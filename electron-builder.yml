@@ -9,6 +9,7 @@ files:
   - '!out/**/*.map'
   - package.json
   - LICENSE
+  - NOTICE
   - THIRD_PARTY_NOTICES.md
 asar: true
 electronFuses:

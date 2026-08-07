@@ -1,6 +1,6 @@
 # Third-Party Notices
 
-AIY includes third-party software. Those components are not covered by the AIY Non-Commercial Source License and remain subject to their own license terms.
+AIY includes third-party software. Those components are not covered by the PolyForm Noncommercial License 1.0.0 and remain subject to their own license terms.
 
 The runtime dependency tree locked for AIY 0.3.0 was audited on 2026-08-07. Excluding AIY itself, it contains 208 packages with the following declared licenses:
 
