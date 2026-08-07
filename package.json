@@ -4,7 +4,7 @@
   "private": true,
   "description": "Local-first AI image generation and asset management workbench",
   "author": "AIY Image Tools",
-  "license": "SEE LICENSE IN LICENSE",
+  "license": "PolyForm-Noncommercial-1.0.0",
   "repository": {
     "type": "git",
     "url": "https://github.com/gantrol/aiy-desktop.git"
