@@ -6,7 +6,7 @@ export const MAX_IMAGE_DECODER_INPUT_BYTES = 64 * 1024 * 1024;
 export const MAX_IMAGE_DECODER_OUTPUT_BYTES = 128 * 1024 * 1024;
 export const MAX_IMAGE_DECODER_THUMBNAIL_BYTES = 32 * 1024 * 1024;
 export const MAX_IMAGE_DECODER_DIMENSION = 32_768;
-export const MAX_IMAGE_DECODER_PIXELS = 4_096 * 4_096;
+export const MAX_IMAGE_DECODER_PIXELS = 32 * 1024 * 1024;
 
 const requestIdSchema = z.string().uuid();
 const operationSchema = z.enum(['thumbnail', 'crop', 'normalize']);

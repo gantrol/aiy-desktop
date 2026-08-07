@@ -45,6 +45,11 @@ win:
       arch: [x64]
 mac:
   icon: build/icon.png
+  # Apple Silicon rejects Electron binaries after fuse patching unless the
+  # complete bundle is signed. Use a valid ad-hoc signature when no Developer
+  # ID is available; this does not provide identity or notarization.
+  identity: '-'
+  hardenedRuntime: false
   target:
     - dmg
     - zip

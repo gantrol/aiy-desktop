@@ -12,6 +12,8 @@ import {
   runResponsiveAction,
   startMainProcessResponsivenessObserver,
   startRendererResponsivenessObserver,
+  textChanged,
+  textContentNow,
   visible,
 } from './support/responsiveness';
 import { action, actions, activeView, views } from './support/selectors';
@@ -22,6 +24,7 @@ const dropOverlay = '[data-slot="global-drop-overlay"]';
 const progressOverlay = '[data-slot="intake-progress-overlay"]';
 const draftTray = '[data-slot="intake-draft-tray"]';
 const intakePreview = '[data-slot="intake-preview"]';
+const fileDropSource = '[data-e2e-file-drop-source]';
 
 async function openGalleryIntake(page: Page) {
   await expectAppReady(page);
@@ -31,7 +34,6 @@ async function openGalleryIntake(page: Page) {
 }
 
 async function prepareFileDrop(page: Page, filePaths: string[]): Promise<JSHandle<DataTransfer>> {
-  const selector = '[data-e2e-file-drop-source]';
   await page.evaluate(() => {
     const input = document.createElement('input');
     input.type = 'file';
@@ -40,14 +42,13 @@ async function prepareFileDrop(page: Page, filePaths: string[]): Promise<JSHandl
     input.setAttribute('data-e2e-file-drop-source', '');
     document.body.append(input);
   });
-  const input = page.locator(selector);
+  const input = page.locator(fileDropSource);
   await input.setInputFiles(filePaths);
   const transfer = await input.evaluateHandle((element) => {
     const dataTransfer = new DataTransfer();
     for (const file of (element as HTMLInputElement).files ?? []) dataTransfer.items.add(file);
     return dataTransfer;
   });
-  await input.evaluate((element) => element.remove());
   return transfer;
 }
 
@@ -64,17 +65,28 @@ async function dropFilesForReview(
       probes: [visible('drop target feedback', page.locator(dropOverlay))],
     }),
   );
+  // A script-created DataTransfer can enter Chromium's protected drag state
+  // after dragenter and expose an empty FileList on a later synthetic drop.
+  // Rebuild the drop transfer from the still-mounted input to model the file
+  // access Chromium grants to a real drop event.
+  const dropTransfer = await page.locator(fileDropSource).evaluateHandle((element) => {
+    const dataTransfer = new DataTransfer();
+    for (const file of (element as HTMLInputElement).files ?? []) dataTransfer.items.add(file);
+    return dataTransfer;
+  });
   responses.push(
     await runResponsiveAction({
       label: 'drop images for review',
-      action: () => surface.dispatchEvent('drop', { dataTransfer: transfer }),
+      action: () => surface.dispatchEvent('drop', { dataTransfer: dropTransfer }),
       probes: [
         visible('image reading progress', page.locator(progressOverlay)),
         visible('image review', page.locator(draftTray)),
       ],
     }),
   );
-  await transfer.dispose();
+  // The intake controller keeps the File objects after the drop handler returns
+  // and decodes them asynchronously. Keep their input and DataTransfers alive;
+  // Playwright releases them with the page after the test finishes.
 }
 
 test.describe('material image intake', () => {
@@ -223,16 +235,39 @@ test.describe('material image intake', () => {
     );
     const inspector = page.locator('[data-slot="material-inspector"]');
     const copyButton = inspector.locator(action(actions.assetFileCopy));
+    const operationToast = page.locator('[data-slot="toast"]');
+    for (let index = 0; index < 8 && (await operationToast.isVisible()); index += 1) {
+      await operationToast.getByRole('button').evaluate((button: HTMLButtonElement) => button.click());
+    }
+    const toastBeforeCopy = await textContentNow(operationToast);
+    await app.evaluate(({ clipboard }) => clipboard.clear());
     responses.push(
       await runResponsiveAction({
         label: 'copy 24 megapixel image without blocking Electron',
         action: () => copyButton.click(),
-        probes: [attribute('large image copy progress', copyButton, 'aria-busy', 'true')],
+        probes: [
+          attribute('large image copy progress', copyButton, 'aria-busy', 'true'),
+          textChanged('large image copy feedback', operationToast, toastBeforeCopy),
+          {
+            label: 'large image copied',
+            active: async () => {
+              const size = await app.evaluate(({ clipboard }) => clipboard.readImage().getSize());
+              return size.width === fixture.width && size.height === fixture.height;
+            },
+          },
+        ],
       }),
     );
     await expect(copyButton).toHaveAttribute('aria-busy', 'false', { timeout: 30_000 });
     const clipboardSize = await app.evaluate(({ clipboard }) => clipboard.readImage().getSize());
-    expect(clipboardSize).toEqual({ width: fixture.width, height: fixture.height });
+    if (await operationToast.isVisible()) {
+      await operationToast.getByRole('button').evaluate((button: HTMLButtonElement) => button.click());
+    }
+    const copyFeedback = await textContentNow(operationToast);
+    expect(clipboardSize, `Copy feedback: ${copyFeedback ?? 'none'}`).toEqual({
+      width: fixture.width,
+      height: fixture.height,
+    });
 
     await testInfo.attach('material-import-phases.json', {
       body: JSON.stringify({ fixture, previewReadyMs, commitCompletedMs, clipboardSize }, null, 2),

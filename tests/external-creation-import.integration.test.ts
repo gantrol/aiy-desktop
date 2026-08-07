@@ -33,9 +33,7 @@ describe('new external creation import', () => {
       });
       expect(
         library.database.db
-          .prepare(
-            `SELECT current_version_id currentVersionId, title FROM prompt_series WHERE id = ?`,
-          )
+          .prepare(`SELECT current_version_id currentVersionId, title FROM prompt_series WHERE id = ?`)
           .get(imported.seriesId),
       ).toEqual({
         currentVersionId: imported.versionId,

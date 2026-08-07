@@ -310,8 +310,8 @@ export async function runModelWorker() {
       isExtensionActivated: () => extensions?.isActivated(CODEX_APP_SERVER_EXTENSION_ID) === true,
     });
     const imageGenerationRoutes = new ImageGenerationRouteRegistry([
-      // CLI stays first to preserve the working pinned-runtime default. The
-      // two descriptors have independent keys and can be selected together.
+      // CLI stays first to preserve the existing model order. The two
+      // descriptors have independent keys and can be selected together.
       new ModelBackedGenerationProvider(CODEX_CLI_PROVIDER_KEY, 'Codex', [new CodexImageModel(codex, 'cli')]),
       new ModelBackedGenerationProvider(CODEX_APP_SERVER_PROVIDER_KEY, 'Codex', [
         new CodexImageModel(codex, 'app-server'),

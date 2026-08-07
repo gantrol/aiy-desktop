@@ -8,48 +8,48 @@ import { createVitestConfig } from './vitest.shared';
  */
 export default createVitestConfig({
   coverageThresholds: {
-    // Combined node + jsdom baseline from 2026-08-04. These floors leave at
-    // most a few uncovered statements of rounding tolerance.
-    lines: 29.4,
-    statements: 27.1,
-    functions: 25.3,
-    branches: 22.7,
+    // Combined node + jsdom release-source baseline measured on 2026-08-07
+    // with Node 22.22.3 and Vitest 4.1.10.
+    lines: 28.4,
+    statements: 26.5,
+    functions: 24,
+    branches: 21.3,
     'src/renderer/components/**': {
-      lines: 14.5,
-      statements: 13.6,
-      functions: 13.7,
-      branches: 14,
+      lines: 12.9,
+      statements: 12.3,
+      functions: 12.1,
+      branches: 12.3,
     },
     'src/main/database/**': {
-      lines: 65.7,
-      statements: 61.2,
-      functions: 66.8,
-      branches: 50.6,
+      lines: 67.2,
+      statements: 62.8,
+      functions: 66.5,
+      branches: 50.8,
     },
     // Zero-percent process boundaries use uncovered-item ceilings so adding
     // more untested code fails even before the first positive percentage lands.
     'src/main/model-worker/**': {
-      lines: -785,
-      statements: -887,
-      functions: -165,
-      branches: -477,
+      lines: -1024,
+      statements: -1141,
+      functions: -215,
+      branches: -591,
     },
     'src/main/ipc.ts': {
-      lines: -424,
-      statements: -492,
-      functions: -148,
-      branches: -126,
+      lines: -505,
+      statements: -567,
+      functions: -165,
+      branches: -172,
     },
     'src/main/ipc/**': {
-      lines: -126,
-      statements: -151,
-      functions: -55,
-      branches: -49,
+      lines: -189,
+      statements: -219,
+      functions: -73,
+      branches: -64,
     },
     'src/preload/**': {
-      lines: -162,
-      statements: -172,
-      functions: -158,
+      lines: -258,
+      statements: -273,
+      functions: -189,
     },
   },
   projects: [

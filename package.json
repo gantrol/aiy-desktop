@@ -1,6 +1,6 @@
 {
   "name": "@aiy/desktop",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "private": true,
   "description": "Local-first AI image generation and asset management workbench",
   "author": "AIY Image Tools",

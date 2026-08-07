@@ -5,6 +5,7 @@ import {
   mkdirSync,
   mkdtempSync,
   readFileSync,
+  realpathSync,
   rmSync,
   statSync,
   unlinkSync,
@@ -27,7 +28,7 @@ interface AssetFixture {
 }
 
 function openLibrary() {
-  const root = mkdtempSync(path.join(os.tmpdir(), 'aibd-library-file-view-'));
+  const root = realpathSync(mkdtempSync(path.join(os.tmpdir(), 'aibd-library-file-view-')));
   roots.push(root);
   const database = new LibraryDatabase(path.join(root, 'library.sqlite3'), root);
   databases.push(database);

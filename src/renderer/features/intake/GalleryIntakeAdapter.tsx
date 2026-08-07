@@ -147,7 +147,7 @@ export const GalleryIntakeAdapter = forwardRef<GalleryIntakeAdapterHandle, Props
         label={messages.creator.workbench.importing}
       />
       <Dialog
-        open={state.items.length > 0}
+        open={state.items.length > 0 && !state.pendingIntent && !externalPending}
         onOpenChange={(open) => {
           if (!open && !reviewBusy) resetReview();
         }}

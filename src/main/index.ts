@@ -592,6 +592,7 @@ if (ownsSingleInstanceLock)
   app
     .whenReady()
     .then(async () => {
+      if (process.platform === 'darwin') app.dock?.setIcon(appIcon());
       if (process.platform === 'win32') ensureAppTray();
       const transitionPreviewLimit = 6;
       const transitionPreviewRoot = path.join(app.getPath('userData'), 'space-previews');
@@ -752,7 +753,8 @@ if (ownsSingleInstanceLock)
           },
         );
       };
-      const internalModelsEnabled = import.meta.env.DEV;
+      const internalModelsEnabled =
+        import.meta.env.DEV || (process.env.AIY_E2E === '1' && process.env.AIY_ENABLE_INTERNAL_MODELS === '1');
       const connectionDirectory = path.join(app.getPath('userData'), 'connections');
       const secretProtector: SecretProtector = {
         isAvailable: () =>

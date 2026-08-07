@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import { chmod, copyFile, readFile, stat } from 'node:fs/promises';
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { AssetFileActions } from '../src/main/asset-file-actions';
@@ -12,7 +12,7 @@ const databases: LibraryDatabase[] = [];
 const pngBytes = Buffer.concat([Buffer.from('89504e470d0a1a0a', 'hex'), Buffer.from('asset-bytes')]);
 
 function openLibrary() {
-  const root = mkdtempSync(path.join(os.tmpdir(), 'aibd-asset-files-'));
+  const root = realpathSync(mkdtempSync(path.join(os.tmpdir(), 'aibd-asset-files-')));
   roots.push(root);
   const database = new LibraryDatabase(path.join(root, 'library.sqlite3'), root);
   databases.push(database);

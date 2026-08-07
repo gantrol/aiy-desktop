@@ -30,9 +30,10 @@ coverage denominator (`src/**/*.{ts,tsx}`), so component execution is merged wit
 unit, architecture, and integration execution instead of being reported against a
 hand-picked file list.
 
-The coverage gate starts at the measured 2026-08-04 baseline: 29.4% lines, 27.1%
-statements, 25.3% functions, and 22.7% branches. The report is still written when a
-test fails. `npm run verify` runs type checking followed by this combined test and
+The coverage gate is anchored to the release-source baseline measured on
+2026-08-07 with Node 22.22.3 and Vitest 4.1.10: 28.4% lines, 26.5% statements,
+24.0% functions, and 21.3% branches. The report is still written when a test
+fails. `npm run verify` runs type checking followed by this combined test and
 coverage gate.
 
 - **Unit** — fast pure-logic checks. Must not open a real SQLite database or

@@ -40,7 +40,7 @@
 
 资源未满足这些条件时，应暂缓可分发构建，而不是在打包机上临时复制外部目录。
 
-当前状态（2026-08-07）：creation starter 已是普通目录，5 个 JSON 与 4 张 WebP 均在 Git 提交树内；fixture 的媒体引用、hash、MIME、尺寸和字节数均与实际 WebP 一致，并已从提交归档复验。Windows x64 未打包目录已成功生成并复核许可文件；首发只生成未签名的 Windows NSIS／ZIP，附带 SHA-256 与 SmartScreen 提示。macOS 不属于本次公开发布范围。
+当前状态（2026-08-07）：creation starter 已是普通目录，5 个 JSON 与 4 张 WebP 均在 Git 提交树内；fixture 的媒体引用、hash、MIME、尺寸和字节数均与实际 WebP 一致，并已从提交归档复验。Windows x64 首发产物为未签名的 NSIS／ZIP；macOS 补丁发行产物使用 Apple Silicon 执行所需的 ad-hoc 签名，但没有 Developer ID 签名或公证。两端产物均附带 SHA-256 与相应的系统安全提示。
 
 ## 建议验收命令
 

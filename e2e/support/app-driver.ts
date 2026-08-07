@@ -6,6 +6,7 @@ export async function expectAppReady(page: Page) {
   await expect(page.locator('#root')).toBeVisible();
   await expect(page.locator(view(views.creator))).toBeVisible();
   await expect(page.locator(view(views.dictionary))).toBeVisible();
+  await keepStarterPackEmpty(page);
 }
 
 export async function keepStarterPackEmpty(page: Page) {
@@ -16,6 +17,7 @@ export async function keepStarterPackEmpty(page: Page) {
 }
 
 export async function navigateTo(page: Page, name: ViewName) {
+  await keepStarterPackEmpty(page);
   const target = page.locator(view(name));
   await expect(target).toBeVisible();
   await target.click();

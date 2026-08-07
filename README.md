@@ -1,10 +1,10 @@
 # AIY生图管理工具
 
-本地优先的 AI 生图、词典与素材管理桌面工具。正式运行时以 SQLite 与受管媒体目录为主库，不从 React 组件或网页 Demo 读取业务数据。首个公开版本 `0.3.0` 优先提供 Windows 10/11 x64 安装包和 ZIP；macOS 暂不属于这次公开发布范围。
+本地优先的 AI 生图、词典与素材管理桌面工具。正式运行时以 SQLite 与受管媒体目录为主库，不从 React 组件或网页 Demo 读取业务数据。`0.3.0` 提供 Windows 10/11 x64 安装包和 ZIP；`0.3.1` 增加 Apple Silicon（arm64）macOS DMG 和 ZIP。
 
 ## 下载与安装
 
-发布版本从 [GitHub Releases](https://github.com/gantrol/aiy-desktop/releases) 下载。Windows 安装包和 ZIP 均附带 SHA-256 校验文件。当前首发候选没有 Authenticode 签名，Windows SmartScreen 可能显示“未知发布者”；运行前应先核对校验值。
+发布版本从 [GitHub Releases](https://github.com/gantrol/aiy-desktop/releases) 下载，所有安装包均附带 SHA-256 校验值。Windows 包没有 Authenticode 签名，macOS 包没有 Apple Developer 签名或公证；SmartScreen 或 Gatekeeper 可能显示安全提示，运行前应先核对校验值。
 
 ## 许可
 
@@ -20,43 +20,9 @@ npm run dev
 
 开发链使用 `electron-vite`：renderer 修改走 Vite HMR；main/preload 修改会重建并自动重启/刷新 Electron。Electron 42+ 改为首次运行时下载二进制，因此 `predev` 会先执行本地 `install-electron`，不需要手工处理。
 
-## Codex 图片生成双选项（Windows 本机）
+## Codex 图片生成
 
-本节记录当前 Windows 本机的固定 CLI 路径；这些 `%LOCALAPPDATA%` 路径和 `win32-x64` 二进制不要直接复制到 macOS。
-
-2026-08-03 起，本机使用两套彼此隔离的 Codex CLI，生图模型也明确拆成两个选项：
-
-- `Codex App Server`：模型键 `codex-app-server/gpt-image-2`，只走 App Server，使用 PATH 中的 `0.144.1`。
-- `Codex CLI`：模型键沿用 `gpt-image-2` 以兼容已有草稿和任务，只走一次性的 `codex exec -m gpt-5.5`，优先使用固定的 `0.143.0`。
-
-两个选项不会自动改走对方的传输。不能把 `0.143.0` 全局接到 App Server；当前服务会要求新版 CLI，而且旧版 `thread/fork` 也可能无法处理较新版本留下的线程状态。重新启动桌面应用不会改变固定目录；只要文件仍在，选择 `Codex CLI` 仍会使用 `0.143.0`，选择 `Codex App Server` 则使用 `0.144.1`。
-
-图片固定用于规避新版图片路径可能出现的下列网络错误。图片任务本身已有 15 分钟超时，因此单纯延长等待时间不能处理这个错误。
-
-```text
-image generation failed: network error: error sending request for url
-(https://chatgpt.com/backend-api/codex/images/generations)
-```
-
-CLI 选项参考 [`eagleagentic/codex-imagegen-143`](https://github.com/eagleagentic/codex-imagegen-143)。固定二进制直接取自官方 npm 平台包 `@openai/codex@0.143.0-win32-x64`。
-
-- App Server/PATH：`%LOCALAPPDATA%\Programs\OpenAI\Codex\bin\codex.exe`（`0.144.1`）
-- 图片 CLI：`%LOCALAPPDATA%\OpenAI\Codex\pinned\0.143.0\bin\codex.exe`
-- 原始 `0.144.1` 备份：`%LOCALAPPDATA%\OpenAI\Codex\binary-backups\0.144.1-20260803-073457\`
-- 图片 CLI SHA-256：`5728E3DDF1480103BAD235560E95CF7764EA3069F06029F9B2F39EB74A8066F6`
-- App Server CLI SHA-256：`CBACBB9726262EF558B4AF0438A1B2A5BBA9076132401D947B5B4D2BF92AB0E4`
-
-验证两套版本：
-
-```powershell
-codex --version
-# codex-cli 0.144.1
-
-& "$env:LOCALAPPDATA\OpenAI\Codex\pinned\0.143.0\bin\codex.exe" --version
-# codex-cli 0.143.0
-```
-
-可用 `CODEX_IMAGE_BINARY` 显式覆盖图片 CLI 路径；未设置时，Windows 默认检查上述固定目录。删除或移动固定文件后，`Codex CLI` 会改用 `CODEX_BINARY` 或 PATH 中的当前 CLI，仍然不会切到 App Server。Codex 桌面端更新可能覆盖 PATH 目录，但不会覆盖独立固定目录；生图问题修复后，应移除 `0.143.0` 固定版本并使用受支持的新版本。
+应用提供彼此独立的 `Codex App Server` 与 `Codex CLI` 两个生图选项；模型键保持稳定，以兼容已有草稿和任务。默认使用 `CODEX_BINARY` 或 PATH 中当前受支持的 Codex CLI。`CODEX_IMAGE_BINARY` 仅用于开发和故障诊断时显式覆盖图片 CLI，正常使用应保持未设置。
 
 图片生成、Codex 助手、会话和标题建议由“每个资料库一个”的独立后台模型进程执行。main/preload 的开发重启只会重新连接该进程，正在运行的任务不会因此中断；协议升级遇到旧 worker 时，有任务就先兼容连接并等待完成，空闲后再滚动换新。无客户端且无任务时，后台进程会在空闲期后自行退出。关闭窗口时若仍有模型任务，应用会让用户选择继续后台运行、取消任务并退出、经二次确认强制退出或返回；选择后台运行后会显示系统托盘，任务完成时通知，并在 30 秒后自动退出。修改 `electron.vite.config.ts` 后需要完整停止并重新执行一次 `npm run dev`，让开发宿主重新读取入口配置。
 

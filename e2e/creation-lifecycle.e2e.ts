@@ -136,8 +136,7 @@ test.describe('creation lifecycle', () => {
         probes: [visible('rename dialog', renameDialog)],
       }),
     );
-    await page.locator('#series-title-zh').fill(renamedTitle);
-    await page.locator('#series-title-en').fill(renamedTitle);
+    await page.locator('#series-title').fill(renamedTitle);
     const renamedSeries = page
       .locator(`[data-series-id="${seriesId}"][data-result-library-selected="true"]`)
       .filter({ visible: true })
@@ -234,10 +233,10 @@ test.describe('creation lifecycle', () => {
     );
 
     const otherSelected = page.locator(
-      '[data-model-key]:not([data-model-key="internal-library-random"])[aria-selected="true"]',
+      '[data-model-key]:not([data-model-key="internal-library-random"]) [role="option"][aria-selected="true"]',
     );
     while ((await otherSelected.count()) > 0) await otherSelected.first().click();
-    const replayModel = page.locator('[data-model-key="internal-library-random"]');
+    const replayModel = page.locator('[data-model-key="internal-library-random"] [role="option"]');
     await expect(replayModel).toHaveAttribute('aria-disabled', 'false');
     if ((await replayModel.getAttribute('aria-selected')) !== 'true') await replayModel.click();
     await page.keyboard.press('Escape');
