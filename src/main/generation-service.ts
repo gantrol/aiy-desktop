@@ -52,7 +52,7 @@ export interface GenerationService {
   startVersion(input: GenerationVersionInput): MaybePromise<{ runId: string; seriesId: string; versionId: string }>;
   retry(runId: string): MaybePromise<{ runId: string; seriesId: string; versionId: string }>;
   cancel(runId: string): MaybePromise<void>;
-  /** Re-read extension activation and connection state in the detached worker. */
+  /** Re-read extension state and broadcast the worker's current route snapshot. */
   refreshExtensions?(): MaybePromise<unknown>;
   /** Replace the worker's in-memory OpenAI credential; never persisted by the worker. */
   configureOpenAiImageApi?(configuration: OpenAiImageApiRuntimeConfiguration | null): MaybePromise<unknown>;

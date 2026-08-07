@@ -1902,19 +1902,21 @@ export function ResultLibrary({
           />
         )}
         <header className="grid h-14 shrink-0 place-items-center border-b border-border/60">
-          {surface === 'new-creation' ? (
+          <div className="flex items-center justify-center gap-1">
+            {surface === 'new-creation' && (
+              <Button
+                variant="ghost"
+                size="icon-sm"
+                disabled={lifecycleBusy}
+                title={a.newAlbum}
+                aria-label={a.newAlbum}
+                onClick={() => onCreateAlbum(null)}
+              >
+                <GalleryVerticalEndIcon className="size-4" />
+              </Button>
+            )}
             <Button
-              variant="ghost"
-              size="icon-sm"
-              disabled={lifecycleBusy}
-              title={a.newAlbum}
-              aria-label={a.newAlbum}
-              onClick={() => onCreateAlbum(null)}
-            >
-              <GalleryVerticalEndIcon className="size-4" />
-            </Button>
-          ) : (
-            <Button
+              type="button"
               data-action="new-creation"
               variant="ghost"
               size="icon-sm"
@@ -1925,7 +1927,7 @@ export function ResultLibrary({
             >
               <PlusIcon className="size-4" />
             </Button>
-          )}
+          </div>
         </header>
         <ScrollArea type="always" className="min-h-0 flex-1" viewportRef={compactViewportRef}>
           <div

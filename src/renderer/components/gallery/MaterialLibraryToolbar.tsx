@@ -169,6 +169,7 @@ function FavoriteScopeButton({ active, label, onToggle }: { active: boolean; lab
       size="sm"
       className="h-9"
       data-action="material-scope-favorite"
+      data-state={active ? 'on' : 'off'}
       aria-pressed={active}
       onClick={onToggle}
     >

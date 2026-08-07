@@ -113,6 +113,7 @@ export function ImportItemList({
                 >
                   {item.kind === 'IMAGE' ? (
                     <img
+                      data-slot="intake-preview"
                       className="h-24 w-24 shrink-0 rounded-md border bg-media-surround-light object-contain"
                       src={item.previewUrl}
                       alt=""

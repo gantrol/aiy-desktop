@@ -2,8 +2,7 @@ export const CODEX_APP_SERVER_EXTENSION_ID = 'com.aiy.codex-app-server';
 export const CODEX_ASSISTANT_DEFAULT_MODEL_KEY = 'gpt-5.6-luna';
 export const CODEX_ASSISTANT_DEFAULT_REASONING_EFFORT = 'low' as const;
 export const CODEX_IMAGE_MODEL_ID = 'gpt-image-2';
-// Keep the historical key on the CLI option: existing drafts and the runs
-// created by the pinned-image workaround already use this value.
+// Keep the historical key on the CLI option so existing drafts and runs remain compatible.
 export const CODEX_CLI_IMAGE_MODEL_KEY = CODEX_IMAGE_MODEL_ID;
 export const CODEX_APP_SERVER_IMAGE_MODEL_KEY = 'codex-app-server/gpt-image-2';
 export const CODEX_APP_SERVER_PROVIDER_KEY = 'codex-app-server';

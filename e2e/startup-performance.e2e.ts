@@ -69,10 +69,11 @@ test.describe('startup performance', () => {
 test.describe('background service startup resilience', () => {
   test.use({ workerReadyDelayMs: 3_000 });
 
-  test('shows a responsive reconnecting UI while the worker handshake is delayed', async (
-    { app, page, launchTiming },
-    testInfo,
-  ) => {
+  test('shows a responsive reconnecting UI while the worker handshake is delayed', async ({
+    app,
+    page,
+    launchTiming,
+  }, testInfo) => {
     const status = page.locator('[data-action="background-tasks"]');
 
     await expect(status).toBeVisible();

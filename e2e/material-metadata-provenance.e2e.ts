@@ -11,7 +11,7 @@ async function clickWithMouse(page: Page, target: Locator) {
   const hitTarget = await page.evaluate(
     ({ x, y }) => {
       const hit = document.elementFromPoint(x, y);
-      return hit instanceof Element ? hit.closest('[role="option"]')?.textContent?.trim() ?? null : null;
+      return hit instanceof Element ? (hit.closest('[role="option"]')?.textContent?.trim() ?? null) : null;
     },
     { x: box.x + box.width / 2, y: box.y + box.height / 2 },
   );
@@ -21,7 +21,9 @@ async function clickWithMouse(page: Page, target: Locator) {
   await page.mouse.click(box.x + box.width / 2, box.y + box.height / 2);
 }
 
-test('selects and persists material model and platform with mouse input inside the inspector sheet', async ({ page }) => {
+test('selects and persists material model and platform with mouse input inside the inspector sheet', async ({
+  page,
+}) => {
   // Matches the screenshot's 1875x1153 physical window at 125% display scale.
   await page.setViewportSize({ width: 1500, height: 922 });
 

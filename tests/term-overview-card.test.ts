@@ -32,15 +32,17 @@ function makeTerm(overrides: Partial<TermListItem> = {}): TermListItem {
       },
     ],
     classificationIds: ['category-appearance-outline'],
-    classifications: [{
-      id: 'category-appearance-outline',
-      stableKey: 'appearance.outline',
-      name: '外观 · 轮廓',
-      primaryValueId: 'domain-appearance',
-      primaryName: '外观',
-      secondaryValueId: 'type-outline',
-      secondaryName: '轮廓',
-    }],
+    classifications: [
+      {
+        id: 'category-appearance-outline',
+        stableKey: 'appearance.outline',
+        name: '外观 · 轮廓',
+        primaryValueId: 'domain-appearance',
+        primaryName: '外观',
+        secondaryValueId: 'type-outline',
+        secondaryName: '轮廓',
+      },
+    ],
     primaryDirectoryClassificationId: 'category-appearance-outline',
     hasDraft: false,
     mediaPreview: {

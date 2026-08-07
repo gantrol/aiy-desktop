@@ -325,19 +325,23 @@ export function ImportReviewWorkspace({
         </div>
         <Button
           type="button"
+          data-action="intake-start-creation"
           variant="outline"
           disabled={disabled || !canImportCreation}
+          aria-busy={importingCreation}
           onClick={() => onImportAsCreation(imageDetailsFromDrafts(drafts))}
         >
           {importingCreation && <LoaderCircleIcon className="size-4 animate-spin" />}
           {labels.importAsCreation}
         </Button>
-        <Button type="button" variant="outline" disabled={disabled} onClick={onCancel}>
+        <Button type="button" data-action="intake-cancel" variant="outline" disabled={disabled} onClick={onCancel}>
           {labels.cancel}
         </Button>
         <Button
           type="button"
+          data-action="intake-import"
           disabled={disabled || !allNamesValid || items.length === 0}
+          aria-busy={importingMaterial}
           onClick={() => onImport(imageDetailsFromDrafts(drafts))}
         >
           {importingMaterial && <LoaderCircleIcon className="size-4 animate-spin" />}

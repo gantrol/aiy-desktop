@@ -96,6 +96,10 @@ export function useIntakeController(
     }
 
     dispatch({ type: 'READING', source });
+    // Let React commit the foreground progress state before Chromium starts
+    // image decoding. Under concurrent load, beginning the decode in the same
+    // frame can otherwise leave the user without either progress or a preview.
+    await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
     const items: LocalIntakeItem[] = [];
     // Decode previews one at a time. Running up to sixteen full media decodes
     // concurrently causes avoidable renderer memory pressure and long tasks.

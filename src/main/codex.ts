@@ -106,13 +106,9 @@ async function regularFileExists(filePath: string) {
   }
 }
 
-function pinnedImageCodexBinary() {
+export function configuredImageCodexBinary() {
   const configured = process.env.CODEX_IMAGE_BINARY?.trim();
-  if (configured) return nativeLocalPath(configured);
-  const localAppData = process.env.LOCALAPPDATA?.trim();
-  if (process.platform !== 'win32' || !localAppData) return null;
-  const candidate = path.join(localAppData, 'OpenAI', 'Codex', 'pinned', '0.143.0', 'bin', 'codex.exe');
-  return existsSync(candidate) ? candidate : null;
+  return configured ? nativeLocalPath(configured) : null;
 }
 
 function safeTempParent(
@@ -656,7 +652,7 @@ export class CodexAdapter {
     this.imageBinary =
       lifecycle.imageBinary === undefined
         ? processRunner === runProcess
-          ? pinnedImageCodexBinary()
+          ? configuredImageCodexBinary()
           : null
         : lifecycle.imageBinary;
     this.isExtensionActivated = lifecycle.isExtensionActivated ?? (() => true);

@@ -12,7 +12,7 @@ import {
 import os from 'node:os';
 import path from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { CodexAdapter, CodexTempLifecycleError } from '@/main/codex';
+import { CodexAdapter, CodexTempLifecycleError, configuredImageCodexBinary } from '@/main/codex';
 import type { LibraryDatabase } from '@/main/database';
 import { GenerationCoordinator } from '@/main/generation';
 import { CodexImageModel, GenerationModelRegistry } from '@/main/generation-models';
@@ -32,6 +32,7 @@ function tempRoot() {
 
 afterEach(() => {
   for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true });
+  vi.unstubAllEnvs();
   vi.restoreAllMocks();
 });
 
@@ -73,6 +74,25 @@ function healthResult(args: string[]) {
   if (args[0] === 'login') return { stdout: 'Logged in', stderr: '' };
   return null;
 }
+
+describe('Codex image binary selection', () => {
+  it('does not infer an image-specific binary from the legacy local app-data directory', () => {
+    const root = tempRoot();
+    const legacyBinary = path.join(root, 'OpenAI', 'Codex', 'pinned', '0.143.0', 'bin', 'codex.exe');
+    mkdirSync(path.dirname(legacyBinary), { recursive: true });
+    writeFileSync(legacyBinary, 'legacy');
+    vi.stubEnv('LOCALAPPDATA', root);
+    vi.stubEnv('CODEX_IMAGE_BINARY', '');
+
+    expect(configuredImageCodexBinary()).toBeNull();
+  });
+
+  it('uses an image-specific binary only when explicitly configured', () => {
+    vi.stubEnv('CODEX_IMAGE_BINARY', '  /opt/codex-current  ');
+
+    expect(configuredImageCodexBinary()).toBe('/opt/codex-current');
+  });
+});
 
 describe('Codex temporary job lifecycle', () => {
   it('passes only explicit conversational image paths to the Codex invocation', async () => {

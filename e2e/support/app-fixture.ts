@@ -223,6 +223,8 @@ export const test = base.extend<AppFixtures & AppWorkerOptions>({
 
   app: async ({ stub, userDataDir, launchTiming, diagnostics, workerReadyDelayMs, intakeCommitDelayMs }, use) => {
     launchTiming.startedAtMs = nodePerformance.now();
+    const launchEnvironment = { ...process.env };
+    delete launchEnvironment.NO_COLOR;
     const app = await electron.launch({
       // Launch the application directory so Electron resolves package.json,
       // app.getAppPath(), built-in resources, and the icon exactly as dev and
@@ -231,7 +233,7 @@ export const test = base.extend<AppFixtures & AppWorkerOptions>({
       args: ['.'],
       cwd: appRoot,
       env: {
-        ...process.env,
+        ...launchEnvironment,
         // Existing production seam: redirects the whole local space.
         AIY_USER_DATA_DIR: userDataDir,
         AIY_E2E: '1',

@@ -28,7 +28,9 @@ describe('database baseline', () => {
       expect(
         database.prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'schema_migrations'").get(),
       ).toBeUndefined();
-      expect(database.prepare("SELECT key FROM app_meta WHERE key LIKE 'schema_migration_%' LIMIT 1").get()).toBeUndefined();
+      expect(
+        database.prepare("SELECT key FROM app_meta WHERE key LIKE 'schema_migration_%' LIMIT 1").get(),
+      ).toBeUndefined();
 
       for (const table of [
         'term_revision_categories',
@@ -38,9 +40,11 @@ describe('database baseline', () => {
         'word_palette_revision_option_contents',
         'word_palette_revision_localizations',
       ]) {
-        expect(database.prepare(`SELECT name FROM sqlite_master WHERE type = 'table' AND name = ?`).get(table)).toEqual({
-          name: table,
-        });
+        expect(database.prepare(`SELECT name FROM sqlite_master WHERE type = 'table' AND name = ?`).get(table)).toEqual(
+          {
+            name: table,
+          },
+        );
       }
 
       const paletteRevisionColumns = (
@@ -91,7 +95,9 @@ describe('database baseline', () => {
       expect(database.prepare("SELECT value FROM app_meta WHERE key = 'product_data_baseline'").get()).toEqual({
         value: '0.3',
       });
-      expect(database.prepare("SELECT key FROM app_meta WHERE key LIKE 'schema_migration_%' LIMIT 1").get()).toBeUndefined();
+      expect(
+        database.prepare("SELECT key FROM app_meta WHERE key LIKE 'schema_migration_%' LIMIT 1").get(),
+      ).toBeUndefined();
       expect(
         database.prepare("SELECT value FROM app_meta WHERE key = 'database_shutdown_state'").get(),
       ).toBeUndefined();

@@ -13,6 +13,7 @@ import { LibraryDatabase } from '@/main/database';
 import { ImageTransformService } from '@/main/image-transform-service';
 import { copyImageInSandbox } from '@/main/image-clipboard-worker-client';
 import type { GenerationService } from '@/main/generation-service';
+import { commitIntakeAndRefreshRoutes } from '@/main/intake-route-refresh';
 import type { ExtensionRegistry } from '@/main/extensions/registry';
 import type { CodexImageDiscovery } from '@/main/extensions/codex-image-discovery';
 import type { OpenAiImageApiConnection } from '@/main/extensions/openai-image-api/connection';
@@ -1244,7 +1245,7 @@ export function registerIpc(
   });
   ipcMain.handle('intake:commit', async (_event, raw) => {
     const input = intakeSchema.parse(raw);
-    const result = await database.commitIntake(input);
+    const result = await commitIntakeAndRefreshRoutes(database, generation, input);
     // Importing from inside an album files the material there; a failed album
     // write must not discard the import that already succeeded.
     if (!input.albumId || !result.materialIds.length) return result;
