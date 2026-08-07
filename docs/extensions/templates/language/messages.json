@@ -1,0 +1,96 @@
+{
+  "common": {
+    "close": "关闭",
+    "cancel": "取消"
+  },
+  "app": {
+    "generationStatus": {
+      "active": {
+        "$params": ["count"],
+        "$template": "{count} 个运行中"
+      },
+      "queued": {
+        "$params": ["position"],
+        "$template": "排队",
+        "$variants": [
+          {
+            "when": {
+              "param": "position",
+              "truthy": true
+            },
+            "template": "排队 {position}"
+          }
+        ]
+      }
+    }
+  },
+  "aiCenter": {
+    "version": {
+      "$params": ["versionNo"],
+      "$template": "V{versionNo}",
+      "$formats": {
+        "versionNo": {
+          "kind": "padStart",
+          "length": 2,
+          "fill": "0"
+        }
+      }
+    }
+  },
+  "gallery": {
+    "screen": {
+      "favorited": {
+        "$params": ["count"],
+        "$template": "已收藏 {count} 项素材",
+        "$variants": [
+          {
+            "when": {
+              "param": "count",
+              "equals": 0
+            },
+            "template": "素材已经收藏"
+          }
+        ]
+      }
+    }
+  },
+  "creator": {
+    "generationTargets": {
+      "blockedModelUnavailable": {
+        "$params": ["model", "detail"],
+        "$template": "{model} 未连接，请到设置里检查。",
+        "$variants": [
+          {
+            "when": {
+              "param": "detail",
+              "truthy": true
+            },
+            "template": "{model} 未连接：{detail}"
+          }
+        ]
+      }
+    },
+    "annotations": {
+      "statusLabel": {
+        "$params": ["status"],
+        "$template": "待处理",
+        "$variants": [
+          {
+            "when": {
+              "param": "status",
+              "equals": "RESOLVED"
+            },
+            "template": "已解决"
+          },
+          {
+            "when": {
+              "param": "status",
+              "equals": "DISMISSED"
+            },
+            "template": "已移除"
+          }
+        ]
+      }
+    }
+  }
+}

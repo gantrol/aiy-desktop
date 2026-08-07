@@ -1,0 +1,12 @@
+coverage/
+dist/
+.electron-vite/
+.webpack/
+node_modules/
+out/
+playwright-report/
+release/
+src/renderer/.tmp/
+test-results/
+package-lock.json
+tests/fixtures/

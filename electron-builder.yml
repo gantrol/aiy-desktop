@@ -1,0 +1,55 @@
+appId: com.catai.aiy
+productName: AIY Image Tools
+directories:
+  output: release
+files:
+  - out/main/**
+  - out/preload/**
+  - out/renderer/**
+  - '!out/**/*.map'
+  - package.json
+  - LICENSE
+  - THIRD_PARTY_NOTICES.md
+asar: true
+electronFuses:
+  runAsNode: false
+  enableCookieEncryption: true
+  enableNodeOptionsEnvironmentVariable: false
+  enableNodeCliInspectArguments: false
+  enableEmbeddedAsarIntegrityValidation: true
+  onlyLoadAppFromAsar: true
+  loadBrowserProcessSpecificV8Snapshot: false
+  grantFileProtocolExtraPrivileges: false
+asarUnpack:
+  - '**/*.node'
+npmRebuild: false
+extraResources:
+  - from: extensions
+    to: extensions
+  - from: content-packs
+    to: content-packs
+  - from: configuration
+    to: configuration
+  - from: build/icon.png
+    to: icon.png
+  - from: build/icon.ico
+    to: icon.ico
+win:
+  executableName: aiy
+  icon: build/icon.ico
+  target:
+    - target: nsis
+      arch: [x64]
+    - target: zip
+      arch: [x64]
+mac:
+  icon: build/icon.png
+  target:
+    - dmg
+    - zip
+artifactName: 'AIY-Image-Tools-${version}-${os}-${arch}.${ext}'
+nsis:
+  oneClick: false
+  allowToChangeInstallationDirectory: true
+  createDesktopShortcut: true
+  license: LICENSE

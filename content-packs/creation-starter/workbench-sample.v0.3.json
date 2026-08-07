@@ -1,0 +1,265 @@
+{
+  "schemaVersion": "0.3.0",
+  "fixturePolicy": {
+    "idFormat": "readable-fixture-id",
+    "productionImport": "deterministically-remap-to-prefixed-ulid"
+  },
+  "exportedAt": "2026-08-04T12:00:00.000Z",
+  "library": {
+    "id": "builtin.creation-starter.source",
+    "name": "AIY",
+    "deviceId": "device_starter_01"
+  },
+  "promptSeries": [
+    {
+      "id": "ps_starter_001",
+      "title": "象牙色露背长裙",
+      "titleZh": "象牙色露背长裙",
+      "titleEn": "Ivory Open-Back Dress",
+      "currentVersionId": "pv_starter_001_02",
+      "createdAt": "2026-07-20T10:20:00.000Z",
+      "deletedAt": null
+    },
+    {
+      "id": "ps_starter_002",
+      "title": "发现我在拍",
+      "titleZh": "发现我在拍",
+      "titleEn": "Caught on Camera",
+      "currentVersionId": "pv_starter_002_02",
+      "createdAt": "2026-07-21T09:15:00.000Z",
+      "deletedAt": null
+    },
+    {
+      "id": "ps_starter_003",
+      "title": "夏夜暗黑甜美",
+      "titleZh": "夏夜暗黑甜美",
+      "titleEn": "Dark Sweet Summer Night",
+      "currentVersionId": "pv_starter_003_02",
+      "createdAt": "2026-07-21T10:00:00.000Z",
+      "deletedAt": null
+    }
+  ],
+  "promptVersions": [
+    {
+      "id": "pv_starter_001_01",
+      "seriesId": "ps_starter_001",
+      "parentVersionId": null,
+      "versionNo": 1,
+      "userIntent": "象牙色露背长裙，柔和日光，写实人像",
+      "finalPrompt": "Realistic portrait of an adult woman wearing an ivory open-back dress in soft daylight. Natural proportions. No text or watermark.",
+      "changeSummary": "初始版本",
+      "sourceImageId": null,
+      "sourceAnnotationIds": [],
+      "contentHash": "2d16d2a6ee83f3e1d5092964423a7b71df7e813d04ac35ad61fd773d4f00a701",
+      "createdAt": "2026-07-20T10:24:00.000Z"
+    },
+    {
+      "id": "pv_starter_001_02",
+      "seriesId": "ps_starter_001",
+      "parentVersionId": "pv_starter_001_01",
+      "versionNo": 2,
+      "userIntent": "人物年轻一些，但不要幼态",
+      "finalPrompt": "Realistic portrait of a young adult woman with fresh, explicitly non-childlike facial features, wearing an ivory open-back dress. Soft daylight. No text or watermark.",
+      "changeSummary": "降低成熟感",
+      "sourceImageId": "img_starter_001",
+      "sourceAnnotationIds": [],
+      "contentHash": "493557725d2955137e5392cf3faace5de2885cf1f43a44ee659028dfa47fb4b9",
+      "createdAt": "2026-07-20T11:42:00.000Z"
+    },
+    {
+      "id": "pv_starter_002_01",
+      "seriesId": "ps_starter_002",
+      "parentVersionId": null,
+      "versionNo": 1,
+      "userIntent": "咖啡馆里发现伴侣正在拍摄的自然瞬间",
+      "finalPrompt": "Photorealistic boyfriend-perspective candid cafe photograph of an adult East Asian woman sitting sideways near a window. She looks up from the menu while trying not to smile. Pink contrast-trim baby tee, cream layered lace skirt, loose twin braids. Natural eye level, mixed window light and direct flash. No text, logo, or watermark.",
+      "changeSummary": "初始版本",
+      "sourceImageId": null,
+      "sourceAnnotationIds": [],
+      "contentHash": "d0c49b3e7ff0537e6122956d329d5d864071495b4954abad29e1441094d1ceb7",
+      "createdAt": "2026-07-21T09:18:00.000Z"
+    },
+    {
+      "id": "pv_starter_002_02",
+      "seriesId": "ps_starter_002",
+      "parentVersionId": "pv_starter_002_01",
+      "versionNo": 2,
+      "userIntent": "保留抓拍感，避免网红脸",
+      "finalPrompt": "Photorealistic boyfriend-perspective candid cafe photograph of an adult East Asian woman sitting sideways near a window. She looks up from the menu while trying not to smile. Pink contrast-trim baby tee, cream layered lace skirt, loose twin braids. Natural eye level, mixed window light and direct flash. Avoid an influencer-style face. No text, logo, or watermark.",
+      "changeSummary": "增加非网红脸约束",
+      "sourceImageId": null,
+      "sourceAnnotationIds": [],
+      "contentHash": "3a26310cd439e69a757555e37a64e3fc1ace3ae781485b1c6db8aedf947de687",
+      "createdAt": "2026-07-21T10:02:00.000Z"
+    },
+    {
+      "id": "pv_starter_003_01",
+      "seriesId": "ps_starter_003",
+      "parentVersionId": null,
+      "versionNo": 1,
+      "userIntent": "夏夜餐厅街道，黑色蕾丝与白色薄开衫",
+      "finalPrompt": "Photorealistic summer-night fashion portrait of an adult East Asian woman beside a softly lit restaurant window. Black micro-polka-dot lace mini dress, sheer white cardigan, black platform ankle boots, compact black bag. Vertical full-body smartphone photograph with both boots visible. No text, logo, or watermark.",
+      "changeSummary": "初始版本",
+      "sourceImageId": null,
+      "sourceAnnotationIds": [],
+      "contentHash": "3a63962751efb315c4b154cd2aaa0ecfacd2171801bd8d5d915fa89d694ea77a",
+      "createdAt": "2026-07-21T09:58:00.000Z"
+    },
+    {
+      "id": "pv_starter_003_02",
+      "seriesId": "ps_starter_003",
+      "parentVersionId": "pv_starter_003_01",
+      "versionNo": 2,
+      "userIntent": "脸部独特自然，睁眼，背景不要出现其他人",
+      "finalPrompt": "Photorealistic vertical summer-night portrait of an adult East Asian woman with distinctive natural features beside a softly lit restaurant window. Black micro-polka-dot lace mini dress, sheer white cardigan, black platform ankle boots, compact black bag. Show the complete outfit and both boots. Eyes open, no other people in the background, no influencer-style face, no text, logo, or watermark.",
+      "changeSummary": "加强面部、睁眼与无人背景约束",
+      "sourceImageId": null,
+      "sourceAnnotationIds": [],
+      "contentHash": "a5110e7db688b3ad4440fa729c4e5f8185aa15adc129192f3a6011f4db6c145c",
+      "createdAt": "2026-07-21T10:02:00.000Z"
+    }
+  ],
+  "generationRuns": [
+    {
+      "id": "run_starter_001",
+      "promptVersionId": "pv_starter_001_01",
+      "modelKey": "gpt-image-2",
+      "width": 1024,
+      "height": 1536,
+      "quality": "medium",
+      "status": "SUCCEEDED",
+      "resultAssetId": "img_starter_001",
+      "errorCode": null,
+      "startedAt": "2026-07-20T10:25:00.000Z",
+      "finishedAt": "2026-07-20T10:27:14.000Z"
+    },
+    {
+      "id": "run_starter_002",
+      "promptVersionId": "pv_starter_001_02",
+      "modelKey": "gpt-image-2",
+      "width": 1024,
+      "height": 1536,
+      "quality": "medium",
+      "status": "SUCCEEDED",
+      "resultAssetId": "img_starter_002",
+      "errorCode": null,
+      "startedAt": "2026-07-20T11:43:00.000Z",
+      "finishedAt": "2026-07-20T11:45:08.000Z"
+    },
+    {
+      "id": "run_starter_003",
+      "promptVersionId": "pv_starter_002_02",
+      "modelKey": "gpt-image-2",
+      "width": 1024,
+      "height": 1536,
+      "quality": "medium",
+      "status": "SUCCEEDED",
+      "resultAssetId": "img_starter_003",
+      "errorCode": null,
+      "startedAt": "2026-07-21T09:20:00.000Z",
+      "finishedAt": "2026-07-21T09:22:31.000Z"
+    },
+    {
+      "id": "run_starter_004",
+      "promptVersionId": "pv_starter_003_02",
+      "modelKey": "gpt-image-2",
+      "width": 1024,
+      "height": 1536,
+      "quality": "medium",
+      "status": "SUCCEEDED",
+      "resultAssetId": "img_starter_004",
+      "errorCode": null,
+      "startedAt": "2026-07-21T10:04:00.000Z",
+      "finishedAt": "2026-07-21T10:06:19.000Z"
+    }
+  ],
+  "imageAssets": [
+    {
+      "id": "img_starter_001",
+      "sourcePath": "workbench/GI2-SUM-001-V01-R01.webp",
+      "kind": "GENERATED",
+      "originType": "GENERATION",
+      "objectHash": "dfa8b5e26c18595c0e3903123e1ba403205522ddeed68a336888535f34e17dec",
+      "relativePath": "objects/sha256/df/dfa8b5e26c18595c0e3903123e1ba403205522ddeed68a336888535f34e17dec.webp",
+      "thumbnailPath": "cache/thumbnails/img_starter_001.webp",
+      "width": 941,
+      "height": 1672,
+      "mimeType": "image/webp",
+      "byteSize": 214194
+    },
+    {
+      "id": "img_starter_002",
+      "sourcePath": "workbench/GI2-SUM-001-V02-R01.webp",
+      "kind": "GENERATED",
+      "originType": "GENERATION",
+      "objectHash": "3dba4e7a1cf094d8c353e6022874be44cbaf589d3b5731d41b11ff99626345ff",
+      "relativePath": "objects/sha256/3d/3dba4e7a1cf094d8c353e6022874be44cbaf589d3b5731d41b11ff99626345ff.webp",
+      "thumbnailPath": "cache/thumbnails/img_starter_002.webp",
+      "width": 853,
+      "height": 1844,
+      "mimeType": "image/webp",
+      "byteSize": 133700
+    },
+    {
+      "id": "img_starter_003",
+      "sourcePath": "workbench/GI2-POV-003-V02-R01.webp",
+      "kind": "GENERATED",
+      "originType": "GENERATION",
+      "objectHash": "ea198635816c8be4a87c57d2c92ba021df396695ea6cdc256bc5cecd605890f8",
+      "relativePath": "objects/sha256/ea/ea198635816c8be4a87c57d2c92ba021df396695ea6cdc256bc5cecd605890f8.webp",
+      "thumbnailPath": "cache/thumbnails/img_starter_003.webp",
+      "width": 1024,
+      "height": 1536,
+      "mimeType": "image/webp",
+      "byteSize": 144690
+    },
+    {
+      "id": "img_starter_004",
+      "sourcePath": "workbench/GI2-SUM-004-V02-R01.webp",
+      "kind": "GENERATED",
+      "originType": "GENERATION",
+      "objectHash": "6ded7c5f6de85b308e1c87a162a1a8f5e891b7ae548ac01de1ddd3587cf5082b",
+      "relativePath": "objects/sha256/6d/6ded7c5f6de85b308e1c87a162a1a8f5e891b7ae548ac01de1ddd3587cf5082b.webp",
+      "thumbnailPath": "cache/thumbnails/img_starter_004.webp",
+      "width": 1024,
+      "height": 1536,
+      "mimeType": "image/webp",
+      "byteSize": 129822
+    }
+  ],
+  "materials": [
+    {
+      "id": "mat_starter_001",
+      "kind": "IMAGE",
+      "assetId": "img_starter_001",
+      "createdAt": "2026-07-20T10:27:14.000Z",
+      "deletedAt": null
+    },
+    {
+      "id": "mat_starter_002",
+      "kind": "IMAGE",
+      "assetId": "img_starter_002",
+      "createdAt": "2026-07-20T11:45:08.000Z",
+      "deletedAt": null
+    },
+    {
+      "id": "mat_starter_003",
+      "kind": "IMAGE",
+      "assetId": "img_starter_003",
+      "createdAt": "2026-07-21T09:22:31.000Z",
+      "deletedAt": null
+    },
+    {
+      "id": "mat_starter_004",
+      "kind": "IMAGE",
+      "assetId": "img_starter_004",
+      "createdAt": "2026-07-21T10:06:19.000Z",
+      "deletedAt": null
+    }
+  ],
+  "terms": [],
+  "termRevisions": [],
+  "termLocalizations": [],
+  "termExpressions": [],
+  "termSchemaVersion": "0.3.0"
+}

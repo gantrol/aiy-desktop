@@ -1,0 +1,31 @@
+{
+  "manifestVersion": 1,
+  "kind": "CAPABILITY",
+  "id": "com.example.asset-search",
+  "version": "0.1.0",
+  "displayName": "Example Asset Search",
+  "description": "Searches assets through an example service.",
+  "engines": {
+    "aiy": "^0.3.0"
+  },
+  "contributes": {
+    "commands": ["example.assets.refresh"],
+    "workflows": ["example.assets.import"],
+    "searchProviders": ["example.assets"]
+  },
+  "permissions": ["network:https://api.example.com"],
+  "optionalPermissions": ["library.write:creations"],
+  "i18n": {
+    "defaultLocale": "en",
+    "locales": {
+      "en": {
+        "displayName": "Example Asset Search",
+        "description": "Searches assets through an example service."
+      },
+      "zh": {
+        "displayName": "示例素材搜索",
+        "description": "通过示例服务搜索素材。"
+      }
+    }
+  }
+}

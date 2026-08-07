@@ -1,0 +1,480 @@
+{
+  "schemaVersion": "0.3.0",
+  "revision": "creation-starter-2",
+  "palettes": [
+    {
+      "stableKey": "starter.natural_portrait",
+      "name": "自然清透肖像",
+      "nameLocale": "zh",
+      "description": "柔和面部结构、均衡比例与放松体态，搭配自然窗光。",
+      "localizations": [
+        {
+          "locale": "en",
+          "name": "Natural Portrait",
+          "description": "Soft facial structure, balanced proportions, relaxed posture, and natural window light."
+        }
+      ],
+      "parameters": [],
+      "promptNodes": [
+        {
+          "kind": "TERM",
+          "termStableKey": "appearance.face_shape.soft_outline"
+        },
+        {
+          "kind": "TEXT",
+          "promptFragment": ", ",
+          "negativeFragment": ""
+        },
+        {
+          "kind": "TERM",
+          "termStableKey": "appearance.proportion.balanced_thirds"
+        },
+        {
+          "kind": "TEXT",
+          "promptFragment": ", ",
+          "negativeFragment": ""
+        },
+        {
+          "kind": "TERM",
+          "termStableKey": "body.proportion.balanced"
+        },
+        {
+          "kind": "TEXT",
+          "promptFragment": ", ",
+          "negativeFragment": ""
+        },
+        {
+          "kind": "TERM",
+          "termStableKey": "body.shoulder.relaxed"
+        },
+        {
+          "kind": "TEXT",
+          "promptFragment": ", ",
+          "negativeFragment": ""
+        },
+        {
+          "kind": "TERM",
+          "termStableKey": "body.torso.relaxed"
+        },
+        {
+          "kind": "TEXT",
+          "promptFragment": ", ",
+          "negativeFragment": ""
+        },
+        {
+          "kind": "TERM",
+          "termStableKey": "body.pose.three_quarter_standing"
+        },
+        {
+          "kind": "TEXT",
+          "promptFragment": ", ",
+          "negativeFragment": ""
+        },
+        {
+          "kind": "TERM",
+          "termStableKey": "body.gesture.relaxed_fingers"
+        },
+        {
+          "kind": "TEXT",
+          "promptFragment": ", ",
+          "negativeFragment": ""
+        },
+        {
+          "kind": "TERM",
+          "termStableKey": "lighting.natural.window"
+        },
+        {
+          "kind": "TEXT",
+          "promptFragment": ", ",
+          "negativeFragment": ""
+        },
+        {
+          "kind": "TERM",
+          "termStableKey": "camera.framing.half_body"
+        }
+      ]
+    },
+    {
+      "stableKey": "starter.wechat_article_header",
+      "name": "公众号题图",
+      "nameLocale": "zh",
+      "description": "简洁现代的公众号题图，兼顾 2.35:1 横幅展示与完整的 1:1 次头条裁切。",
+      "localizations": [
+        {
+          "locale": "en",
+          "name": "WeChat Article Header",
+          "description": "A clean, modern WeChat article header composed for both a 2.35:1 banner and a complete 1:1 secondary-story crop."
+        }
+      ],
+      "parameters": [],
+      "promptNodes": [
+        {
+          "kind": "TEXT",
+          "promptFragment": "clean, modern and visually polished WeChat Official Account article header image, 2.35:1 wide aspect ratio, bright or neutral editorial color palette, clear visual hierarchy, restrained contemporary composition, generous negative space for headline typography, composition remains effective in both primary and secondary article-card displays, include one self-contained square-safe region with a complete focal subject and sufficient contextual background so it can be cropped into a coherent 1:1 secondary-story thumbnail, keep essential content away from the outer edges",
+          "negativeFragment": "night-mode blue-purple palette, blue-purple gradient aesthetic, neon cyberpunk lighting, cluttered layout, weak hierarchy, tiny unreadable text, key content at the extreme edges, fragmented or cropped focal subject in the square-safe region, watermark"
+        }
+      ]
+    },
+    {
+      "stableKey": "starter.parameterized_body_lab",
+      "pinned": true,
+      "name": "身材参数实验",
+      "nameLocale": "zh",
+      "description": "逐项调试身高、身体轮廓和罩杯；选项不代表审美排序。",
+      "localizations": [
+        {
+          "locale": "en",
+          "name": "Body Parameter Lab",
+          "description": "Tune stature, body silhouette, and cup size independently; options imply no aesthetic ranking."
+        }
+      ],
+      "parameters": [
+        {
+          "stableKey": "stature",
+          "name": "身高体量",
+          "nameLocale": "zh",
+          "localizations": [
+            {
+              "locale": "en",
+              "name": "Stature"
+            }
+          ],
+          "required": true,
+          "options": [
+            {
+              "value": "petite",
+              "label": "娇小",
+              "labelLocale": "zh",
+              "localizations": [
+                {
+                  "locale": "en",
+                  "label": "Petite"
+                }
+              ],
+              "contents": [
+                {
+                  "kind": "TEXT",
+                  "promptFragment": "petite adult build",
+                  "negativeFragment": ""
+                }
+              ]
+            },
+            {
+              "value": "average",
+              "label": "中等",
+              "labelLocale": "zh",
+              "localizations": [
+                {
+                  "locale": "en",
+                  "label": "Average"
+                }
+              ],
+              "contents": [
+                {
+                  "kind": "TEXT",
+                  "promptFragment": "average-height adult build",
+                  "negativeFragment": ""
+                }
+              ]
+            },
+            {
+              "value": "tall",
+              "label": "高挑",
+              "labelLocale": "zh",
+              "localizations": [
+                {
+                  "locale": "en",
+                  "label": "Tall"
+                }
+              ],
+              "contents": [
+                {
+                  "kind": "TEXT",
+                  "promptFragment": "tall adult build",
+                  "negativeFragment": ""
+                }
+              ]
+            },
+            {
+              "value": "statuesque",
+              "label": "高挑挺拔",
+              "labelLocale": "zh",
+              "localizations": [
+                {
+                  "locale": "en",
+                  "label": "Statuesque"
+                }
+              ],
+              "contents": [
+                {
+                  "kind": "TEXT",
+                  "promptFragment": "tall statuesque adult build",
+                  "negativeFragment": ""
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "stableKey": "body_silhouette",
+          "name": "身体轮廓",
+          "nameLocale": "zh",
+          "localizations": [
+            {
+              "locale": "en",
+              "name": "Body silhouette"
+            }
+          ],
+          "required": true,
+          "options": [
+            {
+              "value": "hourglass",
+              "label": "沙漏型",
+              "labelLocale": "zh",
+              "localizations": [
+                {
+                  "locale": "en",
+                  "label": "Hourglass"
+                }
+              ],
+              "contents": [
+                {
+                  "kind": "TEXT",
+                  "promptFragment": "natural hourglass silhouette",
+                  "negativeFragment": ""
+                }
+              ]
+            },
+            {
+              "value": "pear",
+              "label": "梨形",
+              "labelLocale": "zh",
+              "localizations": [
+                {
+                  "locale": "en",
+                  "label": "Pear"
+                }
+              ],
+              "contents": [
+                {
+                  "kind": "TEXT",
+                  "promptFragment": "natural pear-shaped silhouette",
+                  "negativeFragment": ""
+                }
+              ]
+            },
+            {
+              "value": "rectangular",
+              "label": "直筒型",
+              "labelLocale": "zh",
+              "localizations": [
+                {
+                  "locale": "en",
+                  "label": "Rectangular"
+                }
+              ],
+              "contents": [
+                {
+                  "kind": "TEXT",
+                  "promptFragment": "natural rectangular silhouette",
+                  "negativeFragment": ""
+                }
+              ]
+            },
+            {
+              "value": "column",
+              "label": "修长直线型",
+              "labelLocale": "zh",
+              "localizations": [
+                {
+                  "locale": "en",
+                  "label": "Column"
+                }
+              ],
+              "contents": [
+                {
+                  "kind": "TEXT",
+                  "promptFragment": "elongated column body silhouette",
+                  "negativeFragment": ""
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "stableKey": "cup_size",
+          "name": "罩杯",
+          "nameLocale": "zh",
+          "localizations": [
+            {
+              "locale": "en",
+              "name": "Cup size"
+            }
+          ],
+          "required": false,
+          "options": [
+            {
+              "value": "A",
+              "label": "A",
+              "labelLocale": "zh",
+              "localizations": [
+                {
+                  "locale": "en",
+                  "label": "A"
+                }
+              ],
+              "contents": [
+                {
+                  "kind": "TEXT",
+                  "promptFragment": "proportional A cup bust",
+                  "negativeFragment": ""
+                }
+              ]
+            },
+            {
+              "value": "B",
+              "label": "B",
+              "labelLocale": "zh",
+              "localizations": [
+                {
+                  "locale": "en",
+                  "label": "B"
+                }
+              ],
+              "contents": [
+                {
+                  "kind": "TEXT",
+                  "promptFragment": "proportional B cup bust",
+                  "negativeFragment": ""
+                }
+              ]
+            },
+            {
+              "value": "C",
+              "label": "C",
+              "labelLocale": "zh",
+              "localizations": [
+                {
+                  "locale": "en",
+                  "label": "C"
+                }
+              ],
+              "contents": [
+                {
+                  "kind": "TEXT",
+                  "promptFragment": "proportional C cup bust",
+                  "negativeFragment": ""
+                }
+              ]
+            },
+            {
+              "value": "D",
+              "label": "D",
+              "labelLocale": "zh",
+              "localizations": [
+                {
+                  "locale": "en",
+                  "label": "D"
+                }
+              ],
+              "contents": [
+                {
+                  "kind": "TEXT",
+                  "promptFragment": "proportional D cup bust",
+                  "negativeFragment": ""
+                }
+              ]
+            },
+            {
+              "value": "E",
+              "label": "E",
+              "labelLocale": "zh",
+              "localizations": [
+                {
+                  "locale": "en",
+                  "label": "E"
+                }
+              ],
+              "contents": [
+                {
+                  "kind": "TEXT",
+                  "promptFragment": "proportional E cup bust",
+                  "negativeFragment": ""
+                }
+              ]
+            }
+          ]
+        }
+      ],
+      "promptNodes": [
+        {
+          "kind": "TERM",
+          "termStableKey": "body.proportion.balanced"
+        },
+        {
+          "kind": "TEXT",
+          "promptFragment": ", ",
+          "negativeFragment": ""
+        },
+        {
+          "kind": "TERM",
+          "termStableKey": "body.shoulder.relaxed"
+        },
+        {
+          "kind": "TEXT",
+          "promptFragment": ", ",
+          "negativeFragment": ""
+        },
+        {
+          "kind": "TERM",
+          "termStableKey": "body.torso.relaxed"
+        },
+        {
+          "kind": "TEXT",
+          "promptFragment": ", ",
+          "negativeFragment": ""
+        },
+        {
+          "kind": "TERM",
+          "termStableKey": "body.pose.front_standing"
+        },
+        {
+          "kind": "TEXT",
+          "promptFragment": ", ",
+          "negativeFragment": ""
+        },
+        {
+          "kind": "TERM",
+          "termStableKey": "body.limbs.natural_hands"
+        },
+        {
+          "kind": "TEXT",
+          "promptFragment": ", ",
+          "negativeFragment": ""
+        },
+        {
+          "kind": "SLOT",
+          "stableKey": "stature"
+        },
+        {
+          "kind": "TEXT",
+          "promptFragment": ", ",
+          "negativeFragment": ""
+        },
+        {
+          "kind": "SLOT",
+          "stableKey": "body_silhouette"
+        },
+        {
+          "kind": "TEXT",
+          "promptFragment": ", ",
+          "negativeFragment": ""
+        },
+        {
+          "kind": "SLOT",
+          "stableKey": "cup_size"
+        }
+      ]
+    }
+  ]
+}

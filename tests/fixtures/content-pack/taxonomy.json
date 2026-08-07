@@ -1,0 +1,87 @@
+{
+  "schemaVersion": "0.3.0",
+  "structureRevision": "synthetic-pack-dictionary-1",
+  "termFiles": [],
+  "retiredTermIds": [],
+  "facetDefinitions": [
+    {
+      "id": "facet_test_pack_group",
+      "stableKey": "arbitrary_group_key",
+      "name": {
+        "zh": "测试分组",
+        "en": "Test group"
+      },
+      "sortOrder": 10,
+      "values": [
+        {
+          "id": "fv_test_pack_group_one",
+          "stableKey": "one",
+          "name": {
+            "zh": "一",
+            "en": "One"
+          },
+          "sortOrder": 10
+        }
+      ]
+    },
+    {
+      "id": "facet_test_pack_kind",
+      "stableKey": "arbitrary_kind_key",
+      "name": {
+        "zh": "测试类别",
+        "en": "Test kind"
+      },
+      "sortOrder": 20,
+      "values": [
+        {
+          "id": "fv_test_pack_kind_one",
+          "stableKey": "one",
+          "name": {
+            "zh": "一",
+            "en": "One"
+          },
+          "sortOrder": 10
+        }
+      ]
+    }
+  ],
+  "categories": [
+    {
+      "id": "category_test_pack_one",
+      "stableKey": "one.one",
+      "primaryFacetKey": "arbitrary_group_key:one",
+      "secondaryFacetKey": "arbitrary_kind_key:one"
+    }
+  ],
+  "terms": [
+    {
+      "id": "term_test_pack_one",
+      "revisionId": "tr_test_pack_one_01",
+      "revisionNo": 1,
+      "stableKey": "test.pack.one",
+      "editorialState": "APPROVED",
+      "title": "测试词条",
+      "titleLocale": "zh",
+      "definition": "用于内容包集成测试的词条。",
+      "localizations": [
+        {
+          "locale": "en",
+          "title": "Test term",
+          "definition": "A term used by content-pack integration tests."
+        }
+      ],
+      "classificationKeys": [
+        "one.one"
+      ],
+      "primaryDirectoryClassificationKey": "one.one",
+      "expressions": [
+        {
+          "modelKey": "gpt-image-2",
+          "locale": "en",
+          "positive": "test term",
+          "contextKey": "general.default"
+        }
+      ]
+    }
+  ]
+}

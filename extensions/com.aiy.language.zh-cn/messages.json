@@ -1,0 +1,2126 @@
+{
+  "common": {
+    "close": "关闭",
+    "cancel": "取消",
+    "chinese": "中文",
+    "english": "English"
+  },
+  "assetFile": {
+    "copy": "复制图片",
+    "copying": "正在复制图片…",
+    "copied": "图片已复制",
+    "addToAlbum": "加入图集",
+    "noAlbums": "暂无可用图集",
+    "addedToAlbum": "已加入图集",
+    "useInCreation": "作为参考图开始创作",
+    "addedToCreation": "已加入创作参考图",
+    "saveAs": "下载",
+    "reveal": "在文件管理器中显示",
+    "locating": "正在定位…",
+    "notInTerm": "尚未加入词条",
+    "notInAlbumOrTerm": "尚未加入图集或词条",
+    "addToCurrentAlbum": "加入当前图集",
+    "open": "用默认应用打开",
+    "saved": "图片已保存",
+    "delete": "删除素材",
+    "deleteTitle": "删除这项素材？",
+    "deleteDescription": "素材会从素材库、图集、词条、配方和创作中隐藏；原文件与历史关系仍会保留。",
+    "cancel": "取消",
+    "confirmDelete": "删除",
+    "deleted": "素材已删除",
+    "referenceLimit": "一项创作最多可包含 8 张参考图",
+    "failed": "文件操作失败"
+  },
+  "app": {
+    "title": "AIY生图管理工具",
+    "libraryFallback": "本地空间",
+    "loading": "正在打开本地空间…",
+    "retry": "重试",
+    "unavailable": "无法打开本地空间",
+    "notifications": "通知",
+    "menu": {
+      "label": "应用菜单",
+      "open": "打开应用菜单",
+      "newCreation": "新建创作",
+      "quit": "退出…"
+    },
+    "navigation": {
+      "label": "主导航",
+      "history": "导航历史",
+      "back": "后退",
+      "forward": "前进",
+      "creator": "创作",
+      "dictionary": "参考",
+      "gallery": "图库",
+      "codexImages": "Codex 图片",
+      "packs": "扩展",
+      "aiCenter": "AI 中心",
+      "settings": "设置"
+    },
+    "settings": {
+      "title": "设置",
+      "interfaceLanguage": "界面语言",
+      "promptLanguage": "默认提示词语言",
+      "aiFeatureModels": "AI 功能模型",
+      "manageAiFeatureModels": "管理模型分配",
+      "none": "无",
+      "chinese": "中文",
+      "english": "English"
+    },
+    "generationStatus": {
+      "backgroundTasks": "后台任务",
+      "active": {
+        "$params": ["count"],
+        "$template": "{count} 个运行中"
+      },
+      "attention": {
+        "$params": ["count"],
+        "$template": "{count} 个异常"
+      },
+      "idle": "空闲",
+      "reconnecting": "重连中",
+      "service": "后台服务",
+      "connected": "已连接",
+      "available": "可用",
+      "unavailable": "不可用",
+      "checking": "检查中",
+      "directionsTask": "灵感方向",
+      "optimizeTask": "AI帮写",
+      "codexTasks": {
+        "$params": ["count"],
+        "$template": "Codex 任务 {count}"
+      },
+      "generation": "任务",
+      "queued": {
+        "$params": ["position"],
+        "$template": "排队",
+        "$variants": [
+          {
+            "when": {
+              "param": "position",
+              "truthy": true
+            },
+            "template": "排队 {position}"
+          }
+        ]
+      },
+      "preparing": "准备素材",
+      "submitting": "提交",
+      "uploading": "上传",
+      "waitingProvider": "等待模型",
+      "generating": "模型处理中",
+      "downloading": "下载",
+      "finalizing": "整理结果",
+      "saving": "保存到空间",
+      "recovering": "恢复",
+      "cancelling": "取消中",
+      "cancel": "取消",
+      "cancelBatch": "取消整批",
+      "batchModels": {
+        "$params": ["count"],
+        "$template": "{count} 个模型"
+      },
+      "batchProgress": {
+        "$params": ["completed", "total"],
+        "$template": "完成 {completed}/{total}"
+      },
+      "retry": "重试",
+      "regenerate": "重新生成",
+      "reEdit": "重新编辑",
+      "failed": "失败",
+      "interrupted": "已中断"
+    },
+    "generationErrors": {
+      "detailsTitle": "API 错误详情",
+      "detailsHint": "悬停或聚焦可查看具体错误",
+      "copyDetails": "复制详情",
+      "copied": "已复制",
+      "copyFailed": "复制失败",
+      "summaries": {
+        "moderationInput": "请求内容未通过审核，请修改提示词或输入图片后重新编辑。",
+        "moderationOutput": "生成结果未通过审核，请调整提示词后重新生成。",
+        "moderation": "请求未通过内容审核，请修改提示词或输入图片。",
+        "auth": "模型 API 无法验证密钥或权限，请检查 API 配置。",
+        "rateLimited": "模型 API 请求受限或额度暂不可用，请稍后重试。",
+        "network": "暂时无法连接模型 API，请检查网络后重试。",
+        "unavailable": "模型 API 服务暂不可用，请稍后重试。",
+        "invalidRequest": "模型 API 拒绝了这次请求，请查看详情后修改输入。",
+        "noOutput": "模型 API 未返回可用图片，请查看详情后重试。",
+        "localState": "远端请求已完成，但结果未能保存到本地。",
+        "interrupted": "生图任务在完成前被中断。",
+        "generic": "生成失败，请查看 API 错误详情。"
+      }
+    }
+  },
+  "aiCenter": {
+    "title": "AI 中心",
+    "tabs": {
+      "activity": "操作记录",
+      "statistics": "统计",
+      "capabilities": "能力与配置"
+    },
+    "filters": {
+      "type": "类型",
+      "status": "状态",
+      "all": "全部",
+      "image": "生图",
+      "text": "文本",
+      "attention": "待处理",
+      "running": "运行中",
+      "completed": "已完成",
+      "expired": "已过期"
+    },
+    "stats": {
+      "records": "记录",
+      "recordCount": {
+        "$params": ["count"],
+        "$template": "{count} 条记录"
+      },
+      "taskDomain": "任务领域",
+      "image": "生图",
+      "text": "文本",
+      "imageTasks": "生图任务",
+      "textTasks": "文本任务",
+      "completionRate": "完成率",
+      "averageDuration": "平均耗时",
+      "running": "运行中",
+      "duration": "耗时",
+      "elapsed": "已运行",
+      "activityTrend": "活动趋势",
+      "taskTypes": "任务类型",
+      "taskStatus": "任务状态",
+      "modelUsage": "模型使用",
+      "period": "统计范围",
+      "period7Days": "近 7 天",
+      "period30Days": "近 30 天",
+      "periodAll": "全部",
+      "model": "模型",
+      "provider": "提供方",
+      "taskCount": "任务数",
+      "share": "占比",
+      "noData": "当前范围暂无数据",
+      "seconds": {
+        "$params": ["value"],
+        "$template": "{value}秒"
+      },
+      "minutesSeconds": {
+        "$params": ["minutes", "seconds"],
+        "$template": "{minutes}分 {seconds}秒"
+      },
+      "hoursMinutes": {
+        "$params": ["hours", "minutes"],
+        "$template": "{hours}小时 {minutes}分"
+      }
+    },
+    "empty": "暂无 AI 操作",
+    "source": {
+      "draft": "当前草稿",
+      "unknown": "原对象不可用"
+    },
+    "kinds": {
+      "directions": "灵感方向",
+      "optimize": "提示词优化",
+      "experiment": "方向实验",
+      "generate": "生图",
+      "edit": "编辑"
+    },
+    "occurrence": {
+      "$params": ["ordinal"],
+      "$template": "第 {ordinal} 次"
+    },
+    "version": {
+      "$params": ["versionNo"],
+      "$template": "V{versionNo}",
+      "$formats": {
+        "versionNo": {
+          "kind": "padStart",
+          "length": 2,
+          "fill": "0"
+        }
+      }
+    },
+    "statuses": {
+      "RUNNING": "运行中",
+      "SUCCEEDED": "完成",
+      "FAILED": "失败",
+      "INTERRUPTED": "已中断",
+      "READY": "提案就绪",
+      "EXPIRED": "已过期",
+      "ADOPTED": "已采用",
+      "CLOSED": "已关闭",
+      "QUEUED": "排队",
+      "PARTIAL": "部分完成",
+      "CANCELLED": "已取消"
+    },
+    "actions": {
+      "locate": "定位到创作",
+      "openCodex": "打开 Codex",
+      "retry": "重试",
+      "reEdit": "重新编辑",
+      "configure": "配置",
+      "managePlugins": "管理插件"
+    },
+    "fields": {
+      "frozenInput": "冻结输入",
+      "prompt": "Prompt",
+      "directTerms": "直接词条",
+      "recipes": "配方",
+      "references": "参考素材",
+      "vision": "视觉分析",
+      "notAnalyzed": "未分析图片",
+      "canvas": "画幅",
+      "models": "模型",
+      "sharedConstraints": "共同保持项",
+      "directions": "方向",
+      "slots": "实验槽位",
+      "completed": "已完成",
+      "failed": "失败",
+      "cancelled": "取消",
+      "interrupted": "中断",
+      "model": "模型",
+      "provider": "提供方",
+      "quality": "质量",
+      "dimensions": "尺寸",
+      "result": "结果",
+      "sourceImage": "来源图片",
+      "codexTask": "Codex 任务",
+      "createdAt": "发起时间",
+      "finishedAt": "完成时间",
+      "realState": "真实状态",
+      "cost": "费用",
+      "costUnknown": "未知",
+      "remoteScope": "远端发送范围",
+      "remoteScopeValue": "Prompt 与所选参考素材"
+    },
+    "capability": {
+      "summary": "统一查看可用能力；密钥、区域和端点由对应插件管理。",
+      "modelsAndConnections": "模型与连接",
+      "noProviders": "暂无模型能力插件",
+      "modelCount": {
+        "$params": ["count"],
+        "$template": "{count} 个模型"
+      },
+      "authorization": "授权与数据边界",
+      "remoteDisclosure": "远端发送前展示范围",
+      "costConfirmation": "费用未知时确认",
+      "visionGate": "视觉分析",
+      "relationActions": "自动关系操作",
+      "always": "始终",
+      "gated": "能力门控",
+      "prohibited": "禁止",
+      "ready": "可用",
+      "unavailable": "不可用"
+    },
+    "configuration": {
+      "title": "Provider 配置",
+      "refreshConnection": "刷新连接"
+    },
+    "routing": {
+      "title": "功能模型",
+      "dialogTitle": "为 AI 功能分配模型",
+      "directionsAction": "给我灵感",
+      "optimizeAction": "AI帮写",
+      "titleAction": "起标题",
+      "model": "模型",
+      "codexModel": "Codex 模型",
+      "reasoningEffort": "推理强度",
+      "reasoningEfforts": {
+        "minimal": "最低",
+        "low": "Light",
+        "medium": "中等",
+        "high": "高",
+        "xhigh": "极高",
+        "max": "Max",
+        "ultra": "Ultra"
+      },
+      "textModel": "文本模型",
+      "agentModel": "Agent 模型",
+      "configureConnection": "配置连接",
+      "save": "保存分配",
+      "saved": "功能模型分配已保存"
+    }
+  },
+  "library": {
+    "switchLibrary": "切换库",
+    "newBlankLibrary": "新建空白资料库",
+    "newLibraryName": "新资料库",
+    "openLibrary": "打开资料库…"
+  },
+  "space": {
+    "transition": {
+      "preparing": "正在切出当前空间",
+      "openingDatabase": "正在打开本地数据",
+      "connectingServices": "正在连接后台服务",
+      "loadingExtensions": "正在载入扩展",
+      "applyingSettings": "正在同步连接设置",
+      "activating": "正在激活空间",
+      "loadingInterface": "正在加载空间界面",
+      "ready": "已就绪",
+      "failed": "切换失败",
+      "progressLabel": "切换进度"
+    },
+    "switchSpace": "切换本地空间",
+    "localSpaces": "本地空间",
+    "newSpace": "新建本地空间",
+    "spaceName": "空间名称",
+    "create": "创建",
+    "openSpace": "打开本地空间…",
+    "unavailable": "不可用",
+    "chooseCover": "选择封面…",
+    "changeCover": "更换封面…",
+    "removeCover": "移除封面",
+    "coverUpdated": "空间封面已更新",
+    "coverRemoved": "空间封面已移除",
+    "coverUpdateFailed": "无法更新空间封面"
+  },
+  "extensions": {
+    "title": "扩展中心",
+    "tabs": {
+      "plugins": "插件与集成",
+      "contentPacks": "内容包"
+    },
+    "enabled": "已启用",
+    "disabled": "已禁用",
+    "compatible": "兼容",
+    "incompatible": "不兼容",
+    "required": "必需",
+    "optional": "可选",
+    "kinds": {
+      "CAPABILITY": "功能插件",
+      "LANGUAGE": "语言插件"
+    },
+    "groups": {
+      "models": "大模型插件",
+      "features": "功能插件",
+      "languages": "语言插件"
+    },
+    "search": {
+      "placeholder": "搜索插件",
+      "clear": "清除搜索",
+      "empty": "没有匹配的插件"
+    },
+    "source": {
+      "BUILT_IN": "内置",
+      "LOCAL": "本地",
+      "MARKETPLACE": "市场"
+    },
+    "connectionStates": {
+      "READY": "可用",
+      "CONNECTING": "连接中",
+      "NEEDS_CONFIGURATION": "需要配置",
+      "UNAVAILABLE": "不可用",
+      "DISABLED": "已禁用",
+      "PERMISSION_REQUIRED": "需要权限"
+    },
+    "actions": {
+      "enable": "启用",
+      "disable": "禁用",
+      "refresh": "刷新连接",
+      "installLocal": "安装本地插件…",
+      "uninstall": "卸载"
+    },
+    "fields": {
+      "manifest": "清单版本",
+      "engine": "应用版本范围",
+      "source": "来源",
+      "compatibility": "兼容性",
+      "runtime": "运行时"
+    },
+    "sections": {
+      "contributions": "贡献能力",
+      "permissions": "权限"
+    },
+    "contributionPoints": {
+      "themes": "主题",
+      "fields": "字段",
+      "filters": "筛选",
+      "commands": "命令",
+      "workflows": "工作流",
+      "tools": "工具",
+      "searchProviders": "搜索 Provider",
+      "modelProviders": "模型 Provider"
+    },
+    "notices": {
+      "enabled": "扩展已启用",
+      "disabled": "扩展已禁用",
+      "permissionGranted": "权限已授予",
+      "permissionRevoked": "权限已撤销",
+      "languageRequired": "必须至少启用一个语言插件",
+      "installed": "本地插件已安装",
+      "uninstalled": "本地插件已卸载"
+    },
+    "uninstall": {
+      "title": "卸载本地插件？",
+      "description": "此设备上的受管插件目录将被永久删除。"
+    },
+    "codexImageDiscovery": {
+      "title": "Codex 图片",
+      "root": "来源目录",
+      "unavailable": "Codex 生成图片目录不可用",
+      "empty": "未发现 Codex 图片",
+      "emptyNotInLibrary": "没有待导入图片",
+      "emptyInLibrary": "没有已导入图片",
+      "imported": "已导入",
+      "untitledTask": "无标题 Codex 任务",
+      "maxSelection": "最多选择 8 张图片",
+      "sameTaskSelection": "每次只能导入同一 Codex 任务中的图片",
+      "files": {
+        "$params": ["count"],
+        "$template": "{count} 个文件"
+      },
+      "total": {
+        "$params": ["count"],
+        "$template": "{count} 个唯一 SHA"
+      },
+      "unimported": {
+        "$params": ["count"],
+        "$template": "{count} 个当前空间未入库"
+      },
+      "inLibrary": {
+        "$params": ["count"],
+        "$template": "{count} 个当前空间已有"
+      },
+      "matches": {
+        "$params": ["count"],
+        "$template": "{count} 个结果"
+      },
+      "duplicates": {
+        "$params": ["count"],
+        "$template": "{count} 个重复文件"
+      },
+      "selected": {
+        "$params": ["count"],
+        "$template": "已选 {count} 张"
+      },
+      "taskImages": {
+        "$params": ["count"],
+        "$template": "{count} 张图片"
+      },
+      "page": {
+        "$params": ["page", "count"],
+        "$template": "第 {page} / {count} 页"
+      },
+      "perPage": {
+        "$params": ["count"],
+        "$template": "每页 {count} 张"
+      },
+      "filters": {
+        "label": "导入状态",
+        "notInLibrary": {
+          "$params": ["count"],
+          "$template": "待导入 {count}"
+        },
+        "inLibrary": {
+          "$params": ["count"],
+          "$template": "已导入 {count}"
+        },
+        "all": {
+          "$params": ["count"],
+          "$template": "全部 {count}"
+        },
+        "showUntitled": {
+          "$params": ["count"],
+          "$template": "显示无标题任务 {count}"
+        }
+      },
+      "actions": {
+        "refresh": "刷新图片",
+        "importSelected": "导入到新创作",
+        "importToCreation": {
+          "$params": ["count"],
+          "$template": "导入 {count} 张到新创作"
+        },
+        "importing": "导入中",
+        "showInSidebar": "在侧边栏显示 Codex 图片",
+        "openCodex": "打开 Codex",
+        "openCreation": "打开创作",
+        "selectTask": {
+          "$params": ["count"],
+          "$template": "选择 {count} 张"
+        },
+        "clearTask": "取消选择",
+        "previous": "上一页",
+        "next": "下一页"
+      },
+      "notices": {
+        "imported": {
+          "$params": ["count"],
+          "$template": "已导入 {count} 张 Codex 图片"
+        }
+      }
+    },
+    "openAiImageApi": {
+      "title": "API 连接",
+      "apiKey": "API Key",
+      "organizationId": "Organization ID",
+      "projectId": "Project ID",
+      "moderation": "内容审核强度",
+      "moderationOptions": {
+        "auto": "标准过滤（auto）",
+        "low": "较宽松过滤（low）"
+      },
+      "optional": "可选",
+      "keyPlaceholder": "输入 OpenAI API Key",
+      "organizationPlaceholder": "org-...",
+      "projectPlaceholder": "proj_...",
+      "secureStorage": "系统加密保存",
+      "savedKey": "已保存",
+      "lastVerified": "上次验证",
+      "neverVerified": "尚未验证",
+      "actions": {
+        "save": "保存",
+        "test": "测试连接",
+        "clear": "清除凭据"
+      },
+      "statuses": {
+        "NOT_CONFIGURED": "未配置",
+        "UNVERIFIED": "待验证",
+        "READY": "已连接",
+        "ERROR": "连接失败"
+      },
+      "notices": {
+        "saved": "OpenAI API 连接已保存",
+        "tested": "OpenAI API 连接测试已完成",
+        "cleared": "OpenAI API 凭据已清除"
+      }
+    },
+    "deepSeekApi": {
+      "title": "DeepSeek API 连接",
+      "apiKey": "API Key",
+      "keyPlaceholder": "输入 DeepSeek API Key",
+      "model": "文本模型",
+      "secureStorage": "系统加密保存",
+      "savedKey": "已保存",
+      "lastVerified": "上次验证",
+      "neverVerified": "尚未验证",
+      "actions": {
+        "saveAndTest": "保存并测试",
+        "test": "测试连接",
+        "clear": "清除凭据"
+      },
+      "statuses": {
+        "NOT_CONFIGURED": "未配置",
+        "UNVERIFIED": "待验证",
+        "READY": "已连接",
+        "ERROR": "连接失败"
+      },
+      "notices": {
+        "saved": "DeepSeek API 连接已保存",
+        "tested": "DeepSeek API 连接测试已完成",
+        "cleared": "DeepSeek API 凭据已清除"
+      }
+    },
+    "externalImageApi": {
+      "otherEndpoint": "其他",
+      "secureStorage": "系统加密保存",
+      "savedKey": "已保存",
+      "lastVerified": "上次验证",
+      "neverChecked": "尚未检查",
+      "verifyOnFirstUse": "首次生成时验证",
+      "actions": {
+        "save": "保存配置",
+        "saveAndCheck": "保存并检查",
+        "test": "检查连接",
+        "clear": "清除凭据"
+      },
+      "statuses": {
+        "NOT_CONFIGURED": "未配置",
+        "UNVERIFIED": "首次使用验证",
+        "READY": "已连接",
+        "ERROR": "连接失败"
+      },
+      "notices": {
+        "saved": "图像 API 配置已保存",
+        "tested": "图像 API 连接检查已完成",
+        "cleared": "图像 API 凭据已清除"
+      }
+    }
+  },
+  "packs": {
+    "title": "资料包",
+    "refresh": "刷新资料包",
+    "kind": {
+      "content": "内容包",
+      "bundle": "套装"
+    },
+    "states": {
+      "NOT_INSTALLED": "未安装",
+      "INSTALLING": "安装中",
+      "UPDATING": "更新中",
+      "INSTALLED": "空间可用",
+      "DISABLED": "空间内已禁用",
+      "FAILED_NO_USABLE_RELEASE": "安装失败",
+      "REMOVAL_PENDING": "卸载中",
+      "REMOVED": "已卸载"
+    },
+    "actions": {
+      "import": "导入本地内容包",
+      "install": "安装到此空间",
+      "disable": "在此空间禁用",
+      "enable": "在此空间重新允许",
+      "remove": "从此空间卸载"
+    },
+    "actionComplete": {
+      "import": "内容包已导入",
+      "install": "资料包已安装",
+      "disable": "资料包已在此空间禁用",
+      "enable": "资料包已在此空间重新允许",
+      "remove": "资料包已从此空间卸载"
+    },
+    "fields": {
+      "version": "版本",
+      "items": "内容项",
+      "dependencies": "依赖",
+      "manifest": "清单版本",
+      "contentKinds": "内容类型"
+    },
+    "sections": {
+      "contents": "内容",
+      "dependencies": "依赖"
+    },
+    "itemCount": {
+      "$params": ["count"],
+      "$template": "{count} 项"
+    },
+    "dependencyCount": {
+      "$params": ["count"],
+      "$template": "{count} 个依赖"
+    }
+  },
+  "intake": {
+    "start": {
+      "paste": "粘贴或拖入",
+      "choose": "选择图片或视频",
+      "contentPack": "导入内容包",
+      "open": "打开本地空间"
+    },
+    "actions": {
+      "create": "开始创作",
+      "import": "导入到素材库",
+      "importToAlbum": {
+        "$params": ["album"],
+        "$template": "导入到「{album}」"
+      },
+      "favorite": "收藏",
+      "cancel": "取消"
+    },
+    "review": {
+      "title": "导入内容",
+      "summary": {
+        "$params": ["count", "kind"],
+        "$template": "{count} 项 · {kind}"
+      },
+      "images": "图片和视频",
+      "text": "文字",
+      "mixed": "混合内容",
+      "selectAll": "选择全部",
+      "selected": {
+        "$params": ["count"],
+        "$template": "已选择 {count} 项"
+      },
+      "addContent": "添加内容",
+      "batchFill": "批量填写",
+      "batchTitle": {
+        "$params": ["count"],
+        "$template": "批量填写 · {count} 项"
+      },
+      "exitBatch": "退出批量",
+      "overwriteHint": "只会覆盖勾选的字段",
+      "applyBatch": {
+        "$params": ["count"],
+        "$template": "应用到 {count} 项"
+      },
+      "basicInformation": "基础信息",
+      "name": "名称",
+      "sourceUrl": "来源 URL",
+      "note": "备注",
+      "aiGeneratedSection": "AI 生成",
+      "aiGeneratedLabel": "是否 AI 生成",
+      "aiYes": "是",
+      "aiNo": "否",
+      "aiUnknown": "未知",
+      "aiOther": "其他",
+      "model": "模型",
+      "platform": "平台",
+      "version": "版本",
+      "exactPrompt": "原始 Prompt",
+      "description": "描述",
+      "relationships": "关联",
+      "linkedCreation": "关联创作",
+      "notLinked": "未关联",
+      "linkedPromptVersion": "关联 Prompt 版本",
+      "noPromptVersion": "无 Prompt 版本",
+      "favorite": "收藏",
+      "cancel": "取消",
+      "importItems": {
+        "$params": ["count"],
+        "$template": "导入 {count} 项"
+      },
+      "importAsCreation": "导入为新创作",
+      "importing": "正在导入",
+      "skipped": {
+        "$params": ["count"],
+        "$template": "已跳过 {count} 个文件"
+      },
+      "imported": {
+        "$params": ["count"],
+        "$template": "已导入 {count} 项"
+      }
+    },
+    "draft": {
+      "up": "上移",
+      "down": "下移",
+      "remove": "移除",
+      "text": "文字",
+      "image": "媒体"
+    },
+    "starterPack": {
+      "title": "导入入门素材？",
+      "description": "向这个空的本地空间加入内置词条、词盘和示范创作。",
+      "keepEmpty": "保持空空间",
+      "confirm": "导入入门素材"
+    },
+    "contentPack": {
+      "title": "导入内容包",
+      "cancel": "取消",
+      "confirm": "导入"
+    }
+  },
+  "gallery": {
+    "screen": {
+      "title": "素材",
+      "subtitle": "选择素材查看详情；关联记录通过明确操作打开",
+      "pasteHint": "粘贴或拖入素材",
+      "unit": "项",
+      "empty": "还没有素材",
+      "emptyHint": "可收藏文字，或从创作和词典流程加入图片。",
+      "emptySearch": "没有匹配的素材",
+      "emptySearchHint": "试试标题、词条名、来源、格式或文字片段。",
+      "emptyUnrated": "没有未评分图片",
+      "searching": "正在查找…",
+      "loadingMore": "正在加载更多…",
+      "loadMore": "加载更多",
+      "saved": "评分已保存",
+      "cleared": "评分已清除",
+      "failed": "评分保存失败",
+      "copied": "文字已复制",
+      "copyFailed": "无法复制文字",
+      "loadFailed": "素材加载失败",
+      "retry": "重试",
+      "shown": "已显示",
+      "backToMaterials": "返回素材",
+      "favorited": {
+        "$params": ["count"],
+        "$template": "已收藏 {count} 项素材",
+        "$variants": [
+          {
+            "when": {
+              "param": "count",
+              "equals": 0
+            },
+            "template": "素材已经收藏"
+          }
+        ]
+      },
+      "unfavorited": "已取消收藏",
+      "unfavoriteFailed": "取消收藏失败"
+    },
+    "batch": {
+      "selected": {
+        "$params": ["count"],
+        "$template": "已选 {count} 项"
+      },
+      "addTo": "加入…",
+      "createAndCollect": "新建图集并加入",
+      "clear": "取消选择",
+      "dictionary": "词典词条",
+      "emptyTerms": "没有匹配的词条",
+      "imageTermsOnly": "仅图片可加入词条",
+      "searchDestinations": "搜索图集或词条",
+      "addDestinationCount": {
+        "$params": ["count"],
+        "$template": "加入 {count} 处"
+      },
+      "addedToDestinations": {
+        "$params": ["count"],
+        "$template": "已加入 {count} 处"
+      }
+    },
+    "albums": {
+      "allMaterials": "全部素材",
+      "myAlbums": "图集",
+      "create": "新建图集",
+      "createTitle": "新建图集",
+      "rename": "重命名",
+      "renameTitle": "重命名图集",
+      "delete": "删除图集",
+      "deleteTitle": "删除图集？",
+      "deleteDescription": "只会删除图集和成员关系，素材本身会保留。",
+      "name": "图集名称",
+      "namePlaceholder": "例如：妆面灵感",
+      "cancel": "取消",
+      "save": "保存",
+      "confirmDelete": "删除",
+      "moreActions": "更多操作",
+      "archived": "已归档",
+      "expand": "固定展开",
+      "collapse": "折叠图集",
+      "createChild": "新建子图集",
+      "open": "打开图集",
+      "pin": "置顶",
+      "unpin": "取消置顶",
+      "archive": "归档",
+      "restore": "恢复",
+      "move": "移动到…",
+      "moveTitle": "移动到",
+      "moveUp": "上移",
+      "moveDown": "下移",
+      "moveToRoot": "移到顶层",
+      "belongsTo": "属于",
+      "materials": {
+        "$params": ["count"],
+        "$template": "{count} 项素材"
+      },
+      "creations": {
+        "$params": ["count"],
+        "$template": "{count} 项创作"
+      },
+      "childAlbums": {
+        "$params": ["count"],
+        "$template": "{count} 个子图集"
+      },
+      "empty": "还没有自建图集",
+      "loading": "正在加载图集…",
+      "loadFailed": "图集加载失败",
+      "unit": "项",
+      "created": "图集已创建",
+      "renamed": "图集已重命名",
+      "deleted": "图集已删除，素材仍保留",
+      "added": "已加入图集",
+      "removed": "已从图集中移除",
+      "moved": "图集位置已更新",
+      "archivedNotice": "图集已归档",
+      "restoredNotice": "图集已恢复",
+      "operationFailed": "图集操作失败",
+      "membershipTitle": "所在图集",
+      "membershipHint": "同一素材可以加入多个图集。",
+      "membershipEmpty": "先在左侧新建图集，再把素材加入其中。"
+    },
+    "library": {
+      "scopeLabel": "素材范围",
+      "scopeAll": "全部",
+      "scopeFavorite": "收藏",
+      "searchPlaceholder": "搜索标题、词条、来源、格式或文字",
+      "searchLabel": "查找素材",
+      "clearSearch": "清除搜索",
+      "filterLabel": "筛选素材",
+      "filter": "筛选",
+      "filterTitle": "筛选条件",
+      "clearAll": "全部清除",
+      "relationshipTitle": "关联位置",
+      "relationshipAny": "不限",
+      "relationshipCreation": "创作",
+      "relationshipDictionary": "词典",
+      "relationshipHint": "选择关联位置时，会在全部素材中查找，而不局限于收藏。",
+      "contentTypeTitle": "内容类型",
+      "IMAGE": "图片",
+      "TEXT": "文字",
+      "imageKindTitle": "图片类型",
+      "GENERATED": "生成图",
+      "REFERENCE": "参考图",
+      "imageKindHint": "启用图片专属筛选时，文字素材会暂时隐藏。",
+      "unratedTitle": "缺少评分",
+      "AESTHETIC": "美观程度",
+      "REALISM": "现实符合度",
+      "unratedHint": "显示任一所选项未评分的图片；评分默认收在详情中。",
+      "viewLabel": "素材布局",
+      "gridView": "网格视图",
+      "listView": "列表视图",
+      "select": "选择",
+      "doneSelecting": "完成",
+      "appliedFilters": "已应用筛选",
+      "unratedChip": {
+        "$params": ["label"],
+        "$template": "未评：{label}"
+      }
+    },
+    "card": {
+      "textMaterial": "文字素材",
+      "imageMaterial": "未命名图片",
+      "text": "文字",
+      "generated": "生成图",
+      "reference": "参考图",
+      "creation": "创作",
+      "dictionary": "词典",
+      "favorite": "收藏",
+      "previewUnavailable": "预览不可用",
+      "details": "查看详情",
+      "copyText": "复制文字",
+      "select": {
+        "$params": ["title"],
+        "$template": "选择{title}"
+      }
+    },
+    "inspector": {
+      "label": "已选素材",
+      "title": "素材详情",
+      "close": "关闭素材详情",
+      "dialogDescription": "查看所选素材，并打开其关联记录。",
+      "textMaterial": "文字素材",
+      "imageMaterial": "未命名图片",
+      "text": "文字",
+      "generated": "生成图",
+      "reference": "参考图",
+      "favorite": "收藏",
+      "unfavorite": "取消收藏",
+      "unsavedChanges": "有未保存的修改",
+      "changesSaved": "修改已保存",
+      "saving": "正在保存…",
+      "discardTitle": "放弃未保存的修改？",
+      "discardDescription": "关闭素材详情后，本次修改将无法恢复。",
+      "continueEditing": "继续编辑",
+      "discardChanges": "放弃修改",
+      "copyText": "复制文字",
+      "openCreation": "打开创作",
+      "openDictionary": "打开词条",
+      "noLinkedRecord": "没有关联记录",
+      "relationships": "关联记录",
+      "importedOutput": "导入成果",
+      "version": {
+        "$params": ["version"],
+        "$template": "版本 {version}"
+      },
+      "dictionaryReference": {
+        "$params": ["count"],
+        "$template": "关联 {count} 个词条"
+      },
+      "ratingTitle": "图片评分",
+      "folded": "默认折叠",
+      "details": "文件信息",
+      "added": "加入时间",
+      "dimensions": "尺寸",
+      "format": "格式",
+      "fileSize": "文件大小",
+      "origin": "来源"
+    },
+    "settings": {
+      "trigger": "评分设置",
+      "triggerDescription": "设置卡片显示的评分项和未评分筛选",
+      "visibleTitle": "卡片显示",
+      "unratedTitle": "显示未评分",
+      "unratedHint": "多选时，显示任一所选项未评分的图片",
+      "AESTHETIC": "美观程度",
+      "REALISM": "现实符合度"
+    },
+    "source": {
+      "label": "素材来源",
+      "ALL": "全部",
+      "FAVORITE": "收藏",
+      "CREATION": "创作",
+      "DICTIONARY": "词典"
+    },
+    "evaluation": {
+      "aesthetic": "美观程度",
+      "aestheticAccessible": "美观程度",
+      "realism": "现实符合度",
+      "realismAccessible": "现实符合度"
+    },
+    "tile": {
+      "favorite": "收藏",
+      "dictionary": "词典",
+      "imported": "导入",
+      "image": "图片",
+      "both": "创作 · 词典",
+      "open": {
+        "$params": ["title"],
+        "$template": "打开{title}"
+      }
+    },
+    "rating": {
+      "score": {
+        "$params": ["label", "value", "selected"],
+        "$template": "{label} {value} 分",
+        "$variants": [
+          {
+            "when": {
+              "param": "selected",
+              "equals": true
+            },
+            "template": "{label} {value} 分，再次点击清除"
+          }
+        ]
+      }
+    }
+  },
+  "dictionary": {
+    "maintenance": {
+      "title": "词典维护",
+      "description": "检查词条缺少的必要内容和重复表达",
+      "refresh": "生成新报告",
+      "close": "关闭",
+      "stale": "基于较早数据",
+      "latest": "最新",
+      "terms": "词条",
+      "ready": "可核准",
+      "uncited": "未引用",
+      "missingDefinition": "缺定义",
+      "missingCategory": "缺类别",
+      "missingPositive": "缺正向表达",
+      "duplicates": "重复表达组",
+      "candidates": "待处理",
+      "prompts": "历史 Prompt",
+      "openTerm": "打开词条",
+      "empty": "暂无维护报告",
+      "none": "没有待处理词条",
+      "before": "当前",
+      "expected": "建议操作",
+      "blank": "空",
+      "more": "显示更多",
+      "showing": {
+        "$params": ["shown", "total"],
+        "$template": "显示 {shown} / {total}"
+      },
+      "severity": {
+        "CRITICAL": "必需",
+        "WARNING": "复核",
+        "INFO": "整理"
+      }
+    },
+    "editor": {
+      "generationFailed": "GPT Image 2 生成失败",
+      "generationFailedShort": "生成失败",
+      "title": "词典",
+      "import": "导入",
+      "search": "搜索名称、别名或表达式",
+      "filter": "筛选",
+      "clear": "清除",
+      "overview": "一览",
+      "edit": "编辑",
+      "backToDetails": "返回词条",
+      "saveAndContinue": "保存并前往",
+      "discardEditTitle": "放弃这次修改？",
+      "discardEditDescription": "尚未保存的内容会丢失，词条将恢复到最近一次保存的版本。",
+      "continueEditing": "继续编辑",
+      "discardChanges": "放弃修改",
+      "record": "记录",
+      "hideDrafts": "隐藏草稿",
+      "hideUncited": "隐藏 0 被引",
+      "showArchived": "显示已删除",
+      "draft": "草稿",
+      "approved": "已核准",
+      "archived": "已删除",
+      "untested": "待验证",
+      "save": "保存草稿",
+      "approve": "核准版本",
+      "citations": "被引",
+      "rows": "项",
+      "saved": "草稿已保存",
+      "operationFailed": "操作失败",
+      "approvedNotice": "新版本已核准",
+      "withdrawnNotice": "已撤回核准，当前版本转为草稿",
+      "deletedNotice": "词条已删除",
+      "restoredNotice": "词条已恢复为草稿",
+      "imported": "项已导入为草稿",
+      "noTerms": "没有匹配词条",
+      "newTerm": "新建词条",
+      "wordFilter": "选词",
+      "maintenanceCandidates": "维护候选",
+      "classificationManagement": "分类管理",
+      "loadingMore": "正在加载更多",
+      "scrollForMore": "下滑加载更多",
+      "allLoaded": "已加载全部",
+      "loadFailed": "加载失败，点击重试",
+      "moreActions": "更多操作",
+      "withdrawApproval": "撤回核准",
+      "deleteTerm": "删除词条",
+      "restore": "恢复词条",
+      "saveBeforeStateChange": "请先保存或撤销当前修改",
+      "deleteDescription": "词条会从普通列表和创作选词中移除；已有 Prompt 引用会保留，也可以稍后恢复。",
+      "cancel": "取消",
+      "confirmDelete": "删除",
+      "images": "图示",
+      "addImages": "添加图片",
+      "importLocal": "导入本地图片",
+      "setCover": "设为封面",
+      "cover": "封面",
+      "removeImage": "移除",
+      "moveLeft": "前移",
+      "moveRight": "后移",
+      "addSelected": "添加所选",
+      "noAvailableImages": "没有可选的创作成果",
+      "moreImages": "查看更多",
+      "imageAdded": "词条图示已更新",
+      "imageRemoved": "图片关联已移除",
+      "unsavedChanges": "有未保存修改",
+      "representativeMedia": "代表图",
+      "termSection": "词条",
+      "titleField": "标题",
+      "titleLanguage": "标题语言",
+      "definition": "定义",
+      "classifications": "分类（可多选）",
+      "disabled": "已停用",
+      "primaryDirectory": "主要目录",
+      "choosePrimaryDirectory": "选择主要目录",
+      "aliasesOptional": "别名（可选）",
+      "aliasesHint": "用逗号分隔检索同义词",
+      "modelExpressions": "模型表达",
+      "modelExpressionsDescription": "按模型、语境和语言维护实际写入提示词的表达。",
+      "addExpression": "添加表达",
+      "context": "语境",
+      "model": "模型",
+      "language": "语言",
+      "removeExpression": "删除表达",
+      "positiveExpression": "正向表达",
+      "negativeExpressionOptional": "排除表达（可选）",
+      "positiveExpressionRequired": "核准前至少添加一条正向表达。",
+      "otherLanguages": "其他语言",
+      "localizationsDescription": "需要时添加，不限制语言数量。",
+      "addLanguage": "添加语言",
+      "removeLanguage": "删除语言",
+      "definitionOptional": "定义（可选）"
+    },
+    "relatedTerms": {
+      "collapse": "收起同类词",
+      "expand": "展开同类词",
+      "backToOverview": "返回词汇一览",
+      "sameCategory": "同类词",
+      "initialLoading": "正在加载同类词",
+      "loadingMore": "正在加载更多",
+      "loadFailed": "加载失败",
+      "retry": "重试",
+      "scrollForMore": "下滑加载更多",
+      "allLoaded": "已加载全部",
+      "empty": "这个分类下没有其他词",
+      "loadedCount": {
+        "$params": ["loaded", "total"],
+        "$template": "已加载 {loaded} / {total}"
+      }
+    },
+    "notices": {
+      "newDraft": "新词条草稿已建立",
+      "filtered": {
+        "$params": ["count"],
+        "$template": "已按 {count} 个词筛选"
+      },
+      "recipeSaved": "配方已保存",
+      "recipeUpdated": "配方已更新",
+      "recipeArchived": "配方已归档",
+      "recipeRestored": "配方已恢复使用",
+      "recipeDeleted": "配方已删除"
+    },
+    "importPreview": {
+      "title": "导入预览",
+      "description": "确认后只建立草稿，不会直接发布。",
+      "valid": "可导入",
+      "duplicate": "重复",
+      "invalid": "无效",
+      "cancel": "取消",
+      "commit": "导入为草稿"
+    },
+    "newTerm": {
+      "title": "新建词条",
+      "titleInClassification": {
+        "$params": ["classification"],
+        "$template": "在“{classification}”中新建词条"
+      },
+      "description": "用一个名称及其语言建立草稿。",
+      "classification": "所在分类",
+      "titleField": "标题",
+      "titleLanguage": "标题语言",
+      "required": "请填写名称和名称语言。",
+      "cancel": "取消",
+      "create": "建立草稿"
+    },
+    "detail": {
+      "back": "返回一览",
+      "opening": "正在打开词条…",
+      "selectTerm": "请选择词条",
+      "retry": "重试",
+      "edit": "编辑",
+      "selected": "已选",
+      "select": "选择",
+      "referenceImage": "参考图",
+      "noReferenceImage": "暂无参考图",
+      "noDefinition": "尚未填写定义。",
+      "modelExpressions": "模型表达",
+      "noPositiveExpression": "未填写正向表达",
+      "noModelExpression": "尚未填写模型表达。",
+      "aliases": "别名"
+    },
+    "classifications": {
+      "header": {
+        "back": "返回词典",
+        "title": "分类管理",
+        "summary": {
+          "$params": ["topLevelCount", "classificationCount", "termCount"],
+          "$template": "{topLevelCount} 个大类 · {classificationCount} 个分类 · {termCount} 个词条"
+        },
+        "search": "搜索大类或分类",
+        "newTopLevel": "新建大类",
+        "topLevelCategories": "大类",
+        "changeSorting": "调整大类顺序",
+        "showDisabled": "显示已停用大类",
+        "hideDisabled": "隐藏已停用大类",
+        "classifications": "分类",
+        "tree": "分类树",
+        "collapseAll": "全部折叠",
+        "newClassification": "新建分类",
+        "loading": "正在加载分类",
+        "retry": "重试"
+      },
+      "inspector": {
+        "basicInformation": "基本信息",
+        "name": "名称",
+        "namePlaceholder": "请输入名称",
+        "nameLanguage": "名称语言",
+        "otherLanguages": "其他语言",
+        "language": "语言",
+        "localizedName": "本地化名称",
+        "removeLanguage": "删除语言",
+        "addLanguage": "添加语言",
+        "stableIdentifier": "稳定标识",
+        "packageSourceValue": "内容包原值",
+        "viewAndRestoreSource": "查看并恢复",
+        "matchesSource": "未修改",
+        "parentClassification": "上级分类",
+        "topLevel": "大类层",
+        "availableInPicker": "在分类选择中启用",
+        "childClassifications": "下级分类",
+        "newChild": "新建下级分类",
+        "termsAndImages": "词条与图片",
+        "imagesManagedInTerms": "代表图片在各词条中维护。",
+        "currentOnly": "仅当前层",
+        "includeChildren": "包含下级",
+        "newTerm": "新建词条",
+        "searchTerms": "搜索词条",
+        "term": "词条",
+        "classification": "所在分类",
+        "status": "状态",
+        "loading": "正在加载",
+        "approved": "已核准",
+        "draft": "草稿",
+        "noTerms": "当前分类还没有词条",
+        "showing": {
+          "$params": ["visible", "total"],
+          "$template": "显示前 {visible} 个，共 {total} 个"
+        },
+        "merge": "合并分类",
+        "disableThis": "停用此分类",
+        "restoreThis": "恢复此分类",
+        "source": "来源：",
+        "localSource": "本地维护",
+        "packSource": "词典内容包",
+        "saveChanges": "保存更改",
+        "moreActions": "更多操作"
+      },
+      "tree": {
+        "newChild": "新建下级分类",
+        "rename": "重命名",
+        "move": "移动分类",
+        "moveUp": "上移",
+        "moveDown": "下移",
+        "disable": "停用分类",
+        "restore": "恢复分类",
+        "drag": "拖动分类",
+        "collapse": "折叠",
+        "expand": "展开",
+        "moreActionsFor": {
+          "$params": ["name"],
+          "$template": "{name}的更多操作"
+        }
+      },
+      "dialogs": {
+        "renameTitle": "重命名分类",
+        "newTopLevelTitle": "新建大类",
+        "newChildTitle": "新建下级分类",
+        "parent": {
+          "$params": ["path"],
+          "$template": "上级分类：{path}"
+        },
+        "newTopLevelDescription": "创建新的大类。",
+        "name": "名称",
+        "namePlaceholder": "请输入名称",
+        "nameLanguage": "名称语言",
+        "otherLanguages": "其他语言",
+        "addLanguage": "添加语言",
+        "language": "语言",
+        "localizedName": "本地化名称",
+        "removeLanguage": "删除语言",
+        "cancel": "取消",
+        "saveChanges": "保存更改",
+        "create": "创建",
+        "topLevel": "大类层",
+        "moveTitle": {
+          "$params": ["name"],
+          "$template": "移动“{name}”"
+        },
+        "moveDescription": "选择新的上级分类，下级分类会一起移动。",
+        "currentPosition": "当前位置",
+        "newParent": "新的上级分类",
+        "search": "搜索大类或分类",
+        "moveTo": "将移动到：",
+        "classification": "当前分类",
+        "moveTogether": "一同移动",
+        "childCount": {
+          "$params": ["count"],
+          "$template": "{count} 个下级分类"
+        },
+        "affectedTerms": "涉及词条",
+        "stableHistory": "稳定标识和历史引用保持不变",
+        "calculatingImpact": "正在计算影响",
+        "move": "移动分类",
+        "mergeTitle": {
+          "$params": ["name"],
+          "$template": "合并“{name}”"
+        },
+        "mergeDescription": "选择保留的目标分类。当前层词条与下级分类将转移过去。",
+        "searchTarget": "搜索目标分类",
+        "keep": "保留分类",
+        "moveTerms": "转移词条",
+        "moveChildren": "转移下级分类",
+        "childConflicts": "同名下级分类",
+        "conflictAction": "冲突处理方式",
+        "chooseConflictAction": "选择处理方式",
+        "keepBoth": "保留两个",
+        "renameBeforeMove": "改名后移动",
+        "mergeMatchingChildren": "合并这两个下级分类",
+        "newName": "新的分类名称",
+        "merge": "合并分类",
+        "disableTitle": {
+          "$params": ["name"],
+          "$template": "停用“{name}”"
+        },
+        "restoreTitle": {
+          "$params": ["name"],
+          "$template": "恢复“{name}”"
+        },
+        "disableDescription": "停用后不能用于新的词条选择；现有词条和历史记录仍会保留。",
+        "restoreDescription": "恢复后可以重新用于词条选择。",
+        "restoreSourceTitle": {
+          "$params": ["name"],
+          "$template": "从内容包恢复“{name}”"
+        },
+        "restoreSourceDescription": "将恢复内容包中的名称、上级分类、顺序和启用状态。",
+        "packageName": "内容包名称",
+        "packageParent": "内容包上级",
+        "restoreSource": "恢复内容包原值",
+        "activeDescendants": "启用中的下级分类",
+        "historicalTerms": {
+          "$params": ["count"],
+          "$template": "涉及的 {count} 个词条仍会保留，并可通过历史分类读取。"
+        },
+        "disableSubtree": {
+          "$params": ["count"],
+          "$template": "同时停用全部 {count} 个启用中的下级分类"
+        },
+        "disable": "停用分类",
+        "restore": "恢复分类",
+        "orderTopLevelTitle": "大类排序",
+        "orderTopLevelDescription": "拖动大类或使用上下按钮，调整保存后的显示顺序。",
+        "termCount": {
+          "$params": ["count"],
+          "$template": "{count} 个词条"
+        },
+        "moveTopLevelUp": {
+          "$params": ["name"],
+          "$template": "上移{name}"
+        },
+        "moveTopLevelDown": {
+          "$params": ["name"],
+          "$template": "下移{name}"
+        },
+        "saveTopLevelOrder": "保存顺序"
+      },
+      "notices": {
+        "updated": "分类已更新",
+        "childCreated": "下级分类已创建",
+        "topLevelCreated": "大类已创建",
+        "notFound": "分类不存在",
+        "moved": "分类已移动",
+        "merged": "分类已合并",
+        "restored": "分类已恢复",
+        "disabled": "分类已停用",
+        "reordered": "分类顺序已更新",
+        "sourceRestored": "已恢复内容包原值"
+      }
+    },
+    "overview": {
+      "words": "词汇一览",
+      "recipes": "配方",
+      "deleteTitle": "删除配方？",
+      "deleteDescription": "删除后不再出现在维护页和创作选词中。已有 Prompt 引用仍会保留。",
+      "cancel": "取消",
+      "delete": "删除"
+    },
+    "wordPalette": {
+      "selected": "已选",
+      "selectTerm": "选择",
+      "openDetails": "查看词条",
+      "clear": "清空",
+      "empty": "这个组合下没有词",
+      "loading": "正在更新一览…",
+      "loadFailed": "一览更新失败",
+      "uncategorized": "其他",
+      "newRecipe": "新建配方",
+      "save": "保存配方",
+      "confirm": "确认筛选"
+    }
+  },
+  "recipe": {
+    "apply": {
+      "cancel": "取消",
+      "apply": "引用配方",
+      "optional": "不选择",
+      "language": "提示词语言",
+      "chinese": "中文",
+      "english": "English"
+    },
+    "create": {
+      "title": "新建配方",
+      "name": "名称",
+      "nameHint": "例如：自然身材",
+      "description": "备注",
+      "descriptionHint": "可选",
+      "terms": "词",
+      "addParameter": "添加可选项",
+      "referenceImages": "参考图片",
+      "addImages": "添加图片",
+      "cancel": "取消",
+      "save": "保存",
+      "saving": "保存中",
+      "invalid": "请填写名称，并添加 Prompt、可选项、词或参考图片"
+    },
+    "editor": {
+      "back": "返回配方",
+      "createTitle": "新建配方",
+      "title": "编辑配方",
+      "active": "使用中",
+      "archived": "已归档",
+      "name": "名称",
+      "description": "备注",
+      "terms": "词",
+      "parameters": "可选项",
+      "addParameter": "添加可选项",
+      "prompt": "配方 Prompt",
+      "promptPlaceholder": "输入完整 Prompt",
+      "recognition": "识别结果",
+      "linkedTerms": "已有词",
+      "suggestedTerms": "待确认",
+      "combineOptions": "合成可选项",
+      "releaseToCombine": "松开合成可选项",
+      "releaseToAddChoice": "松开加入可选项",
+      "choiceAlreadyExists": "这个可选项已经存在",
+      "choiceConflict": "这个词已属于另一组可选项",
+      "chooseTerm": "选择另一个词",
+      "addTermOption": "添加词",
+      "noTerms": "没有匹配的词",
+      "or": "或",
+      "promptOption": "Prompt 选项",
+      "removeOption": "删除选项",
+      "removeChoiceGroup": "删除这组可选项",
+      "outputPreview": "Prompt 输出",
+      "fullWindow": "全窗",
+      "exitFullWindow": "退出全窗",
+      "save": "保存",
+      "create": "创建配方",
+      "saving": "保存中",
+      "revision": "版本",
+      "saveNext": "保存为新版本",
+      "referenceImages": "参考图片",
+      "addImages": "添加图片",
+      "archive": "归档",
+      "restore": "恢复使用",
+      "delete": "删除",
+      "invalid": "请填写名称，并添加 Prompt、可选项、词或参考图片。",
+      "deleteTitle": "删除配方？",
+      "deleteDescription": "删除后不再出现在维护页和创作中。",
+      "cancel": "取消",
+      "confirmDelete": "确认删除"
+    },
+    "library": {
+      "empty": "还没有配方",
+      "noMatch": "没有匹配的配方",
+      "search": "搜索配方、词或可选项"
+    },
+    "item": {
+      "parameterized": "含可选项",
+      "archived": "已归档",
+      "view": "查看",
+      "edit": "编辑",
+      "terms": "词",
+      "used": "被引",
+      "filter": "筛选",
+      "apply": "引用",
+      "delete": "删除"
+    },
+    "parameters": {
+      "parameter": "可选组",
+      "parameterName": "可选组名称",
+      "parameterNameHint": "例如：罩杯",
+      "key": "可选组键",
+      "options": "选项",
+      "optionsHint": "A, B, C, D",
+      "template": "Prompt 模板",
+      "templateHint": "{{value}} cup",
+      "required": "必选",
+      "variation": "可选组",
+      "variationName": "可选组名称",
+      "variationNameHint": "例如：身材",
+      "removeVariation": "删除可选组",
+      "optionName": "选项名称",
+      "addOption": "添加选项",
+      "removeOption": "删除选项",
+      "selectTerms": "选择词条",
+      "searchTerms": "搜索词条",
+      "noTerms": "没有匹配的词条",
+      "customPrompt": "自定义 Prompt"
+    }
+  },
+  "creator": {
+    "workbench": {
+      "newPrompt": "新创作",
+      "manualPrompt": "手动 Prompt",
+      "promptPlaceholder": "描述你想要的画面……",
+      "dictionary": "词典",
+      "importResults": "导入成果",
+      "reviewImport": "确认导入",
+      "importing": "导入中",
+      "imported": "已导入",
+      "duplicates": "重复",
+      "invalid": "无效",
+      "importFailed": "导入失败",
+      "cancel": "取消",
+      "ready": "模型就绪",
+      "generationStarted": "已开始生成",
+      "promptApplied": "已采用 Prompt",
+      "generationFailed": "无法开始生成",
+      "recipeApplied": "已引用配方",
+      "recipeSaved": "配方已保存",
+      "rename": "重命名",
+      "titleGenerated": "标题已自动生成",
+      "titleGenerationFailed": "标题自动生成失败，已保留临时标题",
+      "delete": "删除",
+      "cancelDelete": "取消",
+      "deleteSeriesTitle": "删除这项创作？",
+      "deleteSeriesDescription": "它会从创作列表和所在图集中移除；版本、标注和历史引用仍会保留。",
+      "deleteImages": {
+        "$params": ["count"],
+        "$template": "同时删除 {count} 项产出图片"
+      },
+      "deleteImagesDescription": {
+        "$params": ["count"],
+        "$template": "没有其他引用的产出会同时隐藏；仍被素材图集、收藏、词条、其他创作或派生图片使用的产出会保留在素材中。历史关系与磁盘文件仍保留。"
+      },
+      "deleteWithImages": "删除创作和产出",
+      "deleteAlbumTitle": "删除这个图集？",
+      "deleteAlbumDescription": "只删除图集及其成员关系，不删除其中的创作、子图集或素材。",
+      "seriesDeleted": "创作已删除",
+      "seriesAndOutputsDeleted": {
+        "$params": ["count"],
+        "$template": "创作已删除 · 已隐藏 {count} 项产出"
+      },
+      "albumDeleted": "图集已删除",
+      "promptLanguageChinese": "中文",
+      "version": "版本",
+      "searchVersions": "搜索版本…",
+      "noMatchingVersions": "没有匹配的版本"
+    },
+    "album": {
+      "images": "张",
+      "albums": "图集",
+      "open": "打开创作",
+      "openAlbum": "打开图集",
+      "albumLabel": "图集",
+      "rename": "重命名",
+      "pin": "置顶",
+      "unpin": "取消置顶",
+      "archive": "归档",
+      "restore": "恢复",
+      "archived": "已归档",
+      "archivedAlbums": "已归档图集",
+      "belongsTo": {
+        "$params": ["title"],
+        "$template": "属于 {title}"
+      },
+      "move": "移动到…",
+      "moveTitle": "移动到",
+      "moveUp": "上移",
+      "moveDown": "下移",
+      "moreActions": "更多操作",
+      "delete": "删除",
+      "renameAlbumTitle": "重命名图集",
+      "albumName": "图集名称",
+      "albumRenamed": "图集已重命名",
+      "albumDeleted": "图集已删除",
+      "newAlbum": "新建图集",
+      "newSubAlbum": "新建子图集",
+      "moveToRoot": "移到顶层",
+      "creations": "创作",
+      "contents": "内容",
+      "materials": "素材",
+      "emptyAlbum": "空图集",
+      "outputCount": {
+        "$params": ["count"],
+        "$template": "{count} 张产出"
+      }
+    },
+    "canvas": {
+      "label": "画幅",
+      "choose": "选择画幅",
+      "unspecified": "无比例要求"
+    },
+    "dictionaryPicker": {
+      "dictionary": "词典",
+      "search": "搜索本地词典",
+      "close": "关闭词典",
+      "words": "选词",
+      "recipes": "配方"
+    },
+    "generationTasks": {
+      "queued": "排队",
+      "preparing": "准备素材",
+      "submitting": "提交",
+      "uploading": "上传",
+      "waitingProvider": "等待模型",
+      "generating": "模型处理中",
+      "downloading": "下载",
+      "finalizing": "整理结果",
+      "saving": "保存到空间",
+      "recovering": "恢复",
+      "cancelling": "取消中",
+      "cancel": "取消",
+      "cancelBatch": "取消整批",
+      "batchModels": {
+        "$params": ["count"],
+        "$template": "{count} 个模型"
+      },
+      "batchProgress": {
+        "$params": ["completed", "total"],
+        "$template": "完成 {completed}/{total}"
+      },
+      "retry": "重试",
+      "regenerate": "重新生成",
+      "dismiss": "关闭",
+      "failed": "生成失败",
+      "interrupted": "生成已中断"
+    },
+    "generationRecord": {
+      "record": "生成记录",
+      "details": "详情",
+      "imported": "外部导入",
+      "name": "名称",
+      "originalName": "原始文件名",
+      "note": "备注",
+      "save": "保存",
+      "source": "来源",
+      "sourceUrl": "来源 URL",
+      "creationInputLink": "关联创作输入",
+      "notLinked": "未关联创作输入",
+      "aiGenerated": "AI 生成",
+      "notAiGenerated": "非 AI 生成",
+      "unknown": "未知",
+      "model": "模型",
+      "exactPrompt": "当时的 Prompt",
+      "description": "图片描述",
+      "version": "版本",
+      "dimensions": "尺寸",
+      "format": "格式",
+      "fileSize": "大小",
+      "added": "加入时间",
+      "paste": "粘贴",
+      "drop": "拖入",
+      "upload": "上传",
+      "prompt": "当时的 Prompt",
+      "dictionary": "词条与配方",
+      "userInstruction": "你的指令",
+      "creationInput": "创作输入",
+      "reusePrompt": "复用提示词",
+      "promptReused": "已复用提示词",
+      "promptAndAnnotationsReused": "已复用提示词与评注",
+      "actualRequest": "生图 Prompt",
+      "flatPrompt": "合成 Prompt",
+      "fullRequest": "执行封装",
+      "revision": "修订",
+      "parameters": "参数",
+      "terms": "词条",
+      "references": "参考",
+      "sources": "来源资料包",
+      "providerReturnedDescription": "提供方返回描述",
+      "codexTask": "Codex 任务",
+      "codexRecorded": "已记录",
+      "openCodex": "打开 Codex",
+      "none": "无",
+      "chinese": "中文",
+      "images": "图",
+      "aiGeneratedLabel": "AI 生成标记",
+      "otherProvenance": "其他",
+      "modelPlaceholder": "输入或选择模型",
+      "modelOptions": "模型选项",
+      "platform": "平台",
+      "platformPlaceholder": "输入或选择平台",
+      "platformOptions": "平台选项",
+      "platformOfficialApi": "官方 API",
+      "platformOpenRouter": "OpenRouter",
+      "platformChatGptApp": "ChatGPT App",
+      "platformCodex": "Codex",
+      "platformGeminiApp": "Gemini App",
+      "platformDoubao": "豆包",
+      "platformLocal": "本地部署"
+    },
+    "knowledgeDistillation": {
+      "title": "提炼积累",
+      "description": "基于冻结 PromptVersion 的知识审核候选",
+      "rerun": "重新提炼",
+      "close": "关闭",
+      "ready": "待审核",
+      "accepted": "已保存",
+      "closed": "已关闭",
+      "noVision": "未分析图片",
+      "basis": "依据 PromptVersion",
+      "frozenInput": "冻结输入",
+      "matched": "匹配已有词条",
+      "remaining": "剩余词条候选",
+      "recipe": "配方草稿",
+      "terms": "已有词条",
+      "candidates": "候选词条",
+      "positive": "正向",
+      "negative": "负向",
+      "empty": "无",
+      "saveRecipe": "生成并编辑",
+      "savingRecipe": "正在生成"
+    },
+    "inspector": {
+      "all": "全部产出",
+      "close": "收起",
+      "collapse": "折叠产出",
+      "expand": "展开产出",
+      "resize": "调整产出区宽度",
+      "preview": "单图",
+      "comparison": "对比",
+      "importResults": "导入产出"
+    },
+    "comparison": {
+      "matrix": "生成对比表",
+      "model": "模型",
+      "repeat": "重复",
+      "prompt": "Prompt",
+      "promptText": "正文",
+      "promptDiff": "变更",
+      "promptUnchanged": "正文未变化",
+      "promptEmpty": "未记录 Prompt",
+      "usedTerms": "词条与配方",
+      "copyFullPrompt": "复制此输入",
+      "promptCopied": "已复制此输入",
+      "added": "新增",
+      "removed": "移除",
+      "addModel": "添加模型",
+      "addModelHint": "没有成果的模型仅在手动添加后显示。",
+      "noModelsToAdd": "没有可添加的模型",
+      "viewAllImages": "查看全部图片",
+      "generate": "生成",
+      "generating": "提交中",
+      "regenerate": "再生成",
+      "runs": "次",
+      "images": "张",
+      "failed": "失败",
+      "cancelled": "已取消",
+      "notAiGenerated": "非 AI 生成",
+      "unknown": "未知",
+      "imported": "导入",
+      "importedPrompt": "导入 Prompt",
+      "fullWindow": "全窗",
+      "exitFullWindow": "退出全窗",
+      "pair": "两两",
+      "pairA": "A",
+      "pairB": "B",
+      "sideBySide": "并排",
+      "swipe": "拉帘",
+      "swipePosition": "拉帘分割位置",
+      "overlay": "叠图",
+      "toggle": "A/B",
+      "swap": "交换",
+      "backToMatrix": "返回表格",
+      "zoomOut": "缩小",
+      "fit": "适合",
+      "zoomIn": "放大",
+      "opacity": "叠图混合比例"
+    },
+    "generationTargets": {
+      "models": "模型",
+      "launcherModels": "生图模型",
+      "repeats": "每个模型出图",
+      "batchTask": "批量任务",
+      "repeatEachModel": "每个模型重复",
+      "customCounts": "分别设置",
+      "repeatOption": {
+        "$params": ["count"],
+        "$template": "{count} 次"
+      },
+      "batchSummary": {
+        "$params": ["models", "repeats", "total"],
+        "$template": "{models} 个模型 × {repeats} 次 = {total} 张"
+      },
+      "batchTotal": {
+        "$params": ["models", "total"],
+        "$template": "{models} 个模型 · 共 {total} 张"
+      },
+      "modelParameters": "模型参数",
+      "imageCount": "出图数",
+      "quality": "质量",
+      "providerManagedQuality": "Codex 托管",
+      "notApplicable": "不适用",
+      "modelImageCount": {
+        "$params": ["model"],
+        "$template": "{model} 出图数"
+      },
+      "modelQuality": {
+        "$params": ["model"],
+        "$template": "{model} 质量"
+      },
+      "internalLibraryRandom": "本地素材回放",
+      "noneSelected": "未选择模型",
+      "preview": "预览",
+      "unavailable": "未连接",
+      "searchModels": "搜索模型…",
+      "noMatchingModels": "没有匹配的模型",
+      "selected": "已选择",
+      "notSelected": "未选择",
+      "settings": "生成设置",
+      "generate": "生成",
+      "generating": "提交中",
+      "shortcut": "Ctrl + Enter",
+      "total": {
+        "$params": ["count"],
+        "$template": "共 {count} 张"
+      },
+      "blockedModelUnavailable": {
+        "$params": ["model", "detail"],
+        "$template": "{model} 未连接，请到设置里检查。",
+        "$variants": [
+          {
+            "when": {
+              "param": "detail",
+              "truthy": true
+            },
+            "template": "{model} 未连接：{detail}"
+          }
+        ]
+      },
+      "blockedModelCannotGenerate": {
+        "$params": ["model"],
+        "$template": "{model} 不能生成图片。"
+      },
+      "blockedReferenceUnsupported": {
+        "$params": ["model"],
+        "$template": "{model} 不接受参考图，请移除参考图或换一个模型。"
+      },
+      "blockedMultiReferenceUnsupported": {
+        "$params": ["model"],
+        "$template": "{model} 一次只接受一张参考图。"
+      },
+      "blockedTooManyReferences": {
+        "$params": ["model", "limit"],
+        "$template": "{model} 最多接受 {limit} 张参考图。"
+      }
+    },
+    "starter": {
+      "promptLabel": "提示语",
+      "characters": {
+        "$params": ["count"],
+        "$template": "{count} 字"
+      },
+      "placeholder": "随心写，AI来做。或写几个词，AI帮写。",
+      "annotationRefinement": "标注精修",
+      "annotationRefinementCount": {
+        "$params": ["count"],
+        "$template": "{count} 条标注"
+      },
+      "fullWindow": "全窗",
+      "exitFullWindow": "退出全窗",
+      "ideas": "给我灵感",
+      "buildPrompt": "AI帮写",
+      "searchAndOptimize": "搜索 + 优化",
+      "writingOptions": "AI帮写选项",
+      "collaborationTitle": "创作协作",
+      "deepSeekConfigurationRequired": "请先在「扩展」中配置并启用 DeepSeek API",
+      "exploringDirections": "正在梳理不同创作方向…",
+      "organizingPrompt": "AI 正在帮写…",
+      "staleProposal": "基于较早输入",
+      "promptProposal": "Prompt 建议",
+      "applyProposal": "采用到输入",
+      "proposalApplied": "已采用",
+      "dismissProposal": "关闭建议",
+      "chooseDirection": "选择一个方向",
+      "useDirection": "使用这个方向"
+    },
+    "materialPicker": {
+      "add": "添加素材",
+      "search": "搜索已有图片",
+      "recent": "已有素材与产出",
+      "empty": "没有找到可用图片",
+      "importing": "导入本地图片",
+      "selected": "已选择"
+    },
+    "quality": {
+      "label": "质量",
+      "low": "低",
+      "lowHint": "最快",
+      "medium": "中",
+      "mediumHint": "均衡",
+      "high": "高",
+      "highHint": "精细"
+    },
+    "rename": {
+      "title": "重命名",
+      "fieldLabel": "标题",
+      "suggest": "模型生成",
+      "cancel": "取消",
+      "save": "保存",
+      "saved": "标题已更新"
+    },
+    "results": {
+      "library": "创作",
+      "newCreation": "新创作",
+      "full": "完整列表",
+      "imagesOnly": "仅显示图片",
+      "collapse": "折叠列表",
+      "expand": "固定展开",
+      "resize": "调整列表宽度",
+      "albums": "图集",
+      "versions": "版",
+      "results": "张产出",
+      "more": "查看更多",
+      "delete": "删除",
+      "empty": "还没有创作",
+      "emptyHint": "在右边写一句 Prompt，或直接拖入一张参考图，就能开始第一项创作。"
+    },
+    "imageTransform": {
+      "title": "画面比例",
+      "crop": "本地裁切",
+      "aiReframe": "AI 重构",
+      "cropAction": "生成裁切图",
+      "reframeAction": "开始 AI 重构",
+      "cancel": "取消",
+      "cropCompleted": "已生成裁切图",
+      "cropFailed": "无法裁切图片",
+      "reframeStarted": "AI 比例重构已启动",
+      "reframeFailed": "无法启动 AI 比例重构"
+    },
+    "imageEditConfirm": {
+      "title": "确认定向精修",
+      "description": "将建立一个新版本，并按所选模型与重复次数分别启动任务。",
+      "changes": "应用这些修改",
+      "all": "全选",
+      "none": "清空",
+      "model": "图像编辑模型",
+      "boundary": "保留边界",
+      "strictBoundary": "将标记区域作为原生编辑掩膜",
+      "semanticBoundary": "当前选择只能进行语义精修，未标记区域也可能变化。",
+      "modeMask": "原生掩膜",
+      "modeSemantic": "语义精修",
+      "maskEditSupported": "支持原生蒙版",
+      "maskEditUnsupported": "不支持原生蒙版",
+      "maskEditUnavailable": {
+        "$params": ["models"],
+        "$template": "{models} 通道不支持原生蒙版编辑，只能进行语义精修，可能改动未标记区域；建议改用带「支持原生蒙版」标签的其他通道。"
+      },
+      "nativeMaskUnavailable": "当前图片无法使用原生蒙版编辑，只能进行语义精修，可能改动未标记区域。",
+      "runs": "最大运行数",
+      "maximumRuns": {
+        "$params": ["count"],
+        "$template": "{count} 次"
+      },
+      "cost": "预计费用",
+      "unknown": "未知",
+      "remote": "远端发送范围",
+      "source": {
+        "$params": ["count"],
+        "$template": "{count} 次冻结来源图发送"
+      },
+      "instructions": {
+        "$params": ["count"],
+        "$template": "{count} 条已选修改要求"
+      },
+      "references": {
+        "$params": ["count"],
+        "$template": "{count} 张冻结的辅助参考"
+      },
+      "mask": "1 张本地生成的透明度掩膜",
+      "cancel": "取消",
+      "confirm": "开始定向精修",
+      "starting": "正在启动",
+      "selectionRequired": "至少选择一条修改要求。"
+    },
+    "annotations": {
+      "output": "图片",
+      "empty": "选择成果或生成一张图",
+      "annotate": "标注",
+      "move": "选择",
+      "done": "完成",
+      "refine": "精修",
+      "refining": "启动中",
+      "refineUnavailable": "当前没有可用的图像编辑模型",
+      "refineNeedsComments": "请先添加具体的编辑评注",
+      "refinementStarted": "图像精修已启动",
+      "refinementFailed": "无法启动图像精修",
+      "fit": "适合",
+      "point": "点标记",
+      "brush": "只改这里",
+      "eraseBrush": "保留这里",
+      "brushSize": "笔刷大小",
+      "rectangle": "框选修改",
+      "note": "评注",
+      "noteHint": "描述缺陷…",
+      "save": "保存",
+      "update": "更新",
+      "saving": "保存中",
+      "cancel": "取消",
+      "saved": "评注已保存",
+      "updated": "评注已更新",
+      "updateFailed": "无法更新评注",
+      "edit": "编辑评注",
+      "redrawRange": "重画范围",
+      "zoomOut": "缩小",
+      "zoomIn": "放大",
+      "hideMarkers": "隐藏标记",
+      "showMarkers": "显示标记",
+      "openAnnotations": "待处理",
+      "history": "历史",
+      "showHistory": "显示已关闭标记",
+      "hideHistory": "隐藏已关闭标记",
+      "resolve": "标为已解决",
+      "dismiss": "移除错误标记",
+      "reopen": "重新打开",
+      "resolved": "已解决",
+      "dismissed": "已移除",
+      "resolvedNotice": "缺陷已解决，可在历史中恢复",
+      "dismissedNotice": "错误标记已移除，可在历史中恢复",
+      "reopenedNotice": "缺陷标记已重新打开",
+      "statusFailed": "无法更新缺陷标记",
+      "markerLabel": {
+        "$params": ["index", "comment"],
+        "$template": "#{index} {comment}"
+      },
+      "statusLabel": {
+        "$params": ["status"],
+        "$template": "待处理",
+        "$variants": [
+          {
+            "when": {
+              "param": "status",
+              "equals": "RESOLVED"
+            },
+            "template": "已解决"
+          },
+          {
+            "when": {
+              "param": "status",
+              "equals": "DISMISSED"
+            },
+            "template": "已移除"
+          }
+        ]
+      }
+    }
+  }
+}

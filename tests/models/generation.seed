@@ -1,0 +1,8 @@
+Provider	Operation	Inputs	Outcome	Lifecycle	Persist	Delivery
+openai	EDIT	source_mask	OK	complete	db_fail	nonstream
+openai	GENERATE	none	OK	restart	commit_ok	nonstream
+openai	GENERATE	none	RATE_LIMITED	complete	commit_ok	nonstream
+openai	GENERATE	none	SAFETY	complete	commit_ok	nonstream
+openai	GENERATE	none	OK	complete	commit_ok	stream_cut
+openai	EDIT	ref8	OK	cancel	commit_ok	nonstream
+internal	GENERATE	none	OK	complete	commit_ok	nonstream

@@ -1,0 +1,455 @@
+{
+  "src/main/assistant-models/deepseek.ts": {
+    "complexity": {
+      "count": 1
+    }
+  },
+  "src/main/codex.ts": {
+    "max-lines": {
+      "count": 1
+    }
+  },
+  "src/main/database.ts": {
+    "max-lines": {
+      "count": 1
+    }
+  },
+  "src/main/database/dictionary-repository.ts": {
+    "max-lines": {
+      "count": 1
+    }
+  },
+  "src/main/database/fixture-loader.ts": {
+    "complexity": {
+      "count": 1
+    }
+  },
+  "src/main/database/generation-job-repository.ts": {
+    "complexity": {
+      "count": 1
+    }
+  },
+  "src/main/database/library-file-view-repository.ts": {
+    "complexity": {
+      "count": 1
+    },
+    "max-depth": {
+      "count": 1
+    },
+    "max-lines": {
+      "count": 1
+    }
+  },
+  "src/main/database/material-album-repository.ts": {
+    "max-lines": {
+      "count": 1
+    }
+  },
+  "src/main/database/pack-repository.ts": {
+    "max-lines": {
+      "count": 1
+    }
+  },
+  "src/main/database/style-exploration-repository.ts": {
+    "complexity": {
+      "count": 1
+    }
+  },
+  "src/main/database/workbench-repository.ts": {
+    "max-lines": {
+      "count": 1
+    }
+  },
+  "src/main/development/capture.ts": {
+    "complexity": {
+      "count": 1
+    },
+    "max-lines-per-function": {
+      "count": 1
+    }
+  },
+  "src/main/extensions/codex-app-server/client.ts": {
+    "complexity": {
+      "count": 1
+    }
+  },
+  "src/main/extensions/registry.ts": {
+    "complexity": {
+      "count": 1
+    }
+  },
+  "src/main/generation-models/adapters/validation.ts": {
+    "complexity": {
+      "count": 1
+    }
+  },
+  "src/main/generation.ts": {
+    "complexity": {
+      "count": 1
+    }
+  },
+  "src/main/index.ts": {
+    "max-lines": {
+      "count": 1
+    },
+    "max-lines-per-function": {
+      "count": 1
+    }
+  },
+  "src/main/ipc.ts": {
+    "max-lines": {
+      "count": 1
+    },
+    "max-lines-per-function": {
+      "count": 1
+    }
+  },
+  "src/main/model-worker/client.ts": {
+    "complexity": {
+      "count": 1
+    },
+    "max-lines": {
+      "count": 1
+    }
+  },
+  "src/main/png-validation.ts": {
+    "complexity": {
+      "count": 1
+    }
+  },
+  "src/renderer/App.tsx": {
+    "complexity": {
+      "count": 1
+    },
+    "max-lines-per-function": {
+      "count": 1
+    }
+  },
+  "src/renderer/components/CreatorScreen.tsx": {
+    "complexity": {
+      "count": 3
+    },
+    "max-lines": {
+      "count": 1
+    },
+    "max-lines-per-function": {
+      "count": 1
+    },
+    "react-hooks/exhaustive-deps": {
+      "count": 12
+    }
+  },
+  "src/renderer/components/DictionaryScreen.tsx": {
+    "max-lines": {
+      "count": 1
+    },
+    "max-lines-per-function": {
+      "count": 1
+    },
+    "react-hooks/exhaustive-deps": {
+      "count": 3
+    }
+  },
+  "src/renderer/components/GalleryScreen.tsx": {
+    "complexity": {
+      "count": 1
+    },
+    "max-lines": {
+      "count": 1
+    },
+    "max-lines-per-function": {
+      "count": 1
+    },
+    "react-hooks/exhaustive-deps": {
+      "count": 6
+    }
+  },
+  "src/renderer/components/albums/AlbumCreationDefaultsDialog.tsx": {
+    "max-lines-per-function": {
+      "count": 1
+    },
+    "react-hooks/exhaustive-deps": {
+      "count": 1
+    }
+  },
+  "src/renderer/components/creator/CreationCollaborationPanel.tsx": {
+    "complexity": {
+      "count": 1
+    },
+    "max-lines-per-function": {
+      "count": 1
+    },
+    "react-hooks/exhaustive-deps": {
+      "count": 1
+    }
+  },
+  "src/renderer/components/creator/CreationInputStashDialog.tsx": {
+    "react-hooks/exhaustive-deps": {
+      "count": 3
+    }
+  },
+  "src/renderer/components/creator/CreatorAlbumDetail.tsx": {
+    "max-lines-per-function": {
+      "count": 1
+    }
+  },
+  "src/renderer/components/creator/CreatorPromptComposer.tsx": {
+    "max-lines-per-function": {
+      "count": 1
+    },
+    "react-hooks/exhaustive-deps": {
+      "count": 2
+    }
+  },
+  "src/renderer/components/creator/DictionaryPicker.tsx": {
+    "complexity": {
+      "count": 1
+    }
+  },
+  "src/renderer/components/creator/GenerationComparison.tsx": {
+    "complexity": {
+      "count": 2
+    },
+    "max-lines": {
+      "count": 1
+    },
+    "max-lines-per-function": {
+      "count": 1
+    },
+    "react-hooks/exhaustive-deps": {
+      "count": 5
+    }
+  },
+  "src/renderer/components/creator/ImageEditConfirmDialog.tsx": {
+    "react-hooks/exhaustive-deps": {
+      "count": 1
+    }
+  },
+  "src/renderer/components/creator/NewExternalCreationDialog.tsx": {
+    "max-lines-per-function": {
+      "count": 1
+    }
+  },
+  "src/renderer/components/creator/OutputGenerationRecord.tsx": {
+    "complexity": {
+      "count": 1
+    },
+    "max-lines-per-function": {
+      "count": 1
+    }
+  },
+  "src/renderer/components/creator/OutputInspector.tsx": {
+    "complexity": {
+      "count": 1
+    },
+    "max-lines": {
+      "count": 1
+    },
+    "max-lines-per-function": {
+      "count": 1
+    },
+    "react-hooks/exhaustive-deps": {
+      "count": 1
+    }
+  },
+  "src/renderer/components/creator/ResultLibrary.tsx": {
+    "complexity": {
+      "count": 1
+    },
+    "max-lines": {
+      "count": 1
+    },
+    "max-lines-per-function": {
+      "count": 1
+    },
+    "react-hooks/exhaustive-deps": {
+      "count": 1
+    }
+  },
+  "src/renderer/components/creator/StyleExplorationDialog.tsx": {
+    "max-lines-per-function": {
+      "count": 1
+    }
+  },
+  "src/renderer/components/creator/StyleExplorationPanel.tsx": {
+    "complexity": {
+      "count": 1
+    }
+  },
+  "src/renderer/components/creator/annotations/annotorious/AnnotationImageStage.tsx": {
+    "react-hooks/exhaustive-deps": {
+      "count": 1
+    }
+  },
+  "src/renderer/components/creator/useCreatorTermSearch.ts": {
+    "react-hooks/exhaustive-deps": {
+      "count": 2
+    }
+  },
+  "src/renderer/components/dictionary/TermDetailView.tsx": {
+    "complexity": {
+      "count": 1
+    }
+  },
+  "src/renderer/components/dictionary/TermEditor.tsx": {
+    "max-lines-per-function": {
+      "count": 1
+    }
+  },
+  "src/renderer/components/dictionary/WordPalette.tsx": {
+    "max-lines-per-function": {
+      "count": 1
+    },
+    "react-hooks/exhaustive-deps": {
+      "count": 1
+    }
+  },
+  "src/renderer/components/gallery/AlbumNavigation.tsx": {
+    "max-lines-per-function": {
+      "count": 1
+    }
+  },
+  "src/renderer/components/gallery/DictionaryAlbumTree.tsx": {
+    "max-lines-per-function": {
+      "count": 1
+    },
+    "react-hooks/exhaustive-deps": {
+      "count": 1
+    }
+  },
+  "src/renderer/components/gallery/MaterialBatchToolbar.tsx": {
+    "max-lines-per-function": {
+      "count": 1
+    }
+  },
+  "src/renderer/components/gallery/MaterialCard.tsx": {
+    "complexity": {
+      "count": 1
+    },
+    "max-lines-per-function": {
+      "count": 1
+    }
+  },
+  "src/renderer/components/gallery/MaterialInspector.tsx": {
+    "complexity": {
+      "count": 1
+    },
+    "max-lines-per-function": {
+      "count": 1
+    },
+    "react-hooks/exhaustive-deps": {
+      "count": 2
+    }
+  },
+  "src/renderer/components/palette/WordPaletteEditor.tsx": {
+    "complexity": {
+      "count": 1
+    },
+    "max-lines-per-function": {
+      "count": 1
+    },
+    "react-hooks/exhaustive-deps": {
+      "count": 3
+    }
+  },
+  "src/renderer/components/palette/WordPaletteInlinePromptEditor.tsx": {
+    "complexity": {
+      "count": 1
+    },
+    "max-lines": {
+      "count": 1
+    },
+    "max-lines-per-function": {
+      "count": 1
+    },
+    "react-hooks/exhaustive-deps": {
+      "count": 1
+    }
+  },
+  "src/renderer/components/ui/virtual-grid.tsx": {
+    "max-lines-per-function": {
+      "count": 1
+    },
+    "react-hooks/exhaustive-deps": {
+      "count": 2
+    }
+  },
+  "src/renderer/features/ai-center/AiCenterScreen.tsx": {
+    "react-hooks/exhaustive-deps": {
+      "count": 1
+    }
+  },
+  "src/renderer/features/ai-center/AiProviderConfigurationDialog.tsx": {
+    "react-hooks/exhaustive-deps": {
+      "count": 1
+    }
+  },
+  "src/renderer/features/extensions/CodexImageDiscoveryConfiguration.tsx": {
+    "complexity": {
+      "count": 1
+    },
+    "max-lines-per-function": {
+      "count": 1
+    },
+    "react-hooks/exhaustive-deps": {
+      "count": 1
+    }
+  },
+  "src/renderer/features/extensions/ExtensionCenterScreen.tsx": {
+    "react-hooks/exhaustive-deps": {
+      "count": 1
+    }
+  },
+  "src/renderer/features/extensions/ExtensionPluginScreen.tsx": {
+    "max-lines-per-function": {
+      "count": 1
+    },
+    "react-hooks/exhaustive-deps": {
+      "count": 1
+    }
+  },
+  "src/renderer/features/extensions/ExternalImageApiConfiguration.tsx": {
+    "complexity": {
+      "count": 1
+    },
+    "react-hooks/exhaustive-deps": {
+      "count": 1
+    }
+  },
+  "src/renderer/features/intake/GalleryIntakeAdapter.tsx": {
+    "react-hooks/exhaustive-deps": {
+      "count": 2
+    }
+  },
+  "src/renderer/features/packs/PackScreen.tsx": {
+    "max-lines-per-function": {
+      "count": 1
+    },
+    "react-hooks/exhaustive-deps": {
+      "count": 2
+    }
+  },
+  "src/renderer/i18n/locales/en.ts": {
+    "max-lines": {
+      "count": 1
+    }
+  },
+  "src/shared/contracts.ts": {
+    "max-lines": {
+      "count": 1
+    }
+  },
+  "src/shared/prompt-composition.ts": {
+    "complexity": {
+      "count": 1
+    },
+    "max-lines-per-function": {
+      "count": 1
+    }
+  },
+  "tests/database.integration.test.ts": {
+    "@typescript-eslint/no-unused-vars": {
+      "count": 1
+    }
+  }
+}

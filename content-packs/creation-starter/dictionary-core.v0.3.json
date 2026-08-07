@@ -1,0 +1,1389 @@
+{
+  "schemaVersion": "0.3.0",
+  "structureRevision": "creation-starter-1",
+  "termFiles": [],
+  "retiredTermIds": [],
+  "facetDefinitions": [
+    {
+      "id": "facet_domain",
+      "stableKey": "domain",
+      "name": {
+        "zh": "内容维度",
+        "en": "Content domain"
+      },
+      "sortOrder": 10,
+      "values": [
+        {
+          "id": "fv_domain_appearance",
+          "stableKey": "appearance",
+          "name": {
+            "zh": "脸型",
+            "en": "Face shape"
+          },
+          "sortOrder": 10
+        },
+        {
+          "id": "fv_domain_body",
+          "stableKey": "body",
+          "name": {
+            "zh": "身材",
+            "en": "Body"
+          },
+          "sortOrder": 20
+        },
+        {
+          "id": "fv_domain_clothing",
+          "stableKey": "clothing",
+          "name": {
+            "zh": "衣物",
+            "en": "Garments"
+          },
+          "sortOrder": 30
+        },
+        {
+          "id": "fv_domain_accessories",
+          "stableKey": "accessories",
+          "name": {
+            "zh": "饰品",
+            "en": "Accessories"
+          },
+          "sortOrder": 35
+        },
+        {
+          "id": "fv_domain_scene",
+          "stableKey": "scene",
+          "name": {
+            "zh": "场景环境",
+            "en": "Scene"
+          },
+          "sortOrder": 90
+        },
+        {
+          "id": "fv_domain_lighting",
+          "stableKey": "lighting",
+          "name": {
+            "zh": "光线",
+            "en": "Lighting"
+          },
+          "sortOrder": 100
+        },
+        {
+          "id": "fv_domain_camera",
+          "stableKey": "camera",
+          "name": {
+            "zh": "镜头构图",
+            "en": "Camera and composition"
+          },
+          "sortOrder": 110
+        }
+      ]
+    },
+    {
+      "id": "facet_item_type",
+      "stableKey": "item_type",
+      "name": {
+        "zh": "具体类别",
+        "en": "Item type"
+      },
+      "sortOrder": 25,
+      "values": [
+        {
+          "id": "fv_item_face_shape",
+          "stableKey": "face_shape",
+          "name": {
+            "zh": "脸型",
+            "en": "Face shape"
+          },
+          "sortOrder": 10
+        },
+        {
+          "id": "fv_item_face_proportion",
+          "stableKey": "face_proportion",
+          "name": {
+            "zh": "面部比例",
+            "en": "Face proportion"
+          },
+          "sortOrder": 11
+        },
+        {
+          "id": "fv_item_body_build",
+          "stableKey": "body_build",
+          "name": {
+            "zh": "体型",
+            "en": "Body build"
+          },
+          "sortOrder": 60
+        },
+        {
+          "id": "fv_item_body_proportion",
+          "stableKey": "body_proportion",
+          "name": {
+            "zh": "身材比例",
+            "en": "Body proportion"
+          },
+          "sortOrder": 62
+        },
+        {
+          "id": "fv_item_shoulder_neck",
+          "stableKey": "shoulder_neck",
+          "name": {
+            "zh": "肩颈",
+            "en": "Shoulder and neck"
+          },
+          "sortOrder": 63
+        },
+        {
+          "id": "fv_item_torso_waist",
+          "stableKey": "torso_waist",
+          "name": {
+            "zh": "躯干与腰臀",
+            "en": "Torso waist and hips"
+          },
+          "sortOrder": 64
+        },
+        {
+          "id": "fv_item_standing_pose",
+          "stableKey": "standing_pose",
+          "name": {
+            "zh": "站姿",
+            "en": "Standing pose"
+          },
+          "sortOrder": 67
+        },
+        {
+          "id": "fv_item_movement",
+          "stableKey": "movement",
+          "name": {
+            "zh": "动态",
+            "en": "Movement"
+          },
+          "sortOrder": 69
+        },
+        {
+          "id": "fv_item_hand_gesture",
+          "stableKey": "hand_gesture",
+          "name": {
+            "zh": "手势",
+            "en": "Hand gesture"
+          },
+          "sortOrder": 70
+        },
+        {
+          "id": "fv_item_top",
+          "stableKey": "top",
+          "name": {
+            "zh": "上衣",
+            "en": "Tops"
+          },
+          "sortOrder": 80
+        },
+        {
+          "id": "fv_item_bottom",
+          "stableKey": "bottom",
+          "name": {
+            "zh": "下装",
+            "en": "Bottoms"
+          },
+          "sortOrder": 81
+        },
+        {
+          "id": "fv_item_dress",
+          "stableKey": "dress",
+          "name": {
+            "zh": "裙装",
+            "en": "Dresses"
+          },
+          "sortOrder": 82
+        },
+        {
+          "id": "fv_item_outerwear",
+          "stableKey": "outerwear",
+          "name": {
+            "zh": "外套",
+            "en": "Outerwear"
+          },
+          "sortOrder": 83
+        },
+        {
+          "id": "fv_item_jewelry",
+          "stableKey": "jewelry",
+          "name": {
+            "zh": "首饰",
+            "en": "Jewelry"
+          },
+          "sortOrder": 90
+        },
+        {
+          "id": "fv_item_bag",
+          "stableKey": "bag",
+          "name": {
+            "zh": "包袋",
+            "en": "Bags"
+          },
+          "sortOrder": 91
+        },
+        {
+          "id": "fv_item_footwear",
+          "stableKey": "footwear",
+          "name": {
+            "zh": "鞋履",
+            "en": "Footwear"
+          },
+          "sortOrder": 92
+        },
+        {
+          "id": "fv_item_scene_setting",
+          "stableKey": "scene_setting",
+          "name": {
+            "zh": "场景",
+            "en": "Scene setting"
+          },
+          "sortOrder": 100
+        },
+        {
+          "id": "fv_item_light_source",
+          "stableKey": "light_source",
+          "name": {
+            "zh": "光源",
+            "en": "Light source"
+          },
+          "sortOrder": 110
+        },
+        {
+          "id": "fv_item_framing",
+          "stableKey": "framing",
+          "name": {
+            "zh": "取景",
+            "en": "Framing"
+          },
+          "sortOrder": 120
+        }
+      ]
+    }
+  ],
+  "terms": [
+    {
+      "id": "term_starter_face_oval",
+      "revisionId": "tr_starter_face_oval_01",
+      "revisionNo": 1,
+      "stableKey": "appearance.face_shape.oval",
+      "editorialState": "DRAFT",
+      "title": "鹅蛋脸",
+      "titleLocale": "zh",
+      "aliases": ["蛋形脸"],
+      "localizations": [
+        {
+          "locale": "en",
+          "title": "Oval face"
+        }
+      ],
+      "expressions": [
+        {
+          "modelKey": "gpt-image-2",
+          "locale": "en",
+          "positive": "oval face",
+          "contextKey": "general.default"
+        }
+      ],
+      "classificationKeys": ["appearance.face_shape"],
+      "primaryDirectoryClassificationKey": "appearance.face_shape"
+    },
+    {
+      "id": "term_starter_face_soft_outline",
+      "revisionId": "tr_starter_face_soft_outline_01",
+      "revisionNo": 1,
+      "stableKey": "appearance.face_shape.soft_outline",
+      "editorialState": "DRAFT",
+      "title": "柔和脸型",
+      "titleLocale": "zh",
+      "localizations": [
+        {
+          "locale": "en",
+          "title": "Soft facial outline"
+        }
+      ],
+      "expressions": [
+        {
+          "modelKey": "gpt-image-2",
+          "locale": "en",
+          "positive": "soft facial outline",
+          "contextKey": "general.default"
+        }
+      ],
+      "classificationKeys": ["appearance.face_shape"],
+      "primaryDirectoryClassificationKey": "appearance.face_shape"
+    },
+    {
+      "id": "term_starter_face_balanced_thirds",
+      "revisionId": "tr_starter_face_balanced_thirds_01",
+      "revisionNo": 1,
+      "stableKey": "appearance.proportion.balanced_thirds",
+      "editorialState": "DRAFT",
+      "title": "三庭均衡",
+      "titleLocale": "zh",
+      "localizations": [
+        {
+          "locale": "en",
+          "title": "Balanced facial thirds"
+        }
+      ],
+      "expressions": [
+        {
+          "modelKey": "gpt-image-2",
+          "locale": "en",
+          "positive": "balanced facial thirds",
+          "contextKey": "general.default"
+        }
+      ],
+      "classificationKeys": ["appearance.face_proportion"],
+      "primaryDirectoryClassificationKey": "appearance.face_proportion"
+    },
+    {
+      "id": "term_starter_body_balanced",
+      "revisionId": "tr_starter_body_balanced_01",
+      "revisionNo": 1,
+      "stableKey": "body.proportion.balanced",
+      "editorialState": "DRAFT",
+      "title": "均衡身材比例",
+      "titleLocale": "zh",
+      "localizations": [
+        {
+          "locale": "en",
+          "title": "Balanced body proportions"
+        }
+      ],
+      "expressions": [
+        {
+          "modelKey": "gpt-image-2",
+          "locale": "en",
+          "positive": "balanced natural body proportions",
+          "contextKey": "general.default"
+        },
+        {
+          "modelKey": "gpt-image-2",
+          "locale": "zh",
+          "positive": "自然均衡的身材比例",
+          "contextKey": "general.default"
+        }
+      ],
+      "classificationKeys": ["body.body_proportion"],
+      "primaryDirectoryClassificationKey": "body.body_proportion"
+    },
+    {
+      "id": "term_starter_body_elongated",
+      "revisionId": "tr_starter_body_elongated_01",
+      "revisionNo": 1,
+      "stableKey": "body.proportion.elongated",
+      "editorialState": "DRAFT",
+      "title": "修长身体比例",
+      "titleLocale": "zh",
+      "localizations": [
+        {
+          "locale": "en",
+          "title": "Elongated body proportions"
+        }
+      ],
+      "expressions": [
+        {
+          "modelKey": "gpt-image-2",
+          "locale": "en",
+          "positive": "elongated balanced adult proportions",
+          "contextKey": "general.default"
+        }
+      ],
+      "classificationKeys": ["body.body_proportion"],
+      "primaryDirectoryClassificationKey": "body.body_proportion"
+    },
+    {
+      "id": "term_starter_body_shoulder_relaxed",
+      "revisionId": "tr_starter_body_shoulder_relaxed_01",
+      "revisionNo": 1,
+      "stableKey": "body.shoulder.relaxed",
+      "editorialState": "DRAFT",
+      "title": "放松肩线",
+      "titleLocale": "zh",
+      "localizations": [
+        {
+          "locale": "en",
+          "title": "Relaxed shoulder line"
+        }
+      ],
+      "expressions": [
+        {
+          "modelKey": "gpt-image-2",
+          "locale": "en",
+          "positive": "relaxed natural shoulder line",
+          "contextKey": "general.default"
+        },
+        {
+          "modelKey": "gpt-image-2",
+          "locale": "zh",
+          "positive": "自然放松的肩线",
+          "contextKey": "general.default"
+        }
+      ],
+      "classificationKeys": ["body.shoulder_neck"],
+      "primaryDirectoryClassificationKey": "body.shoulder_neck"
+    },
+    {
+      "id": "term_starter_body_shoulder_straight",
+      "revisionId": "tr_starter_body_shoulder_straight_01",
+      "revisionNo": 1,
+      "stableKey": "body.shoulder.straight",
+      "editorialState": "DRAFT",
+      "title": "平肩",
+      "titleLocale": "zh",
+      "localizations": [
+        {
+          "locale": "en",
+          "title": "Straight shoulders"
+        }
+      ],
+      "expressions": [
+        {
+          "modelKey": "gpt-image-2",
+          "locale": "en",
+          "positive": "level straight shoulders",
+          "contextKey": "general.default"
+        }
+      ],
+      "classificationKeys": ["body.shoulder_neck"],
+      "primaryDirectoryClassificationKey": "body.shoulder_neck"
+    },
+    {
+      "id": "term_starter_body_torso_relaxed",
+      "revisionId": "tr_starter_body_torso_relaxed_01",
+      "revisionNo": 1,
+      "stableKey": "body.torso.relaxed",
+      "editorialState": "DRAFT",
+      "title": "放松躯干",
+      "titleLocale": "zh",
+      "localizations": [
+        {
+          "locale": "en",
+          "title": "Relaxed torso"
+        }
+      ],
+      "expressions": [
+        {
+          "modelKey": "gpt-image-2",
+          "locale": "en",
+          "positive": "relaxed natural torso",
+          "contextKey": "general.default"
+        }
+      ],
+      "classificationKeys": ["body.torso_waist"],
+      "primaryDirectoryClassificationKey": "body.torso_waist"
+    },
+    {
+      "id": "term_starter_body_pose_three_quarter",
+      "revisionId": "tr_starter_body_pose_three_quarter_01",
+      "revisionNo": 1,
+      "stableKey": "body.pose.three_quarter_standing",
+      "editorialState": "DRAFT",
+      "title": "三分之四站姿",
+      "titleLocale": "zh",
+      "localizations": [
+        {
+          "locale": "en",
+          "title": "Three-quarter standing pose"
+        }
+      ],
+      "expressions": [
+        {
+          "modelKey": "gpt-image-2",
+          "locale": "en",
+          "positive": "three-quarter standing pose",
+          "contextKey": "general.default"
+        }
+      ],
+      "classificationKeys": ["body.standing_pose"],
+      "primaryDirectoryClassificationKey": "body.standing_pose"
+    },
+    {
+      "id": "term_starter_body_pose_over_shoulder",
+      "revisionId": "tr_starter_body_pose_over_shoulder_01",
+      "revisionNo": 1,
+      "stableKey": "body.pose.over_shoulder",
+      "editorialState": "DRAFT",
+      "title": "回眸姿态",
+      "titleLocale": "zh",
+      "localizations": [
+        {
+          "locale": "en",
+          "title": "Over-the-shoulder pose"
+        }
+      ],
+      "expressions": [
+        {
+          "modelKey": "gpt-image-2",
+          "locale": "en",
+          "positive": "turning back with an over-the-shoulder glance",
+          "contextKey": "general.default"
+        }
+      ],
+      "classificationKeys": ["body.standing_pose"],
+      "primaryDirectoryClassificationKey": "body.standing_pose"
+    },
+    {
+      "id": "term_starter_body_pose_front",
+      "revisionId": "tr_starter_body_pose_front_01",
+      "revisionNo": 1,
+      "stableKey": "body.pose.front_standing",
+      "editorialState": "DRAFT",
+      "title": "正面站姿",
+      "titleLocale": "zh",
+      "localizations": [
+        {
+          "locale": "en",
+          "title": "Front-facing standing pose"
+        }
+      ],
+      "expressions": [
+        {
+          "modelKey": "gpt-image-2",
+          "locale": "en",
+          "positive": "front-facing standing pose",
+          "contextKey": "general.default"
+        }
+      ],
+      "classificationKeys": ["body.standing_pose"],
+      "primaryDirectoryClassificationKey": "body.standing_pose"
+    },
+    {
+      "id": "term_starter_body_pose_relaxed",
+      "revisionId": "tr_starter_body_pose_relaxed_01",
+      "revisionNo": 1,
+      "stableKey": "body.pose.relaxed_stance",
+      "editorialState": "DRAFT",
+      "title": "松弛站姿",
+      "titleLocale": "zh",
+      "localizations": [
+        {
+          "locale": "en",
+          "title": "Relaxed stance"
+        }
+      ],
+      "expressions": [
+        {
+          "modelKey": "gpt-image-2",
+          "locale": "en",
+          "positive": "relaxed natural standing posture",
+          "contextKey": "general.default"
+        }
+      ],
+      "classificationKeys": ["body.standing_pose"],
+      "primaryDirectoryClassificationKey": "body.standing_pose"
+    },
+    {
+      "id": "term_starter_body_movement_walking",
+      "revisionId": "tr_starter_body_movement_walking_01",
+      "revisionNo": 1,
+      "stableKey": "body.movement.walking",
+      "editorialState": "DRAFT",
+      "title": "自然行走",
+      "titleLocale": "zh",
+      "localizations": [
+        {
+          "locale": "en",
+          "title": "Candid walking pose"
+        }
+      ],
+      "expressions": [
+        {
+          "modelKey": "gpt-image-2",
+          "locale": "en",
+          "positive": "candid natural walking pose",
+          "contextKey": "general.default"
+        }
+      ],
+      "classificationKeys": ["body.movement"],
+      "primaryDirectoryClassificationKey": "body.movement"
+    },
+    {
+      "id": "term_starter_body_movement_turning",
+      "revisionId": "tr_starter_body_movement_turning_01",
+      "revisionNo": 1,
+      "stableKey": "body.movement.turning_back",
+      "editorialState": "DRAFT",
+      "title": "行走中回头",
+      "titleLocale": "zh",
+      "localizations": [
+        {
+          "locale": "en",
+          "title": "Turning back while walking"
+        }
+      ],
+      "expressions": [
+        {
+          "modelKey": "gpt-image-2",
+          "locale": "en",
+          "positive": "turning back naturally while walking",
+          "contextKey": "general.default"
+        }
+      ],
+      "classificationKeys": ["body.movement"],
+      "primaryDirectoryClassificationKey": "body.movement"
+    },
+    {
+      "id": "term_starter_body_gesture_relaxed_fingers",
+      "revisionId": "tr_starter_body_gesture_relaxed_fingers_01",
+      "revisionNo": 1,
+      "stableKey": "body.gesture.relaxed_fingers",
+      "editorialState": "DRAFT",
+      "title": "放松手指",
+      "titleLocale": "zh",
+      "localizations": [
+        {
+          "locale": "en",
+          "title": "Relaxed fingers"
+        }
+      ],
+      "expressions": [
+        {
+          "modelKey": "gpt-image-2",
+          "locale": "en",
+          "positive": "natural relaxed finger pose",
+          "contextKey": "general.default"
+        }
+      ],
+      "classificationKeys": ["body.hand_gesture"],
+      "primaryDirectoryClassificationKey": "body.hand_gesture"
+    },
+    {
+      "id": "term_starter_body_gesture_one_hand_pocket",
+      "revisionId": "tr_starter_body_gesture_pocket_01",
+      "revisionNo": 1,
+      "stableKey": "body.gesture.one_hand_pocket",
+      "editorialState": "DRAFT",
+      "title": "一手插袋",
+      "titleLocale": "zh",
+      "localizations": [
+        {
+          "locale": "en",
+          "title": "One hand in pocket"
+        }
+      ],
+      "expressions": [
+        {
+          "modelKey": "gpt-image-2",
+          "locale": "en",
+          "positive": "one hand resting naturally in a pocket",
+          "contextKey": "general.default"
+        }
+      ],
+      "classificationKeys": ["body.hand_gesture"],
+      "primaryDirectoryClassificationKey": "body.hand_gesture"
+    },
+    {
+      "id": "term_starter_body_gesture_hand_waist",
+      "revisionId": "tr_starter_body_gesture_hand_waist_01",
+      "revisionNo": 1,
+      "stableKey": "body.gesture.hand_waist",
+      "editorialState": "DRAFT",
+      "title": "手扶腰部",
+      "titleLocale": "zh",
+      "localizations": [
+        {
+          "locale": "en",
+          "title": "Hand on waist"
+        }
+      ],
+      "expressions": [
+        {
+          "modelKey": "gpt-image-2",
+          "locale": "en",
+          "positive": "one hand resting naturally on the waist",
+          "contextKey": "general.default"
+        }
+      ],
+      "classificationKeys": ["body.hand_gesture"],
+      "primaryDirectoryClassificationKey": "body.hand_gesture"
+    },
+    {
+      "id": "term_starter_body_limbs_natural_hands",
+      "revisionId": "tr_starter_body_limbs_natural_hands_01",
+      "revisionNo": 1,
+      "stableKey": "body.limbs.natural_hands",
+      "editorialState": "DRAFT",
+      "title": "自然手部",
+      "titleLocale": "zh",
+      "localizations": [
+        {
+          "locale": "en",
+          "title": "Natural hands"
+        }
+      ],
+      "expressions": [
+        {
+          "modelKey": "gpt-image-2",
+          "locale": "en",
+          "positive": "natural relaxed hands with correct anatomy",
+          "contextKey": "general.default"
+        }
+      ],
+      "classificationKeys": ["body.hand_gesture"],
+      "primaryDirectoryClassificationKey": "body.hand_gesture"
+    },
+    {
+      "id": "term_starter_clothing_fitted_tshirt",
+      "revisionId": "tr_starter_clothing_fitted_tshirt_01",
+      "revisionNo": 1,
+      "stableKey": "clothing.top.fitted_tshirt",
+      "editorialState": "DRAFT",
+      "title": "合身T恤",
+      "titleLocale": "zh",
+      "localizations": [
+        {
+          "locale": "en",
+          "title": "Fitted T-shirt"
+        }
+      ],
+      "expressions": [
+        {
+          "modelKey": "gpt-image-2",
+          "locale": "en",
+          "positive": "fitted T-shirt",
+          "contextKey": "general.default"
+        }
+      ],
+      "classificationKeys": ["clothing.top"],
+      "primaryDirectoryClassificationKey": "clothing.top"
+    },
+    {
+      "id": "term_starter_clothing_crisp_shirt",
+      "revisionId": "tr_starter_clothing_crisp_shirt_01",
+      "revisionNo": 1,
+      "stableKey": "clothing.top.crisp_shirt",
+      "editorialState": "DRAFT",
+      "title": "挺括衬衫",
+      "titleLocale": "zh",
+      "localizations": [
+        {
+          "locale": "en",
+          "title": "Crisp shirt"
+        }
+      ],
+      "expressions": [
+        {
+          "modelKey": "gpt-image-2",
+          "locale": "en",
+          "positive": "crisp tailored shirt",
+          "contextKey": "general.default"
+        }
+      ],
+      "classificationKeys": ["clothing.top"],
+      "primaryDirectoryClassificationKey": "clothing.top"
+    },
+    {
+      "id": "term_starter_clothing_camisole",
+      "revisionId": "tr_starter_clothing_camisole_01",
+      "revisionNo": 1,
+      "stableKey": "clothing.top.camisole",
+      "editorialState": "DRAFT",
+      "title": "细肩带吊带",
+      "titleLocale": "zh",
+      "localizations": [
+        {
+          "locale": "en",
+          "title": "Spaghetti-strap camisole"
+        }
+      ],
+      "expressions": [
+        {
+          "modelKey": "gpt-image-2",
+          "locale": "en",
+          "positive": "spaghetti-strap camisole",
+          "contextKey": "general.default"
+        }
+      ],
+      "classificationKeys": ["clothing.top"],
+      "primaryDirectoryClassificationKey": "clothing.top"
+    },
+    {
+      "id": "term_starter_clothing_straight_trousers",
+      "revisionId": "tr_starter_clothing_straight_trousers_01",
+      "revisionNo": 1,
+      "stableKey": "clothing.bottom.straight_trousers",
+      "editorialState": "DRAFT",
+      "title": "直筒西裤",
+      "titleLocale": "zh",
+      "localizations": [
+        {
+          "locale": "en",
+          "title": "Straight-leg trousers"
+        }
+      ],
+      "expressions": [
+        {
+          "modelKey": "gpt-image-2",
+          "locale": "en",
+          "positive": "tailored straight-leg trousers",
+          "contextKey": "general.default"
+        }
+      ],
+      "classificationKeys": ["clothing.bottom"],
+      "primaryDirectoryClassificationKey": "clothing.bottom"
+    },
+    {
+      "id": "term_starter_clothing_pleated_skirt",
+      "revisionId": "tr_starter_clothing_pleated_skirt_01",
+      "revisionNo": 1,
+      "stableKey": "clothing.bottom.pleated_skirt",
+      "editorialState": "DRAFT",
+      "title": "百褶裙",
+      "titleLocale": "zh",
+      "localizations": [
+        {
+          "locale": "en",
+          "title": "Pleated skirt"
+        }
+      ],
+      "expressions": [
+        {
+          "modelKey": "gpt-image-2",
+          "locale": "en",
+          "positive": "pleated skirt",
+          "contextKey": "general.default"
+        }
+      ],
+      "classificationKeys": ["clothing.bottom"],
+      "primaryDirectoryClassificationKey": "clothing.bottom"
+    },
+    {
+      "id": "term_starter_clothing_tea_dress",
+      "revisionId": "tr_starter_clothing_tea_dress_01",
+      "revisionNo": 1,
+      "stableKey": "clothing.dress.tea",
+      "editorialState": "DRAFT",
+      "title": "茶歇裙",
+      "titleLocale": "zh",
+      "localizations": [
+        {
+          "locale": "en",
+          "title": "Tea dress"
+        }
+      ],
+      "expressions": [
+        {
+          "modelKey": "gpt-image-2",
+          "locale": "en",
+          "positive": "midi-length tea dress",
+          "contextKey": "general.default"
+        }
+      ],
+      "classificationKeys": ["clothing.dress"],
+      "primaryDirectoryClassificationKey": "clothing.dress"
+    },
+    {
+      "id": "term_starter_clothing_minimal_blazer",
+      "revisionId": "tr_starter_clothing_minimal_blazer_01",
+      "revisionNo": 1,
+      "stableKey": "clothing.outerwear.minimal_blazer",
+      "editorialState": "DRAFT",
+      "title": "极简西装",
+      "titleLocale": "zh",
+      "localizations": [
+        {
+          "locale": "en",
+          "title": "Minimal blazer"
+        }
+      ],
+      "expressions": [
+        {
+          "modelKey": "gpt-image-2",
+          "locale": "en",
+          "positive": "clean minimal tailored blazer",
+          "contextKey": "general.default"
+        }
+      ],
+      "classificationKeys": ["clothing.outerwear"],
+      "primaryDirectoryClassificationKey": "clothing.outerwear"
+    },
+    {
+      "id": "term_starter_clothing_clean_fit",
+      "revisionId": "tr_starter_clothing_clean_fit_01",
+      "revisionNo": 1,
+      "stableKey": "clothing.outfit.clean_fit",
+      "editorialState": "DRAFT",
+      "title": "利落穿搭",
+      "titleLocale": "zh",
+      "localizations": [
+        {
+          "locale": "en",
+          "title": "Clean fit"
+        }
+      ],
+      "expressions": [
+        {
+          "modelKey": "gpt-image-2",
+          "locale": "en",
+          "positive": "clean-fit minimalist outfit",
+          "contextKey": "general.default"
+        }
+      ],
+      "classificationKeys": ["clothing.top"],
+      "primaryDirectoryClassificationKey": "clothing.top"
+    },
+    {
+      "id": "term_starter_acc_pearl_earrings",
+      "revisionId": "tr_starter_acc_pearl_earrings_01",
+      "revisionNo": 1,
+      "stableKey": "accessories.jewelry.pearl_earrings",
+      "editorialState": "DRAFT",
+      "title": "珍珠耳环",
+      "titleLocale": "zh",
+      "localizations": [
+        {
+          "locale": "en",
+          "title": "Pearl earrings"
+        }
+      ],
+      "expressions": [
+        {
+          "modelKey": "gpt-image-2",
+          "locale": "en",
+          "positive": "delicate pearl earrings",
+          "contextKey": "general.default"
+        }
+      ],
+      "classificationKeys": ["accessories.jewelry"],
+      "primaryDirectoryClassificationKey": "accessories.jewelry"
+    },
+    {
+      "id": "term_starter_acc_shoulder_bag",
+      "revisionId": "tr_starter_acc_shoulder_bag_01",
+      "revisionNo": 1,
+      "stableKey": "accessories.bag.shoulder",
+      "editorialState": "DRAFT",
+      "title": "单肩包",
+      "titleLocale": "zh",
+      "localizations": [
+        {
+          "locale": "en",
+          "title": "Shoulder bag"
+        }
+      ],
+      "expressions": [
+        {
+          "modelKey": "gpt-image-2",
+          "locale": "en",
+          "positive": "compact shoulder bag",
+          "contextKey": "general.default"
+        }
+      ],
+      "classificationKeys": ["accessories.bag"],
+      "primaryDirectoryClassificationKey": "accessories.bag"
+    },
+    {
+      "id": "term_starter_acc_tote",
+      "revisionId": "tr_starter_acc_tote_01",
+      "revisionNo": 1,
+      "stableKey": "accessories.bag.tote",
+      "editorialState": "DRAFT",
+      "title": "托特包",
+      "titleLocale": "zh",
+      "localizations": [
+        {
+          "locale": "en",
+          "title": "Tote bag"
+        }
+      ],
+      "expressions": [
+        {
+          "modelKey": "gpt-image-2",
+          "locale": "en",
+          "positive": "structured tote bag",
+          "contextKey": "general.default"
+        }
+      ],
+      "classificationKeys": ["accessories.bag"],
+      "primaryDirectoryClassificationKey": "accessories.bag"
+    },
+    {
+      "id": "term_starter_acc_sneakers",
+      "revisionId": "tr_starter_acc_sneakers_01",
+      "revisionNo": 1,
+      "stableKey": "accessories.footwear.sneakers",
+      "editorialState": "DRAFT",
+      "title": "运动鞋",
+      "titleLocale": "zh",
+      "localizations": [
+        {
+          "locale": "en",
+          "title": "Sneakers"
+        }
+      ],
+      "expressions": [
+        {
+          "modelKey": "gpt-image-2",
+          "locale": "en",
+          "positive": "clean minimalist sneakers",
+          "contextKey": "general.default"
+        }
+      ],
+      "classificationKeys": ["accessories.footwear"],
+      "primaryDirectoryClassificationKey": "accessories.footwear"
+    },
+    {
+      "id": "term_starter_acc_loafers",
+      "revisionId": "tr_starter_acc_loafers_01",
+      "revisionNo": 1,
+      "stableKey": "accessories.footwear.loafers",
+      "editorialState": "DRAFT",
+      "title": "乐福鞋",
+      "titleLocale": "zh",
+      "localizations": [
+        {
+          "locale": "en",
+          "title": "Loafers"
+        }
+      ],
+      "expressions": [
+        {
+          "modelKey": "gpt-image-2",
+          "locale": "en",
+          "positive": "polished leather loafers",
+          "contextKey": "general.default"
+        }
+      ],
+      "classificationKeys": ["accessories.footwear"],
+      "primaryDirectoryClassificationKey": "accessories.footwear"
+    },
+    {
+      "id": "term_starter_acc_strappy_sandals",
+      "revisionId": "tr_starter_acc_strappy_sandals_01",
+      "revisionNo": 1,
+      "stableKey": "accessories.footwear.strappy_sandals",
+      "editorialState": "DRAFT",
+      "title": "细带凉鞋",
+      "titleLocale": "zh",
+      "localizations": [
+        {
+          "locale": "en",
+          "title": "Strappy sandals"
+        }
+      ],
+      "expressions": [
+        {
+          "modelKey": "gpt-image-2",
+          "locale": "en",
+          "positive": "delicate strappy sandals",
+          "contextKey": "general.default"
+        }
+      ],
+      "classificationKeys": ["accessories.footwear"],
+      "primaryDirectoryClassificationKey": "accessories.footwear"
+    },
+    {
+      "id": "term_starter_scene_cafe",
+      "revisionId": "tr_starter_scene_cafe_01",
+      "revisionNo": 1,
+      "stableKey": "scene.indoor.cafe",
+      "editorialState": "DRAFT",
+      "title": "咖啡馆",
+      "titleLocale": "zh",
+      "localizations": [
+        {
+          "locale": "en",
+          "title": "Cafe interior"
+        }
+      ],
+      "expressions": [
+        {
+          "modelKey": "gpt-image-2",
+          "locale": "en",
+          "positive": "inside a naturally lit cafe",
+          "contextKey": "general.default"
+        }
+      ],
+      "classificationKeys": ["scene.scene_setting"],
+      "primaryDirectoryClassificationKey": "scene.scene_setting"
+    },
+    {
+      "id": "term_starter_scene_city_street",
+      "revisionId": "tr_starter_scene_city_street_01",
+      "revisionNo": 1,
+      "stableKey": "scene.outdoor.city_street",
+      "editorialState": "DRAFT",
+      "title": "城市街道",
+      "titleLocale": "zh",
+      "localizations": [
+        {
+          "locale": "en",
+          "title": "City street"
+        }
+      ],
+      "expressions": [
+        {
+          "modelKey": "gpt-image-2",
+          "locale": "en",
+          "positive": "on a quiet urban street",
+          "contextKey": "general.default"
+        }
+      ],
+      "classificationKeys": ["scene.scene_setting"],
+      "primaryDirectoryClassificationKey": "scene.scene_setting"
+    },
+    {
+      "id": "term_starter_scene_golden_hour",
+      "revisionId": "tr_starter_scene_golden_hour_01",
+      "revisionNo": 1,
+      "stableKey": "scene.outdoor.golden_hour",
+      "editorialState": "DRAFT",
+      "title": "黄金时刻户外",
+      "titleLocale": "zh",
+      "localizations": [
+        {
+          "locale": "en",
+          "title": "Golden hour outdoors"
+        }
+      ],
+      "expressions": [
+        {
+          "modelKey": "gpt-image-2",
+          "locale": "en",
+          "positive": "outdoors at golden hour",
+          "contextKey": "general.default"
+        }
+      ],
+      "classificationKeys": ["scene.scene_setting"],
+      "primaryDirectoryClassificationKey": "scene.scene_setting"
+    },
+    {
+      "id": "term_starter_light_window",
+      "revisionId": "tr_starter_light_window_01",
+      "revisionNo": 1,
+      "stableKey": "lighting.natural.window",
+      "editorialState": "DRAFT",
+      "title": "自然窗光",
+      "titleLocale": "zh",
+      "localizations": [
+        {
+          "locale": "en",
+          "title": "Natural window light"
+        }
+      ],
+      "expressions": [
+        {
+          "modelKey": "gpt-image-2",
+          "locale": "en",
+          "positive": "soft natural window light",
+          "contextKey": "general.default"
+        }
+      ],
+      "classificationKeys": ["lighting.light_source"],
+      "primaryDirectoryClassificationKey": "lighting.light_source"
+    },
+    {
+      "id": "term_starter_light_soft_daylight",
+      "revisionId": "tr_starter_light_soft_daylight_01",
+      "revisionNo": 1,
+      "stableKey": "lighting.natural.soft_daylight",
+      "editorialState": "DRAFT",
+      "title": "柔和日光",
+      "titleLocale": "zh",
+      "localizations": [
+        {
+          "locale": "en",
+          "title": "Soft daylight"
+        }
+      ],
+      "expressions": [
+        {
+          "modelKey": "gpt-image-2",
+          "locale": "en",
+          "positive": "soft diffused daylight",
+          "contextKey": "general.default"
+        }
+      ],
+      "classificationKeys": ["lighting.light_source"],
+      "primaryDirectoryClassificationKey": "lighting.light_source"
+    },
+    {
+      "id": "term_starter_camera_full_body",
+      "revisionId": "tr_starter_camera_full_body_01",
+      "revisionNo": 1,
+      "stableKey": "camera.framing.full_body",
+      "editorialState": "DRAFT",
+      "title": "全身取景",
+      "titleLocale": "zh",
+      "localizations": [
+        {
+          "locale": "en",
+          "title": "Full-body framing"
+        }
+      ],
+      "expressions": [
+        {
+          "modelKey": "gpt-image-2",
+          "locale": "en",
+          "positive": "full-body vertical framing with both feet visible",
+          "contextKey": "general.default"
+        }
+      ],
+      "classificationKeys": ["camera.framing"],
+      "primaryDirectoryClassificationKey": "camera.framing"
+    },
+    {
+      "id": "term_starter_camera_half_body",
+      "revisionId": "tr_starter_camera_half_body_01",
+      "revisionNo": 1,
+      "stableKey": "camera.framing.half_body",
+      "editorialState": "DRAFT",
+      "title": "半身取景",
+      "titleLocale": "zh",
+      "localizations": [
+        {
+          "locale": "en",
+          "title": "Half-body framing"
+        }
+      ],
+      "expressions": [
+        {
+          "modelKey": "gpt-image-2",
+          "locale": "en",
+          "positive": "half-body framing from mid-thigh up",
+          "contextKey": "general.default"
+        }
+      ],
+      "classificationKeys": ["camera.framing"],
+      "primaryDirectoryClassificationKey": "camera.framing"
+    },
+    {
+      "id": "term_starter_camera_eye_level",
+      "revisionId": "tr_starter_camera_eye_level_01",
+      "revisionNo": 1,
+      "stableKey": "camera.angle.eye_level",
+      "editorialState": "DRAFT",
+      "title": "平视角度",
+      "titleLocale": "zh",
+      "localizations": [
+        {
+          "locale": "en",
+          "title": "Eye-level angle"
+        }
+      ],
+      "expressions": [
+        {
+          "modelKey": "gpt-image-2",
+          "locale": "en",
+          "positive": "natural eye-level camera angle",
+          "contextKey": "general.default"
+        }
+      ],
+      "classificationKeys": ["camera.framing"],
+      "primaryDirectoryClassificationKey": "camera.framing"
+    }
+  ],
+  "categories": [
+    {
+      "id": "category_accessories_bag",
+      "stableKey": "accessories.bag",
+      "primaryFacetKey": "domain:accessories",
+      "secondaryFacetKey": "item_type:bag"
+    },
+    {
+      "id": "category_accessories_footwear",
+      "stableKey": "accessories.footwear",
+      "primaryFacetKey": "domain:accessories",
+      "secondaryFacetKey": "item_type:footwear"
+    },
+    {
+      "id": "category_accessories_jewelry",
+      "stableKey": "accessories.jewelry",
+      "primaryFacetKey": "domain:accessories",
+      "secondaryFacetKey": "item_type:jewelry"
+    },
+    {
+      "id": "category_appearance_face_proportion",
+      "stableKey": "appearance.face_proportion",
+      "primaryFacetKey": "domain:appearance",
+      "secondaryFacetKey": "item_type:face_proportion"
+    },
+    {
+      "id": "category_appearance_face_shape",
+      "stableKey": "appearance.face_shape",
+      "primaryFacetKey": "domain:appearance",
+      "secondaryFacetKey": "item_type:face_shape"
+    },
+    {
+      "id": "category_body_body_proportion",
+      "stableKey": "body.body_proportion",
+      "primaryFacetKey": "domain:body",
+      "secondaryFacetKey": "item_type:body_proportion"
+    },
+    {
+      "id": "category_body_hand_gesture",
+      "stableKey": "body.hand_gesture",
+      "primaryFacetKey": "domain:body",
+      "secondaryFacetKey": "item_type:hand_gesture"
+    },
+    {
+      "id": "category_body_movement",
+      "stableKey": "body.movement",
+      "primaryFacetKey": "domain:body",
+      "secondaryFacetKey": "item_type:movement"
+    },
+    {
+      "id": "category_body_shoulder_neck",
+      "stableKey": "body.shoulder_neck",
+      "primaryFacetKey": "domain:body",
+      "secondaryFacetKey": "item_type:shoulder_neck"
+    },
+    {
+      "id": "category_body_standing_pose",
+      "stableKey": "body.standing_pose",
+      "primaryFacetKey": "domain:body",
+      "secondaryFacetKey": "item_type:standing_pose"
+    },
+    {
+      "id": "category_body_torso_waist",
+      "stableKey": "body.torso_waist",
+      "primaryFacetKey": "domain:body",
+      "secondaryFacetKey": "item_type:torso_waist"
+    },
+    {
+      "id": "category_camera_framing",
+      "stableKey": "camera.framing",
+      "primaryFacetKey": "domain:camera",
+      "secondaryFacetKey": "item_type:framing"
+    },
+    {
+      "id": "category_clothing_bottom",
+      "stableKey": "clothing.bottom",
+      "primaryFacetKey": "domain:clothing",
+      "secondaryFacetKey": "item_type:bottom"
+    },
+    {
+      "id": "category_clothing_dress",
+      "stableKey": "clothing.dress",
+      "primaryFacetKey": "domain:clothing",
+      "secondaryFacetKey": "item_type:dress"
+    },
+    {
+      "id": "category_clothing_outerwear",
+      "stableKey": "clothing.outerwear",
+      "primaryFacetKey": "domain:clothing",
+      "secondaryFacetKey": "item_type:outerwear"
+    },
+    {
+      "id": "category_clothing_top",
+      "stableKey": "clothing.top",
+      "primaryFacetKey": "domain:clothing",
+      "secondaryFacetKey": "item_type:top"
+    },
+    {
+      "id": "category_lighting_light_source",
+      "stableKey": "lighting.light_source",
+      "primaryFacetKey": "domain:lighting",
+      "secondaryFacetKey": "item_type:light_source"
+    },
+    {
+      "id": "category_scene_scene_setting",
+      "stableKey": "scene.scene_setting",
+      "primaryFacetKey": "domain:scene",
+      "secondaryFacetKey": "item_type:scene_setting"
+    }
+  ]
+}

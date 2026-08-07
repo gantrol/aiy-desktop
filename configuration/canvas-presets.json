@@ -1,0 +1,113 @@
+{
+  "schemaVersion": "0.3.0",
+  "presets": [
+    {
+      "stableKey": "square_1_1",
+      "ratio": "1:1",
+      "width": 1024,
+      "height": 1024,
+      "nameZh": "通用方图",
+      "nameEn": "Square",
+      "noteZh": "公众号次条、头像与通用方图；可与公众号头条横图成套。",
+      "noteEn": "WeChat secondary cover, avatar, and general square; pair with the wide article cover.",
+      "platformsZh": ["公众号次条", "通用"],
+      "platformsEn": ["WeChat Official Account", "General"]
+    },
+    {
+      "stableKey": "wechat_article_cover_2_35_1",
+      "ratio": "2.35:1",
+      "width": 1504,
+      "height": 640,
+      "nameZh": "公众号头条横图",
+      "nameEn": "WeChat article cover",
+      "noteZh": "公众号头条约 900×383；主体放中央 1:1 安全区，并另配一张 1:1 次条图。",
+      "noteEn": "Wide WeChat article cover; keep the subject in a centered 1:1 safe area and prepare a square companion.",
+      "platformsZh": ["公众号头条"],
+      "platformsEn": ["WeChat Official Account"]
+    },
+    {
+      "stableKey": "xiaohongshu_portrait_3_4",
+      "ratio": "3:4",
+      "width": 1008,
+      "height": 1344,
+      "nameZh": "小红书竖图",
+      "nameEn": "Xiaohongshu portrait",
+      "noteZh": "小红书常见竖图，适合人物与穿搭内容。",
+      "noteEn": "Common Xiaohongshu portrait format for people and outfit posts.",
+      "platformsZh": ["小红书"],
+      "platformsEn": ["Xiaohongshu"]
+    },
+    {
+      "stableKey": "social_portrait_4_5",
+      "ratio": "4:5",
+      "width": 1024,
+      "height": 1280,
+      "nameZh": "社媒竖图",
+      "nameEn": "Social portrait",
+      "noteZh": "Instagram、微博等信息流常见竖图。",
+      "noteEn": "A common portrait feed format for Instagram, Weibo, and similar platforms.",
+      "platformsZh": ["Instagram", "微博"],
+      "platformsEn": ["Instagram", "Weibo"]
+    },
+    {
+      "stableKey": "portrait_2_3",
+      "ratio": "2:3",
+      "width": 1024,
+      "height": 1536,
+      "nameZh": "图鉴人像",
+      "nameEn": "Portrait plate",
+      "noteZh": "适合全身人像、图鉴与海报式构图。",
+      "noteEn": "For full-body portraits, catalog plates, and poster-like composition.",
+      "platformsZh": ["图鉴", "海报"],
+      "platformsEn": ["Catalog", "Poster"]
+    },
+    {
+      "stableKey": "channels_portrait_6_7",
+      "ratio": "6:7",
+      "width": 1152,
+      "height": 1344,
+      "nameZh": "视频号竖版封面",
+      "nameEn": "Channels portrait cover",
+      "noteZh": "视频号竖版封面常用比例。",
+      "noteEn": "Common portrait cover ratio for WeChat Channels.",
+      "platformsZh": ["视频号"],
+      "platformsEn": ["WeChat Channels"]
+    },
+    {
+      "stableKey": "short_video_9_16",
+      "ratio": "9:16",
+      "width": 1152,
+      "height": 2048,
+      "nameZh": "竖屏短视频",
+      "nameEn": "Vertical short video",
+      "noteZh": "抖音、快手及竖屏短视频常见画幅。",
+      "noteEn": "Common vertical canvas for Douyin, Kuaishou, and short video.",
+      "platformsZh": ["抖音", "快手", "短视频"],
+      "platformsEn": ["Douyin", "Kuaishou", "Short video"]
+    },
+    {
+      "stableKey": "landscape_4_3",
+      "ratio": "4:3",
+      "width": 1344,
+      "height": 1008,
+      "nameZh": "通用横图",
+      "nameEn": "General landscape",
+      "noteZh": "小红书横图、相册与传统横向构图。",
+      "noteEn": "Xiaohongshu landscape, albums, and traditional horizontal composition.",
+      "platformsZh": ["小红书", "通用"],
+      "platformsEn": ["Xiaohongshu", "General"]
+    },
+    {
+      "stableKey": "video_landscape_16_9",
+      "ratio": "16:9",
+      "width": 2048,
+      "height": 1152,
+      "nameZh": "横版视频封面",
+      "nameEn": "Landscape video cover",
+      "noteZh": "视频号横版、B站与 YouTube 视频封面常见比例。",
+      "noteEn": "Common for landscape WeChat Channels, Bilibili, and YouTube covers.",
+      "platformsZh": ["视频号", "B站", "YouTube"],
+      "platformsEn": ["WeChat Channels", "Bilibili", "YouTube"]
+    }
+  ]
+}

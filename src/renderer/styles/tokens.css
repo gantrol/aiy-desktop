@@ -1,0 +1,370 @@
+@custom-variant dark (&:where([data-theme="dark"], [data-theme="dark"] *));
+
+@theme inline {
+  /* Semantic color utilities. L1 primitives intentionally have no Tailwind mapping. */
+  --color-background: var(--background);
+  --color-surface: var(--surface);
+  --color-surface-sunken: var(--surface-sunken);
+  --color-overlay: var(--overlay);
+  --color-foreground: var(--foreground);
+  --color-foreground-secondary: var(--foreground-secondary);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-disabled-foreground: var(--disabled-foreground);
+  --color-hover: var(--hover);
+  --color-hover-strong: var(--hover-strong);
+  --color-pressed: var(--pressed);
+  --color-selected: var(--selected);
+  --color-selected-foreground: var(--selected-foreground);
+  --color-selected-border: var(--selected-border);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-primary-hover: var(--primary-hover);
+  --color-border: var(--border);
+  --color-border-strong: var(--border-strong);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-success: var(--success);
+  --color-success-surface: var(--success-surface);
+  --color-warning: var(--warning);
+  --color-warning-surface: var(--warning-surface);
+  --color-info: var(--info);
+  --color-info-surface: var(--info-surface);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-destructive-surface: var(--destructive-surface);
+  --color-destructive-hover: var(--destructive-hover);
+  --color-media-surround: var(--media-surround);
+  --color-media-surround-light: var(--media-surround-light);
+  --color-media-surround-dark: var(--media-surround-dark);
+  --color-media-checker-a: var(--media-checker-a);
+  --color-media-checker-b: var(--media-checker-b);
+  --color-dialog-scrim: var(--dialog-scrim);
+
+  /* Domain-state utilities. */
+  --color-state-locked-fg: var(--state-locked-fg);
+  --color-state-locked-bg: var(--state-locked-bg);
+  --color-state-changed-fg: var(--state-changed-fg);
+  --color-state-changed-bg: var(--state-changed-bg);
+  --color-state-drift-fg: var(--state-drift-fg);
+  --color-generation-action: var(--generation-action);
+  --color-generation-action-foreground: var(--generation-action-foreground);
+  --color-generation-action-hover: var(--generation-action-hover);
+  --color-verdict-pass: var(--verdict-pass);
+  --color-verdict-partial: var(--verdict-partial);
+  --color-verdict-fail: var(--verdict-fail);
+  --color-verdict-unrated: var(--verdict-unrated);
+  --color-lifecycle-draft: var(--lifecycle-draft);
+  --color-lifecycle-approved: var(--lifecycle-approved);
+  --color-lifecycle-archived: var(--lifecycle-archived);
+  --color-lifecycle-published: var(--lifecycle-published);
+  --color-relation-favorited: var(--relation-favorited);
+  --color-relation-referenced: var(--relation-referenced);
+
+  /* shadcn component color primitives. */
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+
+  /* Typography. Line-height variables switch with the document language. */
+  --font-sans: var(--font-ui);
+  --font-mono: var(--font-mono-family);
+  --font-weight-*: initial;
+  --font-weight-normal: 400;
+  --font-weight-medium: 500;
+  --font-weight-semibold: 600;
+  --text-2xs: 0.6875rem;
+  --text-2xs--line-height: var(--line-height-2xs);
+  --text-xs: 0.75rem;
+  --text-xs--line-height: var(--line-height-xs);
+  --text-sm: 0.8125rem;
+  --text-sm--line-height: var(--line-height-sm);
+  --text-base: 0.875rem;
+  --text-base--line-height: var(--line-height-base);
+  --text-md: 1rem;
+  --text-md--line-height: var(--line-height-md);
+  --text-lg: 1.25rem;
+  --text-lg--line-height: var(--line-height-lg);
+  --text-xl: 1.5rem;
+  --text-xl--line-height: var(--line-height-xl);
+  --leading-cjk-2xs: var(--line-height-cjk-2xs);
+  --leading-cjk-xs: var(--line-height-cjk-xs);
+  --leading-cjk-sm: var(--line-height-cjk-sm);
+  --leading-cjk-base: var(--line-height-cjk-base);
+  --leading-cjk-md: var(--line-height-cjk-md);
+  --leading-cjk-lg: var(--line-height-cjk-lg);
+  --leading-cjk-xl: var(--line-height-cjk-xl);
+
+  /* Radius controls size; Electron smoothing controls curvature continuity. */
+  --radius-none: 0px;
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+
+  /* Only temporary and modal layers receive elevation. */
+  --shadow-overlay:
+    0 8px 24px -8px color-mix(in srgb, var(--sand-950) 18%, transparent),
+    0 2px 6px -2px color-mix(in srgb, var(--sand-950) 10%, transparent);
+  --shadow-dialog: 0 24px 64px -16px color-mix(in srgb, var(--sand-950) 28%, transparent);
+
+  --ease-enter: cubic-bezier(0.2, 0, 0, 1);
+  --ease-exit: cubic-bezier(0.4, 0, 1, 1);
+}
+
+@utility duration-fast {
+  transition-duration: var(--motion-fast);
+}
+
+@utility duration-base {
+  transition-duration: var(--motion-base);
+}
+
+@utility duration-overlay {
+  transition-duration: var(--motion-overlay);
+}
+
+@utility corner-continuous {
+  -electron-corner-smoothing: var(--corner-smoothing-continuous);
+}
+
+:root {
+  color-scheme: light;
+
+  /* L1 primitives: the only source of raw color values. */
+  --neutral-0: #ffffff;
+  --sand-50: #fffefb;
+  --sand-100: #f8f7f3;
+  --sand-150: #f4f2ed;
+  --sand-200: #f1efea;
+  --sand-300: #ece9e2;
+  --sand-400: #dedad2;
+  --sand-500: #c8c2b8;
+  --sand-600: #a9a296;
+  --sand-700: #6c665e;
+  --sand-800: #4a453e;
+  --sand-900: #302b29;
+  --sand-950: #262320;
+  --plum-100: #efe5e9;
+  --plum-200: #e3d2da;
+  --plum-600: #6e4052;
+  --plum-700: #57303f;
+  --rose-600: #80566a;
+  --rose-700: #684456;
+  --red-100: #fbeae8;
+  --red-600: #b42318;
+  --red-700: #912018;
+  --amber-100: #fbefdc;
+  --amber-700: #a15c07;
+  --green-100: #e3efe7;
+  --green-700: #2f6b4f;
+  --blue-100: #e4ebf3;
+  --blue-700: #2f5d8c;
+  --neutral-200: #e6e6e6;
+  --neutral-300: #e0e0e0;
+  --neutral-500: #767676;
+  --neutral-900: #1c1c1c;
+
+  /* L2 semantic tokens: light shell. */
+  --background: var(--sand-100);
+  --surface: var(--sand-50);
+  --surface-sunken: var(--sand-200);
+  --overlay: var(--sand-50);
+  --foreground: var(--sand-950);
+  --foreground-secondary: var(--sand-800);
+  --muted-foreground: var(--sand-700);
+  --disabled-foreground: var(--sand-600);
+  --hover: var(--sand-200);
+  --hover-strong: var(--sand-300);
+  --pressed: var(--sand-300);
+  --selected: var(--plum-100);
+  --selected-foreground: var(--plum-600);
+  --selected-border: var(--plum-200);
+  --hierarchy-accent: color-mix(in srgb, var(--selected-foreground) 58%, var(--selected-border));
+  --tree-branch-color: color-mix(in srgb, var(--hierarchy-accent) 80%, var(--selected-foreground));
+  --ring: var(--plum-600);
+  --primary: var(--sand-900);
+  --primary-foreground: var(--neutral-0);
+  --primary-hover: var(--sand-950);
+  --button-primary: var(--rose-600);
+  --button-primary-foreground: var(--neutral-0);
+  --button-primary-hover: var(--rose-700);
+  --border: var(--sand-400);
+  --border-strong: var(--sand-500);
+  --input: var(--sand-500);
+  --success: var(--green-700);
+  --success-surface: var(--green-100);
+  --warning: var(--amber-700);
+  --warning-surface: var(--amber-100);
+  --info: var(--blue-700);
+  --info-surface: var(--blue-100);
+  --destructive: var(--red-600);
+  --destructive-foreground: var(--neutral-0);
+  --destructive-surface: var(--red-100);
+  --destructive-hover: var(--red-700);
+  --media-surround: var(--neutral-500);
+  --media-surround-light: var(--neutral-200);
+  --media-surround-dark: var(--neutral-900);
+  --media-checker-a: var(--neutral-0);
+  --media-checker-b: var(--neutral-300);
+  --image-overlay-contrast-shadow-light:
+    0 0 1px var(--media-surround-dark), 0 1px 2px color-mix(in srgb, var(--media-surround-dark) 76%, transparent);
+  --image-overlay-contrast-shadow-dark:
+    0 0 1px var(--media-checker-a), 0 1px 2px color-mix(in srgb, var(--media-checker-a) 76%, transparent);
+  --image-overlay-copy-scrim: linear-gradient(
+    to top,
+    color-mix(in srgb, var(--media-surround-dark) 88%, transparent) 0%,
+    color-mix(in srgb, var(--media-surround-dark) 80%, transparent) 22%,
+    color-mix(in srgb, var(--media-surround-dark) 68%, transparent) 44%,
+    color-mix(in srgb, var(--media-surround-dark) 50%, transparent) 64%,
+    color-mix(in srgb, var(--media-surround-dark) 26%, transparent) 82%,
+    transparent 100%
+  );
+  --dialog-scrim: color-mix(in srgb, var(--sand-950) 32%, transparent);
+
+  /* L3 domain-state tokens. */
+  --state-locked-fg: var(--muted-foreground);
+  --state-locked-bg: var(--surface-sunken);
+  --state-changed-fg: var(--warning);
+  --state-changed-bg: var(--warning-surface);
+  --state-drift-fg: var(--muted-foreground);
+  --generation-action: var(--plum-600);
+  --generation-action-foreground: var(--neutral-0);
+  --generation-action-hover: var(--plum-700);
+  --verdict-pass: var(--success);
+  --verdict-partial: var(--warning);
+  --verdict-fail: var(--destructive);
+  --verdict-unrated: var(--muted-foreground);
+  --lifecycle-draft: var(--muted-foreground);
+  --lifecycle-approved: var(--success);
+  --lifecycle-archived: var(--muted-foreground);
+  --lifecycle-published: var(--info);
+  --relation-favorited: var(--selected-foreground);
+  --relation-referenced: var(--info);
+
+  /* Base metrics. */
+  --font-ui: Inter, 'Segoe UI Variable Text', 'Segoe UI', 'Microsoft YaHei UI', 'PingFang SC', system-ui, sans-serif;
+  --font-mono-family: 'Cascadia Mono', Consolas, 'SFMono-Regular', ui-monospace, monospace;
+  --line-height-2xs: 1rem;
+  --line-height-xs: 1.125rem;
+  --line-height-sm: 1.25rem;
+  --line-height-base: 1.375rem;
+  --line-height-md: 1.5rem;
+  --line-height-lg: 1.75rem;
+  --line-height-xl: 2rem;
+  --line-height-cjk-2xs: 1.125rem;
+  --line-height-cjk-xs: 1.25rem;
+  --line-height-cjk-sm: 1.375rem;
+  --line-height-cjk-base: 1.5rem;
+  --line-height-cjk-md: 1.625rem;
+  --line-height-cjk-lg: 1.875rem;
+  --line-height-cjk-xl: 2.125rem;
+  --control-height-2xs: 1.5rem;
+  --control-height-xs: 1.75rem;
+  --control-height-sm: 2rem;
+  --control-height-md: 2.25rem;
+  --control-height-lg: 2.5rem;
+  --radius: 0.625rem;
+  --corner-smoothing-continuous: 60%;
+  --focus-ring: 0 0 0 2px var(--background), 0 0 0 4px var(--ring);
+  --motion-fast: 120ms;
+  --motion-base: 180ms;
+  --motion-overlay: 220ms;
+  --motion-reduced: 80ms;
+}
+
+/*
+ * Development-only dark probe. It is deliberately not exposed as a user theme
+ * and is not a reviewed dark skin. Its purpose is to reveal components that
+ * depend on light-only palette classes before the real dark theme is designed.
+ */
+[data-theme='dark'] {
+  color-scheme: dark;
+  --background: var(--neutral-900);
+  --surface: var(--sand-950);
+  --surface-sunken: var(--sand-900);
+  --overlay: var(--sand-950);
+  --foreground: var(--sand-50);
+  --foreground-secondary: var(--sand-300);
+  --muted-foreground: var(--sand-500);
+  --disabled-foreground: var(--sand-600);
+  --hover: var(--sand-900);
+  --hover-strong: var(--sand-800);
+  --pressed: var(--sand-800);
+  --selected: var(--plum-700);
+  --selected-foreground: var(--plum-100);
+  --selected-border: var(--plum-200);
+  --ring: var(--plum-200);
+  --primary: var(--sand-50);
+  --primary-foreground: var(--sand-950);
+  --primary-hover: var(--neutral-200);
+  --button-primary: var(--plum-200);
+  --button-primary-foreground: var(--plum-700);
+  --button-primary-hover: var(--plum-100);
+  --border: var(--sand-700);
+  --border-strong: var(--sand-600);
+  --input: var(--sand-700);
+  --success: var(--green-100);
+  --success-surface: color-mix(in srgb, var(--green-700) 24%, var(--surface));
+  --warning: var(--amber-100);
+  --warning-surface: color-mix(in srgb, var(--amber-700) 24%, var(--surface));
+  --info: var(--blue-100);
+  --info-surface: color-mix(in srgb, var(--blue-700) 24%, var(--surface));
+  --destructive: var(--red-100);
+  --destructive-foreground: var(--red-700);
+  --destructive-surface: color-mix(in srgb, var(--red-700) 24%, var(--surface));
+  --destructive-hover: var(--neutral-0);
+  --media-surround: var(--neutral-500);
+  --media-surround-light: var(--neutral-200);
+  --media-surround-dark: var(--neutral-900);
+  --media-checker-a: var(--neutral-0);
+  --media-checker-b: var(--neutral-300);
+  --state-locked-fg: var(--muted-foreground);
+  --dialog-scrim: color-mix(in srgb, var(--neutral-900) 56%, transparent);
+  --state-locked-bg: var(--surface-sunken);
+  --state-changed-fg: var(--warning);
+  --state-changed-bg: var(--warning-surface);
+  --state-drift-fg: var(--muted-foreground);
+  --generation-action: var(--plum-200);
+  --generation-action-foreground: var(--plum-700);
+  --generation-action-hover: var(--plum-100);
+  --verdict-pass: var(--success);
+  --verdict-partial: var(--warning);
+  --verdict-fail: var(--destructive);
+  --verdict-unrated: var(--muted-foreground);
+  --lifecycle-draft: var(--muted-foreground);
+  --lifecycle-approved: var(--success);
+  --lifecycle-archived: var(--muted-foreground);
+  --lifecycle-published: var(--info);
+  --relation-favorited: var(--plum-200);
+  --relation-referenced: var(--info);
+}
+
+/* shadcn primitives mapped to product semantic surfaces. */
+:root,
+[data-theme='dark'] {
+  --card: var(--surface);
+  --card-foreground: var(--foreground);
+  --popover: var(--overlay);
+  --popover-foreground: var(--foreground);
+  --accent: var(--hover);
+  --accent-foreground: var(--foreground);
+  --secondary: var(--hover-strong);
+  --secondary-foreground: var(--foreground);
+  --muted: var(--surface-sunken);
+}
+
+:root:lang(zh) {
+  --line-height-2xs: var(--line-height-cjk-2xs);
+  --line-height-xs: var(--line-height-cjk-xs);
+  --line-height-sm: var(--line-height-cjk-sm);
+  --line-height-base: var(--line-height-cjk-base);
+  --line-height-md: var(--line-height-cjk-md);
+  --line-height-lg: var(--line-height-cjk-lg);
+  --line-height-xl: var(--line-height-cjk-xl);
+}

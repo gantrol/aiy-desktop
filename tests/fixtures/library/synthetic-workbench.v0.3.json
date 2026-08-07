@@ -1,0 +1,1240 @@
+{
+  "schemaVersion": "0.3.0",
+  "fixturePolicy": {
+    "idFormat": "readable-fixture-id",
+    "productionImport": "deterministically-remap-to-prefixed-ulid"
+  },
+  "exportedAt": "2026-07-24T18:00:00.000Z",
+  "library": {
+    "id": "synthetic.library",
+    "name": "Synthetic library",
+    "deviceId": "device_windows_01"
+  },
+  "promptSeries": [
+    {
+      "id": "ps_007",
+      "title": "Synthetic series 1",
+      "currentVersionId": "pv_007_03",
+      "createdAt": "2026-07-20T10:20:00.000Z",
+      "deletedAt": null
+    },
+    {
+      "id": "ps_011",
+      "title": "Synthetic series 2",
+      "currentVersionId": "pv_011_02",
+      "createdAt": "2026-07-21T09:15:00.000Z",
+      "deletedAt": null
+    },
+    {
+      "id": "ps_012",
+      "title": "Synthetic series 3",
+      "currentVersionId": "pv_012_01",
+      "createdAt": "2026-07-21T09:25:00.000Z",
+      "deletedAt": null
+    },
+    {
+      "id": "ps_014",
+      "title": "Synthetic series 4",
+      "currentVersionId": "pv_014_02",
+      "createdAt": "2026-07-21T10:00:00.000Z",
+      "deletedAt": null
+    }
+  ],
+  "promptVersions": [
+    {
+      "id": "pv_007_01",
+      "seriesId": "ps_007",
+      "parentVersionId": null,
+      "versionNo": 1,
+      "userIntent": "synthetic intent",
+      "finalPrompt": "synthetic prompt",
+      "changeSummary": "synthetic change",
+      "sourceImageId": null,
+      "sourceAnnotationIds": [],
+      "contentHash": "2d16d2a6ee83f3e1d5092964423a7b71df7e813d04ac35ad61fd773d4f00a701",
+      "createdAt": "2026-07-20T10:24:00.000Z"
+    },
+    {
+      "id": "pv_007_02",
+      "seriesId": "ps_007",
+      "parentVersionId": "pv_007_01",
+      "versionNo": 2,
+      "userIntent": "synthetic intent",
+      "finalPrompt": "synthetic prompt",
+      "changeSummary": "synthetic change",
+      "sourceImageId": "img_015",
+      "sourceAnnotationIds": [],
+      "contentHash": "493557725d2955137e5392cf3faace5de2885cf1f43a44ee659028dfa47fb4b9",
+      "createdAt": "2026-07-20T11:42:00.000Z"
+    },
+    {
+      "id": "pv_007_03",
+      "seriesId": "ps_007",
+      "parentVersionId": "pv_007_02",
+      "versionNo": 3,
+      "userIntent": "synthetic intent",
+      "finalPrompt": "synthetic prompt",
+      "changeSummary": "synthetic change",
+      "sourceImageId": "img_016",
+      "sourceAnnotationIds": [],
+      "contentHash": "a557a27457c4ca7ec8201a917446b30a5d8368a722449d734ae16e82fbe9d2fe",
+      "createdAt": "2026-07-20T13:06:00.000Z"
+    },
+    {
+      "id": "pv_011_01",
+      "seriesId": "ps_011",
+      "parentVersionId": null,
+      "versionNo": 1,
+      "userIntent": "synthetic intent",
+      "finalPrompt": "synthetic prompt",
+      "changeSummary": "synthetic change",
+      "sourceImageId": null,
+      "sourceAnnotationIds": [],
+      "contentHash": "d0c49b3e7ff0537e6122956d329d5d864071495b4954abad29e1441094d1ceb7",
+      "createdAt": "2026-07-21T09:18:00.000Z"
+    },
+    {
+      "id": "pv_011_02",
+      "seriesId": "ps_011",
+      "parentVersionId": "pv_011_01",
+      "versionNo": 2,
+      "userIntent": "synthetic intent",
+      "finalPrompt": "synthetic prompt",
+      "changeSummary": "synthetic change",
+      "sourceImageId": null,
+      "sourceAnnotationIds": [],
+      "contentHash": "3a26310cd439e69a757555e37a64e3fc1ace3ae781485b1c6db8aedf947de687",
+      "createdAt": "2026-07-21T10:02:00.000Z"
+    },
+    {
+      "id": "pv_012_01",
+      "seriesId": "ps_012",
+      "parentVersionId": null,
+      "versionNo": 1,
+      "userIntent": "synthetic intent",
+      "finalPrompt": "synthetic prompt",
+      "changeSummary": "synthetic change",
+      "sourceImageId": null,
+      "sourceAnnotationIds": [],
+      "contentHash": "2bec0d7e9426f5a85a1c963c494a4ee428bb89ee838a87c878c066977fd1a856",
+      "createdAt": "2026-07-21T09:25:00.000Z"
+    },
+    {
+      "id": "pv_014_01",
+      "seriesId": "ps_014",
+      "parentVersionId": null,
+      "versionNo": 1,
+      "userIntent": "synthetic intent",
+      "finalPrompt": "synthetic prompt",
+      "changeSummary": "synthetic change",
+      "sourceImageId": null,
+      "sourceAnnotationIds": [],
+      "contentHash": "3a63962751efb315c4b154cd2aaa0ecfacd2171801bd8d5d915fa89d694ea77a",
+      "createdAt": "2026-07-21T09:58:00.000Z"
+    },
+    {
+      "id": "pv_014_02",
+      "seriesId": "ps_014",
+      "parentVersionId": "pv_014_01",
+      "versionNo": 2,
+      "userIntent": "synthetic intent",
+      "finalPrompt": "synthetic prompt",
+      "changeSummary": "synthetic change",
+      "sourceImageId": null,
+      "sourceAnnotationIds": [],
+      "contentHash": "a5110e7db688b3ad4440fa729c4e5f8185aa15adc129192f3a6011f4db6c145c",
+      "createdAt": "2026-07-21T10:02:00.000Z"
+    }
+  ],
+  "generationRuns": [
+    {
+      "id": "run_015",
+      "promptVersionId": "pv_007_01",
+      "modelKey": "gpt-image-2",
+      "width": 1024,
+      "height": 1536,
+      "quality": "medium",
+      "status": "SUCCEEDED",
+      "resultAssetId": "img_015",
+      "errorCode": null,
+      "startedAt": "2026-07-20T10:25:00.000Z",
+      "finishedAt": "2026-07-20T10:27:14.000Z"
+    },
+    {
+      "id": "run_016",
+      "promptVersionId": "pv_007_02",
+      "modelKey": "gpt-image-2",
+      "width": 1024,
+      "height": 1536,
+      "quality": "medium",
+      "status": "SUCCEEDED",
+      "resultAssetId": "img_016",
+      "errorCode": null,
+      "startedAt": "2026-07-20T11:43:00.000Z",
+      "finishedAt": "2026-07-20T11:45:08.000Z"
+    },
+    {
+      "id": "run_018",
+      "promptVersionId": "pv_007_03",
+      "modelKey": "gpt-image-2",
+      "width": 1024,
+      "height": 1536,
+      "quality": "medium",
+      "status": "SUCCEEDED",
+      "resultAssetId": "img_018",
+      "errorCode": null,
+      "startedAt": "2026-07-20T13:08:00.000Z",
+      "finishedAt": "2026-07-20T13:10:46.000Z"
+    },
+    {
+      "id": "run_011",
+      "promptVersionId": "pv_011_02",
+      "modelKey": "gpt-image-2",
+      "width": 1024,
+      "height": 1536,
+      "quality": "medium",
+      "status": "SUCCEEDED",
+      "resultAssetId": "img_011",
+      "errorCode": null,
+      "startedAt": "2026-07-21T09:20:00.000Z",
+      "finishedAt": "2026-07-21T09:22:31.000Z"
+    },
+    {
+      "id": "run_012",
+      "promptVersionId": "pv_012_01",
+      "modelKey": "gpt-image-2",
+      "width": 1024,
+      "height": 1536,
+      "quality": "medium",
+      "status": "SUCCEEDED",
+      "resultAssetId": "img_012",
+      "errorCode": null,
+      "startedAt": "2026-07-21T09:26:00.000Z",
+      "finishedAt": "2026-07-21T09:28:22.000Z"
+    },
+    {
+      "id": "run_014",
+      "promptVersionId": "pv_014_02",
+      "modelKey": "gpt-image-2",
+      "width": 1024,
+      "height": 1536,
+      "quality": "medium",
+      "status": "SUCCEEDED",
+      "resultAssetId": "img_014",
+      "errorCode": null,
+      "startedAt": "2026-07-21T10:04:00.000Z",
+      "finishedAt": "2026-07-21T10:06:19.000Z"
+    }
+  ],
+  "imageAssets": [
+    {
+      "id": "img_011",
+      "sourcePath": "images/valid-64x64.png",
+      "kind": "GENERATED",
+      "originType": "GENERATION",
+      "objectHash": "12df5291ac70930eb85e90fe935769eacaebbf88795972440866939100774a68",
+      "relativePath": "objects/sha256/12/12df5291ac70930eb85e90fe935769eacaebbf88795972440866939100774a68.png",
+      "thumbnailPath": "cache/thumbnails/img_011.webp",
+      "width": 1024,
+      "height": 1536,
+      "mimeType": "image/png",
+      "byteSize": 2854103
+    },
+    {
+      "id": "img_012",
+      "sourcePath": "images/valid-64x64.png",
+      "kind": "GENERATED",
+      "originType": "GENERATION",
+      "objectHash": "246e647c4af496029924c8d9ba4ec27847f5e6edabb2182166d4bcd10ed761e2",
+      "relativePath": "objects/sha256/24/246e647c4af496029924c8d9ba4ec27847f5e6edabb2182166d4bcd10ed761e2.png",
+      "thumbnailPath": "cache/thumbnails/img_012.webp",
+      "width": 1024,
+      "height": 1536,
+      "mimeType": "image/png",
+      "byteSize": 2948077
+    },
+    {
+      "id": "img_014",
+      "sourcePath": "images/valid-64x64.png",
+      "kind": "GENERATED",
+      "originType": "GENERATION",
+      "objectHash": "3b77ac5e2b3aa780cf754cd45928365f71c8b6c2dd8ae306dc7cb809d81b1459",
+      "relativePath": "objects/sha256/3b/3b77ac5e2b3aa780cf754cd45928365f71c8b6c2dd8ae306dc7cb809d81b1459.png",
+      "thumbnailPath": "cache/thumbnails/img_014.webp",
+      "width": 1024,
+      "height": 1536,
+      "mimeType": "image/png",
+      "byteSize": 3012654
+    },
+    {
+      "id": "img_015",
+      "sourcePath": "images/valid-64x64.png",
+      "kind": "GENERATED",
+      "originType": "GENERATION",
+      "objectHash": "4f07034b3dbe93b7129419dd99590eb887f27be5404573df71070f517b2f47a1",
+      "relativePath": "objects/sha256/4f/4f07034b3dbe93b7129419dd99590eb887f27be5404573df71070f517b2f47a1.png",
+      "thumbnailPath": "cache/thumbnails/img_015.webp",
+      "width": 1024,
+      "height": 1536,
+      "mimeType": "image/png",
+      "byteSize": 3124008
+    },
+    {
+      "id": "img_016",
+      "sourcePath": "images/valid-64x64.png",
+      "kind": "GENERATED",
+      "originType": "GENERATION",
+      "objectHash": "5be11ac6992de1348ed20f5ba0fc83eb5af1a07f884188e9330314ec4e5eb59d",
+      "relativePath": "objects/sha256/5b/5be11ac6992de1348ed20f5ba0fc83eb5af1a07f884188e9330314ec4e5eb59d.png",
+      "thumbnailPath": "cache/thumbnails/img_016.webp",
+      "width": 1024,
+      "height": 1536,
+      "mimeType": "image/png",
+      "byteSize": 2980156
+    },
+    {
+      "id": "img_018",
+      "sourcePath": "images/valid-64x64.png",
+      "kind": "GENERATED",
+      "originType": "GENERATION",
+      "objectHash": "78d4b88ae8ac9349054238c56cac23149af7ddd14f3d70b3e47907d08db4416d",
+      "relativePath": "objects/sha256/78/78d4b88ae8ac9349054238c56cac23149af7ddd14f3d70b3e47907d08db4416d.png",
+      "thumbnailPath": "cache/thumbnails/img_018.webp",
+      "width": 1024,
+      "height": 1536,
+      "mimeType": "image/png",
+      "byteSize": 3077120
+    },
+    {
+      "id": "ref_003",
+      "sourcePath": "images/valid-64x64.png",
+      "kind": "REFERENCE",
+      "originType": "LOCAL_IMPORT",
+      "objectHash": "aa19c420b96bf25dca8252491675477c9198bdf29a2672fddf6b9f1431b2cd62",
+      "relativePath": "objects/sha256/aa/aa19c420b96bf25dca8252491675477c9198bdf29a2672fddf6b9f1431b2cd62.png",
+      "thumbnailPath": "cache/thumbnails/ref_003.webp",
+      "width": 1600,
+      "height": 1200,
+      "mimeType": "image/png",
+      "byteSize": 2465102
+    }
+  ],
+  "referenceBindings": [
+    {
+      "id": "rb_001",
+      "promptVersionId": "pv_007_03",
+      "assetId": "img_012",
+      "purpose": "COMPOSITION",
+      "weight": 0.7,
+      "sortOrder": 1
+    },
+    {
+      "id": "rb_002",
+      "promptVersionId": "pv_007_03",
+      "assetId": "ref_003",
+      "purpose": "CLOTHING",
+      "weight": 0.6,
+      "sortOrder": 2
+    }
+  ],
+  "annotations": [
+    {
+      "id": "ann_018_01",
+      "imageAssetId": "img_018",
+      "type": "BRUSH",
+      "x": 0.55,
+      "y": 0.18,
+      "width": 0.06,
+      "height": 0.04,
+      "geometry": {
+        "version": 1,
+        "strokes": [
+          {
+            "mode": "ADD",
+            "radius": 0.03,
+            "points": [
+              {
+                "x": 0.58,
+                "y": 0.2
+              }
+            ]
+          }
+        ]
+      },
+      "comment": "面部年龄感偏成熟",
+      "status": "OPEN",
+      "createdAt": "2026-07-20T13:14:00.000Z"
+    },
+    {
+      "id": "ann_018_02",
+      "imageAssetId": "img_018",
+      "type": "RECTANGLE",
+      "x": 0.38,
+      "y": 0.46,
+      "width": 0.42,
+      "height": 0.28,
+      "comment": "背部布料边缘不自然",
+      "status": "OPEN",
+      "createdAt": "2026-07-20T13:15:00.000Z"
+    }
+  ],
+  "terms": [
+    {
+      "id": "term_young_adult",
+      "stableKey": "test.term.alpha",
+      "currentRevisionId": "tr_young_03",
+      "editorialState": "APPROVED",
+      "archivedAt": null
+    },
+    {
+      "id": "term_relaxed_neck",
+      "stableKey": "test.term.beta",
+      "currentRevisionId": "tr_neck_02",
+      "editorialState": "APPROVED",
+      "archivedAt": null
+    },
+    {
+      "id": "term_ivory_chiffon",
+      "stableKey": "test.term.gamma",
+      "currentRevisionId": "tr_chiffon_05",
+      "editorialState": "APPROVED",
+      "archivedAt": null
+    }
+  ],
+  "termRevisions": [
+    {
+      "id": "tr_young_03",
+      "termId": "term_young_adult",
+      "revisionNo": 3,
+      "title": "测试词条 1",
+      "titleLocale": "zh",
+      "definition": "测试定义"
+    },
+    {
+      "id": "tr_neck_02",
+      "termId": "term_relaxed_neck",
+      "revisionNo": 2,
+      "title": "测试词条 2",
+      "titleLocale": "zh",
+      "definition": "测试定义"
+    },
+    {
+      "id": "tr_chiffon_05",
+      "termId": "term_ivory_chiffon",
+      "revisionNo": 5,
+      "title": "测试词条 3",
+      "titleLocale": "zh",
+      "definition": "测试定义"
+    }
+  ],
+  "facetDefinitions": [
+    {
+      "id": "facet_domain",
+      "stableKey": "domain",
+      "name": {
+        "zh": "测试维度",
+        "en": "Test facet"
+      },
+      "selectionMode": "MULTI",
+      "sortOrder": 10
+    },
+    {
+      "id": "facet_body_area",
+      "stableKey": "body_area",
+      "name": {
+        "zh": "测试维度",
+        "en": "Test facet"
+      },
+      "selectionMode": "MULTI",
+      "sortOrder": 20
+    },
+    {
+      "id": "facet_concept_type",
+      "stableKey": "concept_type",
+      "name": {
+        "zh": "测试维度",
+        "en": "Test facet"
+      },
+      "selectionMode": "MULTI",
+      "sortOrder": 30
+    },
+    {
+      "id": "facet_age_impression",
+      "stableKey": "age_impression",
+      "name": {
+        "zh": "测试维度",
+        "en": "Test facet"
+      },
+      "selectionMode": "MULTI",
+      "sortOrder": 40
+    },
+    {
+      "id": "facet_maturity",
+      "stableKey": "maturity",
+      "name": {
+        "zh": "测试维度",
+        "en": "Test facet"
+      },
+      "selectionMode": "MULTI",
+      "sortOrder": 50
+    },
+    {
+      "id": "facet_posture",
+      "stableKey": "posture",
+      "name": {
+        "zh": "测试维度",
+        "en": "Test facet"
+      },
+      "selectionMode": "MULTI",
+      "sortOrder": 60
+    },
+    {
+      "id": "facet_color",
+      "stableKey": "color",
+      "name": {
+        "zh": "测试维度",
+        "en": "Test facet"
+      },
+      "selectionMode": "MULTI",
+      "sortOrder": 70
+    },
+    {
+      "id": "facet_material",
+      "stableKey": "material",
+      "name": {
+        "zh": "测试维度",
+        "en": "Test facet"
+      },
+      "selectionMode": "MULTI",
+      "sortOrder": 80
+    },
+    {
+      "id": "facet_weight",
+      "stableKey": "weight",
+      "name": {
+        "zh": "测试维度",
+        "en": "Test facet"
+      },
+      "selectionMode": "MULTI",
+      "sortOrder": 90
+    },
+    {
+      "id": "facet_drape",
+      "stableKey": "drape",
+      "name": {
+        "zh": "测试维度",
+        "en": "Test facet"
+      },
+      "selectionMode": "MULTI",
+      "sortOrder": 100
+    },
+    {
+      "id": "facet_realism",
+      "stableKey": "realism",
+      "name": {
+        "zh": "测试维度",
+        "en": "Test facet"
+      },
+      "selectionMode": "MULTI",
+      "sortOrder": 110
+    }
+  ],
+  "facetValues": [
+    {
+      "id": "fv_domain_appearance",
+      "definitionId": "facet_domain",
+      "stableKey": "appearance",
+      "name": {
+        "zh": "测试值",
+        "en": "Test value"
+      },
+      "sortOrder": 10
+    },
+    {
+      "id": "fv_domain_body",
+      "definitionId": "facet_domain",
+      "stableKey": "body",
+      "name": {
+        "zh": "测试值",
+        "en": "Test value"
+      },
+      "sortOrder": 20
+    },
+    {
+      "id": "fv_domain_clothing",
+      "definitionId": "facet_domain",
+      "stableKey": "clothing",
+      "name": {
+        "zh": "测试值",
+        "en": "Test value"
+      },
+      "sortOrder": 30
+    },
+    {
+      "id": "fv_area_face",
+      "definitionId": "facet_body_area",
+      "stableKey": "face",
+      "name": {
+        "zh": "测试值",
+        "en": "Test value"
+      },
+      "sortOrder": 10
+    },
+    {
+      "id": "fv_area_shoulder_neck",
+      "definitionId": "facet_body_area",
+      "stableKey": "shoulder_neck",
+      "name": {
+        "zh": "测试值",
+        "en": "Test value"
+      },
+      "sortOrder": 20
+    },
+    {
+      "id": "fv_area_garment",
+      "definitionId": "facet_body_area",
+      "stableKey": "garment",
+      "name": {
+        "zh": "测试值",
+        "en": "Test value"
+      },
+      "sortOrder": 30
+    },
+    {
+      "id": "fv_type_age_impression",
+      "definitionId": "facet_concept_type",
+      "stableKey": "age_impression",
+      "name": {
+        "zh": "测试值",
+        "en": "Test value"
+      },
+      "sortOrder": 10
+    },
+    {
+      "id": "fv_type_posture",
+      "definitionId": "facet_concept_type",
+      "stableKey": "posture",
+      "name": {
+        "zh": "测试值",
+        "en": "Test value"
+      },
+      "sortOrder": 20
+    },
+    {
+      "id": "fv_type_material",
+      "definitionId": "facet_concept_type",
+      "stableKey": "material",
+      "name": {
+        "zh": "测试值",
+        "en": "Test value"
+      },
+      "sortOrder": 30
+    },
+    {
+      "id": "fv_age_young_adult",
+      "definitionId": "facet_age_impression",
+      "stableKey": "young_adult",
+      "name": {
+        "zh": "测试值",
+        "en": "Test value"
+      },
+      "sortOrder": 10
+    },
+    {
+      "id": "fv_maturity_fresh",
+      "definitionId": "facet_maturity",
+      "stableKey": "fresh",
+      "name": {
+        "zh": "测试值",
+        "en": "Test value"
+      },
+      "sortOrder": 10
+    },
+    {
+      "id": "fv_posture_relaxed",
+      "definitionId": "facet_posture",
+      "stableKey": "relaxed",
+      "name": {
+        "zh": "测试值",
+        "en": "Test value"
+      },
+      "sortOrder": 10
+    },
+    {
+      "id": "fv_color_ivory",
+      "definitionId": "facet_color",
+      "stableKey": "ivory",
+      "name": {
+        "zh": "测试值",
+        "en": "Test value"
+      },
+      "sortOrder": 10
+    },
+    {
+      "id": "fv_material_chiffon",
+      "definitionId": "facet_material",
+      "stableKey": "chiffon",
+      "name": {
+        "zh": "测试值",
+        "en": "Test value"
+      },
+      "sortOrder": 10
+    },
+    {
+      "id": "fv_weight_lightweight",
+      "definitionId": "facet_weight",
+      "stableKey": "lightweight",
+      "name": {
+        "zh": "测试值",
+        "en": "Test value"
+      },
+      "sortOrder": 10
+    },
+    {
+      "id": "fv_drape_fluid",
+      "definitionId": "facet_drape",
+      "stableKey": "fluid",
+      "name": {
+        "zh": "测试值",
+        "en": "Test value"
+      },
+      "sortOrder": 10
+    },
+    {
+      "id": "fv_realism_realistic",
+      "definitionId": "facet_realism",
+      "stableKey": "realistic",
+      "name": {
+        "zh": "测试值",
+        "en": "Test value"
+      },
+      "sortOrder": 10
+    }
+  ],
+  "termFacetAssignments": [
+    {
+      "id": "tfa_young_01",
+      "termRevisionId": "tr_young_03",
+      "facetValueId": "fv_domain_appearance"
+    },
+    {
+      "id": "tfa_young_02",
+      "termRevisionId": "tr_young_03",
+      "facetValueId": "fv_area_face"
+    },
+    {
+      "id": "tfa_young_03",
+      "termRevisionId": "tr_young_03",
+      "facetValueId": "fv_type_age_impression"
+    },
+    {
+      "id": "tfa_young_04",
+      "termRevisionId": "tr_young_03",
+      "facetValueId": "fv_age_young_adult"
+    },
+    {
+      "id": "tfa_young_05",
+      "termRevisionId": "tr_young_03",
+      "facetValueId": "fv_maturity_fresh"
+    },
+    {
+      "id": "tfa_young_06",
+      "termRevisionId": "tr_young_03",
+      "facetValueId": "fv_realism_realistic"
+    },
+    {
+      "id": "tfa_neck_01",
+      "termRevisionId": "tr_neck_02",
+      "facetValueId": "fv_domain_body"
+    },
+    {
+      "id": "tfa_neck_02",
+      "termRevisionId": "tr_neck_02",
+      "facetValueId": "fv_area_shoulder_neck"
+    },
+    {
+      "id": "tfa_neck_03",
+      "termRevisionId": "tr_neck_02",
+      "facetValueId": "fv_type_posture"
+    },
+    {
+      "id": "tfa_neck_04",
+      "termRevisionId": "tr_neck_02",
+      "facetValueId": "fv_posture_relaxed"
+    },
+    {
+      "id": "tfa_neck_05",
+      "termRevisionId": "tr_neck_02",
+      "facetValueId": "fv_realism_realistic"
+    },
+    {
+      "id": "tfa_chiffon_01",
+      "termRevisionId": "tr_chiffon_05",
+      "facetValueId": "fv_domain_clothing"
+    },
+    {
+      "id": "tfa_chiffon_02",
+      "termRevisionId": "tr_chiffon_05",
+      "facetValueId": "fv_area_garment"
+    },
+    {
+      "id": "tfa_chiffon_03",
+      "termRevisionId": "tr_chiffon_05",
+      "facetValueId": "fv_type_material"
+    },
+    {
+      "id": "tfa_chiffon_04",
+      "termRevisionId": "tr_chiffon_05",
+      "facetValueId": "fv_color_ivory"
+    },
+    {
+      "id": "tfa_chiffon_05",
+      "termRevisionId": "tr_chiffon_05",
+      "facetValueId": "fv_material_chiffon"
+    },
+    {
+      "id": "tfa_chiffon_06",
+      "termRevisionId": "tr_chiffon_05",
+      "facetValueId": "fv_weight_lightweight"
+    },
+    {
+      "id": "tfa_chiffon_07",
+      "termRevisionId": "tr_chiffon_05",
+      "facetValueId": "fv_drape_fluid"
+    }
+  ],
+  "termAliases": [
+    {
+      "id": "alias_young_01",
+      "termRevisionId": "tr_young_03",
+      "locale": "zh",
+      "value": "显年轻",
+      "normalizedValue": "显年轻"
+    },
+    {
+      "id": "alias_chiffon_01",
+      "termRevisionId": "tr_chiffon_05",
+      "locale": "zh",
+      "value": "象牙白薄纱",
+      "normalizedValue": "象牙白薄纱"
+    }
+  ],
+  "termExpressions": [
+    {
+      "id": "expr_young_gi2_02",
+      "termRevisionId": "tr_young_03",
+      "contextKey": "general.default",
+      "modelKey": "gpt-image-2",
+      "locale": "en",
+      "positive": "fresh young-adult facial features, realistic and explicitly non-childlike",
+      "negative": "childlike facial proportions, heavy mature makeup"
+    },
+    {
+      "id": "expr_neck_gi2_01",
+      "termRevisionId": "tr_neck_02",
+      "contextKey": "general.default",
+      "modelKey": "gpt-image-2",
+      "locale": "en",
+      "positive": "relaxed shoulder and neck line, natural posture",
+      "negative": "raised shoulders, stiff neck"
+    },
+    {
+      "id": "expr_chiffon_gi2_03",
+      "termRevisionId": "tr_chiffon_05",
+      "contextKey": "general.default",
+      "modelKey": "gpt-image-2",
+      "locale": "en",
+      "positive": "lightweight ivory chiffon with soft, physically coherent folds",
+      "negative": "heavy bridal satin, rigid fabric"
+    }
+  ],
+  "promptTermBindings": [
+    {
+      "id": "ptb_001",
+      "promptVersionId": "pv_007_03",
+      "termRevisionId": "tr_young_03",
+      "expressionId": "expr_young_gi2_02",
+      "role": "INCLUDE",
+      "expressionSnapshot": "fresh young-adult facial features, realistic and explicitly non-childlike"
+    },
+    {
+      "id": "ptb_002",
+      "promptVersionId": "pv_007_03",
+      "termRevisionId": "tr_neck_02",
+      "expressionId": "expr_neck_gi2_01",
+      "role": "INCLUDE",
+      "expressionSnapshot": "relaxed shoulder and neck line, natural posture"
+    },
+    {
+      "id": "ptb_003",
+      "promptVersionId": "pv_007_03",
+      "termRevisionId": "tr_chiffon_05",
+      "expressionId": "expr_chiffon_gi2_03",
+      "role": "INCLUDE",
+      "expressionSnapshot": "lightweight ivory chiffon with soft, physically coherent folds"
+    },
+    {
+      "id": "ptb_004",
+      "promptVersionId": "pv_014_02",
+      "termId": "term_natural_face_contour",
+      "role": "INCLUDE",
+      "expressionSnapshot": "distinctive natural facial contours with plausible subtle asymmetry"
+    },
+    {
+      "id": "ptb_005",
+      "promptVersionId": "pv_014_02",
+      "termId": "term_compact_black_handbag",
+      "role": "INCLUDE",
+      "expressionSnapshot": "compact black handbag with a clean understated silhouette"
+    }
+  ],
+  "termMediaLinks": [
+    {
+      "id": "tml_young_cover",
+      "termId": "term_young_adult",
+      "imageAssetId": "img_018",
+      "role": "COVER",
+      "sortOrder": 0,
+      "focalX": 0.5,
+      "focalY": 0.32
+    },
+    {
+      "id": "tml_young_related_01",
+      "termId": "term_young_adult",
+      "imageAssetId": "img_011",
+      "role": "RELATED",
+      "sortOrder": 1,
+      "focalX": 0.5,
+      "focalY": 0.3
+    },
+    {
+      "id": "tml_young_related_02",
+      "termId": "term_young_adult",
+      "imageAssetId": "img_012",
+      "role": "RELATED",
+      "sortOrder": 2,
+      "focalX": 0.5,
+      "focalY": 0.3
+    },
+    {
+      "id": "tml_young_related_03",
+      "termId": "term_young_adult",
+      "imageAssetId": "img_014",
+      "role": "RELATED",
+      "sortOrder": 3,
+      "focalX": 0.5,
+      "focalY": 0.24
+    },
+    {
+      "id": "tml_chiffon_cover",
+      "termId": "term_ivory_chiffon",
+      "imageAssetId": "img_018",
+      "role": "COVER",
+      "sortOrder": 0,
+      "focalX": 0.5,
+      "focalY": 0.45
+    },
+    {
+      "id": "tml_chiffon_related_01",
+      "termId": "term_ivory_chiffon",
+      "imageAssetId": "img_016",
+      "role": "RELATED",
+      "sortOrder": 1,
+      "focalX": 0.5,
+      "focalY": 0.45
+    },
+    {
+      "id": "tml_chiffon_related_02",
+      "termId": "term_ivory_chiffon",
+      "imageAssetId": "img_015",
+      "role": "RELATED",
+      "sortOrder": 2,
+      "focalX": 0.5,
+      "focalY": 0.45
+    },
+    {
+      "id": "tml_face_cover",
+      "termId": "term_natural_face_contour",
+      "imageAssetId": "img_014",
+      "role": "COVER",
+      "sortOrder": 0,
+      "focalX": 0.5,
+      "focalY": 0.2
+    },
+    {
+      "id": "tml_face_related_01",
+      "termId": "term_natural_face_contour",
+      "imageAssetId": "img_011",
+      "role": "RELATED",
+      "sortOrder": 1,
+      "focalX": 0.5,
+      "focalY": 0.2
+    },
+    {
+      "id": "tml_handbag_cover",
+      "termId": "term_compact_black_handbag",
+      "imageAssetId": "img_014",
+      "role": "COVER",
+      "sortOrder": 0,
+      "focalX": 0.48,
+      "focalY": 0.62
+    },
+    {
+      "id": "tml_neck_cover",
+      "termId": "term_relaxed_neck",
+      "imageAssetId": "img_018",
+      "role": "COVER",
+      "sortOrder": 0,
+      "focalX": 0.5,
+      "focalY": 0.28
+    }
+  ],
+  "termEvidence": [],
+  "importBatches": [
+    {
+      "id": "import_20260719_01",
+      "sourceName": "first-body-appearance-clothing.csv",
+      "format": "CSV",
+      "status": "COMMITTED",
+      "mapping": {
+        "中文名": "name.zh",
+        "英文名": "name.en",
+        "词域": "facet.domain",
+        "提示词": "expression.promptFragment"
+      },
+      "createdAt": "2026-07-19T08:30:00.000Z",
+      "committedAt": "2026-07-19T09:05:00.000Z"
+    }
+  ],
+  "importItems": [
+    {
+      "id": "import_item_001",
+      "batchId": "import_20260719_01",
+      "rowNo": 2,
+      "rawPayload": {
+        "中文名": "显年轻",
+        "英文名": "Young-looking",
+        "词域": "相貌"
+      },
+      "resolution": "MERGED_AS_ALIAS",
+      "targetTermId": "term_young_adult",
+      "error": null
+    },
+    {
+      "id": "import_item_002",
+      "batchId": "import_20260719_01",
+      "rowNo": 3,
+      "rawPayload": {
+        "中文名": "舒展肩颈",
+        "英文名": "Relaxed shoulder and neck line",
+        "词域": "身材"
+      },
+      "resolution": "CREATED_TERM",
+      "targetTermId": "term_relaxed_neck",
+      "error": null
+    },
+    {
+      "id": "import_item_003",
+      "batchId": "import_20260719_01",
+      "rowNo": 4,
+      "rawPayload": {
+        "中文名": "轻薄象牙色雪纺",
+        "英文名": "Lightweight ivory chiffon",
+        "词域": "服饰"
+      },
+      "resolution": "CREATED_TERM",
+      "targetTermId": "term_ivory_chiffon",
+      "error": null
+    }
+  ],
+  "albums": [
+    {
+      "id": "album_summer",
+      "title": "Synthetic album 1",
+      "createdAt": "2026-07-21T12:00:00.000Z",
+      "deletedAt": null
+    },
+    {
+      "id": "album_ivory",
+      "title": "Synthetic album 2",
+      "createdAt": "2026-07-21T12:05:00.000Z",
+      "deletedAt": null
+    }
+  ],
+  "albumItems": [
+    {
+      "id": "album_item_001",
+      "albumId": "album_summer",
+      "targetType": "ALBUM",
+      "targetId": "album_ivory",
+      "sortOrder": 1
+    },
+    {
+      "id": "album_item_002",
+      "albumId": "album_ivory",
+      "targetType": "PROMPT_SERIES",
+      "targetId": "ps_007",
+      "sortOrder": 1
+    },
+    {
+      "id": "album_item_003",
+      "albumId": "album_summer",
+      "targetType": "PROMPT_SERIES",
+      "targetId": "ps_011",
+      "sortOrder": 2
+    },
+    {
+      "id": "album_item_004",
+      "albumId": "album_summer",
+      "targetType": "PROMPT_SERIES",
+      "targetId": "ps_012",
+      "sortOrder": 3
+    },
+    {
+      "id": "album_item_005",
+      "albumId": "album_summer",
+      "targetType": "PROMPT_SERIES",
+      "targetId": "ps_014",
+      "sortOrder": 4
+    }
+  ],
+  "codexConversations": [
+    {
+      "id": "cc_007",
+      "promptSeriesId": "ps_007",
+      "createdAt": "2026-07-24T16:10:00.000Z",
+      "archivedAt": null
+    }
+  ],
+  "codexMessages": [
+    {
+      "id": "cm_001",
+      "conversationId": "cc_007",
+      "role": "USER",
+      "messageType": "QUICK_ACTION",
+      "content": "给几个优化方向",
+      "payload": {
+        "action": "SUGGEST_DIRECTIONS"
+      },
+      "createdAt": "2026-07-24T16:10:05.000Z"
+    },
+    {
+      "id": "cm_002",
+      "conversationId": "cc_007",
+      "role": "CODEX",
+      "messageType": "DIRECTION_OPTIONS",
+      "content": "可以从年龄感、姿态和服装结构三个方向优化。",
+      "payload": {
+        "options": [
+          {
+            "id": "direction_a",
+            "title": "降低成熟感",
+            "termIds": [
+              "term_young_adult"
+            ]
+          },
+          {
+            "id": "direction_b",
+            "title": "改善肩颈姿态",
+            "termIds": [
+              "term_relaxed_neck"
+            ]
+          },
+          {
+            "id": "direction_c",
+            "title": "修正服装结构",
+            "termIds": [
+              "term_ivory_chiffon"
+            ]
+          }
+        ]
+      },
+      "createdAt": "2026-07-24T16:10:13.000Z"
+    }
+  ],
+  "drafts": [
+    {
+      "scopeType": "PROMPT_SERIES",
+      "scopeId": "ps_007",
+      "payload": {
+        "baseVersionId": "pv_007_03",
+        "sourceImageId": "img_018",
+        "sourceAnnotationIds": [
+          "ann_018_01",
+          "ann_018_02"
+        ],
+        "userIntent": "修正人物年龄感和背部布料边缘，其余保持不变"
+      },
+      "savedAt": "2026-07-24T16:18:00.000Z"
+    }
+  ],
+  "changeEvents": [
+    {
+      "id": "change_001",
+      "deviceId": "device_windows_01",
+      "localSequence": 1,
+      "entityType": "PROMPT_VERSION",
+      "entityId": "pv_007_03",
+      "baseRevision": null,
+      "operation": "CREATE",
+      "payload": {
+        "seriesId": "ps_007",
+        "versionNo": 3
+      },
+      "createdAt": "2026-07-20T13:06:00.000Z"
+    },
+    {
+      "id": "change_002",
+      "deviceId": "device_windows_01",
+      "localSequence": 2,
+      "entityType": "ANNOTATION",
+      "entityId": "ann_018_01",
+      "baseRevision": null,
+      "operation": "CREATE",
+      "payload": {
+        "imageAssetId": "img_018",
+        "type": "BRUSH"
+      },
+      "createdAt": "2026-07-20T13:14:00.000Z"
+    },
+    {
+      "id": "change_003",
+      "deviceId": "device_windows_01",
+      "localSequence": 3,
+      "entityType": "ANNOTATION",
+      "entityId": "ann_018_02",
+      "baseRevision": null,
+      "operation": "CREATE",
+      "payload": {
+        "imageAssetId": "img_018",
+        "type": "RECTANGLE"
+      },
+      "createdAt": "2026-07-20T13:15:00.000Z"
+    }
+  ],
+  "tombstones": [],
+  "termLocalizations": [
+    {
+      "id": "tr_young_03_localization_en",
+      "termRevisionId": "tr_young_03",
+      "locale": "en",
+      "title": "Test term 1",
+      "definition": "Test definition"
+    },
+    {
+      "id": "tr_neck_02_localization_en",
+      "termRevisionId": "tr_neck_02",
+      "locale": "en",
+      "title": "Test term 2",
+      "definition": "Test definition"
+    },
+    {
+      "id": "tr_chiffon_05_localization_en",
+      "termRevisionId": "tr_chiffon_05",
+      "locale": "en",
+      "title": "Test term 3",
+      "definition": "Test definition"
+    }
+  ],
+  "termSchemaVersion": "0.3.0"
+}

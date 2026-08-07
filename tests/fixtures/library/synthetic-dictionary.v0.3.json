@@ -1,0 +1,374 @@
+{
+  "schemaVersion": "0.3.0",
+  "structureRevision": "synthetic-dictionary-1",
+  "termFiles": [],
+  "retiredTermIds": [],
+  "facetDefinitions": [
+    {
+      "id": "facet_domain",
+      "stableKey": "test_group",
+      "name": {
+        "zh": "测试分组",
+        "en": "Test group"
+      },
+      "sortOrder": 10,
+      "values": [
+        {
+          "id": "fv_domain_appearance",
+          "stableKey": "alpha",
+          "name": {
+            "zh": "甲组",
+            "en": "Alpha"
+          },
+          "sortOrder": 10
+        },
+        {
+          "id": "fv_domain_body",
+          "stableKey": "beta",
+          "name": {
+            "zh": "乙组",
+            "en": "Beta"
+          },
+          "sortOrder": 20
+        },
+        {
+          "id": "fv_domain_clothing",
+          "stableKey": "gamma",
+          "name": {
+            "zh": "丙组",
+            "en": "Gamma"
+          },
+          "sortOrder": 30
+        },
+        {
+          "id": "fv_domain_accessories",
+          "stableKey": "delta",
+          "name": {
+            "zh": "丁组",
+            "en": "Delta"
+          },
+          "sortOrder": 40
+        }
+      ]
+    },
+    {
+      "id": "facet_item_type",
+      "stableKey": "test_kind",
+      "name": {
+        "zh": "测试类别",
+        "en": "Test kind"
+      },
+      "sortOrder": 20,
+      "values": [
+        {
+          "id": "fv_subject_bag",
+          "stableKey": "kind_one",
+          "name": {
+            "zh": "类别一",
+            "en": "Kind one"
+          },
+          "sortOrder": 10
+        },
+        {
+          "id": "fv_subject_shoulder_neck",
+          "stableKey": "kind_two",
+          "name": {
+            "zh": "类别二",
+            "en": "Kind two"
+          },
+          "sortOrder": 20
+        },
+        {
+          "id": "fv_item_body_build",
+          "stableKey": "kind_three",
+          "name": {
+            "zh": "类别三",
+            "en": "Kind three"
+          },
+          "sortOrder": 30
+        },
+        {
+          "id": "fv_item_standing_pose",
+          "stableKey": "kind_four",
+          "name": {
+            "zh": "类别四",
+            "en": "Kind four"
+          },
+          "sortOrder": 40
+        }
+      ]
+    }
+  ],
+  "categories": [
+    {
+      "id": "category_alpha_kind_two",
+      "stableKey": "alpha.kind_two",
+      "primaryFacetKey": "test_group:alpha",
+      "secondaryFacetKey": "test_kind:kind_two"
+    },
+    {
+      "id": "category_beta_kind_two",
+      "stableKey": "beta.kind_two",
+      "primaryFacetKey": "test_group:beta",
+      "secondaryFacetKey": "test_kind:kind_two"
+    },
+    {
+      "id": "category_beta_kind_three",
+      "stableKey": "beta.kind_three",
+      "primaryFacetKey": "test_group:beta",
+      "secondaryFacetKey": "test_kind:kind_three"
+    },
+    {
+      "id": "category_beta_kind_four",
+      "stableKey": "beta.kind_four",
+      "primaryFacetKey": "test_group:beta",
+      "secondaryFacetKey": "test_kind:kind_four"
+    },
+    {
+      "id": "category_gamma",
+      "stableKey": "gamma",
+      "primaryFacetKey": "test_group:gamma"
+    },
+    {
+      "id": "category_delta",
+      "stableKey": "delta",
+      "primaryFacetKey": "test_group:delta"
+    },
+    {
+      "id": "category_delta_kind_one",
+      "stableKey": "delta.kind_one",
+      "primaryFacetKey": "test_group:delta",
+      "secondaryFacetKey": "test_kind:kind_one"
+    }
+  ],
+  "terms": [
+    {
+      "id": "term_young_adult",
+      "revisionId": "tr_young_03",
+      "revisionNo": 1,
+      "stableKey": "test.term.alpha",
+      "editorialState": "APPROVED",
+      "title": "测试词条甲",
+      "titleLocale": "zh",
+      "definition": "测试定义甲",
+      "localizations": [
+        {
+          "locale": "en",
+          "title": "Test term alpha",
+          "definition": "Test definition alpha"
+        }
+      ],
+      "classificationKeys": [
+        "alpha.kind_two"
+      ],
+      "primaryDirectoryClassificationKey": "alpha.kind_two",
+      "expressions": [
+        {
+          "modelKey": "gpt-image-2",
+          "locale": "en",
+          "positive": "test alpha",
+          "contextKey": "general.default"
+        }
+      ]
+    },
+    {
+      "id": "term_relaxed_neck",
+      "revisionId": "tr_neck_02",
+      "revisionNo": 1,
+      "stableKey": "test.term.beta",
+      "editorialState": "APPROVED",
+      "title": "测试词条乙",
+      "titleLocale": "zh",
+      "definition": "测试定义乙",
+      "localizations": [
+        {
+          "locale": "en",
+          "title": "Test term beta",
+          "definition": "Test definition beta"
+        }
+      ],
+      "classificationKeys": [
+        "beta.kind_two"
+      ],
+      "primaryDirectoryClassificationKey": "beta.kind_two",
+      "expressions": [
+        {
+          "modelKey": "gpt-image-2",
+          "locale": "en",
+          "positive": "test beta",
+          "contextKey": "general.default"
+        }
+      ]
+    },
+    {
+      "id": "term_ivory_chiffon",
+      "revisionId": "tr_chiffon_05",
+      "revisionNo": 1,
+      "stableKey": "test.term.gamma",
+      "editorialState": "APPROVED",
+      "title": "测试词条丙",
+      "titleLocale": "zh",
+      "definition": "测试定义丙",
+      "localizations": [
+        {
+          "locale": "en",
+          "title": "Test term gamma",
+          "definition": "Test definition gamma"
+        }
+      ],
+      "classificationKeys": [
+        "gamma"
+      ],
+      "primaryDirectoryClassificationKey": "gamma",
+      "expressions": [
+        {
+          "modelKey": "gpt-image-2",
+          "locale": "en",
+          "positive": "test gamma",
+          "contextKey": "general.default"
+        }
+      ]
+    },
+    {
+      "id": "term_compact_black_handbag",
+      "revisionId": "tr_test_delta_one",
+      "revisionNo": 1,
+      "stableKey": "test.term.delta.one",
+      "editorialState": "APPROVED",
+      "title": "测试词条丁一",
+      "titleLocale": "zh",
+      "definition": "测试定义丁一",
+      "localizations": [
+        {
+          "locale": "en",
+          "title": "Test term delta one",
+          "definition": "Test definition delta one"
+        }
+      ],
+      "classificationKeys": [
+        "delta.kind_one"
+      ],
+      "primaryDirectoryClassificationKey": "delta.kind_one",
+      "expressions": [
+        {
+          "modelKey": "gpt-image-2",
+          "locale": "en",
+          "positive": "test delta one",
+          "contextKey": "general.default"
+        }
+      ]
+    },
+    {
+      "id": "term_natural_face_contour",
+      "revisionId": "tr_test_delta_two",
+      "revisionNo": 1,
+      "stableKey": "test.term.delta.two",
+      "editorialState": "APPROVED",
+      "title": "测试词条丁二",
+      "titleLocale": "zh",
+      "definition": "测试定义丁二",
+      "localizations": [
+        {
+          "locale": "en",
+          "title": "Test term delta two",
+          "definition": "Test definition delta two"
+        }
+      ],
+      "classificationKeys": [
+        "delta"
+      ],
+      "primaryDirectoryClassificationKey": "delta",
+      "expressions": [
+        {
+          "modelKey": "gpt-image-2",
+          "locale": "en",
+          "positive": "test delta two",
+          "contextKey": "general.default"
+        }
+      ]
+    },
+    {
+      "id": "term_test_beta_build",
+      "revisionId": "tr_test_beta_build",
+      "revisionNo": 1,
+      "stableKey": "test.term.beta.build",
+      "editorialState": "DRAFT",
+      "title": "测试词条乙三",
+      "titleLocale": "zh",
+      "definition": "",
+      "localizations": [
+        {
+          "locale": "en",
+          "title": "Test term beta three",
+          "definition": ""
+        }
+      ],
+      "classificationKeys": [
+        "beta.kind_three"
+      ],
+      "primaryDirectoryClassificationKey": "beta.kind_three",
+      "expressions": [
+        {
+          "modelKey": "gpt-image-2",
+          "locale": "en",
+          "positive": "test beta three",
+          "contextKey": "general.default"
+        }
+      ]
+    },
+    {
+      "id": "term_test_beta_pose",
+      "revisionId": "tr_test_beta_pose",
+      "revisionNo": 1,
+      "stableKey": "test.term.beta.pose",
+      "editorialState": "DRAFT",
+      "title": "测试词条乙四",
+      "titleLocale": "zh",
+      "definition": "",
+      "localizations": [
+        {
+          "locale": "en",
+          "title": "Test term beta four",
+          "definition": ""
+        }
+      ],
+      "classificationKeys": [
+        "beta.kind_four"
+      ],
+      "primaryDirectoryClassificationKey": "beta.kind_four",
+      "expressions": [
+        {
+          "modelKey": "gpt-image-2",
+          "locale": "en",
+          "positive": "test beta four",
+          "contextKey": "general.default"
+        }
+      ]
+    },
+    {
+      "id": "term_test_uncategorized",
+      "revisionId": "tr_test_uncategorized",
+      "revisionNo": 1,
+      "stableKey": "test.term.uncategorized",
+      "editorialState": "DRAFT",
+      "title": "未分类测试词条",
+      "titleLocale": "zh",
+      "definition": "",
+      "localizations": [
+        {
+          "locale": "en",
+          "title": "Uncategorized test term",
+          "definition": ""
+        }
+      ],
+      "expressions": [
+        {
+          "modelKey": "gpt-image-2",
+          "locale": "en",
+          "positive": "uncategorized test",
+          "contextKey": "general.default"
+        }
+      ]
+    }
+  ]
+}

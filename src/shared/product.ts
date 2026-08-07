@@ -1,0 +1,16 @@
+export const PRODUCT_NAMES = {
+  en: 'AIY Image Tools',
+  zh: 'AIY生图管理工具',
+} as const;
+
+export const DEFAULT_PRODUCT_NAME = PRODUCT_NAMES.en;
+
+export function productNameForLocale(locale: string) {
+  return locale.toLowerCase().startsWith('zh') ? PRODUCT_NAMES.zh : PRODUCT_NAMES.en;
+}
+
+export const PRODUCT_VERSION = '0.3.0';
+export const EXTENSION_HOST_ENGINE_KEY = 'aiy' as const;
+export type ExtensionHostEngineKey = typeof EXTENSION_HOST_ENGINE_KEY;
+
+export const USER_DATA_DIRECTORY_NAME = 'AIY';

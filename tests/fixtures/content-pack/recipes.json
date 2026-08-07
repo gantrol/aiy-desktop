@@ -1,0 +1,26 @@
+{
+  "schemaVersion": "0.3.0",
+  "revision": "synthetic-pack-recipes-1",
+  "palettes": [
+    {
+      "stableKey": "test.pack.recipe",
+      "name": "测试配方",
+      "nameLocale": "zh",
+      "description": "",
+      "localizations": [
+        {
+          "locale": "en",
+          "name": "Test recipe",
+          "description": ""
+        }
+      ],
+      "parameters": [],
+      "promptNodes": [
+        {
+          "kind": "TERM",
+          "termStableKey": "test.pack.one"
+        }
+      ]
+    }
+  ]
+}

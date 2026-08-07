@@ -1,0 +1,124 @@
+# Dependencies
+node_modules/
+.npm/
+.pnpm-store/
+
+# Electron / bundler output
+out/
+dist/
+release/
+!docs/release/
+!docs/release/**
+.webpack/
+.electron-vite/
+*.tsbuildinfo
+
+# macOS / installer artifacts (keep outputs under release/ ignored too)
+/*.dmg
+/*.pkg
+/*.app/
+/*.zip
+/*.blockmap
+/latest*.yml
+*.dSYM/
+*.xcarchive/
+
+# Test output
+coverage/
+playwright-report/
+test-results/
+
+# Local runtime files
+.tmp/
+tmp/
+.cache/
+logs/
+*.log
+*.pid
+
+# Local databases and sidecar files
+*.db
+*.db-*
+*.sqlite
+*.sqlite-*
+*.sqlite3
+*.sqlite3-*
+
+# User and CDN-backed content
+/downloads/
+/exports/
+/generated/
+/imports/
+/library/
+/media/
+/objects/
+/uploads/
+/user-data/
+/userdata/
+/resources/
+/content/
+/src/renderer/assets/icon-series/
+
+# Raster, video, and audio content is data by default
+*.avif
+*.bmp
+*.gif
+*.heic
+*.jpeg
+*.jpg
+*.png
+*.tif
+*.tiff
+*.webp
+*.avi
+*.m4v
+*.mkv
+*.mov
+*.mp4
+*.webm
+*.aac
+*.flac
+*.m4a
+*.mp3
+*.ogg
+*.wav
+
+# First-release starter-pack media is a reproducible application input.
+!/content-packs/creation-starter/assets/workbench/*.webp
+
+# Application identity assets are part of the program
+!build/icon-large-source.png
+!build/icon.png
+!build/micro-icon-source.png
+!src/renderer/public/icon-24.png
+!src/renderer/public/icon.png
+
+# Test fixtures are program inputs, not content. Regenerate with
+# `node scripts/generate-image-fixtures.mjs`.
+!tests/fixtures/**/*.png
+!e2e/**/*-snapshots/**/*.png
+
+# Environment files and signing secrets
+.env
+.env.*
+!.env.example
+*.key
+*.p12
+*.pfx
+*.p8
+*.cer
+*.mobileprovision
+*.provisionprofile
+
+# Editors and operating systems
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+Desktop.ini
+
+# Tool caches
+.eslintcache

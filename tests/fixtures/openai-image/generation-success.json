@@ -1,0 +1,21 @@
+{
+  "created": 1767225600,
+  "data": [
+    {
+      "b64_json": "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=",
+      "revised_prompt": "A calm cafe interior, warm afternoon light."
+    }
+  ],
+  "quality": "low",
+  "size": "1024x1024",
+  "output_format": "png",
+  "usage": {
+    "total_tokens": 1520,
+    "input_tokens": 24,
+    "output_tokens": 1496,
+    "input_tokens_details": {
+      "text_tokens": 24,
+      "image_tokens": 0
+    }
+  }
+}

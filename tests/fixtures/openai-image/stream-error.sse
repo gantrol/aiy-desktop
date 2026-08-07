@@ -1,0 +1,6 @@
+event: image_generation.partial_image
+data: {"type":"image_generation.partial_image","b64_json":"iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=","partial_image_index":0,"size":"1024x1024","quality":"low"}
+
+event: error
+data: {"type":"error","error":{"message":"Stream failed mid-generation.","type":"server_error","code":null}}
+

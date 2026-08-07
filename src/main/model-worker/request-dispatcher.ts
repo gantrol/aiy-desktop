@@ -1,0 +1,343 @@
+import { DeepSeekAssistantAdapter } from '@/main/assistant-models/deepseek';
+import { DEEPSEEK_DEFAULT_MODEL_ID, DEEPSEEK_PROVIDER_KEY } from '@/main/assistant-models/deepseek-provider';
+import { CodexAdapter } from '@/main/codex';
+import { LibraryDatabase } from '@/main/database';
+import { readDictionaryImport } from '@/main/dictionary-import';
+import { DeepSeekApiRuntime } from '@/main/extensions/deepseek-api/runtime';
+import { ExternalImageApiRuntime } from '@/main/extensions/external-image-api/runtime';
+import { OpenAiImageApiRuntime } from '@/main/extensions/openai-image-api/runtime';
+import { ExtensionRegistry } from '@/main/extensions/registry';
+import { GenerationCoordinator } from '@/main/generation';
+import { parseModelWorkerMethodParams } from '@/main/model-worker/method-params';
+import type { ModelWorkerMethod, ModelWorkerServerMessage, ModelWorkerSnapshot } from '@/main/model-worker/protocol';
+import { DEEPSEEK_API_EXTENSION_ID } from '@/shared/extension-ids';
+
+const unhandled = Symbol('unhandled-model-worker-method');
+
+export interface ModelWorkerRequestDispatcherOptions {
+  database: LibraryDatabase;
+  generation: GenerationCoordinator;
+  codex: CodexAdapter;
+  deepSeek: DeepSeekAssistantAdapter;
+  extensions: ExtensionRegistry;
+  openAiImageApi: OpenAiImageApiRuntime;
+  deepSeekApi: DeepSeekApiRuntime;
+  externalImageApis: ExternalImageApiRuntime;
+  libraryRoot: string;
+  imageTransformWorkerPath: string;
+  activeRequestCount(): number;
+  beginAssistantJob(): void;
+  endAssistantJob(): void;
+  snapshot(): ModelWorkerSnapshot;
+  broadcast(message: ModelWorkerServerMessage): void;
+  broadcastSnapshot(): void;
+  scheduleGracefulShutdown(): void;
+  scheduleShutdownWhenIdle(): void;
+  scheduleForceShutdown(): void;
+}
+
+function throwIfRequestCancelled(signal: AbortSignal) {
+  if (signal.aborted) {
+    throw Object.assign(new Error('Background model service request was cancelled'), { code: 'CANCELLED' as const });
+  }
+}
+
+async function withAssistantJob<T>(
+  options: ModelWorkerRequestDispatcherOptions,
+  operation: () => Promise<T>,
+): Promise<T> {
+  options.beginAssistantJob();
+  try {
+    return await operation();
+  } finally {
+    options.endAssistantJob();
+  }
+}
+
+async function dispatchStorageAndGeneration(
+  options: ModelWorkerRequestDispatcherOptions,
+  method: ModelWorkerMethod,
+  params: unknown[],
+) {
+  const { database, generation } = options;
+  switch (method) {
+    case 'library-file-view.refresh':
+      parseModelWorkerMethodParams(method, params);
+      database.refreshLibraryFileView();
+      return undefined;
+    case 'dictionary.stage-import': {
+      const [fileName, filePath] = parseModelWorkerMethodParams(method, params);
+      return database.stageImport(fileName, readDictionaryImport(filePath));
+    }
+    case 'dictionary.commit-import': {
+      const [batchId] = parseModelWorkerMethodParams(method, params);
+      const result = database.commitImport(batchId);
+      database.refreshLibraryFileView();
+      return result;
+    }
+    case 'generation.start': {
+      const [input] = parseModelWorkerMethodParams(method, params);
+      return generation.start(input);
+    }
+    case 'generation.start-batch': {
+      const [input] = parseModelWorkerMethodParams(method, params);
+      return generation.startBatch(input);
+    }
+    case 'generation.start-image-edit': {
+      const [input] = parseModelWorkerMethodParams(method, params);
+      return generation.startImageEdit(input);
+    }
+    case 'generation.start-image-edit-batch': {
+      const [input] = parseModelWorkerMethodParams(method, params);
+      return generation.startImageEditBatch(input);
+    }
+    case 'generation.start-image-reframe': {
+      const [input] = parseModelWorkerMethodParams(method, params);
+      return generation.startImageReframe(input);
+    }
+    case 'generation.start-codex-image-refinement': {
+      const [input] = parseModelWorkerMethodParams(method, params);
+      return generation.startCodexImageRefinement(input);
+    }
+    case 'generation.start-style-exploration': {
+      const [input] = parseModelWorkerMethodParams(method, params);
+      return generation.startStyleExploration(input);
+    }
+    case 'generation.cancel-style-exploration': {
+      const [batchId] = parseModelWorkerMethodParams(method, params);
+      return generation.cancelStyleExploration(batchId);
+    }
+    case 'generation.retry-style-exploration-slot': {
+      const [slotId] = parseModelWorkerMethodParams(method, params);
+      return generation.retryStyleExplorationSlot(slotId);
+    }
+    case 'generation.start-version': {
+      const [input] = parseModelWorkerMethodParams(method, params);
+      return generation.startVersion(input);
+    }
+    case 'generation.retry': {
+      const [runId] = parseModelWorkerMethodParams(method, params);
+      return generation.retry(runId);
+    }
+    case 'generation.cancel': {
+      const [runId] = parseModelWorkerMethodParams(method, params);
+      return generation.cancel(runId);
+    }
+    default:
+      return unhandled;
+  }
+}
+
+async function dispatchAssistantAndCodex(
+  options: ModelWorkerRequestDispatcherOptions,
+  method: ModelWorkerMethod,
+  params: unknown[],
+  signal: AbortSignal,
+) {
+  const { codex, database, deepSeek, extensions } = options;
+  switch (method) {
+    case 'codex.refresh-health': {
+      parseModelWorkerMethodParams(method, params);
+      const health = await codex.refreshHealth(signal);
+      options.broadcastSnapshot();
+      return health;
+    }
+    case 'codex.list-models':
+      parseModelWorkerMethodParams(method, params);
+      return codex.listModels(signal);
+    case 'assistant.suggest-titles': {
+      const [input, execution] = parseModelWorkerMethodParams(method, params);
+      if (execution.providerKey === 'codex') {
+        return codex.suggestTitles(
+          input,
+          { model: execution.modelKey, effort: execution.reasoningEffort ?? undefined },
+          signal,
+        );
+      }
+      if (execution.providerKey !== 'deepseek') {
+        throw new Error(`Unsupported title model provider: ${execution.providerKey}`);
+      }
+      if (!extensions.isActivated(DEEPSEEK_API_EXTENSION_ID)) {
+        throw new Error('Enable the DeepSeek API extension and grant its required permissions');
+      }
+      return withAssistantJob(options, () => deepSeek.suggestTitles(input, signal));
+    }
+    case 'assistant.run': {
+      const [runId] = parseModelWorkerMethodParams(method, params);
+      return withAssistantJob(options, async () => {
+        try {
+          const run = database.getAssistantRun(runId);
+          if (!run) throw new Error('Assistant run is unavailable');
+          const input = run.input;
+          const providerKey = run.providerKey ?? (run.mode === 'directions' ? DEEPSEEK_PROVIDER_KEY : 'codex');
+          const modelKey =
+            run.modelKey ?? (providerKey === DEEPSEEK_PROVIDER_KEY ? DEEPSEEK_DEFAULT_MODEL_ID : 'codex');
+          const requested = database.recordAssistantActivity(runId, 'MODEL_REQUESTED', {
+            providerKey,
+            modelKey,
+            message: `Request submitted to ${modelKey}`,
+            payload:
+              run.reasoningEffort || run.input.webSearchMode === 'REQUIRED'
+                ? {
+                    ...(run.reasoningEffort ? { reasoningEffort: run.reasoningEffort } : {}),
+                    ...(run.input.webSearchMode === 'REQUIRED' ? { webSearchMode: 'REQUIRED' } : {}),
+                  }
+                : undefined,
+          });
+          if (requested) options.broadcast({ type: 'assistant-progress', event: requested });
+          const result =
+            providerKey === 'deepseek'
+              ? await runDeepSeekAssistant(options, runId, input, providerKey, modelKey, signal)
+              : await codex.assist(
+                  input,
+                  [],
+                  [],
+                  {
+                    scope: run.scope,
+                    title: run.mode === 'directions' ? '灵感方向' : 'AI帮写',
+                    operationId: runId,
+                    model: modelKey === 'codex' ? undefined : modelKey,
+                    effort: run.reasoningEffort ?? undefined,
+                  },
+                  signal,
+                );
+          throwIfRequestCancelled(signal);
+          const completed = database.succeedAssistantRun(runId, result);
+          const completedEvent = completed.activityEvents?.at(-1);
+          if (completedEvent?.phase === 'COMPLETED') {
+            options.broadcast({ type: 'assistant-progress', event: completedEvent });
+          }
+          return completed;
+        } catch (error) {
+          const message = error instanceof Error ? error.message : String(error);
+          const code =
+            error && typeof error === 'object' && 'code' in error && typeof error.code === 'string' ? error.code : null;
+          const failed =
+            code === 'CANCELLED'
+              ? database.interruptAssistantRun(runId, message)
+              : database.failAssistantRun(runId, message);
+          const failedEvent = failed.activityEvents?.at(-1);
+          if (failedEvent && ['FAILED', 'INTERRUPTED'].includes(failedEvent.phase)) {
+            options.broadcast({ type: 'assistant-progress', event: failedEvent });
+          }
+          return failed;
+        }
+      });
+    }
+    case 'codex.chat': {
+      const [job] = parseModelWorkerMethodParams(method, params);
+      const result = await codex.assist(
+        job.input,
+        job.history,
+        job.imagePaths,
+        { scope: job.scope, title: '创作记录' },
+        signal,
+      );
+      throwIfRequestCancelled(signal);
+      return database.addCreatorAgentTurn(job.scope, job.request, result);
+    }
+    case 'codex.suggest-titles': {
+      const [input, execution] = parseModelWorkerMethodParams(method, params);
+      return codex.suggestTitles(input, execution ?? undefined, signal);
+    }
+    case 'codex.cancel-all':
+      parseModelWorkerMethodParams(method, params);
+      codex.cancelStatelessJobs();
+      return undefined;
+    default:
+      return unhandled;
+  }
+}
+
+async function runDeepSeekAssistant(
+  options: ModelWorkerRequestDispatcherOptions,
+  runId: string,
+  input: Parameters<DeepSeekAssistantAdapter['assist']>[0],
+  providerKey: string,
+  modelKey: string,
+  signal: AbortSignal,
+) {
+  if (!options.extensions.isActivated(DEEPSEEK_API_EXTENSION_ID)) {
+    throw new Error('Enable the DeepSeek API extension and grant its required permissions');
+  }
+  return options.deepSeek.assist(
+    input,
+    (progress) => {
+      const event = options.database.recordAssistantActivity(runId, progress.phase, {
+        providerKey,
+        modelKey,
+        message: progress.message,
+        payload: progress.payload,
+      });
+      if (event) options.broadcast({ type: 'assistant-progress', event });
+    },
+    signal,
+  );
+}
+
+async function dispatchExtensionsAndLifecycle(
+  options: ModelWorkerRequestDispatcherOptions,
+  method: ModelWorkerMethod,
+  params: unknown[],
+  signal: AbortSignal,
+) {
+  switch (method) {
+    case 'extensions.refresh': {
+      parseModelWorkerMethodParams(method, params);
+      const health = await options.codex.refreshHealth(signal);
+      options.broadcastSnapshot();
+      return health;
+    }
+    case 'extensions.configure-openai-image-api': {
+      const [configuration] = parseModelWorkerMethodParams(method, params);
+      options.openAiImageApi.configure(configuration);
+      options.broadcastSnapshot();
+      return undefined;
+    }
+    case 'extensions.configure-deepseek-api': {
+      const [configuration] = parseModelWorkerMethodParams(method, params);
+      options.deepSeekApi.configure(configuration);
+      options.broadcastSnapshot();
+      return undefined;
+    }
+    case 'extensions.configure-external-image-apis': {
+      const [configurations] = parseModelWorkerMethodParams(method, params);
+      options.externalImageApis.configure(configurations);
+      options.broadcastSnapshot();
+      return undefined;
+    }
+    case 'worker.shutdown':
+      parseModelWorkerMethodParams(method, params);
+      if (options.generation.hasPending || options.codex.hasPending || options.activeRequestCount() > 1) {
+        throw Object.assign(new Error('Background model service still has active work'), { code: 'WORKER_BUSY' });
+      }
+      options.scheduleGracefulShutdown();
+      return undefined;
+    case 'worker.shutdown-when-idle':
+      parseModelWorkerMethodParams(method, params);
+      options.scheduleShutdownWhenIdle();
+      return undefined;
+    case 'worker.force-shutdown':
+      parseModelWorkerMethodParams(method, params);
+      options.scheduleForceShutdown();
+      return undefined;
+    default:
+      return unhandled;
+  }
+}
+
+export function createModelWorkerRequestDispatcher(options: ModelWorkerRequestDispatcherOptions) {
+  return async (method: ModelWorkerMethod, params: unknown[], signal: AbortSignal) => {
+    if (method === 'snapshot') {
+      parseModelWorkerMethodParams(method, params);
+      return options.snapshot();
+    }
+    const storageResult = await dispatchStorageAndGeneration(options, method, params);
+    if (storageResult !== unhandled) return storageResult;
+    const assistantResult = await dispatchAssistantAndCodex(options, method, params, signal);
+    if (assistantResult !== unhandled) return assistantResult;
+    const lifecycleResult = await dispatchExtensionsAndLifecycle(options, method, params, signal);
+    if (lifecycleResult !== unhandled) return lifecycleResult;
+    throw new Error(`Unknown background model service method: ${String(method)}`);
+  };
+}

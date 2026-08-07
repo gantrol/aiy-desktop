@@ -1,0 +1,74 @@
+{
+  "manifestVersion": 1,
+  "kind": "CAPABILITY",
+  "id": "com.example.image-api",
+  "version": "0.1.0",
+  "displayName": "Example Image API",
+  "description": "Generates images through an example API.",
+  "engines": {
+    "aiy": "^0.3.0"
+  },
+  "contributes": {
+    "modelProviders": ["example-image-api"]
+  },
+  "permissions": ["network:https://api.example.com", "secrets:example-api-key"],
+  "optionalPermissions": ["network:user-configured-https-endpoint"],
+  "configuration": {
+    "kind": "IMAGE_API",
+    "defaultEndpointPresetId": "example-global",
+    "endpointPresets": [
+      {
+        "id": "example-global",
+        "endpointTemplate": "https://api.example.com/v1/images/generations",
+        "modelId": "example-image-1"
+      }
+    ],
+    "settingFields": [],
+    "customEndpointAllowed": true,
+    "customModelIdAllowed": true,
+    "connectionCheckPresetIds": ["example-global"]
+  },
+  "i18n": {
+    "defaultLocale": "en",
+    "locales": {
+      "en": {
+        "displayName": "Example Image API",
+        "description": "Generates images through an example API.",
+        "configuration": {
+          "title": "Example API connection",
+          "apiKeyLabel": "API Key",
+          "apiKeyPlaceholder": "Enter an API key",
+          "endpointLabel": "Service endpoint",
+          "endpointOptions": {
+            "example-global": "Global endpoint",
+            "custom": "Other compatible endpoint"
+          },
+          "customEndpointLabel": "Custom request URL",
+          "customEndpointPlaceholder": "https://gateway.example.com/v1/images/generations",
+          "modelIdLabel": "Model ID",
+          "modelIdPlaceholder": "example-image-1",
+          "fields": {}
+        }
+      },
+      "zh": {
+        "displayName": "示例图像 API",
+        "description": "通过示例 API 生成图像。",
+        "configuration": {
+          "title": "示例 API 连接",
+          "apiKeyLabel": "API Key",
+          "apiKeyPlaceholder": "输入 API Key",
+          "endpointLabel": "服务端点",
+          "endpointOptions": {
+            "example-global": "全球端点",
+            "custom": "其他兼容端点"
+          },
+          "customEndpointLabel": "自定义请求 URL",
+          "customEndpointPlaceholder": "https://gateway.example.com/v1/images/generations",
+          "modelIdLabel": "模型 ID",
+          "modelIdPlaceholder": "example-image-1",
+          "fields": {}
+        }
+      }
+    }
+  }
+}

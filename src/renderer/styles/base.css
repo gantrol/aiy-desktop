@@ -1,0 +1,406 @@
+@layer base {
+  * {
+    @apply border-border outline-ring;
+  }
+
+  html {
+    font-family: var(--font-ui);
+    color: var(--foreground);
+    background: var(--background);
+    letter-spacing: 0;
+  }
+
+  body {
+    @apply bg-background text-foreground;
+  }
+
+  code,
+  kbd,
+  samp,
+  pre {
+    font-family: var(--font-mono-family);
+  }
+
+  strong,
+  b {
+    font-weight: 600;
+  }
+
+  svg.lucide {
+    stroke-width: 1.7;
+  }
+}
+
+[data-image-overlay-contrast-support='true'][data-image-overlay-tone='light'] {
+  text-shadow: var(--image-overlay-contrast-shadow-light);
+}
+
+[data-image-overlay-contrast-support='true'][data-image-overlay-tone='dark'] {
+  text-shadow: var(--image-overlay-contrast-shadow-dark);
+}
+
+[data-image-overlay-contrast-support='true'] > svg {
+  color: currentColor;
+}
+
+@property --image-overlay-copy-scrim-progress {
+  syntax: '<percentage>';
+  inherits: false;
+  initial-value: -30%;
+}
+
+[data-image-overlay-copy-scrim] {
+  --image-overlay-copy-scrim-progress: -30%;
+  -webkit-mask-image: linear-gradient(
+    to bottom,
+    transparent var(--image-overlay-copy-scrim-progress),
+    var(--media-checker-a) calc(var(--image-overlay-copy-scrim-progress) + 30%)
+  );
+  mask-image: linear-gradient(
+    to bottom,
+    transparent var(--image-overlay-copy-scrim-progress),
+    var(--media-checker-a) calc(var(--image-overlay-copy-scrim-progress) + 30%)
+  );
+  transition: --image-overlay-copy-scrim-progress var(--motion-overlay) var(--ease-enter);
+}
+
+[data-term-overview-card]:hover [data-image-overlay-copy-scrim] {
+  --image-overlay-copy-scrim-progress: 100%;
+}
+
+[data-term-overview-card]:has(:focus-visible) [data-image-overlay-copy-scrim] {
+  --image-overlay-copy-scrim-progress: -30%;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  [data-image-overlay-copy-scrim] {
+    transition: none;
+  }
+}
+
+@media (hover: hover) {
+  :where([class~='overflow-auto'], [class~='overflow-x-auto'], [class~='overflow-y-auto']) {
+    scrollbar-color: transparent transparent;
+  }
+
+  :where([class~='overflow-auto'], [class~='overflow-x-auto'], [class~='overflow-y-auto']):hover,
+  :where([class~='overflow-auto'], [class~='overflow-x-auto'], [class~='overflow-y-auto']):focus-within {
+    scrollbar-color: var(--border) transparent;
+  }
+
+  :where([class~='overflow-auto'], [class~='overflow-x-auto'], [class~='overflow-y-auto'])::-webkit-scrollbar-track,
+  :where([class~='overflow-auto'], [class~='overflow-x-auto'], [class~='overflow-y-auto'])::-webkit-scrollbar-thumb {
+    background: transparent;
+  }
+
+  :where(
+      [class~='overflow-auto'],
+      [class~='overflow-x-auto'],
+      [class~='overflow-y-auto']
+    ):hover::-webkit-scrollbar-thumb,
+  :where(
+      [class~='overflow-auto'],
+      [class~='overflow-x-auto'],
+      [class~='overflow-y-auto']
+    ):focus-within::-webkit-scrollbar-thumb {
+    border-radius: 999px;
+    background: var(--border);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation: none !important;
+    scroll-behavior: auto !important;
+    transition: none !important;
+  }
+
+  [data-reduced-motion-opacity] {
+    transition: opacity var(--motion-reduced) linear !important;
+  }
+}
+
+@keyframes sheet-overlay-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes sheet-overlay-out {
+  from {
+    opacity: 1;
+  }
+  to {
+    opacity: 0;
+  }
+}
+
+@keyframes sheet-in-right {
+  from {
+    opacity: 0;
+    transform: translateX(1rem);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+@keyframes sheet-out-right {
+  from {
+    opacity: 1;
+    transform: translateX(0);
+  }
+  to {
+    opacity: 0;
+    transform: translateX(1rem);
+  }
+}
+
+@keyframes sheet-in-left {
+  from {
+    opacity: 0;
+    transform: translateX(-1rem);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+@keyframes sheet-out-left {
+  from {
+    opacity: 1;
+    transform: translateX(0);
+  }
+  to {
+    opacity: 0;
+    transform: translateX(-1rem);
+  }
+}
+
+@keyframes sheet-in-top {
+  from {
+    opacity: 0;
+    transform: translateY(-1rem);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes sheet-out-top {
+  from {
+    opacity: 1;
+    transform: translateY(0);
+  }
+  to {
+    opacity: 0;
+    transform: translateY(-1rem);
+  }
+}
+
+@keyframes sheet-in-bottom {
+  from {
+    opacity: 0;
+    transform: translateY(1rem);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes sheet-out-bottom {
+  from {
+    opacity: 1;
+    transform: translateY(0);
+  }
+  to {
+    opacity: 0;
+    transform: translateY(1rem);
+  }
+}
+
+@keyframes tree-branch-expand {
+  from {
+    height: 0;
+  }
+  to {
+    height: var(--radix-collapsible-content-height);
+  }
+}
+
+@keyframes tree-branch-collapse {
+  from {
+    height: var(--radix-collapsible-content-height);
+  }
+  to {
+    height: 0;
+  }
+}
+
+@keyframes local-space-transition-card-in {
+  from {
+    opacity: 0;
+    transform: translateY(0.5rem) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes local-space-transition-stage-in {
+  from {
+    opacity: 0;
+    transform: translateY(0.2rem);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes local-space-transition-logo-float {
+  0%,
+  100% {
+    transform: translateY(0) rotate(-1deg);
+  }
+  50% {
+    transform: translateY(-0.35rem) rotate(1deg);
+  }
+}
+
+.local-space-transition-card {
+  animation: local-space-transition-card-in var(--motion-overlay) var(--ease-enter) both;
+}
+
+.local-space-transition-stage {
+  animation: local-space-transition-stage-in var(--motion-fast) var(--ease-enter) both;
+}
+
+.local-space-transition-logo {
+  animation: local-space-transition-logo-float 1.8s var(--ease-standard) infinite;
+}
+
+.tree-disclosure-mark {
+  color: var(--selected-foreground);
+  pointer-events: none;
+}
+
+.tree-disclosure-path {
+  transition: stroke-width var(--motion-fast) var(--ease-standard);
+}
+
+.tree-branch-line {
+  color: var(--hierarchy-accent);
+  transition: color var(--motion-fast) var(--ease-standard);
+}
+
+.tree-branch-line line,
+.tree-branch-line path {
+  stroke: currentColor;
+  stroke-width: 1.75px;
+  transition:
+    stroke-width var(--motion-fast) var(--ease-standard),
+    color var(--motion-fast) var(--ease-standard);
+}
+
+.tree-branch-collapse-rail:is(:hover, :focus-visible) + .tree-branch-content .tree-branch-line,
+.tree-branch-node-connector:has(.tree-branch-hit-target:is(:hover, :focus-visible)) {
+  color: var(--selected-foreground);
+}
+
+.tree-branch-collapse-rail:is(:hover, :focus-visible) + .tree-branch-content .tree-branch-line line,
+.tree-branch-collapse-rail:is(:hover, :focus-visible) + .tree-branch-content .tree-branch-line path,
+.tree-branch-node-connector:has(.tree-branch-hit-target:is(:hover, :focus-visible)) path {
+  stroke-width: 2.25px;
+}
+
+[data-tree-disclosure-attached][data-state='open'] .tree-disclosure-mark {
+  color: var(--selected-foreground);
+}
+
+[data-tree-disclosure-attached][data-state='closed'] .tree-disclosure-mark {
+  color: var(--selected-foreground);
+}
+
+.tree-branch-content[data-state='open'] {
+  /*
+   * Radix exposes the measured pixel height for the opening transition, but
+   * that measurement is only refreshed when the disclosure state changes.
+   * Do not retain the keyframe's final height: async inserts, moves, and
+   * refreshed projections must settle back to intrinsic height immediately.
+   */
+  height: auto;
+  animation: tree-branch-expand calc(var(--motion-overlay) + 100ms) var(--ease-enter);
+}
+
+.tree-branch-content[data-state='closed'] {
+  animation: tree-branch-collapse var(--motion-base) var(--ease-exit) both;
+}
+
+.sheet-overlay-motion[data-state='open'] {
+  animation: sheet-overlay-in var(--motion-overlay) var(--ease-enter);
+}
+
+.sheet-overlay-motion[data-state='closed'] {
+  animation: sheet-overlay-out var(--motion-overlay) var(--ease-exit);
+}
+
+.sheet-content-motion[data-side='right'][data-state='open'] {
+  animation: sheet-in-right var(--motion-overlay) var(--ease-enter);
+}
+.sheet-content-motion[data-side='right'][data-state='closed'] {
+  animation: sheet-out-right var(--motion-overlay) var(--ease-exit);
+}
+.sheet-content-motion[data-side='left'][data-state='open'] {
+  animation: sheet-in-left var(--motion-overlay) var(--ease-enter);
+}
+.sheet-content-motion[data-side='left'][data-state='closed'] {
+  animation: sheet-out-left var(--motion-overlay) var(--ease-exit);
+}
+.sheet-content-motion[data-side='top'][data-state='open'] {
+  animation: sheet-in-top var(--motion-overlay) var(--ease-enter);
+}
+.sheet-content-motion[data-side='top'][data-state='closed'] {
+  animation: sheet-out-top var(--motion-overlay) var(--ease-exit);
+}
+.sheet-content-motion[data-side='bottom'][data-state='open'] {
+  animation: sheet-in-bottom var(--motion-overlay) var(--ease-enter);
+}
+.sheet-content-motion[data-side='bottom'][data-state='closed'] {
+  animation: sheet-out-bottom var(--motion-overlay) var(--ease-exit);
+}
+
+html,
+body,
+#root {
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+}
+
+button {
+  cursor: pointer;
+}
+
+button:disabled {
+  cursor: default;
+}
+
+.app-title-bar {
+  -webkit-app-region: drag;
+  user-select: none;
+}
+
+.app-title-bar-actions {
+  -webkit-app-region: no-drag;
+}

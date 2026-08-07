@@ -1,0 +1,8 @@
+{
+  "error": {
+    "message": "Your organization must be verified to use this model.",
+    "type": "invalid_request_error",
+    "code": "model_not_found",
+    "param": null
+  }
+}

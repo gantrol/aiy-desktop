@@ -1,0 +1,52 @@
+# Combinatorial model for the generation pipeline.
+#
+# Full Cartesian product of these factors is 41,472 combinations. Pairwise
+# coverage needs a few dozen cases and still guarantees every 2-way interaction
+# that the constraints below leave reachable.
+#
+# Regenerate:
+#   pict tests/models/generation.pict /o:2 /e:tests/models/generation.seed > tests/models/generation.pairs.tsv
+#
+# Raise to /o:3 when investigating error handling — provider x outcome x
+# lifecycle is where the real interaction defects live (does a 429 during a
+# cancel leak the run's temp directory?).
+
+Provider:   openai, gemini, codex, internal
+Operation:  GENERATE, EDIT
+Inputs:     none, ref1, ref8, source_mask
+Quality:    low, medium, high
+Size:       auto, valid, invalid
+Outcome:    OK (4), AUTH, RATE_LIMITED, SAFETY, NETWORK, NO_OUTPUT, CORRUPT_B64, UNAVAILABLE
+Delivery:   nonstream, stream_ok, stream_cut
+Lifecycle:  complete, cancel, restart
+Persist:    commit_ok, db_fail
+
+# --- Domain constraints -----------------------------------------------------
+# Masks only exist on edits, and an edit always has at least one image input.
+IF [Inputs] = "source_mask" THEN [Operation] = "EDIT";
+IF [Operation] = "EDIT" THEN [Inputs] <> "none";
+IF [Operation] = "GENERATE" THEN [Inputs] <> "source_mask";
+
+# Streaming is an OpenAI capability; other providers only have the batch shape.
+IF [Delivery] <> "nonstream" THEN [Provider] = "openai";
+# A cut stream is itself the failure, so it does not pair with an HTTP outcome.
+IF [Delivery] = "stream_cut" THEN [Outcome] = "OK";
+
+# The internal model never touches a network provider.
+IF [Provider] = "internal" THEN [Outcome] IN {"OK", "NO_OUTPUT"};
+IF [Provider] = "internal" THEN [Delivery] = "nonstream";
+IF [Provider] = "codex" THEN [Outcome] <> "CORRUPT_B64";
+
+# Only OpenAI and Gemini accept the 8-reference maximum.
+IF [Inputs] = "ref8" THEN [Provider] IN {"openai", "gemini"};
+
+# An invalid size is rejected by validateRequest before any transport runs, so
+# pairing it with a transport outcome would test nothing.
+IF [Size] = "invalid" THEN [Outcome] = "OK";
+IF [Size] = "invalid" THEN [Lifecycle] = "complete";
+
+# Persistence failure and mid-flight restart are only meaningful once the
+# provider has actually produced an image.
+IF [Persist] = "db_fail" THEN [Outcome] = "OK";
+IF [Lifecycle] = "restart" THEN [Outcome] = "OK";
+IF [Lifecycle] = "cancel" THEN [Persist] = "commit_ok";

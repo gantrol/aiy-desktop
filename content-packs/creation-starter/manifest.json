@@ -1,0 +1,24 @@
+{
+  "schemaVersion": 1,
+  "kind": "CONTENT",
+  "key": "creation-starter",
+  "id": "builtin.creation-starter",
+  "version": "0.1.1",
+  "displayName": "入门素材",
+  "description": "开箱即用的引导内容：40 个常用词条、3 组词盘和 3 套示范创作，让新用户直接进入创作流程。",
+  "contentKinds": ["KNOWLEDGE", "RECIPE"],
+  "defaultRoles": ["SUBJECT", "METHOD"],
+  "includeInlineTerms": true,
+  "fixtureLibraryId": "builtin.creation-starter.source",
+  "seedLibrary": true,
+  "facetRoles": {
+    "primaryClassification": "domain",
+    "secondaryClassification": "item_type"
+  },
+  "source": {
+    "fixture": "workbench-sample.v0.3.json",
+    "dictionary": "dictionary-core.v0.3.json",
+    "palettes": "word-palettes.v0.3.json",
+    "assets": "assets"
+  }
+}

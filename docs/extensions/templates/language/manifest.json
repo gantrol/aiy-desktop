@@ -1,0 +1,32 @@
+{
+  "manifestVersion": 1,
+  "kind": "LANGUAGE",
+  "id": "com.example.language.zh-cn",
+  "version": "0.1.0",
+  "displayName": "Simplified Chinese",
+  "description": "Provides a Simplified Chinese interface.",
+  "engines": {
+    "aiy": "^0.3.0"
+  },
+  "contributes": {},
+  "permissions": [],
+  "optionalPermissions": [],
+  "language": {
+    "locale": "zh",
+    "htmlLanguage": "zh-CN",
+    "catalog": "messages.json"
+  },
+  "i18n": {
+    "defaultLocale": "zh",
+    "locales": {
+      "zh": {
+        "displayName": "简体中文",
+        "description": "提供简体中文界面。"
+      },
+      "en": {
+        "displayName": "Simplified Chinese",
+        "description": "Provides a Simplified Chinese interface."
+      }
+    }
+  }
+}

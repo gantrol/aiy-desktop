@@ -1,0 +1,26 @@
+{
+  "schemaVersion": 1,
+  "kind": "CONTENT",
+  "key": "synthetic-pack",
+  "id": "test.synthetic-pack",
+  "version": "0.1.0",
+  "displayName": "Synthetic pack",
+  "description": "",
+  "contentKinds": [
+    "KNOWLEDGE",
+    "RECIPE"
+  ],
+  "defaultRoles": [
+    "TEST"
+  ],
+  "fixtureLibraryId": "synthetic.pack.source",
+  "facetRoles": {
+    "primaryClassification": "arbitrary_group_key",
+    "secondaryClassification": "arbitrary_kind_key"
+  },
+  "source": {
+    "fixture": "payload.json",
+    "dictionary": "taxonomy.json",
+    "palettes": "recipes.json"
+  }
+}
