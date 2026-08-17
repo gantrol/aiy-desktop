@@ -17,6 +17,7 @@ class CatalogImageGenerationRoute implements ImageGenerationRoute {
 }
 
 export class CatalogGenerationProvider implements GenerationProvider {
+  readonly definition;
   private readonly entries: ImageGenerationRoute[];
 
   constructor(
@@ -29,6 +30,7 @@ export class CatalogGenerationProvider implements GenerationProvider {
       availability?: () => Pick<ImageGenerationRouteDto, 'state' | 'availabilityReason'>;
     } = {},
   ) {
+    this.definition = { id: key, name, extensionId: null };
     this.entries = routes.map(
       (route) =>
         new CatalogImageGenerationRoute(

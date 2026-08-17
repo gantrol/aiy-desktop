@@ -28,6 +28,7 @@ import { cn } from '@/renderer/lib/utils';
 interface Props {
   locale: Locale;
   termPromptLocale: Locale;
+  promptProfileId: string;
   prompt: string;
   promptNodes: CreatorPromptNodeInput[];
   terms: TermListItem[];
@@ -68,6 +69,7 @@ interface Props {
 export function MinimalCreationStarter({
   locale,
   termPromptLocale,
+  promptProfileId,
   prompt,
   promptNodes,
   terms,
@@ -170,6 +172,7 @@ export function MinimalCreationStarter({
               ref={composerRef}
               locale={locale}
               termPromptLocale={termPromptLocale}
+              promptProfileId={promptProfileId}
               nodes={promptNodes}
               terms={terms}
               palettes={palettes}

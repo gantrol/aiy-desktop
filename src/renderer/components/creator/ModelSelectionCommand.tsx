@@ -10,6 +10,7 @@ import {
 } from 'lucide-react';
 import type { ImageGenerationRouteDto } from '@/shared/contracts';
 import { generationProviderExtensionId } from '@/shared/extension-ids';
+import { resolveImageGenerationRouteExecutionIdentity } from '@/shared/image-generation-route-identity';
 import { useI18n } from '@/renderer/i18n/useI18n';
 import { cn } from '@/renderer/lib/utils';
 import { Button } from '@/renderer/components/ui/button';
@@ -176,7 +177,9 @@ export function ModelSelectionCommand({
                     ? capabilityTag.supportedLabel
                     : capabilityTag.unsupportedLabel
                   : null;
-                const configurationExtensionId = generationProviderExtensionId(model.providerKey);
+                const configurationExtensionId = generationProviderExtensionId(
+                  resolveImageGenerationRouteExecutionIdentity(model).providerId,
+                );
                 return (
                   <div
                     key={model.key}

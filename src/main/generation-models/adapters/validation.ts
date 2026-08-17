@@ -7,6 +7,7 @@ import type {
   NormalizedGenerationRequest,
 } from '@/main/generation-models/adapters/contracts';
 import { GenerationAdapterError } from '@/main/generation-models/adapters/errors';
+import { resolveImageGenerationRouteExecutionIdentity } from '@/shared/image-generation-route-identity';
 
 function invalidRequest(message: string, details?: Readonly<Record<string, unknown>>): never {
   throw new GenerationAdapterError({
@@ -52,7 +53,7 @@ function countRole(media: readonly NormalizedGenerationMedia[], role: Generation
 
 export function validateGenerationAdapterRequest(
   route: ImageGenerationRouteDto,
-  adapter: Pick<GenerationAdapter, 'validateRequest'>,
+  adapter: Pick<GenerationAdapter, 'adapterId' | 'validateRequest'>,
   request: NormalizedGenerationRequest,
 ) {
   assertNonEmpty(request.runId, 'runId');
@@ -74,6 +75,23 @@ export function validateGenerationAdapterRequest(
       expectedModelId: route.modelId,
       actualModelId: request.modelId,
     });
+  }
+  const routeIdentity = resolveImageGenerationRouteExecutionIdentity(route);
+  if (adapter.adapterId && adapter.adapterId !== routeIdentity.adapterId) {
+    invalidRequest('Adapter identity does not match the selected image-generation route', {
+      expectedAdapterId: routeIdentity.adapterId,
+      actualAdapterId: adapter.adapterId,
+    });
+  }
+  if (request.executionIdentity) {
+    const expected = JSON.stringify(routeIdentity);
+    const actual = JSON.stringify(request.executionIdentity);
+    if (actual !== expected) {
+      invalidRequest('Request execution identity does not match the selected image-generation route', {
+        expected: routeIdentity,
+        actual: request.executionIdentity,
+      });
+    }
   }
 
   const { width, height } = request.output;

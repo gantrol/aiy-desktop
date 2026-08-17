@@ -28,9 +28,10 @@ import type {
   ImageTransformOutputDto,
   ImportedCreationOutputDto,
   ImageGenerationRouteDto,
-  GenerationQuality,
+  GenerationInput,
   GenerationTargetInput,
   GenerationTaskDto,
+  GenerationVersionInput,
   Locale,
   PromptSeriesDto,
   TermListItem,
@@ -95,15 +96,8 @@ interface Props {
   onResizeValueChange(value: number): void;
   onComparisonFullWindowChange(open: boolean): void;
   onGalleryOpenChange(open: boolean): void;
-  onGenerateVersion(versionId: string, modelKey: string): Promise<void>;
-  onGeneratePrompt(
-    seriesId: string,
-    prompt: string,
-    modelKey: string,
-    width: number | null,
-    height: number | null,
-    quality: GenerationQuality,
-  ): Promise<void>;
+  onGenerateVersion(input: GenerationVersionInput): Promise<void>;
+  onGeneratePrompt(input: GenerationInput): Promise<void>;
   onReusePrompt(
     seriesId: string,
     versionId: string,

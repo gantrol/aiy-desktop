@@ -1,8 +1,0 @@
-{
-  "error": {
-    "message": "The image could not be generated from this input.",
-    "type": "image_generation_user_error",
-    "code": "image_generation_user_error",
-    "param": null
-  }
-}

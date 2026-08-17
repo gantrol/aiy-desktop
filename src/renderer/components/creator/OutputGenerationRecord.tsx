@@ -19,11 +19,11 @@ import { Textarea } from '@/renderer/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/renderer/components/ui/select';
 import { useProvenanceSuggestions } from '@/renderer/components/provenance/useProvenanceSuggestions';
 import { GenerationFactLayers } from '@/renderer/components/creator/GenerationFactLayers';
+import { GenerationProcessDetails } from '@/renderer/components/creator/GenerationProcessDetails';
 import {
   comparisonVersionReferenceNames,
   linkedPromptVersion,
 } from '@/renderer/components/creator/generationComparisonUtils';
-import { importedGenerationTextType } from '@/renderer/components/creator/imageImport';
 import type { CreationExperimentContext } from '@/renderer/components/creator/creationExperimentContext';
 
 interface Props {
@@ -66,30 +66,12 @@ export function OutputGenerationRecord({
   const [modelNameDraft, setModelNameDraft] = useState('');
   const [modelProvider, setModelProvider] = useState('');
   const [modelVersion, setModelVersion] = useState('');
+  const [generationTextType, setGenerationTextType] =
+    useState<ImportedCreationOutputDto['generationTextType']>('UNKNOWN');
   const [generationText, setGenerationText] = useState('');
   const [saving, setSaving] = useState(false);
   const [savedBaseline, setSavedBaseline] = useState<ImportedCreationOutputDto | null>(null);
   const l = messages.creator.generationRecord;
-  const platformDefaults = useMemo(
-    () => [
-      l.platformOfficialApi,
-      l.platformOpenRouter,
-      l.platformChatGptApp,
-      l.platformCodex,
-      l.platformGeminiApp,
-      l.platformDoubao,
-      l.platformLocal,
-    ],
-    [
-      l.platformChatGptApp,
-      l.platformCodex,
-      l.platformDoubao,
-      l.platformGeminiApp,
-      l.platformLocal,
-      l.platformOfficialApi,
-      l.platformOpenRouter,
-    ],
-  );
   const generatedRecord = useMemo(() => {
     for (const version of series?.versions ?? []) {
       const run = version.runs.find((item) => item.asset?.id === assetId);
@@ -105,7 +87,7 @@ export function OutputGenerationRecord({
     () => (series?.transformedOutputs ?? []).find((item) => item.asset.id === assetId) ?? null,
     [assetId, series],
   );
-  const provenanceSuggestions = useProvenanceSuggestions(platformDefaults, Boolean(importedRecord && open));
+  const provenanceSuggestions = useProvenanceSuggestions(Boolean(importedRecord && open));
 
   useEffect(() => {
     setOpen(false);
@@ -117,6 +99,7 @@ export function OutputGenerationRecord({
     setModelNameDraft(importedRecord?.modelName ?? '');
     setModelProvider(importedRecord?.modelProvider ?? '');
     setModelVersion(importedRecord?.modelVersion ?? '');
+    setGenerationTextType(importedRecord?.generationTextType ?? 'UNKNOWN');
     setGenerationText(importedRecord?.generationText ?? '');
     setSavedBaseline(null);
   }, [
@@ -130,6 +113,7 @@ export function OutputGenerationRecord({
     importedRecord?.modelName,
     importedRecord?.modelProvider,
     importedRecord?.modelVersion,
+    importedRecord?.generationTextType,
     importedRecord?.generationText,
   ]);
   if (!generatedRecord && !importedRecord && !transformedRecord) return null;
@@ -149,15 +133,17 @@ export function OutputGenerationRecord({
   const modelName = generatedRecord ? (generatedModel?.name ?? generatedRecord.run.modelKey) : '';
   const codexTask = generatedRecord?.run.codexTask ?? importedRecord?.codexTask ?? null;
   const baseline = savedBaseline?.id === importedRecord?.id ? savedBaseline : importedRecord;
-  // Preserve a historical execution link while the recorded model is
-  // untouched. A free-text provenance model never becomes an API route by
-  // merely sharing its display name.
-  const modelKey = modelNameDraft.trim() === baseline?.modelName.trim() ? (baseline?.modelKey ?? null) : null;
   const comparisonRole: ImportedCreationOutputDto['comparisonRole'] =
     aiGeneratedStatus === 'NO' ? 'ACTUAL' : modelNameDraft.trim() ? 'MODEL' : 'UNKNOWN';
   const timestamp = importedRecord?.createdAt ?? transformedRecord?.createdAt ?? asset.createdAt;
-  const generationTextType = importedGenerationTextType(aiGeneratedStatus);
-  const generationTextLabel = aiGeneratedStatus === 'YES' ? l.exactPrompt : l.description;
+  const generationTextLabel =
+    generationTextType === 'EXACT_PROMPT'
+      ? l.exactPrompt
+      : generationTextType === 'DESCRIPTION'
+        ? l.description
+        : generationTextType === 'RECONSTRUCTION'
+          ? l.reconstructedPrompt
+          : l.generationText;
   const generatedVersionLabel = generatedRecord
     ? experimentContext?.slot.versionId === generatedRecord.version.id
       ? experimentContext.versionLabel
@@ -174,7 +160,6 @@ export function OutputGenerationRecord({
       promptVersionId !== baseline!.promptVersionId ||
       aiGeneratedStatus !== baseline!.aiGeneratedStatus ||
       comparisonRole !== baseline!.comparisonRole ||
-      modelKey !== baseline!.modelKey ||
       modelNameDraft !== baseline!.modelName ||
       modelProvider !== baseline!.modelProvider ||
       modelVersion !== baseline!.modelVersion ||
@@ -207,7 +192,6 @@ export function OutputGenerationRecord({
         sourceUrl,
         aiGeneratedStatus,
         comparisonRole,
-        modelKey,
         modelName: modelNameDraft,
         modelProvider,
         modelVersion,
@@ -222,6 +206,7 @@ export function OutputGenerationRecord({
       setModelNameDraft(updated.modelName);
       setModelProvider(updated.modelProvider);
       setModelVersion(updated.modelVersion);
+      setGenerationTextType(updated.generationTextType);
       setGenerationText(updated.generationText);
       setSavedBaseline(updated);
       provenanceSuggestions.remember(updated.modelName, updated.modelProvider);
@@ -248,13 +233,15 @@ export function OutputGenerationRecord({
       <button
         type="button"
         data-action="output-generation-record"
-        className="flex h-10 w-full items-center gap-2 px-3 text-left text-xs hover:bg-muted/60"
+        className="flex min-h-11 w-full min-w-0 flex-wrap items-center gap-x-2 gap-y-1 px-3 py-2 text-left text-xs hover:bg-muted/60"
         aria-expanded={open}
         onClick={() => setOpen((current) => !current)}
       >
-        <ChevronRightIcon className={cn('size-3.5 text-muted-foreground transition-transform', open && 'rotate-90')} />
-        <span className="font-medium">{l.details}</span>
-        <span className="text-muted-foreground">
+        <ChevronRightIcon
+          className={cn('size-3.5 shrink-0 text-muted-foreground transition-transform', open && 'rotate-90')}
+        />
+        <span className="shrink-0 font-medium">{l.details}</span>
+        <span className="min-w-0 flex-1 break-words text-muted-foreground">
           {generatedRecord
             ? `${generatedVersionLabel}${experimentContext?.slot.versionId === generatedRecord.version.id ? ` · ${locale === 'zh' ? '方向实验' : 'Experiment'} · ${experimentContext.slot.label}` : ''} · ${modelName}`
             : transformedRecord
@@ -262,8 +249,8 @@ export function OutputGenerationRecord({
               : `${l.imported}${linkedImportedVersionLabel ? ` · ${linkedImportedVersionLabel}` : ''}`}
         </span>
         {referenceCount > 0 && (
-          <span className="ml-auto inline-flex items-center gap-1 text-muted-foreground">
-            <DictionaryIcon className="size-3.5" />
+          <span className="ml-auto inline-flex shrink-0 items-center gap-1 text-muted-foreground">
+            <DictionaryIcon className="size-3.5 shrink-0" />
             {referenceCount}
           </span>
         )}
@@ -335,7 +322,7 @@ export function OutputGenerationRecord({
                   <div className="grid grid-cols-2 gap-2">
                     <ComboboxInput
                       value={modelNameDraft}
-                      suggestions={provenanceSuggestions.modelNames}
+                      suggestions={provenanceSuggestions.modelsForSource(modelProvider)}
                       disabled={aiGeneratedStatus === 'NO'}
                       aria-label={l.model}
                       placeholder={l.modelPlaceholder}
@@ -344,7 +331,7 @@ export function OutputGenerationRecord({
                     />
                     <ComboboxInput
                       value={modelProvider}
-                      suggestions={provenanceSuggestions.platforms}
+                      suggestions={provenanceSuggestions.sourcesForModel(modelNameDraft)}
                       disabled={aiGeneratedStatus === 'NO'}
                       aria-label={l.platform}
                       placeholder={l.platformPlaceholder}
@@ -467,26 +454,29 @@ export function OutputGenerationRecord({
                 </section>
               )}
               {generatedRecord && (
-                <GenerationFactLayers
-                  version={generatedRecord.version}
-                  run={generatedRecord.run}
-                  locale={locale}
-                  terms={terms}
-                  wordPalettes={wordPalettes}
-                  labels={{
-                    userInstruction: l.userInstruction,
-                    creationInput: l.creationInput,
-                    actualRequest: l.actualRequest,
-                    flatPrompt: l.flatPrompt,
-                    fullRequest: l.fullRequest,
-                    revision: l.revision,
-                    parameters: l.parameters,
-                    terms: l.terms,
-                    references: l.references,
-                    sources: l.sources,
-                    providerReturnedDescription: l.providerReturnedDescription,
-                  }}
-                />
+                <>
+                  <GenerationFactLayers
+                    version={generatedRecord.version}
+                    run={generatedRecord.run}
+                    locale={locale}
+                    terms={terms}
+                    wordPalettes={wordPalettes}
+                    labels={{
+                      userInstruction: l.userInstruction,
+                      creationInput: l.creationInput,
+                      actualRequest: l.actualRequest,
+                      flatPrompt: l.flatPrompt,
+                      fullRequest: l.fullRequest,
+                      revision: l.revision,
+                      parameters: l.parameters,
+                      terms: l.terms,
+                      references: l.references,
+                      sources: l.sources,
+                      providerReturnedDescription: l.providerReturnedDescription,
+                    }}
+                  />
+                  <GenerationProcessDetails runId={generatedRecord.run.id} />
+                </>
               )}
             </div>
           </div>

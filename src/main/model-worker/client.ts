@@ -18,6 +18,7 @@ import type {
   GenerationBatchInput,
   GenerationChangedEvent,
   GenerationInput,
+  ImageGenerationConcurrencyDto,
   ImageEditBatchStartInput,
   ImageEditStartInput,
   ImageReframeStartInput,
@@ -30,14 +31,20 @@ import type {
   ModelWorkerStatusDto,
   StyleExplorationBatchDto,
   StyleExplorationStartInput,
+  VideoDocumentArticleGenerateInput,
+  VideoDocumentArticleGenerateResult,
+  VideoDocumentTranscriptTranslationResult,
+  VideoDocumentTranscriptTranslationWorkerInput,
 } from '@/shared/contracts';
 import { CODEX_APP_SERVER_IMAGE_MODEL_KEY } from '@/shared/extension-ids';
-import type { AssistantService, AssistantTitleExecution } from '@/main/assistant-service';
-import type { CodexChatJob, CodexService, CodexTitleExecutionOptions } from '@/main/codex-service';
+import { videoDocumentArticleGenerateResultSchema } from '@/shared/contracts/video-document';
+import { videoDocumentTranscriptTranslationResultSchema } from '@/shared/contracts/video-document-translation';
+import type { AssistantService, AssistantTitleExecution } from '@/main/assistant/assistant-service';
+import type { CodexChatJob, CodexService, CodexTitleExecutionOptions } from '@/main/assistant/codex-service';
 import type { DeepSeekApiRuntimeConfiguration } from '@/main/extensions/deepseek-api/types';
 import type { ExternalImageApiRuntimeConfiguration } from '@/main/extensions/external-image-api';
 import type { OpenAiImageApiRuntimeConfiguration } from '@/main/extensions/openai-image-api/types';
-import type { GenerationService } from '@/main/generation-service';
+import type { GenerationService } from '@/main/generation/service';
 import { parseModelWorkerMethodParams } from '@/main/model-worker/method-params';
 import {
   MODEL_WORKER_PROTOCOL_VERSION,
@@ -81,6 +88,8 @@ const REQUEST_TIMEOUT_MS = 30_000;
 const REQUEST_CANCEL_GRACE_MS = 5_000;
 const FORCE_SHUTDOWN_TIMEOUT_MS = 1_500;
 const CODEX_ASSIST_TIMEOUT_MS = 300_000;
+const VIDEO_DOCUMENT_ARTICLE_TIMEOUT_MS = 60 * 60_000;
+const VIDEO_DOCUMENT_TRANSLATION_TIMEOUT_MS = 6 * 60 * 60_000;
 const CODEX_TITLE_TIMEOUT_MS = 180_000;
 const DEFAULT_IDLE_EXIT_MS = 10 * 60_000;
 // Development builds briefly emitted these versions. They all support the
@@ -91,6 +100,9 @@ const ROLLING_UPGRADE_SETTLE_MS = 1_000;
 const WORKER_RETIRE_TIMEOUT_MS = 5_000;
 const STARTUP_FALLBACK_MIN_MS = 250;
 const STARTUP_FALLBACK_MAX_MS = 2_000;
+const WORKER_STARTUP_TERMINATION_TIMEOUT_MS = 2_000;
+const RECONNECT_BASE_DELAY_MS = 1_000;
+const RECONNECT_MAX_DELAY_MS = 60_000;
 
 interface WorkerBundleFingerprintCacheEntry {
   size: number;
@@ -339,6 +351,7 @@ export class BackgroundGenerationClient extends EventEmitter implements Generati
   private rollingUpgradeTimer: ReturnType<typeof setTimeout> | null = null;
   private rollingUpgradePromise: Promise<void> | null = null;
   private reconnectAttempt = 0;
+  private workerLaunchBlocked = false;
   private requestSequence = 0;
   private disposed = false;
   private connectionState: ModelWorkerStatusDto['state'] = 'RECONNECTING';
@@ -360,6 +373,7 @@ export class BackgroundGenerationClient extends EventEmitter implements Generati
   private hasCachedDeepSeekApiConfiguration = false;
   private cachedExternalImageApiConfigurations: readonly ExternalImageApiRuntimeConfiguration[] = [];
   private hasCachedExternalImageApiConfigurations = false;
+  private cachedConcurrencyConfiguration: ImageGenerationConcurrencyDto | null = null;
   private readonly pending = new Map<string, PendingRequest>();
   private readonly codexPendingListeners = new Set<(activeCount: number) => void>();
   readonly codex: CodexService;
@@ -435,6 +449,26 @@ export class BackgroundGenerationClient extends EventEmitter implements Generati
 
   startImageReframe(input: ImageReframeStartInput) {
     return this.call<{ runId: string; seriesId: string; versionId: string }>('generation.start-image-reframe', [input]);
+  }
+
+  generateVideoDocumentArticle(input: VideoDocumentArticleGenerateInput, signal?: AbortSignal) {
+    return this.callWorker<unknown>(
+      'video-document.article-generate',
+      [input],
+      VIDEO_DOCUMENT_ARTICLE_TIMEOUT_MS,
+      signal,
+    ).then((result): VideoDocumentArticleGenerateResult => videoDocumentArticleGenerateResultSchema.parse(result));
+  }
+
+  translateVideoDocumentTranscript(input: VideoDocumentTranscriptTranslationWorkerInput, signal?: AbortSignal) {
+    return this.callWorker<unknown>(
+      'video-document.transcript-translate',
+      [input],
+      VIDEO_DOCUMENT_TRANSLATION_TIMEOUT_MS,
+      signal,
+    ).then((result): VideoDocumentTranscriptTranslationResult =>
+      videoDocumentTranscriptTranslationResultSchema.parse(result),
+    );
   }
 
   stageDictionaryImport(fileName: string, filePath: string) {
@@ -614,6 +648,19 @@ export class BackgroundGenerationClient extends EventEmitter implements Generati
     return this.call<void>('extensions.configure-external-image-apis', [configurations]);
   }
 
+  configureConcurrency(configuration: ImageGenerationConcurrencyDto) {
+    this.cachedConcurrencyConfiguration = {
+      ...configuration,
+      limitsByModelKey: { ...configuration.limitsByModelKey },
+    };
+    if (this.connectedProtocolVersion === null) return Promise.resolve();
+    if (this.workerNeedsUpgrade()) {
+      this.scheduleRollingUpgrade();
+      return Promise.resolve();
+    }
+    return this.call<void>('generation.configure-concurrency', [this.cachedConcurrencyConfiguration]);
+  }
+
   dispose() {
     if (this.disposed) return;
     this.disposed = true;
@@ -781,6 +828,9 @@ export class BackgroundGenerationClient extends EventEmitter implements Generati
       }
     }
     if (!allowLaunch) throw new Error('Background model service is unavailable');
+    if (this.workerLaunchBlocked) {
+      throw new Error('Background model service relaunch is disabled because the previous worker did not stop');
+    }
 
     const errorPath = path.join(path.dirname(filePath), 'model-worker.error.json');
     try {
@@ -799,17 +849,22 @@ export class BackgroundGenerationClient extends EventEmitter implements Generati
     const startedAt = Date.now();
     let lastError: unknown = null;
     let fallbackDelayMs = STARTUP_FALLBACK_MIN_MS;
-    let childStopped = false;
+    let childExited = false;
+    let connectedToLaunchedWorker = false;
     let waitingForSingletonWinner = false;
+    let resolveChildExit!: () => void;
+    const childExit = new Promise<void>((resolve) => {
+      resolveChildExit = resolve;
+    });
     const onChildError = (_type: 'FatalError', location: string, report: string) => {
-      childStopped = true;
       lastError = new Error(`Background model service failed at ${location}`, {
         cause: report,
       });
       startupSignal.notifyProcessStopped();
     };
     const onChildExit = (code: number) => {
-      childStopped = true;
+      childExited = true;
+      resolveChildExit();
       if (!lastError) {
         lastError = new Error(`Background model service exited during startup with code ${code}`);
       }
@@ -827,6 +882,7 @@ export class BackgroundGenerationClient extends EventEmitter implements Generati
         ) {
           try {
             await this.connectAndRestoreRuntimeConfigurations(candidate);
+            connectedToLaunchedWorker = candidate.workerId === launched.workerId;
             return;
           } catch (error) {
             lastError = error;
@@ -843,7 +899,7 @@ export class BackgroundGenerationClient extends EventEmitter implements Generati
             waitingForSingletonWinner = true;
           }
         }
-        if (childStopped && !waitingForSingletonWinner) {
+        if (childExited && !waitingForSingletonWinner) {
           throw lastError instanceof Error
             ? lastError
             : new Error('Background model service stopped before publishing its descriptor');
@@ -857,9 +913,23 @@ export class BackgroundGenerationClient extends EventEmitter implements Generati
       const finalStartupError = readWorkerStartupError(launched.errorPath, launched.workerId);
       if (finalStartupError) lastError = finalStartupError;
     } finally {
+      startupSignal.close();
+      if (!connectedToLaunchedWorker && !childExited) {
+        launched.child.kill();
+        await Promise.race([
+          childExit,
+          new Promise<void>((resolve) => setTimeout(resolve, WORKER_STARTUP_TERMINATION_TIMEOUT_MS)),
+        ]);
+        if (!childExited && launched.child.pid !== undefined) {
+          this.workerLaunchBlocked = true;
+          console.error('[model-worker] failed startup worker did not stop; blocking further launches', {
+            pid: launched.child.pid,
+            workerId: launched.workerId,
+          });
+        }
+      }
       launched.child.off('error', onChildError);
       launched.child.off('exit', onChildExit);
-      startupSignal.close();
     }
     throw lastError instanceof Error ? lastError : new Error('Background model service did not start in time');
   }
@@ -1053,6 +1123,14 @@ export class BackgroundGenerationClient extends EventEmitter implements Generati
         true,
       );
     }
+    if (this.cachedConcurrencyConfiguration) {
+      await this.call<void>(
+        'generation.configure-concurrency',
+        [this.cachedConcurrencyConfiguration],
+        REQUEST_TIMEOUT_MS,
+        true,
+      );
+    }
   }
 
   private connect(descriptor: ModelWorkerDescriptor): Promise<void> {
@@ -1099,6 +1177,7 @@ export class BackgroundGenerationClient extends EventEmitter implements Generati
           this.connectedProtocolVersion = descriptor.protocolVersion;
           this.connectedRuntimeFingerprint = descriptor.runtimeFingerprint;
           this.reconnectAttempt = 0;
+          this.workerLaunchBlocked = false;
           this.applySnapshot(message.snapshot, true);
           resolve();
           return;
@@ -1198,7 +1277,7 @@ export class BackgroundGenerationClient extends EventEmitter implements Generati
     }
     this.pending.clear();
     if (this.disposed || this.reconnectTimer) return;
-    const delay = Math.min(5_000, 250 * 2 ** Math.min(this.reconnectAttempt++, 4));
+    const delay = Math.min(RECONNECT_MAX_DELAY_MS, RECONNECT_BASE_DELAY_MS * 2 ** Math.min(this.reconnectAttempt++, 6));
     this.reconnectTimer = setTimeout(() => {
       this.reconnectTimer = null;
       void this.ensureConnected(true).catch(() => this.scheduleReconnect());
@@ -1207,7 +1286,7 @@ export class BackgroundGenerationClient extends EventEmitter implements Generati
 
   private scheduleReconnect() {
     if (this.disposed || this.reconnectTimer || this.socket) return;
-    const delay = Math.min(5_000, 250 * 2 ** Math.min(this.reconnectAttempt++, 4));
+    const delay = Math.min(RECONNECT_MAX_DELAY_MS, RECONNECT_BASE_DELAY_MS * 2 ** Math.min(this.reconnectAttempt++, 6));
     this.reconnectTimer = setTimeout(() => {
       this.reconnectTimer = null;
       void this.ensureConnected(true).catch(() => this.scheduleReconnect());

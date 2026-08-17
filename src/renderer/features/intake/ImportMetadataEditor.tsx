@@ -1,6 +1,7 @@
 import { PencilLineIcon } from 'lucide-react';
 import type { PromptSeriesDto } from '@/shared/contracts';
 import { Button } from '@/renderer/components/ui/button';
+import type { ComboboxInputSuggestionValue } from '@/renderer/components/ui/combobox-input';
 import { ScrollArea } from '@/renderer/components/ui/scroll-area';
 import type { BatchMetadataField, IntakeImageMetadataDraft } from '@/renderer/features/intake/importMetadata';
 import {
@@ -14,11 +15,12 @@ interface Props {
   title: string;
   draft: IntakeImageMetadataDraft;
   series: PromptSeriesDto[];
-  modelSuggestions: string[];
-  platformSuggestions: string[];
+  modelSuggestions: readonly ComboboxInputSuggestionValue[];
+  sourceSuggestions: readonly ComboboxInputSuggestionValue[];
   batchMode: boolean;
   batchCount: number;
   batchFields: ReadonlySet<BatchMetadataField>;
+  relationshipEnabled: boolean;
   disabled: boolean;
   labels: ImportMetadataEditorLabels;
   onChange(draft: IntakeImageMetadataDraft): void;
@@ -33,10 +35,11 @@ export function ImportMetadataEditor({
   draft,
   series,
   modelSuggestions,
-  platformSuggestions,
+  sourceSuggestions,
   batchMode,
   batchCount,
   batchFields,
+  relationshipEnabled,
   disabled,
   labels,
   onChange,
@@ -49,7 +52,7 @@ export function ImportMetadataEditor({
     draft,
     series,
     modelSuggestions,
-    platformSuggestions,
+    sourceSuggestions,
     batchMode,
     batchFields,
     disabled,
@@ -85,7 +88,7 @@ export function ImportMetadataEditor({
         <div className="space-y-6 px-6 py-5">
           <BasicMetadataSection {...sectionProps} />
           <AiMetadataSection {...sectionProps} />
-          <RelationshipMetadataSection {...sectionProps} />
+          {relationshipEnabled && <RelationshipMetadataSection {...sectionProps} />}
         </div>
       </ScrollArea>
       {batchMode && (

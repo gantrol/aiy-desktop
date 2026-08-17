@@ -105,14 +105,10 @@ export const AlbumGlyphIcon = (props: SVGProps<SVGSVGElement>) => (
     aria-hidden="true"
     {...props}
   >
-    <path d="M7.5 4.5h8.25a2.75 2.75 0 0 1 2.75 2.75v8.5a2.75 2.75 0 0 1-2.75 2.75H7.5z" opacity=".38" />
-    <rect x="4.5" y="6.5" width="13" height="13" rx="3" fill="currentColor" opacity=".12" />
-    <rect x="4.5" y="6.5" width="13" height="13" rx="3" />
-    <path d="M8 7v12" opacity=".55" />
-    <path
-      d="M12.75 10.1c.35 1.15.95 1.75 2.1 2.1-1.15.35-1.75.95-2.1 2.1-.35-1.15-.95-1.75-2.1-2.1 1.15-.35 1.75-.95 2.1-2.1Z"
-      fill="currentColor"
-      strokeWidth="1.15"
-    />
+    <path d="M7 4.5h9.25a3.25 3.25 0 0 1 3.25 3.25V16" opacity=".48" />
+    <rect x="4.5" y="7.5" width="13" height="12" rx="2.5" fill="currentColor" opacity=".1" />
+    <rect x="4.5" y="7.5" width="13" height="12" rx="2.5" />
+    <circle cx="9" cy="11.5" r="1.25" />
+    <path d="m6.5 17 3.25-3.25 2.2 2.1 1.8-1.75 2.25 2.4" />
   </svg>
 );

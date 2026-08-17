@@ -1,5 +1,7 @@
 coverage/
+coverage-*/
 dist/
+.tmp/
 .electron-vite/
 .webpack/
 node_modules/
@@ -8,5 +10,6 @@ playwright-report/
 release/
 src/renderer/.tmp/
 test-results/
+tmp/
 package-lock.json
 tests/fixtures/

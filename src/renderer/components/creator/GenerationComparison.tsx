@@ -2,9 +2,10 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { CircleIcon, Columns2Icon, Maximize2Icon, Minimize2Icon, PlusIcon } from 'lucide-react';
 import type {
   ImageGenerationRouteDto,
-  GenerationQuality,
+  GenerationInput,
   GenerationRunDto,
   GenerationTaskDto,
+  GenerationVersionInput,
   ImportedCreationOutputDto,
   Locale,
   PromptSeriesDto,
@@ -55,15 +56,8 @@ interface Props {
   fullWindow: boolean;
   onFullWindowChange(open: boolean): void;
   onSelectAsset(assetId: string): void;
-  onGenerate(versionId: string, modelKey: string): Promise<void>;
-  onGeneratePrompt(
-    seriesId: string,
-    prompt: string,
-    modelKey: string,
-    width: number | null,
-    height: number | null,
-    quality: GenerationQuality,
-  ): Promise<void>;
+  onGenerate(input: GenerationVersionInput): Promise<void>;
+  onGeneratePrompt(input: GenerationInput): Promise<void>;
   onRetry(runId: string): Promise<void>;
   onReEdit(runId: string): void;
   notify(message: string): void;
@@ -79,6 +73,7 @@ interface ComparisonRow {
   id: string;
   label: string;
   version: PromptVersionDto | null;
+  baseVersionId: string | null;
   versionIds: string[];
   changeSummary: string;
   prompt: string;
@@ -91,10 +86,15 @@ interface ComparisonRow {
 const actualColumnKey = '__comparison_actual';
 const unknownColumnKey = '__comparison_unknown';
 
+function importedExecutionRouteKey(output: ImportedCreationOutputDto) {
+  return output.executionRouteKey ?? output.modelKey ?? null;
+}
+
 function importedColumnKey(output: ImportedCreationOutputDto) {
   if (output.comparisonRole === 'ACTUAL') return actualColumnKey;
   if (output.comparisonRole !== 'MODEL') return unknownColumnKey;
-  if (output.modelKey) return output.modelKey;
+  const executionRouteKey = importedExecutionRouteKey(output);
+  if (executionRouteKey) return executionRouteKey;
   if (!output.modelName.trim()) return unknownColumnKey;
   return `external:${[output.modelProvider, output.modelName, output.modelVersion]
     .map((value) => encodeURIComponent(value.trim().toLocaleLowerCase()))
@@ -121,6 +121,34 @@ function chronological(runs: GenerationRunDto[]) {
   return [...runs].sort(
     (left, right) => left.createdAt.localeCompare(right.createdAt) || left.id.localeCompare(right.id),
   );
+}
+
+function comparisonGenerationSettings(
+  sourceRun: GenerationRunDto | undefined,
+  model: ImageGenerationRouteDto | undefined,
+): Pick<GenerationVersionInput, 'canvasPresetKey' | 'width' | 'height' | 'quality'> {
+  const sourceWidth = sourceRun?.width ?? null;
+  const sourceHeight = sourceRun?.height ?? null;
+  const validDimensions =
+    sourceWidth !== null &&
+    sourceHeight !== null &&
+    Number.isInteger(sourceWidth) &&
+    Number.isInteger(sourceHeight) &&
+    sourceWidth >= 256 &&
+    sourceWidth <= 4096 &&
+    sourceHeight >= 256 &&
+    sourceHeight <= 4096;
+  const preferredQuality = sourceRun?.quality ?? 'low';
+  const quality =
+    model?.qualityMode === 'SELECTABLE' && !model.supportedQualities.includes(preferredQuality)
+      ? (model.supportedQualities[0] ?? preferredQuality)
+      : preferredQuality;
+  return {
+    canvasPresetKey: validDimensions ? (sourceRun?.canvasPresetKey ?? null) : null,
+    width: validDimensions ? sourceWidth : null,
+    height: validDimensions ? sourceHeight : null,
+    quality,
+  };
 }
 
 function versionGroupLabel(versions: PromptVersionDto[]) {
@@ -167,10 +195,22 @@ export function GenerationComparison({
     () => [...series.versions].sort((left, right) => right.versionNo - left.versionNo),
     [series.versions],
   );
-  const importedOutputs = series.importedOutputs ?? [];
+  const importedOutputs = useMemo(() => series.importedOutputs ?? [], [series.importedOutputs]);
   const rows = useMemo(() => {
-    const versionGroups = groupEquivalentPromptVersions(versions);
-    const versionById = new Map(versions.map((version) => [version.id, version]));
+    const importedOutputIds = new Set(importedOutputs.map((output) => output.id));
+    const derivedVersionsByImportId = new Map<string, PromptVersionDto[]>();
+    const derivedVersionIds = new Set<string>();
+    for (const version of versions) {
+      if (!version.sourceImportId || !importedOutputIds.has(version.sourceImportId)) continue;
+      derivedVersionIds.add(version.id);
+      derivedVersionsByImportId.set(version.sourceImportId, [
+        ...(derivedVersionsByImportId.get(version.sourceImportId) ?? []),
+        version,
+      ]);
+    }
+    const baseVersions = versions.filter((version) => !derivedVersionIds.has(version.id));
+    const versionGroups = groupEquivalentPromptVersions(baseVersions);
+    const versionById = new Map(baseVersions.map((version) => [version.id, version]));
     const groupIndexByVersionId = new Map(
       versionGroups.flatMap((group, groupIndex) => group.map((version) => [version.id, groupIndex] as const)),
     );
@@ -183,15 +223,19 @@ export function GenerationComparison({
           version: PromptVersionDto;
           prompt: string;
           baselinePrompt: string;
+          sourceImportIds: string[];
           runs: GenerationRunDto[];
         }
       >
     >();
-    const standaloneByPrompt = new Map<string, { prompt: string; runs: GenerationRunDto[] }>();
+    const standaloneByPrompt = new Map<
+      string,
+      { prompt: string; sourceImportIds: string[]; runs: GenerationRunDto[] }
+    >();
     const unbound: GenerationRunDto[] = [];
     for (const output of importedOutputs) {
       const run = importedRun(output);
-      const placement = importedPromptPlacement(output, versions);
+      const placement = importedPromptPlacement(output, baseVersions);
       if (placement.kind === 'VERSION') {
         const groupIndex = groupIndexByVersionId.get(placement.versionId);
         if (groupIndex === undefined) {
@@ -216,8 +260,10 @@ export function GenerationComparison({
           version: linkedVersion,
           prompt: placement.prompt,
           baselinePrompt: placement.baselinePrompt,
+          sourceImportIds: [],
           runs: [],
         };
+        current.sourceImportIds.push(output.id);
         current.runs.push(run);
         variants.set(key, current);
         linkedVariantsByGroup.set(groupIndex, variants);
@@ -225,13 +271,18 @@ export function GenerationComparison({
       }
       if (placement.kind === 'STANDALONE') {
         const key = normalizedComparisonPrompt(placement.prompt);
-        const current = standaloneByPrompt.get(key) ?? { prompt: placement.prompt, runs: [] };
+        const current = standaloneByPrompt.get(key) ?? { prompt: placement.prompt, sourceImportIds: [], runs: [] };
+        current.sourceImportIds.push(output.id);
         current.runs.push(run);
         standaloneByPrompt.set(key, current);
         continue;
       }
       unbound.push(run);
     }
+    const derivedVersionsFor = (sourceImportIds: readonly string[]) =>
+      sourceImportIds
+        .flatMap((sourceImportId) => derivedVersionsByImportId.get(sourceImportId) ?? [])
+        .sort((left, right) => left.versionNo - right.versionNo || left.id.localeCompare(right.id));
     const promptRows = versionGroups
       .map((group, groupIndex) => {
         const version = group.at(-1)!;
@@ -246,6 +297,7 @@ export function GenerationComparison({
           id: comparisonVersionGroupRowId(group),
           label: versionGroupLabel(group),
           version,
+          baseVersionId: null,
           versionIds: group.map((item) => item.id),
           changeSummary:
             group[0].changeSummary === 'MANUAL_PROMPT'
@@ -273,39 +325,56 @@ export function GenerationComparison({
       .reverse()
       .flatMap(({ groupIndex, row }) => {
         const variants: ComparisonRow[] = [...(linkedVariantsByGroup.get(groupIndex)?.entries() ?? [])].map(
-          ([id, item], index, all) => ({
-            id,
-            label: `${l.importedPrompt}${all.length > 1 ? ` ${index + 1}` : ''} · V${String(item.version.versionNo).padStart(2, '0')}`,
-            version: null,
-            versionIds: [],
-            changeSummary: '',
-            prompt: item.prompt,
-            previousPrompt: item.baselinePrompt,
-            fullPrompt: item.prompt,
-            termNames: comparisonVersionReferenceNames(item.version, locale, terms, wordPalettes),
-            runs: item.runs,
-          }),
+          ([id, item], index, all) => {
+            const derivedVersions = derivedVersionsFor(item.sourceImportIds);
+            return {
+              id,
+              label: `${l.importedPrompt}${all.length > 1 ? ` ${index + 1}` : ''} · V${String(item.version.versionNo).padStart(2, '0')}`,
+              version: derivedVersions.at(-1) ?? null,
+              baseVersionId: item.version.id,
+              versionIds: derivedVersions.map((version) => version.id),
+              changeSummary: '',
+              prompt: item.prompt,
+              previousPrompt: item.baselinePrompt,
+              fullPrompt: item.prompt,
+              termNames: comparisonVersionReferenceNames(item.version, locale, terms, wordPalettes),
+              runs: [
+                ...item.runs,
+                ...derivedVersions
+                  .flatMap((version) => version.runs)
+                  .filter((run) => run.outputDisposition !== 'FAILED'),
+              ],
+            };
+          },
         );
         return [...variants, row];
       });
-    const standaloneRows: ComparisonRow[] = [...standaloneByPrompt.entries()].map(([promptKey, item], index, all) => ({
-      id: comparisonImportedPromptRowId(promptKey),
-      label: all.length > 1 ? `${l.importedPrompt} ${index + 1}` : l.importedPrompt,
-      version: null,
-      versionIds: [],
-      changeSummary: '',
-      prompt: item.prompt,
-      previousPrompt: '',
-      fullPrompt: item.prompt,
-      termNames: [],
-      runs: item.runs,
-    }));
+    const standaloneRows: ComparisonRow[] = [...standaloneByPrompt.entries()].map(([promptKey, item], index, all) => {
+      const derivedVersions = derivedVersionsFor(item.sourceImportIds);
+      return {
+        id: comparisonImportedPromptRowId(promptKey),
+        label: all.length > 1 ? `${l.importedPrompt} ${index + 1}` : l.importedPrompt,
+        version: derivedVersions.at(-1) ?? null,
+        baseVersionId: null,
+        versionIds: derivedVersions.map((version) => version.id),
+        changeSummary: '',
+        prompt: item.prompt,
+        previousPrompt: '',
+        fullPrompt: item.prompt,
+        termNames: [],
+        runs: [
+          ...item.runs,
+          ...derivedVersions.flatMap((version) => version.runs).filter((run) => run.outputDisposition !== 'FAILED'),
+        ],
+      };
+    });
     const unboundRow: ComparisonRow[] = unbound.length
       ? [
           {
             id: '__imported',
             label: l.imported,
             version: null,
+            baseVersionId: null,
             versionIds: [],
             changeSummary: '',
             prompt: '',
@@ -318,6 +387,10 @@ export function GenerationComparison({
       : [];
     return [...standaloneRows, ...unboundRow, ...promptRows];
   }, [importedOutputs, l.imported, l.importedPrompt, locale, terms, versions, wordPalettes]);
+  const sourceImportIdByRunId = useMemo(
+    () => new Map<string, string>(importedOutputs.map((output) => [`import:${output.id}`, output.id])),
+    [importedOutputs],
+  );
   const [explicitModelKeys, setExplicitModelKeys] = useState<string[]>([]);
   const successfulAndActiveModelKeys = useMemo(
     () =>
@@ -344,7 +417,7 @@ export function GenerationComparison({
           ? l.notAiGenerated
           : key === unknownColumnKey
             ? l.unknown
-            : output.modelName || output.modelKey || l.unknown;
+            : output.modelName || importedExecutionRouteKey(output) || l.unknown;
       byKey.set(key, {
         key,
         name,
@@ -560,19 +633,33 @@ export function GenerationComparison({
     if (busyCells.has(cellKey)) return;
     setBusyCells((current) => new Set(current).add(cellKey));
     try {
+      const sourceRun =
+        chronological(row.runs.filter((run) => run.modelKey === modelKey)).at(-1) ?? chronological(row.runs).at(-1);
+      const model = modelColumns.find((candidate) => candidate.key === modelKey);
+      const settings = comparisonGenerationSettings(sourceRun, model);
       if (row.version) {
-        await onGenerate(row.version.id, modelKey);
+        await onGenerate({ versionId: row.version.id, modelKey, ...settings });
       } else if (row.fullPrompt.trim()) {
-        const sourceRun =
-          chronological(row.runs.filter((run) => run.modelKey === modelKey)).at(-1) ?? chronological(row.runs).at(-1);
-        await onGeneratePrompt(
-          series.id,
-          row.fullPrompt,
+        const sourceImportId = sourceRun ? sourceImportIdByRunId.get(sourceRun.id) : undefined;
+        if (!sourceImportId) return;
+        const prompt = row.fullPrompt.trim();
+        await onGeneratePrompt({
+          seriesId: series.id,
+          creationDraftId: null,
+          baseVersionId: row.baseVersionId,
+          sourceImportId,
+          title: series.title,
+          titleLocale: locale,
+          manualPrompt: prompt,
+          prompt,
+          changeSummary: l.importedPrompt,
+          referenceAssetIds: [],
+          termPromptLocale: locale,
+          termIds: [],
+          wordPaletteReferences: [],
           modelKey,
-          sourceRun?.width ?? sourceRun?.asset?.width ?? null,
-          sourceRun?.height ?? sourceRun?.asset?.height ?? null,
-          sourceRun?.quality ?? 'low',
-        );
+          ...settings,
+        });
       }
     } catch (reason) {
       notify(reason instanceof Error ? reason.message : String(reason));
@@ -707,18 +794,18 @@ export function GenerationComparison({
             type="single"
             value={axisMode}
             onValueChange={(value) => value && setAxisMode(value as AxisMode)}
-            className="h-7"
+            className="h-10"
           >
-            <SegmentedItem value="MODEL" className="h-6">
+            <SegmentedItem value="MODEL" className="h-9">
               {l.model}
             </SegmentedItem>
-            <SegmentedItem value="REPEAT" className="h-6" disabled={modelColumns.length === 0}>
+            <SegmentedItem value="REPEAT" className="h-9" disabled={modelColumns.length === 0}>
               {l.repeat}
             </SegmentedItem>
           </Segmented>
           {axisMode === 'REPEAT' && (
             <Select value={anchorModelKey} onValueChange={setAnchorModelKey}>
-              <SelectTrigger className="h-7 w-40">
+              <SelectTrigger className="h-9 w-40">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
@@ -741,22 +828,22 @@ export function GenerationComparison({
             type="single"
             value={promptDisplayMode}
             onValueChange={(value) => value && setPromptDisplayMode(value as PromptDisplayMode)}
-            className="h-7"
+            className="h-10"
           >
-            <SegmentedItem value="PROMPT" className="h-6 px-2.5">
+            <SegmentedItem value="PROMPT" className="h-9 px-2.5">
               {l.promptText}
             </SegmentedItem>
-            <SegmentedItem value="DIFF" className="h-6 px-2.5">
+            <SegmentedItem value="DIFF" className="h-9 px-2.5">
               {l.promptDiff}
             </SegmentedItem>
           </Segmented>
-          <div className="ml-auto flex shrink-0 items-center gap-0.5">
+          <div className="ml-auto flex min-w-0 flex-wrap items-center justify-end gap-0.5">
             {(pairSelecting || pairRunIds.A || pairRunIds.B) && (
               <>
                 <Button
                   type="button"
                   variant={activePairSlot === 'A' ? 'secondary' : 'ghost'}
-                  size="icon-sm"
+                  size="icon"
                   aria-label={l.pairA}
                   aria-pressed={activePairSlot === 'A'}
                   onClick={() => {
@@ -769,7 +856,7 @@ export function GenerationComparison({
                 <Button
                   type="button"
                   variant={activePairSlot === 'B' ? 'secondary' : 'ghost'}
-                  size="icon-sm"
+                  size="icon"
                   aria-label={l.pairB}
                   aria-pressed={activePairSlot === 'B'}
                   onClick={() => {
@@ -786,8 +873,11 @@ export function GenerationComparison({
               type="button"
               variant={pairSelecting ? 'secondary' : 'ghost'}
               size="sm"
+              className="min-h-9"
               disabled={pairItems.length < 2}
+              aria-label={l.pair}
               aria-pressed={pairSelecting}
+              title={l.pair}
               onClick={togglePairSelection}
             >
               <Columns2Icon className="size-3.5" />
@@ -798,6 +888,9 @@ export function GenerationComparison({
               type="button"
               variant={fullWindow ? 'secondary' : 'ghost'}
               size="sm"
+              className="min-h-9"
+              aria-label={fullWindow ? l.exitFullWindow : l.fullWindow}
+              title={fullWindow ? l.exitFullWindow : l.fullWindow}
               onClick={() => changeFullWindow(!fullWindow)}
             >
               {fullWindow ? <Minimize2Icon className="size-3.5" /> : <Maximize2Icon className="size-3.5" />}

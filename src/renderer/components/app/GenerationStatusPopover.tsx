@@ -8,6 +8,7 @@ import type {
   GenerationTaskDto,
   ModelWorkerStatusDto,
   PromptSeriesDto,
+  VideoDocumentTranscriptBackgroundTask,
 } from '@/shared/contracts';
 import { useI18n } from '@/renderer/i18n/useI18n';
 import { Button } from '@/renderer/components/ui/button';
@@ -21,30 +22,56 @@ import {
 } from '@/renderer/components/generation/dismissedGenerationErrors';
 import { DirectionExperimentTaskCenterItem } from '@/renderer/components/app/DirectionExperimentTaskCenterItem';
 import { GenerationIssueActions } from '@/renderer/components/app/GenerationIssueActions';
+import { VideoDocumentTranscriptTaskCenterItem } from '@/renderer/components/app/VideoDocumentTranscriptTaskCenterItem';
 
 interface Props {
   workerStatus: ModelWorkerStatusDto | null;
   codexHealth: CodexHealth | null;
   tasks: GenerationTaskDto[];
+  transcriptTasks: VideoDocumentTranscriptBackgroundTask[];
   routes: ImageGenerationRouteDto[];
   assistantRuns: AssistantRunDto[];
   agentTasks: DirectionExperimentDirectorTaskDto[];
   series: PromptSeriesDto[];
   onCancel(runId: string): Promise<void>;
+  onTranscriptCancel(operationId: string): Promise<void>;
   onRetry(runId: string): Promise<void>;
   onReEdit(runId: string): void;
   notify(message: string): void;
+}
+
+const ACTIVE_DIRECTOR_STATUSES = new Set<DirectionExperimentDirectorTaskDto['status']>([
+  'DELEGATED',
+  'PREPARING',
+  'EXECUTING',
+  'WAITING_DECISION',
+  'PAUSED',
+  'WRAPPING_UP',
+]);
+
+function backgroundStatusText(
+  labels: { reconnecting: string; active(count: number): string; attention(count: number): string; idle: string },
+  reconnecting: boolean,
+  activeCount: number,
+  attentionCount: number,
+) {
+  if (reconnecting) return labels.reconnecting;
+  if (activeCount > 0) return labels.active(activeCount);
+  if (attentionCount > 0) return labels.attention(attentionCount);
+  return labels.idle;
 }
 
 export function GenerationStatusPopover({
   workerStatus,
   codexHealth,
   tasks,
+  transcriptTasks,
   routes,
   assistantRuns,
   agentTasks,
   series,
   onCancel,
+  onTranscriptCancel,
   onRetry,
   onReEdit,
   notify,
@@ -72,15 +99,7 @@ export function GenerationStatusPopover({
       .slice(0, 5);
   }, [series]);
   const activeAssistantRuns = useMemo(() => assistantRuns.filter((run) => run.status === 'RUNNING'), [assistantRuns]);
-  const activeDirectorStatuses = new Set([
-    'DELEGATED',
-    'PREPARING',
-    'EXECUTING',
-    'WAITING_DECISION',
-    'PAUSED',
-    'WRAPPING_UP',
-  ]);
-  const activeDirectorTasks = agentTasks.filter((task) => activeDirectorStatuses.has(task.status));
+  const activeDirectorTasks = agentTasks.filter((task) => ACTIVE_DIRECTOR_STATUSES.has(task.status));
   const directorIssues = agentTasks.filter((task) => ['PARTIAL_SUCCESS', 'FAILED'].includes(task.status)).slice(0, 3);
   const agentRunIds = new Set(agentTasks.flatMap((task) => task.runIds));
   const standaloneIssues = issues.filter(({ run }) => !agentRunIds.has(run.id) && !dismissedRunIds.has(run.id));
@@ -90,19 +109,18 @@ export function GenerationStatusPopover({
   const coveredActiveRunCount = tasks.length - visibleGenerationTasks.length;
   const generationTaskCount = Math.max(0, (workerStatus?.generationTaskCount ?? tasks.length) - coveredActiveRunCount);
   const codexTaskCount = workerStatus?.codexTaskCount ?? activeAssistantRuns.length;
-  const activeCount = generationTaskCount + codexTaskCount + activeDirectorTasks.length;
+  const activeCount = generationTaskCount + codexTaskCount + activeDirectorTasks.length + transcriptTasks.length;
   const visibleAssistantRuns = activeAssistantRuns.slice(0, codexTaskCount);
   const otherCodexTaskCount = Math.max(0, codexTaskCount - visibleAssistantRuns.length);
   const reconnecting = !workerStatus || workerStatus.state === 'RECONNECTING';
   const attentionCount = standaloneIssues.length + directorIssues.length;
 
   useEffect(() => saveDismissedGenerationRunIds(dismissedRunIds), [dismissedRunIds]);
-
   useEffect(() => {
-    if (!tasks.some((task) => task.status === 'RUNNING')) return undefined;
+    if (!open || (!tasks.some((task) => task.status === 'RUNNING') && transcriptTasks.length === 0)) return undefined;
     const timer = window.setInterval(() => setNowMs(Date.now()), 1_000);
     return () => window.clearInterval(timer);
-  }, [tasks]);
+  }, [open, tasks, transcriptTasks.length]);
 
   async function cancelTasks(key: string, runIds: string[]) {
     if (busyRunId) return;
@@ -128,6 +146,18 @@ export function GenerationStatusPopover({
     }
   }
 
+  async function cancelTranscriptTask(operationId: string) {
+    if (busyRunId) return;
+    setBusyRunId(operationId);
+    try {
+      await onTranscriptCancel(operationId);
+    } catch (reason) {
+      notify(reason instanceof Error ? reason.message : String(reason));
+    } finally {
+      setBusyRunId(null);
+    }
+  }
+
   function dismissRun(runId: string) {
     setDismissedRunIds((current) => new Set(current).add(runId));
   }
@@ -137,13 +167,7 @@ export function GenerationStatusPopover({
     setOpen(false);
   }
 
-  const statusText = reconnecting
-    ? l.reconnecting
-    : activeCount > 0
-      ? l.active(activeCount)
-      : attentionCount > 0
-        ? l.attention(attentionCount)
-        : l.idle;
+  const statusText = backgroundStatusText(l, reconnecting, activeCount, attentionCount);
   const label = `${l.backgroundTasks} · ${statusText}`;
   const StatusIcon =
     reconnecting || activeCount > 0 ? LoaderCircleIcon : attentionCount > 0 ? CircleAlertIcon : CircleCheckIcon;
@@ -193,6 +217,15 @@ export function GenerationStatusPopover({
           {!activeCount && !standaloneIssues.length && !directorIssues.length && (
             <div className="px-3 py-3 text-xs text-muted-foreground">{l.idle}</div>
           )}
+          {transcriptTasks.map((task) => (
+            <VideoDocumentTranscriptTaskCenterItem
+              key={task.operationId}
+              task={task}
+              nowMs={nowMs}
+              busy={Boolean(busyRunId)}
+              onCancel={() => void cancelTranscriptTask(task.operationId)}
+            />
+          ))}
           {[...activeDirectorTasks, ...directorIssues].map((task) => (
             <DirectionExperimentTaskCenterItem
               key={task.id}

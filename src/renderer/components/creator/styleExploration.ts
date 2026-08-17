@@ -101,6 +101,7 @@ export function buildStyleExplorationStartInput({
         userInstruction: direction.prompt,
         input: {
           title: direction.label,
+          titleLocale: locale,
           manualPrompt: direction.prompt,
           // This renderer composition is a preview only. The main process
           // independently resolves the execution prompt from the same frozen

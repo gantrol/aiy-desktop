@@ -12,7 +12,6 @@ export const importedImageMetadataSchema = z
     note: z.string().max(4000),
     sourceUrl: httpUrl,
     aiGeneratedStatus: z.enum(['YES', 'NO', 'UNKNOWN', 'OTHER']),
-    modelKey: z.string().min(1).max(100).nullable(),
     modelName: z.string().max(300),
     modelProvider: z.string().max(200),
     modelVersion: z.string().max(200),

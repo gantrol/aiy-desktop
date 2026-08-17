@@ -33,13 +33,13 @@ import { Button } from '@/renderer/components/ui/button';
 import { QuietEmpty } from '@/renderer/components/ui/quiet-empty';
 import { ScrollArea } from '@/renderer/components/ui/scroll-area';
 import { Skeleton } from '@/renderer/components/ui/skeleton';
-import { MaterialCard } from '@/renderer/components/gallery/MaterialCard';
 import {
   MaterialLibraryNavigation,
   type MaterialLibraryCategory,
 } from '@/renderer/components/gallery/MaterialLibraryNavigation';
 import { MaterialAlbumHeader } from '@/renderer/components/gallery/MaterialAlbumHeader';
 import { MaterialMasonry } from '@/renderer/components/gallery/MaterialMasonry';
+import { MaterialStackView } from '@/renderer/components/gallery/MaterialStackView';
 import { MaterialInspector } from '@/renderer/components/gallery/MaterialInspector';
 import {
   MaterialLibraryToolbar,
@@ -48,11 +48,18 @@ import {
 import { MaterialBatchToolbar } from '@/renderer/components/gallery/MaterialBatchToolbar';
 import { loadGalleryPreferences, saveGalleryPreferences } from '@/renderer/components/gallery/galleryPreferences';
 import {
-  imageMaterial,
+  mediaMaterial,
   textMaterial,
   type MaterialLibraryItem,
   type SelectionModifiers,
 } from '@/renderer/components/gallery/materialLibraryTypes';
+import {
+  collectMaterialStacks,
+  immediateDescendantUnder,
+  rootAncestor,
+  type MaterialStack,
+} from '@/renderer/components/gallery/materialStacking';
+import { buildMaterialAlbumTree } from '@/renderer/components/gallery/materialAlbumTree';
 import { nextGallerySelection } from '@/renderer/components/gallery/gallerySelection';
 import { writeMaterialsDrag } from '@/renderer/components/albums/albumDrag';
 import { GalleryIntakeAdapter, type GalleryIntakeAdapterHandle } from '@/renderer/features/intake/GalleryIntakeAdapter';
@@ -190,6 +197,32 @@ export function GalleryScreen({
     () => albums.find((album) => album.id === activeAlbumId) ?? null,
     [activeAlbumId, albums],
   );
+  const materialAlbumTree = useMemo(() => buildMaterialAlbumTree(albums), [albums]);
+  const creationRootAlbum = useMemo(
+    () => albums.find((album) => album.systemKey === 'CREATION_ROOT') ?? null,
+    [albums],
+  );
+  const creationAlbumBySeriesId = useMemo(
+    () =>
+      new Map(
+        albums.flatMap((album) =>
+          album.systemKey === 'CREATION_SERIES' && album.sourceSeriesId ? [[album.sourceSeriesId, album] as const] : [],
+        ),
+      ),
+    [albums],
+  );
+  const materialAlbumIdsByMaterialId = useMemo(() => {
+    const result = new Map<string, string[]>();
+    for (const album of albums) {
+      if (album.kind !== 'USER') continue;
+      for (const member of album.members) {
+        const ids = result.get(member.materialId) ?? [];
+        ids.push(album.id);
+        result.set(member.materialId, ids);
+      }
+    }
+    return result;
+  }, [albums]);
   const creationScopeActive = Boolean(activeAlbum?.systemKey?.startsWith('CREATION_'));
   const activeCreationPath = useMemo(() => {
     if (!activeAlbum?.systemKey?.startsWith('CREATION_')) return undefined;
@@ -396,18 +429,6 @@ export function GalleryScreen({
     rangeAnchorKey.current = null;
   }
 
-  function checkedTargets() {
-    return materials
-      .filter((item) => checkedKeys.has(item.key))
-      .map((item) =>
-        item.kind === 'IMAGE'
-          ? item.image.materialId
-            ? { kind: 'MATERIAL' as const, materialId: item.image.materialId }
-            : { kind: 'IMAGE_ASSET' as const, imageAssetId: item.image.asset.id }
-          : { kind: 'MATERIAL' as const, materialId: item.text.id },
-      );
-  }
-
   function targetForMaterial(item: MaterialLibraryItem): MaterialSelectionTargetInput {
     if (item.kind === 'TEXT') return { kind: 'MATERIAL', materialId: item.text.id };
     return item.image.materialId
@@ -415,9 +436,46 @@ export function GalleryScreen({
       : { kind: 'IMAGE_ASSET', imageAssetId: item.image.asset.id };
   }
 
+  function targetsForMaterials(source: readonly MaterialLibraryItem[]) {
+    const targets: MaterialSelectionTargetInput[] = [];
+    const seen = new Set<string>();
+    for (const item of source) {
+      const target = targetForMaterial(item);
+      const key = target.kind === 'MATERIAL' ? `material:${target.materialId}` : `asset:${target.imageAssetId}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      targets.push(target);
+    }
+    return targets;
+  }
+
+  function checkedTargets() {
+    return targetsForMaterials(materials.filter((item) => checkedKeys.has(item.key)));
+  }
+
   function startMaterialDrag(event: ReactDragEvent<HTMLElement>, item: MaterialLibraryItem) {
     const targets = checkedKeys.has(item.key) && checkedKeys.size > 0 ? checkedTargets() : [targetForMaterial(item)];
     writeMaterialsDrag(event.dataTransfer, targets);
+  }
+
+  function toggleStackSelection(stackItems: readonly MaterialLibraryItem[], checked: boolean) {
+    setSelectionMode(true);
+    setSelectedKey(null);
+    setCheckedKeys((current) => {
+      const next = new Set(current);
+      for (const item of stackItems) {
+        if (checked) next.add(item.key);
+        else next.delete(item.key);
+      }
+      return next;
+    });
+    rangeAnchorKey.current = checked ? (stackItems.at(-1)?.key ?? null) : null;
+  }
+
+  function startMaterialStackDrag(event: ReactDragEvent<HTMLElement>, stackItems: readonly MaterialLibraryItem[]) {
+    const draggingCheckedSelection = checkedKeys.size > 0 && stackItems.some((item) => checkedKeys.has(item.key));
+    const source = draggingCheckedSelection ? materials.filter((item) => checkedKeys.has(item.key)) : stackItems;
+    writeMaterialsDrag(event.dataTransfer, targetsForMaterials(source));
   }
 
   // Card rows are memoized, so the handlers they receive must keep a stable
@@ -426,6 +484,8 @@ export function GalleryScreen({
   const stableEnterSelection = useStableCallback(enterSelection);
   const stableToggleSelection = useStableCallback(toggleSelection);
   const stableStartMaterialDrag = useStableCallback(startMaterialDrag);
+  const stableToggleStackSelection = useStableCallback(toggleStackSelection);
+  const stableStartMaterialStackDrag = useStableCallback(startMaterialStackDrag);
   const stableNotify = useStableCallback(notify);
   const stableCopyText = useStableCallback((text: string) => void copyText(text));
 
@@ -435,7 +495,7 @@ export function GalleryScreen({
     try {
       const targets = checkedTargets();
       await Promise.all([
-        ...albumIds.map((albumId) => window.desktopApi.materialAlbumsAddMany({ albumId, targets })),
+        ...albumIds.map((albumId) => window.desktopApi.materialAlbumsAddMany({ albumId, targets, locale })),
         ...(termIds.length ? [window.desktopApi.materialsAddToDestinations({ targets, albumIds: [], termIds })] : []),
       ]);
       galleryCacheRef.current.clear();
@@ -457,8 +517,8 @@ export function GalleryScreen({
     if (collectBusy || checkedKeys.size === 0) return;
     setCollectBusy(true);
     try {
-      const album = await window.desktopApi.materialAlbumsCreate({ title });
-      await window.desktopApi.materialAlbumsAddMany({ albumId: album.id, targets: checkedTargets() });
+      const album = await window.desktopApi.materialAlbumsCreate({ title, locale });
+      await window.desktopApi.materialAlbumsAddMany({ albumId: album.id, targets: checkedTargets(), locale });
       setAlbums(await window.desktopApi.materialAlbumsList({ locale }));
       galleryCacheRef.current.clear();
       notify(messages.gallery.batch.addedToDestinations(1));
@@ -637,16 +697,69 @@ export function GalleryScreen({
 
   const materials = useMemo(
     () =>
-      [...items.map(imageMaterial), ...filteredTexts.map(textMaterial)].sort((left, right) => {
+      [...items.map(mediaMaterial), ...filteredTexts.map(textMaterial)].sort((left, right) => {
         const timeDifference = Date.parse(right.createdAt) - Date.parse(left.createdAt);
         return timeDifference || right.key.localeCompare(left.key);
       }),
     [filteredTexts, items],
   );
 
+  const materialStacks = useMemo(
+    () =>
+      collectMaterialStacks(materials, (item) => {
+        const candidateAlbumIds: string[] = [];
+        if (item.kind !== 'TEXT' && item.image.creation) {
+          const creationAlbum = creationAlbumBySeriesId.get(item.image.creation.seriesId);
+          if (creationAlbum) candidateAlbumIds.push(creationAlbum.id);
+        }
+        const materialId = item.kind === 'TEXT' ? item.text.id : item.image.materialId;
+        if (materialId) candidateAlbumIds.push(...(materialAlbumIdsByMaterialId.get(materialId) ?? []));
+
+        let stackAlbum: MaterialAlbumDto | null = null;
+        if (activeAlbum) {
+          for (const candidateId of candidateAlbumIds) {
+            stackAlbum = immediateDescendantUnder(candidateId, activeAlbum.id, materialAlbumTree);
+            if (stackAlbum) break;
+          }
+        } else {
+          for (const candidateId of candidateAlbumIds) {
+            const candidate = materialAlbumTree.byId.get(candidateId);
+            if (!candidate) continue;
+            if (candidate.systemKey?.startsWith('CREATION_') && creationRootAlbum) {
+              stackAlbum = immediateDescendantUnder(candidate.id, creationRootAlbum.id, materialAlbumTree);
+            } else if (candidate.kind === 'USER') {
+              const root = rootAncestor(candidate.id, materialAlbumTree);
+              stackAlbum = root?.kind === 'USER' ? root : null;
+            }
+            if (stackAlbum) break;
+          }
+        }
+
+        return stackAlbum
+          ? {
+              key: `album:${stackAlbum.id}`,
+              title: stackAlbum.title,
+              target: { kind: 'ALBUM' as const, id: stackAlbum.id },
+            }
+          : null;
+      }),
+    [
+      activeAlbum,
+      creationAlbumBySeriesId,
+      creationRootAlbum,
+      materialAlbumIdsByMaterialId,
+      materialAlbumTree,
+      materials,
+    ],
+  );
+
+  const openMaterialStack = useStableCallback((stack: MaterialStack) => {
+    if (stack.target?.kind === 'ALBUM') navigateCollection({ kind: 'album', albumId: stack.target.id });
+  });
+
   const revealContextForMaterial = useCallback(
     (item: MaterialLibraryItem): AssetFileRevealContext | undefined => {
-      if (item.kind !== 'IMAGE') return undefined;
+      if (item.kind === 'TEXT') return undefined;
       if (activeAlbum?.kind === 'USER') return { kind: 'ALBUM', albumId: activeAlbum.id };
       if (dictionarySelection?.termId) return { kind: 'TERM', termId: dictionarySelection.termId };
       if (dictionaryActive) return { kind: 'DICTIONARY' };
@@ -669,13 +782,13 @@ export function GalleryScreen({
     [materials, selectedKey],
   );
   const selectedFavoriteMaterialId =
-    selectedItem?.kind === 'IMAGE'
+    selectedItem && selectedItem.kind !== 'TEXT'
       ? (selectedItem.image.favorite?.materialId ?? null)
       : selectedItem && !activeAlbumId
         ? selectedItem.text.id
         : null;
   const selectedFavoriteBusy =
-    selectedItem?.kind === 'IMAGE'
+    selectedItem && selectedItem.kind !== 'TEXT'
       ? busyFavoriteMaterialId === selectedItem.image.asset.id ||
         busyFavoriteMaterialId === selectedItem.image.materialId
       : Boolean(selectedItem && busyFavoriteMaterialId === selectedItem.text.id);
@@ -702,7 +815,7 @@ export function GalleryScreen({
     const requestedMaterialId = location.requestedMaterialId;
     if (!active || !requestedMaterialId || activeAlbumId || dictionaryActive) return;
     const imported = materials.find((item) =>
-      item.kind === 'IMAGE' ? item.image.materialId === requestedMaterialId : item.text.id === requestedMaterialId,
+      item.kind !== 'TEXT' ? item.image.materialId === requestedMaterialId : item.text.id === requestedMaterialId,
     );
     if (!imported) return;
     setSelectedKey(imported.key);
@@ -750,6 +863,7 @@ export function GalleryScreen({
         creationRelation: creationScopeActive ? creationRelation : undefined,
         unratedDimensions,
         cursor: nextCursor,
+        knownTotal: total,
         limit: pageSize,
       });
       if (requestId.current !== activeRequest) return;
@@ -758,12 +872,11 @@ export function GalleryScreen({
         rememberGallerySnapshot(galleryCacheRef.current, galleryQueryKey, {
           items: nextItems,
           favoriteTexts,
-          total: page.total,
+          total,
           nextCursor: page.nextCursor,
         });
         return nextItems;
       });
-      setTotal(page.total);
       setNextCursor(page.nextCursor);
     } catch (reason) {
       if (requestId.current === activeRequest) setError(reason instanceof Error ? reason.message : String(reason));
@@ -786,6 +899,7 @@ export function GalleryScreen({
     imageEnabled,
     locale,
     nextCursor,
+    total,
     unratedDimensions,
   ]);
 
@@ -902,7 +1016,7 @@ export function GalleryScreen({
   async function addFavorite(item: MaterialLibraryItem) {
     if (busyFavoriteMaterialId) return;
     const target: MaterialSelectionTargetInput =
-      item.kind === 'IMAGE'
+      item.kind !== 'TEXT'
         ? item.image.materialId
           ? { kind: 'MATERIAL', materialId: item.image.materialId }
           : { kind: 'IMAGE_ASSET', imageAssetId: item.image.asset.id }
@@ -912,7 +1026,7 @@ export function GalleryScreen({
     try {
       const result = await window.desktopApi.favoriteAdd(target);
       galleryCacheRef.current.clear();
-      if (item.kind === 'IMAGE') {
+      if (item.kind !== 'TEXT') {
         setItems((current) =>
           current.map((entry) =>
             entry.asset.id === item.image.asset.id
@@ -942,6 +1056,7 @@ export function GalleryScreen({
     try {
       await window.desktopApi.materialAlbumsCreate({
         title,
+        locale,
         parentAlbumId: parentAlbumId ?? undefined,
       });
       await reloadAlbums();
@@ -959,7 +1074,7 @@ export function GalleryScreen({
   async function renameAlbum(album: MaterialAlbumDto, title: string) {
     setAlbumMutationBusy(true);
     try {
-      await window.desktopApi.materialAlbumsRename({ albumId: album.id, title });
+      await window.desktopApi.materialAlbumsRename({ albumId: album.id, title, locale });
       await reloadAlbums();
       notify(messages.gallery.albums.renamed);
     } catch (reason) {
@@ -994,7 +1109,7 @@ export function GalleryScreen({
     if (!targets.length || collectBusy) return;
     setCollectBusy(true);
     try {
-      await window.desktopApi.materialAlbumsAddMany({ albumId, targets });
+      await window.desktopApi.materialAlbumsAddMany({ albumId, targets, locale });
       galleryCacheRef.current.clear();
       await reloadAlbums();
       if (activeAlbumId === albumId) setRetryKey((value) => value + 1);
@@ -1020,6 +1135,7 @@ export function GalleryScreen({
       if (checked) {
         await window.desktopApi.materialAlbumsAddMany({
           albumId: album.id,
+          locale,
           targets: [
             selectedItem.kind === 'TEXT'
               ? { kind: 'MATERIAL', materialId: selectedItem.text.id }
@@ -1029,7 +1145,11 @@ export function GalleryScreen({
           ],
         });
       } else if (member) {
-        await window.desktopApi.materialAlbumsRemove({ albumId: album.id, materialIds: [member.materialId] });
+        await window.desktopApi.materialAlbumsRemove({
+          albumId: album.id,
+          materialIds: [member.materialId],
+          locale,
+        });
       }
       galleryCacheRef.current.clear();
       await reloadAlbums();
@@ -1355,28 +1475,21 @@ export function GalleryScreen({
                         />
                       </div>
                     ) : (
-                      <div
-                        data-material-view="LIST"
-                        className="m-4 min-w-0 overflow-hidden rounded-lg border bg-surface sm:m-6"
-                      >
-                        {materials.map((item) => (
-                          <MaterialCard
-                            key={item.key}
-                            item={item}
-                            selected={selectedKey === item.key}
-                            checked={checkedKeys.has(item.key)}
-                            selectionMode={selectionMode}
-                            selectionAvailable={activeAlbum?.kind !== 'USER'}
-                            viewMode="LIST"
-                            onSelect={stableSelectMaterial}
-                            onEnterSelection={stableEnterSelection}
-                            onToggleSelection={stableToggleSelection}
-                            onCopyText={stableCopyText}
-                            notify={stableNotify}
-                            onDragStart={stableStartMaterialDrag}
-                            revealContext={revealContextForMaterial(item)}
-                          />
-                        ))}
+                      <div data-material-view="LIST" data-material-layout="STACK" className="w-full min-w-0 p-4 sm:p-6">
+                        <MaterialStackView
+                          stacks={materialStacks}
+                          selectedKey={selectedKey}
+                          checkedKeys={checkedKeys}
+                          selectionMode={selectionMode}
+                          selectionAvailable={activeAlbum?.kind !== 'USER'}
+                          onSelect={stableSelectMaterial}
+                          onToggleStackSelection={stableToggleStackSelection}
+                          onOpenStack={openMaterialStack}
+                          onCopyText={stableCopyText}
+                          notify={stableNotify}
+                          onDragStart={stableStartMaterialStackDrag}
+                          revealContextForItem={revealContextForMaterial}
+                        />
                       </div>
                     )}
                     <div className="flex min-h-16 items-center justify-center gap-3 px-4 pb-6 text-xs text-muted-foreground">

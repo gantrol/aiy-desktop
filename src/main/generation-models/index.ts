@@ -23,6 +23,7 @@ export type {
   GenerationModel,
   GenerationModelResult,
   GenerationProvider,
+  GenerationProviderDefinition,
   GenerationStarted,
   ImageGenerationRoute,
   PreparedGenerationExecution,

@@ -100,8 +100,11 @@ const imageApiConfigurationSchema = z
 
 const manifestSchema = z
   .object({
+    // Protocol version for the manifest JSON shape. Extension releases use
+    // `version`; changing code, copy, or contributions does not advance this.
     manifestVersion: z.literal(1),
     kind: z.enum(['CAPABILITY', 'LANGUAGE']),
+    category: z.enum(['FRONTEND_DESIGN']).optional(),
     id: identifier,
     version: z
       .string()

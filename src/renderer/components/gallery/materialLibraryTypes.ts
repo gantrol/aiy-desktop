@@ -1,7 +1,7 @@
 import type { FavoriteTextMaterialDto, GalleryItemDto } from '@/shared/contracts';
 
 export type MaterialLibraryItem =
-  | { key: string; kind: 'IMAGE'; createdAt: string; image: GalleryItemDto }
+  | { key: string; kind: 'IMAGE' | 'VIDEO'; createdAt: string; image: GalleryItemDto }
   | { key: string; kind: 'TEXT'; createdAt: string; text: FavoriteTextMaterialDto };
 
 /** Which multi-select gesture a click carried: shift extends, ctrl/cmd toggles. */
@@ -21,19 +21,20 @@ export function selectionModifiers(event: {
 // Gallery list updates replace only the rows that actually changed, so caching
 // the wrapper by source row keeps every untouched card referentially equal and
 // lets memoized cards skip the re-render.
-const imageMaterials = new WeakMap<GalleryItemDto, MaterialLibraryItem>();
+const mediaMaterials = new WeakMap<GalleryItemDto, MaterialLibraryItem>();
 const textMaterials = new WeakMap<FavoriteTextMaterialDto, MaterialLibraryItem>();
 
-export function imageMaterial(item: GalleryItemDto): MaterialLibraryItem {
-  const cached = imageMaterials.get(item);
+export function mediaMaterial(item: GalleryItemDto): MaterialLibraryItem {
+  const cached = mediaMaterials.get(item);
   if (cached) return cached;
+  const kind = item.materialKind ?? (item.asset.mimeType.startsWith('video/') ? 'VIDEO' : 'IMAGE');
   const created: MaterialLibraryItem = {
-    key: `image:${item.asset.id}`,
-    kind: 'IMAGE',
+    key: `${kind.toLowerCase()}:${item.asset.id}`,
+    kind,
     createdAt: item.createdAt,
     image: item,
   };
-  imageMaterials.set(item, created);
+  mediaMaterials.set(item, created);
   return created;
 }
 

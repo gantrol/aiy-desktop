@@ -5,7 +5,6 @@ import { Button } from '@/renderer/components/ui/button';
 import { Checkbox } from '@/renderer/components/ui/checkbox';
 import { Textarea } from '@/renderer/components/ui/textarea';
 import { useI18n } from '@/renderer/i18n/useI18n';
-import type { MessageCatalog } from '@/renderer/i18n/catalog';
 import { useProvenanceSuggestions } from '@/renderer/components/provenance/useProvenanceSuggestions';
 import type { LocalIntakeItem } from '@/renderer/features/intake/intake-state';
 import { isCreatorImageMimeType } from '@/renderer/features/intake/intakeImageFormats';
@@ -51,11 +50,9 @@ function applyBatchFields(
   if (fields.has('aiGeneratedStatus')) next = updateAiGeneratedStatus(next, source.aiGeneratedStatus);
   if (fields.has('modelName')) {
     next.modelName = source.modelName;
-    next.modelKey = source.modelKey;
     if (source.modelName.trim() && next.aiGeneratedStatus === 'UNKNOWN') {
       next = updateAiGeneratedStatus(next, 'YES');
       next.modelName = source.modelName;
-      next.modelKey = source.modelKey;
     }
   }
   if (fields.has('modelProvider')) next.modelProvider = source.modelProvider;
@@ -73,25 +70,12 @@ function applyBatchFields(
     next.promptVersionId = next.seriesId === source.seriesId ? source.promptVersionId : null;
   }
   if (next.aiGeneratedStatus === 'NO') {
-    next.modelKey = null;
     next.modelName = '';
     next.modelProvider = '';
     next.modelVersion = '';
   }
   if (!next.seriesId) next.promptVersionId = null;
   return next;
-}
-
-function provenancePlatformDefaults(labels: MessageCatalog['creator']['generationRecord']) {
-  return [
-    labels.platformOfficialApi,
-    labels.platformOpenRouter,
-    labels.platformChatGptApp,
-    labels.platformCodex,
-    labels.platformGeminiApp,
-    labels.platformDoubao,
-    labels.platformLocal,
-  ];
 }
 
 export function ImportReviewWorkspace({
@@ -114,16 +98,16 @@ export function ImportReviewWorkspace({
   const { locale, messages } = useI18n();
   const labels = messages.intake.review;
   const recordLabels = messages.creator.generationRecord;
-  const imageItems = useMemo(
-    () => items.filter((item): item is Extract<LocalIntakeItem, { kind: 'IMAGE' }> => item.kind === 'IMAGE'),
+  const mediaItems = useMemo(
+    () => items.filter((item): item is Exclude<LocalIntakeItem, { kind: 'TEXT' }> => item.kind !== 'TEXT'),
     [items],
   );
-  const imageIds = useMemo(() => new Set(imageItems.map((item) => item.id)), [imageItems]);
-  const knownImageIds = useRef(new Set<string>());
+  const mediaIds = useMemo(() => new Set(mediaItems.map((item) => item.id)), [mediaItems]);
+  const knownMediaIds = useRef(new Set<string>());
   const [activeId, setActiveId] = useState(items[0]?.id ?? '');
-  const [selectedIds, setSelectedIds] = useState<Set<string>>(() => new Set(imageItems.map((item) => item.id)));
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(() => new Set(mediaItems.map((item) => item.id)));
   const [drafts, setDrafts] = useState<Record<string, IntakeImageMetadataDraft>>(() =>
-    Object.fromEntries(imageItems.map((item) => [item.id, createIntakeImageMetadataDraft(item)])),
+    Object.fromEntries(mediaItems.map((item) => [item.id, createIntakeImageMetadataDraft(item)])),
   );
   const [batchMode, setBatchMode] = useState(false);
   const [batchDraft, setBatchDraft] = useState<IntakeImageMetadataDraft | null>(null);
@@ -132,36 +116,37 @@ export function ImportReviewWorkspace({
   useEffect(() => {
     setDrafts((current) => {
       const next: Record<string, IntakeImageMetadataDraft> = {};
-      for (const item of imageItems) next[item.id] = current[item.id] ?? createIntakeImageMetadataDraft(item);
+      for (const item of mediaItems) next[item.id] = current[item.id] ?? createIntakeImageMetadataDraft(item);
       return next;
     });
     setSelectedIds((current) => {
-      const next = new Set([...current].filter((id) => imageIds.has(id)));
-      for (const id of imageIds) if (!knownImageIds.current.has(id)) next.add(id);
+      const next = new Set([...current].filter((id) => mediaIds.has(id)));
+      for (const id of mediaIds) if (!knownMediaIds.current.has(id)) next.add(id);
       return next;
     });
-    knownImageIds.current = imageIds;
+    knownMediaIds.current = mediaIds;
     setActiveId((current) => (items.some((item) => item.id === current) ? current : (items[0]?.id ?? '')));
-  }, [imageIds, imageItems, items]);
+  }, [mediaIds, mediaItems, items]);
 
-  const selectedImageIds = imageItems.map((item) => item.id).filter((id) => selectedIds.has(id));
-  const selectedCount = selectedImageIds.length;
+  const selectedMediaItems = mediaItems.filter((item) => selectedIds.has(item.id));
+  const selectedMediaIds = selectedMediaItems.map((item) => item.id);
+  const selectedCount = selectedMediaIds.length;
   const activeItem = items.find((item) => item.id === activeId) ?? items[0];
-  const activeDraft = activeItem?.kind === 'IMAGE' ? drafts[activeItem.id] : undefined;
+  const activeDraft = activeItem && activeItem.kind !== 'TEXT' ? drafts[activeItem.id] : undefined;
   const editorDraft = batchMode ? batchDraft : activeDraft;
-  const allNamesValid = imageItems.every((item) => Boolean(drafts[item.id]?.displayName.trim()));
+  const allNamesValid = mediaItems.every((item) => Boolean(drafts[item.id]?.displayName.trim()));
   const hasExistingRelationship = Object.values(drafts).some((draft) => Boolean(draft.seriesId));
+  const relationshipEnabled = batchMode
+    ? selectedMediaItems.every((item) => item.kind === 'IMAGE')
+    : activeItem?.kind === 'IMAGE';
   const canImportCreation =
-    imageItems.length > 0 &&
-    imageItems.length <= 8 &&
-    imageItems.every((item) => isCreatorImageMimeType(item.mimeType)) &&
+    mediaItems.length > 0 &&
+    mediaItems.length <= 8 &&
+    mediaItems.every((item) => item.kind === 'IMAGE' && isCreatorImageMimeType(item.mimeType)) &&
     !hasExistingRelationship;
   const kind =
-    imageItems.length === items.length ? labels.images : imageItems.length === 0 ? labels.text : labels.mixed;
-  const provenanceSuggestions = useProvenanceSuggestions(
-    provenancePlatformDefaults(recordLabels),
-    imageItems.length > 0,
-  );
+    mediaItems.length === items.length ? labels.images : mediaItems.length === 0 ? labels.text : labels.mixed;
+  const provenanceSuggestions = useProvenanceSuggestions(mediaItems.length > 0);
 
   useEffect(() => {
     if (selectedCount < 2 && batchMode) {
@@ -171,7 +156,7 @@ export function ImportReviewWorkspace({
   }, [batchMode, selectedCount]);
 
   function enterBatch() {
-    const sourceId = selectedImageIds.includes(activeId) ? activeId : selectedImageIds[0];
+    const sourceId = selectedMediaIds.includes(activeId) ? activeId : selectedMediaIds[0];
     const source = sourceId ? drafts[sourceId] : undefined;
     if (!source || selectedCount < 2) return;
     setBatchDraft({ ...source });
@@ -181,11 +166,14 @@ export function ImportReviewWorkspace({
 
   function applyBatch() {
     if (!batchDraft || selectedCount < 1) return;
+    const applicableFields = relationshipEnabled
+      ? batchFields
+      : new Set([...batchFields].filter((field) => field !== 'seriesId' && field !== 'promptVersionId'));
     setDrafts((current) => {
       const next = { ...current };
-      for (const id of selectedImageIds) {
+      for (const id of selectedMediaIds) {
         const target = next[id];
-        if (target) next[id] = applyBatchFields(target, batchDraft, batchFields);
+        if (target) next[id] = applyBatchFields(target, batchDraft, applicableFields);
       }
       return next;
     });
@@ -250,7 +238,7 @@ export function ImportReviewWorkspace({
               return next;
             })
           }
-          onSelectAll={(selected) => setSelectedIds(selected ? new Set(imageIds) : new Set())}
+          onSelectAll={(selected) => setSelectedIds(selected ? new Set(mediaIds) : new Set())}
           onRemove={onRemove}
           onAddFiles={onAddFiles}
         />
@@ -273,14 +261,15 @@ export function ImportReviewWorkspace({
         ) : editorDraft && activeItem ? (
           <ImportMetadataEditor
             key={batchMode ? 'batch' : activeItem.id}
-            title={activeItem.kind === 'IMAGE' ? activeItem.name : labels.text}
+            title={activeItem.name}
             draft={editorDraft}
             series={series}
-            modelSuggestions={provenanceSuggestions.modelNames}
-            platformSuggestions={provenanceSuggestions.platforms}
+            modelSuggestions={provenanceSuggestions.modelsForSource(editorDraft.modelProvider)}
+            sourceSuggestions={provenanceSuggestions.sourcesForModel(editorDraft.modelName)}
             batchMode={batchMode}
             batchCount={selectedCount}
             batchFields={batchFields}
+            relationshipEnabled={relationshipEnabled}
             disabled={disabled}
             labels={{
               ...labels,
@@ -289,7 +278,7 @@ export function ImportReviewWorkspace({
             }}
             onChange={(draft) => {
               if (batchMode) setBatchDraft(draft);
-              else if (activeItem.kind === 'IMAGE') setDrafts((current) => ({ ...current, [activeItem.id]: draft }));
+              else setDrafts((current) => ({ ...current, [activeItem.id]: draft }));
             }}
             onBatchFieldChange={(field, enabled) =>
               setBatchFields((current) => {
@@ -325,23 +314,19 @@ export function ImportReviewWorkspace({
         </div>
         <Button
           type="button"
-          data-action="intake-start-creation"
           variant="outline"
           disabled={disabled || !canImportCreation}
-          aria-busy={importingCreation}
           onClick={() => onImportAsCreation(imageDetailsFromDrafts(drafts))}
         >
           {importingCreation && <LoaderCircleIcon className="size-4 animate-spin" />}
           {labels.importAsCreation}
         </Button>
-        <Button type="button" data-action="intake-cancel" variant="outline" disabled={disabled} onClick={onCancel}>
+        <Button type="button" variant="outline" disabled={disabled} onClick={onCancel}>
           {labels.cancel}
         </Button>
         <Button
           type="button"
-          data-action="intake-import"
           disabled={disabled || !allNamesValid || items.length === 0}
-          aria-busy={importingMaterial}
           onClick={() => onImport(imageDetailsFromDrafts(drafts))}
         >
           {importingMaterial && <LoaderCircleIcon className="size-4 animate-spin" />}

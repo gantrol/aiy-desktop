@@ -6,6 +6,7 @@ import type {
   GenerationTaskDto,
   ModelWorkerStatusDto,
   PromptSeriesDto,
+  VideoDocumentTranscriptBackgroundTask,
 } from '@/shared/contracts';
 import { ChevronLeftIcon, ChevronRightIcon } from 'lucide-react';
 import { useI18n } from '@/renderer/i18n/useI18n';
@@ -19,6 +20,7 @@ interface Props {
   workerStatus: ModelWorkerStatusDto | null;
   codexHealth: CodexHealth | null;
   generationTasks: GenerationTaskDto[];
+  transcriptBackgroundTasks: VideoDocumentTranscriptBackgroundTask[];
   imageGenerationRoutes: ImageGenerationRouteDto[];
   assistantRuns: AssistantRunDto[];
   agentTasks: DirectionExperimentDirectorTaskDto[];
@@ -36,6 +38,7 @@ interface Props {
   onGoBack(): void;
   onGoForward(): void;
   onGenerationCancel(runId: string): Promise<void>;
+  onTranscriptRecognitionCancel(operationId: string): Promise<void>;
   onGenerationRetry(runId: string): Promise<void>;
   onGenerationReEdit(runId: string): void;
 }
@@ -44,6 +47,7 @@ export function AppTitleBar({
   workerStatus,
   codexHealth,
   generationTasks,
+  transcriptBackgroundTasks,
   imageGenerationRoutes,
   assistantRuns,
   agentTasks,
@@ -61,6 +65,7 @@ export function AppTitleBar({
   onGoBack,
   onGoForward,
   onGenerationCancel,
+  onTranscriptRecognitionCancel,
   onGenerationRetry,
   onGenerationReEdit,
 }: Props) {
@@ -126,11 +131,13 @@ export function AppTitleBar({
             workerStatus={workerStatus}
             codexHealth={codexHealth}
             tasks={generationTasks}
+            transcriptTasks={transcriptBackgroundTasks}
             routes={imageGenerationRoutes}
             assistantRuns={assistantRuns}
             agentTasks={agentTasks}
             series={series}
             onCancel={onGenerationCancel}
+            onTranscriptCancel={onTranscriptRecognitionCancel}
             onRetry={onGenerationRetry}
             onReEdit={onGenerationReEdit}
             notify={notify}

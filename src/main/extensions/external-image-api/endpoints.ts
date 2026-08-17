@@ -186,6 +186,19 @@ export function normalizeExternalImageApiSettings(
   return normalized;
 }
 
+/** Connection fields exclude the independently selected provider model. */
+export function externalImageApiConnectionSettings(
+  extensionId: ExternalImageApiExtensionId,
+  rawSettings: Record<string, string>,
+) {
+  const { modelId: _modelId, ...connectionSettings } = normalizeExternalImageApiSettings(extensionId, rawSettings);
+  return connectionSettings;
+}
+
+export function externalImageApiModelId(extensionId: ExternalImageApiExtensionId, rawSettings: Record<string, string>) {
+  return normalizeExternalImageApiSettings(extensionId, rawSettings).modelId;
+}
+
 export function resolveExternalImageApiEndpoint(
   extensionId: ExternalImageApiExtensionId,
   rawSettings: Record<string, string>,

@@ -7,6 +7,7 @@ import type {
   Locale,
   TermDraftInput,
   TermEditorDto,
+  TermIllustrationPurpose,
   TermListItem,
   TermMediaItemDto,
 } from '@/shared/contracts';
@@ -32,6 +33,9 @@ import { NewTermDialog } from '@/renderer/components/dictionary/NewTermDialog';
 import { TermDetailView } from '@/renderer/components/dictionary/TermDetailView';
 import { TermEditor } from '@/renderer/components/dictionary/TermEditor';
 import { TermOverview } from '@/renderer/components/dictionary/TermOverview';
+import { TermIllustrationAction } from '@/renderer/features/term-illustration/TermIllustrationAction';
+import { TermIllustrationPanel } from '@/renderer/features/term-illustration/TermIllustrationPanel';
+import { TermIllustrationProvider } from '@/renderer/features/term-illustration/TermIllustrationProvider';
 import {
   deriveDictionaryBrowseContext,
   dictionaryBrowseBreadcrumb,
@@ -53,6 +57,7 @@ interface Props {
   onNavigate(location: DictionaryLocation, mode?: NavigationMode): void;
   onNavigateBack(): void;
   onHistoryNavigationGuardChange(guard: HistoryNavigationGuard | null): void;
+  onOpenCreation(seriesId: string, assetId: string | null, versionId: string | null): void;
   refresh(): Promise<void>;
   notify(message: string): void;
 }
@@ -88,6 +93,7 @@ export function DictionaryScreen({
   onNavigate,
   onNavigateBack,
   onHistoryNavigationGuardChange,
+  onOpenCreation,
   refresh,
   notify,
 }: Props) {
@@ -300,9 +306,12 @@ export function DictionaryScreen({
   const availableAssets = useMemo(() => {
     const byId = new Map<string, AssetDto>();
     for (const series of data.series) {
+      if (series.cover) byId.set(series.cover.id, series.cover);
       for (const version of series.versions) {
         for (const run of version.runs) if (run.asset) byId.set(run.asset.id, run.asset);
       }
+      for (const output of series.importedOutputs ?? []) byId.set(output.asset.id, output.asset);
+      for (const output of series.transformedOutputs ?? []) byId.set(output.asset.id, output.asset);
     }
     return [...byId.values()];
   }, [data.series]);
@@ -620,19 +629,35 @@ export function DictionaryScreen({
     });
   }
 
-  async function addMedia(assetIds: string[]) {
+  async function addMedia(assetIds: string[], preferredRole?: TermIllustrationPurpose) {
     if (!detail || !assetIds.length) return;
     const termId = detail.id;
-    await mutateMedia(termId, () => window.desktopApi.dictionaryAddMedia({ termId, assetIds }), c.imageAdded);
+    await mutateMedia(
+      termId,
+      () => window.desktopApi.dictionaryAddMedia({ termId, assetIds, preferredRole }),
+      c.imageAdded,
+    );
   }
 
-  async function importMedia() {
+  async function importMedia(preferredRole?: TermIllustrationPurpose) {
     try {
       const selection = await window.desktopApi.assetsChooseReferences();
-      if (selection.assets.length) await addMedia(selection.assets.map((asset) => asset.id));
+      if (selection.assets.length)
+        await addMedia(
+          selection.assets.map((asset) => asset.id),
+          preferredRole,
+        );
     } catch (reason) {
       notify(dictionaryMutationError(reason, c.operationFailed));
     }
+  }
+
+  async function reloadCurrentTerm() {
+    if (!detail) return;
+    const updated = await window.desktopApi.dictionaryGet(detail.id, locale);
+    setDetail(updated);
+    updateMedia(updated.id, updated.media);
+    await refresh();
   }
 
   async function setMediaCover(mediaId: string) {
@@ -754,22 +779,53 @@ export function DictionaryScreen({
             notify={notify}
           />
           <div className="min-h-0 min-w-0 flex-1 overflow-hidden">
-            {surface === 'detail' && (
-              <TermDetailView
-                className="size-full"
-                term={detail}
-                locale={locale}
-                selected={Boolean(detail && selectionTermIds.includes(detail.id))}
-                loading={detailLoading}
-                error={detailLoadError}
-                onRetry={retryDetail}
-                onBack={() => requestNavigation({ kind: 'overview' })}
-                showBack={false}
-                onSelectedChange={toggleSelection}
-                onEdit={() => editTerm()}
-                notify={notify}
-              />
-            )}
+            {surface === 'detail' &&
+              (detail ? (
+                <TermIllustrationProvider
+                  key={detail.id}
+                  term={detail}
+                  locale={locale}
+                  routes={data.imageGenerationRoutes}
+                  availableAssets={availableAssets}
+                  mediaBusy={mediaBusy}
+                  onAddMedia={addMedia}
+                  onImportMedia={importMedia}
+                  onTermMediaChanged={reloadCurrentTerm}
+                  onOpenCreation={onOpenCreation}
+                  notify={notify}
+                >
+                  <TermDetailView
+                    className="size-full"
+                    term={detail}
+                    locale={locale}
+                    selected={selectionTermIds.includes(detail.id)}
+                    loading={detailLoading}
+                    error={detailLoadError}
+                    onRetry={retryDetail}
+                    onBack={() => requestNavigation({ kind: 'overview' })}
+                    showBack={false}
+                    onSelectedChange={toggleSelection}
+                    onEdit={() => editTerm()}
+                    headerAction={<TermIllustrationAction />}
+                    afterContent={<TermIllustrationPanel />}
+                    notify={notify}
+                  />
+                </TermIllustrationProvider>
+              ) : (
+                <TermDetailView
+                  className="size-full"
+                  term={null}
+                  locale={locale}
+                  selected={false}
+                  loading={detailLoading}
+                  error={detailLoadError}
+                  onRetry={retryDetail}
+                  onBack={() => requestNavigation({ kind: 'overview' })}
+                  showBack={false}
+                  onSelectedChange={toggleSelection}
+                  notify={notify}
+                />
+              ))}
 
             {surface === 'edit' && (
               <TermEditor

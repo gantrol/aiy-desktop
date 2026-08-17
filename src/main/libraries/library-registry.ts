@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import {
   closeSync,
+  copyFileSync,
   existsSync,
   fsyncSync,
   lstatSync,
@@ -327,6 +328,23 @@ function replaceFileAtomically(temporaryPath: string, filePath: string) {
     renameSync(temporaryPath, filePath);
   } catch (initialError) {
     const code = (initialError as NodeJS.ErrnoException).code;
+    if (process.platform === 'win32' && code === 'EXDEV' && existsSync(temporaryPath)) {
+      // Packaged desktop apps can expose one logical AppData directory across
+      // MSIX redirection layers. Windows then reports EXDEV even though both
+      // logical paths share a parent. Preserve recoverability by copying the
+      // already-synced temporary file, syncing the destination, and letting the
+      // caller remove the temporary file after this function returns.
+      let descriptor: number | null = null;
+      try {
+        copyFileSync(temporaryPath, filePath);
+        descriptor = openSync(filePath, 'r+');
+        fsyncSync(descriptor);
+      } finally {
+        if (descriptor !== null) closeSync(descriptor);
+      }
+      syncDirectory(path.dirname(filePath));
+      return;
+    }
     const replaceDenied =
       process.platform === 'win32' && ['EACCES', 'EEXIST', 'ENOTEMPTY', 'EPERM'].includes(code ?? '');
     if (!replaceDenied || !existsSync(filePath) || !existsSync(temporaryPath)) throw initialError;

@@ -1,4 +1,4 @@
-import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type {
   BootstrapDto,
   ImportedCreationOutputDto,
@@ -10,9 +10,15 @@ import type {
 } from '@/shared/contracts';
 import { resolveTermTitle } from '@/shared/term-localization';
 import { AppSidebar, type AppView } from '@/renderer/components/app/AppSidebar';
+import {
+  APP_LOADING_VARIANTS as loadingVariants,
+  AppLoadingState,
+  useAppLoadingPreviews,
+} from '@/renderer/components/app/AppLoadingState';
 import { AppTitleBar } from '@/renderer/components/app/AppTitleBar';
-import { ReturnToMaterialsBar } from '@/renderer/components/app/ReturnToMaterialsBar';
 import { SettingsDialog } from '@/renderer/components/app/SettingsDialog';
+import { AppWorkspaceViews } from '@/renderer/components/app/AppWorkspaceViews';
+import { createWorkspaceLoadingBoundaries } from '@/renderer/components/app/appWorkspaceLoadingBoundaries';
 import {
   initialAppLocation,
   sameAppLocation,
@@ -24,6 +30,7 @@ import {
   type GalleryLocation,
   type HistoryNavigationGuard,
   type NavigationMode,
+  type VideoDocumentsLocation,
 } from '@/renderer/components/app/app-navigation';
 import { useNavigationHistory } from '@/renderer/components/app/useNavigationHistory';
 import { LocalSpaceTransitionOverlay } from '@/renderer/components/spaces/LocalSpaceTransitionOverlay';
@@ -33,34 +40,22 @@ import { AssetMenuActionsProvider } from '@/renderer/components/media/AssetMenuA
 import { LibraryStartScreen } from '@/renderer/features/intake/LibraryStartScreen';
 import { mergeImportedOutput, mergeIntakeResult } from '@/renderer/features/intake/applyIntakeResult';
 import type { AiActivityRecord } from '@/renderer/features/ai-center/AiCenterScreen';
+import { aiActivityNavigationTarget } from '@/renderer/features/ai-center/aiActivityNavigation';
 import { generationReEditLocation } from '@/renderer/features/ai-center/generationReEditNavigation';
 import { useCodexImagesNavigation } from '@/renderer/features/extensions/codexImageNavigation';
+import { useVideoDocumentTranscriptBackgroundTasks } from '@/renderer/features/video-documents/useVideoDocumentTranscriptBackgroundTasks';
+import { useAppUpdateNotification } from '@/renderer/features/app-update/useAppUpdateNotification';
+import { loadCreatorScreen } from '@/renderer/features/creator/lazyCreatorScreen';
 import { useI18n } from '@/renderer/i18n/useI18n';
 import { publishLanguagePluginState } from '@/renderer/i18n/languagePluginState';
-
-const CreatorScreen = lazy(() =>
-  import('@/renderer/components/CreatorScreen').then((module) => ({ default: module.CreatorScreen })),
-);
-const DictionaryScreen = lazy(() =>
-  import('@/renderer/components/DictionaryScreen').then((module) => ({ default: module.DictionaryScreen })),
-);
-const GalleryScreen = lazy(() =>
-  import('@/renderer/components/GalleryScreen').then((module) => ({ default: module.GalleryScreen })),
-);
-const ExtensionCenterScreen = lazy(() => import('@/renderer/features/extensions/ExtensionCenterScreen'));
-const AiCenterScreen = lazy(() =>
-  import('@/renderer/features/ai-center/AiCenterScreen').then((module) => ({ default: module.AiCenterScreen })),
-);
+import { mergeGenerationProjection, useGenerationProjectionEvents } from '@/renderer/generationProjectionRefresh';
+import { createTrailingRefreshQueue, requestTrailingRefresh, synchronizeRefresh } from '@/renderer/startupRefreshQueue';
 
 // These are logical XButton inputs delivered by Chromium after mouse-driver remapping, not raw physical-button reads; keep the mapping explicit so it can become user-configurable.
 const DEFAULT_MOUSE_NAVIGATION_BINDINGS = new Map<number, NavigationCommand>([
   [3, 'back'],
   [4, 'forward'],
 ]);
-
-function ScreenBoundary({ children }: { children: ReactNode }) {
-  return <Suspense fallback={<div className="size-full bg-background" />}>{children}</Suspense>;
-}
 
 export function App() {
   const { locale, messages } = useI18n();
@@ -85,24 +80,35 @@ export function App() {
     return stored === 'zh' ? 'zh' : 'en';
   });
   const [data, setData] = useState<BootstrapDto | null>(null);
+  const { tasks: transcriptBackgroundTasks, lastTerminal: lastTranscriptTerminal } =
+    useVideoDocumentTranscriptBackgroundTasks();
   const [spaceTransition, setSpaceTransition] = useState<LocalSpaceTransitionEvent | null>(null);
   const preTransitionDataRef = useRef<BootstrapDto | null>(null);
+  const {
+    previews: loadingPreviews,
+    requestInitial: requestInitialLoadingPreviews,
+    applyTransition: applyLoadingPreviewTransition,
+  } = useAppLoadingPreviews();
   const [dataRevision, setDataRevision] = useState(0);
+  const [documentNavigationRevision, setDocumentNavigationRevision] = useState(0);
   const creatorStartRevision = useRef(0);
   const [creatorActiveAlbumId, setCreatorActiveAlbumId] = useState<string | null>(null);
   const [galleryActiveAlbumId, setGalleryActiveAlbumId] = useState<string | null>(null);
   const [error, setError] = useState('');
   const refreshRevision = useRef(0);
-  const refreshQueueRef = useRef<{ requested: boolean; running: Promise<void> | null }>({
-    requested: false,
-    running: null,
-  });
+  const refreshQueueRef = useRef(createTrailingRefreshQueue<Locale>());
   const historyNavigationGuardRef = useRef<HistoryNavigationGuard | null>(null);
   const lastHistoryCommandRef = useRef<{ command: NavigationCommand; timestamp: number } | null>(null);
+  const lastNotifiedTranscriptOperationIdRef = useRef<string | null>(null);
   const localeRef = useRef(locale);
   localeRef.current = locale;
   const { messages: notifications, notify, dismiss: dismissNotification } = useToastQueue();
+  useAppUpdateNotification({ settingsOpen, notify });
   const codexImagesNavigation = useCodexImagesNavigation(data?.extensions, view, replaceLocation);
+  const workspaceLoadingBoundaries = useMemo(
+    () => createWorkspaceLoadingBoundaries(loadingPreviews, view),
+    [loadingPreviews, view],
+  );
 
   const loadData = useCallback(async () => {
     const revision = ++refreshRevision.current;
@@ -111,7 +117,7 @@ export function App() {
       setError('');
       const next = await window.desktopApi.bootstrap(requestedLocale);
       if (refreshRevision.current !== revision || localeRef.current !== requestedLocale) return false;
-      publishLanguagePluginState(next.extensions ?? []);
+      publishLanguagePluginState(next.extensions ?? [], { reloadLanguagePacks: false });
       setData(next);
       setDataRevision((current) => current + 1);
       return true;
@@ -122,27 +128,14 @@ export function App() {
     }
   }, []);
   const refresh = useCallback(() => {
-    const queue = refreshQueueRef.current;
-    queue.requested = true;
-    if (!queue.running) {
-      queue.running = (async () => {
-        try {
-          while (queue.requested) {
-            queue.requested = false;
-            await loadData();
-          }
-        } finally {
-          queue.running = null;
-        }
-      })();
-    }
-    return queue.running;
+    return requestTrailingRefresh(refreshQueueRef.current, loadData);
   }, [loadData]);
 
   const refreshAlbums = useCallback(async () => {
-    const albums = await window.desktopApi.albumsList();
+    const albums = await window.desktopApi.albumsList(localeRef.current);
     setData((current) => (current ? { ...current, albums } : current));
     setDataRevision((current) => current + 1);
+    setDocumentNavigationRevision((current) => current + 1);
   }, []);
 
   const updateImportedOutput = useCallback((output: ImportedCreationOutputDto) => {
@@ -150,26 +143,50 @@ export function App() {
     setDataRevision((current) => current + 1);
   }, []);
 
+  const refreshDocumentNavigation = useCallback(() => {
+    setDocumentNavigationRevision((current) => current + 1);
+  }, []);
+
+  useEffect(() => {
+    if (!lastTranscriptTerminal) return;
+    if (lastNotifiedTranscriptOperationIdRef.current === lastTranscriptTerminal.operationId) return;
+    lastNotifiedTranscriptOperationIdRef.current = lastTranscriptTerminal.operationId;
+    if (lastTranscriptTerminal.status === 'succeeded') {
+      refreshDocumentNavigation();
+      notify(messages.videoDocuments.transcript.recognition.completed);
+      return;
+    }
+    if (lastTranscriptTerminal.code !== 'CANCELLED') {
+      notify(messages.videoDocuments.transcript.recognition.errors[lastTranscriptTerminal.code]);
+    }
+  }, [lastTranscriptTerminal, messages.videoDocuments.transcript.recognition, notify, refreshDocumentNavigation]);
+
   const applyIntakeResult = useCallback((result: IntakeCommitResult) => {
     setData((current) => mergeIntakeResult(current, result));
     setDataRevision((current) => current + 1);
   }, []);
 
   useEffect(() => {
-    void refresh();
-  }, [locale, refresh]);
+    requestInitialLoadingPreviews();
+    void loadCreatorScreen().catch(() => undefined);
+    void synchronizeRefresh(refreshQueueRef.current, locale, loadData);
+  }, [loadData, locale, requestInitialLoadingPreviews]);
   useEffect(() => {
     localStorage.setItem('aiy.prompt-locale.v1', defaultPromptLocale ?? 'none');
   }, [defaultPromptLocale]);
-  useEffect(
-    () =>
-      window.desktopApi.onGenerationChanged((event) => {
-        setData((current) => (current ? { ...current, generationTasks: event.tasks } : current));
-        // Reload bootstrap for an empty-run worker snapshot so its image-generation route catalog stays in sync with task updates.
-        if (event.terminal || !event.runId) void refresh();
-      }),
-    [refresh],
-  );
+  useGenerationProjectionEvents({
+    refreshAll: refresh,
+    waitForFullRefresh: () => refreshQueueRef.current.running ?? Promise.resolve(),
+    readLocale: () => localeRef.current,
+    readFullRefreshRevision: () => refreshRevision.current,
+    load: (requestedLocale) => window.desktopApi.generationProjection(requestedLocale),
+    applyTasks: (tasks) => setData((current) => (current ? { ...current, generationTasks: tasks } : current)),
+    apply: (projection) => {
+      setData((current) => mergeGenerationProjection(current, projection));
+      setDataRevision((current) => current + 1);
+    },
+    onError: (reason) => setError(reason instanceof Error ? reason.message : String(reason)),
+  });
   useEffect(
     () =>
       window.desktopApi.onModelWorkerChanged((status) => {
@@ -180,6 +197,7 @@ export function App() {
   useEffect(
     () =>
       window.desktopApi.onLocalSpaceTransition((transition) => {
+        applyLoadingPreviewTransition(transition);
         if (transition.phase === 'FAILED') {
           setData(preTransitionDataRef.current);
           preTransitionDataRef.current = null;
@@ -218,7 +236,7 @@ export function App() {
           }, 220);
         });
       }),
-    [loadData],
+    [applyLoadingPreviewTransition, loadData],
   );
 
   useEffect(() => {
@@ -362,13 +380,40 @@ export function App() {
     ],
   );
 
+  const createDocumentFromVideo = useCallback(
+    async (materialId: string, albumId: string | null) => {
+      try {
+        const document = await window.desktopApi.videoDocumentCreate({
+          videoMaterialId: materialId,
+          title: '',
+          titleLocale: locale,
+          albumId,
+        });
+        void refreshAlbums().catch((reason) => notify(reason instanceof Error ? reason.message : String(reason)));
+        commitLocation((current) => ({
+          ...current,
+          view: 'documents',
+          documents: {
+            collection: document.albumId ? { kind: 'album', albumId: document.albumId } : { kind: 'unfiled' },
+            documentId: document.id,
+          },
+          materialsReturnContext: { destination: 'documents', documentId: document.id, title: document.title },
+        }));
+      } catch (reason) {
+        notify(reason instanceof Error ? reason.message : String(reason));
+      }
+    },
+    [commitLocation, locale, notify, refreshAlbums],
+  );
+
   const assetMenuActions = useMemo(
     () => ({
       albums: data?.albums ?? [],
       useInCreation: useAssetInCreation,
+      createDocumentFromVideo,
       refreshLibrary: refresh,
     }),
-    [data?.albums, refresh, useAssetInCreation],
+    [createDocumentFromVideo, data?.albums, refresh, useAssetInCreation],
   );
 
   const startNewCreationFromContext = useCallback(() => {
@@ -441,7 +486,9 @@ export function App() {
             if (!term) return '';
             return resolveTermTitle(term, locale);
           })()
-        : '';
+        : materialsReturnContext?.destination === 'documents'
+          ? materialsReturnContext.title
+          : '';
 
   function changeView(nextView: AppView) {
     if (nextView === view) return;
@@ -477,6 +524,24 @@ export function App() {
         view: 'dictionary',
         dictionary,
         materialsReturnContext: null,
+      }),
+      mode,
+    );
+  }
+
+  function navigateVideoDocuments(documents: VideoDocumentsLocation, mode: NavigationMode = 'push') {
+    setComparisonFullWindow(false);
+    setCreationPromptFullWindow(false);
+    commitLocation(
+      (current) => ({
+        ...current,
+        view: 'documents',
+        documents,
+        materialsReturnContext:
+          current.materialsReturnContext?.destination === 'documents' &&
+          documents.documentId === current.materialsReturnContext.documentId
+            ? current.materialsReturnContext
+            : null,
       }),
       mode,
     );
@@ -520,20 +585,9 @@ export function App() {
 
   function locateAiActivity(record: AiActivityRecord) {
     setComparisonFullWindow(false);
-    if (record.kind === 'ASSISTANT' && record.run.creationId) {
-      navigateCreator({ surface: 'idea-creation', creationId: record.run.creationId });
-      return;
-    }
-    if (record.sourceSeries) {
-      const assetId = record.kind === 'GENERATION' ? (record.run.asset?.id ?? null) : null;
-      navigateCreator({ surface: 'existing-creation', seriesId: record.sourceSeries.id, assetId });
-      return;
-    }
-    const scope =
-      record.kind === 'ASSISTANT' ? record.run.scope : record.kind === 'EXPERIMENT' ? record.batch.scope : null;
-    if (scope?.kind === 'DRAFT' && data?.creationDraft?.id === scope.id) {
-      navigateCreator({ surface: 'new-creation', albumId: data.creationDraft.targetAlbumId });
-    }
+    const target = aiActivityNavigationTarget(record, data);
+    if (target?.view === 'documents') navigateVideoDocuments(target.location);
+    if (target?.view === 'creator') navigateCreator(target.location);
   }
 
   const manageAiPlugins = (pluginId: string | null = null) =>
@@ -618,6 +672,10 @@ export function App() {
     await refresh();
   }
 
+  async function cancelTranscriptRecognition(operationId: string) {
+    await window.desktopApi.videoDocumentTranscriptRecognitionCancel(operationId);
+  }
+
   async function retryGeneration(runId: string) {
     await window.desktopApi.generationRetry(runId);
     await refresh();
@@ -647,6 +705,7 @@ export function App() {
             workerStatus={data?.modelWorker ?? null}
             codexHealth={data?.codex ?? null}
             generationTasks={data?.generationTasks ?? []}
+            transcriptBackgroundTasks={transcriptBackgroundTasks}
             imageGenerationRoutes={data?.imageGenerationRoutes ?? []}
             assistantRuns={data?.assistantRuns ?? []}
             agentTasks={data?.agentTasks ?? []}
@@ -666,6 +725,7 @@ export function App() {
             onGoBack={goBack}
             onGoForward={goForward}
             onGenerationCancel={cancelGeneration}
+            onTranscriptRecognitionCancel={cancelTranscriptRecognition}
             onGenerationRetry={retryGeneration}
             onGenerationReEdit={reEditGeneration}
           />
@@ -676,7 +736,7 @@ export function App() {
               spaceName={spaceTransition?.space.name ?? data?.spaceName ?? messages.app.libraryFallback}
               spaceCoverUrl={spaceTransition?.space.coverUrl ?? data?.spaceCoverUrl ?? null}
               spaceTransitioning={Boolean(spaceTransition)}
-              libraryBusy={Boolean(data?.generationTasks.length)}
+              libraryBusy={Boolean(data?.generationTasks.length || transcriptBackgroundTasks.length)}
               codexImagesVisible={codexImagesNavigation.visible}
               view={view}
               onViewChange={changeView}
@@ -686,9 +746,7 @@ export function App() {
           </div>
           <section className="relative min-h-0 min-w-0 flex-1 overflow-hidden">
             {spaceTransition && <LocalSpaceTransitionOverlay transition={spaceTransition} />}
-            {!data && !error && (
-              <div className="grid size-full place-items-center text-muted-foreground">{messages.app.loading}</div>
-            )}
+            {!data && !error && <AppLoadingState previews={loadingPreviews} variant={loadingVariants[view]} />}
             {error && (
               <div className="flex size-full flex-col items-center justify-center gap-3 text-muted-foreground">
                 <strong className="text-foreground">{messages.app.unavailable}</strong>
@@ -705,124 +763,59 @@ export function App() {
                 notify={notify}
               />
             )}
-            {data && !data.libraryEmpty && visitedViews.current.has('creator') && (
-              <div className={view === 'creator' ? 'flex size-full min-h-0 flex-col' : 'hidden'}>
-                {materialsReturnContext?.destination === 'creator' &&
-                  !comparisonFullWindow &&
-                  !creationPromptFullWindow && (
-                    <ReturnToMaterialsBar
-                      label={messages.gallery.screen.backToMaterials}
-                      summary={returnSummary}
-                      onReturn={returnToMaterials}
-                    />
-                  )}
-                <div className="min-h-0 flex-1 overflow-hidden">
-                  <ScreenBoundary>
-                    <CreatorScreen
-                      data={data}
-                      locale={locale}
-                      defaultPromptLocale={defaultPromptLocale}
-                      active={view === 'creator'}
-                      location={location.creator}
-                      comparisonFullWindow={comparisonFullWindow}
-                      promptFullWindow={creationPromptFullWindow}
-                      onNavigate={navigateCreator}
-                      onComparisonFullWindowChange={setComparisonFullWindow}
-                      onPromptFullWindowChange={setCreationPromptFullWindow}
-                      onOpenMaterial={openCreatorMaterial}
-                      onConfigureExtension={manageAiPlugins}
-                      onActiveAlbumChange={setCreatorActiveAlbumId}
-                      refresh={refresh}
-                      refreshAlbums={refreshAlbums}
-                      onImportedOutputSaved={updateImportedOutput}
-                      notify={notify}
-                    />
-                  </ScreenBoundary>
-                </div>
-              </div>
-            )}
-            {data && visitedViews.current.has('dictionary') && (
-              <div className={view === 'dictionary' ? 'flex size-full min-h-0 flex-col' : 'hidden'}>
-                {materialsReturnContext?.destination === 'dictionary' && (
-                  <ReturnToMaterialsBar
-                    label={messages.gallery.screen.backToMaterials}
-                    summary={returnSummary}
-                    onReturn={returnToMaterials}
-                  />
-                )}
-                <div className="min-h-0 flex-1 overflow-hidden">
-                  <ScreenBoundary>
-                    <DictionaryScreen
-                      data={data}
-                      active={view === 'dictionary'}
-                      location={location.dictionary}
-                      onNavigate={navigateDictionary}
-                      onNavigateBack={goBack}
-                      onHistoryNavigationGuardChange={setHistoryNavigationGuard}
-                      refresh={refresh}
-                      notify={notify}
-                    />
-                  </ScreenBoundary>
-                </div>
-              </div>
-            )}
-            {data && visitedViews.current.has('gallery') && (
-              <div className={view === 'gallery' ? 'size-full' : 'hidden'}>
-                <ScreenBoundary>
-                  <GalleryScreen
-                    libraryKey={data.spaceName}
-                    dataRevision={dataRevision}
-                    active={view === 'gallery'}
-                    location={location.gallery}
-                    onNavigate={navigateGallery}
-                    onNavigateBack={goBack}
-                    terms={data.terms}
-                    facets={data.facets}
-                    series={data.series}
-                    onOpenResult={openGalleryResult}
-                    onOpenTerm={openGalleryTerm}
-                    onIntakeCommitted={finishGalleryIntake}
-                    onActiveAlbumChange={setGalleryActiveAlbumId}
-                    refresh={refresh}
-                    notify={notify}
-                  />
-                </ScreenBoundary>
-              </div>
-            )}
-            {data && (visitedViews.current.has('packs') || visitedViews.current.has('codexImages')) && (
-              <div className={view === 'packs' || view === 'codexImages' ? 'size-full' : 'hidden'}>
-                <ScreenBoundary>
-                  <ExtensionCenterScreen
-                    activeSurface={view === 'codexImages' ? 'discovery' : view === 'packs' ? 'center' : null}
-                    extensions={data.extensions ?? []}
-                    location={location.extensions}
-                    onNavigate={navigateExtensions}
-                    onExtensionsChange={refresh}
-                    codexImagesNavigation={codexImagesNavigation}
-                    onOpenCreation={openImportedCreation}
-                    notify={notify}
-                  />
-                </ScreenBoundary>
-              </div>
-            )}
-            {data && visitedViews.current.has('aiCenter') && (
-              <div className={view === 'aiCenter' ? 'size-full' : 'hidden'}>
-                <ScreenBoundary>
-                  <AiCenterScreen
-                    active={view === 'aiCenter'}
-                    data={data}
-                    locale={locale}
-                    location={location.aiCenter}
-                    onNavigate={navigateAiCenter}
-                    onLocate={locateAiActivity}
-                    onReEditGeneration={reEditGeneration}
-                    onManagePlugins={manageAiPlugins}
-                    onRetryGeneration={retryGeneration}
-                    refresh={refresh}
-                    notify={notify}
-                  />
-                </ScreenBoundary>
-              </div>
+            {data && (
+              <AppWorkspaceViews
+                view={view}
+                visitedViews={visitedViews.current}
+                data={data}
+                dataRevision={dataRevision}
+                locale={locale}
+                defaultPromptLocale={defaultPromptLocale}
+                location={location}
+                comparisonFullWindow={comparisonFullWindow}
+                creationPromptFullWindow={creationPromptFullWindow}
+                materialsReturnContext={materialsReturnContext}
+                returnSummary={returnSummary}
+                codexImagesNavigation={codexImagesNavigation}
+                transitionPreviews={loadingPreviews}
+                loadingBoundaries={workspaceLoadingBoundaries}
+                onReturnToMaterials={returnToMaterials}
+                documentNavigationRevision={documentNavigationRevision}
+                onCreatorNavigate={navigateCreator}
+                onComparisonFullWindowChange={setComparisonFullWindow}
+                onCreationPromptFullWindowChange={setCreationPromptFullWindow}
+                onOpenCreatorMaterial={openCreatorMaterial}
+                onConfigureExtension={manageAiPlugins}
+                onCreatorActiveAlbumChange={setCreatorActiveAlbumId}
+                refresh={refresh}
+                refreshAlbums={refreshAlbums}
+                onImportedOutputSaved={updateImportedOutput}
+                notify={notify}
+                onVideoDocumentsChange={refreshDocumentNavigation}
+                onVideoDocumentsNavigate={navigateVideoDocuments}
+                onDictionaryNavigate={navigateDictionary}
+                onNavigateBack={goBack}
+                onHistoryNavigationGuardChange={setHistoryNavigationGuard}
+                onOpenDictionaryCreation={(seriesId, assetId, versionId) =>
+                  navigateCreator({
+                    surface: 'existing-creation',
+                    seriesId,
+                    assetId,
+                    ...(versionId ? { versionId } : {}),
+                  })
+                }
+                onGalleryNavigate={navigateGallery}
+                onOpenGalleryResult={openGalleryResult}
+                onOpenGalleryTerm={openGalleryTerm}
+                onGalleryIntakeCommitted={finishGalleryIntake}
+                onGalleryActiveAlbumChange={setGalleryActiveAlbumId}
+                onExtensionsNavigate={navigateExtensions}
+                onOpenImportedCreation={openImportedCreation}
+                onAiCenterNavigate={navigateAiCenter}
+                onLocateAiActivity={locateAiActivity}
+                onReEditGeneration={reEditGeneration}
+                onRetryGeneration={retryGeneration}
+              />
             )}
           </section>
         </div>

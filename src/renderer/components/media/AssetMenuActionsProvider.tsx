@@ -4,6 +4,7 @@ import type { AlbumDto } from '@/shared/contracts';
 export interface AssetMenuActions {
   albums: readonly AlbumDto[];
   useInCreation(assetId: string): Promise<void>;
+  createDocumentFromVideo(materialId: string, albumId: string | null): Promise<void>;
   refreshLibrary(): Promise<void>;
 }
 

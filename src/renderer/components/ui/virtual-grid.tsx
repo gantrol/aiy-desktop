@@ -424,7 +424,7 @@ function VirtualGridInner<Row, Column>(
         <div
           role="row"
           aria-rowindex={1}
-          className="sticky top-0 z-20"
+          className="isolate sticky top-0 z-20"
           style={{ width: totalWidth, height: headerHeight }}
         >
           {hasRowHeader && (
@@ -515,7 +515,7 @@ function VirtualGridInner<Row, Column>(
                     data-virtual-grid-cell={`${rowKeys[rowIndex]}:${columnKeys[columnIndex]}`}
                     data-active={active || undefined}
                     className={cn(
-                      'absolute top-0 overflow-hidden border-r border-b bg-background outline-none data-[active=true]:z-[5] data-[active=true]:ring-2 data-[active=true]:ring-inset data-[active=true]:ring-ring',
+                      'isolate absolute top-0 z-0 overflow-hidden border-r border-b bg-background outline-none data-[active=true]:z-[5] data-[active=true]:ring-2 data-[active=true]:ring-inset data-[active=true]:ring-ring',
                       cellClassName,
                     )}
                     style={{ left: rowHeaderWidth + columnIndex * columnWidth, width: columnWidth, height: rowHeight }}

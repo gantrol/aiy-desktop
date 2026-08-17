@@ -2,6 +2,7 @@ import { useEffect, useReducer, useRef } from 'react';
 import type {
   ImportedImageMetadataInput,
   ImportedImageRelationshipInput,
+  IntakeCommitItemInput,
   IntakeCommitIntent,
   IntakeCommitResult,
   IntakeCommitSource,
@@ -57,7 +58,7 @@ export function useIntakeController(
 
   useEffect(
     () => () => {
-      for (const item of itemsRef.current) if (item.kind === 'IMAGE') releaseIntakePreview(item.previewUrl);
+      for (const item of itemsRef.current) if (item.kind !== 'TEXT') releaseIntakePreview(item.previewUrl);
     },
     [],
   );
@@ -66,7 +67,7 @@ export function useIntakeController(
     if (!enabled || state.pendingIntent) return;
     const existing = itemsRef.current;
     const room = maxIntakeItems - existing.length;
-    let usedBytes = existing.reduce((total, item) => total + (item.kind === 'IMAGE' ? item.file.size : 0), 0);
+    let usedBytes = existing.reduce((total, item) => total + (item.kind !== 'TEXT' ? item.file.size : 0), 0);
 
     const rejected: string[] = [];
     const accepted: Array<{ file: File; mimeType: NonNullable<ReturnType<typeof intakeMediaMimeType>> }> = [];
@@ -96,10 +97,6 @@ export function useIntakeController(
     }
 
     dispatch({ type: 'READING', source });
-    // Let React commit the foreground progress state before Chromium starts
-    // image decoding. Under concurrent load, beginning the decode in the same
-    // frame can otherwise leave the user without either progress or a preview.
-    await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
     const items: LocalIntakeItem[] = [];
     // Decode previews one at a time. Running up to sixteen full media decodes
     // concurrently causes avoidable renderer memory pressure and long tasks.
@@ -111,17 +108,25 @@ export function useIntakeController(
         rejected.push(file.name || 'media');
         continue;
       }
-      items.push({
+      const common = {
         id: crypto.randomUUID(),
-        kind: 'IMAGE' as const,
         name: file.name || 'media',
-        mimeType,
         file,
         previewUrl: preview.url,
         width: preview.width,
         height: preview.height,
         sourceUrl,
-      });
+      };
+      if (isIntakeVideoMimeType(mimeType)) {
+        if (!preview.durationMs) {
+          releaseIntakePreview(preview.url);
+          rejected.push(file.name || 'media');
+          continue;
+        }
+        items.push({ ...common, kind: 'VIDEO', mimeType, durationMs: preview.durationMs });
+      } else {
+        items.push({ ...common, kind: 'IMAGE', mimeType });
+      }
     }
     if (wantsText) items.push({ id: crypto.randomUUID(), kind: 'TEXT', text: trimmedText });
     dispatch({ type: 'ADD', source, items, skipped: rejected });
@@ -167,12 +172,12 @@ export function useIntakeController(
 
   function remove(id: string) {
     const item = state.items.find((candidate) => candidate.id === id);
-    if (item?.kind === 'IMAGE') releaseIntakePreview(item.previewUrl);
+    if (item && item.kind !== 'TEXT') releaseIntakePreview(item.previewUrl);
     dispatch({ type: 'REMOVE', id });
   }
 
   function reset() {
-    for (const item of state.items) if (item.kind === 'IMAGE') releaseIntakePreview(item.previewUrl);
+    for (const item of state.items) if (item.kind !== 'TEXT') releaseIntakePreview(item.previewUrl);
     dispatch({ type: 'RESET' });
   }
 
@@ -180,26 +185,43 @@ export function useIntakeController(
     if (!state.items.length || state.pendingIntent) return;
     dispatch({ type: 'COMMITTING', intent });
     try {
-      const items = [];
+      const items: IntakeCommitItemInput[] = [];
       // Bound peak memory and keep Chromium's decode/file tasks schedulable by
       // reading a batch sequentially instead of materializing every file at once.
       for (const item of state.items) {
-        items.push(
-          item.kind === 'TEXT'
-            ? { id: item.id, kind: item.kind, text: item.text }
-            : {
-                id: item.id,
-                kind: item.kind,
-                name: item.name,
-                mimeType: item.mimeType,
-                width: item.width ?? 0,
-                height: item.height ?? 0,
-                sourceUrl: item.sourceUrl,
-                metadata: options.imageDetails?.[item.id]?.metadata,
-                relationship: options.imageDetails?.[item.id]?.relationship ?? null,
-                bytes: new Uint8Array(await item.file.arrayBuffer()),
-              },
-        );
+        if (item.kind === 'TEXT') {
+          items.push({ id: item.id, kind: item.kind, text: item.text });
+          continue;
+        }
+        const bytes = new Uint8Array(await item.file.arrayBuffer());
+        const metadata = options.imageDetails?.[item.id]?.metadata;
+        if (item.kind === 'VIDEO') {
+          items.push({
+            id: item.id,
+            kind: item.kind,
+            name: item.name,
+            mimeType: item.mimeType,
+            width: item.width,
+            height: item.height,
+            durationMs: item.durationMs,
+            sourceUrl: item.sourceUrl,
+            metadata,
+            bytes,
+          });
+          continue;
+        }
+        items.push({
+          id: item.id,
+          kind: item.kind,
+          name: item.name,
+          mimeType: item.mimeType,
+          width: item.width,
+          height: item.height,
+          sourceUrl: item.sourceUrl,
+          metadata,
+          relationship: options.imageDetails?.[item.id]?.relationship ?? null,
+          bytes,
+        });
       }
       const result = await window.desktopApi.intakeCommit({
         intent,

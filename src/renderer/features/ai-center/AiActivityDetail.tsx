@@ -5,16 +5,23 @@ import { Badge } from '@/renderer/components/ui/badge';
 import { Button } from '@/renderer/components/ui/button';
 import { MetaText } from '@/renderer/components/ui/meta-text';
 import { ScrollArea } from '@/renderer/components/ui/scroll-area';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/renderer/components/ui/tabs';
 import { AssistantProgressTimeline } from '@/renderer/components/creator/AssistantProgressTimeline';
 import { GenerationErrorNotice } from '@/renderer/components/generation/GenerationErrorNotice';
 import { useI18n } from '@/renderer/i18n/useI18n';
 import { AiActivityStatusTag } from '@/renderer/features/ai-center/AiActivityStatusTag';
+import { AiActivityTrace } from '@/renderer/features/ai-center/AiActivityTrace';
 import type {
   AiActivityRecord,
   AssistantActivityRecord,
   ExperimentActivityRecord,
   GenerationActivityRecord,
+  VideoDocumentActivityRecord,
 } from '@/renderer/features/ai-center/activityProjection';
+import {
+  formatApiEquivalentCostUsd,
+  videoDocumentApiEquivalentCostUsd,
+} from '@/renderer/features/video-documents/videoDocumentApiEquivalentCost';
 
 interface Props {
   record: AiActivityRecord | null;
@@ -29,6 +36,11 @@ interface Props {
 }
 
 function localizedSeriesTitle(record: AiActivityRecord, _locale: Locale, fallback: string) {
+  if (record.kind === 'VIDEO_DOCUMENT') return record.activity.documentTitle;
+  if (record.kind === 'ASSISTANT' && record.run.creationTitle) return record.run.creationTitle;
+  if (record.kind === 'EXPERIMENT' && record.sourceRun?.creationTitle) {
+    return record.sourceRun.creationTitle;
+  }
   if (!record.sourceSeries) return fallback;
   return record.sourceSeries.title;
 }
@@ -298,6 +310,81 @@ function GenerationDetail({
   );
 }
 
+function valueOrDash(value: number | null | undefined) {
+  return value === null || value === undefined ? '—' : value.toLocaleString();
+}
+
+function VideoDocumentDetail({ record, locale }: { record: VideoDocumentActivityRecord; locale: Locale }) {
+  const messages = useI18n().messages;
+  const l = messages.aiCenter;
+  const activity = record.activity;
+  if (activity.type === 'TRANSCRIPT_RECOGNITION') {
+    const run = activity.run;
+    const progress =
+      run.totalChunks === null ? valueOrDash(run.completedChunks) : `${run.completedChunks}/${run.totalChunks}`;
+    return (
+      <>
+        <DetailSection title={l.fields.realState}>
+          <dl className="grid grid-cols-2 gap-x-5 gap-y-3 xl:grid-cols-4">
+            <Fact label={l.fields.model}>{run.modelId}</Fact>
+            <Fact label={l.fields.provider}>{run.providerKey}</Fact>
+            <Fact label={l.fields.progress}>{progress}</Fact>
+            <Fact label={l.fields.outputRevision} mono>
+              {run.outputRevisionId ?? '—'}
+            </Fact>
+            <Fact label={l.fields.createdAt}>{dateTime(run.startedAt, locale)}</Fact>
+            <Fact label={l.fields.finishedAt}>{dateTime(run.finishedAt, locale)}</Fact>
+          </dl>
+        </DetailSection>
+        {run.errorCode && (
+          <p className="rounded-md bg-destructive-surface p-3 font-mono text-xs text-destructive">{run.errorCode}</p>
+        )}
+      </>
+    );
+  }
+
+  const run = activity.run;
+  const cost = videoDocumentApiEquivalentCostUsd(run);
+  const tokenLabels = messages.videoDocuments.generation.history;
+  return (
+    <>
+      <DetailSection title={l.fields.realState}>
+        <dl className="grid grid-cols-2 gap-x-5 gap-y-3 xl:grid-cols-4">
+          <Fact label={l.fields.model}>{run.actualModel ?? run.requestedModel}</Fact>
+          <Fact label={l.fields.provider}>{run.providerKey}</Fact>
+          {activity.type === 'TRANSCRIPT_TRANSLATION' && (
+            <>
+              <Fact label={l.fields.targetLanguages}>{activity.run.targetLocales.join(', ')}</Fact>
+              <Fact label={l.fields.progress}>
+                {activity.run.totalBatches === null
+                  ? activity.run.completedBatches
+                  : `${activity.run.completedBatches}/${activity.run.totalBatches}`}
+              </Fact>
+            </>
+          )}
+          <Fact label={tokenLabels.input}>{valueOrDash(run.usage?.inputTokens)}</Fact>
+          <Fact label={tokenLabels.cached}>{valueOrDash(run.usage?.cachedInputTokens)}</Fact>
+          <Fact label={tokenLabels.output}>{valueOrDash(run.usage?.outputTokens)}</Fact>
+          <Fact label={tokenLabels.reasoning}>{valueOrDash(run.usage?.reasoningOutputTokens)}</Fact>
+          <Fact label={tokenLabels.total}>{valueOrDash(run.usage?.totalTokens)}</Fact>
+          <Fact label={tokenLabels.apiEquivalent}>{cost === null ? '—' : formatApiEquivalentCostUsd(cost)}</Fact>
+          <Fact label={l.fields.outputRevision} mono>
+            {run.outputRevisionId ?? '—'}
+          </Fact>
+          <Fact label={l.fields.createdAt}>{dateTime(run.startedAt, locale)}</Fact>
+          <Fact label={l.fields.finishedAt}>{dateTime(run.finishedAt, locale)}</Fact>
+        </dl>
+      </DetailSection>
+      {run.errorCode && (
+        <div className="grid gap-1 rounded-md bg-destructive-surface p-3 text-xs text-destructive">
+          <code>{run.errorCode}</code>
+          {run.errorDetails?.diagnostic && <span>{run.errorDetails.diagnostic}</span>}
+        </div>
+      )}
+    </>
+  );
+}
+
 export function AiActivityDetail({
   record,
   data,
@@ -311,6 +398,7 @@ export function AiActivityDetail({
 }: Props) {
   const l = useI18n().messages.aiCenter;
   const [retrying, setRetrying] = useState(false);
+  const [detailTab, setDetailTab] = useState<'overview' | 'trace'>('overview');
   if (!record) return <div className="grid size-full place-items-center text-sm text-muted-foreground">{l.empty}</div>;
 
   const source = localizedSeriesTitle(record, locale, canLocate ? l.source.draft : l.source.unknown);
@@ -321,9 +409,15 @@ export function AiActivityDetail({
         : l.kinds.optimize
       : record.kind === 'EXPERIMENT'
         ? l.kinds.experiment
-        : record.operation === 'EDIT'
-          ? l.kinds.edit
-          : l.kinds.generate;
+        : record.kind === 'VIDEO_DOCUMENT'
+          ? record.activity.type === 'ARTICLE_GENERATION'
+            ? l.kinds.videoArticle
+            : record.activity.type === 'TRANSCRIPT_RECOGNITION'
+              ? l.kinds.transcribe
+              : l.kinds.translate
+          : record.operation === 'EDIT'
+            ? l.kinds.edit
+            : l.kinds.generate;
   const title =
     record.kind === 'ASSISTANT' && record.occurrenceCount > 1
       ? `${kind} · ${l.occurrence(record.ordinal)}`
@@ -352,53 +446,81 @@ export function AiActivityDetail({
   }
 
   return (
-    <ScrollArea className="min-h-0 min-w-0 bg-background">
-      <article className="mx-auto grid w-full max-w-5xl gap-4 p-5 lg:p-6">
-        <header className="flex flex-wrap items-start justify-between gap-4">
-          <div className="min-w-0">
-            <div className="flex flex-wrap items-center gap-2">
-              <h2 className="truncate text-lg font-semibold">{title}</h2>
-              <AiActivityStatusTag record={record} />
+    <Tabs
+      value={detailTab}
+      onValueChange={(value) => setDetailTab(value as 'overview' | 'trace')}
+      className="min-h-0 min-w-0 bg-background"
+    >
+      <div className="shrink-0 border-b bg-background">
+        <div className="mx-auto w-full max-w-5xl px-5 pt-5 lg:px-6 lg:pt-6">
+          <header className="flex flex-wrap items-start justify-between gap-4">
+            <div className="min-w-0">
+              <div className="flex flex-wrap items-center gap-2">
+                <h2 className="truncate text-lg font-semibold">{title}</h2>
+                <AiActivityStatusTag record={record} />
+              </div>
+              <MetaText className="mt-1">
+                {source} · {dateTime(record.createdAt, locale)}
+              </MetaText>
             </div>
-            <MetaText className="mt-1">
-              {source} · {dateTime(record.createdAt, locale)}
-            </MetaText>
-          </div>
-          <div className="flex flex-wrap gap-2">
-            <Button type="button" variant="outline" size="sm" disabled={!canLocate} onClick={() => onLocate(record)}>
-              <SquareArrowOutUpRightIcon className="size-3.5" />
-              {l.actions.locate}
-            </Button>
-            {record.kind === 'GENERATION' && retryableGeneration && (
-              <Button type="button" variant="outline" size="sm" onClick={() => onReEditGeneration(record.run.id)}>
-                <PencilLineIcon className="size-3.5" />
-                {l.actions.reEdit}
-              </Button>
-            )}
-            {retryableGeneration && (
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                disabled={retrying}
-                onClick={() => void retryGeneration()}
-              >
-                <RotateCcwIcon className="size-3.5" />
-                {l.actions.retry}
-              </Button>
-            )}
-            {record.kind === 'GENERATION' && record.run.codexTask && (
-              <Button type="button" size="sm" onClick={() => void openCodex(record.run.codexTask!.threadId)}>
+            <div className="flex flex-wrap gap-2">
+              <Button type="button" variant="outline" size="sm" disabled={!canLocate} onClick={() => onLocate(record)}>
                 <SquareArrowOutUpRightIcon className="size-3.5" />
-                {l.actions.openCodex}
+                {l.actions.locate}
               </Button>
-            )}
-          </div>
-        </header>
-        {record.kind === 'ASSISTANT' && <AssistantDetail record={record} data={data} locale={locale} />}
-        {record.kind === 'EXPERIMENT' && <ExperimentDetail record={record} data={data} onRetrySlot={onRetrySlot} />}
-        {record.kind === 'GENERATION' && <GenerationDetail record={record} data={data} locale={locale} />}
-      </article>
-    </ScrollArea>
+              {record.kind === 'GENERATION' && retryableGeneration && (
+                <Button type="button" variant="outline" size="sm" onClick={() => onReEditGeneration(record.run.id)}>
+                  <PencilLineIcon className="size-3.5" />
+                  {l.actions.reEdit}
+                </Button>
+              )}
+              {retryableGeneration && (
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  disabled={retrying}
+                  onClick={() => void retryGeneration()}
+                >
+                  <RotateCcwIcon className="size-3.5" />
+                  {l.actions.retry}
+                </Button>
+              )}
+              {record.kind === 'GENERATION' && record.run.codexTask && (
+                <Button type="button" size="sm" onClick={() => void openCodex(record.run.codexTask!.threadId)}>
+                  <SquareArrowOutUpRightIcon className="size-3.5" />
+                  {l.actions.openCodex}
+                </Button>
+              )}
+            </div>
+          </header>
+          <TabsList className="mt-3 gap-1">
+            <TabsTrigger value="overview" className="px-4">
+              {l.detailTabs.overview}
+            </TabsTrigger>
+            <TabsTrigger value="trace" className="px-4">
+              {l.detailTabs.trace}
+            </TabsTrigger>
+          </TabsList>
+        </div>
+      </div>
+      <TabsContent value="overview" className="min-h-0 flex-1">
+        <ScrollArea className="size-full">
+          <article className="mx-auto grid w-full max-w-5xl gap-4 p-5 lg:p-6">
+            {record.kind === 'ASSISTANT' && <AssistantDetail record={record} data={data} locale={locale} />}
+            {record.kind === 'EXPERIMENT' && <ExperimentDetail record={record} data={data} onRetrySlot={onRetrySlot} />}
+            {record.kind === 'GENERATION' && <GenerationDetail record={record} data={data} locale={locale} />}
+            {record.kind === 'VIDEO_DOCUMENT' && <VideoDocumentDetail record={record} locale={locale} />}
+          </article>
+        </ScrollArea>
+      </TabsContent>
+      <TabsContent value="trace" className="min-h-0 flex-1">
+        <ScrollArea className="size-full">
+          <article className="mx-auto w-full max-w-5xl p-5 lg:p-6">
+            <AiActivityTrace record={record} data={data} locale={locale} />
+          </article>
+        </ScrollArea>
+      </TabsContent>
+    </Tabs>
   );
 }

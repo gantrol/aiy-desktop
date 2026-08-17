@@ -1,15 +1,15 @@
 import { randomUUID } from 'node:crypto';
-import { existsSync, mkdirSync, readFileSync, renameSync, unlinkSync, writeFileSync } from 'node:fs';
+import { copyFileSync, existsSync, mkdirSync, readFileSync, renameSync, unlinkSync, writeFileSync } from 'node:fs';
 import net from 'node:net';
 import path from 'node:path';
 import { DeepSeekAssistantAdapter } from '@/main/assistant-models/deepseek';
-import { CodexAdapter } from '@/main/codex';
+import { CodexAdapter } from '@/main/assistant/codex';
 import { LibraryDatabase } from '@/main/database';
 import { DeepSeekApiRuntime } from '@/main/extensions/deepseek-api/runtime';
 import { ExternalImageApiRuntime } from '@/main/extensions/external-image-api/runtime';
 import { OpenAiImageApiRuntime } from '@/main/extensions/openai-image-api/runtime';
 import { ExtensionRegistry } from '@/main/extensions/registry';
-import { GenerationCoordinator } from '@/main/generation';
+import { GenerationCoordinator } from '@/main/generation/coordinator';
 import {
   CodexImageModel,
   createExternalImageProviders,
@@ -30,10 +30,11 @@ import {
   type ModelWorkerSnapshot,
 } from '@/main/model-worker/protocol';
 import { createModelWorkerRequestDispatcher } from '@/main/model-worker/request-dispatcher';
+import { VideoDocumentGenerationService } from '@/main/video-documents/generation-service';
+import { VideoDocumentTranscriptTranslationService } from '@/main/video-transcript/translation-service';
 import {
   CODEX_APP_SERVER_EXTENSION_ID,
-  CODEX_APP_SERVER_PROVIDER_KEY,
-  CODEX_CLI_PROVIDER_KEY,
+  CODEX_PROVIDER_ID,
   OPENAI_IMAGE_API_EXTENSION_ID,
   type ExternalImageApiExtensionId,
 } from '@/shared/extension-ids';
@@ -81,6 +82,26 @@ function readOwnedDescriptor(filePath: string, workerId: string) {
     return parseModelWorkerDescriptor(readFileSync(filePath, 'utf8'))?.workerId === workerId;
   } catch {
     return false;
+  }
+}
+
+function publishWorkerDescriptor(temporaryPath: string, descriptorPath: string) {
+  try {
+    renameSync(temporaryPath, descriptorPath);
+    return;
+  } catch (error) {
+    const code = (error as NodeJS.ErrnoException).code;
+    if (process.platform !== 'win32' || code !== 'EXDEV' || !existsSync(temporaryPath)) throw error;
+
+    // MSIX can virtualize two logical siblings onto different backing volumes.
+    // The descriptor is runtime-only and schema validated by every reader, so a
+    // synchronous copy is a safe fallback when the atomic rename is impossible.
+    copyFileSync(temporaryPath, descriptorPath);
+    try {
+      unlinkSync(temporaryPath);
+    } catch {
+      /* the published descriptor is already complete */
+    }
   }
 }
 
@@ -239,6 +260,41 @@ function installWorkerShutdownSignalHandlers(shutdown: () => Promise<void>) {
   process.once('SIGTERM', interruptAndExit);
 }
 
+function createImageGenerationRoutes(options: {
+  database: LibraryDatabase;
+  codex: CodexAdapter;
+  extensions: ExtensionRegistry;
+  openAiImageApi: OpenAiImageApiRuntime;
+  externalImageApis: ExternalImageApiRuntime;
+  libraryRoot: string;
+  internalModelsEnabled: boolean;
+}) {
+  const { database, codex, extensions, openAiImageApi, externalImageApis, libraryRoot, internalModelsEnabled } =
+    options;
+  return new ImageGenerationRouteRegistry([
+    new ModelBackedGenerationProvider(
+      { id: CODEX_PROVIDER_ID, name: 'Codex', extensionId: CODEX_APP_SERVER_EXTENSION_ID },
+      [new CodexImageModel(codex, 'cli'), new CodexImageModel(codex, 'app-server')],
+    ),
+    ...(internalModelsEnabled
+      ? [
+          new ModelBackedGenerationProvider({ id: 'internal', name: 'Internal', extensionId: null }, [
+            new InternalLibraryRandomModel(database),
+          ]),
+        ]
+      : []),
+    new OpenAiImageProvider(database, libraryRoot, openAiImageApi, () =>
+      extensions.isActivated(OPENAI_IMAGE_API_EXTENSION_ID),
+    ),
+    ...createExternalImageProviders(
+      database,
+      libraryRoot,
+      externalImageApis,
+      (extensionId: ExternalImageApiExtensionId) => extensions.isActivated(extensionId),
+    ),
+  ]);
+}
+
 export async function runModelWorker() {
   const config = parseModelWorkerLaunchConfig(process.env.AIY_MODEL_WORKER_CONFIG);
   delete process.env.AIY_MODEL_WORKER_CONFIG;
@@ -292,6 +348,7 @@ export async function runModelWorker() {
   try {
     database = new LibraryDatabase(config.databasePath, config.libraryRoot, { openMode: 'must-exist' });
     database.initializeModelWorker();
+    database.interruptVideoDocumentGenerations();
     extensions = new ExtensionRegistry(database, {
       codexHealth: () =>
         codex?.cachedHealth ?? {
@@ -309,30 +366,20 @@ export async function runModelWorker() {
       manageStatelessJobs: true,
       isExtensionActivated: () => extensions?.isActivated(CODEX_APP_SERVER_EXTENSION_ID) === true,
     });
-    const imageGenerationRoutes = new ImageGenerationRouteRegistry([
-      // CLI stays first to preserve the existing model order. The two
-      // descriptors have independent keys and can be selected together.
-      new ModelBackedGenerationProvider(CODEX_CLI_PROVIDER_KEY, 'Codex', [new CodexImageModel(codex, 'cli')]),
-      new ModelBackedGenerationProvider(CODEX_APP_SERVER_PROVIDER_KEY, 'Codex', [
-        new CodexImageModel(codex, 'app-server'),
-      ]),
-      ...(config.internalModelsEnabled
-        ? [new ModelBackedGenerationProvider('internal', 'Internal', [new InternalLibraryRandomModel(database)])]
-        : []),
-      new OpenAiImageProvider(
-        database,
-        config.libraryRoot,
-        openAiImageApi,
-        () => extensions?.isActivated(OPENAI_IMAGE_API_EXTENSION_ID) === true,
-      ),
-      ...createExternalImageProviders(
-        database,
-        config.libraryRoot,
-        externalImageApis,
-        (extensionId: ExternalImageApiExtensionId) => extensions?.isActivated(extensionId) === true,
-      ),
-    ]);
+    // CLI stays first to preserve the working pinned-runtime default. The two
+    // Codex descriptors still have independent connection and route identities.
+    const imageGenerationRoutes = createImageGenerationRoutes({
+      database,
+      codex,
+      extensions,
+      openAiImageApi,
+      externalImageApis,
+      libraryRoot: config.libraryRoot,
+      internalModelsEnabled: config.internalModelsEnabled,
+    });
     generation = new GenerationCoordinator(database, imageGenerationRoutes);
+    const videoDocuments = new VideoDocumentGenerationService(database, codex);
+    const videoDocumentTranslations = new VideoDocumentTranscriptTranslationService(database, codex);
     generation.on('changed', (event) => {
       broadcast({ type: 'generation-changed', event });
       scheduleIdleExit();
@@ -344,6 +391,8 @@ export async function runModelWorker() {
     dispatchRequest = createModelWorkerRequestDispatcher({
       database,
       generation,
+      videoDocuments,
+      videoDocumentTranslations,
       codex,
       deepSeek,
       extensions,
@@ -401,7 +450,7 @@ export async function runModelWorker() {
     mkdirSync(path.dirname(config.descriptorPath), { recursive: true });
     temporaryDescriptorPath = `${config.descriptorPath}.${process.pid}.${randomUUID()}.tmp`;
     writeFileSync(temporaryDescriptorPath, JSON.stringify(descriptor), { encoding: 'utf8', mode: 0o600 });
-    renameSync(temporaryDescriptorPath, config.descriptorPath);
+    publishWorkerDescriptor(temporaryDescriptorPath, config.descriptorPath);
     temporaryDescriptorPath = null;
     descriptorWritten = true;
 

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { BracesIcon, ImageIcon } from 'lucide-react';
 import type {
   GenerationRunDto,
@@ -171,9 +171,65 @@ function FactText({ label, children }: { label: string; children: string }) {
   );
 }
 
+function FullExecutionRequest({
+  runId,
+  summaryActualRequest,
+  label,
+}: {
+  runId: string;
+  summaryActualRequest: Record<string, unknown> | undefined;
+  label: string;
+}) {
+  const [actualRequest, setActualRequest] = useState<Record<string, unknown> | null | undefined>(summaryActualRequest);
+  const [loaded, setLoaded] = useState(summaryActualRequest !== undefined);
+  const [loading, setLoading] = useState(false);
+  const mounted = useRef(false);
+
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+    };
+  }, []);
+
+  return (
+    <details
+      className="rounded-md border bg-background/70"
+      onToggle={(event) => {
+        if (!event.currentTarget.open || loaded || loading) return;
+        setLoading(true);
+        void window.desktopApi
+          .generationExecutionRequest(runId)
+          .then((request) => {
+            if (!mounted.current) return;
+            setActualRequest(request);
+            setLoaded(true);
+          })
+          .catch(() => undefined)
+          .finally(() => {
+            if (mounted.current) setLoading(false);
+          });
+      }}
+    >
+      <summary className="flex cursor-pointer list-none items-center gap-2 px-2 py-1.5 font-medium">
+        <BracesIcon className="size-3.5" />
+        {label}
+      </summary>
+      <pre className="max-h-72 overflow-auto border-t p-2 text-[11px] leading-relaxed whitespace-pre-wrap break-all">
+        {JSON.stringify(actualRequest ?? {}, null, 2)}
+      </pre>
+    </details>
+  );
+}
+
+function isImageEditActualRequest(actualRequest: Record<string, unknown> | undefined) {
+  return actualRequest?.operation === 'EDIT';
+}
+
 export function GenerationFactLayers({ version, run, locale, terms, wordPalettes, labels }: Props) {
   const promptSnapshot = version.promptInputSnapshot;
   const executionSnapshot = run.executionInputSnapshot ?? null;
+  const summaryActualRequest = executionSnapshot?.actualRequest;
   const termById = new Map(terms.map((term) => [term.id, term]));
   const sourceReferences = useMemo(
     () => [
@@ -221,13 +277,8 @@ export function GenerationFactLayers({ version, run, locale, terms, wordPalettes
   // model-neutral execution input. The raw envelope remains available only in
   // the collapsed execution diagnostics below.
   const storedClientRequestText = executionSnapshot ? (executionSnapshot.clientRequestText ?? '') : '';
-  const actualRequest = executionSnapshot?.actualRequest;
   const isImageEditRequest = Boolean(
-    actualRequest &&
-    typeof actualRequest === 'object' &&
-    !Array.isArray(actualRequest) &&
-    'operation' in actualRequest &&
-    actualRequest.operation === 'EDIT',
+    isImageEditActualRequest(summaryActualRequest) || version.sourceImageId || run.derivation,
   );
   const clientRequestText = isImageEditRequest
     ? (executionSnapshot?.commonInput.resolvedPrompt.commonExpression ?? '')
@@ -283,15 +334,12 @@ export function GenerationFactLayers({ version, run, locale, terms, wordPalettes
         </FactText>
       ))}
       {executionSnapshot && (
-        <details className="rounded-md border bg-background/70">
-          <summary className="flex cursor-pointer list-none items-center gap-2 px-2 py-1.5 font-medium">
-            <BracesIcon className="size-3.5" />
-            {labels.fullRequest}
-          </summary>
-          <pre className="max-h-72 overflow-auto border-t p-2 text-[11px] leading-relaxed whitespace-pre-wrap break-all">
-            {JSON.stringify(executionSnapshot.actualRequest, null, 2)}
-          </pre>
-        </details>
+        <FullExecutionRequest
+          key={executionSnapshot.id}
+          runId={run.id}
+          summaryActualRequest={summaryActualRequest}
+          label={labels.fullRequest}
+        />
       )}
     </div>
   );

@@ -23,6 +23,9 @@ export type GenerationModelResult =
 export type GenerationStarted = (cancel?: () => void) => void;
 
 export type GenerationExecutionSignal =
+  | { type: 'REQUEST_IDENTIFIED'; providerRequestId: string }
+  | { type: 'REMOTE_OPERATION_ACCEPTED'; providerRequestId: string }
+  /** @deprecated Compatibility alias for REQUEST_IDENTIFIED. */
   | { type: 'REQUEST_ACCEPTED'; providerRequestId?: string }
   | {
       type: 'PROGRESS';
@@ -53,17 +56,32 @@ export interface PreparedGenerationExecution {
 /** Executable route: a model plus the provider and transport used to invoke it. */
 export interface ImageGenerationRoute {
   readonly descriptor: ImageGenerationRouteDto;
+  /** Synchronous route admission check performed before a run is persisted or queued. */
+  validateInput?(
+    input: Readonly<Pick<GenerationInput, 'modelKey' | 'width' | 'height' | 'quality'>>,
+    routeSnapshot?: Readonly<ImageGenerationRouteDto>,
+  ): void;
   prepareExecution(
     runId: string,
     input: GenerationInput,
+    routeSnapshot?: Readonly<ImageGenerationRouteDto>,
   ): PreparedGenerationExecution | Promise<PreparedGenerationExecution>;
 }
 
 /** @deprecated Use ImageGenerationRoute. */
 export type GenerationModel = ImageGenerationRoute;
 
+export interface GenerationProviderDefinition {
+  readonly id: string;
+  readonly name: string;
+  readonly extensionId: string | null;
+}
+
 export interface GenerationProvider {
+  readonly definition: GenerationProviderDefinition;
+  /** @deprecated Use definition.id. */
   readonly key: string;
+  /** @deprecated Use definition.name. */
   readonly name: string;
   routes(): readonly ImageGenerationRoute[];
 }

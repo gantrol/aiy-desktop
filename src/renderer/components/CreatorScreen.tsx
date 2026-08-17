@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useRef, useState, type ComponentProps } from 'react';
-import { HistoryIcon, ImportIcon, LoaderCircleIcon, PencilIcon, SaveIcon } from 'lucide-react';
+import { lazy, Suspense, useEffect, useMemo, useRef, useState, type ComponentProps, type ReactNode } from 'react';
+import { FileTextIcon, HistoryIcon, ImportIcon, LoaderCircleIcon, PencilIcon, SaveIcon } from 'lucide-react';
 import type {
   AssetDto,
   AssistantActivityEventDto,
@@ -23,8 +23,9 @@ import type {
   CreatorPromptNodeInput,
   DirectionExperimentDelegationInput,
   DirectionProposalDto,
-  GenerationQuality,
+  GenerationInput,
   GenerationTargetInput,
+  GenerationVersionInput,
   Locale,
   AlbumDto,
   PromptSeriesDto,
@@ -32,12 +33,15 @@ import type {
   SidebarRootOrderTargetInput,
   StyleExplorationSlotDto,
   TermListItem,
+  VideoDocumentDto,
+  VideoDocumentSummaryDto,
   WordPaletteDto,
 } from '@/shared/contracts';
 import { emptyCreationDictionaryScope } from '@/shared/album-creation-defaults';
 import { fallbackTitleSuggestion } from '@/shared/title-fallback';
 import { termFacetValueIds } from '@/shared/term-localization';
 import { CODEX_APP_SERVER_PROVIDER_KEY, CODEX_CLI_PROVIDER_KEY } from '@/shared/extension-ids';
+import { imageGenerationPromptProfileId } from '@/shared/image-generation-prompt-profile';
 import { DictionaryIcon, ImageIcon } from '@/renderer/icons';
 import { CreateAlbumDialog } from '@/renderer/components/albums/CreateAlbumDialog';
 import { AlbumCreationDefaultsDialog } from '@/renderer/components/albums/AlbumCreationDefaultsDialog';
@@ -52,6 +56,12 @@ import { CanvasPresetPicker } from '@/renderer/components/creator/CanvasPresetPi
 import { CreationMaterialPicker } from '@/renderer/components/creator/CreationMaterialPicker';
 import { CreationReferenceStrip } from '@/renderer/components/creator/CreationReferenceStrip';
 import { CreationInputStashDialog } from '@/renderer/components/creator/CreationInputStashDialog';
+import type { CreationLibraryFilter } from '@/renderer/components/creator/CreationLibraryToolbar';
+import {
+  readCreationStartMode,
+  writeCreationStartMode,
+  type CreationStartMode,
+} from '@/renderer/components/creator/creationStartMode';
 import { CreatorAlbumDetail } from '@/renderer/components/creator/CreatorAlbumDetail';
 import { DictionaryPicker } from '@/renderer/components/creator/DictionaryPicker';
 import { generationReadiness } from '@/renderer/components/creator/generationReadiness';
@@ -87,7 +97,6 @@ import {
   type NewExternalCreationDialogValue,
 } from '@/renderer/components/creator/NewExternalCreationDialog';
 import { KnowledgeDistillationDialog } from '@/renderer/components/creator/KnowledgeDistillationDialog';
-import { OutputInspector } from '@/renderer/components/creator/OutputInspector';
 import type { AnnotationRefinementState } from '@/renderer/components/creator/annotationRefinement';
 import { RenameAlbumDialog } from '@/renderer/components/creator/RenameAlbumDialog';
 import { RenameSeriesDialog } from '@/renderer/components/creator/RenameSeriesDialog';
@@ -128,15 +137,34 @@ import { useI18n } from '@/renderer/i18n/useI18n';
 import { cn } from '@/renderer/lib/utils';
 import { createSerialTaskQueue } from '@/renderer/lib/serialTaskQueue';
 import { generationReEditLocation } from '@/renderer/features/ai-center/generationReEditNavigation';
+import {
+  VideoDocumentCreationStarter,
+  type VideoDocumentCreationRequest,
+} from '@/renderer/features/video-documents/VideoDocumentCreationStarter';
+import { VideoDocumentRenameDialog } from '@/renderer/features/video-documents/VideoDocumentRenameDialog';
+
+const OutputInspector = lazy(() =>
+  import('@/renderer/components/creator/OutputInspector').then(({ OutputInspector: component }) => ({
+    default: component,
+  })),
+);
 
 interface Props {
   data: BootstrapDto;
   locale: Locale;
   defaultPromptLocale: Locale | null;
   active: boolean;
+  creationLibraryActive: boolean;
   location: CreatorLocation;
   comparisonFullWindow: boolean;
   promptFullWindow: boolean;
+  documentWorkspace: ReactNode | null;
+  documentWorkspaceActive: boolean;
+  selectedDocumentId: string | null;
+  selectedDocumentAlbumId: string | null;
+  documentNavigationRevision: number;
+  onSelectDocument(documentId: string, albumId: string | null): void;
+  onDocumentsChange(document: VideoDocumentDto, collectionChanged: boolean): void;
   onNavigate(location: CreatorLocation, mode?: NavigationMode): void;
   onComparisonFullWindowChange(open: boolean): void;
   onPromptFullWindowChange(open: boolean): void;
@@ -185,9 +213,17 @@ export function CreatorScreen({
   locale,
   defaultPromptLocale,
   active,
+  creationLibraryActive,
   location,
   comparisonFullWindow,
   promptFullWindow,
+  documentWorkspace,
+  documentWorkspaceActive,
+  selectedDocumentId,
+  selectedDocumentAlbumId,
+  documentNavigationRevision,
+  onSelectDocument,
+  onDocumentsChange,
   onNavigate,
   onComparisonFullWindowChange,
   onPromptFullWindowChange,
@@ -234,6 +270,12 @@ export function CreatorScreen({
           : run.scope.kind === 'SERIES' && run.scope.id === initialSeriesId),
     ) ?? null;
   const [creationMode, setCreationMode] = useState<CreationMode>(initialCreationMode);
+  const [creationStartMode, setCreationStartMode] = useState<CreationStartMode>(readCreationStartMode);
+  const [videoCreationRequest, setVideoCreationRequest] = useState<VideoDocumentCreationRequest | null>(null);
+  const [creationLibraryFilter, setCreationLibraryFilter] = useState<CreationLibraryFilter>('all');
+  useEffect(() => {
+    if (documentWorkspaceActive && creationLibraryFilter === 'images') setCreationLibraryFilter('documents');
+  }, [creationLibraryFilter, documentWorkspaceActive]);
   const [seriesId, setSeriesId] = useState<string | null>(initialSeriesId);
   const [selectedAlbumId, setSelectedAlbumId] = useState<string | null>(
     location.surface === 'album-detail' ? location.albumId : null,
@@ -404,6 +446,7 @@ export function CreatorScreen({
   const minimalAssistantRequestRevision = useRef(0);
   const [renameOpen, setRenameOpen] = useState(false);
   const [renameAlbum, setRenameAlbum] = useState<AlbumDto | null>(null);
+  const [renameDocument, setRenameDocument] = useState<VideoDocumentSummaryDto | null>(null);
   const [settingsAlbum, setSettingsAlbum] = useState<AlbumDto | null>(null);
   const [createAlbumParent, setCreateAlbumParent] = useState<AlbumDto | null | undefined>(undefined);
   const [lifecycleBusy, setLifecycleBusy] = useState(false);
@@ -462,6 +505,10 @@ export function CreatorScreen({
     [data.imageGenerationRoutes, health.state],
   );
   const selectedModelKeys = useMemo(() => generationTargets.map((target) => target.modelKey), [generationTargets]);
+  const promptProfileId = useMemo(() => {
+    const selectedRoute = imageGenerationRoutes.find((route) => route.key === generationTargets[0]?.modelKey);
+    return imageGenerationPromptProfileId(selectedRoute);
+  }, [generationTargets, imageGenerationRoutes]);
   const dictionaryPackReleaseIds = useMemo(
     () => dictionaryScope.sources.map((source) => source.packReleaseId),
     [dictionaryScope.sources],
@@ -507,9 +554,9 @@ export function CreatorScreen({
         selectedTerms,
         appliedPalettes,
         termPromptLocale,
-        modelKey: 'gpt-image-2',
+        promptProfileId,
       }),
-    [manualPrompt, promptNodes, selectedTerms, appliedPalettes, termPromptLocale],
+    [manualPrompt, promptNodes, selectedTerms, appliedPalettes, termPromptLocale, promptProfileId],
   );
   const assistantContextKey = useMemo(
     () =>
@@ -630,11 +677,12 @@ export function CreatorScreen({
   const ideasDisabled = !activeIdeaCreation && !ideasRunning;
   const writingDisabled = writingAssistantHistory.length === 0 && !writingRunning && !minimalAssistantError;
   const showOutputPane =
-    comparisonFullWindow ||
-    (!selectedAlbum &&
-      ((outputMode === 'images' && creationMode === 'existing' && Boolean(outputSeries)) ||
-        (outputMode === 'ideas' && Boolean(activeIdeaCreation || assistantScope)) ||
-        (outputMode === 'writing' && Boolean(assistantScope))));
+    !documentWorkspaceActive &&
+    (comparisonFullWindow ||
+      (!selectedAlbum &&
+        ((outputMode === 'images' && creationMode === 'existing' && Boolean(outputSeries)) ||
+          (outputMode === 'ideas' && Boolean(activeIdeaCreation || assistantScope)) ||
+          (outputMode === 'writing' && Boolean(assistantScope)))));
   const creatorSurface: ResultLibrarySurface = selectedIdeaCreation
     ? 'idea-creation'
     : selectedAlbum
@@ -642,6 +690,7 @@ export function CreatorScreen({
       : creationMode === 'new'
         ? 'new-creation'
         : 'existing-creation';
+  const newCreationSurface = creationMode === 'new' && !selectedAlbum && !selectedIdeaCreation;
   const ideaAssistantRuns = activeIdeaCreation
     ? data.assistantRuns.filter((run) => run.creationId === activeIdeaCreation.id)
     : assistantHistory.filter((run) => run.mode === 'directions');
@@ -1190,6 +1239,7 @@ export function CreatorScreen({
         const rename = await window.desktopApi.promptSeriesRename({
           seriesId: request.seriesId,
           title: safeTitle,
+          locale,
           expectedTitle: request.initialTitle,
         });
         if (!rename.renamed) return;
@@ -1206,6 +1256,7 @@ export function CreatorScreen({
           .promptSeriesRename({
             seriesId: request.seriesId,
             title: fallback.title,
+            locale,
             expectedTitle: request.initialTitle,
           })
           .then(async (rename) => {
@@ -1338,6 +1389,13 @@ export function CreatorScreen({
     onNavigate(nextLocation, mode);
   }
 
+  function selectCreationStartMode(mode: CreationStartMode) {
+    setCreationStartMode(mode);
+    writeCreationStartMode(mode);
+    if (mode === 'image') setVideoCreationRequest(null);
+    else onPromptFullWindowChange(false);
+  }
+
   function workbenchLocation(): CreatorLocation {
     if (selectedIdeaCreationId) return { surface: 'idea-creation', creationId: selectedIdeaCreationId };
     if (creationMode === 'new') return { surface: 'new-creation', albumId: targetAlbumId };
@@ -1400,6 +1458,7 @@ export function CreatorScreen({
       creationDraftId: null,
       albumId: value.albumId,
       title: value.title,
+      titleLocale: locale,
       prompt: value.promptKnowledge === 'EXACT' ? { knowledge: 'EXACT', text: value.prompt } : { knowledge: 'UNKNOWN' },
       source: value.source,
       sourceUrl: value.sourceUrl,
@@ -1441,7 +1500,7 @@ export function CreatorScreen({
       selectedTerms: capturedPrompt.selectedTerms,
       appliedPalettes: capturedPrompt.appliedPalettes,
       termPromptLocale,
-      modelKey: 'gpt-image-2',
+      promptProfileId,
     });
     if (!capturedResolution.livePrompt.trim()) return;
     synchronizeCapturedPrompt(capturedPrompt);
@@ -1865,6 +1924,7 @@ export function CreatorScreen({
       seriesId: creationMode === 'existing' ? seriesId : null,
       versionId: exactVersionId,
       title: creationMode === 'new' ? typedTitle : (series?.title ?? ''),
+      titleLocale: locale,
       source,
       sourceUrl,
     };
@@ -2157,7 +2217,7 @@ export function CreatorScreen({
       selectedTerms: nextSelectedTerms,
       appliedPalettes: nextAppliedPalettes,
       termPromptLocale,
-      modelKey: 'gpt-image-2',
+      promptProfileId,
     });
     const adoptedContextKey = buildCreatorAssistantContextKey({
       resolution: nextResolution,
@@ -2236,6 +2296,7 @@ export function CreatorScreen({
                   seriesId: run.scope.id,
                   creationDraftId: null,
                   title: data.series.find((item) => item.id === run.scope.id)?.title ?? '',
+                  titleLocale: locale,
                   manualPrompt: nextManualPrompt,
                   promptNodes: nextPromptNodes,
                   prompt: nextResolution.livePrompt,
@@ -2310,7 +2371,7 @@ export function CreatorScreen({
                   ...recipe.internalTerms.flatMap((term) => [term.displayName, term.promptFragment]),
                 ]),
               ],
-            }).map((term) => creatorAssistantTermInput(term, undefined, locale))
+            }).map((term) => creatorAssistantTermInput(term, undefined, locale, promptProfileId))
           : [];
       const turn = await window.desktopApi.agentAssist({
         scope,
@@ -2382,9 +2443,20 @@ export function CreatorScreen({
   }
 
   async function handleRenameAlbum(album: AlbumDto, title: string) {
-    await window.desktopApi.albumsRename({ albumId: album.id, title });
+    await window.desktopApi.albumsRename({ albumId: album.id, title, locale });
     await refreshAlbums();
     notify(messages.creator.album.albumRenamed);
+  }
+
+  async function handleRenameDocument(documentId: string, title: string) {
+    const updated = await window.desktopApi.videoDocumentRename({ documentId, title });
+    onDocumentsChange(updated, false);
+  }
+
+  async function moveDocument(documentId: string, albumId: string | null) {
+    const updated = await window.desktopApi.videoDocumentMove({ documentId, albumId });
+    onDocumentsChange(updated, true);
+    await refreshAlbums();
   }
 
   async function deleteAlbumDirect(album: AlbumDto) {
@@ -2424,6 +2496,7 @@ export function CreatorScreen({
     try {
       const created = await window.desktopApi.albumsCreate({
         title,
+        titleLocale: locale,
         parentAlbumId: parent?.id ?? null,
       });
       await refreshAlbums();
@@ -2815,7 +2888,7 @@ export function CreatorScreen({
       selectedTerms: capturedPrompt.selectedTerms,
       appliedPalettes: capturedPrompt.appliedPalettes,
       termPromptLocale,
-      modelKey: 'gpt-image-2',
+      promptProfileId,
     });
     if (!capturedResolution.livePrompt.trim()) return;
     synchronizeCapturedPrompt(capturedPrompt);
@@ -2831,6 +2904,7 @@ export function CreatorScreen({
           creationDraftId: draftIdForGeneration,
           baseVersionId: creating ? null : (version?.id ?? null),
           title: initialTitle,
+          titleLocale: locale,
           manualPrompt: capturedPrompt.manualPrompt,
           promptNodes: capturedPrompt.nodes,
           prompt: capturedResolution.livePrompt,
@@ -2948,8 +3022,8 @@ export function CreatorScreen({
     panes.setCompactPanel('output');
   }
 
-  async function generateVersion(targetVersionId: string, modelKey: string) {
-    const result = await window.desktopApi.generationStartVersion({ versionId: targetVersionId, modelKey });
+  async function generateVersion(input: GenerationVersionInput) {
+    const result = await window.desktopApi.generationStartVersion(input);
     await refresh();
     notify(`${c.generationStarted} · ${result.runId.slice(-6)}`);
   }
@@ -2991,42 +3065,8 @@ export function CreatorScreen({
     return { annotationsReused: Boolean(reusedAnnotations) };
   }
 
-  async function generateImportedPrompt(
-    targetSeriesId: string,
-    prompt: string,
-    modelKey: string,
-    width: number | null,
-    height: number | null,
-    importedQuality: GenerationQuality,
-  ) {
-    const targetSeries = data.series.find((item) => item.id === targetSeriesId);
-    if (!targetSeries || !prompt.trim()) return;
-    const validDimensions =
-      width !== null &&
-      height !== null &&
-      Number.isInteger(width) &&
-      Number.isInteger(height) &&
-      width >= 256 &&
-      width <= 4096 &&
-      height >= 256 &&
-      height <= 4096;
-    const result = await window.desktopApi.generationStart({
-      seriesId: targetSeries.id,
-      creationDraftId: null,
-      title: targetSeries.title,
-      manualPrompt: prompt.trim(),
-      prompt: prompt.trim(),
-      changeSummary: messages.creator.comparison.importedPrompt,
-      referenceAssetIds: [],
-      termPromptLocale: locale,
-      termIds: [],
-      wordPaletteReferences: [],
-      modelKey,
-      canvasPresetKey: null,
-      width: validDimensions ? width : null,
-      height: validDimensions ? height : null,
-      quality: importedQuality,
-    });
+  async function generateImportedPrompt(input: GenerationInput) {
+    const result = await window.desktopApi.generationStart(input);
     await refresh();
     notify(`${c.generationStarted} · ${result.runId.slice(-6)}`);
   }
@@ -3211,7 +3251,7 @@ export function CreatorScreen({
             {messages.creator.results.library}
           </SegmentedItem>
           <SegmentedItem value="creator" className="px-4">
-            {messages.app.navigation.creator}
+            {documentWorkspaceActive ? messages.videoDocuments.title : messages.app.navigation.creator}
           </SegmentedItem>
           {showOutputPane && (
             <SegmentedItem value="output" className="px-4">
@@ -3246,11 +3286,17 @@ export function CreatorScreen({
           }
         >
           <ResultLibrary
+            active={creationLibraryActive}
             data={data}
             locale={locale}
+            activeContent={documentWorkspaceActive ? 'documents' : 'images'}
+            filter={creationLibraryFilter}
             selectedSeriesId={seriesId}
             selectedCreationId={selectedIdeaCreationId}
             selectedAlbumId={selectedAlbumId}
+            selectedDocumentId={selectedDocumentId}
+            selectedDocumentAlbumId={selectedDocumentAlbumId}
+            documentNavigationRevision={documentNavigationRevision}
             surface={creatorSurface}
             mode={panes.multiPane ? panes.resultLibraryMode : 'full'}
             canExpand={panes.canExpandResultLibrary}
@@ -3262,9 +3308,13 @@ export function CreatorScreen({
             onModeChange={panes.setResultLibraryMode}
             onResizeStart={panes.beginResultResize}
             onResizeValueChange={panes.setResultWidth}
+            onFilterChange={setCreationLibraryFilter}
             onSelectCreation={chooseIdeaCreation}
             onDeleteCreation={requestIdeaCreationDelete}
             onSelect={chooseSeries}
+            onSelectDocument={onSelectDocument}
+            onRenameDocument={setRenameDocument}
+            onMoveDocument={moveDocument}
             onSelectAlbum={chooseAlbum}
             onMore={showMoreResults}
             onNew={() => void startNewCreation(null)}
@@ -3284,17 +3334,34 @@ export function CreatorScreen({
           />
         </div>
 
-        {selectedAlbum &&
+        {documentWorkspace && (
+          <div
+            className={cn(
+              documentWorkspaceActive && panes.compactPanel === 'creator' ? 'flex' : 'hidden',
+              'min-h-0 min-w-0 overflow-hidden bg-background',
+              documentWorkspaceActive && 'min-[840px]:flex [&>*]:size-full',
+            )}
+          >
+            {documentWorkspace}
+          </div>
+        )}
+
+        {!documentWorkspaceActive &&
+          selectedAlbum &&
           !comparisonFullWindow &&
           !promptFullWindow &&
           (panes.multiPane || panes.compactPanel === 'creator') && (
             <CreatorAlbumDetail
+              key={selectedAlbum.id}
               album={selectedAlbum}
               albums={data.albums}
               creationSessions={creationSessions}
+              filter={creationLibraryFilter}
+              documentNavigationRevision={documentNavigationRevision}
               busy={lifecycleBusy}
               onSelectAlbum={chooseAlbum}
               onSelectSeries={chooseSeries}
+              onSelectDocument={onSelectDocument}
               onOpenMaterial={onOpenMaterial}
               onRename={handleRenameAlbum}
               onDelete={deleteAlbumDirect}
@@ -3308,11 +3375,28 @@ export function CreatorScreen({
 
         <PasteDropSurface
           disabled={referenceImporting}
-          onImages={(files, source, sourceUrl) => void importReferenceFiles(files, source, sourceUrl)}
+          onImages={(files, source, sourceUrl) => {
+            if (newCreationSurface) selectCreationStartMode('image');
+            void importReferenceFiles(files, source, sourceUrl);
+          }}
+          onVideo={(file, source) => {
+            if (!newCreationSurface) return;
+            selectCreationStartMode('video-document');
+            setVideoCreationRequest({ file, source });
+          }}
           onText={appendPromptText}
-          overlay={<ImageIcon className="size-8 text-muted-foreground" />}
+          overlay={
+            newCreationSurface ? (
+              <div className="flex items-center gap-3 text-muted-foreground">
+                <ImageIcon className="size-8" />
+                <FileTextIcon className="size-8" />
+              </div>
+            ) : (
+              <ImageIcon className="size-8 text-muted-foreground" />
+            )
+          }
           className={
-            comparisonFullWindow || selectedAlbum
+            documentWorkspaceActive || comparisonFullWindow || selectedAlbum
               ? 'hidden'
               : cn(
                   promptFullWindow || panes.compactPanel === 'creator' ? 'flex' : 'hidden',
@@ -3329,6 +3413,16 @@ export function CreatorScreen({
             {creationMode === 'new' ? (
               <div className="flex min-w-0 items-center gap-2">
                 <span className="truncate font-semibold">{c.newPrompt}</span>
+                {newCreationSurface && (
+                  <Segmented
+                    type="single"
+                    value={creationStartMode}
+                    onValueChange={(value) => value && selectCreationStartMode(value as CreationStartMode)}
+                  >
+                    <SegmentedItem value="image">{c.creationModeImage}</SegmentedItem>
+                    <SegmentedItem value="video-document">{c.creationModeVideoDocument}</SegmentedItem>
+                  </Segmented>
+                )}
                 {targetAlbum && (
                   <span
                     className="max-w-48 truncate rounded-full border bg-surface-sunken px-2 py-0.5 text-xs text-foreground-secondary"
@@ -3414,7 +3508,7 @@ export function CreatorScreen({
               >
                 <HistoryIcon className="size-3.5" />
               </Button>
-              {creationMode === 'new' && (
+              {creationMode === 'new' && creationStartMode === 'image' && (
                 <>
                   <Button
                     type="button"
@@ -3445,47 +3539,61 @@ export function CreatorScreen({
               )}
             </div>
           </header>
-          <MinimalCreationStarter
-            locale={locale}
-            termPromptLocale={defaultPromptLocale ?? termPromptLocale}
-            prompt={manualPrompt}
-            promptNodes={promptNodes}
-            terms={data.terms}
-            palettes={data.wordPalettes}
-            appliedPalettes={appliedPalettes}
-            composerRef={promptComposerRef}
-            assistantBusy={minimalAssistantBusy}
-            assistantMode={minimalAssistantMode}
-            canRequestIdeas
-            canBuildPrompt={promptNodes.some((node) => node.kind !== 'TEXT' || Boolean(node.text.trim()))}
-            routes={imageGenerationRoutes}
-            generationTargets={generationTargets}
-            generationCount={generationCount}
-            readiness={readiness}
-            starting={starting}
-            fullWindow={promptFullWindow}
-            annotationRefinement={annotationRefinementState}
-            materialPicker={materialPickerControl}
-            dictionaryPicker={dictionaryPickerControl}
-            dictionarySidebar={dictionarySidebarControl}
-            canvasPicker={canvasPickerControl}
-            references={referenceStripControl}
-            experiments={explorationPanel}
-            onPromptNodesChange={updatePromptDocument}
-            onOpenTerm={openTermInDictionary}
-            onOpenRecipe={openPaletteInDictionary}
-            onConfigureRecipe={(palette) => requestWordPalette(palette)}
-            onRecipePromptLocaleChange={changeWordPalettePromptLocale}
-            onRequestRecipeInsert={(palette, position) => requestWordPalette(palette, position)}
-            onRequestIdeas={requestProjectIdeas}
-            onBuildPrompt={requestProjectWriting}
-            onGenerationTargetsChange={setGenerationTargets}
-            onConfigureExtension={onConfigureExtension}
-            onGenerate={() => void generate()}
-            onFullWindowChange={changePromptFullWindow}
-          />
+          {newCreationSurface && creationStartMode === 'video-document' ? (
+            <VideoDocumentCreationStarter
+              locale={locale}
+              albums={data.albums}
+              defaultAlbumId={targetAlbumId}
+              request={videoCreationRequest}
+              onRequestChange={setVideoCreationRequest}
+              onLibraryChange={refreshAlbums}
+              onCreated={(documentId, albumId) => onSelectDocument(documentId, albumId)}
+              notify={notify}
+            />
+          ) : (
+            <MinimalCreationStarter
+              locale={locale}
+              termPromptLocale={defaultPromptLocale ?? termPromptLocale}
+              promptProfileId={promptProfileId}
+              prompt={manualPrompt}
+              promptNodes={promptNodes}
+              terms={data.terms}
+              palettes={data.wordPalettes}
+              appliedPalettes={appliedPalettes}
+              composerRef={promptComposerRef}
+              assistantBusy={minimalAssistantBusy}
+              assistantMode={minimalAssistantMode}
+              canRequestIdeas
+              canBuildPrompt={promptNodes.some((node) => node.kind !== 'TEXT' || Boolean(node.text.trim()))}
+              routes={imageGenerationRoutes}
+              generationTargets={generationTargets}
+              generationCount={generationCount}
+              readiness={readiness}
+              starting={starting}
+              fullWindow={promptFullWindow}
+              annotationRefinement={annotationRefinementState}
+              materialPicker={materialPickerControl}
+              dictionaryPicker={dictionaryPickerControl}
+              dictionarySidebar={dictionarySidebarControl}
+              canvasPicker={canvasPickerControl}
+              references={referenceStripControl}
+              experiments={explorationPanel}
+              onPromptNodesChange={updatePromptDocument}
+              onOpenTerm={openTermInDictionary}
+              onOpenRecipe={openPaletteInDictionary}
+              onConfigureRecipe={(palette) => requestWordPalette(palette)}
+              onRecipePromptLocaleChange={changeWordPalettePromptLocale}
+              onRequestRecipeInsert={(palette, position) => requestWordPalette(palette, position)}
+              onRequestIdeas={requestProjectIdeas}
+              onBuildPrompt={requestProjectWriting}
+              onGenerationTargetsChange={setGenerationTargets}
+              onConfigureExtension={onConfigureExtension}
+              onGenerate={() => void generate()}
+              onFullWindowChange={changePromptFullWindow}
+            />
+          )}
           {/* Queue, failures and retries stay visible below the single creation surface; a run must never disappear silently. */}
-          {!promptFullWindow && (
+          {(!newCreationSurface || creationStartMode === 'image') && !promptFullWindow && (
             <GenerationTaskTray
               tasks={data.generationTasks}
               routes={imageGenerationRoutes}
@@ -3693,6 +3801,16 @@ export function CreatorScreen({
             }}
             onSave={handleRenameAlbum}
           />
+          <VideoDocumentRenameDialog
+            open={Boolean(renameDocument)}
+            title={renameDocument?.title ?? ''}
+            onOpenChange={(open) => {
+              if (!open) setRenameDocument(null);
+            }}
+            onSave={async (title) => {
+              if (renameDocument) await handleRenameDocument(renameDocument.id, title);
+            }}
+          />
           <DeleteEntityDialog
             open={Boolean(deleteTarget)}
             title={
@@ -3753,62 +3871,70 @@ export function CreatorScreen({
             }
           >
             {outputMode === 'images' ? (
-              <OutputInspector
-                headerNavigation={
-                  <CreationOutputTabs
-                    value={outputMode}
-                    locale={locale}
-                    ideasDisabled={ideasDisabled}
-                    writingDisabled={writingDisabled}
-                    onValueChange={(value) => void changeOutputMode(value)}
-                  />
+              <Suspense
+                fallback={
+                  <div className="grid size-full place-items-center bg-media-surround" aria-busy="true">
+                    <LoaderCircleIcon className="size-5 animate-spin text-muted-foreground" aria-hidden="true" />
+                  </div>
                 }
-                series={outputSeries}
-                primarySeries={outputPrimarySeries}
-                outputProjection={outputProjection}
-                locale={locale}
-                terms={data.terms}
-                wordPalettes={data.wordPalettes}
-                imageGenerationRoutes={imageGenerationRoutes}
-                generationTargets={generationTargets}
-                generationTasks={data.generationTasks}
-                requestedAssetId={requestedAssetId}
-                annotationWorkspaceRequest={
-                  location.surface === 'existing-creation' && location.workspace === 'annotations' && location.assetId
-                    ? { assetId: location.assetId, requestId: location.requestId ?? 0 }
-                    : null
-                }
-                onAnnotationRefinementStateChange={setAnnotationRefinementState}
-                onRequestedAssetIdChange={selectOutputAsset}
-                galleryOpen={outputGalleryOpen}
-                collapsed={panes.outputCollapsed}
-                comparisonFullWindow={comparisonFullWindow}
-                onCollapsedChange={panes.setOutputCollapsed}
-                onResizeStart={panes.beginOutputResize}
-                resizeValue={panes.outputWidth}
-                resizeMin={panes.outputResizeMin}
-                resizeMax={panes.outputResizeMax}
-                onResizeValueChange={panes.setOutputWidth}
-                onComparisonFullWindowChange={onComparisonFullWindowChange}
-                onGalleryOpenChange={setOutputGalleryOpen}
-                onGenerateVersion={generateVersion}
-                onGeneratePrompt={generateImportedPrompt}
-                onReusePrompt={reusePromptInput}
-                onRefineImage={refineImage}
-                onCropImage={cropImage}
-                onReframeImage={reframeImage}
-                onRetryGeneration={retryGeneration}
-                onReEditGeneration={(runId) => void reEditGeneration(runId)}
-                distilling={Boolean(distillingAssetId)}
-                onDistillKnowledge={openKnowledgeDistillation}
-                importing={outputImport.busy}
-                onImportFiles={(files, source, sourceUrl) => void outputImport.previewFiles(files, source, sourceUrl)}
-                onChooseImport={() => void outputImport.chooseFiles()}
-                onPasteText={pasteTextFromOutput}
-                onImportedOutputUpdated={refresh}
-                onImportedOutputSaved={onImportedOutputSaved}
-                notify={notify}
-              />
+              >
+                <OutputInspector
+                  headerNavigation={
+                    <CreationOutputTabs
+                      value={outputMode}
+                      locale={locale}
+                      ideasDisabled={ideasDisabled}
+                      writingDisabled={writingDisabled}
+                      onValueChange={(value) => void changeOutputMode(value)}
+                    />
+                  }
+                  series={outputSeries}
+                  primarySeries={outputPrimarySeries}
+                  outputProjection={outputProjection}
+                  locale={locale}
+                  terms={data.terms}
+                  wordPalettes={data.wordPalettes}
+                  imageGenerationRoutes={imageGenerationRoutes}
+                  generationTargets={generationTargets}
+                  generationTasks={data.generationTasks}
+                  requestedAssetId={requestedAssetId}
+                  annotationWorkspaceRequest={
+                    location.surface === 'existing-creation' && location.workspace === 'annotations' && location.assetId
+                      ? { assetId: location.assetId, requestId: location.requestId ?? 0 }
+                      : null
+                  }
+                  onAnnotationRefinementStateChange={setAnnotationRefinementState}
+                  onRequestedAssetIdChange={selectOutputAsset}
+                  galleryOpen={outputGalleryOpen}
+                  collapsed={panes.outputCollapsed}
+                  comparisonFullWindow={comparisonFullWindow}
+                  onCollapsedChange={panes.setOutputCollapsed}
+                  onResizeStart={panes.beginOutputResize}
+                  resizeValue={panes.outputWidth}
+                  resizeMin={panes.outputResizeMin}
+                  resizeMax={panes.outputResizeMax}
+                  onResizeValueChange={panes.setOutputWidth}
+                  onComparisonFullWindowChange={onComparisonFullWindowChange}
+                  onGalleryOpenChange={setOutputGalleryOpen}
+                  onGenerateVersion={generateVersion}
+                  onGeneratePrompt={generateImportedPrompt}
+                  onReusePrompt={reusePromptInput}
+                  onRefineImage={refineImage}
+                  onCropImage={cropImage}
+                  onReframeImage={reframeImage}
+                  onRetryGeneration={retryGeneration}
+                  onReEditGeneration={(runId) => void reEditGeneration(runId)}
+                  distilling={Boolean(distillingAssetId)}
+                  onDistillKnowledge={openKnowledgeDistillation}
+                  importing={outputImport.busy}
+                  onImportFiles={(files, source, sourceUrl) => void outputImport.previewFiles(files, source, sourceUrl)}
+                  onChooseImport={() => void outputImport.chooseFiles()}
+                  onPasteText={pasteTextFromOutput}
+                  onImportedOutputUpdated={refresh}
+                  onImportedOutputSaved={onImportedOutputSaved}
+                  notify={notify}
+                />
+              </Suspense>
             ) : (
               <CreatorAssistantOutputPanel
                 mode={outputMode}

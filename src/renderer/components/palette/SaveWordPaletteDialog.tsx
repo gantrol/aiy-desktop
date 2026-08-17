@@ -1,9 +1,15 @@
-import { useEffect, useState } from 'react';
+import { lazy, Suspense, useEffect, useState } from 'react';
+import { LoaderCircleIcon } from 'lucide-react';
 import type { FacetDefinitionDto, Locale, TermListItem, WordPaletteDto } from '@/shared/contracts';
 import { useI18n } from '@/renderer/i18n/useI18n';
 import { cn } from '@/renderer/lib/utils';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/renderer/components/ui/dialog';
-import { WordPaletteEditor } from '@/renderer/components/palette/WordPaletteEditor';
+
+const WordPaletteEditor = lazy(() =>
+  import('@/renderer/components/palette/WordPaletteEditor').then(({ WordPaletteEditor: component }) => ({
+    default: component,
+  })),
+);
 
 interface Props {
   locale: Locale;
@@ -53,23 +59,31 @@ export function SaveWordPaletteDialog({
           <DialogTitle>{title}</DialogTitle>
         </DialogHeader>
         {open && (
-          <WordPaletteEditor
-            locale={locale}
-            palette={palette}
-            initialTermIds={termIds}
-            terms={terms}
-            facets={facets}
-            onBack={() => changeOpen(false)}
-            onFullWindowChange={setFullWindow}
-            onSaved={async (savedPalette, action) => {
-              await onSaved?.(savedPalette, action);
-              if (action === 'created') onCreated?.(savedPalette);
-              changeOpen(false);
-            }}
-            onLifecycleChanged={async (action) => {
-              await onLifecycleChanged?.(action);
-            }}
-          />
+          <Suspense
+            fallback={
+              <div className="grid size-full place-items-center" aria-busy="true">
+                <LoaderCircleIcon className="size-5 animate-spin text-muted-foreground" aria-hidden="true" />
+              </div>
+            }
+          >
+            <WordPaletteEditor
+              locale={locale}
+              palette={palette}
+              initialTermIds={termIds}
+              terms={terms}
+              facets={facets}
+              onBack={() => changeOpen(false)}
+              onFullWindowChange={setFullWindow}
+              onSaved={async (savedPalette, action) => {
+                await onSaved?.(savedPalette, action);
+                if (action === 'created') onCreated?.(savedPalette);
+                changeOpen(false);
+              }}
+              onLifecycleChanged={async (action) => {
+                await onLifecycleChanged?.(action);
+              }}
+            />
+          </Suspense>
         )}
       </DialogContent>
     </Dialog>

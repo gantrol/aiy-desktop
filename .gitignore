@@ -25,6 +25,7 @@ release/
 
 # Test output
 coverage/
+/coverage-*/
 playwright-report/
 test-results/
 
@@ -86,6 +87,10 @@ logs/
 # First-release starter-pack media is a reproducible application input.
 !/content-packs/creation-starter/assets/workbench/*.webp
 
+# Production portrait content is maintained outside the application repository.
+# Never mirror the multi-gigabyte canonical package into distributable resources.
+/content-packs/human-portrait/
+
 # Application identity assets are part of the program
 !build/icon-large-source.png
 !build/icon.png
@@ -93,10 +98,15 @@ logs/
 !src/renderer/public/icon-24.png
 !src/renderer/public/icon.png
 
-# Test fixtures are program inputs, not content. Regenerate with
-# `node scripts/generate-image-fixtures.mjs`.
-!tests/fixtures/**/*.png
-!e2e/**/*-snapshots/**/*.png
+# Microsoft Store package inputs are reproducible application assets.
+!build/msix/
+!build/msix/Assets/
+!build/msix/Assets/*.ico
+!build/msix/Assets/*.png
+
+# Product screenshots are part of the public README.
+!docs/assets/
+!docs/assets/readme-*.png
 
 # Environment files and signing secrets
 .env

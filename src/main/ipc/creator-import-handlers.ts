@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import type { CreatorImageImportItemInput } from '@/shared/contracts';
-import { CreatorImageStagingService } from '@/main/creator-image-staging';
+import { CreatorImageStagingService } from '@/main/creations/creator-image-staging';
 import type { LibraryDatabase } from '@/main/database';
 import type { IpcHandlerRegistrar } from '@/main/ipc/trusted-handlers';
 import { importedImageMetadataSchema } from '@/main/ipc/import-metadata-schema';
@@ -20,6 +20,7 @@ const importContextSchema = z.object({
   seriesId: id.nullable(),
   versionId: id.nullable(),
   title: z.string().max(300),
+  titleLocale: z.enum(['zh', 'en']),
   source: z.enum(['PASTE', 'DROP', 'UPLOAD']),
   sourceUrl: z
     .string()
@@ -59,6 +60,7 @@ const newExternalCreationImportSchema = z
     creationDraftId: id.nullable().optional().default(null),
     albumId: id.nullable().optional().default(null),
     title: z.string().max(300),
+    titleLocale: z.enum(['zh', 'en']),
     prompt: z.discriminatedUnion('knowledge', [
       z.object({ knowledge: z.literal('UNKNOWN') }),
       z.object({ knowledge: z.literal('EXACT'), text: z.string().trim().min(1).max(30_000) }),
@@ -104,7 +106,6 @@ const outputUpdateSchema = z.object({
     .refine((value) => !value || /^https?:\/\//i.test(value), { message: 'Source must be an HTTP(S) URL' }),
   aiGeneratedStatus: z.enum(['YES', 'NO', 'UNKNOWN', 'OTHER']),
   comparisonRole: z.enum(['MODEL', 'UNKNOWN', 'ACTUAL']),
-  modelKey: z.string().min(1).max(100).nullable(),
   modelName: z.string().max(300),
   modelProvider: z.string().max(200),
   modelVersion: z.string().max(200),

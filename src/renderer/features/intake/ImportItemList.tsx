@@ -59,7 +59,7 @@ export function ImportItemList({
   onAddFiles,
 }: Props) {
   const inputRef = useRef<HTMLInputElement | null>(null);
-  const selectableIds = items.filter((item) => item.kind === 'IMAGE').map((item) => item.id);
+  const selectableIds = items.filter((item) => item.kind !== 'TEXT').map((item) => item.id);
   const selectedCount = selectableIds.filter((id) => selectedIds.has(id)).length;
   const allSelected = selectableIds.length > 0 && selectedCount === selectableIds.length;
   const selectState = allSelected ? true : selectedCount > 0 ? 'indeterminate' : false;
@@ -95,7 +95,7 @@ export function ImportItemList({
                   !active && !(batchMode && selected) && 'hover:bg-hover',
                 )}
               >
-                {item.kind === 'IMAGE' ? (
+                {item.kind !== 'TEXT' ? (
                   <Checkbox
                     checked={selected}
                     disabled={disabled}
@@ -111,9 +111,8 @@ export function ImportItemList({
                   disabled={disabled}
                   onClick={() => onActiveChange(item.id)}
                 >
-                  {item.kind === 'IMAGE' ? (
+                  {item.kind !== 'TEXT' ? (
                     <img
-                      data-slot="intake-preview"
                       className="h-24 w-24 shrink-0 rounded-md border bg-media-surround-light object-contain"
                       src={item.previewUrl}
                       alt=""
@@ -125,9 +124,9 @@ export function ImportItemList({
                   )}
                   <span className="min-w-0 flex-1 space-y-1.5">
                     <span className="block truncate text-sm font-medium">
-                      {item.kind === 'IMAGE' ? item.name : labels.text}
+                      {item.kind !== 'TEXT' ? item.name : labels.text}
                     </span>
-                    {item.kind === 'IMAGE' ? (
+                    {item.kind !== 'TEXT' ? (
                       <>
                         <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
                           {isIntakeVideoMimeType(item.mimeType) ? (

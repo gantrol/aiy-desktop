@@ -1,6 +1,6 @@
 import type { z } from 'zod';
 import { GenerationAdapterError } from '@/main/generation-models/adapters/errors';
-import { decodeProviderResponseJson, ProviderResponseError } from '@/main/provider-response';
+import { decodeProviderResponseJson, ProviderResponseError } from '@/main/providers/provider-response';
 
 export async function decodeGenerationProviderResponseJson<T>(
   response: Response,

@@ -4,11 +4,12 @@ import type { ExternalImageApiRuntime } from '@/main/extensions/external-image-a
 import type {
   GenerationAdapter,
   GenerationAdapterExecutionContext,
+  NormalizedGenerationOutput,
   NormalizedGenerationRequest,
 } from '@/main/generation-models/adapters/contracts';
 import { GenerationAdapterError } from '@/main/generation-models/adapters/errors';
 import { decodeGenerationProviderResponseJson } from '@/main/generation-models/adapters/generation-provider-response';
-import { tryDecodeProviderErrorJson } from '@/main/provider-response';
+import { tryDecodeProviderErrorJson } from '@/main/providers/provider-response';
 import {
   cleanupOutput,
   downloadHttpsImage,
@@ -55,6 +56,7 @@ const MAX_QWEN_REFERENCE_BYTES = 10 * 1024 * 1024;
 
 export class AlibabaQwenImageAdapter implements GenerationAdapter {
   readonly providerKey = 'alibaba-cloud';
+  readonly adapterId = 'alibaba-model-studio-image';
   readonly capabilities = ['GENERATE', 'REFERENCE_IMAGE', 'MULTI_REFERENCE', 'IMAGE_EDIT'] as const;
   readonly maxReferenceImages = 3;
   private readonly namespace = 'alibaba-model-studio-image-api';
@@ -65,20 +67,9 @@ export class AlibabaQwenImageAdapter implements GenerationAdapter {
     private readonly fetchImpl: typeof fetch = fetch,
   ) {}
 
-  validateRequest(request: NormalizedGenerationRequest) {
-    const credentials = this.runtime.credentials(ALIBABA_MODEL_STUDIO_IMAGE_API_EXTENSION_ID);
-    const expectedModelId = resolveExternalImageApiEndpoint(
-      ALIBABA_MODEL_STUDIO_IMAGE_API_EXTENSION_ID,
-      credentials.settings,
-    ).modelId;
-    if (request.modelId !== expectedModelId) {
-      throw new GenerationAdapterError({
-        code: 'INVALID_REQUEST',
-        message: 'Alibaba image configuration changed before the request started',
-      });
-    }
-    if (request.output.width && request.output.height) {
-      const pixels = request.output.width * request.output.height;
+  validateOutput(output: NormalizedGenerationOutput) {
+    if (output.width && output.height) {
+      const pixels = output.width * output.height;
       if (pixels < 512 * 512 || pixels > 2048 * 2048) {
         throw new GenerationAdapterError({
           code: 'INVALID_REQUEST',
@@ -88,10 +79,41 @@ export class AlibabaQwenImageAdapter implements GenerationAdapter {
     }
   }
 
-  async execute(request: NormalizedGenerationRequest, context: GenerationAdapterExecutionContext) {
+  validateRequest(request: NormalizedGenerationRequest) {
+    this.boundProvider(request);
+    this.validateOutput(request.output);
+  }
+
+  bindRequest(request: NormalizedGenerationRequest) {
+    const { credentials, provider } = this.boundProvider(request);
+    return (context: GenerationAdapterExecutionContext) => this.executeBound(request, context, credentials, provider);
+  }
+
+  execute(request: NormalizedGenerationRequest, context: GenerationAdapterExecutionContext) {
+    return this.bindRequest(request)(context);
+  }
+
+  private boundProvider(request: NormalizedGenerationRequest) {
     const credentials = this.runtime.credentials(ALIBABA_MODEL_STUDIO_IMAGE_API_EXTENSION_ID);
     const provider = resolveExternalImageApiEndpoint(ALIBABA_MODEL_STUDIO_IMAGE_API_EXTENSION_ID, credentials.settings);
-    const references = request.media.filter((item) => item.role === 'EDIT_SOURCE' || item.role === 'REFERENCE');
+    if (request.modelId !== provider.modelId) {
+      throw new GenerationAdapterError({
+        code: 'INVALID_REQUEST',
+        message: 'Alibaba image configuration changed before the request started',
+      });
+    }
+    return { credentials, provider };
+  }
+
+  private async executeBound(
+    request: NormalizedGenerationRequest,
+    context: GenerationAdapterExecutionContext,
+    credentials: ReturnType<ExternalImageApiRuntime['credentials']>,
+    provider: ReturnType<typeof resolveExternalImageApiEndpoint>,
+  ) {
+    const references = request.media.filter(
+      (item) => item.role === 'EDIT_SOURCE' || item.role === 'ANNOTATION_GUIDE' || item.role === 'REFERENCE',
+    );
     context.emit({ type: 'PROGRESS', stage: 'PREPARING', message: 'Preparing Qwen Image request' });
     if (references.length) {
       context.emit({
@@ -146,7 +168,7 @@ export class AlibabaQwenImageAdapter implements GenerationAdapter {
     if (!response.ok) {
       const body = await tryDecodeProviderErrorJson(response, alibabaErrorSchema, 'Alibaba Model Studio');
       const requestId = response.headers.get('x-request-id') ?? body?.request_id ?? undefined;
-      context.emit({ type: 'REQUEST_ACCEPTED', ...(requestId ? { providerRequestId: requestId } : {}) });
+      if (requestId) context.emit({ type: 'REQUEST_ACCEPTED', providerRequestId: requestId });
       throw providerError({
         provider: 'Alibaba Model Studio',
         status: response.status,
@@ -157,7 +179,7 @@ export class AlibabaQwenImageAdapter implements GenerationAdapter {
     }
     const decoded = await decodeGenerationProviderResponseJson(response, alibabaResponseSchema, 'Alibaba Model Studio');
     const requestId = response.headers.get('x-request-id') ?? decoded.data.request_id ?? undefined;
-    context.emit({ type: 'REQUEST_ACCEPTED', ...(requestId ? { providerRequestId: requestId } : {}) });
+    if (requestId) context.emit({ type: 'REQUEST_ACCEPTED', providerRequestId: requestId });
     if (decoded.kind === 'error') {
       const status = /(?:api.?key|unauthori[sz]ed|permission|access.?denied)/i.test(decoded.data.code) ? 401 : 400;
       throw providerError({

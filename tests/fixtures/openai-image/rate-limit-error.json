@@ -1,8 +1,0 @@
-{
-  "error": {
-    "message": "Rate limit reached for images per minute.",
-    "type": "requests",
-    "code": "rate_limit_exceeded",
-    "param": null
-  }
-}

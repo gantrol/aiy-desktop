@@ -1,4 +1,4 @@
-import type { IntakeMediaMimeType } from '@/shared/contracts';
+import type { IntakeMediaMimeType, IntakeVideoMimeType } from '@/shared/contracts';
 
 export const intakeMediaAccept =
   'image/png,image/jpeg,image/webp,image/gif,video/mp4,video/webm,video/quicktime,.png,.jpg,.jpeg,.webp,.gif,.mp4,.m4v,.webm,.mov';
@@ -31,7 +31,7 @@ export function intakeMediaMimeType(file: File): IntakeMediaMimeType | null {
   return mimeTypeByExtension.get(file.name.split('.').pop()?.toLowerCase() ?? '') ?? null;
 }
 
-export function isIntakeVideoMimeType(mimeType: string) {
+export function isIntakeVideoMimeType(mimeType: IntakeMediaMimeType): mimeType is IntakeVideoMimeType {
   return mimeType.startsWith('video/');
 }
 

@@ -4,7 +4,12 @@ import { ENGLISH_LANGUAGE_EXTENSION_ID } from '@/shared/extension-ids';
 import { htmlLanguages, languagePluginOrder, type MessageCatalog } from '@/renderer/i18n/catalog';
 import { hydrateLanguageCatalog } from '@/renderer/i18n/languageCatalog';
 import { enMessages } from '@/renderer/i18n/locales/en';
-import { enabledLanguagePluginLocales, LANGUAGE_PLUGIN_STATE_EVENT } from '@/renderer/i18n/languagePluginState';
+import {
+  enabledLanguagePluginLocales,
+  getPublishedLanguagePluginState,
+  LANGUAGE_PLUGIN_STATE_EVENT,
+  type LanguagePluginStateEventDetail,
+} from '@/renderer/i18n/languagePluginState';
 
 interface I18nContextValue {
   locale: Locale;
@@ -45,6 +50,32 @@ function hydrateLanguagePacks(packs: readonly ExtensionLanguagePackDto[]) {
   return hydrated;
 }
 
+let cachedLanguagePacks: readonly ExtensionLanguagePackDto[] | null = null;
+let languagePackRefreshRequested = false;
+let languagePackRefreshRunning: Promise<readonly ExtensionLanguagePackDto[]> | null = null;
+
+function requestLanguagePacks(forceRefresh = false) {
+  if (forceRefresh) cachedLanguagePacks = null;
+  if (languagePackRefreshRunning) {
+    if (forceRefresh) languagePackRefreshRequested = true;
+    return languagePackRefreshRunning;
+  }
+  if (!forceRefresh && cachedLanguagePacks) return Promise.resolve(cachedLanguagePacks);
+  languagePackRefreshRequested = true;
+  languagePackRefreshRunning = (async () => {
+    try {
+      do {
+        languagePackRefreshRequested = false;
+        cachedLanguagePacks = await window.desktopApi.extensionLanguagePacksList();
+      } while (languagePackRefreshRequested);
+      return cachedLanguagePacks;
+    } finally {
+      languagePackRefreshRunning = null;
+    }
+  })();
+  return languagePackRefreshRunning;
+}
+
 export function I18nProvider({ children }: { children: ReactNode }) {
   const [locale, setActiveLocale] = useState<Locale>(initialLocale);
   const [extensions, setExtensions] = useState<readonly ExtensionDto[]>([]);
@@ -63,23 +94,29 @@ export function I18nProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     let disposed = false;
     let revision = 0;
-    const refresh = async (knownExtensions?: readonly ExtensionDto[]) => {
+    const refreshLanguagePacks = async (forceRefresh = false) => {
       const requestRevision = ++revision;
-      setCatalogReady(false);
-      const [extensionResult, packResult] = await Promise.allSettled([
-        knownExtensions ? Promise.resolve(knownExtensions) : window.desktopApi.extensionsList(),
-        window.desktopApi.extensionLanguagePacksList(),
-      ]);
-      if (disposed || requestRevision !== revision) return;
-      if (extensionResult.status === 'fulfilled') setExtensions(extensionResult.value);
-      if (packResult.status === 'fulfilled') setLanguagePacks(hydrateLanguagePacks(packResult.value));
-      setCatalogReady(extensionResult.status === 'fulfilled' && packResult.status === 'fulfilled');
+      if (forceRefresh) setCatalogReady(false);
+      try {
+        const packs = await requestLanguagePacks(forceRefresh);
+        if (disposed || requestRevision !== revision) return;
+        setLanguagePacks(hydrateLanguagePacks(packs));
+        setCatalogReady(getPublishedLanguagePluginState() !== null);
+      } catch {
+        if (disposed || requestRevision !== revision) return;
+        setCatalogReady(false);
+      }
     };
-    void refresh();
+
     const handleLanguagePluginsChanged = (event: Event) => {
-      void refresh((event as CustomEvent<readonly ExtensionDto[]>).detail);
+      const detail = (event as CustomEvent<LanguagePluginStateEventDetail>).detail;
+      setExtensions(detail.extensions);
+      void refreshLanguagePacks(detail.reloadLanguagePacks);
     };
     window.addEventListener(LANGUAGE_PLUGIN_STATE_EVENT, handleLanguagePluginsChanged);
+    const knownExtensions = getPublishedLanguagePluginState();
+    if (knownExtensions) setExtensions(knownExtensions);
+    void refreshLanguagePacks();
     return () => {
       disposed = true;
       window.removeEventListener(LANGUAGE_PLUGIN_STATE_EVENT, handleLanguagePluginsChanged);

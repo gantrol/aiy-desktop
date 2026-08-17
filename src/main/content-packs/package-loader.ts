@@ -1,16 +1,21 @@
 import { lstatSync, readFileSync, realpathSync } from 'node:fs';
 import path from 'node:path';
 import { z } from 'zod';
-import { readDictionaryImports } from '@/main/dictionary-import';
-import { parseV03FixtureDocument } from '@/main/database/fixture-contract';
-import type { FixturePackProfile } from '@/main/database/fixture-pack-profile';
-import type { FixturePackSourcePaths } from '@/main/database/fixture-pack-source';
-import type { FacetSystemRoleAssignments } from '@/main/database/facet-system-roles';
+import { readDictionaryImports } from '@/main/dictionary/dictionary-import';
+import { parseV03FixtureDocument } from '@/main/database/packs/fixture-contract';
+import type { FixturePackProfile } from '@/main/database/packs/fixture-pack-profile';
+import type { FixturePackSourcePaths } from '@/main/database/packs/fixture-pack-source';
+import type { FacetSystemRoleAssignments } from '@/main/database/dictionary/facet-system-roles';
+import {
+  contentPackExamplesDocumentSchema,
+  type ContentPackExamplesDocument,
+} from '@/main/content-packs/example-manifest';
 
 const MAX_MANIFEST_BYTES = 256 * 1024;
 const MAX_FIXTURE_BYTES = 64 * 1024 * 1024;
 const MAX_DICTIONARY_BYTES = 16 * 1024 * 1024;
 const MAX_PALETTE_BYTES = 16 * 1024 * 1024;
+const MAX_EXAMPLES_BYTES = 32 * 1024 * 1024;
 const packageId = z
   .string()
   .trim()
@@ -36,6 +41,8 @@ const releaseVersion = z
 
 const contentPackManifestSchema = z
   .object({
+    // Contract version for parsing the manifest. Package content updates bump
+    // `version` instead of inventing another schema revision.
     schemaVersion: z.literal(1),
     kind: z.literal('CONTENT'),
     key: stableKey,
@@ -61,6 +68,8 @@ const contentPackManifestSchema = z
         dictionary: z.string().trim().min(1).max(240),
         palettes: z.string().trim().min(1).max(240).optional(),
         assets: z.string().trim().min(1).max(240).optional(),
+        examples: z.string().trim().min(1).max(240).optional(),
+        exampleAssets: z.string().trim().min(1).max(240).optional(),
       })
       .strict(),
   })
@@ -75,6 +84,9 @@ export interface LoadedContentPackPackage {
   dictionaryPath: string;
   palettePath?: string;
   assetsRoot?: string;
+  examplesPath?: string;
+  exampleAssetsRoot?: string;
+  examplesDocument?: ContentPackExamplesDocument;
   sourcePaths: FixturePackSourcePaths;
   facetRoles: FacetSystemRoleAssignments;
   profile: FixturePackProfile;
@@ -87,7 +99,7 @@ interface ValidatedPackageFile {
 
 const contentPackDictionaryIndexSchema = z
   .object({
-    schemaVersion: z.literal('0.3.0'),
+    schemaVersion: z.enum(['0.3.0', '0.4.0']),
     structureRevision: z.string().trim().min(1).max(200),
     termFiles: z
       .array(z.string().trim().min(1).max(240))
@@ -182,7 +194,7 @@ const contentPackPaletteEntrySchema = z
 
 const contentPackPaletteSchema = z
   .object({
-    schemaVersion: z.literal('0.3.0'),
+    schemaVersion: z.enum(['0.3.0', '0.4']),
     revision: z.string().trim().min(1).max(200),
     palettes: z.array(contentPackPaletteEntrySchema).max(10_000),
   })
@@ -249,6 +261,16 @@ export function loadContentPackPackage(packagePath: string): LoadedContentPackPa
   const assetsRoot = manifest.source.assets
     ? packageDirectory(resolvedPackage, manifest.source.assets, 'Content pack assets')
     : undefined;
+  if (Boolean(manifest.source.examples) !== Boolean(manifest.source.exampleAssets)) {
+    throw new Error('Content pack examples and exampleAssets must be declared together');
+  }
+  const examplesFile = manifest.source.examples
+    ? packageFile(resolvedPackage, manifest.source.examples, 'Content pack examples')
+    : undefined;
+  const examplesPath = examplesFile?.path;
+  const exampleAssetsRoot = manifest.source.exampleAssets
+    ? packageDirectory(resolvedPackage, manifest.source.exampleAssets, 'Content pack example assets')
+    : undefined;
   const fixtureDocument = parseV03FixtureDocument(
     readBoundedJson(fixtureFile, MAX_FIXTURE_BYTES, 'Content pack fixture'),
   );
@@ -263,6 +285,11 @@ export function loadContentPackPackage(packagePath: string): LoadedContentPackPa
   const dictionaryCatalogRows = readDictionaryImports(dictionaryTermPaths, { rootPath: dictionaryRoot });
   const paletteDocument = paletteFile
     ? contentPackPaletteSchema.parse(readBoundedJson(paletteFile, MAX_PALETTE_BYTES, 'Content pack palette catalog'))
+    : undefined;
+  const examplesDocument = examplesFile
+    ? contentPackExamplesDocumentSchema.parse(
+        readBoundedJson(examplesFile, MAX_EXAMPLES_BYTES, 'Content pack examples'),
+      )
     : undefined;
   const sourcePaths: FixturePackSourcePaths = {
     fixturePath,
@@ -283,6 +310,9 @@ export function loadContentPackPackage(packagePath: string): LoadedContentPackPa
     dictionaryPath,
     palettePath,
     assetsRoot,
+    examplesPath,
+    exampleAssetsRoot,
+    examplesDocument,
     sourcePaths,
     facetRoles: {
       ...(manifest.facetRoles?.primaryClassification

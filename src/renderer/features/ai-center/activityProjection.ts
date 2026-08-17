@@ -6,6 +6,7 @@ import type {
   PromptVersionDto,
   StyleExplorationBatchDto,
 } from '@/shared/contracts';
+import type { VideoDocumentAiActivityDto } from '@/shared/contracts/video-document-ai-activity';
 
 interface ActivityBase {
   id: string;
@@ -33,10 +34,17 @@ export interface GenerationActivityRecord extends ActivityBase {
   operation: 'GENERATE' | 'EDIT';
 }
 
-export type AiActivityRecord = AssistantActivityRecord | ExperimentActivityRecord | GenerationActivityRecord;
+export interface VideoDocumentActivityRecord extends ActivityBase {
+  kind: 'VIDEO_DOCUMENT';
+  activity: VideoDocumentAiActivityDto;
+}
 
-export type AiActivityDomain = 'IMAGE' | 'TEXT';
-export type AiActivityCategory = 'DIRECTIONS' | 'OPTIMIZE' | 'EXPERIMENT' | 'GENERATE' | 'EDIT';
+export type AiActivityRecord =
+  AssistantActivityRecord | ExperimentActivityRecord | GenerationActivityRecord | VideoDocumentActivityRecord;
+
+export type AiActivityDomain = 'IMAGE' | 'TEXT' | 'DOCUMENT';
+export type AiActivityCategory =
+  'DIRECTIONS' | 'OPTIMIZE' | 'EXPERIMENT' | 'GENERATE' | 'EDIT' | 'VIDEO_ARTICLE' | 'TRANSCRIBE' | 'TRANSLATE';
 export type AiActivityCategoryFilter = 'ALL' | AiActivityDomain | AiActivityCategory;
 
 export type AiActivityStatusFilter = 'ALL' | 'ATTENTION' | 'RUNNING' | 'COMPLETED' | 'EXPIRED';
@@ -46,19 +54,18 @@ export interface AiActivityDuration {
   running: boolean;
 }
 
-function generationOperation(run: GenerationRunDto): GenerationActivityRecord['operation'] {
+function generationOperation(run: GenerationRunDto, version: PromptVersionDto): GenerationActivityRecord['operation'] {
   const actualRequest = run.executionInputSnapshot?.actualRequest;
-  if (
-    actualRequest &&
-    typeof actualRequest === 'object' &&
-    !Array.isArray(actualRequest) &&
-    actualRequest.operation === 'EDIT'
-  )
-    return 'EDIT';
-  return run.derivation ? 'EDIT' : 'GENERATE';
+  const operation = actualRequest && !Array.isArray(actualRequest) ? actualRequest.operation : undefined;
+  if (operation === 'EDIT') return 'EDIT';
+  if (operation === 'GENERATE') return 'GENERATE';
+  return version.sourceImageId || run.derivation ? 'EDIT' : 'GENERATE';
 }
 
-export function projectAiActivities(data: BootstrapDto): AiActivityRecord[] {
+export function projectAiActivities(
+  data: BootstrapDto,
+  videoDocumentActivities: VideoDocumentAiActivityDto[] = [],
+): AiActivityRecord[] {
   const seriesById = new Map(data.series.map((series) => [series.id, series]));
   const assistantById = new Map(data.assistantRuns.map((run) => [run.id, run]));
   const experimentRunIds = new Set(
@@ -99,14 +106,22 @@ export function projectAiActivities(data: BootstrapDto): AiActivityRecord[] {
                 sourceSeries: series,
                 run,
                 version,
-                operation: generationOperation(run),
+                operation: generationOperation(run, version),
               },
             ],
       ),
     ),
   );
 
-  return [...assistantRecords, ...experimentRecords, ...generationRecords].sort(
+  const videoDocumentRecords = videoDocumentActivities.map((activity): VideoDocumentActivityRecord => ({
+    id: `video-document:${activity.type}:${activity.run.id}`,
+    kind: 'VIDEO_DOCUMENT',
+    createdAt: activity.run.startedAt,
+    sourceSeries: null,
+    activity,
+  }));
+
+  return [...assistantRecords, ...experimentRecords, ...generationRecords, ...videoDocumentRecords].sort(
     (left, right) => right.createdAt.localeCompare(left.createdAt) || right.id.localeCompare(left.id),
   );
 }
@@ -114,10 +129,15 @@ export function projectAiActivities(data: BootstrapDto): AiActivityRecord[] {
 export function activityCategory(record: AiActivityRecord): AiActivityCategory {
   if (record.kind === 'ASSISTANT') return record.run.mode === 'directions' ? 'DIRECTIONS' : 'OPTIMIZE';
   if (record.kind === 'EXPERIMENT') return 'EXPERIMENT';
+  if (record.kind === 'VIDEO_DOCUMENT') {
+    if (record.activity.type === 'ARTICLE_GENERATION') return 'VIDEO_ARTICLE';
+    return record.activity.type === 'TRANSCRIPT_RECOGNITION' ? 'TRANSCRIBE' : 'TRANSLATE';
+  }
   return record.operation;
 }
 
 export function activityDomain(record: AiActivityRecord): AiActivityDomain {
+  if (record.kind === 'VIDEO_DOCUMENT') return 'DOCUMENT';
   return record.kind === 'ASSISTANT' ? 'TEXT' : 'IMAGE';
 }
 
@@ -134,6 +154,11 @@ export function activityStatusFilter(record: AiActivityRecord): Exclude<AiActivi
     if (['FAILED', 'INTERRUPTED', 'PARTIAL'].includes(record.batch.status)) return 'ATTENTION';
     return 'COMPLETED';
   }
+  if (record.kind === 'VIDEO_DOCUMENT') {
+    if (record.activity.run.status === 'RUNNING') return 'RUNNING';
+    if (record.activity.run.status !== 'SUCCEEDED') return 'ATTENTION';
+    return 'COMPLETED';
+  }
   if (record.run.status === 'QUEUED' || record.run.status === 'RUNNING') return 'RUNNING';
   if (record.run.status === 'FAILED' || record.run.status === 'INTERRUPTED') return 'ATTENTION';
   return 'COMPLETED';
@@ -146,7 +171,7 @@ export function activityMatchesFilters(
 ) {
   return (
     (category === 'ALL' ||
-      (category === 'IMAGE' || category === 'TEXT'
+      (category === 'IMAGE' || category === 'TEXT' || category === 'DOCUMENT'
         ? activityDomain(record) === category
         : activityCategory(record) === category)) &&
     (status === 'ALL' || activityStatusFilter(record) === status)
@@ -160,14 +185,18 @@ export function activityDuration(record: AiActivityRecord, now = Date.now()): Ai
       ? record.run.createdAt
       : record.kind === 'EXPERIMENT'
         ? record.batch.createdAt
-        : record.run.createdAt;
+        : record.kind === 'VIDEO_DOCUMENT'
+          ? record.activity.run.startedAt
+          : record.run.createdAt;
   const endValue = running
     ? now
     : record.kind === 'ASSISTANT'
       ? record.run.finishedAt
       : record.kind === 'EXPERIMENT'
         ? record.batch.updatedAt
-        : record.run.finishedAt;
+        : record.kind === 'VIDEO_DOCUMENT'
+          ? record.activity.run.finishedAt
+          : record.run.finishedAt;
   const start = Date.parse(startValue);
   const end = typeof endValue === 'number' ? endValue : endValue ? Date.parse(endValue) : Number.NaN;
   if (!Number.isFinite(start) || !Number.isFinite(end) || end < start) return null;
@@ -178,7 +207,8 @@ export function activityStatus(record: AiActivityRecord) {
   if (record.kind === 'ASSISTANT') {
     return record.run.status === 'SUCCEEDED' && record.run.proposal ? record.run.proposal.status : record.run.status;
   }
-  return record.kind === 'EXPERIMENT' ? record.batch.status : record.run.status;
+  if (record.kind === 'EXPERIMENT') return record.batch.status;
+  return record.kind === 'VIDEO_DOCUMENT' ? record.activity.run.status : record.run.status;
 }
 
 export function findGenerationAssetId(record: GenerationActivityRecord) {

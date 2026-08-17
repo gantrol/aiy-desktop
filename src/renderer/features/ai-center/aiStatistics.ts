@@ -49,6 +49,7 @@ export interface AiStatisticsSnapshot {
 const categoryOrderByScope = {
   IMAGE: ['GENERATE', 'EDIT', 'EXPERIMENT'],
   TEXT: ['DIRECTIONS', 'OPTIMIZE'],
+  DOCUMENT: ['VIDEO_ARTICLE', 'TRANSCRIBE', 'TRANSLATE'],
 } as const satisfies Record<AiStatisticsScope, readonly AiActivityCategory[]>;
 const statusOrder = ['COMPLETED', 'ATTENTION', 'RUNNING', 'EXPIRED'] as const;
 
@@ -168,6 +169,17 @@ interface ModelReference {
 }
 
 function modelReferences(record: AiActivityRecord, routes: Map<string, ImageGenerationRouteDto>): ModelReference[] {
+  if (record.kind === 'VIDEO_DOCUMENT') {
+    if (record.activity.type === 'ARTICLE_GENERATION' || record.activity.type === 'TRANSCRIPT_TRANSLATION') {
+      return [
+        {
+          key: record.activity.run.actualModel ?? record.activity.run.requestedModel,
+          provider: record.activity.run.providerKey,
+        },
+      ];
+    }
+    return [{ key: record.activity.run.modelId, provider: record.activity.run.providerKey }];
+  }
   if (record.kind === 'GENERATION') {
     const snapshot = record.run.modelSnapshot?.descriptor;
     const model = routes.get(record.run.modelKey);

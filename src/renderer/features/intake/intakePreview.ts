@@ -35,7 +35,9 @@ async function videoPreview(file: File): Promise<IntakePreview> {
     if (!context) throw new Error('Preview canvas unavailable');
     context.drawImage(video, 0, 0, width, height);
     const blob = await canvas.convertToBlob({ type: 'image/webp', quality: 0.8 });
-    return { url: URL.createObjectURL(blob), width: sourceWidth, height: sourceHeight };
+    const durationMs = Math.round(video.duration * 1000);
+    if (!Number.isSafeInteger(durationMs) || durationMs <= 0) throw new Error('Video duration is unavailable');
+    return { url: URL.createObjectURL(blob), width: sourceWidth, height: sourceHeight, durationMs };
   } finally {
     video.removeAttribute('src');
     video.load();
@@ -53,6 +55,7 @@ export interface IntakePreview {
   url: string;
   width: number;
   height: number;
+  durationMs?: number;
 }
 
 export async function intakePreview(file: File, video = false): Promise<IntakePreview> {

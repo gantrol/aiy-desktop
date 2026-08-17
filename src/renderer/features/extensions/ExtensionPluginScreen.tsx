@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import type { ExtensionContributionPoint, ExtensionDto, Locale } from '@/shared/contracts';
+import type { ExtensionContributionPoint, ExtensionDto, Locale, TransitionPreviewDto } from '@/shared/contracts';
 import { localizeExtensionManifest } from '@/shared/extension-localization';
 import { EXTENSION_HOST_ENGINE_KEY } from '@/shared/product';
 import {
@@ -21,7 +21,9 @@ import {
   CODEX_IMAGE_DISCOVERY_EXTENSION_ID,
   DEEPSEEK_API_EXTENSION_ID,
   EXTERNAL_IMAGE_API_EXTENSION_IDS,
+  FEATURE_DEMO_EXTENSION_ID,
   OPENAI_IMAGE_API_EXTENSION_ID,
+  TRANSITION_SHOWCASE_EXTENSION_ID,
 } from '@/shared/extension-ids';
 import { CodexImageDiscoveryConfiguration } from '@/renderer/features/extensions/CodexImageDiscoveryConfiguration';
 import { OpenAiImageApiConfiguration } from '@/renderer/features/extensions/OpenAiImageApiConfiguration';
@@ -33,6 +35,8 @@ import { DeleteEntityDialog } from '@/renderer/components/app/DeleteEntityDialog
 import { ExtensionPluginList } from '@/renderer/features/extensions/ExtensionPluginList';
 import { firstGroupedExtensionId } from '@/renderer/features/extensions/extensionPluginGroups';
 import type { CodexImagesNavigationState } from '@/renderer/features/extensions/codexImageNavigation';
+import { TransitionShowcase } from '@/renderer/features/extensions/TransitionShowcase';
+import { FeatureDemoShowcase } from '@/renderer/features/extensions/FeatureDemoShowcase';
 
 interface Props {
   active: boolean;
@@ -40,6 +44,7 @@ interface Props {
   onSelectedIdChange(id: string, mode?: NavigationMode): void;
   onExtensionsChange(): void;
   codexImagesNavigation: CodexImagesNavigationState;
+  transitionPreviews: readonly TransitionPreviewDto[];
   notify(message: string): void;
   onOpenCreation(seriesId: string, assetId: string | null): Promise<void>;
 }
@@ -61,12 +66,29 @@ function localizedShowInSidebarLabel(locale: Locale, translated?: string) {
   return locale === 'zh' ? '在侧边栏显示 Codex 图片' : 'Show Codex images in sidebar';
 }
 
+function TransitionShowcasePanel({
+  extension,
+  previews,
+}: {
+  extension: ExtensionDto;
+  previews: readonly TransitionPreviewDto[];
+}) {
+  if (extension.manifest.id !== TRANSITION_SHOWCASE_EXTENSION_ID || !extension.enabled) return null;
+  return <TransitionShowcase realPreviews={previews} />;
+}
+
+function FeatureDemoPanel({ extension, notify }: { extension: ExtensionDto; notify(message: string): void }) {
+  if (extension.manifest.id !== FEATURE_DEMO_EXTENSION_ID || !extension.enabled) return null;
+  return <FeatureDemoShowcase notify={notify} />;
+}
+
 export function ExtensionPluginScreen({
   active,
   requestedId,
   onSelectedIdChange,
   onExtensionsChange,
   codexImagesNavigation,
+  transitionPreviews,
   notify,
   onOpenCreation,
 }: Props) {
@@ -360,6 +382,8 @@ export function ExtensionPluginScreen({
                 onOpenCreation={onOpenCreation}
               />
             )}
+            <TransitionShowcasePanel extension={selected} previews={transitionPreviews} />
+            <FeatureDemoPanel extension={selected} notify={notify} />
 
             <div className="grid gap-5 lg:grid-cols-2">
               <section className="rounded-lg border">

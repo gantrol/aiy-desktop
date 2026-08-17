@@ -2,7 +2,7 @@ import {
   CheckSquare2Icon,
   Grid2X2Icon,
   HeartIcon,
-  ListIcon,
+  Layers3Icon,
   SearchIcon,
   SlidersHorizontalIcon,
   XIcon,
@@ -63,13 +63,13 @@ function MaterialViewToggle({
   value,
   label,
   gridLabel,
-  listLabel,
+  stackLabel,
   onChange,
 }: {
   value: GalleryViewMode;
   label: string;
   gridLabel: string;
-  listLabel: string;
+  stackLabel: string;
   onChange(value: GalleryViewMode): void;
 }) {
   return (
@@ -91,11 +91,12 @@ function MaterialViewToggle({
       <SegmentedItem
         value="LIST"
         data-action="material-list-view"
+        data-layout-action="material-stack-view"
         className="w-8 px-0"
-        aria-label={listLabel}
-        title={listLabel}
+        aria-label={stackLabel}
+        title={stackLabel}
       >
-        <ListIcon className="size-3.5" />
+        <Layers3Icon className="size-3.5" />
       </SegmentedItem>
     </Segmented>
   );
@@ -169,7 +170,6 @@ function FavoriteScopeButton({ active, label, onToggle }: { active: boolean; lab
       size="sm"
       className="h-9"
       data-action="material-scope-favorite"
-      data-state={active ? 'on' : 'off'}
       aria-pressed={active}
       onClick={onToggle}
     >
@@ -375,7 +375,7 @@ export function MaterialLibraryToolbar({
           value={viewMode}
           label={l.viewLabel}
           gridLabel={l.gridView}
-          listLabel={l.listView}
+          stackLabel={l.stackView}
           onChange={onViewModeChange}
         />
 

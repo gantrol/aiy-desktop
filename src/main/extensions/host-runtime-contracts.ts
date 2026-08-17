@@ -1,7 +1,8 @@
 import type { ExtensionContributionPoint, ExtensionManifestDto } from '@/shared/contracts';
-import { CODEX_IMAGE_DISCOVERY_EXTENSION_ID } from '@/shared/extension-ids';
+import { CODEX_IMAGE_DISCOVERY_EXTENSION_ID, FEATURE_DEMO_EXTENSION_ID } from '@/shared/extension-ids';
 
 export const CODEX_IMAGE_DISCOVERY_HOST_RUNTIME_ID = 'codex-image-discovery';
+export const FEATURE_DEMO_HOST_RUNTIME_ID = 'feature-demo';
 
 export const CODEX_IMAGE_DISCOVERY_PERMISSIONS = [
   'filesystem.read:codex-generated-images',
@@ -12,6 +13,10 @@ const CODEX_IMAGE_DISCOVERY_CONTRIBUTIONS: ExtensionManifestDto['contributes'] =
   commands: ['codexImages.refresh'],
   workflows: ['codexImages.importGenerated'],
   searchProviders: ['codex.generatedImages'],
+};
+
+const FEATURE_DEMO_CONTRIBUTIONS: ExtensionManifestDto['contributes'] = {
+  commands: ['featureDemo.play', 'featureDemo.export2k'],
 };
 
 interface HostRuntimeContract {
@@ -27,6 +32,12 @@ const hostRuntimeContracts: Readonly<Record<string, HostRuntimeContract>> = {
     permissions: CODEX_IMAGE_DISCOVERY_PERMISSIONS,
     optionalPermissions: [],
     contributes: CODEX_IMAGE_DISCOVERY_CONTRIBUTIONS,
+  },
+  [FEATURE_DEMO_HOST_RUNTIME_ID]: {
+    extensionId: FEATURE_DEMO_EXTENSION_ID,
+    permissions: [],
+    optionalPermissions: [],
+    contributes: FEATURE_DEMO_CONTRIBUTIONS,
   },
 };
 

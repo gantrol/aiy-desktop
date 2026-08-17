@@ -12,3 +12,10 @@ export interface DeepSeekApiRuntimeStatus {
   ready: boolean;
   message: string;
 }
+
+export interface DeepSeekApiConnectionSnapshot {
+  connectionId: 'deepseek-api-default';
+  modelId: string;
+  responsesUrl: string;
+  configurationRevision: string;
+}

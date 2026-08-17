@@ -2,7 +2,7 @@
 
 > 状态：As-is
 > 范围：`apps/desktop/src` 及与当前产品行为直接相关的运行时、数据库结构
-> 更新日期：2026-08-06
+> 更新日期：2026-08-11
 
 本文使用用例图、包/组件图、部署图、类图、时序图和状态图梳理 Desktop 当前结构。内容以源码为准，不引用 `trash/` 或未重新构建的 `release/` 产物。
 
@@ -151,19 +151,27 @@ flowchart TB
     end
 
     subgraph Main["src/main — 特权进程"]
-        MainEntry["index.ts<br/>窗口、托盘、空间上下文、协议"]
-        IPC["ipc.ts + ipc/*<br/>校验、对话框、用例分发"]
-        Services["Generation / Assistant / Codex<br/>Extensions / Discovery / Image Transform"]
-        Database["database.ts<br/>稳定薄门面"]
-        Repositories["database/*<br/>Repository、迁移、SQL"]
+        MainEntry["index.ts<br/>Electron 入口与 composition root"]
+        AppRuntime["app/* + libraries/*<br/>窗口、协议、空间上下文生命周期"]
+        IPCFacade["ipc.ts<br/>稳定转发门面"]
+        IPC["ipc/register-ipc.ts<br/>IPC composition root"]
+        IPCDomains["ipc/*-handlers.ts + ipc/schemas/*<br/>领域用例与边界校验"]
+        Services["assistant / dictionary / generation / creations<br/>media / extensions / video-documents"]
+        DatabaseFacade["database.ts<br/>稳定薄门面"]
+        DatabaseComposition["database/library-database/*<br/>连接生命周期、Repository 与 API 组装"]
+        Repositories["database/{core,albums,assets,...}<br/>领域 Repository 与 SQL"]
         Models["generation-models/*<br/>Provider Adapter"]
 
+        MainEntry --> AppRuntime
         MainEntry --> IPC
-        IPC --> Services
-        IPC --> Database
-        Services --> Database
+        IPCFacade --> IPC
+        IPC --> IPCDomains
+        IPCDomains --> Services
+        IPCDomains --> DatabaseFacade
+        Services --> DatabaseFacade
         Services --> Models
-        Database --> Repositories
+        DatabaseFacade --> DatabaseComposition
+        DatabaseComposition --> Repositories
     end
 
     Contracts["src/shared/contracts*<br/>DTO、IPC 与 Worker 契约"]
@@ -186,13 +194,29 @@ flowchart TB
 
 ### 3.2 Main
 
-- `main/index.ts`：应用生命周期、窗口安全、托盘、空间 Registry 和 Active Context。
-- `main/ipc.ts` 与 `main/ipc/*`：跨进程用例入口、输入验证和操作系统能力。
-- `main/database.ts`：连接生命周期及 Repository 委托门面。
-- `main/database/*`：领域查询、事务、迁移、Revision、Change Event 和对象存储。
-- `main/generation.ts`：生成排队、并发、执行快照、结果提交与取消。
+- `main/index.ts`：Electron 入口和最终 composition root；窗口/托盘状态、Renderer 事件、媒体响应与空间 Context 的实现分别位于 `app/*` 和 `libraries/*`。
+- `main/database.ts`、`main/ipc.ts`、`main/generation.ts`、`main/codex.ts` 等根文件是稳定转发门面，不承载业务行为。已有调用方可以继续使用稳定入口，新 Main 内部代码使用直接 `@/main/...` 路径。
+- `main/ipc/register-ipc.ts`：只组合可信 IPC registrar、领域 handler 和所需服务；`ipc/*-handlers.ts` 按用例域注册 channel，`ipc/schemas/*` 保存可复用的运行时输入 schema。
+- `main/database/library-database/*`：实现 `LibraryDatabase` 的连接生命周期、Repository 构造和按领域分组的委托 API；`main/database.ts` 只导出这个稳定门面。
+- `main/database/{core,albums,assets,assistant,creations,dictionary,extensions,generation,packs,video-documents}`：领域查询、事务、Revision、Change Event 和对象存储行为；固定多语句 SQL 位于 `database/sql/*`。
+- `main/generation/*`：生成排队、并发、执行快照、结果提交与取消；`main/assistant/*`：Assistant 与 Codex 运行时；`main/media/*`：受控本地媒体能力。
 - `main/model-worker/*`：每空间后台进程的发现、握手、RPC、升级和空闲退出。
-- `main/renderer-event-dispatcher.ts`：维护可替换 Renderer frame 的就绪边界，统一安全发送 Main → Renderer 事件，并在销毁/重载期间丢弃瞬态事件。
+- `main/app/renderer-event-dispatcher.ts`：维护可替换 Renderer frame 的就绪边界，统一安全发送 Main → Renderer 事件，并在销毁/重载期间丢弃瞬态事件。
+
+数据库目录的归属规则如下：
+
+| 目录                               | 归属                                                              |
+| ---------------------------------- | ----------------------------------------------------------------- |
+| `database/core`                    | SQLite 连接、schema、基础值和批处理原语                           |
+| `database/library-database`        | 稳定 `LibraryDatabase` 的生命周期、Repository 构造和领域 API 组合 |
+| `database/albums`、`assets`        | 专辑关系、素材、图库和文件视图投影                                |
+| `database/creations`、`dictionary` | 创作导入/暂存、词条、分类、词板和知识维护                         |
+| `database/assistant`、`generation` | Assistant/AI 过程、生成作业、快照和工作台                         |
+| `database/extensions`、`packs`     | 扩展发现与内容包安装/对账                                         |
+| `database/video-documents`         | 视频文档及其导航、生成运行记录                                    |
+| `database/sql`                     | 命名的固定多语句 SQL、baseline 与 revision                        |
+
+新增代码遵循四条结构约束：根门面只能转发；跨领域组装只进入 composition 模块；业务行为进入最具体的领域目录；不得为缩短路径新增 barrel。兼容旧测试或外部调用所需的一行转发文件可以保留，但不能再次长成实现文件。
 
 ## 4. 运行时组件与部署图
 
@@ -650,9 +674,10 @@ stateDiagram-v2
 | `renderer/components/CreatorScreen.tsx`         | 创作会话、Prompt、Assistant、生成、比较和多类弹窗的总编排 |
 | `renderer/components/creator/ResultLibrary.tsx` | 结果树、输出集合、选择和创作历史                          |
 | `renderer/components/GalleryScreen.tsx`         | 素材查询、分页缓存、专辑、选择和检查器编排                |
-| `main/ipc.ts`                                   | 多数特权用例、Zod schema 与服务路由                       |
-| `main/index.ts`                                 | 应用生命周期、空间 Context、Worker、托盘和媒体协议        |
+| `main/index.ts`                                 | Electron 入口、协议安装和最终 Context/IPC 组装            |
 | `shared/contracts.ts`                           | Renderer、Preload、Main 和 Worker 的共享协议              |
+
+原 `main/ipc.ts`、`main/database.ts`、`main/generation.ts` 和 `main/codex.ts` 已降为稳定薄门面；原先超过千行的数据库聚合、工作台、文件视图、内容包、Codex 和生成协调实现也已经拆入对应领域模块。后续评审应查看具体领域文件，而不是把根门面当作行为入口。
 
 后续演进应继续保持：
 
@@ -669,16 +694,19 @@ stateDiagram-v2
 - [Renderer 应用编排](../../src/renderer/App.tsx)
 - [应用导航模型](../../src/renderer/components/app/app-navigation.ts)
 - [Main 入口与本地空间 Context](../../src/main/index.ts)
+- [Main 应用壳](../../src/main/app/application-shell.ts)
+- [Active Library Context](../../src/main/libraries/active-library-context.ts)
 - [Preload DesktopApi](../../src/preload/index.ts)
-- [IPC 注册与 Bootstrap](../../src/main/ipc.ts)
+- [IPC 组合根与 Bootstrap](../../src/main/ipc/register-ipc.ts)
 - [Database 门面](../../src/main/database.ts)
-- [对象存储与 Change Event](../../src/main/database/storage.ts)
-- [生成协调器](../../src/main/generation.ts)
-- [Renderer 事件分发器](../../src/main/renderer-event-dispatcher.ts)
+- [Database 实现与生命周期](../../src/main/database/library-database/library-database.ts)
+- [对象存储与 Change Event](../../src/main/database/core/storage.ts)
+- [生成协调器](../../src/main/generation/coordinator.ts)
+- [Renderer 事件分发器](../../src/main/app/renderer-event-dispatcher.ts)
 - [Model Worker 协议](../../src/main/model-worker/protocol.ts)
 - [Model Worker 客户端](../../src/main/model-worker/client.ts)
 - [Model Worker 服务端](../../src/main/model-worker/server.ts)
-- [词条状态与 Revision](../../src/main/database/dictionary-repository.ts)
+- [词条状态与 Revision](../../src/main/database/dictionary/dictionary-repository.ts)
 - [当前数据库基线](../../src/main/database/sql/v03-baseline.sql)
 - [词条本地化与分类基线](../../src/main/database/sql/v03-baseline.sql)
-- [窗口安全策略](../../src/main/window-security.ts)
+- [窗口安全策略](../../src/main/app/window-security.ts)

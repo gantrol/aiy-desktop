@@ -1,16 +1,20 @@
 import type { ExtensionManifestDto } from '@/shared/contracts';
-import { EXTENSION_HOST_ENGINE_KEY, PRODUCT_VERSION } from '@/shared/product';
+import { EXTENSION_HOST_ENGINE_KEY, EXTENSION_HOST_VERSION } from '@/shared/product';
 import { DEEPSEEK_PROVIDER } from '@/main/assistant-models/deepseek-provider';
 import { OPENAI_IMAGE_PROVIDER } from '@/main/extensions/openai-image-api/definition';
 import {
+  ALIBABA_IMAGE_PROVIDER_ID,
   ALIBABA_MODEL_STUDIO_IMAGE_API_EXTENSION_ID,
   CODEX_APP_SERVER_EXTENSION_ID,
-  CODEX_APP_SERVER_PROVIDER_KEY,
-  CODEX_CLI_PROVIDER_KEY,
+  CODEX_PROVIDER_ID,
   DEEPSEEK_API_EXTENSION_ID,
   ENGLISH_LANGUAGE_EXTENSION_ID,
+  GOOGLE_IMAGE_PROVIDER_ID,
   GOOGLE_GEMINI_IMAGE_API_EXTENSION_ID,
   OPENAI_IMAGE_API_EXTENSION_ID,
+  OPENAI_IMAGE_PROVIDER_KEY,
+  TRANSITION_SHOWCASE_EXTENSION_ID,
+  VOLCENGINE_IMAGE_PROVIDER_ID,
   VOLCENGINE_ARK_IMAGE_API_EXTENSION_ID,
 } from '@/shared/extension-ids';
 import {
@@ -54,15 +58,41 @@ const VOLCENGINE_ARK_IMAGE_API_OPTIONAL_PERMISSIONS = [
 ] as const;
 
 const BUILTIN_EXTENSION_ENGINES: ExtensionManifestDto['engines'] = {
-  [EXTENSION_HOST_ENGINE_KEY]: `^${PRODUCT_VERSION}`,
+  [EXTENSION_HOST_ENGINE_KEY]: `^${EXTENSION_HOST_VERSION}`,
 };
 
 export const BUILTIN_EXTENSION_MANIFESTS: readonly ExtensionManifestDto[] = [
   {
     manifestVersion: 1,
+    kind: 'CAPABILITY',
+    category: 'FRONTEND_DESIGN',
+    id: TRANSITION_SHOWCASE_EXTENSION_ID,
+    version: '0.3.2',
+    displayName: 'Transition Showcase',
+    description: 'Inspect transition aspect ratios, media states, responsive layouts, and motion behavior.',
+    engines: BUILTIN_EXTENSION_ENGINES,
+    contributes: {},
+    permissions: [],
+    optionalPermissions: [],
+    i18n: {
+      defaultLocale: 'en',
+      locales: {
+        en: {
+          displayName: 'Transition Showcase',
+          description: 'Inspect transition aspect ratios, media states, responsive layouts, and motion behavior.',
+        },
+        zh: {
+          displayName: '过场动画展',
+          description: '检查过场动画的图片比例、媒体状态、响应式布局和运动表现。',
+        },
+      },
+    },
+  },
+  {
+    manifestVersion: 1,
     kind: 'LANGUAGE',
     id: ENGLISH_LANGUAGE_EXTENSION_ID,
-    version: '0.3.0',
+    version: '0.3.2',
     displayName: 'English',
     description: "Provides the app's English interface.",
     engines: BUILTIN_EXTENSION_ENGINES,
@@ -88,7 +118,7 @@ export const BUILTIN_EXTENSION_MANIFESTS: readonly ExtensionManifestDto[] = [
     manifestVersion: 1,
     kind: 'CAPABILITY',
     id: CODEX_APP_SERVER_EXTENSION_ID,
-    version: '0.3.0',
+    version: '0.3.1',
     displayName: 'Codex App Server',
     description: 'Codex tasks, creative proposals, and separate App Server and CLI image generation routes.',
     engines: BUILTIN_EXTENSION_ENGINES,
@@ -96,7 +126,7 @@ export const BUILTIN_EXTENSION_MANIFESTS: readonly ExtensionManifestDto[] = [
       commands: ['codex.refreshConnection'],
       workflows: ['codex.promptAssist', 'codex.directionExploration', 'codex.targetedImageRefinement'],
       tools: ['codex.image.generate', 'codex.image.refine'],
-      modelProviders: [CODEX_APP_SERVER_PROVIDER_KEY, CODEX_CLI_PROVIDER_KEY],
+      modelProviders: [CODEX_PROVIDER_ID],
     },
     permissions: [...CODEX_APP_SERVER_PERMISSIONS],
     optionalPermissions: [],
@@ -118,12 +148,12 @@ export const BUILTIN_EXTENSION_MANIFESTS: readonly ExtensionManifestDto[] = [
     manifestVersion: 1,
     kind: 'CAPABILITY',
     id: OPENAI_IMAGE_API_EXTENSION_ID,
-    version: '0.3.0',
+    version: '0.3.1',
     displayName: 'OpenAI Image API',
     description: 'Call GPT Image 2 with independent OpenAI API credentials.',
     engines: BUILTIN_EXTENSION_ENGINES,
     contributes: {
-      modelProviders: ['openai-image-api'],
+      modelProviders: [OPENAI_IMAGE_PROVIDER_KEY],
     },
     permissions: [...OPENAI_IMAGE_API_PERMISSIONS],
     optionalPermissions: [],
@@ -145,7 +175,7 @@ export const BUILTIN_EXTENSION_MANIFESTS: readonly ExtensionManifestDto[] = [
     manifestVersion: 1,
     kind: 'CAPABILITY',
     id: DEEPSEEK_API_EXTENSION_ID,
-    version: '0.3.0',
+    version: '0.3.1',
     displayName: 'DeepSeek API',
     description: 'Use DeepSeek V4 Flash for prompt writing, web-grounded optimization, and creative directions.',
     engines: BUILTIN_EXTENSION_ENGINES,
@@ -173,11 +203,11 @@ export const BUILTIN_EXTENSION_MANIFESTS: readonly ExtensionManifestDto[] = [
     manifestVersion: 1,
     kind: 'CAPABILITY',
     id: GOOGLE_GEMINI_IMAGE_API_EXTENSION_ID,
-    version: '0.1.0',
+    version: '0.1.1',
     displayName: 'Google Gemini Image API',
     description: 'Not tested with a live API. Generate and edit images with Nano Banana 2 through the Gemini API.',
     engines: BUILTIN_EXTENSION_ENGINES,
-    contributes: { modelProviders: ['google-gemini-image-api'] },
+    contributes: { modelProviders: [GOOGLE_IMAGE_PROVIDER_ID] },
     permissions: [...GOOGLE_GEMINI_IMAGE_API_PERMISSIONS],
     optionalPermissions: [USER_CONFIGURED_HTTPS_ENDPOINT_PERMISSION],
     configuration: externalImageApiConfiguration(GOOGLE_GEMINI_IMAGE_API_EXTENSION_ID),
@@ -230,12 +260,12 @@ export const BUILTIN_EXTENSION_MANIFESTS: readonly ExtensionManifestDto[] = [
     manifestVersion: 1,
     kind: 'CAPABILITY',
     id: ALIBABA_MODEL_STUDIO_IMAGE_API_EXTENSION_ID,
-    version: '0.1.0',
+    version: '0.1.1',
     displayName: 'Alibaba Model Studio Image API',
     description:
       'Not tested with a live API. Generate and edit images with Qwen Image 3.0 Pro through Alibaba Cloud Model Studio.',
     engines: BUILTIN_EXTENSION_ENGINES,
-    contributes: { modelProviders: ['alibaba-model-studio-image-api'] },
+    contributes: { modelProviders: [ALIBABA_IMAGE_PROVIDER_ID] },
     permissions: [...ALIBABA_MODEL_STUDIO_IMAGE_API_PERMISSIONS],
     optionalPermissions: [USER_CONFIGURED_HTTPS_ENDPOINT_PERMISSION],
     configuration: externalImageApiConfiguration(ALIBABA_MODEL_STUDIO_IMAGE_API_EXTENSION_ID),
@@ -296,12 +326,12 @@ export const BUILTIN_EXTENSION_MANIFESTS: readonly ExtensionManifestDto[] = [
     manifestVersion: 1,
     kind: 'CAPABILITY',
     id: VOLCENGINE_ARK_IMAGE_API_EXTENSION_ID,
-    version: '0.1.0',
+    version: '0.1.1',
     displayName: 'Volcengine Ark / BytePlus ModelArk Image API',
     description:
       'Not tested with a live API. Generate Seedream 5.0 images through Volcengine Ark or BytePlus ModelArk regional endpoints.',
     engines: BUILTIN_EXTENSION_ENGINES,
-    contributes: { modelProviders: ['volcengine-ark-image-api'] },
+    contributes: { modelProviders: [VOLCENGINE_IMAGE_PROVIDER_ID] },
     permissions: [...VOLCENGINE_ARK_IMAGE_API_PERMISSIONS],
     optionalPermissions: [...VOLCENGINE_ARK_IMAGE_API_OPTIONAL_PERMISSIONS],
     configuration: externalImageApiConfiguration(VOLCENGINE_ARK_IMAGE_API_EXTENSION_ID),

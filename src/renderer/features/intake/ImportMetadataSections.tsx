@@ -1,7 +1,7 @@
 import type { ReactNode } from 'react';
 import type { PromptSeriesDto } from '@/shared/contracts';
 import { Checkbox } from '@/renderer/components/ui/checkbox';
-import { ComboboxInput } from '@/renderer/components/ui/combobox-input';
+import { ComboboxInput, type ComboboxInputSuggestionValue } from '@/renderer/components/ui/combobox-input';
 import { Input } from '@/renderer/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/renderer/components/ui/select';
 import { Textarea } from '@/renderer/components/ui/textarea';
@@ -33,6 +33,8 @@ export interface ImportMetadataEditorLabels {
   version: string;
   exactPrompt: string;
   description: string;
+  reconstructedPrompt: string;
+  generationText: string;
   relationships: string;
   linkedCreation: string;
   notLinked: string;
@@ -45,8 +47,8 @@ export interface ImportMetadataEditorLabels {
 interface SharedSectionProps {
   draft: IntakeImageMetadataDraft;
   series: PromptSeriesDto[];
-  modelSuggestions: string[];
-  platformSuggestions: string[];
+  modelSuggestions: readonly ComboboxInputSuggestionValue[];
+  sourceSuggestions: readonly ComboboxInputSuggestionValue[];
   batchMode: boolean;
   batchFields: ReadonlySet<BatchMetadataField>;
   disabled: boolean;
@@ -140,7 +142,7 @@ export function BasicMetadataSection({
 export function AiMetadataSection({
   draft,
   modelSuggestions,
-  platformSuggestions,
+  sourceSuggestions,
   batchMode,
   batchFields,
   disabled,
@@ -149,14 +151,20 @@ export function AiMetadataSection({
   onBatchFieldChange,
 }: SharedSectionProps) {
   const modelDisabled = draft.aiGeneratedStatus === 'NO';
-  const generationTextLabel = draft.aiGeneratedStatus === 'YES' ? labels.exactPrompt : labels.description;
+  const generationTextLabel =
+    draft.generationTextType === 'EXACT_PROMPT'
+      ? labels.exactPrompt
+      : draft.generationTextType === 'DESCRIPTION'
+        ? labels.description
+        : draft.generationTextType === 'RECONSTRUCTION'
+          ? labels.reconstructedPrompt
+          : labels.generationText;
   const fields = { batchMode, batchFields, disabled, onBatchFieldChange };
 
   function changeModelName(modelName: string) {
     onChange({
       ...(draft.aiGeneratedStatus === 'UNKNOWN' ? updateAiGeneratedStatus(draft, 'YES') : draft),
       modelName,
-      modelKey: null,
     });
   }
 
@@ -219,7 +227,7 @@ export function AiMetadataSection({
             <ComboboxInput
               className="min-w-0 flex-1"
               value={draft.modelProvider}
-              suggestions={platformSuggestions}
+              suggestions={sourceSuggestions}
               disabled={disabled || modelDisabled || (batchMode && !batchFields.has('modelProvider'))}
               aria-label={labels.platform}
               placeholder={labels.platform}

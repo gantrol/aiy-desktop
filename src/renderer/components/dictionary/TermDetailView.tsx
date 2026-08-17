@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, type ReactNode } from 'react';
 import { ArrowLeftIcon, CheckIcon, ImageIcon, PencilIcon, PlusIcon } from 'lucide-react';
 import type { Locale, TermEditorDto, TermListItem, TermMediaItemDto } from '@/shared/contracts';
 import { resolveTermContent } from '@/shared/term-localization';
@@ -21,6 +21,8 @@ export interface TermDetailViewProps {
   showBack?: boolean;
   onSelectedChange(selected: boolean, term: TermListItem): void;
   onEdit?(term: TermListItem): void;
+  headerAction?: ReactNode;
+  afterContent?: ReactNode;
   notify?(message: string): void;
   className?: string;
 }
@@ -48,6 +50,8 @@ export function TermDetailView({
   showBack = true,
   onSelectedChange,
   onEdit,
+  headerAction,
+  afterContent,
   notify = () => undefined,
   className,
 }: TermDetailViewProps) {
@@ -107,7 +111,7 @@ export function TermDetailView({
         ) : (
           <span />
         )}
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center justify-end gap-2">
           {onEdit && (
             <Button
               data-action="term-detail-edit"
@@ -120,6 +124,7 @@ export function TermDetailView({
               {copy.edit}
             </Button>
           )}
+          {headerAction}
           <Button
             data-action="term-detail-select"
             type="button"
@@ -271,6 +276,7 @@ export function TermDetailView({
               </section>
             )}
           </article>
+          {afterContent && <div className="min-w-0 lg:col-span-2">{afterContent}</div>}
         </div>
       </ScrollArea>
     </section>

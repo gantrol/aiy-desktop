@@ -127,13 +127,15 @@ export function ImageEditConfirmDialog({
     (target) => eligibleModels.find((model) => model.key === target.modelKey) ?? [],
   );
   const selectedWithoutMaskEdit = selectedModels.filter((model) => !model.capabilities.includes('MASK_EDIT'));
-  const mode =
-    selectedModels.length &&
-    nativeMaskAvailable &&
-    selectedModels.every((model) => model.capabilities.includes('MASK_EDIT'))
-      ? 'MASK'
-      : 'SEMANTIC';
   const maximumRuns = targets.reduce((total, target) => total + target.count, 0);
+  const nativeMaskRuns = nativeMaskAvailable
+    ? targets.reduce((total, target) => {
+        const model = eligibleModels.find((candidate) => candidate.key === target.modelKey);
+        return total + (model?.capabilities.includes('MASK_EDIT') ? target.count : 0);
+      }, 0)
+    : 0;
+  const guideRuns = maximumRuns - nativeMaskRuns;
+  const mode = nativeMaskRuns > 0 ? 'MASK' : 'SEMANTIC';
   const canConfirm = Boolean(targets.length && selectedIds.length && !busy);
 
   function selectModels(modelKeys: string[]) {
@@ -214,14 +216,14 @@ export function ImageEditConfirmDialog({
                 routes={eligibleModels}
                 selectedModelKeys={targets.map((target) => target.modelKey)}
                 capabilityTag={{
-                  supports: (model) => model.capabilities.includes('MASK_EDIT'),
+                  supports: (model) => nativeMaskAvailable && model.capabilities.includes('MASK_EDIT'),
                   supportedLabel: copy.maskEditSupported,
                   unsupportedLabel: copy.maskEditUnsupported,
                 }}
                 onSelectedModelKeysChange={selectModels}
               />
             </div>
-            {selectedWithoutMaskEdit.length > 0 && (
+            {nativeMaskAvailable && selectedWithoutMaskEdit.length > 0 && (
               <div
                 role="status"
                 className="flex items-start gap-2 rounded-lg border border-warning/30 bg-warning-surface px-3 py-2 text-xs text-warning"
@@ -230,7 +232,7 @@ export function ImageEditConfirmDialog({
                 {copy.maskEditUnavailable(selectedWithoutMaskEdit.map((model) => model.name).join(', '))}
               </div>
             )}
-            {!selectedWithoutMaskEdit.length && selectedModels.length > 0 && !nativeMaskAvailable && (
+            {selectedModels.length > 0 && !nativeMaskAvailable && (
               <div
                 role="status"
                 className="flex items-start gap-2 rounded-lg border border-warning/30 bg-warning-surface px-3 py-2 text-xs text-warning"
@@ -254,12 +256,17 @@ export function ImageEditConfirmDialog({
           <section className="rounded-lg border bg-surface-sunken/40 p-3" aria-label={copy.boundary}>
             <div className="flex items-center justify-between gap-3 text-xs">
               <span className="font-semibold">{copy.boundary}</span>
-              <Badge variant={mode === 'MASK' ? 'secondary' : 'outline'}>
-                {mode === 'MASK' ? copy.modeMask : copy.modeSemantic}
-              </Badge>
+              <div className="flex flex-wrap justify-end gap-1">
+                {nativeMaskRuns > 0 && <Badge variant="secondary">{copy.modeMask}</Badge>}
+                {guideRuns > 0 && <Badge variant="outline">{copy.modeGuide}</Badge>}
+              </div>
             </div>
             <p className="mt-2 text-xs text-foreground-secondary">
-              {mode === 'MASK' ? copy.strictBoundary : copy.semanticBoundary}
+              {nativeMaskRuns > 0 && guideRuns > 0
+                ? copy.mixedBoundary
+                : nativeMaskRuns > 0
+                  ? copy.strictBoundary
+                  : copy.guideBoundary}
             </p>
           </section>
 
@@ -279,7 +286,8 @@ export function ImageEditConfirmDialog({
               <li>· {copy.source(maximumRuns)}</li>
               <li>· {copy.instructions(selectedIds.length)}</li>
               {supportingReferenceCount > 0 && <li>· {copy.references(supportingReferenceCount)}</li>}
-              {mode === 'MASK' && <li>· {copy.mask}</li>}
+              {nativeMaskRuns > 0 && <li>· {copy.mask(nativeMaskRuns)}</li>}
+              {guideRuns > 0 && <li>· {copy.guide(guideRuns)}</li>}
             </ul>
           </section>
 

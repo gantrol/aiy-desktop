@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import type { ExtensionDto } from '@/shared/contracts';
-import { BlocksIcon, ChevronDownIcon, CpuIcon, LanguagesIcon, SearchIcon, XIcon } from 'lucide-react';
+import { BlocksIcon, ChevronDownIcon, CpuIcon, LanguagesIcon, PaletteIcon, SearchIcon, XIcon } from 'lucide-react';
 import { localizeExtensionManifest } from '@/shared/extension-localization';
 import { Badge } from '@/renderer/components/ui/badge';
 import { Button } from '@/renderer/components/ui/button';
@@ -22,6 +22,7 @@ interface Props {
 
 function PluginIcon({ group }: { group: ExtensionPluginGroup }) {
   if (group === 'models') return <CpuIcon className="size-4 shrink-0" />;
+  if (group === 'frontendDesign') return <PaletteIcon className="size-4 shrink-0" />;
   if (group === 'languages') return <LanguagesIcon className="size-4 shrink-0" />;
   return <BlocksIcon className="size-4 shrink-0" />;
 }
@@ -32,6 +33,7 @@ export function ExtensionPluginList({ extensions, selectedId, onSelect }: Props)
   const [query, setQuery] = useState('');
   const [openGroups, setOpenGroups] = useState<Record<ExtensionPluginGroup, boolean>>({
     models: true,
+    frontendDesign: true,
     features: true,
     languages: true,
   });

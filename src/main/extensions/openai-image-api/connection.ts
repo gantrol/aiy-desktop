@@ -5,12 +5,13 @@ import { z } from 'zod';
 import { OPENAI_IMAGE_PROVIDER } from '@/main/extensions/openai-image-api/definition';
 import type { SecretProtector } from '@/main/extensions/secure-credentials';
 import type { OpenAiImageApiRuntimeConfiguration } from '@/main/extensions/openai-image-api/types';
-import { decodeProviderResponseJson, tryDecodeProviderErrorJson } from '@/main/provider-response';
+import { decodeProviderResponseJson, tryDecodeProviderErrorJson } from '@/main/providers/provider-response';
 import type {
   OpenAiImageApiConnectionDto,
   OpenAiImageApiConnectionStatus,
   OpenAiImageApiSaveInput,
 } from '@/shared/contracts';
+import { OPENAI_IMAGE_CONNECTION_ID, OPENAI_IMAGE_PROVIDER_KEY } from '@/shared/extension-ids';
 
 const connectionStatusSchema = z.enum(['UNVERIFIED', 'READY', 'ERROR']) satisfies z.ZodType<
   Exclude<OpenAiImageApiConnectionStatus, 'NOT_CONFIGURED'>
@@ -61,6 +62,9 @@ function validateApiKey(apiKey: string) {
 
 function connectionDto(record: PersistedConnection): OpenAiImageApiConnectionDto {
   return {
+    connectionId: OPENAI_IMAGE_CONNECTION_ID,
+    providerId: OPENAI_IMAGE_PROVIDER_KEY,
+    modelId: OPENAI_IMAGE_PROVIDER.modelId,
     configured: true,
     status: record.connectionStatus,
     message: record.connectionMessage,
@@ -75,6 +79,9 @@ function connectionDto(record: PersistedConnection): OpenAiImageApiConnectionDto
 
 function notConfigured(): OpenAiImageApiConnectionDto {
   return {
+    connectionId: OPENAI_IMAGE_CONNECTION_ID,
+    providerId: OPENAI_IMAGE_PROVIDER_KEY,
+    modelId: OPENAI_IMAGE_PROVIDER.modelId,
     configured: false,
     status: 'NOT_CONFIGURED',
     message: 'OpenAI API credentials are not configured',

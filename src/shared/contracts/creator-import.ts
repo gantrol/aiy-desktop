@@ -14,6 +14,7 @@ export interface CreatorImageImportContext {
   seriesId: string | null;
   versionId: string | null;
   title: string;
+  titleLocale?: 'zh' | 'en';
   source: CreatorImageImportSource;
   sourceUrl?: string;
 }

@@ -10,7 +10,6 @@
 | `out/preload/**` | preload bridge | 由当前源码重新构建 |
 | `out/renderer/**` | renderer bundle | 由当前源码重新构建 |
 | `package.json` | 运行时元数据 | 与版本和入口一致 |
-| `LICENSE`、`THIRD_PARTY_NOTICES.md` | 第一方授权和第三方许可索引 | 必须与当前发布版本一起分发；Windows 安装器展示 `LICENSE` |
 | `extensions/` | 内置扩展 | 必须来自当前 checkout |
 | `content-packs/` | 内置内容包 | JSON、manifest 和媒体引用必须完整可复现 |
 | `configuration/` | 默认运行配置 | 只放可公开的默认配置，不放凭据 |
@@ -40,7 +39,7 @@
 
 资源未满足这些条件时，应暂缓可分发构建，而不是在打包机上临时复制外部目录。
 
-当前状态（2026-08-07）：creation starter 已是普通目录，5 个 JSON 与 4 张 WebP 均在 Git 提交树内；fixture 的媒体引用、hash、MIME、尺寸和字节数均与实际 WebP 一致，并已从提交归档复验。Windows x64 首发产物为未签名的 NSIS／ZIP；macOS 补丁发行产物使用 Apple Silicon 执行所需的 ad-hoc 签名，但没有 Developer ID 签名或公证。两端产物均附带 SHA-256 与相应的系统安全提示。
+当前状态（2026-08-06）：creation starter 已是普通目录，5 个 JSON 与 4 张 WebP 均在 Git 提交树内；fixture 的媒体引用、hash、MIME、尺寸和字节数均与实际 WebP 一致，并已从提交归档复验。资源输入阻断已关闭；Windows／macOS 安装包生成、签名和安装验收仍未执行。
 
 ## 建议验收命令
 

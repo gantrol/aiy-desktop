@@ -7,6 +7,7 @@ import {
   transferSourceUrl,
   type RendererImageImportSource,
 } from '@/renderer/components/creator/imageImport';
+import { intakeMediaMimeType, isIntakeVideoMimeType } from '@/renderer/features/intake/intakeImageFormats';
 
 interface Props {
   className?: string;
@@ -14,10 +15,11 @@ interface Props {
   disabled?: boolean;
   overlay?: ReactNode;
   onImages(files: File[], source: RendererImageImportSource, sourceUrl: string): void;
+  onVideo?(file: File, source: 'DROP'): void;
   onText?(text: string): void;
 }
 
-export function PasteDropSurface({ className, children, disabled, overlay, onImages, onText }: Props) {
+export function PasteDropSurface({ className, children, disabled, overlay, onImages, onVideo, onText }: Props) {
   const [dragActive, setDragActive] = useState(false);
 
   function paste(event: ClipboardEvent<HTMLElement>) {
@@ -47,6 +49,14 @@ export function PasteDropSurface({ className, children, disabled, overlay, onIma
     if (disabled || event.defaultPrevented) return;
     event.preventDefault();
     setDragActive(false);
+    const video = Array.from(event.dataTransfer.files).find((file) => {
+      const mimeType = intakeMediaMimeType(file);
+      return Boolean(mimeType && isIntakeVideoMimeType(mimeType));
+    });
+    if (video && onVideo) {
+      onVideo(video, 'DROP');
+      return;
+    }
     const files = imageFiles(event.dataTransfer.files);
     if (files.length) onImages(files, 'DROP', transferSourceUrl(event.dataTransfer));
   }

@@ -15,15 +15,6 @@
     "paths": { "@/*": ["./src/*"] },
     "types": ["node", "vite/client"]
   },
-  "include": [
-    "src/**/*.ts",
-    "src/**/*.tsx",
-    "tests/**/*.ts",
-    "tests/**/*.tsx",
-    "bench/**/*.ts",
-    "e2e/**/*.ts",
-    "*.config.ts",
-    "vitest.shared.ts"
-  ],
+  "include": ["src/**/*.ts", "src/**/*.tsx", "tests/smoke/**/*.ts", "vitest.smoke.config.ts"],
   "exclude": ["src/renderer/.tmp", "node_modules", "out", "dist"]
 }

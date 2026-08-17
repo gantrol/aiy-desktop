@@ -1,22 +1,30 @@
-import { DeepSeekAssistantAdapter } from '@/main/assistant-models/deepseek';
+import { decodeDeepSeekTitleResult, DeepSeekAssistantAdapter } from '@/main/assistant-models/deepseek';
 import { DEEPSEEK_DEFAULT_MODEL_ID, DEEPSEEK_PROVIDER_KEY } from '@/main/assistant-models/deepseek-provider';
-import { CodexAdapter } from '@/main/codex';
+import { CodexAdapter } from '@/main/assistant/codex';
 import { LibraryDatabase } from '@/main/database';
-import { readDictionaryImport } from '@/main/dictionary-import';
+import { readDictionaryImport } from '@/main/dictionary/dictionary-import';
 import { DeepSeekApiRuntime } from '@/main/extensions/deepseek-api/runtime';
 import { ExternalImageApiRuntime } from '@/main/extensions/external-image-api/runtime';
 import { OpenAiImageApiRuntime } from '@/main/extensions/openai-image-api/runtime';
 import { ExtensionRegistry } from '@/main/extensions/registry';
-import { GenerationCoordinator } from '@/main/generation';
+import { GenerationCoordinator } from '@/main/generation/coordinator';
+import { ModelRuntimeCallRunner } from '@/main/model-runtime/call-runner';
+import { DEEPSEEK_TITLE_REQUIREMENT, resolveDeepSeekTitleRoute } from '@/main/model-runtime/deepseek-title-route';
+import { ModelRuntimeError } from '@/main/model-runtime/errors';
+import type { VideoDocumentGenerationService } from '@/main/video-documents/generation-service';
+import type { VideoDocumentTranscriptTranslationService } from '@/main/video-transcript/translation-service';
 import { parseModelWorkerMethodParams } from '@/main/model-worker/method-params';
 import type { ModelWorkerMethod, ModelWorkerServerMessage, ModelWorkerSnapshot } from '@/main/model-worker/protocol';
 import { DEEPSEEK_API_EXTENSION_ID } from '@/shared/extension-ids';
 
 const unhandled = Symbol('unhandled-model-worker-method');
+const modelRuntimeCallRunner = new ModelRuntimeCallRunner();
 
 export interface ModelWorkerRequestDispatcherOptions {
   database: LibraryDatabase;
   generation: GenerationCoordinator;
+  videoDocuments?: VideoDocumentGenerationService;
+  videoDocumentTranslations?: VideoDocumentTranscriptTranslationService;
   codex: CodexAdapter;
   deepSeek: DeepSeekAssistantAdapter;
   extensions: ExtensionRegistry;
@@ -123,6 +131,12 @@ async function dispatchStorageAndGeneration(
       const [runId] = parseModelWorkerMethodParams(method, params);
       return generation.cancel(runId);
     }
+    case 'generation.configure-concurrency': {
+      const [configuration] = parseModelWorkerMethodParams(method, params);
+      generation.configureConcurrency(configuration);
+      options.broadcastSnapshot();
+      return undefined;
+    }
     default:
       return unhandled;
   }
@@ -134,7 +148,7 @@ async function dispatchAssistantAndCodex(
   params: unknown[],
   signal: AbortSignal,
 ) {
-  const { codex, database, deepSeek, extensions } = options;
+  const { codex, database, extensions } = options;
   switch (method) {
     case 'codex.refresh-health': {
       parseModelWorkerMethodParams(method, params);
@@ -145,6 +159,18 @@ async function dispatchAssistantAndCodex(
     case 'codex.list-models':
       parseModelWorkerMethodParams(method, params);
       return codex.listModels(signal);
+    case 'video-document.article-generate': {
+      const [input] = parseModelWorkerMethodParams(method, params);
+      if (!options.videoDocuments) throw new Error('Video document generation service is unavailable');
+      return withAssistantJob(options, () =>
+        options.videoDocuments!.generateArticle(input.documentId, input.noteId, signal),
+      );
+    }
+    case 'video-document.transcript-translate': {
+      const [input] = parseModelWorkerMethodParams(method, params);
+      if (!options.videoDocumentTranslations) throw new Error('Video document translation service is unavailable');
+      return withAssistantJob(options, () => options.videoDocumentTranslations!.translate(input, signal));
+    }
     case 'assistant.suggest-titles': {
       const [input, execution] = parseModelWorkerMethodParams(method, params);
       if (execution.providerKey === 'codex') {
@@ -160,7 +186,7 @@ async function dispatchAssistantAndCodex(
       if (!extensions.isActivated(DEEPSEEK_API_EXTENSION_ID)) {
         throw new Error('Enable the DeepSeek API extension and grant its required permissions');
       }
-      return withAssistantJob(options, () => deepSeek.suggestTitles(input, signal));
+      return withAssistantJob(options, () => runDeepSeekTitleSuggestion(options, input, signal));
     }
     case 'assistant.run': {
       const [runId] = parseModelWorkerMethodParams(method, params);
@@ -226,15 +252,45 @@ async function dispatchAssistantAndCodex(
     }
     case 'codex.chat': {
       const [job] = parseModelWorkerMethodParams(method, params);
-      const result = await codex.assist(
-        job.input,
-        job.history,
-        job.imagePaths,
-        { scope: job.scope, title: '创作记录' },
-        signal,
-      );
-      throwIfRequestCancelled(signal);
-      return database.addCreatorAgentTurn(job.scope, job.request, result);
+      const processId =
+        job.processId ??
+        database.startAgentChatProcess(
+          job.scope,
+          job.history.map((turn) => turn.id),
+        );
+      if (job.processId) {
+        database.assertAgentChatProcessOwnership(
+          processId,
+          job.scope,
+          job.history.map((turn) => turn.id),
+        );
+      }
+      try {
+        // processId is an audit correlation key only. The prompt builder receives
+        // the explicit bounded history below and never reads process/event tables.
+        const result = await codex.assist(
+          job.input,
+          job.history,
+          job.imagePaths,
+          {
+            scope: job.scope,
+            title: '创作记录',
+            observer: {
+              onTransportSelected: (transport) => database.setAgentChatProcessTransport(processId, transport),
+              onTurnStarted: (threadId, turnId) => database.recordAgentChatExternalTurn(processId, threadId, turnId),
+              onEvent: (event) => database.recordAgentChatProcessEvent(processId, event),
+              onCaptureDegraded: (reason, droppedEventCount, droppedEventCountExact) =>
+                database.markAgentChatCaptureDegraded(processId, reason, droppedEventCount, droppedEventCountExact),
+            },
+          },
+          signal,
+        );
+        throwIfRequestCancelled(signal);
+        return database.completeAgentChatProcess(processId, job.scope, job.request, result);
+      } catch (error) {
+        database.failAgentChatProcess(processId, error);
+        throw error;
+      }
     }
     case 'codex.suggest-titles': {
       const [input, execution] = parseModelWorkerMethodParams(method, params);
@@ -247,6 +303,47 @@ async function dispatchAssistantAndCodex(
     default:
       return unhandled;
   }
+}
+
+async function runDeepSeekTitleSuggestion(
+  options: ModelWorkerRequestDispatcherOptions,
+  input: Parameters<DeepSeekAssistantAdapter['suggestTitles']>[0],
+  signal: AbortSignal,
+) {
+  const connection = options.deepSeekApi.connectionSnapshot();
+  const route = resolveDeepSeekTitleRoute(connection);
+  const result = await modelRuntimeCallRunner.run({
+    route,
+    requirement: DEEPSEEK_TITLE_REQUIREMENT,
+    inputManifest: {
+      submittedInputModalities: ['TEXT'],
+      submittedItemCount: 1,
+      submittedBytes: null,
+      sourceArtifactIds: [],
+      derivedEvidenceIds: [],
+    },
+    signal,
+    bind: (selectedRoute) => {
+      const current = options.deepSeekApi.connectionSnapshot();
+      if (
+        current.configurationRevision !== selectedRoute.connectionRevision ||
+        current.modelId !== selectedRoute.modelId
+      ) {
+        throw new ModelRuntimeError({
+          code: 'INPUT_CHANGED',
+          phase: 'BINDING_CONNECTION',
+          retryable: true,
+          providerStarted: false,
+          message: 'DeepSeek connection changed before the model call was bound',
+        });
+      }
+      return options.deepSeek.bindTitleSuggestion(input);
+    },
+    decodeOutput: (value) => decodeDeepSeekTitleResult(input, value),
+    resolveActualModelEffectiveCapabilities: (modelId) =>
+      modelId === route.modelId ? route.effectiveCapabilities : null,
+  });
+  return result.output;
 }
 
 async function runDeepSeekAssistant(

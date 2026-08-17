@@ -10,7 +10,7 @@ function presentation(status: string) {
   if (status === 'EXPIRED') {
     return { className: 'text-muted-foreground', icon: <Clock3Icon /> };
   }
-  if (['FAILED', 'INTERRUPTED', 'PARTIAL'].includes(status)) {
+  if (['FAILED', 'INTERRUPTED', 'PARTIAL', 'CANCELLED', 'BLOCKED', 'NOT_STARTED'].includes(status)) {
     return { className: status === 'FAILED' ? 'text-destructive' : 'text-warning', icon: <CircleAlertIcon /> };
   }
   return { className: 'text-success', icon: <CircleCheckIcon /> };

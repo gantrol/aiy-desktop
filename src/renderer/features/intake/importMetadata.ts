@@ -31,14 +31,13 @@ export const defaultBatchMetadataFields = new Set<BatchMetadataField>([
 ]);
 
 export function createIntakeImageMetadataDraft(
-  item: Extract<LocalIntakeItem, { kind: 'IMAGE' }>,
+  item: Exclude<LocalIntakeItem, { kind: 'TEXT' }>,
 ): IntakeImageMetadataDraft {
   return {
     displayName: item.name.trim() || 'image',
     note: '',
     sourceUrl: item.sourceUrl,
     aiGeneratedStatus: 'UNKNOWN',
-    modelKey: null,
     modelName: '',
     modelProvider: '',
     modelVersion: '',
@@ -57,7 +56,6 @@ export function imageDetailsFromDrafts(drafts: Readonly<Record<string, IntakeIma
         note: draft.note,
         sourceUrl: draft.sourceUrl,
         aiGeneratedStatus: draft.aiGeneratedStatus,
-        modelKey: draft.modelKey,
         modelName: draft.modelName,
         modelProvider: draft.modelProvider,
         modelVersion: draft.modelVersion,
@@ -79,7 +77,6 @@ export function updateAiGeneratedStatus(
   return {
     ...draft,
     aiGeneratedStatus,
-    generationTextType: aiGeneratedStatus === 'YES' ? 'EXACT_PROMPT' : 'DESCRIPTION',
-    ...(aiGeneratedStatus === 'NO' ? { modelKey: null, modelName: '', modelProvider: '', modelVersion: '' } : {}),
+    ...(aiGeneratedStatus === 'NO' ? { modelName: '', modelProvider: '', modelVersion: '' } : {}),
   };
 }

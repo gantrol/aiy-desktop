@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import type { ExtensionDto } from '@/shared/contracts';
+import type { ExtensionDto, TransitionPreviewDto } from '@/shared/contracts';
 import { CODEX_IMAGE_DISCOVERY_EXTENSION_ID } from '@/shared/extension-ids';
 import { Badge } from '@/renderer/components/ui/badge';
 import {
@@ -21,6 +21,7 @@ interface Props {
   onNavigate(location: ExtensionsLocation, mode?: NavigationMode): void;
   onExtensionsChange(): void;
   codexImagesNavigation: CodexImagesNavigationState;
+  transitionPreviews: readonly TransitionPreviewDto[];
   notify(message: string): void;
   onOpenCreation(seriesId: string, assetId: string | null): Promise<void>;
 }
@@ -32,6 +33,7 @@ export function ExtensionCenterScreen({
   onNavigate,
   onExtensionsChange,
   codexImagesNavigation,
+  transitionPreviews,
   notify,
   onOpenCreation,
 }: Props) {
@@ -94,6 +96,7 @@ export function ExtensionCenterScreen({
           }
           onExtensionsChange={onExtensionsChange}
           codexImagesNavigation={codexImagesNavigation}
+          transitionPreviews={transitionPreviews}
           notify={notify}
           onOpenCreation={onOpenCreation}
         />

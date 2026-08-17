@@ -97,7 +97,7 @@ export function AppIconMenu({
 
         <nav className="grid gap-0.5" aria-label={navigation.label}>
           {visibleViewItems.map(({ id, icon: Icon }) => {
-            const current = view === id;
+            const current = id === 'creator' ? view === 'creator' || view === 'documents' : view === id;
             return (
               <Button
                 key={id}

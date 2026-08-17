@@ -307,6 +307,9 @@ export function AiStatisticsView({ active, records, routes, locale }: Props) {
     DIRECTIONS: l.kinds.directions,
     OPTIMIZE: l.kinds.optimize,
     EXPERIMENT: l.kinds.experiment,
+    VIDEO_ARTICLE: l.kinds.videoArticle,
+    TRANSCRIBE: l.kinds.transcribe,
+    TRANSLATE: l.kinds.translate,
   };
   const statusLabels = {
     COMPLETED: l.filters.completed,
@@ -335,6 +338,9 @@ export function AiStatisticsView({ active, records, routes, locale }: Props) {
             <SegmentedItem value="TEXT" className="max-md:flex-1">
               {l.stats.text}
             </SegmentedItem>
+            <SegmentedItem value="DOCUMENT" className="max-md:flex-1">
+              {l.stats.document}
+            </SegmentedItem>
           </Segmented>
           <Segmented
             type="single"
@@ -360,7 +366,9 @@ export function AiStatisticsView({ active, records, routes, locale }: Props) {
         <dl className="grid overflow-hidden rounded-lg border bg-surface sm:grid-cols-2 xl:grid-cols-4 [&>*:not(:last-child)]:border-b sm:[&>*:nth-child(odd)]:border-r sm:[&>*:nth-child(3)]:border-b-0 xl:[&>*]:border-b-0 xl:[&>*:not(:last-child)]:border-r">
           <Metric
             icon={<ListChecksIcon />}
-            label={scope === 'IMAGE' ? l.stats.imageTasks : l.stats.textTasks}
+            label={
+              scope === 'IMAGE' ? l.stats.imageTasks : scope === 'TEXT' ? l.stats.textTasks : l.stats.documentTasks
+            }
             value={numberFormatter.format(snapshot.total)}
           />
           <Metric

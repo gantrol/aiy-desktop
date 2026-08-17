@@ -21,7 +21,7 @@ import type {
   CodexImageDiscoverySnapshotDto,
   CreatorImageImportItemInput,
 } from '@/shared/contracts';
-import { CreatorImageStagingService } from '@/main/creator-image-staging';
+import { CreatorImageStagingService } from '@/main/creations/creator-image-staging';
 import type { LibraryDatabase } from '@/main/database';
 import type {
   CodexDiscoveredImageMimeType,
@@ -29,8 +29,8 @@ import type {
   CodexImageDiscoveryScanSnapshot,
   CodexImageDiscoveryThreadDirectorySnapshot,
   CodexImageScanEntry,
-} from '@/main/database/codex-image-discovery-repository';
-import { sha256HexAsync } from '@/main/database/storage';
+} from '@/main/database/extensions/codex-image-discovery-repository';
+import { sha256HexAsync } from '@/main/database/core/storage';
 import { CodexThreadTitleIndex } from '@/main/extensions/codex-image-discovery/thread-title-index';
 
 const MAX_IMAGE_BYTES = 25 * 1024 * 1024;
@@ -105,6 +105,7 @@ export class CodexImageDiscovery extends EventEmitter {
   private readonly threadWatchers = new Map<string, FSWatcher>();
   private lastScannedAt = '';
   private cachedScanSnapshot: CodexImageDiscoveryScanSnapshot | null = null;
+  private mediaRecordById = new Map<string, CodexImageDiscoveryRecord>();
   private readonly imageStages: CreatorImageStagingService;
   private disposed = false;
 
@@ -140,6 +141,7 @@ export class CodexImageDiscovery extends EventEmitter {
 
   async setActive(active: boolean) {
     if (this.disposed) return;
+    if (!active) this.mediaRecordById.clear();
     if (this.active === active) return;
     this.active = active;
     if (!active) {
@@ -179,6 +181,7 @@ export class CodexImageDiscovery extends EventEmitter {
         }
       })();
     if (!available) {
+      this.mediaRecordById.clear();
       return {
         available: false,
         rootPath: this.rootPath,
@@ -204,6 +207,7 @@ export class CodexImageDiscovery extends EventEmitter {
       input.filter,
       input.includeUntitled === true,
     );
+    this.mediaRecordById = new Map(listing.records.map((record) => [record.id, record]));
     return {
       available: true,
       rootPath: this.rootPath,
@@ -298,6 +302,7 @@ export class CodexImageDiscovery extends EventEmitter {
           sourceKind: 'EXTERNAL_IMPORT',
           albumId: null,
           title: title,
+          titleLocale: input.locale,
           prompt: { knowledge: 'UNKNOWN' },
           source: 'UPLOAD',
           sourceUrl: '',
@@ -309,7 +314,7 @@ export class CodexImageDiscovery extends EventEmitter {
       ),
     );
     this.database.scheduleLibraryFileViewSynchronization();
-    this.emit('changed');
+    this.notifyChanged();
     return {
       threadId,
       threadName,
@@ -323,7 +328,7 @@ export class CodexImageDiscovery extends EventEmitter {
 
   resolveMediaPath(discoveryId: string) {
     if (!DISCOVERY_ID_PATTERN.test(discoveryId)) return null;
-    const record = this.database.getCodexImageDiscoveries([discoveryId])[0];
+    const record = this.mediaRecordById.get(discoveryId) ?? this.database.getCodexImageDiscoveries([discoveryId])[0];
     if (!record) return null;
     try {
       const filePath = this.resolveRecordPath(record);
@@ -338,6 +343,7 @@ export class CodexImageDiscovery extends EventEmitter {
     if (this.disposed) return;
     this.disposed = true;
     this.active = false;
+    this.mediaRecordById.clear();
     this.stopWatching();
     const runningScan = this.scanPromise;
     if (runningScan) await runningScan.catch(() => undefined);
@@ -373,7 +379,7 @@ export class CodexImageDiscovery extends EventEmitter {
           this.lastScannedAt = this.cachedScanSnapshot?.lastScannedAt ?? '';
         }
         if (this.active) this.syncWatchers(result.threadDirectories);
-        if (this.notifyAfterScan && result.changed) this.emit('changed');
+        if (this.notifyAfterScan && result.changed) this.notifyChanged();
         return result;
       })
       .finally(() => {
@@ -385,6 +391,7 @@ export class CodexImageDiscovery extends EventEmitter {
   }
 
   private async performScan(forceHash = false): Promise<ScanResult> {
+    this.mediaRecordById.clear();
     const scannedAt = new Date().toISOString();
     let rootEntries: Dirent[];
     try {
@@ -578,6 +585,11 @@ export class CodexImageDiscovery extends EventEmitter {
       throw new Error('Codex image path escaped the generated image directory');
     }
     return resolvedCandidate;
+  }
+
+  private notifyChanged() {
+    this.mediaRecordById.clear();
+    this.emit('changed');
   }
 
   private scheduleRefresh() {
