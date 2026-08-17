@@ -7,6 +7,7 @@ import type {
   ImageGenerationRouteDto,
   GenerationTaskDto,
 } from '@/shared/contracts';
+import { imageGenerationPromptProfileId } from '@/shared/image-generation-prompt-profile';
 
 // The wire version tracks message compatibility. The runtime fingerprint
 // separately prevents a host from reusing worker code from another build.
@@ -31,8 +32,11 @@ export const modelWorkerMethods = [
   'generation.start-version',
   'generation.retry',
   'generation.cancel',
+  'generation.configure-concurrency',
   'codex.refresh-health',
   'codex.list-models',
+  'video-document.article-generate',
+  'video-document.transcript-translate',
   'assistant.run',
   'assistant.suggest-titles',
   'codex.chat',
@@ -143,6 +147,34 @@ const imageGenerationRouteSchema: z.ZodType<ImageGenerationRouteDto> = z
     provider: z.string().min(1).max(1_000),
     providerKey: boundedIdentifier,
     modelId: boundedIdentifier,
+    executionIdentity: z
+      .object({
+        routeId: boundedIdentifier,
+        providerId: boundedIdentifier,
+        connectionId: boundedIdentifier,
+        adapterId: boundedIdentifier,
+        modelId: boundedIdentifier,
+        canonicalModelFamilyId: boundedIdentifier.nullable(),
+        promptProfileId: boundedIdentifier.optional(),
+        resourcePoolKey: boundedIdentifier,
+        // Earlier worker snapshots may contain these two fields. Decode and
+        // discard them; neither field participates in admission anymore.
+        providerMaxConcurrent: z.number().int().positive().max(1_000).nullable().optional(),
+        resourcePoolMaxConcurrent: z.number().int().positive().max(1_000).nullable().optional(),
+      })
+      .strict()
+      .transform((identity) => ({
+        routeId: identity.routeId,
+        providerId: identity.providerId,
+        connectionId: identity.connectionId,
+        adapterId: identity.adapterId,
+        modelId: identity.modelId,
+        canonicalModelFamilyId: identity.canonicalModelFamilyId,
+        promptProfileId: identity.promptProfileId,
+        resourcePoolKey: identity.resourcePoolKey,
+      }))
+      .optional(),
+    maxConcurrent: z.number().int().positive().max(100).optional(),
     state: z.enum(['READY', 'UNAVAILABLE']),
     availabilityReason: z.string().max(10_000).nullable(),
     releaseStage: z.enum(['STABLE', 'PREVIEW', 'INTERNAL']),
@@ -156,7 +188,17 @@ const imageGenerationRouteSchema: z.ZodType<ImageGenerationRouteDto> = z
     qualityMode: z.enum(['SELECTABLE', 'PROVIDER_MANAGED']),
     supportedQualities: z.array(z.enum(['low', 'medium', 'high'])).max(3),
   })
-  .strict();
+  .strict()
+  .transform((route): ImageGenerationRouteDto => {
+    if (!route.executionIdentity) return { ...route, executionIdentity: undefined };
+    return {
+      ...route,
+      executionIdentity: {
+        ...route.executionIdentity,
+        promptProfileId: imageGenerationPromptProfileId(route),
+      },
+    };
+  });
 
 const generationTaskSchema: z.ZodType<GenerationTaskDto> = z
   .object({

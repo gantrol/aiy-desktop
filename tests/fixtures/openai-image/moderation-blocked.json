@@ -1,8 +1,0 @@
-{
-  "error": {
-    "message": "Your request was rejected as a result of our safety system.",
-    "type": "image_generation_user_error",
-    "code": "moderation_blocked",
-    "param": null
-  }
-}

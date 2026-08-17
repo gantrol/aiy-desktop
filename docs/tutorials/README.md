@@ -10,7 +10,7 @@
 4. [维护词典与词盘](04-dictionary-and-prompt-palettes.md)
 5. [本地空间、备份与恢复](05-local-spaces-backup-and-recovery.md)
 
-维护者再阅读 [macOS 打包验收](06-macos-packaging-qa.md) 和 [发布输入与安装包边界](../release/packaging-inputs.md)。
+维护者再阅读 [macOS 打包验收](06-macos-packaging-qa.md)、[在 Windows WSL2 部署 Qwen3-ASR](07-qwen3-asr-wsl-local-deployment.md) 和 [发布输入与安装包边界](../release/packaging-inputs.md)。
 
 ## 先知道三件事
 

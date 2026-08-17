@@ -1,11 +1,19 @@
 import type { ResolvedPromptComposition } from '@/shared/prompt-composition';
 import type { ExtensionHostEngineKey } from '@/shared/product';
 import type {
+  LegacyLocalSpaceCandidateDto,
   LocalSpaceCoverUpdateResult,
   LocalSpaceDescriptorDto,
+  LocalSpaceExportResult,
+  LocalSpaceImportResult,
+  LocalSpaceMigrationProgressEvent,
+  LocalSpaceMigrationResult,
   LocalSpaceRegistryDto,
   LocalSpaceSwitchResult,
+  LocalSpaceTransferProgressEvent,
   LocalSpaceTransitionEvent,
+  TransitionPreviewDto,
+  TransitionPreviewRefreshEvent,
 } from '@/shared/contracts/local-space';
 import type {
   PackCatalogItemDto,
@@ -28,14 +36,80 @@ import type {
   ImportedImageMetadataInput,
   ImportedImageRelationshipInput,
 } from '@/shared/contracts/import-metadata';
+import type {
+  GenerationProcessEventPageDto,
+  GenerationProcessEventPageInput,
+  GenerationProcessSummaryDto,
+} from '@/shared/contracts/generation-process';
+import type { AppUpdateStateDto } from '@/shared/contracts/app-update';
+import type {
+  TermIllustrationAdoptInput,
+  TermIllustrationDecisionResult,
+  TermIllustrationDismissInput,
+  TermIllustrationListDto,
+  TermIllustrationListInput,
+  TermIllustrationStartInput,
+  TermIllustrationStartResult,
+} from '@/shared/contracts/term-illustration';
+import type {
+  LocalQwenAsrSidecarDto,
+  VideoDocumentArticleGenerateInput,
+  VideoDocumentArticleGenerateResult,
+  VideoDocumentAudioProbeInput,
+  VideoDocumentCreateInput,
+  VideoDocumentDto,
+  VideoDocumentExportInput,
+  VideoDocumentExportResult,
+  VideoDocumentFrameCaptureInput,
+  VideoDocumentFrameCaptureResult,
+  VideoDocumentGenerationRunsListInput,
+  VideoDocumentGenerationRunsPage,
+  VideoDocumentListInput,
+  VideoDocumentListPageDto,
+  VideoDocumentMoveInput,
+  VideoDocumentNavigationListInput,
+  VideoDocumentNavigationPage,
+  VideoDocumentNavigationReorderInput,
+  VideoDocumentRenameInput,
+  VideoDocumentRevealExportInput,
+  VideoDocumentRevisionDto,
+  VideoDocumentRevisionSaveInput,
+  VideoDocumentSourceReplaceInput,
+  VideoDocumentTranscriptRecognitionProgress,
+  VideoDocumentTranscriptRecognitionResult,
+  VideoDocumentTranscriptRecognizeInput,
+} from '@/shared/contracts/video-document';
+import type {
+  VideoDocumentTranscriptBackgroundTaskSnapshot,
+  VideoDocumentTranscriptBackgroundTasksChangedEvent,
+} from '@/shared/contracts/video-document-transcription';
+import type {
+  VideoDocumentAiActivitiesListInput,
+  VideoDocumentAiActivitiesPage,
+} from '@/shared/contracts/video-document-ai-activity';
+import type {
+  VideoDocumentTranscriptTranslationResult,
+  VideoDocumentTranscriptTranslationStartInput,
+} from '@/shared/contracts/video-document-translation';
+import type { VideoKeyChangeExtractInput, VideoKeyChangeResultDto } from '@/shared/contracts/video-key-changes';
 
 export type {
+  LegacyLocalSpaceCandidateDto,
   LocalSpaceCoverUpdateResult,
   LocalSpaceDescriptorDto,
+  LocalSpaceExportResult,
+  LocalSpaceImportResult,
+  LocalSpaceMigrationErrorCode,
+  LocalSpaceMigrationProgressEvent,
+  LocalSpaceMigrationResult,
   LocalSpaceRegistryDto,
   LocalSpaceSwitchResult,
+  LocalSpaceTransferErrorCode,
+  LocalSpaceTransferProgressEvent,
   LocalSpaceTransitionEvent,
   LocalSpaceTransitionStage,
+  TransitionPreviewDto,
+  TransitionPreviewRefreshEvent,
 } from '@/shared/contracts/local-space';
 export type {
   PackCatalogItemDto,
@@ -66,6 +140,124 @@ export type {
   ImportedImageMetadataInput,
   ImportedImageRelationshipInput,
 } from '@/shared/contracts/import-metadata';
+export type {
+  GenerationProcessEventHeaderDto,
+  GenerationProcessEventPageDto,
+  GenerationProcessEventPageInput,
+  GenerationProcessEventPayloadDto,
+  GenerationProcessStatus,
+  GenerationProcessSummaryDto,
+} from '@/shared/contracts/generation-process';
+export type {
+  AppUpdateErrorAction,
+  AppUpdateErrorDto,
+  AppUpdatePhase,
+  AppUpdateProgressDto,
+  AppUpdateStateDto,
+  AppUpdateSupportReason,
+} from '@/shared/contracts/app-update';
+export type {
+  TermIllustrationAdoptInput,
+  TermIllustrationBatchDto,
+  TermIllustrationBatchStatus,
+  TermIllustrationDecision,
+  TermIllustrationDecisionResult,
+  TermIllustrationDismissInput,
+  TermIllustrationListDto,
+  TermIllustrationListInput,
+  TermIllustrationPurpose,
+  TermIllustrationRunDto,
+  TermIllustrationStartInput,
+  TermIllustrationStartResult,
+} from '@/shared/contracts/term-illustration';
+export type {
+  LocalQwenAsrGpuTelemetry,
+  LocalQwenAsrProviderKey,
+  LocalQwenAsrSidecarDto,
+  LocalQwenAsrSidecarErrorCode,
+  LocalQwenAsrSidecarStatus,
+  VideoDocumentArticleGenerateInput,
+  VideoDocumentArticleGenerateResult,
+  VideoDocumentAudioInfo,
+  VideoDocumentAudioProbeInput,
+  VideoDocumentAudioStatus,
+  VideoDocumentBranchDto,
+  VideoDocumentBranchRole,
+  VideoDocumentBranchStatus,
+  VideoDocumentCreateInput,
+  VideoDocumentDto,
+  VideoDocumentExportFormat,
+  VideoDocumentExportInput,
+  VideoDocumentExportResult,
+  VideoDocumentFrameCaptureInput,
+  VideoDocumentFrameCaptureResult,
+  VideoDocumentGenerationReceipt,
+  VideoDocumentGenerationErrorDetails,
+  VideoDocumentGenerationRunDto,
+  VideoDocumentGenerationRunsListInput,
+  VideoDocumentGenerationRunsPage,
+  VideoDocumentListInput,
+  VideoDocumentListPageDto,
+  VideoDocumentMoveInput,
+  VideoDocumentNavigationEntry,
+  VideoDocumentNavigationListInput,
+  VideoDocumentNavigationPage,
+  VideoDocumentNavigationReorderInput,
+  VideoDocumentNoteCollectionContent,
+  VideoDocumentNote,
+  VideoDocumentNotesContent,
+  VideoDocumentRichNote,
+  VideoDocumentRenameInput,
+  VideoDocumentRevealExportInput,
+  VideoDocumentMediaBinding,
+  VideoDocumentRevisionContent,
+  VideoDocumentRevisionDto,
+  VideoDocumentRevisionMediaDto,
+  VideoDocumentRevisionOrigin,
+  VideoDocumentRevisionSaveInput,
+  VideoDocumentSourceReplaceInput,
+  VideoDocumentSourceDto,
+  VideoDocumentStatus,
+  VideoDocumentSegmentType,
+  VideoDocumentSummaryDto,
+  VideoDocumentTokenUsage,
+  VideoDocumentTokenAvailability,
+  VideoDocumentTimedTranscriptContent,
+  VideoDocumentTranscriptCue,
+  VideoDocumentTranscriptBasis,
+  VideoDocumentTranscriptRecognitionErrorCode,
+  VideoDocumentTranscriptRecognitionProgress,
+  VideoDocumentTranscriptRecognitionResult,
+  VideoDocumentTranscriptRecognizeInput,
+  VideoDocumentTimelineSegment,
+} from '@/shared/contracts/video-document';
+export type {
+  VideoDocumentTranscriptBackgroundTask,
+  VideoDocumentTranscriptBackgroundTaskSnapshot,
+  VideoDocumentTranscriptBackgroundTaskStatus,
+  VideoDocumentTranscriptBackgroundTaskTerminal,
+  VideoDocumentTranscriptBackgroundTasksChangedEvent,
+} from '@/shared/contracts/video-document-transcription';
+export type {
+  VideoDocumentAiActivitiesListInput,
+  VideoDocumentAiActivitiesPage,
+  VideoDocumentAiActivityDto,
+  VideoDocumentTranscriptionRunDto,
+} from '@/shared/contracts/video-document-ai-activity';
+export type {
+  VideoDocumentTranscriptTranslationExecution,
+  VideoDocumentTranscriptTranslationResult,
+  VideoDocumentTranscriptTranslationRunDto,
+  VideoDocumentTranscriptTranslationStartInput,
+  VideoDocumentTranscriptTranslationWorkerInput,
+  VideoDocumentTranslationLocale,
+} from '@/shared/contracts/video-document-translation';
+export type {
+  VideoKeyChangeCandidateDto,
+  VideoKeyChangeCandidateReason,
+  VideoKeyChangeExtractInput,
+  VideoKeyChangeResultDto,
+} from '@/shared/contracts/video-key-changes';
 
 export type Locale = 'zh' | 'en';
 /** BCP 47 language tag used by dictionary content. Unlike the UI locale, this is open-ended. */
@@ -120,6 +312,7 @@ export type ExtensionContributionPoint =
   'themes' | 'fields' | 'filters' | 'commands' | 'workflows' | 'tools' | 'searchProviders' | 'modelProviders';
 
 export type ExtensionKind = 'CAPABILITY' | 'LANGUAGE';
+export type ExtensionCategory = 'FRONTEND_DESIGN';
 export type ExtensionSource = 'BUILT_IN' | 'LOCAL' | 'MARKETPLACE';
 export type ExtensionConnectionState =
   'READY' | 'CONNECTING' | 'NEEDS_CONFIGURATION' | 'UNAVAILABLE' | 'DISABLED' | 'PERMISSION_REQUIRED';
@@ -194,6 +387,7 @@ export interface ExtensionHostRuntimeDto {
 export interface ExtensionManifestDto {
   manifestVersion: 1;
   kind: ExtensionKind;
+  category?: ExtensionCategory;
   id: string;
   version: string;
   displayName: string;
@@ -309,6 +503,7 @@ export interface CodexImageDiscoveryListInput {
 
 export interface CodexGeneratedImageImportInput {
   discoveryIds: string[];
+  locale?: Locale;
 }
 
 export interface CodexGeneratedImageImportResult {
@@ -325,6 +520,9 @@ export type OpenAiImageApiConnectionStatus = 'NOT_CONFIGURED' | 'UNVERIFIED' | '
 export type OpenAiImageModeration = 'auto' | 'low';
 
 export interface OpenAiImageApiConnectionDto {
+  connectionId: string;
+  providerId: string;
+  modelId: string;
   configured: boolean;
   status: OpenAiImageApiConnectionStatus;
   message: string;
@@ -361,7 +559,7 @@ export interface DeepSeekApiSaveInput {
   apiKey: string;
 }
 
-export type AssistantOperation = 'directions' | 'optimize' | 'title';
+export type AssistantOperation = 'directions' | 'optimize' | 'title' | 'subtitleTranslation';
 export type AssistantWebSearchMode = 'DISABLED' | 'REQUIRED';
 export type AssistantModelKind = 'TEXT' | 'AGENT';
 export type AssistantModelState = 'READY' | 'UNAVAILABLE';
@@ -401,6 +599,7 @@ export interface AssistantRoutingSelections {
   directions: AssistantRoutingSelection;
   optimize: AssistantRoutingSelection;
   title: AssistantRoutingSelection;
+  subtitleTranslation: AssistantRoutingSelection;
 }
 
 export interface AssistantRoutingDto {
@@ -425,10 +624,16 @@ export type ExternalImageApiConnectionStatus = OpenAiImageApiConnectionStatus;
 
 export interface ExternalImageApiConnectionDto {
   extensionId: string;
+  connectionId: string;
+  providerId: string;
+  modelId: string;
   configured: boolean;
   status: ExternalImageApiConnectionStatus;
   message: string;
   apiKeyHint: string | null;
+  /** Provider endpoint/account fields only; model selection is reported separately as modelId. */
+  connectionSettings: Record<string, string>;
+  /** Legacy combined form retained for the existing configuration editor. */
   settings: Record<string, string>;
   updatedAt: string | null;
   lastVerifiedAt: string | null;
@@ -447,12 +652,35 @@ export type ImageGenerationRouteQualityMode = 'SELECTABLE' | 'PROVIDER_MANAGED';
 export type ImageGenerationRouteCapability =
   'GENERATE' | 'REFERENCE_IMAGE' | 'MULTI_REFERENCE' | 'IMAGE_EDIT' | 'MASK_EDIT' | 'TRANSPARENT_BACKGROUND';
 
+/**
+ * The executable binding behind a route. Provider, connection, adapter, and
+ * model identities are deliberately independent so changing one cannot be
+ * mistaken for changing all of them.
+ */
+export interface ImageGenerationRouteExecutionIdentityDto {
+  routeId: string;
+  providerId: string;
+  connectionId: string;
+  adapterId: string;
+  modelId: string;
+  canonicalModelFamilyId: string | null;
+  /** Dictionary-expression / Prompt dialect identity; never an executable route ID. */
+  promptProfileId: string;
+  resourcePoolKey: string;
+}
+
 export interface ImageGenerationRouteDto {
+  /** Legacy route-key projection. New execution code uses executionIdentity.routeId. */
   key: string;
   name: string;
   provider: string;
+  /** Legacy provider-key projection retained for persisted v0.3 records and UI compatibility. */
   providerKey: string;
   modelId: string;
+  /** Optional only for persisted pre-identity snapshots and test doubles. Live routes always provide it. */
+  executionIdentity?: ImageGenerationRouteExecutionIdentityDto;
+  /** Effective per-model admission limit. Optional only for old snapshots and lightweight test routes. */
+  maxConcurrent?: number;
   state: ImageGenerationRouteState;
   availabilityReason: string | null;
   releaseStage: ImageGenerationRouteReleaseStage;
@@ -461,6 +689,18 @@ export interface ImageGenerationRouteDto {
   capabilities: ImageGenerationRouteCapability[];
   qualityMode: ImageGenerationRouteQualityMode;
   supportedQualities: GenerationQuality[];
+}
+
+export interface ImageGenerationConcurrencyDto {
+  /** Per-model fallback; this is never an aggregate application limit. */
+  defaultMaxConcurrent: number;
+  limitsByModelKey: Record<string, number>;
+  updatedAt: string | null;
+}
+
+export interface ImageGenerationConcurrencySaveInput {
+  modelKey: string;
+  maxConcurrent: number;
 }
 
 /** @deprecated Use ImageGenerationRouteDto. This descriptor is an executable route, not a provenance model. */
@@ -752,6 +992,11 @@ export interface AssetDto {
   createdAt: string;
 }
 
+export interface VideoAssetDto extends AssetDto {
+  mediaKind: 'VIDEO';
+  durationMs: number;
+}
+
 export interface AssetFileAvailabilityDto {
   available: boolean;
 }
@@ -812,12 +1057,16 @@ export interface GalleryListInput {
   creationRelation?: CreationRelationFilter;
   unratedDimensions: ImageRatingDimension[];
   cursor: string | null;
+  /** Reuses the first page's count for later cursor pages. */
+  knownTotal?: number;
   limit: number;
 }
 
 export interface GalleryItemDto {
   id: string;
   materialId: string | null;
+  /** Present on current gallery reads; older cached rows can infer it from MIME. */
+  materialKind?: 'IMAGE' | 'VIDEO';
   source: GalleryItemSource;
   createdAt: string;
   asset: AssetDto;
@@ -852,11 +1101,11 @@ export interface ExternalMaterialMetadataDto {
   note: string;
   sourceUrl: string;
   aiGeneratedStatus: ImportedImageAiGeneratedStatus;
-  /** Set only while the name still matches a runtime generation model. */
-  modelKey: string | null;
+  /** Verified link to an executable route; never inferred from free-text provenance. */
+  executionRouteKey: string | null;
   /** Free-text model name — a model is not the same thing as a runtime route. */
   modelName: string;
-  /** Platform the model was reached through, e.g. an official API or OpenRouter. */
+  /** Source product/service, e.g. ChatGPT App, an official Images API, or OpenRouter. */
   modelProvider: string;
   modelVersion: string;
   generationTextType: ImportedImageGenerationTextType;
@@ -871,7 +1120,8 @@ export interface ExternalMaterialMetadataUpdateInput {
   note: string;
   sourceUrl: string;
   aiGeneratedStatus: ExternalMaterialMetadataDto['aiGeneratedStatus'];
-  modelKey: string | null;
+  /** @deprecated Ignored. Provenance editors cannot assign executable routes. */
+  modelKey?: string | null;
   modelName: string;
   modelProvider: string;
   modelVersion: string;
@@ -879,10 +1129,12 @@ export interface ExternalMaterialMetadataUpdateInput {
   generationText: string;
 }
 
-/** Library history and current runtime values offered as editable combobox suggestions. */
+/** Canonical catalog identities and uncatalogued library history for editable provenance fields. */
 export interface MaterialProvenanceSuggestionsDto {
-  modelNames: string[];
-  modelProviders: string[];
+  modelFamilyIds: string[];
+  customModelNames: string[];
+  sourceServiceIds: string[];
+  customSourceNames: string[];
 }
 
 export interface GalleryPageDto {
@@ -1027,6 +1279,7 @@ export interface TermMediaPreviewDto {
 export interface AddTermMediaInput {
   termId: string;
   assetIds: string[];
+  preferredRole?: TermMediaRole;
 }
 
 export interface ReorderTermMediaInput {
@@ -1172,7 +1425,8 @@ export interface ExecutionInputSnapshotDto {
   route: GenerationExecutionRoute;
   requestSchema: string;
   commonInput: GenerationExecutionCommonInputDto;
-  actualRequest: Record<string, unknown>;
+  /** Omitted from startup summaries; loaded on demand for full execution diagnostics. */
+  actualRequest?: Record<string, unknown>;
   /** Audit text for the transport request; use commonInput.resolvedPrompt for user-visible Prompt behavior. */
   clientRequestText: string | null;
   contentHash: string;
@@ -1263,6 +1517,7 @@ export interface GenerationTaskDto {
   status: Extract<GenerationStatus, 'QUEUED' | 'RUNNING'>;
   phase: GenerationTaskPhase;
   progress: number | null;
+  /** Position among queued tasks sharing the same executable route. */
   queuePosition: number | null;
   submittedAt: string;
   startedAt: string | null;
@@ -1285,6 +1540,8 @@ export interface ModelWorkerStatusDto {
 export interface PromptVersionDto {
   id: string;
   parentVersionId?: string | null;
+  /** Imported output whose exact Prompt was used to create this version. */
+  sourceImportId?: string | null;
   /** Frozen edit source for image-edit versions; null for ordinary generations. */
   sourceImageId?: string | null;
   versionNo: number;
@@ -1344,6 +1601,7 @@ export interface NewExternalCreationImportInput {
   creationDraftId?: string | null;
   albumId?: string | null;
   title: string;
+  titleLocale?: Locale;
   prompt: NewExternalCreationPromptInput;
   source?: CreatorImageImportSource;
   sourceUrl?: string;
@@ -1364,7 +1622,10 @@ export interface ImportedCreationOutputDto {
   sourceUrl: string;
   aiGeneratedStatus: 'YES' | 'NO' | 'UNKNOWN' | 'OTHER';
   comparisonRole: 'MODEL' | 'UNKNOWN' | 'ACTUAL';
-  modelKey: string | null;
+  /** Verified link to an executable route; distinct from the declared source identity below. */
+  executionRouteKey?: string | null;
+  /** @deprecated Read compatibility for pre-separation records and fixtures. */
+  modelKey?: string | null;
   modelName: string;
   modelProvider: string;
   modelVersion: string;
@@ -1397,7 +1658,8 @@ export interface ImportedCreationOutputUpdateInput {
   sourceUrl: string;
   aiGeneratedStatus: ImportedCreationOutputDto['aiGeneratedStatus'];
   comparisonRole: ImportedCreationOutputDto['comparisonRole'];
-  modelKey: string | null;
+  /** @deprecated Ignored. Provenance editors cannot assign executable routes. */
+  modelKey?: string | null;
   modelName: string;
   modelProvider: string;
   modelVersion: string;
@@ -1414,6 +1676,7 @@ export interface CreationGroupDto {
 export interface RenameCreationGroupInput {
   creationGroupId: string;
   title: string;
+  locale?: Locale;
 }
 
 export type AlbumMemberTargetType = 'MATERIAL' | 'SERIES' | 'ALBUM';
@@ -1441,6 +1704,8 @@ export interface AlbumDto {
   materialCount: number;
   seriesCount: number;
   previewAssets: AssetDto[];
+  /** Stable image thumbnails from active video documents in this album tree. */
+  documentPreviewAssets?: AssetDto[];
   createdAt: string;
   updatedAt: string;
   /** Latest content activity in this album or any descendant. */
@@ -1453,6 +1718,7 @@ export interface AlbumDto {
 
 export interface AlbumCreateInput {
   title: string;
+  titleLocale?: Locale;
   intent?: string;
   parentAlbumId?: string | null;
 }
@@ -1482,6 +1748,7 @@ export interface AlbumCreationDefaultsUpdateInput {
 export interface AlbumRenameInput {
   albumId: string;
   title: string;
+  locale?: Locale;
 }
 
 export interface AlbumAddMembersInput {
@@ -1537,7 +1804,7 @@ export interface MaterialAlbumMemberDto {
   id: string;
   albumId: string;
   materialId: string;
-  kind: 'IMAGE' | 'TEXT';
+  kind: 'IMAGE' | 'VIDEO' | 'TEXT';
   imageAsset: AssetDto | null;
   text: string | null;
   sortOrder: number;
@@ -1613,12 +1880,14 @@ export interface MaterialAlbumListInput {
 
 export interface MaterialAlbumCreateInput {
   title: string;
+  locale?: Locale;
   parentAlbumId?: string;
 }
 
 export interface MaterialAlbumRenameInput {
   albumId: string;
   title: string;
+  locale?: Locale;
 }
 
 export type MaterialSelectionTargetInput =
@@ -1626,11 +1895,13 @@ export type MaterialSelectionTargetInput =
 
 export interface MaterialAlbumAddManyInput {
   albumId: string;
+  locale?: Locale;
   targets: MaterialSelectionTargetInput[];
 }
 
 export interface MaterialAlbumRemoveInput {
   albumId: string;
+  locale?: Locale;
   materialIds: string[];
 }
 
@@ -1652,6 +1923,7 @@ export interface AddMaterialsToDestinationsResult {
 
 export interface AlbumCreateFromMaterialsInput {
   title: string;
+  titleLocale?: Locale;
   targets: MaterialSelectionTargetInput[];
 }
 
@@ -1693,6 +1965,14 @@ export interface BootstrapDto {
   agentTasks: DirectionExperimentDirectorTaskDto[];
   libraryEmpty: boolean;
   creationDraft: CreationDraftDto | null;
+}
+
+/** Generation-owned library projections refreshed after a run reaches a terminal state. */
+export interface GenerationProjectionDto {
+  series: PromptSeriesDto[];
+  albums: AlbumDto[];
+  styleExplorationBatches: StyleExplorationBatchDto[];
+  agentTasks: DirectionExperimentDirectorTaskDto[];
 }
 
 export interface CreationDraftDto {
@@ -1788,13 +2068,25 @@ export type IntakeCommitItemInput =
       id: string;
       kind: 'IMAGE';
       name: string;
-      mimeType: IntakeMediaMimeType;
+      mimeType: IntakeImageMimeType;
       width?: number;
       height?: number;
       bytes: Uint8Array;
       sourceUrl?: string;
       metadata?: ImportedImageMetadataInput;
       relationship?: ImportedImageRelationshipInput | null;
+    }
+  | {
+      id: string;
+      kind: 'VIDEO';
+      name: string;
+      mimeType: IntakeVideoMimeType;
+      width: number;
+      height: number;
+      durationMs: number;
+      bytes: Uint8Array;
+      sourceUrl?: string;
+      metadata?: ImportedImageMetadataInput;
     };
 
 export interface IntakeCommitInput {
@@ -1813,6 +2105,7 @@ export interface IntakeCommitResult {
   favoriteCount: number;
   materialIds: string[];
   imageMaterialIds: string[];
+  videoMaterialIds: string[];
   /** Imported-output relationships created or updated by this review batch. */
   linkedOutputs: ImportedCreationOutputDto[];
   /** Album the materials were filed into, echoed back for post-import feedback. */
@@ -2348,6 +2641,20 @@ export interface CreatorAgentTurnDto {
   createdAt: string;
 }
 
+/** A bounded history page selected from the newest end; items within each page remain chronological. */
+export interface CreatorAgentHistoryInput {
+  scope: CreatorAgentScope;
+  /** Opaque cursor returned by the previous page; null starts at the newest turn. */
+  cursor: string | null;
+  limit: number;
+}
+
+export interface CreatorAgentHistoryPageDto {
+  items: CreatorAgentTurnDto[];
+  /** Cursor for the next older page, or null when the beginning has been reached. */
+  nextCursor: string | null;
+}
+
 export interface CodexTitleInput {
   prompt: string;
   title: string;
@@ -2361,6 +2668,7 @@ export interface CodexTitleResult {
 export interface RenamePromptSeriesInput {
   seriesId: string;
   title: string;
+  locale?: Locale;
   expectedTitle?: string;
 }
 
@@ -2426,9 +2734,12 @@ export interface GenerationInput {
   creationDraftId?: string | null;
   /** Selected historical version to reuse or branch from instead of the series head. */
   baseVersionId?: string | null;
+  /** Imported output whose exact Prompt is the source of this generation. */
+  sourceImportId?: string | null;
   /** Preserves edit lineage when a generation is derived from an existing image. */
   sourceAssetId?: string | null;
   title: string;
+  titleLocale?: Locale;
   manualPrompt: string;
   promptNodes?: CreatorPromptNodeInput[];
   prompt: string;
@@ -2819,6 +3130,10 @@ export interface DictionaryMaintenanceCreateInput {
 export interface GenerationVersionInput {
   versionId: string;
   modelKey: string;
+  canvasPresetKey: string | null;
+  width: number | null;
+  height: number | null;
+  quality: GenerationQuality;
 }
 
 export interface AnnotationInput {
@@ -2860,8 +3175,16 @@ export interface AnnotationStatusInput {
 export type NavigationCommand = 'back' | 'forward';
 
 export interface DesktopApi {
+  /** Up to 24 already-cached local-space previews; cache misses resolve to an empty list. */
+  appLoadingPreviews(): Promise<TransitionPreviewDto[]>;
+  onAppLoadingPreviewsRefreshed(callback: (event: TransitionPreviewRefreshEvent) => void): () => void;
   bootstrap(locale: Locale): Promise<BootstrapDto>;
+  generationProjection(locale: Locale): Promise<GenerationProjectionDto>;
   appRequestQuit(): Promise<void>;
+  appUpdateGetState(): Promise<AppUpdateStateDto>;
+  appUpdateCheck(): Promise<AppUpdateStateDto>;
+  appUpdateDownload(): Promise<AppUpdateStateDto>;
+  appUpdateInstall(): Promise<AppUpdateStateDto>;
   extensionsList(): Promise<ExtensionDto[]>;
   extensionLanguagePacksList(): Promise<ExtensionLanguagePackDto[]>;
   extensionInstallLocal(): Promise<ExtensionInstallLocalResult>;
@@ -2878,19 +3201,29 @@ export interface DesktopApi {
   deepSeekApiSave(input: DeepSeekApiSaveInput): Promise<DeepSeekApiConnectionDto>;
   deepSeekApiTest(): Promise<DeepSeekApiConnectionDto>;
   deepSeekApiClear(): Promise<DeepSeekApiConnectionDto>;
+  localQwenAsrSidecarGet(): Promise<LocalQwenAsrSidecarDto>;
   assistantRoutingGet(): Promise<AssistantRoutingDto>;
   assistantRoutingSave(input: AssistantRoutingSaveInput): Promise<AssistantRoutingDto>;
+  imageGenerationConcurrencySave(input: ImageGenerationConcurrencySaveInput): Promise<ImageGenerationConcurrencyDto>;
   externalImageApiGet(extensionId: string): Promise<ExternalImageApiConnectionDto>;
   externalImageApiSave(input: ExternalImageApiSaveInput): Promise<ExternalImageApiConnectionDto>;
   externalImageApiTest(extensionId: string): Promise<ExternalImageApiConnectionDto>;
   externalImageApiClear(extensionId: string): Promise<ExternalImageApiConnectionDto>;
   localSpacesList(): Promise<LocalSpaceRegistryDto>;
+  localSpacesDiscoverLegacy(): Promise<LegacyLocalSpaceCandidateDto[]>;
+  localSpacesMigrateLegacy(candidateId: string): Promise<LocalSpaceMigrationResult>;
+  localSpacesCancelLegacyMigration(): Promise<void>;
+  localSpacesExportCurrent(): Promise<LocalSpaceExportResult>;
+  localSpacesImportArchive(): Promise<LocalSpaceImportResult>;
+  localSpacesCancelTransfer(): Promise<void>;
   localSpacesOpen(): Promise<LocalSpaceSwitchResult>;
   localSpacesSwitch(spaceId: string): Promise<LocalSpaceSwitchResult>;
   localSpacesCreate(name: string): Promise<LocalSpaceSwitchResult>;
   localSpacesChooseCover(spaceId: string): Promise<LocalSpaceCoverUpdateResult>;
   localSpacesRemoveCover(spaceId: string): Promise<LocalSpaceDescriptorDto>;
   onLocalSpaceTransition(callback: (event: LocalSpaceTransitionEvent) => void): () => void;
+  onLocalSpaceMigrationProgress(callback: (event: LocalSpaceMigrationProgressEvent) => void): () => void;
+  onLocalSpaceTransferProgress(callback: (event: LocalSpaceTransferProgressEvent) => void): () => void;
   packsList(): Promise<PackCatalogItemDto[]>;
   packImportLocal(): Promise<PackImportLocalResult>;
   packImportStarter(): Promise<string>;
@@ -2899,6 +3232,43 @@ export interface DesktopApi {
   packSetDisabled(packId: string, disabled: boolean): Promise<PackInstallationDto>;
   packRemove(packId: string): Promise<PackInstallationDto>;
   intakeCommit(input: IntakeCommitInput): Promise<IntakeCommitResult>;
+  videoDocumentsList(input: VideoDocumentListInput): Promise<VideoDocumentListPageDto>;
+  videoDocumentNavigationList(input: VideoDocumentNavigationListInput): Promise<VideoDocumentNavigationPage>;
+  videoDocumentNavigationReorder(input: VideoDocumentNavigationReorderInput): Promise<void>;
+  videoDocumentGet(documentId: string): Promise<VideoDocumentDto>;
+  videoDocumentAudioProbe(input: VideoDocumentAudioProbeInput): Promise<VideoDocumentDto>;
+  videoDocumentCreate(input: VideoDocumentCreateInput): Promise<VideoDocumentDto>;
+  videoDocumentRename(input: VideoDocumentRenameInput): Promise<VideoDocumentDto>;
+  videoDocumentMove(input: VideoDocumentMoveInput): Promise<VideoDocumentDto>;
+  videoDocumentSourceReplace(input: VideoDocumentSourceReplaceInput): Promise<VideoDocumentDto>;
+  videoDocumentRevisionGet(branchId: string, revisionId?: string | null): Promise<VideoDocumentRevisionDto | null>;
+  videoDocumentRevisionSave(input: VideoDocumentRevisionSaveInput): Promise<VideoDocumentRevisionDto>;
+  videoDocumentTranscriptImport(documentId: string): Promise<VideoDocumentRevisionDto | null>;
+  videoDocumentTranscriptRecognize(
+    input: VideoDocumentTranscriptRecognizeInput,
+  ): Promise<VideoDocumentTranscriptRecognitionResult>;
+  videoDocumentTranscriptBackgroundTasksGet(): Promise<VideoDocumentTranscriptBackgroundTaskSnapshot>;
+  videoDocumentTranscriptRecognitionCancel(operationId: string): Promise<void>;
+  videoDocumentTranscriptTranslate(
+    input: VideoDocumentTranscriptTranslationStartInput,
+  ): Promise<VideoDocumentTranscriptTranslationResult>;
+  videoDocumentTranscriptTranslationCancel(operationId: string): Promise<void>;
+  onVideoDocumentTranscriptRecognitionProgress(
+    callback: (progress: VideoDocumentTranscriptRecognitionProgress) => void,
+  ): () => void;
+  onVideoDocumentTranscriptBackgroundTasksChanged(
+    callback: (event: VideoDocumentTranscriptBackgroundTasksChangedEvent) => void,
+  ): () => void;
+  videoDocumentArticleGenerate(input: VideoDocumentArticleGenerateInput): Promise<VideoDocumentArticleGenerateResult>;
+  videoDocumentGenerationRunsList(
+    input: VideoDocumentGenerationRunsListInput,
+  ): Promise<VideoDocumentGenerationRunsPage>;
+  videoDocumentAiActivitiesList(input: VideoDocumentAiActivitiesListInput): Promise<VideoDocumentAiActivitiesPage>;
+  videoDocumentExport(input: VideoDocumentExportInput): Promise<VideoDocumentExportResult>;
+  videoDocumentRevealExport(input: VideoDocumentRevealExportInput): Promise<void>;
+  videoDocumentKeyChangesGet(documentId: string): Promise<VideoKeyChangeResultDto | null>;
+  videoDocumentKeyChangesExtract(input: VideoKeyChangeExtractInput): Promise<VideoKeyChangeResultDto>;
+  videoDocumentFrameCapture(input: VideoDocumentFrameCaptureInput): Promise<VideoDocumentFrameCaptureResult>;
   creatorReferencesImport(input: CreatorImageImportInput): Promise<AssetDto[]>;
   creatorOutputsImport(input: CreatorStagedImageImportInput): Promise<CreatorOutputsImportResult>;
   creatorNewExternalCreationImport(input: NewExternalCreationImportInput): Promise<NewExternalCreationImportResult>;
@@ -2925,6 +3295,10 @@ export interface DesktopApi {
   dictionarySetMediaCover(mediaId: string): Promise<TermMediaItemDto[]>;
   dictionaryRemoveMedia(mediaId: string): Promise<TermMediaItemDto[]>;
   dictionaryReorderMedia(input: ReorderTermMediaInput): Promise<TermMediaItemDto[]>;
+  termIllustrationsList(input: TermIllustrationListInput): Promise<TermIllustrationListDto>;
+  termIllustrationsStart(input: TermIllustrationStartInput): Promise<TermIllustrationStartResult>;
+  termIllustrationsAdopt(input: TermIllustrationAdoptInput): Promise<TermIllustrationDecisionResult>;
+  termIllustrationsDismiss(input: TermIllustrationDismissInput): Promise<TermIllustrationDecisionResult>;
   dictionaryClassificationsTree(locale: Locale): Promise<DictionaryClassificationTreeDto>;
   dictionaryClassificationsTerms(input: DictionaryClassificationTermsInput): Promise<DictionaryClassificationTermsDto>;
   dictionaryClassificationCreate(input: DictionaryClassificationCreateInput): Promise<DictionaryClassificationTreeDto>;
@@ -2956,7 +3330,7 @@ export interface DesktopApi {
   assetsChooseReferences(): Promise<ReferenceSelection>;
   codexHealth(): Promise<CodexHealth>;
   codexOpenThread(threadId: string): Promise<void>;
-  agentHistory(scope: CreatorAgentScope): Promise<CreatorAgentTurnDto[]>;
+  agentHistory(input: CreatorAgentHistoryInput): Promise<CreatorAgentHistoryPageDto>;
   agentChat(input: CreatorAgentChatInput): Promise<CreatorAgentTurnDto>;
   agentAssist(input: CreatorAgentAssistInput): Promise<AssistantRunDto>;
   assistantProposalExpire(runId: string, currentContextKey: string): Promise<AssistantRunDto>;
@@ -2977,7 +3351,7 @@ export interface DesktopApi {
   materialAlbumsDelete(albumId: string): Promise<void>;
   materialAlbumsAddMany(input: MaterialAlbumAddManyInput): Promise<MaterialAlbumDto>;
   materialAlbumsRemove(input: MaterialAlbumRemoveInput): Promise<MaterialAlbumDto>;
-  albumsList(): Promise<AlbumDto[]>;
+  albumsList(locale: Locale): Promise<AlbumDto[]>;
   albumsListTextMaterials(albumId: string): Promise<FavoriteTextMaterialDto[]>;
   albumsCreate(input: AlbumCreateInput): Promise<AlbumDto>;
   albumsCreateFromMaterials(input: AlbumCreateFromMaterialsInput): Promise<AlbumCreateFromMaterialsResult>;
@@ -3028,6 +3402,9 @@ export interface DesktopApi {
   ): Promise<{ runId: string; seriesId: string; versionId: string }>;
   generationRetry(runId: string): Promise<{ runId: string; seriesId: string; versionId: string }>;
   generationCancel(runId: string): Promise<void>;
+  generationProcessSummary(runId: string): Promise<GenerationProcessSummaryDto | null>;
+  generationProcessEvents(input: GenerationProcessEventPageInput): Promise<GenerationProcessEventPageDto | null>;
+  generationExecutionRequest(runId: string): Promise<Record<string, unknown> | null>;
   generationOutputSetFailed(input: GenerationOutputSetFailedInput): Promise<void>;
   annotationsList(assetId: string): Promise<AnnotationDto[]>;
   annotationsAdd(input: AnnotationInput): Promise<AnnotationDto>;
@@ -3035,7 +3412,7 @@ export interface DesktopApi {
   annotationsReuseHistory(input: AnnotationHistoryReuseInput): Promise<AnnotationHistoryReuseResult | null>;
   annotationsSetStatus(input: AnnotationStatusInput): Promise<AnnotationDto>;
   galleryList(input: GalleryListInput): Promise<GalleryPageDto>;
-  assetRelationshipGet(assetId: string): Promise<AssetRelationshipDto>;
+  assetRelationshipGet(assetId: string, locale: Locale): Promise<AssetRelationshipDto>;
   assetFileAvailability(assetId: string): Promise<AssetFileAvailabilityDto>;
   assetFileCopy(assetId: string): Promise<void>;
   assetFileSaveAs(assetId: string): Promise<AssetFileSaveResult>;
@@ -3056,6 +3433,7 @@ export interface DesktopApi {
   onAssistantProgress(callback: (event: AssistantActivityEventDto) => void): () => void;
   onModelWorkerChanged(callback: (status: ModelWorkerStatusDto) => void): () => void;
   onNavigationCommand(callback: (command: NavigationCommand) => void): () => void;
+  onAppUpdateChanged(callback: (state: AppUpdateStateDto) => void): () => void;
 }
 
 declare global {

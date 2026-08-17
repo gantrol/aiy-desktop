@@ -37,7 +37,7 @@ export function CodexImageDiscoveryConfiguration({
   notify,
   onOpenCreation,
 }: Props) {
-  const { messages } = useI18n();
+  const { locale, messages } = useI18n();
   const l = messages.extensions.codexImageDiscovery;
   const [snapshot, setSnapshot] = useState<CodexImageDiscoverySnapshotDto | null>(null);
   const [filter, setFilter] = useState<CodexImageDiscoveryFilter>('NOT_IN_LIBRARY');
@@ -208,6 +208,7 @@ export function CodexImageDiscoveryConfiguration({
     try {
       const result = await window.desktopApi.codexGeneratedImagesImport({
         discoveryIds: [...selectedIds],
+        locale,
       });
       setSelectedIds(new Set());
       await load(pageRef.current, false);

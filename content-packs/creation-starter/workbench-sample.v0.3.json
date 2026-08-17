@@ -14,8 +14,8 @@
     {
       "id": "ps_starter_001",
       "title": "象牙色露背长裙",
-      "titleZh": "象牙色露背长裙",
-      "titleEn": "Ivory Open-Back Dress",
+      "titleLocale": "zh",
+      "localizations": [{ "locale": "en", "title": "Ivory Open-Back Dress" }],
       "currentVersionId": "pv_starter_001_02",
       "createdAt": "2026-07-20T10:20:00.000Z",
       "deletedAt": null
@@ -23,8 +23,8 @@
     {
       "id": "ps_starter_002",
       "title": "发现我在拍",
-      "titleZh": "发现我在拍",
-      "titleEn": "Caught on Camera",
+      "titleLocale": "zh",
+      "localizations": [{ "locale": "en", "title": "Caught on Camera" }],
       "currentVersionId": "pv_starter_002_02",
       "createdAt": "2026-07-21T09:15:00.000Z",
       "deletedAt": null
@@ -32,8 +32,8 @@
     {
       "id": "ps_starter_003",
       "title": "夏夜暗黑甜美",
-      "titleZh": "夏夜暗黑甜美",
-      "titleEn": "Dark Sweet Summer Night",
+      "titleLocale": "zh",
+      "localizations": [{ "locale": "en", "title": "Dark Sweet Summer Night" }],
       "currentVersionId": "pv_starter_003_02",
       "createdAt": "2026-07-21T10:00:00.000Z",
       "deletedAt": null

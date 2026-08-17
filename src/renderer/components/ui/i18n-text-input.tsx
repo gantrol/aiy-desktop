@@ -3,6 +3,7 @@ import { useEffect, useId, useRef, useState } from 'react';
 import { Button } from '@/renderer/components/ui/button';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/renderer/components/ui/collapsible';
 import { Input } from '@/renderer/components/ui/input';
+import { Textarea } from '@/renderer/components/ui/textarea';
 import { cn } from '@/renderer/lib/utils';
 
 export interface I18nTextTranslation {
@@ -30,6 +31,8 @@ interface I18nTextInputProps {
   localeInputId?: string;
   valueMaxLength?: number;
   autoFocus?: boolean;
+  multiline?: boolean;
+  defaultOpen?: boolean;
   className?: string;
   onValueChange(value: string): void;
   onLocaleChange(locale: string): void;
@@ -70,15 +73,17 @@ export function I18nTextInput({
   localeInputId,
   valueMaxLength,
   autoFocus,
+  multiline = false,
+  defaultOpen,
   className,
   onValueChange,
   onLocaleChange,
   onTranslationsChange,
 }: I18nTextInputProps) {
   const listId = `i18n-text-locales-${useId().replaceAll(':', '')}`;
-  const [open, setOpen] = useState(translations.length === 0);
+  const [open, setOpen] = useState(defaultOpen ?? translations.length === 0);
   const localeInputRefs = useRef<Array<HTMLInputElement | null>>([]);
-  const valueInputRefs = useRef<Array<HTMLInputElement | null>>([]);
+  const valueInputRefs = useRef<Array<HTMLInputElement | HTMLTextAreaElement | null>>([]);
   const addButtonRef = useRef<HTMLButtonElement>(null);
   const pendingFocusRef = useRef<{ kind: 'locale'; index: number } | { kind: 'add' } | null>(null);
 
@@ -156,16 +161,29 @@ export function I18nTextInput({
             onChange={(event) => onLocaleChange(event.target.value)}
           />
         </div>
-        <Input
-          id={valueInputId}
-          value={value}
-          maxLength={valueMaxLength}
-          autoFocus={autoFocus}
-          aria-label={labels.value}
-          placeholder={placeholder}
-          className="h-9 rounded-none border-0 bg-transparent px-3 hover:border-transparent focus-visible:z-10 focus-visible:border-transparent focus-visible:ring-offset-0"
-          onChange={(event) => onValueChange(event.target.value)}
-        />
+        {multiline ? (
+          <Textarea
+            id={valueInputId}
+            value={value}
+            maxLength={valueMaxLength}
+            autoFocus={autoFocus}
+            aria-label={labels.value}
+            placeholder={placeholder}
+            className="min-h-16 resize-y rounded-none border-0 bg-transparent px-3 py-2.5 hover:border-transparent focus-visible:z-10 focus-visible:border-transparent focus-visible:ring-offset-0"
+            onChange={(event) => onValueChange(event.target.value)}
+          />
+        ) : (
+          <Input
+            id={valueInputId}
+            value={value}
+            maxLength={valueMaxLength}
+            autoFocus={autoFocus}
+            aria-label={labels.value}
+            placeholder={placeholder}
+            className="h-9 rounded-none border-0 bg-transparent px-3 hover:border-transparent focus-visible:z-10 focus-visible:border-transparent focus-visible:ring-offset-0"
+            onChange={(event) => onValueChange(event.target.value)}
+          />
+        )}
         <CollapsibleTrigger asChild>
           <Button
             type="button"
@@ -234,17 +252,31 @@ export function I18nTextInput({
                 }}
               />
             </div>
-            <Input
-              ref={(element) => {
-                valueInputRefs.current[index] = element;
-              }}
-              value={translation.value}
-              maxLength={valueMaxLength}
-              aria-label={labels.value}
-              placeholder={placeholder}
-              className="h-9 rounded-none border-0 bg-transparent px-3 hover:border-transparent focus-visible:z-10 focus-visible:border-transparent focus-visible:ring-offset-0"
-              onChange={(event) => updateTranslation(index, { value: event.target.value })}
-            />
+            {multiline ? (
+              <Textarea
+                ref={(element) => {
+                  valueInputRefs.current[index] = element;
+                }}
+                value={translation.value}
+                maxLength={valueMaxLength}
+                aria-label={labels.value}
+                placeholder={placeholder}
+                className="min-h-16 resize-y rounded-none border-0 bg-transparent px-3 py-2.5 hover:border-transparent focus-visible:z-10 focus-visible:border-transparent focus-visible:ring-offset-0"
+                onChange={(event) => updateTranslation(index, { value: event.target.value })}
+              />
+            ) : (
+              <Input
+                ref={(element) => {
+                  valueInputRefs.current[index] = element;
+                }}
+                value={translation.value}
+                maxLength={valueMaxLength}
+                aria-label={labels.value}
+                placeholder={placeholder}
+                className="h-9 rounded-none border-0 bg-transparent px-3 hover:border-transparent focus-visible:z-10 focus-visible:border-transparent focus-visible:ring-offset-0"
+                onChange={(event) => updateTranslation(index, { value: event.target.value })}
+              />
+            )}
             <Button
               type="button"
               variant="ghost"

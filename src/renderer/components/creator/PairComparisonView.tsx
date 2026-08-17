@@ -66,7 +66,7 @@ function clamp(value: number, minimum: number, maximum: number) {
 }
 
 function IconButton({ label, ...props }: ComponentProps<typeof Button> & { label: string }) {
-  return <Button type="button" size="icon-sm" aria-label={label} {...props} />;
+  return <Button type="button" size="icon" aria-label={label} title={label} {...props} />;
 }
 
 function SourceSummary({ slotLabel, source }: { slotLabel: string; source: PairComparisonItem }) {
@@ -145,25 +145,25 @@ export function PairComparisonView({
       className={cn('flex min-h-0 min-w-0 flex-1 flex-col bg-media-surround outline-none', className)}
       data-mode={mode}
     >
-      <header className="flex h-12 shrink-0 items-center gap-1.5 overflow-x-auto border-b bg-background px-2">
+      <header className="flex min-h-12 shrink-0 flex-wrap items-center gap-1.5 border-b bg-background px-2 py-1.5">
         <Segmented
           type="single"
           value={mode}
           onValueChange={(value) => value && changeMode(value as PairComparisonMode)}
-          className="shrink-0"
+          className="h-10 shrink-0"
         >
           <SegmentedItem
             value="SIDE_BY_SIDE"
             aria-label={labels.sideBySide}
             title={labels.sideBySide}
-            className="w-8 px-0"
+            className="h-9 w-9 px-0"
           >
             <Columns2Icon className="size-4" />
           </SegmentedItem>
-          <SegmentedItem value="SWIPE" aria-label={labels.swipe} title={labels.swipe} className="w-8 px-0">
+          <SegmentedItem value="SWIPE" aria-label={labels.swipe} title={labels.swipe} className="h-9 w-9 px-0">
             <SquareCenterlineDashedVerticalIcon className="size-4" />
           </SegmentedItem>
-          <SegmentedItem value="OVERLAY" aria-label={labels.overlay} title={labels.overlay} className="w-8 px-0">
+          <SegmentedItem value="OVERLAY" aria-label={labels.overlay} title={labels.overlay} className="h-9 w-9 px-0">
             <BlendIcon className="size-4" />
           </SegmentedItem>
         </Segmented>
@@ -176,7 +176,7 @@ export function PairComparisonView({
           <Button
             type="button"
             variant={soloSlot === 'A' ? 'secondary' : 'ghost'}
-            size="icon-sm"
+            size="icon"
             aria-label={`${labels.toggle}: ${labels.a}`}
             aria-pressed={soloSlot === 'A'}
             onClick={() => toggleSolo('A')}
@@ -186,7 +186,7 @@ export function PairComparisonView({
           <Button
             type="button"
             variant={soloSlot === 'B' ? 'secondary' : 'ghost'}
-            size="icon-sm"
+            size="icon"
             aria-label={`${labels.toggle}: ${labels.b}`}
             aria-pressed={soloSlot === 'B'}
             onClick={() => toggleSolo('B')}
@@ -197,13 +197,13 @@ export function PairComparisonView({
 
         {mode === 'OVERLAY' && (
           <div
-            className="flex min-w-64 shrink-0 items-center gap-2 px-1 text-[11px] text-muted-foreground"
+            className="flex min-w-0 flex-1 basis-64 items-center gap-2 px-1 text-[11px] text-muted-foreground"
             title={labels.opacity}
           >
             <span className="w-11 text-right font-mono tabular-nums">
               {labels.a} {100 - overlayMix}%
             </span>
-            <div className="relative w-44">
+            <div className="relative min-w-24 flex-1">
               <Slider
                 value={[overlayMix]}
                 min={0}
@@ -226,7 +226,7 @@ export function PairComparisonView({
           </div>
         )}
 
-        <div className="ml-auto flex shrink-0 items-center gap-0.5">
+        <div className="ml-auto flex min-w-0 flex-wrap items-center justify-end gap-0.5">
           <IconButton
             label={labels.zoomOut}
             variant="ghost"

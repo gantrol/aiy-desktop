@@ -58,7 +58,12 @@ SET
       SELECT 1 FROM background_jobs job
       WHERE job.id = background_job_attempts.job_id AND job.desired_state = 'CANCEL'
     ) THEN recovery_mode
-    WHEN provider_request_id IS NOT NULL THEN 'RECONCILE'
+    WHEN checkpoint_json IS NOT NULL OR EXISTS (
+      SELECT 1
+      FROM background_job_events evidence
+      WHERE evidence.attempt_id = background_job_attempts.id
+        AND evidence.event_type = 'REMOTE_OPERATION_ACCEPTED'
+    ) THEN 'RECONCILE'
     ELSE 'RETRY'
   END,
   retryable = CASE

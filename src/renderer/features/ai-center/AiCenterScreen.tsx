@@ -8,10 +8,11 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/renderer/components/ui/tabs';
 import { useI18n } from '@/renderer/i18n/useI18n';
 import { AiActivityDetail } from '@/renderer/features/ai-center/AiActivityDetail';
-import { AiActivityList } from '@/renderer/features/ai-center/AiActivityList';
+import { AiActivityList, type AiActivityViewMode } from '@/renderer/features/ai-center/AiActivityList';
 import { AiCapabilitiesView } from '@/renderer/features/ai-center/AiCapabilitiesView';
 import { AiProviderConfigurationDialog } from '@/renderer/features/ai-center/AiProviderConfigurationDialog';
 import { AiStatisticsView } from '@/renderer/features/ai-center/AiStatisticsView';
+import { useVideoDocumentAiActivities } from '@/renderer/features/ai-center/useVideoDocumentAiActivities';
 import {
   activityMatchesFilters,
   projectAiActivities,
@@ -34,7 +35,28 @@ interface Props {
   notify(message: string): void;
 }
 
+const AI_ACTIVITY_VIEW_STORAGE_KEY = 'aiy.ai-center.activity-view.v1';
+
+function initialActivityViewMode(): AiActivityViewMode {
+  try {
+    return globalThis.localStorage?.getItem(AI_ACTIVITY_VIEW_STORAGE_KEY) === 'TIMELINE' ? 'TIMELINE' : 'OUTLINE';
+  } catch {
+    return 'OUTLINE';
+  }
+}
+
+function storeActivityViewMode(mode: AiActivityViewMode) {
+  try {
+    globalThis.localStorage?.setItem(AI_ACTIVITY_VIEW_STORAGE_KEY, mode);
+  } catch {
+    // The selected mode still applies for this session when storage is unavailable.
+  }
+}
+
 function canLocate(record: AiActivityRecord, data: BootstrapDto) {
+  if (record.kind === 'VIDEO_DOCUMENT') return true;
+  if (record.kind === 'ASSISTANT' && record.run.creationId) return true;
+  if (record.kind === 'EXPERIMENT' && record.sourceRun?.creationId) return true;
   if (record.sourceSeries) return true;
   if (record.kind === 'GENERATION') return false;
   const scope = record.kind === 'ASSISTANT' ? record.run.scope : record.batch.scope;
@@ -55,10 +77,15 @@ export function AiCenterScreen({
   notify,
 }: Props) {
   const l = useI18n().messages.aiCenter;
-  const records = useMemo(() => projectAiActivities(data), [data]);
+  const videoDocumentActivities = useVideoDocumentAiActivities(active, notify);
+  const records = useMemo(
+    () => projectAiActivities(data, videoDocumentActivities.items),
+    [data, videoDocumentActivities.items],
+  );
   const locationKey = navigationLocationKey(location);
   const appliedLocationKey = useRef(locationKey);
   const [tab, setTab] = useState<AiCenterLocation['tab']>(location.tab);
+  const [activityViewMode, setActivityViewMode] = useState<AiActivityViewMode>(initialActivityViewMode);
   const [categoryFilter, setCategoryFilter] = useState<AiActivityCategoryFilter>('ALL');
   const [statusFilter, setStatusFilter] = useState<AiActivityStatusFilter>('ALL');
   const [configurationExtensionId, setConfigurationExtensionId] = useState<string | null>(null);
@@ -142,12 +169,18 @@ export function AiCenterScreen({
             records={records}
             categoryFilter={categoryFilter}
             statusFilter={statusFilter}
+            viewMode={activityViewMode}
             selectedId={selected?.id ?? null}
             currentDraftId={data.creationDraft?.id ?? null}
             locale={locale}
             routes={data.imageGenerationRoutes}
+            outlineContext={data}
             onCategoryFilterChange={changeCategoryFilter}
             onStatusFilterChange={changeStatusFilter}
+            onViewModeChange={(mode) => {
+              setActivityViewMode(mode);
+              storeActivityViewMode(mode);
+            }}
             onSelect={(recordId) => commit({ ...location, recordId })}
           />
           <AiActivityDetail
@@ -171,12 +204,13 @@ export function AiCenterScreen({
           locale={locale}
         />
       </TabsContent>
-      <TabsContent value="capabilities" className="min-h-0 flex-1">
+      <TabsContent value="capabilities" className="min-h-0 flex-1 overflow-hidden">
         <AiCapabilitiesView
           active={active && tab === 'capabilities'}
           data={data}
           locale={locale}
           notify={notify}
+          refresh={refresh}
           onConfigure={setConfigurationExtensionId}
           onManagePlugins={onManagePlugins}
         />

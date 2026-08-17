@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useState } from 'react';
 import type { ExternalMaterialMetadataDto } from '@/shared/contracts';
 import { useI18n } from '@/renderer/i18n/useI18n';
 import { useProvenanceSuggestions } from '@/renderer/components/provenance/useProvenanceSuggestions';
@@ -46,37 +46,13 @@ export function MaterialMetadataEditor({ metadata, formId, onStateChange, onUpda
     setGenerationText(metadata.generationText);
   }, [metadata]);
 
-  const platformDefaults = useMemo(
-    () => [
-      l.platformOfficialApi,
-      l.platformOpenRouter,
-      l.platformChatGptApp,
-      l.platformCodex,
-      l.platformGeminiApp,
-      l.platformDoubao,
-      l.platformLocal,
-    ],
-    [
-      l.platformChatGptApp,
-      l.platformCodex,
-      l.platformDoubao,
-      l.platformGeminiApp,
-      l.platformLocal,
-      l.platformOfficialApi,
-      l.platformOpenRouter,
-    ],
-  );
-  const suggestions = useProvenanceSuggestions(platformDefaults);
-  // Preserve an existing execution link while its recorded model is untouched,
-  // but never infer one from the currently configured API catalog.
-  const modelKey = modelName.trim() === metadata.modelName.trim() ? metadata.modelKey : null;
+  const suggestions = useProvenanceSuggestions();
 
   const dirty =
     displayName !== metadata.displayName ||
     note !== metadata.note ||
     sourceUrl !== metadata.sourceUrl ||
     aiStatus !== metadata.aiGeneratedStatus ||
-    modelKey !== metadata.modelKey ||
     modelName !== metadata.modelName ||
     modelProvider !== metadata.modelProvider ||
     modelVersion !== metadata.modelVersion ||
@@ -91,7 +67,6 @@ export function MaterialMetadataEditor({ metadata, formId, onStateChange, onUpda
   function selectAiStatus(value: string) {
     const next = value as ExternalMaterialMetadataDto['aiGeneratedStatus'];
     setAiStatus(next);
-    setGenerationTextType(next === 'YES' ? 'EXACT_PROMPT' : 'DESCRIPTION');
     if (next !== 'NO') return;
     setModelName('');
     setModelProvider('');
@@ -108,7 +83,6 @@ export function MaterialMetadataEditor({ metadata, formId, onStateChange, onUpda
         note,
         sourceUrl,
         aiGeneratedStatus: aiStatus,
-        modelKey,
         modelName,
         modelProvider,
         modelVersion,
@@ -134,7 +108,14 @@ export function MaterialMetadataEditor({ metadata, formId, onStateChange, onUpda
   }
 
   const modelDisabled = aiStatus === 'NO';
-  const textLabel = generationTextType === 'EXACT_PROMPT' ? l.exactPrompt : l.description;
+  const textLabel =
+    generationTextType === 'EXACT_PROMPT'
+      ? l.exactPrompt
+      : generationTextType === 'DESCRIPTION'
+        ? l.description
+        : generationTextType === 'RECONSTRUCTION'
+          ? l.reconstructedPrompt
+          : l.generationText;
   return (
     <form
       id={formId}
@@ -172,7 +153,7 @@ export function MaterialMetadataEditor({ metadata, formId, onStateChange, onUpda
       <div className="grid grid-cols-2 gap-2">
         <ComboboxInput
           value={modelName}
-          suggestions={suggestions.modelNames}
+          suggestions={suggestions.modelsForSource(modelProvider)}
           disabled={modelDisabled}
           aria-label={l.model}
           placeholder={l.modelPlaceholder}
@@ -181,7 +162,7 @@ export function MaterialMetadataEditor({ metadata, formId, onStateChange, onUpda
         />
         <ComboboxInput
           value={modelProvider}
-          suggestions={suggestions.platforms}
+          suggestions={suggestions.sourcesForModel(modelName)}
           disabled={modelDisabled}
           aria-label={l.platform}
           placeholder={l.platformPlaceholder}

@@ -1,0 +1,34 @@
+{
+  "manifestVersion": 1,
+  "kind": "CAPABILITY",
+  "category": "FRONTEND_DESIGN",
+  "id": "com.aiy.feature-demo",
+  "version": "0.1.0",
+  "displayName": "Feature Demo",
+  "description": "Preview a plain feature walkthrough and export it as a 2K video.",
+  "engines": {
+    "aiy": "^0.3.0"
+  },
+  "runtime": {
+    "kind": "HOST",
+    "id": "feature-demo"
+  },
+  "contributes": {
+    "commands": ["featureDemo.play", "featureDemo.export2k"]
+  },
+  "permissions": [],
+  "optionalPermissions": [],
+  "i18n": {
+    "defaultLocale": "en",
+    "locales": {
+      "en": {
+        "displayName": "Feature Demo",
+        "description": "Preview a plain feature walkthrough and export it as a 2K video."
+      },
+      "zh": {
+        "displayName": "演示",
+        "description": "预览朴实的主要功能演示，并导出为 2K 视频。"
+      }
+    }
+  }
+}

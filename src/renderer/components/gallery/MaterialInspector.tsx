@@ -2,6 +2,7 @@ import {
   BookOpenIcon,
   CopyIcon,
   ExternalLinkIcon,
+  FileTextIcon,
   HeartIcon,
   HeartOffIcon,
   LoaderCircleIcon,
@@ -32,6 +33,7 @@ import {
 } from '@/renderer/components/ui/dialog';
 import { MetaText } from '@/renderer/components/ui/meta-text';
 import { AssetFileContextMenu } from '@/renderer/components/media/AssetFileContextMenu';
+import { useAssetMenuActions } from '@/renderer/components/media/AssetMenuActionsProvider';
 import { AssetMedia, isVideoAsset } from '@/renderer/components/media/AssetMedia';
 import { ScrollArea } from '@/renderer/components/ui/scroll-area';
 import { Sheet, SheetContent, SheetDescription, SheetTitle } from '@/renderer/components/ui/sheet';
@@ -141,7 +143,7 @@ export function MaterialInspector({
   }
 
   async function copyImage() {
-    if (item.kind !== 'IMAGE' || isVideoAsset(item.image.asset) || copyBusy) return;
+    if (item.kind !== 'IMAGE' || copyBusy) return;
     setCopyBusy(true);
     notify(fileLabels.copying);
     try {
@@ -261,9 +263,10 @@ function InspectorBody({
   onCopyImage,
 }: InspectorBodyProps) {
   const { messages } = useI18n();
+  const assetActions = useAssetMenuActions();
   const l = messages.gallery.inspector;
   const fileLabels = messages.assetFile;
-  const image = item.kind === 'IMAGE' ? item.image : null;
+  const image = item.kind !== 'TEXT' ? item.image : null;
   const video = isVideoAsset(image?.asset);
   const [activeTab, setActiveTab] = useState(
     image?.metadata?.provenanceConfidence === 'UNKNOWN' ? 'details' : 'relationships',
@@ -291,7 +294,7 @@ function InspectorBody({
     setRelationshipLoading(true);
     setRelationshipFailed(false);
     void window.desktopApi
-      .assetRelationshipGet(image.asset.id)
+      .assetRelationshipGet(image.asset.id, locale)
       .then((result) => {
         if (!current) return;
         setRelationships(result);
@@ -332,7 +335,7 @@ function InspectorBody({
     <div className="flex size-full min-h-0 flex-col">
       <div className="flex h-14 shrink-0 items-center gap-2 border-b px-4">
         <strong className="min-w-0 flex-1 truncate text-sm">{l.title}</strong>
-        {item.kind === 'IMAGE' && !video && (
+        {item.kind === 'IMAGE' && (
           <Button
             type="button"
             variant="ghost"
@@ -364,7 +367,7 @@ function InspectorBody({
         className="min-h-0 min-w-0 flex-1 [&_[data-slot=scroll-area-viewport]>div]:!block [&_[data-slot=scroll-area-viewport]>div]:!w-full"
       >
         <div className="w-full min-w-0 space-y-5 p-4">
-          {item.kind === 'IMAGE' ? (
+          {item.kind !== 'TEXT' ? (
             <AssetFileContextMenu
               assetId={item.image.asset.id}
               notify={notify}
@@ -433,6 +436,21 @@ function InspectorBody({
             </div>
           ) : (
             <div className="grid gap-2">
+              {video && image?.materialId && assetActions && (
+                <Button
+                  type="button"
+                  className="w-full"
+                  onClick={() =>
+                    void assetActions.createDocumentFromVideo(
+                      image.materialId!,
+                      revealContext?.kind === 'ALBUM' ? revealContext.albumId : null,
+                    )
+                  }
+                >
+                  <FileTextIcon className="size-4" />
+                  {messages.videoDocuments.createFromVideo}
+                </Button>
+              )}
               {image?.creation && (
                 <Button
                   type="button"

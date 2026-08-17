@@ -290,6 +290,10 @@ export function linkedPromptVersion(output: ImportedCreationOutputDto, versions:
   return output.promptVersionId ? versions.find((version) => version.id === output.promptVersionId) : undefined;
 }
 
+function importedExecutionRouteKey(output: ImportedCreationOutputDto) {
+  return output.executionRouteKey ?? output.modelKey ?? null;
+}
+
 function versionMatchesExactPrompt(version: PromptVersionDto, normalizedPrompt: string, modelKey: string | null) {
   const candidates = [...executionPromptCandidates(version, modelKey), comparisonPromptForVersion(version, modelKey)];
   return candidates.some((candidate) => normalizedComparisonPrompt(candidate) === normalizedPrompt);
@@ -308,22 +312,24 @@ export function importedPromptPlacement(
   if (linkedVersion) {
     if (!exactPrompt) return { kind: 'VERSION', versionId: linkedVersion.id };
     const normalized = normalizedComparisonPrompt(exactPrompt);
-    if (versionMatchesExactPrompt(linkedVersion, normalized, output.modelKey)) {
+    const executionRouteKey = importedExecutionRouteKey(output);
+    if (versionMatchesExactPrompt(linkedVersion, normalized, executionRouteKey)) {
       return { kind: 'VERSION', versionId: linkedVersion.id };
     }
     return {
       kind: 'LINKED_VARIANT',
       versionId: linkedVersion.id,
       prompt: exactPrompt,
-      baselinePrompt: comparisonPromptForVersion(linkedVersion, output.modelKey),
+      baselinePrompt: comparisonPromptForVersion(linkedVersion, executionRouteKey),
     };
   }
 
   if (exactPrompt) {
     const normalized = normalizedComparisonPrompt(exactPrompt);
+    const executionRouteKey = importedExecutionRouteKey(output);
     const matchingVersion = [...versions]
       .sort((left, right) => right.versionNo - left.versionNo)
-      .find((version) => versionMatchesExactPrompt(version, normalized, output.modelKey));
+      .find((version) => versionMatchesExactPrompt(version, normalized, executionRouteKey));
     return matchingVersion
       ? { kind: 'VERSION', versionId: matchingVersion.id }
       : { kind: 'STANDALONE', prompt: exactPrompt };

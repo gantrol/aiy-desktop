@@ -7,8 +7,10 @@ import type {
 import { effectiveImageGenerationRouteDescriptor } from '@/main/generation-models/adapters/capabilities';
 import type {
   GenerationAdapter,
+  GenerationAdapterExecutionContext,
   GenerationAdapterResult,
   GenerationAdapterSignal,
+  BoundGenerationAdapterExecution,
   GenerationRequestFactory,
   NormalizedGenerationRequest,
 } from '@/main/generation-models/adapters/contracts';
@@ -25,6 +27,9 @@ import {
 
 export type GenerationAdapterEvent =
   | { type: 'STARTED'; runId: string; timestamp: string }
+  | { type: 'REQUEST_IDENTIFIED'; runId: string; timestamp: string; providerRequestId: string }
+  | { type: 'REMOTE_OPERATION_ACCEPTED'; runId: string; timestamp: string; providerRequestId: string }
+  /** @deprecated Compatibility alias for REQUEST_IDENTIFIED. */
   | { type: 'REQUEST_ACCEPTED'; runId: string; timestamp: string; providerRequestId?: string }
   | {
       type: 'PROGRESS';
@@ -71,8 +76,27 @@ export class AdapterBackedGenerationModel implements ImageGenerationRoute {
     return effectiveImageGenerationRouteDescriptor(descriptor, this.options.adapter);
   }
 
-  async prepareExecution(runId: string, input: GenerationInput) {
-    const route = this.descriptor;
+  validateInput(
+    input: Readonly<Pick<GenerationInput, 'modelKey' | 'width' | 'height' | 'quality'>>,
+    routeSnapshot?: Readonly<ImageGenerationRouteDto>,
+  ) {
+    const route = routeSnapshot ?? this.descriptor;
+    if (input.modelKey !== route.key) {
+      throw new GenerationAdapterError({
+        code: 'INVALID_REQUEST',
+        message: `Input modelKey ${input.modelKey} does not match ${route.key}`,
+        details: { actual: input.modelKey, expected: route.key },
+      });
+    }
+    this.options.adapter.validateOutput?.({
+      width: input.width,
+      height: input.height,
+      quality: input.quality,
+    });
+  }
+
+  async prepareExecution(runId: string, input: GenerationInput, routeSnapshot?: Readonly<ImageGenerationRouteDto>) {
+    const route = routeSnapshot ?? this.descriptor;
     if (input.modelKey !== route.key) {
       throw new GenerationAdapterError({
         code: 'INVALID_REQUEST',
@@ -89,6 +113,7 @@ export class AdapterBackedGenerationModel implements ImageGenerationRoute {
       });
     }
     validateGenerationAdapterRequest(route, this.options.adapter, request);
+    const boundExecution = this.options.adapter.bindRequest?.(request);
     return {
       requestSnapshot: {
         route: 'PROVIDER_ADAPTER' as const,
@@ -97,7 +122,7 @@ export class AdapterBackedGenerationModel implements ImageGenerationRoute {
         clientRequestText: request.prompt,
       },
       execute: (onStarted: GenerationStarted, onSignal?: GenerationExecutionObserver) =>
-        this.executePrepared(runId, request, onStarted, onSignal),
+        this.executePrepared(runId, request, onStarted, onSignal, boundExecution),
       ...(this.options.cleanup ? { cleanup: () => this.options.cleanup?.(request) } : {}),
     };
   }
@@ -107,6 +132,7 @@ export class AdapterBackedGenerationModel implements ImageGenerationRoute {
     request: NormalizedGenerationRequest,
     onStarted: GenerationStarted,
     onSignal?: GenerationExecutionObserver,
+    boundExecution?: BoundGenerationAdapterExecution,
   ): Promise<GenerationAdapterResult> {
     const abortController = new AbortController();
     try {
@@ -116,7 +142,7 @@ export class AdapterBackedGenerationModel implements ImageGenerationRoute {
         throw new DOMException('Generation was cancelled', 'AbortError');
       }
 
-      const adapterResult = await this.options.adapter.execute(request, {
+      const executionContext: GenerationAdapterExecutionContext = {
         signal: abortController.signal,
         emit: (signal) => {
           this.emitSignal(runId, signal);
@@ -137,7 +163,10 @@ export class AdapterBackedGenerationModel implements ImageGenerationRoute {
             });
           }
         },
-      });
+      };
+      const adapterResult = boundExecution
+        ? await boundExecution(executionContext)
+        : await this.options.adapter.execute(request, executionContext);
       if (abortController.signal.aborted) {
         throw new DOMException('Generation was cancelled', 'AbortError');
       }
@@ -159,6 +188,8 @@ export class AdapterBackedGenerationModel implements ImageGenerationRoute {
   private emitSignal(runId: string, signal: GenerationAdapterSignal) {
     const timestamp = this.now();
     switch (signal.type) {
+      case 'REQUEST_IDENTIFIED':
+      case 'REMOTE_OPERATION_ACCEPTED':
       case 'REQUEST_ACCEPTED':
         this.emit({ ...signal, runId, timestamp });
         break;

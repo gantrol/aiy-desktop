@@ -2,15 +2,16 @@ appId: com.catai.aiy
 productName: AIY Image Tools
 directories:
   output: release
+publish:
+  provider: github
+  owner: gantrol
+  repo: aiy-desktop
 files:
   - out/main/**
   - out/preload/**
   - out/renderer/**
   - '!out/**/*.map'
   - package.json
-  - LICENSE
-  - NOTICE
-  - THIRD_PARTY_NOTICES.md
 asar: true
 electronFuses:
   runAsNode: false
@@ -27,6 +28,8 @@ npmRebuild: false
 extraResources:
   - from: extensions
     to: extensions
+  # Only lightweight, checked-in application content belongs here. Production
+  # portrait libraries are imported explicitly and are not bundled.
   - from: content-packs
     to: content-packs
   - from: configuration
@@ -45,17 +48,12 @@ win:
       arch: [x64]
 mac:
   icon: build/icon.png
-  # Apple Silicon rejects Electron binaries after fuse patching unless the
-  # complete bundle is signed. Use a valid ad-hoc signature when no Developer
-  # ID is available; this does not provide identity or notarization.
-  identity: '-'
-  hardenedRuntime: false
   target:
     - dmg
     - zip
-artifactName: 'AIY-Image-Tools-${version}-${os}-${arch}.${ext}'
+artifactName: '${productName}-${version}-${os}-${arch}.${ext}'
 nsis:
+  include: build/installer.nsh
   oneClick: false
   allowToChangeInstallationDirectory: true
   createDesktopShortcut: true
-  license: LICENSE

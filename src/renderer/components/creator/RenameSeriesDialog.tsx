@@ -17,7 +17,7 @@ interface Props {
 }
 
 export function RenameSeriesDialog({ series, prompt, open, onOpenChange, onSaved, notify }: Props) {
-  const { messages } = useI18n();
+  const { locale, messages } = useI18n();
   const c = messages.creator.rename;
   const [title, setTitle] = useState('');
   const [busy, setBusy] = useState<'suggest' | 'save' | null>(null);
@@ -54,7 +54,7 @@ export function RenameSeriesDialog({ series, prompt, open, onOpenChange, onSaved
     setBusy('save');
     setError('');
     try {
-      await window.desktopApi.promptSeriesRename({ seriesId: currentSeries.id, title });
+      await window.desktopApi.promptSeriesRename({ seriesId: currentSeries.id, title, locale });
       await onSaved();
       onOpenChange(false);
       notify(c.saved);

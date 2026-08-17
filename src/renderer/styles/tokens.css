@@ -212,6 +212,21 @@
   --media-surround-dark: var(--neutral-900);
   --media-checker-a: var(--neutral-0);
   --media-checker-b: var(--neutral-300);
+  --loading-polaroid-aura: color-mix(in srgb, var(--selected) 84%, var(--rose-600));
+  --loading-polaroid-paper: color-mix(in srgb, var(--surface) 94%, var(--selected) 6%);
+  --loading-polaroid-border: color-mix(in srgb, var(--border-strong) 72%, transparent);
+  --loading-polaroid-shadow: color-mix(in srgb, var(--foreground) 42%, transparent);
+  --loading-polaroid-center-shadow: color-mix(in srgb, var(--foreground) 48%, transparent);
+  --loading-polaroid-highlight: color-mix(in srgb, var(--background) 82%, var(--surface));
+  --loading-polaroid-aperture-border: color-mix(in srgb, var(--border-strong) 84%, transparent);
+  --loading-polaroid-aperture-glint: color-mix(in srgb, var(--selected) 62%, var(--surface));
+  --loading-polaroid-aperture-light: color-mix(in srgb, var(--background) 76%, var(--selected));
+  --loading-polaroid-aperture-mid: color-mix(in srgb, var(--media-surround) 72%, var(--background));
+  --loading-polaroid-aperture-accent: color-mix(in srgb, var(--selected-border) 52%, var(--background));
+  --loading-polaroid-aperture-inset: color-mix(in srgb, var(--background) 70%, transparent);
+  --loading-polaroid-footer-line: color-mix(in srgb, var(--muted-foreground) 46%, transparent);
+  --loading-polaroid-focus: color-mix(in srgb, var(--rose-600) 82%, var(--selected-border));
+  --loading-polaroid-focus-glow: color-mix(in srgb, var(--loading-polaroid-focus) 46%, transparent);
   --image-overlay-contrast-shadow-light:
     0 0 1px var(--media-surround-dark), 0 1px 2px color-mix(in srgb, var(--media-surround-dark) 76%, transparent);
   --image-overlay-contrast-shadow-dark:

@@ -49,21 +49,16 @@ For backup and recovery boundaries, see [Local spaces, backup, and recovery](tut
 
 ## Development commands
 
-| Purpose                   | Command                                      |
-| ------------------------- | -------------------------------------------- |
-| Start the development app | `npm run dev`                                |
-| Type-check                | `npm run typecheck`                          |
-| Check formatting          | `npm run format:check`                       |
-| Lint                      | `npm run lint`                               |
-| Default Vitest unit tests | `npm test`                                   |
-| All Vitest projects       | `npm run test:all`                           |
-| Coverage gate             | `npm run test:coverage`                      |
-| Electron E2E              | Run `npm run build`, then `npm run test:e2e` |
-| Full verification         | `npm run verify`                             |
+| Purpose                   | Command                |
+| ------------------------- | ---------------------- |
+| Start the development app | `npm run dev`          |
+| Type-check                | `npm run typecheck`    |
+| Check formatting          | `npm run format:check` |
+| Lint                      | `npm run lint`         |
+| Public smoke test         | `npm test`             |
+| Full verification         | `npm run verify`       |
 
-The default `npm test` command runs the unit lane. Use the focused lane commands while iterating, and use `npm run verify` when a change needs the complete format, lint, type-check, and coverage gate.
-
-See [`tests/README.md`](../tests/README.md) for test lanes, network isolation, and provider stubs. See [`e2e/README.md`](../e2e/README.md) for the Playwright setup, stable selectors, and performance contracts.
+The public repository contains only a generic startup and storage smoke lane. Detailed quality gates are maintained outside the public source tree. Use `npm run verify` for format, lint, type-check, public-boundary, and smoke verification.
 
 Normal development does not require packaging or updating `release/`.
 

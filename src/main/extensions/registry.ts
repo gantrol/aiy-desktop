@@ -14,11 +14,16 @@ import {
   type ExternalImageApiExtensionId,
 } from '@/shared/extension-ids';
 import type { LibraryDatabase } from '@/main/database';
-import { EXTENSION_HOST_ENGINE_KEY, PRODUCT_VERSION } from '@/shared/product';
+import { EXTENSION_HOST_ENGINE_KEY, EXTENSION_HOST_VERSION } from '@/shared/product';
 import { BUILTIN_EXTENSION_MANIFESTS } from '@/main/extensions/builtin-manifests';
 import { extensionSupportsHost, parseExtensionManifest } from '@/main/extensions/manifest';
-import { loadExtensionPackages, type ExtensionPackageRoot } from '@/main/extensions/package-loader';
+import {
+  loadExtensionPackage,
+  loadExtensionPackages,
+  type ExtensionPackageRoot,
+} from '@/main/extensions/package-loader';
 import { LocalExtensionPackageManager } from '@/main/extensions/local-package-manager';
+import type { ExtensionInstallationState } from '@/main/database/extensions/extension-repository';
 
 interface ExtensionRegistryOptions {
   codexHealth(): CodexHealth;
@@ -42,6 +47,7 @@ export class ExtensionRegistry {
   private languageMessagesById: ReadonlyMap<string, Record<string, unknown>> = new Map();
   private packagePathById = new Map<string, string>();
   private sourceById = new Map<string, 'BUILT_IN' | 'LOCAL' | 'MARKETPLACE'>();
+  private installationById = new Map<string, ExtensionInstallationState>();
   private readonly protectedManifestIds: ReadonlySet<string>;
   private readonly localPackages: LocalExtensionPackageManager | null;
 
@@ -123,11 +129,10 @@ export class ExtensionRegistry {
         enabledByDefault: !externalImageApiExtensionIds.has(manifest.id),
       })),
     );
-    const installationById = new Map(
-      this.database.listExtensionInstallations().map((item) => [item.extensionId, item]),
-    );
+    const installationById = this.refreshInstallations();
     if (!languageManifests.some((manifest) => installationById.get(manifest.id)?.enabled)) {
       this.database.setExtensionEnabled(languageManifests[0].id, true);
+      this.refreshInstallations();
     }
   }
 
@@ -167,9 +172,10 @@ export class ExtensionRegistry {
   }
 
   list(): ExtensionDto[] {
-    const installations = new Map(
-      this.database.listExtensionInstallations().map((installation) => [installation.extensionId, installation]),
-    );
+    return this.toDtos(this.refreshInstallations());
+  }
+
+  private toDtos(installations: ReadonlyMap<string, ExtensionInstallationState>): ExtensionDto[] {
     return this.manifests.map((manifest) => {
       const installation = installations.get(manifest.id);
       if (!installation) throw new Error(`Built-in extension was not reconciled: ${manifest.id}`);
@@ -185,7 +191,7 @@ export class ExtensionRegistry {
           granted: installation.permissions.get(key) === true,
         })),
       ];
-      const compatible = extensionSupportsHost(manifest.engines[EXTENSION_HOST_ENGINE_KEY], PRODUCT_VERSION);
+      const compatible = extensionSupportsHost(manifest.engines[EXTENSION_HOST_ENGINE_KEY], EXTENSION_HOST_VERSION);
       const requiredPermissionsGranted = permissions.every((permission) => !permission.required || permission.granted);
       const connection = this.connectionFor(manifest, installation.enabled, compatible, requiredPermissionsGranted);
       return {
@@ -204,6 +210,7 @@ export class ExtensionRegistry {
   }
 
   listLanguagePacks(): ExtensionLanguagePackDto[] {
+    if (import.meta.env.DEV) this.refreshDevelopmentLanguageMessages();
     return this.manifests.flatMap((manifest) => {
       const messages = this.languageMessagesById.get(manifest.id);
       if (manifest.kind !== 'LANGUAGE' || !manifest.language || !messages) return [];
@@ -218,27 +225,44 @@ export class ExtensionRegistry {
     });
   }
 
+  private refreshDevelopmentLanguageMessages() {
+    const refreshed = new Map(this.languageMessagesById);
+    for (const manifest of this.manifests) {
+      if (manifest.kind !== 'LANGUAGE') continue;
+      const packagePath = this.packagePathById.get(manifest.id);
+      const source = this.sourceById.get(manifest.id);
+      if (!packagePath || !source) continue;
+      try {
+        const loaded = loadExtensionPackage(packagePath, source);
+        if (loaded.manifest.id !== manifest.id || !loaded.languageMessages) continue;
+        refreshed.set(manifest.id, loaded.languageMessages);
+      } catch (error) {
+        console.warn('[extensions] kept previous development language catalog', packagePath, error);
+      }
+    }
+    this.languageMessagesById = refreshed;
+  }
+
   get(extensionId: string) {
     return this.list().find((extension) => extension.manifest.id === extensionId) ?? null;
   }
 
   /** Persisted activation gate. Runtime connection readiness is checked by the provider itself. */
   isActivated(extensionId: string) {
-    const extension = this.get(extensionId);
-    if (!extension) return false;
+    const manifest = this.byId.get(extensionId);
+    const installation = this.installationById.get(extensionId);
+    if (!manifest || !installation) return false;
     return (
-      extension.enabled &&
-      extension.compatible &&
-      extension.permissions.every((permission) => !permission.required || permission.granted)
+      installation.enabled &&
+      extensionSupportsHost(manifest.engines[EXTENSION_HOST_ENGINE_KEY], EXTENSION_HOST_VERSION) &&
+      manifest.permissions.every((permission) => installation.permissions.get(permission) === true)
     );
   }
 
   isPermissionGranted(extensionId: string, permission: string) {
     const manifest = this.requireManifest(extensionId);
     if (![...manifest.permissions, ...manifest.optionalPermissions].includes(permission)) return false;
-    const installation = this.database
-      .listExtensionInstallations()
-      .find((candidate) => candidate.extensionId === extensionId);
+    const installation = this.installationById.get(extensionId);
     return installation?.permissions.get(permission) === true;
   }
 
@@ -255,7 +279,7 @@ export class ExtensionRegistry {
       }
     }
     this.database.setExtensionEnabled(extensionId, enabled);
-    return this.list();
+    return this.toDtos(this.refreshInstallations());
   }
 
   setPermission(extensionId: string, permission: string, granted: boolean) {
@@ -264,7 +288,14 @@ export class ExtensionRegistry {
       throw new Error(`Extension does not declare permission: ${permission}`);
     }
     this.database.setExtensionPermission(extensionId, permission, granted);
-    return this.list();
+    return this.toDtos(this.refreshInstallations());
+  }
+
+  private refreshInstallations() {
+    this.installationById = new Map(
+      this.database.listExtensionInstallations().map((installation) => [installation.extensionId, installation]),
+    );
+    return this.installationById;
   }
 
   private requireManifest(extensionId: string) {

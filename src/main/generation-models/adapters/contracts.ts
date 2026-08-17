@@ -2,6 +2,7 @@ import type {
   GenerationInput,
   ImageGenerationRouteCapability,
   ImageGenerationRouteDto,
+  ImageGenerationRouteExecutionIdentityDto,
   GenerationQuality,
   ProviderReturnedDescriptionInput,
 } from '@/shared/contracts';
@@ -35,6 +36,8 @@ export interface NormalizedGenerationRequest {
   modelKey: string;
   providerKey: string;
   modelId: string;
+  /** Canonical binding frozen with the request; absent only in legacy snapshots and test doubles. */
+  executionIdentity?: Readonly<ImageGenerationRouteExecutionIdentityDto>;
   operation: NormalizedGenerationOperation;
   prompt: string;
   media: readonly NormalizedGenerationMedia[];
@@ -49,10 +52,23 @@ export interface NormalizedGenerationRequest {
   continuation?: Readonly<ProviderContinuationState> | null;
 }
 
+export type NormalizedGenerationOutput = NormalizedGenerationRequest['output'];
+
 export type GenerationAdapterStage = 'PREPARING' | 'UPLOADING' | 'GENERATING' | 'DOWNLOADING' | 'FINALIZING';
 
 /** Signals emitted by an adapter while it owns a request. */
 export type GenerationAdapterSignal =
+  | {
+      /** A request/trace identifier was returned by a synchronous transport response. */
+      type: 'REQUEST_IDENTIFIED';
+      providerRequestId: string;
+    }
+  | {
+      /** The provider accepted a durable asynchronous operation that remains in flight remotely. */
+      type: 'REMOTE_OPERATION_ACCEPTED';
+      providerRequestId: string;
+    }
+  /** @deprecated Compatibility alias for REQUEST_IDENTIFIED. */
   | {
       type: 'REQUEST_ACCEPTED';
       providerRequestId?: string;
@@ -93,12 +109,21 @@ export interface GenerationAdapterExecutionContext {
   emit(signal: GenerationAdapterSignal): void;
 }
 
+export type BoundGenerationAdapterExecution = (
+  context: GenerationAdapterExecutionContext,
+) => Promise<GenerationAdapterResult>;
+
 /** Provider-specific code implements this interface without depending on workbench storage. */
 export interface GenerationAdapter {
   readonly providerKey: string;
+  readonly adapterId?: string;
   readonly capabilities: readonly ImageGenerationRouteCapability[];
   readonly maxReferenceImages: number | null;
+  /** Synchronous provider-specific admission check that must not read credentials or perform I/O. */
+  validateOutput?(output: NormalizedGenerationOutput): void;
   validateRequest?(request: NormalizedGenerationRequest): void;
+  /** Captures volatile credentials/configuration without serializing secrets into the request snapshot. */
+  bindRequest?(request: NormalizedGenerationRequest): BoundGenerationAdapterExecution;
   execute(
     request: NormalizedGenerationRequest,
     context: GenerationAdapterExecutionContext,

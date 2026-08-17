@@ -24,7 +24,7 @@ export function IntakeDraftTray({ items, disabled, onEditText, onMove, onRemove 
           data-intake-item={item.kind}
           className="flex min-h-20 items-center gap-3 border-b px-3 py-3 last:border-b-0"
         >
-          {item.kind === 'IMAGE' ? (
+          {item.kind !== 'TEXT' ? (
             <img
               data-slot="intake-preview"
               className="size-16 shrink-0 rounded-md border bg-media-surround-light object-contain"

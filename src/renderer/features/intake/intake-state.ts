@@ -1,4 +1,9 @@
-import type { IntakeCommitIntent, IntakeCommitSource, IntakeMediaMimeType } from '@/shared/contracts';
+import type {
+  IntakeCommitIntent,
+  IntakeCommitSource,
+  IntakeImageMimeType,
+  IntakeVideoMimeType,
+} from '@/shared/contracts';
 import { intakeContextPolicy, type IntakeContext } from '@/renderer/features/intake/intake-context-policy';
 
 export const maxIntakeItems = 16;
@@ -9,11 +14,23 @@ export type LocalIntakeItem =
       id: string;
       kind: 'IMAGE';
       name: string;
-      mimeType: IntakeMediaMimeType;
+      mimeType: IntakeImageMimeType;
       file: File;
       previewUrl: string;
       width?: number;
       height?: number;
+      sourceUrl: string;
+    }
+  | {
+      id: string;
+      kind: 'VIDEO';
+      name: string;
+      mimeType: IntakeVideoMimeType;
+      file: File;
+      previewUrl: string;
+      width: number;
+      height: number;
+      durationMs: number;
       sourceUrl: string;
     };
 

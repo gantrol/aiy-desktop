@@ -16,6 +16,7 @@ import { useI18n } from '@/renderer/i18n/useI18n';
 import { formatDateTime } from '@/renderer/lib/dateFormat';
 import { cn } from '@/renderer/lib/utils';
 import { AssetFileContextMenu } from '@/renderer/components/media/AssetFileContextMenu';
+import { useAssetMenuActions } from '@/renderer/components/media/AssetMenuActionsProvider';
 import { AssetMedia, isVideoAsset } from '@/renderer/components/media/AssetMedia';
 import { DEFAULT_MEDIA_ASPECT_RATIO, getSourceMediaAspectRatio } from '@/renderer/components/media/mediaAspectRatio';
 import { Checkbox } from '@/renderer/components/ui/checkbox';
@@ -65,7 +66,7 @@ function formatDate(value: string, locale: Locale) {
  * reading lengths so their card and masonry measurements stay in sync.
  */
 export function getMaterialCardAspectRatio(item: MaterialLibraryItem) {
-  if (item.kind === 'IMAGE') {
+  if (item.kind !== 'TEXT') {
     const { width, height } = item.image.asset;
     return getSourceMediaAspectRatio(width, height, DEFAULT_MATERIAL_ASPECT_RATIO);
   }
@@ -143,6 +144,7 @@ function MaterialCardImpl({
   revealContext,
 }: Props) {
   const { locale, messages } = useI18n();
+  const actions = useAssetMenuActions();
   const l = messages.gallery.card;
   const [imageFailed, setImageFailed] = useState(false);
   const [overlayTone, setOverlayTone] = useState<MaterialOverlayTone>('light');
@@ -153,9 +155,9 @@ function MaterialCardImpl({
     item.kind === 'TEXT' ? l.textMaterial : item.image.asset.kind === 'GENERATED' ? l.generated : l.reference;
   const title = materialTitle(item, fallbackTitle);
   const date = formatDate(item.createdAt, locale);
-  const image = item.kind === 'IMAGE' ? item.image : null;
+  const image = item.kind !== 'TEXT' ? item.image : null;
   const video = isVideoAsset(image?.asset);
-  const materialId = item.kind === 'IMAGE' ? item.image.materialId : item.text.id;
+  const materialId = item.kind !== 'TEXT' ? item.image.materialId : item.text.id;
   const creationRoles = image?.creation?.roles
     .map((role) =>
       role === 'OUTPUT'
@@ -199,6 +201,20 @@ function MaterialCardImpl({
       icon: EyeIcon,
       onSelect: () => onSelect(item),
     },
+    ...(video && materialId && actions
+      ? [
+          {
+            id: 'create-video-document',
+            label: messages.videoDocuments.createFromVideo,
+            icon: FileTextIcon,
+            onSelect: () =>
+              void actions.createDocumentFromVideo(
+                materialId,
+                revealContext?.kind === 'ALBUM' ? revealContext.albumId : null,
+              ),
+          } satisfies ActionMenuAction,
+        ]
+      : []),
   ];
   const textActions: ActionMenuAction[] =
     item.kind === 'TEXT'

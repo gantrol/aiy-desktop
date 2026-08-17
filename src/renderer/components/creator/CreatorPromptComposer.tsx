@@ -14,6 +14,7 @@ import {
   type DragEvent as ReactDragEvent,
 } from 'react';
 import type { CreatorPromptNodeInput, Locale, TermListItem, WordPaletteDto } from '@/shared/contracts';
+import { DEFAULT_IMAGE_PROMPT_PROFILE_ID } from '@/shared/image-generation-prompt-profile';
 import { resolveAlternateTermTitle, resolveTermExpression, resolveTermTitle } from '@/shared/term-localization';
 import {
   resolveLocalizedName,
@@ -64,6 +65,7 @@ interface ComposerCallbacks {
 interface ComposerBridgeStorage {
   locale: Locale;
   termPromptLocale: Locale;
+  promptProfileId: string;
   termsById: Map<string, TermListItem>;
   palettesById: Map<string, WordPaletteDto>;
   appliedByPaletteId: Map<string, AppliedWordPalette>;
@@ -78,6 +80,7 @@ function composerBridge(editor: Editor) {
     bridge = {
       locale: 'zh',
       termPromptLocale: 'en',
+      promptProfileId: DEFAULT_IMAGE_PROMPT_PROFILE_ID,
       termsById: new Map(),
       palettesById: new Map(),
       appliedByPaletteId: new Map(),
@@ -99,17 +102,22 @@ function termLabel(term: TermListItem, promptLocale: Locale) {
   return resolveTermTitle(term, promptLocale);
 }
 
-function termExpression(term: TermListItem, promptLocale: Locale) {
-  return resolveTermExpression(term, 'gpt-image-2', promptLocale)?.positive;
+function termExpression(term: TermListItem, promptProfileId: string, promptLocale: Locale) {
+  return resolveTermExpression(term, promptProfileId, promptLocale)?.positive;
 }
 
-function termAttributes(term: TermListItem, promptLocale: Locale, editorKey = nextNodeKey('term')) {
+function termAttributes(
+  term: TermListItem,
+  promptProfileId: string,
+  promptLocale: Locale,
+  editorKey = nextNodeKey('term'),
+) {
   return {
     editorKey,
     termId: term.id,
     promptLocale,
     label: termLabel(term, promptLocale),
-    promptText: termExpression(term, promptLocale) ?? termLabel(term, promptLocale),
+    promptText: termExpression(term, promptProfileId, promptLocale) ?? termLabel(term, promptLocale),
   };
 }
 
@@ -160,7 +168,7 @@ function CreatorTermNodeView({ editor, node, getPos }: NodeViewProps) {
     node.attrs.promptLocale === 'zh' ? 'zh' : node.attrs.promptLocale === 'en' ? 'en' : bridge.termPromptLocale;
   const label = termLabel(term, promptLocale);
   const secondaryName = resolveAlternateTermTitle(term, promptLocale);
-  const promptFragment = termExpression(term, promptLocale) ?? label;
+  const promptFragment = termExpression(term, bridge.promptProfileId, promptLocale) ?? label;
   return (
     <NodeViewWrapper
       as="span"
@@ -204,7 +212,11 @@ function CreatorTermNodeView({ editor, node, getPos }: NodeViewProps) {
             const position = getPos();
             if (typeof position !== 'number') return;
             editor.view.dispatch(
-              editor.state.tr.setNodeMarkup(position, undefined, termAttributes(term, value, nodeKey)),
+              editor.state.tr.setNodeMarkup(
+                position,
+                undefined,
+                termAttributes(term, bridge.promptProfileId, value, nodeKey),
+              ),
             );
           }}
           onOpen={() => {
@@ -371,7 +383,7 @@ function editorJsonFromNodes(
   nodes: readonly CreatorPromptNodeInput[],
   bridge: Pick<
     ComposerBridgeStorage,
-    'locale' | 'termPromptLocale' | 'termsById' | 'palettesById' | 'appliedByPaletteId'
+    'locale' | 'termPromptLocale' | 'promptProfileId' | 'termsById' | 'palettesById' | 'appliedByPaletteId'
   >,
 ) {
   const paragraphs: Array<{ type: 'paragraph'; content: Array<Record<string, unknown>> }> = [
@@ -391,7 +403,7 @@ function editorJsonFromNodes(
       if (term)
         paragraph().content.push({
           type: TERM_NODE,
-          attrs: termAttributes(term, node.promptLocale ?? bridge.termPromptLocale),
+          attrs: termAttributes(term, bridge.promptProfileId, node.promptLocale ?? bridge.termPromptLocale),
         });
     } else if (bridge.palettesById.has(node.paletteId) || bridge.appliedByPaletteId.has(node.paletteId)) {
       paragraph().content.push({ type: RECIPE_NODE, attrs: recipeAttributes(node.paletteId, bridge) });
@@ -438,6 +450,7 @@ function useComposerBridgeSynchronization(editor: Editor | null, snapshot: Compo
     const bridge = composerBridge(currentEditor);
     bridge.locale = snapshot.locale;
     bridge.termPromptLocale = snapshot.termPromptLocale;
+    bridge.promptProfileId = snapshot.promptProfileId;
     bridge.termsById = snapshot.termsById;
     bridge.palettesById = snapshot.palettesById;
     bridge.appliedByPaletteId = snapshot.appliedByPaletteId;
@@ -452,6 +465,7 @@ function useComposerBridgeSynchronization(editor: Editor | null, snapshot: Compo
             undefined,
             termAttributes(
               term,
+              snapshot.promptProfileId,
               node.attrs.promptLocale === 'zh' || node.attrs.promptLocale === 'en'
                 ? node.attrs.promptLocale
                 : snapshot.termPromptLocale,
@@ -545,6 +559,7 @@ export interface CreatorPromptComposerHandle {
 interface Props {
   locale: Locale;
   termPromptLocale: Locale;
+  promptProfileId: string;
   nodes: CreatorPromptNodeInput[];
   terms: TermListItem[];
   palettes: WordPaletteDto[];
@@ -564,6 +579,7 @@ export const CreatorPromptComposer = forwardRef<CreatorPromptComposerHandle, Pro
   {
     locale,
     termPromptLocale,
+    promptProfileId,
     nodes,
     terms,
     palettes,
@@ -594,8 +610,8 @@ export const CreatorPromptComposer = forwardRef<CreatorPromptComposerHandle, Pro
     [appliedPalettes],
   );
   const bridgeSnapshot = useMemo(
-    () => ({ locale, termPromptLocale, termsById, palettesById, appliedByPaletteId }),
-    [appliedByPaletteId, locale, palettesById, termPromptLocale, termsById],
+    () => ({ locale, termPromptLocale, promptProfileId, termsById, palettesById, appliedByPaletteId }),
+    [appliedByPaletteId, locale, palettesById, promptProfileId, termPromptLocale, termsById],
   );
   const callbacksRef = useRef<ComposerCallbacks>({
     nodesChanged: onNodesChange,
@@ -674,7 +690,7 @@ export const CreatorPromptComposer = forwardRef<CreatorPromptComposerHandle, Pro
             moveOrInsertAtom(
               currentEditor,
               TERM_NODE,
-              termAttributes(term, bridge.termPromptLocale, termPayload.nodeKey),
+              termAttributes(term, bridge.promptProfileId, bridge.termPromptLocale, termPayload.nodeKey),
               coordinates.pos,
               termPayload.nodeKey,
             );
@@ -779,7 +795,7 @@ export const CreatorPromptComposer = forwardRef<CreatorPromptComposerHandle, Pro
             .focus()
             .insertContentAt(insertPosition(editor, position), {
               type: TERM_NODE,
-              attrs: termAttributes(term, termPromptLocale),
+              attrs: termAttributes(term, promptProfileId, termPromptLocale),
             })
             .run();
       },

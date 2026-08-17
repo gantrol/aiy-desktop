@@ -5,6 +5,7 @@ import { cn } from '@/renderer/lib/utils';
 import { getSourceMediaAspectRatio } from '@/renderer/components/media/mediaAspectRatio';
 import { mediaThumbnailUrl } from '@/renderer/components/media/mediaThumbnailUrl';
 import { AssetFileContextMenu } from '@/renderer/components/media/AssetFileContextMenu';
+import { AssetMedia, isVideoAsset } from '@/renderer/components/media/AssetMedia';
 import type { ActionMenuAction } from '@/renderer/components/ui/action-menu';
 
 export interface MediaStackItem {
@@ -283,7 +284,17 @@ export function MediaStackPreview({
           zIndex: visible.length - index,
           transform: `translateX(${x}px) rotate(${rotation}deg)`,
         };
-        const image = (
+        const mediaStyle = { objectPosition: `${(item.focalX ?? 0.5) * 100}% ${(item.focalY ?? 0.5) * 100}%` };
+        const image = isVideoAsset(item.asset) ? (
+          <AssetMedia
+            asset={item.asset}
+            className="size-full object-contain"
+            loading="lazy"
+            muted
+            preload="metadata"
+            draggable={false}
+          />
+        ) : (
           <img
             className="size-full object-contain"
             src={mediaThumbnailUrl(item.asset, thumbnailSize)}
@@ -292,7 +303,7 @@ export function MediaStackPreview({
             decoding="async"
             fetchPriority={index === 0 ? 'auto' : 'low'}
             draggable={false}
-            style={{ objectPosition: `${(item.focalX ?? 0.5) * 100}% ${(item.focalY ?? 0.5) * 100}%` }}
+            style={mediaStyle}
           />
         );
         const preview = onAssetSelect ? (

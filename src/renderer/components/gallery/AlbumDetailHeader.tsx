@@ -1,7 +1,6 @@
 import {
   ArchiveIcon,
   ArchiveRestoreIcon,
-  GalleryVerticalEndIcon,
   PencilIcon,
   PinIcon,
   PinOffIcon,
@@ -10,8 +9,10 @@ import {
   Trash2Icon,
 } from 'lucide-react';
 import { useState } from 'react';
-import type { AlbumDto } from '@/shared/contracts';
+import type { AlbumDto, AssetDto } from '@/shared/contracts';
+import { AlbumGlyphIcon } from '@/renderer/icons';
 import { cn } from '@/renderer/lib/utils';
+import { mediaThumbnailUrl } from '@/renderer/components/media/mediaThumbnailUrl';
 import { ActionMenuButton, type ActionMenuAction } from '@/renderer/components/ui/action-menu';
 import { Button } from '@/renderer/components/ui/button';
 import { AlbumEditorDialog, DeleteAlbumDialog } from '@/renderer/components/gallery/AlbumDialogs';
@@ -27,6 +28,7 @@ interface Labels extends AlbumNavigationLabels {
 
 interface Props {
   album: AlbumDto;
+  previewAssets?: readonly AssetDto[];
   parent: AlbumDto | null;
   effectivelyArchived?: boolean;
   labels: Labels;
@@ -41,6 +43,7 @@ interface Props {
 
 export function AlbumDetailHeader({
   album,
+  previewAssets,
   parent,
   effectivelyArchived,
   labels,
@@ -99,7 +102,7 @@ export function AlbumDetailHeader({
         className="flex min-h-24 shrink-0 items-center gap-4 border-b bg-surface px-4 py-4 sm:px-6"
         aria-labelledby="album-detail-title"
       >
-        <AlbumCover album={album} />
+        <AlbumCover assets={previewAssets ?? album.previewAssets} />
         <div className="min-w-0 flex-1">
           <div className="flex min-w-0 items-center gap-2">
             <h2 id="album-detail-title" className="truncate text-xl font-semibold tracking-tight" title={album.title}>
@@ -157,12 +160,12 @@ export function AlbumDetailHeader({
   );
 }
 
-function AlbumCover({ album }: { album: AlbumDto }) {
-  const assets = album.previewAssets.slice(0, 4);
+function AlbumCover({ assets: allAssets }: { assets: readonly AssetDto[] }) {
+  const assets = allAssets.slice(0, 4);
   if (assets.length === 0)
     return (
       <span className="grid size-16 shrink-0 place-items-center rounded-xl border bg-muted text-muted-foreground">
-        <GalleryVerticalEndIcon className="size-6" />
+        <AlbumGlyphIcon className="size-6" />
       </span>
     );
   return (
@@ -170,7 +173,7 @@ function AlbumCover({ album }: { album: AlbumDto }) {
       {assets.map((asset, index) => (
         <img
           key={asset.id}
-          src={asset.mediaUrl}
+          src={mediaThumbnailUrl(asset, 96)}
           alt=""
           className={cn(
             'size-full object-contain',
@@ -178,6 +181,7 @@ function AlbumCover({ album }: { album: AlbumDto }) {
             assets.length === 2 && 'row-span-2',
             assets.length === 3 && index === 0 && 'row-span-2',
           )}
+          decoding="async"
           draggable={false}
         />
       ))}

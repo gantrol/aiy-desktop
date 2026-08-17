@@ -6,6 +6,7 @@ import type { OpenAiImageApiRuntime } from '@/main/extensions/openai-image-api/r
 import type {
   GenerationAdapter,
   GenerationAdapterExecutionContext,
+  NormalizedGenerationOutput,
   NormalizedGenerationRequest,
 } from '@/main/generation-models/adapters/contracts';
 import { GenerationAdapterError } from '@/main/generation-models/adapters/errors';
@@ -15,7 +16,7 @@ import {
   readValidatedReferenceImage,
   writeProviderImage,
 } from '@/main/generation-models/adapters/provider-media';
-import { tryDecodeProviderErrorJson } from '@/main/provider-response';
+import { tryDecodeProviderErrorJson } from '@/main/providers/provider-response';
 
 export const OPENAI_IMAGE_API_BASE_URL = OPENAI_IMAGE_PROVIDER.baseUrl;
 const MAX_OPENAI_REFERENCE_BYTES = 25 * 1024 * 1024;
@@ -122,8 +123,8 @@ function outputSize(request: NormalizedGenerationRequest) {
     : 'auto';
 }
 
-function validateGptImage2Size(request: NormalizedGenerationRequest) {
-  const { width, height } = request.output;
+function validateGptImage2Size(output: NormalizedGenerationOutput) {
+  const { width, height } = output;
   if (width === null || height === null) return;
   const longEdge = Math.max(width, height);
   const shortEdge = Math.min(width, height);
@@ -174,6 +175,7 @@ function moderationForRequest(request: NormalizedGenerationRequest) {
 
 export class OpenAiImageAdapter implements GenerationAdapter {
   readonly providerKey = 'openai';
+  readonly adapterId = 'openai-images-v1';
   readonly capabilities = ['GENERATE', 'REFERENCE_IMAGE', 'MULTI_REFERENCE', 'IMAGE_EDIT', 'MASK_EDIT'] as const;
   readonly maxReferenceImages = 8;
 
@@ -189,6 +191,10 @@ export class OpenAiImageAdapter implements GenerationAdapter {
     private readonly baseUrl: string = OPENAI_IMAGE_API_BASE_URL,
   ) {}
 
+  validateOutput(output: NormalizedGenerationOutput) {
+    validateGptImage2Size(output);
+  }
+
   validateRequest(request: NormalizedGenerationRequest) {
     if (request.modelId !== OPENAI_IMAGE_PROVIDER.modelId) {
       throw new GenerationAdapterError({
@@ -203,7 +209,7 @@ export class OpenAiImageAdapter implements GenerationAdapter {
       });
     }
     moderationForRequest(request);
-    validateGptImage2Size(request);
+    this.validateOutput(request.output);
     const source = request.media.find((item) => item.role === 'EDIT_SOURCE');
     const mask = request.media.find((item) => item.role === 'MASK');
     if (mask) {
@@ -231,7 +237,16 @@ export class OpenAiImageAdapter implements GenerationAdapter {
     }
   }
 
-  async execute(request: NormalizedGenerationRequest, context: GenerationAdapterExecutionContext) {
+  bindRequest(request: NormalizedGenerationRequest) {
+    const credentials = this.credentialsForRequest();
+    return (context: GenerationAdapterExecutionContext) => this.executeWithCredentials(request, context, credentials);
+  }
+
+  execute(request: NormalizedGenerationRequest, context: GenerationAdapterExecutionContext) {
+    return this.bindRequest(request)(context);
+  }
+
+  private credentialsForRequest() {
     let credentials: ReturnType<OpenAiImageApiRuntime['credentials']>;
     try {
       credentials = this.runtime.credentials();
@@ -242,6 +257,14 @@ export class OpenAiImageAdapter implements GenerationAdapter {
         cause: error,
       });
     }
+    return credentials;
+  }
+
+  private async executeWithCredentials(
+    request: NormalizedGenerationRequest,
+    context: GenerationAdapterExecutionContext,
+    credentials: ReturnType<OpenAiImageApiRuntime['credentials']>,
+  ) {
     const source = request.media.find((item) => item.role === 'EDIT_SOURCE');
     const references = request.media.filter((item) => item.role === 'REFERENCE' || item.role === 'ANNOTATION_GUIDE');
     const mask = request.media.find((item) => item.role === 'MASK');
@@ -252,7 +275,7 @@ export class OpenAiImageAdapter implements GenerationAdapter {
         ? await this.createEdit(request, imageInputs, mask, credentials, context)
         : await this.createGeneration(request, credentials, context);
     const requestId = response.headers.get('x-request-id') ?? undefined;
-    context.emit({ type: 'REQUEST_ACCEPTED', ...(requestId ? { providerRequestId: requestId } : {}) });
+    if (requestId) context.emit({ type: 'REQUEST_ACCEPTED', providerRequestId: requestId });
     if (!response.ok) throw await this.responseError(response, requestId);
     context.emit({ type: 'PROGRESS', stage: 'DOWNLOADING', message: 'Receiving generated image' });
     const body = await decodeGenerationProviderResponseJson(response, openAiImageSuccessSchema, 'OpenAI Image');

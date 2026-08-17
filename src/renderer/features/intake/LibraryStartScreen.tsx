@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import type { IntakeCommitResult } from '@/shared/contracts';
+import type { IntakeCommitResult, LegacyLocalSpaceCandidateDto } from '@/shared/contracts';
 import { useI18n } from '@/renderer/i18n/useI18n';
 import { ContentPackImportDialog } from '@/renderer/features/intake/ContentPackImportDialog';
 import { GlobalDropOverlay } from '@/renderer/features/intake/GlobalDropOverlay';
@@ -11,6 +11,7 @@ import { StartActionBar } from '@/renderer/features/intake/StartActionBar';
 import { StarterPackImportDialog } from '@/renderer/features/intake/StarterPackImportDialog';
 import { isCreatorImageMimeType } from '@/renderer/features/intake/intakeImageFormats';
 import { useIntakeController } from '@/renderer/features/intake/useIntakeController';
+import { LegacySpaceMigrationDialog } from '@/renderer/components/spaces/LegacySpaceMigrationDialog';
 
 interface Props {
   onCommitted(result: IntakeCommitResult): void;
@@ -24,9 +25,29 @@ export function LibraryStartScreen({ onCommitted, onContentPackImported, notify 
   const controller = useIntakeController('LIBRARY_START', onCommitted);
   const { state } = controller;
   const creationAvailable = state.items.every((item) => item.kind === 'TEXT' || isCreatorImageMimeType(item.mimeType));
-  const [starterPackImportOpen, setStarterPackImportOpen] = useState(true);
+  const [starterPackImportOpen, setStarterPackImportOpen] = useState(false);
   const [contentPackImportOpen, setContentPackImportOpen] = useState(false);
   const [openingLibrary, setOpeningLibrary] = useState(false);
+  const [legacyMigrationOpen, setLegacyMigrationOpen] = useState(false);
+  const [legacyCandidates, setLegacyCandidates] = useState<LegacyLocalSpaceCandidateDto[]>([]);
+
+  useEffect(() => {
+    let active = true;
+    void window.desktopApi
+      .localSpacesDiscoverLegacy()
+      .then((candidates) => {
+        if (!active) return;
+        setLegacyCandidates(candidates);
+        if (candidates.length) setLegacyMigrationOpen(true);
+        else setStarterPackImportOpen(true);
+      })
+      .catch(() => {
+        if (active) setStarterPackImportOpen(true);
+      });
+    return () => {
+      active = false;
+    };
+  }, []);
 
   useEffect(() => {
     const paste = (event: ClipboardEvent) => controller.onPaste(event);
@@ -135,6 +156,16 @@ export function LibraryStartScreen({ onCommitted, onContentPackImported, notify 
               ? messages.intake.actions.import
               : state.error}
       </span>
+      <LegacySpaceMigrationDialog
+        open={legacyMigrationOpen}
+        candidates={legacyCandidates}
+        onOpenChange={(next) => {
+          setLegacyMigrationOpen(next);
+          if (!next) setStarterPackImportOpen(true);
+        }}
+        onSwitched={() => setLegacyMigrationOpen(false)}
+        notify={notify}
+      />
       <StarterPackImportDialog
         open={starterPackImportOpen}
         onOpenChange={setStarterPackImportOpen}

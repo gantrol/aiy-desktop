@@ -36,6 +36,8 @@ import type {
   Locale,
   PromptSeriesDto,
   SidebarRootOrderTargetInput,
+  VideoDocumentNavigationEntry,
+  VideoDocumentSummaryDto,
 } from '@/shared/contracts';
 import { useI18n } from '@/renderer/i18n/useI18n';
 import { cn } from '@/renderer/lib/utils';
@@ -80,6 +82,18 @@ import { ContextMenu, ContextMenuContent, ContextMenuTrigger } from '@/renderer/
 import { ScrollArea } from '@/renderer/components/ui/scroll-area';
 import { QuietEmpty } from '@/renderer/components/ui/quiet-empty';
 import { CreatorPaneResizeHandle } from '@/renderer/components/creator/CreatorPaneResizeHandle';
+import {
+  CreationLibraryToolbar,
+  type CreationLibraryFilter,
+} from '@/renderer/components/creator/CreationLibraryToolbar';
+import { creationAlbumPreviewAssets } from '@/renderer/components/creator/creationAlbumPreviewAssets';
+import {
+  CreationDocumentAlbumPaging,
+  CreationDocumentCompactItem,
+  CreationDocumentRootPaging,
+  CreationDocumentRow,
+  creationAlbumCanExpand,
+} from '@/renderer/components/creator/CreationDocumentLibraryItems';
 import { AssetHoverPreview } from '@/renderer/components/creator/AssetHoverPreview';
 import {
   buildCreationSessionProjection,
@@ -87,16 +101,24 @@ import {
 } from '@/renderer/components/creator/creationSessionProjection';
 import { allAssets } from '@/renderer/components/creator/utils';
 import { transferSourceUrl } from '@/renderer/components/creator/imageImport';
+import { useVideoDocumentList } from '@/renderer/features/video-documents/useVideoDocumentList';
+import { useVideoDocumentNavigation } from '@/renderer/features/video-documents/useVideoDocumentNavigation';
 
 export type ResultLibraryMode = 'full' | 'images';
 export type ResultLibrarySurface = 'new-creation' | 'idea-creation' | 'existing-creation' | 'album-detail';
 
 interface Props {
+  active: boolean;
   data: BootstrapDto;
   locale: Locale;
+  activeContent: 'images' | 'documents';
+  filter: CreationLibraryFilter;
   selectedSeriesId: string | null;
   selectedCreationId: string | null;
   selectedAlbumId: string | null;
+  selectedDocumentId: string | null;
+  selectedDocumentAlbumId: string | null;
+  documentNavigationRevision: number;
   surface: ResultLibrarySurface;
   mode: ResultLibraryMode;
   canExpand: boolean;
@@ -108,9 +130,13 @@ interface Props {
   onModeChange(mode: ResultLibraryMode): void;
   onResizeStart(event: ReactPointerEvent<HTMLDivElement>): void;
   onResizeValueChange(value: number): void;
+  onFilterChange(filter: CreationLibraryFilter): void;
   onSelectCreation(creationId: string): void;
   onDeleteCreation(creation: CreationDto): void;
   onSelect(seriesId: string, assetId?: string): void;
+  onSelectDocument(documentId: string, albumId: string | null): void;
+  onRenameDocument(document: VideoDocumentSummaryDto): void;
+  onMoveDocument(documentId: string, albumId: string | null): Promise<void>;
   onSelectAlbum(albumId: string): void;
   onMore(seriesId: string): void;
   onNew(): void;
@@ -132,7 +158,14 @@ interface Props {
 
 type MixedEntry =
   | { kind: 'ALBUM'; album: AlbumDto; activityAt: string; pinned: boolean; archived?: boolean }
-  | { kind: 'SERIES'; session: CreationSessionProjection; activityAt: string; pinned: false; archived?: boolean };
+  | { kind: 'SERIES'; session: CreationSessionProjection; activityAt: string; pinned: false; archived?: boolean }
+  | {
+      kind: 'DOCUMENT';
+      entry: Extract<VideoDocumentNavigationEntry, { kind: 'DOCUMENT' }>;
+      activityAt: string;
+      pinned: false;
+      archived?: boolean;
+    };
 
 type ResultMoveTarget = AlbumMoveTarget & { seriesIds?: string[] };
 type DraggedTreeItem = { kind: 'ALBUM'; albumId: string } | { kind: 'CREATION'; seriesIds: string[] };
@@ -141,6 +174,47 @@ type DropPlacement = {
   targetKey: string;
   edge: 'before' | 'after';
 };
+
+function ResultLibraryMoveDialog({
+  albums,
+  target,
+  busy,
+  onOpenChange,
+  onMoveAlbum,
+  onMoveSeries,
+  onMoveDocument,
+}: {
+  albums: readonly AlbumDto[];
+  target: ResultMoveTarget | null;
+  busy: boolean;
+  onOpenChange(open: boolean): void;
+  onMoveAlbum(albumId: string, parentAlbumId: string | null): Promise<void>;
+  onMoveSeries(seriesIds: readonly string[], albumId: string | null): Promise<void>;
+  onMoveDocument(documentId: string, albumId: string | null): Promise<void>;
+}) {
+  const { messages } = useI18n();
+  const albumLabels = messages.creator.album;
+  const documentTarget = target?.kind === 'DOCUMENT';
+  return (
+    <AlbumMoveDialog
+      albums={albums}
+      target={target}
+      labels={{
+        title: documentTarget ? messages.videoDocuments.moveTitle : albumLabels.moveTitle,
+        topLevel: documentTarget ? messages.videoDocuments.unfiled : albumLabels.moveToRoot,
+        operationFailed: documentTarget ? messages.videoDocuments.moveFailed : messages.gallery.albums.operationFailed,
+      }}
+      busy={busy}
+      onOpenChange={onOpenChange}
+      onMove={async (albumId) => {
+        if (!target) return;
+        if (target.kind === 'ALBUM') await onMoveAlbum(target.id, albumId);
+        else if (target.kind === 'DOCUMENT') await onMoveDocument(target.id, albumId);
+        else await onMoveSeries(target.seriesIds ?? [target.id], albumId);
+      }}
+    />
+  );
+}
 
 function sessionActivity(session: CreationSessionProjection) {
   return (
@@ -153,6 +227,23 @@ function sessionActivity(session: CreationSessionProjection) {
       .sort((left, right) => (left < right ? -1 : left > right ? 1 : 0))
       .at(-1) ?? ''
   );
+}
+
+function creationSessionTitle(session: CreationSessionProjection, locale: Locale) {
+  if (!session.syntheticExperimentRoot) return session.primarySeries.title;
+  return locale === 'zh' ? '方向实验' : 'Direction experiment';
+}
+
+function normalizeCreationLibraryQuery(query: string, locale: Locale) {
+  return query.trim().toLocaleLowerCase(locale === 'zh' ? 'zh-CN' : 'en');
+}
+
+function creationLibraryNavigationFiltered(filter: CreationLibraryFilter, normalizedQuery: string) {
+  return filter !== 'all' || Boolean(normalizedQuery);
+}
+
+function creationDocumentSearchActive(active: boolean, filter: CreationLibraryFilter, normalizedQuery: string) {
+  return active && filter !== 'images' && Boolean(normalizedQuery);
 }
 
 function collectSessionAssets(session: CreationSessionProjection) {
@@ -168,7 +259,8 @@ function collectSessionAssets(session: CreationSessionProjection) {
 
 function entryId(entry: MixedEntry) {
   if (entry.kind === 'ALBUM') return entry.album.id;
-  return entry.session.id;
+  if (entry.kind === 'SERIES') return entry.session.id;
+  return entry.entry.documentId;
 }
 
 function compareEntries(left: MixedEntry, right: MixedEntry) {
@@ -181,6 +273,7 @@ function compareEntries(left: MixedEntry, right: MixedEntry) {
 
 function rootSortOrder(entry: MixedEntry) {
   if (entry.kind === 'ALBUM') return entry.album.creatorRootSortOrder ?? null;
+  if (entry.kind === 'DOCUMENT') return entry.entry.sortOrder;
   const orders = entry.session.memberSeries.flatMap((series) =>
     series.creatorRootSortOrder == null ? [] : [series.creatorRootSortOrder],
   );
@@ -193,6 +286,19 @@ function compareRootEntries(left: MixedEntry, right: MixedEntry) {
   const rootOrder = compareSidebarRootSortOrder(rootSortOrder(left), rootSortOrder(right));
   if (rootOrder) return rootOrder;
   return compareEntries(left, right);
+}
+
+function navigationEntryForDocument(
+  document: VideoDocumentSummaryDto,
+): Extract<VideoDocumentNavigationEntry, { kind: 'DOCUMENT' }> {
+  return {
+    nodeId: `DOCUMENT:${document.id}`,
+    kind: 'DOCUMENT',
+    documentId: document.id,
+    parentAlbumId: document.albumId,
+    sortOrder: null,
+    document,
+  };
 }
 
 const rowControlsClassName =
@@ -245,12 +351,54 @@ function ResultLibraryRowButton({
   );
 }
 
+function CreationLibraryEmptyState({
+  empty,
+  filtered,
+  includeDocuments,
+  queryActive,
+  searchLoading,
+  rootLoading,
+  title,
+  filteredTitle,
+  actionLabel,
+  actionDisabled,
+  onAction,
+}: {
+  empty: boolean;
+  filtered: boolean;
+  includeDocuments: boolean;
+  queryActive: boolean;
+  searchLoading: boolean;
+  rootLoading: boolean;
+  title: string;
+  filteredTitle: string;
+  actionLabel: string;
+  actionDisabled: boolean;
+  onAction(): void;
+}) {
+  if (!empty || searchLoading || (includeDocuments && !queryActive && rootLoading)) return null;
+  if (filtered) {
+    return (
+      <div className="grid justify-items-center px-6 py-10 text-center">
+        <strong className="text-sm font-medium">{filteredTitle}</strong>
+      </div>
+    );
+  }
+  return <QuietEmpty title={title} actionLabel={actionLabel} actionDisabled={actionDisabled} onAction={onAction} />;
+}
+
 export function ResultLibrary({
+  active,
   data,
   locale,
+  activeContent,
+  filter,
   selectedSeriesId,
   selectedCreationId,
   selectedAlbumId,
+  selectedDocumentId,
+  selectedDocumentAlbumId,
+  documentNavigationRevision,
   surface,
   mode,
   canExpand,
@@ -262,8 +410,12 @@ export function ResultLibrary({
   onModeChange,
   onResizeStart,
   onResizeValueChange,
+  onFilterChange,
   onSelectCreation,
   onSelect,
+  onSelectDocument,
+  onRenameDocument,
+  onMoveDocument,
   onSelectAlbum,
   onMore,
   onNew,
@@ -285,6 +437,24 @@ export function ResultLibrary({
   const { messages } = useI18n();
   const l = messages.creator.results;
   const a = messages.creator.album;
+  const [query, setQuery] = useState('');
+  const normalizedQuery = normalizeCreationLibraryQuery(query, locale);
+  const navigationFiltered = creationLibraryNavigationFiltered(filter, normalizedQuery);
+  const includeDocuments = filter !== 'images';
+  const documentNavigation = useVideoDocumentNavigation({
+    active,
+    refreshKey: documentNavigationRevision,
+    notify,
+  });
+  const ensureDocumentChildren = documentNavigation.ensureChildren;
+  const documentSearch = useVideoDocumentList({
+    active: creationDocumentSearchActive(active, filter, normalizedQuery),
+    refreshKey: documentNavigationRevision,
+    query: normalizedQuery,
+    albumId: null,
+    unfiledOnly: false,
+    notify,
+  });
   const [pendingAlbumParents, setPendingAlbumParents] = useState<ReadonlyMap<string, string | null>>(() => new Map());
   const [pendingSeriesAlbums, setPendingSeriesAlbums] = useState<ReadonlyMap<string, string | null>>(() => new Map());
   const [pendingMemberOrders, setPendingMemberOrders] = useState<ReadonlyMap<string, readonly string[]>>(
@@ -385,6 +555,25 @@ export function ResultLibrary({
     () => sessions.filter((session) => !albumBySessionId.has(session.id)),
     [albumBySessionId, sessions],
   );
+  const rootDocumentEntries = useMemo(
+    () =>
+      documentNavigation.root.items.flatMap((entry): MixedEntry[] =>
+        entry.kind === 'DOCUMENT'
+          ? [{ kind: 'DOCUMENT', entry, activityAt: entry.document.updatedAt, pinned: false }]
+          : [],
+      ),
+    [documentNavigation.root.items],
+  );
+  const documentAlbumEntryById = useMemo(() => {
+    const result = new Map<string, Extract<VideoDocumentNavigationEntry, { kind: 'ALBUM' }>>();
+    const pages = [documentNavigation.root, ...Object.values(documentNavigation.children)];
+    for (const page of pages) {
+      for (const entry of page.items) {
+        if (entry.kind === 'ALBUM') result.set(entry.albumId, entry);
+      }
+    }
+    return result;
+  }, [documentNavigation.children, documentNavigation.root]);
   const rootEntries = useMemo<MixedEntry[]>(() => {
     const entries: MixedEntry[] = [
       ...tree.activeRoots.map((album) => ({
@@ -399,6 +588,7 @@ export function ResultLibrary({
         activityAt: sessionActivityById.get(session.id) ?? '',
         pinned: false as const,
       })),
+      ...rootDocumentEntries,
     ];
     if (!pendingRootTargets) return entries.sort(compareRootEntries);
     const orderByTarget = new Map(
@@ -406,6 +596,7 @@ export function ResultLibrary({
     );
     const pendingOrder = (entry: MixedEntry) => {
       if (entry.kind === 'ALBUM') return orderByTarget.get(`ALBUM:${entry.album.id}`) ?? null;
+      if (entry.kind === 'DOCUMENT') return entry.entry.sortOrder;
       const orders = entry.session.memberSeries.flatMap((series) => {
         const order = orderByTarget.get(`SERIES:${series.id}`);
         return order == null ? [] : [order];
@@ -419,11 +610,77 @@ export function ResultLibrary({
       if (rootOrder) return rootOrder;
       return compareEntries(left, right);
     });
-  }, [pendingRootTargets, sessionActivityById, tree.activeRoots, unassignedSessions]);
+  }, [pendingRootTargets, rootDocumentEntries, sessionActivityById, tree.activeRoots, unassignedSessions]);
+  const displayedRootEntries = useMemo<MixedEntry[]>(() => {
+    if (!normalizedQuery) {
+      return rootEntries.filter(
+        (entry) =>
+          entry.kind === 'ALBUM' ||
+          filter === 'all' ||
+          (filter === 'images' && entry.kind === 'SERIES') ||
+          (filter === 'documents' && entry.kind === 'DOCUMENT'),
+      );
+    }
+
+    const albumEntries = displayedAlbums.flatMap((album): MixedEntry[] =>
+      !tree.effectivelyArchived.has(album.id) &&
+      album.title.toLocaleLowerCase(locale === 'zh' ? 'zh-CN' : 'en').includes(normalizedQuery)
+        ? [{ kind: 'ALBUM', album, activityAt: album.activityAt, pinned: album.pinned }]
+        : [],
+    );
+    const sessionEntries =
+      filter === 'documents'
+        ? []
+        : sessions.flatMap((session): MixedEntry[] => {
+            const albumId = albumBySessionId.get(session.id);
+            if (albumId && tree.effectivelyArchived.has(albumId)) return [];
+            return creationSessionTitle(session, locale)
+              .toLocaleLowerCase(locale === 'zh' ? 'zh-CN' : 'en')
+              .includes(normalizedQuery)
+              ? [
+                  {
+                    kind: 'SERIES',
+                    session,
+                    activityAt: sessionActivityById.get(session.id) ?? '',
+                    pinned: false,
+                  },
+                ]
+              : [];
+          });
+    const documentEntries =
+      filter === 'images'
+        ? []
+        : documentSearch.items.flatMap((document): MixedEntry[] =>
+            document.albumId && tree.effectivelyArchived.has(document.albumId)
+              ? []
+              : [
+                  {
+                    kind: 'DOCUMENT',
+                    entry: navigationEntryForDocument(document),
+                    activityAt: document.updatedAt,
+                    pinned: false,
+                  },
+                ],
+          );
+    return [...albumEntries, ...sessionEntries, ...documentEntries].sort(compareEntries);
+  }, [
+    displayedAlbums,
+    albumBySessionId,
+    documentSearch.items,
+    filter,
+    locale,
+    normalizedQuery,
+    rootEntries,
+    sessionActivityById,
+    sessions,
+    tree.effectivelyArchived,
+  ]);
   const albumViewportRef = useRef<HTMLDivElement>(null);
   const compactViewportRef = useRef<HTMLDivElement>(null);
   const rootPageEndRef = useRef<HTMLDivElement>(null);
   const albumExpansion = useAlbumTreeExpansion(albumViewportRef);
+  const expandedAlbumIds = albumExpansion.openIds;
+  const setPersistentAlbumExpansion = albumExpansion.setPersistent;
   const [archivedOpen, setArchivedOpen] = useState(false);
   const [dropAlbumId, setDropAlbumId] = useState<string | null>(null);
   const [rootDropActive, setRootDropActive] = useState(false);
@@ -451,19 +708,26 @@ export function ResultLibrary({
         ? sessions.find((session) => ideaCreationBySessionId.get(session.id)?.id === selectedCreationId)
         : null;
     const targetAlbumId = rootAlbumId(
-      selectedAlbumId ?? (selectedSession ? albumBySessionId.get(selectedSession.id) : null),
+      activeContent === 'documents'
+        ? selectedDocumentAlbumId
+        : (selectedAlbumId ?? (selectedSession ? albumBySessionId.get(selectedSession.id) : null)),
     );
-    return rootEntries.findIndex((entry) =>
+    return displayedRootEntries.findIndex((entry) =>
       entry.kind === 'ALBUM'
         ? entry.album.id === targetAlbumId
-        : Boolean(selectedSession && entry.session.id === selectedSession.id && !targetAlbumId),
+        : entry.kind === 'SERIES'
+          ? Boolean(selectedSession && entry.session.id === selectedSession.id && !targetAlbumId)
+          : entry.entry.documentId === selectedDocumentId,
     );
   }, [
     albumBySessionId,
+    activeContent,
     ideaCreationBySessionId,
-    rootEntries,
+    displayedRootEntries,
     selectedAlbumId,
     selectedCreationId,
+    selectedDocumentId,
+    selectedDocumentAlbumId,
     selectedSeriesId,
     sessions,
     tree.parentById,
@@ -471,58 +735,90 @@ export function ResultLibrary({
   const [renderedRootCount, setRenderedRootCount] = useState(rootRenderPageSize);
   useEffect(() => {
     setRenderedRootCount((current) =>
-      Math.min(rootEntries.length, Math.max(rootRenderPageSize, selectedRootIndex + 1, current)),
+      Math.min(displayedRootEntries.length, Math.max(rootRenderPageSize, selectedRootIndex + 1, current)),
     );
-  }, [rootEntries.length, selectedRootIndex]);
-  const renderedRootEntries = useMemo(() => rootEntries.slice(0, renderedRootCount), [renderedRootCount, rootEntries]);
+  }, [displayedRootEntries.length, selectedRootIndex]);
+  const renderedRootEntries = useMemo(
+    () => displayedRootEntries.slice(0, renderedRootCount),
+    [displayedRootEntries, renderedRootCount],
+  );
   const compactEntries = useMemo(() => (mode === 'images' ? renderedRootEntries : []), [mode, renderedRootEntries]);
 
   useEffect(() => {
     const target = rootPageEndRef.current;
     const viewport = mode === 'images' ? compactViewportRef.current : albumViewportRef.current;
-    if (!target || !viewport || renderedRootCount >= rootEntries.length) return undefined;
+    if (!target || !viewport || renderedRootCount >= displayedRootEntries.length) return undefined;
     const observer = new IntersectionObserver(
       (entries) => {
         if (!entries.some((entry) => entry.isIntersecting)) return;
-        setRenderedRootCount((current) => Math.min(rootEntries.length, current + rootRenderPageSize));
+        setRenderedRootCount((current) => Math.min(displayedRootEntries.length, current + rootRenderPageSize));
       },
       { root: viewport, rootMargin: '240px 0px' },
     );
     observer.observe(target);
     return () => observer.disconnect();
-  }, [mode, renderedRootCount, rootEntries.length]);
+  }, [displayedRootEntries.length, mode, renderedRootCount]);
 
   useEffect(() => {
+    if (!active) return;
     const selectedSession =
       surface === 'existing-creation' && selectedSeriesId
         ? sessions.find((session) => session.memberSeries.some((series) => series.id === selectedSeriesId))
         : null;
     const targetAlbumId =
-      surface === 'album-detail'
-        ? selectedAlbumId
-        : selectedSession
-          ? (albumBySessionId.get(selectedSession.id) ?? null)
-          : null;
-    if (!targetAlbumId) return;
+      activeContent === 'documents'
+        ? selectedDocumentAlbumId
+        : surface === 'album-detail'
+          ? selectedAlbumId
+          : selectedSession
+            ? (albumBySessionId.get(selectedSession.id) ?? null)
+            : null;
+    if (!targetAlbumId || !tree.byId.has(targetAlbumId)) return;
     if (tree.effectivelyArchived.has(targetAlbumId)) setArchivedOpen(true);
 
     const ancestors: string[] = [];
     const visited = new Set<string>();
-    let currentId = surface === 'album-detail' ? tree.parentById.get(targetAlbumId) : targetAlbumId;
+    let currentId =
+      activeContent === 'images' && surface === 'album-detail' ? tree.parentById.get(targetAlbumId) : targetAlbumId;
     while (currentId && !visited.has(currentId)) {
       visited.add(currentId);
       ancestors.push(currentId);
       currentId = tree.parentById.get(currentId);
     }
-    ancestors.reverse().forEach((albumId) => albumExpansion.setPersistent(albumId, true));
+    ancestors.reverse().forEach((albumId) => {
+      setPersistentAlbumExpansion(albumId, true);
+      if (includeDocuments && !tree.effectivelyArchived.has(albumId)) ensureDocumentChildren(albumId);
+    });
   }, [
+    active,
+    activeContent,
     albumBySessionId,
+    ensureDocumentChildren,
+    includeDocuments,
     selectedAlbumId,
     selectedSeriesId,
+    selectedDocumentAlbumId,
     sessions,
+    setPersistentAlbumExpansion,
     surface,
+    tree.byId,
     tree.effectivelyArchived,
     tree.parentById,
+  ]);
+
+  useEffect(() => {
+    if (!active || !includeDocuments) return;
+    for (const albumId of expandedAlbumIds) {
+      if (tree.byId.has(albumId) && !tree.effectivelyArchived.has(albumId)) ensureDocumentChildren(albumId);
+    }
+  }, [
+    active,
+    documentNavigationRevision,
+    ensureDocumentChildren,
+    expandedAlbumIds,
+    includeDocuments,
+    tree.byId,
+    tree.effectivelyArchived,
   ]);
 
   useEffect(() => {
@@ -547,27 +843,45 @@ export function ResultLibrary({
       window.cancelAnimationFrame(layoutFrame);
       if (revealFrame) window.cancelAnimationFrame(revealFrame);
     };
-  }, [compactEntries, mode, selectedAlbumId, selectedCreationId, selectedSeriesId, surface]);
+  }, [
+    activeContent,
+    compactEntries,
+    mode,
+    selectedAlbumId,
+    selectedCreationId,
+    selectedDocumentId,
+    selectedSeriesId,
+    surface,
+  ]);
 
   function sessionAssets(session: CreationSessionProjection) {
     return sessionAssetsById.get(session.id) ?? [];
   }
 
   function sessionTitle(session: CreationSessionProjection) {
-    if (!session.syntheticExperimentRoot) return session.primarySeries.title;
-    return locale === 'zh' ? '方向实验' : 'Direction experiment';
+    return creationSessionTitle(session, locale);
   }
 
   function sessionSelected(session: CreationSessionProjection) {
-    return surface === 'existing-creation' && session.memberSeries.some((series) => series.id === selectedSeriesId);
+    return (
+      activeContent === 'images' &&
+      surface === 'existing-creation' &&
+      session.memberSeries.some((series) => series.id === selectedSeriesId)
+    );
   }
 
   function setAlbumExpanded(albumId: string, open: boolean) {
-    albumExpansion.setPersistent(albumId, open);
+    setPersistentAlbumExpansion(albumId, open);
+    if (open && includeDocuments && tree.byId.has(albumId) && !tree.effectivelyArchived.has(albumId)) {
+      ensureDocumentChildren(albumId);
+    }
   }
 
   function setAlbumHoverExpanded(albumId: string, open: boolean) {
     albumExpansion.setHover(albumId, open);
+    if (open && includeDocuments && tree.byId.has(albumId) && !tree.effectivelyArchived.has(albumId)) {
+      ensureDocumentChildren(albumId);
+    }
   }
 
   function wouldCreateAlbumCycle(albumId: string, parentAlbumId: string | null) {
@@ -680,7 +994,9 @@ export function ResultLibrary({
   }
 
   function childEntryKey(entry: MixedEntry) {
-    return entry.kind === 'ALBUM' ? `ALBUM:${entry.album.id}` : `SERIES:${entry.session.id}`;
+    if (entry.kind === 'ALBUM') return `ALBUM:${entry.album.id}`;
+    if (entry.kind === 'SERIES') return `SERIES:${entry.session.id}`;
+    return `DOCUMENT:${entry.entry.documentId}`;
   }
 
   function memberIdsForEntry(album: AlbumDto, entry: MixedEntry) {
@@ -689,6 +1005,7 @@ export function ResultLibrary({
         .filter((member) => member.targetType === 'ALBUM' && member.targetId === entry.album.id)
         .map((member) => member.id);
     }
+    if (entry.kind === 'DOCUMENT') return [];
     const seriesIds = new Set(entry.session.memberSeries.map((series) => series.id));
     return orderedAlbumMembers(album)
       .filter((member) => member.targetType === 'SERIES' && seriesIds.has(member.targetId))
@@ -711,9 +1028,10 @@ export function ResultLibrary({
   }
 
   function rootTargetsForEntry(entry: MixedEntry): SidebarRootOrderTargetInput[] {
-    return entry.kind === 'ALBUM'
-      ? [{ targetType: 'ALBUM', targetId: entry.album.id }]
-      : entry.session.memberSeries.map((series) => ({ targetType: 'SERIES', targetId: series.id }));
+    if (entry.kind === 'ALBUM') return [{ targetType: 'ALBUM', targetId: entry.album.id }];
+    if (entry.kind === 'SERIES')
+      return entry.session.memberSeries.map((series) => ({ targetType: 'SERIES', targetId: series.id }));
+    return [];
   }
 
   function rootTargetKey(target: SidebarRootOrderTargetInput) {
@@ -774,7 +1092,10 @@ export function ResultLibrary({
   }
 
   async function reorderEntryByStep(album: AlbumDto, entry: MixedEntry, archivedBranch: boolean, direction: -1 | 1) {
-    const entries = childEntries(album, archivedBranch).filter((candidate) => candidate.pinned === entry.pinned);
+    if (entry.kind === 'DOCUMENT') return;
+    const entries = childEntries(album, archivedBranch).filter(
+      (candidate) => candidate.kind !== 'DOCUMENT' && candidate.pinned === entry.pinned,
+    );
     const index = entries.findIndex((candidate) => childEntryKey(candidate) === childEntryKey(entry));
     const target = entries[index + direction];
     if (!target) return;
@@ -787,7 +1108,10 @@ export function ResultLibrary({
   }
 
   async function reorderRootEntryByStep(entry: MixedEntry, direction: -1 | 1) {
-    const entries = rootEntries.filter((candidate) => candidate.pinned === entry.pinned);
+    if (entry.kind === 'DOCUMENT') return;
+    const entries = rootEntries.filter(
+      (candidate) => candidate.kind !== 'DOCUMENT' && candidate.pinned === entry.pinned,
+    );
     const index = entries.findIndex((candidate) => childEntryKey(candidate) === childEntryKey(entry));
     const target = entries[index + direction];
     if (!target) return;
@@ -817,6 +1141,7 @@ export function ResultLibrary({
   }
 
   function rootReorderEdge(event: DragEvent, target: MixedEntry, centerOpensAlbum: boolean) {
+    if (target.kind === 'DOCUMENT') return null;
     const dragged = currentDraggedTreeItem(event);
     if (dragged?.kind === 'ALBUM' && tree.byId.get(dragged.albumId)?.pinned !== target.pinned) return null;
     if (dragged?.kind === 'CREATION' && target.pinned) return null;
@@ -869,8 +1194,10 @@ export function ResultLibrary({
     const parent = parentId ? (tree.byId.get(parentId) ?? null) : null;
     const entry = { kind: 'SERIES' as const, session, activityAt: sessionActivity(session), pinned: false as const };
     const siblings = parent
-      ? childEntries(parent, archivedBranch).filter((candidate) => candidate.pinned === entry.pinned)
-      : rootEntries.filter((candidate) => candidate.pinned === entry.pinned);
+      ? childEntries(parent, archivedBranch).filter(
+          (candidate) => candidate.kind !== 'DOCUMENT' && candidate.pinned === entry.pinned,
+        )
+      : rootEntries.filter((candidate) => candidate.kind !== 'DOCUMENT' && candidate.pinned === entry.pinned);
     const siblingIndex = siblings.findIndex((candidate) => childEntryKey(candidate) === childEntryKey(entry));
     return [
       { id: 'open', label: a.open, icon: OpenImageIcon, onSelect: () => onSelect(series.id) },
@@ -954,8 +1281,10 @@ export function ResultLibrary({
     const parent = parentId ? (tree.byId.get(parentId) ?? null) : null;
     const entry = { kind: 'ALBUM' as const, album, activityAt: album.activityAt, pinned: album.pinned };
     const siblings = parent
-      ? childEntries(parent, archivedBranch).filter((candidate) => candidate.pinned === entry.pinned)
-      : rootEntries.filter((candidate) => candidate.pinned === entry.pinned);
+      ? childEntries(parent, archivedBranch).filter(
+          (candidate) => candidate.kind !== 'DOCUMENT' && candidate.pinned === entry.pinned,
+        )
+      : rootEntries.filter((candidate) => candidate.kind !== 'DOCUMENT' && candidate.pinned === entry.pinned);
     const siblingIndex = siblings.findIndex((candidate) => childEntryKey(candidate) === childEntryKey(entry));
     return [
       { id: 'open', label: a.openAlbum, icon: GalleryVerticalEndIcon, onSelect: () => onSelectAlbum(album.id) },
@@ -1080,6 +1409,7 @@ export function ResultLibrary({
   }
 
   function canDropIntoAlbum(event: DragEvent, albumId: string) {
+    if (navigationFiltered) return false;
     const dragged = currentDraggedTreeItem(event);
     if (!dragged) return false;
     if (dragged.kind === 'ALBUM') {
@@ -1089,6 +1419,7 @@ export function ResultLibrary({
   }
 
   function canDropAtRoot(event: DragEvent) {
+    if (navigationFiltered) return false;
     const dragged = currentDraggedTreeItem(event);
     if (!dragged) return false;
     if (dragged.kind === 'ALBUM') return tree.parentById.has(dragged.albumId);
@@ -1134,13 +1465,17 @@ export function ResultLibrary({
     }
   }
 
+  function albumPreviewAssets(album: AlbumDto) {
+    return creationAlbumPreviewAssets(album, filter);
+  }
+
   function compactAlbumPreview(album: AlbumDto) {
     return (
       <span className="relative grid size-full place-items-center">
         <MediaStackPreview
           size="rail"
           singleItemAlign="center"
-          items={album.previewAssets.map((asset) => ({ asset }))}
+          items={albumPreviewAssets(album).map((asset) => ({ asset }))}
         />
         <AlbumCoverBadge compact />
       </span>
@@ -1197,7 +1532,12 @@ export function ResultLibrary({
     const assets = sessionAssets(session);
     const first = assets[0] ?? null;
     const ideaCreation = ideaCreationBySessionId.get(session.id) ?? null;
-    const ideaSelected = Boolean(ideaCreation && surface === 'idea-creation' && selectedCreationId === ideaCreation.id);
+    const ideaSelected = Boolean(
+      activeContent === 'images' &&
+      ideaCreation &&
+      surface === 'idea-creation' &&
+      selectedCreationId === ideaCreation.id,
+    );
     const selected = (sessionSelected(session) && !selectedAlbumId) || ideaSelected;
     const title = sessionTitle(session);
     const memberSeriesIds = session.memberSeries.map((series) => series.id);
@@ -1331,7 +1671,7 @@ export function ResultLibrary({
           </span>
         </span>
         <div data-result-library-row-control className={rowControlsClassName}>
-          {!lifecycleBusy && !archivedBranch && (
+          {!lifecycleBusy && !navigationFiltered && !archivedBranch && (
             <TreeDragHandle
               label={locale === 'zh' ? '拖动创作' : 'Drag creation'}
               className={rowControlClassName}
@@ -1357,28 +1697,80 @@ export function ResultLibrary({
     );
   }
 
+  function renderDocumentRow(
+    entry: Extract<VideoDocumentNavigationEntry, { kind: 'DOCUMENT' }>,
+    branchTopology?: TreeBranchItemTopology,
+  ) {
+    return (
+      <CreationDocumentRow
+        key={entry.documentId}
+        entry={entry}
+        selected={activeContent === 'documents' && selectedDocumentId === entry.documentId}
+        branchTopology={branchTopology}
+        onSelectDocument={onSelectDocument}
+        onRenameDocument={onRenameDocument}
+        onMoveDocument={(document) =>
+          setMoveTarget({
+            kind: 'DOCUMENT',
+            id: document.id,
+            title: document.title,
+            currentAlbumId: document.albumId,
+          })
+        }
+      />
+    );
+  }
+
   function childEntries(album: AlbumDto, archivedBranch: boolean): MixedEntry[] {
     const entries: MixedEntry[] = [
       ...(tree.childrenByParentId.get(album.id) ?? [])
         .filter((child) => tree.effectivelyArchived.has(child.id) === archivedBranch)
         .map((child) => ({ kind: 'ALBUM' as const, album: child, activityAt: child.activityAt, pinned: child.pinned })),
-      ...(sessionsByAlbumId.get(album.id) ?? []).map((session) => ({
-        kind: 'SERIES' as const,
-        session,
-        activityAt: sessionActivityById.get(session.id) ?? '',
-        pinned: false as const,
-      })),
+      ...(filter === 'documents'
+        ? []
+        : (sessionsByAlbumId.get(album.id) ?? []).map((session) => ({
+            kind: 'SERIES' as const,
+            session,
+            activityAt: sessionActivityById.get(session.id) ?? '',
+            pinned: false as const,
+          }))),
+      ...(filter === 'images' || archivedBranch
+        ? []
+        : (documentNavigation.children[album.id]?.items ?? []).flatMap((entry): MixedEntry[] =>
+            entry.kind === 'DOCUMENT'
+              ? [{ kind: 'DOCUMENT', entry, activityAt: entry.document.updatedAt, pinned: false }]
+              : [],
+          )),
     ];
-    const memberOrder = new Map(orderedAlbumMembers(album).map((member, index) => [member.id, index]));
+    const memberOrder = new Map(orderedAlbumMembers(album).map((member) => [member.id, member.sortOrder]));
+    const entryRank = (entry: MixedEntry) =>
+      entry.kind === 'DOCUMENT'
+        ? (entry.entry.sortOrder ?? Number.MAX_SAFE_INTEGER)
+        : Math.min(
+            ...memberIdsForEntry(album, entry).map((memberId) => memberOrder.get(memberId) ?? Number.MAX_SAFE_INTEGER),
+          );
     return entries.sort((left, right) => {
-      const leftRank = Math.min(
-        ...memberIdsForEntry(album, left).map((memberId) => memberOrder.get(memberId) ?? Number.MAX_SAFE_INTEGER),
-      );
-      const rightRank = Math.min(
-        ...memberIdsForEntry(album, right).map((memberId) => memberOrder.get(memberId) ?? Number.MAX_SAFE_INTEGER),
-      );
+      const leftRank = entryRank(left);
+      const rightRank = entryRank(right);
       return Number(right.pinned) - Number(left.pinned) || leftRank - rightRank || compareEntries(left, right);
     });
+  }
+
+  function renderAlbumDocumentPaging(
+    albumId: string,
+    expanded: boolean,
+    includeAlbumDocuments: boolean,
+    visibleChildCount: number,
+  ) {
+    return (
+      <CreationDocumentAlbumPaging
+        expanded={expanded}
+        includeDocuments={includeAlbumDocuments}
+        visibleChildCount={visibleChildCount}
+        page={documentNavigation.children[albumId]}
+        onLoadMore={() => documentNavigation.loadChildrenMore(albumId)}
+      />
+    );
   }
 
   function renderAlbumBranch(
@@ -1388,9 +1780,13 @@ export function ResultLibrary({
     parentAlbum: AlbumDto | null = null,
   ): ReactNode {
     const children = childEntries(album, archivedBranch);
+    const documentChildPage = documentNavigation.children[album.id];
+    const includeAlbumDocuments = includeDocuments && !archivedBranch;
+    const documentCount = documentAlbumEntryById.get(album.id)?.descendantDocumentCount;
+    const expandable = creationAlbumCanExpand(children.length, includeAlbumDocuments, documentChildPage, documentCount);
     const expanded = albumExpansion.isOpen(album.id);
-    const selected = selectedAlbumId === album.id;
-    const actions = albumActions(album, archivedBranch, expanded, children.length > 0);
+    const selected = activeContent === 'images' && selectedAlbumId === album.id;
+    const actions = albumActions(album, archivedBranch, expanded, expandable);
     const entry = { kind: 'ALBUM' as const, album, activityAt: album.activityAt, pinned: album.pinned };
     const targetKey = childEntryKey(entry);
     const targetMemberIds = parentAlbum ? memberIdsForEntry(parentAlbum, entry) : [];
@@ -1401,7 +1797,7 @@ export function ResultLibrary({
       if (event.detail <= 1) onSelectAlbum(album.id);
     };
     const handleAlbumDoubleClick: MouseEventHandler<HTMLButtonElement> = () =>
-      children.length > 0 && albumExpansion.togglePersistent(album.id);
+      expandable && setAlbumExpanded(album.id, !expanded);
     const row = (
       <div
         data-album-id={album.id}
@@ -1545,13 +1941,13 @@ export function ResultLibrary({
           onClick={handleAlbumClick}
           onDoubleClick={handleAlbumDoubleClick}
           expanded={expanded}
-          onExpandedChange={children.length ? (open) => setAlbumExpanded(album.id, open) : undefined}
+          onExpandedChange={expandable ? (open) => setAlbumExpanded(album.id, open) : undefined}
         />
         <AlbumTreePreview
-          assets={album.previewAssets}
+          assets={albumPreviewAssets(album)}
           title={album.title}
           open={expanded}
-          expandable={children.length > 0}
+          expandable={expandable}
           expandLabel={expanded ? l.collapse : l.expand}
           disclosureInteractive
           branchTopology={branchTopology}
@@ -1576,7 +1972,7 @@ export function ResultLibrary({
           />
         )}
         <div data-result-library-row-control className={rowControlsClassName}>
-          {!lifecycleBusy && !archivedBranch && (
+          {!lifecycleBusy && !navigationFiltered && !archivedBranch && (
             <TreeDragHandle
               label={locale === 'zh' ? '拖动图集' : 'Drag album'}
               className={rowControlClassName}
@@ -1608,7 +2004,7 @@ export function ResultLibrary({
             <ActionContextMenuItems actions={actions} />
           </ContextMenuContent>
         </ContextMenu>
-        {children.length > 0 && expanded && (
+        {expandable && expanded && (
           <TreeBranchCollapseRail label={l.collapse} onCollapse={() => albumExpansion.collapse(album.id)} />
         )}
         {children.length > 0 && expanded && (
@@ -1616,22 +2012,44 @@ export function ResultLibrary({
             <TreeBranchCollapseProvider onCollapse={() => albumExpansion.collapse(album.id)}>
               {children.map((entry, index) => {
                 const topology = getTreeBranchItemTopology(index, children.length);
-                return entry.kind === 'ALBUM'
-                  ? renderAlbumBranch(entry.album, archivedBranch, topology, album)
-                  : renderSessionRow(entry.session, archivedBranch, topology, album);
+                if (entry.kind === 'ALBUM') return renderAlbumBranch(entry.album, archivedBranch, topology, album);
+                if (entry.kind === 'SERIES') return renderSessionRow(entry.session, archivedBranch, topology, album);
+                return renderDocumentRow(entry.entry, topology);
               })}
             </TreeBranchCollapseProvider>
           </TreeBranchContent>
         )}
+        {renderAlbumDocumentPaging(album.id, expanded, includeAlbumDocuments, children.length)}
       </Collapsible>
+    );
+  }
+
+  function renderCompactDocument(entry: Extract<VideoDocumentNavigationEntry, { kind: 'DOCUMENT' }>) {
+    return (
+      <CreationDocumentCompactItem
+        key={`compact:${entry.documentId}`}
+        entry={entry}
+        selected={activeContent === 'documents' && selectedDocumentId === entry.documentId}
+        onSelectDocument={onSelectDocument}
+        onRenameDocument={onRenameDocument}
+        onMoveDocument={(document) =>
+          setMoveTarget({
+            kind: 'DOCUMENT',
+            id: document.id,
+            title: document.title,
+            currentAlbumId: document.albumId,
+          })
+        }
+      />
     );
   }
 
   function renderCompactEntry(entry: MixedEntry) {
     if (entry.kind === 'ALBUM') {
       const album = entry.album;
-      const selected = surface === 'album-detail' && selectedAlbumId === album.id;
+      const selected = activeContent === 'images' && surface === 'album-detail' && selectedAlbumId === album.id;
       const archived = Boolean(entry.archived || tree.effectivelyArchived.has(album.id));
+      const previewAssets = albumPreviewAssets(album);
       const actions = albumActions(album, archived, false, false);
       const trigger = (
         <button
@@ -1651,7 +2069,7 @@ export function ResultLibrary({
           data-album-id={album.id}
           role="group"
           aria-label={album.title}
-          draggable={!lifecycleBusy && !archived}
+          draggable={!lifecycleBusy && !navigationFiltered && !archived}
           onDragStart={(event) => startAlbumDrag(event, album.id)}
           onDragEnd={clearTreeDragState}
           onDragEnter={(event) => {
@@ -1720,8 +2138,8 @@ export function ResultLibrary({
             dropAlbumId === album.id && 'bg-accent ring-1 ring-inset ring-ring',
           )}
         >
-          {album.previewAssets[0] ? (
-            <AssetHoverPreview asset={album.previewAssets[0]} side="right">
+          {previewAssets[0] ? (
+            <AssetHoverPreview asset={previewAssets[0]} side="right">
               {trigger}
             </AssetHoverPreview>
           ) : (
@@ -1729,10 +2147,10 @@ export function ResultLibrary({
           )}
         </div>
       );
-      return album.previewAssets[0] ? (
+      return previewAssets[0] ? (
         <AssetFileContextMenu
           key={`compact:${album.id}`}
-          assetId={album.previewAssets[0].id}
+          assetId={previewAssets[0].id}
           notify={notify}
           actions={actions}
           revealContext={{ kind: 'ALBUM', albumId: album.id }}
@@ -1748,10 +2166,16 @@ export function ResultLibrary({
         </ContextMenu>
       );
     }
+    if (entry.kind === 'DOCUMENT') return renderCompactDocument(entry.entry);
     const assets = sessionAssets(entry.session);
     const first = assets[0] ?? null;
     const ideaCreation = ideaCreationBySessionId.get(entry.session.id) ?? null;
-    const ideaSelected = Boolean(ideaCreation && surface === 'idea-creation' && selectedCreationId === ideaCreation.id);
+    const ideaSelected = Boolean(
+      activeContent === 'images' &&
+      ideaCreation &&
+      surface === 'idea-creation' &&
+      selectedCreationId === ideaCreation.id,
+    );
     const selected = (sessionSelected(entry.session) && !selectedAlbumId) || ideaSelected;
     const title = sessionTitle(entry.session);
     const memberSeriesIds = entry.session.memberSeries.map((series) => series.id);
@@ -1826,7 +2250,7 @@ export function ResultLibrary({
         data-result-library-selected={selected ? 'true' : undefined}
         role="group"
         aria-label={title}
-        draggable={!lifecycleBusy && !archived}
+        draggable={!lifecycleBusy && !navigationFiltered && !archived}
         onDragStart={(event) => startCreationDrag(event, memberSeriesIds)}
         onDragEnd={clearTreeDragState}
         className="group relative flex h-16 w-full items-center justify-center"
@@ -1866,23 +2290,16 @@ export function ResultLibrary({
   }
 
   const moveDialog = (
-    <AlbumMoveDialog
+    <ResultLibraryMoveDialog
       albums={data.albums}
       target={moveTarget}
-      labels={{
-        title: a.moveTitle,
-        topLevel: a.moveToRoot,
-        operationFailed: messages.gallery.albums.operationFailed,
-      }}
       busy={lifecycleBusy}
       onOpenChange={(open) => {
         if (!open) setMoveTarget(null);
       }}
-      onMove={async (albumId) => {
-        if (!moveTarget) return;
-        if (moveTarget.kind === 'ALBUM') await requestAlbumMove(moveTarget.id, albumId);
-        else await requestSeriesMove(moveTarget.seriesIds ?? [moveTarget.id], albumId);
-      }}
+      onMoveAlbum={requestAlbumMove}
+      onMoveSeries={requestSeriesMove}
+      onMoveDocument={onMoveDocument}
     />
   );
 
@@ -1902,21 +2319,19 @@ export function ResultLibrary({
           />
         )}
         <header className="grid h-14 shrink-0 place-items-center border-b border-border/60">
-          <div className="flex items-center justify-center gap-1">
-            {surface === 'new-creation' && (
-              <Button
-                variant="ghost"
-                size="icon-sm"
-                disabled={lifecycleBusy}
-                title={a.newAlbum}
-                aria-label={a.newAlbum}
-                onClick={() => onCreateAlbum(null)}
-              >
-                <GalleryVerticalEndIcon className="size-4" />
-              </Button>
-            )}
+          {surface === 'new-creation' ? (
             <Button
-              type="button"
+              variant="ghost"
+              size="icon-sm"
+              disabled={lifecycleBusy}
+              title={a.newAlbum}
+              aria-label={a.newAlbum}
+              onClick={() => onCreateAlbum(null)}
+            >
+              <GalleryVerticalEndIcon className="size-4" />
+            </Button>
+          ) : (
+            <Button
               data-action="new-creation"
               variant="ghost"
               size="icon-sm"
@@ -1927,16 +2342,16 @@ export function ResultLibrary({
             >
               <PlusIcon className="size-4" />
             </Button>
-          </div>
+          )}
         </header>
         <ScrollArea type="always" className="min-h-0 flex-1" viewportRef={compactViewportRef}>
           <div
             className="flex flex-col items-stretch gap-2 pt-3 pr-3 pb-14 pl-2"
             data-rendered-root-count={renderedRootEntries.length}
-            data-total-root-count={rootEntries.length}
+            data-total-root-count={displayedRootEntries.length}
           >
             {compactEntries.map(renderCompactEntry)}
-            {renderedRootEntries.length < rootEntries.length && (
+            {renderedRootEntries.length < displayedRootEntries.length && (
               <div ref={rootPageEndRef} data-slot="result-library-page-end" className="h-px" aria-hidden="true" />
             )}
           </div>
@@ -2027,6 +2442,7 @@ export function ResultLibrary({
           </Button>
         </div>
       </header>
+      <CreationLibraryToolbar query={query} filter={filter} onQueryChange={setQuery} onFilterChange={onFilterChange} />
       <ScrollArea
         type="always"
         className="min-h-0 flex-1 [&_[data-slot=scroll-area-viewport]>div]:!block [&_[data-slot=scroll-area-viewport]>div]:min-h-full"
@@ -2035,7 +2451,7 @@ export function ResultLibrary({
         <div
           data-result-library-root-drop-zone
           data-rendered-root-count={renderedRootEntries.length}
-          data-total-root-count={rootEntries.length}
+          data-total-root-count={displayedRootEntries.length}
           className={cn('min-h-full space-y-0.5 px-2 py-2 pb-14 transition-colors', rootDropActive && 'bg-accent/40')}
           onDragEnter={(event) => {
             if (!lifecycleBusy && hasTreeDrag(event) && canDropAtRoot(event)) {
@@ -2061,25 +2477,44 @@ export function ResultLibrary({
             else if (hasTreeDrag(event)) clearTreeDragState();
           }}
         >
-          {renderedRootEntries.map((entry) =>
-            entry.kind === 'ALBUM' ? renderAlbumBranch(entry.album, false) : renderSessionRow(entry.session),
-          )}
-          {renderedRootEntries.length < rootEntries.length && (
+          {renderedRootEntries.map((entry) => {
+            if (entry.kind === 'ALBUM') return renderAlbumBranch(entry.album, false);
+            if (entry.kind === 'SERIES') return renderSessionRow(entry.session);
+            return renderDocumentRow(entry.entry);
+          })}
+          <CreationDocumentRootPaging
+            includeDocuments={includeDocuments}
+            queryActive={Boolean(normalizedQuery)}
+            searchLoading={documentSearch.loading}
+            searchHasMore={documentSearch.hasMore}
+            searchLoadingMore={documentSearch.loadingMore}
+            rootLoading={documentNavigation.root.loading}
+            rootHasMore={Boolean(documentNavigation.root.nextCursor)}
+            rootLoadingMore={documentNavigation.root.loadingMore}
+            onLoadSearchMore={() => void documentSearch.loadMore()}
+            onLoadRootMore={documentNavigation.loadRootMore}
+          />
+          {renderedRootEntries.length < displayedRootEntries.length && (
             <div ref={rootPageEndRef} data-slot="result-library-page-end" className="h-px" aria-hidden="true" />
           )}
-          {rootEntries.length === 0 && (
-            <QuietEmpty
-              title={l.empty}
-              actionLabel={surface === 'new-creation' ? a.newAlbum : l.newCreation}
-              actionDisabled={lifecycleBusy || (surface !== 'new-creation' && selectedAlbumArchived)}
-              onAction={() => {
-                if (surface === 'new-creation') onCreateAlbum(null);
-                else if (surface === 'album-detail' && selectedAlbumId) onNewInAlbum(selectedAlbumId);
-                else onNew();
-              }}
-            />
-          )}
-          {tree.archivedRoots.length > 0 && (
+          <CreationLibraryEmptyState
+            empty={displayedRootEntries.length === 0}
+            filtered={navigationFiltered}
+            includeDocuments={includeDocuments}
+            queryActive={Boolean(normalizedQuery)}
+            searchLoading={documentSearch.loading}
+            rootLoading={documentNavigation.root.loading}
+            title={l.empty}
+            filteredTitle={l.emptyFiltered}
+            actionLabel={surface === 'new-creation' ? a.newAlbum : l.newCreation}
+            actionDisabled={lifecycleBusy || (surface !== 'new-creation' && selectedAlbumArchived)}
+            onAction={() => {
+              if (surface === 'new-creation') onCreateAlbum(null);
+              else if (surface === 'album-detail' && selectedAlbumId) onNewInAlbum(selectedAlbumId);
+              else onNew();
+            }}
+          />
+          {!normalizedQuery && tree.archivedRoots.length > 0 && (
             <Collapsible open={archivedOpen} onOpenChange={setArchivedOpen} className="pt-2">
               <CollapsibleTrigger asChild>
                 <TreeDisclosureRail

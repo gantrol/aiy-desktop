@@ -9,7 +9,7 @@ import type {
 import { GenerationAdapterError } from '@/main/generation-models/adapters/errors';
 import { decodeGenerationProviderResponseJson } from '@/main/generation-models/adapters/generation-provider-response';
 import { decodeProviderImageBase64 } from '@/main/generation-models/adapters/provider-media';
-import { tryDecodeProviderErrorJson } from '@/main/provider-response';
+import { tryDecodeProviderErrorJson } from '@/main/providers/provider-response';
 import {
   cleanupOutput,
   fetchProvider,
@@ -114,6 +114,7 @@ function outputImage(body: GoogleInteractionResponse) {
 
 export class GoogleGeminiImageAdapter implements GenerationAdapter {
   readonly providerKey = 'google';
+  readonly adapterId = 'google-gemini-interactions-image';
   readonly capabilities = ['GENERATE', 'REFERENCE_IMAGE', 'MULTI_REFERENCE', 'IMAGE_EDIT'] as const;
   readonly maxReferenceImages = 14;
   private readonly namespace = 'google-gemini-image-api';
@@ -125,24 +126,40 @@ export class GoogleGeminiImageAdapter implements GenerationAdapter {
   ) {}
 
   validateRequest(request: NormalizedGenerationRequest) {
+    this.boundProvider(request);
+  }
+
+  bindRequest(request: NormalizedGenerationRequest) {
+    const { credentials, provider } = this.boundProvider(request);
+    return (context: GenerationAdapterExecutionContext) => this.executeBound(request, context, credentials, provider);
+  }
+
+  execute(request: NormalizedGenerationRequest, context: GenerationAdapterExecutionContext) {
+    return this.bindRequest(request)(context);
+  }
+
+  private boundProvider(request: NormalizedGenerationRequest) {
     const credentials = this.runtime.credentials(GOOGLE_GEMINI_IMAGE_API_EXTENSION_ID);
-    const expectedModelId = resolveExternalImageApiEndpoint(
-      GOOGLE_GEMINI_IMAGE_API_EXTENSION_ID,
-      credentials.settings,
-    ).modelId;
-    if (request.modelId !== expectedModelId) {
+    const provider = resolveExternalImageApiEndpoint(GOOGLE_GEMINI_IMAGE_API_EXTENSION_ID, credentials.settings);
+    if (request.modelId !== provider.modelId) {
       throw new GenerationAdapterError({
         code: 'INVALID_REQUEST',
         message: 'Google image configuration changed before the request started',
       });
     }
+    return { credentials, provider };
   }
 
-  async execute(request: NormalizedGenerationRequest, context: GenerationAdapterExecutionContext) {
-    const credentials = this.runtime.credentials(GOOGLE_GEMINI_IMAGE_API_EXTENSION_ID);
-    const provider = resolveExternalImageApiEndpoint(GOOGLE_GEMINI_IMAGE_API_EXTENSION_ID, credentials.settings);
+  private async executeBound(
+    request: NormalizedGenerationRequest,
+    context: GenerationAdapterExecutionContext,
+    credentials: ReturnType<ExternalImageApiRuntime['credentials']>,
+    provider: ReturnType<typeof resolveExternalImageApiEndpoint>,
+  ) {
     context.emit({ type: 'PROGRESS', stage: 'PREPARING', message: 'Preparing Gemini image request' });
-    const references = request.media.filter((item) => item.role === 'EDIT_SOURCE' || item.role === 'REFERENCE');
+    const references = request.media.filter(
+      (item) => item.role === 'EDIT_SOURCE' || item.role === 'ANNOTATION_GUIDE' || item.role === 'REFERENCE',
+    );
     const input: Array<Record<string, string>> = [
       { type: 'text', text: request.prompt },
       ...references.map((reference) => ({
@@ -191,7 +208,7 @@ export class GoogleGeminiImageAdapter implements GenerationAdapter {
     if (!response.ok) {
       const body = await tryDecodeProviderErrorJson(response, googleErrorSchema, 'Google Gemini');
       const requestId = response.headers.get('x-request-id') ?? body?.id ?? undefined;
-      context.emit({ type: 'REQUEST_ACCEPTED', ...(requestId ? { providerRequestId: requestId } : {}) });
+      if (requestId) context.emit({ type: 'REQUEST_ACCEPTED', providerRequestId: requestId });
       throw providerError({
         provider: 'Google Gemini',
         status: response.status,
@@ -202,7 +219,7 @@ export class GoogleGeminiImageAdapter implements GenerationAdapter {
     }
     const body = await decodeGenerationProviderResponseJson(response, googleSuccessSchema, 'Google Gemini');
     const requestId = response.headers.get('x-request-id') ?? body.id ?? undefined;
-    context.emit({ type: 'REQUEST_ACCEPTED', ...(requestId ? { providerRequestId: requestId } : {}) });
+    if (requestId) context.emit({ type: 'REQUEST_ACCEPTED', providerRequestId: requestId });
     const image = outputImage(body);
     if (!image || typeof image.data !== 'string' || !image.data) {
       throw new GenerationAdapterError({ code: 'NO_OUTPUT', message: 'Gemini returned no image data' });

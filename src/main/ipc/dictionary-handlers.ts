@@ -1,9 +1,17 @@
 import path from 'node:path';
 import { z } from 'zod';
 import type { LibraryDatabase } from '@/main/database';
-import type { GenerationService } from '@/main/generation-service';
-import { readDictionaryImport } from '@/main/dictionary-import';
+import type { GenerationService } from '@/main/generation/service';
+import { TermIllustrationService } from '@/main/dictionary/term-illustration-service';
+import { readDictionaryImport } from '@/main/dictionary/dictionary-import';
 import type { IpcHandlerRegistrar } from '@/main/ipc/trusted-handlers';
+import { dictionarySaveDraftSchema } from '@/main/ipc/schemas/creation-generation-schemas';
+import {
+  termIllustrationAdoptInputSchema,
+  termIllustrationDismissInputSchema,
+  termIllustrationListInputSchema,
+  termIllustrationStartInputSchema,
+} from '@/shared/contracts/term-illustration';
 
 interface DictionaryFileSelection {
   canceled: boolean;
@@ -47,7 +55,11 @@ const newTermSchema = z
   .refine((value) => Boolean(value.title.trim()), {
     message: 'Title is required',
   });
-const addTermMediaSchema = z.object({ termId: id, assetIds: z.array(id).min(1).max(50) });
+const addTermMediaSchema = z.object({
+  termId: id,
+  assetIds: z.array(id).min(1).max(50),
+  preferredRole: z.enum(['COVER', 'RELATED']).optional(),
+});
 const reorderTermMediaSchema = z.object({ termId: id, mediaIds: z.array(id).max(100) });
 const classificationNamesSchema = {
   name: z.string().trim().min(1).max(160),
@@ -164,8 +176,19 @@ export function registerDictionaryIpc(
   ipcMain: IpcHandlerRegistrar,
   database: LibraryDatabase,
   chooseDictionaryFile: () => Promise<DictionaryFileSelection>,
-  backgroundTasks?: Pick<GenerationService, 'stageDictionaryImport' | 'commitDictionaryImport'>,
+  backgroundTasks?: Pick<GenerationService, 'stageDictionaryImport' | 'commitDictionaryImport'> &
+    Partial<Pick<GenerationService, 'imageGenerationRoutes' | 'startBatch' | 'cancel'>>,
 ) {
+  const termIllustrationService = () => {
+    if (!backgroundTasks?.imageGenerationRoutes || !backgroundTasks.startBatch || !backgroundTasks.cancel) {
+      throw new Error('Image generation service is unavailable');
+    }
+    return new TermIllustrationService(database, {
+      imageGenerationRoutes: backgroundTasks.imageGenerationRoutes,
+      startBatch: (input) => backgroundTasks.startBatch!(input),
+      cancel: (runId) => backgroundTasks.cancel!(runId),
+    });
+  };
   ipcMain.handle('dictionary:search', (_event, raw) => {
     const input = searchSchema.parse(raw);
     return database.searchTerms(input.locale, input.query, input.facetValueIds, input);
@@ -178,6 +201,10 @@ export function registerDictionaryIpc(
     database.getTerm(id.parse(rawId), localeSchema.parse(rawLocale)),
   );
   ipcMain.handle('dictionary:create', (_event, raw) => database.createTerm(newTermSchema.parse(raw)));
+  ipcMain.handle('dictionary:save-draft', (_event, raw) => {
+    const input = dictionarySaveDraftSchema.parse(raw);
+    return database.saveTermDraft(input.draft, input.locale);
+  });
   ipcMain.handle('dictionary:approve', (_event, rawId, rawLocale) =>
     database.approveTerm(id.parse(rawId), localeSchema.parse(rawLocale)),
   );
@@ -192,6 +219,18 @@ export function registerDictionaryIpc(
   ipcMain.handle('dictionary:remove-media', (_event, rawId) => database.removeTermMedia(id.parse(rawId)));
   ipcMain.handle('dictionary:reorder-media', (_event, raw) =>
     database.reorderTermMedia(reorderTermMediaSchema.parse(raw)),
+  );
+  ipcMain.handle('term-illustrations:list', (_event, raw) =>
+    database.listTermIllustrations(termIllustrationListInputSchema.parse(raw)),
+  );
+  ipcMain.handle('term-illustrations:start', (_event, raw) =>
+    termIllustrationService().start(termIllustrationStartInputSchema.parse(raw)),
+  );
+  ipcMain.handle('term-illustrations:adopt', (_event, raw) =>
+    database.adoptTermIllustration(termIllustrationAdoptInputSchema.parse(raw)),
+  );
+  ipcMain.handle('term-illustrations:dismiss', (_event, raw) =>
+    database.dismissTermIllustration(termIllustrationDismissInputSchema.parse(raw).batchRunId),
   );
   ipcMain.handle('dictionary-classifications:tree', (_event, rawLocale) =>
     database.listDictionaryClassifications(localeSchema.parse(rawLocale)),

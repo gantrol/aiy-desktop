@@ -9,7 +9,11 @@ export function FullWindowComparison({ expanded, className, children, ...props }
   return (
     <section
       data-full-window-comparison={expanded ? 'true' : 'false'}
-      className={cn('flex min-h-0 flex-1 flex-col bg-background', expanded && 'size-full', className)}
+      className={cn(
+        'flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden bg-background',
+        expanded && 'size-full',
+        className,
+      )}
       {...props}
     >
       {children}

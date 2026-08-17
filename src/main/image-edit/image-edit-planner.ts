@@ -7,7 +7,7 @@ import type {
   PromptCommonInputDto,
 } from '@/shared/contracts';
 import type { LibraryDatabase } from '@/main/database';
-import type { PersistedImageEditMode } from '@/main/database/image-edit-repository';
+import type { PersistedImageEditMode } from '@/main/database/generation/image-edit-repository';
 
 const MAX_EDIT_REFERENCES = 8;
 const ORIGINAL_PROMPT_BUDGET = 8_000;
@@ -69,13 +69,16 @@ export function buildImageEditPrompt(
   originalPrompt: string,
   annotations: readonly AnnotationDto[],
   mode: PersistedImageEditMode,
+  hasVisibleGuide = false,
 ) {
   const edits = annotationPayload(annotations);
   const originalVisualBrief = originalPrompt.trim().slice(0, ORIGINAL_PROMPT_BUDGET);
   const targeting =
     mode === 'MASK'
       ? `A separate alpha mask defines the editable union of these regions. Use the comments to decide what to change inside that mask. Treat the mask as the primary edit boundary and preserve opaque regions as closely as the model permits; the coordinates are audit context.`
-      : `Coordinates and brush paths are semantic guidance, not a hard pixel boundary. Use the visual content around them to resolve each intended subject precisely.`;
+      : hasVisibleGuide
+        ? `A separate visible localization guide at the same canvas size identifies the editable union: bright magenta pixels are the requested edit area and charcoal pixels are the preservation area. Match that guide to the first source image, apply the comments only to the corresponding source content, and use the coordinates as additional audit context.`
+        : `Coordinates and brush paths are semantic guidance, not a hard pixel boundary. Use the visual content around them to resolve each intended subject precisely.`;
   return `Edit the first attached image as the source image and return exactly one refined image.
 Apply every targeted edit below. ${targeting}
 Preserve the subject identity, composition, camera, lighting, palette, materials, typography, and all unmarked areas unless a requested edit necessarily requires a local adjustment. Do not add numbered markers, rectangles, brush overlays, labels, or other annotation graphics to the final image.
@@ -229,6 +232,7 @@ export function createImageEditGenerationPlan(
       creationDraftId: null,
       sourceAssetId: input.sourceAssetId,
       title: source.series.title,
+      titleLocale: input.locale,
       // Keep transport instructions out of the user-visible Prompt history.
       // The exact edit envelope is reconstructed from the frozen annotation
       // snapshot immediately before the model boundary.
@@ -281,6 +285,7 @@ ${originalPrompt}
     creationDraftId: null,
     sourceAssetId: input.sourceAssetId,
     title: source.series.title,
+    titleLocale: input.locale,
     manualPrompt: prompt,
     prompt,
     changeSummary:

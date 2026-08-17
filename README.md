@@ -7,7 +7,6 @@
     <a href="README.zh-CN.md"><img src="https://img.shields.io/badge/%E7%AE%80%E4%BD%93%E4%B8%AD%E6%96%87-README-9f1239?style=flat-square" alt="简体中文 README" /></a>
   </p>
 
-
   <p>
     <a href="https://github.com/gantrol/aiy-desktop/releases/latest"><img src="https://img.shields.io/github/v/release/gantrol/aiy-desktop?display_name=tag&amp;style=flat-square&amp;label=release" alt="Latest release" /></a>
     <img src="https://img.shields.io/badge/platform-Windows%20x64%20%7C%20macOS%20Apple%20Silicon-4b5563?style=flat-square" alt="Windows x64 and Apple Silicon Mac" />

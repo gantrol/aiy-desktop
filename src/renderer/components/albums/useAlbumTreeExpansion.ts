@@ -1,4 +1,4 @@
-import { useRef, useState, type RefObject } from 'react';
+import { useCallback, useMemo, useRef, useState, type RefObject } from 'react';
 import { hasAlbumTreeVerticalTravel, trackAlbumTreeRetreat } from '@/renderer/components/albums/albumTreeInteraction';
 
 const branchRevealDelayMs = 340;
@@ -59,13 +59,13 @@ export function useAlbumTreeExpansion(viewportRef: RefObject<HTMLDivElement | nu
   const pointerYByAlbum = useRef(new Map<string, number>());
   const retreatByAlbum = useRef(new Map<string, RetreatOrigin>());
 
-  function updatePersistent(updater: (current: Set<string>) => Set<string>) {
+  const updatePersistent = useCallback((updater: (current: Set<string>) => Set<string>) => {
     setPersistentIds((current) => {
       const next = updater(current);
       persistentIdsRef.current = next;
       return next;
     });
-  }
+  }, []);
 
   function clearHoverMany(albumIds: ReadonlySet<string>) {
     for (const albumId of albumIds) retreatByAlbum.current.delete(albumId);
@@ -76,36 +76,45 @@ export function useAlbumTreeExpansion(viewportRef: RefObject<HTMLDivElement | nu
     setHoverIds(next);
   }
 
-  function collapse(albumId: string) {
-    // A pull-down-opened branch is owned by its gesture until upward retreat.
-    if (hoverIdsRef.current.has(albumId)) return;
-    updatePersistent((current) => {
-      if (!current.has(albumId)) return current;
-      const next = new Set(current);
-      next.delete(albumId);
-      return next;
-    });
-  }
+  const collapse = useCallback(
+    (albumId: string) => {
+      // A pull-down-opened branch is owned by its gesture until upward retreat.
+      if (hoverIdsRef.current.has(albumId)) return;
+      updatePersistent((current) => {
+        if (!current.has(albumId)) return current;
+        const next = new Set(current);
+        next.delete(albumId);
+        return next;
+      });
+    },
+    [updatePersistent],
+  );
 
-  function setPersistent(albumId: string, open: boolean) {
-    // Radix disclosure changes and row clicks must not release a gesture latch.
-    if (hoverIdsRef.current.has(albumId)) return;
-    if (!open) {
-      collapse(albumId);
-      return;
-    }
-    updatePersistent((current) => {
-      if (current.has(albumId)) return current;
-      const next = new Set(current);
-      next.add(albumId);
-      return next;
-    });
-    revealBranch(viewportRef.current, albumId);
-  }
+  const setPersistent = useCallback(
+    (albumId: string, open: boolean) => {
+      // Radix disclosure changes and row clicks must not release a gesture latch.
+      if (hoverIdsRef.current.has(albumId)) return;
+      if (!open) {
+        collapse(albumId);
+        return;
+      }
+      updatePersistent((current) => {
+        if (current.has(albumId)) return current;
+        const next = new Set(current);
+        next.add(albumId);
+        return next;
+      });
+      revealBranch(viewportRef.current, albumId);
+    },
+    [collapse, updatePersistent, viewportRef],
+  );
 
-  function togglePersistent(albumId: string) {
-    setPersistent(albumId, !persistentIdsRef.current.has(albumId));
-  }
+  const togglePersistent = useCallback(
+    (albumId: string) => {
+      setPersistent(albumId, !persistentIdsRef.current.has(albumId));
+    },
+    [setPersistent],
+  );
 
   function setHover(albumId: string, open: boolean) {
     // Gesture-open state may only be cleared by samplePointer's upward retreat.
@@ -171,10 +180,13 @@ export function useAlbumTreeExpansion(viewportRef: RefObject<HTMLDivElement | nu
     return samplePointer(albumId, clientY, 'move');
   }
 
+  const openIds = useMemo(() => new Set([...persistentIds, ...hoverIds]), [hoverIds, persistentIds]);
+
   return {
     beginPointerTrack,
     collapse,
-    isOpen: (albumId: string) => persistentIds.has(albumId) || hoverIds.has(albumId),
+    isOpen: (albumId: string) => openIds.has(albumId),
+    openIds,
     setHover,
     setPersistent,
     togglePersistent,

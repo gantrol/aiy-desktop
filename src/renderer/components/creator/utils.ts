@@ -15,6 +15,10 @@ import type {
   WordPaletteReferenceInput,
   WordPaletteRevisionDto,
 } from '@/shared/contracts';
+import {
+  DEFAULT_IMAGE_PROMPT_PROFILE_ID,
+  imageGenerationPromptProfileId,
+} from '@/shared/image-generation-prompt-profile';
 import { resolveTermExpression, resolveTermTitle } from '@/shared/term-localization';
 import {
   resolveLocalizedName,
@@ -73,6 +77,7 @@ export interface CreatorRecipeSource {
 }
 
 export interface CreatorPromptResolution {
+  promptProfileId: string;
   composition: ResolvedPromptComposition;
   livePrompt: string;
   negativePrompt: string;
@@ -107,6 +112,8 @@ export interface ResolveCreatorPromptInput {
   selectedTerms: TermListItem[];
   appliedPalettes: AppliedWordPalette[];
   termPromptLocale?: Locale;
+  promptProfileId?: string;
+  /** @deprecated Pass promptProfileId; this was never an executable route key. */
   modelKey?: string;
 }
 
@@ -501,9 +508,13 @@ export function resolveCreatorPrompt({
   selectedTerms,
   appliedPalettes,
   termPromptLocale = 'en',
-  modelKey = 'gpt-image-2',
+  promptProfileId,
+  modelKey,
 }: ResolveCreatorPromptInput): CreatorPromptResolution {
-  const recipes = appliedPalettes.map((reference) => recipeInput(reference, modelKey));
+  const effectivePromptProfileId =
+    promptProfileId?.trim() ||
+    imageGenerationPromptProfileId(modelKey ? { key: modelKey, modelId: modelKey } : undefined);
+  const recipes = appliedPalettes.map((reference) => recipeInput(reference, effectivePromptProfileId));
   const promptLocaleByTermId = new Map(
     (promptNodes ?? []).flatMap((node) =>
       node.kind === 'TERM' && node.promptLocale ? [[node.termId, node.promptLocale] as const] : [],
@@ -515,7 +526,7 @@ export function resolveCreatorPrompt({
   const composition = resolvePromptComposition({
     userInstruction: manualPrompt,
     directTerms: selectedTerms.flatMap(
-      (term) => promptTerm(term, modelKey, promptLocaleByTermId.get(term.id) ?? termPromptLocale) ?? [],
+      (term) => promptTerm(term, effectivePromptProfileId, promptLocaleByTermId.get(term.id) ?? termPromptLocale) ?? [],
     ),
     recipes,
     ...(promptNodes
@@ -553,6 +564,7 @@ export function resolveCreatorPrompt({
     ];
   });
   return {
+    promptProfileId: effectivePromptProfileId,
     composition,
     livePrompt: composition.commonExpression,
     negativePrompt: composition.negativeExpression,
@@ -569,8 +581,9 @@ export function creatorAssistantTermInput(
   term: TermListItem,
   resolved: ResolvedPromptTerm | undefined,
   locale: Locale,
+  promptProfileId = DEFAULT_IMAGE_PROMPT_PROFILE_ID,
 ): CodexAssistTermInput {
-  const fallbackExpression = resolveTermExpression(term, 'gpt-image-2', locale) ?? term.modelExpressions[0];
+  const fallbackExpression = resolveTermExpression(term, promptProfileId, locale) ?? term.modelExpressions[0];
   return {
     stableId: term.id,
     revisionId: term.termRevisionId,
@@ -602,6 +615,7 @@ export function buildCreatorAssistContext(
       term,
       resolution.effectiveTerms.find((item) => item.term.id === term.id && item.directSource)?.resolved,
       locale,
+      resolution.promptProfileId,
     ),
   );
   const recipes = resolution.recipeSources.map(({ useId, reference }) => {
@@ -660,6 +674,7 @@ export function buildCreatorAssistContext(
           resolution.effectiveTerms.find((item) => item.term.id === term.id && item.recipeUseIds.includes(useId))
             ?.resolved,
           locale,
+          resolution.promptProfileId,
         ),
       ),
     };

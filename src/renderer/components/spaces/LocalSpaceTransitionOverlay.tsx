@@ -11,12 +11,18 @@ import {
   SlidersHorizontalIcon,
   type LucideIcon,
 } from 'lucide-react';
-import type { LocalSpaceTransitionEvent, LocalSpaceTransitionStage } from '@/shared/contracts';
+import type { CSSProperties } from 'react';
+import type { LocalSpaceTransitionEvent, LocalSpaceTransitionStage, TransitionPreviewDto } from '@/shared/contracts';
+import { type TransitionSceneMediaState, type TransitionSceneMotion } from '@/renderer/components/app/AppLoadingState';
+import { TransitionPreviewMedia, clampTransitionPreviewAspect } from '@/renderer/components/app/TransitionPreviewMedia';
 import { useI18n } from '@/renderer/i18n/useI18n';
 import { cn } from '@/renderer/lib/utils';
 
 interface Props {
   transition: LocalSpaceTransitionEvent;
+  motion?: TransitionSceneMotion;
+  mediaState?: TransitionSceneMediaState;
+  previewOnly?: boolean;
 }
 
 const stageIcons: Record<LocalSpaceTransitionStage, LucideIcon> = {
@@ -33,40 +39,82 @@ const stageIcons: Record<LocalSpaceTransitionStage, LucideIcon> = {
 
 const previewSlots = [
   {
-    fan: 'left-[3%] top-[34%] rotate-[-13deg]',
-    settled: 'left-[1%] top-[12%] rotate-[-2deg]',
-    revealAt: 72,
+    fanY: '5.25rem',
+    fanRotate: '-13deg',
+    settledRotate: '-2deg',
+    revealAt: 32,
   },
   {
-    fan: 'left-[16%] top-[18%] rotate-[-8deg]',
-    settled: 'left-[17.5%] top-[12%] rotate-[-1deg]',
-    revealAt: 55,
+    fanY: '2.5rem',
+    fanRotate: '-8deg',
+    settledRotate: '-1deg',
+    revealAt: 16,
   },
   {
-    fan: 'left-[30%] top-[7%] rotate-[-3deg]',
-    settled: 'left-[34%] top-[12%] rotate-0',
-    revealAt: 20,
+    fanY: '0rem',
+    fanRotate: '-3deg',
+    settledRotate: '0deg',
+    revealAt: 0,
   },
   {
-    fan: 'left-[55%] top-[7%] rotate-[3deg]',
-    settled: 'left-[50.5%] top-[12%] rotate-0',
-    revealAt: 20,
+    fanY: '0rem',
+    fanRotate: '3deg',
+    settledRotate: '0deg',
+    revealAt: 0,
   },
   {
-    fan: 'left-[69%] top-[18%] rotate-[8deg]',
-    settled: 'left-[67%] top-[12%] rotate-[1deg]',
-    revealAt: 55,
+    fanY: '2.5rem',
+    fanRotate: '8deg',
+    settledRotate: '1deg',
+    revealAt: 16,
   },
   {
-    fan: 'left-[82%] top-[34%] rotate-[13deg]',
-    settled: 'left-[83%] top-[12%] rotate-[2deg]',
-    revealAt: 72,
+    fanY: '5.25rem',
+    fanRotate: '13deg',
+    settledRotate: '2deg',
+    revealAt: 32,
   },
 ] as const;
 
 const settledStages = new Set<LocalSpaceTransitionStage>(['ACTIVATING', 'LOADING_INTERFACE', 'READY']);
 
-export function LocalSpaceTransitionOverlay({ transition }: Props) {
+type TransitionPreviewStyle = CSSProperties & Record<`--${string}`, string | number>;
+
+function previewFrameWidth(aspect: number) {
+  return Math.min(6.5, Math.max(4.25, aspect * 8.25));
+}
+
+function LocalSpaceTransitionPreviewMedia({
+  preview,
+  mediaState,
+}: {
+  preview: TransitionPreviewDto | null;
+  mediaState: TransitionSceneMediaState;
+}) {
+  return (
+    <TransitionPreviewMedia
+      preview={preview}
+      requested
+      mediaState={mediaState}
+      className="local-space-transition-preview-media"
+      placeholder={
+        <span
+          data-transition-preview-placeholder
+          className="absolute inset-0 z-0 grid place-items-center bg-surface-sunken text-muted-foreground"
+        >
+          <ImageIcon className="size-5" />
+        </span>
+      }
+    />
+  );
+}
+
+export function LocalSpaceTransitionOverlay({
+  transition,
+  motion = {},
+  mediaState = 'ready',
+  previewOnly = false,
+}: Props) {
   const { messages } = useI18n();
   const copy = messages.space.transition;
   const labels: Record<LocalSpaceTransitionStage, string> = {
@@ -86,59 +134,77 @@ export function LocalSpaceTransitionOverlay({ transition }: Props) {
   const failed = transition.stage === 'FAILED';
   const settled = settledStages.has(transition.stage);
   const fullColor = transition.progress >= 82 || ready;
+  const speedMultiplier = Math.max(0.25, motion.speedMultiplier ?? 1);
 
   return (
     <div
       data-local-space-transition
       data-stage={transition.stage}
       data-progress={transition.progress}
+      data-motion-paused={motion.paused ? 'true' : undefined}
+      data-reduced-motion={motion.reduced ? 'true' : undefined}
       className={cn(
         'local-space-transition absolute inset-0 z-50 grid place-items-center overflow-hidden bg-background transition-opacity duration-base',
-        ready && 'pointer-events-none opacity-0',
+        ready && !previewOnly && 'pointer-events-none opacity-0',
       )}
-      role="status"
-      aria-live="polite"
-      aria-label={`${transition.space.name}: ${stageLabel}`}
+      style={
+        {
+          '--space-transition-card-duration': `${320 / speedMultiplier}ms`,
+          '--space-transition-stage-duration': `${160 / speedMultiplier}ms`,
+          '--space-transition-logo-duration': `${1.8 / speedMultiplier}s`,
+        } as TransitionPreviewStyle
+      }
+      role={previewOnly ? undefined : 'status'}
+      aria-live={previewOnly ? undefined : 'polite'}
+      aria-label={previewOnly ? undefined : `${transition.space.name}: ${stageLabel}`}
     >
       <div className="pointer-events-none absolute inset-0 grid place-items-center" aria-hidden="true">
         <div className="size-[30rem] rounded-full bg-selected opacity-60 blur-3xl" />
       </div>
 
-      <div className="local-space-transition-card relative flex w-[min(44rem,calc(100%-3rem))] flex-col items-center">
+      <div
+        key={motion.replayKey ?? 0}
+        className="local-space-transition-card relative flex w-[min(44rem,calc(100%-3rem))] flex-col items-center"
+      >
         <div
           className="relative h-72 w-full"
-          data-local-space-preview-count={transition.previewUrls.length}
+          data-local-space-preview-count={transition.previews.length}
           aria-hidden="true"
         >
           {previewSlots.map((slot, index) => {
-            const previewUrl =
-              transition.previewUrls.length > 0 ? transition.previewUrls[index % transition.previewUrls.length] : null;
+            const preview = transition.previews[index] ?? null;
+            const aspect = preview ? clampTransitionPreviewAspect(preview.width, preview.height) : 0.75;
             const revealed = transition.progress >= slot.revealAt || ready || failed;
             return (
               <div
-                key={`${previewUrl ?? 'placeholder'}-${index}`}
-                data-space-preview={previewUrl ? 'image' : 'placeholder'}
-                className={cn(
-                  'absolute z-10 aspect-[3/4] w-[15%] min-w-[4.75rem] max-w-[6.5rem] origin-bottom overflow-hidden rounded-xl border bg-surface shadow-overlay transition-[left,top,opacity,transform,filter] duration-overlay ease-enter',
-                  settled ? slot.settled : slot.fan,
-                  revealed ? 'scale-100 opacity-100 blur-0' : 'scale-75 opacity-0 blur-sm',
-                  fullColor ? 'saturate-100' : 'saturate-50',
-                )}
-                style={{ transitionDelay: `${index * 35}ms` }}
+                key={`${preview ? `${preview.url}-${preview.detailUrl ?? preview.url}` : 'placeholder'}-${index}`}
+                className="local-space-transition-preview-anchor absolute top-1 grid h-40 place-items-start"
+                style={{ left: `${index * (100 / previewSlots.length)}%`, width: `${100 / previewSlots.length}%` }}
               >
-                {previewUrl ? (
-                  <img
-                    className="size-full bg-surface-sunken object-contain"
-                    src={previewUrl}
-                    alt=""
-                    draggable={false}
-                  />
-                ) : (
-                  <div className="grid size-full place-items-center bg-surface-sunken text-muted-foreground">
-                    <ImageIcon className="size-5" />
-                  </div>
-                )}
-                <span className="absolute inset-x-0 bottom-0 h-1/3 bg-gradient-to-t from-background/30 to-transparent" />
+                <div
+                  data-space-preview={preview ? (mediaState === 'ready' ? 'image' : mediaState) : 'placeholder'}
+                  data-preview-aspect={aspect}
+                  className={cn(
+                    'local-space-transition-preview relative z-10 max-w-[calc(100%-.25rem)] origin-bottom overflow-hidden rounded-xl border bg-surface shadow-overlay',
+                    revealed ? 'opacity-100 blur-0' : 'opacity-0 blur-sm',
+                    fullColor ? 'saturate-100' : 'saturate-50',
+                  )}
+                  style={
+                    {
+                      '--preview-aspect': aspect,
+                      '--preview-fan-y': slot.fanY,
+                      '--preview-fan-rotation': slot.fanRotate,
+                      '--preview-settled-rotation': slot.settledRotate,
+                      '--preview-scale': revealed ? 1 : 0.75,
+                      '--preview-transition-delay': `${index * 35}ms`,
+                      width: `${previewFrameWidth(aspect)}rem`,
+                    } as TransitionPreviewStyle
+                  }
+                  data-settled={settled ? 'true' : undefined}
+                >
+                  <LocalSpaceTransitionPreviewMedia preview={preview} mediaState={mediaState} />
+                  <span className="absolute inset-x-0 bottom-0 z-[3] h-1/3 bg-gradient-to-t from-background/30 to-transparent" />
+                </div>
               </div>
             );
           })}
@@ -157,7 +223,7 @@ export function LocalSpaceTransitionOverlay({ transition }: Props) {
                 {transition.space.coverUrl && (
                   <img
                     key={transition.space.coverUrl}
-                    className="absolute inset-0 size-full object-contain"
+                    className="absolute inset-0 size-full object-cover"
                     src={transition.space.coverUrl}
                     alt=""
                     draggable={false}

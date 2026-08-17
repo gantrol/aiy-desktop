@@ -6,13 +6,15 @@ import type { SecretProtector } from '@/main/extensions/secure-credentials';
 import { secretHint, validateApiSecret } from '@/main/extensions/secure-credentials';
 import {
   externalImageApiConfiguration,
+  externalImageApiConnectionSettings,
+  externalImageApiModelId,
   externalImageApiEndpointPermission,
   externalImageApiSettingsWithDefaults,
   normalizeExternalImageApiSettings,
   resolveExternalImageApiEndpoint,
 } from '@/main/extensions/external-image-api/endpoints';
 import type { ExternalImageApiRuntimeConfiguration } from '@/main/extensions/external-image-api/types';
-import { decodeProviderResponseJson } from '@/main/provider-response';
+import { decodeProviderResponseJson } from '@/main/providers/provider-response';
 import type {
   ExternalImageApiConnectionDto,
   ExternalImageApiConnectionStatus,
@@ -23,6 +25,8 @@ import {
   EXTERNAL_IMAGE_API_EXTENSION_IDS,
   GOOGLE_GEMINI_IMAGE_API_EXTENSION_ID,
   VOLCENGINE_ARK_IMAGE_API_EXTENSION_ID,
+  externalImageConnectionId,
+  externalImageProviderId,
   type ExternalImageApiExtensionId,
 } from '@/shared/extension-ids';
 
@@ -61,26 +65,36 @@ function requireExtensionId(value: string): ExternalImageApiExtensionId {
 }
 
 function notConfigured(extensionId: ExternalImageApiExtensionId): ExternalImageApiConnectionDto {
+  const settings = externalImageApiSettingsWithDefaults(extensionId, {});
   return {
     extensionId,
+    connectionId: externalImageConnectionId(extensionId),
+    providerId: externalImageProviderId(extensionId),
+    modelId: externalImageApiModelId(extensionId, settings),
     configured: false,
     status: 'NOT_CONFIGURED',
     message: 'API credentials are not configured',
     apiKeyHint: null,
-    settings: externalImageApiSettingsWithDefaults(extensionId, {}),
+    connectionSettings: externalImageApiConnectionSettings(extensionId, settings),
+    settings,
     updatedAt: null,
     lastVerifiedAt: null,
   };
 }
 
 function toDto(record: PersistedConnection): ExternalImageApiConnectionDto {
+  const settings = externalImageApiSettingsWithDefaults(record.extensionId, record.settings);
   return {
     extensionId: record.extensionId,
+    connectionId: externalImageConnectionId(record.extensionId),
+    providerId: externalImageProviderId(record.extensionId),
+    modelId: externalImageApiModelId(record.extensionId, settings),
     configured: true,
     status: record.connectionStatus,
     message: record.connectionMessage,
     apiKeyHint: record.apiKeyHint,
-    settings: externalImageApiSettingsWithDefaults(record.extensionId, record.settings),
+    connectionSettings: externalImageApiConnectionSettings(record.extensionId, settings),
+    settings,
     updatedAt: record.updatedAt,
     lastVerifiedAt: record.lastVerifiedAt,
   };
@@ -194,7 +208,12 @@ export class ExternalImageApiConnections {
           })();
     const timestamp = new Date().toISOString();
     const settings = normalizeExternalImageApiSettings(extensionId, input.settings);
-    const connectionChanged = replacesApiKey || !sameSettings(existing?.settings, settings);
+    const connectionChanged =
+      replacesApiKey ||
+      !sameSettings(
+        existing ? externalImageApiConnectionSettings(extensionId, existing.settings) : undefined,
+        externalImageApiConnectionSettings(extensionId, settings),
+      );
     const record: PersistedConnection = {
       schemaVersion: 1,
       extensionId,
@@ -207,11 +226,11 @@ export class ExternalImageApiConnections {
           ? existing.connectionMessage
           : 'Credentials saved; connection has not been verified',
       updatedAt: timestamp,
-      lastVerifiedAt: existing?.lastVerifiedAt ?? null,
+      lastVerifiedAt: connectionChanged ? null : (existing?.lastVerifiedAt ?? null),
     };
     const revision = this.nextMutationRevision(extensionId);
     this.writeRecord(record);
-    return this.testRecord(record, apiKey, true, revision);
+    return this.testRecord(record, apiKey, connectionChanged, revision);
   }
 
   async test(rawExtensionId: string) {
@@ -270,7 +289,7 @@ export class ExternalImageApiConnections {
   private async testRecord(
     record: PersistedConnection,
     apiKey: string,
-    configurationWasSaved: boolean,
+    connectionWasChanged: boolean,
     revision: number,
   ) {
     const resolved = resolveExternalImageApiEndpoint(record.extensionId, record.settings);
@@ -279,7 +298,7 @@ export class ExternalImageApiConnections {
       record.extensionId !== GOOGLE_GEMINI_IMAGE_API_EXTENSION_ID ||
       !configuration.connectionCheckPresetIds.includes(resolved.endpointPresetId)
     ) {
-      if (!configurationWasSaved) return toDto(record);
+      if (!connectionWasChanged) return toDto(record);
       const next: PersistedConnection = {
         ...record,
         connectionStatus: 'UNVERIFIED',

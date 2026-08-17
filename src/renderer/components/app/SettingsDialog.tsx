@@ -5,6 +5,7 @@ import { Button } from '@/renderer/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/renderer/components/ui/dialog';
 import { Label } from '@/renderer/components/ui/label';
 import { Segmented, SegmentedItem } from '@/renderer/components/ui/segmented';
+import { AppUpdateSection } from '@/renderer/features/app-update/AppUpdateSection';
 
 interface Props {
   promptLocale: Locale | null;
@@ -74,6 +75,7 @@ export function SettingsDialog({
               <ArrowRightIcon className="size-4" />
             </Button>
           </div>
+          <AppUpdateSection active={open} />
         </div>
       </DialogContent>
     </Dialog>

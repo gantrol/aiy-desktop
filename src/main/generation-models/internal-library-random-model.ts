@@ -1,6 +1,7 @@
 import type { GenerationInput, ImageGenerationRouteDto } from '@/shared/contracts';
 import type { LibraryDatabase } from '@/main/database';
 import type { GenerationStarted, ImageGenerationRoute } from '@/main/generation-models/types';
+import { DEFAULT_IMAGE_PROMPT_PROFILE_ID } from '@/shared/image-generation-prompt-profile';
 
 export const internalLibraryRandomModelKey = 'internal-library-random';
 
@@ -18,6 +19,16 @@ export class InternalLibraryRandomModel implements ImageGenerationRoute {
       provider: 'Internal',
       providerKey: 'internal',
       modelId: internalLibraryRandomModelKey,
+      executionIdentity: {
+        routeId: internalLibraryRandomModelKey,
+        providerId: 'internal',
+        connectionId: 'internal:library',
+        adapterId: 'internal:library-replay',
+        modelId: internalLibraryRandomModelKey,
+        canonicalModelFamilyId: null,
+        promptProfileId: DEFAULT_IMAGE_PROMPT_PROFILE_ID,
+        resourcePoolKey: 'internal:library',
+      },
       state: available ? 'READY' : 'UNAVAILABLE',
       availabilityReason: available ? null : 'NO_LIBRARY_IMAGES',
       releaseStage: 'INTERNAL',

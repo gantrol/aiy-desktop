@@ -1,12 +1,16 @@
 import type { GenerationInput, ImageGenerationRouteDto } from '@/shared/contracts';
 import {
   CODEX_APP_SERVER_IMAGE_MODEL_KEY,
+  CODEX_APP_SERVER_CONNECTION_ID,
   CODEX_APP_SERVER_PROVIDER_KEY,
+  CODEX_CLI_CONNECTION_ID,
   CODEX_CLI_IMAGE_MODEL_KEY,
   CODEX_CLI_PROVIDER_KEY,
   CODEX_IMAGE_MODEL_ID,
+  CODEX_PROVIDER_ID,
 } from '@/shared/extension-ids';
-import type { CodexAdapter, CodexImageExecutionMode } from '@/main/codex';
+import type { CodexAdapter, CodexImageExecutionMode } from '@/main/assistant/codex';
+import { DEFAULT_IMAGE_PROMPT_PROFILE_ID } from '@/shared/image-generation-prompt-profile';
 import type {
   GenerationExecutionObserver,
   GenerationStarted,
@@ -21,12 +25,24 @@ export class CodexImageModel implements ImageGenerationRoute {
 
   get descriptor(): ImageGenerationRouteDto {
     const appServer = this.executionMode === 'app-server';
+    const routeId = appServer ? CODEX_APP_SERVER_IMAGE_MODEL_KEY : CODEX_CLI_IMAGE_MODEL_KEY;
+    const connectionId = appServer ? CODEX_APP_SERVER_CONNECTION_ID : CODEX_CLI_CONNECTION_ID;
     return {
-      key: appServer ? CODEX_APP_SERVER_IMAGE_MODEL_KEY : CODEX_CLI_IMAGE_MODEL_KEY,
+      key: routeId,
       name: appServer ? 'Codex App Server' : 'Codex CLI',
       provider: 'Codex',
       providerKey: appServer ? CODEX_APP_SERVER_PROVIDER_KEY : CODEX_CLI_PROVIDER_KEY,
       modelId: CODEX_IMAGE_MODEL_ID,
+      executionIdentity: {
+        routeId,
+        providerId: CODEX_PROVIDER_ID,
+        connectionId,
+        adapterId: appServer ? 'codex-app-server-image' : 'codex-cli-image',
+        modelId: CODEX_IMAGE_MODEL_ID,
+        canonicalModelFamilyId: 'openai/gpt-image-2',
+        promptProfileId: DEFAULT_IMAGE_PROMPT_PROFILE_ID,
+        resourcePoolKey: connectionId,
+      },
       state: this.codex.cachedHealth.state === 'ready' ? 'READY' : 'UNAVAILABLE',
       availabilityReason: this.codex.cachedHealth.state === 'ready' ? null : 'CODEX_UNAVAILABLE',
       releaseStage: 'STABLE',

@@ -1,3 +1,4 @@
+import { isDeepStrictEqual } from 'node:util';
 import { z } from 'zod';
 import type {
   CodexImageRefinementInput,
@@ -5,18 +6,27 @@ import type {
   GenerationBatchInput,
   GenerationInput,
   GenerationVersionInput,
+  ImageGenerationConcurrencyDto,
   ImageCropInput,
   ImageEditBatchStartInput,
   ImageEditStartInput,
   ImageReframeStartInput,
   StyleExplorationStartInput,
+  VideoDocumentArticleGenerateInput,
+  VideoDocumentTranscriptTranslationWorkerInput,
 } from '@/shared/contracts';
-import type { AssistantTitleExecution } from '@/main/assistant-service';
-import type { CodexChatJob, CodexTitleExecutionOptions } from '@/main/codex-service';
+import { videoDocumentArticleGenerateInputSchema } from '@/shared/contracts/video-document';
+import { videoDocumentTranscriptTranslationWorkerInputSchema } from '@/shared/contracts/video-document-translation';
+import type { AssistantTitleExecution } from '@/main/assistant/assistant-service';
+import type { CodexChatJob, CodexTitleExecutionOptions } from '@/main/assistant/codex-service';
 import type { DeepSeekApiRuntimeConfiguration } from '@/main/extensions/deepseek-api/types';
 import type { ExternalImageApiRuntimeConfiguration } from '@/main/extensions/external-image-api/types';
 import type { OpenAiImageApiRuntimeConfiguration } from '@/main/extensions/openai-image-api/types';
 import { EXTERNAL_IMAGE_API_EXTENSION_IDS } from '@/shared/extension-ids';
+import {
+  MAX_IMAGE_GENERATION_MAX_CONCURRENT,
+  MIN_IMAGE_GENERATION_MAX_CONCURRENT,
+} from '@/shared/image-generation-concurrency';
 import type { ModelWorkerMethod } from '@/main/model-worker/protocol';
 
 const identifier = z.string().min(1).max(200);
@@ -47,8 +57,10 @@ const generationBase = z
     seriesId: identifier.nullable(),
     creationDraftId: identifier.nullable().optional().default(null),
     baseVersionId: identifier.nullable().optional().default(null),
+    sourceImportId: identifier.nullable().optional().default(null),
     sourceAssetId: identifier.nullable().optional(),
     title: z.string().max(300),
+    titleLocale: locale,
     manualPrompt: z.string().max(30_000),
     prompt: z.string().min(1).max(30_000),
     changeSummary: z.string().max(1_000),
@@ -406,13 +418,66 @@ const chatRequest = assistInput
   });
 const codexChatJob = z
   .object({
+    processId: identifier.optional(),
     scope,
     request: chatRequest,
     input: assistInput,
     history: z.array(historyTurn).max(20),
     imagePaths: z.array(boundedPath).max(8),
   })
-  .strict();
+  .strict()
+  .superRefine((job, context) => {
+    if (!isDeepStrictEqual(job.scope, job.request.scope)) {
+      context.addIssue({
+        code: 'custom',
+        path: ['request', 'scope'],
+        message: 'Chat request scope does not match the worker job scope',
+      });
+    }
+
+    const { scope: _scope, attachmentAssetIds: _attachmentAssetIds, ...requestInput } = job.request;
+    if (!isDeepStrictEqual(job.input, requestInput)) {
+      context.addIssue({
+        code: 'custom',
+        path: ['input'],
+        message: 'Chat execution input does not match the persisted request',
+      });
+    }
+
+    const historyIds = new Set<string>();
+    for (const [index, turn] of job.history.entries()) {
+      if (!isDeepStrictEqual(turn.scope, job.scope)) {
+        context.addIssue({
+          code: 'custom',
+          path: ['history', index, 'scope'],
+          message: 'Chat history scope does not match the worker job scope',
+        });
+      }
+      if (turn.mode !== 'chat') {
+        context.addIssue({
+          code: 'custom',
+          path: ['history', index, 'mode'],
+          message: 'Chat history contains a non-chat turn',
+        });
+      }
+      if (historyIds.has(turn.id)) {
+        context.addIssue({
+          code: 'custom',
+          path: ['history', index, 'id'],
+          message: 'Chat history contains a duplicate turn',
+        });
+      }
+      historyIds.add(turn.id);
+    }
+
+    if (job.imagePaths.length !== job.request.attachmentAssetIds.length) {
+      context.addIssue({
+        code: 'custom',
+        path: ['imagePaths'],
+        message: 'Chat image paths do not match the persisted attachment list',
+      });
+    }
+  });
 
 const assistantTitleExecution = z
   .object({ providerKey: identifier, modelKey: identifier, reasoningEffort: reasoningEffort.nullable() })
@@ -454,6 +519,23 @@ const externalImageConfiguration = z
       context.addIssue({ code: 'custom', message: 'Provider settings contain too many entries', path: ['settings'] });
     }
   });
+const generationMaxConcurrent = z
+  .number()
+  .int()
+  .min(MIN_IMAGE_GENERATION_MAX_CONCURRENT)
+  .max(MAX_IMAGE_GENERATION_MAX_CONCURRENT);
+const generationConcurrencyConfiguration: z.ZodType<ImageGenerationConcurrencyDto> = z
+  .object({
+    defaultMaxConcurrent: generationMaxConcurrent,
+    limitsByModelKey: z.record(z.string().min(1).max(512), generationMaxConcurrent),
+    updatedAt: z.string().datetime().nullable(),
+  })
+  .strict()
+  .superRefine((value, context) => {
+    if (Object.keys(value.limitsByModelKey).length > 10_000) {
+      context.addIssue({ code: 'custom', message: 'Too many image-generation concurrency overrides' });
+    }
+  });
 
 export interface ModelWorkerMethodParams {
   snapshot: [];
@@ -473,8 +555,11 @@ export interface ModelWorkerMethodParams {
   'generation.start-version': [input: GenerationVersionInput];
   'generation.retry': [runId: string];
   'generation.cancel': [runId: string];
+  'generation.configure-concurrency': [configuration: ImageGenerationConcurrencyDto];
   'codex.refresh-health': [];
   'codex.list-models': [];
+  'video-document.article-generate': [input: VideoDocumentArticleGenerateInput];
+  'video-document.transcript-translate': [input: VideoDocumentTranscriptTranslationWorkerInput];
   'assistant.run': [runId: string];
   'assistant.suggest-titles': [input: CodexTitleInput, execution: AssistantTitleExecution];
   'codex.chat': [job: CodexChatJob];
@@ -507,11 +592,26 @@ const schemas = {
   'generation.start-style-exploration': z.tuple([styleExplorationInput]),
   'generation.cancel-style-exploration': z.tuple([identifier]),
   'generation.retry-style-exploration-slot': z.tuple([identifier]),
-  'generation.start-version': z.tuple([z.object({ versionId: identifier, modelKey: identifier }).strict()]),
+  'generation.start-version': z.tuple([
+    z
+      .object({
+        versionId: identifier,
+        modelKey: identifier,
+        canvasPresetKey: z.string().min(1).max(100).nullable(),
+        width: z.number().int().min(256).max(4_096).nullable(),
+        height: z.number().int().min(256).max(4_096).nullable(),
+        quality,
+      })
+      .strict()
+      .superRefine(validateCanvas),
+  ]),
   'generation.retry': z.tuple([identifier]),
   'generation.cancel': z.tuple([identifier]),
+  'generation.configure-concurrency': z.tuple([generationConcurrencyConfiguration]),
   'codex.refresh-health': empty,
   'codex.list-models': empty,
+  'video-document.article-generate': z.tuple([videoDocumentArticleGenerateInputSchema]),
+  'video-document.transcript-translate': z.tuple([videoDocumentTranscriptTranslationWorkerInputSchema]),
   'assistant.run': z.tuple([identifier]),
   'assistant.suggest-titles': z.tuple([titleInput, assistantTitleExecution]),
   'codex.chat': z.tuple([codexChatJob]),

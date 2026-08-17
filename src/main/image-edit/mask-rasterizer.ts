@@ -165,7 +165,45 @@ function encodeAlphaMask(editable: Uint8Array, width: number, height: number) {
   ]);
 }
 
-export function rasterizeImageEditMask(annotations: readonly AnnotationDto[], width: number, height: number) {
+function encodeVisibleGuide(editable: Uint8Array, width: number, height: number) {
+  const stride = width * 4;
+  const scanlines = Buffer.allocUnsafe((stride + 1) * height);
+  for (let y = 0; y < height; y += 1) {
+    const rowOffset = y * (stride + 1);
+    scanlines[rowOffset] = 0;
+    for (let x = 0; x < width; x += 1) {
+      const target = rowOffset + 1 + x * 4;
+      if (editable[y * width + x]) {
+        // Magenta stays visually distinct from portrait skin, shadows, and the
+        // monochrome preservation field when this guide is sent as an image.
+        scanlines[target] = 255;
+        scanlines[target + 1] = 0;
+        scanlines[target + 2] = 255;
+      } else {
+        scanlines[target] = 24;
+        scanlines[target + 1] = 24;
+        scanlines[target + 2] = 24;
+      }
+      scanlines[target + 3] = 255;
+    }
+  }
+  const header = Buffer.alloc(13);
+  header.writeUInt32BE(width, 0);
+  header.writeUInt32BE(height, 4);
+  header[8] = 8;
+  header[9] = 6;
+  header[10] = 0;
+  header[11] = 0;
+  header[12] = 0;
+  return Buffer.concat([
+    Buffer.from('89504e470d0a1a0a', 'hex'),
+    pngChunk('IHDR', header),
+    pngChunk('IDAT', deflateSync(scanlines, { level: 9 })),
+    pngChunk('IEND', Buffer.alloc(0)),
+  ]);
+}
+
+function rasterizeEditableRegions(annotations: readonly AnnotationDto[], width: number, height: number) {
   if (!Number.isInteger(width) || !Number.isInteger(height) || width <= 0 || height <= 0) {
     throw new Error('Image edit mask dimensions are invalid');
   }
@@ -180,5 +218,13 @@ export function rasterizeImageEditMask(annotations: readonly AnnotationDto[], wi
     }
   }
   if (!editable.some((value) => value === 1)) throw new Error('Image edit mask is empty');
-  return encodeAlphaMask(editable, width, height);
+  return editable;
+}
+
+export function rasterizeImageEditMask(annotations: readonly AnnotationDto[], width: number, height: number) {
+  return encodeAlphaMask(rasterizeEditableRegions(annotations, width, height), width, height);
+}
+
+export function rasterizeImageEditGuide(annotations: readonly AnnotationDto[], width: number, height: number) {
+  return encodeVisibleGuide(rasterizeEditableRegions(annotations, width, height), width, height);
 }

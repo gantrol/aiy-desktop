@@ -1,6 +1,6 @@
 import { nativeImage } from 'electron';
 import { readFile, stat } from 'node:fs/promises';
-import { imageDimensions } from '@/main/image-dimensions';
+import { imageDimensions } from '@/main/media/image-dimensions';
 import { validateProviderImage, type SupportedImageMimeType } from '@/main/generation-models/adapters/provider-media';
 
 const MAX_COVER_BYTES = 25 * 1024 * 1024;

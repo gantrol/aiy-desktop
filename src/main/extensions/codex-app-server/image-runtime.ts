@@ -13,13 +13,13 @@ export function codexImageReferenceAssetIds(input: Pick<GenerationInput, 'refere
 
 export function buildCodexAppServerImageTurnInput(
   input: Pick<GenerationInput, 'prompt' | 'width' | 'height' | 'sourceAssetId'>,
-  hasLocalizationMask = false,
+  hasLocalizationGuide = false,
 ) {
   const canvasLine =
     input.width !== null && input.height !== null ? `\n\nRequested output canvas: ${input.width}x${input.height}.` : '';
   const sourceLine = input.sourceAssetId
-    ? hasLocalizationMask
-      ? `\n\nThe first attached image is the edit source. The second attached image is an application-generated alpha localization mask at the same canvas size: transparent pixels identify the requested editable union and opaque white pixels identify areas to preserve. Treat it as spatial guidance even if the image tool has no native mask parameter. Images after the second, if any, are supporting references.`
+    ? hasLocalizationGuide
+      ? `\n\nThe first attached image is the edit source. The second attached image is an application-generated visible range guide at the same canvas size: bright magenta identifies the requested edit area and charcoal identifies the preservation area. Match it spatially to the source, apply edits only to the corresponding source content, and do not reproduce the guide colors. Images after the second, if any, are supporting references.`
       : '\n\nThe first attached image is the edit source. Remaining images, if any, are supporting references.'
     : '';
   return `${input.prompt.slice(0, 30_000)}${sourceLine}${canvasLine}`;

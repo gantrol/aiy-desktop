@@ -6,9 +6,16 @@ import { Input } from '@/renderer/components/ui/input';
 import { Popover, PopoverAnchor, PopoverContent } from '@/renderer/components/ui/popover';
 import { ScrollArea } from '@/renderer/components/ui/scroll-area';
 
+export interface ComboboxInputSuggestion {
+  value: string;
+  group?: string;
+  keywords?: readonly string[];
+}
+export type ComboboxInputSuggestionValue = string | ComboboxInputSuggestion;
+
 interface Props extends Omit<React.ComponentProps<'input'>, 'onChange' | 'value' | 'list'> {
   value: string;
-  suggestions: readonly string[];
+  suggestions: readonly ComboboxInputSuggestionValue[];
   openLabel: string;
   onValueChange(value: string): void;
 }
@@ -16,7 +23,7 @@ interface Props extends Omit<React.ComponentProps<'input'>, 'onChange' | 'value'
 /**
  * A text field that offers known values without closing the set: anything the
  * user types is a valid value. Use where the catalog is advisory rather than
- * authoritative, such as model and platform names.
+ * authoritative, such as model-family and source-service names.
  */
 export function ComboboxInput({ value, suggestions, openLabel, onValueChange, className, disabled, ...props }: Props) {
   const [open, setOpen] = React.useState(false);
@@ -27,19 +34,32 @@ export function ComboboxInput({ value, suggestions, openLabel, onValueChange, cl
 
   const matches = React.useMemo(() => {
     const seen = new Set<string>();
-    const entries = typing ? suggestions : [value, ...suggestions];
+    const normalizedSuggestions = suggestions.map((suggestion) =>
+      typeof suggestion === 'string' ? { value: suggestion } : suggestion,
+    );
+    const hasCurrentValue = normalizedSuggestions.some(
+      (suggestion) => suggestion.value.trim().toLocaleLowerCase() === value.trim().toLocaleLowerCase(),
+    );
+    const entries =
+      typing || !value.trim() || hasCurrentValue ? normalizedSuggestions : [{ value }, ...normalizedSuggestions];
     const unique = entries.flatMap((rawEntry) => {
-      const entry = rawEntry.trim();
-      const key = entry.toLocaleLowerCase();
-      if (!entry || seen.has(key)) return [];
+      const entry = { ...rawEntry, value: rawEntry.value.trim() };
+      const key = entry.value.toLocaleLowerCase();
+      if (!entry.value || seen.has(key)) return [];
       seen.add(key);
       return [entry];
     });
     const needle = value.trim().toLowerCase();
     if (!typing || !needle) return unique;
-    return unique.filter((entry) => entry.toLowerCase().includes(needle));
+    return unique.filter((entry) =>
+      [entry.value, ...(entry.keywords ?? [])].some((candidate) => candidate.toLocaleLowerCase().includes(needle)),
+    );
   }, [suggestions, typing, value]);
   const visible = open && matches.length > 0;
+  const groupHeaderCount = matches.reduce(
+    (count, entry, index) => count + (entry.group && entry.group !== matches[index - 1]?.group ? 1 : 0),
+    0,
+  );
 
   React.useEffect(() => {
     if (open && matches.length === 0) setOpen(false);
@@ -50,8 +70,8 @@ export function ComboboxInput({ value, suggestions, openLabel, onValueChange, cl
     document.getElementById(`${listboxId}-option-${activeIndex}`)?.scrollIntoView({ block: 'nearest' });
   }, [activeIndex, listboxId, visible]);
 
-  function choose(entry: string) {
-    onValueChange(entry);
+  function choose(entry: ComboboxInputSuggestion) {
+    onValueChange(entry.value);
     setTyping(false);
     setActiveIndex(-1);
     setOpen(false);
@@ -127,7 +147,7 @@ export function ComboboxInput({ value, suggestions, openLabel, onValueChange, cl
               }
               setTyping(false);
               setActiveIndex(() => {
-                const selectedIndex = matches.findIndex((entry) => entry === value);
+                const selectedIndex = matches.findIndex((entry) => entry.value === value);
                 return selectedIndex >= 0 ? selectedIndex : 0;
               });
               setOpen(true);
@@ -146,30 +166,44 @@ export function ComboboxInput({ value, suggestions, openLabel, onValueChange, cl
           type="always"
           className="[&_[data-slot=scroll-area-scrollbar]]:opacity-100 [&_[data-slot=scroll-area-viewport]]:overscroll-contain [&_[data-slot=scroll-area-viewport]>div]:!block"
           style={{
-            height: `min(${Math.min(matches.length * 32 + 8, 256)}px, var(--radix-popover-content-available-height))`,
+            height: `min(${Math.min(matches.length * 32 + groupHeaderCount * 24 + 8, 320)}px, var(--radix-popover-content-available-height))`,
           }}
         >
           <ul id={listboxId} role="listbox" aria-label={openLabel} className="p-1 pr-3">
-            {matches.map((entry, index) => (
-              <li key={entry}>
-                <button
-                  id={`${listboxId}-option-${index}`}
-                  type="button"
-                  role="option"
-                  aria-selected={entry === value}
-                  className={cn(
-                    'flex min-h-8 w-full items-center gap-2 rounded-sm px-2 py-1.5 text-left text-sm outline-none hover:bg-hover focus-visible:bg-hover',
-                    index === activeIndex && 'bg-hover',
-                    entry === value && 'bg-selected text-selected-foreground',
+            {matches.map((entry, index) => {
+              const selected = entry.value === value;
+              const startsGroup = entry.group && entry.group !== matches[index - 1]?.group;
+              return (
+                <React.Fragment key={entry.value.toLocaleLowerCase()}>
+                  {startsGroup && (
+                    <li
+                      role="presentation"
+                      className="px-2 pb-1 pt-2 text-[0.6875rem] font-medium text-muted-foreground"
+                    >
+                      {entry.group}
+                    </li>
                   )}
-                  onPointerMove={() => setActiveIndex(index)}
-                  onClick={() => choose(entry)}
-                >
-                  <CheckIcon className={cn('size-3.5 shrink-0', entry !== value && 'invisible')} />
-                  <span className="min-w-0 flex-1 truncate">{entry}</span>
-                </button>
-              </li>
-            ))}
+                  <li>
+                    <button
+                      id={`${listboxId}-option-${index}`}
+                      type="button"
+                      role="option"
+                      aria-selected={selected}
+                      className={cn(
+                        'flex min-h-8 w-full items-center gap-2 rounded-sm px-2 py-1.5 text-left text-sm outline-none hover:bg-hover focus-visible:bg-hover',
+                        index === activeIndex && 'bg-hover',
+                        selected && 'bg-selected text-selected-foreground',
+                      )}
+                      onPointerMove={() => setActiveIndex(index)}
+                      onClick={() => choose(entry)}
+                    >
+                      <CheckIcon className={cn('size-3.5 shrink-0', !selected && 'invisible')} />
+                      <span className="min-w-0 flex-1 truncate">{entry.value}</span>
+                    </button>
+                  </li>
+                </React.Fragment>
+              );
+            })}
           </ul>
         </ScrollArea>
       </PopoverContent>

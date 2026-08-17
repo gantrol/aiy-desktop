@@ -4,6 +4,7 @@ import type { ImageRatingDimension } from '@/shared/contracts';
 export type GalleryScope = 'ALL' | 'FAVORITE';
 export type GalleryRelationship = 'ANY' | 'CREATION' | 'DICTIONARY';
 export type GalleryContentType = 'IMAGE' | 'TEXT';
+// LIST remains the persisted compatibility token; the renderer now presents it as album stacks.
 export type GalleryViewMode = 'GRID' | 'LIST';
 
 export interface GalleryPreferences {

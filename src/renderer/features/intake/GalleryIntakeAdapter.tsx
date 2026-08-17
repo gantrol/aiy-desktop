@@ -30,7 +30,7 @@ export const GalleryIntakeAdapter = forwardRef<GalleryIntakeAdapterHandle, Props
   { active, children, materialAlbumId, creationAlbumId, series, onCommitted, onExternalCreationCommitted },
   ref,
 ) {
-  const { messages } = useI18n();
+  const { locale, messages } = useI18n();
   const controller = useIntakeController('GALLERY', (result) => void onCommitted(result), active);
   const { state } = controller;
   const reviewFocusRef = useRef<HTMLDivElement | null>(null);
@@ -94,8 +94,13 @@ export const GalleryIntakeAdapter = forwardRef<GalleryIntakeAdapterHandle, Props
     setExternalError('');
     try {
       const outputs = await imageImportItems(images.map((item) => item.file));
+      const itemSourceUrls = images.map((item) =>
+        (details[item.id]?.metadata.sourceUrl || item.sourceUrl || '').trim(),
+      );
       const sourceUrl =
-        images.map((item) => details[item.id]?.metadata.sourceUrl || item.sourceUrl).find(Boolean) ?? '';
+        itemSourceUrls.length > 0 && itemSourceUrls.every((value) => value && value === itemSourceUrls[0])
+          ? itemSourceUrls[0]
+          : '';
       const result = await window.desktopApi.creatorNewExternalCreationImport({
         intent: 'NEW_EXTERNAL_CREATION',
         sourceKind: 'EXTERNAL_IMPORT',
@@ -103,6 +108,7 @@ export const GalleryIntakeAdapter = forwardRef<GalleryIntakeAdapterHandle, Props
         // Material albums are filing destinations, not creation groups.
         albumId: creationAlbumId ?? null,
         title: '',
+        titleLocale: locale,
         prompt: { knowledge: 'UNKNOWN' },
         source: state.source,
         sourceUrl,
@@ -147,7 +153,7 @@ export const GalleryIntakeAdapter = forwardRef<GalleryIntakeAdapterHandle, Props
         label={messages.creator.workbench.importing}
       />
       <Dialog
-        open={state.items.length > 0 && !state.pendingIntent && !externalPending}
+        open={state.items.length > 0}
         onOpenChange={(open) => {
           if (!open && !reviewBusy) resetReview();
         }}

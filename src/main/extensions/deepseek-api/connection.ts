@@ -3,7 +3,7 @@ import { mkdirSync, readFileSync, renameSync, unlinkSync, writeFileSync } from '
 import path from 'node:path';
 import { z } from 'zod';
 import { DEEPSEEK_PROVIDER, type DeepSeekProviderDefinition } from '@/main/assistant-models/deepseek-provider';
-import { decodeProviderResponseJson } from '@/main/provider-response';
+import { decodeProviderResponseJson } from '@/main/providers/provider-response';
 import type { SecretProtector } from '@/main/extensions/secure-credentials';
 import { secretHint, validateApiSecret } from '@/main/extensions/secure-credentials';
 import type { DeepSeekApiRuntimeConfiguration } from '@/main/extensions/deepseek-api/types';

@@ -19,7 +19,7 @@ export function ComparisonModelPicker({ routes, selectedModelKeys, onSelectedMod
   return (
     <Popover modal>
       <PopoverTrigger asChild>
-        <Button type="button" variant="outline" size="sm" className="h-7 shrink-0 px-2" aria-label={labels.addModel}>
+        <Button type="button" variant="outline" size="sm" className="h-9 shrink-0 px-2" aria-label={labels.addModel}>
           <PlusIcon className="size-3.5" />
           {labels.addModel}
           {selectedCount > 0 && (

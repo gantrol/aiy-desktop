@@ -61,8 +61,17 @@ export interface AiCenterLocation {
   recordId: string | null;
 }
 
+export type VideoDocumentCollection = { kind: 'all' } | { kind: 'unfiled' } | { kind: 'album'; albumId: string };
+
+export interface VideoDocumentsLocation {
+  collection: VideoDocumentCollection;
+  documentId: string | null;
+}
+
 export type MaterialsReturnContext =
-  { destination: 'creator'; seriesId: string } | { destination: 'dictionary'; termId: string };
+  | { destination: 'creator'; seriesId: string }
+  | { destination: 'dictionary'; termId: string }
+  | { destination: 'documents'; documentId: string; title: string };
 
 export interface AppLocation {
   view: AppView;
@@ -71,6 +80,7 @@ export interface AppLocation {
   gallery: GalleryLocation;
   extensions: ExtensionsLocation;
   aiCenter: AiCenterLocation;
+  documents: VideoDocumentsLocation;
   materialsReturnContext: MaterialsReturnContext | null;
 }
 
@@ -91,6 +101,10 @@ export const initialAppLocation: AppLocation = {
   aiCenter: {
     tab: 'activity',
     recordId: null,
+  },
+  documents: {
+    collection: { kind: 'all' },
+    documentId: null,
   },
   materialsReturnContext: null,
 };

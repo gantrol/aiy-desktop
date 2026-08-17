@@ -6,7 +6,7 @@ import { Button } from '@/renderer/components/ui/button';
 import { LocalSpaceSwitcher } from '@/renderer/components/spaces/LocalSpaceSwitcher';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/renderer/components/ui/tooltip';
 
-export type AppView = 'creator' | 'dictionary' | 'gallery' | 'codexImages' | 'packs' | 'aiCenter';
+export type AppView = 'creator' | 'documents' | 'dictionary' | 'gallery' | 'codexImages' | 'packs' | 'aiCenter';
 
 interface Props {
   spaceName: string;
@@ -59,30 +59,33 @@ export function AppSidebar({
           />
         </div>
         <nav className="flex w-full flex-col items-center gap-2">
-          {visibleItems.map(({ id, icon: Icon }) => (
-            <Tooltip key={id}>
-              <TooltipTrigger asChild>
-                <Button
-                  data-view={id}
-                  variant="ghost"
-                  disabled={spaceTransitioning}
-                  className={cn(
-                    'relative h-14 w-14 flex-col gap-1 rounded-md px-0 text-[10px] font-normal whitespace-nowrap text-muted-foreground',
-                    'focus-visible:border-transparent focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-border-strong',
-                    view === id &&
-                      'bg-selected font-semibold text-selected-foreground hover:bg-selected active:bg-selected',
-                  )}
-                  onClick={() => onViewChange(id)}
-                  aria-current={view === id ? 'page' : undefined}
-                  aria-label={labels[id]}
-                >
-                  <Icon className="size-5" />
-                  <span>{labels[id]}</span>
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent side="right">{labels[id]}</TooltipContent>
-            </Tooltip>
-          ))}
+          {visibleItems.map(({ id, icon: Icon }) => {
+            const current = id === 'creator' ? view === 'creator' || view === 'documents' : view === id;
+            return (
+              <Tooltip key={id}>
+                <TooltipTrigger asChild>
+                  <Button
+                    data-view={id}
+                    variant="ghost"
+                    disabled={spaceTransitioning}
+                    className={cn(
+                      'relative h-14 w-14 flex-col gap-1 rounded-md px-0 text-[10px] font-normal whitespace-nowrap text-muted-foreground',
+                      'focus-visible:border-transparent focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-border-strong',
+                      current &&
+                        'bg-selected font-semibold text-selected-foreground hover:bg-selected active:bg-selected',
+                    )}
+                    onClick={() => onViewChange(id)}
+                    aria-current={current ? 'page' : undefined}
+                    aria-label={labels[id]}
+                  >
+                    <Icon className="size-5" />
+                    <span>{labels[id]}</span>
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent side="right">{labels[id]}</TooltipContent>
+              </Tooltip>
+            );
+          })}
         </nav>
         <div className="mt-auto flex flex-col items-center gap-2">
           <Tooltip>

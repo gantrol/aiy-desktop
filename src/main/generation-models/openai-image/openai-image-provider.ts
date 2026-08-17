@@ -1,7 +1,14 @@
 import type { ImageGenerationRouteDto } from '@/shared/contracts';
-import { CODEX_IMAGE_MODEL_ID, OPENAI_IMAGE_MODEL_KEY, OPENAI_IMAGE_PROVIDER_KEY } from '@/shared/extension-ids';
+import {
+  CODEX_IMAGE_MODEL_ID,
+  OPENAI_IMAGE_API_EXTENSION_ID,
+  OPENAI_IMAGE_CONNECTION_ID,
+  OPENAI_IMAGE_MODEL_KEY,
+  OPENAI_IMAGE_PROVIDER_KEY,
+} from '@/shared/extension-ids';
 import type { LibraryDatabase } from '@/main/database';
 import type { OpenAiImageApiRuntime } from '@/main/extensions/openai-image-api/runtime';
+import { DEFAULT_IMAGE_PROMPT_PROFILE_ID } from '@/shared/image-generation-prompt-profile';
 import { AdapterBackedGenerationModel } from '@/main/generation-models/adapters/adapter-backed-generation-model';
 import type { NormalizedGenerationMedia } from '@/main/generation-models/adapters/contracts';
 import type { GenerationProvider } from '@/main/generation-models/types';
@@ -30,8 +37,13 @@ function supportedGptImage2Size(width: number | null, height: number | null) {
 }
 
 export class OpenAiImageProvider implements GenerationProvider {
+  readonly definition = {
+    id: OPENAI_IMAGE_PROVIDER_KEY,
+    name: 'OpenAI API',
+    extensionId: OPENAI_IMAGE_API_EXTENSION_ID,
+  };
   readonly key = OPENAI_IMAGE_PROVIDER_KEY;
-  readonly name = 'OpenAI API';
+  readonly name = this.definition.name;
   private readonly entries;
 
   constructor(
@@ -50,6 +62,16 @@ export class OpenAiImageProvider implements GenerationProvider {
         provider: this.name,
         providerKey: this.key,
         modelId: CODEX_IMAGE_MODEL_ID,
+        executionIdentity: {
+          routeId: OPENAI_IMAGE_MODEL_KEY,
+          providerId: OPENAI_IMAGE_PROVIDER_KEY,
+          connectionId: OPENAI_IMAGE_CONNECTION_ID,
+          adapterId: 'openai-images-v1',
+          modelId: CODEX_IMAGE_MODEL_ID,
+          canonicalModelFamilyId: 'openai/gpt-image-2',
+          promptProfileId: DEFAULT_IMAGE_PROMPT_PROFILE_ID,
+          resourcePoolKey: OPENAI_IMAGE_CONNECTION_ID,
+        },
         state: active && status.usable ? 'READY' : 'UNAVAILABLE',
         availabilityReason: active
           ? status.usable
@@ -93,19 +115,12 @@ export class OpenAiImageProvider implements GenerationProvider {
                   }
                 : {}),
             });
-          media.push(
-            ...referencePaths.map((localPath, index) => ({
-              assetId: referenceAssetIds[index],
-              role: 'REFERENCE' as const,
-              localPath,
-              mimeType: mimeTypeForPath(localPath),
-            })),
-          );
           const editSpec = sourceAssetId ? database.getGenerationEditSpec(runId) : null;
           if (editSpec && editSpec.sourceAssetId !== sourceAssetId) {
             throw new Error('OpenAI image edit spec does not match its source');
           }
-          if (editSpec?.mode === 'MASK') {
+          const usesNativeMask = editSpec?.mode === 'MASK' && route.capabilities.includes('MASK_EDIT');
+          if (usesNativeMask) {
             if (!editSpec.mask) throw new Error('OpenAI mask edit artifact is unavailable');
             media.push({
               assetId: editSpec.mask.id,
@@ -115,7 +130,26 @@ export class OpenAiImageProvider implements GenerationProvider {
               width: editSpec.mask.width,
               height: editSpec.mask.height,
             });
+          } else if (editSpec) {
+            const guide = database.getGenerationEditGuide(runId);
+            if (!guide) throw new Error('OpenAI image edit range guide is unavailable');
+            media.push({
+              assetId: guide.id,
+              role: 'ANNOTATION_GUIDE',
+              localPath: guide.localPath,
+              mimeType: guide.mimeType,
+              width: guide.width,
+              height: guide.height,
+            });
           }
+          media.push(
+            ...referencePaths.map((localPath, index) => ({
+              assetId: referenceAssetIds[index],
+              role: 'REFERENCE' as const,
+              localPath,
+              mimeType: mimeTypeForPath(localPath),
+            })),
+          );
           // Imported edit sources may use arbitrary dimensions. Let GPT Image 2
           // choose an output size instead of misrepresenting an unsupported exact
           // size; the source and native mask still retain their original size.
@@ -125,6 +159,7 @@ export class OpenAiImageProvider implements GenerationProvider {
             modelKey: route.key,
             providerKey: route.providerKey,
             modelId: route.modelId,
+            executionIdentity: route.executionIdentity,
             operation: sourceAssetId ? 'EDIT' : 'GENERATE',
             prompt: input.prompt,
             media,

@@ -21,6 +21,38 @@ function localeMatches(candidate: ContentLocale, requested: ContentLocale) {
   return left === right || left.split('-')[0] === right.split('-')[0];
 }
 
+interface TermExpressionSelectionCandidate {
+  contextKey: string;
+  locale: ContentLocale;
+}
+
+/**
+ * Selects an expression without inventing a context choice. Implicit callers
+ * prefer the canonical default and may use a non-default context only when it
+ * is the sole context available. Multiple non-default contexts remain
+ * ambiguous until the caller supplies an explicit context key.
+ */
+export function selectTermExpressionCandidate<T extends TermExpressionSelectionCandidate>(
+  candidates: readonly T[],
+  locale: ContentLocale,
+  primaryLocale: ContentLocale,
+  contextKey?: string,
+): T | null {
+  const scopedCandidates = (() => {
+    if (contextKey !== undefined) return candidates.filter((item) => item.contextKey === contextKey);
+    const defaultCandidates = candidates.filter((item) => item.contextKey === DEFAULT_TERM_CONTEXT_KEY);
+    if (defaultCandidates.length) return defaultCandidates;
+    return new Set(candidates.map((item) => item.contextKey)).size === 1 ? candidates : [];
+  })();
+  return (
+    scopedCandidates.find((item) => localeMatches(item.locale, locale)) ??
+    scopedCandidates.find((item) => localeMatches(item.locale, primaryLocale)) ??
+    scopedCandidates.find((item) => localeMatches(item.locale, 'en')) ??
+    scopedCandidates[0] ??
+    null
+  );
+}
+
 export function primaryTermContent(term: TermListItem): ResolvedTermContent {
   return {
     locale: term.titleLocale,
@@ -69,18 +101,10 @@ export function resolveTermExpression(
   term: TermListItem,
   modelKey: string,
   locale: ContentLocale,
-  contextKey = DEFAULT_TERM_CONTEXT_KEY,
+  contextKey?: string,
 ): TermModelExpressionDto | null {
-  const candidates = term.modelExpressions.filter(
-    (item) => item.modelKey === modelKey && item.contextKey === contextKey,
-  );
-  return (
-    candidates.find((item) => localeMatches(item.locale, locale)) ??
-    candidates.find((item) => localeMatches(item.locale, term.titleLocale)) ??
-    candidates.find((item) => localeMatches(item.locale, 'en')) ??
-    candidates[0] ??
-    null
-  );
+  const candidates = term.modelExpressions.filter((item) => item.modelKey === modelKey);
+  return selectTermExpressionCandidate(candidates, locale, term.titleLocale, contextKey);
 }
 
 export function termSearchableText(term: TermListItem) {
