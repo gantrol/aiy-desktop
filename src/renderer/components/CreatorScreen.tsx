@@ -29,6 +29,7 @@ import type {
   Locale,
   AlbumDto,
   PromptSeriesDto,
+  PromptVersionCreateResult,
   PromptVersionDto,
   SidebarRootOrderTargetInput,
   StyleExplorationSlotDto,
@@ -43,6 +44,7 @@ import { termFacetValueIds } from '@/shared/term-localization';
 import { CODEX_APP_SERVER_PROVIDER_KEY, CODEX_CLI_PROVIDER_KEY } from '@/shared/extension-ids';
 import { imageGenerationPromptProfileId } from '@/shared/image-generation-prompt-profile';
 import { DictionaryIcon, ImageIcon } from '@/renderer/icons';
+import { useStableCallback } from '@/renderer/lib/useStableCallback';
 import { CreateAlbumDialog } from '@/renderer/components/albums/CreateAlbumDialog';
 import { AlbumCreationDefaultsDialog } from '@/renderer/components/albums/AlbumCreationDefaultsDialog';
 import { buildAlbumTreeIndex } from '@/renderer/components/albums/albumTree';
@@ -151,6 +153,7 @@ const OutputInspector = lazy(() =>
 
 interface Props {
   data: BootstrapDto;
+  dataRevision: number;
   locale: Locale;
   defaultPromptLocale: Locale | null;
   active: boolean;
@@ -210,6 +213,7 @@ const activeWordPalettes = (palettes: WordPaletteDto[]) => palettes.filter((pale
 
 export function CreatorScreen({
   data,
+  dataRevision,
   locale,
   defaultPromptLocale,
   active,
@@ -322,12 +326,15 @@ export function CreatorScreen({
             creation.sourceScope.kind === 'SERIES' &&
             creation.sourceScope.id === sessionHostSeries.id,
         ) ?? null);
-  const assistantScope: CreatorAgentScope | null =
-    creationMode === 'existing' && sessionHostSeries
-      ? { kind: 'SERIES', id: sessionHostSeries.id }
-      : creationDraftId
-        ? { kind: 'DRAFT', id: creationDraftId }
-        : null;
+  const assistantScope = useMemo<CreatorAgentScope | null>(
+    () =>
+      creationMode === 'existing' && sessionHostSeries
+        ? { kind: 'SERIES', id: sessionHostSeries.id }
+        : creationDraftId
+          ? { kind: 'DRAFT', id: creationDraftId }
+          : null,
+    [creationDraftId, creationMode, sessionHostSeries],
+  );
   const viewingExperimentBranch = Boolean(series && sessionHostSeries && series.id !== sessionHostSeries.id);
   const [outputSeriesId, setOutputSeriesId] = useState<string | null>(seriesId);
   const outputSeries = data.series.find((item) => item.id === outputSeriesId);
@@ -469,6 +476,7 @@ export function CreatorScreen({
   const [outputGalleryOpen, setOutputGalleryOpen] = useState(false);
   const [health, setHealth] = useState(data.codex);
   const [starting, setStarting] = useState(false);
+  const [versionCreating, setVersionCreating] = useState(false);
   const [referenceImporting, setReferenceImporting] = useState(false);
   const [newExternalCreationDialog, setNewExternalCreationDialog] = useState<NewExternalCreationDialogState | null>(
     null,
@@ -528,6 +536,7 @@ export function CreatorScreen({
   });
   const outputImport = useCreatorOutputImport({
     createContext: creatorImportContext,
+    defaultPromptVersionId: creationMode === 'existing' ? (version?.id ?? null) : null,
     applyImportedOutputs,
     refresh,
     notify,
@@ -535,6 +544,7 @@ export function CreatorScreen({
       importFailed: c.importFailed,
       imported: c.imported,
       duplicates: c.duplicates,
+      tooManyImages: c.importDraftLimit,
     },
   });
   const scopedWordPalettes = useMemo(
@@ -586,7 +596,7 @@ export function CreatorScreen({
             currentContextKey: assistantContextKey,
           })
         : [],
-    [assistantContextKey, assistantScope?.id, assistantScope?.kind, data.assistantRuns, minimalAssistantRun],
+    [assistantContextKey, assistantScope, data.assistantRuns, minimalAssistantRun],
   );
   const writingAssistantHistory = useMemo(
     () => assistantHistory.filter((run) => run.mode !== 'directions'),
@@ -600,26 +610,32 @@ export function CreatorScreen({
     generationTargets.every((target) => data.imageGenerationRoutes.some((model) => model.key === target.modelKey)) &&
     (creationMode !== 'existing' || hydratedVersionId === (version?.id ?? null)),
   );
-  const expirableAssistantRunIds = assistantHistory
-    .filter(
-      (run) =>
-        run.proposal &&
-        !run.input.sourceExperimentSlotId &&
-        ['READY', 'ADOPTED'].includes(run.proposal.status) &&
-        run.contextKey !== assistantContextKey &&
-        run.proposal.adoptedContextKey !== assistantContextKey,
-    )
-    .map((run) => run.id);
-  const expirableAssistantRunSignature = expirableAssistantRunIds.join('\u0000');
-  const revalidatableAssistantRunIds = assistantHistory
-    .filter((run) => {
-      if (!run.proposal || run.input.sourceExperimentSlotId || run.proposal.status !== 'EXPIRED') return false;
-      return run.proposal.adoptedContextKey
-        ? run.proposal.adoptedContextKey === assistantContextKey
-        : run.contextKey === assistantContextKey;
-    })
-    .map((run) => run.id);
-  const revalidatableAssistantRunSignature = revalidatableAssistantRunIds.join('\u0000');
+  const expirableAssistantRunIds = useMemo(
+    () =>
+      assistantHistory
+        .filter(
+          (run) =>
+            run.proposal &&
+            !run.input.sourceExperimentSlotId &&
+            ['READY', 'ADOPTED'].includes(run.proposal.status) &&
+            run.contextKey !== assistantContextKey &&
+            run.proposal.adoptedContextKey !== assistantContextKey,
+        )
+        .map((run) => run.id),
+    [assistantContextKey, assistantHistory],
+  );
+  const revalidatableAssistantRunIds = useMemo(
+    () =>
+      assistantHistory
+        .filter((run) => {
+          if (!run.proposal || run.input.sourceExperimentSlotId || run.proposal.status !== 'EXPIRED') return false;
+          return run.proposal.adoptedContextKey
+            ? run.proposal.adoptedContextKey === assistantContextKey
+            : run.contextKey === assistantContextKey;
+        })
+        .map((run) => run.id),
+    [assistantContextKey, assistantHistory],
+  );
   const effectiveTerms = promptResolution.effectiveTerms;
   const livePrompt = promptResolution.livePrompt;
   const currentInputSnapshot: CreationInputSnapshotDto = {
@@ -1095,6 +1111,16 @@ export function CreatorScreen({
     );
   }
 
+  const restoreVersionForEffect = useStableCallback(restoreVersion);
+  const saveCreationDraftForEffect = useStableCallback(saveCreationDraftNow);
+  const commitCreatorLocationForEffect = useStableCallback(commitCreatorLocation);
+  const workbenchLocationForEffect = useStableCallback(workbenchLocation);
+  const chooseAlbumForEffect = useStableCallback(chooseAlbum);
+  const chooseIdeaCreationForEffect = useStableCallback(chooseIdeaCreation);
+  const chooseSeriesForEffect = useStableCallback(chooseSeries);
+  const startNewCreationForEffect = useStableCallback(startNewCreation);
+  const notifyForEffect = useStableCallback(notify);
+
   useEffect(() => {
     if (creationMode !== 'existing' || !series) return;
     const requestedVersionId =
@@ -1104,13 +1130,13 @@ export function CreatorScreen({
       series.versions.find((item) => item.id === series.currentVersionId) ??
       series.versions[0];
     setVersionId(next?.id ?? '');
-    if (restoredVersionIdRef.current !== (next?.id ?? null)) restoreVersion(next);
-  }, [creationMode, series?.id, series?.currentVersionId]);
+    if (restoredVersionIdRef.current !== (next?.id ?? null)) restoreVersionForEffect(next);
+  }, [creationMode, location, restoreVersionForEffect, series]);
 
   useEffect(() => {
     if (creationMode !== 'existing' || !version || restoredVersionIdRef.current === version.id) return;
-    restoreVersion(version);
-  }, [creationMode, version?.id]);
+    restoreVersionForEffect(version);
+  }, [creationMode, restoreVersionForEffect, version]);
 
   useEffect(() => {
     if (creationMode !== 'new' || starting) return undefined;
@@ -1123,7 +1149,9 @@ export function CreatorScreen({
     );
     if (!hasContent && !creationDraftId) return undefined;
     const timer = window.setTimeout(() => {
-      void saveCreationDraftNow().catch((reason) => notify(reason instanceof Error ? reason.message : String(reason)));
+      void saveCreationDraftForEffect().catch((reason) =>
+        notifyForEffect(reason instanceof Error ? reason.message : String(reason)),
+      );
     }, 450);
     return () => window.clearTimeout(timer);
   }, [
@@ -1141,6 +1169,8 @@ export function CreatorScreen({
     canvasPresetKey,
     generationTargets,
     locale,
+    notifyForEffect,
+    saveCreationDraftForEffect,
     starting,
   ]);
 
@@ -1148,18 +1178,27 @@ export function CreatorScreen({
     if (creationMode !== 'new' || !targetAlbumId || !targetAlbumUnavailable) return;
     setTargetAlbumId(null);
     if (location.surface === 'new-creation') {
-      commitCreatorLocation({ surface: 'new-creation', albumId: null }, 'replace');
+      commitCreatorLocationForEffect({ surface: 'new-creation', albumId: null }, 'replace');
     }
-    void saveCreationDraftNow(null)
+    void saveCreationDraftForEffect(null)
       .then(() =>
-        notify(
+        notifyForEffect(
           locale === 'zh'
             ? '目标图集不可用，草稿已移到顶层'
             : 'The target album is unavailable; the draft was moved to the root',
         ),
       )
-      .catch((reason) => notify(reason instanceof Error ? reason.message : String(reason)));
-  }, [creationMode, locale, locationKey, notify, targetAlbumId, targetAlbumUnavailable]);
+      .catch((reason) => notifyForEffect(reason instanceof Error ? reason.message : String(reason)));
+  }, [
+    commitCreatorLocationForEffect,
+    creationMode,
+    locale,
+    location.surface,
+    notifyForEffect,
+    saveCreationDraftForEffect,
+    targetAlbumId,
+    targetAlbumUnavailable,
+  ]);
 
   useEffect(() => {
     if (data.codex.state === 'checking') void window.desktopApi.codexHealth().then(setHealth);
@@ -1206,9 +1245,9 @@ export function CreatorScreen({
   }, [
     assistantContextKey,
     assistantProposalSyncReady,
-    expirableAssistantRunSignature,
+    expirableAssistantRunIds,
     refresh,
-    revalidatableAssistantRunSignature,
+    revalidatableAssistantRunIds,
   ]);
 
   useEffect(() => {
@@ -1266,7 +1305,7 @@ export function CreatorScreen({
           })
           .catch(() => notify(c.titleGenerationFailed));
       });
-  }, [c.titleGenerated, c.titleGenerationFailed, data.series, notify, pendingAutoTitle, refresh]);
+  }, [c.titleGenerated, c.titleGenerationFailed, data.series, locale, notify, pendingAutoTitle, refresh]);
 
   useEffect(() => {
     setWordPalettes(activeWordPalettes(data.wordPalettes));
@@ -1293,13 +1332,7 @@ export function CreatorScreen({
     return () => {
       requestActive = false;
     };
-  }, [
-    active,
-    dictionaryScope.mode,
-    dictionaryScope.includeLocalTerms,
-    dictionaryPackReleaseIds.join('|'),
-    wordPalettes,
-  ]);
+  }, [active, dictionaryPackReleaseIds, dictionaryScope.mode, dictionaryScope.includeLocalTerms, notify]);
 
   useEffect(() => {
     if (!imageGenerationRoutes.length) return;
@@ -1336,7 +1369,7 @@ export function CreatorScreen({
     return () => {
       requestActive = false;
     };
-  }, [active, dictionaryOpen, promptFullWindow, assistantScope?.kind, assistantScope?.id, notify]);
+  }, [active, assistantScope, dictionaryOpen, notify, promptFullWindow]);
 
   function resetInputs() {
     minimalAssistantRequestRevision.current += 1;
@@ -1452,6 +1485,7 @@ export function CreatorScreen({
 
   async function createExternalCreation(value: NewExternalCreationDialogValue) {
     if (creationMode === 'new' && hasNewCreationDraftState()) await saveCreationDraftNow();
+    const outputItems = await imageImportItems(value.outputs.map((output) => output.file));
     const result = await window.desktopApi.creatorNewExternalCreationImport({
       intent: 'NEW_EXTERNAL_CREATION',
       sourceKind: 'EXTERNAL_IMPORT',
@@ -1462,7 +1496,7 @@ export function CreatorScreen({
       prompt: value.promptKnowledge === 'EXACT' ? { knowledge: 'EXACT', text: value.prompt } : { knowledge: 'UNKNOWN' },
       source: value.source,
       sourceUrl: value.sourceUrl,
-      outputs: await imageImportItems(value.files),
+      outputs: outputItems.map((output, index) => ({ ...output, metadata: value.outputs[index]?.metadata })),
     });
     await refresh();
     const firstAssetId = result.assetIds[0] ?? null;
@@ -1482,7 +1516,7 @@ export function CreatorScreen({
       { surface: 'existing-creation', seriesId: result.seriesId, assetId: firstAssetId },
       'replace',
     );
-    notify(locale === 'zh' ? '已导入外部创作' : 'External creation imported');
+    notify(messages.creator.externalCreationImport.imported);
   }
 
   async function commitCreationAsV01() {
@@ -1546,6 +1580,68 @@ export function CreatorScreen({
       notify(reason instanceof Error ? reason.message : String(reason));
     } finally {
       setStarting(false);
+    }
+  }
+
+  async function createNextPromptVersion(targetSeriesId: string): Promise<PromptVersionCreateResult | null> {
+    if (!series || series.id !== targetSeriesId) {
+      notify(messages.creator.resultsOrganizer.versionUnavailable);
+      return null;
+    }
+    if (starting || versionCreating) return null;
+    if (typeof window.desktopApi.promptVersionCreate !== 'function') {
+      notify(messages.creator.resultsOrganizer.restartRequired);
+      return null;
+    }
+    const nextVersionNo = Math.max(0, ...series.versions.map((item) => item.versionNo)) + 1;
+    const nextVersionLabel = `V${String(nextVersionNo).padStart(2, '0')}`;
+    let capturedPrompt: CapturedCreatorPrompt;
+    try {
+      capturedPrompt = captureVisiblePrompt();
+    } catch (reason) {
+      notify(reason instanceof Error ? reason.message : String(reason));
+      return null;
+    }
+    const capturedResolution = resolveCreatorPrompt({
+      manualPrompt: capturedPrompt.manualPrompt,
+      promptNodes: capturedPrompt.nodes,
+      selectedTerms: capturedPrompt.selectedTerms,
+      appliedPalettes: capturedPrompt.appliedPalettes,
+      termPromptLocale,
+      promptProfileId,
+    });
+    synchronizeCapturedPrompt(capturedPrompt);
+    setVersionCreating(true);
+    try {
+      const result = await window.desktopApi.promptVersionCreate({
+        seriesId: series.id,
+        baseVersionId: version?.id ?? null,
+        title: series.title,
+        titleLocale: locale,
+        manualPrompt: capturedPrompt.manualPrompt,
+        promptNodes: capturedPrompt.nodes,
+        prompt: capturedResolution.livePrompt,
+        changeSummary: automaticChangeSummary,
+        referenceAssetIds: referenceAssets.map((asset) => asset.id),
+        termPromptLocale,
+        termIds: capturedPrompt.selectedTerms.map((term) => term.id),
+        wordPaletteReferences: capturedPrompt.appliedPalettes.map((reference) => ({
+          paletteId: reference.palette.id,
+          paletteRevisionId: reference.revision.id,
+          parameterValues: reference.parameterValues,
+          promptLocale: reference.promptLocale,
+        })),
+      });
+      await refresh();
+      setVersionId(result.versionId);
+      setOutputSeriesId(result.seriesId);
+      notify(`${nextVersionLabel} · ${c.versionCreated}`);
+      return result;
+    } catch (reason) {
+      notify(reason instanceof Error ? reason.message : String(reason));
+      return null;
+    } finally {
+      setVersionCreating(false);
     }
   }
 
@@ -1755,9 +1851,9 @@ export function CreatorScreen({
     if (!selectedAlbumId || data.albums.some((album) => album.id === selectedAlbumId)) return;
     setSelectedAlbumId(null);
     if (location.surface === 'album-detail' && location.albumId === selectedAlbumId) {
-      commitCreatorLocation(workbenchLocation(), 'replace');
+      commitCreatorLocationForEffect(workbenchLocationForEffect(), 'replace');
     }
-  }, [data.albums, selectedAlbumId]);
+  }, [commitCreatorLocationForEffect, data.albums, location, selectedAlbumId, workbenchLocationForEffect]);
 
   useEffect(() => {
     if (!selectedIdeaCreationId || (data.creations ?? []).some((creation) => creation.id === selectedIdeaCreationId))
@@ -1765,7 +1861,7 @@ export function CreatorScreen({
     setSelectedIdeaCreationId(null);
     setOutputMode('images');
     if (location.surface === 'idea-creation' && location.creationId === selectedIdeaCreationId) {
-      commitCreatorLocation(
+      commitCreatorLocationForEffect(
         creationMode === 'new'
           ? { surface: 'new-creation', albumId: targetAlbumId }
           : seriesId
@@ -1774,7 +1870,16 @@ export function CreatorScreen({
         'replace',
       );
     }
-  }, [data.creations, selectedIdeaCreationId]);
+  }, [
+    commitCreatorLocationForEffect,
+    creationMode,
+    data.creations,
+    location,
+    requestedAssetId,
+    selectedIdeaCreationId,
+    seriesId,
+    targetAlbumId,
+  ]);
 
   useEffect(() => {
     onActiveAlbumChange(activeAlbumContextId);
@@ -1788,26 +1893,38 @@ export function CreatorScreen({
         : initialSeriesId
           ? { surface: 'existing-creation', seriesId: initialSeriesId, assetId: null }
           : { surface: 'new-creation', albumId: null };
-      commitCreatorLocation(canonicalLocation, 'replace');
+      commitCreatorLocationForEffect(canonicalLocation, 'replace');
       return;
     }
     if (appliedLocationKeyRef.current === locationKey) return;
     appliedLocationKeyRef.current = locationKey;
     onPromptFullWindowChange(false);
     if (location.surface === 'album-detail') {
-      void chooseAlbum(location.albumId, null);
+      void chooseAlbumForEffect(location.albumId, null);
       return;
     }
     if (location.surface === 'existing-creation') {
-      void chooseSeries(location.seriesId, location.assetId ?? undefined, null, location.versionId);
+      void chooseSeriesForEffect(location.seriesId, location.assetId ?? undefined, null, location.versionId);
       return;
     }
     if (location.surface === 'idea-creation') {
-      void chooseIdeaCreation(location.creationId, null);
+      void chooseIdeaCreationForEffect(location.creationId, null);
       return;
     }
-    void startNewCreation(location.albumId, null);
-  }, [active, locationKey]);
+    void startNewCreationForEffect(location.albumId, null);
+  }, [
+    active,
+    chooseAlbumForEffect,
+    chooseIdeaCreationForEffect,
+    chooseSeriesForEffect,
+    commitCreatorLocationForEffect,
+    data.creationDraft,
+    initialSeriesId,
+    location,
+    locationKey,
+    onPromptFullWindowChange,
+    startNewCreationForEffect,
+  ]);
 
   async function showMoreResults(id: string) {
     if (!(await chooseSeries(id))) return;
@@ -2003,11 +2120,12 @@ export function CreatorScreen({
     }));
   }
 
-  function toggleReferenceAsset(asset: AssetDto) {
+  function applyReferenceAssets(assets: AssetDto[]) {
     updateMaterials((current) =>
-      current.referenceAssets.some((item) => item.id === asset.id)
-        ? { ...current, referenceAssets: current.referenceAssets.filter((item) => item.id !== asset.id) }
-        : { ...current, referenceAssets: [...current.referenceAssets, asset].slice(0, 8) },
+      current.referenceAssets.length === assets.length &&
+      current.referenceAssets.every((asset, index) => asset.id === assets[index]?.id)
+        ? current
+        : { ...current, referenceAssets: assets },
     );
   }
 
@@ -2851,7 +2969,7 @@ export function CreatorScreen({
   }
 
   async function generate() {
-    if (!readiness.ready || starting) return;
+    if (!readiness.ready || starting || versionCreating) return;
     const visibleRefinement = annotationRefinementState;
     if (visibleRefinement) {
       setStarting(true);
@@ -3126,10 +3244,13 @@ export function CreatorScreen({
 
   const materialPickerControl = (
     <CreationMaterialPicker
-      locale={locale}
-      selectedAssetIds={referenceAssets.map((asset) => asset.id)}
+      libraryKey={data.spaceName}
+      dataRevision={dataRevision}
+      terms={data.terms}
+      facets={data.facets}
+      selectedAssets={referenceAssets}
       disabled={referenceImporting}
-      onToggle={toggleReferenceAsset}
+      onApply={applyReferenceAssets}
       onImport={attachReferences}
     />
   );
@@ -3330,6 +3451,7 @@ export function CreatorScreen({
             onMoveSeries={moveSeriesToAlbum}
             onReorderMembers={reorderAlbumMembers}
             onReorderRoot={reorderSidebarRoot}
+            onCreationPresentationChange={refresh}
             notify={notify}
           />
         </div>
@@ -3569,7 +3691,7 @@ export function CreatorScreen({
               generationTargets={generationTargets}
               generationCount={generationCount}
               readiness={readiness}
-              starting={starting}
+              starting={starting || versionCreating}
               fullWindow={promptFullWindow}
               annotationRefinement={annotationRefinementState}
               materialPicker={materialPickerControl}
@@ -3723,15 +3845,24 @@ export function CreatorScreen({
           <ImageImportPreviewDialog
             open={Boolean(outputImport.preview)}
             rows={outputImport.preview?.rows ?? null}
+            versions={creationMode === 'existing' ? (series?.versions ?? []) : []}
+            defaultVersionId={outputImport.preview?.defaultVersionId ?? null}
             busy={outputImport.busy}
+            staging={outputImport.staging}
             onOpenChange={(open) => {
               if (!open) outputImport.dismiss();
             }}
+            onAddFiles={() => void outputImport.chooseFiles()}
+            onAddImages={(files, source, sourceUrl) => void outputImport.previewFiles(files, source, sourceUrl)}
+            onDefaultVersionChange={outputImport.setDefaultVersionId}
+            onRowChange={outputImport.updateRow}
+            onAssignVersion={outputImport.assignVersion}
+            onMoveRow={outputImport.moveRow}
+            onRemoveRow={outputImport.removeRow}
             onConfirm={() => void outputImport.commit()}
           />
           <NewExternalCreationDialog
             open={Boolean(newExternalCreationDialog)}
-            locale={locale}
             albums={data.albums}
             defaultAlbumId={newExternalCreationDialog?.albumId}
             onOpenChange={(open) => {
@@ -3930,6 +4061,7 @@ export function CreatorScreen({
                   onImportFiles={(files, source, sourceUrl) => void outputImport.previewFiles(files, source, sourceUrl)}
                   onChooseImport={() => void outputImport.chooseFiles()}
                   onPasteText={pasteTextFromOutput}
+                  onCreatePromptVersion={createNextPromptVersion}
                   onImportedOutputUpdated={refresh}
                   onImportedOutputSaved={onImportedOutputSaved}
                   notify={notify}

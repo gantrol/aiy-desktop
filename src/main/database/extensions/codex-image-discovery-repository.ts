@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import type {
+  CodexGeneratedImageRecoveryTargetDto,
   CodexImageDiscoveryFilter,
   CodexTaskReferenceDto,
   NewExternalCreationImportInput,
@@ -8,6 +9,8 @@ import type { CreationImportRepository } from '@/main/database/creations/creatio
 import type { StoredCreatorImage } from '@/main/database/creations/creation-import-repository';
 import type { LibraryStorage } from '@/main/database/core/storage';
 import { now, type JsonMap, text } from '@/main/database/core/values';
+import type { WorkbenchRepository } from '@/main/database/generation/workbench-repository';
+import { CODEX_APP_SERVER_EXTENSION_ID, CODEX_APP_SERVER_IMAGE_MODEL_KEY } from '@/shared/extension-ids';
 
 export type CodexDiscoveredImageMimeType = 'image/png' | 'image/jpeg' | 'image/webp';
 
@@ -45,6 +48,11 @@ export interface CodexImageDiscoveryRecord extends CodexImageScanEntry {
   missingAt: string | null;
   inLibrary: boolean;
   libraryAssetId: string | null;
+  recoveryTarget?: CodexImageRecoveryTarget | null;
+}
+
+export interface CodexImageRecoveryTarget extends CodexGeneratedImageRecoveryTargetDto {
+  sourceAssetId: string | null;
 }
 
 interface DiscoveryRow {
@@ -68,6 +76,21 @@ interface DiscoveryRow {
   library_asset_id?: string | null;
 }
 
+interface RecoveryTargetRow {
+  thread_id: string;
+  run_id: string;
+  series_id: string;
+  version_id: string;
+  version_no: number;
+  creation_title: string;
+  creation_title_locale: string;
+  user_intent: string;
+  final_prompt: string;
+  source_asset_id: string | null;
+  model_key: string;
+  created_at: string;
+}
+
 const LAST_SCANNED_AT_META_KEY = 'codex_image_discovery_last_scanned_at';
 const DIRECTORY_SNAPSHOT_META_KEY = 'codex_image_discovery_thread_directory_snapshot';
 const DIRECTORY_SNAPSHOT_VERSION = 1;
@@ -76,6 +99,7 @@ export class CodexImageDiscoveryRepository {
   constructor(
     private readonly storage: LibraryStorage,
     private readonly creationImports: CreationImportRepository,
+    private readonly workbench: WorkbenchRepository,
   ) {}
 
   private get db() {
@@ -374,8 +398,9 @@ export class CodexImageDiscoveryRepository {
       LIMIT ? OFFSET ?`,
       )
       .all(includeUntitled ? 1 : 0, filter, filter, filter, pageSize, (page - 1) * pageSize) as DiscoveryRow[];
+    const recoveryTargets = this.recoveryTargets(rows.map((row) => row.thread_id));
     return {
-      records: rows.map((row) => this.map(row)),
+      records: rows.map((row) => this.map(row, recoveryTargets.get(row.thread_id) ?? null)),
       filter,
       includeUntitled,
       page,
@@ -404,7 +429,8 @@ export class CodexImageDiscoveryRepository {
       WHERE discovery.id IN (${placeholders}) AND discovery.missing_at IS NULL`,
       )
       .all(...discoveryIds) as DiscoveryRow[];
-    const byId = new Map(rows.map((row) => [row.id, this.map(row)]));
+    const recoveryTargets = this.recoveryTargets(rows.map((row) => row.thread_id));
+    const byId = new Map(rows.map((row) => [row.id, this.map(row, recoveryTargets.get(row.thread_id) ?? null)]));
     return discoveryIds.flatMap((id) => byId.get(id) ?? []);
   }
 
@@ -465,6 +491,43 @@ export class CodexImageDiscoveryRepository {
       .immediate();
   }
 
+  recoverStoredGeneration(discoveryId: string, image: StoredCreatorImage) {
+    return this.db
+      .transaction(() => {
+        if (image.item.id !== discoveryId || image.item.mimeType !== 'image/png') {
+          throw new Error('Only the selected PNG can repair this generation');
+        }
+        const record = this.get([discoveryId])[0];
+        if (!record || record.missingAt) throw new Error('Discovered Codex image is unavailable');
+        if (record.inLibrary) throw new Error('This Codex image already exists in the library');
+        if (!record.recoveryTarget) throw new Error('This Codex image no longer matches a recoverable generation');
+        if (record.contentHash !== image.stored.hash) throw new Error('Codex image content changed before recovery');
+
+        const target = record.recoveryTarget;
+        const asset = this.workbench.finishGenerationFromStoredImage(
+          target.runId,
+          image.stored,
+          'image/png',
+          target.sourceAssetId,
+        );
+        this.markRecovered({
+          discoveryId,
+          contentHash: record.contentHash,
+          runId: target.runId,
+          seriesId: target.seriesId,
+          assetId: asset.id,
+        });
+        return {
+          discoveryId,
+          runId: target.runId,
+          seriesId: target.seriesId,
+          versionId: target.versionId,
+          assetId: asset.id,
+        };
+      })
+      .immediate();
+  }
+
   markImported(input: {
     discoveryId: string;
     contentHash: string;
@@ -504,6 +567,37 @@ export class CodexImageDiscoveryRepository {
     );
   }
 
+  private markRecovered(input: {
+    discoveryId: string;
+    contentHash: string;
+    runId: string;
+    seriesId: string;
+    assetId: string;
+  }) {
+    const timestamp = now();
+    const result = this.db
+      .prepare(
+        `UPDATE codex_image_discoveries SET
+      imported_series_id = ?, imported_asset_id = ?, imported_output_id = NULL,
+      imported_at = ?, updated_at = ?
+      WHERE id = ? AND content_hash = ? AND missing_at IS NULL`,
+      )
+      .run(input.seriesId, input.assetId, timestamp, timestamp, input.discoveryId, input.contentHash);
+    if (!result.changes) throw new Error('Discovered Codex image changed or is no longer available');
+    this.recordEvent(
+      input.discoveryId,
+      'IMPORTED',
+      {
+        mode: 'GENERATION_RECOVERY',
+        runId: input.runId,
+        seriesId: input.seriesId,
+        assetId: input.assetId,
+        contentHash: input.contentHash,
+      },
+      timestamp,
+    );
+  }
+
   private recordEvent(
     discoveryId: string,
     eventKind: 'DISCOVERED' | 'UPDATED' | 'MISSING' | 'RESTORED' | 'IMPORTED',
@@ -519,7 +613,50 @@ export class CodexImageDiscoveryRepository {
       .run(randomUUID(), discoveryId, eventKind, JSON.stringify(payload), createdAt);
   }
 
-  private map(row: DiscoveryRow): CodexImageDiscoveryRecord {
+  private recoveryTargets(threadIds: readonly string[]) {
+    const uniqueThreadIds = [...new Set(threadIds)];
+    if (!uniqueThreadIds.length) return new Map<string, CodexImageRecoveryTarget>();
+    const placeholders = uniqueThreadIds.map(() => '?').join(', ');
+    const rows = this.db
+      .prepare(
+        `SELECT binding.thread_id, run.id AS run_id, version.series_id,
+          version.id AS version_id, version.version_no,
+          series.title AS creation_title, series.title_locale AS creation_title_locale,
+          version.user_intent, version.final_prompt, version.source_image_id AS source_asset_id,
+          run.model_key, run.created_at
+        FROM extension_thread_bindings binding
+        JOIN generation_runs run ON binding.scope_id = ('generation:' || run.id)
+        JOIN prompt_versions version ON version.id = run.prompt_version_id
+        JOIN prompt_series series ON series.id = version.series_id
+        WHERE binding.extension_id = ? AND binding.scope_kind = 'SYSTEM'
+          AND binding.thread_id IN (${placeholders})
+          AND run.model_key = ? AND run.result_asset_id IS NULL
+          AND run.status IN ('FAILED', 'INTERRUPTED', 'CANCELLED')
+          AND series.deleted_at IS NULL
+        ORDER BY run.created_at DESC, run.id DESC`,
+      )
+      .all(CODEX_APP_SERVER_EXTENSION_ID, ...uniqueThreadIds, CODEX_APP_SERVER_IMAGE_MODEL_KEY) as RecoveryTargetRow[];
+    const targets = new Map<string, CodexImageRecoveryTarget>();
+    for (const row of rows) {
+      if (targets.has(row.thread_id)) continue;
+      targets.set(row.thread_id, {
+        runId: row.run_id,
+        seriesId: row.series_id,
+        versionId: row.version_id,
+        versionNo: Number(row.version_no),
+        creationTitle: row.creation_title,
+        creationTitleLocale: row.creation_title_locale === 'en' ? 'en' : 'zh',
+        userIntent: row.user_intent,
+        finalPrompt: row.final_prompt,
+        sourceAssetId: row.source_asset_id,
+        modelKey: row.model_key,
+        createdAt: row.created_at,
+      });
+    }
+    return targets;
+  }
+
+  private map(row: DiscoveryRow, recoveryTarget: CodexImageRecoveryTarget | null): CodexImageDiscoveryRecord {
     return {
       id: row.id,
       contentHash: row.content_hash ?? '',
@@ -540,6 +677,7 @@ export class CodexImageDiscoveryRepository {
       missingAt: row.missing_at,
       inLibrary: Boolean(row.library_asset_id),
       libraryAssetId: row.library_asset_id ?? null,
+      recoveryTarget,
     };
   }
 }

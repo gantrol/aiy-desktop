@@ -11,10 +11,16 @@ import type {
   AssistantRoutingSelections,
 } from '@/shared/contracts';
 import {
+  ANTIGRAVITY_CLI_DEFAULT_MODEL_KEY,
+  ANTIGRAVITY_CLI_EXTENSION_ID,
+  ANTIGRAVITY_CLI_PROVIDER_KEY,
   CODEX_APP_SERVER_EXTENSION_ID,
   CODEX_ASSISTANT_DEFAULT_MODEL_KEY,
   CODEX_ASSISTANT_DEFAULT_REASONING_EFFORT,
   DEEPSEEK_API_EXTENSION_ID,
+  GOOGLE_GEMINI_API_EXTENSION_ID,
+  GOOGLE_GEMINI_ASSISTANT_MODEL_KEY,
+  GOOGLE_GEMINI_ASSISTANT_PROVIDER_KEY,
 } from '@/shared/extension-ids';
 
 export interface AssistantModelDefinition {
@@ -45,6 +51,28 @@ export const ASSISTANT_MODEL_DEFINITIONS: readonly AssistantModelDefinition[] = 
     kind: 'TEXT',
     supportedOperations: ['directions', 'optimize', 'title'],
     modelSelectionMode: 'FIXED',
+    reasoningEffort: null,
+  },
+  {
+    key: GOOGLE_GEMINI_ASSISTANT_PROVIDER_KEY,
+    providerKey: GOOGLE_GEMINI_ASSISTANT_PROVIDER_KEY,
+    modelKey: GOOGLE_GEMINI_ASSISTANT_MODEL_KEY,
+    extensionId: GOOGLE_GEMINI_API_EXTENSION_ID,
+    name: 'Google Gemini API',
+    kind: 'TEXT',
+    supportedOperations: ['directions', 'optimize', 'title'],
+    modelSelectionMode: 'FIXED',
+    reasoningEffort: null,
+  },
+  {
+    key: ANTIGRAVITY_CLI_PROVIDER_KEY,
+    providerKey: ANTIGRAVITY_CLI_PROVIDER_KEY,
+    modelKey: ANTIGRAVITY_CLI_DEFAULT_MODEL_KEY,
+    extensionId: ANTIGRAVITY_CLI_EXTENSION_ID,
+    name: 'Antigravity CLI',
+    kind: 'AGENT',
+    supportedOperations: ['directions', 'optimize', 'title'],
+    modelSelectionMode: 'CATALOG',
     reasoningEffort: null,
   },
   {

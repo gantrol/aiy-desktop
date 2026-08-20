@@ -1,0 +1,11 @@
+[data-image-overlay-contrast-support='true'][data-image-overlay-tone='light'] {
+  text-shadow: var(--image-overlay-contrast-shadow-light);
+}
+
+[data-image-overlay-contrast-support='true'][data-image-overlay-tone='dark'] {
+  text-shadow: var(--image-overlay-contrast-shadow-dark);
+}
+
+[data-image-overlay-contrast-support='true'] > svg {
+  color: currentColor;
+}

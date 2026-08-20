@@ -33,7 +33,7 @@ const importContextSchema = z.object({
 const imageItemSchema = z.object({
   id,
   name: z.string().min(1).max(500),
-  mimeType: z.enum(['image/png', 'image/jpeg', 'image/webp']),
+  mimeType: z.enum(['image/png', 'image/jpeg', 'image/webp', 'image/svg+xml']),
   bytes: imageBytesSchema,
   metadata: importedImageMetadataSchema.optional(),
 });
@@ -48,7 +48,21 @@ const imageImportSchema = z.object({ context: importContextSchema, items: imageI
 const stagedImageImportSchema = z
   .object({
     context: importContextSchema,
-    stageIds: z.array(id).min(1).max(8),
+    items: z
+      .array(
+        z
+          .object({
+            stageId: id,
+            promptVersionId: id.nullable(),
+            displayName: z.string().trim().min(1).max(500),
+          })
+          .strict(),
+      )
+      .min(1)
+      .max(8)
+      .refine((items) => new Set(items.map((item) => item.stageId)).size === items.length, {
+        message: 'Staged image selection contains duplicates',
+      }),
   })
   .strict();
 const stageIdsSchema = z.array(id).max(8);
@@ -112,6 +126,31 @@ const outputUpdateSchema = z.object({
   generationTextType: z.enum(['EXACT_PROMPT', 'DESCRIPTION', 'RECONSTRUCTION', 'UNKNOWN']),
   generationText: z.string().max(30_000),
 });
+const outputsOrganizeSchema = z
+  .object({
+    seriesId: id,
+    items: z
+      .array(
+        z
+          .object({
+            outputId: id,
+            displayName: z.string().trim().min(1).max(500),
+            promptVersionId: id.nullable(),
+            relationshipKind: z.enum(['UNSPECIFIED', 'PRIMARY', 'VARIANT', 'DERIVED', 'POST_EDIT']),
+            relationshipTargetOutputId: id.nullable(),
+            aiGeneratedStatus: z.enum(['YES', 'NO', 'UNKNOWN', 'OTHER']),
+            modelName: z.string().max(300),
+            modelProvider: z.string().max(200),
+          })
+          .strict(),
+      )
+      .min(1)
+      .max(200)
+      .refine((items) => new Set(items.map((item) => item.outputId)).size === items.length, {
+        message: 'Output selection contains duplicates',
+      }),
+  })
+  .strict();
 
 export function registerCreatorImportIpc(
   ipcMain: IpcHandlerRegistrar,
@@ -143,6 +182,9 @@ export function registerCreatorImportIpc(
   });
   ipcMain.handle('creator:output-update', (_event, raw) =>
     database.updateImportedCreationOutput(outputUpdateSchema.parse(raw)),
+  );
+  ipcMain.handle('creator:outputs-organize', (_event, raw) =>
+    database.organizeCreatorOutputs(outputsOrganizeSchema.parse(raw)),
   );
   ipcMain.handle('creator:outputs-stage', (_event, raw) => stages.stageItems(imageItemsSchema.parse(raw)));
   ipcMain.handle('creator:outputs-choose', async (_event, raw) => {

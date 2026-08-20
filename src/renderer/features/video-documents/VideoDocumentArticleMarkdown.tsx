@@ -10,6 +10,7 @@ import type {
   VideoDocumentTranscriptCue,
 } from '@/shared/contracts';
 import { HoverCard, HoverCardContent, HoverCardTrigger } from '@/renderer/components/ui/hover-card';
+import { ImageAmbientBackdrop } from '@/renderer/components/media/AmbientImage';
 import { VideoDocumentInlineVideo } from '@/renderer/features/video-documents/VideoDocumentInlineVideo';
 
 type MarkdownContent = Extract<VideoDocumentRevisionContent, { format: 'MARKDOWN' }>;
@@ -350,12 +351,15 @@ function createComponents({
       const media = binding ? mediaById.get(binding.assetId) : null;
       if (!binding || binding.kind !== 'IMAGE' || !media) return <MissingMedia />;
       const image = (
-        <img
-          src={media.mediaUrl}
-          alt={alt ?? ''}
-          className="max-h-[34rem] w-full bg-media-surround-dark object-contain"
-          loading="lazy"
-        />
+        <span className="relative isolate block max-h-[34rem] w-full overflow-hidden bg-surface-sunken">
+          <ImageAmbientBackdrop src={media.mediaUrl} loading="lazy" />
+          <img
+            src={media.mediaUrl}
+            alt={alt ?? ''}
+            className="relative z-10 max-h-[34rem] w-full object-contain"
+            loading="lazy"
+          />
+        </span>
       );
       return (
         <figure className="overflow-hidden rounded-lg border bg-surface">

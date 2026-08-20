@@ -54,9 +54,17 @@
       "dictionary": "参考",
       "gallery": "图库",
       "codexImages": "Codex 图片",
+      "transitionShowcase": "过场调试",
       "packs": "扩展",
       "aiCenter": "AI 中心",
       "settings": "设置"
+    },
+    "windowControls": {
+      "label": "窗口控制",
+      "minimize": "最小化",
+      "maximize": "最大化",
+      "restore": "还原",
+      "close": "关闭窗口"
     },
     "settings": {
       "title": "设置",
@@ -64,6 +72,11 @@
       "promptLanguage": "默认提示词语言",
       "aiFeatureModels": "AI 功能模型",
       "manageAiFeatureModels": "管理模型分配",
+      "privacyAndSupport": "隐私与支持",
+      "privacyPolicy": "隐私政策",
+      "reportAiContent": "举报不适当的 AI 内容",
+      "reportAiContentHint": "打开私密邮件草稿，不会自动附加提示词或媒体。",
+      "supportOpenFailed": "无法打开隐私或支持入口",
       "softwareUpdates": "软件更新",
       "currentVersion": "当前版本",
       "updateStatusLoading": "正在读取更新状态…",
@@ -515,7 +528,7 @@
       "titleAction": "起标题",
       "subtitleTranslationAction": "翻译字幕",
       "model": "模型",
-      "codexModel": "Codex 模型",
+      "codexModel": "模型",
       "reasoningEffort": "推理强度",
       "reasoningEfforts": {
         "minimal": "最低",
@@ -721,9 +734,32 @@
       },
       "source": "图片来源",
       "sources": {
-        "real": "当前图库",
-        "stress": "压力样例"
+        "real": "当前素材",
+        "stress": "压力样例",
+        "manual": "手动选择"
       },
+      "showInSidebar": "在侧边栏显示过场调试",
+      "materials": "素材",
+      "dictionary": "词典",
+      "myMaterialAlbums": "我的素材图集",
+      "albumsLoadFailed": "无法加载素材图集",
+      "chooseImages": "选择图片",
+      "chooseImagesTitle": "选择过场图片",
+      "useSelectedImages": "使用所选图片",
+      "noSelectableImages": "素材中没有可选图片",
+      "selectedImages": {
+        "$params": ["count"],
+        "$template": "已选 {count} 张"
+      },
+      "selectedOrder": "已选图片顺序",
+      "deselectImage": {
+        "$params": ["index"],
+        "$template": "取消选择第 {index} 张图片"
+      },
+      "deselectAllImages": "全部取消",
+      "dragToReorder": "拖动排序",
+      "loadingMaterials": "正在加载素材图片…",
+      "materialsLoadFailed": "无法加载素材图片",
       "aspect": "比例样例",
       "aspects": {
         "mixed": "混合",
@@ -753,11 +789,18 @@
       "pause": "暂停",
       "resume": "继续",
       "replay": "重播",
+      "exportTransparentPng": "导出透明 PNG",
+      "exportingPng": "正在导出 PNG…",
+      "pngExported": "透明 PNG 已开始下载",
+      "pngExportFailed": "无法导出透明 PNG",
       "reducedMotion": "减弱动态",
+      "enterFullscreen": "进入全屏",
+      "exitFullscreen": "退出全屏",
       "stage": "切换阶段",
       "progress": "切换进度",
+      "spacePreviewName": "AIY：AI帮你DIY",
       "previewAria": "过场动画预览舞台",
-      "realEmpty": "当前图库没有匹配该比例的图片，已显示抽象画框。",
+      "realEmpty": "素材中没有匹配该比例的图片。",
       "imageCount": {
         "$params": ["count"],
         "$template": "{count} 张预览图"
@@ -765,7 +808,6 @@
     },
     "featureDemo": {
       "title": "功能演示",
-      "brand": "AIY · AI DIY",
       "play": "播放",
       "pause": "暂停",
       "replay": "重播",
@@ -777,17 +819,21 @@
       "previewAria": "功能演示预览",
       "timelineAria": "功能演示时间轴",
       "scenes": {
-        "intro": {
-          "title": "主要功能",
-          "subtitle": "朴实展示当前 AIY 工作流。"
+        "directionDetailsExpand": {
+          "title": "方向缩略图 · 显示详情",
+          "subtitle": "展开方向说明、变化轴、状态和可用操作。"
         },
-        "thumbnailExpand": {
-          "title": "光标悬浮在缩略图 · 下滑展开",
-          "subtitle": "图片保持可见，Prompt、模型和版本信息在下方展开。"
+        "directionDetailsCollapse": {
+          "title": "方向缩略图 · 收起详情",
+          "subtitle": "回到以图片为主的紧凑方向卡片。"
         },
-        "thumbnailCollapse": {
-          "title": "光标悬浮在缩略图 · 上滑折叠",
-          "subtitle": "回到紧凑网格，同时保留当前选择。"
+        "directoryExpand": {
+          "title": "悬浮目录缩略图 · 下滑展开",
+          "subtitle": "在目录封面上向下滑动，展开子目录和视频文稿。"
+        },
+        "directoryCollapse": {
+          "title": "悬浮目录缩略图 · 上滑折叠",
+          "subtitle": "在目录封面上向上滑动，折叠手势展开的目录分支。"
         },
         "codexImages": {
           "title": "找回 Codex 图片",
@@ -800,22 +846,7 @@
         "videoDocument": {
           "title": "视频转图文",
           "subtitle": "把源视频整理为关键帧、逐字稿和可编辑图文。"
-        },
-        "outro": {
-          "title": "AIY · AI DIY",
-          "subtitle": "围绕仍要继续使用的作品组织 AI 产物。"
         }
-      },
-      "canvas": {
-        "tasks": "Codex 任务",
-        "library": "本地图册",
-        "prompt": "Prompt",
-        "model": "模型",
-        "version": "版本",
-        "video": "源视频",
-        "article": "图文稿",
-        "transcript": "逐字稿与关键帧",
-        "importAction": "导入所选"
       }
     },
     "codexImageDiscovery": {
@@ -869,6 +900,14 @@
         "$params": ["count"],
         "$template": "每页 {count} 张"
       },
+      "recovery": {
+        "available": "可补回的 AIY 生图",
+        "prompt": "创作输入",
+        "version": {
+          "$params": ["versionNo"],
+          "$template": "V{versionNo}"
+        }
+      },
       "filters": {
         "label": "导入状态",
         "notInLibrary": {
@@ -899,6 +938,7 @@
         "showInSidebar": "在侧边栏显示 Codex 图片",
         "openCodex": "打开 Codex",
         "openCreation": "打开创作",
+        "recoverToCreation": "补回原创作",
         "selectTask": {
           "$params": ["count"],
           "$template": "选择 {count} 张"
@@ -911,7 +951,8 @@
         "imported": {
           "$params": ["count"],
           "$template": "已导入 {count} 张 Codex 图片"
-        }
+        },
+        "recovered": "已连同原始创作信息补回生成图片"
       }
     },
     "openAiImageApi": {
@@ -973,6 +1014,26 @@
         "saved": "DeepSeek API 连接已保存",
         "tested": "DeepSeek API 连接测试已完成",
         "cleared": "DeepSeek API 凭据已清除"
+      }
+    },
+    "antigravityCli": {
+      "title": "Antigravity CLI 额度",
+      "version": "CLI 版本",
+      "currentModel": "当前模型",
+      "lastChecked": "额度查询时间",
+      "notChecked": "尚未查询",
+      "resetAt": "重置时间",
+      "refresh": "刷新 CLI 状态和额度",
+      "states": {
+        "checking": "检查中",
+        "ready": "可用",
+        "unavailable": "不可用"
+      },
+      "warnings": {
+        "NONE": "额度充足",
+        "LOW": "Antigravity 额度即将用尽。",
+        "EXHAUSTED": "Antigravity 额度已用尽。",
+        "UNAVAILABLE": "暂时无法查询 Antigravity 额度。"
       }
     },
     "externalImageApi": {
@@ -1070,7 +1131,7 @@
       "cancel": "取消"
     },
     "review": {
-      "title": "导入内容",
+      "title": "整理导入内容",
       "summary": {
         "$params": ["count", "kind"],
         "$template": "{count} 项 · {kind}"
@@ -1082,6 +1143,15 @@
       "selected": {
         "$params": ["count"],
         "$template": "已选择 {count} 项"
+      },
+      "preview": "预览",
+      "selectItem": {
+        "$params": ["name"],
+        "$template": "选择 {name}"
+      },
+      "previewItem": {
+        "$params": ["name"],
+        "$template": "预览 {name}"
       },
       "addContent": "添加内容",
       "batchFill": "批量填写",
@@ -1107,6 +1177,11 @@
       "aiOther": "其他",
       "model": "模型",
       "platform": "来源服务",
+      "modelOptions": "模型选项",
+      "platformOptions": "来源服务选项",
+      "changeAllAiGenerated": "修改全部项目的 AI 生成状态",
+      "changeAllModel": "修改全部项目的模型",
+      "changeAllPlatform": "修改全部项目的来源服务",
       "version": "版本",
       "exactPrompt": "原始 Prompt",
       "description": "描述",
@@ -1115,11 +1190,16 @@
       "notLinked": "未关联",
       "linkedPromptVersion": "关联 Prompt 版本",
       "noPromptVersion": "无 Prompt 版本",
+      "editDetails": "编辑详情",
+      "editDetailsFor": {
+        "$params": ["name"],
+        "$template": "编辑 {name} 的详情"
+      },
       "favorite": "收藏",
       "cancel": "取消",
       "importItems": {
         "$params": ["count"],
-        "$template": "导入 {count} 项"
+        "$template": "导入 {count} 项素材"
       },
       "importAsCreation": "导入为新创作",
       "importing": "正在导入",
@@ -1805,6 +1885,13 @@
       }
     },
     "albums": {
+      "navigation": {
+        "creation": "创作",
+        "dictionary": "词典",
+        "material": "素材",
+        "allCreations": "全部创作",
+        "albums": "我的素材图集"
+      },
       "allMaterials": "全部素材",
       "myAlbums": "图集",
       "create": "新建图集",
@@ -1835,6 +1922,10 @@
       "moveDown": "下移",
       "moveToRoot": "移到顶层",
       "belongsTo": "属于",
+      "albumCount": {
+        "$params": ["count"],
+        "$template": "{count} 个图集"
+      },
       "materials": {
         "$params": ["count"],
         "$template": "{count} 项素材"
@@ -1847,6 +1938,11 @@
         "$params": ["count"],
         "$template": "{count} 个子图集"
       },
+      "subAlbums": "子图集",
+      "unfiledMaterials": "零散素材",
+      "materialsHere": "本级素材",
+      "materialZone": "素材区",
+      "path": "图集路径",
       "empty": "还没有自建图集",
       "loading": "正在加载图集…",
       "loadFailed": "图集加载失败",
@@ -1923,8 +2019,17 @@
     "inspector": {
       "label": "已选素材",
       "title": "素材详情",
+      "back": "返回素材库",
       "close": "关闭素材详情",
       "dialogDescription": "查看所选素材，并打开其关联记录。",
+      "preview": "素材预览",
+      "browseLabel": "浏览素材",
+      "previous": "上一项素材",
+      "next": "下一项素材",
+      "position": {
+        "$params": ["position", "total"],
+        "$template": "第 {position} / {total} 项"
+      },
       "textMaterial": "文字素材",
       "imageMaterial": "未命名图片",
       "text": "文字",
@@ -1936,12 +2041,15 @@
       "changesSaved": "修改已保存",
       "saving": "正在保存…",
       "discardTitle": "放弃未保存的修改？",
-      "discardDescription": "关闭素材详情后，本次修改将无法恢复。",
+      "discardDescription": "离开素材详情后，本次修改将无法恢复。",
       "continueEditing": "继续编辑",
       "discardChanges": "放弃修改",
       "copyText": "复制文字",
       "openCreation": "打开创作",
       "openDictionary": "打开词条",
+      "roleOutput": "产出",
+      "roleSource": "源图",
+      "roleInput": "输入",
       "noLinkedRecord": "没有关联记录",
       "relationships": "关联记录",
       "importedOutput": "导入成果",
@@ -1955,12 +2063,15 @@
       },
       "ratingTitle": "图片评分",
       "folded": "默认折叠",
+      "loading": "正在加载",
+      "retry": "重试",
       "details": "文件信息",
       "added": "加入时间",
       "dimensions": "尺寸",
       "format": "格式",
       "fileSize": "文件大小",
-      "origin": "来源"
+      "origin": "来源",
+      "assetId": "素材 ID"
     },
     "settings": {
       "trigger": "评分设置",
@@ -2596,6 +2707,33 @@
       "dictionary": "词典",
       "importResults": "导入成果",
       "reviewImport": "确认导入",
+      "importDraftDescription": "可继续粘贴或拖入图片，导入前统一确认名称、版本和顺序。",
+      "importDraftLimit": "一次最多确认 8 张图片。",
+      "releaseToAddResults": "松开以添加成果",
+      "newImagesDefaultVersion": "新图片默认版本",
+      "selectedVersion": "所选图片版本",
+      "unlinkedVersion": "不关联版本",
+      "applyToSelected": "应用",
+      "selectedResults": {
+        "$params": ["count"],
+        "$template": "已选 {count} 项"
+      },
+      "addImages": "添加图片",
+      "pasteOrDropResults": "在这里粘贴或拖入成果图片",
+      "selectAllResults": "选择全部可导入成果",
+      "preview": "预览",
+      "resultName": "成果名称",
+      "linkedVersion": "关联版本",
+      "importState": "状态",
+      "order": "顺序",
+      "selectResult": {
+        "$params": ["name"],
+        "$template": "选择 {name}"
+      },
+      "readyToImport": "可导入",
+      "moveResultUp": "上移成果",
+      "moveResultDown": "下移成果",
+      "removeResult": "移除成果",
       "importing": "导入中",
       "imported": "已导入",
       "duplicates": "重复",
@@ -2634,8 +2772,164 @@
       "albumDeleted": "图集已删除",
       "promptLanguageChinese": "中文",
       "version": "版本",
+      "createVersion": "创建版本",
+      "versionCreated": "版本已创建",
       "searchVersions": "搜索版本…",
       "noMatchingVersions": "没有匹配的版本"
+    },
+    "externalCreationImport": {
+      "title": "导入外部创作",
+      "description": "把一批外部成果图直接整理为创作 V01。",
+      "creationTitle": "标题",
+      "optional": "可选",
+      "promptKnowledge": "Prompt",
+      "imageFallback": "图片",
+      "exactPrompt": "有准确 Prompt",
+      "unknownPrompt": "不知道 Prompt",
+      "sourceUrl": "来源链接",
+      "album": "图集",
+      "noAlbum": "不归入图集",
+      "cancel": "取消",
+      "createV01": "创建 V01",
+      "imported": "已导入外部创作",
+      "errors": {
+        "TYPE": "仅支持 PNG、JPEG、WebP、SVG 图片",
+        "SIZE": "每张图片不能超过 25 MB",
+        "LIMIT": "最多导入 8 张成果图",
+        "DUPLICATE": "相同文件已经添加"
+      }
+    },
+    "resultsOrganizer": {
+      "organize": "整理成果…",
+      "title": "整理成果",
+      "outputCount": {
+        "$params": ["count"],
+        "$template": "共 {count} 项成果"
+      },
+      "selectedCount": {
+        "$params": ["count"],
+        "$template": "已选 {count} 项"
+      },
+      "selectAll": "选择全部成果",
+      "selectOutput": {
+        "$params": ["name"],
+        "$template": "选择 {name}"
+      },
+      "previewOutput": {
+        "$params": ["name"],
+        "$template": "预览 {name}"
+      },
+      "preview": "成果",
+      "name": "名称",
+      "version": "版本",
+      "relationship": "图片关系",
+      "aiGenerated": "AI 生成",
+      "model": "模型",
+      "platform": "来源服务",
+      "order": "顺序",
+      "changeAll": "全改",
+      "changeAllAiGenerated": "修改全部成果的 AI 生成状态",
+      "changeAllModel": "修改全部成果的模型",
+      "changeAllPlatform": "修改全部成果的来源服务",
+      "mixedValues": "多种值",
+      "unchanged": "保持不变",
+      "unlinkedVersion": "不关联版本",
+      "createVersion": {
+        "$params": ["version"],
+        "$template": "新建 {version}"
+      },
+      "applyToSelected": "应用",
+      "inferFromPrompt": "根据 Prompt 推断",
+      "inferred": {
+        "$params": ["count"],
+        "$template": "已应用 {count} 项建议"
+      },
+      "nothingInferred": "没有新的 Prompt 推断建议",
+      "relationshipUnspecified": "未设置",
+      "relationshipPrimary": "主成果",
+      "relationshipVariant": {
+        "$params": ["name"],
+        "$template": "{name} 的变体"
+      },
+      "relationshipDerived": {
+        "$params": ["name"],
+        "$template": "派生自 {name}"
+      },
+      "relationshipPostEdit": {
+        "$params": ["name"],
+        "$template": "后期修改自 {name}"
+      },
+      "aiYes": "是",
+      "aiNo": "否",
+      "aiUnknown": "未知",
+      "aiOther": "其他",
+      "modelPlaceholder": "输入或选择模型",
+      "modelOptions": "模型选项",
+      "platformPlaceholder": "输入或选择来源服务",
+      "platformOptions": "来源服务选项",
+      "prompt": "Prompt",
+      "promptEmpty": "未记录 Prompt",
+      "promptDiffWithBelow": {
+        "$params": ["name"],
+        "$template": "与下方成果 · {name} 的差异"
+      },
+      "promptUnchanged": "Prompt 未变化",
+      "diffAdded": "新增",
+      "diffRemoved": "删除",
+      "moveUp": "上移成果",
+      "moveDown": "下移成果",
+      "cancel": "取消",
+      "save": "保存更改",
+      "saving": "保存中",
+      "saved": "成果已更新",
+      "saveFailed": "成果更新失败",
+      "restartRequired": "请重启应用以加载更新后的创作功能",
+      "versionUnavailable": "请先打开这项创作，再继续新增版本"
+    },
+    "outputPresentation": {
+      "addCover": "添加到封面",
+      "removeCover": "从封面中移除",
+      "maximumCovers": {
+        "$params": ["maximum"],
+        "$template": "最多选择 {maximum} 张封面"
+      },
+      "useAutomaticCover": "恢复自动封面",
+      "chooseCover": "选择封面组…",
+      "changeCover": "更换封面组…",
+      "coverPickerTitle": {
+        "$params": ["title"],
+        "$template": "选择“{title}”的封面组"
+      },
+      "coverPickerDescription": "最多选择 3 张可见图片；第一张是主封面，可拖动已选封面调整顺序。",
+      "automaticCover": "自动封面",
+      "automaticCoverDescription": "跟随最新成果",
+      "selectedCovers": {
+        "$params": ["count", "maximum"],
+        "$template": "已选择 {count}/{maximum} 张封面"
+      },
+      "selectedOrder": "封面顺序 · 第一张为主封面",
+      "dragToReorder": "拖动调整顺序",
+      "coverPosition": {
+        "$params": ["position"],
+        "$template": "第 {position} 张封面"
+      },
+      "deselectCover": {
+        "$params": ["position"],
+        "$template": "移除第 {position} 张封面"
+      },
+      "coverImage": {
+        "$params": ["index", "width", "height"],
+        "$template": "图片 {index} · {width}×{height}"
+      },
+      "applyCover": "保存封面组",
+      "remove": "从创作中移除",
+      "coverSet": "创作封面已更新",
+      "automaticCoverSet": "已恢复自动封面",
+      "removeTitle": "从这项创作中移除图片？",
+      "removeDescription": "图片仍保留在素材库及其他引用位置；生成与导入历史不会删除。",
+      "confirmRemove": "移除",
+      "removed": "图片已从创作中移除",
+      "actionFailed": "无法更新创作"
     },
     "album": {
       "images": "张",
@@ -3064,11 +3358,28 @@
     },
     "materialPicker": {
       "add": "添加素材",
+      "title": "选择参考图片",
+      "choose": "选择图片",
+      "apply": "使用所选图片",
       "search": "搜索已有图片",
       "recent": "已有素材与产出",
       "empty": "没有找到可用图片",
       "importing": "导入本地图片",
-      "selected": "已选择"
+      "selected": "已选择",
+      "selectedImages": {
+        "$params": ["count"],
+        "$template": "已选择 {count} 张"
+      },
+      "selectedOrder": "已选图片顺序",
+      "dragToReorder": "拖动调整顺序",
+      "deselectAll": "取消全选",
+      "deselectImage": {
+        "$params": ["index"],
+        "$template": "取消选择第 {index} 张图片"
+      },
+      "albumsLoadFailed": "无法加载素材图集",
+      "loadingMaterials": "正在加载素材图片…",
+      "materialsLoadFailed": "无法加载素材图片"
     },
     "quality": {
       "label": "质量",

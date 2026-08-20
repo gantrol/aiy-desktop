@@ -6,7 +6,7 @@ import {
   ArrowUpToLineIcon,
   FolderInputIcon,
   GalleryVerticalEndIcon,
-  ImageIcon as OpenImageIcon,
+  ImageIcon,
   ImagesIcon,
   LightbulbIcon,
   PanelLeftCloseIcon,
@@ -49,7 +49,7 @@ import {
   writeCreationDrag,
 } from '@/renderer/components/albums/albumDrag';
 import { AlbumMoveDialog, type AlbumMoveTarget } from '@/renderer/components/albums/AlbumMoveDialog';
-import { AlbumCoverBadge, AlbumTreePreview } from '@/renderer/components/albums/AlbumTreePreview';
+import { AlbumTreePreview } from '@/renderer/components/albums/AlbumTreePreview';
 import { buildAlbumTreeIndex, compareSidebarRootSortOrder } from '@/renderer/components/albums/albumTree';
 import { createAlbumExpansionAction } from '@/renderer/components/albums/albumTreeMenuActions';
 import { TreeDragHandle } from '@/renderer/components/albums/TreeDragHandle';
@@ -57,24 +57,16 @@ import {
   TreeBranchCollapseRail,
   TreeBranchCollapseProvider,
   TreeBranchContent,
-  TreeBranchNodeConnector,
   TreeBranchTransitRail,
   TreeDisclosureRail,
 } from '@/renderer/components/albums/TreeDisclosureRail';
 import {
   getTreeBranchItemTopology,
-  getTreeNodeAnchor,
   type TreeBranchItemTopology,
 } from '@/renderer/components/albums/treeConnectionGeometry';
 import { useAlbumTreeExpansion } from '@/renderer/components/albums/useAlbumTreeExpansion';
 import { AssetFileContextMenu } from '@/renderer/components/media/AssetFileContextMenu';
-import {
-  getMediaStackHorizontalBounds,
-  getMediaStackLayout,
-  getMediaStackPrimaryFrameBounds,
-  MediaStackPreview,
-  type MediaStackItem,
-} from '@/renderer/components/media/MediaStackPreview';
+import { MediaStackPreview } from '@/renderer/components/media/MediaStackPreview';
 import { ActionContextMenuItems, ActionMenuButton, type ActionMenuAction } from '@/renderer/components/ui/action-menu';
 import { Button } from '@/renderer/components/ui/button';
 import { Collapsible, CollapsibleTrigger } from '@/renderer/components/ui/collapsible';
@@ -82,11 +74,19 @@ import { ContextMenu, ContextMenuContent, ContextMenuTrigger } from '@/renderer/
 import { ScrollArea } from '@/renderer/components/ui/scroll-area';
 import { QuietEmpty } from '@/renderer/components/ui/quiet-empty';
 import { CreatorPaneResizeHandle } from '@/renderer/components/creator/CreatorPaneResizeHandle';
+import { CreationCoverPickerDialog } from '@/renderer/components/creator/CreationCoverPickerDialog';
 import {
   CreationLibraryToolbar,
   type CreationLibraryFilter,
 } from '@/renderer/components/creator/CreationLibraryToolbar';
 import { creationAlbumPreviewAssets } from '@/renderer/components/creator/creationAlbumPreviewAssets';
+import {
+  CompactCreationAlbumPreview,
+  CreationSessionTreePreview,
+  creationAlbumPreviewAssetLabel,
+  indexCreationAssetNavigationTargets,
+  resolveCreationAlbumPreviewTarget,
+} from '@/renderer/components/creator/CreationLibraryMediaPreviews';
 import {
   CreationDocumentAlbumPaging,
   CreationDocumentCompactItem,
@@ -99,7 +99,7 @@ import {
   buildCreationSessionProjection,
   type CreationSessionProjection,
 } from '@/renderer/components/creator/creationSessionProjection';
-import { allAssets } from '@/renderer/components/creator/utils';
+import { creationSessionCoverFirstAssets } from '@/renderer/components/creator/creationCoverFirstAssets';
 import { transferSourceUrl } from '@/renderer/components/creator/imageImport';
 import { useVideoDocumentList } from '@/renderer/features/video-documents/useVideoDocumentList';
 import { useVideoDocumentNavigation } from '@/renderer/features/video-documents/useVideoDocumentNavigation';
@@ -152,6 +152,7 @@ interface Props {
   onMoveSeries(seriesIds: readonly string[], albumId: string | null): Promise<void>;
   onReorderMembers(albumId: string, memberIds: string[]): Promise<void>;
   onReorderRoot(targets: SidebarRootOrderTargetInput[]): Promise<void>;
+  onCreationPresentationChange(): Promise<void>;
   onImportExternalFiles?(albumId: string, files: File[], sourceUrl: string): void;
   notify(message: string): void;
 }
@@ -247,14 +248,23 @@ function creationDocumentSearchActive(active: boolean, filter: CreationLibraryFi
 }
 
 function collectSessionAssets(session: CreationSessionProjection) {
-  const seen = new Set<string>();
-  return session.memberSeries.flatMap((owner) =>
-    allAssets(owner).flatMap((asset) => {
-      if (seen.has(asset.id)) return [];
-      seen.add(asset.id);
-      return [{ asset, seriesId: owner.id }];
-    }),
-  );
+  return creationSessionCoverFirstAssets(session);
+}
+
+function explicitCreationCoverAssetIds(
+  series: Pick<PromptSeriesDto, 'explicitCoverAssetId' | 'explicitCoverAssetIds'> | null | undefined,
+) {
+  if (!series) return [];
+  return series.explicitCoverAssetIds ?? (series.explicitCoverAssetId ? [series.explicitCoverAssetId] : []);
+}
+
+function creationCoverPickerView(session: CreationSessionProjection | null, locale: Locale) {
+  if (!session) return { title: '', assets: [] as AssetDto[], explicitCoverAssetIds: [] as string[] };
+  return {
+    title: creationSessionTitle(session, locale),
+    assets: collectSessionAssets(session).map(({ asset }) => asset),
+    explicitCoverAssetIds: explicitCreationCoverAssetIds(session.primarySeries),
+  };
 }
 
 function entryId(entry: MixedEntry) {
@@ -303,7 +313,7 @@ function navigationEntryForDocument(
 
 const rowControlsClassName =
   'pointer-events-none absolute inset-y-0 right-1 z-30 flex items-center gap-0.5 opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100';
-const rowControlClassName = 'pointer-events-auto shrink-0 rounded-md bg-overlay/95 shadow-overlay backdrop-blur-sm';
+const rowControlClassName = 'pointer-events-auto shrink-0 rounded-md bg-overlay/95 shadow-overlay';
 const compactItemClassName =
   'relative grid size-16 shrink-0 place-items-center overflow-visible rounded-xl bg-transparent outline-none focus-visible:ring-2 focus-visible:ring-ring';
 const compactSelectedClassName =
@@ -431,13 +441,17 @@ export function ResultLibrary({
   onMoveSeries,
   onReorderMembers,
   onReorderRoot,
+  onCreationPresentationChange,
   onImportExternalFiles,
   notify,
 }: Props) {
   const { messages } = useI18n();
   const l = messages.creator.results;
   const a = messages.creator.album;
+  const presentation = messages.creator.outputPresentation;
   const [query, setQuery] = useState('');
+  const [coverPickerSessionId, setCoverPickerSessionId] = useState<string | null>(null);
+  const [coverBusy, setCoverBusy] = useState(false);
   const normalizedQuery = normalizeCreationLibraryQuery(query, locale);
   const navigationFiltered = creationLibraryNavigationFiltered(filter, normalizedQuery);
   const includeDocuments = filter !== 'images';
@@ -493,6 +507,12 @@ export function ResultLibrary({
     () => new Map(sessions.map((session) => [session.id, collectSessionAssets(session)])),
     [sessions],
   );
+  const creationTargetsByAssetId = useMemo(
+    () => indexCreationAssetNavigationTargets(sessionAssetsById),
+    [sessionAssetsById],
+  );
+  const coverPickerSession = sessions.find((session) => session.id === coverPickerSessionId) ?? null;
+  const coverPickerView = creationCoverPickerView(coverPickerSession, locale);
   const albumBySeriesId = useMemo(() => {
     const result = new Map<string, string>();
     for (const album of data.albums) {
@@ -688,7 +708,7 @@ export function ResultLibrary({
   const [draggedTreeItem, setDraggedTreeItem] = useState<DraggedTreeItem | null>(null);
   const [dropPlacement, setDropPlacement] = useState<DropPlacement | null>(null);
   const [moveTarget, setMoveTarget] = useState<ResultMoveTarget | null>(null);
-  const [compactPreview, setCompactPreview] = useState<{ sessionId: string; asset: AssetDto } | null>(null);
+  const [compactPreview, setCompactPreview] = useState<{ entryKey: string; asset: AssetDto } | null>(null);
   const selectedAlbumArchived = Boolean(selectedAlbumId && tree.effectivelyArchived.has(selectedAlbumId));
   const selectedRootIndex = useMemo(() => {
     const rootAlbumId = (albumId: string | null | undefined) => {
@@ -868,6 +888,25 @@ export function ResultLibrary({
       surface === 'existing-creation' &&
       session.memberSeries.some((series) => series.id === selectedSeriesId)
     );
+  }
+
+  async function updateCreationCovers(imageAssetIds: readonly string[]) {
+    const target = coverPickerSession;
+    if (!target || coverBusy) return;
+    setCoverBusy(true);
+    try {
+      await window.desktopApi.promptSeriesCoverSet({
+        seriesId: target.primarySeries.id,
+        imageAssetIds: [...imageAssetIds],
+      });
+      await onCreationPresentationChange();
+      setCoverPickerSessionId(null);
+      notify(imageAssetIds.length > 0 ? presentation.coverSet : presentation.automaticCoverSet);
+    } catch (reason) {
+      notify(`${presentation.actionFailed}: ${reason instanceof Error ? reason.message : String(reason)}`);
+    } finally {
+      setCoverBusy(false);
+    }
   }
 
   function setAlbumExpanded(albumId: string, open: boolean) {
@@ -1200,7 +1239,7 @@ export function ResultLibrary({
       : rootEntries.filter((candidate) => candidate.kind !== 'DOCUMENT' && candidate.pinned === entry.pinned);
     const siblingIndex = siblings.findIndex((candidate) => childEntryKey(candidate) === childEntryKey(entry));
     return [
-      { id: 'open', label: a.open, icon: OpenImageIcon, onSelect: () => onSelect(series.id) },
+      { id: 'open', label: a.open, icon: ImageIcon, onSelect: () => onSelect(series.id) },
       ...(imageAssetIds.length > 3
         ? [
             {
@@ -1211,6 +1250,13 @@ export function ResultLibrary({
             } satisfies ActionMenuAction,
           ]
         : []),
+      {
+        id: 'choose-creation-cover',
+        label: explicitCreationCoverAssetIds(series).length > 0 ? presentation.changeCover : presentation.chooseCover,
+        icon: ImageIcon,
+        disabled: lifecycleBusy || archivedBranch || coverBusy || imageAssetIds.length === 0,
+        onSelect: () => setCoverPickerSessionId(session.id),
+      },
       {
         id: 'move',
         label: a.move,
@@ -1469,57 +1515,29 @@ export function ResultLibrary({
     return creationAlbumPreviewAssets(album, filter);
   }
 
-  function compactAlbumPreview(album: AlbumDto) {
-    return (
-      <span className="relative grid size-full place-items-center">
-        <MediaStackPreview
-          size="rail"
-          singleItemAlign="center"
-          items={albumPreviewAssets(album).map((asset) => ({ asset }))}
-        />
-        <AlbumCoverBadge compact />
-      </span>
+  function creationTargetForAlbumPreview(albumId: string, assetId: string) {
+    return resolveCreationAlbumPreviewTarget(
+      albumId,
+      assetId,
+      creationTargetsByAssetId,
+      albumBySessionId,
+      tree.parentById,
     );
   }
 
-  function sessionMediaPreview(
-    items: MediaStackItem[],
-    branchTopology: TreeBranchItemTopology | undefined,
-    onAssetSelect: (asset: AssetDto) => void,
-    actions: readonly ActionMenuAction[],
-  ) {
-    const paintedBounds = getMediaStackHorizontalBounds('tree', items, 'settled');
-    const previewWidth = Math.ceil(Math.max(getMediaStackLayout('tree').containerWidth, paintedBounds.right));
-    const preview = (
-      <MediaStackPreview
-        size="tree"
-        items={items}
-        onAssetSelect={onAssetSelect}
-        notify={notify}
-        contextActions={actions}
-      />
-    );
-    if (!branchTopology)
-      return (
-        <span
-          className="relative z-10 -ml-1 flex h-[4.25rem] shrink-0 items-center overflow-visible pl-0.5"
-          style={{ width: previewWidth }}
-        >
-          {preview}
-        </span>
-      );
-    const nodeAnchor = getTreeNodeAnchor(getMediaStackPrimaryFrameBounds('tree', items));
-    return (
-      <span
-        data-tree-branch-media-preview
-        className="relative z-10 -ml-1 flex h-[4.25rem] shrink-0 items-center overflow-visible"
-        style={{ width: previewWidth }}
-      >
-        <TreeBranchTransitRail topology={branchTopology} />
-        <TreeBranchNodeConnector topology={branchTopology} anchor={nodeAnchor} />
-        {preview}
-      </span>
-    );
+  function selectAlbumPreviewAsset(album: AlbumDto, asset: AssetDto) {
+    const target = creationTargetForAlbumPreview(album.id, asset.id);
+    if (target) onSelect(target.seriesId, asset.id);
+    else onSelectAlbum(album.id);
+  }
+
+  function albumPreviewAssetLabel(album: AlbumDto, asset: AssetDto, index: number) {
+    const target = creationTargetForAlbumPreview(album.id, asset.id);
+    return creationAlbumPreviewAssetLabel(album, index, locale, target, a.open);
+  }
+
+  function updateCompactPreview(entryKey: string, asset: AssetDto | null) {
+    setCompactPreview((current) => (asset ? { entryKey, asset } : current?.entryKey === entryKey ? null : current));
   }
 
   function renderSessionRow(
@@ -1645,7 +1663,13 @@ export function ResultLibrary({
         )}
         <ResultLibraryRowButton label={`${a.open}: ${title}`} current={selected} onClick={selectSession} />
         <span className="relative z-20 flex shrink-0">
-          {sessionMediaPreview(previewItems, branchTopology, selectAsset, actions)}
+          <CreationSessionTreePreview
+            items={previewItems}
+            branchTopology={branchTopology}
+            onAssetSelect={selectAsset}
+            actions={actions}
+            notify={notify}
+          />
           {ideaCreation && (
             <button
               type="button"
@@ -1949,6 +1973,9 @@ export function ResultLibrary({
           open={expanded}
           expandable={expandable}
           expandLabel={expanded ? l.collapse : l.expand}
+          overlayStyle="solid"
+          onAssetSelect={(asset) => selectAlbumPreviewAsset(album, asset)}
+          assetLabel={(asset, index) => albumPreviewAssetLabel(album, asset, index)}
           disclosureInteractive
           branchTopology={branchTopology}
           onPullDownExpand={() => setAlbumHoverExpanded(album.id, true)}
@@ -2051,18 +2078,30 @@ export function ResultLibrary({
       const archived = Boolean(entry.archived || tree.effectivelyArchived.has(album.id));
       const previewAssets = albumPreviewAssets(album);
       const actions = albumActions(album, archived, false, false);
+      const activePreviewAsset =
+        compactPreview?.entryKey === `album:${album.id}` ? compactPreview.asset : previewAssets[0];
       const trigger = (
-        <button
-          type="button"
+        <div
           title={album.title}
-          aria-label={album.title}
-          aria-current={selected ? 'page' : undefined}
           data-result-library-selected={selected ? 'true' : undefined}
           className={cn(compactItemClassName, selected && compactSelectedClassName, archived && 'opacity-60')}
-          onClick={() => onSelectAlbum(album.id)}
         >
-          {compactAlbumPreview(album)}
-        </button>
+          <button
+            type="button"
+            className="absolute inset-0 z-0 rounded-xl outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            aria-label={`${a.open}: ${album.title}`}
+            aria-current={selected ? 'page' : undefined}
+            onClick={() => onSelectAlbum(album.id)}
+          />
+          <CompactCreationAlbumPreview
+            album={album}
+            assets={previewAssets}
+            assetLabel={(asset, index) => albumPreviewAssetLabel(album, asset, index)}
+            onAlbumSelect={() => onSelectAlbum(album.id)}
+            onAssetSelect={(asset) => selectAlbumPreviewAsset(album, asset)}
+            onAssetPreviewChange={(asset) => updateCompactPreview(`album:${album.id}`, asset)}
+          />
+        </div>
       );
       const content = (
         <div
@@ -2139,7 +2178,7 @@ export function ResultLibrary({
           )}
         >
           {previewAssets[0] ? (
-            <AssetHoverPreview asset={previewAssets[0]} side="right">
+            <AssetHoverPreview asset={activePreviewAsset} side="right">
               {trigger}
             </AssetHoverPreview>
           ) : (
@@ -2191,7 +2230,8 @@ export function ResultLibrary({
       const owner = assets.find((record) => record.asset.id === asset.id)?.seriesId ?? entry.session.primarySeries.id;
       onSelect(owner, asset.id);
     };
-    const activePreviewAsset = compactPreview?.sessionId === entry.session.id ? compactPreview.asset : first?.asset;
+    const previewKey = `session:${entry.session.id}`;
+    const activePreviewAsset = compactPreview?.entryKey === previewKey ? compactPreview.asset : first?.asset;
     const trigger =
       assets.length > 0 ? (
         <div
@@ -2217,15 +2257,7 @@ export function ResultLibrary({
               revealContext: { kind: 'CREATION' as const, seriesId },
             }))}
             onAssetSelect={selectAsset}
-            onAssetPreviewChange={(asset) =>
-              setCompactPreview((current) =>
-                asset
-                  ? { sessionId: entry.session.id, asset }
-                  : current?.sessionId === entry.session.id
-                    ? null
-                    : current,
-              )
-            }
+            onAssetPreviewChange={(asset) => updateCompactPreview(previewKey, asset)}
             assetLabel={(_asset, index) => `${title}: ${locale === 'zh' ? `图片 ${index + 1}` : `Image ${index + 1}`}`}
             notify={notify}
             contextActions={actions}
@@ -2302,6 +2334,19 @@ export function ResultLibrary({
       onMoveDocument={onMoveDocument}
     />
   );
+  const coverPickerDialog = (
+    <CreationCoverPickerDialog
+      open={Boolean(coverPickerSession)}
+      seriesTitle={coverPickerView.title}
+      assets={coverPickerView.assets}
+      explicitCoverAssetIds={coverPickerView.explicitCoverAssetIds}
+      busy={coverBusy}
+      onOpenChange={(open) => {
+        if (!open) setCoverPickerSessionId(null);
+      }}
+      onApply={(imageAssetIds) => void updateCreationCovers(imageAssetIds)}
+    />
+  );
 
   if (mode === 'images')
     return (
@@ -2371,6 +2416,7 @@ export function ResultLibrary({
           </Button>
         )}
         {moveDialog}
+        {coverPickerDialog}
       </aside>
     );
 
@@ -2578,6 +2624,7 @@ export function ResultLibrary({
         </Button>
       )}
       {moveDialog}
+      {coverPickerDialog}
     </aside>
   );
 }

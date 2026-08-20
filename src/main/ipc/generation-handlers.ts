@@ -26,6 +26,7 @@ import {
   imageReframeStartSchema,
   knowledgeDistillationAcceptSchema,
   knowledgeDistillationCreateSchema,
+  promptVersionCreateSchema,
   styleExplorationStartSchema,
 } from '@/main/ipc/schemas';
 import {
@@ -133,6 +134,9 @@ export function registerGenerationIpc(
   );
   ipcMain.handle('generation:start-version', (_event, raw) =>
     generation.startVersion(generationVersionSchema.parse(raw)),
+  );
+  ipcMain.handle('prompt-version:create', (_event, raw) =>
+    database.createPromptVersion(promptVersionCreateSchema.parse(raw)),
   );
   ipcMain.handle('generation:retry', (_event, rawId) => generation.retry(id.parse(rawId)));
   ipcMain.handle('generation:cancel', (_event, rawId) => generation.cancel(id.parse(rawId)));

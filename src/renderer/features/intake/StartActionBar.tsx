@@ -27,7 +27,7 @@ export function StartActionBar({
 }: Props) {
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   return (
-    <div data-slot="start-action-bar" className="flex items-center gap-2">
+    <div data-slot="start-action-bar" className="flex max-w-full flex-wrap justify-center gap-2">
       <input
         ref={fileInputRef}
         data-action="intake-file-input"

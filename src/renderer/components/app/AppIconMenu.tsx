@@ -7,6 +7,7 @@ import {
   LogOutIcon,
   ScanSearchIcon,
   SettingsIcon,
+  SlidersHorizontalIcon,
   SquarePenIcon,
 } from 'lucide-react';
 import { useState } from 'react';
@@ -22,6 +23,7 @@ interface Props {
   view: AppView;
   disabled: boolean;
   codexImagesVisible: boolean;
+  transitionShowcaseVisible: boolean;
   onNewCreation(): void;
   onViewChange(view: AppView): void;
   onSettingsOpen(): void;
@@ -33,6 +35,7 @@ const viewItems = [
   { id: 'dictionary', icon: DictionaryIcon },
   { id: 'gallery', icon: ImagesIcon },
   { id: 'codexImages', icon: ScanSearchIcon },
+  { id: 'transitionShowcase', icon: SlidersHorizontalIcon },
   { id: 'packs', icon: BlocksIcon },
   { id: 'aiCenter', icon: ActivityIcon },
 ] as const;
@@ -41,6 +44,7 @@ export function AppIconMenu({
   view,
   disabled,
   codexImagesVisible,
+  transitionShowcaseVisible,
   onNewCreation,
   onViewChange,
   onSettingsOpen,
@@ -50,7 +54,10 @@ export function AppIconMenu({
   const { messages } = useI18n();
   const labels = messages.app.menu;
   const navigation = messages.app.navigation;
-  const visibleViewItems = viewItems.filter(({ id }) => id !== 'codexImages' || codexImagesVisible);
+  const visibleViewItems = viewItems.filter(
+    ({ id }) =>
+      (id !== 'codexImages' || codexImagesVisible) && (id !== 'transitionShowcase' || transitionShowcaseVisible),
+  );
 
   function select(action: () => void) {
     setOpen(false);

@@ -139,6 +139,16 @@ function decodeTitle(value: unknown) {
   return result.data;
 }
 
+/** Provider-neutral structured boundary used by API and CLI assistant adapters. */
+export function decodeStructuredAssistOutput(value: unknown, mode: CodexAssistInput['mode']) {
+  return decodeAssist(value, mode);
+}
+
+/** Provider-neutral structured boundary used by API and CLI title adapters. */
+export function decodeStructuredTitleOutput(value: unknown) {
+  return decodeTitle(value);
+}
+
 export function decodeCodexAssistOutputFile(filePath: string, mode: CodexAssistInput['mode']) {
   return decodeAssist(structuredFileJson(filePath), mode);
 }

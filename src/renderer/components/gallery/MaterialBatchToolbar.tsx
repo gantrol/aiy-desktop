@@ -1,12 +1,10 @@
 import {
   BookOpenIcon,
   CornerDownRightIcon,
-  ImagesIcon,
   ListPlusIcon,
   LoaderCircleIcon,
   PlusIcon,
   SearchIcon,
-  VideoIcon,
   XIcon,
 } from 'lucide-react';
 import { useEffect, useMemo, useState, type FormEvent } from 'react';
@@ -17,8 +15,8 @@ import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '
 import { Input } from '@/renderer/components/ui/input';
 import { ScrollArea } from '@/renderer/components/ui/scroll-area';
 import { Separator } from '@/renderer/components/ui/separator';
-import { isVideoAsset } from '@/renderer/components/media/AssetMedia';
 import { buildMaterialAlbumTree, flattenMaterialAlbumTree } from '@/renderer/components/gallery/materialAlbumTree';
+import { MaterialAlbumPreview } from '@/renderer/components/gallery/MaterialAlbumPreview';
 
 interface Labels {
   selected(count: number): string;
@@ -249,6 +247,7 @@ export function MaterialBatchToolbar({
                 <div className="divide-y rounded-lg border bg-background">
                   {visibleAlbumRows.map(({ album, depth }) => {
                     const key = `${albumPrefix}${album.id}`;
+                    const preview = album.previewAssets[0];
                     return (
                       <label
                         key={album.id}
@@ -262,20 +261,7 @@ export function MaterialBatchToolbar({
                           onCheckedChange={() => toggle(key)}
                         />
                         {depth > 0 && <CornerDownRightIcon className="size-3.5 shrink-0 text-muted-foreground" />}
-                        <span className="grid size-6 shrink-0 place-items-center overflow-hidden rounded-md bg-media-surround-light text-muted-foreground">
-                          {isVideoAsset(album.previewAssets[0]) ? (
-                            <VideoIcon className="size-3.5" />
-                          ) : album.previewAssets[0] ? (
-                            <img
-                              src={album.previewAssets[0].mediaUrl}
-                              alt=""
-                              draggable={false}
-                              className="size-full object-contain"
-                            />
-                          ) : (
-                            <ImagesIcon className="size-3.5" />
-                          )}
-                        </span>
+                        <MaterialAlbumPreview asset={preview} className="size-6 rounded-md" />
                         <span className="min-w-0 flex-1 truncate">{album.title}</span>
                       </label>
                     );

@@ -6,6 +6,7 @@ import {
   CodexAppServerRpcError,
 } from '@/main/extensions/codex-app-server/errors';
 import {
+  CODEX_APP_SERVER_MAX_MESSAGE_BYTES,
   accountReadResponseSchema,
   agentMessageCompletedItemSchema,
   codexReasoningEffortSchema,
@@ -142,7 +143,7 @@ export interface StartTurnInput {
   onEvent?(event: CodexAppServerTurnEvent): void;
 }
 
-const MAX_LINE_BYTES = 16 * 1024 * 1024;
+const MAX_LINE_BYTES = CODEX_APP_SERVER_MAX_MESSAGE_BYTES;
 const MAX_EARLY_TURN_MESSAGES = 100;
 const MAX_EARLY_TURN_BYTES = MAX_LINE_BYTES + 256 * 1024;
 const MAX_EARLY_GLOBAL_BYTES = 32 * 1024 * 1024;

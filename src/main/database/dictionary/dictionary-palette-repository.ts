@@ -25,17 +25,32 @@ export class DictionaryPaletteRepository extends DictionaryQueryRepository {
       .all() as JsonMap[];
     const valueRows = this.db
       .prepare(
-        `SELECT v.*,
-        (SELECT count(*)
-         FROM terms t
-         JOIN term_revision_categories membership ON membership.term_revision_id = t.current_revision_id
-         JOIN term_categories category ON category.id = membership.category_id
-         WHERE t.archived_at IS NULL AND (
-           (definition.system_role = 'PRIMARY_CLASSIFICATION' AND category.primary_facet_value_id = v.id)
-           OR (definition.system_role = 'SECONDARY_CLASSIFICATION' AND category.secondary_facet_value_id = v.id)
-         )) AS usage_count
+        `WITH active_category_memberships AS (
+          SELECT category.primary_facet_value_id AS primary_value_id,
+            category.secondary_facet_value_id AS secondary_value_id
+          FROM terms term
+          JOIN term_revision_categories membership ON membership.term_revision_id = term.current_revision_id
+          JOIN term_categories category ON category.id = membership.category_id
+          WHERE term.archived_at IS NULL
+        ), facet_value_usage AS (
+          SELECT primary_value_id AS value_id,
+            'PRIMARY_CLASSIFICATION' AS system_role,
+            count(*) AS usage_count
+          FROM active_category_memberships
+          GROUP BY primary_value_id
+          UNION ALL
+          SELECT secondary_value_id AS value_id,
+            'SECONDARY_CLASSIFICATION' AS system_role,
+            count(*) AS usage_count
+          FROM active_category_memberships
+          WHERE secondary_value_id IS NOT NULL
+          GROUP BY secondary_value_id
+        )
+        SELECT v.*, COALESCE(usage.usage_count, 0) AS usage_count
         FROM facet_values v
         JOIN facet_definitions definition ON definition.id = v.definition_id
+        LEFT JOIN facet_value_usage usage
+          ON usage.value_id = v.id AND usage.system_role = definition.system_role
         WHERE definition.system_role IS NOT NULL
         ORDER BY v.sort_order`,
       )

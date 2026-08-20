@@ -1,0 +1,45 @@
+import type { MessageCatalog } from '@/renderer/i18n/types';
+
+export function materialLibraryNavigationLabels(messages: MessageCatalog) {
+  const albums = messages.gallery.albums;
+  const navigation = albums.navigation;
+  return {
+    creation: navigation.creation,
+    dictionary: navigation.dictionary,
+    material: navigation.material,
+    allCreations: navigation.allCreations,
+    more: messages.gallery.screen.loadMore,
+    allMaterials: albums.allMaterials,
+    albums: navigation.albums,
+    archived: albums.archived,
+    expand: albums.expand,
+    collapse: albums.collapse,
+    create: albums.create,
+    createTitle: albums.createTitle,
+    createChild: albums.createChild,
+    open: albums.open,
+    rename: albums.rename,
+    renameTitle: albums.renameTitle,
+    delete: albums.delete,
+    deleteTitle: albums.deleteTitle,
+    deleteDescription: (title: string) => `${albums.deleteDescription} · ${title}`,
+    pin: albums.pin,
+    unpin: albums.unpin,
+    archive: albums.archive,
+    restore: albums.restore,
+    move: albums.move,
+    moveTitle: albums.moveTitle,
+    moveUp: albums.moveUp,
+    moveDown: albums.moveDown,
+    moveToRoot: albums.moveToRoot,
+    moreActions: (title: string) => `${albums.moreActions}: ${title}`,
+    name: albums.name,
+    namePlaceholder: albums.namePlaceholder,
+    cancel: albums.cancel,
+    save: albums.save,
+    confirmDelete: albums.confirmDelete,
+    belongsTo: (title: string) => `${albums.belongsTo} · ${title}`,
+    empty: albums.empty,
+    operationFailed: albums.operationFailed,
+  };
+}

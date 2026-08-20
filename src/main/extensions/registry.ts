@@ -1,4 +1,5 @@
 import type {
+  AntigravityCliStatusDto,
   CodexHealth,
   ExtensionConnectionState,
   ExtensionDto,
@@ -6,6 +7,7 @@ import type {
   ExtensionManifestDto,
 } from '@/shared/contracts';
 import {
+  ANTIGRAVITY_CLI_EXTENSION_ID,
   CODEX_APP_SERVER_EXTENSION_ID,
   CODEX_IMAGE_DISCOVERY_EXTENSION_ID,
   DEEPSEEK_API_EXTENSION_ID,
@@ -27,6 +29,7 @@ import type { ExtensionInstallationState } from '@/main/database/extensions/exte
 
 interface ExtensionRegistryOptions {
   codexHealth(): CodexHealth;
+  antigravityCliStatus?(): AntigravityCliStatusDto;
   codexImageDiscoveryStatus?(): { available: boolean; message: string };
   openAiImageApiStatus?(): { configured: boolean; usable: boolean; message: string };
   deepSeekApiStatus?(): { configured: boolean; ready: boolean; message: string };
@@ -321,6 +324,15 @@ export class ExtensionRegistry {
       return health.state === 'ready'
         ? { state: 'READY', message: health.message }
         : { state: 'UNAVAILABLE', message: health.message };
+    }
+    if (manifest.id === ANTIGRAVITY_CLI_EXTENSION_ID) {
+      const status = this.options.antigravityCliStatus?.();
+      if (!status || status.state === 'checking') {
+        return { state: 'CONNECTING', message: status?.message || 'Checking local Antigravity CLI' };
+      }
+      return status.state === 'ready'
+        ? { state: 'READY', message: status.message }
+        : { state: 'UNAVAILABLE', message: status.message };
     }
     if (manifest.id === CODEX_IMAGE_DISCOVERY_EXTENSION_ID) {
       const status = this.options.codexImageDiscoveryStatus?.();

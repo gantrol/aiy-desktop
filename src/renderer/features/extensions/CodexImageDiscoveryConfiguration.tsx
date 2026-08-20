@@ -221,6 +221,23 @@ export function CodexImageDiscoveryConfiguration({
     }
   }
 
+  async function recoverImage(image: CodexGeneratedImageDto) {
+    if (!image.recoveryTarget || importing || loading) return;
+    setImporting(true);
+    setError('');
+    try {
+      const result = await window.desktopApi.codexGeneratedImagesRecover({ discoveryId: image.id });
+      setSelectedIds(new Set());
+      await load(pageRef.current, false);
+      notify(l.notices.recovered);
+      await onOpenCreation(result.seriesId, result.assetId);
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : String(reason));
+    } finally {
+      setImporting(false);
+    }
+  }
+
   async function changePage(nextPage: number) {
     setSelectedIds(new Set());
     await load(nextPage, true, false, filterRef.current);
@@ -369,6 +386,7 @@ export function CodexImageDiscoveryConfiguration({
                 onSelectTask={selectTask}
                 onOpenCodex={(threadId) => void openCodex(threadId)}
                 onOpenCreation={(seriesId, assetId) => void openCreation(seriesId, assetId)}
+                onRecoverImage={(image) => void recoverImage(image)}
               />
             ))}
           </div>

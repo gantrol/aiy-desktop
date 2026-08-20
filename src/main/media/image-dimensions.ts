@@ -62,10 +62,108 @@ function gifSize(data: Buffer): { width: number; height: number } | null {
   return { width: data.readUInt16LE(6), height: data.readUInt16LE(8) };
 }
 
+function svgRootTag(source: string) {
+  let offset = source.charCodeAt(0) === 0xfeff ? 1 : 0;
+  while (offset < source.length) {
+    while (/\s/u.test(source[offset] ?? '')) offset += 1;
+    if (source.startsWith('<?xml', offset)) {
+      const end = source.indexOf('?>', offset + 5);
+      if (end < 0) return null;
+      offset = end + 2;
+      continue;
+    }
+    if (source.startsWith('<!--', offset)) {
+      const end = source.indexOf('-->', offset + 4);
+      if (end < 0) return null;
+      offset = end + 3;
+      continue;
+    }
+    break;
+  }
+  if (!/^<svg(?:\s|>)/iu.test(source.slice(offset, offset + 8))) return null;
+  let quote = '';
+  for (let index = offset + 4; index < source.length; index += 1) {
+    const character = source[index];
+    if (quote) {
+      if (character === quote) quote = '';
+      continue;
+    }
+    if (character === '"' || character === "'") {
+      quote = character;
+      continue;
+    }
+    if (character === '>') return source.slice(offset, index + 1);
+  }
+  return null;
+}
+
+function svgAttribute(tag: string, name: string) {
+  const expression = new RegExp(`(?:^|\\s)${name}\\s*=\\s*(?:"([^"]*)"|'([^']*)')`, 'iu');
+  const match = expression.exec(tag);
+  return match ? (match[1] ?? match[2] ?? '').trim() : null;
+}
+
+const svgUnitScale = {
+  px: 1,
+  in: 96,
+  cm: 96 / 2.54,
+  mm: 96 / 25.4,
+  q: 96 / 101.6,
+  pt: 96 / 72,
+  pc: 16,
+} as const;
+
+function svgLength(value: string | null) {
+  if (!value) return null;
+  const match = /^([+]?(?:\d+(?:\.\d*)?|\.\d+)(?:e[+-]?\d+)?)\s*(px|in|cm|mm|q|pt|pc)?$/iu.exec(value);
+  if (!match) return null;
+  const parsed = Number(match[1]);
+  if (!Number.isFinite(parsed) || parsed <= 0) return null;
+  const unit = (match[2] ?? 'px').toLowerCase() as keyof typeof svgUnitScale;
+  return parsed * svgUnitScale[unit];
+}
+
+function svgViewBox(value: string | null) {
+  if (!value) return null;
+  const parts = value
+    .trim()
+    .split(/[\s,]+/u)
+    .map(Number);
+  if (parts.length !== 4 || parts.some((part) => !Number.isFinite(part)) || parts[2] <= 0 || parts[3] <= 0) {
+    return null;
+  }
+  return { width: parts[2], height: parts[3] };
+}
+
+function svgSize(data: Buffer): { width: number; height: number } | null {
+  const source = data.toString('utf8');
+  if (!source || source.includes('\0') || source.includes('\ufffd')) return null;
+  const tag = svgRootTag(source);
+  if (!tag) return null;
+  const width = svgLength(svgAttribute(tag, 'width'));
+  const height = svgLength(svgAttribute(tag, 'height'));
+  const viewBox = svgViewBox(svgAttribute(tag, 'viewBox'));
+  let resolvedWidth = width;
+  let resolvedHeight = height;
+  if (viewBox && resolvedWidth && !resolvedHeight) resolvedHeight = (resolvedWidth * viewBox.height) / viewBox.width;
+  if (viewBox && resolvedHeight && !resolvedWidth) resolvedWidth = (resolvedHeight * viewBox.width) / viewBox.height;
+  resolvedWidth ??= viewBox?.width ?? 300;
+  resolvedHeight ??= viewBox?.height ?? 150;
+  const roundedWidth = Math.round(resolvedWidth);
+  const roundedHeight = Math.round(resolvedHeight);
+  return Number.isSafeInteger(roundedWidth) &&
+    Number.isSafeInteger(roundedHeight) &&
+    roundedWidth > 0 &&
+    roundedHeight > 0
+    ? { width: roundedWidth, height: roundedHeight }
+    : null;
+}
+
 export function imageDimensions(data: Buffer, extension: string) {
   if (extension === '.png') return pngSize(data);
   if (extension === '.jpg' || extension === '.jpeg') return jpegSize(data);
   if (extension === '.webp') return webpSize(data);
   if (extension === '.gif') return gifSize(data);
+  if (extension === '.svg') return svgSize(data);
   return null;
 }

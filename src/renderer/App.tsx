@@ -37,12 +37,13 @@ import { LocalSpaceTransitionOverlay } from '@/renderer/components/spaces/LocalS
 import { Button } from '@/renderer/components/ui/button';
 import { ToastViewport, useToastQueue } from '@/renderer/components/ui/toast';
 import { AssetMenuActionsProvider } from '@/renderer/components/media/AssetMenuActionsProvider';
-import { LibraryStartScreen } from '@/renderer/features/intake/LibraryStartScreen';
 import { mergeImportedOutput, mergeIntakeResult } from '@/renderer/features/intake/applyIntakeResult';
+import { LibraryStartScreen } from '@/renderer/features/intake/lazyLibraryStartScreen';
 import type { AiActivityRecord } from '@/renderer/features/ai-center/AiCenterScreen';
 import { aiActivityNavigationTarget } from '@/renderer/features/ai-center/aiActivityNavigation';
 import { generationReEditLocation } from '@/renderer/features/ai-center/generationReEditNavigation';
 import { useCodexImagesNavigation } from '@/renderer/features/extensions/codexImageNavigation';
+import { useTransitionShowcaseNavigation } from '@/renderer/features/extensions/transitionShowcaseNavigation';
 import { useVideoDocumentTranscriptBackgroundTasks } from '@/renderer/features/video-documents/useVideoDocumentTranscriptBackgroundTasks';
 import { useAppUpdateNotification } from '@/renderer/features/app-update/useAppUpdateNotification';
 import { loadCreatorScreen } from '@/renderer/features/creator/lazyCreatorScreen';
@@ -57,6 +58,9 @@ const DEFAULT_MOUSE_NAVIGATION_BINDINGS = new Map<number, NavigationCommand>([
   [4, 'forward'],
 ]);
 
+const appGridRows = (fullWindow: boolean) =>
+  fullWindow ? 'grid-rows-[minmax(0,1fr)]' : 'grid-rows-[36px_minmax(0,1fr)]';
+
 export function App() {
   const { locale, messages } = useI18n();
   const {
@@ -70,10 +74,12 @@ export function App() {
   } = useNavigationHistory(initialAppLocation, sameAppLocation);
   const { view, materialsReturnContext } = location;
   const visitedViews = useRef(new Set<AppView>());
+  const preTransitionVisitedViewsRef = useRef<Set<AppView> | null>(null);
   visitedViews.current.add(view);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [comparisonFullWindow, setComparisonFullWindow] = useState(false);
   const [creationPromptFullWindow, setCreationPromptFullWindow] = useState(false);
+  const appFullWindow = comparisonFullWindow || creationPromptFullWindow;
   const [defaultPromptLocale, setDefaultPromptLocale] = useState<Locale | null>(() => {
     const stored = localStorage.getItem('aiy.prompt-locale.v1');
     if (stored === 'none') return null;
@@ -95,6 +101,7 @@ export function App() {
   const [creatorActiveAlbumId, setCreatorActiveAlbumId] = useState<string | null>(null);
   const [galleryActiveAlbumId, setGalleryActiveAlbumId] = useState<string | null>(null);
   const [error, setError] = useState('');
+  const showLoadingState = !spaceTransition && !data && !error;
   const refreshRevision = useRef(0);
   const refreshQueueRef = useRef(createTrailingRefreshQueue<Locale>());
   const historyNavigationGuardRef = useRef<HistoryNavigationGuard | null>(null);
@@ -105,6 +112,7 @@ export function App() {
   const { messages: notifications, notify, dismiss: dismissNotification } = useToastQueue();
   useAppUpdateNotification({ settingsOpen, notify });
   const codexImagesNavigation = useCodexImagesNavigation(data?.extensions, view, replaceLocation);
+  const transitionShowcaseNavigation = useTransitionShowcaseNavigation(data?.extensions, view, replaceLocation);
   const workspaceLoadingBoundaries = useMemo(
     () => createWorkspaceLoadingBoundaries(loadingPreviews, view),
     [loadingPreviews, view],
@@ -199,6 +207,9 @@ export function App() {
       window.desktopApi.onLocalSpaceTransition((transition) => {
         applyLoadingPreviewTransition(transition);
         if (transition.phase === 'FAILED') {
+          const previousVisitedViews = preTransitionVisitedViewsRef.current;
+          if (previousVisitedViews) visitedViews.current = previousVisitedViews;
+          preTransitionVisitedViewsRef.current = null;
           setData(preTransitionDataRef.current);
           preTransitionDataRef.current = null;
           setSpaceTransition(null);
@@ -210,6 +221,8 @@ export function App() {
         setCreationPromptFullWindow(false);
         if (transition.phase === 'STARTING') {
           refreshRevision.current += 1;
+          preTransitionVisitedViewsRef.current = new Set(visitedViews.current);
+          visitedViews.current = new Set([view]);
           setData((current) => {
             preTransitionDataRef.current = current;
             return null;
@@ -222,6 +235,7 @@ export function App() {
         setGalleryActiveAlbumId(null);
         void loadData().then((loaded) => {
           preTransitionDataRef.current = null;
+          preTransitionVisitedViewsRef.current = null;
           if (!loaded) {
             setSpaceTransition((current) => (current?.space.id === transition.space.id ? null : current));
             return;
@@ -236,7 +250,7 @@ export function App() {
           }, 220);
         });
       }),
-    [applyLoadingPreviewTransition, loadData],
+    [applyLoadingPreviewTransition, loadData, view],
   );
 
   useEffect(() => {
@@ -693,14 +707,8 @@ export function App() {
 
   return (
     <AssetMenuActionsProvider value={assetMenuActions}>
-      <main
-        className={
-          creationPromptFullWindow
-            ? 'grid h-full min-h-0 grid-rows-[minmax(0,1fr)] overflow-hidden bg-background'
-            : 'grid h-full min-h-0 grid-rows-[36px_minmax(0,1fr)] overflow-hidden bg-background'
-        }
-      >
-        {!creationPromptFullWindow && (
+      <main className={`grid h-full min-h-0 overflow-hidden bg-background ${appGridRows(appFullWindow)}`}>
+        {!appFullWindow && (
           <AppTitleBar
             workerStatus={data?.modelWorker ?? null}
             codexHealth={data?.codex ?? null}
@@ -713,6 +721,7 @@ export function App() {
             view={view}
             menuDisabled={Boolean(spaceTransition)}
             codexImagesVisible={codexImagesNavigation.visible}
+            transitionShowcaseVisible={transitionShowcaseNavigation.visible}
             canGoBack={canGoBack}
             canGoForward={canGoForward}
             notify={notify}
@@ -731,13 +740,14 @@ export function App() {
           />
         )}
         <div className="flex min-h-0 overflow-hidden">
-          <div className={comparisonFullWindow || creationPromptFullWindow ? 'hidden' : 'contents'}>
+          <div className={appFullWindow ? 'hidden' : 'contents'}>
             <AppSidebar
               spaceName={spaceTransition?.space.name ?? data?.spaceName ?? messages.app.libraryFallback}
               spaceCoverUrl={spaceTransition?.space.coverUrl ?? data?.spaceCoverUrl ?? null}
               spaceTransitioning={Boolean(spaceTransition)}
               libraryBusy={Boolean(data?.generationTasks.length || transcriptBackgroundTasks.length)}
               codexImagesVisible={codexImagesNavigation.visible}
+              transitionShowcaseVisible={transitionShowcaseNavigation.visible}
               view={view}
               onViewChange={changeView}
               onSettingsOpen={() => setSettingsOpen(true)}
@@ -746,7 +756,7 @@ export function App() {
           </div>
           <section className="relative min-h-0 min-w-0 flex-1 overflow-hidden">
             {spaceTransition && <LocalSpaceTransitionOverlay transition={spaceTransition} />}
-            {!data && !error && <AppLoadingState previews={loadingPreviews} variant={loadingVariants[view]} />}
+            {showLoadingState && <AppLoadingState previews={loadingPreviews} variant={loadingVariants[view]} />}
             {error && (
               <div className="flex size-full flex-col items-center justify-center gap-3 text-muted-foreground">
                 <strong className="text-foreground">{messages.app.unavailable}</strong>
@@ -756,13 +766,16 @@ export function App() {
                 </Button>
               </div>
             )}
-            {data && data.libraryEmpty && view === 'creator' && (
-              <LibraryStartScreen
-                onCommitted={(result) => void finishIntake(result.intent, result)}
-                onContentPackImported={refresh}
-                notify={notify}
-              />
-            )}
+            {data &&
+              data.libraryEmpty &&
+              view === 'creator' &&
+              workspaceLoadingBoundaries.creator(
+                <LibraryStartScreen
+                  onCommitted={(result) => void finishIntake(result.intent, result)}
+                  onContentPackImported={refresh}
+                  notify={notify}
+                />,
+              )}
             {data && (
               <AppWorkspaceViews
                 view={view}
@@ -777,7 +790,7 @@ export function App() {
                 materialsReturnContext={materialsReturnContext}
                 returnSummary={returnSummary}
                 codexImagesNavigation={codexImagesNavigation}
-                transitionPreviews={loadingPreviews}
+                transitionShowcaseNavigation={transitionShowcaseNavigation}
                 loadingBoundaries={workspaceLoadingBoundaries}
                 onReturnToMaterials={returnToMaterials}
                 documentNavigationRevision={documentNavigationRevision}

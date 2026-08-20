@@ -6,6 +6,7 @@ import type {
   PairComparisonMode,
   PairComparisonSlot,
 } from '@/renderer/components/creator/PairComparisonView';
+import { ImageAmbientBackdrop } from '@/renderer/components/media/AmbientImage';
 
 export interface PairComparisonPan {
   x: number;
@@ -47,7 +48,7 @@ function ImageLayer({
 }) {
   return (
     <div
-      className="pointer-events-none absolute inset-0 flex items-center justify-center overflow-hidden"
+      className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center overflow-hidden"
       style={clipStart === undefined ? undefined : { clipPath: `inset(0 0 0 ${clipStart}%)` }}
     >
       <img
@@ -87,7 +88,11 @@ function SingleCanvas({
   pan: PairComparisonPan;
 }) {
   return (
-    <div data-comparison-canvas className="relative size-full min-h-0 min-w-0 overflow-hidden border bg-media-surround">
+    <div
+      data-comparison-canvas
+      className="relative isolate size-full min-h-0 min-w-0 overflow-hidden border bg-surface-sunken"
+    >
+      <ImageAmbientBackdrop src={source.mediaUrl} />
       <ImageLayer slotLabel={slotLabel} source={source} zoom={zoom} pan={pan} />
       <SlotBadge slotLabel={slotLabel} />
     </div>
@@ -244,8 +249,10 @@ export function PairComparisonStage({
       {!soloSlot && mode === 'SWIPE' && (
         <div
           data-comparison-canvas
-          className="relative size-full min-h-0 overflow-hidden border bg-media-surround isolate"
+          className="relative isolate size-full min-h-0 overflow-hidden border bg-surface-sunken"
         >
+          <ImageAmbientBackdrop src={a.mediaUrl} />
+          <ImageAmbientBackdrop src={b.mediaUrl} style={{ clipPath: `inset(0 0 0 ${splitPosition}%)` }} />
           <ImageLayer slotLabel={labels.a} source={a} zoom={zoom} pan={pan} />
           <ImageLayer slotLabel={labels.b} source={b} zoom={zoom} pan={pan} clipStart={splitPosition} />
           <SlotBadge slotLabel={labels.a} />
@@ -261,8 +268,10 @@ export function PairComparisonStage({
       {!soloSlot && mode === 'OVERLAY' && (
         <div
           data-comparison-canvas
-          className="relative size-full min-h-0 overflow-hidden border bg-media-surround isolate"
+          className="relative isolate size-full min-h-0 overflow-hidden border bg-surface-sunken"
         >
+          <ImageAmbientBackdrop src={a.mediaUrl} />
+          <ImageAmbientBackdrop src={b.mediaUrl} style={{ opacity: overlayMix / 100 }} />
           <ImageLayer slotLabel={labels.a} source={a} zoom={zoom} pan={pan} />
           <ImageLayer slotLabel={labels.b} source={b} zoom={zoom} pan={pan} opacity={overlayMix / 100} />
           <SlotBadge slotLabel={labels.a} />

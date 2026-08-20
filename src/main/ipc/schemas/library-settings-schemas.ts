@@ -129,7 +129,9 @@ export const galleryListSchema = z.object({
     .array(z.enum(['GENERATED', 'REFERENCE']))
     .max(2)
     .optional(),
+  placement: z.enum(['ANY', 'UNFILED', 'UNORGANIZED']).optional(),
   albumId: id.optional(),
+  albumScope: z.enum(['TREE', 'DIRECT']).optional(),
   creationRelation: z.enum(['ALL', 'INPUT', 'OUTPUT']).optional(),
   unratedDimensions: z.array(imageRatingDimensionSchema).max(2),
   cursor: z.string().max(1024).nullable(),
@@ -301,6 +303,12 @@ export const codexGeneratedImageImportSchema = z
     message: 'Codex image selection must be unique',
     path: ['discoveryIds'],
   });
+
+export const codexGeneratedImageRecoverSchema = z
+  .object({
+    discoveryId: z.string().regex(/^[a-f0-9]{64}$/),
+  })
+  .strict();
 
 export const codexGeneratedImageListSchema = z
   .object({

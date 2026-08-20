@@ -229,6 +229,16 @@ function isImageEditActualRequest(actualRequest: Record<string, unknown> | undef
 export function GenerationFactLayers({ version, run, locale, terms, wordPalettes, labels }: Props) {
   const promptSnapshot = version.promptInputSnapshot;
   const executionSnapshot = run.executionInputSnapshot ?? null;
+  const executionSummary =
+    run.executionSummary ??
+    (executionSnapshot
+      ? {
+          id: executionSnapshot.id,
+          requestSchema: executionSnapshot.requestSchema,
+          resolvedPrompt: executionSnapshot.commonInput.resolvedPrompt.commonExpression,
+          clientRequestText: executionSnapshot.clientRequestText,
+        }
+      : null);
   const summaryActualRequest = executionSnapshot?.actualRequest;
   const termById = new Map(terms.map((term) => [term.id, term]));
   const sourceReferences = useMemo(
@@ -276,14 +286,14 @@ export function GenerationFactLayers({ version, run, locale, terms, wordPalettes
   // The user-visible image Prompt instead comes from the independently frozen,
   // model-neutral execution input. The raw envelope remains available only in
   // the collapsed execution diagnostics below.
-  const storedClientRequestText = executionSnapshot ? (executionSnapshot.clientRequestText ?? '') : '';
+  const storedClientRequestText = executionSummary?.clientRequestText ?? '';
   const isImageEditRequest = Boolean(
     isImageEditActualRequest(summaryActualRequest) || version.sourceImageId || run.derivation,
   );
   const clientRequestText = isImageEditRequest
-    ? (executionSnapshot?.commonInput.resolvedPrompt.commonExpression ?? '')
-    : executionSnapshot?.requestSchema === 'codex-cli-imagegen.v1'
-      ? executionSnapshot.commonInput.resolvedPrompt.commonExpression
+    ? (executionSummary?.resolvedPrompt ?? '')
+    : executionSummary?.requestSchema === 'codex-cli-imagegen.v1'
+      ? executionSummary.resolvedPrompt
       : storedClientRequestText;
 
   return (
@@ -333,9 +343,9 @@ export function GenerationFactLayers({ version, run, locale, terms, wordPalettes
           {description.rawValue}
         </FactText>
       ))}
-      {executionSnapshot && (
+      {executionSummary && (
         <FullExecutionRequest
-          key={executionSnapshot.id}
+          key={executionSummary.id}
           runId={run.id}
           summaryActualRequest={summaryActualRequest}
           label={labels.fullRequest}

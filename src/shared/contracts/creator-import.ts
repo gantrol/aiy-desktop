@@ -2,10 +2,13 @@ import type { ImportedImageMetadataInput } from '@/shared/contracts/import-metad
 
 export type CreatorImageImportSource = 'PASTE' | 'DROP' | 'UPLOAD';
 
+export type CreatorRasterImageMimeType = 'image/png' | 'image/jpeg' | 'image/webp';
+export type CreatorImageImportMimeType = CreatorRasterImageMimeType | 'image/svg+xml';
+
 export interface CreatorImageImportItemInput {
   id: string;
   name: string;
-  mimeType: 'image/png' | 'image/jpeg' | 'image/webp';
+  mimeType: CreatorImageImportMimeType;
   bytes: Uint8Array;
   metadata?: ImportedImageMetadataInput;
 }
@@ -41,7 +44,14 @@ export interface CreatorImageStagePreviewRow {
   state: CreatorImageStageState;
 }
 
+export interface CreatorStagedOutputImportItemInput {
+  stageId: string;
+  promptVersionId: string | null;
+  displayName: string;
+}
+
 export interface CreatorStagedImageImportInput {
   context: CreatorImageImportContext;
-  stageIds: string[];
+  /** Array order is inserted at the front of the creation's durable output order. */
+  items: CreatorStagedOutputImportItemInput[];
 }

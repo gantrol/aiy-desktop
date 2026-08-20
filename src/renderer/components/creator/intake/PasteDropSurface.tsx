@@ -14,18 +14,29 @@ interface Props {
   children: ReactNode;
   disabled?: boolean;
   overlay?: ReactNode;
+  respectEditableImagePaste?: boolean;
   onImages(files: File[], source: RendererImageImportSource, sourceUrl: string): void;
   onVideo?(file: File, source: 'DROP'): void;
   onText?(text: string): void;
 }
 
-export function PasteDropSurface({ className, children, disabled, overlay, onImages, onVideo, onText }: Props) {
+export function PasteDropSurface({
+  className,
+  children,
+  disabled,
+  overlay,
+  respectEditableImagePaste,
+  onImages,
+  onVideo,
+  onText,
+}: Props) {
   const [dragActive, setDragActive] = useState(false);
 
   function paste(event: ClipboardEvent<HTMLElement>) {
     if (disabled || event.defaultPrevented) return;
     const files = clipboardImageFiles(event.clipboardData);
     if (files.length) {
+      if (respectEditableImagePaste && isEditableTarget(event.target)) return;
       event.preventDefault();
       const sourceUrl = transferSourceUrl(event.clipboardData);
       onImages(files, 'PASTE', sourceUrl);

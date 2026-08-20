@@ -1,14 +1,4 @@
-import {
-  BookOpenIcon,
-  CopyIcon,
-  ExternalLinkIcon,
-  FileTextIcon,
-  HeartIcon,
-  HeartOffIcon,
-  LoaderCircleIcon,
-  SquarePenIcon,
-  XIcon,
-} from 'lucide-react';
+import { HeartIcon, LoaderCircleIcon } from 'lucide-react';
 import { useEffect, useId, useRef, useState } from 'react';
 import type {
   AssetRelationshipDto,
@@ -19,6 +9,7 @@ import type {
   MaterialAlbumMemberDto,
   AssetFileRevealContext,
 } from '@/shared/contracts';
+import type { HistoryNavigationGuard } from '@/renderer/components/app/app-navigation';
 import { useI18n } from '@/renderer/i18n/useI18n';
 import { formatDateTime } from '@/renderer/lib/dateFormat';
 import { Badge } from '@/renderer/components/ui/badge';
@@ -32,11 +23,8 @@ import {
   DialogTitle,
 } from '@/renderer/components/ui/dialog';
 import { MetaText } from '@/renderer/components/ui/meta-text';
-import { AssetFileContextMenu } from '@/renderer/components/media/AssetFileContextMenu';
-import { useAssetMenuActions } from '@/renderer/components/media/AssetMenuActionsProvider';
-import { AssetMedia, isVideoAsset } from '@/renderer/components/media/AssetMedia';
+import { isVideoAsset } from '@/renderer/components/media/AssetMedia';
 import { ScrollArea } from '@/renderer/components/ui/scroll-area';
-import { Sheet, SheetContent, SheetDescription, SheetTitle } from '@/renderer/components/ui/sheet';
 import { StateTag } from '@/renderer/components/ui/state-tag';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/renderer/components/ui/tabs';
 import { ImageEvaluationControls } from '@/renderer/components/gallery/ImageEvaluationControls';
@@ -46,16 +34,27 @@ import {
   type MaterialMetadataEditorState,
 } from '@/renderer/components/gallery/MaterialMetadataEditor';
 import { MaterialRelationships } from '@/renderer/components/gallery/MaterialRelationships';
+import {
+  MaterialDetailActions,
+  MaterialDetailHeader,
+  MaterialDetailPreview,
+} from '@/renderer/components/gallery/MaterialDetailOverview';
 import { materialTitle, type MaterialLibraryItem } from '@/renderer/components/gallery/materialLibraryTypes';
 
 interface Props {
   item: MaterialLibraryItem;
+  position: number;
+  total: number;
   albums: MaterialAlbumDto[];
   ratingBusy: boolean;
   albumMembershipBusy: boolean;
   favorited: boolean;
   favoriteBusy: boolean;
+  hasPrevious: boolean;
+  hasNext: boolean;
   onClose(): void;
+  onPrevious(): void;
+  onNext(): void;
   onOpenResult(seriesId: string, assetId: string): void;
   onOpenTerm(termId: string): void;
   onCopyText(text: string): void;
@@ -69,6 +68,8 @@ interface Props {
   onScore(dimension: ImageRatingDimension, score: number | null): void;
   notify(message: string): void;
   onMetadataUpdated(metadata: ExternalMaterialMetadataDto): void;
+  closeAfterRemoveFavorite: boolean;
+  onHistoryNavigationGuardChange(guard: HistoryNavigationGuard | null): void;
   revealContext?: AssetFileRevealContext;
 }
 
@@ -91,14 +92,20 @@ function formatBytes(value: number | undefined) {
   return `${(value / (1024 * 1024)).toFixed(1)} MB`;
 }
 
-export function MaterialInspector({
+export function MaterialDetailPage({
   item,
+  position,
+  total,
   albums,
   ratingBusy,
   albumMembershipBusy,
   favorited,
   favoriteBusy,
+  hasPrevious,
+  hasNext,
   onClose,
+  onPrevious,
+  onNext,
   onOpenResult,
   onOpenTerm,
   onCopyText,
@@ -108,6 +115,8 @@ export function MaterialInspector({
   onScore,
   notify,
   onMetadataUpdated,
+  closeAfterRemoveFavorite,
+  onHistoryNavigationGuardChange,
   revealContext,
 }: Props) {
   const { locale, messages } = useI18n();
@@ -131,6 +140,21 @@ export function MaterialInspector({
     setCopyBusy(false);
     pendingExitRef.current = onClose;
   }, [item.key]);
+
+  useEffect(() => {
+    if (!metadataState.dirty && !metadataState.saving) {
+      onHistoryNavigationGuardChange(null);
+      return;
+    }
+    const guard: HistoryNavigationGuard = (_direction, continueNavigation) => {
+      if (metadataState.saving) return true;
+      pendingExitRef.current = continueNavigation;
+      setDiscardOpen(true);
+      return true;
+    };
+    onHistoryNavigationGuardChange(guard);
+    return () => onHistoryNavigationGuardChange(null);
+  }, [metadataState.dirty, metadataState.saving, onHistoryNavigationGuardChange]);
 
   function requestExit(action: () => void) {
     if (metadataState.saving) return;
@@ -167,9 +191,11 @@ export function MaterialInspector({
   }
 
   const body = (
-    <InspectorBody
+    <MaterialDetailBody
       key={item.key}
       item={item}
+      position={position}
+      total={total}
       albums={albums}
       title={title}
       locale={locale}
@@ -177,17 +203,16 @@ export function MaterialInspector({
       albumMembershipBusy={albumMembershipBusy}
       favorited={favorited}
       favoriteBusy={favoriteBusy}
+      hasPrevious={hasPrevious}
+      hasNext={hasNext}
       onClose={() => requestExit(onClose)}
+      onPrevious={() => requestExit(onPrevious)}
+      onNext={() => requestExit(onNext)}
       onOpenResult={(seriesId, assetId) => requestExit(() => onOpenResult(seriesId, assetId))}
       onOpenTerm={(termId) => requestExit(() => onOpenTerm(termId))}
       onCopyText={onCopyText}
       onAddFavorite={onAddFavorite}
-      onRemoveFavorite={() =>
-        requestExit(() => {
-          onClose();
-          onRemoveFavorite();
-        })
-      }
+      onRemoveFavorite={() => (closeAfterRemoveFavorite ? requestExit(onRemoveFavorite) : onRemoveFavorite())}
       onToggleAlbumMembership={onToggleAlbumMembership}
       onScore={onScore}
       notify={notify}
@@ -197,37 +222,37 @@ export function MaterialInspector({
       onMetadataStateChange={setMetadataState}
       copyBusy={copyBusy}
       onCopyImage={() => void copyImage()}
+      onRequestExit={requestExit}
     />
   );
 
   return (
-    <Sheet open onOpenChange={(open) => !open && requestExit(onClose)}>
-      <SheetContent side="right" showCloseButton={false} className="gap-0 p-0" data-slot="material-inspector">
-        <SheetTitle className="sr-only">{title}</SheetTitle>
-        <SheetDescription className="sr-only">{l.dialogDescription}</SheetDescription>
-        {body}
-        <Dialog open={discardOpen} onOpenChange={(open) => (open ? setDiscardOpen(true) : continueEditing())}>
-          <DialogContent>
-            <DialogHeader>
-              <DialogTitle>{l.discardTitle}</DialogTitle>
-              <DialogDescription>{l.discardDescription}</DialogDescription>
-            </DialogHeader>
-            <DialogFooter>
-              <Button type="button" variant="outline" onClick={continueEditing}>
-                {l.continueEditing}
-              </Button>
-              <Button type="button" variant="destructive" onClick={discardAndExit}>
-                {l.discardChanges}
-              </Button>
-            </DialogFooter>
-          </DialogContent>
-        </Dialog>
-      </SheetContent>
-    </Sheet>
+    <>
+      {body}
+      <Dialog open={discardOpen} onOpenChange={(open) => (open ? setDiscardOpen(true) : continueEditing())}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>{l.discardTitle}</DialogTitle>
+            <DialogDescription>{l.discardDescription}</DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={continueEditing}>
+              {l.continueEditing}
+            </Button>
+            <Button type="button" variant="destructive" onClick={discardAndExit}>
+              {l.discardChanges}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </>
   );
 }
 
-interface InspectorBodyProps extends Omit<Props, 'item'> {
+interface MaterialDetailBodyProps extends Omit<
+  Props,
+  'item' | 'closeAfterRemoveFavorite' | 'onHistoryNavigationGuardChange'
+> {
   item: MaterialLibraryItem;
   title: string;
   locale: Locale;
@@ -235,10 +260,13 @@ interface InspectorBodyProps extends Omit<Props, 'item'> {
   onMetadataStateChange(state: MaterialMetadataEditorState): void;
   copyBusy: boolean;
   onCopyImage(): void;
+  onRequestExit(action: () => void): void;
 }
 
-function InspectorBody({
+function MaterialDetailBody({
   item,
+  position,
+  total,
   albums,
   title,
   locale,
@@ -246,7 +274,11 @@ function InspectorBody({
   albumMembershipBusy,
   favorited,
   favoriteBusy,
+  hasPrevious,
+  hasNext,
   onClose,
+  onPrevious,
+  onNext,
   onOpenResult,
   onOpenTerm,
   onCopyText,
@@ -261,11 +293,10 @@ function InspectorBody({
   onMetadataStateChange,
   copyBusy,
   onCopyImage,
-}: InspectorBodyProps) {
+  onRequestExit,
+}: MaterialDetailBodyProps) {
   const { messages } = useI18n();
-  const assetActions = useAssetMenuActions();
   const l = messages.gallery.inspector;
-  const fileLabels = messages.assetFile;
   const image = item.kind !== 'TEXT' ? item.image : null;
   const video = isVideoAsset(image?.asset);
   const [activeTab, setActiveTab] = useState(
@@ -308,322 +339,220 @@ function InspectorBody({
     return () => {
       current = false;
     };
-  }, [image?.asset.id, relationshipRefresh]);
-  const favoriteButton = (image || favorited) && (
-    <Button
-      type="button"
-      data-action="material-favorite-toggle"
-      variant="outline"
-      className="w-full"
-      disabled={favoriteBusy}
-      aria-busy={favoriteBusy}
-      aria-pressed={favorited}
-      onClick={favorited ? onRemoveFavorite : onAddFavorite}
-    >
-      {favoriteBusy ? (
-        <LoaderCircleIcon className="size-4 animate-spin" />
-      ) : favorited ? (
-        <HeartOffIcon className="size-4" />
-      ) : (
-        <HeartIcon className="size-4" />
-      )}
-      {favorited ? l.unfavorite : l.favorite}
-    </Button>
-  );
+  }, [image?.asset.id, locale, relationshipRefresh]);
 
   return (
-    <div className="flex size-full min-h-0 flex-col">
-      <div className="flex h-14 shrink-0 items-center gap-2 border-b px-4">
-        <strong className="min-w-0 flex-1 truncate text-sm">{l.title}</strong>
-        {item.kind === 'IMAGE' && (
-          <Button
-            type="button"
-            variant="ghost"
-            size="icon"
-            className="size-8"
-            data-action="asset-file-copy"
-            aria-label={fileLabels.copy}
-            aria-busy={copyBusy ? 'true' : 'false'}
-            disabled={copyBusy}
-            onClick={onCopyImage}
+    <article className="flex size-full min-h-0 flex-col bg-background" data-slot="material-detail-page">
+      <MaterialDetailHeader
+        title={title}
+        position={position}
+        total={total}
+        hasPrevious={hasPrevious}
+        hasNext={hasNext}
+        copyBusy={copyBusy}
+        canCopy={Boolean(image && !video)}
+        onClose={onClose}
+        onPrevious={onPrevious}
+        onNext={onNext}
+        onCopyImage={onCopyImage}
+      />
+
+      <div className="grid min-h-0 min-w-0 flex-1 grid-cols-1 grid-rows-[minmax(16rem,1fr)_minmax(0,1fr)] overflow-hidden lg:grid-cols-[minmax(0,1fr)_minmax(22rem,36%)] lg:grid-rows-1">
+        <MaterialDetailPreview item={item} title={title} video={video} notify={notify} revealContext={revealContext} />
+
+        <aside className="flex min-h-0 min-w-0 flex-col border-t bg-background lg:border-t-0 lg:border-l">
+          <ScrollArea
+            viewportRef={viewportRef}
+            className="min-h-0 min-w-0 flex-1 [&_[data-slot=scroll-area-viewport]>div]:!block [&_[data-slot=scroll-area-viewport]>div]:!w-full"
           >
-            {copyBusy ? <LoaderCircleIcon className="size-4 animate-spin" /> : <CopyIcon className="size-4" />}
-          </Button>
-        )}
-        <Button
-          type="button"
-          variant="ghost"
-          size="icon"
-          className="size-8"
-          data-action="material-inspector-close"
-          aria-label={l.close}
-          onClick={onClose}
-        >
-          <XIcon className="size-4" />
-        </Button>
-      </div>
-      <ScrollArea
-        viewportRef={viewportRef}
-        className="min-h-0 min-w-0 flex-1 [&_[data-slot=scroll-area-viewport]>div]:!block [&_[data-slot=scroll-area-viewport]>div]:!w-full"
-      >
-        <div className="w-full min-w-0 space-y-5 p-4">
-          {item.kind !== 'TEXT' ? (
-            <AssetFileContextMenu
-              assetId={item.image.asset.id}
-              notify={notify}
-              revealContext={revealContext}
-              copyable={!video}
-              usableInCreation={!video}
-            >
-              <div className="grid max-h-80 min-h-48 place-items-center overflow-hidden rounded-lg border bg-media-surround">
-                <AssetMedia
-                  asset={item.image.asset}
-                  className="max-h-80 size-full object-contain"
-                  alt=""
-                  draggable={false}
-                  controls={video}
-                  preload={video ? 'auto' : 'metadata'}
-                />
-              </div>
-            </AssetFileContextMenu>
-          ) : (
-            <div className="rounded-lg border bg-background p-4">
-              <p className="max-h-72 overflow-auto whitespace-pre-wrap break-words text-sm leading-6">
-                {item.text.text}
-              </p>
-            </div>
-          )}
-
-          <div className="space-y-2">
-            <div className="flex flex-wrap items-center gap-1.5">
-              {item.kind === 'TEXT' && <Badge variant="secondary">{l.text}</Badge>}
-              {favorited && (
-                <StateTag
-                  tone="neutral"
-                  className="bg-selected text-relation-favorited"
-                  icon={<HeartIcon className="fill-current" />}
-                >
-                  {l.favorite}
-                </StateTag>
-              )}
-              {image?.creation?.roles.map((role) => (
-                <Badge key={role} variant="secondary">
-                  {role === 'OUTPUT'
-                    ? locale === 'zh'
-                      ? '产出'
-                      : 'Output'
-                    : role === 'SOURCE'
-                      ? locale === 'zh'
-                        ? '源图'
-                        : 'Source'
-                      : locale === 'zh'
-                        ? '输入'
-                        : 'Input'}
-                </Badge>
-              ))}
-            </div>
-            <h2 className="break-words text-base font-semibold leading-6">{title}</h2>
-            <MetaText as="p">{formatDate(item.createdAt, locale)}</MetaText>
-          </div>
-
-          {item.kind === 'TEXT' ? (
-            <div className="grid gap-2">
-              <Button type="button" className="w-full" onClick={() => onCopyText(item.text.text)}>
-                <CopyIcon className="size-4" />
-                {l.copyText}
-              </Button>
-              {favoriteButton}
-            </div>
-          ) : (
-            <div className="grid gap-2">
-              {video && image?.materialId && assetActions && (
-                <Button
-                  type="button"
-                  className="w-full"
-                  onClick={() =>
-                    void assetActions.createDocumentFromVideo(
-                      image.materialId!,
-                      revealContext?.kind === 'ALBUM' ? revealContext.albumId : null,
-                    )
-                  }
-                >
-                  <FileTextIcon className="size-4" />
-                  {messages.videoDocuments.createFromVideo}
-                </Button>
-              )}
-              {image?.creation && (
-                <Button
-                  type="button"
-                  className="w-full"
-                  onClick={() => onOpenResult(image.creation!.seriesId, image.asset.id)}
-                >
-                  <SquarePenIcon className="size-4" />
-                  {l.openCreation}
-                  <ExternalLinkIcon className="ml-auto size-3.5 opacity-60" />
-                </Button>
-              )}
-              {!image?.creation && image?.dictionary && (
-                <Button type="button" className="w-full" onClick={() => onOpenTerm(image.dictionary!.termId)}>
-                  <BookOpenIcon className="size-4" />
-                  {l.openDictionary}
-                  <ExternalLinkIcon className="ml-auto size-3.5 opacity-60" />
-                </Button>
-              )}
-              {favoriteButton}
-            </div>
-          )}
-
-          <Tabs value={activeTab} onValueChange={setActiveTab} className="min-w-0 gap-4">
-            <TabsList className={image ? 'grid grid-cols-3' : 'grid grid-cols-2'}>
-              <TabsTrigger value="relationships" data-action="material-inspector-relationships">
-                {l.relationships}
-              </TabsTrigger>
-              {image && (
-                <TabsTrigger value="rating" data-action="material-inspector-rating">
-                  {l.ratingTitle}
-                </TabsTrigger>
-              )}
-              <TabsTrigger value="details" data-action="material-inspector-details">
-                {l.details}
-              </TabsTrigger>
-            </TabsList>
-
-            <TabsContent value="relationships" className="min-w-0 space-y-4">
-              {image && relationshipLoading && (
-                <div className="grid h-10 place-items-center" aria-live="polite">
-                  <LoaderCircleIcon
-                    className="size-4 animate-spin"
-                    aria-label={locale === 'zh' ? '正在加载' : 'Loading'}
-                  />
+            <div className="w-full min-w-0 space-y-5 p-5">
+              <div className="space-y-2">
+                <div className="flex flex-wrap items-center gap-1.5">
+                  {item.kind === 'TEXT' && <Badge variant="secondary">{l.text}</Badge>}
+                  {favorited && (
+                    <StateTag
+                      tone="neutral"
+                      className="bg-selected text-relation-favorited"
+                      icon={<HeartIcon className="fill-current" />}
+                    >
+                      {l.favorite}
+                    </StateTag>
+                  )}
+                  {image?.creation?.roles.map((role) => (
+                    <Badge key={role} variant="secondary">
+                      {role === 'OUTPUT' ? l.roleOutput : role === 'SOURCE' ? l.roleSource : l.roleInput}
+                    </Badge>
+                  ))}
                 </div>
-              )}
-              {image && relationshipFailed && (
-                <Button
-                  type="button"
-                  variant="outline"
-                  className="w-full"
-                  onClick={() => setRelationshipRefresh((value) => value + 1)}
-                >
-                  {locale === 'zh' ? '重试' : 'Retry'}
-                </Button>
-              )}
-              {image && relationships && (
-                <MaterialRelationships
-                  relationships={relationships}
-                  assetId={image.asset.id}
-                  locale={locale}
-                  onOpenResult={onOpenResult}
-                  onOpenTerm={onOpenTerm}
-                />
-              )}
-              <MaterialAlbumMembership
-                albums={albums}
-                target={
-                  item.kind === 'TEXT'
-                    ? { materialId: item.text.id }
-                    : { materialId: item.image.materialId, imageAssetId: item.image.asset.id }
-                }
-                labels={{
-                  title: messages.gallery.albums.membershipTitle,
-                  operationFailed: messages.gallery.albums.operationFailed,
-                }}
-                disabled={albumMembershipBusy}
-                onToggle={onToggleAlbumMembership}
+                <h2 className="break-words text-base font-semibold leading-6">{title}</h2>
+                <MetaText as="p">{formatDate(item.createdAt, locale)}</MetaText>
+              </div>
+
+              <MaterialDetailActions
+                item={item}
+                video={video}
+                favorited={favorited}
+                favoriteBusy={favoriteBusy}
+                onCopyText={onCopyText}
+                onAddFavorite={onAddFavorite}
+                onRemoveFavorite={onRemoveFavorite}
+                onOpenResult={onOpenResult}
+                onOpenTerm={onOpenTerm}
+                onRequestExit={onRequestExit}
+                notify={notify}
+                revealContext={revealContext}
               />
-            </TabsContent>
 
-            {image && (
-              <TabsContent value="rating">
-                <ImageEvaluationControls
-                  ratings={image.ratings}
-                  visibleDimensions={['AESTHETIC', 'REALISM']}
-                  disabled={ratingBusy}
-                  onChange={onScore}
-                />
-              </TabsContent>
-            )}
+              <Tabs value={activeTab} onValueChange={setActiveTab} className="min-w-0 gap-4">
+                <TabsList className={image ? 'grid grid-cols-3' : 'grid grid-cols-2'}>
+                  <TabsTrigger value="relationships" data-action="material-inspector-relationships">
+                    {l.relationships}
+                  </TabsTrigger>
+                  {image && (
+                    <TabsTrigger value="rating" data-action="material-inspector-rating">
+                      {l.ratingTitle}
+                    </TabsTrigger>
+                  )}
+                  <TabsTrigger value="details" data-action="material-inspector-details">
+                    {l.details}
+                  </TabsTrigger>
+                </TabsList>
 
-            {/*
+                <TabsContent value="relationships" className="min-w-0 space-y-4">
+                  {image && relationshipLoading && (
+                    <div className="grid h-10 place-items-center" aria-live="polite">
+                      <LoaderCircleIcon className="size-4 animate-spin" aria-label={l.loading} />
+                    </div>
+                  )}
+                  {image && relationshipFailed && (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      className="w-full"
+                      onClick={() => setRelationshipRefresh((value) => value + 1)}
+                    >
+                      {l.retry}
+                    </Button>
+                  )}
+                  {image && relationships && (
+                    <MaterialRelationships
+                      relationships={relationships}
+                      assetId={image.asset.id}
+                      locale={locale}
+                      onOpenResult={onOpenResult}
+                      onOpenTerm={onOpenTerm}
+                    />
+                  )}
+                  <MaterialAlbumMembership
+                    albums={albums}
+                    target={
+                      item.kind === 'TEXT'
+                        ? { materialId: item.text.id }
+                        : { materialId: item.image.materialId, imageAssetId: item.image.asset.id }
+                    }
+                    labels={{
+                      title: messages.gallery.albums.membershipTitle,
+                      operationFailed: messages.gallery.albums.operationFailed,
+                    }}
+                    disabled={albumMembershipBusy}
+                    onToggle={onToggleAlbumMembership}
+                  />
+                </TabsContent>
+
+                {image && (
+                  <TabsContent value="rating">
+                    <ImageEvaluationControls
+                      ratings={image.ratings}
+                      visibleDimensions={['AESTHETIC', 'REALISM']}
+                      disabled={ratingBusy}
+                      onChange={onScore}
+                    />
+                  </TabsContent>
+                )}
+
+                {/*
               Radix passes `hidden={!present}`, and `present` is always true under
               forceMount, so the panel stays mounted *and* visible. The editor must
               stay mounted to keep unsaved edits across tab switches, so hide it here.
             */}
-            <TabsContent value="details" forceMount className={activeTab === 'details' ? undefined : 'hidden'}>
-              {image?.metadata && (
-                <div className="mb-5 border-b pb-5">
-                  <MaterialMetadataEditor
-                    metadata={image.metadata}
-                    formId={metadataFormId}
-                    notify={notify}
-                    onStateChange={onMetadataStateChange}
-                    onUpdated={onMetadataUpdated}
-                  />
-                </div>
-              )}
-              <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-2">
-                {image?.metadata?.originalName && (
-                  <>
-                    <MetaText as="dt">{messages.creator.generationRecord.originalName}</MetaText>
-                    <MetaText as="dd" className="truncate text-right" title={image.metadata.originalName}>
-                      {image.metadata.originalName}
+                <TabsContent value="details" forceMount className={activeTab === 'details' ? undefined : 'hidden'}>
+                  {image?.metadata && (
+                    <div className="mb-5 border-b pb-5">
+                      <MaterialMetadataEditor
+                        metadata={image.metadata}
+                        formId={metadataFormId}
+                        notify={notify}
+                        onStateChange={onMetadataStateChange}
+                        onUpdated={onMetadataUpdated}
+                      />
+                    </div>
+                  )}
+                  <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-2">
+                    {image?.metadata?.originalName && (
+                      <>
+                        <MetaText as="dt">{messages.creator.generationRecord.originalName}</MetaText>
+                        <MetaText as="dd" className="truncate text-right" title={image.metadata.originalName}>
+                          {image.metadata.originalName}
+                        </MetaText>
+                      </>
+                    )}
+                    <MetaText as="dt">{l.added}</MetaText>
+                    <MetaText as="dd" className="text-right">
+                      {formatDate(item.createdAt, locale)}
                     </MetaText>
-                  </>
-                )}
-                <MetaText as="dt">{l.added}</MetaText>
-                <MetaText as="dd" className="text-right">
-                  {formatDate(item.createdAt, locale)}
-                </MetaText>
-                {image && (
-                  <>
-                    <MetaText as="dt">{l.dimensions}</MetaText>
-                    <MetaText as="dd" mono className="text-right">
-                      {image.asset.width} × {image.asset.height}
-                    </MetaText>
-                    <MetaText as="dt">{l.format}</MetaText>
-                    <MetaText as="dd" className="truncate text-right">
-                      {image.asset.mimeType}
-                    </MetaText>
-                    <MetaText as="dt">{l.fileSize}</MetaText>
-                    <MetaText as="dd" mono className="text-right">
-                      {formatBytes(image.asset.byteSize)}
-                    </MetaText>
-                    <MetaText as="dt">{l.origin}</MetaText>
-                    <MetaText as="dd" className="truncate text-right">
-                      {image.asset.originType || '—'}
-                    </MetaText>
-                    <MetaText as="dt">ID</MetaText>
-                    <MetaText as="dd" mono className="truncate text-right" title={image.asset.id}>
-                      {image.asset.id}
-                    </MetaText>
-                  </>
-                )}
-              </dl>
-            </TabsContent>
-          </Tabs>
-        </div>
-      </ScrollArea>
-      {image?.metadata && (activeTab === 'details' || metadataState.dirty || metadataState.saving) && (
-        <div className="flex shrink-0 items-center justify-between gap-3 border-t bg-overlay px-4 py-3">
-          <span
-            data-slot="material-metadata-status"
-            data-state={metadataState.saving ? 'saving' : metadataState.dirty ? 'dirty' : 'saved'}
-            className="min-w-0 truncate text-xs text-muted-foreground"
-            aria-live="polite"
-          >
-            {metadataState.saving ? l.saving : metadataState.dirty ? l.unsavedChanges : l.changesSaved}
-          </span>
-          <Button
-            type="submit"
-            form={metadataFormId}
-            data-action="material-metadata-save"
-            aria-busy={metadataState.saving}
-            disabled={metadataState.saving || !metadataState.dirty || !metadataState.valid}
-          >
-            {metadataState.saving && <LoaderCircleIcon className="size-4 animate-spin" />}
-            {messages.creator.generationRecord.save}
-          </Button>
-        </div>
-      )}
-    </div>
+                    {image && (
+                      <>
+                        <MetaText as="dt">{l.dimensions}</MetaText>
+                        <MetaText as="dd" mono className="text-right">
+                          {image.asset.width} × {image.asset.height}
+                        </MetaText>
+                        <MetaText as="dt">{l.format}</MetaText>
+                        <MetaText as="dd" className="truncate text-right">
+                          {image.asset.mimeType}
+                        </MetaText>
+                        <MetaText as="dt">{l.fileSize}</MetaText>
+                        <MetaText as="dd" mono className="text-right">
+                          {formatBytes(image.asset.byteSize)}
+                        </MetaText>
+                        <MetaText as="dt">{l.origin}</MetaText>
+                        <MetaText as="dd" className="truncate text-right">
+                          {image.asset.originType || '—'}
+                        </MetaText>
+                        <MetaText as="dt">{l.assetId}</MetaText>
+                        <MetaText as="dd" mono className="truncate text-right" title={image.asset.id}>
+                          {image.asset.id}
+                        </MetaText>
+                      </>
+                    )}
+                  </dl>
+                </TabsContent>
+              </Tabs>
+            </div>
+          </ScrollArea>
+          {image?.metadata && (activeTab === 'details' || metadataState.dirty || metadataState.saving) && (
+            <div className="flex shrink-0 items-center justify-between gap-3 border-t bg-overlay px-4 py-3">
+              <span
+                data-slot="material-metadata-status"
+                data-state={metadataState.saving ? 'saving' : metadataState.dirty ? 'dirty' : 'saved'}
+                className="min-w-0 truncate text-xs text-muted-foreground"
+                aria-live="polite"
+              >
+                {metadataState.saving ? l.saving : metadataState.dirty ? l.unsavedChanges : l.changesSaved}
+              </span>
+              <Button
+                type="submit"
+                form={metadataFormId}
+                data-action="material-metadata-save"
+                aria-busy={metadataState.saving}
+                disabled={metadataState.saving || !metadataState.dirty || !metadataState.valid}
+              >
+                {metadataState.saving && <LoaderCircleIcon className="size-4 animate-spin" />}
+                {messages.creator.generationRecord.save}
+              </Button>
+            </div>
+          )}
+        </aside>
+      </div>
+    </article>
   );
 }

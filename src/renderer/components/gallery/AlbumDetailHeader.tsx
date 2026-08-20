@@ -13,6 +13,7 @@ import type { AlbumDto, AssetDto } from '@/shared/contracts';
 import { AlbumGlyphIcon } from '@/renderer/icons';
 import { cn } from '@/renderer/lib/utils';
 import { mediaThumbnailUrl } from '@/renderer/components/media/mediaThumbnailUrl';
+import { ImageAmbientBackdrop } from '@/renderer/components/media/AmbientImage';
 import { ActionMenuButton, type ActionMenuAction } from '@/renderer/components/ui/action-menu';
 import { Button } from '@/renderer/components/ui/button';
 import { AlbumEditorDialog, DeleteAlbumDialog } from '@/renderer/components/gallery/AlbumDialogs';
@@ -169,22 +170,31 @@ function AlbumCover({ assets: allAssets }: { assets: readonly AssetDto[] }) {
       </span>
     );
   return (
-    <span className="grid size-16 shrink-0 grid-cols-2 grid-rows-2 gap-px overflow-hidden rounded-xl border bg-media-surround-light">
-      {assets.map((asset, index) => (
-        <img
-          key={asset.id}
-          src={mediaThumbnailUrl(asset, 96)}
-          alt=""
-          className={cn(
-            'size-full object-contain',
-            assets.length === 1 && 'col-span-2 row-span-2',
-            assets.length === 2 && 'row-span-2',
-            assets.length === 3 && index === 0 && 'row-span-2',
-          )}
-          decoding="async"
-          draggable={false}
-        />
-      ))}
+    <span className="grid size-16 shrink-0 grid-cols-2 grid-rows-2 gap-px overflow-hidden rounded-xl border bg-border">
+      {assets.map((asset, index) => {
+        const thumbnailUrl = mediaThumbnailUrl(asset, 96);
+        return (
+          <span
+            key={asset.id}
+            className={cn(
+              'relative isolate overflow-hidden bg-surface-sunken',
+              assets.length === 1 && 'col-span-2 row-span-2',
+              assets.length === 2 && 'row-span-2',
+              assets.length === 3 && index === 0 && 'row-span-2',
+            )}
+          >
+            <ImageAmbientBackdrop src={thumbnailUrl} loading="lazy" />
+            <img
+              src={thumbnailUrl}
+              alt=""
+              className="relative z-10 size-full object-contain"
+              loading="lazy"
+              decoding="async"
+              draggable={false}
+            />
+          </span>
+        );
+      })}
     </span>
   );
 }

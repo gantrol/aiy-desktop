@@ -105,7 +105,7 @@ class ExternalImageGenerationProvider implements GenerationProvider {
         adapter: spec.adapter,
         createRequest: ({ runId, input, route }) => {
           const sourceAssetId = input.sourceAssetId?.trim() || null;
-          const sourcePath = sourceAssetId ? database.getAssetPath(sourceAssetId) : null;
+          const sourcePath = sourceAssetId ? database.getGenerationAssetPath(sourceAssetId) : null;
           if (sourceAssetId && !sourcePath) throw new Error('Provider image edit source is unavailable');
           const referenceAssetIds = input.referenceAssetIds.filter((assetId) => assetId !== sourceAssetId);
           const paths = database.getReferencePaths(referenceAssetIds);

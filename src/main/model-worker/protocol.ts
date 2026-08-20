@@ -1,6 +1,7 @@
 import { StringDecoder } from 'node:string_decoder';
 import { z } from 'zod';
 import type {
+  AntigravityCliStatusDto,
   AssistantActivityEventDto,
   CodexHealth,
   GenerationChangedEvent,
@@ -11,7 +12,7 @@ import { imageGenerationPromptProfileId } from '@/shared/image-generation-prompt
 
 // The wire version tracks message compatibility. The runtime fingerprint
 // separately prevents a host from reusing worker code from another build.
-export const MODEL_WORKER_PROTOCOL_VERSION = 1;
+export const MODEL_WORKER_PROTOCOL_VERSION = 2;
 export const MODEL_WORKER_MAX_MESSAGE_BYTES = 16 * 1024 * 1024;
 
 export const modelWorkerMethods = [
@@ -35,6 +36,7 @@ export const modelWorkerMethods = [
   'generation.configure-concurrency',
   'codex.refresh-health',
   'codex.list-models',
+  'antigravity.refresh-status',
   'video-document.article-generate',
   'video-document.transcript-translate',
   'assistant.run',
@@ -59,6 +61,7 @@ export interface ModelWorkerSnapshot {
   workerId: string;
   codexHealth: CodexHealth;
   codexPendingCount: number;
+  antigravityCliStatus?: AntigravityCliStatusDto;
   imageGenerationRoutes: ImageGenerationRouteDto[];
   generationTasks: GenerationTaskDto[];
 }
@@ -137,6 +140,55 @@ const codexHealthSchema: z.ZodType<CodexHealth> = z
     version: z.string().max(1_000),
     authenticated: z.boolean(),
     message: z.string().max(10_000),
+  })
+  .strict();
+
+const antigravityCliModelSchema = z
+  .object({
+    key: boundedIdentifier,
+    name: z.string().min(1).max(1_000),
+    isCurrent: z.boolean(),
+  })
+  .strict();
+
+const antigravityCliStatusSchema: z.ZodType<AntigravityCliStatusDto> = z
+  .object({
+    state: z.enum(['checking', 'ready', 'unavailable']),
+    version: z.string().max(1_000),
+    authenticated: z.boolean(),
+    message: z.string().max(10_000),
+    currentModel: antigravityCliModelSchema.nullable(),
+    models: z.array(antigravityCliModelSchema).max(100),
+    quota: z
+      .object({
+        warning: z.enum(['NONE', 'LOW', 'EXHAUSTED', 'UNAVAILABLE']),
+        groups: z
+          .array(
+            z
+              .object({
+                name: z.string().min(1).max(1_000),
+                description: z.string().max(10_000),
+                buckets: z
+                  .array(
+                    z
+                      .object({
+                        id: boundedIdentifier,
+                        name: z.string().min(1).max(1_000),
+                        window: z.string().min(1).max(1_000),
+                        remainingFraction: z.number().min(0).max(1),
+                        resetAt: z.string().max(100).nullable(),
+                      })
+                      .strict(),
+                  )
+                  .max(100),
+              })
+              .strict(),
+          )
+          .max(100),
+        checkedAt: z.string().max(100).nullable(),
+        message: z.string().max(20_000),
+      })
+      .strict(),
   })
   .strict();
 
@@ -272,6 +324,7 @@ const modelWorkerSnapshotSchema: z.ZodType<ModelWorkerSnapshot> = z
     workerId: boundedIdentifier,
     codexHealth: codexHealthSchema,
     codexPendingCount: z.number().int().nonnegative().max(100_000),
+    antigravityCliStatus: antigravityCliStatusSchema.optional(),
     imageGenerationRoutes: z.array(imageGenerationRouteSchema).max(10_000),
     generationTasks: z.array(generationTaskSchema).max(10_000),
   })

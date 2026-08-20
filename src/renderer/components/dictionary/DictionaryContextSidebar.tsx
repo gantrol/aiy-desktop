@@ -4,6 +4,7 @@ import type { TermListItem } from '@/shared/contracts';
 import { cn } from '@/renderer/lib/utils';
 import { MediaStackPreview } from '@/renderer/components/media/MediaStackPreview';
 import { AssetFileContextMenu } from '@/renderer/components/media/AssetFileContextMenu';
+import { ImageAmbientBackdrop } from '@/renderer/components/media/AmbientImage';
 import { Button } from '@/renderer/components/ui/button';
 import { ScrollArea } from '@/renderer/components/ui/scroll-area';
 import { Skeleton } from '@/renderer/components/ui/skeleton';
@@ -106,13 +107,17 @@ function CompactTermPreview({ term }: { term: TermListItem }) {
       </span>
     );
   return (
-    <img
-      src={media.asset.mediaUrl}
-      alt=""
-      draggable={false}
-      className="size-full object-contain"
-      style={{ objectPosition: `${media.focalX * 100}% ${media.focalY * 100}%` }}
-    />
+    <>
+      <ImageAmbientBackdrop src={media.asset.mediaUrl} loading="lazy" />
+      <img
+        src={media.asset.mediaUrl}
+        alt=""
+        draggable={false}
+        loading="lazy"
+        className="relative z-10 size-full object-contain"
+        style={{ objectPosition: `${media.focalX * 100}% ${media.focalY * 100}%` }}
+      />
+    </>
   );
 }
 
@@ -182,7 +187,7 @@ function CompactTermRow({ term, current, notify, onSelect }: TermRowProps) {
           aria-label={term.title}
           title={term.title}
           className={cn(
-            'relative mx-auto block h-14 w-11 overflow-hidden rounded-lg border-2 border-transparent bg-media-surround-light outline-none transition-colors',
+            'relative isolate mx-auto block h-14 w-11 overflow-hidden rounded-lg border-2 border-transparent bg-surface-sunken outline-none transition-colors',
             'hover:border-border-strong focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring',
             current && 'border-selected-border ring-2 ring-ring hover:border-selected-border',
           )}
@@ -190,7 +195,7 @@ function CompactTermRow({ term, current, notify, onSelect }: TermRowProps) {
         >
           <CompactTermPreview term={term} />
           {current && (
-            <span aria-hidden className="absolute inset-x-1 bottom-1 h-0.5 rounded-full bg-selected-foreground" />
+            <span aria-hidden className="absolute inset-x-1 bottom-1 z-20 h-0.5 rounded-full bg-selected-foreground" />
           )}
         </button>
       </TooltipTrigger>

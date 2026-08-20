@@ -7,16 +7,26 @@ import type {
 export type RendererImageImportSource = 'PASTE' | 'DROP' | 'UPLOAD';
 
 export type RendererImageImportItem = CreatorImageImportItemInput;
-export type RendererImageImportPreviewRow = CreatorImageStagePreviewRow;
+export type RendererImageImportPreviewRow = CreatorImageStagePreviewRow & {
+  displayName: string;
+  promptVersionId: string | null;
+  previewUrl: string | null;
+};
 
 const maxImageBytes = 25 * 1024 * 1024;
 const maxImages = 8;
-const supportedImageTypes = new Set<RendererImageImportItem['mimeType']>(['image/png', 'image/jpeg', 'image/webp']);
+const supportedImageTypes = new Set<RendererImageImportItem['mimeType']>([
+  'image/png',
+  'image/jpeg',
+  'image/webp',
+  'image/svg+xml',
+]);
 const imageTypeByExtension = new Map<string, RendererImageImportItem['mimeType']>([
   ['png', 'image/png'],
   ['jpg', 'image/jpeg'],
   ['jpeg', 'image/jpeg'],
   ['webp', 'image/webp'],
+  ['svg', 'image/svg+xml'],
 ]);
 
 export function imageMimeType(file: File): RendererImageImportItem['mimeType'] | null {

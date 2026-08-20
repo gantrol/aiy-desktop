@@ -2,6 +2,7 @@ import { closeSync, openSync, readSync, realpathSync, statSync } from 'node:fs';
 import path from 'node:path';
 import type { LibraryStorage } from '@/main/database/core/storage';
 import { type JsonMap, text } from '@/main/database/core/values';
+import { imageDimensions } from '@/main/media/image-dimensions';
 import { trimTrailingCharacters } from '@/shared/string-boundaries';
 
 export interface ResolvedAssetFile {
@@ -9,8 +10,16 @@ export interface ResolvedAssetFile {
   objectHash: string;
   absolutePath: string;
   suggestedName: string;
-  extension: '.png' | '.jpg' | '.webp' | '.gif' | '.mp4' | '.webm' | '.mov';
-  mimeType: 'image/png' | 'image/jpeg' | 'image/webp' | 'image/gif' | 'video/mp4' | 'video/webm' | 'video/quicktime';
+  extension: '.png' | '.jpg' | '.webp' | '.gif' | '.svg' | '.mp4' | '.webm' | '.mov';
+  mimeType:
+    | 'image/png'
+    | 'image/jpeg'
+    | 'image/webp'
+    | 'image/gif'
+    | 'image/svg+xml'
+    | 'video/mp4'
+    | 'video/webm'
+    | 'video/quicktime';
   width: number;
   height: number;
 }
@@ -20,6 +29,7 @@ const imageFileTypes = {
   'image/jpeg': { extension: '.jpg', acceptedExtensions: ['.jpg', '.jpeg'] },
   'image/webp': { extension: '.webp', acceptedExtensions: ['.webp'] },
   'image/gif': { extension: '.gif', acceptedExtensions: ['.gif'] },
+  'image/svg+xml': { extension: '.svg', acceptedExtensions: ['.svg'] },
   'video/mp4': { extension: '.mp4', acceptedExtensions: ['.mp4', '.m4v'] },
   'video/webm': { extension: '.webm', acceptedExtensions: ['.webm'] },
   'video/quicktime': { extension: '.mov', acceptedExtensions: ['.mov'] },
@@ -59,7 +69,7 @@ export function acceptedAssetExportExtensions(mimeType: ResolvedAssetFile['mimeT
 function hasExpectedMediaSignature(filePath: string, mimeType: ResolvedAssetFile['mimeType']) {
   const descriptor = openSync(filePath, 'r');
   try {
-    const header = Buffer.alloc(12);
+    const header = Buffer.alloc(mimeType === 'image/svg+xml' ? Math.min(statSync(filePath).size, 4 * 1024 * 1024) : 12);
     const length = readSync(descriptor, header, 0, header.length, 0);
     if (mimeType === 'image/png') {
       return length >= 8 && header.subarray(0, 8).equals(Buffer.from('89504e470d0a1a0a', 'hex'));
@@ -70,6 +80,9 @@ function hasExpectedMediaSignature(filePath: string, mimeType: ResolvedAssetFile
     if (mimeType === 'image/gif') {
       const signature = header.subarray(0, 6).toString('ascii');
       return length >= 10 && (signature === 'GIF87a' || signature === 'GIF89a');
+    }
+    if (mimeType === 'image/svg+xml') {
+      return imageDimensions(header.subarray(0, length), '.svg') !== null;
     }
     if (mimeType === 'video/webm') {
       return length >= 4 && header.subarray(0, 4).equals(Buffer.from('1a45dfa3', 'hex'));

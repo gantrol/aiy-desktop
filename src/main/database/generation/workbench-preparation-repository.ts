@@ -78,13 +78,22 @@ export class WorkbenchPreparationRepository extends WorkbenchReader {
     return { versionId: prepared.versionId, seriesId: prepared.seriesId };
   }
 
+  createPromptVersion(
+    input: GenerationInput,
+    promptInput: PromptCommonInputDto,
+  ): { versionId: string; seriesId: string } {
+    const prepared = this.prepareStructuredVersion(input, promptInput, false, true, true);
+    return { versionId: prepared.versionId, seriesId: prepared.seriesId };
+  }
+
   private prepareStructuredVersion(
     input: GenerationInput,
     promptInput: PromptCommonInputDto,
     createRun: boolean,
     forceNewVersion: boolean,
+    allowEmptyPrompt = false,
   ): { runId: string | null; versionId: string; seriesId: string; effectiveReferenceAssetIds: string[] } {
-    if (!input.prompt.trim()) throw new Error('Prompt is empty');
+    if (!allowEmptyPrompt && !input.prompt.trim()) throw new Error('Prompt is empty');
     const composition = {
       ...normalizedGenerationComposition(input),
       termPromptLocale: promptInput.directTermPromptLocale,

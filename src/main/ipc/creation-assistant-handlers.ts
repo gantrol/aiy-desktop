@@ -1,8 +1,13 @@
 import { shell, type OpenDialogOptions, type OpenDialogReturnValue } from 'electron';
 import { z } from 'zod';
 import type { CodexService } from '@/main/assistant/codex-service';
+import { CreatorImageStagingService } from '@/main/creations/creator-image-staging';
 import type { LibraryDatabase } from '@/main/database';
 import type { IpcHandlerRegistrar } from '@/main/ipc/trusted-handlers';
+import {
+  promptSeriesCoverSetInputSchema,
+  promptSeriesOutputRemoveInputSchema,
+} from '@/shared/contracts/creation-output-presentation';
 import {
   assistantProposalAdoptionSchema,
   creationDraftCommitSchema,
@@ -39,6 +44,7 @@ export function registerCreationAssistantIpc({
   runAssistantRequest,
   runTitleRequest,
 }: CreationAssistantIpcOptions) {
+  const referenceStages = new CreatorImageStagingService(() => database);
   ipcMain.handle('creation-draft:start', (_event, raw) =>
     database.startCreationDraft(creationDraftStartSchema.parse(raw)),
   );
@@ -61,13 +67,18 @@ export function registerCreationAssistantIpc({
   ipcMain.handle('assets:choose-references', async () => {
     const result = await chooseFile({
       properties: ['openFile', 'multiSelections'],
-      filters: [{ name: 'Images', extensions: ['png', 'jpg', 'jpeg', 'webp'] }],
+      filters: [{ name: 'Images', extensions: ['png', 'jpg', 'jpeg', 'webp', 'svg'] }],
     });
     if (result.canceled) return { assets: [] };
     if (result.filePaths.length > 8) throw new Error('Import supports at most 8 images');
-    const assets = [];
-    for (const filePath of result.filePaths) assets.push(await database.importReferenceAsync(filePath));
-    return { assets };
+    const rows = await referenceStages.stageFiles(result.filePaths);
+    const stageIds = rows.flatMap((row) => row.item.stageId ?? []);
+    const invalid = rows.find((row) => row.state === 'INVALID');
+    if (invalid) {
+      await referenceStages.discard(stageIds);
+      throw new Error(`Invalid ${invalid.item.mimeType} image: ${invalid.item.name}`);
+    }
+    return { assets: stageIds.length ? await referenceStages.importReferences('UPLOAD', stageIds) : [] };
   });
   ipcMain.handle('codex:health', () => codex.refreshHealth());
   ipcMain.handle('codex:open-thread', (_event, rawThreadId) => {
@@ -106,6 +117,12 @@ export function registerCreationAssistantIpc({
   ipcMain.handle('codex:suggest-titles', (_event, raw) => runTitleRequest(titleSchema.parse(raw)));
   ipcMain.handle('prompt-series:rename', (_event, raw) => database.renamePromptSeries(renameSeriesSchema.parse(raw)));
   ipcMain.handle('prompt-series:delete', (_event, raw) => database.deletePromptSeries(deleteSeriesSchema.parse(raw)));
+  ipcMain.handle('prompt-series:output-remove', (_event, raw) =>
+    database.removePromptSeriesOutput(promptSeriesOutputRemoveInputSchema.parse(raw)),
+  );
+  ipcMain.handle('prompt-series:cover-set', (_event, raw) =>
+    database.setPromptSeriesCover(promptSeriesCoverSetInputSchema.parse(raw)),
+  );
   ipcMain.handle('creation-groups:rename', (_event, raw) =>
     database.renameCreationGroup(creationGroupRenameSchema.parse(raw)),
   );

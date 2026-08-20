@@ -5,6 +5,7 @@ import { PlusIcon } from '@/renderer/icons';
 import type { DictionaryMessages } from '@/renderer/i18n/catalog';
 import { Button } from '@/renderer/components/ui/button';
 import { TermMediaPickerDialog } from '@/renderer/components/dictionary/TermMediaPickerDialog';
+import { ImageAmbientBackdrop } from '@/renderer/components/media/AmbientImage';
 
 interface Props {
   copy: DictionaryMessages;
@@ -49,21 +50,23 @@ export function TermMediaEditor({
           return (
             <div
               key={item.id}
-              className="group relative h-40 w-28 overflow-hidden rounded-lg border bg-media-surround-light"
+              className="group relative isolate h-40 w-28 overflow-hidden rounded-lg border bg-surface-sunken"
             >
+              <ImageAmbientBackdrop src={item.asset.mediaUrl} loading="lazy" />
               <img
                 data-asset-id={item.asset.id}
-                className="size-full object-contain"
+                className="relative z-10 size-full object-contain"
                 src={item.asset.mediaUrl}
                 alt=""
+                loading="lazy"
               />
               {item.role === 'COVER' && (
-                <span className="absolute top-1.5 left-1.5 rounded bg-overlay px-1.5 py-0.5 text-[10px] font-medium shadow-overlay">
+                <span className="absolute top-1.5 left-1.5 z-20 rounded bg-overlay px-1.5 py-0.5 text-[10px] font-medium shadow-overlay">
                   {c.cover}
                 </span>
               )}
               {!disabled && (
-                <div className="absolute inset-x-1.5 bottom-1.5 flex items-center justify-center gap-1 rounded-md bg-overlay p-1 opacity-0 shadow-overlay transition-opacity group-hover:opacity-100 group-focus-within:opacity-100">
+                <div className="absolute inset-x-1.5 bottom-1.5 z-20 flex items-center justify-center gap-1 rounded-md bg-overlay p-1 opacity-0 shadow-overlay transition-opacity group-hover:opacity-100 group-focus-within:opacity-100">
                   {item.role !== 'COVER' && (
                     <Button
                       type="button"

@@ -6,7 +6,10 @@ export function createIntakeApi(
   repositories: Pick<LibraryDatabaseRepositories, 'albums' | 'intake' | 'packs' | 'workbench'>,
 ) {
   return {
-    getWorkbench(locale: Locale = 'zh', options: { includeExecutionActualRequest?: boolean } = {}) {
+    getWorkbench(
+      locale: Locale = 'zh',
+      options: { includeExecutionActualRequest?: boolean; includeExecutionInputSnapshot?: boolean } = {},
+    ) {
       return { ...repositories.workbench.getWorkbench(locale, options), albums: repositories.albums.list(locale) };
     },
 

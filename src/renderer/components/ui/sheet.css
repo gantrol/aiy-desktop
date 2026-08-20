@@ -1,0 +1,145 @@
+@keyframes sheet-overlay-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes sheet-overlay-out {
+  from {
+    opacity: 1;
+  }
+  to {
+    opacity: 0;
+  }
+}
+
+@keyframes sheet-in-right {
+  from {
+    opacity: 0;
+    transform: translateX(1rem);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+@keyframes sheet-out-right {
+  from {
+    opacity: 1;
+    transform: translateX(0);
+  }
+  to {
+    opacity: 0;
+    transform: translateX(1rem);
+  }
+}
+
+@keyframes sheet-in-left {
+  from {
+    opacity: 0;
+    transform: translateX(-1rem);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+@keyframes sheet-out-left {
+  from {
+    opacity: 1;
+    transform: translateX(0);
+  }
+  to {
+    opacity: 0;
+    transform: translateX(-1rem);
+  }
+}
+
+@keyframes sheet-in-top {
+  from {
+    opacity: 0;
+    transform: translateY(-1rem);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes sheet-out-top {
+  from {
+    opacity: 1;
+    transform: translateY(0);
+  }
+  to {
+    opacity: 0;
+    transform: translateY(-1rem);
+  }
+}
+
+@keyframes sheet-in-bottom {
+  from {
+    opacity: 0;
+    transform: translateY(1rem);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes sheet-out-bottom {
+  from {
+    opacity: 1;
+    transform: translateY(0);
+  }
+  to {
+    opacity: 0;
+    transform: translateY(1rem);
+  }
+}
+
+.sheet-overlay-motion[data-state='open'] {
+  animation: sheet-overlay-in var(--motion-overlay) var(--ease-enter);
+}
+
+.sheet-overlay-motion[data-state='closed'] {
+  animation: sheet-overlay-out var(--motion-overlay) var(--ease-exit);
+}
+
+.sheet-content-motion[data-side='right'][data-state='open'] {
+  animation: sheet-in-right var(--motion-overlay) var(--ease-enter);
+}
+
+.sheet-content-motion[data-side='right'][data-state='closed'] {
+  animation: sheet-out-right var(--motion-overlay) var(--ease-exit);
+}
+
+.sheet-content-motion[data-side='left'][data-state='open'] {
+  animation: sheet-in-left var(--motion-overlay) var(--ease-enter);
+}
+
+.sheet-content-motion[data-side='left'][data-state='closed'] {
+  animation: sheet-out-left var(--motion-overlay) var(--ease-exit);
+}
+
+.sheet-content-motion[data-side='top'][data-state='open'] {
+  animation: sheet-in-top var(--motion-overlay) var(--ease-enter);
+}
+
+.sheet-content-motion[data-side='top'][data-state='closed'] {
+  animation: sheet-out-top var(--motion-overlay) var(--ease-exit);
+}
+
+.sheet-content-motion[data-side='bottom'][data-state='open'] {
+  animation: sheet-in-bottom var(--motion-overlay) var(--ease-enter);
+}
+
+.sheet-content-motion[data-side='bottom'][data-state='closed'] {
+  animation: sheet-out-bottom var(--motion-overlay) var(--ease-exit);
+}

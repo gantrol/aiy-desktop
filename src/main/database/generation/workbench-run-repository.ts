@@ -10,6 +10,7 @@ import type {
   RenamePromptSeriesInput,
 } from '@/shared/contracts';
 import { ensureImageMaterials } from '@/main/database/albums/image-material-batch';
+import type { StoredObject } from '@/main/database/core/storage';
 import { type JsonMap, now, text } from '@/main/database/core/values';
 import { archiveIdeasForSeries } from '@/main/database/creations/idea-creation-lifecycle';
 import { WorkbenchPreparationRepository } from '@/main/database/generation/workbench-preparation-repository';
@@ -494,6 +495,31 @@ export class WorkbenchRunRepository extends WorkbenchPreparationRepository {
   }
 
   finishGeneration(runId: string, outputPath: string, sourceAssetId: string | null = null): AssetDto {
+    const committed = this.committedGenerationAsset(runId, sourceAssetId);
+    if (committed) return committed;
+    return this.commitGenerationStoredObject(
+      runId,
+      this.storage.copyIntoObjectStore(outputPath),
+      'image/png',
+      sourceAssetId,
+    );
+  }
+
+  finishGenerationFromStoredImage(
+    runId: string,
+    stored: StoredObject,
+    mimeType: 'image/png',
+    sourceAssetId: string | null = null,
+  ): AssetDto {
+    if (!/^[a-f0-9]{64}$/.test(stored.hash) || !Number.isSafeInteger(stored.byteSize) || stored.byteSize <= 0) {
+      throw new Error('Stored generation image is invalid');
+    }
+    const committed = this.committedGenerationAsset(runId, sourceAssetId);
+    if (committed) return committed;
+    return this.commitGenerationStoredObject(runId, stored, mimeType, sourceAssetId);
+  }
+
+  private committedGenerationAsset(runId: string, sourceAssetId: string | null): AssetDto | null {
     if (sourceAssetId && !this.getAssetPath(sourceAssetId)) {
       throw new Error('Image edit source is unavailable');
     }
@@ -513,7 +539,15 @@ export class WorkbenchRunRepository extends WorkbenchPreparationRepository {
       if (!committed) throw new Error('Committed generation output is unavailable');
       return committed;
     }
-    const imported = this.storage.copyIntoObjectStore(outputPath);
+    return null;
+  }
+
+  private commitGenerationStoredObject(
+    runId: string,
+    imported: StoredObject,
+    mimeType: 'image/png',
+    sourceAssetId: string | null,
+  ): AssetDto {
     const assetId = ulid();
     const resolvedAssetId = this.db.transaction(() => {
       const concurrentAssetId = this.generationJobs.outputAssetId(runId);
@@ -522,9 +556,18 @@ export class WorkbenchRunRepository extends WorkbenchPreparationRepository {
         .prepare(
           `INSERT INTO image_assets
           (id, kind, origin_type, object_hash, relative_path, width, height, mime_type, byte_size, created_at, deleted_at)
-          VALUES (?, 'GENERATED', 'GENERATION', ?, ?, ?, ?, 'image/png', ?, ?, NULL)`,
+          VALUES (?, 'GENERATED', 'GENERATION', ?, ?, ?, ?, ?, ?, ?, NULL)`,
         )
-        .run(assetId, imported.hash, imported.relativePath, imported.width, imported.height, imported.byteSize, now());
+        .run(
+          assetId,
+          imported.hash,
+          imported.relativePath,
+          imported.width,
+          imported.height,
+          mimeType,
+          imported.byteSize,
+          now(),
+        );
       if (sourceAssetId) {
         this.db
           .prepare(

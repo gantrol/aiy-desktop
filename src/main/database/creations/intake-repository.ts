@@ -26,12 +26,21 @@ import {
   defaultImportedImageMetadata,
   writeImportedMaterialMetadata,
 } from '@/main/database/assets/external-material-import-metadata';
+import {
+  creationDraftReferenceAssetIds,
+  normalizeCreationDraftSave,
+  storedCreationDraftMatches,
+} from '@/main/database/creations/creation-draft-save';
+import { imageDimensions } from '@/main/media/image-dimensions';
+
+const maxImageHeaderBytes = 4 * 1024 * 1024;
 
 const extensionByMimeType = {
   'image/png': '.png',
   'image/jpeg': '.jpg',
   'image/webp': '.webp',
   'image/gif': '.gif',
+  'image/svg+xml': '.svg',
   'video/mp4': '.mp4',
   'video/webm': '.webm',
   'video/quicktime': '.mov',
@@ -59,6 +68,14 @@ function hasExpectedMediaSignature(bytes: Uint8Array, mimeType: keyof typeof ext
       header.length >= 12 &&
       header.subarray(0, 4).toString('ascii') === 'RIFF' &&
       header.subarray(8, 12).toString('ascii') === 'WEBP'
+    );
+  }
+  if (mimeType === 'image/svg+xml') {
+    return (
+      imageDimensions(
+        Buffer.from(bytes.buffer, bytes.byteOffset, Math.min(bytes.byteLength, maxImageHeaderBytes)),
+        '.svg',
+      ) !== null
     );
   }
   if (mimeType === 'video/webm') {
@@ -344,26 +361,31 @@ export class IntakeRepository {
           if (!album) throw new Error('Album not found');
           if (album.archived_at) throw new Error('Archived albums cannot receive a creation');
         }
-        const savedAt = now();
         const draftId = existing ? text(existing.id) : ulid();
         const modelTargets = this.normalizeModelTargets(input);
-        const title = input.title.trim();
+        const normalized = normalizeCreationDraftSave(input, targetAlbumId, dictionaryScope, modelTargets);
+        if (existing) {
+          const storedReferenceAssetIds = creationDraftReferenceAssetIds(this.db, draftId);
+          if (storedCreationDraftMatches(existing, normalized, storedReferenceAssetIds)) return this.getDraft(draftId);
+        }
+
+        const savedAt = now();
         const values = [
-          targetAlbumId,
-          input.text.trim(),
-          title,
-          input.termPromptLocale,
-          JSON.stringify([...new Set(input.termIds)]),
-          JSON.stringify(input.wordPaletteReferences),
-          JSON.stringify(input.promptNodes ?? []),
-          dictionaryScope.mode,
-          JSON.stringify(dictionaryScope.sources),
-          dictionaryScope.includeLocalTerms ? 1 : 0,
-          input.canvasPresetKey ?? '',
-          input.quality,
-          JSON.stringify([...new Set(input.selectedModelKeys)]),
-          Math.max(1, input.repeatCount),
-          JSON.stringify(modelTargets),
+          normalized.targetAlbumId,
+          normalized.text,
+          normalized.title,
+          normalized.termPromptLocale,
+          normalized.termIdsJson,
+          normalized.paletteReferencesJson,
+          normalized.promptNodesJson,
+          normalized.dictionaryScopeMode,
+          normalized.dictionarySourcesJson,
+          normalized.dictionaryIncludesLocalTerms ? 1 : 0,
+          normalized.canvasPresetKey,
+          normalized.quality,
+          normalized.selectedModelKeysJson,
+          normalized.repeatCount,
+          normalized.modelTargetsJson,
           savedAt,
         ] as const;
         if (existing) {
@@ -387,28 +409,28 @@ export class IntakeRepository {
             )
             .run(
               draftId,
-              title,
-              input.text.trim(),
+              normalized.title,
+              normalized.text,
               savedAt,
               savedAt,
-              input.termPromptLocale,
-              JSON.stringify([...new Set(input.termIds)]),
-              JSON.stringify(input.wordPaletteReferences),
-              JSON.stringify(input.promptNodes ?? []),
-              input.canvasPresetKey ?? '',
-              input.quality,
-              JSON.stringify([...new Set(input.selectedModelKeys)]),
-              Math.max(1, input.repeatCount),
-              JSON.stringify(modelTargets),
-              targetAlbumId,
-              dictionaryScope.mode,
-              JSON.stringify(dictionaryScope.sources),
-              dictionaryScope.includeLocalTerms ? 1 : 0,
+              normalized.termPromptLocale,
+              normalized.termIdsJson,
+              normalized.paletteReferencesJson,
+              normalized.promptNodesJson,
+              normalized.canvasPresetKey,
+              normalized.quality,
+              normalized.selectedModelKeysJson,
+              normalized.repeatCount,
+              normalized.modelTargetsJson,
+              normalized.targetAlbumId,
+              normalized.dictionaryScopeMode,
+              normalized.dictionarySourcesJson,
+              normalized.dictionaryIncludesLocalTerms ? 1 : 0,
             );
         }
 
         this.db.prepare('DELETE FROM creation_draft_materials WHERE creation_draft_id = ?').run(draftId);
-        for (const [sortOrder, assetId] of [...new Set(input.referenceAssetIds)].entries()) {
+        for (const [sortOrder, assetId] of normalized.referenceAssetIds.entries()) {
           const materialId = this.ensureMaterialForAsset(assetId);
           this.db
             .prepare(

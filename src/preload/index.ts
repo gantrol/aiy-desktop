@@ -6,6 +6,19 @@ import {
   generationProcessSummarySchema,
 } from '@/shared/contracts/generation-process';
 import { appUpdateStateSchema } from '@/shared/contracts/app-update';
+import { appSupportDestinationSchema } from '@/shared/contracts/app-support';
+import { appWindowStateSchema, desktopPlatformSchema } from '@/shared/contracts/app-window';
+import {
+  transitionShowcaseExportImageIdsSchema,
+  transitionShowcaseExportImageSnapshotsSchema,
+} from '@/shared/contracts/transition-showcase';
+import { creatorOutputsOrganizeResultSchema } from '@/shared/contracts/creation-output-organization';
+import {
+  promptSeriesCoverSetInputSchema,
+  promptSeriesOutputPresentationResultSchema,
+  promptSeriesOutputRemoveInputSchema,
+} from '@/shared/contracts/creation-output-presentation';
+import { promptVersionCreateResultSchema } from '@/shared/contracts/prompt-version-create';
 import {
   legacyLocalSpaceCandidateListSchema,
   localSpaceExportResultSchema,
@@ -88,7 +101,15 @@ function appLoadingPreviews() {
 }
 
 const api: DesktopApi = {
+  appPlatform: desktopPlatformSchema.parse(process.platform),
   appLoadingPreviews,
+  transitionShowcaseExportImages: async (assetIds) =>
+    transitionShowcaseExportImageSnapshotsSchema.parse(
+      await ipcRenderer.invoke(
+        'transition-showcase:export-images',
+        transitionShowcaseExportImageIdsSchema.parse(assetIds),
+      ),
+    ),
   onAppLoadingPreviewsRefreshed: (callback) => {
     const listener = (_event: Electron.IpcRendererEvent, value: unknown) =>
       callback(transitionPreviewRefreshEventSchema.parse(value));
@@ -97,6 +118,18 @@ const api: DesktopApi = {
   },
   bootstrap: (locale) => ipcRenderer.invoke('app:bootstrap', locale),
   generationProjection: (locale) => ipcRenderer.invoke('generation:projection', locale),
+  appWindowGetState: async () => appWindowStateSchema.parse(await ipcRenderer.invoke('app-window:get-state')),
+  appWindowMinimize: () => ipcRenderer.invoke('app-window:minimize'),
+  appWindowToggleMaximized: async () =>
+    appWindowStateSchema.parse(await ipcRenderer.invoke('app-window:toggle-maximized')),
+  appWindowClose: () => ipcRenderer.invoke('app-window:close'),
+  appSupportOpen: (destination) =>
+    ipcRenderer.invoke('app-support:open', appSupportDestinationSchema.parse(destination)),
+  onAppWindowStateChanged: (callback) => {
+    const listener = (_event: Electron.IpcRendererEvent, value: unknown) => callback(appWindowStateSchema.parse(value));
+    ipcRenderer.on('app-window:state-changed', listener);
+    return () => ipcRenderer.removeListener('app-window:state-changed', listener);
+  },
   appRequestQuit: () => ipcRenderer.invoke('app:request-quit'),
   appUpdateGetState: async () => appUpdateStateSchema.parse(await ipcRenderer.invoke('app-update:get-state')),
   appUpdateCheck: async () => appUpdateStateSchema.parse(await ipcRenderer.invoke('app-update:check')),
@@ -110,6 +143,7 @@ const api: DesktopApi = {
   extensionSetPermission: (input) => ipcRenderer.invoke('extension:set-permission', input),
   codexGeneratedImagesList: (input) => ipcRenderer.invoke('codex-generated-images:list', input),
   codexGeneratedImagesImport: (input) => ipcRenderer.invoke('codex-generated-images:import', input),
+  codexGeneratedImagesRecover: (input) => ipcRenderer.invoke('codex-generated-images:recover', input),
   openAiImageApiGet: () => ipcRenderer.invoke('openai-image-api:get'),
   openAiImageApiSave: (input) => ipcRenderer.invoke('openai-image-api:save', input),
   openAiImageApiTest: () => ipcRenderer.invoke('openai-image-api:test'),
@@ -127,6 +161,8 @@ const api: DesktopApi = {
   externalImageApiSave: (input) => ipcRenderer.invoke('external-image-api:save', input),
   externalImageApiTest: (extensionId) => ipcRenderer.invoke('external-image-api:test', extensionId),
   externalImageApiClear: (extensionId) => ipcRenderer.invoke('external-image-api:clear', extensionId),
+  antigravityCliGet: () => ipcRenderer.invoke('antigravity-cli:get'),
+  antigravityCliRefresh: () => ipcRenderer.invoke('antigravity-cli:refresh'),
   localSpacesList: async () => localSpaceRegistrySchema.parse(await ipcRenderer.invoke('local-spaces:list')),
   localSpacesDiscoverLegacy: async () =>
     legacyLocalSpaceCandidateListSchema.parse(await ipcRenderer.invoke('local-spaces:discover-legacy')),
@@ -307,6 +343,18 @@ const api: DesktopApi = {
   creatorOutputsChoose: (input) => ipcRenderer.invoke('creator:outputs-choose', input),
   creatorOutputsDiscard: (stageIds) => ipcRenderer.invoke('creator:outputs-discard', stageIds),
   creatorOutputUpdate: (input) => ipcRenderer.invoke('creator:output-update', input),
+  creatorOutputsOrganize: async (input) =>
+    creatorOutputsOrganizeResultSchema.parse(await ipcRenderer.invoke('creator:outputs-organize', input)),
+  promptSeriesOutputRemove: async (input) =>
+    promptSeriesOutputPresentationResultSchema.parse(
+      await ipcRenderer.invoke('prompt-series:output-remove', promptSeriesOutputRemoveInputSchema.parse(input)),
+    ),
+  promptSeriesCoverSet: async (input) =>
+    promptSeriesOutputPresentationResultSchema.parse(
+      await ipcRenderer.invoke('prompt-series:cover-set', promptSeriesCoverSetInputSchema.parse(input)),
+    ),
+  promptVersionCreate: async (input) =>
+    promptVersionCreateResultSchema.parse(await ipcRenderer.invoke('prompt-version:create', input)),
   creationDraftStart: (input) => ipcRenderer.invoke('creation-draft:start', input),
   creationDraftSave: (input) => ipcRenderer.invoke('creation-draft:save', input),
   creationDraftCommit: (input) => ipcRenderer.invoke('creation-draft:commit', input),

@@ -10,6 +10,11 @@ import type {
 } from '@/shared/contracts';
 import type { LibraryStorage } from '@/main/database/core/storage';
 import { isSystemMaterialAlbumId, materialAlbumAssetFilter } from '@/main/database/albums/material-album-repository';
+import {
+  unfiledMaterialAssetPredicate,
+  unorganizedMaterialAssetPredicate,
+} from '@/main/database/albums/material-album-scopes';
+import { creationOutputNotExcluded } from '@/main/database/creations/creation-output-presentation-sql';
 import { type JsonMap, mediaUrl, text } from '@/main/database/core/values';
 import { resolveStoredTitle, titleLocalizationsByOwner } from '@/main/database/core/title-localization';
 
@@ -56,6 +61,22 @@ function sourcePredicate(source: GallerySourceFilter) {
   if (source === 'LIBRARY') return '(gallery_material.id IS NOT NULL OR creation.is_output = 1)';
   if (source === 'IMPORT') return 'gallery_material.id IS NOT NULL AND COALESCE(creation.is_output, 0) = 0';
   return '1 = 1';
+}
+
+function materialAlbumFilter(input: GalleryListInput) {
+  if (!input.albumId) return { clause: '', parameters: [] as string[] };
+  const filter = materialAlbumAssetFilter(
+    input.albumId,
+    input.creationRelation ?? 'OUTPUT',
+    input.albumScope ?? 'TREE',
+  );
+  return { clause: `AND ${filter.predicate}`, parameters: filter.parameters };
+}
+
+function materialPlacementClause(placement: GalleryListInput['placement']) {
+  if (placement === 'UNFILED') return `AND ${unfiledMaterialAssetPredicate}`;
+  if (placement === 'UNORGANIZED') return `AND ${unorganizedMaterialAssetPredicate}`;
+  return '';
 }
 
 const dictionaryAssetTerms = `
@@ -170,6 +191,7 @@ const gallerySearchPredicate = `(
           JOIN prompt_versions search_version ON search_version.id = search_run.prompt_version_id
           WHERE search_version.series_id = search_series.id
             AND search_run.result_asset_id = asset.id AND search_run.status = 'SUCCEEDED'
+            AND ${creationOutputNotExcluded('search_series.id', 'asset.id')}
             AND NOT EXISTS (
               SELECT 1 FROM generation_output_reviews search_review
               WHERE search_review.generation_run_id = search_run.id
@@ -179,10 +201,12 @@ const gallerySearchPredicate = `(
           SELECT 1 FROM creation_output_imports search_imported
           WHERE search_imported.series_id = search_series.id
             AND search_imported.image_asset_id = asset.id AND search_imported.deleted_at IS NULL
+            AND ${creationOutputNotExcluded('search_series.id', 'asset.id')}
         ) OR EXISTS (
           SELECT 1 FROM image_transform_runs search_transform
           WHERE search_transform.series_id = search_series.id
             AND search_transform.output_asset_id = asset.id AND search_transform.deleted_at IS NULL
+            AND ${creationOutputNotExcluded('search_series.id', 'asset.id')}
         ) OR EXISTS (
           SELECT 1 FROM reference_bindings search_binding
           WHERE search_binding.prompt_version_id = search_series.current_version_id
@@ -276,6 +300,7 @@ const creationRelationshipsCte = `creation_candidates AS (
   JOIN prompt_versions version ON version.id = run.prompt_version_id
   JOIN prompt_series series ON series.id = version.series_id
   WHERE run.status = 'SUCCEEDED' AND run.result_asset_id IS NOT NULL
+    AND ${creationOutputNotExcluded('series.id', 'run.result_asset_id')}
     AND NOT EXISTS (
       SELECT 1 FROM generation_output_reviews review
       WHERE review.generation_run_id = run.id AND review.disposition = 'FAILED'
@@ -290,6 +315,7 @@ const creationRelationshipsCte = `creation_candidates AS (
   JOIN prompt_series series ON series.id = imported.series_id
   LEFT JOIN prompt_versions version ON version.id = imported.prompt_version_id
   WHERE imported.deleted_at IS NULL
+    AND ${creationOutputNotExcluded('series.id', 'imported.image_asset_id')}
   UNION ALL
   SELECT transform.output_asset_id AS asset_id, NULL AS run_id, NULL AS imported_output_id,
     transform.created_at AS creation_created_at, transform.created_at AS relation_created_at,
@@ -300,6 +326,7 @@ const creationRelationshipsCte = `creation_candidates AS (
   JOIN prompt_series series ON series.id = transform.series_id
   LEFT JOIN prompt_versions version ON version.id = series.current_version_id
   WHERE transform.deleted_at IS NULL
+    AND ${creationOutputNotExcluded('series.id', 'transform.output_asset_id')}
   UNION ALL
   SELECT binding.image_asset_id AS asset_id, NULL AS run_id, NULL AS imported_output_id,
     NULL AS creation_created_at, version.created_at AS relation_created_at,
@@ -361,7 +388,10 @@ export class GalleryRepository {
     this.db = storage.db;
   }
 
-  /** Score-weighted previews that exhaust distinct creation sessions before taking another from one session. */
+  /**
+   * Score-weighted previews that exhaust distinct creation sessions before taking another from one session.
+   * Unrated assets use weight 0.5, half the selection rate of a one-star asset.
+   */
   listTransitionPreviewSources(limit = 24): TransitionPreviewSource[] {
     const normalizedLimit = Math.max(1, Math.min(24, Math.trunc(limit)));
     const rows = this.db
@@ -389,7 +419,7 @@ export class GalleryRepository {
             ) AS session_key,
             -ln(
               (CAST(random() AS REAL) + 9223372036854775809.0) / 18446744073709551618.0
-            ) / COALESCE(AVG(CAST(transition_rating.score AS REAL)), 1.0) AS selection_key
+            ) / COALESCE(AVG(CAST(transition_rating.score AS REAL)), 0.5) AS selection_key
           FROM image_assets asset
           LEFT JOIN creation ON creation.asset_id = asset.id
           LEFT JOIN transition_series_sessions transition_session
@@ -434,9 +464,8 @@ export class GalleryRepository {
     const predicate = userAlbumIsAllSource ? '1 = 1' : sourcePredicate(input.source);
     const assetKinds = [...new Set(input.assetKinds ?? [])];
     const assetKindClause = assetKinds.length ? `AND asset.kind IN (${assetKinds.map(() => '?').join(', ')})` : '';
-    const materialAlbumFilter = albumId ? materialAlbumAssetFilter(albumId, input.creationRelation ?? 'OUTPUT') : null;
-    const materialAlbumClause = materialAlbumFilter ? `AND ${materialAlbumFilter.predicate}` : '';
-    const materialAlbumParameters = materialAlbumFilter?.parameters ?? [];
+    const { clause: materialAlbumClause, parameters: materialAlbumParameters } = materialAlbumFilter(input);
+    const placementClause = materialPlacementClause(input.placement);
     const scopedDictionary = dictionaryFilter(input.dictionary);
     const favoriteOnlyClause =
       input.favoriteOnly && input.source !== 'FAVORITE' ? 'AND favorite.asset_id IS NOT NULL' : '';
@@ -552,7 +581,7 @@ export class GalleryRepository {
         AND realism_rating.deleted_at IS NULL
       WHERE asset.deleted_at IS NULL AND ${predicate}
         AND ${galleryFailedOutputVisibilityPredicate}
-        ${favoriteOnlyClause} ${assetKindClause} ${materialAlbumClause}
+        ${favoriteOnlyClause} ${assetKindClause} ${materialAlbumClause} ${placementClause}
         ${scopedDictionary.predicate} ${searchClause} ${unratedClause} ${cursorClause}
       ORDER BY ${creationSortExpression} DESC, asset.id DESC
       LIMIT ?
@@ -610,7 +639,8 @@ export class GalleryRepository {
       WHERE asset.deleted_at IS NULL AND ${userAlbumIsAllSource ? '1 = 1' : this.countPredicate(input.source)}
         ${failedOutputCountVisibilityClause}
         ${input.favoriteOnly && input.source !== 'FAVORITE' ? `AND ${this.countPredicate('FAVORITE')}` : ''}
-        ${assetKindClause} ${materialAlbumClause} ${scopedDictionary.predicate} ${searchClause} ${unratedCountClause}
+        ${assetKindClause} ${materialAlbumClause} ${placementClause}
+        ${scopedDictionary.predicate} ${searchClause} ${unratedCountClause}
     `,
             )
             .get(
@@ -647,6 +677,7 @@ export class GalleryRepository {
           SELECT 1 FROM generation_runs run
           JOIN prompt_versions version ON version.id = run.prompt_version_id
           WHERE version.series_id = series.id AND run.result_asset_id = asset.id AND run.status = 'SUCCEEDED'
+            AND ${creationOutputNotExcluded('series.id', 'asset.id')}
             AND NOT EXISTS (
               SELECT 1 FROM generation_output_reviews review
               WHERE review.generation_run_id = run.id AND review.disposition = 'FAILED'
@@ -654,6 +685,12 @@ export class GalleryRepository {
         ) OR EXISTS (
           SELECT 1 FROM creation_output_imports imported
           WHERE imported.series_id = series.id AND imported.image_asset_id = asset.id AND imported.deleted_at IS NULL
+            AND ${creationOutputNotExcluded('series.id', 'asset.id')}
+        ) OR EXISTS (
+          SELECT 1 FROM image_transform_runs transform
+          WHERE transform.series_id = series.id AND transform.output_asset_id = asset.id
+            AND transform.deleted_at IS NULL
+            AND ${creationOutputNotExcluded('series.id', 'asset.id')}
         )
       )
     )`;

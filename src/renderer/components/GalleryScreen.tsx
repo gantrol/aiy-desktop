@@ -1,4 +1,4 @@
-import { BookOpenIcon, ImageIcon, LoaderCircleIcon } from 'lucide-react';
+import { BookOpenIcon, LoaderCircleIcon } from 'lucide-react';
 import {
   useCallback,
   useEffect,
@@ -28,19 +28,14 @@ import type {
 } from '@/shared/contracts';
 import { useI18n } from '@/renderer/i18n/useI18n';
 import { useStableCallback } from '@/renderer/lib/useStableCallback';
-import { cn } from '@/renderer/lib/utils';
 import { Button } from '@/renderer/components/ui/button';
-import { QuietEmpty } from '@/renderer/components/ui/quiet-empty';
-import { ScrollArea } from '@/renderer/components/ui/scroll-area';
-import { Skeleton } from '@/renderer/components/ui/skeleton';
 import {
   MaterialLibraryNavigation,
   type MaterialLibraryCategory,
 } from '@/renderer/components/gallery/MaterialLibraryNavigation';
 import { MaterialAlbumHeader } from '@/renderer/components/gallery/MaterialAlbumHeader';
-import { MaterialMasonry } from '@/renderer/components/gallery/MaterialMasonry';
-import { MaterialStackView } from '@/renderer/components/gallery/MaterialStackView';
-import { MaterialInspector } from '@/renderer/components/gallery/MaterialInspector';
+import { MaterialDetailPage } from '@/renderer/components/gallery/MaterialInspector';
+import { MaterialLibraryContent } from '@/renderer/components/gallery/MaterialLibraryContent';
 import {
   MaterialLibraryToolbar,
   type MaterialSourceFilter,
@@ -54,12 +49,11 @@ import {
   type SelectionModifiers,
 } from '@/renderer/components/gallery/materialLibraryTypes';
 import {
-  collectMaterialStacks,
-  immediateDescendantUnder,
-  rootAncestor,
-  type MaterialStack,
-} from '@/renderer/components/gallery/materialStacking';
-import { buildMaterialAlbumTree } from '@/renderer/components/gallery/materialAlbumTree';
+  buildMaterialAlbumBrowseIndex,
+  materialAlbumAncestors,
+} from '@/renderer/components/gallery/materialAlbumBrowse';
+import { materialLibraryNavigationLabels } from '@/renderer/components/gallery/materialLibraryNavigationLabels';
+import { useCreationCollectionBrowse } from '@/renderer/components/gallery/useCreationCollectionBrowse';
 import { nextGallerySelection } from '@/renderer/components/gallery/gallerySelection';
 import { writeMaterialsDrag } from '@/renderer/components/albums/albumDrag';
 import { GalleryIntakeAdapter, type GalleryIntakeAdapterHandle } from '@/renderer/features/intake/GalleryIntakeAdapter';
@@ -68,6 +62,7 @@ import {
   type GalleryCollection,
   type GalleryDictionaryCollection,
   type GalleryLocation,
+  type HistoryNavigationGuard,
   type NavigationMode,
 } from '@/renderer/components/app/app-navigation';
 import { OTHER_DOMAIN, OTHER_TYPE } from '@/renderer/components/dictionary/dictionary-navigation';
@@ -79,7 +74,7 @@ interface Props {
   active: boolean;
   location: GalleryLocation;
   onNavigate(location: GalleryLocation, mode?: NavigationMode): void;
-  onNavigateBack(): void;
+  onHistoryNavigationGuardChange(guard: HistoryNavigationGuard | null): void;
   onOpenResult(seriesId: string, assetId: string): void;
   onOpenTerm(termId: string): void;
   onIntakeCommitted(result: IntakeCommitResult): void | Promise<void>;
@@ -129,7 +124,7 @@ export function GalleryScreen({
   active,
   location,
   onNavigate,
-  onNavigateBack,
+  onHistoryNavigationGuardChange,
   onOpenResult,
   onOpenTerm,
   onIntakeCommitted,
@@ -153,7 +148,7 @@ export function GalleryScreen({
   const viewportRef = useRef<HTMLDivElement | null>(null);
   const pageEndRef = useRef<HTMLDivElement | null>(null);
   const [preferences, setPreferences] = useState(loadGalleryPreferences);
-  const { scope, contentTypes, unratedDimensions, viewMode } = preferences;
+  const { scope, contentTypes, unratedDimensions } = preferences;
   const [query, setQuery] = useState('');
   const [debouncedQuery, setDebouncedQuery] = useState('');
   const [items, setItems] = useState<GalleryItemDto[]>([]);
@@ -197,47 +192,34 @@ export function GalleryScreen({
     () => albums.find((album) => album.id === activeAlbumId) ?? null,
     [activeAlbumId, albums],
   );
-  const materialAlbumTree = useMemo(() => buildMaterialAlbumTree(albums), [albums]);
-  const creationRootAlbum = useMemo(
-    () => albums.find((album) => album.systemKey === 'CREATION_ROOT') ?? null,
-    [albums],
-  );
-  const creationAlbumBySeriesId = useMemo(
-    () =>
-      new Map(
-        albums.flatMap((album) =>
-          album.systemKey === 'CREATION_SERIES' && album.sourceSeriesId ? [[album.sourceSeriesId, album] as const] : [],
-        ),
-      ),
-    [albums],
-  );
-  const materialAlbumIdsByMaterialId = useMemo(() => {
-    const result = new Map<string, string[]>();
-    for (const album of albums) {
-      if (album.kind !== 'USER') continue;
-      for (const member of album.members) {
-        const ids = result.get(member.materialId) ?? [];
-        ids.push(album.id);
-        result.set(member.materialId, ids);
-      }
-    }
-    return result;
-  }, [albums]);
-  const creationScopeActive = Boolean(activeAlbum?.systemKey?.startsWith('CREATION_'));
-  const activeCreationPath = useMemo(() => {
-    if (!activeAlbum?.systemKey?.startsWith('CREATION_')) return undefined;
-    const byId = new Map(albums.map((album) => [album.id, album]));
-    const path: string[] = [];
-    const visited = new Set<string>();
-    let current: MaterialAlbumDto | undefined = activeAlbum;
-    while (current && !visited.has(current.id)) {
-      visited.add(current.id);
-      path.unshift(current.title);
-      current = current.parentId ? byId.get(current.parentId) : undefined;
-    }
-    return path.length > 1 ? path.join(' / ') : undefined;
-  }, [activeAlbum, albums]);
+  const favoriteOnly = dictionarySelection?.scope === 'FAVORITE' || (!dictionarySelection && scope === 'FAVORITE');
+  const {
+    scopeActive: creationScopeActive,
+    browseActive: creationBrowseActive,
+    collections: creationCollections,
+    rootCollections: creationRootCollections,
+    path: activeCreationPath,
+  } = useCreationCollectionBrowse({
+    albums,
+    activeAlbum,
+    favoriteOnly,
+    query: debouncedQuery,
+    relation: creationRelation,
+    unratedActive: unratedDimensions.length > 0,
+  });
   const writableAlbums = useMemo(() => albums.filter((album) => album.kind === 'USER'), [albums]);
+  const materialAlbumBrowse = useMemo(() => buildMaterialAlbumBrowseIndex(writableAlbums), [writableAlbums]);
+  const organizedMaterialIds = useMemo(() => {
+    const ids = new Set<string>();
+    for (const album of writableAlbums) {
+      for (const member of album.members) ids.add(member.materialId);
+    }
+    return ids;
+  }, [writableAlbums]);
+  const activeDirectMaterialIds = useMemo(
+    () => new Set(activeAlbum?.kind === 'USER' ? activeAlbum.members.map((member) => member.materialId) : []),
+    [activeAlbum],
+  );
   const uncategorizedLabel = messages.dictionary.wordPalette.uncategorized;
   const dictionaryTree = useMemo(
     () => buildDictionaryMaterialTree(terms, facets, uncategorizedLabel, locale),
@@ -287,6 +269,18 @@ export function GalleryScreen({
     if (sourceFilter === 'CREATION') return { kind: 'creation' };
     if (sourceFilter === 'IMPORT') return { kind: 'import' };
     return { kind: 'all' };
+  }
+
+  function closeMaterialInspector() {
+    setSelectedKey(null);
+    commitGalleryLocation(
+      {
+        collection: currentCollection(),
+        selectedMaterialKey: null,
+        requestedMaterialId: null,
+      },
+      'replace',
+    );
   }
 
   function navigateCollection(collection: GalleryCollection, mode: NavigationMode = 'push') {
@@ -339,12 +333,69 @@ export function GalleryScreen({
       termId: dictionarySelection.termId,
     };
   }, [dictionarySelection]);
-  const favoriteOnly = dictionarySelection?.scope === 'FAVORITE' || (!dictionarySelection && scope === 'FAVORITE');
   const backendSource: GallerySourceFilter = dictionarySelection
     ? 'DICTIONARY'
     : sourceFilter === 'ALL'
       ? 'LIBRARY'
       : sourceFilter;
+  const defaultContentTypeFilter =
+    contentTypes.length === 2 && contentTypes.includes('IMAGE') && contentTypes.includes('TEXT');
+  const structuralBrowseActive =
+    !favoriteOnly &&
+    !debouncedQuery &&
+    sourceFilter === 'ALL' &&
+    !dictionaryActive &&
+    !creationScopeActive &&
+    defaultContentTypeFilter &&
+    unratedDimensions.length === 0;
+  const overviewBrowseActive = structuralBrowseActive && !activeAlbumId;
+  const albumBrowseActive = structuralBrowseActive && activeAlbum?.kind === 'USER';
+  const galleryPlacement = overviewBrowseActive ? ('UNORGANIZED' as const) : undefined;
+  const galleryAlbumScope = albumBrowseActive ? ('DIRECT' as const) : undefined;
+  const rootAlbumSummaries = useMemo(
+    () =>
+      materialAlbumBrowse.tree.roots.flatMap((album) => {
+        const summary = materialAlbumBrowse.summaryById.get(album.id);
+        return summary ? [summary] : [];
+      }),
+    [materialAlbumBrowse],
+  );
+  const activeChildAlbumSummaries = useMemo(
+    () =>
+      activeAlbum?.kind === 'USER'
+        ? (materialAlbumBrowse.tree.childrenByParentId.get(activeAlbum.id) ?? []).flatMap((album) => {
+            const summary = materialAlbumBrowse.summaryById.get(album.id);
+            return summary ? [summary] : [];
+          })
+        : [],
+    [activeAlbum, materialAlbumBrowse],
+  );
+  const activeAlbumSummary =
+    activeAlbum?.kind === 'USER' ? (materialAlbumBrowse.summaryById.get(activeAlbum.id) ?? null) : null;
+  const activeAlbumAncestors = useMemo(
+    () => (activeAlbum?.kind === 'USER' ? materialAlbumAncestors(activeAlbum.id, materialAlbumBrowse.tree) : []),
+    [activeAlbum, materialAlbumBrowse],
+  );
+  const browseAlbumSummaries = overviewBrowseActive
+    ? rootAlbumSummaries
+    : albumBrowseActive
+      ? activeChildAlbumSummaries
+      : [];
+  const overviewCreationCollections = overviewBrowseActive ? creationRootCollections : [];
+  const creationSeriesCount = overviewBrowseActive
+    ? albums.filter((album) => album.systemKey === 'CREATION_SERIES').length
+    : 0;
+  const creationSectionTitle = overviewBrowseActive ? messages.gallery.library.relationshipCreation : null;
+  const albumSectionTitle = overviewBrowseActive
+    ? messages.gallery.albums.myAlbums
+    : albumBrowseActive
+      ? messages.gallery.albums.subAlbums
+      : null;
+  const materialSectionTitle = overviewBrowseActive
+    ? messages.gallery.albums.unfiledMaterials
+    : albumBrowseActive
+      ? messages.gallery.albums.materialsHere
+      : null;
   const galleryQueryKey = useMemo(
     () =>
       JSON.stringify({
@@ -352,6 +403,8 @@ export function GalleryScreen({
         dataRevision,
         locale,
         albumId: activeAlbumId,
+        albumScope: galleryAlbumScope,
+        placement: galleryPlacement,
         creationRelation: creationScopeActive ? creationRelation : undefined,
         dictionary: dictionaryFilter,
         favoriteOnly,
@@ -371,6 +424,8 @@ export function GalleryScreen({
       debouncedQuery,
       dictionaryFilter,
       favoriteOnly,
+      galleryAlbumScope,
+      galleryPlacement,
       imageEnabled,
       libraryKey,
       locale,
@@ -384,7 +439,11 @@ export function GalleryScreen({
    * Plain click opens the inspector and drops any batch. Ctrl/Cmd toggles one
    * item; Shift extends from the last anchor so a run can be swept in one go.
    */
-  function selectMaterial(target: MaterialLibraryItem, modifiers?: SelectionModifiers) {
+  function selectMaterial(
+    target: MaterialLibraryItem,
+    modifiers?: SelectionModifiers,
+    navigationMode: NavigationMode = 'push',
+  ) {
     const effectiveModifiers =
       selectionMode && !modifiers?.range && !modifiers?.toggle ? { range: false, toggle: true } : modifiers;
     const next = nextGallerySelection(
@@ -398,11 +457,14 @@ export function GalleryScreen({
     setSelectedKey(next.selectedKey);
     if (next.checkedKeys.size > 0) setSelectionMode(true);
     if (next.selectedKey && next.checkedKeys.size === 0) {
-      commitGalleryLocation({
-        collection: currentCollection(),
-        selectedMaterialKey: next.selectedKey,
-        requestedMaterialId: null,
-      });
+      commitGalleryLocation(
+        {
+          collection: currentCollection(),
+          selectedMaterialKey: next.selectedKey,
+          requestedMaterialId: null,
+        },
+        navigationMode,
+      );
     }
   }
 
@@ -458,34 +520,12 @@ export function GalleryScreen({
     writeMaterialsDrag(event.dataTransfer, targets);
   }
 
-  function toggleStackSelection(stackItems: readonly MaterialLibraryItem[], checked: boolean) {
-    setSelectionMode(true);
-    setSelectedKey(null);
-    setCheckedKeys((current) => {
-      const next = new Set(current);
-      for (const item of stackItems) {
-        if (checked) next.add(item.key);
-        else next.delete(item.key);
-      }
-      return next;
-    });
-    rangeAnchorKey.current = checked ? (stackItems.at(-1)?.key ?? null) : null;
-  }
-
-  function startMaterialStackDrag(event: ReactDragEvent<HTMLElement>, stackItems: readonly MaterialLibraryItem[]) {
-    const draggingCheckedSelection = checkedKeys.size > 0 && stackItems.some((item) => checkedKeys.has(item.key));
-    const source = draggingCheckedSelection ? materials.filter((item) => checkedKeys.has(item.key)) : stackItems;
-    writeMaterialsDrag(event.dataTransfer, targetsForMaterials(source));
-  }
-
   // Card rows are memoized, so the handlers they receive must keep a stable
   // identity or every list mutation re-renders the whole grid.
   const stableSelectMaterial = useStableCallback(selectMaterial);
   const stableEnterSelection = useStableCallback(enterSelection);
   const stableToggleSelection = useStableCallback(toggleSelection);
   const stableStartMaterialDrag = useStableCallback(startMaterialDrag);
-  const stableToggleStackSelection = useStableCallback(toggleStackSelection);
-  const stableStartMaterialStackDrag = useStableCallback(startMaterialStackDrag);
   const stableNotify = useStableCallback(notify);
   const stableCopyText = useStableCallback((text: string) => void copyText(text));
 
@@ -521,6 +561,7 @@ export function GalleryScreen({
       await window.desktopApi.materialAlbumsAddMany({ albumId: album.id, targets: checkedTargets(), locale });
       setAlbums(await window.desktopApi.materialAlbumsList({ locale }));
       galleryCacheRef.current.clear();
+      setRetryKey((value) => value + 1);
       notify(messages.gallery.batch.addedToDestinations(1));
     } catch (reason) {
       notify(
@@ -587,7 +628,7 @@ export function GalleryScreen({
       setLoading(false);
       return;
     }
-    if (activeAlbumId && !albumsLoaded) {
+    if ((activeAlbumId || overviewBrowseActive) && !albumsLoaded) {
       requestId.current += 1;
       loadingRef.current = false;
       setLoading(albumsLoading);
@@ -614,25 +655,34 @@ export function GalleryScreen({
     loadingRef.current = true;
     setLoading(true);
 
-    const imageRequest = imageEnabled
-      ? window.desktopApi.galleryList({
-          locale,
-          source: backendSource,
-          favoriteOnly: favoriteOnly || undefined,
-          dictionary: dictionaryFilter,
-          query: debouncedQuery,
-          albumId: activeAlbumId ?? undefined,
-          creationRelation: creationScopeActive ? creationRelation : undefined,
-          unratedDimensions,
-          cursor: null,
-          limit: pageSize,
-        })
-      : Promise.resolve(emptyPage);
-    const textRequest = textEnabled
-      ? activeAlbum?.kind === 'USER'
-        ? window.desktopApi.albumsListTextMaterials(activeAlbum.id)
-        : window.desktopApi.favoriteTextsList()
-      : Promise.resolve([] as FavoriteTextMaterialDto[]);
+    const imageRequest =
+      imageEnabled && !creationBrowseActive
+        ? window.desktopApi.galleryList({
+            locale,
+            source: backendSource,
+            favoriteOnly: favoriteOnly || undefined,
+            dictionary: dictionaryFilter,
+            query: debouncedQuery,
+            placement: galleryPlacement,
+            albumId: activeAlbumId ?? undefined,
+            albumScope: galleryAlbumScope,
+            creationRelation: creationScopeActive ? creationRelation : undefined,
+            unratedDimensions,
+            cursor: null,
+            limit: pageSize,
+          })
+        : Promise.resolve(emptyPage);
+    const textRequest = (
+      textEnabled
+        ? activeAlbum?.kind === 'USER'
+          ? window.desktopApi.albumsListTextMaterials(activeAlbum.id)
+          : window.desktopApi.favoriteTextsList()
+        : Promise.resolve([] as FavoriteTextMaterialDto[])
+    ).then((texts) => {
+      if (overviewBrowseActive) return texts.filter((item) => !organizedMaterialIds.has(item.id));
+      if (albumBrowseActive) return texts.filter((item) => activeDirectMaterialIds.has(item.id));
+      return texts;
+    });
 
     void Promise.all([imageRequest, textRequest])
       .then(([page, texts]) => {
@@ -672,18 +722,25 @@ export function GalleryScreen({
     active,
     activeAlbum,
     activeAlbumId,
+    activeDirectMaterialIds,
+    albumBrowseActive,
     albumsLoaded,
     albumsLoading,
     backendSource,
     creationRelation,
+    creationBrowseActive,
     creationScopeActive,
     debouncedQuery,
     dictionaryFilter,
     favoriteOnly,
+    galleryAlbumScope,
+    galleryPlacement,
     galleryQueryKey,
     imageEnabled,
     libraryKey,
     locale,
+    organizedMaterialIds,
+    overviewBrowseActive,
     retryKey,
     textEnabled,
     unratedDimensions,
@@ -703,59 +760,8 @@ export function GalleryScreen({
       }),
     [filteredTexts, items],
   );
-
-  const materialStacks = useMemo(
-    () =>
-      collectMaterialStacks(materials, (item) => {
-        const candidateAlbumIds: string[] = [];
-        if (item.kind !== 'TEXT' && item.image.creation) {
-          const creationAlbum = creationAlbumBySeriesId.get(item.image.creation.seriesId);
-          if (creationAlbum) candidateAlbumIds.push(creationAlbum.id);
-        }
-        const materialId = item.kind === 'TEXT' ? item.text.id : item.image.materialId;
-        if (materialId) candidateAlbumIds.push(...(materialAlbumIdsByMaterialId.get(materialId) ?? []));
-
-        let stackAlbum: MaterialAlbumDto | null = null;
-        if (activeAlbum) {
-          for (const candidateId of candidateAlbumIds) {
-            stackAlbum = immediateDescendantUnder(candidateId, activeAlbum.id, materialAlbumTree);
-            if (stackAlbum) break;
-          }
-        } else {
-          for (const candidateId of candidateAlbumIds) {
-            const candidate = materialAlbumTree.byId.get(candidateId);
-            if (!candidate) continue;
-            if (candidate.systemKey?.startsWith('CREATION_') && creationRootAlbum) {
-              stackAlbum = immediateDescendantUnder(candidate.id, creationRootAlbum.id, materialAlbumTree);
-            } else if (candidate.kind === 'USER') {
-              const root = rootAncestor(candidate.id, materialAlbumTree);
-              stackAlbum = root?.kind === 'USER' ? root : null;
-            }
-            if (stackAlbum) break;
-          }
-        }
-
-        return stackAlbum
-          ? {
-              key: `album:${stackAlbum.id}`,
-              title: stackAlbum.title,
-              target: { kind: 'ALBUM' as const, id: stackAlbum.id },
-            }
-          : null;
-      }),
-    [
-      activeAlbum,
-      creationAlbumBySeriesId,
-      creationRootAlbum,
-      materialAlbumIdsByMaterialId,
-      materialAlbumTree,
-      materials,
-    ],
-  );
-
-  const openMaterialStack = useStableCallback((stack: MaterialStack) => {
-    if (stack.target?.kind === 'ALBUM') navigateCollection({ kind: 'album', albumId: stack.target.id });
-  });
+  const resultTotal = total + filteredTexts.length;
+  const displayedResultTotal = creationBrowseActive ? (activeAlbum?.materialCount ?? 0) : resultTotal;
 
   const revealContextForMaterial = useCallback(
     (item: MaterialLibraryItem): AssetFileRevealContext | undefined => {
@@ -781,6 +787,9 @@ export function GalleryScreen({
     () => materials.find((item) => item.key === selectedKey) ?? null,
     [materials, selectedKey],
   );
+  const selectedIndex = selectedItem ? materials.findIndex((item) => item.key === selectedItem.key) : -1;
+  const previousItem = selectedIndex > 0 ? materials[selectedIndex - 1] : null;
+  const nextItem = selectedIndex >= 0 ? (materials[selectedIndex + 1] ?? null) : null;
   const selectedFavoriteMaterialId =
     selectedItem && selectedItem.kind !== 'TEXT'
       ? (selectedItem.image.favorite?.materialId ?? null)
@@ -792,7 +801,6 @@ export function GalleryScreen({
       ? busyFavoriteMaterialId === selectedItem.image.asset.id ||
         busyFavoriteMaterialId === selectedItem.image.materialId
       : Boolean(selectedItem && busyFavoriteMaterialId === selectedItem.text.id);
-  const resultTotal = total + filteredTexts.length;
   const searchPending = query.trim() !== debouncedQuery;
   const showingPreviousResults = Boolean(materials.length) && displayedQueryKey !== galleryQueryKey;
 
@@ -859,7 +867,9 @@ export function GalleryScreen({
         favoriteOnly: favoriteOnly || undefined,
         dictionary: dictionaryFilter,
         query: debouncedQuery,
+        placement: galleryPlacement,
         albumId: activeAlbumId ?? undefined,
+        albumScope: galleryAlbumScope,
         creationRelation: creationScopeActive ? creationRelation : undefined,
         unratedDimensions,
         cursor: nextCursor,
@@ -895,6 +905,8 @@ export function GalleryScreen({
     dictionaryFilter,
     favoriteOnly,
     favoriteTexts,
+    galleryAlbumScope,
+    galleryPlacement,
     galleryQueryKey,
     imageEnabled,
     locale,
@@ -904,6 +916,10 @@ export function GalleryScreen({
   ]);
 
   useEffect(() => {
+    if (active && selectedItem && selectedIndex >= materials.length - 3 && nextCursor && !loading && !error) {
+      void loadMore();
+      return;
+    }
     const viewport = viewportRef.current;
     const pageEnd = pageEndRef.current;
     if (!viewport || !pageEnd || !nextCursor || loading || error) return undefined;
@@ -915,7 +931,7 @@ export function GalleryScreen({
     );
     observer.observe(pageEnd);
     return () => observer.disconnect();
-  }, [error, loadMore, loading, materials.length, nextCursor]);
+  }, [active, error, loadMore, loading, materials.length, nextCursor, selectedIndex, selectedItem]);
 
   async function scoreItem(item: GalleryItemDto, dimension: ImageRatingDimension, score: number | null) {
     const assetId = item.asset.id;
@@ -1092,7 +1108,8 @@ export function GalleryScreen({
     try {
       await window.desktopApi.materialAlbumsDelete(album.id);
       galleryCacheRef.current.clear();
-      setAlbums((current) => current.filter((candidate) => candidate.id !== album.id));
+      await reloadAlbums();
+      setRetryKey((value) => value + 1);
       if (activeAlbumId === album.id) navigateCollection({ kind: 'all' }, 'replace');
       notify(messages.gallery.albums.deleted);
     } catch (reason) {
@@ -1112,7 +1129,7 @@ export function GalleryScreen({
       await window.desktopApi.materialAlbumsAddMany({ albumId, targets, locale });
       galleryCacheRef.current.clear();
       await reloadAlbums();
-      if (activeAlbumId === albumId) setRetryKey((value) => value + 1);
+      setRetryKey((value) => value + 1);
       notify(messages.gallery.albums.added);
     } catch (reason) {
       notify(
@@ -1153,7 +1170,7 @@ export function GalleryScreen({
       }
       galleryCacheRef.current.clear();
       await reloadAlbums();
-      if (activeAlbumId === album.id) setRetryKey((value) => value + 1);
+      setRetryKey((value) => value + 1);
       notify(checked ? messages.gallery.albums.added : messages.gallery.albums.removed);
     } catch (reason) {
       notify(
@@ -1191,57 +1208,39 @@ export function GalleryScreen({
         ? l.favorited(result.favoriteCount)
         : messages.intake.review.imported(result.materialIds.length),
     );
-    if (result.albumId) {
-      const importedCount = result.materialIds.length;
-      setAlbums((current) =>
-        current.map((album) =>
-          album.id === result.albumId ? { ...album, materialCount: album.materialCount + importedCount } : album,
-        ),
-      );
-    }
+    if (result.albumId) await reloadAlbums();
     await onIntakeCommitted(result);
     await refresh();
   }
 
-  const albumLabels = {
-    creation: locale === 'zh' ? '创作' : 'Creation',
-    dictionary: locale === 'zh' ? '词典' : 'Dictionary',
-    material: locale === 'zh' ? '素材' : 'Materials',
-    allCreations: locale === 'zh' ? '全部创作' : 'All creations',
-    more: l.loadMore,
-    allMaterials: messages.gallery.albums.allMaterials,
-    albums: locale === 'zh' ? '我的素材图集' : 'My material albums',
-    archived: messages.gallery.albums.archived,
-    expand: messages.gallery.albums.expand,
-    collapse: messages.gallery.albums.collapse,
-    create: messages.gallery.albums.create,
-    createTitle: messages.gallery.albums.createTitle,
-    createChild: messages.gallery.albums.createChild,
-    open: messages.gallery.albums.open,
-    rename: messages.gallery.albums.rename,
-    renameTitle: messages.gallery.albums.renameTitle,
-    delete: messages.gallery.albums.delete,
-    deleteTitle: messages.gallery.albums.deleteTitle,
-    deleteDescription: (title: string) => `${messages.gallery.albums.deleteDescription} · ${title}`,
-    pin: messages.gallery.albums.pin,
-    unpin: messages.gallery.albums.unpin,
-    archive: messages.gallery.albums.archive,
-    restore: messages.gallery.albums.restore,
-    move: messages.gallery.albums.move,
-    moveTitle: messages.gallery.albums.moveTitle,
-    moveUp: messages.gallery.albums.moveUp,
-    moveDown: messages.gallery.albums.moveDown,
-    moveToRoot: messages.gallery.albums.moveToRoot,
-    moreActions: (title: string) => `${messages.gallery.albums.moreActions}: ${title}`,
-    name: messages.gallery.albums.name,
-    namePlaceholder: messages.gallery.albums.namePlaceholder,
-    cancel: messages.gallery.albums.cancel,
-    save: messages.gallery.albums.save,
-    confirmDelete: messages.gallery.albums.confirmDelete,
-    belongsTo: (title: string) => `${messages.gallery.albums.belongsTo} · ${title}`,
-    empty: messages.gallery.albums.empty,
-    operationFailed: messages.gallery.albums.operationFailed,
-  };
+  const albumLabels = materialLibraryNavigationLabels(messages);
+  const resultCountLabel = overviewBrowseActive
+    ? [
+        messages.gallery.albums.creations(creationSeriesCount),
+        messages.gallery.albums.albumCount(rootAlbumSummaries.length),
+        messages.gallery.albums.materials(resultTotal),
+      ].join(' · ')
+    : albumBrowseActive
+      ? `${messages.gallery.albums.albumCount(activeChildAlbumSummaries.length)} · ${messages.gallery.albums.materials(resultTotal)}`
+      : `${displayedResultTotal} ${l.unit}`;
+  const activeHeaderAlbum =
+    activeAlbum && activeAlbumSummary
+      ? {
+          ...activeAlbum,
+          materialCount: activeAlbumSummary.materialCount,
+          previewAssets: activeAlbumSummary.previewAssets,
+        }
+      : activeAlbum;
+  const activeAlbumCountLabel = activeAlbumSummary
+    ? [
+        messages.gallery.albums.materials(activeAlbumSummary.materialCount),
+        ...(activeAlbumSummary.childAlbumCount
+          ? [messages.gallery.albums.childAlbums(activeAlbumSummary.childAlbumCount)]
+          : []),
+      ].join(' · ')
+    : activeAlbum
+      ? messages.gallery.albums.materials(creationScopeActive ? displayedResultTotal : activeAlbum.materialCount)
+      : '';
 
   return (
     <GalleryIntakeAdapter
@@ -1263,290 +1262,233 @@ export function GalleryScreen({
         data-selection-mode={selectionMode ? 'active' : 'inactive'}
         data-selected-count={checkedKeys.size}
         data-loaded-count={materials.length}
-        data-view-mode={viewMode}
         className="flex size-full min-h-0 flex-col bg-background"
       >
-        <header className="flex min-h-14 shrink-0 flex-wrap items-center gap-x-3 gap-y-1 border-b px-4 py-2 sm:px-6">
-          <h1 className="text-lg font-semibold tracking-tight">{l.title}</h1>
-          <span data-slot="material-result-count" className="text-xs text-muted-foreground" aria-live="polite">
-            {searchPending ? l.searching : `${resultTotal} ${l.unit}`}
-          </span>
-          {loading && materials.length > 0 && (
-            <LoaderCircleIcon className="size-3.5 animate-spin text-muted-foreground" aria-label={l.loadingMore} />
-          )}
-          {albumsLoading && <span className="text-xs text-muted-foreground">{messages.gallery.albums.loading}</span>}
-          {!albumsLoading && albumError && (
-            <Button
-              type="button"
-              variant="ghost"
-              size="sm"
-              className="h-7 text-xs text-destructive"
-              onClick={() => setAlbumRetryKey((value) => value + 1)}
-            >
-              {messages.gallery.albums.loadFailed} · {l.retry}
-            </Button>
-          )}
-        </header>
-
-        <div className="flex min-h-0 min-w-0 flex-1 overflow-hidden">
-          <MaterialLibraryNavigation
-            albums={albums}
-            category={category}
-            activeAlbumId={activeAlbumId}
-            dictionarySelection={dictionarySelection}
-            dictionaryTree={dictionaryTree}
-            labels={albumLabels}
-            busy={albumMutationBusy}
-            onSelectCategory={(nextCategory) => {
-              if (nextCategory === 'DICTIONARY') navigateCollection({ kind: 'dictionary', scope: 'ALL' });
-              else navigateCollection({ kind: 'all' });
-            }}
-            onSelectAlbum={(albumId) => navigateCollection({ kind: 'album', albumId })}
-            onSelectDictionary={navigateCollection}
-            onCreate={createAlbum}
-            onRename={renameAlbum}
-            onDelete={deleteAlbum}
-            onCollectMaterials={collectDroppedMaterials}
-            onImportFiles={(album, files) =>
-              intakeRef.current?.reviewFiles(files, { albumId: album.id, albumName: album.title })
-            }
-          />
-
-          <div
-            className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden"
-            aria-busy={loading || showingPreviousResults}
-          >
-            {activeAlbum && (
-              <MaterialAlbumHeader
-                album={activeAlbum}
-                pathLabel={activeCreationPath}
-                countLabel={messages.gallery.albums.materials(
-                  creationScopeActive ? resultTotal : activeAlbum.materialCount,
-                )}
-              />
+        <div className={active && selectedItem ? 'hidden' : 'contents'}>
+          <header className="flex min-h-14 shrink-0 flex-wrap items-center gap-x-3 gap-y-1 border-b px-4 py-2 sm:px-6">
+            <h1 className="text-lg font-semibold tracking-tight">{l.title}</h1>
+            <span data-slot="material-result-count" className="text-xs text-muted-foreground" aria-live="polite">
+              {searchPending ? l.searching : resultCountLabel}
+            </span>
+            {loading && materials.length > 0 && (
+              <LoaderCircleIcon className="size-3.5 animate-spin text-muted-foreground" aria-label={l.loadingMore} />
             )}
-            {dictionaryActive && (
-              <div className="flex min-h-20 shrink-0 items-center gap-3 border-b px-4 py-3 sm:px-6">
-                <span className="grid size-11 shrink-0 place-items-center rounded-xl border bg-surface text-selected-foreground">
-                  <BookOpenIcon className="size-5" />
-                </span>
-                <div className="min-w-0">
-                  <h2 className="truncate text-xl font-semibold tracking-tight">
-                    {dictionaryPathLabels.at(-1) ?? albumLabels.dictionary}
-                  </h2>
-                  {dictionaryPathLabels.length > 1 && (
-                    <p className="mt-0.5 truncate text-xs text-muted-foreground">{dictionaryPathLabels.join(' / ')}</p>
-                  )}
-                </div>
-              </div>
+            {albumsLoading && <span className="text-xs text-muted-foreground">{messages.gallery.albums.loading}</span>}
+            {!albumsLoading && albumError && (
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                className="h-7 text-xs text-destructive"
+                onClick={() => setAlbumRetryKey((value) => value + 1)}
+              >
+                {messages.gallery.albums.loadFailed} · {l.retry}
+              </Button>
             )}
-            <MaterialLibraryToolbar
-              query={query}
-              scope={dictionarySelection?.scope ?? scope}
-              relationship="ANY"
-              contentTypes={effectiveContentTypes}
-              unratedDimensions={unratedDimensions}
-              viewMode={viewMode}
-              selectionMode={selectionMode}
-              selectionAvailable={activeAlbum?.kind !== 'USER'}
-              availableContentTypes={imageOnly ? ['IMAGE'] : undefined}
-              relationshipLocked
-              sourceFilter={dictionaryActive || creationScopeActive ? undefined : sourceFilter}
-              creationRelationFilter={creationScopeActive ? creationRelation : undefined}
-              onQueryChange={setQuery}
-              onScopeChange={(nextScope) => {
-                if (!dictionarySelection) {
-                  changeScope(nextScope);
-                  return;
-                }
-                navigateCollection({ ...dictionarySelection, scope: nextScope });
-              }}
-              onRelationshipChange={() => undefined}
-              onContentTypesChange={(value) => updatePreferences({ ...preferences, contentTypes: value })}
-              onUnratedDimensionsChange={(value) => updatePreferences({ ...preferences, unratedDimensions: value })}
-              onViewModeChange={(value) => updatePreferences({ ...preferences, viewMode: value })}
-              onSelectionModeChange={changeSelectionMode}
-              onSourceFilterChange={(nextSource) => {
-                if (activeAlbumId) {
-                  changeSelectionMode(false);
-                  setSelectedKey(null);
-                  setSourceFilter(nextSource);
-                  return;
-                }
-                if (nextSource === 'CREATION') navigateCollection({ kind: 'creation' });
-                else if (nextSource === 'IMPORT') navigateCollection({ kind: 'import' });
+          </header>
+
+          <div className="flex min-h-0 min-w-0 flex-1 overflow-hidden">
+            <MaterialLibraryNavigation
+              albums={albums}
+              category={category}
+              activeAlbumId={activeAlbumId}
+              dictionarySelection={dictionarySelection}
+              dictionaryTree={dictionaryTree}
+              labels={albumLabels}
+              busy={albumMutationBusy}
+              onSelectCategory={(nextCategory) => {
+                if (nextCategory === 'DICTIONARY') navigateCollection({ kind: 'dictionary', scope: 'ALL' });
                 else navigateCollection({ kind: 'all' });
               }}
-              onCreationRelationFilterChange={(nextRelation) => {
-                if (!activeAlbumId || !creationScopeActive) return;
-                navigateCollection(
-                  { kind: 'album', albumId: activeAlbumId, creationRelation: nextRelation },
-                  'replace',
-                );
-              }}
+              onSelectAlbum={(albumId) => navigateCollection({ kind: 'album', albumId })}
+              onSelectDictionary={navigateCollection}
+              onCreate={createAlbum}
+              onRename={renameAlbum}
+              onDelete={deleteAlbum}
+              onCollectMaterials={collectDroppedMaterials}
+              onImportFiles={(album, files) =>
+                intakeRef.current?.reviewFiles(files, { albumId: album.id, albumName: album.title })
+              }
             />
 
-            {selectionMode && activeAlbum?.kind !== 'USER' && (
-              <MaterialBatchToolbar
-                count={checkedKeys.size}
-                albums={writableAlbums}
-                terms={terms}
-                containsText={materials.some((item) => checkedKeys.has(item.key) && item.kind === 'TEXT')}
-                busy={collectBusy}
-                labels={{
-                  ...messages.gallery.batch,
-                  albums: messages.gallery.albums.myAlbums,
-                  empty: messages.gallery.albums.empty,
-                  createTitle: messages.gallery.albums.createTitle,
-                  albumName: messages.gallery.albums.name,
-                  albumNamePlaceholder: messages.gallery.albums.namePlaceholder,
-                  cancel: messages.gallery.albums.cancel,
-                  create: messages.gallery.albums.create,
-                }}
-                onAdd={addCheckedToDestinations}
-                onCreateAndCollect={createAlbumAndCollect}
-                onClear={() => changeSelectionMode(false)}
-              />
-            )}
-
             <div
-              className={cn(
-                'grid min-h-0 min-w-0 flex-1 grid-cols-[minmax(0,1fr)] overflow-hidden',
-                showingPreviousResults && 'pointer-events-none select-none',
-              )}
+              className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden"
+              aria-busy={loading || showingPreviousResults}
             >
-              <div className="relative flex min-w-0 flex-col overflow-hidden">
-                {!loading && error && materials.length === 0 ? (
-                  <div className="grid min-h-0 flex-1 place-items-center p-6 text-center text-muted-foreground">
-                    <div className="grid justify-items-center gap-3">
-                      <ImageIcon className="size-8 opacity-40" />
-                      <strong className="text-sm text-foreground">{l.loadFailed}</strong>
-                      <small className="max-w-md break-words">{error}</small>
-                      <Button variant="outline" size="sm" onClick={() => setRetryKey((value) => value + 1)}>
-                        {l.retry}
-                      </Button>
-                    </div>
-                  </div>
-                ) : loading && materials.length === 0 ? (
-                  <div className="grid grid-cols-[repeat(auto-fill,minmax(190px,1fr))] gap-4 overflow-hidden p-4 sm:p-6">
-                    {Array.from({ length: 10 }, (_, index) => (
-                      <Skeleton key={index} className="aspect-[4/3] rounded-xl" />
-                    ))}
-                  </div>
-                ) : !loading && !error && materials.length === 0 ? (
-                  debouncedQuery || unratedDimensions.length > 0 ? (
-                    <QuietEmpty
-                      className="min-h-0 flex-1 place-content-center"
-                      title={debouncedQuery ? l.emptySearch : l.emptyUnrated}
-                      actionLabel={
-                        debouncedQuery ? messages.gallery.library.clearSearch : messages.gallery.library.clearAll
-                      }
-                      onAction={() => {
-                        if (debouncedQuery) setQuery('');
-                        else updatePreferences({ ...preferences, unratedDimensions: [] });
-                      }}
-                    />
-                  ) : (
-                    <div className="grid min-h-0 flex-1 place-items-center p-6 text-center">
-                      <strong className="text-sm font-medium">{l.empty}</strong>
-                    </div>
-                  )
-                ) : (
-                  <ScrollArea
-                    type="always"
-                    className="min-h-0 min-w-0 flex-1 [&_[data-slot=scroll-area-viewport]>div]:!block [&_[data-slot=scroll-area-viewport]>div]:!w-full"
-                    viewportRef={viewportRef}
-                  >
-                    {viewMode === 'GRID' ? (
-                      <div data-material-view="GRID" className="w-full min-w-0 p-4 sm:p-6">
-                        <MaterialMasonry
-                          items={materials}
-                          selectedKey={selectedKey}
-                          checkedKeys={checkedKeys}
-                          selectionMode={selectionMode}
-                          selectionAvailable={activeAlbum?.kind !== 'USER'}
-                          onSelect={stableSelectMaterial}
-                          onEnterSelection={stableEnterSelection}
-                          onToggleSelection={stableToggleSelection}
-                          onCopyText={stableCopyText}
-                          notify={stableNotify}
-                          onDragStart={stableStartMaterialDrag}
-                          revealContextForItem={revealContextForMaterial}
-                        />
-                      </div>
-                    ) : (
-                      <div data-material-view="LIST" data-material-layout="STACK" className="w-full min-w-0 p-4 sm:p-6">
-                        <MaterialStackView
-                          stacks={materialStacks}
-                          selectedKey={selectedKey}
-                          checkedKeys={checkedKeys}
-                          selectionMode={selectionMode}
-                          selectionAvailable={activeAlbum?.kind !== 'USER'}
-                          onSelect={stableSelectMaterial}
-                          onToggleStackSelection={stableToggleStackSelection}
-                          onOpenStack={openMaterialStack}
-                          onCopyText={stableCopyText}
-                          notify={stableNotify}
-                          onDragStart={stableStartMaterialStackDrag}
-                          revealContextForItem={revealContextForMaterial}
-                        />
-                      </div>
-                    )}
-                    <div className="flex min-h-16 items-center justify-center gap-3 px-4 pb-6 text-xs text-muted-foreground">
-                      {error ? (
-                        <>
-                          <span>{l.loadFailed}</span>
-                          <Button variant="outline" size="sm" onClick={() => void loadMore()}>
-                            {l.retry}
-                          </Button>
-                        </>
-                      ) : loading ? (
-                        <span aria-live="polite">{l.loadingMore}</span>
-                      ) : (
-                        materials.length > 0 && (
-                          <span>
-                            {l.shown} {materials.length} / {resultTotal}
-                          </span>
-                        )
-                      )}
-                    </div>
-                    <div ref={pageEndRef} data-slot="material-page-end" className="h-px" aria-hidden="true" />
-                  </ScrollArea>
-                )}
-              </div>
-
-              {active && selectedItem && (
-                <MaterialInspector
-                  item={selectedItem}
-                  albums={writableAlbums}
-                  ratingBusy={selectedItem.kind === 'IMAGE' && busyAssets.has(selectedItem.image.asset.id)}
-                  albumMembershipBusy={busyAlbumIds.size > 0}
-                  favorited={Boolean(selectedFavoriteMaterialId)}
-                  favoriteBusy={selectedFavoriteBusy}
-                  onClose={() => {
-                    onNavigateBack();
-                  }}
-                  onOpenResult={(seriesId, assetId) => onOpenResult(activeAlbum?.sourceSeriesId ?? seriesId, assetId)}
-                  onOpenTerm={onOpenTerm}
-                  onCopyText={(text) => void copyText(text)}
-                  onAddFavorite={() => {
-                    if (selectedItem) void addFavorite(selectedItem);
-                  }}
-                  onRemoveFavorite={() => {
-                    if (selectedFavoriteMaterialId) void removeFavorite(selectedFavoriteMaterialId);
-                  }}
-                  onToggleAlbumMembership={toggleAlbumMembership}
-                  onScore={(dimension, score) => {
-                    if (selectedItem.kind === 'IMAGE') void scoreItem(selectedItem.image, dimension, score);
-                  }}
-                  notify={notify}
-                  onMetadataUpdated={updateMaterialMetadata}
-                  revealContext={revealContextForMaterial(selectedItem)}
+              {activeHeaderAlbum && (
+                <MaterialAlbumHeader
+                  album={activeHeaderAlbum}
+                  pathLabel={activeCreationPath}
+                  countLabel={activeAlbumCountLabel}
+                  ancestors={activeAlbumSummary ? activeAlbumAncestors : undefined}
+                  onOpenRoot={activeAlbumSummary ? () => navigateCollection({ kind: 'all' }) : undefined}
+                  onOpenAlbum={
+                    activeAlbumSummary ? (albumId) => navigateCollection({ kind: 'album', albumId }) : undefined
+                  }
                 />
               )}
+              {dictionaryActive && (
+                <div className="flex min-h-20 shrink-0 items-center gap-3 border-b px-4 py-3 sm:px-6">
+                  <span className="grid size-11 shrink-0 place-items-center rounded-xl border bg-surface text-selected-foreground">
+                    <BookOpenIcon className="size-5" />
+                  </span>
+                  <div className="min-w-0">
+                    <h2 className="truncate text-xl font-semibold tracking-tight">
+                      {dictionaryPathLabels.at(-1) ?? albumLabels.dictionary}
+                    </h2>
+                    {dictionaryPathLabels.length > 1 && (
+                      <p className="mt-0.5 truncate text-xs text-muted-foreground">
+                        {dictionaryPathLabels.join(' / ')}
+                      </p>
+                    )}
+                  </div>
+                </div>
+              )}
+              <MaterialLibraryToolbar
+                query={query}
+                scope={dictionarySelection?.scope ?? scope}
+                relationship="ANY"
+                contentTypes={effectiveContentTypes}
+                unratedDimensions={unratedDimensions}
+                selectionMode={selectionMode}
+                selectionAvailable={!creationBrowseActive && activeAlbum?.kind !== 'USER'}
+                availableContentTypes={imageOnly ? ['IMAGE'] : undefined}
+                relationshipLocked
+                sourceFilter={dictionaryActive || creationScopeActive ? undefined : sourceFilter}
+                creationRelationFilter={creationScopeActive ? creationRelation : undefined}
+                onQueryChange={setQuery}
+                onScopeChange={(nextScope) => {
+                  if (!dictionarySelection) {
+                    changeScope(nextScope);
+                    return;
+                  }
+                  navigateCollection({ ...dictionarySelection, scope: nextScope });
+                }}
+                onRelationshipChange={() => undefined}
+                onContentTypesChange={(value) => updatePreferences({ ...preferences, contentTypes: value })}
+                onUnratedDimensionsChange={(value) => updatePreferences({ ...preferences, unratedDimensions: value })}
+                onSelectionModeChange={changeSelectionMode}
+                onSourceFilterChange={(nextSource) => {
+                  if (activeAlbumId) {
+                    changeSelectionMode(false);
+                    setSelectedKey(null);
+                    setSourceFilter(nextSource);
+                    return;
+                  }
+                  if (nextSource === 'CREATION') navigateCollection({ kind: 'creation' });
+                  else if (nextSource === 'IMPORT') navigateCollection({ kind: 'import' });
+                  else navigateCollection({ kind: 'all' });
+                }}
+                onCreationRelationFilterChange={(nextRelation) => {
+                  if (!activeAlbumId || !creationScopeActive) return;
+                  navigateCollection(
+                    { kind: 'album', albumId: activeAlbumId, creationRelation: nextRelation },
+                    'replace',
+                  );
+                }}
+              />
+
+              {selectionMode && !creationBrowseActive && activeAlbum?.kind !== 'USER' && (
+                <MaterialBatchToolbar
+                  count={checkedKeys.size}
+                  albums={writableAlbums}
+                  terms={terms}
+                  containsText={materials.some((item) => checkedKeys.has(item.key) && item.kind === 'TEXT')}
+                  busy={collectBusy}
+                  labels={{
+                    ...messages.gallery.batch,
+                    albums: messages.gallery.albums.myAlbums,
+                    empty: messages.gallery.albums.empty,
+                    createTitle: messages.gallery.albums.createTitle,
+                    albumName: messages.gallery.albums.name,
+                    albumNamePlaceholder: messages.gallery.albums.namePlaceholder,
+                    cancel: messages.gallery.albums.cancel,
+                    create: messages.gallery.albums.create,
+                  }}
+                  onAdd={addCheckedToDestinations}
+                  onCreateAndCollect={createAlbumAndCollect}
+                  onClear={() => changeSelectionMode(false)}
+                />
+              )}
+
+              <MaterialLibraryContent
+                albums={browseAlbumSummaries}
+                creationCollections={creationCollections}
+                overviewCreationCollections={overviewCreationCollections}
+                creationSectionTitle={creationSectionTitle}
+                albumSectionTitle={albumSectionTitle}
+                materialSectionTitle={materialSectionTitle}
+                overviewMode={overviewBrowseActive}
+                materialTotal={displayedResultTotal}
+                materials={materials}
+                selectedKey={selectedKey}
+                checkedKeys={checkedKeys}
+                selectionMode={selectionMode}
+                selectionAvailable={!creationBrowseActive && activeAlbum?.kind !== 'USER'}
+                loading={loading}
+                error={error}
+                showingPreviousResults={showingPreviousResults}
+                searchActive={Boolean(debouncedQuery)}
+                unratedActive={unratedDimensions.length > 0}
+                albumMutationBusy={albumMutationBusy}
+                viewportRef={viewportRef}
+                pageEndRef={pageEndRef}
+                onOpenAlbum={(albumId) => navigateCollection({ kind: 'album', albumId })}
+                onCollectMaterials={collectDroppedMaterials}
+                onImportFiles={(album, files) =>
+                  intakeRef.current?.reviewFiles(files, { albumId: album.id, albumName: album.title })
+                }
+                onSelect={stableSelectMaterial}
+                onEnterSelection={stableEnterSelection}
+                onToggleSelection={stableToggleSelection}
+                onCopyText={stableCopyText}
+                notify={stableNotify}
+                onDragStart={stableStartMaterialDrag}
+                revealContextForItem={revealContextForMaterial}
+                onClearSearch={() => setQuery('')}
+                onClearUnrated={() => updatePreferences({ ...preferences, unratedDimensions: [] })}
+                onRetry={() => setRetryKey((value) => value + 1)}
+              />
             </div>
           </div>
         </div>
+        {active && selectedItem && (
+          <MaterialDetailPage
+            item={selectedItem}
+            position={selectedIndex + 1}
+            total={Math.max(resultTotal, materials.length)}
+            albums={writableAlbums}
+            ratingBusy={selectedItem.kind === 'IMAGE' && busyAssets.has(selectedItem.image.asset.id)}
+            albumMembershipBusy={busyAlbumIds.size > 0}
+            favorited={Boolean(selectedFavoriteMaterialId)}
+            favoriteBusy={selectedFavoriteBusy}
+            hasPrevious={Boolean(previousItem)}
+            hasNext={Boolean(nextItem)}
+            onClose={closeMaterialInspector}
+            onPrevious={() => {
+              if (previousItem) selectMaterial(previousItem, undefined, 'replace');
+            }}
+            onNext={() => {
+              if (nextItem) selectMaterial(nextItem, undefined, 'replace');
+            }}
+            onOpenResult={(seriesId, assetId) => onOpenResult(activeAlbum?.sourceSeriesId ?? seriesId, assetId)}
+            onOpenTerm={onOpenTerm}
+            onCopyText={(text) => void copyText(text)}
+            onAddFavorite={() => void addFavorite(selectedItem)}
+            onRemoveFavorite={() => {
+              if (selectedFavoriteMaterialId) void removeFavorite(selectedFavoriteMaterialId);
+            }}
+            onToggleAlbumMembership={toggleAlbumMembership}
+            onScore={(dimension, score) => {
+              if (selectedItem.kind === 'IMAGE') void scoreItem(selectedItem.image, dimension, score);
+            }}
+            notify={notify}
+            onMetadataUpdated={updateMaterialMetadata}
+            closeAfterRemoveFavorite={favoriteOnly}
+            onHistoryNavigationGuardChange={onHistoryNavigationGuardChange}
+            revealContext={revealContextForMaterial(selectedItem)}
+          />
+        )}
       </section>
     </GalleryIntakeAdapter>
   );

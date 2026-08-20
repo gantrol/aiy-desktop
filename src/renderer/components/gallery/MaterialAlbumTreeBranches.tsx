@@ -67,6 +67,7 @@ interface SharedBranchProps {
 }
 
 interface MaterialAlbumBranchProps extends SharedBranchProps {
+  browseOnly?: boolean;
   busy: boolean;
   dropAlbumId: string | null;
   onDropAlbumChange: Dispatch<SetStateAction<string | null>>;
@@ -83,6 +84,7 @@ export function MaterialAlbumBranch(props: MaterialAlbumBranchProps) {
     tree,
     activeAlbumId,
     labels,
+    browseOnly = false,
     busy,
     dropAlbumId,
     expansion,
@@ -120,38 +122,42 @@ export function MaterialAlbumBranch(props: MaterialAlbumBranchProps) {
           }),
         ]
       : []),
-    {
-      id: 'create-child',
-      label: labels.createChild,
-      icon: PlusIcon,
-      disabled: busy,
-      onSelect: () => onEditorChange({ mode: 'create', parent: album }),
-    },
-    ...(hasParent && onMove
+    ...(!browseOnly
       ? [
           {
-            id: 'move-to-root',
-            label: labels.moveToRoot,
-            icon: FolderInputIcon,
+            id: 'create-child',
+            label: labels.createChild,
+            icon: PlusIcon,
             disabled: busy,
-            onSelect: () => void onMove(album.id, null),
+            onSelect: () => onEditorChange({ mode: 'create', parent: album }),
+          } satisfies ActionMenuAction,
+          ...(hasParent && onMove
+            ? [
+                {
+                  id: 'move-to-root',
+                  label: labels.moveToRoot,
+                  icon: FolderInputIcon,
+                  disabled: busy,
+                  onSelect: () => void onMove(album.id, null),
+                } satisfies ActionMenuAction,
+              ]
+            : []),
+          {
+            id: 'rename',
+            label: labels.rename,
+            icon: PencilIcon,
+            onSelect: () => onEditorChange({ mode: 'rename', album }),
+          } satisfies ActionMenuAction,
+          {
+            id: 'delete',
+            label: labels.delete,
+            icon: Trash2Icon,
+            destructive: true,
+            separatorBefore: true,
+            onSelect: () => onDeleteAlbumChange(album),
           } satisfies ActionMenuAction,
         ]
       : []),
-    {
-      id: 'rename',
-      label: labels.rename,
-      icon: PencilIcon,
-      onSelect: () => onEditorChange({ mode: 'rename', album }),
-    },
-    {
-      id: 'delete',
-      label: labels.delete,
-      icon: Trash2Icon,
-      destructive: true,
-      separatorBefore: true,
-      onSelect: () => onDeleteAlbumChange(album),
-    },
   ];
 
   const row = (
@@ -167,6 +173,7 @@ export function MaterialAlbumBranch(props: MaterialAlbumBranchProps) {
         dropAlbumId === album.id && 'bg-accent ring-1 ring-inset ring-ring',
       )}
       onDragEnter={(event) => {
+        if (browseOnly) return;
         if (
           !event.dataTransfer.types.includes(MATERIALS_DRAG_TYPE) &&
           !(onImportFiles && event.dataTransfer.types.includes('Files'))
@@ -176,6 +183,7 @@ export function MaterialAlbumBranch(props: MaterialAlbumBranchProps) {
         onDropAlbumChange(album.id);
       }}
       onDragOver={(event) => {
+        if (browseOnly) return;
         if (
           !event.dataTransfer.types.includes(MATERIALS_DRAG_TYPE) &&
           !(onImportFiles && event.dataTransfer.types.includes('Files'))
@@ -185,9 +193,11 @@ export function MaterialAlbumBranch(props: MaterialAlbumBranchProps) {
         event.dataTransfer.dropEffect = 'copy';
       }}
       onDragLeave={(event) => {
+        if (browseOnly) return;
         if (!event.currentTarget.contains(event.relatedTarget as Node | null)) onDropAlbumChange(null);
       }}
       onDrop={(event: DragEvent<HTMLDivElement>) => {
+        if (browseOnly) return;
         const hasMaterials = event.dataTransfer.types.includes(MATERIALS_DRAG_TYPE);
         const hasFiles = Boolean(onImportFiles && event.dataTransfer.types.includes('Files'));
         if (!hasMaterials && !hasFiles) return;
@@ -209,6 +219,7 @@ export function MaterialAlbumBranch(props: MaterialAlbumBranchProps) {
         open={expanded}
         expandable={children.length > 0}
         expandLabel={expanded ? labels.collapse : labels.expand}
+        overlayStyle="solid"
         disclosureInteractive={false}
         branchTopology={branchTopology}
         onPullDownExpand={() => expansion.setHover(album.id, true)}
@@ -247,7 +258,7 @@ export function MaterialAlbumBranch(props: MaterialAlbumBranchProps) {
       <ActionMenuButton
         actions={actions}
         label={labels.moreActions(album.title)}
-        className="absolute right-1 top-1/2 z-30 size-6 -translate-y-1/2 bg-overlay/95 opacity-0 shadow-overlay backdrop-blur-sm group-hover:opacity-100 group-focus-within:opacity-100"
+        className="absolute right-1 top-1/2 z-30 size-6 -translate-y-1/2 bg-overlay/95 opacity-0 shadow-overlay group-hover:opacity-100 group-focus-within:opacity-100"
       />
     </div>
   );
@@ -288,18 +299,13 @@ export function MaterialAlbumBranch(props: MaterialAlbumBranchProps) {
 }
 
 export function CreationGroupBranch(props: SharedBranchProps) {
-  const { album, tree, activeAlbumId, labels, expansion, click, branchTopology, onSelectAlbum } = props;
+  const { album, tree, activeAlbumId, labels, expansion, branchTopology, onSelectAlbum } = props;
   const children = tree.childrenByParentId.get(album.id) ?? [];
   const expanded = expansion.isOpen(album.id);
-  const clickHandlers = children.length
-    ? click.handlers<HTMLButtonElement>(
-        () => {
-          if (expanded) expansion.collapse(album.id);
-          else expansion.setPersistent(album.id, true);
-        },
-        () => onSelectAlbum(album.id),
-      )
-    : immediateOpenHandlers<HTMLButtonElement>(() => onSelectAlbum(album.id));
+  const clickHandlers = immediateOpenHandlers<HTMLButtonElement>(() => {
+    if (children.length && !expanded) expansion.setPersistent(album.id, true);
+    onSelectAlbum(album.id);
+  });
   const actions: ActionMenuAction[] = [
     { id: 'open', label: labels.open, icon: ImagesIcon, onSelect: () => onSelectAlbum(album.id) },
     ...(children.length > 0
@@ -331,6 +337,7 @@ export function CreationGroupBranch(props: SharedBranchProps) {
         open={expanded}
         expandable={children.length > 0}
         expandLabel={expanded ? labels.collapse : labels.expand}
+        overlayStyle="solid"
         disclosureInteractive={false}
         branchTopology={branchTopology}
         onPullDownExpand={() => expansion.setHover(album.id, true)}
@@ -369,7 +376,7 @@ export function CreationGroupBranch(props: SharedBranchProps) {
       <ActionMenuButton
         actions={actions}
         label={labels.moreActions(album.title)}
-        className="absolute right-1 top-1/2 z-30 size-6 -translate-y-1/2 bg-overlay/95 opacity-0 shadow-overlay backdrop-blur-sm group-hover:opacity-100 group-focus-within:opacity-100"
+        className="absolute right-1 top-1/2 z-30 size-6 -translate-y-1/2 bg-overlay/95 opacity-0 shadow-overlay group-hover:opacity-100 group-focus-within:opacity-100"
       />
     </div>
   );

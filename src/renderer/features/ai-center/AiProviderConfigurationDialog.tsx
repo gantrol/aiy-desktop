@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { CircleAlertIcon, CircleCheckIcon, PowerIcon, RefreshCwIcon, ShieldCheckIcon } from 'lucide-react';
 import type { ExtensionDto, Locale } from '@/shared/contracts';
 import {
+  ANTIGRAVITY_CLI_EXTENSION_ID,
   CODEX_APP_SERVER_EXTENSION_ID,
   DEEPSEEK_API_EXTENSION_ID,
   EXTERNAL_IMAGE_API_EXTENSION_IDS,
@@ -19,6 +20,7 @@ import { cn } from '@/renderer/lib/utils';
 import { DeepSeekApiConfiguration } from '@/renderer/features/extensions/DeepSeekApiConfiguration';
 import { ExternalImageApiConfiguration } from '@/renderer/features/extensions/ExternalImageApiConfiguration';
 import { OpenAiImageApiConfiguration } from '@/renderer/features/extensions/OpenAiImageApiConfiguration';
+import { AntigravityCliConfiguration } from '@/renderer/features/extensions/AntigravityCliConfiguration';
 
 interface Props {
   open: boolean;
@@ -205,6 +207,9 @@ export function AiProviderConfigurationDialog({ open, extension, locale, notify,
               )}
               {current.manifest.id === DEEPSEEK_API_EXTENSION_ID && (
                 <DeepSeekApiConfiguration active={open} notify={notify} onConnectionChanged={connectionChanged} />
+              )}
+              {current.manifest.id === ANTIGRAVITY_CLI_EXTENSION_ID && (
+                <AntigravityCliConfiguration active={open && current.enabled} onConnectionChanged={connectionChanged} />
               )}
               {externalImageApiExtensionIds.has(current.manifest.id) && (
                 <ExternalImageApiConfiguration

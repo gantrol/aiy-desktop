@@ -1,4 +1,12 @@
-import { ActivityIcon, BlocksIcon, ImagesIcon, ScanSearchIcon, SettingsIcon, SquarePenIcon } from 'lucide-react';
+import {
+  ActivityIcon,
+  BlocksIcon,
+  ImagesIcon,
+  ScanSearchIcon,
+  SettingsIcon,
+  SlidersHorizontalIcon,
+  SquarePenIcon,
+} from 'lucide-react';
 import { DictionaryIcon } from '@/renderer/icons';
 import { useI18n } from '@/renderer/i18n/useI18n';
 import { cn } from '@/renderer/lib/utils';
@@ -6,7 +14,8 @@ import { Button } from '@/renderer/components/ui/button';
 import { LocalSpaceSwitcher } from '@/renderer/components/spaces/LocalSpaceSwitcher';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/renderer/components/ui/tooltip';
 
-export type AppView = 'creator' | 'documents' | 'dictionary' | 'gallery' | 'codexImages' | 'packs' | 'aiCenter';
+export type AppView =
+  'creator' | 'documents' | 'dictionary' | 'gallery' | 'codexImages' | 'transitionShowcase' | 'packs' | 'aiCenter';
 
 interface Props {
   spaceName: string;
@@ -14,6 +23,7 @@ interface Props {
   spaceTransitioning: boolean;
   libraryBusy: boolean;
   codexImagesVisible: boolean;
+  transitionShowcaseVisible: boolean;
   view: AppView;
   onViewChange(view: AppView): void;
   onSettingsOpen(): void;
@@ -25,6 +35,7 @@ const items = [
   { id: 'dictionary', icon: DictionaryIcon },
   { id: 'gallery', icon: ImagesIcon },
   { id: 'codexImages', icon: ScanSearchIcon },
+  { id: 'transitionShowcase', icon: SlidersHorizontalIcon },
   { id: 'packs', icon: BlocksIcon },
   { id: 'aiCenter', icon: ActivityIcon },
 ] as const;
@@ -35,6 +46,7 @@ export function AppSidebar({
   spaceTransitioning,
   libraryBusy,
   codexImagesVisible,
+  transitionShowcaseVisible,
   view,
   onViewChange,
   onSettingsOpen,
@@ -42,7 +54,10 @@ export function AppSidebar({
 }: Props) {
   const { messages } = useI18n();
   const labels = messages.app.navigation;
-  const visibleItems = items.filter(({ id }) => id !== 'codexImages' || codexImagesVisible);
+  const visibleItems = items.filter(
+    ({ id }) =>
+      (id !== 'codexImages' || codexImagesVisible) && (id !== 'transitionShowcase' || transitionShowcaseVisible),
+  );
   return (
     <TooltipProvider>
       <aside

@@ -32,9 +32,9 @@ export function VideoDocumentAlbumPreview({
         spread={expanded ? 'settled' : 'collapsed'}
         maxItems={3}
       />
-      <AlbumCoverBadge compact />
+      <AlbumCoverBadge compact overlayStyle="solid" />
       {(loading || entry.childCount > 0) && (
-        <span className="absolute bottom-0.5 right-0.5 grid size-4 place-items-center rounded-[4px] border border-selected-border bg-overlay/95 text-selected-foreground shadow-sm backdrop-blur-sm">
+        <span className="absolute bottom-0.5 right-0.5 grid size-4 place-items-center rounded-[4px] border border-selected-border bg-overlay/95 text-selected-foreground shadow-sm">
           {loading ? (
             <LoaderCircleIcon className="size-2.5 animate-spin" />
           ) : expanded ? (

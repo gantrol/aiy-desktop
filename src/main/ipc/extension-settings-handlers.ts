@@ -15,6 +15,7 @@ import {
   assistantRoutingSaveSchema,
   codexGeneratedImageImportSchema,
   codexGeneratedImageListSchema,
+  codexGeneratedImageRecoverSchema,
   deepSeekApiSaveSchema,
   extensionSetEnabledSchema,
   extensionSetPermissionSchema,
@@ -25,8 +26,10 @@ import {
   openAiImageApiSaveSchema,
 } from '@/main/ipc/schemas';
 import type { IpcHandlerRegistrar } from '@/main/ipc/trusted-handlers';
-import type { CodexTextModelDto } from '@/shared/contracts';
+import type { AntigravityCliStatusDto, CodexTextModelDto } from '@/shared/contracts';
 import {
+  ANTIGRAVITY_CLI_DEFAULT_MODEL_KEY,
+  ANTIGRAVITY_CLI_PROVIDER_KEY,
   CODEX_APP_SERVER_EXTENSION_ID,
   CODEX_IMAGE_DISCOVERY_EXTENSION_ID,
   EXTERNAL_IMAGE_API_EXTENSION_IDS,
@@ -49,6 +52,31 @@ interface ExtensionSettingsIpcOptions {
   chooseFile: (options: OpenDialogOptions) => Promise<OpenDialogReturnValue>;
 }
 
+function registerCodexImageDiscoveryIpc(
+  ipcMain: IpcHandlerRegistrar,
+  extensions: ExtensionRegistry,
+  codexImageDiscovery: CodexImageDiscovery,
+) {
+  const active = () => {
+    if (!extensions.isActivated(CODEX_IMAGE_DISCOVERY_EXTENSION_ID)) {
+      throw new Error('Codex Image Discovery is disabled or missing permissions');
+    }
+  };
+  const invoke = <T>(operation: () => T) => {
+    active();
+    return operation();
+  };
+  ipcMain.handle('codex-generated-images:list', (_event, raw) =>
+    invoke(() => codexImageDiscovery.list(codexGeneratedImageListSchema.parse(raw))),
+  );
+  ipcMain.handle('codex-generated-images:import', (_event, raw) =>
+    invoke(() => codexImageDiscovery.importImages(codexGeneratedImageImportSchema.parse(raw))),
+  );
+  ipcMain.handle('codex-generated-images:recover', (_event, raw) =>
+    invoke(() => codexImageDiscovery.recoverImage(codexGeneratedImageRecoverSchema.parse(raw).discoveryId)),
+  );
+}
+
 export function registerExtensionSettingsIpc({
   ipcMain,
   extensions,
@@ -62,6 +90,15 @@ export function registerExtensionSettingsIpc({
   codex,
   chooseFile,
 }: ExtensionSettingsIpcOptions) {
+  const unavailableAntigravityStatus = (): AntigravityCliStatusDto => ({
+    state: 'unavailable',
+    version: '',
+    authenticated: false,
+    message: 'Background model service is unavailable',
+    currentModel: null,
+    models: [],
+    quota: { warning: 'UNAVAILABLE', groups: [], checkedAt: null, message: 'Quota is unavailable' },
+  });
   const syncExternalImageApiRuntime = async () => {
     await generation.configureExternalImageApis?.(
       externalImageApis.runtimeConfigurations((extensionId, permission) =>
@@ -110,19 +147,7 @@ export function registerExtensionSettingsIpc({
     await syncExternalImageApiRuntime();
     return extensions.list();
   });
-  const assertCodexImageDiscoveryActive = () => {
-    if (!extensions.isActivated(CODEX_IMAGE_DISCOVERY_EXTENSION_ID)) {
-      throw new Error('Codex Image Discovery is disabled or missing permissions');
-    }
-  };
-  ipcMain.handle('codex-generated-images:list', async (_event, raw) => {
-    assertCodexImageDiscoveryActive();
-    return codexImageDiscovery.list(codexGeneratedImageListSchema.parse(raw));
-  });
-  ipcMain.handle('codex-generated-images:import', async (_event, raw) => {
-    assertCodexImageDiscoveryActive();
-    return codexImageDiscovery.importImages(codexGeneratedImageImportSchema.parse(raw));
-  });
+  registerCodexImageDiscoveryIpc(ipcMain, extensions, codexImageDiscovery);
   const syncOpenAiImageApiRuntime = async () => {
     await generation.configureOpenAiImageApi?.(openAiImageApi.runtimeConfiguration());
   };
@@ -183,6 +208,11 @@ export function registerExtensionSettingsIpc({
     await syncDeepSeekApiRuntime();
     return result;
   });
+  ipcMain.handle('antigravity-cli:get', () => generation.antigravityCliStatus ?? unavailableAntigravityStatus());
+  ipcMain.handle('antigravity-cli:refresh', async () => {
+    if (!generation.refreshAntigravityCli) return generation.antigravityCliStatus ?? unavailableAntigravityStatus();
+    return await generation.refreshAntigravityCli();
+  });
   const assistantRoutingSnapshot = async () => {
     const configuration = assistantRouting.get();
     const codexExtension = extensions.get(CODEX_APP_SERVER_EXTENSION_ID);
@@ -194,6 +224,27 @@ export function registerExtensionSettingsIpc({
         // The runtime-managed default remains usable when catalog discovery is temporarily unavailable.
       }
     }
+    const antigravityStatus = generation.antigravityCliStatus;
+    const antigravityModels: CodexTextModelDto[] = antigravityStatus
+      ? [
+          {
+            key: ANTIGRAVITY_CLI_DEFAULT_MODEL_KEY,
+            name: antigravityStatus.currentModel
+              ? `CLI default · ${antigravityStatus.currentModel.name}`
+              : 'CLI default',
+            isDefault: true,
+            defaultReasoningEffort: null,
+            supportedReasoningEfforts: [],
+          },
+          ...antigravityStatus.models.map((model) => ({
+            key: model.key,
+            name: model.name,
+            isDefault: false,
+            defaultReasoningEffort: null,
+            supportedReasoningEfforts: [],
+          })),
+        ]
+      : [];
     return {
       ...configuration,
       models: ASSISTANT_MODEL_DEFINITIONS.map((model) => {
@@ -202,7 +253,12 @@ export function registerExtensionSettingsIpc({
         return {
           ...model,
           supportedOperations: [...model.supportedOperations],
-          modelOptions: model.modelSelectionMode === 'CATALOG' ? codexModels : [],
+          modelOptions:
+            model.modelSelectionMode === 'CATALOG'
+              ? model.providerKey === ANTIGRAVITY_CLI_PROVIDER_KEY
+                ? antigravityModels
+                : codexModels
+              : [],
           state: ready ? ('READY' as const) : ('UNAVAILABLE' as const),
           availabilityReason: ready ? null : extension?.connectionMessage || 'Provider extension unavailable',
         };

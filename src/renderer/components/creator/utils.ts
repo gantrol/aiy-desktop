@@ -698,6 +698,8 @@ export function allAssets(series: PromptSeriesDto | undefined, options: { includ
                 id: run.id,
                 asset: run.asset,
                 createdAt: run.asset.createdAt || run.createdAt,
+                batchId: null,
+                sortOrder: 0,
               },
             ]
           : [],
@@ -706,13 +708,23 @@ export function allAssets(series: PromptSeriesDto | undefined, options: { includ
       id: output.id,
       asset: output.asset,
       createdAt: output.createdAt,
+      batchId: output.batchId,
+      sortOrder: output.sortOrder ?? 0,
     })),
     ...(series?.transformedOutputs ?? []).map((output) => ({
       id: output.id,
       asset: output.asset,
       createdAt: output.createdAt,
+      batchId: null,
+      sortOrder: 0,
     })),
-  ].sort((left, right) => right.createdAt.localeCompare(left.createdAt) || right.id.localeCompare(left.id));
+  ].sort(
+    (left, right) =>
+      right.createdAt.localeCompare(left.createdAt) ||
+      (left.batchId && left.batchId === right.batchId
+        ? left.sortOrder - right.sortOrder
+        : right.id.localeCompare(left.id)),
+  );
   const seen = new Set<string>();
   return records.flatMap(({ asset }) => {
     if (seen.has(asset.id)) return [];

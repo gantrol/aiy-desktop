@@ -18,7 +18,7 @@ export function TreeDragHandle({ label, className, onDragStart, onDragEnd }: Pro
       title={label}
       data-tree-drag-handle
       className={cn(
-        'pointer-events-auto relative z-10 grid size-6 shrink-0 cursor-grab place-items-center rounded-md bg-overlay/95 text-muted-foreground shadow-overlay backdrop-blur-sm hover:bg-hover-strong active:cursor-grabbing',
+        'pointer-events-auto relative z-10 grid size-6 shrink-0 cursor-grab place-items-center rounded-md bg-overlay/95 text-muted-foreground shadow-overlay hover:bg-hover-strong active:cursor-grabbing',
         className,
       )}
       onDragStart={onDragStart}

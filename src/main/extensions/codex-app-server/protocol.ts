@@ -1,5 +1,7 @@
 import { z } from 'zod';
 
+export const CODEX_APP_SERVER_MAX_MESSAGE_BYTES = 16 * 1024 * 1024;
+
 const boundedIdentifierSchema = z.string().min(1).max(512);
 const boundedLabelSchema = z.string().max(2_000);
 const nonNegativeIntegerSchema = z.number().int().nonnegative().safe();
@@ -187,7 +189,11 @@ export const imageGenerationCompletedItemSchema = z
     type: z.literal('imageGeneration'),
     savedPath: z.string().max(32_000).nullable().optional(),
     revisedPrompt: z.string().max(1_000_000).nullable().optional(),
-    result: z.string().max(1_000_000).optional(),
+    // App Server can return the complete generated image as Base64 when no
+    // durable saved path is available. The transport already rejects any
+    // message above this bound, so a smaller field limit would discard a
+    // valid image and misclassify the completed turn as EMPTY_RESPONSE.
+    result: z.string().max(CODEX_APP_SERVER_MAX_MESSAGE_BYTES).optional(),
   })
   .passthrough();
 

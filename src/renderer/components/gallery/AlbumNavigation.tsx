@@ -607,6 +607,7 @@ export function AlbumNavigation({
           open={expanded}
           expandable={children.length > 0}
           expandLabel={expanded ? labels.collapse : labels.expand}
+          overlayStyle="solid"
           disclosureInteractive={false}
           branchTopology={branchTopology}
           onPullDownExpand={() => setHoverExpanded(album.id, true)}
@@ -655,7 +656,7 @@ export function AlbumNavigation({
           <ActionMenuButton
             actions={actions}
             label={labels.moreActions(album.title)}
-            className="pointer-events-auto size-6 bg-overlay/95 shadow-overlay backdrop-blur-sm"
+            className="pointer-events-auto size-6 bg-overlay/95 shadow-overlay"
           />
         </div>
       </div>

@@ -24,6 +24,7 @@ import {
 import type { LibraryStorage } from '@/main/database/core/storage';
 import { resolveStoredTitle, titleLocalizationsByOwner } from '@/main/database/core/title-localization';
 import { type JsonMap, text } from '@/main/database/core/values';
+import { creationItemCoverSortOrder } from '@/main/database/creations/creation-output-presentation-sql';
 
 export class MaterialAlbumReader {
   protected readonly db: LibraryStorage['db'];
@@ -191,8 +192,8 @@ export class MaterialAlbumReader {
               AND member.target_type = 'SERIES' AND member.deleted_at IS NULL
             JOIN prompt_series series ON series.id = member.target_id AND series.deleted_at IS NULL
           ),
-          group_relationships(root_id, asset_id, relationship_role) AS (
-            SELECT grouped_series.root_id, run.result_asset_id, 'OUTPUT'
+          group_relationships(root_id, series_id, asset_id, relationship_role) AS (
+            SELECT grouped_series.root_id, grouped_series.series_id, run.result_asset_id, 'OUTPUT'
             FROM grouped_series
             JOIN prompt_versions version ON version.series_id = grouped_series.series_id
             JOIN generation_runs run ON run.prompt_version_id = version.id
@@ -201,30 +202,45 @@ export class MaterialAlbumReader {
                 SELECT 1 FROM generation_output_reviews review
                 WHERE review.generation_run_id = run.id AND review.disposition = 'FAILED'
               )
+              AND NOT EXISTS (
+                SELECT 1 FROM prompt_series_output_exclusions exclusion
+                WHERE exclusion.series_id = grouped_series.series_id
+                  AND exclusion.image_asset_id = run.result_asset_id
+              )
             UNION
-            SELECT grouped_series.root_id, imported.image_asset_id, 'OUTPUT'
+            SELECT grouped_series.root_id, grouped_series.series_id, imported.image_asset_id, 'OUTPUT'
             FROM grouped_series
             JOIN creation_output_imports imported ON imported.series_id = grouped_series.series_id
               AND imported.deleted_at IS NULL
+              AND NOT EXISTS (
+                SELECT 1 FROM prompt_series_output_exclusions exclusion
+                WHERE exclusion.series_id = grouped_series.series_id
+                  AND exclusion.image_asset_id = imported.image_asset_id
+              )
             UNION
-            SELECT grouped_series.root_id, transform.output_asset_id, 'OUTPUT'
+            SELECT grouped_series.root_id, grouped_series.series_id, transform.output_asset_id, 'OUTPUT'
             FROM grouped_series
             JOIN image_transform_runs transform ON transform.series_id = grouped_series.series_id
               AND transform.deleted_at IS NULL
+              AND NOT EXISTS (
+                SELECT 1 FROM prompt_series_output_exclusions exclusion
+                WHERE exclusion.series_id = grouped_series.series_id
+                  AND exclusion.image_asset_id = transform.output_asset_id
+              )
             UNION
-            SELECT grouped_series.root_id, binding.image_asset_id, 'INPUT'
+            SELECT grouped_series.root_id, grouped_series.series_id, binding.image_asset_id, 'INPUT'
             FROM grouped_series
             JOIN prompt_series series ON series.id = grouped_series.series_id
             JOIN reference_bindings binding ON binding.prompt_version_id = series.current_version_id
               AND binding.source_type = 'DIRECT'
             UNION
-            SELECT grouped_series.root_id, version.source_image_id, 'INPUT'
+            SELECT grouped_series.root_id, grouped_series.series_id, version.source_image_id, 'INPUT'
             FROM grouped_series
             JOIN prompt_series series ON series.id = grouped_series.series_id
             JOIN prompt_versions version ON version.id = series.current_version_id
             WHERE version.source_image_id IS NOT NULL
-          ), group_assets(root_id, asset_id) AS (
-            SELECT DISTINCT relationship.root_id, relationship.asset_id
+          ), group_assets(root_id, series_id, asset_id) AS (
+            SELECT DISTINCT relationship.root_id, relationship.series_id, relationship.asset_id
             FROM group_relationships relationship
             WHERE relationship.relationship_role = 'OUTPUT' OR EXISTS (
               SELECT 1 FROM materials material
@@ -232,17 +248,36 @@ export class MaterialAlbumReader {
                 AND material.deleted_at IS NULL
             )
           ),
-          ranked AS (
-            SELECT group_assets.root_id, asset.*,
-              count(*) OVER (PARTITION BY group_assets.root_id) AS material_count,
+          ranked_per_creation AS (
+            SELECT group_assets.root_id, group_assets.series_id, asset.*,
               row_number() OVER (
-                PARTITION BY group_assets.root_id
-                ORDER BY asset.created_at DESC, asset.id DESC
-              ) AS preview_rank
+                PARTITION BY group_assets.root_id, group_assets.series_id
+                ORDER BY COALESCE(
+                    ${creationItemCoverSortOrder('group_assets.series_id', 'asset.id')},
+                    2147483647
+                  ),
+                  asset.created_at DESC, asset.id DESC
+              ) AS creation_preview_rank
             FROM group_assets
+            JOIN prompt_series series ON series.id = group_assets.series_id
             JOIN image_assets asset ON asset.id = group_assets.asset_id AND asset.deleted_at IS NULL
+          ), ranked_assets AS (
+            SELECT root_id, id, MIN(creation_preview_rank) AS creation_preview_rank,
+              MAX(created_at) AS created_at
+            FROM ranked_per_creation
+            GROUP BY root_id, id
+          ), ranked AS (
+            SELECT ranked_assets.root_id, asset.*,
+              count(*) OVER (PARTITION BY ranked_assets.root_id) AS material_count,
+              row_number() OVER (
+                PARTITION BY ranked_assets.root_id
+                ORDER BY ranked_assets.creation_preview_rank,
+                  ranked_assets.created_at DESC, ranked_assets.id DESC
+              ) AS preview_rank
+            FROM ranked_assets
+            JOIN image_assets asset ON asset.id = ranked_assets.id AND asset.deleted_at IS NULL
           )
-          SELECT * FROM ranked WHERE preview_rank <= 4
+          SELECT * FROM ranked WHERE preview_rank <= 5
           ORDER BY root_id, preview_rank`,
       )
       .all(MATERIAL_LIBRARY_ALBUM_INTENT) as JsonMap[];
@@ -272,16 +307,30 @@ export class MaterialAlbumReader {
                 SELECT 1 FROM generation_output_reviews review
                 WHERE review.generation_run_id = run.id AND review.disposition = 'FAILED'
               )
+              AND NOT EXISTS (
+                SELECT 1 FROM prompt_series_output_exclusions exclusion
+                WHERE exclusion.series_id = version.series_id AND exclusion.image_asset_id = run.result_asset_id
+              )
             UNION
             SELECT imported.series_id, imported.image_asset_id, 'OUTPUT'
             FROM creation_output_imports imported
             JOIN prompt_series series ON series.id = imported.series_id AND series.deleted_at IS NULL
             WHERE imported.deleted_at IS NULL
+              AND NOT EXISTS (
+                SELECT 1 FROM prompt_series_output_exclusions exclusion
+                WHERE exclusion.series_id = imported.series_id
+                  AND exclusion.image_asset_id = imported.image_asset_id
+              )
             UNION
             SELECT transform.series_id, transform.output_asset_id, 'OUTPUT'
             FROM image_transform_runs transform
             JOIN prompt_series series ON series.id = transform.series_id AND series.deleted_at IS NULL
             WHERE transform.deleted_at IS NULL
+              AND NOT EXISTS (
+                SELECT 1 FROM prompt_series_output_exclusions exclusion
+                WHERE exclusion.series_id = transform.series_id
+                  AND exclusion.image_asset_id = transform.output_asset_id
+              )
             UNION
             SELECT series.id, binding.image_asset_id, 'INPUT'
             FROM prompt_series series
@@ -301,12 +350,16 @@ export class MaterialAlbumReader {
               WHERE material.image_asset_id = relationship.asset_id AND material.kind = 'IMAGE'
                 AND material.deleted_at IS NULL
             )
-          ), scoped_assets(scope_id, asset_id) AS (
-            SELECT 'SERIES:' || series_assets.series_id, series_assets.asset_id FROM series_assets
+          ), root_assets(series_id, asset_id) AS (
+            SELECT MIN(series_assets.series_id), series_assets.asset_id
+            FROM series_assets
+            GROUP BY series_assets.asset_id
+          ), scoped_assets(scope_id, series_id, asset_id) AS (
+            SELECT 'SERIES:' || series_assets.series_id, series_assets.series_id, series_assets.asset_id FROM series_assets
             UNION
-            SELECT 'ROOT', series_assets.asset_id FROM series_assets
+            SELECT 'ROOT', root_assets.series_id, root_assets.asset_id FROM root_assets
             UNION
-            SELECT 'UNASSIGNED', series_assets.asset_id
+            SELECT 'UNASSIGNED', series_assets.series_id, series_assets.asset_id
             FROM series_assets
             WHERE NOT EXISTS (
               SELECT 1 FROM album_members member
@@ -315,17 +368,30 @@ export class MaterialAlbumReader {
               WHERE member.target_type = 'SERIES' AND member.target_id = series_assets.series_id
                 AND member.deleted_at IS NULL
             )
-          ), ranked AS (
+          ), ranked_per_creation AS (
             SELECT scoped_assets.scope_id, asset.*,
               count(*) OVER (PARTITION BY scoped_assets.scope_id) AS material_count,
               row_number() OVER (
-                PARTITION BY scoped_assets.scope_id
-                ORDER BY asset.created_at DESC, asset.id DESC
-              ) AS preview_rank
+                PARTITION BY scoped_assets.scope_id, scoped_assets.series_id
+                ORDER BY COALESCE(
+                    ${creationItemCoverSortOrder('scoped_assets.series_id', 'asset.id')},
+                    2147483647
+                  ),
+                  asset.created_at DESC, asset.id DESC
+              ) AS creation_preview_rank
             FROM scoped_assets
             JOIN image_assets asset ON asset.id = scoped_assets.asset_id AND asset.deleted_at IS NULL
+          ), ranked AS (
+            SELECT ranked_per_creation.*,
+              row_number() OVER (
+                PARTITION BY ranked_per_creation.scope_id
+                ORDER BY
+                  ranked_per_creation.creation_preview_rank,
+                  ranked_per_creation.created_at DESC, ranked_per_creation.id DESC
+              ) AS preview_rank
+            FROM ranked_per_creation
           )
-          SELECT * FROM ranked WHERE preview_rank <= 4
+          SELECT * FROM ranked WHERE preview_rank <= 5
           ORDER BY scope_id, preview_rank`,
       )
       .all() as JsonMap[];

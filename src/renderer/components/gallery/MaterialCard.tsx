@@ -15,9 +15,11 @@ import type { AssetFileRevealContext, Locale } from '@/shared/contracts';
 import { useI18n } from '@/renderer/i18n/useI18n';
 import { formatDateTime } from '@/renderer/lib/dateFormat';
 import { cn } from '@/renderer/lib/utils';
+import './MaterialCard.css';
 import { AssetFileContextMenu } from '@/renderer/components/media/AssetFileContextMenu';
 import { useAssetMenuActions } from '@/renderer/components/media/AssetMenuActionsProvider';
 import { AssetMedia, isVideoAsset } from '@/renderer/components/media/AssetMedia';
+import { ImageAmbientBackdrop } from '@/renderer/components/media/AmbientImage';
 import { DEFAULT_MEDIA_ASPECT_RATIO, getSourceMediaAspectRatio } from '@/renderer/components/media/mediaAspectRatio';
 import { Checkbox } from '@/renderer/components/ui/checkbox';
 import { ActionContextMenuItems, type ActionMenuAction } from '@/renderer/components/ui/action-menu';
@@ -46,6 +48,50 @@ interface Props {
   notify(message: string): void;
   onDragStart?(event: ReactDragEvent<HTMLElement>, item: MaterialLibraryItem): void;
   revealContext?: AssetFileRevealContext;
+}
+
+function MaterialListPreview({
+  item,
+  video,
+  failed,
+  unavailableLabel,
+  onError,
+}: {
+  item: MaterialLibraryItem;
+  video: boolean;
+  failed: boolean;
+  unavailableLabel: string;
+  onError(): void;
+}) {
+  if (item.kind === 'TEXT') {
+    return (
+      <div className="grid size-full place-items-center bg-surface-sunken/60 text-muted-foreground">
+        <FileTextIcon className="size-5" />
+      </div>
+    );
+  }
+  if (failed) {
+    return (
+      <div className="grid size-full place-items-center bg-surface-sunken text-muted-foreground">
+        {video ? <VideoIcon className="size-7 opacity-50" /> : <ImageIcon className="size-7 opacity-50" />}
+        <span className="sr-only">{unavailableLabel}</span>
+      </div>
+    );
+  }
+  return (
+    <>
+      {!video && <ImageAmbientBackdrop src={item.image.asset.mediaUrl} loading="lazy" />}
+      <AssetMedia
+        asset={item.image.asset}
+        className="relative z-10 size-full object-contain"
+        alt=""
+        loading="lazy"
+        decoding="async"
+        draggable={false}
+        onError={onError}
+      />
+    </>
+  );
 }
 
 const DEFAULT_MATERIAL_ASPECT_RATIO = DEFAULT_MEDIA_ASPECT_RATIO;
@@ -224,28 +270,6 @@ function MaterialCardImpl({
         ]
       : commonActions;
 
-  const listPreview =
-    item.kind === 'TEXT' ? (
-      <div className="grid size-full place-items-center bg-surface-sunken/60 text-muted-foreground">
-        <FileTextIcon className="size-5" />
-      </div>
-    ) : imageFailed ? (
-      <div className="grid size-full place-items-center bg-media-surround-light text-muted-foreground">
-        {video ? <VideoIcon className="size-7 opacity-50" /> : <ImageIcon className="size-7 opacity-50" />}
-        <span className="sr-only">{l.previewUnavailable}</span>
-      </div>
-    ) : (
-      <AssetMedia
-        asset={item.image.asset}
-        className="size-full object-contain"
-        alt=""
-        loading="lazy"
-        decoding="async"
-        draggable={false}
-        onError={() => setImageFailed(true)}
-      />
-    );
-
   if (viewMode === 'LIST') {
     const card = (
       <article
@@ -270,8 +294,19 @@ function MaterialCardImpl({
             checked && 'bg-selected/60',
           )}
         >
-          <div className="relative h-16 w-20 shrink-0 overflow-hidden rounded-md border bg-media-surround-light">
-            {listPreview}
+          <div
+            className={cn(
+              'relative isolate h-16 w-20 shrink-0 overflow-hidden rounded-md border',
+              video ? 'bg-media-surround-dark' : 'bg-surface-sunken',
+            )}
+          >
+            <MaterialListPreview
+              item={item}
+              video={video}
+              failed={imageFailed}
+              unavailableLabel={l.previewUnavailable}
+              onError={() => setImageFailed(true)}
+            />
           </div>
           <div className="min-w-0 flex-1">
             <div className="flex items-center gap-2">
@@ -418,7 +453,8 @@ function MaterialCardImpl({
         onDragStart={(event) => onDragStart?.(event, item)}
         data-material-aspect-ratio={cardAspectRatio.toFixed(3)}
         className={cn(
-          'corner-continuous group relative isolate w-full self-start overflow-hidden rounded-xl border bg-media-surround-light transition-colors duration-fast hover:border-border-strong focus-within:border-border-strong',
+          'corner-continuous group relative isolate w-full self-start overflow-hidden rounded-xl border transition-colors duration-fast hover:border-border-strong focus-within:border-border-strong',
+          video ? 'bg-media-surround-dark' : 'bg-surface-sunken',
           selected && 'border-border-strong ring-1 ring-border',
           checked && 'border-border-strong ring-1 ring-border',
         )}
@@ -436,7 +472,7 @@ function MaterialCardImpl({
           className="group/card-button absolute inset-0 block size-full text-left outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
         >
           {imageFailed ? (
-            <span className="absolute inset-0 grid place-items-center bg-media-surround-light text-muted-foreground">
+            <span className="absolute inset-0 grid place-items-center bg-surface-sunken text-muted-foreground">
               {video ? <VideoIcon className="size-8 opacity-50" /> : <ImageIcon className="size-8 opacity-50" />}
               <span className="sr-only">{l.previewUnavailable}</span>
             </span>

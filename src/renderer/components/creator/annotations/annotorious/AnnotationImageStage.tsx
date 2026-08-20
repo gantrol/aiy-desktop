@@ -29,6 +29,7 @@ import type {
 } from '@/renderer/components/creator/annotations/types';
 import { BrushAnnotationLayer } from '@/renderer/components/creator/annotations/BrushAnnotationLayer';
 import { AnnotationMarkerLayer } from '@/renderer/components/creator/annotations/annotorious/AnnotationMarkerLayer';
+import { ImageAmbientBackdrop } from '@/renderer/components/media/AmbientImage';
 import {
   fromAnnotoriousRectangle,
   pendingAnnotationId,
@@ -248,66 +249,69 @@ export const AnnotationImageStage = forwardRef(function AnnotationImageStage(
   }, [annotatorReady, asset.id, dimensions, onPendingChange, onSelect]);
 
   return (
-    <div ref={viewportRef} className={cn('relative min-h-0 min-w-0 overflow-auto bg-media-surround', className)}>
-      {!stageSize ? (
-        <div className="flex size-full items-center justify-center p-4">
-          <img
-            className="max-h-full max-w-full object-contain"
-            src={asset.mediaUrl}
-            alt=""
-            decoding="async"
-            draggable={false}
-          />
-        </div>
-      ) : (
-        <div
-          className="flex items-center justify-center"
-          style={{
-            minWidth: '100%',
-            minHeight: '100%',
-            width: Math.max(viewportSize.width, stageSize.width + stagePadding * 2),
-            height: Math.max(viewportSize.height, stageSize.height + stagePadding * 2),
-          }}
-        >
-          <div
-            className={cn(
-              'relative shrink-0 overflow-hidden bg-media-surround-light ring-1 ring-border',
-              active && mode !== 'view' && 'cursor-crosshair',
-            )}
-            style={{ width: stageSize.width, height: stageSize.height }}
-          >
+    <div className={cn('relative isolate min-h-0 min-w-0 overflow-hidden bg-surface-sunken', className)}>
+      <ImageAmbientBackdrop src={asset.mediaUrl} />
+      <div ref={viewportRef} className="relative z-10 size-full overflow-auto">
+        {!stageSize ? (
+          <div className="flex size-full items-center justify-center p-4">
             <img
-              ref={imageRef}
-              className="size-full select-none object-fill"
+              className="max-h-full max-w-full object-contain"
               src={asset.mediaUrl}
               alt=""
               decoding="async"
               draggable={false}
-              onLoad={() => setLoadedAssetId(asset.id)}
             />
-            <BrushAnnotationLayer
-              active={active && mode === 'BRUSH'}
-              annotations={annotations}
-              brushMode={brushMode}
-              brushRadius={brushRadius}
-              dimensions={dimensions}
-              pending={pending}
-              selectedId={selectedId}
-              visible={markersVisible}
-              onPendingChange={onPendingChange}
-            />
-            {active && (
-              <AnnotationMarkerLayer
+          </div>
+        ) : (
+          <div
+            className="flex items-center justify-center"
+            style={{
+              minWidth: '100%',
+              minHeight: '100%',
+              width: Math.max(viewportSize.width, stageSize.width + stagePadding * 2),
+              height: Math.max(viewportSize.height, stageSize.height + stagePadding * 2),
+            }}
+          >
+            <div
+              className={cn(
+                'relative shrink-0 overflow-hidden bg-media-surround-light ring-1 ring-border',
+                active && mode !== 'view' && 'cursor-crosshair',
+              )}
+              style={{ width: stageSize.width, height: stageSize.height }}
+            >
+              <img
+                ref={imageRef}
+                className="size-full select-none object-fill"
+                src={asset.mediaUrl}
+                alt=""
+                decoding="async"
+                draggable={false}
+                onLoad={() => setLoadedAssetId(asset.id)}
+              />
+              <BrushAnnotationLayer
+                active={active && mode === 'BRUSH'}
                 annotations={annotations}
-                labels={labels}
+                brushMode={brushMode}
+                brushRadius={brushRadius}
+                dimensions={dimensions}
+                pending={pending}
                 selectedId={selectedId}
                 visible={markersVisible}
-                onSelect={onSelect}
+                onPendingChange={onPendingChange}
               />
-            )}
+              {active && (
+                <AnnotationMarkerLayer
+                  annotations={annotations}
+                  labels={labels}
+                  selectedId={selectedId}
+                  visible={markersVisible}
+                  onSelect={onSelect}
+                />
+              )}
+            </div>
           </div>
-        </div>
-      )}
+        )}
+      </div>
     </div>
   );
 });

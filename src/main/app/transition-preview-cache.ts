@@ -183,15 +183,17 @@ export class TransitionPreviewCache {
   }
 
   refresh(libraryId: string, candidates: readonly TransitionPreviewCandidate[]) {
-    const current = this.refreshes.get(libraryId);
-    if (current) return current;
-    const refresh = this.refreshNow(libraryId, candidates)
+    const previous = this.refreshes.get(libraryId);
+    const refresh: Promise<TransitionPreviewDto[] | null> = (
+      previous ? previous.then(() => undefined) : Promise.resolve()
+    )
+      .then(() => this.refreshNow(libraryId, candidates))
       .catch((error) => {
         console.warn('[local-space] failed to refresh transition previews', { libraryId, error });
         return null;
       })
       .finally(() => {
-        this.refreshes.delete(libraryId);
+        if (this.refreshes.get(libraryId) === refresh) this.refreshes.delete(libraryId);
       });
     this.refreshes.set(libraryId, refresh);
     return refresh;

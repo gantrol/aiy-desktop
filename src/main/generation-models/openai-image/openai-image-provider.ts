@@ -95,19 +95,22 @@ export class OpenAiImageProvider implements GenerationProvider {
         createRequest: ({ runId, input, route }) => {
           const sourceAssetId = input.sourceAssetId?.trim() || null;
           const sourceFile = sourceAssetId ? database.resolveAssetFile(sourceAssetId) : null;
-          if (sourceAssetId && !sourceFile) throw new Error('OpenAI image edit source is unavailable');
+          const sourcePath = sourceAssetId ? database.getGenerationAssetPath(sourceAssetId) : null;
+          if (sourceAssetId && (!sourceFile || !sourcePath)) {
+            throw new Error('OpenAI image edit source is unavailable');
+          }
           const referenceAssetIds = input.referenceAssetIds.filter((assetId) => assetId !== sourceAssetId);
           const referencePaths = database.getReferencePaths(referenceAssetIds);
           if (referencePaths.length !== referenceAssetIds.length) {
             throw new Error('One or more OpenAI reference images are unavailable');
           }
           const media: NormalizedGenerationMedia[] = [];
-          if (sourceAssetId && sourceFile)
+          if (sourceAssetId && sourceFile && sourcePath)
             media.push({
               assetId: sourceAssetId,
               role: 'EDIT_SOURCE',
-              localPath: sourceFile.absolutePath,
-              mimeType: sourceFile.mimeType,
+              localPath: sourcePath,
+              mimeType: sourceFile.mimeType === 'image/svg+xml' ? 'image/png' : sourceFile.mimeType,
               ...(input.width !== null && input.height !== null
                 ? {
                     width: input.width,

@@ -7,23 +7,30 @@ import {
   IMAGE_DECODER_REQUEST_CHANNEL,
   IMAGE_DECODER_RESPONSE_CHANNEL,
   MAX_IMAGE_DECODER_DIMENSION,
+  MAX_IMAGE_DECODER_INPUT_BYTES,
   MAX_IMAGE_DECODER_PIXELS,
   imageDecoderRequestSchema,
   imageDecoderResponseSchema,
   type ImageDecoderFileRequestInput,
   type ImageDecoderRequest,
+  type ImageDecoderSourceMimeType,
   type ImageDecoderSuccessResponse,
 } from '@/shared/image-decoder-protocol';
 
-const decoderDocument = `<!doctype html><meta http-equiv="Content-Security-Policy" content="default-src 'none'; base-uri 'none'; form-action 'none'">`;
+const decoderDocument = `<!doctype html><meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src blob:; base-uri 'none'; form-action 'none'">`;
 const decoderDocumentUrl = `data:text/html;charset=utf-8,${encodeURIComponent(decoderDocument)}`;
 const decoderPartition = 'aiy-image-decoder';
 const decoderIdleTimeoutMs = 15_000;
 const maximumPendingJobs = 16;
 const maximumPendingThumbnails = 8;
+const maximumInflightByteSourceBytes = 64 * 1024 * 1024;
+
+type QueuedDecodeSource =
+  | { kind: 'file'; filePath: string }
+  | { kind: 'bytes'; bytes: Uint8Array<ArrayBufferLike>; mimeType: ImageDecoderSourceMimeType };
 
 interface QueuedDecode {
-  filePath: string;
+  source: QueuedDecodeSource;
   input: ImageDecoderFileRequestInput;
   timeoutMs: number;
   signal?: AbortSignal;
@@ -172,6 +179,9 @@ async function createDecoderWindow() {
   decoder.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
   decoder.webContents.on('will-attach-webview', (event) => event.preventDefault());
   const decoderSession = decoder.webContents.session;
+  decoderSession.webRequest.onBeforeRequest((details, callback) => {
+    callback({ cancel: details.url !== decoderDocumentUrl && !details.url.startsWith('blob:') });
+  });
   decoderSession.setPermissionCheckHandler(() => false);
   decoderSession.setPermissionRequestHandler((_webContents, _permission, callback) => callback(false));
   decoder.once('closed', () => {
@@ -212,7 +222,12 @@ function greatestCommonDivisor(left: number, right: number) {
   return Math.max(1, a);
 }
 
-function matchesSourceDimensions(response: ImageDecoderSuccessResponse, header: { width: number; height: number }) {
+function matchesSourceDimensions(
+  response: ImageDecoderSuccessResponse,
+  header: { width: number; height: number },
+  sourceMimeType: ImageDecoderSourceMimeType,
+) {
+  if (sourceMimeType === 'image/svg+xml') return true;
   return (
     (response.sourceWidth === header.width && response.sourceHeight === header.height) ||
     (response.sourceWidth === header.height && response.sourceHeight === header.width)
@@ -224,7 +239,7 @@ function validateResponseSemantics(
   response: ImageDecoderSuccessResponse,
   header: { width: number; height: number },
 ) {
-  if (!matchesSourceDimensions(response, header)) {
+  if (!matchesSourceDimensions(response, header, request.sourceMimeType)) {
     throw new Error('Image decoder source dimensions do not match the image header');
   }
 
@@ -274,8 +289,25 @@ function validateResponseSemantics(
   }
 }
 
-function validateImageHeader(bytes: Buffer, filePath: string) {
-  const dimensions = imageDimensions(bytes, path.extname(filePath).toLowerCase());
+const sourceMimeTypeByExtension: Readonly<Record<string, ImageDecoderSourceMimeType>> = {
+  '.png': 'image/png',
+  '.jpg': 'image/jpeg',
+  '.jpeg': 'image/jpeg',
+  '.webp': 'image/webp',
+  '.gif': 'image/gif',
+  '.svg': 'image/svg+xml',
+};
+
+const extensionBySourceMimeType: Readonly<Record<ImageDecoderSourceMimeType, string>> = {
+  'image/png': '.png',
+  'image/jpeg': '.jpg',
+  'image/webp': '.webp',
+  'image/gif': '.gif',
+  'image/svg+xml': '.svg',
+};
+
+function validateImageHeader(bytes: Buffer, extension: string) {
+  const dimensions = imageDimensions(bytes.subarray(0, Math.min(bytes.byteLength, 4 * 1024 * 1024)), extension);
   if (
     !dimensions ||
     !Number.isInteger(dimensions.width) ||
@@ -303,12 +335,24 @@ async function runJob(job: QueuedDecode) {
   controller.signal.addEventListener('abort', onOperationAbort, { once: true });
 
   try {
-    const sourceBytes = await readBoundedImageFile(job.filePath, controller.signal);
-    const header = validateImageHeader(sourceBytes, job.filePath);
+    const sourceBytes =
+      job.source.kind === 'file'
+        ? await readBoundedImageFile(job.source.filePath, controller.signal)
+        : Buffer.from(job.source.bytes.buffer, job.source.bytes.byteOffset, job.source.bytes.byteLength);
+    if (!sourceBytes.byteLength || sourceBytes.byteLength > MAX_IMAGE_DECODER_INPUT_BYTES) {
+      throw new Error('Image decoder input exceeds the transfer limit');
+    }
+    const sourceMimeType =
+      job.source.kind === 'file'
+        ? sourceMimeTypeByExtension[path.extname(job.source.filePath).toLowerCase()]
+        : job.source.mimeType;
+    if (!sourceMimeType) throw new Error('Image format is unsupported by the sandboxed decoder');
+    const header = validateImageHeader(sourceBytes, extensionBySourceMimeType[sourceMimeType]);
     controller.signal.throwIfAborted();
     const request = imageDecoderRequestSchema.parse({
       ...job.input,
       requestId: randomUUID(),
+      sourceMimeType,
       sourceBytes,
     });
     const decoder = await abortable(decoderForRequest(), controller.signal);
@@ -356,9 +400,14 @@ function pumpQueue() {
 
 function enqueueJob(job: QueuedDecode) {
   const pendingThumbnails = pendingJobs.filter((queued) => queued.input.operation === 'thumbnail').length;
+  const inflightByteSourceBytes = [activeJob, ...pendingJobs, job].reduce(
+    (total, queued) => total + (queued?.source.kind === 'bytes' ? queued.source.bytes.byteLength : 0),
+    0,
+  );
   if (
     pendingJobs.length >= maximumPendingJobs ||
-    (job.input.operation === 'thumbnail' && pendingThumbnails >= maximumPendingThumbnails)
+    (job.input.operation === 'thumbnail' && pendingThumbnails >= maximumPendingThumbnails) ||
+    inflightByteSourceBytes > maximumInflightByteSourceBytes
   ) {
     job.reject(new Error('Image decoder queue is full'));
     return;
@@ -393,11 +442,21 @@ export function withDecodedImageFileInSandbox<T>(
   timeoutMs = 120_000,
   signal?: AbortSignal,
 ) {
+  return decodeInSandbox({ kind: 'file', filePath }, input, consume, timeoutMs, signal);
+}
+
+function decodeInSandbox<T>(
+  source: QueuedDecodeSource,
+  input: ImageDecoderFileRequestInput,
+  consume: (response: ImageDecoderSuccessResponse) => Promise<T> | T,
+  timeoutMs = 120_000,
+  signal?: AbortSignal,
+) {
   signal?.throwIfAborted();
   const boundedTimeout = Math.min(120_000, Math.max(1_000, Math.trunc(timeoutMs)));
   return new Promise<T>((resolve, reject) => {
     enqueueJob({
-      filePath,
+      source,
       input,
       timeoutMs: boundedTimeout,
       signal,
@@ -406,6 +465,17 @@ export function withDecodedImageFileInSandbox<T>(
       reject,
     });
   });
+}
+
+export function withDecodedImageBytesInSandbox<T>(
+  bytes: Uint8Array<ArrayBufferLike>,
+  mimeType: ImageDecoderSourceMimeType,
+  input: ImageDecoderFileRequestInput,
+  consume: (response: ImageDecoderSuccessResponse) => Promise<T> | T,
+  timeoutMs = 120_000,
+  signal?: AbortSignal,
+) {
+  return decodeInSandbox({ kind: 'bytes', bytes, mimeType }, input, consume, timeoutMs, signal);
 }
 
 export function closeSandboxedImageDecoder(reason = new Error('Image decoder host window closed')) {

@@ -1,0 +1,71 @@
+@keyframes tree-branch-expand {
+  from {
+    height: 0;
+  }
+  to {
+    height: var(--radix-collapsible-content-height);
+  }
+}
+
+@keyframes tree-branch-collapse {
+  from {
+    height: var(--radix-collapsible-content-height);
+  }
+  to {
+    height: 0;
+  }
+}
+
+.tree-disclosure-mark {
+  color: var(--selected-foreground);
+  pointer-events: none;
+}
+
+.tree-disclosure-path {
+  transition: stroke-width var(--motion-fast) var(--ease-standard);
+}
+
+.tree-branch-line {
+  color: var(--hierarchy-accent);
+  transition: color var(--motion-fast) var(--ease-standard);
+}
+
+.tree-branch-line line,
+.tree-branch-line path {
+  stroke: currentColor;
+  stroke-width: 1.75px;
+  transition:
+    stroke-width var(--motion-fast) var(--ease-standard),
+    color var(--motion-fast) var(--ease-standard);
+}
+
+.tree-branch-collapse-rail:is(:hover, :focus-visible) + .tree-branch-content .tree-branch-line,
+.tree-branch-node-connector:has(.tree-branch-hit-target:is(:hover, :focus-visible)) {
+  color: var(--selected-foreground);
+}
+
+.tree-branch-collapse-rail:is(:hover, :focus-visible) + .tree-branch-content .tree-branch-line line,
+.tree-branch-collapse-rail:is(:hover, :focus-visible) + .tree-branch-content .tree-branch-line path,
+.tree-branch-node-connector:has(.tree-branch-hit-target:is(:hover, :focus-visible)) path {
+  stroke-width: 2.25px;
+}
+
+[data-tree-disclosure-attached][data-state='open'] .tree-disclosure-mark,
+[data-tree-disclosure-attached][data-state='closed'] .tree-disclosure-mark {
+  color: var(--selected-foreground);
+}
+
+.tree-branch-content[data-state='open'] {
+  /*
+   * Radix exposes the measured pixel height for the opening transition, but
+   * that measurement is only refreshed when the disclosure state changes.
+   * Do not retain the keyframe's final height: async inserts, moves, and
+   * refreshed projections must settle back to intrinsic height immediately.
+   */
+  height: auto;
+  animation: tree-branch-expand calc(var(--motion-overlay) + 100ms) var(--ease-enter);
+}
+
+.tree-branch-content[data-state='closed'] {
+  animation: tree-branch-collapse var(--motion-base) var(--ease-exit) both;
+}

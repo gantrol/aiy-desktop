@@ -1,24 +1,16 @@
-import { LoaderCircleIcon } from 'lucide-react';
-import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react';
+import { FileTextIcon, LoaderCircleIcon, PlusIcon, XIcon } from 'lucide-react';
+import { useMemo, useRef, type KeyboardEvent } from 'react';
 import type { PromptSeriesDto } from '@/shared/contracts';
 import { Button } from '@/renderer/components/ui/button';
 import { Checkbox } from '@/renderer/components/ui/checkbox';
 import { Textarea } from '@/renderer/components/ui/textarea';
-import { useI18n } from '@/renderer/i18n/useI18n';
-import { useProvenanceSuggestions } from '@/renderer/components/provenance/useProvenanceSuggestions';
+import { ImportBatchTable } from '@/renderer/features/intake/ImportBatchTable';
+import { ImportMetadataDetailsDialog } from '@/renderer/features/intake/ImportMetadataDetailsDialog';
+import { imageDetailsFromDrafts } from '@/renderer/features/intake/importMetadata';
 import type { LocalIntakeItem } from '@/renderer/features/intake/intake-state';
-import { isCreatorImageMimeType } from '@/renderer/features/intake/intakeImageFormats';
-import { ImportItemList } from '@/renderer/features/intake/ImportItemList';
-import { ImportMetadataEditor } from '@/renderer/features/intake/ImportMetadataEditor';
-import {
-  createIntakeImageMetadataDraft,
-  defaultBatchMetadataFields,
-  imageDetailsFromDrafts,
-  updateAiGeneratedStatus,
-  type BatchMetadataField,
-  type IntakeImageDetails,
-  type IntakeImageMetadataDraft,
-} from '@/renderer/features/intake/importMetadata';
+import { intakeMediaAccept, isCreatorImageMimeType } from '@/renderer/features/intake/intakeImageFormats';
+import { useImportMetadataOrganizer } from '@/renderer/features/intake/useImportMetadataOrganizer';
+import { useI18n } from '@/renderer/i18n/useI18n';
 
 interface Props {
   items: LocalIntakeItem[];
@@ -31,51 +23,12 @@ interface Props {
   skippedCount: number;
   onFavoriteChange(value: boolean): void;
   onEditText(id: string, text: string): void;
+  onMove(id: string, offset: -1 | 1): void;
   onRemove(id: string): void;
   onAddFiles(files: File[]): void;
-  onImport(details: IntakeImageDetails): void;
-  onImportAsCreation(details: IntakeImageDetails): void;
+  onImport(details: ReturnType<typeof imageDetailsFromDrafts>): void;
+  onImportAsCreation(details: ReturnType<typeof imageDetailsFromDrafts>): void;
   onCancel(): void;
-}
-
-function applyBatchFields(
-  target: IntakeImageMetadataDraft,
-  source: IntakeImageMetadataDraft,
-  fields: ReadonlySet<BatchMetadataField>,
-) {
-  let next = { ...target };
-  if (fields.has('displayName')) next.displayName = source.displayName;
-  if (fields.has('sourceUrl')) next.sourceUrl = source.sourceUrl;
-  if (fields.has('note')) next.note = source.note;
-  if (fields.has('aiGeneratedStatus')) next = updateAiGeneratedStatus(next, source.aiGeneratedStatus);
-  if (fields.has('modelName')) {
-    next.modelName = source.modelName;
-    if (source.modelName.trim() && next.aiGeneratedStatus === 'UNKNOWN') {
-      next = updateAiGeneratedStatus(next, 'YES');
-      next.modelName = source.modelName;
-    }
-  }
-  if (fields.has('modelProvider')) next.modelProvider = source.modelProvider;
-  if (fields.has('modelVersion')) next.modelVersion = source.modelVersion;
-  if (fields.has('generationText')) {
-    next.generationText = source.generationText;
-    next.generationTextType = source.generationTextType;
-  }
-  if (fields.has('seriesId')) {
-    const changedSeries = next.seriesId !== source.seriesId;
-    next.seriesId = source.seriesId;
-    if (changedSeries && !fields.has('promptVersionId')) next.promptVersionId = null;
-  }
-  if (fields.has('promptVersionId')) {
-    next.promptVersionId = next.seriesId === source.seriesId ? source.promptVersionId : null;
-  }
-  if (next.aiGeneratedStatus === 'NO') {
-    next.modelName = '';
-    next.modelProvider = '';
-    next.modelVersion = '';
-  }
-  if (!next.seriesId) next.promptVersionId = null;
-  return next;
 }
 
 export function ImportReviewWorkspace({
@@ -89,56 +42,27 @@ export function ImportReviewWorkspace({
   skippedCount,
   onFavoriteChange,
   onEditText,
+  onMove,
   onRemove,
   onAddFiles,
   onImport,
   onImportAsCreation,
   onCancel,
 }: Props) {
-  const { locale, messages } = useI18n();
+  const { messages } = useI18n();
   const labels = messages.intake.review;
-  const recordLabels = messages.creator.generationRecord;
+  const inputRef = useRef<HTMLInputElement | null>(null);
   const mediaItems = useMemo(
     () => items.filter((item): item is Exclude<LocalIntakeItem, { kind: 'TEXT' }> => item.kind !== 'TEXT'),
     [items],
   );
-  const mediaIds = useMemo(() => new Set(mediaItems.map((item) => item.id)), [mediaItems]);
-  const knownMediaIds = useRef(new Set<string>());
-  const [activeId, setActiveId] = useState(items[0]?.id ?? '');
-  const [selectedIds, setSelectedIds] = useState<Set<string>>(() => new Set(mediaItems.map((item) => item.id)));
-  const [drafts, setDrafts] = useState<Record<string, IntakeImageMetadataDraft>>(() =>
-    Object.fromEntries(mediaItems.map((item) => [item.id, createIntakeImageMetadataDraft(item)])),
-  );
-  const [batchMode, setBatchMode] = useState(false);
-  const [batchDraft, setBatchDraft] = useState<IntakeImageMetadataDraft | null>(null);
-  const [batchFields, setBatchFields] = useState<Set<BatchMetadataField>>(() => new Set(defaultBatchMetadataFields));
-
-  useEffect(() => {
-    setDrafts((current) => {
-      const next: Record<string, IntakeImageMetadataDraft> = {};
-      for (const item of mediaItems) next[item.id] = current[item.id] ?? createIntakeImageMetadataDraft(item);
-      return next;
-    });
-    setSelectedIds((current) => {
-      const next = new Set([...current].filter((id) => mediaIds.has(id)));
-      for (const id of mediaIds) if (!knownMediaIds.current.has(id)) next.add(id);
-      return next;
-    });
-    knownMediaIds.current = mediaIds;
-    setActiveId((current) => (items.some((item) => item.id === current) ? current : (items[0]?.id ?? '')));
-  }, [mediaIds, mediaItems, items]);
-
-  const selectedMediaItems = mediaItems.filter((item) => selectedIds.has(item.id));
-  const selectedMediaIds = selectedMediaItems.map((item) => item.id);
-  const selectedCount = selectedMediaIds.length;
-  const activeItem = items.find((item) => item.id === activeId) ?? items[0];
-  const activeDraft = activeItem && activeItem.kind !== 'TEXT' ? drafts[activeItem.id] : undefined;
-  const editorDraft = batchMode ? batchDraft : activeDraft;
-  const allNamesValid = mediaItems.every((item) => Boolean(drafts[item.id]?.displayName.trim()));
-  const hasExistingRelationship = Object.values(drafts).some((draft) => Boolean(draft.seriesId));
-  const relationshipEnabled = batchMode
-    ? selectedMediaItems.every((item) => item.kind === 'IMAGE')
-    : activeItem?.kind === 'IMAGE';
+  const textItems = items.filter((item): item is Extract<LocalIntakeItem, { kind: 'TEXT' }> => item.kind === 'TEXT');
+  const organizer = useImportMetadataOrganizer(mediaItems);
+  const allNamesValid = mediaItems.every((item) => Boolean(organizer.drafts[item.id]?.displayName.trim()));
+  const hasExistingRelationship = mediaItems.some((item) => Boolean(organizer.drafts[item.id]?.seriesId));
+  const relationshipEnabled = organizer.batchMode
+    ? organizer.selectedItems.every((item) => item.kind === 'IMAGE')
+    : organizer.editingItem?.kind === 'IMAGE';
   const canImportCreation =
     mediaItems.length > 0 &&
     mediaItems.length <= 8 &&
@@ -146,40 +70,6 @@ export function ImportReviewWorkspace({
     !hasExistingRelationship;
   const kind =
     mediaItems.length === items.length ? labels.images : mediaItems.length === 0 ? labels.text : labels.mixed;
-  const provenanceSuggestions = useProvenanceSuggestions(mediaItems.length > 0);
-
-  useEffect(() => {
-    if (selectedCount < 2 && batchMode) {
-      setBatchMode(false);
-      setBatchDraft(null);
-    }
-  }, [batchMode, selectedCount]);
-
-  function enterBatch() {
-    const sourceId = selectedMediaIds.includes(activeId) ? activeId : selectedMediaIds[0];
-    const source = sourceId ? drafts[sourceId] : undefined;
-    if (!source || selectedCount < 2) return;
-    setBatchDraft({ ...source });
-    setBatchFields(new Set(defaultBatchMetadataFields));
-    setBatchMode(true);
-  }
-
-  function applyBatch() {
-    if (!batchDraft || selectedCount < 1) return;
-    const applicableFields = relationshipEnabled
-      ? batchFields
-      : new Set([...batchFields].filter((field) => field !== 'seriesId' && field !== 'promptVersionId'));
-    setDrafts((current) => {
-      const next = { ...current };
-      for (const id of selectedMediaIds) {
-        const target = next[id];
-        if (target) next[id] = applyBatchFields(target, batchDraft, applicableFields);
-      }
-      return next;
-    });
-    setBatchMode(false);
-    setBatchDraft(null);
-  }
 
   function submitDefault(event: KeyboardEvent<HTMLDivElement>) {
     if (
@@ -198,110 +88,110 @@ export function ImportReviewWorkspace({
     )
       return;
     event.preventDefault();
-    onImport(imageDetailsFromDrafts(drafts));
+    onImport(imageDetailsFromDrafts(organizer.drafts));
+  }
+
+  function moveMedia(id: string, direction: -1 | 1) {
+    const mediaIndex = mediaItems.findIndex((item) => item.id === id);
+    const targetMedia = mediaItems[mediaIndex + direction];
+    if (mediaIndex < 0 || !targetMedia) return;
+    const sourceIndex = items.findIndex((item) => item.id === id);
+    const targetIndex = items.findIndex((item) => item.id === targetMedia.id);
+    for (let step = 0; step < Math.abs(targetIndex - sourceIndex); step += 1) onMove(id, direction);
   }
 
   return (
     <div
-      className="grid size-full min-h-0 grid-rows-[6rem_minmax(0,1fr)_4.5rem] outline-none"
+      className="grid size-full min-h-0 min-w-0 grid-rows-[auto_minmax(0,1fr)_auto] outline-none"
       data-slot="import-review-workspace"
-      data-batch-mode={batchMode ? 'true' : 'false'}
+      data-batch-mode={organizer.batchMode ? 'true' : 'false'}
       tabIndex={-1}
       onKeyDown={submitDefault}
     >
-      <header className="flex flex-col justify-center border-b px-8 pr-16">
+      <header className="flex min-w-0 flex-col justify-center border-b px-4 py-4 pr-16 sm:px-8">
         <h1 className="text-xl font-semibold tracking-tight">{labels.title}</h1>
         <p className="mt-1 text-sm text-muted-foreground">{labels.summary(items.length, kind)}</p>
       </header>
 
-      <div className="grid min-h-0 grid-cols-1 md:grid-cols-[minmax(18rem,36%)_minmax(0,1fr)]">
-        <ImportItemList
-          items={items}
-          activeId={activeItem?.id ?? ''}
-          selectedIds={selectedIds}
-          batchMode={batchMode}
-          disabled={disabled}
-          locale={locale}
-          labels={{
-            selectAll: labels.selectAll,
-            selected: labels.selected,
-            addContent: labels.addContent,
-            remove: messages.intake.draft.remove,
-            text: labels.text,
+      <div className="flex min-h-0 min-w-0 flex-col bg-overlay">
+        <input
+          ref={inputRef}
+          type="file"
+          accept={intakeMediaAccept}
+          multiple
+          className="sr-only"
+          tabIndex={-1}
+          onChange={(event) => {
+            onAddFiles([...(event.currentTarget.files ?? [])]);
+            event.currentTarget.value = '';
           }}
-          onActiveChange={setActiveId}
-          onSelectionChange={(id, selected) =>
-            setSelectedIds((current) => {
-              const next = new Set(current);
-              if (selected) next.add(id);
-              else next.delete(id);
-              return next;
-            })
-          }
-          onSelectAll={(selected) => setSelectedIds(selected ? new Set(mediaIds) : new Set())}
-          onRemove={onRemove}
-          onAddFiles={onAddFiles}
         />
-
-        {activeItem?.kind === 'TEXT' ? (
-          <section className="flex min-h-0 flex-col bg-overlay">
-            <header className="flex min-h-14 items-center border-b px-6">
-              <h2 className="text-sm font-semibold">{labels.text}</h2>
-            </header>
-            <div className="min-h-0 flex-1 p-6">
-              <Textarea
-                className="h-full min-h-48 resize-none"
-                value={activeItem.text}
-                disabled={disabled}
-                aria-label={labels.text}
-                onChange={(event) => onEditText(activeItem.id, event.target.value)}
-              />
-            </div>
-          </section>
-        ) : editorDraft && activeItem ? (
-          <ImportMetadataEditor
-            key={batchMode ? 'batch' : activeItem.id}
-            title={activeItem.name}
-            draft={editorDraft}
+        {mediaItems.length > 0 ? (
+          <ImportBatchTable
+            items={mediaItems}
+            drafts={organizer.drafts}
             series={series}
-            modelSuggestions={provenanceSuggestions.modelsForSource(editorDraft.modelProvider)}
-            sourceSuggestions={provenanceSuggestions.sourcesForModel(editorDraft.modelName)}
-            batchMode={batchMode}
-            batchCount={selectedCount}
-            batchFields={batchFields}
-            relationshipEnabled={relationshipEnabled}
-            disabled={disabled}
-            labels={{
-              ...labels,
-              modelOptions: recordLabels.modelOptions,
-              platformOptions: recordLabels.platformOptions,
-            }}
-            onChange={(draft) => {
-              if (batchMode) setBatchDraft(draft);
-              else setDrafts((current) => ({ ...current, [activeItem.id]: draft }));
-            }}
-            onBatchFieldChange={(field, enabled) =>
-              setBatchFields((current) => {
-                const next = new Set(current);
-                if (enabled) next.add(field);
-                else next.delete(field);
-                return next;
-              })
-            }
-            onEnterBatch={enterBatch}
-            onExitBatch={() => {
-              setBatchMode(false);
-              setBatchDraft(null);
-            }}
-            onApplyBatch={applyBatch}
+            selectedIds={organizer.selectedIds}
+            busy={disabled}
+            relationshipsEnabled
+            onToggle={organizer.toggle}
+            onToggleAll={organizer.selectAll}
+            onUpdateRow={organizer.updateRow}
+            onUpdateAll={organizer.updateAll}
+            onMove={moveMedia}
+            onEditDetails={organizer.openDetails}
+            onEditSelected={() => organizer.enterBatch()}
+            onRemove={onRemove}
+            onAddContent={() => inputRef.current?.click()}
           />
         ) : (
-          <div className="bg-overlay" />
+          <div className="flex min-h-14 shrink-0 items-center justify-end border-b bg-surface-sunken/60 px-4">
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              disabled={disabled}
+              onClick={() => inputRef.current?.click()}
+            >
+              <PlusIcon className="size-3.5" />
+              {labels.addContent}
+            </Button>
+          </div>
+        )}
+
+        {textItems.length > 0 && (
+          <section className={mediaItems.length ? 'max-h-48 shrink-0 border-t' : 'min-h-0 flex-1'}>
+            <div className="h-full overflow-y-auto p-4">
+              {textItems.map((item) => (
+                <div key={item.id} className="flex min-w-0 items-start gap-3 rounded-lg border bg-surface p-3">
+                  <FileTextIcon className="mt-2 size-4 shrink-0 text-muted-foreground" />
+                  <Textarea
+                    className="min-h-20 flex-1 resize-y"
+                    value={item.text}
+                    disabled={disabled}
+                    aria-label={labels.text}
+                    onChange={(event) => onEditText(item.id, event.target.value)}
+                  />
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon-sm"
+                    disabled={disabled}
+                    title={messages.intake.draft.remove}
+                    aria-label={messages.intake.draft.remove}
+                    onClick={() => onRemove(item.id)}
+                  >
+                    <XIcon className="size-3.5" />
+                  </Button>
+                </div>
+              ))}
+            </div>
+          </section>
         )}
       </div>
 
-      <footer className="flex min-w-0 items-center gap-3 border-t bg-overlay px-8">
-        <label className="mr-auto flex items-center gap-2 text-sm">
+      <footer className="flex min-w-0 flex-wrap items-center gap-3 border-t bg-overlay px-4 py-3 sm:px-8">
+        <label className="flex shrink-0 items-center gap-2 text-sm">
           <Checkbox
             checked={favorite}
             disabled={disabled}
@@ -309,14 +199,17 @@ export function ImportReviewWorkspace({
           />
           {labels.favorite}
         </label>
-        <div className="min-w-0 flex-1 text-right text-xs text-destructive" role="alert">
+        <div
+          className="order-last min-w-0 basis-full text-xs text-destructive sm:order-none sm:flex-1 sm:text-right"
+          role="alert"
+        >
           {error || (skippedCount > 0 ? labels.skipped(skippedCount) : '')}
         </div>
         <Button
           type="button"
           variant="outline"
-          disabled={disabled || !canImportCreation}
-          onClick={() => onImportAsCreation(imageDetailsFromDrafts(drafts))}
+          disabled={disabled || !canImportCreation || !allNamesValid}
+          onClick={() => onImportAsCreation(imageDetailsFromDrafts(organizer.drafts))}
         >
           {importingCreation && <LoaderCircleIcon className="size-4 animate-spin" />}
           {labels.importAsCreation}
@@ -327,12 +220,40 @@ export function ImportReviewWorkspace({
         <Button
           type="button"
           disabled={disabled || !allNamesValid || items.length === 0}
-          onClick={() => onImport(imageDetailsFromDrafts(drafts))}
+          onClick={() => onImport(imageDetailsFromDrafts(organizer.drafts))}
         >
           {importingMaterial && <LoaderCircleIcon className="size-4 animate-spin" />}
           {labels.importItems(items.length)}
         </Button>
       </footer>
+
+      <ImportMetadataDetailsDialog
+        open={organizer.detailsOpen}
+        title={organizer.editingItem?.name ?? labels.batchTitle(organizer.selectedItems.length)}
+        draft={organizer.editorDraft}
+        series={series}
+        batchMode={organizer.batchMode}
+        batchCount={organizer.selectedItems.length}
+        batchFields={organizer.batchFields}
+        relationshipEnabled={relationshipEnabled}
+        disabled={disabled}
+        onOpenChange={(open) => !open && organizer.closeDetails()}
+        onChange={(draft) => {
+          if (organizer.batchMode) organizer.setBatchDraft(draft);
+          else if (organizer.editingItem) organizer.updateRow(organizer.editingItem.id, draft);
+        }}
+        onBatchFieldChange={(field, enabled) =>
+          organizer.setBatchFields((current) => {
+            const next = new Set(current);
+            if (enabled) next.add(field);
+            else next.delete(field);
+            return next;
+          })
+        }
+        onEnterBatch={() => organizer.enterBatch()}
+        onExitBatch={organizer.exitBatch}
+        onApplyBatch={() => organizer.applyBatch(relationshipEnabled)}
+      />
     </div>
   );
 }

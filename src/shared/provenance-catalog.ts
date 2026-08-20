@@ -1,5 +1,6 @@
 import {
   ALIBABA_IMAGE_PROVIDER_ID,
+  ANTIGRAVITY_CLI_PROVIDER_KEY,
   CODEX_APP_SERVER_PROVIDER_KEY,
   CODEX_CLI_PROVIDER_KEY,
   CODEX_PROVIDER_ID,
@@ -253,6 +254,14 @@ export const PROVENANCE_SOURCE_SERVICES = [
     modelFamilyIds: googleModelFamilyIds,
   },
   {
+    id: 'google/antigravity',
+    name: 'Google Antigravity',
+    organizationId: 'google',
+    group: 'PRODUCT',
+    surfaces: ['APP', 'CLI'],
+    aliases: ['Antigravity', 'Antigravity CLI', ANTIGRAVITY_CLI_PROVIDER_KEY],
+  },
+  {
     id: 'bytedance/doubao',
     name: 'Doubao',
     organizationId: 'bytedance',
@@ -351,6 +360,7 @@ const sourceServiceIdByProviderId: Readonly<Record<string, string>> = {
   [CODEX_PROVIDER_ID]: 'openai/codex',
   [CODEX_APP_SERVER_PROVIDER_KEY]: 'openai/codex',
   [CODEX_CLI_PROVIDER_KEY]: 'openai/codex',
+  [ANTIGRAVITY_CLI_PROVIDER_KEY]: 'google/antigravity',
   [OPENAI_IMAGE_PROVIDER_KEY]: 'openai/images-api',
   [GOOGLE_IMAGE_PROVIDER_ID]: 'google/gemini-api',
   [ALIBABA_IMAGE_PROVIDER_ID]: 'alibaba/model-studio',

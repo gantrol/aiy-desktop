@@ -258,7 +258,9 @@ function GenerationDetail({
       ? messages.creator.generationTargets.providerManagedQuality
       : record.run.quality;
   const prompt =
-    record.run.executionInputSnapshot?.commonInput.resolvedPrompt.commonExpression || record.version.finalPrompt;
+    record.run.executionSummary?.resolvedPrompt ||
+    record.run.executionInputSnapshot?.commonInput.resolvedPrompt.commonExpression ||
+    record.version.finalPrompt;
   return (
     <>
       <DetailSection title={l.fields.frozenInput}>

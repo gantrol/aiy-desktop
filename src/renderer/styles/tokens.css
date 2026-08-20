@@ -113,6 +113,7 @@
     0 2px 6px -2px color-mix(in srgb, var(--sand-950) 10%, transparent);
   --shadow-dialog: 0 24px 64px -16px color-mix(in srgb, var(--sand-950) 28%, transparent);
 
+  --ease-standard: cubic-bezier(0.2, 0, 0, 1);
   --ease-enter: cubic-bezier(0.2, 0, 0, 1);
   --ease-exit: cubic-bezier(0.4, 0, 1, 1);
 }
@@ -279,14 +280,8 @@
   --line-height-cjk-md: 1.625rem;
   --line-height-cjk-lg: 1.875rem;
   --line-height-cjk-xl: 2.125rem;
-  --control-height-2xs: 1.5rem;
-  --control-height-xs: 1.75rem;
-  --control-height-sm: 2rem;
-  --control-height-md: 2.25rem;
-  --control-height-lg: 2.5rem;
   --radius: 0.625rem;
   --corner-smoothing-continuous: 60%;
-  --focus-ring: 0 0 0 2px var(--background), 0 0 0 4px var(--ring);
   --motion-fast: 120ms;
   --motion-base: 180ms;
   --motion-overlay: 220ms;

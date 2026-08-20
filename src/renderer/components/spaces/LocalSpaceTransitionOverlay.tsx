@@ -11,19 +11,24 @@ import {
   SlidersHorizontalIcon,
   type LucideIcon,
 } from 'lucide-react';
-import type { CSSProperties } from 'react';
+import { useState, type CSSProperties } from 'react';
 import type { LocalSpaceTransitionEvent, LocalSpaceTransitionStage, TransitionPreviewDto } from '@/shared/contracts';
 import { type TransitionSceneMediaState, type TransitionSceneMotion } from '@/renderer/components/app/AppLoadingState';
 import { TransitionPreviewMedia, clampTransitionPreviewAspect } from '@/renderer/components/app/TransitionPreviewMedia';
 import { useI18n } from '@/renderer/i18n/useI18n';
 import { cn } from '@/renderer/lib/utils';
+import './LocalSpaceTransitionOverlay.css';
 
 interface Props {
   transition: LocalSpaceTransitionEvent;
   motion?: TransitionSceneMotion;
   mediaState?: TransitionSceneMediaState;
   previewOnly?: boolean;
+  previewReorderLabel?: string;
+  onPreviewReorder?(sourceIndex: number, targetIndex: number, afterTarget: boolean): void;
 }
+
+const TRANSITION_PREVIEW_DRAG_TYPE = 'application/x-aiy-transition-preview-index';
 
 const stageIcons: Record<LocalSpaceTransitionStage, LucideIcon> = {
   PREPARING: HardDriveIcon,
@@ -114,6 +119,8 @@ export function LocalSpaceTransitionOverlay({
   motion = {},
   mediaState = 'ready',
   previewOnly = false,
+  previewReorderLabel,
+  onPreviewReorder,
 }: Props) {
   const { messages } = useI18n();
   const copy = messages.space.transition;
@@ -133,8 +140,10 @@ export function LocalSpaceTransitionOverlay({
   const ready = transition.stage === 'READY';
   const failed = transition.stage === 'FAILED';
   const settled = settledStages.has(transition.stage);
-  const fullColor = transition.progress >= 82 || ready;
   const speedMultiplier = Math.max(0.25, motion.speedMultiplier ?? 1);
+  const [draggingPreviewIndex, setDraggingPreviewIndex] = useState<number | null>(null);
+  const [dropPreviewIndex, setDropPreviewIndex] = useState<number | null>(null);
+  const previewsSortable = previewOnly && Boolean(onPreviewReorder);
 
   return (
     <div
@@ -158,8 +167,12 @@ export function LocalSpaceTransitionOverlay({
       aria-live={previewOnly ? undefined : 'polite'}
       aria-label={previewOnly ? undefined : `${transition.space.name}: ${stageLabel}`}
     >
-      <div className="pointer-events-none absolute inset-0 grid place-items-center" aria-hidden="true">
-        <div className="size-[30rem] rounded-full bg-selected opacity-60 blur-3xl" />
+      <div
+        data-transition-showcase-export-backdrop
+        className="pointer-events-none absolute inset-0 grid place-items-center"
+        aria-hidden="true"
+      >
+        <div className="size-[30rem] rounded-full bg-selected opacity-20 blur-3xl" />
       </div>
 
       <div
@@ -169,25 +182,40 @@ export function LocalSpaceTransitionOverlay({
         <div
           className="relative h-72 w-full"
           data-local-space-preview-count={transition.previews.length}
-          aria-hidden="true"
+          aria-hidden={previewsSortable ? undefined : 'true'}
+          role={previewsSortable ? 'list' : undefined}
         >
           {previewSlots.map((slot, index) => {
             const preview = transition.previews[index] ?? null;
             const aspect = preview ? clampTransitionPreviewAspect(preview.width, preview.height) : 0.75;
             const revealed = transition.progress >= slot.revealAt || ready || failed;
+            const previewSortable = previewsSortable && preview !== null;
             return (
               <div
-                key={`${preview ? `${preview.url}-${preview.detailUrl ?? preview.url}` : 'placeholder'}-${index}`}
+                key={preview ? `${preview.url}-${preview.detailUrl ?? preview.url}` : `placeholder-${index}`}
                 className="local-space-transition-preview-anchor absolute top-1 grid h-40 place-items-start"
                 style={{ left: `${index * (100 / previewSlots.length)}%`, width: `${100 / previewSlots.length}%` }}
               >
                 <div
+                  role={previewSortable ? 'listitem' : undefined}
+                  tabIndex={previewSortable ? 0 : undefined}
+                  draggable={previewSortable}
+                  aria-label={previewSortable ? `${previewReorderLabel ?? ''} ${index + 1}`.trim() : undefined}
+                  title={previewSortable ? previewReorderLabel : undefined}
                   data-space-preview={preview ? (mediaState === 'ready' ? 'image' : mediaState) : 'placeholder'}
                   data-preview-aspect={aspect}
+                  data-preview-sortable={previewSortable ? 'true' : undefined}
+                  data-preview-dragging={draggingPreviewIndex === index ? 'true' : undefined}
+                  data-preview-drop-target={dropPreviewIndex === index ? 'true' : undefined}
                   className={cn(
                     'local-space-transition-preview relative z-10 max-w-[calc(100%-.25rem)] origin-bottom overflow-hidden rounded-xl border bg-surface shadow-overlay',
                     revealed ? 'opacity-100 blur-0' : 'opacity-0 blur-sm',
-                    fullColor ? 'saturate-100' : 'saturate-50',
+                    previewSortable &&
+                      'cursor-grab outline-none hover:ring-2 hover:ring-ring focus-visible:ring-2 focus-visible:ring-ring active:cursor-grabbing',
+                    draggingPreviewIndex === index && 'opacity-40',
+                    dropPreviewIndex === index &&
+                      draggingPreviewIndex !== index &&
+                      'ring-2 ring-ring ring-offset-2 ring-offset-background',
                   )}
                   style={
                     {
@@ -201,9 +229,52 @@ export function LocalSpaceTransitionOverlay({
                     } as TransitionPreviewStyle
                   }
                   data-settled={settled ? 'true' : undefined}
+                  onDragStart={(event) => {
+                    if (!previewSortable) return;
+                    setDraggingPreviewIndex(index);
+                    event.dataTransfer.effectAllowed = 'move';
+                    event.dataTransfer.setData(TRANSITION_PREVIEW_DRAG_TYPE, String(index));
+                    event.dataTransfer.setData('text/plain', String(index));
+                  }}
+                  onDragEnd={() => {
+                    setDraggingPreviewIndex(null);
+                    setDropPreviewIndex(null);
+                  }}
+                  onDragOver={(event) => {
+                    if (!previewSortable || draggingPreviewIndex === index) return;
+                    event.preventDefault();
+                    event.dataTransfer.dropEffect = 'move';
+                    setDropPreviewIndex(index);
+                  }}
+                  onDragLeave={(event) => {
+                    if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setDropPreviewIndex(null);
+                  }}
+                  onDrop={(event) => {
+                    if (!previewSortable) return;
+                    event.preventDefault();
+                    const serializedSourceIndex =
+                      event.dataTransfer.getData(TRANSITION_PREVIEW_DRAG_TYPE) ||
+                      event.dataTransfer.getData('text/plain');
+                    const sourceIndex = draggingPreviewIndex ?? Number.parseInt(serializedSourceIndex, 10);
+                    if (Number.isInteger(sourceIndex) && sourceIndex !== index) {
+                      const bounds = event.currentTarget.getBoundingClientRect();
+                      onPreviewReorder?.(sourceIndex, index, event.clientX >= bounds.left + bounds.width / 2);
+                    }
+                    setDraggingPreviewIndex(null);
+                    setDropPreviewIndex(null);
+                  }}
+                  onKeyDown={(event) => {
+                    if (!previewSortable || (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight')) {
+                      return;
+                    }
+                    const targetIndex = index + (event.key === 'ArrowLeft' ? -1 : 1);
+                    if (targetIndex < 0 || targetIndex >= transition.previews.length) return;
+                    event.preventDefault();
+                    onPreviewReorder?.(index, targetIndex, event.key === 'ArrowRight');
+                  }}
                 >
                   <LocalSpaceTransitionPreviewMedia preview={preview} mediaState={mediaState} />
-                  <span className="absolute inset-x-0 bottom-0 z-[3] h-1/3 bg-gradient-to-t from-background/30 to-transparent" />
+                  <span className="absolute inset-x-0 bottom-0 z-[3] h-1/3 bg-gradient-to-t from-background/15 to-transparent" />
                 </div>
               </div>
             );
@@ -211,7 +282,7 @@ export function LocalSpaceTransitionOverlay({
 
           <div
             className={cn(
-              'absolute left-1/2 z-20 -translate-x-1/2 -translate-y-1/2 transition-[top,transform] duration-overlay ease-enter',
+              'pointer-events-none absolute left-1/2 z-20 -translate-x-1/2 -translate-y-1/2 transition-[top,transform] duration-overlay ease-enter',
               settled ? 'top-[79%] scale-90' : 'top-1/2 scale-100',
             )}
           >

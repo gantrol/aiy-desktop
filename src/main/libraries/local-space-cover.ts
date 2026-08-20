@@ -1,6 +1,8 @@
 import { nativeImage } from 'electron';
 import { readFile, stat } from 'node:fs/promises';
+import path from 'node:path';
 import { imageDimensions } from '@/main/media/image-dimensions';
+import { rasterizeSvgFileInSandbox } from '@/main/media/svg-rasterization';
 import { validateProviderImage, type SupportedImageMimeType } from '@/main/generation-models/adapters/provider-media';
 
 const MAX_COVER_BYTES = 25 * 1024 * 1024;
@@ -37,7 +39,10 @@ export async function prepareLocalSpaceCover(filePath: string): Promise<Prepared
     throw new Error('The selected cover image is unavailable or too large');
   }
 
-  const bytes = await readFile(filePath);
+  const bytes =
+    path.extname(filePath).toLowerCase() === '.svg'
+      ? (await rasterizeSvgFileInSandbox(filePath)).bytes
+      : await readFile(filePath);
   if (bytes.length < 1 || bytes.length > MAX_COVER_BYTES) {
     throw new Error('The selected cover image is unavailable or too large');
   }
@@ -46,7 +51,7 @@ export async function prepareLocalSpaceCover(filePath: string): Promise<Prepared
   try {
     mimeType = validateProviderImage(bytes);
   } catch {
-    throw new Error('The selected cover must be a valid PNG, JPEG, or WebP image');
+    throw new Error('The selected cover must be a valid PNG, JPEG, WebP, or SVG image');
   }
 
   const extension = extensionByMimeType[mimeType];

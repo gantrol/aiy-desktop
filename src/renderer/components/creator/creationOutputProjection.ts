@@ -1,17 +1,27 @@
 import type {
   AssetDto,
   GenerationRunDto,
+  ImportedCreationOutputDto,
   PromptSeriesDto,
   PromptVersionDto,
   StyleExplorationBatchDto,
   StyleExplorationSlotDto,
 } from '@/shared/contracts';
 
-export interface CreationOutputAssetProjection {
+interface GeneratedOutputAssetProjection {
+  kind?: 'GENERATION';
   asset: AssetDto;
   run: GenerationRunDto;
   lineageRootRunId: string;
 }
+
+interface ImportedOutputAssetProjection {
+  kind: 'IMPORTED_OUTPUT';
+  asset: AssetDto;
+  output: ImportedCreationOutputDto;
+}
+
+export type CreationOutputAssetProjection = GeneratedOutputAssetProjection | ImportedOutputAssetProjection;
 
 export interface CreationOutputDirectionStack {
   id: string;
@@ -50,7 +60,7 @@ function compareRunsNewestFirst(left: GenerationRunDto, right: GenerationRunDto)
  * prevents a refreshed DTO or reconciled retry chain from stacking one image
  * more than once while retaining independent model/count positions.
  */
-function projectRunAssets(runs: readonly GenerationRunDto[]): CreationOutputAssetProjection[] {
+function projectRunAssets(runs: readonly GenerationRunDto[]): GeneratedOutputAssetProjection[] {
   const runById = new Map(runs.map((run) => [run.id, run]));
   const rootByRunId = new Map<string, string>();
 
@@ -77,15 +87,23 @@ function projectRunAssets(runs: readonly GenerationRunDto[]): CreationOutputAsse
     if (!current || compareRunsNewestFirst(run, current) < 0) newestSuccessfulByRoot.set(root, run);
   }
 
-  const byAssetId = new Map<string, CreationOutputAssetProjection>();
+  const byAssetId = new Map<string, GeneratedOutputAssetProjection>();
   for (const [lineageRootRunId, run] of newestSuccessfulByRoot) {
     const asset = run.asset!;
     const current = byAssetId.get(asset.id);
     if (!current || compareRunsNewestFirst(run, current.run) < 0) {
-      byAssetId.set(asset.id, { asset, run, lineageRootRunId });
+      byAssetId.set(asset.id, { kind: 'GENERATION', asset, run, lineageRootRunId });
     }
   }
   return [...byAssetId.values()].sort((left, right) => compareRunsNewestFirst(left.run, right.run));
+}
+
+function compareImportedOutputs(left: ImportedCreationOutputDto, right: ImportedCreationOutputDto) {
+  return (
+    (left.sortOrder ?? Number.MAX_SAFE_INTEGER) - (right.sortOrder ?? Number.MAX_SAFE_INTEGER) ||
+    right.createdAt.localeCompare(left.createdAt) ||
+    right.id.localeCompare(left.id)
+  );
 }
 
 function splitRunAssets(runs: readonly GenerationRunDto[]) {
@@ -150,6 +168,16 @@ export function buildCreationOutputProjection(
       };
     });
   const groupByVersionId = new Map(groups.map((group) => [group.version.id, group]));
+  const projectedAssetIds = new Set(
+    groups.flatMap((group) => group.primaryAssets.concat(group.failedPrimaryAssets).map((item) => item.asset.id)),
+  );
+  for (const output of [...(primarySeries.importedOutputs ?? [])].sort(compareImportedOutputs)) {
+    if (!output.promptVersionId || projectedAssetIds.has(output.imageAssetId)) continue;
+    const group = groupByVersionId.get(output.promptVersionId);
+    if (!group) continue;
+    group.primaryAssets.push({ kind: 'IMPORTED_OUTPUT', asset: output.asset, output });
+    projectedAssetIds.add(output.imageAssetId);
+  }
   const directionCountByVersionId = new Map<string, number>();
   const uniqueBatches = [...new Map(batches.map((batch) => [batch.id, batch])).values()]
     .filter((batch) => batch.scope.kind === 'SERIES' && batch.scope.id === primarySeries.id)

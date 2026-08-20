@@ -16,18 +16,23 @@ import type {
 import type { LibraryDatabase } from '@/main/database';
 import type { StoredCreatorImage } from '@/main/database/creations/creation-import-repository';
 import { sha256HexAsync } from '@/main/database/core/storage';
+import { readBoundedImageFile } from '@/main/media/bounded-image-file';
 import { imageDimensions } from '@/main/media/image-dimensions';
+import { rasterizeSvgBytesInSandbox } from '@/main/media/svg-rasterization';
+import { storeSvgRasterCacheFile } from '@/main/media/svg-raster-cache';
 
 const maxImageCount = 8;
 const maxImageBytes = 25 * 1024 * 1024;
 const maxBatchBytes = 100 * 1024 * 1024;
 const headerBytes = 4 * 1024 * 1024;
 const stageLifetimeMs = 15 * 60 * 1000;
+const staleFileCleanupConcurrency = 4;
 
 const extensionByMimeType = {
   'image/png': '.png',
   'image/jpeg': '.jpg',
   'image/webp': '.webp',
+  'image/svg+xml': '.svg',
 } as const;
 
 const mimeTypeByExtension = new Map<string, CreatorImageImportItemInput['mimeType']>([
@@ -35,17 +40,39 @@ const mimeTypeByExtension = new Map<string, CreatorImageImportItemInput['mimeTyp
   ['.jpg', 'image/jpeg'],
   ['.jpeg', 'image/jpeg'],
   ['.webp', 'image/webp'],
+  ['.svg', 'image/svg+xml'],
 ]);
 
 interface StageRecord {
   filePath: string;
+  modelRasterPath: string | null;
   libraryRoot: string;
-  item: Pick<CreatorImageImportItemInput, 'id' | 'name' | 'mimeType' | 'metadata'>;
+  item: StagedImageItem;
   hash: string;
   width: number;
   height: number;
   byteSize: number;
   expiry: NodeJS.Timeout;
+}
+
+type StagedImageItem = Pick<CreatorImageImportItemInput, 'id' | 'name' | 'metadata'> & {
+  mimeType: CreatorImageImportItemInput['mimeType'];
+};
+
+async function removeStaleFiles(directory: string, fileNames: readonly string[]) {
+  let cursor = 0;
+  const worker = async () => {
+    while (cursor < fileNames.length) {
+      const fileName = fileNames[cursor];
+      cursor += 1;
+      try {
+        await unlink(path.join(directory, fileName));
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
+      }
+    }
+  };
+  await Promise.all(Array.from({ length: Math.min(staleFileCleanupConcurrency, fileNames.length) }, () => worker()));
 }
 
 function hasExpectedSignature(bytes: Uint8Array, mimeType: CreatorImageImportItemInput['mimeType']) {
@@ -54,6 +81,9 @@ function hasExpectedSignature(bytes: Uint8Array, mimeType: CreatorImageImportIte
   }
   if (mimeType === 'image/jpeg') {
     return bytes.byteLength >= 3 && bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff;
+  }
+  if (mimeType === 'image/svg+xml') {
+    return imageDimensions(bufferView(bytes), '.svg') !== null;
   }
   return (
     bytes.byteLength >= 12 &&
@@ -77,19 +107,33 @@ export class CreatorImageStagingService {
     const libraryRoot = this.resolveDatabase().libraryRoot;
     const seenHashes = new Set<string>();
     const rows: CreatorImageStagePreviewRow[] = [];
+    const svgRasterByteSizes: number[] = [];
     try {
       for (const item of items) {
         const bytes = bufferView(item.bytes);
+        const rasterized = item.mimeType === 'image/svg+xml' ? await rasterizeSvgBytesInSandbox(bytes) : null;
+        if (rasterized) {
+          svgRasterByteSizes.push(rasterized.bytes.byteLength);
+          this.assertBatch(svgRasterByteSizes);
+        }
+        const stagedItem: StagedImageItem = {
+          id: item.id,
+          name: item.name,
+          mimeType: item.mimeType,
+          metadata: item.metadata,
+        };
         rows.push(
           await this.stageCandidate({
             libraryRoot,
-            item: { id: item.id, name: item.name, mimeType: item.mimeType, metadata: item.metadata },
-            byteSize: item.bytes.byteLength,
+            item: stagedItem,
+            byteSize: bytes.byteLength,
             header: bytes.subarray(0, headerBytes),
+            dimensions: rasterized ? { width: rasterized.width, height: rasterized.height } : undefined,
+            modelRaster: rasterized?.bytes,
             seenHashes,
             write: async (destination) => {
               const hash = await sha256HexAsync(bytes);
-              await writeFile(destination, item.bytes, { flag: 'wx' });
+              await writeFile(destination, bytes, { flag: 'wx' });
               return hash;
             },
           }),
@@ -115,8 +159,32 @@ export class CreatorImageStagingService {
     const libraryRoot = this.resolveDatabase().libraryRoot;
     const seenHashes = new Set<string>();
     const rows: CreatorImageStagePreviewRow[] = [];
+    const svgRasterByteSizes: number[] = [];
     try {
       for (const { filePath, fileStat, mimeType } of entries) {
+        if (mimeType === 'image/svg+xml') {
+          const bytes = await readBoundedImageFile(filePath);
+          const rasterized = await rasterizeSvgBytesInSandbox(bytes);
+          svgRasterByteSizes.push(rasterized.bytes.byteLength);
+          this.assertBatch(svgRasterByteSizes);
+          rows.push(
+            await this.stageCandidate({
+              libraryRoot,
+              item: { id: randomUUID(), name: path.basename(filePath), mimeType },
+              byteSize: bytes.byteLength,
+              header: bytes.subarray(0, headerBytes),
+              dimensions: { width: rasterized.width, height: rasterized.height },
+              modelRaster: rasterized.bytes,
+              seenHashes,
+              write: async (destination) => {
+                const hash = await sha256HexAsync(bytes);
+                await writeFile(destination, bytes, { flag: 'wx' });
+                return hash;
+              },
+            }),
+          );
+          continue;
+        }
         const header = await this.readHeader(filePath, fileStat.size);
         rows.push(
           await this.stageCandidate({
@@ -151,8 +219,9 @@ export class CreatorImageStagingService {
   }
 
   async import(input: CreatorStagedImageImportInput): Promise<CreatorOutputsImportResult> {
-    return this.consume(input.stageIds, (database, images) =>
-      database.importStoredCreatorOutputs(input.context, images),
+    return this.consume(
+      input.items.map((item) => item.stageId),
+      (database, images) => database.importStoredCreatorOutputs(input.context, images, input.items),
     );
   }
 
@@ -180,9 +249,12 @@ export class CreatorImageStagingService {
     const claim = this.claim(stageIds);
     try {
       const images = await this.materialize(claim.database, claim.records);
-      return await operation(claim.database, images);
-    } finally {
+      const result = await operation(claim.database, images);
       await this.cleanupClaimed(claim.records);
+      return result;
+    } catch (error) {
+      this.restoreClaim(claim.stageIds, claim.records);
+      throw error;
     }
   }
 
@@ -208,7 +280,19 @@ export class CreatorImageStagingService {
       this.records.delete(stageId);
       clearTimeout(records[index].expiry);
     }
-    return { database, records };
+    return { database, records, stageIds };
+  }
+
+  private restoreClaim(stageIds: readonly string[], records: readonly StageRecord[]) {
+    for (const [index, stageId] of stageIds.entries()) {
+      const record = records[index];
+      const expiry = setTimeout(() => {
+        void this.discard([stageId]);
+      }, stageLifetimeMs);
+      expiry.unref();
+      record.expiry = expiry;
+      this.records.set(stageId, record);
+    }
   }
 
   private async materialize(database: LibraryDatabase, records: StageRecord[]) {
@@ -224,6 +308,9 @@ export class CreatorImageStagingService {
           byteSize: record.byteSize,
         },
       );
+      if (record.modelRasterPath) {
+        await storeSvgRasterCacheFile(record.libraryRoot, record.hash, record.modelRasterPath);
+      }
       images.push({ item: record.item, stored });
     }
     return images;
@@ -236,17 +323,25 @@ export class CreatorImageStagingService {
         if (!record) return;
         this.records.delete(stageId);
         clearTimeout(record.expiry);
-        try {
-          await unlink(record.filePath);
-        } catch (error) {
-          if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
-        }
+        const filePaths = record.modelRasterPath ? [record.filePath, record.modelRasterPath] : [record.filePath];
+        await Promise.all(
+          filePaths.map(async (filePath) => {
+            try {
+              await unlink(filePath);
+            } catch (error) {
+              if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
+            }
+          }),
+        );
       }),
     );
   }
 
   private async cleanupClaimed(records: readonly StageRecord[]) {
-    const results = await Promise.allSettled(records.map((record) => unlink(record.filePath)));
+    const filePaths = records.flatMap((record) =>
+      record.modelRasterPath ? [record.filePath, record.modelRasterPath] : [record.filePath],
+    );
+    const results = await Promise.allSettled(filePaths.map((filePath) => unlink(filePath)));
     for (const result of results) {
       if (result.status === 'rejected' && (result.reason as NodeJS.ErrnoException).code !== 'ENOENT') {
         console.warn('[creator-image-staging] failed to remove consumed stage file', result.reason);
@@ -279,9 +374,11 @@ export class CreatorImageStagingService {
 
   private async stageCandidate(input: {
     libraryRoot: string;
-    item: Pick<CreatorImageImportItemInput, 'id' | 'name' | 'mimeType' | 'metadata'>;
+    item: StagedImageItem;
     byteSize: number;
     header: Buffer;
+    dimensions?: { width: number; height: number };
+    modelRaster?: Buffer;
     seenHashes: Set<string>;
     write(destination: string): Promise<string>;
   }): Promise<CreatorImageStagePreviewRow> {
@@ -305,22 +402,40 @@ export class CreatorImageStagingService {
       }
       throw error;
     }
-    if (input.seenHashes.has(hash)) {
+    const duplicateStage = [...this.records.values()].some(
+      (record) => path.resolve(record.libraryRoot) === path.resolve(input.libraryRoot) && record.hash === hash,
+    );
+    if (input.seenHashes.has(hash) || duplicateStage) {
       await unlink(filePath);
       return {
         item: { ...input.item, stageId: null, byteSize: input.byteSize },
         state: 'DUPLICATE',
       };
     }
+    const modelRasterPath = input.modelRaster ? path.join(directory, `${stageId}.model.png`) : null;
+    if (input.modelRaster && modelRasterPath) {
+      try {
+        await writeFile(modelRasterPath, input.modelRaster, { flag: 'wx' });
+      } catch (error) {
+        await unlink(filePath);
+        try {
+          await unlink(modelRasterPath);
+        } catch {
+          // The derivative write may have failed before creating the destination.
+        }
+        throw error;
+      }
+    }
     input.seenHashes.add(hash);
     const extension = extensionByMimeType[input.item.mimeType];
-    const dimensions = imageDimensions(input.header, extension);
+    const dimensions = input.dimensions ?? imageDimensions(input.header, extension);
     const expiry = setTimeout(() => {
       void this.discard([stageId]);
     }, stageLifetimeMs);
     expiry.unref();
     this.records.set(stageId, {
       filePath,
+      modelRasterPath,
       libraryRoot: input.libraryRoot,
       item: input.item,
       hash,
@@ -343,16 +458,9 @@ export class CreatorImageStagingService {
       const directory = path.join(resolvedRoot, 'temp', 'creator-import');
       await mkdir(directory, { recursive: true });
       const entries = await readdir(directory, { withFileTypes: true });
-      await Promise.all(
-        entries
-          .filter((entry) => entry.isFile())
-          .map(async (entry) => {
-            try {
-              await unlink(path.join(directory, entry.name));
-            } catch (error) {
-              if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
-            }
-          }),
+      await removeStaleFiles(
+        directory,
+        entries.filter((entry) => entry.isFile()).map((entry) => entry.name),
       );
       return directory;
     })();

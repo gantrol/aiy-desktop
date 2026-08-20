@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import type { ExtensionContributionPoint, ExtensionDto, Locale, TransitionPreviewDto } from '@/shared/contracts';
+import type { BootstrapDto, ExtensionContributionPoint, ExtensionDto } from '@/shared/contracts';
 import { localizeExtensionManifest } from '@/shared/extension-localization';
 import { EXTENSION_HOST_ENGINE_KEY } from '@/shared/product';
 import {
@@ -18,6 +18,7 @@ import { ScrollArea } from '@/renderer/components/ui/scroll-area';
 import { cn } from '@/renderer/lib/utils';
 import { useI18n } from '@/renderer/i18n/useI18n';
 import {
+  ANTIGRAVITY_CLI_EXTENSION_ID,
   CODEX_IMAGE_DISCOVERY_EXTENSION_ID,
   DEEPSEEK_API_EXTENSION_ID,
   EXTERNAL_IMAGE_API_EXTENSION_IDS,
@@ -35,16 +36,20 @@ import { DeleteEntityDialog } from '@/renderer/components/app/DeleteEntityDialog
 import { ExtensionPluginList } from '@/renderer/features/extensions/ExtensionPluginList';
 import { firstGroupedExtensionId } from '@/renderer/features/extensions/extensionPluginGroups';
 import type { CodexImagesNavigationState } from '@/renderer/features/extensions/codexImageNavigation';
+import type { TransitionShowcaseNavigationState } from '@/renderer/features/extensions/transitionShowcaseNavigation';
 import { TransitionShowcase } from '@/renderer/features/extensions/TransitionShowcase';
 import { FeatureDemoShowcase } from '@/renderer/features/extensions/FeatureDemoShowcase';
+import { AntigravityCliConfiguration } from '@/renderer/features/extensions/AntigravityCliConfiguration';
 
 interface Props {
   active: boolean;
+  data: BootstrapDto;
+  dataRevision: number;
   requestedId: string | null;
   onSelectedIdChange(id: string, mode?: NavigationMode): void;
   onExtensionsChange(): void;
   codexImagesNavigation: CodexImagesNavigationState;
-  transitionPreviews: readonly TransitionPreviewDto[];
+  transitionShowcaseNavigation: TransitionShowcaseNavigationState;
   notify(message: string): void;
   onOpenCreation(seriesId: string, assetId: string | null): Promise<void>;
 }
@@ -61,34 +66,108 @@ const contributionOrder: ExtensionContributionPoint[] = [
 ];
 const externalImageApiExtensionIds = new Set<string>(EXTERNAL_IMAGE_API_EXTENSION_IDS);
 
-function localizedShowInSidebarLabel(locale: Locale, translated?: string) {
-  if (translated) return translated;
-  return locale === 'zh' ? '在侧边栏显示 Codex 图片' : 'Show Codex images in sidebar';
-}
-
 function TransitionShowcasePanel({
+  active,
+  data,
+  dataRevision,
   extension,
-  previews,
+  notify,
 }: {
+  active: boolean;
+  data: BootstrapDto;
+  dataRevision: number;
   extension: ExtensionDto;
-  previews: readonly TransitionPreviewDto[];
+  notify(message: string): void;
 }) {
   if (extension.manifest.id !== TRANSITION_SHOWCASE_EXTENSION_ID || !extension.enabled) return null;
-  return <TransitionShowcase realPreviews={previews} />;
+  return (
+    <TransitionShowcase
+      active={active}
+      libraryKey={data.spaceName}
+      dataRevision={dataRevision}
+      terms={data.terms}
+      facets={data.facets}
+      notify={notify}
+    />
+  );
 }
 
-function FeatureDemoPanel({ extension, notify }: { extension: ExtensionDto; notify(message: string): void }) {
+function FeatureDemoPanel({
+  data,
+  extension,
+  extensions,
+  notify,
+}: {
+  data: BootstrapDto;
+  extension: ExtensionDto;
+  extensions: readonly ExtensionDto[];
+  notify(message: string): void;
+}) {
   if (extension.manifest.id !== FEATURE_DEMO_EXTENSION_ID || !extension.enabled) return null;
-  return <FeatureDemoShowcase notify={notify} />;
+  return <FeatureDemoShowcase data={data} extensions={extensions} notify={notify} />;
+}
+
+function AntigravityConfigurationPanel({
+  active,
+  extension,
+  onConnectionChanged,
+}: {
+  active: boolean;
+  extension: ExtensionDto;
+  onConnectionChanged(): void | Promise<void>;
+}) {
+  if (extension.manifest.id !== ANTIGRAVITY_CLI_EXTENSION_ID) return null;
+  return <AntigravityCliConfiguration active={active && extension.enabled} onConnectionChanged={onConnectionChanged} />;
+}
+
+function ExtensionNavigationPreference({
+  busy,
+  extension,
+  codexImagesNavigation,
+  transitionShowcaseNavigation,
+}: {
+  busy: boolean;
+  extension: ExtensionDto;
+  codexImagesNavigation: CodexImagesNavigationState;
+  transitionShowcaseNavigation: TransitionShowcaseNavigationState;
+}) {
+  const l = useI18n().messages.extensions;
+  if (extension.manifest.id === CODEX_IMAGE_DISCOVERY_EXTENSION_ID) {
+    return (
+      <label className="flex min-h-11 cursor-pointer items-center justify-between gap-4 rounded-lg border px-4 py-3 text-sm font-medium">
+        <span>{l.codexImageDiscovery.actions.showInSidebar}</span>
+        <Checkbox
+          checked={codexImagesNavigation.enabled}
+          disabled={!extension.enabled || busy}
+          onCheckedChange={(checked) => codexImagesNavigation.setEnabled(checked === true)}
+        />
+      </label>
+    );
+  }
+  if (extension.manifest.id === TRANSITION_SHOWCASE_EXTENSION_ID) {
+    return (
+      <label className="flex min-h-11 cursor-pointer items-center justify-between gap-4 rounded-lg border px-4 py-3 text-sm font-medium">
+        <span>{l.transitionShowcase.showInSidebar}</span>
+        <Checkbox
+          checked={transitionShowcaseNavigation.enabled}
+          disabled={!extension.enabled || busy}
+          onCheckedChange={(checked) => transitionShowcaseNavigation.setEnabled(checked === true)}
+        />
+      </label>
+    );
+  }
+  return null;
 }
 
 export function ExtensionPluginScreen({
   active,
+  data,
+  dataRevision,
   requestedId,
   onSelectedIdChange,
   onExtensionsChange,
   codexImagesNavigation,
-  transitionPreviews,
+  transitionShowcaseNavigation,
   notify,
   onOpenCreation,
 }: Props) {
@@ -136,8 +215,6 @@ export function ExtensionPluginScreen({
     () => extensions.find((extension) => extension.manifest.id === selectedId) ?? null,
     [extensions, selectedId],
   );
-  const showInSidebarLabel = localizedShowInSidebarLabel(locale, l.codexImageDiscovery.actions.showInSidebar);
-
   async function setEnabled(extension: ExtensionDto, enabled: boolean) {
     setBusyKey(`enabled:${extension.manifest.id}`);
     setError('');
@@ -349,16 +426,12 @@ export function ExtensionPluginScreen({
               )}
             </dl>
 
-            {selected.manifest.id === CODEX_IMAGE_DISCOVERY_EXTENSION_ID && (
-              <label className="flex min-h-11 cursor-pointer items-center justify-between gap-4 rounded-lg border px-4 py-3 text-sm font-medium">
-                <span>{showInSidebarLabel}</span>
-                <Checkbox
-                  checked={codexImagesNavigation.enabled}
-                  disabled={!selected.enabled || Boolean(busyKey)}
-                  onCheckedChange={(checked) => codexImagesNavigation.setEnabled(checked === true)}
-                />
-              </label>
-            )}
+            <ExtensionNavigationPreference
+              busy={Boolean(busyKey)}
+              extension={selected}
+              codexImagesNavigation={codexImagesNavigation}
+              transitionShowcaseNavigation={transitionShowcaseNavigation}
+            />
 
             {selected.manifest.id === OPENAI_IMAGE_API_EXTENSION_ID && (
               <OpenAiImageApiConfiguration active={active} notify={notify} onConnectionChanged={() => load(false)} />
@@ -366,6 +439,11 @@ export function ExtensionPluginScreen({
             {selected.manifest.id === DEEPSEEK_API_EXTENSION_ID && (
               <DeepSeekApiConfiguration active={active} notify={notify} onConnectionChanged={() => load(false)} />
             )}
+            <AntigravityConfigurationPanel
+              active={active}
+              extension={selected}
+              onConnectionChanged={() => load(false)}
+            />
             {externalImageApiExtensionIds.has(selected.manifest.id) && (
               <ExternalImageApiConfiguration
                 active={active}
@@ -382,8 +460,14 @@ export function ExtensionPluginScreen({
                 onOpenCreation={onOpenCreation}
               />
             )}
-            <TransitionShowcasePanel extension={selected} previews={transitionPreviews} />
-            <FeatureDemoPanel extension={selected} notify={notify} />
+            <TransitionShowcasePanel
+              active={active}
+              data={data}
+              dataRevision={dataRevision}
+              extension={selected}
+              notify={notify}
+            />
+            <FeatureDemoPanel data={data} extension={selected} extensions={extensions} notify={notify} />
 
             <div className="grid gap-5 lg:grid-cols-2">
               <section className="rounded-lg border">

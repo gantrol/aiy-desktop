@@ -1,6 +1,6 @@
 import { mergeAttributes, Node, type Editor } from '@tiptap/core';
 import type { Node as ProseMirrorNode } from '@tiptap/pm/model';
-import { EditorContent, NodeViewWrapper, ReactNodeViewRenderer, type NodeViewProps, useEditor } from '@tiptap/react';
+import { NodeViewWrapper, ReactNodeViewRenderer, type NodeViewProps, useEditor } from '@tiptap/react';
 import StarterKit from '@tiptap/starter-kit';
 import { BookOpenIcon, ChevronDownIcon, SlidersHorizontalIcon } from 'lucide-react';
 import {
@@ -21,10 +21,8 @@ import {
   resolveWordPaletteOptionLabel,
   resolveWordPaletteParameterName,
 } from '@/shared/word-palette-localization';
-import { cn } from '@/renderer/lib/utils';
 import { Button } from '@/renderer/components/ui/button';
 import { Popover, PopoverTrigger } from '@/renderer/components/ui/popover';
-import { ScrollArea } from '@/renderer/components/ui/scroll-area';
 import { useExternalEditorDocument } from '@/renderer/hooks/useExternalEditorDocument';
 import { useLatestMicrotask } from '@/renderer/hooks/useLatestMicrotask';
 import {
@@ -42,10 +40,10 @@ import {
   CreatorRecipeNodeDetails,
   CreatorTermNodeDetails,
 } from '@/renderer/components/creator/CreatorPromptNodeDetails';
+import { CreatorPromptEditorSurface } from '@/renderer/components/creator/CreatorPromptEditorSurface';
 import type { AppliedWordPalette } from '@/renderer/components/creator/utils';
 
-const TERM_NODE = 'creatorTerm';
-const RECIPE_NODE = 'creatorRecipe';
+const [TERM_NODE, RECIPE_NODE] = ['creatorTerm', 'creatorRecipe'] as const;
 let nodeSerial = 0;
 
 function nextNodeKey(prefix: string) {
@@ -829,22 +827,11 @@ export const CreatorPromptComposer = forwardRef<CreatorPromptComposerHandle, Pro
   );
 
   return (
-    <ScrollArea
-      data-creator-prompt-editor
-      type="always"
-      className={cn(
-        'relative [&_[data-slot=scroll-area-scrollbar]]:opacity-100',
-        fullWindow ? 'min-h-0 flex-1' : 'h-60 max-h-[38vh]',
-      )}
-    >
-      <div className="relative min-h-full">
-        {editor && editorIsEmpty && (
-          <div className="pointer-events-none absolute left-5 top-2 text-md leading-8 text-muted-foreground">
-            {placeholder}
-          </div>
-        )}
-        <EditorContent className="min-h-full [&>.ProseMirror]:min-h-full" editor={editor} />
-      </div>
-    </ScrollArea>
+    <CreatorPromptEditorSurface
+      editor={editor}
+      empty={editorIsEmpty}
+      fullWindow={fullWindow}
+      placeholder={placeholder}
+    />
   );
 });

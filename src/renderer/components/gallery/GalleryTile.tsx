@@ -3,6 +3,7 @@ import { useI18n } from '@/renderer/i18n/useI18n';
 import { cn } from '@/renderer/lib/utils';
 import { Badge } from '@/renderer/components/ui/badge';
 import { ImageEvaluationControls } from '@/renderer/components/gallery/ImageEvaluationControls';
+import { ImageAmbientBackdrop } from '@/renderer/components/media/AmbientImage';
 
 interface Props {
   item: GalleryItemDto;
@@ -53,15 +54,22 @@ export function GalleryTile({ item, filter, visibleDimensions, ratingBusy, onOpe
           }
         }}
       >
-        <div className="grid aspect-[3/4] place-items-center overflow-hidden bg-media-surround-light">
-          <img className="size-full object-contain" src={item.asset.mediaUrl} alt="" draggable={false} />
+        <div className="relative isolate grid aspect-[3/4] place-items-center overflow-hidden bg-surface-sunken">
+          <ImageAmbientBackdrop src={item.asset.mediaUrl} loading="lazy" />
+          <img
+            className="relative z-10 size-full object-contain"
+            src={item.asset.mediaUrl}
+            alt=""
+            loading="lazy"
+            draggable={false}
+          />
         </div>
         {item.source === 'BOTH' && (
-          <Badge variant="outline" className="absolute top-2 left-2 bg-overlay/90 text-[10px] backdrop-blur-sm">
+          <Badge variant="outline" className="absolute top-2 left-2 z-20 bg-overlay/90 text-[10px] backdrop-blur-sm">
             {labels.both}
           </Badge>
         )}
-        <div className="absolute inset-x-0 bottom-0 flex items-end justify-between gap-3 border-t bg-overlay/95 px-3 py-3 text-foreground opacity-0 backdrop-blur-sm transition-opacity duration-fast group-hover:opacity-100 group-focus-within:opacity-100">
+        <div className="absolute inset-x-0 bottom-0 z-20 flex items-end justify-between gap-3 border-t bg-overlay/95 px-3 py-3 text-foreground opacity-0 backdrop-blur-sm transition-opacity duration-fast group-hover:opacity-100 group-focus-within:opacity-100">
           <span className="min-w-0 truncate text-sm font-medium">{title}</span>
           <span className="shrink-0 text-[11px] text-muted-foreground">{detail}</span>
         </div>

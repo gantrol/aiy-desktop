@@ -2,7 +2,10 @@ import { ImagesIcon, PlusIcon } from 'lucide-react';
 import { useMemo, useRef, useState, type ReactNode } from 'react';
 import type { MaterialAlbumDto, MaterialSelectionTargetInput } from '@/shared/contracts';
 import type { GalleryDictionaryCollection } from '@/renderer/components/app/app-navigation';
-import { useAlbumTreeExpansion } from '@/renderer/components/albums/useAlbumTreeExpansion';
+import {
+  useAlbumTreeExpansion,
+  type AlbumTreeDiagnosticSink,
+} from '@/renderer/components/albums/useAlbumTreeExpansion';
 import { useDeferredSingleDoubleClick } from '@/renderer/components/albums/useDeferredSingleDoubleClick';
 import { Button } from '@/renderer/components/ui/button';
 import { ScrollArea } from '@/renderer/components/ui/scroll-area';
@@ -46,12 +49,14 @@ interface Labels extends MaterialAlbumBranchLabels {
 
 interface Props {
   albums: MaterialAlbumDto[];
+  browseOnly?: boolean;
   category: MaterialLibraryCategory;
   activeAlbumId: string | null;
   dictionarySelection: GalleryDictionaryCollection | null;
   dictionaryTree: DictionaryMaterialTree;
   labels: Labels;
   busy?: boolean;
+  diagnostics?: AlbumTreeDiagnosticSink;
   onSelectCategory(category: MaterialLibraryCategory): void;
   onSelectAlbum(albumId: string): void;
   onSelectDictionary(collection: GalleryDictionaryCollection): void;
@@ -65,12 +70,14 @@ interface Props {
 
 export function MaterialLibraryNavigation({
   albums,
+  browseOnly = false,
   category,
   activeAlbumId,
   dictionarySelection,
   dictionaryTree,
   labels,
   busy = false,
+  diagnostics,
   onSelectCategory,
   onSelectAlbum,
   onSelectDictionary,
@@ -82,8 +89,15 @@ export function MaterialLibraryNavigation({
   onImportFiles,
 }: Props) {
   const viewportRef = useRef<HTMLDivElement>(null);
-  const expansion = useAlbumTreeExpansion(viewportRef);
-  const click = useDeferredSingleDoubleClick();
+  const initialDictionaryExpansionIds = useMemo(() => {
+    if (!dictionarySelection?.domainId || !dictionarySelection.typeId) return [];
+    return [
+      `dictionary-domain:${dictionarySelection.domainId}`,
+      `dictionary-type:${dictionarySelection.domainId}:${dictionarySelection.typeId}`,
+    ];
+  }, [dictionarySelection?.domainId, dictionarySelection?.typeId]);
+  const expansion = useAlbumTreeExpansion(viewportRef, initialDictionaryExpansionIds, diagnostics);
+  const click = useDeferredSingleDoubleClick(280, diagnostics);
   const [editor, setEditor] = useState<MaterialAlbumEditorState | null>(null);
   const [deleteAlbum, setDeleteAlbum] = useState<MaterialAlbumDto | null>(null);
   const [dropAlbumId, setDropAlbumId] = useState<string | null>(null);
@@ -150,18 +164,20 @@ export function MaterialLibraryNavigation({
                 <span className="min-w-0 flex-1 truncate text-xs font-medium text-muted-foreground">
                   {labels.albums}
                 </span>
-                <Button
-                  type="button"
-                  data-action="material-create-album"
-                  variant="ghost"
-                  size="icon-sm"
-                  disabled={busy}
-                  title={labels.create}
-                  aria-label={labels.create}
-                  onClick={() => setEditor({ mode: 'create', parent: null })}
-                >
-                  <PlusIcon className="size-4" />
-                </Button>
+                {!browseOnly && (
+                  <Button
+                    type="button"
+                    data-action="material-create-album"
+                    variant="ghost"
+                    size="icon-sm"
+                    disabled={busy}
+                    title={labels.create}
+                    aria-label={labels.create}
+                    onClick={() => setEditor({ mode: 'create', parent: null })}
+                  >
+                    <PlusIcon className="size-4" />
+                  </Button>
+                )}
               </div>
               {tree.roots.map((album) => (
                 <MaterialAlbumBranch
@@ -170,6 +186,7 @@ export function MaterialLibraryNavigation({
                   tree={tree}
                   activeAlbumId={activeAlbumId}
                   labels={labels}
+                  browseOnly={browseOnly}
                   busy={busy}
                   dropAlbumId={dropAlbumId}
                   expansion={expansion}
@@ -191,6 +208,7 @@ export function MaterialLibraryNavigation({
               selection={dictionarySelection}
               expansion={expansion}
               click={click}
+              diagnostics={diagnostics}
               openLabel={labels.open}
               expandLabel={labels.expand}
               collapseLabel={labels.collapse}
@@ -202,17 +220,19 @@ export function MaterialLibraryNavigation({
         </div>
       </ScrollArea>
 
-      <MaterialAlbumDialogs
-        editor={editor}
-        deleteAlbum={deleteAlbum}
-        labels={labels}
-        busy={busy}
-        onEditorChange={setEditor}
-        onDeleteAlbumChange={setDeleteAlbum}
-        onCreate={onCreate}
-        onRename={onRename}
-        onDelete={onDelete}
-      />
+      {!browseOnly && (
+        <MaterialAlbumDialogs
+          editor={editor}
+          deleteAlbum={deleteAlbum}
+          labels={labels}
+          busy={busy}
+          onEditorChange={setEditor}
+          onDeleteAlbumChange={setDeleteAlbum}
+          onCreate={onCreate}
+          onRename={onRename}
+          onDelete={onDelete}
+        />
+      )}
     </aside>
   );
 }

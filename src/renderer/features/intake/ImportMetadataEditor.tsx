@@ -61,8 +61,8 @@ export function ImportMetadataEditor({
     onBatchFieldChange,
   };
   return (
-    <section className="flex min-h-0 flex-col bg-overlay" data-slot="import-metadata-editor">
-      <header className="flex min-h-14 shrink-0 items-center gap-3 border-b px-6">
+    <section className="flex size-full min-h-0 flex-col bg-overlay" data-slot="import-metadata-editor">
+      <header className="flex min-h-14 shrink-0 items-center gap-3 border-b px-6 pr-14">
         <div className="min-w-0 flex-1">
           <h2 className="truncate text-sm font-semibold">{batchMode ? labels.batchTitle(batchCount) : title}</h2>
           {batchMode && <p className="mt-0.5 text-xs text-muted-foreground">{labels.overwriteHint}</p>}

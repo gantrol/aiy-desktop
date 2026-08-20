@@ -1,9 +1,12 @@
 import { decodeDeepSeekTitleResult, DeepSeekAssistantAdapter } from '@/main/assistant-models/deepseek';
+import { AntigravityAssistantAdapter } from '@/main/assistant-models/antigravity';
+import { GoogleGeminiAssistantAdapter } from '@/main/assistant-models/google-gemini';
 import { DEEPSEEK_DEFAULT_MODEL_ID, DEEPSEEK_PROVIDER_KEY } from '@/main/assistant-models/deepseek-provider';
 import { CodexAdapter } from '@/main/assistant/codex';
 import { LibraryDatabase } from '@/main/database';
 import { readDictionaryImport } from '@/main/dictionary/dictionary-import';
 import { DeepSeekApiRuntime } from '@/main/extensions/deepseek-api/runtime';
+import { AntigravityCliRuntime } from '@/main/extensions/antigravity-cli/runtime';
 import { ExternalImageApiRuntime } from '@/main/extensions/external-image-api/runtime';
 import { OpenAiImageApiRuntime } from '@/main/extensions/openai-image-api/runtime';
 import { ExtensionRegistry } from '@/main/extensions/registry';
@@ -15,7 +18,13 @@ import type { VideoDocumentGenerationService } from '@/main/video-documents/gene
 import type { VideoDocumentTranscriptTranslationService } from '@/main/video-transcript/translation-service';
 import { parseModelWorkerMethodParams } from '@/main/model-worker/method-params';
 import type { ModelWorkerMethod, ModelWorkerServerMessage, ModelWorkerSnapshot } from '@/main/model-worker/protocol';
-import { DEEPSEEK_API_EXTENSION_ID } from '@/shared/extension-ids';
+import {
+  ANTIGRAVITY_CLI_EXTENSION_ID,
+  ANTIGRAVITY_CLI_PROVIDER_KEY,
+  DEEPSEEK_API_EXTENSION_ID,
+  GOOGLE_GEMINI_API_EXTENSION_ID,
+  GOOGLE_GEMINI_ASSISTANT_PROVIDER_KEY,
+} from '@/shared/extension-ids';
 
 const unhandled = Symbol('unhandled-model-worker-method');
 const modelRuntimeCallRunner = new ModelRuntimeCallRunner();
@@ -27,6 +36,9 @@ export interface ModelWorkerRequestDispatcherOptions {
   videoDocumentTranslations?: VideoDocumentTranscriptTranslationService;
   codex: CodexAdapter;
   deepSeek: DeepSeekAssistantAdapter;
+  antigravity?: AntigravityCliRuntime;
+  antigravityAssistant?: AntigravityAssistantAdapter;
+  googleGemini?: GoogleGeminiAssistantAdapter;
   extensions: ExtensionRegistry;
   openAiImageApi: OpenAiImageApiRuntime;
   deepSeekApi: DeepSeekApiRuntime;
@@ -59,6 +71,81 @@ async function withAssistantJob<T>(
     return await operation();
   } finally {
     options.endAssistantJob();
+  }
+}
+
+async function executeConfiguredAssistant(
+  options: ModelWorkerRequestDispatcherOptions,
+  run: NonNullable<ReturnType<LibraryDatabase['getAssistantRun']>>,
+  runId: string,
+  providerKey: string,
+  modelKey: string,
+  signal: AbortSignal,
+) {
+  if (providerKey === DEEPSEEK_PROVIDER_KEY) {
+    return await runDeepSeekAssistant(options, runId, run.input, providerKey, modelKey, signal);
+  }
+  if (providerKey === GOOGLE_GEMINI_ASSISTANT_PROVIDER_KEY) {
+    return await runGoogleGeminiAssistant(options, runId, run.input, providerKey, modelKey, signal);
+  }
+  if (providerKey === ANTIGRAVITY_CLI_PROVIDER_KEY) {
+    return await runAntigravityAssistant(options, runId, run.input, providerKey, modelKey, signal);
+  }
+  if (providerKey !== 'codex') throw new Error(`Unsupported assistant model provider: ${providerKey}`);
+  return await options.codex.assist(
+    run.input,
+    [],
+    [],
+    {
+      scope: run.scope,
+      title: run.mode === 'directions' ? '灵感方向' : 'AI帮写',
+      operationId: runId,
+      model: modelKey === 'codex' ? undefined : modelKey,
+      effort: run.reasoningEffort ?? undefined,
+    },
+    signal,
+  );
+}
+
+async function runPersistedAssistant(options: ModelWorkerRequestDispatcherOptions, runId: string, signal: AbortSignal) {
+  const { database } = options;
+  try {
+    const run = database.getAssistantRun(runId);
+    if (!run) throw new Error('Assistant run is unavailable');
+    const providerKey = run.providerKey ?? (run.mode === 'directions' ? DEEPSEEK_PROVIDER_KEY : 'codex');
+    const modelKey = run.modelKey ?? (providerKey === DEEPSEEK_PROVIDER_KEY ? DEEPSEEK_DEFAULT_MODEL_ID : 'codex');
+    const requested = database.recordAssistantActivity(runId, 'MODEL_REQUESTED', {
+      providerKey,
+      modelKey,
+      message: `Request submitted to ${modelKey}`,
+      payload:
+        run.reasoningEffort || run.input.webSearchMode === 'REQUIRED'
+          ? {
+              ...(run.reasoningEffort ? { reasoningEffort: run.reasoningEffort } : {}),
+              ...(run.input.webSearchMode === 'REQUIRED' ? { webSearchMode: 'REQUIRED' } : {}),
+            }
+          : undefined,
+    });
+    if (requested) options.broadcast({ type: 'assistant-progress', event: requested });
+    const result = await executeConfiguredAssistant(options, run, runId, providerKey, modelKey, signal);
+    throwIfRequestCancelled(signal);
+    const completed = database.succeedAssistantRun(runId, result);
+    const completedEvent = completed.activityEvents?.at(-1);
+    if (completedEvent?.phase === 'COMPLETED') {
+      options.broadcast({ type: 'assistant-progress', event: completedEvent });
+    }
+    return completed;
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    const code =
+      error && typeof error === 'object' && 'code' in error && typeof error.code === 'string' ? error.code : null;
+    const failed =
+      code === 'CANCELLED' ? database.interruptAssistantRun(runId, message) : database.failAssistantRun(runId, message);
+    const failedEvent = failed.activityEvents?.at(-1);
+    if (failedEvent && ['FAILED', 'INTERRUPTED'].includes(failedEvent.phase)) {
+      options.broadcast({ type: 'assistant-progress', event: failedEvent });
+    }
+    return failed;
   }
 }
 
@@ -180,75 +267,33 @@ async function dispatchAssistantAndCodex(
           signal,
         );
       }
-      if (execution.providerKey !== 'deepseek') {
-        throw new Error(`Unsupported title model provider: ${execution.providerKey}`);
+      if (execution.providerKey === 'deepseek') {
+        if (!extensions.isActivated(DEEPSEEK_API_EXTENSION_ID)) {
+          throw new Error('Enable the DeepSeek API extension and grant its required permissions');
+        }
+        return withAssistantJob(options, () => runDeepSeekTitleSuggestion(options, input, signal));
       }
-      if (!extensions.isActivated(DEEPSEEK_API_EXTENSION_ID)) {
-        throw new Error('Enable the DeepSeek API extension and grant its required permissions');
+      if (execution.providerKey === GOOGLE_GEMINI_ASSISTANT_PROVIDER_KEY) {
+        if (!extensions.isActivated(GOOGLE_GEMINI_API_EXTENSION_ID)) {
+          throw new Error('Enable the Google Gemini API extension and grant its required permissions');
+        }
+        if (!options.googleGemini) throw new Error('Google Gemini assistant runtime is unavailable');
+        return withAssistantJob(options, () => options.googleGemini!.suggestTitles(input, signal));
       }
-      return withAssistantJob(options, () => runDeepSeekTitleSuggestion(options, input, signal));
+      if (execution.providerKey === ANTIGRAVITY_CLI_PROVIDER_KEY) {
+        if (!extensions.isActivated(ANTIGRAVITY_CLI_EXTENSION_ID)) {
+          throw new Error('Enable the Antigravity CLI extension and grant its required permissions');
+        }
+        if (!options.antigravityAssistant) throw new Error('Antigravity assistant runtime is unavailable');
+        return withAssistantJob(options, () =>
+          options.antigravityAssistant!.suggestTitles(input, execution.modelKey, signal),
+        );
+      }
+      throw new Error(`Unsupported title model provider: ${execution.providerKey}`);
     }
     case 'assistant.run': {
       const [runId] = parseModelWorkerMethodParams(method, params);
-      return withAssistantJob(options, async () => {
-        try {
-          const run = database.getAssistantRun(runId);
-          if (!run) throw new Error('Assistant run is unavailable');
-          const input = run.input;
-          const providerKey = run.providerKey ?? (run.mode === 'directions' ? DEEPSEEK_PROVIDER_KEY : 'codex');
-          const modelKey =
-            run.modelKey ?? (providerKey === DEEPSEEK_PROVIDER_KEY ? DEEPSEEK_DEFAULT_MODEL_ID : 'codex');
-          const requested = database.recordAssistantActivity(runId, 'MODEL_REQUESTED', {
-            providerKey,
-            modelKey,
-            message: `Request submitted to ${modelKey}`,
-            payload:
-              run.reasoningEffort || run.input.webSearchMode === 'REQUIRED'
-                ? {
-                    ...(run.reasoningEffort ? { reasoningEffort: run.reasoningEffort } : {}),
-                    ...(run.input.webSearchMode === 'REQUIRED' ? { webSearchMode: 'REQUIRED' } : {}),
-                  }
-                : undefined,
-          });
-          if (requested) options.broadcast({ type: 'assistant-progress', event: requested });
-          const result =
-            providerKey === 'deepseek'
-              ? await runDeepSeekAssistant(options, runId, input, providerKey, modelKey, signal)
-              : await codex.assist(
-                  input,
-                  [],
-                  [],
-                  {
-                    scope: run.scope,
-                    title: run.mode === 'directions' ? '灵感方向' : 'AI帮写',
-                    operationId: runId,
-                    model: modelKey === 'codex' ? undefined : modelKey,
-                    effort: run.reasoningEffort ?? undefined,
-                  },
-                  signal,
-                );
-          throwIfRequestCancelled(signal);
-          const completed = database.succeedAssistantRun(runId, result);
-          const completedEvent = completed.activityEvents?.at(-1);
-          if (completedEvent?.phase === 'COMPLETED') {
-            options.broadcast({ type: 'assistant-progress', event: completedEvent });
-          }
-          return completed;
-        } catch (error) {
-          const message = error instanceof Error ? error.message : String(error);
-          const code =
-            error && typeof error === 'object' && 'code' in error && typeof error.code === 'string' ? error.code : null;
-          const failed =
-            code === 'CANCELLED'
-              ? database.interruptAssistantRun(runId, message)
-              : database.failAssistantRun(runId, message);
-          const failedEvent = failed.activityEvents?.at(-1);
-          if (failedEvent && ['FAILED', 'INTERRUPTED'].includes(failedEvent.phase)) {
-            options.broadcast({ type: 'assistant-progress', event: failedEvent });
-          }
-          return failed;
-        }
-      });
+      return withAssistantJob(options, () => runPersistedAssistant(options, runId, signal));
     }
     case 'codex.chat': {
       const [job] = parseModelWorkerMethodParams(method, params);
@@ -372,6 +417,61 @@ async function runDeepSeekAssistant(
   );
 }
 
+async function runGoogleGeminiAssistant(
+  options: ModelWorkerRequestDispatcherOptions,
+  runId: string,
+  input: Parameters<GoogleGeminiAssistantAdapter['assist']>[0],
+  providerKey: string,
+  modelKey: string,
+  signal: AbortSignal,
+) {
+  if (!options.extensions.isActivated(GOOGLE_GEMINI_API_EXTENSION_ID)) {
+    throw new Error('Enable the Google Gemini API extension and grant its required permissions');
+  }
+  if (!options.googleGemini) throw new Error('Google Gemini assistant runtime is unavailable');
+  return options.googleGemini.assist(
+    input,
+    (progress) => {
+      const event = options.database.recordAssistantActivity(runId, progress.phase, {
+        providerKey,
+        modelKey,
+        message: progress.message,
+        payload: progress.payload,
+      });
+      if (event) options.broadcast({ type: 'assistant-progress', event });
+    },
+    signal,
+  );
+}
+
+async function runAntigravityAssistant(
+  options: ModelWorkerRequestDispatcherOptions,
+  runId: string,
+  input: Parameters<AntigravityAssistantAdapter['assist']>[0],
+  providerKey: string,
+  modelKey: string,
+  signal: AbortSignal,
+) {
+  if (!options.extensions.isActivated(ANTIGRAVITY_CLI_EXTENSION_ID)) {
+    throw new Error('Enable the Antigravity CLI extension and grant its required permissions');
+  }
+  if (!options.antigravityAssistant) throw new Error('Antigravity assistant runtime is unavailable');
+  return options.antigravityAssistant.assist(
+    input,
+    modelKey,
+    (progress) => {
+      const event = options.database.recordAssistantActivity(runId, progress.phase, {
+        providerKey,
+        modelKey,
+        message: progress.message,
+        payload: progress.payload,
+      });
+      if (event) options.broadcast({ type: 'assistant-progress', event });
+    },
+    signal,
+  );
+}
+
 async function dispatchExtensionsAndLifecycle(
   options: ModelWorkerRequestDispatcherOptions,
   method: ModelWorkerMethod,
@@ -381,9 +481,20 @@ async function dispatchExtensionsAndLifecycle(
   switch (method) {
     case 'extensions.refresh': {
       parseModelWorkerMethodParams(method, params);
+      options.extensions.list();
       const health = await options.codex.refreshHealth(signal);
+      if (options.antigravity && options.extensions.isActivated(ANTIGRAVITY_CLI_EXTENSION_ID)) {
+        await options.antigravity.refresh(signal);
+      }
       options.broadcastSnapshot();
       return health;
+    }
+    case 'antigravity.refresh-status': {
+      parseModelWorkerMethodParams(method, params);
+      if (!options.antigravity) throw new Error('Antigravity CLI runtime is unavailable');
+      const status = await options.antigravity.refresh(signal);
+      options.broadcastSnapshot();
+      return status;
     }
     case 'extensions.configure-openai-image-api': {
       const [configuration] = parseModelWorkerMethodParams(method, params);

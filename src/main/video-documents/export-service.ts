@@ -88,6 +88,7 @@ export interface VideoDocumentExportPorts {
   showSaveDialog(options: Electron.SaveDialogOptions): Promise<SaveDialogResult>;
   showDirectoryDialog?(options: Electron.OpenDialogOptions): Promise<DirectoryDialogResult>;
   convertWebpToPng(filePath: string): Promise<Buffer | null>;
+  convertSvgToPng?(filePath: string): Promise<Buffer | null>;
 }
 
 interface MarkdownNode {
@@ -819,8 +820,10 @@ export class VideoDocumentExportService {
       if (totalBytes > MAX_DOCX_TOTAL_IMAGE_BYTES) throw exportError('VIDEO_DOCUMENT_EXPORT_TOO_LARGE');
       let data: Buffer;
       let type: PreparedDocxImage['type'];
-      if (source.mimeType === 'image/webp') {
-        const converted = await this.ports.convertWebpToPng(source.absolutePath);
+      if (source.mimeType === 'image/webp' || source.mimeType === 'image/svg+xml') {
+        const converted = await (source.mimeType === 'image/webp'
+          ? this.ports.convertWebpToPng(source.absolutePath)
+          : this.ports.convertSvgToPng?.(source.absolutePath));
         if (!converted) throw exportError('VIDEO_DOCUMENT_EXPORT_MEDIA_UNAVAILABLE');
         data = converted;
         type = 'png';

@@ -326,6 +326,118 @@ export async function validateCanvasPngAsync(bytes: Buffer): Promise<ValidPngStr
   return structure;
 }
 
+interface GenericPngRaster {
+  bitDepth: number;
+  colorType: number;
+  interlace: number;
+  imageData: Buffer[];
+}
+
+function genericPngRaster(bytes: Buffer): GenericPngRaster | null {
+  let offset = PNG_SIGNATURE.length;
+  let bitDepth = -1;
+  let colorType = -1;
+  let interlace = -1;
+  const imageData: Buffer[] = [];
+  while (offset < bytes.length) {
+    const chunk = readPngChunk(bytes, offset);
+    if (!chunk) return null;
+    if (chunk.type === 'IHDR') {
+      bitDepth = bytes[chunk.dataOffset + 8];
+      colorType = bytes[chunk.dataOffset + 9];
+      interlace = bytes[chunk.dataOffset + 12];
+    } else if (chunk.type === 'IDAT') {
+      imageData.push(bytes.subarray(chunk.dataOffset, chunk.dataEnd));
+    } else if (chunk.type === 'IEND') {
+      return bitDepth > 0 && colorType >= 0 && imageData.length > 0
+        ? { bitDepth, colorType, interlace, imageData }
+        : null;
+    }
+    offset = chunk.chunkEnd;
+  }
+  return null;
+}
+
+function passDimension(size: number, start: number, stride: number) {
+  return size <= start ? 0 : Math.ceil((size - start) / stride);
+}
+
+function pngRasterRowPayloadBytes(structure: ValidPngStructure, raster: GenericPngRaster) {
+  const channels =
+    raster.colorType === 0 || raster.colorType === 3 ? 1 : raster.colorType === 2 ? 3 : raster.colorType === 4 ? 2 : 4;
+  const bitsPerPixel = channels * raster.bitDepth;
+  const passes =
+    raster.interlace === 0
+      ? [[0, 0, 1, 1] as const]
+      : ([
+          [0, 0, 8, 8],
+          [4, 0, 8, 8],
+          [0, 4, 4, 8],
+          [2, 0, 4, 4],
+          [0, 2, 2, 4],
+          [1, 0, 2, 2],
+          [0, 1, 1, 2],
+        ] as const);
+  const rows: number[] = [];
+  for (const [startX, startY, strideX, strideY] of passes) {
+    const width = passDimension(structure.width, startX, strideX);
+    const height = passDimension(structure.height, startY, strideY);
+    if (width === 0 || height === 0) continue;
+    const rowBytes = Math.ceil((width * bitsPerPixel) / 8);
+    for (let row = 0; row < height; row += 1) rows.push(rowBytes);
+  }
+  return rows;
+}
+
+async function hasDecodablePngRaster(imageData: readonly Buffer[], rowPayloadBytes: readonly number[]) {
+  const expectedBytes = rowPayloadBytes.reduce((total, rowBytes) => total + rowBytes + 1, 0);
+  let decodedBytes = 0;
+  let rowIndex = 0;
+  let remainingInRow = 0;
+  const sink = new Writable({
+    write(chunk: Buffer, _encoding, callback) {
+      try {
+        let offset = 0;
+        while (offset < chunk.byteLength) {
+          if (remainingInRow === 0) {
+            if (rowIndex >= rowPayloadBytes.length || chunk[offset] > 4) {
+              throw new Error('PNG raster has an invalid scanline');
+            }
+            remainingInRow = rowPayloadBytes[rowIndex++];
+            offset += 1;
+            decodedBytes += 1;
+          }
+          const take = Math.min(remainingInRow, chunk.byteLength - offset);
+          remainingInRow -= take;
+          offset += take;
+          decodedBytes += take;
+          if (decodedBytes > expectedBytes) throw new Error('PNG raster exceeds its declared dimensions');
+        }
+        callback();
+      } catch (error) {
+        callback(error instanceof Error ? error : new Error(String(error)));
+      }
+    },
+  });
+  try {
+    await pipeline(Readable.from(imageData, { objectMode: false }), createInflate({ chunkSize: 64 * 1024 }), sink);
+  } catch {
+    return false;
+  }
+  return decodedBytes === expectedBytes && rowIndex === rowPayloadBytes.length && remainingInRow === 0;
+}
+
+export async function validateDecodablePngAsync(bytes: Buffer): Promise<ValidPngStructure | null> {
+  const structure = await validatePngStructureAsync(bytes);
+  if (!structure || structure.width * structure.height > MAX_IMAGE_DECODER_PIXELS) return null;
+  const raster = genericPngRaster(bytes);
+  if (!raster) return null;
+  const rowPayloadBytes = pngRasterRowPayloadBytes(structure, raster);
+  return rowPayloadBytes.length > 0 && (await hasDecodablePngRaster(raster.imageData, rowPayloadBytes))
+    ? structure
+    : null;
+}
+
 export function validatePngFile(filePath: string): ValidPngStructure | null {
   const stats = lstatSync(filePath);
   if (!stats.isFile() || stats.isSymbolicLink() || stats.size < 57 || stats.size > MAX_PNG_FILE_BYTES) return null;
@@ -336,7 +448,7 @@ export async function validatePngFileAsync(filePath: string): Promise<ValidPngSt
   try {
     const stats = await lstat(filePath);
     if (!stats.isFile() || stats.isSymbolicLink() || stats.size < 57 || stats.size > MAX_PNG_FILE_BYTES) return null;
-    return validatePngStructureAsync(await readFile(filePath));
+    return validateDecodablePngAsync(await readFile(filePath));
   } catch {
     return null;
   }

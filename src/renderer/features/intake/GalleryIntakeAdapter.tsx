@@ -159,7 +159,7 @@ export const GalleryIntakeAdapter = forwardRef<GalleryIntakeAdapterHandle, Props
         }}
       >
         <DialogContent
-          className="h-[min(880px,calc(100vh-2rem))] w-[min(1180px,calc(100vw-2rem))] max-w-none gap-0 overflow-hidden p-0"
+          className="h-[min(880px,calc(100vh-2rem))] w-[min(86rem,calc(100vw-2rem))] max-w-none gap-0 overflow-hidden p-0"
           onOpenAutoFocus={(event) => {
             event.preventDefault();
             reviewFocusRef.current?.focus();
@@ -177,6 +177,7 @@ export const GalleryIntakeAdapter = forwardRef<GalleryIntakeAdapterHandle, Props
               skippedCount={state.skipped.length}
               onFavoriteChange={controller.setFavorite}
               onEditText={controller.editText}
+              onMove={controller.move}
               onRemove={controller.remove}
               onAddFiles={controller.addFiles}
               onImport={(details) =>

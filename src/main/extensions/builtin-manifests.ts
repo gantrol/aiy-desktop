@@ -5,12 +5,15 @@ import { OPENAI_IMAGE_PROVIDER } from '@/main/extensions/openai-image-api/defini
 import {
   ALIBABA_IMAGE_PROVIDER_ID,
   ALIBABA_MODEL_STUDIO_IMAGE_API_EXTENSION_ID,
+  ANTIGRAVITY_CLI_EXTENSION_ID,
+  ANTIGRAVITY_CLI_PROVIDER_KEY,
   CODEX_APP_SERVER_EXTENSION_ID,
   CODEX_PROVIDER_ID,
   DEEPSEEK_API_EXTENSION_ID,
   ENGLISH_LANGUAGE_EXTENSION_ID,
   GOOGLE_IMAGE_PROVIDER_ID,
   GOOGLE_GEMINI_IMAGE_API_EXTENSION_ID,
+  GOOGLE_GEMINI_ASSISTANT_PROVIDER_KEY,
   OPENAI_IMAGE_API_EXTENSION_ID,
   OPENAI_IMAGE_PROVIDER_KEY,
   TRANSITION_SHOWCASE_EXTENSION_ID,
@@ -25,6 +28,8 @@ import {
 } from '@/main/extensions/external-image-api/endpoints';
 
 export const CODEX_APP_SERVER_PERMISSIONS = ['codex:app-server', 'codex:threads', 'library.read:references'] as const;
+
+export const ANTIGRAVITY_CLI_PERMISSIONS = ['antigravity:cli', 'library.read:references'] as const;
 
 export const OPENAI_IMAGE_API_PERMISSIONS = [
   `network:${OPENAI_IMAGE_PROVIDER.origin}`,
@@ -92,7 +97,7 @@ export const BUILTIN_EXTENSION_MANIFESTS: readonly ExtensionManifestDto[] = [
     manifestVersion: 1,
     kind: 'LANGUAGE',
     id: ENGLISH_LANGUAGE_EXTENSION_ID,
-    version: '0.3.2',
+    version: '0.3.3',
     displayName: 'English',
     description: "Provides the app's English interface.",
     engines: BUILTIN_EXTENSION_ENGINES,
@@ -117,8 +122,37 @@ export const BUILTIN_EXTENSION_MANIFESTS: readonly ExtensionManifestDto[] = [
   {
     manifestVersion: 1,
     kind: 'CAPABILITY',
+    id: ANTIGRAVITY_CLI_EXTENSION_ID,
+    version: '0.1.0',
+    displayName: 'Google Antigravity CLI',
+    description: 'Use a local Antigravity sign-in for agent assistance and preview image generation.',
+    engines: BUILTIN_EXTENSION_ENGINES,
+    contributes: {
+      workflows: ['assistant.promptAssist', 'assistant.directionExploration'],
+      tools: ['antigravity.image.generate', 'antigravity.image.refine'],
+      modelProviders: [ANTIGRAVITY_CLI_PROVIDER_KEY],
+    },
+    permissions: [...ANTIGRAVITY_CLI_PERMISSIONS],
+    optionalPermissions: [],
+    i18n: {
+      defaultLocale: 'en',
+      locales: {
+        en: {
+          displayName: 'Google Antigravity CLI',
+          description: 'Use a local Antigravity sign-in for agent assistance and preview image generation.',
+        },
+        zh: {
+          displayName: 'Google Antigravity CLI',
+          description: '使用本机 Antigravity 登录额度进行 Agent 帮写和预览级图像生成。',
+        },
+      },
+    },
+  },
+  {
+    manifestVersion: 1,
+    kind: 'CAPABILITY',
     id: CODEX_APP_SERVER_EXTENSION_ID,
-    version: '0.3.1',
+    version: '0.3.2',
     displayName: 'Codex App Server',
     description: 'Codex tasks, creative proposals, and separate App Server and CLI image generation routes.',
     engines: BUILTIN_EXTENSION_ENGINES,
@@ -203,11 +237,14 @@ export const BUILTIN_EXTENSION_MANIFESTS: readonly ExtensionManifestDto[] = [
     manifestVersion: 1,
     kind: 'CAPABILITY',
     id: GOOGLE_GEMINI_IMAGE_API_EXTENSION_ID,
-    version: '0.1.1',
-    displayName: 'Google Gemini Image API',
-    description: 'Not tested with a live API. Generate and edit images with Nano Banana 2 through the Gemini API.',
+    version: '0.1.2',
+    displayName: 'Google Gemini API',
+    description: 'Use an AI Studio API key for Gemini assistant tasks and direct image generation.',
     engines: BUILTIN_EXTENSION_ENGINES,
-    contributes: { modelProviders: [GOOGLE_IMAGE_PROVIDER_ID] },
+    contributes: {
+      workflows: ['assistant.promptAssist', 'assistant.directionExploration'],
+      modelProviders: [GOOGLE_IMAGE_PROVIDER_ID, GOOGLE_GEMINI_ASSISTANT_PROVIDER_KEY],
+    },
     permissions: [...GOOGLE_GEMINI_IMAGE_API_PERMISSIONS],
     optionalPermissions: [USER_CONFIGURED_HTTPS_ENDPOINT_PERMISSION],
     configuration: externalImageApiConfiguration(GOOGLE_GEMINI_IMAGE_API_EXTENSION_ID),
@@ -215,9 +252,8 @@ export const BUILTIN_EXTENSION_MANIFESTS: readonly ExtensionManifestDto[] = [
       defaultLocale: 'en',
       locales: {
         en: {
-          displayName: 'Google Gemini Image API',
-          description:
-            'Not tested with a live API. Generate and edit images with Nano Banana 2 through the Gemini API.',
+          displayName: 'Google Gemini API',
+          description: 'Use an AI Studio API key for Gemini assistant tasks and direct image generation.',
           configuration: {
             title: 'Gemini API connection',
             apiKeyLabel: 'Gemini API Key',
@@ -235,8 +271,8 @@ export const BUILTIN_EXTENSION_MANIFESTS: readonly ExtensionManifestDto[] = [
           },
         },
         zh: {
-          displayName: 'Google Gemini 图像 API',
-          description: '未实际测试。通过 Gemini API 使用 Nano Banana 2 生成和编辑图像。',
+          displayName: 'Google Gemini API',
+          description: '使用 AI Studio API Key 调用 Gemini 助手，并直连生成和编辑图像。',
           configuration: {
             title: 'Gemini API 连接',
             apiKeyLabel: 'Gemini API Key',

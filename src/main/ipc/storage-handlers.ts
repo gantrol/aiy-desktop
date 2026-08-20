@@ -25,6 +25,7 @@ export interface LocalSpaceActions {
   cancelTransfer(): void;
   currentCoverUrl(): string | null;
   currentPreviews(): TransitionPreviewDto[];
+  refreshCurrentPreviews(): void;
   open(rootPath: string): LocalSpaceSwitchResult | Promise<LocalSpaceSwitchResult>;
   switchTo(spaceId: string): LocalSpaceSwitchResult | Promise<LocalSpaceSwitchResult>;
   create(name: string): LocalSpaceSwitchResult | Promise<LocalSpaceSwitchResult>;

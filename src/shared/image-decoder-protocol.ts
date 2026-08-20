@@ -10,6 +10,13 @@ export const MAX_IMAGE_DECODER_PIXELS = 4_096 * 4_096;
 
 const requestIdSchema = z.string().uuid();
 const operationSchema = z.enum(['thumbnail', 'crop', 'normalize']);
+export const imageDecoderSourceMimeTypeSchema = z.enum([
+  'image/png',
+  'image/jpeg',
+  'image/webp',
+  'image/gif',
+  'image/svg+xml',
+]);
 const sourceBytesSchema = z
   .instanceof(Uint8Array)
   .refine((bytes) => bytes.byteLength > 0 && bytes.byteLength <= MAX_IMAGE_DECODER_INPUT_BYTES);
@@ -26,6 +33,7 @@ export const imageDecoderRequestSchema = z.discriminatedUnion('operation', [
     .object({
       requestId: requestIdSchema,
       operation: z.literal('thumbnail'),
+      sourceMimeType: imageDecoderSourceMimeTypeSchema,
       sourceBytes: sourceBytesSchema,
       size: z.number().int().min(16).max(2_048),
     })
@@ -34,6 +42,7 @@ export const imageDecoderRequestSchema = z.discriminatedUnion('operation', [
     .object({
       requestId: requestIdSchema,
       operation: z.literal('crop'),
+      sourceMimeType: imageDecoderSourceMimeTypeSchema,
       sourceBytes: sourceBytesSchema,
       ratioWidth: z.number().int().min(1).max(100),
       ratioHeight: z.number().int().min(1).max(100),
@@ -43,6 +52,7 @@ export const imageDecoderRequestSchema = z.discriminatedUnion('operation', [
     .object({
       requestId: requestIdSchema,
       operation: z.literal('normalize'),
+      sourceMimeType: imageDecoderSourceMimeTypeSchema,
       sourceBytes: sourceBytesSchema,
     })
     .strict(),
@@ -94,11 +104,21 @@ export const imageDecoderResponseSchema = z
   });
 
 export type ImageDecoderRequest = z.infer<typeof imageDecoderRequestSchema>;
-type WithoutRequestId<T> = T extends { requestId: string; sourceBytes: Uint8Array }
+export type ImageDecoderSourceMimeType = z.infer<typeof imageDecoderSourceMimeTypeSchema>;
+type WithoutRequestId<T> = T extends {
+  requestId: string;
+  sourceMimeType: ImageDecoderSourceMimeType;
+  sourceBytes: Uint8Array;
+}
   ? Omit<T, 'requestId' | 'sourceBytes'> & { sourceBytes: Uint8Array<ArrayBufferLike> }
   : never;
 export type ImageDecoderRequestInput = WithoutRequestId<ImageDecoderRequest>;
-type WithoutSourceBytes<T> = T extends { sourceBytes: Uint8Array<ArrayBufferLike> } ? Omit<T, 'sourceBytes'> : never;
-export type ImageDecoderFileRequestInput = WithoutSourceBytes<ImageDecoderRequestInput>;
+type WithoutSource<T> = T extends {
+  sourceMimeType: ImageDecoderSourceMimeType;
+  sourceBytes: Uint8Array<ArrayBufferLike>;
+}
+  ? Omit<T, 'sourceMimeType' | 'sourceBytes'>
+  : never;
+export type ImageDecoderFileRequestInput = WithoutSource<ImageDecoderRequestInput>;
 export type ImageDecoderResponse = z.infer<typeof imageDecoderResponseSchema>;
 export type ImageDecoderSuccessResponse = Extract<ImageDecoderResponse, { ok: true }>;

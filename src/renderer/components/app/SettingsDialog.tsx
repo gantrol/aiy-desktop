@@ -1,5 +1,6 @@
-import { ArrowRightIcon } from 'lucide-react';
-import type { Locale } from '@/shared/contracts';
+import { ArrowRightIcon, ExternalLinkIcon, FlagIcon } from 'lucide-react';
+import { useState } from 'react';
+import type { AppSupportDestination, Locale } from '@/shared/contracts';
 import { useI18n } from '@/renderer/i18n/useI18n';
 import { Button } from '@/renderer/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/renderer/components/ui/dialog';
@@ -24,6 +25,17 @@ export function SettingsDialog({
 }: Props) {
   const { locale, setLocale, messages, availableLocales } = useI18n();
   const l = messages.app.settings;
+  const [supportError, setSupportError] = useState('');
+
+  async function openSupportDestination(destination: AppSupportDestination) {
+    setSupportError('');
+    try {
+      await window.desktopApi.appSupportOpen(destination);
+    } catch {
+      setSupportError(l.supportOpenFailed);
+    }
+  }
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-sm">
@@ -74,6 +86,33 @@ export function SettingsDialog({
               {l.manageAiFeatureModels}
               <ArrowRightIcon className="size-4" />
             </Button>
+          </div>
+          <div className="grid gap-2">
+            <Label>{l.privacyAndSupport}</Label>
+            <Button
+              type="button"
+              variant="outline"
+              className="justify-between"
+              onClick={() => void openSupportDestination('PRIVACY_POLICY')}
+            >
+              {l.privacyPolicy}
+              <ExternalLinkIcon className="size-4" />
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              className="justify-between"
+              onClick={() => void openSupportDestination('AI_CONTENT_REPORT')}
+            >
+              {l.reportAiContent}
+              <FlagIcon className="size-4" />
+            </Button>
+            <p className="text-sm text-muted-foreground">{l.reportAiContentHint}</p>
+            {supportError && (
+              <p role="alert" className="text-sm text-destructive">
+                {supportError}
+              </p>
+            )}
           </div>
           <AppUpdateSection active={open} />
         </div>

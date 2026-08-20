@@ -1,6 +1,8 @@
 import type { LibraryDatabase } from '@/main/database';
 import type { IpcHandlerRegistrar } from '@/main/ipc/trusted-handlers';
 import type { AssetFileActions } from '@/main/media/asset-file-actions';
+import { createTransitionShowcaseExportImages } from '@/main/media/transition-showcase-export-images';
+import { transitionShowcaseExportImageIdsSchema } from '@/shared/contracts/transition-showcase';
 import {
   assetFileRevealContextSchema,
   assetFileRevealTargetContextSchema,
@@ -16,6 +18,7 @@ export function registerAssetIpc(
   ipcMain: IpcHandlerRegistrar,
   database: LibraryDatabase,
   assetFiles: AssetFileActions,
+  onTransitionPreviewSelectionChanged: () => void = () => undefined,
 ) {
   ipcMain.handle('gallery:list', (_event, raw) => database.listGallery(galleryListSchema.parse(raw)));
   ipcMain.handle('asset-relationship:get', (_event, rawId, rawLocale) =>
@@ -31,17 +34,28 @@ export function registerAssetIpc(
     assetFiles.reveal(id.parse(rawId), assetFileRevealContextSchema.optional().parse(rawContext)),
   );
   ipcMain.handle('asset-file:open', (_event, rawId) => assetFiles.open(id.parse(rawId)));
+  ipcMain.handle('transition-showcase:export-images', (_event, rawAssetIds) => {
+    const assetIds = transitionShowcaseExportImageIdsSchema.parse(rawAssetIds);
+    const sources = assetIds.map((assetId) => {
+      const source = database.resolveAssetFile(assetId);
+      if (!source) throw new Error('Transition export image is unavailable');
+      return source;
+    });
+    return createTransitionShowcaseExportImages(sources);
+  });
   ipcMain.handle('asset:delete', (_event, rawId) => database.deleteAsset(id.parse(rawId)));
   ipcMain.handle('favorites:text-list', () => database.listFavoriteTexts());
   ipcMain.handle('favorites:add', (_event, rawTarget) =>
     database.addFavorite(materialAlbumTargetSchema.parse(rawTarget)),
   );
   ipcMain.handle('favorites:remove', (_event, rawMaterialId) => database.removeFavorite(id.parse(rawMaterialId)));
-  ipcMain.handle('image-rating:set', (_event, rawAssetId, rawDimension, rawScore) =>
-    database.setImageRating(
+  ipcMain.handle('image-rating:set', (_event, rawAssetId, rawDimension, rawScore) => {
+    const rating = database.setImageRating(
       id.parse(rawAssetId),
       imageRatingDimensionSchema.parse(rawDimension),
       imageRatingScoreSchema.parse(rawScore),
-    ),
-  );
+    );
+    onTransitionPreviewSelectionChanged();
+    return rating;
+  });
 }

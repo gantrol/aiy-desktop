@@ -57,11 +57,38 @@ export class PackCatalogRepository {
     const name = input.name === undefined ? null : required(input.name, 'Local space name');
     return this.db.transaction(() => {
       const current = this.getLocalSpace();
+      const metadata = new Map(
+        (
+          this.db
+            .prepare("SELECT key, value FROM app_meta WHERE key IN ('local_space_id', 'library_name')")
+            .all() as JsonMap[]
+        ).map((row) => [text(row.key), text(row.value)]),
+      );
+      const idChanged = current.id !== id;
+      const nameChanged = name !== null && current.name !== name;
+      const createdAtChanged = input.createdAt !== undefined && current.createdAt !== input.createdAt;
+      const idMetadataChanged = metadata.get('local_space_id') !== id;
+      const nameMetadataChanged = name !== null && metadata.get('library_name') !== name;
+      if (!idChanged && !nameChanged && !createdAtChanged && !idMetadataChanged && !nameMetadataChanged) {
+        return current;
+      }
+
       const timestamp = now();
-      if (current.id !== id) {
+      if (idChanged) {
         const conflict = this.db.prepare('SELECT 1 FROM local_spaces WHERE id = ?').get(id);
         if (conflict) throw new Error('Local space registry id is already in use');
-        this.db.prepare('UPDATE local_spaces SET id = ?, updated_at = ? WHERE id = ?').run(id, timestamp, current.id);
+      }
+
+      if (idChanged || nameChanged || createdAtChanged) {
+        this.db
+          .prepare(
+            `UPDATE local_spaces
+            SET id = ?, name = ?, created_at = ?, updated_at = ?
+            WHERE id = ?`,
+          )
+          .run(id, name ?? current.name, input.createdAt ?? current.createdAt, timestamp, current.id);
+      }
+      if (idChanged) {
         // Keep registry identity alignment application-managed and atomic so
         // every local-space reference changes with its owning record.
         for (const table of [
@@ -73,19 +100,15 @@ export class PackCatalogRepository {
           this.db.prepare(`UPDATE ${table} SET space_id = ? WHERE space_id = ?`).run(id, current.id);
         }
       }
-      this.db
-        .prepare(
-          `UPDATE local_spaces SET name = COALESCE(?, name),
-          created_at = COALESCE(?, created_at), updated_at = ? WHERE id = ?`,
-        )
-        .run(name, input.createdAt ?? null, timestamp, id);
-      this.db
-        .prepare(
-          `INSERT INTO app_meta(key, value) VALUES ('local_space_id', ?)
-          ON CONFLICT(key) DO UPDATE SET value = excluded.value`,
-        )
-        .run(id);
-      if (name) {
+      if (idMetadataChanged) {
+        this.db
+          .prepare(
+            `INSERT INTO app_meta(key, value) VALUES ('local_space_id', ?)
+            ON CONFLICT(key) DO UPDATE SET value = excluded.value`,
+          )
+          .run(id);
+      }
+      if (name !== null && nameMetadataChanged) {
         this.db
           .prepare(
             `INSERT INTO app_meta(key, value) VALUES ('library_name', ?)

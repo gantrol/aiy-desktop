@@ -142,7 +142,7 @@ export function PairComparisonView({
       role="region"
       tabIndex={-1}
       aria-label={`${a.promptLabel} · ${b.promptLabel}`}
-      className={cn('flex min-h-0 min-w-0 flex-1 flex-col bg-media-surround outline-none', className)}
+      className={cn('flex min-h-0 min-w-0 flex-1 flex-col bg-surface-sunken outline-none', className)}
       data-mode={mode}
     >
       <header className="flex min-h-12 shrink-0 flex-wrap items-center gap-1.5 border-b bg-background px-2 py-1.5">

@@ -1,4 +1,4 @@
-import type { AssetDto, CreationRelationFilter } from '@/shared/contracts';
+import type { AssetDto, CreationRelationFilter, GalleryAlbumScope } from '@/shared/contracts';
 import { MATERIAL_LIBRARY_ALBUM_INTENT } from '@/main/database/albums/album-intents';
 import { albumProjectedAssetPredicate } from '@/main/database/albums/album-projection-repository';
 import { type JsonMap, mediaUrl, text } from '@/main/database/core/values';
@@ -122,6 +122,11 @@ export function creationScopeAssetFilter(
   relation: CreationRelationFilter,
 ): { predicate: string; parameters: string[] } {
   const output = `(
+    NOT EXISTS (
+      SELECT 1 FROM prompt_series_output_exclusions scoped_exclusion
+      WHERE scoped_exclusion.series_id = scoped_series.id
+        AND scoped_exclusion.image_asset_id = asset.id
+    ) AND (
     EXISTS (
       SELECT 1 FROM generation_runs scoped_run
       JOIN prompt_versions scoped_version ON scoped_version.id = scoped_run.prompt_version_id
@@ -139,6 +144,7 @@ export function creationScopeAssetFilter(
       SELECT 1 FROM image_transform_runs scoped_transform
       WHERE scoped_transform.series_id = scoped_series.id
         AND scoped_transform.output_asset_id = asset.id AND scoped_transform.deleted_at IS NULL
+    )
     )
   )`;
   const input = `(
@@ -227,9 +233,34 @@ export const dictionaryUncategorizedAssetPredicate = `EXISTS (
 
 export const userAlbumAssetPredicate = albumProjectedAssetPredicate;
 
+export const directUserAlbumAssetPredicate = `EXISTS (
+  SELECT 1 FROM album_members direct_member
+  JOIN materials direct_material ON direct_material.id = direct_member.target_id
+    AND direct_material.kind IN ('IMAGE', 'VIDEO') AND direct_material.deleted_at IS NULL
+  WHERE direct_member.album_id = ? AND direct_member.target_type = 'MATERIAL'
+    AND direct_member.deleted_at IS NULL AND direct_material.image_asset_id = asset.id
+)`;
+
+export const unfiledMaterialAssetPredicate = `NOT EXISTS (
+  SELECT 1 FROM album_members organized_member
+  JOIN albums organized_album ON organized_album.id = organized_member.album_id
+    AND organized_album.deleted_at IS NULL AND organized_album.intent = '${MATERIAL_LIBRARY_ALBUM_INTENT}'
+  JOIN materials organized_material ON organized_material.id = organized_member.target_id
+    AND organized_material.kind IN ('IMAGE', 'VIDEO') AND organized_material.deleted_at IS NULL
+  WHERE organized_member.target_type = 'MATERIAL' AND organized_member.deleted_at IS NULL
+    AND organized_material.image_asset_id = asset.id
+)`;
+
+/** Assets represented by neither a user material album nor the live creation projection. */
+export const unorganizedMaterialAssetPredicate = `(
+  ${unfiledMaterialAssetPredicate}
+  AND NOT (${creationScopeAssetFilter(creationRootScope(), 'ALL').predicate})
+)`;
+
 export function materialAlbumAssetFilter(
   materialAlbumId: string,
   creationRelation: CreationRelationFilter = 'OUTPUT',
+  albumScope: GalleryAlbumScope = 'TREE',
 ): { predicate: string; parameters: string[] } {
   if (materialAlbumId === MATERIAL_ALBUM_CREATION_ROOT_ID) {
     return creationScopeAssetFilter(creationRootScope(), creationRelation);
@@ -254,6 +285,9 @@ export function materialAlbumAssetFilter(
   const sourceSeriesId = materialAlbumCreationSeriesSourceId(materialAlbumId);
   if (sourceSeriesId) {
     return creationScopeAssetFilter(creationSeriesScope(sourceSeriesId), creationRelation);
+  }
+  if (albumScope === 'DIRECT') {
+    return { predicate: directUserAlbumAssetPredicate, parameters: [materialAlbumId] };
   }
   return { predicate: userAlbumAssetPredicate, parameters: [materialAlbumId] };
 }

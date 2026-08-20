@@ -3,13 +3,17 @@ import { copyFileSync, existsSync, mkdirSync, readFileSync, renameSync, unlinkSy
 import net from 'node:net';
 import path from 'node:path';
 import { DeepSeekAssistantAdapter } from '@/main/assistant-models/deepseek';
+import { AntigravityAssistantAdapter } from '@/main/assistant-models/antigravity';
+import { GoogleGeminiAssistantAdapter } from '@/main/assistant-models/google-gemini';
 import { CodexAdapter } from '@/main/assistant/codex';
 import { LibraryDatabase } from '@/main/database';
 import { DeepSeekApiRuntime } from '@/main/extensions/deepseek-api/runtime';
+import { AntigravityCliRuntime } from '@/main/extensions/antigravity-cli/runtime';
 import { ExternalImageApiRuntime } from '@/main/extensions/external-image-api/runtime';
 import { OpenAiImageApiRuntime } from '@/main/extensions/openai-image-api/runtime';
 import { ExtensionRegistry } from '@/main/extensions/registry';
 import { GenerationCoordinator } from '@/main/generation/coordinator';
+import { AntigravityImageProvider } from '@/main/generation-models/antigravity-cli/antigravity-image-provider';
 import {
   CodexImageModel,
   createExternalImageProviders,
@@ -33,6 +37,7 @@ import { createModelWorkerRequestDispatcher } from '@/main/model-worker/request-
 import { VideoDocumentGenerationService } from '@/main/video-documents/generation-service';
 import { VideoDocumentTranscriptTranslationService } from '@/main/video-transcript/translation-service';
 import {
+  ANTIGRAVITY_CLI_EXTENSION_ID,
   CODEX_APP_SERVER_EXTENSION_ID,
   CODEX_PROVIDER_ID,
   OPENAI_IMAGE_API_EXTENSION_ID,
@@ -233,6 +238,7 @@ function createWorkerSnapshot(
   workerId: string,
   generation: GenerationCoordinator | null,
   codex: CodexAdapter | null,
+  antigravity: AntigravityCliRuntime,
   activeAssistantJobs: number,
 ): ModelWorkerSnapshot {
   if (!generation || !codex) throw new Error('Background model service is still starting');
@@ -242,6 +248,7 @@ function createWorkerSnapshot(
     workerId,
     codexHealth: codex.cachedHealth,
     codexPendingCount: codex.pendingCount + activeAssistantJobs,
+    antigravityCliStatus: antigravity.status,
     imageGenerationRoutes: generation.imageGenerationRoutes,
     generationTasks: generation.tasks,
   };
@@ -266,11 +273,20 @@ function createImageGenerationRoutes(options: {
   extensions: ExtensionRegistry;
   openAiImageApi: OpenAiImageApiRuntime;
   externalImageApis: ExternalImageApiRuntime;
+  antigravity: AntigravityCliRuntime;
   libraryRoot: string;
   internalModelsEnabled: boolean;
 }) {
-  const { database, codex, extensions, openAiImageApi, externalImageApis, libraryRoot, internalModelsEnabled } =
-    options;
+  const {
+    database,
+    codex,
+    extensions,
+    openAiImageApi,
+    externalImageApis,
+    antigravity,
+    libraryRoot,
+    internalModelsEnabled,
+  } = options;
   return new ImageGenerationRouteRegistry([
     new ModelBackedGenerationProvider(
       { id: CODEX_PROVIDER_ID, name: 'Codex', extensionId: CODEX_APP_SERVER_EXTENSION_ID },
@@ -286,6 +302,9 @@ function createImageGenerationRoutes(options: {
     new OpenAiImageProvider(database, libraryRoot, openAiImageApi, () =>
       extensions.isActivated(OPENAI_IMAGE_API_EXTENSION_ID),
     ),
+    new AntigravityImageProvider(database, antigravity, libraryRoot, () =>
+      extensions.isActivated(ANTIGRAVITY_CLI_EXTENSION_ID),
+    ),
     ...createExternalImageProviders(
       database,
       libraryRoot,
@@ -295,21 +314,47 @@ function createImageGenerationRoutes(options: {
   ]);
 }
 
+function configuredE2eReadyDelay() {
+  if (process.env.AIY_E2E !== '1') return 0;
+  return Math.max(0, Math.min(10_000, Number(process.env.AIY_E2E_MODEL_WORKER_READY_DELAY_MS) || 0));
+}
+
+function createWorkerRuntimes(libraryRoot: string) {
+  const deepSeekApi = new DeepSeekApiRuntime();
+  const antigravity = new AntigravityCliRuntime();
+  const externalImageApis = new ExternalImageApiRuntime();
+  return {
+    deepSeekApi,
+    deepSeek: new DeepSeekAssistantAdapter(deepSeekApi),
+    antigravity,
+    antigravityAssistant: new AntigravityAssistantAdapter(antigravity, libraryRoot),
+    openAiImageApi: new OpenAiImageApiRuntime(),
+    externalImageApis,
+    googleGemini: new GoogleGeminiAssistantAdapter(externalImageApis),
+  };
+}
+
+function refreshInitialConnections(
+  codex: CodexAdapter,
+  antigravity: AntigravityCliRuntime,
+  extensions: ExtensionRegistry,
+  onSettled: () => void,
+) {
+  const antigravityStartup = extensions.isActivated(ANTIGRAVITY_CLI_EXTENSION_ID)
+    ? antigravity.refresh()
+    : Promise.resolve();
+  void Promise.allSettled([codex.refreshHealth(), antigravityStartup]).then(onSettled);
+}
+
 export async function runModelWorker() {
   const config = parseModelWorkerLaunchConfig(process.env.AIY_MODEL_WORKER_CONFIG);
   delete process.env.AIY_MODEL_WORKER_CONFIG;
-  const e2eReadyDelayMs =
-    process.env.AIY_E2E === '1'
-      ? Math.max(0, Math.min(10_000, Number(process.env.AIY_E2E_MODEL_WORKER_READY_DELAY_MS) || 0))
-      : 0;
+  const e2eReadyDelayMs = configuredE2eReadyDelay();
 
   let database: LibraryDatabase | null = null;
   let codex: CodexAdapter | null = null;
-  const deepSeekApi = new DeepSeekApiRuntime();
-  const deepSeek = new DeepSeekAssistantAdapter(deepSeekApi);
+  const runtimes = createWorkerRuntimes(config.libraryRoot);
   let extensions: ExtensionRegistry | null = null;
-  const openAiImageApi = new OpenAiImageApiRuntime();
-  const externalImageApis = new ExternalImageApiRuntime();
   let generation: GenerationCoordinator | null = null;
   let dispatchRequest: ReturnType<typeof createModelWorkerRequestDispatcher> | null = null;
   let closing = false;
@@ -323,7 +368,14 @@ export async function runModelWorker() {
   const connections = new Set<net.Socket>();
   const activeRequests = new Map<string, AbortController>();
   const snapshot = () =>
-    createWorkerSnapshot(config.runtimeFingerprint, config.workerId, generation, codex, activeAssistantJobs);
+    createWorkerSnapshot(
+      config.runtimeFingerprint,
+      config.workerId,
+      generation,
+      codex,
+      runtimes.antigravity,
+      activeAssistantJobs,
+    );
   const broadcast = (message: ModelWorkerServerMessage) => broadcastWorkerMessage(clients, message);
 
   const server = createWorkerServer({
@@ -357,9 +409,10 @@ export async function runModelWorker() {
           authenticated: false,
           message: 'Checking local Codex',
         },
-      openAiImageApiStatus: () => openAiImageApi.status(),
-      deepSeekApiStatus: () => deepSeekApi.status(),
-      externalImageApiStatus: (extensionId) => externalImageApis.status(extensionId),
+      openAiImageApiStatus: () => runtimes.openAiImageApi.status(),
+      deepSeekApiStatus: () => runtimes.deepSeekApi.status(),
+      antigravityCliStatus: () => runtimes.antigravity.status,
+      externalImageApiStatus: (extensionId) => runtimes.externalImageApis.status(extensionId),
     });
     codex = new CodexAdapter(database, config.libraryRoot, undefined, undefined, undefined, {
       manageGenerationJobs: true,
@@ -372,8 +425,9 @@ export async function runModelWorker() {
       database,
       codex,
       extensions,
-      openAiImageApi,
-      externalImageApis,
+      openAiImageApi: runtimes.openAiImageApi,
+      externalImageApis: runtimes.externalImageApis,
+      antigravity: runtimes.antigravity,
       libraryRoot: config.libraryRoot,
       internalModelsEnabled: config.internalModelsEnabled,
     });
@@ -394,11 +448,14 @@ export async function runModelWorker() {
       videoDocuments,
       videoDocumentTranslations,
       codex,
-      deepSeek,
+      deepSeek: runtimes.deepSeek,
+      antigravity: runtimes.antigravity,
+      antigravityAssistant: runtimes.antigravityAssistant,
+      googleGemini: runtimes.googleGemini,
       extensions,
-      openAiImageApi,
-      deepSeekApi,
-      externalImageApis,
+      openAiImageApi: runtimes.openAiImageApi,
+      deepSeekApi: runtimes.deepSeekApi,
+      externalImageApis: runtimes.externalImageApis,
       libraryRoot: config.libraryRoot,
       imageTransformWorkerPath: config.imageTransformWorkerPath,
       activeRequestCount: () => activeRequests.size,
@@ -454,7 +511,9 @@ export async function runModelWorker() {
     temporaryDescriptorPath = null;
     descriptorWritten = true;
 
-    void codex.refreshHealth().then(() => broadcast({ type: 'snapshot', snapshot: snapshot() }));
+    refreshInitialConnections(codex, runtimes.antigravity, extensions, () =>
+      broadcast({ type: 'snapshot', snapshot: snapshot() }),
+    );
     scheduleIdleExit();
   } catch (error) {
     closing = true;
@@ -526,9 +585,9 @@ export async function runModelWorker() {
     clients.clear();
     generation?.dispose();
     generation = null;
-    openAiImageApi.clear();
-    deepSeekApi.clear();
-    externalImageApis.clear();
+    runtimes.openAiImageApi.clear();
+    runtimes.deepSeekApi.clear();
+    runtimes.externalImageApis.clear();
     await codex?.dispose();
     codex = null;
     extensions = null;

@@ -325,6 +325,24 @@ export const validateGenerationCanvas = (
 
 export const generationSchema = generationBaseSchema.superRefine(validateGenerationCanvas);
 
+export const promptVersionCreateSchema = generationBaseSchema
+  .pick({
+    seriesId: true,
+    baseVersionId: true,
+    title: true,
+    titleLocale: true,
+    manualPrompt: true,
+    prompt: true,
+    changeSummary: true,
+    promptNodes: true,
+    referenceAssetIds: true,
+    termPromptLocale: true,
+    termIds: true,
+    wordPaletteReferences: true,
+  })
+  .extend({ seriesId: id, baseVersionId: id.nullable(), prompt: z.string().max(30_000) })
+  .strict();
+
 export const generationOutputSetFailedSchema = z
   .object({
     runId: id,
@@ -527,7 +545,7 @@ export const intakeMediaBytesSchema = z
     message: 'Media must be 100 MB or smaller',
   });
 
-export const creatorIntakeMimeTypes = new Set(['image/png', 'image/jpeg', 'image/webp']);
+export const creatorIntakeMimeTypes = new Set(['image/png', 'image/jpeg', 'image/webp', 'image/svg+xml']);
 
 export const intakeSchema = z
   .object({
@@ -543,7 +561,7 @@ export const intakeSchema = z
             id,
             kind: z.literal('IMAGE'),
             name: z.string().min(1).max(500),
-            mimeType: z.enum(['image/png', 'image/jpeg', 'image/webp', 'image/gif']),
+            mimeType: z.enum(['image/png', 'image/jpeg', 'image/webp', 'image/gif', 'image/svg+xml']),
             width: z.number().int().min(0).max(65_535).optional().default(0),
             height: z.number().int().min(0).max(65_535).optional().default(0),
             sourceUrl: z
@@ -593,7 +611,7 @@ export const intakeSchema = z
       if (value.intent === 'START_CREATION' && (item.kind !== 'IMAGE' || !creatorIntakeMimeTypes.has(item.mimeType))) {
         context.addIssue({
           code: 'custom',
-          message: 'Only PNG, JPEG, and WebP media can start a creation',
+          message: 'Only PNG, JPEG, WebP, and SVG media can start a creation',
           path: ['items', index, 'mimeType'],
         });
       }

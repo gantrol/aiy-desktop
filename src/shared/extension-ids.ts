@@ -12,6 +12,12 @@ export const CODEX_CLI_PROVIDER_KEY = 'codex-cli';
 export const CODEX_APP_SERVER_CONNECTION_ID = `${CODEX_APP_SERVER_EXTENSION_ID}:app-server`;
 export const CODEX_CLI_CONNECTION_ID = `${CODEX_APP_SERVER_EXTENSION_ID}:cli`;
 export const CODEX_IMAGE_DISCOVERY_EXTENSION_ID = 'com.aiy.codex-image-discovery';
+export const ANTIGRAVITY_CLI_EXTENSION_ID = 'com.aiy.antigravity-cli';
+export const ANTIGRAVITY_CLI_PROVIDER_KEY = 'antigravity-cli';
+export const ANTIGRAVITY_CLI_CONNECTION_ID = `${ANTIGRAVITY_CLI_EXTENSION_ID}:cli`;
+export const ANTIGRAVITY_CLI_DEFAULT_MODEL_KEY = 'antigravity-default';
+export const ANTIGRAVITY_CLI_IMAGE_MODEL_ID = 'antigravity-agent-image';
+export const ANTIGRAVITY_CLI_IMAGE_MODEL_KEY = `${ANTIGRAVITY_CLI_PROVIDER_KEY}/${ANTIGRAVITY_CLI_IMAGE_MODEL_ID}`;
 export const TRANSITION_SHOWCASE_EXTENSION_ID = 'com.aiy.transition-showcase';
 export const FEATURE_DEMO_EXTENSION_ID = 'com.aiy.feature-demo';
 export const OPENAI_IMAGE_API_EXTENSION_ID = 'com.aiy.openai-image-api';
@@ -21,6 +27,10 @@ export const OPENAI_IMAGE_CONNECTION_ID = `${OPENAI_IMAGE_API_EXTENSION_ID}:defa
 export const DEEPSEEK_API_EXTENSION_ID = 'com.aiy.deepseek-api';
 export const ENGLISH_LANGUAGE_EXTENSION_ID = 'com.aiy.language.en';
 export const GOOGLE_GEMINI_IMAGE_API_EXTENSION_ID = 'com.aiy.google-gemini-image-api';
+/** Legacy ID retained because existing installations and encrypted connection files use it. */
+export const GOOGLE_GEMINI_API_EXTENSION_ID = GOOGLE_GEMINI_IMAGE_API_EXTENSION_ID;
+export const GOOGLE_GEMINI_ASSISTANT_PROVIDER_KEY = 'google-gemini';
+export const GOOGLE_GEMINI_ASSISTANT_MODEL_KEY = 'gemini-3.6-flash';
 export const ALIBABA_MODEL_STUDIO_IMAGE_API_EXTENSION_ID = 'com.aiy.alibaba-model-studio-image-api';
 export const VOLCENGINE_ARK_IMAGE_API_EXTENSION_ID = 'com.aiy.volcengine-ark-image-api';
 
@@ -38,6 +48,7 @@ const GENERATION_PROVIDER_EXTENSION_IDS: Readonly<Record<string, string>> = {
   [CODEX_PROVIDER_ID]: CODEX_APP_SERVER_EXTENSION_ID,
   [CODEX_APP_SERVER_PROVIDER_KEY]: CODEX_APP_SERVER_EXTENSION_ID,
   [CODEX_CLI_PROVIDER_KEY]: CODEX_APP_SERVER_EXTENSION_ID,
+  [ANTIGRAVITY_CLI_PROVIDER_KEY]: ANTIGRAVITY_CLI_EXTENSION_ID,
   [OPENAI_IMAGE_PROVIDER_KEY]: OPENAI_IMAGE_API_EXTENSION_ID,
   [GOOGLE_IMAGE_PROVIDER_ID]: GOOGLE_GEMINI_IMAGE_API_EXTENSION_ID,
   [ALIBABA_IMAGE_PROVIDER_ID]: ALIBABA_MODEL_STUDIO_IMAGE_API_EXTENSION_ID,

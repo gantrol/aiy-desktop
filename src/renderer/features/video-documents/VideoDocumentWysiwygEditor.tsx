@@ -4,7 +4,8 @@ import { TableKit } from '@tiptap/extension-table';
 import TaskItem from '@tiptap/extension-task-item';
 import TaskList from '@tiptap/extension-task-list';
 import { Markdown } from '@tiptap/markdown';
-import { EditorContent, useEditor, useEditorState } from '@tiptap/react';
+import { EditorContent, NodeViewWrapper, ReactNodeViewRenderer, useEditor, useEditorState } from '@tiptap/react';
+import type { NodeViewProps } from '@tiptap/react';
 import StarterKit from '@tiptap/starter-kit';
 import { useEffect, useMemo, useRef } from 'react';
 import type {
@@ -23,6 +24,7 @@ import {
   insertVideoDocumentImage,
   videoDocumentFrameImageAttributes,
 } from '@/renderer/features/video-documents/videoDocumentEditorMedia';
+import { ImageAmbientBackdrop } from '@/renderer/components/media/AmbientImage';
 
 export type { VideoDocumentWysiwygEditorLabels } from '@/renderer/features/video-documents/VideoDocumentWysiwygToolbar';
 export type { VideoDocumentEditorImageImport } from '@/renderer/features/video-documents/VideoDocumentWysiwygToolbar';
@@ -72,6 +74,25 @@ interface DocumentImageMediaSnapshot {
   media: readonly VideoDocumentRevisionMediaDto[];
 }
 
+function DocumentImageNodeView({ node }: NodeViewProps) {
+  const src = typeof node.attrs.src === 'string' ? node.attrs.src : '';
+  const alt = typeof node.attrs.alt === 'string' ? node.attrs.alt : '';
+  const title = typeof node.attrs.title === 'string' ? node.attrs.title : undefined;
+  return (
+    <NodeViewWrapper className="relative isolate my-5 block max-h-[34rem] w-full overflow-hidden rounded-lg border bg-surface-sunken">
+      {src && <ImageAmbientBackdrop src={src} loading="lazy" />}
+      <img
+        src={src}
+        alt={alt}
+        title={title}
+        className="relative z-10 max-h-[34rem] w-full object-contain"
+        loading="lazy"
+        draggable={false}
+      />
+    </NodeViewWrapper>
+  );
+}
+
 function createDocumentImageExtension(resolveMedia: () => DocumentImageMediaSnapshot) {
   return Image.extend({
     addAttributes() {
@@ -104,9 +125,12 @@ function createDocumentImageExtension(resolveMedia: () => DocumentImageMediaSnap
       const title = typeof node.attrs?.title === 'string' ? node.attrs.title : '';
       return title ? `![${alt}](${src} "${title}")` : `![${alt}](${src})`;
     },
+    addNodeView() {
+      return ReactNodeViewRenderer(DocumentImageNodeView);
+    },
   }).configure({
     HTMLAttributes: {
-      class: 'my-5 max-h-[34rem] w-full rounded-lg border bg-media-surround-dark object-contain',
+      class: 'my-5 max-h-[34rem] w-full rounded-lg border bg-surface-sunken object-contain',
     },
   });
 }

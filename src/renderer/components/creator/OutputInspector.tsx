@@ -34,10 +34,11 @@ import type {
   GenerationVersionInput,
   Locale,
   PromptSeriesDto,
+  PromptVersionCreateResult,
   TermListItem,
   WordPaletteDto,
 } from '@/shared/contracts';
-import { CloseIcon, ImageIcon } from '@/renderer/icons';
+import { CloseIcon, ImageIcon as AppImageIcon } from '@/renderer/icons';
 import { useI18n } from '@/renderer/i18n/useI18n';
 import { cn } from '@/renderer/lib/utils';
 import { Button } from '@/renderer/components/ui/button';
@@ -45,6 +46,7 @@ import { Badge } from '@/renderer/components/ui/badge';
 import { HoverRevealButton } from '@/renderer/components/ui/hover-reveal-button';
 import { Segmented, SegmentedItem } from '@/renderer/components/ui/segmented';
 import { AssetFileContextMenu } from '@/renderer/components/media/AssetFileContextMenu';
+import { AmbientImage } from '@/renderer/components/media/AmbientImage';
 import { AnnotationComposer } from '@/renderer/components/creator/annotations/AnnotationComposer';
 import { AnnotationList } from '@/renderer/components/creator/annotations/AnnotationList';
 import { AnnotationToolbar } from '@/renderer/components/creator/annotations/AnnotationToolbar';
@@ -64,6 +66,8 @@ import type { AnnotationRefinementState } from '@/renderer/components/creator/an
 import type { CreationExperimentContext } from '@/renderer/components/creator/creationExperimentContext';
 import type { CreationOutputVersionGroup } from '@/renderer/components/creator/creationOutputProjection';
 import { OutputVersionStrip } from '@/renderer/components/creator/OutputVersionStrip';
+import { CreationResultsOrganizerDialog } from '@/renderer/components/creator/CreationResultsOrganizerDialog';
+import { useCreationOutputPresentation } from '@/renderer/components/creator/useCreationOutputPresentation';
 import {
   ImageEditConfirmDialog,
   type ImageEditConfirmValue,
@@ -114,6 +118,7 @@ interface Props {
   onImportFiles(files: File[], source: RendererImageImportSource, sourceUrl?: string): void;
   onChooseImport(): void;
   onPasteText(text: string): void;
+  onCreatePromptVersion(seriesId: string): Promise<PromptVersionCreateResult | null>;
   onImportedOutputUpdated(): Promise<void>;
   onImportedOutputSaved(output: ImportedCreationOutputDto): void;
   notify(message: string): void;
@@ -195,6 +200,7 @@ export function OutputInspector({
   onImportFiles,
   onChooseImport,
   onPasteText,
+  onCreatePromptVersion,
   onImportedOutputUpdated,
   onImportedOutputSaved,
   notify,
@@ -269,6 +275,14 @@ export function OutputInspector({
       ...outputProjection.flatMap((group) => group.directionStacks.flatMap((stack) => stack.series ?? [])),
     ].filter((item, index, items) => items.findIndex((candidate) => candidate.id === item.id) === index);
     for (const ownerSeries of relatedSeries) {
+      for (const output of ownerSeries.importedOutputs ?? [])
+        append({
+          asset: output.asset,
+          ownerSeries,
+          experimentContext: null,
+          projected: false,
+          failed: false,
+        });
       for (const asset of allAssets(ownerSeries))
         append({
           asset,
@@ -325,6 +339,36 @@ export function OutputInspector({
   const [reusingPrompt, setReusingPrompt] = useState(false);
   const [busyAnnotationId, setBusyAnnotationId] = useState<string | null>(null);
   const [displayMode, setDisplayMode] = useState<'preview' | 'comparison'>('preview');
+  const [organizerTarget, setOrganizerTarget] = useState<{
+    seriesId: string;
+    outputId: string;
+  } | null>(null);
+  const organizerSeries = organizerTarget
+    ? (assetRecords.find((record) => record.ownerSeries.id === organizerTarget.seriesId)?.ownerSeries ?? null)
+    : null;
+  const canOrganizeAsset = useCallback(
+    (targetAssetId: string) => {
+      const record = assetRecords.find((candidate) => candidate.asset.id === targetAssetId);
+      return Boolean(record?.ownerSeries.importedOutputs?.some((output) => output.imageAssetId === targetAssetId));
+    },
+    [assetRecords],
+  );
+  const openResultsOrganizer = useCallback(
+    (targetAssetId: string) => {
+      const record = assetRecords.find((candidate) => candidate.asset.id === targetAssetId);
+      const output = record?.ownerSeries.importedOutputs?.find((candidate) => candidate.imageAssetId === targetAssetId);
+      if (!record || !output) return;
+      setOrganizerTarget({ seriesId: record.ownerSeries.id, outputId: output.id });
+    },
+    [assetRecords],
+  );
+  const outputPresentation = useCreationOutputPresentation({
+    records: assetRecords,
+    coverSeries: inspectorSeries,
+    refresh: onImportedOutputUpdated,
+    notify,
+  });
+  const presentationActionsForAsset = outputPresentation.actionsForAsset;
 
   const numberedAnnotations = useMemo(
     () => annotations.map((annotation, index) => ({ annotation, number: index + 1 })),
@@ -429,6 +473,7 @@ export function OutputInspector({
     setShowHistory(false);
     setRefinementDialogOpen(false);
     setRefinementError('');
+    setOrganizerTarget(null);
   }, [assets, newestAssetId, series?.id]);
 
   useEffect(() => {
@@ -823,6 +868,10 @@ export function OutputInspector({
       locale={locale}
       onSelect={selectAsset}
       onSetFailed={setOutputFailed}
+      organizeLabel={messages.creator.resultsOrganizer.organize}
+      canOrganize={canOrganizeAsset}
+      onOrganize={openResultsOrganizer}
+      contextActionsForAsset={presentationActionsForAsset}
       notify={notify}
       revealContextForAsset={revealContextForAsset}
     />
@@ -934,7 +983,12 @@ export function OutputInspector({
         (asset ? (
           <>
             <div className="relative min-h-0 flex-1" data-slot="output-inspector-image" data-asset-id={asset.id}>
-              <AssetFileContextMenu assetId={asset.id} notify={notify} revealContext={revealContextForAsset(asset.id)}>
+              <AssetFileContextMenu
+                assetId={asset.id}
+                notify={notify}
+                revealContext={revealContextForAsset(asset.id)}
+                actions={presentationActionsForAsset(asset.id)}
+              >
                 <AnnotationImageStage
                   ref={annotationViewerRef}
                   className="size-full"
@@ -1111,11 +1165,12 @@ export function OutputInspector({
                           assetId={item.id}
                           notify={notify}
                           revealContext={revealContextForAsset(item.id)}
+                          actions={presentationActionsForAsset(item.id)}
                         >
                           <button
                             type="button"
                             className={cn(
-                              'aspect-[3/4] min-w-0 overflow-hidden rounded-md border-2 border-transparent bg-media-surround-light p-0.5 outline-none hover:border-border-strong focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring',
+                              'relative isolate aspect-[3/4] min-w-0 overflow-hidden rounded-md border-2 border-transparent bg-surface-sunken p-0.5 outline-none hover:border-border-strong focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring',
                               item.id === asset.id && 'border-selected-border ring-2 ring-ring',
                             )}
                             onClick={() => {
@@ -1123,13 +1178,14 @@ export function OutputInspector({
                               onGalleryOpenChange(false);
                             }}
                           >
-                            <img
-                              className="size-full rounded-sm object-contain"
+                            <AmbientImage
                               src={item.mediaUrl}
                               alt=""
                               loading="lazy"
                               decoding="async"
                               draggable={false}
+                              frameClassName="size-full rounded-sm"
+                              className="size-full object-contain"
                             />
                           </button>
                         </AssetFileContextMenu>
@@ -1157,7 +1213,7 @@ export function OutputInspector({
                 {importing ? (
                   <LoaderCircleIcon className="size-5 animate-spin" />
                 ) : (
-                  <ImageIcon className="size-6 opacity-50" />
+                  <AppImageIcon className="size-6 opacity-50" />
                 )}
               </Button>
             </div>
@@ -1202,6 +1258,21 @@ export function OutputInspector({
         onCrop={(ratio) => void cropImage(ratio)}
         onReframe={(ratio) => void reframeImage(ratio)}
       />
+      <CreationResultsOrganizerDialog
+        open={Boolean(organizerTarget && organizerSeries)}
+        series={organizerSeries}
+        initialOutputId={organizerTarget?.outputId ?? null}
+        onOpenChange={(open) => {
+          if (!open) setOrganizerTarget(null);
+        }}
+        onCreateVersion={onCreatePromptVersion}
+        onSaved={async (outputs) => {
+          for (const output of outputs) onImportedOutputSaved(output);
+          await onImportedOutputUpdated();
+        }}
+        notify={notify}
+      />
+      {outputPresentation.dialog}
     </PasteDropSurface>
   );
 
@@ -1230,6 +1301,7 @@ export function OutputInspector({
             }}
             notify={notify}
             revealContextForAsset={revealContextForAsset}
+            actionsForAsset={presentationActionsForAsset}
             thumbnailLabel={(_asset, index) => `${gallery.preview} ${index + 1}`}
           />
         </div>

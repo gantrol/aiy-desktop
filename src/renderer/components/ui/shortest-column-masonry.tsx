@@ -27,12 +27,24 @@ export interface MasonryLayout {
   placements: MasonryPlacement[];
 }
 
+export interface MasonrySectionBreak {
+  index: number;
+  gap: number;
+}
+
 export interface ShortestColumnMasonryProps {
   items: readonly MasonryLayoutItem[];
-  renderItem(item: MasonryLayoutItem, index: number): ReactNode;
+  renderItem(
+    item: MasonryLayoutItem,
+    index: number,
+    placement: Readonly<MasonryPlacement>,
+    layout: Readonly<MasonryLayout>,
+  ): ReactNode;
   minColumnWidth?: number;
   gap?: number;
   className?: string;
+  sectionBreak?: Readonly<MasonrySectionBreak>;
+  onLayoutChange?(layout: MasonryLayout): void;
 }
 
 function validPositiveNumber(value: number, fallback: number) {
@@ -49,6 +61,7 @@ export function computeShortestColumnMasonry(
   containerWidth: number,
   minColumnWidth = DEFAULT_MIN_COLUMN_WIDTH,
   gap = DEFAULT_GAP,
+  sectionBreak?: Readonly<MasonrySectionBreak>,
 ): MasonryLayout {
   const width = Number.isFinite(containerWidth) ? Math.max(0, containerWidth) : 0;
   const minimumWidth = validPositiveNumber(minColumnWidth, DEFAULT_MIN_COLUMN_WIDTH);
@@ -58,6 +71,15 @@ export function computeShortestColumnMasonry(
   const columnHeights = Array.from({ length: columnCount }, () => 0);
 
   const placements = items.map((item, index) => {
+    if (index === sectionBreak?.index) {
+      const occupiedHeights = columnHeights.filter((height) => height > 0);
+      const fallbackHeight = occupiedHeights.length ? Math.min(...occupiedHeights) : 0;
+      const extraGap = Math.max(0, sectionBreak.gap - safeGap);
+      for (let column = 0; column < columnHeights.length; column += 1) {
+        columnHeights[column] = (columnHeights[column] || fallbackHeight) + extraGap;
+      }
+    }
+
     let column = 0;
     for (let candidate = 1; candidate < columnHeights.length; candidate += 1) {
       if (columnHeights[candidate] < columnHeights[column]) column = candidate;
@@ -92,6 +114,8 @@ export function ShortestColumnMasonry({
   minColumnWidth = DEFAULT_MIN_COLUMN_WIDTH,
   gap = DEFAULT_GAP,
   className,
+  sectionBreak,
+  onLayoutChange,
 }: ShortestColumnMasonryProps) {
   const rootRef = useRef<HTMLDivElement>(null);
   const [containerWidth, setContainerWidth] = useState(0);
@@ -113,10 +137,23 @@ export function ShortestColumnMasonry({
     return () => observer.disconnect();
   }, []);
 
+  const sectionBreakIndex = sectionBreak?.index;
+  const sectionBreakGap = sectionBreak?.gap;
   const layout = useMemo(
-    () => computeShortestColumnMasonry(items, containerWidth, minColumnWidth, gap),
-    [containerWidth, gap, items, minColumnWidth],
+    () =>
+      computeShortestColumnMasonry(
+        items,
+        containerWidth,
+        minColumnWidth,
+        gap,
+        sectionBreakIndex === undefined || sectionBreakGap === undefined
+          ? undefined
+          : { index: sectionBreakIndex, gap: sectionBreakGap },
+      ),
+    [containerWidth, gap, items, minColumnWidth, sectionBreakGap, sectionBreakIndex],
   );
+
+  useLayoutEffect(() => onLayoutChange?.(layout), [layout, onLayoutChange]);
 
   // These cards do not animate between columns. Real offsets keep the browser's
   // image visibility and raster bounds aligned with where each card is painted.
@@ -140,7 +177,7 @@ export function ShortestColumnMasonry({
             height: placement.height,
           }}
         >
-          {renderItem(items[placement.index], placement.index)}
+          {renderItem(items[placement.index], placement.index, placement, layout)}
         </div>
       ))}
     </div>

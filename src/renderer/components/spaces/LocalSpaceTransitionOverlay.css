@@ -1,0 +1,77 @@
+@keyframes local-space-transition-card-in {
+  from {
+    opacity: 0;
+    transform: translateY(0.5rem) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes local-space-transition-stage-in {
+  from {
+    opacity: 0;
+    transform: translateY(0.2rem);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes local-space-transition-logo-float {
+  0%,
+  100% {
+    transform: translateY(0) rotate(-1deg);
+  }
+  50% {
+    transform: translateY(-0.35rem) rotate(1deg);
+  }
+}
+
+.local-space-transition-card {
+  animation: local-space-transition-card-in var(--space-transition-card-duration, var(--motion-overlay))
+    var(--ease-enter) both;
+}
+
+.local-space-transition-stage {
+  animation: local-space-transition-stage-in var(--space-transition-stage-duration, var(--motion-fast))
+    var(--ease-enter) both;
+}
+
+.local-space-transition-logo {
+  animation: local-space-transition-logo-float var(--space-transition-logo-duration, 1.8s) var(--ease-standard) infinite;
+}
+
+.local-space-transition-preview-anchor {
+  justify-items: center;
+}
+
+.local-space-transition-preview {
+  aspect-ratio: var(--preview-aspect, 0.75);
+  transform: translateY(var(--preview-fan-y, 0)) rotate(var(--preview-fan-rotation, 0deg))
+    scale(var(--preview-scale, 1));
+  transition:
+    opacity var(--space-transition-card-duration, var(--motion-overlay)) var(--ease-enter),
+    transform var(--space-transition-card-duration, var(--motion-overlay)) var(--ease-enter),
+    filter var(--space-transition-card-duration, var(--motion-overlay)) var(--ease-enter);
+  transition-delay: var(--preview-transition-delay, 0ms);
+}
+
+.local-space-transition-preview[data-settled='true'] {
+  transform: translateY(0.75rem) rotate(var(--preview-settled-rotation, 0deg)) scale(var(--preview-scale, 1));
+}
+
+.local-space-transition[data-motion-paused='true'] .local-space-transition-logo {
+  animation-play-state: paused;
+}
+
+.local-space-transition[data-reduced-motion='true']
+  :is(.local-space-transition-card, .local-space-transition-stage, .local-space-transition-logo) {
+  animation: none;
+}
+
+.local-space-transition[data-reduced-motion='true'] .local-space-transition-preview {
+  transition: none;
+}

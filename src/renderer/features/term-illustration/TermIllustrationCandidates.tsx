@@ -1,6 +1,7 @@
 import { ExternalLinkIcon } from 'lucide-react';
 import { useI18n } from '@/renderer/i18n/useI18n';
 import { AssetFileContextMenu } from '@/renderer/components/media/AssetFileContextMenu';
+import { ImageAmbientBackdrop } from '@/renderer/components/media/AmbientImage';
 import { Badge } from '@/renderer/components/ui/badge';
 import { Button } from '@/renderer/components/ui/button';
 import { useTermIllustration } from '@/renderer/features/term-illustration/TermIllustrationProvider';
@@ -27,9 +28,10 @@ export function TermIllustrationCandidates() {
                 revealContext={{ kind: 'TERM', termId: term.id }}
                 notify={notify}
               >
-                <div className="grid aspect-[4/3] place-items-center bg-media-surround-light">
+                <div className="relative isolate grid aspect-[4/3] place-items-center overflow-hidden bg-surface-sunken">
+                  <ImageAmbientBackdrop src={run.asset.mediaUrl} loading="lazy" />
                   <img
-                    className="size-full object-contain"
+                    className="relative z-10 size-full object-contain"
                     src={run.asset.mediaUrl}
                     alt={copy.candidateAlt}
                     draggable={false}

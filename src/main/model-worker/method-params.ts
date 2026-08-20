@@ -558,6 +558,7 @@ export interface ModelWorkerMethodParams {
   'generation.configure-concurrency': [configuration: ImageGenerationConcurrencyDto];
   'codex.refresh-health': [];
   'codex.list-models': [];
+  'antigravity.refresh-status': [];
   'video-document.article-generate': [input: VideoDocumentArticleGenerateInput];
   'video-document.transcript-translate': [input: VideoDocumentTranscriptTranslationWorkerInput];
   'assistant.run': [runId: string];
@@ -610,6 +611,7 @@ const schemas = {
   'generation.configure-concurrency': z.tuple([generationConcurrencyConfiguration]),
   'codex.refresh-health': empty,
   'codex.list-models': empty,
+  'antigravity.refresh-status': empty,
   'video-document.article-generate': z.tuple([videoDocumentArticleGenerateInputSchema]),
   'video-document.transcript-translate': z.tuple([videoDocumentTranscriptTranslationWorkerInputSchema]),
   'assistant.run': z.tuple([identifier]),

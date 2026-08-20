@@ -240,10 +240,26 @@ export class LibraryFileViewPathRepository {
             JOIN generation_runs run ON run.prompt_version_id = version.id
             WHERE version.series_id = series.id AND run.status = 'SUCCEEDED'
               AND run.result_asset_id = ?
+              AND NOT EXISTS (
+                SELECT 1 FROM prompt_series_output_exclusions exclusion
+                WHERE exclusion.series_id = series.id AND exclusion.image_asset_id = run.result_asset_id
+              )
           ) OR EXISTS (
             SELECT 1 FROM creation_output_imports imported
             WHERE imported.series_id = series.id AND imported.image_asset_id = ?
               AND imported.deleted_at IS NULL
+              AND NOT EXISTS (
+                SELECT 1 FROM prompt_series_output_exclusions exclusion
+                WHERE exclusion.series_id = series.id AND exclusion.image_asset_id = imported.image_asset_id
+              )
+          ) OR EXISTS (
+            SELECT 1 FROM image_transform_runs transform
+            WHERE transform.series_id = series.id AND transform.output_asset_id = ?
+              AND transform.deleted_at IS NULL
+              AND NOT EXISTS (
+                SELECT 1 FROM prompt_series_output_exclusions exclusion
+                WHERE exclusion.series_id = series.id AND exclusion.image_asset_id = transform.output_asset_id
+              )
           ) OR EXISTS (
             SELECT 1 FROM prompt_versions version
             JOIN reference_bindings binding ON binding.prompt_version_id = version.id
@@ -251,7 +267,7 @@ export class LibraryFileViewPathRepository {
           )
         ) LIMIT 1`,
       )
-      .get(seriesId, assetId, assetId, assetId);
+      .get(seriesId, assetId, assetId, assetId, assetId);
     if (!matches) return null;
 
     const owner = this.db
@@ -287,6 +303,10 @@ export class LibraryFileViewPathRepository {
         JOIN generation_runs run ON run.prompt_version_id = version.id
         WHERE member.target_type = 'SERIES' AND member.deleted_at IS NULL
           AND run.status = 'SUCCEEDED' AND run.result_asset_id = ?
+          AND NOT EXISTS (
+            SELECT 1 FROM prompt_series_output_exclusions exclusion
+            WHERE exclusion.series_id = series.id AND exclusion.image_asset_id = run.result_asset_id
+          )
         UNION
         SELECT member.album_id
         FROM album_members member
@@ -296,6 +316,23 @@ export class LibraryFileViewPathRepository {
           AND imported.deleted_at IS NULL
         WHERE member.target_type = 'SERIES' AND member.deleted_at IS NULL
           AND imported.image_asset_id = ?
+          AND NOT EXISTS (
+            SELECT 1 FROM prompt_series_output_exclusions exclusion
+            WHERE exclusion.series_id = series.id AND exclusion.image_asset_id = imported.image_asset_id
+          )
+        UNION
+        SELECT member.album_id
+        FROM album_members member
+        JOIN albums album ON album.id = member.album_id AND album.deleted_at IS NULL
+        JOIN prompt_series series ON series.id = member.target_id AND series.deleted_at IS NULL
+        JOIN image_transform_runs transform ON transform.series_id = series.id
+          AND transform.deleted_at IS NULL
+        WHERE member.target_type = 'SERIES' AND member.deleted_at IS NULL
+          AND transform.output_asset_id = ?
+          AND NOT EXISTS (
+            SELECT 1 FROM prompt_series_output_exclusions exclusion
+            WHERE exclusion.series_id = series.id AND exclusion.image_asset_id = transform.output_asset_id
+          )
         UNION
         SELECT member.album_id
         FROM album_members member
@@ -307,7 +344,7 @@ export class LibraryFileViewPathRepository {
           AND binding.image_asset_id = ?
         ORDER BY album_id`,
       )
-      .all(assetId, assetId, assetId, assetId) as JsonMap[];
+      .all(assetId, assetId, assetId, assetId, assetId) as JsonMap[];
     return rows.map((row) => text(row.album_id));
   }
 

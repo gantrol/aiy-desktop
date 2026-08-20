@@ -2,6 +2,7 @@ import { createContext, forwardRef, useContext, useId, type ComponentProps, type
 import { cn } from '@/renderer/lib/utils';
 import { Button } from '@/renderer/components/ui/button';
 import { CollapsibleContent } from '@/renderer/components/ui/collapsible';
+import './TreeDisclosureRail.css';
 import {
   getTreeBranchNodeConnectorPath,
   getTreeDisclosurePath,

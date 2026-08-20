@@ -34,6 +34,10 @@ export class LibraryFileViewIndexRepository extends LibraryFileViewPathRepositor
             JOIN generation_runs run ON run.prompt_version_id = version.id
             WHERE member.target_type = 'SERIES' AND member.deleted_at IS NULL
               AND run.status = 'SUCCEEDED' AND run.result_asset_id IS NOT NULL
+              AND NOT EXISTS (
+                SELECT 1 FROM prompt_series_output_exclusions exclusion
+                WHERE exclusion.series_id = series.id AND exclusion.image_asset_id = run.result_asset_id
+              )
             UNION
             SELECT imported.image_asset_id AS asset_id
             FROM album_members member
@@ -42,6 +46,22 @@ export class LibraryFileViewIndexRepository extends LibraryFileViewPathRepositor
             JOIN creation_output_imports imported ON imported.series_id = series.id
               AND imported.deleted_at IS NULL
             WHERE member.target_type = 'SERIES' AND member.deleted_at IS NULL
+              AND NOT EXISTS (
+                SELECT 1 FROM prompt_series_output_exclusions exclusion
+                WHERE exclusion.series_id = series.id AND exclusion.image_asset_id = imported.image_asset_id
+              )
+            UNION
+            SELECT transform.output_asset_id AS asset_id
+            FROM album_members member
+            JOIN albums album ON album.id = member.album_id AND album.deleted_at IS NULL
+            JOIN prompt_series series ON series.id = member.target_id AND series.deleted_at IS NULL
+            JOIN image_transform_runs transform ON transform.series_id = series.id
+              AND transform.deleted_at IS NULL
+            WHERE member.target_type = 'SERIES' AND member.deleted_at IS NULL
+              AND NOT EXISTS (
+                SELECT 1 FROM prompt_series_output_exclusions exclusion
+                WHERE exclusion.series_id = series.id AND exclusion.image_asset_id = transform.output_asset_id
+              )
             UNION
             SELECT binding.image_asset_id AS asset_id
             FROM album_members member

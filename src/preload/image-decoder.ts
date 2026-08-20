@@ -48,8 +48,26 @@ async function canvasPngBytes(canvas: OffscreenCanvas, maximumBytes = MAX_IMAGE_
   return bytes;
 }
 
+async function sourceBitmap(request: ImageDecoderRequest) {
+  const blob = new Blob([request.sourceBytes], { type: request.sourceMimeType });
+  try {
+    return await createImageBitmap(blob);
+  } catch (error) {
+    if (request.sourceMimeType !== 'image/svg+xml') throw error;
+    const sourceUrl = URL.createObjectURL(blob);
+    try {
+      const image = new Image();
+      image.src = sourceUrl;
+      await image.decode();
+      return await createImageBitmap(image);
+    } finally {
+      URL.revokeObjectURL(sourceUrl);
+    }
+  }
+}
+
 async function decodeRequest(request: ImageDecoderRequest): Promise<ImageDecoderSuccessResponse> {
-  let bitmap: ImageBitmap | null = await createImageBitmap(new Blob([request.sourceBytes]));
+  let bitmap: ImageBitmap | null = await sourceBitmap(request);
   try {
     assertSafeDimensions(bitmap.width, bitmap.height);
     const sourceWidth = bitmap.width;

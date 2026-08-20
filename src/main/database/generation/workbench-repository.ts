@@ -189,7 +189,7 @@ export class WorkbenchRepository extends WorkbenchRunRepository {
   }
 
   getReferencePaths(assetIds: string[]) {
-    return assetIds.map((id) => this.getAssetPath(id)).filter((item): item is string => Boolean(item));
+    return assetIds.map((id) => this.getGenerationAssetPath(id)).filter((item): item is string => Boolean(item));
   }
 
   getLibraryName() {

@@ -5,6 +5,7 @@ import { resolveTermContent } from '@/shared/term-localization';
 import { useI18n } from '@/renderer/i18n/useI18n';
 import { cn } from '@/renderer/lib/utils';
 import { AssetFileContextMenu } from '@/renderer/components/media/AssetFileContextMenu';
+import { ImageAmbientBackdrop } from '@/renderer/components/media/AmbientImage';
 import { Badge } from '@/renderer/components/ui/badge';
 import { Button } from '@/renderer/components/ui/button';
 import { ScrollArea } from '@/renderer/components/ui/scroll-area';
@@ -148,10 +149,11 @@ export function TermDetailView({
                 notify={notify}
                 revealContext={{ kind: 'TERM', termId: term.id }}
               >
-                <div className="relative mx-auto w-fit max-w-full overflow-hidden rounded-2xl border bg-media-surround-light">
+                <div className="relative isolate mx-auto w-fit max-w-full overflow-hidden rounded-2xl border bg-surface-sunken">
+                  <ImageAmbientBackdrop src={activeMedia.asset.mediaUrl} />
                   <img
                     data-term-detail-media
-                    className="block h-auto max-h-[680px] w-auto max-w-full"
+                    className="relative z-10 block h-auto max-h-[680px] w-auto max-w-full"
                     src={activeMedia.asset.mediaUrl}
                     alt={`${content.title} · ${copy.referenceImage}`}
                     draggable={false}
@@ -159,14 +161,14 @@ export function TermDetailView({
                     height={activeMedia.asset.height}
                   />
                   {totalMediaCount > 1 && (
-                    <Badge variant="secondary" className="absolute right-3 bottom-3 bg-overlay shadow-overlay">
+                    <Badge variant="secondary" className="absolute right-3 bottom-3 z-20 bg-overlay shadow-overlay">
                       {media.findIndex((item) => item.id === activeMedia.id) + 1} / {totalMediaCount}
                     </Badge>
                   )}
                 </div>
               </AssetFileContextMenu>
             ) : (
-              <div className="grid min-h-72 place-items-center rounded-2xl border bg-media-surround-light">
+              <div className="grid min-h-72 place-items-center rounded-2xl border bg-surface-sunken">
                 <div className="grid justify-items-center gap-3 text-sm text-muted-foreground">
                   <ImageIcon className="size-7" />
                   {copy.noReferenceImage}
@@ -180,13 +182,20 @@ export function TermDetailView({
                     key={item.id}
                     type="button"
                     className={cn(
-                      'h-20 w-16 shrink-0 overflow-hidden rounded-lg border bg-media-surround-light',
+                      'relative isolate h-20 w-16 shrink-0 overflow-hidden rounded-lg border bg-surface-sunken',
                       item.id === activeMedia?.id && 'border-selected-border ring-2 ring-ring',
                     )}
                     aria-label={`${copy.referenceImage} ${index + 1}`}
                     onClick={() => setMediaSelection({ termId: term.id, mediaId: item.id })}
                   >
-                    <img className="size-full object-contain" src={item.asset.mediaUrl} alt="" draggable={false} />
+                    <ImageAmbientBackdrop src={item.asset.mediaUrl} loading="lazy" />
+                    <img
+                      className="relative z-10 size-full object-contain"
+                      src={item.asset.mediaUrl}
+                      alt=""
+                      loading="lazy"
+                      draggable={false}
+                    />
                   </button>
                 ))}
               </div>

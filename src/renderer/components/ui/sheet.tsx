@@ -4,6 +4,7 @@ import { cva, type VariantProps } from 'class-variance-authority';
 import { XIcon } from 'lucide-react';
 import { useI18n } from '@/renderer/i18n/useI18n';
 import { cn } from '@/renderer/lib/utils';
+import './sheet.css';
 
 const Sheet = DialogPrimitive.Root;
 const SheetTrigger = DialogPrimitive.Trigger;

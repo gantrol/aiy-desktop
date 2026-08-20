@@ -10,6 +10,8 @@ import type {
   CodexTaskReferenceDto,
   CreatorImageImportContext,
   CreatorImageImportInput,
+  CreatorOutputsOrganizeInput,
+  CreatorStagedOutputImportItemInput,
   ImportedCreationOutputUpdateInput,
   MaterialSelectionTargetInput,
   NewExternalCreationImportInput,
@@ -39,8 +41,12 @@ export function createCreationImportApi(
       return repositories.storage.storeVerifiedFile(sourcePath, extension, metadata);
     },
 
-    importStoredCreatorOutputs(context: CreatorImageImportContext, images: StoredCreatorImage[]) {
-      return repositories.creationImports.importStoredOutputs(context, images);
+    importStoredCreatorOutputs(
+      context: CreatorImageImportContext,
+      images: StoredCreatorImage[],
+      items: readonly CreatorStagedOutputImportItemInput[],
+    ) {
+      return repositories.creationImports.importStoredOutputs(context, images, items);
     },
 
     importNewExternalCreation(input: NewExternalCreationImportInput) {
@@ -62,6 +68,10 @@ export function createCreationImportApi(
       codexTask: CodexTaskReferenceDto,
     ) {
       return repositories.codexImageDiscoveries.importStoredImages(input, images, bindings, codexTask);
+    },
+
+    recoverStoredCodexGeneration(discoveryId: string, image: StoredCreatorImage) {
+      return repositories.codexImageDiscoveries.recoverStoredGeneration(discoveryId, image);
     },
 
     reconcileCodexImageDiscoveries(
@@ -96,6 +106,10 @@ export function createCreationImportApi(
 
     updateImportedCreationOutput(input: ImportedCreationOutputUpdateInput) {
       return repositories.creationImports.updateOutput(input);
+    },
+
+    organizeCreatorOutputs(input: CreatorOutputsOrganizeInput) {
+      return repositories.creationImports.organizeOutputs(input);
     },
 
     listFavoriteTexts() {

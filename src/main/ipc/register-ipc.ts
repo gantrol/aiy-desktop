@@ -17,6 +17,7 @@ import { readCanvasPresets } from '@/main/media/canvas-presets';
 import { LibraryDatabase } from '@/main/database';
 import { ImageTransformService } from '@/main/media/image-transform-service';
 import { copyImageInSandbox } from '@/main/media/image-clipboard-worker-client';
+import { rasterizeSvgFileInSandbox } from '@/main/media/svg-rasterization';
 import type { GenerationService } from '@/main/generation/service';
 import type { ExtensionRegistry } from '@/main/extensions/registry';
 import type { CodexImageDiscovery } from '@/main/extensions/codex-image-discovery';
@@ -38,6 +39,8 @@ import { registerGenerationIpc } from '@/main/ipc/generation-handlers';
 import { registerIntakeIpc } from '@/main/ipc/intake-handlers';
 import { registerLibraryIpc } from '@/main/ipc/library-handlers';
 import { registerVideoDocumentIpc } from '@/main/ipc/video-document-handlers';
+import { registerAppSupportIpc } from '@/main/ipc/app-support-handlers';
+import { registerAppWindowIpc } from '@/main/ipc/app-window-handlers';
 import { VideoKeyChangeService } from '@/main/video-documents/key-change-service';
 import { VideoDocumentExportService } from '@/main/video-documents/export-service';
 import { VideoDocumentAudioProbeService } from '@/main/video-documents/audio-probe-service';
@@ -64,6 +67,11 @@ function safeSpaceArchiveName(name: string) {
   return `${stem || 'AIY Space'}.aiyspace`;
 }
 
+const compactExecutionWorkbenchOptions = {
+  includeExecutionActualRequest: false,
+  includeExecutionInputSnapshot: false,
+} as const;
+
 export function registerIpc(
   database: LibraryDatabase,
   codex: CodexService,
@@ -86,6 +94,9 @@ export function registerIpc(
   localSpaces: LocalSpaceActions,
   runInLibraryContext?: TrustedIpcInvocationRunner,
 ) {
+  const appIpcMain = createTrustedIpcHandlerRegistrar(getWindow);
+  registerAppSupportIpc(appIpcMain);
+  registerAppWindowIpc(appIpcMain, getWindow);
   const ipcMain = createTrustedIpcHandlerRegistrar(getWindow, runInLibraryContext);
   const videoKeyChanges = new VideoKeyChangeService(database);
   const videoDocumentAudio = new VideoDocumentAudioProbeService(database);
@@ -111,6 +122,13 @@ export function registerIpc(
     convertWebpToPng: async (filePath) => {
       const image = nativeImage.createFromPath(filePath);
       return image.isEmpty() ? null : image.toPNG();
+    },
+    convertSvgToPng: async (filePath) => {
+      try {
+        return (await rasterizeSvgFileInSandbox(filePath)).bytes;
+      } catch {
+        return null;
+      }
     },
   });
   const runAssistantRequest = (request: z.infer<typeof creatorAgentAssistSchema>) => {
@@ -180,7 +198,7 @@ export function registerIpc(
     () =>
       chooseFile({
         properties: ['openFile'],
-        filters: [{ name: 'Images', extensions: ['png', 'jpg', 'jpeg', 'webp'] }],
+        filters: [{ name: 'Images', extensions: ['png', 'jpg', 'jpeg', 'webp', 'svg'] }],
       }),
     importStarterPack,
     ipcMain,
@@ -188,7 +206,7 @@ export function registerIpc(
   registerCreatorImportIpc(ipcMain, database, () =>
     chooseFile({
       properties: ['openFile', 'multiSelections'],
-      filters: [{ name: 'Images', extensions: ['png', 'jpg', 'jpeg', 'webp'] }],
+      filters: [{ name: 'Images', extensions: ['png', 'jpg', 'jpeg', 'webp', 'svg'] }],
     }),
   );
   registerDictionaryIpc(
@@ -234,7 +252,7 @@ export function registerIpc(
   ipcMain.handle('app:loading-previews', () => localSpaces.currentPreviews());
   ipcMain.handle('app:bootstrap', (_event, rawLocale) => {
     const locale = localeSchema.parse(rawLocale) as Locale;
-    const workbench = database.getWorkbench(locale, { includeExecutionActualRequest: false });
+    const workbench = database.getWorkbench(locale, compactExecutionWorkbenchOptions);
     const terms = database.searchTerms(locale);
     return {
       locale,
@@ -262,7 +280,7 @@ export function registerIpc(
   ipcMain.handle('generation:projection', (_event, rawLocale) => {
     const locale = localeSchema.parse(rawLocale) as Locale;
     return {
-      ...database.getWorkbench(locale, { includeExecutionActualRequest: false }),
+      ...database.getWorkbench(locale, compactExecutionWorkbenchOptions),
       styleExplorationBatches: database.listStyleExplorationBatches(),
       agentTasks: database.listDirectionExperimentDirectorTasks(),
     };
@@ -303,5 +321,5 @@ export function registerIpc(
   });
   registerLibraryIpc(ipcMain, database);
   registerGenerationIpc(ipcMain, database, generation, imageTransforms, runAssistantRequest);
-  registerAssetIpc(ipcMain, database, assetFiles);
+  registerAssetIpc(ipcMain, database, assetFiles, localSpaces.refreshCurrentPreviews);
 }

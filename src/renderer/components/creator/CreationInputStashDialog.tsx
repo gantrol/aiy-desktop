@@ -22,6 +22,7 @@ import { Button } from '@/renderer/components/ui/button';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/renderer/components/ui/dialog';
 import { ScrollArea } from '@/renderer/components/ui/scroll-area';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/renderer/components/ui/select';
+import { AmbientImage } from '@/renderer/components/media/AmbientImage';
 
 interface Props {
   open: boolean;
@@ -111,11 +112,12 @@ function referenceValue(snapshot: ComparableSnapshot, locale: Locale) {
       {snapshot.referenceAssetIds.map((id, index) => {
         const asset = byId.get(id);
         return asset ? (
-          <img
+          <AmbientImage
             key={`${id}:${index}`}
             src={asset.mediaUrl}
             alt=""
-            className="size-10 rounded border bg-media-surround-light object-contain"
+            frameClassName="size-10 rounded border"
+            className="size-full object-contain"
           />
         ) : (
           <span key={`${id}:${index}`} className="rounded border px-1.5 py-1 text-2xs text-muted-foreground">

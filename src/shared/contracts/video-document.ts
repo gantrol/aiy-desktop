@@ -349,6 +349,7 @@ export const videoDocumentRevisionMediaSchema = z
       'image/jpeg',
       'image/webp',
       'image/gif',
+      'image/svg+xml',
       'video/mp4',
       'video/webm',
       'video/quicktime',

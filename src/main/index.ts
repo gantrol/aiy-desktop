@@ -16,6 +16,7 @@ import { AppUpdateService } from '@/main/app/app-update-service';
 import { DesktopApplicationShell } from '@/main/app/application-shell';
 import { applyMediaResponseHeaders, CONTEXT_INDEPENDENT_MEDIA_HOSTS, fetchLocalFile } from '@/main/app/media-response';
 import { TransitionPreviewCache, TRANSITION_PREVIEW_LIMIT } from '@/main/app/transition-preview-cache';
+import { createTransitionPreviewRatingRefreshScheduler } from '@/main/app/transition-preview-rating-refresh';
 import { registerAppUpdateIpc } from '@/main/ipc/app-update-handlers';
 import { createTrustedIpcHandlerRegistrar } from '@/main/ipc/trusted-handlers';
 import { installStarterContentPack } from '@/main/content-packs/starter-pack-installer';
@@ -261,6 +262,7 @@ if (ownsSingleInstanceLock)
           const targetExtensions: ExtensionRegistry = new ExtensionRegistry(targetDatabase, {
             extensionRoots,
             codexHealth: () => targetCodex.cachedHealth,
+            antigravityCliStatus: () => targetGeneration!.antigravityCliStatus,
             codexImageDiscoveryStatus: () => targetImageDiscovery!.status(),
             openAiImageApiStatus: () => {
               const status = openAiImageApi.status();
@@ -598,6 +600,13 @@ if (ownsSingleInstanceLock)
         if (!context) throw new Error('Library services are unavailable');
         return context;
       };
+      const scheduleRatingPreviewRefresh = createTransitionPreviewRatingRefreshScheduler({
+        cache: transitionPreviews,
+        getContext: requireActiveContext,
+        isCurrentContext: (context) =>
+          context.state === 'ACTIVE' && appShell.activeLibraryContext?.epoch === context.epoch,
+        publish: (spaceId, previews) => rendererEvents.send('app:loading-previews-refreshed', { spaceId, previews }),
+      });
       const contextIndependentIpcChannels = new Set([
         'app:request-quit',
         'app:loading-previews',
@@ -681,6 +690,7 @@ if (ownsSingleInstanceLock)
             return libraryRegistry.getCurrentCoverUrl();
           },
           currentPreviews: () => transitionPreviews.previewsFor(activeLibrary.id),
+          refreshCurrentPreviews: scheduleRatingPreviewRefresh,
           open: (rootPath) => {
             if (!libraryRegistry) throw new Error('Library registry is unavailable');
             const registeredIds = new Set(libraryRegistry.list().libraries.map((library) => library.id));

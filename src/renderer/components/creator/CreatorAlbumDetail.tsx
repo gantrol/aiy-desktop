@@ -40,10 +40,10 @@ import { AlbumDocumentRow, AlbumDocumentView } from '@/renderer/components/creat
 import type { CreationLibraryFilter } from '@/renderer/components/creator/CreationLibraryToolbar';
 import { CreatorPaneResizeHandle } from '@/renderer/components/creator/CreatorPaneResizeHandle';
 import { shouldShowDocumentView } from '@/renderer/components/creator/albumDocumentView';
+import { creationSessionCoverFirstAssets } from '@/renderer/components/creator/creationCoverFirstAssets';
 import { creationAlbumPreviewAssets } from '@/renderer/components/creator/creationAlbumPreviewAssets';
 import type { CreationSessionProjection } from '@/renderer/components/creator/creationSessionProjection';
 import { useAlbumContentPane } from '@/renderer/components/creator/useAlbumContentPane';
-import { allAssets } from '@/renderer/components/creator/utils';
 import { useVideoDocumentList } from '@/renderer/features/video-documents/useVideoDocumentList';
 
 interface Props {
@@ -80,14 +80,7 @@ type AlbumContentEntry =
   | ({ kind: 'CREATION' } & AlbumCreationEntry);
 
 function sessionAssets(session: CreationSessionProjection) {
-  const seen = new Set<string>();
-  return session.memberSeries.flatMap((series) =>
-    allAssets(series).flatMap((asset) => {
-      if (seen.has(asset.id)) return [];
-      seen.add(asset.id);
-      return [{ asset, seriesId: series.id }];
-    }),
-  );
+  return creationSessionCoverFirstAssets(session);
 }
 
 function creationAlbumId(session: CreationSessionProjection, albumBySeriesId: ReadonlyMap<string, string>) {

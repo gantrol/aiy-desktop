@@ -11,12 +11,15 @@ import revision2VideoDocumentTranslationsSql from '@/main/database/sql/v03-revis
 import revision2VideoDocumentNotesSql from '@/main/database/sql/v03-revision-002-video-document-notes.sql?raw';
 import revision2VideoDocumentVisualGenerationSql from '@/main/database/sql/v03-revision-002-video-document-visual-generation.sql?raw';
 import revision2VideoDocumentWorkspaceSql from '@/main/database/sql/v03-revision-002-video-document-workspace.sql?raw';
+import revision3CreationCoverAssetsSql from '@/main/database/sql/v03-revision-003-creation-cover-assets.sql?raw';
+import revision3CreationOutputOrderSql from '@/main/database/sql/v03-revision-003-creation-output-order.sql?raw';
+import revision3CreationOutputOrganizationSql from '@/main/database/sql/v03-revision-003-creation-output-organization.sql?raw';
+import revision3CreationOutputPresentationSql from '@/main/database/sql/v03-revision-003-creation-output-presentation.sql?raw';
 
 export const DATABASE_PRODUCT_BASELINE = '0.3.0';
-// v0.3.1 publicly shipped revision 1. Every schema change prepared for the
-// next release is one atomic revision 2; do not number unreleased features as
-// separate public database revisions.
-export const DATABASE_SCHEMA_REVISION = 2;
+// v0.3.2 publicly shipped revision 2. The v0.3.3 schema advances exactly once
+// to revision 3; do not number individual unreleased features separately.
+export const DATABASE_SCHEMA_REVISION = 3;
 const DATABASE_SHUTDOWN_STATE_KEY = 'database_shutdown_state';
 
 const releasedRevision1RequiredTables = [
@@ -56,7 +59,7 @@ const termIllustrationRequiredTables = [
   'term_illustration_batches',
 ] as const;
 
-const currentRequiredTables = [
+const revision2RequiredTables = [
   ...termIllustrationRequiredTables,
   'document_branches',
   'document_draft_revisions',
@@ -69,6 +72,12 @@ const currentRequiredTables = [
   'video_document_navigation_order',
   'video_document_transcription_runs',
   'video_document_translation_runs',
+] as const;
+
+const currentRequiredTables = [
+  ...revision2RequiredTables,
+  'prompt_series_cover_assets',
+  'prompt_series_output_exclusions',
 ] as const;
 
 const canonicalTitleColumns = [
@@ -149,6 +158,47 @@ function hasPromptVersionSourceImportColumn(db: Database.Database) {
 
 function ensurePromptVersionSourceImportColumn(db: Database.Database) {
   if (!hasPromptVersionSourceImportColumn(db)) db.exec(revision2PromptSourceImportSql);
+}
+
+function hasCreationOutputSortOrderColumn(db: Database.Database) {
+  return columnNames(db, 'creation_output_imports').has('sort_order');
+}
+
+function ensureCreationOutputSortOrderColumn(db: Database.Database) {
+  if (!hasCreationOutputSortOrderColumn(db)) db.exec(revision3CreationOutputOrderSql);
+}
+
+function creationOutputOrganizationShape(db: Database.Database) {
+  const columns = columnNames(db, 'creation_output_imports');
+  const states = ['relationship_kind', 'relationship_target_output_id'].map((column) => columns.has(column));
+  if (states.every(Boolean)) return 'COMPLETE' as const;
+  if (states.every((present) => !present)) return 'ABSENT' as const;
+  unsupportedSchema();
+}
+
+function hasCreationOutputOrganizationColumns(db: Database.Database) {
+  return creationOutputOrganizationShape(db) === 'COMPLETE';
+}
+
+function ensureCreationOutputOrganizationColumns(db: Database.Database) {
+  if (creationOutputOrganizationShape(db) === 'ABSENT') db.exec(revision3CreationOutputOrganizationSql);
+}
+
+function creationOutputPresentationShape(db: Database.Database) {
+  const tables = tableNames(db);
+  const exclusionTablePresent = tables.has('prompt_series_output_exclusions');
+  const coverTablePresent = tables.has('prompt_series_cover_assets');
+  const columnPresent = columnNames(db, 'prompt_series').has('cover_image_asset_id');
+  if (exclusionTablePresent && columnPresent && coverTablePresent) return 'COMPLETE' as const;
+  if (exclusionTablePresent && columnPresent && !coverTablePresent) return 'SINGLE_COVER_DEVELOPMENT' as const;
+  if (!exclusionTablePresent && !columnPresent && !coverTablePresent) return 'ABSENT' as const;
+  unsupportedSchema();
+}
+
+function ensureCreationOutputPresentation(db: Database.Database) {
+  const shape = creationOutputPresentationShape(db);
+  if (shape === 'ABSENT') db.exec(revision3CreationOutputPresentationSql);
+  if (shape !== 'COMPLETE') db.exec(revision3CreationCoverAssetsSql);
 }
 
 function videoDocumentGenerationSupportsVisualInput(db: Database.Database) {
@@ -287,13 +337,13 @@ function revision1TitleShape(db: Database.Database) {
   unsupportedSchema();
 }
 
-const preVideoWorkspaceRequiredTables = currentRequiredTables.filter(
+const preVideoWorkspaceRequiredTables = revision2RequiredTables.filter(
   (table) =>
     table !== 'video_document_navigation_order' &&
     table !== 'video_document_transcription_runs' &&
     table !== 'video_document_translation_runs',
 );
-const preVideoDocumentAiActivityRequiredTables = currentRequiredTables.filter(
+const preVideoDocumentAiActivityRequiredTables = revision2RequiredTables.filter(
   (table) => table !== 'video_document_transcription_runs' && table !== 'video_document_translation_runs',
 );
 // Recovery-only markers emitted by private builds before the next public
@@ -312,7 +362,7 @@ function isCurrentSchemaShapeBeforePromptSourceImport(db: Database.Database) {
   }
 }
 
-function isCurrentSchemaShape(db: Database.Database) {
+function isRevision2SchemaShape(db: Database.Database) {
   return (
     isCurrentSchemaShapeBeforePromptSourceImport(db) &&
     hasPromptVersionSourceImportColumn(db) &&
@@ -320,6 +370,15 @@ function isCurrentSchemaShape(db: Database.Database) {
     videoDocumentBranchesSupportNotes(db) &&
     videoDocumentTranscriptionRunsAvailable(db) &&
     videoDocumentTranslationRunsAvailable(db)
+  );
+}
+
+function isCurrentSchemaShape(db: Database.Database) {
+  return (
+    isRevision2SchemaShape(db) &&
+    hasCreationOutputSortOrderColumn(db) &&
+    hasCreationOutputOrganizationColumns(db) &&
+    creationOutputPresentationShape(db) === 'COMPLETE'
   );
 }
 
@@ -339,19 +398,21 @@ function retireLegacyTitles(db: Database.Database) {
  *
  * Values 2-6 were written only by unreleased development builds. They are
  * stages, not public revisions: accepting them here preserves local developer
- * libraries while every released database finishes at revision 2.
+ * libraries while normalizing the old shape to public revision 2 before the
+ * revision-3 migration is applied.
  */
 function finishRevision2FromDevelopmentStage(db: Database.Database, stage: UnreleasedDevelopmentStage) {
+  if (isRevision2SchemaShape(db)) return;
   // Some private revision-2 builds already produced the complete table shape.
   // Complete the newly consolidated nullable column without replaying the
   // earlier, non-idempotent development-stage migrations.
-  if (stage === DATABASE_SCHEMA_REVISION && isCurrentSchemaShapeBeforePromptSourceImport(db)) {
+  if (stage === 2 && isCurrentSchemaShapeBeforePromptSourceImport(db)) {
     ensureVideoDocumentGenerationSupportsVisualInput(db);
     ensurePromptVersionSourceImportColumn(db);
     ensureVideoDocumentBranchesSupportNotes(db);
     ensureVideoDocumentTranscriptionRuns(db);
     ensureVideoDocumentTranslationRuns(db);
-    if (!isCurrentSchemaShape(db)) unsupportedSchema();
+    if (!isRevision2SchemaShape(db)) unsupportedSchema();
     return;
   }
 
@@ -373,14 +434,14 @@ function finishRevision2FromDevelopmentStage(db: Database.Database, stage: Unrel
   ensureVideoDocumentBranchesSupportNotes(db);
   ensureVideoDocumentTranscriptionRuns(db);
   ensureVideoDocumentTranslationRuns(db);
-  if (!isCurrentSchemaShape(db)) unsupportedSchema();
+  if (!isRevision2SchemaShape(db)) unsupportedSchema();
 }
 
 function migrateReleasedDatabase(db: Database.Database) {
   if (metadata(db, 'product_data_baseline') !== DATABASE_PRODUCT_BASELINE) unsupportedSchema();
 
   const storedRevision = Number(metadata(db, 'database_schema_revision'));
-  const isReleasedBaseline = storedRevision === 1;
+  const isReleasedBaseline = storedRevision === 1 || storedRevision === 2;
   const isUnreleasedDevelopmentStage = unreleasedDevelopmentStages.some((stage) => stage === storedRevision);
   if (!Number.isSafeInteger(storedRevision) || (!isReleasedBaseline && !isUnreleasedDevelopmentStage)) {
     unsupportedSchema();
@@ -399,6 +460,10 @@ function migrateReleasedDatabase(db: Database.Database) {
       } else {
         finishRevision2FromDevelopmentStage(db, storedRevision as UnreleasedDevelopmentStage);
       }
+      ensureCreationOutputSortOrderColumn(db);
+      ensureCreationOutputOrganizationColumns(db);
+      ensureCreationOutputPresentation(db);
+      if (!isCurrentSchemaShape(db)) unsupportedSchema();
 
       if (storedRevision !== DATABASE_SCHEMA_REVISION) {
         const result = db
@@ -429,6 +494,9 @@ export function assertDatabaseSchemaCompatible(db: Database.Database) {
   if (!videoDocumentTranscriptionRunsAvailable(db)) unsupportedSchema();
   if (!videoDocumentTranslationRunsAvailable(db)) unsupportedSchema();
   if (!hasPromptVersionSourceImportColumn(db)) unsupportedSchema();
+  if (!hasCreationOutputSortOrderColumn(db)) unsupportedSchema();
+  if (!hasCreationOutputOrganizationColumns(db)) unsupportedSchema();
+  if (creationOutputPresentationShape(db) !== 'COMPLETE') unsupportedSchema();
   if (retiredTitleColumnShape(db) !== 'ABSENT') unsupportedSchema();
   if (metadata(db, 'product_data_baseline') !== DATABASE_PRODUCT_BASELINE) unsupportedSchema();
   if (Number(metadata(db, 'database_schema_revision')) !== DATABASE_SCHEMA_REVISION) unsupportedSchema();

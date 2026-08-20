@@ -1,6 +1,6 @@
 {
   "name": "@aiy/desktop",
-  "version": "0.3.2",
+  "version": "0.3.3",
   "private": true,
   "description": "Local-first AI image generation and asset management workbench",
   "author": "AIY Image Tools",
@@ -78,6 +78,7 @@
     "cmdk": "^1.1.1",
     "docx": "^9.7.1",
     "electron-updater": "6.8.9",
+    "html-to-image": "1.11.13",
     "js-yaml": "4.3.1",
     "lucide-react": "1.26.0",
     "mediabunny": "^1.53.0",

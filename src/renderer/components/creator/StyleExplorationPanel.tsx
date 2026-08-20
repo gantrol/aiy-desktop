@@ -20,6 +20,7 @@ import type {
 } from '@/shared/contracts';
 import { useI18n } from '@/renderer/i18n/useI18n';
 import { cn } from '@/renderer/lib/utils';
+import { ImageAmbientBackdrop } from '@/renderer/components/media/AmbientImage';
 import { Button } from '@/renderer/components/ui/button';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/renderer/components/ui/collapsible';
 import { StateTag } from '@/renderer/components/ui/state-tag';
@@ -201,19 +202,23 @@ function StyleExplorationSlotCard({
         <div data-slot-media className={cn('peer/media absolute inset-0 grid gap-px bg-border', mediaGrid)}>
           {backgroundAssets.map((asset, index) => {
             const cellClassName = cn(
-              'relative min-h-0 min-w-0 overflow-hidden bg-media-surround outline-none',
+              'relative isolate min-h-0 min-w-0 overflow-hidden bg-surface-sunken outline-none',
               backgroundAssets.length === 3 && index === 0 && 'row-span-2',
               backgroundAssets.length === 5 && index === 0 && 'col-span-2',
               onOpenAsset &&
                 'cursor-pointer focus-visible:z-10 focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring',
             );
             const image = (
-              <img
-                src={asset.mediaUrl}
-                alt=""
-                className="size-full object-contain transition-transform duration-base ease-enter motion-reduce:transition-none"
-                draggable={false}
-              />
+              <>
+                <ImageAmbientBackdrop src={asset.mediaUrl} loading="lazy" />
+                <img
+                  src={asset.mediaUrl}
+                  alt=""
+                  className="relative z-10 size-full object-contain transition-transform duration-base ease-enter motion-reduce:transition-none"
+                  loading="lazy"
+                  draggable={false}
+                />
+              </>
             );
             return onOpenAsset ? (
               <button

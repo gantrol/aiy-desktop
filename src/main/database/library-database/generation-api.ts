@@ -13,16 +13,22 @@ import type {
   GenerationInput,
   GenerationVersionInput,
   ImageGenerationRouteDto,
+  PromptVersionCreateInput,
   PromptCommonInputDto,
   ProviderReturnedDescriptionInput,
   RenamePromptSeriesInput,
 } from '@/shared/contracts';
 import type { GenerationProcessEventPageInput } from '@/shared/contracts/generation-process';
+import type {
+  PromptSeriesCoverSetInput,
+  PromptSeriesOutputRemoveInput,
+} from '@/shared/contracts/creation-output-presentation';
 
 export function createGenerationApi(
   repositories: Pick<
     LibraryDatabaseRepositories,
     | 'executionSnapshots'
+    | 'creationOutputPresentation'
     | 'generationJobs'
     | 'generationProcesses'
     | 'imageEdits'
@@ -33,6 +39,14 @@ export function createGenerationApi(
   >,
 ) {
   return {
+    removePromptSeriesOutput(input: PromptSeriesOutputRemoveInput) {
+      return repositories.creationOutputPresentation.remove(input);
+    },
+
+    setPromptSeriesCover(input: PromptSeriesCoverSetInput) {
+      return repositories.creationOutputPresentation.setCover(input);
+    },
+
     renamePromptSeries(input: RenamePromptSeriesInput) {
       return repositories.workbench.renameSeries(input);
     },
@@ -43,6 +57,10 @@ export function createGenerationApi(
 
     getAssetPath(assetId: string) {
       return repositories.workbench.getAssetPath(assetId);
+    },
+
+    getGenerationAssetPath(assetId: string) {
+      return repositories.workbench.getGenerationAssetPath(assetId);
     },
 
     resolveImageCropSource(seriesId: string, assetId: string) {
@@ -147,6 +165,22 @@ export function createGenerationApi(
       );
     },
 
+    createPromptVersion(input: PromptVersionCreateInput) {
+      const generationInput: GenerationInput = {
+        ...input,
+        creationDraftId: null,
+        sourceImportId: null,
+        sourceAssetId: null,
+        modelKey: 'prompt-version-only',
+        canvasPresetKey: null,
+        width: null,
+        height: null,
+        quality: 'low',
+      };
+      const promptInput = repositories.executionSnapshots.captureCommonInput(generationInput);
+      return repositories.workbench.createPromptVersion(generationInput, promptInput);
+    },
+
     prepareGenerationRetry(runId: string) {
       return repositories.workbench.prepareGenerationRetry(runId);
     },
@@ -215,6 +249,15 @@ export function createGenerationApi(
 
     finishGeneration(runId: string, outputPath: string, sourceAssetId: string | null = null) {
       return repositories.workbench.finishGeneration(runId, outputPath, sourceAssetId);
+    },
+
+    finishGenerationFromStoredImage(
+      runId: string,
+      stored: Parameters<LibraryDatabaseRepositories['workbench']['finishGenerationFromStoredImage']>[1],
+      mimeType: 'image/png',
+      sourceAssetId: string | null = null,
+    ) {
+      return repositories.workbench.finishGenerationFromStoredImage(runId, stored, mimeType, sourceAssetId);
     },
 
     finishGenerationFromAsset(runId: string, sourceAssetId: string, relationType: 'MODEL_REPLAY') {

@@ -1,4 +1,5 @@
 import type {
+  AntigravityCliStatusDto,
   CodexImageRefinementInput,
   GenerationBatchInput,
   GenerationChangedEvent,
@@ -29,6 +30,7 @@ type MaybePromise<T> = T | Promise<T>;
  */
 export interface GenerationService {
   readonly hasPending: boolean;
+  readonly antigravityCliStatus?: AntigravityCliStatusDto;
   readonly imageGenerationRoutes: ImageGenerationRouteDto[];
   readonly tasks: GenerationTaskDto[];
   readonly workerStatus: ModelWorkerStatusDto;
@@ -55,6 +57,8 @@ export interface GenerationService {
   cancel(runId: string): MaybePromise<void>;
   /** Re-read extension activation and connection state in the detached worker. */
   refreshExtensions?(): MaybePromise<unknown>;
+  /** Re-probe the local Antigravity CLI, its model catalog, and signed-in quota. */
+  refreshAntigravityCli?(): MaybePromise<AntigravityCliStatusDto>;
   /** Replace the worker's in-memory OpenAI credential; never persisted by the worker. */
   configureOpenAiImageApi?(configuration: OpenAiImageApiRuntimeConfiguration | null): MaybePromise<unknown>;
   /** Replace the worker's in-memory DeepSeek credential; never read from ambient environment variables. */

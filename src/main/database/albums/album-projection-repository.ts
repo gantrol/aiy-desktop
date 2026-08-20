@@ -1,6 +1,7 @@
 import type { AssetDto, FavoriteTextMaterialDto } from '@/shared/contracts';
 import type { LibraryStorage } from '@/main/database/core/storage';
 import { type JsonMap, mediaUrl, text } from '@/main/database/core/values';
+import { creationItemCoverSortOrder } from '@/main/database/creations/creation-output-presentation-sql';
 
 /**
  * The single recursive membership rule used by album counts, previews, and the
@@ -39,11 +40,28 @@ export const albumProjectedAssetPredicate = `EXISTS (
         SELECT 1 FROM generation_output_reviews review
         WHERE review.generation_run_id = run.id AND review.disposition = 'FAILED'
       )
+      AND NOT EXISTS (
+        SELECT 1 FROM prompt_series_output_exclusions exclusion
+        WHERE exclusion.series_id = projected.id AND exclusion.image_asset_id = run.result_asset_id
+      )
     UNION
     SELECT imported.image_asset_id
     FROM projected_series projected
     JOIN creation_output_imports imported ON imported.series_id = projected.id
     WHERE imported.deleted_at IS NULL
+      AND NOT EXISTS (
+        SELECT 1 FROM prompt_series_output_exclusions exclusion
+        WHERE exclusion.series_id = projected.id AND exclusion.image_asset_id = imported.image_asset_id
+      )
+    UNION
+    SELECT transform.output_asset_id
+    FROM projected_series projected
+    JOIN image_transform_runs transform ON transform.series_id = projected.id
+    WHERE transform.deleted_at IS NULL
+      AND NOT EXISTS (
+        SELECT 1 FROM prompt_series_output_exclusions exclusion
+        WHERE exclusion.series_id = projected.id AND exclusion.image_asset_id = transform.output_asset_id
+      )
   )
   SELECT 1 FROM projected_assets projected WHERE projected.id = asset.id
 )`;
@@ -138,11 +156,28 @@ export class AlbumProjectionRepository {
           SELECT 1 FROM generation_output_reviews review
           WHERE review.generation_run_id = run.id AND review.disposition = 'FAILED'
         )
+        AND NOT EXISTS (
+          SELECT 1 FROM prompt_series_output_exclusions exclusion
+          WHERE exclusion.series_id = projected.id AND exclusion.image_asset_id = run.result_asset_id
+        )
       UNION
       SELECT 'IMAGE:' || imported.image_asset_id
       FROM projected_series projected
       JOIN creation_output_imports imported ON imported.series_id = projected.id AND imported.deleted_at IS NULL
       JOIN image_assets asset ON asset.id = imported.image_asset_id AND asset.deleted_at IS NULL
+      WHERE NOT EXISTS (
+        SELECT 1 FROM prompt_series_output_exclusions exclusion
+        WHERE exclusion.series_id = projected.id AND exclusion.image_asset_id = imported.image_asset_id
+      )
+      UNION
+      SELECT 'IMAGE:' || transform.output_asset_id
+      FROM projected_series projected
+      JOIN image_transform_runs transform ON transform.series_id = projected.id AND transform.deleted_at IS NULL
+      JOIN image_assets asset ON asset.id = transform.output_asset_id AND asset.deleted_at IS NULL
+      WHERE NOT EXISTS (
+        SELECT 1 FROM prompt_series_output_exclusions exclusion
+        WHERE exclusion.series_id = projected.id AND exclusion.image_asset_id = transform.output_asset_id
+      )
     ), activity_values(value) AS (
       SELECT COALESCE(album.content_updated_at, album.updated_at)
       FROM projected_albums projected
@@ -170,6 +205,11 @@ export class AlbumProjectionRepository {
       FROM projected_series projected
       JOIN creation_output_imports imported ON imported.series_id = projected.id
       WHERE imported.deleted_at IS NULL
+      UNION ALL
+      SELECT transform.created_at
+      FROM projected_series projected
+      JOIN image_transform_runs transform ON transform.series_id = projected.id
+      WHERE transform.deleted_at IS NULL
     ) SELECT
       (SELECT count(*) FROM projected_materials) AS material_count,
       (SELECT count(*) FROM projected_series) AS series_count,
@@ -196,21 +236,46 @@ export class AlbumProjectionRepository {
           SELECT 1 FROM generation_output_reviews review
           WHERE review.generation_run_id = run.id AND review.disposition = 'FAILED'
         )
+        AND NOT EXISTS (
+          SELECT 1 FROM prompt_series_output_exclusions exclusion
+          WHERE exclusion.series_id = projected.id AND exclusion.image_asset_id = run.result_asset_id
+        )
       UNION ALL
       SELECT projected.id, imported.image_asset_id, imported.created_at
       FROM projected_series projected
       JOIN creation_output_imports imported ON imported.series_id = projected.id
       WHERE imported.deleted_at IS NULL
+        AND NOT EXISTS (
+          SELECT 1 FROM prompt_series_output_exclusions exclusion
+          WHERE exclusion.series_id = projected.id AND exclusion.image_asset_id = imported.image_asset_id
+        )
+      UNION ALL
+      SELECT projected.id, transform.output_asset_id, transform.created_at
+      FROM projected_series projected
+      JOIN image_transform_runs transform ON transform.series_id = projected.id
+      WHERE transform.deleted_at IS NULL
+        AND NOT EXISTS (
+          SELECT 1 FROM prompt_series_output_exclusions exclusion
+          WHERE exclusion.series_id = projected.id AND exclusion.image_asset_id = transform.output_asset_id
+        )
     ), ranked_series_assets AS (
-      SELECT series_id, id, activity_at,
-        ROW_NUMBER() OVER (PARTITION BY series_id ORDER BY activity_at, id) AS series_order
-      FROM series_assets
+      SELECT assets.series_id, assets.id, assets.activity_at,
+        ${creationItemCoverSortOrder('assets.series_id', 'assets.id')} AS cover_sort_order,
+        ROW_NUMBER() OVER (
+          PARTITION BY assets.series_id
+          ORDER BY COALESCE(${creationItemCoverSortOrder('assets.series_id', 'assets.id')}, 2147483647),
+            assets.activity_at DESC, assets.id DESC
+        ) AS series_order
+      FROM series_assets assets
+      JOIN prompt_series series ON series.id = assets.series_id
     ), preview_candidates(id, priority, activity_at) AS (
-      SELECT id, 0, activity_at FROM ranked_series_assets WHERE series_order = 1
+      SELECT id, cover_sort_order, activity_at FROM ranked_series_assets WHERE cover_sort_order IS NOT NULL
       UNION ALL
-      SELECT id, 1, activity_at FROM direct_assets
+      SELECT id, 3, activity_at FROM ranked_series_assets WHERE series_order = 1
       UNION ALL
-      SELECT id, 2, activity_at FROM series_assets
+      SELECT id, 4, activity_at FROM direct_assets
+      UNION ALL
+      SELECT id, 5, activity_at FROM series_assets
     ), ranked_assets AS (
       SELECT id, MIN(priority) AS priority, MAX(activity_at) AS activity_at
       FROM preview_candidates GROUP BY id
@@ -277,11 +342,28 @@ export class AlbumProjectionRepository {
           SELECT 1 FROM generation_output_reviews review
           WHERE review.generation_run_id = run.id AND review.disposition = 'FAILED'
         )
+        AND NOT EXISTS (
+          SELECT 1 FROM prompt_series_output_exclusions exclusion
+          WHERE exclusion.series_id = projected.id AND exclusion.image_asset_id = run.result_asset_id
+        )
       UNION
       SELECT projected.root_id, 'IMAGE:' || imported.image_asset_id
       FROM projected_series projected
       JOIN creation_output_imports imported ON imported.series_id = projected.id AND imported.deleted_at IS NULL
       JOIN image_assets asset ON asset.id = imported.image_asset_id AND asset.deleted_at IS NULL
+      WHERE NOT EXISTS (
+        SELECT 1 FROM prompt_series_output_exclusions exclusion
+        WHERE exclusion.series_id = projected.id AND exclusion.image_asset_id = imported.image_asset_id
+      )
+      UNION
+      SELECT projected.root_id, 'IMAGE:' || transform.output_asset_id
+      FROM projected_series projected
+      JOIN image_transform_runs transform ON transform.series_id = projected.id AND transform.deleted_at IS NULL
+      JOIN image_assets asset ON asset.id = transform.output_asset_id AND asset.deleted_at IS NULL
+      WHERE NOT EXISTS (
+        SELECT 1 FROM prompt_series_output_exclusions exclusion
+        WHERE exclusion.series_id = projected.id AND exclusion.image_asset_id = transform.output_asset_id
+      )
     ), material_counts(root_id, material_count) AS (
       SELECT root_id, count(*) FROM projected_materials GROUP BY root_id
     ), series_counts(root_id, series_count) AS (
@@ -313,6 +395,11 @@ export class AlbumProjectionRepository {
       FROM projected_series projected
       JOIN creation_output_imports imported ON imported.series_id = projected.id
       WHERE imported.deleted_at IS NULL
+      UNION ALL
+      SELECT projected.root_id, transform.created_at
+      FROM projected_series projected
+      JOIN image_transform_runs transform ON transform.series_id = projected.id
+      WHERE transform.deleted_at IS NULL
     ), activity_summaries(root_id, activity_at) AS (
       SELECT root_id, MAX(value) FROM activity_values GROUP BY root_id
     ) SELECT root.root_id AS album_id,
@@ -356,23 +443,47 @@ export class AlbumProjectionRepository {
           SELECT 1 FROM generation_output_reviews review
           WHERE review.generation_run_id = run.id AND review.disposition = 'FAILED'
         )
+        AND NOT EXISTS (
+          SELECT 1 FROM prompt_series_output_exclusions exclusion
+          WHERE exclusion.series_id = projected.id AND exclusion.image_asset_id = run.result_asset_id
+        )
       UNION ALL
       SELECT projected.root_id, projected.id, imported.image_asset_id, imported.created_at
       FROM projected_series projected
       JOIN creation_output_imports imported ON imported.series_id = projected.id
       WHERE imported.deleted_at IS NULL
+        AND NOT EXISTS (
+          SELECT 1 FROM prompt_series_output_exclusions exclusion
+          WHERE exclusion.series_id = projected.id AND exclusion.image_asset_id = imported.image_asset_id
+        )
+      UNION ALL
+      SELECT projected.root_id, projected.id, transform.output_asset_id, transform.created_at
+      FROM projected_series projected
+      JOIN image_transform_runs transform ON transform.series_id = projected.id
+      WHERE transform.deleted_at IS NULL
+        AND NOT EXISTS (
+          SELECT 1 FROM prompt_series_output_exclusions exclusion
+          WHERE exclusion.series_id = projected.id AND exclusion.image_asset_id = transform.output_asset_id
+        )
     ), ranked_series_assets AS (
-      SELECT root_id, series_id, id, activity_at,
+      SELECT assets.root_id, assets.series_id, assets.id, assets.activity_at,
+        ${creationItemCoverSortOrder('assets.series_id', 'assets.id')} AS cover_sort_order,
         ROW_NUMBER() OVER (
-          PARTITION BY root_id, series_id ORDER BY activity_at, id
+          PARTITION BY assets.root_id, assets.series_id
+          ORDER BY COALESCE(${creationItemCoverSortOrder('assets.series_id', 'assets.id')}, 2147483647),
+            assets.activity_at DESC, assets.id DESC
         ) AS series_order
-      FROM series_assets
+      FROM series_assets assets
+      JOIN prompt_series series ON series.id = assets.series_id
     ), preview_candidates(root_id, id, priority, activity_at) AS (
-      SELECT root_id, id, 0, activity_at FROM ranked_series_assets WHERE series_order = 1
+      SELECT root_id, id, cover_sort_order, activity_at
+      FROM ranked_series_assets WHERE cover_sort_order IS NOT NULL
       UNION ALL
-      SELECT root_id, id, 1, activity_at FROM direct_assets
+      SELECT root_id, id, 3, activity_at FROM ranked_series_assets WHERE series_order = 1
       UNION ALL
-      SELECT root_id, id, 2, activity_at FROM series_assets
+      SELECT root_id, id, 4, activity_at FROM direct_assets
+      UNION ALL
+      SELECT root_id, id, 5, activity_at FROM series_assets
     ), ranked_assets(root_id, id, priority, activity_at) AS (
       SELECT root_id, id, MIN(priority), MAX(activity_at)
       FROM preview_candidates GROUP BY root_id, id

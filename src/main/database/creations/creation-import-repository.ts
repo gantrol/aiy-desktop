@@ -7,7 +7,10 @@ import type {
   CreatorImageImportContext,
   CreatorImageImportInput,
   CreatorImageImportItemInput,
+  CreatorOutputsOrganizeInput,
+  CreatorOutputsOrganizeResult,
   CreatorOutputsImportResult,
+  CreatorStagedOutputImportItemInput,
   ImportedCreationOutputDto,
   ImportedCreationOutputUpdateInput,
   NewExternalCreationImportInput,
@@ -19,24 +22,26 @@ import { type JsonMap, mediaUrl, now, text } from '@/main/database/core/values';
 import type { ExecutionSnapshotRepository } from '@/main/database/generation/execution-snapshot-repository';
 import { rehomeCreationInputStashes } from '@/main/database/creations/creation-input-stash-repository';
 import { rehomeIdeaCreation } from '@/main/database/creations/idea-creation-lifecycle';
-import {
-  normalizeImportedImageMetadata,
-  sameImportedModelIdentity,
-} from '@/main/database/assets/imported-image-metadata';
+import { sameImportedModelIdentity } from '@/main/database/assets/imported-image-metadata';
 import {
   linkExistingImportedOutput,
   type ExistingImportedOutputLinkInput,
 } from '@/main/database/creations/imported-output-linker';
-import { ensureImageMaterials } from '@/main/database/albums/image-material-batch';
+import { insertCreationOutputBatch } from '@/main/database/creations/creation-output-import-batch';
+import { organizeCreationOutputs } from '@/main/database/creations/creation-output-organizer';
+import { updatedCreationOutputProvenanceConfidence } from '@/main/database/creations/creation-output-provenance';
+import { imageDimensions } from '@/main/media/image-dimensions';
 
 const maxImageCount = 8;
 const maxImageBytes = 25 * 1024 * 1024;
 const maxBatchBytes = 100 * 1024 * 1024;
+const maxImageHeaderBytes = 4 * 1024 * 1024;
 
 const extensionByMimeType = {
   'image/png': '.png',
   'image/jpeg': '.jpg',
   'image/webp': '.webp',
+  'image/svg+xml': '.svg',
 } as const;
 
 export interface StoredCreatorImage {
@@ -63,50 +68,6 @@ interface ImportedOutputUpdateOptions {
   provenanceConfidence?: ImportedCreationOutputDto['provenanceConfidence'];
 }
 
-type ImportedOutputProvenance = Pick<
-  ImportedCreationOutputDto,
-  | 'sourceUrl'
-  | 'aiGeneratedStatus'
-  | 'comparisonRole'
-  | 'modelName'
-  | 'modelProvider'
-  | 'modelVersion'
-  | 'generationTextType'
-  | 'generationText'
->;
-
-function updatedProvenanceConfidence(
-  existing: JsonMap,
-  next: ImportedOutputProvenance,
-  override: ImportedOutputUpdateOptions['provenanceConfidence'],
-) {
-  if (override) return override;
-  const changed = [
-    next.sourceUrl !== text(existing.source_url),
-    next.aiGeneratedStatus !== text(existing.ai_generated_status),
-    next.comparisonRole !== text(existing.comparison_role),
-    next.modelName !== text(existing.model_name),
-    next.modelProvider !== text(existing.model_provider),
-    next.modelVersion !== text(existing.model_version),
-    next.generationTextType !== text(existing.generation_text_type),
-    next.generationText !== text(existing.generation_text),
-  ].some(Boolean);
-  if (!changed) {
-    return text(existing.provenance_confidence) as ImportedCreationOutputDto['provenanceConfidence'];
-  }
-  const hasDeclaredProvenance = [
-    next.sourceUrl,
-    next.aiGeneratedStatus === 'UNKNOWN' ? '' : next.aiGeneratedStatus,
-    next.comparisonRole === 'UNKNOWN' ? '' : next.comparisonRole,
-    next.modelName,
-    next.modelProvider,
-    next.modelVersion,
-    next.generationTextType === 'UNKNOWN' ? '' : next.generationTextType,
-    next.generationText,
-  ].some(Boolean);
-  return hasDeclaredProvenance ? 'DECLARED' : 'UNKNOWN';
-}
-
 function hasExpectedSignature(item: CreatorImageImportItemInput) {
   const bytes = item.bytes;
   if (item.mimeType === 'image/png') {
@@ -114,6 +75,14 @@ function hasExpectedSignature(item: CreatorImageImportItemInput) {
   }
   if (item.mimeType === 'image/jpeg') {
     return bytes.byteLength >= 3 && bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff;
+  }
+  if (item.mimeType === 'image/svg+xml') {
+    return (
+      imageDimensions(
+        Buffer.from(bytes.buffer, bytes.byteOffset, Math.min(bytes.byteLength, maxImageHeaderBytes)),
+        '.svg',
+      ) !== null
+    );
   }
   return (
     bytes.byteLength >= 12 &&
@@ -170,8 +139,13 @@ export class CreationImportRepository {
       .immediate();
   }
 
-  importStoredOutputs(context: CreatorImageImportContext, images: StoredCreatorImage[]): CreatorOutputsImportResult {
+  importStoredOutputs(
+    context: CreatorImageImportContext,
+    images: StoredCreatorImage[],
+    items: readonly CreatorStagedOutputImportItemInput[],
+  ): CreatorOutputsImportResult {
     const staged = this.stagedStoredImages(images);
+    if (items.length !== staged.images.length) throw new Error('Imported output details do not match staged images');
     return this.db
       .transaction(() => {
         const seriesId = this.resolveSeries(context, images[0]?.item.name);
@@ -184,6 +158,7 @@ export class CreationImportRepository {
             exactPrompt: null,
           },
           staged,
+          items,
         );
       })
       .immediate();
@@ -435,7 +410,7 @@ export class CreationImportRepository {
           : null
         : null;
     const sourceUrl = input.sourceUrl.trim();
-    const provenanceConfidence = updatedProvenanceConfidence(
+    const provenanceConfidence = updatedCreationOutputProvenanceConfidence(
       output,
       {
         sourceUrl,
@@ -487,6 +462,10 @@ export class CreationImportRepository {
     return this.outputDto(input.outputId);
   }
 
+  organizeOutputs(input: CreatorOutputsOrganizeInput): CreatorOutputsOrganizeResult {
+    return organizeCreationOutputs(this.storage, input, (outputId) => this.outputDto(outputId));
+  }
+
   private stage(items: CreatorImageImportItemInput[], allowEmpty = false): StagedBatch {
     if (!items.length && !allowEmpty) throw new Error('Nothing to import');
     if (items.length > maxImageCount) throw new Error(`Import supports at most ${maxImageCount} images`);
@@ -518,97 +497,20 @@ export class CreationImportRepository {
     };
   }
 
-  private insertOutputs(context: OutputImportContext, staged: StagedBatch): CreatorOutputsImportResult {
-    const batchId = ulid();
-    const createdAt = now();
-    const importedOutputs: ImportedCreationOutputDto[] = [];
-    const seenAssets = new Set<string>();
-    const outputAssetIds = new Set<string>();
-    let duplicateCount = staged.duplicateCount;
-    const usedNames = new Set(
-      (
-        this.db
-          .prepare(
-            `SELECT COALESCE(NULLIF(trim(display_name), ''), original_name) AS name
-      FROM creation_output_imports WHERE series_id = ? AND deleted_at IS NULL`,
-          )
-          .all(context.seriesId) as JsonMap[]
-      ).map((row) => text(row.name).toLocaleLowerCase()),
-    );
-
-    for (const image of staged.images) {
-      const imageAssetId = this.ensureReferenceAsset(image, context.source);
-      outputAssetIds.add(imageAssetId);
-      const alreadyLinked = this.db
-        .prepare(
-          `SELECT 1 FROM creation_output_imports
-        WHERE series_id = ? AND image_asset_id = ? AND deleted_at IS NULL LIMIT 1`,
-        )
-        .get(context.seriesId, imageAssetId);
-      if (seenAssets.has(imageAssetId) || alreadyLinked) {
-        duplicateCount += 1;
-        continue;
-      }
-      seenAssets.add(imageAssetId);
-      const outputId = ulid();
-      const originalName = image.item.name.trim() || 'image';
-      const fallbackDisplayName = this.availableDisplayName(originalName, usedNames);
-      const metadata = normalizeImportedImageMetadata(image.item.metadata, {
-        displayName: fallbackDisplayName,
-        sourceUrl: context.sourceUrl,
-        exactPrompt: context.exactPrompt,
-      });
-      usedNames.add(metadata.displayName.toLocaleLowerCase());
-      this.db
-        .prepare(
-          `INSERT INTO creation_output_imports
-        (id, batch_id, series_id, prompt_version_id, image_asset_id, source_type, original_name, created_at, deleted_at,
-          display_name, note, source_url, ai_generated_status, model_key, model_name, model_provider,
-          model_version, generation_text_type, generation_text, provenance_confidence, comparison_role,
-          codex_thread_id, codex_thread_name)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, NULL, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-        )
-        .run(
-          outputId,
-          batchId,
-          context.seriesId,
-          context.promptVersionId,
-          imageAssetId,
-          context.source,
-          originalName,
-          createdAt,
-          metadata.displayName,
-          metadata.note,
-          metadata.sourceUrl,
-          metadata.aiGeneratedStatus,
-          null,
-          metadata.modelName,
-          metadata.modelProvider,
-          metadata.modelVersion,
-          metadata.generationTextType,
-          metadata.generationText,
-          metadata.provenanceConfidence,
-          metadata.comparisonRole,
-          context.codexTask?.threadId ?? null,
-          context.codexTask?.threadName ?? '',
-        );
-      this.storage.recordChange('CREATION_OUTPUT_IMPORT', outputId, 'CREATE', {
-        batchId,
-        seriesId: context.seriesId,
-        promptVersionId: context.promptVersionId,
-        imageAssetId,
-        sourceType: context.source,
-      });
-      importedOutputs.push(this.outputDto(outputId));
-    }
-
-    ensureImageMaterials(this.storage, [...outputAssetIds]);
-    return {
-      seriesId: context.seriesId,
-      assetIds: importedOutputs.map((output) => output.imageAssetId),
-      importedOutputs,
-      duplicateCount,
-    };
+  private insertOutputs(
+    context: OutputImportContext,
+    staged: StagedBatch,
+    items: readonly CreatorStagedOutputImportItemInput[] = [],
+  ): CreatorOutputsImportResult {
+    return insertCreationOutputBatch({
+      storage: this.storage,
+      context,
+      staged,
+      items,
+      ensureReferenceAsset: (image, source) => this.ensureReferenceAsset(image, source),
+      availableDisplayName: (name, used) => this.availableDisplayName(name, used),
+      outputDto: (outputId) => this.outputDto(outputId),
+    });
   }
 
   private attachSeriesToAlbum(albumId: string, seriesId: string, timestamp: string) {
@@ -783,6 +685,9 @@ export class CreationImportRepository {
       generationTextType: text(row.generation_text_type) as ImportedCreationOutputDto['generationTextType'],
       generationText: text(row.generation_text),
       provenanceConfidence: text(row.provenance_confidence) as ImportedCreationOutputDto['provenanceConfidence'],
+      sortOrder: Number(row.sort_order),
+      relationshipKind: (text(row.relationship_kind) as ImportedCreationOutputDto['relationshipKind']) || 'UNSPECIFIED',
+      relationshipTargetOutputId: row.relationship_target_output_id ? text(row.relationship_target_output_id) : null,
       codexTask: row.codex_thread_id
         ? {
             threadId: text(row.codex_thread_id),

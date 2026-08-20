@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import type { AssetDto, AssetFileRevealContext } from '@/shared/contracts';
 import { ImageIcon } from '@/renderer/icons';
 import { cn } from '@/renderer/lib/utils';
@@ -7,6 +7,11 @@ import { mediaThumbnailUrl } from '@/renderer/components/media/mediaThumbnailUrl
 import { AssetFileContextMenu } from '@/renderer/components/media/AssetFileContextMenu';
 import { AssetMedia, isVideoAsset } from '@/renderer/components/media/AssetMedia';
 import type { ActionMenuAction } from '@/renderer/components/ui/action-menu';
+import {
+  stackedMediaFrameLayerClassName,
+  stackedMediaFrameLiftClassName,
+  stackedMediaFrameStyle,
+} from '@/renderer/components/ui/stacked-media-frame';
 
 export interface MediaStackItem {
   asset: AssetDto;
@@ -17,7 +22,7 @@ export interface MediaStackItem {
 
 interface Props {
   items: MediaStackItem[];
-  size?: 'xs' | 'rail' | 'tree' | 'sm' | 'md';
+  size?: 'xs' | 'rail' | 'tree' | 'sm' | 'md' | 'card';
   className?: string;
   expanded?: boolean;
   spread?: MediaStackSpread;
@@ -31,6 +36,8 @@ interface Props {
   notify?(message: string): void;
   contextActions?: readonly ActionMenuAction[];
   revealContext?: AssetFileRevealContext;
+  deferOffscreenMedia?: boolean;
+  onMediaAdmitted?(): void;
 }
 
 export type MediaStackSpread = 'collapsed' | 'settled' | 'expanded';
@@ -94,6 +101,15 @@ const dimensions: Record<NonNullable<Props['size']>, MediaStackLayout> = {
     collapsedStep: 6,
     settledStep: 12,
     expandedStep: 18,
+  },
+  card: {
+    containerWidth: 236,
+    containerHeight: 152,
+    itemWidth: 88,
+    itemHeight: 132,
+    collapsedStep: 10,
+    settledStep: 16,
+    expandedStep: 24,
   },
 };
 
@@ -195,6 +211,35 @@ export function getMediaStackLeadingEdge(
   return getMediaStackHorizontalBounds(size, items, spread, maxItems).left;
 }
 
+function useMediaStackAdmission(deferOffscreenMedia: boolean, onMediaAdmitted?: () => void) {
+  const containerRef = useRef<HTMLSpanElement>(null);
+  const onMediaAdmittedRef = useRef(onMediaAdmitted);
+  const [admitted, setAdmitted] = useState(() => !deferOffscreenMedia || typeof IntersectionObserver === 'undefined');
+  onMediaAdmittedRef.current = onMediaAdmitted;
+
+  useEffect(() => {
+    if (admitted || !deferOffscreenMedia) return;
+    const container = containerRef.current;
+    if (!container) return;
+    const scrollViewport = container.closest<HTMLElement>('[data-slot="scroll-area-viewport"]');
+    // Native lazy images look several viewports ahead. Gate tree media on the
+    // actually clipped scroll viewport so opening a deep branch stays incremental.
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (!entries.some((entry) => entry.isIntersecting)) return;
+        onMediaAdmittedRef.current?.();
+        setAdmitted(true);
+        observer.disconnect();
+      },
+      { root: scrollViewport, rootMargin: '320px 0px' },
+    );
+    observer.observe(container);
+    return () => observer.disconnect();
+  }, [admitted, deferOffscreenMedia]);
+
+  return { containerRef, mediaAdmitted: admitted || !deferOffscreenMedia };
+}
+
 export function MediaStackPreview({
   items,
   size = 'md',
@@ -211,8 +256,11 @@ export function MediaStackPreview({
   notify,
   contextActions,
   revealContext,
+  deferOffscreenMedia = false,
+  onMediaAdmitted,
 }: Props) {
   const [internalExpanded, setInternalExpanded] = useState(false);
+  const { containerRef, mediaAdmitted } = useMediaStackAdmission(deferOffscreenMedia, onMediaAdmitted);
   const expanded = controlledExpanded ?? internalExpanded;
   const spread = controlledSpread ?? (expanded ? 'expanded' : 'collapsed');
   const visible = items.slice(0, maxItems);
@@ -227,6 +275,7 @@ export function MediaStackPreview({
 
   return (
     <span
+      ref={containerRef}
       data-media-stack
       data-media-count={items.length}
       data-expanded={spread === 'expanded' ? 'true' : 'false'}
@@ -253,7 +302,7 @@ export function MediaStackPreview({
       {!visible.length && (
         <span
           className={cn(
-            'absolute inset-1 grid place-items-center rounded-md border bg-media-surround-light text-muted-foreground',
+            'absolute inset-1 grid place-items-center rounded-md border bg-surface-sunken text-muted-foreground',
             size === 'tree' && 'corner-continuous',
           )}
         >
@@ -277,15 +326,14 @@ export function MediaStackPreview({
             : firstCenter + index * (expandedStep ?? layout.expandedStep) - frame.width / 2;
         const x = spread === 'expanded' ? expandedX : spread === 'settled' ? settledX : collapsedX;
         const rotation = spread === 'collapsed' && visible.length > 1 ? offset * 3 : 0;
-        const frameStyle = {
+        const frameStyle = stackedMediaFrameStyle(visible.length - index, {
           top: (layout.containerHeight - frame.height) / 2,
           width: frame.width,
           height: frame.height,
-          zIndex: visible.length - index,
           transform: `translateX(${x}px) rotate(${rotation}deg)`,
-        };
+        });
         const mediaStyle = { objectPosition: `${(item.focalX ?? 0.5) * 100}% ${(item.focalY ?? 0.5) * 100}%` };
-        const image = isVideoAsset(item.asset) ? (
+        const image = !mediaAdmitted ? null : isVideoAsset(item.asset) ? (
           <AssetMedia
             asset={item.asset}
             className="size-full object-contain"
@@ -312,7 +360,9 @@ export function MediaStackPreview({
             type="button"
             aria-label={assetLabel?.(item.asset, index) ?? `Image ${index + 1}`}
             className={cn(
-              'absolute left-0 overflow-hidden rounded-md border border-border/70 bg-media-surround outline-none transition-transform duration-fast ease-out motion-reduce:transition-none hover:z-20 focus-visible:z-20 focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring',
+              'pointer-events-auto absolute left-0 overflow-hidden rounded-md border border-border/70 bg-surface-sunken outline-none transition-transform duration-fast ease-out motion-reduce:transition-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring',
+              stackedMediaFrameLayerClassName,
+              stackedMediaFrameLiftClassName,
               size === 'tree' && 'corner-continuous',
             )}
             style={frameStyle}
@@ -329,7 +379,8 @@ export function MediaStackPreview({
           <span
             key={item.asset.id}
             className={cn(
-              'absolute left-0 overflow-hidden rounded-md border border-border/70 bg-media-surround transition-transform duration-fast ease-out motion-reduce:transition-none',
+              'absolute left-0 overflow-hidden rounded-md border border-border/70 bg-surface-sunken transition-transform duration-fast ease-out motion-reduce:transition-none',
+              stackedMediaFrameLayerClassName,
               size === 'tree' && 'corner-continuous',
             )}
             style={frameStyle}

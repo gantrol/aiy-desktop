@@ -1,0 +1,34 @@
+@property --image-overlay-copy-scrim-progress {
+  syntax: '<percentage>';
+  inherits: false;
+  initial-value: -30%;
+}
+
+[data-image-overlay-copy-scrim] {
+  --image-overlay-copy-scrim-progress: -30%;
+  -webkit-mask-image: linear-gradient(
+    to bottom,
+    transparent var(--image-overlay-copy-scrim-progress),
+    var(--media-checker-a) calc(var(--image-overlay-copy-scrim-progress) + 30%)
+  );
+  mask-image: linear-gradient(
+    to bottom,
+    transparent var(--image-overlay-copy-scrim-progress),
+    var(--media-checker-a) calc(var(--image-overlay-copy-scrim-progress) + 30%)
+  );
+  transition: --image-overlay-copy-scrim-progress var(--motion-overlay) var(--ease-enter);
+}
+
+[data-term-overview-card]:hover [data-image-overlay-copy-scrim] {
+  --image-overlay-copy-scrim-progress: 100%;
+}
+
+[data-term-overview-card]:has(:focus-visible) [data-image-overlay-copy-scrim] {
+  --image-overlay-copy-scrim-progress: -30%;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  [data-image-overlay-copy-scrim] {
+    transition: none;
+  }
+}

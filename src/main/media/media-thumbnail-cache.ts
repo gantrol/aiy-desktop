@@ -5,7 +5,7 @@ import path from 'node:path';
 import { createThumbnailInSandbox } from '@/main/media/image-thumbnail-worker-client';
 
 const thumbnailVersion = 1;
-const thumbnailSizes = [96, 192, 320] as const;
+const thumbnailSizes = [96, 192, 320, 512] as const;
 
 export function normalizeMediaThumbnailSize(value: string | null) {
   const requested = Number(value);

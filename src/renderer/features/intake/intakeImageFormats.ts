@@ -1,13 +1,14 @@
 import type { IntakeMediaMimeType, IntakeVideoMimeType } from '@/shared/contracts';
 
 export const intakeMediaAccept =
-  'image/png,image/jpeg,image/webp,image/gif,video/mp4,video/webm,video/quicktime,.png,.jpg,.jpeg,.webp,.gif,.mp4,.m4v,.webm,.mov';
+  'image/png,image/jpeg,image/webp,image/gif,image/svg+xml,video/mp4,video/webm,video/quicktime,.png,.jpg,.jpeg,.webp,.gif,.svg,.mp4,.m4v,.webm,.mov';
 
 const supportedMimeTypes = new Set<IntakeMediaMimeType>([
   'image/png',
   'image/jpeg',
   'image/webp',
   'image/gif',
+  'image/svg+xml',
   'video/mp4',
   'video/webm',
   'video/quicktime',
@@ -19,6 +20,7 @@ const mimeTypeByExtension = new Map<string, IntakeMediaMimeType>([
   ['jpeg', 'image/jpeg'],
   ['webp', 'image/webp'],
   ['gif', 'image/gif'],
+  ['svg', 'image/svg+xml'],
   ['mp4', 'video/mp4'],
   ['m4v', 'video/mp4'],
   ['webm', 'video/webm'],
@@ -36,5 +38,7 @@ export function isIntakeVideoMimeType(mimeType: IntakeMediaMimeType): mimeType i
 }
 
 export function isCreatorImageMimeType(mimeType: string) {
-  return mimeType === 'image/png' || mimeType === 'image/jpeg' || mimeType === 'image/webp';
+  return (
+    mimeType === 'image/png' || mimeType === 'image/jpeg' || mimeType === 'image/webp' || mimeType === 'image/svg+xml'
+  );
 }

@@ -261,6 +261,10 @@ function newestRunsFirst(version: PromptVersionDto, modelKey: string | null) {
 
 function executionPromptCandidates(version: PromptVersionDto, modelKey: string | null) {
   return newestRunsFirst(version, modelKey).flatMap((run) => {
+    const summary = run.executionSummary;
+    if (summary) {
+      return [summary.resolvedPrompt, summary.clientRequestText ?? ''].map((value) => value.trim()).filter(Boolean);
+    }
     const execution = run.executionInputSnapshot;
     if (!execution) return [];
     return [execution.commonInput.resolvedPrompt.commonExpression, execution.clientRequestText ?? '']

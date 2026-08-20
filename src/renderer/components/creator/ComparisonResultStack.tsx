@@ -4,6 +4,7 @@ import { cn } from '@/renderer/lib/utils';
 import { Popover, PopoverContent, PopoverTrigger } from '@/renderer/components/ui/popover';
 import { ScrollArea } from '@/renderer/components/ui/scroll-area';
 import { AssetFileContextMenu } from '@/renderer/components/media/AssetFileContextMenu';
+import { ImageAmbientBackdrop } from '@/renderer/components/media/AmbientImage';
 import { AssetHoverPreview } from '@/renderer/components/creator/AssetHoverPreview';
 
 type PairSlot = 'A' | 'B';
@@ -145,18 +146,24 @@ export function ComparisonResultStack({
                 >
                   <span
                     className={cn(
-                      'pointer-events-none relative block size-full overflow-hidden rounded-md border bg-media-surround transition-transform duration-base ease-enter',
+                      'pointer-events-none relative isolate block size-full overflow-hidden rounded-md border bg-surface-sunken transition-transform duration-base ease-enter',
                       pairSelecting && active && 'ring-2 ring-selected-border',
                       slot && 'ring-2 ring-ring',
                     )}
                     style={{ transform: active ? `rotate(${-rotation}deg)` : 'none' }}
                   >
-                    <img className="size-full object-contain" src={item.run.asset.mediaUrl} alt="" draggable={false} />
-                    <span className="absolute right-1.5 bottom-1.5 rounded-sm border bg-overlay/90 px-1 py-0.5 font-mono text-[9px] font-medium tabular-nums">
+                    <ImageAmbientBackdrop src={item.run.asset.mediaUrl} />
+                    <img
+                      className="relative z-10 size-full object-contain"
+                      src={item.run.asset.mediaUrl}
+                      alt=""
+                      draggable={false}
+                    />
+                    <span className="absolute right-1.5 bottom-1.5 z-20 rounded-sm border bg-overlay/90 px-1 py-0.5 font-mono text-[9px] font-medium tabular-nums">
                       R{item.repeatIndex + repeatOrdinalOffset + 1}
                     </span>
                     {slot && (
-                      <span className="absolute top-1.5 left-1.5 grid size-5 place-items-center rounded-sm border bg-background/95 text-[11px] font-semibold">
+                      <span className="absolute top-1.5 left-1.5 z-20 grid size-5 place-items-center rounded-sm border bg-background/95 text-[11px] font-semibold">
                         {slot}
                       </span>
                     )}
@@ -202,23 +209,24 @@ export function ComparisonResultStack({
                           aria-label={`${contextLabel} · R${item.repeatIndex + repeatOrdinalOffset + 1}${slot ? ` · ${slot}` : ''}`}
                           aria-pressed={pairSelecting ? Boolean(slot) : undefined}
                           className={cn(
-                            'relative h-28 overflow-hidden rounded-md border bg-media-surround outline-none hover:border-foreground/40 focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring',
+                            'relative isolate h-28 overflow-hidden rounded-md border bg-surface-sunken outline-none hover:border-foreground/40 focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring',
                             slot && 'ring-2 ring-foreground',
                           )}
                           onClick={() => select(item)}
                         >
+                          <ImageAmbientBackdrop src={item.run.asset.mediaUrl} loading="lazy" />
                           <img
-                            className="size-full object-contain"
+                            className="relative z-10 size-full object-contain"
                             src={item.run.asset.mediaUrl}
                             alt=""
                             loading="lazy"
                             draggable={false}
                           />
-                          <span className="absolute right-1 bottom-1 rounded-sm border bg-background/90 px-1 py-0.5 font-mono text-[9px] font-medium tabular-nums">
+                          <span className="absolute right-1 bottom-1 z-20 rounded-sm border bg-background/90 px-1 py-0.5 font-mono text-[9px] font-medium tabular-nums">
                             R{item.repeatIndex + repeatOrdinalOffset + 1}
                           </span>
                           {slot && (
-                            <span className="absolute top-1 left-1 grid size-5 place-items-center rounded-sm border bg-background/95 text-[11px] font-semibold">
+                            <span className="absolute top-1 left-1 z-20 grid size-5 place-items-center rounded-sm border bg-background/95 text-[11px] font-semibold">
                               {slot}
                             </span>
                           )}

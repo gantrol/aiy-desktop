@@ -152,6 +152,7 @@ function NavigationEntryRow({
                     open={expanded}
                     expandable={expandable}
                     expandLabel={expanded ? labels.collapseAlbum(entry.title) : labels.expandAlbum(entry.title)}
+                    overlayStyle="solid"
                     disclosureInteractive
                     onPullDownExpand={onPullDownExpand}
                     onPointerTrackStart={onPointerTrackStart}
@@ -184,7 +185,7 @@ function NavigationEntryRow({
               <div className="pointer-events-none absolute inset-y-0 right-1 z-30 flex items-center gap-0.5 opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100">
                 <TreeDragHandle
                   label={labels.sidebar.move}
-                  className="rounded-md bg-overlay/95 shadow-overlay backdrop-blur-sm"
+                  className="rounded-md bg-overlay/95 shadow-overlay"
                   onDragStart={(event) => {
                     event.dataTransfer.effectAllowed = 'move';
                     onDragStart();
@@ -194,7 +195,7 @@ function NavigationEntryRow({
                 <ActionMenuButton
                   actions={actions}
                   label={labels.sidebar.moreActions(title)}
-                  className="pointer-events-auto size-6 rounded-md bg-overlay/95 shadow-overlay backdrop-blur-sm"
+                  className="pointer-events-auto size-6 rounded-md bg-overlay/95 shadow-overlay"
                 />
               </div>
             </div>

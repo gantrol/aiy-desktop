@@ -241,7 +241,9 @@ function projectDetailedGenerationTrace(
         (parseTimestamp(right.createdAt) ?? Number.MAX_SAFE_INTEGER),
   );
   const prompt =
-    record.run.executionInputSnapshot?.commonInput.resolvedPrompt.commonExpression || record.version.finalPrompt;
+    record.run.executionSummary?.resolvedPrompt ||
+    record.run.executionInputSnapshot?.commonInput.resolvedPrompt.commonExpression ||
+    record.version.finalPrompt;
   const entries: AiActivityTraceEntry[] = [
     {
       id: `${record.id}:input`,
@@ -282,7 +284,9 @@ function projectGenerationSummaryTrace(
   now: number,
 ): AiActivityTraceProjection {
   const prompt =
-    record.run.executionInputSnapshot?.commonInput.resolvedPrompt.commonExpression || record.version.finalPrompt;
+    record.run.executionSummary?.resolvedPrompt ||
+    record.run.executionInputSnapshot?.commonInput.resolvedPrompt.commonExpression ||
+    record.version.finalPrompt;
   const provider = providerName(record.run, data);
   const startedAt = record.run.startedAt ?? record.run.createdAt;
   const running = record.run.status === 'QUEUED' || record.run.status === 'RUNNING';

@@ -1,5 +1,5 @@
 import { CopyIcon, FileTextIcon, ImageIcon, Layers3Icon, SquarePenIcon, VideoIcon } from 'lucide-react';
-import { useState, type CSSProperties, type DragEvent as ReactDragEvent } from 'react';
+import { useState, type DragEvent as ReactDragEvent } from 'react';
 import type { AssetFileRevealContext } from '@/shared/contracts';
 import { useI18n } from '@/renderer/i18n/useI18n';
 import { cn } from '@/renderer/lib/utils';
@@ -13,6 +13,11 @@ import {
   ContextMenuItem,
   ContextMenuTrigger,
 } from '@/renderer/components/ui/context-menu';
+import {
+  stackedMediaFrameLayerClassName,
+  stackedMediaFrameLiftClassName,
+  stackedMediaFrameStyle,
+} from '@/renderer/components/ui/stacked-media-frame';
 import { getMaterialCardAspectRatio } from '@/renderer/components/gallery/MaterialCard';
 import {
   materialTitle,
@@ -62,7 +67,7 @@ function StackMedia({ item }: { item: Exclude<MaterialLibraryItem, { kind: 'TEXT
   const [failed, setFailed] = useState(false);
   if (failed) {
     return (
-      <span className="grid size-full place-items-center bg-media-surround-light text-muted-foreground">
+      <span className="grid size-full place-items-center bg-surface-sunken text-muted-foreground">
         {item.kind === 'VIDEO' ? (
           <VideoIcon className="size-7 opacity-50" />
         ) : (
@@ -127,14 +132,13 @@ function MaterialFrame({
   const rotation = expanded || count === 1 ? 0 : offset * 4;
   const size = frameSize(item, count);
   const materialId = item.kind === 'TEXT' ? item.text.id : item.image.materialId;
-  const style: CSSProperties = {
+  const style = stackedMediaFrameStyle(count - index, {
     left: '50%',
     top: '50%',
     width: size.width,
     height: size.height,
-    zIndex: count - index,
     transform: `translate(calc(-50% + ${offset * step}px), -50%) rotate(${rotation}deg)`,
-  };
+  });
   const button = (
     <button
       type="button"
@@ -144,7 +148,9 @@ function MaterialFrame({
       aria-label={label}
       aria-pressed={selected || checked}
       className={cn(
-        'absolute overflow-hidden rounded-lg border border-border/80 bg-media-surround-light text-left outline-none transition-[transform,border-color] duration-fast ease-out hover:z-20 focus-visible:z-20 focus-visible:ring-2 focus-visible:ring-ring',
+        'absolute overflow-hidden rounded-lg border border-border/80 bg-surface-sunken text-left outline-none transition-[transform,border-color] duration-fast ease-out focus-visible:ring-2 focus-visible:ring-ring',
+        stackedMediaFrameLayerClassName,
+        stackedMediaFrameLiftClassName,
         selected && 'border-selected-border ring-2 ring-ring',
         checked && 'border-selected-border ring-2 ring-ring',
       )}

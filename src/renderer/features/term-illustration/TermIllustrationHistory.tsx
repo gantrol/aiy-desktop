@@ -2,6 +2,7 @@ import { CircleCheckIcon, Clock3Icon, ExternalLinkIcon, LoaderCircleIcon } from 
 import { useI18n } from '@/renderer/i18n/useI18n';
 import { Badge } from '@/renderer/components/ui/badge';
 import { Button } from '@/renderer/components/ui/button';
+import { AmbientImage } from '@/renderer/components/media/AmbientImage';
 import { useTermIllustration } from '@/renderer/features/term-illustration/TermIllustrationProvider';
 import {
   batchStatusLabel,
@@ -53,8 +54,9 @@ export function TermIllustrationHistory() {
               {batch.runs.map((run) => (
                 <div key={run.id} className="flex items-center gap-3">
                   {run.asset ? (
-                    <img
-                      className="size-12 shrink-0 rounded-md border bg-media-surround-light object-contain"
+                    <AmbientImage
+                      frameClassName="size-12 shrink-0 rounded-md border"
+                      className="size-full object-contain"
                       src={run.asset.mediaUrl}
                       alt={copy.candidateAlt}
                       draggable={false}

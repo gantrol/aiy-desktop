@@ -22,6 +22,8 @@ import {
   videoDocumentFileStem,
 } from '@/renderer/features/video-documents/useVideoDocumentLocalFile';
 import { useI18n } from '@/renderer/i18n/useI18n';
+import { ImageAmbientBackdrop } from '@/renderer/components/media/AmbientImage';
+import { cn } from '@/renderer/lib/utils';
 
 const UNFILED_VALUE = '__UNFILED__';
 
@@ -100,9 +102,17 @@ export function VideoDocumentStartDialog({
             <DialogDescription>{labels.description}</DialogDescription>
           </DialogHeader>
           <div className="flex min-w-0 gap-4 rounded-lg border bg-surface-sunken p-3">
-            <div className="grid aspect-video w-40 shrink-0 place-items-center overflow-hidden rounded-md bg-media-surround-dark text-white/70">
+            <div
+              className={cn(
+                'relative isolate grid aspect-video w-40 shrink-0 place-items-center overflow-hidden rounded-md text-white/70',
+                previewUrl ? 'bg-surface-sunken' : 'bg-media-surround-dark',
+              )}
+            >
               {previewUrl ? (
-                <img src={previewUrl} alt="" className="size-full object-contain" />
+                <>
+                  <ImageAmbientBackdrop src={previewUrl} />
+                  <img src={previewUrl} alt="" className="relative z-10 size-full object-contain" />
+                </>
               ) : reading ? (
                 <LoaderCircleIcon className="size-5 animate-spin" />
               ) : (

@@ -1,5 +1,5 @@
 import { BookOpenIcon, ShapesIcon, TagIcon } from 'lucide-react';
-import { useEffect, useState, type ReactNode } from 'react';
+import { useLayoutEffect, useState, type AnimationEvent, type ReactNode } from 'react';
 import type { GalleryDictionaryCollection } from '@/renderer/components/app/app-navigation';
 import { cn } from '@/renderer/lib/utils';
 import { AlbumTreePreview } from '@/renderer/components/albums/AlbumTreePreview';
@@ -14,7 +14,10 @@ import {
   getTreeBranchItemTopology,
   type TreeBranchItemTopology,
 } from '@/renderer/components/albums/treeConnectionGeometry';
-import { useAlbumTreeExpansion } from '@/renderer/components/albums/useAlbumTreeExpansion';
+import {
+  useAlbumTreeExpansion,
+  type AlbumTreeDiagnosticSink,
+} from '@/renderer/components/albums/useAlbumTreeExpansion';
 import { useDeferredSingleDoubleClick } from '@/renderer/components/albums/useDeferredSingleDoubleClick';
 import { ActionContextMenuItems, ActionMenuButton, type ActionMenuAction } from '@/renderer/components/ui/action-menu';
 import { Button } from '@/renderer/components/ui/button';
@@ -34,6 +37,7 @@ interface Props {
   selection: GalleryDictionaryCollection | null;
   expansion: ReturnType<typeof useAlbumTreeExpansion>;
   click: ReturnType<typeof useDeferredSingleDoubleClick>;
+  diagnostics?: AlbumTreeDiagnosticSink;
   openLabel: string;
   expandLabel: string;
   collapseLabel: string;
@@ -53,6 +57,7 @@ export function DictionaryAlbumTree({
   selection,
   expansion,
   click,
+  diagnostics,
   openLabel,
   expandLabel,
   collapseLabel,
@@ -63,7 +68,25 @@ export function DictionaryAlbumTree({
   const [visibleTermsByType, setVisibleTermsByType] = useState<Record<string, number>>({});
   const scope = selection?.scope ?? 'ALL';
 
-  useEffect(() => {
+  function traceBranchAnimation(
+    albumId: string,
+    contentDepth: number,
+    itemCount: number,
+    phase: 'start' | 'end',
+    event: AnimationEvent<HTMLDivElement>,
+  ) {
+    if (event.target !== event.currentTarget) return;
+    diagnostics?.('tree.branch.animation', {
+      albumId,
+      animationName: event.animationName,
+      contentDepth,
+      elapsedMs: event.elapsedTime * 1_000,
+      itemCount,
+      phase,
+    });
+  }
+
+  useLayoutEffect(() => {
     if (!selection) return;
     if (selection.domainId && selection.typeId) {
       expansion.setPersistent(`dictionary-domain:${selection.domainId}`, true);
@@ -76,10 +99,10 @@ export function DictionaryAlbumTree({
         ?.types.find((candidate) => candidate.typeId === selection.typeId);
       const termIndex = type?.terms.findIndex((term) => term.term.id === selection.termId) ?? -1;
       if (termIndex >= 0) {
-        setVisibleTermsByType((current) => ({
-          ...current,
-          [typeId]: Math.max(current[typeId] ?? pageSize, termIndex + 1),
-        }));
+        setVisibleTermsByType((current) => {
+          const visibleCount = Math.max(current[typeId] ?? pageSize, termIndex + 1);
+          return current[typeId] === visibleCount ? current : { ...current, [typeId]: visibleCount };
+        });
       }
     }
   }, [selection?.domainId, selection?.termId, selection?.typeId, tree]);
@@ -132,11 +155,22 @@ export function DictionaryAlbumTree({
           open={open}
           expandable={expandable}
           expandLabel={open ? collapseLabel : expandLabel}
+          overlayStyle="solid"
           disclosureInteractive={false}
           branchTopology={branchTopology}
           onPullDownExpand={() => expansion.setHover(id, true)}
           onPointerTrackStart={(clientY) => expansion.beginPointerTrack(id, clientY)}
           onPointerTrack={(clientY) => expansion.trackPointer(id, clientY)}
+          onMediaAdmitted={
+            diagnostics
+              ? () =>
+                  diagnostics('tree.media.admitted', {
+                    albumId: id,
+                    assetCount: previewAssets.length,
+                    expandable,
+                  })
+              : undefined
+          }
           onClick={handlers.onClick}
           onDoubleClick={handlers.onDoubleClick}
         />
@@ -170,7 +204,7 @@ export function DictionaryAlbumTree({
         <ActionMenuButton
           actions={actions}
           label={moreActionsLabel(rowTitle)}
-          className="absolute right-1 top-1/2 z-30 size-6 -translate-y-1/2 bg-overlay/95 opacity-0 shadow-overlay backdrop-blur-sm group-hover:opacity-100 group-focus-within:opacity-100 data-[state=open]:opacity-100"
+          className="absolute right-1 top-1/2 z-30 size-6 -translate-y-1/2 bg-overlay/95 opacity-0 shadow-overlay group-hover:opacity-100 group-focus-within:opacity-100 data-[state=open]:opacity-100"
         />
       </div>
     );
@@ -249,7 +283,10 @@ export function DictionaryAlbumTree({
           <TreeBranchCollapseRail label={collapseLabel} onCollapse={() => expansion.collapse(id)} />
         )}
         {type.terms.length > 0 && (
-          <TreeBranchContent>
+          <TreeBranchContent
+            onAnimationStart={(event) => traceBranchAnimation(id, 3, visibleTerms.length, 'start', event)}
+            onAnimationEnd={(event) => traceBranchAnimation(id, 3, visibleTerms.length, 'end', event)}
+          >
             <TreeBranchCollapseProvider onCollapse={() => expansion.collapse(id)}>
               {visibleTerms.map((term, index) =>
                 renderTerm(
@@ -308,7 +345,10 @@ export function DictionaryAlbumTree({
           <TreeBranchCollapseRail label={collapseLabel} onCollapse={() => expansion.collapse(id)} />
         )}
         {domain.types.length > 0 && (
-          <TreeBranchContent>
+          <TreeBranchContent
+            onAnimationStart={(event) => traceBranchAnimation(id, 2, domain.types.length, 'start', event)}
+            onAnimationEnd={(event) => traceBranchAnimation(id, 2, domain.types.length, 'end', event)}
+          >
             <TreeBranchCollapseProvider onCollapse={() => expansion.collapse(id)}>
               {open &&
                 domain.types.map((type, index) =>

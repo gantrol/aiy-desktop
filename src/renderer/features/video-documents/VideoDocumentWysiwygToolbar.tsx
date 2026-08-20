@@ -378,7 +378,23 @@ export function VideoDocumentWysiwygToolbar({
       });
       const asset = assets[0];
       if (!asset) throw new Error('Image import produced no asset');
-      const extension = item.mimeType === 'image/png' ? 'png' : item.mimeType === 'image/webp' ? 'webp' : 'jpg';
+      if (
+        asset.mimeType !== 'image/png' &&
+        asset.mimeType !== 'image/jpeg' &&
+        asset.mimeType !== 'image/webp' &&
+        asset.mimeType !== 'image/svg+xml'
+      ) {
+        throw new Error('Image import produced an unsupported asset');
+      }
+      const mimeType = asset.mimeType;
+      const extension =
+        mimeType === 'image/png'
+          ? 'png'
+          : mimeType === 'image/webp'
+            ? 'webp'
+            : mimeType === 'image/svg+xml'
+              ? 'svg'
+              : 'jpg';
       const binding: VideoDocumentMediaBinding = {
         path: `assets/upload-${asset.id}.${extension}`,
         assetId: asset.id,
@@ -390,7 +406,7 @@ export function VideoDocumentWysiwygToolbar({
       const media: VideoDocumentRevisionMediaDto = {
         assetId: asset.id,
         mediaUrl: asset.mediaUrl,
-        mimeType: item.mimeType,
+        mimeType,
         width: asset.width,
         height: asset.height,
         byteSize: asset.byteSize ?? item.bytes.byteLength,
@@ -509,7 +525,7 @@ export function VideoDocumentWysiwygToolbar({
         <input
           ref={imageInputRef}
           type="file"
-          accept="image/png,image/jpeg,image/webp"
+          accept="image/png,image/jpeg,image/webp,image/svg+xml,.svg"
           className="sr-only"
           tabIndex={-1}
           onChange={(event) => {

@@ -4,6 +4,7 @@ import { Button } from '@/renderer/components/ui/button';
 import { Textarea } from '@/renderer/components/ui/textarea';
 import { useI18n } from '@/renderer/i18n/useI18n';
 import { isIntakeVideoMimeType } from '@/renderer/features/intake/intakeImageFormats';
+import { AmbientImage } from '@/renderer/components/media/AmbientImage';
 
 interface Props {
   items: LocalIntakeItem[];
@@ -25,9 +26,10 @@ export function IntakeDraftTray({ items, disabled, onEditText, onMove, onRemove 
           className="flex min-h-20 items-center gap-3 border-b px-3 py-3 last:border-b-0"
         >
           {item.kind !== 'TEXT' ? (
-            <img
+            <AmbientImage
               data-slot="intake-preview"
-              className="size-16 shrink-0 rounded-md border bg-media-surround-light object-contain"
+              frameClassName="size-16 shrink-0 rounded-md border"
+              className="size-full object-contain"
               src={item.previewUrl}
               alt=""
             />

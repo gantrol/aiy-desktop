@@ -5,8 +5,10 @@ import { cn } from '@/renderer/lib/utils';
 import { Button } from '@/renderer/components/ui/button';
 import { ScrollArea } from '@/renderer/components/ui/scroll-area';
 import { AssetFileContextMenu } from '@/renderer/components/media/AssetFileContextMenu';
+import { ImageAmbientBackdrop } from '@/renderer/components/media/AmbientImage';
 import { AssetHoverPreview } from '@/renderer/components/creator/AssetHoverPreview';
 import { CreatorPaneResizeHandle } from '@/renderer/components/creator/CreatorPaneResizeHandle';
+import type { ActionMenuAction } from '@/renderer/components/ui/action-menu';
 
 interface Props {
   assets: AssetDto[];
@@ -26,6 +28,7 @@ interface Props {
   onSelect(assetId: string): void;
   notify(message: string): void;
   revealContextForAsset?(assetId: string): AssetFileRevealContext | undefined;
+  actionsForAsset?(assetId: string): readonly ActionMenuAction[];
   thumbnailLabel?(asset: AssetDto, index: number): string;
 }
 
@@ -47,6 +50,7 @@ export function OutputThumbnailRail({
   onSelect,
   notify,
   revealContextForAsset,
+  actionsForAsset,
   thumbnailLabel,
 }: Props) {
   return (
@@ -86,6 +90,7 @@ export function OutputThumbnailRail({
                 assetId={asset.id}
                 notify={notify}
                 revealContext={revealContextForAsset?.(asset.id)}
+                actions={actionsForAsset?.(asset.id)}
               >
                 <AssetHoverPreview asset={asset} side="left">
                   <button
@@ -94,7 +99,7 @@ export function OutputThumbnailRail({
                     aria-pressed={asset.id === selectedAssetId}
                     title={accessibleLabel}
                     className={cn(
-                      'h-14 w-11 overflow-hidden rounded-md border-2 border-transparent bg-media-surround-light p-0.5 outline-none transition-colors hover:border-border-strong focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring',
+                      'relative isolate h-14 w-11 overflow-hidden rounded-md border-2 border-transparent bg-surface-sunken p-0.5 outline-none transition-colors hover:border-border-strong focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring',
                       asset.id === selectedAssetId && 'border-selected-border ring-2 ring-ring',
                     )}
                     onClick={() => {
@@ -102,10 +107,12 @@ export function OutputThumbnailRail({
                       onExpand();
                     }}
                   >
+                    <ImageAmbientBackdrop src={asset.mediaUrl} loading="lazy" />
                     <img
                       src={asset.mediaUrl}
                       alt=""
-                      className="size-full rounded-sm object-contain"
+                      className="relative z-10 size-full rounded-sm object-contain"
+                      loading="lazy"
                       draggable={false}
                     />
                   </button>

@@ -1,6 +1,7 @@
 import { forwardRef, useCallback, useEffect, useId, useRef, useState, type ReactNode } from 'react';
 import type { TransitionPreviewDto } from '@/shared/contracts/local-space';
 import { cn } from '@/renderer/lib/utils';
+import './TransitionPreviewMedia.css';
 
 const MIN_TRANSITION_PREVIEW_ASPECT = 0.5;
 const MAX_TRANSITION_PREVIEW_ASPECT = 2;

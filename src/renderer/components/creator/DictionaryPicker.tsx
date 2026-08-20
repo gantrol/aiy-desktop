@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { HistoryIcon, LoaderCircleIcon, XIcon } from 'lucide-react';
+import { XIcon } from 'lucide-react';
 import type {
   FacetDefinitionDto,
   HistoricalTermRecommendationRunDto,
@@ -15,7 +15,6 @@ import { WordPaletteLibrary } from '@/renderer/components/palette/WordPaletteLib
 import { Button } from '@/renderer/components/ui/button';
 import { Input } from '@/renderer/components/ui/input';
 import { WordPalette } from '@/renderer/components/dictionary/WordPalette';
-import { HistoricalTermRecommendations } from '@/renderer/components/creator/HistoricalTermRecommendations';
 
 interface Props {
   locale: Locale;
@@ -59,10 +58,6 @@ export function DictionaryPicker({
   scopeMode = 'ALL',
   albumScopeAvailable = false,
   draggableMaterials = false,
-  recommendationRuns = [],
-  recommendationSelectedTermIds,
-  recommendationBusy = false,
-  recommendationAvailable = false,
   layout = 'popover',
   onQueryChange,
   onToggle,
@@ -71,8 +66,6 @@ export function DictionaryPicker({
   onPaletteView,
   onPaletteCreated,
   onScopeModeChange,
-  onRecommendFromHistory,
-  onAddRecommendation,
   onClose,
   notify,
 }: Props) {
@@ -146,23 +139,6 @@ export function DictionaryPicker({
             </Button>
           </div>
         )}
-        {mode === 'words' && onRecommendFromHistory && (
-          <Button
-            type="button"
-            variant="ghost"
-            size="sm"
-            className="shrink-0"
-            disabled={!recommendationAvailable || recommendationBusy}
-            onClick={() => void onRecommendFromHistory()}
-          >
-            {recommendationBusy ? (
-              <LoaderCircleIcon className="size-3.5 animate-spin" />
-            ) : (
-              <HistoryIcon className="size-3.5" />
-            )}
-            {locale === 'zh' ? '历史推荐' : 'History suggestions'}
-          </Button>
-        )}
         {mode === 'words' && (
           <div className="relative min-w-0 flex-1">
             <SearchIcon className="pointer-events-none absolute top-1/2 left-3 z-10 size-4 -translate-y-1/2 text-muted-foreground" />
@@ -185,12 +161,6 @@ export function DictionaryPicker({
       </header>
       {mode === 'words' ? (
         <div className={cn(sidebar && 'flex min-h-0 flex-1 flex-col')}>
-          <HistoricalTermRecommendations
-            locale={locale}
-            runs={recommendationRuns}
-            selectedTermIds={recommendationSelectedTermIds ?? selectedTerms.map((term) => term.id)}
-            onAdd={(termId) => onAddRecommendation?.(termId)}
-          />
           <div className={cn(sidebar && 'min-h-0 flex-1')}>
             <WordPalette
               compact={!sidebar}

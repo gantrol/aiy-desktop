@@ -1,0 +1,14 @@
+@media (prefers-reduced-motion: reduce) {
+  [data-preview-load] > img {
+    animation: none;
+    filter: none;
+    transform: none;
+    transition: none;
+  }
+}
+
+[data-reduced-motion='true'] [data-preview-load] > img {
+  filter: none;
+  transform: none;
+  transition: none;
+}

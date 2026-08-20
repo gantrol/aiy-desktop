@@ -1,10 +1,11 @@
-import { CheckIcon, SquareArrowOutUpRightIcon } from 'lucide-react';
+import { ArchiveRestoreIcon, CheckIcon, SquareArrowOutUpRightIcon } from 'lucide-react';
 import { useMemo } from 'react';
 import type { CodexGeneratedImageDto } from '@/shared/contracts';
 import { Badge } from '@/renderer/components/ui/badge';
 import { Button } from '@/renderer/components/ui/button';
 import { useI18n } from '@/renderer/i18n/useI18n';
 import { cn } from '@/renderer/lib/utils';
+import { ImageAmbientBackdrop } from '@/renderer/components/media/AmbientImage';
 
 export interface CodexImageTaskGroupData {
   threadId: string;
@@ -21,6 +22,7 @@ interface Props {
   onSelectTask(images: readonly CodexGeneratedImageDto[]): void;
   onOpenCodex(threadId: string): void;
   onOpenCreation(seriesId: string, assetId: string | null): void;
+  onRecoverImage(image: CodexGeneratedImageDto): void;
 }
 
 const CODEX_THREAD_ID_PATTERN = /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i;
@@ -33,6 +35,7 @@ export function CodexImageTaskGroup({
   onSelectTask,
   onOpenCodex,
   onOpenCreation,
+  onRecoverImage,
 }: Props) {
   const { locale, messages } = useI18n();
   const l = messages.extensions.codexImageDiscovery;
@@ -42,6 +45,10 @@ export function CodexImageTaskGroup({
   const selectedCount = group.images.filter((image) => selectedIds.has(image.id)).length;
   const canOpenCodex = group.threadTitleAvailable && CODEX_THREAD_ID_PATTERN.test(group.threadId);
   const displayName = group.threadTitleAvailable ? group.threadName : l.untitledTask;
+  const recoveryImage = group.images.find(
+    (image) => image.importable && !image.imported && image.recoveryTarget !== null,
+  );
+  const recoveryTarget = recoveryImage?.recoveryTarget ?? null;
   const dateFormatter = useMemo(
     () =>
       new Intl.DateTimeFormat(locale === 'zh' ? 'zh-CN' : 'en-US', {
@@ -88,6 +95,36 @@ export function CodexImageTaskGroup({
         )}
       </header>
 
+      {recoveryImage && recoveryTarget && (
+        <div className="flex min-w-0 flex-wrap items-center gap-3 border-b bg-accent/30 px-3 py-2.5">
+          <div className="min-w-48 flex-1">
+            <div className="flex min-w-0 flex-wrap items-center gap-2 text-xs">
+              <Badge variant="outline">{l.recovery.available}</Badge>
+              <strong className="truncate text-foreground" title={recoveryTarget.creationTitle}>
+                {recoveryTarget.creationTitle} · {l.recovery.version(recoveryTarget.versionNo)}
+              </strong>
+              <code className="text-2xs text-muted-foreground">{recoveryTarget.modelKey}</code>
+            </div>
+            <p
+              className="mt-1 truncate text-xs text-muted-foreground"
+              title={recoveryTarget.userIntent || recoveryTarget.finalPrompt}
+            >
+              {l.recovery.prompt}: {recoveryTarget.userIntent || recoveryTarget.finalPrompt}
+            </p>
+          </div>
+          <Button
+            type="button"
+            variant="secondary"
+            size="sm"
+            disabled={busy}
+            onClick={() => onRecoverImage(recoveryImage)}
+          >
+            <ArchiveRestoreIcon className="size-3.5" />
+            {l.actions.recoverToCreation}
+          </Button>
+        </div>
+      )}
+
       <div className="grid grid-cols-[repeat(auto-fill,minmax(15rem,20rem))] gap-3 p-3">
         {group.images.map((image) => {
           const selected = selectedIds.has(image.id);
@@ -119,18 +156,19 @@ export function CodexImageTaskGroup({
                 onToggleImage(image);
               }}
             >
-              <span className="relative block aspect-square overflow-hidden bg-media-surround-light">
+              <span className="relative isolate block aspect-square overflow-hidden bg-surface-sunken">
+                <ImageAmbientBackdrop src={image.mediaUrl} loading="lazy" />
                 <img
                   src={image.mediaUrl}
                   alt=""
                   loading="lazy"
                   draggable={false}
-                  className="size-full object-contain"
+                  className="relative z-10 size-full object-contain"
                 />
                 {selectable && (
                   <span
                     className={cn(
-                      'absolute top-2 right-2 grid size-5 place-items-center rounded-full border bg-background/90 text-transparent shadow-overlay',
+                      'absolute top-2 right-2 z-20 grid size-5 place-items-center rounded-full border bg-background/90 text-transparent shadow-overlay',
                       selected && 'border-selected-foreground bg-selected-foreground text-primary-foreground',
                     )}
                   >
@@ -138,7 +176,7 @@ export function CodexImageTaskGroup({
                   </span>
                 )}
                 {opensCreation && (
-                  <span className="absolute top-2 right-2 grid size-6 place-items-center rounded-full border bg-background/90 shadow-overlay">
+                  <span className="absolute top-2 right-2 z-20 grid size-6 place-items-center rounded-full border bg-background/90 shadow-overlay">
                     <SquareArrowOutUpRightIcon className="size-3.5" />
                   </span>
                 )}

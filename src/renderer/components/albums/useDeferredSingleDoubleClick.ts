@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, type MouseEventHandler } from 'react';
+import type { AlbumTreeDiagnosticSink } from '@/renderer/components/albums/useAlbumTreeExpansion';
 
 type ClickAction = () => void;
 
@@ -52,7 +53,7 @@ export function createDeferredSingleDoubleClick(delayMs = 280): DeferredSingleDo
  * a hook call per row. Keyboard-generated clicks have `detail === 0`, so they
  * run immediately instead of inheriting the pointer double-click delay.
  */
-export function useDeferredSingleDoubleClick(delayMs = 280) {
+export function useDeferredSingleDoubleClick(delayMs = 280, diagnostics?: AlbumTreeDiagnosticSink) {
   const coordinator = useMemo(() => createDeferredSingleDoubleClick(delayMs), [delayMs]);
   const cancelPendingClick = useCallback(() => coordinator.cancel(), [coordinator]);
 
@@ -65,14 +66,29 @@ export function useDeferredSingleDoubleClick(delayMs = 280) {
     ): DeferredSingleDoubleClickHandlers<Element> {
       return {
         onClick(event) {
-          coordinator.click(event.detail, onSingleClick);
+          const clickDetail = event.detail;
+          const receivedAt = diagnostics ? performance.now() : 0;
+          diagnostics?.('tree.click.received', {
+            clickDetail,
+            delayMs: clickDetail === 0 ? 0 : delayMs,
+          });
+          coordinator.click(clickDetail, () => {
+            diagnostics?.('tree.click.single-fired', {
+              clickDetail,
+              waitedMs: performance.now() - receivedAt,
+            });
+            onSingleClick();
+          });
         },
         onDoubleClick() {
-          coordinator.doubleClick(onDoubleClick);
+          coordinator.doubleClick(() => {
+            diagnostics?.('tree.click.double-fired');
+            onDoubleClick();
+          });
         },
       };
     },
-    [coordinator],
+    [coordinator, delayMs, diagnostics],
   );
 
   return { handlers, cancelPendingClick };

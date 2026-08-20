@@ -5,7 +5,13 @@ export const FEATURE_DEMO_PREVIEW_HEIGHT = 720;
 export const FEATURE_DEMO_FPS = 30;
 
 export type FeatureDemoSceneId =
-  'intro' | 'thumbnailExpand' | 'thumbnailCollapse' | 'codexImages' | 'promptCompare' | 'videoDocument' | 'outro';
+  | 'directionDetailsExpand'
+  | 'directionDetailsCollapse'
+  | 'directoryExpand'
+  | 'directoryCollapse'
+  | 'codexImages'
+  | 'promptCompare'
+  | 'videoDocument';
 
 export interface FeatureDemoScene {
   id: FeatureDemoSceneId;
@@ -13,19 +19,20 @@ export interface FeatureDemoScene {
 }
 
 export const FEATURE_DEMO_SCENES: readonly FeatureDemoScene[] = [
-  { id: 'intro', durationInSeconds: 5 },
-  { id: 'thumbnailExpand', durationInSeconds: 8 },
-  { id: 'thumbnailCollapse', durationInSeconds: 7 },
-  { id: 'codexImages', durationInSeconds: 12 },
+  { id: 'directionDetailsExpand', durationInSeconds: 6 },
+  { id: 'directionDetailsCollapse', durationInSeconds: 5 },
+  { id: 'directoryExpand', durationInSeconds: 7 },
+  { id: 'directoryCollapse', durationInSeconds: 6 },
+  { id: 'codexImages', durationInSeconds: 10 },
   { id: 'promptCompare', durationInSeconds: 14 },
-  { id: 'videoDocument', durationInSeconds: 13 },
-  { id: 'outro', durationInSeconds: 7 },
+  { id: 'videoDocument', durationInSeconds: 12 },
 ] as const;
 
-export const FEATURE_DEMO_DURATION_SECONDS = FEATURE_DEMO_SCENES.reduce(
-  (total, scene) => total + scene.durationInSeconds,
-  0,
-);
+export function featureDemoDuration(scenes: readonly FeatureDemoScene[] = FEATURE_DEMO_SCENES) {
+  return scenes.reduce((total, scene) => total + scene.durationInSeconds, 0);
+}
+
+export const FEATURE_DEMO_DURATION_SECONDS = featureDemoDuration();
 
 export interface FeatureDemoScenePosition {
   scene: FeatureDemoScene;
@@ -35,21 +42,23 @@ export interface FeatureDemoScenePosition {
   progress: number;
 }
 
-export function featureDemoSceneStart(sceneIndex: number) {
-  return FEATURE_DEMO_SCENES.slice(0, Math.max(0, sceneIndex)).reduce(
-    (total, scene) => total + scene.durationInSeconds,
-    0,
-  );
+export function featureDemoSceneStart(sceneIndex: number, scenes: readonly FeatureDemoScene[] = FEATURE_DEMO_SCENES) {
+  return scenes.slice(0, Math.max(0, sceneIndex)).reduce((total, scene) => total + scene.durationInSeconds, 0);
 }
 
-export function featureDemoSceneAt(timeInSeconds: number): FeatureDemoScenePosition {
-  const bounded = Math.min(Math.max(0, timeInSeconds), FEATURE_DEMO_DURATION_SECONDS);
+export function featureDemoSceneAt(
+  timeInSeconds: number,
+  scenes: readonly FeatureDemoScene[] = FEATURE_DEMO_SCENES,
+): FeatureDemoScenePosition {
+  if (scenes.length === 0) throw new Error('Feature demo timeline has no scenes');
+  const duration = featureDemoDuration(scenes);
+  const bounded = Math.min(Math.max(0, timeInSeconds), duration);
   let sceneStart = 0;
 
-  for (let sceneIndex = 0; sceneIndex < FEATURE_DEMO_SCENES.length; sceneIndex += 1) {
-    const scene = FEATURE_DEMO_SCENES[sceneIndex]!;
+  for (let sceneIndex = 0; sceneIndex < scenes.length; sceneIndex += 1) {
+    const scene = scenes[sceneIndex]!;
     const sceneEnd = sceneStart + scene.durationInSeconds;
-    if (bounded < sceneEnd || sceneIndex === FEATURE_DEMO_SCENES.length - 1) {
+    if (bounded < sceneEnd || sceneIndex === scenes.length - 1) {
       const elapsed = Math.min(scene.durationInSeconds, Math.max(0, bounded - sceneStart));
       return {
         scene,
@@ -62,5 +71,5 @@ export function featureDemoSceneAt(timeInSeconds: number): FeatureDemoScenePosit
     sceneStart = sceneEnd;
   }
 
-  throw new Error('Feature demo timeline has no scenes');
+  throw new Error('Feature demo timeline has no reachable scene');
 }

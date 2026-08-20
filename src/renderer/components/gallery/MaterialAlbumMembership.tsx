@@ -1,10 +1,10 @@
-import { CornerDownRightIcon, ImagesIcon, LoaderCircleIcon, VideoIcon } from 'lucide-react';
+import { CornerDownRightIcon, LoaderCircleIcon } from 'lucide-react';
 import { useMemo, useState } from 'react';
 import type { MaterialAlbumDto, MaterialAlbumMemberDto } from '@/shared/contracts';
 import { Checkbox } from '@/renderer/components/ui/checkbox';
 import { ScrollArea } from '@/renderer/components/ui/scroll-area';
-import { isVideoAsset } from '@/renderer/components/media/AssetMedia';
 import { buildMaterialAlbumTree, flattenMaterialAlbumTree } from '@/renderer/components/gallery/materialAlbumTree';
+import { MaterialAlbumPreview } from '@/renderer/components/gallery/MaterialAlbumPreview';
 
 export interface MaterialAlbumMembershipTarget {
   materialId?: string | null;
@@ -84,6 +84,7 @@ export function MaterialAlbumMembership({
             const member = findMembership(album, target);
             const pending = pendingAlbumIds.has(album.id);
             const checked = Boolean(member);
+            const preview = album.previewAssets[0];
             return (
               <label
                 key={album.id}
@@ -99,20 +100,7 @@ export function MaterialAlbumMembership({
                   onCheckedChange={(value) => void toggle(album, member, value === true)}
                 />
                 {depth > 0 && <CornerDownRightIcon className="size-3.5 shrink-0 text-muted-foreground" />}
-                <span className="grid size-6 shrink-0 place-items-center overflow-hidden rounded-md bg-media-surround-light text-muted-foreground">
-                  {isVideoAsset(album.previewAssets[0]) ? (
-                    <VideoIcon className="size-3.5" />
-                  ) : album.previewAssets[0] ? (
-                    <img
-                      src={album.previewAssets[0].mediaUrl}
-                      alt=""
-                      draggable={false}
-                      className="size-full object-contain"
-                    />
-                  ) : (
-                    <ImagesIcon className="size-3.5" />
-                  )}
-                </span>
+                <MaterialAlbumPreview asset={preview} className="size-6 rounded-md" />
                 <span className="min-w-0 flex-1 truncate" title={album.title}>
                   {album.title}
                 </span>

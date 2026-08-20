@@ -65,11 +65,16 @@ export function linkExistingImportedOutput(
 
   const createdAt = now();
   db.prepare(
+    `UPDATE creation_output_imports
+    SET sort_order = sort_order + 1
+    WHERE series_id = ? AND deleted_at IS NULL`,
+  ).run(input.seriesId);
+  db.prepare(
     `INSERT INTO creation_output_imports
     (id, batch_id, series_id, prompt_version_id, image_asset_id, source_type, original_name, created_at, deleted_at,
       display_name, note, source_url, ai_generated_status, model_key, model_name, model_provider,
-      model_version, generation_text_type, generation_text, provenance_confidence, comparison_role)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, NULL, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      model_version, generation_text_type, generation_text, provenance_confidence, comparison_role, sort_order)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, NULL, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0)`,
   ).run(
     outputId,
     input.batchId,

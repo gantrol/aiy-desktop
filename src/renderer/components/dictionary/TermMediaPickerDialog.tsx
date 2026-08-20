@@ -7,6 +7,7 @@ import { cn } from '@/renderer/lib/utils';
 import { Button } from '@/renderer/components/ui/button';
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/renderer/components/ui/dialog';
 import { ScrollArea } from '@/renderer/components/ui/scroll-area';
+import { ImageAmbientBackdrop } from '@/renderer/components/media/AmbientImage';
 
 interface Props {
   copy: DictionaryMessages;
@@ -62,7 +63,7 @@ export function TermMediaPickerDialog({
                   type="button"
                   aria-pressed={selected}
                   className={cn(
-                    'relative aspect-[3/4] overflow-hidden rounded-md border-2 border-transparent bg-media-surround-light outline-none hover:border-border-strong focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring',
+                    'relative isolate aspect-[3/4] overflow-hidden rounded-md border-2 border-transparent bg-surface-sunken outline-none hover:border-border-strong focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring',
                     selected && 'border-selected-border ring-2 ring-ring',
                   )}
                   onClick={() =>
@@ -71,9 +72,10 @@ export function TermMediaPickerDialog({
                     )
                   }
                 >
-                  <img className="size-full object-contain" src={asset.mediaUrl} alt="" />
+                  <ImageAmbientBackdrop src={asset.mediaUrl} loading="lazy" />
+                  <img className="relative z-10 size-full object-contain" src={asset.mediaUrl} alt="" loading="lazy" />
                   {selected && (
-                    <span className="absolute top-1 right-1 grid size-5 place-items-center rounded-sm border border-selected-border bg-selected text-selected-foreground">
+                    <span className="absolute top-1 right-1 z-20 grid size-5 place-items-center rounded-sm border border-selected-border bg-selected text-selected-foreground">
                       <CheckIcon className="size-3" />
                     </span>
                   )}

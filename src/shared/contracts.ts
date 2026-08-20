@@ -37,11 +37,19 @@ import type {
   ImportedImageRelationshipInput,
 } from '@/shared/contracts/import-metadata';
 import type {
+  PromptSeriesCoverSetInput,
+  PromptSeriesOutputPresentationResult,
+  PromptSeriesOutputRemoveInput,
+} from '@/shared/contracts/creation-output-presentation';
+import type {
   GenerationProcessEventPageDto,
   GenerationProcessEventPageInput,
   GenerationProcessSummaryDto,
 } from '@/shared/contracts/generation-process';
 import type { AppUpdateStateDto } from '@/shared/contracts/app-update';
+import type { AppSupportDestination } from '@/shared/contracts/app-support';
+import type { AppWindowStateDto, DesktopPlatform } from '@/shared/contracts/app-window';
+import type { TransitionShowcaseExportImageSnapshot } from '@/shared/contracts/transition-showcase';
 import type {
   TermIllustrationAdoptInput,
   TermIllustrationDecisionResult,
@@ -111,6 +119,8 @@ export type {
   TransitionPreviewDto,
   TransitionPreviewRefreshEvent,
 } from '@/shared/contracts/local-space';
+export type { TransitionShowcaseExportImageSnapshot } from '@/shared/contracts/transition-showcase';
+export type { AppWindowStateDto, DesktopPlatform } from '@/shared/contracts/app-window';
 export type {
   PackCatalogItemDto,
   PackDependencyDto,
@@ -129,10 +139,13 @@ export type {
   CreatorImageImportContext,
   CreatorImageImportInput,
   CreatorImageImportItemInput,
+  CreatorImageImportMimeType,
   CreatorImageImportSource,
+  CreatorRasterImageMimeType,
   CreatorImageStagePreviewRow,
   CreatorImageStageState,
   CreatorStagedImageImportInput,
+  CreatorStagedOutputImportItemInput,
 } from '@/shared/contracts/creator-import';
 export type {
   ImportedImageAiGeneratedStatus,
@@ -156,6 +169,7 @@ export type {
   AppUpdateStateDto,
   AppUpdateSupportReason,
 } from '@/shared/contracts/app-update';
+export type { AppSupportDestination } from '@/shared/contracts/app-support';
 export type {
   TermIllustrationAdoptInput,
   TermIllustrationBatchDto,
@@ -306,6 +320,45 @@ export interface CodexHealth {
   version: string;
   authenticated: boolean;
   message: string;
+}
+
+export interface AntigravityCliModelDto {
+  key: string;
+  name: string;
+  isCurrent: boolean;
+}
+
+export interface AntigravityCliQuotaBucketDto {
+  id: string;
+  name: string;
+  window: string;
+  remainingFraction: number;
+  resetAt: string | null;
+}
+
+export interface AntigravityCliQuotaGroupDto {
+  name: string;
+  description: string;
+  buckets: AntigravityCliQuotaBucketDto[];
+}
+
+export type AntigravityCliQuotaWarning = 'NONE' | 'LOW' | 'EXHAUSTED' | 'UNAVAILABLE';
+
+export interface AntigravityCliQuotaDto {
+  warning: AntigravityCliQuotaWarning;
+  groups: AntigravityCliQuotaGroupDto[];
+  checkedAt: string | null;
+  message: string;
+}
+
+export interface AntigravityCliStatusDto {
+  state: 'checking' | 'ready' | 'unavailable';
+  version: string;
+  authenticated: boolean;
+  message: string;
+  currentModel: AntigravityCliModelDto | null;
+  models: AntigravityCliModelDto[];
+  quota: AntigravityCliQuotaDto;
 }
 
 export type ExtensionContributionPoint =
@@ -465,6 +518,21 @@ export interface CodexGeneratedImageDto {
   imported: boolean;
   importedSeriesId: string | null;
   importedAssetId: string | null;
+  /** A failed AIY generation that this exact Codex task can repair without losing its creation context. */
+  recoveryTarget: CodexGeneratedImageRecoveryTargetDto | null;
+}
+
+export interface CodexGeneratedImageRecoveryTargetDto {
+  runId: string;
+  seriesId: string;
+  versionId: string;
+  versionNo: number;
+  creationTitle: string;
+  creationTitleLocale: Locale;
+  userIntent: string;
+  finalPrompt: string;
+  modelKey: string;
+  createdAt: string;
 }
 
 export type CodexImageDiscoveryFilter = 'NOT_IN_LIBRARY' | 'IN_LIBRARY' | 'ALL';
@@ -514,6 +582,18 @@ export interface CodexGeneratedImageImportResult {
   assetIds: string[];
   importedCount: number;
   duplicateCount: number;
+}
+
+export interface CodexGeneratedImageRecoverInput {
+  discoveryId: string;
+}
+
+export interface CodexGeneratedImageRecoverResult {
+  discoveryId: string;
+  runId: string;
+  seriesId: string;
+  versionId: string;
+  assetId: string;
 }
 
 export type OpenAiImageApiConnectionStatus = 'NOT_CONFIGURED' | 'UNVERIFIED' | 'READY' | 'ERROR';
@@ -1034,6 +1114,8 @@ export type GallerySourceFilter = 'ALL' | 'LIBRARY' | 'FAVORITE' | 'CREATION' | 
 export type GalleryItemSource = 'FAVORITE' | 'CREATION' | 'DICTIONARY' | 'BOTH' | 'MATERIAL';
 export type CreationMaterialRole = 'INPUT' | 'SOURCE' | 'OUTPUT';
 export type CreationRelationFilter = 'ALL' | 'INPUT' | 'OUTPUT';
+export type GalleryMaterialPlacement = 'ANY' | 'UNFILED' | 'UNORGANIZED';
+export type GalleryAlbumScope = 'TREE' | 'DIRECT';
 
 export interface GalleryDictionaryFilter {
   facetValueIds?: string[];
@@ -1052,7 +1134,11 @@ export interface GalleryListInput {
   dictionary?: GalleryDictionaryFilter;
   query?: string;
   assetKinds?: AssetDto['kind'][];
+  /** Narrows the library by user-album placement or by all structural organization projections. */
+  placement?: GalleryMaterialPlacement;
   albumId?: string;
+  /** User albums default to their full subtree; directory-style album pages can request direct members only. */
+  albumScope?: GalleryAlbumScope;
   /** Narrows a virtual creation node to its current inputs/sources or outputs. */
   creationRelation?: CreationRelationFilter;
   unratedDimensions: ImageRatingDimension[];
@@ -1433,6 +1519,14 @@ export interface ExecutionInputSnapshotDto {
   createdAt: string;
 }
 
+/** Compact execution facts retained in startup and refresh projections. */
+export interface GenerationExecutionSummaryDto {
+  id: string;
+  requestSchema: string;
+  resolvedPrompt: string;
+  clientRequestText: string | null;
+}
+
 export interface ProviderReturnedDescriptionInput {
   fieldName: string;
   rawValue: string;
@@ -1488,6 +1582,7 @@ export interface GenerationRunDto {
   errorDetails?: GenerationErrorDetailsDto | null;
   createdAt: string;
   modelSnapshot?: ImageGenerationRouteSnapshotDto | null;
+  executionSummary?: GenerationExecutionSummaryDto | null;
   executionInputSnapshot?: ExecutionInputSnapshotDto | null;
   providerReturnedDescriptions?: ProviderReturnedDescriptionDto[];
   /** Present only after a Codex-backed run has created its persistent Codex task. */
@@ -1566,6 +1661,12 @@ export interface PromptSeriesDto {
   importedOutputs?: ImportedCreationOutputDto[];
   transformedOutputs?: ImageTransformOutputDto[];
   cover: AssetDto | null;
+  /** Effective ordered covers. Automatic mode contributes its current first candidate. */
+  covers?: AssetDto[];
+  /** Absent only in older in-memory snapshots created before explicit covers existed. */
+  explicitCoverAssetId?: string | null;
+  /** Explicit user-selected cover order; an empty list means automatic mode. */
+  explicitCoverAssetIds?: string[];
   /** Explicit order while this series is shown at the creation sidebar root. */
   creatorRootSortOrder?: number | null;
 }
@@ -1609,6 +1710,8 @@ export interface NewExternalCreationImportInput {
   outputs: CreatorImageImportItemInput[];
 }
 
+export type CreationOutputRelationshipKind = 'UNSPECIFIED' | 'PRIMARY' | 'VARIANT' | 'DERIVED' | 'POST_EDIT';
+
 export interface ImportedCreationOutputDto {
   id: string;
   batchId: string;
@@ -1632,6 +1735,11 @@ export interface ImportedCreationOutputDto {
   generationTextType: 'EXACT_PROMPT' | 'DESCRIPTION' | 'RECONSTRUCTION' | 'UNKNOWN';
   generationText: string;
   provenanceConfidence: 'VERIFIED' | 'DECLARED' | 'INFERRED' | 'UNKNOWN';
+  /** User-controlled stable order within the creation. */
+  sortOrder?: number;
+  /** User-organized relationship to another imported output in this creation. */
+  relationshipKind?: CreationOutputRelationshipKind;
+  relationshipTargetOutputId?: string | null;
   /** Durable source task for outputs imported through Codex image discovery. */
   codexTask?: CodexTaskReferenceDto | null;
   createdAt: string;
@@ -1643,6 +1751,27 @@ export interface CreatorOutputsImportResult {
   assetIds: string[];
   importedOutputs: ImportedCreationOutputDto[];
   duplicateCount: number;
+}
+
+export interface CreatorOutputOrganizeItemInput {
+  outputId: string;
+  displayName: string;
+  promptVersionId: string | null;
+  relationshipKind: CreationOutputRelationshipKind;
+  relationshipTargetOutputId: string | null;
+  aiGeneratedStatus: ImportedCreationOutputDto['aiGeneratedStatus'];
+  modelName: string;
+  modelProvider: string;
+}
+
+export interface CreatorOutputsOrganizeInput {
+  seriesId: string;
+  /** The full active imported-output set in its desired display order. */
+  items: CreatorOutputOrganizeItemInput[];
+}
+
+export interface CreatorOutputsOrganizeResult {
+  outputs: ImportedCreationOutputDto[];
 }
 
 export interface NewExternalCreationImportResult extends CreatorOutputsImportResult {
@@ -2756,6 +2885,28 @@ export interface GenerationInput {
   quality: GenerationQuality;
 }
 
+/** Saves the visible creation input as a new immutable version without starting a generation run. */
+export interface PromptVersionCreateInput {
+  seriesId: string;
+  /** The selected historical version becomes the parent; numbering still advances from the series maximum. */
+  baseVersionId: string | null;
+  title: string;
+  titleLocale: Locale;
+  manualPrompt: string;
+  promptNodes?: CreatorPromptNodeInput[];
+  prompt: string;
+  changeSummary: string;
+  referenceAssetIds: string[];
+  termPromptLocale: Locale;
+  termIds: string[];
+  wordPaletteReferences: WordPaletteReferenceInput[];
+}
+
+export interface PromptVersionCreateResult {
+  seriesId: string;
+  versionId: string;
+}
+
 export interface CreationDraftCommitInput {
   creationDraftId: string;
   title: string;
@@ -3175,11 +3326,19 @@ export interface AnnotationStatusInput {
 export type NavigationCommand = 'back' | 'forward';
 
 export interface DesktopApi {
+  readonly appPlatform: DesktopPlatform;
   /** Up to 24 already-cached local-space previews; cache misses resolve to an empty list. */
   appLoadingPreviews(): Promise<TransitionPreviewDto[]>;
+  transitionShowcaseExportImages(assetIds: readonly string[]): Promise<TransitionShowcaseExportImageSnapshot[]>;
   onAppLoadingPreviewsRefreshed(callback: (event: TransitionPreviewRefreshEvent) => void): () => void;
   bootstrap(locale: Locale): Promise<BootstrapDto>;
   generationProjection(locale: Locale): Promise<GenerationProjectionDto>;
+  appWindowGetState(): Promise<AppWindowStateDto>;
+  appWindowMinimize(): Promise<void>;
+  appWindowToggleMaximized(): Promise<AppWindowStateDto>;
+  appWindowClose(): Promise<void>;
+  appSupportOpen(destination: AppSupportDestination): Promise<void>;
+  onAppWindowStateChanged(callback: (state: AppWindowStateDto) => void): () => void;
   appRequestQuit(): Promise<void>;
   appUpdateGetState(): Promise<AppUpdateStateDto>;
   appUpdateCheck(): Promise<AppUpdateStateDto>;
@@ -3193,6 +3352,7 @@ export interface DesktopApi {
   extensionSetPermission(input: ExtensionSetPermissionInput): Promise<ExtensionDto[]>;
   codexGeneratedImagesList(input: CodexImageDiscoveryListInput): Promise<CodexImageDiscoverySnapshotDto>;
   codexGeneratedImagesImport(input: CodexGeneratedImageImportInput): Promise<CodexGeneratedImageImportResult>;
+  codexGeneratedImagesRecover(input: CodexGeneratedImageRecoverInput): Promise<CodexGeneratedImageRecoverResult>;
   openAiImageApiGet(): Promise<OpenAiImageApiConnectionDto>;
   openAiImageApiSave(input: OpenAiImageApiSaveInput): Promise<OpenAiImageApiConnectionDto>;
   openAiImageApiTest(): Promise<OpenAiImageApiConnectionDto>;
@@ -3209,6 +3369,8 @@ export interface DesktopApi {
   externalImageApiSave(input: ExternalImageApiSaveInput): Promise<ExternalImageApiConnectionDto>;
   externalImageApiTest(extensionId: string): Promise<ExternalImageApiConnectionDto>;
   externalImageApiClear(extensionId: string): Promise<ExternalImageApiConnectionDto>;
+  antigravityCliGet(): Promise<AntigravityCliStatusDto>;
+  antigravityCliRefresh(): Promise<AntigravityCliStatusDto>;
   localSpacesList(): Promise<LocalSpaceRegistryDto>;
   localSpacesDiscoverLegacy(): Promise<LegacyLocalSpaceCandidateDto[]>;
   localSpacesMigrateLegacy(candidateId: string): Promise<LocalSpaceMigrationResult>;
@@ -3276,6 +3438,10 @@ export interface DesktopApi {
   creatorOutputsChoose(input: CreatorImageChooseInput): Promise<CreatorImageStagePreviewRow[] | null>;
   creatorOutputsDiscard(stageIds: string[]): Promise<void>;
   creatorOutputUpdate(input: ImportedCreationOutputUpdateInput): Promise<ImportedCreationOutputDto>;
+  creatorOutputsOrganize(input: CreatorOutputsOrganizeInput): Promise<CreatorOutputsOrganizeResult>;
+  promptSeriesOutputRemove(input: PromptSeriesOutputRemoveInput): Promise<PromptSeriesOutputPresentationResult>;
+  promptSeriesCoverSet(input: PromptSeriesCoverSetInput): Promise<PromptSeriesOutputPresentationResult>;
+  promptVersionCreate(input: PromptVersionCreateInput): Promise<PromptVersionCreateResult>;
   creationDraftStart(input: CreationDraftStartInput): Promise<CreationDraftDto>;
   creationDraftSave(input: CreationDraftSaveInput): Promise<CreationDraftDto>;
   creationDraftCommit(input: CreationDraftCommitInput): Promise<CreationDraftCommitResult>;

@@ -15,6 +15,7 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/rend
 import type { AppView } from '@/renderer/components/app/AppSidebar';
 import { AppIconMenu } from '@/renderer/components/app/AppIconMenu';
 import { GenerationStatusPopover } from '@/renderer/components/app/GenerationStatusPopover';
+import { AppWindowControls } from '@/renderer/components/app/AppWindowControls';
 
 interface Props {
   workerStatus: ModelWorkerStatusDto | null;
@@ -28,6 +29,7 @@ interface Props {
   view: AppView;
   menuDisabled: boolean;
   codexImagesVisible: boolean;
+  transitionShowcaseVisible: boolean;
   canGoBack: boolean;
   canGoForward: boolean;
   notify(message: string): void;
@@ -55,6 +57,7 @@ export function AppTitleBar({
   view,
   menuDisabled,
   codexImagesVisible,
+  transitionShowcaseVisible,
   canGoBack,
   canGoForward,
   notify,
@@ -75,13 +78,14 @@ export function AppTitleBar({
     <TooltipProvider>
       <header
         data-app-title-bar
-        className="app-title-bar flex h-9 items-center border-b bg-muted pl-3 pr-36 text-xs text-muted-foreground"
+        className="app-title-bar relative flex h-9 items-center border-b bg-muted pl-3 pr-36 text-xs text-muted-foreground"
       >
         <div className="app-title-bar-actions flex min-w-0 items-center">
           <AppIconMenu
             view={view}
             disabled={menuDisabled}
             codexImagesVisible={codexImagesVisible}
+            transitionShowcaseVisible={transitionShowcaseVisible}
             onNewCreation={onNewCreation}
             onViewChange={onViewChange}
             onSettingsOpen={onSettingsOpen}
@@ -143,6 +147,7 @@ export function AppTitleBar({
             notify={notify}
           />
         </div>
+        <AppWindowControls />
       </header>
     </TooltipProvider>
   );

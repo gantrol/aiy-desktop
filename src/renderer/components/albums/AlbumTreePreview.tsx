@@ -18,33 +18,76 @@ import {
 import { TreeBranchNodeConnector, TreeDisclosureRail } from '@/renderer/components/albums/TreeDisclosureRail';
 import { getTreeNodeAnchor, type TreeBranchItemTopology } from '@/renderer/components/albums/treeConnectionGeometry';
 
+export type AlbumTreeOverlayStyle = 'blurred' | 'solid';
+
 interface Props {
   assets: AssetDto[];
   title: string;
   open: boolean;
   expandable: boolean;
   expandLabel: string;
+  overlayStyle?: AlbumTreeOverlayStyle;
   onClick: MouseEventHandler<HTMLButtonElement>;
   onDoubleClick: MouseEventHandler<HTMLButtonElement>;
+  onAssetSelect?(asset: AssetDto): void;
+  assetLabel?(asset: AssetDto, index: number): string;
   disclosureInteractive?: boolean;
   branchTopology?: TreeBranchItemTopology;
   onPullDownExpand?(): void;
   onPointerTrackStart?(clientY: number): void;
   onPointerTrack?(clientY: number): boolean;
+  onMediaAdmitted?(): void;
   className?: string;
 }
 
-export function AlbumCoverBadge({ compact = false }: { compact?: boolean }) {
+export function AlbumCoverBadge({
+  compact = false,
+  overlayStyle = 'blurred',
+  label,
+  onClick,
+  onDoubleClick,
+}: {
+  compact?: boolean;
+  overlayStyle?: AlbumTreeOverlayStyle;
+  label?: string;
+  onClick?: MouseEventHandler<HTMLButtonElement>;
+  onDoubleClick?: MouseEventHandler<HTMLButtonElement>;
+}) {
+  const className = cn(
+    'absolute z-30 grid place-items-center border bg-overlay/95 text-selected-foreground shadow-overlay',
+    overlayStyle === 'blurred' && 'backdrop-blur-sm',
+    compact ? 'bottom-0.5 left-0.5 size-4 rounded-[5px]' : 'right-0.5 bottom-0.5 size-5 rounded-md',
+  );
+  const icon = <AlbumGlyphIcon className={compact ? 'size-3' : 'size-3.5'} />;
+
+  if (!onClick) {
+    return (
+      <span aria-hidden="true" className={cn('pointer-events-none', className)}>
+        {icon}
+      </span>
+    );
+  }
+
   return (
-    <span
-      aria-hidden="true"
+    <button
+      type="button"
+      title={label}
+      aria-label={label}
       className={cn(
-        'pointer-events-none absolute z-30 grid place-items-center border bg-overlay/95 text-selected-foreground shadow-overlay backdrop-blur-sm',
-        compact ? 'bottom-0.5 left-0.5 size-4 rounded-[5px]' : 'right-0.5 bottom-0.5 size-5 rounded-md',
+        className,
+        'pointer-events-auto outline-none transition-colors hover:bg-hover-strong focus-visible:ring-2 focus-visible:ring-ring',
       )}
+      onClick={(event) => {
+        event.stopPropagation();
+        onClick(event);
+      }}
+      onDoubleClick={(event) => {
+        event.stopPropagation();
+        onDoubleClick?.(event);
+      }}
     >
-      <AlbumGlyphIcon className={compact ? 'size-3' : 'size-3.5'} />
-    </span>
+      {icon}
+    </button>
   );
 }
 
@@ -59,13 +102,17 @@ export function AlbumTreePreview({
   open,
   expandable,
   expandLabel,
+  overlayStyle = 'blurred',
   onClick,
   onDoubleClick,
+  onAssetSelect,
+  assetLabel,
   disclosureInteractive = true,
   branchTopology,
   onPullDownExpand,
   onPointerTrackStart,
   onPointerTrack,
+  onMediaAdmitted,
   className,
 }: Props) {
   const [previewExpanded, setPreviewExpanded] = useState(false);
@@ -129,6 +176,21 @@ export function AlbumTreePreview({
     }
     tryPullDownExpand();
   }
+
+  const mediaStack = (
+    <MediaStackPreview
+      className={onAssetSelect ? 'pointer-events-none relative z-10' : undefined}
+      size="tree"
+      items={stackItems}
+      spread={spread}
+      maxItems={5}
+      expandedStep={ALBUM_TREE_INTERACTION.hoverSpreadStepPx}
+      onAssetSelect={onAssetSelect}
+      assetLabel={assetLabel}
+      deferOffscreenMedia
+      onMediaAdmitted={onMediaAdmitted}
+    />
+  );
 
   return (
     <span
@@ -201,22 +263,30 @@ export function AlbumTreePreview({
             aria-hidden="true"
           />
         ))}
-      <button
-        type="button"
-        className="relative z-10 grid shrink-0 place-items-center rounded-lg outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 focus-visible:ring-offset-background"
-        aria-label={title}
-        onClick={onClick}
-        onDoubleClick={onDoubleClick}
-      >
-        <MediaStackPreview
-          size="tree"
-          items={stackItems}
-          spread={spread}
-          maxItems={5}
-          expandedStep={ALBUM_TREE_INTERACTION.hoverSpreadStepPx}
-        />
-        <AlbumCoverBadge />
-      </button>
+      {onAssetSelect ? (
+        <span className="relative z-10 grid shrink-0 place-items-center rounded-lg">
+          <button
+            type="button"
+            className="absolute inset-0 z-0 rounded-lg outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 focus-visible:ring-offset-background"
+            aria-label={title}
+            onClick={onClick}
+            onDoubleClick={onDoubleClick}
+          />
+          {mediaStack}
+          <AlbumCoverBadge label={title} overlayStyle={overlayStyle} onClick={onClick} onDoubleClick={onDoubleClick} />
+        </span>
+      ) : (
+        <button
+          type="button"
+          className="relative z-10 grid shrink-0 place-items-center rounded-lg outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 focus-visible:ring-offset-background"
+          aria-label={title}
+          onClick={onClick}
+          onDoubleClick={onDoubleClick}
+        >
+          {mediaStack}
+          <AlbumCoverBadge overlayStyle={overlayStyle} />
+        </button>
+      )}
     </span>
   );
 }

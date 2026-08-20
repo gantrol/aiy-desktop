@@ -38,6 +38,7 @@ import { ScrollArea } from '@/renderer/components/ui/scroll-area';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/renderer/components/ui/select';
 import { Textarea } from '@/renderer/components/ui/textarea';
 import { StateTag } from '@/renderer/components/ui/state-tag';
+import { ImageAmbientBackdrop } from '@/renderer/components/media/AmbientImage';
 import {
   WordPaletteInlinePromptEditor,
   type WordPaletteInlinePromptEditorHandle,
@@ -86,6 +87,44 @@ function choiceFacetName(seeds: readonly ChoiceSeed[], facets: readonly FacetDef
     if (common) return common.name;
   }
   return '';
+}
+
+function ReferenceAssetCard({
+  asset,
+  index,
+  count,
+  onMove,
+  onRemove,
+}: {
+  asset: AssetDto;
+  index: number;
+  count: number;
+  onMove(index: number, direction: -1 | 1): void;
+  onRemove(assetId: string): void;
+}) {
+  return (
+    <div className="group relative isolate h-24 w-16 shrink-0 overflow-hidden rounded-md border bg-surface-sunken">
+      <ImageAmbientBackdrop src={asset.mediaUrl} loading="lazy" />
+      <img className="relative z-10 size-full object-contain" src={asset.mediaUrl} alt="" loading="lazy" />
+      <div className="absolute inset-x-1 bottom-1 z-20 flex justify-center rounded bg-overlay opacity-0 group-hover:opacity-100 group-focus-within:opacity-100">
+        <Button type="button" variant="ghost" size="icon-sm" disabled={index === 0} onClick={() => onMove(index, -1)}>
+          <ChevronLeftIcon className="size-3" />
+        </Button>
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon-sm"
+          disabled={index === count - 1}
+          onClick={() => onMove(index, 1)}
+        >
+          <ChevronRightIcon className="size-3" />
+        </Button>
+        <Button type="button" variant="ghost" size="icon-sm" onClick={() => onRemove(asset.id)}>
+          <XIcon className="size-3" />
+        </Button>
+      </div>
+    </div>
+  );
 }
 
 export function WordPaletteEditor({
@@ -503,42 +542,16 @@ export function WordPaletteEditor({
               {referenceAssets.length > 0 && (
                 <div className="flex gap-2 overflow-x-auto pb-1">
                   {referenceAssets.map((asset, index) => (
-                    <div
+                    <ReferenceAssetCard
                       key={asset.id}
-                      className="group relative h-24 w-16 shrink-0 overflow-hidden rounded-md border bg-media-surround-light"
-                    >
-                      <img className="size-full object-contain" src={asset.mediaUrl} alt="" />
-                      <div className="absolute inset-x-1 bottom-1 flex justify-center rounded bg-overlay opacity-0 group-hover:opacity-100 group-focus-within:opacity-100">
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="icon-sm"
-                          disabled={index === 0}
-                          onClick={() => moveReferenceImage(index, -1)}
-                        >
-                          <ChevronLeftIcon className="size-3" />
-                        </Button>
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="icon-sm"
-                          disabled={index === referenceAssets.length - 1}
-                          onClick={() => moveReferenceImage(index, 1)}
-                        >
-                          <ChevronRightIcon className="size-3" />
-                        </Button>
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="icon-sm"
-                          onClick={() =>
-                            setReferenceAssets((current) => current.filter((item) => item.id !== asset.id))
-                          }
-                        >
-                          <XIcon className="size-3" />
-                        </Button>
-                      </div>
-                    </div>
+                      asset={asset}
+                      index={index}
+                      count={referenceAssets.length}
+                      onMove={moveReferenceImage}
+                      onRemove={(assetId) =>
+                        setReferenceAssets((current) => current.filter((item) => item.id !== assetId))
+                      }
+                    />
                   ))}
                 </div>
               )}
@@ -590,7 +603,7 @@ export function WordPaletteEditor({
         className={cn(
           'grid min-h-0 min-w-0 grid-cols-[minmax(0,1fr)] overflow-hidden',
           fullWindow
-            ? 'col-start-2 row-start-1 grid-rows-[minmax(0,1fr)_auto] gap-3 p-5 pt-14'
+            ? 'col-start-2 row-start-1 grid-rows-[minmax(0,1fr)_auto] gap-3 p-5'
             : 'grid-rows-[auto_minmax(0,1fr)_auto]',
         )}
       >
@@ -638,7 +651,7 @@ export function WordPaletteEditor({
       </div>
 
       {fullWindow && (
-        <aside className="col-start-1 row-start-1 flex min-h-0 min-w-0 flex-col overflow-hidden border-r bg-background pt-9">
+        <aside className="col-start-1 row-start-1 flex min-h-0 min-w-0 flex-col overflow-hidden border-r bg-background">
           <header className="flex h-12 shrink-0 items-center gap-2 border-b px-3">
             <strong className="shrink-0">{messages.creator.dictionaryPicker.dictionary}</strong>
             <div className="relative min-w-0 flex-1">

@@ -2,13 +2,15 @@ import { CheckIcon, PlusIcon } from 'lucide-react';
 import type { CSSProperties, SyntheticEvent } from 'react';
 import type { TermListItem } from '@/shared/contracts';
 import { cn } from '@/renderer/lib/utils';
+import './TermOverviewCard.css';
 import { DEFAULT_MEDIA_ASPECT_RATIO, getSourceMediaAspectRatio } from '@/renderer/components/media/mediaAspectRatio';
 import {
   chooseImageOverlayTone,
   sampleImageOverlayTone,
   type ImageOverlayTone,
 } from '@/renderer/components/media/imageOverlayTone';
-import { Button } from '@/renderer/components/ui/button';
+import { ImageAmbientBackdrop } from '@/renderer/components/media/AmbientImage';
+import { MediaOverlayActionButton } from '@/renderer/components/media/MediaOverlayActionButton';
 
 export type TermCardOverlayTone = ImageOverlayTone;
 /** @deprecated Term cards now use a fixed light foreground over a dark scrim. */
@@ -94,31 +96,34 @@ export function TermOverviewCard({
         <span
           data-media-frame
           data-overlay-tone="light"
-          className="relative block w-full overflow-hidden bg-media-surround"
+          className="relative isolate block w-full overflow-hidden bg-surface-sunken"
           style={{ aspectRatio: cardAspectRatio }}
         >
           {preview && (
-            <img
-              data-asset-id={preview.asset.id}
-              className="absolute inset-0 size-full object-contain transition-transform duration-overlay ease-enter motion-reduce:transform-none motion-reduce:transition-none group-hover:scale-[1.015]"
-              crossOrigin="anonymous"
-              src={preview.asset.mediaUrl}
-              alt=""
-              draggable={false}
-              loading="lazy"
-              decoding="async"
-              style={{
-                objectPosition: `${preview.focalX * 100}% ${preview.focalY * 100}%`,
-                transformOrigin: `${preview.focalX * 100}% ${preview.focalY * 100}%`,
-              }}
-              onLoad={handleImageLoad}
-              onError={handleImageError}
-            />
+            <>
+              <ImageAmbientBackdrop src={preview.asset.mediaUrl} loading="lazy" crossOrigin="anonymous" />
+              <img
+                data-asset-id={preview.asset.id}
+                className="absolute inset-0 z-10 size-full object-contain transition-transform duration-overlay ease-enter motion-reduce:transform-none motion-reduce:transition-none group-hover:scale-[1.015]"
+                crossOrigin="anonymous"
+                src={preview.asset.mediaUrl}
+                alt=""
+                draggable={false}
+                loading="lazy"
+                decoding="async"
+                style={{
+                  objectPosition: `${preview.focalX * 100}% ${preview.focalY * 100}%`,
+                  transformOrigin: `${preview.focalX * 100}% ${preview.focalY * 100}%`,
+                }}
+                onLoad={handleImageLoad}
+                onError={handleImageError}
+              />
+            </>
           )}
           <span
             data-media-fallback
             hidden={Boolean(preview)}
-            className="absolute inset-0 grid place-items-center bg-media-surround text-4xl font-semibold text-foreground"
+            className="absolute inset-0 z-10 grid place-items-center bg-surface-sunken text-4xl font-semibold text-foreground"
             aria-hidden="true"
           >
             {placeholder}
@@ -146,22 +151,16 @@ export function TermOverviewCard({
           </span>
         </span>
       </button>
-      <Button
+      <MediaOverlayActionButton
         type="button"
         data-action="toggle-term"
-        size="xs"
-        variant="outline"
-        className={cn(
-          'absolute top-2 right-2 z-20 max-w-[calc(100%-1rem)] border-border bg-overlay/95 text-foreground hover:bg-hover active:bg-pressed',
-          selected &&
-            'border-selected-border bg-selected text-selected-foreground hover:bg-selected active:bg-selected',
-        )}
+        active={selected}
         aria-pressed={selected}
         onClick={() => onToggle(term)}
       >
         {selected ? <CheckIcon className="size-3.5" /> : <PlusIcon className="size-3.5" />}
         <span className="truncate">{selected ? selectedLabel : addLabel}</span>
-      </Button>
+      </MediaOverlayActionButton>
     </article>
   );
 }

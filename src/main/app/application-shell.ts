@@ -11,6 +11,7 @@ import type { ActiveLibraryContext } from '@/main/libraries/active-library-conte
 import { closeSandboxedImageDecoder } from '@/main/media/sandboxed-image-decoder';
 import type { BackgroundGenerationClient } from '@/main/model-worker/client';
 import { productNameForLocale } from '@/shared/product';
+import { appWindowStateSchema } from '@/shared/contracts/app-window';
 
 interface DesktopApplicationShellOptions {
   backgroundColor: string;
@@ -497,15 +498,6 @@ export class DesktopApplicationShell {
       icon: this.appIcon(),
       titleBarStyle: 'hidden',
       roundedCorners: true,
-      ...(process.platform !== 'darwin'
-        ? {
-            titleBarOverlay: {
-              color: '#f1efea',
-              symbolColor: '#262320',
-              height: 36,
-            },
-          }
-        : {}),
       show: false,
       webPreferences: {
         preload: path.join(app.getAppPath(), 'out', 'preload', 'index.js'),
@@ -516,6 +508,13 @@ export class DesktopApplicationShell {
     });
     this.mainWindow = window;
     this.rendererEvents.attach(window);
+    const sendWindowState = () =>
+      this.rendererEvents.send(
+        'app-window:state-changed',
+        appWindowStateSchema.parse({ maximized: window.isMaximized() }),
+      );
+    window.on('maximize', sendWindowState);
+    window.on('unmaximize', sendWindowState);
     window.on('close', (event) => {
       if (this.appQuitRequested) return;
       if (this.appUpdateInstallPreparing) {

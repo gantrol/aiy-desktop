@@ -4,7 +4,7 @@ import type { ImageRatingDimension } from '@/shared/contracts';
 export type GalleryScope = 'ALL' | 'FAVORITE';
 export type GalleryRelationship = 'ANY' | 'CREATION' | 'DICTIONARY';
 export type GalleryContentType = 'IMAGE' | 'TEXT';
-// LIST remains the persisted compatibility token; the renderer now presents it as album stacks.
+// LIST remains the shared compatibility token for creator album stack layouts.
 export type GalleryViewMode = 'GRID' | 'LIST';
 
 export interface GalleryPreferences {
@@ -12,7 +12,6 @@ export interface GalleryPreferences {
   relationship: GalleryRelationship;
   contentTypes: GalleryContentType[];
   unratedDimensions: ImageRatingDimension[];
-  viewMode: GalleryViewMode;
 }
 
 const storageKey = 'aiy.gallery-preferences.v1';
@@ -20,14 +19,12 @@ const dimensions = ['AESTHETIC', 'REALISM'] as const satisfies readonly ImageRat
 const contentTypes = ['IMAGE', 'TEXT'] as const satisfies readonly GalleryContentType[];
 const scopes = ['ALL', 'FAVORITE'] as const satisfies readonly GalleryScope[];
 const relationships = ['ANY', 'CREATION', 'DICTIONARY'] as const satisfies readonly GalleryRelationship[];
-const viewModes = ['GRID', 'LIST'] as const satisfies readonly GalleryViewMode[];
 const storedGalleryPreferencesSchema = z
   .object({
     scope: z.enum(scopes).optional().catch(undefined),
     relationship: z.enum(relationships).optional().catch(undefined),
     contentTypes: z.array(z.enum(contentTypes)).max(contentTypes.length).optional().catch(undefined),
     unratedDimensions: z.array(z.enum(dimensions)).max(dimensions.length).optional().catch(undefined),
-    viewMode: z.enum(viewModes).optional().catch(undefined),
   })
   .passthrough();
 
@@ -36,7 +33,6 @@ export const defaultGalleryPreferences: GalleryPreferences = {
   relationship: 'ANY',
   contentTypes: ['IMAGE', 'TEXT'],
   unratedDimensions: [],
-  viewMode: 'GRID',
 };
 
 function validSubset<T extends string>(value: unknown, allowed: readonly T[]) {
@@ -52,7 +48,6 @@ function normalize(value: unknown): GalleryPreferences {
     relationship: stored.relationship ?? defaultGalleryPreferences.relationship,
     contentTypes: normalizedContentTypes?.length ? normalizedContentTypes : defaultGalleryPreferences.contentTypes,
     unratedDimensions: validSubset(stored.unratedDimensions, dimensions) ?? defaultGalleryPreferences.unratedDimensions,
-    viewMode: stored.viewMode ?? defaultGalleryPreferences.viewMode,
   };
 }
 

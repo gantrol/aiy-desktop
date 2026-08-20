@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import type { ExtensionDto, TransitionPreviewDto } from '@/shared/contracts';
+import type { BootstrapDto, ExtensionDto } from '@/shared/contracts';
 import { CODEX_IMAGE_DISCOVERY_EXTENSION_ID } from '@/shared/extension-ids';
 import { Badge } from '@/renderer/components/ui/badge';
 import {
@@ -13,27 +13,32 @@ import { PackScreen } from '@/renderer/features/packs/PackScreen';
 import { CodexImageDiscoveryScreen } from '@/renderer/features/extensions/CodexImageDiscoveryScreen';
 import { ExtensionPluginScreen } from '@/renderer/features/extensions/ExtensionPluginScreen';
 import type { CodexImagesNavigationState } from '@/renderer/features/extensions/codexImageNavigation';
+import type { TransitionShowcaseNavigationState } from '@/renderer/features/extensions/transitionShowcaseNavigation';
 
 interface Props {
   activeSurface: 'center' | 'discovery' | null;
+  data: BootstrapDto;
+  dataRevision: number;
   extensions: readonly ExtensionDto[];
   location: ExtensionsLocation;
   onNavigate(location: ExtensionsLocation, mode?: NavigationMode): void;
   onExtensionsChange(): void;
   codexImagesNavigation: CodexImagesNavigationState;
-  transitionPreviews: readonly TransitionPreviewDto[];
+  transitionShowcaseNavigation: TransitionShowcaseNavigationState;
   notify(message: string): void;
   onOpenCreation(seriesId: string, assetId: string | null): Promise<void>;
 }
 
 export function ExtensionCenterScreen({
   activeSurface,
+  data,
+  dataRevision,
   extensions,
   location,
   onNavigate,
   onExtensionsChange,
   codexImagesNavigation,
-  transitionPreviews,
+  transitionShowcaseNavigation,
   notify,
   onOpenCreation,
 }: Props) {
@@ -90,13 +95,15 @@ export function ExtensionCenterScreen({
       <TabsContent value="plugins" className="min-h-0 flex-1">
         <ExtensionPluginScreen
           active={active && tab === 'plugins'}
+          data={data}
+          dataRevision={dataRevision}
           requestedId={location.pluginId}
           onSelectedIdChange={(pluginId, mode) =>
             commitExtensionsLocation({ ...location, tab: 'plugins', pluginId }, mode)
           }
           onExtensionsChange={onExtensionsChange}
           codexImagesNavigation={codexImagesNavigation}
-          transitionPreviews={transitionPreviews}
+          transitionShowcaseNavigation={transitionShowcaseNavigation}
           notify={notify}
           onOpenCreation={onOpenCreation}
         />

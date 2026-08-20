@@ -30,7 +30,7 @@ interface Props {
   relationship: GalleryRelationship;
   contentTypes: GalleryContentType[];
   unratedDimensions: ImageRatingDimension[];
-  viewMode: GalleryViewMode;
+  viewMode?: GalleryViewMode;
   selectionMode: boolean;
   selectionAvailable?: boolean;
   availableContentTypes?: GalleryContentType[];
@@ -42,7 +42,7 @@ interface Props {
   onRelationshipChange(value: GalleryRelationship): void;
   onContentTypesChange(value: GalleryContentType[]): void;
   onUnratedDimensionsChange(value: ImageRatingDimension[]): void;
-  onViewModeChange(value: GalleryViewMode): void;
+  onViewModeChange?(value: GalleryViewMode): void;
   onSelectionModeChange(value: boolean): void;
   onSourceFilterChange?(value: MaterialSourceFilter): void;
   onCreationRelationFilterChange?(value: CreationRelationFilter): void;
@@ -371,13 +371,15 @@ export function MaterialLibraryToolbar({
           </PopoverContent>
         </Popover>
 
-        <MaterialViewToggle
-          value={viewMode}
-          label={l.viewLabel}
-          gridLabel={l.gridView}
-          stackLabel={l.stackView}
-          onChange={onViewModeChange}
-        />
+        {viewMode && onViewModeChange && (
+          <MaterialViewToggle
+            value={viewMode}
+            label={l.viewLabel}
+            gridLabel={l.gridView}
+            stackLabel={l.stackView}
+            onChange={onViewModeChange}
+          />
+        )}
 
         {selectionAvailable && (
           <Button

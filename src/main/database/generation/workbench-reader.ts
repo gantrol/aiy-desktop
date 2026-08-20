@@ -3,6 +3,7 @@ import path from 'node:path';
 import type {
   AssetDto,
   ExecutionInputSnapshotDto,
+  GenerationExecutionSummaryDto,
   GenerationExecutionCommonInputDto,
   GenerationQuality,
   GenerationRunDto,
@@ -31,7 +32,12 @@ import {
   pushMapped,
 } from '@/main/database/generation/workbench-values';
 import { resolveStoredTitle, titleLocalizationsByOwner } from '@/main/database/core/title-localization';
+import {
+  creationItemIncludesSeries,
+  creationOutputNotExcluded,
+} from '@/main/database/creations/creation-output-presentation-sql';
 import { CODEX_APP_SERVER_EXTENSION_ID } from '@/shared/extension-ids';
+import { findSvgRasterCachePath } from '@/main/media/svg-raster-cache';
 
 export class WorkbenchReader {
   private assetPathIndex: Map<string, string> | null = null;
@@ -73,7 +79,7 @@ export class WorkbenchReader {
 
   getWorkbench(
     locale: Locale = 'zh',
-    options: { includeExecutionActualRequest?: boolean } = {},
+    options: { includeExecutionActualRequest?: boolean; includeExecutionInputSnapshot?: boolean } = {},
   ): { series: PromptSeriesDto[] } {
     const seriesRows = this.db
       .prepare(
@@ -91,6 +97,10 @@ export class WorkbenchReader {
             JOIN image_assets asset ON asset.id = run.result_asset_id
             WHERE version.series_id = series.id AND asset.deleted_at IS NULL
               AND NOT EXISTS (
+                SELECT 1 FROM prompt_series_output_exclusions exclusion
+                WHERE exclusion.series_id = series.id AND exclusion.image_asset_id = asset.id
+              )
+              AND NOT EXISTS (
                 SELECT 1 FROM generation_output_reviews review
                 WHERE review.generation_run_id = run.id AND review.disposition = 'FAILED'
               )
@@ -100,12 +110,20 @@ export class WorkbenchReader {
             FROM creation_output_imports imported
             JOIN image_assets asset ON asset.id = imported.image_asset_id
             WHERE imported.series_id = series.id AND imported.deleted_at IS NULL AND asset.deleted_at IS NULL
+              AND NOT EXISTS (
+                SELECT 1 FROM prompt_series_output_exclusions exclusion
+                WHERE exclusion.series_id = series.id AND exclusion.image_asset_id = asset.id
+              )
           ), ''),
           COALESCE((
             SELECT MAX(transform.created_at)
             FROM image_transform_runs transform
             JOIN image_assets asset ON asset.id = transform.output_asset_id
             WHERE transform.series_id = series.id AND transform.deleted_at IS NULL AND asset.deleted_at IS NULL
+              AND NOT EXISTS (
+                SELECT 1 FROM prompt_series_output_exclusions exclusion
+                WHERE exclusion.series_id = series.id AND exclusion.image_asset_id = asset.id
+              )
           ), ''),
           series.created_at
         ) DESC, series.created_at DESC, series.id DESC`,
@@ -116,6 +134,7 @@ export class WorkbenchReader {
       'PROMPT_SERIES',
       seriesRows.map((row) => text(row.id)),
     );
+    const explicitCoversBySeries = this.readExplicitCovers();
     const relations = this.readWorkbenchRelations(options);
     const series = seriesRows.map((seriesRow): PromptSeriesDto => {
       const versionRows = relations.versionRowsBySeries.get(text(seriesRow.id)) ?? [];
@@ -150,24 +169,22 @@ export class WorkbenchReader {
       const seriesId = text(seriesRow.id);
       const importedOutputs = relations.importedOutputsBySeries.get(seriesId) ?? [];
       const transformedOutputs = relations.transformedOutputsBySeries.get(seriesId) ?? [];
-      const generatedCover = versions
+      const generatedCoverCandidates = versions
         .flatMap((item) => item.runs)
-        .filter((item) => item.asset && item.outputDisposition !== 'FAILED')
-        .sort((left, right) => {
-          const byCreatedAt = (right.asset?.createdAt ?? right.createdAt).localeCompare(
-            left.asset?.createdAt ?? left.createdAt,
-          );
-          return byCreatedAt || right.id.localeCompare(left.id);
-        })[0];
-      const cover =
-        [
-          ...(generatedCover?.asset
-            ? [{ asset: generatedCover.asset, createdAt: generatedCover.asset.createdAt, id: generatedCover.id }]
-            : []),
-          ...importedOutputs.map((output) => ({ asset: output.asset, createdAt: output.createdAt, id: output.id })),
-          ...transformedOutputs.map((output) => ({ asset: output.asset, createdAt: output.createdAt, id: output.id })),
-        ].sort((left, right) => right.createdAt.localeCompare(left.createdAt) || right.id.localeCompare(left.id))[0]
-          ?.asset ?? null;
+        .flatMap((item) =>
+          item.asset && item.outputDisposition !== 'FAILED'
+            ? [{ asset: item.asset, createdAt: item.asset.createdAt || item.createdAt, id: item.id }]
+            : [],
+        );
+      const coverCandidates = [
+        ...generatedCoverCandidates,
+        ...importedOutputs.map((output) => ({ asset: output.asset, createdAt: output.createdAt, id: output.id })),
+        ...transformedOutputs.map((output) => ({ asset: output.asset, createdAt: output.createdAt, id: output.id })),
+      ].sort((left, right) => right.createdAt.localeCompare(left.createdAt) || right.id.localeCompare(left.id));
+      const explicitCovers = explicitCoversBySeries.get(seriesId) ?? [];
+      const automaticCover = coverCandidates[0]?.asset ?? null;
+      const covers = explicitCovers.length > 0 ? explicitCovers : automaticCover ? [automaticCover] : [];
+      const cover = covers[0] ?? null;
       const title = resolveStoredTitle(seriesRow, locale, titleLocalizations.get(text(seriesRow.id)) ?? []);
       return {
         id: text(seriesRow.id),
@@ -177,13 +194,64 @@ export class WorkbenchReader {
         importedOutputs,
         transformedOutputs,
         cover,
+        covers,
+        explicitCoverAssetId: explicitCovers[0]?.id ?? null,
+        explicitCoverAssetIds: explicitCovers.map((asset) => asset.id),
         creatorRootSortOrder: seriesRow.root_sort_order == null ? null : Number(seriesRow.root_sort_order),
       };
     });
     return { series };
   }
 
-  private readWorkbenchRelations(options: { includeExecutionActualRequest?: boolean }) {
+  private readExplicitCovers() {
+    const rows = this.db
+      .prepare(
+        `SELECT DISTINCT cover_owner.id AS series_id, selected_cover.sort_order AS cover_sort_order,
+          asset.id AS asset_id, asset.kind AS asset_kind, asset.origin_type AS asset_origin_type,
+          asset.width AS asset_width, asset.height AS asset_height, asset.mime_type AS asset_mime_type,
+          asset.byte_size AS asset_byte_size, asset.created_at AS asset_created_at
+        FROM prompt_series cover_owner
+        JOIN prompt_series_cover_assets selected_cover ON selected_cover.series_id = cover_owner.id
+        JOIN image_assets asset ON asset.id = selected_cover.image_asset_id AND asset.deleted_at IS NULL
+        JOIN prompt_series output_owner ON output_owner.deleted_at IS NULL
+        WHERE cover_owner.deleted_at IS NULL
+          AND ${creationItemIncludesSeries('cover_owner.id', 'output_owner.id')}
+          AND ${creationOutputNotExcluded('output_owner.id', 'asset.id')}
+          AND (
+            EXISTS (
+              SELECT 1 FROM prompt_versions version
+              JOIN generation_runs run ON run.prompt_version_id = version.id
+              WHERE version.series_id = output_owner.id AND run.result_asset_id = asset.id
+                AND run.status = 'SUCCEEDED'
+                AND NOT EXISTS (
+                  SELECT 1 FROM generation_output_reviews review
+                  WHERE review.generation_run_id = run.id AND review.disposition = 'FAILED'
+                )
+            ) OR EXISTS (
+              SELECT 1 FROM creation_output_imports imported
+              WHERE imported.series_id = output_owner.id AND imported.image_asset_id = asset.id
+                AND imported.deleted_at IS NULL
+            ) OR EXISTS (
+              SELECT 1 FROM image_transform_runs transform
+              WHERE transform.series_id = output_owner.id AND transform.output_asset_id = asset.id
+                AND transform.deleted_at IS NULL
+            )
+          )
+        ORDER BY cover_owner.id, selected_cover.sort_order, asset.id`,
+      )
+      .all() as JsonMap[];
+    const result = new Map<string, AssetDto[]>();
+    for (const row of rows) {
+      const asset = joinedAssetDto(row);
+      if (asset) pushMapped(result, text(row.series_id), asset);
+    }
+    return result;
+  }
+
+  private readWorkbenchRelations(options: {
+    includeExecutionActualRequest?: boolean;
+    includeExecutionInputSnapshot?: boolean;
+  }) {
     const { versionRowsBySeries, promptInputSnapshotsByVersion } = this.readVersionRelations();
 
     const { runSnapshotsById, providerDescriptionsByRun, derivationByAssetId } = this.readRunMetadataRelations(options);
@@ -265,7 +333,11 @@ export class WorkbenchReader {
         JOIN prompt_series series ON series.id = imported.series_id
         JOIN image_assets asset ON asset.id = imported.image_asset_id
         WHERE series.deleted_at IS NULL AND imported.deleted_at IS NULL AND asset.deleted_at IS NULL
-        ORDER BY imported.series_id, imported.created_at DESC, imported.id DESC`,
+          AND NOT EXISTS (
+            SELECT 1 FROM prompt_series_output_exclusions exclusion
+            WHERE exclusion.series_id = imported.series_id AND exclusion.image_asset_id = imported.image_asset_id
+          )
+        ORDER BY imported.series_id, imported.sort_order, imported.created_at DESC, imported.id DESC`,
       )
       .all() as JsonMap[];
     for (const row of importedRows) {
@@ -283,6 +355,10 @@ export class WorkbenchReader {
         JOIN prompt_series series ON series.id = transform.series_id
         JOIN image_assets asset ON asset.id = transform.output_asset_id
         WHERE series.deleted_at IS NULL AND transform.deleted_at IS NULL AND asset.deleted_at IS NULL
+          AND NOT EXISTS (
+            SELECT 1 FROM prompt_series_output_exclusions exclusion
+            WHERE exclusion.series_id = transform.series_id AND exclusion.image_asset_id = transform.output_asset_id
+          )
         ORDER BY transform.series_id, transform.created_at DESC, transform.id DESC`,
       )
       .all() as JsonMap[];
@@ -346,11 +422,15 @@ export class WorkbenchReader {
     return { versionRowsBySeries, promptInputSnapshotsByVersion };
   }
 
-  private readRunMetadataRelations(options: { includeExecutionActualRequest?: boolean }) {
+  private readRunMetadataRelations(options: {
+    includeExecutionActualRequest?: boolean;
+    includeExecutionInputSnapshot?: boolean;
+  }) {
     const runSnapshotsById = new Map<
       string,
       {
         modelSnapshot: ImageGenerationRouteSnapshotDto | null;
+        executionSummary: GenerationExecutionSummaryDto | null;
         executionInputSnapshot: ExecutionInputSnapshotDto | null;
       }
     >();
@@ -359,8 +439,9 @@ export class WorkbenchReader {
         `SELECT model.generation_run_id, model.id AS model_snapshot_id, model.descriptor_json,
           model.content_hash AS model_content_hash, model.created_at AS model_created_at,
           execution.id AS execution_snapshot_id, execution.route_kind, execution.request_schema,
-          execution.common_input_json,
-          ${options.includeExecutionActualRequest === false ? 'NULL' : 'execution.actual_request_json'} AS actual_request_json,
+          ${options.includeExecutionInputSnapshot === false ? 'NULL' : 'execution.common_input_json'} AS common_input_json,
+          json_extract(execution.common_input_json, '$.resolvedPrompt.commonExpression') AS resolved_prompt,
+          ${options.includeExecutionActualRequest === false || options.includeExecutionInputSnapshot === false ? 'NULL' : 'execution.actual_request_json'} AS actual_request_json,
           execution.client_request_text,
           execution.content_hash AS execution_content_hash, execution.created_at AS execution_created_at
         FROM generation_model_snapshots model
@@ -379,16 +460,25 @@ export class WorkbenchReader {
           contentHash: text(row.model_content_hash),
           createdAt: text(row.model_created_at),
         },
-        executionInputSnapshot: {
+        executionSummary: {
           id: text(row.execution_snapshot_id),
-          route: text(row.route_kind) as ExecutionInputSnapshotDto['route'],
           requestSchema: text(row.request_schema),
-          commonInput: parsedObject(row.common_input_json) as unknown as GenerationExecutionCommonInputDto,
-          ...(row.actual_request_json == null ? {} : { actualRequest: parsedObject(row.actual_request_json) }),
+          resolvedPrompt: text(row.resolved_prompt),
           clientRequestText: row.client_request_text == null ? null : text(row.client_request_text),
-          contentHash: text(row.execution_content_hash),
-          createdAt: text(row.execution_created_at),
         },
+        executionInputSnapshot:
+          row.common_input_json == null
+            ? null
+            : {
+                id: text(row.execution_snapshot_id),
+                route: text(row.route_kind) as ExecutionInputSnapshotDto['route'],
+                requestSchema: text(row.request_schema),
+                commonInput: parsedObject(row.common_input_json) as unknown as GenerationExecutionCommonInputDto,
+                ...(row.actual_request_json == null ? {} : { actualRequest: parsedObject(row.actual_request_json) }),
+                clientRequestText: row.client_request_text == null ? null : text(row.client_request_text),
+                contentHash: text(row.execution_content_hash),
+                createdAt: text(row.execution_created_at),
+              },
       });
     }
 
@@ -445,6 +535,7 @@ export class WorkbenchReader {
       string,
       {
         modelSnapshot: ImageGenerationRouteSnapshotDto | null;
+        executionSummary: GenerationExecutionSummaryDto | null;
         executionInputSnapshot: ExecutionInputSnapshotDto | null;
       }
     >;
@@ -486,7 +577,10 @@ export class WorkbenchReader {
           ON codex_thread.extension_id = ?
           AND codex_thread.scope_kind = 'SYSTEM'
           AND codex_thread.scope_id = 'generation:' || run.id
+        LEFT JOIN prompt_series_output_exclusions excluded_output
+          ON excluded_output.series_id = series.id AND excluded_output.image_asset_id = run.result_asset_id
         LEFT JOIN image_assets asset ON asset.id = run.result_asset_id AND asset.deleted_at IS NULL
+          AND excluded_output.image_asset_id IS NULL
         WHERE series.deleted_at IS NULL
         ORDER BY run.prompt_version_id, COALESCE(asset.created_at, run.created_at) DESC, run.created_at DESC, run.id DESC`,
       )
@@ -496,6 +590,7 @@ export class WorkbenchReader {
       const asset = joinedAssetDto(row);
       const snapshots = relations.runSnapshotsById.get(runId) ?? {
         modelSnapshot: null,
+        executionSummary: null,
         executionInputSnapshot: null,
       };
       pushMapped(runsByVersion, text(row.prompt_version_id), {
@@ -544,6 +639,12 @@ export class WorkbenchReader {
     const resolved = row ? this.storedAssetPath(row.relative_path) : null;
     if (resolved) this.assetPathIndex?.set(assetId, resolved);
     return resolved;
+  }
+
+  getGenerationAssetPath(assetId: string): string | null {
+    const sourcePath = this.getAssetPath(assetId);
+    if (!sourcePath || path.extname(sourcePath).toLowerCase() !== '.svg') return sourcePath;
+    return findSvgRasterCachePath(this.storage.libraryRoot, path.basename(sourcePath, '.svg'));
   }
 
   hasGenerationReplaySources(): boolean {
@@ -617,6 +718,9 @@ export class WorkbenchReader {
       generationTextType: text(row.generation_text_type) as ImportedCreationOutputDto['generationTextType'],
       generationText: text(row.generation_text),
       provenanceConfidence: text(row.provenance_confidence) as ImportedCreationOutputDto['provenanceConfidence'],
+      sortOrder: Number(row.sort_order),
+      relationshipKind: (text(row.relationship_kind) as ImportedCreationOutputDto['relationshipKind']) || 'UNSPECIFIED',
+      relationshipTargetOutputId: row.relationship_target_output_id ? text(row.relationship_target_output_id) : null,
       codexTask: row.codex_thread_id
         ? {
             threadId: text(row.codex_thread_id),

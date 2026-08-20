@@ -8,6 +8,7 @@ import {
 import { CloseIcon, DictionaryIcon, ImageIcon } from '@/renderer/icons';
 import { TermPreviewTooltip } from '@/renderer/components/media/TermPreviewTooltip';
 import { AssetFileContextMenu } from '@/renderer/components/media/AssetFileContextMenu';
+import { ImageAmbientBackdrop } from '@/renderer/components/media/AmbientImage';
 import { Button } from '@/renderer/components/ui/button';
 import { Popover, PopoverAnchor, PopoverContent } from '@/renderer/components/ui/popover';
 import { TooltipProvider } from '@/renderer/components/ui/tooltip';
@@ -224,10 +225,11 @@ export function CreationReferenceStrip({
     <div className="mt-3 flex flex-wrap gap-2 border-t pt-3">
       {assets.map((asset) => (
         <AssetFileContextMenu assetId={asset.id} notify={notify} revealContext={revealContext} key={asset.id}>
-          <span className="group relative size-12 overflow-visible rounded-md bg-media-surround-light">
-            <img className="size-full rounded-md object-contain" src={asset.mediaUrl} alt="" />
+          <span className="group relative isolate size-12 rounded-md bg-surface-sunken">
+            <ImageAmbientBackdrop src={asset.mediaUrl} />
+            <img className="relative z-10 size-full rounded-md object-contain" src={asset.mediaUrl} alt="" />
             <Button
-              className="absolute -top-1.5 -right-1.5 size-6 rounded-full bg-overlay text-foreground opacity-0 shadow-overlay group-focus-within:opacity-100 group-hover:opacity-100"
+              className="absolute -top-1.5 -right-1.5 z-20 size-6 rounded-full bg-overlay text-foreground opacity-0 shadow-overlay group-focus-within:opacity-100 group-hover:opacity-100"
               type="button"
               variant="outline"
               size="icon-sm"

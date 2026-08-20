@@ -9,6 +9,7 @@ import { ContentPackRepository } from '@/main/database/packs/content-pack-reposi
 import { CreationImportRepository } from '@/main/database/creations/creation-import-repository';
 import { CreationInputStashRepository } from '@/main/database/creations/creation-input-stash-repository';
 import { CreationRepository } from '@/main/database/creations/creation-repository';
+import { CreationOutputPresentationRepository } from '@/main/database/creations/creation-output-presentation-repository';
 import { CreatorAgentRepository } from '@/main/database/assistant/creator-agent-repository';
 import { DictionaryClassificationRepository } from '@/main/database/dictionary/dictionary-classification-repository';
 import { DictionaryMaintenanceRepository } from '@/main/database/dictionary/dictionary-maintenance-repository';
@@ -46,10 +47,10 @@ export function createLibraryDatabaseRepositories(storage: LibraryStorage) {
   const imports = new ImportRepository(storage);
   const executionSnapshots = new ExecutionSnapshotRepository(storage);
   const creationImports = new CreationImportRepository(storage, executionSnapshots);
+  const creationOutputPresentation = new CreationOutputPresentationRepository(storage);
   const intake = new IntakeRepository(storage, creationImports);
   const videoDocuments = new VideoDocumentRepository(storage);
   const creationInputStashes = new CreationInputStashRepository(storage);
-  const codexImageDiscoveries = new CodexImageDiscoveryRepository(storage, creationImports);
   const creatorAgent = new CreatorAgentRepository(storage);
   const aiProcesses = new AiProcessRepository(storage);
   const creations = new CreationRepository(storage);
@@ -63,6 +64,7 @@ export function createLibraryDatabaseRepositories(storage: LibraryStorage) {
   const generationJobs = new GenerationJobRepository(storage);
   const generationProcesses = new GenerationProcessRepository(storage);
   const workbench = new WorkbenchRepository(storage, executionSnapshots, generationJobs);
+  const codexImageDiscoveries = new CodexImageDiscoveryRepository(storage, creationImports, workbench);
   const ratings = new RatingRepository(storage);
   const gallery = new GalleryRepository(storage);
   const assetFiles = new AssetFileRepository(storage);
@@ -90,6 +92,7 @@ export function createLibraryDatabaseRepositories(storage: LibraryStorage) {
     codexImageDiscoveries,
     contentPacks,
     creationImports,
+    creationOutputPresentation,
     creationInputStashes,
     creations,
     creatorAgent,

@@ -95,7 +95,7 @@ Download the app and `SHA256SUMS.txt` from [GitHub Releases](https://github.com/
 
 ## ❕Early stage
 
-AIY is still very early. As of `v0.3.1`, the project has only been in development for about two weeks. Image creation and the library are usable, but the extensions and content packs may still change.
+AIY is still very early. As of `v0.3.3`, image creation and the library are usable, but extensions and content packs may still change.
 
 The basic framework is in place. Real user feedback is what will determine where this project goes next.
 

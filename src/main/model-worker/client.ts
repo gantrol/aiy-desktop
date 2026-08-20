@@ -7,6 +7,7 @@ import net from 'node:net';
 import os from 'node:os';
 import path from 'node:path';
 import type {
+  AntigravityCliStatusDto,
   AssistantActivityEventDto,
   AssistantRunDto,
   CodexHealth,
@@ -95,7 +96,7 @@ const DEFAULT_IDLE_EXIT_MS = 10 * 60_000;
 // Development builds briefly emitted these versions. They all support the
 // authenticated idle-shutdown handshake and can be replaced without losing
 // in-flight work.
-const REPLACEABLE_DEVELOPMENT_PROTOCOL_VERSIONS = new Set([MODEL_WORKER_PROTOCOL_VERSION]);
+const REPLACEABLE_DEVELOPMENT_PROTOCOL_VERSIONS = new Set([1, MODEL_WORKER_PROTOCOL_VERSION]);
 const ROLLING_UPGRADE_SETTLE_MS = 1_000;
 const WORKER_RETIRE_TIMEOUT_MS = 5_000;
 const STARTUP_FALLBACK_MIN_MS = 250;
@@ -365,6 +366,15 @@ export class BackgroundGenerationClient extends EventEmitter implements Generati
     message: 'Checking local Codex',
   };
   private currentCodexPendingCount = 0;
+  private currentAntigravityCliStatus: AntigravityCliStatusDto = {
+    state: 'checking',
+    version: '',
+    authenticated: false,
+    message: 'Checking local Antigravity CLI',
+    currentModel: null,
+    models: [],
+    quota: { warning: 'UNAVAILABLE', groups: [], checkedAt: null, message: 'Quota is unavailable' },
+  };
   private currentImageGenerationRoutes: ImageGenerationRouteDto[] = [];
   private currentTasks: GenerationTaskDto[] = [];
   private cachedOpenAiImageApiConfiguration: OpenAiImageApiRuntimeConfiguration | null = null;
@@ -402,6 +412,10 @@ export class BackgroundGenerationClient extends EventEmitter implements Generati
 
   get imageGenerationRoutes() {
     return this.currentImageGenerationRoutes;
+  }
+
+  get antigravityCliStatus() {
+    return this.currentAntigravityCliStatus;
   }
 
   get tasks() {
@@ -613,6 +627,13 @@ export class BackgroundGenerationClient extends EventEmitter implements Generati
 
   refreshExtensions() {
     return this.call<CodexHealth>('extensions.refresh', []);
+  }
+
+  refreshAntigravityCli() {
+    return this.call<AntigravityCliStatusDto>('antigravity.refresh-status', []).then((status) => {
+      this.currentAntigravityCliStatus = status;
+      return status;
+    });
   }
 
   configureOpenAiImageApi(configuration: OpenAiImageApiRuntimeConfiguration | null) {
@@ -1249,6 +1270,7 @@ export class BackgroundGenerationClient extends EventEmitter implements Generati
     this.currentWorkerId = snapshot.workerId;
     this.currentCodexHealth = snapshot.codexHealth;
     this.currentCodexPendingCount = snapshot.codexPendingCount;
+    if (snapshot.antigravityCliStatus) this.currentAntigravityCliStatus = snapshot.antigravityCliStatus;
     this.currentImageGenerationRoutes = snapshot.imageGenerationRoutes;
     this.currentTasks = snapshot.generationTasks;
     if (previousCodexPendingCount !== this.currentCodexPendingCount) {

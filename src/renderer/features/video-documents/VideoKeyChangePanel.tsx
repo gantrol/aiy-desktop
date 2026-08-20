@@ -3,6 +3,7 @@ import type { VideoKeyChangeResultDto } from '@/shared/contracts';
 import { Badge } from '@/renderer/components/ui/badge';
 import { Button } from '@/renderer/components/ui/button';
 import { useI18n } from '@/renderer/i18n/useI18n';
+import { ImageAmbientBackdrop } from '@/renderer/components/media/AmbientImage';
 
 interface Props {
   result: VideoKeyChangeResultDto | null;
@@ -70,9 +71,15 @@ export function VideoKeyChangePanel({ result, loading, extracting, onExtract, on
                   aria-label={labels.openAt(timestamp)}
                   onClick={() => onSeek(candidate.timestampMs)}
                 >
-                  <span className="relative block aspect-video overflow-hidden bg-media-surround-dark">
-                    <img src={candidate.imageUrl} alt="" className="size-full object-contain" loading="lazy" />
-                    <span className="absolute bottom-2 left-2 inline-flex items-center gap-1 rounded bg-overlay/90 px-2 py-1 text-xs text-foreground shadow-overlay backdrop-blur-sm">
+                  <span className="relative isolate block aspect-video overflow-hidden bg-surface-sunken">
+                    <ImageAmbientBackdrop src={candidate.imageUrl} loading="lazy" />
+                    <img
+                      src={candidate.imageUrl}
+                      alt=""
+                      className="relative z-10 size-full object-contain"
+                      loading="lazy"
+                    />
+                    <span className="absolute bottom-2 left-2 z-20 inline-flex items-center gap-1 rounded bg-overlay/90 px-2 py-1 text-xs text-foreground shadow-overlay backdrop-blur-sm">
                       <PlayIcon className="size-3 fill-current" />
                       {timestamp}
                     </span>

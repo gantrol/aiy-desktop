@@ -250,40 +250,12 @@ export class CodexImageDiscovery extends EventEmitter {
     const seenHashes = new Set<string>();
     let totalBytes = 0;
     for (const record of records) {
-      const filePath = this.resolveRecordPath(record);
-      const fileStat = lstatSync(filePath);
-      if (!fileStat.isFile() || fileStat.isSymbolicLink())
-        throw new Error(`Codex image is unavailable: ${record.fileName}`);
-      if (fileStat.size <= 0 || fileStat.size > MAX_IMAGE_BYTES) {
-        throw new Error(`Codex image must be 25 MB or smaller: ${record.fileName}`);
-      }
-      if (fileStat.size !== record.byteSize || fileStat.mtime.toISOString() !== record.fileModifiedAt) {
-        throw new Error(`Codex image changed; refresh and select it again: ${record.fileName}`);
-      }
-      totalBytes += fileStat.size;
+      totalBytes += record.byteSize;
       if (totalBytes > MAX_IMPORT_BYTES) throw new Error('Codex image import must be 100 MB or smaller');
-      const bytes = await readFile(filePath);
-      const verifiedStat = lstatSync(filePath);
-      if (
-        !verifiedStat.isFile() ||
-        verifiedStat.isSymbolicLink() ||
-        verifiedStat.size !== record.byteSize ||
-        verifiedStat.mtime.toISOString() !== record.fileModifiedAt
-      ) {
-        throw new Error(`Codex image changed while it was being read: ${record.fileName}`);
-      }
-      const contentHash = await sha256HexAsync(bytes);
-      if (contentHash !== record.contentHash) {
-        throw new Error(`Codex image content changed; refresh and select it again: ${record.fileName}`);
-      }
+      const { item, contentHash } = await this.readVerifiedImage(record);
       if (seenHashes.has(contentHash)) throw new Error('The selected Codex images contain duplicate content');
       seenHashes.add(contentHash);
-      items.push({
-        id: record.id,
-        name: record.fileName,
-        mimeType: record.mimeType,
-        bytes,
-      });
+      items.push(item);
       bindings.push({ discoveryId: record.id, contentHash });
     }
 
@@ -324,6 +296,28 @@ export class CodexImageDiscovery extends EventEmitter {
       importedCount: result.importedOutputs.length,
       duplicateCount: result.duplicateCount,
     };
+  }
+
+  async recoverImage(discoveryId: string) {
+    if (!DISCOVERY_ID_PATTERN.test(discoveryId)) throw new Error('Invalid Codex image selection');
+    const record = this.database.getCodexImageDiscoveries([discoveryId])[0];
+    if (!record) throw new Error('Codex image is no longer available');
+    if (record.inLibrary) throw new Error('This Codex image already exists in the library');
+    if (!record.recoveryTarget) throw new Error('This Codex image no longer matches a recoverable generation');
+    if (record.mimeType !== 'image/png') throw new Error('Only a generated PNG can repair an AIY generation');
+
+    const { item } = await this.readVerifiedImage(record);
+    const stagedRows = await this.imageStages.stageItems([item]);
+    const stageId = stagedRows[0]?.item.stageId;
+    if (!stageId) throw new Error('The Codex image could not be staged for recovery');
+    const result = await this.imageStages.consume([stageId], (database, images) => {
+      const image = images[0];
+      if (!image) throw new Error('The staged Codex image is unavailable');
+      return database.recoverStoredCodexGeneration(discoveryId, image);
+    });
+    this.database.scheduleLibraryFileViewSynchronization();
+    this.notifyChanged();
+    return result;
   }
 
   resolveMediaPath(discoveryId: string) {
@@ -572,6 +566,58 @@ export class CodexImageDiscovery extends EventEmitter {
       imported: record.inLibrary,
       importedSeriesId: record.importedSeriesId,
       importedAssetId: record.libraryAssetId ?? record.importedAssetId,
+      recoveryTarget:
+        !record.inLibrary && record.mimeType === 'image/png' && record.recoveryTarget
+          ? {
+              runId: record.recoveryTarget.runId,
+              seriesId: record.recoveryTarget.seriesId,
+              versionId: record.recoveryTarget.versionId,
+              versionNo: record.recoveryTarget.versionNo,
+              creationTitle: record.recoveryTarget.creationTitle,
+              creationTitleLocale: record.recoveryTarget.creationTitleLocale,
+              userIntent: record.recoveryTarget.userIntent,
+              finalPrompt: record.recoveryTarget.finalPrompt,
+              modelKey: record.recoveryTarget.modelKey,
+              createdAt: record.recoveryTarget.createdAt,
+            }
+          : null,
+    };
+  }
+
+  private async readVerifiedImage(record: CodexImageDiscoveryRecord) {
+    const filePath = this.resolveRecordPath(record);
+    const fileStat = lstatSync(filePath);
+    if (!fileStat.isFile() || fileStat.isSymbolicLink()) {
+      throw new Error(`Codex image is unavailable: ${record.fileName}`);
+    }
+    if (fileStat.size <= 0 || fileStat.size > MAX_IMAGE_BYTES) {
+      throw new Error(`Codex image must be 25 MB or smaller: ${record.fileName}`);
+    }
+    if (fileStat.size !== record.byteSize || fileStat.mtime.toISOString() !== record.fileModifiedAt) {
+      throw new Error(`Codex image changed; refresh and select it again: ${record.fileName}`);
+    }
+    const bytes = await readFile(filePath);
+    const verifiedStat = lstatSync(filePath);
+    if (
+      !verifiedStat.isFile() ||
+      verifiedStat.isSymbolicLink() ||
+      verifiedStat.size !== record.byteSize ||
+      verifiedStat.mtime.toISOString() !== record.fileModifiedAt
+    ) {
+      throw new Error(`Codex image changed while it was being read: ${record.fileName}`);
+    }
+    const contentHash = await sha256HexAsync(bytes);
+    if (contentHash !== record.contentHash) {
+      throw new Error(`Codex image content changed; refresh and select it again: ${record.fileName}`);
+    }
+    return {
+      item: {
+        id: record.id,
+        name: record.fileName,
+        mimeType: record.mimeType,
+        bytes,
+      } satisfies CreatorImageImportItemInput,
+      contentHash,
     };
   }
 
