@@ -9,7 +9,7 @@
 
   <p>
     <a href="https://github.com/gantrol/aiy-desktop/releases/latest"><img src="https://img.shields.io/github/v/release/gantrol/aiy-desktop?display_name=tag&amp;style=flat-square&amp;label=release" alt="最新版本" /></a>
-    <img src="https://img.shields.io/badge/platform-Windows%20x64%20%7C%20macOS%20Apple%20Silicon-4b5563?style=flat-square" alt="Windows x64 与 Apple Silicon Mac" />
+    <img src="https://img.shields.io/badge/platform-Windows%2010%2F11%20x64%20Store-4b5563?style=flat-square" alt="Windows 10/11 x64 Microsoft Store" />
     <a href="LICENSE"><img src="https://img.shields.io/badge/license-PolyForm%20Noncommercial%201.0.0-7c3aed?style=flat-square" alt="PolyForm Noncommercial 1.0.0" /></a>
   </p>
 
@@ -22,7 +22,7 @@
   </p>
 
   <p>
-    <a href="https://github.com/gantrol/aiy-desktop/releases/latest"><strong>下载体验</strong></a> ·
+    <a href="https://github.com/gantrol/aiy-desktop/releases/latest"><strong>历史版本</strong></a> ·
     <a href="#目前能做什么">功能</a> ·
     <a href="#下一步视频--图文稿">下一步</a> ·
     <a href="https://github.com/gantrol/aiy-desktop/issues">反馈</a>
@@ -83,18 +83,17 @@ AIY 可以扫描本机 Codex 的生成图片目录，按任务分组、避免重
 
 使用 AI 能力时，应用仍会连接你选择的服务。该次请求选中的 Prompt、参考图和相关数据会交给对应服务，并受其条款、隐私政策和计费规则约束。当前通道包括 Codex App Server/CLI、OpenAI Image API 和 DeepSeek Prompt 辅助；Gemini、Qwen Image 与 Seedream 扩展仍处于待验收阶段。
 
-## 下载
+## 分发
 
-最新版本提供：
+从 `v0.3.5` 起，维护中的分发目标只有：
 
-- Windows 10/11 x64：安装包和便携 ZIP；
-- Apple Silicon Mac：DMG 和 ZIP。
+- Windows 10/11 x64：Microsoft Store MSIX。
 
-请从 [GitHub Releases](https://github.com/gantrol/aiy-desktop/releases/latest) 下载应用和 `SHA256SUMS.txt`。当前 Windows 与 macOS 安装包尚未进行发行者签名或 Apple 公证，打开前请核对校验值并阅读 Release 中的安全说明。Linux 暂不在打包范围内。
+普通构建脚本不再生成 NSIS、便携 ZIP、macOS DMG、macOS ZIP 或独立 unpacked 版本。历史安装包仍保留在 [GitHub Releases](https://github.com/gantrol/aiy-desktop/releases)，但不属于当前维护矩阵；当前版本通过 Microsoft Store 认证后由 Store 分发。
 
 ## ❕早期阶段
 
-AIY 目前仍处于早期开发阶段。到 v0.3.3，图像创作与素材库已可用，扩展与内容包后续仍可能变化。
+AIY 目前仍处于早期开发阶段。到 v0.3.5，图像创作与素材库已可用，扩展与内容包后续仍可能变化。
 
 框架已经搭好，需要真实用户反馈，才能决定这个项目往哪里走。
 

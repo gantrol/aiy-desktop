@@ -56,6 +56,7 @@ const usageCommandDataSchema = z
                   .object({
                     id: z.string().min(1).max(500),
                     name: z.string().min(1).max(500),
+                    description: z.string().max(5_000).optional(),
                     window: z.string().min(1).max(100),
                     remaining_fraction: z.number().min(0).max(1),
                     reset_time: z.string().max(100).optional(),
@@ -86,19 +87,27 @@ const modelCommandSchema = z
   })
   .strict();
 
-const streamEventSchema = z
-  .object({
-    event: z.enum(['init', 'step_update', 'result']),
-    init: z.unknown().optional(),
-    step_update: z.unknown().optional(),
-    result: z.unknown().optional(),
-  })
-  .passthrough()
-  .superRefine((value, context) => {
-    if (value[value.event] === undefined) {
-      context.addIssue({ code: 'custom', message: `Missing ${value.event} payload` });
-    }
-  });
+const streamEventSchema = z.discriminatedUnion('event', [
+  z
+    .object({
+      event: z.literal('init'),
+      conversation_id: z.string().min(1).max(500),
+      init: z.unknown(),
+    })
+    .passthrough(),
+  z
+    .object({
+      event: z.literal('step_update'),
+      step_update: z.unknown(),
+    })
+    .passthrough(),
+  z
+    .object({
+      event: z.literal('result'),
+      result: z.unknown(),
+    })
+    .passthrough(),
+]);
 
 export type AntigravityPrintEnvelope = z.infer<typeof printEnvelopeSchema>;
 export type AntigravityStreamEvent = z.infer<typeof streamEventSchema>;

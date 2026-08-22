@@ -21,6 +21,7 @@ import type {
 import { useI18n } from '@/renderer/i18n/useI18n';
 import { cn } from '@/renderer/lib/utils';
 import { ImageAmbientBackdrop } from '@/renderer/components/media/AmbientImage';
+import { AssetFileContextMenu } from '@/renderer/components/media/AssetFileContextMenu';
 import { Button } from '@/renderer/components/ui/button';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/renderer/components/ui/collapsible';
 import { StateTag } from '@/renderer/components/ui/state-tag';
@@ -38,6 +39,7 @@ interface StyleExplorationPanelProps {
   onProposeAdjacent?(slot: StyleExplorationSlotDto): void | Promise<void>;
   onContinueDirection(slot: StyleExplorationSlotDto): void;
   onOpenAsset?(assetId: string): void;
+  notify?(message: string): void;
 }
 
 const copyByLocale = {
@@ -149,6 +151,7 @@ interface StyleExplorationSlotCardProps {
   onProposeAdjacent(slot: StyleExplorationSlotDto): void | Promise<void>;
   onContinueDirection(slot: StyleExplorationSlotDto): void;
   onOpenAsset?(assetId: string): void;
+  notify?(message: string): void;
 }
 
 function StyleExplorationSlotCard({
@@ -162,6 +165,7 @@ function StyleExplorationSlotCard({
   onProposeAdjacent,
   onContinueDirection,
   onOpenAsset,
+  notify,
 }: StyleExplorationSlotCardProps) {
   const { locale } = useI18n();
   const copy = copyByLocale[locale];
@@ -220,9 +224,8 @@ function StyleExplorationSlotCard({
                 />
               </>
             );
-            return onOpenAsset ? (
+            const content = onOpenAsset ? (
               <button
-                key={asset.id}
                 type="button"
                 aria-label={copy.openResult(slot.label, index + 1)}
                 className={cellClassName}
@@ -231,8 +234,20 @@ function StyleExplorationSlotCard({
                 {image}
               </button>
             ) : (
-              <div key={asset.id} className={cellClassName}>
-                {image}
+              <div className={cellClassName}>{image}</div>
+            );
+            return notify ? (
+              <AssetFileContextMenu
+                key={asset.id}
+                assetId={asset.id}
+                notify={notify}
+                revealContext={{ kind: 'CREATION', seriesId: slot.seriesId }}
+              >
+                {content}
+              </AssetFileContextMenu>
+            ) : (
+              <div key={asset.id} className="contents">
+                {content}
               </div>
             );
           })}
@@ -389,6 +404,7 @@ export function StyleExplorationPanel({
   onProposeAdjacent = () => undefined,
   onContinueDirection,
   onOpenAsset,
+  notify,
 }: StyleExplorationPanelProps) {
   const { locale } = useI18n();
   const copy = copyByLocale[locale];
@@ -552,6 +568,7 @@ export function StyleExplorationPanel({
                         onProposeAdjacent={onProposeAdjacent}
                         onContinueDirection={onContinueDirection}
                         onOpenAsset={onOpenAsset}
+                        notify={notify}
                       />
                     ))}
                 </div>

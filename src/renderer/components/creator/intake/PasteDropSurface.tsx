@@ -1,4 +1,5 @@
 import { useState, type ClipboardEvent, type DragEvent, type ReactNode } from 'react';
+import { hasExternalFilesDrag, hasMaterialsDrag } from '@/renderer/components/albums/albumDrag';
 import { cn } from '@/renderer/lib/utils';
 import {
   clipboardImageFiles,
@@ -50,7 +51,16 @@ export function PasteDropSurface({
   }
 
   function drag(event: DragEvent<HTMLElement>, active: boolean) {
-    if (disabled || event.defaultPrevented || !event.dataTransfer.types.includes('Files')) return;
+    if (disabled || event.defaultPrevented) return;
+    if (hasMaterialsDrag(event.dataTransfer)) {
+      setDragActive(false);
+      if (event.type === 'dragover') {
+        event.preventDefault();
+        event.dataTransfer.dropEffect = 'none';
+      }
+      return;
+    }
+    if (!hasExternalFilesDrag(event.dataTransfer)) return;
     event.preventDefault();
     if (event.type === 'dragover') event.dataTransfer.dropEffect = 'copy';
     setDragActive(active);
@@ -58,6 +68,12 @@ export function PasteDropSurface({
 
   function drop(event: DragEvent<HTMLElement>) {
     if (disabled || event.defaultPrevented) return;
+    if (hasMaterialsDrag(event.dataTransfer)) {
+      event.preventDefault();
+      setDragActive(false);
+      return;
+    }
+    if (!hasExternalFilesDrag(event.dataTransfer)) return;
     event.preventDefault();
     setDragActive(false);
     const video = Array.from(event.dataTransfer.files).find((file) => {

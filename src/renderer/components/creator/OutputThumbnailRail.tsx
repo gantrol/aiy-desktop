@@ -6,6 +6,7 @@ import { Button } from '@/renderer/components/ui/button';
 import { ScrollArea } from '@/renderer/components/ui/scroll-area';
 import { AssetFileContextMenu } from '@/renderer/components/media/AssetFileContextMenu';
 import { ImageAmbientBackdrop } from '@/renderer/components/media/AmbientImage';
+import { mediaThumbnailUrl } from '@/renderer/components/media/mediaThumbnailUrl';
 import { AssetHoverPreview } from '@/renderer/components/creator/AssetHoverPreview';
 import { CreatorPaneResizeHandle } from '@/renderer/components/creator/CreatorPaneResizeHandle';
 import type { ActionMenuAction } from '@/renderer/components/ui/action-menu';
@@ -84,6 +85,7 @@ export function OutputThumbnailRail({
         <div className="flex flex-col items-center gap-2 px-2 pt-3 pb-14">
           {assets.map((asset, index) => {
             const accessibleLabel = thumbnailLabel?.(asset, index) ?? `${expandLabel} ${index + 1}`;
+            const thumbnailUrl = mediaThumbnailUrl(asset, 192);
             return (
               <AssetFileContextMenu
                 key={asset.id}
@@ -99,20 +101,22 @@ export function OutputThumbnailRail({
                     aria-pressed={asset.id === selectedAssetId}
                     title={accessibleLabel}
                     className={cn(
-                      'relative isolate h-14 w-11 overflow-hidden rounded-md border-2 border-transparent bg-surface-sunken p-0.5 outline-none transition-colors hover:border-border-strong focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring',
-                      asset.id === selectedAssetId && 'border-selected-border ring-2 ring-ring',
+                      'relative isolate h-14 w-11 overflow-hidden rounded-md bg-surface-sunken ring-1 ring-inset ring-foreground/10 outline-none transition-shadow duration-fast hover:ring-2 hover:ring-border-strong focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring',
+                      asset.id === selectedAssetId && 'ring-2 ring-ring',
                     )}
                     onClick={() => {
                       onSelect(asset.id);
                       onExpand();
                     }}
                   >
-                    <ImageAmbientBackdrop src={asset.mediaUrl} loading="lazy" />
+                    <ImageAmbientBackdrop src={thumbnailUrl} loading="lazy" />
                     <img
-                      src={asset.mediaUrl}
+                      src={thumbnailUrl}
                       alt=""
                       className="relative z-10 size-full rounded-sm object-contain"
                       loading="lazy"
+                      decoding="async"
+                      fetchPriority={asset.id === selectedAssetId ? 'auto' : 'low'}
                       draggable={false}
                     />
                   </button>

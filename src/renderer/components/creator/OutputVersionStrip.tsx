@@ -4,6 +4,8 @@ import type { AssetDto, AssetFileRevealContext, Locale } from '@/shared/contract
 import { cn } from '@/renderer/lib/utils';
 import { AssetFileContextMenu } from '@/renderer/components/media/AssetFileContextMenu';
 import { ImageAmbientBackdrop } from '@/renderer/components/media/AmbientImage';
+import { getMediaPreviewAspectRatio } from '@/renderer/components/media/mediaAspectRatio';
+import { mediaThumbnailUrl } from '@/renderer/components/media/mediaThumbnailUrl';
 import type { ActionMenuAction } from '@/renderer/components/ui/action-menu';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/renderer/components/ui/collapsible';
 import {
@@ -51,6 +53,43 @@ interface AssetStackProps {
   failed?: boolean;
 }
 
+const OUTPUT_THUMBNAIL_MAX_WIDTH = 48;
+const OUTPUT_THUMBNAIL_MAX_HEIGHT = 56;
+const OUTPUT_THUMBNAIL_EXPANDED_GAP = 4;
+const OUTPUT_THUMBNAIL_STACKED_STEP = 10;
+
+function outputThumbnailFrame(asset: AssetDto) {
+  const preview = getMediaPreviewAspectRatio(
+    asset.width,
+    asset.height,
+    OUTPUT_THUMBNAIL_MAX_WIDTH / OUTPUT_THUMBNAIL_MAX_HEIGHT,
+  );
+  const boundsAspectRatio = OUTPUT_THUMBNAIL_MAX_WIDTH / OUTPUT_THUMBNAIL_MAX_HEIGHT;
+  return {
+    ...preview,
+    ...(preview.aspectRatio >= boundsAspectRatio
+      ? {
+          width: OUTPUT_THUMBNAIL_MAX_WIDTH,
+          height: OUTPUT_THUMBNAIL_MAX_WIDTH / preview.aspectRatio,
+        }
+      : {
+          width: OUTPUT_THUMBNAIL_MAX_HEIGHT * preview.aspectRatio,
+          height: OUTPUT_THUMBNAIL_MAX_HEIGHT,
+        }),
+  };
+}
+
+function outputThumbnailBackdrop(src: string) {
+  return (
+    <ImageAmbientBackdrop
+      src={src}
+      loading="lazy"
+      imageClassName="scale-150 blur-md"
+      scrimClassName="bg-background/5 dark:bg-background/10"
+    />
+  );
+}
+
 function AssetStack({
   label,
   assets,
@@ -71,12 +110,20 @@ function AssetStack({
 }: AssetStackProps) {
   if (!assets.length) return null;
   const visible = expanded ? assets : assets.slice(0, 3);
-  const thumbnailWidth = 48;
-  const expandedGap = 4;
-  const stackedStep = 10;
+  const frames = visible.map((item) => outputThumbnailFrame(item.asset));
+  let nextExpandedOffset = 0;
+  const expandedOffsets = frames.map((frame) => {
+    const offset = nextExpandedOffset;
+    nextExpandedOffset += frame.width + OUTPUT_THUMBNAIL_EXPANDED_GAP;
+    return offset;
+  });
   const width = expanded
-    ? thumbnailWidth * visible.length + expandedGap * (visible.length - 1)
-    : thumbnailWidth + stackedStep * (visible.length - 1);
+    ? frames.reduce((total, frame) => total + frame.width, 0) +
+      OUTPUT_THUMBNAIL_EXPANDED_GAP * Math.max(0, frames.length - 1)
+    : frames.reduce(
+        (maximum, frame, index) => Math.max(maximum, frame.width + OUTPUT_THUMBNAIL_STACKED_STEP * index),
+        0,
+      );
   const renderedAssets = expanded ? visible : [...visible].reverse();
   const actionLabel = failed
     ? locale === 'zh'
@@ -109,6 +156,8 @@ function AssetStack({
         {renderedAssets.map((item, renderedIndex) => {
           const index = expanded ? renderedIndex : visible.length - renderedIndex - 1;
           const selected = item.asset.id === selectedAssetId;
+          const frame = frames[index];
+          const thumbnailUrl = mediaThumbnailUrl(item.asset, 192);
           const actions: ActionMenuAction[] = [];
           if (item.kind !== 'IMPORTED_OUTPUT') {
             actions.push({
@@ -141,25 +190,32 @@ function AssetStack({
                 data-output-asset-id={item.asset.id}
                 type="button"
                 aria-label={`${label} · ${index + 1}`}
+                data-output-thumbnail-aspect-ratio={frame.aspectRatio.toFixed(3)}
+                data-output-thumbnail-edge-fill={frame.needsEdgeFill ? 'true' : undefined}
                 className={cn(
-                  'absolute top-0 isolate h-14 w-12 overflow-hidden rounded-md border-2 border-background bg-surface-sunken p-0.5 outline-none transition-colors hover:border-border-strong focus-visible:ring-2 focus-visible:ring-ring',
+                  'absolute isolate overflow-hidden rounded-md bg-surface-sunken ring-1 ring-inset ring-foreground/10 outline-none transition-[box-shadow,opacity] duration-fast hover:ring-2 hover:ring-border-strong focus-visible:ring-2 focus-visible:ring-ring',
                   stackedMediaFrameLayerClassName,
                   stackedMediaFrameLiftClassName,
-                  failed && 'border-destructive/40 opacity-75 hover:border-destructive/70 hover:opacity-100',
-                  selected && 'border-selected-border opacity-100 ring-2 ring-ring',
+                  failed && 'ring-destructive/40 opacity-75 hover:ring-destructive/70 hover:opacity-100',
+                  selected && 'opacity-100 ring-2 ring-ring',
                 )}
                 style={stackedMediaFrameStyle(selected ? 20 : expanded ? 1 : 10 - index, {
-                  left: `${index * (expanded ? thumbnailWidth + expandedGap : stackedStep)}px`,
+                  top: (OUTPUT_THUMBNAIL_MAX_HEIGHT - frame.height) / 2,
+                  left: expanded ? expandedOffsets[index] : index * OUTPUT_THUMBNAIL_STACKED_STEP,
+                  width: frame.width,
+                  height: frame.height,
                 })}
                 onClick={() => onSelect(item.asset.id)}
               >
-                <ImageAmbientBackdrop src={item.asset.mediaUrl} loading="lazy" />
+                {frame.needsEdgeFill && outputThumbnailBackdrop(thumbnailUrl)}
                 <img
-                  src={item.asset.mediaUrl}
+                  data-asset-id={item.asset.id}
+                  src={thumbnailUrl}
                   alt=""
                   className="relative z-10 size-full rounded-sm object-contain"
                   loading="lazy"
                   decoding="async"
+                  fetchPriority="low"
                   draggable={false}
                 />
               </button>
@@ -343,48 +399,58 @@ export function OutputVersionStrip({
       })}
       {ungroupedAssets.length > 0 && (
         <section className="flex shrink-0 items-end gap-1.5 rounded-lg border border-border/60 bg-background/55 px-2 py-1.5">
-          {ungroupedAssets.map((asset, index) => (
-            <AssetFileContextMenu
-              key={asset.id}
-              assetId={asset.id}
-              notify={notify}
-              revealContext={revealContextForAsset?.(asset.id)}
-              actions={[
-                ...(organizeLabel && canOrganize?.(asset.id) && onOrganize
-                  ? [
-                      {
-                        id: 'organize-creation-outputs',
-                        label: organizeLabel,
-                        icon: TablePropertiesIcon,
-                        onSelect: () => onOrganize(asset.id),
-                      },
-                    ]
-                  : []),
-                ...(contextActionsForAsset?.(asset.id) ?? []),
-              ]}
-            >
-              <button
-                data-output-asset-id={asset.id}
-                type="button"
-                aria-label={`Output ${index + 1}`}
-                className={cn(
-                  'relative isolate h-14 w-12 overflow-hidden rounded-md border-2 border-transparent bg-surface-sunken p-0.5 outline-none transition-colors hover:border-border-strong focus-visible:ring-2 focus-visible:ring-ring',
-                  asset.id === selectedAssetId && 'border-selected-border ring-2 ring-ring',
-                )}
-                onClick={() => onSelect(asset.id)}
-              >
-                <ImageAmbientBackdrop src={asset.mediaUrl} loading="lazy" />
-                <img
-                  src={asset.mediaUrl}
-                  alt=""
-                  className="relative z-10 size-full rounded-sm object-contain"
-                  loading="lazy"
-                  decoding="async"
-                  draggable={false}
-                />
-              </button>
-            </AssetFileContextMenu>
-          ))}
+          {ungroupedAssets.map((asset, index) => {
+            const frame = outputThumbnailFrame(asset);
+            const thumbnailUrl = mediaThumbnailUrl(asset, 192);
+            return (
+              <span key={asset.id} className="grid h-14 w-12 shrink-0 place-items-center">
+                <AssetFileContextMenu
+                  assetId={asset.id}
+                  notify={notify}
+                  revealContext={revealContextForAsset?.(asset.id)}
+                  actions={[
+                    ...(organizeLabel && canOrganize?.(asset.id) && onOrganize
+                      ? [
+                          {
+                            id: 'organize-creation-outputs',
+                            label: organizeLabel,
+                            icon: TablePropertiesIcon,
+                            onSelect: () => onOrganize(asset.id),
+                          },
+                        ]
+                      : []),
+                    ...(contextActionsForAsset?.(asset.id) ?? []),
+                  ]}
+                >
+                  <button
+                    data-output-asset-id={asset.id}
+                    data-output-thumbnail-aspect-ratio={frame.aspectRatio.toFixed(3)}
+                    data-output-thumbnail-edge-fill={frame.needsEdgeFill ? 'true' : undefined}
+                    type="button"
+                    aria-label={`Output ${index + 1}`}
+                    className={cn(
+                      'relative isolate overflow-hidden rounded-md bg-surface-sunken ring-1 ring-inset ring-foreground/10 outline-none transition-shadow duration-fast hover:ring-2 hover:ring-border-strong focus-visible:ring-2 focus-visible:ring-ring',
+                      asset.id === selectedAssetId && 'ring-2 ring-ring',
+                    )}
+                    style={{ width: frame.width, height: frame.height }}
+                    onClick={() => onSelect(asset.id)}
+                  >
+                    {frame.needsEdgeFill && outputThumbnailBackdrop(thumbnailUrl)}
+                    <img
+                      data-asset-id={asset.id}
+                      src={thumbnailUrl}
+                      alt=""
+                      className="relative z-10 size-full rounded-sm object-contain"
+                      loading="lazy"
+                      decoding="async"
+                      fetchPriority="low"
+                      draggable={false}
+                    />
+                  </button>
+                </AssetFileContextMenu>
+              </span>
+            );
+          })}
         </section>
       )}
     </div>

@@ -1,6 +1,6 @@
 # 使用教程
 
-这组教程面向第一次使用 AIY Image Tools 的用户，也覆盖需要在 Windows 和 macOS 上验证候选版本的维护者。
+这组教程面向第一次使用 AIY Image Tools 的用户，也覆盖需要在 Windows 上验证 Store MSIX 候选版本的维护者。
 
 建议按以下顺序阅读：
 
@@ -10,7 +10,7 @@
 4. [维护词典与词盘](04-dictionary-and-prompt-palettes.md)
 5. [本地空间、备份与恢复](05-local-spaces-backup-and-recovery.md)
 
-维护者再阅读 [macOS 打包验收](06-macos-packaging-qa.md)、[在 Windows WSL2 部署 Qwen3-ASR](07-qwen3-asr-wsl-local-deployment.md) 和 [发布输入与安装包边界](../release/packaging-inputs.md)。
+维护者再阅读 [Store MSIX 打包验收](06-store-msix-packaging-qa.md)、[在 Windows WSL2 部署 Qwen3-ASR](07-qwen3-asr-wsl-local-deployment.md) 和 [发布输入与安装包边界](../release/packaging-inputs.md)。
 
 ## 先知道三件事
 

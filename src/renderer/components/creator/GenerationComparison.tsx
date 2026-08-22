@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState, type DragEvent as ReactDragEvent } from 'react';
 import { CircleIcon, Columns2Icon, Maximize2Icon, Minimize2Icon, PlusIcon } from 'lucide-react';
 import type {
   ImageGenerationRouteDto,
@@ -45,6 +45,7 @@ import {
   normalizedComparisonPrompt,
 } from '@/renderer/components/creator/generationComparisonUtils';
 import { PairComparisonView, type PairComparisonItem } from '@/renderer/components/creator/PairComparisonView';
+import { startImageAssetDrag } from '@/renderer/components/albums/albumDrag';
 
 interface Props {
   series: PromptSeriesDto;
@@ -191,6 +192,14 @@ export function GenerationComparison({
   const expandedBeforePair = useRef(false);
   const modelLabel = (model: ImageGenerationRouteDto) =>
     model.key === 'internal-library-random' ? messages.creator.generationTargets.internalLibraryRandom : model.name;
+  const startComparisonAssetDrag = (event: ReactDragEvent<HTMLElement>, assetId: string) => {
+    const request = startImageAssetDrag(event, [assetId]);
+    if (request) {
+      void request.catch((reason) => {
+        notify(`${messages.assetFile.failed}: ${reason instanceof Error ? reason.message : String(reason)}`);
+      });
+    }
+  };
   const versions = useMemo(
     () => [...series.versions].sort((left, right) => right.versionNo - left.versionNo),
     [series.versions],
@@ -508,6 +517,7 @@ export function GenerationComparison({
               ? [
                   {
                     id: run.id,
+                    assetId: run.asset.id,
                     mediaUrl: run.asset.mediaUrl,
                     width: run.asset.width,
                     height: run.asset.height,
@@ -779,6 +789,7 @@ export function GenerationComparison({
             zoomOut: l.zoomOut,
             fit: l.fit,
             zoomIn: l.zoomIn,
+            magnifier: l.magnifier,
             close: l.backToMatrix,
             opacity: l.opacity,
             a: l.pairA,
@@ -786,6 +797,7 @@ export function GenerationComparison({
           }}
           onSwap={() => setPairRunIds({ A: pairRunIds.B, B: pairRunIds.A })}
           onClose={closePairComparison}
+          onAssetDragStart={startComparisonAssetDrag}
         />
       )}
       <div className={cn('flex min-h-0 flex-1 flex-col', pairOpen && 'hidden')}>

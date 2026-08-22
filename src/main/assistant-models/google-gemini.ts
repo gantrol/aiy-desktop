@@ -20,6 +20,10 @@ import {
 import { resolveExternalImageApiEndpoint } from '@/main/extensions/external-image-api/endpoints';
 import type { ExternalImageApiRuntime } from '@/main/extensions/external-image-api/runtime';
 import { decodeProviderResponseJson, tryDecodeProviderErrorJson } from '@/main/providers/provider-response';
+import {
+  googleInteractionErrorDetailSchema,
+  googleInteractionStatusSchema,
+} from '@/main/providers/google-interactions';
 
 const REQUEST_TIMEOUT_MS = 180_000;
 const MAX_RESPONSE_BYTES = 8 * 1024 * 1024;
@@ -37,7 +41,7 @@ const interactionSchema = z
   .object({
     id: z.string().min(1).max(1_000),
     model: z.string().min(1).max(500).optional(),
-    status: z.enum(['in_progress', 'requires_action', 'completed', 'failed', 'cancelled', 'incomplete']),
+    status: googleInteractionStatusSchema,
     steps: z
       .array(
         z
@@ -59,22 +63,13 @@ const interactionSchema = z
       })
       .passthrough()
       .optional(),
-    error: z
-      .object({ message: z.string().max(10_000).optional(), code: z.union([z.string(), z.number()]).optional() })
-      .passthrough()
-      .optional(),
+    error: googleInteractionErrorDetailSchema.optional(),
   })
   .passthrough();
 
 const googleErrorSchema = z
   .object({
-    error: z
-      .object({
-        message: z.string().max(10_000).optional(),
-        code: z.union([z.string(), z.number()]).optional(),
-        status: z.string().max(500).optional(),
-      })
-      .passthrough(),
+    error: googleInteractionErrorDetailSchema,
   })
   .passthrough();
 

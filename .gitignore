@@ -108,6 +108,11 @@ logs/
 !docs/assets/
 !docs/assets/readme-*.png
 
+# Test fixtures are program inputs, not content. Regenerate with
+# `node scripts/generate-image-fixtures.mjs`.
+!tests/fixtures/**/*.png
+!e2e/**/*-snapshots/**/*.png
+
 # Environment files and signing secrets
 .env
 .env.*

@@ -1,18 +1,10 @@
-import type { PointerEvent as ReactPointerEvent } from 'react';
-import {
-  ArchiveIcon,
-  CircleAlertIcon,
-  FilePenLineIcon,
-  LightbulbIcon,
-  LoaderCircleIcon,
-  PanelRightCloseIcon,
-} from 'lucide-react';
+import type { PointerEvent as ReactPointerEvent, ReactNode } from 'react';
+import { HistoryIcon, PanelRightCloseIcon } from 'lucide-react';
 import type {
   AssistantActivityEventDto,
   AssistantProposalApplyValue,
   AssistantRunDto,
   AssistantWebSearchMode,
-  CreationDto,
   CreatorAgentScope,
   CreatorPromptNodeInput,
   DirectionProposalDto,
@@ -20,18 +12,13 @@ import type {
 } from '@/shared/contracts';
 import { Button } from '@/renderer/components/ui/button';
 import { ScrollArea } from '@/renderer/components/ui/scroll-area';
-import { StateTag } from '@/renderer/components/ui/state-tag';
 import { AssistantRunHistoryPanel } from '@/renderer/components/creator/AssistantRunHistoryPanel';
 import type { CreationAssistantMode } from '@/renderer/components/creator/CreationCollaborationPanel';
-import { CreationOutputTabs, type CreationOutputMode } from '@/renderer/components/creator/CreationOutputTabs';
 import { CreatorPaneResizeHandle } from '@/renderer/components/creator/CreatorPaneResizeHandle';
 
 interface Props {
-  mode: Extract<CreationOutputMode, 'ideas' | 'writing'>;
+  headerNavigation: ReactNode;
   locale: Locale;
-  creation: CreationDto | null;
-  ideasDisabled: boolean;
-  writingDisabled: boolean;
   scope: CreatorAgentScope | null;
   runs: AssistantRunDto[];
   progressEvents?: AssistantActivityEventDto[];
@@ -45,7 +32,6 @@ interface Props {
   resizeValue: number;
   resizeMin: number;
   resizeMax: number;
-  onModeChange(mode: CreationOutputMode): void;
   onCollapsedChange(collapsed: boolean): void;
   onResizeStart(event: ReactPointerEvent<HTMLDivElement>): void;
   onResizeValueChange(value: number): void;
@@ -57,41 +43,9 @@ interface Props {
   onStartExperiment(run: AssistantRunDto, directions: DirectionProposalDto[]): void;
 }
 
-function ideaStatus(creation: CreationDto | null, running: boolean, locale: Locale) {
-  if (running || creation?.status === 'FORMING') {
-    return {
-      label: locale === 'zh' ? '草稿 · 生成中' : 'Draft · Generating',
-      tone: 'info' as const,
-      icon: <LoaderCircleIcon className="animate-spin" />,
-    };
-  }
-  if (creation?.status === 'FAILED') {
-    return {
-      label: locale === 'zh' ? '草稿有错误' : 'Draft error',
-      tone: 'danger' as const,
-      icon: <CircleAlertIcon />,
-    };
-  }
-  if (creation?.status === 'ARCHIVED') {
-    return {
-      label: locale === 'zh' ? '已归档' : 'Archived',
-      tone: 'neutral' as const,
-      icon: <ArchiveIcon />,
-    };
-  }
-  return {
-    label: locale === 'zh' ? '草稿' : 'Draft',
-    tone: 'neutral' as const,
-    icon: <LightbulbIcon />,
-  };
-}
-
-export function CreatorAssistantOutputPanel({
-  mode,
+export function CreatorRecordPanel({
+  headerNavigation,
   locale,
-  creation,
-  ideasDisabled,
-  writingDisabled,
   scope,
   runs,
   progressEvents,
@@ -105,7 +59,6 @@ export function CreatorAssistantOutputPanel({
   resizeValue,
   resizeMin,
   resizeMax,
-  onModeChange,
   onCollapsedChange,
   onResizeStart,
   onResizeValueChange,
@@ -116,8 +69,7 @@ export function CreatorAssistantOutputPanel({
   onDismissTransient,
   onStartExperiment,
 }: Props) {
-  const status = ideaStatus(creation, busy, locale);
-  const modeLabel = mode === 'ideas' ? (locale === 'zh' ? '灵感' : 'Ideas') : locale === 'zh' ? '帮写' : 'Writing';
+  const recordLabel = locale === 'zh' ? '记录' : 'records';
 
   if (collapsed) {
     return (
@@ -135,11 +87,11 @@ export function CreatorAssistantOutputPanel({
           type="button"
           variant="ghost"
           size="icon-sm"
-          title={locale === 'zh' ? `展开${modeLabel}` : `Expand ${modeLabel}`}
-          aria-label={locale === 'zh' ? `展开${modeLabel}` : `Expand ${modeLabel}`}
+          title={locale === 'zh' ? '展开记录' : 'Expand records'}
+          aria-label={locale === 'zh' ? '展开记录' : 'Expand records'}
           onClick={() => onCollapsedChange(false)}
         >
-          {mode === 'ideas' ? <LightbulbIcon className="size-4" /> : <FilePenLineIcon className="size-4" />}
+          <HistoryIcon className="size-4" />
         </Button>
       </section>
     );
@@ -149,26 +101,15 @@ export function CreatorAssistantOutputPanel({
     <section className="relative flex min-h-0 min-w-0 flex-col bg-background">
       <CreatorPaneResizeHandle
         edge="left"
-        label={locale === 'zh' ? '调整产出区宽度' : 'Resize output'}
+        label={locale === 'zh' ? '调整记录区宽度' : 'Resize records'}
         value={resizeValue}
         min={resizeMin}
         max={resizeMax}
         onValueChange={onResizeValueChange}
         onPointerDown={onResizeStart}
       />
-      <header className="flex h-14 shrink-0 items-center justify-between gap-2 border-b border-border/60 bg-secondary px-3">
-        <CreationOutputTabs
-          value={mode}
-          locale={locale}
-          ideasDisabled={ideasDisabled}
-          writingDisabled={writingDisabled}
-          onValueChange={onModeChange}
-        />
-        {mode === 'ideas' && (creation || busy) && (
-          <StateTag tone={status.tone} icon={status.icon}>
-            {status.label}
-          </StateTag>
-        )}
+      <header className="flex h-14 shrink-0 items-center border-b border-border/60 bg-secondary px-3">
+        {headerNavigation}
       </header>
       <ScrollArea type="always" className="min-h-0 flex-1">
         <div className="mx-auto w-full max-w-3xl px-4 py-5">
@@ -199,8 +140,8 @@ export function CreatorAssistantOutputPanel({
         variant="secondary"
         size="icon-sm"
         className="absolute bottom-2 left-2 z-30 hidden shadow-overlay min-[840px]:inline-flex"
-        title={locale === 'zh' ? '收起产出区' : 'Collapse output'}
-        aria-label={locale === 'zh' ? '收起产出区' : 'Collapse output'}
+        title={locale === 'zh' ? '收起记录区' : `Collapse ${recordLabel}`}
+        aria-label={locale === 'zh' ? '收起记录区' : `Collapse ${recordLabel}`}
         onClick={() => onCollapsedChange(true)}
       >
         <PanelRightCloseIcon className="size-4" />

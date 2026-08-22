@@ -28,6 +28,7 @@ import type {
   MaterialAlbumAddManyInput,
   MaterialAlbumCreateInput,
   MaterialAlbumListInput,
+  MaterialAlbumMoveInput,
   MaterialAlbumRemoveInput,
   MaterialAlbumRenameInput,
   RenameCreationGroupInput,
@@ -170,6 +171,10 @@ export function createAssetLibraryApi(
 
     renameMaterialAlbum(input: MaterialAlbumRenameInput) {
       return repositories.materialAlbums.rename(input);
+    },
+
+    moveMaterialAlbum(input: MaterialAlbumMoveInput) {
+      return repositories.materialAlbums.move(input);
     },
 
     deleteMaterialAlbum(albumId: string) {

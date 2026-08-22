@@ -1,4 +1,4 @@
-import { ArrowRightIcon, ExternalLinkIcon, FlagIcon } from 'lucide-react';
+import { ArrowRightIcon, ExternalLinkIcon } from 'lucide-react';
 import { useState } from 'react';
 import type { AppSupportDestination, Locale } from '@/shared/contracts';
 import { useI18n } from '@/renderer/i18n/useI18n';
@@ -87,34 +87,24 @@ export function SettingsDialog({
               <ArrowRightIcon className="size-4" />
             </Button>
           </div>
-          <div className="grid gap-2">
-            <Label>{l.privacyAndSupport}</Label>
+          <div className="grid gap-1 border-t pt-2">
+            <AppUpdateSection active={open} />
             <Button
               type="button"
-              variant="outline"
-              className="justify-between"
+              variant="link"
+              size="sm"
+              className="h-8 w-fit px-1.5 text-xs text-muted-foreground"
               onClick={() => void openSupportDestination('PRIVACY_POLICY')}
             >
               {l.privacyPolicy}
-              <ExternalLinkIcon className="size-4" />
+              <ExternalLinkIcon className="size-3.5" />
             </Button>
-            <Button
-              type="button"
-              variant="outline"
-              className="justify-between"
-              onClick={() => void openSupportDestination('AI_CONTENT_REPORT')}
-            >
-              {l.reportAiContent}
-              <FlagIcon className="size-4" />
-            </Button>
-            <p className="text-sm text-muted-foreground">{l.reportAiContentHint}</p>
             {supportError && (
-              <p role="alert" className="text-sm text-destructive">
+              <p role="alert" className="px-1.5 text-xs text-destructive">
                 {supportError}
               </p>
             )}
           </div>
-          <AppUpdateSection active={open} />
         </div>
       </DialogContent>
     </Dialog>

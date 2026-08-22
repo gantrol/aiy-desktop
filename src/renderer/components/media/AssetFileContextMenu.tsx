@@ -11,10 +11,11 @@ import {
   Trash2Icon,
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
-import { useRef, useState, type ReactNode } from 'react';
+import { useLayoutEffect, useRef, useState, type DragEvent as ReactDragEvent, type ReactNode } from 'react';
 import type { AssetFileRevealContext, AssetFileRevealTargetDto } from '@/shared/contracts';
 import { useI18n } from '@/renderer/i18n/useI18n';
 import { AlbumTreeContextMenuItems } from '@/renderer/components/albums/AlbumTreeContextMenuItems';
+import { startImageAssetDrag } from '@/renderer/components/albums/albumDrag';
 import {
   ContextMenu,
   ContextMenuContent,
@@ -46,11 +47,24 @@ interface Props {
   revealContext?: AssetFileRevealContext;
   copyable?: boolean;
   usableInCreation?: boolean;
+  draggable?: boolean;
 }
 
 type FileAction = 'COPY' | 'SAVE_AS' | 'REVEAL' | 'OPEN';
 
 const defaultRevealContext: AssetFileRevealContext = { kind: 'ALL_MATERIALS' };
+
+function useDraggableFirstChild(enabled: boolean) {
+  const containerRef = useRef<HTMLDivElement>(null);
+  useLayoutEffect(() => {
+    if (!enabled) return;
+    const dragTarget = containerRef.current?.firstElementChild;
+    if (!(dragTarget instanceof HTMLElement) || dragTarget.hasAttribute('draggable')) return;
+    dragTarget.draggable = true;
+    return () => dragTarget.removeAttribute('draggable');
+  });
+  return containerRef;
+}
 
 function AssetMenuIcon({ icon: Icon, className }: { icon: LucideIcon; className?: string }) {
   return (
@@ -58,6 +72,22 @@ function AssetMenuIcon({ icon: Icon, className }: { icon: LucideIcon; className?
       <Icon className={className} />
     </ContextMenuIcon>
   );
+}
+
+function startNativeFileDrag(
+  event: ReactDragEvent<HTMLDivElement>,
+  assetId: string,
+  enabled: boolean,
+  failedLabel: string,
+  notify: (message: string) => void,
+) {
+  if (!enabled) return;
+  const request = startImageAssetDrag(event, [assetId]);
+  if (request) {
+    void request.catch((reason) => {
+      notify(`${failedLabel}: ${reason instanceof Error ? reason.message : String(reason)}`);
+    });
+  }
 }
 
 export function AssetFileContextMenu({
@@ -68,10 +98,12 @@ export function AssetFileContextMenu({
   revealContext = defaultRevealContext,
   copyable = true,
   usableInCreation = true,
+  draggable = copyable,
 }: Props) {
   const { messages } = useI18n();
   const labels = messages.assetFile;
   const menuActions = useAssetMenuActions();
+  const dragSurfaceRef = useDraggableFirstChild(draggable);
   const revealRequestKey = `${assetId}:${JSON.stringify(revealContext)}`;
   const latestRevealRequestKey = useRef(revealRequestKey);
   const revealRequestRevision = useRef(0);
@@ -226,10 +258,14 @@ export function AssetFileContextMenu({
       >
         <ContextMenuTrigger asChild>
           <div
+            ref={dragSurfaceRef}
             className="contents"
             data-asset-file-menu={assetId}
+            data-native-file-drag={draggable ? 'true' : undefined}
             data-file-action-state={fileActionBusy ?? 'IDLE'}
             aria-busy={fileActionBusy ? 'true' : undefined}
+            draggable={draggable}
+            onDragStart={(event) => startNativeFileDrag(event, assetId, draggable, labels.failed, notify)}
           >
             {children}
           </div>

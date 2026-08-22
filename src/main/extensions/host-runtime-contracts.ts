@@ -1,7 +1,12 @@
 import type { ExtensionContributionPoint, ExtensionManifestDto } from '@/shared/contracts';
-import { CODEX_IMAGE_DISCOVERY_EXTENSION_ID, FEATURE_DEMO_EXTENSION_ID } from '@/shared/extension-ids';
+import {
+  CODEX_IMAGE_DISCOVERY_EXTENSION_ID,
+  CODEX_USAGE_INVESTIGATOR_EXTENSION_ID,
+  FEATURE_DEMO_EXTENSION_ID,
+} from '@/shared/extension-ids';
 
 export const CODEX_IMAGE_DISCOVERY_HOST_RUNTIME_ID = 'codex-image-discovery';
+export const CODEX_USAGE_INVESTIGATOR_HOST_RUNTIME_ID = 'codex-usage-investigator';
 export const FEATURE_DEMO_HOST_RUNTIME_ID = 'feature-demo';
 
 export const CODEX_IMAGE_DISCOVERY_PERMISSIONS = [
@@ -9,10 +14,22 @@ export const CODEX_IMAGE_DISCOVERY_PERMISSIONS = [
   'library.write:creations',
 ] as const;
 
+export const CODEX_USAGE_INVESTIGATOR_PERMISSIONS = [
+  'filesystem.read:codex-session-usage',
+  'filesystem.write:user-selected-export',
+] as const;
+
+export const CODEX_USAGE_INVESTIGATOR_OPTIONAL_PERMISSIONS = ['codex:account-rate-limits'] as const;
+
 const CODEX_IMAGE_DISCOVERY_CONTRIBUTIONS: ExtensionManifestDto['contributes'] = {
   commands: ['codexImages.refresh'],
-  workflows: ['codexImages.importGenerated'],
+  workflows: ['codexImages.importGenerated', 'codexImages.recoverGeneration'],
   searchProviders: ['codex.generatedImages'],
+};
+
+const CODEX_USAGE_INVESTIGATOR_CONTRIBUTIONS: ExtensionManifestDto['contributes'] = {
+  commands: ['codexUsage.scan', 'codexUsage.pause', 'codexUsage.resume', 'codexUsage.export'],
+  workflows: ['codexUsage.investigate'],
 };
 
 const FEATURE_DEMO_CONTRIBUTIONS: ExtensionManifestDto['contributes'] = {
@@ -32,6 +49,12 @@ const hostRuntimeContracts: Readonly<Record<string, HostRuntimeContract>> = {
     permissions: CODEX_IMAGE_DISCOVERY_PERMISSIONS,
     optionalPermissions: [],
     contributes: CODEX_IMAGE_DISCOVERY_CONTRIBUTIONS,
+  },
+  [CODEX_USAGE_INVESTIGATOR_HOST_RUNTIME_ID]: {
+    extensionId: CODEX_USAGE_INVESTIGATOR_EXTENSION_ID,
+    permissions: CODEX_USAGE_INVESTIGATOR_PERMISSIONS,
+    optionalPermissions: CODEX_USAGE_INVESTIGATOR_OPTIONAL_PERMISSIONS,
+    contributes: CODEX_USAGE_INVESTIGATOR_CONTRIBUTIONS,
   },
   [FEATURE_DEMO_HOST_RUNTIME_ID]: {
     extensionId: FEATURE_DEMO_EXTENSION_ID,

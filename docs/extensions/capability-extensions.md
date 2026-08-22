@@ -40,7 +40,10 @@ manifest 负责让扩展中心知道“这个扩展是什么、贡献什么、�
 - 命令、工作流、工具和 Provider 贡献点；
 - 实际运行时代码及其 IPC、存储和错误隔离边界。
 
-包可以独立更新版本、名称、描述、本地化和兼容范围，但不能放宽权限或把运行时绑定到另一个扩展 ID。当前开放的参考运行时是 `codex-image-discovery`，清单位于 [`extensions/com.aiy.codex-image-discovery/`](../../extensions/com.aiy.codex-image-discovery/)。
+包可以独立更新版本、名称、描述、本地化和兼容范围，但不能放宽权限或把运行时绑定到另一个扩展 ID。当前开放的参考运行时包括：
+
+- `codex-image-discovery`：发现并导入 Codex 生成图片，清单位于 [`extensions/com.aiy.codex-image-discovery/`](../../extensions/com.aiy.codex-image-discovery/)。
+- `codex-usage-investigator`（今天Codex努力了吗）：以 Codex `state_*.sqlite` 为任务索引，将逐次 token、订阅套餐、模型、Standard/Fast 及 primary/secondary 额度窗口增量导入拓展专用 SQLite；每完成一个 rollout 即提交检查点，中断后从未完成文件继续。导入时以会话累计计数器还原真实增量，为每个用量事件生成不含内容的稳定指纹，并在读取时只保留跨会话历史重放中的全局最早事件。额度换算只统计 `resetsAt` 之前且落在 10080 分钟周窗口内的事件；`resetsAt` 仅作为下一次重置预测，按 5 分钟容差推进同一额度流，旧预测快照会被丢弃，预测前移时结束当前连续观测段。每个观测段以去重后的 Token 总数除以该段观测到的额度消耗百分点，并列出 Sol、Luna、Terra 及其他模型的 Token 占比、非缓存输入加输出 Token 与缓存输入占比。加工结果按原始数据修订号和算法版本缓存。拓展不会保存或导出 Prompt、回复、工作目录或本机绝对路径。清单位于 [`extensions/com.aiy.codex-usage-investigator/`](../../extensions/com.aiy.codex-usage-investigator/)。
 
 ## 通用能力 manifest
 

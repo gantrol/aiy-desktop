@@ -55,7 +55,7 @@
       "gallery": "图库",
       "codexImages": "Codex 图片",
       "transitionShowcase": "过场调试",
-      "packs": "扩展",
+      "packs": "拓展",
       "aiCenter": "AI 中心",
       "settings": "设置"
     },
@@ -74,43 +74,22 @@
       "manageAiFeatureModels": "管理模型分配",
       "privacyAndSupport": "隐私与支持",
       "privacyPolicy": "隐私政策",
-      "reportAiContent": "举报不适当的 AI 内容",
-      "reportAiContentHint": "打开私密邮件草稿，不会自动附加提示词或媒体。",
-      "supportOpenFailed": "无法打开隐私或支持入口",
-      "softwareUpdates": "软件更新",
+      "supportOpenFailed": "无法打开隐私政策",
       "currentVersion": "当前版本",
-      "updateStatusLoading": "正在读取更新状态…",
       "updateStatusFailed": "无法读取更新状态",
-      "automaticUpdateChecks": "应用会自动检查更新",
       "checkingForUpdates": "正在检查更新…",
       "upToDate": "已是最新版本",
-      "updateAvailable": {
-        "$params": ["version"],
-        "$template": "版本 {version} 可以下载"
-      },
-      "updateAvailableNotification": {
-        "$params": ["version"],
-        "$template": "版本 {version} 已可在设置中下载"
-      },
-      "updateAvailableUnknown": "有新版本可以下载",
+      "microsoftStoreUpdateAvailable": "Microsoft Store 更新可用",
+      "microsoftStoreUpdateAvailableNotification": "Microsoft Store 更新已可在设置中下载",
       "downloadingUpdate": {
         "$params": ["percent"],
         "$template": "正在下载更新… {percent}%"
       },
-      "updateReady": {
-        "$params": ["version"],
-        "$template": "版本 {version} 已准备好安装"
-      },
-      "updateReadyUnknown": "更新已准备好安装",
+      "updateReady": "更新已下载，可以重启并更新",
       "installingUpdate": "正在重启并安装更新…",
       "updateCheckFailed": "无法检查更新",
       "updateDownloadFailed": "无法下载更新",
-      "updateInstallFailed": "无法启动更新安装程序",
-      "updateUnsupportedDevelopment": "安装版应用可以使用自动更新",
-      "updateUnsupportedPackageType": "此版本通过应用外部方式更新",
-      "updateUnsupportedConfiguration": "此构建缺少有效的更新配置",
-      "updateUnsupportedSignature": "此构建未签名，无法安全地自动更新",
-      "updateUnsupportedPlatform": "当前平台不支持自动更新",
+      "updateInstallFailed": "无法启动 Microsoft Store 更新",
       "checkForUpdates": "检查",
       "downloadUpdate": "下载",
       "restartAndUpdate": "重启并更新",
@@ -449,7 +428,7 @@
       "retry": "重试",
       "reEdit": "重新编辑",
       "configure": "配置",
-      "managePlugins": "管理插件"
+      "managePlugins": "管理拓展"
     },
     "fields": {
       "frozenInput": "冻结输入",
@@ -487,9 +466,9 @@
       "targetLanguages": "目标语言"
     },
     "capability": {
-      "summary": "统一查看可用能力；密钥、区域和端点由对应插件管理。",
+      "summary": "统一查看可用能力；密钥、区域和端点由对应拓展管理。",
       "modelsAndConnections": "模型与连接",
-      "noProviders": "暂无模型能力插件",
+      "noProviders": "暂无模型能力拓展",
       "modelCount": {
         "$params": ["count"],
         "$template": "{count} 个模型"
@@ -557,7 +536,7 @@
       "preparing": "正在切出当前空间",
       "openingDatabase": "正在打开本地数据",
       "connectingServices": "正在连接后台服务",
-      "loadingExtensions": "正在载入扩展",
+      "loadingExtensions": "正在载入拓展",
       "applyingSettings": "正在同步连接设置",
       "activating": "正在激活空间",
       "loadingInterface": "正在加载空间界面",
@@ -644,9 +623,9 @@
     }
   },
   "extensions": {
-    "title": "扩展中心",
+    "title": "拓展中心",
     "tabs": {
-      "plugins": "插件与集成",
+      "plugins": "拓展与集成",
       "contentPacks": "内容包"
     },
     "enabled": "已启用",
@@ -656,19 +635,19 @@
     "required": "必需",
     "optional": "可选",
     "kinds": {
-      "CAPABILITY": "功能插件",
-      "LANGUAGE": "语言插件"
+      "CAPABILITY": "功能拓展",
+      "LANGUAGE": "语言拓展"
     },
     "groups": {
-      "models": "大模型插件",
-      "frontendDesign": "前端设计",
-      "features": "功能插件",
-      "languages": "语言插件"
+      "models": "大模型拓展",
+      "frontendDesign": "前端设计拓展",
+      "features": "功能拓展",
+      "languages": "语言拓展"
     },
     "search": {
-      "placeholder": "搜索插件",
+      "placeholder": "搜索拓展",
       "clear": "清除搜索",
-      "empty": "没有匹配的插件"
+      "empty": "没有匹配的拓展"
     },
     "source": {
       "BUILT_IN": "内置",
@@ -687,7 +666,7 @@
       "enable": "启用",
       "disable": "禁用",
       "refresh": "刷新连接",
-      "installLocal": "安装本地插件…",
+      "installLocal": "安装本地拓展…",
       "uninstall": "卸载"
     },
     "fields": {
@@ -712,17 +691,17 @@
       "modelProviders": "模型 Provider"
     },
     "notices": {
-      "enabled": "扩展已启用",
-      "disabled": "扩展已禁用",
+      "enabled": "拓展已启用",
+      "disabled": "拓展已禁用",
       "permissionGranted": "权限已授予",
       "permissionRevoked": "权限已撤销",
-      "languageRequired": "必须至少启用一个语言插件",
-      "installed": "本地插件已安装",
-      "uninstalled": "本地插件已卸载"
+      "languageRequired": "必须至少启用一个语言拓展",
+      "installed": "本地拓展已安装",
+      "uninstalled": "本地拓展已卸载"
     },
     "uninstall": {
-      "title": "卸载本地插件？",
-      "description": "此设备上的受管插件目录将被永久删除。"
+      "title": "卸载本地拓展？",
+      "description": "此设备上的受管拓展目录将被永久删除。"
     },
     "transitionShowcase": {
       "title": "过场预览",
@@ -953,6 +932,185 @@
           "$template": "已导入 {count} 张 Codex 图片"
         },
         "recovered": "已连同原始创作信息补回生成图片"
+      }
+    },
+    "codexUsageInvestigator": {
+      "title": "今天Codex努力了吗",
+      "rangeLabel": "调查范围",
+      "ranges": {
+        "LAST_24_HOURS": "24 小时",
+        "LAST_7_DAYS": "7 天",
+        "LAST_30_DAYS": "30 天",
+        "LAST_90_DAYS": "90 天",
+        "ALL": "全部"
+      },
+      "actions": {
+        "scan": "开始调查",
+        "pause": "暂停",
+        "resume": "继续"
+      },
+      "phases": {
+        "DISCOVERING": "发现记录",
+        "SCANNING": "扫描用量",
+        "FINALIZING": "计算等值"
+      },
+      "empty": "选择范围并开始调查",
+      "paused": "调查已暂停；完成的文件已安全缓存",
+      "taskFailed": "后台调查失败",
+      "history": "调查记录",
+      "background": "后台运行",
+      "eta": "预计剩余",
+      "elapsed": "已用时",
+      "firstRunWarning": "首次调查会将范围内的 Codex 事件导入拓展独立数据库。",
+      "cachePolicy": "未变化的来源文件从 SQLite 检查点续用；原始事件导入完成后再单独缓存加工结果。",
+      "cleanup": {
+        "action": "清理",
+        "title": "清理本地用量数据",
+        "level": "清理程度",
+        "levels": {
+          "HISTORY": "调查记录",
+          "ANALYSIS_CACHE": "分析缓存",
+          "LOCAL_INDEX": "本地索引"
+        },
+        "descriptions": {
+          "HISTORY": "删除已完成的调查和导出记录；保留全部可复用缓存与事件索引。",
+          "ANALYSIS_CACHE": "删除调查记录和派生分析缓存；保留已导入的事件索引。",
+          "LOCAL_INDEX": "删除 AIY 保存的全部本地用量副本；不触碰 Codex 原始日志。"
+        },
+        "cancel": "取消",
+        "confirm": "清理",
+        "clearing": "清理中",
+        "notices": {
+          "HISTORY": "调查记录已清理",
+          "ANALYSIS_CACHE": "调查记录与分析缓存已清理",
+          "LOCAL_INDEX": "本地用量索引已清理"
+        }
+      },
+      "apiEquivalentNote": "按公开 API 费率计算的等值，不是账单或实际扣费。",
+      "metrics": {
+        "apiEquivalent": "API 等值",
+        "cacheSavings": "缓存节省",
+        "creditEquivalent": "Codex credits 等值",
+        "totalTokens": "Token 总量",
+        "cachedInput": "缓存输入",
+        "coverage": "覆盖率",
+        "requests": "次请求",
+        "sessions": "个会话",
+        "files": "个文件",
+        "scannedFiles": "个实读文件",
+        "cachedFiles": "个缓存文件"
+      },
+      "quotaYield": {
+        "title": "周额度连续观测账",
+        "cycle": "连续观测区间",
+        "cycles": "个观测段",
+        "observedPeriod": "最近重置预测",
+        "quotaMovement": "观测额度消耗",
+        "modelTokenShare": "模型 Token 占比",
+        "granularity": "时间片",
+        "granularities": {
+          "AUTO": "自动",
+          "HOUR": "小时",
+          "SIX_HOURS": "6 小时",
+          "DAY": "天",
+          "WEEK": "周"
+        },
+        "timeZone": "时区",
+        "pinnedTimeZone": "调查时区",
+        "systemTimeZone": "当前系统时区",
+        "configuration": "配置",
+        "window": "窗口",
+        "primaryWindow": "主窗口",
+        "secondaryWindow": "次窗口",
+        "timeSlices": "时间片",
+        "period": "时段",
+        "change": "变化",
+        "interquartileRange": "P25–P75",
+        "quotaPerMillionTokens": "额度 % / 百万 Token",
+        "creditsPerOnePercent": "Credits / 1%",
+        "estimates": "项估计",
+        "samples": "个样本",
+        "events": "个事件",
+        "plan": "订阅套餐",
+        "tier": "模式",
+        "allModels": "全部模型",
+        "allModes": "全部模式",
+        "tokensPerOnePercent": "Token / 1% 额度",
+        "nonCachedTokensPerOnePercent": "非缓存 + 输出 Token / 1%",
+        "cachedInputPercent": "缓存输入占比",
+        "insufficientSamples": "样本不足",
+        "median": "中位数",
+        "quotaPoints": "观测额度点",
+        "empty": "暂无同时包含 Token 用量和额度变化的连续周额度观测段",
+        "confirmedResets": "确认换期",
+        "quotaReleased": "额度释放",
+        "staleSnapshots": "旧快照",
+        "streamChanges": "额度流变化",
+        "forecastChanges": "预测变化",
+        "mixedModels": "混合模型",
+        "mixedTiers": "混合模式",
+        "unknown": "未知信息",
+        "incomplete": "不完整",
+        "warmup": "边界预热",
+        "nonConsecutive": "跨百分点",
+        "resetKinds": {
+          "RESET_SCHEDULE_CHANGED": "重置预测变化",
+          "WINDOW_CHANGED": "额度窗口变化",
+          "USED_PERCENT_DECREASE_CONFIRMED": "已确认额度回落",
+          "QUOTA_RELEASED": "额度释放",
+          "STALE_SNAPSHOT": "旧快照",
+          "STREAM_CHANGED": "额度流变化",
+          "MANUAL_RESET_CONFIRMED": "已确认手动重置",
+          "WINDOW_ROLLOVER_CONFIRMED": "已确认窗口换期"
+        }
+      },
+      "chart": {
+        "title": "Token 趋势",
+        "total": "Token",
+        "cached": "缓存输入",
+        "uncached": "非缓存输入",
+        "output": "输出"
+      },
+      "quota": {
+        "title": "实时额度",
+        "states": {
+          "LIVE": "实时",
+          "PERMISSION_REQUIRED": "需要权限",
+          "CODEX_UNAVAILABLE": "Codex 不可用",
+          "UNAVAILABLE": "暂不可用"
+        },
+        "credits": "余额",
+        "defaultLimit": "Codex 额度",
+        "primary": "主窗口已用",
+        "secondary": "次窗口已用",
+        "individual": "个人消费控制",
+        "noReset": "不重置"
+      },
+      "table": {
+        "model": "模型",
+        "requests": "请求",
+        "tokens": "Token",
+        "apiEquivalent": "API 等值",
+        "cacheSavings": "缓存节省",
+        "credits": "Credits"
+      },
+      "warnings": {
+        "SOURCE_UNAVAILABLE": "来源不可用",
+        "FILES_SKIPPED": "部分文件跳过",
+        "INVALID_RECORDS": "存在无效用量记录",
+        "OVERSIZED_RECORDS": "超大记录已跳过",
+        "UNPRICED_MODELS": "费率覆盖不完整",
+        "PARTIAL_RANGE": "结果为保守下限",
+        "QUOTA_UNAVAILABLE": "未关联额度",
+        "FAST_MODE_NOT_DETECTED": "部分 service tier 或额度归属无法识别",
+        "QUOTA_YIELD_UNAVAILABLE": "暂无可用的额度变化样本",
+        "QUOTA_YIELD_PARTIAL": "部分额度区间已排除",
+        "QUOTA_SAMPLES_TRUNCATED": "时间片来源样本已截断",
+        "DATABASE_INDEX_UNAVAILABLE": "已回退到文件索引",
+        "EXPORT_ROWS_TRUNCATED": "导出明细已截断"
+      },
+      "notices": {
+        "exported": "用量报告已导出"
       }
     },
     "openAiImageApi": {
@@ -3246,6 +3404,7 @@
       "zoomOut": "缩小",
       "fit": "适合",
       "zoomIn": "放大",
+      "magnifier": "局部放大",
       "opacity": "叠图混合比例"
     },
     "generationTargets": {
@@ -3345,7 +3504,7 @@
       "searchAndOptimize": "搜索 + 优化",
       "writingOptions": "AI帮写选项",
       "collaborationTitle": "创作协作",
-      "deepSeekConfigurationRequired": "请先在「扩展」中配置并启用 DeepSeek API",
+      "deepSeekConfigurationRequired": "请先在「拓展」中配置并启用 DeepSeek API",
       "exploringDirections": "正在梳理不同创作方向…",
       "organizingPrompt": "AI 正在帮写…",
       "staleProposal": "基于较早输入",

@@ -12,13 +12,7 @@ export const appUpdatePhaseSchema = z.enum([
   'ERROR',
 ]);
 
-export const appUpdateSupportReasonSchema = z.enum([
-  'DEVELOPMENT',
-  'PACKAGE_TYPE',
-  'CONFIGURATION',
-  'SIGNATURE',
-  'PLATFORM',
-]);
+export const appUpdateSupportReasonSchema = z.enum(['DEVELOPMENT', 'NOT_MICROSOFT_STORE', 'PLATFORM']);
 export const appUpdateErrorActionSchema = z.enum(['CHECK', 'DOWNLOAD', 'INSTALL']);
 
 export const appUpdateProgressSchema = z
@@ -26,7 +20,6 @@ export const appUpdateProgressSchema = z
     percent: z.number().min(0).max(100),
     transferred: z.number().int().nonnegative(),
     total: z.number().int().nonnegative(),
-    bytesPerSecond: z.number().nonnegative(),
   })
   .strict();
 
@@ -47,8 +40,6 @@ export const appUpdateStateSchema = z
     phase: appUpdatePhaseSchema,
     currentVersion: z.string().min(1).max(64),
     supportReason: appUpdateSupportReasonSchema.nullable(),
-    targetVersion: z.string().min(1).max(64).nullable(),
-    releaseDate: z.string().datetime({ offset: true }).nullable(),
     progress: appUpdateProgressSchema.nullable(),
     error: appUpdateErrorSchema.nullable(),
   })

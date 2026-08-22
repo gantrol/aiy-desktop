@@ -6,6 +6,7 @@ import type {
   MaterialAlbumAddManyInput,
   MaterialAlbumCreateInput,
   MaterialAlbumDto,
+  MaterialAlbumMoveInput,
   MaterialAlbumRemoveInput,
   MaterialAlbumRenameInput,
   MaterialCollectionDto,
@@ -159,6 +160,117 @@ export class MaterialAlbumRepository extends MaterialAlbumReader {
         writeLocalizedTitle(this.db, 'ALBUM', input.albumId, locale, title);
         this.db.prepare('UPDATE albums SET updated_at = ? WHERE id = ?').run(timestamp, input.albumId);
         this.storage.recordChange('ALBUM', input.albumId, 'RENAME', { title, locale });
+      })
+      .immediate();
+    return this.getUserAlbumDto(input.albumId, locale);
+  }
+
+  move(input: MaterialAlbumMoveInput): MaterialAlbumDto {
+    const locale = input.locale ?? 'zh';
+    this.db
+      .transaction(() => {
+        this.assertMutableAlbum(input.albumId);
+        if (input.parentAlbumId === input.albumId) throw new Error('A material album cannot contain itself');
+        if (input.parentAlbumId) {
+          this.assertMutableAlbum(input.parentAlbumId);
+          const descendant = this.db
+            .prepare(
+              `WITH RECURSIVE descendants(id) AS (
+                SELECT target_id FROM album_members
+                WHERE album_id = ? AND target_type = 'ALBUM' AND deleted_at IS NULL
+                UNION
+                SELECT member.target_id FROM album_members member
+                JOIN descendants parent ON member.album_id = parent.id
+                WHERE member.target_type = 'ALBUM' AND member.deleted_at IS NULL
+              ) SELECT 1 FROM descendants WHERE id = ? LIMIT 1`,
+            )
+            .get(input.albumId, input.parentAlbumId);
+          if (descendant) throw new Error('A material album cannot be moved into its descendant');
+        }
+
+        const oldParents = this.db
+          .prepare(
+            `SELECT id, album_id FROM album_members
+              WHERE target_type = 'ALBUM' AND target_id = ? AND deleted_at IS NULL`,
+          )
+          .all(input.albumId) as JsonMap[];
+        const alreadyAtTarget = input.parentAlbumId
+          ? oldParents.length === 1 && text(oldParents[0].album_id) === input.parentAlbumId
+          : oldParents.length === 0;
+        if (alreadyAtTarget) return;
+
+        const timestamp = now();
+        const touchedAlbumIds = new Set<string>([input.albumId]);
+        for (const parent of oldParents) {
+          const memberId = text(parent.id);
+          const parentAlbumId = text(parent.album_id);
+          this.db
+            .prepare('UPDATE album_members SET deleted_at = ?, updated_at = ? WHERE id = ?')
+            .run(timestamp, timestamp, memberId);
+          this.db
+            .prepare("INSERT INTO tombstones VALUES (?, 'ALBUM_MEMBER', ?, ?, 'LOCAL_ONLY')")
+            .run(ulid(), memberId, timestamp);
+          this.storage.recordChange('ALBUM_MEMBER', memberId, 'DELETE', {
+            albumId: parentAlbumId,
+            targetType: 'ALBUM',
+            targetId: input.albumId,
+          });
+          touchedAlbumIds.add(parentAlbumId);
+        }
+
+        if (input.parentAlbumId) {
+          const existing = this.db
+            .prepare(
+              `SELECT id FROM album_members
+                WHERE album_id = ? AND target_type = 'ALBUM' AND target_id = ?`,
+            )
+            .get(input.parentAlbumId, input.albumId) as JsonMap | undefined;
+          const nextOrder = Number(
+            (
+              this.db
+                .prepare(
+                  `SELECT COALESCE(MAX(sort_order), -1) + 1 AS next_order
+                    FROM album_members WHERE album_id = ? AND deleted_at IS NULL`,
+                )
+                .get(input.parentAlbumId) as JsonMap
+            ).next_order,
+          );
+          if (existing) {
+            const memberId = text(existing.id);
+            this.db
+              .prepare(
+                `UPDATE album_members
+                  SET sort_order = ?, updated_at = ?, deleted_at = NULL WHERE id = ?`,
+              )
+              .run(nextOrder, timestamp, memberId);
+            this.storage.recordChange('ALBUM_MEMBER', memberId, 'RESTORE', {
+              albumId: input.parentAlbumId,
+              targetType: 'ALBUM',
+              targetId: input.albumId,
+              sortOrder: nextOrder,
+            });
+          } else {
+            const memberId = ulid();
+            this.db
+              .prepare(
+                `INSERT INTO album_members
+                  (id, album_id, target_type, target_id, sort_order, created_at, updated_at)
+                  VALUES (?, ?, 'ALBUM', ?, ?, ?, ?)`,
+              )
+              .run(memberId, input.parentAlbumId, input.albumId, nextOrder, timestamp, timestamp);
+            this.storage.recordChange('ALBUM_MEMBER', memberId, 'CREATE', {
+              albumId: input.parentAlbumId,
+              targetType: 'ALBUM',
+              targetId: input.albumId,
+              sortOrder: nextOrder,
+            });
+          }
+          touchedAlbumIds.add(input.parentAlbumId);
+        }
+
+        const touchAlbum = this.db.prepare('UPDATE albums SET updated_at = ? WHERE id = ? AND deleted_at IS NULL');
+        for (const albumId of touchedAlbumIds) touchAlbum.run(timestamp, albumId);
+        this.storage.recordChange('ALBUM', input.albumId, 'MOVE', { parentAlbumId: input.parentAlbumId });
       })
       .immediate();
     return this.getUserAlbumDto(input.albumId, locale);

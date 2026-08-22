@@ -2,21 +2,21 @@
 
 ## 使用已构建的应用
 
-安装包用户不需要 Node.js。安装后直接启动应用即可；首次启动会建立 AIY 的用户数据目录。
+Microsoft Store 安装用户不需要 Node.js。安装后直接启动应用即可；首次启动会建立 Store 身份隔离的 AIY 用户数据目录。
 
-如果系统提示应用未签名或无法验证开发者，这是本地未签名构建的预期现象。正式分发前需要由维护者完成 Apple Developer 签名、公证或 Windows 安装包签名。
+正式包由 Microsoft Store 在认证后签名和分发。维护者通过 `make:store:local` 生成的本地测试 MSIX 使用临时证书，只能在明确信任导出的 CER 后侧载；不要把本地测试 PFX 或 MSIX 当作正式分发包。
 
 ## 从源码运行
 
 开发环境需要 Node.js 22 或更新版本：
 
-```bash
+```powershell
 cd apps/desktop
 npm ci
 npm run dev
 ```
 
-不要把 Windows 的 `node_modules/`、`out/` 或 `release/` 复制到 macOS。原生依赖必须在目标系统重新安装。
+不要复用其他 checkout 或机器生成的 `node_modules/`、`out/`、`release/`。原生依赖和发行 bundle 必须从当前源码重新安装、构建。
 
 普通开发只需要补充目标检查：
 
@@ -40,12 +40,12 @@ npm test
 
 ## 用户数据位置
 
-默认根目录由 Electron 的应用数据目录和 `AIY` 组成：
+默认根目录由 Electron 的应用数据目录决定：
 
-| 系统    | 默认根目录                           |
-| ------- | ------------------------------------ |
-| Windows | `%APPDATA%/AIY/`                     |
-| macOS   | `~/Library/Application Support/AIY/` |
+| 运行方式         | 逻辑目录                        |
+| ---------------- | ------------------------------- |
+| Microsoft Store  | Store 应用数据中的 `AIY-Store/` |
+| Windows 源码开发 | `%APPDATA%/AIY/`                |
 
 目录通常包含：
 

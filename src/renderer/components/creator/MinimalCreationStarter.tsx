@@ -13,6 +13,7 @@ import { AssistantWritingAction } from '@/renderer/components/creator/AssistantW
 import { AnnotationRefinementInput } from '@/renderer/components/creator/AnnotationRefinementInput';
 import type { AnnotationRefinementState } from '@/renderer/components/creator/annotationRefinement';
 import type { CreationAssistantMode } from '@/renderer/components/creator/CreationCollaborationPanel';
+import { CreationOutcomePlanner } from '@/renderer/components/creator/CreationOutcomePicker';
 import {
   CreatorPromptComposer,
   type CreatorPromptComposerHandle,
@@ -44,12 +45,15 @@ interface Props {
   generationCount: number;
   readiness: GenerationReadiness;
   starting: boolean;
+  planning: boolean;
+  startReady: boolean;
   fullWindow: boolean;
   annotationRefinement: AnnotationRefinementState | null;
   materialPicker: ReactNode;
   dictionaryPicker: ReactNode;
   dictionarySidebar: ReactNode;
   canvasPicker: ReactNode;
+  videoPicker?: ReactNode;
   references: ReactNode;
   experiments?: ReactNode;
   onPromptNodesChange(nodes: CreatorPromptNodeInput[]): void;
@@ -63,6 +67,8 @@ interface Props {
   onGenerationTargetsChange(targets: GenerationTargetInput[]): void;
   onConfigureExtension(extensionId: string): void;
   onGenerate(): void;
+  onStartCreation(): void;
+  onChooseVideoDocument(): void;
   onFullWindowChange(open: boolean): void;
 }
 
@@ -85,12 +91,15 @@ export function MinimalCreationStarter({
   generationCount,
   readiness,
   starting,
+  planning,
+  startReady,
   fullWindow,
   annotationRefinement,
   materialPicker,
   dictionaryPicker,
   dictionarySidebar,
   canvasPicker,
+  videoPicker,
   references,
   experiments,
   onPromptNodesChange,
@@ -104,6 +113,8 @@ export function MinimalCreationStarter({
   onGenerationTargetsChange,
   onConfigureExtension,
   onGenerate,
+  onStartCreation,
+  onChooseVideoDocument,
   onFullWindowChange,
 }: Props) {
   const labels = useI18n().messages.creator.starter;
@@ -149,7 +160,9 @@ export function MinimalCreationStarter({
             )}
           >
             <div className="flex h-10 shrink-0 items-center justify-between gap-3 px-5 pt-1">
-              <span className="text-xs font-semibold text-foreground-secondary">{labels.promptLabel}</span>
+              <span className="text-xs font-semibold text-foreground-secondary">
+                {locale === 'zh' ? '输入' : 'Input'}
+              </span>
               <div className="flex items-center gap-2">
                 {characterCount > 0 && (
                   <span className="text-2xs tabular-nums text-muted-foreground">
@@ -199,6 +212,7 @@ export function MinimalCreationStarter({
             <div className="flex flex-wrap items-center gap-2 border-t bg-surface-sunken/30 px-3 py-2.5">
               <div className="flex items-center gap-1.5">
                 {materialPicker}
+                {planning && videoPicker}
                 {!fullWindow && dictionaryPicker}
                 {canvasPicker}
               </div>
@@ -228,19 +242,30 @@ export function MinimalCreationStarter({
                 />
               </div>
             </div>
-            <GenerationLauncher
-              embedded
-              locale={locale}
-              routes={routes}
-              generationTargets={generationTargets}
-              generationCount={generationCount}
-              readiness={readiness}
-              starting={starting}
-              onGenerationTargetsChange={onGenerationTargetsChange}
-              onConfigureExtension={onConfigureExtension}
-              onGenerate={onGenerate}
-            />
+            {!planning && (
+              <GenerationLauncher
+                embedded
+                locale={locale}
+                routes={routes}
+                generationTargets={generationTargets}
+                generationCount={generationCount}
+                readiness={readiness}
+                starting={starting}
+                onGenerationTargetsChange={onGenerationTargetsChange}
+                onConfigureExtension={onConfigureExtension}
+                onGenerate={onGenerate}
+              />
+            )}
           </section>
+          {planning && (
+            <CreationOutcomePlanner
+              locale={locale}
+              startReady={startReady}
+              starting={starting}
+              onStartCreation={onStartCreation}
+              onChooseVideoDocument={onChooseVideoDocument}
+            />
+          )}
           {!fullWindow && experiments}
         </div>
       </div>

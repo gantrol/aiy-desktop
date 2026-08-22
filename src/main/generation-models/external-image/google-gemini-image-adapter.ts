@@ -11,6 +11,10 @@ import { decodeGenerationProviderResponseJson } from '@/main/generation-models/a
 import { decodeProviderImageBase64 } from '@/main/generation-models/adapters/provider-media';
 import { tryDecodeProviderErrorJson } from '@/main/providers/provider-response';
 import {
+  googleInteractionErrorDetailSchema,
+  googleInteractionStatusSchema,
+} from '@/main/providers/google-interactions';
+import {
   cleanupOutput,
   fetchProvider,
   outputPath,
@@ -31,6 +35,8 @@ const googleImageBlockSchema = z
 const googleSuccessSchema = z
   .object({
     id: z.string().optional(),
+    status: googleInteractionStatusSchema,
+    error: googleInteractionErrorDetailSchema.optional(),
     output_image: googleImageBlockSchema.optional(),
     steps: z
       .array(
@@ -44,9 +50,7 @@ const googleSuccessSchema = z
       .optional(),
     usage: z.record(z.string(), z.unknown()).optional(),
   })
-  .refine((value) => value.output_image !== undefined || value.steps !== undefined, {
-    message: 'Expected output_image or steps',
-  });
+  .passthrough();
 
 const googleErrorSchema = z
   .object({
@@ -110,6 +114,23 @@ function outputImage(body: GoogleInteractionResponse) {
     if (image) return image;
   }
   return null;
+}
+
+function assertCompletedInteraction(body: GoogleInteractionResponse) {
+  if (body.status === 'completed') return;
+  const detail = body.error?.message?.trim() || `image interaction ended with status ${body.status}`;
+  const providerCode = String(body.error?.status ?? body.error?.code ?? body.status);
+  throw new GenerationAdapterError({
+    code:
+      body.status === 'budget_exceeded'
+        ? 'RATE_LIMITED'
+        : body.status === 'cancelled'
+          ? 'CANCELLED'
+          : 'PROVIDER_UNAVAILABLE',
+    message: `Google Gemini ${detail}`,
+    providerCode,
+    retryable: body.status === 'in_progress' || body.status === 'queued' || body.status === 'budget_exceeded',
+  });
 }
 
 export class GoogleGeminiImageAdapter implements GenerationAdapter {
@@ -194,8 +215,6 @@ export class GoogleGeminiImageAdapter implements GenerationAdapter {
           store: false,
           response_format: {
             type: 'image',
-            mime_type: 'image/png',
-            delivery: 'inline',
             aspect_ratio: closestAspectRatio(request.output.width, request.output.height),
             image_size: imageSize(request.output.quality),
           },
@@ -220,6 +239,7 @@ export class GoogleGeminiImageAdapter implements GenerationAdapter {
     const body = await decodeGenerationProviderResponseJson(response, googleSuccessSchema, 'Google Gemini');
     const requestId = response.headers.get('x-request-id') ?? body.id ?? undefined;
     if (requestId) context.emit({ type: 'REQUEST_ACCEPTED', providerRequestId: requestId });
+    assertCompletedInteraction(body);
     const image = outputImage(body);
     if (!image || typeof image.data !== 'string' || !image.data) {
       throw new GenerationAdapterError({ code: 'NO_OUTPUT', message: 'Gemini returned no image data' });

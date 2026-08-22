@@ -1,4 +1,3 @@
-import { ArrowDownIcon } from 'lucide-react';
 import { useMemo, useState, type DragEvent as ReactDragEvent } from 'react';
 import type { AssetFileRevealContext, MaterialAlbumDto, MaterialSelectionTargetInput } from '@/shared/contracts';
 import {
@@ -11,6 +10,7 @@ import {
 import { getMaterialCardAspectRatio, MaterialCard } from '@/renderer/components/gallery/MaterialCard';
 import type { MaterialAlbumBrowseSummary } from '@/renderer/components/gallery/materialAlbumBrowse';
 import type { MaterialLibraryItem, SelectionModifiers } from '@/renderer/components/gallery/materialLibraryTypes';
+import { MaterialZoneHeading } from '@/renderer/components/gallery/MaterialZoneHeading';
 import {
   ShortestColumnMasonry,
   type MasonryLayout,
@@ -19,8 +19,8 @@ import {
 import { Skeleton } from '@/renderer/components/ui/skeleton';
 import { useI18n } from '@/renderer/i18n/useI18n';
 
-const MATERIAL_ZONE_GAP = 88;
-const MATERIAL_ZONE_LINE_OFFSET = 14;
+const MATERIAL_ZONE_GAP = 104;
+const MATERIAL_ZONE_LINE_OFFSET = MATERIAL_ZONE_GAP / 2;
 const MAX_COLLECTION_PREVIEWS = 5;
 
 interface Props {
@@ -35,6 +35,10 @@ interface Props {
   loading: boolean;
   albumMutationBusy: boolean;
   onOpenAlbum(albumId: string): void;
+  canMoveCreationAlbum(albumId: string, parentAlbumId: string | null): boolean;
+  onMoveCreationAlbum(albumId: string, parentAlbumId: string | null): Promise<void>;
+  canMoveAlbum(albumId: string, parentAlbumId: string | null): boolean;
+  onMoveAlbum(albumId: string, parentAlbumId: string | null): Promise<void>;
   onCollectMaterials(albumId: string, targets: MaterialSelectionTargetInput[]): Promise<void>;
   onImportFiles?(album: MaterialAlbumDto, files: File[]): void;
   onSelect(item: MaterialLibraryItem, modifiers?: SelectionModifiers): void;
@@ -84,6 +88,8 @@ function MaterialZoneBoundary({
   const columnEnds = creationColumnEnds(layout, creationCount);
   const lineTops = columnEnds.map((end) => end + MATERIAL_ZONE_LINE_OFFSET);
   const labelColumn = columnEnds.indexOf(Math.min(...columnEnds));
+  const labelLeadingBridge = labelColumn > 0 ? COLLECTION_GAP / 2 : 0;
+  const labelTrailingBridge = labelColumn < layout.columnCount - 1 ? COLLECTION_GAP / 2 : 0;
 
   return (
     <div
@@ -94,12 +100,13 @@ function MaterialZoneBoundary({
     >
       <div aria-hidden="true">
         {lineTops.map((top, column) => {
+          if (column === labelColumn) return null;
           const leadingBridge = column > 0 ? COLLECTION_GAP / 2 : 0;
           const trailingBridge = column < layout.columnCount - 1 ? COLLECTION_GAP / 2 : 0;
           return (
             <span
               key={`horizontal:${column}`}
-              className="absolute h-px bg-border-strong"
+              className="absolute h-px bg-border"
               style={{
                 left: column * (layout.columnWidth + COLLECTION_GAP) - leadingBridge,
                 top,
@@ -113,7 +120,7 @@ function MaterialZoneBoundary({
           return (
             <span
               key={`vertical:${column}`}
-              className="absolute w-px bg-border-strong"
+              className="absolute w-px bg-border"
               style={{
                 left: (column + 1) * (layout.columnWidth + COLLECTION_GAP) - COLLECTION_GAP / 2,
                 top: Math.min(top, nextTop),
@@ -123,25 +130,16 @@ function MaterialZoneBoundary({
           );
         })}
       </div>
-      <div
-        className="absolute flex justify-center px-2"
+      <MaterialZoneHeading
+        headingId="material-zone-transition-heading"
+        title={title}
+        className="absolute -translate-y-1/2"
         style={{
-          left: labelColumn * (layout.columnWidth + COLLECTION_GAP),
-          top: columnEnds[labelColumn] + 25,
-          width: layout.columnWidth,
+          left: labelColumn * (layout.columnWidth + COLLECTION_GAP) - labelLeadingBridge,
+          top: lineTops[labelColumn],
+          width: layout.columnWidth + labelLeadingBridge + labelTrailingBridge,
         }}
-      >
-        <div className="flex min-w-0 items-center gap-2 rounded-full border bg-surface px-3 py-2 shadow-sm">
-          <span className="grid size-6 shrink-0 place-items-center rounded-full bg-surface-sunken text-muted-foreground">
-            <ArrowDownIcon className="size-3.5" aria-hidden="true" />
-          </span>
-          <div className="min-w-0">
-            <h2 id="material-zone-transition-heading" className="truncate text-sm font-semibold">
-              {title}
-            </h2>
-          </div>
-        </div>
-      </div>
+      />
     </div>
   );
 }
@@ -158,6 +156,10 @@ export function MaterialZoneMasonry({
   loading,
   albumMutationBusy,
   onOpenAlbum,
+  canMoveCreationAlbum,
+  onMoveCreationAlbum,
+  canMoveAlbum,
+  onMoveAlbum,
   onCollectMaterials,
   onImportFiles,
   onSelect,
@@ -253,7 +255,10 @@ export function MaterialZoneMasonry({
                   placement,
                   layout,
                 )}
+                busy={albumMutationBusy}
                 onOpen={onOpenAlbum}
+                canMoveCreationAlbum={canMoveCreationAlbum}
+                onMoveCreationAlbum={onMoveCreationAlbum}
               />
             );
           }
@@ -272,6 +277,8 @@ export function MaterialZoneMasonry({
               childAlbumCount={entry.summary.childAlbumCount}
               busy={albumMutationBusy}
               onOpen={onOpenAlbum}
+              canMoveAlbum={canMoveAlbum}
+              onMoveAlbum={onMoveAlbum}
               onCollectMaterials={onCollectMaterials}
               onImportFiles={onImportFiles}
             />

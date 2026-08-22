@@ -360,7 +360,7 @@ export function MediaStackPreview({
             type="button"
             aria-label={assetLabel?.(item.asset, index) ?? `Image ${index + 1}`}
             className={cn(
-              'pointer-events-auto absolute left-0 overflow-hidden rounded-md border border-border/70 bg-surface-sunken outline-none transition-transform duration-fast ease-out motion-reduce:transition-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring',
+              'pointer-events-auto absolute left-0 overflow-hidden rounded-md bg-surface-sunken ring-1 ring-inset ring-foreground/10 outline-none transition-transform duration-fast ease-out motion-reduce:transition-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring',
               stackedMediaFrameLayerClassName,
               stackedMediaFrameLiftClassName,
               size === 'tree' && 'corner-continuous',
@@ -379,7 +379,7 @@ export function MediaStackPreview({
           <span
             key={item.asset.id}
             className={cn(
-              'absolute left-0 overflow-hidden rounded-md border border-border/70 bg-surface-sunken transition-transform duration-fast ease-out motion-reduce:transition-none',
+              'absolute left-0 overflow-hidden rounded-md bg-surface-sunken ring-1 ring-inset ring-foreground/10 transition-transform duration-fast ease-out motion-reduce:transition-none',
               stackedMediaFrameLayerClassName,
               size === 'tree' && 'corner-continuous',
             )}

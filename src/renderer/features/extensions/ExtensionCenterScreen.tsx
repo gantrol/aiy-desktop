@@ -12,6 +12,7 @@ import { useI18n } from '@/renderer/i18n/useI18n';
 import { PackScreen } from '@/renderer/features/packs/PackScreen';
 import { CodexImageDiscoveryScreen } from '@/renderer/features/extensions/CodexImageDiscoveryScreen';
 import { ExtensionPluginScreen } from '@/renderer/features/extensions/ExtensionPluginScreen';
+import { visibleExtensionCenterItems } from '@/renderer/features/extensions/extensionPluginGroups';
 import type { CodexImagesNavigationState } from '@/renderer/features/extensions/codexImageNavigation';
 import type { TransitionShowcaseNavigationState } from '@/renderer/features/extensions/transitionShowcaseNavigation';
 
@@ -82,7 +83,7 @@ export function ExtensionCenterScreen({
     >
       <header className="flex h-14 shrink-0 items-center gap-3 border-b px-5">
         <h1 className="text-base font-semibold">{l.title}</h1>
-        <Badge variant="secondary">{extensions.length}</Badge>
+        <Badge variant="secondary">{visibleExtensionCenterItems(extensions).length}</Badge>
         <TabsList className="ml-4 h-14 border-0">
           <TabsTrigger value="plugins" className="h-14">
             {l.tabs.plugins}

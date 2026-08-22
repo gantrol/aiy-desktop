@@ -20,6 +20,7 @@ import { useI18n } from '@/renderer/i18n/useI18n';
 import {
   ANTIGRAVITY_CLI_EXTENSION_ID,
   CODEX_IMAGE_DISCOVERY_EXTENSION_ID,
+  CODEX_USAGE_INVESTIGATOR_EXTENSION_ID,
   DEEPSEEK_API_EXTENSION_ID,
   EXTERNAL_IMAGE_API_EXTENSION_IDS,
   FEATURE_DEMO_EXTENSION_ID,
@@ -34,12 +35,17 @@ import { publishLanguagePluginState } from '@/renderer/i18n/languagePluginState'
 import type { NavigationMode } from '@/renderer/components/app/app-navigation';
 import { DeleteEntityDialog } from '@/renderer/components/app/DeleteEntityDialog';
 import { ExtensionPluginList } from '@/renderer/features/extensions/ExtensionPluginList';
-import { firstGroupedExtensionId } from '@/renderer/features/extensions/extensionPluginGroups';
+import {
+  firstGroupedExtensionId,
+  isExtensionCenterItemVisible,
+  visibleExtensionCenterItems,
+} from '@/renderer/features/extensions/extensionPluginGroups';
 import type { CodexImagesNavigationState } from '@/renderer/features/extensions/codexImageNavigation';
 import type { TransitionShowcaseNavigationState } from '@/renderer/features/extensions/transitionShowcaseNavigation';
 import { TransitionShowcase } from '@/renderer/features/extensions/TransitionShowcase';
 import { FeatureDemoShowcase } from '@/renderer/features/extensions/FeatureDemoShowcase';
 import { AntigravityCliConfiguration } from '@/renderer/features/extensions/AntigravityCliConfiguration';
+import { CodexUsageInvestigatorConfiguration } from '@/renderer/features/extensions/CodexUsageInvestigatorConfiguration';
 
 interface Props {
   active: boolean;
@@ -174,7 +180,9 @@ export function ExtensionPluginScreen({
   const { locale, messages } = useI18n();
   const l = messages.extensions;
   const [extensions, setExtensions] = useState<ExtensionDto[]>([]);
-  const [selectedId, setSelectedId] = useState(requestedId ?? '');
+  const [selectedId, setSelectedId] = useState(
+    requestedId && requestedId !== FEATURE_DEMO_EXTENSION_ID ? requestedId : '',
+  );
   const [loading, setLoading] = useState(false);
   const [busyKey, setBusyKey] = useState('');
   const [error, setError] = useState('');
@@ -186,14 +194,15 @@ export function ExtensionPluginScreen({
     try {
       if (refreshConnection) await window.desktopApi.codexHealth();
       const next = await window.desktopApi.extensionsList();
+      const visibleNext = visibleExtensionCenterItems(next);
       setExtensions(next);
       publishLanguagePluginState(next);
       const preferredId =
-        requestedId && next.some((item) => item.manifest.id === requestedId)
+        requestedId && visibleNext.some((item) => item.manifest.id === requestedId)
           ? requestedId
-          : selectedId && next.some((item) => item.manifest.id === selectedId)
+          : selectedId && visibleNext.some((item) => item.manifest.id === selectedId)
             ? selectedId
-            : firstGroupedExtensionId(next);
+            : firstGroupedExtensionId(visibleNext);
       setSelectedId(preferredId);
       if (preferredId && preferredId !== requestedId) onSelectedIdChange(preferredId, 'replace');
     } catch (reason) {
@@ -208,12 +217,13 @@ export function ExtensionPluginScreen({
   }, [active]);
 
   useEffect(() => {
-    if (requestedId !== null) setSelectedId(requestedId);
+    if (requestedId !== null && requestedId !== FEATURE_DEMO_EXTENSION_ID) setSelectedId(requestedId);
   }, [requestedId]);
 
+  const visibleExtensions = useMemo(() => visibleExtensionCenterItems(extensions), [extensions]);
   const selected = useMemo(
-    () => extensions.find((extension) => extension.manifest.id === selectedId) ?? null,
-    [extensions, selectedId],
+    () => visibleExtensions.find((extension) => extension.manifest.id === selectedId) ?? null,
+    [selectedId, visibleExtensions],
   );
   async function setEnabled(extension: ExtensionDto, enabled: boolean) {
     setBusyKey(`enabled:${extension.manifest.id}`);
@@ -262,11 +272,14 @@ export function ExtensionPluginScreen({
       setExtensions(result.extensions);
       onExtensionsChange();
       publishLanguagePluginState(result.extensions);
-      if (result.extensionId) {
-        setSelectedId(result.extensionId);
-        onSelectedIdChange(result.extensionId);
-        notify(l.notices.installed);
+      const installed = result.extensionId
+        ? result.extensions.find((extension) => extension.manifest.id === result.extensionId)
+        : null;
+      if (installed && isExtensionCenterItemVisible(installed)) {
+        setSelectedId(installed.manifest.id);
+        onSelectedIdChange(installed.manifest.id);
       }
+      if (result.extensionId) notify(l.notices.installed);
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : String(reason));
     } finally {
@@ -283,9 +296,10 @@ export function ExtensionPluginScreen({
       setExtensions(next);
       onExtensionsChange();
       publishLanguagePluginState(next);
-      const preferredId = next.some((extension) => extension.manifest.id === uninstallTarget.manifest.id)
+      const visibleNext = visibleExtensionCenterItems(next);
+      const preferredId = visibleNext.some((extension) => extension.manifest.id === uninstallTarget.manifest.id)
         ? uninstallTarget.manifest.id
-        : firstGroupedExtensionId(next);
+        : firstGroupedExtensionId(visibleNext);
       setSelectedId(preferredId);
       onSelectedIdChange(preferredId, 'replace');
       setUninstallTarget(null);
@@ -323,7 +337,7 @@ export function ExtensionPluginScreen({
         </div>
         <ScrollArea className="min-h-0 flex-1">
           <ExtensionPluginList
-            extensions={extensions}
+            extensions={visibleExtensions}
             selectedId={selectedId}
             onSelect={(extensionId) => {
               setSelectedId(extensionId);
@@ -335,7 +349,7 @@ export function ExtensionPluginScreen({
 
       <ScrollArea className="min-h-0">
         {selected && (
-          <article className="mx-auto grid w-full max-w-4xl gap-6 p-6">
+          <article className="mx-auto grid w-full max-w-6xl gap-6 p-6">
             <div className="flex items-start gap-4">
               <div className="grid size-11 shrink-0 place-items-center rounded-lg border bg-muted">
                 {selected.manifest.kind === 'LANGUAGE' ? (
@@ -459,6 +473,9 @@ export function ExtensionPluginScreen({
                 notify={notify}
                 onOpenCreation={onOpenCreation}
               />
+            )}
+            {selected.manifest.id === CODEX_USAGE_INVESTIGATOR_EXTENSION_ID && (
+              <CodexUsageInvestigatorConfiguration active={active} extension={selected} notify={notify} />
             )}
             <TransitionShowcasePanel
               active={active}

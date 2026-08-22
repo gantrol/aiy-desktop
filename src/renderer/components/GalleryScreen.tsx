@@ -53,9 +53,10 @@ import {
   materialAlbumAncestors,
 } from '@/renderer/components/gallery/materialAlbumBrowse';
 import { materialLibraryNavigationLabels } from '@/renderer/components/gallery/materialLibraryNavigationLabels';
+import { buildMaterialAlbumTree } from '@/renderer/components/gallery/materialAlbumTree';
 import { useCreationCollectionBrowse } from '@/renderer/components/gallery/useCreationCollectionBrowse';
 import { nextGallerySelection } from '@/renderer/components/gallery/gallerySelection';
-import { writeMaterialsDrag } from '@/renderer/components/albums/albumDrag';
+import { beginNativeMaterialsDrag, writeMaterialsDrag } from '@/renderer/components/albums/albumDrag';
 import { GalleryIntakeAdapter, type GalleryIntakeAdapterHandle } from '@/renderer/features/intake/GalleryIntakeAdapter';
 import {
   navigationLocationKey,
@@ -208,6 +209,11 @@ export function GalleryScreen({
     unratedActive: unratedDimensions.length > 0,
   });
   const writableAlbums = useMemo(() => albums.filter((album) => album.kind === 'USER'), [albums]);
+  const creationAlbumViews = useMemo(
+    () => albums.filter((album) => album.systemKey?.startsWith('CREATION_')),
+    [albums],
+  );
+  const creationAlbumTree = useMemo(() => buildMaterialAlbumTree(creationAlbumViews), [creationAlbumViews]);
   const materialAlbumBrowse = useMemo(() => buildMaterialAlbumBrowseIndex(writableAlbums), [writableAlbums]);
   const organizedMaterialIds = useMemo(() => {
     const ids = new Set<string>();
@@ -516,6 +522,26 @@ export function GalleryScreen({
   }
 
   function startMaterialDrag(event: ReactDragEvent<HTMLElement>, item: MaterialLibraryItem) {
+    if (!event.shiftKey && item.kind === 'IMAGE') {
+      const source =
+        checkedKeys.has(item.key) && checkedKeys.size > 0
+          ? materials.filter((candidate) => checkedKeys.has(candidate.key))
+          : [item];
+      const images = source.flatMap((candidate) => (candidate.kind === 'IMAGE' ? [candidate] : []));
+      const assetIds = [...new Set(images.map((candidate) => candidate.image.asset.id))];
+      if (assetIds.length > 0) {
+        event.preventDefault();
+        event.stopPropagation();
+        const finishNativeDrag = beginNativeMaterialsDrag(targetsForMaterials(images));
+        void window.desktopApi
+          .assetFilesStartDrag(assetIds)
+          .catch((reason) => {
+            notify(`${messages.assetFile.failed}: ${reason instanceof Error ? reason.message : String(reason)}`);
+          })
+          .finally(finishNativeDrag);
+        return;
+      }
+    }
     const targets = checkedKeys.has(item.key) && checkedKeys.size > 0 ? checkedTargets() : [targetForMaterial(item)];
     writeMaterialsDrag(event.dataTransfer, targets);
   }
@@ -1067,6 +1093,45 @@ export function GalleryScreen({
     setAlbums(await window.desktopApi.materialAlbumsList({ locale }));
   }
 
+  function canMoveMaterialAlbum(albumId: string, parentAlbumId: string | null) {
+    const tree = materialAlbumBrowse.tree;
+    const source = tree.byId.get(albumId);
+    if (!source) return false;
+    if (parentAlbumId === null) return source.parentId !== null;
+    if (parentAlbumId === albumId || source.parentId === parentAlbumId || !tree.byId.has(parentAlbumId)) return false;
+
+    const visited = new Set<string>();
+    let currentId: string | undefined = parentAlbumId;
+    while (currentId) {
+      if (currentId === albumId || visited.has(currentId)) return false;
+      visited.add(currentId);
+      currentId = tree.parentById.get(currentId);
+    }
+    return true;
+  }
+
+  function canMoveCreationAlbum(albumId: string, parentAlbumId: string | null) {
+    const source = creationAlbumTree.byId.get(albumId);
+    const movableGroup = source?.systemKey === 'CREATION_GROUP' && Boolean(source.sourceAlbumId);
+    const movableSeries = source?.systemKey === 'CREATION_SERIES' && Boolean(source.sourceSeriesId);
+    if (!source || (!movableGroup && !movableSeries)) return false;
+    const target = parentAlbumId ? creationAlbumTree.byId.get(parentAlbumId) : null;
+    if (parentAlbumId && (target?.systemKey !== 'CREATION_GROUP' || !target.sourceAlbumId)) return false;
+    const currentParent = source.parentId ? creationAlbumTree.byId.get(source.parentId) : null;
+    const currentParentAlbumId = currentParent?.systemKey === 'CREATION_GROUP' ? currentParent.id : null;
+    if (currentParentAlbumId === parentAlbumId) return false;
+    if (!movableGroup || parentAlbumId === null) return true;
+
+    const visited = new Set<string>();
+    let currentId: string | undefined = parentAlbumId;
+    while (currentId) {
+      if (currentId === albumId || visited.has(currentId)) return false;
+      visited.add(currentId);
+      currentId = creationAlbumTree.parentById.get(currentId);
+    }
+    return true;
+  }
+
   async function createAlbum(title: string, parentAlbumId: string | null) {
     setAlbumMutationBusy(true);
     try {
@@ -1093,6 +1158,54 @@ export function GalleryScreen({
       await window.desktopApi.materialAlbumsRename({ albumId: album.id, title, locale });
       await reloadAlbums();
       notify(messages.gallery.albums.renamed);
+    } catch (reason) {
+      notify(
+        `${messages.gallery.albums.operationFailed}: ${reason instanceof Error ? reason.message : String(reason)}`,
+      );
+      throw reason;
+    } finally {
+      setAlbumMutationBusy(false);
+    }
+  }
+
+  async function moveAlbum(albumId: string, parentAlbumId: string | null) {
+    if (albumMutationBusy || !canMoveMaterialAlbum(albumId, parentAlbumId)) return;
+    setAlbumMutationBusy(true);
+    try {
+      await window.desktopApi.materialAlbumsMove({ albumId, parentAlbumId, locale });
+      galleryCacheRef.current.clear();
+      await reloadAlbums();
+      setRetryKey((value) => value + 1);
+      notify(messages.gallery.albums.moved);
+    } catch (reason) {
+      notify(
+        `${messages.gallery.albums.operationFailed}: ${reason instanceof Error ? reason.message : String(reason)}`,
+      );
+      throw reason;
+    } finally {
+      setAlbumMutationBusy(false);
+    }
+  }
+
+  async function moveCreationAlbum(albumId: string, parentAlbumId: string | null) {
+    if (albumMutationBusy || !canMoveCreationAlbum(albumId, parentAlbumId)) return;
+    const source = creationAlbumTree.byId.get(albumId);
+    const target = parentAlbumId ? creationAlbumTree.byId.get(parentAlbumId) : null;
+    if (!source) return;
+    setAlbumMutationBusy(true);
+    try {
+      const targetSourceAlbumId = target?.sourceAlbumId ?? null;
+      if (source.systemKey === 'CREATION_GROUP' && source.sourceAlbumId) {
+        await window.desktopApi.albumsMove({ albumId: source.sourceAlbumId, parentAlbumId: targetSourceAlbumId });
+      } else if (source.systemKey === 'CREATION_SERIES' && source.sourceSeriesId) {
+        await window.desktopApi.albumsMoveSeries({ seriesIds: [source.sourceSeriesId], albumId: targetSourceAlbumId });
+      } else {
+        return;
+      }
+      galleryCacheRef.current.clear();
+      await reloadAlbums();
+      setRetryKey((value) => value + 1);
+      notify(messages.gallery.albums.moved);
     } catch (reason) {
       notify(
         `${messages.gallery.albums.operationFailed}: ${reason instanceof Error ? reason.message : String(reason)}`,
@@ -1305,6 +1418,9 @@ export function GalleryScreen({
               onCreate={createAlbum}
               onRename={renameAlbum}
               onDelete={deleteAlbum}
+              onMove={moveAlbum}
+              canMoveCreationAlbum={canMoveCreationAlbum}
+              onMoveCreationAlbum={moveCreationAlbum}
               onCollectMaterials={collectDroppedMaterials}
               onImportFiles={(album, files) =>
                 intakeRef.current?.reviewFiles(files, { albumId: album.id, albumName: album.title })
@@ -1434,6 +1550,10 @@ export function GalleryScreen({
                 viewportRef={viewportRef}
                 pageEndRef={pageEndRef}
                 onOpenAlbum={(albumId) => navigateCollection({ kind: 'album', albumId })}
+                canMoveCreationAlbum={canMoveCreationAlbum}
+                onMoveCreationAlbum={moveCreationAlbum}
+                canMoveAlbum={canMoveMaterialAlbum}
+                onMoveAlbum={moveAlbum}
                 onCollectMaterials={collectDroppedMaterials}
                 onImportFiles={(album, files) =>
                   intakeRef.current?.reviewFiles(files, { albumId: album.id, albumName: album.title })

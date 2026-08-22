@@ -1,4 +1,11 @@
-import type { OpenDialogOptions, OpenDialogReturnValue } from 'electron';
+import path from 'node:path';
+import {
+  app,
+  type OpenDialogOptions,
+  type OpenDialogReturnValue,
+  type SaveDialogOptions,
+  type SaveDialogReturnValue,
+} from 'electron';
 import type { CodexService } from '@/main/assistant/codex-service';
 import { ASSISTANT_MODEL_DEFINITIONS, type AssistantRoutingConfiguration } from '@/main/assistant/assistant-routing';
 import type { CodexImageDiscovery } from '@/main/extensions/codex-image-discovery';
@@ -26,12 +33,14 @@ import {
   openAiImageApiSaveSchema,
 } from '@/main/ipc/schemas';
 import type { IpcHandlerRegistrar } from '@/main/ipc/trusted-handlers';
+import { registerCodexUsageIpc } from '@/main/ipc/codex-usage-handlers';
 import type { AntigravityCliStatusDto, CodexTextModelDto } from '@/shared/contracts';
 import {
   ANTIGRAVITY_CLI_DEFAULT_MODEL_KEY,
   ANTIGRAVITY_CLI_PROVIDER_KEY,
   CODEX_APP_SERVER_EXTENSION_ID,
   CODEX_IMAGE_DISCOVERY_EXTENSION_ID,
+  CODEX_USAGE_INVESTIGATOR_EXTENSION_ID,
   EXTERNAL_IMAGE_API_EXTENSION_IDS,
   OPENAI_IMAGE_CONNECTION_ID,
   externalImageConnectionId,
@@ -50,6 +59,8 @@ interface ExtensionSettingsIpcOptions {
   generationConcurrency: GenerationConcurrencyConfiguration;
   codex: CodexService;
   chooseFile: (options: OpenDialogOptions) => Promise<OpenDialogReturnValue>;
+  chooseSaveFile: (options: SaveDialogOptions) => Promise<SaveDialogReturnValue>;
+  sendRendererEvent(channel: string, ...args: unknown[]): boolean;
 }
 
 function registerCodexImageDiscoveryIpc(
@@ -89,6 +100,8 @@ export function registerExtensionSettingsIpc({
   generationConcurrency,
   codex,
   chooseFile,
+  chooseSaveFile,
+  sendRendererEvent,
 }: ExtensionSettingsIpcOptions) {
   const unavailableAntigravityStatus = (): AntigravityCliStatusDto => ({
     state: 'unavailable',
@@ -110,6 +123,18 @@ export function registerExtensionSettingsIpc({
     await generation.configureDeepSeekApi?.(deepSeekApi.runtimeConfiguration());
   };
   ipcMain.handle('extensions:list', () => extensions.list());
+  const codexUsage = registerCodexUsageIpc({
+    ipcMain,
+    extensions,
+    codex,
+    dataDirectory: path.join(app.getPath('userData'), 'extension-data', CODEX_USAGE_INVESTIGATOR_EXTENSION_ID),
+    chooseSaveFile,
+    sendRendererEvent,
+  });
+  const hasPendingExtensionWork = (extensionId: string) =>
+    generation.hasPending ||
+    codex.hasPending ||
+    (extensionId === CODEX_USAGE_INVESTIGATOR_EXTENSION_ID && codexUsage.hasPending);
   ipcMain.handle('extension-language-packs:list', () => extensions.listLanguagePacks());
   ipcMain.handle('extension:install-local', async () => {
     const selection = await chooseFile({ properties: ['openDirectory'] });
@@ -125,7 +150,7 @@ export function registerExtensionSettingsIpc({
     codexImageDiscovery.setActive(extensions.isActivated(CODEX_IMAGE_DISCOVERY_EXTENSION_ID));
   ipcMain.handle('extension:set-enabled', async (_event, raw) => {
     const input = extensionSetEnabledSchema.parse(raw);
-    if (!input.enabled && (generation.hasPending || codex.hasPending)) {
+    if (!input.enabled && hasPendingExtensionWork(input.extensionId)) {
       throw new Error('Wait for active model tasks to finish before disabling an extension');
     }
     extensions.setEnabled(input.extensionId, input.enabled);
@@ -137,7 +162,7 @@ export function registerExtensionSettingsIpc({
   });
   ipcMain.handle('extension:set-permission', async (_event, raw) => {
     const input = extensionSetPermissionSchema.parse(raw);
-    if (!input.granted && (generation.hasPending || codex.hasPending)) {
+    if (!input.granted && hasPendingExtensionWork(input.extensionId)) {
       throw new Error('Wait for active model tasks to finish before revoking a permission');
     }
     extensions.setPermission(input.extensionId, input.permission, input.granted);

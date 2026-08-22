@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import type { ComponentProps, KeyboardEvent } from 'react';
+import type { ComponentProps, DragEvent as ReactDragEvent, KeyboardEvent } from 'react';
 import {
   ArrowLeftRightIcon,
   BlendIcon,
@@ -7,6 +7,7 @@ import {
   MinusIcon,
   PlusIcon,
   ScanIcon,
+  SearchIcon,
   SquareCenterlineDashedVerticalIcon,
   XIcon,
 } from 'lucide-react';
@@ -21,6 +22,7 @@ export type PairComparisonSlot = 'A' | 'B';
 
 export interface PairComparisonItem {
   id: string;
+  assetId: string;
   mediaUrl: string;
   width: number;
   height: number;
@@ -39,6 +41,7 @@ export interface PairComparisonLabels {
   zoomOut: string;
   fit: string;
   zoomIn: string;
+  magnifier: string;
   close: string;
   opacity: string;
   a: string;
@@ -54,6 +57,7 @@ export interface PairComparisonViewProps {
   className?: string;
   initialMode?: PairComparisonMode;
   onModeChange?(mode: PairComparisonMode): void;
+  onAssetDragStart?(event: ReactDragEvent<HTMLElement>, assetId: string): void;
 }
 
 const MIN_ZOOM = 0.5;
@@ -96,6 +100,7 @@ export function PairComparisonView({
   initialMode = 'SIDE_BY_SIDE',
   labels,
   onModeChange,
+  onAssetDragStart,
 }: PairComparisonViewProps) {
   const rootRef = useRef<HTMLDivElement>(null);
   const [mode, setMode] = useState<PairComparisonMode>(initialMode);
@@ -104,6 +109,8 @@ export function PairComparisonView({
   const [overlayMix, setOverlayMix] = useState(50);
   const [zoom, setZoom] = useState(1);
   const [pan, setPan] = useState<PairComparisonPan>(centeredPan);
+  const [magnifierActive, setMagnifierActive] = useState(false);
+  const [magnifierScale, setMagnifierScale] = useState(1);
 
   useEffect(() => {
     rootRef.current?.focus({ preventScroll: true });
@@ -228,6 +235,17 @@ export function PairComparisonView({
 
         <div className="ml-auto flex min-w-0 flex-wrap items-center justify-end gap-0.5">
           <IconButton
+            label={labels.magnifier}
+            variant="ghost"
+            aria-pressed={magnifierActive}
+            className={cn(
+              magnifierActive && 'bg-selected text-selected-foreground hover:bg-selected active:bg-selected',
+            )}
+            onClick={() => setMagnifierActive((current) => !current)}
+          >
+            <SearchIcon className="size-4" />
+          </IconButton>
+          <IconButton
             label={labels.zoomOut}
             variant="ghost"
             disabled={zoom <= MIN_ZOOM}
@@ -270,9 +288,21 @@ export function PairComparisonView({
           overlayMix={overlayMix}
           zoom={zoom}
           pan={pan}
-          labels={{ a: labels.a, b: labels.b, swipePosition: labels.swipePosition }}
+          magnifierActive={magnifierActive}
+          magnifierScale={magnifierScale}
+          labels={{
+            a: labels.a,
+            b: labels.b,
+            swipePosition: labels.swipePosition,
+            magnifier: labels.magnifier,
+            opacity: labels.opacity,
+          }}
           onPanChange={setPan}
           onSplitPositionChange={setSplitPosition}
+          onOverlayMixChange={setOverlayMix}
+          onMagnifierActiveChange={setMagnifierActive}
+          onMagnifierScaleChange={setMagnifierScale}
+          onAssetDragStart={onAssetDragStart}
         />
       </div>
     </div>

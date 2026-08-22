@@ -35,12 +35,12 @@ extensions/
 开发版扫描仓库的 `apps/desktop/extensions/`；安装版扫描应用资源中的 `extensions/`。用户本地扩展从以下目录扫描：
 
 ```text
-Windows: %APPDATA%/AIY/extensions/
-macOS:   ~/Library/Application Support/AIY/extensions/
+Microsoft Store: <Store app data>/AIY-Store/extensions/
+Windows source development: %APPDATA%/AIY/extensions/
 ```
 
 实际根目录也可以由 `AIY_USER_DATA_DIR` 指定；应用会在该目录下使用 `extensions/`。
-当前构建与验收目标只有 Windows 和 macOS；Linux 不在本项目的打包范围内。
+当前构建与验收目标只有 Windows Desktop x64 Store MSIX；其他平台安装包不在维护范围内。
 
 设置 `AIY_USER_DATA_DIR` 时，本地扩展目录改为 `<AIY_USER_DATA_DIR>/extensions/`。扩展中心的“安装本地插件”会校验所选目录，只把 `manifest.json` 与语言 catalog 复制到受管目录，并立即重载；手动修改用户扩展目录后仍需重启应用。
 

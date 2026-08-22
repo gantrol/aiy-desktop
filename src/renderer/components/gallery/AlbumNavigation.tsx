@@ -17,7 +17,8 @@ import type { GalleryDictionaryCollection } from '@/renderer/components/app/app-
 import { cn } from '@/renderer/lib/utils';
 import {
   ALBUM_DRAG_TYPE,
-  MATERIALS_DRAG_TYPE,
+  hasExternalFilesDrag,
+  hasMaterialsDrag,
   readMaterialsDrag,
   writeAlbumDrag,
 } from '@/renderer/components/albums/albumDrag';
@@ -209,8 +210,8 @@ export function AlbumNavigation({
   }
 
   function supportsDrop(event: DragEvent, allowMaterials: boolean, targetAlbumId?: string) {
-    if (allowMaterials && event.dataTransfer.types.includes(MATERIALS_DRAG_TYPE)) return true;
-    if (allowMaterials && onImportFiles && event.dataTransfer.types.includes('Files')) return true;
+    if (allowMaterials && hasMaterialsDrag(event.dataTransfer)) return true;
+    if (allowMaterials && onImportFiles && hasExternalFilesDrag(event.dataTransfer)) return true;
     const albumId = eventAlbumId(event);
     if (!albumId || !event.dataTransfer.types.includes(ALBUM_DRAG_TYPE)) return false;
     return !targetAlbumId || (albumId !== targetAlbumId && !wouldCreateCycle(albumId, targetAlbumId));
@@ -432,7 +433,7 @@ export function AlbumNavigation({
       await onCollectMaterials?.(album.id, targets);
       return;
     }
-    if (onImportFiles && event.dataTransfer.types.includes('Files')) {
+    if (onImportFiles && hasExternalFilesDrag(event.dataTransfer)) {
       const files = [...event.dataTransfer.files];
       if (files.length) onImportFiles(album, files);
     }
@@ -573,9 +574,7 @@ export function AlbumNavigation({
             return;
           }
           event.dataTransfer.dropEffect =
-            event.dataTransfer.types.includes(MATERIALS_DRAG_TYPE) || event.dataTransfer.types.includes('Files')
-              ? 'copy'
-              : 'move';
+            hasMaterialsDrag(event.dataTransfer) || hasExternalFilesDrag(event.dataTransfer) ? 'copy' : 'move';
         }}
         onDragLeave={(event) => {
           if (!event.currentTarget.contains(event.relatedTarget as Node | null)) {

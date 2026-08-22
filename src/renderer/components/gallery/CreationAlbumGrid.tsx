@@ -1,7 +1,18 @@
 import { FolderOpenIcon, PinIcon, PinOffIcon, SquarePenIcon } from 'lucide-react';
 import { useMemo, useState, type CSSProperties, type DragEvent } from 'react';
 import type { AssetDto, MaterialAlbumDto, MaterialSelectionTargetInput } from '@/shared/contracts';
-import { MATERIALS_DRAG_TYPE, readMaterialsDrag } from '@/renderer/components/albums/albumDrag';
+import {
+  beginCreationCollectionDrag,
+  beginMaterialAlbumDrag,
+  endCreationCollectionDrag,
+  endMaterialAlbumDrag,
+  hasCreationCollectionDrag,
+  hasExternalFilesDrag,
+  hasMaterialsDrag,
+  readCreationCollectionDrag,
+  readMaterialAlbumDrag,
+  readMaterialsDrag,
+} from '@/renderer/components/albums/albumDrag';
 import { ImageAmbientBackdrop } from '@/renderer/components/media/AmbientImage';
 import { DEFAULT_MEDIA_ASPECT_RATIO, getSourceMediaAspectRatio } from '@/renderer/components/media/mediaAspectRatio';
 import { mediaThumbnailUrl } from '@/renderer/components/media/mediaThumbnailUrl';
@@ -19,13 +30,16 @@ import { cn } from '@/renderer/lib/utils';
 interface Props {
   albums: readonly MaterialAlbumDto[];
   title?: string;
+  busy?: boolean;
   onOpen(albumId: string): void;
+  canMoveCreationAlbum?: CanMoveAlbum;
+  onMoveCreationAlbum?: MoveAlbum;
 }
 
 const MAX_PREVIEW_ASSETS = 5;
 const DEFAULT_COLLECTION_ASPECT_RATIO = DEFAULT_MEDIA_ASPECT_RATIO;
 export const COLLECTION_MIN_COLUMN_WIDTH = 240;
-export const COLLECTION_GAP = 12;
+export const COLLECTION_GAP = 16;
 const PREVIEW_THUMBNAIL_SIZE = 512;
 const PREVIEW_BACKDROP_THUMBNAIL_SIZE = 256;
 const MIN_COLLECTION_ASPECT_RATIO = 1 / 2;
@@ -166,6 +180,90 @@ function previewFrameStyle(
   };
 }
 
+type CanMoveAlbum = (albumId: string, parentAlbumId: string | null) => boolean;
+type MoveAlbum = (albumId: string, parentAlbumId: string | null) => Promise<void>;
+type CollectionDragKind = 'MATERIAL' | 'CREATION';
+
+interface CollectionMoveOptions {
+  canMoveAlbum?: CanMoveAlbum;
+  onMoveAlbum?: MoveAlbum;
+  canMoveCreationAlbum?: CanMoveAlbum;
+  onMoveCreationAlbum?: MoveAlbum;
+}
+
+interface CollectionMoveDrop {
+  kind: CollectionDragKind;
+  albumId: string;
+}
+
+function collectionDragKind(
+  album: MaterialAlbumDto,
+  busy: boolean,
+  canMoveAlbum: CanMoveAlbum | undefined,
+  onMoveAlbum: MoveAlbum | undefined,
+  canMoveCreationAlbum: CanMoveAlbum | undefined,
+  onMoveCreationAlbum: MoveAlbum | undefined,
+) {
+  if (busy) return null;
+  if (album.kind === 'USER' && canMoveAlbum && onMoveAlbum) return 'MATERIAL' as const;
+  const movableCreationAlbum = album.systemKey === 'CREATION_GROUP' && Boolean(album.sourceAlbumId);
+  const movableCreationSeries = album.systemKey === 'CREATION_SERIES' && Boolean(album.sourceSeriesId);
+  if ((movableCreationAlbum || movableCreationSeries) && canMoveCreationAlbum && onMoveCreationAlbum) {
+    return 'CREATION' as const;
+  }
+  return null;
+}
+
+function collectionMoveDrop(
+  dataTransfer: DataTransfer,
+  targetAlbum: MaterialAlbumDto,
+  options: CollectionMoveOptions,
+): CollectionMoveDrop | null {
+  if (
+    targetAlbum.systemKey === 'CREATION_GROUP' &&
+    options.canMoveCreationAlbum &&
+    options.onMoveCreationAlbum &&
+    hasCreationCollectionDrag(dataTransfer)
+  ) {
+    const albumId = readCreationCollectionDrag(dataTransfer);
+    if (albumId && options.canMoveCreationAlbum(albumId, targetAlbum.id)) return { kind: 'CREATION', albumId };
+  }
+  if (targetAlbum.kind !== 'USER' || !options.canMoveAlbum || !options.onMoveAlbum) return null;
+  const albumId = readMaterialAlbumDrag(dataTransfer);
+  return albumId && options.canMoveAlbum(albumId, targetAlbum.id) ? { kind: 'MATERIAL', albumId } : null;
+}
+
+function collectionAcceptsDrop(
+  dataTransfer: DataTransfer,
+  targetAlbum: MaterialAlbumDto,
+  options: CollectionMoveOptions,
+  canCollectMaterials: boolean,
+  canImportFiles: boolean,
+) {
+  if (collectionMoveDrop(dataTransfer, targetAlbum, options)) return true;
+  if (targetAlbum.kind !== 'USER') return false;
+  return (
+    (canCollectMaterials && hasMaterialsDrag(dataTransfer)) || (canImportFiles && hasExternalFilesDrag(dataTransfer))
+  );
+}
+
+function collectionOpenLabel(
+  writableMaterialAlbum: boolean,
+  creationSeries: boolean,
+  materialLabel: string,
+  seriesLabel: string,
+  creationAlbumLabel: string,
+) {
+  if (writableMaterialAlbum) return materialLabel;
+  return creationSeries ? seriesLabel : creationAlbumLabel;
+}
+
+function collectionDragHandleAttributes(kind: CollectionDragKind | null, albumId: string) {
+  if (kind === 'MATERIAL') return { 'data-material-album-drag-handle': albumId };
+  if (kind === 'CREATION') return { 'data-creation-collection-drag-handle': albumId };
+  return {};
+}
+
 function CreationCollectionPreview({
   assets,
   creation,
@@ -262,6 +360,10 @@ export function CollectionAlbumCard({
   childAlbumCount,
   busy = false,
   onOpen,
+  canMoveAlbum,
+  onMoveAlbum,
+  canMoveCreationAlbum,
+  onMoveCreationAlbum,
   onCollectMaterials,
   onImportFiles,
 }: {
@@ -272,6 +374,10 @@ export function CollectionAlbumCard({
   childAlbumCount?: number;
   busy?: boolean;
   onOpen(albumId: string): void;
+  canMoveAlbum?: CanMoveAlbum;
+  onMoveAlbum?: MoveAlbum;
+  canMoveCreationAlbum?: CanMoveAlbum;
+  onMoveCreationAlbum?: MoveAlbum;
   onCollectMaterials?(albumId: string, targets: MaterialSelectionTargetInput[]): Promise<void>;
   onImportFiles?(album: MaterialAlbumDto, files: File[]): void;
 }) {
@@ -285,15 +391,26 @@ export function CollectionAlbumCard({
   const [dropActive, setDropActive] = useState(false);
   const creation = album.systemKey === 'CREATION_SERIES';
   const writableMaterialAlbum = album.kind === 'USER';
+  const albumDragKind = collectionDragKind(
+    album,
+    busy,
+    canMoveAlbum,
+    onMoveAlbum,
+    canMoveCreationAlbum,
+    onMoveCreationAlbum,
+  );
+  const albumDragEnabled = albumDragKind !== null;
   const canExpand = album.previewAssets.length > 1;
   const previewExpanded =
     canExpand && !previewSuppressed && (hovered || focusWithin || previewPinned || hoveredAssetIndex !== null);
   const chromeHidden = previewChromeHidden && !focusWithin;
-  const openLabel = writableMaterialAlbum
-    ? messages.gallery.albums.open
-    : creation
-      ? messages.creator.album.open
-      : messages.creator.album.openAlbum;
+  const openLabel = collectionOpenLabel(
+    writableMaterialAlbum,
+    creation,
+    messages.gallery.albums.open,
+    messages.creator.album.open,
+    messages.creator.album.openAlbum,
+  );
   const detailLabel = detail ?? messages.gallery.albums.materials(album.materialCount);
   const previewActionLabel = previewPinned ? messages.gallery.albums.collapse : messages.gallery.albums.expand;
   const togglePreviewPinned = () => {
@@ -319,13 +436,10 @@ export function CollectionAlbumCard({
       : []),
   ];
 
-  function acceptsDrop(event: DragEvent<HTMLElement>) {
-    if (!writableMaterialAlbum) return false;
-    return (
-      Boolean(onCollectMaterials && event.dataTransfer.types.includes(MATERIALS_DRAG_TYPE)) ||
-      Boolean(onImportFiles && event.dataTransfer.types.includes('Files'))
-    );
-  }
+  const moveOptions = { canMoveAlbum, onMoveAlbum, canMoveCreationAlbum, onMoveCreationAlbum };
+  const acceptedMove = (event: DragEvent<HTMLElement>) => collectionMoveDrop(event.dataTransfer, album, moveOptions);
+  const acceptsDrop = (event: DragEvent<HTMLElement>) =>
+    collectionAcceptsDrop(event.dataTransfer, album, moveOptions, Boolean(onCollectMaterials), Boolean(onImportFiles));
 
   const card = (
     <article
@@ -346,12 +460,14 @@ export function CollectionAlbumCard({
       onDragEnter={(event) => {
         if (busy || !acceptsDrop(event)) return;
         event.preventDefault();
+        event.stopPropagation();
         setDropActive(true);
       }}
       onDragOver={(event) => {
         if (busy || !acceptsDrop(event)) return;
         event.preventDefault();
-        event.dataTransfer.dropEffect = 'copy';
+        event.stopPropagation();
+        event.dataTransfer.dropEffect = acceptedMove(event) ? 'move' : 'copy';
       }}
       onDragLeave={(event) => {
         if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setDropActive(false);
@@ -359,12 +475,23 @@ export function CollectionAlbumCard({
       onDrop={(event) => {
         if (busy || !acceptsDrop(event)) return;
         event.preventDefault();
+        event.stopPropagation();
         setDropActive(false);
-        if (onCollectMaterials && event.dataTransfer.types.includes(MATERIALS_DRAG_TYPE)) {
-          const targets = readMaterialsDrag(event.dataTransfer);
-          if (targets.length) void onCollectMaterials(album.id, targets).catch(() => undefined);
+        const move = acceptedMove(event);
+        if (move) {
+          const request =
+            move.kind === 'CREATION'
+              ? onMoveCreationAlbum?.(move.albumId, album.id)
+              : onMoveAlbum?.(move.albumId, album.id);
+          void request?.catch(() => undefined);
           return;
         }
+        const targets = onCollectMaterials ? readMaterialsDrag(event.dataTransfer) : [];
+        if (targets.length) {
+          void onCollectMaterials?.(album.id, targets).catch(() => undefined);
+          return;
+        }
+        if (!hasExternalFilesDrag(event.dataTransfer)) return;
         const files = [...event.dataTransfer.files];
         if (files.length) onImportFiles?.(album, files);
       }}
@@ -421,10 +548,29 @@ export function CollectionAlbumCard({
           }}
         />
         <span
+          {...collectionDragHandleAttributes(albumDragKind, album.id)}
+          draggable={albumDragEnabled}
           className={cn(
-            'pointer-events-none absolute inset-x-0 bottom-0 z-20 flex min-h-[20%] min-w-0 flex-col items-start justify-end px-3 py-3 pr-12 text-media-checker-a opacity-100 transition-opacity duration-overlay ease-enter motion-reduce:transition-none',
-            chromeHidden && 'opacity-0 duration-fast ease-exit',
+            'absolute inset-x-0 bottom-0 z-20 flex min-h-[20%] min-w-0 flex-col items-start justify-end px-3 py-3 pr-12 text-media-checker-a opacity-100 transition-opacity duration-overlay ease-enter motion-reduce:transition-none',
+            albumDragEnabled
+              ? 'pointer-events-auto cursor-grab select-none active:cursor-grabbing'
+              : 'pointer-events-none',
+            chromeHidden && 'pointer-events-none opacity-0 duration-fast ease-exit',
           )}
+          onDragStart={(event) => {
+            if (!albumDragEnabled) {
+              event.preventDefault();
+              return;
+            }
+            event.stopPropagation();
+            if (albumDragKind === 'MATERIAL') beginMaterialAlbumDrag(event.dataTransfer, album.id);
+            else beginCreationCollectionDrag(event.dataTransfer, album.id);
+          }}
+          onDragEnd={(event) => {
+            event.stopPropagation();
+            endMaterialAlbumDrag();
+            endCreationCollectionDrag();
+          }}
         >
           <span
             aria-hidden="true"
@@ -460,7 +606,7 @@ export function CollectionAlbumCard({
   );
 }
 
-export function CreationAlbumGrid({ albums, title, onOpen }: Props) {
+export function CreationAlbumGrid({ albums, title, busy, onOpen, canMoveCreationAlbum, onMoveCreationAlbum }: Props) {
   const masonryAlbums = useMemo(
     () =>
       albums.map((album) => ({
@@ -492,7 +638,10 @@ export function CreationAlbumGrid({ albums, title, onOpen }: Props) {
               placement,
               layout,
             )}
+            busy={busy}
             onOpen={onOpen}
+            canMoveCreationAlbum={canMoveCreationAlbum}
+            onMoveCreationAlbum={onMoveCreationAlbum}
           />
         )}
       />

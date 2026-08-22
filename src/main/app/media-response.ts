@@ -73,7 +73,7 @@ function urlPathExtension(filePath: string) {
 }
 
 export function applyMediaResponseHeaders(headers: Headers, hostname: string, filePath: string, thumbnail: boolean) {
-  if (thumbnail) headers.set('content-type', 'image/jpeg');
+  if (thumbnail) headers.set('content-type', 'image/png');
   if (hostname === 'space-cover') {
     headers.set(
       'content-type',

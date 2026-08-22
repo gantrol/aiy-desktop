@@ -86,6 +86,18 @@ import {
   videoDocumentTranscriptTranslationStartInputSchema,
 } from '@/shared/contracts/video-document-translation';
 import { videoKeyChangeExtractInputSchema, videoKeyChangeResultSchema } from '@/shared/contracts/video-key-changes';
+import {
+  codexUsageCleanupInputSchema,
+  codexUsageCleanupResultSchema,
+  codexUsageExportInputSchema,
+  codexUsageExportResultSchema,
+  codexUsageInvestigationGetInputSchema,
+  codexUsageInvestigationSchema,
+  codexUsageResumeInputSchema,
+  codexUsageScanInputSchema,
+  codexUsageStateSchema,
+  codexUsageTaskSchema,
+} from '@/shared/contracts/codex-usage';
 
 let loadingPreviewsInFlight: Promise<TransitionPreviewDto[]> | null = null;
 
@@ -144,6 +156,31 @@ const api: DesktopApi = {
   codexGeneratedImagesList: (input) => ipcRenderer.invoke('codex-generated-images:list', input),
   codexGeneratedImagesImport: (input) => ipcRenderer.invoke('codex-generated-images:import', input),
   codexGeneratedImagesRecover: (input) => ipcRenderer.invoke('codex-generated-images:recover', input),
+  codexUsageState: async () => codexUsageStateSchema.parse(await ipcRenderer.invoke('codex-usage:state')),
+  codexUsageInvestigation: async (input) =>
+    codexUsageInvestigationSchema.parse(
+      await ipcRenderer.invoke('codex-usage:investigation', codexUsageInvestigationGetInputSchema.parse(input)),
+    ),
+  codexUsageScan: async (input) =>
+    codexUsageTaskSchema.parse(await ipcRenderer.invoke('codex-usage:scan', codexUsageScanInputSchema.parse(input))),
+  codexUsageResume: async (input) =>
+    codexUsageTaskSchema.parse(
+      await ipcRenderer.invoke('codex-usage:resume', codexUsageResumeInputSchema.parse(input)),
+    ),
+  codexUsagePause: () => ipcRenderer.invoke('codex-usage:pause'),
+  codexUsageClear: async (input) =>
+    codexUsageCleanupResultSchema.parse(
+      await ipcRenderer.invoke('codex-usage:clear', codexUsageCleanupInputSchema.parse(input)),
+    ),
+  codexUsageExport: async (input) =>
+    codexUsageExportResultSchema.parse(
+      await ipcRenderer.invoke('codex-usage:export', codexUsageExportInputSchema.parse(input)),
+    ),
+  onCodexUsageTaskChanged: (callback) => {
+    const listener = (_event: Electron.IpcRendererEvent, value: unknown) => callback(codexUsageTaskSchema.parse(value));
+    ipcRenderer.on('codex-usage:task-changed', listener);
+    return () => ipcRenderer.removeListener('codex-usage:task-changed', listener);
+  },
   openAiImageApiGet: () => ipcRenderer.invoke('openai-image-api:get'),
   openAiImageApiSave: (input) => ipcRenderer.invoke('openai-image-api:save', input),
   openAiImageApiTest: () => ipcRenderer.invoke('openai-image-api:test'),
@@ -435,6 +472,7 @@ const api: DesktopApi = {
   materialAlbumsList: (input) => ipcRenderer.invoke('material-albums:list', input),
   materialAlbumsCreate: (input) => ipcRenderer.invoke('material-albums:create', input),
   materialAlbumsRename: (input) => ipcRenderer.invoke('material-albums:rename', input),
+  materialAlbumsMove: (input) => ipcRenderer.invoke('material-albums:move', input),
   materialAlbumsDelete: (albumId) => ipcRenderer.invoke('material-albums:delete', albumId),
   materialAlbumsAddMany: (input) => ipcRenderer.invoke('material-albums:add-many', input),
   materialAlbumsRemove: (input) => ipcRenderer.invoke('material-albums:remove', input),
@@ -497,6 +535,7 @@ const api: DesktopApi = {
   assetFileAvailability: (assetId) => ipcRenderer.invoke('asset-file:availability', assetId),
   assetFileCopy: (assetId) => ipcRenderer.invoke('asset-file:copy', assetId),
   assetFileSaveAs: (assetId) => ipcRenderer.invoke('asset-file:save-as', assetId),
+  assetFilesStartDrag: (assetIds) => ipcRenderer.invoke('asset-files:start-drag', assetIds),
   assetFileRevealTargets: (assetId, context) => ipcRenderer.invoke('asset-file:reveal-targets', assetId, context),
   assetFileReveal: (assetId, context) => ipcRenderer.invoke('asset-file:reveal', assetId, context),
   assetFileOpen: (assetId) => ipcRenderer.invoke('asset-file:open', assetId),

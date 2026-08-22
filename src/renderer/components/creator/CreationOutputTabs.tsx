@@ -1,39 +1,31 @@
 import type { Locale } from '@/shared/contracts';
 import { Segmented, SegmentedItem } from '@/renderer/components/ui/segmented';
 
-export type CreationOutputMode = 'images' | 'ideas' | 'writing';
+export type CreationOutputMode = 'results' | 'inputs' | 'records';
 
 interface Props {
   value: CreationOutputMode;
   locale: Locale;
-  ideasDisabled?: boolean;
-  writingDisabled?: boolean;
   onValueChange(value: CreationOutputMode): void;
 }
 
-export function CreationOutputTabs({
-  value,
-  locale,
-  ideasDisabled = false,
-  writingDisabled = false,
-  onValueChange,
-}: Props) {
+export function CreationOutputTabs({ value, locale, onValueChange }: Props) {
   return (
     <Segmented
       type="single"
       value={value}
       className="shrink-0"
       onValueChange={(next) => next && onValueChange(next as CreationOutputMode)}
-      aria-label={locale === 'zh' ? '产出类型' : 'Output type'}
+      aria-label={locale === 'zh' ? '创作视图' : 'Creation view'}
     >
-      <SegmentedItem value="images" className="whitespace-nowrap px-3">
-        {locale === 'zh' ? '图片' : 'Images'}
+      <SegmentedItem value="results" className="whitespace-nowrap px-3">
+        {locale === 'zh' ? '成果' : 'Results'}
       </SegmentedItem>
-      <SegmentedItem value="ideas" className="whitespace-nowrap px-3" disabled={ideasDisabled}>
-        {locale === 'zh' ? '灵感' : 'Ideas'}
+      <SegmentedItem value="inputs" className="whitespace-nowrap px-3">
+        {locale === 'zh' ? '输入' : 'Inputs'}
       </SegmentedItem>
-      <SegmentedItem value="writing" className="whitespace-nowrap px-3" disabled={writingDisabled}>
-        {locale === 'zh' ? '帮写' : 'Writing'}
+      <SegmentedItem value="records" className="whitespace-nowrap px-3">
+        {locale === 'zh' ? '记录' : 'Records'}
       </SegmentedItem>
     </Segmented>
   );

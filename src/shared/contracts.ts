@@ -1,6 +1,18 @@
 import type { ResolvedPromptComposition } from '@/shared/prompt-composition';
 import type { ExtensionHostEngineKey } from '@/shared/product';
 import type {
+  CodexUsageCleanupInput,
+  CodexUsageCleanupResult,
+  CodexUsageExportInput,
+  CodexUsageExportResult,
+  CodexUsageInvestigation,
+  CodexUsageInvestigationGetInput,
+  CodexUsageResumeInput,
+  CodexUsageScanInput,
+  CodexUsageState,
+  CodexUsageTask,
+} from '@/shared/contracts/codex-usage';
+import type {
   LegacyLocalSpaceCandidateDto,
   LocalSpaceCoverUpdateResult,
   LocalSpaceDescriptorDto,
@@ -121,6 +133,50 @@ export type {
 } from '@/shared/contracts/local-space';
 export type { TransitionShowcaseExportImageSnapshot } from '@/shared/contracts/transition-showcase';
 export type { AppWindowStateDto, DesktopPlatform } from '@/shared/contracts/app-window';
+export type {
+  CodexUsageCleanupCounts,
+  CodexUsageCleanupInput,
+  CodexUsageCleanupLevel,
+  CodexUsageCleanupResult,
+  CodexUsageDailyBreakdown,
+  CodexUsageExportFormat,
+  CodexUsageExportInput,
+  CodexUsageExportResult,
+  CodexUsageGranularity,
+  CodexUsageHistoryItem,
+  CodexUsageInvestigation,
+  CodexUsageInvestigationGetInput,
+  CodexUsageModelBreakdown,
+  CodexUsageObservedServiceTier,
+  CodexUsagePricingBasis,
+  CodexUsageQuotaCycle,
+  CodexUsageQuotaCycleModelShare,
+  CodexUsageQuotaKind,
+  CodexUsageQuotaLimit,
+  CodexUsageQuotaResetObservation,
+  CodexUsageQuotaResetObservationKind,
+  CodexUsageQuotaSnapshot,
+  CodexUsageQuotaState,
+  CodexUsageQuotaWindow,
+  CodexUsageQuotaWindowKind,
+  CodexUsageQuotaYieldAttribution,
+  CodexUsageQuotaYieldAnalysis,
+  CodexUsageQuotaYieldEstimate,
+  CodexUsageQuotaYieldSample,
+  CodexUsageQuotaYieldServiceTier,
+  CodexUsageQuotaYieldTimeSlice,
+  CodexUsageRange,
+  CodexUsageResolvedGranularity,
+  CodexUsageResumeInput,
+  CodexUsageScanInput,
+  CodexUsageScanProgress,
+  CodexUsageServiceTier,
+  CodexUsageState,
+  CodexUsageTask,
+  CodexUsageTaskStatus,
+  CodexUsageTokenTotals,
+  CodexUsageWarningCode,
+} from '@/shared/contracts/codex-usage';
 export type {
   PackCatalogItemDto,
   PackDependencyDto,
@@ -2019,6 +2075,12 @@ export interface MaterialAlbumRenameInput {
   locale?: Locale;
 }
 
+export interface MaterialAlbumMoveInput {
+  albumId: string;
+  parentAlbumId: string | null;
+  locale?: Locale;
+}
+
 export type MaterialSelectionTargetInput =
   { kind: 'MATERIAL'; materialId: string } | { kind: 'IMAGE_ASSET'; imageAssetId: string };
 
@@ -3353,6 +3415,14 @@ export interface DesktopApi {
   codexGeneratedImagesList(input: CodexImageDiscoveryListInput): Promise<CodexImageDiscoverySnapshotDto>;
   codexGeneratedImagesImport(input: CodexGeneratedImageImportInput): Promise<CodexGeneratedImageImportResult>;
   codexGeneratedImagesRecover(input: CodexGeneratedImageRecoverInput): Promise<CodexGeneratedImageRecoverResult>;
+  codexUsageState(): Promise<CodexUsageState>;
+  codexUsageInvestigation(input: CodexUsageInvestigationGetInput): Promise<CodexUsageInvestigation>;
+  codexUsageScan(input: CodexUsageScanInput): Promise<CodexUsageTask>;
+  codexUsageResume(input: CodexUsageResumeInput): Promise<CodexUsageTask>;
+  codexUsagePause(): Promise<void>;
+  codexUsageClear(input: CodexUsageCleanupInput): Promise<CodexUsageCleanupResult>;
+  codexUsageExport(input: CodexUsageExportInput): Promise<CodexUsageExportResult>;
+  onCodexUsageTaskChanged(callback: (task: CodexUsageTask) => void): () => void;
   openAiImageApiGet(): Promise<OpenAiImageApiConnectionDto>;
   openAiImageApiSave(input: OpenAiImageApiSaveInput): Promise<OpenAiImageApiConnectionDto>;
   openAiImageApiTest(): Promise<OpenAiImageApiConnectionDto>;
@@ -3514,6 +3584,7 @@ export interface DesktopApi {
   materialAlbumsList(input: MaterialAlbumListInput): Promise<MaterialAlbumDto[]>;
   materialAlbumsCreate(input: MaterialAlbumCreateInput): Promise<MaterialAlbumDto>;
   materialAlbumsRename(input: MaterialAlbumRenameInput): Promise<MaterialAlbumDto>;
+  materialAlbumsMove(input: MaterialAlbumMoveInput): Promise<MaterialAlbumDto>;
   materialAlbumsDelete(albumId: string): Promise<void>;
   materialAlbumsAddMany(input: MaterialAlbumAddManyInput): Promise<MaterialAlbumDto>;
   materialAlbumsRemove(input: MaterialAlbumRemoveInput): Promise<MaterialAlbumDto>;
@@ -3582,6 +3653,7 @@ export interface DesktopApi {
   assetFileAvailability(assetId: string): Promise<AssetFileAvailabilityDto>;
   assetFileCopy(assetId: string): Promise<void>;
   assetFileSaveAs(assetId: string): Promise<AssetFileSaveResult>;
+  assetFilesStartDrag(assetIds: readonly string[]): Promise<void>;
   assetFileRevealTargets(assetId: string, context?: AssetFileRevealTargetContext): Promise<AssetFileRevealTargetDto[]>;
   assetFileReveal(assetId: string, context?: AssetFileRevealContext): Promise<void>;
   assetFileOpen(assetId: string): Promise<void>;

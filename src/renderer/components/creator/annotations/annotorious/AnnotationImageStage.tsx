@@ -30,6 +30,11 @@ import type {
 import { BrushAnnotationLayer } from '@/renderer/components/creator/annotations/BrushAnnotationLayer';
 import { AnnotationMarkerLayer } from '@/renderer/components/creator/annotations/annotorious/AnnotationMarkerLayer';
 import { ImageAmbientBackdrop } from '@/renderer/components/media/AmbientImage';
+import { ImageMagnifier, ImageMagnifierScaleBadge } from '@/renderer/components/creator/ImageMagnifier';
+import {
+  usePointerImageMagnifier,
+  type PointerImageMagnifierSample,
+} from '@/renderer/components/creator/usePointerImageMagnifier';
 import {
   fromAnnotoriousRectangle,
   pendingAnnotationId,
@@ -55,7 +60,10 @@ interface Props {
   mode: AnnotationMode;
   pending: PendingAnnotation | null;
   selectedId: string | null;
+  magnifierActive?: boolean;
+  magnifierLabel?: string;
   className?: string;
+  onMagnifierActiveChange(active: boolean): void;
   onPendingChange(annotation: PendingAnnotation): void;
   onSelect(id: string | null): void;
 }
@@ -94,6 +102,39 @@ function annotationStyle(annotation: ImageAnnotation, state?: { selected?: boole
   };
 }
 
+function OutputImageMagnifier({
+  asset,
+  diameter,
+  label,
+  sample,
+  scale,
+  scaleFeedbackVisible,
+}: {
+  asset: AssetDto;
+  diameter: number;
+  label: string;
+  sample: PointerImageMagnifierSample;
+  scale: number;
+  scaleFeedbackVisible: boolean;
+}) {
+  return (
+    <div
+      className="pointer-events-none absolute z-30"
+      style={{ left: sample.left - diameter / 2, top: sample.top - diameter / 2 }}
+    >
+      <ImageMagnifier
+        diameter={diameter}
+        label={`${label} · ${scale}×`}
+        layers={[{ id: asset.id, src: asset.mediaUrl, width: sample.imageWidth, height: sample.imageHeight }]}
+        point={sample.point}
+        scale={scale}
+      >
+        <ImageMagnifierScaleBadge scale={scale} visible={scaleFeedbackVisible} />
+      </ImageMagnifier>
+    </div>
+  );
+}
+
 export const AnnotationImageStage = forwardRef(function AnnotationImageStage(
   {
     active,
@@ -106,7 +147,10 @@ export const AnnotationImageStage = forwardRef(function AnnotationImageStage(
     mode,
     pending,
     selectedId,
+    magnifierActive = false,
+    magnifierLabel = 'Local magnifier',
     className,
+    onMagnifierActiveChange,
     onPendingChange,
     onSelect,
   }: Props,
@@ -167,6 +211,15 @@ export const AnnotationImageStage = forwardRef(function AnnotationImageStage(
   }, [dimensions.height, dimensions.width, viewportSize.height, viewportSize.width, zoom]);
 
   const annotatorReady = active && Boolean(stageSize) && loadedAssetId === asset.id;
+  const magnifier = usePointerImageMagnifier({
+    active: magnifierActive && !active,
+    enabled: !active,
+    imageRef,
+    onActiveChange: onMagnifierActiveChange,
+    sourceId: asset.id,
+    viewportRef,
+    viewportSize,
+  });
 
   useLayoutEffect(() => {
     const image = imageRef.current;
@@ -251,7 +304,14 @@ export const AnnotationImageStage = forwardRef(function AnnotationImageStage(
   return (
     <div className={cn('relative isolate min-h-0 min-w-0 overflow-hidden bg-surface-sunken', className)}>
       <ImageAmbientBackdrop src={asset.mediaUrl} />
-      <div ref={viewportRef} className="relative z-10 size-full overflow-auto">
+      <div
+        ref={viewportRef}
+        className="relative z-10 size-full overflow-auto"
+        onPointerMove={magnifier.onPointerMove}
+        onPointerLeave={magnifier.onPointerLeave}
+        onScroll={magnifier.onScroll}
+        onWheel={magnifier.onWheel}
+      >
         {!stageSize ? (
           <div className="flex size-full items-center justify-center p-4">
             <img
@@ -259,6 +319,7 @@ export const AnnotationImageStage = forwardRef(function AnnotationImageStage(
               src={asset.mediaUrl}
               alt=""
               decoding="async"
+              fetchPriority="high"
               draggable={false}
             />
           </div>
@@ -274,8 +335,9 @@ export const AnnotationImageStage = forwardRef(function AnnotationImageStage(
           >
             <div
               className={cn(
-                'relative shrink-0 overflow-hidden bg-media-surround-light ring-1 ring-border',
+                'relative shrink-0 overflow-hidden bg-media-surround-light ring-1 ring-foreground/10',
                 active && mode !== 'view' && 'cursor-crosshair',
+                magnifierActive && !active && 'cursor-crosshair',
               )}
               style={{ width: stageSize.width, height: stageSize.height }}
             >
@@ -285,6 +347,7 @@ export const AnnotationImageStage = forwardRef(function AnnotationImageStage(
                 src={asset.mediaUrl}
                 alt=""
                 decoding="async"
+                fetchPriority="high"
                 draggable={false}
                 onLoad={() => setLoadedAssetId(asset.id)}
               />
@@ -312,6 +375,16 @@ export const AnnotationImageStage = forwardRef(function AnnotationImageStage(
           </div>
         )}
       </div>
+      {magnifierActive && !active && magnifier.sample && (
+        <OutputImageMagnifier
+          asset={asset}
+          diameter={magnifier.diameter}
+          label={magnifierLabel}
+          sample={magnifier.sample}
+          scale={magnifier.scale}
+          scaleFeedbackVisible={magnifier.scaleFeedbackVisible}
+        />
+      )}
     </div>
   );
 });

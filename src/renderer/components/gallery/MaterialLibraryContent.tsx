@@ -1,4 +1,4 @@
-import { ArrowDownIcon, ImageIcon } from 'lucide-react';
+import { ImageIcon } from 'lucide-react';
 import type { DragEvent as ReactDragEvent, RefObject } from 'react';
 import type { AssetFileRevealContext, MaterialAlbumDto, MaterialSelectionTargetInput } from '@/shared/contracts';
 import { useI18n } from '@/renderer/i18n/useI18n';
@@ -11,6 +11,7 @@ import { CreationAlbumGrid } from '@/renderer/components/gallery/CreationAlbumGr
 import { MaterialAlbumGrid } from '@/renderer/components/gallery/MaterialAlbumGrid';
 import type { MaterialAlbumBrowseSummary } from '@/renderer/components/gallery/materialAlbumBrowse';
 import { MaterialMasonry } from '@/renderer/components/gallery/MaterialMasonry';
+import { MaterialZoneHeading } from '@/renderer/components/gallery/MaterialZoneHeading';
 import { MaterialZoneMasonry } from '@/renderer/components/gallery/MaterialZoneMasonry';
 import type { MaterialLibraryItem, SelectionModifiers } from '@/renderer/components/gallery/materialLibraryTypes';
 
@@ -37,6 +38,10 @@ interface Props {
   viewportRef: RefObject<HTMLDivElement | null>;
   pageEndRef: RefObject<HTMLDivElement | null>;
   onOpenAlbum(albumId: string): void;
+  canMoveCreationAlbum(albumId: string, parentAlbumId: string | null): boolean;
+  onMoveCreationAlbum(albumId: string, parentAlbumId: string | null): Promise<void>;
+  canMoveAlbum(albumId: string, parentAlbumId: string | null): boolean;
+  onMoveAlbum(albumId: string, parentAlbumId: string | null): Promise<void>;
   onCollectMaterials(albumId: string, targets: MaterialSelectionTargetInput[]): Promise<void>;
   onImportFiles?(album: MaterialAlbumDto, files: File[]): void;
   onSelect(item: MaterialLibraryItem, modifiers?: SelectionModifiers): void;
@@ -65,10 +70,16 @@ function CreationCollectionBrowser({
   albums,
   viewportRef,
   onOpen,
+  busy,
+  canMoveCreationAlbum,
+  onMoveCreationAlbum,
 }: {
   albums: readonly MaterialAlbumDto[];
   viewportRef: RefObject<HTMLDivElement | null>;
   onOpen(albumId: string): void;
+  busy: boolean;
+  canMoveCreationAlbum(albumId: string, parentAlbumId: string | null): boolean;
+  onMoveCreationAlbum(albumId: string, parentAlbumId: string | null): Promise<void>;
 }) {
   const { messages } = useI18n();
   if (!albums.length) {
@@ -84,7 +95,13 @@ function CreationCollectionBrowser({
       className="min-h-0 min-w-0 flex-1 [&_[data-slot=scroll-area-viewport]>div]:!block [&_[data-slot=scroll-area-viewport]>div]:!w-full"
       viewportRef={viewportRef}
     >
-      <CreationAlbumGrid albums={albums} onOpen={onOpen} />
+      <CreationAlbumGrid
+        albums={albums}
+        busy={busy}
+        onOpen={onOpen}
+        canMoveCreationAlbum={canMoveCreationAlbum}
+        onMoveCreationAlbum={onMoveCreationAlbum}
+      />
     </ScrollArea>
   );
 }
@@ -105,6 +122,10 @@ function MaterialResults({
   loading,
   albumMutationBusy,
   onOpenAlbum,
+  canMoveCreationAlbum,
+  onMoveCreationAlbum,
+  canMoveAlbum,
+  onMoveAlbum,
   onCollectMaterials,
   onImportFiles,
   onSelect,
@@ -139,18 +160,12 @@ function MaterialResults({
           </div>
         )}
         {!hasCreationCollections && showMaterialZone && (
-          <div data-slot="material-zone-marker" className="mb-5 flex justify-center">
-            <div className="flex min-w-0 shrink items-center gap-2 rounded-full border bg-surface px-3 py-2 shadow-sm">
-              <span className="grid size-6 shrink-0 place-items-center rounded-full bg-surface-sunken text-muted-foreground">
-                <ArrowDownIcon className="size-3.5" aria-hidden="true" />
-              </span>
-              <div className="min-w-0">
-                <h2 id="material-zone-heading" className="truncate text-sm font-semibold">
-                  {messages.gallery.albums.materialZone}
-                </h2>
-              </div>
-            </div>
-          </div>
+          <MaterialZoneHeading
+            data-slot="material-zone-marker"
+            headingId="material-zone-heading"
+            title={messages.gallery.albums.materialZone}
+            className="mb-6"
+          />
         )}
         <MaterialZoneMasonry
           creationAlbums={overviewCreationCollections}
@@ -164,6 +179,10 @@ function MaterialResults({
           loading={loading}
           albumMutationBusy={albumMutationBusy}
           onOpenAlbum={onOpenAlbum}
+          canMoveCreationAlbum={canMoveCreationAlbum}
+          onMoveCreationAlbum={onMoveCreationAlbum}
+          canMoveAlbum={canMoveAlbum}
+          onMoveAlbum={onMoveAlbum}
           onCollectMaterials={onCollectMaterials}
           onImportFiles={onImportFiles}
           onSelect={onSelect}
@@ -181,7 +200,14 @@ function MaterialResults({
   return (
     <>
       {creationSectionTitle && (
-        <CreationAlbumGrid albums={overviewCreationCollections} title={creationSectionTitle} onOpen={onOpenAlbum} />
+        <CreationAlbumGrid
+          albums={overviewCreationCollections}
+          title={creationSectionTitle}
+          busy={albumMutationBusy}
+          onOpen={onOpenAlbum}
+          canMoveCreationAlbum={canMoveCreationAlbum}
+          onMoveCreationAlbum={onMoveCreationAlbum}
+        />
       )}
       {albumSectionTitle && (
         <MaterialAlbumGrid
@@ -189,6 +215,8 @@ function MaterialResults({
           albums={albums}
           busy={albumMutationBusy}
           onOpen={onOpenAlbum}
+          canMoveAlbum={canMoveAlbum}
+          onMoveAlbum={onMoveAlbum}
           onCollectMaterials={onCollectMaterials}
           onImportFiles={onImportFiles}
         />
@@ -240,9 +268,12 @@ export function MaterialLibraryContent(props: Props) {
     showingPreviousResults,
     searchActive,
     unratedActive,
+    albumMutationBusy,
     viewportRef,
     pageEndRef,
     onOpenAlbum,
+    canMoveCreationAlbum,
+    onMoveCreationAlbum,
     onClearSearch,
     onClearUnrated,
     onRetry,
@@ -250,7 +281,16 @@ export function MaterialLibraryContent(props: Props) {
   const { messages } = useI18n();
   const l = messages.gallery.screen;
   if (creationCollections !== null) {
-    return <CreationCollectionBrowser albums={creationCollections} viewportRef={viewportRef} onOpen={onOpenAlbum} />;
+    return (
+      <CreationCollectionBrowser
+        albums={creationCollections}
+        viewportRef={viewportRef}
+        onOpen={onOpenAlbum}
+        busy={albumMutationBusy}
+        canMoveCreationAlbum={canMoveCreationAlbum}
+        onMoveCreationAlbum={onMoveCreationAlbum}
+      />
+    );
   }
   const hasCreationCollections = overviewCreationCollections.length > 0;
   const hasAlbums = albums.length > 0;

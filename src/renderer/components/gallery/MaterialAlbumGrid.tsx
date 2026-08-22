@@ -16,6 +16,8 @@ interface Props {
   albums: readonly MaterialAlbumBrowseSummary[];
   busy?: boolean;
   onOpen(albumId: string): void;
+  canMoveAlbum(albumId: string, parentAlbumId: string | null): boolean;
+  onMoveAlbum(albumId: string, parentAlbumId: string | null): Promise<void>;
   onCollectMaterials(albumId: string, targets: MaterialSelectionTargetInput[]): Promise<void>;
   onImportFiles?(album: MaterialAlbumDto, files: File[]): void;
 }
@@ -28,7 +30,16 @@ function albumForCard(summary: MaterialAlbumBrowseSummary): MaterialAlbumDto {
   };
 }
 
-export function MaterialAlbumGrid({ title, albums, busy, onOpen, onCollectMaterials, onImportFiles }: Props) {
+export function MaterialAlbumGrid({
+  title,
+  albums,
+  busy,
+  onOpen,
+  canMoveAlbum,
+  onMoveAlbum,
+  onCollectMaterials,
+  onImportFiles,
+}: Props) {
   const { messages } = useI18n();
   const cardAlbums = useMemo(() => albums.map(albumForCard), [albums]);
   const layoutItems = useMemo(
@@ -67,6 +78,8 @@ export function MaterialAlbumGrid({ title, albums, busy, onOpen, onCollectMateri
               childAlbumCount={summary.childAlbumCount}
               busy={busy}
               onOpen={onOpen}
+              canMoveAlbum={canMoveAlbum}
+              onMoveAlbum={onMoveAlbum}
               onCollectMaterials={onCollectMaterials}
               onImportFiles={onImportFiles}
             />

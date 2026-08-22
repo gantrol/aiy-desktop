@@ -2,6 +2,7 @@ import { ImagesIcon, PlusIcon } from 'lucide-react';
 import { useMemo, useRef, useState, type ReactNode } from 'react';
 import type { MaterialAlbumDto, MaterialSelectionTargetInput } from '@/shared/contracts';
 import type { GalleryDictionaryCollection } from '@/renderer/components/app/app-navigation';
+import { hasMaterialAlbumDrag, readMaterialAlbumDrag } from '@/renderer/components/albums/albumDrag';
 import {
   useAlbumTreeExpansion,
   type AlbumTreeDiagnosticSink,
@@ -22,6 +23,7 @@ import {
   type MaterialAlbumBranchLabels,
 } from '@/renderer/components/gallery/MaterialAlbumTreeBranches';
 import { buildMaterialAlbumTree } from '@/renderer/components/gallery/materialAlbumTree';
+import { cn } from '@/renderer/lib/utils';
 
 export type MaterialLibraryCategory = 'DICTIONARY' | 'MATERIAL';
 
@@ -64,6 +66,8 @@ interface Props {
   onRename(album: MaterialAlbumDto, title: string): Promise<void>;
   onDelete(album: MaterialAlbumDto): Promise<void>;
   onMove?(albumId: string, parentAlbumId: string | null): Promise<void>;
+  canMoveCreationAlbum?(albumId: string, parentAlbumId: string | null): boolean;
+  onMoveCreationAlbum?(albumId: string, parentAlbumId: string | null): Promise<void>;
   onCollectMaterials(albumId: string, targets: MaterialSelectionTargetInput[]): Promise<void>;
   onImportFiles?(album: MaterialAlbumDto, files: File[]): void;
 }
@@ -85,6 +89,8 @@ export function MaterialLibraryNavigation({
   onRename,
   onDelete,
   onMove,
+  canMoveCreationAlbum,
+  onMoveCreationAlbum,
   onCollectMaterials,
   onImportFiles,
 }: Props) {
@@ -101,10 +107,18 @@ export function MaterialLibraryNavigation({
   const [editor, setEditor] = useState<MaterialAlbumEditorState | null>(null);
   const [deleteAlbum, setDeleteAlbum] = useState<MaterialAlbumDto | null>(null);
   const [dropAlbumId, setDropAlbumId] = useState<string | null>(null);
+  const [rootDropActive, setRootDropActive] = useState(false);
   const creationAlbums = albums.filter((album) => album.systemKey?.startsWith('CREATION_'));
   const userAlbums = albums.filter((album) => album.kind === 'USER');
   const tree = useMemo(() => buildMaterialAlbumTree(userAlbums), [userAlbums]);
   const creationTree = useMemo(() => buildMaterialAlbumTree(creationAlbums), [creationAlbums]);
+
+  function rootAlbumDropSource(dataTransfer: DataTransfer) {
+    if (browseOnly || busy || !onMove || !hasMaterialAlbumDrag(dataTransfer)) return null;
+    const sourceAlbumId = readMaterialAlbumDrag(dataTransfer);
+    const source = sourceAlbumId ? tree.byId.get(sourceAlbumId) : undefined;
+    return source?.parentId ? source.id : null;
+  }
 
   function categoryRow(target: MaterialLibraryCategory, title: string, icon: ReactNode) {
     const selected = category === target && !activeAlbumId && target !== 'DICTIONARY';
@@ -113,8 +127,37 @@ export function MaterialLibraryNavigation({
         type="button"
         data-action={target === 'MATERIAL' ? 'material-all' : 'material-all-dictionary'}
         variant={selected ? 'secondary' : 'ghost'}
-        className="h-11 w-full justify-start gap-2 px-2 font-normal"
+        className={cn(
+          'h-11 w-full justify-start gap-2 px-2 font-normal',
+          target === 'MATERIAL' && rootDropActive && 'ring-1 ring-inset ring-ring',
+        )}
         onClick={() => onSelectCategory(target)}
+        onDragEnter={(event) => {
+          if (target !== 'MATERIAL' || !rootAlbumDropSource(event.dataTransfer)) return;
+          event.preventDefault();
+          event.stopPropagation();
+          setRootDropActive(true);
+        }}
+        onDragOver={(event) => {
+          if (target !== 'MATERIAL' || !rootAlbumDropSource(event.dataTransfer)) return;
+          event.preventDefault();
+          event.stopPropagation();
+          event.dataTransfer.dropEffect = 'move';
+        }}
+        onDragLeave={(event) => {
+          if (target === 'MATERIAL' && !event.currentTarget.contains(event.relatedTarget as Node | null)) {
+            setRootDropActive(false);
+          }
+        }}
+        onDrop={(event) => {
+          if (target !== 'MATERIAL') return;
+          const sourceAlbumId = rootAlbumDropSource(event.dataTransfer);
+          if (!sourceAlbumId) return;
+          event.preventDefault();
+          event.stopPropagation();
+          setRootDropActive(false);
+          void onMove?.(sourceAlbumId, null).catch(() => undefined);
+        }}
       >
         {icon}
         <span className="truncate text-base font-medium">{title}</span>
@@ -152,9 +195,14 @@ export function MaterialLibraryNavigation({
                   tree={creationTree}
                   activeAlbumId={activeAlbumId}
                   labels={labels}
+                  busy={busy}
+                  dropAlbumId={dropAlbumId}
                   expansion={expansion}
                   click={click}
                   onSelectAlbum={onSelectAlbum}
+                  onDropAlbumChange={setDropAlbumId}
+                  canMoveCreationAlbum={canMoveCreationAlbum}
+                  onMoveCreationAlbum={onMoveCreationAlbum}
                 />
               ))}
               <div

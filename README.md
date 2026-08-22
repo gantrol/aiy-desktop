@@ -9,7 +9,7 @@
 
   <p>
     <a href="https://github.com/gantrol/aiy-desktop/releases/latest"><img src="https://img.shields.io/github/v/release/gantrol/aiy-desktop?display_name=tag&amp;style=flat-square&amp;label=release" alt="Latest release" /></a>
-    <img src="https://img.shields.io/badge/platform-Windows%20x64%20%7C%20macOS%20Apple%20Silicon-4b5563?style=flat-square" alt="Windows x64 and Apple Silicon Mac" />
+    <img src="https://img.shields.io/badge/platform-Windows%2010%2F11%20x64%20Store-4b5563?style=flat-square" alt="Windows 10/11 x64 Microsoft Store" />
     <a href="LICENSE"><img src="https://img.shields.io/badge/license-PolyForm%20Noncommercial%201.0.0-7c3aed?style=flat-square" alt="PolyForm Noncommercial 1.0.0" /></a>
   </p>
 
@@ -22,7 +22,7 @@
   </p>
 
   <p>
-    <a href="https://github.com/gantrol/aiy-desktop/releases/latest"><strong>Download</strong></a> ·
+    <a href="https://github.com/gantrol/aiy-desktop/releases/latest"><strong>Release history</strong></a> ·
     <a href="#what-you-can-do-today">Features</a> ·
     <a href="#next-video--illustrated-article">What's next</a> ·
     <a href="https://github.com/gantrol/aiy-desktop/issues">Feedback</a>
@@ -84,18 +84,17 @@ Library metadata and managed media are stored in local spaces backed by SQLite. 
 
 When you use AI features, the app still connects to the provider you choose. The prompt, reference images, and related data selected for that request are sent to the corresponding service and handled under its terms, privacy policy, and billing rules. Current routes include Codex App Server/CLI, the OpenAI Image API, and DeepSeek prompt assistance; Gemini, Qwen Image, and Seedream extensions are still awaiting acceptance testing.
 
-## Download
+## Distribution
 
-The latest release provides:
+The maintained distribution target from `v0.3.5` onward is:
 
-- Windows 10/11 x64 — installer and portable ZIP;
-- Apple Silicon Mac — DMG and ZIP.
+- Windows 10/11 x64 — Microsoft Store MSIX.
 
-Download the app and `SHA256SUMS.txt` from [GitHub Releases](https://github.com/gantrol/aiy-desktop/releases/latest). The current Windows and macOS packages are not publisher-signed or notarized, so verify the checksum and read the security notes in the release before opening them. Linux is not currently a packaging target.
+Normal build scripts no longer produce NSIS installers, portable ZIPs, macOS DMGs, macOS ZIPs, or standalone unpacked releases. Historical packages remain in [GitHub Releases](https://github.com/gantrol/aiy-desktop/releases), but they are outside the maintained release matrix. Current packages are distributed through Microsoft Store after certification.
 
 ## ❕Early stage
 
-AIY is still very early. As of `v0.3.3`, image creation and the library are usable, but extensions and content packs may still change.
+AIY is still very early. As of `v0.3.5`, image creation and the library are usable, but extensions and content packs may still change.
 
 The basic framework is in place. Real user feedback is what will determine where this project goes next.
 

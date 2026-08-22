@@ -67,6 +67,16 @@ function safeSpaceArchiveName(name: string) {
   return `${stem || 'AIY Space'}.aiyspace`;
 }
 
+function showDownloadsSaveDialog(getWindow: () => BrowserWindow | null, options: Electron.SaveDialogOptions) {
+  const parent = getWindow();
+  const defaultPath =
+    typeof options.defaultPath === 'string'
+      ? path.join(app.getPath('downloads'), path.basename(options.defaultPath))
+      : app.getPath('downloads');
+  const localizedOptions = { ...options, defaultPath };
+  return parent ? dialog.showSaveDialog(parent, localizedOptions) : dialog.showSaveDialog(localizedOptions);
+}
+
 const compactExecutionWorkbenchOptions = {
   includeExecutionActualRequest: false,
   includeExecutionInputSnapshot: false,
@@ -297,6 +307,8 @@ export function registerIpc(
     generationConcurrency,
     codex,
     chooseFile,
+    chooseSaveFile: (options) => showDownloadsSaveDialog(getWindow, options),
+    sendRendererEvent,
   });
   registerIntakeIpc(ipcMain, database);
   registerVideoDocumentIpc({

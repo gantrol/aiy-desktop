@@ -153,6 +153,12 @@ export const materialAlbumRenameSchema = z.object({
   locale: localeSchema,
 });
 
+export const materialAlbumMoveSchema = z.object({
+  albumId: id,
+  parentAlbumId: id.nullable(),
+  locale: localeSchema.optional(),
+});
+
 export const materialAlbumTargetSchema = z.discriminatedUnion('kind', [
   z.object({ kind: z.literal('MATERIAL'), materialId: id }),
   z.object({ kind: z.literal('IMAGE_ASSET'), imageAssetId: id }),

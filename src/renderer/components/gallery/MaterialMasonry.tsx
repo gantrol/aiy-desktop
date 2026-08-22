@@ -12,7 +12,7 @@ import { getMaterialCardAspectRatio, MaterialCard } from '@/renderer/components/
 import type { MaterialLibraryItem, SelectionModifiers } from '@/renderer/components/gallery/materialLibraryTypes';
 
 const DEFAULT_MIN_COLUMN_WIDTH = 220;
-const DEFAULT_GAP = 12;
+const DEFAULT_GAP = 16;
 
 export type MaterialMasonryLayoutItem = MasonryLayoutItem;
 export type MaterialMasonryPlacement = MasonryPlacement;

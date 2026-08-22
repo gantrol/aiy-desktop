@@ -59,4 +59,4 @@ $env:AIY_USER_DATA_DIR = 'D:\AIY-test-data'
 npm run dev
 ```
 
-macOS 使用对应的 shell 设置同名环境变量。当前构建与验收目标只有 Windows 和 macOS；Linux 不在本项目的打包范围内。测试结束后删除测试目录前，先确认其中没有需要保留的用户数据。
+当前构建与验收目标只有 Windows Desktop x64 Store MSIX。测试结束后删除测试目录前，先确认其中没有需要保留的用户数据。

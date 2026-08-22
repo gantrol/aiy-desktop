@@ -8,3 +8,4 @@
 
 当前随应用分发的简体中文参考包位于 [`com.aiy.language.zh-cn/`](com.aiy.language.zh-cn/)。
 Codex 图片发现能力包位于 [`com.aiy.codex-image-discovery/`](com.aiy.codex-image-discovery/)。
+“今天Codex努力了吗”能力包位于 [`com.aiy.codex-usage-investigator/`](com.aiy.codex-usage-investigator/)。

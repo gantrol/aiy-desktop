@@ -1,11 +1,7 @@
 appId: com.catai.aiy
 productName: AIY Image Tools
 directories:
-  output: release
-publish:
-  provider: github
-  owner: gantrol
-  repo: aiy-desktop
+  output: .tmp/electron-builder-store-payload
 files:
   - out/main/**
   - out/preload/**
@@ -42,18 +38,7 @@ win:
   executableName: aiy
   icon: build/icon.ico
   target:
-    - target: nsis
+    # electron-builder only prepares the x64 payload consumed by the Store
+    # MSIX script. It is not a standalone distribution artifact.
+    - target: dir
       arch: [x64]
-    - target: zip
-      arch: [x64]
-mac:
-  icon: build/icon.png
-  target:
-    - dmg
-    - zip
-artifactName: '${productName}-${version}-${os}-${arch}.${ext}'
-nsis:
-  include: build/installer.nsh
-  oneClick: false
-  allowToChangeInstallationDirectory: true
-  createDesktopShortcut: true

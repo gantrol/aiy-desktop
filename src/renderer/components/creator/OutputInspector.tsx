@@ -15,6 +15,7 @@ import {
   PackageOpenIcon,
   PanelRightCloseIcon,
   RotateCcwIcon,
+  SearchIcon,
   UploadIcon,
 } from 'lucide-react';
 import type {
@@ -46,7 +47,9 @@ import { Badge } from '@/renderer/components/ui/badge';
 import { HoverRevealButton } from '@/renderer/components/ui/hover-reveal-button';
 import { Segmented, SegmentedItem } from '@/renderer/components/ui/segmented';
 import { AssetFileContextMenu } from '@/renderer/components/media/AssetFileContextMenu';
-import { AmbientImage } from '@/renderer/components/media/AmbientImage';
+import { ImageAmbientBackdrop } from '@/renderer/components/media/AmbientImage';
+import { getMediaPreviewAspectRatio } from '@/renderer/components/media/mediaAspectRatio';
+import { mediaThumbnailUrl } from '@/renderer/components/media/mediaThumbnailUrl';
 import { AnnotationComposer } from '@/renderer/components/creator/annotations/AnnotationComposer';
 import { AnnotationList } from '@/renderer/components/creator/annotations/AnnotationList';
 import { AnnotationToolbar } from '@/renderer/components/creator/annotations/AnnotationToolbar';
@@ -76,6 +79,7 @@ import { ImageAspectDialog, type ImageAspectRatio } from '@/renderer/components/
 
 interface Props {
   headerNavigation: ReactNode;
+  emptyState?: ReactNode;
   series: PromptSeriesDto | undefined;
   primarySeries?: PromptSeriesDto;
   outputProjection?: CreationOutputVersionGroup[];
@@ -132,6 +136,10 @@ interface OutputAssetRecord {
   failed: boolean;
 }
 
+function outputGalleryFrame(asset: AssetDto) {
+  return getMediaPreviewAspectRatio(asset.width, asset.height, 3 / 4);
+}
+
 function promptVersionForAsset(series: PromptSeriesDto, assetId: string) {
   const visited = new Set<string>();
   let candidateAssetId: string | null = assetId;
@@ -162,6 +170,7 @@ function pendingFromAnnotation(annotation: AnnotationDto): PendingAnnotation {
 
 export function OutputInspector({
   headerNavigation,
+  emptyState,
   series,
   primarySeries,
   outputProjection = [],
@@ -320,6 +329,7 @@ export function OutputInspector({
   const annotationViewerRef = useRef<AnnotationImageStageHandle>(null);
   const appliedAnnotationWorkspaceRequest = useRef<string | null>(null);
   const [annotationWorkspaceOpen, setAnnotationWorkspaceOpen] = useState(false);
+  const [outputMagnifierActive, setOutputMagnifierActive] = useState(false);
   const [annotationMode, setAnnotationMode] = useState<AnnotationMode>('view');
   const [brushMode, setBrushMode] = useState<BrushMode>('ADD');
   const [brushRadius, setBrushRadius] = useState(0.03);
@@ -538,6 +548,10 @@ export function OutputInspector({
   }, [asset?.id, notify]);
 
   useEffect(() => {
+    setOutputMagnifierActive(false);
+  }, [annotationWorkspaceOpen, asset?.id, displayMode]);
+
+  useEffect(() => {
     if (!annotationWorkspaceRequest || asset?.id !== annotationWorkspaceRequest.assetId) return;
     const requestKey = `${annotationWorkspaceRequest.assetId}:${annotationWorkspaceRequest.requestId}`;
     if (appliedAnnotationWorkspaceRequest.current === requestKey) return;
@@ -587,7 +601,9 @@ export function OutputInspector({
       if (displayMode !== 'preview') return;
       if (isEditableTarget(event.target)) return;
       if (event.key === 'Escape') {
-        if (editingAnnotationId || pendingAnnotation) {
+        if (outputMagnifierActive) {
+          setOutputMagnifierActive(false);
+        } else if (editingAnnotationId || pendingAnnotation) {
           const editedId = editingAnnotationId;
           setPendingAnnotation(null);
           setAnnotationText('');
@@ -620,6 +636,7 @@ export function OutputInspector({
     changeAnnotationStatus,
     displayMode,
     editingAnnotationId,
+    outputMagnifierActive,
     pendingAnnotation,
     selectedAnnotationId,
   ]);
@@ -988,6 +1005,7 @@ export function OutputInspector({
                 notify={notify}
                 revealContext={revealContextForAsset(asset.id)}
                 actions={presentationActionsForAsset(asset.id)}
+                draggable={!annotationWorkspaceOpen && !outputMagnifierActive}
               >
                 <AnnotationImageStage
                   ref={annotationViewerRef}
@@ -1002,6 +1020,9 @@ export function OutputInspector({
                   mode={annotationWorkspaceOpen ? annotationMode : 'view'}
                   pending={annotationWorkspaceOpen ? pendingAnnotation : null}
                   selectedId={selectedAnnotationId}
+                  magnifierActive={outputMagnifierActive}
+                  magnifierLabel={messages.creator.comparison.magnifier}
+                  onMagnifierActiveChange={setOutputMagnifierActive}
                   onPendingChange={(annotation) => {
                     setPendingAnnotation(annotation);
                     setSelectedAnnotationId(null);
@@ -1062,6 +1083,21 @@ export function OutputInspector({
                 </div>
               ) : (
                 <div className="absolute right-3 bottom-3 z-20 flex items-center gap-1.5">
+                  <HoverRevealButton
+                    type="button"
+                    data-action="image-magnifier-toggle"
+                    variant="secondary"
+                    label={messages.creator.comparison.magnifier}
+                    aria-pressed={outputMagnifierActive}
+                    className={cn(
+                      'shadow-overlay',
+                      outputMagnifierActive &&
+                        'bg-selected text-selected-foreground hover:bg-selected active:bg-selected',
+                    )}
+                    onClick={() => setOutputMagnifierActive((current) => !current)}
+                  >
+                    <SearchIcon className="size-4" />
+                  </HoverRevealButton>
                   {reuseVersion && (
                     <HoverRevealButton
                       type="button"
@@ -1099,7 +1135,10 @@ export function OutputInspector({
                     variant="secondary"
                     label={messages.creator.imageTransform.title}
                     className="shadow-overlay"
-                    onClick={() => setAspectDialogOpen(true)}
+                    onClick={() => {
+                      setOutputMagnifierActive(false);
+                      setAspectDialogOpen(true);
+                    }}
                   >
                     <CropIcon className="size-4" />
                   </HoverRevealButton>
@@ -1159,37 +1198,47 @@ export function OutputInspector({
                       </button>
                     </div>
                     <div className="grid max-h-40 grid-cols-[repeat(auto-fill,minmax(54px,1fr))] gap-2 overflow-y-auto pr-3 pb-3 pl-12">
-                      {assets.map((item) => (
-                        <AssetFileContextMenu
-                          key={item.id}
-                          assetId={item.id}
-                          notify={notify}
-                          revealContext={revealContextForAsset(item.id)}
-                          actions={presentationActionsForAsset(item.id)}
-                        >
-                          <button
-                            type="button"
-                            className={cn(
-                              'relative isolate aspect-[3/4] min-w-0 overflow-hidden rounded-md border-2 border-transparent bg-surface-sunken p-0.5 outline-none hover:border-border-strong focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring',
-                              item.id === asset.id && 'border-selected-border ring-2 ring-ring',
-                            )}
-                            onClick={() => {
-                              selectAsset(item.id);
-                              onGalleryOpenChange(false);
-                            }}
+                      {assets.map((item) => {
+                        const frame = outputGalleryFrame(item);
+                        const thumbnailUrl = mediaThumbnailUrl(item, 192);
+                        return (
+                          <AssetFileContextMenu
+                            key={item.id}
+                            assetId={item.id}
+                            notify={notify}
+                            revealContext={revealContextForAsset(item.id)}
+                            actions={presentationActionsForAsset(item.id)}
                           >
-                            <AmbientImage
-                              src={item.mediaUrl}
-                              alt=""
-                              loading="lazy"
-                              decoding="async"
-                              draggable={false}
-                              frameClassName="size-full rounded-sm"
-                              className="size-full object-contain"
-                            />
-                          </button>
-                        </AssetFileContextMenu>
-                      ))}
+                            <button
+                              type="button"
+                              data-output-gallery-aspect-ratio={frame.aspectRatio.toFixed(3)}
+                              data-output-gallery-edge-fill={frame.needsEdgeFill ? 'true' : undefined}
+                              className={cn(
+                                'relative isolate w-full min-w-0 self-start overflow-hidden rounded-md bg-surface-sunken ring-1 ring-inset ring-foreground/10 outline-none transition-shadow duration-fast hover:ring-2 hover:ring-border-strong focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring',
+                                item.id === asset.id && 'ring-2 ring-ring',
+                              )}
+                              style={{ aspectRatio: frame.aspectRatio }}
+                              onClick={() => {
+                                selectAsset(item.id);
+                                onGalleryOpenChange(false);
+                              }}
+                            >
+                              {frame.needsEdgeFill && <ImageAmbientBackdrop src={thumbnailUrl} loading="lazy" />}
+                              <img
+                                src={thumbnailUrl}
+                                alt=""
+                                width={item.width}
+                                height={item.height}
+                                loading="lazy"
+                                decoding="async"
+                                fetchPriority="low"
+                                draggable={false}
+                                className="relative z-10 size-full rounded-sm object-contain"
+                              />
+                            </button>
+                          </AssetFileContextMenu>
+                        );
+                      })}
                     </div>
                   </div>
                 ) : (
@@ -1200,23 +1249,25 @@ export function OutputInspector({
           </>
         ) : (
           <>
-            <div className="flex flex-1 items-center justify-center">
-              <Button
-                type="button"
-                variant="ghost"
-                size="icon"
-                disabled={importing}
-                title={gallery.importResults}
-                aria-label={gallery.importResults}
-                onClick={onChooseImport}
-              >
-                {importing ? (
-                  <LoaderCircleIcon className="size-5 animate-spin" />
-                ) : (
-                  <AppImageIcon className="size-6 opacity-50" />
-                )}
-              </Button>
-            </div>
+            {emptyState ?? (
+              <div className="flex flex-1 items-center justify-center">
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon"
+                  disabled={importing}
+                  title={gallery.importResults}
+                  aria-label={gallery.importResults}
+                  onClick={onChooseImport}
+                >
+                  {importing ? (
+                    <LoaderCircleIcon className="size-5 animate-spin" />
+                  ) : (
+                    <AppImageIcon className="size-6 opacity-50" />
+                  )}
+                </Button>
+              </div>
+            )}
             {hasVersionStripContent && versionStrip}
           </>
         ))}

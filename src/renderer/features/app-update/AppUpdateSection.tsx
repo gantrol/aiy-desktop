@@ -2,8 +2,6 @@ import { useEffect, useState } from 'react';
 import { DownloadIcon, LoaderCircleIcon, RefreshCwIcon } from 'lucide-react';
 import type { AppUpdateStateDto } from '@/shared/contracts/app-update';
 import { Button } from '@/renderer/components/ui/button';
-import { Label } from '@/renderer/components/ui/label';
-import { MetaText } from '@/renderer/components/ui/meta-text';
 import { useI18n } from '@/renderer/i18n/useI18n';
 
 interface Props {
@@ -58,29 +56,25 @@ export function AppUpdateSection({ active }: Props) {
     }
   };
 
+  if ((!state && !requestFailed) || state?.phase === 'UNSUPPORTED') return null;
+
   const phase = state?.phase;
   const busy = requestPending || phase === 'CHECKING' || phase === 'DOWNLOADING' || phase === 'INSTALLING';
   const progress = Math.round(state?.progress?.percent ?? 0);
   const status = (() => {
     if (requestFailed) return l.updateStatusFailed;
-    if (!state) return l.updateStatusLoading;
+    if (!state) return l.updateStatusFailed;
     switch (state.phase) {
-      case 'UNSUPPORTED':
-        if (state.supportReason === 'DEVELOPMENT') return l.updateUnsupportedDevelopment;
-        if (state.supportReason === 'PACKAGE_TYPE') return l.updateUnsupportedPackageType;
-        if (state.supportReason === 'CONFIGURATION') return l.updateUnsupportedConfiguration;
-        if (state.supportReason === 'SIGNATURE') return l.updateUnsupportedSignature;
-        return l.updateUnsupportedPlatform;
       case 'IDLE':
-        return l.automaticUpdateChecks;
+        return null;
       case 'CHECKING':
         return l.checkingForUpdates;
       case 'AVAILABLE':
-        return state.targetVersion ? l.updateAvailable(state.targetVersion) : l.updateAvailableUnknown;
+        return l.microsoftStoreUpdateAvailable;
       case 'DOWNLOADING':
         return l.downloadingUpdate(progress);
       case 'READY':
-        return state.targetVersion ? l.updateReady(state.targetVersion) : l.updateReadyUnknown;
+        return l.updateReady;
       case 'INSTALLING':
         return l.installingUpdate;
       case 'UP_TO_DATE':
@@ -106,12 +100,11 @@ export function AppUpdateSection({ active }: Props) {
     if (state.phase === 'READY') {
       return { label: l.restartAndUpdate, run: () => window.desktopApi.appUpdateInstall(), icon: RefreshCwIcon };
     }
-    if (state.phase === 'ERROR') {
-      if (!state.error?.retryable) return null;
-      if (state.error?.action === 'DOWNLOAD' && state.error.retryable) {
+    if (state.phase === 'ERROR' && state.error?.retryable) {
+      if (state.error.action === 'DOWNLOAD') {
         return { label: l.retryUpdate, run: () => window.desktopApi.appUpdateDownload(), icon: RefreshCwIcon };
       }
-      if (state.error?.action === 'INSTALL') {
+      if (state.error.action === 'INSTALL') {
         return { label: l.retryUpdate, run: () => window.desktopApi.appUpdateInstall(), icon: RefreshCwIcon };
       }
       return { label: l.retryUpdate, run: () => window.desktopApi.appUpdateCheck(), icon: RefreshCwIcon };
@@ -120,40 +113,59 @@ export function AppUpdateSection({ active }: Props) {
   })();
 
   const ActionIcon = action?.icon;
+  const needsAttention =
+    requestFailed ||
+    phase === 'AVAILABLE' ||
+    phase === 'DOWNLOADING' ||
+    phase === 'READY' ||
+    phase === 'INSTALLING' ||
+    phase === 'ERROR';
   return (
-    <div className="grid gap-2">
-      <Label>{l.softwareUpdates}</Label>
-      <div className="grid gap-3 rounded-md border bg-background p-3">
-        <div className="flex min-w-0 items-start justify-between gap-3">
-          <div className="min-w-0" aria-live="polite">
-            <p className="text-sm text-foreground">{status}</p>
-            <MetaText className="mt-0.5 block">
-              {l.currentVersion}: {state?.currentVersion ?? '—'}
-            </MetaText>
-          </div>
-          {action && ActionIcon && (
-            <Button type="button" variant="outline" size="sm" disabled={busy} onClick={() => void run(action.run)}>
-              {busy ? <LoaderCircleIcon className="size-4 animate-spin" /> : <ActionIcon className="size-4" />}
-              {action.label}
-            </Button>
+    <div className={needsAttention ? 'grid gap-2 rounded-md border bg-background p-3' : 'grid gap-2 px-1.5'}>
+      <div className="flex min-w-0 items-center justify-between gap-3">
+        <p
+          className={needsAttention ? 'min-w-0 text-xs text-foreground' : 'min-w-0 text-xs text-muted-foreground'}
+          aria-live="polite"
+        >
+          <span className="tabular-nums">
+            {l.currentVersion}: {state?.currentVersion ?? '—'}
+          </span>
+          {status && (
+            <>
+              <span aria-hidden="true"> · </span>
+              <span>{status}</span>
+            </>
           )}
-        </div>
-        {phase === 'DOWNLOADING' && (
-          <div
-            className="h-1.5 overflow-hidden rounded-full bg-surface-sunken"
-            role="progressbar"
-            aria-label={l.downloadingUpdate(progress)}
-            aria-valuemin={0}
-            aria-valuemax={100}
-            aria-valuenow={progress}
+        </p>
+        {action && ActionIcon && (
+          <Button
+            type="button"
+            variant={needsAttention ? 'outline' : 'ghost'}
+            size="sm"
+            className={needsAttention ? undefined : 'px-2 text-muted-foreground'}
+            disabled={busy}
+            onClick={() => void run(action.run)}
           >
-            <span
-              className="block h-full rounded-full bg-selected-foreground transition-[width] duration-base"
-              style={{ width: `${progress}%` }}
-            />
-          </div>
+            {busy ? <LoaderCircleIcon className="size-4 animate-spin" /> : <ActionIcon className="size-4" />}
+            {action.label}
+          </Button>
         )}
       </div>
+      {phase === 'DOWNLOADING' && (
+        <div
+          className="h-1.5 overflow-hidden rounded-full bg-surface-sunken"
+          role="progressbar"
+          aria-label={l.downloadingUpdate(progress)}
+          aria-valuemin={0}
+          aria-valuemax={100}
+          aria-valuenow={progress}
+        >
+          <span
+            className="block h-full rounded-full bg-selected-foreground transition-[width] duration-base"
+            style={{ width: `${progress}%` }}
+          />
+        </div>
+      )}
     </div>
   );
 }

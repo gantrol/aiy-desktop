@@ -25,7 +25,6 @@ import { ANTIGRAVITY_CLI_IMAGE_MODEL_ID, ANTIGRAVITY_CLI_PROVIDER_KEY } from '@/
 const GENERATION_TIMEOUT_MS = 15 * 60_000;
 const MAX_DISCOVERED_FILES = 1_000;
 
-const initEventSchema = z.object({ conversation_id: z.string().min(1).max(500) }).passthrough();
 const toolStepSchema = z
   .object({
     step_type: z.literal('tool'),
@@ -280,8 +279,7 @@ export class AntigravityImageAdapter implements GenerationAdapter {
     onConversation: (id: string) => void,
   ) {
     if (event.event === 'init') {
-      const init = initEventSchema.parse(event.init);
-      onConversation(init.conversation_id);
+      onConversation(event.conversation_id);
       return;
     }
     if (event.event !== 'step_update') return;

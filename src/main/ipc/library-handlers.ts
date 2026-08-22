@@ -17,6 +17,7 @@ import {
   materialAlbumAddManySchema,
   materialAlbumCreateSchema,
   materialAlbumListSchema,
+  materialAlbumMoveSchema,
   materialAlbumRemoveSchema,
   materialAlbumRenameSchema,
   materialMetadataUpdateSchema,
@@ -32,6 +33,9 @@ export function registerLibraryIpc(ipcMain: IpcHandlerRegistrar, database: Libra
   );
   ipcMain.handle('material-albums:rename', (_event, raw) =>
     database.renameMaterialAlbum(materialAlbumRenameSchema.parse(raw)),
+  );
+  ipcMain.handle('material-albums:move', (_event, raw) =>
+    database.moveMaterialAlbum(materialAlbumMoveSchema.parse(raw)),
   );
   ipcMain.handle('material-albums:delete', (_event, rawId) => database.deleteMaterialAlbum(id.parse(rawId)));
   ipcMain.handle('material-albums:add-many', (_event, raw) =>

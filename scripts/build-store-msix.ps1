@@ -90,6 +90,21 @@ function Remove-BuildDirectory {
   }
 }
 
+function Resolve-MSBuildPath {
+  $vsWherePath = Join-Path ${env:ProgramFiles(x86)} 'Microsoft Visual Studio\Installer\vswhere.exe'
+  if (-not (Test-Path -LiteralPath $vsWherePath)) {
+    throw "Visual Studio Installer discovery tool is missing: $vsWherePath"
+  }
+
+  $matches = @(
+    & $vsWherePath -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -find 'MSBuild\**\Bin\MSBuild.exe'
+  )
+  if ($LASTEXITCODE -ne 0 -or $matches.Count -eq 0) {
+    throw 'Visual Studio with the MSVC x64 build tools is required to build the Store update helper.'
+  }
+  return [string]$matches[0]
+}
+
 if ($env:OS -ne 'Windows_NT') {
   throw 'Microsoft Store MSIX packages must be built on Windows.'
 }
@@ -98,10 +113,11 @@ $repositoryRoot = [System.IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..'))
 $packageJsonPath = Join-Path $repositoryRoot 'package.json'
 $manifestPath = Join-Path $repositoryRoot 'build\msix\Package.appxmanifest'
 $assetDirectory = Join-Path $repositoryRoot 'build\msix\Assets'
+$storeUpdateProject = Join-Path $repositoryRoot 'native\store-update-helper\store-update-helper.vcxproj'
 $electronBuilder = Join-Path $repositoryRoot 'node_modules\.bin\electron-builder.cmd'
 $winApp = Join-Path $repositoryRoot 'node_modules\.bin\winapp.cmd'
 
-foreach ($requiredPath in @($packageJsonPath, $manifestPath, $assetDirectory, $electronBuilder, $winApp)) {
+foreach ($requiredPath in @($packageJsonPath, $manifestPath, $assetDirectory, $storeUpdateProject, $electronBuilder, $winApp)) {
   if (-not (Test-Path -LiteralPath $requiredPath)) {
     throw "Required Store build input is missing: $requiredPath"
   }
@@ -139,6 +155,9 @@ $buildRoot = Join-Path $repositoryRoot "release\store-msix-$appVersion"
 $modeName = if ($LocalTest) { 'local-test' } else { 'submission' }
 $modeRoot = Join-Path $buildRoot $modeName
 $electronBuilderOutput = Join-Path $modeRoot 'electron-builder'
+$nativeBuildDirectory = Join-Path $modeRoot 'store-update-helper-build'
+$nativeOutputDirectory = Join-Path $nativeBuildDirectory 'out'
+$nativeIntermediateDirectory = Join-Path $nativeBuildDirectory 'obj'
 $stagingDirectory = Join-Path $modeRoot 'staging'
 $inspectionDirectory = Join-Path $modeRoot 'inspection'
 $certificateDirectory = Join-Path $modeRoot 'certificate'
@@ -153,6 +172,35 @@ if (Test-Path -LiteralPath $validatedModeRoot) {
   Remove-Item -LiteralPath $validatedModeRoot -Recurse -Force
 }
 New-Item -ItemType Directory -Path $validatedModeRoot | Out-Null
+
+$msBuild = Resolve-MSBuildPath
+Write-Host "Building the Microsoft Store update helper for AIY $appVersion..."
+Invoke-CheckedCommand -FilePath $msBuild -Arguments @(
+  $storeUpdateProject,
+  '/nologo',
+  '/m',
+  '/p:Configuration=Release',
+  '/p:Platform=x64',
+  "/p:OutDir=$nativeOutputDirectory$([System.IO.Path]::DirectorySeparatorChar)",
+  "/p:IntDir=$nativeIntermediateDirectory$([System.IO.Path]::DirectorySeparatorChar)"
+)
+
+$compiledStoreUpdateHelper = Join-Path $nativeOutputDirectory 'aiy-store-update.exe'
+if (-not (Test-Path -LiteralPath $compiledStoreUpdateHelper)) {
+  throw "The Store update helper build did not produce the expected executable: $compiledStoreUpdateHelper"
+}
+$protocolOutput = @(& $compiledStoreUpdateHelper protocol-version)
+if ($LASTEXITCODE -ne 0 -or $protocolOutput.Count -ne 1) {
+  throw 'The Store update helper protocol validation command failed.'
+}
+try {
+  $helperProtocol = $protocolOutput[0] | ConvertFrom-Json
+}
+catch {
+  throw 'The Store update helper returned malformed protocol metadata.'
+}
+Assert-Equal -Label 'Store update helper protocol type' -Actual ([string]$helperProtocol.type) -Expected 'protocol'
+Assert-Equal -Label 'Store update helper protocol version' -Actual ([string]$helperProtocol.version) -Expected '1'
 
 Write-Host "Building Electron x64 layout for AIY $appVersion..."
 Invoke-CheckedCommand -FilePath $electronBuilder -Arguments @(
@@ -172,6 +220,9 @@ if (-not (Test-Path -LiteralPath (Join-Path $unpackedDirectory 'aiy.exe'))) {
 New-Item -ItemType Directory -Path $stagingDirectory | Out-Null
 Get-ChildItem -LiteralPath $unpackedDirectory -Force | Copy-Item -Destination $stagingDirectory -Recurse -Force
 Copy-Item -LiteralPath $assetDirectory -Destination (Join-Path $stagingDirectory 'Assets') -Recurse -Force
+$storeUpdateResourceDirectory = Join-Path $stagingDirectory 'resources\store-update'
+New-Item -ItemType Directory -Path $storeUpdateResourceDirectory | Out-Null
+Copy-Item -LiteralPath $compiledStoreUpdateHelper -Destination (Join-Path $storeUpdateResourceDirectory 'aiy-store-update.exe') -Force
 
 $contentPackRoot = Join-Path $stagingDirectory 'resources\content-packs'
 $bundledContentPacks = @(
@@ -242,6 +293,22 @@ if (Test-Path -LiteralPath (Join-Path $inspectionDirectory 'resources\content-pa
 if (Test-Path -LiteralPath (Join-Path $inspectionDirectory 'Package.appxmanifest')) {
   throw 'The source Package.appxmanifest was accidentally included as application payload.'
 }
+$packedStoreUpdateHelper = Join-Path $inspectionDirectory 'resources\store-update\aiy-store-update.exe'
+if (-not (Test-Path -LiteralPath $packedStoreUpdateHelper)) {
+  throw 'The Store package is missing the native update helper.'
+}
+$packedProtocolOutput = @(& $packedStoreUpdateHelper protocol-version)
+if ($LASTEXITCODE -ne 0 -or $packedProtocolOutput.Count -ne 1) {
+  throw 'The packed Store update helper protocol validation command failed.'
+}
+try {
+  $packedHelperProtocol = $packedProtocolOutput[0] | ConvertFrom-Json
+}
+catch {
+  throw 'The packed Store update helper returned malformed protocol metadata.'
+}
+Assert-Equal -Label 'Packed Store update helper protocol type' -Actual ([string]$packedHelperProtocol.type) -Expected 'protocol'
+Assert-Equal -Label 'Packed Store update helper protocol version' -Actual ([string]$packedHelperProtocol.version) -Expected '1'
 
 $signaturePath = Join-Path $inspectionDirectory 'AppxSignature.p7x'
 if ($LocalTest -and -not (Test-Path -LiteralPath $signaturePath)) {
@@ -265,6 +332,7 @@ $metadata = [ordered]@{
   publisherDisplayName = $expectedPublisherDisplayName
   architecture = 'x64'
   deviceFamily = 'Windows.Desktop'
+  storeUpdateProtocolVersion = 1
   signedForLocalTest = [bool]$LocalTest
   sourceCommit = $sourceCommit
   sourceDirty = $sourceDirty
@@ -286,6 +354,7 @@ $metadata = [ordered]@{
 Remove-BuildDirectory -Path $stagingDirectory -BuildRoot $modeRoot
 Remove-BuildDirectory -Path $inspectionDirectory -BuildRoot $modeRoot
 Remove-BuildDirectory -Path $electronBuilderOutput -BuildRoot $modeRoot
+Remove-BuildDirectory -Path $nativeBuildDirectory -BuildRoot $modeRoot
 
 Write-Host ''
 Write-Host "MSIX ready: $artifactPath"

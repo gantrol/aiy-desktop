@@ -12,6 +12,7 @@ export const CODEX_CLI_PROVIDER_KEY = 'codex-cli';
 export const CODEX_APP_SERVER_CONNECTION_ID = `${CODEX_APP_SERVER_EXTENSION_ID}:app-server`;
 export const CODEX_CLI_CONNECTION_ID = `${CODEX_APP_SERVER_EXTENSION_ID}:cli`;
 export const CODEX_IMAGE_DISCOVERY_EXTENSION_ID = 'com.aiy.codex-image-discovery';
+export const CODEX_USAGE_INVESTIGATOR_EXTENSION_ID = 'com.aiy.codex-usage-investigator';
 export const ANTIGRAVITY_CLI_EXTENSION_ID = 'com.aiy.antigravity-cli';
 export const ANTIGRAVITY_CLI_PROVIDER_KEY = 'antigravity-cli';
 export const ANTIGRAVITY_CLI_CONNECTION_ID = `${ANTIGRAVITY_CLI_EXTENSION_ID}:cli`;

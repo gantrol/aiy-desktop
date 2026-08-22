@@ -1,0 +1,34 @@
+{
+  "manifestVersion": 1,
+  "kind": "CAPABILITY",
+  "id": "com.aiy.codex-usage-investigator",
+  "version": "0.1.1",
+  "displayName": "Did Codex Work Hard Today?",
+  "description": "Deduplicate Token history across sessions, align it to continuous weekly quota observations, and show model and cache shares.",
+  "engines": {
+    "aiy": "^0.3.0"
+  },
+  "runtime": {
+    "kind": "HOST",
+    "id": "codex-usage-investigator"
+  },
+  "contributes": {
+    "commands": ["codexUsage.scan", "codexUsage.pause", "codexUsage.resume", "codexUsage.export"],
+    "workflows": ["codexUsage.investigate"]
+  },
+  "permissions": ["filesystem.read:codex-session-usage", "filesystem.write:user-selected-export"],
+  "optionalPermissions": ["codex:account-rate-limits"],
+  "i18n": {
+    "defaultLocale": "en",
+    "locales": {
+      "en": {
+        "displayName": "Did Codex Work Hard Today?",
+        "description": "Deduplicate Token history across sessions, align it to continuous weekly quota observations, and show model and cache shares."
+      },
+      "zh": {
+        "displayName": "今天Codex努力了吗",
+        "description": "跨会话去重 Token 历史并对齐连续周额度观测段，再展示每 1% 额度、模型与缓存占比。"
+      }
+    }
+  }
+}

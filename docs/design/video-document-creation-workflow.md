@@ -314,7 +314,7 @@ GPU 等效电费 = GPU 电量 kWh × 当地电价
 - 完整视频输入可以经过 FFmpeg、受管 WSL/Qwen、逐字稿提交和重开读取；
 - 公开仓库不保存详细测试、夹具、trace 或失败证据。
 
-详细 unit、component、integration 与硬件 E2E 位于工作区约定的私有测试仓库 `D:\CatAI\aiy-desktop-test`，通过 `SUT_ROOT=D:\CatAI\ai-beauty-dictionary\apps\desktop` 引用产品源码。本文只记录公开的产品契约，不复制私有场景内容。
+详细 unit、component、integration 与硬件 E2E 不属于本文的公开产品契约。本文只记录公开的产品行为和验收边界，不复制具体测试场景内容。
 
 ## 15. 多语字幕翻译
 

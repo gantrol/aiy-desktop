@@ -1,5 +1,6 @@
 import { forwardRef, useEffect, useImperativeHandle, useRef, useState, type ReactNode } from 'react';
 import type { IntakeCommitResult, NewExternalCreationImportResult, PromptSeriesDto } from '@/shared/contracts';
+import { hasExternalFilesDrag, hasMaterialsDrag } from '@/renderer/components/albums/albumDrag';
 import { imageImportItems } from '@/renderer/components/creator/imageImport';
 import { Dialog, DialogContent } from '@/renderer/components/ui/dialog';
 import { useI18n } from '@/renderer/i18n/useI18n';
@@ -138,10 +139,37 @@ export const GalleryIntakeAdapter = forwardRef<GalleryIntakeAdapterHandle, Props
       data-intake-state={state.status}
       aria-busy={reviewBusy}
       className="relative flex size-full min-h-0 flex-col overflow-hidden"
-      onDragEnter={controller.onDragEnter}
-      onDragOver={controller.onDragOver}
-      onDragLeave={controller.onDragLeave}
+      onDragEnterCapture={(event) => {
+        if (hasMaterialsDrag(event.dataTransfer)) controller.cancelDrag();
+      }}
+      onDragEnter={(event) => {
+        if (!hasExternalFilesDrag(event.dataTransfer)) return;
+        controller.onDragEnter(event);
+      }}
+      onDragOver={(event) => {
+        if (hasMaterialsDrag(event.dataTransfer)) {
+          event.preventDefault();
+          event.dataTransfer.dropEffect = 'none';
+          return;
+        }
+        if (hasExternalFilesDrag(event.dataTransfer)) controller.onDragOver(event);
+      }}
+      onDragLeave={(event) => {
+        if (hasMaterialsDrag(event.dataTransfer)) {
+          controller.cancelDrag();
+          return;
+        }
+        controller.onDragLeave(event);
+      }}
       onDrop={(event) => {
+        if (hasMaterialsDrag(event.dataTransfer)) {
+          event.preventDefault();
+          setDropTarget(null);
+          controller.cancelDrag();
+          return;
+        }
+        if (!hasExternalFilesDrag(event.dataTransfer)) return;
+        if (event.defaultPrevented) return;
         setDropTarget(null);
         controller.onDrop(event);
       }}

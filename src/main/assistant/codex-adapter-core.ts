@@ -1,7 +1,8 @@
 import type { ChildProcessWithoutNullStreams } from 'node:child_process';
 import { existsSync, lstatSync, readdirSync, realpathSync } from 'node:fs';
 import path from 'node:path';
-import type { CodexHealth, CodexTextModelDto, GenerationInput } from '@/shared/contracts';
+import type { CodexHealth, CodexTextModelDto, CodexUsageQuotaSnapshot, GenerationInput } from '@/shared/contracts';
+import { codexUsageQuotaSnapshotSchema } from '@/shared/contracts/codex-usage';
 import {
   type CodexAdapterLifecycleOptions,
   type CodexThreadContext,
@@ -21,6 +22,7 @@ import {
 import { LibraryDatabase } from '@/main/database';
 import type { ExtensionThreadScopeKind } from '@/main/database/extensions/extension-repository';
 import { CodexAppServerClient, CodexAppServerRpcError } from '@/main/extensions/codex-app-server/client';
+import type { CodexAppServerRateLimitSnapshot } from '@/main/extensions/codex-app-server/protocol';
 import { CODEX_APP_SERVER_EXTENSION_ID } from '@/shared/extension-ids';
 import { validatePngFile } from '@/main/media/png-validation';
 
@@ -151,6 +153,75 @@ export class CodexAdapterCore {
     const models = await this.appServer.listModels();
     throwIfCodexCancelled(signal);
     return models;
+  }
+
+  async readUsageQuota(signal?: AbortSignal): Promise<CodexUsageQuotaSnapshot> {
+    throwIfCodexCancelled(signal);
+    if (!this.health.authenticated) await this.refreshHealth(signal);
+    if (!this.health.authenticated) throw new Error(this.health.message);
+    const [account, response] = await Promise.all([this.appServer.readAccount(), this.appServer.readRateLimits()]);
+    throwIfCodexCancelled(signal);
+    const snapshots: Array<{ snapshot: CodexAppServerRateLimitSnapshot; fallbackId: string | null }> = [
+      { snapshot: response.rateLimits, fallbackId: null },
+      ...Object.entries(response.rateLimitsByLimitId ?? {}).map(([limitId, snapshot]) => ({
+        snapshot,
+        fallbackId: limitId,
+      })),
+    ];
+    const seen = new Set<string>();
+    const limits = snapshots.flatMap(({ snapshot, fallbackId }, index) => {
+      const limitId = snapshot.limitId ?? fallbackId;
+      const key = limitId ?? `${snapshot.limitName ?? ''}:${snapshot.planType ?? ''}:${index}`;
+      if (seen.has(key)) return [];
+      seen.add(key);
+      return [
+        {
+          limitId: limitId ?? null,
+          limitName: snapshot.limitName ?? null,
+          planType: snapshot.planType ?? null,
+          primary: snapshot.primary
+            ? {
+                usedPercent: snapshot.primary.usedPercent,
+                windowDurationMins: snapshot.primary.windowDurationMins,
+                resetsAt: snapshot.primary.resetsAt,
+              }
+            : null,
+          secondary: snapshot.secondary
+            ? {
+                usedPercent: snapshot.secondary.usedPercent,
+                windowDurationMins: snapshot.secondary.windowDurationMins,
+                resetsAt: snapshot.secondary.resetsAt,
+              }
+            : null,
+          rateLimitReachedType: snapshot.rateLimitReachedType ?? null,
+        },
+      ];
+    });
+    const credits = snapshots.find(({ snapshot }) => snapshot.credits)?.snapshot.credits ?? null;
+    const individualLimit =
+      snapshots.find(({ snapshot }) => snapshot.individualLimit)?.snapshot.individualLimit ?? null;
+    const accountPlan = account.account?.type === 'chatgpt' ? account.account.planType : null;
+    return codexUsageQuotaSnapshotSchema.parse({
+      capturedAt: new Date().toISOString(),
+      planType: response.rateLimits.planType ?? accountPlan,
+      limits,
+      credits: credits
+        ? {
+            hasCredits: credits.hasCredits,
+            unlimited: credits.unlimited,
+            balance: credits.balance,
+          }
+        : null,
+      individualLimit: individualLimit
+        ? {
+            limit: individualLimit.limit,
+            used: individualLimit.used,
+            remainingPercent: individualLimit.remainingPercent,
+            resetsAt: individualLimit.resetsAt,
+          }
+        : null,
+      resetCreditCount: response.rateLimitResetCredits?.availableCount ?? 0,
+    });
   }
 
   protected async getOrCreateThread(

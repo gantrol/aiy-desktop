@@ -8,7 +8,7 @@
   <Identity
     Name="Gantrol.AIY"
     Publisher="CN=C15001B6-7C6F-41AE-9600-3F68EF6CBD5A"
-    Version="1.3.3.0"
+    Version="1.3.5.0"
     ProcessorArchitecture="x64" />
   <Properties>
     <DisplayName>AIY</DisplayName>

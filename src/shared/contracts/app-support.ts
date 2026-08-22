@@ -1,5 +1,5 @@
 import { z } from 'zod';
 
-export const appSupportDestinationSchema = z.enum(['PRIVACY_POLICY', 'AI_CONTENT_REPORT']);
+export const appSupportDestinationSchema = z.literal('PRIVACY_POLICY');
 
 export type AppSupportDestination = z.infer<typeof appSupportDestinationSchema>;
