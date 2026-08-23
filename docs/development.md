@@ -6,21 +6,29 @@ This document covers engineering workflows for `apps/desktop`. For the product o
 
 - Windows 10/11 x64 for the Windows build.
 - Apple Silicon (arm64) macOS for the `v0.3.1` macOS package.
+- Ubuntu 22.04/24.04 x64 for source evaluation (no Linux package is produced).
 - Node.js 22 or newer.
 
-The current build and validation targets are Windows and macOS. Linux is not in the packaging scope of this project.
+The maintained packaging target is Windows. Ubuntu x64 can run the application
+from source with the normal npm workflow, but Linux packaging and distribution
+are not in scope.
 
 ## Run from source
 
-Run commands from `apps/desktop`:
+Run commands from the repository root:
 
-```powershell
-cd apps/desktop
+```bash
 npm ci
 npm run dev
 ```
 
 `npm run dev` installs the Electron version required by the project first. Renderer changes use Vite HMR; main/preload changes rebuild and restart Electron. After changing `electron.vite.config.ts`, stop the dev process completely and start it again so the host reloads its entry configuration.
+
+On Linux, the npm-installed Chromium setuid helper cannot be owned by root, and
+Ubuntu 24.04 restricts its unprivileged-user-namespace fallback. The source-only
+development launcher therefore passes Electron's `--no-sandbox` option on Linux.
+Only run a checkout you trust. Packaged renderer processes retain the sandbox
+configured by the application.
 
 Packaged installations do not require Node.js.
 
@@ -31,6 +39,7 @@ The first launch creates an empty, user-owned library. The default data location
 ```text
 Windows: %APPDATA%/AIY/libraries/
 macOS:   ~/Library/Application Support/AIY/libraries/
+Linux:   ~/.config/AIY/libraries/
 
 libraries/
 ├─ index.json

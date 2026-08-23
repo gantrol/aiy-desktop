@@ -102,7 +102,7 @@ If you have also watched the image count rise while your prompts became harder t
 
 ## Run from source
 
-You need Node.js 22 or newer. For the corresponding AI features, you will also need model credentials or an authenticated Codex CLI.
+You need Node.js 22 or newer. The normal npm workflow supports source evaluation on Windows, macOS, and Ubuntu x64; Linux packages are not currently distributed. For the corresponding AI features, you will also need model credentials or an authenticated Codex CLI.
 
 ```bash
 git clone https://github.com/gantrol/aiy-desktop.git

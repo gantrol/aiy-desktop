@@ -101,7 +101,7 @@ AIY 目前仍处于早期开发阶段。到 v0.3.5，图像创作与素材库已
 
 ## 从源码运行
 
-需要 Node.js 22 或更高版本；使用对应 AI 功能时，还需要模型凭据或已登录的 Codex CLI。
+需要 Node.js 22 或更高版本。Windows、macOS 和 Ubuntu x64 均可使用标准 npm 流程从源码试用；Linux 当前不提供安装包。使用对应 AI 功能时，还需要模型凭据或已登录的 Codex CLI。
 
 ```bash
 git clone https://github.com/gantrol/aiy-desktop.git
