@@ -8,13 +8,14 @@ Microsoft Store 安装用户不需要 Node.js。安装后直接启动应用即�
 
 ## 从源码运行
 
-开发环境需要 Node.js 22 或更新版本：
+开发环境需要 Node.js 22 或更新版本。Windows、macOS 和 Ubuntu x64 均可按下面的方式从源码启动；Linux 当前只用于源码试用，不提供安装包：
 
-```powershell
-cd apps/desktop
+```bash
 npm ci
 npm run dev
 ```
+
+Ubuntu 的源码开发进程会关闭 Chromium 进程沙箱，以兼容 npm 安装的 Electron 与 Ubuntu 24.04 的 AppArmor 用户命名空间限制；只应运行可信源码。该行为不改变正式打包应用的渲染进程沙箱配置。
 
 不要复用其他 checkout 或机器生成的 `node_modules/`、`out/`、`release/`。原生依赖和发行 bundle 必须从当前源码重新安装、构建。
 
@@ -42,10 +43,12 @@ npm test
 
 默认根目录由 Electron 的应用数据目录决定：
 
-| 运行方式         | 逻辑目录                        |
-| ---------------- | ------------------------------- |
-| Microsoft Store  | Store 应用数据中的 `AIY-Store/` |
-| Windows 源码开发 | `%APPDATA%/AIY/`                |
+| 运行方式         | 逻辑目录                             |
+| ---------------- | ------------------------------------ |
+| Microsoft Store  | Store 应用数据中的 `AIY-Store/`      |
+| Windows 源码开发 | `%APPDATA%/AIY/`                     |
+| macOS 源码开发   | `~/Library/Application Support/AIY/` |
+| Ubuntu 源码试用  | `~/.config/AIY/`                     |
 
 目录通常包含：
 

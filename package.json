@@ -18,7 +18,7 @@
   "scripts": {
     "electron:install": "install-electron --no",
     "predev": "npm run electron:install",
-    "dev": "electron-vite dev --watch",
+    "dev": "node scripts/run-electron-vite-dev.mjs",
     "prestart": "npm run electron:install",
     "start": "electron-vite dev --watch",
     "build": "electron-vite build",
@@ -85,9 +85,11 @@
     "unified": "^11.0.5",
     "zod": "4.4.3"
   },
+  "optionalDependencies": {
+    "@microsoft/winappcli": "0.6.0"
+  },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
-    "@microsoft/winappcli": "0.6.0",
     "@tailwindcss/vite": "4.3.3",
     "@types/better-sqlite3": "7.6.13",
     "@types/node": "24.10.0",

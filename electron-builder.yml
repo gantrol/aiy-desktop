@@ -7,6 +7,9 @@ files:
   - out/preload/**
   - out/renderer/**
   - '!out/**/*.map'
+  # Build-time only. Windows installs it for the Store MSIX workflow; other
+  # platforms skip it through optionalDependencies.
+  - '!node_modules/@microsoft/winappcli/**'
   - package.json
 asar: true
 electronFuses:
