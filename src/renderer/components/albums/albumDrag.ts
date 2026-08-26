@@ -2,7 +2,7 @@ import type { DragEvent as ReactDragEvent } from 'react';
 import type { MaterialSelectionTargetInput } from '@/shared/contracts';
 
 export const ALBUM_DRAG_TYPE = 'application/x-aiy-album';
-export const CREATION_DRAG_TYPE = 'application/x-aiy-creation';
+export const CREATION_ITEM_DRAG_TYPE = 'application/x-aiy-creation-item';
 export const CREATION_COLLECTION_DRAG_TYPE = 'application/x-aiy-creation-collection';
 export const MATERIAL_ALBUM_DRAG_TYPE = 'application/x-aiy-material-album';
 export const MATERIALS_DRAG_TYPE = 'application/x-aiy-materials';
@@ -158,23 +158,16 @@ export function writeAlbumDrag(dataTransfer: DataTransfer, albumId: string) {
   dataTransfer.setData('text/plain', albumId);
 }
 
-export function writeCreationDrag(dataTransfer: DataTransfer, seriesIds: string | readonly string[]) {
-  const ids = [...new Set((typeof seriesIds === 'string' ? [seriesIds] : seriesIds).filter(Boolean))];
+export function writeCreationItemDrag(dataTransfer: DataTransfer, creationItemId: string) {
+  const id = creationItemId.trim();
+  if (!id) throw new Error('A creation-item drag requires an ID');
   dataTransfer.effectAllowed = 'move';
-  dataTransfer.setData(CREATION_DRAG_TYPE, JSON.stringify(ids));
-  dataTransfer.setData('text/plain', ids[0] ?? '');
+  dataTransfer.setData(CREATION_ITEM_DRAG_TYPE, id);
+  dataTransfer.setData('text/plain', id);
 }
 
-export function readCreationDrag(dataTransfer: DataTransfer): string[] {
-  const value = dataTransfer.getData(CREATION_DRAG_TYPE);
-  if (!value) return [];
-  try {
-    const parsed = JSON.parse(value) as unknown;
-    if (!Array.isArray(parsed)) return [];
-    return [...new Set(parsed.filter((item): item is string => typeof item === 'string' && Boolean(item)))];
-  } catch {
-    return [];
-  }
+export function readCreationItemDrag(dataTransfer: DataTransfer): string | null {
+  return dataTransfer.getData(CREATION_ITEM_DRAG_TYPE).trim() || null;
 }
 
 export function writeMaterialsDrag(dataTransfer: DataTransfer, targets: readonly MaterialSelectionTargetInput[]) {

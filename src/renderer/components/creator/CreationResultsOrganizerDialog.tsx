@@ -1,4 +1,4 @@
-import { LoaderCircleIcon, PlusIcon, SparklesIcon } from 'lucide-react';
+import { ListFilterIcon, LoaderCircleIcon, PlusIcon } from 'lucide-react';
 import type { ImportedCreationOutputDto, PromptSeriesDto, PromptVersionCreateResult } from '@/shared/contracts';
 import { Button } from '@/renderer/components/ui/button';
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/renderer/components/ui/dialog';
@@ -95,7 +95,7 @@ function OrganizerToolbar({
         {labels.applyToSelected}
       </Button>
       <Button type="button" size="sm" variant="ghost" disabled={busy} onClick={onInfer}>
-        <SparklesIcon className="size-3.5" />
+        <ListFilterIcon className="size-3.5" />
         {labels.inferFromPrompt}
       </Button>
       <Button type="button" size="sm" variant="outline" className="ml-auto" disabled={busy} onClick={onCreateVersion}>

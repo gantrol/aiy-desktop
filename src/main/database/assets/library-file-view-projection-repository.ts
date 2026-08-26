@@ -336,17 +336,24 @@ export class LibraryFileViewProjectionRepository extends LibraryFileViewIndexRep
         JOIN albums album ON album.id = member.album_id AND album.deleted_at IS NULL
         JOIN materials material ON material.id = member.target_id
           AND material.kind IN ('IMAGE', 'VIDEO') AND material.deleted_at IS NULL
+          AND material.archived_at IS NULL
         JOIN image_assets asset ON asset.id = material.image_asset_id AND asset.deleted_at IS NULL
         WHERE member.target_type = 'MATERIAL' AND member.deleted_at IS NULL
         UNION
         SELECT member.album_id, run.result_asset_id AS asset_id
         FROM album_members member
         JOIN albums album ON album.id = member.album_id AND album.deleted_at IS NULL
-        JOIN prompt_series series ON series.id = member.target_id AND series.deleted_at IS NULL
+        JOIN creation_items item ON item.id = member.target_id
+          AND item.deleted_at IS NULL AND item.archived_at IS NULL
+        JOIN creation_forms form ON form.creation_item_id = item.id
+          AND form.role = 'IMAGE_CREATION' AND form.entity_type = 'PROMPT_SERIES'
+          AND form.deleted_at IS NULL
+        JOIN prompt_series series ON series.id = form.entity_id
+          AND series.deleted_at IS NULL AND series.archived_at IS NULL
         JOIN prompt_versions version ON version.series_id = series.id
         JOIN generation_runs run ON run.prompt_version_id = version.id
         JOIN image_assets asset ON asset.id = run.result_asset_id AND asset.deleted_at IS NULL
-        WHERE member.target_type = 'SERIES' AND member.deleted_at IS NULL
+        WHERE member.target_type = 'CREATION_ITEM' AND member.deleted_at IS NULL
           AND run.status = 'SUCCEEDED'
           AND NOT EXISTS (
             SELECT 1 FROM prompt_series_output_exclusions exclusion
@@ -356,11 +363,17 @@ export class LibraryFileViewProjectionRepository extends LibraryFileViewIndexRep
         SELECT member.album_id, imported.image_asset_id AS asset_id
         FROM album_members member
         JOIN albums album ON album.id = member.album_id AND album.deleted_at IS NULL
-        JOIN prompt_series series ON series.id = member.target_id AND series.deleted_at IS NULL
+        JOIN creation_items item ON item.id = member.target_id
+          AND item.deleted_at IS NULL AND item.archived_at IS NULL
+        JOIN creation_forms form ON form.creation_item_id = item.id
+          AND form.role = 'IMAGE_CREATION' AND form.entity_type = 'PROMPT_SERIES'
+          AND form.deleted_at IS NULL
+        JOIN prompt_series series ON series.id = form.entity_id
+          AND series.deleted_at IS NULL AND series.archived_at IS NULL
         JOIN creation_output_imports imported ON imported.series_id = series.id
           AND imported.deleted_at IS NULL
         JOIN image_assets asset ON asset.id = imported.image_asset_id AND asset.deleted_at IS NULL
-        WHERE member.target_type = 'SERIES' AND member.deleted_at IS NULL
+        WHERE member.target_type = 'CREATION_ITEM' AND member.deleted_at IS NULL
           AND NOT EXISTS (
             SELECT 1 FROM prompt_series_output_exclusions exclusion
             WHERE exclusion.series_id = series.id AND exclusion.image_asset_id = imported.image_asset_id
@@ -369,11 +382,17 @@ export class LibraryFileViewProjectionRepository extends LibraryFileViewIndexRep
         SELECT member.album_id, transform.output_asset_id AS asset_id
         FROM album_members member
         JOIN albums album ON album.id = member.album_id AND album.deleted_at IS NULL
-        JOIN prompt_series series ON series.id = member.target_id AND series.deleted_at IS NULL
+        JOIN creation_items item ON item.id = member.target_id
+          AND item.deleted_at IS NULL AND item.archived_at IS NULL
+        JOIN creation_forms form ON form.creation_item_id = item.id
+          AND form.role = 'IMAGE_CREATION' AND form.entity_type = 'PROMPT_SERIES'
+          AND form.deleted_at IS NULL
+        JOIN prompt_series series ON series.id = form.entity_id
+          AND series.deleted_at IS NULL AND series.archived_at IS NULL
         JOIN image_transform_runs transform ON transform.series_id = series.id
           AND transform.deleted_at IS NULL
         JOIN image_assets asset ON asset.id = transform.output_asset_id AND asset.deleted_at IS NULL
-        WHERE member.target_type = 'SERIES' AND member.deleted_at IS NULL
+        WHERE member.target_type = 'CREATION_ITEM' AND member.deleted_at IS NULL
           AND NOT EXISTS (
             SELECT 1 FROM prompt_series_output_exclusions exclusion
             WHERE exclusion.series_id = series.id AND exclusion.image_asset_id = transform.output_asset_id
@@ -382,11 +401,17 @@ export class LibraryFileViewProjectionRepository extends LibraryFileViewIndexRep
         SELECT member.album_id, binding.image_asset_id AS asset_id
         FROM album_members member
         JOIN albums album ON album.id = member.album_id AND album.deleted_at IS NULL
-        JOIN prompt_series series ON series.id = member.target_id AND series.deleted_at IS NULL
+        JOIN creation_items item ON item.id = member.target_id
+          AND item.deleted_at IS NULL AND item.archived_at IS NULL
+        JOIN creation_forms form ON form.creation_item_id = item.id
+          AND form.role = 'IMAGE_CREATION' AND form.entity_type = 'PROMPT_SERIES'
+          AND form.deleted_at IS NULL
+        JOIN prompt_series series ON series.id = form.entity_id
+          AND series.deleted_at IS NULL AND series.archived_at IS NULL
         JOIN prompt_versions version ON version.series_id = series.id
         JOIN reference_bindings binding ON binding.prompt_version_id = version.id
         JOIN image_assets asset ON asset.id = binding.image_asset_id AND asset.deleted_at IS NULL
-        WHERE member.target_type = 'SERIES' AND member.deleted_at IS NULL
+        WHERE member.target_type = 'CREATION_ITEM' AND member.deleted_at IS NULL
         ORDER BY album_id, asset_id`,
       )
       .all() as JsonMap[];

@@ -106,15 +106,20 @@ function MaterialImagePickerSelectionStrip<T extends MaterialImagePickerImage>({
               setDraggingId(null);
             }}
           >
-            <img src={image.mediaUrl} alt="" className="size-full object-cover" draggable={false} />
-            <span className="absolute left-1 top-1 grid size-5 place-items-center rounded bg-overlay/90 text-[10px] font-semibold tabular-nums text-foreground shadow-sm">
+            <img
+              src={image.mediaUrl}
+              alt=""
+              className="size-full bg-media-surround-light object-contain"
+              draggable={false}
+            />
+            <span className="absolute left-1 top-1 grid size-5 place-items-center rounded bg-overlay/90 text-[10px] font-semibold tabular-nums text-foreground">
               {index + 1}
             </span>
             <Button
               type="button"
               variant="secondary"
               size="icon-sm"
-              className="absolute right-1 top-1 z-10 size-6 bg-overlay/90 shadow-sm"
+              className="absolute right-1 top-1 z-10 size-6 bg-overlay/90"
               aria-label={labels.deselectImage(index + 1)}
               title={labels.deselectImage(index + 1)}
               onPointerDown={(event) => event.stopPropagation()}
@@ -169,7 +174,7 @@ function MaterialImagePickerCandidate({
         draggable={false}
       />
       {selected && (
-        <span className="absolute right-2 top-2 z-20 grid size-6 place-items-center rounded-md border border-selected-border bg-selected text-xs font-semibold tabular-nums text-selected-foreground shadow-sm">
+        <span className="absolute right-2 top-2 z-20 grid size-6 place-items-center rounded-md border border-selected-border bg-selected text-xs font-semibold tabular-nums text-selected-foreground">
           {selectedIndex + 1}
         </span>
       )}
@@ -233,6 +238,7 @@ function pickerNavigationLabels(messages: ReturnType<typeof useI18n>['messages']
     open: albums.open,
     rename: albums.rename,
     renameTitle: albums.renameTitle,
+    archive: albums.archive,
     delete: albums.delete,
     deleteTitle: albums.deleteTitle,
     deleteDescription: (title: string) => `${albums.deleteDescription} · ${title}`,
@@ -473,6 +479,7 @@ export function MaterialImagePickerDialog<T extends MaterialImagePickerImage>({
             onSelectDictionary={(next) => onCollectionChange({ ...next, scope: 'ALL' })}
             onCreate={ignoreMaterialMutation}
             onRename={ignoreMaterialMutation}
+            onArchive={ignoreMaterialMutation}
             onDelete={ignoreMaterialMutation}
             onCollectMaterials={ignoreMaterialMutation}
           />

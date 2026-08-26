@@ -12,9 +12,10 @@ import type {
 import { ensureImageMaterials } from '@/main/database/albums/image-material-batch';
 import type { StoredObject } from '@/main/database/core/storage';
 import { type JsonMap, now, text } from '@/main/database/core/values';
-import { archiveIdeasForSeries } from '@/main/database/creations/idea-creation-lifecycle';
 import { WorkbenchPreparationRepository } from '@/main/database/generation/workbench-preparation-repository';
 import { jsonStringRecord, nullableDimension } from '@/main/database/generation/workbench-values';
+import { ContentLifecycleRepository } from '@/main/database/recovery/content-lifecycle-repository';
+import { CreationItemRepository } from '@/main/database/creations/creation-item-repository';
 import {
   resolveStoredTitle,
   titleLocalizationsByOwner,
@@ -257,8 +258,10 @@ export class WorkbenchRunRepository extends WorkbenchPreparationRepository {
         return { renamed: false };
       }
       const title = input.title.trim() || currentTitle || '新创作';
+      const timestamp = now();
       writeLocalizedTitle(this.db, 'PROMPT_SERIES', input.seriesId, locale, title);
       this.storage.recordChange('PROMPT_SERIES', input.seriesId, 'RENAME', { title, locale });
+      new CreationItemRepository(this.storage).touchForSeries(input.seriesId, timestamp);
       return { renamed: true };
     })();
   }
@@ -268,7 +271,7 @@ export class WorkbenchRunRepository extends WorkbenchPreparationRepository {
       const { seriesId, outputDisposition } = input;
       const existing = this.db
         .prepare('SELECT id FROM prompt_series WHERE id = ? AND deleted_at IS NULL')
-        .get(seriesId) as JsonMap | undefined;
+        .get(seriesId);
       if (!existing) throw new Error('Prompt series not found');
       const activeRun = this.db
         .prepare(
@@ -278,156 +281,15 @@ export class WorkbenchRunRepository extends WorkbenchPreparationRepository {
         )
         .get(seriesId);
       if (activeRun) throw new Error('Cannot delete a prompt series while it is generating');
-      const deletedAt = now();
-      const importedOutputRows = this.db
-        .prepare(
-          `SELECT id, image_asset_id FROM creation_output_imports
-          WHERE series_id = ? AND deleted_at IS NULL`,
-        )
-        .all(seriesId) as JsonMap[];
-      const transformedOutputRows = this.db
-        .prepare(
-          `SELECT id, output_asset_id FROM image_transform_runs
-          WHERE series_id = ? AND deleted_at IS NULL`,
-        )
-        .all(seriesId) as JsonMap[];
-      const associatedOutputAssetIds = (
-        this.db
-          .prepare(
-            `SELECT DISTINCT associated.id FROM (
-            SELECT gr.result_asset_id AS id FROM generation_runs gr
-            JOIN prompt_versions pv ON pv.id = gr.prompt_version_id
-            WHERE pv.series_id = ? AND gr.result_asset_id IS NOT NULL
-            UNION
-            SELECT imported.image_asset_id AS id FROM creation_output_imports imported
-            WHERE imported.series_id = ? AND imported.deleted_at IS NULL
-            UNION
-            SELECT transform.output_asset_id AS id FROM image_transform_runs transform
-            WHERE transform.series_id = ? AND transform.deleted_at IS NULL
-          ) associated
-          JOIN image_assets asset ON asset.id = associated.id
-          WHERE asset.deleted_at IS NULL`,
-          )
-          .all(seriesId, seriesId, seriesId) as JsonMap[]
-      ).map((row) => text(row.id));
-      if (outputDisposition === 'KEEP') ensureImageMaterials(this.storage, associatedOutputAssetIds);
-      const imageAssetIds =
-        outputDisposition === 'TRASH'
-          ? (
-              this.db
-                .prepare(
-                  `WITH associated(id) AS (
-                  SELECT gr.result_asset_id FROM generation_runs gr
-                  JOIN prompt_versions pv ON pv.id = gr.prompt_version_id
-                  WHERE pv.series_id = ? AND gr.result_asset_id IS NOT NULL
-                  UNION
-                  SELECT imported.image_asset_id FROM creation_output_imports imported
-                  WHERE imported.series_id = ? AND imported.deleted_at IS NULL
-                  UNION
-                  SELECT transform.output_asset_id FROM image_transform_runs transform
-                  WHERE transform.series_id = ? AND transform.deleted_at IS NULL
-                )
-                SELECT DISTINCT asset.id
-                FROM associated
-                JOIN image_assets asset ON asset.id = associated.id AND asset.deleted_at IS NULL
-                WHERE NOT EXISTS (
-                  SELECT 1 FROM generation_runs other_run
-                  JOIN prompt_versions other_version ON other_version.id = other_run.prompt_version_id
-                  JOIN prompt_series other_series ON other_series.id = other_version.series_id
-                    AND other_series.deleted_at IS NULL
-                  WHERE other_series.id <> ? AND other_run.result_asset_id = asset.id
-                ) AND NOT EXISTS (
-                  SELECT 1 FROM creation_output_imports other_import
-                  JOIN prompt_series other_series ON other_series.id = other_import.series_id
-                    AND other_series.deleted_at IS NULL
-                  WHERE other_series.id <> ? AND other_import.image_asset_id = asset.id
-                    AND other_import.deleted_at IS NULL
-                ) AND NOT EXISTS (
-                  SELECT 1 FROM image_transform_runs other_transform
-                  JOIN prompt_series other_series ON other_series.id = other_transform.series_id
-                    AND other_series.deleted_at IS NULL
-                  WHERE other_series.id <> ? AND other_transform.output_asset_id = asset.id
-                    AND other_transform.deleted_at IS NULL
-                ) AND NOT EXISTS (
-                  SELECT 1 FROM reference_bindings binding
-                  JOIN prompt_versions version ON version.id = binding.prompt_version_id
-                  JOIN prompt_series other_series ON other_series.id = version.series_id
-                    AND other_series.deleted_at IS NULL
-                  WHERE other_series.id <> ? AND binding.image_asset_id = asset.id
-                ) AND NOT EXISTS (
-                  SELECT 1 FROM prompt_versions source_version
-                  JOIN prompt_series other_series ON other_series.id = source_version.series_id
-                    AND other_series.deleted_at IS NULL
-                  WHERE other_series.id <> ? AND source_version.source_image_id = asset.id
-                ) AND NOT EXISTS (
-                  SELECT 1 FROM materials material
-                  JOIN album_members member ON member.target_type = 'MATERIAL'
-                    AND member.target_id = material.id AND member.deleted_at IS NULL
-                  JOIN albums owner ON owner.id = member.album_id AND owner.deleted_at IS NULL
-                  WHERE material.kind IN ('IMAGE', 'VIDEO') AND material.image_asset_id = asset.id
-                    AND material.deleted_at IS NULL
-                ) AND NOT EXISTS (
-                  SELECT 1 FROM materials material
-                  JOIN material_favorites favorite ON favorite.material_id = material.id
-                    AND favorite.deleted_at IS NULL
-                  WHERE material.kind IN ('IMAGE', 'VIDEO') AND material.image_asset_id = asset.id
-                    AND material.deleted_at IS NULL
-                ) AND NOT EXISTS (
-                  SELECT 1 FROM term_media_links media
-                  WHERE media.image_asset_id = asset.id AND media.deleted_at IS NULL
-                ) AND NOT EXISTS (
-                  SELECT 1 FROM term_evidence evidence WHERE evidence.image_asset_id = asset.id
-                ) AND NOT EXISTS (
-                  SELECT 1 FROM asset_derivations derivation
-                  JOIN image_assets child ON child.id = derivation.child_asset_id AND child.deleted_at IS NULL
-                  WHERE derivation.source_asset_id = asset.id
-                )`,
-                )
-                .all(seriesId, seriesId, seriesId, seriesId, seriesId, seriesId, seriesId, seriesId) as JsonMap[]
-            ).map((row) => text(row.id))
-          : [];
-      this.db.prepare('UPDATE prompt_series SET deleted_at = ? WHERE id = ?').run(deletedAt, seriesId);
-      archiveIdeasForSeries(this.storage, seriesId, deletedAt);
-      this.db
-        .prepare(
-          `UPDATE creation_output_imports SET deleted_at = ?
-          WHERE series_id = ? AND deleted_at IS NULL`,
-        )
-        .run(deletedAt, seriesId);
-      this.db
-        .prepare(
-          `UPDATE image_transform_runs SET deleted_at = ?
-          WHERE series_id = ? AND deleted_at IS NULL`,
-        )
-        .run(deletedAt, seriesId);
-      for (const output of importedOutputRows) {
-        this.db
-          .prepare("INSERT INTO tombstones VALUES (?, 'CREATION_OUTPUT_IMPORT', ?, ?, 'LOCAL_ONLY')")
-          .run(ulid(), output.id, deletedAt);
-        this.storage.recordChange('CREATION_OUTPUT_IMPORT', text(output.id), 'DELETE', { seriesId });
-      }
-      for (const output of transformedOutputRows) {
-        this.db
-          .prepare("INSERT INTO tombstones VALUES (?, 'IMAGE_TRANSFORM', ?, ?, 'LOCAL_ONLY')")
-          .run(ulid(), output.id, deletedAt);
-        this.storage.recordChange('IMAGE_TRANSFORM', text(output.id), 'DELETE', { seriesId });
-      }
-      for (const imageAssetId of imageAssetIds) {
-        this.db.prepare('UPDATE image_assets SET deleted_at = ? WHERE id = ?').run(deletedAt, imageAssetId);
-        this.db
-          .prepare("INSERT INTO tombstones VALUES (?, 'IMAGE_ASSET', ?, ?, 'LOCAL_ONLY')")
-          .run(ulid(), imageAssetId, deletedAt);
-        this.storage.recordChange('IMAGE_ASSET', imageAssetId, 'DELETE', { sourceSeriesId: seriesId });
-      }
-      this.db
-        .prepare("INSERT INTO tombstones VALUES (?, 'PROMPT_SERIES', ?, ?, 'LOCAL_ONLY')")
-        .run(ulid(), seriesId, deletedAt);
-      this.storage.recordChange('PROMPT_SERIES', seriesId, 'DELETE', { outputDisposition, imageAssetIds });
+      new ContentLifecycleRepository(this.storage, async () => undefined).applyDirect('DELETE', {
+        entityType: 'PROMPT_SERIES',
+        entityId: seriesId,
+      });
       return {
         seriesId,
         outputDisposition,
-        trashedOutputCount: imageAssetIds.length,
-        retainedOutputCount: outputDisposition === 'TRASH' ? associatedOutputAssetIds.length - imageAssetIds.length : 0,
+        trashedOutputCount: 0,
+        retainedOutputCount: 0,
       };
     })();
   }
@@ -446,9 +308,10 @@ export class WorkbenchRunRepository extends WorkbenchPreparationRepository {
     return this.db.transaction(() => {
       const run = this.db
         .prepare(
-          `SELECT run.id, run.result_asset_id, review.id AS review_id,
+          `SELECT run.id, run.result_asset_id, version.series_id, review.id AS review_id,
             review.disposition
           FROM generation_runs run
+          JOIN prompt_versions version ON version.id = run.prompt_version_id
           LEFT JOIN generation_output_reviews review ON review.generation_run_id = run.id
           WHERE run.id = ?`,
         )
@@ -473,6 +336,7 @@ export class WorkbenchRunRepository extends WorkbenchPreparationRepository {
         assetId: text(run.result_asset_id),
         disposition,
       });
+      new CreationItemRepository(this.storage).touchForSeries(text(run.series_id), timestamp);
     })();
   }
 

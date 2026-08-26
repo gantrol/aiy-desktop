@@ -4,14 +4,12 @@ This document covers engineering workflows for `apps/desktop`. For the product o
 
 ## Requirements
 
-- Windows 10/11 x64 for the Windows build.
-- Apple Silicon (arm64) macOS for the `v0.3.1` macOS package.
+- Windows 10/11 x64 for packaging.
 - Ubuntu 22.04/24.04 x64 for source evaluation (no Linux package is produced).
 - Node.js 22 or newer.
+- Visual Studio 2022 or Build Tools with the MSVC x64 C++ toolchain, used to compile the Store update helper.
 
-The maintained packaging target is Windows. Ubuntu x64 can run the application
-from source with the normal npm workflow, but Linux packaging and distribution
-are not in scope.
+The maintained distribution target is Microsoft Store MSIX for Windows Desktop x64. Ubuntu x64 can run the application from source with the normal npm workflow, but Linux packages are not produced. macOS, Linux, NSIS, portable ZIP, and unpacked directories are not release targets. `electron-builder` is retained only to prepare the temporary Windows payload consumed by the MSIX script.
 
 ## Run from source
 
@@ -37,9 +35,9 @@ Packaged installations do not require Node.js.
 The first launch creates an empty, user-owned library. The default data locations are:
 
 ```text
-Windows: %APPDATA%/AIY/libraries/
-macOS:   ~/Library/Application Support/AIY/libraries/
-Linux:   ~/.config/AIY/libraries/
+Microsoft Store: <Store app data>/AIY-Store/libraries/
+Windows source development: %APPDATA%/AIY/libraries/
+Linux source evaluation: ~/.config/AIY/libraries/
 
 libraries/
 ├─ index.json
@@ -58,39 +56,47 @@ For backup and recovery boundaries, see [Local spaces, backup, and recovery](tut
 
 ## Development commands
 
-| Purpose                   | Command                |
-| ------------------------- | ---------------------- |
-| Start the development app | `npm run dev`          |
-| Type-check                | `npm run typecheck`    |
-| Check formatting          | `npm run format:check` |
-| Lint                      | `npm run lint`         |
-| Public smoke test         | `npm test`             |
-| Full verification         | `npm run verify`       |
+| Purpose                    | Command                        |
+| -------------------------- | ------------------------------ |
+| Start the development app  | `npm run dev`                  |
+| Type-check                 | `npm run typecheck`            |
+| Check formatting           | `npm run format:check`         |
+| Lint                       | `npm run lint`                 |
+| Public startup smoke       | `npm test`                     |
+| Check public test boundary | `npm run verify:test-boundary` |
+| Production build           | `npm run build`                |
+| Full verification          | `npm run verify`               |
 
-The public repository contains only a generic startup and storage smoke lane. Detailed quality gates are maintained outside the public source tree. Use `npm run verify` for format, lint, type-check, public-boundary, and smoke verification.
+The public repository keeps only a generic startup-storage smoke check. `npm run verify` runs formatting, lint, type-checking, the public test-boundary check, that smoke check, and a production build. Traditional coverage percentages are reference data and are not part of public verification.
 
 Normal development does not require packaging or updating `release/`.
 
 ## Packaging
 
-Run a fresh `npm ci` on the target operating system before packaging. Do not reuse `node_modules/`, `out/`, or `release/` produced on another operating system.
+Run packaging from a clean Windows x64 checkout after a fresh `npm ci`. Do not reuse `node_modules/`, `out/`, or `release/` from another checkout or machine.
 
-Windows validation and packaging:
+The ordinary package commands run the Store gate, build the production bundles, and create an unsigned MSIX for Partner Center:
 
 ```powershell
-npm run verify
-npm run package  # build an unpacked application directory
-npm run make     # build Windows installers
+npm run package
+# npm run make is an exact alias
 ```
 
-Apple Silicon macOS validation and packaging:
+For packaging-only iteration after the relevant checks have already passed:
 
-```bash
-npm run verify
-npm run make:mac
+```powershell
+npm run make:store
 ```
 
-`make:mac` builds the native architecture of the current Mac and produces a DMG and ZIP. Apple Developer signing and notarization credentials are not stored in the repository; configure and validate them separately before distribution.
+For a locally signed sideload package:
+
+```powershell
+npm run make:store:local
+```
+
+Submission output is written to `release/store-msix-<app-version>/submission/`; the local package and its temporary certificate are written under `release/store-msix-<app-version>/local-test/`. Only the unsigned submission MSIX goes to Partner Center. The generated local-test PFX must never be uploaded or committed.
+
+The script validates the Store identity, x64 architecture, semantic-to-Store version mapping, bundled content boundary, update-helper protocol, signature mode, and SHA-256 metadata before retaining the artifact. The Electron unpacked directory is deleted after it is folded into the MSIX and is not a deliverable.
 
 ## Extensions and tutorials
 

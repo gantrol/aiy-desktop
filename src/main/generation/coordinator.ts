@@ -235,6 +235,7 @@ export class GenerationCoordinator extends GenerationCoordinatorRuntime implemen
           ...resolvedTarget,
           seriesId,
           creationDraftId: index === 0 ? batch.input.creationDraftId : null,
+          inspirationStashId: index === 0 ? batch.input.inspirationStashId : null,
           baseVersionId: index === 0 ? resolvedTarget.baseVersionId : versionId,
         };
         const prepared = this.database.prepareGeneration(targetInput, promptInput);

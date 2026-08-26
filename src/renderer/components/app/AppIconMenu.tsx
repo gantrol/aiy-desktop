@@ -132,11 +132,16 @@ export function AppIconMenu({
           type="button"
           data-action="app-menu-settings"
           variant="ghost"
-          className="h-9 w-full justify-start gap-2 px-2 font-normal"
+          className={cn(
+            'h-9 w-full justify-start gap-2 px-2 font-normal',
+            view === 'contentManagement' && 'bg-selected text-selected-foreground hover:bg-selected active:bg-selected',
+          )}
+          aria-current={view === 'contentManagement' ? 'page' : undefined}
           onClick={() => select(onSettingsOpen)}
         >
           <SettingsIcon className="size-4" />
           <span>{navigation.settings}</span>
+          {view === 'contentManagement' && <CheckIcon className="ml-auto size-4" aria-hidden="true" />}
         </Button>
         <Button
           type="button"

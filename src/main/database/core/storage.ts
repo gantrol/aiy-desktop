@@ -90,6 +90,8 @@ export class LibraryStorage {
   readonly db: Database.Database;
   private changeListener: ((change: RecordedLibraryChange) => void) | null = null;
   private changeEventInsert: Database.Statement | null = null;
+  private changeRevisionSnapshot: number | null = null;
+  private changeRevisionSnapshotClearQueued = false;
   private imageAssetRevision = 0;
 
   constructor(
@@ -119,6 +121,21 @@ export class LibraryStorage {
 
   getImageAssetRevision() {
     return this.imageAssetRevision;
+  }
+
+  /** Share one revision read across synchronous projection builders in an IPC turn. */
+  getChangeRevision() {
+    if (this.changeRevisionSnapshot !== null) return this.changeRevisionSnapshot;
+    const value = Number(this.db.prepare('SELECT COALESCE(MAX(rowid), 0) FROM change_events').pluck().get());
+    this.changeRevisionSnapshot = Number.isSafeInteger(value) && value >= 0 ? value : 0;
+    if (!this.changeRevisionSnapshotClearQueued) {
+      this.changeRevisionSnapshotClearQueued = true;
+      queueMicrotask(() => {
+        this.changeRevisionSnapshot = null;
+        this.changeRevisionSnapshotClearQueued = false;
+      });
+    }
+    return this.changeRevisionSnapshot;
   }
 
   copyIntoObjectStore(sourcePath: string): StoredObject {
@@ -193,6 +210,7 @@ export class LibraryStorage {
       'INSERT INTO change_events(id, entity_type, entity_id, operation, payload_json, occurred_at) VALUES (?, ?, ?, ?, ?, ?)',
     );
     this.changeEventInsert.run(ulid(), entityType, entityId, operation, JSON.stringify(payload), now());
+    this.changeRevisionSnapshot = null;
     if (entityType === 'IMAGE_ASSET') this.imageAssetRevision += 1;
     this.changeListener?.({ entityType, entityId, operation, affectsFileView: options?.affectsFileView });
   }

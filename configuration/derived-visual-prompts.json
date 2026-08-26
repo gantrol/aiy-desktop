@@ -1,0 +1,33 @@
+{
+  "schemaVersion": "0.3.6",
+  "locales": {
+    "zh": {
+      "articleHeader": "设计一张微信公众号文章题图。\n\n从题目与正文中提炼一个清晰、具象、可一眼识别的核心视觉。整体简洁、现代、克制、美观，具有高质量科技商业媒体或杂志封面的编辑质感；不要做成 SaaS 落地页、演示文稿或信息图。\n\n画面比例严格为 2.35:1。\n\n构图同时兼顾公众号次头条的 1:1 裁切：将完整的核心主体及必要背景集中在一个连续的正方形区域内；横幅展示时保持均衡，裁成正方形后主体仍完整、清晰、协调。不要在成品中出现裁切框、安全区标记、辅助线、尺寸标注或模板说明。\n\n题目和正文仅用于理解主题。画面中不要生成标题、段落、Logo、水印或其他可读文字。避免蓝紫夜间配色、霓虹赛博朋克、无意义渐变、拥挤排版和过度装饰。\n\n题目：{题目}\n\n正文（仅做语境参考）：\n{正文}",
+      "articleInline": "设计一张文章正文配图。\n\n从指定段落与文章语境中提炼一个清晰、具象、可一眼识别的视觉内容。画面应直接帮助读者理解当前段落，不重复题图，不做无关装饰。\n\n整体简洁、现代、克制、美观，具有高质量科技商业媒体或杂志内页插图的编辑质感；不要做成 SaaS 落地页、演示文稿或信息图。\n\n画面比例严格为 {比例}（{宽度}×{高度}）。\n{对应画幅的构图约束}\n\n画面中不要生成标题、段落、Logo、水印或其他可读文字。避免蓝紫夜间配色、霓虹赛博朋克、无意义渐变、拥挤排版和过度装饰。\n\n文章题目：{题目}\n\n配图段落：\n{段落}\n\n正文（仅做补充语境参考）：\n{正文}",
+      "socialCover": "设计一张社媒贴图封面。\n\n从题目与正文中提炼一个明确、具象、适合信息流快速识别的核心视觉。整体简洁、现代、克制、美观，具有高质量编辑设计或杂志封面的质感。\n\n画面比例严格为 {比例}（{宽度}×{高度}）。\n{对应画幅的构图约束}\n\n在缩略图尺寸下仍要主体明确、层次清晰、视觉重心稳定。不要出现安全区、辅助线、模板说明、Logo、水印或不可读文字。避免蓝紫夜间配色、霓虹赛博朋克、无意义渐变和拥挤排版。\n\n题目：{题目}\n\n正文（仅做语境参考）：\n{正文}",
+      "compositionConstraints": {
+        "ARTICLE_INLINE:landscape_4_3": "采用稳健的横向编辑构图，主体与必要环境完整落在画面中部，边缘保留呼吸空间。",
+        "ARTICLE_INLINE:square_1_1": "采用完整方形构图，核心主体集中、轮廓清晰，四周保留均衡留白。",
+        "ARTICLE_INLINE:xiaohongshu_portrait_3_4": "采用竖向编辑构图，核心主体置于中部，背景可向上下自然延展，避免关键信息贴边。",
+        "ARTICLE_INLINE:video_landscape_16_9": "采用宽幅编辑构图，核心主体保持明确，左右环境只用于补充语境，不分散视觉重心。",
+        "SOCIAL_POST_COVER:xiaohongshu_portrait_3_4": "采用 3:4 竖向信息流构图，核心主体集中在画面中部，上下背景自然延展，缩略图中仍保持完整。",
+        "SOCIAL_POST_COVER:social_portrait_4_5": "采用紧凑的 4:5 竖向构图，视觉重心稳定居中，主体与必要背景完整，边缘保留呼吸空间。",
+        "SOCIAL_POST_COVER:square_1_1": "采用完整方形构图，核心视觉集中且轮廓清晰，四周留白均衡，适合信息流快速识别。"
+      }
+    },
+    "en": {
+      "articleHeader": "Design a hero image for a WeChat Official Account article.\n\nExtract one clear, concrete, immediately recognizable visual from the title and article. Keep it minimal, modern, restrained, and polished, with the editorial quality of a premium technology-business publication or magazine cover; do not make a SaaS landing page, slide, or infographic.\n\nUse a strict 2.35:1 aspect ratio.\n\nThe composition must also survive a 1:1 crop for a secondary WeChat placement. Keep the complete subject and necessary background inside one continuous square region while maintaining balance in the full banner. Do not show crop frames, safe-area guides, construction lines, measurements, or template notes.\n\nThe title and article are context only. Do not render headlines, paragraphs, logos, watermarks, or other readable text. Avoid blue-purple night palettes, neon cyberpunk, arbitrary gradients, crowded layouts, and excessive decoration.\n\nTitle: {题目}\n\nArticle context:\n{正文}",
+      "articleInline": "Design an inline illustration for an article.\n\nExtract one clear, concrete, immediately recognizable visual from the selected passage and article context. It should help the reader understand this passage directly, without repeating the hero image or adding unrelated decoration.\n\nKeep it minimal, modern, restrained, and polished, with the editorial quality of a premium technology-business publication or magazine interior; do not make a SaaS landing page, slide, or infographic.\n\nUse a strict {比例} aspect ratio ({宽度}×{高度}).\n{对应画幅的构图约束}\n\nDo not render headlines, paragraphs, logos, watermarks, or other readable text. Avoid blue-purple night palettes, neon cyberpunk, arbitrary gradients, crowded layouts, and excessive decoration.\n\nArticle title: {题目}\n\nSelected passage:\n{段落}\n\nAdditional article context:\n{正文}",
+      "socialCover": "Design a cover image for a social post.\n\nExtract one clear, concrete visual that reads immediately in a fast-moving feed. Keep it minimal, modern, restrained, and polished, with premium editorial or magazine-cover quality.\n\nUse a strict {比例} aspect ratio ({宽度}×{高度}).\n{对应画幅的构图约束}\n\nThe subject must remain clear, layered, and visually stable at thumbnail size. Do not show safe areas, guides, template notes, logos, watermarks, or illegible text. Avoid blue-purple night palettes, neon cyberpunk, arbitrary gradients, and crowded layouts.\n\nTitle: {题目}\n\nPost context:\n{正文}",
+      "compositionConstraints": {
+        "ARTICLE_INLINE:landscape_4_3": "Use a stable horizontal editorial composition. Keep the subject and necessary setting complete near the center with breathing room at the edges.",
+        "ARTICLE_INLINE:square_1_1": "Use a complete square composition with a concentrated, clearly outlined subject and balanced negative space.",
+        "ARTICLE_INLINE:xiaohongshu_portrait_3_4": "Use a vertical editorial composition. Keep the subject centered, let the background extend naturally above and below, and keep essential details away from the edges.",
+        "ARTICLE_INLINE:video_landscape_16_9": "Use a wide editorial composition with one clear subject. Let the left and right environment add context without competing for attention.",
+        "SOCIAL_POST_COVER:xiaohongshu_portrait_3_4": "Use a 3:4 vertical feed composition. Keep the subject centered and complete while the background extends naturally above and below.",
+        "SOCIAL_POST_COVER:social_portrait_4_5": "Use a compact 4:5 vertical composition with a stable central focus, a complete subject, necessary context, and breathing room at the edges.",
+        "SOCIAL_POST_COVER:square_1_1": "Use a complete square composition with a concentrated, clearly outlined focal visual and balanced negative space for fast feed recognition."
+      }
+    }
+  }
+}

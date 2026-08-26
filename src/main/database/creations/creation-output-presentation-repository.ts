@@ -10,6 +10,7 @@ import {
   creationItemIncludesSeries,
   creationOutputNotExcluded,
 } from '@/main/database/creations/creation-output-presentation-sql';
+import { CreationItemRepository } from '@/main/database/creations/creation-item-repository';
 
 export class CreationOutputPresentationRepository {
   private readonly db: LibraryStorage['db'];
@@ -41,7 +42,7 @@ export class CreationOutputPresentationRepository {
         for (const coverSeriesId of updatedCoverSeriesIds) {
           const previousCoverAssetIds = this.coverAssetIds(coverSeriesId);
           const coverAssetIds = previousCoverAssetIds.filter((assetId) => assetId !== input.imageAssetId);
-          this.replaceCoverAssets(coverSeriesId, coverAssetIds);
+          this.replaceCoverAssets(coverSeriesId, coverAssetIds, removedAt);
           if (coverSeriesId !== input.seriesId) {
             this.storage.recordChange(
               'PROMPT_SERIES',
@@ -74,6 +75,10 @@ export class CreationOutputPresentationRepository {
             },
             { affectsFileView: true },
           );
+          const creationItems = new CreationItemRepository(this.storage);
+          for (const seriesId of new Set([input.seriesId, ...updatedCoverSeriesIds])) {
+            creationItems.touchForSeries(seriesId, removedAt);
+          }
         }
         return this.presentationResult(input.seriesId, input.imageAssetId);
       })
@@ -97,7 +102,8 @@ export class CreationOutputPresentationRepository {
         }
         const previousCoverAssetIds = this.coverAssetIds(input.seriesId);
         if (!this.sameOrderedIds(previousCoverAssetIds, input.imageAssetIds)) {
-          this.replaceCoverAssets(input.seriesId, input.imageAssetIds);
+          const updatedAt = now();
+          this.replaceCoverAssets(input.seriesId, input.imageAssetIds, updatedAt);
           this.storage.recordChange(
             'PROMPT_SERIES',
             input.seriesId,
@@ -111,6 +117,7 @@ export class CreationOutputPresentationRepository {
             },
             { affectsFileView: false },
           );
+          new CreationItemRepository(this.storage).touchForSeries(input.seriesId, updatedAt);
         }
         return this.presentationResult(input.seriesId, input.imageAssetIds[0] ?? null);
       })
@@ -226,14 +233,13 @@ export class CreationOutputPresentationRepository {
     return rows.map((row) => text(row.image_asset_id));
   }
 
-  private replaceCoverAssets(seriesId: string, imageAssetIds: readonly string[]) {
+  private replaceCoverAssets(seriesId: string, imageAssetIds: readonly string[], updatedAt: string) {
     this.db.prepare('DELETE FROM prompt_series_cover_assets WHERE series_id = ?').run(seriesId);
     const insert = this.db.prepare(
       `INSERT INTO prompt_series_cover_assets(series_id, image_asset_id, sort_order, created_at)
       VALUES (?, ?, ?, ?)`,
     );
-    const createdAt = now();
-    imageAssetIds.forEach((imageAssetId, index) => insert.run(seriesId, imageAssetId, index, createdAt));
+    imageAssetIds.forEach((imageAssetId, index) => insert.run(seriesId, imageAssetId, index, updatedAt));
     this.db
       .prepare('UPDATE prompt_series SET cover_image_asset_id = ? WHERE id = ?')
       .run(imageAssetIds[0] ?? null, seriesId);

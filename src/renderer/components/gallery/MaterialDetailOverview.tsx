@@ -1,4 +1,5 @@
 import {
+  ArchiveIcon,
   ArrowLeftIcon,
   BookOpenIcon,
   ChevronLeftIcon,
@@ -10,6 +11,7 @@ import {
   HeartOffIcon,
   LoaderCircleIcon,
   SquarePenIcon,
+  Trash2Icon,
 } from 'lucide-react';
 import { useState } from 'react';
 import type { AssetFileRevealContext } from '@/shared/contracts';
@@ -18,11 +20,15 @@ import { useAssetMenuActions } from '@/renderer/components/media/AssetMenuAction
 import { AssetMedia } from '@/renderer/components/media/AssetMedia';
 import { ImageAmbientBackdrop } from '@/renderer/components/media/AmbientImage';
 import { Button } from '@/renderer/components/ui/button';
+import type { ActionMenuAction } from '@/renderer/components/ui/action-menu';
 import { MetaText } from '@/renderer/components/ui/meta-text';
 import { ScrollArea } from '@/renderer/components/ui/scroll-area';
 import { useI18n } from '@/renderer/i18n/useI18n';
 import { cn } from '@/renderer/lib/utils';
-import type { MaterialLibraryItem } from '@/renderer/components/gallery/materialLibraryTypes';
+import {
+  hasMaterialLifecycleEntity,
+  type MaterialLibraryItem,
+} from '@/renderer/components/gallery/materialLibraryTypes';
 
 interface MaterialDetailHeaderProps {
   title: string;
@@ -130,10 +136,42 @@ interface MaterialDetailPreviewProps {
   video: boolean;
   notify(message: string): void;
   revealContext?: AssetFileRevealContext;
+  lifecycleBusy: boolean;
+  onArchive(): void;
+  onDelete(): void;
 }
 
-export function MaterialDetailPreview({ item, title, video, notify, revealContext }: MaterialDetailPreviewProps) {
-  const l = useI18n().messages.gallery.inspector;
+export function MaterialDetailPreview({
+  item,
+  title,
+  video,
+  notify,
+  revealContext,
+  lifecycleBusy,
+  onArchive,
+  onDelete,
+}: MaterialDetailPreviewProps) {
+  const { messages } = useI18n();
+  const l = messages.gallery.inspector;
+  const lifecycleActions: ActionMenuAction[] = hasMaterialLifecycleEntity(item)
+    ? [
+        {
+          id: 'archive-material',
+          label: messages.contentManagement.actions.archive,
+          icon: ArchiveIcon,
+          disabled: lifecycleBusy,
+          onSelect: onArchive,
+        },
+        {
+          id: 'delete-material',
+          label: messages.contentManagement.actions.delete,
+          icon: Trash2Icon,
+          destructive: true,
+          disabled: lifecycleBusy,
+          onSelect: onDelete,
+        },
+      ]
+    : [];
   return (
     <section className="min-h-0 min-w-0 bg-surface-sunken p-4 sm:p-6" aria-label={l.preview}>
       {item.kind !== 'TEXT' ? (
@@ -143,6 +181,7 @@ export function MaterialDetailPreview({ item, title, video, notify, revealContex
           revealContext={revealContext}
           copyable={!video}
           usableInCreation={!video}
+          lifecycleActions={lifecycleActions}
         >
           <div
             className={cn(
@@ -181,6 +220,9 @@ interface MaterialDetailActionsProps {
   onOpenResult(seriesId: string, assetId: string): void;
   onOpenTerm(termId: string): void;
   onRequestExit(action: () => void): void;
+  lifecycleBusy: boolean;
+  onArchive(item: MaterialLibraryItem): void;
+  onDelete(item: MaterialLibraryItem): void;
   notify(message: string): void;
   revealContext?: AssetFileRevealContext;
 }
@@ -196,6 +238,9 @@ export function MaterialDetailActions({
   onOpenResult,
   onOpenTerm,
   onRequestExit,
+  lifecycleBusy,
+  onArchive,
+  onDelete,
   notify,
   revealContext,
 }: MaterialDetailActionsProps) {
@@ -204,6 +249,7 @@ export function MaterialDetailActions({
   const fileLabels = messages.assetFile;
   const assetActions = useAssetMenuActions();
   const image = item.kind === 'TEXT' ? null : item.image;
+  const lifecycleAvailable = hasMaterialLifecycleEntity(item);
   const [creationBusy, setCreationBusy] = useState(false);
 
   async function sendToCreation() {
@@ -248,6 +294,24 @@ export function MaterialDetailActions({
           {l.copyText}
         </Button>
         {favoriteButton}
+        <Button
+          type="button"
+          variant="outline"
+          disabled={lifecycleBusy}
+          onClick={() => onRequestExit(() => onArchive(item))}
+        >
+          <ArchiveIcon className="size-4" />
+          {messages.contentManagement.actions.archive}
+        </Button>
+        <Button
+          type="button"
+          variant="destructive"
+          disabled={lifecycleBusy}
+          onClick={() => onRequestExit(() => onDelete(item))}
+        >
+          <Trash2Icon className="size-4" />
+          {messages.contentManagement.actions.delete}
+        </Button>
       </div>
     );
   }
@@ -300,6 +364,28 @@ export function MaterialDetailActions({
         </Button>
       )}
       {favoriteButton}
+      {lifecycleAvailable && (
+        <>
+          <Button
+            type="button"
+            variant="outline"
+            disabled={lifecycleBusy}
+            onClick={() => onRequestExit(() => onArchive(item))}
+          >
+            <ArchiveIcon className="size-4" />
+            {messages.contentManagement.actions.archive}
+          </Button>
+          <Button
+            type="button"
+            variant="destructive"
+            disabled={lifecycleBusy}
+            onClick={() => onRequestExit(() => onDelete(item))}
+          >
+            <Trash2Icon className="size-4" />
+            {messages.contentManagement.actions.delete}
+          </Button>
+        </>
+      )}
     </div>
   );
 }

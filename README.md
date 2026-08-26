@@ -9,7 +9,7 @@
 
   <p>
     <a href="https://github.com/gantrol/aiy-desktop/releases/latest"><img src="https://img.shields.io/github/v/release/gantrol/aiy-desktop?display_name=tag&amp;style=flat-square&amp;label=release" alt="Latest release" /></a>
-    <img src="https://img.shields.io/badge/platform-Windows%2010%2F11%20x64%20Store-4b5563?style=flat-square" alt="Windows 10/11 x64 Microsoft Store" />
+    <a href="https://apps.microsoft.com/detail/9nwd1hg6tczh"><img src="https://img.shields.io/badge/platform-Windows%2010%2F11%20x64%20Store-4b5563?style=flat-square" alt="Windows 10/11 x64 Microsoft Store" /></a>
     <a href="LICENSE"><img src="https://img.shields.io/badge/license-PolyForm%20Noncommercial%201.0.0-7c3aed?style=flat-square" alt="PolyForm Noncommercial 1.0.0" /></a>
   </p>
 
@@ -18,7 +18,6 @@
     <img src="https://img.shields.io/badge/Security-A-2ea043?style=flat-square" alt="Security rating: A" />
     <img src="https://img.shields.io/badge/Maintainability-A-2ea043?style=flat-square" alt="Maintainability rating: A" />
     <img src="https://img.shields.io/badge/Security%20Review-A-2ea043?style=flat-square" alt="Security review rating: A" />
-    <img src="https://img.shields.io/badge/Coverage-29.51%25%20lines-eab308?style=flat-square" alt="Line coverage: 29.51%" />
   </p>
 
   <p>
@@ -86,7 +85,7 @@ When you use AI features, the app still connects to the provider you choose. The
 
 ## Distribution
 
-The maintained distribution target from `v0.3.5` onward is:
+The maintained distribution target from `v0.3.6` onward is:
 
 - Windows 10/11 x64 — Microsoft Store MSIX.
 
@@ -94,7 +93,7 @@ Normal build scripts no longer produce NSIS installers, portable ZIPs, macOS DMG
 
 ## ❕Early stage
 
-AIY is still very early. As of `v0.3.5`, image creation and the library are usable, but extensions and content packs may still change.
+AIY is still very early. As of `v0.3.6`, image creation and the library are usable, but extensions and content packs may still change.
 
 The basic framework is in place. Real user feedback is what will determine where this project goes next.
 

@@ -21,9 +21,9 @@ interface TreeDisclosureRailProps extends Omit<ComponentProps<typeof Button>, 'c
 }
 
 /**
- * Album disclosure bracket. In an album preview it follows the primary
- * thumbnail's top and leading edges instead of occupying a separate control
- * column. Its light connector appears only while the child bus is present.
+ * Tree branch disclosure bracket. It follows the primary preview's top and
+ * leading edges instead of occupying a separate control column. Its light
+ * connector appears only while the child bus is present.
  */
 export const TreeDisclosureRail = forwardRef<HTMLButtonElement, TreeDisclosureRailProps>(function TreeDisclosureRail(
   {

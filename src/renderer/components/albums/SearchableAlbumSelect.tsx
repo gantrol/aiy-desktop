@@ -20,6 +20,7 @@ interface Props {
   albums: readonly AlbumDto[];
   value: string | null;
   labels: SearchableAlbumSelectLabels;
+  className?: string;
   disabled?: boolean;
   onValueChange(value: string | null): void;
   onRequestCreate(parent: AlbumDto | null): void;
@@ -238,6 +239,7 @@ export function SearchableAlbumSelect({
   albums,
   value,
   labels,
+  className,
   disabled = false,
   onValueChange,
   onRequestCreate,
@@ -290,7 +292,7 @@ export function SearchableAlbumSelect({
           aria-expanded={open}
           disabled={disabled}
           variant="outline"
-          className="h-11 w-full justify-between gap-2 px-3 font-normal"
+          className={cn('h-11 w-full justify-between gap-2 px-3 font-normal', className)}
         >
           <span className="truncate">{selected?.title ?? labels.unfiled}</span>
           <ChevronsUpDownIcon className="size-3.5 shrink-0 text-muted-foreground" />
@@ -302,7 +304,7 @@ export function SearchableAlbumSelect({
           <Input
             autoFocus
             value={query}
-            className="h-full border-0 bg-transparent px-0 shadow-none hover:border-0 focus-visible:border-0 focus-visible:ring-0 focus-visible:ring-offset-0"
+            className="h-full border-0 bg-transparent px-0 shadow-none hover:border-0 focus-visible:border-0 focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring focus-visible:ring-offset-0"
             placeholder={labels.searchPlaceholder}
             onChange={(event) => setQuery(event.target.value)}
           />

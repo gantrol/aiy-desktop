@@ -8,7 +8,7 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } f
 import { ScrollArea } from '@/renderer/components/ui/scroll-area';
 
 export interface AlbumMoveTarget {
-  kind: 'ALBUM' | 'CREATION' | 'DOCUMENT';
+  kind: 'ALBUM' | 'CREATION' | 'DOCUMENT' | 'STASH' | 'POST' | 'ARTICLE';
   id: string;
   title: string;
   currentAlbumId: string | null;

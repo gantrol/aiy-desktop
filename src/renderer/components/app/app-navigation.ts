@@ -9,6 +9,9 @@ export type HistoryNavigationGuard = (direction: HistoryNavigationDirection, con
 export type CreatorLocation =
   | { surface: 'default' }
   | { surface: 'new-creation'; albumId: string | null; requestId?: number }
+  | { surface: 'inspiration-stash'; stashId: string }
+  | { surface: 'social-post'; postId: string }
+  | { surface: 'article'; articleId: string }
   | { surface: 'idea-creation'; creationId: string }
   | {
       surface: 'existing-creation';

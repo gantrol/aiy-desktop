@@ -6,7 +6,6 @@ import type {
   AlbumCreateInput,
   AlbumCreationDefaultsUpdateInput,
   AlbumMoveInput,
-  AlbumMoveSeriesInput,
   AlbumRemoveMembersInput,
   AlbumRenameInput,
   AlbumReorderMembersInput,
@@ -15,6 +14,12 @@ import type {
   AssetFileRevealContext,
   AssetFileRevealTargetContext,
   CreateMaterialCollectionFromSourceInput,
+  ContentLifecycleApplyInput,
+  ContentLifecycleListInput,
+  ContentLifecyclePlanInput,
+  ContentLifecyclePurgeInput,
+  ContentLifecyclePurgePlanInput,
+  ContentLifecycleRestoreInput,
   DictionaryMaintenanceCreateInput,
   DictionaryMaintenanceListInput,
   ExternalMaterialMetadataUpdateInput,
@@ -31,7 +36,11 @@ import type {
   MaterialAlbumMoveInput,
   MaterialAlbumRemoveInput,
   MaterialAlbumRenameInput,
-  RenameCreationGroupInput,
+  RecycleBinListInput,
+  RecycleBinPurgeInput,
+  RecycleBinPurgePlanInput,
+  RecycleBinRestoreInput,
+  RenameCreationAlbumInput,
   SidebarRootReorderInput,
 } from '@/shared/contracts';
 
@@ -43,6 +52,7 @@ export function createAssetLibraryApi(
     | 'assetLifecycle'
     | 'assetRelationships'
     | 'db'
+    | 'contentLifecycle'
     | 'dictionaryMaintenance'
     | 'gallery'
     | 'historicalTermRecommendations'
@@ -53,6 +63,7 @@ export function createAssetLibraryApi(
     | 'materialMetadata'
     | 'packs'
     | 'ratings'
+    | 'recycleBin'
   >,
 ) {
   return {
@@ -108,6 +119,46 @@ export function createAssetLibraryApi(
       return repositories.assetLifecycle.delete(assetId);
     },
 
+    listRecycleBin(input: RecycleBinListInput) {
+      return repositories.recycleBin.list(input);
+    },
+
+    restoreRecycleBinEntry(input: RecycleBinRestoreInput) {
+      return repositories.recycleBin.restore(input);
+    },
+
+    planRecycleBinPurge(input: RecycleBinPurgePlanInput) {
+      return repositories.recycleBin.planPurge(input);
+    },
+
+    purgeRecycleBin(input: RecycleBinPurgeInput) {
+      return repositories.recycleBin.purge(input);
+    },
+
+    listContentLifecycle(input: ContentLifecycleListInput) {
+      return repositories.contentLifecycle.list(input);
+    },
+
+    planContentLifecycle(input: ContentLifecyclePlanInput) {
+      return repositories.contentLifecycle.plan(input);
+    },
+
+    applyContentLifecycle(input: ContentLifecycleApplyInput) {
+      return repositories.contentLifecycle.apply(input);
+    },
+
+    restoreContentLifecycle(input: ContentLifecycleRestoreInput) {
+      return repositories.contentLifecycle.restore(input);
+    },
+
+    planContentLifecyclePurge(input: ContentLifecyclePurgePlanInput) {
+      return repositories.contentLifecycle.planPurge(input);
+    },
+
+    purgeContentLifecycle(input: ContentLifecyclePurgeInput) {
+      return repositories.contentLifecycle.purge(input);
+    },
+
     resolveAssetRevealPath(assetId: string, context?: AssetFileRevealContext) {
       const asset = repositories.assetFiles.resolve(assetId);
       return asset ? repositories.libraryFileView.resolveRevealPath(asset, context) : null;
@@ -157,8 +208,8 @@ export function createAssetLibraryApi(
       return repositories.materialAlbums.createCollectionFromSource(input, imageAssetIds);
     },
 
-    renameCreationGroup(input: RenameCreationGroupInput) {
-      return repositories.materialAlbums.renameCreationGroup(input);
+    renameCreationAlbum(input: RenameCreationAlbumInput) {
+      return repositories.materialAlbums.renameCreationAlbum(input);
     },
 
     listMaterialAlbums(input: MaterialAlbumListInput = { locale: 'zh' }) {
@@ -229,10 +280,7 @@ export function createAssetLibraryApi(
     },
 
     deleteAlbum(albumId: string) {
-      return repositories.db.transaction(() => {
-        repositories.packs.clearAlbumDictionarySources(albumId);
-        return repositories.albums.delete(albumId);
-      })();
+      return repositories.albums.delete(albumId);
     },
 
     setAlbumPinned(input: AlbumSetPinnedInput) {
@@ -249,10 +297,6 @@ export function createAssetLibraryApi(
 
     moveAlbum(input: AlbumMoveInput) {
       return repositories.albums.move(input);
-    },
-
-    moveAlbumSeries(input: AlbumMoveSeriesInput) {
-      return repositories.albums.moveSeries(input);
     },
 
     addAlbumMembers(input: AlbumAddMembersInput) {

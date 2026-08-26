@@ -2,7 +2,7 @@
 
 > 状态：As-is
 > 范围：`apps/desktop/src` 及与当前产品行为直接相关的运行时、数据库结构
-> 更新日期：2026-08-11
+> 更新日期：2026-08-25
 
 本文使用用例图、包/组件图、部署图、类图、时序图和状态图梳理 Desktop 当前结构。内容以源码为准，不引用 `trash/` 或未重新构建的 `release/` 产物。
 
@@ -16,7 +16,7 @@ Desktop 是本地优先的 Electron AI 图像创作与素材管理工作台：
 - Main 负责窗口、托盘、空间切换、受信 IPC、文件能力、连接配置和服务编排。
 - 每个本地空间拥有独立 SQLite、SHA-256 对象库和 Model Worker。
 - Model Worker 承载图片生成、Assistant、字典大批量处理及可恢复后台任务。
-- 核心业务链为 `CreationDraft → PromptSeries → PromptVersion → GenerationRun → ImageAsset/Material`。
+- 图片生成链为 `CreationDraft → PromptSeries → PromptVersion → GenerationRun → ImageAsset/Material`；创作侧栏以 `CreationItem → CreationForm → 强类型内容实体` 组织图片创作、灵感、贴文、文章、视频文档和派生视觉。
 
 ## 2. 用户与系统用例图
 
@@ -293,6 +293,19 @@ classDiagram
         +string targetId
         +int sortOrder
     }
+    class CreationItem {
+        +string id
+        +DRAFT_OR_ACTIVE phase
+        +string? primaryFormId
+        +string? albumId
+    }
+    class CreationForm {
+        +CreationFormRole role
+        +EntityKind entityType
+        +string entityId
+        +string anchorKey
+        +int sortOrder
+    }
     class CreationDraft {
         +string id
         +PromptNode[] promptNodes
@@ -325,6 +338,11 @@ classDiagram
         +string title
         +string currentVersionId
     }
+    class InspirationStash
+    class SocialPost
+    class Article
+    class VideoDocument
+    class DerivedVisual
     class PromptVersion {
         +string id
         +int versionNo
@@ -364,8 +382,16 @@ classDiagram
     LocalSpace "1" *-- "1" Album
     Album "1" *-- "0..*" AlbumMember
     AlbumMember ..> Album : ALBUM
-    AlbumMember ..> PromptSeries : SERIES
+    AlbumMember ..> CreationItem : CREATION_ITEM
     AlbumMember ..> Material : MATERIAL
+    CreationItem "1" *-- "1..*" CreationForm
+    CreationItem --> "0..1" CreationForm : primaryFormId
+    CreationForm ..> PromptSeries : IMAGE_CREATION
+    CreationForm ..> InspirationStash : INSPIRATION
+    CreationForm ..> SocialPost : SOCIAL_POST
+    CreationForm ..> Article : ARTICLE
+    CreationForm ..> VideoDocument : VIDEO_DOCUMENT
+    CreationForm ..> DerivedVisual : COVER_HEADER_INLINE
     CreationDraft --> Album : target
     CreationDraft --> Material : references
     Creation "1" *-- "0..*" CreationElement
@@ -380,12 +406,13 @@ classDiagram
     ImageAsset "0..1" -- "1" Material : image material
 ```
 
-两个重要的多态关系：
+三个重要的多态关系：
 
-- `album_members.target_type/target_id` 可以指向素材、Prompt 系列或子专辑。
+- `album_members.target_type/target_id` 可以指向素材、`CreationItem` 或子专辑；具体创作形式不再分别成为图集成员。
+- `creation_forms.entity_type/entity_id` 将强类型内容实体注册到一个稳定 `CreationItem`，这是一种关联而不是对象继承。
 - `creation_elements.kind/target_id` 将 Assistant、Prompt 系列、探索批次等纳入同一个 Creation 聚合。
 
-SQLite 运行时关闭外键强制检查。关系主要由 Repository 显式验证，读取路径允许软引用缺失；因此上图表示业务关系，不都表示数据库强外键。
+SQLite 运行时启用外键并执行完整性检查；`creation_forms`、`album_members` 等多态目标关系还由 runtime schema 和 Repository 显式验证。创作项与创作形式的完整不变量、接口和交互 UML 见[创作项、创作形式与侧栏交互设计](./creation-item-and-form.md)。
 
 ## 6. 词典、词语配方与内容包类图
 
@@ -701,6 +728,9 @@ stateDiagram-v2
 - [Database 门面](../../src/main/database.ts)
 - [Database 实现与生命周期](../../src/main/database/library-database/library-database.ts)
 - [对象存储与 Change Event](../../src/main/database/core/storage.ts)
+- [创作项、创作形式与侧栏交互设计](./creation-item-and-form.md)
+- [CreationItem / CreationForm contracts](../../src/shared/contracts/creation-library.ts)
+- [CreationItem repository](../../src/main/database/creations/creation-item-repository.ts)
 - [生成协调器](../../src/main/generation/coordinator.ts)
 - [Renderer 事件分发器](../../src/main/app/renderer-event-dispatcher.ts)
 - [Model Worker 协议](../../src/main/model-worker/protocol.ts)

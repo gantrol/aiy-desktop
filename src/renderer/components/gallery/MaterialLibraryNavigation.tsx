@@ -4,9 +4,9 @@ import type { MaterialAlbumDto, MaterialSelectionTargetInput } from '@/shared/co
 import type { GalleryDictionaryCollection } from '@/renderer/components/app/app-navigation';
 import { hasMaterialAlbumDrag, readMaterialAlbumDrag } from '@/renderer/components/albums/albumDrag';
 import {
-  useAlbumTreeExpansion,
-  type AlbumTreeDiagnosticSink,
-} from '@/renderer/components/albums/useAlbumTreeExpansion';
+  useTreeBranchExpansion,
+  type TreeBranchDiagnosticSink,
+} from '@/renderer/components/albums/useTreeBranchExpansion';
 import { useDeferredSingleDoubleClick } from '@/renderer/components/albums/useDeferredSingleDoubleClick';
 import { Button } from '@/renderer/components/ui/button';
 import { ScrollArea } from '@/renderer/components/ui/scroll-area';
@@ -18,7 +18,7 @@ import {
   type MaterialAlbumEditorState,
 } from '@/renderer/components/gallery/MaterialAlbumDialogs';
 import {
-  CreationGroupBranch,
+  CreationAlbumBranch,
   MaterialAlbumBranch,
   type MaterialAlbumBranchLabels,
 } from '@/renderer/components/gallery/MaterialAlbumTreeBranches';
@@ -58,12 +58,13 @@ interface Props {
   dictionaryTree: DictionaryMaterialTree;
   labels: Labels;
   busy?: boolean;
-  diagnostics?: AlbumTreeDiagnosticSink;
+  diagnostics?: TreeBranchDiagnosticSink;
   onSelectCategory(category: MaterialLibraryCategory): void;
   onSelectAlbum(albumId: string): void;
   onSelectDictionary(collection: GalleryDictionaryCollection): void;
   onCreate(title: string, parentAlbumId: string | null): Promise<void>;
   onRename(album: MaterialAlbumDto, title: string): Promise<void>;
+  onArchive(album: MaterialAlbumDto): Promise<void>;
   onDelete(album: MaterialAlbumDto): Promise<void>;
   onMove?(albumId: string, parentAlbumId: string | null): Promise<void>;
   canMoveCreationAlbum?(albumId: string, parentAlbumId: string | null): boolean;
@@ -87,6 +88,7 @@ export function MaterialLibraryNavigation({
   onSelectDictionary,
   onCreate,
   onRename,
+  onArchive,
   onDelete,
   onMove,
   canMoveCreationAlbum,
@@ -102,10 +104,9 @@ export function MaterialLibraryNavigation({
       `dictionary-type:${dictionarySelection.domainId}:${dictionarySelection.typeId}`,
     ];
   }, [dictionarySelection?.domainId, dictionarySelection?.typeId]);
-  const expansion = useAlbumTreeExpansion(viewportRef, initialDictionaryExpansionIds, diagnostics);
+  const expansion = useTreeBranchExpansion(viewportRef, initialDictionaryExpansionIds, diagnostics);
   const click = useDeferredSingleDoubleClick(280, diagnostics);
   const [editor, setEditor] = useState<MaterialAlbumEditorState | null>(null);
-  const [deleteAlbum, setDeleteAlbum] = useState<MaterialAlbumDto | null>(null);
   const [dropAlbumId, setDropAlbumId] = useState<string | null>(null);
   const [rootDropActive, setRootDropActive] = useState(false);
   const creationAlbums = albums.filter((album) => album.systemKey?.startsWith('CREATION_'));
@@ -189,7 +190,7 @@ export function MaterialLibraryNavigation({
             <>
               {categoryRow('MATERIAL', labels.allMaterials, <ImagesIcon className="size-4" />)}
               {creationTree.roots.map((album) => (
-                <CreationGroupBranch
+                <CreationAlbumBranch
                   key={album.id}
                   album={album}
                   tree={creationTree}
@@ -242,7 +243,8 @@ export function MaterialLibraryNavigation({
                   onSelectAlbum={onSelectAlbum}
                   onDropAlbumChange={setDropAlbumId}
                   onEditorChange={setEditor}
-                  onDeleteAlbumChange={setDeleteAlbum}
+                  onArchive={onArchive}
+                  onDelete={onDelete}
                   onMove={onMove}
                   onCollectMaterials={onCollectMaterials}
                   onImportFiles={onImportFiles}
@@ -271,14 +273,11 @@ export function MaterialLibraryNavigation({
       {!browseOnly && (
         <MaterialAlbumDialogs
           editor={editor}
-          deleteAlbum={deleteAlbum}
           labels={labels}
           busy={busy}
           onEditorChange={setEditor}
-          onDeleteAlbumChange={setDeleteAlbum}
           onCreate={onCreate}
           onRename={onRename}
-          onDelete={onDelete}
         />
       )}
     </aside>

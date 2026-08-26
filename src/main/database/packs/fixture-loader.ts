@@ -18,6 +18,10 @@ import {
 import { readV03FixtureDocument, V03_FIXTURE_SCHEMA_VERSION } from '@/main/database/packs/fixture-contract';
 import { ensureImageMaterials } from '@/main/database/albums/image-material-batch';
 import { replaceTitleLocalizations } from '@/main/database/core/title-localization';
+import {
+  ensureCreationEntityComposition,
+  ensureCreationItemLocations,
+} from '@/main/database/creations/creation-composition-schema';
 
 function ensureFixturePromptSnapshot(db: LibraryStorage['db'], row: JsonMap) {
   const versionId = text(row.id);
@@ -423,8 +427,24 @@ function reconcileFixtureRows(storage: LibraryStorage, fixture: JsonMap, demoAss
     reconcileFixtureAnnotations(db, list('annotations'));
     reconcileFixtureTerms(db, list, revisionTermIds);
     reconcileFixtureAlbums(db, list('albums'));
+    ensureCreationEntityComposition(db);
     for (const row of list('albumItems')) {
       const createdAt = now();
+      const fixtureTargetType = text(row.targetType);
+      const targetType = fixtureTargetType === 'ALBUM' ? 'ALBUM' : 'CREATION_ITEM';
+      const targetId =
+        targetType === 'ALBUM'
+          ? text(row.targetId)
+          : text(
+              (
+                db
+                  .prepare(
+                    `SELECT creation_item_id FROM creation_forms
+                    WHERE entity_type = 'PROMPT_SERIES' AND entity_id = ? AND deleted_at IS NULL`,
+                  )
+                  .get(row.targetId) as JsonMap | undefined
+              )?.creation_item_id,
+            );
       db.prepare(
         `INSERT INTO album_members
         (id, album_id, target_type, target_id, sort_order, created_at, updated_at, deleted_at)
@@ -432,16 +452,9 @@ function reconcileFixtureRows(storage: LibraryStorage, fixture: JsonMap, demoAss
         ON CONFLICT(id) DO UPDATE SET album_id = excluded.album_id, target_type = excluded.target_type,
           target_id = excluded.target_id, sort_order = excluded.sort_order,
           updated_at = excluded.updated_at, deleted_at = NULL`,
-      ).run(
-        row.id,
-        row.albumId,
-        text(row.targetType) === 'ALBUM' ? 'ALBUM' : 'SERIES',
-        row.targetId,
-        row.sortOrder,
-        createdAt,
-        createdAt,
-      );
+      ).run(row.id, row.albumId, targetType, targetId, row.sortOrder, createdAt, createdAt);
     }
+    ensureCreationItemLocations(db);
     for (const row of list('promptVersions')) ensureFixturePromptSnapshot(db, row);
     db.prepare("INSERT OR REPLACE INTO app_meta(key, value) VALUES ('fixture_seeded', ?)").run(
       V03_FIXTURE_SCHEMA_VERSION,

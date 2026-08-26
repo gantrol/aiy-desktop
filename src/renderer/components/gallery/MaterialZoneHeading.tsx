@@ -11,14 +11,14 @@ export function MaterialZoneHeading({ headingId, title, className, ...props }: P
   return (
     <div
       data-slot="material-zone-heading"
-      className={cn('flex min-w-0 items-center gap-2.5 text-muted-foreground', className)}
+      className={cn('flex min-w-0 items-center gap-2 text-foreground-secondary', className)}
       {...props}
     >
-      <Separator className="min-w-4 flex-1" />
-      <h2 id={headingId} className="max-w-[70%] shrink-0 truncate text-xs font-medium tracking-wide">
+      <Separator className="h-0.5 min-w-4 flex-1 bg-border-strong" />
+      <h2 id={headingId} className="max-w-[70%] shrink-0 truncate text-xs font-semibold tracking-wide">
         {title}
       </h2>
-      <Separator className="min-w-4 flex-1" />
+      <Separator className="h-0.5 min-w-4 flex-1 bg-border-strong" />
     </div>
   );
 }

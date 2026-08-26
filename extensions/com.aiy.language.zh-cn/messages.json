@@ -14,8 +14,9 @@
     "addedToAlbum": "已加入图集",
     "useInCreation": "作为参考图开始创作",
     "addedToCreation": "已加入创作参考图",
-    "saveAs": "下载",
-    "reveal": "在文件管理器中显示",
+    "saveAs": "导出图片",
+    "reveal": "打开所在文件目录",
+    "revealPlacement": "打开资料库映射目录",
     "locating": "正在定位…",
     "notInTerm": "尚未加入词条",
     "notInAlbumOrTerm": "尚未加入图集或词条",
@@ -24,10 +25,10 @@
     "saved": "图片已保存",
     "delete": "删除素材",
     "deleteTitle": "删除这项素材？",
-    "deleteDescription": "素材会从素材库、图集、词条、配方和创作中隐藏；原文件与历史关系仍会保留。",
+    "deleteDescription": "素材会进入回收站并保留 30 天；永久清理前保留历史关系。",
     "cancel": "取消",
     "confirmDelete": "删除",
-    "deleted": "素材已删除",
+    "deleted": "素材已移至回收站",
     "referenceLimit": "一项创作最多可包含 8 张参考图",
     "failed": "文件操作失败"
   },
@@ -72,6 +73,8 @@
       "promptLanguage": "默认提示词语言",
       "aiFeatureModels": "AI 功能模型",
       "manageAiFeatureModels": "管理模型分配",
+      "content": "内容",
+      "manageContent": "内容管理",
       "privacyAndSupport": "隐私与支持",
       "privacyPolicy": "隐私政策",
       "supportOpenFailed": "无法打开隐私政策",
@@ -187,6 +190,85 @@
         "interrupted": "生图任务在完成前被中断。",
         "generic": "生成失败，请查看 API 错误详情。"
       }
+    }
+  },
+  "contentManagement": {
+    "title": "内容管理",
+    "states": {
+      "archived": "已归档",
+      "recycleBin": "回收站"
+    },
+    "filters": {
+      "all": "全部",
+      "creation": "创作",
+      "album": "图集",
+      "material": "素材"
+    },
+    "subtypes": {
+      "creationAlbum": "创作图集",
+      "materialAlbum": "素材图集",
+      "promptSeries": "图像创作",
+      "ideaCreation": "构思创作",
+      "inspirationStash": "灵感",
+      "socialPost": "贴图创作",
+      "article": "文章",
+      "videoDocument": "视频文稿",
+      "imageMaterial": "图片",
+      "videoMaterial": "视频",
+      "textMaterial": "文本"
+    },
+    "actions": {
+      "label": "内容操作",
+      "openAlbum": "打开图集",
+      "archive": "归档",
+      "restore": "恢复",
+      "delete": "删除",
+      "permanentDelete": "永久删除",
+      "clear": "清空当前筛选"
+    },
+    "count": {
+      "$params": ["count"],
+      "$template": "{count} 项"
+    },
+    "changedAt": "变更于",
+    "expiresIn": {
+      "$params": ["days"],
+      "$template": "{days} 天后清理"
+    },
+    "expiresToday": "今天清理",
+    "cleanupFailed": "清理失败",
+    "emptyArchived": "暂无已归档内容",
+    "emptyRecycleBin": "回收站为空",
+    "emptyFilter": "当前筛选暂无内容",
+    "loadFailed": "无法读取内容",
+    "retry": "重试",
+    "loadMore": "加载更多",
+    "loading": "正在加载…",
+    "backToRoot": "内容管理",
+    "confirm": {
+      "archiveTitle": "归档这项内容？",
+      "restoreTitle": "恢复这项内容？",
+      "deleteTitle": "将这项内容移入回收站？",
+      "permanentDeleteTitle": "永久删除这项内容？",
+      "clearTitle": "清空当前筛选？",
+      "impact": {
+        "$params": ["albumCount", "contentCount"],
+        "$template": "{albumCount} 个图集 · {contentCount} 项内容"
+      },
+      "archive": "归档",
+      "restore": "恢复",
+      "delete": "删除",
+      "permanentDelete": "永久删除",
+      "clear": "清空"
+    },
+    "notices": {
+      "archived": "内容已归档",
+      "restored": "内容已恢复",
+      "deleted": "内容已移入回收站",
+      "permanentlyDeleted": "内容已永久删除",
+      "cleared": "回收站已清空",
+      "failed": "内容操作失败",
+      "stale": "内容已变化，列表已刷新"
     }
   },
   "aiCenter": {
@@ -986,10 +1068,10 @@
           "LOCAL_INDEX": "本地用量索引已清理"
         }
       },
-      "apiEquivalentNote": "按公开 API 费率计算的等值，不是账单或实际扣费。",
+      "apiEquivalentNote": "按公开 Standard API 费率计算的等值，不是账单或实际扣费；Fast 倍率仅用于 Codex Credits 等值。",
       "metrics": {
         "apiEquivalent": "API 等值",
-        "cacheSavings": "缓存节省",
+        "cacheSavings": "节省额度",
         "creditEquivalent": "Codex credits 等值",
         "totalTokens": "Token 总量",
         "cachedInput": "缓存输入",
@@ -1006,7 +1088,7 @@
         "cycles": "个观测段",
         "observedPeriod": "最近重置预测",
         "quotaMovement": "观测额度消耗",
-        "modelTokenShare": "模型 Token 占比",
+        "modelTokenShare": "模型 / 模式 Token 占比",
         "granularity": "时间片",
         "granularities": {
           "AUTO": "自动",
@@ -1028,11 +1110,18 @@
         "interquartileRange": "P25–P75",
         "quotaPerMillionTokens": "额度 % / 百万 Token",
         "creditsPerOnePercent": "Credits / 1%",
+        "weeklyQuota": "周额度",
         "estimates": "项估计",
         "samples": "个样本",
         "events": "个事件",
         "plan": "订阅套餐",
         "tier": "模式",
+        "modes": {
+          "STANDARD": "Standard",
+          "FAST": "Fast",
+          "UNKNOWN": "未知"
+        },
+        "inferredMode": "部分 Token 的模式依据扫描时有效的 Codex 配置推断。",
         "allModels": "全部模型",
         "allModes": "全部模式",
         "tokensPerOnePercent": "Token / 1% 额度",
@@ -1091,7 +1180,7 @@
         "requests": "请求",
         "tokens": "Token",
         "apiEquivalent": "API 等值",
-        "cacheSavings": "缓存节省",
+        "cacheSavings": "节省额度",
         "credits": "Credits"
       },
       "warnings": {
@@ -2058,7 +2147,7 @@
       "renameTitle": "重命名图集",
       "delete": "删除图集",
       "deleteTitle": "删除图集？",
-      "deleteDescription": "只会删除图集和成员关系，素材本身会保留。",
+      "deleteDescription": "图集会进入回收站并保留 30 天；其中的素材与子图集仍会保留。",
       "name": "图集名称",
       "namePlaceholder": "例如：妆面灵感",
       "cancel": "取消",
@@ -2107,7 +2196,7 @@
       "unit": "项",
       "created": "图集已创建",
       "renamed": "图集已重命名",
-      "deleted": "图集已删除，素材仍保留",
+      "deleted": "图集已移至回收站，素材仍保留",
       "added": "已加入图集",
       "removed": "已从图集中移除",
       "moved": "图集位置已更新",
@@ -2910,24 +2999,24 @@
       "delete": "删除",
       "cancelDelete": "取消",
       "deleteSeriesTitle": "删除这项创作？",
-      "deleteSeriesDescription": "它会从创作列表和所在图集中移除；版本、标注和历史引用仍会保留。",
+      "deleteSeriesDescription": "创作会进入回收站并保留 30 天；版本、标注和历史引用仍可恢复。",
       "deleteImages": {
         "$params": ["count"],
         "$template": "同时删除 {count} 项产出图片"
       },
       "deleteImagesDescription": {
         "$params": ["count"],
-        "$template": "没有其他引用的产出会同时隐藏；仍被素材图集、收藏、词条、其他创作或派生图片使用的产出会保留在素材中。历史关系与磁盘文件仍保留。"
+        "$template": "没有其他引用的产出会同时进入回收站；仍被素材图集、收藏、词条、其他创作或派生图片使用的产出会继续保留。"
       },
       "deleteWithImages": "删除创作和产出",
       "deleteAlbumTitle": "删除这个图集？",
-      "deleteAlbumDescription": "只删除图集及其成员关系，不删除其中的创作、子图集或素材。",
-      "seriesDeleted": "创作已删除",
+      "deleteAlbumDescription": "图集会进入回收站并保留 30 天；成员关系会保留以便恢复，其中的创作、子图集和素材不会删除。",
+      "seriesDeleted": "创作已移至回收站",
       "seriesAndOutputsDeleted": {
         "$params": ["count"],
-        "$template": "创作已删除 · 已隐藏 {count} 项产出"
+        "$template": "创作已移至回收站 · {count} 项产出已一并移入"
       },
-      "albumDeleted": "图集已删除",
+      "albumDeleted": "图集已移至回收站",
       "promptLanguageChinese": "中文",
       "version": "版本",
       "createVersion": "创建版本",
@@ -3565,6 +3654,7 @@
       "clearSearch": "清除搜索",
       "filter": "筛选创作",
       "filterAll": "全部",
+      "filterCreations": "创作",
       "filterImages": "图片创作",
       "filterDocuments": "文稿创作",
       "full": "完整列表",
@@ -3576,6 +3666,10 @@
       "versions": "版",
       "results": "张产出",
       "more": "查看更多",
+      "showMoreChildren": "显示更多",
+      "showFewerChildren": "收起多余项目",
+      "restoreDefaultVisibleItems": "恢复默认显示数量",
+      "collapseFollowingItems": "收起后续项目",
       "delete": "删除",
       "empty": "还没有创作",
       "emptyFiltered": "没有匹配的创作",

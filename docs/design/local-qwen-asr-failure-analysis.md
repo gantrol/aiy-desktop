@@ -130,6 +130,6 @@ D --> R: 相同 revision 与 cues
 
 回归契约覆盖真实 loopback HTTP、multipart WAV、Bearer header、JSON envelope、多段 Qwen 协议正文，以及完整视频输入经过 FFmpeg、受管 WSL/Qwen、逐字稿 revision 提交和重新读取的链路。硬件场景必须显式提供合成语音视频，不在普通 CI 中隐式下载权重、读取用户素材或调用付费 Provider。
 
-详细测试代码、夹具、运行报告和失败证据不属于本文的公开产品契约。公开文档只保留本故障的原因、修复策略和验收契约，不保存具体场景标识或 trace。
+公开仓库只保留本故障的原因、修复策略和验收契约，不保存详细测试实现、夹具、trace 或失败证据。
 
 统一创作入口、后台任务和后续图文稿编排见 [视频文档统一创作与后台转录工作流](video-document-creation-workflow.md)。

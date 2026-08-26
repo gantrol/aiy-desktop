@@ -98,7 +98,7 @@ export function AlbumDocumentView({
           <button
             key={document.id}
             type="button"
-            className="group min-w-0 overflow-hidden rounded-xl border bg-surface text-left shadow-sm outline-none transition-colors hover:bg-hover focus-visible:ring-2 focus-visible:ring-ring"
+            className="group min-w-0 overflow-hidden rounded-xl border bg-surface text-left outline-none transition-colors hover:bg-hover focus-visible:ring-2 focus-visible:ring-ring"
             title={document.title}
             aria-label={`${labels.sidebar.open}: ${document.title}`}
             onClick={() => onSelectDocument(document.id, document.albumId)}

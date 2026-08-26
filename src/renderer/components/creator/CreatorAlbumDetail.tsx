@@ -4,6 +4,7 @@ import type {
   AlbumDto,
   AlbumMemberDto,
   AssetDto,
+  CreationItemDto,
   GalleryItemDto,
   GallerySourceFilter,
   ImageRatingDimension,
@@ -15,8 +16,6 @@ import { AlbumCoverBadge } from '@/renderer/components/albums/AlbumTreePreview';
 import { buildAlbumTreeIndex } from '@/renderer/components/albums/albumTree';
 import { AlbumDetailHeader } from '@/renderer/components/gallery/AlbumDetailHeader';
 import { MaterialLibraryToolbar } from '@/renderer/components/gallery/MaterialLibraryToolbar';
-import { MaterialMasonry } from '@/renderer/components/gallery/MaterialMasonry';
-import { MaterialStackView } from '@/renderer/components/gallery/MaterialStackView';
 import type {
   GalleryRelationship,
   GalleryScope,
@@ -37,8 +36,12 @@ import { Button } from '@/renderer/components/ui/button';
 import { ScrollArea } from '@/renderer/components/ui/scroll-area';
 import { Skeleton } from '@/renderer/components/ui/skeleton';
 import { AlbumDocumentRow, AlbumDocumentView } from '@/renderer/components/creator/AlbumDocumentContent';
-import type { CreationLibraryFilter } from '@/renderer/components/creator/CreationLibraryToolbar';
+import {
+  allCreationLibraryFilters,
+  type CreationLibraryFilter,
+} from '@/renderer/components/creator/creationLibraryFilter';
 import { CreatorPaneResizeHandle } from '@/renderer/components/creator/CreatorPaneResizeHandle';
+import { CreatorAlbumMaterialViews } from '@/renderer/components/creator/CreatorAlbumMaterialViews';
 import { shouldShowDocumentView } from '@/renderer/components/creator/albumDocumentView';
 import { creationSessionCoverFirstAssets } from '@/renderer/components/creator/creationCoverFirstAssets';
 import { creationAlbumPreviewAssets } from '@/renderer/components/creator/creationAlbumPreviewAssets';
@@ -50,6 +53,7 @@ interface Props {
   album: AlbumDto;
   albums: AlbumDto[];
   creationSessions: readonly CreationSessionProjection[];
+  creationItems: readonly CreationItemDto[];
   filter: CreationLibraryFilter;
   documentNavigationRevision: number;
   busy: boolean;
@@ -57,10 +61,12 @@ interface Props {
   onSelectSeries(seriesId: string, assetId?: string): void;
   onSelectDocument(documentId: string, albumId: string | null): void;
   onOpenMaterial(materialId: string): void;
+  onArchiveMaterial(item: MaterialLibraryItem): void;
+  onDeleteMaterial(item: MaterialLibraryItem): void;
   onRename(album: AlbumDto, title: string): Promise<void>;
   onDelete(album: AlbumDto): Promise<void>;
   onTogglePin(album: AlbumDto): Promise<void>;
-  onSetArchived(album: AlbumDto, archived: boolean): Promise<void>;
+  onArchive(album: AlbumDto): Promise<void>;
   onCreateCreation(): void;
   onSettings(): void;
   notify(message: string): void;
@@ -83,29 +89,24 @@ function sessionAssets(session: CreationSessionProjection) {
   return creationSessionCoverFirstAssets(session);
 }
 
-function creationAlbumId(session: CreationSessionProjection, albumBySeriesId: ReadonlyMap<string, string>) {
-  return (
-    albumBySeriesId.get(session.primarySeries.id) ??
-    session.memberSeries.map((series) => albumBySeriesId.get(series.id)).find(Boolean) ??
-    null
-  );
-}
-
 function directCreationEntries(
   album: AlbumDto,
   sessions: readonly CreationSessionProjection[],
-  albumBySeriesId: ReadonlyMap<string, string>,
+  creationItems: readonly CreationItemDto[],
 ): AlbumCreationEntry[] {
   const sessionBySeriesId = new Map<string, CreationSessionProjection>();
   for (const session of sessions) {
     for (const series of session.memberSeries) sessionBySeriesId.set(series.id, session);
   }
 
+  const itemById = new Map(creationItems.map((item) => [item.id, item] as const));
   const seenSessionIds = new Set<string>();
   return album.members.flatMap((member) => {
-    if (member.targetType !== 'SERIES') return [];
-    const session = sessionBySeriesId.get(member.targetId);
-    if (!session || creationAlbumId(session, albumBySeriesId) !== album.id || seenSessionIds.has(session.id)) return [];
+    if (member.targetType !== 'CREATION_ITEM') return [];
+    const item = itemById.get(member.targetId);
+    const imageForm = item?.forms.find((form) => form.role === 'IMAGE_CREATION');
+    const session = imageForm ? sessionBySeriesId.get(imageForm.entity.id) : null;
+    if (!session || seenSessionIds.has(session.id)) return [];
     seenSessionIds.add(session.id);
     return [{ session, assets: sessionAssets(session) }];
   });
@@ -124,13 +125,13 @@ export function AlbumContentList({
   album,
   childAlbums,
   sessions,
-  albumBySeriesId,
+  creationItems,
   documents = [],
   documentTotal,
   documentsLoading = false,
   documentsLoadingMore = false,
   documentsHasMore = false,
-  filter = 'all',
+  filter = allCreationLibraryFilters,
   locale,
   contentsLabel,
   loadMoreDocumentsLabel,
@@ -144,7 +145,7 @@ export function AlbumContentList({
   album: AlbumDto;
   childAlbums: readonly AlbumDto[];
   sessions: readonly CreationSessionProjection[];
-  albumBySeriesId: ReadonlyMap<string, string>;
+  creationItems: readonly CreationItemDto[];
   documents?: readonly VideoDocumentSummaryDto[];
   documentTotal?: number;
   documentsLoading?: boolean;
@@ -171,10 +172,10 @@ export function AlbumContentList({
   const entries = useMemo<AlbumContentEntry[]>(
     () => [
       ...childAlbums.map((child) => ({ kind: 'ALBUM' as const, album: child })),
-      ...(filter === 'documents'
+      ...(!filter.images
         ? []
         : [
-            ...directCreationEntries(album, sessions, albumBySeriesId).map((entry) => ({
+            ...directCreationEntries(album, sessions, creationItems).map((entry) => ({
               kind: 'CREATION' as const,
               ...entry,
             })),
@@ -182,11 +183,11 @@ export function AlbumContentList({
               .filter((member) => member.targetType === 'MATERIAL')
               .map((member) => ({ kind: 'MATERIAL' as const, member })),
           ]),
-      ...(filter === 'images' ? [] : documents.map((document) => ({ kind: 'DOCUMENT' as const, document }))),
+      ...(filter.documents ? documents.map((document) => ({ kind: 'DOCUMENT' as const, document })) : []),
     ],
-    [album, albumBySeriesId, childAlbums, documents, filter, sessions],
+    [album, childAlbums, creationItems, documents, filter, sessions],
   );
-  const visibleDocumentTotal = filter === 'images' ? 0 : (documentTotal ?? documents.length);
+  const visibleDocumentTotal = filter.documents ? (documentTotal ?? documents.length) : 0;
   const contentCount = entries.length + Math.max(0, visibleDocumentTotal - documents.length);
 
   return (
@@ -199,7 +200,7 @@ export function AlbumContentList({
         <h2 id="album-contents-heading" className="min-w-0 flex-1 truncate text-xs font-semibold">
           {contentsLabel}
         </h2>
-        {documentsLoading && filter !== 'images' && documents.length === 0 ? (
+        {documentsLoading && filter.documents && documents.length === 0 ? (
           <LoaderCircleIcon className="size-3.5 shrink-0 animate-spin text-muted-foreground" aria-hidden="true" />
         ) : (
           <span className="shrink-0 text-[11px] tabular-nums text-muted-foreground">{contentCount}</span>
@@ -332,12 +333,12 @@ export function AlbumContentList({
               </li>
             );
           })}
-          {documentsLoading && filter !== 'images' && entries.length === 0 && (
+          {documentsLoading && filter.documents && entries.length === 0 && (
             <li className="grid h-12 place-items-center">
               <LoaderCircleIcon className="size-3.5 animate-spin text-muted-foreground" aria-hidden="true" />
             </li>
           )}
-          {filter !== 'images' && documentsHasMore && onLoadMoreDocuments && loadMoreDocumentsLabel && (
+          {filter.documents && documentsHasMore && onLoadMoreDocuments && loadMoreDocumentsLabel && (
             <li className="px-1 py-2">
               <Button
                 type="button"
@@ -373,6 +374,7 @@ export function CreatorAlbumDetail({
   album,
   albums,
   creationSessions,
+  creationItems,
   filter,
   documentNavigationRevision,
   busy,
@@ -380,10 +382,12 @@ export function CreatorAlbumDetail({
   onSelectSeries,
   onSelectDocument,
   onOpenMaterial,
+  onArchiveMaterial,
+  onDeleteMaterial,
   onRename,
   onDelete,
   onTogglePin,
-  onSetArchived,
+  onArchive,
   onCreateCreation,
   onSettings,
   notify,
@@ -392,7 +396,7 @@ export function CreatorAlbumDetail({
   const l = messages.gallery.screen;
   const contentPane = useAlbumContentPane();
   const documentList = useVideoDocumentList({
-    active: filter !== 'images',
+    active: filter.documents,
     refreshKey: documentNavigationRevision,
     query: '',
     albumId: album.id,
@@ -427,7 +431,7 @@ export function CreatorAlbumDetail({
     [album.id, albumTree.childrenByParentId, albumTree.effectivelyArchived, effectivelyArchived],
   );
   const descendantDocumentList = useVideoDocumentList({
-    active: filter !== 'images' && childAlbums.length > 0,
+    active: filter.documents && childAlbums.length > 0,
     refreshKey: documentNavigationRevision,
     query: '',
     albumId: album.id,
@@ -438,13 +442,14 @@ export function CreatorAlbumDetail({
   const mainDocumentList = childAlbums.length > 0 ? descendantDocumentList : documentList;
   const albumBySeriesId = useMemo(() => {
     const result = new Map<string, string>();
-    for (const candidate of albums) {
-      for (const member of candidate.members) {
-        if (member.targetType === 'SERIES') result.set(member.targetId, candidate.id);
+    for (const item of creationItems) {
+      if (!item.albumId) continue;
+      for (const form of item.forms) {
+        if (form.entity.kind === 'PROMPT_SERIES') result.set(form.entity.id, item.albumId);
       }
     }
     return result;
-  }, [albums]);
+  }, [creationItems]);
   const source: GallerySourceFilter = scope === 'FAVORITE' ? 'FAVORITE' : relationship === 'ANY' ? 'ALL' : relationship;
   const materials = useMemo<MaterialLibraryItem[]>(() => items.map(mediaMaterial), [items]);
   const albumIdsByMaterialId = useMemo(() => {
@@ -505,10 +510,13 @@ export function CreatorAlbumDetail({
   }, [query]);
 
   useEffect(() => {
-    if (filter === 'documents') {
+    if (!filter.images) {
       requestId.current += 1;
       setLoading(false);
       setError('');
+      setItems([]);
+      setTotal(0);
+      setNextCursor(null);
       return;
     }
     const currentRequest = ++requestId.current;
@@ -649,7 +657,7 @@ export function CreatorAlbumDetail({
         onRename={onRename}
         onDelete={onDelete}
         onTogglePin={onTogglePin}
-        onSetArchived={onSetArchived}
+        onArchive={onArchive}
         onCreateCreation={onCreateCreation}
         onSettings={onSettings}
       />
@@ -658,7 +666,7 @@ export function CreatorAlbumDetail({
           album={album}
           childAlbums={childAlbums}
           sessions={creationSessions}
-          albumBySeriesId={albumBySeriesId}
+          creationItems={creationItems}
           documents={documentList.items}
           documentTotal={documentList.total}
           documentsLoading={documentList.loading}
@@ -740,37 +748,18 @@ export function CreatorAlbumDetail({
                   type="always"
                   className="min-h-0 min-w-0 flex-1 [&_[data-slot=scroll-area-viewport]>div]:!block [&_[data-slot=scroll-area-viewport]>div]:!w-full"
                 >
-                  {viewMode === 'GRID' ? (
-                    <div data-material-view="GRID" className="w-full min-w-0 p-4 sm:p-6">
-                      <MaterialMasonry
-                        items={materials}
-                        selectedKey={null}
-                        checkedKeys={new Set()}
-                        selectionMode={false}
-                        selectionAvailable={false}
-                        onSelect={openMaterial}
-                        onEnterSelection={() => undefined}
-                        onToggleSelection={() => undefined}
-                        onCopyText={() => undefined}
-                        notify={notify}
-                        revealContext={{ kind: 'ALBUM', albumId: album.id }}
-                      />
-                    </div>
-                  ) : (
-                    <div data-material-view="LIST" data-material-layout="STACK" className="w-full min-w-0 p-4 sm:p-6">
-                      <MaterialStackView
-                        stacks={materialStacks}
-                        selectedKey={null}
-                        selectionMode={false}
-                        selectionAvailable={false}
-                        onSelect={openMaterial}
-                        onOpenStack={openMaterialStack}
-                        onCopyText={() => undefined}
-                        notify={notify}
-                        revealContextForItem={() => ({ kind: 'ALBUM', albumId: album.id })}
-                      />
-                    </div>
-                  )}
+                  <CreatorAlbumMaterialViews
+                    albumId={album.id}
+                    viewMode={viewMode}
+                    materials={materials}
+                    materialStacks={materialStacks}
+                    busy={busy}
+                    onOpen={openMaterial}
+                    onOpenStack={openMaterialStack}
+                    onArchive={onArchiveMaterial}
+                    onDelete={onDeleteMaterial}
+                    notify={notify}
+                  />
                   <div className="flex min-h-16 items-center justify-center gap-3 px-4 pb-6 text-xs text-muted-foreground">
                     {loading ? (
                       <LoaderCircleIcon className="size-4 animate-spin" aria-label={l.loadingMore} />

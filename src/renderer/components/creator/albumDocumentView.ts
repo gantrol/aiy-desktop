@@ -1,4 +1,7 @@
-import type { CreationLibraryFilter } from '@/renderer/components/creator/CreationLibraryToolbar';
+import {
+  isAllCreationLibraryFilter,
+  type CreationLibraryFilter,
+} from '@/renderer/components/creator/creationLibraryFilter';
 import type { GalleryRelationship, GalleryScope } from '@/renderer/components/gallery/galleryPreferences';
 
 export function shouldShowDocumentView({
@@ -25,8 +28,8 @@ export function shouldShowDocumentView({
   documentTotal: number;
 }) {
   return (
-    filter === 'documents' ||
-    (filter === 'all' &&
+    (!filter.images && filter.documents) ||
+    (isAllCreationLibraryFilter(filter) &&
       !loading &&
       !error &&
       !query &&

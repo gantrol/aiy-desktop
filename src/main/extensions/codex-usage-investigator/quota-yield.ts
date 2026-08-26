@@ -6,6 +6,7 @@ import type {
   CodexUsageQuotaYieldEstimate,
   CodexUsageQuotaYieldSample,
   CodexUsageRange,
+  CodexUsageServiceTier,
 } from '@/shared/contracts/codex-usage';
 import { codexUsageDefaultGranularity } from '@/shared/codex-usage-time';
 import type { CodexUsageEventCoverage } from '@/main/extensions/codex-usage-investigator/cache-database';
@@ -34,6 +35,9 @@ interface QuotaObservation {
 }
 
 interface MutableModelUsage {
+  model: string;
+  serviceTier: CodexUsageServiceTier;
+  inferredServiceTierTokens: number;
   totalTokens: number;
   requestCount: number;
 }
@@ -346,7 +350,7 @@ export class CodexQuotaYieldAccumulator {
     return {
       definition: 'OBSERVED_TOKENS_PER_SUBSCRIPTION_QUOTA_PERCENT',
       calculationBasis: 'OBSERVATION_SEGMENT',
-      algorithmVersion: 7,
+      algorithmVersion: 8,
       timeZone: this.#timeZone,
       defaultGranularity: codexUsageDefaultGranularity(this.#range),
       storedFrom: this.#coverage.storedFrom,
@@ -410,11 +414,21 @@ export class CodexQuotaYieldAccumulator {
     addUsage(state.usage, event.usage);
     state.requestCount = addSafe(state.requestCount, 1);
     const model = normalizeCodexUsageModel(event.model) || 'unknown';
-    const modelUsage = state.models.get(model) ?? { totalTokens: 0, requestCount: 0 };
+    const modelTierKey = `${model}\u0000${event.serviceTier}`;
+    const modelUsage = state.models.get(modelTierKey) ?? {
+      model,
+      serviceTier: event.serviceTier,
+      inferredServiceTierTokens: 0,
+      totalTokens: 0,
+      requestCount: 0,
+    };
+    if (event.serviceTierInferred) {
+      modelUsage.inferredServiceTierTokens = addSafe(modelUsage.inferredServiceTierTokens, event.usage.totalTokens);
+    }
     modelUsage.totalTokens = addSafe(modelUsage.totalTokens, event.usage.totalTokens);
     modelUsage.requestCount = addSafe(modelUsage.requestCount, 1);
-    state.models.set(model, modelUsage);
-    const valuation = estimateCodexUsage(model, event.usage);
+    state.models.set(modelTierKey, modelUsage);
+    const valuation = estimateCodexUsage(model, event.usage, event.serviceTier, event.timestamp);
     state.credits += valuation.codexCredits ?? 0;
     state.creditsComplete &&= valuation.codexCredits !== null;
   }
@@ -464,14 +478,21 @@ export class CodexQuotaYieldAccumulator {
       nonCachedTokensPerOnePercent: nonCachedTokens / quotaPercentConsumed,
       cachedInputPercent:
         state.usage.inputTokens > 0 ? (state.usage.cachedInputTokens / state.usage.inputTokens) * 100 : 0,
-      modelShares: [...state.models.entries()]
-        .map(([model, usage]) => ({
-          model,
+      modelShares: [...state.models.values()]
+        .map((usage) => ({
+          model: usage.model,
+          serviceTier: usage.serviceTier,
+          inferredServiceTierTokens: usage.inferredServiceTierTokens,
           totalTokens: usage.totalTokens,
           tokenPercent: (usage.totalTokens / state.usage.totalTokens) * 100,
           requestCount: usage.requestCount,
         }))
-        .sort((left, right) => right.totalTokens - left.totalTokens || left.model.localeCompare(right.model)),
+        .sort(
+          (left, right) =>
+            right.totalTokens - left.totalTokens ||
+            left.model.localeCompare(right.model) ||
+            left.serviceTier.localeCompare(right.serviceTier),
+        ),
     };
   }
 

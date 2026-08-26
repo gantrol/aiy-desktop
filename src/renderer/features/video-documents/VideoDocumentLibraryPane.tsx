@@ -290,7 +290,7 @@ export function VideoDocumentLibraryPane({
         expandedAlbumIds={treeState.expandedAlbumIds}
         compact={compact}
         onToggleAlbum={treeState.toggleAlbum}
-        onPullDownExpand={treeState.pullDownExpand}
+        onGestureExpand={treeState.gestureExpand}
         onPointerTrackStart={treeState.beginPointerTrack}
         onPointerTrack={treeState.trackPointer}
         onSelectDocument={onSelectDocument}

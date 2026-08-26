@@ -11,6 +11,7 @@ interface Props {
   value: CanvasPresetDto | undefined;
   compact?: boolean;
   toolbar?: boolean;
+  disabled?: boolean;
   onChange(preset: CanvasPresetDto | undefined): void;
 }
 
@@ -29,7 +30,14 @@ function RatioSwatch({ preset }: { preset: CanvasPresetDto }) {
   );
 }
 
-export function CanvasPresetPicker({ presets, value, compact = false, toolbar = false, onChange }: Props) {
+export function CanvasPresetPicker({
+  presets,
+  value,
+  compact = false,
+  toolbar = false,
+  disabled = false,
+  onChange,
+}: Props) {
   const { messages } = useI18n();
   const c = messages.creator.canvas;
   const [open, setOpen] = useState(false);
@@ -44,6 +52,7 @@ export function CanvasPresetPicker({ presets, value, compact = false, toolbar = 
             type="button"
             variant={toolbar ? 'ghost' : 'outline'}
             size={toolbar ? 'sm' : undefined}
+            disabled={disabled}
             className={
               toolbar
                 ? 'h-8 gap-1.5 rounded-md px-2 font-medium shadow-none data-[state=open]:bg-accent'

@@ -13,6 +13,7 @@ import {
 import type { LucideIcon } from 'lucide-react';
 import { useLayoutEffect, useRef, useState, type DragEvent as ReactDragEvent, type ReactNode } from 'react';
 import type { AssetFileRevealContext, AssetFileRevealTargetDto } from '@/shared/contracts';
+import type { MessageCatalog } from '@/renderer/i18n/catalog';
 import { useI18n } from '@/renderer/i18n/useI18n';
 import { AlbumTreeContextMenuItems } from '@/renderer/components/albums/AlbumTreeContextMenuItems';
 import { startImageAssetDrag } from '@/renderer/components/albums/albumDrag';
@@ -42,15 +43,16 @@ import { useAssetMenuActions } from '@/renderer/components/media/AssetMenuAction
 interface Props {
   assetId: string;
   children: ReactNode;
-  notify(message: string): void;
+  notify?(message: string): void;
   actions?: readonly ActionMenuAction[];
+  lifecycleActions?: readonly ActionMenuAction[];
   revealContext?: AssetFileRevealContext;
   copyable?: boolean;
   usableInCreation?: boolean;
   draggable?: boolean;
 }
 
-type FileAction = 'COPY' | 'SAVE_AS' | 'REVEAL' | 'OPEN';
+type FileAction = 'COPY' | 'SAVE_AS' | 'REVEAL' | 'REVEAL_SOURCE' | 'OPEN';
 
 const defaultRevealContext: AssetFileRevealContext = { kind: 'ALL_MATERIALS' };
 
@@ -74,6 +76,40 @@ function AssetMenuIcon({ icon: Icon, className }: { icon: LucideIcon; className?
   );
 }
 
+function DeleteAssetDialog({
+  open,
+  busy,
+  labels,
+  onOpenChange,
+  onDelete,
+}: {
+  open: boolean;
+  busy: boolean;
+  labels: MessageCatalog['assetFile'];
+  onOpenChange(open: boolean): void;
+  onDelete(): void;
+}) {
+  return (
+    <Dialog open={open} onOpenChange={(next) => !busy && onOpenChange(next)}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>{labels.deleteTitle}</DialogTitle>
+          <DialogDescription>{labels.deleteDescription}</DialogDescription>
+        </DialogHeader>
+        <DialogFooter>
+          <Button type="button" variant="outline" disabled={busy} onClick={() => onOpenChange(false)}>
+            {labels.cancel}
+          </Button>
+          <Button type="button" variant="destructive" disabled={busy} onClick={onDelete}>
+            {busy && <LoaderCircleIcon className="size-4 animate-spin" />}
+            {labels.confirmDelete}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 function startNativeFileDrag(
   event: ReactDragEvent<HTMLDivElement>,
   assetId: string,
@@ -93,8 +129,9 @@ function startNativeFileDrag(
 export function AssetFileContextMenu({
   assetId,
   children,
-  notify,
+  notify: notifyProp,
   actions = [],
+  lifecycleActions,
   revealContext = defaultRevealContext,
   copyable = true,
   usableInCreation = true,
@@ -103,6 +140,7 @@ export function AssetFileContextMenu({
   const { messages } = useI18n();
   const labels = messages.assetFile;
   const menuActions = useAssetMenuActions();
+  const notify = notifyProp ?? menuActions?.notify ?? (() => undefined);
   const dragSurfaceRef = useDraggableFirstChild(draggable);
   const revealRequestKey = `${assetId}:${JSON.stringify(revealContext)}`;
   const latestRevealRequestKey = useRef(revealRequestKey);
@@ -130,6 +168,8 @@ export function AssetFileContextMenu({
       } else if (action === 'SAVE_AS') {
         const result = await window.desktopApi.assetFileSaveAs(assetId);
         if (result.status === 'saved') notify(labels.saved);
+      } else if (action === 'REVEAL_SOURCE') {
+        await window.desktopApi.assetFileReveal(assetId);
       } else if (action === 'REVEAL') {
         await window.desktopApi.assetFileReveal(assetId, context);
       } else {
@@ -211,7 +251,7 @@ export function AssetFileContextMenu({
   const revealItem = !aggregateRevealContext ? (
     <ContextMenuItem onSelect={() => void run('REVEAL')}>
       <AssetMenuIcon icon={FolderOpenIcon} />
-      {labels.reveal}
+      {labels.revealPlacement}
     </ContextMenuItem>
   ) : revealTargetsLoading || revealTargets === null ? (
     <ContextMenuItem disabled>
@@ -226,13 +266,13 @@ export function AssetFileContextMenu({
   ) : revealTargets.length === 1 ? (
     <ContextMenuItem onSelect={() => void run('REVEAL', revealTargets[0].context)}>
       <AssetMenuIcon icon={FolderOpenIcon} />
-      {labels.reveal}
+      {labels.revealPlacement}
     </ContextMenuItem>
   ) : (
     <ContextMenuSub>
       <ContextMenuSubTrigger>
         <AssetMenuIcon icon={FolderOpenIcon} />
-        {labels.reveal}
+        {labels.revealPlacement}
       </ContextMenuSubTrigger>
       <ContextMenuSubContent>
         {revealTargets.map((target) => (
@@ -311,40 +351,33 @@ export function AssetFileContextMenu({
             <AssetMenuIcon icon={DownloadIcon} />
             {labels.saveAs}
           </ContextMenuItem>
+          <ContextMenuItem data-action="asset-file-reveal-source" onSelect={() => void run('REVEAL_SOURCE')}>
+            <AssetMenuIcon icon={FolderOpenIcon} />
+            {labels.reveal}
+          </ContextMenuItem>
           {revealItem}
           <ContextMenuItem onSelect={() => void run('OPEN')}>
             <AssetMenuIcon icon={ExternalLinkIcon} />
             {labels.open}
           </ContextMenuItem>
           <ContextMenuSeparator />
-          <ContextMenuItem variant="destructive" onSelect={() => setDeleteOpen(true)}>
-            <AssetMenuIcon icon={Trash2Icon} />
-            {labels.delete}
-          </ContextMenuItem>
+          {lifecycleActions === undefined ? (
+            <ContextMenuItem variant="destructive" onSelect={() => setDeleteOpen(true)}>
+              <AssetMenuIcon icon={Trash2Icon} />
+              {labels.delete}
+            </ContextMenuItem>
+          ) : (
+            <ActionContextMenuItems actions={lifecycleActions} />
+          )}
         </ContextMenuContent>
       </ContextMenu>
-      <Dialog
-        open={deleteOpen}
-        onOpenChange={(open) => {
-          if (!deleteBusy) setDeleteOpen(open);
-        }}
-      >
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>{labels.deleteTitle}</DialogTitle>
-            <DialogDescription>{labels.deleteDescription}</DialogDescription>
-          </DialogHeader>
-          <DialogFooter>
-            <Button type="button" variant="outline" disabled={deleteBusy} onClick={() => setDeleteOpen(false)}>
-              {labels.cancel}
-            </Button>
-            <Button type="button" variant="destructive" disabled={deleteBusy} onClick={() => void deleteAsset()}>
-              {deleteBusy && <LoaderCircleIcon className="size-4 animate-spin" />}
-              {labels.confirmDelete}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      <DeleteAssetDialog
+        open={lifecycleActions === undefined && deleteOpen}
+        busy={deleteBusy}
+        labels={labels}
+        onOpenChange={setDeleteOpen}
+        onDelete={() => void deleteAsset()}
+      />
     </>
   );
 }

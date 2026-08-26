@@ -1,13 +1,4 @@
-import {
-  ArchiveIcon,
-  ArchiveRestoreIcon,
-  PencilIcon,
-  PinIcon,
-  PinOffIcon,
-  PlusIcon,
-  SettingsIcon,
-  Trash2Icon,
-} from 'lucide-react';
+import { ArchiveIcon, PencilIcon, PinIcon, PinOffIcon, PlusIcon, SettingsIcon, Trash2Icon } from 'lucide-react';
 import { useState } from 'react';
 import type { AlbumDto, AssetDto } from '@/shared/contracts';
 import { AlbumGlyphIcon } from '@/renderer/icons';
@@ -16,7 +7,7 @@ import { mediaThumbnailUrl } from '@/renderer/components/media/mediaThumbnailUrl
 import { ImageAmbientBackdrop } from '@/renderer/components/media/AmbientImage';
 import { ActionMenuButton, type ActionMenuAction } from '@/renderer/components/ui/action-menu';
 import { Button } from '@/renderer/components/ui/button';
-import { AlbumEditorDialog, DeleteAlbumDialog } from '@/renderer/components/gallery/AlbumDialogs';
+import { AlbumEditorDialog } from '@/renderer/components/gallery/AlbumDialogs';
 import type { AlbumNavigationLabels } from '@/renderer/components/gallery/AlbumNavigation';
 
 interface Labels extends AlbumNavigationLabels {
@@ -37,7 +28,7 @@ interface Props {
   onRename(album: AlbumDto, title: string): Promise<void>;
   onDelete(album: AlbumDto): Promise<void>;
   onTogglePin(album: AlbumDto): Promise<void>;
-  onSetArchived(album: AlbumDto, archived: boolean): Promise<void>;
+  onArchive(album: AlbumDto): Promise<void>;
   onCreateCreation?(): void;
   onSettings?(): void;
 }
@@ -52,48 +43,36 @@ export function AlbumDetailHeader({
   onRename,
   onDelete,
   onTogglePin,
-  onSetArchived,
+  onArchive,
   onCreateCreation,
   onSettings,
 }: Props) {
   const [renaming, setRenaming] = useState(false);
-  const [deleting, setDeleting] = useState(false);
-  const ownArchived = Boolean(album.archivedAt);
-  const archived = effectivelyArchived ?? ownArchived;
+  const archived = effectivelyArchived ?? Boolean(album.archivedAt);
   const actions: ActionMenuAction[] = [
     ...(onSettings && labels.settings
       ? [{ id: 'settings', label: labels.settings, icon: SettingsIcon, disabled: busy, onSelect: onSettings }]
       : []),
     { id: 'rename', label: labels.rename, icon: PencilIcon, disabled: busy, onSelect: () => setRenaming(true) },
-    ...(ownArchived
+    ...(!archived
       ? [
           {
             id: 'archive',
-            label: labels.restore,
-            icon: ArchiveRestoreIcon,
+            label: labels.archive,
+            icon: ArchiveIcon,
+            separatorBefore: true,
             disabled: busy,
-            onSelect: () => void onSetArchived(album, false),
+            onSelect: () => void onArchive(album),
           } satisfies ActionMenuAction,
         ]
-      : archived
-        ? []
-        : [
-            {
-              id: 'archive',
-              label: labels.archive,
-              icon: ArchiveIcon,
-              disabled: busy,
-              onSelect: () => void onSetArchived(album, true),
-            } satisfies ActionMenuAction,
-          ]),
+      : []),
     {
       id: 'delete',
       label: labels.delete,
       icon: Trash2Icon,
       destructive: true,
-      separatorBefore: true,
       disabled: busy,
-      onSelect: () => setDeleting(true),
+      onSelect: () => void onDelete(album),
     },
   ];
 
@@ -143,18 +122,6 @@ export function AlbumDetailHeader({
         onSubmit={async (title) => {
           await onRename(album, title);
           setRenaming(false);
-        }}
-      />
-      <DeleteAlbumDialog
-        album={deleting ? album : null}
-        labels={labels}
-        busy={busy}
-        onOpenChange={(open) => {
-          if (!open) setDeleting(false);
-        }}
-        onDelete={async () => {
-          await onDelete(album);
-          setDeleting(false);
         }}
       />
     </>

@@ -1,14 +1,14 @@
 import type { AlbumDto, AssetDto, Locale } from '@/shared/contracts';
 import { AlbumCoverBadge } from '@/renderer/components/albums/AlbumTreePreview';
-import { TreeBranchNodeConnector, TreeBranchTransitRail } from '@/renderer/components/albums/TreeDisclosureRail';
-import { getTreeNodeAnchor, type TreeBranchItemTopology } from '@/renderer/components/albums/treeConnectionGeometry';
 import {
-  getMediaStackHorizontalBounds,
-  getMediaStackLayout,
-  getMediaStackPrimaryFrameBounds,
-  MediaStackPreview,
-  type MediaStackItem,
-} from '@/renderer/components/media/MediaStackPreview';
+  CreationTreeNodeFrame,
+  type CreationLibraryTreePlacementProps,
+  type CreationTreeChildBranch,
+  getCreationTreeMediaNodeMetrics,
+} from '@/renderer/components/creator/CreationLibraryTreeItem';
+import { useTreeBranchPreviewGesture } from '@/renderer/components/albums/useTreeBranchPreviewGesture';
+import { MediaStackPreview, type MediaStackItem } from '@/renderer/components/media/MediaStackPreview';
+import { cn } from '@/renderer/lib/utils';
 import type { ActionMenuAction } from '@/renderer/components/ui/action-menu';
 
 export interface CreationAssetNavigationTarget {
@@ -99,21 +99,37 @@ export function CompactCreationAlbumPreview({
   );
 }
 
+export interface CreationSessionTreePreviewProps extends CreationLibraryTreePlacementProps {
+  items: MediaStackItem[];
+  childBranch?: CreationTreeChildBranch;
+  onAssetSelect(asset: AssetDto): void;
+  actions: readonly ActionMenuAction[];
+  notify(message: string): void;
+  onGestureExpand?(): void;
+  onPointerTrackStart?(clientY: number): void;
+  onPointerTrack?(clientY: number): boolean;
+}
+
 export function CreationSessionTreePreview({
   items,
+  childBranch,
   branchTopology,
   onAssetSelect,
   actions,
   notify,
-}: {
-  items: MediaStackItem[];
-  branchTopology: TreeBranchItemTopology | undefined;
-  onAssetSelect(asset: AssetDto): void;
-  actions: readonly ActionMenuAction[];
-  notify(message: string): void;
-}) {
-  const paintedBounds = getMediaStackHorizontalBounds('tree', items, 'settled');
-  const previewWidth = Math.ceil(Math.max(getMediaStackLayout('tree').containerWidth, paintedBounds.right));
+  onGestureExpand,
+  onPointerTrackStart,
+  onPointerTrack,
+}: CreationSessionTreePreviewProps) {
+  const metrics = getCreationTreeMediaNodeMetrics(items);
+  const previewGesture = useTreeBranchPreviewGesture({
+    open: childBranch?.open ?? false,
+    expandable: Boolean(childBranch),
+    canSpreadPreview: false,
+    onGestureExpand: childBranch ? onGestureExpand : undefined,
+    onPointerTrackStart: childBranch ? onPointerTrackStart : undefined,
+    onPointerTrack: childBranch ? onPointerTrack : undefined,
+  });
   const preview = (
     <MediaStackPreview
       size="tree"
@@ -123,26 +139,16 @@ export function CreationSessionTreePreview({
       contextActions={actions}
     />
   );
-  if (!branchTopology) {
-    return (
-      <span
-        className="relative z-10 -ml-1 flex h-[4.25rem] shrink-0 items-center overflow-visible pl-0.5"
-        style={{ width: previewWidth }}
-      >
-        {preview}
-      </span>
-    );
-  }
-  const nodeAnchor = getTreeNodeAnchor(getMediaStackPrimaryFrameBounds('tree', items));
   return (
-    <span
+    <CreationTreeNodeFrame
       data-tree-branch-media-preview
-      className="relative z-10 -ml-1 flex h-[4.25rem] shrink-0 items-center overflow-visible"
-      style={{ width: previewWidth }}
+      bounds={metrics.bounds}
+      branchTopology={branchTopology}
+      className={cn('-ml-1 flex h-[4.25rem] items-center', !branchTopology && 'pl-0.5')}
+      style={{ width: metrics.width }}
+      {...(childBranch ? previewGesture.bindings : {})}
     >
-      <TreeBranchTransitRail topology={branchTopology} />
-      <TreeBranchNodeConnector topology={branchTopology} anchor={nodeAnchor} />
       {preview}
-    </span>
+    </CreationTreeNodeFrame>
   );
 }

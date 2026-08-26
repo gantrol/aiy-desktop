@@ -8,6 +8,10 @@ import { CodexImageDiscoveryRepository } from '@/main/database/extensions/codex-
 import { ContentPackRepository } from '@/main/database/packs/content-pack-repository';
 import { CreationImportRepository } from '@/main/database/creations/creation-import-repository';
 import { CreationInputStashRepository } from '@/main/database/creations/creation-input-stash-repository';
+import { CreationItemRepository } from '@/main/database/creations/creation-item-repository';
+import { InspirationStashRepository } from '@/main/database/creations/inspiration-stash-repository';
+import { SocialPostRepository } from '@/main/database/creations/social-post-repository';
+import { ArticleRepository } from '@/main/database/creations/article-repository';
 import { CreationRepository } from '@/main/database/creations/creation-repository';
 import { CreationOutputPresentationRepository } from '@/main/database/creations/creation-output-presentation-repository';
 import { CreatorAgentRepository } from '@/main/database/assistant/creator-agent-repository';
@@ -39,6 +43,9 @@ import { StyleExplorationRepository } from '@/main/database/assistant/style-expl
 import { TermIllustrationRepository } from '@/main/database/dictionary/term-illustration-repository';
 import { VideoDocumentRepository } from '@/main/database/video-documents/video-document-repository';
 import { WorkbenchRepository } from '@/main/database/generation/workbench-repository';
+import { DerivedVisualRepository } from '@/main/database/creations/derived-visual-repository';
+import { RecycleBinRepository } from '@/main/database/recovery/recycle-bin-repository';
+import { ContentLifecycleRepository } from '@/main/database/recovery/content-lifecycle-repository';
 
 export function createLibraryDatabaseRepositories(storage: LibraryStorage) {
   const dictionary = new DictionaryRepository(storage);
@@ -48,9 +55,14 @@ export function createLibraryDatabaseRepositories(storage: LibraryStorage) {
   const executionSnapshots = new ExecutionSnapshotRepository(storage);
   const creationImports = new CreationImportRepository(storage, executionSnapshots);
   const creationOutputPresentation = new CreationOutputPresentationRepository(storage);
+  const creationItems = new CreationItemRepository(storage);
   const intake = new IntakeRepository(storage, creationImports);
   const videoDocuments = new VideoDocumentRepository(storage);
   const creationInputStashes = new CreationInputStashRepository(storage);
+  const inspirationStashes = new InspirationStashRepository(storage);
+  const socialPosts = new SocialPostRepository(storage);
+  const articles = new ArticleRepository(storage);
+  const derivedVisuals = new DerivedVisualRepository(storage, intake, articles, socialPosts, creationItems);
   const creatorAgent = new CreatorAgentRepository(storage);
   const aiProcesses = new AiProcessRepository(storage);
   const creations = new CreationRepository(storage);
@@ -70,6 +82,10 @@ export function createLibraryDatabaseRepositories(storage: LibraryStorage) {
   const assetFiles = new AssetFileRepository(storage);
   const assetLifecycle = new AssetLifecycleRepository(storage);
   const libraryFileView = new LibraryFileViewRepository(storage);
+  const recycleBin = new RecycleBinRepository(storage, () => libraryFileView.synchronizeBeforeObjectPurge());
+  const contentLifecycle = new ContentLifecycleRepository(storage, () =>
+    libraryFileView.synchronizeBeforeObjectPurge(),
+  );
   const assetRelationships = new AssetRelationshipRepository(storage);
   const materialAlbums = new MaterialAlbumRepository(storage);
   const materialMetadata = new MaterialMetadataRepository(storage);
@@ -89,14 +105,20 @@ export function createLibraryDatabaseRepositories(storage: LibraryStorage) {
     assetLifecycle,
     assetRelationships,
     assistantRuns,
+    articles,
     codexImageDiscoveries,
     contentPacks,
+    contentLifecycle,
     creationImports,
+    creationItems,
     creationOutputPresentation,
     creationInputStashes,
+    inspirationStashes,
+    socialPosts,
     creations,
     creatorAgent,
     dictionary,
+    derivedVisuals,
     dictionaryClassifications,
     dictionaryMaintenance,
     db: storage.db,
@@ -120,6 +142,7 @@ export function createLibraryDatabaseRepositories(storage: LibraryStorage) {
     packs,
     providerDescriptions,
     ratings,
+    recycleBin,
     storage,
     styleExplorations,
     termIllustrations,

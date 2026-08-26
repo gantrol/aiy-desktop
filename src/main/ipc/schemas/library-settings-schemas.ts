@@ -139,6 +139,98 @@ export const galleryListSchema = z.object({
   limit: z.number().int().min(1).max(60),
 });
 
+export const recycleBinScopeSchema = z.enum(['CREATOR_ALBUMS', 'MATERIAL_ALBUMS', 'CREATIONS', 'MATERIALS']);
+
+const recycleBinEntityTypeSchema = z.enum(['ALBUM', 'PROMPT_SERIES', 'CREATION', 'IMAGE_ASSET']);
+
+const recycleBinItemRefSchema = z
+  .object({
+    entityType: recycleBinEntityTypeSchema,
+    entityId: id,
+    expectedDeletedAt: z.string().min(1).max(64),
+  })
+  .strict();
+
+const recycleBinSelectionSchema = z.discriminatedUnion('kind', [
+  z.object({ kind: z.literal('ALL') }).strict(),
+  z.object({ kind: z.literal('ITEMS'), items: z.array(recycleBinItemRefSchema).min(1).max(1_000) }).strict(),
+]);
+
+export const recycleBinListSchema = z
+  .object({
+    scope: recycleBinScopeSchema,
+    cursor: z.string().max(512).nullable().optional(),
+    limit: z.number().int().min(1).max(100).optional(),
+  })
+  .strict();
+
+export const recycleBinRestoreSchema = recycleBinItemRefSchema.extend({ scope: recycleBinScopeSchema }).strict();
+
+export const recycleBinPurgePlanSchema = z
+  .object({ scope: recycleBinScopeSchema, selection: recycleBinSelectionSchema })
+  .strict();
+
+export const recycleBinPurgeSchema = recycleBinPurgePlanSchema
+  .extend({ confirmationToken: z.string().regex(/^[a-f0-9]{64}$/) })
+  .strict();
+
+const contentLifecycleStateSchema = z.enum(['ARCHIVED', 'RECYCLE_BIN']);
+const contentLifecycleKindSchema = z.enum(['ALBUM', 'CREATION', 'MATERIAL']);
+const contentLifecycleEntityTypeSchema = z.enum([
+  'ALBUM',
+  'CREATION_ITEM',
+  'PROMPT_SERIES',
+  'CREATION',
+  'INSPIRATION_STASH',
+  'SOCIAL_POST',
+  'ARTICLE',
+  'VIDEO_DOCUMENT',
+  'MATERIAL',
+  'IMAGE_ASSET',
+]);
+
+const contentLifecycleTargetSchema = z.object({ entityType: contentLifecycleEntityTypeSchema, entityId: id }).strict();
+
+const contentLifecycleItemRefSchema = contentLifecycleTargetSchema
+  .extend({ expectedChangedAt: z.string().min(1).max(64) })
+  .strict();
+
+export const contentLifecycleListSchema = z
+  .object({
+    state: contentLifecycleStateSchema,
+    kind: contentLifecycleKindSchema.nullable().optional(),
+    containerId: z.string().min(1).max(512).nullable().optional(),
+    cursor: z.string().max(512).nullable().optional(),
+    limit: z.number().int().min(1).max(100).optional(),
+  })
+  .strict();
+
+export const contentLifecyclePlanSchema = z
+  .object({
+    action: z.enum(['ARCHIVE', 'DELETE']),
+    targets: z.array(contentLifecycleTargetSchema).min(1).max(1_000),
+  })
+  .strict();
+
+export const contentLifecycleApplySchema = contentLifecyclePlanSchema
+  .extend({ confirmationToken: z.string().regex(/^[a-f0-9]{64}$/) })
+  .strict();
+
+export const contentLifecycleRestoreSchema = contentLifecycleItemRefSchema;
+
+const contentLifecycleFilterSchema = z.object({ kind: contentLifecycleKindSchema.nullable().optional() }).strict();
+
+const contentLifecyclePurgeSelectionSchema = z.discriminatedUnion('kind', [
+  z.object({ kind: z.literal('FILTER'), filter: contentLifecycleFilterSchema }).strict(),
+  z.object({ kind: z.literal('ITEMS'), items: z.array(contentLifecycleItemRefSchema).min(1).max(1_000) }).strict(),
+]);
+
+export const contentLifecyclePurgePlanSchema = z.object({ selection: contentLifecyclePurgeSelectionSchema }).strict();
+
+export const contentLifecyclePurgeSchema = contentLifecyclePurgePlanSchema
+  .extend({ confirmationToken: z.string().regex(/^[a-f0-9]{64}$/) })
+  .strict();
+
 export const materialAlbumListSchema = z.object({ locale: localeSchema });
 
 export const materialAlbumCreateSchema = z.object({
@@ -192,7 +284,7 @@ export const materialAlbumRemoveSchema = z.object({
   materialIds: z.array(id).max(200),
 });
 
-export const albumMemberTargetTypeSchema = z.enum(['MATERIAL', 'SERIES', 'ALBUM']);
+export const albumMemberTargetTypeSchema = z.enum(['MATERIAL', 'ALBUM']);
 
 export const albumCreateSchema = z.object({
   title: z.string().trim().min(1).max(200),
@@ -218,8 +310,6 @@ export const albumSetArchivedSchema = z.object({ albumId: id, archived: z.boolea
 
 export const albumMoveSchema = z.object({ albumId: id, parentAlbumId: id.nullable() });
 
-export const albumMoveSeriesSchema = z.object({ seriesIds: z.array(id).min(1).max(200), albumId: id.nullable() });
-
 export const albumAddMembersSchema = z.object({
   albumId: id,
   members: z.array(z.object({ targetType: albumMemberTargetTypeSchema, targetId: id })).max(200),
@@ -231,17 +321,18 @@ export const albumReorderMembersSchema = z.object({ albumId: id, memberIds: z.ar
 
 export const sidebarRootReorderSchema = z.object({
   scope: z.enum(['CREATOR', 'GALLERY']),
-  targets: z.array(z.object({ targetType: z.enum(['ALBUM', 'SERIES']), targetId: id })).max(5000),
+  targets: z.array(z.object({ targetType: z.enum(['ALBUM', 'CREATION_ITEM']), targetId: id })).max(5000),
 });
 
-export const creationGroupRenameSchema = z.object({
-  creationGroupId: id,
+export const creationAlbumRenameSchema = z.object({
+  creationAlbumId: id,
   title: z.string().trim().min(1).max(200),
   locale: localeSchema,
 });
 
 export const materialCollectionSourceSchema = z.discriminatedUnion('kind', [
   z.object({ kind: z.literal('MATERIAL_VIEW'), viewId: id }),
+  z.object({ kind: z.literal('CREATION_ALBUM'), creationAlbumId: id }),
   z.object({ kind: z.literal('CREATION_GROUP'), creationGroupId: id }),
   z.object({ kind: z.literal('PROMPT_SERIES'), seriesId: id }),
 ]);

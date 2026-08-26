@@ -193,6 +193,11 @@ export function registerDictionaryIpc(
     const input = searchSchema.parse(raw);
     return database.searchTerms(input.locale, input.query, input.facetValueIds, input);
   });
+  ipcMain.handle('dictionary:details', (_event, rawLocale) => {
+    const locale = localeSchema.parse(rawLocale);
+    const terms = database.searchTerms(locale);
+    return { terms, wordPalettes: database.getWordPalettes(locale, terms) };
+  });
   ipcMain.handle('dictionary:search-page', (_event, raw) => database.searchTermsPage(pageSearchSchema.parse(raw)));
   ipcMain.handle('dictionary:scope-resolve', (_event, raw) =>
     database.resolveDictionaryScope(dictionaryScopeResolveSchema.parse(raw)),

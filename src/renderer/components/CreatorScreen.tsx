@@ -2,27 +2,35 @@ import { useEffect, useMemo, useRef, useState, type ComponentProps, type ReactNo
 import { FileTextIcon, HistoryIcon, ImportIcon, PencilIcon, VideoIcon } from 'lucide-react';
 import type {
   AssetDto,
+  ArticleContentInput,
+  ArticleDto,
   AssistantActivityEventDto,
   AssistantProposalApplyValue,
   AssistantRunDto,
   AssistantWebSearchMode,
   BootstrapDto,
-  CreationDto,
+  CanvasPresetDto,
   CreationDictionaryScopeDto,
   CreationDraftDto,
   CreationInputSnapshotDto,
   CreationInputStashDto,
+  CreationFormEntityKind,
+  CreationItemDto,
   ImageCropInput,
   ImageEditBatchStartInput,
   ImageReframeStartInput,
   ImageTransformOutputDto,
   HistoricalTermRecommendationRunDto,
   ImportedCreationOutputDto,
+  InspirationStashContentInput,
+  InspirationStashDto,
   KnowledgeDistillationProposalDto,
   CreatorAgentScope,
   CreatorPromptNodeInput,
   DirectionExperimentDelegationInput,
   DirectionProposalDto,
+  DerivedVisualDto,
+  DerivedVisualWorkspaceOpenResult,
   GenerationInput,
   GenerationTargetInput,
   GenerationVersionInput,
@@ -31,7 +39,8 @@ import type {
   PromptSeriesDto,
   PromptVersionCreateResult,
   PromptVersionDto,
-  SidebarRootOrderTargetInput,
+  SocialPostContentInput,
+  SocialPostDto,
   StyleExplorationSlotDto,
   TermListItem,
   VideoDocumentDto,
@@ -48,17 +57,25 @@ import { useStableCallback } from '@/renderer/lib/useStableCallback';
 import { CreateAlbumDialog } from '@/renderer/components/albums/CreateAlbumDialog';
 import { AlbumCreationDefaultsDialog } from '@/renderer/components/albums/AlbumCreationDefaultsDialog';
 import { buildAlbumTreeIndex } from '@/renderer/components/albums/albumTree';
+import { SearchableAlbumSelect } from '@/renderer/components/albums/SearchableAlbumSelect';
+import {
+  useContentLifecycleActions,
+  type ContentLifecycleActionRequest,
+} from '@/renderer/components/albums/useContentLifecycleActions';
 import {
   navigationLocationKey,
   type CreatorLocation,
   type NavigationMode,
 } from '@/renderer/components/app/app-navigation';
-import { DeleteEntityDialog } from '@/renderer/components/app/DeleteEntityDialog';
 import { CanvasPresetPicker } from '@/renderer/components/creator/CanvasPresetPicker';
 import { CreationMaterialPicker } from '@/renderer/components/creator/CreationMaterialPicker';
 import { CreationReferenceStrip } from '@/renderer/components/creator/CreationReferenceStrip';
 import { CreationInputStashDialog } from '@/renderer/components/creator/CreationInputStashDialog';
-import type { CreationLibraryFilter } from '@/renderer/components/creator/CreationLibraryToolbar';
+import {
+  readCreationLibraryFilter,
+  writeCreationLibraryFilter,
+  type CreationLibraryFilter,
+} from '@/renderer/components/creator/creationLibraryFilter';
 import {
   readCreationStartMode,
   writeCreationStartMode,
@@ -66,6 +83,7 @@ import {
 } from '@/renderer/components/creator/creationStartMode';
 import { CreatorAlbumDetail } from '@/renderer/components/creator/CreatorAlbumDetail';
 import { DictionaryPicker } from '@/renderer/components/creator/DictionaryPicker';
+import { DerivedVisualWorkbench } from '@/renderer/components/creator/DerivedVisualWorkbench';
 import { generationReadiness } from '@/renderer/components/creator/generationReadiness';
 import {
   initialGenerationTargets,
@@ -86,6 +104,7 @@ import { CreatorInputPanel } from '@/renderer/components/creator/CreatorInputPan
 import { PasteDropSurface } from '@/renderer/components/creator/intake/PasteDropSurface';
 import { MinimalCreationStarter } from '@/renderer/components/creator/MinimalCreationStarter';
 import type { CreatorPromptComposerHandle } from '@/renderer/components/creator/CreatorPromptComposer';
+import { articleMarkdownFromPlainText } from '@/renderer/components/creator/articleMarkdownFromPlainText';
 import {
   appendCreatorPromptText,
   creatorPromptNodesFromCommonInput,
@@ -103,6 +122,7 @@ import { KnowledgeDistillationDialog } from '@/renderer/components/creator/Knowl
 import { OutputInspector } from '@/renderer/components/creator/OutputInspector';
 import type { AnnotationRefinementState } from '@/renderer/components/creator/annotationRefinement';
 import { RenameAlbumDialog } from '@/renderer/components/creator/RenameAlbumDialog';
+import { RenameArticleDialog } from '@/renderer/components/creator/RenameArticleDialog';
 import { RenameSeriesDialog } from '@/renderer/components/creator/RenameSeriesDialog';
 import { ResultLibrary, type ResultLibrarySurface } from '@/renderer/components/creator/ResultLibrary';
 import { StyleExplorationDialog } from '@/renderer/components/creator/StyleExplorationDialog';
@@ -112,12 +132,23 @@ import {
   buildCreatorAssistPromptNodes,
   rankPromptDraftTermCandidates,
 } from '@/renderer/components/creator/promptDraftCandidates';
-import { buildCreationSessionProjection } from '@/renderer/components/creator/creationSessionProjection';
+import {
+  buildCreationSessionProjection,
+  type CreationSessionProjection,
+} from '@/renderer/components/creator/creationSessionProjection';
 import { creationExperimentContextForSeries } from '@/renderer/components/creator/creationExperimentContext';
 import { assistantRunHistory, directionCoverageMemory } from '@/renderer/components/creator/assistantRunHistory';
 import { buildCreationOutputProjection } from '@/renderer/components/creator/creationOutputProjection';
 import { useCreatorPanes } from '@/renderer/components/creator/useCreatorPanes';
 import { CreationOutputTabs, type CreationOutputMode } from '@/renderer/components/creator/CreationOutputTabs';
+import type { CreationOutcomePlan } from '@/renderer/components/creator/CreationOutcomePicker';
+import { SocialPostEditor } from '@/renderer/components/creator/SocialPostEditor';
+import { ArticleEditor } from '@/renderer/components/creator/ArticleEditor';
+import {
+  buildArticleHeaderPrompt,
+  buildArticleInlinePrompt,
+  buildSocialCoverPrompt,
+} from '@/renderer/components/creator/derivedVisualPrompt';
 import type { CreationAssistantMode } from '@/renderer/components/creator/CreationCollaborationPanel';
 import {
   allAssets,
@@ -147,6 +178,7 @@ import {
 } from '@/renderer/features/video-documents/VideoDocumentCreationStarter';
 import { VideoFileInput } from '@/renderer/features/video-documents/VideoDocumentFileInputs';
 import { VideoDocumentRenameDialog } from '@/renderer/features/video-documents/VideoDocumentRenameDialog';
+import { materialTitle, type MaterialLibraryItem } from '@/renderer/components/gallery/materialLibraryTypes';
 
 interface Props {
   data: BootstrapDto;
@@ -173,6 +205,7 @@ interface Props {
   onActiveAlbumChange(albumId: string | null): void;
   refresh(): Promise<void>;
   refreshAlbums(): Promise<void>;
+  onTermDetailsRequest?(): Promise<void>;
   onImportedOutputSaved(output: ImportedCreationOutputDto): void;
   notify(message: string): void;
 }
@@ -186,11 +219,108 @@ interface PendingAutoTitle {
   initialTitle: string;
 }
 
+function creatorMaterialLifecycleTarget(item: MaterialLibraryItem) {
+  if (item.kind === 'TEXT') return { entityType: 'MATERIAL' as const, entityId: item.text.id };
+  return item.image.materialId
+    ? { entityType: 'MATERIAL' as const, entityId: item.image.materialId }
+    : { entityType: 'IMAGE_ASSET' as const, entityId: item.image.asset.id };
+}
+
 interface CreationMaterialsSnapshot {
   referenceAssets: AssetDto[];
   selectedTerms: TermListItem[];
   appliedPalettes: AppliedWordPalette[];
   termPromptLocale: Locale;
+}
+
+function articleImageExtension(asset: AssetDto) {
+  if (asset.mimeType === 'image/png') return 'png';
+  if (asset.mimeType === 'image/webp') return 'webp';
+  if (asset.mimeType === 'image/svg+xml') return 'svg';
+  return 'jpg';
+}
+
+function articleMediaBindings(assets: readonly AssetDto[], prefix: 'reference' | 'post') {
+  return assets.map((asset, index) => ({
+    path: `assets/${prefix}-${index + 1}-${asset.id}.${articleImageExtension(asset)}`,
+    assetId: asset.id,
+  }));
+}
+
+function markdownWithImages(body: string, bindings: readonly { path: string }[], locale: Locale) {
+  const imageMarkdown = bindings
+    .map((binding, index) => `![${locale === 'zh' ? '图片' : 'Image'} ${index + 1}](${binding.path})`)
+    .join('\n\n');
+  return [articleMarkdownFromPlainText(body), imageMarkdown].filter(Boolean).join('\n\n');
+}
+
+function socialPostBodyFromMarkdown(markdown: string) {
+  return markdown
+    .replace(/\r\n?/gu, '\n')
+    .replace(/!\[[^\]]*\]\([^\r\n)]*\)/gu, '')
+    .trim();
+}
+
+function commitGeneratedImageLocation(
+  keepEditorOpen: boolean,
+  seriesId: string,
+  versionId: string,
+  commit: (location: CreatorLocation, mode: NavigationMode) => void,
+) {
+  if (keepEditorOpen) return;
+  commit({ surface: 'existing-creation', seriesId, assetId: null, versionId }, 'replace');
+}
+
+function derivedVisualWorkspaceAvailable(visual: DerivedVisualDto, data: BootstrapDto) {
+  return visual.promptSeriesId
+    ? data.series.some((series) => series.id === visual.promptSeriesId)
+    : data.creationDraft?.id === visual.creationDraftId;
+}
+
+function defaultStandaloneCreationSeriesId(data: BootstrapDto, sessions: readonly CreationSessionProjection[]) {
+  const derivedSeriesIds = new Set(
+    (data.derivedVisuals ?? []).flatMap((visual) => (visual.promptSeriesId ? [visual.promptSeriesId] : [])),
+  );
+  return (
+    sessions.find((session) => session.memberSeries.every((series) => !derivedSeriesIds.has(series.id)))?.primarySeries
+      .id ?? null
+  );
+}
+
+function defaultStandaloneCreationDraft(data: BootstrapDto) {
+  const draft = data.creationDraft;
+  if (!draft) return null;
+  return (data.derivedVisuals ?? []).some((visual) => visual.creationDraftId === draft.id) ? null : draft;
+}
+
+function creationItemByFormEntity(
+  creationItems: readonly CreationItemDto[],
+  kind: CreationFormEntityKind,
+  entityId: string,
+) {
+  return (
+    creationItems.find((item) => item.forms.some((form) => form.entity.kind === kind && form.entity.id === entityId)) ??
+    null
+  );
+}
+
+function imageSeriesIdForCreationItem(item: CreationItemDto | null) {
+  const imageForm = item?.forms.find((form) => form.role === 'IMAGE_CREATION');
+  return imageForm?.entity.kind === 'PROMPT_SERIES' ? imageForm.entity.id : null;
+}
+
+function defaultDerivedDraftParentLocation(data: BootstrapDto): CreatorLocation | null {
+  const draftId = data.creationDraft?.id;
+  const visual = draftId
+    ? (data.derivedVisuals ?? []).find((candidate) => candidate.creationDraftId === draftId)
+    : null;
+  if (visual?.articleId && (data.articles ?? []).some((article) => article.id === visual.articleId)) {
+    return { surface: 'article', articleId: visual.articleId };
+  }
+  if (visual?.socialPostId && (data.socialPosts ?? []).some((post) => post.id === visual.socialPostId)) {
+    return { surface: 'social-post', postId: visual.socialPostId };
+  }
+  return null;
 }
 
 interface CapturedCreatorPrompt {
@@ -233,34 +363,86 @@ export function CreatorScreen({
   onActiveAlbumChange,
   refresh,
   refreshAlbums,
+  onTermDetailsRequest,
   onImportedOutputSaved,
   notify,
 }: Props) {
   const { messages } = useI18n();
   const c = messages.creator.workbench;
   const locationKey = navigationLocationKey(location);
-  const appliedLocationKeyRef = useRef(locationKey);
+  const appliedLocationKeyRef = useRef(
+    location.surface === 'inspiration-stash' || location.surface === 'social-post' || location.surface === 'article'
+      ? ''
+      : locationKey,
+  );
   const creationSessions = useMemo(
     () => buildCreationSessionProjection(data.series, data.styleExplorationBatches),
     [data.series, data.styleExplorationBatches],
   );
+  const initialInspirationStash =
+    location.surface === 'inspiration-stash'
+      ? (data.inspirationStashes ?? []).find((stash) => stash.id === location.stashId)
+      : undefined;
+  const initialInspirationItem = initialInspirationStash
+    ? creationItemByFormEntity(data.creationItems, 'INSPIRATION_STASH', initialInspirationStash.id)
+    : null;
+  const initialInspirationSeriesId = imageSeriesIdForCreationItem(initialInspirationItem);
+  const initialSocialPost =
+    location.surface === 'social-post'
+      ? (data.socialPosts ?? []).find((post) => post.id === location.postId)
+      : undefined;
+  const initialArticle =
+    location.surface === 'article'
+      ? (data.articles ?? []).find((article) => article.id === location.articleId)
+      : undefined;
+  const resumableDerivedVisual = (data.derivedVisuals ?? []).find(
+    (visual) =>
+      visual.adoptedAt === null &&
+      ((initialArticle && visual.articleId === initialArticle.id) ||
+        (initialSocialPost && visual.socialPostId === initialSocialPost.id)) &&
+      ((visual.promptSeriesId && data.series.some((series) => series.id === visual.promptSeriesId)) ||
+        data.creationDraft?.id === visual.creationDraftId),
+  );
+  const resumableDerivedSeriesId = resumableDerivedVisual?.promptSeriesId ?? null;
+  const resumableDerivedDraft =
+    !resumableDerivedSeriesId && data.creationDraft?.id === resumableDerivedVisual?.creationDraftId
+      ? data.creationDraft
+      : null;
+  const standaloneInitialSeriesId = defaultStandaloneCreationSeriesId(data, creationSessions);
+  const standaloneInitialDraft = defaultStandaloneCreationDraft(data);
+  const derivedDraftParentLocation = defaultDerivedDraftParentLocation(data);
   const initialCreationMode: CreationMode =
     location.surface === 'new-creation'
       ? 'new'
       : location.surface === 'existing-creation'
         ? 'existing'
-        : data.creationDraft
-          ? 'new'
-          : data.series.length
-            ? 'existing'
-            : 'new';
-  const initialDraft = initialCreationMode === 'new' ? data.creationDraft : null;
+        : resumableDerivedSeriesId
+          ? 'existing'
+          : initialSocialPost || initialArticle
+            ? 'new'
+            : initialInspirationStash
+              ? initialInspirationSeriesId
+                ? 'existing'
+                : 'new'
+              : standaloneInitialDraft
+                ? 'new'
+                : standaloneInitialSeriesId
+                  ? 'existing'
+                  : 'new';
+  const initialDraft =
+    resumableDerivedDraft ??
+    (initialCreationMode === 'new' && !initialSocialPost && !initialArticle ? standaloneInitialDraft : null);
   const initialSeriesId =
-    location.surface === 'existing-creation'
-      ? location.seriesId
-      : initialDraft
-        ? null
-        : (creationSessions[0]?.primarySeries.id ?? data.series[0]?.id ?? null);
+    resumableDerivedSeriesId ??
+    (initialSocialPost || initialArticle
+      ? null
+      : location.surface === 'existing-creation'
+        ? location.seriesId
+        : initialInspirationSeriesId
+          ? initialInspirationSeriesId
+          : initialDraft
+            ? null
+            : standaloneInitialSeriesId);
   const initialAssistantRun =
     data.assistantRuns.find(
       (run) =>
@@ -273,11 +455,29 @@ export function CreatorScreen({
   const [creationMode, setCreationMode] = useState<CreationMode>(initialCreationMode);
   const [creationStartMode, setCreationStartMode] = useState<CreationStartMode>(readCreationStartMode);
   const [videoCreationRequest, setVideoCreationRequest] = useState<VideoDocumentCreationRequest | null>(null);
-  const [creationLibraryFilter, setCreationLibraryFilter] = useState<CreationLibraryFilter>('all');
+  const [creationLibraryFilter, setCreationLibraryFilter] = useState<CreationLibraryFilter>(readCreationLibraryFilter);
   useEffect(() => {
-    if (documentWorkspaceActive && creationLibraryFilter === 'images') setCreationLibraryFilter('documents');
-  }, [creationLibraryFilter, documentWorkspaceActive]);
+    writeCreationLibraryFilter(creationLibraryFilter);
+  }, [creationLibraryFilter]);
+  useEffect(() => {
+    if (documentWorkspaceActive && !creationLibraryFilter.documents) {
+      setCreationLibraryFilter((current) => ({ ...current, documents: true }));
+    }
+  }, [creationLibraryFilter.documents, documentWorkspaceActive]);
   const [seriesId, setSeriesId] = useState<string | null>(initialSeriesId);
+  const [selectedInspirationStashId, setSelectedInspirationStashId] = useState<string | null>(
+    location.surface === 'inspiration-stash' ? location.stashId : null,
+  );
+  const selectedInspirationStash =
+    (data.inspirationStashes ?? []).find((stash) => stash.id === selectedInspirationStashId) ?? null;
+  const [selectedSocialPostId, setSelectedSocialPostId] = useState<string | null>(
+    location.surface === 'social-post' ? location.postId : null,
+  );
+  const selectedSocialPost = (data.socialPosts ?? []).find((post) => post.id === selectedSocialPostId) ?? null;
+  const [selectedArticleId, setSelectedArticleId] = useState<string | null>(
+    location.surface === 'article' ? location.articleId : null,
+  );
+  const selectedArticle = (data.articles ?? []).find((article) => article.id === selectedArticleId) ?? null;
   const [selectedAlbumId, setSelectedAlbumId] = useState<string | null>(
     location.surface === 'album-detail' ? location.albumId : null,
   );
@@ -291,7 +491,9 @@ export function CreatorScreen({
   const selectedIdeaCreation =
     (data.creations ?? []).find((creation) => creation.id === selectedIdeaCreationId) ?? null;
   const [targetAlbumId, setTargetAlbumId] = useState<string | null>(
-    location.surface === 'new-creation' ? location.albumId : (initialDraft?.targetAlbumId ?? null),
+    location.surface === 'new-creation'
+      ? location.albumId
+      : (initialInspirationItem?.albumId ?? initialInspirationStash?.albumId ?? initialDraft?.targetAlbumId ?? null),
   );
   const targetAlbum = data.albums.find((album) => album.id === targetAlbumId) ?? null;
   const albumTree = useMemo(() => buildAlbumTreeIndex(data.albums), [data.albums]);
@@ -302,14 +504,20 @@ export function CreatorScreen({
   const creationDraftIdRef = useRef(initialDraft?.id ?? null);
   const draftSavePromiseRef = useRef<Promise<CreationDraftDto> | null>(null);
   const savedDraftRef = useRef(initialDraft);
+  const draftAutosaveEpochRef = useRef(0);
+  const [inputSessionRevision, setInputSessionRevision] = useState(0);
   const series = creationMode === 'existing' ? data.series.find((item) => item.id === seriesId) : undefined;
   const seriesAlbumId =
-    data.albums.find((album) =>
-      album.members.some((member) => member.targetType === 'SERIES' && member.targetId === seriesId),
-    )?.id ?? null;
-  const activeAlbumContextId = selectedIdeaCreationId
-    ? null
-    : (selectedAlbumId ?? (creationMode === 'new' ? targetAlbumId : seriesAlbumId));
+    data.creationItems.find((item) =>
+      item.forms.some((form) => form.entity.kind === 'PROMPT_SERIES' && form.entity.id === seriesId),
+    )?.albumId ?? null;
+  const activeAlbumContextId = selectedSocialPostId
+    ? (selectedSocialPost?.albumId ?? null)
+    : selectedArticleId
+      ? (selectedArticle?.albumId ?? null)
+      : selectedIdeaCreationId
+        ? null
+        : (selectedAlbumId ?? (creationMode === 'new' ? targetAlbumId : seriesAlbumId));
   const activeCreationSession = series
     ? creationSessions.find((session) => session.memberSeries.some((item) => item.id === series.id))
     : undefined;
@@ -325,16 +533,50 @@ export function CreatorScreen({
         ) ?? null);
   const assistantScope = useMemo<CreatorAgentScope | null>(
     () =>
-      creationMode === 'existing' && sessionHostSeries
-        ? { kind: 'SERIES', id: sessionHostSeries.id }
-        : creationDraftId
-          ? { kind: 'DRAFT', id: creationDraftId }
-          : null,
-    [creationDraftId, creationMode, sessionHostSeries],
+      selectedSocialPostId || selectedArticleId
+        ? null
+        : creationMode === 'existing' && sessionHostSeries
+          ? { kind: 'SERIES', id: sessionHostSeries.id }
+          : creationDraftId
+            ? { kind: 'DRAFT', id: creationDraftId }
+            : null,
+    [creationDraftId, creationMode, selectedArticleId, selectedSocialPostId, sessionHostSeries],
   );
   const viewingExperimentBranch = Boolean(series && sessionHostSeries && series.id !== sessionHostSeries.id);
   const [outputSeriesId, setOutputSeriesId] = useState<string | null>(seriesId);
   const outputSeries = data.series.find((item) => item.id === outputSeriesId);
+  const draftDerivedVisual =
+    (data.derivedVisuals ?? []).find((visual) => visual.creationDraftId === creationDraftId) ?? null;
+  const seriesDerivedVisual = (data.derivedVisuals ?? []).find((visual) => visual.promptSeriesId === seriesId) ?? null;
+  const outputDerivedVisual =
+    (data.derivedVisuals ?? []).find((visual) => visual.promptSeriesId === outputSeries?.id) ?? null;
+  const socialCoverWorkspace = selectedSocialPost
+    ? ((data.derivedVisuals ?? []).find(
+        (visual) =>
+          visual.role === 'SOCIAL_POST_COVER' &&
+          visual.socialPostId === selectedSocialPost.id &&
+          derivedVisualWorkspaceAvailable(visual, data),
+      ) ?? null)
+    : null;
+  const socialCoverWorkspaceExists = Boolean(socialCoverWorkspace);
+  const articleHeaderWorkspace = selectedArticle
+    ? ((data.derivedVisuals ?? []).find(
+        (visual) =>
+          visual.role === 'ARTICLE_HEADER' &&
+          visual.articleId === selectedArticle.id &&
+          derivedVisualWorkspaceAvailable(visual, data),
+      ) ?? null)
+    : null;
+  const articleHeaderWorkspaceExists = Boolean(articleHeaderWorkspace);
+  const activeDerivedVisual = creationMode === 'new' ? draftDerivedVisual : seriesDerivedVisual;
+  const [dismissedDerivedVisualId, setDismissedDerivedVisualId] = useState<string | null>(null);
+  const editorDerivedVisual =
+    activeDerivedVisual &&
+    activeDerivedVisual.id !== dismissedDerivedVisualId &&
+    ((selectedArticle && activeDerivedVisual.articleId === selectedArticle.id) ||
+      (selectedSocialPost && activeDerivedVisual.socialPostId === selectedSocialPost.id))
+      ? activeDerivedVisual
+      : null;
   const outputCreationSession = outputSeries
     ? creationSessions.find((session) => session.memberSeries.some((item) => item.id === outputSeries.id))
     : undefined;
@@ -451,22 +693,20 @@ export function CreatorScreen({
   const minimalAssistantRequestRevision = useRef(0);
   const [renameOpen, setRenameOpen] = useState(false);
   const [renameAlbum, setRenameAlbum] = useState<AlbumDto | null>(null);
+  const [renameArticle, setRenameArticle] = useState<ArticleDto | null>(null);
   const [renameDocument, setRenameDocument] = useState<VideoDocumentSummaryDto | null>(null);
   const [settingsAlbum, setSettingsAlbum] = useState<AlbumDto | null>(null);
-  const [createAlbumParent, setCreateAlbumParent] = useState<AlbumDto | null | undefined>(undefined);
+  const [createAlbumRequest, setCreateAlbumRequest] = useState<{
+    parent: AlbumDto | null;
+    destination: 'LIBRARY' | 'NEW_CREATION';
+  } | null>(null);
   const [lifecycleBusy, setLifecycleBusy] = useState(false);
   const [albumMoveQueue] = useState(createSerialTaskQueue);
-  const [deleteTarget, setDeleteTarget] = useState<{
-    kind: 'series' | 'album' | 'idea';
-    id: string;
-    name: string;
-  } | null>(null);
-  const [deleteBusy, setDeleteBusy] = useState(false);
-  const [deleteError, setDeleteError] = useState('');
-  const [deleteAssociatedImages, setDeleteAssociatedImages] = useState(false);
-  const deleteSeriesTarget =
-    deleteTarget?.kind === 'series' ? data.series.find((item) => item.id === deleteTarget.id) : undefined;
-  const deleteOutputCount = allAssets(deleteSeriesTarget, { includeFailed: true }).length;
+  const contentLifecycleActions = useContentLifecycleActions({
+    notify,
+    onApplied: finishContentLifecycleAction,
+  });
+  const lifecycleActionBusy = lifecycleBusy || contentLifecycleActions.busy;
   const [requestedAssetId, setRequestedAssetId] = useState<string | null>(
     location.surface === 'existing-creation' ? location.assetId : null,
   );
@@ -482,6 +722,8 @@ export function CreatorScreen({
   const [inputStashDialogOpen, setInputStashDialogOpen] = useState(false);
   const [inputStashes, setInputStashes] = useState<CreationInputStashDto[]>([]);
   const [inputStashBusy, setInputStashBusy] = useState(false);
+  const [inspirationStashBusy, setInspirationStashBusy] = useState(false);
+  const [savedInspirationContentKey, setSavedInspirationContentKey] = useState<string | null>(null);
   const [pendingAutoTitle, setPendingAutoTitle] = useState<PendingAutoTitle | null>(null);
   const initialAssistantGenerationTargets =
     initialAssistantRun?.proposal && ['READY', 'ADOPTED'].includes(initialAssistantRun.proposal.status)
@@ -652,6 +894,21 @@ export function CreatorScreen({
     canvasPresetKey: canvasPreset?.stableKey ?? null,
     generationTargets,
   };
+  const currentInspirationContent: InspirationStashContentInput = {
+    schemaVersion: 1,
+    manualPrompt,
+    promptNodes,
+    referenceAssetIds: referenceAssets.map((asset) => asset.id),
+    termPromptLocale,
+    termIds: selectedTerms.map((term) => term.id),
+    wordPaletteReferences: appliedPalettes.map((reference) => ({
+      paletteId: reference.palette.id,
+      paletteRevisionId: reference.revision.id,
+      parameterValues: reference.parameterValues,
+      promptLocale: reference.promptLocale,
+    })),
+  };
+  const currentInspirationContentKey = JSON.stringify(currentInspirationContent);
   const automaticChangeSummary = useMemo(
     () =>
       creationDiffSummary({
@@ -684,18 +941,28 @@ export function CreatorScreen({
   const activeIdeaCreation = selectedIdeaCreation ?? projectIdeaCreation;
   const showOutputPane =
     !documentWorkspaceActive &&
-    (comparisonFullWindow ||
-      (!selectedAlbum &&
-        ((creationMode === 'existing' && Boolean(outputSeries)) ||
-          (outputMode === 'records' && Boolean(activeIdeaCreation || assistantScope)))));
-  const creatorSurface: ResultLibrarySurface = selectedIdeaCreation
-    ? 'idea-creation'
-    : selectedAlbum
-      ? 'album-detail'
-      : creationMode === 'new'
-        ? 'new-creation'
-        : 'existing-creation';
-  const newCreationSurface = creationMode === 'new' && !selectedAlbum && !selectedIdeaCreation;
+    (Boolean(editorDerivedVisual) ||
+      (!selectedSocialPost &&
+        !selectedArticle &&
+        (comparisonFullWindow ||
+          (!selectedAlbum &&
+            ((creationMode === 'existing' && Boolean(outputSeries)) ||
+              (outputMode === 'records' && Boolean(activeIdeaCreation || assistantScope)))))));
+  const creatorSurface: ResultLibrarySurface = selectedSocialPost
+    ? 'social-post'
+    : selectedArticle
+      ? 'article'
+      : selectedIdeaCreation
+        ? 'idea-creation'
+        : selectedInspirationStash
+          ? 'inspiration-stash'
+          : selectedAlbum
+            ? 'album-detail'
+            : creationMode === 'new'
+              ? 'new-creation'
+              : 'existing-creation';
+  const newCreationSurface =
+    creationMode === 'new' && !selectedAlbum && !selectedIdeaCreation && !selectedSocialPost && !selectedArticle;
   const ideaAssistantRuns = activeIdeaCreation
     ? data.assistantRuns.filter((run) => run.creationId === activeIdeaCreation.id)
     : assistantHistory.filter((run) => run.mode === 'directions');
@@ -1011,6 +1278,45 @@ export function CreatorScreen({
     }
   }
 
+  function invalidatePendingCreationDraftAutosaves() {
+    draftAutosaveEpochRef.current += 1;
+  }
+
+  async function autosaveCreationDraft(expectedEpoch: number, expectedDraftId: string | null) {
+    if (draftAutosaveEpochRef.current !== expectedEpoch || creationDraftIdRef.current !== expectedDraftId) {
+      return;
+    }
+    if (draftSavePromiseRef.current) {
+      try {
+        await draftSavePromiseRef.current;
+      } catch {
+        // The guarded autosave below is the recovery attempt for this input session.
+      }
+    }
+    if (draftAutosaveEpochRef.current !== expectedEpoch || creationDraftIdRef.current !== expectedDraftId) {
+      return;
+    }
+    await saveCreationDraftNow();
+  }
+
+  async function changeNewCreationAlbum(nextAlbumId: string | null) {
+    if (creationMode !== 'new' || nextAlbumId === targetAlbumId) return;
+    const previousAlbumId = targetAlbumId;
+    setTargetAlbumId(nextAlbumId);
+    if (location.surface === 'new-creation') {
+      commitCreatorLocation({ surface: 'new-creation', albumId: nextAlbumId }, 'replace');
+    }
+    try {
+      await saveCreationDraftNow(nextAlbumId);
+    } catch (reason) {
+      setTargetAlbumId(previousAlbumId);
+      if (location.surface === 'new-creation') {
+        commitCreatorLocation({ surface: 'new-creation', albumId: previousAlbumId }, 'replace');
+      }
+      notify(reason instanceof Error ? reason.message : String(reason));
+    }
+  }
+
   async function ensureAgentScope(): Promise<CreatorAgentScope> {
     if (creationMode === 'existing' && sessionHostSeries) return { kind: 'SERIES', id: sessionHostSeries.id };
     const draft = await saveCreationDraftNow();
@@ -1022,7 +1328,8 @@ export function CreatorScreen({
     setInputStashBusy(true);
     try {
       const scope = await ensureAgentScope();
-      setInputStashes(await window.desktopApi.creationInputStashesList(scope));
+      const stashes = await window.desktopApi.creationInputStashesList(scope);
+      setInputStashes(stashes);
       setInputStashDialogOpen(true);
     } catch (reason) {
       notify(reason instanceof Error ? reason.message : String(reason));
@@ -1042,7 +1349,7 @@ export function CreatorScreen({
       notify(
         locale === 'zh'
           ? `已暂存输入 S${String(stash.revisionNo).padStart(2, '0')}`
-          : `Input saved as S${String(stash.revisionNo).padStart(2, '0')}`,
+          : `Input stashed as S${String(stash.revisionNo).padStart(2, '0')}`,
       );
     } catch (reason) {
       notify(reason instanceof Error ? reason.message : String(reason));
@@ -1103,12 +1410,116 @@ export function CreatorScreen({
     );
   }
 
+  function restoreInspirationStash(stash: InspirationStashDto) {
+    const { referenceAssets: stashReferenceAssets, ...content } = stash.content;
+    const nextTerms = content.termIds.flatMap((termId) => data.terms.find((term) => term.id === termId) ?? []);
+    const nextPalettes = content.wordPaletteReferences.flatMap((reference) => {
+      const palette = data.wordPalettes.find((item) => item.id === reference.paletteId);
+      const revision = palette?.revisions.find((item) => item.id === reference.paletteRevisionId);
+      return palette && revision
+        ? [
+            {
+              palette,
+              revision,
+              parameterValues: reference.parameterValues,
+              promptLocale: reference.promptLocale,
+            },
+          ]
+        : [];
+    });
+    const nextPromptNodes = creatorPromptNodesFromReferences({
+      manualPrompt: content.manualPrompt,
+      termIds: content.termIds,
+      wordPaletteReferences: content.wordPaletteReferences,
+      nodes: content.promptNodes,
+    });
+    promptNodesRef.current = nextPromptNodes;
+    setPromptNodes(nextPromptNodes);
+    setManualPrompt(creatorPromptText(nextPromptNodes));
+    setTermPromptLocale(content.termPromptLocale);
+    replaceMaterials({
+      referenceAssets: stashReferenceAssets,
+      selectedTerms: nextTerms,
+      appliedPalettes: nextPalettes,
+      termPromptLocale: content.termPromptLocale,
+    });
+    setSavedInspirationContentKey(JSON.stringify(content));
+  }
+
+  async function stashInspiration() {
+    if (inspirationStashBusy) return;
+    let capturedPrompt: CapturedCreatorPrompt;
+    try {
+      capturedPrompt = captureVisiblePrompt();
+    } catch (reason) {
+      notify(reason instanceof Error ? reason.message : String(reason));
+      return;
+    }
+    const content: InspirationStashContentInput = {
+      schemaVersion: 1,
+      manualPrompt: capturedPrompt.manualPrompt,
+      promptNodes: capturedPrompt.nodes,
+      referenceAssetIds: referenceAssets.map((asset) => asset.id),
+      termPromptLocale,
+      termIds: capturedPrompt.selectedTerms.map((term) => term.id),
+      wordPaletteReferences: capturedPrompt.appliedPalettes.map((reference) => ({
+        paletteId: reference.palette.id,
+        paletteRevisionId: reference.revision.id,
+        parameterValues: reference.parameterValues,
+        promptLocale: reference.promptLocale,
+      })),
+    };
+    setInspirationStashBusy(true);
+    try {
+      synchronizeCapturedPrompt(capturedPrompt);
+      const currentItem =
+        creationMode === 'existing' && sessionHostSeries
+          ? creationItemByFormEntity(data.creationItems, 'PROMPT_SERIES', sessionHostSeries.id)
+          : null;
+      if (creationMode === 'existing' && sessionHostSeries && !currentItem) {
+        throw new Error(locale === 'zh' ? '所属创作项不可用' : 'The containing creation item is unavailable');
+      }
+      const stash = await window.desktopApi.inspirationStashSave(
+        selectedInspirationStashId
+          ? { mode: 'UPDATE', id: selectedInspirationStashId, content }
+          : currentItem
+            ? { mode: 'ADD_FORM', creationItemId: currentItem.id, content }
+            : { mode: 'CREATE_STANDALONE', albumId: targetAlbumId, content },
+      );
+      if (creationMode === 'new') {
+        const started = await startNewCreation(targetAlbumId, 'replace', true);
+        await refresh();
+        if (started) {
+          notify(locale === 'zh' ? '已暂存灵感' : 'Inspiration stashed');
+          return;
+        }
+      } else {
+        await refresh();
+      }
+      setSelectedInspirationStashId(stash.id);
+      setSavedInspirationContentKey(JSON.stringify(content));
+      setSelectedIdeaCreationId(null);
+      setSelectedAlbumId(null);
+      panes.setCompactPanel('creator');
+      commitCreatorLocation({ surface: 'inspiration-stash', stashId: stash.id }, 'replace');
+      notify(locale === 'zh' ? '已暂存灵感' : 'Inspiration stashed');
+    } catch (reason) {
+      notify(reason instanceof Error ? reason.message : String(reason));
+    } finally {
+      setInspirationStashBusy(false);
+    }
+  }
+
   const restoreVersionForEffect = useStableCallback(restoreVersion);
   const saveCreationDraftForEffect = useStableCallback(saveCreationDraftNow);
+  const autosaveCreationDraftForEffect = useStableCallback(autosaveCreationDraft);
   const commitCreatorLocationForEffect = useStableCallback(commitCreatorLocation);
   const workbenchLocationForEffect = useStableCallback(workbenchLocation);
   const chooseAlbumForEffect = useStableCallback(chooseAlbum);
   const chooseIdeaCreationForEffect = useStableCallback(chooseIdeaCreation);
+  const chooseInspirationStashForEffect = useStableCallback(chooseInspirationStash);
+  const chooseSocialPostForEffect = useStableCallback(chooseSocialPost);
+  const chooseArticleForEffect = useStableCallback(chooseArticle);
   const chooseSeriesForEffect = useStableCallback(chooseSeries);
   const startNewCreationForEffect = useStableCallback(startNewCreation);
   const notifyForEffect = useStableCallback(notify);
@@ -1131,7 +1542,9 @@ export function CreatorScreen({
   }, [creationMode, restoreVersionForEffect, version]);
 
   useEffect(() => {
-    if (creationMode !== 'new' || starting) return undefined;
+    if (creationMode !== 'new' || selectedInspirationStashId || selectedSocialPostId || selectedArticleId || starting) {
+      return undefined;
+    }
     const hasContent = Boolean(
       newTitle.trim() ||
       manualPrompt.trim() ||
@@ -1140,8 +1553,10 @@ export function CreatorScreen({
       appliedPalettes.length,
     );
     if (!hasContent && !creationDraftId) return undefined;
+    const expectedEpoch = draftAutosaveEpochRef.current;
+    const expectedDraftId = creationDraftId;
     const timer = window.setTimeout(() => {
-      void saveCreationDraftForEffect().catch((reason) =>
+      void autosaveCreationDraftForEffect(expectedEpoch, expectedDraftId).catch((reason) =>
         notifyForEffect(reason instanceof Error ? reason.message : String(reason)),
       );
     }, 450);
@@ -1154,6 +1569,9 @@ export function CreatorScreen({
     manualPrompt,
     promptNodes,
     referenceAssets,
+    selectedInspirationStashId,
+    selectedSocialPostId,
+    selectedArticleId,
     selectedTerms,
     appliedPalettes,
     dictionaryScope,
@@ -1162,7 +1580,7 @@ export function CreatorScreen({
     generationTargets,
     locale,
     notifyForEffect,
-    saveCreationDraftForEffect,
+    autosaveCreationDraftForEffect,
     starting,
   ]);
 
@@ -1364,7 +1782,9 @@ export function CreatorScreen({
   }, [active, assistantScope, dictionaryOpen, notify, promptFullWindow]);
 
   function resetInputs() {
+    invalidatePendingCreationDraftAutosaves();
     minimalAssistantRequestRevision.current += 1;
+    setInputSessionRevision((revision) => revision + 1);
     restoredVersionIdRef.current = null;
     setHydratedVersionId(null);
     promptNodesRef.current = [];
@@ -1383,6 +1803,8 @@ export function CreatorScreen({
     setExplorationDialogOpen(false);
     setExplorationError('');
     setRenameOpen(false);
+    setInputStashDialogOpen(false);
+    setInputStashes([]);
   }
 
   function restoreAssistantForScope(scope: CreatorAgentScope | null) {
@@ -1422,7 +1844,10 @@ export function CreatorScreen({
   }
 
   function workbenchLocation(): CreatorLocation {
+    if (selectedSocialPostId) return { surface: 'social-post', postId: selectedSocialPostId };
+    if (selectedArticleId) return { surface: 'article', articleId: selectedArticleId };
     if (selectedIdeaCreationId) return { surface: 'idea-creation', creationId: selectedIdeaCreationId };
+    if (selectedInspirationStashId) return { surface: 'inspiration-stash', stashId: selectedInspirationStashId };
     if (creationMode === 'new') return { surface: 'new-creation', albumId: targetAlbumId };
     if (seriesId) return { surface: 'existing-creation', seriesId, assetId: requestedAssetId };
     return { surface: 'default' };
@@ -1435,9 +1860,24 @@ export function CreatorScreen({
     }
   }
 
-  async function startNewCreation(albumId: string | null = null, navigationMode: NavigationMode | null = 'push') {
+  async function startNewCreation(
+    albumId: string | null = null,
+    navigationMode: NavigationMode | null = 'push',
+    fresh = false,
+  ) {
+    invalidatePendingCreationDraftAutosaves();
     try {
+      if (fresh && draftSavePromiseRef.current) {
+        try {
+          await draftSavePromiseRef.current;
+        } catch {
+          // Starting a fresh session supersedes an older autosave failure.
+        }
+      }
       if (
+        !fresh &&
+        !selectedSocialPostId &&
+        !selectedArticleId &&
         creationMode === 'new' &&
         (creationDraftIdRef.current ||
           newTitle.trim() ||
@@ -1451,9 +1891,14 @@ export function CreatorScreen({
       const draft = await window.desktopApi.creationDraftStart({
         albumId,
         termPromptLocale: defaultPromptLocale ?? locale,
+        fresh,
       });
       savedDraftRef.current = draft;
       onComparisonFullWindowChange(false);
+      setSelectedSocialPostId(null);
+      setSelectedArticleId(null);
+      setSelectedInspirationStashId(null);
+      setSavedInspirationContentKey(null);
       setSelectedIdeaCreationId(null);
       setOutputMode('results');
       setSelectedAlbumId(null);
@@ -1471,8 +1916,10 @@ export function CreatorScreen({
       if (navigationMode) {
         commitCreatorLocation({ surface: 'new-creation', albumId: draft.targetAlbumId }, navigationMode);
       }
+      return true;
     } catch (reason) {
       notify(reason instanceof Error ? reason.message : String(reason));
+      return false;
     }
   }
 
@@ -1494,6 +1941,10 @@ export function CreatorScreen({
     await refresh();
     const firstAssetId = result.assetIds[0] ?? null;
     onComparisonFullWindowChange(false);
+    setSelectedSocialPostId(null);
+    setSelectedArticleId(null);
+    setSelectedInspirationStashId(null);
+    setSavedInspirationContentKey(null);
     setSelectedIdeaCreationId(null);
     setOutputMode('results');
     setSelectedAlbumId(null);
@@ -1533,11 +1984,13 @@ export function CreatorScreen({
     synchronizeCapturedPrompt(capturedPrompt);
     const typedTitle = newTitle.trim();
     const title = typedTitle || savedDraftRef.current?.title.trim() || '新创作';
+    invalidatePendingCreationDraftAutosaves();
     setStarting(true);
     try {
       const draft = await saveCreationDraftNow(undefined, capturedPrompt);
       const result = await window.desktopApi.creationDraftCommit({
         creationDraftId: draft.id,
+        inspirationStashId: selectedInspirationStashId,
         title: title,
         manualPrompt: capturedPrompt.manualPrompt,
         promptNodes: capturedPrompt.nodes,
@@ -1559,6 +2012,10 @@ export function CreatorScreen({
       creationDraftIdRef.current = null;
       setCreationDraftId(null);
       setTargetAlbumId(null);
+      setSelectedSocialPostId(null);
+      setSelectedArticleId(null);
+      setSelectedInspirationStashId(null);
+      setSavedInspirationContentKey(null);
       setSelectedIdeaCreationId(null);
       setOutputMode('results');
       setSelectedAlbumId(null);
@@ -1575,6 +2032,564 @@ export function CreatorScreen({
     } finally {
       setStarting(false);
     }
+  }
+
+  async function commitSocialPost(_plan: Extract<CreationOutcomePlan, { kind: 'social-post' }>) {
+    if (starting) return;
+    let capturedPrompt: CapturedCreatorPrompt;
+    try {
+      capturedPrompt = captureVisiblePrompt();
+    } catch (reason) {
+      notify(reason instanceof Error ? reason.message : String(reason));
+      return;
+    }
+    const body = capturedPrompt.manualPrompt;
+    if (!body.trim()) return;
+    const firstLine = body
+      .split(/\r?\n/u)
+      .map((line) => line.trim())
+      .find(Boolean);
+    const title =
+      newTitle.trim() ||
+      Array.from(firstLine ?? '')
+        .slice(0, 60)
+        .join('') ||
+      '新贴图';
+    synchronizeCapturedPrompt(capturedPrompt);
+    invalidatePendingCreationDraftAutosaves();
+    setStarting(true);
+    try {
+      const draft = await saveCreationDraftNow(undefined, capturedPrompt);
+      const content: SocialPostContentInput = {
+        schemaVersion: 1,
+        title,
+        body,
+        mediaAssetIds: referenceAssets.map((asset) => asset.id),
+        coverAssetId: referenceAssets[0]?.id ?? null,
+      };
+      const sourceItem = selectedInspirationStashId
+        ? creationItemByFormEntity(data.creationItems, 'INSPIRATION_STASH', selectedInspirationStashId)
+        : null;
+      if (selectedInspirationStashId && !sourceItem) {
+        throw new Error(locale === 'zh' ? '灵感所属创作项不可用' : 'The inspiration creation item is unavailable');
+      }
+      const post = sourceItem
+        ? await window.desktopApi.socialPostFormAdd({
+            creationItemId: sourceItem.id,
+            sourceInspirationStashId: selectedInspirationStashId,
+            consumeCreationDraftId: draft.id,
+            content,
+          })
+        : await window.desktopApi.socialPostSave({
+            id: null,
+            albumId: targetAlbumId,
+            sourceInspirationStashId: null,
+            consumeCreationDraftId: draft.id,
+            content,
+          });
+      await refresh();
+      savedDraftRef.current = null;
+      creationDraftIdRef.current = null;
+      setCreationDraftId(null);
+      setTargetAlbumId(null);
+      setSelectedSocialPostId(post.id);
+      setSelectedArticleId(null);
+      setSelectedInspirationStashId(null);
+      setSavedInspirationContentKey(null);
+      setSelectedIdeaCreationId(null);
+      setSelectedAlbumId(null);
+      setOutputMode('results');
+      setOutputSeriesId(null);
+      setRequestedAssetId(null);
+      resetInputs();
+      restoreDraft(null);
+      panes.setCompactPanel('creator');
+      commitCreatorLocation({ surface: 'social-post', postId: post.id }, 'replace');
+      notify(locale === 'zh' ? '已创建贴图' : 'Social post created');
+    } catch (reason) {
+      notify(reason instanceof Error ? reason.message : String(reason));
+    } finally {
+      setStarting(false);
+    }
+  }
+
+  async function commitArticle(_plan: Extract<CreationOutcomePlan, { kind: 'article' }>) {
+    if (starting) return;
+    let capturedPrompt: CapturedCreatorPrompt;
+    try {
+      capturedPrompt = captureVisiblePrompt();
+    } catch (reason) {
+      notify(reason instanceof Error ? reason.message : String(reason));
+      return;
+    }
+    const body = capturedPrompt.manualPrompt.trim();
+    if (!body && referenceAssets.length === 0) return;
+    const firstLine = body
+      .split(/\r?\n/u)
+      .map((line) => line.replace(/^#+\s*/u, '').trim())
+      .find(Boolean);
+    const title =
+      newTitle.trim() ||
+      Array.from(firstLine ?? '')
+        .slice(0, 60)
+        .join('') ||
+      '新文章';
+    const mediaBindings = articleMediaBindings(referenceAssets, 'reference');
+    const markdown = markdownWithImages(body, mediaBindings, locale);
+    synchronizeCapturedPrompt(capturedPrompt);
+    invalidatePendingCreationDraftAutosaves();
+    setStarting(true);
+    try {
+      const draft = await saveCreationDraftNow(undefined, capturedPrompt);
+      const content: ArticleContentInput = {
+        schemaVersion: 1,
+        title,
+        markdown,
+        mediaBindings,
+        coverAssetId: referenceAssets[0]?.id ?? null,
+      };
+      const sourceItem = selectedInspirationStashId
+        ? creationItemByFormEntity(data.creationItems, 'INSPIRATION_STASH', selectedInspirationStashId)
+        : null;
+      if (selectedInspirationStashId && !sourceItem) {
+        throw new Error(locale === 'zh' ? '灵感所属创作项不可用' : 'The inspiration creation item is unavailable');
+      }
+      const article = sourceItem
+        ? await window.desktopApi.articleFormAdd({
+            creationItemId: sourceItem.id,
+            sourceInspirationStashId: selectedInspirationStashId,
+            consumeCreationDraftId: draft.id,
+            content,
+          })
+        : await window.desktopApi.articleSave({
+            id: null,
+            albumId: targetAlbumId,
+            sourceInspirationStashId: null,
+            consumeCreationDraftId: draft.id,
+            content,
+          });
+      await refresh();
+      savedDraftRef.current = null;
+      creationDraftIdRef.current = null;
+      setCreationDraftId(null);
+      setTargetAlbumId(null);
+      setSelectedSocialPostId(null);
+      setSelectedArticleId(article.id);
+      setSelectedInspirationStashId(null);
+      setSavedInspirationContentKey(null);
+      setSelectedIdeaCreationId(null);
+      setSelectedAlbumId(null);
+      setOutputMode('results');
+      setOutputSeriesId(null);
+      setRequestedAssetId(null);
+      resetInputs();
+      restoreDraft(null);
+      panes.setCompactPanel('creator');
+      commitCreatorLocation({ surface: 'article', articleId: article.id }, 'replace');
+      notify(locale === 'zh' ? '已创建文章' : 'Article created');
+    } catch (reason) {
+      notify(reason instanceof Error ? reason.message : String(reason));
+    } finally {
+      setStarting(false);
+    }
+  }
+
+  function startCreationFromPlan(plan: CreationOutcomePlan) {
+    if (plan.kind === 'image') {
+      void commitCreationAsV01();
+      return;
+    }
+    if (plan.kind === 'social-post') {
+      void commitSocialPost(plan);
+      return;
+    }
+    void commitArticle(plan);
+  }
+
+  async function saveSocialPost(post: SocialPostDto, content: SocialPostContentInput) {
+    await window.desktopApi.socialPostSave({
+      id: post.id,
+      albumId: post.albumId,
+      sourceInspirationStashId: post.sourceInspirationStashId,
+      consumeCreationDraftId: null,
+      content,
+    });
+    await refresh();
+  }
+
+  async function saveArticle(article: ArticleDto, content: ArticleContentInput) {
+    const saved = await window.desktopApi.articleSave({
+      id: article.id,
+      albumId: article.albumId,
+      sourceInspirationStashId: article.sourceInspirationStashId,
+      consumeCreationDraftId: null,
+      content,
+    });
+    await refresh();
+    return saved;
+  }
+
+  function openDerivedVisualDraftWorkspace(draft: CreationDraftDto) {
+    savedDraftRef.current = draft;
+    creationDraftIdRef.current = draft.id;
+    onComparisonFullWindowChange(false);
+    setSelectedInspirationStashId(null);
+    setSavedInspirationContentKey(null);
+    setSelectedIdeaCreationId(null);
+    setSelectedAlbumId(null);
+    setOutputMode('results');
+    setVideoCreationRequest(null);
+    setCreationMode('new');
+    setSeriesId(null);
+    setOutputSeriesId(null);
+    setVersionId('');
+    setRequestedAssetId(null);
+    setOutputGalleryOpen(false);
+    resetInputs();
+    restoreDraft(draft);
+    restoreAssistantForScope({ kind: 'DRAFT', id: draft.id });
+    setDismissedDerivedVisualId(null);
+    panes.setOutputCollapsed(false);
+    panes.setCompactPanel('output');
+  }
+
+  function openDerivedVisualSeriesWorkspace(
+    visual: DerivedVisualDto,
+    hostSeriesId: string,
+    options: {
+      outputSeriesId?: string;
+      assetId?: string;
+      prompt?: string;
+      canvasPreset?: CanvasPresetDto;
+    } = {},
+  ) {
+    const hostSeries = data.series.find((candidate) => candidate.id === hostSeriesId);
+    if (!hostSeries || visual.promptSeriesId !== hostSeries.id) {
+      throw new Error(locale === 'zh' ? '派生创作工作区不可用' : 'The derived creation workspace is unavailable');
+    }
+    const targetVersion =
+      hostSeries.versions.find((candidate) => candidate.id === hostSeries.currentVersionId) ?? hostSeries.versions[0];
+    const targetArticle = visual.articleId
+      ? (data.articles ?? []).find((article) => article.id === visual.articleId)
+      : null;
+    const targetPost = visual.socialPostId
+      ? (data.socialPosts ?? []).find((post) => post.id === visual.socialPostId)
+      : null;
+    if (!targetArticle && !targetPost) {
+      throw new Error(locale === 'zh' ? '父创作不可用' : 'The parent creation is unavailable');
+    }
+
+    savedDraftRef.current = null;
+    creationDraftIdRef.current = null;
+    onComparisonFullWindowChange(false);
+    setSelectedSocialPostId(targetPost?.id ?? null);
+    setSelectedArticleId(targetArticle?.id ?? null);
+    setSelectedInspirationStashId(null);
+    setSavedInspirationContentKey(null);
+    setSelectedIdeaCreationId(null);
+    setSelectedAlbumId(null);
+    setTargetAlbumId(null);
+    setOutputMode('results');
+    setVideoCreationRequest(null);
+    setCreationMode('existing');
+    setSeriesId(hostSeries.id);
+    setOutputSeriesId(options.outputSeriesId ?? hostSeries.id);
+    setCreationDraftId(null);
+    setVersionId(targetVersion?.id ?? '');
+    setRequestedAssetId(options.assetId ?? null);
+    setOutputGalleryOpen(false);
+    setDictionaryScope(emptyCreationDictionaryScope());
+    resetInputs();
+    restoreVersion(targetVersion);
+    if (options.canvasPreset) setCanvasPresetKey(options.canvasPreset.stableKey);
+    if (options.prompt) changeDerivedVisualPrompt(options.prompt);
+    setDismissedDerivedVisualId(null);
+    panes.setOutputCollapsed(false);
+    panes.setCompactPanel('output');
+    commitCreatorLocation(
+      targetArticle
+        ? { surface: 'article', articleId: targetArticle.id }
+        : { surface: 'social-post', postId: targetPost!.id },
+      'replace',
+    );
+  }
+
+  function openDerivedVisualWorkspace(result: DerivedVisualWorkspaceOpenResult) {
+    if (result.kind === 'DRAFT') {
+      openDerivedVisualDraftWorkspace(result.draft);
+      return;
+    }
+    openDerivedVisualSeriesWorkspace(result.visual, result.seriesId, {
+      assetId: result.visual.selectedImageAssetId ?? undefined,
+    });
+  }
+
+  function derivedVisualTemplates() {
+    const templates = data.derivedVisualPrompts;
+    if (!templates?.articleHeader || !templates.articleInline || !templates.socialCover) {
+      throw new Error(locale === 'zh' ? '配图提示词配置不可用' : 'Visual prompt configuration is unavailable');
+    }
+    return templates;
+  }
+
+  async function openArticleHeaderWorkspace(article: ArticleDto, content: ArticleContentInput) {
+    if (articleHeaderWorkspace?.articleId === article.id) {
+      const result = await window.desktopApi.derivedVisualWorkspaceOpen({
+        mode: 'RESUME',
+        visualId: articleHeaderWorkspace.id,
+      });
+      await refresh();
+      openDerivedVisualWorkspace(result);
+      notify(locale === 'zh' ? '已继续题图创作' : 'Hero creation resumed');
+      return;
+    }
+    const saved = await saveArticle(article, content);
+    const preset = data.canvasPresets.find((item) => item.stableKey === 'wechat_article_cover_2_35_1');
+    if (!preset) throw new Error(locale === 'zh' ? '公众号题图画幅不可用' : 'WeChat hero canvas is unavailable');
+    const prompt = buildArticleHeaderPrompt(derivedVisualTemplates(), saved.content.title, saved.content.markdown);
+    const result = await window.desktopApi.derivedVisualWorkspaceOpen({
+      mode: 'CREATE',
+      role: 'ARTICLE_HEADER',
+      articleId: saved.id,
+      articleRevisionId: saved.revisionId,
+      prompt,
+      canvasPresetKey: preset.stableKey,
+      locale,
+    });
+    await refresh();
+    openDerivedVisualWorkspace(result);
+    notify(locale === 'zh' ? '已打开题图创作' : 'Hero creation opened');
+  }
+
+  async function openArticleIllustrationWorkspace(
+    article: ArticleDto,
+    content: ArticleContentInput,
+    selectedText: string,
+    preset: CanvasPresetDto,
+  ) {
+    const anchorText = selectedText.trim();
+    const first = content.markdown.indexOf(anchorText);
+    if (!anchorText || first < 0 || first !== content.markdown.lastIndexOf(anchorText)) {
+      throw new Error(
+        locale === 'zh'
+          ? '请选择当前文章中一段唯一的连续文字'
+          : 'Select one unique continuous passage in the current article',
+      );
+    }
+    const existingWorkspace = (data.derivedVisuals ?? []).find(
+      (visual) =>
+        visual.role === 'ARTICLE_INLINE' &&
+        visual.articleId === article.id &&
+        visual.anchor?.selectedText === anchorText &&
+        derivedVisualWorkspaceAvailable(visual, data),
+    );
+    if (existingWorkspace) {
+      const result = await window.desktopApi.derivedVisualWorkspaceOpen({
+        mode: 'RESUME',
+        visualId: existingWorkspace.id,
+      });
+      await refresh();
+      openDerivedVisualWorkspace(result);
+      notify(locale === 'zh' ? '已继续正文配图创作' : 'Illustration creation resumed');
+      return;
+    }
+    const saved = await saveArticle(article, content);
+    const prompt = buildArticleInlinePrompt(
+      derivedVisualTemplates(),
+      preset,
+      saved.content.title,
+      anchorText,
+      saved.content.markdown,
+    );
+    const result = await window.desktopApi.derivedVisualWorkspaceOpen({
+      mode: 'CREATE',
+      role: 'ARTICLE_INLINE',
+      articleId: saved.id,
+      articleRevisionId: saved.revisionId,
+      prompt,
+      canvasPresetKey: preset.stableKey,
+      locale,
+      anchor: { selectedText: anchorText },
+    });
+    await refresh();
+    openDerivedVisualWorkspace(result);
+    notify(locale === 'zh' ? '已打开正文配图创作' : 'Illustration creation opened');
+  }
+
+  async function openSocialCoverWorkspace(
+    post: SocialPostDto,
+    content: SocialPostContentInput,
+    preset: CanvasPresetDto,
+  ) {
+    if (socialCoverWorkspace?.socialPostId === post.id) {
+      const result = await window.desktopApi.derivedVisualWorkspaceOpen({
+        mode: 'RESUME',
+        visualId: socialCoverWorkspace.id,
+      });
+      await refresh();
+      openDerivedVisualWorkspace(result);
+      notify(locale === 'zh' ? '已继续封面创作' : 'Cover creation resumed');
+      return;
+    }
+    const saved = await window.desktopApi.socialPostSave({
+      id: post.id,
+      albumId: post.albumId,
+      sourceInspirationStashId: post.sourceInspirationStashId,
+      consumeCreationDraftId: null,
+      content,
+    });
+    const prompt = buildSocialCoverPrompt(derivedVisualTemplates(), preset, saved.content.title, saved.content.body);
+    const result = await window.desktopApi.derivedVisualWorkspaceOpen({
+      mode: 'CREATE',
+      role: 'SOCIAL_POST_COVER',
+      socialPostId: saved.id,
+      socialPostRevisionId: saved.revisionId,
+      prompt,
+      canvasPresetKey: preset.stableKey,
+      locale,
+    });
+    await refresh();
+    openDerivedVisualWorkspace(result);
+    notify(locale === 'zh' ? '已打开封面创作' : 'Cover creation opened');
+  }
+
+  function changeDerivedVisualPrompt(prompt: string) {
+    updatePromptDocument(replaceCreatorPromptText(promptNodesRef.current, prompt));
+  }
+
+  function changeDerivedVisualCanvas(preset: CanvasPresetDto) {
+    if (!editorDerivedVisual) return;
+    try {
+      let prompt: string;
+      if (editorDerivedVisual.role === 'ARTICLE_HEADER') {
+        if (!selectedArticle) return;
+        prompt = buildArticleHeaderPrompt(
+          derivedVisualTemplates(),
+          selectedArticle.content.title,
+          selectedArticle.content.markdown,
+        );
+      } else if (editorDerivedVisual.role === 'ARTICLE_INLINE') {
+        if (!selectedArticle || !editorDerivedVisual.anchor) return;
+        prompt = buildArticleInlinePrompt(
+          derivedVisualTemplates(),
+          preset,
+          selectedArticle.content.title,
+          editorDerivedVisual.anchor.selectedText,
+          selectedArticle.content.markdown,
+        );
+      } else {
+        if (!selectedSocialPost) return;
+        prompt = buildSocialCoverPrompt(
+          derivedVisualTemplates(),
+          preset,
+          selectedSocialPost.content.title,
+          selectedSocialPost.content.body,
+        );
+      }
+      setCanvasPresetKey(preset.stableKey);
+      changeDerivedVisualPrompt(prompt);
+    } catch (reason) {
+      notify(reason instanceof Error ? reason.message : String(reason));
+    }
+  }
+
+  async function adoptDerivedVisual(visualId: string, imageAssetId: string) {
+    const result = await window.desktopApi.derivedVisualAdopt({ id: visualId, imageAssetId });
+    await refresh();
+    if (result.article) {
+      setSelectedSocialPostId(null);
+      setSelectedArticleId(result.article.id);
+      panes.setCompactPanel('creator');
+      commitCreatorLocation({ surface: 'article', articleId: result.article.id }, 'replace');
+      notify(
+        locale === 'zh'
+          ? result.visual.role === 'ARTICLE_HEADER'
+            ? '已设为文章题图'
+            : '已插入文章正文'
+          : result.visual.role === 'ARTICLE_HEADER'
+            ? 'Article hero updated'
+            : 'Illustration inserted in the article',
+      );
+    } else if (result.socialPost) {
+      setSelectedArticleId(null);
+      setSelectedSocialPostId(result.socialPost.id);
+      panes.setCompactPanel('creator');
+      commitCreatorLocation({ surface: 'social-post', postId: result.socialPost.id }, 'replace');
+      notify(locale === 'zh' ? '已设为贴图首图' : 'Social cover updated');
+    }
+  }
+
+  async function exportArticleMarkdown(articleId: string) {
+    const result = await window.desktopApi.articleExportMarkdown({ id: articleId });
+    if (result.status === 'SAVED') notify(locale === 'zh' ? '已导出 Markdown' : 'Markdown exported');
+  }
+
+  async function copyArticleForWechat(articleId: string) {
+    const result = await window.desktopApi.articleCopyForWechat({ id: articleId });
+    const imageNotice =
+      result.remoteImageCount > 0
+        ? locale === 'zh'
+          ? `；${result.remoteImageCount} 张网络图片需在公众号中确认`
+          : `; check ${result.remoteImageCount} remote image${result.remoteImageCount === 1 ? '' : 's'} in WeChat`
+        : '';
+    notify(locale === 'zh' ? `已复制公众号正文${imageNotice}` : `WeChat article body copied${imageNotice}`);
+  }
+
+  function activeDerivedSourceId(sourceId: string | null) {
+    return sourceId && (data.inspirationStashes ?? []).some((stash) => stash.id === sourceId) ? sourceId : null;
+  }
+
+  function creationItemIdForEntity(kind: 'ARTICLE' | 'SOCIAL_POST', entityId: string) {
+    const item = creationItemByFormEntity(data.creationItems, kind, entityId);
+    if (!item) throw new Error(locale === 'zh' ? '所属创作项不可用' : 'The containing creation item is unavailable');
+    return item.id;
+  }
+
+  async function createSocialPostFromArticle(article: ArticleDto, content: ArticleContentInput) {
+    const post = await window.desktopApi.socialPostFormAdd({
+      creationItemId: creationItemIdForEntity('ARTICLE', article.id),
+      sourceInspirationStashId: activeDerivedSourceId(article.sourceInspirationStashId),
+      consumeCreationDraftId: null,
+      content: {
+        schemaVersion: 1,
+        title: content.title,
+        body: socialPostBodyFromMarkdown(content.markdown),
+        mediaAssetIds: content.mediaBindings.map((binding) => binding.assetId),
+        coverAssetId: content.coverAssetId,
+      },
+    });
+    await refresh();
+    setSelectedArticleId(null);
+    setSelectedSocialPostId(post.id);
+    commitCreatorLocation({ surface: 'social-post', postId: post.id }, 'push');
+    notify(locale === 'zh' ? '已打开贴图创作形式' : 'Social post form opened');
+  }
+
+  async function createArticleFromSocialPost(
+    post: SocialPostDto,
+    content: SocialPostContentInput,
+    mediaAssets: readonly AssetDto[],
+  ) {
+    const byId = new Map(mediaAssets.map((asset) => [asset.id, asset]));
+    const orderedAssets = content.mediaAssetIds.flatMap((assetId) => byId.get(assetId) ?? []);
+    const mediaBindings = articleMediaBindings(orderedAssets, 'post');
+    const article = await window.desktopApi.articleFormAdd({
+      creationItemId: creationItemIdForEntity('SOCIAL_POST', post.id),
+      sourceInspirationStashId: activeDerivedSourceId(post.sourceInspirationStashId),
+      consumeCreationDraftId: null,
+      content: {
+        schemaVersion: 1,
+        title: content.title,
+        markdown: markdownWithImages(content.body, mediaBindings, locale),
+        mediaBindings,
+        coverAssetId: content.coverAssetId,
+      },
+    });
+    await refresh();
+    setSelectedSocialPostId(null);
+    setSelectedArticleId(article.id);
+    commitCreatorLocation({ surface: 'article', articleId: article.id }, 'push');
+    notify(locale === 'zh' ? '已打开文章创作形式' : 'Article form opened');
   }
 
   async function createNextPromptVersion(targetSeriesId: string): Promise<PromptVersionCreateResult | null> {
@@ -1651,6 +2666,7 @@ export function CreatorScreen({
   }
 
   async function preserveNewCreationBeforeNavigation() {
+    if (selectedSocialPostId || selectedArticleId) return true;
     if (creationMode !== 'new' || !hasNewCreationDraftState()) return true;
     try {
       await saveCreationDraftNow();
@@ -1708,6 +2724,10 @@ export function CreatorScreen({
       targetSeries.versions[0];
     const seriesChanged = creationMode !== 'existing' || seriesId !== id || selectedAlbumId !== null;
     onComparisonFullWindowChange(false);
+    setSelectedSocialPostId(null);
+    setSelectedArticleId(null);
+    setSelectedInspirationStashId(null);
+    setSavedInspirationContentKey(null);
     setSelectedIdeaCreationId(null);
     setOutputMode('results');
     setSelectedAlbumId(null);
@@ -1735,11 +2755,103 @@ export function CreatorScreen({
     return true;
   }
 
+  async function resumeDerivedVisual(visualId: string) {
+    if (!(await preserveNewCreationBeforeNavigation())) return;
+    try {
+      const result = await window.desktopApi.derivedVisualWorkspaceOpen({ mode: 'RESUME', visualId });
+      await refresh();
+      openDerivedVisualWorkspace(result);
+    } catch (reason) {
+      notify(reason instanceof Error ? reason.message : String(reason));
+    }
+  }
+
+  function openParentEditorWithoutDerivedWorkspace() {
+    setDismissedDerivedVisualId(activeDerivedVisual?.id ?? null);
+    setCreationMode('new');
+    setSeriesId(null);
+    setOutputSeriesId(null);
+    setVersionId('');
+  }
+
+  async function chooseSocialPost(id: string, navigationMode: NavigationMode | null = 'push') {
+    const post = (data.socialPosts ?? []).find((item) => item.id === id);
+    if (!post) return false;
+    if (!(await preserveNewCreationBeforeNavigation())) return false;
+    onComparisonFullWindowChange(false);
+    openParentEditorWithoutDerivedWorkspace();
+    setSelectedSocialPostId(post.id);
+    setSelectedArticleId(null);
+    setSelectedInspirationStashId(null);
+    setSavedInspirationContentKey(null);
+    setSelectedIdeaCreationId(null);
+    setSelectedAlbumId(null);
+    setOutputMode('results');
+    setRequestedAssetId(null);
+    setOutputGalleryOpen(false);
+    panes.setCompactPanel('creator');
+    if (navigationMode) commitCreatorLocation({ surface: 'social-post', postId: post.id }, navigationMode);
+    return true;
+  }
+
+  async function chooseArticle(id: string, navigationMode: NavigationMode | null = 'push') {
+    const article = (data.articles ?? []).find((item) => item.id === id);
+    if (!article) return false;
+    if (!(await preserveNewCreationBeforeNavigation())) return false;
+    onComparisonFullWindowChange(false);
+    openParentEditorWithoutDerivedWorkspace();
+    setSelectedSocialPostId(null);
+    setSelectedArticleId(article.id);
+    setSelectedInspirationStashId(null);
+    setSavedInspirationContentKey(null);
+    setSelectedIdeaCreationId(null);
+    setSelectedAlbumId(null);
+    setOutputMode('results');
+    setRequestedAssetId(null);
+    setOutputGalleryOpen(false);
+    panes.setCompactPanel('creator');
+    if (navigationMode) commitCreatorLocation({ surface: 'article', articleId: article.id }, navigationMode);
+    return true;
+  }
+
+  async function chooseInspirationStash(id: string, navigationMode: NavigationMode | null = 'push') {
+    const stash = (data.inspirationStashes ?? []).find((item) => item.id === id);
+    if (!stash) return false;
+    const item = creationItemByFormEntity(data.creationItems, 'INSPIRATION_STASH', stash.id);
+    if (!item) {
+      notify(locale === 'zh' ? '灵感所属创作项不可用' : 'The inspiration creation item is unavailable');
+      return false;
+    }
+    const hostSeriesId = imageSeriesIdForCreationItem(item);
+    if (hostSeriesId) {
+      if (!(await chooseSeries(hostSeriesId, undefined, null))) return false;
+    } else if (!(await startNewCreation(item.albumId, null))) {
+      return false;
+    }
+    onComparisonFullWindowChange(false);
+    setSelectedSocialPostId(null);
+    setSelectedArticleId(null);
+    setSelectedIdeaCreationId(null);
+    setSelectedAlbumId(null);
+    setSelectedInspirationStashId(stash.id);
+    setOutputMode('results');
+    setRequestedAssetId(null);
+    setOutputGalleryOpen(false);
+    restoreInspirationStash(stash);
+    panes.setCompactPanel('creator');
+    if (navigationMode) commitCreatorLocation({ surface: 'inspiration-stash', stashId: stash.id }, navigationMode);
+    return true;
+  }
+
   async function chooseIdeaCreation(id: string, navigationMode: NavigationMode | null = 'push') {
     const creation = (data.creations ?? []).find((item) => item.id === id);
     if (!creation) return false;
     if (!(await preserveNewCreationBeforeNavigation())) return false;
     onComparisonFullWindowChange(false);
+    setSelectedSocialPostId(null);
+    setSelectedArticleId(null);
+    setSelectedInspirationStashId(null);
+    setSavedInspirationContentKey(null);
     if (creation.sourceScope.kind === 'SERIES') {
       const sourceLoaded =
         creationMode === 'existing' &&
@@ -1830,6 +2942,10 @@ export function CreatorScreen({
   async function chooseAlbum(id: string, navigationMode: NavigationMode | null = 'push') {
     if (!(await preserveNewCreationBeforeNavigation())) return false;
     onComparisonFullWindowChange(false);
+    setSelectedSocialPostId(null);
+    setSelectedArticleId(null);
+    setSelectedInspirationStashId(null);
+    setSavedInspirationContentKey(null);
     setSelectedIdeaCreationId(null);
     setOutputMode('results');
     setSelectedAlbumId(id);
@@ -1875,17 +2991,94 @@ export function CreatorScreen({
   ]);
 
   useEffect(() => {
+    if (
+      !selectedInspirationStashId ||
+      (data.inspirationStashes ?? []).some((stash) => stash.id === selectedInspirationStashId)
+    )
+      return;
+    setSelectedInspirationStashId(null);
+    setSavedInspirationContentKey(null);
+    if (location.surface === 'inspiration-stash' && location.stashId === selectedInspirationStashId) {
+      commitCreatorLocationForEffect(
+        creationMode === 'new'
+          ? { surface: 'new-creation', albumId: targetAlbumId }
+          : seriesId
+            ? { surface: 'existing-creation', seriesId, assetId: requestedAssetId }
+            : { surface: 'default' },
+        'replace',
+      );
+    }
+  }, [
+    commitCreatorLocationForEffect,
+    creationMode,
+    data.inspirationStashes,
+    location,
+    requestedAssetId,
+    selectedInspirationStashId,
+    seriesId,
+    targetAlbumId,
+  ]);
+
+  useEffect(() => {
+    if (!selectedSocialPostId || (data.socialPosts ?? []).some((post) => post.id === selectedSocialPostId)) return;
+    setSelectedSocialPostId(null);
+    if (location.surface !== 'social-post' || location.postId !== selectedSocialPostId) return;
+    commitCreatorLocationForEffect(
+      creationMode === 'new'
+        ? { surface: 'new-creation', albumId: targetAlbumId }
+        : seriesId
+          ? { surface: 'existing-creation', seriesId, assetId: requestedAssetId }
+          : { surface: 'default' },
+      'replace',
+    );
+  }, [
+    commitCreatorLocationForEffect,
+    creationMode,
+    data.socialPosts,
+    location,
+    requestedAssetId,
+    selectedSocialPostId,
+    seriesId,
+    targetAlbumId,
+  ]);
+
+  useEffect(() => {
+    if (!selectedArticleId || (data.articles ?? []).some((article) => article.id === selectedArticleId)) return;
+    setSelectedArticleId(null);
+    if (location.surface !== 'article' || location.articleId !== selectedArticleId) return;
+    commitCreatorLocationForEffect(
+      creationMode === 'new'
+        ? { surface: 'new-creation', albumId: targetAlbumId }
+        : seriesId
+          ? { surface: 'existing-creation', seriesId, assetId: requestedAssetId }
+          : { surface: 'default' },
+      'replace',
+    );
+  }, [
+    commitCreatorLocationForEffect,
+    creationMode,
+    data.articles,
+    location,
+    requestedAssetId,
+    selectedArticleId,
+    seriesId,
+    targetAlbumId,
+  ]);
+
+  useEffect(() => {
     onActiveAlbumChange(activeAlbumContextId);
   }, [activeAlbumContextId, onActiveAlbumChange]);
 
   useEffect(() => {
     if (!active) return;
     if (location.surface === 'default') {
-      const canonicalLocation: CreatorLocation = data.creationDraft
-        ? { surface: 'new-creation', albumId: data.creationDraft.targetAlbumId }
-        : initialSeriesId
-          ? { surface: 'existing-creation', seriesId: initialSeriesId, assetId: null }
-          : { surface: 'new-creation', albumId: null };
+      const canonicalLocation: CreatorLocation =
+        derivedDraftParentLocation ??
+        (initialDraft
+          ? { surface: 'new-creation', albumId: initialDraft.targetAlbumId }
+          : initialSeriesId
+            ? { surface: 'existing-creation', seriesId: initialSeriesId, assetId: null }
+            : { surface: 'new-creation', albumId: null });
       commitCreatorLocationForEffect(canonicalLocation, 'replace');
       return;
     }
@@ -1904,14 +3097,30 @@ export function CreatorScreen({
       void chooseIdeaCreationForEffect(location.creationId, null);
       return;
     }
-    void startNewCreationForEffect(location.albumId, null);
+    if (location.surface === 'inspiration-stash') {
+      void chooseInspirationStashForEffect(location.stashId, null);
+      return;
+    }
+    if (location.surface === 'social-post') {
+      void chooseSocialPostForEffect(location.postId, null);
+      return;
+    }
+    if (location.surface === 'article') {
+      void chooseArticleForEffect(location.articleId, null);
+      return;
+    }
+    void startNewCreationForEffect(location.albumId, null, location.requestId !== undefined);
   }, [
     active,
     chooseAlbumForEffect,
     chooseIdeaCreationForEffect,
+    chooseInspirationStashForEffect,
+    chooseSocialPostForEffect,
+    chooseArticleForEffect,
     chooseSeriesForEffect,
     commitCreatorLocationForEffect,
-    data.creationDraft,
+    derivedDraftParentLocation,
+    initialDraft,
     initialSeriesId,
     location,
     locationKey,
@@ -1926,82 +3135,59 @@ export function CreatorScreen({
     panes.setCompactPanel('output');
   }
 
-  function requestSeriesDelete(item: PromptSeriesDto) {
-    setDeleteError('');
-    setDeleteAssociatedImages(false);
-    setDeleteTarget({ kind: 'series', id: item.id, name: item.title });
-  }
-
-  function requestIdeaCreationDelete(creation: CreationDto) {
-    setDeleteError('');
-    setDeleteAssociatedImages(false);
-    setDeleteTarget({ kind: 'idea', id: creation.id, name: creation.title });
-  }
-
-  async function confirmDelete() {
-    if (!deleteTarget) return;
-    setDeleteBusy(true);
-    setDeleteError('');
-    try {
-      const deletionResult =
-        deleteTarget.kind === 'series'
-          ? await window.desktopApi.promptSeriesDelete({
-              seriesId: deleteTarget.id,
-              outputDisposition: deleteAssociatedImages ? 'TRASH' : 'KEEP',
-            })
-          : null;
-      let draftDetached = false;
-      if (deleteTarget.kind === 'album') {
-        await window.desktopApi.albumsDelete(deleteTarget.id);
-        draftDetached = await detachDraftFromUnavailableAlbum(deleteTarget.id, false);
+  async function finishContentLifecycleAction({ target }: ContentLifecycleActionRequest) {
+    if (target.entityType === 'ALBUM') {
+      const draftDetached = await detachDraftFromUnavailableAlbum(target.entityId, true);
+      if (selectedAlbumId) {
+        let currentAlbumId: string | undefined = selectedAlbumId;
+        while (currentAlbumId) {
+          if (currentAlbumId === target.entityId) {
+            setSelectedAlbumId(null);
+            commitCreatorLocation(
+              draftDetached ? { surface: 'new-creation', albumId: null } : workbenchLocation(),
+              'replace',
+            );
+            break;
+          }
+          currentAlbumId = albumTree.parentById.get(currentAlbumId);
+        }
       }
-      if (deleteTarget.kind === 'idea') await window.desktopApi.creationsDelete(deleteTarget.id);
-      const deletedSelectedSeries = deleteTarget.kind === 'series' && deleteTarget.id === seriesId;
-      const deletedSelectedAlbum = deleteTarget.kind === 'album' && deleteTarget.id === selectedAlbumId;
-      const deletedSelectedIdea = deleteTarget.kind === 'idea' && deleteTarget.id === selectedIdeaCreationId;
-      const notice = deletionResult?.retainedOutputCount
-        ? locale === 'zh'
-          ? `创作已删除 · 已隐藏 ${deletionResult.trashedOutputCount} 项产出，另有 ${deletionResult.retainedOutputCount} 项仍被引用并保留`
-          : `Creation deleted · ${deletionResult.trashedOutputCount} output${deletionResult.trashedOutputCount === 1 ? '' : 's'} hidden; ${deletionResult.retainedOutputCount} referenced output${deletionResult.retainedOutputCount === 1 ? '' : 's'} kept`
-        : deletionResult?.trashedOutputCount
-          ? c.seriesAndOutputsDeleted(deletionResult.trashedOutputCount)
-          : deleteTarget.kind === 'series'
-            ? c.seriesDeleted
-            : deleteTarget.kind === 'album'
-              ? messages.creator.album.albumDeleted
-              : locale === 'zh'
-                ? '灵感创作已删除'
-                : 'Idea creation deleted';
-      setDeleteTarget(null);
-      if (deletedSelectedSeries) void startNewCreation(null, 'replace');
-      if (deletedSelectedAlbum) {
-        setSelectedAlbumId(null);
-        commitCreatorLocation(
-          draftDetached ? { surface: 'new-creation', albumId: null } : workbenchLocation(),
-          'replace',
-        );
-      }
-      if (deletedSelectedIdea) {
-        setSelectedIdeaCreationId(null);
-        setOutputMode('results');
-        commitCreatorLocation(
-          creationMode === 'new'
-            ? { surface: 'new-creation', albumId: targetAlbumId }
-            : seriesId
-              ? { surface: 'existing-creation', seriesId, assetId: requestedAssetId }
-              : { surface: 'default' },
-          'replace',
-        );
-        panes.setCompactPanel(creationMode === 'existing' && outputSeries ? 'output' : 'creator');
-      }
-      if (deleteTarget.kind === 'album') await refreshAlbums();
-      else await refresh();
-      notify(notice);
-    } catch (reason) {
-      setDeleteError(reason instanceof Error ? reason.message : String(reason));
-    } finally {
-      setDeleteBusy(false);
+      await Promise.all([refresh(), refreshAlbums()]);
+      return;
     }
+
+    const selectedCreationItemId = data.creationItems.find((item) =>
+      item.forms.some(
+        (form) =>
+          (form.entity.kind === 'PROMPT_SERIES' && form.entity.id === seriesId) ||
+          (form.entity.kind === 'INSPIRATION_STASH' && form.entity.id === selectedInspirationStashId) ||
+          (form.entity.kind === 'SOCIAL_POST' && form.entity.id === selectedSocialPostId) ||
+          (form.entity.kind === 'ARTICLE' && form.entity.id === selectedArticleId) ||
+          (form.entity.kind === 'VIDEO_DOCUMENT' && form.entity.id === selectedDocumentId),
+      ),
+    )?.id;
+    const selectedTarget =
+      (target.entityType === 'CREATION_ITEM' && target.entityId === selectedCreationItemId) ||
+      (target.entityType === 'PROMPT_SERIES' && target.entityId === seriesId) ||
+      (target.entityType === 'CREATION' && target.entityId === selectedIdeaCreationId) ||
+      (target.entityType === 'INSPIRATION_STASH' && target.entityId === selectedInspirationStashId) ||
+      (target.entityType === 'SOCIAL_POST' && target.entityId === selectedSocialPostId) ||
+      (target.entityType === 'ARTICLE' && target.entityId === selectedArticleId) ||
+      (target.entityType === 'VIDEO_DOCUMENT' && target.entityId === selectedDocumentId);
+
+    if (target.entityType === 'INSPIRATION_STASH' && target.entityId === selectedInspirationStashId) {
+      setSelectedInspirationStashId(null);
+      setSavedInspirationContentKey(null);
+    }
+    if (target.entityType === 'SOCIAL_POST' && target.entityId === selectedSocialPostId) setSelectedSocialPostId(null);
+    if (target.entityType === 'ARTICLE' && target.entityId === selectedArticleId) setSelectedArticleId(null);
+    if (target.entityType === 'CREATION' && target.entityId === selectedIdeaCreationId) {
+      setSelectedIdeaCreationId(null);
+      setOutputMode('results');
+    }
+
+    await refresh();
+    if (selectedTarget) await startNewCreation(null, 'replace', true);
   }
 
   async function attachReferences() {
@@ -2564,45 +3750,18 @@ export function CreatorScreen({
     onDocumentsChange(updated, false);
   }
 
-  async function moveDocument(documentId: string, albumId: string | null) {
-    const updated = await window.desktopApi.videoDocumentMove({ documentId, albumId });
-    onDocumentsChange(updated, true);
-    await refreshAlbums();
+  async function handleRenameArticle(article: ArticleDto, title: string) {
+    await window.desktopApi.articleRename({ id: article.id, title });
+    await refresh();
+    notify(locale === 'zh' ? '文章标题已更新' : 'Article title updated');
   }
 
-  async function deleteAlbumDirect(album: AlbumDto) {
-    if (lifecycleBusy) return;
-    setLifecycleBusy(true);
-    try {
-      await window.desktopApi.albumsDelete(album.id);
-      const draftDetached = await detachDraftFromUnavailableAlbum(album.id, false);
-      if (selectedAlbumId === album.id) {
-        setSelectedAlbumId(null);
-        commitCreatorLocation(
-          draftDetached ? { surface: 'new-creation', albumId: null } : workbenchLocation(),
-          'replace',
-        );
-      }
-      await refreshAlbums();
-      notify(messages.creator.album.albumDeleted);
-    } catch (reason) {
-      notify(
-        `${messages.gallery.albums.operationFailed}: ${reason instanceof Error ? reason.message : String(reason)}`,
-      );
-      throw reason;
-    } finally {
-      setLifecycleBusy(false);
-    }
-  }
-
-  function requestAlbumDelete(album: AlbumDto) {
-    setDeleteError('');
-    setDeleteAssociatedImages(false);
-    setDeleteTarget({ kind: 'album', id: album.id, name: album.title });
-  }
-
-  async function createAlbum(parent: AlbumDto | null, title: string) {
-    if (lifecycleBusy) return;
+  async function createAlbum(
+    parent: AlbumDto | null,
+    title: string,
+    destination: 'LIBRARY' | 'NEW_CREATION' = 'LIBRARY',
+  ) {
+    if (lifecycleActionBusy) return;
     setLifecycleBusy(true);
     try {
       const created = await window.desktopApi.albumsCreate({
@@ -2611,7 +3770,8 @@ export function CreatorScreen({
         parentAlbumId: parent?.id ?? null,
       });
       await refreshAlbums();
-      await chooseAlbum(created.id);
+      if (destination === 'NEW_CREATION') await changeNewCreationAlbum(created.id);
+      else await chooseAlbum(created.id);
     } catch (reason) {
       notify(
         `${messages.gallery.albums.operationFailed}: ${reason instanceof Error ? reason.message : String(reason)}`,
@@ -2626,6 +3786,21 @@ export function CreatorScreen({
     try {
       await window.desktopApi.albumsSetPinned({ albumId: album.id, pinned: !album.pinned });
       await refreshAlbums();
+    } catch (reason) {
+      notify(
+        `${messages.gallery.albums.operationFailed}: ${reason instanceof Error ? reason.message : String(reason)}`,
+      );
+    } finally {
+      setLifecycleBusy(false);
+    }
+  }
+
+  async function toggleCreationItemPin(creationItemId: string, pinned: boolean) {
+    if (lifecycleActionBusy) return;
+    setLifecycleBusy(true);
+    try {
+      await window.desktopApi.creationItemSetPinned({ creationItemId, pinned });
+      await refresh();
     } catch (reason) {
       notify(
         `${messages.gallery.albums.operationFailed}: ${reason instanceof Error ? reason.message : String(reason)}`,
@@ -2652,7 +3827,7 @@ export function CreatorScreen({
   }
 
   async function moveAlbum(albumId: string, parentAlbumId: string | null) {
-    if (lifecycleBusy) return;
+    if (lifecycleActionBusy) return;
     return albumMoveQueue.enqueue(async () => {
       try {
         await window.desktopApi.albumsMove({ albumId, parentAlbumId });
@@ -2667,50 +3842,16 @@ export function CreatorScreen({
     });
   }
 
-  async function reorderAlbumMembers(albumId: string, memberIds: string[]) {
-    if (lifecycleBusy || memberIds.length === 0) return;
+  async function moveCreationItemToAlbum(creationItemId: string, albumId: string | null) {
+    if (lifecycleActionBusy) return;
     return albumMoveQueue.enqueue(async () => {
       try {
-        await window.desktopApi.albumsReorderMembers({ albumId, memberIds });
-        await refreshAlbums();
-        notify(messages.gallery.albums.moved);
-      } catch (reason) {
-        notify(
-          `${messages.gallery.albums.operationFailed}: ${reason instanceof Error ? reason.message : String(reason)}`,
-        );
-        throw reason;
-      }
-    });
-  }
-
-  async function reorderSidebarRoot(targets: SidebarRootOrderTargetInput[]) {
-    if (lifecycleBusy || targets.length === 0) return;
-    return albumMoveQueue.enqueue(async () => {
-      try {
-        await window.desktopApi.albumsReorderRoot({ scope: 'CREATOR', targets });
+        await window.desktopApi.creationItemMove({ creationItemId, albumId });
         await refresh();
-        notify(messages.gallery.albums.moved);
-      } catch (reason) {
-        notify(
-          `${messages.gallery.albums.operationFailed}: ${reason instanceof Error ? reason.message : String(reason)}`,
-        );
-        throw reason;
-      }
-    });
-  }
-
-  async function moveSeriesToAlbum(target: string | readonly string[], albumId: string | null) {
-    if (lifecycleBusy) return;
-    const targetSeriesIds = [...new Set(typeof target === 'string' ? [target] : target)];
-    if (!targetSeriesIds.length) return;
-    return albumMoveQueue.enqueue(async () => {
-      try {
-        await window.desktopApi.albumsMoveSeries({ seriesIds: targetSeriesIds, albumId });
-        await refreshAlbums();
         notify(albumId ? messages.gallery.albums.added : messages.gallery.albums.removed);
       } catch (reason) {
         try {
-          await refreshAlbums();
+          await refresh();
         } catch {
           // The original operation error is the actionable notification.
         }
@@ -2720,37 +3861,6 @@ export function CreatorScreen({
         throw reason;
       }
     });
-  }
-
-  async function setAlbumArchived(album: AlbumDto, archived: boolean) {
-    if (lifecycleBusy) return;
-    setLifecycleBusy(true);
-    try {
-      await window.desktopApi.albumsSetArchived({ albumId: album.id, archived });
-      const draftDetached = archived ? await detachDraftFromUnavailableAlbum(album.id, true) : false;
-      if (archived && selectedAlbumId) {
-        let currentAlbumId: string | undefined = selectedAlbumId;
-        while (currentAlbumId) {
-          if (currentAlbumId === album.id) {
-            setSelectedAlbumId(null);
-            commitCreatorLocation(
-              draftDetached ? { surface: 'new-creation', albumId: null } : workbenchLocation(),
-              'replace',
-            );
-            break;
-          }
-          currentAlbumId = albumTree.parentById.get(currentAlbumId);
-        }
-      }
-      await refreshAlbums();
-      notify(archived ? messages.gallery.albums.archivedNotice : messages.gallery.albums.restoredNotice);
-    } catch (reason) {
-      notify(
-        `${messages.gallery.albums.operationFailed}: ${reason instanceof Error ? reason.message : String(reason)}`,
-      );
-    } finally {
-      setLifecycleBusy(false);
-    }
   }
 
   function reviewDirectionExperiment(assistantRun: AssistantRunDto, directions: DirectionProposalDto[]) {
@@ -2963,6 +4073,7 @@ export function CreatorScreen({
 
   async function generate() {
     if (!readiness.ready || starting || versionCreating) return;
+    const keepEditorOpen = Boolean(editorDerivedVisual);
     const visibleRefinement = annotationRefinementState;
     if (visibleRefinement) {
       setStarting(true);
@@ -3006,6 +4117,7 @@ export function CreatorScreen({
     const creating = creationMode === 'new';
     const typedTitle = newTitle.trim();
     const initialTitle = creating ? typedTitle || '新创作' : series?.title || '新创作';
+    invalidatePendingCreationDraftAutosaves();
     setStarting(true);
     try {
       const draftIdForGeneration = creating ? (await saveCreationDraftNow(undefined, capturedPrompt)).id : null;
@@ -3013,6 +4125,7 @@ export function CreatorScreen({
         input: {
           seriesId: creating ? null : seriesId,
           creationDraftId: draftIdForGeneration,
+          inspirationStashId: selectedInspirationStashId,
           baseVersionId: creating ? null : (version?.id ?? null),
           title: initialTitle,
           titleLocale: locale,
@@ -3040,6 +4153,8 @@ export function CreatorScreen({
       await refresh();
       setCreationMode('existing');
       setTargetAlbumId(null);
+      setSelectedInspirationStashId(null);
+      setSavedInspirationContentKey(null);
       creationDraftIdRef.current = null;
       setCreationDraftId(null);
       if (creating) savedDraftRef.current = null;
@@ -3050,10 +4165,7 @@ export function CreatorScreen({
       setVersionId(result.versionId);
       panes.setOutputCollapsed(false);
       panes.setCompactPanel('output');
-      commitCreatorLocation(
-        { surface: 'existing-creation', seriesId: result.seriesId, assetId: null, versionId: result.versionId },
-        'replace',
-      );
+      commitGeneratedImageLocation(keepEditorOpen, result.seriesId, result.versionId, commitCreatorLocation);
       notify(`${c.generationStarted} · ${result.runIds.length}`);
       if (creating && !typedTitle) {
         setPendingAutoTitle({
@@ -3244,6 +4356,7 @@ export function CreatorScreen({
       facets={data.facets}
       selectedAssets={referenceAssets}
       disabled={referenceImporting}
+      onBeforeOpen={onTermDetailsRequest}
       onApply={applyReferenceAssets}
       onImport={attachReferences}
     />
@@ -3352,6 +4465,7 @@ export function CreatorScreen({
       value={canvasPreset}
       compact
       toolbar
+      disabled={Boolean(activeDerivedVisual)}
       onChange={(preset) => setCanvasPresetKey(preset?.stableKey ?? '')}
     />
   );
@@ -3417,17 +4531,29 @@ export function CreatorScreen({
           </SegmentedItem>
           {showOutputPane && (
             <SegmentedItem value="output" className="px-4">
-              {outputMode === 'results'
+              {editorDerivedVisual
                 ? locale === 'zh'
-                  ? '成果'
-                  : 'Results'
-                : outputMode === 'inputs'
+                  ? editorDerivedVisual.role === 'ARTICLE_HEADER'
+                    ? '题图'
+                    : editorDerivedVisual.role === 'ARTICLE_INLINE'
+                      ? '配图'
+                      : '封面'
+                  : editorDerivedVisual.role === 'ARTICLE_HEADER'
+                    ? 'Hero'
+                    : editorDerivedVisual.role === 'ARTICLE_INLINE'
+                      ? 'Illustration'
+                      : 'Cover'
+                : outputMode === 'results'
                   ? locale === 'zh'
-                    ? '输入'
-                    : 'Inputs'
-                  : locale === 'zh'
-                    ? '记录'
-                    : 'Records'}
+                    ? '成果'
+                    : 'Results'
+                  : outputMode === 'inputs'
+                    ? locale === 'zh'
+                      ? '输入'
+                      : 'Inputs'
+                    : locale === 'zh'
+                      ? '记录'
+                      : 'Records'}
             </SegmentedItem>
           )}
         </Segmented>
@@ -3455,6 +4581,9 @@ export function CreatorScreen({
             filter={creationLibraryFilter}
             selectedSeriesId={seriesId}
             selectedCreationId={selectedIdeaCreationId}
+            selectedInspirationStashId={selectedInspirationStashId}
+            selectedSocialPostId={selectedSocialPostId}
+            selectedArticleId={selectedArticleId}
             selectedAlbumId={selectedAlbumId}
             selectedDocumentId={selectedDocumentId}
             selectedDocumentAlbumId={selectedDocumentAlbumId}
@@ -3466,33 +4595,31 @@ export function CreatorScreen({
             resizeMin={panes.resultResizeMin}
             resizeMax={panes.resultResizeMax}
             showModeToggle={panes.multiPane}
-            lifecycleBusy={lifecycleBusy}
+            lifecycleBusy={lifecycleActionBusy}
             onModeChange={panes.setResultLibraryMode}
             onResizeStart={panes.beginResultResize}
             onResizeValueChange={panes.setResultWidth}
             onFilterChange={setCreationLibraryFilter}
-            onSelectCreation={chooseIdeaCreation}
-            onDeleteCreation={requestIdeaCreationDelete}
+            onSelectInspirationStash={chooseInspirationStash}
+            onSelectSocialPost={chooseSocialPost}
+            onSelectArticle={chooseArticle}
+            onRenameArticle={setRenameArticle}
+            onContentLifecycleAction={(request) => void contentLifecycleActions.request(request)}
             onSelect={chooseSeries}
+            onOpenDerivedVisual={(visualId) => void resumeDerivedVisual(visualId)}
             onSelectDocument={onSelectDocument}
             onRenameDocument={setRenameDocument}
-            onMoveDocument={moveDocument}
             onSelectAlbum={chooseAlbum}
             onMore={showMoreResults}
-            onNew={() => void startNewCreation(null)}
-            onNewInAlbum={(albumId) => void startNewCreation(albumId)}
+            onNew={() => void startNewCreation(null, 'push', true)}
+            onNewInAlbum={(albumId) => void startNewCreation(albumId, 'push', true)}
             onRenameSeries={requestSeriesRename}
-            onDeleteSeries={requestSeriesDelete}
             onRenameAlbum={setRenameAlbum}
-            onDeleteAlbum={requestAlbumDelete}
             onToggleAlbumPin={toggleAlbumPin}
-            onSetAlbumArchived={(album, archived) => void setAlbumArchived(album, archived)}
-            onCreateAlbum={(parent) => setCreateAlbumParent(parent)}
+            onCreateAlbum={(parent) => setCreateAlbumRequest({ parent, destination: 'LIBRARY' })}
             onMoveAlbum={moveAlbum}
-            onMoveSeries={moveSeriesToAlbum}
-            onReorderMembers={reorderAlbumMembers}
-            onReorderRoot={reorderSidebarRoot}
-            onCreationPresentationChange={refresh}
+            onMoveCreationItem={moveCreationItemToAlbum}
+            onToggleCreationItemPin={toggleCreationItemPin}
             notify={notify}
           />
         </div>
@@ -3510,6 +4637,53 @@ export function CreatorScreen({
         )}
 
         {!documentWorkspaceActive &&
+          selectedSocialPost &&
+          !comparisonFullWindow &&
+          !promptFullWindow &&
+          (panes.multiPane || panes.compactPanel === 'creator') && (
+            <div className="flex min-h-0 min-w-0 overflow-hidden bg-background">
+              <SocialPostEditor
+                key={selectedSocialPost.id}
+                post={selectedSocialPost}
+                locale={locale}
+                canvasPresets={data.canvasPresets}
+                coverWorkspaceExists={socialCoverWorkspaceExists}
+                onSave={(content) => saveSocialPost(selectedSocialPost, content)}
+                onCreateArticle={(content, mediaAssets) =>
+                  createArticleFromSocialPost(selectedSocialPost, content, mediaAssets)
+                }
+                onGenerateCover={(content, preset) => openSocialCoverWorkspace(selectedSocialPost, content, preset)}
+                notify={notify}
+              />
+            </div>
+          )}
+
+        {!documentWorkspaceActive &&
+          selectedArticle &&
+          !comparisonFullWindow &&
+          !promptFullWindow &&
+          (panes.multiPane || panes.compactPanel === 'creator') && (
+            <div className="flex min-h-0 min-w-0 overflow-hidden bg-background">
+              <ArticleEditor
+                key={selectedArticle.id}
+                article={selectedArticle}
+                locale={locale}
+                canvasPresets={data.canvasPresets}
+                headerWorkspaceExists={articleHeaderWorkspaceExists}
+                onSave={(content) => saveArticle(selectedArticle, content)}
+                onCopyForWechat={() => copyArticleForWechat(selectedArticle.id)}
+                onExport={() => exportArticleMarkdown(selectedArticle.id)}
+                onCreateSocialPost={(content) => createSocialPostFromArticle(selectedArticle, content)}
+                onGenerateHeader={(content) => openArticleHeaderWorkspace(selectedArticle, content)}
+                onGenerateIllustration={(content, selectedText, preset) =>
+                  openArticleIllustrationWorkspace(selectedArticle, content, selectedText, preset)
+                }
+                notify={notify}
+              />
+            </div>
+          )}
+
+        {!documentWorkspaceActive &&
           selectedAlbum &&
           !comparisonFullWindow &&
           !promptFullWindow &&
@@ -3519,18 +4693,57 @@ export function CreatorScreen({
               album={selectedAlbum}
               albums={data.albums}
               creationSessions={creationSessions}
+              creationItems={data.creationItems}
               filter={creationLibraryFilter}
               documentNavigationRevision={documentNavigationRevision}
-              busy={lifecycleBusy}
+              busy={lifecycleActionBusy}
               onSelectAlbum={chooseAlbum}
               onSelectSeries={chooseSeries}
               onSelectDocument={onSelectDocument}
               onOpenMaterial={onOpenMaterial}
+              onArchiveMaterial={(item) => {
+                const fallbackTitle =
+                  item.kind === 'TEXT'
+                    ? messages.gallery.card.textMaterial
+                    : item.image.asset.kind === 'GENERATED'
+                      ? messages.gallery.card.generated
+                      : messages.gallery.card.reference;
+                void contentLifecycleActions.request({
+                  action: 'ARCHIVE',
+                  target: creatorMaterialLifecycleTarget(item),
+                  title: materialTitle(item, fallbackTitle),
+                });
+              }}
+              onDeleteMaterial={(item) => {
+                const fallbackTitle =
+                  item.kind === 'TEXT'
+                    ? messages.gallery.card.textMaterial
+                    : item.image.asset.kind === 'GENERATED'
+                      ? messages.gallery.card.generated
+                      : messages.gallery.card.reference;
+                void contentLifecycleActions.request({
+                  action: 'DELETE',
+                  target: creatorMaterialLifecycleTarget(item),
+                  title: materialTitle(item, fallbackTitle),
+                });
+              }}
               onRename={handleRenameAlbum}
-              onDelete={deleteAlbumDirect}
+              onDelete={(album) =>
+                contentLifecycleActions.request({
+                  action: 'DELETE',
+                  target: { entityType: 'ALBUM', entityId: album.id },
+                  title: album.title,
+                })
+              }
               onTogglePin={toggleAlbumPin}
-              onSetArchived={setAlbumArchived}
-              onCreateCreation={() => void startNewCreation(selectedAlbum.id)}
+              onArchive={(album) =>
+                contentLifecycleActions.request({
+                  action: 'ARCHIVE',
+                  target: { entityType: 'ALBUM', entityId: album.id },
+                  title: album.title,
+                })
+              }
+              onCreateCreation={() => void startNewCreation(selectedAlbum.id, 'push', true)}
               onSettings={() => setSettingsAlbum(selectedAlbum)}
               notify={notify}
             />
@@ -3559,7 +4772,7 @@ export function CreatorScreen({
             )
           }
           className={
-            documentWorkspaceActive || comparisonFullWindow || selectedAlbum
+            documentWorkspaceActive || comparisonFullWindow || selectedAlbum || selectedSocialPost || selectedArticle
               ? 'hidden'
               : cn(
                   promptFullWindow || panes.compactPanel === 'creator' ? 'flex' : 'hidden',
@@ -3576,7 +4789,13 @@ export function CreatorScreen({
             {creationMode === 'new' ? (
               <div className="flex min-w-0 items-center gap-2">
                 <span className="truncate font-semibold">
-                  {creationStartMode === 'video-document' ? messages.videoDocuments.start.title : c.newPrompt}
+                  {creationStartMode === 'video-document'
+                    ? messages.videoDocuments.start.title
+                    : selectedInspirationStash
+                      ? locale === 'zh'
+                        ? '灵感暂存'
+                        : 'Inspiration stash'
+                      : c.newPrompt}
                 </span>
                 {newCreationSurface && creationStartMode === 'video-document' && (
                   <Button type="button" variant="ghost" size="sm" onClick={() => selectCreationStartMode('image')}>
@@ -3584,18 +4803,23 @@ export function CreatorScreen({
                     {locale === 'zh' ? '返回输入' : 'Back to input'}
                   </Button>
                 )}
-                {targetAlbum && (
-                  <span
-                    className="max-w-48 truncate rounded-full border bg-surface-sunken px-2 py-0.5 text-xs text-foreground-secondary"
-                    title={targetAlbum.title}
-                  >
-                    {targetAlbum.title}
-                  </span>
-                )}
-                {targetAlbumId && !targetAlbum && (
-                  <span className="text-xs text-destructive">
-                    {locale === 'zh' ? '目标图集不可用' : 'Target album unavailable'}
-                  </span>
+                {creationStartMode === 'image' && (
+                  <SearchableAlbumSelect
+                    albums={data.albums}
+                    value={targetAlbumId}
+                    className="h-8 w-48 max-w-[35vw] text-xs"
+                    disabled={starting || versionCreating || lifecycleActionBusy}
+                    labels={{
+                      ariaLabel: locale === 'zh' ? '选择新创作图集' : 'Choose album for new creation',
+                      unfiled: locale === 'zh' ? '不归入图集' : 'Unfiled',
+                      searchPlaceholder: locale === 'zh' ? '搜索图集' : 'Search albums',
+                      empty: locale === 'zh' ? '没有匹配的图集' : 'No matching albums',
+                      create: locale === 'zh' ? '新建图集' : 'New album',
+                      createChild: locale === 'zh' ? '新建子图集' : 'New child album',
+                    }}
+                    onValueChange={(albumId) => void changeNewCreationAlbum(albumId)}
+                    onRequestCreate={(parent) => setCreateAlbumRequest({ parent, destination: 'NEW_CREATION' })}
+                  />
                 )}
               </div>
             ) : (
@@ -3662,8 +4886,8 @@ export function CreatorScreen({
                 type="button"
                 variant="ghost"
                 size="icon-sm"
-                title={locale === 'zh' ? '输入暂存与版本对比' : 'Input stashes & version comparison'}
-                aria-label={locale === 'zh' ? '输入暂存与版本对比' : 'Input stashes & version comparison'}
+                title={locale === 'zh' ? '输入暂存与版本' : 'Input stashes & versions'}
+                aria-label={locale === 'zh' ? '输入暂存与版本' : 'Input stashes & versions'}
                 disabled={inputStashBusy}
                 onClick={() => void openInputStashDialog()}
               >
@@ -3695,6 +4919,7 @@ export function CreatorScreen({
             />
           ) : (
             <MinimalCreationStarter
+              key={`creation-input-${inputSessionRevision}`}
               locale={locale}
               termPromptLocale={defaultPromptLocale ?? termPromptLocale}
               promptProfileId={promptProfileId}
@@ -3712,6 +4937,11 @@ export function CreatorScreen({
               generationTargets={generationTargets}
               generationCount={generationCount}
               readiness={readiness}
+              stashReady={promptNodes.some((node) => node.kind !== 'TEXT' || Boolean(node.text.trim()))}
+              stashing={inspirationStashBusy}
+              stashed={
+                Boolean(selectedInspirationStashId) && savedInspirationContentKey === currentInspirationContentKey
+              }
               starting={starting || versionCreating}
               planning={creationMode === 'new'}
               startReady={Boolean(livePrompt.trim())}
@@ -3735,7 +4965,8 @@ export function CreatorScreen({
               onGenerationTargetsChange={setGenerationTargets}
               onConfigureExtension={onConfigureExtension}
               onGenerate={() => void generate()}
-              onStartCreation={() => void commitCreationAsV01()}
+              onStashInspiration={() => void stashInspiration()}
+              onStartCreation={startCreationFromPlan}
               onChooseVideoDocument={() => selectCreationStartMode('video-document')}
               onFullWindowChange={changePromptFullWindow}
             />
@@ -3930,9 +5161,9 @@ export function CreatorScreen({
             notify={notify}
           />
           <CreateAlbumDialog
-            open={createAlbumParent !== undefined}
-            parentTitle={createAlbumParent?.title}
-            busy={lifecycleBusy}
+            open={createAlbumRequest !== null}
+            parentTitle={createAlbumRequest?.parent?.title}
+            busy={lifecycleActionBusy}
             labels={{
               title: messages.gallery.albums.createTitle,
               childTitle: messages.gallery.albums.createChild,
@@ -3943,11 +5174,11 @@ export function CreatorScreen({
               operationFailed: messages.gallery.albums.operationFailed,
             }}
             onOpenChange={(open) => {
-              if (!open) setCreateAlbumParent(undefined);
+              if (!open) setCreateAlbumRequest(null);
             }}
             onCreate={async (title) => {
-              if (createAlbumParent === undefined) return;
-              await createAlbum(createAlbumParent, title);
+              if (!createAlbumRequest) return;
+              await createAlbum(createAlbumRequest.parent, title, createAlbumRequest.destination);
             }}
           />
           <RenameAlbumDialog
@@ -3957,6 +5188,14 @@ export function CreatorScreen({
               if (!open) setRenameAlbum(null);
             }}
             onSave={handleRenameAlbum}
+          />
+          <RenameArticleDialog
+            article={renameArticle}
+            open={Boolean(renameArticle)}
+            onOpenChange={(open) => {
+              if (!open) setRenameArticle(null);
+            }}
+            onSave={handleRenameArticle}
           />
           <VideoDocumentRenameDialog
             open={Boolean(renameDocument)}
@@ -3968,52 +5207,7 @@ export function CreatorScreen({
               if (renameDocument) await handleRenameDocument(renameDocument.id, title);
             }}
           />
-          <DeleteEntityDialog
-            open={Boolean(deleteTarget)}
-            title={
-              deleteTarget?.kind === 'album'
-                ? c.deleteAlbumTitle
-                : deleteTarget?.kind === 'idea'
-                  ? locale === 'zh'
-                    ? '删除灵感创作？'
-                    : 'Delete idea creation?'
-                  : c.deleteSeriesTitle
-            }
-            description={
-              deleteTarget
-                ? `${deleteTarget.name}：${
-                    deleteTarget.kind === 'album'
-                      ? c.deleteAlbumDescription
-                      : deleteTarget.kind === 'idea'
-                        ? locale === 'zh'
-                          ? '灵感方向和历史轮次将一并删除。'
-                          : 'Directions and round history will be deleted.'
-                        : c.deleteSeriesDescription
-                  }`
-                : ''
-            }
-            cancelLabel={c.cancelDelete}
-            confirmLabel={deleteTarget?.kind === 'series' && deleteAssociatedImages ? c.deleteWithImages : c.delete}
-            busy={deleteBusy}
-            error={deleteError}
-            optionLabel={
-              deleteTarget?.kind === 'series' && deleteOutputCount > 0 ? c.deleteImages(deleteOutputCount) : undefined
-            }
-            optionDescription={
-              deleteTarget?.kind === 'series' && deleteOutputCount > 0
-                ? c.deleteImagesDescription(deleteOutputCount)
-                : undefined
-            }
-            optionChecked={deleteAssociatedImages}
-            onOptionCheckedChange={setDeleteAssociatedImages}
-            onOpenChange={(open) => {
-              if (!open && !deleteBusy) {
-                setDeleteTarget(null);
-                setDeleteAssociatedImages(false);
-              }
-            }}
-            onConfirm={() => void confirmDelete()}
-          />
+          {contentLifecycleActions.confirmationDialog}
         </PasteDropSurface>
 
         {showOutputPane && !promptFullWindow && (
@@ -4027,7 +5221,38 @@ export function CreatorScreen({
                   )
             }
           >
-            {outputMode === 'results' ? (
+            {editorDerivedVisual ? (
+              <DerivedVisualWorkbench
+                visual={editorDerivedVisual}
+                locale={locale}
+                prompt={manualPrompt}
+                canvasPreset={canvasPreset}
+                canvasPresets={data.canvasPresets}
+                series={outputSeries}
+                routes={imageGenerationRoutes}
+                generationTargets={generationTargets}
+                generationCount={generationCount}
+                generationTasks={data.generationTasks}
+                readiness={readiness}
+                starting={starting || versionCreating}
+                resizeValue={panes.outputWidth}
+                resizeMin={panes.outputResizeMin}
+                resizeMax={panes.outputResizeMax}
+                onResizeStart={panes.beginOutputResize}
+                onResizeValueChange={panes.setOutputWidth}
+                onPromptChange={changeDerivedVisualPrompt}
+                onCanvasPresetChange={changeDerivedVisualCanvas}
+                onGenerationTargetsChange={setGenerationTargets}
+                onConfigureExtension={onConfigureExtension}
+                onGenerate={() => void generate()}
+                onAdopt={adoptDerivedVisual}
+                onClose={() => {
+                  setDismissedDerivedVisualId(editorDerivedVisual.id);
+                  panes.setCompactPanel('creator');
+                }}
+                notify={notify}
+              />
+            ) : outputMode === 'results' ? (
               <OutputInspector
                 headerNavigation={outputHeaderNavigation}
                 emptyState={outputEmptyState}
@@ -4076,6 +5301,8 @@ export function CreatorScreen({
                 onCreatePromptVersion={createNextPromptVersion}
                 onImportedOutputUpdated={refresh}
                 onImportedOutputSaved={onImportedOutputSaved}
+                derivedVisual={outputDerivedVisual}
+                onAdoptDerivedVisual={adoptDerivedVisual}
                 notify={notify}
               />
             ) : outputMode === 'inputs' ? (

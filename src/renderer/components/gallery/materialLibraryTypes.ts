@@ -51,6 +51,10 @@ export function textMaterial(item: FavoriteTextMaterialDto): MaterialLibraryItem
   return created;
 }
 
+export function hasMaterialLifecycleEntity(item: MaterialLibraryItem) {
+  return item.kind === 'TEXT' || Boolean(item.image.materialId);
+}
+
 function fileStem(value: string) {
   const name = value.trim().split(/[\\/]/).at(-1) ?? '';
   return name.replace(/\.[^.]+$/, '').trim();

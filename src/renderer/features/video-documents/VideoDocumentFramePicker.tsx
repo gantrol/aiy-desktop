@@ -175,7 +175,7 @@ export function VideoDocumentFramePicker({
               }}
             />
           ) : (
-            <span className="grid size-full place-items-center text-white/50" aria-label={labels.preview}>
+            <span className="grid size-full place-items-center text-media-checker-a/50" aria-label={labels.preview}>
               <ImageIcon className="size-8" />
             </span>
           )}

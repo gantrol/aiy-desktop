@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, type MouseEventHandler } from 'react';
-import type { AlbumTreeDiagnosticSink } from '@/renderer/components/albums/useAlbumTreeExpansion';
+import type { TreeBranchDiagnosticSink } from '@/renderer/components/albums/useTreeBranchExpansion';
 
 type ClickAction = () => void;
 
@@ -53,7 +53,7 @@ export function createDeferredSingleDoubleClick(delayMs = 280): DeferredSingleDo
  * a hook call per row. Keyboard-generated clicks have `detail === 0`, so they
  * run immediately instead of inheriting the pointer double-click delay.
  */
-export function useDeferredSingleDoubleClick(delayMs = 280, diagnostics?: AlbumTreeDiagnosticSink) {
+export function useDeferredSingleDoubleClick(delayMs = 280, diagnostics?: TreeBranchDiagnosticSink) {
   const coordinator = useMemo(() => createDeferredSingleDoubleClick(delayMs), [delayMs]);
   const cancelPendingClick = useCallback(() => coordinator.cancel(), [coordinator]);
 

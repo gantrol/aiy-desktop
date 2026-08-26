@@ -9,6 +9,7 @@ import {
 } from 'react';
 import {
   CropIcon,
+  CheckIcon,
   FlaskConicalIcon,
   LoaderCircleIcon,
   MessageSquareIcon,
@@ -38,6 +39,7 @@ import type {
   PromptVersionCreateResult,
   TermListItem,
   WordPaletteDto,
+  DerivedVisualDto,
 } from '@/shared/contracts';
 import { CloseIcon, ImageIcon as AppImageIcon } from '@/renderer/icons';
 import { useI18n } from '@/renderer/i18n/useI18n';
@@ -125,6 +127,8 @@ interface Props {
   onCreatePromptVersion(seriesId: string): Promise<PromptVersionCreateResult | null>;
   onImportedOutputUpdated(): Promise<void>;
   onImportedOutputSaved(output: ImportedCreationOutputDto): void;
+  derivedVisual?: DerivedVisualDto | null;
+  onAdoptDerivedVisual?(visualId: string, imageAssetId: string): Promise<void>;
   notify(message: string): void;
 }
 
@@ -212,6 +216,8 @@ export function OutputInspector({
   onCreatePromptVersion,
   onImportedOutputUpdated,
   onImportedOutputSaved,
+  derivedVisual = null,
+  onAdoptDerivedVisual,
   notify,
 }: Props) {
   const { messages } = useI18n();
@@ -346,6 +352,7 @@ export function OutputInspector({
   const [refinementError, setRefinementError] = useState('');
   const [aspectDialogOpen, setAspectDialogOpen] = useState(false);
   const [transforming, setTransforming] = useState(false);
+  const [adoptingDerivedVisual, setAdoptingDerivedVisual] = useState(false);
   const [reusingPrompt, setReusingPrompt] = useState(false);
   const [busyAnnotationId, setBusyAnnotationId] = useState<string | null>(null);
   const [displayMode, setDisplayMode] = useState<'preview' | 'comparison'>('preview');
@@ -869,6 +876,32 @@ export function OutputInspector({
     );
   }
 
+  async function adoptDerivedVisual() {
+    if (!asset || !derivedVisual || !onAdoptDerivedVisual || adoptingDerivedVisual) return;
+    setAdoptingDerivedVisual(true);
+    try {
+      await onAdoptDerivedVisual(derivedVisual.id, asset.id);
+    } catch (reason) {
+      notify(reason instanceof Error ? reason.message : String(reason));
+    } finally {
+      setAdoptingDerivedVisual(false);
+    }
+  }
+
+  const derivedVisualActionLabel = derivedVisual
+    ? locale === 'zh'
+      ? derivedVisual.role === 'ARTICLE_HEADER'
+        ? '设为题图'
+        : derivedVisual.role === 'ARTICLE_INLINE'
+          ? '插入文章'
+          : '设为首图'
+      : derivedVisual.role === 'ARTICLE_HEADER'
+        ? 'Set as hero'
+        : derivedVisual.role === 'ARTICLE_INLINE'
+          ? 'Insert in article'
+          : 'Set as cover'
+    : '';
+
   const hasVersionStripContent =
     outputProjection.some(
       (group) =>
@@ -1171,6 +1204,27 @@ export function OutputInspector({
             </div>
             {!annotationWorkspaceOpen && (
               <>
+                {derivedVisual && derivedVisual.promptSeriesId === assetOwnerSeries?.id && onAdoptDerivedVisual && (
+                  <div className="shrink-0 border-t border-border/60 bg-background p-2">
+                    <Button
+                      type="button"
+                      className="w-full"
+                      disabled={adoptingDerivedVisual || derivedVisual.selectedImageAssetId === asset.id}
+                      onClick={() => void adoptDerivedVisual()}
+                    >
+                      {adoptingDerivedVisual ? (
+                        <LoaderCircleIcon className="size-4 animate-spin" />
+                      ) : (
+                        <CheckIcon className="size-4" />
+                      )}
+                      {derivedVisual.selectedImageAssetId === asset.id
+                        ? locale === 'zh'
+                          ? '已采用'
+                          : 'Applied'
+                        : derivedVisualActionLabel}
+                    </Button>
+                  </div>
+                )}
                 <OutputGenerationRecord
                   series={assetOwnerSeries}
                   experimentContext={experimentContext}

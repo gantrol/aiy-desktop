@@ -47,7 +47,7 @@ function CreationCoverOption({
     >
       {children}
       {selected && (
-        <span className="absolute top-2 right-2 z-20 grid size-6 place-items-center rounded-md border border-selected-border bg-selected text-xs font-semibold tabular-nums text-selected-foreground shadow-sm">
+        <span className="absolute top-2 right-2 z-20 grid size-6 place-items-center rounded-md border border-selected-border bg-selected text-xs font-semibold tabular-nums text-selected-foreground">
           {selectionOrder ?? <CheckIcon className="size-3.5" aria-hidden="true" />}
         </span>
       )}
@@ -177,11 +177,16 @@ export function CreationCoverPickerDialog({
                       setDraggingAssetId(null);
                     }}
                   >
-                    <img src={thumbnailUrl} alt="" className="size-full object-cover" draggable={false} />
-                    <span className="absolute top-1 left-1 grid size-5 place-items-center rounded bg-overlay/90 text-[10px] font-semibold tabular-nums text-foreground shadow-sm">
+                    <img
+                      src={thumbnailUrl}
+                      alt=""
+                      className="size-full bg-media-surround-light object-contain"
+                      draggable={false}
+                    />
+                    <span className="absolute top-1 left-1 grid size-5 place-items-center rounded bg-overlay/90 text-[10px] font-semibold tabular-nums text-foreground">
                       {index + 1}
                     </span>
-                    <span className="absolute right-8 bottom-1 left-1 flex items-center gap-1 truncate rounded bg-overlay/90 px-1.5 py-0.5 text-[10px] text-foreground shadow-sm">
+                    <span className="absolute right-8 bottom-1 left-1 flex items-center gap-1 truncate rounded bg-overlay/90 px-1.5 py-0.5 text-[10px] text-foreground">
                       <GripVerticalIcon className="size-3" aria-hidden="true" />
                       {copy.coverPosition(index + 1)}
                     </span>
@@ -189,7 +194,7 @@ export function CreationCoverPickerDialog({
                       type="button"
                       variant="secondary"
                       size="icon-sm"
-                      className="absolute top-1 right-1 z-10 size-6 bg-overlay/90 shadow-sm"
+                      className="absolute top-1 right-1 z-10 size-6 bg-overlay/90"
                       disabled={busy}
                       aria-label={copy.deselectCover(index + 1)}
                       title={copy.deselectCover(index + 1)}

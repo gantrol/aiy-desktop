@@ -17,6 +17,7 @@ import type {
   CodexUsageQuotaYieldAnalysis,
   CodexUsageRange,
   CodexUsageScanProgress,
+  CodexUsageServiceTier,
   CodexUsageTokenTotals,
   CodexUsageWarningCode,
 } from '@/shared/contracts/codex-usage';
@@ -27,6 +28,7 @@ import {
   estimateCodexUsage,
 } from '@/main/extensions/codex-usage-investigator/pricing';
 import { CodexQuotaYieldAccumulator } from '@/main/extensions/codex-usage-investigator/quota-yield';
+import { resolveCodexUsageServiceTierFallback } from '@/main/extensions/codex-usage-investigator/service-tier-fallback';
 import {
   codexUsageInternalRowSchema,
   readCodexUsageSession,
@@ -42,7 +44,8 @@ import type { CodexUsageCacheDatabase } from '@/main/extensions/codex-usage-inve
 const MAX_FILES = 100_000;
 const MAX_EXPORT_ROWS = 100_000;
 const DISCOVERY_STAT_CONCURRENCY = 12;
-const PROCESSED_ANALYSIS_VERSION = 7;
+const PROCESSED_ANALYSIS_VERSION = 9;
+const FILE_YIELD_INTERVAL = 32;
 const safeIntegerSchema = z.number().int().nonnegative().safe();
 
 const processedSnapshotSchema = z
@@ -55,6 +58,7 @@ const processedSnapshotSchema = z
     quotaYield: codexUsageQuotaYieldAnalysisSchema,
     exportRows: z.array(codexUsageInternalRowSchema).max(MAX_EXPORT_ROWS),
     exportRowsTruncated: z.boolean(),
+    hasUnknownServiceTier: z.boolean(),
   })
   .strict();
 
@@ -71,6 +75,7 @@ interface DiscoveryResult {
 
 interface MutableAggregate {
   usage: CodexUsageBreakdown;
+  inferredServiceTierTokens: number;
   requestCount: number;
   sessions: Set<string>;
   longContextRequestCount: number;
@@ -80,8 +85,16 @@ interface MutableAggregate {
   hasApiCacheSavings: boolean;
   codexCredits: number;
   hasCodexCredits: boolean;
+  codexCreditCacheSavings: number;
+  hasCodexCreditCacheSavings: boolean;
   apiPricedTokens: number;
   creditPricedTokens: number;
+}
+
+interface MutableModelAggregate {
+  model: string;
+  serviceTier: CodexUsageServiceTier;
+  aggregate: MutableAggregate;
 }
 
 export interface CodexUsageScanResult {
@@ -116,6 +129,7 @@ function emptyUsage(): CodexUsageBreakdown {
 function emptyAggregate(): MutableAggregate {
   return {
     usage: emptyUsage(),
+    inferredServiceTierTokens: 0,
     requestCount: 0,
     sessions: new Set(),
     longContextRequestCount: 0,
@@ -125,6 +139,8 @@ function emptyAggregate(): MutableAggregate {
     hasApiCacheSavings: false,
     codexCredits: 0,
     hasCodexCredits: false,
+    codexCreditCacheSavings: 0,
+    hasCodexCreditCacheSavings: false,
     apiPricedTokens: 0,
     creditPricedTokens: 0,
   };
@@ -140,6 +156,11 @@ function throwIfAborted(signal?: AbortSignal) {
   }
 }
 
+async function yieldToMainThread(signal?: AbortSignal) {
+  await new Promise<void>((resolve) => setImmediate(resolve));
+  throwIfAborted(signal);
+}
+
 function addUsage(target: CodexUsageBreakdown, usage: CodexUsageBreakdown) {
   target.inputTokens = addSafe(target.inputTokens, usage.inputTokens);
   target.cachedInputTokens = addSafe(target.cachedInputTokens, usage.cachedInputTokens);
@@ -151,6 +172,7 @@ function addUsage(target: CodexUsageBreakdown, usage: CodexUsageBreakdown) {
 
 function mergeRow(target: MutableAggregate, row: CodexUsageInternalRow) {
   addUsage(target.usage, row.usage);
+  target.inferredServiceTierTokens = addSafe(target.inferredServiceTierTokens, row.inferredServiceTierTokens);
   target.requestCount = addSafe(target.requestCount, row.requestCount);
   target.sessions.add(row.sessionId);
   target.longContextRequestCount = addSafe(target.longContextRequestCount, row.longContextRequestCount);
@@ -168,6 +190,10 @@ function mergeRow(target: MutableAggregate, row: CodexUsageInternalRow) {
     target.codexCredits += row.codexCredits;
     target.hasCodexCredits = true;
   }
+  if (row.codexCreditCacheSavings !== null) {
+    target.codexCreditCacheSavings += row.codexCreditCacheSavings;
+    target.hasCodexCreditCacheSavings = true;
+  }
 }
 
 function addNullable(left: number | null, right: number | null) {
@@ -176,12 +202,13 @@ function addNullable(left: number | null, right: number | null) {
 }
 
 function rowFromEvent(event: CodexUsageInternalEvent, timeZone: string): CodexUsageInternalRow {
-  const estimate = estimateCodexUsage(event.model, event.usage);
+  const estimate = estimateCodexUsage(event.model, event.usage, event.serviceTier, event.timestamp);
   return {
     sessionId: event.sessionId,
     date: codexUsageLocalDateKey(event.timestamp, timeZone),
     model: event.model,
     serviceTier: event.serviceTier,
+    inferredServiceTierTokens: event.serviceTierInferred ? event.usage.totalTokens : 0,
     quotaKind: event.quotaKind,
     firstAt: event.timestamp,
     lastAt: event.timestamp,
@@ -190,6 +217,7 @@ function rowFromEvent(event: CodexUsageInternalEvent, timeZone: string): CodexUs
     apiEquivalentUsd: estimate.apiEquivalentUsd,
     apiCacheSavingsUsd: estimate.apiCacheSavingsUsd,
     codexCredits: estimate.codexCredits,
+    codexCreditCacheSavings: estimate.codexCreditCacheSavings,
     apiPricedTokens: estimate.apiPricedTokens,
     creditPricedTokens: estimate.creditPricedTokens,
     longContextRequestCount: estimate.longContext ? 1 : 0,
@@ -198,12 +226,14 @@ function rowFromEvent(event: CodexUsageInternalEvent, timeZone: string): CodexUs
 
 function mergeInternalRow(target: CodexUsageInternalRow, row: CodexUsageInternalRow) {
   addUsage(target.usage, row.usage);
+  target.inferredServiceTierTokens = addSafe(target.inferredServiceTierTokens, row.inferredServiceTierTokens);
   if (row.firstAt < target.firstAt) target.firstAt = row.firstAt;
   if (row.lastAt > target.lastAt) target.lastAt = row.lastAt;
   target.requestCount = addSafe(target.requestCount, row.requestCount);
   target.apiEquivalentUsd = addNullable(target.apiEquivalentUsd, row.apiEquivalentUsd);
   target.apiCacheSavingsUsd = addNullable(target.apiCacheSavingsUsd, row.apiCacheSavingsUsd);
   target.codexCredits = addNullable(target.codexCredits, row.codexCredits);
+  target.codexCreditCacheSavings = addNullable(target.codexCreditCacheSavings, row.codexCreditCacheSavings);
   target.apiPricedTokens = addSafe(target.apiPricedTokens, row.apiPricedTokens);
   target.creditPricedTokens = addSafe(target.creditPricedTokens, row.creditPricedTokens);
   target.longContextRequestCount = addSafe(target.longContextRequestCount, row.longContextRequestCount);
@@ -216,6 +246,11 @@ function totalsFromAggregate(aggregate: MutableAggregate): CodexUsageTokenTotals
     apiEquivalentUsd: empty ? 0 : aggregate.hasApiEquivalent ? aggregate.apiEquivalentUsd : null,
     apiCacheSavingsUsd: empty ? 0 : aggregate.hasApiCacheSavings ? aggregate.apiCacheSavingsUsd : null,
     codexCredits: empty ? 0 : aggregate.hasCodexCredits ? aggregate.codexCredits : null,
+    codexCreditCacheSavings: empty
+      ? 0
+      : aggregate.hasCodexCreditCacheSavings
+        ? aggregate.codexCreditCacheSavings
+        : null,
     apiPricedTokens: aggregate.apiPricedTokens,
     creditPricedTokens: aggregate.creditPricedTokens,
   };
@@ -304,10 +339,18 @@ async function discoverRoot(root: string, signal?: AbortSignal) {
   };
 }
 
-async function discoverCodexSessions(fromEpoch: number | null, signal?: AbortSignal): Promise<DiscoveryResult> {
+function codexHomePath() {
   const configuredHome = process.env.CODEX_HOME?.trim();
   const codexHome = path.resolve(configuredHome || path.join(os.homedir(), '.codex'));
-  if (containsForbiddenPathSegment(codexHome)) {
+  return containsForbiddenPathSegment(codexHome) ? null : codexHome;
+}
+
+async function discoverCodexSessions(
+  codexHome: string | null,
+  fromEpoch: number | null,
+  signal?: AbortSignal,
+): Promise<DiscoveryResult> {
+  if (!codexHome) {
     return { files: [], skipped: 0, availableRoots: 0, sourceMode: 'FILESYSTEM_FALLBACK' };
   }
   const indexed = await discoverCodexUsageFromThreadIndex(codexHome, fromEpoch, signal);
@@ -336,16 +379,23 @@ async function discoverCodexSessions(fromEpoch: number | null, signal?: AbortSig
   };
 }
 
-function modelBreakdowns(models: ReadonlyMap<string, MutableAggregate>): CodexUsageModelBreakdown[] {
-  return [...models.entries()]
-    .map(([model, aggregate]) => ({
+function modelBreakdowns(models: ReadonlyMap<string, MutableModelAggregate>): CodexUsageModelBreakdown[] {
+  return [...models.values()]
+    .map(({ model, serviceTier, aggregate }) => ({
       model,
+      serviceTier,
+      inferredServiceTierTokens: aggregate.inferredServiceTierTokens,
       ...totalsFromAggregate(aggregate),
       requestCount: aggregate.requestCount,
       sessionCount: aggregate.sessions.size,
       longContextRequestCount: aggregate.longContextRequestCount,
     }))
-    .sort((left, right) => right.totalTokens - left.totalTokens || left.model.localeCompare(right.model))
+    .sort(
+      (left, right) =>
+        right.totalTokens - left.totalTokens ||
+        left.model.localeCompare(right.model) ||
+        left.serviceTier.localeCompare(right.serviceTier),
+    )
     .slice(0, 1_000);
 }
 
@@ -370,6 +420,7 @@ function warningList(
   sourceMode: DiscoveryResult['sourceMode'],
   exportRowsTruncated: boolean,
   quotaYield: CodexUsageQuotaYieldAnalysis,
+  hasUnknownServiceTier: boolean,
 ) {
   const warnings = new Set<CodexUsageWarningCode>();
   if (!sourceAvailable) warnings.add('SOURCE_UNAVAILABLE');
@@ -383,6 +434,7 @@ function warningList(
     warnings.add('UNPRICED_MODELS');
   }
   if (filesSkipped || invalidRecords || oversizedRecords) warnings.add('PARTIAL_RANGE');
+  if (hasUnknownServiceTier) warnings.add('FAST_MODE_NOT_DETECTED');
   if (!quotaYield.estimates.length) warnings.add('QUOTA_YIELD_UNAVAILABLE');
   if (
     quotaYield.discardedMixedModelIntervals ||
@@ -410,36 +462,46 @@ function processedCacheKey(
   return `v${PROCESSED_ANALYSIS_VERSION}:${range}:${fromEpoch ?? 'ALL'}:${toEpoch}:${timeZone}:${granularity}`;
 }
 
-function processStoredEvents(
+async function processStoredEvents(
   options: ScanOptions,
   coverage: ReturnType<CodexUsageCacheDatabase['eventCoverage']>,
   queryToEpoch: number,
-): ProcessedSnapshot {
+): Promise<ProcessedSnapshot> {
   const total = emptyAggregate();
-  const models = new Map<string, MutableAggregate>();
+  const models = new Map<string, MutableModelAggregate>();
   const days = new Map<string, MutableAggregate>();
   const groupedRows = new Map<string, CodexUsageInternalRow>();
+  let hasUnknownServiceTier = false;
   const quotaYield = new CodexQuotaYieldAccumulator({
     coverage,
     range: options.range,
     timeZone: options.timeZone,
   });
-  for (const event of options.cache.events(options.fromEpoch, queryToEpoch)) {
-    throwIfAborted(options.signal);
-    quotaYield.add(event);
-    if (!event.usage.totalTokens) continue;
-    const row = rowFromEvent(event, options.timeZone);
-    mergeRow(total, row);
-    const model = models.get(row.model) ?? emptyAggregate();
-    mergeRow(model, row);
-    models.set(row.model, model);
-    const day = days.get(row.date) ?? emptyAggregate();
-    mergeRow(day, row);
-    days.set(row.date, day);
-    const rowKey = `${row.sessionId}\u0000${row.date}\u0000${row.model}\u0000${row.serviceTier}\u0000${row.quotaKind}`;
-    const existing = groupedRows.get(rowKey);
-    if (existing) mergeInternalRow(existing, row);
-    else groupedRows.set(rowKey, row);
+  for (const page of options.cache.eventPages(options.fromEpoch, queryToEpoch)) {
+    for (const event of page) {
+      throwIfAborted(options.signal);
+      quotaYield.add(event);
+      if (!event.usage.totalTokens) continue;
+      hasUnknownServiceTier ||= event.serviceTier === 'UNKNOWN';
+      const row = rowFromEvent(event, options.timeZone);
+      mergeRow(total, row);
+      const modelKey = `${row.model}\u0000${row.serviceTier}`;
+      const model = models.get(modelKey) ?? {
+        model: row.model,
+        serviceTier: row.serviceTier,
+        aggregate: emptyAggregate(),
+      };
+      mergeRow(model.aggregate, row);
+      models.set(modelKey, model);
+      const day = days.get(row.date) ?? emptyAggregate();
+      mergeRow(day, row);
+      days.set(row.date, day);
+      const rowKey = `${row.sessionId}\u0000${row.date}\u0000${row.model}\u0000${row.serviceTier}\u0000${row.quotaKind}`;
+      const existing = groupedRows.get(rowKey);
+      if (existing) mergeInternalRow(existing, row);
+      else groupedRows.set(rowKey, row);
+    }
+    await yieldToMainThread(options.signal);
   }
   const allExportRows = [...groupedRows.values()].sort(
     (left, right) =>
@@ -456,6 +518,7 @@ function processStoredEvents(
     quotaYield: quotaYield.result(),
     exportRows: allExportRows.slice(0, MAX_EXPORT_ROWS),
     exportRowsTruncated: allExportRows.length > MAX_EXPORT_ROWS,
+    hasUnknownServiceTier,
   };
 }
 
@@ -474,7 +537,11 @@ export async function scanCodexUsage(options: ScanOptions): Promise<CodexUsageSc
     estimatedRemainingMs: null,
     elapsedMs: 0,
   });
-  const discovery = await discoverCodexSessions(fromEpoch, signal);
+  const codexHome = codexHomePath();
+  const [discovery, serviceTierFallback] = await Promise.all([
+    discoverCodexSessions(codexHome, fromEpoch, signal),
+    codexHome ? resolveCodexUsageServiceTierFallback(codexHome) : Promise.resolve(null),
+  ]);
   const files = discovery.files;
   let filesProcessed = 0;
   let filesScanned = 0;
@@ -483,9 +550,12 @@ export async function scanCodexUsage(options: ScanOptions): Promise<CodexUsageSc
   let invalidRecords = 0;
   let oversizedRecords = 0;
   let bytesRead = 0;
-  const cacheHits = new Set(
-    files.filter((file) => options.cache.hasIngestedSource(file)).map((file) => file.sessionId),
-  );
+  const cacheHits = new Set<string>();
+  for (const [index, file] of files.entries()) {
+    throwIfAborted(signal);
+    if (options.cache.hasIngestedSource(file, serviceTierFallback)) cacheHits.add(file.sessionId);
+    if ((index + 1) % FILE_YIELD_INTERVAL === 0) await yieldToMainThread(signal);
+  }
   let bytesTotal = files.reduce((sum, file) => (cacheHits.has(file.sessionId) ? sum : addSafe(sum, file.size)), 0);
   const ioStartedAt = Date.now();
   let lastProgressAt = 0;
@@ -520,6 +590,7 @@ export async function scanCodexUsage(options: ScanOptions): Promise<CodexUsageSc
   for (const file of files) {
     throwIfAborted(signal);
     const bytesBeforeFile = bytesRead;
+    let checkpoint = false;
     try {
       if (cacheHits.has(file.sessionId)) {
         filesCached += 1;
@@ -530,13 +601,15 @@ export async function scanCodexUsage(options: ScanOptions): Promise<CodexUsageSc
           file.fallbackModel,
           null,
           Number.MAX_SAFE_INTEGER,
+          serviceTierFallback,
           signal,
           (bytes) => {
             bytesRead = addSafe(bytesRead, bytes);
             progress();
           },
         );
-        options.cache.replaceIngestedSource(file, result);
+        options.cache.replaceIngestedSource(file, result, serviceTierFallback);
+        checkpoint = true;
         filesScanned += 1;
         invalidRecords = addSafe(invalidRecords, result.invalidRecords);
         oversizedRecords = addSafe(oversizedRecords, result.oversizedRecords);
@@ -549,8 +622,9 @@ export async function scanCodexUsage(options: ScanOptions): Promise<CodexUsageSc
       bytesTotal = Math.max(bytesRead, bytesTotal - Math.max(0, file.size - consumed));
     }
     filesProcessed += 1;
-    progress(true);
-    options.onCheckpoint?.(progressSnapshot('SCANNING'));
+    progress();
+    if (checkpoint) options.onCheckpoint?.(progressSnapshot('SCANNING'));
+    if (filesProcessed % FILE_YIELD_INTERVAL === 0) await yieldToMainThread(signal);
   }
   progress(true, 'FINALIZING');
   const allCoverage = options.cache.eventCoverage();
@@ -560,7 +634,7 @@ export async function scanCodexUsage(options: ScanOptions): Promise<CodexUsageSc
   const cacheKey = processedCacheKey(range, fromEpoch, queryToEpoch, options.timeZone, options.granularity);
   let processed = options.cache.readProcessed(cacheKey, processedSnapshotSchema);
   if (!processed) {
-    processed = processStoredEvents(options, coverage, queryToEpoch);
+    processed = await processStoredEvents(options, coverage, queryToEpoch);
     options.cache.saveProcessed(cacheKey, processed, processedSnapshotSchema);
   }
   const sourceAvailable = discovery.availableRoots > 0 || coverage.sourceEventCount > 0;
@@ -601,6 +675,7 @@ export async function scanCodexUsage(options: ScanOptions): Promise<CodexUsageSc
       discovery.sourceMode,
       processed.exportRowsTruncated,
       processed.quotaYield,
+      processed.hasUnknownServiceTier,
     ),
   };
   return { investigation, exportRows: processed.exportRows };

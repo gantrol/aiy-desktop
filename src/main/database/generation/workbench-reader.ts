@@ -14,6 +14,8 @@ import type {
   ImportedCreationOutputDto,
   Locale,
   PromptInputSnapshotDto,
+  PromptCommonInputDto,
+  PromptCommonRecipeReferenceDto,
   PromptSeriesDto,
   PromptVersionDto,
   ProviderReturnedDescriptionDto,
@@ -39,9 +41,74 @@ import {
 import { CODEX_APP_SERVER_EXTENSION_ID } from '@/shared/extension-ids';
 import { findSvgRasterCachePath } from '@/main/media/svg-raster-cache';
 
+class StructuralInterner<T> {
+  private readonly values = new Map<string, T>();
+
+  intern(value: T): T {
+    const key = JSON.stringify(value);
+    const cached = this.values.get(key);
+    if (cached !== undefined) return cached;
+    this.values.set(key, value);
+    return value;
+  }
+}
+
+/**
+ * Prompt snapshots are immutable, and successive versions commonly freeze the
+ * same palette revision again. Preserve that identity inside one workbench
+ * projection so Electron serializes each repeated recipe subtree only once.
+ */
+class PromptInputProjectionInterner {
+  private readonly directTerms = new StructuralInterner<PromptCommonInputDto['directTerms']>();
+  private readonly directReferences = new StructuralInterner<PromptCommonInputDto['directReferences']>();
+  private readonly contentNodes = new StructuralInterner<NonNullable<PromptCommonInputDto['contentNodes']>>();
+  private readonly resolvedPrompts = new StructuralInterner<NonNullable<PromptCommonInputDto['flatResolvedPrompt']>>();
+  private readonly recipeLocalizations = new StructuralInterner<PromptCommonRecipeReferenceDto['localizations']>();
+  private readonly recipeParameterValues = new StructuralInterner<PromptCommonRecipeReferenceDto['parameterValues']>();
+  private readonly recipeTerms = new StructuralInterner<PromptCommonRecipeReferenceDto['terms']>();
+  private readonly recipeParameters = new StructuralInterner<PromptCommonRecipeReferenceDto['parameters']>();
+  private readonly recipeContentNodes = new StructuralInterner<PromptCommonRecipeReferenceDto['contentNodes']>();
+  private readonly recipeReferences = new StructuralInterner<PromptCommonRecipeReferenceDto['references']>();
+  private readonly recipePackSources = new StructuralInterner<
+    NonNullable<PromptCommonRecipeReferenceDto['packSources']>
+  >();
+  private readonly recipes = new StructuralInterner<PromptCommonRecipeReferenceDto>();
+  private readonly recipeLists = new StructuralInterner<PromptCommonInputDto['recipes']>();
+  private readonly inputs = new StructuralInterner<PromptCommonInputDto>();
+
+  intern(input: PromptCommonInputDto) {
+    const recipes = this.recipeLists.intern(
+      input.recipes.map((recipe) =>
+        this.recipes.intern({
+          ...recipe,
+          localizations: this.recipeLocalizations.intern(recipe.localizations),
+          parameterValues: this.recipeParameterValues.intern(recipe.parameterValues),
+          terms: this.recipeTerms.intern(recipe.terms),
+          parameters: this.recipeParameters.intern(recipe.parameters),
+          contentNodes: this.recipeContentNodes.intern(recipe.contentNodes),
+          references: this.recipeReferences.intern(recipe.references),
+          ...(recipe.packSources ? { packSources: this.recipePackSources.intern(recipe.packSources) } : {}),
+        }),
+      ),
+    );
+    return this.inputs.intern({
+      ...input,
+      directTerms: this.directTerms.intern(input.directTerms),
+      directReferences: this.directReferences.intern(input.directReferences),
+      recipes,
+      ...(input.contentNodes ? { contentNodes: this.contentNodes.intern(input.contentNodes) } : {}),
+      ...(input.flatResolvedPrompt
+        ? { flatResolvedPrompt: this.resolvedPrompts.intern(input.flatResolvedPrompt) }
+        : {}),
+    });
+  }
+}
+
 export class WorkbenchReader {
   private assetPathIndex: Map<string, string> | null = null;
   private assetPathIndexRevision = -1;
+  private workbenchRevision = -1;
+  private readonly workbenches = new Map<string, { series: PromptSeriesDto[] }>();
 
   constructor(
     protected readonly storage: LibraryStorage,
@@ -81,14 +148,28 @@ export class WorkbenchReader {
     locale: Locale = 'zh',
     options: { includeExecutionActualRequest?: boolean; includeExecutionInputSnapshot?: boolean } = {},
   ): { series: PromptSeriesDto[] } {
+    const revision = this.storage.getChangeRevision();
+    if (this.workbenchRevision !== revision) {
+      this.workbenchRevision = revision;
+      this.workbenches.clear();
+    }
+    const cacheKey = `${locale}:${options.includeExecutionActualRequest === false ? 0 : 1}:${options.includeExecutionInputSnapshot === false ? 0 : 1}`;
+    const cached = this.workbenches.get(cacheKey);
+    if (cached) return cached;
+
     const seriesRows = this.db
       .prepare(
         `SELECT series.*, root_order.sort_order AS root_sort_order
         FROM prompt_series series
+        LEFT JOIN creation_forms root_form ON root_form.role = 'IMAGE_CREATION'
+          AND root_form.entity_type = 'PROMPT_SERIES' AND root_form.entity_id = series.id
+          AND root_form.deleted_at IS NULL
+        LEFT JOIN creation_items root_item ON root_item.id = root_form.creation_item_id
+          AND root_item.deleted_at IS NULL
         LEFT JOIN sidebar_root_order root_order
           ON root_order.scope = 'CREATOR'
-          AND root_order.target_type = 'SERIES' AND root_order.target_id = series.id
-        WHERE series.deleted_at IS NULL
+          AND root_order.target_type = 'CREATION_ITEM' AND root_order.target_id = root_item.id
+        WHERE series.deleted_at IS NULL AND series.archived_at IS NULL
         ORDER BY MAX(
           COALESCE((
             SELECT MAX(asset.created_at)
@@ -200,7 +281,9 @@ export class WorkbenchReader {
         creatorRootSortOrder: seriesRow.root_sort_order == null ? null : Number(seriesRow.root_sort_order),
       };
     });
-    return { series };
+    const workbench = { series };
+    this.workbenches.set(cacheKey, workbench);
+    return workbench;
   }
 
   private readExplicitCovers() {
@@ -402,6 +485,7 @@ export class WorkbenchReader {
     for (const row of versionRows) pushMapped(versionRowsBySeries, text(row.series_id), row);
 
     const promptInputSnapshotsByVersion = new Map<string, PromptInputSnapshotDto>();
+    const promptInputs = new PromptInputProjectionInterner();
     const promptSnapshotRows = this.db
       .prepare(
         `SELECT snapshot.* FROM prompt_input_snapshots snapshot
@@ -414,7 +498,7 @@ export class WorkbenchReader {
       promptInputSnapshotsByVersion.set(text(row.prompt_version_id), {
         id: text(row.id),
         sourceKind: text(row.source_kind) as PromptInputSnapshotDto['sourceKind'],
-        commonInput: parsePromptCommonInput(row.common_input_json),
+        commonInput: promptInputs.intern(parsePromptCommonInput(row.common_input_json)),
         contentHash: text(row.content_hash),
         createdAt: text(row.created_at),
       });

@@ -44,10 +44,14 @@ interface Props {
   onMoveAlbum(albumId: string, parentAlbumId: string | null): Promise<void>;
   onCollectMaterials(albumId: string, targets: MaterialSelectionTargetInput[]): Promise<void>;
   onImportFiles?(album: MaterialAlbumDto, files: File[]): void;
+  onArchiveAlbum(album: MaterialAlbumDto): void;
+  onDeleteAlbum(album: MaterialAlbumDto): void;
   onSelect(item: MaterialLibraryItem, modifiers?: SelectionModifiers): void;
   onEnterSelection(item: MaterialLibraryItem): void;
   onToggleSelection(item: MaterialLibraryItem): void;
   onCopyText(text: string): void;
+  onArchiveMaterial(item: MaterialLibraryItem): void;
+  onDeleteMaterial(item: MaterialLibraryItem): void;
   notify(message: string): void;
   onDragStart?(event: ReactDragEvent<HTMLElement>, item: MaterialLibraryItem): void;
   revealContextForItem?(item: MaterialLibraryItem): AssetFileRevealContext | undefined;
@@ -128,10 +132,14 @@ function MaterialResults({
   onMoveAlbum,
   onCollectMaterials,
   onImportFiles,
+  onArchiveAlbum,
+  onDeleteAlbum,
   onSelect,
   onEnterSelection,
   onToggleSelection,
   onCopyText,
+  onArchiveMaterial,
+  onDeleteMaterial,
   notify,
   onDragStart,
   revealContextForItem,
@@ -185,10 +193,14 @@ function MaterialResults({
           onMoveAlbum={onMoveAlbum}
           onCollectMaterials={onCollectMaterials}
           onImportFiles={onImportFiles}
+          onArchiveAlbum={onArchiveAlbum}
+          onDeleteAlbum={onDeleteAlbum}
           onSelect={onSelect}
           onEnterSelection={onEnterSelection}
           onToggleSelection={onToggleSelection}
           onCopyText={onCopyText}
+          onArchiveMaterial={onArchiveMaterial}
+          onDeleteMaterial={onDeleteMaterial}
           notify={notify}
           onDragStart={onDragStart}
           revealContextForItem={revealContextForItem}
@@ -219,6 +231,8 @@ function MaterialResults({
           onMoveAlbum={onMoveAlbum}
           onCollectMaterials={onCollectMaterials}
           onImportFiles={onImportFiles}
+          onArchive={onArchiveAlbum}
+          onDelete={onDeleteAlbum}
         />
       )}
       {(hasMaterials || loading) && (
@@ -245,6 +259,9 @@ function MaterialResults({
               onEnterSelection={onEnterSelection}
               onToggleSelection={onToggleSelection}
               onCopyText={onCopyText}
+              onArchive={onArchiveMaterial}
+              onDelete={onDeleteMaterial}
+              lifecycleBusy={albumMutationBusy}
               notify={notify}
               onDragStart={onDragStart}
               revealContextForItem={revealContextForItem}

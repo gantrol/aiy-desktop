@@ -13,11 +13,9 @@ import type {
   AlbumSetPinnedInput,
   AlbumSetArchivedInput,
   AlbumMoveInput,
-  AlbumMoveSeriesInput,
   Locale,
 } from '@/shared/contracts';
 import { normalizeAlbumCreationDefaults, parseAlbumCreationDefaults } from '@/shared/album-creation-defaults';
-import { moveAlbumSeries } from '@/main/database/albums/album-series-move';
 import type { LibraryStorage } from '@/main/database/core/storage';
 import {
   AlbumProjectionRepository,
@@ -31,6 +29,7 @@ import {
   sqlPlaceholders as placeholders,
 } from '@/main/database/albums/image-material-batch';
 import { type JsonMap, now, text } from '@/main/database/core/values';
+import { ContentLifecycleRepository } from '@/main/database/recovery/content-lifecycle-repository';
 import {
   resolveStoredTitle,
   titleLocalizationsByOwner,
@@ -40,10 +39,12 @@ import {
 export class AlbumRepository {
   private readonly storage: LibraryStorage;
   private readonly projection: AlbumProjectionRepository;
+  private readonly lifecycle: ContentLifecycleRepository;
 
   constructor(storage: LibraryStorage) {
     this.storage = storage;
     this.projection = new AlbumProjectionRepository(storage);
+    this.lifecycle = new ContentLifecycleRepository(storage, async () => undefined);
   }
 
   private get db() {
@@ -53,7 +54,15 @@ export class AlbumRepository {
   list(locale: Locale = 'zh'): AlbumDto[] {
     const rows = this.db
       .prepare(
-        `SELECT album.*,
+        `WITH RECURSIVE unavailable_album(id) AS (
+        SELECT id FROM albums WHERE deleted_at IS NOT NULL
+        UNION
+        SELECT member.target_id
+        FROM unavailable_album unavailable
+        JOIN album_members member ON member.album_id = unavailable.id
+          AND member.target_type = 'ALBUM' AND member.deleted_at IS NULL
+      )
+      SELECT album.*,
         creator_order.sort_order AS creator_root_sort_order,
         gallery_order.sort_order AS gallery_root_sort_order
       FROM albums album
@@ -64,6 +73,7 @@ export class AlbumRepository {
         ON gallery_order.scope = 'GALLERY'
         AND gallery_order.target_type = 'ALBUM' AND gallery_order.target_id = album.id
       WHERE album.deleted_at IS NULL AND album.intent <> '${MATERIAL_LIBRARY_ALBUM_INTENT}'
+        AND NOT EXISTS (SELECT 1 FROM unavailable_album unavailable WHERE unavailable.id = album.id)
       ORDER BY album.id`,
       )
       .all() as JsonMap[];
@@ -126,18 +136,18 @@ export class AlbumRepository {
     this.assertAlbumExists(albumId);
     const archived = this.db
       .prepare(
-        `WITH RECURSIVE lineage(id, archived_at) AS (
-        SELECT id, archived_at FROM albums WHERE id = ? AND deleted_at IS NULL
+        `WITH RECURSIVE lineage(id, archived_at, deleted_at) AS (
+        SELECT id, archived_at, deleted_at FROM albums WHERE id = ?
         UNION
-        SELECT parent.id, parent.archived_at
+        SELECT parent.id, parent.archived_at, parent.deleted_at
         FROM lineage child
         JOIN album_members relation
           ON relation.target_type = 'ALBUM'
           AND relation.target_id = child.id
           AND relation.deleted_at IS NULL
-        JOIN albums parent ON parent.id = relation.album_id AND parent.deleted_at IS NULL
+        JOIN albums parent ON parent.id = relation.album_id
       )
-      SELECT 1 FROM lineage WHERE archived_at IS NOT NULL LIMIT 1`,
+      SELECT 1 FROM lineage WHERE archived_at IS NOT NULL OR deleted_at IS NOT NULL LIMIT 1`,
       )
       .get(albumId);
     if (archived) throw new Error('Archived albums cannot accept new content');
@@ -151,10 +161,10 @@ export class AlbumRepository {
       const timestamp = now();
       this.db
         .prepare(
-          `UPDATE albums SET defaults_json = ?, updated_at = ?
+          `UPDATE albums SET defaults_json = ?, updated_at = ?, content_updated_at = ?
         WHERE id = ? AND deleted_at IS NULL`,
         )
-        .run(JSON.stringify(defaults), timestamp, input.albumId);
+        .run(JSON.stringify(defaults), timestamp, timestamp, input.albumId);
       this.storage.recordChange('ALBUM', input.albumId, 'UPDATE_CREATION_DEFAULTS', { defaults });
       return this.getAlbumDto(input.albumId);
     })();
@@ -177,46 +187,7 @@ export class AlbumRepository {
   }
 
   delete(albumId: string): void {
-    this.db.transaction(() => {
-      this.assertAlbumExists(albumId);
-      const timestamp = now();
-      const relationships = this.db
-        .prepare(
-          `SELECT id, album_id, target_type, target_id
-        FROM album_members
-        WHERE deleted_at IS NULL AND (
-          album_id = ? OR (target_type = 'ALBUM' AND target_id = ?)
-        )`,
-        )
-        .all(albumId, albumId) as JsonMap[];
-      const parentAlbumIds = new Set<string>();
-      for (const relationship of relationships) {
-        const memberId = text(relationship.id);
-        const ownerAlbumId = text(relationship.album_id);
-        this.db
-          .prepare('UPDATE album_members SET deleted_at = ?, updated_at = ? WHERE id = ?')
-          .run(timestamp, timestamp, memberId);
-        this.db
-          .prepare("INSERT INTO tombstones VALUES (?, 'ALBUM_MEMBER', ?, ?, 'LOCAL_ONLY')")
-          .run(ulid(), memberId, timestamp);
-        this.storage.recordChange('ALBUM_MEMBER', memberId, 'DELETE', {
-          albumId: ownerAlbumId,
-          targetType: text(relationship.target_type),
-          targetId: text(relationship.target_id),
-          reason: 'ALBUM_DELETE',
-        });
-        if (ownerAlbumId !== albumId) parentAlbumIds.add(ownerAlbumId);
-      }
-      this.db
-        .prepare(
-          `UPDATE albums SET deleted_at = ?, updated_at = ?
-        WHERE id = ? AND deleted_at IS NULL`,
-        )
-        .run(timestamp, timestamp, albumId);
-      this.db.prepare("INSERT INTO tombstones VALUES (?, 'ALBUM', ?, ?, 'LOCAL_ONLY')").run(ulid(), albumId, timestamp);
-      this.storage.recordChange('ALBUM', albumId, 'DELETE', {});
-      for (const parentAlbumId of parentAlbumIds) this.touchAlbumContent(parentAlbumId, timestamp);
-    })();
+    this.lifecycle.applyDirect('DELETE', { entityType: 'ALBUM', entityId: albumId });
   }
 
   setPinned(input: AlbumSetPinnedInput): AlbumDto {
@@ -244,17 +215,8 @@ export class AlbumRepository {
   }
 
   setArchived(input: AlbumSetArchivedInput): AlbumDto {
-    return this.db.transaction(() => {
-      const timestamp = now();
-      this.db
-        .prepare(
-          `UPDATE albums SET archived_at = ?, updated_at = ?
-        WHERE id = ? AND deleted_at IS NULL`,
-        )
-        .run(input.archived ? timestamp : null, timestamp, input.albumId);
-      this.storage.recordChange('ALBUM', input.albumId, 'UPDATE', { archived: input.archived });
-      return this.getAlbumDto(input.albumId);
-    })();
+    this.lifecycle.setDirectArchived({ entityType: 'ALBUM', entityId: input.albumId }, input.archived);
+    return this.getAlbumDto(input.albumId);
   }
 
   move(input: AlbumMoveInput): void {
@@ -358,10 +320,6 @@ export class AlbumRepository {
     })();
   }
 
-  moveSeries(input: AlbumMoveSeriesInput): void {
-    moveAlbumSeries(this.storage, input);
-  }
-
   addMembers(input: AlbumAddMembersInput): AlbumDto;
   addMembers(input: AlbumAddMembersInput, options: { returnDto: false }): void;
   addMembers(input: AlbumAddMembersInput, options?: { returnDto: false }): AlbumDto | void {
@@ -391,69 +349,25 @@ export class AlbumRepository {
         let nextOrder = maxOrder + 1;
         let membershipChanged = false;
         const existingByTarget = new Map<string, JsonMap>();
-        const loadExistingMemberships = (targetType: 'MATERIAL' | 'SERIES', targetIds: readonly string[]) => {
+        const loadExistingMemberships = (targetIds: readonly string[]) => {
           for (const batch of batches([...new Set(targetIds)])) {
             const rows = this.db
               .prepare(
                 `SELECT id, target_type, target_id, deleted_at FROM album_members
-              WHERE album_id = ? AND target_type = ?
+              WHERE album_id = ? AND target_type = 'MATERIAL'
                 AND target_id IN (${placeholders(batch.length)})`,
               )
-              .all(input.albumId, targetType, ...batch) as JsonMap[];
-            for (const row of rows) existingByTarget.set(`${targetType}:${text(row.target_id)}`, row);
+              .all(input.albumId, ...batch) as JsonMap[];
+            for (const row of rows) existingByTarget.set(`MATERIAL:${text(row.target_id)}`, row);
           }
         };
-        loadExistingMemberships('MATERIAL', [...resolvedMaterialIds.values()]);
-        loadExistingMemberships(
-          'SERIES',
-          input.members.flatMap((member) => (member.targetType === 'SERIES' ? [member.targetId] : [])),
-        );
+        loadExistingMemberships([...resolvedMaterialIds.values()]);
         for (const member of input.members) {
           if (member.targetType === 'ALBUM') continue;
-          const targetType = member.targetType;
+          const targetType = 'MATERIAL' as const;
           // A MATERIAL member is addressed by materials.id; callers may hand us an
           // image_asset id, so promote it before recording the edge.
-          const targetId =
-            targetType === 'MATERIAL' ? (resolvedMaterialIds.get(member.targetId) as string) : member.targetId;
-          if (targetType === 'SERIES') {
-            if (
-              !this.db
-                .prepare(
-                  `SELECT 1 FROM prompt_series
-            WHERE id = ? AND deleted_at IS NULL`,
-                )
-                .get(targetId)
-            )
-              throw new Error('Creation not found');
-            const oldMemberships = this.db
-              .prepare(
-                `SELECT id, album_id FROM album_members
-            WHERE target_type = 'SERIES' AND target_id = ?
-              AND album_id <> ? AND deleted_at IS NULL`,
-              )
-              .all(targetId, input.albumId) as JsonMap[];
-            for (const oldMembership of oldMemberships) {
-              const oldMemberId = text(oldMembership.id);
-              const oldAlbumId = text(oldMembership.album_id);
-              this.db
-                .prepare(
-                  `UPDATE album_members SET deleted_at = ?, updated_at = ?
-              WHERE id = ?`,
-                )
-                .run(timestamp, timestamp, oldMemberId);
-              this.db
-                .prepare("INSERT INTO tombstones VALUES (?, 'ALBUM_MEMBER', ?, ?, 'LOCAL_ONLY')")
-                .run(ulid(), oldMemberId, timestamp);
-              this.storage.recordChange('ALBUM_MEMBER', oldMemberId, 'DELETE', {
-                albumId: oldAlbumId,
-                targetType,
-                targetId,
-                movedToAlbumId: input.albumId,
-              });
-              this.touchAlbumContent(oldAlbumId, timestamp);
-              membershipChanged = true;
-            }
-          }
+          const targetId = resolvedMaterialIds.get(member.targetId) as string;
           const existing = existingByTarget.get(`${targetType}:${targetId}`);
           if (existing && !existing.deleted_at) continue;
           if (existing && existing.deleted_at) {
@@ -507,6 +421,13 @@ export class AlbumRepository {
       this.assertAlbumExists(input.albumId);
       const timestamp = now();
       for (const memberId of input.memberIds) {
+        const member = this.db
+          .prepare('SELECT target_type FROM album_members WHERE id = ? AND album_id = ? AND deleted_at IS NULL')
+          .get(memberId, input.albumId) as JsonMap | undefined;
+        if (!member) continue;
+        if (text(member.target_type) !== 'MATERIAL') {
+          throw new Error('Creation items and child albums must be moved through their owning aggregate');
+        }
         const updated = this.db
           .prepare(
             `UPDATE album_members SET deleted_at = ?, updated_at = ?
@@ -578,16 +499,16 @@ export class AlbumRepository {
             WHERE member.target_type = 'ALBUM' AND member.target_id = album.id AND member.deleted_at IS NULL
           )
         UNION ALL
-        SELECT 'SERIES' AS target_type, series.id AS target_id, root_order.sort_order
-        FROM prompt_series series
+        SELECT 'CREATION_ITEM' AS target_type, item.id AS target_id, root_order.sort_order
+        FROM creation_items item
         LEFT JOIN sidebar_root_order root_order
           ON root_order.scope = ?
-          AND root_order.target_type = 'SERIES' AND root_order.target_id = series.id
-        WHERE ? = 'CREATOR' AND series.deleted_at IS NULL
+          AND root_order.target_type = 'CREATION_ITEM' AND root_order.target_id = item.id
+        WHERE ? = 'CREATOR' AND item.deleted_at IS NULL AND item.archived_at IS NULL
           AND NOT EXISTS (
             SELECT 1 FROM album_members member
             JOIN albums parent ON parent.id = member.album_id AND parent.deleted_at IS NULL
-            WHERE member.target_type = 'SERIES' AND member.target_id = series.id AND member.deleted_at IS NULL
+            WHERE member.target_type = 'CREATION_ITEM' AND member.target_id = item.id AND member.deleted_at IS NULL
           )
         )
         SELECT * FROM active_targets
@@ -661,8 +582,28 @@ export class AlbumRepository {
   private assertAlbumExists(albumId: string) {
     if (
       !this.db
-        .prepare(`SELECT 1 FROM albums WHERE id = ? AND deleted_at IS NULL AND intent <> ?`)
-        .get(albumId, MATERIAL_LIBRARY_ALBUM_INTENT)
+        .prepare(
+          `WITH RECURSIVE lineage(id, deleted_at, intent) AS (
+            SELECT id, deleted_at, intent FROM albums WHERE id = ?
+            UNION
+            SELECT parent.id, parent.deleted_at, parent.intent
+            FROM lineage child
+            JOIN album_members relation ON relation.target_type = 'ALBUM'
+              AND relation.target_id = child.id AND relation.deleted_at IS NULL
+            JOIN albums parent ON parent.id = relation.album_id
+          )
+          SELECT 1
+          FROM (
+            SELECT COUNT(*) AS lineage_count,
+              MAX(CASE WHEN id = ? AND intent <> ? THEN 1 ELSE 0 END) AS requested_album_is_available,
+              SUM(CASE WHEN deleted_at IS NOT NULL THEN 1 ELSE 0 END) AS deleted_album_count
+            FROM lineage
+          ) validation
+          WHERE validation.lineage_count > 0
+            AND validation.requested_album_is_available = 1
+            AND validation.deleted_album_count = 0`,
+        )
+        .get(albumId, albumId, MATERIAL_LIBRARY_ALBUM_INTENT)
     ) {
       throw new Error('Album not found');
     }
@@ -747,7 +688,7 @@ export class AlbumRepository {
       creationDefaults: parseAlbumCreationDefaults(text(row.defaults_json)),
       pinned: Boolean(row.pinned),
       materialCount: projection.materialCount,
-      seriesCount: projection.seriesCount,
+      creationItemCount: projection.creationItemCount,
       previewAssets: projection.previewAssets,
       documentPreviewAssets: projection.documentPreviewAssets,
       createdAt: text(row.created_at),

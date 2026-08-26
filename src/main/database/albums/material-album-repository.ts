@@ -2,7 +2,7 @@ import { ulid } from 'ulid';
 import type {
   CreateMaterialCollectionFromSourceInput,
   CreateMaterialCollectionFromSourceResult,
-  CreationGroupDto,
+  CreationAlbumDto,
   MaterialAlbumAddManyInput,
   MaterialAlbumCreateInput,
   MaterialAlbumDto,
@@ -10,7 +10,7 @@ import type {
   MaterialAlbumRemoveInput,
   MaterialAlbumRenameInput,
   MaterialCollectionDto,
-  RenameCreationGroupInput,
+  RenameCreationAlbumInput,
 } from '@/shared/contracts';
 import { MATERIAL_LIBRARY_ALBUM_INTENT } from '@/main/database/albums/album-intents';
 import {
@@ -25,10 +25,10 @@ import {
   MATERIAL_ALBUM_DICTIONARY_UNCATEGORIZED_ID,
   isSystemMaterialAlbumId,
   materialAlbumAssetFilter,
-  materialAlbumCreationGroupId,
-  materialAlbumCreationGroupSourceId,
+  materialAlbumCreationAlbumId,
+  materialAlbumCreationAlbumSourceId,
   materialAlbumDictionaryDomainSourceId,
-  normalizeCreationGroupTitle,
+  normalizeCreationAlbumTitle,
   normalizeTitle,
   promptSeriesAssetPredicate,
 } from '@/main/database/albums/material-album-scopes';
@@ -38,6 +38,7 @@ import {
   writeLocalizedTitle,
 } from '@/main/database/core/title-localization';
 import { type JsonMap, now, text } from '@/main/database/core/values';
+import { ContentLifecycleRepository } from '@/main/database/recovery/content-lifecycle-repository';
 
 export {
   MATERIAL_ALBUM_CREATION_ROOT_ID,
@@ -45,8 +46,8 @@ export {
   MATERIAL_ALBUM_DICTIONARY_ID,
   isSystemMaterialAlbumId,
   materialAlbumAssetFilter,
-  materialAlbumCreationGroupId,
-  materialAlbumCreationGroupSourceId,
+  materialAlbumCreationAlbumId,
+  materialAlbumCreationAlbumSourceId,
   materialAlbumCreationSeriesId,
   materialAlbumCreationSeriesSourceId,
   materialAlbumDictionaryDomainId,
@@ -130,7 +131,7 @@ export class MaterialAlbumRepository extends MaterialAlbumReader {
     };
   }
 
-  renameCreationGroup(input: RenameCreationGroupInput): CreationGroupDto {
+  renameCreationAlbum(input: RenameCreationAlbumInput): CreationAlbumDto {
     const locale = input.locale ?? 'zh';
     return this.db
       .transaction(() => {
@@ -139,13 +140,13 @@ export class MaterialAlbumRepository extends MaterialAlbumReader {
             `SELECT title FROM albums
           WHERE id = ? AND deleted_at IS NULL`,
           )
-          .get(input.creationGroupId) as JsonMap | undefined;
-        if (!existing) throw new Error('Creation group not found');
-        const title = normalizeCreationGroupTitle(input.title);
+          .get(input.creationAlbumId) as JsonMap | undefined;
+        if (!existing) throw new Error('Creation album not found');
+        const title = normalizeCreationAlbumTitle(input.title);
         if (text(existing.title) !== title) {
-          this.albums.rename({ albumId: input.creationGroupId, title, locale });
+          this.albums.rename({ albumId: input.creationAlbumId, title, locale });
         }
-        return this.getCreationGroupDto(input.creationGroupId, locale);
+        return this.getCreationAlbumDto(input.creationAlbumId, locale);
       })
       .immediate();
   }
@@ -278,43 +279,10 @@ export class MaterialAlbumRepository extends MaterialAlbumReader {
 
   delete(albumId: string): void {
     this.assertMutableAlbum(albumId);
-    this.db
-      .transaction(() => {
-        const deletedAt = now();
-        const documentMembers = this.db
-          .prepare(
-            `SELECT id, target_id FROM album_members
-              WHERE album_id = ? AND target_type = 'DOCUMENT' AND deleted_at IS NULL`,
-          )
-          .all(albumId) as JsonMap[];
-        for (const member of documentMembers) {
-          const memberId = text(member.id);
-          this.db
-            .prepare('UPDATE album_members SET deleted_at = ?, updated_at = ? WHERE id = ?')
-            .run(deletedAt, deletedAt, memberId);
-          this.db
-            .prepare("INSERT INTO tombstones VALUES (?, 'ALBUM_MEMBER', ?, ?, 'LOCAL_ONLY')")
-            .run(ulid(), memberId, deletedAt);
-          this.storage.recordChange('ALBUM_MEMBER', memberId, 'DELETE', {
-            albumId,
-            targetType: 'DOCUMENT',
-            targetId: text(member.target_id),
-            reason: 'ALBUM_DELETE',
-          });
-        }
-        const result = this.db
-          .prepare(
-            `UPDATE albums SET deleted_at = ?, updated_at = ?
-          WHERE id = ? AND deleted_at IS NULL`,
-          )
-          .run(deletedAt, deletedAt, albumId);
-        if (!result.changes) throw new Error('Material album not found');
-        this.db
-          .prepare("INSERT INTO tombstones VALUES (?, 'ALBUM', ?, ?, 'LOCAL_ONLY')")
-          .run(ulid(), albumId, deletedAt);
-        this.storage.recordChange('ALBUM', albumId, 'DELETE', {});
-      })
-      .immediate();
+    new ContentLifecycleRepository(this.storage, async () => undefined).applyDirect('DELETE', {
+      entityType: 'ALBUM',
+      entityId: albumId,
+    });
   }
 
   addMany(input: MaterialAlbumAddManyInput): MaterialAlbumDto;
@@ -491,7 +459,7 @@ export class MaterialAlbumRepository extends MaterialAlbumReader {
         if (!domain) throw new Error('Material view not found');
         return { title: text(domain.title), filter: materialAlbumAssetFilter(viewId) };
       }
-      const sourceAlbumId = materialAlbumCreationGroupSourceId(viewId);
+      const sourceAlbumId = materialAlbumCreationAlbumSourceId(viewId);
       if (sourceAlbumId) {
         const sourceAlbum = this.db
           .prepare('SELECT id, title, title_locale FROM albums WHERE id = ? AND deleted_at IS NULL')
@@ -508,20 +476,22 @@ export class MaterialAlbumRepository extends MaterialAlbumReader {
       }
       throw new Error('Material view not found');
     }
-    if (input.source.kind === 'CREATION_GROUP') {
-      const creationGroup = this.db
+    if (input.source.kind === 'CREATION_ALBUM' || input.source.kind === 'CREATION_GROUP') {
+      const creationAlbumId =
+        input.source.kind === 'CREATION_ALBUM' ? input.source.creationAlbumId : input.source.creationGroupId;
+      const creationAlbum = this.db
         .prepare(
           `SELECT id, title, title_locale FROM albums
           WHERE id = ? AND deleted_at IS NULL`,
         )
-        .get(input.source.creationGroupId) as JsonMap | undefined;
-      if (!creationGroup) throw new Error('Creation group not found');
-      const viewId = materialAlbumCreationGroupId(text(creationGroup.id));
+        .get(creationAlbumId) as JsonMap | undefined;
+      if (!creationAlbum) throw new Error('Creation album not found');
+      const viewId = materialAlbumCreationAlbumId(text(creationAlbum.id));
       return {
         title: resolveStoredTitle(
-          creationGroup,
+          creationAlbum,
           input.locale,
-          titleLocalizationsByOwner(this.db, 'ALBUM', [text(creationGroup.id)]).get(text(creationGroup.id)) ?? [],
+          titleLocalizationsByOwner(this.db, 'ALBUM', [text(creationAlbum.id)]).get(text(creationAlbum.id)) ?? [],
         ),
         filter: materialAlbumAssetFilter(viewId),
       };
@@ -551,7 +521,25 @@ export class MaterialAlbumRepository extends MaterialAlbumReader {
     if (isSystemMaterialAlbumId(albumId)) throw new Error('System material albums are read-only');
     if (
       !this.db
-        .prepare('SELECT 1 FROM albums WHERE id = ? AND deleted_at IS NULL AND intent = ?')
+        .prepare(
+          `WITH RECURSIVE lineage(id, deleted_at) AS (
+            SELECT id, deleted_at FROM albums WHERE id = ? AND intent = ?
+            UNION
+            SELECT parent.id, parent.deleted_at
+            FROM lineage child
+            JOIN album_members relation ON relation.target_type = 'ALBUM'
+              AND relation.target_id = child.id AND relation.deleted_at IS NULL
+            JOIN albums parent ON parent.id = relation.album_id
+          )
+          SELECT 1
+          FROM (
+            SELECT COUNT(*) AS lineage_count,
+              SUM(CASE WHEN deleted_at IS NOT NULL THEN 1 ELSE 0 END) AS deleted_album_count
+            FROM lineage
+          ) validation
+          WHERE validation.lineage_count > 0
+            AND validation.deleted_album_count = 0`,
+        )
         .get(albumId, MATERIAL_LIBRARY_ALBUM_INTENT)
     ) {
       throw new Error('Material album not found');
@@ -592,7 +580,8 @@ export class MaterialAlbumRepository extends MaterialAlbumReader {
         .prepare(
           `SELECT material.id FROM materials material
             LEFT JOIN image_assets asset ON asset.id = material.image_asset_id AND asset.deleted_at IS NULL
-            WHERE material.id IN (${placeholders(batch.length)}) AND material.deleted_at IS NULL
+            WHERE material.id IN (${placeholders(batch.length)})
+              AND material.deleted_at IS NULL AND material.archived_at IS NULL
               AND (material.kind = 'TEXT' OR (material.kind IN ('IMAGE', 'VIDEO') AND asset.id IS NOT NULL))`,
         )
         .all(...batch) as JsonMap[];

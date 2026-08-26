@@ -18,8 +18,23 @@ import {
 import { type JsonMap, now, text } from '@/main/database/core/values';
 import { DictionaryQueryRepository } from '@/main/database/dictionary/dictionary-query-repository';
 
+interface RevisionCache<T> {
+  revision: number;
+  value: T;
+}
+
 export class DictionaryPaletteRepository extends DictionaryQueryRepository {
+  private readonly facetsByLocale = new Map<Locale, RevisionCache<FacetDefinitionDto[]>>();
+  private readonly categoriesByLocale = new Map<Locale, RevisionCache<TermCategoryDto[]>>();
+  private readonly wordPalettesByLocale = new Map<
+    Locale,
+    RevisionCache<WordPaletteDto[]> & { sourceTerms: TermListItem[] | undefined }
+  >();
+
   getFacets(locale: Locale): FacetDefinitionDto[] {
+    const revision = this.currentChangeRevision();
+    const cached = this.facetsByLocale.get(locale);
+    if (cached?.revision === revision) return cached.value;
     const definitions = this.db
       .prepare('SELECT * FROM facet_definitions WHERE system_role IS NOT NULL ORDER BY sort_order')
       .all() as JsonMap[];
@@ -55,7 +70,7 @@ export class DictionaryPaletteRepository extends DictionaryQueryRepository {
         ORDER BY v.sort_order`,
       )
       .all() as JsonMap[];
-    return definitions.map((definition) => ({
+    const facets: FacetDefinitionDto[] = definitions.map((definition) => ({
       id: text(definition.id),
       stableKey: text(definition.stable_key),
       systemRole:
@@ -72,9 +87,14 @@ export class DictionaryPaletteRepository extends DictionaryQueryRepository {
           count: Number(row.usage_count),
         })),
     }));
+    this.facetsByLocale.set(locale, { revision, value: facets });
+    return facets;
   }
 
   getCategories(locale: Locale): TermCategoryDto[] {
+    const revision = this.currentChangeRevision();
+    const cached = this.categoriesByLocale.get(locale);
+    if (cached?.revision === revision) return cached.value;
     const rows = this.db
       .prepare(
         `WITH RECURSIVE category_paths AS (
@@ -115,28 +135,16 @@ export class DictionaryPaletteRepository extends DictionaryQueryRepository {
           ORDER BY category_paths.path COLLATE NOCASE, category.stable_key`,
       )
       .all(locale, locale, locale, locale) as JsonMap[];
-    return rows.map((row) => {
-      const primaryName = text(row[locale === 'zh' ? 'primary_name_zh' : 'primary_name_en']);
-      const secondaryName = row.secondary_value_id
-        ? text(row[locale === 'zh' ? 'secondary_name_zh' : 'secondary_name_en'])
-        : null;
-      return {
-        id: text(row.id),
-        stableKey: text(row.stable_key),
-        name: text(row.path),
-        primaryValueId: text(row.primary_value_id),
-        primaryName,
-        secondaryValueId: row.secondary_value_id ? text(row.secondary_value_id) : null,
-        secondaryName,
-        parentId: row.parent_id ? text(row.parent_id) : null,
-        path: text(row.path),
-        state: row.state === 'DISABLED' ? 'DISABLED' : 'ACTIVE',
-        selectable: Boolean(row.selectable),
-      };
-    });
+    const categoryDtosById = this.currentTermCategories(locale);
+    const categories = rows.map((row) => this.termCategoryDto(locale, row, categoryDtosById));
+    this.categoriesByLocale.set(locale, { revision, value: categories });
+    return categories;
   }
 
   getWordPalettes(locale: Locale, sourceTerms?: TermListItem[]): WordPaletteDto[] {
+    const revision = this.currentChangeRevision();
+    const cached = this.wordPalettesByLocale.get(locale);
+    if (cached?.revision === revision && cached.sourceTerms === sourceTerms) return cached.value;
     const paletteTermIds = sourceTerms
       ? []
       : (
@@ -177,11 +185,13 @@ export class DictionaryPaletteRepository extends DictionaryQueryRepository {
           })
         : []);
     const terms = new Map(resolvedTerms.map((term) => [term.id, term]));
-    return listWordPalettes(this.db, locale, (termId) => {
+    const wordPalettes = listWordPalettes(this.db, locale, (termId) => {
       const term = terms.get(termId);
       if (!term) throw new Error(`Palette term not found: ${termId}`);
       return term;
     });
+    this.wordPalettesByLocale.set(locale, { revision, sourceTerms, value: wordPalettes });
+    return wordPalettes;
   }
 
   createWordPalette(input: CreateWordPaletteInput): WordPaletteDto {

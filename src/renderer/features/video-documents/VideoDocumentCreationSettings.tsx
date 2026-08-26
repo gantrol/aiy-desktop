@@ -50,7 +50,7 @@ export function VideoDocumentCreationSettings({
   }
 
   return (
-    <form className="flex min-h-[360px] flex-col rounded-xl border bg-card p-5 shadow-sm" onSubmit={submit}>
+    <form className="flex min-h-[360px] flex-col rounded-xl border bg-card p-5" onSubmit={submit}>
       <h2 className="text-base font-semibold">{labels.creationSettings}</h2>
       <div className="mt-5 grid gap-4">
         <div className="grid gap-2">

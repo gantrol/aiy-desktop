@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef } from 'react';
 import type { AssetDto, BootstrapDto, VideoDocumentNavigationEntry, VideoDocumentSummaryDto } from '@/shared/contracts';
-import { useAlbumTreeExpansion } from '@/renderer/components/albums/useAlbumTreeExpansion';
+import { useTreeBranchExpansion } from '@/renderer/components/albums/useTreeBranchExpansion';
 import { allAssets } from '@/renderer/components/creator/utils';
 import {
   VideoDocumentNavigationTree,
@@ -137,8 +137,8 @@ function page(items: VideoDocumentNavigationEntry[]): VideoDocumentNavigationPag
 export function FeatureDemoDirectoryTree({ data, openProgress }: FeatureDemoDirectoryTreeProps) {
   const { messages } = useI18n();
   const viewportRef = useRef<HTMLDivElement | null>(null);
-  const { beginPointerTrack, openIds, setHover, setPersistent, togglePersistent, trackPointer } =
-    useAlbumTreeExpansion(viewportRef);
+  const { beginPointerTrack, expandFromGesture, openIds, setPersistent, togglePersistent, trackPointer } =
+    useTreeBranchExpansion(viewportRef);
   const rootOpen = openProgress >= 0.18;
   const childOpen = openProgress >= 0.62;
   const tree = useMemo(() => {
@@ -219,7 +219,7 @@ export function FeatureDemoDirectoryTree({ data, openProgress }: FeatureDemoDire
         selectedDocumentId={null}
         expandedAlbumIds={openIds}
         onToggleAlbum={(entry) => togglePersistent(entry.albumId)}
-        onPullDownExpand={(entry) => setHover(entry.albumId, true)}
+        onGestureExpand={(entry) => expandFromGesture(entry.albumId)}
         onPointerTrackStart={beginPointerTrack}
         onPointerTrack={trackPointer}
         onSelectDocument={() => undefined}

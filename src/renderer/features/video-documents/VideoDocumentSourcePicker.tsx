@@ -45,7 +45,7 @@ function LocalVideoPreview({ sourceUrl }: { sourceUrl: string }) {
         }}
         onLoadedData={() => setReady(true)}
       />
-      {!ready && <LoaderCircleIcon className="absolute size-7 animate-spin text-white/70" />}
+      {!ready && <LoaderCircleIcon className="absolute size-7 animate-spin text-media-checker-a/70" />}
     </div>
   );
 }
@@ -89,7 +89,7 @@ function GalleryVideoGrid({
           >
             <AssetMedia
               asset={item.asset}
-              className="aspect-video w-full rounded-md bg-media-surround-dark object-cover"
+              className="aspect-video w-full rounded-md bg-media-surround-dark object-contain"
               loading="lazy"
               muted
             />
@@ -165,7 +165,7 @@ export function VideoDocumentSourcePicker({
   return (
     <section
       className={cn(
-        'relative flex min-h-[360px] min-w-0 flex-col overflow-hidden rounded-xl border bg-card p-5 shadow-sm',
+        'relative flex min-h-[360px] min-w-0 flex-col overflow-hidden rounded-xl border bg-card p-5',
         !selected && 'border-dashed border-accent-foreground/50',
       )}
     >
@@ -176,7 +176,7 @@ export function VideoDocumentSourcePicker({
               localSourceUrl ? (
                 <LocalVideoPreview sourceUrl={localSourceUrl} />
               ) : (
-                <div className="grid min-h-52 place-items-center text-white/70">
+                <div className="grid min-h-52 place-items-center text-media-checker-a/70">
                   {localReading ? (
                     <LoaderCircleIcon className="size-7 animate-spin" />
                   ) : (

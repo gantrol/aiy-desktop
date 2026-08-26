@@ -310,7 +310,7 @@ function OverlayOpacityControl({
   return (
     <div
       data-magnifier-control
-      className="pointer-events-auto flex h-7 w-[165px] items-center gap-1 rounded-sm border bg-overlay/95 px-1 shadow-sm"
+      className="pointer-events-auto flex h-7 w-[165px] items-center gap-1 rounded-sm border bg-overlay/95 px-1 shadow-overlay"
     >
       <Button
         type="button"

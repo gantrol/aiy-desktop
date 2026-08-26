@@ -3,6 +3,10 @@ import { open } from 'node:fs/promises';
 import { z } from 'zod';
 import type { CodexUsageQuotaKind, CodexUsageServiceTier } from '@/shared/contracts/codex-usage';
 import type { CodexUsageBreakdown } from '@/main/extensions/codex-usage-investigator/pricing';
+import {
+  inferredServiceTier,
+  type CodexUsageServiceTierFallback,
+} from '@/main/extensions/codex-usage-investigator/service-tier-fallback';
 
 const READ_CHUNK_BYTES = 256 * 1024;
 const MAX_RECORD_BYTES = 16 * 1024 * 1024;
@@ -109,6 +113,7 @@ export const codexUsageInternalRowSchema = z
     date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
     model: z.string().min(1).max(200),
     serviceTier: z.enum(['STANDARD', 'FAST', 'UNKNOWN']).default('UNKNOWN'),
+    inferredServiceTierTokens: safeTokenSchema.default(0),
     quotaKind: z.enum(['MAIN', 'SEPARATE', 'UNKNOWN']).default('UNKNOWN'),
     firstAt: z.string().datetime(),
     lastAt: z.string().datetime(),
@@ -117,6 +122,7 @@ export const codexUsageInternalRowSchema = z
     apiEquivalentUsd: z.number().finite().nonnegative().nullable(),
     apiCacheSavingsUsd: z.number().finite().nonnegative().nullable(),
     codexCredits: z.number().finite().nonnegative().nullable(),
+    codexCreditCacheSavings: z.number().finite().nonnegative().nullable().default(null),
     apiPricedTokens: safeTokenSchema,
     creditPricedTokens: safeTokenSchema,
     longContextRequestCount: safeTokenSchema,
@@ -130,6 +136,7 @@ export const codexUsageInternalEventSchema = z
     timestamp: z.string().datetime(),
     model: z.string().min(1).max(200),
     serviceTier: z.enum(['STANDARD', 'FAST', 'UNKNOWN']),
+    serviceTierInferred: z.boolean().default(false),
     quotaKind: z.enum(['MAIN', 'SEPARATE', 'UNKNOWN']),
     limitId: z.string().max(512).nullable(),
     planType: z.string().max(2_000).nullable(),
@@ -354,6 +361,7 @@ function appendPendingEvents(
   sessionId: string,
   model: string,
   serviceTier: CodexUsageServiceTier,
+  serviceTierInferred: boolean,
   pending: readonly PendingUsage[],
 ) {
   for (const pendingEvent of pending) {
@@ -363,6 +371,7 @@ function appendPendingEvents(
         timestamp: pendingEvent.timestamp,
         model,
         serviceTier,
+        serviceTierInferred,
         quotaKind: pendingEvent.quotaKind,
         limitId: pendingEvent.limitId,
         planType: pendingEvent.planType,
@@ -479,6 +488,7 @@ export async function readCodexUsageSession(
   fallbackModel: string | null,
   fromEpoch: number | null,
   toEpoch: number,
+  serviceTierFallback?: CodexUsageServiceTierFallback | null,
   signal?: AbortSignal,
   onBytesRead?: (bytes: number) => void,
 ): Promise<SessionReadResult> {
@@ -498,9 +508,16 @@ export async function readCodexUsageSession(
     groupedEventCount += events.length;
   };
 
-  const flushPendingTierGroups = (tier: CodexUsageServiceTier) => {
+  const flushPendingTierGroups = (tier: CodexUsageServiceTier, inferMissing = false) => {
     for (const group of pendingTierGroups) {
-      appendPendingEvents(candidates, sessionId, group.model, tier, group.events);
+      if (!inferMissing) {
+        appendPendingEvents(candidates, sessionId, group.model, tier, false, group.events);
+        continue;
+      }
+      for (const event of group.events) {
+        const inferredTier = inferredServiceTier(event.timestamp, serviceTierFallback);
+        appendPendingEvents(candidates, sessionId, group.model, inferredTier ?? tier, inferredTier !== null, [event]);
+      }
     }
     pendingTierGroups.length = 0;
     groupedEventCount = 0;
@@ -520,7 +537,7 @@ export async function readCodexUsageSession(
       if (status === 'BELOW_RANGE') crossedLowerBound = true;
       else if (status === 'OVERFLOW') {
         groupPending(fallbackModel || 'unknown');
-        flushPendingTierGroups('UNKNOWN');
+        flushPendingTierGroups('UNKNOWN', true);
         invalidRecords += 1;
       }
     } else if (parsed.kind === 'CONTEXT') {
@@ -532,7 +549,7 @@ export async function readCodexUsageSession(
     if (crossedLowerBound && pending.length === 0 && pendingTierGroups.length === 0) break;
   }
   groupPending(fallbackModel || 'unknown');
-  flushPendingTierGroups('UNKNOWN');
+  flushPendingTierGroups('UNKNOWN', true);
   return {
     events: normalizeSessionUsage(candidates),
     invalidRecords,

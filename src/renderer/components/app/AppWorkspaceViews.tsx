@@ -64,6 +64,7 @@ interface Props {
   onCreatorActiveAlbumChange: ComponentProps<typeof CreatorScreen>['onActiveAlbumChange'];
   refresh: ComponentProps<typeof CreatorScreen>['refresh'];
   refreshAlbums: ComponentProps<typeof CreatorScreen>['refreshAlbums'];
+  onTermDetailsRequest?: ComponentProps<typeof CreatorScreen>['onTermDetailsRequest'];
   onImportedOutputSaved(output: ImportedCreationOutputDto): void;
   notify(message: string): void;
   onVideoDocumentsNavigate: ComponentProps<typeof VideoDocumentsScreen>['onNavigate'];
@@ -86,6 +87,10 @@ interface Props {
 
 function selectedDocumentAlbumId(location: AppLocation['documents']) {
   return location.collection.kind === 'album' ? location.collection.albumId : null;
+}
+
+function shouldMountCreationWorkspace(data: BootstrapDto, view: AppView, visitedViews: ReadonlySet<AppView>) {
+  return (!data.libraryEmpty || view === 'documents') && (visitedViews.has('creator') || visitedViews.has('documents'));
 }
 
 export function AppWorkspaceViews({
@@ -114,6 +119,7 @@ export function AppWorkspaceViews({
   onCreatorActiveAlbumChange,
   refresh,
   refreshAlbums,
+  onTermDetailsRequest,
   onImportedOutputSaved,
   notify,
   onVideoDocumentsNavigate,
@@ -153,74 +159,74 @@ export function AppWorkspaceViews({
   };
   return (
     <>
-      {(!data.libraryEmpty || view === 'documents') &&
-        (visitedViews.has('creator') || visitedViews.has('documents')) && (
-          <Activity mode={view === 'creator' || view === 'documents' ? 'visible' : 'hidden'}>
-            <div className="flex size-full min-h-0 flex-col">
-              {materialsReturnContext?.destination === view && !comparisonFullWindow && !creationPromptFullWindow && (
-                <ReturnToMaterialsBar
-                  label={messages.gallery.screen.backToMaterials}
-                  summary={returnSummary}
-                  onReturn={onReturnToMaterials}
-                />
+      {shouldMountCreationWorkspace(data, view, visitedViews) && (
+        <Activity mode={view === 'creator' || view === 'documents' ? 'visible' : 'hidden'}>
+          <div className="flex size-full min-h-0 flex-col">
+            {materialsReturnContext?.destination === view && !comparisonFullWindow && !creationPromptFullWindow && (
+              <ReturnToMaterialsBar
+                label={messages.gallery.screen.backToMaterials}
+                summary={returnSummary}
+                onReturn={onReturnToMaterials}
+              />
+            )}
+            <div className="min-h-0 flex-1 overflow-hidden">
+              {loadingBoundaries.creator(
+                <CreatorScreen
+                  data={data}
+                  dataRevision={dataRevision}
+                  locale={locale}
+                  defaultPromptLocale={defaultPromptLocale}
+                  active={view === 'creator'}
+                  creationLibraryActive={view === 'creator' || view === 'documents'}
+                  location={location.creator}
+                  comparisonFullWindow={comparisonFullWindow}
+                  promptFullWindow={creationPromptFullWindow}
+                  documentWorkspaceActive={view === 'documents'}
+                  documentNavigationRevision={documentNavigationRevision}
+                  selectedDocumentId={location.documents.documentId}
+                  selectedDocumentAlbumId={selectedDocumentAlbumId(location.documents)}
+                  documentWorkspace={
+                    visitedViews.has('documents')
+                      ? loadingBoundaries.documents(
+                          <VideoDocumentsScreen
+                            active={view === 'documents'}
+                            libraryVisible={false}
+                            externalDocumentUpdate={creatorDocumentUpdate}
+                            albums={data.albums}
+                            location={location.documents}
+                            onNavigate={onVideoDocumentsNavigate}
+                            onAlbumsChange={refreshAlbums}
+                            onLibraryChange={onVideoDocumentsChange}
+                            onOpenSourceMaterial={onOpenCreatorMaterial}
+                            notify={notify}
+                          />,
+                        )
+                      : null
+                  }
+                  onSelectDocument={(documentId, albumId) =>
+                    onVideoDocumentsNavigate({
+                      collection: albumId ? { kind: 'album', albumId } : { kind: 'unfiled' },
+                      documentId,
+                    })
+                  }
+                  onDocumentsChange={handleCreatorDocumentsChange}
+                  onNavigate={onCreatorNavigate}
+                  onComparisonFullWindowChange={onComparisonFullWindowChange}
+                  onPromptFullWindowChange={onCreationPromptFullWindowChange}
+                  onOpenMaterial={onOpenCreatorMaterial}
+                  onConfigureExtension={onConfigureExtension}
+                  onActiveAlbumChange={onCreatorActiveAlbumChange}
+                  refresh={refresh}
+                  refreshAlbums={refreshAlbums}
+                  onTermDetailsRequest={onTermDetailsRequest}
+                  onImportedOutputSaved={onImportedOutputSaved}
+                  notify={notify}
+                />,
               )}
-              <div className="min-h-0 flex-1 overflow-hidden">
-                {loadingBoundaries.creator(
-                  <CreatorScreen
-                    data={data}
-                    dataRevision={dataRevision}
-                    locale={locale}
-                    defaultPromptLocale={defaultPromptLocale}
-                    active={view === 'creator'}
-                    creationLibraryActive={view === 'creator' || view === 'documents'}
-                    location={location.creator}
-                    comparisonFullWindow={comparisonFullWindow}
-                    promptFullWindow={creationPromptFullWindow}
-                    documentWorkspaceActive={view === 'documents'}
-                    documentNavigationRevision={documentNavigationRevision}
-                    selectedDocumentId={location.documents.documentId}
-                    selectedDocumentAlbumId={selectedDocumentAlbumId(location.documents)}
-                    documentWorkspace={
-                      visitedViews.has('documents')
-                        ? loadingBoundaries.documents(
-                            <VideoDocumentsScreen
-                              active={view === 'documents'}
-                              libraryVisible={false}
-                              externalDocumentUpdate={creatorDocumentUpdate}
-                              albums={data.albums}
-                              location={location.documents}
-                              onNavigate={onVideoDocumentsNavigate}
-                              onAlbumsChange={refreshAlbums}
-                              onLibraryChange={onVideoDocumentsChange}
-                              onOpenSourceMaterial={onOpenCreatorMaterial}
-                              notify={notify}
-                            />,
-                          )
-                        : null
-                    }
-                    onSelectDocument={(documentId, albumId) =>
-                      onVideoDocumentsNavigate({
-                        collection: albumId ? { kind: 'album', albumId } : { kind: 'unfiled' },
-                        documentId,
-                      })
-                    }
-                    onDocumentsChange={handleCreatorDocumentsChange}
-                    onNavigate={onCreatorNavigate}
-                    onComparisonFullWindowChange={onComparisonFullWindowChange}
-                    onPromptFullWindowChange={onCreationPromptFullWindowChange}
-                    onOpenMaterial={onOpenCreatorMaterial}
-                    onConfigureExtension={onConfigureExtension}
-                    onActiveAlbumChange={onCreatorActiveAlbumChange}
-                    refresh={refresh}
-                    refreshAlbums={refreshAlbums}
-                    onImportedOutputSaved={onImportedOutputSaved}
-                    notify={notify}
-                  />,
-                )}
-              </div>
             </div>
-          </Activity>
-        )}
+          </div>
+        </Activity>
+      )}
       {visitedViews.has('dictionary') && (
         <Activity mode={view === 'dictionary' ? 'visible' : 'hidden'}>
           <div className="flex size-full min-h-0 flex-col">
@@ -263,6 +269,7 @@ export function AppWorkspaceViews({
                 terms={data.terms}
                 facets={data.facets}
                 series={data.series}
+                creationItems={data.creationItems}
                 onOpenResult={onOpenGalleryResult}
                 onOpenTerm={onOpenGalleryTerm}
                 onIntakeCommitted={onGalleryIntakeCommitted}

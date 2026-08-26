@@ -62,8 +62,13 @@ export class VideoDocumentAiActivityRepository {
           document.title AS document_title, placement.album_id
         FROM activity_index activity
         JOIN documents document ON document.id = activity.document_id AND document.deleted_at IS NULL
-        LEFT JOIN album_members placement ON placement.target_type = 'DOCUMENT'
-          AND placement.target_id = document.id AND placement.deleted_at IS NULL
+        LEFT JOIN creation_forms placement_form ON placement_form.role = 'VIDEO_DOCUMENT'
+          AND placement_form.entity_type = 'VIDEO_DOCUMENT' AND placement_form.entity_id = document.id
+          AND placement_form.deleted_at IS NULL
+        LEFT JOIN creation_items placement_item ON placement_item.id = placement_form.creation_item_id
+          AND placement_item.deleted_at IS NULL
+        LEFT JOIN album_members placement ON placement.target_type = 'CREATION_ITEM'
+          AND placement.target_id = placement_item.id AND placement.deleted_at IS NULL
           AND EXISTS (
             SELECT 1 FROM albums placement_album
             WHERE placement_album.id = placement.album_id AND placement_album.deleted_at IS NULL

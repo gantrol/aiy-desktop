@@ -1,4 +1,4 @@
-import { useRef, useState, type MouseEventHandler } from 'react';
+import type { MouseEventHandler } from 'react';
 import type { AssetDto } from '@/shared/contracts';
 import { AlbumGlyphIcon } from '@/renderer/icons';
 import { cn } from '@/renderer/lib/utils';
@@ -10,13 +10,10 @@ import {
   type MediaStackItem,
 } from '@/renderer/components/media/MediaStackPreview';
 import { CollapsibleTrigger } from '@/renderer/components/ui/collapsible';
-import { useHoverIntent } from '@/renderer/components/ui/use-hover-intent';
-import {
-  ALBUM_TREE_INTERACTION,
-  shouldExpandAlbumFromPullDown,
-} from '@/renderer/components/albums/albumTreeInteraction';
+import { TREE_BRANCH_INTERACTION } from '@/renderer/components/albums/treeBranchInteraction';
 import { TreeBranchNodeConnector, TreeDisclosureRail } from '@/renderer/components/albums/TreeDisclosureRail';
 import { getTreeNodeAnchor, type TreeBranchItemTopology } from '@/renderer/components/albums/treeConnectionGeometry';
+import { useTreeBranchPreviewGesture } from '@/renderer/components/albums/useTreeBranchPreviewGesture';
 
 export type AlbumTreeOverlayStyle = 'blurred' | 'solid';
 
@@ -33,7 +30,7 @@ interface Props {
   assetLabel?(asset: AssetDto, index: number): string;
   disclosureInteractive?: boolean;
   branchTopology?: TreeBranchItemTopology;
-  onPullDownExpand?(): void;
+  onGestureExpand?(): void;
   onPointerTrackStart?(clientY: number): void;
   onPointerTrack?(clientY: number): boolean;
   onMediaAdmitted?(): void;
@@ -109,22 +106,23 @@ export function AlbumTreePreview({
   assetLabel,
   disclosureInteractive = true,
   branchTopology,
-  onPullDownExpand,
+  onGestureExpand,
   onPointerTrackStart,
   onPointerTrack,
   onMediaAdmitted,
   className,
 }: Props) {
-  const [previewExpanded, setPreviewExpanded] = useState(false);
-  const pointerStartY = useRef<number | null>(null);
-  const pointerCurrentY = useRef<number | null>(null);
-  const pullDownArmed = useRef(false);
-  const pullDownTriggered = useRef(false);
-  const gestureOpen = useRef(open);
-  const pullDownIntent = useHoverIntent(ALBUM_TREE_INTERACTION.pullDownArmDelayMs);
-  gestureOpen.current = open;
   const stackItems: MediaStackItem[] = assets.map((asset) => ({ asset }));
   const canSpreadCover = stackItems.length > 1;
+  const previewGesture = useTreeBranchPreviewGesture({
+    open,
+    expandable,
+    canSpreadPreview: canSpreadCover,
+    onGestureExpand,
+    onPointerTrackStart,
+    onPointerTrack,
+  });
+  const previewExpanded = previewGesture.previewExpanded;
   const spread = previewExpanded ? 'expanded' : open ? 'settled' : 'collapsed';
   const nodeAnchor = getTreeNodeAnchor(getMediaStackPrimaryFrameBounds('tree', stackItems, 5));
   const expandedBounds = getMediaStackHorizontalBounds(
@@ -132,50 +130,18 @@ export function AlbumTreePreview({
     stackItems,
     'expanded',
     5,
-    ALBUM_TREE_INTERACTION.hoverSpreadStepPx,
+    TREE_BRANCH_INTERACTION.previewSpreadStepPx,
   );
   const paintedBounds = getMediaStackHorizontalBounds(
     'tree',
     stackItems,
     spread,
     5,
-    ALBUM_TREE_INTERACTION.hoverSpreadStepPx,
+    TREE_BRANCH_INTERACTION.previewSpreadStepPx,
   );
   const previewWidth = Math.ceil(Math.max(getMediaStackLayout('tree').containerWidth, paintedBounds.right));
   const gestureSurfaceLeft = Math.min(0, expandedBounds.left);
   const gestureSurfaceRight = Math.max(getMediaStackLayout('tree').containerWidth, expandedBounds.right);
-
-  function tryPullDownExpand() {
-    if (
-      pullDownTriggered.current ||
-      pointerStartY.current === null ||
-      pointerCurrentY.current === null ||
-      !shouldExpandAlbumFromPullDown({
-        armed: pullDownArmed.current,
-        originY: pointerStartY.current,
-        currentY: pointerCurrentY.current,
-      }) ||
-      !expandable ||
-      gestureOpen.current ||
-      !onPullDownExpand
-    )
-      return false;
-
-    pullDownTriggered.current = true;
-    gestureOpen.current = true;
-    onPullDownExpand();
-    return true;
-  }
-
-  function trackCoverPointer(clientY: number) {
-    pointerCurrentY.current = clientY;
-    if (onPointerTrack?.(clientY)) {
-      gestureOpen.current = false;
-      pointerStartY.current = clientY;
-      pullDownTriggered.current = false;
-    }
-    tryPullDownExpand();
-  }
 
   const mediaStack = (
     <MediaStackPreview
@@ -184,7 +150,7 @@ export function AlbumTreePreview({
       items={stackItems}
       spread={spread}
       maxItems={5}
-      expandedStep={ALBUM_TREE_INTERACTION.hoverSpreadStepPx}
+      expandedStep={TREE_BRANCH_INTERACTION.previewSpreadStepPx}
       onAssetSelect={onAssetSelect}
       assetLabel={assetLabel}
       deferOffscreenMedia
@@ -204,39 +170,7 @@ export function AlbumTreePreview({
         className,
       )}
       style={{ width: previewWidth }}
-      onPointerEnter={(event) => {
-        pointerStartY.current = event.clientY;
-        pointerCurrentY.current = event.clientY;
-        pullDownArmed.current = false;
-        pullDownTriggered.current = false;
-        onPointerTrackStart?.(event.clientY);
-        pullDownIntent.schedule(
-          () => {
-            pullDownArmed.current = true;
-            tryPullDownExpand();
-          },
-          expandable && Boolean(onPullDownExpand),
-        );
-      }}
-      onPointerMove={(event) => trackCoverPointer(event.clientY)}
-      onPointerLeave={(event) => {
-        trackCoverPointer(event.clientY);
-        pullDownIntent.cancel();
-        pullDownArmed.current = false;
-      }}
-      onMouseEnter={() => setPreviewExpanded(canSpreadCover)}
-      onMouseLeave={() => {
-        pullDownIntent.cancel();
-        pointerStartY.current = null;
-        pointerCurrentY.current = null;
-        pullDownArmed.current = false;
-        pullDownTriggered.current = false;
-        setPreviewExpanded(false);
-      }}
-      onFocusCapture={() => setPreviewExpanded(canSpreadCover)}
-      onBlurCapture={(event) => {
-        if (!event.currentTarget.contains(event.relatedTarget)) setPreviewExpanded(false);
-      }}
+      {...previewGesture.bindings}
     >
       {branchTopology && <TreeBranchNodeConnector topology={branchTopology} anchor={nodeAnchor} />}
       {(open || previewExpanded) && canSpreadCover && (

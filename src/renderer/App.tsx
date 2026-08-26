@@ -8,7 +8,6 @@ import type {
   LocalSpaceTransitionEvent,
   NavigationCommand,
 } from '@/shared/contracts';
-import { resolveTermTitle } from '@/shared/term-localization';
 import { AppSidebar, type AppView } from '@/renderer/components/app/AppSidebar';
 import {
   APP_LOADING_VARIANTS as loadingVariants,
@@ -19,6 +18,7 @@ import { AppTitleBar } from '@/renderer/components/app/AppTitleBar';
 import { SettingsDialog } from '@/renderer/components/app/SettingsDialog';
 import { AppWorkspaceViews } from '@/renderer/components/app/AppWorkspaceViews';
 import { createWorkspaceLoadingBoundaries } from '@/renderer/components/app/appWorkspaceLoadingBoundaries';
+import { useTermDetails } from '@/renderer/components/app/useTermDetails';
 import {
   initialAppLocation,
   sameAppLocation,
@@ -46,20 +46,13 @@ import { useCodexImagesNavigation } from '@/renderer/features/extensions/codexIm
 import { useTransitionShowcaseNavigation } from '@/renderer/features/extensions/transitionShowcaseNavigation';
 import { useVideoDocumentTranscriptBackgroundTasks } from '@/renderer/features/video-documents/useVideoDocumentTranscriptBackgroundTasks';
 import { useAppUpdateNotification } from '@/renderer/features/app-update/useAppUpdateNotification';
+import { ContentManagementScreen } from '@/renderer/features/content-management/ContentManagementScreen';
 import { loadCreatorScreen } from '@/renderer/features/creator/lazyCreatorScreen';
 import { useI18n } from '@/renderer/i18n/useI18n';
 import { publishLanguagePluginState } from '@/renderer/i18n/languagePluginState';
 import { mergeGenerationProjection, useGenerationProjectionEvents } from '@/renderer/generationProjectionRefresh';
 import { createTrailingRefreshQueue, requestTrailingRefresh, synchronizeRefresh } from '@/renderer/startupRefreshQueue';
-
-// These are logical XButton inputs delivered by Chromium after mouse-driver remapping, not raw physical-button reads; keep the mapping explicit so it can become user-configurable.
-const DEFAULT_MOUSE_NAVIGATION_BINDINGS = new Map<number, NavigationCommand>([
-  [3, 'back'],
-  [4, 'forward'],
-]);
-
-const appGridRows = (fullWindow: boolean) =>
-  fullWindow ? 'grid-rows-[minmax(0,1fr)]' : 'grid-rows-[36px_minmax(0,1fr)]';
+import { appGridRows, appMaterialsReturnSummary, DEFAULT_MOUSE_NAVIGATION_BINDINGS } from '@/renderer/appPresentation';
 
 export function App() {
   const { locale, messages } = useI18n();
@@ -135,9 +128,17 @@ export function App() {
       return false;
     }
   }, []);
-  const refresh = useCallback(() => {
-    return requestTrailingRefresh(refreshQueueRef.current, loadData);
-  }, [loadData]);
+  const refresh = useCallback(() => requestTrailingRefresh(refreshQueueRef.current, loadData), [loadData]);
+
+  const requestTermDetails = useTermDetails({
+    data,
+    view,
+    refreshRevision,
+    localeRef,
+    setData,
+    setDataRevision,
+    notify,
+  });
 
   const refreshAlbums = useCallback(async () => {
     const albums = await window.desktopApi.albumsList(localeRef.current);
@@ -151,9 +152,7 @@ export function App() {
     setDataRevision((current) => current + 1);
   }, []);
 
-  const refreshDocumentNavigation = useCallback(() => {
-    setDocumentNavigationRevision((current) => current + 1);
-  }, []);
+  const refreshDocumentNavigation = useCallback(() => setDocumentNavigationRevision((current) => current + 1), []);
 
   useEffect(() => {
     if (!lastTranscriptTerminal) return;
@@ -423,11 +422,12 @@ export function App() {
   const assetMenuActions = useMemo(
     () => ({
       albums: data?.albums ?? [],
+      notify,
       useInCreation: useAssetInCreation,
       createDocumentFromVideo,
       refreshLibrary: refresh,
     }),
-    [createDocumentFromVideo, data?.albums, refresh, useAssetInCreation],
+    [createDocumentFromVideo, data?.albums, notify, refresh, useAssetInCreation],
   );
 
   const startNewCreationFromContext = useCallback(() => {
@@ -487,22 +487,7 @@ export function App() {
     return () => window.removeEventListener('mouseup', handleMouseNavigation, true);
   }, [invokeHistoryNavigation]);
 
-  const returnSummary =
-    materialsReturnContext?.destination === 'creator'
-      ? (() => {
-          const series = data?.series.find((item) => item.id === materialsReturnContext.seriesId);
-          if (!series) return '';
-          return series.title;
-        })()
-      : materialsReturnContext?.destination === 'dictionary'
-        ? (() => {
-            const term = data?.terms.find((item) => item.id === materialsReturnContext.termId);
-            if (!term) return '';
-            return resolveTermTitle(term, locale);
-          })()
-        : materialsReturnContext?.destination === 'documents'
-          ? materialsReturnContext.title
-          : '';
+  const returnSummary = appMaterialsReturnSummary(materialsReturnContext, data, locale);
 
   function changeView(nextView: AppView) {
     if (nextView === view) return;
@@ -802,6 +787,7 @@ export function App() {
                 onCreatorActiveAlbumChange={setCreatorActiveAlbumId}
                 refresh={refresh}
                 refreshAlbums={refreshAlbums}
+                onTermDetailsRequest={requestTermDetails}
                 onImportedOutputSaved={updateImportedOutput}
                 notify={notify}
                 onVideoDocumentsChange={refreshDocumentNavigation}
@@ -830,6 +816,15 @@ export function App() {
                 onRetryGeneration={retryGeneration}
               />
             )}
+            {data && view === 'contentManagement' && (
+              <ContentManagementScreen
+                active
+                canNavigateBack={canGoBack}
+                onNavigateBack={goBack}
+                onContentChange={refresh}
+                notify={notify}
+              />
+            )}
           </section>
         </div>
         <SettingsDialog
@@ -838,6 +833,7 @@ export function App() {
           onOpenChange={setSettingsOpen}
           onPromptLocaleChange={setDefaultPromptLocale}
           onAiFeatureModelsOpen={() => navigateAiCenter({ tab: 'capabilities', recordId: null })}
+          onContentManagementOpen={() => changeView('contentManagement')}
         />
         <ToastViewport
           messages={notifications}

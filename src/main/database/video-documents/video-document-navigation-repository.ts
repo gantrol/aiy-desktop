@@ -67,11 +67,16 @@ export class VideoDocumentNavigationRepository {
               UNION ALL
               SELECT 'DOCUMENT', document.id, member.sort_order, ordering.sort_order, document.updated_at
               FROM album_members member
-              JOIN documents document ON document.id = member.target_id
+              JOIN creation_items item ON item.id = member.target_id
+                AND item.deleted_at IS NULL AND item.archived_at IS NULL
+              JOIN creation_forms form ON form.creation_item_id = item.id
+                AND form.role = 'VIDEO_DOCUMENT' AND form.entity_type = 'VIDEO_DOCUMENT'
+                AND form.deleted_at IS NULL
+              JOIN documents document ON document.id = form.entity_id
                 AND document.deleted_at IS NULL AND document.status = 'ACTIVE'
               LEFT JOIN video_document_navigation_order ordering
                 ON ordering.parent_key = ? AND ordering.target_type = 'DOCUMENT' AND ordering.target_id = document.id
-              WHERE member.album_id = ? AND member.target_type = 'DOCUMENT' AND member.deleted_at IS NULL
+              WHERE member.album_id = ? AND member.target_type = 'CREATION_ITEM' AND member.deleted_at IS NULL
             )
             SELECT * FROM navigation
             ORDER BY explicit_order IS NULL, explicit_order, membership_order, fallback_at DESC, target_type, target_id
@@ -94,14 +99,19 @@ export class VideoDocumentNavigationRepository {
                 )
               UNION ALL
               SELECT 'DOCUMENT', document.id, NULL, ordering.sort_order, document.updated_at
-              FROM documents document
+              FROM creation_forms form
+              JOIN creation_items item ON item.id = form.creation_item_id
+                AND item.deleted_at IS NULL AND item.archived_at IS NULL
+              JOIN documents document ON document.id = form.entity_id
               LEFT JOIN video_document_navigation_order ordering
                 ON ordering.parent_key = 'ROOT' AND ordering.target_type = 'DOCUMENT'
                 AND ordering.target_id = document.id
-              WHERE document.deleted_at IS NULL AND document.status = 'ACTIVE'
+              WHERE form.role = 'VIDEO_DOCUMENT' AND form.entity_type = 'VIDEO_DOCUMENT'
+                AND form.deleted_at IS NULL
+                AND document.deleted_at IS NULL AND document.status = 'ACTIVE'
                 AND NOT EXISTS (
                   SELECT 1 FROM album_members placement
-                  WHERE placement.target_type = 'DOCUMENT' AND placement.target_id = document.id
+                  WHERE placement.target_type = 'CREATION_ITEM' AND placement.target_id = item.id
                     AND placement.deleted_at IS NULL
                 )
             )
@@ -218,7 +228,12 @@ export class VideoDocumentNavigationRepository {
         FROM album_members member
         LEFT JOIN albums child_album ON member.target_type = 'ALBUM' AND child_album.id = member.target_id
           AND child_album.deleted_at IS NULL AND child_album.archived_at IS NULL
-        LEFT JOIN documents child_document ON member.target_type = 'DOCUMENT' AND child_document.id = member.target_id
+        LEFT JOIN creation_items child_item ON member.target_type = 'CREATION_ITEM'
+          AND child_item.id = member.target_id AND child_item.deleted_at IS NULL AND child_item.archived_at IS NULL
+        LEFT JOIN creation_forms child_form ON child_form.creation_item_id = child_item.id
+          AND child_form.role = 'VIDEO_DOCUMENT' AND child_form.entity_type = 'VIDEO_DOCUMENT'
+          AND child_form.deleted_at IS NULL
+        LEFT JOIN documents child_document ON child_document.id = child_form.entity_id
           AND child_document.deleted_at IS NULL AND child_document.status = 'ACTIVE'
         WHERE member.album_id IN (${placeholders}) AND member.deleted_at IS NULL
           AND (child_album.id IS NOT NULL OR child_document.id IS NOT NULL)
@@ -245,8 +260,13 @@ export class VideoDocumentNavigationRepository {
         SELECT tree.root_album_id AS album_id, COUNT(DISTINCT document.id) AS document_count
         FROM album_tree tree
         JOIN album_members member ON member.album_id = tree.album_id
-          AND member.target_type = 'DOCUMENT' AND member.deleted_at IS NULL
-        JOIN documents document ON document.id = member.target_id
+          AND member.target_type = 'CREATION_ITEM' AND member.deleted_at IS NULL
+        JOIN creation_items item ON item.id = member.target_id
+          AND item.deleted_at IS NULL AND item.archived_at IS NULL
+        JOIN creation_forms form ON form.creation_item_id = item.id
+          AND form.role = 'VIDEO_DOCUMENT' AND form.entity_type = 'VIDEO_DOCUMENT'
+          AND form.deleted_at IS NULL
+        JOIN documents document ON document.id = form.entity_id
           AND document.deleted_at IS NULL AND document.status = 'ACTIVE'
         GROUP BY tree.root_album_id`,
       )
@@ -276,8 +296,13 @@ export class VideoDocumentNavigationRepository {
             thumbnail_asset.byte_size AS byte_size, thumbnail_asset.created_at AS created_at
           FROM album_tree tree
           JOIN album_members member ON member.album_id = tree.album_id
-            AND member.target_type = 'DOCUMENT' AND member.deleted_at IS NULL
-          JOIN documents document ON document.id = member.target_id
+            AND member.target_type = 'CREATION_ITEM' AND member.deleted_at IS NULL
+          JOIN creation_items item ON item.id = member.target_id
+            AND item.deleted_at IS NULL AND item.archived_at IS NULL
+          JOIN creation_forms form ON form.creation_item_id = item.id
+            AND form.role = 'VIDEO_DOCUMENT' AND form.entity_type = 'VIDEO_DOCUMENT'
+            AND form.deleted_at IS NULL
+          JOIN documents document ON document.id = form.entity_id
             AND document.deleted_at IS NULL AND document.status = 'ACTIVE'
           JOIN document_thumbnails thumbnail ON thumbnail.document_id = document.id
           JOIN image_assets thumbnail_asset ON thumbnail_asset.id = thumbnail.image_asset_id
@@ -356,19 +381,29 @@ export class VideoDocumentNavigationRepository {
       ? (this.db
           .prepare(
             `SELECT document.id FROM album_members member
-            JOIN documents document ON document.id = member.target_id
+            JOIN creation_items item ON item.id = member.target_id
+              AND item.deleted_at IS NULL AND item.archived_at IS NULL
+            JOIN creation_forms form ON form.creation_item_id = item.id
+              AND form.role = 'VIDEO_DOCUMENT' AND form.entity_type = 'VIDEO_DOCUMENT'
+              AND form.deleted_at IS NULL
+            JOIN documents document ON document.id = form.entity_id
               AND document.deleted_at IS NULL AND document.status = 'ACTIVE'
-            WHERE member.album_id = ? AND member.target_type = 'DOCUMENT' AND member.deleted_at IS NULL
+            WHERE member.album_id = ? AND member.target_type = 'CREATION_ITEM' AND member.deleted_at IS NULL
               AND document.id IN (${placeholders})`,
           )
           .all(parentAlbumId, ...documentIds) as JsonMap[])
       : (this.db
           .prepare(
-            `SELECT document.id FROM documents document
-            WHERE document.id IN (${placeholders}) AND document.deleted_at IS NULL AND document.status = 'ACTIVE'
+            `SELECT document.id FROM creation_forms form
+            JOIN creation_items item ON item.id = form.creation_item_id
+              AND item.deleted_at IS NULL AND item.archived_at IS NULL
+            JOIN documents document ON document.id = form.entity_id
+            WHERE form.role = 'VIDEO_DOCUMENT' AND form.entity_type = 'VIDEO_DOCUMENT'
+              AND form.deleted_at IS NULL
+              AND document.id IN (${placeholders}) AND document.deleted_at IS NULL AND document.status = 'ACTIVE'
               AND NOT EXISTS (
                 SELECT 1 FROM album_members placement
-                WHERE placement.target_type = 'DOCUMENT' AND placement.target_id = document.id
+                WHERE placement.target_type = 'CREATION_ITEM' AND placement.target_id = item.id
                   AND placement.deleted_at IS NULL
               )`,
           )

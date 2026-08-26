@@ -9,7 +9,8 @@ export const MATERIAL_ALBUM_CREATION_UNASSIGNED_ID = 'material-album:system:crea
 
 export const MATERIAL_ALBUM_DICTIONARY_ID = 'material-album:system:dictionary';
 
-export const MATERIAL_ALBUM_CREATION_GROUP_PREFIX = 'material-album:system:creation-group:';
+// The virtual view id is stable across the terminology change from group to album.
+export const MATERIAL_ALBUM_CREATION_ALBUM_PREFIX = 'material-album:system:creation-group:';
 
 export const MATERIAL_ALBUM_CREATION_SERIES_PREFIX = 'material-album:system:creation-series:';
 
@@ -17,13 +18,13 @@ export const MATERIAL_ALBUM_DICTIONARY_DOMAIN_PREFIX = 'material-album:system:di
 
 export const MATERIAL_ALBUM_DICTIONARY_UNCATEGORIZED_ID = 'material-album:system:dictionary-uncategorized';
 
-export function materialAlbumCreationGroupId(sourceAlbumId: string) {
-  return `${MATERIAL_ALBUM_CREATION_GROUP_PREFIX}${sourceAlbumId}`;
+export function materialAlbumCreationAlbumId(sourceAlbumId: string) {
+  return `${MATERIAL_ALBUM_CREATION_ALBUM_PREFIX}${sourceAlbumId}`;
 }
 
-export function materialAlbumCreationGroupSourceId(materialAlbumId: string) {
-  if (!materialAlbumId.startsWith(MATERIAL_ALBUM_CREATION_GROUP_PREFIX)) return null;
-  return materialAlbumId.slice(MATERIAL_ALBUM_CREATION_GROUP_PREFIX.length) || null;
+export function materialAlbumCreationAlbumSourceId(materialAlbumId: string) {
+  if (!materialAlbumId.startsWith(MATERIAL_ALBUM_CREATION_ALBUM_PREFIX)) return null;
+  return materialAlbumId.slice(MATERIAL_ALBUM_CREATION_ALBUM_PREFIX.length) || null;
 }
 
 export function materialAlbumCreationSeriesId(sourceSeriesId: string) {
@@ -50,7 +51,7 @@ export function isSystemMaterialAlbumId(materialAlbumId: string) {
     materialAlbumId === MATERIAL_ALBUM_CREATION_UNASSIGNED_ID ||
     materialAlbumId === MATERIAL_ALBUM_DICTIONARY_ID ||
     materialAlbumId === MATERIAL_ALBUM_DICTIONARY_UNCATEGORIZED_ID ||
-    materialAlbumCreationGroupSourceId(materialAlbumId) !== null ||
+    materialAlbumCreationAlbumSourceId(materialAlbumId) !== null ||
     materialAlbumCreationSeriesSourceId(materialAlbumId) !== null ||
     materialAlbumDictionaryDomainSourceId(materialAlbumId) !== null
   );
@@ -61,16 +62,28 @@ export interface CreationScopeSql {
   parameters: string[];
 }
 
+interface CreationContentScopeSql {
+  cte: string;
+  parameters: string[];
+}
+
 export function creationRootScope(): CreationScopeSql {
   return {
     cte: `WITH scoped_series(id) AS (
-      SELECT id FROM prompt_series WHERE deleted_at IS NULL
+      SELECT form.entity_id
+      FROM creation_forms form
+      JOIN creation_items item ON item.id = form.creation_item_id
+        AND item.deleted_at IS NULL AND item.archived_at IS NULL
+      JOIN prompt_series series ON series.id = form.entity_id
+        AND series.deleted_at IS NULL AND series.archived_at IS NULL
+      WHERE form.role = 'IMAGE_CREATION' AND form.entity_type = 'PROMPT_SERIES'
+        AND form.deleted_at IS NULL
     )`,
     parameters: [],
   };
 }
 
-export function creationGroupScope(sourceAlbumId: string): CreationScopeSql {
+export function creationAlbumScope(sourceAlbumId: string): CreationScopeSql {
   return {
     cte: `WITH RECURSIVE scoped_album_descendants(id) AS (
       SELECT id FROM albums WHERE id = ? AND deleted_at IS NULL AND intent <> '${MATERIAL_LIBRARY_ALBUM_INTENT}'
@@ -81,12 +94,21 @@ export function creationGroupScope(sourceAlbumId: string): CreationScopeSql {
         AND edge.target_type = 'ALBUM' AND edge.deleted_at IS NULL
       JOIN albums child ON child.id = edge.target_id
         AND child.deleted_at IS NULL AND child.intent <> '${MATERIAL_LIBRARY_ALBUM_INTENT}'
-    ), scoped_series(id) AS (
+    ), scoped_creation_items(id) AS (
       SELECT DISTINCT member.target_id
       FROM scoped_album_descendants album
       JOIN album_members member ON member.album_id = album.id
-        AND member.target_type = 'SERIES' AND member.deleted_at IS NULL
-      JOIN prompt_series series ON series.id = member.target_id AND series.deleted_at IS NULL
+        AND member.target_type = 'CREATION_ITEM' AND member.deleted_at IS NULL
+      JOIN creation_items item ON item.id = member.target_id
+        AND item.deleted_at IS NULL AND item.archived_at IS NULL
+    ), scoped_series(id) AS (
+      SELECT DISTINCT form.entity_id
+      FROM scoped_creation_items item
+      JOIN creation_forms form ON form.creation_item_id = item.id
+        AND form.role = 'IMAGE_CREATION' AND form.entity_type = 'PROMPT_SERIES'
+        AND form.deleted_at IS NULL
+      JOIN prompt_series series ON series.id = form.entity_id
+        AND series.deleted_at IS NULL AND series.archived_at IS NULL
     )`,
     parameters: [sourceAlbumId],
   };
@@ -95,7 +117,14 @@ export function creationGroupScope(sourceAlbumId: string): CreationScopeSql {
 export function creationSeriesScope(sourceSeriesId: string): CreationScopeSql {
   return {
     cte: `WITH scoped_series(id) AS (
-      SELECT id FROM prompt_series WHERE id = ? AND deleted_at IS NULL
+      SELECT series.id
+      FROM creation_forms form
+      JOIN creation_items item ON item.id = form.creation_item_id
+        AND item.deleted_at IS NULL AND item.archived_at IS NULL
+      JOIN prompt_series series ON series.id = form.entity_id
+      WHERE form.role = 'IMAGE_CREATION' AND form.entity_type = 'PROMPT_SERIES'
+        AND form.deleted_at IS NULL
+        AND series.id = ? AND series.deleted_at IS NULL AND series.archived_at IS NULL
     )`,
     parameters: [sourceSeriesId],
   };
@@ -104,14 +133,180 @@ export function creationSeriesScope(sourceSeriesId: string): CreationScopeSql {
 export function creationUnassignedScope(): CreationScopeSql {
   return {
     cte: `WITH scoped_series(id) AS (
-      SELECT series.id FROM prompt_series series
-      WHERE series.deleted_at IS NULL AND NOT EXISTS (
-        SELECT 1 FROM album_members member
-        JOIN albums owner ON owner.id = member.album_id
-          AND owner.deleted_at IS NULL AND owner.intent <> '${MATERIAL_LIBRARY_ALBUM_INTENT}'
-        WHERE member.target_type = 'SERIES' AND member.target_id = series.id
-          AND member.deleted_at IS NULL
+      SELECT series.id
+      FROM creation_forms form
+      JOIN creation_items item ON item.id = form.creation_item_id
+        AND item.deleted_at IS NULL AND item.archived_at IS NULL
+      JOIN prompt_series series ON series.id = form.entity_id
+      WHERE form.role = 'IMAGE_CREATION' AND form.entity_type = 'PROMPT_SERIES'
+        AND form.deleted_at IS NULL
+        AND series.deleted_at IS NULL AND series.archived_at IS NULL
+        AND NOT EXISTS (
+          SELECT 1 FROM album_members member
+          JOIN albums owner ON owner.id = member.album_id
+            AND owner.deleted_at IS NULL AND owner.intent <> '${MATERIAL_LIBRARY_ALBUM_INTENT}'
+          WHERE member.target_type = 'CREATION_ITEM' AND member.target_id = item.id
+            AND member.deleted_at IS NULL
       )
+    )`,
+    parameters: [],
+  };
+}
+
+function creationRootContentScope(): CreationContentScopeSql {
+  return {
+    cte: `WITH scoped_inspirations(id, input_json) AS (
+      SELECT inspiration.id, inspiration.input_json
+      FROM creation_forms form
+      JOIN creation_items item ON item.id = form.creation_item_id
+        AND item.deleted_at IS NULL AND item.archived_at IS NULL
+      JOIN inspiration_stashes inspiration ON inspiration.id = form.entity_id
+      WHERE form.role = 'INSPIRATION' AND form.entity_type = 'INSPIRATION_STASH'
+        AND form.deleted_at IS NULL
+        AND inspiration.status = 'ACTIVE' AND inspiration.deleted_at IS NULL
+    ), scoped_social_posts(id, current_revision_id) AS (
+      SELECT post.id, post.current_revision_id
+      FROM creation_forms form
+      JOIN creation_items item ON item.id = form.creation_item_id
+        AND item.deleted_at IS NULL AND item.archived_at IS NULL
+      JOIN social_post_drafts post ON post.id = form.entity_id
+      WHERE form.role = 'SOCIAL_POST' AND form.entity_type = 'SOCIAL_POST'
+        AND form.deleted_at IS NULL AND post.status = 'ACTIVE' AND post.deleted_at IS NULL
+    ), scoped_articles(id, current_revision_id) AS (
+      SELECT article.id, article.current_revision_id
+      FROM creation_forms form
+      JOIN creation_items item ON item.id = form.creation_item_id
+        AND item.deleted_at IS NULL AND item.archived_at IS NULL
+      JOIN articles article ON article.id = form.entity_id
+      WHERE form.role = 'ARTICLE' AND form.entity_type = 'ARTICLE'
+        AND form.deleted_at IS NULL AND article.status = 'ACTIVE' AND article.deleted_at IS NULL
+    )`,
+    parameters: [],
+  };
+}
+
+function creationAlbumContentScope(sourceAlbumId: string): CreationContentScopeSql {
+  return {
+    cte: `WITH RECURSIVE scoped_album_descendants(id) AS (
+      SELECT id FROM albums WHERE id = ? AND deleted_at IS NULL AND intent <> '${MATERIAL_LIBRARY_ALBUM_INTENT}'
+      UNION
+      SELECT child.id
+      FROM scoped_album_descendants parent
+      JOIN album_members edge ON edge.album_id = parent.id
+        AND edge.target_type = 'ALBUM' AND edge.deleted_at IS NULL
+      JOIN albums child ON child.id = edge.target_id
+        AND child.deleted_at IS NULL AND child.intent <> '${MATERIAL_LIBRARY_ALBUM_INTENT}'
+    ), scoped_creation_items(id) AS (
+      SELECT DISTINCT member.target_id
+      FROM scoped_album_descendants album
+      JOIN album_members member ON member.album_id = album.id
+        AND member.target_type = 'CREATION_ITEM' AND member.deleted_at IS NULL
+      JOIN creation_items item ON item.id = member.target_id
+        AND item.deleted_at IS NULL AND item.archived_at IS NULL
+    ), scoped_inspirations(id, input_json) AS (
+      SELECT inspiration.id, inspiration.input_json
+      FROM scoped_creation_items item
+      JOIN creation_forms form ON form.creation_item_id = item.id
+        AND form.role = 'INSPIRATION' AND form.entity_type = 'INSPIRATION_STASH'
+        AND form.deleted_at IS NULL
+      JOIN inspiration_stashes inspiration ON inspiration.id = form.entity_id
+      WHERE inspiration.status = 'ACTIVE' AND inspiration.deleted_at IS NULL
+    ), scoped_social_posts(id, current_revision_id) AS (
+      SELECT post.id, post.current_revision_id
+      FROM scoped_creation_items item
+      JOIN creation_forms form ON form.creation_item_id = item.id
+        AND form.role = 'SOCIAL_POST' AND form.entity_type = 'SOCIAL_POST'
+        AND form.deleted_at IS NULL
+      JOIN social_post_drafts post ON post.id = form.entity_id
+      WHERE post.status = 'ACTIVE' AND post.deleted_at IS NULL
+    ), scoped_articles(id, current_revision_id) AS (
+      SELECT article.id, article.current_revision_id
+      FROM scoped_creation_items item
+      JOIN creation_forms form ON form.creation_item_id = item.id
+        AND form.role = 'ARTICLE' AND form.entity_type = 'ARTICLE'
+        AND form.deleted_at IS NULL
+      JOIN articles article ON article.id = form.entity_id
+      WHERE article.status = 'ACTIVE' AND article.deleted_at IS NULL
+    )`,
+    parameters: [sourceAlbumId],
+  };
+}
+
+function creationSeriesContentScope(sourceSeriesId: string): CreationContentScopeSql {
+  return {
+    cte: `WITH selected_creation_items(id) AS (
+      SELECT item.id
+      FROM creation_forms form
+      JOIN creation_items item ON item.id = form.creation_item_id
+        AND item.deleted_at IS NULL AND item.archived_at IS NULL
+      WHERE form.role = 'IMAGE_CREATION' AND form.entity_type = 'PROMPT_SERIES'
+        AND form.entity_id = ? AND form.deleted_at IS NULL
+    ),
+    scoped_inspirations(id, input_json) AS (
+      SELECT inspiration.id, inspiration.input_json
+      FROM selected_creation_items item
+      JOIN creation_forms form ON form.creation_item_id = item.id
+        AND form.role = 'INSPIRATION' AND form.entity_type = 'INSPIRATION_STASH'
+        AND form.deleted_at IS NULL
+      JOIN inspiration_stashes inspiration ON inspiration.id = form.entity_id
+      WHERE inspiration.status = 'ACTIVE' AND inspiration.deleted_at IS NULL
+    ), scoped_social_posts(id, current_revision_id) AS (
+      SELECT post.id, post.current_revision_id
+      FROM selected_creation_items item
+      JOIN creation_forms form ON form.creation_item_id = item.id
+        AND form.role = 'SOCIAL_POST' AND form.entity_type = 'SOCIAL_POST'
+        AND form.deleted_at IS NULL
+      JOIN social_post_drafts post ON post.id = form.entity_id
+      WHERE post.status = 'ACTIVE' AND post.deleted_at IS NULL
+    ), scoped_articles(id, current_revision_id) AS (
+      SELECT article.id, article.current_revision_id
+      FROM selected_creation_items item
+      JOIN creation_forms form ON form.creation_item_id = item.id
+        AND form.role = 'ARTICLE' AND form.entity_type = 'ARTICLE'
+        AND form.deleted_at IS NULL
+      JOIN articles article ON article.id = form.entity_id
+      WHERE article.status = 'ACTIVE' AND article.deleted_at IS NULL
+    )`,
+    parameters: [sourceSeriesId],
+  };
+}
+
+function creationUnassignedContentScope(): CreationContentScopeSql {
+  return {
+    cte: `WITH unassigned_creation_items(id) AS (
+      SELECT item.id FROM creation_items item
+      WHERE item.deleted_at IS NULL AND item.archived_at IS NULL
+        AND NOT EXISTS (
+          SELECT 1 FROM album_members member
+          JOIN albums owner ON owner.id = member.album_id
+            AND owner.deleted_at IS NULL AND owner.intent <> '${MATERIAL_LIBRARY_ALBUM_INTENT}'
+          WHERE member.target_type = 'CREATION_ITEM' AND member.target_id = item.id
+            AND member.deleted_at IS NULL
+        )
+    ), scoped_inspirations(id, input_json) AS (
+      SELECT inspiration.id, inspiration.input_json
+      FROM unassigned_creation_items item
+      JOIN creation_forms form ON form.creation_item_id = item.id
+        AND form.role = 'INSPIRATION' AND form.entity_type = 'INSPIRATION_STASH'
+        AND form.deleted_at IS NULL
+      JOIN inspiration_stashes inspiration ON inspiration.id = form.entity_id
+      WHERE inspiration.status = 'ACTIVE' AND inspiration.deleted_at IS NULL
+    ), scoped_social_posts(id, current_revision_id) AS (
+      SELECT post.id, post.current_revision_id
+      FROM unassigned_creation_items item
+      JOIN creation_forms form ON form.creation_item_id = item.id
+        AND form.role = 'SOCIAL_POST' AND form.entity_type = 'SOCIAL_POST'
+        AND form.deleted_at IS NULL
+      JOIN social_post_drafts post ON post.id = form.entity_id
+      WHERE post.status = 'ACTIVE' AND post.deleted_at IS NULL
+    ), scoped_articles(id, current_revision_id) AS (
+      SELECT article.id, article.current_revision_id
+      FROM unassigned_creation_items item
+      JOIN creation_forms form ON form.creation_item_id = item.id
+        AND form.role = 'ARTICLE' AND form.entity_type = 'ARTICLE'
+        AND form.deleted_at IS NULL
+      JOIN articles article ON article.id = form.entity_id
+      WHERE article.status = 'ACTIVE' AND article.deleted_at IS NULL
     )`,
     parameters: [],
   };
@@ -165,7 +360,7 @@ export function creationScopeAssetFilter(
   const materialIdentity = `EXISTS (
     SELECT 1 FROM materials scoped_material
     WHERE scoped_material.kind = 'IMAGE' AND scoped_material.image_asset_id = asset.id
-      AND scoped_material.deleted_at IS NULL
+      AND scoped_material.deleted_at IS NULL AND scoped_material.archived_at IS NULL
   )`;
   const visibleInput = `(${input} AND ${materialIdentity})`;
   const relationship =
@@ -177,6 +372,58 @@ export function creationScopeAssetFilter(
       WHERE ${relationship}
     )`,
     parameters: scope.parameters,
+  };
+}
+
+function creationContentAssetFilter(
+  scope: CreationContentScopeSql,
+  relation: CreationRelationFilter,
+): { predicate: string; parameters: string[] } {
+  const output = `(
+    EXISTS (
+      SELECT 1 FROM scoped_social_posts post
+      JOIN social_post_revisions revision ON revision.id = post.current_revision_id
+      JOIN json_each(revision.content_json, '$.mediaAssetIds') media
+      WHERE media.value = asset.id
+    ) OR EXISTS (
+      SELECT 1 FROM scoped_articles article
+      JOIN article_revisions revision ON revision.id = article.current_revision_id
+      JOIN json_each(revision.content_json, '$.mediaBindings') binding
+      WHERE json_extract(binding.value, '$.assetId') = asset.id
+    )
+  )`;
+  const materialIdentity = `EXISTS (
+    SELECT 1 FROM materials scoped_material
+    WHERE scoped_material.kind = 'IMAGE' AND scoped_material.image_asset_id = asset.id
+      AND scoped_material.deleted_at IS NULL AND scoped_material.archived_at IS NULL
+  )`;
+  const input = `(
+    EXISTS (
+      SELECT 1 FROM scoped_inspirations inspiration
+      JOIN json_each(inspiration.input_json, '$.referenceAssetIds') reference
+      WHERE reference.value = asset.id
+    ) AND ${materialIdentity}
+  )`;
+  const relationship = relation === 'OUTPUT' ? output : relation === 'INPUT' ? input : `(${output} OR ${input})`;
+  return {
+    predicate: `EXISTS (
+      ${scope.cte}
+      SELECT 1 WHERE ${relationship}
+    )`,
+    parameters: scope.parameters,
+  };
+}
+
+function combinedCreationAssetFilter(
+  seriesScope: CreationScopeSql,
+  contentScope: CreationContentScopeSql,
+  relation: CreationRelationFilter,
+) {
+  const series = creationScopeAssetFilter(seriesScope, relation);
+  const content = creationContentAssetFilter(contentScope, relation);
+  return {
+    predicate: `(${series.predicate} OR ${content.predicate})`,
+    parameters: [...series.parameters, ...content.parameters],
   };
 }
 
@@ -237,6 +484,7 @@ export const directUserAlbumAssetPredicate = `EXISTS (
   SELECT 1 FROM album_members direct_member
   JOIN materials direct_material ON direct_material.id = direct_member.target_id
     AND direct_material.kind IN ('IMAGE', 'VIDEO') AND direct_material.deleted_at IS NULL
+    AND direct_material.archived_at IS NULL
   WHERE direct_member.album_id = ? AND direct_member.target_type = 'MATERIAL'
     AND direct_member.deleted_at IS NULL AND direct_material.image_asset_id = asset.id
 )`;
@@ -247,6 +495,7 @@ export const unfiledMaterialAssetPredicate = `NOT EXISTS (
     AND organized_album.deleted_at IS NULL AND organized_album.intent = '${MATERIAL_LIBRARY_ALBUM_INTENT}'
   JOIN materials organized_material ON organized_material.id = organized_member.target_id
     AND organized_material.kind IN ('IMAGE', 'VIDEO') AND organized_material.deleted_at IS NULL
+    AND organized_material.archived_at IS NULL
   WHERE organized_member.target_type = 'MATERIAL' AND organized_member.deleted_at IS NULL
     AND organized_material.image_asset_id = asset.id
 )`;
@@ -254,7 +503,7 @@ export const unfiledMaterialAssetPredicate = `NOT EXISTS (
 /** Assets represented by neither a user material album nor the live creation projection. */
 export const unorganizedMaterialAssetPredicate = `(
   ${unfiledMaterialAssetPredicate}
-  AND NOT (${creationScopeAssetFilter(creationRootScope(), 'ALL').predicate})
+  AND NOT (${combinedCreationAssetFilter(creationRootScope(), creationRootContentScope(), 'ALL').predicate})
 )`;
 
 export function materialAlbumAssetFilter(
@@ -263,10 +512,10 @@ export function materialAlbumAssetFilter(
   albumScope: GalleryAlbumScope = 'TREE',
 ): { predicate: string; parameters: string[] } {
   if (materialAlbumId === MATERIAL_ALBUM_CREATION_ROOT_ID) {
-    return creationScopeAssetFilter(creationRootScope(), creationRelation);
+    return combinedCreationAssetFilter(creationRootScope(), creationRootContentScope(), creationRelation);
   }
   if (materialAlbumId === MATERIAL_ALBUM_CREATION_UNASSIGNED_ID) {
-    return creationScopeAssetFilter(creationUnassignedScope(), creationRelation);
+    return combinedCreationAssetFilter(creationUnassignedScope(), creationUnassignedContentScope(), creationRelation);
   }
   if (materialAlbumId === MATERIAL_ALBUM_DICTIONARY_ID) {
     return { predicate: dictionaryAssetPredicate, parameters: [] };
@@ -278,13 +527,21 @@ export function materialAlbumAssetFilter(
   if (sourceDomainId) {
     return { predicate: dictionaryDomainAssetPredicate, parameters: [sourceDomainId] };
   }
-  const sourceAlbumId = materialAlbumCreationGroupSourceId(materialAlbumId);
+  const sourceAlbumId = materialAlbumCreationAlbumSourceId(materialAlbumId);
   if (sourceAlbumId) {
-    return creationScopeAssetFilter(creationGroupScope(sourceAlbumId), creationRelation);
+    return combinedCreationAssetFilter(
+      creationAlbumScope(sourceAlbumId),
+      creationAlbumContentScope(sourceAlbumId),
+      creationRelation,
+    );
   }
   const sourceSeriesId = materialAlbumCreationSeriesSourceId(materialAlbumId);
   if (sourceSeriesId) {
-    return creationScopeAssetFilter(creationSeriesScope(sourceSeriesId), creationRelation);
+    return combinedCreationAssetFilter(
+      creationSeriesScope(sourceSeriesId),
+      creationSeriesContentScope(sourceSeriesId),
+      creationRelation,
+    );
   }
   if (albumScope === 'DIRECT') {
     return { predicate: directUserAlbumAssetPredicate, parameters: [materialAlbumId] };
@@ -299,10 +556,10 @@ export function normalizeTitle(value: string) {
   return title;
 }
 
-export function normalizeCreationGroupTitle(value: string) {
+export function normalizeCreationAlbumTitle(value: string) {
   const title = value.trim();
-  if (!title) throw new Error('Creation group title is required');
-  if (title.length > 200) throw new Error('Creation group title is too long');
+  if (!title) throw new Error('Creation album title is required');
+  if (title.length > 200) throw new Error('Creation album title is too long');
   return title;
 }
 

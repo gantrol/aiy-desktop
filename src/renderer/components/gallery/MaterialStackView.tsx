@@ -1,4 +1,13 @@
-import { CopyIcon, FileTextIcon, ImageIcon, Layers3Icon, SquarePenIcon, VideoIcon } from 'lucide-react';
+import {
+  ArchiveIcon,
+  CopyIcon,
+  FileTextIcon,
+  ImageIcon,
+  Layers3Icon,
+  SquarePenIcon,
+  Trash2Icon,
+  VideoIcon,
+} from 'lucide-react';
 import { useState, type DragEvent as ReactDragEvent } from 'react';
 import type { AssetFileRevealContext } from '@/shared/contracts';
 import { useI18n } from '@/renderer/i18n/useI18n';
@@ -6,11 +15,13 @@ import { cn } from '@/renderer/lib/utils';
 import { AssetFileContextMenu } from '@/renderer/components/media/AssetFileContextMenu';
 import { mediaThumbnailUrl } from '@/renderer/components/media/mediaThumbnailUrl';
 import { Checkbox } from '@/renderer/components/ui/checkbox';
+import { ActionContextMenuItems, type ActionMenuAction } from '@/renderer/components/ui/action-menu';
 import {
   ContextMenu,
   ContextMenuContent,
   ContextMenuIcon,
   ContextMenuItem,
+  ContextMenuSeparator,
   ContextMenuTrigger,
 } from '@/renderer/components/ui/context-menu';
 import {
@@ -20,6 +31,7 @@ import {
 } from '@/renderer/components/ui/stacked-media-frame';
 import { getMaterialCardAspectRatio } from '@/renderer/components/gallery/MaterialCard';
 import {
+  hasMaterialLifecycleEntity,
   materialTitle,
   selectionModifiers,
   type MaterialLibraryItem,
@@ -37,6 +49,9 @@ interface Props {
   onToggleStackSelection?(items: readonly MaterialLibraryItem[], checked: boolean): void;
   onOpenStack?(stack: MaterialStack): void;
   onCopyText(text: string): void;
+  onArchive?(item: MaterialLibraryItem): void;
+  onDelete?(item: MaterialLibraryItem): void;
+  lifecycleBusy?: boolean;
   notify(message: string): void;
   onDragStart?(event: ReactDragEvent<HTMLElement>, items: readonly MaterialLibraryItem[]): void;
   revealContextForItem?(item: MaterialLibraryItem): AssetFileRevealContext | undefined;
@@ -111,6 +126,9 @@ function MaterialFrame({
   copyLabel,
   onSelect,
   onCopyText,
+  onArchive,
+  onDelete,
+  lifecycleBusy,
   notify,
   revealContext,
 }: {
@@ -126,12 +144,42 @@ function MaterialFrame({
   onCopyText(text: string): void;
   notify(message: string): void;
   revealContext?: AssetFileRevealContext;
+  onArchive?(item: MaterialLibraryItem): void;
+  onDelete?(item: MaterialLibraryItem): void;
+  lifecycleBusy?: boolean;
 }) {
+  const { messages } = useI18n();
   const offset = index - (count - 1) / 2;
   const step = expanded ? 28 : 10;
   const rotation = expanded || count === 1 ? 0 : offset * 4;
   const size = frameSize(item, count);
   const materialId = item.kind === 'TEXT' ? item.text.id : item.image.materialId;
+  const lifecycleAvailable = hasMaterialLifecycleEntity(item);
+  const lifecycleActions: ActionMenuAction[] = [
+    ...(onArchive && lifecycleAvailable
+      ? [
+          {
+            id: 'archive-material',
+            label: messages.contentManagement.actions.archive,
+            icon: ArchiveIcon,
+            disabled: lifecycleBusy,
+            onSelect: () => onArchive(item),
+          } satisfies ActionMenuAction,
+        ]
+      : []),
+    ...(onDelete && lifecycleAvailable
+      ? [
+          {
+            id: 'delete-material',
+            label: messages.contentManagement.actions.delete,
+            icon: Trash2Icon,
+            destructive: true,
+            disabled: lifecycleBusy,
+            onSelect: () => onDelete(item),
+          } satisfies ActionMenuAction,
+        ]
+      : []),
+  ];
   const style = stackedMediaFrameStyle(count - index, {
     left: '50%',
     top: '50%',
@@ -172,6 +220,7 @@ function MaterialFrame({
         revealContext={revealContext}
         copyable={item.kind !== 'VIDEO'}
         usableInCreation={item.kind !== 'VIDEO'}
+        lifecycleActions={onArchive || onDelete ? lifecycleActions : undefined}
       >
         {button}
       </AssetFileContextMenu>
@@ -187,6 +236,12 @@ function MaterialFrame({
           </ContextMenuIcon>
           {copyLabel}
         </ContextMenuItem>
+        {lifecycleActions.length > 0 && (
+          <>
+            <ContextMenuSeparator />
+            <ActionContextMenuItems actions={lifecycleActions} />
+          </>
+        )}
       </ContextMenuContent>
     </ContextMenu>
   );
@@ -210,6 +265,9 @@ function MaterialStackTile({
   onToggleStackSelection,
   onOpenStack,
   onCopyText,
+  onArchive,
+  onDelete,
+  lifecycleBusy,
   notify,
   onDragStart,
   revealContextForItem,
@@ -268,6 +326,9 @@ function MaterialStackTile({
             copyLabel={cardLabels.copyText}
             onSelect={onSelect}
             onCopyText={onCopyText}
+            onArchive={onArchive}
+            onDelete={onDelete}
+            lifecycleBusy={lifecycleBusy}
             notify={notify}
             revealContext={revealContextForItem?.(item)}
           />

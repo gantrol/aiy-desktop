@@ -1,8 +1,9 @@
-import { ChevronRightIcon } from 'lucide-react';
+import { ArchiveIcon, ChevronRightIcon, Trash2Icon } from 'lucide-react';
 import type { MaterialAlbumDto } from '@/shared/contracts';
 import { useI18n } from '@/renderer/i18n/useI18n';
 import { MaterialAlbumPreview } from '@/renderer/components/gallery/MaterialAlbumPreview';
 import { Button } from '@/renderer/components/ui/button';
+import { ActionMenuButton, type ActionMenuAction } from '@/renderer/components/ui/action-menu';
 
 export function MaterialAlbumHeader({
   album,
@@ -11,6 +12,9 @@ export function MaterialAlbumHeader({
   ancestors = [],
   onOpenRoot,
   onOpenAlbum,
+  busy = false,
+  onArchive,
+  onDelete,
 }: {
   album: MaterialAlbumDto;
   countLabel: string;
@@ -18,9 +22,37 @@ export function MaterialAlbumHeader({
   ancestors?: readonly MaterialAlbumDto[];
   onOpenRoot?(): void;
   onOpenAlbum?(albumId: string): void;
+  busy?: boolean;
+  onArchive?(album: MaterialAlbumDto): void;
+  onDelete?(album: MaterialAlbumDto): void;
 }) {
   const { messages } = useI18n();
   const preview = album.previewAssets[0];
+  const actions: ActionMenuAction[] = [
+    ...(onArchive
+      ? [
+          {
+            id: 'archive-album',
+            label: messages.gallery.albums.archive,
+            icon: ArchiveIcon,
+            disabled: busy,
+            onSelect: () => onArchive(album),
+          } satisfies ActionMenuAction,
+        ]
+      : []),
+    ...(onDelete
+      ? [
+          {
+            id: 'delete-album',
+            label: messages.gallery.albums.delete,
+            icon: Trash2Icon,
+            destructive: true,
+            disabled: busy,
+            onSelect: () => onDelete(album),
+          } satisfies ActionMenuAction,
+        ]
+      : []),
+  ];
   return (
     <div
       data-slot="material-album-header"
@@ -66,6 +98,13 @@ export function MaterialAlbumHeader({
         {pathLabel && <p className="mt-0.5 truncate text-xs text-muted-foreground">{pathLabel}</p>}
         <p className="mt-0.5 text-xs text-muted-foreground">{countLabel}</p>
       </div>
+      {actions.length > 0 && (
+        <ActionMenuButton
+          actions={actions}
+          label={`${messages.gallery.albums.moreActions}: ${album.title}`}
+          className="ml-auto"
+        />
+      )}
     </div>
   );
 }

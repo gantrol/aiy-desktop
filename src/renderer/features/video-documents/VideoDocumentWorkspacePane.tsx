@@ -5,7 +5,6 @@ import {
   LoaderCircleIcon,
   PanelRightOpenIcon,
   RefreshCwIcon,
-  SparklesIcon,
 } from 'lucide-react';
 import { useCallback, useState, type ReactNode } from 'react';
 import type {
@@ -376,7 +375,7 @@ function DocumentBranchPanel({
               type="button"
               disabled={articleGenerationActionDisabled(generating, recognizing, translating, revisionLoading)}
               icon={
-                generating ? <LoaderCircleIcon className="size-4 animate-spin" /> : <SparklesIcon className="size-4" />
+                generating ? <LoaderCircleIcon className="size-4 animate-spin" /> : <RefreshCwIcon className="size-4" />
               }
               label={generating ? labels.generation.generating : labels.generation.generate}
               onClick={() => onGenerate(selectedArticle?.noteId ?? null)}

@@ -41,6 +41,7 @@ import {
 } from '@/main/database/video-documents/video-document-list-values';
 import type { LibraryStorage } from '@/main/database/core/storage';
 import { type JsonMap, mediaUrl, now, text } from '@/main/database/core/values';
+import { CreationItemRepository } from '@/main/database/creations/creation-item-repository';
 import { videoDocumentSelect, videoDocumentSummaryDto } from '@/main/database/video-documents/video-document-values';
 
 function parseRevisionContent(value: unknown) {
@@ -59,12 +60,14 @@ export class VideoDocumentRepository {
   private readonly aiActivities: VideoDocumentAiActivityRepository;
   private readonly transcriptionRuns: VideoDocumentTranscriptionRunRepository;
   private readonly translations: VideoDocumentTranslationRepository;
+  private readonly creationItems: CreationItemRepository;
 
   constructor(private readonly storage: LibraryStorage) {
     this.generationRuns = new VideoDocumentGenerationRunRepository(storage);
     this.navigation = new VideoDocumentNavigationRepository(storage);
     this.aiActivities = new VideoDocumentAiActivityRepository(storage);
     this.transcriptionRuns = new VideoDocumentTranscriptionRunRepository(storage);
+    this.creationItems = new CreationItemRepository(storage);
     this.translations = new VideoDocumentTranslationRepository(storage, {
       write: (input) => this.writeRevision(input, 'AGENT'),
       read: (branchId, revisionId) => this.readSavedRevision(branchId, revisionId),
@@ -167,11 +170,15 @@ export class VideoDocumentRepository {
   }
 
   completeTranscription(input: Parameters<VideoDocumentTranscriptionRunRepository['complete']>[0]) {
-    return this.transcriptionRuns.complete(input);
+    const run = this.transcriptionRuns.complete(input);
+    this.creationItems.touchForEntity({ kind: 'VIDEO_DOCUMENT', id: input.documentId }, input.finishedAt);
+    return run;
   }
 
   failTranscription(input: Parameters<VideoDocumentTranscriptionRunRepository['fail']>[0]) {
-    return this.transcriptionRuns.fail(input);
+    const run = this.transcriptionRuns.fail(input);
+    this.creationItems.touchForEntity({ kind: 'VIDEO_DOCUMENT', id: input.documentId }, input.finishedAt);
+    return run;
   }
 
   interruptRunningTranscriptions() {
@@ -187,11 +194,17 @@ export class VideoDocumentRepository {
   }
 
   commitTranslation(input: Parameters<VideoDocumentTranslationRepository['commit']>[0]) {
-    return this.translations.commit(input);
+    const result = this.translations.commit(input);
+    this.creationItems.touchForEntity({ kind: 'VIDEO_DOCUMENT', id: input.documentId }, input.completion.finishedAt);
+    return result;
   }
 
   failTranslation(input: Parameters<VideoDocumentTranslationRepository['fail']>[0]) {
-    return this.translations.fail(input);
+    const run = this.translations.fail(input);
+    if (run.finishedAt) {
+      this.creationItems.touchForEntity({ kind: 'VIDEO_DOCUMENT', id: run.documentId }, run.finishedAt);
+    }
+    return run;
   }
 
   interruptRunningTranslations() {
@@ -251,7 +264,6 @@ export class VideoDocumentRepository {
     const documentId = this.db
       .transaction(() => {
         const timestamp = now();
-        if (input.albumId) this.requireAlbum(input.albumId);
         const id = ulid();
         this.db
           .prepare(
@@ -279,7 +291,14 @@ export class VideoDocumentRepository {
         this.createBranch(id, 'CLEAN_TRANSCRIPT', 'NONE', timestamp);
         this.createBranch(id, 'ARTICLE', 'NONE', timestamp);
         this.createBranch(id, 'NOTES', 'NONE', timestamp);
-        if (input.albumId) this.placeDocument(id, input.albumId, timestamp);
+        this.creationItems.createWithForm({
+          albumId: input.albumId ?? null,
+          form: {
+            role: 'VIDEO_DOCUMENT',
+            entity: { kind: 'VIDEO_DOCUMENT', id },
+            anchorKey: null,
+          },
+        });
         return id;
       })
       .immediate();
@@ -289,11 +308,14 @@ export class VideoDocumentRepository {
   rename(input: VideoDocumentRenameInput): VideoDocumentDto {
     const title = input.title.trim();
     const updatedAt = now();
-    const result = this.db
-      .prepare('UPDATE documents SET title = ?, updated_at = ? WHERE id = ? AND deleted_at IS NULL')
-      .run(title, updatedAt, input.documentId);
-    if (!result.changes) throw new Error('Document not found');
-    this.storage.recordChange('DOCUMENT', input.documentId, 'UPDATE', { title });
+    this.db.transaction(() => {
+      const result = this.db
+        .prepare('UPDATE documents SET title = ?, updated_at = ? WHERE id = ? AND deleted_at IS NULL')
+        .run(title, updatedAt, input.documentId);
+      if (!result.changes) throw new Error('Document not found');
+      this.creationItems.touchForEntity({ kind: 'VIDEO_DOCUMENT', id: input.documentId }, updatedAt);
+      this.storage.recordChange('DOCUMENT', input.documentId, 'UPDATE', { title });
+    })();
     return this.get(input.documentId);
   }
 
@@ -301,35 +323,11 @@ export class VideoDocumentRepository {
     this.db
       .transaction(() => {
         this.requireDocument(input.documentId);
-        if (input.albumId) this.requireAlbum(input.albumId);
+        const creationItem = this.creationItems.findForEntity({ kind: 'VIDEO_DOCUMENT', id: input.documentId });
+        if (!creationItem) throw new Error('Video document creation item not found');
+        if (creationItem.albumId === input.albumId) return;
         const timestamp = now();
-        const current = this.db
-          .prepare(
-            `SELECT id, album_id FROM album_members
-            WHERE target_type = 'DOCUMENT' AND target_id = ? AND deleted_at IS NULL`,
-          )
-          .get(input.documentId) as JsonMap | undefined;
-        if ((current ? text(current.album_id) : null) === input.albumId) return;
-        if (current) {
-          const memberId = text(current.id);
-          const oldAlbumId = text(current.album_id);
-          this.db
-            .prepare('UPDATE album_members SET deleted_at = ?, updated_at = ? WHERE id = ?')
-            .run(timestamp, timestamp, memberId);
-          this.db
-            .prepare("INSERT INTO tombstones VALUES (?, 'ALBUM_MEMBER', ?, ?, 'LOCAL_ONLY')")
-            .run(ulid(), memberId, timestamp);
-          this.storage.recordChange('ALBUM_MEMBER', memberId, 'DELETE', {
-            albumId: oldAlbumId,
-            targetType: 'DOCUMENT',
-            targetId: input.documentId,
-            movedToAlbumId: input.albumId,
-          });
-          this.db
-            .prepare('UPDATE albums SET content_updated_at = ?, updated_at = ? WHERE id = ?')
-            .run(timestamp, timestamp, oldAlbumId);
-        }
-        if (input.albumId) this.placeDocument(input.documentId, input.albumId, timestamp);
+        this.creationItems.move({ creationItemId: creationItem.id, albumId: input.albumId });
         this.db.prepare('UPDATE documents SET updated_at = ? WHERE id = ?').run(timestamp, input.documentId);
         this.storage.recordChange('DOCUMENT', input.documentId, 'MOVE', { albumId: input.albumId });
       })
@@ -388,6 +386,7 @@ export class VideoDocumentRepository {
           .run(input.videoMaterialId, document.source.relationId, input.documentId, document.source.materialId);
         if (result.changes !== 1) throw new Error('VIDEO_DOCUMENT_SOURCE_REPLACEMENT_CONFLICT');
         this.db.prepare('UPDATE documents SET updated_at = ? WHERE id = ?').run(timestamp, input.documentId);
+        this.creationItems.touchForEntity({ kind: 'VIDEO_DOCUMENT', id: input.documentId }, timestamp);
         this.storage.recordChange('DOCUMENT_SOURCE_RELATION', document.source.relationId, 'REPLACE', {
           documentId: input.documentId,
           previousMaterialId: document.source.materialId,
@@ -508,6 +507,7 @@ export class VideoDocumentRepository {
       .prepare("UPDATE document_branches SET status = 'EDITABLE', updated_at = ? WHERE id = ?")
       .run(timestamp, input.branchId);
     this.db.prepare('UPDATE documents SET updated_at = ? WHERE id = ?').run(timestamp, text(branch.document_id));
+    this.creationItems.touchForEntity({ kind: 'VIDEO_DOCUMENT', id: text(branch.document_id) }, timestamp);
     this.storage.recordChange('DOCUMENT_DRAFT_REVISION', revisionId, 'CREATE', {
       branchId: input.branchId,
       draftId: text(branch.draft_id),
@@ -586,7 +586,11 @@ export class VideoDocumentRepository {
     reason: unknown,
     providerResult: { actualModel?: string | null; usage?: VideoDocumentTokenUsage | null } = {},
   ) {
-    return this.generationRuns.fail(runId, reason, providerResult);
+    const run = this.generationRuns.fail(runId, reason, providerResult);
+    if (run.finishedAt) {
+      this.creationItems.touchForEntity({ kind: 'VIDEO_DOCUMENT', id: run.documentId }, run.finishedAt);
+    }
+    return run;
   }
 
   interruptRunningGenerations() {
@@ -649,6 +653,8 @@ export class VideoDocumentRepository {
         ON CONFLICT(document_id) DO UPDATE SET image_asset_id = excluded.image_asset_id, updated_at = excluded.updated_at`,
       )
       .run(documentId, assetId, timestamp, timestamp);
+    this.db.prepare('UPDATE documents SET updated_at = ? WHERE id = ?').run(timestamp, documentId);
+    this.creationItems.touchForEntity({ kind: 'VIDEO_DOCUMENT', id: documentId }, timestamp);
     this.storage.recordChange('DOCUMENT_THUMBNAIL', documentId, 'UPSERT', { assetId });
   }
 
@@ -777,51 +783,6 @@ export class VideoDocumentRepository {
     this.storage.recordChange('DOCUMENT_DRAFT', draftId, 'CREATE', { branchId });
   }
 
-  private placeDocument(documentId: string, albumId: string, timestamp: string) {
-    const existing = this.db
-      .prepare(
-        `SELECT id, deleted_at FROM album_members
-        WHERE album_id = ? AND target_type = 'DOCUMENT' AND target_id = ?`,
-      )
-      .get(albumId, documentId) as JsonMap | undefined;
-    const sortOrder = Number(
-      (
-        this.db
-          .prepare(
-            'SELECT COALESCE(MAX(sort_order), -1) + 1 AS next_order FROM album_members WHERE album_id = ? AND deleted_at IS NULL',
-          )
-          .get(albumId) as JsonMap
-      ).next_order,
-    );
-    if (existing) {
-      this.db
-        .prepare('UPDATE album_members SET sort_order = ?, updated_at = ?, deleted_at = NULL WHERE id = ?')
-        .run(sortOrder, timestamp, text(existing.id));
-      this.storage.recordChange('ALBUM_MEMBER', text(existing.id), 'RESTORE', {
-        albumId,
-        targetType: 'DOCUMENT',
-        targetId: documentId,
-      });
-    } else {
-      const memberId = ulid();
-      this.db
-        .prepare(
-          `INSERT INTO album_members
-          (id, album_id, target_type, target_id, sort_order, created_at, updated_at, deleted_at)
-          VALUES (?, ?, 'DOCUMENT', ?, ?, ?, ?, NULL)`,
-        )
-        .run(memberId, albumId, documentId, sortOrder, timestamp, timestamp);
-      this.storage.recordChange('ALBUM_MEMBER', memberId, 'CREATE', {
-        albumId,
-        targetType: 'DOCUMENT',
-        targetId: documentId,
-      });
-    }
-    this.db
-      .prepare('UPDATE albums SET content_updated_at = ?, updated_at = ? WHERE id = ?')
-      .run(timestamp, timestamp, albumId);
-  }
-
   updateAudioInfo(sourceAssetId: string, audio: VideoDocumentAudioInfo) {
     const result = this.db
       .prepare(
@@ -838,12 +799,5 @@ export class VideoDocumentRepository {
   private requireDocument(documentId: string) {
     const found = this.db.prepare('SELECT 1 FROM documents WHERE id = ? AND deleted_at IS NULL').get(documentId);
     if (!found) throw new Error('Document not found');
-  }
-
-  private requireAlbum(albumId: string) {
-    const album = this.db.prepare('SELECT archived_at FROM albums WHERE id = ? AND deleted_at IS NULL').get(albumId) as
-      JsonMap | undefined;
-    if (!album) throw new Error('Album not found');
-    if (album.archived_at) throw new Error('Archived albums cannot receive documents');
   }
 }

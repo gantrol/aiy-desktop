@@ -58,6 +58,9 @@ interface Props {
   onOpenResult(seriesId: string, assetId: string): void;
   onOpenTerm(termId: string): void;
   onCopyText(text: string): void;
+  lifecycleBusy: boolean;
+  onArchive(item: MaterialLibraryItem): void;
+  onDelete(item: MaterialLibraryItem): void;
   onAddFavorite(): void;
   onRemoveFavorite(): void;
   onToggleAlbumMembership(
@@ -109,6 +112,9 @@ export function MaterialDetailPage({
   onOpenResult,
   onOpenTerm,
   onCopyText,
+  lifecycleBusy,
+  onArchive,
+  onDelete,
   onAddFavorite,
   onRemoveFavorite,
   onToggleAlbumMembership,
@@ -211,6 +217,9 @@ export function MaterialDetailPage({
       onOpenResult={(seriesId, assetId) => requestExit(() => onOpenResult(seriesId, assetId))}
       onOpenTerm={(termId) => requestExit(() => onOpenTerm(termId))}
       onCopyText={onCopyText}
+      lifecycleBusy={lifecycleBusy}
+      onArchive={onArchive}
+      onDelete={onDelete}
       onAddFavorite={onAddFavorite}
       onRemoveFavorite={() => (closeAfterRemoveFavorite ? requestExit(onRemoveFavorite) : onRemoveFavorite())}
       onToggleAlbumMembership={onToggleAlbumMembership}
@@ -282,6 +291,9 @@ function MaterialDetailBody({
   onOpenResult,
   onOpenTerm,
   onCopyText,
+  lifecycleBusy,
+  onArchive,
+  onDelete,
   onAddFavorite,
   onRemoveFavorite,
   onToggleAlbumMembership,
@@ -358,7 +370,16 @@ function MaterialDetailBody({
       />
 
       <div className="grid min-h-0 min-w-0 flex-1 grid-cols-1 grid-rows-[minmax(16rem,1fr)_minmax(0,1fr)] overflow-hidden lg:grid-cols-[minmax(0,1fr)_minmax(22rem,36%)] lg:grid-rows-1">
-        <MaterialDetailPreview item={item} title={title} video={video} notify={notify} revealContext={revealContext} />
+        <MaterialDetailPreview
+          item={item}
+          title={title}
+          video={video}
+          notify={notify}
+          revealContext={revealContext}
+          lifecycleBusy={lifecycleBusy}
+          onArchive={() => onRequestExit(() => onArchive(item))}
+          onDelete={() => onRequestExit(() => onDelete(item))}
+        />
 
         <aside className="flex min-h-0 min-w-0 flex-col border-t bg-background lg:border-t-0 lg:border-l">
           <ScrollArea
@@ -399,6 +420,9 @@ function MaterialDetailBody({
                 onOpenResult={onOpenResult}
                 onOpenTerm={onOpenTerm}
                 onRequestExit={onRequestExit}
+                lifecycleBusy={lifecycleBusy}
+                onArchive={onArchive}
+                onDelete={onDelete}
                 notify={notify}
                 revealContext={revealContext}
               />

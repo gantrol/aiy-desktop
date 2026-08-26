@@ -22,6 +22,7 @@ import { type JsonMap, mediaUrl, now, text } from '@/main/database/core/values';
 import type { ExecutionSnapshotRepository } from '@/main/database/generation/execution-snapshot-repository';
 import { rehomeCreationInputStashes } from '@/main/database/creations/creation-input-stash-repository';
 import { rehomeIdeaCreation } from '@/main/database/creations/idea-creation-lifecycle';
+import { CreationItemRepository } from '@/main/database/creations/creation-item-repository';
 import { sameImportedModelIdentity } from '@/main/database/assets/imported-image-metadata';
 import {
   linkExistingImportedOutput,
@@ -269,7 +270,7 @@ export class CreationImportRepository {
           promptKnowledge: input.prompt.knowledge,
         });
 
-        if (input.albumId) this.attachSeriesToAlbum(input.albumId, seriesId, createdAt);
+        this.registerNewImageCreation(seriesId, input.albumId ?? null, input.creationDraftId ?? null);
         const imported = this.insertOutputs(
           {
             seriesId,
@@ -459,6 +460,7 @@ export class CreationImportRepository {
       },
       { affectsFileView: displayName !== text(output.display_name) },
     );
+    new CreationItemRepository(this.storage).touchForSeries(text(output.series_id));
     return this.outputDto(input.outputId);
   }
 
@@ -513,38 +515,6 @@ export class CreationImportRepository {
     });
   }
 
-  private attachSeriesToAlbum(albumId: string, seriesId: string, timestamp: string) {
-    const sortOrder = Number(
-      (
-        this.db
-          .prepare(
-            `SELECT COALESCE(MAX(sort_order), -1) + 1 AS next_order
-      FROM album_members WHERE album_id = ? AND deleted_at IS NULL`,
-          )
-          .get(albumId) as JsonMap
-      ).next_order,
-    );
-    const memberId = ulid();
-    this.db
-      .prepare(
-        `INSERT INTO album_members
-      (id, album_id, target_type, target_id, sort_order, created_at, updated_at, deleted_at)
-      VALUES (?, ?, 'SERIES', ?, ?, ?, ?, NULL)`,
-      )
-      .run(memberId, albumId, seriesId, sortOrder, timestamp, timestamp);
-    this.db
-      .prepare(
-        `UPDATE albums SET updated_at = ?, content_updated_at = ?
-      WHERE id = ? AND deleted_at IS NULL`,
-      )
-      .run(timestamp, timestamp, albumId);
-    this.storage.recordChange('ALBUM_MEMBER', memberId, 'CREATE', {
-      albumId,
-      targetType: 'SERIES',
-      targetId: seriesId,
-    });
-  }
-
   private availableDisplayName(originalName: string, used: Set<string>) {
     const extension = path.extname(originalName);
     const base = path.basename(originalName, extension) || 'image';
@@ -595,7 +565,25 @@ export class CreationImportRepository {
       locale: titleLocale,
       source: context.source,
     });
+    this.registerNewImageCreation(seriesId, null, null);
     return seriesId;
+  }
+
+  private registerNewImageCreation(seriesId: string, albumId: string | null, creationDraftId: string | null) {
+    if (creationDraftId) {
+      const derivedVisual = this.db
+        .prepare('SELECT 1 FROM derived_visuals WHERE creation_draft_id = ?')
+        .get(creationDraftId);
+      if (derivedVisual) return;
+    }
+    new CreationItemRepository(this.storage).createWithForm({
+      albumId,
+      form: {
+        role: 'IMAGE_CREATION',
+        entity: { kind: 'PROMPT_SERIES', id: seriesId },
+        anchorKey: null,
+      },
+    });
   }
 
   private availableSeriesTitle(base: string) {

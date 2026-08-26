@@ -5,6 +5,7 @@ import Database from 'better-sqlite3';
 import { z } from 'zod';
 import codexUsageCacheRevision3Sql from '@/main/database/sql/v03-codex-usage-cache-revision-003.sql?raw';
 import codexUsageCacheRevision4Sql from '@/main/database/sql/v03-codex-usage-cache-revision-004.sql?raw';
+import codexUsageCacheRevision5Sql from '@/main/database/sql/v03-codex-usage-cache-revision-005.sql?raw';
 import {
   codexUsageCleanupCountsSchema,
   codexUsageHistoryItemSchema,
@@ -26,14 +27,16 @@ import {
   type CodexUsageInternalRow,
   type SessionReadResult,
 } from '@/main/extensions/codex-usage-investigator/session-reader';
+import type { CodexUsageServiceTierFallback } from '@/main/extensions/codex-usage-investigator/service-tier-fallback';
 
-const DATABASE_SCHEMA_VERSION = 4;
-const SOURCE_ANALYSIS_VERSION = 5;
+const DATABASE_SCHEMA_VERSION = 5;
+const SOURCE_ANALYSIS_VERSION = 6;
 const MAX_TASK_JSON_BYTES = 256 * 1024;
 const MAX_HISTORY_JSON_BYTES = 64 * 1024;
 const MAX_INVESTIGATION_JSON_BYTES = 32 * 1024 * 1024;
 const MAX_EXPORT_ROWS_JSON_BYTES = 256 * 1024 * 1024;
 const MAX_PROCESSED_JSON_BYTES = 256 * 1024 * 1024;
+const EVENT_PAGE_SIZE = 2_000;
 
 const taskRowSchema = z.object({ taskJson: z.string() }).strict();
 const historyRowSchema = z.object({ historyJson: z.string() }).strict();
@@ -58,10 +61,13 @@ const coverageRowSchema = z
 const storedEventRowSchema = z
   .object({
     sessionId: z.string(),
+    eventOrder: z.number().int().nonnegative().safe(),
     eventFingerprint: z.string().regex(/^[0-9a-f]{64}$/),
+    timestampMs: z.number().int().nonnegative().safe(),
     timestamp: z.string(),
     model: z.string(),
     serviceTier: z.enum(['STANDARD', 'FAST', 'UNKNOWN']),
+    serviceTierInferred: z.union([z.literal(0), z.literal(1)]),
     quotaKind: z.enum(['MAIN', 'SEPARATE', 'UNKNOWN']),
     limitId: z.string().nullable(),
     planType: z.string().nullable(),
@@ -80,10 +86,41 @@ const storedEventRowSchema = z
   })
   .strict();
 
+type StoredEventRow = z.infer<typeof storedEventRowSchema>;
+
+function eventFromStoredRow(row: StoredEventRow): CodexUsageInternalEvent {
+  return codexUsageInternalEventSchema.parse({
+    sessionId: row.sessionId,
+    eventFingerprint: row.eventFingerprint,
+    timestamp: row.timestamp,
+    model: row.model,
+    serviceTier: row.serviceTier,
+    serviceTierInferred: row.serviceTierInferred === 1,
+    quotaKind: row.quotaKind,
+    limitId: row.limitId,
+    planType: row.planType,
+    usedPercent: row.usedPercent,
+    windowDurationMins: row.windowDurationMins,
+    resetsAt: row.resetsAt,
+    secondaryUsedPercent: row.secondaryUsedPercent,
+    secondaryWindowDurationMins: row.secondaryWindowDurationMins,
+    secondaryResetsAt: row.secondaryResetsAt,
+    usage: {
+      inputTokens: row.inputTokens,
+      cachedInputTokens: row.cachedInputTokens,
+      cacheWriteInputTokens: row.cacheWriteInputTokens,
+      outputTokens: row.outputTokens,
+      reasoningOutputTokens: row.reasoningOutputTokens,
+      totalTokens: row.totalTokens,
+    },
+  });
+}
+
 export interface CodexUsageFileFingerprint {
   sessionId: string;
   fallbackModel: string | null;
   size: number;
+  mtimeMs: number;
   mtimeNs: string;
   ctimeNs: string;
 }
@@ -130,7 +167,12 @@ function historyItem(investigation: CodexUsageInvestigation): CodexUsageHistoryI
   });
 }
 
-export function codexUsageSourceCacheKey(file: CodexUsageFileFingerprint) {
+export function codexUsageSourceCacheKey(
+  file: CodexUsageFileFingerprint,
+  serviceTierFallback?: CodexUsageServiceTierFallback | null,
+) {
+  const applicableFallback =
+    serviceTierFallback && file.mtimeMs >= serviceTierFallback.effectiveFromEpoch ? serviceTierFallback : null;
   return createHash('sha256')
     .update(
       JSON.stringify({
@@ -140,6 +182,13 @@ export function codexUsageSourceCacheKey(file: CodexUsageFileFingerprint) {
         size: file.size,
         mtimeNs: file.mtimeNs,
         ctimeNs: file.ctimeNs,
+        serviceTierFallback: applicableFallback
+          ? {
+              serviceTier: applicableFallback.serviceTier,
+              effectiveFromEpoch: applicableFallback.effectiveFromEpoch,
+              sourceRevision: applicableFallback.sourceRevision,
+            }
+          : null,
       }),
       'utf8',
     )
@@ -153,7 +202,11 @@ export class CodexUsageCacheDatabase {
     const root = path.resolve(directory);
     mkdirSync(root, { recursive: true });
     this.database = new Database(path.join(root, 'usage-cache.sqlite'), { timeout: 5_000 });
-    this.database.pragma('journal_mode = WAL');
+    const journalMode = z
+      .string()
+      .parse(this.database.pragma('journal_mode', { simple: true }))
+      .toLowerCase();
+    if (journalMode !== 'wal') this.database.pragma('journal_mode = WAL');
     this.database.pragma('synchronous = NORMAL');
     this.database.pragma('foreign_keys = ON');
     this.migrate();
@@ -257,22 +310,26 @@ export class CodexUsageCacheDatabase {
     }
   }
 
-  hasIngestedSource(file: CodexUsageFileFingerprint) {
+  hasIngestedSource(file: CodexUsageFileFingerprint, serviceTierFallback?: CodexUsageServiceTierFallback | null) {
     const row = sourceKeyRowSchema.safeParse(
       this.database
         .prepare('SELECT cache_key AS cacheKey FROM usage_source_files WHERE session_id = ?')
         .get(file.sessionId),
     );
-    return row.success && row.data.cacheKey === codexUsageSourceCacheKey(file);
+    return row.success && row.data.cacheKey === codexUsageSourceCacheKey(file, serviceTierFallback);
   }
 
-  replaceIngestedSource(file: CodexUsageFileFingerprint, result: SessionReadResult) {
+  replaceIngestedSource(
+    file: CodexUsageFileFingerprint,
+    result: SessionReadResult,
+    serviceTierFallback?: CodexUsageServiceTierFallback | null,
+  ) {
     const parsed = codexUsageSessionReadResultSchema.parse(result);
     const events = [...parsed.events].sort(
       (left, right) =>
         Date.parse(left.timestamp) - Date.parse(right.timestamp) || left.model.localeCompare(right.model),
     );
-    const cacheKey = codexUsageSourceCacheKey(file);
+    const cacheKey = codexUsageSourceCacheKey(file, serviceTierFallback);
     const firstEventMs = events.length ? Date.parse(events[0]!.timestamp) : null;
     const lastEventMs = events.length ? Date.parse(events.at(-1)!.timestamp) : null;
     const updatedAt = new Date().toISOString();
@@ -296,12 +353,13 @@ export class CodexUsageCacheDatabase {
     );
     const insertEvent = this.database.prepare(
       `INSERT INTO usage_events (
-        source_session_id, event_order, event_fingerprint, timestamp_ms, timestamp, model, service_tier, quota_kind,
+        source_session_id, event_order, event_fingerprint, timestamp_ms, timestamp, model,
+        service_tier, service_tier_inferred, quota_kind,
         limit_id, plan_type, used_percent, window_duration_mins, resets_at,
         secondary_used_percent, secondary_window_duration_mins, secondary_resets_at,
         input_tokens, cached_input_tokens, cache_write_input_tokens, output_tokens,
         reasoning_output_tokens, total_tokens
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     );
     this.database.transaction(() => {
       upsertSource.run(
@@ -328,6 +386,7 @@ export class CodexUsageCacheDatabase {
           event.timestamp,
           event.model,
           event.serviceTier,
+          event.serviceTierInferred ? 1 : 0,
           event.quotaKind,
           event.limitId,
           event.planType,
@@ -366,15 +425,17 @@ export class CodexUsageCacheDatabase {
     );
   }
 
-  *events(fromEpoch: number | null, toEpoch: number): Iterable<CodexUsageInternalEvent> {
-    const rows = this.database
-      .prepare(
-        `SELECT
+  *eventPages(fromEpoch: number | null, toEpoch: number): Iterable<ReadonlyArray<CodexUsageInternalEvent>> {
+    const statement = this.database.prepare(
+      `SELECT
           current.source_session_id AS sessionId,
+          current.event_order AS eventOrder,
           current.event_fingerprint AS eventFingerprint,
+          current.timestamp_ms AS timestampMs,
           current.timestamp,
           current.model,
           current.service_tier AS serviceTier,
+          current.service_tier_inferred AS serviceTierInferred,
           current.quota_kind AS quotaKind,
           current.limit_id AS limitId,
           current.plan_type AS planType,
@@ -392,6 +453,7 @@ export class CodexUsageCacheDatabase {
           current.total_tokens AS totalTokens
          FROM usage_events AS current
          WHERE current.timestamp_ms >= COALESCE(?, 0) AND current.timestamp_ms <= ?
+           AND (current.timestamp_ms, current.source_session_id, current.event_order) > (?, ?, ?)
            AND (
              current.total_tokens = 0
              OR NOT EXISTS (
@@ -401,43 +463,35 @@ export class CodexUsageCacheDatabase {
                  AND previous.total_tokens > 0
                  AND previous.source_session_id <> current.source_session_id
                  AND (
-                   previous.timestamp_ms < current.timestamp_ms
+                   previous.service_tier_inferred < current.service_tier_inferred
                    OR (
-                     previous.timestamp_ms = current.timestamp_ms
-                     AND previous.source_session_id < current.source_session_id
+                     previous.service_tier_inferred = current.service_tier_inferred
+                     AND (previous.timestamp_ms, previous.source_session_id)
+                       < (current.timestamp_ms, current.source_session_id)
                    )
                  )
              )
            )
-         ORDER BY current.timestamp_ms ASC, current.source_session_id ASC, current.event_order ASC`,
-      )
-      .iterate(fromEpoch, toEpoch);
-    for (const raw of rows) {
-      const row = storedEventRowSchema.parse(raw);
-      yield codexUsageInternalEventSchema.parse({
-        sessionId: row.sessionId,
-        eventFingerprint: row.eventFingerprint,
-        timestamp: row.timestamp,
-        model: row.model,
-        serviceTier: row.serviceTier,
-        quotaKind: row.quotaKind,
-        limitId: row.limitId,
-        planType: row.planType,
-        usedPercent: row.usedPercent,
-        windowDurationMins: row.windowDurationMins,
-        resetsAt: row.resetsAt,
-        secondaryUsedPercent: row.secondaryUsedPercent,
-        secondaryWindowDurationMins: row.secondaryWindowDurationMins,
-        secondaryResetsAt: row.secondaryResetsAt,
-        usage: {
-          inputTokens: row.inputTokens,
-          cachedInputTokens: row.cachedInputTokens,
-          cacheWriteInputTokens: row.cacheWriteInputTokens,
-          outputTokens: row.outputTokens,
-          reasoningOutputTokens: row.reasoningOutputTokens,
-          totalTokens: row.totalTokens,
-        },
-      });
+         ORDER BY current.timestamp_ms ASC, current.source_session_id ASC, current.event_order ASC
+         LIMIT ?`,
+    );
+    let cursor: Pick<StoredEventRow, 'timestampMs' | 'sessionId' | 'eventOrder'> = {
+      timestampMs: (fromEpoch ?? 0) - 1,
+      sessionId: '',
+      eventOrder: 0,
+    };
+    while (true) {
+      const rows = z
+        .array(storedEventRowSchema)
+        .max(EVENT_PAGE_SIZE)
+        .parse(
+          statement.all(fromEpoch, toEpoch, cursor.timestampMs, cursor.sessionId, cursor.eventOrder, EVENT_PAGE_SIZE),
+        );
+      if (!rows.length) return;
+      yield rows.map(eventFromStoredRow);
+      const last = rows.at(-1);
+      if (!last || rows.length < EVENT_PAGE_SIZE) return;
+      cursor = last;
     }
   }
 
@@ -624,7 +678,11 @@ export class CodexUsageCacheDatabase {
       .array(sqliteTableInfoRowSchema)
       .parse(this.database.pragma('table_info(usage_events)'))
       .some((column) => column.name === 'event_fingerprint');
-    if (version === DATABASE_SCHEMA_VERSION && hasEventFingerprintColumn) return;
+    const hasServiceTierInferredColumn = z
+      .array(sqliteTableInfoRowSchema)
+      .parse(this.database.pragma('table_info(usage_events)'))
+      .some((column) => column.name === 'service_tier_inferred');
+    if (version === DATABASE_SCHEMA_VERSION && hasEventFingerprintColumn && hasServiceTierInferredColumn) return;
     this.database.transaction(() => {
       if (version < 1) {
         this.database.exec(
@@ -710,6 +768,7 @@ export class CodexUsageCacheDatabase {
       }
       if (version < 3) this.database.exec(codexUsageCacheRevision3Sql);
       if (!hasEventFingerprintColumn) this.database.exec(codexUsageCacheRevision4Sql);
+      if (!hasServiceTierInferredColumn) this.database.exec(codexUsageCacheRevision5Sql);
       this.database.pragma(`user_version = ${DATABASE_SCHEMA_VERSION}`);
     })();
   }

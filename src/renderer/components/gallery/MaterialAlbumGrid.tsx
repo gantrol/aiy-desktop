@@ -20,6 +20,8 @@ interface Props {
   onMoveAlbum(albumId: string, parentAlbumId: string | null): Promise<void>;
   onCollectMaterials(albumId: string, targets: MaterialSelectionTargetInput[]): Promise<void>;
   onImportFiles?(album: MaterialAlbumDto, files: File[]): void;
+  onArchive(album: MaterialAlbumDto): void;
+  onDelete(album: MaterialAlbumDto): void;
 }
 
 function albumForCard(summary: MaterialAlbumBrowseSummary): MaterialAlbumDto {
@@ -39,6 +41,8 @@ export function MaterialAlbumGrid({
   onMoveAlbum,
   onCollectMaterials,
   onImportFiles,
+  onArchive,
+  onDelete,
 }: Props) {
   const { messages } = useI18n();
   const cardAlbums = useMemo(() => albums.map(albumForCard), [albums]);
@@ -82,6 +86,8 @@ export function MaterialAlbumGrid({
               onMoveAlbum={onMoveAlbum}
               onCollectMaterials={onCollectMaterials}
               onImportFiles={onImportFiles}
+              onArchive={onArchive}
+              onDelete={onDelete}
             />
           );
         }}

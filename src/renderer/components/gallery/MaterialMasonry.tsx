@@ -28,6 +28,9 @@ export interface MaterialMasonryProps {
   onEnterSelection(item: MaterialLibraryItem): void;
   onToggleSelection(item: MaterialLibraryItem): void;
   onCopyText(text: string): void;
+  onArchive?(item: MaterialLibraryItem): void;
+  onDelete?(item: MaterialLibraryItem): void;
+  lifecycleBusy?: boolean;
   notify(message: string): void;
   minColumnWidth?: number;
   gap?: number;
@@ -57,6 +60,9 @@ export function MaterialMasonry({
   onEnterSelection,
   onToggleSelection,
   onCopyText,
+  onArchive,
+  onDelete,
+  lifecycleBusy,
   notify,
   minColumnWidth = DEFAULT_MIN_COLUMN_WIDTH,
   gap = DEFAULT_GAP,
@@ -88,6 +94,9 @@ export function MaterialMasonry({
           onEnterSelection={onEnterSelection}
           onToggleSelection={onToggleSelection}
           onCopyText={onCopyText}
+          onArchive={onArchive}
+          onDelete={onDelete}
+          lifecycleBusy={lifecycleBusy}
           notify={notify}
           onDragStart={onDragStart}
           revealContext={revealContextForItem?.(items[index]) ?? revealContext}

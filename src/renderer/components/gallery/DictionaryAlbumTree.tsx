@@ -15,9 +15,9 @@ import {
   type TreeBranchItemTopology,
 } from '@/renderer/components/albums/treeConnectionGeometry';
 import {
-  useAlbumTreeExpansion,
-  type AlbumTreeDiagnosticSink,
-} from '@/renderer/components/albums/useAlbumTreeExpansion';
+  useTreeBranchExpansion,
+  type TreeBranchDiagnosticSink,
+} from '@/renderer/components/albums/useTreeBranchExpansion';
 import { useDeferredSingleDoubleClick } from '@/renderer/components/albums/useDeferredSingleDoubleClick';
 import { ActionContextMenuItems, ActionMenuButton, type ActionMenuAction } from '@/renderer/components/ui/action-menu';
 import { Button } from '@/renderer/components/ui/button';
@@ -35,9 +35,9 @@ const pageSize = 30;
 interface Props {
   tree: DictionaryMaterialTree;
   selection: GalleryDictionaryCollection | null;
-  expansion: ReturnType<typeof useAlbumTreeExpansion>;
+  expansion: ReturnType<typeof useTreeBranchExpansion>;
   click: ReturnType<typeof useDeferredSingleDoubleClick>;
-  diagnostics?: AlbumTreeDiagnosticSink;
+  diagnostics?: TreeBranchDiagnosticSink;
   openLabel: string;
   expandLabel: string;
   collapseLabel: string;
@@ -143,6 +143,7 @@ export function DictionaryAlbumTree({
     const content = (
       <div
         data-album-id={id}
+        data-tree-node-id={id}
         className={cn(
           'group relative flex h-[4.25rem] min-w-0 items-center gap-1 rounded-lg px-1 transition-colors hover:bg-hover',
           active &&
@@ -158,7 +159,7 @@ export function DictionaryAlbumTree({
           overlayStyle="solid"
           disclosureInteractive={false}
           branchTopology={branchTopology}
-          onPullDownExpand={() => expansion.setHover(id, true)}
+          onGestureExpand={() => expansion.expandFromGesture(id)}
           onPointerTrackStart={(clientY) => expansion.beginPointerTrack(id, clientY)}
           onPointerTrack={(clientY) => expansion.trackPointer(id, clientY)}
           onMediaAdmitted={
@@ -271,6 +272,7 @@ export function DictionaryAlbumTree({
         onOpenChange={(next) => expansion.setPersistent(id, next)}
         className="relative"
         data-album-branch-id={id}
+        data-tree-branch-id={id}
       >
         <TreeBranchTransitRail topology={topology} />
         <ContextMenu>
@@ -334,6 +336,7 @@ export function DictionaryAlbumTree({
         onOpenChange={(next) => expansion.setPersistent(id, next)}
         className="relative"
         data-album-branch-id={id}
+        data-tree-branch-id={id}
       >
         <ContextMenu>
           <ContextMenuTrigger asChild>{content}</ContextMenuTrigger>

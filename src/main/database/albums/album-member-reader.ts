@@ -31,31 +31,29 @@ export function albumMemberDtosByAlbum(
         asset.id AS asset_id, asset.kind AS asset_kind, asset.origin_type AS asset_origin_type,
         asset.width AS asset_width, asset.height AS asset_height, asset.mime_type AS asset_mime_type,
         asset.byte_size AS asset_byte_size, asset.created_at AS asset_created_at,
-        series.title AS series_title, series.title_locale AS series_title_locale,
         child_album.title AS child_album_title, child_album.title_locale AS child_album_title_locale
       FROM album_members member
       LEFT JOIN materials material ON member.target_type = 'MATERIAL'
-        AND material.id = member.target_id AND material.deleted_at IS NULL
+        AND material.id = member.target_id AND material.deleted_at IS NULL AND material.archived_at IS NULL
       LEFT JOIN image_assets asset ON material.kind IN ('IMAGE', 'VIDEO')
         AND asset.id = material.image_asset_id AND asset.deleted_at IS NULL
-      LEFT JOIN prompt_series series ON member.target_type = 'SERIES'
-        AND series.id = member.target_id AND series.deleted_at IS NULL
       LEFT JOIN albums child_album ON member.target_type = 'ALBUM'
         AND child_album.id = member.target_id AND child_album.deleted_at IS NULL
+      LEFT JOIN creation_items creation_item ON member.target_type = 'CREATION_ITEM'
+        AND creation_item.id = member.target_id
+        AND creation_item.archived_at IS NULL AND creation_item.deleted_at IS NULL
       JOIN albums owner_album ON owner_album.id = member.album_id AND owner_album.deleted_at IS NULL
       WHERE (? IS NULL OR member.album_id = ?) AND member.deleted_at IS NULL
         AND (
           (member.target_type = 'MATERIAL' AND material.id IS NOT NULL
             AND (material.kind = 'TEXT' OR asset.id IS NOT NULL))
-          OR (member.target_type = 'SERIES' AND series.id IS NOT NULL)
           OR (member.target_type = 'ALBUM' AND child_album.id IS NOT NULL)
+          OR (member.target_type = 'CREATION_ITEM' AND creation_item.id IS NOT NULL)
         )
       ORDER BY member.album_id, member.sort_order, member.id`,
     )
     .all(albumId, albumId) as JsonMap[];
-  const seriesIds = rows.filter((row) => text(row.target_type) === 'SERIES').map((row) => text(row.target_id));
   const childAlbumIds = rows.filter((row) => text(row.target_type) === 'ALBUM').map((row) => text(row.target_id));
-  const seriesLocalizations = titleLocalizationsByOwner(db, 'PROMPT_SERIES', seriesIds);
   const albumLocalizations = titleLocalizationsByOwner(db, 'ALBUM', childAlbumIds);
   const result = new Map<string, AlbumMemberDto[]>();
   for (const row of rows) {
@@ -70,14 +68,6 @@ export function albumMemberDtosByAlbum(
       sortOrder: Number(row.sort_order),
       imageAsset: targetType === 'MATERIAL' && text(row.material_kind) !== 'TEXT' ? assetDto(row) : null,
       materialText: targetType === 'MATERIAL' && text(row.material_kind) === 'TEXT' ? text(row.material_text) : null,
-      seriesTitle:
-        targetType === 'SERIES'
-          ? resolveStoredTitle(
-              { title: row.series_title, title_locale: row.series_title_locale },
-              locale,
-              seriesLocalizations.get(targetId) ?? [],
-            )
-          : null,
       childAlbumTitle:
         targetType === 'ALBUM'
           ? resolveStoredTitle(

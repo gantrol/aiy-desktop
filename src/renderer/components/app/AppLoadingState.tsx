@@ -33,8 +33,8 @@ const POLAROID_PREVIEW_SLOT_ORDER = [4, 2, 0, 1, 3] as const;
 const POLAROID_CARD_SCALES = [0.8, 0.95, 1.12, 0.95, 0.8] as const;
 const PLACEHOLDER_ASPECTS = [0.75, 0.5625, 1, 0.8, 1.5, 0.6667, 1.7778, 0.75] as const;
 const FILM_STRIP_CLASSES = [
-  'app-loading-filmstrip app-loading-filmstrip-primary absolute -inset-y-48 left-[30%] z-[2] w-48 -translate-x-1/2 rotate-[4deg] overflow-hidden rounded-none drop-shadow-sm',
-  'app-loading-filmstrip app-loading-filmstrip-secondary absolute -inset-y-48 left-[70%] z-[1] w-48 -translate-x-1/2 -rotate-[4deg] scale-[0.875] overflow-hidden rounded-none drop-shadow-sm',
+  'app-loading-filmstrip app-loading-filmstrip-primary absolute -inset-y-48 left-[30%] z-[2] w-48 -translate-x-1/2 rotate-[4deg] overflow-hidden rounded-none',
+  'app-loading-filmstrip app-loading-filmstrip-secondary absolute -inset-y-48 left-[70%] z-[1] w-48 -translate-x-1/2 -rotate-[4deg] scale-[0.875] overflow-hidden rounded-none',
 ] as const;
 export type AppLoadingVariant = 'portrait' | 'ribbon';
 
@@ -85,6 +85,7 @@ function readAppLoadingVariants() {
     transitionShowcase: DEFAULT_APP_LOADING_VARIANT,
     packs: variantAt(4),
     aiCenter: variantAt(5),
+    contentManagement: DEFAULT_APP_LOADING_VARIANT,
   } as const;
 }
 
@@ -317,7 +318,7 @@ function FilmFrame({
             mediaState={mediaState}
             preloadRoot={rootRef}
             loadImmediately={loadAllPreviews}
-            imageClassName="object-cover"
+            imageClassName="bg-media-surround-light object-contain"
             key={`${duplicate}-${frame.preview.url}-${frame.preview.detailUrl ?? frame.preview.url}`}
           />
         )}

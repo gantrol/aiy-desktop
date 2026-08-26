@@ -2,6 +2,7 @@ import { ulid } from 'ulid';
 import type { GenerationErrorDetailsDto } from '@/shared/contracts';
 import type { LibraryStorage } from '@/main/database/core/storage';
 import { type JsonMap, now, text } from '@/main/database/core/values';
+import { CreationItemRepository } from '@/main/database/creations/creation-item-repository';
 
 const ACTIVE_STATUSES = new Set(['QUEUED', 'RUNNING']);
 const TERMINAL_STATUSES = new Set(['SUCCEEDED', 'FAILED', 'CANCELLED', 'INTERRUPTED']);
@@ -86,6 +87,18 @@ export class GenerationJobRepository {
 
   private get db() {
     return this.storage.db;
+  }
+
+  private touchCreationItemForRun(runId: string, timestamp: string) {
+    const row = this.db
+      .prepare(
+        `SELECT version.series_id
+        FROM generation_runs run
+        JOIN prompt_versions version ON version.id = run.prompt_version_id
+        WHERE run.id = ?`,
+      )
+      .get(runId) as JsonMap | undefined;
+    if (row) new CreationItemRepository(this.storage).touchForSeries(text(row.series_id), timestamp);
   }
 
   /**
@@ -484,6 +497,7 @@ export class GenerationJobRepository {
         { errorCode: nextErrorCode, ...(errorDetails ? { errorDetails } : {}) },
         changedAt,
       );
+      if (finishedAt) this.touchCreationItemForRun(runId, finishedAt);
       return this.getForRun(runId)!;
     })();
   }
@@ -556,6 +570,7 @@ export class GenerationJobRepository {
         { assetId, providerOutputId: providerOutputId ?? null },
         finishedAt,
       );
+      this.touchCreationItemForRun(runId, finishedAt);
       return this.getForRun(runId)!;
     })();
   }

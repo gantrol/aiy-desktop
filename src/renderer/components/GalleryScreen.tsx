@@ -10,6 +10,7 @@ import {
 } from 'react';
 import type {
   AssetFileRevealContext,
+  CreationItemDto,
   CreationRelationFilter,
   FacetDefinitionDto,
   FavoriteTextMaterialDto,
@@ -22,6 +23,7 @@ import type {
   MaterialAlbumDto,
   MaterialAlbumMemberDto,
   MaterialSelectionTargetInput,
+  ContentLifecycleTarget,
   NewExternalCreationImportResult,
   PromptSeriesDto,
   TermListItem,
@@ -44,6 +46,7 @@ import { MaterialBatchToolbar } from '@/renderer/components/gallery/MaterialBatc
 import { loadGalleryPreferences, saveGalleryPreferences } from '@/renderer/components/gallery/galleryPreferences';
 import {
   mediaMaterial,
+  materialTitle,
   textMaterial,
   type MaterialLibraryItem,
   type SelectionModifiers,
@@ -57,6 +60,10 @@ import { buildMaterialAlbumTree } from '@/renderer/components/gallery/materialAl
 import { useCreationCollectionBrowse } from '@/renderer/components/gallery/useCreationCollectionBrowse';
 import { nextGallerySelection } from '@/renderer/components/gallery/gallerySelection';
 import { beginNativeMaterialsDrag, writeMaterialsDrag } from '@/renderer/components/albums/albumDrag';
+import {
+  useContentLifecycleActions,
+  type ContentLifecycleActionRequest,
+} from '@/renderer/components/albums/useContentLifecycleActions';
 import { GalleryIntakeAdapter, type GalleryIntakeAdapterHandle } from '@/renderer/features/intake/GalleryIntakeAdapter';
 import {
   navigationLocationKey,
@@ -85,6 +92,7 @@ interface Props {
   terms: TermListItem[];
   facets: FacetDefinitionDto[];
   series: PromptSeriesDto[];
+  creationItems: CreationItemDto[];
 }
 
 const pageSize = 24;
@@ -100,6 +108,13 @@ function sourceForCollection(collection: GalleryCollection): MaterialSourceFilte
 function categoryForCollection(collection: GalleryCollection): MaterialLibraryCategory {
   if (collection.kind === 'dictionary') return 'DICTIONARY';
   return 'MATERIAL';
+}
+
+function contentLifecycleTargetForMaterial(item: MaterialLibraryItem): ContentLifecycleTarget {
+  if (item.kind === 'TEXT') return { entityType: 'MATERIAL', entityId: item.text.id };
+  return item.image.materialId
+    ? { entityType: 'MATERIAL', entityId: item.image.materialId }
+    : { entityType: 'IMAGE_ASSET', entityId: item.image.asset.id };
 }
 
 interface GallerySnapshot {
@@ -135,6 +150,7 @@ export function GalleryScreen({
   terms,
   facets = [],
   series,
+  creationItems,
 }: Props) {
   const { locale, messages } = useI18n();
   const l = messages.gallery.screen;
@@ -827,6 +843,11 @@ export function GalleryScreen({
       ? busyFavoriteMaterialId === selectedItem.image.asset.id ||
         busyFavoriteMaterialId === selectedItem.image.materialId
       : Boolean(selectedItem && busyFavoriteMaterialId === selectedItem.text.id);
+  const contentLifecycleActions = useContentLifecycleActions({
+    notify,
+    onApplied: finishGalleryContentLifecycleAction,
+  });
+  const contentLifecycleBusy = albumMutationBusy || contentLifecycleActions.busy;
   const searchPending = query.trim() !== debouncedQuery;
   const showingPreviousResults = Boolean(materials.length) && displayedQueryKey !== galleryQueryKey;
 
@@ -1089,6 +1110,49 @@ export function GalleryScreen({
     }
   }
 
+  async function finishGalleryContentLifecycleAction({ target }: ContentLifecycleActionRequest) {
+    if (target.entityType === 'ALBUM' && activeAlbumId) {
+      let currentAlbumId: string | undefined = activeAlbumId;
+      while (currentAlbumId) {
+        if (currentAlbumId === target.entityId) {
+          navigateCollection({ kind: 'all' }, 'replace');
+          break;
+        }
+        currentAlbumId = materialAlbumBrowse.tree.parentById.get(currentAlbumId);
+      }
+    } else if (selectedItem) {
+      const selectedTarget = contentLifecycleTargetForMaterial(selectedItem);
+      if (selectedTarget.entityType === target.entityType && selectedTarget.entityId === target.entityId) {
+        closeMaterialInspector();
+      }
+    }
+    galleryCacheRef.current.clear();
+    setRetryKey((value) => value + 1);
+    await Promise.all([reloadAlbums(), refresh()]);
+  }
+
+  function requestMaterialLifecycle(action: 'ARCHIVE' | 'DELETE', item: MaterialLibraryItem) {
+    const fallbackTitle =
+      item.kind === 'TEXT'
+        ? messages.gallery.card.textMaterial
+        : item.image.asset.kind === 'GENERATED'
+          ? messages.gallery.card.generated
+          : messages.gallery.card.reference;
+    return contentLifecycleActions.request({
+      action,
+      target: contentLifecycleTargetForMaterial(item),
+      title: materialTitle(item, fallbackTitle),
+    });
+  }
+
+  function requestAlbumLifecycle(action: 'ARCHIVE' | 'DELETE', album: MaterialAlbumDto) {
+    return contentLifecycleActions.request({
+      action,
+      target: { entityType: 'ALBUM', entityId: album.id },
+      title: album.title,
+    });
+  }
+
   async function reloadAlbums() {
     setAlbums(await window.desktopApi.materialAlbumsList({ locale }));
   }
@@ -1112,15 +1176,15 @@ export function GalleryScreen({
 
   function canMoveCreationAlbum(albumId: string, parentAlbumId: string | null) {
     const source = creationAlbumTree.byId.get(albumId);
-    const movableGroup = source?.systemKey === 'CREATION_GROUP' && Boolean(source.sourceAlbumId);
+    const movableAlbum = source?.systemKey === 'CREATION_GROUP' && Boolean(source.sourceAlbumId);
     const movableSeries = source?.systemKey === 'CREATION_SERIES' && Boolean(source.sourceSeriesId);
-    if (!source || (!movableGroup && !movableSeries)) return false;
+    if (!source || (!movableAlbum && !movableSeries)) return false;
     const target = parentAlbumId ? creationAlbumTree.byId.get(parentAlbumId) : null;
     if (parentAlbumId && (target?.systemKey !== 'CREATION_GROUP' || !target.sourceAlbumId)) return false;
     const currentParent = source.parentId ? creationAlbumTree.byId.get(source.parentId) : null;
     const currentParentAlbumId = currentParent?.systemKey === 'CREATION_GROUP' ? currentParent.id : null;
     if (currentParentAlbumId === parentAlbumId) return false;
-    if (!movableGroup || parentAlbumId === null) return true;
+    if (!movableAlbum || parentAlbumId === null) return true;
 
     const visited = new Set<string>();
     let currentId: string | undefined = parentAlbumId;
@@ -1169,7 +1233,7 @@ export function GalleryScreen({
   }
 
   async function moveAlbum(albumId: string, parentAlbumId: string | null) {
-    if (albumMutationBusy || !canMoveMaterialAlbum(albumId, parentAlbumId)) return;
+    if (contentLifecycleBusy || !canMoveMaterialAlbum(albumId, parentAlbumId)) return;
     setAlbumMutationBusy(true);
     try {
       await window.desktopApi.materialAlbumsMove({ albumId, parentAlbumId, locale });
@@ -1188,7 +1252,7 @@ export function GalleryScreen({
   }
 
   async function moveCreationAlbum(albumId: string, parentAlbumId: string | null) {
-    if (albumMutationBusy || !canMoveCreationAlbum(albumId, parentAlbumId)) return;
+    if (contentLifecycleBusy || !canMoveCreationAlbum(albumId, parentAlbumId)) return;
     const source = creationAlbumTree.byId.get(albumId);
     const target = parentAlbumId ? creationAlbumTree.byId.get(parentAlbumId) : null;
     if (!source) return;
@@ -1198,7 +1262,13 @@ export function GalleryScreen({
       if (source.systemKey === 'CREATION_GROUP' && source.sourceAlbumId) {
         await window.desktopApi.albumsMove({ albumId: source.sourceAlbumId, parentAlbumId: targetSourceAlbumId });
       } else if (source.systemKey === 'CREATION_SERIES' && source.sourceSeriesId) {
-        await window.desktopApi.albumsMoveSeries({ seriesIds: [source.sourceSeriesId], albumId: targetSourceAlbumId });
+        const item = creationItems.find((candidate) =>
+          candidate.forms.some(
+            (form) => form.entity.kind === 'PROMPT_SERIES' && form.entity.id === source.sourceSeriesId,
+          ),
+        );
+        if (!item) throw new Error('The containing creation item is unavailable');
+        await window.desktopApi.creationItemMove({ creationItemId: item.id, albumId: targetSourceAlbumId });
       } else {
         return;
       }
@@ -1217,22 +1287,11 @@ export function GalleryScreen({
   }
 
   async function deleteAlbum(album: MaterialAlbumDto) {
-    setAlbumMutationBusy(true);
-    try {
-      await window.desktopApi.materialAlbumsDelete(album.id);
-      galleryCacheRef.current.clear();
-      await reloadAlbums();
-      setRetryKey((value) => value + 1);
-      if (activeAlbumId === album.id) navigateCollection({ kind: 'all' }, 'replace');
-      notify(messages.gallery.albums.deleted);
-    } catch (reason) {
-      notify(
-        `${messages.gallery.albums.operationFailed}: ${reason instanceof Error ? reason.message : String(reason)}`,
-      );
-      throw reason;
-    } finally {
-      setAlbumMutationBusy(false);
-    }
+    await requestAlbumLifecycle('DELETE', album);
+  }
+
+  async function archiveAlbum(album: MaterialAlbumDto) {
+    await requestAlbumLifecycle('ARCHIVE', album);
   }
 
   async function collectDroppedMaterials(albumId: string, targets: MaterialSelectionTargetInput[]) {
@@ -1408,7 +1467,7 @@ export function GalleryScreen({
               dictionarySelection={dictionarySelection}
               dictionaryTree={dictionaryTree}
               labels={albumLabels}
-              busy={albumMutationBusy}
+              busy={contentLifecycleBusy}
               onSelectCategory={(nextCategory) => {
                 if (nextCategory === 'DICTIONARY') navigateCollection({ kind: 'dictionary', scope: 'ALL' });
                 else navigateCollection({ kind: 'all' });
@@ -1417,6 +1476,7 @@ export function GalleryScreen({
               onSelectDictionary={navigateCollection}
               onCreate={createAlbum}
               onRename={renameAlbum}
+              onArchive={archiveAlbum}
               onDelete={deleteAlbum}
               onMove={moveAlbum}
               canMoveCreationAlbum={canMoveCreationAlbum}
@@ -1441,6 +1501,9 @@ export function GalleryScreen({
                   onOpenAlbum={
                     activeAlbumSummary ? (albumId) => navigateCollection({ kind: 'album', albumId }) : undefined
                   }
+                  busy={contentLifecycleBusy}
+                  onArchive={activeHeaderAlbum.kind === 'USER' ? (album) => void archiveAlbum(album) : undefined}
+                  onDelete={activeHeaderAlbum.kind === 'USER' ? (album) => void deleteAlbum(album) : undefined}
                 />
               )}
               {dictionaryActive && (
@@ -1546,7 +1609,7 @@ export function GalleryScreen({
                 showingPreviousResults={showingPreviousResults}
                 searchActive={Boolean(debouncedQuery)}
                 unratedActive={unratedDimensions.length > 0}
-                albumMutationBusy={albumMutationBusy}
+                albumMutationBusy={contentLifecycleBusy}
                 viewportRef={viewportRef}
                 pageEndRef={pageEndRef}
                 onOpenAlbum={(albumId) => navigateCollection({ kind: 'album', albumId })}
@@ -1558,10 +1621,14 @@ export function GalleryScreen({
                 onImportFiles={(album, files) =>
                   intakeRef.current?.reviewFiles(files, { albumId: album.id, albumName: album.title })
                 }
+                onArchiveAlbum={(album) => void archiveAlbum(album)}
+                onDeleteAlbum={(album) => void deleteAlbum(album)}
                 onSelect={stableSelectMaterial}
                 onEnterSelection={stableEnterSelection}
                 onToggleSelection={stableToggleSelection}
                 onCopyText={stableCopyText}
+                onArchiveMaterial={(item) => void requestMaterialLifecycle('ARCHIVE', item)}
+                onDeleteMaterial={(item) => void requestMaterialLifecycle('DELETE', item)}
                 notify={stableNotify}
                 onDragStart={stableStartMaterialDrag}
                 revealContextForItem={revealContextForMaterial}
@@ -1594,6 +1661,9 @@ export function GalleryScreen({
             onOpenResult={(seriesId, assetId) => onOpenResult(activeAlbum?.sourceSeriesId ?? seriesId, assetId)}
             onOpenTerm={onOpenTerm}
             onCopyText={(text) => void copyText(text)}
+            lifecycleBusy={contentLifecycleBusy}
+            onArchive={(item) => void requestMaterialLifecycle('ARCHIVE', item)}
+            onDelete={(item) => void requestMaterialLifecycle('DELETE', item)}
             onAddFavorite={() => void addFavorite(selectedItem)}
             onRemoveFavorite={() => {
               if (selectedFavoriteMaterialId) void removeFavorite(selectedFavoriteMaterialId);
@@ -1609,6 +1679,7 @@ export function GalleryScreen({
             revealContext={revealContextForMaterial(selectedItem)}
           />
         )}
+        {contentLifecycleActions.confirmationDialog}
       </section>
     </GalleryIntakeAdapter>
   );

@@ -84,7 +84,7 @@ export function VideoDocumentPlayerControls({
   const safeCurrentTimeMs = Math.min(Math.max(0, currentTimeMs), safeDurationMs || currentTimeMs);
 
   return (
-    <div className="space-y-2 border-t border-white/10 bg-media-surround-dark px-2.5 py-2 text-white">
+    <div className="space-y-2 border-t border-media-checker-a/10 bg-media-surround-dark px-2.5 py-2 text-media-checker-a">
       <Slider
         min={0}
         max={Math.max(1, safeDurationMs)}
@@ -93,7 +93,7 @@ export function VideoDocumentPlayerControls({
         disabled={safeDurationMs <= 0}
         aria-label={labels.seek}
         aria-valuetext={formatVideoDocumentTime(safeCurrentTimeMs)}
-        className="[&_[data-slot=slider-range]]:bg-white [&_[data-slot=slider-thumb]]:border-white [&_[data-slot=slider-thumb]]:bg-white [&_[data-slot=slider-track]]:bg-white/25"
+        className="[&_[data-slot=slider-range]]:bg-media-checker-a [&_[data-slot=slider-thumb]]:border-media-checker-a [&_[data-slot=slider-thumb]]:bg-media-checker-a [&_[data-slot=slider-track]]:bg-media-checker-a/25"
         onValueChange={(value) => onSeek(value[0] ?? 0)}
       />
       <div className="space-y-1">
@@ -102,7 +102,7 @@ export function VideoDocumentPlayerControls({
             type="button"
             variant="ghost"
             size="icon-sm"
-            className="text-white hover:bg-white/15"
+            className="text-media-checker-a hover:bg-media-checker-a/15"
             aria-label={playing ? labels.pause : labels.play}
             onClick={onTogglePlayback}
           >
@@ -112,7 +112,7 @@ export function VideoDocumentPlayerControls({
             type="button"
             variant="ghost"
             size="icon-sm"
-            className="text-white hover:bg-white/15"
+            className="text-media-checker-a hover:bg-media-checker-a/15"
             aria-label={labels.backTen}
             onClick={() => onJump(-10)}
           >
@@ -122,13 +122,13 @@ export function VideoDocumentPlayerControls({
             type="button"
             variant="ghost"
             size="icon-sm"
-            className="text-white hover:bg-white/15"
+            className="text-media-checker-a hover:bg-media-checker-a/15"
             aria-label={labels.forwardTen}
             onClick={() => onJump(10)}
           >
             <RotateCwIcon className="size-4" />
           </Button>
-          <span className="ml-auto font-mono text-[11px] tabular-nums text-white/80">
+          <span className="ml-auto font-mono text-[11px] tabular-nums text-media-checker-a/80">
             {formatVideoDocumentTime(safeCurrentTimeMs)} / {formatVideoDocumentTime(safeDurationMs)}
           </span>
         </div>
@@ -137,7 +137,7 @@ export function VideoDocumentPlayerControls({
             type="button"
             variant="ghost"
             size="icon-sm"
-            className="text-white hover:bg-white/15"
+            className="text-media-checker-a hover:bg-media-checker-a/15"
             aria-label={muted ? labels.unmute : labels.mute}
             disabled={!audioEnabled}
             onClick={onToggleMuted}
@@ -151,12 +151,12 @@ export function VideoDocumentPlayerControls({
             value={[muted ? 0 : volume]}
             disabled={!audioEnabled}
             aria-label={labels.volume}
-            className="w-16 [&_[data-slot=slider-range]]:bg-white [&_[data-slot=slider-thumb]]:border-white [&_[data-slot=slider-thumb]]:bg-white [&_[data-slot=slider-track]]:bg-white/25"
+            className="w-16 [&_[data-slot=slider-range]]:bg-media-checker-a [&_[data-slot=slider-thumb]]:border-media-checker-a [&_[data-slot=slider-thumb]]:bg-media-checker-a [&_[data-slot=slider-track]]:bg-media-checker-a/25"
             onValueChange={(value) => onVolumeChange(value[0] ?? 0)}
           />
           <select
             value={playbackRate}
-            className="ml-auto h-8 rounded-md border border-white/15 bg-white/10 px-1.5 text-xs text-white outline-none focus-visible:ring-2 focus-visible:ring-white/70"
+            className="ml-auto h-8 rounded-md border border-media-checker-a/15 bg-media-checker-a/10 px-1.5 text-xs text-media-checker-a outline-none focus-visible:ring-2 focus-visible:ring-media-checker-a"
             aria-label={labels.speed}
             onChange={(event) => onPlaybackRateChange(Number(event.target.value))}
           >
@@ -170,7 +170,7 @@ export function VideoDocumentPlayerControls({
             type="button"
             variant="ghost"
             size="icon-sm"
-            className="text-white hover:bg-white/15"
+            className="text-media-checker-a hover:bg-media-checker-a/15"
             aria-label={labels.pictureInPicture}
             aria-pressed={pictureInPicture}
             disabled={!canPictureInPicture}
@@ -182,7 +182,7 @@ export function VideoDocumentPlayerControls({
             type="button"
             variant="ghost"
             size="icon-sm"
-            className="text-white hover:bg-white/15"
+            className="text-media-checker-a hover:bg-media-checker-a/15"
             aria-label={fullscreen ? labels.exitFullscreen : labels.enterFullscreen}
             onClick={onToggleFullscreen}
           >

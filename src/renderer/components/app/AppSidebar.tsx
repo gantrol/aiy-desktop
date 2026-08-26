@@ -15,7 +15,15 @@ import { LocalSpaceSwitcher } from '@/renderer/components/spaces/LocalSpaceSwitc
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/renderer/components/ui/tooltip';
 
 export type AppView =
-  'creator' | 'documents' | 'dictionary' | 'gallery' | 'codexImages' | 'transitionShowcase' | 'packs' | 'aiCenter';
+  | 'creator'
+  | 'documents'
+  | 'dictionary'
+  | 'gallery'
+  | 'codexImages'
+  | 'transitionShowcase'
+  | 'packs'
+  | 'aiCenter'
+  | 'contentManagement';
 
 interface Props {
   spaceName: string;
@@ -111,6 +119,11 @@ export function AppSidebar({
                 size="icon"
                 disabled={spaceTransitioning}
                 aria-label={labels.settings}
+                aria-current={view === 'contentManagement' ? 'page' : undefined}
+                className={cn(
+                  view === 'contentManagement' &&
+                    'bg-selected text-selected-foreground hover:bg-selected active:bg-selected',
+                )}
                 onClick={onSettingsOpen}
               >
                 <SettingsIcon className="size-4" />

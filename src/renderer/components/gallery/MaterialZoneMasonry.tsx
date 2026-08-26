@@ -41,10 +41,14 @@ interface Props {
   onMoveAlbum(albumId: string, parentAlbumId: string | null): Promise<void>;
   onCollectMaterials(albumId: string, targets: MaterialSelectionTargetInput[]): Promise<void>;
   onImportFiles?(album: MaterialAlbumDto, files: File[]): void;
+  onArchiveAlbum(album: MaterialAlbumDto): void;
+  onDeleteAlbum(album: MaterialAlbumDto): void;
   onSelect(item: MaterialLibraryItem, modifiers?: SelectionModifiers): void;
   onEnterSelection(item: MaterialLibraryItem): void;
   onToggleSelection(item: MaterialLibraryItem): void;
   onCopyText(text: string): void;
+  onArchiveMaterial(item: MaterialLibraryItem): void;
+  onDeleteMaterial(item: MaterialLibraryItem): void;
   notify(message: string): void;
   onDragStart?(event: ReactDragEvent<HTMLElement>, item: MaterialLibraryItem): void;
   revealContextForItem?(item: MaterialLibraryItem): AssetFileRevealContext | undefined;
@@ -106,10 +110,10 @@ function MaterialZoneBoundary({
           return (
             <span
               key={`horizontal:${column}`}
-              className="absolute h-px bg-border"
+              className="absolute h-0.5 bg-border-strong"
               style={{
                 left: column * (layout.columnWidth + COLLECTION_GAP) - leadingBridge,
-                top,
+                top: top - 1,
                 width: layout.columnWidth + leadingBridge + trailingBridge,
               }}
             />
@@ -120,9 +124,9 @@ function MaterialZoneBoundary({
           return (
             <span
               key={`vertical:${column}`}
-              className="absolute w-px bg-border"
+              className="absolute w-0.5 bg-border-strong"
               style={{
-                left: (column + 1) * (layout.columnWidth + COLLECTION_GAP) - COLLECTION_GAP / 2,
+                left: (column + 1) * (layout.columnWidth + COLLECTION_GAP) - COLLECTION_GAP / 2 - 1,
                 top: Math.min(top, nextTop),
                 height: Math.abs(top - nextTop),
               }}
@@ -162,10 +166,14 @@ export function MaterialZoneMasonry({
   onMoveAlbum,
   onCollectMaterials,
   onImportFiles,
+  onArchiveAlbum,
+  onDeleteAlbum,
   onSelect,
   onEnterSelection,
   onToggleSelection,
   onCopyText,
+  onArchiveMaterial,
+  onDeleteMaterial,
   notify,
   onDragStart,
   revealContextForItem,
@@ -239,6 +247,9 @@ export function MaterialZoneMasonry({
                 onEnterSelection={onEnterSelection}
                 onToggleSelection={onToggleSelection}
                 onCopyText={onCopyText}
+                onArchive={onArchiveMaterial}
+                onDelete={onDeleteMaterial}
+                lifecycleBusy={albumMutationBusy}
                 notify={notify}
                 onDragStart={onDragStart}
                 revealContext={revealContextForItem?.(entry.item)}
@@ -281,6 +292,8 @@ export function MaterialZoneMasonry({
               onMoveAlbum={onMoveAlbum}
               onCollectMaterials={onCollectMaterials}
               onImportFiles={onImportFiles}
+              onArchive={onArchiveAlbum}
+              onDelete={onDeleteAlbum}
             />
           );
         }}

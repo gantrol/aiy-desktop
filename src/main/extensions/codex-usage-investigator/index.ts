@@ -226,7 +226,7 @@ export class CodexUsageInvestigator {
     });
     this.currentTask = updated;
     if (checkpoint) this.cache.saveTask(updated);
-    this.emit(updated);
+    else this.emit(updated);
   }
 
   private emit(task: CodexUsageTask) {

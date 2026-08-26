@@ -15,6 +15,17 @@ import type { LibraryStorage } from '@/main/database/core/storage';
 import { type JsonMap, mediaUrl, text } from '@/main/database/core/values';
 
 const emptyMediaPreview = (): TermMediaPreviewDto => ({ totalCount: 0, items: [] });
+const compactMediaPreview = emptyMediaPreview();
+const compactMetrics = {
+  citationCount: 0,
+  distinctPromptSeries: 0,
+  positiveEvidence: 0,
+  negativeEvidence: 0,
+  pendingIssues: 0,
+  lastValidatedAt: null,
+} satisfies TermListItem['metrics'];
+
+type TermProjectionDetail = 'CREATOR' | 'FULL';
 
 type DictionaryFilters = Pick<DictionarySearchInput, 'excludeDrafts' | 'excludeUncited'> &
   Partial<
@@ -42,13 +53,64 @@ interface TermRowDetails {
 }
 
 export class DictionaryQueryRepository {
+  private readonly allTermsByLocale = new Map<Locale, { revision: number; terms: TermListItem[] }>();
+  private readonly creatorTermsByLocale = new Map<Locale, { revision: number; terms: TermListItem[] }>();
+  private readonly termCategoriesByLocale = new Map<
+    Locale,
+    { revision: number; values: Map<string, TermCategoryDto> }
+  >();
+
   constructor(protected readonly storage: LibraryStorage) {}
 
   protected get db() {
     return this.storage.db;
   }
 
+  protected currentChangeRevision() {
+    return this.storage.getChangeRevision();
+  }
+
+  protected currentTermCategories(locale: Locale) {
+    const revision = this.currentChangeRevision();
+    const cached = this.termCategoriesByLocale.get(locale);
+    if (cached?.revision === revision) return cached.values;
+    const values = new Map<string, TermCategoryDto>();
+    this.termCategoriesByLocale.set(locale, { revision, values });
+    return values;
+  }
+
+  protected termCategoryDto(locale: Locale, row: JsonMap, categories = this.currentTermCategories(locale)) {
+    const id = text(row.id);
+    const cached = categories.get(id);
+    if (cached) return cached;
+    const primaryName = text(row[locale === 'zh' ? 'primary_name_zh' : 'primary_name_en']);
+    const secondaryName = row.secondary_value_id
+      ? text(row[locale === 'zh' ? 'secondary_name_zh' : 'secondary_name_en'])
+      : null;
+    const categoryPath = text(row.path);
+    const category: TermCategoryDto = {
+      id,
+      stableKey: text(row.stable_key),
+      name: categoryPath,
+      primaryValueId: text(row.primary_value_id),
+      primaryName,
+      secondaryValueId: row.secondary_value_id ? text(row.secondary_value_id) : null,
+      secondaryName,
+      parentId: row.parent_id ? text(row.parent_id) : null,
+      path: categoryPath,
+      state: row.state === 'DISABLED' ? 'DISABLED' : 'ACTIVE',
+      selectable: Boolean(row.selectable),
+    };
+    categories.set(id, category);
+    return category;
+  }
+
   searchTerms(locale: Locale, query = '', facetValueIds: string[] = [], filters?: DictionaryFilters): TermListItem[] {
+    const cacheable = query === '' && facetValueIds.length === 0 && filters === undefined;
+    const revision = cacheable ? this.currentChangeRevision() : null;
+    const cached = revision === null ? null : this.allTermsByLocale.get(locale);
+    if (cached?.revision === revision) return cached.terms;
+
     const effectiveFilters = filters ?? {
       excludeDrafts: false,
       excludeUncited: false,
@@ -68,7 +130,31 @@ export class DictionaryQueryRepository {
         ) DESC, r.title COLLATE NOCASE, t.id`,
       )
       .all(...params) as JsonMap[];
-    return this.mapTermRows(rows, locale);
+    const terms = this.mapTermRows(rows, locale);
+    if (revision !== null) this.allTermsByLocale.set(locale, { revision, terms });
+    return terms;
+  }
+
+  searchCreatorTerms(locale: Locale): TermListItem[] {
+    const revision = this.currentChangeRevision();
+    const cached = this.creatorTermsByLocale.get(locale);
+    if (cached?.revision === revision) return cached.terms;
+    const rows = this.db
+      .prepare(
+        `SELECT term.*, revision.*,
+        EXISTS(SELECT 1 FROM drafts draft WHERE draft.entity_type = 'TERM' AND draft.entity_id = term.id) AS has_draft
+        FROM terms term
+        JOIN term_revisions revision ON revision.id = term.current_revision_id
+        WHERE term.archived_at IS NULL
+        ORDER BY EXISTS(
+          SELECT 1 FROM term_media_links media
+          WHERE media.term_id = term.id AND media.deleted_at IS NULL
+        ) DESC, revision.title COLLATE NOCASE, term.id`,
+      )
+      .all() as JsonMap[];
+    const terms = this.mapTermRows(rows, locale, 'CREATOR');
+    this.creatorTermsByLocale.set(locale, { revision, terms });
+    return terms;
   }
 
   searchTermsPage(input: DictionaryPageInput): DictionaryPageDto {
@@ -267,18 +353,30 @@ export class DictionaryQueryRepository {
     return { whereSql: where.join(' AND '), params };
   }
 
-  private mapTermRows(rows: JsonMap[], locale: Locale): TermListItem[] {
-    const mediaByTerm = this.activeMediaByTerm(rows.map((row) => text(row.term_id)));
-    const detailsByRevision = this.loadTermRowDetails(rows, locale);
+  private mapTermRows(rows: JsonMap[], locale: Locale, detail: TermProjectionDetail = 'FULL'): TermListItem[] {
+    const mediaByTerm = detail === 'FULL' ? this.activeMediaByTerm(rows.map((row) => text(row.term_id))) : new Map();
+    const detailsByRevision = this.loadTermRowDetails(rows, locale, detail);
+    const categories = this.currentTermCategories(locale);
     return rows.map((row) => {
       const media = mediaByTerm.get(text(row.term_id)) ?? [];
       const details = detailsByRevision.get(text(row.id));
       if (!details) throw new Error(`Term projection details are missing: ${text(row.term_id)}`);
-      return this.termRow(row, locale, details, { totalCount: media.length, items: media.slice(0, 3) });
+      return this.termRow(
+        row,
+        locale,
+        details,
+        detail === 'FULL' ? { totalCount: media.length, items: media.slice(0, 3) } : compactMediaPreview,
+        categories,
+        detail,
+      );
     });
   }
 
-  protected loadTermRowDetails(rows: JsonMap[], locale: Locale): Map<string, TermRowDetails> {
+  protected loadTermRowDetails(
+    rows: JsonMap[],
+    locale: Locale,
+    detail: TermProjectionDetail = 'FULL',
+  ): Map<string, TermRowDetails> {
     if (!rows.length) return new Map();
     const revisionIds = rows.map((row) => text(row.id));
     const termIds = rows.map((row) => text(row.term_id));
@@ -386,6 +484,8 @@ export class DictionaryQueryRepository {
       detailsByRevision.get(text(category.term_revision_id))!.categories.push(category);
     }
 
+    if (detail === 'CREATOR') return detailsByRevision;
+
     const placementRows = this.db
       .prepare(
         `SELECT term_id, primary_category_id
@@ -451,6 +551,8 @@ export class DictionaryQueryRepository {
     locale: Locale,
     details: TermRowDetails,
     mediaPreview = emptyMediaPreview(),
+    categoryDtosById = this.currentTermCategories(locale),
+    detail: TermProjectionDetail = 'FULL',
   ): TermListItem {
     const revisionId = text(row.id);
     const termId = text(row.term_id);
@@ -465,26 +567,7 @@ export class DictionaryQueryRepository {
       pending,
     } = details;
     const titleLocale = text(row.title_locale);
-    const categoryDtos: TermCategoryDto[] = categories.map((category) => {
-      const categoryPrimaryName = text(category[locale === 'zh' ? 'primary_name_zh' : 'primary_name_en']);
-      const categorySecondaryName = category.secondary_value_id
-        ? text(category[locale === 'zh' ? 'secondary_name_zh' : 'secondary_name_en'])
-        : null;
-      const categoryPath = text(category.path);
-      return {
-        id: text(category.id),
-        stableKey: text(category.stable_key),
-        name: categoryPath,
-        primaryValueId: text(category.primary_value_id),
-        primaryName: categoryPrimaryName,
-        secondaryValueId: category.secondary_value_id ? text(category.secondary_value_id) : null,
-        secondaryName: categorySecondaryName,
-        parentId: category.parent_id ? text(category.parent_id) : null,
-        path: categoryPath,
-        state: category.state === 'DISABLED' ? 'DISABLED' : 'ACTIVE',
-        selectable: Boolean(category.selectable),
-      };
-    });
+    const categoryDtos = categories.map((category) => this.termCategoryDto(locale, category, categoryDtosById));
     return {
       id: termId,
       stableKey: text(row.stable_key),
@@ -516,14 +599,17 @@ export class DictionaryQueryRepository {
       primaryDirectoryClassificationId,
       hasDraft: Boolean(row.has_draft),
       mediaPreview,
-      metrics: {
-        citationCount: Number(promptCount.citation_count ?? 0),
-        distinctPromptSeries: Number(promptCount.series_count ?? 0),
-        positiveEvidence: Number(evidence.positive ?? 0),
-        negativeEvidence: Number(evidence.negative ?? 0),
-        pendingIssues: Number(pending.count ?? 0),
-        lastValidatedAt: evidence.last_validated ? text(evidence.last_validated) : null,
-      },
+      metrics:
+        detail === 'CREATOR'
+          ? compactMetrics
+          : {
+              citationCount: Number(promptCount.citation_count ?? 0),
+              distinctPromptSeries: Number(promptCount.series_count ?? 0),
+              positiveEvidence: Number(evidence.positive ?? 0),
+              negativeEvidence: Number(evidence.negative ?? 0),
+              pendingIssues: Number(pending.count ?? 0),
+              lastValidatedAt: evidence.last_validated ? text(evidence.last_validated) : null,
+            },
     };
   }
 

@@ -42,12 +42,12 @@ export function VideoDocumentInlineVideo({ mediaUrl, posterUrl, title, children,
               <img src={posterUrl} alt="" className="relative z-10 size-full object-contain" loading="lazy" />
             </>
           ) : (
-            <span className="grid size-full place-items-center text-white/70">
+            <span className="grid size-full place-items-center text-media-checker-a/70">
               <VideoIcon className="size-9" />
             </span>
           )}
-          <span className="absolute inset-0 z-20 grid place-items-center bg-black/10 transition-colors group-hover:bg-black/20">
-            <span className="grid size-12 place-items-center rounded-full bg-black/65 text-white shadow-sm">
+          <span className="absolute inset-0 z-20 grid place-items-center bg-media-surround-dark/10 transition-colors group-hover:bg-media-surround-dark/20">
+            <span className="grid size-12 place-items-center rounded-full bg-media-surround-dark/65 text-media-checker-a">
               <PlayIcon className="ml-0.5 size-5 fill-current" />
             </span>
           </span>

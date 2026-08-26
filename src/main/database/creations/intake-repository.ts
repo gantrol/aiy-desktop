@@ -18,7 +18,7 @@ import type {
   MaterialSelectionTargetInput,
   WordPaletteReferenceInput,
 } from '@/shared/contracts';
-import type { LibraryStorage, StoredObject } from '@/main/database/core/storage';
+import type { LibraryStorage } from '@/main/database/core/storage';
 import { emptyCreationDictionaryScope } from '@/shared/album-creation-defaults';
 import { type JsonMap, mediaUrl, now, text } from '@/main/database/core/values';
 import type { CreationImportRepository } from '@/main/database/creations/creation-import-repository';
@@ -31,58 +31,11 @@ import {
   normalizeCreationDraftSave,
   storedCreationDraftMatches,
 } from '@/main/database/creations/creation-draft-save';
-import { imageDimensions } from '@/main/media/image-dimensions';
-
-const maxImageHeaderBytes = 4 * 1024 * 1024;
-
-const extensionByMimeType = {
-  'image/png': '.png',
-  'image/jpeg': '.jpg',
-  'image/webp': '.webp',
-  'image/gif': '.gif',
-  'image/svg+xml': '.svg',
-  'video/mp4': '.mp4',
-  'video/webm': '.webm',
-  'video/quicktime': '.mov',
-} as const;
-
-interface StagedMedia {
-  stored: StoredObject;
-  mimeType: keyof typeof extensionByMimeType;
-}
-
-function hasExpectedMediaSignature(bytes: Uint8Array, mimeType: keyof typeof extensionByMimeType) {
-  const header = Buffer.from(bytes.buffer, bytes.byteOffset, Math.min(bytes.byteLength, 12));
-  if (mimeType === 'image/png') {
-    return header.length >= 8 && header.subarray(0, 8).equals(Buffer.from('89504e470d0a1a0a', 'hex'));
-  }
-  if (mimeType === 'image/jpeg') {
-    return header.length >= 3 && header[0] === 0xff && header[1] === 0xd8 && header[2] === 0xff;
-  }
-  if (mimeType === 'image/gif') {
-    const signature = header.subarray(0, 6).toString('ascii');
-    return header.length >= 10 && (signature === 'GIF87a' || signature === 'GIF89a');
-  }
-  if (mimeType === 'image/webp') {
-    return (
-      header.length >= 12 &&
-      header.subarray(0, 4).toString('ascii') === 'RIFF' &&
-      header.subarray(8, 12).toString('ascii') === 'WEBP'
-    );
-  }
-  if (mimeType === 'image/svg+xml') {
-    return (
-      imageDimensions(
-        Buffer.from(bytes.buffer, bytes.byteOffset, Math.min(bytes.byteLength, maxImageHeaderBytes)),
-        '.svg',
-      ) !== null
-    );
-  }
-  if (mimeType === 'video/webm') {
-    return header.length >= 4 && header.subarray(0, 4).equals(Buffer.from('1a45dfa3', 'hex'));
-  }
-  return header.length >= 12 && header.subarray(4, 8).toString('ascii') === 'ftyp';
-}
+import {
+  extensionByMimeType,
+  hasExpectedMediaSignature,
+  type StagedMedia,
+} from '@/main/database/creations/intake-media';
 
 async function waitForE2eCommitDelay() {
   if (process.env.AIY_E2E !== '1') return;
@@ -282,14 +235,30 @@ export class IntakeRepository {
           if (!album) throw new Error('Album not found');
           if (album.archived_at) throw new Error('Archived albums cannot start a new creation');
         }
-        const existing = this.db
+        const existingRows = this.db
           .prepare(
             `SELECT id FROM creation_drafts
         WHERE target_album_id IS ? AND consumed_at IS NULL AND deleted_at IS NULL
-        ORDER BY updated_at DESC, id DESC LIMIT 1`,
+        ORDER BY updated_at DESC, id DESC`,
           )
-          .get(input.albumId) as JsonMap | undefined;
-        if (existing) return this.getDraft(text(existing.id));
+          .all(input.albumId) as JsonMap[];
+        const existing = existingRows[0];
+        if (existing && !input.fresh) return this.getDraft(text(existing.id));
+        if (input.fresh && existingRows.length > 0) {
+          const discardedAt = now();
+          this.db
+            .prepare(
+              `UPDATE creation_drafts
+              SET deleted_at = ?, updated_at = ?
+              WHERE target_album_id IS ? AND consumed_at IS NULL AND deleted_at IS NULL`,
+            )
+            .run(discardedAt, discardedAt, input.albumId);
+          for (const row of existingRows) {
+            this.storage.recordChange('CREATION_DRAFT', text(row.id), 'DISCARD_FOR_NEW_SESSION', {
+              albumId: input.albumId,
+            });
+          }
+        }
         for (const reference of defaults.recipes) {
           if (
             !this.db
@@ -521,6 +490,7 @@ export class IntakeRepository {
         `SELECT
       EXISTS(SELECT 1 FROM materials WHERE deleted_at IS NULL) OR
       EXISTS(SELECT 1 FROM creation_drafts WHERE deleted_at IS NULL) OR
+      EXISTS(SELECT 1 FROM inspiration_stashes WHERE status = 'ACTIVE' AND deleted_at IS NULL) OR
       EXISTS(SELECT 1 FROM prompt_series WHERE deleted_at IS NULL) OR
       EXISTS(SELECT 1 FROM albums WHERE deleted_at IS NULL) OR
       EXISTS(SELECT 1 FROM terms) OR
@@ -649,7 +619,7 @@ export class IntakeRepository {
     return materialId;
   }
 
-  private getDraft(draftId: string): CreationDraftDto {
+  getDraft(draftId: string): CreationDraftDto {
     const draft = this.db
       .prepare(
         `SELECT * FROM creation_drafts

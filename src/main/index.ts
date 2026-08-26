@@ -400,7 +400,7 @@ if (ownsSingleInstanceLock)
                 if (!activated || backgroundServicesStarted) return;
                 backgroundServicesStarted = true;
                 try {
-                  targetDatabase.startLibraryFileViewSynchronization();
+                  targetDatabase.startBackgroundStorage();
                 } catch (error) {
                   console.error('[library-file-view] initial synchronization failed', error);
                 }
@@ -446,7 +446,7 @@ if (ownsSingleInstanceLock)
                 targetGeneration!.off('changed', onGenerationChanged);
                 targetGeneration!.off('worker-status-changed', onWorkerStatusChanged);
                 targetImageDiscovery!.off('changed', onDiscoveryChanged);
-                await targetDatabase.drainLibraryFileViewSynchronization();
+                await targetDatabase.drainBackgroundStorage();
                 await targetThumbnails.dispose();
                 targetGeneration!.dispose();
                 await targetImageDiscovery!.dispose();
@@ -460,7 +460,7 @@ if (ownsSingleInstanceLock)
           });
           return context;
         } catch (error) {
-          await targetDatabase.drainLibraryFileViewSynchronization();
+          await targetDatabase.drainBackgroundStorage();
           await targetThumbnails.dispose();
           targetGeneration?.dispose();
           await targetImageDiscovery?.dispose();
@@ -669,6 +669,10 @@ if (ownsSingleInstanceLock)
         [
           path.join(app.getPath('userData'), 'configuration', 'canvas-presets.json'),
           path.join(bundledConfigurationPath, 'canvas-presets.json'),
+        ],
+        [
+          path.join(app.getPath('userData'), 'configuration', 'derived-visual-prompts.json'),
+          path.join(bundledConfigurationPath, 'derived-visual-prompts.json'),
         ],
         () => appShell.mainWindow,
         (channel, ...args) => rendererEvents.send(channel, ...args),

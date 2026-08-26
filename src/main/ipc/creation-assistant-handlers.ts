@@ -2,8 +2,34 @@ import { shell, type OpenDialogOptions, type OpenDialogReturnValue } from 'elect
 import { z } from 'zod';
 import type { CodexService } from '@/main/assistant/codex-service';
 import { CreatorImageStagingService } from '@/main/creations/creator-image-staging';
+import type { ArticleExportService } from '@/main/creations/article-export-service';
+import type { ArticleWechatCopyService } from '@/main/creations/article-wechat-copy-service';
 import type { LibraryDatabase } from '@/main/database';
 import type { IpcHandlerRegistrar } from '@/main/ipc/trusted-handlers';
+import {
+  inspirationStashMoveInputSchema,
+  inspirationStashSaveInputSchema,
+  inspirationStashSetArchivedInputSchema,
+} from '@/shared/contracts/inspiration-stash';
+import {
+  socialPostFormAddInputSchema,
+  socialPostMoveInputSchema,
+  socialPostSaveInputSchema,
+  socialPostSetArchivedInputSchema,
+} from '@/shared/contracts/social-post';
+import {
+  articleFormAddInputSchema,
+  articleCopyForWechatInputSchema,
+  articleExportMarkdownInputSchema,
+  articleMoveInputSchema,
+  articleRenameInputSchema,
+  articleSaveInputSchema,
+  articleSetArchivedInputSchema,
+} from '@/shared/contracts/article';
+import {
+  derivedVisualAdoptInputSchema,
+  derivedVisualWorkspaceOpenInputSchema,
+} from '@/shared/contracts/derived-visual';
 import {
   promptSeriesCoverSetInputSchema,
   promptSeriesOutputRemoveInputSchema,
@@ -13,7 +39,7 @@ import {
   creationDraftCommitSchema,
   creationDraftSaveSchema,
   creationDraftStartSchema,
-  creationGroupRenameSchema,
+  creationAlbumRenameSchema,
   creationInputStashCreateSchema,
   creatorAgentAssistSchema,
   creatorAgentChatSchema,
@@ -34,6 +60,8 @@ interface CreationAssistantIpcOptions {
   chooseFile: (options: OpenDialogOptions) => Promise<OpenDialogReturnValue>;
   runAssistantRequest: (request: z.infer<typeof creatorAgentAssistSchema>) => unknown;
   runTitleRequest: (request: z.infer<typeof titleSchema>) => unknown;
+  articleExports: ArticleExportService;
+  articleWechatCopy: ArticleWechatCopyService;
 }
 
 export function registerCreationAssistantIpc({
@@ -43,6 +71,8 @@ export function registerCreationAssistantIpc({
   chooseFile,
   runAssistantRequest,
   runTitleRequest,
+  articleExports,
+  articleWechatCopy,
 }: CreationAssistantIpcOptions) {
   const referenceStages = new CreatorImageStagingService(() => database);
   ipcMain.handle('creation-draft:start', (_event, raw) =>
@@ -54,11 +84,47 @@ export function registerCreationAssistantIpc({
   ipcMain.handle('creation-draft:commit', (_event, raw) =>
     database.commitCreationDraft(creationDraftCommitSchema.parse(raw)),
   );
+  ipcMain.handle('derived-visual:workspace-open', (_event, raw) =>
+    database.openDerivedVisualWorkspace(derivedVisualWorkspaceOpenInputSchema.parse(raw)),
+  );
+  ipcMain.handle('derived-visual:adopt', (_event, raw) =>
+    database.adoptDerivedVisual(derivedVisualAdoptInputSchema.parse(raw)),
+  );
   ipcMain.handle('creation-input-stashes:list', (_event, raw) =>
     database.listCreationInputStashes(creatorAgentScopeSchema.parse(raw)),
   );
   ipcMain.handle('creation-input-stash:create', (_event, raw) =>
     database.createCreationInputStash(creationInputStashCreateSchema.parse(raw)),
+  );
+  ipcMain.handle('inspiration-stash:save', (_event, raw) =>
+    database.saveInspirationStash(inspirationStashSaveInputSchema.parse(raw)),
+  );
+  ipcMain.handle('inspiration-stash:move', (_event, raw) =>
+    database.moveInspirationStash(inspirationStashMoveInputSchema.parse(raw)),
+  );
+  ipcMain.handle('inspiration-stash:set-archived', (_event, raw) =>
+    database.setInspirationStashArchived(inspirationStashSetArchivedInputSchema.parse(raw)),
+  );
+  ipcMain.handle('social-post:save', (_event, raw) => database.saveSocialPost(socialPostSaveInputSchema.parse(raw)));
+  ipcMain.handle('social-post:form-add', (_event, raw) =>
+    database.addSocialPostForm(socialPostFormAddInputSchema.parse(raw)),
+  );
+  ipcMain.handle('social-post:move', (_event, raw) => database.moveSocialPost(socialPostMoveInputSchema.parse(raw)));
+  ipcMain.handle('social-post:set-archived', (_event, raw) =>
+    database.setSocialPostArchived(socialPostSetArchivedInputSchema.parse(raw)),
+  );
+  ipcMain.handle('article:save', (_event, raw) => database.saveArticle(articleSaveInputSchema.parse(raw)));
+  ipcMain.handle('article:form-add', (_event, raw) => database.addArticleForm(articleFormAddInputSchema.parse(raw)));
+  ipcMain.handle('article:rename', (_event, raw) => database.renameArticle(articleRenameInputSchema.parse(raw)));
+  ipcMain.handle('article:move', (_event, raw) => database.moveArticle(articleMoveInputSchema.parse(raw)));
+  ipcMain.handle('article:set-archived', (_event, raw) =>
+    database.setArticleArchived(articleSetArchivedInputSchema.parse(raw)),
+  );
+  ipcMain.handle('article:copy-for-wechat', (_event, raw) =>
+    articleWechatCopy.copy(articleCopyForWechatInputSchema.parse(raw)),
+  );
+  ipcMain.handle('article:export-markdown', (_event, raw) =>
+    articleExports.exportMarkdown(articleExportMarkdownInputSchema.parse(raw)),
   );
   ipcMain.handle('creations:delete', (_event, raw) => database.deleteCreation(id.parse(raw)));
   ipcMain.handle('materials:add-to-destinations', (_event, raw) =>
@@ -123,8 +189,8 @@ export function registerCreationAssistantIpc({
   ipcMain.handle('prompt-series:cover-set', (_event, raw) =>
     database.setPromptSeriesCover(promptSeriesCoverSetInputSchema.parse(raw)),
   );
-  ipcMain.handle('creation-groups:rename', (_event, raw) =>
-    database.renameCreationGroup(creationGroupRenameSchema.parse(raw)),
+  ipcMain.handle('creation-albums:rename', (_event, raw) =>
+    database.renameCreationAlbum(creationAlbumRenameSchema.parse(raw)),
   );
   ipcMain.handle('material-collections:create-from-source', (_event, raw) =>
     database.createMaterialCollectionFromSource(materialCollectionCreateFromSourceSchema.parse(raw)),

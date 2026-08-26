@@ -34,7 +34,7 @@ export function VideoDocumentAlbumPreview({
       />
       <AlbumCoverBadge compact overlayStyle="solid" />
       {(loading || entry.childCount > 0) && (
-        <span className="absolute bottom-0.5 right-0.5 grid size-4 place-items-center rounded-[4px] border border-selected-border bg-overlay/95 text-selected-foreground shadow-sm">
+        <span className="absolute bottom-0.5 right-0.5 grid size-4 place-items-center rounded-[4px] border border-selected-border bg-overlay/95 text-selected-foreground">
           {loading ? (
             <LoaderCircleIcon className="size-2.5 animate-spin" />
           ) : expanded ? (
@@ -58,7 +58,7 @@ export function VideoDocumentPreview({
   return (
     <span
       className={cn(
-        'relative grid aspect-video w-16 shrink-0 place-items-center overflow-hidden rounded-lg border bg-surface text-muted-foreground shadow-sm',
+        'relative grid aspect-video w-16 shrink-0 place-items-center overflow-hidden rounded-lg border bg-media-surround-light text-muted-foreground',
         className,
       )}
     >
@@ -69,12 +69,12 @@ export function VideoDocumentPreview({
           alt=""
           loading="lazy"
           decoding="async"
-          className="absolute inset-0 size-full object-cover"
+          className="absolute inset-0 size-full object-contain"
         />
       ) : document.source.available ? (
         <AssetMedia
           asset={document.source.asset}
-          className="absolute inset-0 size-full object-cover"
+          className="absolute inset-0 size-full object-contain"
           loading="lazy"
           muted
           preload="metadata"

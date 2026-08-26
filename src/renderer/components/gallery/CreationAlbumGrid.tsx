@@ -1,4 +1,4 @@
-import { FolderOpenIcon, PinIcon, PinOffIcon, SquarePenIcon } from 'lucide-react';
+import { ArchiveIcon, FolderOpenIcon, PinIcon, PinOffIcon, SquarePenIcon, Trash2Icon } from 'lucide-react';
 import { useMemo, useState, type CSSProperties, type DragEvent } from 'react';
 import type { AssetDto, MaterialAlbumDto, MaterialSelectionTargetInput } from '@/shared/contracts';
 import {
@@ -340,7 +340,7 @@ function CreationCollectionPreview({
           );
         })
       ) : (
-        <span className="absolute inset-0 grid place-items-center overflow-hidden rounded-xl border border-dashed bg-surface-sunken text-muted-foreground shadow-sm">
+        <span className="absolute inset-0 grid place-items-center overflow-hidden rounded-xl border border-dashed bg-surface-sunken text-muted-foreground">
           {creation ? (
             <SquarePenIcon className="size-8 opacity-50" />
           ) : (
@@ -350,6 +350,66 @@ function CreationCollectionPreview({
       )}
     </span>
   );
+}
+
+function collectionLifecycleActions({
+  album,
+  writable,
+  busy,
+  archiveLabel,
+  deleteLabel,
+  onArchive,
+  onDelete,
+}: {
+  album: MaterialAlbumDto;
+  writable: boolean;
+  busy: boolean;
+  archiveLabel: string;
+  deleteLabel: string;
+  onArchive?(album: MaterialAlbumDto): void;
+  onDelete?(album: MaterialAlbumDto): void;
+}): ActionMenuAction[] {
+  if (!writable) return [];
+  const actions: ActionMenuAction[] = [];
+  if (onArchive) {
+    actions.push({
+      id: 'archive-album',
+      label: archiveLabel,
+      icon: ArchiveIcon,
+      separatorBefore: true,
+      disabled: busy,
+      onSelect: () => onArchive(album),
+    });
+  }
+  if (onDelete) {
+    actions.push({
+      id: 'delete-album',
+      label: deleteLabel,
+      icon: Trash2Icon,
+      destructive: true,
+      disabled: busy,
+      onSelect: () => onDelete(album),
+    });
+  }
+  return actions;
+}
+
+interface CollectionAlbumCardProps {
+  album: MaterialAlbumDto;
+  containerAspectRatio: number;
+  spread: PreviewSpread;
+  detail?: string;
+  childAlbumCount?: number;
+  busy?: boolean;
+  onOpen(albumId: string): void;
+  canMoveAlbum?: CanMoveAlbum;
+  onMoveAlbum?: MoveAlbum;
+  canMoveCreationAlbum?: CanMoveAlbum;
+  onMoveCreationAlbum?: MoveAlbum;
+  onCollectMaterials?(albumId: string, targets: MaterialSelectionTargetInput[]): Promise<void>;
+  onImportFiles?(album: MaterialAlbumDto, files: File[]): void;
+  onArchive?(album: MaterialAlbumDto): void;
+  onDelete?(album: MaterialAlbumDto): void;
 }
 
 export function CollectionAlbumCard({
@@ -366,21 +426,9 @@ export function CollectionAlbumCard({
   onMoveCreationAlbum,
   onCollectMaterials,
   onImportFiles,
-}: {
-  album: MaterialAlbumDto;
-  containerAspectRatio: number;
-  spread: PreviewSpread;
-  detail?: string;
-  childAlbumCount?: number;
-  busy?: boolean;
-  onOpen(albumId: string): void;
-  canMoveAlbum?: CanMoveAlbum;
-  onMoveAlbum?: MoveAlbum;
-  canMoveCreationAlbum?: CanMoveAlbum;
-  onMoveCreationAlbum?: MoveAlbum;
-  onCollectMaterials?(albumId: string, targets: MaterialSelectionTargetInput[]): Promise<void>;
-  onImportFiles?(album: MaterialAlbumDto, files: File[]): void;
-}) {
+  onArchive,
+  onDelete,
+}: CollectionAlbumCardProps) {
   const { messages } = useI18n();
   const [hovered, setHovered] = useState(false);
   const [focusWithin, setFocusWithin] = useState(false);
@@ -434,6 +482,15 @@ export function CollectionAlbumCard({
           },
         ]
       : []),
+    ...collectionLifecycleActions({
+      album,
+      writable: writableMaterialAlbum,
+      busy,
+      archiveLabel: messages.gallery.albums.archive,
+      deleteLabel: messages.gallery.albums.delete,
+      onArchive,
+      onDelete,
+    }),
   ];
 
   const moveOptions = { canMoveAlbum, onMoveAlbum, canMoveCreationAlbum, onMoveCreationAlbum };

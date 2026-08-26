@@ -119,6 +119,11 @@ export class LibraryFileViewRepository extends LibraryFileViewCacheRepository {
     return this.reconcileAndCheckpoint();
   }
 
+  async synchronizeBeforeObjectPurge() {
+    if (this.backgroundSynchronizer) await this.backgroundSynchronizer();
+    else this.reconcileAndCheckpoint();
+  }
+
   refresh() {
     return this.loadReusableProjection() ?? this.reconcileAndCheckpoint();
   }
@@ -275,10 +280,14 @@ export class LibraryFileViewRepository extends LibraryFileViewCacheRepository {
       return Boolean(
         this.db
           .prepare(
-            `SELECT 1 FROM album_members member
+            `SELECT 1 FROM creation_forms form
+            JOIN creation_items item ON item.id = form.creation_item_id
+              AND item.deleted_at IS NULL AND item.archived_at IS NULL
+            JOIN album_members member ON member.target_type = 'CREATION_ITEM'
+              AND member.target_id = item.id AND member.deleted_at IS NULL
             JOIN albums album ON album.id = member.album_id AND album.deleted_at IS NULL
-            WHERE member.target_type = 'SERIES' AND member.target_id = ?
-              AND member.deleted_at IS NULL LIMIT 1`,
+            WHERE form.role = 'IMAGE_CREATION' AND form.entity_type = 'PROMPT_SERIES'
+              AND form.entity_id = ? AND form.deleted_at IS NULL LIMIT 1`,
           )
           .get(seriesId),
       );

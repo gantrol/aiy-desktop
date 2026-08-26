@@ -6,6 +6,7 @@ import {
   Code2Icon,
   Columns3Icon,
   ItalicIcon,
+  ImagePlusIcon,
   LinkIcon,
   ListChecksIcon,
   ListIcon,
@@ -24,6 +25,7 @@ import {
 import type { ReactNode } from 'react';
 import { useRef, useState } from 'react';
 import type {
+  CreatorImageImportSource,
   VideoDocumentFrameCaptureResult,
   VideoDocumentMediaBinding,
   VideoDocumentRevisionMediaDto,
@@ -38,6 +40,7 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/rend
 import { VideoDocumentFramePicker } from '@/renderer/features/video-documents/VideoDocumentFramePicker';
 import {
   insertVideoDocumentImage,
+  type VideoDocumentEditorImageAttributes,
   videoDocumentFrameImageAttributes,
 } from '@/renderer/features/video-documents/videoDocumentEditorMedia';
 import { cn } from '@/renderer/lib/utils';
@@ -45,6 +48,69 @@ import { cn } from '@/renderer/lib/utils';
 export interface VideoDocumentEditorImageImport {
   binding: VideoDocumentMediaBinding;
   media: VideoDocumentRevisionMediaDto;
+}
+
+interface ImportedEditorImage extends VideoDocumentEditorImageImport {
+  attributes: VideoDocumentEditorImageAttributes;
+}
+
+export async function importVideoDocumentEditorImage(
+  file: File,
+  source: CreatorImageImportSource,
+): Promise<ImportedEditorImage> {
+  const item = (await imageImportItems([file]))[0];
+  if (!item) throw new Error('Image import produced no item');
+  const assets = await window.desktopApi.creatorReferencesImport({
+    context: {
+      seriesId: null,
+      versionId: null,
+      title: '',
+      titleLocale: 'en',
+      source,
+    },
+    items: [item],
+  });
+  const asset = assets[0];
+  if (!asset) throw new Error('Image import produced no asset');
+  if (
+    asset.mimeType !== 'image/png' &&
+    asset.mimeType !== 'image/jpeg' &&
+    asset.mimeType !== 'image/webp' &&
+    asset.mimeType !== 'image/svg+xml'
+  ) {
+    throw new Error('Image import produced an unsupported asset');
+  }
+  const mimeType = asset.mimeType;
+  const extension =
+    mimeType === 'image/png'
+      ? 'png'
+      : mimeType === 'image/webp'
+        ? 'webp'
+        : mimeType === 'image/svg+xml'
+          ? 'svg'
+          : 'jpg';
+  const binding: VideoDocumentMediaBinding = {
+    path: `assets/upload-${asset.id}.${extension}`,
+    assetId: asset.id,
+    kind: 'IMAGE',
+    timestampMs: null,
+    endTimestampMs: null,
+    posterAssetId: null,
+  };
+  const media: VideoDocumentRevisionMediaDto = {
+    assetId: asset.id,
+    mediaUrl: asset.mediaUrl,
+    mimeType,
+    width: asset.width,
+    height: asset.height,
+    byteSize: asset.byteSize ?? item.bytes.byteLength,
+    durationMs: null,
+  };
+  return {
+    binding,
+    media,
+    attributes: { src: media.mediaUrl, sourcePath: binding.path, title: null, alt: item.name || null },
+  };
 }
 
 export interface VideoDocumentWysiwygEditorLabels {
@@ -104,6 +170,7 @@ export interface VideoDocumentWysiwygToolbarState {
   canRedo: boolean;
   image: boolean;
   imageSourcePath: string | null;
+  selectedText: string;
 }
 
 interface FormatButtonProps {
@@ -339,6 +406,8 @@ interface Props {
   onFrameCaptured(result: VideoDocumentFrameCaptureResult): void;
   onImageImported(result: VideoDocumentEditorImageImport): void;
   onImageImportError(): void;
+  illustrationLabel?: string;
+  onIllustrationRequest?(selectedText: string): void;
 }
 
 export function VideoDocumentWysiwygToolbar({
@@ -354,6 +423,8 @@ export function VideoDocumentWysiwygToolbar({
   onFrameCaptured,
   onImageImported,
   onImageImportError,
+  illustrationLabel,
+  onIllustrationRequest,
 }: Props) {
   const imageInputRef = useRef<HTMLInputElement>(null);
   const [uploadingImage, setUploadingImage] = useState(false);
@@ -364,59 +435,11 @@ export function VideoDocumentWysiwygToolbar({
   async function uploadImage(file: File) {
     setUploadingImage(true);
     try {
-      const item = (await imageImportItems([file]))[0];
-      if (!item) throw new Error('Image import produced no item');
-      const assets = await window.desktopApi.creatorReferencesImport({
-        context: {
-          seriesId: null,
-          versionId: null,
-          title: '',
-          titleLocale: 'en',
-          source: 'UPLOAD',
-        },
-        items: [item],
-      });
-      const asset = assets[0];
-      if (!asset) throw new Error('Image import produced no asset');
-      if (
-        asset.mimeType !== 'image/png' &&
-        asset.mimeType !== 'image/jpeg' &&
-        asset.mimeType !== 'image/webp' &&
-        asset.mimeType !== 'image/svg+xml'
-      ) {
-        throw new Error('Image import produced an unsupported asset');
-      }
-      const mimeType = asset.mimeType;
-      const extension =
-        mimeType === 'image/png'
-          ? 'png'
-          : mimeType === 'image/webp'
-            ? 'webp'
-            : mimeType === 'image/svg+xml'
-              ? 'svg'
-              : 'jpg';
-      const binding: VideoDocumentMediaBinding = {
-        path: `assets/upload-${asset.id}.${extension}`,
-        assetId: asset.id,
-        kind: 'IMAGE',
-        timestampMs: null,
-        endTimestampMs: null,
-        posterAssetId: null,
-      };
-      const media: VideoDocumentRevisionMediaDto = {
-        assetId: asset.id,
-        mediaUrl: asset.mediaUrl,
-        mimeType,
-        width: asset.width,
-        height: asset.height,
-        byteSize: asset.byteSize ?? item.bytes.byteLength,
-        durationMs: null,
-      };
-      const attributes = { src: media.mediaUrl, sourcePath: binding.path, title: null, alt: item.name || null };
-      if (!insertVideoDocumentImage(editor, attributes, editor.isActive('image'))) {
+      const result = await importVideoDocumentEditorImage(file, 'UPLOAD');
+      if (!insertVideoDocumentImage(editor, result.attributes, editor.isActive('image'))) {
         throw new Error('Image could not be inserted into the editor');
       }
-      onImageImported({ binding, media });
+      onImageImported(result);
     } catch {
       if (!editor.isDestroyed) onImageImportError();
     } finally {
@@ -426,7 +449,7 @@ export function VideoDocumentWysiwygToolbar({
 
   return (
     <TooltipProvider delayDuration={450}>
-      <div className="sticky top-0 z-30 flex min-h-9 items-center gap-0.5 overflow-x-auto border-b bg-background/96 px-1.5 shadow-sm backdrop-blur-sm [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+      <div className="sticky top-0 z-30 flex min-h-9 items-center gap-0.5 overflow-x-auto border-b bg-background/96 px-1.5 backdrop-blur-sm [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
         <HeadingMenu editor={editor} state={state} labels={labels} />
         <Separator orientation="vertical" className="mx-1 h-4" />
         <FormatButton label={labels.bold} active={state.bold} onClick={() => editor.chain().focus().toggleBold().run()}>
@@ -496,6 +519,15 @@ export function VideoDocumentWysiwygToolbar({
         >
           <UploadIcon className={uploadingImage ? 'size-3.5 animate-pulse' : 'size-3.5'} />
         </FormatButton>
+        {illustrationLabel && onIllustrationRequest && (
+          <FormatButton
+            label={illustrationLabel}
+            disabled={!state.selectedText}
+            onClick={() => onIllustrationRequest(state.selectedText)}
+          >
+            <ImagePlusIcon className="size-3.5" />
+          </FormatButton>
+        )}
         {documentId && durationMs > 0 && (
           <VideoDocumentFramePicker
             documentId={documentId}

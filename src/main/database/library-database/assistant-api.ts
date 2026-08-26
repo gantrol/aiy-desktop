@@ -48,6 +48,7 @@ export function createAssistantApi(
       const generationInput: GenerationInput = {
         seriesId: null,
         creationDraftId: input.creationDraftId,
+        inspirationStashId: input.inspirationStashId,
         title: input.title,
         titleLocale: input.termPromptLocale,
         manualPrompt: input.manualPrompt,

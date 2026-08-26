@@ -104,7 +104,7 @@ export function VideoDocumentStartDialog({
           <div className="flex min-w-0 gap-4 rounded-lg border bg-surface-sunken p-3">
             <div
               className={cn(
-                'relative isolate grid aspect-video w-40 shrink-0 place-items-center overflow-hidden rounded-md text-white/70',
+                'relative isolate grid aspect-video w-40 shrink-0 place-items-center overflow-hidden rounded-md text-media-checker-a/70',
                 previewUrl ? 'bg-surface-sunken' : 'bg-media-surround-dark',
               )}
             >

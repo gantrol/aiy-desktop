@@ -1,6 +1,6 @@
 import type {
   AssetDto,
-  CreationGroupDto,
+  CreationAlbumDto,
   Locale,
   MaterialAlbumDto,
   MaterialAlbumListInput,
@@ -9,6 +9,7 @@ import type {
 } from '@/shared/contracts';
 import { MATERIAL_LIBRARY_ALBUM_INTENT } from '@/main/database/albums/album-intents';
 import { AlbumRepository } from '@/main/database/albums/album-repository';
+import { creationSeriesMaterialSummariesSql } from '@/main/database/albums/creation-series-material-summaries-sql';
 import {
   MATERIAL_ALBUM_CREATION_ROOT_ID,
   MATERIAL_ALBUM_CREATION_UNASSIGNED_ID,
@@ -17,7 +18,7 @@ import {
   type SystemAlbumSummary,
   assetDto,
   materialAlbumAssetFilter,
-  materialAlbumCreationGroupId,
+  materialAlbumCreationAlbumId,
   materialAlbumCreationSeriesId,
   materialAlbumDictionaryDomainId,
 } from '@/main/database/albums/material-album-scopes';
@@ -25,6 +26,14 @@ import type { LibraryStorage } from '@/main/database/core/storage';
 import { resolveStoredTitle, titleLocalizationsByOwner } from '@/main/database/core/title-localization';
 import { type JsonMap, text } from '@/main/database/core/values';
 import { creationItemCoverSortOrder } from '@/main/database/creations/creation-output-presentation-sql';
+
+function creationAlbumItemTargetType(value: unknown): CreationAlbumDto['items'][number]['targetType'] {
+  const targetType = text(value);
+  if (targetType === 'MATERIAL' || targetType === 'ALBUM' || targetType === 'CREATION_ITEM') {
+    return targetType;
+  }
+  throw new Error('Creation album member is invalid');
+}
 
 export class MaterialAlbumReader {
   protected readonly db: LibraryStorage['db'];
@@ -48,9 +57,17 @@ export class MaterialAlbumReader {
     );
     // Only albums that actually hold creations get a read-only outputs view;
     // pure material albums would just repeat their `userAlbums` entry here.
-    const creationGroupRows = this.db
+    const creationAlbumRows = this.db
       .prepare(
-        `SELECT album.id, album.title, album.title_locale, album.created_at, parent.album_id AS parent_album_id
+        `WITH RECURSIVE unavailable_album(id) AS (
+          SELECT id FROM albums WHERE deleted_at IS NOT NULL
+          UNION
+          SELECT member.target_id
+          FROM unavailable_album unavailable
+          JOIN album_members member ON member.album_id = unavailable.id
+            AND member.target_type = 'ALBUM' AND member.deleted_at IS NULL
+        )
+        SELECT album.id, album.title, album.title_locale, album.created_at, parent.album_id AS parent_album_id
         FROM albums album
         LEFT JOIN album_members parent ON parent.target_type = 'ALBUM'
           AND parent.target_id = album.id AND parent.deleted_at IS NULL
@@ -59,28 +76,30 @@ export class MaterialAlbumReader {
             WHERE parent_album.id = parent.album_id AND parent_album.deleted_at IS NULL
               AND parent_album.intent <> ?
           )
-        WHERE album.deleted_at IS NULL AND album.intent <> ? AND EXISTS (
+        WHERE album.deleted_at IS NULL AND album.archived_at IS NULL AND album.intent <> ?
+          AND NOT EXISTS (SELECT 1 FROM unavailable_album unavailable WHERE unavailable.id = album.id)
+          AND EXISTS (
           SELECT 1 FROM album_members member
           WHERE member.album_id = album.id AND member.deleted_at IS NULL
-            AND member.target_type IN ('SERIES', 'ALBUM')
+            AND member.target_type IN ('CREATION_ITEM', 'ALBUM')
         )
         ORDER BY album.pinned DESC, album.created_at, album.id`,
       )
       .all(MATERIAL_LIBRARY_ALBUM_INTENT, MATERIAL_LIBRARY_ALBUM_INTENT) as JsonMap[];
-    const creationGroupSummaries = this.creationGroupSummaries();
-    const creationGroupIds = new Set(creationGroupRows.map((row) => text(row.id)));
-    const creationGroupLocalizations = titleLocalizationsByOwner(this.db, 'ALBUM', [...creationGroupIds]);
-    const creationGroups = creationGroupRows.map((row) =>
+    const creationAlbumSummaries = this.creationAlbumSummaries();
+    const creationAlbumIds = new Set(creationAlbumRows.map((row) => text(row.id)));
+    const creationAlbumLocalizations = titleLocalizationsByOwner(this.db, 'ALBUM', [...creationAlbumIds]);
+    const creationAlbums = creationAlbumRows.map((row) =>
       this.systemAlbum(
-        materialAlbumCreationGroupId(text(row.id)),
+        materialAlbumCreationAlbumId(text(row.id)),
         'CREATION_GROUP',
-        resolveStoredTitle(row, input.locale, creationGroupLocalizations.get(text(row.id)) ?? []),
-        row.parent_album_id && creationGroupIds.has(text(row.parent_album_id))
-          ? materialAlbumCreationGroupId(text(row.parent_album_id))
+        resolveStoredTitle(row, input.locale, creationAlbumLocalizations.get(text(row.id)) ?? []),
+        row.parent_album_id && creationAlbumIds.has(text(row.parent_album_id))
+          ? materialAlbumCreationAlbumId(text(row.parent_album_id))
           : MATERIAL_ALBUM_CREATION_ROOT_ID,
         text(row.id),
         text(row.created_at),
-        creationGroupSummaries.get(text(row.id)) ?? { materialCount: 0, previewAssets: [] },
+        creationAlbumSummaries.get(text(row.id)) ?? { materialCount: 0, previewAssets: [] },
       ),
     );
     const seriesRows = this.db
@@ -88,16 +107,21 @@ export class MaterialAlbumReader {
         `SELECT series.id, series.title, series.title_locale, series.created_at,
             member.album_id AS source_album_id, member.sort_order,
             root_order.sort_order AS root_sort_order
-          FROM prompt_series series
-          LEFT JOIN album_members member ON member.target_type = 'SERIES'
-            AND member.target_id = series.id AND member.deleted_at IS NULL
+          FROM creation_items item
+          JOIN creation_forms form ON form.creation_item_id = item.id
+            AND form.role = 'IMAGE_CREATION' AND form.entity_type = 'PROMPT_SERIES'
+            AND form.deleted_at IS NULL
+          JOIN prompt_series series ON series.id = form.entity_id
+          LEFT JOIN album_members member ON member.target_type = 'CREATION_ITEM'
+            AND member.target_id = item.id AND member.deleted_at IS NULL
             AND EXISTS (
               SELECT 1 FROM albums owner
               WHERE owner.id = member.album_id AND owner.deleted_at IS NULL AND owner.intent <> ?
             )
           LEFT JOIN sidebar_root_order root_order ON root_order.scope = 'CREATOR'
-            AND root_order.target_type = 'SERIES' AND root_order.target_id = series.id
-          WHERE series.deleted_at IS NULL
+            AND root_order.target_type = 'CREATION_ITEM' AND root_order.target_id = item.id
+          WHERE item.deleted_at IS NULL AND item.archived_at IS NULL
+            AND series.deleted_at IS NULL AND series.archived_at IS NULL
           ORDER BY member.album_id IS NULL, member.album_id, member.sort_order,
             root_order.sort_order IS NULL, root_order.sort_order, series.created_at, series.id`,
       )
@@ -129,8 +153,8 @@ export class MaterialAlbumReader {
         materialAlbumCreationSeriesId(seriesId),
         'CREATION_SERIES',
         localizedTitle,
-        sourceAlbumId && creationGroupIds.has(sourceAlbumId)
-          ? materialAlbumCreationGroupId(sourceAlbumId)
+        sourceAlbumId && creationAlbumIds.has(sourceAlbumId)
+          ? materialAlbumCreationAlbumId(sourceAlbumId)
           : MATERIAL_ALBUM_CREATION_UNASSIGNED_ID,
         null,
         text(row.created_at),
@@ -156,46 +180,67 @@ export class MaterialAlbumReader {
     if (uncategorized.materialCount > 0) dictionaryDomains.push(uncategorized);
     const userAlbumRows = this.db
       .prepare(
-        `SELECT * FROM albums
-        WHERE deleted_at IS NULL AND intent = ? ORDER BY created_at, id`,
+        `WITH RECURSIVE unavailable_album(id) AS (
+          SELECT id FROM albums WHERE deleted_at IS NOT NULL
+          UNION
+          SELECT member.target_id
+          FROM unavailable_album unavailable
+          JOIN album_members member ON member.album_id = unavailable.id
+            AND member.target_type = 'ALBUM' AND member.deleted_at IS NULL
+        )
+        SELECT * FROM albums album
+        WHERE album.deleted_at IS NULL AND album.archived_at IS NULL AND album.intent = ?
+          AND NOT EXISTS (SELECT 1 FROM unavailable_album unavailable WHERE unavailable.id = album.id)
+        ORDER BY album.created_at, album.id`,
       )
       .all(MATERIAL_LIBRARY_ALBUM_INTENT) as JsonMap[];
     const userAlbums = this.userAlbumDtos(userAlbumRows, input.locale);
-    return [root, ...creationGroups, ...unassigned, ...creationSeries, dictionary, ...dictionaryDomains, ...userAlbums];
+    return [root, ...creationAlbums, ...unassigned, ...creationSeries, dictionary, ...dictionaryDomains, ...userAlbums];
   }
 
-  private creationGroupSummaries() {
+  private creationAlbumSummaries() {
     const rows = this.db
       .prepare(
         `WITH RECURSIVE
-          group_roots(id) AS (
+          album_roots(id) AS (
             SELECT album.id FROM albums album
-            WHERE album.deleted_at IS NULL AND album.intent <> ? AND EXISTS (
+            WHERE album.deleted_at IS NULL AND album.archived_at IS NULL AND album.intent <> ? AND EXISTS (
               SELECT 1 FROM album_members member
               WHERE member.album_id = album.id AND member.deleted_at IS NULL
-                AND member.target_type IN ('SERIES', 'ALBUM')
+                AND member.target_type IN ('CREATION_ITEM', 'ALBUM')
             )
           ),
           descendants(root_id, id) AS (
-            SELECT id, id FROM group_roots
+            SELECT id, id FROM album_roots
             UNION
             SELECT descendants.root_id, child.id
             FROM descendants
             JOIN album_members edge ON edge.album_id = descendants.id
               AND edge.target_type = 'ALBUM' AND edge.deleted_at IS NULL
-            JOIN albums child ON child.id = edge.target_id AND child.deleted_at IS NULL
+            JOIN albums child ON child.id = edge.target_id
+              AND child.deleted_at IS NULL AND child.archived_at IS NULL
           ),
-          grouped_series(root_id, series_id) AS (
+          album_creation_items(root_id, creation_item_id) AS (
             SELECT DISTINCT descendants.root_id, member.target_id
             FROM descendants
             JOIN album_members member ON member.album_id = descendants.id
-              AND member.target_type = 'SERIES' AND member.deleted_at IS NULL
-            JOIN prompt_series series ON series.id = member.target_id AND series.deleted_at IS NULL
+              AND member.target_type = 'CREATION_ITEM' AND member.deleted_at IS NULL
+            JOIN creation_items item ON item.id = member.target_id
+              AND item.deleted_at IS NULL AND item.archived_at IS NULL
           ),
-          group_relationships(root_id, series_id, asset_id, relationship_role) AS (
-            SELECT grouped_series.root_id, grouped_series.series_id, run.result_asset_id, 'OUTPUT'
-            FROM grouped_series
-            JOIN prompt_versions version ON version.series_id = grouped_series.series_id
+          album_series(root_id, series_id) AS (
+            SELECT DISTINCT item.root_id, form.entity_id
+            FROM album_creation_items item
+            JOIN creation_forms form ON form.creation_item_id = item.creation_item_id
+              AND form.role = 'IMAGE_CREATION' AND form.entity_type = 'PROMPT_SERIES'
+              AND form.deleted_at IS NULL
+            JOIN prompt_series series ON series.id = form.entity_id
+              AND series.deleted_at IS NULL AND series.archived_at IS NULL
+          ),
+          album_relationships(root_id, series_id, asset_id, relationship_role) AS (
+            SELECT album_series.root_id, album_series.series_id, run.result_asset_id, 'OUTPUT'
+            FROM album_series
+            JOIN prompt_versions version ON version.series_id = album_series.series_id
             JOIN generation_runs run ON run.prompt_version_id = version.id
               AND run.status = 'SUCCEEDED' AND run.result_asset_id IS NOT NULL
               AND NOT EXISTS (
@@ -204,67 +249,120 @@ export class MaterialAlbumReader {
               )
               AND NOT EXISTS (
                 SELECT 1 FROM prompt_series_output_exclusions exclusion
-                WHERE exclusion.series_id = grouped_series.series_id
+                WHERE exclusion.series_id = album_series.series_id
                   AND exclusion.image_asset_id = run.result_asset_id
               )
             UNION
-            SELECT grouped_series.root_id, grouped_series.series_id, imported.image_asset_id, 'OUTPUT'
-            FROM grouped_series
-            JOIN creation_output_imports imported ON imported.series_id = grouped_series.series_id
+            SELECT album_series.root_id, album_series.series_id, imported.image_asset_id, 'OUTPUT'
+            FROM album_series
+            JOIN creation_output_imports imported ON imported.series_id = album_series.series_id
               AND imported.deleted_at IS NULL
               AND NOT EXISTS (
                 SELECT 1 FROM prompt_series_output_exclusions exclusion
-                WHERE exclusion.series_id = grouped_series.series_id
+                WHERE exclusion.series_id = album_series.series_id
                   AND exclusion.image_asset_id = imported.image_asset_id
               )
             UNION
-            SELECT grouped_series.root_id, grouped_series.series_id, transform.output_asset_id, 'OUTPUT'
-            FROM grouped_series
-            JOIN image_transform_runs transform ON transform.series_id = grouped_series.series_id
+            SELECT album_series.root_id, album_series.series_id, transform.output_asset_id, 'OUTPUT'
+            FROM album_series
+            JOIN image_transform_runs transform ON transform.series_id = album_series.series_id
               AND transform.deleted_at IS NULL
               AND NOT EXISTS (
                 SELECT 1 FROM prompt_series_output_exclusions exclusion
-                WHERE exclusion.series_id = grouped_series.series_id
+                WHERE exclusion.series_id = album_series.series_id
                   AND exclusion.image_asset_id = transform.output_asset_id
               )
             UNION
-            SELECT grouped_series.root_id, grouped_series.series_id, binding.image_asset_id, 'INPUT'
-            FROM grouped_series
-            JOIN prompt_series series ON series.id = grouped_series.series_id
+            SELECT album_series.root_id, album_series.series_id, binding.image_asset_id, 'INPUT'
+            FROM album_series
+            JOIN prompt_series series ON series.id = album_series.series_id
             JOIN reference_bindings binding ON binding.prompt_version_id = series.current_version_id
               AND binding.source_type = 'DIRECT'
             UNION
-            SELECT grouped_series.root_id, grouped_series.series_id, version.source_image_id, 'INPUT'
-            FROM grouped_series
-            JOIN prompt_series series ON series.id = grouped_series.series_id
+            SELECT album_series.root_id, album_series.series_id, version.source_image_id, 'INPUT'
+            FROM album_series
+            JOIN prompt_series series ON series.id = album_series.series_id
             JOIN prompt_versions version ON version.id = series.current_version_id
             WHERE version.source_image_id IS NOT NULL
-          ), group_assets(root_id, series_id, asset_id) AS (
+          ), album_assets(root_id, series_id, asset_id) AS (
             SELECT DISTINCT relationship.root_id, relationship.series_id, relationship.asset_id
-            FROM group_relationships relationship
+            FROM album_relationships relationship
             WHERE relationship.relationship_role = 'OUTPUT' OR EXISTS (
               SELECT 1 FROM materials material
               WHERE material.image_asset_id = relationship.asset_id AND material.kind = 'IMAGE'
-                AND material.deleted_at IS NULL
+                AND material.deleted_at IS NULL AND material.archived_at IS NULL
             )
+          ), album_content_assets(root_id, content_id, asset_id, content_preview_rank, activity_at) AS (
+            SELECT item.root_id, 'INSPIRATION_STASH:' || inspiration.id,
+              reference.value, CAST(reference.key AS INTEGER) + 1, inspiration.updated_at
+            FROM album_creation_items item
+            JOIN creation_forms form ON form.creation_item_id = item.creation_item_id
+              AND form.role = 'INSPIRATION' AND form.entity_type = 'INSPIRATION_STASH'
+              AND form.deleted_at IS NULL
+            JOIN inspiration_stashes inspiration ON inspiration.id = form.entity_id
+              AND inspiration.status = 'ACTIVE' AND inspiration.deleted_at IS NULL
+            JOIN json_each(inspiration.input_json, '$.referenceAssetIds') reference
+            WHERE EXISTS (
+              SELECT 1 FROM materials material
+              WHERE material.image_asset_id = reference.value AND material.kind = 'IMAGE'
+                AND material.deleted_at IS NULL AND material.archived_at IS NULL
+            )
+            UNION ALL
+            SELECT item.root_id, 'SOCIAL_POST:' || post.id, media.value,
+              CASE
+                WHEN media.value = json_extract(revision.content_json, '$.coverAssetId') THEN 0
+                ELSE CAST(media.key AS INTEGER) + 1
+              END,
+              post.updated_at
+            FROM album_creation_items item
+            JOIN creation_forms form ON form.creation_item_id = item.creation_item_id
+              AND form.role = 'SOCIAL_POST' AND form.entity_type = 'SOCIAL_POST'
+              AND form.deleted_at IS NULL
+            JOIN social_post_drafts post ON post.id = form.entity_id
+              AND post.status = 'ACTIVE' AND post.deleted_at IS NULL
+            JOIN social_post_revisions revision ON revision.id = post.current_revision_id
+            JOIN json_each(revision.content_json, '$.mediaAssetIds') media
+            UNION ALL
+            SELECT item.root_id, 'ARTICLE:' || article.id,
+              json_extract(binding.value, '$.assetId'),
+              CASE
+                WHEN json_extract(binding.value, '$.assetId') = json_extract(revision.content_json, '$.coverAssetId')
+                  THEN 0
+                ELSE CAST(binding.key AS INTEGER) + 1
+              END,
+              article.updated_at
+            FROM album_creation_items item
+            JOIN creation_forms form ON form.creation_item_id = item.creation_item_id
+              AND form.role = 'ARTICLE' AND form.entity_type = 'ARTICLE'
+              AND form.deleted_at IS NULL
+            JOIN articles article ON article.id = form.entity_id
+              AND article.status = 'ACTIVE' AND article.deleted_at IS NULL
+            JOIN article_revisions revision ON revision.id = article.current_revision_id
+            JOIN json_each(revision.content_json, '$.mediaBindings') binding
           ),
           ranked_per_creation AS (
-            SELECT group_assets.root_id, group_assets.series_id, asset.*,
+            SELECT album_assets.root_id, album_assets.series_id, asset.*,
               row_number() OVER (
-                PARTITION BY group_assets.root_id, group_assets.series_id
+                PARTITION BY album_assets.root_id, album_assets.series_id
                 ORDER BY COALESCE(
-                    ${creationItemCoverSortOrder('group_assets.series_id', 'asset.id')},
+                    ${creationItemCoverSortOrder('album_assets.series_id', 'asset.id')},
                     2147483647
                   ),
                   asset.created_at DESC, asset.id DESC
               ) AS creation_preview_rank
-            FROM group_assets
-            JOIN prompt_series series ON series.id = group_assets.series_id
-            JOIN image_assets asset ON asset.id = group_assets.asset_id AND asset.deleted_at IS NULL
+            FROM album_assets
+            JOIN prompt_series series ON series.id = album_assets.series_id
+            JOIN image_assets asset ON asset.id = album_assets.asset_id AND asset.deleted_at IS NULL
           ), ranked_assets AS (
-            SELECT root_id, id, MIN(creation_preview_rank) AS creation_preview_rank,
-              MAX(created_at) AS created_at
-            FROM ranked_per_creation
+            SELECT root_id, id, MIN(creation_preview_rank) AS creation_preview_rank, MAX(activity_at) AS activity_at
+            FROM (
+              SELECT root_id, id, creation_preview_rank, created_at AS activity_at
+              FROM ranked_per_creation
+              UNION ALL
+              SELECT content.root_id, asset.id, content.content_preview_rank, content.activity_at
+              FROM album_content_assets content
+              JOIN image_assets asset ON asset.id = content.asset_id AND asset.deleted_at IS NULL
+            ) candidates
             GROUP BY root_id, id
           ), ranked AS (
             SELECT ranked_assets.root_id, asset.*,
@@ -272,7 +370,7 @@ export class MaterialAlbumReader {
               row_number() OVER (
                 PARTITION BY ranked_assets.root_id
                 ORDER BY ranked_assets.creation_preview_rank,
-                  ranked_assets.created_at DESC, ranked_assets.id DESC
+                  ranked_assets.activity_at DESC, ranked_assets.id DESC
               ) AS preview_rank
             FROM ranked_assets
             JOIN image_assets asset ON asset.id = ranked_assets.id AND asset.deleted_at IS NULL
@@ -295,106 +393,7 @@ export class MaterialAlbumReader {
   }
 
   private creationSeriesSummaries() {
-    const rows = this.db
-      .prepare(
-        `WITH series_relationships(series_id, asset_id, relationship_role) AS (
-            SELECT version.series_id, run.result_asset_id, 'OUTPUT'
-            FROM prompt_versions version
-            JOIN prompt_series series ON series.id = version.series_id AND series.deleted_at IS NULL
-            JOIN generation_runs run ON run.prompt_version_id = version.id
-              AND run.status = 'SUCCEEDED' AND run.result_asset_id IS NOT NULL
-              AND NOT EXISTS (
-                SELECT 1 FROM generation_output_reviews review
-                WHERE review.generation_run_id = run.id AND review.disposition = 'FAILED'
-              )
-              AND NOT EXISTS (
-                SELECT 1 FROM prompt_series_output_exclusions exclusion
-                WHERE exclusion.series_id = version.series_id AND exclusion.image_asset_id = run.result_asset_id
-              )
-            UNION
-            SELECT imported.series_id, imported.image_asset_id, 'OUTPUT'
-            FROM creation_output_imports imported
-            JOIN prompt_series series ON series.id = imported.series_id AND series.deleted_at IS NULL
-            WHERE imported.deleted_at IS NULL
-              AND NOT EXISTS (
-                SELECT 1 FROM prompt_series_output_exclusions exclusion
-                WHERE exclusion.series_id = imported.series_id
-                  AND exclusion.image_asset_id = imported.image_asset_id
-              )
-            UNION
-            SELECT transform.series_id, transform.output_asset_id, 'OUTPUT'
-            FROM image_transform_runs transform
-            JOIN prompt_series series ON series.id = transform.series_id AND series.deleted_at IS NULL
-            WHERE transform.deleted_at IS NULL
-              AND NOT EXISTS (
-                SELECT 1 FROM prompt_series_output_exclusions exclusion
-                WHERE exclusion.series_id = transform.series_id
-                  AND exclusion.image_asset_id = transform.output_asset_id
-              )
-            UNION
-            SELECT series.id, binding.image_asset_id, 'INPUT'
-            FROM prompt_series series
-            JOIN reference_bindings binding ON binding.prompt_version_id = series.current_version_id
-              AND binding.source_type = 'DIRECT'
-            WHERE series.deleted_at IS NULL
-            UNION
-            SELECT series.id, version.source_image_id, 'INPUT'
-            FROM prompt_series series
-            JOIN prompt_versions version ON version.id = series.current_version_id
-            WHERE series.deleted_at IS NULL AND version.source_image_id IS NOT NULL
-          ), series_assets(series_id, asset_id) AS (
-            SELECT DISTINCT relationship.series_id, relationship.asset_id
-            FROM series_relationships relationship
-            WHERE relationship.relationship_role = 'OUTPUT' OR EXISTS (
-              SELECT 1 FROM materials material
-              WHERE material.image_asset_id = relationship.asset_id AND material.kind = 'IMAGE'
-                AND material.deleted_at IS NULL
-            )
-          ), root_assets(series_id, asset_id) AS (
-            SELECT MIN(series_assets.series_id), series_assets.asset_id
-            FROM series_assets
-            GROUP BY series_assets.asset_id
-          ), scoped_assets(scope_id, series_id, asset_id) AS (
-            SELECT 'SERIES:' || series_assets.series_id, series_assets.series_id, series_assets.asset_id FROM series_assets
-            UNION
-            SELECT 'ROOT', root_assets.series_id, root_assets.asset_id FROM root_assets
-            UNION
-            SELECT 'UNASSIGNED', series_assets.series_id, series_assets.asset_id
-            FROM series_assets
-            WHERE NOT EXISTS (
-              SELECT 1 FROM album_members member
-              JOIN albums owner ON owner.id = member.album_id
-                AND owner.deleted_at IS NULL AND owner.intent <> '${MATERIAL_LIBRARY_ALBUM_INTENT}'
-              WHERE member.target_type = 'SERIES' AND member.target_id = series_assets.series_id
-                AND member.deleted_at IS NULL
-            )
-          ), ranked_per_creation AS (
-            SELECT scoped_assets.scope_id, asset.*,
-              count(*) OVER (PARTITION BY scoped_assets.scope_id) AS material_count,
-              row_number() OVER (
-                PARTITION BY scoped_assets.scope_id, scoped_assets.series_id
-                ORDER BY COALESCE(
-                    ${creationItemCoverSortOrder('scoped_assets.series_id', 'asset.id')},
-                    2147483647
-                  ),
-                  asset.created_at DESC, asset.id DESC
-              ) AS creation_preview_rank
-            FROM scoped_assets
-            JOIN image_assets asset ON asset.id = scoped_assets.asset_id AND asset.deleted_at IS NULL
-          ), ranked AS (
-            SELECT ranked_per_creation.*,
-              row_number() OVER (
-                PARTITION BY ranked_per_creation.scope_id
-                ORDER BY
-                  ranked_per_creation.creation_preview_rank,
-                  ranked_per_creation.created_at DESC, ranked_per_creation.id DESC
-              ) AS preview_rank
-            FROM ranked_per_creation
-          )
-          SELECT * FROM ranked WHERE preview_rank <= 5
-          ORDER BY scope_id, preview_rank`,
-      )
-      .all() as JsonMap[];
+    const rows = this.db.prepare(creationSeriesMaterialSummariesSql).all() as JsonMap[];
     const bySeries = new Map<string, SystemAlbumSummary>();
     const root: SystemAlbumSummary = { materialCount: 0, previewAssets: [] };
     const unassigned: SystemAlbumSummary = { materialCount: 0, previewAssets: [] };
@@ -536,7 +535,7 @@ export class MaterialAlbumReader {
     const row = this.db
       .prepare(
         `SELECT * FROM albums
-        WHERE id = ? AND deleted_at IS NULL AND intent = ?`,
+        WHERE id = ? AND deleted_at IS NULL AND archived_at IS NULL AND intent = ?`,
       )
       .get(albumId, MATERIAL_LIBRARY_ALBUM_INTENT) as JsonMap | undefined;
     if (!row) throw new Error('Material album not found');
@@ -550,7 +549,9 @@ export class MaterialAlbumReader {
         `SELECT edge.target_id AS child_id, edge.album_id AS parent_id
           FROM album_members edge
           JOIN albums child ON child.id = edge.target_id
-            AND child.deleted_at IS NULL AND child.intent = ?
+            AND child.deleted_at IS NULL AND child.archived_at IS NULL AND child.intent = ?
+          JOIN albums parent ON parent.id = edge.album_id
+            AND parent.deleted_at IS NULL AND parent.archived_at IS NULL
           WHERE edge.target_type = 'ALBUM' AND edge.deleted_at IS NULL
           ORDER BY edge.target_id, edge.updated_at DESC, edge.id`,
       )
@@ -570,8 +571,9 @@ export class MaterialAlbumReader {
           asset.byte_size AS asset_byte_size, asset.created_at AS asset_created_at
           FROM album_members member
           JOIN albums owner ON owner.id = member.album_id
-            AND owner.deleted_at IS NULL AND owner.intent = ?
-          JOIN materials material ON material.id = member.target_id AND material.deleted_at IS NULL
+            AND owner.deleted_at IS NULL AND owner.archived_at IS NULL AND owner.intent = ?
+          JOIN materials material ON material.id = member.target_id
+            AND material.deleted_at IS NULL AND material.archived_at IS NULL
           LEFT JOIN image_assets asset ON asset.id = material.image_asset_id AND asset.deleted_at IS NULL
           WHERE member.target_type = 'MATERIAL' AND member.deleted_at IS NULL
             AND (material.kind = 'TEXT' OR asset.id IS NOT NULL)
@@ -620,7 +622,8 @@ export class MaterialAlbumReader {
           asset.width AS asset_width, asset.height AS asset_height, asset.mime_type AS asset_mime_type,
           asset.byte_size AS asset_byte_size, asset.created_at AS asset_created_at
         FROM album_members member
-        JOIN materials material ON material.id = member.target_id AND material.deleted_at IS NULL
+        JOIN materials material ON material.id = member.target_id
+          AND material.deleted_at IS NULL AND material.archived_at IS NULL
         LEFT JOIN image_assets asset ON asset.id = material.image_asset_id AND asset.deleted_at IS NULL
         WHERE member.album_id = ? AND member.target_type = 'MATERIAL' AND member.deleted_at IS NULL
           AND (material.kind = 'TEXT' OR asset.id IS NOT NULL)
@@ -678,37 +681,45 @@ export class MaterialAlbumReader {
     };
   }
 
-  protected getCreationGroupDto(creationGroupId: string, locale: Locale = 'zh'): CreationGroupDto {
-    const group = this.db
+  protected getCreationAlbumDto(creationAlbumId: string, locale: Locale = 'zh'): CreationAlbumDto {
+    const album = this.db
       .prepare(
         `SELECT id, title, title_locale FROM albums
-        WHERE id = ? AND deleted_at IS NULL`,
+        WHERE id = ? AND deleted_at IS NULL AND archived_at IS NULL`,
       )
-      .get(creationGroupId) as JsonMap | undefined;
-    if (!group) throw new Error('Creation group not found');
+      .get(creationAlbumId) as JsonMap | undefined;
+    if (!album) throw new Error('Creation album not found');
     const items = (
       this.db
         .prepare(
           `SELECT item.* FROM album_members item
         WHERE item.album_id = ? AND item.deleted_at IS NULL AND (
-          (item.target_type = 'SERIES' AND EXISTS (
-            SELECT 1 FROM prompt_series series
-            WHERE series.id = item.target_id AND series.deleted_at IS NULL
+          (item.target_type = 'MATERIAL' AND EXISTS (
+            SELECT 1 FROM materials material
+            WHERE material.id = item.target_id
+              AND material.deleted_at IS NULL AND material.archived_at IS NULL
           )) OR
           (item.target_type = 'ALBUM' AND EXISTS (
             SELECT 1 FROM albums child
-            WHERE child.id = item.target_id AND child.deleted_at IS NULL
+            WHERE child.id = item.target_id AND child.deleted_at IS NULL AND child.archived_at IS NULL
+          )) OR
+          (item.target_type = 'CREATION_ITEM' AND EXISTS (
+            SELECT 1 FROM creation_items creation_item
+            WHERE creation_item.id = item.target_id
+              AND creation_item.archived_at IS NULL AND creation_item.deleted_at IS NULL
           ))
         )
         ORDER BY item.sort_order, item.id`,
         )
-        .all(creationGroupId) as JsonMap[]
-    ).map((item) => ({
-      id: text(item.id),
-      targetType: text(item.target_type) === 'ALBUM' ? ('ALBUM' as const) : ('PROMPT_SERIES' as const),
-      targetId: text(item.target_id),
-    }));
-    const localizations = titleLocalizationsByOwner(this.db, 'ALBUM', [creationGroupId]).get(creationGroupId) ?? [];
-    return { id: text(group.id), title: resolveStoredTitle(group, locale, localizations), items };
+        .all(creationAlbumId) as JsonMap[]
+    ).map((item) => {
+      return {
+        id: text(item.id),
+        targetType: creationAlbumItemTargetType(item.target_type),
+        targetId: text(item.target_id),
+      };
+    });
+    const localizations = titleLocalizationsByOwner(this.db, 'ALBUM', [creationAlbumId]).get(creationAlbumId) ?? [];
+    return { id: text(album.id), title: resolveStoredTitle(album, locale, localizations), items };
   }
 }

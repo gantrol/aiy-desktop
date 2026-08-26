@@ -19,7 +19,7 @@ export function VideoDocumentRecentVideos({ locale, items, loading, selectedMate
   const dateFormatter = new Intl.DateTimeFormat(locale, { dateStyle: 'medium', timeStyle: 'short' });
 
   return (
-    <section className="rounded-xl border bg-card p-4 shadow-sm">
+    <section className="rounded-xl border bg-card p-4">
       <h2 className="text-sm font-semibold">{labels.recentVideos}</h2>
       <div className="mt-3 grid grid-cols-2 gap-3 lg:grid-cols-4">
         {loading
@@ -45,7 +45,7 @@ export function VideoDocumentRecentVideos({ locale, items, loading, selectedMate
                 >
                   <AssetMedia
                     asset={item.asset}
-                    className="aspect-video w-full rounded-md bg-media-surround-dark object-cover"
+                    className="aspect-video w-full rounded-md bg-media-surround-dark object-contain"
                     loading="lazy"
                     muted
                   />

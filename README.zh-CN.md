@@ -9,7 +9,7 @@
 
   <p>
     <a href="https://github.com/gantrol/aiy-desktop/releases/latest"><img src="https://img.shields.io/github/v/release/gantrol/aiy-desktop?display_name=tag&amp;style=flat-square&amp;label=release" alt="最新版本" /></a>
-    <img src="https://img.shields.io/badge/platform-Windows%2010%2F11%20x64%20Store-4b5563?style=flat-square" alt="Windows 10/11 x64 Microsoft Store" />
+    <a href="https://apps.microsoft.com/detail/9nwd1hg6tczh"><img src="https://img.shields.io/badge/platform-Windows%2010%2F11%20x64%20Store-4b5563?style=flat-square" alt="Windows 10/11 x64 Microsoft Store" /></a>
     <a href="LICENSE"><img src="https://img.shields.io/badge/license-PolyForm%20Noncommercial%201.0.0-7c3aed?style=flat-square" alt="PolyForm Noncommercial 1.0.0" /></a>
   </p>
 
@@ -18,7 +18,6 @@
     <img src="https://img.shields.io/badge/Security-A-2ea043?style=flat-square" alt="安全性评级：A" />
     <img src="https://img.shields.io/badge/Maintainability-A-2ea043?style=flat-square" alt="可维护性评级：A" />
     <img src="https://img.shields.io/badge/Security%20Review-A-2ea043?style=flat-square" alt="安全审查评级：A" />
-    <img src="https://img.shields.io/badge/Coverage-29.51%25%20lines-eab308?style=flat-square" alt="代码行覆盖率：29.51%" />
   </p>
 
   <p>
@@ -85,7 +84,7 @@ AIY 可以扫描本机 Codex 的生成图片目录，按任务分组、避免重
 
 ## 分发
 
-从 `v0.3.5` 起，维护中的分发目标只有：
+从 `v0.3.6` 起，维护中的分发目标只有：
 
 - Windows 10/11 x64：Microsoft Store MSIX。
 
@@ -93,7 +92,7 @@ AIY 可以扫描本机 Codex 的生成图片目录，按任务分组、避免重
 
 ## ❕早期阶段
 
-AIY 目前仍处于早期开发阶段。到 v0.3.5，图像创作与素材库已可用，扩展与内容包后续仍可能变化。
+AIY 目前仍处于早期开发阶段。到 v0.3.6，图像创作与素材库已可用，扩展与内容包后续仍可能变化。
 
 框架已经搭好，需要真实用户反馈，才能决定这个项目往哪里走。
 

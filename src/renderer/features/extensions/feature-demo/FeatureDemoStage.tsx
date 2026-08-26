@@ -61,7 +61,7 @@ function FeatureDemoCursor({ x, y }: { x: number; y: number }) {
     <MousePointer2Icon
       data-feature-demo-cursor
       aria-hidden="true"
-      className="pointer-events-none absolute z-[80] size-10 fill-background text-foreground drop-shadow-md"
+      className="pointer-events-none absolute z-[80] size-10 fill-background text-foreground"
       style={{ left: x, top: y, transform: 'translate(-3px, -3px)' }}
     />
   );
@@ -216,7 +216,7 @@ export const FeatureDemoStage = forwardRef<HTMLDivElement, FeatureDemoStageProps
       style={{ width: FEATURE_DEMO_PREVIEW_WIDTH, height: FEATURE_DEMO_PREVIEW_HEIGHT }}
     >
       <DemoScene active={styleSceneActive} className="bg-surface-sunken p-5 pt-16">
-        <div ref={styleRootRef} className="size-full overflow-hidden rounded-xl border bg-background p-4 shadow-sm">
+        <div ref={styleRootRef} className="size-full overflow-hidden rounded-xl border bg-background p-4">
           <StyleExplorationPanel
             batches={demoBatch}
             series={data.series}
@@ -268,7 +268,7 @@ export const FeatureDemoStage = forwardRef<HTMLDivElement, FeatureDemoStageProps
       </DemoScene>
 
       <DemoScene active={directorySceneActive} className="bg-surface-sunken p-8 pt-[5.5rem]">
-        <div className="size-full overflow-hidden rounded-xl border bg-background shadow-sm">
+        <div className="size-full overflow-hidden rounded-xl border bg-background">
           <div ref={directoryRootRef} className="h-full w-[28rem] border-r">
             <FeatureDemoDirectoryTree data={data} openProgress={directoryOpenProgress} />
           </div>
@@ -291,7 +291,7 @@ export const FeatureDemoStage = forwardRef<HTMLDivElement, FeatureDemoStageProps
         </div>
       </DemoScene>
 
-      <div className="pointer-events-none absolute inset-x-0 top-0 z-[70] flex h-14 items-center gap-3 border-b bg-overlay/95 px-5 shadow-sm backdrop-blur-sm">
+      <div className="pointer-events-none absolute inset-x-0 top-0 z-[70] flex h-14 items-center gap-3 border-b bg-overlay/95 px-5 backdrop-blur-sm">
         <Badge variant="secondary" className="tabular-nums">
           {String(position.sceneIndex + 1).padStart(2, '0')}
         </Badge>

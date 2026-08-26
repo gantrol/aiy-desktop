@@ -16,7 +16,7 @@ interface Props {
   children: ReactNode;
   /** Material album currently open in the library, so a material import lands where the user is. */
   materialAlbumId?: string | null;
-  /** Backing creation group for a read-only creation view, if one is open. */
+  /** Backing creation album for a read-only creation view, if one is open. */
   creationAlbumId?: string | null;
   series: PromptSeriesDto[];
   onCommitted(result: IntakeCommitResult): void | Promise<void>;
@@ -106,7 +106,7 @@ export const GalleryIntakeAdapter = forwardRef<GalleryIntakeAdapterHandle, Props
         intent: 'NEW_EXTERNAL_CREATION',
         sourceKind: 'EXTERNAL_IMPORT',
         creationDraftId: null,
-        // Material albums are filing destinations, not creation groups.
+        // Material albums are filing destinations, not creation albums.
         albumId: creationAlbumId ?? null,
         title: '',
         titleLocale: locale,

@@ -164,7 +164,12 @@ export function AiActivityOutline({
                   />
                   <span className="grid size-[38px] place-items-center overflow-hidden rounded-md bg-surface-sunken text-foreground-secondary">
                     {group.cover ? (
-                      <AssetMedia asset={group.cover} alt={title} loading="lazy" className="size-full object-cover" />
+                      <AssetMedia
+                        asset={group.cover}
+                        alt={title}
+                        loading="lazy"
+                        className="size-full bg-media-surround-light object-contain"
+                      />
                     ) : (
                       <OutcomeIcon group={group} />
                     )}

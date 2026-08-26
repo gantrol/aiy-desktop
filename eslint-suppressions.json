@@ -158,9 +158,6 @@
     }
   },
   "src/renderer/components/creator/ResultLibrary.tsx": {
-    "complexity": {
-      "count": 1
-    },
     "max-lines": {
       "count": 1
     },
@@ -346,6 +343,11 @@
       "count": 1
     },
     "max-lines-per-function": {
+      "count": 1
+    }
+  },
+  "tests/database.integration.test.ts": {
+    "@typescript-eslint/no-unused-vars": {
       "count": 1
     }
   }

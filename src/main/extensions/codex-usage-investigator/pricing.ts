@@ -1,13 +1,13 @@
-import type { CodexUsagePricingBasis } from '@/shared/contracts/codex-usage';
+import type { CodexUsagePricingBasis, CodexUsageServiceTier } from '@/shared/contracts/codex-usage';
 
 const TOKENS_PER_MILLION = 1_000_000;
 export const CODEX_USAGE_LONG_CONTEXT_THRESHOLD = 272_000;
 
 export const CODEX_USAGE_PRICING_BASIS: CodexUsagePricingBasis = {
-  apiVerifiedAt: '2026-08-20',
-  apiSourceUrl: 'https://developers.openai.com/api/docs/models/compare',
-  creditVerifiedAt: '2026-08-20',
-  creditSourceUrl: 'https://help.openai.com/en/articles/11481834',
+  apiVerifiedAt: '2026-08-25',
+  apiSourceUrl: 'https://developers.openai.com/api/docs/changelog',
+  creditVerifiedAt: '2026-08-23',
+  creditSourceUrl: 'https://learn.chatgpt.com/docs/pricing',
   longContextThresholdTokens: CODEX_USAGE_LONG_CONTEXT_THRESHOLD,
 };
 
@@ -28,112 +28,185 @@ interface ApiPrice {
   longContext: boolean;
 }
 
+interface ApiPricePeriod extends ApiPrice {
+  effectiveFrom: string | null;
+}
+
 interface CreditPrice {
   inputPerMillion: number;
   cachedInputPerMillion: number;
   outputPerMillion: number;
 }
 
-const API_PRICES = {
-  'gpt-5.6-sol': {
-    inputPerMillionUsd: 5,
-    cachedInputPerMillionUsd: 0.5,
-    cacheWriteInputPerMillionUsd: 6.25,
-    outputPerMillionUsd: 30,
-    longContext: true,
-  },
-  'gpt-5.6-terra': {
-    inputPerMillionUsd: 2,
-    cachedInputPerMillionUsd: 0.2,
-    cacheWriteInputPerMillionUsd: 2.5,
-    outputPerMillionUsd: 12,
-    longContext: true,
-  },
-  'gpt-5.6-luna': {
-    inputPerMillionUsd: 0.2,
-    cachedInputPerMillionUsd: 0.02,
-    cacheWriteInputPerMillionUsd: 0.25,
-    outputPerMillionUsd: 1.2,
-    longContext: true,
-  },
-  'gpt-5.5': {
-    inputPerMillionUsd: 5,
-    cachedInputPerMillionUsd: 0.5,
-    cacheWriteInputPerMillionUsd: null,
-    outputPerMillionUsd: 30,
-    longContext: true,
-  },
-  'gpt-5.5-pro': {
-    inputPerMillionUsd: 30,
-    cachedInputPerMillionUsd: null,
-    cacheWriteInputPerMillionUsd: null,
-    outputPerMillionUsd: 180,
-    longContext: true,
-  },
-  'gpt-5.4': {
-    inputPerMillionUsd: 2.5,
-    cachedInputPerMillionUsd: 0.25,
-    cacheWriteInputPerMillionUsd: null,
-    outputPerMillionUsd: 15,
-    longContext: true,
-  },
-  'gpt-5.4-pro': {
-    inputPerMillionUsd: 30,
-    cachedInputPerMillionUsd: null,
-    cacheWriteInputPerMillionUsd: null,
-    outputPerMillionUsd: 180,
-    longContext: true,
-  },
-  'gpt-5.4-mini': {
-    inputPerMillionUsd: 0.75,
-    cachedInputPerMillionUsd: 0.075,
-    cacheWriteInputPerMillionUsd: null,
-    outputPerMillionUsd: 4.5,
-    longContext: false,
-  },
-  'gpt-5.4-nano': {
-    inputPerMillionUsd: 0.2,
-    cachedInputPerMillionUsd: 0.02,
-    cacheWriteInputPerMillionUsd: null,
-    outputPerMillionUsd: 1.25,
-    longContext: false,
-  },
-  'gpt-5.3-codex': {
-    inputPerMillionUsd: 1.75,
-    cachedInputPerMillionUsd: 0.175,
-    cacheWriteInputPerMillionUsd: null,
-    outputPerMillionUsd: 14,
-    longContext: false,
-  },
-  'gpt-5.2': {
-    inputPerMillionUsd: 1.75,
-    cachedInputPerMillionUsd: 0.175,
-    cacheWriteInputPerMillionUsd: null,
-    outputPerMillionUsd: 14,
-    longContext: false,
-  },
-  'gpt-5.2-pro': {
-    inputPerMillionUsd: 21,
-    cachedInputPerMillionUsd: null,
-    cacheWriteInputPerMillionUsd: null,
-    outputPerMillionUsd: 168,
-    longContext: false,
-  },
-  'gpt-5-codex': {
-    inputPerMillionUsd: 1.25,
-    cachedInputPerMillionUsd: 0.125,
-    cacheWriteInputPerMillionUsd: null,
-    outputPerMillionUsd: 10,
-    longContext: false,
-  },
-} satisfies Record<string, ApiPrice>;
+const GPT_5_6_SOL_INITIAL_API_PRICE = {
+  inputPerMillionUsd: 5,
+  cachedInputPerMillionUsd: 0.5,
+  cacheWriteInputPerMillionUsd: 6.25,
+  outputPerMillionUsd: 30,
+  longContext: true,
+} satisfies ApiPrice;
+
+const GPT_5_6_SOL_PROMOTIONAL_API_PRICE = {
+  inputPerMillionUsd: 4,
+  cachedInputPerMillionUsd: 0.4,
+  cacheWriteInputPerMillionUsd: 5,
+  outputPerMillionUsd: 20,
+  longContext: true,
+} satisfies ApiPrice;
+
+const API_PRICE_HISTORY = {
+  'gpt-5.6-sol': [
+    { effectiveFrom: '2026-07-09', ...GPT_5_6_SOL_INITIAL_API_PRICE },
+    { effectiveFrom: '2026-08-21', ...GPT_5_6_SOL_PROMOTIONAL_API_PRICE },
+  ],
+  'daybreak-blue': [
+    { effectiveFrom: '2026-08-07', ...GPT_5_6_SOL_INITIAL_API_PRICE },
+    { effectiveFrom: '2026-08-21', ...GPT_5_6_SOL_PROMOTIONAL_API_PRICE },
+  ],
+  'gpt-5.6-terra': [
+    {
+      effectiveFrom: '2026-07-09',
+      inputPerMillionUsd: 2.5,
+      cachedInputPerMillionUsd: 0.25,
+      cacheWriteInputPerMillionUsd: 3.125,
+      outputPerMillionUsd: 15,
+      longContext: true,
+    },
+    {
+      effectiveFrom: '2026-07-30',
+      inputPerMillionUsd: 2,
+      cachedInputPerMillionUsd: 0.2,
+      cacheWriteInputPerMillionUsd: 2.5,
+      outputPerMillionUsd: 12,
+      longContext: true,
+    },
+  ],
+  'gpt-5.6-luna': [
+    {
+      effectiveFrom: '2026-07-09',
+      inputPerMillionUsd: 1,
+      cachedInputPerMillionUsd: 0.1,
+      cacheWriteInputPerMillionUsd: 1.25,
+      outputPerMillionUsd: 6,
+      longContext: true,
+    },
+    {
+      effectiveFrom: '2026-07-30',
+      inputPerMillionUsd: 0.2,
+      cachedInputPerMillionUsd: 0.02,
+      cacheWriteInputPerMillionUsd: 0.25,
+      outputPerMillionUsd: 1.2,
+      longContext: true,
+    },
+  ],
+  'gpt-5.5': [
+    {
+      effectiveFrom: null,
+      inputPerMillionUsd: 5,
+      cachedInputPerMillionUsd: 0.5,
+      cacheWriteInputPerMillionUsd: null,
+      outputPerMillionUsd: 30,
+      longContext: true,
+    },
+  ],
+  'gpt-5.5-pro': [
+    {
+      effectiveFrom: null,
+      inputPerMillionUsd: 30,
+      cachedInputPerMillionUsd: null,
+      cacheWriteInputPerMillionUsd: null,
+      outputPerMillionUsd: 180,
+      longContext: true,
+    },
+  ],
+  'gpt-5.4': [
+    {
+      effectiveFrom: null,
+      inputPerMillionUsd: 2.5,
+      cachedInputPerMillionUsd: 0.25,
+      cacheWriteInputPerMillionUsd: null,
+      outputPerMillionUsd: 15,
+      longContext: true,
+    },
+  ],
+  'gpt-5.4-pro': [
+    {
+      effectiveFrom: null,
+      inputPerMillionUsd: 30,
+      cachedInputPerMillionUsd: null,
+      cacheWriteInputPerMillionUsd: null,
+      outputPerMillionUsd: 180,
+      longContext: true,
+    },
+  ],
+  'gpt-5.4-mini': [
+    {
+      effectiveFrom: null,
+      inputPerMillionUsd: 0.75,
+      cachedInputPerMillionUsd: 0.075,
+      cacheWriteInputPerMillionUsd: null,
+      outputPerMillionUsd: 4.5,
+      longContext: false,
+    },
+  ],
+  'gpt-5.4-nano': [
+    {
+      effectiveFrom: null,
+      inputPerMillionUsd: 0.2,
+      cachedInputPerMillionUsd: 0.02,
+      cacheWriteInputPerMillionUsd: null,
+      outputPerMillionUsd: 1.25,
+      longContext: false,
+    },
+  ],
+  'gpt-5.3-codex': [
+    {
+      effectiveFrom: null,
+      inputPerMillionUsd: 1.75,
+      cachedInputPerMillionUsd: 0.175,
+      cacheWriteInputPerMillionUsd: null,
+      outputPerMillionUsd: 14,
+      longContext: false,
+    },
+  ],
+  'gpt-5.2': [
+    {
+      effectiveFrom: null,
+      inputPerMillionUsd: 1.75,
+      cachedInputPerMillionUsd: 0.175,
+      cacheWriteInputPerMillionUsd: null,
+      outputPerMillionUsd: 14,
+      longContext: false,
+    },
+  ],
+  'gpt-5.2-pro': [
+    {
+      effectiveFrom: null,
+      inputPerMillionUsd: 21,
+      cachedInputPerMillionUsd: null,
+      cacheWriteInputPerMillionUsd: null,
+      outputPerMillionUsd: 168,
+      longContext: false,
+    },
+  ],
+  'gpt-5-codex': [
+    {
+      effectiveFrom: null,
+      inputPerMillionUsd: 1.25,
+      cachedInputPerMillionUsd: 0.125,
+      cacheWriteInputPerMillionUsd: null,
+      outputPerMillionUsd: 10,
+      longContext: false,
+    },
+  ],
+} satisfies Record<string, readonly ApiPricePeriod[]>;
 
 const CREDIT_PRICES = {
-  'gpt-5.6-sol': { inputPerMillion: 125, cachedInputPerMillion: 12.5, outputPerMillion: 750 },
+  'gpt-5.6-sol': { inputPerMillion: 100, cachedInputPerMillion: 10, outputPerMillion: 500 },
   'gpt-5.6-terra': { inputPerMillion: 50, cachedInputPerMillion: 5, outputPerMillion: 300 },
   'gpt-5.6-luna': { inputPerMillion: 5, cachedInputPerMillion: 0.5, outputPerMillion: 30 },
   'gpt-5.5': { inputPerMillion: 125, cachedInputPerMillion: 12.5, outputPerMillion: 750 },
-  'daybreak-blue': { inputPerMillion: 125, cachedInputPerMillion: 12.5, outputPerMillion: 750 },
+  'daybreak-blue': { inputPerMillion: 100, cachedInputPerMillion: 10, outputPerMillion: 500 },
   'daybreak-red': { inputPerMillion: 312.5, cachedInputPerMillion: 31.25, outputPerMillion: 1875 },
   'gpt-5.4': { inputPerMillion: 62.5, cachedInputPerMillion: 6.25, outputPerMillion: 375 },
   'gpt-5.4-mini': { inputPerMillion: 18.75, cachedInputPerMillion: 1.875, outputPerMillion: 113 },
@@ -141,7 +214,7 @@ const CREDIT_PRICES = {
   'gpt-5.2': { inputPerMillion: 43.75, cachedInputPerMillion: 4.375, outputPerMillion: 350 },
 } satisfies Record<string, CreditPrice>;
 
-type ApiPriceKey = keyof typeof API_PRICES;
+type ApiPriceKey = keyof typeof API_PRICE_HISTORY;
 type CreditPriceKey = keyof typeof CREDIT_PRICES;
 
 export function normalizeCodexUsageModel(model: string) {
@@ -160,9 +233,21 @@ export function normalizeCodexUsageModel(model: string) {
   if (/^gpt-5\.2-codex(?:$|[-:])/.test(value)) return 'gpt-5.2';
   if (/^gpt-5\.2(?:$|-\d{4}-)/.test(value)) return 'gpt-5.2';
   if (/^gpt-5-codex(?:$|[-:])/.test(value)) return 'gpt-5-codex';
-  if (/^(?:gpt-5\.6-cyber|daybreak-blue)(?:$|[-:])/.test(value)) return 'daybreak-blue';
-  if (/^daybreak-red(?:$|[-:])/.test(value)) return 'daybreak-red';
+  if (/^daybreak-blue(?:$|[-:])/.test(value)) return 'daybreak-blue';
+  if (/^(?:gpt-5\.6-cyber|daybreak-red)(?:$|[-:])/.test(value)) return 'daybreak-red';
   return value;
+}
+
+function apiPriceAt(key: string, occurredAt: string): ApiPrice | null {
+  if (!(key in API_PRICE_HISTORY) || occurredAt.length < 10) return null;
+  const occurredOn = occurredAt.slice(0, 10);
+  const periods = API_PRICE_HISTORY[key as ApiPriceKey];
+  let price: ApiPrice | null = null;
+  for (const period of periods) {
+    if (period.effectiveFrom !== null && period.effectiveFrom > occurredOn) break;
+    price = period;
+  }
+  return price;
 }
 
 function boundedInputCategories(usage: CodexUsageBreakdown) {
@@ -175,20 +260,37 @@ function boundedInputCategories(usage: CodexUsageBreakdown) {
   return { uncachedInputTokens, cachedInputTokens, cacheWriteInputTokens };
 }
 
+function codexCreditMultiplier(model: string, serviceTier: CodexUsageServiceTier) {
+  if (serviceTier === 'STANDARD') return 1;
+  if (serviceTier !== 'FAST') return null;
+  if (model === 'gpt-5.6-sol' || model === 'gpt-5.6-terra' || model === 'gpt-5.6-luna' || model === 'gpt-5.5') {
+    return 2.5;
+  }
+  if (model === 'gpt-5.4') return 2;
+  return null;
+}
+
 export interface CodexUsagePriceEstimate {
   apiEquivalentUsd: number | null;
   apiCacheSavingsUsd: number | null;
   codexCredits: number | null;
+  codexCreditCacheSavings: number | null;
   apiPricedTokens: number;
   creditPricedTokens: number;
   longContext: boolean;
 }
 
-export function estimateCodexUsage(model: string, usage: CodexUsageBreakdown): CodexUsagePriceEstimate {
+export function estimateCodexUsage(
+  model: string,
+  usage: CodexUsageBreakdown,
+  serviceTier: CodexUsageServiceTier,
+  occurredAt: string,
+): CodexUsagePriceEstimate {
   const key = normalizeCodexUsageModel(model);
-  const apiPrice = key in API_PRICES ? API_PRICES[key as ApiPriceKey] : null;
+  const apiPrice = apiPriceAt(key, occurredAt);
   const creditPrice = key in CREDIT_PRICES ? CREDIT_PRICES[key as CreditPriceKey] : null;
   const { uncachedInputTokens, cachedInputTokens, cacheWriteInputTokens } = boundedInputCategories(usage);
+  const creditMultiplier = codexCreditMultiplier(key, serviceTier);
   const longContext = Boolean(apiPrice?.longContext && usage.inputTokens > CODEX_USAGE_LONG_CONTEXT_THRESHOLD);
   const inputMultiplier = longContext ? 2 : 1;
   const outputMultiplier = longContext ? 1.5 : 1;
@@ -211,16 +313,24 @@ export function estimateCodexUsage(model: string, usage: CodexUsageBreakdown): C
         TOKENS_PER_MILLION
       : null;
   // Codex's public token-based rate card does not charge cache writes.
-  const codexCredits = creditPrice
-    ? (uncachedInputTokens * creditPrice.inputPerMillion +
-        cachedInputTokens * creditPrice.cachedInputPerMillion +
-        usage.outputTokens * creditPrice.outputPerMillion) /
-      TOKENS_PER_MILLION
-    : null;
+  const codexCredits =
+    creditPrice && creditMultiplier !== null
+      ? ((uncachedInputTokens * creditPrice.inputPerMillion +
+          cachedInputTokens * creditPrice.cachedInputPerMillion +
+          usage.outputTokens * creditPrice.outputPerMillion) /
+          TOKENS_PER_MILLION) *
+        creditMultiplier
+      : null;
+  const codexCreditCacheSavings =
+    creditPrice && creditMultiplier !== null
+      ? ((cachedInputTokens * (creditPrice.inputPerMillion - creditPrice.cachedInputPerMillion)) / TOKENS_PER_MILLION) *
+        creditMultiplier
+      : null;
   return {
     apiEquivalentUsd,
     apiCacheSavingsUsd,
     codexCredits,
+    codexCreditCacheSavings,
     apiPricedTokens: apiEquivalentUsd === null ? 0 : usage.totalTokens,
     creditPricedTokens: codexCredits === null ? 0 : usage.totalTokens,
     longContext,

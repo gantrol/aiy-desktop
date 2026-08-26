@@ -1,4 +1,4 @@
-import { useId, useState } from 'react';
+import { useId, useState, type ReactNode } from 'react';
 import { ImagePlusIcon, LoaderCircleIcon, Settings2Icon } from 'lucide-react';
 import type { ImageGenerationRouteDto, GenerationTargetInput, Locale } from '@/shared/contracts';
 import { useI18n } from '@/renderer/i18n/useI18n';
@@ -18,6 +18,8 @@ interface CommonProps {
   generationCount: number;
   readiness: GenerationReadiness;
   starting: boolean;
+  interactionBlocked?: boolean;
+  secondaryAction?: ReactNode;
   onGenerationTargetsChange(targets: GenerationTargetInput[]): void;
   onConfigureExtension?(extensionId: string): void;
   onGenerate(): void;
@@ -60,6 +62,8 @@ export function GenerationLauncher(props: Props) {
     generationCount,
     readiness,
     starting,
+    interactionBlocked = false,
+    secondaryAction,
     onGenerationTargetsChange,
     onConfigureExtension,
     onGenerate,
@@ -70,7 +74,7 @@ export function GenerationLauncher(props: Props) {
   const settingsId = useId();
   const blockedMessageId = useId();
   const blockMessage = useGenerationBlockMessage(readiness);
-  const canGenerate = readiness.ready && !starting;
+  const canGenerate = readiness.ready && !starting && !interactionBlocked;
   const batchPlan = generationBatchPlan(generationTargets);
   const modelNames = generationTargets.map((target) =>
     target.modelKey === 'internal-library-random'
@@ -179,7 +183,10 @@ export function GenerationLauncher(props: Props) {
     >
       <div className="grid min-h-16 grid-cols-[minmax(0,1fr)_auto] items-center gap-3 px-3 py-2">
         {summary}
-        {generateButton}
+        <div className="flex items-center gap-2">
+          {secondaryAction}
+          {generateButton}
+        </div>
       </div>
       {blockMessage && (
         <p

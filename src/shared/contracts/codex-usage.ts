@@ -168,6 +168,8 @@ export const codexUsageQuotaResetObservationSchema = z
 export const codexUsageQuotaCycleModelShareSchema = z
   .object({
     model: z.string().trim().min(1).max(200),
+    serviceTier: codexUsageServiceTierSchema.default('UNKNOWN'),
+    inferredServiceTierTokens: nonNegativeIntegerSchema.default(0),
     totalTokens: nonNegativeIntegerSchema,
     tokenPercent: percentageSchema,
     requestCount: nonNegativeIntegerSchema,
@@ -251,6 +253,7 @@ export const codexUsageTokenTotalsSchema = z
     apiEquivalentUsd: nullableMoneySchema,
     apiCacheSavingsUsd: nullableMoneySchema,
     codexCredits: nullableMoneySchema,
+    codexCreditCacheSavings: nullableMoneySchema.default(null),
     apiPricedTokens: nonNegativeIntegerSchema,
     creditPricedTokens: nonNegativeIntegerSchema,
   })
@@ -259,6 +262,8 @@ export const codexUsageTokenTotalsSchema = z
 export const codexUsageModelBreakdownSchema = codexUsageTokenTotalsSchema
   .extend({
     model: z.string().min(1).max(200),
+    serviceTier: codexUsageServiceTierSchema.default('UNKNOWN'),
+    inferredServiceTierTokens: nonNegativeIntegerSchema.default(0),
     requestCount: nonNegativeIntegerSchema,
     sessionCount: nonNegativeIntegerSchema,
     longContextRequestCount: nonNegativeIntegerSchema,

@@ -14,6 +14,7 @@ interface Props {
   onOpenChange(open: boolean): void;
   onPromptLocaleChange(locale: Locale | null): void;
   onAiFeatureModelsOpen(): void;
+  onContentManagementOpen(): void;
 }
 
 export function SettingsDialog({
@@ -22,6 +23,7 @@ export function SettingsDialog({
   onOpenChange,
   onPromptLocaleChange,
   onAiFeatureModelsOpen,
+  onContentManagementOpen,
 }: Props) {
   const { locale, setLocale, messages, availableLocales } = useI18n();
   const l = messages.app.settings;
@@ -84,6 +86,21 @@ export function SettingsDialog({
               }}
             >
               {l.manageAiFeatureModels}
+              <ArrowRightIcon className="size-4" />
+            </Button>
+          </div>
+          <div className="grid gap-2">
+            <Label>{l.content}</Label>
+            <Button
+              type="button"
+              variant="outline"
+              className="justify-between"
+              onClick={() => {
+                onOpenChange(false);
+                onContentManagementOpen();
+              }}
+            >
+              {l.manageContent}
               <ArrowRightIcon className="size-4" />
             </Button>
           </div>

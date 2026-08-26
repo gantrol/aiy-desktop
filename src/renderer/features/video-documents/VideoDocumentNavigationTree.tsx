@@ -54,7 +54,7 @@ interface RowProps {
   dragging: boolean;
   actions: ActionMenuAction[];
   onToggleAlbum(): void;
-  onPullDownExpand(): void;
+  onGestureExpand(): void;
   onPointerTrackStart(clientY: number): void;
   onPointerTrack(clientY: number): boolean;
   onOpenDocument(): void;
@@ -72,7 +72,7 @@ function NavigationEntryRow({
   dragging,
   actions,
   onToggleAlbum,
-  onPullDownExpand,
+  onGestureExpand,
   onPointerTrackStart,
   onPointerTrack,
   onOpenDocument,
@@ -105,6 +105,7 @@ function NavigationEntryRow({
             className={cn('relative transition-opacity', dragging && 'opacity-45')}
             style={{ paddingLeft: row.depth * 18 }}
             data-album-branch-id={entry.kind === 'ALBUM' ? entry.albumId : undefined}
+            data-tree-branch-id={entry.kind === 'ALBUM' ? entry.albumId : undefined}
           >
             {row.depth > 0 && (
               <span
@@ -120,6 +121,7 @@ function NavigationEntryRow({
                   'text-selected-foreground before:pointer-events-none before:absolute before:inset-y-0.5 before:inset-x-0 before:rounded-lg before:bg-selected hover:bg-transparent',
               )}
               data-album-id={entry.kind === 'ALBUM' ? entry.albumId : undefined}
+              data-tree-node-id={entry.kind === 'ALBUM' ? entry.albumId : undefined}
               onDragOver={(event) => {
                 event.preventDefault();
                 event.dataTransfer.dropEffect = 'move';
@@ -154,7 +156,7 @@ function NavigationEntryRow({
                     expandLabel={expanded ? labels.collapseAlbum(entry.title) : labels.expandAlbum(entry.title)}
                     overlayStyle="solid"
                     disclosureInteractive
-                    onPullDownExpand={onPullDownExpand}
+                    onGestureExpand={onGestureExpand}
                     onPointerTrackStart={onPointerTrackStart}
                     onPointerTrack={onPointerTrack}
                     onClick={(event) => {
@@ -264,7 +266,7 @@ function CompactNavigationEntryRow({
             )}
             onClick={entry.kind === 'ALBUM' ? onToggleAlbum : onOpenDocument}
           >
-            <span className="scale-[0.88] transition-transform duration-200 group-hover:scale-95">
+            <span className="scale-[0.88]">
               {entry.kind === 'ALBUM' ? (
                 <VideoDocumentAlbumPreview entry={entry} expanded={expanded} loading={childPage?.loading} />
               ) : (
@@ -311,7 +313,7 @@ interface Props {
   selectedDocumentId: string | null;
   expandedAlbumIds: Set<string>;
   onToggleAlbum(entry: Extract<VideoDocumentNavigationEntry, { kind: 'ALBUM' }>): void;
-  onPullDownExpand(entry: Extract<VideoDocumentNavigationEntry, { kind: 'ALBUM' }>): void;
+  onGestureExpand(entry: Extract<VideoDocumentNavigationEntry, { kind: 'ALBUM' }>): void;
   onPointerTrackStart(albumId: string, clientY: number): void;
   onPointerTrack(albumId: string, clientY: number): boolean;
   onSelectDocument(documentId: string, parentAlbumId: string | null): void;
@@ -337,7 +339,7 @@ export function VideoDocumentNavigationTree({
   selectedDocumentId,
   expandedAlbumIds,
   onToggleAlbum,
-  onPullDownExpand,
+  onGestureExpand,
   onPointerTrackStart,
   onPointerTrack,
   onSelectDocument,
@@ -483,7 +485,7 @@ export function VideoDocumentNavigationTree({
             dragging={drag?.entry.nodeId === entry.nodeId}
             actions={entryActions(row, expanded)}
             onToggleAlbum={() => entry.kind === 'ALBUM' && onToggleAlbum(entry)}
-            onPullDownExpand={() => entry.kind === 'ALBUM' && onPullDownExpand(entry)}
+            onGestureExpand={() => entry.kind === 'ALBUM' && onGestureExpand(entry)}
             onPointerTrackStart={(clientY) => entry.kind === 'ALBUM' && onPointerTrackStart(entry.albumId, clientY)}
             onPointerTrack={(clientY) => (entry.kind === 'ALBUM' ? onPointerTrack(entry.albumId, clientY) : false)}
             onOpenDocument={() => entry.kind === 'DOCUMENT' && onSelectDocument(entry.documentId, row.parentAlbumId)}

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { type Dispatch, type SetStateAction, memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   CircleDollarSignIcon,
   CoinsIcon,
@@ -19,6 +19,7 @@ import type {
   CodexUsageInvestigation,
   CodexUsageQuotaWindow,
   CodexUsageRange,
+  CodexUsageServiceTier,
   CodexUsageTask,
   ExtensionDto,
 } from '@/shared/contracts';
@@ -30,12 +31,22 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/renderer/components/ui/tooltip';
 import { CodexQuotaYieldResults } from '@/renderer/features/extensions/CodexQuotaYieldResults';
 import { CodexUsageCleanupControl } from '@/renderer/features/extensions/CodexUsageCleanupDialog';
+import { CodexUsageServiceTierLabel } from '@/renderer/features/extensions/CodexUsageServiceTierLabel';
 import { useI18n } from '@/renderer/i18n/useI18n';
 
 interface Props {
   active: boolean;
   extension: ExtensionDto;
   notify(message: string): void;
+}
+
+interface InvestigationSelectionOptions {
+  history: CodexUsageHistoryItem[];
+  setRange: Dispatch<SetStateAction<CodexUsageRange>>;
+  setGranularity: Dispatch<SetStateAction<CodexUsageGranularity>>;
+  setDisplayTimeZone: Dispatch<SetStateAction<string>>;
+  setInvestigation: Dispatch<SetStateAction<CodexUsageInvestigation | null>>;
+  setError: Dispatch<SetStateAction<string>>;
 }
 
 interface TokenBucket {
@@ -70,6 +81,69 @@ function scanProgressPercent(progress: CodexUsageTask['progress'] | null) {
 
 function clampPercent(value: number) {
   return Math.max(0, Math.min(100, value));
+}
+
+function serviceTierLabel(serviceTier: CodexUsageServiceTier, labels: UsageLabels) {
+  return labels.quotaYield.modes[serviceTier];
+}
+
+function observedCreditsPerQuotaPercent(analysis: CodexUsageInvestigation['quotaYield']) {
+  if (!analysis) return null;
+  const observed = analysis.estimates.reduce(
+    (result, estimate) => {
+      if (estimate.codexCredits === null || estimate.quotaPercentObserved <= 0) return result;
+      result.credits += estimate.codexCredits;
+      result.quotaPercent += estimate.quotaPercentObserved;
+      return result;
+    },
+    { credits: 0, quotaPercent: 0 },
+  );
+  if (observed.credits <= 0 || observed.quotaPercent <= 0) return null;
+  const creditsPerQuotaPercent = observed.credits / observed.quotaPercent;
+  return Number.isFinite(creditsPerQuotaPercent) && creditsPerQuotaPercent > 0 ? creditsPerQuotaPercent : null;
+}
+
+function estimatedCreditsPerQuotaPercent(investigation: CodexUsageInvestigation) {
+  const observed = observedCreditsPerQuotaPercent(investigation.quotaYield);
+  if (observed !== null) return observed;
+  if (!investigation.quotaYield || investigation.totals.codexCredits === null) return null;
+  if (investigation.totals.codexCredits <= 0 || investigation.totals.creditPricedTokens <= 0) return null;
+  const observedTotals = investigation.quotaYield.estimates.reduce(
+    (result, estimate) => {
+      if (estimate.quotaPercentObserved <= 0 || estimate.totalTokens <= 0) return result;
+      result.quotaPercent += estimate.quotaPercentObserved;
+      result.tokens += estimate.totalTokens;
+      return result;
+    },
+    { quotaPercent: 0, tokens: 0 },
+  );
+  if (observedTotals.quotaPercent <= 0 || observedTotals.tokens <= 0) return null;
+  // Unknown Standard/Fast rows use the priced rows' average Credits per token as a midpoint estimate.
+  const estimatedObservedCredits =
+    (investigation.totals.codexCredits * observedTotals.tokens) / investigation.totals.creditPricedTokens;
+  const estimate = estimatedObservedCredits / observedTotals.quotaPercent;
+  return Number.isFinite(estimate) && estimate > 0 ? estimate : null;
+}
+
+function roundedQuotaPercent(value: number) {
+  if (value <= 0) return 0;
+  if (value >= 1) return Math.round(value);
+  return Math.max(0.1, Math.round(value * 10) / 10);
+}
+
+function formatQuotaSavings(
+  creditSavings: number | null,
+  creditsPerQuotaPercent: number | null,
+  formatter: Intl.NumberFormat,
+  creditUnit: string,
+  weeklyQuotaUnit: string,
+) {
+  if (creditSavings === null) return '—';
+  if (creditsPerQuotaPercent !== null) {
+    const quotaPercent = roundedQuotaPercent(creditSavings / creditsPerQuotaPercent);
+    return `≈${formatter.format(quotaPercent)}% ${weeklyQuotaUnit}`;
+  }
+  return `${formatter.format(creditSavings)} ${creditUnit}`;
 }
 
 function formatBytes(value: number, formatter: Intl.NumberFormat) {
@@ -218,7 +292,7 @@ function TokenTrendChart({
   );
 }
 
-function UsageInvestigationResults({
+const UsageInvestigationResults = memo(function UsageInvestigationResults({
   investigation,
   labels,
   numberLocale,
@@ -254,6 +328,10 @@ function UsageInvestigationResults({
     [displayTimeZone, numberLocale],
   );
   const formatMoney = (value: number | null) => (value === null ? '—' : money.format(value));
+  const formatCredits = (value: number | null) => (value === null ? '—' : numbers.format(value));
+  const creditsPerQuotaPercent = estimatedCreditsPerQuotaPercent(investigation);
+  const formatSavings = (value: number | null) =>
+    formatQuotaSavings(value, creditsPerQuotaPercent, numbers, labels.table.credits, labels.quotaYield.weeklyQuota);
   const formatReset = (epoch: number | null) =>
     epoch === null ? labels.quota.noReset : date.format(new Date(epoch * 1_000));
   const apiCoverage = investigation.totals.totalTokens
@@ -283,7 +361,9 @@ function UsageInvestigationResults({
         </div>
         <div className="grid gap-1 px-4 py-3">
           <dt className="text-xs text-muted-foreground">{labels.metrics.cacheSavings}</dt>
-          <dd className="text-xl font-semibold tabular-nums">{formatMoney(investigation.totals.apiCacheSavingsUsd)}</dd>
+          <dd className="text-xl font-semibold tabular-nums">
+            {formatSavings(investigation.totals.codexCreditCacheSavings)}
+          </dd>
           <dd className="text-[11px] text-muted-foreground">
             {labels.metrics.cachedInput} {tokens.format(investigation.totals.cachedInputTokens)}
           </dd>
@@ -293,9 +373,7 @@ function UsageInvestigationResults({
             <CoinsIcon className="size-3.5" />
             {labels.metrics.creditEquivalent}
           </dt>
-          <dd className="text-xl font-semibold tabular-nums">
-            {investigation.totals.codexCredits === null ? '—' : numbers.format(investigation.totals.codexCredits)}
-          </dd>
+          <dd className="text-xl font-semibold tabular-nums">{formatCredits(investigation.totals.codexCredits)}</dd>
           <dd className="text-[11px] text-muted-foreground">
             {labels.metrics.coverage} {creditCoverage.toFixed(1)}%
           </dd>
@@ -382,6 +460,7 @@ function UsageInvestigationResults({
             <TableHeader>
               <TableRow>
                 <TableHead>{labels.table.model}</TableHead>
+                <TableHead>{labels.quotaYield.tier}</TableHead>
                 <TableHead numeric>{labels.table.requests}</TableHead>
                 <TableHead numeric>{labels.table.tokens}</TableHead>
                 <TableHead numeric>{labels.table.apiEquivalent}</TableHead>
@@ -391,15 +470,20 @@ function UsageInvestigationResults({
             </TableHeader>
             <TableBody>
               {investigation.models.map((model) => (
-                <TableRow key={model.model}>
+                <TableRow key={`${model.model}:${model.serviceTier}`}>
                   <TableCell className="max-w-52 truncate font-mono text-xs">{model.model}</TableCell>
+                  <TableCell>
+                    <CodexUsageServiceTierLabel
+                      label={serviceTierLabel(model.serviceTier, labels)}
+                      inferred={model.inferredServiceTierTokens > 0}
+                      inferenceHint={labels.quotaYield.inferredMode}
+                    />
+                  </TableCell>
                   <TableCell numeric>{model.requestCount}</TableCell>
                   <TableCell numeric>{tokens.format(model.totalTokens)}</TableCell>
                   <TableCell numeric>{formatMoney(model.apiEquivalentUsd)}</TableCell>
-                  <TableCell numeric>{formatMoney(model.apiCacheSavingsUsd)}</TableCell>
-                  <TableCell numeric>
-                    {model.codexCredits === null ? '—' : numbers.format(model.codexCredits)}
-                  </TableCell>
+                  <TableCell numeric>{formatSavings(model.codexCreditCacheSavings)}</TableCell>
+                  <TableCell numeric>{formatCredits(model.codexCredits)}</TableCell>
                 </TableRow>
               ))}
             </TableBody>
@@ -408,7 +492,7 @@ function UsageInvestigationResults({
       </section>
     </>
   );
-}
+});
 
 function CodexUsageExportButtons({
   available,
@@ -441,6 +525,67 @@ function CodexUsageExportButtons({
   );
 }
 
+function useInvestigationSelection({
+  history,
+  setRange,
+  setGranularity,
+  setDisplayTimeZone,
+  setInvestigation,
+  setError,
+}: InvestigationSelectionOptions) {
+  const requestSequence = useRef(0);
+  const clearInvestigation = useCallback(() => {
+    requestSequence.current += 1;
+    setInvestigation(null);
+  }, [setInvestigation]);
+  const loadInvestigation = useCallback(
+    async (investigationId: string) => {
+      const request = ++requestSequence.current;
+      let value: CodexUsageInvestigation;
+      try {
+        value = await window.desktopApi.codexUsageInvestigation({ investigationId });
+      } catch (reason) {
+        if (request !== requestSequence.current) return;
+        throw reason;
+      }
+      if (request !== requestSequence.current) return;
+      setInvestigation(value);
+      setRange(value.range);
+      setGranularity(value.granularity);
+      setDisplayTimeZone(value.timeZone);
+    },
+    [setDisplayTimeZone, setGranularity, setInvestigation, setRange],
+  );
+  const selectRange = useCallback(
+    (nextRange: CodexUsageRange) => {
+      setRange(nextRange);
+      const latest = history.find((item) => item.range === nextRange);
+      if (!latest) {
+        clearInvestigation();
+        setError('');
+        return;
+      }
+      setGranularity(latest.granularity);
+      setDisplayTimeZone(latest.timeZone);
+      setError('');
+      void loadInvestigation(latest.investigationId).catch((reason: unknown) => {
+        setError(reason instanceof Error ? reason.message : String(reason));
+      });
+    },
+    [clearInvestigation, history, loadInvestigation, setDisplayTimeZone, setError, setGranularity, setRange],
+  );
+  const selectHistory = useCallback(
+    (investigationId: string) => {
+      setError('');
+      void loadInvestigation(investigationId).catch((reason: unknown) => {
+        setError(reason instanceof Error ? reason.message : String(reason));
+      });
+    },
+    [loadInvestigation, setError],
+  );
+  return { clearInvestigation, loadInvestigation, selectHistory, selectRange };
+}
+
 export function CodexUsageInvestigatorConfiguration({ active, extension, notify }: Props) {
   const { locale, messages } = useI18n();
   const l = messages.extensions.codexUsageInvestigator;
@@ -461,13 +606,14 @@ export function CodexUsageInvestigatorConfiguration({ active, extension, notify 
     [numberLocale],
   );
 
-  const loadInvestigation = useCallback(async (investigationId: string) => {
-    const value = await window.desktopApi.codexUsageInvestigation({ investigationId });
-    setInvestigation(value);
-    setRange(value.range);
-    setGranularity(value.granularity);
-    setDisplayTimeZone(value.timeZone);
-  }, []);
+  const { clearInvestigation, loadInvestigation, selectHistory, selectRange } = useInvestigationSelection({
+    history,
+    setRange,
+    setGranularity,
+    setDisplayTimeZone,
+    setInvestigation,
+    setError,
+  });
 
   const refreshState = useCallback(
     async (preferredInvestigationId?: string) => {
@@ -574,7 +720,7 @@ export function CodexUsageInvestigatorConfiguration({ active, extension, notify 
             type="single"
             value={range}
             disabled={running}
-            onValueChange={(value) => value && setRange(value as CodexUsageRange)}
+            onValueChange={(value) => value && selectRange(value as CodexUsageRange)}
             aria-label={l.rangeLabel}
           >
             {ranges.map((value) => (
@@ -584,7 +730,7 @@ export function CodexUsageInvestigatorConfiguration({ active, extension, notify 
             ))}
           </Segmented>
           {history.length > 0 && (
-            <Select value={investigation?.investigationId} onValueChange={(value) => void loadInvestigation(value)}>
+            <Select value={investigation?.investigationId} onValueChange={selectHistory}>
               <SelectTrigger className="h-8 w-72" aria-label={l.history}>
                 <HistoryIcon className="size-3.5" />
                 <SelectValue placeholder={l.history} />
@@ -630,7 +776,7 @@ export function CodexUsageInvestigatorConfiguration({ active, extension, notify 
               onCleared={(result) => {
                 setTask(result.state.task);
                 setHistory(result.state.history);
-                setInvestigation(null);
+                clearInvestigation();
               }}
             />
           </div>

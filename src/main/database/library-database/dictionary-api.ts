@@ -71,6 +71,10 @@ export function createDictionaryApi(
       return repositories.dictionary.searchTerms(locale, query, facetValueIds, filters);
     },
 
+    searchCreatorTerms(locale: Locale) {
+      return repositories.dictionary.searchCreatorTerms(locale);
+    },
+
     searchTermsPage(input: DictionaryPageInput) {
       return repositories.dictionary.searchTermsPage(input);
     },

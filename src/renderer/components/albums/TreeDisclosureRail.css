@@ -61,11 +61,18 @@
    * that measurement is only refreshed when the disclosure state changes.
    * Do not retain the keyframe's final height: async inserts, moves, and
    * refreshed projections must settle back to intrinsic height immediately.
-   */
+  */
   height: auto;
-  animation: tree-branch-expand calc(var(--motion-overlay) + 100ms) var(--ease-enter);
+  animation: tree-branch-expand var(--motion-overlay) var(--ease-enter);
 }
 
 .tree-branch-content[data-state='closed'] {
   animation: tree-branch-collapse var(--motion-base) var(--ease-exit) both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .tree-branch-content[data-state='open'],
+  .tree-branch-content[data-state='closed'] {
+    animation: none;
+  }
 }

@@ -1,6 +1,5 @@
-import { ulid } from 'ulid';
 import type { LibraryStorage } from '@/main/database/core/storage';
-import { now } from '@/main/database/core/values';
+import { ContentLifecycleRepository } from '@/main/database/recovery/content-lifecycle-repository';
 
 /**
  * Owns asset-level lifecycle changes. Deletion is intentionally logical: the
@@ -8,25 +7,13 @@ import { now } from '@/main/database/core/values';
  * for audit/history, while ordinary read models stop projecting the asset.
  */
 export class AssetLifecycleRepository {
-  private readonly db: LibraryStorage['db'];
+  private readonly lifecycle: ContentLifecycleRepository;
 
-  constructor(private readonly storage: LibraryStorage) {
-    this.db = storage.db;
+  constructor(storage: LibraryStorage) {
+    this.lifecycle = new ContentLifecycleRepository(storage, async () => undefined);
   }
 
   delete(assetId: string): void {
-    this.db.transaction(() => {
-      const asset = this.db.prepare('SELECT id FROM image_assets WHERE id = ? AND deleted_at IS NULL').get(assetId);
-      if (!asset) throw new Error('Image asset not found');
-
-      const deletedAt = now();
-      this.db
-        .prepare('UPDATE image_assets SET deleted_at = ? WHERE id = ? AND deleted_at IS NULL')
-        .run(deletedAt, assetId);
-      this.db
-        .prepare("INSERT INTO tombstones VALUES (?, 'IMAGE_ASSET', ?, ?, 'LOCAL_ONLY')")
-        .run(ulid(), assetId, deletedAt);
-      this.storage.recordChange('IMAGE_ASSET', assetId, 'DELETE', { preserveFile: true });
-    })();
+    this.lifecycle.applyDirect('DELETE', { entityType: 'IMAGE_ASSET', entityId: assetId });
   }
 }

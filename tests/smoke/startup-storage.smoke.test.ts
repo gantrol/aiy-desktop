@@ -1,9 +1,12 @@
 import { mkdtempSync, rmSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import { performance } from 'node:perf_hooks';
 import { afterEach, describe, expect, it } from 'vitest';
 import { LibraryDatabase } from '@/main/database';
 
+const smokeDurationCeilingMs = 5_000;
+const emptyBootstrapPayloadCeilingBytes = 256 * 1024;
 const temporaryRoots: string[] = [];
 
 describe('startup storage smoke', () => {
@@ -14,6 +17,7 @@ describe('startup storage smoke', () => {
   it('opens an empty local space and builds the core bootstrap projection', () => {
     const root = mkdtempSync(path.join(os.tmpdir(), 'aiy-startup-smoke-'));
     temporaryRoots.push(root);
+    const startedAt = performance.now();
     const database = new LibraryDatabase(path.join(root, 'library.sqlite3'), root, { openMode: 'create' });
 
     try {
@@ -37,6 +41,8 @@ describe('startup storage smoke', () => {
         creationDraft: database.getCreationDraft(),
       };
 
+      expect(performance.now() - startedAt).toBeLessThan(smokeDurationCeilingMs);
+      expect(Buffer.byteLength(JSON.stringify(projection))).toBeLessThan(emptyBootstrapPayloadCeilingBytes);
       expect(projection.libraryEmpty).toBe(true);
     } finally {
       database.close();

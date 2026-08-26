@@ -7,6 +7,7 @@ import type { LibraryStorage } from '@/main/database/core/storage';
 import { type JsonMap, now, text } from '@/main/database/core/values';
 import { rehomeCreationInputStashes } from '@/main/database/creations/creation-input-stash-repository';
 import { rehomeIdeaCreation } from '@/main/database/creations/idea-creation-lifecycle';
+import { CreationItemRepository } from '@/main/database/creations/creation-item-repository';
 import { WorkbenchReader } from '@/main/database/generation/workbench-reader';
 import {
   type GenerationComposition,
@@ -167,8 +168,39 @@ export class WorkbenchPreparationRepository extends WorkbenchReader {
       )
       .run(seriesId, title, titleLocale, createdAt);
     this.storage.recordChange('PROMPT_SERIES', seriesId, 'CREATE', { title, locale: titleLocale });
-    if (targetAlbumId) this.attachSeriesToAlbum(targetAlbumId, seriesId, createdAt);
+    this.registerNewImageCreation(input, seriesId, targetAlbumId);
     return { seriesId, current: undefined };
+  }
+
+  private registerNewImageCreation(input: GenerationInput, seriesId: string, targetAlbumId: string | null) {
+    if (input.creationDraftId) {
+      const derivedVisual = this.db
+        .prepare('SELECT id FROM derived_visuals WHERE creation_draft_id = ?')
+        .get(input.creationDraftId) as JsonMap | undefined;
+      if (derivedVisual) return;
+    }
+
+    const creationItems = new CreationItemRepository(this.storage);
+    if (input.inspirationStashId) {
+      const item = creationItems.findForEntity({ kind: 'INSPIRATION_STASH', id: input.inspirationStashId });
+      if (!item) throw new Error('The source inspiration item is unavailable');
+      creationItems.addOrGetForm({
+        creationItemId: item.id,
+        role: 'IMAGE_CREATION',
+        entity: { kind: 'PROMPT_SERIES', id: seriesId },
+        anchorKey: null,
+      });
+      return;
+    }
+
+    creationItems.createWithForm({
+      albumId: targetAlbumId,
+      form: {
+        role: 'IMAGE_CREATION',
+        entity: { kind: 'PROMPT_SERIES', id: seriesId },
+        anchorKey: null,
+      },
+    });
   }
 
   private resolveSourceImportId(input: GenerationInput, seriesId: string): string | null {
@@ -476,6 +508,13 @@ export class WorkbenchPreparationRepository extends WorkbenchReader {
       )
       .run(consumedAt, seriesId, consumedAt, creationDraftId);
     if (!consumed.changes) throw new Error('Creation draft is no longer available');
+    const linkedVisual = this.db
+      .prepare(
+        `UPDATE derived_visuals
+          SET prompt_series_id = ?, updated_at = ?
+          WHERE creation_draft_id = ? AND prompt_series_id IS NULL`,
+      )
+      .run(seriesId, consumedAt, creationDraftId);
     const assistantRunIds = this.readDraftScopeIds('assistant_runs', creationDraftId);
     const styleExplorationBatchIds = this.readDraftScopeIds('style_exploration_batches', creationDraftId);
     this.db
@@ -491,6 +530,16 @@ export class WorkbenchPreparationRepository extends WorkbenchReader {
     this.recordScopeRehomeChanges('ASSISTANT_RUN', assistantRunIds, creationDraftId, seriesId);
     this.recordScopeRehomeChanges('STYLE_EXPLORATION_BATCH', styleExplorationBatchIds, creationDraftId, seriesId);
     this.storage.recordChange('CREATION_DRAFT', creationDraftId, 'CONSUME', { seriesId, runId });
+    if (linkedVisual.changes) {
+      const visualId = this.db
+        .prepare('SELECT id FROM derived_visuals WHERE creation_draft_id = ?')
+        .pluck()
+        .get(creationDraftId);
+      if (typeof visualId === 'string') {
+        this.storage.recordChange('DERIVED_VISUAL', visualId, 'ATTACH_SERIES', { seriesId, runId });
+        new CreationItemRepository(this.storage).touchForEntity({ kind: 'DERIVED_VISUAL', id: visualId }, consumedAt);
+      }
+    }
   }
 
   private readDraftScopeIds(table: 'assistant_runs' | 'style_exploration_batches', creationDraftId: string): string[] {
@@ -527,37 +576,5 @@ export class WorkbenchPreparationRepository extends WorkbenchReader {
         to: { kind: 'SERIES', id: seriesId },
       });
     }
-  }
-
-  private attachSeriesToAlbum(albumId: string, seriesId: string, timestamp: string) {
-    const sortOrder = Number(
-      (
-        this.db
-          .prepare(
-            `SELECT COALESCE(MAX(sort_order), -1) + 1 AS next_order
-        FROM album_members WHERE album_id = ? AND deleted_at IS NULL`,
-          )
-          .get(albumId) as JsonMap
-      ).next_order,
-    );
-    const memberId = ulid();
-    this.db
-      .prepare(
-        `INSERT INTO album_members
-        (id, album_id, target_type, target_id, sort_order, created_at, updated_at, deleted_at)
-        VALUES (?, ?, 'SERIES', ?, ?, ?, ?, NULL)`,
-      )
-      .run(memberId, albumId, seriesId, sortOrder, timestamp, timestamp);
-    this.db
-      .prepare(
-        `UPDATE albums SET updated_at = ?, content_updated_at = ?
-        WHERE id = ? AND deleted_at IS NULL`,
-      )
-      .run(timestamp, timestamp, albumId);
-    this.storage.recordChange('ALBUM_MEMBER', memberId, 'CREATE', {
-      albumId,
-      targetType: 'SERIES',
-      targetId: seriesId,
-    });
   }
 }

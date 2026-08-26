@@ -1,7 +1,9 @@
-import { FolderInputIcon, LoaderCircleIcon, NotebookTextIcon, PencilIcon } from 'lucide-react';
+import { ArchiveIcon, FolderInputIcon, LoaderCircleIcon, NotebookTextIcon, PencilIcon, Trash2Icon } from 'lucide-react';
 import type { VideoDocumentNavigationEntry } from '@/shared/contracts';
-import { TreeBranchNodeConnector, TreeBranchTransitRail } from '@/renderer/components/albums/TreeDisclosureRail';
-import { getTreeNodeAnchor, type TreeBranchItemTopology } from '@/renderer/components/albums/treeConnectionGeometry';
+import {
+  CreationLibraryTreeItem,
+  type CreationLibraryTreePlacementProps,
+} from '@/renderer/components/creator/CreationLibraryTreeItem';
 import { ActionContextMenuItems, ActionMenuButton, type ActionMenuAction } from '@/renderer/components/ui/action-menu';
 import { Button } from '@/renderer/components/ui/button';
 import { ContextMenu, ContextMenuContent, ContextMenuTrigger } from '@/renderer/components/ui/context-menu';
@@ -25,9 +27,13 @@ export interface CreationDocumentNavigationPage {
 interface DocumentItemProps {
   entry: DocumentEntry;
   selected: boolean;
+  busy: boolean;
+  additionalActions?: readonly ActionMenuAction[];
   onSelectDocument(documentId: string, albumId: string | null): void;
   onRenameDocument?(document: DocumentEntry['document']): void;
   onMoveDocument?(document: DocumentEntry['document']): void;
+  onArchiveDocument(document: DocumentEntry['document']): void;
+  onDeleteDocument(document: DocumentEntry['document']): void;
 }
 
 const rowControlsClassName =
@@ -54,12 +60,17 @@ export function creationAlbumCanExpand(
 export function CreationDocumentRow({
   entry,
   selected,
+  busy,
   branchTopology,
+  additionalActions = [],
   onSelectDocument,
   onRenameDocument,
   onMoveDocument,
-}: DocumentItemProps & { branchTopology?: TreeBranchItemTopology }) {
-  const labels = useI18n().messages.videoDocuments.sidebar;
+  onArchiveDocument,
+  onDeleteDocument,
+}: DocumentItemProps & CreationLibraryTreePlacementProps) {
+  const { locale, messages } = useI18n();
+  const labels = messages.videoDocuments.sidebar;
   const document = entry.document;
   const openDocument = () => onSelectDocument(document.id, entry.parentAlbumId);
   const actions: ActionMenuAction[] = [
@@ -81,50 +92,51 @@ export function CreationDocumentRow({
       onSelect: () => onMoveDocument(document),
     });
   }
-  const previewAnchor = getTreeNodeAnchor({ left: 0, top: 12, right: 64, bottom: 48 });
+  actions.push(...additionalActions);
+  actions.push(
+    {
+      id: 'archive-document',
+      label: locale === 'zh' ? '归档' : 'Archive',
+      icon: ArchiveIcon,
+      separatorBefore: true,
+      disabled: busy,
+      onSelect: () => onArchiveDocument(document),
+    },
+    {
+      id: 'delete-document',
+      label: locale === 'zh' ? '删除' : 'Delete',
+      icon: Trash2Icon,
+      destructive: true,
+      disabled: busy,
+      onSelect: () => onDeleteDocument(document),
+    },
+  );
   const row = (
-    <div
-      data-document-id={document.id}
-      data-result-library-selected={selected ? 'true' : undefined}
-      role="group"
-      aria-label={document.title}
-      className={cn(
-        'group relative flex h-[4.25rem] min-w-0 cursor-pointer items-center gap-1 rounded-lg px-1 transition-colors hover:bg-hover',
-        selected &&
-          'text-selected-foreground before:pointer-events-none before:absolute before:inset-y-0.5 before:left-3 before:right-0 before:rounded-xl before:bg-selected hover:bg-transparent',
-      )}
-    >
-      <button
-        type="button"
-        className="absolute inset-0 z-0 rounded-lg outline-none focus-visible:ring-2 focus-visible:ring-ring"
-        aria-label={`${labels.open}: ${document.title}`}
-        aria-current={selected ? 'page' : undefined}
-        onClick={openDocument}
-      />
-      <span
-        data-tree-branch-media-preview
-        className="pointer-events-none relative z-10 -ml-1 flex h-[4.25rem] w-16 shrink-0 items-center overflow-visible"
-      >
-        {branchTopology && <TreeBranchTransitRail topology={branchTopology} />}
-        {branchTopology && <TreeBranchNodeConnector topology={branchTopology} anchor={previewAnchor} />}
-        <VideoDocumentPreview document={document} />
-      </span>
-      <span className="pointer-events-none relative z-10 min-w-0 flex-1 px-1 text-left">
-        <strong className="line-clamp-2 break-words text-base font-medium leading-5" title={document.title}>
-          {document.title}
-        </strong>
+    <CreationLibraryTreeItem
+      dataAttributes={{ 'data-document-id': document.id }}
+      selected={selected}
+      branchTopology={branchTopology}
+      ariaLabel={document.title}
+      openLabel={`${labels.open}: ${document.title}`}
+      title={document.title}
+      previewBounds={{ left: 0, top: 12, right: 64, bottom: 48 }}
+      preview={<VideoDocumentPreview document={document} />}
+      metadata={
         <span className="mt-0.5 block truncate text-xs text-muted-foreground">
           {formatVideoDuration(document.source.asset.durationMs)}
         </span>
-      </span>
-      <div data-result-library-row-control className={rowControlsClassName}>
-        <ActionMenuButton
-          actions={actions}
-          label={labels.moreActions(document.title)}
-          className={cn(rowControlClassName, 'size-6')}
-        />
-      </div>
-    </div>
+      }
+      controls={
+        <div data-result-library-row-control className={rowControlsClassName}>
+          <ActionMenuButton
+            actions={actions}
+            label={labels.moreActions(document.title)}
+            className={cn(rowControlClassName, 'size-6')}
+          />
+        </div>
+      }
+      onOpen={openDocument}
+    />
   );
 
   return (
@@ -140,11 +152,16 @@ export function CreationDocumentRow({
 export function CreationDocumentCompactItem({
   entry,
   selected,
+  busy,
+  additionalActions = [],
   onSelectDocument,
   onRenameDocument,
   onMoveDocument,
+  onArchiveDocument,
+  onDeleteDocument,
 }: DocumentItemProps) {
-  const labels = useI18n().messages.videoDocuments.sidebar;
+  const { locale, messages } = useI18n();
+  const labels = messages.videoDocuments.sidebar;
   const document = entry.document;
   const openDocument = () => onSelectDocument(document.id, entry.parentAlbumId);
   const actions: ActionMenuAction[] = [
@@ -166,6 +183,25 @@ export function CreationDocumentCompactItem({
       onSelect: () => onMoveDocument(document),
     });
   }
+  actions.push(...additionalActions);
+  actions.push(
+    {
+      id: 'archive-document',
+      label: locale === 'zh' ? '归档' : 'Archive',
+      icon: ArchiveIcon,
+      separatorBefore: true,
+      disabled: busy,
+      onSelect: () => onArchiveDocument(document),
+    },
+    {
+      id: 'delete-document',
+      label: locale === 'zh' ? '删除' : 'Delete',
+      icon: Trash2Icon,
+      destructive: true,
+      disabled: busy,
+      onSelect: () => onDeleteDocument(document),
+    },
+  );
 
   return (
     <ContextMenu>
@@ -193,37 +229,23 @@ export function CreationDocumentCompactItem({
   );
 }
 
-export function CreationDocumentAlbumPaging({
+export function CreationDocumentAlbumLoading({
   expanded,
   includeDocuments,
   visibleChildCount,
   page,
-  onLoadMore,
 }: {
   expanded: boolean;
   includeDocuments: boolean;
   visibleChildCount: number;
   page: CreationDocumentNavigationPage | undefined;
-  onLoadMore(): void;
 }) {
-  const loadMoreLabel = useI18n().messages.videoDocuments.loadMore;
   if (!expanded || !includeDocuments) return null;
+  if (!page?.loading || visibleChildCount > 0) return null;
   return (
-    <>
-      {page?.loading && visibleChildCount === 0 && (
-        <div className="grid h-10 place-items-center text-selected-foreground">
-          <LoaderCircleIcon className="size-3.5 animate-spin" />
-        </div>
-      )}
-      {page?.nextCursor && (
-        <div className="px-3 py-1 pl-12">
-          <Button type="button" variant="ghost" size="sm" disabled={page.loadingMore} onClick={onLoadMore}>
-            {page.loadingMore && <LoaderCircleIcon className="size-3.5 animate-spin" />}
-            {loadMoreLabel}
-          </Button>
-        </div>
-      )}
-    </>
+    <div className="grid h-10 place-items-center text-selected-foreground">
+      <LoaderCircleIcon className="size-3.5 animate-spin" />
+    </div>
   );
 }
 

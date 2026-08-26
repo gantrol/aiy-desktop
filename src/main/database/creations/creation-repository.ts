@@ -8,6 +8,7 @@ import type {
 } from '@/shared/contracts';
 import type { LibraryStorage } from '@/main/database/core/storage';
 import { type JsonMap, now, text } from '@/main/database/core/values';
+import { ContentLifecycleRepository } from '@/main/database/recovery/content-lifecycle-repository';
 
 interface StartCreationInput {
   scope: CreatorAgentScope;
@@ -362,20 +363,12 @@ export class CreationRepository {
   }
 
   delete(id: string) {
-    return this.db.transaction(() => {
-      const creation = this.get(id);
-      if (!creation) return;
-      const deletedAt = now();
-      this.db
-        .prepare(
-          'UPDATE creation_elements SET deleted_at = ?, updated_at = ? WHERE creation_id = ? AND deleted_at IS NULL',
-        )
-        .run(deletedAt, deletedAt, id);
-      this.db
-        .prepare('UPDATE creations SET deleted_at = ?, updated_at = ? WHERE id = ? AND deleted_at IS NULL')
-        .run(deletedAt, deletedAt, id);
-      this.storage.recordChange('CREATION', id, 'DELETE', { title: creation.title, deletedAt });
-    })();
+    const creation = this.get(id);
+    if (!creation) return;
+    return new ContentLifecycleRepository(this.storage, async () => undefined).applyDirect('DELETE', {
+      entityType: 'CREATION',
+      entityId: id,
+    });
   }
 
   private creationIdForAssistantRun(runId: string) {

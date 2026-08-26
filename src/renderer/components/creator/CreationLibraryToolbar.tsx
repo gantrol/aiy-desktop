@@ -1,12 +1,16 @@
-import { SearchIcon, SlidersHorizontalIcon, XIcon } from 'lucide-react';
+import { CheckIcon, SearchIcon, SlidersHorizontalIcon, XIcon } from 'lucide-react';
 import { useState } from 'react';
 import { Button } from '@/renderer/components/ui/button';
+import { Checkbox } from '@/renderer/components/ui/checkbox';
 import { Input } from '@/renderer/components/ui/input';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/renderer/components/ui/select';
+import { Popover, PopoverContent, PopoverTrigger } from '@/renderer/components/ui/popover';
 import { useI18n } from '@/renderer/i18n/useI18n';
 import { cn } from '@/renderer/lib/utils';
-
-export type CreationLibraryFilter = 'all' | 'images' | 'documents';
+import {
+  allCreationLibraryFilters,
+  isAllCreationLibraryFilter,
+  type CreationLibraryFilter,
+} from '@/renderer/components/creator/creationLibraryFilter';
 
 interface Props {
   query: string;
@@ -16,13 +20,32 @@ interface Props {
 }
 
 export function CreationLibraryToolbar({ query, filter, onQueryChange, onFilterChange }: Props) {
-  const labels = useI18n().messages.creator.results;
+  const { locale, messages } = useI18n();
+  const labels = messages.creator.results;
+  const inspirationLabel = locale === 'zh' ? '灵感' : labels.filterInspirations;
+  const socialPostLabel = locale === 'zh' ? '贴图' : 'Social posts';
+  const articleLabel = locale === 'zh' ? '文章' : 'Articles';
+  const emptyFilterLabel = locale === 'zh' ? '无' : labels.filterNone;
   const [searchOpen, setSearchOpen] = useState(Boolean(query));
   const searchVisible = searchOpen || Boolean(query);
-  const filterActive = filter !== 'all';
-  const filterValueLabel =
-    filter === 'images' ? labels.filterImages : filter === 'documents' ? labels.filterDocuments : labels.filterAll;
+  const filterActive = !isAllCreationLibraryFilter(filter);
+  const selectedFilterLabels = [
+    ...(filter.images ? [labels.filterImages] : []),
+    ...(filter.documents ? [labels.filterDocuments] : []),
+    ...(filter.articles ? [articleLabel] : []),
+    ...(filter.socialPosts ? [socialPostLabel] : []),
+    ...(filter.inspirations ? [inspirationLabel] : []),
+  ];
+  const filterValueLabel = filterActive
+    ? selectedFilterLabels.length
+      ? selectedFilterLabels.join(', ')
+      : emptyFilterLabel
+    : labels.filterAll;
   const filterControlLabel = `${labels.filter}: ${filterValueLabel}`;
+
+  function toggleFilter(key: keyof CreationLibraryFilter, checked: boolean) {
+    onFilterChange({ ...filter, [key]: checked });
+  }
 
   return (
     <div className="flex h-10 shrink-0 items-center justify-end gap-1 border-b border-border/60 px-3">
@@ -73,26 +96,60 @@ export function CreationLibraryToolbar({ query, filter, onQueryChange, onFilterC
           <SearchIcon className="size-4" />
         </Button>
       )}
-      <Select value={filter} onValueChange={(value) => onFilterChange(value as CreationLibraryFilter)}>
-        <SelectTrigger
-          className={cn(
-            'h-8 shrink-0 gap-1.5 text-xs',
-            filterActive
-              ? 'w-auto max-w-[9rem] border-selected-foreground/20 bg-selected px-2 text-selected-foreground hover:bg-selected'
-              : 'size-8 justify-center gap-0 border-transparent bg-transparent p-0 text-muted-foreground hover:bg-hover hover:text-foreground data-[state=open]:bg-pressed [&>svg:last-child]:hidden',
-          )}
-          title={filterControlLabel}
-          aria-label={filterControlLabel}
-        >
-          <SlidersHorizontalIcon className="size-4 shrink-0" />
-          {filterActive && <SelectValue />}
-        </SelectTrigger>
-        <SelectContent align="end">
-          <SelectItem value="all">{labels.filterAll}</SelectItem>
-          <SelectItem value="images">{labels.filterImages}</SelectItem>
-          <SelectItem value="documents">{labels.filterDocuments}</SelectItem>
-        </SelectContent>
-      </Select>
+      <Popover>
+        <PopoverTrigger asChild>
+          <Button
+            type="button"
+            variant={filterActive ? 'secondary' : 'ghost'}
+            size={filterActive ? 'sm' : 'icon-sm'}
+            className={cn(
+              'h-8 shrink-0 gap-1.5 text-xs',
+              filterActive && 'max-w-[9rem] bg-selected px-2 text-selected-foreground hover:bg-selected',
+            )}
+            title={filterControlLabel}
+            aria-label={filterControlLabel}
+          >
+            <SlidersHorizontalIcon className="size-4 shrink-0" />
+            {filterActive && <span className="truncate">{filterValueLabel}</span>}
+          </Button>
+        </PopoverTrigger>
+        <PopoverContent align="end" className="w-44 p-1.5">
+          <button
+            type="button"
+            className="flex h-8 w-full items-center gap-2 rounded-md px-2 text-left text-xs outline-none hover:bg-hover focus-visible:bg-hover"
+            onClick={() => onFilterChange({ ...allCreationLibraryFilters })}
+          >
+            <span
+              aria-hidden="true"
+              className="grid size-4 shrink-0 place-items-center rounded-[4px] border border-input"
+            >
+              {isAllCreationLibraryFilter(filter) && <CheckIcon className="size-3" />}
+            </span>
+            <span>{labels.filterAll}</span>
+          </button>
+          {(
+            [
+              ['images', labels.filterImages],
+              ['documents', labels.filterDocuments],
+              ['articles', articleLabel],
+              ['socialPosts', socialPostLabel],
+              ['inspirations', inspirationLabel],
+            ] as const
+          ).map(([key, label]) => (
+            <label
+              key={key}
+              className="flex h-8 cursor-pointer items-center gap-2 rounded-md px-2 text-xs outline-none hover:bg-hover focus-within:bg-hover"
+            >
+              <Checkbox
+                checked={filter[key]}
+                aria-label={label}
+                onCheckedChange={(checked) => toggleFilter(key, checked === true)}
+              />
+              <span>{label}</span>
+            </label>
+          ))}
+        </PopoverContent>
+      </Popover>
     </div>
   );
 }

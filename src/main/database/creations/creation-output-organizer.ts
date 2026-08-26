@@ -7,7 +7,8 @@ import type {
 } from '@/shared/contracts';
 import { sameImportedModelIdentity } from '@/main/database/assets/imported-image-metadata';
 import type { LibraryStorage } from '@/main/database/core/storage';
-import { type JsonMap, text } from '@/main/database/core/values';
+import { type JsonMap, now, text } from '@/main/database/core/values';
+import { CreationItemRepository } from '@/main/database/creations/creation-item-repository';
 import { updatedCreationOutputProvenanceConfidence } from '@/main/database/creations/creation-output-provenance';
 
 function validateVersions(db: Database.Database, input: CreatorOutputsOrganizeInput) {
@@ -187,6 +188,7 @@ export function organizeCreationOutputs(
           { affectsFileView: next.displayName !== text(existing.display_name) },
         );
       }
+      new CreationItemRepository(storage).touchForSeries(input.seriesId, now());
       return { outputs: input.items.map((item) => outputDto(item.outputId)) };
     })
     .immediate();

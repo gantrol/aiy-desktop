@@ -56,6 +56,7 @@ const generationBase = z
   .object({
     seriesId: identifier.nullable(),
     creationDraftId: identifier.nullable().optional().default(null),
+    inspirationStashId: identifier.nullable().optional().default(null),
     baseVersionId: identifier.nullable().optional().default(null),
     sourceImportId: identifier.nullable().optional().default(null),
     sourceAssetId: identifier.nullable().optional(),
@@ -170,7 +171,9 @@ const styleExplorationSlot = z
     variableAxis: z.string().max(1_000),
     risk: z.string().max(1_000),
     userInstruction: z.string().max(30_000),
-    input: generationBase.omit({ seriesId: true, creationDraftId: true, modelKey: true }).superRefine(validateCanvas),
+    input: generationBase
+      .omit({ seriesId: true, creationDraftId: true, inspirationStashId: true, modelKey: true })
+      .superRefine(validateCanvas),
   })
   .strict()
   .superRefine((value, context) => {

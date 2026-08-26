@@ -1,4 +1,4 @@
-import { app, dialog, nativeImage, shell, type BrowserWindow } from 'electron';
+import { app, clipboard, dialog, nativeImage, shell, type BrowserWindow } from 'electron';
 import { createHash } from 'node:crypto';
 import { chmod, copyFile } from 'node:fs/promises';
 import path from 'node:path';
@@ -13,11 +13,14 @@ import type {
 import type { CodexService } from '@/main/assistant/codex-service';
 import type { AssistantService } from '@/main/assistant/assistant-service';
 import { AssetFileActions } from '@/main/media/asset-file-actions';
+import { ArticleExportService } from '@/main/creations/article-export-service';
+import { ArticleWechatCopyService } from '@/main/creations/article-wechat-copy-service';
 import { readCanvasPresets } from '@/main/media/canvas-presets';
+import { readDerivedVisualPrompts } from '@/main/media/derived-visual-prompts';
 import { LibraryDatabase } from '@/main/database';
 import { ImageTransformService } from '@/main/media/image-transform-service';
 import { copyImageInSandbox } from '@/main/media/image-clipboard-worker-client';
-import { rasterizeSvgFileInSandbox } from '@/main/media/svg-rasterization';
+import { rasterizeSvgBytesInSandbox, rasterizeSvgFileInSandbox } from '@/main/media/svg-rasterization';
 import type { GenerationService } from '@/main/generation/service';
 import type { ExtensionRegistry } from '@/main/extensions/registry';
 import type { CodexImageDiscovery } from '@/main/extensions/codex-image-discovery';
@@ -77,10 +80,58 @@ function showDownloadsSaveDialog(getWindow: () => BrowserWindow | null, options:
   return parent ? dialog.showSaveDialog(parent, localizedOptions) : dialog.showSaveDialog(localizedOptions);
 }
 
+async function convertWebpToPng(filePath: string) {
+  const image = nativeImage.createFromPath(filePath);
+  return image.isEmpty() ? null : image.toPNG();
+}
+
+async function convertSvgToPng(filePath: string) {
+  try {
+    return (await rasterizeSvgFileInSandbox(filePath)).bytes;
+  } catch {
+    return null;
+  }
+}
+
+async function convertWebpBytesToPng(bytes: Buffer) {
+  const image = nativeImage.createFromBuffer(bytes);
+  return image.isEmpty() ? null : image.toPNG();
+}
+
+async function convertSvgBytesToPng(bytes: Buffer) {
+  try {
+    return (await rasterizeSvgBytesInSandbox(bytes)).bytes;
+  } catch {
+    return null;
+  }
+}
+
 const compactExecutionWorkbenchOptions = {
   includeExecutionActualRequest: false,
   includeExecutionInputSnapshot: false,
 } as const;
+
+function creativeLibraryContainers(database: LibraryDatabase) {
+  return {
+    articles: database.listArticles(),
+    creations: database.listCreations(),
+    creationItems: database.listCreationItems(),
+    inspirationStashes: database.listInspirationStashes(),
+    socialPosts: database.listSocialPosts(),
+    derivedVisuals: database.listDerivedVisuals(),
+  };
+}
+
+function bootstrapDictionaryProjection(database: LibraryDatabase, locale: Locale) {
+  const terms = database.searchCreatorTerms(locale);
+  return {
+    terms,
+    termDetailsIncluded: false as const,
+    categories: database.getCategories(locale),
+    facets: database.getFacets(locale),
+    wordPalettes: database.getWordPalettes(locale, terms),
+  };
+}
 
 export function registerIpc(
   database: LibraryDatabase,
@@ -98,6 +149,7 @@ export function registerIpc(
   generationConcurrency: GenerationConcurrencyConfiguration,
   importStarterPack: () => string,
   canvasPresetPaths: string | readonly string[],
+  derivedVisualPromptPaths: string | readonly string[],
   getWindow: () => BrowserWindow | null,
   sendRendererEvent: (channel: string, ...args: unknown[]) => boolean,
   requestAppQuit: () => Promise<void>,
@@ -129,17 +181,16 @@ export function registerIpc(
       const localizedOptions = { ...options, defaultPath };
       return parent ? dialog.showOpenDialog(parent, localizedOptions) : dialog.showOpenDialog(localizedOptions);
     },
-    convertWebpToPng: async (filePath) => {
-      const image = nativeImage.createFromPath(filePath);
-      return image.isEmpty() ? null : image.toPNG();
-    },
-    convertSvgToPng: async (filePath) => {
-      try {
-        return (await rasterizeSvgFileInSandbox(filePath)).bytes;
-      } catch {
-        return null;
-      }
-    },
+    convertWebpToPng,
+    convertSvgToPng,
+  });
+  const articleExports = new ArticleExportService(database, {
+    showSaveDialog: (options) => showDownloadsSaveDialog(getWindow, options),
+  });
+  const articleWechatCopy = new ArticleWechatCopyService(database, {
+    writeClipboard: (data) => clipboard.write(data),
+    convertWebpBytesToPng,
+    convertSvgBytesToPng,
   });
   const runAssistantRequest = (request: z.infer<typeof creatorAgentAssistSchema>) => {
     const execution = assistantRouting.resolve(request.mode);
@@ -263,16 +314,13 @@ export function registerIpc(
   ipcMain.handle('app:bootstrap', (_event, rawLocale) => {
     const locale = localeSchema.parse(rawLocale) as Locale;
     const workbench = database.getWorkbench(locale, compactExecutionWorkbenchOptions);
-    const terms = database.searchTerms(locale);
     return {
       locale,
       spaceName: database.getLibraryName(),
       spaceCoverUrl: localSpaces.currentCoverUrl(),
-      terms,
-      categories: database.getCategories(locale),
-      facets: database.getFacets(locale),
-      wordPalettes: database.getWordPalettes(locale, terms),
+      ...bootstrapDictionaryProjection(database, locale),
       canvasPresets: readCanvasPresets(canvasPresetPaths, locale),
+      derivedVisualPrompts: readDerivedVisualPrompts(derivedVisualPromptPaths, locale),
       ...workbench,
       codex: codex.cachedHealth,
       extensions: extensions.list(),
@@ -280,7 +328,7 @@ export function registerIpc(
       imageGenerationRoutes: generation.imageGenerationRoutes,
       generationTasks: generation.tasks,
       assistantRuns: database.listAssistantRuns(),
-      creations: database.listCreations(),
+      ...creativeLibraryContainers(database),
       styleExplorationBatches: database.listStyleExplorationBatches(),
       agentTasks: database.listDirectionExperimentDirectorTasks(),
       libraryEmpty: database.isLibraryEmpty(),
@@ -291,6 +339,7 @@ export function registerIpc(
     const locale = localeSchema.parse(rawLocale) as Locale;
     return {
       ...database.getWorkbench(locale, compactExecutionWorkbenchOptions),
+      creationItems: database.listCreationItems(),
       styleExplorationBatches: database.listStyleExplorationBatches(),
       agentTasks: database.listDirectionExperimentDirectorTasks(),
     };
@@ -330,6 +379,8 @@ export function registerIpc(
     chooseFile,
     runAssistantRequest,
     runTitleRequest,
+    articleExports,
+    articleWechatCopy,
   });
   registerLibraryIpc(ipcMain, database);
   registerGenerationIpc(ipcMain, database, generation, imageTransforms, runAssistantRequest);

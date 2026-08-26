@@ -13,11 +13,49 @@ import {
   transitionShowcaseExportImageSnapshotsSchema,
 } from '@/shared/contracts/transition-showcase';
 import { creatorOutputsOrganizeResultSchema } from '@/shared/contracts/creation-output-organization';
+import { inspirationStashMoveInputSchema, inspirationStashSaveInputSchema } from '@/shared/contracts/inspiration-stash';
+import {
+  creationFormAddOrGetInputSchema,
+  creationFormAddOrGetResultSchema,
+  creationItemCreateWithFormInputSchema,
+  creationItemCreateWithFormResultSchema,
+  creationItemGetInputSchema,
+  creationItemGetResultSchema,
+  creationItemListInputSchema,
+  creationItemListResultSchema,
+  creationItemMoveInputSchema,
+  creationItemMoveResultSchema,
+  creationItemSetPinnedInputSchema,
+  creationItemSetPinnedResultSchema,
+  creationItemSetPrimaryInputSchema,
+  creationItemSetPrimaryResultSchema,
+} from '@/shared/contracts/creation-library';
 import {
   promptSeriesCoverSetInputSchema,
   promptSeriesOutputPresentationResultSchema,
   promptSeriesOutputRemoveInputSchema,
 } from '@/shared/contracts/creation-output-presentation';
+import {
+  socialPostFormAddInputSchema,
+  socialPostMoveInputSchema,
+  socialPostSaveInputSchema,
+  socialPostSetArchivedInputSchema,
+} from '@/shared/contracts/social-post';
+import {
+  articleFormAddInputSchema,
+  articleCopyForWechatInputSchema,
+  articleCopyForWechatResultSchema,
+  articleExportMarkdownInputSchema,
+  articleExportMarkdownResultSchema,
+  articleMoveInputSchema,
+  articleRenameInputSchema,
+  articleSaveInputSchema,
+  articleSetArchivedInputSchema,
+} from '@/shared/contracts/article';
+import {
+  derivedVisualAdoptInputSchema,
+  derivedVisualWorkspaceOpenInputSchema,
+} from '@/shared/contracts/derived-visual';
 import { promptVersionCreateResultSchema } from '@/shared/contracts/prompt-version-create';
 import {
   legacyLocalSpaceCandidateListSchema,
@@ -395,10 +433,65 @@ const api: DesktopApi = {
   creationDraftStart: (input) => ipcRenderer.invoke('creation-draft:start', input),
   creationDraftSave: (input) => ipcRenderer.invoke('creation-draft:save', input),
   creationDraftCommit: (input) => ipcRenderer.invoke('creation-draft:commit', input),
+  creationItemsList: async (input) =>
+    creationItemListResultSchema.parse(
+      await ipcRenderer.invoke('creation-items:list', creationItemListInputSchema.parse(input ?? {})),
+    ),
+  creationItemGet: async (input) =>
+    creationItemGetResultSchema.parse(
+      await ipcRenderer.invoke('creation-item:get', creationItemGetInputSchema.parse(input)),
+    ),
+  creationItemCreateWithForm: async (input) =>
+    creationItemCreateWithFormResultSchema.parse(
+      await ipcRenderer.invoke('creation-item:create-with-form', creationItemCreateWithFormInputSchema.parse(input)),
+    ),
+  creationFormAddOrGet: async (input) =>
+    creationFormAddOrGetResultSchema.parse(
+      await ipcRenderer.invoke('creation-form:add-or-get', creationFormAddOrGetInputSchema.parse(input)),
+    ),
+  creationItemMove: async (input) =>
+    creationItemMoveResultSchema.parse(
+      await ipcRenderer.invoke('creation-item:move', creationItemMoveInputSchema.parse(input)),
+    ),
+  creationItemSetPinned: async (input) =>
+    creationItemSetPinnedResultSchema.parse(
+      await ipcRenderer.invoke('creation-item:set-pinned', creationItemSetPinnedInputSchema.parse(input)),
+    ),
+  creationItemSetPrimary: async (input) =>
+    creationItemSetPrimaryResultSchema.parse(
+      await ipcRenderer.invoke('creation-item:set-primary', creationItemSetPrimaryInputSchema.parse(input)),
+    ),
+  derivedVisualWorkspaceOpen: (input) =>
+    ipcRenderer.invoke('derived-visual:workspace-open', derivedVisualWorkspaceOpenInputSchema.parse(input)),
+  derivedVisualAdopt: (input) => ipcRenderer.invoke('derived-visual:adopt', derivedVisualAdoptInputSchema.parse(input)),
   creationInputStashesList: (scope) => ipcRenderer.invoke('creation-input-stashes:list', scope),
   creationInputStashCreate: (input) => ipcRenderer.invoke('creation-input-stash:create', input),
+  inspirationStashSave: (input) =>
+    ipcRenderer.invoke('inspiration-stash:save', inspirationStashSaveInputSchema.parse(input)),
+  inspirationStashMove: (input) =>
+    ipcRenderer.invoke('inspiration-stash:move', inspirationStashMoveInputSchema.parse(input)),
+  inspirationStashSetArchived: (input) => ipcRenderer.invoke('inspiration-stash:set-archived', input),
+  socialPostSave: (input) => ipcRenderer.invoke('social-post:save', socialPostSaveInputSchema.parse(input)),
+  socialPostFormAdd: (input) => ipcRenderer.invoke('social-post:form-add', socialPostFormAddInputSchema.parse(input)),
+  socialPostMove: (input) => ipcRenderer.invoke('social-post:move', socialPostMoveInputSchema.parse(input)),
+  socialPostSetArchived: (input) =>
+    ipcRenderer.invoke('social-post:set-archived', socialPostSetArchivedInputSchema.parse(input)),
+  articleSave: (input) => ipcRenderer.invoke('article:save', articleSaveInputSchema.parse(input)),
+  articleFormAdd: (input) => ipcRenderer.invoke('article:form-add', articleFormAddInputSchema.parse(input)),
+  articleRename: (input) => ipcRenderer.invoke('article:rename', articleRenameInputSchema.parse(input)),
+  articleMove: (input) => ipcRenderer.invoke('article:move', articleMoveInputSchema.parse(input)),
+  articleSetArchived: (input) => ipcRenderer.invoke('article:set-archived', articleSetArchivedInputSchema.parse(input)),
+  articleCopyForWechat: async (input) =>
+    articleCopyForWechatResultSchema.parse(
+      await ipcRenderer.invoke('article:copy-for-wechat', articleCopyForWechatInputSchema.parse(input)),
+    ),
+  articleExportMarkdown: async (input) =>
+    articleExportMarkdownResultSchema.parse(
+      await ipcRenderer.invoke('article:export-markdown', articleExportMarkdownInputSchema.parse(input)),
+    ),
   creationsDelete: (creationId) => ipcRenderer.invoke('creations:delete', creationId),
   dictionarySearch: (input) => ipcRenderer.invoke('dictionary:search', input),
+  dictionaryDetails: (locale) => ipcRenderer.invoke('dictionary:details', locale),
   dictionarySearchPage: (input) => ipcRenderer.invoke('dictionary:search-page', input),
   dictionaryScopeResolve: (input) => ipcRenderer.invoke('dictionary:scope-resolve', input),
   dictionaryGet: (termId, locale) => ipcRenderer.invoke('dictionary:get', termId, locale),
@@ -467,7 +560,7 @@ const api: DesktopApi = {
   codexSuggestTitles: (input) => ipcRenderer.invoke('codex:suggest-titles', input),
   promptSeriesRename: (input) => ipcRenderer.invoke('prompt-series:rename', input),
   promptSeriesDelete: (input) => ipcRenderer.invoke('prompt-series:delete', input),
-  creationGroupsRename: (input) => ipcRenderer.invoke('creation-groups:rename', input),
+  creationAlbumsRename: (input) => ipcRenderer.invoke('creation-albums:rename', input),
   materialCollectionsCreateFromSource: (input) => ipcRenderer.invoke('material-collections:create-from-source', input),
   materialAlbumsList: (input) => ipcRenderer.invoke('material-albums:list', input),
   materialAlbumsCreate: (input) => ipcRenderer.invoke('material-albums:create', input),
@@ -487,11 +580,20 @@ const api: DesktopApi = {
   albumsArchive: (albumId) => ipcRenderer.invoke('albums:archive', albumId),
   albumsSetArchived: (input) => ipcRenderer.invoke('albums:set-archived', input),
   albumsMove: (input) => ipcRenderer.invoke('albums:move', input),
-  albumsMoveSeries: (input) => ipcRenderer.invoke('albums:move-series', input),
   albumsAddMembers: (input) => ipcRenderer.invoke('albums:add-members', input),
   albumsRemoveMembers: (input) => ipcRenderer.invoke('albums:remove-members', input),
   albumsReorderMembers: (input) => ipcRenderer.invoke('albums:reorder-members', input),
   albumsReorderRoot: (input) => ipcRenderer.invoke('albums:reorder-root', input),
+  recycleBinList: (input) => ipcRenderer.invoke('recycle-bin:list', input),
+  recycleBinRestore: (input) => ipcRenderer.invoke('recycle-bin:restore', input),
+  recycleBinPurgePlan: (input) => ipcRenderer.invoke('recycle-bin:plan-purge', input),
+  recycleBinPurge: (input) => ipcRenderer.invoke('recycle-bin:purge', input),
+  contentLifecycleList: (input) => ipcRenderer.invoke('content-lifecycle:list', input),
+  contentLifecyclePlan: (input) => ipcRenderer.invoke('content-lifecycle:plan', input),
+  contentLifecycleApply: (input) => ipcRenderer.invoke('content-lifecycle:apply', input),
+  contentLifecycleRestore: (input) => ipcRenderer.invoke('content-lifecycle:restore', input),
+  contentLifecyclePurgePlan: (input) => ipcRenderer.invoke('content-lifecycle:plan-purge', input),
+  contentLifecyclePurge: (input) => ipcRenderer.invoke('content-lifecycle:purge', input),
   materialMetadataUpdate: (input) => ipcRenderer.invoke('material-metadata:update', input),
   materialProvenanceSuggestions: () => ipcRenderer.invoke('material-provenance:suggestions'),
   generationStart: (input) => ipcRenderer.invoke('generation:start', input),

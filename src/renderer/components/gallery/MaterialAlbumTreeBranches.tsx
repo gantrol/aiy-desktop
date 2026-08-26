@@ -1,4 +1,4 @@
-import { FolderInputIcon, ImagesIcon, PencilIcon, PlusIcon, Trash2Icon } from 'lucide-react';
+import { ArchiveIcon, FolderInputIcon, ImagesIcon, PencilIcon, PlusIcon, Trash2Icon } from 'lucide-react';
 import type { Dispatch, DragEvent, SetStateAction } from 'react';
 import type { MaterialAlbumDto, MaterialSelectionTargetInput } from '@/shared/contracts';
 import {
@@ -12,7 +12,7 @@ import {
 } from '@/renderer/components/albums/albumDrag';
 import { AlbumTreePreview } from '@/renderer/components/albums/AlbumTreePreview';
 import { createAlbumExpansionAction } from '@/renderer/components/albums/albumTreeMenuActions';
-import type { useAlbumTreeExpansion } from '@/renderer/components/albums/useAlbumTreeExpansion';
+import type { useTreeBranchExpansion } from '@/renderer/components/albums/useTreeBranchExpansion';
 import type {
   DeferredSingleDoubleClickHandlers,
   useDeferredSingleDoubleClick,
@@ -42,11 +42,12 @@ export interface MaterialAlbumBranchLabels {
   createChild: string;
   moveToRoot: string;
   rename: string;
+  archive: string;
   delete: string;
   moreActions(title: string): string;
 }
 
-type Expansion = ReturnType<typeof useAlbumTreeExpansion>;
+type Expansion = ReturnType<typeof useTreeBranchExpansion>;
 type DeferredClick = ReturnType<typeof useDeferredSingleDoubleClick>;
 
 function immediateOpenHandlers<Element extends HTMLElement>(
@@ -80,13 +81,14 @@ interface MaterialAlbumBranchProps extends SharedBranchProps {
   dropAlbumId: string | null;
   onDropAlbumChange: Dispatch<SetStateAction<string | null>>;
   onEditorChange(state: MaterialAlbumEditorState): void;
-  onDeleteAlbumChange(album: MaterialAlbumDto): void;
+  onArchive(album: MaterialAlbumDto): Promise<void>;
+  onDelete(album: MaterialAlbumDto): Promise<void>;
   onMove?(albumId: string, parentAlbumId: string | null): Promise<void>;
   onCollectMaterials(albumId: string, targets: MaterialSelectionTargetInput[]): Promise<void>;
   onImportFiles?(album: MaterialAlbumDto, files: File[]): void;
 }
 
-interface CreationGroupBranchProps extends SharedBranchProps {
+interface CreationAlbumBranchProps extends SharedBranchProps {
   busy: boolean;
   dropAlbumId: string | null;
   onDropAlbumChange: Dispatch<SetStateAction<string | null>>;
@@ -107,6 +109,33 @@ function canMoveAlbumTo(tree: MaterialAlbumTreeIndex, sourceAlbumId: string, par
   return true;
 }
 
+function materialAlbumLifecycleActions(
+  album: MaterialAlbumDto,
+  labels: MaterialAlbumBranchLabels,
+  busy: boolean,
+  onArchive: (album: MaterialAlbumDto) => Promise<void>,
+  onDelete: (album: MaterialAlbumDto) => Promise<void>,
+): ActionMenuAction[] {
+  return [
+    {
+      id: 'archive',
+      label: labels.archive,
+      icon: ArchiveIcon,
+      separatorBefore: true,
+      disabled: busy,
+      onSelect: () => void onArchive(album),
+    },
+    {
+      id: 'delete',
+      label: labels.delete,
+      icon: Trash2Icon,
+      destructive: true,
+      disabled: busy,
+      onSelect: () => void onDelete(album),
+    },
+  ];
+}
+
 export function MaterialAlbumBranch(props: MaterialAlbumBranchProps) {
   const {
     album,
@@ -122,7 +151,8 @@ export function MaterialAlbumBranch(props: MaterialAlbumBranchProps) {
     onSelectAlbum,
     onDropAlbumChange,
     onEditorChange,
-    onDeleteAlbumChange,
+    onArchive,
+    onDelete,
     onMove,
     onCollectMaterials,
     onImportFiles,
@@ -182,14 +212,7 @@ export function MaterialAlbumBranch(props: MaterialAlbumBranchProps) {
             icon: PencilIcon,
             onSelect: () => onEditorChange({ mode: 'rename', album }),
           } satisfies ActionMenuAction,
-          {
-            id: 'delete',
-            label: labels.delete,
-            icon: Trash2Icon,
-            destructive: true,
-            separatorBefore: true,
-            onSelect: () => onDeleteAlbumChange(album),
-          } satisfies ActionMenuAction,
+          ...materialAlbumLifecycleActions(album, labels, busy, onArchive, onDelete),
         ]
       : []),
   ];
@@ -197,6 +220,7 @@ export function MaterialAlbumBranch(props: MaterialAlbumBranchProps) {
   const row = (
     <div
       data-album-id={album.id}
+      data-tree-node-id={album.id}
       data-parent-album-id={album.parentId ?? ''}
       data-material-count={album.materialCount}
       data-active={activeAlbumId === album.id ? 'true' : 'false'}
@@ -278,7 +302,7 @@ export function MaterialAlbumBranch(props: MaterialAlbumBranchProps) {
         overlayStyle="solid"
         disclosureInteractive={false}
         branchTopology={branchTopology}
-        onPullDownExpand={() => expansion.setHover(album.id, true)}
+        onGestureExpand={() => expansion.expandFromGesture(album.id)}
         onPointerTrackStart={(clientY) => expansion.beginPointerTrack(album.id, clientY)}
         onPointerTrack={(clientY) => expansion.trackPointer(album.id, clientY)}
         onClick={clickHandlers.onClick}
@@ -325,6 +349,7 @@ export function MaterialAlbumBranch(props: MaterialAlbumBranchProps) {
       onOpenChange={(open) => expansion.setPersistent(album.id, open)}
       className="relative"
       data-album-branch-id={album.id}
+      data-tree-branch-id={album.id}
     >
       {branchTopology && <TreeBranchTransitRail topology={branchTopology} />}
       <ContextMenu>
@@ -354,7 +379,7 @@ export function MaterialAlbumBranch(props: MaterialAlbumBranchProps) {
   );
 }
 
-export function CreationGroupBranch(props: CreationGroupBranchProps) {
+export function CreationAlbumBranch(props: CreationAlbumBranchProps) {
   const {
     album,
     tree,
@@ -406,6 +431,7 @@ export function CreationGroupBranch(props: CreationGroupBranchProps) {
   const row = (
     <div
       data-album-id={album.id}
+      data-tree-node-id={album.id}
       data-parent-album-id={album.parentId ?? ''}
       data-material-count={album.materialCount}
       data-active={activeAlbumId === album.id ? 'true' : 'false'}
@@ -452,7 +478,7 @@ export function CreationGroupBranch(props: CreationGroupBranchProps) {
         overlayStyle="solid"
         disclosureInteractive={false}
         branchTopology={branchTopology}
-        onPullDownExpand={() => expansion.setHover(album.id, true)}
+        onGestureExpand={() => expansion.expandFromGesture(album.id)}
         onPointerTrackStart={(clientY) => expansion.beginPointerTrack(album.id, clientY)}
         onPointerTrack={(clientY) => expansion.trackPointer(album.id, clientY)}
         onClick={clickHandlers.onClick}
@@ -499,6 +525,7 @@ export function CreationGroupBranch(props: CreationGroupBranchProps) {
       onOpenChange={(open) => expansion.setPersistent(album.id, open)}
       className="relative"
       data-album-branch-id={album.id}
+      data-tree-branch-id={album.id}
     >
       {branchTopology && <TreeBranchTransitRail topology={branchTopology} />}
       <ContextMenu>
@@ -514,7 +541,7 @@ export function CreationGroupBranch(props: CreationGroupBranchProps) {
         <TreeBranchContent>
           <TreeBranchCollapseProvider onCollapse={() => expansion.collapse(album.id)}>
             {children.map((child, index) => (
-              <CreationGroupBranch
+              <CreationAlbumBranch
                 {...props}
                 key={child.id}
                 album={child}

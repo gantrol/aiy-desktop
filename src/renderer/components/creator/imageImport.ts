@@ -47,6 +47,20 @@ export function clipboardImageFiles(clipboard: DataTransfer): File[] {
   return imageFiles(itemFiles.length ? itemFiles : clipboard.files);
 }
 
+export function clipboardHasUserText(clipboard: DataTransfer) {
+  const html = clipboard.getData('text/html');
+  if (html) {
+    const document = new DOMParser().parseFromString(html, 'text/html');
+    document.querySelectorAll('img, picture, source').forEach((element) => element.remove());
+    if (document.body.textContent?.trim()) return true;
+  }
+
+  const text = clipboard.getData('text/plain').trim();
+  if (!text) return false;
+  if (httpUrl(text)) return false;
+  return !/^(?:[a-zA-Z]:[\\/]|file:\/\/).+\.(?:avif|gif|jpe?g|png|svg|webp)$/iu.test(text);
+}
+
 function httpUrl(value: string | null | undefined) {
   if (!value) return '';
   try {

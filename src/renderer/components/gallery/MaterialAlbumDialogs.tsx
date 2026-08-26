@@ -1,14 +1,7 @@
 import { useEffect, useState, type FormEvent } from 'react';
 import type { MaterialAlbumDto } from '@/shared/contracts';
 import { Button } from '@/renderer/components/ui/button';
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from '@/renderer/components/ui/dialog';
+import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/renderer/components/ui/dialog';
 import { Input } from '@/renderer/components/ui/input';
 
 export type MaterialAlbumEditorState =
@@ -30,27 +23,14 @@ interface Labels {
 
 interface Props {
   editor: MaterialAlbumEditorState | null;
-  deleteAlbum: MaterialAlbumDto | null;
   labels: Labels;
   busy: boolean;
   onEditorChange(editor: MaterialAlbumEditorState | null): void;
-  onDeleteAlbumChange(album: MaterialAlbumDto | null): void;
   onCreate(title: string, parentAlbumId: string | null): Promise<void>;
   onRename(album: MaterialAlbumDto, title: string): Promise<void>;
-  onDelete(album: MaterialAlbumDto): Promise<void>;
 }
 
-export function MaterialAlbumDialogs({
-  editor,
-  deleteAlbum,
-  labels,
-  busy,
-  onEditorChange,
-  onDeleteAlbumChange,
-  onCreate,
-  onRename,
-  onDelete,
-}: Props) {
+export function MaterialAlbumDialogs({ editor, labels, busy, onEditorChange, onCreate, onRename }: Props) {
   const [title, setTitle] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
@@ -59,10 +39,6 @@ export function MaterialAlbumDialogs({
     setTitle(editor?.mode === 'rename' ? editor.album.title : '');
     setError('');
   }, [editor]);
-
-  useEffect(() => {
-    setError('');
-  }, [deleteAlbum]);
 
   async function submitEditor(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -81,99 +57,50 @@ export function MaterialAlbumDialogs({
     }
   }
 
-  async function confirmDelete() {
-    if (!deleteAlbum || busy || submitting) return;
-    setSubmitting(true);
-    setError('');
-    try {
-      await onDelete(deleteAlbum);
-      onDeleteAlbumChange(null);
-    } catch (reason) {
-      setError(reason instanceof Error ? reason.message : labels.operationFailed);
-    } finally {
-      setSubmitting(false);
-    }
-  }
-
   return (
-    <>
-      <Dialog open={Boolean(editor)} onOpenChange={(open) => !open && !submitting && onEditorChange(null)}>
-        <DialogContent
-          data-dialog="material-album-editor"
-          data-editor-mode={editor?.mode ?? ''}
-          data-operation-state={submitting || busy ? 'pending' : 'idle'}
-          aria-busy={submitting || busy}
-        >
-          <form className="grid gap-4" onSubmit={(event) => void submitEditor(event)}>
-            <DialogHeader>
-              <DialogTitle>{editor?.mode === 'rename' ? labels.renameTitle : labels.createTitle}</DialogTitle>
-            </DialogHeader>
-            <label className="grid gap-2 text-sm font-medium">
-              {labels.name}
-              <Input
-                autoFocus
-                data-field="material-album-name"
-                value={title}
-                maxLength={120}
-                disabled={busy || submitting}
-                placeholder={labels.namePlaceholder}
-                onChange={(event) => setTitle(event.target.value)}
-              />
-            </label>
-            {error && (
-              <p role="alert" className="text-sm text-destructive">
-                {error}
-              </p>
-            )}
-            <DialogFooter>
-              <Button type="button" variant="outline" disabled={submitting} onClick={() => onEditorChange(null)}>
-                {labels.cancel}
-              </Button>
-              <Button
-                type="submit"
-                data-action="material-album-submit"
-                aria-busy={submitting}
-                disabled={busy || submitting || !title.trim()}
-              >
-                {editor?.mode === 'rename' ? labels.save : labels.create}
-              </Button>
-            </DialogFooter>
-          </form>
-        </DialogContent>
-      </Dialog>
-
-      <Dialog open={Boolean(deleteAlbum)} onOpenChange={(open) => !open && !submitting && onDeleteAlbumChange(null)}>
-        <DialogContent
-          data-dialog="material-album-delete"
-          data-operation-state={submitting || busy ? 'pending' : 'idle'}
-          aria-busy={submitting || busy}
-        >
+    <Dialog open={Boolean(editor)} onOpenChange={(open) => !open && !submitting && onEditorChange(null)}>
+      <DialogContent
+        data-dialog="material-album-editor"
+        data-editor-mode={editor?.mode ?? ''}
+        data-operation-state={submitting || busy ? 'pending' : 'idle'}
+        aria-busy={submitting || busy}
+      >
+        <form className="grid gap-4" onSubmit={(event) => void submitEditor(event)}>
           <DialogHeader>
-            <DialogTitle>{labels.deleteTitle}</DialogTitle>
-            <DialogDescription>{deleteAlbum ? labels.deleteDescription(deleteAlbum.title) : ''}</DialogDescription>
+            <DialogTitle>{editor?.mode === 'rename' ? labels.renameTitle : labels.createTitle}</DialogTitle>
           </DialogHeader>
+          <label className="grid gap-2 text-sm font-medium">
+            {labels.name}
+            <Input
+              autoFocus
+              data-field="material-album-name"
+              value={title}
+              maxLength={120}
+              disabled={busy || submitting}
+              placeholder={labels.namePlaceholder}
+              onChange={(event) => setTitle(event.target.value)}
+            />
+          </label>
           {error && (
             <p role="alert" className="text-sm text-destructive">
               {error}
             </p>
           )}
           <DialogFooter>
-            <Button type="button" variant="outline" disabled={submitting} onClick={() => onDeleteAlbumChange(null)}>
+            <Button type="button" variant="outline" disabled={submitting} onClick={() => onEditorChange(null)}>
               {labels.cancel}
             </Button>
             <Button
-              type="button"
-              data-action="material-album-delete-confirm"
-              variant="destructive"
+              type="submit"
+              data-action="material-album-submit"
               aria-busy={submitting}
-              disabled={busy || submitting}
-              onClick={() => void confirmDelete()}
+              disabled={busy || submitting || !title.trim()}
             >
-              {labels.confirmDelete}
+              {editor?.mode === 'rename' ? labels.save : labels.create}
             </Button>
           </DialogFooter>
-        </DialogContent>
-      </Dialog>
-    </>
+        </form>
+      </DialogContent>
+    </Dialog>
   );
 }

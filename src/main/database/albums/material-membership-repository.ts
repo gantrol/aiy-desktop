@@ -120,7 +120,7 @@ export class MaterialMembershipRepository {
           `SELECT material.id, material.kind, material.image_asset_id
           FROM materials material
           LEFT JOIN image_assets asset ON asset.id = material.image_asset_id
-          WHERE material.id IN (${slots}) AND material.deleted_at IS NULL
+          WHERE material.id IN (${slots}) AND material.deleted_at IS NULL AND material.archived_at IS NULL
             AND (material.kind = 'TEXT' OR asset.deleted_at IS NULL)`,
         )
         .all(...materialIds) as JsonMap[];

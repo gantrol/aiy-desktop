@@ -234,7 +234,7 @@ export class LibraryFileViewPathRepository {
       .prepare(
         `SELECT 1
         FROM prompt_series series
-        WHERE series.id = ? AND series.deleted_at IS NULL AND (
+        WHERE series.id = ? AND series.deleted_at IS NULL AND series.archived_at IS NULL AND (
           EXISTS (
             SELECT 1 FROM prompt_versions version
             JOIN generation_runs run ON run.prompt_version_id = version.id
@@ -273,10 +273,14 @@ export class LibraryFileViewPathRepository {
     const owner = this.db
       .prepare(
         `SELECT member.album_id
-        FROM album_members member
+        FROM creation_forms form
+        JOIN creation_items item ON item.id = form.creation_item_id
+          AND item.deleted_at IS NULL AND item.archived_at IS NULL
+        JOIN album_members member ON member.target_type = 'CREATION_ITEM'
+          AND member.target_id = item.id AND member.deleted_at IS NULL
         JOIN albums album ON album.id = member.album_id AND album.deleted_at IS NULL
-        WHERE member.target_type = 'SERIES' AND member.target_id = ?
-          AND member.deleted_at IS NULL
+        WHERE form.role = 'IMAGE_CREATION' AND form.entity_type = 'PROMPT_SERIES'
+          AND form.entity_id = ? AND form.deleted_at IS NULL
         ORDER BY member.album_id LIMIT 1`,
       )
       .get(seriesId) as JsonMap | undefined;
@@ -292,16 +296,23 @@ export class LibraryFileViewPathRepository {
         JOIN albums album ON album.id = member.album_id AND album.deleted_at IS NULL
         JOIN materials material ON material.id = member.target_id
           AND material.kind IN ('IMAGE', 'VIDEO') AND material.deleted_at IS NULL
+          AND material.archived_at IS NULL
         WHERE member.target_type = 'MATERIAL' AND member.deleted_at IS NULL
           AND material.image_asset_id = ?
         UNION
         SELECT member.album_id
         FROM album_members member
         JOIN albums album ON album.id = member.album_id AND album.deleted_at IS NULL
-        JOIN prompt_series series ON series.id = member.target_id AND series.deleted_at IS NULL
+        JOIN creation_items item ON item.id = member.target_id
+          AND item.deleted_at IS NULL AND item.archived_at IS NULL
+        JOIN creation_forms form ON form.creation_item_id = item.id
+          AND form.role = 'IMAGE_CREATION' AND form.entity_type = 'PROMPT_SERIES'
+          AND form.deleted_at IS NULL
+        JOIN prompt_series series ON series.id = form.entity_id
+          AND series.deleted_at IS NULL AND series.archived_at IS NULL
         JOIN prompt_versions version ON version.series_id = series.id
         JOIN generation_runs run ON run.prompt_version_id = version.id
-        WHERE member.target_type = 'SERIES' AND member.deleted_at IS NULL
+        WHERE member.target_type = 'CREATION_ITEM' AND member.deleted_at IS NULL
           AND run.status = 'SUCCEEDED' AND run.result_asset_id = ?
           AND NOT EXISTS (
             SELECT 1 FROM prompt_series_output_exclusions exclusion
@@ -311,10 +322,16 @@ export class LibraryFileViewPathRepository {
         SELECT member.album_id
         FROM album_members member
         JOIN albums album ON album.id = member.album_id AND album.deleted_at IS NULL
-        JOIN prompt_series series ON series.id = member.target_id AND series.deleted_at IS NULL
+        JOIN creation_items item ON item.id = member.target_id
+          AND item.deleted_at IS NULL AND item.archived_at IS NULL
+        JOIN creation_forms form ON form.creation_item_id = item.id
+          AND form.role = 'IMAGE_CREATION' AND form.entity_type = 'PROMPT_SERIES'
+          AND form.deleted_at IS NULL
+        JOIN prompt_series series ON series.id = form.entity_id
+          AND series.deleted_at IS NULL AND series.archived_at IS NULL
         JOIN creation_output_imports imported ON imported.series_id = series.id
           AND imported.deleted_at IS NULL
-        WHERE member.target_type = 'SERIES' AND member.deleted_at IS NULL
+        WHERE member.target_type = 'CREATION_ITEM' AND member.deleted_at IS NULL
           AND imported.image_asset_id = ?
           AND NOT EXISTS (
             SELECT 1 FROM prompt_series_output_exclusions exclusion
@@ -324,10 +341,16 @@ export class LibraryFileViewPathRepository {
         SELECT member.album_id
         FROM album_members member
         JOIN albums album ON album.id = member.album_id AND album.deleted_at IS NULL
-        JOIN prompt_series series ON series.id = member.target_id AND series.deleted_at IS NULL
+        JOIN creation_items item ON item.id = member.target_id
+          AND item.deleted_at IS NULL AND item.archived_at IS NULL
+        JOIN creation_forms form ON form.creation_item_id = item.id
+          AND form.role = 'IMAGE_CREATION' AND form.entity_type = 'PROMPT_SERIES'
+          AND form.deleted_at IS NULL
+        JOIN prompt_series series ON series.id = form.entity_id
+          AND series.deleted_at IS NULL AND series.archived_at IS NULL
         JOIN image_transform_runs transform ON transform.series_id = series.id
           AND transform.deleted_at IS NULL
-        WHERE member.target_type = 'SERIES' AND member.deleted_at IS NULL
+        WHERE member.target_type = 'CREATION_ITEM' AND member.deleted_at IS NULL
           AND transform.output_asset_id = ?
           AND NOT EXISTS (
             SELECT 1 FROM prompt_series_output_exclusions exclusion
@@ -337,10 +360,16 @@ export class LibraryFileViewPathRepository {
         SELECT member.album_id
         FROM album_members member
         JOIN albums album ON album.id = member.album_id AND album.deleted_at IS NULL
-        JOIN prompt_series series ON series.id = member.target_id AND series.deleted_at IS NULL
+        JOIN creation_items item ON item.id = member.target_id
+          AND item.deleted_at IS NULL AND item.archived_at IS NULL
+        JOIN creation_forms form ON form.creation_item_id = item.id
+          AND form.role = 'IMAGE_CREATION' AND form.entity_type = 'PROMPT_SERIES'
+          AND form.deleted_at IS NULL
+        JOIN prompt_series series ON series.id = form.entity_id
+          AND series.deleted_at IS NULL AND series.archived_at IS NULL
         JOIN prompt_versions version ON version.series_id = series.id
         JOIN reference_bindings binding ON binding.prompt_version_id = version.id
-        WHERE member.target_type = 'SERIES' AND member.deleted_at IS NULL
+        WHERE member.target_type = 'CREATION_ITEM' AND member.deleted_at IS NULL
           AND binding.image_asset_id = ?
         ORDER BY album_id`,
       )

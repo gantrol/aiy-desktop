@@ -307,7 +307,11 @@ export function ImageImportPreviewDialog({
                         <TableCell>
                           <div className="grid size-10 place-items-center overflow-hidden rounded border bg-surface-sunken">
                             {row.previewUrl ? (
-                              <img src={row.previewUrl} alt="" className="size-full object-cover" />
+                              <img
+                                src={row.previewUrl}
+                                alt=""
+                                className="size-full bg-media-surround-light object-contain"
+                              />
                             ) : (
                               <ImageIcon className="size-4 text-muted-foreground" />
                             )}

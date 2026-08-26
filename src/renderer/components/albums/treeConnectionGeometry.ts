@@ -65,7 +65,7 @@ export function getTreeNodeAnchor(
 }
 
 /**
- * The dark album mark is allowed to deform with the cover. When open, the
+ * The dark disclosure mark is allowed to deform with the preview. When open, the
  * same path bends all the way to the next level's outlet with vertical
  * tangents at both ends, avoiding a stitched dark/light elbow.
  */

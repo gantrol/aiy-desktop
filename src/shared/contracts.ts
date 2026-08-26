@@ -1,6 +1,109 @@
 import type { ResolvedPromptComposition } from '@/shared/prompt-composition';
 import type { ExtensionHostEngineKey } from '@/shared/product';
 import type {
+  CreationFormAddOrGetInput,
+  CreationFormAddOrGetResult,
+  CreationItemDto,
+  CreationItemCreateWithFormInput,
+  CreationItemCreateWithFormResult,
+  CreationItemGetInput,
+  CreationItemGetResult,
+  CreationItemListInput,
+  CreationItemListResult,
+  CreationItemMoveInput,
+  CreationItemMoveResult,
+  CreationItemSetPinnedInput,
+  CreationItemSetPinnedResult,
+  CreationItemSetPrimaryInput,
+  CreationItemSetPrimaryResult,
+} from '@/shared/contracts/creation-library';
+export type {
+  CreationFormAddOrGetInput,
+  CreationFormAddOrGetResult,
+  CreationFormDto,
+  CreationFormEntityKind,
+  CreationFormEntityRef,
+  CreationFormRole,
+  CreationInitialFormInput,
+  CreationItemDto,
+  CreationItemCreateWithFormInput,
+  CreationItemCreateWithFormResult,
+  CreationItemGetInput,
+  CreationItemGetResult,
+  CreationItemListInput,
+  CreationItemListResult,
+  CreationItemLifecycle,
+  CreationItemMoveInput,
+  CreationItemMoveResult,
+  CreationItemPhase,
+  CreationItemSetPinnedInput,
+  CreationItemSetPinnedResult,
+  CreationItemSetPrimaryInput,
+  CreationItemSetPrimaryResult,
+} from '@/shared/contracts/creation-library';
+import type {
+  InspirationStashContentInput,
+  InspirationStashMoveInput,
+  InspirationStashSaveInput,
+  InspirationStashSetArchivedInput,
+} from '@/shared/contracts/inspiration-stash';
+export type {
+  InspirationStashContentInput,
+  InspirationStashMoveInput,
+  InspirationStashSaveInput,
+  InspirationStashSetArchivedInput,
+} from '@/shared/contracts/inspiration-stash';
+import type {
+  SocialPostContentInput,
+  SocialPostFormAddInput,
+  SocialPostMoveInput,
+  SocialPostSaveInput,
+  SocialPostSetArchivedInput,
+} from '@/shared/contracts/social-post';
+import type {
+  ArticleContentInput,
+  ArticleCopyForWechatInput,
+  ArticleCopyForWechatResult,
+  ArticleExportMarkdownInput,
+  ArticleFormAddInput,
+  ArticleMoveInput,
+  ArticleRenameInput,
+  ArticleSaveInput,
+  ArticleSetArchivedInput,
+} from '@/shared/contracts/article';
+import type {
+  ArticleInlineVisualAnchor,
+  DerivedVisualAdoptInput,
+  DerivedVisualRole,
+  DerivedVisualWorkspaceOpenInput,
+} from '@/shared/contracts/derived-visual';
+export type {
+  ArticleContentInput,
+  ArticleCopyForWechatInput,
+  ArticleCopyForWechatResult,
+  ArticleExportMarkdownInput,
+  ArticleFormAddInput,
+  ArticleMediaBindingInput,
+  ArticleMoveInput,
+  ArticleRenameInput,
+  ArticleSaveInput,
+  ArticleSetArchivedInput,
+} from '@/shared/contracts/article';
+export type {
+  ArticleInlineVisualAnchor,
+  DerivedVisualAdoptInput,
+  DerivedVisualRole,
+  DerivedVisualWorkspaceCreateInput,
+  DerivedVisualWorkspaceOpenInput,
+} from '@/shared/contracts/derived-visual';
+export type {
+  SocialPostContentInput,
+  SocialPostFormAddInput,
+  SocialPostMoveInput,
+  SocialPostSaveInput,
+  SocialPostSetArchivedInput,
+} from '@/shared/contracts/social-post';
+import type {
   CodexUsageCleanupInput,
   CodexUsageCleanupResult,
   CodexUsageExportInput,
@@ -1852,19 +1955,25 @@ export interface ImportedCreationOutputUpdateInput {
   generationText: string;
 }
 
-export interface CreationGroupDto {
+export interface CreationAlbumDto {
   id: string;
   title: string;
-  items: Array<{ id: string; targetType: 'ALBUM' | 'PROMPT_SERIES'; targetId: string }>;
+  items: Array<{
+    id: string;
+    targetType: 'MATERIAL' | 'ALBUM' | 'CREATION_ITEM';
+    targetId: string;
+  }>;
 }
 
-export interface RenameCreationGroupInput {
-  creationGroupId: string;
+export interface RenameCreationAlbumInput {
+  creationAlbumId: string;
   title: string;
   locale?: Locale;
 }
 
-export type AlbumMemberTargetType = 'MATERIAL' | 'SERIES' | 'ALBUM';
+export type AlbumMemberTargetType = 'MATERIAL' | 'ALBUM' | 'CREATION_ITEM';
+
+export type AlbumAddableMemberTargetType = Extract<AlbumMemberTargetType, 'MATERIAL' | 'ALBUM'>;
 
 export interface AlbumMemberDto {
   id: string;
@@ -1874,7 +1983,6 @@ export interface AlbumMemberDto {
   sortOrder: number;
   imageAsset: AssetDto | null;
   materialText: string | null;
-  seriesTitle: string | null;
   childAlbumTitle: string | null;
   createdAt: string;
   updatedAt: string;
@@ -1887,13 +1995,13 @@ export interface AlbumDto {
   creationDefaults: AlbumCreationDefaultsDto;
   pinned: boolean;
   materialCount: number;
-  seriesCount: number;
+  creationItemCount: number;
   previewAssets: AssetDto[];
   /** Stable image thumbnails from active video documents in this album tree. */
   documentPreviewAssets?: AssetDto[];
   createdAt: string;
   updatedAt: string;
-  /** Latest content activity in this album or any descendant. */
+  /** Latest meaningful content activity in this album or any descendant; pin and access metadata are excluded. */
   activityAt: string;
   archivedAt: string | null;
   creatorRootSortOrder?: number | null;
@@ -1938,7 +2046,7 @@ export interface AlbumRenameInput {
 
 export interface AlbumAddMembersInput {
   albumId: string;
-  members: Array<{ targetType: AlbumMemberTargetType; targetId: string }>;
+  members: Array<{ targetType: AlbumAddableMemberTargetType; targetId: string }>;
 }
 
 export interface AlbumRemoveMembersInput {
@@ -1952,7 +2060,7 @@ export interface AlbumReorderMembersInput {
 }
 
 export interface SidebarRootOrderTargetInput {
-  targetType: 'ALBUM' | 'SERIES';
+  targetType: 'ALBUM' | 'CREATION_ITEM';
   targetId: string;
 }
 
@@ -1976,12 +2084,196 @@ export interface AlbumMoveInput {
   parentAlbumId: string | null;
 }
 
-export interface AlbumMoveSeriesInput {
-  seriesIds: string[];
-  albumId: string | null;
+export type RecycleBinScope = 'CREATOR_ALBUMS' | 'MATERIAL_ALBUMS' | 'CREATIONS' | 'MATERIALS';
+export type RecycleBinEntityType = 'ALBUM' | 'PROMPT_SERIES' | 'CREATION' | 'IMAGE_ASSET';
+export type RecycleBinPurgeState = 'RETAINED' | 'PURGE_PENDING' | 'FAILED';
+
+export interface RecycleBinEntryDto {
+  entityType: RecycleBinEntityType;
+  entityId: string;
+  scope: RecycleBinScope;
+  title: string;
+  deletedAt: string;
+  purgeAfter: string;
+  stateBeforeDelete: 'ACTIVE' | 'ARCHIVED';
+  purgeState: RecycleBinPurgeState;
+  purgeError: string | null;
+}
+
+export interface RecycleBinListInput {
+  scope: RecycleBinScope;
+  cursor?: string | null;
+  limit?: number;
+}
+
+export interface RecycleBinPageDto {
+  items: RecycleBinEntryDto[];
+  total: number;
+  nextCursor: string | null;
+}
+
+export interface RecycleBinItemRef {
+  entityType: RecycleBinEntityType;
+  entityId: string;
+  expectedDeletedAt: string;
+}
+
+export interface RecycleBinRestoreInput extends RecycleBinItemRef {
+  scope: RecycleBinScope;
+}
+
+export type RecycleBinSelection = { kind: 'ALL' } | { kind: 'ITEMS'; items: RecycleBinItemRef[] };
+
+export interface RecycleBinPurgePlanInput {
+  scope: RecycleBinScope;
+  selection: RecycleBinSelection;
+}
+
+export interface RecycleBinPurgePlanDto {
+  confirmationToken: string;
+  count: number;
+}
+
+export interface RecycleBinPurgeInput extends RecycleBinPurgePlanInput {
+  confirmationToken: string;
+}
+
+export interface RecycleBinPurgeResult {
+  purged: number;
+  failed: number;
+}
+
+export type ContentLifecycleState = 'ARCHIVED' | 'RECYCLE_BIN';
+export type ContentLifecycleKind = 'ALBUM' | 'CREATION' | 'MATERIAL';
+export type ContentLifecycleSubtype =
+  | 'CREATION_ALBUM'
+  | 'MATERIAL_ALBUM'
+  | 'PROMPT_SERIES'
+  | 'IDEA_CREATION'
+  | 'INSPIRATION_STASH'
+  | 'SOCIAL_POST'
+  | 'ARTICLE'
+  | 'VIDEO_DOCUMENT'
+  | 'IMAGE_MATERIAL'
+  | 'VIDEO_MATERIAL'
+  | 'TEXT_MATERIAL';
+export type ContentLifecycleEntityType =
+  | 'ALBUM'
+  | 'CREATION_ITEM'
+  | 'PROMPT_SERIES'
+  | 'CREATION'
+  | 'INSPIRATION_STASH'
+  | 'SOCIAL_POST'
+  | 'ARTICLE'
+  | 'VIDEO_DOCUMENT'
+  | 'MATERIAL'
+  | 'IMAGE_ASSET';
+export type ContentLifecyclePurgeState = 'RETAINED' | 'PURGE_PENDING' | 'FAILED';
+
+export interface ContentLifecycleItemRef {
+  entityType: ContentLifecycleEntityType;
+  entityId: string;
+  expectedChangedAt: string;
+}
+
+export interface ContentLifecycleTarget {
+  entityType: ContentLifecycleEntityType;
+  entityId: string;
+}
+
+export interface ContentLifecycleItemDto extends ContentLifecycleItemRef {
+  state: ContentLifecycleState;
+  kind: ContentLifecycleKind;
+  subtype: ContentLifecycleSubtype;
+  title: string;
+  previewAssetId: string | null;
+  previewText: string | null;
+  changedAt: string;
+  expiresAt: string | null;
+  purgeState: ContentLifecyclePurgeState | null;
+  purgeError: string | null;
+  hasChildren: boolean;
+  albumCount: number;
+  contentCount: number;
+  /** Stable state-specific album-navigation token. */
+  containerId: string | null;
+  parentContainerId: string | null;
+  /** Atomic archive/delete batch; distinct from navigation hierarchy. */
+  operationBatchId: string | null;
+}
+
+export interface ContentLifecycleListInput {
+  state: ContentLifecycleState;
+  kind?: ContentLifecycleKind | null;
+  /** Omit or pass null for roots; pass an album item's containerId to drill in. */
+  containerId?: string | null;
+  cursor?: string | null;
+  limit?: number;
+}
+
+export interface ContentLifecyclePageDto {
+  items: ContentLifecycleItemDto[];
+  total: number;
+  nextCursor: string | null;
+}
+
+export type ContentLifecycleAction = 'ARCHIVE' | 'DELETE';
+
+export interface ContentLifecyclePlanInput {
+  action: ContentLifecycleAction;
+  targets: ContentLifecycleTarget[];
+}
+
+export interface ContentLifecyclePlanDto {
+  confirmationToken: string;
+  count: number;
+  albumCount: number;
+  contentCount: number;
+}
+
+export interface ContentLifecycleApplyInput extends ContentLifecyclePlanInput {
+  confirmationToken: string;
+}
+
+export interface ContentLifecycleApplyResult {
+  affected: number;
+}
+
+export type ContentLifecycleRestoreInput = ContentLifecycleItemRef;
+
+export interface ContentLifecycleRestoreResult {
+  restored: number;
+}
+
+export interface ContentLifecycleFilter {
+  kind?: ContentLifecycleKind | null;
+}
+
+export type ContentLifecyclePurgeSelection =
+  { kind: 'FILTER'; filter: ContentLifecycleFilter } | { kind: 'ITEMS'; items: ContentLifecycleItemRef[] };
+
+export interface ContentLifecyclePurgePlanInput {
+  selection: ContentLifecyclePurgeSelection;
+}
+
+export interface ContentLifecyclePurgePlanDto {
+  confirmationToken: string;
+  count: number;
+  albumCount: number;
+  contentCount: number;
+}
+
+export interface ContentLifecyclePurgeInput extends ContentLifecyclePurgePlanInput {
+  confirmationToken: string;
+}
+
+export interface ContentLifecyclePurgeResult {
+  purged: number;
+  failed: number;
 }
 
 export type MaterialAlbumKind = 'SYSTEM' | 'USER';
+/** Legacy wire key retained for stored/view compatibility; the product concept is a creation album. */
 export type MaterialAlbumSystemKey =
   'CREATION_ROOT' | 'CREATION_GROUP' | 'CREATION_UNASSIGNED' | 'CREATION_SERIES' | 'DICTIONARY' | 'DICTIONARY_DOMAIN';
 
@@ -2030,6 +2322,8 @@ export type MaterialCollectionDto = MaterialAlbumDto & {
 
 export type MaterialCollectionSource =
   | { kind: 'MATERIAL_VIEW'; viewId: string }
+  | { kind: 'CREATION_ALBUM'; creationAlbumId: string }
+  /** @deprecated Compatibility input for clients predating the album terminology. */
   | { kind: 'CREATION_GROUP'; creationGroupId: string }
   | { kind: 'PROMPT_SERIES'; seriesId: string };
 
@@ -2138,6 +2432,8 @@ export interface BootstrapDto {
   spaceName: string;
   spaceCoverUrl: string | null;
   terms: TermListItem[];
+  /** False when activity metrics and media previews are deferred until a consumer opens. */
+  termDetailsIncluded?: boolean;
   categories: TermCategoryDto[];
   facets: FacetDefinitionDto[];
   wordPalettes: WordPaletteDto[];
@@ -2152,6 +2448,13 @@ export interface BootstrapDto {
   assistantRuns: AssistantRunDto[];
   /** Independent creative work containers. PromptSeries remains one possible child element. */
   creations?: CreationDto[];
+  /** Stable creator-library aggregates. Forms reference the typed content arrays below. */
+  creationItems: CreationItemDto[];
+  inspirationStashes?: InspirationStashDto[];
+  socialPosts?: SocialPostDto[];
+  articles?: ArticleDto[];
+  derivedVisuals?: DerivedVisualDto[];
+  derivedVisualPrompts?: DerivedVisualPromptTemplatesDto;
   styleExplorationBatches: StyleExplorationBatchDto[];
   agentTasks: DirectionExperimentDirectorTaskDto[];
   libraryEmpty: boolean;
@@ -2162,6 +2465,7 @@ export interface BootstrapDto {
 export interface GenerationProjectionDto {
   series: PromptSeriesDto[];
   albums: AlbumDto[];
+  creationItems: CreationItemDto[];
   styleExplorationBatches: StyleExplorationBatchDto[];
   agentTasks: DirectionExperimentDirectorTaskDto[];
 }
@@ -2207,6 +2511,7 @@ export interface CreationDraftSaveInput {
 export interface CreationDraftStartInput {
   albumId: string | null;
   termPromptLocale: Locale;
+  fresh?: boolean;
 }
 
 export interface CreationInputSnapshotInput {
@@ -2241,6 +2546,90 @@ export interface CreationInputStashDto {
   contentHash: string;
   createdAt: string;
 }
+
+export interface InspirationStashContentDto extends InspirationStashContentInput {
+  referenceAssets: AssetDto[];
+}
+
+export interface InspirationStashDto {
+  id: string;
+  albumId: string | null;
+  title: string;
+  content: InspirationStashContentDto;
+  contentHash: string;
+  status: 'ACTIVE' | 'ARCHIVED';
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface SocialPostContentDto extends SocialPostContentInput {
+  mediaAssets: AssetDto[];
+}
+
+export interface SocialPostDto {
+  id: string;
+  albumId: string | null;
+  sourceInspirationStashId: string | null;
+  content: SocialPostContentDto;
+  contentHash: string;
+  revisionId: string;
+  revisionNo: number;
+  status: 'ACTIVE' | 'ARCHIVED';
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface ArticleContentDto extends ArticleContentInput {
+  mediaAssets: AssetDto[];
+}
+
+export interface ArticleDto {
+  id: string;
+  albumId: string | null;
+  sourceInspirationStashId: string | null;
+  content: ArticleContentDto;
+  contentHash: string;
+  revisionId: string;
+  revisionNo: number;
+  status: 'ACTIVE' | 'ARCHIVED';
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface DerivedVisualPromptTemplatesDto {
+  articleHeader: string;
+  articleInline: string;
+  socialCover: string;
+  compositionConstraints: Record<string, string>;
+}
+
+export interface DerivedVisualDto {
+  id: string;
+  role: DerivedVisualRole;
+  articleId: string | null;
+  articleRevisionId: string | null;
+  socialPostId: string | null;
+  socialPostRevisionId: string | null;
+  anchor: ArticleInlineVisualAnchor | null;
+  creationDraftId: string;
+  promptSeriesId: string | null;
+  selectedImageAssetId: string | null;
+  createdAt: string;
+  updatedAt: string;
+  adoptedAt: string | null;
+}
+
+export type DerivedVisualWorkspaceOpenResult =
+  | { kind: 'DRAFT'; reused: boolean; draft: CreationDraftDto; visual: DerivedVisualDto }
+  | { kind: 'SERIES'; reused: true; seriesId: string; visual: DerivedVisualDto };
+
+export interface DerivedVisualAdoptResult {
+  visual: DerivedVisualDto;
+  article: ArticleDto | null;
+  socialPost: SocialPostDto | null;
+}
+
+export type ArticleExportMarkdownResult = { status: 'SAVED'; filePath: string } | { status: 'CANCELLED' };
 
 /**
  * What the user wants to happen *after* the material lands in the library.
@@ -2319,6 +2708,11 @@ export interface DictionarySearchInput {
   includeArchived: boolean;
   packReleaseIds?: string[];
   includeLocalTerms?: boolean;
+}
+
+export interface DictionaryDetailsDto {
+  terms: TermListItem[];
+  wordPalettes: WordPaletteDto[];
 }
 
 export interface DictionaryScopeResolveInput {
@@ -2923,6 +3317,8 @@ export interface ImageReframeStartInput {
 export interface GenerationInput {
   seriesId: string | null;
   creationDraftId?: string | null;
+  /** Explicit user-selected inspiration stash to contain in the resulting creation. */
+  inspirationStashId?: string | null;
   /** Selected historical version to reuse or branch from instead of the series head. */
   baseVersionId?: string | null;
   /** Imported output whose exact Prompt is the source of this generation. */
@@ -2971,6 +3367,7 @@ export interface PromptVersionCreateResult {
 
 export interface CreationDraftCommitInput {
   creationDraftId: string;
+  inspirationStashId?: string | null;
   title: string;
   manualPrompt: string;
   promptNodes?: CreatorPromptNodeInput[];
@@ -3008,7 +3405,7 @@ export interface StyleExplorationSlotInput {
   variableAxis: string;
   risk: string;
   userInstruction: string;
-  input: Omit<GenerationInput, 'seriesId' | 'creationDraftId' | 'modelKey'>;
+  input: Omit<GenerationInput, 'seriesId' | 'creationDraftId' | 'inspirationStashId' | 'modelKey'>;
 }
 
 export interface DirectionExperimentDecisionReceiptDto {
@@ -3515,10 +3912,34 @@ export interface DesktopApi {
   creationDraftStart(input: CreationDraftStartInput): Promise<CreationDraftDto>;
   creationDraftSave(input: CreationDraftSaveInput): Promise<CreationDraftDto>;
   creationDraftCommit(input: CreationDraftCommitInput): Promise<CreationDraftCommitResult>;
+  creationItemsList(input?: CreationItemListInput): Promise<CreationItemListResult>;
+  creationItemGet(input: CreationItemGetInput): Promise<CreationItemGetResult>;
+  creationItemCreateWithForm(input: CreationItemCreateWithFormInput): Promise<CreationItemCreateWithFormResult>;
+  creationFormAddOrGet(input: CreationFormAddOrGetInput): Promise<CreationFormAddOrGetResult>;
+  creationItemMove(input: CreationItemMoveInput): Promise<CreationItemMoveResult>;
+  creationItemSetPinned(input: CreationItemSetPinnedInput): Promise<CreationItemSetPinnedResult>;
+  creationItemSetPrimary(input: CreationItemSetPrimaryInput): Promise<CreationItemSetPrimaryResult>;
+  derivedVisualWorkspaceOpen(input: DerivedVisualWorkspaceOpenInput): Promise<DerivedVisualWorkspaceOpenResult>;
+  derivedVisualAdopt(input: DerivedVisualAdoptInput): Promise<DerivedVisualAdoptResult>;
   creationInputStashesList(scope: CreatorAgentScope): Promise<CreationInputStashDto[]>;
   creationInputStashCreate(input: CreationInputStashCreateInput): Promise<CreationInputStashDto>;
+  inspirationStashSave(input: InspirationStashSaveInput): Promise<InspirationStashDto>;
+  inspirationStashMove(input: InspirationStashMoveInput): Promise<InspirationStashDto>;
+  inspirationStashSetArchived(input: InspirationStashSetArchivedInput): Promise<InspirationStashDto>;
+  socialPostSave(input: SocialPostSaveInput): Promise<SocialPostDto>;
+  socialPostFormAdd(input: SocialPostFormAddInput): Promise<SocialPostDto>;
+  socialPostMove(input: SocialPostMoveInput): Promise<SocialPostDto>;
+  socialPostSetArchived(input: SocialPostSetArchivedInput): Promise<SocialPostDto>;
+  articleSave(input: ArticleSaveInput): Promise<ArticleDto>;
+  articleFormAdd(input: ArticleFormAddInput): Promise<ArticleDto>;
+  articleRename(input: ArticleRenameInput): Promise<ArticleDto>;
+  articleMove(input: ArticleMoveInput): Promise<ArticleDto>;
+  articleSetArchived(input: ArticleSetArchivedInput): Promise<ArticleDto>;
+  articleCopyForWechat(input: ArticleCopyForWechatInput): Promise<ArticleCopyForWechatResult>;
+  articleExportMarkdown(input: ArticleExportMarkdownInput): Promise<ArticleExportMarkdownResult>;
   creationsDelete(creationId: string): Promise<void>;
   dictionarySearch(input: DictionarySearchInput): Promise<TermListItem[]>;
+  dictionaryDetails(locale: Locale): Promise<DictionaryDetailsDto>;
   dictionarySearchPage(input: DictionaryPageInput): Promise<DictionaryPageDto>;
   dictionaryScopeResolve(input: DictionaryScopeResolveInput): Promise<DictionaryScopeContentsDto>;
   dictionaryGet(termId: string, locale: Locale): Promise<TermEditorDto>;
@@ -3577,7 +3998,7 @@ export interface DesktopApi {
   codexSuggestTitles(input: CodexTitleInput): Promise<CodexTitleResult>;
   promptSeriesRename(input: RenamePromptSeriesInput): Promise<{ renamed: boolean }>;
   promptSeriesDelete(input: DeletePromptSeriesInput): Promise<DeletePromptSeriesResult>;
-  creationGroupsRename(input: RenameCreationGroupInput): Promise<CreationGroupDto>;
+  creationAlbumsRename(input: RenameCreationAlbumInput): Promise<CreationAlbumDto>;
   materialCollectionsCreateFromSource(
     input: CreateMaterialCollectionFromSourceInput,
   ): Promise<CreateMaterialCollectionFromSourceResult>;
@@ -3599,11 +4020,20 @@ export interface DesktopApi {
   albumsArchive(albumId: string): Promise<AlbumDto>;
   albumsSetArchived(input: AlbumSetArchivedInput): Promise<AlbumDto>;
   albumsMove(input: AlbumMoveInput): Promise<void>;
-  albumsMoveSeries(input: AlbumMoveSeriesInput): Promise<void>;
   albumsAddMembers(input: AlbumAddMembersInput): Promise<AlbumDto>;
   albumsRemoveMembers(input: AlbumRemoveMembersInput): Promise<AlbumDto>;
   albumsReorderMembers(input: AlbumReorderMembersInput): Promise<void>;
   albumsReorderRoot(input: SidebarRootReorderInput): Promise<void>;
+  recycleBinList(input: RecycleBinListInput): Promise<RecycleBinPageDto>;
+  recycleBinRestore(input: RecycleBinRestoreInput): Promise<void>;
+  recycleBinPurgePlan(input: RecycleBinPurgePlanInput): Promise<RecycleBinPurgePlanDto>;
+  recycleBinPurge(input: RecycleBinPurgeInput): Promise<RecycleBinPurgeResult>;
+  contentLifecycleList(input: ContentLifecycleListInput): Promise<ContentLifecyclePageDto>;
+  contentLifecyclePlan(input: ContentLifecyclePlanInput): Promise<ContentLifecyclePlanDto>;
+  contentLifecycleApply(input: ContentLifecycleApplyInput): Promise<ContentLifecycleApplyResult>;
+  contentLifecycleRestore(input: ContentLifecycleRestoreInput): Promise<ContentLifecycleRestoreResult>;
+  contentLifecyclePurgePlan(input: ContentLifecyclePurgePlanInput): Promise<ContentLifecyclePurgePlanDto>;
+  contentLifecyclePurge(input: ContentLifecyclePurgeInput): Promise<ContentLifecyclePurgeResult>;
   materialMetadataUpdate(input: ExternalMaterialMetadataUpdateInput): Promise<ExternalMaterialMetadataDto>;
   materialProvenanceSuggestions(): Promise<MaterialProvenanceSuggestionsDto>;
   generationStart(input: GenerationInput): Promise<{ runId: string; seriesId: string; versionId: string }>;

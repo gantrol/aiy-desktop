@@ -15,11 +15,29 @@ import revision3CreationCoverAssetsSql from '@/main/database/sql/v03-revision-00
 import revision3CreationOutputOrderSql from '@/main/database/sql/v03-revision-003-creation-output-order.sql?raw';
 import revision3CreationOutputOrganizationSql from '@/main/database/sql/v03-revision-003-creation-output-organization.sql?raw';
 import revision3CreationOutputPresentationSql from '@/main/database/sql/v03-revision-003-creation-output-presentation.sql?raw';
+import revision4CreationItemPinnedSql from '@/main/database/sql/v03-revision-004-creation-item-pinned.sql?raw';
+import revision4CreationItemsSql from '@/main/database/sql/v03-revision-004-creation-items.sql?raw';
+import revision4InspirationStashesSql from '@/main/database/sql/v03-revision-004-inspiration-stashes.sql?raw';
+import revision4SocialPostDraftsSql from '@/main/database/sql/v03-revision-004-social-post-drafts.sql?raw';
+import revision4ArticlesSql from '@/main/database/sql/v03-revision-004-articles.sql?raw';
+import revision4DerivedVisualsSql from '@/main/database/sql/v03-revision-004-derived-visuals.sql?raw';
+import revision4CreationAlbumMembersSql from '@/main/database/sql/v03-revision-004-creation-album-members.sql?raw';
+import {
+  creationCompositionComplete,
+  ensureCreationEntityComposition,
+  ensureCreationItemLocations,
+} from '@/main/database/creations/creation-composition-schema';
+import {
+  contentLifecycleShape,
+  ensureContentLifecycle,
+  ensureRecoveryLifecycle,
+  recoveryLifecycleShape,
+} from '@/main/database/recovery/content-lifecycle-schema';
 
 export const DATABASE_PRODUCT_BASELINE = '0.3.0';
-// v0.3.2 publicly shipped revision 2. The v0.3.3 schema advances exactly once
-// to revision 3; do not number individual unreleased features separately.
-export const DATABASE_SCHEMA_REVISION = 3;
+// v0.3.6 advances the public schema exactly once from revision 3 to revision 4.
+// Do not number individual unreleased features separately.
+export const DATABASE_SCHEMA_REVISION = 4;
 const DATABASE_SHUTDOWN_STATE_KEY = 'database_shutdown_state';
 
 const releasedRevision1RequiredTables = [
@@ -76,8 +94,19 @@ const revision2RequiredTables = [
 
 const currentRequiredTables = [
   ...revision2RequiredTables,
+  'article_revisions',
+  'articles',
+  'creation_forms',
+  'creation_items',
+  'content_lifecycle_batch_members',
+  'content_lifecycle_batches',
+  'derived_visuals',
+  'inspiration_stashes',
   'prompt_series_cover_assets',
   'prompt_series_output_exclusions',
+  'recycle_bin_entries',
+  'social_post_drafts',
+  'social_post_revisions',
 ] as const;
 
 const canonicalTitleColumns = [
@@ -199,6 +228,238 @@ function ensureCreationOutputPresentation(db: Database.Database) {
   const shape = creationOutputPresentationShape(db);
   if (shape === 'ABSENT') db.exec(revision3CreationOutputPresentationSql);
   if (shape !== 'COMPLETE') db.exec(revision3CreationCoverAssetsSql);
+}
+
+function creationLibraryShape(db: Database.Database) {
+  const tables = tableNames(db);
+  const itemsPresent = tables.has('creation_items');
+  const formsPresent = tables.has('creation_forms');
+  if (!itemsPresent && !formsPresent) return 'ABSENT' as const;
+  if (!itemsPresent || !formsPresent) unsupportedSchema();
+
+  const itemColumns = columnNames(db, 'creation_items');
+  const formColumns = columnNames(db, 'creation_forms');
+  const requiredItemColumns = [
+    'id',
+    'phase',
+    'primary_form_id',
+    'created_at',
+    'updated_at',
+    'archived_at',
+    'deleted_at',
+  ];
+  const requiredFormColumns = [
+    'id',
+    'creation_item_id',
+    'role',
+    'entity_type',
+    'entity_id',
+    'anchor_key',
+    'sort_order',
+    'created_at',
+    'updated_at',
+    'deleted_at',
+  ];
+  const indexes = new Set(
+    (
+      db.prepare("SELECT name FROM sqlite_master WHERE type = 'index' AND tbl_name = 'creation_forms'").all() as Array<{
+        name: string;
+      }>
+    ).map((index) => index.name),
+  );
+  const requiredIndexes = [
+    'idx_creation_forms_active_entity',
+    'idx_creation_forms_active_singleton_role',
+    'idx_creation_forms_active_article_inline_anchor',
+  ];
+  if (
+    requiredItemColumns.every((column) => itemColumns.has(column)) &&
+    requiredFormColumns.every((column) => formColumns.has(column)) &&
+    requiredIndexes.every((index) => indexes.has(index))
+  ) {
+    return itemColumns.has('pinned') ? ('COMPLETE' as const) : ('MISSING_PINNED' as const);
+  }
+  unsupportedSchema();
+}
+
+function ensureCreationLibrary(db: Database.Database) {
+  const shape = creationLibraryShape(db);
+  if (shape === 'ABSENT') db.exec(revision4CreationItemsSql);
+  if (shape === 'MISSING_PINNED') db.exec(revision4CreationItemPinnedSql);
+}
+
+function inspirationStashShape(db: Database.Database) {
+  if (!tableNames(db).has('inspiration_stashes')) return 'ABSENT' as const;
+  const columns = columnNames(db, 'inspiration_stashes');
+  const required = [
+    'id',
+    'album_id',
+    'input_json',
+    'content_hash',
+    'status',
+    'created_at',
+    'updated_at',
+    'archived_at',
+    'deleted_at',
+  ];
+  if (!required.every((column) => columns.has(column))) unsupportedSchema();
+  if (columns.has('parent_series_id')) return 'LEGACY_PARENT_SERIES' as const;
+  return 'COMPLETE' as const;
+}
+
+function ensureInspirationStashes(db: Database.Database) {
+  if (inspirationStashShape(db) === 'ABSENT') db.exec(revision4InspirationStashesSql);
+}
+
+function socialPostDraftShape(db: Database.Database) {
+  const tables = tableNames(db);
+  const draftPresent = tables.has('social_post_drafts');
+  const revisionPresent = tables.has('social_post_revisions');
+  if (!draftPresent && !revisionPresent) return 'ABSENT' as const;
+  if (!draftPresent || !revisionPresent) unsupportedSchema();
+  const draftColumns = columnNames(db, 'social_post_drafts');
+  const revisionColumns = columnNames(db, 'social_post_revisions');
+  const draftRequired = [
+    'id',
+    'album_id',
+    'source_inspiration_stash_id',
+    'current_revision_id',
+    'status',
+    'created_at',
+    'updated_at',
+    'archived_at',
+    'deleted_at',
+  ];
+  const revisionRequired = ['id', 'draft_id', 'revision_no', 'content_json', 'content_hash', 'created_at'];
+  if (
+    draftRequired.every((column) => draftColumns.has(column)) &&
+    revisionRequired.every((column) => revisionColumns.has(column))
+  ) {
+    return 'COMPLETE' as const;
+  }
+  unsupportedSchema();
+}
+
+function ensureSocialPostDrafts(db: Database.Database) {
+  if (socialPostDraftShape(db) === 'ABSENT') db.exec(revision4SocialPostDraftsSql);
+}
+
+function articleShape(db: Database.Database) {
+  const tables = tableNames(db);
+  const articlePresent = tables.has('articles');
+  const revisionPresent = tables.has('article_revisions');
+  if (!articlePresent && !revisionPresent) return 'ABSENT' as const;
+  if (!articlePresent || !revisionPresent) unsupportedSchema();
+  const articleColumns = columnNames(db, 'articles');
+  const revisionColumns = columnNames(db, 'article_revisions');
+  const articleRequired = [
+    'id',
+    'album_id',
+    'source_inspiration_stash_id',
+    'current_revision_id',
+    'status',
+    'created_at',
+    'updated_at',
+    'archived_at',
+    'deleted_at',
+  ];
+  const revisionRequired = ['id', 'article_id', 'revision_no', 'content_json', 'content_hash', 'created_at'];
+  if (
+    articleRequired.every((column) => articleColumns.has(column)) &&
+    revisionRequired.every((column) => revisionColumns.has(column))
+  ) {
+    return 'COMPLETE' as const;
+  }
+  unsupportedSchema();
+}
+
+function ensureArticles(db: Database.Database) {
+  if (articleShape(db) === 'ABSENT') db.exec(revision4ArticlesSql);
+}
+
+function derivedVisualShape(db: Database.Database) {
+  if (!tableNames(db).has('derived_visuals')) return 'ABSENT' as const;
+  const columns = columnNames(db, 'derived_visuals');
+  const required = [
+    'id',
+    'role',
+    'article_id',
+    'article_revision_id',
+    'social_post_id',
+    'social_post_revision_id',
+    'anchor_json',
+    'creation_draft_id',
+    'prompt_series_id',
+    'selected_image_asset_id',
+    'created_at',
+    'updated_at',
+    'adopted_at',
+  ];
+  if (required.every((column) => columns.has(column))) return 'COMPLETE' as const;
+  unsupportedSchema();
+}
+
+function ensureDerivedVisuals(db: Database.Database) {
+  if (derivedVisualShape(db) === 'ABSENT') db.exec(revision4DerivedVisualsSql);
+}
+
+function creationAlbumOwnershipShape(db: Database.Database) {
+  const row = db.prepare("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'album_members'").get() as
+    { sql?: unknown } | undefined;
+  const tableSql = row?.sql;
+  if (typeof tableSql !== 'string') unsupportedSchema();
+  const rootOrderRow = db
+    .prepare("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'sidebar_root_order'")
+    .get() as { sql?: unknown } | undefined;
+  const rootOrderSql = rootOrderRow?.sql;
+  if (typeof rootOrderSql !== 'string') unsupportedSchema();
+
+  const indexes = new Set(
+    (
+      db.prepare("SELECT name FROM sqlite_master WHERE type = 'index' AND tbl_name = 'album_members'").all() as Array<{
+        name: string;
+      }>
+    ).map((index) => index.name),
+  );
+  const rootOrderIndexes = new Set(
+    (
+      db
+        .prepare("SELECT name FROM sqlite_master WHERE type = 'index' AND tbl_name = 'sidebar_root_order'")
+        .all() as Array<{ name: string }>
+    ).map((index) => index.name),
+  );
+  if (
+    tableSql.includes("'CREATION_ITEM'") &&
+    rootOrderSql.includes("'CREATION_ITEM'") &&
+    indexes.has('idx_album_members_active_creation_item_owner')
+  ) {
+    return rootOrderIndexes.has('idx_sidebar_root_order_sort')
+      ? ('COMPLETE' as const)
+      : ('MISSING_ROOT_ORDER_INDEX' as const);
+  }
+
+  if (tableSql.includes("'CREATION_ITEM'") || rootOrderSql.includes("'CREATION_ITEM'")) unsupportedSchema();
+  const legacyTypes = ['SERIES', 'DOCUMENT'];
+  const developmentTypes = ['INSPIRATION_STASH', 'SOCIAL_POST', 'ARTICLE'];
+  const hasAnyDevelopmentType = developmentTypes.some((targetType) => tableSql.includes(`'${targetType}'`));
+  if (
+    legacyTypes.every((targetType) => tableSql.includes(`'${targetType}'`)) &&
+    (!hasAnyDevelopmentType || developmentTypes.every((targetType) => tableSql.includes(`'${targetType}'`))) &&
+    rootOrderSql.includes("'SERIES'")
+  ) {
+    return 'ENTITY_MEMBERS' as const;
+  }
+  unsupportedSchema();
+}
+
+function ensureCreationItemAlbumOwnership(db: Database.Database) {
+  const shape = creationAlbumOwnershipShape(db);
+  if (shape === 'ENTITY_MEMBERS') db.exec(revision4CreationAlbumMembersSql);
+  if (shape === 'MISSING_ROOT_ORDER_INDEX') {
+    db.exec(
+      'CREATE INDEX idx_sidebar_root_order_sort ON sidebar_root_order(scope, sort_order, target_type, target_id)',
+    );
+  }
 }
 
 function videoDocumentGenerationSupportsVisualInput(db: Database.Database) {
@@ -373,12 +634,27 @@ function isRevision2SchemaShape(db: Database.Database) {
   );
 }
 
-function isCurrentSchemaShape(db: Database.Database) {
+function isRevision3SchemaShape(db: Database.Database) {
   return (
     isRevision2SchemaShape(db) &&
     hasCreationOutputSortOrderColumn(db) &&
     hasCreationOutputOrganizationColumns(db) &&
     creationOutputPresentationShape(db) === 'COMPLETE'
+  );
+}
+
+function isCurrentSchemaShape(db: Database.Database) {
+  return (
+    isRevision3SchemaShape(db) &&
+    creationLibraryShape(db) === 'COMPLETE' &&
+    inspirationStashShape(db) === 'COMPLETE' &&
+    socialPostDraftShape(db) === 'COMPLETE' &&
+    articleShape(db) === 'COMPLETE' &&
+    derivedVisualShape(db) === 'COMPLETE' &&
+    creationAlbumOwnershipShape(db) === 'COMPLETE' &&
+    creationCompositionComplete(db) &&
+    recoveryLifecycleShape(db) === 'COMPLETE' &&
+    contentLifecycleShape(db) === 'COMPLETE'
   );
 }
 
@@ -463,6 +739,16 @@ function migrateReleasedDatabase(db: Database.Database) {
       ensureCreationOutputSortOrderColumn(db);
       ensureCreationOutputOrganizationColumns(db);
       ensureCreationOutputPresentation(db);
+      ensureCreationLibrary(db);
+      ensureInspirationStashes(db);
+      ensureSocialPostDrafts(db);
+      ensureArticles(db);
+      ensureDerivedVisuals(db);
+      ensureCreationEntityComposition(db);
+      ensureCreationItemAlbumOwnership(db);
+      ensureCreationItemLocations(db);
+      ensureRecoveryLifecycle(db);
+      ensureContentLifecycle(db);
       if (!isCurrentSchemaShape(db)) unsupportedSchema();
 
       if (storedRevision !== DATABASE_SCHEMA_REVISION) {
@@ -497,6 +783,15 @@ export function assertDatabaseSchemaCompatible(db: Database.Database) {
   if (!hasCreationOutputSortOrderColumn(db)) unsupportedSchema();
   if (!hasCreationOutputOrganizationColumns(db)) unsupportedSchema();
   if (creationOutputPresentationShape(db) !== 'COMPLETE') unsupportedSchema();
+  if (creationLibraryShape(db) !== 'COMPLETE') unsupportedSchema();
+  if (inspirationStashShape(db) !== 'COMPLETE') unsupportedSchema();
+  if (socialPostDraftShape(db) !== 'COMPLETE') unsupportedSchema();
+  if (articleShape(db) !== 'COMPLETE') unsupportedSchema();
+  if (derivedVisualShape(db) !== 'COMPLETE') unsupportedSchema();
+  if (creationAlbumOwnershipShape(db) !== 'COMPLETE') unsupportedSchema();
+  if (!creationCompositionComplete(db)) unsupportedSchema();
+  if (recoveryLifecycleShape(db) !== 'COMPLETE') unsupportedSchema();
+  if (contentLifecycleShape(db) !== 'COMPLETE') unsupportedSchema();
   if (retiredTitleColumnShape(db) !== 'ABSENT') unsupportedSchema();
   if (metadata(db, 'product_data_baseline') !== DATABASE_PRODUCT_BASELINE) unsupportedSchema();
   if (Number(metadata(db, 'database_schema_revision')) !== DATABASE_SCHEMA_REVISION) unsupportedSchema();

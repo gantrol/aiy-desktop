@@ -1,12 +1,13 @@
 import { HardDriveIcon, TargetIcon } from 'lucide-react';
-import type { CodexUsageQuotaCycle, CodexUsageQuotaYieldAnalysis } from '@/shared/contracts';
+import type { CodexUsageQuotaCycle, CodexUsageQuotaYieldAnalysis, CodexUsageServiceTier } from '@/shared/contracts';
 import { Badge } from '@/renderer/components/ui/badge';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/renderer/components/ui/table';
+import { CodexUsageServiceTierLabel } from '@/renderer/features/extensions/CodexUsageServiceTierLabel';
 import type { useI18n } from '@/renderer/i18n/useI18n';
 
 type UsageLabels = ReturnType<typeof useI18n>['messages']['extensions']['codexUsageInvestigator'];
 
-const publicReportVersion = 1;
+const publicReportVersion = 2;
 
 interface QuotaYieldResultsProps {
   analysis: CodexUsageQuotaYieldAnalysis;
@@ -21,6 +22,10 @@ function modelLabel(model: string) {
   if (model === 'gpt-5.6-luna') return 'Luna';
   if (model === 'gpt-5.6-terra') return 'Terra';
   return model;
+}
+
+function serviceTierLabel(serviceTier: CodexUsageServiceTier, labels: UsageLabels) {
+  return labels.quotaYield.modes[serviceTier];
 }
 
 function cyclePeriod(cycle: CodexUsageQuotaCycle, date: Intl.DateTimeFormat) {
@@ -90,8 +95,14 @@ export function CodexQuotaYieldResults({ analysis, labels, tokens, numbers, date
                 <TableCell>
                   <div className="flex min-w-48 flex-wrap gap-x-2 gap-y-0.5 text-xs tabular-nums">
                     {cycle.modelShares.map((share) => (
-                      <span key={share.model} className="whitespace-nowrap">
-                        {modelLabel(share.model)} {numbers.format(share.tokenPercent)}%
+                      <span key={`${share.model}:${share.serviceTier}`} className="whitespace-nowrap">
+                        {modelLabel(share.model)} ·{' '}
+                        <CodexUsageServiceTierLabel
+                          label={serviceTierLabel(share.serviceTier, labels)}
+                          inferred={share.inferredServiceTierTokens > 0}
+                          inferenceHint={labels.quotaYield.inferredMode}
+                        />{' '}
+                        {numbers.format(share.tokenPercent)}%
                       </span>
                     ))}
                   </div>

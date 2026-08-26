@@ -1,6 +1,6 @@
 import type { RefObject } from 'react';
 import type { GalleryDictionaryCollection } from '@/renderer/components/app/app-navigation';
-import { useAlbumTreeExpansion } from '@/renderer/components/albums/useAlbumTreeExpansion';
+import { useTreeBranchExpansion } from '@/renderer/components/albums/useTreeBranchExpansion';
 import { useDeferredSingleDoubleClick } from '@/renderer/components/albums/useDeferredSingleDoubleClick';
 import { ScrollArea } from '@/renderer/components/ui/scroll-area';
 import type { AlbumNavigationLabels } from '@/renderer/components/gallery/AlbumNavigation';
@@ -11,7 +11,7 @@ interface Props {
   viewportRef: RefObject<HTMLDivElement | null>;
   tree: DictionaryMaterialTree;
   selection: GalleryDictionaryCollection | null;
-  expansion: ReturnType<typeof useAlbumTreeExpansion>;
+  expansion: ReturnType<typeof useTreeBranchExpansion>;
   click: ReturnType<typeof useDeferredSingleDoubleClick>;
   labels: AlbumNavigationLabels;
   moreLabel: string;

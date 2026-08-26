@@ -87,7 +87,7 @@ function NoteRow({ note, draft, durationMs, saving, labels, onSeek, onDraftChang
       <div className="grid gap-1">
         <Input
           value={draft.time}
-          className="h-7 border-0 bg-transparent px-0 font-mono text-xs tabular-nums text-selected-foreground shadow-none focus-visible:ring-0"
+          className="h-7 border-0 bg-transparent px-0 font-mono text-xs tabular-nums text-selected-foreground shadow-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
           aria-label={labels.time}
           aria-invalid={!validTime}
           onChange={(event) => onDraftChange({ ...draft, time: event.target.value })}
@@ -102,7 +102,7 @@ function NoteRow({ note, draft, durationMs, saving, labels, onSeek, onDraftChang
       </div>
       <Textarea
         value={draft.text}
-        className="min-h-10 resize-none border-0 bg-transparent px-0 py-1 text-sm leading-6 shadow-none focus-visible:ring-0"
+        className="min-h-10 resize-none border-0 bg-transparent px-0 py-1 text-sm leading-6 shadow-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
         aria-label={labels.text}
         onChange={(event) => onDraftChange({ ...draft, text: event.target.value })}
         onKeyDown={(event) => {

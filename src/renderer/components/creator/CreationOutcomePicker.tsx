@@ -10,14 +10,12 @@ import {
   VideoIcon,
 } from 'lucide-react';
 import type { Locale } from '@/shared/contracts';
+import { InspirationStashAction } from '@/renderer/components/creator/InspirationStashAction';
 import { Button } from '@/renderer/components/ui/button';
-import { Segmented, SegmentedItem } from '@/renderer/components/ui/segmented';
 import { cn } from '@/renderer/lib/utils';
 
-export type CreationOutcomeKind = 'image' | 'social-graphic' | 'document' | 'presentation';
-
-type SocialGraphicIntent = 'share' | 'note' | 'promotion';
-type SocialPlatform = 'weibo' | 'wechat' | 'xiaohongshu';
+export type CreationOutcomeKind = 'image' | 'social-post' | 'article' | 'presentation';
+export type CreationOutcomePlan = { kind: 'image' } | { kind: 'social-post' } | { kind: 'article' };
 
 interface Props {
   locale: Locale;
@@ -28,16 +26,20 @@ interface Props {
 
 interface PlannerProps {
   locale: Locale;
+  stashReady: boolean;
+  stashing: boolean;
+  stashed: boolean;
   startReady: boolean;
   starting: boolean;
-  onStartCreation(): void;
+  onStashInspiration(): void;
+  onStartCreation(plan: CreationOutcomePlan): void;
   onChooseVideoDocument(): void;
 }
 
 const outcomeIcons = {
   image: ImageIcon,
-  'social-graphic': ImagesIcon,
-  document: FileTextIcon,
+  'social-post': ImagesIcon,
+  article: FileTextIcon,
   presentation: PresentationIcon,
 } satisfies Record<CreationOutcomeKind, typeof ImageIcon>;
 
@@ -47,25 +49,12 @@ function toggleValue<T extends string>(values: T[], value: T) {
 
 export function CreationOutcomePicker({ locale, value, onValueChange, onChooseVideoDocument }: Props) {
   const zh = locale === 'zh';
-  const [socialIntent, setSocialIntent] = useState<SocialGraphicIntent>('share');
-  const [socialPlatforms, setSocialPlatforms] = useState<SocialPlatform[]>(['wechat']);
   const outcomes: Array<{ kind: CreationOutcomeKind; label: string; available: boolean }> = [
     { kind: 'image', label: zh ? '图片' : 'Image', available: true },
-    { kind: 'social-graphic', label: zh ? '贴图' : 'Social graphic', available: false },
-    { kind: 'document', label: zh ? '文稿' : 'Document', available: true },
+    { kind: 'social-post', label: zh ? '贴图' : 'Social post', available: true },
+    { kind: 'article', label: zh ? '文章' : 'Article', available: true },
     { kind: 'presentation', label: zh ? '演示文稿' : 'Presentation', available: false },
   ];
-  const socialIntents: Array<{ value: SocialGraphicIntent; label: string }> = [
-    { value: 'share', label: zh ? '分享' : 'Share' },
-    { value: 'note', label: zh ? '笔记' : 'Note' },
-    { value: 'promotion', label: zh ? '宣传' : 'Promote' },
-  ];
-  const platforms: Array<{ value: SocialPlatform; label: string }> = [
-    { value: 'weibo', label: zh ? '微博' : 'Weibo' },
-    { value: 'wechat', label: zh ? '公众号' : 'WeChat' },
-    { value: 'xiaohongshu', label: zh ? '小红书' : 'RED' },
-  ];
-
   function toggleOutcome(kind: CreationOutcomeKind) {
     onValueChange(toggleValue(value, kind));
   }
@@ -113,55 +102,13 @@ export function CreationOutcomePicker({ locale, value, onValueChange, onChooseVi
         })}
       </div>
 
-      {value.includes('document') && (
+      {value.includes('article') && (
         <div className="flex flex-wrap items-center gap-2 border-t pt-3">
           <span className="w-12 shrink-0 text-xs font-medium text-foreground-secondary">{zh ? '流程' : 'Flow'}</span>
           <Button type="button" variant="outline" size="sm" onClick={onChooseVideoDocument}>
             <VideoIcon className="size-4" />
-            {zh ? '视频转文稿' : 'Video to document'}
+            {zh ? '视频转文章' : 'Video to article'}
           </Button>
-        </div>
-      )}
-
-      {value.includes('social-graphic') && (
-        <div className="grid gap-2 border-t pt-3 sm:grid-cols-[auto_minmax(0,1fr)] sm:items-center">
-          <span className="w-12 shrink-0 text-xs font-medium text-foreground-secondary">{zh ? '用途' : 'Intent'}</span>
-          <Segmented
-            type="single"
-            value={socialIntent}
-            onValueChange={(next) => next && setSocialIntent(next as SocialGraphicIntent)}
-            aria-label={zh ? '贴图用途' : 'Social graphic intent'}
-          >
-            {socialIntents.map((item) => (
-              <SegmentedItem key={item.value} value={item.value}>
-                {item.label}
-              </SegmentedItem>
-            ))}
-          </Segmented>
-          <span className="w-12 shrink-0 text-xs font-medium text-foreground-secondary">
-            {zh ? '平台' : 'Platform'}
-          </span>
-          <div className="flex flex-wrap gap-1.5">
-            {platforms.map((platform) => {
-              const selected = socialPlatforms.includes(platform.value);
-              return (
-                <Button
-                  key={platform.value}
-                  type="button"
-                  variant="outline"
-                  size="xs"
-                  aria-pressed={selected}
-                  className={cn(
-                    selected && 'border-selected-border bg-selected text-selected-foreground hover:bg-selected',
-                  )}
-                  onClick={() => setSocialPlatforms((current) => toggleValue(current, platform.value))}
-                >
-                  {selected && <CheckIcon className="size-3" />}
-                  {platform.label}
-                </Button>
-              );
-            })}
-          </div>
         </div>
       )}
     </section>
@@ -170,15 +117,28 @@ export function CreationOutcomePicker({ locale, value, onValueChange, onChooseVi
 
 export function CreationOutcomePlanner({
   locale,
+  stashReady,
+  stashing,
+  stashed,
   startReady,
   starting,
+  onStashInspiration,
   onStartCreation,
   onChooseVideoDocument,
 }: PlannerProps) {
   const [outcomes, setOutcomes] = useState<CreationOutcomeKind[]>([]);
-  const unavailableOutcomes = outcomes.filter((outcome) => outcome === 'social-graphic' || outcome === 'presentation');
-  const documentSelected = outcomes.includes('document');
-  const canStartCreation = startReady && outcomes.length === 1 && outcomes[0] === 'image' && !starting;
+  const unavailableOutcomes = outcomes.filter((outcome) => outcome === 'presentation');
+  const selectedPlan: CreationOutcomePlan | null =
+    outcomes.length !== 1
+      ? null
+      : outcomes[0] === 'image'
+        ? { kind: 'image' }
+        : outcomes[0] === 'social-post'
+          ? { kind: 'social-post' }
+          : outcomes[0] === 'article'
+            ? { kind: 'article' }
+            : null;
+  const canStartCreation = startReady && Boolean(selectedPlan) && !starting && !stashing;
   const blockedTitle =
     outcomes.length === 0
       ? locale === 'zh'
@@ -188,11 +148,7 @@ export function CreationOutcomePlanner({
         ? locale === 'zh'
           ? '所选成果尚未接入'
           : 'Some selected results are not available yet'
-        : documentSelected
-          ? locale === 'zh'
-            ? '请先在文稿流程中选择视频'
-            : 'Choose a video from the document flow first'
-          : '';
+        : '';
 
   return (
     <>
@@ -202,7 +158,15 @@ export function CreationOutcomePlanner({
         onValueChange={setOutcomes}
         onChooseVideoDocument={onChooseVideoDocument}
       />
-      <div className="mt-4 flex min-h-10 items-center justify-end border-t pt-4">
+      <div className="mt-4 flex min-h-10 items-center justify-end gap-2 border-t pt-4">
+        <InspirationStashAction
+          locale={locale}
+          ready={stashReady}
+          busy={stashing}
+          saved={stashed}
+          blocked={starting}
+          onClick={onStashInspiration}
+        />
         <Button
           data-action="start-creation"
           type="button"
@@ -210,7 +174,7 @@ export function CreationOutcomePlanner({
           disabled={!canStartCreation}
           title={blockedTitle}
           aria-busy={starting}
-          onClick={onStartCreation}
+          onClick={() => selectedPlan && onStartCreation(selectedPlan)}
         >
           {starting ? <LoaderCircleIcon className="size-4 animate-spin" /> : <CirclePlayIcon className="size-4" />}
           {locale === 'zh' ? '开启创作' : 'Start creating'}

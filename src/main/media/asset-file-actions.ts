@@ -75,8 +75,9 @@ export class AssetFileActions {
   async reveal(assetId: string, context?: AssetFileRevealContext) {
     const source = this.require(assetId);
     try {
-      const effectiveContext = context ?? { kind: 'ALL_MATERIALS' };
-      const revealPath = (await this.resolveRevealPath?.(source, effectiveContext)) ?? source.absolutePath;
+      const revealPath = context
+        ? ((await this.resolveRevealPath?.(source, context)) ?? source.absolutePath)
+        : source.absolutePath;
       this.ports.showItemInFolder(revealPath);
     } catch {
       throw new Error('Unable to show the image in the file manager');

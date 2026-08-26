@@ -261,13 +261,13 @@ export function VideoDocumentTranscriptNavigator({
           />
           <span
             className={cn(
-              'absolute inset-x-0 top-0 h-1 rounded-full bg-selected-foreground/55 shadow-sm transition-colors duration-150',
+              'absolute inset-x-0 top-0 h-1 rounded-full bg-selected-foreground/55 transition-colors duration-150',
               dragging && 'bg-selected-foreground/85',
             )}
           />
           <span
             className={cn(
-              'absolute inset-x-0 bottom-0 h-1 rounded-full bg-selected-foreground/55 shadow-sm transition-colors duration-150',
+              'absolute inset-x-0 bottom-0 h-1 rounded-full bg-selected-foreground/55 transition-colors duration-150',
               dragging && 'bg-selected-foreground/85',
             )}
           />
@@ -281,7 +281,7 @@ export function VideoDocumentTranscriptNavigator({
           top: `clamp(0.5rem, ${positionOf(currentTimeMs, normalizedDurationMs)}%, calc(100% - 0.5rem))`,
         }}
       >
-        <VideoIcon className="size-3 shrink-0 drop-shadow-sm" strokeWidth={2} aria-hidden="true" />
+        <VideoIcon className="size-3 shrink-0" strokeWidth={2} aria-hidden="true" />
         <span className="h-px flex-1 bg-current opacity-45" aria-hidden="true" />
       </span>
       {focusedCue && (
@@ -294,13 +294,13 @@ export function VideoDocumentTranscriptNavigator({
           }}
         >
           <span className="h-px flex-1 bg-current opacity-55" aria-hidden="true" />
-          <TextIcon className="size-3 shrink-0 drop-shadow-sm" strokeWidth={2.25} aria-hidden="true" />
+          <TextIcon className="size-3 shrink-0" strokeWidth={2.25} aria-hidden="true" />
         </span>
       )}
       {hoverTimestampMs !== null && hoveredCue && (
         <>
           <span
-            className="pointer-events-none absolute left-[13px] z-40 size-1.5 -translate-y-1/2 rounded-full border border-background bg-foreground shadow-sm"
+            className="pointer-events-none absolute left-[13px] z-40 size-1.5 -translate-y-1/2 rounded-full border border-background bg-foreground"
             style={{ top: `${positionOf(hoverTimestampMs, normalizedDurationMs)}%` }}
             aria-hidden="true"
           />

@@ -243,7 +243,7 @@ const TimelineMarkers = memo(function TimelineMarkers({
     <button
       key={marker.id}
       type="button"
-      className="group absolute left-[5px] z-[15] grid size-[7px] -translate-y-1/2 rotate-45 place-items-center bg-selected-foreground/65 outline-none transition-transform hover:scale-125 hover:bg-selected-foreground focus-visible:ring-2 focus-visible:ring-ring"
+      className="group absolute left-[5px] z-[15] grid size-[7px] -translate-y-1/2 rotate-45 place-items-center bg-selected-foreground/65 outline-none transition-colors hover:bg-selected-foreground focus-visible:ring-2 focus-visible:ring-ring"
       style={{ top: `${positionOf(marker.timestampMs, durationMs)}%` }}
       aria-label={`${markerTitle(marker.title)}, ${openAtLabel(formatTimestamp(marker.timestampMs))}`}
       onPointerDown={(event) => event.stopPropagation()}

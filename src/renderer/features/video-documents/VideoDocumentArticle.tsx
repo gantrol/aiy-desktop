@@ -1,4 +1,4 @@
-import { LoaderCircleIcon, PencilIcon, PlusIcon, SaveIcon, SparklesIcon, XIcon } from 'lucide-react';
+import { LoaderCircleIcon, PencilIcon, PlusIcon, RefreshCwIcon, SaveIcon, XIcon } from 'lucide-react';
 import { memo, type ReactNode } from 'react';
 import ReactMarkdown, { defaultUrlTransform, type Components } from 'react-markdown';
 import remarkGfm from 'remark-gfm';
@@ -194,7 +194,7 @@ function ArticleGenerationToolbarAction({
       type="button"
       disabled={disabled}
       expanded={generating}
-      icon={generating ? <LoaderCircleIcon className="size-4 animate-spin" /> : <SparklesIcon className="size-4" />}
+      icon={generating ? <LoaderCircleIcon className="size-4 animate-spin" /> : <RefreshCwIcon className="size-4" />}
       label={generating ? labels.generating : hasVisibleContent ? labels.regenerate : labels.generate}
       onClick={onGenerate}
     />
@@ -248,7 +248,7 @@ function ArticleBlankActions({
         )}
         {onGenerate && (
           <Button type="button" disabled={generationDisabled} onClick={onGenerate}>
-            {generating ? <LoaderCircleIcon className="size-4 animate-spin" /> : <SparklesIcon className="size-4" />}
+            {generating ? <LoaderCircleIcon className="size-4 animate-spin" /> : <RefreshCwIcon className="size-4" />}
             {generating ? generatingLabel : generateLabel}
           </Button>
         )}

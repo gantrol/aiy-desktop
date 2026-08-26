@@ -107,7 +107,7 @@ export function CreatorInputPanel({
                       loading="lazy"
                       decoding="async"
                       draggable={false}
-                      className="aspect-square w-full object-cover"
+                      className="aspect-square w-full bg-media-surround-light object-contain"
                     />
                   </div>
                 ))}

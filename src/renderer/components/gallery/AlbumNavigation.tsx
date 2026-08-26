@@ -31,17 +31,16 @@ import {
   TreeBranchCollapseProvider,
   TreeBranchContent,
   TreeBranchTransitRail,
-  TreeDisclosureRail,
 } from '@/renderer/components/albums/TreeDisclosureRail';
 import {
   getTreeBranchItemTopology,
   type TreeBranchItemTopology,
 } from '@/renderer/components/albums/treeConnectionGeometry';
-import { useAlbumTreeExpansion } from '@/renderer/components/albums/useAlbumTreeExpansion';
+import { useTreeBranchExpansion } from '@/renderer/components/albums/useTreeBranchExpansion';
 import { useDeferredSingleDoubleClick } from '@/renderer/components/albums/useDeferredSingleDoubleClick';
 import { ActionContextMenuItems, ActionMenuButton, type ActionMenuAction } from '@/renderer/components/ui/action-menu';
 import { Button } from '@/renderer/components/ui/button';
-import { Collapsible, CollapsibleTrigger } from '@/renderer/components/ui/collapsible';
+import { Collapsible } from '@/renderer/components/ui/collapsible';
 import { ContextMenu, ContextMenuContent, ContextMenuTrigger } from '@/renderer/components/ui/context-menu';
 import { ScrollArea } from '@/renderer/components/ui/scroll-area';
 import { AlbumNavigationDialogs } from '@/renderer/components/gallery/AlbumNavigationDialogs';
@@ -173,9 +172,8 @@ export function AlbumNavigation({
   const albumClick = useDeferredSingleDoubleClick();
   const [editor, setEditor] = useState<AlbumEditorState | null>(null);
   const [deleteAlbum, setDeleteAlbum] = useState<AlbumDto | null>(null);
-  const [archivedOpen, setArchivedOpen] = useState(false);
   const albumViewportRef = useRef<HTMLDivElement>(null);
-  const albumExpansion = useAlbumTreeExpansion(albumViewportRef);
+  const albumExpansion = useTreeBranchExpansion(albumViewportRef);
   const [dropAlbumId, setDropAlbumId] = useState<string | null>(null);
   const [rootDropActive, setRootDropActive] = useState(false);
   const [draggedAlbumId, setDraggedAlbumId] = useState<string | null>(null);
@@ -190,8 +188,8 @@ export function AlbumNavigation({
     albumExpansion.setPersistent(albumId, open);
   }
 
-  function setHoverExpanded(albumId: string, open: boolean) {
-    albumExpansion.setHover(albumId, open);
+  function expandFromGesture(albumId: string) {
+    albumExpansion.expandFromGesture(albumId);
   }
 
   function eventAlbumId(event: DragEvent) {
@@ -565,6 +563,7 @@ export function AlbumNavigation({
     const row = (
       <div
         data-album-id={album.id}
+        data-tree-node-id={album.id}
         onDragEnter={(event) => {
           updateDropFeedback(event, album, parent, archivedBranch);
         }}
@@ -609,7 +608,7 @@ export function AlbumNavigation({
           overlayStyle="solid"
           disclosureInteractive={false}
           branchTopology={branchTopology}
-          onPullDownExpand={() => setHoverExpanded(album.id, true)}
+          onGestureExpand={() => expandFromGesture(album.id)}
           onPointerTrackStart={(clientY) => albumExpansion.beginPointerTrack(album.id, clientY)}
           onPointerTrack={(clientY) => albumExpansion.trackPointer(album.id, clientY)}
           onClick={clickHandlers.onClick}
@@ -668,6 +667,7 @@ export function AlbumNavigation({
         onOpenChange={(open) => setExpanded(album.id, open)}
         className="relative"
         data-album-branch-id={album.id}
+        data-tree-branch-id={album.id}
       >
         {branchTopology && <TreeBranchTransitRail topology={branchTopology} />}
         <ContextMenu>
@@ -763,26 +763,7 @@ export function AlbumNavigation({
           </div>
 
           <ScrollArea type="always" className="min-h-0 flex-1" viewportRef={albumViewportRef}>
-            <div className="space-y-0.5 px-2 py-2">
-              {tree.activeRoots.map((album) => renderBranch(album, false))}
-              {tree.archivedRoots.length > 0 && (
-                <Collapsible open={archivedOpen} onOpenChange={setArchivedOpen} className="pt-2">
-                  <CollapsibleTrigger asChild>
-                    <TreeDisclosureRail
-                      open={archivedOpen}
-                      label={archivedOpen ? labels.collapse : labels.expand}
-                      className="h-8 w-full justify-start px-2 text-xs font-normal text-muted-foreground"
-                    >
-                      <ArchiveIcon className="size-3.5" />
-                      <span className="flex-1 text-left">{labels.archived}</span>
-                    </TreeDisclosureRail>
-                  </CollapsibleTrigger>
-                  <TreeBranchContent className="space-y-0.5 pt-1">
-                    {tree.archivedRoots.map((album) => renderBranch(album, true))}
-                  </TreeBranchContent>
-                </Collapsible>
-              )}
-            </div>
+            <div className="space-y-0.5 px-2 py-2">{tree.activeRoots.map((album) => renderBranch(album, false))}</div>
           </ScrollArea>
         </>
       ) : (

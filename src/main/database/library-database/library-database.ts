@@ -159,6 +159,27 @@ class LibraryDatabaseCore {
     this.repositories.libraryFileView.scheduleSynchronization();
   }
 
+  startRecycleBinCleanup() {
+    this.repositories.contentLifecycle.startAutomaticCleanup();
+  }
+
+  startBackgroundStorage() {
+    this.startLibraryFileViewSynchronization();
+    this.startRecycleBinCleanup();
+  }
+
+  drainRecycleBinCleanup() {
+    return Promise.all([
+      this.repositories.contentLifecycle.stopAndDrain(),
+      this.repositories.recycleBin.stopAndDrain(),
+    ]).then(() => undefined);
+  }
+
+  async drainBackgroundStorage() {
+    await this.drainRecycleBinCleanup();
+    await this.drainLibraryFileViewSynchronization();
+  }
+
   synchronizeLibraryFileView() {
     return this.repositories.libraryFileView.synchronize();
   }

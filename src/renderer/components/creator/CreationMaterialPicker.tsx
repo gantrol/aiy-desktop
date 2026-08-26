@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import type { AssetDto, FacetDefinitionDto, TermListItem } from '@/shared/contracts';
 import { ImageIcon } from '@/renderer/icons';
 import { MaterialImagePickerDialog } from '@/renderer/components/gallery/MaterialImagePickerDialog';
@@ -19,6 +19,7 @@ interface Props {
   facets: readonly FacetDefinitionDto[];
   selectedAssets: readonly AssetDto[];
   disabled?: boolean;
+  onBeforeOpen?(): void | Promise<void>;
   onApply(assets: AssetDto[]): void;
   onImport(): void | Promise<void>;
 }
@@ -30,12 +31,17 @@ export function CreationMaterialPicker({
   facets,
   selectedAssets,
   disabled = false,
+  onBeforeOpen,
   onApply,
   onImport,
 }: Props) {
   const labels = useI18n().messages.creator.materialPicker;
   const [open, setOpen] = useState(false);
   const [collection, setCollection] = useState<MaterialImagePickerCollection>({ kind: 'all' });
+
+  useEffect(() => {
+    if (open) void onBeforeOpen?.();
+  }, [dataRevision, onBeforeOpen, open]);
 
   return (
     <>

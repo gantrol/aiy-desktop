@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef } from 'react';
 import type { AlbumDto, VideoDocumentNavigationEntry } from '@/shared/contracts';
 import type { VideoDocumentsLocation } from '@/renderer/components/app/app-navigation';
 import { buildAlbumTreeIndex } from '@/renderer/components/albums/albumTree';
-import { useAlbumTreeExpansion } from '@/renderer/components/albums/useAlbumTreeExpansion';
+import { useTreeBranchExpansion } from '@/renderer/components/albums/useTreeBranchExpansion';
 import type {
   VideoDocumentNavigationPageState,
   VideoDocumentVisibleEntry,
@@ -27,7 +27,7 @@ export function useVideoDocumentLibraryTree({
 }: Params) {
   const albumIndex = useMemo(() => buildAlbumTreeIndex(albums), [albums]);
   const navigationViewportRef = useRef<HTMLDivElement | null>(null);
-  const albumExpansion = useAlbumTreeExpansion(navigationViewportRef);
+  const albumExpansion = useTreeBranchExpansion(navigationViewportRef);
   const expandedAlbumIds = albumExpansion.openIds;
   const setAlbumPersistent = albumExpansion.setPersistent;
 
@@ -83,8 +83,8 @@ export function useVideoDocumentLibraryTree({
     onExpandAlbum(entry.albumId);
   }
 
-  function pullDownExpand(entry: Extract<VideoDocumentNavigationEntry, { kind: 'ALBUM' }>) {
-    albumExpansion.setHover(entry.albumId, true);
+  function gestureExpand(entry: Extract<VideoDocumentNavigationEntry, { kind: 'ALBUM' }>) {
+    albumExpansion.expandFromGesture(entry.albumId);
     onExpandAlbum(entry.albumId);
   }
 
@@ -93,7 +93,7 @@ export function useVideoDocumentLibraryTree({
     emptyAlbumCount,
     expandedAlbumIds,
     navigationViewportRef,
-    pullDownExpand,
+    gestureExpand,
     toggleAlbum,
     trackPointer: albumExpansion.trackPointer,
     visibleEntries,

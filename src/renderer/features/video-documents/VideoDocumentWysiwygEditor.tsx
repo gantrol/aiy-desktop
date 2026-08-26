@@ -9,17 +9,25 @@ import type { NodeViewProps } from '@tiptap/react';
 import StarterKit from '@tiptap/starter-kit';
 import { useEffect, useMemo, useRef } from 'react';
 import type {
+  CreatorImageImportSource,
   VideoDocumentFrameCaptureResult,
   VideoDocumentMediaBinding,
   VideoDocumentRevisionMediaDto,
   VideoDocumentTimelineSegment,
 } from '@/shared/contracts';
 import {
+  importVideoDocumentEditorImage,
   VideoDocumentWysiwygToolbar,
   type VideoDocumentEditorImageImport,
   type VideoDocumentWysiwygEditorLabels,
   type VideoDocumentWysiwygToolbarState,
 } from '@/renderer/features/video-documents/VideoDocumentWysiwygToolbar';
+import {
+  clipboardHasUserText,
+  clipboardImageFiles,
+  imageFiles,
+  imageMimeType,
+} from '@/renderer/components/creator/imageImport';
 import {
   insertVideoDocumentImage,
   videoDocumentFrameImageAttributes,
@@ -50,6 +58,8 @@ interface Props {
   onFrameCaptured(result: VideoDocumentFrameCaptureResult): void;
   onImageImported(result: VideoDocumentEditorImageImport): void;
   onImageImportError(): void;
+  illustrationLabel?: string;
+  onIllustrationRequest?(selectedText: string): void;
   onQuickInsertNoteBusyChange?(busy: boolean): void;
   onQuickInsertNoteError?(): void;
   onSave(markdown: string): void;
@@ -160,12 +170,14 @@ const emptyToolbarState: VideoDocumentWysiwygToolbarState = {
   canRedo: false,
   image: false,
   imageSourcePath: null,
+  selectedText: '',
 };
 
 function selectToolbarState(editor: Editor | null): VideoDocumentWysiwygToolbarState {
   if (!editor || editor.isDestroyed) return emptyToolbarState;
   const image = editor.isActive('image');
   const imageAttributes = image ? editor.getAttributes('image') : null;
+  const { from, to } = editor.state.selection;
   return {
     headingLevel: activeHeadingLevel(editor),
     bold: editor.isActive('bold'),
@@ -182,6 +194,7 @@ function selectToolbarState(editor: Editor | null): VideoDocumentWysiwygToolbarS
     canRedo: editor.can().chain().redo().run(),
     image,
     imageSourcePath: typeof imageAttributes?.sourcePath === 'string' ? imageAttributes.sourcePath : null,
+    selectedText: from === to ? '' : editor.state.doc.textBetween(from, to, '\n').trim(),
   };
 }
 
@@ -253,6 +266,8 @@ export function VideoDocumentWysiwygEditor({
   onFrameCaptured,
   onImageImported,
   onImageImportError,
+  illustrationLabel,
+  onIllustrationRequest,
   onQuickInsertNoteBusyChange,
   onQuickInsertNoteError,
   onSave,
@@ -261,10 +276,39 @@ export function VideoDocumentWysiwygEditor({
   const onSaveRef = useRef(onSave);
   const currentMarkdownRef = useRef(markdown);
   const editorRootRef = useRef<HTMLDivElement>(null);
+  const editorRef = useRef<Editor | null>(null);
+  const imageImportQueueRef = useRef(Promise.resolve());
+  const imageImportCallbacksRef = useRef({ onImageImported, onImageImportError });
   useEffect(() => {
     onChangeRef.current = onChange;
     onSaveRef.current = onSave;
-  }, [onChange, onSave]);
+    imageImportCallbacksRef.current = { onImageImported, onImageImportError };
+  }, [onChange, onImageImportError, onImageImported, onSave]);
+
+  function enqueueImages(files: readonly File[], source: CreatorImageImportSource) {
+    const candidates = files.filter((file) => imageMimeType(file));
+    if (!candidates.length) return;
+    imageImportQueueRef.current = imageImportQueueRef.current.then(async () => {
+      let failed = false;
+      for (const file of candidates) {
+        const currentEditor = editorRef.current;
+        if (!currentEditor || currentEditor.isDestroyed) return;
+        try {
+          const result = await importVideoDocumentEditorImage(file, source);
+          if (!insertVideoDocumentImage(currentEditor, result.attributes)) {
+            throw new Error('Image could not be inserted into the editor');
+          }
+          imageImportCallbacksRef.current.onImageImported(result);
+        } catch {
+          failed = true;
+        }
+      }
+      const currentEditor = editorRef.current;
+      if (failed && currentEditor && !currentEditor.isDestroyed) {
+        imageImportCallbacksRef.current.onImageImportError();
+      }
+    });
+  }
 
   const imageMediaRef = useRef<DocumentImageMediaSnapshot>({ mediaBindings, media });
   useEffect(() => {
@@ -307,7 +351,7 @@ export function VideoDocumentWysiwygEditor({
           'aria-multiline': 'true',
           role: 'textbox',
           class:
-            'min-h-[60vh] px-6 py-5 text-[15px] leading-7 text-foreground outline-none [&>h1:first-child]:hidden [&_h2]:mb-4 [&_h2]:mt-10 [&_h2]:text-xl [&_h2]:font-semibold [&_h2]:leading-tight [&_h3]:mb-3 [&_h3]:mt-8 [&_h3]:text-lg [&_h3]:font-semibold [&_h3]:leading-tight [&_h4]:mb-2 [&_h4]:mt-6 [&_h4]:font-semibold [&_h5]:mb-2 [&_h5]:mt-5 [&_h5]:text-sm [&_h5]:font-semibold [&_h6]:mb-2 [&_h6]:mt-4 [&_h6]:text-xs [&_h6]:font-semibold [&_h6]:uppercase [&_h6]:tracking-wide [&_p]:my-4 [&_a]:text-selected-foreground [&_a]:underline [&_a]:decoration-selected-border [&_a]:underline-offset-4 [&_a[data-video-binding]]:flex [&_a[data-video-binding]]:aspect-video [&_a[data-video-binding]]:items-end [&_a[data-video-binding]]:rounded-lg [&_a[data-video-binding]]:border [&_a[data-video-binding]]:bg-media-surround-dark [&_a[data-video-binding]]:bg-cover [&_a[data-video-binding]]:bg-center [&_a[data-video-binding]]:p-4 [&_a[data-video-binding]]:font-medium [&_a[data-video-binding]]:text-white [&_a[data-video-binding]]:no-underline [&_blockquote]:my-5 [&_blockquote]:border-l-2 [&_blockquote]:pl-4 [&_blockquote]:text-sm [&_blockquote]:leading-6 [&_blockquote]:text-muted-foreground [&_ul]:my-4 [&_ul]:list-disc [&_ul]:space-y-2 [&_ul]:pl-6 [&_ol]:my-4 [&_ol]:list-decimal [&_ol]:space-y-2 [&_ol]:pl-6 [&_ul[data-type=taskList]]:list-none [&_ul[data-type=taskList]]:pl-0 [&_li[data-type=taskItem]]:flex [&_li[data-type=taskItem]]:items-start [&_li[data-type=taskItem]]:gap-2 [&_li[data-type=taskItem]>label]:pt-1 [&_li[data-type=taskItem]>div]:min-w-0 [&_li[data-type=taskItem]>div]:flex-1 [&_pre]:my-5 [&_pre]:overflow-x-auto [&_pre]:bg-surface-sunken [&_pre]:p-4 [&_pre]:font-mono [&_pre]:text-sm [&_hr]:my-8 [&_hr]:border-border-strong [&_.tableWrapper]:my-5 [&_.tableWrapper]:overflow-x-auto [&_table]:w-full [&_table]:border-collapse [&_table]:text-sm [&_th]:border [&_th]:bg-surface-sunken [&_th]:px-4 [&_th]:py-2.5 [&_th]:text-left [&_th]:font-medium [&_td]:border [&_td]:px-4 [&_td]:py-2.5 [&_td]:align-top [&_.ProseMirror-selectednode]:ring-2 [&_.ProseMirror-selectednode]:ring-selected-border',
+            'min-h-[60vh] px-6 py-5 text-[15px] leading-7 text-foreground outline-none [&>h1:first-child]:hidden [&_h2]:mb-4 [&_h2]:mt-10 [&_h2]:text-xl [&_h2]:font-semibold [&_h2]:leading-tight [&_h3]:mb-3 [&_h3]:mt-8 [&_h3]:text-lg [&_h3]:font-semibold [&_h3]:leading-tight [&_h4]:mb-2 [&_h4]:mt-6 [&_h4]:font-semibold [&_h5]:mb-2 [&_h5]:mt-5 [&_h5]:text-sm [&_h5]:font-semibold [&_h6]:mb-2 [&_h6]:mt-4 [&_h6]:text-xs [&_h6]:font-semibold [&_h6]:uppercase [&_h6]:tracking-wide [&_p]:my-4 [&_a]:text-selected-foreground [&_a]:underline [&_a]:decoration-selected-border [&_a]:underline-offset-4 [&_a[data-video-binding]]:flex [&_a[data-video-binding]]:aspect-video [&_a[data-video-binding]]:items-end [&_a[data-video-binding]]:rounded-lg [&_a[data-video-binding]]:border [&_a[data-video-binding]]:bg-media-surround-dark [&_a[data-video-binding]]:bg-cover [&_a[data-video-binding]]:bg-center [&_a[data-video-binding]]:p-4 [&_a[data-video-binding]]:font-medium [&_a[data-video-binding]]:text-media-checker-a [&_a[data-video-binding]]:no-underline [&_blockquote]:my-5 [&_blockquote]:border-l-2 [&_blockquote]:pl-4 [&_blockquote]:text-sm [&_blockquote]:leading-6 [&_blockquote]:text-muted-foreground [&_ul]:my-4 [&_ul]:list-disc [&_ul]:space-y-2 [&_ul]:pl-6 [&_ol]:my-4 [&_ol]:list-decimal [&_ol]:space-y-2 [&_ol]:pl-6 [&_ul[data-type=taskList]]:list-none [&_ul[data-type=taskList]]:pl-0 [&_li[data-type=taskItem]]:flex [&_li[data-type=taskItem]]:items-start [&_li[data-type=taskItem]]:gap-2 [&_li[data-type=taskItem]>label]:pt-1 [&_li[data-type=taskItem]>div]:min-w-0 [&_li[data-type=taskItem]>div]:flex-1 [&_pre]:my-5 [&_pre]:overflow-x-auto [&_pre]:bg-surface-sunken [&_pre]:p-4 [&_pre]:font-mono [&_pre]:text-sm [&_hr]:my-8 [&_hr]:border-border-strong [&_.tableWrapper]:my-5 [&_.tableWrapper]:overflow-x-auto [&_table]:w-full [&_table]:border-collapse [&_table]:text-sm [&_th]:border [&_th]:bg-surface-sunken [&_th]:px-4 [&_th]:py-2.5 [&_th]:text-left [&_th]:font-medium [&_td]:border [&_td]:px-4 [&_td]:py-2.5 [&_td]:align-top [&_.ProseMirror-selectednode]:ring-2 [&_.ProseMirror-selectednode]:ring-selected-border',
         },
         handleKeyDown: (_view, event) => {
           if ((event.ctrlKey || event.metaKey) && event.key.toLocaleLowerCase() === 's') {
@@ -323,6 +367,31 @@ export function VideoDocumentWysiwygEditor({
           }
           return false;
         },
+        handlePaste: (_view, event) => {
+          const clipboardData = event.clipboardData;
+          if (!clipboardData) return false;
+          const files = clipboardImageFiles(clipboardData).filter((file) => imageMimeType(file));
+          if (!files.length) return false;
+          if (clipboardHasUserText(clipboardData)) {
+            window.setTimeout(() => enqueueImages(files, 'PASTE'), 0);
+            return false;
+          }
+          event.preventDefault();
+          enqueueImages(files, 'PASTE');
+          return true;
+        },
+        handleDrop: (view, event, _slice, moved) => {
+          if (moved) return false;
+          const dataTransfer = event.dataTransfer;
+          if (!dataTransfer) return false;
+          const files = imageFiles(dataTransfer.files).filter((file) => imageMimeType(file));
+          if (!files.length) return false;
+          event.preventDefault();
+          const position = view.posAtCoords({ left: event.clientX, top: event.clientY });
+          if (position) editorRef.current?.commands.setTextSelection(position.pos);
+          enqueueImages(files, 'DROP');
+          return true;
+        },
       },
       onUpdate: ({ editor: current }) => {
         const nextMarkdown = current.getMarkdown();
@@ -332,6 +401,13 @@ export function VideoDocumentWysiwygEditor({
     },
     [extensions],
   );
+
+  useEffect(() => {
+    editorRef.current = editor;
+    return () => {
+      if (editorRef.current === editor) editorRef.current = null;
+    };
+  }, [editor]);
 
   useEffect(() => {
     currentMarkdownRef.current = markdown;
@@ -359,8 +435,8 @@ export function VideoDocumentWysiwygEditor({
         link.dataset.videoBinding = 'true';
         const poster = binding.posterAssetId ? mediaById.get(binding.posterAssetId) : null;
         link.style.backgroundImage = poster
-          ? `linear-gradient(to top, rgb(0 0 0 / 72%), transparent 58%), url(${JSON.stringify(poster.mediaUrl)})`
-          : 'linear-gradient(to top, rgb(0 0 0 / 72%), rgb(0 0 0 / 18%))';
+          ? `var(--image-overlay-copy-scrim), url(${JSON.stringify(poster.mediaUrl)})`
+          : 'var(--image-overlay-copy-scrim)';
       });
     });
     return () => window.cancelAnimationFrame(frame);
@@ -402,6 +478,8 @@ export function VideoDocumentWysiwygEditor({
         onFrameCaptured={onFrameCaptured}
         onImageImported={onImageImported}
         onImageImportError={onImageImportError}
+        illustrationLabel={illustrationLabel}
+        onIllustrationRequest={onIllustrationRequest}
       />
       <div className="min-w-0 overflow-hidden">
         <EditorContent className="min-w-0 w-full [&>.ProseMirror]:min-w-0 [&>.ProseMirror]:w-full" editor={editor} />

@@ -283,6 +283,7 @@ export const generationBaseSchema = z.object({
   title: z.string().max(300),
   titleLocale: localeSchema,
   creationDraftId: id.nullable().optional().default(null),
+  inspirationStashId: id.nullable().optional().default(null),
   baseVersionId: id.nullable().optional().default(null),
   sourceImportId: id.nullable().optional().default(null),
   manualPrompt: z.string().max(30_000),
@@ -372,7 +373,7 @@ export const styleExplorationSlotSchema = z
     risk: z.string().max(1_000),
     userInstruction: z.string().max(30_000),
     input: generationBaseSchema
-      .omit({ seriesId: true, creationDraftId: true, modelKey: true })
+      .omit({ seriesId: true, creationDraftId: true, inspirationStashId: true, modelKey: true })
       .superRefine(validateGenerationCanvas),
   })
   .superRefine((value, context) => {
@@ -662,10 +663,17 @@ export const assistantProposalAdoptionSchema = assistantProposalAdoptionBaseSche
     .optional(),
 });
 
-export const creationDraftStartSchema = z.object({ albumId: id.nullable(), termPromptLocale: localeSchema });
+export const creationDraftStartSchema = z
+  .object({
+    albumId: id.nullable(),
+    termPromptLocale: localeSchema,
+    fresh: z.boolean().default(false),
+  })
+  .strict();
 
 export const creationDraftCommitSchema = z.object({
   creationDraftId: id,
+  inspirationStashId: id.nullable().optional().default(null),
   title: z.string().max(300),
   manualPrompt: z.string().max(30_000),
   promptNodes: z.array(creatorPromptNodeSchema).max(2_000).optional(),

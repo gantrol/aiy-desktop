@@ -1,7 +1,10 @@
 import type { AssetDto, FavoriteTextMaterialDto } from '@/shared/contracts';
 import type { LibraryStorage } from '@/main/database/core/storage';
 import { type JsonMap, mediaUrl, text } from '@/main/database/core/values';
-import { creationItemCoverSortOrder } from '@/main/database/creations/creation-output-presentation-sql';
+import {
+  creationItemCoverSortOrder,
+  creationItemIncludesSeries,
+} from '@/main/database/creations/creation-output-presentation-sql';
 
 /**
  * The single recursive membership rule used by album counts, previews, and the
@@ -17,18 +20,40 @@ export const albumProjectedAssetPredicate = `EXISTS (
     JOIN projected_albums parent ON parent.id = member.album_id
     JOIN albums child ON child.id = member.target_id AND child.deleted_at IS NULL
     WHERE member.target_type = 'ALBUM' AND member.deleted_at IS NULL
-  ), projected_series(id) AS (
+  ), projected_creation_items(id) AS (
     SELECT DISTINCT member.target_id
     FROM album_members member
     JOIN projected_albums album ON album.id = member.album_id
-    JOIN prompt_series series ON series.id = member.target_id AND series.deleted_at IS NULL
-    WHERE member.target_type = 'SERIES' AND member.deleted_at IS NULL
+    JOIN creation_items item ON item.id = member.target_id
+      AND item.deleted_at IS NULL AND item.archived_at IS NULL
+    WHERE member.target_type = 'CREATION_ITEM' AND member.deleted_at IS NULL
+  ), projected_owner_series(id) AS (
+    SELECT DISTINCT form.entity_id
+    FROM projected_creation_items item
+    JOIN creation_forms form ON form.creation_item_id = item.id
+      AND form.role = 'IMAGE_CREATION' AND form.entity_type = 'PROMPT_SERIES'
+      AND form.deleted_at IS NULL
+    JOIN prompt_series series ON series.id = form.entity_id
+      AND series.deleted_at IS NULL AND series.archived_at IS NULL
+    UNION
+    SELECT DISTINCT visual.prompt_series_id
+    FROM projected_creation_items item
+    JOIN creation_forms form ON form.creation_item_id = item.id
+      AND form.entity_type = 'DERIVED_VISUAL' AND form.deleted_at IS NULL
+    JOIN derived_visuals visual ON visual.id = form.entity_id AND visual.prompt_series_id IS NOT NULL
+    JOIN prompt_series series ON series.id = visual.prompt_series_id
+      AND series.deleted_at IS NULL AND series.archived_at IS NULL
+  ), projected_series(id) AS (
+    SELECT DISTINCT series.id
+    FROM projected_owner_series owner
+    JOIN prompt_series series ON series.deleted_at IS NULL AND series.archived_at IS NULL
+    WHERE ${creationItemIncludesSeries('owner.id', 'series.id')}
   ), projected_assets(id) AS (
     SELECT material.image_asset_id
     FROM album_members member
     JOIN projected_albums album ON album.id = member.album_id
     JOIN materials material ON material.id = member.target_id
-      AND material.kind IN ('IMAGE', 'VIDEO') AND material.deleted_at IS NULL
+      AND material.kind IN ('IMAGE', 'VIDEO') AND material.deleted_at IS NULL AND material.archived_at IS NULL
     WHERE member.target_type = 'MATERIAL' AND member.deleted_at IS NULL
     UNION
     SELECT run.result_asset_id
@@ -74,12 +99,34 @@ const projectionCte = `WITH RECURSIVE projected_albums(id) AS (
   JOIN projected_albums parent ON parent.id = member.album_id
   JOIN albums child ON child.id = member.target_id AND child.deleted_at IS NULL
   WHERE member.target_type = 'ALBUM' AND member.deleted_at IS NULL
-), projected_series(id) AS (
+), projected_creation_items(id) AS (
   SELECT DISTINCT member.target_id
   FROM album_members member
   JOIN projected_albums album ON album.id = member.album_id
-  JOIN prompt_series series ON series.id = member.target_id AND series.deleted_at IS NULL
-  WHERE member.target_type = 'SERIES' AND member.deleted_at IS NULL
+  JOIN creation_items item ON item.id = member.target_id
+    AND item.deleted_at IS NULL AND item.archived_at IS NULL
+  WHERE member.target_type = 'CREATION_ITEM' AND member.deleted_at IS NULL
+), projected_owner_series(id) AS (
+  SELECT DISTINCT form.entity_id
+  FROM projected_creation_items item
+  JOIN creation_forms form ON form.creation_item_id = item.id
+    AND form.role = 'IMAGE_CREATION' AND form.entity_type = 'PROMPT_SERIES'
+    AND form.deleted_at IS NULL
+  JOIN prompt_series series ON series.id = form.entity_id
+    AND series.deleted_at IS NULL AND series.archived_at IS NULL
+  UNION
+  SELECT DISTINCT visual.prompt_series_id
+  FROM projected_creation_items item
+  JOIN creation_forms form ON form.creation_item_id = item.id
+    AND form.entity_type = 'DERIVED_VISUAL' AND form.deleted_at IS NULL
+  JOIN derived_visuals visual ON visual.id = form.entity_id AND visual.prompt_series_id IS NOT NULL
+  JOIN prompt_series series ON series.id = visual.prompt_series_id
+    AND series.deleted_at IS NULL AND series.archived_at IS NULL
+), projected_series(id) AS (
+  SELECT DISTINCT series.id
+  FROM projected_owner_series owner
+  JOIN prompt_series series ON series.deleted_at IS NULL AND series.archived_at IS NULL
+  WHERE ${creationItemIncludesSeries('owner.id', 'series.id')}
 )`;
 
 const batchProjectionCte = (rootCount: number) => `WITH RECURSIVE projection_roots(root_id) AS (
@@ -93,20 +140,132 @@ const batchProjectionCte = (rootCount: number) => `WITH RECURSIVE projection_roo
   JOIN album_members member ON member.album_id = parent.id
   JOIN albums child ON child.id = member.target_id AND child.deleted_at IS NULL
   WHERE member.target_type = 'ALBUM' AND member.deleted_at IS NULL
-), projected_series(root_id, id) AS (
+), projected_creation_items(root_id, id) AS (
   SELECT DISTINCT album.root_id, member.target_id
   FROM album_members member
   JOIN projected_albums album ON album.id = member.album_id
-  JOIN prompt_series series ON series.id = member.target_id AND series.deleted_at IS NULL
-  WHERE member.target_type = 'SERIES' AND member.deleted_at IS NULL
+  JOIN creation_items item ON item.id = member.target_id
+    AND item.deleted_at IS NULL AND item.archived_at IS NULL
+  WHERE member.target_type = 'CREATION_ITEM' AND member.deleted_at IS NULL
+), projected_owner_series(root_id, id) AS (
+  SELECT DISTINCT item.root_id, form.entity_id
+  FROM projected_creation_items item
+  JOIN creation_forms form ON form.creation_item_id = item.id
+    AND form.role = 'IMAGE_CREATION' AND form.entity_type = 'PROMPT_SERIES'
+    AND form.deleted_at IS NULL
+  JOIN prompt_series series ON series.id = form.entity_id
+    AND series.deleted_at IS NULL AND series.archived_at IS NULL
+  UNION
+  SELECT DISTINCT item.root_id, visual.prompt_series_id
+  FROM projected_creation_items item
+  JOIN creation_forms form ON form.creation_item_id = item.id
+    AND form.entity_type = 'DERIVED_VISUAL' AND form.deleted_at IS NULL
+  JOIN derived_visuals visual ON visual.id = form.entity_id AND visual.prompt_series_id IS NOT NULL
+  JOIN prompt_series series ON series.id = visual.prompt_series_id
+    AND series.deleted_at IS NULL AND series.archived_at IS NULL
+), projected_series(root_id, id) AS (
+  SELECT DISTINCT owner.root_id, series.id
+  FROM projected_owner_series owner
+  JOIN prompt_series series ON series.deleted_at IS NULL AND series.archived_at IS NULL
+  WHERE ${creationItemIncludesSeries('owner.id', 'series.id')}
 )`;
 
 export interface AlbumProjectionSummary {
   materialCount: number;
-  seriesCount: number;
+  creationItemCount: number;
   previewAssets: AssetDto[];
   documentPreviewAssets: AssetDto[];
   activityAt: string;
+}
+
+function appendPreviewRows(summaries: Map<string, AlbumProjectionSummary>, rows: readonly JsonMap[]) {
+  for (const row of rows) {
+    const summary = summaries.get(text(row.album_id));
+    if (!summary) continue;
+    const target = text(row.preview_kind) === 'DOCUMENT' ? summary.documentPreviewAssets : summary.previewAssets;
+    target.push(assetDto(row));
+  }
+}
+
+function projectedCreationItemActivityValues(rootIdExpression?: string) {
+  const root = rootIdExpression ? `${rootIdExpression}, ` : '';
+  return `SELECT ${root}item.updated_at
+    FROM projected_creation_items projected
+    JOIN creation_items item ON item.id = projected.id
+    UNION ALL
+    SELECT ${root}form.updated_at
+    FROM projected_creation_items projected
+    JOIN creation_forms form ON form.creation_item_id = projected.id AND form.deleted_at IS NULL
+    UNION ALL
+    SELECT ${root}inspiration.updated_at
+    FROM projected_creation_items projected
+    JOIN creation_forms form ON form.creation_item_id = projected.id
+      AND form.entity_type = 'INSPIRATION_STASH' AND form.deleted_at IS NULL
+    JOIN inspiration_stashes inspiration ON inspiration.id = form.entity_id AND inspiration.deleted_at IS NULL
+    UNION ALL
+    SELECT ${root}post.updated_at
+    FROM projected_creation_items projected
+    JOIN creation_forms form ON form.creation_item_id = projected.id
+      AND form.entity_type = 'SOCIAL_POST' AND form.deleted_at IS NULL
+    JOIN social_post_drafts post ON post.id = form.entity_id AND post.deleted_at IS NULL
+    UNION ALL
+    SELECT ${root}article.updated_at
+    FROM projected_creation_items projected
+    JOIN creation_forms form ON form.creation_item_id = projected.id
+      AND form.entity_type = 'ARTICLE' AND form.deleted_at IS NULL
+    JOIN articles article ON article.id = form.entity_id AND article.deleted_at IS NULL
+    UNION ALL
+    SELECT ${root}document.updated_at
+    FROM projected_creation_items projected
+    JOIN creation_forms form ON form.creation_item_id = projected.id
+      AND form.entity_type = 'VIDEO_DOCUMENT' AND form.deleted_at IS NULL
+    JOIN documents document ON document.id = form.entity_id AND document.deleted_at IS NULL
+    UNION ALL
+    SELECT ${root}visual.updated_at
+    FROM projected_creation_items projected
+    JOIN creation_forms form ON form.creation_item_id = projected.id
+      AND form.entity_type = 'DERIVED_VISUAL' AND form.deleted_at IS NULL
+    JOIN derived_visuals visual ON visual.id = form.entity_id`;
+}
+
+function projectedSeriesActivityValues(rootIdExpression?: string) {
+  const root = rootIdExpression ? `${rootIdExpression}, ` : '';
+  return `SELECT ${root}series.created_at
+    FROM projected_series projected
+    JOIN prompt_series series ON series.id = projected.id
+    UNION ALL
+    SELECT ${root}version.created_at
+    FROM projected_series projected
+    JOIN prompt_versions version ON version.series_id = projected.id
+    UNION ALL
+    SELECT ${root}COALESCE(run.finished_at, run.created_at)
+    FROM projected_series projected
+    JOIN prompt_versions version ON version.series_id = projected.id
+    JOIN generation_runs run ON run.prompt_version_id = version.id
+    UNION ALL
+    SELECT ${root}imported.created_at
+    FROM projected_series projected
+    JOIN creation_output_imports imported ON imported.series_id = projected.id
+    WHERE imported.deleted_at IS NULL
+    UNION ALL
+    SELECT ${root}transform.created_at
+    FROM projected_series projected
+    JOIN image_transform_runs transform ON transform.series_id = projected.id
+    WHERE transform.deleted_at IS NULL
+    UNION ALL
+    SELECT ${root}review.updated_at
+    FROM projected_series projected
+    JOIN prompt_versions version ON version.series_id = projected.id
+    JOIN generation_runs run ON run.prompt_version_id = version.id
+    JOIN generation_output_reviews review ON review.generation_run_id = run.id
+    UNION ALL
+    SELECT ${root}cover.created_at
+    FROM projected_series projected
+    JOIN prompt_series_cover_assets cover ON cover.series_id = projected.id
+    UNION ALL
+    SELECT ${root}exclusion.removed_at
+    FROM projected_series projected
+    JOIN prompt_series_output_exclusions exclusion ON exclusion.series_id = projected.id`;
 }
 
 function assetDto(row: JsonMap): AssetDto {
@@ -141,7 +300,8 @@ export class AlbumProjectionRepository {
       END
       FROM album_members member
       JOIN projected_albums album ON album.id = member.album_id
-      JOIN materials material ON material.id = member.target_id AND material.deleted_at IS NULL
+      JOIN materials material ON material.id = member.target_id
+        AND material.deleted_at IS NULL AND material.archived_at IS NULL
       LEFT JOIN image_assets asset ON asset.id = material.image_asset_id AND asset.deleted_at IS NULL
       WHERE member.target_type = 'MATERIAL' AND member.deleted_at IS NULL
         AND (material.kind = 'TEXT' OR asset.id IS NOT NULL)
@@ -179,7 +339,7 @@ export class AlbumProjectionRepository {
         WHERE exclusion.series_id = projected.id AND exclusion.image_asset_id = transform.output_asset_id
       )
     ), activity_values(value) AS (
-      SELECT COALESCE(album.content_updated_at, album.updated_at)
+      SELECT COALESCE(album.content_updated_at, album.created_at)
       FROM projected_albums projected
       JOIN albums album ON album.id = projected.id
       UNION ALL
@@ -188,31 +348,12 @@ export class AlbumProjectionRepository {
       JOIN projected_albums album ON album.id = member.album_id
       WHERE member.deleted_at IS NULL
       UNION ALL
-      SELECT series.created_at
-      FROM projected_series projected
-      JOIN prompt_series series ON series.id = projected.id
+      ${projectedCreationItemActivityValues()}
       UNION ALL
-      SELECT version.created_at
-      FROM projected_series projected
-      JOIN prompt_versions version ON version.series_id = projected.id
-      UNION ALL
-      SELECT run.created_at
-      FROM projected_series projected
-      JOIN prompt_versions version ON version.series_id = projected.id
-      JOIN generation_runs run ON run.prompt_version_id = version.id
-      UNION ALL
-      SELECT imported.created_at
-      FROM projected_series projected
-      JOIN creation_output_imports imported ON imported.series_id = projected.id
-      WHERE imported.deleted_at IS NULL
-      UNION ALL
-      SELECT transform.created_at
-      FROM projected_series projected
-      JOIN image_transform_runs transform ON transform.series_id = projected.id
-      WHERE transform.deleted_at IS NULL
+      ${projectedSeriesActivityValues()}
     ) SELECT
       (SELECT count(*) FROM projected_materials) AS material_count,
-      (SELECT count(*) FROM projected_series) AS series_count,
+      (SELECT count(*) FROM projected_creation_items) AS creation_item_count,
       (SELECT MAX(value) FROM activity_values) AS activity_at`,
       )
       .get(albumId) as JsonMap;
@@ -225,7 +366,37 @@ export class AlbumProjectionRepository {
       JOIN projected_albums album ON album.id = member.album_id
       JOIN materials material ON material.id = member.target_id
         AND material.kind IN ('IMAGE', 'VIDEO') AND material.deleted_at IS NULL
+        AND material.archived_at IS NULL
       WHERE member.target_type = 'MATERIAL' AND member.deleted_at IS NULL
+    ), creative_assets(id, activity_at) AS (
+      SELECT reference.value, inspiration.updated_at
+      FROM projected_creation_items item
+      JOIN creation_forms form ON form.creation_item_id = item.id
+        AND form.role = 'INSPIRATION' AND form.entity_type = 'INSPIRATION_STASH'
+        AND form.deleted_at IS NULL
+      JOIN inspiration_stashes inspiration ON inspiration.id = form.entity_id
+        AND inspiration.status = 'ACTIVE' AND inspiration.deleted_at IS NULL
+      JOIN json_each(inspiration.input_json, '$.referenceAssetIds') reference
+      UNION ALL
+      SELECT media.value, post.updated_at
+      FROM projected_creation_items item
+      JOIN creation_forms form ON form.creation_item_id = item.id
+        AND form.role = 'SOCIAL_POST' AND form.entity_type = 'SOCIAL_POST'
+        AND form.deleted_at IS NULL
+      JOIN social_post_drafts post ON post.id = form.entity_id
+        AND post.status = 'ACTIVE' AND post.deleted_at IS NULL
+      JOIN social_post_revisions revision ON revision.id = post.current_revision_id
+      JOIN json_each(revision.content_json, '$.mediaAssetIds') media
+      UNION ALL
+      SELECT json_extract(binding.value, '$.assetId'), article.updated_at
+      FROM projected_creation_items item
+      JOIN creation_forms form ON form.creation_item_id = item.id
+        AND form.role = 'ARTICLE' AND form.entity_type = 'ARTICLE'
+        AND form.deleted_at IS NULL
+      JOIN articles article ON article.id = form.entity_id
+        AND article.status = 'ACTIVE' AND article.deleted_at IS NULL
+      JOIN article_revisions revision ON revision.id = article.current_revision_id
+      JOIN json_each(revision.content_json, '$.mediaBindings') binding
     ), series_assets(series_id, id, activity_at) AS (
       SELECT projected.id, run.result_asset_id, run.created_at
       FROM projected_series projected
@@ -273,9 +444,11 @@ export class AlbumProjectionRepository {
       UNION ALL
       SELECT id, 3, activity_at FROM ranked_series_assets WHERE series_order = 1
       UNION ALL
-      SELECT id, 4, activity_at FROM direct_assets
+      SELECT id, 4, activity_at FROM creative_assets
       UNION ALL
-      SELECT id, 5, activity_at FROM series_assets
+      SELECT id, 5, activity_at FROM direct_assets
+      UNION ALL
+      SELECT id, 6, activity_at FROM series_assets
     ), ranked_assets AS (
       SELECT id, MIN(priority) AS priority, MAX(activity_at) AS activity_at
       FROM preview_candidates GROUP BY id
@@ -289,14 +462,15 @@ export class AlbumProjectionRepository {
       .prepare(
         `${projectionCte}, document_assets(id, activity_at) AS (
       SELECT thumbnail.image_asset_id, document.updated_at
-      FROM album_members member
-      JOIN projected_albums album ON album.id = member.album_id
-      JOIN documents document ON document.id = member.target_id
+      FROM projected_creation_items item
+      JOIN creation_forms form ON form.creation_item_id = item.id
+        AND form.role = 'VIDEO_DOCUMENT' AND form.entity_type = 'VIDEO_DOCUMENT'
+        AND form.deleted_at IS NULL
+      JOIN documents document ON document.id = form.entity_id
         AND document.deleted_at IS NULL AND document.status = 'ACTIVE'
       JOIN document_thumbnails thumbnail ON thumbnail.document_id = document.id
       JOIN image_assets asset ON asset.id = thumbnail.image_asset_id
         AND asset.mime_type LIKE 'image/%' AND asset.deleted_at IS NULL
-      WHERE member.target_type = 'DOCUMENT' AND member.deleted_at IS NULL
     ), ranked_assets AS (
       SELECT id, MAX(activity_at) AS activity_at
       FROM document_assets GROUP BY id
@@ -308,7 +482,7 @@ export class AlbumProjectionRepository {
 
     return {
       materialCount: Number(count.material_count),
-      seriesCount: Number(count.series_count),
+      creationItemCount: Number(count.creation_item_count),
       previewAssets: previews.map(assetDto),
       documentPreviewAssets: documentPreviews.map(assetDto),
       activityAt: text(count.activity_at),
@@ -327,7 +501,8 @@ export class AlbumProjectionRepository {
       END
       FROM album_members member
       JOIN projected_albums album ON album.id = member.album_id
-      JOIN materials material ON material.id = member.target_id AND material.deleted_at IS NULL
+      JOIN materials material ON material.id = member.target_id
+        AND material.deleted_at IS NULL AND material.archived_at IS NULL
       LEFT JOIN image_assets asset ON asset.id = material.image_asset_id AND asset.deleted_at IS NULL
       WHERE member.target_type = 'MATERIAL' AND member.deleted_at IS NULL
         AND (material.kind = 'TEXT' OR asset.id IS NOT NULL)
@@ -366,10 +541,10 @@ export class AlbumProjectionRepository {
       )
     ), material_counts(root_id, material_count) AS (
       SELECT root_id, count(*) FROM projected_materials GROUP BY root_id
-    ), series_counts(root_id, series_count) AS (
-      SELECT root_id, count(*) FROM projected_series GROUP BY root_id
+    ), creation_item_counts(root_id, creation_item_count) AS (
+      SELECT root_id, count(*) FROM projected_creation_items GROUP BY root_id
     ), activity_values(root_id, value) AS (
-      SELECT projected.root_id, COALESCE(album.content_updated_at, album.updated_at)
+      SELECT projected.root_id, COALESCE(album.content_updated_at, album.created_at)
       FROM projected_albums projected
       JOIN albums album ON album.id = projected.id
       UNION ALL
@@ -378,37 +553,18 @@ export class AlbumProjectionRepository {
       JOIN projected_albums album ON album.id = member.album_id
       WHERE member.deleted_at IS NULL
       UNION ALL
-      SELECT projected.root_id, series.created_at
-      FROM projected_series projected
-      JOIN prompt_series series ON series.id = projected.id
+      ${projectedCreationItemActivityValues('projected.root_id')}
       UNION ALL
-      SELECT projected.root_id, version.created_at
-      FROM projected_series projected
-      JOIN prompt_versions version ON version.series_id = projected.id
-      UNION ALL
-      SELECT projected.root_id, run.created_at
-      FROM projected_series projected
-      JOIN prompt_versions version ON version.series_id = projected.id
-      JOIN generation_runs run ON run.prompt_version_id = version.id
-      UNION ALL
-      SELECT projected.root_id, imported.created_at
-      FROM projected_series projected
-      JOIN creation_output_imports imported ON imported.series_id = projected.id
-      WHERE imported.deleted_at IS NULL
-      UNION ALL
-      SELECT projected.root_id, transform.created_at
-      FROM projected_series projected
-      JOIN image_transform_runs transform ON transform.series_id = projected.id
-      WHERE transform.deleted_at IS NULL
+      ${projectedSeriesActivityValues('projected.root_id')}
     ), activity_summaries(root_id, activity_at) AS (
       SELECT root_id, MAX(value) FROM activity_values GROUP BY root_id
     ) SELECT root.root_id AS album_id,
         COALESCE(material.material_count, 0) AS material_count,
-        COALESCE(series.series_count, 0) AS series_count,
+        COALESCE(item.creation_item_count, 0) AS creation_item_count,
         activity.activity_at
       FROM projection_roots root
       LEFT JOIN material_counts material ON material.root_id = root.root_id
-      LEFT JOIN series_counts series ON series.root_id = root.root_id
+      LEFT JOIN creation_item_counts item ON item.root_id = root.root_id
       LEFT JOIN activity_summaries activity ON activity.root_id = root.root_id`,
       )
       .all(...albumIds) as JsonMap[];
@@ -417,7 +573,7 @@ export class AlbumProjectionRepository {
     for (const row of countRows) {
       summaries.set(text(row.album_id), {
         materialCount: Number(row.material_count),
-        seriesCount: Number(row.series_count),
+        creationItemCount: Number(row.creation_item_count),
         previewAssets: [],
         documentPreviewAssets: [],
         activityAt: text(row.activity_at),
@@ -432,7 +588,37 @@ export class AlbumProjectionRepository {
       JOIN projected_albums album ON album.id = member.album_id
       JOIN materials material ON material.id = member.target_id
         AND material.kind IN ('IMAGE', 'VIDEO') AND material.deleted_at IS NULL
+        AND material.archived_at IS NULL
       WHERE member.target_type = 'MATERIAL' AND member.deleted_at IS NULL
+    ), creative_assets(root_id, id, activity_at) AS (
+      SELECT item.root_id, reference.value, inspiration.updated_at
+      FROM projected_creation_items item
+      JOIN creation_forms form ON form.creation_item_id = item.id
+        AND form.role = 'INSPIRATION' AND form.entity_type = 'INSPIRATION_STASH'
+        AND form.deleted_at IS NULL
+      JOIN inspiration_stashes inspiration ON inspiration.id = form.entity_id
+        AND inspiration.status = 'ACTIVE' AND inspiration.deleted_at IS NULL
+      JOIN json_each(inspiration.input_json, '$.referenceAssetIds') reference
+      UNION ALL
+      SELECT item.root_id, media.value, post.updated_at
+      FROM projected_creation_items item
+      JOIN creation_forms form ON form.creation_item_id = item.id
+        AND form.role = 'SOCIAL_POST' AND form.entity_type = 'SOCIAL_POST'
+        AND form.deleted_at IS NULL
+      JOIN social_post_drafts post ON post.id = form.entity_id
+        AND post.status = 'ACTIVE' AND post.deleted_at IS NULL
+      JOIN social_post_revisions revision ON revision.id = post.current_revision_id
+      JOIN json_each(revision.content_json, '$.mediaAssetIds') media
+      UNION ALL
+      SELECT item.root_id, json_extract(binding.value, '$.assetId'), article.updated_at
+      FROM projected_creation_items item
+      JOIN creation_forms form ON form.creation_item_id = item.id
+        AND form.role = 'ARTICLE' AND form.entity_type = 'ARTICLE'
+        AND form.deleted_at IS NULL
+      JOIN articles article ON article.id = form.entity_id
+        AND article.status = 'ACTIVE' AND article.deleted_at IS NULL
+      JOIN article_revisions revision ON revision.id = article.current_revision_id
+      JOIN json_each(revision.content_json, '$.mediaBindings') binding
     ), series_assets(root_id, series_id, id, activity_at) AS (
       SELECT projected.root_id, projected.id, run.result_asset_id, run.created_at
       FROM projected_series projected
@@ -481,9 +667,11 @@ export class AlbumProjectionRepository {
       UNION ALL
       SELECT root_id, id, 3, activity_at FROM ranked_series_assets WHERE series_order = 1
       UNION ALL
-      SELECT root_id, id, 4, activity_at FROM direct_assets
+      SELECT root_id, id, 4, activity_at FROM creative_assets
       UNION ALL
-      SELECT root_id, id, 5, activity_at FROM series_assets
+      SELECT root_id, id, 5, activity_at FROM direct_assets
+      UNION ALL
+      SELECT root_id, id, 6, activity_at FROM series_assets
     ), ranked_assets(root_id, id, priority, activity_at) AS (
       SELECT root_id, id, MIN(priority), MAX(activity_at)
       FROM preview_candidates GROUP BY root_id, id
@@ -494,15 +682,16 @@ export class AlbumProjectionRepository {
         ) AS preview_order
       FROM ranked_assets
     ), document_assets(root_id, id, activity_at) AS (
-      SELECT album.root_id, thumbnail.image_asset_id, document.updated_at
-      FROM album_members member
-      JOIN projected_albums album ON album.id = member.album_id
-      JOIN documents document ON document.id = member.target_id
+      SELECT item.root_id, thumbnail.image_asset_id, document.updated_at
+      FROM projected_creation_items item
+      JOIN creation_forms form ON form.creation_item_id = item.id
+        AND form.role = 'VIDEO_DOCUMENT' AND form.entity_type = 'VIDEO_DOCUMENT'
+        AND form.deleted_at IS NULL
+      JOIN documents document ON document.id = form.entity_id
         AND document.deleted_at IS NULL AND document.status = 'ACTIVE'
       JOIN document_thumbnails thumbnail ON thumbnail.document_id = document.id
       JOIN image_assets asset ON asset.id = thumbnail.image_asset_id
         AND asset.mime_type LIKE 'image/%' AND asset.deleted_at IS NULL
-      WHERE member.target_type = 'DOCUMENT' AND member.deleted_at IS NULL
     ), ranked_document_assets(root_id, id, activity_at) AS (
       SELECT root_id, id, MAX(activity_at)
       FROM document_assets GROUP BY root_id, id
@@ -527,12 +716,7 @@ export class AlbumProjectionRepository {
       )
       .all(...albumIds) as JsonMap[];
 
-    for (const row of previewRows) {
-      const summary = summaries.get(text(row.album_id));
-      if (!summary) continue;
-      const target = text(row.preview_kind) === 'DOCUMENT' ? summary.documentPreviewAssets : summary.previewAssets;
-      target.push(assetDto(row));
-    }
+    appendPreviewRows(summaries, previewRows);
     return summaries;
   }
 
@@ -545,7 +729,7 @@ export class AlbumProjectionRepository {
       FROM album_members member
       JOIN projected_albums album ON album.id = member.album_id
       JOIN materials material ON material.id = member.target_id
-        AND material.kind = 'TEXT' AND material.deleted_at IS NULL
+        AND material.kind = 'TEXT' AND material.deleted_at IS NULL AND material.archived_at IS NULL
       WHERE member.target_type = 'MATERIAL' AND member.deleted_at IS NULL
       GROUP BY material.id, material.text_content, material.created_at
       ORDER BY membership_updated_at DESC, material.id DESC`,

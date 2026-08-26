@@ -168,7 +168,7 @@ const gallerySearchPredicate = `(
     SELECT 1 FROM materials search_material
     JOIN external_material_metadata search_metadata ON search_metadata.material_id = search_material.id
     WHERE search_material.image_asset_id = asset.id
-      AND search_material.kind IN ('IMAGE', 'VIDEO') AND search_material.deleted_at IS NULL
+      AND search_material.kind IN ('IMAGE', 'VIDEO') AND search_material.deleted_at IS NULL AND search_material.archived_at IS NULL
       AND (
         LOWER(COALESCE(search_metadata.display_name, '')) LIKE ? ESCAPE '\\'
         OR LOWER(COALESCE(search_metadata.original_name, '')) LIKE ? ESCAPE '\\'
@@ -176,7 +176,7 @@ const gallerySearchPredicate = `(
   )
   OR EXISTS (
     SELECT 1 FROM prompt_series search_series
-    WHERE search_series.deleted_at IS NULL
+    WHERE search_series.deleted_at IS NULL AND search_series.archived_at IS NULL
       AND (
         LOWER(COALESCE(search_series.title, '')) LIKE ? ESCAPE '\\'
         OR EXISTS (
@@ -257,7 +257,7 @@ const transitionPreviewDictionaryReachabilityPredicate = `EXISTS (
 const transitionPreviewMaterialReachabilityPredicate = `EXISTS (
   SELECT 1 FROM materials transition_material
   WHERE transition_material.image_asset_id = asset.id
-    AND transition_material.kind IN ('IMAGE', 'VIDEO') AND transition_material.deleted_at IS NULL
+    AND transition_material.kind IN ('IMAGE', 'VIDEO') AND transition_material.deleted_at IS NULL AND transition_material.archived_at IS NULL
 )`;
 
 const transitionPreviewOwnerRatingReachabilityPredicate = `EXISTS (
@@ -531,7 +531,7 @@ export class GalleryRepository {
           ) AS position
         FROM material_favorites favorite
         JOIN materials material ON material.id = favorite.material_id
-        WHERE favorite.deleted_at IS NULL AND material.deleted_at IS NULL
+        WHERE favorite.deleted_at IS NULL AND material.deleted_at IS NULL AND material.archived_at IS NULL
           AND material.kind IN ('IMAGE', 'VIDEO') AND material.image_asset_id IS NOT NULL
       ),
       favorite AS (
@@ -570,7 +570,7 @@ export class GalleryRepository {
       LEFT JOIN dictionary ON dictionary.asset_id = asset.id
       LEFT JOIN favorite ON favorite.asset_id = asset.id
       LEFT JOIN materials gallery_material ON gallery_material.image_asset_id = asset.id
-        AND gallery_material.kind IN ('IMAGE', 'VIDEO') AND gallery_material.deleted_at IS NULL
+        AND gallery_material.kind IN ('IMAGE', 'VIDEO') AND gallery_material.deleted_at IS NULL AND gallery_material.archived_at IS NULL
       LEFT JOIN external_material_metadata external_metadata
         ON external_metadata.material_id = gallery_material.id
       LEFT JOIN image_ratings aesthetic_rating ON aesthetic_rating.image_asset_id = asset.id
@@ -625,7 +625,7 @@ export class GalleryRepository {
         SELECT 1 FROM materials visible_material
         WHERE visible_material.image_asset_id = asset.id
           AND visible_material.kind IN ('IMAGE', 'VIDEO')
-          AND visible_material.deleted_at IS NULL
+          AND visible_material.deleted_at IS NULL AND visible_material.archived_at IS NULL
       )
     )`;
     const total =
@@ -672,7 +672,7 @@ export class GalleryRepository {
   private countPredicate(source: GallerySourceFilter) {
     const creation = `EXISTS (
       SELECT 1 FROM prompt_series series
-      WHERE series.deleted_at IS NULL AND (
+      WHERE series.deleted_at IS NULL AND series.archived_at IS NULL AND (
         EXISTS (
           SELECT 1 FROM generation_runs run
           JOIN prompt_versions version ON version.id = run.prompt_version_id
@@ -703,12 +703,13 @@ export class GalleryRepository {
       SELECT 1 FROM materials material
       JOIN material_favorites selected_favorite ON selected_favorite.material_id = material.id
       WHERE material.image_asset_id = asset.id AND material.kind IN ('IMAGE', 'VIDEO')
-        AND material.deleted_at IS NULL AND selected_favorite.deleted_at IS NULL
+        AND material.deleted_at IS NULL AND material.archived_at IS NULL
+        AND selected_favorite.deleted_at IS NULL
     )`;
     const material = `EXISTS (
       SELECT 1 FROM materials selected_material
       WHERE selected_material.image_asset_id = asset.id AND selected_material.kind IN ('IMAGE', 'VIDEO')
-        AND selected_material.deleted_at IS NULL
+        AND selected_material.deleted_at IS NULL AND selected_material.archived_at IS NULL
     )`;
     if (source === 'CREATION') return creation;
     if (source === 'DICTIONARY') return dictionary;

@@ -1,6 +1,11 @@
 import { execFileSync } from 'node:child_process';
+import { existsSync } from 'node:fs';
 
-const trackedFiles = execFileSync('git', ['ls-files', '-z'], { encoding: 'utf8' }).split('\0').filter(Boolean);
+const repositoryFiles = execFileSync('git', ['ls-files', '-z', '--cached', '--others', '--exclude-standard'], {
+  encoding: 'utf8',
+})
+  .split('\0')
+  .filter((file) => file && existsSync(file));
 
 const allowedTestAssets = [
   /^tests\/smoke\//,
@@ -18,7 +23,7 @@ const testAssetCandidates = [
   /^scripts\/(?:generate-image-fixtures|manual-openai-image-acceptance)\.mjs$/,
 ];
 
-const disallowed = trackedFiles.filter(
+const disallowed = repositoryFiles.filter(
   (file) =>
     testAssetCandidates.some((pattern) => pattern.test(file)) &&
     !allowedTestAssets.some((pattern) => pattern.test(file)),

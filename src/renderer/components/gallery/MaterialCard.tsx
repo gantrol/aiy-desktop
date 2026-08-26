@@ -1,4 +1,5 @@
 import {
+  ArchiveIcon,
   BookOpenIcon,
   CheckIcon,
   CopyIcon,
@@ -8,6 +9,7 @@ import {
   ImageIcon,
   SquarePenIcon,
   VideoIcon,
+  Trash2Icon,
 } from 'lucide-react';
 import { memo, useState } from 'react';
 import type { DragEvent as ReactDragEvent } from 'react';
@@ -26,6 +28,7 @@ import { ActionContextMenuItems, type ActionMenuAction } from '@/renderer/compon
 import { ContextMenu, ContextMenuContent, ContextMenuTrigger } from '@/renderer/components/ui/context-menu';
 import type { GalleryViewMode } from '@/renderer/components/gallery/galleryPreferences';
 import {
+  hasMaterialLifecycleEntity,
   materialTitle,
   selectionModifiers,
   type MaterialLibraryItem,
@@ -45,6 +48,9 @@ interface Props {
   onEnterSelection(item: MaterialLibraryItem): void;
   onToggleSelection(item: MaterialLibraryItem): void;
   onCopyText(text: string): void;
+  onArchive?(item: MaterialLibraryItem): void;
+  onDelete?(item: MaterialLibraryItem): void;
+  lifecycleBusy?: boolean;
   notify(message: string): void;
   onDragStart?(event: ReactDragEvent<HTMLElement>, item: MaterialLibraryItem): void;
   revealContext?: AssetFileRevealContext;
@@ -185,6 +191,9 @@ function MaterialCardImpl({
   onEnterSelection,
   onToggleSelection,
   onCopyText,
+  onArchive,
+  onDelete,
+  lifecycleBusy = false,
   notify,
   onDragStart,
   revealContext,
@@ -262,11 +271,41 @@ function MaterialCardImpl({
         ]
       : []),
   ];
+  const lifecycleAvailable = hasMaterialLifecycleEntity(item);
+  const lifecycleActions: ActionMenuAction[] = [
+    ...(onArchive && lifecycleAvailable
+      ? [
+          {
+            id: 'archive-material',
+            label: messages.contentManagement.actions.archive,
+            icon: ArchiveIcon,
+            disabled: lifecycleBusy,
+            onSelect: () => onArchive(item),
+          } satisfies ActionMenuAction,
+        ]
+      : []),
+    ...(onDelete && lifecycleAvailable
+      ? [
+          {
+            id: 'delete-material',
+            label: messages.contentManagement.actions.delete,
+            icon: Trash2Icon,
+            destructive: true,
+            disabled: lifecycleBusy,
+            onSelect: () => onDelete(item),
+          } satisfies ActionMenuAction,
+        ]
+      : []),
+  ];
   const textActions: ActionMenuAction[] =
     item.kind === 'TEXT'
       ? [
           ...commonActions,
           { id: 'copy', label: l.copyText, icon: CopyIcon, onSelect: () => onCopyText(item.text.text) },
+          ...lifecycleActions.map((action, index) => ({
+            ...action,
+            separatorBefore: index === 0,
+          })),
         ]
       : commonActions;
 
@@ -340,6 +379,7 @@ function MaterialCardImpl({
         assetId={image.asset.id}
         notify={notify}
         actions={commonActions}
+        lifecycleActions={onArchive || onDelete ? lifecycleActions : undefined}
         revealContext={revealContext}
         copyable={!video}
         usableInCreation={!video}
@@ -441,6 +481,7 @@ function MaterialCardImpl({
       assetId={imageItem.asset.id}
       notify={notify}
       actions={commonActions}
+      lifecycleActions={onArchive || onDelete ? lifecycleActions : undefined}
       revealContext={revealContext}
       copyable={!video}
       usableInCreation={!video}

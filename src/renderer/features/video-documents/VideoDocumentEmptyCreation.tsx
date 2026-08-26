@@ -1,4 +1,4 @@
-import { CaptionsIcon, FileTextIcon, LanguagesIcon, LoaderCircleIcon, SparklesIcon, UploadIcon } from 'lucide-react';
+import { CaptionsIcon, FileTextIcon, LanguagesIcon, LoaderCircleIcon, UploadIcon } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import type {
   VideoDocumentTranscriptBackgroundTaskStatus,
@@ -91,7 +91,7 @@ export function VideoDocumentEmptyCreation({
       <section className="m-auto grid w-full max-w-2xl gap-6" aria-labelledby="video-document-creation-title">
         <header className="flex items-center gap-3">
           <span className="grid size-10 place-items-center rounded-full bg-selected text-selected-foreground">
-            <SparklesIcon className="size-5" />
+            <FileTextIcon className="size-5" />
           </span>
           <div>
             <h2 id="video-document-creation-title" className="text-xl font-semibold">
@@ -172,7 +172,7 @@ export function VideoDocumentEmptyCreation({
             </Button>
           ) : (
             <Button type="button" disabled={!canStart} onClick={() => void start()}>
-              {starting ? <LoaderCircleIcon className="size-4 animate-spin" /> : <SparklesIcon className="size-4" />}
+              {starting ? <LoaderCircleIcon className="size-4 animate-spin" /> : <FileTextIcon className="size-4" />}
               {starting ? labels.starting : selection.article ? labels.startBoth : labels.startTranscript}
             </Button>
           )}

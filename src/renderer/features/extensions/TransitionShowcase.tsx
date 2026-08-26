@@ -333,7 +333,7 @@ function TransitionShowcaseStage({
           type="button"
           variant="outline"
           size="icon-sm"
-          className="absolute right-3 top-3 z-[60] bg-overlay/95 shadow-sm backdrop-blur-sm"
+          className="absolute right-3 top-3 z-[60] bg-overlay/95 shadow-overlay backdrop-blur-sm"
           aria-label={fullscreen ? l.exitFullscreen : l.enterFullscreen}
           aria-pressed={fullscreen}
           title={fullscreen ? l.exitFullscreen : l.enterFullscreen}

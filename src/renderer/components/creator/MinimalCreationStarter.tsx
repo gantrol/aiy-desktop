@@ -13,13 +13,14 @@ import { AssistantWritingAction } from '@/renderer/components/creator/AssistantW
 import { AnnotationRefinementInput } from '@/renderer/components/creator/AnnotationRefinementInput';
 import type { AnnotationRefinementState } from '@/renderer/components/creator/annotationRefinement';
 import type { CreationAssistantMode } from '@/renderer/components/creator/CreationCollaborationPanel';
-import { CreationOutcomePlanner } from '@/renderer/components/creator/CreationOutcomePicker';
+import { CreationOutcomePlanner, type CreationOutcomePlan } from '@/renderer/components/creator/CreationOutcomePicker';
 import {
   CreatorPromptComposer,
   type CreatorPromptComposerHandle,
 } from '@/renderer/components/creator/CreatorPromptComposer';
 import { GenerationLauncher } from '@/renderer/components/creator/GenerationLauncher';
 import type { GenerationReadiness } from '@/renderer/components/creator/generationReadiness';
+import { InspirationStashAction } from '@/renderer/components/creator/InspirationStashAction';
 import type { AppliedWordPalette } from '@/renderer/components/creator/utils';
 import { Button } from '@/renderer/components/ui/button';
 import { ScrollArea } from '@/renderer/components/ui/scroll-area';
@@ -44,6 +45,9 @@ interface Props {
   generationTargets: GenerationTargetInput[];
   generationCount: number;
   readiness: GenerationReadiness;
+  stashReady: boolean;
+  stashing: boolean;
+  stashed: boolean;
   starting: boolean;
   planning: boolean;
   startReady: boolean;
@@ -67,7 +71,8 @@ interface Props {
   onGenerationTargetsChange(targets: GenerationTargetInput[]): void;
   onConfigureExtension(extensionId: string): void;
   onGenerate(): void;
-  onStartCreation(): void;
+  onStashInspiration(): void;
+  onStartCreation(plan: CreationOutcomePlan): void;
   onChooseVideoDocument(): void;
   onFullWindowChange(open: boolean): void;
 }
@@ -90,6 +95,9 @@ export function MinimalCreationStarter({
   generationTargets,
   generationCount,
   readiness,
+  stashReady,
+  stashing,
+  stashed,
   starting,
   planning,
   startReady,
@@ -113,6 +121,7 @@ export function MinimalCreationStarter({
   onGenerationTargetsChange,
   onConfigureExtension,
   onGenerate,
+  onStashInspiration,
   onStartCreation,
   onChooseVideoDocument,
   onFullWindowChange,
@@ -251,6 +260,17 @@ export function MinimalCreationStarter({
                 generationCount={generationCount}
                 readiness={readiness}
                 starting={starting}
+                interactionBlocked={stashing}
+                secondaryAction={
+                  <InspirationStashAction
+                    locale={locale}
+                    ready={stashReady}
+                    busy={stashing}
+                    saved={stashed}
+                    blocked={starting}
+                    onClick={onStashInspiration}
+                  />
+                }
                 onGenerationTargetsChange={onGenerationTargetsChange}
                 onConfigureExtension={onConfigureExtension}
                 onGenerate={onGenerate}
@@ -260,8 +280,12 @@ export function MinimalCreationStarter({
           {planning && (
             <CreationOutcomePlanner
               locale={locale}
+              stashReady={stashReady}
+              stashing={stashing}
+              stashed={stashed}
               startReady={startReady}
               starting={starting}
+              onStashInspiration={onStashInspiration}
               onStartCreation={onStartCreation}
               onChooseVideoDocument={onChooseVideoDocument}
             />

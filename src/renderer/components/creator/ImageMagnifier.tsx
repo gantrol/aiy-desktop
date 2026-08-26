@@ -124,7 +124,7 @@ export function ImageMagnifier({ diameter, label, layers, point, scale, classNam
       role="img"
       aria-label={label}
       className={cn(
-        'relative isolate shrink-0 overflow-hidden rounded-full border border-border-strong bg-surface-sunken shadow-sm',
+        'relative isolate shrink-0 overflow-hidden rounded-full border border-border-strong bg-surface-sunken',
         className,
       )}
       style={{ width: diameter, height: diameter }}

@@ -65,6 +65,7 @@ export function mergeGenerationProjection(
         ...current,
         series: projection.series,
         albums: projection.albums,
+        creationItems: projection.creationItems,
         styleExplorationBatches: projection.styleExplorationBatches,
         agentTasks: projection.agentTasks,
       }
