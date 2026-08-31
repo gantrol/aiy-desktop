@@ -388,10 +388,7 @@ export class GalleryRepository {
     this.db = storage.db;
   }
 
-  /**
-   * Score-weighted previews that exhaust distinct creation sessions before taking another from one session.
-   * Unrated assets use weight 0.5, half the selection rate of a one-star asset.
-   */
+  /** Score-weighted, session-diverse previews rank outputs, dictionary images, and owner-rated images first. */
   listTransitionPreviewSources(limit = 24): TransitionPreviewSource[] {
     const normalizedLimit = Math.max(1, Math.min(24, Math.trunc(limit)));
     const rows = this.db
@@ -417,6 +414,7 @@ export class GalleryRepository {
               CASE WHEN creation.series_id IS NOT NULL THEN 'series:' || creation.series_id END,
               'asset:' || asset.id
             ) AS session_key,
+            CASE WHEN creation.is_output = 1 OR ${transitionPreviewDictionaryReachabilityPredicate} OR ${transitionPreviewOwnerRatingReachabilityPredicate} THEN 0 WHEN creation.asset_id IS NOT NULL THEN 1 ELSE 2 END AS presentation_tier,
             -ln(
               (CAST(random() AS REAL) + 9223372036854775809.0) / 18446744073709551618.0
             ) / COALESCE(AVG(CAST(transition_rating.score AS REAL)), 0.5) AS selection_key
@@ -436,12 +434,12 @@ export class GalleryRepository {
           SELECT candidate.*,
             ROW_NUMBER() OVER (
               PARTITION BY candidate.session_key
-              ORDER BY candidate.selection_key, candidate.id
+              ORDER BY candidate.presentation_tier, candidate.selection_key, candidate.id
             ) AS position
           FROM transition_preview_candidates candidate
         )
         SELECT id, relative_path, width, height FROM transition_preview_ranked
-        ORDER BY position, selection_key, id
+        ORDER BY position, presentation_tier, selection_key, id
         LIMIT ?`,
       )
       .all(normalizedLimit) as JsonMap[];
@@ -449,8 +447,7 @@ export class GalleryRepository {
     const pathBoundary = `${libraryRoot}${path.sep}`;
     return rows.flatMap((row) => {
       const sourcePath = path.resolve(libraryRoot, text(row.relative_path));
-      const width = Number(row.width);
-      const height = Number(row.height);
+      const [width, height] = [Number(row.width), Number(row.height)];
       if (!sourcePath.startsWith(pathBoundary) || !Number.isInteger(width) || !Number.isInteger(height)) return [];
       return [{ assetId: text(row.id), sourcePath, width, height }];
     });

@@ -15,6 +15,9 @@ const paletteReferenceSchema = z
     promptLocale: localeSchema,
   })
   .strict();
+const draftConsumptionSchema = {
+  consumeCreationDraftId: idSchema.nullable().default(null),
+};
 
 export const inspirationStashContentSchema = z
   .object({
@@ -34,6 +37,7 @@ export const inspirationStashSaveInputSchema = z.discriminatedUnion('mode', [
       mode: z.literal('UPDATE'),
       id: idSchema,
       content: inspirationStashContentSchema,
+      ...draftConsumptionSchema,
     })
     .strict(),
   z
@@ -41,6 +45,7 @@ export const inspirationStashSaveInputSchema = z.discriminatedUnion('mode', [
       mode: z.literal('CREATE_STANDALONE'),
       albumId: idSchema.nullable(),
       content: inspirationStashContentSchema,
+      ...draftConsumptionSchema,
     })
     .strict(),
   z
@@ -48,6 +53,7 @@ export const inspirationStashSaveInputSchema = z.discriminatedUnion('mode', [
       mode: z.literal('ADD_FORM'),
       creationItemId: idSchema,
       content: inspirationStashContentSchema,
+      ...draftConsumptionSchema,
     })
     .strict(),
 ]);

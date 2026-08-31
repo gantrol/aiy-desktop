@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { ChevronDownIcon, CircleIcon, FileTextIcon, ImageIcon, PencilLineIcon } from 'lucide-react';
-import { AssetMedia } from '@/renderer/components/media/AssetMedia';
+import { AssetMedia, isVideoAsset } from '@/renderer/components/media/AssetMedia';
+import { mediaThumbnailUrl } from '@/renderer/components/media/mediaThumbnailUrl';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/renderer/components/ui/collapsible';
 import { ScrollArea } from '@/renderer/components/ui/scroll-area';
 import { cn } from '@/renderer/lib/utils';
@@ -21,6 +22,8 @@ interface Props {
   now: number;
   onSelect(recordId: string): void;
 }
+
+const AI_ACTIVITY_COVER_THUMBNAIL_SIZE = 96;
 
 function groupRecords(group: AiActivityOutcomeGroup) {
   const records: AiActivityRecord[] = [];
@@ -166,6 +169,11 @@ export function AiActivityOutline({
                     {group.cover ? (
                       <AssetMedia
                         asset={group.cover}
+                        src={
+                          isVideoAsset(group.cover)
+                            ? group.cover.mediaUrl
+                            : mediaThumbnailUrl(group.cover, AI_ACTIVITY_COVER_THUMBNAIL_SIZE)
+                        }
                         alt={title}
                         loading="lazy"
                         className="size-full bg-media-surround-light object-contain"

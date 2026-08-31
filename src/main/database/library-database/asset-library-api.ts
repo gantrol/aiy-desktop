@@ -36,6 +36,7 @@ import type {
   MaterialAlbumMoveInput,
   MaterialAlbumRemoveInput,
   MaterialAlbumRenameInput,
+  MaterialImageAssetsResolveInput,
   RecycleBinListInput,
   RecycleBinPurgeInput,
   RecycleBinPurgePlanInput,
@@ -321,6 +322,10 @@ export function createAssetLibraryApi(
 
     addMaterialsToDestinations(input: AddMaterialsToDestinationsInput) {
       return repositories.materialMemberships.addToDestinations(input);
+    },
+
+    resolveMaterialImageAssets(input: MaterialImageAssetsResolveInput) {
+      return repositories.materialMemberships.resolveImageAssets(input.targets);
     },
 
     createAlbumFromMaterials(input: AlbumCreateFromMaterialsInput) {

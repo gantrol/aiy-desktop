@@ -5,7 +5,9 @@ import path from 'node:path';
 import { DeepSeekAssistantAdapter } from '@/main/assistant-models/deepseek';
 import { AntigravityAssistantAdapter } from '@/main/assistant-models/antigravity';
 import { GoogleGeminiAssistantAdapter } from '@/main/assistant-models/google-gemini';
+import { ImageBreakdownModelAdapter } from '@/main/assistant-models/image-breakdown';
 import { CodexAdapter } from '@/main/assistant/codex';
+import { AgentGenerationService } from '@/main/agent/agent-generation-service';
 import { LibraryDatabase } from '@/main/database';
 import { DeepSeekApiRuntime } from '@/main/extensions/deepseek-api/runtime';
 import { AntigravityCliRuntime } from '@/main/extensions/antigravity-cli/runtime';
@@ -331,6 +333,7 @@ function createWorkerRuntimes(libraryRoot: string) {
     openAiImageApi: new OpenAiImageApiRuntime(),
     externalImageApis,
     googleGemini: new GoogleGeminiAssistantAdapter(externalImageApis),
+    imageBreakdown: new ImageBreakdownModelAdapter(externalImageApis, deepSeekApi, antigravity, libraryRoot),
   };
 }
 
@@ -432,6 +435,7 @@ export async function runModelWorker() {
       internalModelsEnabled: config.internalModelsEnabled,
     });
     generation = new GenerationCoordinator(database, imageGenerationRoutes);
+    const agent = new AgentGenerationService(database, generation);
     const videoDocuments = new VideoDocumentGenerationService(database, codex);
     const videoDocumentTranslations = new VideoDocumentTranscriptTranslationService(database, codex);
     generation.on('changed', (event) => {
@@ -444,18 +448,13 @@ export async function runModelWorker() {
     });
     dispatchRequest = createModelWorkerRequestDispatcher({
       database,
+      agent,
       generation,
       videoDocuments,
       videoDocumentTranslations,
       codex,
-      deepSeek: runtimes.deepSeek,
-      antigravity: runtimes.antigravity,
-      antigravityAssistant: runtimes.antigravityAssistant,
-      googleGemini: runtimes.googleGemini,
+      ...runtimes,
       extensions,
-      openAiImageApi: runtimes.openAiImageApi,
-      deepSeekApi: runtimes.deepSeekApi,
-      externalImageApis: runtimes.externalImageApis,
       libraryRoot: config.libraryRoot,
       imageTransformWorkerPath: config.imageTransformWorkerPath,
       activeRequestCount: () => activeRequests.size,

@@ -88,7 +88,6 @@ export function CreationLibraryChildDisclosure({
 
 interface ChildListProps extends Props {
   children: ReactNode;
-  expanded: boolean;
   hasVisibleChildren: boolean;
   onCollapse(): void;
   showDisclosure: boolean;
@@ -99,7 +98,6 @@ export function CreationLibraryChildList({
   children,
   branchTopology,
   collapseLabel,
-  expanded,
   hasVisibleChildren,
   label,
   loading,
@@ -110,7 +108,7 @@ export function CreationLibraryChildList({
   onReset,
   showDisclosure,
 }: ChildListProps) {
-  if (!expanded || (!hasVisibleChildren && !showDisclosure)) return null;
+  if (!hasVisibleChildren && !showDisclosure) return null;
   return (
     <TreeBranchContent>
       <TreeBranchCollapseProvider onCollapse={onCollapse}>

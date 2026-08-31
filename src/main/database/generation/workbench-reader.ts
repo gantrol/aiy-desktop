@@ -40,6 +40,7 @@ import {
 } from '@/main/database/creations/creation-output-presentation-sql';
 import { CODEX_APP_SERVER_EXTENSION_ID } from '@/shared/extension-ids';
 import { findSvgRasterCachePath } from '@/main/media/svg-raster-cache';
+import { BackgroundIssueRepository } from '@/main/database/background-issues/background-issue-repository';
 
 class StructuralInterner<T> {
   private readonly values = new Map<string, T>();
@@ -114,6 +115,7 @@ export class WorkbenchReader {
     protected readonly storage: LibraryStorage,
     protected readonly executionSnapshots: ExecutionSnapshotRepository,
     protected readonly generationJobs: GenerationJobRepository,
+    protected readonly backgroundIssues = new BackgroundIssueRepository(storage),
   ) {}
 
   protected get db() {
@@ -669,6 +671,7 @@ export class WorkbenchReader {
         ORDER BY run.prompt_version_id, COALESCE(asset.created_at, run.created_at) DESC, run.created_at DESC, run.id DESC`,
       )
       .all(CODEX_APP_SERVER_EXTENSION_ID) as JsonMap[];
+    const issuesByRunId = this.backgroundIssues.generationIssuesForRows(runRows);
     for (const row of runRows) {
       const runId = text(row.id);
       const asset = joinedAssetDto(row);
@@ -703,6 +706,7 @@ export class WorkbenchReader {
         codexTask: row.codex_thread_id
           ? { threadId: text(row.codex_thread_id), threadName: text(row.codex_thread_name) }
           : null,
+        backgroundIssue: issuesByRunId.get(runId) ?? null,
       });
     }
     return runsByVersion;

@@ -118,11 +118,10 @@ export function AssetFileCapabilityLayer({
     if (element.closest('[data-asset-file-menu]')) return;
     const assetId = assetMediaTarget(element)?.assetId;
     if (!assetId) return;
-    const request = startImageAssetDrag(event, [assetId]);
-    if (request) {
-      void request.catch((reason) => {
-        notify(`${labels.failed}: ${reason instanceof Error ? reason.message : String(reason)}`);
-      });
+    try {
+      startImageAssetDrag(event, [assetId]);
+    } catch (reason) {
+      notify(`${labels.failed}: ${reason instanceof Error ? reason.message : String(reason)}`);
     }
   }
 

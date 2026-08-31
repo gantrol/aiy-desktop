@@ -10,6 +10,7 @@ import {
   ANTIGRAVITY_CLI_EXTENSION_ID,
   CODEX_APP_SERVER_EXTENSION_ID,
   CODEX_IMAGE_DISCOVERY_EXTENSION_ID,
+  CODEX_VISUALIZATION_DISCOVERY_EXTENSION_ID,
   DEEPSEEK_API_EXTENSION_ID,
   EXTERNAL_IMAGE_API_EXTENSION_IDS,
   OPENAI_IMAGE_API_EXTENSION_ID,
@@ -26,13 +27,19 @@ import {
 } from '@/main/extensions/package-loader';
 import { LocalExtensionPackageManager } from '@/main/extensions/local-package-manager';
 import type { ExtensionInstallationState } from '@/main/database/extensions/extension-repository';
+import {
+  extensionRuntimePermissionMatchesTemplate,
+  isExtensionPermissionTemplate,
+} from '@/shared/extension-permissions';
 
 interface ExtensionRegistryOptions {
   codexHealth(): CodexHealth;
   antigravityCliStatus?(): AntigravityCliStatusDto;
   codexImageDiscoveryStatus?(): { available: boolean; message: string };
+  codexVisualizationDiscoveryStatus?(): { available: boolean; message: string };
   openAiImageApiStatus?(): { configured: boolean; usable: boolean; message: string };
   deepSeekApiStatus?(): { configured: boolean; ready: boolean; message: string };
+  articleDeliveryStatus?(extensionId: string): { configured: boolean; ready: boolean; message: string };
   externalImageApiStatus?(extensionId: ExternalImageApiExtensionId): {
     configured: boolean;
     usable: boolean;
@@ -43,6 +50,7 @@ interface ExtensionRegistryOptions {
 }
 
 const externalImageApiExtensionIds = new Set<string>(EXTERNAL_IMAGE_API_EXTENSION_IDS);
+const disabledByDefaultExtensionIds = new Set<string>(EXTERNAL_IMAGE_API_EXTENSION_IDS);
 
 export class ExtensionRegistry {
   private manifests: readonly ExtensionManifestDto[] = [];
@@ -129,7 +137,9 @@ export class ExtensionRegistry {
       definitions.map(({ manifest, source }) => ({
         manifest,
         source,
-        enabledByDefault: !externalImageApiExtensionIds.has(manifest.id),
+        enabledByDefault:
+          manifest.kind === 'LANGUAGE' || (source === 'BUILT_IN' && !disabledByDefaultExtensionIds.has(manifest.id)),
+        grantRequiredPermissionsByDefault: source === 'BUILT_IN',
       })),
     );
     const installationById = this.refreshInstallations();
@@ -182,17 +192,29 @@ export class ExtensionRegistry {
     return this.manifests.map((manifest) => {
       const installation = installations.get(manifest.id);
       if (!installation) throw new Error(`Built-in extension was not reconciled: ${manifest.id}`);
+      const declaredPermissionKeys = new Set([...manifest.permissions, ...manifest.optionalPermissions]);
       const permissions = [
-        ...manifest.permissions.map((key) => ({
-          key,
-          required: true,
-          granted: installation.permissions.get(key) === true,
-        })),
-        ...manifest.optionalPermissions.map((key) => ({
-          key,
-          required: false,
-          granted: installation.permissions.get(key) === true,
-        })),
+        ...manifest.permissions
+          .filter((key) => !isExtensionPermissionTemplate(key))
+          .map((key) => ({
+            key,
+            required: true,
+            granted: installation.permissions.get(key) === true,
+            runtimeScoped: false,
+          })),
+        ...manifest.optionalPermissions
+          .filter((key) => !isExtensionPermissionTemplate(key))
+          .map((key) => ({
+            key,
+            required: false,
+            granted: installation.permissions.get(key) === true,
+            runtimeScoped: false,
+          })),
+        ...[...installation.permissions.entries()].flatMap(([key, granted]) =>
+          granted && !declaredPermissionKeys.has(key) && this.isRuntimePermission(manifest, key)
+            ? [{ key, required: false, granted, runtimeScoped: true }]
+            : [],
+        ),
       ];
       const compatible = extensionSupportsHost(manifest.engines[EXTENSION_HOST_ENGINE_KEY], EXTENSION_HOST_VERSION);
       const requiredPermissionsGranted = permissions.every((permission) => !permission.required || permission.granted);
@@ -264,9 +286,54 @@ export class ExtensionRegistry {
 
   isPermissionGranted(extensionId: string, permission: string) {
     const manifest = this.requireManifest(extensionId);
-    if (![...manifest.permissions, ...manifest.optionalPermissions].includes(permission)) return false;
+    const declared = [...manifest.permissions, ...manifest.optionalPermissions].includes(permission);
+    if ((!declared || isExtensionPermissionTemplate(permission)) && !this.isRuntimePermission(manifest, permission)) {
+      return false;
+    }
     const installation = this.installationById.get(extensionId);
     return installation?.permissions.get(permission) === true;
+  }
+
+  declaresPermission(extensionId: string, permission: string) {
+    const manifest = this.requireManifest(extensionId);
+    return [...manifest.permissions, ...manifest.optionalPermissions].includes(permission);
+  }
+
+  grantRuntimePermission(extensionId: string, template: string, permission: string) {
+    const manifest = this.requireManifest(extensionId);
+    if (!manifest.optionalPermissions.includes(template) || !isExtensionPermissionTemplate(template)) {
+      throw new Error(`Extension does not declare runtime permission template: ${template}`);
+    }
+    if (!extensionRuntimePermissionMatchesTemplate(template, permission)) {
+      throw new Error(`Runtime permission ${permission} does not match ${template}`);
+    }
+    const alreadyGranted = this.installationById.get(extensionId)?.permissions.get(permission) === true;
+    if (!alreadyGranted) {
+      this.database.setExtensionPermission(extensionId, permission, true);
+      this.refreshInstallations();
+    }
+    return !alreadyGranted;
+  }
+
+  revokeRuntimePermissionsExcept(extensionId: string, template: string, retainedPermission: string | null) {
+    const manifest = this.requireManifest(extensionId);
+    if (!manifest.optionalPermissions.includes(template) || !isExtensionPermissionTemplate(template)) {
+      throw new Error(`Extension does not declare runtime permission template: ${template}`);
+    }
+    const installation = this.installationById.get(extensionId);
+    if (!installation) return;
+    const declared = new Set([...manifest.permissions, ...manifest.optionalPermissions]);
+    for (const [permission, granted] of installation.permissions) {
+      if (
+        granted &&
+        !declared.has(permission) &&
+        permission !== retainedPermission &&
+        extensionRuntimePermissionMatchesTemplate(template, permission)
+      ) {
+        this.database.setExtensionPermission(extensionId, permission, false);
+      }
+    }
+    this.refreshInstallations();
   }
 
   setEnabled(extensionId: string, enabled: boolean) {
@@ -287,9 +354,12 @@ export class ExtensionRegistry {
 
   setPermission(extensionId: string, permission: string, granted: boolean) {
     const manifest = this.requireManifest(extensionId);
-    if (![...manifest.permissions, ...manifest.optionalPermissions].includes(permission)) {
+    const declared = [...manifest.permissions, ...manifest.optionalPermissions].includes(permission);
+    const runtime = this.isRuntimePermission(manifest, permission);
+    if ((!declared || isExtensionPermissionTemplate(permission)) && !runtime) {
       throw new Error(`Extension does not declare permission: ${permission}`);
     }
+    if (runtime && granted) throw new Error('Runtime-scoped permissions can only be granted by their owning workflow');
     this.database.setExtensionPermission(extensionId, permission, granted);
     return this.toDtos(this.refreshInstallations());
   }
@@ -305,6 +375,13 @@ export class ExtensionRegistry {
     const manifest = this.byId.get(extensionId);
     if (!manifest) throw new Error(`Unknown extension: ${extensionId}`);
     return manifest;
+  }
+
+  private isRuntimePermission(manifest: ExtensionManifestDto, permission: string) {
+    return manifest.optionalPermissions.some(
+      (template) =>
+        isExtensionPermissionTemplate(template) && extensionRuntimePermissionMatchesTemplate(template, permission),
+    );
   }
 
   private connectionFor(
@@ -341,6 +418,13 @@ export class ExtensionRegistry {
         ? { state: 'READY', message: status.message }
         : { state: 'UNAVAILABLE', message: status.message };
     }
+    if (manifest.id === CODEX_VISUALIZATION_DISCOVERY_EXTENSION_ID) {
+      const status = this.options.codexVisualizationDiscoveryStatus?.();
+      if (!status) return { state: 'READY', message: 'Ready' };
+      return status.available
+        ? { state: 'READY', message: status.message }
+        : { state: 'UNAVAILABLE', message: status.message };
+    }
     if (manifest.id === OPENAI_IMAGE_API_EXTENSION_ID) {
       const status = this.options.openAiImageApiStatus?.();
       if (!status?.configured)
@@ -359,6 +443,18 @@ export class ExtensionRegistry {
           state: 'NEEDS_CONFIGURATION',
           message: status?.message || 'DeepSeek API connection is not configured',
         };
+      return status.ready
+        ? { state: 'READY', message: status.message }
+        : { state: 'UNAVAILABLE', message: status.message };
+    }
+    if (manifest.configuration?.kind === 'ARTICLE_DELIVERY') {
+      const status = this.options.articleDeliveryStatus?.(manifest.id);
+      if (!status?.configured) {
+        return {
+          state: 'NEEDS_CONFIGURATION',
+          message: status?.message || 'Delivery connection is not configured',
+        };
+      }
       return status.ready
         ? { state: 'READY', message: status.message }
         : { state: 'UNAVAILABLE', message: status.message };

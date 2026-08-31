@@ -10,42 +10,53 @@ export const creationItemLifecycleSchema = z.enum(['ACTIVE', 'ARCHIVED']);
 
 export const creationFormRoleSchema = z.enum([
   'INSPIRATION',
+  'IMAGE_BREAKDOWN',
   'IMAGE_CREATION',
   'SOCIAL_POST',
   'ARTICLE',
   'VIDEO_DOCUMENT',
+  'EVALUATION_SUITE',
   'SOCIAL_POST_COVER',
   'ARTICLE_HEADER',
   'ARTICLE_INLINE',
 ]);
 
-export const creationPrimaryFormRoleSchema = z.enum(['IMAGE_CREATION', 'SOCIAL_POST', 'ARTICLE', 'VIDEO_DOCUMENT']);
-
-export const creationSingletonFormRoleSchema = z.enum([
-  'INSPIRATION',
+export const creationPrimaryFormRoleSchema = z.enum([
+  'IMAGE_BREAKDOWN',
   'IMAGE_CREATION',
   'SOCIAL_POST',
   'ARTICLE',
   'VIDEO_DOCUMENT',
-  'SOCIAL_POST_COVER',
-  'ARTICLE_HEADER',
+  'EVALUATION_SUITE',
+]);
+
+export const creationSingletonFormRoleSchema = z.enum([
+  'INSPIRATION',
+  'IMAGE_BREAKDOWN',
+  'IMAGE_CREATION',
+  'VIDEO_DOCUMENT',
+  'EVALUATION_SUITE',
 ]);
 
 export const creationFormEntityKindSchema = z.enum([
   'PROMPT_SERIES',
+  'IMAGE_BREAKDOWN',
   'INSPIRATION_STASH',
   'SOCIAL_POST',
   'ARTICLE',
   'VIDEO_DOCUMENT',
+  'EVALUATION_SUITE',
   'DERIVED_VISUAL',
 ]);
 
 const creationFormEntityRefVariants = [
   z.object({ kind: z.literal('PROMPT_SERIES'), id: idSchema }).strict(),
+  z.object({ kind: z.literal('IMAGE_BREAKDOWN'), id: idSchema }).strict(),
   z.object({ kind: z.literal('INSPIRATION_STASH'), id: idSchema }).strict(),
   z.object({ kind: z.literal('SOCIAL_POST'), id: idSchema }).strict(),
   z.object({ kind: z.literal('ARTICLE'), id: idSchema }).strict(),
   z.object({ kind: z.literal('VIDEO_DOCUMENT'), id: idSchema }).strict(),
+  z.object({ kind: z.literal('EVALUATION_SUITE'), id: idSchema }).strict(),
   z.object({ kind: z.literal('DERIVED_VISUAL'), id: idSchema }).strict(),
 ] as const;
 
@@ -55,6 +66,8 @@ export const creationFormEntityRefSchema = z.discriminatedUnion('kind', creation
 const creationFormRecordShape = {
   id: idSchema,
   creationItemId: idSchema,
+  /** Optional immutable lineage edge to another form in the same creation item. */
+  sourceFormId: idSchema.nullable(),
   sortOrder: sortOrderSchema,
   createdAt: dateTimeSchema,
   updatedAt: dateTimeSchema,
@@ -74,6 +87,15 @@ export const imageCreationFormSchema = z
     ...creationFormRecordShape,
     role: z.literal('IMAGE_CREATION'),
     entity: z.object({ kind: z.literal('PROMPT_SERIES'), id: idSchema }).strict(),
+    anchorKey: z.null(),
+  })
+  .strict();
+
+export const imageBreakdownCreationFormSchema = z
+  .object({
+    ...creationFormRecordShape,
+    role: z.literal('IMAGE_BREAKDOWN'),
+    entity: z.object({ kind: z.literal('IMAGE_BREAKDOWN'), id: idSchema }).strict(),
     anchorKey: z.null(),
   })
   .strict();
@@ -101,6 +123,15 @@ export const videoDocumentCreationFormSchema = z
     ...creationFormRecordShape,
     role: z.literal('VIDEO_DOCUMENT'),
     entity: z.object({ kind: z.literal('VIDEO_DOCUMENT'), id: idSchema }).strict(),
+    anchorKey: z.null(),
+  })
+  .strict();
+
+export const evaluationSuiteCreationFormSchema = z
+  .object({
+    ...creationFormRecordShape,
+    role: z.literal('EVALUATION_SUITE'),
+    entity: z.object({ kind: z.literal('EVALUATION_SUITE'), id: idSchema }).strict(),
     anchorKey: z.null(),
   })
   .strict();
@@ -138,16 +169,19 @@ export const articleInlineCreationFormSchema = z
  */
 export const creationFormSchema = z.discriminatedUnion('role', [
   inspirationCreationFormSchema,
+  imageBreakdownCreationFormSchema,
   imageCreationFormSchema,
   socialPostCreationFormSchema,
   articleCreationFormSchema,
   videoDocumentCreationFormSchema,
+  evaluationSuiteCreationFormSchema,
   socialPostCoverCreationFormSchema,
   articleHeaderCreationFormSchema,
   articleInlineCreationFormSchema,
 ]);
 
 const primaryRoles = new Set<CreationFormRole>(creationPrimaryFormRoleSchema.options);
+const singletonRoles = new Set<CreationFormRole>(creationSingletonFormRoleSchema.options);
 
 /** Stable album/sidebar aggregate composed from typed creation-form registrations. */
 export const creationItemSchema = z
@@ -168,6 +202,7 @@ export const creationItemSchema = z
   .strict()
   .superRefine((item, context) => {
     const formIds = new Set<string>();
+    const formById = new Map(item.forms.map((form) => [form.id, form] as const));
     const entityRefs = new Set<string>();
     const singletonRoleKeys = new Set<string>();
     const inlineAnchorKeys = new Set<string>();
@@ -200,7 +235,7 @@ export const creationItemSchema = z
       }
       entityRefs.add(entityRefKey);
 
-      if (form.role !== 'ARTICLE_INLINE') {
+      if (singletonRoles.has(form.role)) {
         if (singletonRoleKeys.has(form.role)) {
           context.addIssue({
             code: 'custom',
@@ -209,7 +244,7 @@ export const creationItemSchema = z
           });
         }
         singletonRoleKeys.add(form.role);
-      } else {
+      } else if (form.role === 'ARTICLE_INLINE') {
         if (inlineAnchorKeys.has(form.anchorKey)) {
           context.addIssue({
             code: 'custom',
@@ -218,6 +253,41 @@ export const creationItemSchema = z
           });
         }
         inlineAnchorKeys.add(form.anchorKey);
+      }
+    }
+
+    for (const [index, form] of item.forms.entries()) {
+      if (!form.sourceFormId) continue;
+      if (form.sourceFormId === form.id) {
+        context.addIssue({
+          code: 'custom',
+          path: ['forms', index, 'sourceFormId'],
+          message: 'A form cannot derive from itself',
+        });
+        continue;
+      }
+      if (!formById.has(form.sourceFormId)) {
+        context.addIssue({
+          code: 'custom',
+          path: ['forms', index, 'sourceFormId'],
+          message: 'A source form must belong to the same creation item',
+        });
+        continue;
+      }
+
+      const visited = new Set([form.id]);
+      let sourceFormId: string | null = form.sourceFormId;
+      while (sourceFormId) {
+        if (visited.has(sourceFormId)) {
+          context.addIssue({
+            code: 'custom',
+            path: ['forms', index, 'sourceFormId'],
+            message: 'Creation form lineage cannot contain a cycle',
+          });
+          break;
+        }
+        visited.add(sourceFormId);
+        sourceFormId = formById.get(sourceFormId)?.sourceFormId ?? null;
       }
     }
 
@@ -269,6 +339,7 @@ export const creationItemSchema = z
 
 const creationFormAddInputShape = {
   creationItemId: idSchema,
+  sourceFormId: idSchema.nullable().default(null),
 };
 
 export const creationFormAddOrGetInputSchema = z.discriminatedUnion('role', [
@@ -277,6 +348,14 @@ export const creationFormAddOrGetInputSchema = z.discriminatedUnion('role', [
       ...creationFormAddInputShape,
       role: z.literal('INSPIRATION'),
       entity: z.object({ kind: z.literal('INSPIRATION_STASH'), id: idSchema }).strict(),
+      anchorKey: z.null(),
+    })
+    .strict(),
+  z
+    .object({
+      ...creationFormAddInputShape,
+      role: z.literal('IMAGE_BREAKDOWN'),
+      entity: z.object({ kind: z.literal('IMAGE_BREAKDOWN'), id: idSchema }).strict(),
       anchorKey: z.null(),
     })
     .strict(),
@@ -309,6 +388,14 @@ export const creationFormAddOrGetInputSchema = z.discriminatedUnion('role', [
       ...creationFormAddInputShape,
       role: z.literal('VIDEO_DOCUMENT'),
       entity: z.object({ kind: z.literal('VIDEO_DOCUMENT'), id: idSchema }).strict(),
+      anchorKey: z.null(),
+    })
+    .strict(),
+  z
+    .object({
+      ...creationFormAddInputShape,
+      role: z.literal('EVALUATION_SUITE'),
+      entity: z.object({ kind: z.literal('EVALUATION_SUITE'), id: idSchema }).strict(),
       anchorKey: z.null(),
     })
     .strict(),
@@ -348,6 +435,13 @@ export const creationInitialFormInputSchema = z.discriminatedUnion('role', [
     .strict(),
   z
     .object({
+      role: z.literal('IMAGE_BREAKDOWN'),
+      entity: z.object({ kind: z.literal('IMAGE_BREAKDOWN'), id: idSchema }).strict(),
+      anchorKey: z.null(),
+    })
+    .strict(),
+  z
+    .object({
       role: z.literal('IMAGE_CREATION'),
       entity: z.object({ kind: z.literal('PROMPT_SERIES'), id: idSchema }).strict(),
       anchorKey: z.null(),
@@ -371,6 +465,13 @@ export const creationInitialFormInputSchema = z.discriminatedUnion('role', [
     .object({
       role: z.literal('VIDEO_DOCUMENT'),
       entity: z.object({ kind: z.literal('VIDEO_DOCUMENT'), id: idSchema }).strict(),
+      anchorKey: z.null(),
+    })
+    .strict(),
+  z
+    .object({
+      role: z.literal('EVALUATION_SUITE'),
+      entity: z.object({ kind: z.literal('EVALUATION_SUITE'), id: idSchema }).strict(),
       anchorKey: z.null(),
     })
     .strict(),
@@ -431,6 +532,7 @@ export const creationFormAddOrGetResultSchema = z
         form.role === result.form.role &&
         form.entity.kind === result.form.entity.kind &&
         form.entity.id === result.form.entity.id &&
+        form.sourceFormId === result.form.sourceFormId &&
         form.anchorKey === result.form.anchorKey &&
         form.sortOrder === result.form.sortOrder &&
         form.createdAt === result.form.createdAt &&
@@ -459,7 +561,7 @@ export type CreationFormEntityRef = z.infer<typeof creationFormEntityRefSchema>;
 export type CreationFormDto = z.infer<typeof creationFormSchema>;
 export type CreationItemDto = z.infer<typeof creationItemSchema>;
 export type CreationInitialFormInput = z.infer<typeof creationInitialFormInputSchema>;
-export type CreationFormAddOrGetInput = z.infer<typeof creationFormAddOrGetInputSchema>;
+export type CreationFormAddOrGetInput = z.input<typeof creationFormAddOrGetInputSchema>;
 export type CreationItemCreateWithFormInput = z.infer<typeof creationItemCreateWithFormInputSchema>;
 export type CreationItemGetInput = z.infer<typeof creationItemGetInputSchema>;
 export type CreationItemListInput = z.input<typeof creationItemListInputSchema>;

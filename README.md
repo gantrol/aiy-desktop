@@ -85,7 +85,7 @@ When you use AI features, the app still connects to the provider you choose. The
 
 ## Distribution
 
-The maintained distribution target from `v0.3.6` onward is:
+The maintained distribution target from `v0.3.7` onward is:
 
 - Windows 10/11 x64 — Microsoft Store MSIX.
 
@@ -93,7 +93,7 @@ Normal build scripts no longer produce NSIS installers, portable ZIPs, macOS DMG
 
 ## ❕Early stage
 
-AIY is still very early. As of `v0.3.6`, image creation and the library are usable, but extensions and content packs may still change.
+AIY is still very early. As of `v0.3.7`, image creation and the library are usable, but extensions and content packs may still change.
 
 The basic framework is in place. Real user feedback is what will determine where this project goes next.
 

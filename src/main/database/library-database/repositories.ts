@@ -10,8 +10,11 @@ import { CreationImportRepository } from '@/main/database/creations/creation-imp
 import { CreationInputStashRepository } from '@/main/database/creations/creation-input-stash-repository';
 import { CreationItemRepository } from '@/main/database/creations/creation-item-repository';
 import { InspirationStashRepository } from '@/main/database/creations/inspiration-stash-repository';
+import { ImageBreakdownRepository } from '@/main/database/creations/image-breakdown-repository';
 import { SocialPostRepository } from '@/main/database/creations/social-post-repository';
 import { ArticleRepository } from '@/main/database/creations/article-repository';
+import { ArticleCheckRunRepository } from '@/main/database/creations/article-check-run-repository';
+import { ArticleRevisionPackStore } from '@/main/database/creations/article-revision-pack-store';
 import { CreationRepository } from '@/main/database/creations/creation-repository';
 import { CreationOutputPresentationRepository } from '@/main/database/creations/creation-output-presentation-repository';
 import { CreatorAgentRepository } from '@/main/database/assistant/creator-agent-repository';
@@ -21,9 +24,11 @@ import { DictionaryRepository } from '@/main/database/dictionary/dictionary-repo
 import { DirectionExperimentTaskRepository } from '@/main/database/assistant/direction-experiment-task-repository';
 import { ExecutionSnapshotRepository } from '@/main/database/generation/execution-snapshot-repository';
 import { ExtensionRepository } from '@/main/database/extensions/extension-repository';
+import { ArticleDeliveryJobRepository } from '@/main/database/extensions/article-delivery-job-repository';
 import { FixturePackRepository } from '@/main/database/packs/fixture-pack-repository';
 import { GalleryRepository } from '@/main/database/assets/gallery-repository';
 import { GenerationJobRepository } from '@/main/database/generation/generation-job-repository';
+import { AgentCommandRepository } from '@/main/database/generation/agent-command-repository';
 import { GenerationProcessRepository } from '@/main/database/generation/generation-process-repository';
 import { HistoricalTermRecommendationRepository } from '@/main/database/dictionary/historical-term-recommendation-repository';
 import { ImageEditRepository } from '@/main/database/generation/image-edit-repository';
@@ -46,6 +51,8 @@ import { WorkbenchRepository } from '@/main/database/generation/workbench-reposi
 import { DerivedVisualRepository } from '@/main/database/creations/derived-visual-repository';
 import { RecycleBinRepository } from '@/main/database/recovery/recycle-bin-repository';
 import { ContentLifecycleRepository } from '@/main/database/recovery/content-lifecycle-repository';
+import { EvaluationSuiteRepository } from '@/main/database/creations/evaluation-suite-repository';
+import { BackgroundIssueRepository } from '@/main/database/background-issues/background-issue-repository';
 
 export function createLibraryDatabaseRepositories(storage: LibraryStorage) {
   const dictionary = new DictionaryRepository(storage);
@@ -60,22 +67,29 @@ export function createLibraryDatabaseRepositories(storage: LibraryStorage) {
   const videoDocuments = new VideoDocumentRepository(storage);
   const creationInputStashes = new CreationInputStashRepository(storage);
   const inspirationStashes = new InspirationStashRepository(storage);
+  const imageBreakdowns = new ImageBreakdownRepository(storage);
+  const evaluationSuites = new EvaluationSuiteRepository(storage);
   const socialPosts = new SocialPostRepository(storage);
-  const articles = new ArticleRepository(storage);
+  const articleRevisionPacks = new ArticleRevisionPackStore(storage);
+  const articles = new ArticleRepository(storage, articleRevisionPacks);
+  const articleChecks = new ArticleCheckRunRepository(storage, articles);
   const derivedVisuals = new DerivedVisualRepository(storage, intake, articles, socialPosts, creationItems);
   const creatorAgent = new CreatorAgentRepository(storage);
   const aiProcesses = new AiProcessRepository(storage);
   const creations = new CreationRepository(storage);
   const assistantRuns = new AssistantRunRepository(storage, creations);
-  const directionExperimentTasks = new DirectionExperimentTaskRepository(storage);
+  const backgroundIssues = new BackgroundIssueRepository(storage);
+  const directionExperimentTasks = new DirectionExperimentTaskRepository(storage, backgroundIssues);
   const styleExplorations = new StyleExplorationRepository(storage, directionExperimentTasks);
   const extensions = new ExtensionRepository(storage);
+  const articleDeliveryJobs = new ArticleDeliveryJobRepository(storage);
   const providerDescriptions = new ProviderDescriptionRepository(storage);
   const imageEdits = new ImageEditRepository(storage);
   const imageTransforms = new ImageTransformRepository(storage);
   const generationJobs = new GenerationJobRepository(storage);
+  const agentCommands = new AgentCommandRepository(storage);
   const generationProcesses = new GenerationProcessRepository(storage);
-  const workbench = new WorkbenchRepository(storage, executionSnapshots, generationJobs);
+  const workbench = new WorkbenchRepository(storage, executionSnapshots, generationJobs, backgroundIssues);
   const codexImageDiscoveries = new CodexImageDiscoveryRepository(storage, creationImports, workbench);
   const ratings = new RatingRepository(storage);
   const gallery = new GalleryRepository(storage);
@@ -99,12 +113,17 @@ export function createLibraryDatabaseRepositories(storage: LibraryStorage) {
   const contentPacks = new ContentPackRepository(storage, fixturePacks);
 
   return {
+    agentCommands,
     aiProcesses,
     albums,
     assetFiles,
     assetLifecycle,
     assetRelationships,
     assistantRuns,
+    backgroundIssues,
+    articleRevisionPacks,
+    articleChecks,
+    articleDeliveryJobs,
     articles,
     codexImageDiscoveries,
     contentPacks,
@@ -114,6 +133,7 @@ export function createLibraryDatabaseRepositories(storage: LibraryStorage) {
     creationOutputPresentation,
     creationInputStashes,
     inspirationStashes,
+    imageBreakdowns,
     socialPosts,
     creations,
     creatorAgent,
@@ -124,6 +144,7 @@ export function createLibraryDatabaseRepositories(storage: LibraryStorage) {
     db: storage.db,
     directionExperimentTasks,
     executionSnapshots,
+    evaluationSuites,
     extensions,
     fixturePacks,
     gallery,

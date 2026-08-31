@@ -1,12 +1,37 @@
 import { z } from 'zod';
 
 const nonNegativeIntegerSchema = z.number().int().nonnegative().safe();
+const positiveIntegerSchema = z.number().int().positive().safe();
 const nonNegativeNumberSchema = z.number().finite().nonnegative();
 const positiveNumberSchema = z.number().finite().positive();
 const percentageSchema = z.number().finite().min(0);
 const nullableMoneySchema = nonNegativeNumberSchema.nullable();
 
-export const codexUsageRangeSchema = z.enum(['LAST_24_HOURS', 'LAST_7_DAYS', 'LAST_30_DAYS', 'LAST_90_DAYS', 'ALL']);
+export const codexUsageRangeSchema = z.enum([
+  'LAST_24_HOURS',
+  'LAST_7_DAYS',
+  'LAST_30_DAYS',
+  'LAST_90_DAYS',
+  'ALL',
+  'CUSTOM',
+]);
+
+export const codexUsageDateRangeSchema = z
+  .object({
+    from: z.iso.date(),
+    to: z.iso.date(),
+  })
+  .strict()
+  .refine((range) => range.from <= range.to, 'The start date must not be after the end date');
+
+const customRangeMessage = 'A custom Codex usage range requires explicit calendar dates';
+
+function customRangeIsConsistent(value: {
+  range: z.infer<typeof codexUsageRangeSchema>;
+  dateRange: z.infer<typeof codexUsageDateRangeSchema> | null;
+}) {
+  return (value.range === 'CUSTOM') === (value.dateRange !== null);
+}
 
 export const codexUsageGranularitySchema = z.enum(['AUTO', 'HOUR', 'SIX_HOURS', 'DAY', 'WEEK']);
 export const codexUsageResolvedGranularitySchema = z.enum(['HOUR', 'SIX_HOURS', 'DAY', 'WEEK']);
@@ -45,10 +70,16 @@ export const codexUsageQuotaResetObservationKindSchema = z.enum([
 export const codexUsageScanInputSchema = z
   .object({
     range: codexUsageRangeSchema,
+    dateRange: codexUsageDateRangeSchema.nullable().default(null),
     timeZone: codexUsageTimeZoneSchema.default('UTC'),
     granularity: codexUsageGranularitySchema.default('AUTO'),
+    detailedStatistics: z.boolean().default(false),
   })
-  .strict();
+  .strict()
+  .refine(customRangeIsConsistent, {
+    message: customRangeMessage,
+    path: ['dateRange'],
+  });
 
 export const codexUsageQuotaYieldSampleSchema = z
   .object({
@@ -278,6 +309,126 @@ export const codexUsageDailyBreakdownSchema = codexUsageTokenTotalsSchema
   })
   .strict();
 
+export const codexUsageTurnSpeedTierSummarySchema = z
+  .object({
+    completedTurnCount: nonNegativeIntegerSchema,
+    medianDurationMs: nonNegativeNumberSchema.nullable(),
+  })
+  .strict();
+
+export const codexUsageTurnSpeedComparisonSchema = z
+  .object({
+    model: z.string().min(1).max(200),
+    reasoningEffort: z.string().min(1).max(100),
+    standard: codexUsageTurnSpeedTierSummarySchema,
+    fast: codexUsageTurnSpeedTierSummarySchema,
+    actualSpeedMultiplier: z.number().finite().positive().nullable(),
+  })
+  .strict();
+
+export const codexUsageTurnSpeedAnalysisSchema = z
+  .object({
+    definition: z.literal('TASK_COMPLETE_DURATION'),
+    algorithmVersion: z.literal(1),
+    comparisonScope: z.literal('SINGLE_NORMALIZED_MODEL_AND_REASONING_EFFORT'),
+    rangeAssignment: z.literal('COMPLETION_TIMESTAMP'),
+    officialSpeedMultiplier: z.literal(1.5),
+    completedTurnCount: nonNegativeIntegerSchema,
+    validTurnCount: nonNegativeIntegerSchema,
+    comparableTurnCount: nonNegativeIntegerSchema,
+    excludedInvalidDurationTurnCount: nonNegativeIntegerSchema,
+    excludedUnknownServiceTierTurnCount: nonNegativeIntegerSchema,
+    excludedUnknownCohortTurnCount: nonNegativeIntegerSchema,
+    comparisons: z.array(codexUsageTurnSpeedComparisonSchema).max(1_000),
+  })
+  .strict();
+
+export const codexUsageSessionSourceSchema = z.enum(['USER_DIRECT', 'USER_FORK', 'SUBAGENT']);
+
+export const codexUsageSessionLengthRangeSchema = z
+  .object({
+    minimumTurns: positiveIntegerSchema,
+    maximumTurns: positiveIntegerSchema.nullable(),
+  })
+  .strict();
+
+const codexUsageSessionTurnDistributionEntrySchema = z
+  .object({
+    chatTurns: positiveIntegerSchema,
+    sessionCount: positiveIntegerSchema,
+  })
+  .strict();
+
+export const codexUsageSessionLengthBucketSchema = codexUsageSessionLengthRangeSchema
+  .extend({
+    sessionCount: nonNegativeIntegerSchema,
+    totalChatTurns: nonNegativeIntegerSchema,
+    sessionTurnDistribution: z.array(codexUsageSessionTurnDistributionEntrySchema).max(10_000).default([]),
+    medianUncachedInputTokensPerTurn: nonNegativeNumberSchema,
+    medianCachedInputTokensPerTurn: nonNegativeNumberSchema,
+    medianCacheWriteInputTokensPerTurn: nonNegativeNumberSchema,
+    medianOutputTokensPerTurn: nonNegativeNumberSchema,
+    medianReasoningOutputTokensPerTurn: nonNegativeNumberSchema,
+    medianTotalTokensPerTurn: nonNegativeNumberSchema,
+    medianApiEquivalentUsdPerTurn: nullableMoneySchema,
+    averageContextCompactions: nonNegativeNumberSchema.nullable().default(null),
+    apiPricedSessionCount: nonNegativeIntegerSchema,
+    apiPricingCoveragePercent: percentageSchema,
+    percentile25PeakContextTokens: nonNegativeNumberSchema,
+    percentile75PeakContextTokens: nonNegativeNumberSchema,
+  })
+  .strict();
+
+export const codexUsageSessionLengthTrendSchema = codexUsageSessionLengthRangeSchema
+  .extend({ relativeToLowestPercent: nonNegativeNumberSchema })
+  .strict();
+
+export const codexUsageSessionLengthComparisonSchema = z
+  .object({
+    source: codexUsageSessionSourceSchema,
+    model: z.string().min(1).max(200),
+    sessionCount: nonNegativeIntegerSchema,
+    totalChatTurns: nonNegativeIntegerSchema,
+    medianSessionTurns: nonNegativeNumberSchema,
+    percentile90SessionTurns: nonNegativeNumberSchema,
+    maximumSessionTurns: nonNegativeIntegerSchema,
+    averageContextCompactions: nonNegativeNumberSchema.nullable().default(null),
+    apiPricedSessionCount: nonNegativeIntegerSchema,
+    apiPricingCoveragePercent: percentageSchema,
+    buckets: z.array(codexUsageSessionLengthBucketSchema).min(1).max(64),
+    lowestMedianTokenRanges: z.array(codexUsageSessionLengthRangeSchema).max(64),
+    lowestMedianApiCostRanges: z.array(codexUsageSessionLengthRangeSchema).max(64),
+    sustainedApiCostIncrease: codexUsageSessionLengthTrendSchema.nullable(),
+  })
+  .strict();
+
+export const codexUsageSessionLengthAnalysisSchema = z
+  .object({
+    definition: z.literal('COMPLETE_SESSION_CHAT_TURNS'),
+    algorithmVersion: z.union([z.literal(2), z.literal(3)]),
+    comparisonScope: z.literal('SESSION_SOURCE_AND_SINGLE_NORMALIZED_MODEL'),
+    bucketStrategy: z.literal('DYNAMIC_EQUAL_SESSION_COUNT'),
+    rangeAssignment: z.literal('LAST_TERMINAL_OWNED_CHAT_TURN'),
+    contextDefinition: z.literal('SESSION_MAXIMUM_INPUT_TOKENS'),
+    signalMinimumSessions: z.literal(5),
+    signalMinimumPricedSessions: z.literal(5),
+    sourceSessionCount: nonNegativeIntegerSchema,
+    rangeSessionCount: nonNegativeIntegerSchema,
+    comparisonSessionCount: nonNegativeIntegerSchema,
+    excludedUnsupportedSourceSessionCount: nonNegativeIntegerSchema,
+    excludedIncompleteSessionCount: nonNegativeIntegerSchema,
+    excludedNoOwnedTurnSessionCount: nonNegativeIntegerSchema,
+    excludedOpenSessionCount: nonNegativeIntegerSchema,
+    excludedOutsideRangeSessionCount: nonNegativeIntegerSchema,
+    excludedNoUsageSessionCount: nonNegativeIntegerSchema,
+    excludedUnknownModelSessionCount: nonNegativeIntegerSchema,
+    excludedMixedModelSessionCount: nonNegativeIntegerSchema,
+    mixedServiceTierSessionCount: nonNegativeIntegerSchema,
+    unknownServiceTierSessionCount: nonNegativeIntegerSchema,
+    comparisons: z.array(codexUsageSessionLengthComparisonSchema).max(1_000),
+  })
+  .strict();
+
 export const codexUsageQuotaWindowSchema = z
   .object({
     usedPercent: percentageSchema,
@@ -356,6 +507,7 @@ export const codexUsageInvestigationSchema = z
     investigationId: z.string().uuid(),
     generatedAt: z.string().datetime(),
     range: codexUsageRangeSchema,
+    dateRange: codexUsageDateRangeSchema.nullable().default(null),
     timeZone: codexUsageTimeZoneSchema.default('UTC'),
     granularity: codexUsageGranularitySchema.default('AUTO'),
     from: z.string().datetime().nullable(),
@@ -375,6 +527,8 @@ export const codexUsageInvestigationSchema = z
     totals: codexUsageTokenTotalsSchema,
     models: z.array(codexUsageModelBreakdownSchema).max(1_000),
     days: z.array(codexUsageDailyBreakdownSchema).max(10_000),
+    turnSpeed: codexUsageTurnSpeedAnalysisSchema.nullable().default(null),
+    sessionLength: codexUsageSessionLengthAnalysisSchema.nullable().default(null),
     quotaYield: codexUsageQuotaYieldAnalysisSchema.nullable().default(null),
     quotaState: codexUsageQuotaStateSchema,
     quotaMessage: z.string().max(2_000).nullable(),
@@ -382,7 +536,8 @@ export const codexUsageInvestigationSchema = z
     pricing: codexUsagePricingBasisSchema,
     warnings: z.array(codexUsageWarningCodeSchema).max(20),
   })
-  .strict();
+  .strict()
+  .refine(customRangeIsConsistent, { message: customRangeMessage, path: ['dateRange'] });
 
 export const codexUsageScanProgressSchema = z
   .object({
@@ -395,6 +550,7 @@ export const codexUsageScanProgressSchema = z
     bytesTotal: nonNegativeIntegerSchema,
     throughputBytesPerSecond: nonNegativeNumberSchema,
     estimatedRemainingMs: nonNegativeIntegerSchema.nullable(),
+    calculationPercent: percentageSchema.default(0),
     elapsedMs: nonNegativeIntegerSchema,
   })
   .strict();
@@ -412,8 +568,10 @@ export const codexUsageTaskSchema = z
   .object({
     taskId: z.string().uuid(),
     range: codexUsageRangeSchema,
+    dateRange: codexUsageDateRangeSchema.nullable().default(null),
     timeZone: codexUsageTimeZoneSchema.default('UTC'),
     granularity: codexUsageGranularitySchema.default('AUTO'),
+    detailedStatistics: z.boolean().default(false),
     status: codexUsageTaskStatusSchema,
     createdAt: z.string().datetime(),
     startedAt: z.string().datetime(),
@@ -424,15 +582,18 @@ export const codexUsageTaskSchema = z
     investigationId: z.string().uuid().nullable(),
     errorMessage: z.string().max(2_000).nullable(),
   })
-  .strict();
+  .strict()
+  .refine(customRangeIsConsistent, { message: customRangeMessage, path: ['dateRange'] });
 
 export const codexUsageHistoryItemSchema = z
   .object({
     investigationId: z.string().uuid(),
     generatedAt: z.string().datetime(),
     range: codexUsageRangeSchema,
+    dateRange: codexUsageDateRangeSchema.nullable().default(null),
     timeZone: codexUsageTimeZoneSchema.default('UTC'),
     granularity: codexUsageGranularitySchema.default('AUTO'),
+    detailedStatistics: z.boolean().default(false),
     algorithmVersion: nonNegativeIntegerSchema.default(7),
     yieldEstimateCount: nonNegativeIntegerSchema.default(0),
     yieldSampleCount: nonNegativeIntegerSchema.default(0),
@@ -447,7 +608,8 @@ export const codexUsageHistoryItemSchema = z
     bytesRead: nonNegativeIntegerSchema,
     durationMs: nonNegativeIntegerSchema,
   })
-  .strict();
+  .strict()
+  .refine(customRangeIsConsistent, { message: customRangeMessage, path: ['dateRange'] });
 
 export const codexUsageStateSchema = z
   .object({
@@ -514,6 +676,7 @@ export const codexUsageExportResultSchema = z.discriminatedUnion('status', [
 ]);
 
 export type CodexUsageRange = z.infer<typeof codexUsageRangeSchema>;
+export type CodexUsageDateRange = z.infer<typeof codexUsageDateRangeSchema>;
 export type CodexUsageGranularity = z.infer<typeof codexUsageGranularitySchema>;
 export type CodexUsageResolvedGranularity = z.infer<typeof codexUsageResolvedGranularitySchema>;
 export type CodexUsageServiceTier = z.infer<typeof codexUsageServiceTierSchema>;
@@ -534,6 +697,15 @@ export type CodexUsageQuotaYieldAnalysis = z.infer<typeof codexUsageQuotaYieldAn
 export type CodexUsageTokenTotals = z.infer<typeof codexUsageTokenTotalsSchema>;
 export type CodexUsageModelBreakdown = z.infer<typeof codexUsageModelBreakdownSchema>;
 export type CodexUsageDailyBreakdown = z.infer<typeof codexUsageDailyBreakdownSchema>;
+export type CodexUsageTurnSpeedTierSummary = z.infer<typeof codexUsageTurnSpeedTierSummarySchema>;
+export type CodexUsageTurnSpeedComparison = z.infer<typeof codexUsageTurnSpeedComparisonSchema>;
+export type CodexUsageTurnSpeedAnalysis = z.infer<typeof codexUsageTurnSpeedAnalysisSchema>;
+export type CodexUsageSessionSource = z.infer<typeof codexUsageSessionSourceSchema>;
+export type CodexUsageSessionLengthRange = z.infer<typeof codexUsageSessionLengthRangeSchema>;
+export type CodexUsageSessionLengthBucket = z.infer<typeof codexUsageSessionLengthBucketSchema>;
+export type CodexUsageSessionLengthTrend = z.infer<typeof codexUsageSessionLengthTrendSchema>;
+export type CodexUsageSessionLengthComparison = z.infer<typeof codexUsageSessionLengthComparisonSchema>;
+export type CodexUsageSessionLengthAnalysis = z.infer<typeof codexUsageSessionLengthAnalysisSchema>;
 export type CodexUsageQuotaWindow = z.infer<typeof codexUsageQuotaWindowSchema>;
 export type CodexUsageQuotaLimit = z.infer<typeof codexUsageQuotaLimitSchema>;
 export type CodexUsageQuotaSnapshot = z.infer<typeof codexUsageQuotaSnapshotSchema>;

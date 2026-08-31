@@ -3,10 +3,13 @@ import type {
   AddMaterialsToDestinationsResult,
   AlbumCreateFromMaterialsInput,
   AlbumCreateFromMaterialsResult,
+  AssetDto,
+  MaterialSelectionTargetInput,
 } from '@/shared/contracts';
 import type { AlbumRepository } from '@/main/database/albums/album-repository';
 import type { DictionaryRepository } from '@/main/database/dictionary/dictionary-repository';
 import type { MaterialAlbumRepository } from '@/main/database/albums/material-album-repository';
+import { assetDto } from '@/main/database/albums/material-album-scopes';
 import type { LibraryStorage } from '@/main/database/core/storage';
 import { type JsonMap, text } from '@/main/database/core/values';
 
@@ -103,6 +106,53 @@ export class MaterialMembershipRepository {
         };
       })
       .immediate();
+  }
+
+  resolveImageAssets(targets: readonly MaterialSelectionTargetInput[]): AssetDto[] {
+    const materialIds = [
+      ...new Set(targets.flatMap((target) => (target.kind === 'MATERIAL' ? [target.materialId] : []))),
+    ];
+    const imageAssetIdByMaterialId = new Map<string, string>();
+    if (materialIds.length > 0) {
+      const rows = this.db
+        .prepare(
+          `SELECT material.id, material.kind, material.image_asset_id
+          FROM materials material
+          LEFT JOIN image_assets asset ON asset.id = material.image_asset_id
+          WHERE material.id IN (${materialIds.map(() => '?').join(', ')})
+            AND material.deleted_at IS NULL AND material.archived_at IS NULL
+            AND (material.kind = 'TEXT' OR asset.deleted_at IS NULL)`,
+        )
+        .all(...materialIds) as JsonMap[];
+      if (rows.length !== materialIds.length) throw new Error('Material not found');
+      for (const row of rows) {
+        if (text(row.kind) !== 'IMAGE' || !text(row.image_asset_id)) {
+          throw new Error('Only image materials can be added here');
+        }
+        imageAssetIdByMaterialId.set(text(row.id), text(row.image_asset_id));
+      }
+    }
+
+    const orderedAssetIds = targets.map((target) =>
+      target.kind === 'MATERIAL' ? (imageAssetIdByMaterialId.get(target.materialId) as string) : target.imageAssetId,
+    );
+    const assetIds = [...new Set(orderedAssetIds)];
+    if (assetIds.length === 0) return [];
+    const rows = this.db
+      .prepare(
+        `SELECT id, kind, origin_type, width, height, mime_type, byte_size, created_at
+        FROM image_assets
+        WHERE id IN (${assetIds.map(() => '?').join(', ')}) AND deleted_at IS NULL`,
+      )
+      .all(...assetIds) as JsonMap[];
+    const byId = new Map(rows.map((row) => [text(row.id), row]));
+    if (byId.size !== assetIds.length) throw new Error('Image asset not found');
+    for (const assetId of assetIds) {
+      if (!text(byId.get(assetId)?.mime_type).startsWith('image/')) {
+        throw new Error('Only image materials can be added here');
+      }
+    }
+    return assetIds.map((assetId) => assetDto(byId.get(assetId) as JsonMap));
   }
 
   private resolveTargets(targets: AddMaterialsToDestinationsInput['targets']) {

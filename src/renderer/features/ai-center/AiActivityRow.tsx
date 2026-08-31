@@ -30,6 +30,7 @@ export function formatAiActivityDuration(milliseconds: number, formatters: Durat
 }
 
 function ActivityKindIcon({ record }: { record: AiActivityRecord }) {
+  if (record.kind === 'ARTICLE_CHECK') return <ListChecksIcon className="size-4" />;
   if (record.kind === 'ASSISTANT') {
     return record.run.mode === 'directions' ? (
       <LightbulbIcon className="size-4" />
@@ -56,6 +57,7 @@ function sourceName(
   unknown: string,
   preferCreationTitle: boolean,
 ) {
+  if (record.kind === 'ARTICLE_CHECK') return record.run.articleTitle || unknown;
   if (record.kind === 'VIDEO_DOCUMENT') return record.activity.documentTitle;
   if (preferCreationTitle && record.kind === 'ASSISTANT' && record.run.creationTitle) return record.run.creationTitle;
   if (preferCreationTitle && record.kind === 'EXPERIMENT' && record.sourceRun?.creationTitle)
@@ -92,21 +94,23 @@ export function AiActivityRow({
   const l = useI18n().messages.aiCenter;
   const source = sourceName(record, currentDraftId, l.source.draft, l.source.unknown, variant === 'OUTLINE');
   const kind =
-    record.kind === 'ASSISTANT'
-      ? record.run.mode === 'directions'
-        ? l.kinds.directions
-        : l.kinds.optimize
-      : record.kind === 'EXPERIMENT'
-        ? l.kinds.experiment
-        : record.kind === 'VIDEO_DOCUMENT'
-          ? record.activity.type === 'ARTICLE_GENERATION'
-            ? l.kinds.videoArticle
-            : record.activity.type === 'TRANSCRIPT_RECOGNITION'
-              ? l.kinds.transcribe
-              : l.kinds.translate
-          : record.operation === 'EDIT'
-            ? l.kinds.edit
-            : l.kinds.generate;
+    record.kind === 'ARTICLE_CHECK'
+      ? l.kinds.articleCheck
+      : record.kind === 'ASSISTANT'
+        ? record.run.mode === 'directions'
+          ? l.kinds.directions
+          : l.kinds.optimize
+        : record.kind === 'EXPERIMENT'
+          ? l.kinds.experiment
+          : record.kind === 'VIDEO_DOCUMENT'
+            ? record.activity.type === 'ARTICLE_GENERATION'
+              ? l.kinds.videoArticle
+              : record.activity.type === 'TRANSCRIPT_RECOGNITION'
+                ? l.kinds.transcribe
+                : l.kinds.translate
+            : record.operation === 'EDIT'
+              ? l.kinds.edit
+              : l.kinds.generate;
   const title =
     record.kind === 'ASSISTANT' && record.occurrenceCount > 1
       ? `${kind} · ${l.occurrence(record.ordinal)}`
@@ -114,19 +118,23 @@ export function AiActivityRow({
         ? `${kind} · ${source}`
         : kind;
   const secondary =
-    record.kind === 'GENERATION'
-      ? `${l.version(record.version.versionNo)} · ${modelNameByKey.get(record.run.modelKey) ?? record.run.modelKey}`
-      : record.kind === 'EXPERIMENT'
-        ? `${record.batch.slots.length} ${l.fields.directions} · ${record.batch.completedCount}/${record.batch.totalCount}`
-        : record.kind === 'VIDEO_DOCUMENT'
-          ? record.activity.type === 'ARTICLE_GENERATION'
-            ? (record.activity.run.actualModel ?? record.activity.run.requestedModel)
-            : record.activity.type === 'TRANSCRIPT_RECOGNITION'
-              ? record.activity.run.totalChunks === null
-                ? record.activity.run.modelId
-                : `${record.activity.run.modelId} · ${record.activity.run.completedChunks}/${record.activity.run.totalChunks}`
-              : `${record.activity.run.actualModel ?? record.activity.run.requestedModel} · ${record.activity.run.targetLocales.join(', ')}`
-          : source;
+    record.kind === 'ARTICLE_CHECK'
+      ? record.run.findingCount === null
+        ? record.run.requestedModel
+        : `${record.run.requestedModel} · ${record.run.findingCount} ${l.fields.findings}`
+      : record.kind === 'GENERATION'
+        ? `${l.version(record.version.versionNo)} · ${modelNameByKey.get(record.run.modelKey) ?? record.run.modelKey}`
+        : record.kind === 'EXPERIMENT'
+          ? `${record.batch.slots.length} ${l.fields.directions} · ${record.batch.completedCount}/${record.batch.totalCount}`
+          : record.kind === 'VIDEO_DOCUMENT'
+            ? record.activity.type === 'ARTICLE_GENERATION'
+              ? (record.activity.run.actualModel ?? record.activity.run.requestedModel)
+              : record.activity.type === 'TRANSCRIPT_RECOGNITION'
+                ? record.activity.run.totalChunks === null
+                  ? record.activity.run.modelId
+                  : `${record.activity.run.modelId} · ${record.activity.run.completedChunks}/${record.activity.run.totalChunks}`
+                : `${record.activity.run.actualModel ?? record.activity.run.requestedModel} · ${record.activity.run.targetLocales.join(', ')}`
+            : source;
   const duration = activityDuration(record, now);
 
   return (

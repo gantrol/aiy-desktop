@@ -144,18 +144,17 @@ export function LocalSpaceTransitionOverlay({
   const [draggingPreviewIndex, setDraggingPreviewIndex] = useState<number | null>(null);
   const [dropPreviewIndex, setDropPreviewIndex] = useState<number | null>(null);
   const previewsSortable = previewOnly && Boolean(onPreviewReorder);
+  const renderedPreviewSlots = previewOnly || transition.previews.length > 0 ? previewSlots : [];
 
   return (
     <div
       data-local-space-transition
+      data-transition-owner="space"
       data-stage={transition.stage}
       data-progress={transition.progress}
       data-motion-paused={motion.paused ? 'true' : undefined}
       data-reduced-motion={motion.reduced ? 'true' : undefined}
-      className={cn(
-        'local-space-transition absolute inset-0 z-50 grid place-items-center overflow-hidden bg-background transition-opacity duration-base',
-        ready && !previewOnly && 'pointer-events-none opacity-0',
-      )}
+      className="local-space-transition absolute inset-0 z-50 grid place-items-center overflow-hidden bg-background"
       style={
         {
           '--space-transition-card-duration': `${320 / speedMultiplier}ms`,
@@ -177,22 +176,31 @@ export function LocalSpaceTransitionOverlay({
 
       <div
         key={motion.replayKey ?? 0}
-        className="local-space-transition-card relative flex w-[min(44rem,calc(100%-3rem))] flex-col items-center"
+        className={cn(
+          'local-space-transition-card relative flex w-[min(44rem,calc(100%-3rem))] flex-col items-center transition-opacity duration-base',
+          ready && !previewOnly && 'opacity-0',
+        )}
       >
         <div
           className="relative h-72 w-full"
           data-local-space-preview-count={transition.previews.length}
+          data-preview-state={transition.previews.length > 0 ? 'available' : 'empty'}
           aria-hidden={previewsSortable ? undefined : 'true'}
           role={previewsSortable ? 'list' : undefined}
         >
-          {previewSlots.map((slot, index) => {
-            const preview = transition.previews[index] ?? null;
+          {renderedPreviewSlots.map((slot, index) => {
+            const directPreview = transition.previews[index] ?? null;
+            const preview =
+              directPreview ??
+              (!previewOnly && transition.previews.length > 0
+                ? transition.previews[index % transition.previews.length]!
+                : null);
             const aspect = preview ? clampTransitionPreviewAspect(preview.width, preview.height) : 0.75;
             const revealed = transition.progress >= slot.revealAt || ready || failed;
-            const previewSortable = previewsSortable && preview !== null;
+            const previewSortable = previewsSortable && directPreview !== null;
             return (
               <div
-                key={preview ? `${preview.url}-${preview.detailUrl ?? preview.url}` : `placeholder-${index}`}
+                key={preview ? `${index}-${preview.url}-${preview.detailUrl ?? preview.url}` : `placeholder-${index}`}
                 className="local-space-transition-preview-anchor absolute top-1 grid h-40 place-items-start"
                 style={{ left: `${index * (100 / previewSlots.length)}%`, width: `${100 / previewSlots.length}%` }}
               >

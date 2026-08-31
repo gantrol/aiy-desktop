@@ -8,12 +8,38 @@ import {
 import { appUpdateStateSchema } from '@/shared/contracts/app-update';
 import { appSupportDestinationSchema } from '@/shared/contracts/app-support';
 import { appWindowStateSchema, desktopPlatformSchema } from '@/shared/contracts/app-window';
+import { workspaceLayoutSaveInputSchema, workspaceLayoutSaveResultSchema } from '@/shared/contracts/workspace-layout';
+import {
+  articleEditorRecoveryCheckpointSchema,
+  articleEditorRecoveryIdentitySchema,
+  articleEditorRecoveryListResultSchema,
+  articleEditorRecoveryMutationResultSchema,
+  articleEditorRecoveryScopeSchema,
+} from '@/shared/contracts/article-editor-recovery';
+import { createProviderConnectionPreloadApi } from '@/preload/provider-connection-api';
 import {
   transitionShowcaseExportImageIdsSchema,
   transitionShowcaseExportImageSnapshotsSchema,
 } from '@/shared/contracts/transition-showcase';
+import {
+  assetFileDragRequestSchema,
+  assetFileDragResultSchema,
+  assetFilesDragFinishedChannel,
+  assetFilesStartDragChannel,
+} from '@/shared/contracts/asset-file-drag';
 import { creatorOutputsOrganizeResultSchema } from '@/shared/contracts/creation-output-organization';
+import { creationDraftDtoSchema } from '@/shared/contracts/creation-draft';
 import { inspirationStashMoveInputSchema, inspirationStashSaveInputSchema } from '@/shared/contracts/inspiration-stash';
+import {
+  imageBreakdownCreateInputSchema,
+  imageBreakdownCreateResultSchema,
+  imageBreakdownImageFormCreateInputSchema,
+  imageBreakdownImageFormCreateResultSchema,
+  imageBreakdownReplaceSourceInputSchema,
+  imageBreakdownRoutesSchema,
+  imageBreakdownRunInputSchema,
+  imageBreakdownSchema,
+} from '@/shared/contracts/image-breakdown';
 import {
   creationFormAddOrGetInputSchema,
   creationFormAddOrGetResultSchema,
@@ -30,6 +56,10 @@ import {
   creationItemSetPrimaryInputSchema,
   creationItemSetPrimaryResultSchema,
 } from '@/shared/contracts/creation-library';
+import { createEvaluationSuitePreloadApi } from '@/preload/evaluation-suite-api';
+import { createArticlePreloadApi } from '@/preload/article-api';
+import { createArticleDeliveryPreloadApi } from '@/preload/article-delivery-api';
+import { createCodexPreloadApi } from '@/preload/codex-api';
 import {
   promptSeriesCoverSetInputSchema,
   promptSeriesOutputPresentationResultSchema,
@@ -37,21 +67,22 @@ import {
 } from '@/shared/contracts/creation-output-presentation';
 import {
   socialPostFormAddInputSchema,
+  socialPostFormCreateInputSchema,
   socialPostMoveInputSchema,
   socialPostSaveInputSchema,
   socialPostSetArchivedInputSchema,
 } from '@/shared/contracts/social-post';
 import {
-  articleFormAddInputSchema,
-  articleCopyForWechatInputSchema,
-  articleCopyForWechatResultSchema,
-  articleExportMarkdownInputSchema,
-  articleExportMarkdownResultSchema,
-  articleMoveInputSchema,
-  articleRenameInputSchema,
-  articleSaveInputSchema,
-  articleSetArchivedInputSchema,
-} from '@/shared/contracts/article';
+  browserCompanionDestinationSelectInputSchema,
+  browserCompanionDestinationsResultSchema,
+  browserCompanionDeleteInputSchema,
+  browserCompanionDeleteResultSchema,
+  browserCompanionHistoryResultSchema,
+  browserCompanionOpenInputSchema,
+  browserCompanionOpenResultSchema,
+  browserCompanionStageInputSchema,
+  browserCompanionStageResultSchema,
+} from '@/shared/contracts/browser-companion';
 import {
   derivedVisualAdoptInputSchema,
   derivedVisualWorkspaceOpenInputSchema,
@@ -67,9 +98,6 @@ import {
   localSpaceSwitchResultSchema,
   localSpaceTransferProgressEventSchema,
   localSpaceTransitionEventSchema,
-  transitionPreviewListSchema,
-  transitionPreviewRefreshEventSchema,
-  type TransitionPreviewDto,
 } from '@/shared/contracts/local-space';
 import {
   termIllustrationAdoptInputSchema,
@@ -136,23 +164,13 @@ import {
   codexUsageStateSchema,
   codexUsageTaskSchema,
 } from '@/shared/contracts/codex-usage';
-
-let loadingPreviewsInFlight: Promise<TransitionPreviewDto[]> | null = null;
-
-function appLoadingPreviews() {
-  if (loadingPreviewsInFlight) return loadingPreviewsInFlight;
-  const request = ipcRenderer.invoke('app:loading-previews').then((value) => transitionPreviewListSchema.parse(value));
-  loadingPreviewsInFlight = request;
-  const clearInFlight = () => {
-    if (loadingPreviewsInFlight === request) loadingPreviewsInFlight = null;
-  };
-  void request.then(clearInFlight, clearInFlight);
-  return request;
-}
+import { createAppShellPreloadApi } from '@/preload/app-shell-api';
+import { createBackgroundIssuePreloadApi } from '@/preload/background-issue-api';
+import { createCodexArtifactsPreloadApi } from '@/preload/codex-artifacts-api';
 
 const api: DesktopApi = {
   appPlatform: desktopPlatformSchema.parse(process.platform),
-  appLoadingPreviews,
+  ...createAppShellPreloadApi(),
   transitionShowcaseExportImages: async (assetIds) =>
     transitionShowcaseExportImageSnapshotsSchema.parse(
       await ipcRenderer.invoke(
@@ -160,14 +178,32 @@ const api: DesktopApi = {
         transitionShowcaseExportImageIdsSchema.parse(assetIds),
       ),
     ),
-  onAppLoadingPreviewsRefreshed: (callback) => {
-    const listener = (_event: Electron.IpcRendererEvent, value: unknown) =>
-      callback(transitionPreviewRefreshEventSchema.parse(value));
-    ipcRenderer.on('app:loading-previews-refreshed', listener);
-    return () => ipcRenderer.removeListener('app:loading-previews-refreshed', listener);
-  },
   bootstrap: (locale) => ipcRenderer.invoke('app:bootstrap', locale),
+  articleEditorRecoveryList: (input) => {
+    const result = articleEditorRecoveryListResultSchema.parse(
+      ipcRenderer.sendSync('article-editor-recovery:list', articleEditorRecoveryScopeSchema.parse(input)),
+    );
+    if (result.status === 'error') throw new Error(result.message);
+    return result.checkpoints;
+  },
+  articleEditorRecoveryWrite: (checkpoint) => {
+    const result = articleEditorRecoveryMutationResultSchema.parse(
+      ipcRenderer.sendSync('article-editor-recovery:write', articleEditorRecoveryCheckpointSchema.parse(checkpoint)),
+    );
+    if (result.status === 'error') throw new Error(result.message);
+  },
+  articleEditorRecoveryRemove: (input) => {
+    const result = articleEditorRecoveryMutationResultSchema.parse(
+      ipcRenderer.sendSync('article-editor-recovery:remove', articleEditorRecoveryIdentitySchema.parse(input)),
+    );
+    if (result.status === 'error') throw new Error(result.message);
+  },
+  workspaceLayoutSave: async (input) =>
+    workspaceLayoutSaveResultSchema.parse(
+      await ipcRenderer.invoke('workspace-layout:save', workspaceLayoutSaveInputSchema.parse(input)),
+    ),
   generationProjection: (locale) => ipcRenderer.invoke('generation:projection', locale),
+  ...createBackgroundIssuePreloadApi(ipcRenderer),
   appWindowGetState: async () => appWindowStateSchema.parse(await ipcRenderer.invoke('app-window:get-state')),
   appWindowMinimize: () => ipcRenderer.invoke('app-window:minimize'),
   appWindowToggleMaximized: async () =>
@@ -191,9 +227,9 @@ const api: DesktopApi = {
   extensionUninstallLocal: (extensionId) => ipcRenderer.invoke('extension:uninstall-local', extensionId),
   extensionSetEnabled: (input) => ipcRenderer.invoke('extension:set-enabled', input),
   extensionSetPermission: (input) => ipcRenderer.invoke('extension:set-permission', input),
-  codexGeneratedImagesList: (input) => ipcRenderer.invoke('codex-generated-images:list', input),
-  codexGeneratedImagesImport: (input) => ipcRenderer.invoke('codex-generated-images:import', input),
-  codexGeneratedImagesRecover: (input) => ipcRenderer.invoke('codex-generated-images:recover', input),
+  ...createArticleDeliveryPreloadApi(ipcRenderer),
+  ...createProviderConnectionPreloadApi(ipcRenderer),
+  ...createCodexArtifactsPreloadApi(ipcRenderer),
   codexUsageState: async () => codexUsageStateSchema.parse(await ipcRenderer.invoke('codex-usage:state')),
   codexUsageInvestigation: async (input) =>
     codexUsageInvestigationSchema.parse(
@@ -219,23 +255,11 @@ const api: DesktopApi = {
     ipcRenderer.on('codex-usage:task-changed', listener);
     return () => ipcRenderer.removeListener('codex-usage:task-changed', listener);
   },
-  openAiImageApiGet: () => ipcRenderer.invoke('openai-image-api:get'),
-  openAiImageApiSave: (input) => ipcRenderer.invoke('openai-image-api:save', input),
-  openAiImageApiTest: () => ipcRenderer.invoke('openai-image-api:test'),
-  openAiImageApiClear: () => ipcRenderer.invoke('openai-image-api:clear'),
-  deepSeekApiGet: () => ipcRenderer.invoke('deepseek-api:get'),
-  deepSeekApiSave: (input) => ipcRenderer.invoke('deepseek-api:save', input),
-  deepSeekApiTest: () => ipcRenderer.invoke('deepseek-api:test'),
-  deepSeekApiClear: () => ipcRenderer.invoke('deepseek-api:clear'),
   localQwenAsrSidecarGet: async () =>
     localQwenAsrSidecarSchema.parse(await ipcRenderer.invoke('local-qwen-asr-sidecar:get')),
   assistantRoutingGet: () => ipcRenderer.invoke('assistant-routing:get'),
   assistantRoutingSave: (input) => ipcRenderer.invoke('assistant-routing:save', input),
   imageGenerationConcurrencySave: (input) => ipcRenderer.invoke('image-generation-concurrency:save', input),
-  externalImageApiGet: (extensionId) => ipcRenderer.invoke('external-image-api:get', extensionId),
-  externalImageApiSave: (input) => ipcRenderer.invoke('external-image-api:save', input),
-  externalImageApiTest: (extensionId) => ipcRenderer.invoke('external-image-api:test', extensionId),
-  externalImageApiClear: (extensionId) => ipcRenderer.invoke('external-image-api:clear', extensionId),
   antigravityCliGet: () => ipcRenderer.invoke('antigravity-cli:get'),
   antigravityCliRefresh: () => ipcRenderer.invoke('antigravity-cli:refresh'),
   localSpacesList: async () => localSpaceRegistrySchema.parse(await ipcRenderer.invoke('local-spaces:list')),
@@ -276,6 +300,8 @@ const api: DesktopApi = {
   },
   packsList: () => ipcRenderer.invoke('packs:list'),
   packImportLocal: () => ipcRenderer.invoke('content-pack:import-local'),
+  packApplyImport: (input) => ipcRenderer.invoke('content-pack:apply-local', input.requestId),
+  packDiscardImport: (requestId) => ipcRenderer.invoke('content-pack:discard-local', requestId),
   packImportStarter: () => ipcRenderer.invoke('content-pack:import-starter'),
   packReleaseGet: (releaseId) => ipcRenderer.invoke('pack-release:get', releaseId),
   packInstallExact: (input) => ipcRenderer.invoke('pack:install-exact', input),
@@ -411,6 +437,7 @@ const api: DesktopApi = {
     videoDocumentFrameCaptureResultSchema.parse(
       await ipcRenderer.invoke('video-document:frame-capture', videoDocumentFrameCaptureInputSchema.parse(input)),
     ),
+  creatorClipboardReferenceImport: (input) => ipcRenderer.invoke('creator:clipboard-reference-import', input),
   creatorReferencesImport: (input) => ipcRenderer.invoke('creator:references-import', input),
   creatorOutputsImport: (input) => ipcRenderer.invoke('creator:outputs-import', input),
   creatorNewExternalCreationImport: (input) => ipcRenderer.invoke('creator:new-external-creation-import', input),
@@ -431,6 +458,8 @@ const api: DesktopApi = {
   promptVersionCreate: async (input) =>
     promptVersionCreateResultSchema.parse(await ipcRenderer.invoke('prompt-version:create', input)),
   creationDraftStart: (input) => ipcRenderer.invoke('creation-draft:start', input),
+  creationDraftLoad: async (input) =>
+    creationDraftDtoSchema.parse(await ipcRenderer.invoke('creation-draft:load', input)),
   creationDraftSave: (input) => ipcRenderer.invoke('creation-draft:save', input),
   creationDraftCommit: (input) => ipcRenderer.invoke('creation-draft:commit', input),
   creationItemsList: async (input) =>
@@ -461,6 +490,7 @@ const api: DesktopApi = {
     creationItemSetPrimaryResultSchema.parse(
       await ipcRenderer.invoke('creation-item:set-primary', creationItemSetPrimaryInputSchema.parse(input)),
     ),
+  ...createEvaluationSuitePreloadApi(ipcRenderer),
   derivedVisualWorkspaceOpen: (input) =>
     ipcRenderer.invoke('derived-visual:workspace-open', derivedVisualWorkspaceOpenInputSchema.parse(input)),
   derivedVisualAdopt: (input) => ipcRenderer.invoke('derived-visual:adopt', derivedVisualAdoptInputSchema.parse(input)),
@@ -471,24 +501,58 @@ const api: DesktopApi = {
   inspirationStashMove: (input) =>
     ipcRenderer.invoke('inspiration-stash:move', inspirationStashMoveInputSchema.parse(input)),
   inspirationStashSetArchived: (input) => ipcRenderer.invoke('inspiration-stash:set-archived', input),
+  imageBreakdownCreate: async (input) =>
+    imageBreakdownCreateResultSchema.parse(
+      await ipcRenderer.invoke('image-breakdown:create', imageBreakdownCreateInputSchema.parse(input)),
+    ),
+  imageBreakdownRoutes: async () =>
+    imageBreakdownRoutesSchema.parse(await ipcRenderer.invoke('image-breakdown:list-routes')),
+  imageBreakdownReplaceSource: async (input) =>
+    imageBreakdownSchema.parse(
+      await ipcRenderer.invoke('image-breakdown:replace-source', imageBreakdownReplaceSourceInputSchema.parse(input)),
+    ),
+  imageBreakdownRun: async (input) =>
+    imageBreakdownSchema.parse(
+      await ipcRenderer.invoke('image-breakdown:run', imageBreakdownRunInputSchema.parse(input)),
+    ),
+  imageBreakdownCreateImageForm: async (input) =>
+    imageBreakdownImageFormCreateResultSchema.parse(
+      await ipcRenderer.invoke(
+        'image-breakdown:create-image-form',
+        imageBreakdownImageFormCreateInputSchema.parse(input),
+      ),
+    ),
   socialPostSave: (input) => ipcRenderer.invoke('social-post:save', socialPostSaveInputSchema.parse(input)),
   socialPostFormAdd: (input) => ipcRenderer.invoke('social-post:form-add', socialPostFormAddInputSchema.parse(input)),
+  socialPostFormCreate: (input) =>
+    ipcRenderer.invoke('social-post:form-create', socialPostFormCreateInputSchema.parse(input)),
   socialPostMove: (input) => ipcRenderer.invoke('social-post:move', socialPostMoveInputSchema.parse(input)),
   socialPostSetArchived: (input) =>
     ipcRenderer.invoke('social-post:set-archived', socialPostSetArchivedInputSchema.parse(input)),
-  articleSave: (input) => ipcRenderer.invoke('article:save', articleSaveInputSchema.parse(input)),
-  articleFormAdd: (input) => ipcRenderer.invoke('article:form-add', articleFormAddInputSchema.parse(input)),
-  articleRename: (input) => ipcRenderer.invoke('article:rename', articleRenameInputSchema.parse(input)),
-  articleMove: (input) => ipcRenderer.invoke('article:move', articleMoveInputSchema.parse(input)),
-  articleSetArchived: (input) => ipcRenderer.invoke('article:set-archived', articleSetArchivedInputSchema.parse(input)),
-  articleCopyForWechat: async (input) =>
-    articleCopyForWechatResultSchema.parse(
-      await ipcRenderer.invoke('article:copy-for-wechat', articleCopyForWechatInputSchema.parse(input)),
+  browserCompanionStage: async (input) =>
+    browserCompanionStageResultSchema.parse(
+      await ipcRenderer.invoke('browser-companion:stage', browserCompanionStageInputSchema.parse(input)),
     ),
-  articleExportMarkdown: async (input) =>
-    articleExportMarkdownResultSchema.parse(
-      await ipcRenderer.invoke('article:export-markdown', articleExportMarkdownInputSchema.parse(input)),
+  browserCompanionDestinations: async () =>
+    browserCompanionDestinationsResultSchema.parse(await ipcRenderer.invoke('browser-companion:destinations')),
+  browserCompanionOpen: async (input) =>
+    browserCompanionOpenResultSchema.parse(
+      await ipcRenderer.invoke('browser-companion:open', browserCompanionOpenInputSchema.parse(input)),
     ),
+  browserCompanionSelectDestination: async (input) =>
+    browserCompanionDestinationsResultSchema.parse(
+      await ipcRenderer.invoke(
+        'browser-companion:select-destination',
+        browserCompanionDestinationSelectInputSchema.parse(input),
+      ),
+    ),
+  browserCompanionHistory: async () =>
+    browserCompanionHistoryResultSchema.parse(await ipcRenderer.invoke('browser-companion:history')),
+  browserCompanionDelete: async (input) =>
+    browserCompanionDeleteResultSchema.parse(
+      await ipcRenderer.invoke('browser-companion:delete', browserCompanionDeleteInputSchema.parse(input)),
+    ),
+  ...createArticlePreloadApi(ipcRenderer),
   creationsDelete: (creationId) => ipcRenderer.invoke('creations:delete', creationId),
   dictionarySearch: (input) => ipcRenderer.invoke('dictionary:search', input),
   dictionaryDetails: (locale) => ipcRenderer.invoke('dictionary:details', locale),
@@ -538,6 +602,7 @@ const api: DesktopApi = {
   dictionaryClassificationMergePreview: (input) => ipcRenderer.invoke('dictionary-classification:merge-preview', input),
   dictionaryClassificationMerge: (input) => ipcRenderer.invoke('dictionary-classification:merge', input),
   materialsAddToDestinations: (input) => ipcRenderer.invoke('materials:add-to-destinations', input),
+  materialImageAssetsResolve: (input) => ipcRenderer.invoke('material-image-assets:resolve', input),
   dictionaryChooseImport: () => ipcRenderer.invoke('dictionary:choose-import'),
   dictionaryCommitImport: (batchId) => ipcRenderer.invoke('dictionary:commit-import', batchId),
   wordPaletteCreate: (input) => ipcRenderer.invoke('word-palette:create', input),
@@ -545,8 +610,7 @@ const api: DesktopApi = {
   wordPaletteSetArchived: (paletteId, archived) => ipcRenderer.invoke('word-palette:set-archived', paletteId, archived),
   wordPaletteDelete: (paletteId) => ipcRenderer.invoke('word-palette:delete', paletteId),
   assetsChooseReferences: () => ipcRenderer.invoke('assets:choose-references'),
-  codexHealth: () => ipcRenderer.invoke('codex:health'),
-  codexOpenThread: (threadId) => ipcRenderer.invoke('codex:open-thread', threadId),
+  ...createCodexPreloadApi(ipcRenderer),
   agentHistory: (input) => ipcRenderer.invoke('agent:history', input),
   agentChat: (input) => ipcRenderer.invoke('agent:chat', input),
   agentAssist: (input) => ipcRenderer.invoke('agent:assist', input),
@@ -637,7 +701,14 @@ const api: DesktopApi = {
   assetFileAvailability: (assetId) => ipcRenderer.invoke('asset-file:availability', assetId),
   assetFileCopy: (assetId) => ipcRenderer.invoke('asset-file:copy', assetId),
   assetFileSaveAs: (assetId) => ipcRenderer.invoke('asset-file:save-as', assetId),
-  assetFilesStartDrag: (assetIds) => ipcRenderer.invoke('asset-files:start-drag', assetIds),
+  assetFilesStartDrag: (request) =>
+    ipcRenderer.send(assetFilesStartDragChannel, assetFileDragRequestSchema.parse(request)),
+  onAssetFilesDragFinished: (callback) => {
+    const listener = (_event: Electron.IpcRendererEvent, raw: unknown) =>
+      callback(assetFileDragResultSchema.parse(raw));
+    ipcRenderer.on(assetFilesDragFinishedChannel, listener);
+    return () => ipcRenderer.removeListener(assetFilesDragFinishedChannel, listener);
+  },
   assetFileRevealTargets: (assetId, context) => ipcRenderer.invoke('asset-file:reveal-targets', assetId, context),
   assetFileReveal: (assetId, context) => ipcRenderer.invoke('asset-file:reveal', assetId, context),
   assetFileOpen: (assetId) => ipcRenderer.invoke('asset-file:open', assetId),

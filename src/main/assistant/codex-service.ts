@@ -1,4 +1,6 @@
 import type {
+  ArticleCheckInput,
+  ArticleCheckResult,
   CodexAssistInput,
   CodexHealth,
   AssistantReasoningEffort,
@@ -14,6 +16,11 @@ import type {
 export interface CodexTitleExecutionOptions {
   model?: string;
   effort?: AssistantReasoningEffort;
+}
+
+export interface CodexArticleCheckExecutionOptions {
+  model: string;
+  effort: AssistantReasoningEffort;
 }
 
 export interface CodexChatJob {
@@ -45,5 +52,10 @@ export interface CodexService {
     options?: CodexTitleExecutionOptions,
     signal?: AbortSignal,
   ): Promise<CodexTitleResult>;
+  checkArticle(
+    input: ArticleCheckInput,
+    options: CodexArticleCheckExecutionOptions,
+    signal?: AbortSignal,
+  ): Promise<ArticleCheckResult>;
   cancelAll(): Promise<void>;
 }

@@ -12,6 +12,7 @@ interface Props {
   compact?: boolean;
   toolbar?: boolean;
   disabled?: boolean;
+  allowUnspecified?: boolean;
   onChange(preset: CanvasPresetDto | undefined): void;
 }
 
@@ -36,6 +37,7 @@ export function CanvasPresetPicker({
   compact = false,
   toolbar = false,
   disabled = false,
+  allowUnspecified = true,
   onChange,
 }: Props) {
   const { messages } = useI18n();
@@ -87,20 +89,22 @@ export function CanvasPresetPicker({
         <PopoverContent align="start" sideOffset={6} className="w-[390px] max-w-[calc(100vw-2rem)] p-2">
           <div className="mb-1 px-2 py-1 text-xs font-medium text-muted-foreground">{c.choose}</div>
           <div className="max-h-[390px] overflow-y-auto">
-            <button
-              type="button"
-              className={`flex w-full items-center gap-3 rounded-md px-2 py-2 text-left transition-colors hover:bg-accent ${!value ? 'bg-accent' : ''}`}
-              aria-pressed={!value}
-              onClick={() => {
-                onChange(undefined);
-                setOpen(false);
-              }}
-            >
-              <span className="grid h-9 w-12 shrink-0 place-items-center text-muted-foreground" aria-hidden="true">
-                <ProportionsIcon className="size-5" />
-              </span>
-              <span className="min-w-0 flex-1 text-sm font-medium">{c.unspecified}</span>
-            </button>
+            {allowUnspecified && (
+              <button
+                type="button"
+                className={`flex w-full items-center gap-3 rounded-md px-2 py-2 text-left transition-colors hover:bg-accent ${!value ? 'bg-accent' : ''}`}
+                aria-pressed={!value}
+                onClick={() => {
+                  onChange(undefined);
+                  setOpen(false);
+                }}
+              >
+                <span className="grid h-9 w-12 shrink-0 place-items-center text-muted-foreground" aria-hidden="true">
+                  <ProportionsIcon className="size-5" />
+                </span>
+                <span className="min-w-0 flex-1 text-sm font-medium">{c.unspecified}</span>
+              </button>
+            )}
             {presets.map((preset) => (
               <button
                 type="button"

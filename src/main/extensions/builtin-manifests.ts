@@ -1,6 +1,10 @@
 import type { ExtensionManifestDto } from '@/shared/contracts';
 import { EXTENSION_HOST_ENGINE_KEY, EXTENSION_HOST_VERSION } from '@/shared/product';
 import { DEEPSEEK_PROVIDER } from '@/main/assistant-models/deepseek-provider';
+import {
+  DEEPSEEK_VISION_ENDPOINT_PERMISSION,
+  DEEPSEEK_VISION_REFERENCE_PERMISSION,
+} from '@/main/extensions/deepseek-api/vision-endpoint';
 import { OPENAI_IMAGE_PROVIDER } from '@/main/extensions/openai-image-api/definition';
 import {
   ALIBABA_IMAGE_PROVIDER_ID,
@@ -20,46 +24,55 @@ import {
   VOLCENGINE_IMAGE_PROVIDER_ID,
   VOLCENGINE_ARK_IMAGE_API_EXTENSION_ID,
 } from '@/shared/extension-ids';
+import { EXTENSION_PERMISSION, EXTENSION_PERMISSION_TEMPLATE } from '@/shared/extension-permissions';
 import {
   BYTEPLUS_AP_ENDPOINT_PERMISSION,
   BYTEPLUS_EU_ENDPOINT_PERMISSION,
-  USER_CONFIGURED_HTTPS_ENDPOINT_PERMISSION,
   externalImageApiConfiguration,
 } from '@/main/extensions/external-image-api/endpoints';
 
-export const CODEX_APP_SERVER_PERMISSIONS = ['codex:app-server', 'codex:threads', 'library.read:references'] as const;
+export const CODEX_APP_SERVER_PERMISSIONS = [
+  EXTENSION_PERMISSION.integrationConnectCodexAppServer,
+  EXTENSION_PERMISSION.codexManageExtensionThreads,
+  EXTENSION_PERMISSION.libraryReadSelectedReferences,
+] as const;
 
-export const ANTIGRAVITY_CLI_PERMISSIONS = ['antigravity:cli', 'library.read:references'] as const;
+export const ANTIGRAVITY_CLI_PERMISSIONS = [
+  EXTENSION_PERMISSION.processExecuteAntigravityCli,
+  EXTENSION_PERMISSION.libraryReadSelectedReferences,
+] as const;
 
 export const OPENAI_IMAGE_API_PERMISSIONS = [
   `network:${OPENAI_IMAGE_PROVIDER.origin}`,
-  'secrets:openai-api-key',
-  'library.read:references',
+  EXTENSION_PERMISSION.credentialsUseOpenAiApiKey,
+  EXTENSION_PERMISSION.libraryReadSelectedReferences,
 ] as const;
 
-export const DEEPSEEK_API_PERMISSIONS = [`network:${DEEPSEEK_PROVIDER.origin}`, 'secrets:deepseek-api-key'] as const;
+export const DEEPSEEK_API_PERMISSIONS = [
+  `network:${DEEPSEEK_PROVIDER.origin}`,
+  EXTENSION_PERMISSION.credentialsUseDeepSeekApiKey,
+] as const;
 
 const GOOGLE_GEMINI_IMAGE_API_PERMISSIONS = [
   'network:https://generativelanguage.googleapis.com',
-  'secrets:google-gemini-api-key',
-  'library.read:references',
+  EXTENSION_PERMISSION.credentialsUseGoogleGeminiApiKey,
+  EXTENSION_PERMISSION.libraryReadSelectedReferences,
 ] as const;
 
 const ALIBABA_MODEL_STUDIO_IMAGE_API_PERMISSIONS = [
-  'network:https://aliyuncs.com',
-  'secrets:alibaba-model-studio-api-key',
-  'library.read:references',
+  EXTENSION_PERMISSION.credentialsUseAlibabaModelStudioApiKey,
+  EXTENSION_PERMISSION.libraryReadSelectedReferences,
 ] as const;
 
 const VOLCENGINE_ARK_IMAGE_API_PERMISSIONS = [
   'network:https://ark.cn-beijing.volces.com',
-  'secrets:volcengine-ark-api-key',
-  'library.read:references',
+  EXTENSION_PERMISSION.credentialsUseVolcengineArkApiKey,
+  EXTENSION_PERMISSION.libraryReadSelectedReferences,
 ] as const;
 const VOLCENGINE_ARK_IMAGE_API_OPTIONAL_PERMISSIONS = [
   BYTEPLUS_AP_ENDPOINT_PERMISSION,
   BYTEPLUS_EU_ENDPOINT_PERMISSION,
-  USER_CONFIGURED_HTTPS_ENDPOINT_PERMISSION,
+  EXTENSION_PERMISSION_TEMPLATE.userConfiguredHttpsEndpoint,
 ] as const;
 
 const BUILTIN_EXTENSION_ENGINES: ExtensionManifestDto['engines'] = {
@@ -97,7 +110,7 @@ export const BUILTIN_EXTENSION_MANIFESTS: readonly ExtensionManifestDto[] = [
     manifestVersion: 1,
     kind: 'LANGUAGE',
     id: ENGLISH_LANGUAGE_EXTENSION_ID,
-    version: '0.3.6',
+    version: '0.3.7',
     displayName: 'English',
     description: "Provides the app's English interface.",
     engines: BUILTIN_EXTENSION_ENGINES,
@@ -123,7 +136,7 @@ export const BUILTIN_EXTENSION_MANIFESTS: readonly ExtensionManifestDto[] = [
     manifestVersion: 1,
     kind: 'CAPABILITY',
     id: ANTIGRAVITY_CLI_EXTENSION_ID,
-    version: '0.1.0',
+    version: '0.1.1',
     displayName: 'Google Antigravity CLI',
     description: 'Use a local Antigravity sign-in for agent assistance and preview image generation.',
     engines: BUILTIN_EXTENSION_ENGINES,
@@ -152,7 +165,7 @@ export const BUILTIN_EXTENSION_MANIFESTS: readonly ExtensionManifestDto[] = [
     manifestVersion: 1,
     kind: 'CAPABILITY',
     id: CODEX_APP_SERVER_EXTENSION_ID,
-    version: '0.3.2',
+    version: '0.3.3',
     displayName: 'Codex App Server',
     description: 'Codex tasks, creative proposals, and separate App Server and CLI image generation routes.',
     engines: BUILTIN_EXTENSION_ENGINES,
@@ -182,7 +195,7 @@ export const BUILTIN_EXTENSION_MANIFESTS: readonly ExtensionManifestDto[] = [
     manifestVersion: 1,
     kind: 'CAPABILITY',
     id: OPENAI_IMAGE_API_EXTENSION_ID,
-    version: '0.3.1',
+    version: '0.3.2',
     displayName: 'OpenAI Image API',
     description: 'Call GPT Image 2 with independent OpenAI API credentials.',
     engines: BUILTIN_EXTENSION_ENGINES,
@@ -209,7 +222,7 @@ export const BUILTIN_EXTENSION_MANIFESTS: readonly ExtensionManifestDto[] = [
     manifestVersion: 1,
     kind: 'CAPABILITY',
     id: DEEPSEEK_API_EXTENSION_ID,
-    version: '0.3.1',
+    version: '0.3.2',
     displayName: 'DeepSeek API',
     description: 'Use DeepSeek V4 Flash for prompt writing, web-grounded optimization, and creative directions.',
     engines: BUILTIN_EXTENSION_ENGINES,
@@ -218,7 +231,7 @@ export const BUILTIN_EXTENSION_MANIFESTS: readonly ExtensionManifestDto[] = [
       modelProviders: ['deepseek'],
     },
     permissions: [...DEEPSEEK_API_PERMISSIONS],
-    optionalPermissions: [],
+    optionalPermissions: [DEEPSEEK_VISION_REFERENCE_PERMISSION, DEEPSEEK_VISION_ENDPOINT_PERMISSION],
     i18n: {
       defaultLocale: 'en',
       locales: {
@@ -237,7 +250,7 @@ export const BUILTIN_EXTENSION_MANIFESTS: readonly ExtensionManifestDto[] = [
     manifestVersion: 1,
     kind: 'CAPABILITY',
     id: GOOGLE_GEMINI_IMAGE_API_EXTENSION_ID,
-    version: '0.1.2',
+    version: '0.1.3',
     displayName: 'Google Gemini API',
     description: 'Use an AI Studio API key for Gemini assistant tasks and direct image generation.',
     engines: BUILTIN_EXTENSION_ENGINES,
@@ -246,7 +259,7 @@ export const BUILTIN_EXTENSION_MANIFESTS: readonly ExtensionManifestDto[] = [
       modelProviders: [GOOGLE_IMAGE_PROVIDER_ID, GOOGLE_GEMINI_ASSISTANT_PROVIDER_KEY],
     },
     permissions: [...GOOGLE_GEMINI_IMAGE_API_PERMISSIONS],
-    optionalPermissions: [USER_CONFIGURED_HTTPS_ENDPOINT_PERMISSION],
+    optionalPermissions: [EXTENSION_PERMISSION_TEMPLATE.userConfiguredHttpsEndpoint],
     configuration: externalImageApiConfiguration(GOOGLE_GEMINI_IMAGE_API_EXTENSION_ID),
     i18n: {
       defaultLocale: 'en',
@@ -296,14 +309,14 @@ export const BUILTIN_EXTENSION_MANIFESTS: readonly ExtensionManifestDto[] = [
     manifestVersion: 1,
     kind: 'CAPABILITY',
     id: ALIBABA_MODEL_STUDIO_IMAGE_API_EXTENSION_ID,
-    version: '0.1.1',
+    version: '0.1.2',
     displayName: 'Alibaba Model Studio Image API',
     description:
       'Not tested with a live API. Generate and edit images with Qwen Image 3.0 Pro through Alibaba Cloud Model Studio.',
     engines: BUILTIN_EXTENSION_ENGINES,
     contributes: { modelProviders: [ALIBABA_IMAGE_PROVIDER_ID] },
     permissions: [...ALIBABA_MODEL_STUDIO_IMAGE_API_PERMISSIONS],
-    optionalPermissions: [USER_CONFIGURED_HTTPS_ENDPOINT_PERMISSION],
+    optionalPermissions: [EXTENSION_PERMISSION_TEMPLATE.userConfiguredHttpsEndpoint],
     configuration: externalImageApiConfiguration(ALIBABA_MODEL_STUDIO_IMAGE_API_EXTENSION_ID),
     i18n: {
       defaultLocale: 'en',
@@ -362,7 +375,7 @@ export const BUILTIN_EXTENSION_MANIFESTS: readonly ExtensionManifestDto[] = [
     manifestVersion: 1,
     kind: 'CAPABILITY',
     id: VOLCENGINE_ARK_IMAGE_API_EXTENSION_ID,
-    version: '0.1.1',
+    version: '0.1.2',
     displayName: 'Volcengine Ark / BytePlus ModelArk Image API',
     description:
       'Not tested with a live API. Generate Seedream 5.0 images through Volcengine Ark or BytePlus ModelArk regional endpoints.',

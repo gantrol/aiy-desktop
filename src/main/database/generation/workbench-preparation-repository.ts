@@ -32,6 +32,15 @@ export class WorkbenchPreparationRepository extends WorkbenchReader {
     return this.commitImportedReference(sourcePath, imported);
   }
 
+  async importReferenceBytes(sourceName: string, bytes: Uint8Array): Promise<AssetDto> {
+    const extension = path.extname(sourceName).toLowerCase();
+    if (!['.png', '.jpg', '.jpeg', '.webp'].includes(extension) || bytes.byteLength < 1) {
+      throw new Error('Reference image bytes are invalid');
+    }
+    const imported = await this.storage.storeBufferAsync(bytes, extension);
+    return this.commitImportedReference(sourceName, imported);
+  }
+
   private commitImportedReference(
     sourcePath: string,
     imported: ReturnType<LibraryStorage['copyIntoObjectStore']>,
@@ -181,6 +190,25 @@ export class WorkbenchPreparationRepository extends WorkbenchReader {
     }
 
     const creationItems = new CreationItemRepository(this.storage);
+    if (input.inspirationStashId && input.imageBreakdownId) {
+      throw new Error('An image creation cannot have two creation-form owners');
+    }
+    if (input.imageBreakdownId) {
+      const item = creationItems.findForEntity({ kind: 'IMAGE_BREAKDOWN', id: input.imageBreakdownId });
+      if (!item) throw new Error('The source image breakdown item is unavailable');
+      const sourceForm = item.forms.find(
+        (form) => form.role === 'IMAGE_BREAKDOWN' && form.entity.id === input.imageBreakdownId,
+      );
+      if (!sourceForm) throw new Error('The source image breakdown form is unavailable');
+      creationItems.addOrGetForm({
+        creationItemId: item.id,
+        sourceFormId: sourceForm.id,
+        role: 'IMAGE_CREATION',
+        entity: { kind: 'PROMPT_SERIES', id: seriesId },
+        anchorKey: null,
+      });
+      return;
+    }
     if (input.inspirationStashId) {
       const item = creationItems.findForEntity({ kind: 'INSPIRATION_STASH', id: input.inspirationStashId });
       if (!item) throw new Error('The source inspiration item is unavailable');

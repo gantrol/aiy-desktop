@@ -16,6 +16,14 @@ const spaceCoverMimeTypeByExtension: Readonly<Record<string, string>> = {
   '.png': 'image/png',
   '.webp': 'image/webp',
 };
+const codexVisualizationMimeTypeByExtension: Readonly<Record<string, string>> = {
+  '.avif': 'image/avif',
+  '.gif': 'image/gif',
+  '.jpg': 'image/jpeg',
+  '.jpeg': 'image/jpeg',
+  '.png': 'image/png',
+  '.webp': 'image/webp',
+};
 
 function parseHttpByteRange(value: string, totalSize: number): HttpByteRange | null {
   const match = /^bytes=(\d*)-(\d*)$/u.exec(value.trim());
@@ -78,6 +86,12 @@ export function applyMediaResponseHeaders(headers: Headers, hostname: string, fi
     headers.set(
       'content-type',
       spaceCoverMimeTypeByExtension[urlPathExtension(filePath)] ?? 'application/octet-stream',
+    );
+  }
+  if (hostname === 'codex-visualization') {
+    headers.set(
+      'content-type',
+      codexVisualizationMimeTypeByExtension[urlPathExtension(filePath)] ?? 'application/octet-stream',
     );
   }
   headers.set(

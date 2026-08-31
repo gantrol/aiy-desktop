@@ -1,15 +1,16 @@
-import { lstatSync, readFileSync, realpathSync } from 'node:fs';
+import { lstat, readFile, realpath } from 'node:fs/promises';
 import path from 'node:path';
 import { z } from 'zod';
-import { readDictionaryImports } from '@/main/dictionary/dictionary-import';
+import { readDictionaryImportsAsync } from '@/main/dictionary/dictionary-import';
 import { parseV03FixtureDocument } from '@/main/database/packs/fixture-contract';
 import type { FixturePackProfile } from '@/main/database/packs/fixture-pack-profile';
-import type { FixturePackSourcePaths } from '@/main/database/packs/fixture-pack-source';
+import { fixtureContentHash, type FixturePackSourcePaths } from '@/main/database/packs/fixture-pack-source';
 import type { FacetSystemRoleAssignments } from '@/main/database/dictionary/facet-system-roles';
 import {
   contentPackExamplesDocumentSchema,
   type ContentPackExamplesDocument,
 } from '@/main/content-packs/example-manifest';
+import { prepareContentPackExamples, type PreparedContentPackExample } from '@/main/content-packs/example-importer';
 
 const MAX_MANIFEST_BYTES = 256 * 1024;
 const MAX_FIXTURE_BYTES = 64 * 1024 * 1024;
@@ -87,6 +88,8 @@ export interface LoadedContentPackPackage {
   examplesPath?: string;
   exampleAssetsRoot?: string;
   examplesDocument?: ContentPackExamplesDocument;
+  preparedExamples: PreparedContentPackExample[];
+  packageFingerprint: string;
   sourcePaths: FixturePackSourcePaths;
   facetRoles: FacetSystemRoleAssignments;
   profile: FixturePackProfile;
@@ -200,12 +203,12 @@ const contentPackPaletteSchema = z
   })
   .passthrough();
 
-function readBoundedJson(file: ValidatedPackageFile, maximumBytes: number, label: string) {
+async function readBoundedJson(file: ValidatedPackageFile, maximumBytes: number, label: string) {
   if (file.size === 0 || file.size > maximumBytes) {
     throw new Error(`${label} has an invalid size: ${file.path}`);
   }
-  const bytes = readFileSync(file.path);
-  if (bytes.byteLength === 0 || bytes.byteLength > maximumBytes) {
+  const bytes = await readFile(file.path);
+  if (bytes.byteLength !== file.size || bytes.byteLength > maximumBytes) {
     throw new Error(`${label} changed while it was being read: ${file.path}`);
   }
   try {
@@ -215,8 +218,8 @@ function readBoundedJson(file: ValidatedPackageFile, maximumBytes: number, label
   }
 }
 
-function readManifest(file: ValidatedPackageFile) {
-  return contentPackManifestSchema.parse(readBoundedJson(file, MAX_MANIFEST_BYTES, 'Content pack manifest'));
+async function readManifest(file: ValidatedPackageFile) {
+  return contentPackManifestSchema.parse(await readBoundedJson(file, MAX_MANIFEST_BYTES, 'Content pack manifest'));
 }
 
 function isContained(root: string, candidate: string) {
@@ -224,77 +227,94 @@ function isContained(root: string, candidate: string) {
   return relative !== '' && !relative.startsWith(`..${path.sep}`) && relative !== '..' && !path.isAbsolute(relative);
 }
 
-function packageFile(packagePath: string, relativePath: string, label: string) {
+async function packageFile(packagePath: string, relativePath: string, label: string) {
   if (path.isAbsolute(relativePath)) throw new Error(`${label} must be package-relative`);
   const resolvedFile = path.resolve(packagePath, relativePath);
   if (!isContained(packagePath, resolvedFile)) throw new Error(`${label} is outside the content pack`);
-  const entry = lstatSync(resolvedFile);
+  const entry = await lstat(resolvedFile);
   if (!entry.isFile() || entry.isSymbolicLink()) throw new Error(`${label} must be a regular file`);
-  const realFile = realpathSync(resolvedFile);
+  const realFile = await realpath(resolvedFile);
   if (!isContained(packagePath, realFile)) throw new Error(`${label} is outside the content pack`);
   return { path: realFile, size: entry.size };
 }
 
-function packageDirectory(packagePath: string, relativePath: string, label: string) {
+async function packageDirectory(packagePath: string, relativePath: string, label: string) {
   if (path.isAbsolute(relativePath)) throw new Error(`${label} must be package-relative`);
   const resolvedDirectory = path.resolve(packagePath, relativePath);
   if (!isContained(packagePath, resolvedDirectory)) throw new Error(`${label} is outside the content pack`);
-  const entry = lstatSync(resolvedDirectory);
+  const entry = await lstat(resolvedDirectory);
   if (!entry.isDirectory() || entry.isSymbolicLink()) throw new Error(`${label} must be a regular directory`);
-  const realDirectory = realpathSync(resolvedDirectory);
+  const realDirectory = await realpath(resolvedDirectory);
   if (!isContained(packagePath, realDirectory)) throw new Error(`${label} is outside the content pack`);
   return realDirectory;
 }
 
-export function loadContentPackPackage(packagePath: string): LoadedContentPackPackage {
-  const resolvedPackage = realpathSync(packagePath);
-  if (!lstatSync(resolvedPackage).isDirectory()) throw new Error('Content pack path must be a directory');
-  const manifest = readManifest(packageFile(resolvedPackage, 'manifest.json', 'Content pack manifest'));
-  const fixtureFile = packageFile(resolvedPackage, manifest.source.fixture, 'Content pack fixture');
-  const dictionaryFile = packageFile(resolvedPackage, manifest.source.dictionary, 'Content pack dictionary');
-  const paletteFile = manifest.source.palettes
-    ? packageFile(resolvedPackage, manifest.source.palettes, 'Content pack palette catalog')
-    : undefined;
-  const fixturePath = fixtureFile.path;
-  const dictionaryPath = dictionaryFile.path;
-  const palettePath = paletteFile?.path;
-  const assetsRoot = manifest.source.assets
-    ? packageDirectory(resolvedPackage, manifest.source.assets, 'Content pack assets')
-    : undefined;
+export async function loadContentPackPackage(packagePath: string): Promise<LoadedContentPackPackage> {
+  const resolvedPackage = await realpath(packagePath);
+  if (!(await lstat(resolvedPackage)).isDirectory()) throw new Error('Content pack path must be a directory');
+  const manifest = await readManifest(await packageFile(resolvedPackage, 'manifest.json', 'Content pack manifest'));
   if (Boolean(manifest.source.examples) !== Boolean(manifest.source.exampleAssets)) {
     throw new Error('Content pack examples and exampleAssets must be declared together');
   }
-  const examplesFile = manifest.source.examples
-    ? packageFile(resolvedPackage, manifest.source.examples, 'Content pack examples')
-    : undefined;
+  const [fixtureFile, dictionaryFile, paletteFile, assetsRoot, examplesFile, exampleAssetsRoot] = await Promise.all([
+    packageFile(resolvedPackage, manifest.source.fixture, 'Content pack fixture'),
+    packageFile(resolvedPackage, manifest.source.dictionary, 'Content pack dictionary'),
+    manifest.source.palettes
+      ? packageFile(resolvedPackage, manifest.source.palettes, 'Content pack palette catalog')
+      : undefined,
+    manifest.source.assets
+      ? packageDirectory(resolvedPackage, manifest.source.assets, 'Content pack assets')
+      : undefined,
+    manifest.source.examples
+      ? packageFile(resolvedPackage, manifest.source.examples, 'Content pack examples')
+      : undefined,
+    manifest.source.exampleAssets
+      ? packageDirectory(resolvedPackage, manifest.source.exampleAssets, 'Content pack example assets')
+      : undefined,
+  ]);
+  const fixturePath = fixtureFile.path;
+  const dictionaryPath = dictionaryFile.path;
+  const palettePath = paletteFile?.path;
   const examplesPath = examplesFile?.path;
-  const exampleAssetsRoot = manifest.source.exampleAssets
-    ? packageDirectory(resolvedPackage, manifest.source.exampleAssets, 'Content pack example assets')
-    : undefined;
-  const fixtureDocument = parseV03FixtureDocument(
+  const [fixtureValue, dictionaryValue, paletteValue, examplesValue] = await Promise.all([
     readBoundedJson(fixtureFile, MAX_FIXTURE_BYTES, 'Content pack fixture'),
-  );
-  const dictionary = contentPackDictionaryIndexSchema.parse(
     readBoundedJson(dictionaryFile, MAX_DICTIONARY_BYTES, 'Content pack dictionary'),
-  );
+    paletteFile ? readBoundedJson(paletteFile, MAX_PALETTE_BYTES, 'Content pack palette catalog') : undefined,
+    examplesFile ? readBoundedJson(examplesFile, MAX_EXAMPLES_BYTES, 'Content pack examples') : undefined,
+  ]);
+  const fixtureDocument = parseV03FixtureDocument(fixtureValue);
+  const dictionary = contentPackDictionaryIndexSchema.parse(dictionaryValue);
   const dictionaryRoot = path.dirname(dictionaryPath);
   const dictionaryTermPaths = (dictionary.termFiles ?? []).map((termFile) => {
     if (path.isAbsolute(termFile)) throw new Error('Content pack dictionary term file must be package-relative');
     return path.resolve(dictionaryRoot, termFile);
   });
-  const dictionaryCatalogRows = readDictionaryImports(dictionaryTermPaths, { rootPath: dictionaryRoot });
-  const paletteDocument = paletteFile
-    ? contentPackPaletteSchema.parse(readBoundedJson(paletteFile, MAX_PALETTE_BYTES, 'Content pack palette catalog'))
-    : undefined;
-  const examplesDocument = examplesFile
-    ? contentPackExamplesDocumentSchema.parse(
-        readBoundedJson(examplesFile, MAX_EXAMPLES_BYTES, 'Content pack examples'),
-      )
-    : undefined;
+  const paletteDocument = paletteValue === undefined ? undefined : contentPackPaletteSchema.parse(paletteValue);
+  const examplesDocument =
+    examplesValue === undefined ? undefined : contentPackExamplesDocumentSchema.parse(examplesValue);
+  const [dictionaryCatalogRows, preparedExamples] = await Promise.all([
+    readDictionaryImportsAsync(dictionaryTermPaths, { rootPath: dictionaryRoot }),
+    prepareContentPackExamples(manifest.id, examplesDocument, exampleAssetsRoot),
+  ]);
+  const packageFingerprint = `sha256:${fixtureContentHash({
+    contract: 'CONTENT_PACKAGE_IMPORT_SNAPSHOT_V1',
+    manifest,
+    fixture: fixtureDocument,
+    dictionary,
+    dictionaryCatalogRows,
+    palette: paletteDocument ?? {},
+    examples: examplesDocument ?? null,
+    exampleObjects: preparedExamples.map((example) => ({
+      itemKey: example.itemKey,
+      objectHash: example.objectHash,
+      byteSize: example.byteSize,
+    })),
+  })}`;
   const sourcePaths: FixturePackSourcePaths = {
     fixturePath,
     dictionaryPath,
     ...(palettePath ? { palettePath } : {}),
+    supplementalItems: preparedExamples.map((example) => example.releaseItem),
     prepared: {
       fixture: fixtureDocument,
       dictionary,
@@ -313,6 +333,8 @@ export function loadContentPackPackage(packagePath: string): LoadedContentPackPa
     examplesPath,
     exampleAssetsRoot,
     examplesDocument,
+    preparedExamples,
+    packageFingerprint,
     sourcePaths,
     facetRoles: {
       ...(manifest.facetRoles?.primaryClassification

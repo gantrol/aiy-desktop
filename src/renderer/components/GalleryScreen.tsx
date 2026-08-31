@@ -59,7 +59,7 @@ import { materialLibraryNavigationLabels } from '@/renderer/components/gallery/m
 import { buildMaterialAlbumTree } from '@/renderer/components/gallery/materialAlbumTree';
 import { useCreationCollectionBrowse } from '@/renderer/components/gallery/useCreationCollectionBrowse';
 import { nextGallerySelection } from '@/renderer/components/gallery/gallerySelection';
-import { beginNativeMaterialsDrag, writeMaterialsDrag } from '@/renderer/components/albums/albumDrag';
+import { startNativeAssetFilesDrag, writeMaterialsDrag } from '@/renderer/components/albums/albumDrag';
 import {
   useContentLifecycleActions,
   type ContentLifecycleActionRequest,
@@ -546,15 +546,11 @@ export function GalleryScreen({
       const images = source.flatMap((candidate) => (candidate.kind === 'IMAGE' ? [candidate] : []));
       const assetIds = [...new Set(images.map((candidate) => candidate.image.asset.id))];
       if (assetIds.length > 0) {
-        event.preventDefault();
-        event.stopPropagation();
-        const finishNativeDrag = beginNativeMaterialsDrag(targetsForMaterials(images));
-        void window.desktopApi
-          .assetFilesStartDrag(assetIds)
-          .catch((reason) => {
-            notify(`${messages.assetFile.failed}: ${reason instanceof Error ? reason.message : String(reason)}`);
-          })
-          .finally(finishNativeDrag);
+        try {
+          startNativeAssetFilesDrag(event, assetIds, targetsForMaterials(images));
+        } catch (reason) {
+          notify(`${messages.assetFile.failed}: ${reason instanceof Error ? reason.message : String(reason)}`);
+        }
         return;
       }
     }
@@ -570,6 +566,10 @@ export function GalleryScreen({
   const stableStartMaterialDrag = useStableCallback(startMaterialDrag);
   const stableNotify = useStableCallback(notify);
   const stableCopyText = useStableCallback((text: string) => void copyText(text));
+  const archiveMaterial = useStableCallback((item: MaterialLibraryItem) => requestMaterialLifecycle('ARCHIVE', item));
+  const deleteMaterial = useStableCallback((item: MaterialLibraryItem) => requestMaterialLifecycle('DELETE', item));
+  const archiveAlbum = useStableCallback((album: MaterialAlbumDto) => requestAlbumLifecycle('ARCHIVE', album));
+  const deleteAlbum = useStableCallback((album: MaterialAlbumDto) => requestAlbumLifecycle('DELETE', album));
 
   async function addCheckedToDestinations(albumIds: string[], termIds: string[]) {
     if (collectBusy || checkedKeys.size === 0) return;
@@ -805,15 +805,15 @@ export function GalleryScreen({
   const resultTotal = total + filteredTexts.length;
   const displayedResultTotal = creationBrowseActive ? (activeAlbum?.materialCount ?? 0) : resultTotal;
 
+  const materialRevealContext = useMemo<AssetFileRevealContext>(() => {
+    if (activeAlbum?.kind === 'USER') return { kind: 'ALBUM', albumId: activeAlbum.id };
+    if (dictionarySelection?.termId) return { kind: 'TERM', termId: dictionarySelection.termId };
+    return dictionaryActive ? { kind: 'DICTIONARY' } : { kind: 'ALL_MATERIALS' };
+  }, [activeAlbum?.id, activeAlbum?.kind, dictionaryActive, dictionarySelection?.termId]);
   const revealContextForMaterial = useCallback(
-    (item: MaterialLibraryItem): AssetFileRevealContext | undefined => {
-      if (item.kind === 'TEXT') return undefined;
-      if (activeAlbum?.kind === 'USER') return { kind: 'ALBUM', albumId: activeAlbum.id };
-      if (dictionarySelection?.termId) return { kind: 'TERM', termId: dictionarySelection.termId };
-      if (dictionaryActive) return { kind: 'DICTIONARY' };
-      return { kind: 'ALL_MATERIALS' };
-    },
-    [activeAlbum, dictionaryActive, dictionarySelection?.termId],
+    (item: MaterialLibraryItem): AssetFileRevealContext | undefined =>
+      item.kind === 'TEXT' ? undefined : materialRevealContext,
+    [materialRevealContext],
   );
 
   useEffect(() => {
@@ -1286,14 +1286,6 @@ export function GalleryScreen({
     }
   }
 
-  async function deleteAlbum(album: MaterialAlbumDto) {
-    await requestAlbumLifecycle('DELETE', album);
-  }
-
-  async function archiveAlbum(album: MaterialAlbumDto) {
-    await requestAlbumLifecycle('ARCHIVE', album);
-  }
-
   async function collectDroppedMaterials(albumId: string, targets: MaterialSelectionTargetInput[]) {
     if (!targets.length || collectBusy) return;
     setCollectBusy(true);
@@ -1621,14 +1613,14 @@ export function GalleryScreen({
                 onImportFiles={(album, files) =>
                   intakeRef.current?.reviewFiles(files, { albumId: album.id, albumName: album.title })
                 }
-                onArchiveAlbum={(album) => void archiveAlbum(album)}
-                onDeleteAlbum={(album) => void deleteAlbum(album)}
+                onArchiveAlbum={archiveAlbum}
+                onDeleteAlbum={deleteAlbum}
                 onSelect={stableSelectMaterial}
                 onEnterSelection={stableEnterSelection}
                 onToggleSelection={stableToggleSelection}
                 onCopyText={stableCopyText}
-                onArchiveMaterial={(item) => void requestMaterialLifecycle('ARCHIVE', item)}
-                onDeleteMaterial={(item) => void requestMaterialLifecycle('DELETE', item)}
+                onArchiveMaterial={archiveMaterial}
+                onDeleteMaterial={deleteMaterial}
                 notify={stableNotify}
                 onDragStart={stableStartMaterialDrag}
                 revealContextForItem={revealContextForMaterial}

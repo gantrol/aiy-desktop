@@ -22,6 +22,7 @@ export interface ResolvedAssetFile {
     | 'video/quicktime';
   width: number;
   height: number;
+  byteSize: number;
 }
 
 const imageFileTypes = {
@@ -111,7 +112,7 @@ export class AssetFileRepository {
     const row = this.db
       .prepare(
         `SELECT asset.id, asset.object_hash, asset.relative_path, asset.mime_type,
-        asset.width, asset.height,
+        asset.width, asset.height, asset.byte_size,
         COALESCE(
           (
             SELECT NULLIF(TRIM(metadata.display_name), '')
@@ -181,6 +182,7 @@ export class AssetFileRepository {
         mimeType,
         width: Number(row.width),
         height: Number(row.height),
+        byteSize: Number(row.byte_size),
       };
     } catch {
       return null;

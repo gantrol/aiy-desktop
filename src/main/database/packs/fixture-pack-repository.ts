@@ -13,7 +13,7 @@ import { type JsonMap, text } from '@/main/database/core/values';
 
 interface FixtureLocalMapping {
   itemKey: string;
-  localObjectType: 'TERM' | 'RECIPE';
+  localObjectType: string;
   localObjectId: string;
   localRevisionId: string;
 }
@@ -109,7 +109,7 @@ export class FixturePackRepository {
   }
 
   isCurrent(source: FixturePackSource) {
-    const expectedItemCount = source.terms.length + source.recipes.length;
+    const expectedItemCount = source.terms.length + source.recipes.length + source.supplementalItems.length;
     const state = this.storage.db
       .prepare(
         `SELECT pack.kind, pack.display_name, pack.description,
@@ -162,7 +162,7 @@ export class FixturePackRepository {
 
   ensure(source: FixturePackSource) {
     const { profile } = source;
-    return this.storage.db.transaction(() => {
+    const registered = this.storage.db.transaction(() => {
       const mappings: FixtureLocalMapping[] = [];
       const items: PackReleaseItemInput[] = [];
       const localTermIds = new Map<string, string>();
@@ -225,6 +225,26 @@ export class FixturePackRepository {
         });
       }
 
+      for (const supplemental of source.supplementalItems) {
+        items.push({
+          itemKey: supplemental.itemKey,
+          objectType: supplemental.objectType,
+          objectRevisionId: supplemental.objectRevisionId,
+          contentHash: supplemental.contentHash,
+          inclusionKind: supplemental.inclusionKind,
+          visibility: supplemental.visibility,
+          rightsStatus: supplemental.rightsStatus,
+          metadata: supplemental.metadata,
+          provenance: supplemental.provenance,
+        });
+        mappings.push({
+          itemKey: supplemental.itemKey,
+          localObjectType: supplemental.localObjectType,
+          localObjectId: supplemental.localObjectId,
+          localRevisionId: supplemental.localRevisionId,
+        });
+      }
+
       const pack = this.packs.registerPack({
         id: profile.id,
         kind: 'CONTENT',
@@ -248,6 +268,7 @@ export class FixturePackRepository {
           paletteRevision: source.paletteRevision,
           termRevisionCount: source.terms.length,
           recipeRevisionCount: source.recipes.length,
+          supplementalItemCount: source.supplementalItems.length,
         },
         compatibility: { productBaseline: '0.3.0' },
         defaultRoles: profile.defaultRoles,
@@ -259,19 +280,14 @@ export class FixturePackRepository {
         },
         items,
       });
-      const installation = this.packs.installExactPackRelease({
-        packId: pack.id,
-        releaseId: release.id,
-        source: { source: 'CONTENT_PACKAGE', packageKey: profile.key },
-        verification: { contentHash: release.contentHash, itemCount: release.items.length },
-      });
       const releaseItems = new Map(release.items.map((item) => [item.itemKey, item]));
+      const spaceId = this.packs.getLocalSpace().id;
       for (const mapping of mappings) {
         const item = releaseItems.get(mapping.itemKey);
         if (!item) throw new Error(`Content package release item is missing: ${mapping.itemKey}`);
         this.packs.linkPackReleaseItem({
           id: deterministicId('pack_link', {
-            spaceId: installation.spaceId,
+            spaceId,
             releaseItemId: item.id,
             localRevisionId: mapping.localRevisionId,
           }),
@@ -282,7 +298,14 @@ export class FixturePackRepository {
           mappingKind: 'REUSED_IDENTICAL',
         });
       }
-      return { pack, release, installation };
+      return { pack, release };
     })();
+    const installation = this.packs.repairExactPackRelease({
+      packId: registered.pack.id,
+      releaseId: registered.release.id,
+      source: { source: 'CONTENT_PACKAGE', packageKey: profile.key },
+      verification: { contentHash: registered.release.contentHash, itemCount: registered.release.items.length },
+    });
+    return { ...registered, installation };
   }
 }

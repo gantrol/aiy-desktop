@@ -28,17 +28,24 @@ const VideoDocumentsScreen = lazy(() =>
     default: module.VideoDocumentsScreen,
   })),
 );
+const CompanionHistoryScreen = lazy(() =>
+  import('@/renderer/features/browser-companion/CompanionHistoryScreen').then((module) => ({
+    default: module.CompanionHistoryScreen,
+  })),
+);
 
 export interface AppWorkspaceLoadingBoundaries {
   creator(children: ReactNode): ReactNode;
   documents(children: ReactNode): ReactNode;
   dictionary(children: ReactNode): ReactNode;
   gallery(children: ReactNode): ReactNode;
+  companion(children: ReactNode): ReactNode;
   extensions(children: ReactNode): ReactNode;
   aiCenter(children: ReactNode): ReactNode;
 }
 
 interface Props {
+  groupActive: boolean;
   view: AppView;
   visitedViews: ReadonlySet<AppView>;
   data: BootstrapDto;
@@ -57,6 +64,7 @@ interface Props {
   onReturnToMaterials(): void;
   onVideoDocumentsChange(): void;
   onCreatorNavigate: ComponentProps<typeof CreatorScreen>['onNavigate'];
+  onCreatorOpenInNewTab: ComponentProps<typeof CreatorScreen>['onOpenInNewTab'];
   onComparisonFullWindowChange: ComponentProps<typeof CreatorScreen>['onComparisonFullWindowChange'];
   onCreationPromptFullWindowChange: ComponentProps<typeof CreatorScreen>['onPromptFullWindowChange'];
   onOpenCreatorMaterial: ComponentProps<typeof CreatorScreen>['onOpenMaterial'];
@@ -66,6 +74,7 @@ interface Props {
   refreshAlbums: ComponentProps<typeof CreatorScreen>['refreshAlbums'];
   onTermDetailsRequest?: ComponentProps<typeof CreatorScreen>['onTermDetailsRequest'];
   onImportedOutputSaved(output: ImportedCreationOutputDto): void;
+  onArticleSaved: ComponentProps<typeof CreatorScreen>['onArticleSaved'];
   notify(message: string): void;
   onVideoDocumentsNavigate: ComponentProps<typeof VideoDocumentsScreen>['onNavigate'];
   onDictionaryNavigate: ComponentProps<typeof DictionaryScreen>['onNavigate'];
@@ -89,11 +98,75 @@ function selectedDocumentAlbumId(location: AppLocation['documents']) {
   return location.collection.kind === 'album' ? location.collection.albumId : null;
 }
 
-function shouldMountCreationWorkspace(data: BootstrapDto, view: AppView, visitedViews: ReadonlySet<AppView>) {
-  return (!data.libraryEmpty || view === 'documents') && (visitedViews.has('creator') || visitedViews.has('documents'));
+function selectedVideoDocumentLocation(documentId: string, albumId: string | null): AppLocation['documents'] {
+  return {
+    collection: albumId ? { kind: 'album', albumId } : { kind: 'unfiled' },
+    documentId,
+  };
+}
+
+interface CreatorDocumentUpdate {
+  revision: number;
+  document: VideoDocumentDto;
+}
+
+const creatorViews: readonly AppView[] = ['creator'];
+const creationLibraryViews: readonly AppView[] = ['creator', 'documents'];
+const documentViews: readonly AppView[] = ['documents'];
+const dictionaryViews: readonly AppView[] = ['dictionary'];
+const galleryViews: readonly AppView[] = ['gallery'];
+const companionViews: readonly AppView[] = ['companion'];
+const transitionShowcaseViews: readonly AppView[] = ['transitionShowcase'];
+const aiCenterViews: readonly AppView[] = ['aiCenter'];
+
+function groupOwnsView(groupActive: boolean, view: AppView, expected: readonly AppView[]) {
+  return groupActive && expected.includes(view);
+}
+
+function activeExtensionSurface(groupActive: boolean, view: AppView) {
+  if (!groupActive) return null;
+  if (view === 'codexImages') return 'discovery' as const;
+  return view === 'packs' ? ('center' as const) : null;
+}
+
+function shouldMountCreationWorkspace(
+  data: BootstrapDto,
+  view: AppView,
+  visitedViews: ReadonlySet<AppView>,
+  location: AppLocation,
+) {
+  const libraryStartVisible = data.libraryEmpty && view === 'creator' && location.creator.surface === 'default';
+  return (
+    !libraryStartVisible &&
+    (view === 'creator' || view === 'documents' || !data.libraryEmpty) &&
+    (visitedViews.has('creator') || visitedViews.has('documents'))
+  );
+}
+
+function useCreatorDocumentUpdate({
+  location,
+  onVideoDocumentsChange,
+  onVideoDocumentsNavigate,
+}: Pick<Props, 'location' | 'onVideoDocumentsChange' | 'onVideoDocumentsNavigate'>) {
+  const [update, setUpdate] = useState<CreatorDocumentUpdate | null>(null);
+  const handleChange = (document: VideoDocumentDto, collectionChanged: boolean) => {
+    setUpdate((current) => ({ revision: (current?.revision ?? 0) + 1, document }));
+    onVideoDocumentsChange();
+    if (collectionChanged && location.documents.documentId === document.id) {
+      onVideoDocumentsNavigate(
+        {
+          collection: document.albumId ? { kind: 'album', albumId: document.albumId } : { kind: 'unfiled' },
+          documentId: document.id,
+        },
+        'replace',
+      );
+    }
+  };
+  return [update, handleChange] as const;
 }
 
 export function AppWorkspaceViews({
+  groupActive,
   view,
   visitedViews,
   data,
@@ -112,6 +185,7 @@ export function AppWorkspaceViews({
   onReturnToMaterials,
   onVideoDocumentsChange,
   onCreatorNavigate,
+  onCreatorOpenInNewTab,
   onComparisonFullWindowChange,
   onCreationPromptFullWindowChange,
   onOpenCreatorMaterial,
@@ -121,6 +195,7 @@ export function AppWorkspaceViews({
   refreshAlbums,
   onTermDetailsRequest,
   onImportedOutputSaved,
+  onArticleSaved,
   notify,
   onVideoDocumentsNavigate,
   onDictionaryNavigate,
@@ -140,26 +215,15 @@ export function AppWorkspaceViews({
   onRetryGeneration,
 }: Props) {
   const { messages } = useI18n();
-  const [creatorDocumentUpdate, setCreatorDocumentUpdate] = useState<{
-    revision: number;
-    document: VideoDocumentDto;
-  } | null>(null);
-  const handleCreatorDocumentsChange = (document: VideoDocumentDto, collectionChanged: boolean) => {
-    setCreatorDocumentUpdate((current) => ({ revision: (current?.revision ?? 0) + 1, document }));
-    onVideoDocumentsChange();
-    if (collectionChanged && location.documents.documentId === document.id) {
-      onVideoDocumentsNavigate(
-        {
-          collection: document.albumId ? { kind: 'album', albumId: document.albumId } : { kind: 'unfiled' },
-          documentId: document.id,
-        },
-        'replace',
-      );
-    }
-  };
+  const companionActive = groupOwnsView(groupActive, view, companionViews);
+  const [creatorDocumentUpdate, handleCreatorDocumentsChange] = useCreatorDocumentUpdate({
+    location,
+    onVideoDocumentsChange,
+    onVideoDocumentsNavigate,
+  });
   return (
     <>
-      {shouldMountCreationWorkspace(data, view, visitedViews) && (
+      {shouldMountCreationWorkspace(data, view, visitedViews, location) && (
         <Activity mode={view === 'creator' || view === 'documents' ? 'visible' : 'hidden'}>
           <div className="flex size-full min-h-0 flex-col">
             {materialsReturnContext?.destination === view && !comparisonFullWindow && !creationPromptFullWindow && (
@@ -176,8 +240,8 @@ export function AppWorkspaceViews({
                   dataRevision={dataRevision}
                   locale={locale}
                   defaultPromptLocale={defaultPromptLocale}
-                  active={view === 'creator'}
-                  creationLibraryActive={view === 'creator' || view === 'documents'}
+                  active={groupOwnsView(groupActive, view, creatorViews)}
+                  creationLibraryActive={creationLibraryViews.includes(view)}
                   location={location.creator}
                   comparisonFullWindow={comparisonFullWindow}
                   promptFullWindow={creationPromptFullWindow}
@@ -189,7 +253,7 @@ export function AppWorkspaceViews({
                     visitedViews.has('documents')
                       ? loadingBoundaries.documents(
                           <VideoDocumentsScreen
-                            active={view === 'documents'}
+                            active={groupOwnsView(groupActive, view, documentViews)}
                             libraryVisible={false}
                             externalDocumentUpdate={creatorDocumentUpdate}
                             albums={data.albums}
@@ -204,13 +268,11 @@ export function AppWorkspaceViews({
                       : null
                   }
                   onSelectDocument={(documentId, albumId) =>
-                    onVideoDocumentsNavigate({
-                      collection: albumId ? { kind: 'album', albumId } : { kind: 'unfiled' },
-                      documentId,
-                    })
+                    onVideoDocumentsNavigate(selectedVideoDocumentLocation(documentId, albumId))
                   }
                   onDocumentsChange={handleCreatorDocumentsChange}
                   onNavigate={onCreatorNavigate}
+                  onOpenInNewTab={onCreatorOpenInNewTab}
                   onComparisonFullWindowChange={onComparisonFullWindowChange}
                   onPromptFullWindowChange={onCreationPromptFullWindowChange}
                   onOpenMaterial={onOpenCreatorMaterial}
@@ -220,6 +282,7 @@ export function AppWorkspaceViews({
                   refreshAlbums={refreshAlbums}
                   onTermDetailsRequest={onTermDetailsRequest}
                   onImportedOutputSaved={onImportedOutputSaved}
+                  onArticleSaved={onArticleSaved}
                   notify={notify}
                 />,
               )}
@@ -241,7 +304,7 @@ export function AppWorkspaceViews({
               {loadingBoundaries.dictionary(
                 <DictionaryScreen
                   data={data}
-                  active={view === 'dictionary'}
+                  active={groupOwnsView(groupActive, view, dictionaryViews)}
                   location={location.dictionary}
                   onNavigate={onDictionaryNavigate}
                   onNavigateBack={onNavigateBack}
@@ -262,7 +325,7 @@ export function AppWorkspaceViews({
               <GalleryScreen
                 libraryKey={data.spaceName}
                 dataRevision={dataRevision}
-                active={view === 'gallery'}
+                active={groupOwnsView(groupActive, view, galleryViews)}
                 location={location.gallery}
                 onNavigate={onGalleryNavigate}
                 onHistoryNavigationGuardChange={onHistoryNavigationGuardChange}
@@ -281,12 +344,21 @@ export function AppWorkspaceViews({
           </div>
         </Activity>
       )}
+      {visitedViews.has('companion') && (
+        <Activity mode={view === 'companion' ? 'visible' : 'hidden'}>
+          <div className="size-full">
+            {loadingBoundaries.companion(
+              <CompanionHistoryScreen active={companionActive} locale={locale} notify={notify} />,
+            )}
+          </div>
+        </Activity>
+      )}
       {(visitedViews.has('packs') || visitedViews.has('codexImages')) && (
         <Activity mode={view === 'packs' || view === 'codexImages' ? 'visible' : 'hidden'}>
           <div className="size-full">
             {loadingBoundaries.extensions(
               <ExtensionCenterScreen
-                activeSurface={view === 'codexImages' ? 'discovery' : view === 'packs' ? 'center' : null}
+                activeSurface={activeExtensionSurface(groupActive, view)}
                 data={data}
                 dataRevision={dataRevision}
                 extensions={data.extensions ?? []}
@@ -307,7 +379,7 @@ export function AppWorkspaceViews({
           <div className="size-full">
             {loadingBoundaries.extensions(
               <TransitionShowcaseScreen
-                active={view === 'transitionShowcase'}
+                active={groupOwnsView(groupActive, view, transitionShowcaseViews)}
                 libraryKey={data.spaceName}
                 dataRevision={dataRevision}
                 terms={data.terms}
@@ -323,7 +395,7 @@ export function AppWorkspaceViews({
           <div className="size-full">
             {loadingBoundaries.aiCenter(
               <AiCenterScreen
-                active={view === 'aiCenter'}
+                active={groupOwnsView(groupActive, view, aiCenterViews)}
                 data={data}
                 locale={locale}
                 location={location.aiCenter}

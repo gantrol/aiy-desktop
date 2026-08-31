@@ -26,7 +26,14 @@ import {
 } from '@/shared/contracts/creation-library';
 import { creationItemIncludesSeries } from '@/main/database/creations/creation-output-presentation-sql';
 
-const primaryRoles = new Set<CreationFormRole>(['IMAGE_CREATION', 'SOCIAL_POST', 'ARTICLE', 'VIDEO_DOCUMENT']);
+const primaryRoles = new Set<CreationFormRole>([
+  'IMAGE_BREAKDOWN',
+  'IMAGE_CREATION',
+  'SOCIAL_POST',
+  'ARTICLE',
+  'VIDEO_DOCUMENT',
+  'EVALUATION_SUITE',
+]);
 
 interface CreationItemRow extends JsonMap {
   id: unknown;
@@ -48,6 +55,7 @@ function formDto(row: JsonMap): CreationFormDto {
   return creationFormSchema.parse({
     id: row.id,
     creationItemId: row.creation_item_id,
+    sourceFormId: row.source_form_id == null ? null : row.source_form_id,
     role: row.role,
     entity,
     anchorKey: row.anchor_key,
@@ -96,6 +104,73 @@ export class CreationItemRepository {
       )
       .get(parsed.kind, parsed.id) as JsonMap | undefined;
     return row ? this.find(text(row.creation_item_id)) : null;
+  }
+
+  findSourceFormForImageAsset(assetId: string, preferredFormId: string | null = null): CreationFormDto | null {
+    const row = this.db
+      .prepare(
+        `WITH asset_series(series_id, relation_priority, relation_at, relation_key) AS (
+          SELECT version.series_id, 0, run.created_at, run.id
+          FROM generation_runs run
+          JOIN prompt_versions version ON version.id = run.prompt_version_id
+          WHERE run.result_asset_id = ? AND run.status = 'SUCCEEDED'
+          UNION ALL
+          SELECT imported.series_id, 0, imported.created_at, imported.id
+          FROM creation_output_imports imported
+          WHERE imported.image_asset_id = ? AND imported.deleted_at IS NULL
+          UNION ALL
+          SELECT transform.series_id, 0, transform.created_at, transform.id
+          FROM image_transform_runs transform
+          WHERE transform.output_asset_id = ? AND transform.deleted_at IS NULL
+          UNION ALL
+          SELECT version.series_id, 1, version.created_at, binding.id
+          FROM reference_bindings binding
+          JOIN prompt_versions version ON version.id = binding.prompt_version_id
+          WHERE binding.image_asset_id = ?
+          UNION ALL
+          SELECT version.series_id, 1, version.created_at, 'source:' || version.id
+          FROM prompt_versions version
+          WHERE version.source_image_id = ?
+        ), owner_forms(form_id, owner_series_id) AS (
+          SELECT form.id, form.entity_id
+          FROM creation_forms form
+          WHERE form.role = 'IMAGE_CREATION' AND form.entity_type = 'PROMPT_SERIES'
+            AND form.deleted_at IS NULL
+          UNION ALL
+          SELECT form.id, visual.prompt_series_id
+          FROM creation_forms form
+          JOIN derived_visuals visual ON visual.id = form.entity_id
+          WHERE form.entity_type = 'DERIVED_VISUAL' AND form.deleted_at IS NULL
+            AND visual.prompt_series_id IS NOT NULL
+        ), candidate_forms AS (
+          SELECT form.*, asset.relation_priority AS match_relation_priority,
+            asset.relation_at AS match_relation_at, asset.relation_key AS match_relation_key,
+            asset.series_id AS match_series_id, owner.owner_series_id AS match_owner_series_id
+          FROM asset_series asset
+          JOIN owner_forms owner ON ${creationItemIncludesSeries('owner.owner_series_id', 'asset.series_id')}
+          JOIN creation_forms form ON form.id = owner.form_id AND form.deleted_at IS NULL
+          JOIN creation_items item ON item.id = form.creation_item_id
+            AND item.archived_at IS NULL AND item.deleted_at IS NULL
+          WHERE (? IS NOT NULL OR asset.relation_priority = 0)
+            AND (? IS NULL OR form.id = ?)
+        )
+        SELECT * FROM candidate_forms
+        WHERE (SELECT COUNT(DISTINCT creation_item_id) FROM candidate_forms) = 1
+        ORDER BY match_relation_priority,
+          CASE WHEN match_owner_series_id = match_series_id THEN 0 ELSE 1 END,
+          match_relation_at DESC, match_relation_key DESC, sort_order, created_at, id
+        LIMIT 1`,
+      )
+      .get(assetId, assetId, assetId, assetId, assetId, preferredFormId, preferredFormId, preferredFormId) as
+      JsonMap | undefined;
+    return row ? formDto(row) : null;
+  }
+
+  getForm(id: string): CreationFormDto {
+    const row = this.db.prepare('SELECT * FROM creation_forms WHERE id = ? AND deleted_at IS NULL').get(id) as
+      JsonMap | undefined;
+    if (!row) throw new Error('Creation form not found');
+    return formDto(row);
   }
 
   touchForEntity(entity: CreationFormEntityRef, timestamp = now()): CreationItemDto {
@@ -164,7 +239,9 @@ export class CreationItemRepository {
     const row = this.db
       .prepare(
         `SELECT * FROM creation_forms
-        WHERE creation_item_id = ? AND role = ? AND anchor_key IS ? AND deleted_at IS NULL`,
+        WHERE creation_item_id = ? AND role = ? AND anchor_key IS ? AND deleted_at IS NULL
+        ORDER BY created_at, id
+        LIMIT 1`,
       )
       .get(creationItemId, role, role === 'ARTICLE_INLINE' ? anchorKey : null) as JsonMap | undefined;
     return row ? formDto(row) : null;
@@ -199,6 +276,7 @@ export class CreationItemRepository {
         this.syncAlbumMembership(creationItemId, parsedInput.albumId, timestamp);
         this.storage.recordChange('CREATION_FORM', form.id, 'CREATE', {
           creationItemId,
+          sourceFormId: form.sourceFormId,
           role: form.role,
           entity: form.entity,
           anchorKey: form.anchorKey,
@@ -233,6 +311,7 @@ export class CreationItemRepository {
         if (text(itemRow.phase) === 'DRAFT' && !primaryRoles.has(parsed.role) && parsed.role !== 'INSPIRATION') {
           throw new Error('A draft creation item cannot contain an auxiliary visual form');
         }
+        this.assertSourceForm(parsed.creationItemId, parsed.sourceFormId);
         this.assertEntityAvailable(parsed.entity);
         const claimed = this.db
           .prepare(
@@ -258,6 +337,55 @@ export class CreationItemRepository {
         }
         this.storage.recordChange('CREATION_FORM', form.id, 'CREATE', {
           creationItemId: parsed.creationItemId,
+          sourceFormId: form.sourceFormId,
+          role: form.role,
+          entity: form.entity,
+          anchorKey: form.anchorKey,
+        });
+        return creationFormAddOrGetResultSchema.parse({
+          item: this.get(parsed.creationItemId),
+          form,
+          created: true,
+        });
+      })
+      .immediate();
+  }
+
+  addForm(input: CreationFormAddOrGetInput): CreationFormAddOrGetResult {
+    const parsed = creationFormAddOrGetInputSchema.parse(input);
+    return this.db
+      .transaction(() => {
+        const itemRow = this.mutableItemRow(parsed.creationItemId);
+        if (text(itemRow.phase) === 'DRAFT' && !primaryRoles.has(parsed.role) && parsed.role !== 'INSPIRATION') {
+          throw new Error('A draft creation item cannot contain an auxiliary visual form');
+        }
+        this.assertSourceForm(parsed.creationItemId, parsed.sourceFormId);
+        this.assertEntityAvailable(parsed.entity);
+        const claimed = this.db
+          .prepare(
+            `SELECT creation_item_id FROM creation_forms
+            WHERE entity_type = ? AND entity_id = ? AND deleted_at IS NULL`,
+          )
+          .get(parsed.entity.kind, parsed.entity.id) as JsonMap | undefined;
+        if (claimed) throw new Error('This creation form entity is already registered');
+
+        const timestamp = now();
+        const form = this.insertForm(parsed, timestamp);
+        if (text(itemRow.phase) === 'DRAFT' && primaryRoles.has(form.role)) {
+          this.db
+            .prepare(
+              `UPDATE creation_items
+              SET phase = 'ACTIVE', primary_form_id = ?, updated_at = ? WHERE id = ?`,
+            )
+            .run(form.id, timestamp, parsed.creationItemId);
+        } else {
+          this.db
+            .prepare('UPDATE creation_items SET updated_at = ? WHERE id = ?')
+            .run(timestamp, parsed.creationItemId);
+        }
+        this.storage.recordChange('CREATION_FORM', form.id, 'CREATE', {
+          creationItemId: parsed.creationItemId,
+          sourceFormId: form.sourceFormId,
           role: form.role,
           entity: form.entity,
           anchorKey: form.anchorKey,
@@ -437,13 +565,14 @@ export class CreationItemRepository {
     this.db
       .prepare(
         `INSERT INTO creation_forms
-        (id, creation_item_id, role, entity_type, entity_id, anchor_key,
+        (id, creation_item_id, source_form_id, role, entity_type, entity_id, anchor_key,
           sort_order, created_at, updated_at, deleted_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NULL)`,
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL)`,
       )
       .run(
         id,
         input.creationItemId,
+        input.sourceFormId ?? null,
         input.role,
         input.entity.kind,
         input.entity.id,
@@ -455,6 +584,7 @@ export class CreationItemRepository {
     return creationFormSchema.parse({
       id,
       creationItemId: input.creationItemId,
+      sourceFormId: input.sourceFormId ?? null,
       role: input.role,
       entity: input.entity,
       anchorKey: input.anchorKey,
@@ -467,15 +597,28 @@ export class CreationItemRepository {
   private assertEntityAvailable(entity: CreationFormEntityRef) {
     const table = {
       PROMPT_SERIES: 'prompt_series',
+      IMAGE_BREAKDOWN: 'image_breakdowns',
       INSPIRATION_STASH: 'inspiration_stashes',
       SOCIAL_POST: 'social_post_drafts',
       ARTICLE: 'articles',
       VIDEO_DOCUMENT: 'documents',
+      EVALUATION_SUITE: 'evaluation_suites',
       DERIVED_VISUAL: 'derived_visuals',
     }[entity.kind];
     const deletionPredicate = entity.kind === 'DERIVED_VISUAL' ? '' : ' AND deleted_at IS NULL';
     const row = this.db.prepare(`SELECT 1 FROM ${table} WHERE id = ?${deletionPredicate}`).get(entity.id);
     if (!row) throw new Error('Creation form entity not found');
+  }
+
+  private assertSourceForm(creationItemId: string, sourceFormId: string | null) {
+    if (!sourceFormId) return;
+    const row = this.db
+      .prepare(
+        `SELECT 1 FROM creation_forms
+        WHERE id = ? AND creation_item_id = ? AND deleted_at IS NULL`,
+      )
+      .get(sourceFormId, creationItemId);
+    if (!row) throw new Error('The source form must belong to the same creation item');
   }
 
   private assertAlbumAvailable(albumId: string | null) {
@@ -578,13 +721,14 @@ export class CreationItemRepository {
       .prepare(
         `SELECT entity_type, entity_id FROM creation_forms
         WHERE creation_item_id = ? AND deleted_at IS NULL
-          AND entity_type IN ('INSPIRATION_STASH', 'SOCIAL_POST', 'ARTICLE')`,
+          AND entity_type IN ('INSPIRATION_STASH', 'SOCIAL_POST', 'ARTICLE', 'EVALUATION_SUITE')`,
       )
       .all(creationItemId) as JsonMap[];
     const locations = {
       INSPIRATION_STASH: { table: 'inspiration_stashes', changeType: 'INSPIRATION_STASH', affectsFileView: true },
       SOCIAL_POST: { table: 'social_post_drafts', changeType: 'SOCIAL_POST_DRAFT', affectsFileView: false },
       ARTICLE: { table: 'articles', changeType: 'ARTICLE', affectsFileView: false },
+      EVALUATION_SUITE: { table: 'evaluation_suites', changeType: 'EVALUATION_SUITE', affectsFileView: false },
     } as const;
 
     for (const form of forms) {

@@ -1,10 +1,15 @@
-import { z } from 'zod';
 import type { LibraryDatabase } from '@/main/database';
 import type { IpcHandlerRegistrar } from '@/main/ipc/trusted-handlers';
 import type { AssetFileActions } from '@/main/media/asset-file-actions';
 import { createAssetFileDragIcon } from '@/main/media/asset-file-drag-icon';
 import { createTransitionShowcaseExportImages } from '@/main/media/transition-showcase-export-images';
 import { transitionShowcaseExportImageIdsSchema } from '@/shared/contracts/transition-showcase';
+import {
+  assetFileDragRequestSchema,
+  assetFileDragResultSchema,
+  assetFilesDragFinishedChannel,
+  assetFilesStartDragChannel,
+} from '@/shared/contracts/asset-file-drag';
 import {
   assetFileRevealContextSchema,
   assetFileRevealTargetContextSchema,
@@ -15,12 +20,6 @@ import {
   localeSchema,
   materialAlbumTargetSchema,
 } from '@/main/ipc/schemas';
-
-const assetFileDragIdsSchema = z
-  .array(id)
-  .min(1)
-  .max(100)
-  .transform((assetIds) => [...new Set(assetIds)]);
 
 export function registerAssetIpc(
   ipcMain: IpcHandlerRegistrar,
@@ -35,16 +34,38 @@ export function registerAssetIpc(
   ipcMain.handle('asset-file:availability', (_event, rawId) => assetFiles.availability(id.parse(rawId)));
   ipcMain.handle('asset-file:copy', (_event, rawId) => assetFiles.copy(id.parse(rawId)));
   ipcMain.handle('asset-file:save-as', (_event, rawId) => assetFiles.saveAs(id.parse(rawId)));
-  ipcMain.handle('asset-files:start-drag', (event, rawAssetIds) => {
-    // Keep paths inside the trusted main process: the renderer supplies stable
-    // asset IDs, and every source is re-resolved and revalidated at drag time.
-    const sources = assetFileDragIdsSchema.parse(rawAssetIds).map((assetId) => {
-      const source = database.resolveAssetFile(assetId);
-      if (!source || !source.mimeType.startsWith('image/')) throw new Error('Image file is unavailable');
-      return source;
-    });
-    const files = [...new Set(sources.map((source) => source.absolutePath))];
-    event.sender.startDrag({ file: files[0], files, icon: createAssetFileDragIcon(files[0]) });
+  ipcMain.on(assetFilesStartDragChannel, (event, rawRequest) => {
+    const parsedRequest = assetFileDragRequestSchema.safeParse(rawRequest);
+    if (!parsedRequest.success) return;
+    const request = parsedRequest.data;
+    try {
+      // Keep paths inside the trusted main process: the renderer supplies stable
+      // asset IDs, and every source is re-resolved and revalidated at drag time.
+      const sources = request.assetIds.map((assetId) => {
+        const source = database.resolveAssetFile(assetId);
+        if (!source || !source.mimeType.startsWith('image/')) throw new Error('Image file is unavailable');
+        return source;
+      });
+      const files = [...new Set(sources.map((source) => source.absolutePath))];
+      event.sender.startDrag({ file: files[0], files, icon: createAssetFileDragIcon(files[0]) });
+      if (!event.sender.isDestroyed()) {
+        event.reply(
+          assetFilesDragFinishedChannel,
+          assetFileDragResultSchema.parse({ requestId: request.requestId, status: 'ENDED' }),
+        );
+      }
+    } catch {
+      if (!event.sender.isDestroyed()) {
+        event.reply(
+          assetFilesDragFinishedChannel,
+          assetFileDragResultSchema.parse({
+            requestId: request.requestId,
+            status: 'FAILED',
+            message: 'Unable to prepare the image file for dragging',
+          }),
+        );
+      }
+    }
   });
   ipcMain.handle('asset-file:reveal-targets', (_event, rawId, rawContext) =>
     database.listAssetRevealTargets(id.parse(rawId), assetFileRevealTargetContextSchema.optional().parse(rawContext)),

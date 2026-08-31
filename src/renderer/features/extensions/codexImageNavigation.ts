@@ -1,6 +1,11 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import type { ExtensionDto } from '@/shared/contracts';
-import { CODEX_IMAGE_DISCOVERY_EXTENSION_ID } from '@/shared/extension-ids';
+import {
+  CODEX_HISTORY_SEARCH_EXTENSION_ID,
+  CODEX_IMAGE_DISCOVERY_EXTENSION_ID,
+  CODEX_USAGE_INVESTIGATOR_EXTENSION_ID,
+  CODEX_VISUALIZATION_DISCOVERY_EXTENSION_ID,
+} from '@/shared/extension-ids';
 import type { AppLocation } from '@/renderer/components/app/app-navigation';
 
 type ReplaceLocation = (destination: AppLocation | ((current: AppLocation) => AppLocation)) => void;
@@ -16,7 +21,10 @@ function isCodexImagesVisible(extensions: readonly ExtensionDto[] | undefined) {
   return Boolean(
     extensions?.some(
       (extension) =>
-        extension.manifest.id === CODEX_IMAGE_DISCOVERY_EXTENSION_ID &&
+        (extension.manifest.id === CODEX_HISTORY_SEARCH_EXTENSION_ID ||
+          extension.manifest.id === CODEX_IMAGE_DISCOVERY_EXTENSION_ID ||
+          extension.manifest.id === CODEX_USAGE_INVESTIGATOR_EXTENSION_ID ||
+          extension.manifest.id === CODEX_VISUALIZATION_DISCOVERY_EXTENSION_ID) &&
         extension.enabled &&
         extension.compatible &&
         extension.permissions.every((permission) => !permission.required || permission.granted),
@@ -40,5 +48,5 @@ export function useCodexImagesNavigation(
     if (!extensions || visible || view !== 'codexImages') return;
     replaceLocation((current) => ({ ...current, view: 'creator', materialsReturnContext: null }));
   }, [extensions, replaceLocation, view, visible]);
-  return { visible, enabled, setEnabled };
+  return useMemo(() => ({ visible, enabled, setEnabled }), [enabled, setEnabled, visible]);
 }

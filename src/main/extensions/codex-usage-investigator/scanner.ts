@@ -7,9 +7,12 @@ import {
   codexUsageDailyBreakdownSchema,
   codexUsageModelBreakdownSchema,
   codexUsageQuotaYieldAnalysisSchema,
+  codexUsageSessionLengthAnalysisSchema,
   codexUsageTokenTotalsSchema,
+  codexUsageTurnSpeedAnalysisSchema,
 } from '@/shared/contracts/codex-usage';
 import type {
+  CodexUsageDateRange,
   CodexUsageDailyBreakdown,
   CodexUsageGranularity,
   CodexUsageInvestigation,
@@ -28,6 +31,7 @@ import {
   estimateCodexUsage,
 } from '@/main/extensions/codex-usage-investigator/pricing';
 import { CodexQuotaYieldAccumulator } from '@/main/extensions/codex-usage-investigator/quota-yield';
+import { CodexSessionLengthAccumulator } from '@/main/extensions/codex-usage-investigator/session-length';
 import { resolveCodexUsageServiceTierFallback } from '@/main/extensions/codex-usage-investigator/service-tier-fallback';
 import {
   codexUsageInternalRowSchema,
@@ -44,7 +48,8 @@ import type { CodexUsageCacheDatabase } from '@/main/extensions/codex-usage-inve
 const MAX_FILES = 100_000;
 const MAX_EXPORT_ROWS = 100_000;
 const DISCOVERY_STAT_CONCURRENCY = 12;
-const PROCESSED_ANALYSIS_VERSION = 9;
+const PROCESSED_ANALYSIS_VERSION = 12;
+const DETAILED_STATISTICS_VERSION = 4;
 const FILE_YIELD_INTERVAL = 32;
 const safeIntegerSchema = z.number().int().nonnegative().safe();
 
@@ -55,6 +60,8 @@ const processedSnapshotSchema = z
     totals: codexUsageTokenTotalsSchema,
     models: z.array(codexUsageModelBreakdownSchema).max(1_000),
     days: z.array(codexUsageDailyBreakdownSchema).max(10_000),
+    turnSpeed: codexUsageTurnSpeedAnalysisSchema,
+    sessionLength: codexUsageSessionLengthAnalysisSchema.nullable().default(null),
     quotaYield: codexUsageQuotaYieldAnalysisSchema,
     exportRows: z.array(codexUsageInternalRowSchema).max(MAX_EXPORT_ROWS),
     exportRowsTruncated: z.boolean(),
@@ -105,8 +112,10 @@ export interface CodexUsageScanResult {
 interface ScanOptions {
   investigationId: string;
   range: CodexUsageRange;
+  dateRange: CodexUsageDateRange | null;
   timeZone: string;
   granularity: CodexUsageGranularity;
+  detailedStatistics: boolean;
   fromEpoch: number | null;
   toEpoch: number;
   cache: CodexUsageCacheDatabase;
@@ -289,6 +298,8 @@ async function statCandidates(paths: readonly string[], signal?: AbortSignal) {
             filePath,
             sessionId: sessionIdFor(filePath, path.basename(filePath)),
             fallbackModel: null,
+            threadSource: 'OTHER' as const,
+            createdAtMs: Number(metadata.birthtimeNs / 1_000_000n),
             size: Number(metadata.size),
             mtimeMs: Number(metadata.mtimeNs / 1_000_000n),
             mtimeNs: metadata.mtimeNs.toString(),
@@ -458,25 +469,38 @@ function processedCacheKey(
   toEpoch: number,
   timeZone: string,
   granularity: CodexUsageGranularity,
+  detailedStatistics: boolean,
 ) {
-  return `v${PROCESSED_ANALYSIS_VERSION}:${range}:${fromEpoch ?? 'ALL'}:${toEpoch}:${timeZone}:${granularity}`;
+  const detailVersion = detailedStatistics ? DETAILED_STATISTICS_VERSION : 0;
+  return `v${PROCESSED_ANALYSIS_VERSION}:${range}:${fromEpoch ?? 'ALL'}:${toEpoch}:${timeZone}:${granularity}:detailed=${detailVersion}`;
 }
 
 async function processStoredEvents(
   options: ScanOptions,
   coverage: ReturnType<CodexUsageCacheDatabase['eventCoverage']>,
   queryToEpoch: number,
+  workload: ReturnType<CodexUsageCacheDatabase['processingWorkload']>,
+  onProgress?: (percent: number) => void,
 ): Promise<ProcessedSnapshot> {
   const total = emptyAggregate();
   const models = new Map<string, MutableModelAggregate>();
   const days = new Map<string, MutableAggregate>();
   const groupedRows = new Map<string, CodexUsageInternalRow>();
   let hasUnknownServiceTier = false;
+  const sessionLength = options.detailedStatistics
+    ? new CodexSessionLengthAccumulator(options.fromEpoch, options.toEpoch)
+    : null;
   const quotaYield = new CodexQuotaYieldAccumulator({
     coverage,
     range: options.range,
     timeZone: options.timeZone,
   });
+  const reportStage = (start: number, share: number, completed: number, total: number) => {
+    const fraction = total > 0 ? Math.min(1, completed / total) : 0;
+    onProgress?.((start + share * fraction) * 100);
+  };
+  const baseEventShare = options.detailedStatistics ? 0.35 : 0.95;
+  let processedEvents = 0;
   for (const page of options.cache.eventPages(options.fromEpoch, queryToEpoch)) {
     for (const event of page) {
       throwIfAborted(options.signal);
@@ -501,7 +525,39 @@ async function processStoredEvents(
       if (existing) mergeInternalRow(existing, row);
       else groupedRows.set(rowKey, row);
     }
+    processedEvents = addSafe(processedEvents, page.length);
+    reportStage(0, baseEventShare, processedEvents, coverage.sourceEventCount);
     await yieldToMainThread(options.signal);
+  }
+  onProgress?.(baseEventShare * 100);
+  if (sessionLength) {
+    let processedSources = 0;
+    for (const page of options.cache.sessionSourcePages()) {
+      for (const source of page) sessionLength.addSource(source);
+      processedSources = addSafe(processedSources, page.length);
+      reportStage(0.35, 0.12, processedSources, workload.sessionSourceCount);
+      await yieldToMainThread(options.signal);
+    }
+    onProgress?.(47);
+    let processedTurns = 0;
+    for (const page of options.cache.chatTurnPages()) {
+      for (const turn of page) sessionLength.addChatTurn(turn);
+      processedTurns = addSafe(processedTurns, page.length);
+      reportStage(0.47, 0.23, processedTurns, workload.chatTurnCount);
+      await yieldToMainThread(options.signal);
+    }
+    onProgress?.(70);
+    let processedSessionEvents = 0;
+    for (const page of options.cache.sessionAnalysisEventPages(options.fromEpoch, options.toEpoch)) {
+      for (const event of page) {
+        throwIfAborted(options.signal);
+        sessionLength.addEvent(event, rowFromEvent(event, options.timeZone));
+      }
+      processedSessionEvents = addSafe(processedSessionEvents, page.length);
+      reportStage(0.7, 0.25, processedSessionEvents, coverage.sourceEventCount);
+      await yieldToMainThread(options.signal);
+    }
+    onProgress?.(95);
   }
   const allExportRows = [...groupedRows.values()].sort(
     (left, right) =>
@@ -509,17 +565,21 @@ async function processStoredEvents(
       left.model.localeCompare(right.model) ||
       left.sessionId.localeCompare(right.sessionId),
   );
-  return {
+  const snapshot = {
     sessionCount: total.sessions.size,
     requestCount: total.requestCount,
     totals: totalsFromAggregate(total),
     models: modelBreakdowns(models),
     days: dailyBreakdowns(days),
+    turnSpeed: options.cache.turnSpeedAnalysis(options.fromEpoch, queryToEpoch),
+    sessionLength: sessionLength?.result() ?? null,
     quotaYield: quotaYield.result(),
     exportRows: allExportRows.slice(0, MAX_EXPORT_ROWS),
     exportRowsTruncated: allExportRows.length > MAX_EXPORT_ROWS,
     hasUnknownServiceTier,
   };
+  onProgress?.(100);
+  return snapshot;
 }
 
 export async function scanCodexUsage(options: ScanOptions): Promise<CodexUsageScanResult> {
@@ -535,6 +595,7 @@ export async function scanCodexUsage(options: ScanOptions): Promise<CodexUsageSc
     bytesTotal: 0,
     throughputBytesPerSecond: 0,
     estimatedRemainingMs: null,
+    calculationPercent: 0,
     elapsedMs: 0,
   });
   const codexHome = codexHomePath();
@@ -550,6 +611,8 @@ export async function scanCodexUsage(options: ScanOptions): Promise<CodexUsageSc
   let invalidRecords = 0;
   let oversizedRecords = 0;
   let bytesRead = 0;
+  let calculationPercent = 0;
+  let calculationStartedAt: number | null = null;
   const cacheHits = new Set<string>();
   for (const [index, file] of files.entries()) {
     throwIfAborted(signal);
@@ -564,6 +627,18 @@ export async function scanCodexUsage(options: ScanOptions): Promise<CodexUsageSc
     const ioElapsedMs = Math.max(0, Date.now() - ioStartedAt);
     const throughputBytesPerSecond = ioElapsedMs > 0 ? bytesRead / (ioElapsedMs / 1_000) : 0;
     const remainingBytes = Math.max(0, bytesTotal - bytesRead);
+    let estimatedRemainingMs: number | null = null;
+    if (phase === 'SCANNING' && throughputBytesPerSecond > 0) {
+      estimatedRemainingMs = Math.ceil((remainingBytes / throughputBytesPerSecond) * 1_000);
+    } else if (
+      phase === 'FINALIZING' &&
+      calculationStartedAt !== null &&
+      calculationPercent > 0 &&
+      calculationPercent < 100
+    ) {
+      const calculationElapsedMs = Math.max(0, Date.now() - calculationStartedAt);
+      estimatedRemainingMs = Math.ceil((calculationElapsedMs / calculationPercent) * (100 - calculationPercent));
+    }
     return {
       phase,
       filesDiscovered: files.length,
@@ -573,10 +648,8 @@ export async function scanCodexUsage(options: ScanOptions): Promise<CodexUsageSc
       bytesRead,
       bytesTotal,
       throughputBytesPerSecond,
-      estimatedRemainingMs:
-        phase === 'SCANNING' && throughputBytesPerSecond > 0
-          ? Math.ceil((remainingBytes / throughputBytesPerSecond) * 1_000)
-          : null,
+      estimatedRemainingMs,
+      calculationPercent,
       elapsedMs,
     };
   };
@@ -598,6 +671,7 @@ export async function scanCodexUsage(options: ScanOptions): Promise<CodexUsageSc
         const result = await readCodexUsageSession(
           file.filePath,
           file.sessionId,
+          file.createdAtMs,
           file.fallbackModel,
           null,
           Number.MAX_SAFE_INTEGER,
@@ -626,22 +700,39 @@ export async function scanCodexUsage(options: ScanOptions): Promise<CodexUsageSc
     if (checkpoint) options.onCheckpoint?.(progressSnapshot('SCANNING'));
     if (filesProcessed % FILE_YIELD_INTERVAL === 0) await yieldToMainThread(signal);
   }
+  calculationStartedAt = Date.now();
   progress(true, 'FINALIZING');
   const allCoverage = options.cache.eventCoverage();
   const storedToEpoch = allCoverage.storedTo ? Date.parse(allCoverage.storedTo) : toEpoch;
   const queryToEpoch = Math.min(toEpoch, storedToEpoch);
   const coverage = options.cache.eventCoverage(fromEpoch, queryToEpoch);
-  const cacheKey = processedCacheKey(range, fromEpoch, queryToEpoch, options.timeZone, options.granularity);
+  const cacheKey = processedCacheKey(
+    range,
+    fromEpoch,
+    queryToEpoch,
+    options.timeZone,
+    options.granularity,
+    options.detailedStatistics,
+  );
   let processed = options.cache.readProcessed(cacheKey, processedSnapshotSchema);
   if (!processed) {
-    processed = await processStoredEvents(options, coverage, queryToEpoch);
+    const workload = options.detailedStatistics
+      ? options.cache.processingWorkload()
+      : { sessionSourceCount: 0, chatTurnCount: 0 };
+    processed = await processStoredEvents(options, coverage, queryToEpoch, workload, (percent) => {
+      calculationPercent = Math.max(calculationPercent, Math.min(100, percent));
+      progress(false, 'FINALIZING');
+    });
     options.cache.saveProcessed(cacheKey, processed, processedSnapshotSchema);
   }
+  calculationPercent = 100;
+  progress(true, 'FINALIZING');
   const sourceAvailable = discovery.availableRoots > 0 || coverage.sourceEventCount > 0;
   const investigation: CodexUsageInvestigation = {
     investigationId: options.investigationId,
     generatedAt: new Date().toISOString(),
     range,
+    dateRange: options.dateRange,
     timeZone: options.timeZone,
     granularity: options.granularity,
     from: fromEpoch === null ? null : new Date(fromEpoch).toISOString(),
@@ -661,6 +752,8 @@ export async function scanCodexUsage(options: ScanOptions): Promise<CodexUsageSc
     totals: processed.totals,
     models: processed.models,
     days: processed.days,
+    turnSpeed: processed.turnSpeed,
+    sessionLength: processed.sessionLength,
     quotaYield: processed.quotaYield,
     quotaState: 'UNAVAILABLE',
     quotaMessage: null,

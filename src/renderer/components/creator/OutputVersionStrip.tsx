@@ -1,4 +1,4 @@
-import { ChevronRightIcon, CircleXIcon, RotateCcwIcon, TablePropertiesIcon } from 'lucide-react';
+import { ChevronRightIcon, CircleXIcon, RotateCcwIcon, StarIcon, TablePropertiesIcon } from 'lucide-react';
 import { useState } from 'react';
 import type { AssetDto, AssetFileRevealContext, Locale } from '@/shared/contracts';
 import { cn } from '@/renderer/lib/utils';
@@ -23,6 +23,7 @@ interface Props {
   groups: CreationOutputVersionGroup[];
   ungroupedAssets?: AssetDto[];
   selectedAssetId: string | null;
+  adoptedAssetId?: string | null;
   locale: Locale;
   onSelect(assetId: string): void;
   onSetFailed(runId: string, failed: boolean): Promise<void>;
@@ -38,6 +39,7 @@ interface AssetStackProps {
   label: string;
   assets: CreationOutputAssetProjection[];
   selectedAssetId: string | null;
+  adoptedAssetId?: string | null;
   locale: Locale;
   onSelect(assetId: string): void;
   onSetFailed(item: CreationOutputAssetProjection, failed: boolean): void;
@@ -94,6 +96,7 @@ function AssetStack({
   label,
   assets,
   selectedAssetId,
+  adoptedAssetId,
   locale,
   onSelect,
   onSetFailed,
@@ -156,6 +159,7 @@ function AssetStack({
         {renderedAssets.map((item, renderedIndex) => {
           const index = expanded ? renderedIndex : visible.length - renderedIndex - 1;
           const selected = item.asset.id === selectedAssetId;
+          const adopted = item.asset.id === adoptedAssetId;
           const frame = frames[index];
           const thumbnailUrl = mediaThumbnailUrl(item.asset, 192);
           const actions: ActionMenuAction[] = [];
@@ -189,7 +193,8 @@ function AssetStack({
               <button
                 data-output-asset-id={item.asset.id}
                 type="button"
-                aria-label={`${label} · ${index + 1}`}
+                aria-label={`${label} · ${index + 1}${adopted ? (locale === 'zh' ? ' · 当前首图' : ' · Current cover') : ''}`}
+                data-output-adopted={adopted || undefined}
                 data-output-thumbnail-aspect-ratio={frame.aspectRatio.toFixed(3)}
                 data-output-thumbnail-edge-fill={frame.needsEdgeFill ? 'true' : undefined}
                 className={cn(
@@ -218,6 +223,11 @@ function AssetStack({
                   fetchPriority="low"
                   draggable={false}
                 />
+                {adopted && (
+                  <span className="pointer-events-none absolute top-0.5 right-0.5 z-20 grid size-4 place-items-center rounded-sm bg-overlay text-foreground shadow-overlay">
+                    <StarIcon className="size-2.5 fill-current" />
+                  </span>
+                )}
               </button>
             </AssetFileContextMenu>
           );
@@ -235,6 +245,7 @@ export function OutputVersionStrip({
   groups,
   ungroupedAssets = [],
   selectedAssetId,
+  adoptedAssetId = null,
   locale,
   onSelect,
   onSetFailed,
@@ -288,6 +299,7 @@ export function OutputVersionStrip({
         const failedOpen = expandedFailedGroupIds.has(group.id);
         const commonStackProps = {
           selectedAssetId,
+          adoptedAssetId,
           locale,
           onSelect,
           busyRunIds,
@@ -402,6 +414,7 @@ export function OutputVersionStrip({
           {ungroupedAssets.map((asset, index) => {
             const frame = outputThumbnailFrame(asset);
             const thumbnailUrl = mediaThumbnailUrl(asset, 192);
+            const adopted = asset.id === adoptedAssetId;
             return (
               <span key={asset.id} className="grid h-14 w-12 shrink-0 place-items-center">
                 <AssetFileContextMenu
@@ -424,10 +437,11 @@ export function OutputVersionStrip({
                 >
                   <button
                     data-output-asset-id={asset.id}
+                    data-output-adopted={adopted || undefined}
                     data-output-thumbnail-aspect-ratio={frame.aspectRatio.toFixed(3)}
                     data-output-thumbnail-edge-fill={frame.needsEdgeFill ? 'true' : undefined}
                     type="button"
-                    aria-label={`Output ${index + 1}`}
+                    aria-label={`Output ${index + 1}${adopted ? (locale === 'zh' ? ' · 当前首图' : ' · Current cover') : ''}`}
                     className={cn(
                       'relative isolate overflow-hidden rounded-md bg-surface-sunken ring-1 ring-inset ring-foreground/10 outline-none transition-shadow duration-fast hover:ring-2 hover:ring-border-strong focus-visible:ring-2 focus-visible:ring-ring',
                       asset.id === selectedAssetId && 'ring-2 ring-ring',
@@ -446,6 +460,11 @@ export function OutputVersionStrip({
                       fetchPriority="low"
                       draggable={false}
                     />
+                    {adopted && (
+                      <span className="pointer-events-none absolute top-0.5 right-0.5 z-20 grid size-4 place-items-center rounded-sm bg-overlay text-foreground shadow-overlay">
+                        <StarIcon className="size-2.5 fill-current" />
+                      </span>
+                    )}
                   </button>
                 </AssetFileContextMenu>
               </span>

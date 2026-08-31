@@ -2,7 +2,7 @@
   "manifestVersion": 1,
   "kind": "CAPABILITY",
   "id": "com.aiy.codex-image-discovery",
-  "version": "0.3.2",
+  "version": "0.3.3",
   "displayName": "Codex Image Discovery",
   "description": "Discover local Codex images, recover failed AIY generation outputs, or import selected results as external creations.",
   "engines": {
@@ -17,7 +17,7 @@
     "workflows": ["codexImages.importGenerated", "codexImages.recoverGeneration"],
     "searchProviders": ["codex.generatedImages"]
   },
-  "permissions": ["filesystem.read:codex-generated-images", "library.write:creations"],
+  "permissions": ["filesystem.read:codex-generated-images", "library.create:creations"],
   "optionalPermissions": [],
   "i18n": {
     "defaultLocale": "en",

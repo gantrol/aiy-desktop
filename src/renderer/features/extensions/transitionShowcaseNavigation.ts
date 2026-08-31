@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import type { ExtensionDto } from '@/shared/contracts';
 import { TRANSITION_SHOWCASE_EXTENSION_ID } from '@/shared/extension-ids';
 import type { AppLocation } from '@/renderer/components/app/app-navigation';
@@ -43,5 +43,5 @@ export function useTransitionShowcaseNavigation(
     replaceLocation((current) => ({ ...current, view: 'creator', materialsReturnContext: null }));
   }, [extensions, replaceLocation, view, visible]);
 
-  return { visible, enabled, setEnabled };
+  return useMemo(() => ({ visible, enabled, setEnabled }), [enabled, setEnabled, visible]);
 }

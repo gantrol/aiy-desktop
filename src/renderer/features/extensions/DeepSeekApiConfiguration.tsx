@@ -4,8 +4,10 @@ import { Badge } from '@/renderer/components/ui/badge';
 import { Button } from '@/renderer/components/ui/button';
 import { Field, FieldControl, FieldLabel } from '@/renderer/components/ui/field';
 import { Input } from '@/renderer/components/ui/input';
+import { loadProviderConnection } from '@/renderer/features/extensions/providerConnectionClient';
 import { useI18n } from '@/renderer/i18n/useI18n';
-import type { DeepSeekApiConnectionDto } from '@/shared/contracts';
+import type { ProviderConnectionDto } from '@/shared/contracts';
+import { DEEPSEEK_API_CONNECTION_ID } from '@/shared/extension-ids';
 
 interface Props {
   active: boolean;
@@ -16,15 +18,20 @@ interface Props {
 export function DeepSeekApiConfiguration({ active, notify, onConnectionChanged }: Props) {
   const { locale, messages } = useI18n();
   const l = messages.extensions.deepSeekApi;
-  const [connection, setConnection] = useState<DeepSeekApiConnectionDto | null>(null);
+  const [connection, setConnection] = useState<ProviderConnectionDto | null>(null);
   const [apiKey, setApiKey] = useState('');
+  const [visionEndpoint, setVisionEndpoint] = useState('');
+  const [visionModelId, setVisionModelId] = useState('');
   const [busy, setBusy] = useState('');
   const [error, setError] = useState('');
 
   async function load() {
     setError('');
     try {
-      setConnection(await window.desktopApi.deepSeekApiGet());
+      const next = await loadProviderConnection(DEEPSEEK_API_CONNECTION_ID);
+      setConnection(next);
+      setVisionEndpoint(next.settings.visionEndpoint ?? '');
+      setVisionModelId(next.settings.visionModelId ?? '');
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : String(reason));
     }
@@ -40,12 +47,18 @@ export function DeepSeekApiConfiguration({ active, notify, onConnectionChanged }
     try {
       const next =
         action === 'save'
-          ? await window.desktopApi.deepSeekApiSave({ apiKey })
+          ? await window.desktopApi.providerConnectionSave({
+              connectionId: DEEPSEEK_API_CONNECTION_ID,
+              apiKey,
+              settings: { visionEndpoint, visionModelId },
+            })
           : action === 'test'
-            ? await window.desktopApi.deepSeekApiTest()
-            : await window.desktopApi.deepSeekApiClear();
+            ? await window.desktopApi.providerConnectionVerify(DEEPSEEK_API_CONNECTION_ID)
+            : await window.desktopApi.providerConnectionRemove(DEEPSEEK_API_CONNECTION_ID);
       setConnection(next);
       setApiKey('');
+      setVisionEndpoint(next.settings.visionEndpoint ?? '');
+      setVisionModelId(next.settings.visionModelId ?? '');
       await onConnectionChanged();
       notify(action === 'clear' ? l.notices.cleared : action === 'test' ? l.notices.tested : l.notices.saved);
     } catch (reason) {
@@ -55,8 +68,9 @@ export function DeepSeekApiConfiguration({ active, notify, onConnectionChanged }
     }
   }
 
-  const status = connection?.status ?? 'NOT_CONFIGURED';
-  const canSave = Boolean(apiKey.trim() || connection?.configured);
+  const status = connection?.connectionState ?? 'NOT_CONFIGURED';
+  const visionSettingsComplete = Boolean(visionEndpoint.trim()) === Boolean(visionModelId.trim());
+  const canSave = Boolean(apiKey.trim() || connection?.configured) && visionSettingsComplete;
   const lastVerified = connection?.lastVerifiedAt
     ? new Date(connection.lastVerifiedAt).toLocaleString(locale === 'zh' ? 'zh-CN' : 'en-US')
     : l.neverVerified;
@@ -80,11 +94,41 @@ export function DeepSeekApiConfiguration({ active, notify, onConnectionChanged }
               spellCheck={false}
               disabled={Boolean(busy)}
               value={apiKey}
-              placeholder={connection?.apiKeyHint ?? l.keyPlaceholder}
+              placeholder={connection?.credentialHint ?? l.keyPlaceholder}
               onChange={(event) => setApiKey(event.target.value)}
             />
           </FieldControl>
         </Field>
+
+        <div className="grid gap-4 sm:grid-cols-2">
+          <Field>
+            <FieldLabel>{l.visionEndpoint}</FieldLabel>
+            <FieldControl>
+              <Input
+                type="url"
+                autoComplete="off"
+                spellCheck={false}
+                disabled={Boolean(busy)}
+                value={visionEndpoint}
+                placeholder={l.visionEndpointPlaceholder}
+                onChange={(event) => setVisionEndpoint(event.target.value)}
+              />
+            </FieldControl>
+          </Field>
+          <Field>
+            <FieldLabel>{l.visionModel}</FieldLabel>
+            <FieldControl>
+              <Input
+                autoComplete="off"
+                spellCheck={false}
+                disabled={Boolean(busy)}
+                value={visionModelId}
+                placeholder={l.visionModelPlaceholder}
+                onChange={(event) => setVisionModelId(event.target.value)}
+              />
+            </FieldControl>
+          </Field>
+        </div>
 
         <dl className="grid grid-cols-[auto_minmax(0,1fr)] gap-x-3 gap-y-1.5 rounded-md bg-surface-sunken/55 px-3 py-2 text-xs">
           <dt className="text-muted-foreground">{l.model}</dt>
@@ -94,7 +138,7 @@ export function DeepSeekApiConfiguration({ active, notify, onConnectionChanged }
             <ShieldCheckIcon className="size-3.5 text-success" />
           </dd>
           <dt className="text-muted-foreground">{l.savedKey}</dt>
-          <dd className="text-right font-mono">{connection?.apiKeyHint ?? '—'}</dd>
+          <dd className="text-right font-mono">{connection?.credentialHint ?? '—'}</dd>
           <dt className="text-muted-foreground">{l.lastVerified}</dt>
           <dd className="text-right">{lastVerified}</dd>
         </dl>

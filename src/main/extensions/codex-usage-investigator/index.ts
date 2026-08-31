@@ -16,6 +16,7 @@ import {
   codexUsageInvestigationSchema,
   codexUsageTaskSchema,
 } from '@/shared/contracts/codex-usage';
+import { codexUsageDateRangeEpochs } from '@/shared/codex-usage-time';
 import { CodexUsageCacheDatabase } from '@/main/extensions/codex-usage-investigator/cache-database';
 import { serializeCodexUsageExport } from '@/main/extensions/codex-usage-investigator/export';
 import { codexUsageRangeStart, scanCodexUsage } from '@/main/extensions/codex-usage-investigator/scanner';
@@ -59,6 +60,7 @@ function initialProgress(): CodexUsageScanProgress {
     bytesTotal: 0,
     throughputBytesPerSecond: 0,
     estimatedRemainingMs: null,
+    calculationPercent: 0,
     elapsedMs: 0,
   };
 }
@@ -91,20 +93,26 @@ export class CodexUsageInvestigator {
 
   start(input: CodexUsageScanInput, options: RunOptions) {
     if (this.controller) throw new Error('A Codex usage investigation is already running');
-    this.cache.cancelPendingTasks();
     const now = Date.now();
     const timestamp = new Date(now).toISOString();
+    const epochs =
+      input.range === 'CUSTOM' && input.dateRange
+        ? codexUsageDateRangeEpochs(input.dateRange, input.timeZone, now)
+        : { fromEpoch: codexUsageRangeStart(input.range, now, input.timeZone), toEpoch: now };
+    this.cache.cancelPendingTasks();
     const task = codexUsageTaskSchema.parse({
       taskId: randomUUID(),
       range: input.range,
+      dateRange: input.dateRange,
       timeZone: input.timeZone,
       granularity: input.granularity,
+      detailedStatistics: input.detailedStatistics,
       status: 'RUNNING',
       createdAt: timestamp,
       startedAt: timestamp,
       updatedAt: timestamp,
-      fromEpoch: codexUsageRangeStart(input.range, now, input.timeZone),
-      toEpoch: now,
+      fromEpoch: epochs.fromEpoch,
+      toEpoch: epochs.toEpoch,
       progress: initialProgress(),
       investigationId: null,
       errorMessage: null,
@@ -171,8 +179,10 @@ export class CodexUsageInvestigator {
       const scanned = await scanCodexUsage({
         investigationId: task.taskId,
         range: task.range,
+        dateRange: task.dateRange,
         timeZone: task.timeZone,
         granularity: task.granularity,
+        detailedStatistics: task.detailedStatistics,
         fromEpoch: task.fromEpoch,
         toEpoch: task.toEpoch,
         cache: this.cache,

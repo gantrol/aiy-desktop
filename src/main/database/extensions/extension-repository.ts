@@ -2,6 +2,7 @@ import { createHash, randomUUID } from 'node:crypto';
 import type { ExtensionManifestDto, ExtensionSource } from '@/shared/contracts';
 import type { LibraryStorage } from '@/main/database/core/storage';
 import { now, type JsonMap } from '@/main/database/core/values';
+import { extensionPermissionLegacyAliases } from '@/shared/extension-permissions';
 
 interface InstallationRow {
   extension_id: string;
@@ -48,6 +49,8 @@ export interface ExtensionReconcileEntry {
   source: ExtensionSource;
   /** Initial state for a newly discovered extension. Existing user choices are never overwritten. */
   enabledByDefault?: boolean;
+  /** Only trusted, application-distributed extensions may receive initial required grants. */
+  grantRequiredPermissionsByDefault?: boolean;
 }
 
 export interface ExtensionThreadBinding {
@@ -68,13 +71,25 @@ export class ExtensionRepository {
   constructor(private readonly storage: LibraryStorage) {}
 
   reconcileBuiltIns(manifests: readonly ExtensionManifestDto[]) {
-    return this.reconcile(manifests.map((manifest) => ({ manifest, source: 'BUILT_IN' as const })));
+    return this.reconcile(
+      manifests.map((manifest) => ({
+        manifest,
+        source: 'BUILT_IN' as const,
+        enabledByDefault: true,
+        grantRequiredPermissionsByDefault: true,
+      })),
+    );
   }
 
   reconcile(entries: readonly ExtensionReconcileEntry[]) {
     this.storage.db.transaction(() => {
       for (const entry of entries) {
-        this.reconcileExtension(entry.manifest, entry.source, entry.enabledByDefault ?? true);
+        this.reconcileExtension(
+          entry.manifest,
+          entry.source,
+          entry.enabledByDefault ?? false,
+          entry.grantRequiredPermissionsByDefault ?? false,
+        );
       }
     })();
   }
@@ -215,7 +230,12 @@ export class ExtensionRepository {
     })();
   }
 
-  private reconcileExtension(manifest: ExtensionManifestDto, source: ExtensionSource, enabledByDefault: boolean) {
+  private reconcileExtension(
+    manifest: ExtensionManifestDto,
+    source: ExtensionSource,
+    enabledByDefault: boolean,
+    grantRequiredPermissionsByDefault: boolean,
+  ) {
     const hash = manifestHash(manifest);
     const timestamp = now();
     const existing = this.storage.db
@@ -238,9 +258,9 @@ export class ExtensionRepository {
           .prepare(
             `INSERT INTO extension_permission_grants(
           extension_id, permission_key, granted, updated_at
-        ) VALUES (?, ?, 1, ?)`,
+        ) VALUES (?, ?, ?, ?)`,
           )
-          .run(manifest.id, permission, timestamp);
+          .run(manifest.id, permission, grantRequiredPermissionsByDefault ? 1 : 0, timestamp);
       }
       for (const permission of manifest.optionalPermissions) {
         this.storage.db
@@ -254,7 +274,12 @@ export class ExtensionRepository {
       this.recordEvent(
         manifest.id,
         'DISCOVERED',
-        { version: manifest.version, source, enabled: enabledByDefault },
+        {
+          version: manifest.version,
+          source,
+          enabled: enabledByDefault,
+          requiredPermissionsGranted: grantRequiredPermissionsByDefault,
+        },
         timestamp,
       );
       return;
@@ -283,14 +308,29 @@ export class ExtensionRepository {
       );
     }
     for (const permission of [...manifest.permissions, ...manifest.optionalPermissions]) {
+      const inheritedGrant = this.inheritedPermissionGrant(manifest.id, permission);
       this.storage.db
         .prepare(
           `INSERT OR IGNORE INTO extension_permission_grants(
         extension_id, permission_key, granted, updated_at
-      ) VALUES (?, ?, 0, ?)`,
+      ) VALUES (?, ?, ?, ?)`,
         )
-        .run(manifest.id, permission, timestamp);
+        .run(manifest.id, permission, inheritedGrant ? 1 : 0, timestamp);
     }
+  }
+
+  private inheritedPermissionGrant(extensionId: string, permission: string) {
+    const aliases = extensionPermissionLegacyAliases(permission);
+    if (!aliases.length) return false;
+    const placeholders = aliases.map(() => '?').join(', ');
+    const row = this.storage.db
+      .prepare(
+        `SELECT 1 FROM extension_permission_grants
+         WHERE extension_id = ? AND granted = 1 AND permission_key IN (${placeholders})
+         LIMIT 1`,
+      )
+      .get(extensionId, ...aliases);
+    return Boolean(row);
   }
 
   private recordEvent(extensionId: string, eventKind: string, payload: JsonMap, createdAt: string) {

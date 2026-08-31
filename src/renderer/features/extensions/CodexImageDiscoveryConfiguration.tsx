@@ -24,6 +24,7 @@ interface Props {
   active: boolean;
   extension: ExtensionDto;
   standalone?: boolean;
+  standaloneHeadingLevel?: 'h1' | 'h2';
   notify(message: string): void;
   onOpenCreation(seriesId: string, assetId: string | null): Promise<void>;
 }
@@ -34,6 +35,7 @@ export function CodexImageDiscoveryConfiguration({
   active,
   extension,
   standalone = false,
+  standaloneHeadingLevel = 'h1',
   notify,
   onOpenCreation,
 }: Props) {
@@ -262,7 +264,7 @@ export function CodexImageDiscoveryConfiguration({
     void load(1, true, false, filterRef.current, nextIncludeUntitled);
   }
 
-  const Heading = standalone ? 'h1' : 'h3';
+  const Heading = standalone ? standaloneHeadingLevel : 'h3';
 
   return (
     <section

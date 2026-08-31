@@ -1,4 +1,5 @@
 import type { ExtensionImageApiConfigurationDto } from '@/shared/contracts';
+import { EXTENSION_PERMISSION_TEMPLATE, networkOriginExtensionPermission } from '@/shared/extension-permissions';
 import {
   ALIBABA_MODEL_STUDIO_IMAGE_API_EXTENSION_ID,
   GOOGLE_GEMINI_IMAGE_API_EXTENSION_ID,
@@ -7,7 +8,7 @@ import {
 } from '@/shared/extension-ids';
 
 export const CUSTOM_ENDPOINT_PRESET_ID = 'custom';
-export const USER_CONFIGURED_HTTPS_ENDPOINT_PERMISSION = 'network:user-configured-https-endpoint';
+export const USER_CONFIGURED_HTTPS_ENDPOINT_PERMISSION = EXTENSION_PERMISSION_TEMPLATE.userConfiguredHttpsEndpoint;
 export const BYTEPLUS_AP_ENDPOINT_PERMISSION = 'network:https://ark.ap-southeast.bytepluses.com';
 export const BYTEPLUS_EU_ENDPOINT_PERMISSION = 'network:https://ark.eu-west.bytepluses.com';
 export const GOOGLE_GEMINI_DEFAULT_MODEL_ID = 'gemini-3.1-flash-image';
@@ -233,7 +234,10 @@ export function externalImageApiEndpointPermission(
   rawSettings: Record<string, string>,
 ) {
   const resolved = resolveExternalImageApiEndpoint(extensionId, rawSettings);
-  if (resolved.custom) return USER_CONFIGURED_HTTPS_ENDPOINT_PERMISSION;
+  if (resolved.custom) return networkOriginExtensionPermission(resolved.endpoint);
+  if (extensionId === ALIBABA_MODEL_STUDIO_IMAGE_API_EXTENSION_ID) {
+    return networkOriginExtensionPermission(resolved.endpoint);
+  }
   if (extensionId !== VOLCENGINE_ARK_IMAGE_API_EXTENSION_ID) return null;
   if (resolved.endpointPresetId === 'byteplus-ap-southeast-1') return BYTEPLUS_AP_ENDPOINT_PERMISSION;
   if (resolved.endpointPresetId === 'byteplus-eu-west-1') return BYTEPLUS_EU_ENDPOINT_PERMISSION;

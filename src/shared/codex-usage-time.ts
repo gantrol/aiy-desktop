@@ -1,4 +1,5 @@
 import type {
+  CodexUsageDateRange,
   CodexUsageQuotaYieldSample,
   CodexUsageQuotaYieldTimeSlice,
   CodexUsageRange,
@@ -169,6 +170,20 @@ function zonedDateTimeEpoch(value: { year: number; month: number; day: number; h
   return candidate;
 }
 
+function calendarDateParts(value: string) {
+  const [year, month, day] = value.split('-').map(Number);
+  return { year: year!, month: month!, day: day! };
+}
+
+function nextCalendarDate(value: { year: number; month: number; day: number }) {
+  const next = new Date(Date.UTC(value.year, value.month - 1, value.day + 1));
+  return {
+    year: next.getUTCFullYear(),
+    month: next.getUTCMonth() + 1,
+    day: next.getUTCDate(),
+  };
+}
+
 export function codexUsageDefaultGranularity(range: CodexUsageRange): CodexUsageResolvedGranularity {
   if (range === 'LAST_24_HOURS') return 'HOUR';
   if (range === 'LAST_7_DAYS') return 'SIX_HOURS';
@@ -182,6 +197,7 @@ export function codexUsageLocalDateKey(value: string | number, timeZone: string)
 
 export function codexUsageRangeStartEpoch(range: CodexUsageRange, toEpoch: number, timeZone: string) {
   if (range === 'ALL') return null;
+  if (range === 'CUSTOM') throw new Error('Custom Codex usage ranges require explicit calendar dates');
   if (range === 'LAST_24_HOURS') return Math.max(0, toEpoch - DAY_MS);
   const days = range === 'LAST_7_DAYS' ? 7 : range === 'LAST_30_DAYS' ? 30 : 90;
   const current = zonedParts(toEpoch, timeZone);
@@ -196,6 +212,23 @@ export function codexUsageRangeStartEpoch(range: CodexUsageRange, toEpoch: numbe
     },
     timeZone,
   );
+}
+
+export function codexUsageDateRangeEpochs(
+  range: CodexUsageDateRange,
+  timeZone: string,
+  maximumToEpoch: number = Date.now(),
+) {
+  const today = localDate(zonedParts(maximumToEpoch, timeZone));
+  if (range.to > today) throw new Error('The selected Codex usage dates are in the future');
+  const fromDate = calendarDateParts(range.from);
+  const throughDate = calendarDateParts(range.to);
+  const fromEpoch = zonedDateTimeEpoch({ ...fromDate, hour: 0 }, timeZone);
+  if (fromEpoch < 0) throw new Error('The selected Codex usage dates are before the supported range');
+  const throughEpoch = zonedDateTimeEpoch({ ...nextCalendarDate(throughDate), hour: 0 }, timeZone) - 1;
+  const toEpoch = Math.min(maximumToEpoch, throughEpoch);
+  if (toEpoch < fromEpoch) throw new Error('The selected Codex usage dates are in the future');
+  return { fromEpoch, toEpoch };
 }
 
 export function buildCodexUsageTimeSlices(

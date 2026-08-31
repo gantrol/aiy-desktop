@@ -1,4 +1,5 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { LoaderCircleIcon } from 'lucide-react';
 import type { AssetDto, AssetFileRevealContext, TermListItem } from '@/shared/contracts';
 import {
   resolveLocalizedName,
@@ -9,15 +10,21 @@ import { CloseIcon, DictionaryIcon, ImageIcon } from '@/renderer/icons';
 import { TermPreviewTooltip } from '@/renderer/components/media/TermPreviewTooltip';
 import { AssetFileContextMenu } from '@/renderer/components/media/AssetFileContextMenu';
 import { ImageAmbientBackdrop } from '@/renderer/components/media/AmbientImage';
+import { MediaPreviewDialog } from '@/renderer/components/media/MediaPreviewDialog';
+import { MediaOrderHandle } from '@/renderer/components/media/MediaOrderHandle';
 import { Button } from '@/renderer/components/ui/button';
 import { Popover, PopoverAnchor, PopoverContent } from '@/renderer/components/ui/popover';
 import { TooltipProvider } from '@/renderer/components/ui/tooltip';
+import { useI18n } from '@/renderer/i18n/useI18n';
+import { cn } from '@/renderer/lib/utils';
 import type { AppliedWordPalette, CreatorPromptResolution } from '@/renderer/components/creator/utils';
 
 interface Props {
   assets: AssetDto[];
+  imageImporting?: boolean;
   promptResolution: CreatorPromptResolution;
   removeLabel: string;
+  onAssetsChange(assets: AssetDto[]): void;
   onRemoveAsset(id: string): void;
   onRemovePalette(id: string): void;
   onRemoveTerm(term: TermListItem): void;
@@ -26,6 +33,18 @@ interface Props {
   notify(message: string): void;
   revealContext?: AssetFileRevealContext;
   hidePromptMaterials?: boolean;
+}
+
+const creationReferenceMediaDragType = 'application/x-aiy-creation-reference-media';
+
+function reorderAssets(assets: readonly AssetDto[], sourceId: string, targetId: string, placeAfterTarget: boolean) {
+  const source = assets.find((asset) => asset.id === sourceId);
+  if (!source || sourceId === targetId) return [...assets];
+  const next = assets.filter((asset) => asset.id !== sourceId);
+  const targetIndex = next.findIndex((asset) => asset.id === targetId);
+  if (targetIndex < 0) return [...assets];
+  next.splice(targetIndex + Number(placeAfterTarget), 0, source);
+  return next;
 }
 
 function paletteLabel(reference: AppliedWordPalette) {
@@ -204,8 +223,10 @@ function RecipeSourceControl({
 
 export function CreationReferenceStrip({
   assets,
+  imageImporting = false,
   promptResolution,
   removeLabel,
+  onAssetsChange,
   onRemoveAsset,
   onRemovePalette,
   onRemoveTerm,
@@ -215,81 +236,201 @@ export function CreationReferenceStrip({
   revealContext,
   hidePromptMaterials = false,
 }: Props) {
+  const { locale, messages } = useI18n();
+  const fileLabels = messages.assetFile;
+  const [previewAssetId, setPreviewAssetId] = useState<string | null>(null);
+  const [copyingAssetId, setCopyingAssetId] = useState<string | null>(null);
+  const [dragTargetAssetId, setDragTargetAssetId] = useState<string | null>(null);
+  const assetsById = useMemo(() => new Map(assets.map((asset) => [asset.id, asset])), [assets]);
   const directTerms = hidePromptMaterials
     ? []
     : promptResolution.effectiveTerms.filter(({ directSource }) => directSource);
   const recipeSources = hidePromptMaterials ? [] : promptResolution.recipeSources;
-  if (!assets.length && !recipeSources.length && !directTerms.length) return null;
+
+  useEffect(() => {
+    if (previewAssetId && !assetsById.has(previewAssetId)) setPreviewAssetId(null);
+  }, [assetsById, previewAssetId]);
+
+  async function copyImage(assetId: string) {
+    if (copyingAssetId) return;
+    setCopyingAssetId(assetId);
+    notify(fileLabels.copying);
+    try {
+      await window.desktopApi.assetFileCopy(assetId);
+      notify(fileLabels.copied);
+    } catch (reason) {
+      notify(`${fileLabels.failed}: ${reason instanceof Error ? reason.message : String(reason)}`);
+    } finally {
+      setCopyingAssetId(null);
+    }
+  }
+
+  function removeAsset(assetId: string) {
+    const index = assets.findIndex((asset) => asset.id === assetId);
+    const nextPreviewId = assets[index + 1]?.id ?? assets[index - 1]?.id ?? null;
+    onRemoveAsset(assetId);
+    if (previewAssetId === assetId) setPreviewAssetId(nextPreviewId);
+  }
+
+  if (!assets.length && !imageImporting && !recipeSources.length && !directTerms.length) return null;
 
   return (
-    <div className="mt-3 flex flex-wrap gap-2 border-t pt-3">
-      {assets.map((asset) => (
-        <AssetFileContextMenu assetId={asset.id} notify={notify} revealContext={revealContext} key={asset.id}>
-          <span className="group relative isolate size-12 rounded-md bg-surface-sunken">
-            <ImageAmbientBackdrop src={asset.mediaUrl} />
-            <img className="relative z-10 size-full rounded-md object-contain" src={asset.mediaUrl} alt="" />
+    <>
+      <div className="mt-3 flex flex-wrap gap-2 border-t pt-3">
+        {imageImporting ? (
+          <span
+            role="status"
+            aria-label={locale === 'zh' ? '正在导入图片' : 'Importing image'}
+            data-reference-image-importing=""
+            className="grid size-12 shrink-0 place-items-center rounded-md bg-surface-sunken text-muted-foreground"
+          >
+            <LoaderCircleIcon className="size-4 animate-spin" aria-hidden="true" />
+          </span>
+        ) : null}
+        {assets.map((asset, index) => (
+          <span
+            className={cn(
+              'group relative isolate size-12 rounded-md bg-surface-sunken',
+              dragTargetAssetId === asset.id && 'ring-2 ring-selected-border',
+            )}
+            key={asset.id}
+            onDragOver={(event) => {
+              if (!event.dataTransfer.types.includes(creationReferenceMediaDragType)) return;
+              event.preventDefault();
+              event.stopPropagation();
+              event.dataTransfer.dropEffect = 'move';
+              setDragTargetAssetId(asset.id);
+            }}
+            onDragLeave={(event) => {
+              if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setDragTargetAssetId(null);
+            }}
+            onDrop={(event) => {
+              const sourceId = event.dataTransfer.getData(creationReferenceMediaDragType);
+              if (!sourceId) return;
+              event.preventDefault();
+              event.stopPropagation();
+              const bounds = event.currentTarget.getBoundingClientRect();
+              setDragTargetAssetId(null);
+              onAssetsChange(
+                reorderAssets(assets, sourceId, asset.id, event.clientX >= bounds.left + bounds.width / 2),
+              );
+            }}
+          >
+            <AssetFileContextMenu assetId={asset.id} notify={notify} revealContext={revealContext}>
+              <Button
+                type="button"
+                variant="ghost"
+                className="relative isolate size-12 cursor-zoom-in overflow-hidden rounded-md p-0 shadow-none hover:bg-transparent focus-visible:ring-inset focus-visible:ring-offset-0"
+                title={locale === 'zh' ? '放大图片' : 'Enlarge image'}
+                aria-label={locale === 'zh' ? `放大图片 ${index + 1}` : `Enlarge image ${index + 1}`}
+                onClick={() => setPreviewAssetId(asset.id)}
+              >
+                <ImageAmbientBackdrop src={asset.mediaUrl} />
+                <img
+                  className="relative z-10 size-full rounded-md object-contain"
+                  src={asset.mediaUrl}
+                  alt=""
+                  draggable={false}
+                />
+              </Button>
+            </AssetFileContextMenu>
             <Button
               className="absolute -top-1.5 -right-1.5 z-20 size-6 rounded-full bg-overlay text-foreground opacity-0 shadow-overlay group-focus-within:opacity-100 group-hover:opacity-100"
               type="button"
               variant="outline"
               size="icon-sm"
               aria-label={removeLabel}
-              onClick={() => onRemoveAsset(asset.id)}
+              onClick={() => removeAsset(asset.id)}
             >
               <CloseIcon className="size-3" />
             </Button>
+            {assets.length > 1 && (
+              <MediaOrderHandle
+                draggable
+                className="absolute bottom-1 left-1 z-20 h-5 min-w-0 gap-0 px-1 text-[10px] tabular-nums [&>svg]:size-2.5"
+                label={locale === 'zh' ? `拖动第 ${index + 1} 张图片调整顺序` : `Drag image ${index + 1} to reorder`}
+                onDragStart={(event) => {
+                  event.stopPropagation();
+                  event.dataTransfer.effectAllowed = 'move';
+                  event.dataTransfer.setData(creationReferenceMediaDragType, asset.id);
+                }}
+                onDragEnd={() => setDragTargetAssetId(null)}
+                onKeyDown={(event) => {
+                  const offset = event.key === 'ArrowLeft' ? -1 : event.key === 'ArrowRight' ? 1 : 0;
+                  const target = assets[index + offset];
+                  if (!offset || !target) return;
+                  event.preventDefault();
+                  onAssetsChange(reorderAssets(assets, asset.id, target.id, offset > 0));
+                }}
+              >
+                {index + 1}
+              </MediaOrderHandle>
+            )}
           </span>
-        </AssetFileContextMenu>
-      ))}
-      <TooltipProvider delayDuration={280}>
-        {directTerms.map(({ term, resolved, recipeUseIds }) => (
-          <TermPreviewTooltip term={term} key={term.id}>
-            <span
-              data-effective-term-id={term.id}
-              data-direct-source="true"
-              data-recipe-source-count={recipeUseIds.length}
-              className="inline-flex h-8 max-w-full items-center overflow-hidden rounded-full bg-secondary text-secondary-foreground"
-            >
-              <Button
-                data-action="open-term-reference"
-                type="button"
-                variant="ghost"
-                size="sm"
-                className="h-full min-w-0 rounded-none border-0 px-3 font-normal shadow-none"
-                onClick={() => onOpenTerm(term)}
-              >
-                <span className="truncate">{term.title}</span>
-                {resolved.sourcePaths.length > 1 && (
-                  <span className="shrink-0 text-[10px] text-muted-foreground">×{resolved.sourcePaths.length}</span>
-                )}
-              </Button>
-              <Button
-                data-action="remove-term-reference"
-                data-remove-source="direct"
-                type="button"
-                variant="ghost"
-                size="icon-sm"
-                className="size-7 shrink-0 rounded-full shadow-none"
-                aria-label={removeLabel}
-                title={removeLabel}
-                onClick={() => onRemoveTerm(term)}
-              >
-                <CloseIcon className="size-3" />
-              </Button>
-            </span>
-          </TermPreviewTooltip>
         ))}
-      </TooltipProvider>
-      {recipeSources.map(({ useId, reference }) => (
-        <RecipeSourceControl
-          key={useId}
-          useId={useId}
-          reference={reference}
-          removeLabel={removeLabel}
-          onOpenPalette={onOpenPalette}
-          onRemovePalette={onRemovePalette}
-        />
-      ))}
-    </div>
+        <TooltipProvider delayDuration={280}>
+          {directTerms.map(({ term, resolved, recipeUseIds }) => (
+            <TermPreviewTooltip term={term} key={term.id}>
+              <span
+                data-effective-term-id={term.id}
+                data-direct-source="true"
+                data-recipe-source-count={recipeUseIds.length}
+                className="inline-flex h-8 max-w-full items-center overflow-hidden rounded-full bg-secondary text-secondary-foreground"
+              >
+                <Button
+                  data-action="open-term-reference"
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  className="h-full min-w-0 rounded-none border-0 px-3 font-normal shadow-none"
+                  onClick={() => onOpenTerm(term)}
+                >
+                  <span className="truncate">{term.title}</span>
+                  {resolved.sourcePaths.length > 1 && (
+                    <span className="shrink-0 text-[10px] text-muted-foreground">×{resolved.sourcePaths.length}</span>
+                  )}
+                </Button>
+                <Button
+                  data-action="remove-term-reference"
+                  data-remove-source="direct"
+                  type="button"
+                  variant="ghost"
+                  size="icon-sm"
+                  className="size-7 shrink-0 rounded-full shadow-none"
+                  aria-label={removeLabel}
+                  title={removeLabel}
+                  onClick={() => onRemoveTerm(term)}
+                >
+                  <CloseIcon className="size-3" />
+                </Button>
+              </span>
+            </TermPreviewTooltip>
+          ))}
+        </TooltipProvider>
+        {recipeSources.map(({ useId, reference }) => (
+          <RecipeSourceControl
+            key={useId}
+            useId={useId}
+            reference={reference}
+            removeLabel={removeLabel}
+            onOpenPalette={onOpenPalette}
+            onRemovePalette={onRemovePalette}
+          />
+        ))}
+      </div>
+      <MediaPreviewDialog
+        assetIds={assets.map((asset) => asset.id)}
+        assetsById={assetsById}
+        copyingAssetId={copyingAssetId}
+        copyLabel={fileLabels.copy}
+        dataDialog="creation-input-media-preview"
+        locale={locale}
+        openAssetId={previewAssetId}
+        notify={notify}
+        onCopy={(assetId) => void copyImage(assetId)}
+        onOpenAssetIdChange={setPreviewAssetId}
+        onRemove={removeAsset}
+      />
+    </>
   );
 }

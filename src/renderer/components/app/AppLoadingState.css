@@ -1,3 +1,15 @@
+@keyframes app-loading-neutral-breathe {
+  0%,
+  100% {
+    opacity: 0.78;
+    transform: scale(0.97);
+  }
+  50% {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
 @keyframes app-loading-film-scroll-up {
   from {
     transform: translateY(0);
@@ -44,6 +56,14 @@
 [data-app-loading-state] .app-loading-aperture-track-down {
   animation: app-loading-film-scroll-down var(--film-scroll-duration) linear infinite;
   animation-delay: var(--film-scroll-delay);
+}
+
+[data-app-loading-state] .app-loading-neutral-icon {
+  animation: app-loading-neutral-breathe 1.8s var(--ease-enter) infinite;
+}
+
+[data-app-loading-state] [data-transition-surface='neutral'][data-motion-paused='true'] .app-loading-neutral-icon {
+  animation-play-state: paused;
 }
 
 /* The mask punches real transparent perforations out of the moving film segment. */
@@ -236,7 +256,7 @@
   overflow: hidden;
   border: 1px solid var(--loading-polaroid-aperture-border);
   border-radius: 0.22rem;
-  background: transparent;
+  background: var(--media-surround-light);
   box-shadow: inset 0 0 0 1px var(--loading-polaroid-aperture-inset);
 }
 
@@ -322,6 +342,7 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
+  [data-app-loading-state] .app-loading-neutral-icon,
   [data-app-loading-state] .app-loading-aperture-track,
   [data-app-loading-state] .app-loading-polaroid-stage,
   [data-app-loading-state] .app-loading-polaroid-focus {
@@ -334,6 +355,7 @@
 
 [data-app-loading-state] .app-loading-scene[data-reduced-motion='true'] .app-loading-aperture-track,
 [data-app-loading-state] .app-loading-polaroid-scene[data-reduced-motion='true'] .app-loading-polaroid-stage,
-[data-app-loading-state] .app-loading-polaroid-scene[data-reduced-motion='true'] .app-loading-polaroid-focus {
+[data-app-loading-state] .app-loading-polaroid-scene[data-reduced-motion='true'] .app-loading-polaroid-focus,
+[data-app-loading-state] [data-transition-surface='neutral'][data-reduced-motion='true'] .app-loading-neutral-icon {
   animation: none;
 }

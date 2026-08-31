@@ -8,6 +8,8 @@ import os from 'node:os';
 import path from 'node:path';
 import type {
   AntigravityCliStatusDto,
+  ArticleCheckInput,
+  ArticleCheckResult,
   AssistantActivityEventDto,
   AssistantRunDto,
   CodexHealth,
@@ -20,6 +22,8 @@ import type {
   GenerationChangedEvent,
   GenerationInput,
   ImageGenerationConcurrencyDto,
+  ImageBreakdownResult,
+  ImageBreakdownWorkerInput,
   ImageEditBatchStartInput,
   ImageEditStartInput,
   ImageReframeStartInput,
@@ -41,7 +45,12 @@ import { CODEX_APP_SERVER_IMAGE_MODEL_KEY } from '@/shared/extension-ids';
 import { videoDocumentArticleGenerateResultSchema } from '@/shared/contracts/video-document';
 import { videoDocumentTranscriptTranslationResultSchema } from '@/shared/contracts/video-document-translation';
 import type { AssistantService, AssistantTitleExecution } from '@/main/assistant/assistant-service';
-import type { CodexChatJob, CodexService, CodexTitleExecutionOptions } from '@/main/assistant/codex-service';
+import type {
+  CodexArticleCheckExecutionOptions,
+  CodexChatJob,
+  CodexService,
+  CodexTitleExecutionOptions,
+} from '@/main/assistant/codex-service';
 import type { DeepSeekApiRuntimeConfiguration } from '@/main/extensions/deepseek-api/types';
 import type { ExternalImageApiRuntimeConfiguration } from '@/main/extensions/external-image-api';
 import type { OpenAiImageApiRuntimeConfiguration } from '@/main/extensions/openai-image-api/types';
@@ -92,11 +101,13 @@ const CODEX_ASSIST_TIMEOUT_MS = 300_000;
 const VIDEO_DOCUMENT_ARTICLE_TIMEOUT_MS = 60 * 60_000;
 const VIDEO_DOCUMENT_TRANSLATION_TIMEOUT_MS = 6 * 60 * 60_000;
 const CODEX_TITLE_TIMEOUT_MS = 180_000;
+const CODEX_ARTICLE_CHECK_TIMEOUT_MS = 330_000;
+const IMAGE_BREAKDOWN_TIMEOUT_MS = 200_000;
 const DEFAULT_IDLE_EXIT_MS = 10 * 60_000;
 // Development builds briefly emitted these versions. They all support the
 // authenticated idle-shutdown handshake and can be replaced without losing
 // in-flight work.
-const REPLACEABLE_DEVELOPMENT_PROTOCOL_VERSIONS = new Set([1, MODEL_WORKER_PROTOCOL_VERSION]);
+const REPLACEABLE_DEVELOPMENT_PROTOCOL_VERSIONS = new Set([1, 2, 3, MODEL_WORKER_PROTOCOL_VERSION]);
 const ROLLING_UPGRADE_SETTLE_MS = 1_000;
 const WORKER_RETIRE_TIMEOUT_MS = 5_000;
 const STARTUP_FALLBACK_MIN_MS = 250;
@@ -1360,6 +1371,15 @@ class BackgroundCodexService implements CodexService {
     );
   }
 
+  checkArticle(input: ArticleCheckInput, options: CodexArticleCheckExecutionOptions, signal?: AbortSignal) {
+    return this.owner.callWorker<ArticleCheckResult>(
+      'codex.check-article',
+      [input, options],
+      CODEX_ARTICLE_CHECK_TIMEOUT_MS,
+      signal,
+    );
+  }
+
   cancelAll() {
     return this.owner.callWorker<void>('codex.cancel-all', []);
   }
@@ -1378,6 +1398,10 @@ class BackgroundAssistantService implements AssistantService {
       [input, execution],
       CODEX_TITLE_TIMEOUT_MS,
     );
+  }
+
+  imageBreakdown(input: ImageBreakdownWorkerInput) {
+    return this.owner.callWorker<ImageBreakdownResult>('image-breakdown.run', [input], IMAGE_BREAKDOWN_TIMEOUT_MS);
   }
 
   onProgress(listener: (event: AssistantActivityEventDto) => void) {

@@ -1,4 +1,4 @@
--- Revision-2 repair fragment for private builds created before local ASR
+-- Revision-2 repair fragment for pre-release builds created before local ASR
 -- activity history became part of the AI Center.
 
 CREATE TABLE video_document_transcription_runs (

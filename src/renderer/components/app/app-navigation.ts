@@ -9,7 +9,10 @@ export type HistoryNavigationGuard = (direction: HistoryNavigationDirection, con
 export type CreatorLocation =
   | { surface: 'default' }
   | { surface: 'new-creation'; albumId: string | null; requestId?: number }
+  | { surface: 'creation-draft'; draftId: string; requestId?: number }
   | { surface: 'inspiration-stash'; stashId: string }
+  | { surface: 'image-breakdown'; breakdownId: string }
+  | { surface: 'evaluation-suite'; suiteId: string }
   | { surface: 'social-post'; postId: string }
   | { surface: 'article'; articleId: string }
   | { surface: 'idea-creation'; creationId: string }
@@ -70,6 +73,9 @@ export interface VideoDocumentsLocation {
   collection: VideoDocumentCollection;
   documentId: string | null;
 }
+
+export type CreatorOpenTabTarget =
+  { view: 'creator'; location: CreatorLocation } | { view: 'documents'; location: VideoDocumentsLocation };
 
 export type MaterialsReturnContext =
   | { destination: 'creator'; seriesId: string }

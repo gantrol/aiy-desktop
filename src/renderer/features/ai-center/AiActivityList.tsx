@@ -88,6 +88,7 @@ export function AiActivityList({
     { id: 'DIRECTIONS', label: l.kinds.directions },
     { id: 'OPTIMIZE', label: l.kinds.optimize },
     { id: 'VIDEO_ARTICLE', label: l.kinds.videoArticle },
+    { id: 'ARTICLE_CHECK', label: l.kinds.articleCheck },
     { id: 'TRANSCRIBE', label: l.kinds.transcribe },
     { id: 'TRANSLATE', label: l.kinds.translate },
   ];

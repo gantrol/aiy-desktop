@@ -4,6 +4,8 @@ import type {
   CreationFormEntityRef,
   CreationItemDto,
   DerivedVisualDto,
+  EvaluationSuiteDto,
+  ImageBreakdownDto,
   InspirationStashDto,
   Locale,
   PromptSeriesDto,
@@ -14,6 +16,8 @@ import { creationSessionCoverFirstAssets } from '@/renderer/components/creator/c
 import type { CreationSessionProjection } from '@/renderer/components/creator/creationSessionProjection';
 
 export type InspirationCreationFormDto = Extract<CreationFormDto, { role: 'INSPIRATION' }>;
+export type ImageBreakdownCreationFormDto = Extract<CreationFormDto, { role: 'IMAGE_BREAKDOWN' }>;
+export type EvaluationSuiteCreationFormDto = Extract<CreationFormDto, { role: 'EVALUATION_SUITE' }>;
 export type ImageCreationFormDto = Extract<CreationFormDto, { role: 'IMAGE_CREATION' }>;
 export type SocialPostCreationFormDto = Extract<CreationFormDto, { role: 'SOCIAL_POST' }>;
 export type ArticleCreationFormDto = Extract<CreationFormDto, { role: 'ARTICLE' }>;
@@ -23,6 +27,8 @@ export type ArticleHeaderCreationFormDto = Extract<CreationFormDto, { role: 'ART
 export type ArticleInlineCreationFormDto = Extract<CreationFormDto, { role: 'ARTICLE_INLINE' }>;
 
 type PromptSeriesEntityRef = Extract<CreationFormEntityRef, { kind: 'PROMPT_SERIES' }>;
+type ImageBreakdownEntityRef = Extract<CreationFormEntityRef, { kind: 'IMAGE_BREAKDOWN' }>;
+type EvaluationSuiteEntityRef = Extract<CreationFormEntityRef, { kind: 'EVALUATION_SUITE' }>;
 type InspirationStashEntityRef = Extract<CreationFormEntityRef, { kind: 'INSPIRATION_STASH' }>;
 type SocialPostEntityRef = Extract<CreationFormEntityRef, { kind: 'SOCIAL_POST' }>;
 type ArticleEntityRef = Extract<CreationFormEntityRef, { kind: 'ARTICLE' }>;
@@ -30,10 +36,19 @@ type VideoDocumentEntityRef = Extract<CreationFormEntityRef, { kind: 'VIDEO_DOCU
 type DerivedVisualEntityRef = Extract<CreationFormEntityRef, { kind: 'DERIVED_VISUAL' }>;
 
 export type CreationFormEntity =
-  PromptSeriesDto | InspirationStashDto | SocialPostDto | ArticleDto | VideoDocumentSummaryDto | DerivedVisualDto;
+  | PromptSeriesDto
+  | ImageBreakdownDto
+  | EvaluationSuiteDto
+  | InspirationStashDto
+  | SocialPostDto
+  | ArticleDto
+  | VideoDocumentSummaryDto
+  | DerivedVisualDto;
 
 export interface CreationFormEntityIndex {
   promptSeriesById: ReadonlyMap<string, PromptSeriesDto>;
+  imageBreakdownById: ReadonlyMap<string, ImageBreakdownDto>;
+  evaluationSuiteById: ReadonlyMap<string, EvaluationSuiteDto>;
   inspirationStashById: ReadonlyMap<string, InspirationStashDto>;
   socialPostById: ReadonlyMap<string, SocialPostDto>;
   articleById: ReadonlyMap<string, ArticleDto>;
@@ -44,6 +59,8 @@ export interface CreationFormEntityIndex {
 
 export interface CreationFormEntitySource {
   series: readonly PromptSeriesDto[];
+  imageBreakdowns: readonly ImageBreakdownDto[];
+  evaluationSuites: readonly EvaluationSuiteDto[];
   sessions: readonly CreationSessionProjection[];
   inspirationStashes: readonly InspirationStashDto[];
   socialPosts: readonly SocialPostDto[];
@@ -62,6 +79,8 @@ export function creationFormEntityRefKey(ref: CreationFormEntityRef) {
 
 export function buildCreationFormEntityIndex({
   series,
+  imageBreakdowns,
+  evaluationSuites,
   sessions,
   inspirationStashes,
   socialPosts,
@@ -75,6 +94,8 @@ export function buildCreationFormEntityIndex({
   }
   return {
     promptSeriesById: indexById(series),
+    imageBreakdownById: indexById(imageBreakdowns),
+    evaluationSuiteById: indexById(evaluationSuites),
     inspirationStashById: indexById(inspirationStashes),
     socialPostById: indexById(socialPosts),
     articleById: indexById(articles),
@@ -88,6 +109,14 @@ export function resolveCreationFormEntity(
   ref: PromptSeriesEntityRef,
   index: CreationFormEntityIndex,
 ): PromptSeriesDto | null;
+export function resolveCreationFormEntity(
+  ref: ImageBreakdownEntityRef,
+  index: CreationFormEntityIndex,
+): ImageBreakdownDto | null;
+export function resolveCreationFormEntity(
+  ref: EvaluationSuiteEntityRef,
+  index: CreationFormEntityIndex,
+): EvaluationSuiteDto | null;
 export function resolveCreationFormEntity(
   ref: InspirationStashEntityRef,
   index: CreationFormEntityIndex,
@@ -116,6 +145,10 @@ export function resolveCreationFormEntity(
   switch (ref.kind) {
     case 'PROMPT_SERIES':
       return index.promptSeriesById.get(ref.id) ?? null;
+    case 'IMAGE_BREAKDOWN':
+      return index.imageBreakdownById.get(ref.id) ?? null;
+    case 'EVALUATION_SUITE':
+      return index.evaluationSuiteById.get(ref.id) ?? null;
     case 'INSPIRATION_STASH':
       return index.inspirationStashById.get(ref.id) ?? null;
     case 'SOCIAL_POST':
@@ -140,6 +173,16 @@ interface CreationFormProjectionBase<TForm extends CreationFormDto, TEntity exte
 export type InspirationCreationFormProjection = CreationFormProjectionBase<
   InspirationCreationFormDto,
   InspirationStashDto
+>;
+
+export type ImageBreakdownCreationFormProjection = CreationFormProjectionBase<
+  ImageBreakdownCreationFormDto,
+  ImageBreakdownDto
+>;
+
+export type EvaluationSuiteCreationFormProjection = CreationFormProjectionBase<
+  EvaluationSuiteCreationFormDto,
+  EvaluationSuiteDto
 >;
 
 export type ImageCreationFormProjection = CreationFormProjectionBase<ImageCreationFormDto, PromptSeriesDto> & {
@@ -167,6 +210,8 @@ export type ArticleInlineCreationFormProjection = DerivedVisualCreationFormProje
 
 export type CreationFormProjection =
   | InspirationCreationFormProjection
+  | ImageBreakdownCreationFormProjection
+  | EvaluationSuiteCreationFormProjection
   | ImageCreationFormProjection
   | SocialPostCreationFormProjection
   | ArticleCreationFormProjection
@@ -182,6 +227,22 @@ function derivedVisualSeries(visual: DerivedVisualDto | null, index: CreationFor
 export function projectCreationForm(form: CreationFormDto, index: CreationFormEntityIndex): CreationFormProjection {
   switch (form.role) {
     case 'INSPIRATION':
+      return {
+        key: form.id,
+        role: form.role,
+        form,
+        entityRef: form.entity,
+        entity: resolveCreationFormEntity(form.entity, index),
+      };
+    case 'IMAGE_BREAKDOWN':
+      return {
+        key: form.id,
+        role: form.role,
+        form,
+        entityRef: form.entity,
+        entity: resolveCreationFormEntity(form.entity, index),
+      };
+    case 'EVALUATION_SUITE':
       return {
         key: form.id,
         role: form.role,
@@ -310,6 +371,10 @@ function roleFallbackTitle(role: CreationFormDto['role'], locale: Locale) {
     switch (role) {
       case 'INSPIRATION':
         return '灵感暂存';
+      case 'IMAGE_BREAKDOWN':
+        return '拆解图片';
+      case 'EVALUATION_SUITE':
+        return '未命名评测集';
       case 'IMAGE_CREATION':
         return '未命名创作';
       case 'SOCIAL_POST':
@@ -329,6 +394,10 @@ function roleFallbackTitle(role: CreationFormDto['role'], locale: Locale) {
   switch (role) {
     case 'INSPIRATION':
       return 'Inspiration';
+    case 'IMAGE_BREAKDOWN':
+      return 'Image breakdown';
+    case 'EVALUATION_SUITE':
+      return 'Untitled evaluation suite';
     case 'IMAGE_CREATION':
       return 'Untitled creation';
     case 'SOCIAL_POST':
@@ -350,6 +419,10 @@ export function creationFormTitle(projection: CreationFormProjection, locale: Lo
   switch (projection.role) {
     case 'INSPIRATION':
       return projection.entity?.title || roleFallbackTitle(projection.role, locale);
+    case 'IMAGE_BREAKDOWN':
+      return projection.entity?.title || roleFallbackTitle(projection.role, locale);
+    case 'EVALUATION_SUITE':
+      return projection.entity?.content.title || roleFallbackTitle(projection.role, locale);
     case 'IMAGE_CREATION':
       return projection.session
         ? creationSessionTitle(projection.session, locale)
@@ -376,6 +449,10 @@ export function creationFormPreviewAssetIds(projection: CreationFormProjection):
   switch (projection.role) {
     case 'INSPIRATION':
       return projection.entity?.content.referenceAssets.map((asset) => asset.id) ?? [];
+    case 'IMAGE_BREAKDOWN':
+      return projection.entity ? [projection.entity.sourceAsset.id] : [];
+    case 'EVALUATION_SUITE':
+      return [];
     case 'IMAGE_CREATION':
       if (projection.session) return creationSessionCoverFirstAssets(projection.session).map(({ asset }) => asset.id);
       return (
@@ -400,8 +477,12 @@ export function creationFormPreviewAssetIds(projection: CreationFormProjection):
       return projection.entity?.thumbnail ? [projection.entity.thumbnail.assetId] : [];
     case 'SOCIAL_POST_COVER':
     case 'ARTICLE_HEADER':
-    case 'ARTICLE_INLINE':
-      return projection.entity?.selectedImageAssetId ? [projection.entity.selectedImageAssetId] : [];
+    case 'ARTICLE_INLINE': {
+      const generatedAssetIds = projection.session
+        ? creationSessionCoverFirstAssets(projection.session).map(({ asset }) => asset.id)
+        : [];
+      return coverFirstAssetIds(generatedAssetIds, projection.entity?.selectedImageAssetId ?? null);
+    }
   }
 }
 
@@ -413,6 +494,8 @@ export function creationFormActivityAt(projection: CreationFormProjection) {
         projection.session ? creationSessionActivity(projection.session) : null,
       ]);
     case 'INSPIRATION':
+    case 'IMAGE_BREAKDOWN':
+    case 'EVALUATION_SUITE':
     case 'SOCIAL_POST':
     case 'ARTICLE':
     case 'VIDEO_DOCUMENT':

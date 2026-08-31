@@ -18,6 +18,7 @@ const derivedVisualWorkspaceCreateInputSchema = z.discriminatedUnion('role', [
     .object({
       mode: z.literal('CREATE'),
       role: z.literal('ARTICLE_HEADER'),
+      sourceFormId: idSchema,
       articleId: idSchema,
       articleRevisionId: idSchema,
       prompt: promptSchema,
@@ -29,6 +30,7 @@ const derivedVisualWorkspaceCreateInputSchema = z.discriminatedUnion('role', [
     .object({
       mode: z.literal('CREATE'),
       role: z.literal('ARTICLE_INLINE'),
+      sourceFormId: idSchema,
       articleId: idSchema,
       articleRevisionId: idSchema,
       prompt: promptSchema,
@@ -41,6 +43,7 @@ const derivedVisualWorkspaceCreateInputSchema = z.discriminatedUnion('role', [
     .object({
       mode: z.literal('CREATE'),
       role: z.literal('SOCIAL_POST_COVER'),
+      sourceFormId: idSchema,
       socialPostId: idSchema,
       socialPostRevisionId: idSchema,
       prompt: promptSchema,

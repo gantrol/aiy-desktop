@@ -1,6 +1,11 @@
 import { useEffect, useRef, useState } from 'react';
 import type { BootstrapDto, ExtensionDto } from '@/shared/contracts';
-import { CODEX_IMAGE_DISCOVERY_EXTENSION_ID } from '@/shared/extension-ids';
+import {
+  CODEX_HISTORY_SEARCH_EXTENSION_ID,
+  CODEX_IMAGE_DISCOVERY_EXTENSION_ID,
+  CODEX_USAGE_INVESTIGATOR_EXTENSION_ID,
+  CODEX_VISUALIZATION_DISCOVERY_EXTENSION_ID,
+} from '@/shared/extension-ids';
 import { Badge } from '@/renderer/components/ui/badge';
 import {
   navigationLocationKey,
@@ -10,7 +15,7 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/renderer/components/ui/tabs';
 import { useI18n } from '@/renderer/i18n/useI18n';
 import { PackScreen } from '@/renderer/features/packs/PackScreen';
-import { CodexImageDiscoveryScreen } from '@/renderer/features/extensions/CodexImageDiscoveryScreen';
+import { CodexArtifactsScreen } from '@/renderer/features/extensions/CodexArtifactsScreen';
 import { ExtensionPluginScreen } from '@/renderer/features/extensions/ExtensionPluginScreen';
 import { visibleExtensionCenterItems } from '@/renderer/features/extensions/extensionPluginGroups';
 import type { CodexImagesNavigationState } from '@/renderer/features/extensions/codexImageNavigation';
@@ -62,9 +67,20 @@ export function ExtensionCenterScreen({
 
   if (activeSurface === 'discovery') {
     return (
-      <CodexImageDiscoveryScreen
+      <CodexArtifactsScreen
         active
-        extension={extensions.find((extension) => extension.manifest.id === CODEX_IMAGE_DISCOVERY_EXTENSION_ID) ?? null}
+        historyExtension={
+          extensions.find((extension) => extension.manifest.id === CODEX_HISTORY_SEARCH_EXTENSION_ID) ?? null
+        }
+        imageExtension={
+          extensions.find((extension) => extension.manifest.id === CODEX_IMAGE_DISCOVERY_EXTENSION_ID) ?? null
+        }
+        usageExtension={
+          extensions.find((extension) => extension.manifest.id === CODEX_USAGE_INVESTIGATOR_EXTENSION_ID) ?? null
+        }
+        visualizationExtension={
+          extensions.find((extension) => extension.manifest.id === CODEX_VISUALIZATION_DISCOVERY_EXTENSION_ID) ?? null
+        }
         notify={notify}
         onOpenCreation={onOpenCreation}
       />

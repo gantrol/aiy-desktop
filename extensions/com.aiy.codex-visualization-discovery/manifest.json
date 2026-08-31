@@ -1,0 +1,41 @@
+{
+  "manifestVersion": 1,
+  "kind": "CAPABILITY",
+  "id": "com.aiy.codex-visualization-discovery",
+  "version": "0.1.0",
+  "displayName": "Codex Visualizations",
+  "description": "Discover, safely preview, open, reveal, and export visualization results grouped by their Codex task.",
+  "engines": {
+    "aiy": "^0.3.0"
+  },
+  "runtime": {
+    "kind": "HOST",
+    "id": "codex-visualization-discovery"
+  },
+  "contributes": {
+    "commands": [
+      "codexVisualizations.refresh",
+      "codexVisualizations.preview",
+      "codexVisualizations.open",
+      "codexVisualizations.reveal",
+      "codexVisualizations.export"
+    ],
+    "workflows": ["codexVisualizations.manage"],
+    "searchProviders": ["codex.visualizations"]
+  },
+  "permissions": ["filesystem.read:codex-visualizations", "filesystem.read:codex-session-metadata"],
+  "optionalPermissions": ["filesystem.read:codex-thread-content"],
+  "i18n": {
+    "defaultLocale": "en",
+    "locales": {
+      "en": {
+        "displayName": "Codex Visualizations",
+        "description": "Discover, safely preview, open, reveal, and export visualization results grouped by their Codex task."
+      },
+      "zh": {
+        "displayName": "Codex 可视化",
+        "description": "按 Codex 任务发现、安全预览、打开、定位和导出可视化结果。"
+      }
+    }
+  }
+}

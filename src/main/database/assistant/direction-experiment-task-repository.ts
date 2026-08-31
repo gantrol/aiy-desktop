@@ -5,11 +5,16 @@ import type {
   DirectionExperimentDirectorAuthorizationDto,
   DirectionExperimentDirectorCompletionReportDto,
   DirectionExperimentDirectorTaskDto,
-  DirectionExperimentDirectorTaskStatus,
   GenerationTargetInput,
 } from '@/shared/contracts';
 import type { LibraryStorage } from '@/main/database/core/storage';
 import { type JsonMap, now, text } from '@/main/database/core/values';
+import {
+  BackgroundIssueRepository,
+  directionExperimentIssueSnapshot,
+  directionExperimentStatusFromRuns,
+} from '@/main/database/background-issues/background-issue-repository';
+import { backgroundIssueIdentityKey } from '@/shared/contracts/background-issue';
 
 interface CreateDirectionExperimentTaskInput {
   scope: CreatorAgentScope;
@@ -56,17 +61,6 @@ function parseObject(value: unknown): JsonMap {
   }
 }
 
-function taskStatus(runs: readonly DirectionExperimentRunRow[]): DirectionExperimentDirectorTaskStatus {
-  if (!runs.length) return 'DELEGATED';
-  if (runs.some((run) => run.status === 'RUNNING')) return 'EXECUTING';
-  if (runs.some((run) => run.status === 'QUEUED')) return 'PREPARING';
-  const completedCount = runs.filter((run) => run.status === 'SUCCEEDED').length;
-  if (completedCount === runs.length) return 'SUCCEEDED';
-  if (completedCount > 0) return 'PARTIAL_SUCCESS';
-  if (runs.every((run) => run.status === 'CANCELLED')) return 'CANCELLED';
-  return 'FAILED';
-}
-
 function latestTimestamp(values: Array<string | null | undefined>, fallback: string) {
   return (
     values.filter((value): value is string => Boolean(value)).sort((left, right) => right.localeCompare(left))[0] ??
@@ -75,7 +69,10 @@ function latestTimestamp(values: Array<string | null | undefined>, fallback: str
 }
 
 export class DirectionExperimentTaskRepository {
-  constructor(private readonly storage: LibraryStorage) {}
+  constructor(
+    private readonly storage: LibraryStorage,
+    private readonly backgroundIssues = new BackgroundIssueRepository(storage),
+  ) {}
 
   private get db() {
     return this.storage.db;
@@ -160,7 +157,9 @@ export class DirectionExperimentTaskRepository {
       .get(batchId) as JsonMap | undefined;
     if (!row) return null;
     const runs = this.loadRunHydration([batchId]);
-    return this.dto(row, runs.allByBatch.get(batchId) ?? [], runs.currentByBatch.get(batchId) ?? []);
+    return this.hydrateIssues([
+      this.dto(row, runs.allByBatch.get(batchId) ?? [], runs.currentByBatch.get(batchId) ?? []),
+    ])[0];
   }
 
   list(limit = 50): DirectionExperimentDirectorTaskDto[] {
@@ -175,10 +174,12 @@ export class DirectionExperimentTaskRepository {
       )
       .all(safeLimit) as JsonMap[];
     const runs = this.loadRunHydration(rows.map((row) => text(row.style_exploration_batch_id)));
-    return rows.map((row) => {
-      const batchId = text(row.style_exploration_batch_id);
-      return this.dto(row, runs.allByBatch.get(batchId) ?? [], runs.currentByBatch.get(batchId) ?? []);
-    });
+    return this.hydrateIssues(
+      rows.map((row) => {
+        const batchId = text(row.style_exploration_batch_id);
+        return this.dto(row, runs.allByBatch.get(batchId) ?? [], runs.currentByBatch.get(batchId) ?? []);
+      }),
+    );
   }
 
   listForBatches(
@@ -195,15 +196,15 @@ export class DirectionExperimentTaskRepository {
       JOIN json_each(?) selected_batch ON selected_batch.value = task.style_exploration_batch_id`,
       )
       .all(JSON.stringify(batchIds)) as JsonMap[];
-    return new Map(
-      rows.map((row) => {
-        const batchId = text(row.style_exploration_batch_id);
-        return [
-          batchId,
-          this.dto(row, hydratedRuns.allByBatch.get(batchId) ?? [], hydratedRuns.currentByBatch.get(batchId) ?? []),
-        ];
-      }),
-    );
+    const entries = rows.map((row) => {
+      const batchId = text(row.style_exploration_batch_id);
+      return [
+        batchId,
+        this.dto(row, hydratedRuns.allByBatch.get(batchId) ?? [], hydratedRuns.currentByBatch.get(batchId) ?? []),
+      ] as const;
+    });
+    const hydratedDtos = this.hydrateIssues(entries.map(([, dto]) => dto));
+    return new Map(entries.map(([batchId], index) => [batchId, hydratedDtos[index]]));
   }
 
   /** Load every historical attempt and its lineage-leaf projection once for a
@@ -267,7 +268,9 @@ export class DirectionExperimentTaskRepository {
     if (!row) throw new Error('Delegated direction experiment task not found');
     const batchId = text(row.style_exploration_batch_id);
     const runs = this.loadRunHydration([batchId]);
-    return this.dto(row, runs.allByBatch.get(batchId) ?? [], runs.currentByBatch.get(batchId) ?? []);
+    return this.hydrateIssues([
+      this.dto(row, runs.allByBatch.get(batchId) ?? [], runs.currentByBatch.get(batchId) ?? []),
+    ])[0];
   }
 
   private hasStorage() {
@@ -287,7 +290,7 @@ export class DirectionExperimentTaskRepository {
     currentRuns: readonly DirectionExperimentRunRow[],
   ): DirectionExperimentDirectorTaskDto {
     const batchId = text(row.style_exploration_batch_id);
-    const status = taskStatus(currentRuns);
+    const status = directionExperimentStatusFromRuns(currentRuns);
     const completedCount = currentRuns.filter((run) => run.status === 'SUCCEEDED').length;
     const failedCount = currentRuns.filter((run) => run.status === 'FAILED').length;
     const cancelledCount = currentRuns.filter((run) => run.status === 'CANCELLED').length;
@@ -349,7 +352,19 @@ export class DirectionExperimentTaskRepository {
       createdAt,
       updatedAt,
       finishedAt,
+      backgroundIssue: directionExperimentIssueSnapshot(text(row.id), currentRuns, status),
     };
+  }
+
+  private hydrateIssues(tasks: DirectionExperimentDirectorTaskDto[]) {
+    const snapshots = tasks.flatMap((task) => (task.backgroundIssue ? [task.backgroundIssue] : []));
+    const hydrated = this.backgroundIssues.hydrate(snapshots);
+    return tasks.map((task) => {
+      const snapshot = task.backgroundIssue;
+      return snapshot
+        ? { ...task, backgroundIssue: hydrated.get(backgroundIssueIdentityKey(snapshot)) ?? snapshot }
+        : task;
+    });
   }
 }
 

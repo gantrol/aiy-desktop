@@ -1,13 +1,13 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { VideoDocumentOutlineItem } from '@/renderer/features/video-documents/VideoDocumentOutlineRail';
 
-interface ArticleHeading extends VideoDocumentOutlineItem {
+export interface VideoDocumentArticleHeading extends VideoDocumentOutlineItem {
   line: number;
 }
 
 interface Options {
   markdown: string;
-  draftMarkdown: string;
+  draftHeadings: readonly VideoDocumentArticleHeading[];
   editing: boolean;
 }
 
@@ -19,8 +19,8 @@ function outlineTitle(markdown: string) {
     .trim();
 }
 
-function articleHeadings(markdown: string): ArticleHeading[] {
-  const headings: ArticleHeading[] = [];
+export function videoDocumentArticleHeadings(markdown: string): VideoDocumentArticleHeading[] {
+  const headings: VideoDocumentArticleHeading[] = [];
   const lines = markdown.split(/\r?\n/);
   let fenced = false;
   for (let index = 0; index < lines.length; index += 1) {
@@ -58,20 +58,22 @@ function headingElement(article: HTMLElement, item: VideoDocumentOutlineItem, in
 function scrollToHeading(article: HTMLElement, element: HTMLElement) {
   const scrollRoot = article.closest<HTMLElement>('[data-slot="tabs-content"]');
   if (!scrollRoot) {
-    element.scrollIntoView({ behavior: 'auto', block: 'start' });
+    element.scrollIntoView({ behavior: 'auto', block: 'center', inline: 'nearest' });
     return;
   }
   const rootRect = scrollRoot.getBoundingClientRect();
   const elementRect = element.getBoundingClientRect();
-  const nextTop = Math.max(0, scrollRoot.scrollTop + elementRect.top - rootRect.top - 16);
+  const nextTop = Math.max(
+    0,
+    scrollRoot.scrollTop + elementRect.top - rootRect.top - (rootRect.height - elementRect.height) / 2,
+  );
   scrollRoot.scrollTo({ top: nextTop, behavior: 'auto' });
 }
 
-export function useVideoDocumentArticleOutline({ markdown, draftMarkdown, editing }: Options) {
+export function useVideoDocumentArticleOutline({ markdown, draftHeadings, editing }: Options) {
   const articleRef = useRef<HTMLElement>(null);
   const [activeOutlineId, setActiveOutlineId] = useState<string | null>(null);
-  const renderedHeadings = useMemo(() => articleHeadings(markdown), [markdown]);
-  const draftHeadings = useMemo(() => articleHeadings(draftMarkdown), [draftMarkdown]);
+  const renderedHeadings = useMemo(() => videoDocumentArticleHeadings(markdown), [markdown]);
   const outlineItems = editing ? draftHeadings : renderedHeadings;
   const headingByLine = useMemo(
     () => new Map(renderedHeadings.map((heading) => [heading.line, heading])),

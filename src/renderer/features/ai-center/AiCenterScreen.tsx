@@ -13,6 +13,7 @@ import { AiCapabilitiesView } from '@/renderer/features/ai-center/AiCapabilities
 import { AiProviderConfigurationDialog } from '@/renderer/features/ai-center/AiProviderConfigurationDialog';
 import { AiStatisticsView } from '@/renderer/features/ai-center/AiStatisticsView';
 import { useVideoDocumentAiActivities } from '@/renderer/features/ai-center/useVideoDocumentAiActivities';
+import { useArticleCheckRuns } from '@/renderer/features/ai-center/useArticleCheckRuns';
 import {
   activityMatchesFilters,
   projectAiActivities,
@@ -54,6 +55,8 @@ function storeActivityViewMode(mode: AiActivityViewMode) {
 }
 
 function canLocate(record: AiActivityRecord, data: BootstrapDto) {
+  if (record.kind === 'ARTICLE_CHECK')
+    return Boolean(data.articles?.some((article) => article.id === record.run.articleId));
   if (record.kind === 'VIDEO_DOCUMENT') return true;
   if (record.kind === 'ASSISTANT' && record.run.creationId) return true;
   if (record.kind === 'EXPERIMENT' && record.sourceRun?.creationId) return true;
@@ -78,9 +81,10 @@ export function AiCenterScreen({
 }: Props) {
   const l = useI18n().messages.aiCenter;
   const videoDocumentActivities = useVideoDocumentAiActivities(active, notify);
+  const articleCheckRuns = useArticleCheckRuns(active, notify);
   const records = useMemo(
-    () => projectAiActivities(data, videoDocumentActivities.items),
-    [data, videoDocumentActivities.items],
+    () => projectAiActivities(data, videoDocumentActivities.items, articleCheckRuns.items),
+    [articleCheckRuns.items, data, videoDocumentActivities.items],
   );
   const locationKey = navigationLocationKey(location);
   const appliedLocationKey = useRef(locationKey);
@@ -133,6 +137,16 @@ export function AiCenterScreen({
       const message = reason instanceof Error ? reason.message : String(reason);
       notify(message);
     }
+  }
+
+  async function applyArticleCheck(runId: string) {
+    const result = await window.desktopApi.articleCheckRunApply({ runId });
+    await Promise.all([refresh(), articleCheckRuns.reload()]);
+    notify(
+      locale === 'zh'
+        ? `${result.createdCommentIds.length} 条检查意见已加入评论`
+        : `${result.createdCommentIds.length} check findings added as comments`,
+    );
   }
 
   return (
@@ -192,6 +206,7 @@ export function AiCenterScreen({
             onReEditGeneration={onReEditGeneration}
             onRetryGeneration={onRetryGeneration}
             onRetrySlot={retrySlot}
+            onApplyArticleCheck={applyArticleCheck}
             notify={notify}
           />
         </div>

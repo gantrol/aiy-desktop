@@ -1,3 +1,5 @@
+import { EXTENSION_PERMISSION } from '@/shared/extension-permissions';
+
 export const CODEX_APP_SERVER_EXTENSION_ID = 'com.aiy.codex-app-server';
 export const CODEX_PROVIDER_ID = 'codex';
 export const CODEX_ASSISTANT_DEFAULT_MODEL_KEY = 'gpt-5.6-luna';
@@ -12,7 +14,11 @@ export const CODEX_CLI_PROVIDER_KEY = 'codex-cli';
 export const CODEX_APP_SERVER_CONNECTION_ID = `${CODEX_APP_SERVER_EXTENSION_ID}:app-server`;
 export const CODEX_CLI_CONNECTION_ID = `${CODEX_APP_SERVER_EXTENSION_ID}:cli`;
 export const CODEX_IMAGE_DISCOVERY_EXTENSION_ID = 'com.aiy.codex-image-discovery';
+export const CODEX_HISTORY_SEARCH_EXTENSION_ID = 'com.aiy.codex-history-search';
+export const CODEX_VISUALIZATION_DISCOVERY_EXTENSION_ID = 'com.aiy.codex-visualization-discovery';
+export const CODEX_VISUALIZATION_THREAD_CONTENT_PERMISSION = EXTENSION_PERMISSION.filesystemReadCodexThreadContent;
 export const CODEX_USAGE_INVESTIGATOR_EXTENSION_ID = 'com.aiy.codex-usage-investigator';
+export const WEIBO_CHANNEL_EXTENSION_ID = 'com.aiy.channel.weibo';
 export const ANTIGRAVITY_CLI_EXTENSION_ID = 'com.aiy.antigravity-cli';
 export const ANTIGRAVITY_CLI_PROVIDER_KEY = 'antigravity-cli';
 export const ANTIGRAVITY_CLI_CONNECTION_ID = `${ANTIGRAVITY_CLI_EXTENSION_ID}:cli`;
@@ -26,6 +32,8 @@ export const OPENAI_IMAGE_MODEL_KEY = 'openai/gpt-image-2';
 export const OPENAI_IMAGE_PROVIDER_KEY = 'openai';
 export const OPENAI_IMAGE_CONNECTION_ID = `${OPENAI_IMAGE_API_EXTENSION_ID}:default`;
 export const DEEPSEEK_API_EXTENSION_ID = 'com.aiy.deepseek-api';
+/** Historical runtime identity retained by persisted assistant runs. */
+export const DEEPSEEK_API_CONNECTION_ID = 'deepseek-api-default';
 export const ENGLISH_LANGUAGE_EXTENSION_ID = 'com.aiy.language.en';
 export const GOOGLE_GEMINI_IMAGE_API_EXTENSION_ID = 'com.aiy.google-gemini-image-api';
 /** Legacy ID retained because existing installations and encrypted connection files use it. */

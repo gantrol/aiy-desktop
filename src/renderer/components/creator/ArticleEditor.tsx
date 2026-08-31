@@ -1,221 +1,98 @@
-import {
-  CheckIcon,
-  CircleAlertIcon,
-  CopyIcon,
-  DownloadIcon,
-  ImagePlusIcon,
-  LoaderCircleIcon,
-  PanelsTopLeftIcon,
-  TextCursorInputIcon,
-  XIcon,
-} from 'lucide-react';
-import { useEffect, useMemo, useRef, useState, type ComponentProps, type Dispatch, type SetStateAction } from 'react';
+import { Columns2Icon, PencilIcon } from 'lucide-react';
+import { useState } from 'react';
 import type {
   ArticleContentInput,
   ArticleDto,
+  ArticleRevisionSaveInput,
+  ArticleRevisionSaveResult,
+  ArticleWechatCopyOptions,
   CanvasPresetDto,
   Locale,
-  VideoDocumentMediaBinding,
-  VideoDocumentRevisionMediaDto,
 } from '@/shared/contracts';
-import { Button } from '@/renderer/components/ui/button';
-import { Input } from '@/renderer/components/ui/input';
-import {
-  VideoDocumentWysiwygEditor,
-  type VideoDocumentEditorImageImport,
-} from '@/renderer/features/video-documents/VideoDocumentWysiwygEditor';
 import { useI18n } from '@/renderer/i18n/useI18n';
-import { useStableCallback } from '@/renderer/lib/useStableCallback';
+import { ArticleEditorDocument } from '@/renderer/components/creator/article-editor/ArticleEditorDocument';
+import { CurrentArticleReference } from '@/renderer/components/creator/article-editor/ArticleEditorComparison';
+import { ArticleWechatCopyAction } from '@/renderer/components/creator/article-editor/ArticleWechatCopyAction';
+import {
+  ArticleRevisionHistoryAction,
+  ArticleRevisionHistoryDialog,
+} from '@/renderer/components/creator/article-editor/ArticleRevisionHistoryDialog';
+import { ArticleCheckButton } from '@/renderer/components/creator/article-editor/ArticleCheckButton';
+import { ArticleDeliveryAction } from '@/renderer/components/creator/article-editor/ArticleDeliveryAction';
+import {
+  ArticleEditorSessionProvider,
+  useArticleEditorSession,
+  useArticleEditorSessionSelector,
+} from '@/renderer/components/creator/article-editor/ArticleEditorSessionProvider';
+import {
+  articleEditorSessionConflicted,
+  articleEditorSessionDirty,
+  articleEditorSessionFailed,
+  articleEditorSessionSaving,
+  selectArticleEditorHasBody,
+  selectArticleEditorMedia,
+  selectArticleEditorMediaBindings,
+  selectArticleEditorTitle,
+} from '@/renderer/components/creator/article-editor/articleEditorSession';
+import {
+  ArticleHeaderAiActions,
+  ArticleHeaderActions,
+  ArticleHeaderIconButton,
+  ArticleSaveStatus,
+  SuggestedArticleTitle,
+} from '@/renderer/components/creator/article-editor/ArticleEditorHeader';
+import {
+  CreationRelationsSheet,
+  type CreationRelationItem,
+} from '@/renderer/components/creator/CreationRelationsSheet';
+import { TooltipProvider } from '@/renderer/components/ui/tooltip';
+import { useWorkspaceArticleEditorState } from '@/renderer/components/workspace/WorkspaceArticleEditorStateProvider';
+import { Button } from '@/renderer/components/ui/button';
+import { useArticleComments } from '@/renderer/components/creator/article-editor/useArticleComments';
+import { useArticleCheck } from '@/renderer/components/creator/article-editor/useArticleCheck';
 
 interface Props {
   article: ArticleDto;
+  spaceId: string;
   locale: Locale;
   canvasPresets: CanvasPresetDto[];
-  headerWorkspaceExists: boolean;
-  onSave(content: ArticleContentInput): Promise<ArticleDto>;
-  onCopyForWechat(): Promise<void>;
+  relations: readonly CreationRelationItem[];
+  onSave(input: ArticleRevisionSaveInput): Promise<ArticleRevisionSaveResult>;
+  onSaved(article: ArticleDto): void;
+  onCopyForWechat(options: ArticleWechatCopyOptions): Promise<void>;
   onExport(): Promise<void>;
-  onCreateSocialPost(content: ArticleContentInput): Promise<void>;
-  onGenerateHeader(content: ArticleContentInput): Promise<void>;
-  onGenerateIllustration(content: ArticleContentInput, selectedText: string, preset: CanvasPresetDto): Promise<void>;
+  onCreateArticle(content: ArticleContentInput, copySourceContent: boolean): Promise<void>;
+  onCreateSocialPost(content: ArticleContentInput, copySourceContent: boolean): Promise<void>;
+  onGenerateHeader(article: ArticleDto, content: ArticleContentInput): Promise<void>;
+  onGenerateIllustration(
+    article: ArticleDto,
+    content: ArticleContentInput,
+    selectedText: string,
+    preset: CanvasPresetDto,
+  ): Promise<void>;
+  onConfigureArticleCheck(): void;
+  onOpenRelation(item: CreationRelationItem): void;
   notify(message: string): void;
-}
-
-function editableContent(article: ArticleDto): ArticleContentInput {
-  const { mediaAssets: _mediaAssets, ...content } = article.content;
-  return {
-    ...content,
-    mediaBindings: content.mediaBindings.map((binding) => ({ ...binding })),
-  };
-}
-
-function editorBindings(content: ArticleContentInput): VideoDocumentMediaBinding[] {
-  return content.mediaBindings.map((binding) => ({
-    ...binding,
-    kind: 'IMAGE',
-    timestampMs: null,
-    endTimestampMs: null,
-    posterAssetId: null,
-  }));
-}
-
-function editorMedia(article: ArticleDto): VideoDocumentRevisionMediaDto[] {
-  return article.content.mediaAssets.map((asset) => ({
-    assetId: asset.id,
-    mediaUrl: asset.mediaUrl,
-    mimeType: asset.mimeType as VideoDocumentRevisionMediaDto['mimeType'],
-    width: asset.width,
-    height: asset.height,
-    byteSize: asset.byteSize ?? 0,
-    durationMs: null,
-  }));
-}
-
-function contentAfterImageImport(current: ArticleContentInput, result: VideoDocumentEditorImageImport) {
-  if (current.mediaBindings.some((binding) => binding.assetId === result.binding.assetId)) return current;
-  return {
-    ...current,
-    mediaBindings: [...current.mediaBindings, { path: result.binding.path, assetId: result.binding.assetId }],
-    coverAssetId: current.coverAssetId ?? result.binding.assetId,
-  };
-}
-
-function applyImageImport(
-  result: VideoDocumentEditorImageImport,
-  setContent: Dispatch<SetStateAction<ArticleContentInput>>,
-  setMedia: Dispatch<SetStateAction<VideoDocumentRevisionMediaDto[]>>,
-) {
-  setContent((current) => contentAfterImageImport(current, result));
-  setMedia((current) => [...current.filter((candidate) => candidate.assetId !== result.media.assetId), result.media]);
-}
-
-function SuggestedArticleTitle({
-  onApply,
-  onDismiss,
-  title,
-  zh,
-}: {
-  onApply(): void;
-  onDismiss(): void;
-  title: string;
-  zh: boolean;
-}) {
-  return (
-    <div className="flex shrink-0 items-center gap-2 border-b bg-surface-sunken px-4 py-2">
-      <TextCursorInputIcon className="size-4 shrink-0 text-muted-foreground" />
-      <span className="min-w-0 flex-1 truncate text-sm">{title}</span>
-      <Button type="button" variant="outline" size="sm" onClick={onApply}>
-        {zh ? '采用' : 'Apply'}
-      </Button>
-      <Button type="button" variant="ghost" size="icon-sm" title={zh ? '忽略' : 'Dismiss'} onClick={onDismiss}>
-        <XIcon className="size-4" />
-      </Button>
-    </div>
-  );
-}
-
-function ArticleHeaderActions({
-  copyingForWechat,
-  creatingSocialPost,
-  exporting,
-  generatingHeader,
-  headerWorkspaceExists,
-  hasBody,
-  suggesting,
-  zh,
-  onCopyForWechat,
-  onCreateSocialPost,
-  onExport,
-  onGenerateHeader,
-  onSuggestTitle,
-}: {
-  copyingForWechat: boolean;
-  creatingSocialPost: boolean;
-  exporting: boolean;
-  generatingHeader: boolean;
-  headerWorkspaceExists: boolean;
-  hasBody: boolean;
-  suggesting: boolean;
-  zh: boolean;
-  onCopyForWechat(): Promise<void>;
-  onCreateSocialPost(): Promise<void>;
-  onExport(): Promise<void>;
-  onGenerateHeader(): Promise<void>;
-  onSuggestTitle(): Promise<void>;
-}) {
-  return (
-    <>
-      <Button
-        type="button"
-        variant="ghost"
-        size="sm"
-        data-action="open-article-header-workspace"
-        data-workspace-state={headerWorkspaceExists ? 'existing' : 'new'}
-        disabled={!hasBody || generatingHeader}
-        onClick={() => void onGenerateHeader()}
-      >
-        {generatingHeader ? <LoaderCircleIcon className="size-4 animate-spin" /> : <ImagePlusIcon className="size-4" />}
-        {headerWorkspaceExists ? (zh ? '继续题图创作' : 'Continue hero creation') : zh ? '生成题图' : 'Generate hero'}
-      </Button>
-      <Button
-        type="button"
-        variant="ghost"
-        size="sm"
-        disabled={creatingSocialPost}
-        onClick={() => void onCreateSocialPost()}
-      >
-        {creatingSocialPost ? (
-          <LoaderCircleIcon className="size-4 animate-spin" />
-        ) : (
-          <PanelsTopLeftIcon className="size-4" />
-        )}
-        {zh ? '做成贴图' : 'Make social post'}
-      </Button>
-      <Button
-        type="button"
-        variant="ghost"
-        size="sm"
-        disabled={!hasBody || suggesting}
-        onClick={() => void onSuggestTitle()}
-      >
-        {suggesting ? <LoaderCircleIcon className="size-4 animate-spin" /> : <TextCursorInputIcon className="size-4" />}
-        {zh ? 'AI 起标题' : 'AI title'}
-      </Button>
-      <Button
-        type="button"
-        variant="ghost"
-        size="sm"
-        disabled={!hasBody || copyingForWechat}
-        onClick={() => void onCopyForWechat()}
-      >
-        {copyingForWechat ? <LoaderCircleIcon className="size-4 animate-spin" /> : <CopyIcon className="size-4" />}
-        {zh ? '复制公众号正文' : 'Copy for WeChat'}
-      </Button>
-      <Button type="button" variant="ghost" size="sm" disabled={exporting} onClick={() => void onExport()}>
-        {exporting ? <LoaderCircleIcon className="size-4 animate-spin" /> : <DownloadIcon className="size-4" />}
-        Markdown
-      </Button>
-    </>
-  );
 }
 
 function useArticleVisualGeneration({
   canvasPresets,
-  content,
-  dirty,
   notify,
   onGenerateHeader,
   onGenerateIllustration,
-  persist,
+  session,
   zh,
 }: {
   canvasPresets: CanvasPresetDto[];
-  content: ArticleContentInput;
-  dirty: boolean;
   notify(message: string): void;
-  onGenerateHeader(content: ArticleContentInput): Promise<void>;
-  onGenerateIllustration(content: ArticleContentInput, selectedText: string, preset: CanvasPresetDto): Promise<void>;
-  persist(content: ArticleContentInput): Promise<boolean>;
+  onGenerateHeader(article: ArticleDto, content: ArticleContentInput): Promise<void>;
+  onGenerateIllustration(
+    article: ArticleDto,
+    content: ArticleContentInput,
+    selectedText: string,
+    preset: CanvasPresetDto,
+  ): Promise<void>;
+  session: ReturnType<typeof useArticleEditorSession>;
   zh: boolean;
 }) {
   const [generatingHeader, setGeneratingHeader] = useState(false);
@@ -224,10 +101,12 @@ function useArticleVisualGeneration({
 
   async function generateHeader() {
     if (generatingHeader) return;
-    if (dirty && !(await persist(content))) return;
+    if (!(await session.flush('manual'))) return;
+    const article = session.capturePersistedArticle();
+    const content = session.captureSnapshot();
     setGeneratingHeader(true);
     try {
-      await onGenerateHeader(content);
+      await onGenerateHeader(article, content);
     } catch (reason) {
       notify(reason instanceof Error ? reason.message : String(reason));
     } finally {
@@ -242,10 +121,12 @@ function useArticleVisualGeneration({
       notify(zh ? '正文配图画幅不可用' : 'Illustration canvas is unavailable');
       return;
     }
-    if (dirty && !(await persist(content))) return;
+    if (!(await session.flush('manual'))) return;
+    const article = session.capturePersistedArticle();
+    const content = session.captureSnapshot();
     setGeneratingIllustration(true);
     try {
-      await onGenerateIllustration(content, selection, defaultIllustrationPreset);
+      await onGenerateIllustration(article, content, selection, defaultIllustrationPreset);
     } catch (reason) {
       notify(reason instanceof Error ? reason.message : String(reason));
     } finally {
@@ -261,190 +142,121 @@ function useArticleVisualGeneration({
   };
 }
 
-function ArticleBody({
-  content,
-  generatingIllustration,
-  labels,
+function ReadOnlyArticleEditor({
+  article,
   media,
+  mediaBindings,
+  requestEditOwnership,
+  session,
+  title,
   zh,
-  onIllustrationRequest,
-  onImageImportError,
-  onImageImported,
-  onMarkdownChange,
-  onPersist,
-  onTitleChange,
 }: {
-  content: ArticleContentInput;
-  generatingIllustration: boolean;
-  labels: ComponentProps<typeof VideoDocumentWysiwygEditor>['labels'];
-  media: VideoDocumentRevisionMediaDto[];
+  article: ArticleDto;
+  media: ReturnType<typeof selectArticleEditorMedia>;
+  mediaBindings: ArticleContentInput['mediaBindings'];
+  requestEditOwnership(): void;
+  session: ReturnType<typeof useArticleEditorSession>;
+  title: string;
   zh: boolean;
-  onIllustrationRequest(selectedText: string | null): void;
-  onImageImportError(): void;
-  onImageImported(result: VideoDocumentEditorImageImport): void;
-  onMarkdownChange(markdown: string): void;
-  onPersist(content: ArticleContentInput): void;
-  onTitleChange(title: string): void;
 }) {
   return (
-    <div className="min-h-0 flex-1 overflow-y-auto py-6">
-      <div className="mx-auto w-full max-w-4xl px-6 lg:px-8">
-        <Input
-          value={content.title}
-          maxLength={200}
-          className="mb-5 h-auto border-0 px-0 text-3xl font-semibold shadow-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
-          aria-label={zh ? '文章标题' : 'Article title'}
-          placeholder={zh ? '未命名文章' : 'Untitled article'}
-          onChange={(event) => onTitleChange(event.target.value)}
-          onBlur={() => onPersist(content)}
-        />
-        <VideoDocumentWysiwygEditor
-          markdown={content.markdown}
-          mediaBindings={editorBindings(content)}
-          media={media}
-          currentTimeMs={0}
-          durationMs={0}
-          timelineSegments={[]}
-          ariaLabel={zh ? '文章正文' : 'Article body'}
-          labels={labels}
-          onChange={onMarkdownChange}
-          onFrameCaptured={() => undefined}
-          onImageImported={onImageImported}
-          onImageImportError={onImageImportError}
-          illustrationLabel={
-            generatingIllustration
-              ? zh
-                ? '正在打开配图工作区'
-                : 'Opening illustration workspace'
-              : zh
-                ? '生成配图'
-                : 'Generate illustration'
-          }
-          onIllustrationRequest={onIllustrationRequest}
-          onSave={(markdown) => onPersist({ ...content, markdown })}
-        />
-      </div>
+    <div data-article-editor className="flex min-h-0 min-w-0 flex-1 flex-col bg-background">
+      <TooltipProvider delayDuration={300}>
+        <header className="flex min-h-14 shrink-0 items-center gap-2 border-b px-4 py-2">
+          <span className="min-w-0 flex-1 truncate font-semibold">
+            {title || (zh ? '未命名文章' : 'Untitled article')}
+          </span>
+          <ArticleRevisionHistoryDialog articleId={article.id} currentRevisionId={article.revisionId} zh={zh} />
+          <Button type="button" variant="outline" size="sm" onClick={requestEditOwnership}>
+            <PencilIcon className="size-3.5" />
+            {zh ? '编辑此视图' : 'Edit this view'}
+          </Button>
+        </header>
+      </TooltipProvider>
+      <CurrentArticleReference
+        articleId={article.id}
+        elements={session.getArticleElementsProjection()}
+        media={media}
+        mediaBindings={mediaBindings}
+        title={title}
+        trackPosition
+        zh={zh}
+      />
     </div>
   );
 }
 
-export function ArticleEditor({
+function ArticleEditorWorkspace({
   article,
+  spaceId,
   locale,
   canvasPresets,
-  headerWorkspaceExists,
-  onSave,
+  relations,
   onCopyForWechat,
   onExport,
+  onCreateArticle,
   onCreateSocialPost,
   onGenerateHeader,
   onGenerateIllustration,
+  onConfigureArticleCheck,
+  onOpenRelation,
+  onSaved,
   notify,
 }: Props) {
   const zh = locale === 'zh';
   const { messages } = useI18n();
-  const [content, setContent] = useState<ArticleContentInput>(() => editableContent(article));
-  const [media, setMedia] = useState<VideoDocumentRevisionMediaDto[]>(() => editorMedia(article));
-  const [savedJson, setSavedJson] = useState(() => JSON.stringify(editableContent(article)));
-  const savedJsonRef = useRef(savedJson);
-  const articleIdRef = useRef(article.id);
-  const savingRef = useRef(false);
-  const [saving, setSaving] = useState(false);
-  const [failedJson, setFailedJson] = useState<string | null>(null);
+  const session = useArticleEditorSession();
+  const { editable, requestEditOwnership } = useWorkspaceArticleEditorState(article.id);
+  const title = useArticleEditorSessionSelector(selectArticleEditorTitle);
+  const mediaBindings = useArticleEditorSessionSelector(selectArticleEditorMediaBindings);
+  const media = useArticleEditorSessionSelector(selectArticleEditorMedia);
+  const hasBody = useArticleEditorSessionSelector(selectArticleEditorHasBody);
+  const conflict = useArticleEditorSessionSelector(articleEditorSessionConflicted);
+  const dirty = useArticleEditorSessionSelector(articleEditorSessionDirty);
+  const saveFailed = useArticleEditorSessionSelector(articleEditorSessionFailed);
+  const saving = useArticleEditorSessionSelector(articleEditorSessionSaving);
   const [suggesting, setSuggesting] = useState(false);
   const [suggestedTitle, setSuggestedTitle] = useState<string | null>(null);
-  const [copyingForWechat, setCopyingForWechat] = useState(false);
   const [exporting, setExporting] = useState(false);
-  const [creatingSocialPost, setCreatingSocialPost] = useState(false);
-  const contentJson = useMemo(() => JSON.stringify(content), [content]);
-  const dirty = contentJson !== savedJson;
-  const saveFailed = failedJson === contentJson;
-  const saveForEffect = useStableCallback(onSave);
-  const notifyForEffect = useStableCallback(notify);
-
-  useEffect(() => {
-    const incoming = editableContent(article);
-    const incomingJson = JSON.stringify(incoming);
-    if (articleIdRef.current !== article.id) {
-      articleIdRef.current = article.id;
-      savedJsonRef.current = incomingJson;
-      setContent(incoming);
-      setMedia(editorMedia(article));
-      setSavedJson(incomingJson);
-      setFailedJson(null);
-      setSuggestedTitle(null);
-      return;
-    }
-    const previousSavedJson = savedJsonRef.current;
-    savedJsonRef.current = incomingJson;
-    setSavedJson(incomingJson);
-    setFailedJson((current) => (current === incomingJson ? null : current));
-    setContent((current) => (JSON.stringify(current) === previousSavedJson ? incoming : current));
-    setMedia((current) => {
-      const merged = new Map(current.map((item) => [item.assetId, item]));
-      editorMedia(article).forEach((item) => merged.set(item.assetId, item));
-      return [...merged.values()];
-    });
-  }, [article]);
-
-  const persist = useStableCallback(async (snapshot: ArticleContentInput) => {
-    const snapshotJson = JSON.stringify(snapshot);
-    if (snapshotJson === savedJsonRef.current) return true;
-    if (savingRef.current) return false;
-    savingRef.current = true;
-    setSaving(true);
-    try {
-      const saved = await saveForEffect(snapshot);
-      savedJsonRef.current = snapshotJson;
-      setSavedJson(snapshotJson);
-      setFailedJson(null);
-      setMedia((current) => {
-        const merged = new Map(current.map((item) => [item.assetId, item]));
-        editorMedia(saved).forEach((item) => merged.set(item.assetId, item));
-        return [...merged.values()];
-      });
-      return true;
-    } catch (reason) {
-      setFailedJson(snapshotJson);
-      const detail = reason instanceof Error ? reason.message : String(reason);
-      notifyForEffect(zh ? `文章自动保存失败：${detail}` : `Could not autosave the article: ${detail}`);
-      return false;
-    } finally {
-      savingRef.current = false;
-      setSaving(false);
-    }
+  const [creatingForm, setCreatingForm] = useState(false);
+  const [relationsOpen, setRelationsOpen] = useState(false);
+  const [splitOpen, setSplitOpen] = useState(false);
+  const articleComments = useArticleComments({ article, session, notify, onSaved });
+  const articleCheck = useArticleCheck({
+    locale,
+    commentsBusy: articleComments.busy,
+    session,
+    notify,
+    onConfigureProvider: onConfigureArticleCheck,
+    onApplied: articleComments.applyCheckResult,
   });
   const { generateHeader, generateIllustration, generatingHeader, generatingIllustration } = useArticleVisualGeneration(
     {
       canvasPresets,
-      content,
-      dirty,
       notify,
       onGenerateHeader,
       onGenerateIllustration,
-      persist,
+      session,
       zh,
     },
   );
 
-  useEffect(() => {
-    if (!dirty || saving || saveFailed) return;
-    const snapshot = content;
-    const timeout = window.setTimeout(() => void persist(snapshot), 650);
-    return () => window.clearTimeout(timeout);
-  }, [content, dirty, persist, saveFailed, saving]);
-
-  useEffect(() => {
-    function onKeyDown(event: KeyboardEvent) {
-      if (!(event.ctrlKey || event.metaKey) || event.key.toLocaleLowerCase() !== 's') return;
-      event.preventDefault();
-      void persist(content);
-    }
-    window.addEventListener('keydown', onKeyDown);
-    return () => window.removeEventListener('keydown', onKeyDown);
-  }, [content, persist]);
+  if (!editable) {
+    return (
+      <ReadOnlyArticleEditor
+        article={article}
+        media={media}
+        mediaBindings={mediaBindings}
+        requestEditOwnership={requestEditOwnership}
+        session={session}
+        title={title}
+        zh={zh}
+      />
+    );
+  }
 
   async function suggestTitle() {
+    const content = session.captureSnapshot();
     const prompt = content.markdown.trim();
     if (!prompt || suggesting) return;
     setSuggesting(true);
@@ -464,7 +276,7 @@ export function ArticleEditor({
 
   async function exportMarkdown() {
     if (exporting) return;
-    if (dirty && !(await persist(content))) return;
+    if (!(await session.flush('manual'))) return;
     setExporting(true);
     try {
       await onExport();
@@ -475,111 +287,162 @@ export function ArticleEditor({
     }
   }
 
-  async function copyForWechat() {
-    if (copyingForWechat) return;
-    if (dirty && !(await persist(content))) return;
-    setCopyingForWechat(true);
+  async function runCreateAction(action: (content: ArticleContentInput) => Promise<void>) {
+    if (creatingForm) return;
+    if (!(await session.flush('manual'))) return;
+    const content = session.captureSnapshot();
+    setCreatingForm(true);
     try {
-      await onCopyForWechat();
+      await action(content);
     } catch (reason) {
       notify(reason instanceof Error ? reason.message : String(reason));
     } finally {
-      setCopyingForWechat(false);
+      setCreatingForm(false);
     }
   }
 
-  async function createSocialPost() {
-    if (creatingSocialPost) return;
-    if (dirty && !(await persist(content))) return;
-    setCreatingSocialPost(true);
-    try {
-      await onCreateSocialPost(content);
-    } catch (reason) {
-      notify(reason instanceof Error ? reason.message : String(reason));
-    } finally {
-      setCreatingSocialPost(false);
-    }
-  }
+  const createArticle = (copySourceContent: boolean) =>
+    runCreateAction((content) => onCreateArticle(content, copySourceContent));
 
-  const imageImported = (result: VideoDocumentEditorImageImport) => applyImageImport(result, setContent, setMedia);
+  const createSocialPost = (copySourceContent: boolean) =>
+    runCreateAction((content) => onCreateSocialPost(content, copySourceContent));
 
   return (
     <div data-article-editor className="flex min-h-0 min-w-0 flex-1 flex-col bg-background">
-      <header className="flex min-h-14 shrink-0 flex-wrap items-center justify-between gap-2 border-b px-4 py-2">
-        <div className="flex min-w-0 items-center gap-2">
-          <span className="truncate font-semibold">{content.title || (zh ? '未命名文章' : 'Untitled article')}</span>
-          <span className="text-xs text-muted-foreground">{zh ? '文章' : 'Article'}</span>
-        </div>
-        <div className="flex items-center gap-1">
-          <ArticleHeaderActions
-            copyingForWechat={copyingForWechat}
-            creatingSocialPost={creatingSocialPost}
-            exporting={exporting}
-            generatingHeader={generatingHeader}
-            headerWorkspaceExists={headerWorkspaceExists}
-            hasBody={Boolean(content.markdown.trim())}
-            suggesting={suggesting}
-            zh={zh}
-            onCopyForWechat={copyForWechat}
-            onCreateSocialPost={createSocialPost}
-            onExport={exportMarkdown}
-            onGenerateHeader={generateHeader}
-            onSuggestTitle={suggestTitle}
-          />
-          <div className="grid size-8 place-items-center text-muted-foreground">
-            {saving ? (
-              <LoaderCircleIcon className="size-4 animate-spin" aria-label={zh ? '正在自动保存' : 'Autosaving'} />
-            ) : saveFailed ? (
-              <Button
-                type="button"
-                variant="ghost"
-                size="icon-sm"
-                className="text-destructive"
-                title={zh ? '自动保存失败，点击重试' : 'Autosave failed. Retry'}
-                onClick={() => void persist(content)}
-              >
-                <CircleAlertIcon className="size-4" />
-              </Button>
-            ) : dirty ? (
-              <span
-                className="size-1.5 rounded-full bg-muted-foreground"
-                title={zh ? '等待自动保存' : 'Waiting to autosave'}
-              />
-            ) : (
-              <CheckIcon className="size-4" aria-label={zh ? '已自动保存' : 'Autosaved'} />
-            )}
+      <TooltipProvider delayDuration={300}>
+        <header className="flex min-h-14 shrink-0 items-center gap-2 border-b px-4 py-2">
+          <div className="flex min-w-0 flex-1 items-center gap-2 overflow-hidden">
+            <span className="truncate font-semibold">{title || (zh ? '未命名文章' : 'Untitled article')}</span>
+            <span className="shrink-0 text-xs text-muted-foreground">{zh ? '文章' : 'Article'}</span>
+            <ArticleSaveStatus
+              conflict={conflict}
+              dirty={dirty}
+              failed={saveFailed}
+              saving={saving}
+              zh={zh}
+              onRetry={() => void session.retry()}
+            />
           </div>
-        </div>
-      </header>
+          <div className="flex shrink-0 items-center gap-1">
+            <ArticleHeaderAiActions
+              checkAction={
+                <ArticleCheckButton
+                  busy={articleCheck.checking}
+                  disabled={!hasBody || articleCheck.checking || articleComments.busy}
+                  zh={zh}
+                  onClick={() => void articleCheck.run()}
+                />
+              }
+              hasBody={hasBody}
+              suggesting={suggesting}
+              zh={zh}
+              onSuggestTitle={suggestTitle}
+            />
+            <ArticleRevisionHistoryAction article={article} notify={notify} zh={zh} />
+            <ArticleDeliveryAction
+              articleId={article.id}
+              locale={locale}
+              notify={notify}
+              onCopyForWechat={onCopyForWechat}
+              spaceId={spaceId}
+              zh={zh}
+            />
+            <ArticleHeaderIconButton
+              variant={splitOpen ? 'secondary' : 'ghost'}
+              aria-pressed={splitOpen}
+              label={zh ? '分栏编辑' : 'Split editor'}
+              onClick={() => setSplitOpen((current) => !current)}
+            >
+              <Columns2Icon className="size-4" />
+            </ArticleHeaderIconButton>
+            <ArticleHeaderActions
+              copyForWechatAction={<ArticleWechatCopyAction locale={locale} notify={notify} onCopy={onCopyForWechat} />}
+              creatingForm={creatingForm}
+              exporting={exporting}
+              generatingHeader={generatingHeader}
+              hasBody={hasBody}
+              relationCount={relations.length}
+              zh={zh}
+              onCreateArticle={createArticle}
+              onCreateSocialPost={createSocialPost}
+              onExport={exportMarkdown}
+              onGenerateHeader={generateHeader}
+              onOpenRelations={() => setRelationsOpen(true)}
+            />
+          </div>
+        </header>
+      </TooltipProvider>
 
       {suggestedTitle && (
         <SuggestedArticleTitle
           title={suggestedTitle}
           zh={zh}
           onApply={() => {
-            setContent((current) => ({ ...current, title: suggestedTitle }));
+            session.titleChanged(suggestedTitle);
             setSuggestedTitle(null);
           }}
           onDismiss={() => setSuggestedTitle(null)}
         />
       )}
 
-      <ArticleBody
-        content={content}
+      <ArticleEditorDocument
+        articleId={article.id}
+        editorSessionIdentity={session.getEditorSessionIdentity()}
+        comments={articleComments.comments}
+        commentMutationBusy={articleComments.busy || articleCheck.checking}
+        initialElements={session.getArticleElementsProjection()}
         generatingIllustration={generatingIllustration}
+        initialMarkdown={session.getMarkdownProjection()}
         labels={messages.videoDocuments.editor.richText}
         media={media}
+        mediaBindings={mediaBindings}
+        splitOpen={splitOpen}
+        title={title}
         zh={zh}
+        onEditorHandleChange={session.registerEditor}
+        onCommentCreate={articleComments.create}
+        onCommentDelete={(commentId) => articleComments.mutateExisting('DELETE', commentId)}
+        onCommentReply={(commentId, body) => articleComments.mutateExisting('ADD_REPLY', commentId, { body })}
+        onCommentStatusChange={(commentId, status) =>
+          articleComments.mutateExisting('SET_STATUS', commentId, { status })
+        }
+        onCommentUpdateBody={(commentId, body) => articleComments.mutateExisting('UPDATE_BODY', commentId, { body })}
         onIllustrationRequest={(selectedText) => void generateIllustration(selectedText)}
         onImageImportError={() => notify(zh ? '图片导入失败' : 'Could not import image')}
-        onImageImported={imageImported}
-        onMarkdownChange={(markdown) => setContent((current) => ({ ...current, markdown }))}
-        onPersist={(snapshot) => void persist(snapshot)}
-        onTitleChange={(title) => {
+        onImageImported={session.imageImported}
+        onMarkdownChange={session.documentChanged}
+        onPersist={(mode) => void session.flush(mode)}
+        onSplitClose={() => setSplitOpen(false)}
+        onTitleChange={(nextTitle) => {
           setSuggestedTitle(null);
-          setContent((current) => ({ ...current, title }));
+          session.titleChanged(nextTitle);
         }}
       />
+      <CreationRelationsSheet
+        items={relations}
+        locale={locale}
+        open={relationsOpen}
+        filteredAssetId={null}
+        onOpenChange={setRelationsOpen}
+        onSelect={onOpenRelation}
+      />
     </div>
+  );
+}
+
+export function ArticleEditor(props: Props) {
+  const { article, locale, notify, onSave, onSaved, spaceId } = props;
+  return (
+    <ArticleEditorSessionProvider
+      key={`${spaceId}:${article.id}`}
+      article={article}
+      notify={notify}
+      onSave={onSave}
+      onSaved={onSaved}
+      spaceId={spaceId}
+      zh={locale === 'zh'}
+    >
+      <ArticleEditorWorkspace {...props} />
+    </ArticleEditorSessionProvider>
   );
 }

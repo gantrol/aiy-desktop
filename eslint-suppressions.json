@@ -43,17 +43,6 @@
       "count": 1
     }
   },
-  "src/renderer/components/CreatorScreen.tsx": {
-    "complexity": {
-      "count": 3
-    },
-    "max-lines": {
-      "count": 1
-    },
-    "max-lines-per-function": {
-      "count": 1
-    }
-  },
   "src/renderer/components/DictionaryScreen.tsx": {
     "max-lines": {
       "count": 1
@@ -302,9 +291,6 @@
   "src/renderer/features/extensions/ExtensionPluginScreen.tsx": {
     "max-lines-per-function": {
       "count": 1
-    },
-    "react-hooks/exhaustive-deps": {
-      "count": 1
     }
   },
   "src/renderer/features/extensions/ExternalImageApiConfiguration.tsx": {
@@ -316,14 +302,6 @@
     }
   },
   "src/renderer/features/intake/GalleryIntakeAdapter.tsx": {
-    "react-hooks/exhaustive-deps": {
-      "count": 2
-    }
-  },
-  "src/renderer/features/packs/PackScreen.tsx": {
-    "max-lines-per-function": {
-      "count": 1
-    },
     "react-hooks/exhaustive-deps": {
       "count": 2
     }
@@ -343,11 +321,6 @@
       "count": 1
     },
     "max-lines-per-function": {
-      "count": 1
-    }
-  },
-  "tests/database.integration.test.ts": {
-    "@typescript-eslint/no-unused-vars": {
       "count": 1
     }
   }

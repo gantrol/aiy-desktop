@@ -1,4 +1,4 @@
--- Revision-2 repair fragment for private builds created before transcript
+-- Revision-2 repair fragment for pre-release builds created before transcript
 -- translation and its AI Center activity history became part of the release.
 
 CREATE TABLE video_document_translation_runs (

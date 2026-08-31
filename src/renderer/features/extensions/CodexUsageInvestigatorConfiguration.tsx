@@ -1,4 +1,4 @@
-import { type Dispatch, type SetStateAction, memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { memo, useCallback, useEffect, useMemo, useState } from 'react';
 import {
   CircleDollarSignIcon,
   CoinsIcon,
@@ -7,11 +7,10 @@ import {
   HistoryIcon,
   InfoIcon,
   LoaderCircleIcon,
-  PauseIcon,
-  PlayIcon,
   ScanLineIcon,
 } from 'lucide-react';
 import type {
+  CodexUsageDateRange,
   CodexUsageDailyBreakdown,
   CodexUsageExportFormat,
   CodexUsageGranularity,
@@ -25,28 +24,36 @@ import type {
 } from '@/shared/contracts';
 import { Badge } from '@/renderer/components/ui/badge';
 import { Button } from '@/renderer/components/ui/button';
-import { Segmented, SegmentedItem } from '@/renderer/components/ui/segmented';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/renderer/components/ui/select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/renderer/components/ui/table';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/renderer/components/ui/tooltip';
 import { CodexQuotaYieldResults } from '@/renderer/features/extensions/CodexQuotaYieldResults';
 import { CodexUsageCleanupControl } from '@/renderer/features/extensions/CodexUsageCleanupDialog';
+import {
+  CodexUsageDateRangePicker,
+  formatCodexUsageDateRange,
+} from '@/renderer/features/extensions/CodexUsageDateRangePicker';
+import {
+  CodexUsageDetailedStatisticsToggle,
+  CodexUsageSessionLengthResults,
+  useCodexUsageDetailedStatisticsPreference,
+} from '@/renderer/features/extensions/CodexUsageDetailedStatistics';
+import { CodexUsageScanProgress } from '@/renderer/features/extensions/CodexUsageScanProgress';
 import { CodexUsageServiceTierLabel } from '@/renderer/features/extensions/CodexUsageServiceTierLabel';
+import {
+  CodexUsageTaskControls,
+  type CodexUsageTaskAction,
+} from '@/renderer/features/extensions/CodexUsageTaskControls';
+import { CodexUsageTurnSpeedResults } from '@/renderer/features/extensions/CodexUsageTurnSpeedResults';
+import { useCodexUsageInvestigationSelection } from '@/renderer/features/extensions/useCodexUsageInvestigationSelection';
 import { useI18n } from '@/renderer/i18n/useI18n';
+import { cn } from '@/renderer/lib/utils';
 
 interface Props {
   active: boolean;
   extension: ExtensionDto;
+  standalone?: boolean;
   notify(message: string): void;
-}
-
-interface InvestigationSelectionOptions {
-  history: CodexUsageHistoryItem[];
-  setRange: Dispatch<SetStateAction<CodexUsageRange>>;
-  setGranularity: Dispatch<SetStateAction<CodexUsageGranularity>>;
-  setDisplayTimeZone: Dispatch<SetStateAction<string>>;
-  setInvestigation: Dispatch<SetStateAction<CodexUsageInvestigation | null>>;
-  setError: Dispatch<SetStateAction<string>>;
 }
 
 interface TokenBucket {
@@ -58,7 +65,6 @@ interface TokenBucket {
   output: number;
 }
 
-const ranges: CodexUsageRange[] = ['LAST_24_HOURS', 'LAST_7_DAYS', 'LAST_30_DAYS', 'LAST_90_DAYS', 'ALL'];
 const MAX_CHART_BUCKETS = 48;
 
 function currentSystemTimeZone() {
@@ -71,12 +77,6 @@ function extensionAuthorized(extension: ExtensionDto) {
     extension.compatible &&
     extension.permissions.every((permission) => !permission.required || permission.granted)
   );
-}
-
-function scanProgressPercent(progress: CodexUsageTask['progress'] | null) {
-  if (progress?.bytesTotal) return clampPercent((progress.bytesRead / progress.bytesTotal) * 100);
-  if (progress?.filesDiscovered) return clampPercent((progress.filesProcessed / progress.filesDiscovered) * 100);
-  return 0;
 }
 
 function clampPercent(value: number) {
@@ -144,25 +144,6 @@ function formatQuotaSavings(
     return `≈${formatter.format(quotaPercent)}% ${weeklyQuotaUnit}`;
   }
   return `${formatter.format(creditSavings)} ${creditUnit}`;
-}
-
-function formatBytes(value: number, formatter: Intl.NumberFormat) {
-  const units = ['B', 'KB', 'MB', 'GB', 'TB'] as const;
-  if (value < 1_000) return `${formatter.format(value)} B`;
-  const unitIndex = Math.min(Math.floor(Math.log(value) / Math.log(1_000)), units.length - 1);
-  return `${formatter.format(value / 1_000 ** unitIndex)} ${units[unitIndex]}`;
-}
-
-function formatDuration(value: number, formatter: Intl.NumberFormat) {
-  const seconds = Math.max(0, Math.ceil(value / 1_000));
-  if (seconds < 60) return `${formatter.format(seconds)}s`;
-  const minutes = Math.ceil(seconds / 60);
-  if (minutes < 60) return `${formatter.format(minutes)}m`;
-  const hours = Math.floor(minutes / 60);
-  const remainingMinutes = minutes % 60;
-  return remainingMinutes
-    ? `${formatter.format(hours)}h ${formatter.format(remainingMinutes)}m`
-    : `${formatter.format(hours)}h`;
 }
 
 function buildTokenBuckets(days: CodexUsageDailyBreakdown[], numberLocale: string): TokenBucket[] {
@@ -388,6 +369,20 @@ const UsageInvestigationResults = memo(function UsageInvestigationResults({
         </div>
       </dl>
 
+      {investigation.turnSpeed && (
+        <CodexUsageTurnSpeedResults analysis={investigation.turnSpeed} labels={labels.turnSpeed} numbers={numbers} />
+      )}
+
+      {investigation.sessionLength && (
+        <CodexUsageSessionLengthResults
+          analysis={investigation.sessionLength}
+          labels={labels.detailedStatistics}
+          tokens={tokens}
+          numbers={numbers}
+          numberLocale={numberLocale}
+        />
+      )}
+
       {investigation.quotaYield && (
         <CodexQuotaYieldResults
           analysis={investigation.quotaYield}
@@ -525,80 +520,24 @@ function CodexUsageExportButtons({
   );
 }
 
-function useInvestigationSelection({
-  history,
-  setRange,
-  setGranularity,
-  setDisplayTimeZone,
-  setInvestigation,
-  setError,
-}: InvestigationSelectionOptions) {
-  const requestSequence = useRef(0);
-  const clearInvestigation = useCallback(() => {
-    requestSequence.current += 1;
-    setInvestigation(null);
-  }, [setInvestigation]);
-  const loadInvestigation = useCallback(
-    async (investigationId: string) => {
-      const request = ++requestSequence.current;
-      let value: CodexUsageInvestigation;
-      try {
-        value = await window.desktopApi.codexUsageInvestigation({ investigationId });
-      } catch (reason) {
-        if (request !== requestSequence.current) return;
-        throw reason;
-      }
-      if (request !== requestSequence.current) return;
-      setInvestigation(value);
-      setRange(value.range);
-      setGranularity(value.granularity);
-      setDisplayTimeZone(value.timeZone);
-    },
-    [setDisplayTimeZone, setGranularity, setInvestigation, setRange],
-  );
-  const selectRange = useCallback(
-    (nextRange: CodexUsageRange) => {
-      setRange(nextRange);
-      const latest = history.find((item) => item.range === nextRange);
-      if (!latest) {
-        clearInvestigation();
-        setError('');
-        return;
-      }
-      setGranularity(latest.granularity);
-      setDisplayTimeZone(latest.timeZone);
-      setError('');
-      void loadInvestigation(latest.investigationId).catch((reason: unknown) => {
-        setError(reason instanceof Error ? reason.message : String(reason));
-      });
-    },
-    [clearInvestigation, history, loadInvestigation, setDisplayTimeZone, setError, setGranularity, setRange],
-  );
-  const selectHistory = useCallback(
-    (investigationId: string) => {
-      setError('');
-      void loadInvestigation(investigationId).catch((reason: unknown) => {
-        setError(reason instanceof Error ? reason.message : String(reason));
-      });
-    },
-    [loadInvestigation, setError],
-  );
-  return { clearInvestigation, loadInvestigation, selectHistory, selectRange };
-}
-
-export function CodexUsageInvestigatorConfiguration({ active, extension, notify }: Props) {
+export function CodexUsageInvestigatorConfiguration({ active, extension, standalone = false, notify }: Props) {
   const { locale, messages } = useI18n();
   const l = messages.extensions.codexUsageInvestigator;
   const [range, setRange] = useState<CodexUsageRange>('LAST_30_DAYS');
+  const [dateRange, setDateRange] = useState<CodexUsageDateRange | null>(null);
   const [granularity, setGranularity] = useState<CodexUsageGranularity>('AUTO');
+  const { enabled: detailedStatistics, setEnabled: setDetailedStatistics } =
+    useCodexUsageDetailedStatisticsPreference();
   const [systemTimeZone, setSystemTimeZone] = useState(currentSystemTimeZone);
   const [displayTimeZone, setDisplayTimeZone] = useState(currentSystemTimeZone);
   const [investigation, setInvestigation] = useState<CodexUsageInvestigation | null>(null);
   const [history, setHistory] = useState<CodexUsageHistoryItem[]>([]);
   const [task, setTask] = useState<CodexUsageTask | null>(null);
+  const [taskAction, setTaskAction] = useState<CodexUsageTaskAction>(null);
   const [exporting, setExporting] = useState<CodexUsageExportFormat | null>(null);
   const [error, setError] = useState('');
   const authorized = extensionAuthorized(extension);
+  const Heading = standalone ? 'h2' : 'h3';
   const numberLocale = locale === 'zh' ? 'zh-CN' : 'en-US';
   const numbers = useMemo(() => new Intl.NumberFormat(numberLocale, { maximumFractionDigits: 2 }), [numberLocale]);
   const historyDate = useMemo(
@@ -606,9 +545,10 @@ export function CodexUsageInvestigatorConfiguration({ active, extension, notify 
     [numberLocale],
   );
 
-  const { clearInvestigation, loadInvestigation, selectHistory, selectRange } = useInvestigationSelection({
+  const { clearInvestigation, loadInvestigation, selectHistory, selectRange } = useCodexUsageInvestigationSelection({
     history,
     setRange,
+    setDateRange,
     setGranularity,
     setDisplayTimeZone,
     setInvestigation,
@@ -633,6 +573,7 @@ export function CodexUsageInvestigatorConfiguration({ active, extension, notify 
     const applyTask = (nextTask: CodexUsageTask) => {
       if (disposed) return;
       setTask(nextTask);
+      setTaskAction((current) => (current === 'PAUSE' && nextTask.status === 'RUNNING' ? current : null));
       if (nextTask.status === 'COMPLETED' && nextTask.investigationId) {
         void refreshState(nextTask.investigationId).catch((reason: unknown) => {
           if (!disposed) setError(reason instanceof Error ? reason.message : String(reason));
@@ -658,36 +599,53 @@ export function CodexUsageInvestigatorConfiguration({ active, extension, notify 
   }, [active]);
 
   const running = task?.status === 'RUNNING';
-  const progress = running ? task.progress : null;
-  const scanPercent = scanProgressPercent(progress);
+  const resumable = Boolean(task && ['PAUSED', 'INTERRUPTED'].includes(task.status));
+  const progress = running || resumable ? task?.progress : null;
+  const controlsLocked = running || taskAction !== null;
 
   async function scan() {
-    if (!authorized || running) return;
+    if (!authorized || controlsLocked) return;
+    setTaskAction('SCAN');
     setError('');
     try {
       setTask(
         await window.desktopApi.codexUsageScan({
           range,
+          dateRange,
           timeZone: systemTimeZone,
           granularity,
+          detailedStatistics,
         }),
       );
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : String(reason));
+    } finally {
+      setTaskAction(null);
     }
   }
 
   async function pause() {
-    await window.desktopApi.codexUsagePause();
+    if (taskAction !== null) return;
+    setTaskAction('PAUSE');
+    setError('');
+    try {
+      await window.desktopApi.codexUsagePause();
+    } catch (reason) {
+      setTaskAction(null);
+      setError(reason instanceof Error ? reason.message : String(reason));
+    }
   }
 
   async function resume() {
-    if (!task || !['PAUSED', 'INTERRUPTED'].includes(task.status)) return;
+    if (!task || !['PAUSED', 'INTERRUPTED'].includes(task.status) || taskAction !== null) return;
+    setTaskAction('RESUME');
     setError('');
     try {
       setTask(await window.desktopApi.codexUsageResume({ taskId: task.taskId }));
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : String(reason));
+    } finally {
+      setTaskAction(null);
     }
   }
 
@@ -710,25 +668,30 @@ export function CodexUsageInvestigatorConfiguration({ active, extension, notify 
 
   return (
     <TooltipProvider>
-      <section className="grid gap-4 border-t pt-5">
-        <div className="flex flex-wrap items-center gap-3">
+      <section
+        data-codex-usage-investigator-configuration
+        className={cn(
+          'grid gap-4 bg-background',
+          standalone ? 'size-full min-h-0 overflow-y-auto p-5' : 'border-t pt-5',
+        )}
+      >
+        <div className={cn('flex flex-wrap items-center gap-3', standalone && 'border-b pb-4')}>
           <div className="flex items-center gap-2">
             <ScanLineIcon className="size-4" />
-            <h3 className="text-sm font-semibold">{l.title}</h3>
+            <Heading className={cn('font-semibold', standalone ? 'text-base' : 'text-sm')}>{l.title}</Heading>
           </div>
-          <Segmented
-            type="single"
-            value={range}
-            disabled={running}
-            onValueChange={(value) => value && selectRange(value as CodexUsageRange)}
-            aria-label={l.rangeLabel}
-          >
-            {ranges.map((value) => (
-              <SegmentedItem key={value} value={value}>
-                {l.ranges[value]}
-              </SegmentedItem>
-            ))}
-          </Segmented>
+          <CodexUsageDateRangePicker
+            disabled={controlsLocked}
+            range={range}
+            dateRange={dateRange}
+            onChange={selectRange}
+          />
+          <CodexUsageDetailedStatisticsToggle
+            checked={detailedStatistics}
+            disabled={controlsLocked}
+            label={l.detailedStatistics.option}
+            onCheckedChange={setDetailedStatistics}
+          />
           {history.length > 0 && (
             <Select value={investigation?.investigationId} onValueChange={selectHistory}>
               <SelectTrigger className="h-8 w-72" aria-label={l.history}>
@@ -738,38 +701,34 @@ export function CodexUsageInvestigatorConfiguration({ active, extension, notify 
               <SelectContent>
                 {history.map((item) => (
                   <SelectItem key={item.investigationId} value={item.investigationId}>
-                    {l.ranges[item.range]} · {item.yieldEstimateCount} {l.quotaYield.estimates} ·{' '}
-                    {item.yieldSampleCount} {l.quotaYield.samples} · {historyDate.format(new Date(item.generatedAt))}
+                    {item.range === 'CUSTOM' && item.dateRange
+                      ? formatCodexUsageDateRange(item.dateRange, locale)
+                      : l.ranges[item.range]}{' '}
+                    · {item.yieldEstimateCount} {l.quotaYield.estimates} · {item.yieldSampleCount}{' '}
+                    {l.quotaYield.samples} · {historyDate.format(new Date(item.generatedAt))}
                   </SelectItem>
                 ))}
               </SelectContent>
             </Select>
           )}
           <div className="ml-auto flex items-center gap-2">
-            {running ? (
-              <Button type="button" variant="outline" onClick={() => void pause()}>
-                <PauseIcon className="size-4" />
-                {l.actions.pause}
-              </Button>
-            ) : task && ['PAUSED', 'INTERRUPTED'].includes(task.status) ? (
-              <Button type="button" variant="outline" onClick={() => void resume()}>
-                <PlayIcon className="size-4" />
-                {l.actions.resume}
-              </Button>
-            ) : null}
-            {!running && (
-              <Button type="button" disabled={!authorized} onClick={() => void scan()}>
-                <ScanLineIcon className="size-4" />
-                {l.actions.scan}
-              </Button>
-            )}
+            <CodexUsageTaskControls
+              running={running}
+              resumable={resumable}
+              action={taskAction}
+              authorized={authorized}
+              labels={l.actions}
+              onScan={() => void scan()}
+              onPause={() => void pause()}
+              onResume={() => void resume()}
+            />
             <CodexUsageExportButtons
               available={Boolean(investigation)}
               exporting={exporting}
               onExport={(format) => void exportReport(format)}
             />
             <CodexUsageCleanupControl
-              disabled={running}
+              disabled={controlsLocked}
               labels={l.cleanup}
               notify={notify}
               onError={setError}
@@ -782,39 +741,21 @@ export function CodexUsageInvestigatorConfiguration({ active, extension, notify 
           </div>
         </div>
 
-        {running && progress && (
-          <div className="grid gap-2 border-y py-3">
-            <div className="flex items-center justify-between gap-3 text-xs">
-              <span className="flex items-center gap-2 font-medium">
-                <LoaderCircleIcon className="size-3.5 animate-spin" />
-                {l.phases[progress.phase]}
-                <Badge variant="outline">{l.background}</Badge>
-              </span>
-              <span className="tabular-nums text-muted-foreground">
-                {progress.filesProcessed}/{progress.filesDiscovered} · {formatBytes(progress.bytesRead, numbers)} /{' '}
-                {formatBytes(progress.bytesTotal, numbers)} · {formatBytes(progress.throughputBytesPerSecond, numbers)}
-                /s · {l.eta}{' '}
-                {progress.estimatedRemainingMs === null ? '—' : formatDuration(progress.estimatedRemainingMs, numbers)}
-              </span>
-            </div>
-            <div className="h-1 overflow-hidden bg-surface-sunken">
-              <div
-                className="h-full bg-foreground/65 transition-[width] duration-normal"
-                style={{ width: `${scanPercent}%` }}
-              />
-            </div>
-            <div className="flex justify-between text-[11px] text-muted-foreground">
-              <span>
-                {progress.filesCached} {l.metrics.cachedFiles} · {progress.filesScanned} {l.metrics.scannedFiles}
-              </span>
-              <span>
-                {l.elapsed} {formatDuration(progress.elapsedMs, numbers)}
-              </span>
-            </div>
-          </div>
+        {progress && (
+          <CodexUsageScanProgress
+            progress={progress}
+            active={running}
+            phaseLabel={running ? l.phases[progress.phase] : l.paused}
+            backgroundLabel={l.background}
+            etaLabel={l.eta}
+            elapsedLabel={l.elapsed}
+            scannedFilesLabel={l.metrics.scannedFiles}
+            cachedFilesLabel={l.metrics.cachedFiles}
+            numbers={numbers}
+          />
         )}
 
-        {!investigation && !running && (
+        {!investigation && !progress && (
           <div className="grid min-h-24 place-items-center border-y text-sm text-muted-foreground">
             {task && ['PAUSED', 'INTERRUPTED'].includes(task.status) ? l.paused : l.empty}
           </div>

@@ -8,10 +8,7 @@ import { StatusDot } from '@/renderer/components/ui/status-dot';
 import { generationElapsed, generationPhaseLabel } from '@/renderer/components/generation/task-presentation';
 import { groupGenerationTasks, leadGenerationTask } from '@/renderer/components/generation/generationTaskGroups';
 import { GenerationErrorNotice } from '@/renderer/components/generation/GenerationErrorNotice';
-import {
-  loadDismissedGenerationRunIds,
-  saveDismissedGenerationRunIds,
-} from '@/renderer/components/generation/dismissedGenerationErrors';
+import { useBackgroundIssues } from '@/renderer/features/background-issues/BackgroundIssueProvider';
 
 interface Props {
   tasks: GenerationTaskDto[];
@@ -25,7 +22,7 @@ interface Props {
 
 export function GenerationTaskTray({ tasks, routes, series, allSeries, onCancel, onRetry, notify }: Props) {
   const l = useI18n().messages.creator.generationTasks;
-  const [dismissed, setDismissed] = useState(loadDismissedGenerationRunIds);
+  const backgroundIssues = useBackgroundIssues();
   const [busyRunId, setBusyRunId] = useState<string | null>(null);
   const [busyCancelKey, setBusyCancelKey] = useState<string | null>(null);
   const [nowMs, setNowMs] = useState(() => Date.now());
@@ -36,18 +33,21 @@ export function GenerationTaskTray({ tasks, routes, series, allSeries, onCancel,
     const runs = (series?.versions ?? []).flatMap((version) => version.runs);
     const retried = new Set(runs.flatMap((run) => (run.retryOfRunId ? [run.retryOfRunId] : [])));
     return runs
-      .filter((run) => ['FAILED', 'INTERRUPTED'].includes(run.status) && !retried.has(run.id) && !dismissed.has(run.id))
+      .filter(
+        (run) =>
+          ['FAILED', 'INTERRUPTED'].includes(run.status) &&
+          !retried.has(run.id) &&
+          !backgroundIssues.isAcknowledged(run.backgroundIssue),
+      )
       .sort((left, right) => right.createdAt.localeCompare(left.createdAt) || right.id.localeCompare(left.id))
       .slice(0, 2);
-  }, [dismissed, series]);
+  }, [backgroundIssues, series]);
 
   useEffect(() => {
     if (!tasks.some((task) => task.status === 'RUNNING')) return undefined;
     const timer = window.setInterval(() => setNowMs(Date.now()), 1_000);
     return () => window.clearInterval(timer);
   }, [tasks]);
-
-  useEffect(() => saveDismissedGenerationRunIds(dismissed), [dismissed]);
 
   if (!tasks.length && !failures.length) return null;
 
@@ -56,7 +56,6 @@ export function GenerationTaskTray({ tasks, routes, series, allSeries, onCancel,
     setBusyRunId(runId);
     try {
       await onRetry(runId);
-      setDismissed((current) => new Set(current).add(runId));
     } catch (reason) {
       notify(reason instanceof Error ? reason.message : String(reason));
     } finally {
@@ -153,7 +152,8 @@ export function GenerationTaskTray({ tasks, routes, series, allSeries, onCancel,
             className="size-7"
             title={l.dismiss}
             aria-label={l.dismiss}
-            onClick={() => setDismissed((current) => new Set(current).add(run.id))}
+            disabled={backgroundIssues.isPending(run.backgroundIssue)}
+            onClick={() => void backgroundIssues.acknowledge(run.backgroundIssue)}
           >
             <XIcon className="size-3.5" />
           </Button>

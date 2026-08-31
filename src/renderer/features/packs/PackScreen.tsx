@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type {
   PackCatalogItemDto,
   PackInstallationStateDto,
@@ -6,7 +6,6 @@ import type {
   PackReleaseSummaryDto,
 } from '@/shared/contracts';
 import {
-  BoxesIcon,
   CheckCircle2Icon,
   CircleOffIcon,
   LoaderCircleIcon,
@@ -28,6 +27,8 @@ import { ScrollArea } from '@/renderer/components/ui/scroll-area';
 import { cn } from '@/renderer/lib/utils';
 import { useI18n } from '@/renderer/i18n/useI18n';
 import type { NavigationMode } from '@/renderer/components/app/app-navigation';
+import { PackDetails, type PackDetailActionKind } from '@/renderer/features/packs/PackDetails';
+import { PackImportDialog } from '@/renderer/features/packs/PackImportDialog';
 
 interface Props {
   active: boolean;
@@ -37,11 +38,7 @@ interface Props {
   notify(message: string): void;
 }
 
-type PendingAction =
-  | { kind: 'INSTALL'; packId: string; release: PackReleaseSummaryDto }
-  | { kind: 'DISABLE'; packId: string; release: PackReleaseSummaryDto }
-  | { kind: 'ENABLE'; packId: string; release: PackReleaseSummaryDto }
-  | { kind: 'REMOVE'; packId: string; release: PackReleaseSummaryDto };
+type PendingAction = { kind: PackDetailActionKind; packId: string; release: PackReleaseSummaryDto };
 
 function installationIcon(state: PackInstallationStateDto | null) {
   if (state === 'INSTALLED') return CheckCircle2Icon;
@@ -60,27 +57,35 @@ export function PackScreen({ active, embedded = false, requestedId, onSelectedId
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [pendingAction, setPendingAction] = useState<PendingAction | null>(null);
+  const [importOpen, setImportOpen] = useState(false);
+  const [inspectedReleaseId, setInspectedReleaseId] = useState('');
+  const wasActive = useRef(false);
 
-  async function loadCatalog(preferredPackId?: string) {
-    setLoading(true);
-    setError('');
-    try {
-      const next = await window.desktopApi.packsList();
-      setCatalog(next);
-      const preferred = preferredPackId || requestedId || selectedPackId;
-      const nextSelectedId = next.some((item) => item.pack.id === preferred) ? preferred : (next[0]?.pack.id ?? '');
-      setSelectedPackId(nextSelectedId);
-      if (nextSelectedId && nextSelectedId !== requestedId) onSelectedIdChange(nextSelectedId, 'replace');
-    } catch (reason) {
-      setError(reason instanceof Error ? reason.message : String(reason));
-    } finally {
-      setLoading(false);
-    }
-  }
+  const loadCatalog = useCallback(
+    async (preferredPackId?: string) => {
+      setLoading(true);
+      setError('');
+      try {
+        const next = await window.desktopApi.packsList();
+        setCatalog(next);
+        const preferred = preferredPackId || requestedId || selectedPackId;
+        const nextSelectedId = next.some((item) => item.pack.id === preferred) ? preferred : (next[0]?.pack.id ?? '');
+        setSelectedPackId(nextSelectedId);
+        if (nextSelectedId && nextSelectedId !== requestedId) onSelectedIdChange(nextSelectedId, 'replace');
+      } catch (reason) {
+        setError(reason instanceof Error ? reason.message : String(reason));
+      } finally {
+        setLoading(false);
+      }
+    },
+    [onSelectedIdChange, requestedId, selectedPackId],
+  );
 
   useEffect(() => {
-    if (active) void loadCatalog();
-  }, [active]);
+    const becameActive = active && !wasActive.current;
+    wasActive.current = active;
+    if (becameActive) void loadCatalog();
+  }, [active, loadCatalog]);
 
   useEffect(() => {
     if (requestedId !== null) setSelectedPackId(requestedId);
@@ -93,21 +98,31 @@ export function PackScreen({ active, embedded = false, requestedId, onSelectedId
   const selectedRelease = useMemo(() => {
     if (!selected) return null;
     return (
+      selected.releases.find((item) => item.id === inspectedReleaseId) ??
       selected.releases.find((item) => item.id === selected.installation?.selectedReleaseId) ??
       selected.releases[0] ??
       null
     );
-  }, [selected]);
+  }, [inspectedReleaseId, selected]);
+
+  const inspectedPackId = selected?.pack.id ?? '';
+  const installedReleaseId = selected?.installation?.selectedReleaseId ?? '';
+  const defaultReleaseId = selected?.releases[0]?.id ?? '';
+  const selectedReleaseId = selectedRelease?.id ?? '';
 
   useEffect(() => {
-    if (!selectedRelease) {
+    setInspectedReleaseId(installedReleaseId || defaultReleaseId);
+  }, [defaultReleaseId, inspectedPackId, installedReleaseId]);
+
+  useEffect(() => {
+    if (!selectedReleaseId) {
       setRelease(null);
       return;
     }
     let alive = true;
     setRelease(null);
     void window.desktopApi
-      .packReleaseGet(selectedRelease.id)
+      .packReleaseGet(selectedReleaseId)
       .then((next) => {
         if (alive) setRelease(next);
       })
@@ -117,13 +132,13 @@ export function PackScreen({ active, embedded = false, requestedId, onSelectedId
     return () => {
       alive = false;
     };
-  }, [selectedRelease?.id]);
+  }, [selectedReleaseId]);
 
   async function commitAction() {
     if (!pendingAction) return;
     setBusy(true);
     try {
-      if (pendingAction.kind === 'INSTALL') {
+      if (pendingAction.kind === 'INSTALL' || pendingAction.kind === 'USE_RELEASE') {
         await window.desktopApi.packInstallExact({
           packId: pendingAction.packId,
           releaseId: pendingAction.release.id,
@@ -134,7 +149,12 @@ export function PackScreen({ active, embedded = false, requestedId, onSelectedId
         await window.desktopApi.packSetDisabled(pendingAction.packId, pendingAction.kind === 'DISABLE');
       }
       const packId = pendingAction.packId;
-      const message = l.actionComplete[pendingAction.kind.toLowerCase() as Lowercase<PendingAction['kind']>];
+      const message =
+        pendingAction.kind === 'USE_RELEASE'
+          ? l.actionComplete.useRelease
+          : l.actionComplete[
+              pendingAction.kind.toLowerCase() as Lowercase<Exclude<PendingAction['kind'], 'USE_RELEASE'>>
+            ];
       setPendingAction(null);
       await loadCatalog(packId);
       notify(message);
@@ -145,24 +165,11 @@ export function PackScreen({ active, embedded = false, requestedId, onSelectedId
     }
   }
 
-  async function importLocal() {
-    setBusy(true);
-    setError('');
-    try {
-      const result = await window.desktopApi.packImportLocal();
-      if (result.status === 'cancelled') return;
-      await loadCatalog(result.packId);
-      notify(l.actionComplete.import);
-    } catch (reason) {
-      setError(reason instanceof Error ? reason.message : String(reason));
-    } finally {
-      setBusy(false);
-    }
-  }
-
   const actionRelease = pendingAction?.release ?? null;
   const actionLabel = pendingAction
-    ? l.actions[pendingAction.kind.toLowerCase() as Lowercase<PendingAction['kind']>]
+    ? pendingAction.kind === 'USE_RELEASE'
+      ? l.actions.useRelease
+      : l.actions[pendingAction.kind.toLowerCase() as Lowercase<Exclude<PendingAction['kind'], 'USE_RELEASE'>>]
     : '';
 
   return (
@@ -174,7 +181,7 @@ export function PackScreen({ active, embedded = false, requestedId, onSelectedId
             <Badge variant="secondary">{catalog.length}</Badge>
           </>
         )}
-        <Button className="ml-auto" type="button" variant="outline" disabled={busy} onClick={() => void importLocal()}>
+        <Button className="ml-auto" type="button" variant="outline" disabled={busy} onClick={() => setImportOpen(true)}>
           <PackagePlusIcon className="mr-2 size-4" />
           {l.actions.import}
         </Button>
@@ -236,134 +243,16 @@ export function PackScreen({ active, embedded = false, requestedId, onSelectedId
         </ScrollArea>
         <ScrollArea className="min-h-0">
           {selected && selectedRelease && (
-            <article className="mx-auto grid w-full max-w-4xl gap-6 p-6">
-              <div className="flex items-start gap-4">
-                <div className="grid size-11 shrink-0 place-items-center rounded-lg border bg-muted">
-                  {selected.pack.kind === 'BUNDLE' ? (
-                    <BoxesIcon className="size-5" />
-                  ) : (
-                    <PackageIcon className="size-5" />
-                  )}
-                </div>
-                <div className="min-w-0 flex-1">
-                  <div className="flex flex-wrap items-center gap-2">
-                    <h2 className="text-xl font-semibold">{selected.pack.displayName}</h2>
-                    <Badge variant="outline">{selectedRelease.version}</Badge>
-                    <Badge variant="secondary">{l.states[selected.installation?.state ?? 'NOT_INSTALLED']}</Badge>
-                  </div>
-                  {selected.pack.description && (
-                    <p className="mt-2 text-sm text-muted-foreground">{selected.pack.description}</p>
-                  )}
-                </div>
-                <div className="flex shrink-0 items-center gap-2">
-                  {!selected.installation ||
-                  selected.installation.state === 'REMOVED' ||
-                  selected.installation.state === 'FAILED_NO_USABLE_RELEASE' ? (
-                    <Button
-                      type="button"
-                      onClick={() =>
-                        setPendingAction({ kind: 'INSTALL', packId: selected.pack.id, release: selectedRelease })
-                      }
-                    >
-                      {l.actions.install}
-                    </Button>
-                  ) : selected.installation.state === 'DISABLED' ? (
-                    <Button
-                      type="button"
-                      variant="outline"
-                      onClick={() =>
-                        setPendingAction({ kind: 'ENABLE', packId: selected.pack.id, release: selectedRelease })
-                      }
-                    >
-                      {l.actions.enable}
-                    </Button>
-                  ) : (
-                    <Button
-                      type="button"
-                      variant="outline"
-                      onClick={() =>
-                        setPendingAction({ kind: 'DISABLE', packId: selected.pack.id, release: selectedRelease })
-                      }
-                    >
-                      {l.actions.disable}
-                    </Button>
-                  )}
-                  {selected.installation &&
-                    !['REMOVED', 'FAILED_NO_USABLE_RELEASE'].includes(selected.installation.state) && (
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        onClick={() =>
-                          setPendingAction({ kind: 'REMOVE', packId: selected.pack.id, release: selectedRelease })
-                        }
-                      >
-                        {l.actions.remove}
-                      </Button>
-                    )}
-                </div>
-              </div>
-
-              <dl className="grid grid-cols-2 gap-px overflow-hidden rounded-lg border bg-border text-sm sm:grid-cols-4">
-                <div className="bg-background p-3">
-                  <dt className="text-xs text-muted-foreground">{l.fields.version}</dt>
-                  <dd className="mt-1 font-medium">{selectedRelease.version}</dd>
-                </div>
-                <div className="bg-background p-3">
-                  <dt className="text-xs text-muted-foreground">{l.fields.items}</dt>
-                  <dd className="mt-1 font-medium">{selectedRelease.itemCount}</dd>
-                </div>
-                <div className="bg-background p-3">
-                  <dt className="text-xs text-muted-foreground">{l.fields.dependencies}</dt>
-                  <dd className="mt-1 font-medium">{selectedRelease.dependencyCount}</dd>
-                </div>
-                <div className="bg-background p-3">
-                  <dt className="text-xs text-muted-foreground">{l.fields.manifest}</dt>
-                  <dd className="mt-1 font-medium">{selectedRelease.manifestVersion}</dd>
-                </div>
-              </dl>
-
-              {selected.pack.contentKinds.length > 0 && (
-                <section className="flex flex-wrap gap-2" aria-label={l.fields.contentKinds}>
-                  {selected.pack.contentKinds.map((kind) => (
-                    <Badge key={kind} variant="secondary">
-                      {kind}
-                    </Badge>
-                  ))}
-                </section>
-              )}
-
-              {release && (
-                <div className="grid gap-5 lg:grid-cols-2">
-                  <section className="rounded-lg border">
-                    <h3 className="border-b px-4 py-3 text-sm font-semibold">{l.sections.contents}</h3>
-                    <div className="divide-y">
-                      {release.items.map((item) => (
-                        <div key={item.id} className="flex items-center gap-3 px-4 py-2.5 text-sm">
-                          <span className="min-w-0 flex-1 truncate">{item.itemKey}</span>
-                          <Badge variant="outline">{item.objectType}</Badge>
-                        </div>
-                      ))}
-                    </div>
-                  </section>
-                  <section className="rounded-lg border">
-                    <h3 className="border-b px-4 py-3 text-sm font-semibold">{l.sections.dependencies}</h3>
-                    <div className="divide-y">
-                      {release.dependencies.map((dependency) => (
-                        <div key={dependency.id} className="grid gap-1 px-4 py-2.5 text-sm">
-                          <span className="font-medium">{dependency.targetPackId}</span>
-                          <span className="text-xs text-muted-foreground">
-                            {dependency.kind} · {dependency.versionRange}
-                          </span>
-                        </div>
-                      ))}
-                      {release.dependencies.length === 0 && (
-                        <div className="px-4 py-3 text-sm tabular-nums text-muted-foreground">0</div>
-                      )}
-                    </div>
-                  </section>
-                </div>
-              )}
-            </article>
+            <PackDetails
+              item={selected}
+              selectedRelease={selectedRelease}
+              release={release}
+              busy={busy}
+              onSelectRelease={setInspectedReleaseId}
+              onAction={(kind, nextRelease) =>
+                setPendingAction({ kind, packId: selected.pack.id, release: nextRelease })
+              }
+            />
           )}
           {!selected && !loading && (
             <div className="grid size-full place-items-center text-3xl tabular-nums text-muted-foreground">0</div>
@@ -405,6 +294,15 @@ export function PackScreen({ active, embedded = false, requestedId, onSelectedId
           </DialogFooter>
         </DialogContent>
       </Dialog>
+      <PackImportDialog
+        open={importOpen}
+        onOpenChange={setImportOpen}
+        onApplied={async (packId) => {
+          await loadCatalog(packId);
+          notify(l.actionComplete.import);
+        }}
+        notify={notify}
+      />
     </div>
   );
 }

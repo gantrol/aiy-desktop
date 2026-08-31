@@ -35,6 +35,8 @@ const entityTypeSchema = z.enum([
   'PROMPT_SERIES',
   'CREATION',
   'INSPIRATION_STASH',
+  'IMAGE_BREAKDOWN',
+  'EVALUATION_SUITE',
   'SOCIAL_POST',
   'ARTICLE',
   'VIDEO_DOCUMENT',
@@ -48,6 +50,8 @@ const subtypeSchema = z.enum([
   'PROMPT_SERIES',
   'IDEA_CREATION',
   'INSPIRATION_STASH',
+  'IMAGE_BREAKDOWN',
+  'EVALUATION_SUITE',
   'SOCIAL_POST',
   'ARTICLE',
   'VIDEO_DOCUMENT',
@@ -715,6 +719,30 @@ export class ContentLifecycleRepository {
       statusBefore = row ? text(row.status) : undefined;
       archived = statusBefore === 'ARCHIVED';
       changedAt = row ? text(row.updated_at) : '';
+    } else if (type === 'IMAGE_BREAKDOWN') {
+      row = this.db.prepare('SELECT * FROM image_breakdowns WHERE id = ? AND deleted_at IS NULL').get(id) as
+        JsonMap | undefined;
+      subtype = 'IMAGE_BREAKDOWN';
+      title = row ? text(row.title) : id;
+      previewAssetId = row?.source_asset_id ? text(row.source_asset_id) : null;
+      previewText = row?.result_json ? text(row.result_json).slice(0, 500) : null;
+      archived = Boolean(row?.archived_at);
+      changedAt = row ? text(row.updated_at) : '';
+    } else if (type === 'EVALUATION_SUITE') {
+      row = this.db
+        .prepare(
+          `SELECT suite.*, revision.content_json
+          FROM evaluation_suites suite
+          LEFT JOIN evaluation_suite_revisions revision ON revision.id = suite.current_revision_id
+          WHERE suite.id = ? AND suite.deleted_at IS NULL`,
+        )
+        .get(id) as JsonMap | undefined;
+      subtype = 'EVALUATION_SUITE';
+      title = row ? this.jsonTitle(row.content_json, id) : id;
+      previewText = row ? text(row.content_json).slice(0, 500) : null;
+      statusBefore = row ? text(row.status) : undefined;
+      archived = statusBefore === 'ARCHIVED';
+      changedAt = row ? text(row.updated_at) : '';
     } else if (type === 'SOCIAL_POST' || type === 'ARTICLE') {
       const table = type === 'SOCIAL_POST' ? 'social_post_drafts' : 'articles';
       const revisionTable = type === 'SOCIAL_POST' ? 'social_post_revisions' : 'article_revisions';
@@ -834,6 +862,10 @@ export class ContentLifecycleRepository {
       this.db
         .prepare('UPDATE prompt_series SET archived_at = ? WHERE id = ? AND deleted_at IS NULL')
         .run(timestamp, member.entityId);
+    else if (member.entityType === 'IMAGE_BREAKDOWN')
+      this.db
+        .prepare('UPDATE image_breakdowns SET archived_at = ?, updated_at = ? WHERE id = ? AND deleted_at IS NULL')
+        .run(timestamp, timestamp, member.entityId);
     else if (member.entityType === 'MATERIAL')
       this.db
         .prepare('UPDATE materials SET archived_at = ? WHERE id = ? AND deleted_at IS NULL')
@@ -863,6 +895,10 @@ export class ContentLifecycleRepository {
       this.db
         .prepare('UPDATE prompt_series SET deleted_at = ? WHERE id = ? AND deleted_at IS NULL')
         .run(timestamp, member.entityId);
+    else if (member.entityType === 'IMAGE_BREAKDOWN')
+      this.db
+        .prepare('UPDATE image_breakdowns SET deleted_at = ?, updated_at = ? WHERE id = ? AND deleted_at IS NULL')
+        .run(timestamp, timestamp, member.entityId);
     else if (member.entityType === 'MATERIAL')
       this.db
         .prepare('UPDATE materials SET deleted_at = ? WHERE id = ? AND deleted_at IS NULL')
@@ -896,6 +932,10 @@ export class ContentLifecycleRepository {
       this.db
         .prepare('UPDATE prompt_series SET archived_at = NULL WHERE id = ? AND deleted_at IS NULL')
         .run(member.entity_id);
+    else if (member.entity_type === 'IMAGE_BREAKDOWN')
+      this.db
+        .prepare('UPDATE image_breakdowns SET archived_at = NULL, updated_at = ? WHERE id = ? AND deleted_at IS NULL')
+        .run(now(), member.entity_id);
     else if (member.entity_type === 'MATERIAL')
       this.db
         .prepare('UPDATE materials SET archived_at = NULL WHERE id = ? AND deleted_at IS NULL')
@@ -930,6 +970,10 @@ export class ContentLifecycleRepository {
       this.db
         .prepare('UPDATE prompt_series SET deleted_at = NULL WHERE id = ? AND deleted_at = ?')
         .run(member.entity_id, deletedAt);
+    else if (member.entity_type === 'IMAGE_BREAKDOWN')
+      this.db
+        .prepare('UPDATE image_breakdowns SET deleted_at = NULL, updated_at = ? WHERE id = ? AND deleted_at = ?')
+        .run(now(), member.entity_id, deletedAt);
     else if (member.entity_type === 'MATERIAL')
       this.db
         .prepare('UPDATE materials SET deleted_at = NULL WHERE id = ? AND deleted_at = ?')
@@ -1230,6 +1274,7 @@ export class ContentLifecycleRepository {
     if (member.entity_type === 'ALBUM') {
       this.db.prepare('UPDATE creation_drafts SET target_album_id = NULL WHERE target_album_id = ?').run(id);
       this.db.prepare('UPDATE inspiration_stashes SET album_id = NULL WHERE album_id = ?').run(id);
+      this.db.prepare('UPDATE evaluation_suites SET album_id = NULL WHERE album_id = ?').run(id);
       this.db.prepare('UPDATE social_post_drafts SET album_id = NULL WHERE album_id = ?').run(id);
       this.db.prepare('UPDATE articles SET album_id = NULL WHERE album_id = ?').run(id);
       this.db.prepare('DELETE FROM album_members WHERE album_id = ?').run(id);
@@ -1250,6 +1295,21 @@ export class ContentLifecycleRepository {
           "UPDATE inspiration_stashes SET input_json = '{}', content_hash = 'purged:' || id, album_id = NULL WHERE id = ? AND deleted_at IS NOT NULL",
         )
         .run(id);
+    } else if (member.entity_type === 'IMAGE_BREAKDOWN') {
+      this.db
+        .prepare(
+          `UPDATE image_breakdowns
+          SET title = 'Purged', focus = '', model_key = NULL, status = 'DRAFT',
+            result_json = NULL, error_code = NULL, error_message = NULL
+          WHERE id = ? AND deleted_at IS NOT NULL`,
+        )
+        .run(id);
+    } else if (member.entity_type === 'EVALUATION_SUITE') {
+      const purgedHash = createHash('sha256').update(`purged:${id}`).digest('hex');
+      this.db
+        .prepare("UPDATE evaluation_suite_revisions SET content_json = '{}', content_hash = ? WHERE suite_id = ?")
+        .run(purgedHash, id);
+      this.db.prepare('UPDATE evaluation_suites SET album_id = NULL WHERE id = ? AND deleted_at IS NOT NULL').run(id);
     } else if (member.entity_type === 'SOCIAL_POST') {
       this.db
         .prepare(
@@ -1262,11 +1322,18 @@ export class ContentLifecycleRepository {
         )
         .run(id);
     } else if (member.entity_type === 'ARTICLE') {
+      this.db.prepare('DELETE FROM article_comments WHERE article_id = ?').run(id);
+      this.db.prepare('DELETE FROM article_revision_elements WHERE article_id = ?').run(id);
+      this.db.prepare('DELETE FROM article_elements WHERE article_id = ?').run(id);
       this.db
         .prepare(
-          "UPDATE article_revisions SET content_json = '{}', content_hash = 'purged:' || id WHERE article_id = ?",
+          `UPDATE article_revisions
+          SET content_json = '{}', content_hash = 'purged:' || id,
+            content_pack_id = NULL, content_pack_entry_index = NULL
+          WHERE article_id = ?`,
         )
         .run(id);
+      this.db.prepare('DELETE FROM article_revision_packs WHERE article_id = ?').run(id);
       this.db
         .prepare(
           'UPDATE articles SET album_id = NULL, source_inspiration_stash_id = NULL WHERE id = ? AND deleted_at IS NOT NULL',
@@ -1549,6 +1616,8 @@ export class ContentLifecycleRepository {
   ) {
     if (type === 'CREATION') return 'creations';
     if (type === 'INSPIRATION_STASH') return 'inspiration_stashes';
+    if (type === 'IMAGE_BREAKDOWN') return 'image_breakdowns';
+    if (type === 'EVALUATION_SUITE') return 'evaluation_suites';
     if (type === 'SOCIAL_POST') return 'social_post_drafts';
     if (type === 'ARTICLE') return 'articles';
     return 'documents';
@@ -1560,6 +1629,8 @@ export class ContentLifecycleRepository {
     if (type === 'PROMPT_SERIES') return 'prompt_series';
     if (type === 'CREATION') return 'creations';
     if (type === 'INSPIRATION_STASH') return 'inspiration_stashes';
+    if (type === 'IMAGE_BREAKDOWN') return 'image_breakdowns';
+    if (type === 'EVALUATION_SUITE') return 'evaluation_suites';
     if (type === 'SOCIAL_POST') return 'social_post_drafts';
     if (type === 'ARTICLE') return 'articles';
     if (type === 'VIDEO_DOCUMENT') return 'documents';
@@ -1608,6 +1679,8 @@ export class ContentLifecycleRepository {
   private creationFormEntityType(type: string): ContentLifecycleEntityType | null {
     if (type === 'PROMPT_SERIES') return 'PROMPT_SERIES';
     if (type === 'INSPIRATION_STASH') return 'INSPIRATION_STASH';
+    if (type === 'IMAGE_BREAKDOWN') return 'IMAGE_BREAKDOWN';
+    if (type === 'EVALUATION_SUITE') return 'EVALUATION_SUITE';
     if (type === 'SOCIAL_POST') return 'SOCIAL_POST';
     if (type === 'ARTICLE') return 'ARTICLE';
     if (type === 'VIDEO_DOCUMENT') return 'VIDEO_DOCUMENT';

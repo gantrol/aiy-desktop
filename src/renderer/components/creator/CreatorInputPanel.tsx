@@ -1,10 +1,12 @@
-import type { PointerEvent as ReactPointerEvent, ReactNode } from 'react';
+import { useEffect, useMemo, useState, type PointerEvent as ReactPointerEvent, type ReactNode } from 'react';
 import { FileTextIcon, ImageIcon, PanelRightCloseIcon } from 'lucide-react';
-import type { AssetDto, Locale } from '@/shared/contracts';
+import type { AssetDto, AssetFileRevealContext, Locale } from '@/shared/contracts';
+import { useI18n } from '@/renderer/i18n/useI18n';
 import { Button } from '@/renderer/components/ui/button';
 import { ScrollArea } from '@/renderer/components/ui/scroll-area';
 import { CreatorPaneResizeHandle } from '@/renderer/components/creator/CreatorPaneResizeHandle';
-import { mediaThumbnailUrl } from '@/renderer/components/media/mediaThumbnailUrl';
+import { CreatorReferenceImageCard } from '@/renderer/components/creator/CreatorReferenceImageCard';
+import { MediaPreviewDialog } from '@/renderer/components/media/MediaPreviewDialog';
 
 interface Props {
   headerNavigation: ReactNode;
@@ -15,6 +17,9 @@ interface Props {
   resizeValue: number;
   resizeMin: number;
   resizeMax: number;
+  revealContext?: AssetFileRevealContext;
+  notify(message: string): void;
+  onReferenceAssetsChange(assets: AssetDto[]): void;
   onCollapsedChange(collapsed: boolean): void;
   onResizeStart(event: ReactPointerEvent<HTMLDivElement>): void;
   onResizeValueChange(value: number): void;
@@ -29,17 +34,51 @@ export function CreatorInputPanel({
   resizeValue,
   resizeMin,
   resizeMax,
+  revealContext,
+  notify,
+  onReferenceAssetsChange,
   onCollapsedChange,
   onResizeStart,
   onResizeValueChange,
 }: Props) {
+  const { messages } = useI18n();
   const textLabel = locale === 'zh' ? '文字' : 'Text';
   const imageLabel = locale === 'zh' ? '图片' : 'Images';
   const resizeLabel = locale === 'zh' ? '调整输入区宽度' : 'Resize inputs';
+  const fileLabels = messages.assetFile;
+  const [dragTargetId, setDragTargetId] = useState<string | null>(null);
+  const [previewAssetId, setPreviewAssetId] = useState<string | null>(null);
+  const [copyingAssetId, setCopyingAssetId] = useState<string | null>(null);
+  const assetsById = useMemo(() => new Map(referenceAssets.map((asset) => [asset.id, asset])), [referenceAssets]);
+
+  useEffect(() => {
+    if (previewAssetId && !assetsById.has(previewAssetId)) setPreviewAssetId(null);
+  }, [assetsById, previewAssetId]);
+
+  async function copyImage(assetId: string) {
+    if (copyingAssetId) return;
+    setCopyingAssetId(assetId);
+    notify(fileLabels.copying);
+    try {
+      await window.desktopApi.assetFileCopy(assetId);
+      notify(fileLabels.copied);
+    } catch (reason) {
+      notify(`${fileLabels.failed}: ${reason instanceof Error ? reason.message : String(reason)}`);
+    } finally {
+      setCopyingAssetId(null);
+    }
+  }
+
+  function removeImage(assetId: string) {
+    const index = referenceAssets.findIndex((asset) => asset.id === assetId);
+    const nextPreviewId = referenceAssets[index + 1]?.id ?? referenceAssets[index - 1]?.id ?? null;
+    onReferenceAssetsChange(referenceAssets.filter((asset) => asset.id !== assetId));
+    if (previewAssetId === assetId) setPreviewAssetId(nextPreviewId);
+  }
 
   if (collapsed) {
     return (
-      <section className="relative hidden size-full min-h-0 flex-col items-center bg-secondary pt-3 min-[840px]:flex">
+      <section className="relative hidden size-full min-h-0 flex-col items-center bg-secondary pt-3 @min-[840px]/creator:flex">
         <CreatorPaneResizeHandle
           edge="left"
           label={resizeLabel}
@@ -96,22 +135,41 @@ export function CreatorInputPanel({
                   {imageLabel} · {referenceAssets.length}
                 </span>
               </div>
-              <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
-                {referenceAssets.map((asset) => (
-                  <div key={asset.id} className="overflow-hidden rounded-md border bg-surface-sunken">
-                    <img
-                      src={mediaThumbnailUrl(asset, 320)}
-                      alt=""
-                      width={asset.width}
-                      height={asset.height}
-                      loading="lazy"
-                      decoding="async"
-                      draggable={false}
-                      className="aspect-square w-full bg-media-surround-light object-contain"
-                    />
-                  </div>
+              <div className="grid grid-cols-2 gap-3">
+                {referenceAssets.map((asset, index) => (
+                  <CreatorReferenceImageCard
+                    key={asset.id}
+                    asset={asset}
+                    referenceAssets={referenceAssets}
+                    copyingAssetId={copyingAssetId}
+                    copyLabel={fileLabels.copy}
+                    dragTargetId={dragTargetId}
+                    index={index}
+                    locale={locale}
+                    moreActionsLabel={messages.creator.album.moreActions}
+                    revealContext={revealContext}
+                    notify={notify}
+                    onCopy={(assetId) => void copyImage(assetId)}
+                    onDragTargetIdChange={setDragTargetId}
+                    onPreview={setPreviewAssetId}
+                    onReferenceAssetsChange={onReferenceAssetsChange}
+                    onRemove={removeImage}
+                  />
                 ))}
               </div>
+              <MediaPreviewDialog
+                assetIds={referenceAssets.map((asset) => asset.id)}
+                assetsById={assetsById}
+                copyingAssetId={copyingAssetId}
+                copyLabel={fileLabels.copy}
+                dataDialog="creator-reference-media-preview"
+                locale={locale}
+                openAssetId={previewAssetId}
+                notify={notify}
+                onCopy={(assetId) => void copyImage(assetId)}
+                onOpenAssetIdChange={setPreviewAssetId}
+                onRemove={removeImage}
+              />
             </section>
           )}
         </div>
@@ -120,7 +178,7 @@ export function CreatorInputPanel({
         type="button"
         variant="secondary"
         size="icon-sm"
-        className="absolute bottom-2 left-2 z-30 hidden shadow-overlay min-[840px]:inline-flex"
+        className="absolute bottom-2 left-2 z-30 hidden shadow-overlay @min-[840px]/creator:inline-flex"
         title={locale === 'zh' ? '收起输入区' : 'Collapse inputs'}
         aria-label={locale === 'zh' ? '收起输入区' : 'Collapse inputs'}
         onClick={() => onCollapsedChange(true)}

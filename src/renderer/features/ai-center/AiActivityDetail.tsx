@@ -1,5 +1,11 @@
 import { useState } from 'react';
-import { ImageIcon, PencilLineIcon, RotateCcwIcon, SquareArrowOutUpRightIcon } from 'lucide-react';
+import {
+  ImageIcon,
+  MessageSquarePlusIcon,
+  PencilLineIcon,
+  RotateCcwIcon,
+  SquareArrowOutUpRightIcon,
+} from 'lucide-react';
 import type { BootstrapDto, Locale, StyleExplorationSlotDto } from '@/shared/contracts';
 import { Badge } from '@/renderer/components/ui/badge';
 import { Button } from '@/renderer/components/ui/button';
@@ -13,6 +19,7 @@ import { AiActivityStatusTag } from '@/renderer/features/ai-center/AiActivitySta
 import { AiActivityTrace } from '@/renderer/features/ai-center/AiActivityTrace';
 import type {
   AiActivityRecord,
+  ArticleCheckActivityRecord,
   AssistantActivityRecord,
   ExperimentActivityRecord,
   GenerationActivityRecord,
@@ -32,10 +39,12 @@ interface Props {
   onReEditGeneration(runId: string): void;
   onRetryGeneration(runId: string): Promise<void>;
   onRetrySlot(slotId: string): Promise<void>;
+  onApplyArticleCheck(runId: string): Promise<void>;
   notify(message: string): void;
 }
 
 function localizedSeriesTitle(record: AiActivityRecord, _locale: Locale, fallback: string) {
+  if (record.kind === 'ARTICLE_CHECK') return record.run.articleTitle || fallback;
   if (record.kind === 'VIDEO_DOCUMENT') return record.activity.documentTitle;
   if (record.kind === 'ASSISTANT' && record.run.creationTitle) return record.run.creationTitle;
   if (record.kind === 'EXPERIMENT' && record.sourceRun?.creationTitle) {
@@ -387,6 +396,48 @@ function VideoDocumentDetail({ record, locale }: { record: VideoDocumentActivity
   );
 }
 
+function ArticleCheckDetail({ record, locale }: { record: ArticleCheckActivityRecord; locale: Locale }) {
+  const l = useI18n().messages.aiCenter;
+  const run = record.run;
+  const result =
+    run.status !== 'SUCCEEDED'
+      ? '—'
+      : run.findingCount === 0
+        ? l.fields.noFindings
+        : run.appliedAt
+          ? l.fields.commentsAdded
+          : l.fields.commentsPending;
+  return (
+    <>
+      <DetailSection title={l.fields.realState}>
+        <dl className="grid grid-cols-2 gap-x-5 gap-y-3 xl:grid-cols-4">
+          <Fact label={l.fields.model}>{run.requestedModel}</Fact>
+          <Fact label={l.fields.provider}>{run.providerKey}</Fact>
+          <Fact label={l.fields.findings}>{run.findingCount ?? '—'}</Fact>
+          <Fact label={l.fields.result}>{result}</Fact>
+          <Fact label={l.fields.createdAt}>{dateTime(run.startedAt, locale)}</Fact>
+          <Fact label={l.fields.finishedAt}>{dateTime(run.finishedAt, locale)}</Fact>
+        </dl>
+      </DetailSection>
+      {run.errorMessage && (
+        <div className="grid gap-1 rounded-md bg-destructive-surface p-3 text-xs text-destructive">
+          {run.errorCode && <code>{run.errorCode}</code>}
+          <span>{run.errorMessage}</span>
+        </div>
+      )}
+    </>
+  );
+}
+
+function canApplyArticleCheck(record: AiActivityRecord) {
+  return (
+    record.kind === 'ARTICLE_CHECK' &&
+    record.run.status === 'SUCCEEDED' &&
+    Boolean(record.run.findingCount) &&
+    !record.run.appliedAt
+  );
+}
+
 export function AiActivityDetail({
   record,
   data,
@@ -396,30 +447,34 @@ export function AiActivityDetail({
   onReEditGeneration,
   onRetryGeneration,
   onRetrySlot,
+  onApplyArticleCheck,
   notify,
 }: Props) {
   const l = useI18n().messages.aiCenter;
   const [retrying, setRetrying] = useState(false);
+  const [applyingArticleCheck, setApplyingArticleCheck] = useState(false);
   const [detailTab, setDetailTab] = useState<'overview' | 'trace'>('overview');
   if (!record) return <div className="grid size-full place-items-center text-sm text-muted-foreground">{l.empty}</div>;
 
   const source = localizedSeriesTitle(record, locale, canLocate ? l.source.draft : l.source.unknown);
   const kind =
-    record.kind === 'ASSISTANT'
-      ? record.run.mode === 'directions'
-        ? l.kinds.directions
-        : l.kinds.optimize
-      : record.kind === 'EXPERIMENT'
-        ? l.kinds.experiment
-        : record.kind === 'VIDEO_DOCUMENT'
-          ? record.activity.type === 'ARTICLE_GENERATION'
-            ? l.kinds.videoArticle
-            : record.activity.type === 'TRANSCRIPT_RECOGNITION'
-              ? l.kinds.transcribe
-              : l.kinds.translate
-          : record.operation === 'EDIT'
-            ? l.kinds.edit
-            : l.kinds.generate;
+    record.kind === 'ARTICLE_CHECK'
+      ? l.kinds.articleCheck
+      : record.kind === 'ASSISTANT'
+        ? record.run.mode === 'directions'
+          ? l.kinds.directions
+          : l.kinds.optimize
+        : record.kind === 'EXPERIMENT'
+          ? l.kinds.experiment
+          : record.kind === 'VIDEO_DOCUMENT'
+            ? record.activity.type === 'ARTICLE_GENERATION'
+              ? l.kinds.videoArticle
+              : record.activity.type === 'TRANSCRIPT_RECOGNITION'
+                ? l.kinds.transcribe
+                : l.kinds.translate
+            : record.operation === 'EDIT'
+              ? l.kinds.edit
+              : l.kinds.generate;
   const title =
     record.kind === 'ASSISTANT' && record.occurrenceCount > 1
       ? `${kind} · ${l.occurrence(record.ordinal)}`
@@ -447,6 +502,18 @@ export function AiActivityDetail({
     }
   }
 
+  async function applyArticleCheck() {
+    if (record?.kind !== 'ARTICLE_CHECK' || applyingArticleCheck) return;
+    setApplyingArticleCheck(true);
+    try {
+      await onApplyArticleCheck(record.run.id);
+    } catch (reason) {
+      notify(reason instanceof Error ? reason.message : String(reason));
+    } finally {
+      setApplyingArticleCheck(false);
+    }
+  }
+
   return (
     <Tabs
       value={detailTab}
@@ -468,8 +535,19 @@ export function AiActivityDetail({
             <div className="flex flex-wrap gap-2">
               <Button type="button" variant="outline" size="sm" disabled={!canLocate} onClick={() => onLocate(record)}>
                 <SquareArrowOutUpRightIcon className="size-3.5" />
-                {l.actions.locate}
+                {record.kind === 'ARTICLE_CHECK' ? l.actions.openArticle : l.actions.locate}
               </Button>
+              {canApplyArticleCheck(record) && (
+                <Button
+                  type="button"
+                  size="sm"
+                  disabled={!canLocate || applyingArticleCheck}
+                  onClick={() => void applyArticleCheck()}
+                >
+                  <MessageSquarePlusIcon className="size-3.5" />
+                  {l.actions.addComments}
+                </Button>
+              )}
               {record.kind === 'GENERATION' && retryableGeneration && (
                 <Button type="button" variant="outline" size="sm" onClick={() => onReEditGeneration(record.run.id)}>
                   <PencilLineIcon className="size-3.5" />
@@ -513,6 +591,7 @@ export function AiActivityDetail({
             {record.kind === 'EXPERIMENT' && <ExperimentDetail record={record} data={data} onRetrySlot={onRetrySlot} />}
             {record.kind === 'GENERATION' && <GenerationDetail record={record} data={data} locale={locale} />}
             {record.kind === 'VIDEO_DOCUMENT' && <VideoDocumentDetail record={record} locale={locale} />}
+            {record.kind === 'ARTICLE_CHECK' && <ArticleCheckDetail record={record} locale={locale} />}
           </article>
         </ScrollArea>
       </TabsContent>

@@ -11,7 +11,7 @@
   "contributes": {
     "modelProviders": ["example-image-api"]
   },
-  "permissions": ["network:https://api.example.com", "secrets:example-api-key"],
+  "permissions": ["network:https://api.example.com", "credentials.use:example-api-key"],
   "optionalPermissions": ["network:user-configured-https-endpoint"],
   "configuration": {
     "kind": "IMAGE_API",

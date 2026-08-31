@@ -7,6 +7,7 @@ settings, and a versioned profile ID.
 
 - `direction-scout-prompt.ts`: divergent inspiration and adjacent exploration.
 - `prompt-optimization-prompt.ts`: structured edits to the user instruction.
+- `article-check-prompt.ts`: article-review instructions and bounded block payload assembly.
 - `codex-assist-prompt.ts`: Codex-specific assistant instructions and prompt assembly.
 - `*-web-search-prompt.ts`: provider-specific search instructions.
 - `creator-assist-payload.ts`: bounded provider-neutral creator input serialization.

@@ -23,6 +23,7 @@ import { useAssetMenuActions } from '@/renderer/components/media/AssetMenuAction
 import { AssetMedia, isVideoAsset } from '@/renderer/components/media/AssetMedia';
 import { ImageAmbientBackdrop } from '@/renderer/components/media/AmbientImage';
 import { DEFAULT_MEDIA_ASPECT_RATIO, getSourceMediaAspectRatio } from '@/renderer/components/media/mediaAspectRatio';
+import { mediaThumbnailUrl } from '@/renderer/components/media/mediaThumbnailUrl';
 import { Checkbox } from '@/renderer/components/ui/checkbox';
 import { ActionContextMenuItems, type ActionMenuAction } from '@/renderer/components/ui/action-menu';
 import { ContextMenu, ContextMenuContent, ContextMenuTrigger } from '@/renderer/components/ui/context-menu';
@@ -56,6 +57,10 @@ interface Props {
   revealContext?: AssetFileRevealContext;
 }
 
+const MATERIAL_LIST_THUMBNAIL_SIZE = 320;
+const MATERIAL_GRID_THUMBNAIL_SIZE = 512;
+const MATERIAL_BACKDROP_THUMBNAIL_SIZE = 192;
+
 function MaterialListPreview({
   item,
   video,
@@ -84,11 +89,20 @@ function MaterialListPreview({
       </div>
     );
   }
+  const previewUrl = video
+    ? item.image.asset.mediaUrl
+    : mediaThumbnailUrl(item.image.asset, MATERIAL_LIST_THUMBNAIL_SIZE);
   return (
     <>
-      {!video && <ImageAmbientBackdrop src={item.image.asset.mediaUrl} loading="lazy" />}
+      {!video && (
+        <ImageAmbientBackdrop
+          src={mediaThumbnailUrl(item.image.asset, MATERIAL_BACKDROP_THUMBNAIL_SIZE)}
+          loading="lazy"
+        />
+      )}
       <AssetMedia
         asset={item.image.asset}
+        src={previewUrl}
         className="relative z-10 size-full object-contain"
         alt=""
         loading="lazy"
@@ -475,6 +489,9 @@ function MaterialCardImpl({
   }
 
   const imageItem = item.image;
+  const previewUrl = video
+    ? imageItem.asset.mediaUrl
+    : mediaThumbnailUrl(imageItem.asset, MATERIAL_GRID_THUMBNAIL_SIZE);
 
   return (
     <AssetFileContextMenu
@@ -520,6 +537,7 @@ function MaterialCardImpl({
           ) : (
             <AssetMedia
               asset={item.image.asset}
+              src={previewUrl}
               className="absolute inset-0 size-full object-contain transition-transform duration-base ease-enter motion-reduce:transform-none motion-reduce:transition-none group-hover/card-button:scale-[1.015]"
               crossOrigin="anonymous"
               alt=""

@@ -1,0 +1,34 @@
+{
+  "manifestVersion": 1,
+  "kind": "CAPABILITY",
+  "id": "com.aiy.channel.weibo",
+  "version": "0.1.0",
+  "displayName": "Weibo browser handoff",
+  "description": "Prepare a one-time handoff for the paired browser companion to fill a Weibo draft.",
+  "engines": {
+    "aiy": "^0.3.0"
+  },
+  "runtime": {
+    "kind": "HOST",
+    "id": "weibo-browser-handoff"
+  },
+  "contributes": {
+    "workflows": ["delivery.weibo.fillDraft"],
+    "deliveryChannels": ["weibo"]
+  },
+  "permissions": ["browser.handoff:weibo"],
+  "optionalPermissions": [],
+  "i18n": {
+    "defaultLocale": "en",
+    "locales": {
+      "en": {
+        "displayName": "Weibo browser handoff",
+        "description": "Prepare a one-time handoff for the paired browser companion to fill a Weibo draft."
+      },
+      "zh": {
+        "displayName": "微博浏览器交接",
+        "description": "创建一次性交接，由配对的浏览器伴侣填入微博草稿。"
+      }
+    }
+  }
+}

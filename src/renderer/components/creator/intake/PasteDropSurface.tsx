@@ -2,6 +2,8 @@ import { useState, type ClipboardEvent, type DragEvent, type ReactNode } from 'r
 import { hasExternalFilesDrag, hasMaterialsDrag } from '@/renderer/components/albums/albumDrag';
 import { cn } from '@/renderer/lib/utils';
 import {
+  clipboardHasImagePayload,
+  clipboardHasUserText,
   clipboardImageFiles,
   imageFiles,
   isEditableTarget,
@@ -17,6 +19,7 @@ interface Props {
   overlay?: ReactNode;
   respectEditableImagePaste?: boolean;
   onImages(files: File[], source: RendererImageImportSource, sourceUrl: string): void;
+  onClipboardImage?(sourceUrl: string): void;
   onVideo?(file: File, source: 'DROP'): void;
   onText?(text: string): void;
 }
@@ -28,6 +31,7 @@ export function PasteDropSurface({
   overlay,
   respectEditableImagePaste,
   onImages,
+  onClipboardImage,
   onVideo,
   onText,
 }: Props) {
@@ -39,8 +43,19 @@ export function PasteDropSurface({
     if (files.length) {
       if (respectEditableImagePaste && isEditableTarget(event.target)) return;
       event.preventDefault();
+      event.stopPropagation();
       const sourceUrl = transferSourceUrl(event.clipboardData);
       onImages(files, 'PASTE', sourceUrl);
+      return;
+    }
+    if (
+      onClipboardImage &&
+      clipboardHasImagePayload(event.clipboardData) &&
+      !clipboardHasUserText(event.clipboardData)
+    ) {
+      event.preventDefault();
+      event.stopPropagation();
+      onClipboardImage(transferSourceUrl(event.clipboardData));
       return;
     }
     if (!onText || isEditableTarget(event.target)) return;
@@ -91,7 +106,7 @@ export function PasteDropSurface({
   return (
     <section
       className={cn('relative', className)}
-      onPaste={paste}
+      onPasteCapture={paste}
       onDragEnter={(event) => drag(event, true)}
       onDragOver={(event) => drag(event, true)}
       onDragLeave={(event) => {

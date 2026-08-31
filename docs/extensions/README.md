@@ -12,6 +12,7 @@ AIY 扩展是带有 `manifest.json` 的目录。当前宿主支持两类 manifes
 ## 文档导航
 
 - [manifest 参考](manifest.md)：通用字段、命名限制、兼容性、权限和本地化。
+- [权限模型](permissions.md)：声明、持久授权、操作范围、动态网络端点和浏览器渠道门禁。
 - [语言扩展与 i18n 模板](language-extensions.md)：`messages.json`、参数、分支、格式化和 fallback。
 - [能力扩展](capability-extensions.md)：贡献点、声明式 `IMAGE_API` 配置及当前边界。
 - [语言扩展 manifest 模板](templates/language/manifest.json)

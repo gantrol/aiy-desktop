@@ -266,7 +266,7 @@ export const TransitionPreviewMedia = forwardRef<HTMLSpanElement, Props>(functio
       }
       data-preview-edge-fill={needsEdgeFill ? 'true' : undefined}
     >
-      {placeholder}
+      {loadState === 'loaded' ? null : placeholder}
       {loadState === 'loaded' && needsEdgeFill && visibleSourceUrl && (
         <TransitionPreviewBackdrop sourceUrl={visibleSourceUrl} />
       )}

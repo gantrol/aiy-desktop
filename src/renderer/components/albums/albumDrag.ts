@@ -1,5 +1,5 @@
 import type { DragEvent as ReactDragEvent } from 'react';
-import type { MaterialSelectionTargetInput } from '@/shared/contracts';
+import type { AssetFileDragIntent, MaterialSelectionTargetInput } from '@/shared/contracts';
 
 export const ALBUM_DRAG_TYPE = 'application/x-aiy-album';
 export const CREATION_ITEM_DRAG_TYPE = 'application/x-aiy-creation-item';
@@ -20,11 +20,12 @@ interface MaterialAlbumDragSession {
 }
 
 interface NativeMaterialsDragSession {
-  id: number;
+  requestId: string;
+  intent: AssetFileDragIntent;
   targets: MaterialSelectionTargetInput[];
+  finish(): void;
 }
 
-let nextNativeMaterialsDragId = 0;
 let activeNativeMaterialsDrag: NativeMaterialsDragSession | null = null;
 let nextCreationCollectionDragId = 0;
 let activeCreationCollectionDrag: CreationCollectionDragSession | null = null;
@@ -47,32 +48,66 @@ function uniqueMaterialTargets(targets: readonly MaterialSelectionTargetInput[])
  * renderer can file existing materials instead of importing their files.
  */
 export function beginNativeMaterialsDrag(targets: readonly MaterialSelectionTargetInput[]) {
-  const id = ++nextNativeMaterialsDragId;
-  activeNativeMaterialsDrag = { id, targets: uniqueMaterialTargets(targets) };
+  activeNativeMaterialsDrag?.finish();
+  const requestId = window.crypto.randomUUID();
+  const intent: AssetFileDragIntent = 'EXPORT_FILES';
   const finish = () => {
     window.removeEventListener('dragend', finish, true);
-    if (activeNativeMaterialsDrag?.id === id) activeNativeMaterialsDrag = null;
+    if (activeNativeMaterialsDrag?.requestId === requestId) activeNativeMaterialsDrag = null;
   };
+  activeNativeMaterialsDrag = { requestId, intent, targets: uniqueMaterialTargets(targets), finish };
   window.addEventListener('dragend', finish, { capture: true, once: true });
-  return finish;
+  return { requestId, intent, finish };
+}
+
+export function finishNativeMaterialsDrag(requestId: string) {
+  if (activeNativeMaterialsDrag?.requestId === requestId) activeNativeMaterialsDrag.finish();
+}
+
+export function startNativeAssetFilesDrag(
+  event: ReactDragEvent<HTMLElement>,
+  assetIds: readonly string[],
+  targets: readonly MaterialSelectionTargetInput[],
+) {
+  const uniqueAssetIds = [...new Set(assetIds.filter(Boolean))];
+  if (!uniqueAssetIds.length) return null;
+  event.preventDefault();
+  event.stopPropagation();
+  const session = beginNativeMaterialsDrag(targets);
+  try {
+    window.desktopApi.assetFilesStartDrag({
+      requestId: session.requestId,
+      intent: session.intent,
+      assetIds: uniqueAssetIds,
+    });
+    return true;
+  } catch (reason) {
+    session.finish();
+    throw reason;
+  }
+}
+
+export function startNativeImageAssetDrag(event: ReactDragEvent<HTMLElement>, assetIds: readonly string[]) {
+  const uniqueAssetIds = [...new Set(assetIds.filter(Boolean))];
+  return startNativeAssetFilesDrag(
+    event,
+    uniqueAssetIds,
+    uniqueAssetIds.map((imageAssetId) => ({ kind: 'IMAGE_ASSET', imageAssetId })),
+  );
 }
 
 export function startImageAssetDrag(event: ReactDragEvent<HTMLElement>, assetIds: readonly string[]) {
   const uniqueAssetIds = [...new Set(assetIds.filter(Boolean))];
   if (!uniqueAssetIds.length) return null;
-  const targets = uniqueAssetIds.map((imageAssetId) => ({
-    kind: 'IMAGE_ASSET' as const,
-    imageAssetId,
-  }));
   if (event.shiftKey) {
     event.stopPropagation();
-    writeMaterialsDrag(event.dataTransfer, targets);
+    writeMaterialsDrag(
+      event.dataTransfer,
+      uniqueAssetIds.map((imageAssetId) => ({ kind: 'IMAGE_ASSET', imageAssetId })),
+    );
     return null;
   }
-  event.preventDefault();
-  event.stopPropagation();
-  const finishNativeDrag = beginNativeMaterialsDrag(targets);
-  return window.desktopApi.assetFilesStartDrag(uniqueAssetIds).finally(finishNativeDrag);
+  return startNativeImageAssetDrag(event, uniqueAssetIds);
 }
 
 export function hasMaterialsDrag(dataTransfer: DataTransfer) {

@@ -94,4 +94,50 @@ export interface PackInstallExactInput {
   releaseId: string;
 }
 
-export type PackImportLocalResult = { status: 'cancelled'; packId: null } | { status: 'imported'; packId: string };
+export type PackUpdateOperationDto = 'INSTALL' | 'UPDATE' | 'REINSTALL' | 'DOWNGRADE';
+export type PackUpdateChangeKindDto = 'ADDED' | 'UPDATED' | 'REMOVED';
+export type PackUpdateLocalStateDto = 'FOLLOW_PACK' | 'LOCAL_FORK' | 'CONFLICT';
+
+export interface PackUpdateChangeDto {
+  itemKey: string;
+  objectType: string;
+  changeKind: PackUpdateChangeKindDto;
+  localState: PackUpdateLocalStateDto;
+}
+
+export interface PackUpdateSummaryDto {
+  added: number;
+  updated: number;
+  removed: number;
+  unchanged: number;
+  localForks: number;
+  conflicts: number;
+}
+
+export interface PackImportPreviewDto {
+  requestId: string;
+  packId: string;
+  displayName: string;
+  operation: PackUpdateOperationDto;
+  currentReleaseId: string | null;
+  currentVersion: string | null;
+  targetReleaseId: string;
+  targetVersion: string;
+  targetContentHash: string;
+  summary: PackUpdateSummaryDto;
+  changes: PackUpdateChangeDto[];
+  changesTruncated: boolean;
+}
+
+export type PackImportLocalResult =
+  { status: 'cancelled'; preview: null } | { status: 'preview'; preview: PackImportPreviewDto };
+
+export interface PackApplyImportInput {
+  requestId: string;
+}
+
+export interface PackApplyImportResult {
+  packId: string;
+  releaseId: string;
+  version: string;
+}

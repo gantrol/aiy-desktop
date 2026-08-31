@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import { z } from 'zod';
 import type {
   LegacyLocalSpaceCandidateDto,
@@ -8,6 +9,8 @@ import type {
   LocalSpaceMigrationResult,
   LocalSpaceRegistryDto,
   LocalSpaceSwitchResult,
+  PackApplyImportResult,
+  PackImportPreviewDto,
   PackImportLocalResult,
   TransitionPreviewDto,
 } from '@/shared/contracts';
@@ -19,6 +22,7 @@ export interface LocalSpaceActions {
   discoverLegacy(): Promise<LegacyLocalSpaceCandidateDto[]>;
   migrateLegacy(candidateId: string, destinationParent: string | null): Promise<LocalSpaceMigrationResult>;
   cancelLegacyMigration(): void;
+  currentSpaceId(): string;
   currentSpaceName(): string;
   exportCurrent(destinationPath: string): Promise<LocalSpaceExportResult>;
   importArchive(archivePath: string, destinationParent: string): Promise<LocalSpaceImportResult>;
@@ -45,6 +49,7 @@ interface SaveSelection {
 
 const id = z.string().min(1).max(200);
 const packInstallExactSchema = z.object({ packId: id, releaseId: id });
+const pendingPackImportId = z.string().uuid();
 
 export function registerStorageIpc(
   database: LibraryDatabase,
@@ -55,9 +60,30 @@ export function registerStorageIpc(
   chooseImportArchive: () => Promise<DirectorySelection>,
   chooseImportDestination: () => Promise<DirectorySelection>,
   chooseCover: () => Promise<DirectorySelection>,
-  importStarterPack: () => string,
+  importStarterPack: () => Promise<string>,
   ipcMain: IpcHandlerRegistrar,
 ) {
+  const pendingPackImports = new Map<
+    string,
+    {
+      packagePath: string;
+      packageFingerprint: string;
+      spaceId: string;
+      preview: PackImportPreviewDto;
+      createdAt: number;
+    }
+  >();
+  const prunePendingPackImports = () => {
+    const expiresBefore = Date.now() - 30 * 60 * 1000;
+    for (const [requestId, pending] of pendingPackImports) {
+      if (pending.createdAt < expiresBefore) pendingPackImports.delete(requestId);
+    }
+    while (pendingPackImports.size > 8) {
+      const oldestRequestId = pendingPackImports.keys().next().value;
+      if (!oldestRequestId) break;
+      pendingPackImports.delete(oldestRequestId);
+    }
+  };
   ipcMain.handle('local-spaces:list', () => localSpaces.listSpaces());
   ipcMain.handle('local-spaces:discover-legacy', () => localSpaces.discoverLegacy());
   ipcMain.handle('local-spaces:migrate-legacy', async (event, rawCandidateId) => {
@@ -140,12 +166,46 @@ export function registerStorageIpc(
   ipcMain.handle('content-pack:import-local', async () => {
     const result = await chooseDirectory();
     if (result.canceled || !result.filePaths[0]) {
-      return { status: 'cancelled', packId: null } satisfies PackImportLocalResult;
+      return { status: 'cancelled', preview: null } satisfies PackImportLocalResult;
     }
+    prunePendingPackImports();
+    const requestId = randomUUID();
+    const { packageFingerprint, ...plannedPreview } = await database.previewContentPack(result.filePaths[0]);
+    const preview = { ...plannedPreview, requestId };
+    pendingPackImports.set(requestId, {
+      packagePath: result.filePaths[0],
+      packageFingerprint,
+      spaceId: database.getLocalSpace().id,
+      preview,
+      createdAt: Date.now(),
+    });
+    prunePendingPackImports();
     return {
-      status: 'imported',
-      packId: database.importContentPack(result.filePaths[0]),
+      status: 'preview',
+      preview,
     } satisfies PackImportLocalResult;
+  });
+  ipcMain.handle('content-pack:apply-local', async (_event, rawRequestId) => {
+    prunePendingPackImports();
+    const requestId = pendingPackImportId.parse(rawRequestId);
+    const pending = pendingPackImports.get(requestId);
+    if (!pending) throw new Error('Content pack update preview expired');
+    pendingPackImports.delete(requestId);
+    if (database.getLocalSpace().id !== pending.spaceId) {
+      throw new Error('The active local space changed after the content pack preview');
+    }
+    const packId = await database.importPreviewedContentPack(
+      pending.packagePath,
+      pending.preview.targetContentHash,
+      pending.packageFingerprint,
+    );
+    const installation = database.listPackInstallations().find((item) => item.packId === packId);
+    if (!installation?.selectedReleaseId) throw new Error('Content pack update did not select a release');
+    const release = database.getPackRelease(installation.selectedReleaseId);
+    return { packId, releaseId: release.id, version: release.version } satisfies PackApplyImportResult;
+  });
+  ipcMain.handle('content-pack:discard-local', (_event, rawRequestId) => {
+    pendingPackImports.delete(pendingPackImportId.parse(rawRequestId));
   });
   ipcMain.handle('content-pack:import-starter', () => importStarterPack());
   ipcMain.handle('pack-release:get', (_event, rawReleaseId) => {

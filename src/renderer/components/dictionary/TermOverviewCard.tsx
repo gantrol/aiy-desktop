@@ -11,6 +11,7 @@ import {
 } from '@/renderer/components/media/imageOverlayTone';
 import { ImageAmbientBackdrop } from '@/renderer/components/media/AmbientImage';
 import { MediaOverlayActionButton } from '@/renderer/components/media/MediaOverlayActionButton';
+import { mediaThumbnailUrl } from '@/renderer/components/media/mediaThumbnailUrl';
 
 export type TermCardOverlayTone = ImageOverlayTone;
 /** @deprecated Term cards now use a fixed light foreground over a dark scrim. */
@@ -30,6 +31,8 @@ export interface TermOverviewCardProps {
 }
 
 const DEFAULT_CARD_ASPECT_RATIO = DEFAULT_MEDIA_ASPECT_RATIO;
+const TERM_CARD_THUMBNAIL_SIZE = 512;
+const TERM_CARD_BACKDROP_THUMBNAIL_SIZE = 192;
 const TERM_CARD_OVERLAY_MOTION_STYLE = {
   transitionDuration: 'var(--motion-overlay)',
   transitionTimingFunction: 'var(--ease-enter)',
@@ -101,12 +104,16 @@ export function TermOverviewCard({
         >
           {preview && (
             <>
-              <ImageAmbientBackdrop src={preview.asset.mediaUrl} loading="lazy" crossOrigin="anonymous" />
+              <ImageAmbientBackdrop
+                src={mediaThumbnailUrl(preview.asset, TERM_CARD_BACKDROP_THUMBNAIL_SIZE)}
+                loading="lazy"
+                crossOrigin="anonymous"
+              />
               <img
                 data-asset-id={preview.asset.id}
                 className="absolute inset-0 z-10 size-full object-contain transition-transform duration-overlay ease-enter motion-reduce:transform-none motion-reduce:transition-none group-hover:scale-[1.015]"
                 crossOrigin="anonymous"
-                src={preview.asset.mediaUrl}
+                src={mediaThumbnailUrl(preview.asset, TERM_CARD_THUMBNAIL_SIZE)}
                 alt=""
                 draggable={false}
                 loading="lazy"

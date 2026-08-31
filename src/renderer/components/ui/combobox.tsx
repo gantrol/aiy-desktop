@@ -32,6 +32,12 @@ interface ComboboxProps {
   disabled?: boolean;
   className?: string;
   contentClassName?: string;
+  action?: {
+    label: string;
+    icon?: React.ReactNode;
+    disabled?: boolean;
+    onSelect(): void;
+  };
 }
 
 function Combobox({
@@ -45,6 +51,7 @@ function Combobox({
   disabled = false,
   className,
   contentClassName,
+  action,
 }: ComboboxProps) {
   const [open, setOpen] = React.useState(false);
   const selected = options.find((option) => option.value === value);
@@ -113,6 +120,24 @@ function Combobox({
               </CommandGroup>
             ))}
           </CommandList>
+          {action && (
+            <div className="border-t p-1">
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                className="w-full justify-start"
+                disabled={action.disabled}
+                onClick={() => {
+                  setOpen(false);
+                  action.onSelect();
+                }}
+              >
+                {action.icon}
+                {action.label}
+              </Button>
+            </div>
+          )}
         </Command>
       </PopoverContent>
     </Popover>

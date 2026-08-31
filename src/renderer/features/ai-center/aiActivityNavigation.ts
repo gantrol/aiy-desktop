@@ -9,6 +9,9 @@ export function aiActivityNavigationTarget(
   record: AiActivityRecord,
   data: Pick<BootstrapDto, 'creationDraft'> | null,
 ): AiActivityNavigationTarget | null {
+  if (record.kind === 'ARTICLE_CHECK') {
+    return { view: 'creator', location: { surface: 'article', articleId: record.run.articleId } };
+  }
   if (record.kind === 'VIDEO_DOCUMENT') {
     return {
       view: 'documents',
@@ -36,6 +39,6 @@ export function aiActivityNavigationTarget(
   if (scope?.kind !== 'DRAFT' || data?.creationDraft?.id !== scope.id) return null;
   return {
     view: 'creator',
-    location: { surface: 'new-creation', albumId: data.creationDraft.targetAlbumId },
+    location: { surface: 'creation-draft', draftId: data.creationDraft.id },
   };
 }

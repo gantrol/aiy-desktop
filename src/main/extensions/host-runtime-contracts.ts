@@ -1,30 +1,68 @@
 import type { ExtensionContributionPoint, ExtensionManifestDto } from '@/shared/contracts';
 import {
+  CODEX_HISTORY_SEARCH_EXTENSION_ID,
   CODEX_IMAGE_DISCOVERY_EXTENSION_ID,
+  CODEX_VISUALIZATION_DISCOVERY_EXTENSION_ID,
+  CODEX_VISUALIZATION_THREAD_CONTENT_PERMISSION,
   CODEX_USAGE_INVESTIGATOR_EXTENSION_ID,
   FEATURE_DEMO_EXTENSION_ID,
+  WEIBO_CHANNEL_EXTENSION_ID,
 } from '@/shared/extension-ids';
+import { EXTENSION_PERMISSION } from '@/shared/extension-permissions';
 
 export const CODEX_IMAGE_DISCOVERY_HOST_RUNTIME_ID = 'codex-image-discovery';
+export const CODEX_HISTORY_SEARCH_HOST_RUNTIME_ID = 'codex-history-search';
+export const CODEX_VISUALIZATION_DISCOVERY_HOST_RUNTIME_ID = 'codex-visualization-discovery';
 export const CODEX_USAGE_INVESTIGATOR_HOST_RUNTIME_ID = 'codex-usage-investigator';
 export const FEATURE_DEMO_HOST_RUNTIME_ID = 'feature-demo';
+export const ARTICLE_DELIVERY_HOST_RUNTIME_ID = 'article-draft-delivery';
+export const WEIBO_BROWSER_HANDOFF_HOST_RUNTIME_ID = 'weibo-browser-handoff';
 
 export const CODEX_IMAGE_DISCOVERY_PERMISSIONS = [
-  'filesystem.read:codex-generated-images',
-  'library.write:creations',
+  EXTENSION_PERMISSION.filesystemReadCodexGeneratedImages,
+  EXTENSION_PERMISSION.libraryCreateCreations,
 ] as const;
 
-export const CODEX_USAGE_INVESTIGATOR_PERMISSIONS = [
-  'filesystem.read:codex-session-usage',
-  'filesystem.write:user-selected-export',
+export const CODEX_HISTORY_SEARCH_PERMISSIONS = [
+  EXTENSION_PERMISSION.filesystemReadCodexSessionMetadata,
+  EXTENSION_PERMISSION.filesystemReadCodexThreadContent,
 ] as const;
 
-export const CODEX_USAGE_INVESTIGATOR_OPTIONAL_PERMISSIONS = ['codex:account-rate-limits'] as const;
+export const CODEX_VISUALIZATION_DISCOVERY_PERMISSIONS = [
+  EXTENSION_PERMISSION.filesystemReadCodexVisualizations,
+  EXTENSION_PERMISSION.filesystemReadCodexSessionMetadata,
+] as const;
+
+export const CODEX_VISUALIZATION_DISCOVERY_OPTIONAL_PERMISSIONS = [
+  CODEX_VISUALIZATION_THREAD_CONTENT_PERMISSION,
+] as const;
+
+export const CODEX_USAGE_INVESTIGATOR_PERMISSIONS = [EXTENSION_PERMISSION.filesystemReadCodexSessionUsage] as const;
+
+export const CODEX_USAGE_INVESTIGATOR_OPTIONAL_PERMISSIONS = [EXTENSION_PERMISSION.accountReadCodexRateLimits] as const;
 
 const CODEX_IMAGE_DISCOVERY_CONTRIBUTIONS: ExtensionManifestDto['contributes'] = {
   commands: ['codexImages.refresh'],
   workflows: ['codexImages.importGenerated', 'codexImages.recoverGeneration'],
   searchProviders: ['codex.generatedImages'],
+};
+
+const CODEX_HISTORY_SEARCH_CONTRIBUTIONS: ExtensionManifestDto['contributes'] = {
+  commands: ['codexHistory.refresh', 'codexHistory.rebuild'],
+  workflows: ['codexHistory.search'],
+  searchProviders: ['codex.threads'],
+};
+
+const CODEX_VISUALIZATION_DISCOVERY_CONTRIBUTIONS: ExtensionManifestDto['contributes'] = {
+  commands: [
+    'codexVisualizations.refresh',
+    'codexVisualizations.preview',
+    'codexVisualizations.open',
+    'codexVisualizations.reveal',
+    'codexVisualizations.export',
+  ],
+  workflows: ['codexVisualizations.manage'],
+  searchProviders: ['codex.visualizations'],
 };
 
 const CODEX_USAGE_INVESTIGATOR_CONTRIBUTIONS: ExtensionManifestDto['contributes'] = {
@@ -36,6 +74,11 @@ const FEATURE_DEMO_CONTRIBUTIONS: ExtensionManifestDto['contributes'] = {
   commands: ['featureDemo.play', 'featureDemo.export2k'],
 };
 
+const WEIBO_BROWSER_HANDOFF_CONTRIBUTIONS: ExtensionManifestDto['contributes'] = {
+  workflows: ['delivery.weibo.fillDraft'],
+  deliveryChannels: ['weibo'],
+};
+
 interface HostRuntimeContract {
   extensionId: string;
   permissions: readonly string[];
@@ -44,11 +87,23 @@ interface HostRuntimeContract {
 }
 
 const hostRuntimeContracts: Readonly<Record<string, HostRuntimeContract>> = {
+  [CODEX_HISTORY_SEARCH_HOST_RUNTIME_ID]: {
+    extensionId: CODEX_HISTORY_SEARCH_EXTENSION_ID,
+    permissions: CODEX_HISTORY_SEARCH_PERMISSIONS,
+    optionalPermissions: [],
+    contributes: CODEX_HISTORY_SEARCH_CONTRIBUTIONS,
+  },
   [CODEX_IMAGE_DISCOVERY_HOST_RUNTIME_ID]: {
     extensionId: CODEX_IMAGE_DISCOVERY_EXTENSION_ID,
     permissions: CODEX_IMAGE_DISCOVERY_PERMISSIONS,
     optionalPermissions: [],
     contributes: CODEX_IMAGE_DISCOVERY_CONTRIBUTIONS,
+  },
+  [CODEX_VISUALIZATION_DISCOVERY_HOST_RUNTIME_ID]: {
+    extensionId: CODEX_VISUALIZATION_DISCOVERY_EXTENSION_ID,
+    permissions: CODEX_VISUALIZATION_DISCOVERY_PERMISSIONS,
+    optionalPermissions: CODEX_VISUALIZATION_DISCOVERY_OPTIONAL_PERMISSIONS,
+    contributes: CODEX_VISUALIZATION_DISCOVERY_CONTRIBUTIONS,
   },
   [CODEX_USAGE_INVESTIGATOR_HOST_RUNTIME_ID]: {
     extensionId: CODEX_USAGE_INVESTIGATOR_EXTENSION_ID,
@@ -62,10 +117,45 @@ const hostRuntimeContracts: Readonly<Record<string, HostRuntimeContract>> = {
     optionalPermissions: [],
     contributes: FEATURE_DEMO_CONTRIBUTIONS,
   },
+  [WEIBO_BROWSER_HANDOFF_HOST_RUNTIME_ID]: {
+    extensionId: WEIBO_CHANNEL_EXTENSION_ID,
+    permissions: [EXTENSION_PERMISSION.browserHandoffWeibo],
+    optionalPermissions: [],
+    contributes: WEIBO_BROWSER_HANDOFF_CONTRIBUTIONS,
+  },
 };
+
+function validateArticleDeliveryRuntime(manifest: ExtensionManifestDto) {
+  const configuration = manifest.configuration;
+  if (configuration?.kind !== 'ARTICLE_DELIVERY') {
+    throw new Error(`Runtime ${ARTICLE_DELIVERY_HOST_RUNTIME_ID} requires ARTICLE_DELIVERY configuration`);
+  }
+  const channels = manifest.contributes.deliveryChannels ?? [];
+  if (
+    channels.length !== 1 ||
+    !sameContributions(manifest.contributes, {
+      workflows: ['articleDelivery.uploadDraft'],
+      deliveryChannels: channels,
+    })
+  ) {
+    throw new Error(`Extension ${manifest.id} does not match the article delivery contribution contract`);
+  }
+  const credentialPermissions = manifest.permissions.filter((permission) => permission.startsWith('credentials.use:'));
+  const expectedPermissions = [
+    ...configuration.endpoints.map((endpoint) => `network:${endpoint.siteUrl}`),
+    ...credentialPermissions,
+  ];
+  if (credentialPermissions.length !== 1 || !sameValues(manifest.permissions, expectedPermissions)) {
+    throw new Error(`Extension ${manifest.id} does not match the article delivery permission contract`);
+  }
+  if (manifest.optionalPermissions.length) {
+    throw new Error(`Extension ${manifest.id} article delivery runtime does not accept optional permissions`);
+  }
+}
 
 function sameValues(actual: readonly string[], expected: readonly string[]) {
   if (actual.length !== expected.length) return false;
+  if (new Set(actual).size !== actual.length) return false;
   const expectedValues = new Set(expected);
   return actual.every((value) => expectedValues.has(value));
 }
@@ -81,6 +171,10 @@ function sameContributions(actual: ExtensionManifestDto['contributes'], expected
 /** Fails closed: packaged capabilities can only bind to an exact host-owned runtime contract. */
 export function validatePackagedCapabilityRuntime(manifest: ExtensionManifestDto) {
   const runtimeId = manifest.runtime?.kind === 'HOST' ? manifest.runtime.id : '';
+  if (runtimeId === ARTICLE_DELIVERY_HOST_RUNTIME_ID) {
+    validateArticleDeliveryRuntime(manifest);
+    return;
+  }
   const contract = hostRuntimeContracts[runtimeId];
   if (!contract) throw new Error(`Unsupported packaged capability runtime: ${runtimeId || 'missing'}`);
   if (manifest.id !== contract.extensionId) {

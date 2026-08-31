@@ -27,6 +27,10 @@ export interface CreatorImageImportInput {
   items: CreatorImageImportItemInput[];
 }
 
+export interface CreatorClipboardReferenceImportInput {
+  context: CreatorImageImportContext;
+}
+
 export interface CreatorImageChooseInput {
   context: CreatorImageImportContext;
 }

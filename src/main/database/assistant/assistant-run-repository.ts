@@ -384,6 +384,11 @@ export class AssistantRunRepository {
       throw new Error('Assistant proposal revision context is required');
     }
     if (!input.afterPrompt.trim()) throw new Error('An adopted assistant prompt cannot be empty');
+    const run = this.get(input.runId);
+    if (!run?.proposal) throw new Error('Assistant proposal not found');
+    if (run.contextKey !== input.baseContextKey && run.proposal.adoptedContextKey !== input.baseContextKey) {
+      throw new Error('Assistant proposal does not match the current creation input');
+    }
     return this.setProposalStatus(input.runId, 'ADOPTED', input.authorizedContextKey, input);
   }
 

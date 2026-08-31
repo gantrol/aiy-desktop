@@ -9,6 +9,8 @@ import type {
   VideoDocumentTimelineSegment,
   VideoDocumentTranscriptCue,
 } from '@/shared/contracts';
+import { parseCodexThreadHref } from '@/shared/contracts/codex-thread';
+import { CodexThreadAnchor } from '@/renderer/components/content/CodexThreadAnchor';
 import { HoverCard, HoverCardContent, HoverCardTrigger } from '@/renderer/components/ui/hover-card';
 import { ImageAmbientBackdrop } from '@/renderer/components/media/AmbientImage';
 import { VideoDocumentInlineVideo } from '@/renderer/features/video-documents/VideoDocumentInlineVideo';
@@ -212,7 +214,7 @@ function createComponents({
     return (
       <button
         type="button"
-        className="inline-flex items-center gap-1 rounded-sm font-medium text-selected-foreground underline decoration-selected-border underline-offset-4 hover:decoration-current focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        className="inline-flex items-center gap-1 rounded-sm font-medium text-[var(--button-primary)] underline decoration-selected-border underline-offset-4 hover:decoration-current focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
         aria-label={labels.openAt(timestamp)}
         onClick={() => onSeek(timestampMs)}
       >
@@ -239,7 +241,7 @@ function createComponents({
         <HoverCardTrigger asChild>
           <button
             type="button"
-            className="inline-flex items-center gap-1 text-xs font-normal text-selected-foreground outline-none hover:underline hover:underline-offset-4 focus-visible:ring-2 focus-visible:ring-ring"
+            className="inline-flex items-center gap-1 text-xs font-normal text-[var(--button-primary)] outline-none hover:underline hover:underline-offset-4 focus-visible:ring-2 focus-visible:ring-ring"
             aria-label={labels.openTranscriptAt(range)}
             onClick={() => onOpenTranscript(startTimestampMs)}
           >
@@ -291,19 +293,11 @@ function createComponents({
     const headingId = headingIdForNode(node);
     const Tag = `h${level}` as 'h2' | 'h3' | 'h4' | 'h5' | 'h6';
     const segment = segmentForHeading(node);
-    const sizeClass =
-      level === 2
-        ? 'mb-4 mt-10 text-xl first:mt-0'
-        : level === 3
-          ? 'mb-3 mt-8 text-lg'
-          : level === 4
-            ? 'mb-2 mt-6 text-base'
-            : 'mb-2 mt-5 text-sm';
     return (
       <Tag
         id={headingId}
         data-article-heading-id={headingId}
-        className={`${sizeClass} flex scroll-mt-6 flex-wrap items-baseline gap-x-2 gap-y-1 font-semibold leading-tight`}
+        className="flex scroll-mt-6 flex-wrap items-baseline gap-x-2 gap-y-1"
       >
         <span>{segment ? headingWithoutSourceTime(children, segment, content?.sourceUrl ?? null) : children}</span>
         {segment && <SourceReference segment={segment} />}
@@ -320,9 +314,9 @@ function createComponents({
     h6: ({ node, children }) => <Heading level={6} node={node} children={children} />,
     p: ({ node, children }) =>
       mediaOnlyParagraph(node, bindingByPath) ? (
-        <div className="my-5 grid gap-4">{children}</div>
+        <div className="my-7 grid gap-5">{children}</div>
       ) : (
-        <p className="my-4 text-[15px] leading-7 text-foreground">{children}</p>
+        <p className="my-5 text-inherit">{children}</p>
       ),
     blockquote: ({ children }) => {
       const matchingCueSourceIndexes = cueSourceIndexesByText.get(normalizedText(visibleText(children))) ?? [];
@@ -332,20 +326,18 @@ function createComponents({
           (sourceIndex) => directQuoteCueSourceIndexes.has(sourceIndex) || originalLedCueSourceIndexes.has(sourceIndex),
         );
       if (content?.generation && !preserveQuote) return null;
-      return (
-        <blockquote className="my-5 border-l-2 pl-4 text-sm leading-6 text-muted-foreground">{children}</blockquote>
-      );
+      return <blockquote>{children}</blockquote>;
     },
-    ul: ({ children }) => <ul className="my-4 list-disc space-y-2 pl-6 text-[15px] leading-7">{children}</ul>,
-    ol: ({ children }) => <ol className="my-4 list-decimal space-y-2 pl-6 text-[15px] leading-7">{children}</ol>,
+    ul: ({ children }) => <ul>{children}</ul>,
+    ol: ({ children }) => <ol>{children}</ol>,
     table: ({ children }) => (
-      <div className="my-5 overflow-hidden rounded-lg border">
-        <table className="w-full border-collapse text-sm [&_tbody_tr:last-child_td]:border-b-0">{children}</table>
+      <div className="tableWrapper">
+        <table>{children}</table>
       </div>
     ),
-    thead: ({ children }) => <thead className="bg-surface-sunken text-left">{children}</thead>,
-    th: ({ children }) => <th className="border-b px-4 py-2.5 font-medium">{children}</th>,
-    td: ({ children }) => <td className="border-b px-4 py-2.5 align-top">{children}</td>,
+    thead: ({ children }) => <thead>{children}</thead>,
+    th: ({ children }) => <th>{children}</th>,
+    td: ({ children }) => <td>{children}</td>,
     img: ({ src, alt }) => {
       const binding = bindingByPath.get(normalizedMediaPath(src));
       const media = binding ? mediaById.get(binding.assetId) : null;
@@ -362,7 +354,7 @@ function createComponents({
         </span>
       );
       return (
-        <figure className="overflow-hidden rounded-lg border bg-surface">
+        <figure className="overflow-hidden rounded-md bg-surface">
           {binding.timestampMs === null ? (
             image
           ) : (
@@ -384,6 +376,17 @@ function createComponents({
       );
     },
     a: ({ href, children }) => {
+      const threadId = parseCodexThreadHref(href);
+      if (threadId) {
+        return (
+          <CodexThreadAnchor
+            threadId={threadId}
+            className="text-[var(--button-primary)] underline decoration-selected-border underline-offset-4"
+          >
+            {children}
+          </CodexThreadAnchor>
+        );
+      }
       const binding = bindingByPath.get(normalizedMediaPath(href));
       if (binding?.kind === 'VIDEO') {
         const media = mediaById.get(binding.assetId);

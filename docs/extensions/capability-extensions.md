@@ -43,7 +43,11 @@ manifest 负责让扩展中心知道“这个扩展是什么、贡献什么、�
 包可以独立更新版本、名称、描述、本地化和兼容范围，但不能放宽权限或把运行时绑定到另一个扩展 ID。当前开放的参考运行时包括：
 
 - `codex-image-discovery`：发现并导入 Codex 生成图片，清单位于 [`extensions/com.aiy.codex-image-discovery/`](../../extensions/com.aiy.codex-image-discovery/)。
-- `codex-usage-investigator`（今天Codex努力了吗）：以 Codex `state_*.sqlite` 为任务索引，将逐次 token、订阅套餐、模型、Standard/Fast 及 primary/secondary 额度窗口增量导入拓展专用 SQLite；每完成一个 rollout 即提交检查点，中断后从未完成文件继续。导入时以会话累计计数器还原真实增量，为每个用量事件生成不含内容的稳定指纹，并在读取时只保留跨会话历史重放中的全局最早事件。Credits 等值按事件的 Standard/Fast 模式应用公开倍率；会话缺少模式事件时，仅对 Codex 配置文件修改时间之后的事件使用其中的模式兜底，显式会话标记始终优先，推断结果合并进对应模式并在悬停模式名称时说明来源。API 等值固定采用公开 Standard 费率，仅作为对照而非账单。额度换算只统计 `resetsAt` 之前且落在 10080 分钟周窗口内的事件；`resetsAt` 仅作为下一次重置预测，按 5 分钟容差推进同一额度流，旧预测快照会被丢弃，预测前移时结束当前连续观测段。每个观测段以去重后的 Token 总数除以该段观测到的额度消耗百分点，并列出 Sol、Luna、Terra 及其他模型与 Standard/Fast 组合的 Token 占比、非缓存输入加输出 Token 与缓存输入占比。加工结果按原始数据修订号和算法版本缓存。拓展不会保存或导出 Prompt、回复、工作目录或本机绝对路径。清单位于 [`extensions/com.aiy.codex-usage-investigator/`](../../extensions/com.aiy.codex-usage-investigator/)。
+- `codex-history-search`：从 Codex 只读任务元数据与聊天投影建立扩展私有 FTS5 索引，搜索标题、用户消息和最终回答；支持归档状态、角色、子代理、工作区、分支和日期筛选。查询不逐次读取 rollout，索引不进入资料库、不上传，并在任一必需权限撤销时清空。清单位于 [`extensions/com.aiy.codex-history-search/`](../../extensions/com.aiy.codex-history-search/)。
+- `codex-visualization-discovery`：按 Codex 任务发现 HTML 交互可视化、静态可视化、SVG、PDF、线框图、UML 与图表源文件；HTML 仅按需进入关闭脚本、网络、表单和下载的短期沙箱静态预览，并受文件、请求数和总资源体积限制。能力包不改动来源文件，同时提供外部打开、定位和导出。清单位于 [`extensions/com.aiy.codex-visualization-discovery/`](../../extensions/com.aiy.codex-visualization-discovery/)。
+- `codex-usage-investigator`（今天Codex努力了吗）：以 Codex `state_*.sqlite` 为任务索引，将逐次 token、Chat turn 终态与完成耗时、会话来源、上下文压缩次数、订阅套餐、模型、Standard/Fast 及 primary/secondary 额度窗口增量导入拓展专用 SQLite；每完成一个 rollout 即提交检查点，中断后从未完成文件继续。Fast 实测按完成时刻归属所选范围，只比较同一规范化模型与同一推理强度中明确记录模式的完成轮次，分别计算 Standard/Fast `task_complete.duration_ms` 中位数，并以两者之比对照[官方 1.5 倍模型速度标称](https://learn.chatgpt.com/docs/agent-configuration/speed)；Fork 继承轮次只保留最早自有记录。导入时以会话累计计数器还原真实增量，为每个用量事件生成不含内容的稳定指纹，并在读取时只保留跨会话历史重放中的全局最早事件。可选详细统计以完整会话为一级单位，按末个自有终态 Chat turn 归属时间范围；Fork 继承的 Chat turn 与上下文压缩均不重复计数，用户直聊、Fork 与子代理分开比较，仅按单一规范化模型控制样本，Standard、Fast、混合及未知服务模式合并进入 Token 分桶。会话按轮数排序后采用动态近似等频分桶：组数随样本量对数增长，并限制为每约 5 个完整会话至多增加一组；同轮数会话不拆分，超大同轮数组后重新均衡剩余组。低于 5 个样本的组继续展示，但不参与成本最低点及趋势信号。API 等值统一折算为同模型在事件日期的 Standard 公开费率，因此模式未知的会话仍可进入 API 中位数。界面同时展示总体覆盖、跨比较组轮数信号、上下文压缩次数平均值、轮均 Token/API 中位数与会话峰值上下文范围。Credits 等值仍按事件的 Standard/Fast 模式应用公开倍率；会话缺少模式事件时，仅对 Codex 配置文件修改时间之后的事件使用其中的模式兜底，显式会话标记始终优先。API 等值仅作为公开费率对照而非账单。额度换算只统计 `resetsAt` 之前且落在 10080 分钟周窗口内的事件；`resetsAt` 仅作为下一次重置预测，按 5 分钟容差推进同一额度流，旧预测快照会被丢弃，预测前移时结束当前连续观测段。每个观测段以去重后的 Token 总数除以该段观测到的额度消耗百分点，并列出 Sol、Luna、Terra 及其他模型与 Standard/Fast 组合的 Token 占比、非缓存输入加输出 Token 与缓存输入占比。扫描与计算阶段分别报告可访问的后台进度，加工结果按原始数据修订号和算法版本缓存。拓展不会保存或导出 Prompt、回复、工作目录或本机绝对路径。清单位于 [`extensions/com.aiy.codex-usage-investigator/`](../../extensions/com.aiy.codex-usage-investigator/)。
+- `weibo-browser-handoff`：把当前内容和已验证的资产交给浏览器伴侣填入微博草稿。它只接受 `com.aiy.channel.weibo`，并要求 `browser.handoff:weibo`；最终发布仍由用户在微博页面完成。清单位于 [`extensions/com.aiy.channel.weibo/`](../../extensions/com.aiy.channel.weibo/)。
+- `article-draft-delivery`：由外部扩展声明唯一渠道、站点 origin、URL 前缀和凭据权限；宿主只代管密钥、捕获不可变文章修订、上传已绑定图片并调用固定的 AIY 文章导入协议。扩展包不执行 JavaScript，渠道包可在站点仓库独立维护和安装。
 
 ## 通用能力 manifest
 
@@ -62,7 +66,7 @@ manifest 负责让扩展中心知道“这个扩展是什么、贡献什么、�
     "searchProviders": ["example.assets"]
   },
   "permissions": ["network:https://api.example.com"],
-  "optionalPermissions": ["library.write:creations"]
+  "optionalPermissions": ["library.create:creations"]
 }
 ```
 
@@ -72,16 +76,17 @@ manifest 负责让扩展中心知道“这个扩展是什么、贡献什么、�
 
 `contributes` 当前识别以下键：
 
-| 键                | 声明的能力    |
-| ----------------- | ------------- |
-| `themes`          | 主题          |
-| `fields`          | 领域字段      |
-| `filters`         | 筛选器        |
-| `commands`        | 命令          |
-| `workflows`       | 工作流        |
-| `tools`           | 工具          |
-| `searchProviders` | 搜索 Provider |
-| `modelProviders`  | 模型 Provider |
+| 键                 | 声明的能力    |
+| ------------------ | ------------- |
+| `themes`           | 主题          |
+| `fields`           | 领域字段      |
+| `filters`          | 筛选器        |
+| `commands`         | 命令          |
+| `workflows`        | 工作流        |
+| `tools`            | 工具          |
+| `searchProviders`  | 搜索 Provider |
+| `modelProviders`   | 模型 Provider |
+| `deliveryChannels` | 外部投递渠道  |
 
 这些数组目前都是贡献 ID 列表，不是实现体。通用的外部贡献点注册 API 尚未开放；宿主实现必须显式识别扩展 ID 和贡献 ID。不要仅凭 manifest 声明就假定某个命令或 Provider 已可调用。
 
@@ -160,15 +165,18 @@ manifest 负责让扩展中心知道“这个扩展是什么、贡献什么、�
 
 ```json
 {
-  "permissions": ["network:https://api.example.com", "secrets:example-api-key"],
+  "permissions": ["network:https://api.example.com", "credentials.use:example-api-key"],
   "optionalPermissions": ["network:user-configured-https-endpoint"]
 }
 ```
 
 - 固定远端域名放入必需权限。
 - 只有用户选择自定义端点时才需要的网络能力放入可选权限。
-- manifest 不存 API Key；凭据由宿主的安全存储层管理。
+- manifest 不存 API Key；凭据由宿主的安全存储层管理，`credentials.use:*` 只允许宿主代为使用，不能读取原始值。
+- 自定义端点权限是声明模板。保存配置时，宿主把它收窄为 `network:<精确 origin>`，切换或清除配置后撤销旧 origin。
 - 声明权限不等于自动执行权限检查。宿主实现应在每条敏感路径再次校验授权。
+
+资料库中由用户选中的参考图、文件选择器返回的单次导出路径，以及用户明确要求打开的已验证文件属于操作范围，不应扩大成整个资料库或文件系统的持久权限。完整规范见 [扩展权限模型](permissions.md)。
 
 ## 宿主实现清单
 

@@ -208,9 +208,12 @@ export function useCreatorPanes({ showResultLibrary, showOutputInspector, compar
   useEffect(() => {
     const workspace = workspaceRef.current;
     if (!workspace) return undefined;
-    const observer = new ResizeObserver(([entry]) => setWorkspaceWidth(entry.contentRect.width));
+    const updateWorkspaceWidth = (width: number) => {
+      if (width > 0) setWorkspaceWidth(width);
+    };
+    const observer = new ResizeObserver(([entry]) => updateWorkspaceWidth(entry.contentRect.width));
     observer.observe(workspace);
-    setWorkspaceWidth(workspace.getBoundingClientRect().width);
+    updateWorkspaceWidth(workspace.getBoundingClientRect().width);
     return () => observer.disconnect();
   }, []);
 

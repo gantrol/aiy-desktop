@@ -111,6 +111,18 @@ export function contentLifecycleShape(db: Database.Database) {
   const membersSupportCreationItems = memberDefinition.includes("'CREATION_ITEM'");
   if (!batchSupportsCreationItems && !membersSupportCreationItems) return 'LEGACY_ENTITY_TYPES' as const;
   if (!batchSupportsCreationItems || !membersSupportCreationItems) unsupportedSchema();
+  if (
+    tables.has('image_breakdowns') &&
+    (!batchDefinition.includes("'IMAGE_BREAKDOWN'") || !memberDefinition.includes("'IMAGE_BREAKDOWN'"))
+  ) {
+    unsupportedSchema();
+  }
+  if (
+    tables.has('evaluation_suites') &&
+    (!batchDefinition.includes("'EVALUATION_SUITE'") || !memberDefinition.includes("'EVALUATION_SUITE'"))
+  ) {
+    unsupportedSchema();
+  }
   if (hasMissingAggregate(db) || hasMissingForm(db)) return 'MISSING_CREATION_ITEM_MEMBERS' as const;
   return 'COMPLETE' as const;
 }
@@ -125,7 +137,8 @@ function hasMissingAggregate(db: Database.Database) {
           ON form.entity_type = member.entity_type AND form.entity_id = member.entity_id
         JOIN content_lifecycle_batches batch ON batch.id = member.batch_id
         WHERE member.entity_type IN (
-          'PROMPT_SERIES', 'INSPIRATION_STASH', 'SOCIAL_POST', 'ARTICLE', 'VIDEO_DOCUMENT'
+          'PROMPT_SERIES', 'INSPIRATION_STASH', 'IMAGE_BREAKDOWN', 'SOCIAL_POST', 'ARTICLE', 'VIDEO_DOCUMENT',
+          'EVALUATION_SUITE'
         )
           AND (form.deleted_at IS NULL OR (batch.action = 'DELETE' AND form.deleted_at = batch.changed_at))
           AND NOT EXISTS (
@@ -151,7 +164,8 @@ function hasMissingForm(db: Database.Database) {
         WHERE aggregate.entity_type = 'CREATION_ITEM'
           AND (form.deleted_at IS NULL OR (batch.action = 'DELETE' AND form.deleted_at = batch.changed_at))
           AND form.entity_type IN (
-            'PROMPT_SERIES', 'INSPIRATION_STASH', 'SOCIAL_POST', 'ARTICLE', 'VIDEO_DOCUMENT'
+            'PROMPT_SERIES', 'INSPIRATION_STASH', 'IMAGE_BREAKDOWN', 'SOCIAL_POST', 'ARTICLE', 'VIDEO_DOCUMENT',
+            'EVALUATION_SUITE'
           )
           AND NOT EXISTS (
             SELECT 1 FROM content_lifecycle_batch_members member

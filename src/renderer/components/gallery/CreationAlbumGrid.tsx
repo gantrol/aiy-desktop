@@ -437,6 +437,7 @@ export function CollectionAlbumCard({
   const [hoveredAssetIndex, setHoveredAssetIndex] = useState<number | null>(null);
   const [previewChromeHidden, setPreviewChromeHidden] = useState(false);
   const [dropActive, setDropActive] = useState(false);
+  const [contextMenuOpen, setContextMenuOpen] = useState(false);
   const creation = album.systemKey === 'CREATION_SERIES';
   const writableMaterialAlbum = album.kind === 'USER';
   const albumDragKind = collectionDragKind(
@@ -654,11 +655,13 @@ export function CollectionAlbumCard({
   );
 
   return (
-    <ContextMenu>
+    <ContextMenu onOpenChange={setContextMenuOpen}>
       <ContextMenuTrigger asChild>{card}</ContextMenuTrigger>
-      <ContextMenuContent>
-        <ActionContextMenuItems actions={actions} />
-      </ContextMenuContent>
+      {contextMenuOpen && (
+        <ContextMenuContent>
+          <ActionContextMenuItems actions={actions} />
+        </ContextMenuContent>
+      )}
     </ContextMenu>
   );
 }

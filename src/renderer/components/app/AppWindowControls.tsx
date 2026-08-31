@@ -2,9 +2,11 @@ import { useEffect, useState } from 'react';
 import { CopyIcon, MinusIcon, SquareIcon, XIcon } from 'lucide-react';
 import { Button } from '@/renderer/components/ui/button';
 import { useI18n } from '@/renderer/i18n/useI18n';
+import { useArticleEditorSessionFlush } from '@/renderer/components/creator/article-editor/ArticleEditorSessionProvider';
 
 export function AppWindowControls() {
   const labels = useI18n().messages.app.windowControls;
+  const flushArticleEditors = useArticleEditorSessionFlush();
   const [maximized, setMaximized] = useState(false);
   const customControls = window.desktopApi.appPlatform !== 'darwin';
 
@@ -56,7 +58,7 @@ export function AppWindowControls() {
         className="h-9 w-12 rounded-none hover:bg-destructive hover:text-destructive-foreground active:bg-destructive-hover focus-visible:ring-inset focus-visible:ring-offset-0"
         aria-label={labels.close}
         title={labels.close}
-        onClick={() => void window.desktopApi.appWindowClose()}
+        onClick={() => void flushArticleEditors().finally(() => window.desktopApi.appWindowClose())}
       >
         <XIcon className="size-3.5" />
       </Button>

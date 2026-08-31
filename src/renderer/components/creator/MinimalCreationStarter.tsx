@@ -22,6 +22,7 @@ import { GenerationLauncher } from '@/renderer/components/creator/GenerationLaun
 import type { GenerationReadiness } from '@/renderer/components/creator/generationReadiness';
 import { InspirationStashAction } from '@/renderer/components/creator/InspirationStashAction';
 import type { AppliedWordPalette } from '@/renderer/components/creator/utils';
+import { CompanionHandoffButton } from '@/renderer/features/browser-companion/CompanionHandoffButton';
 import { Button } from '@/renderer/components/ui/button';
 import { ScrollArea } from '@/renderer/components/ui/scroll-area';
 import { useI18n } from '@/renderer/i18n/useI18n';
@@ -39,6 +40,7 @@ interface Props {
   composerRef: Ref<CreatorPromptComposerHandle>;
   assistantBusy: boolean;
   assistantMode: CreationAssistantMode | null;
+  companionHandoffBusy: boolean;
   canRequestIdeas: boolean;
   canBuildPrompt: boolean;
   routes: ImageGenerationRouteDto[];
@@ -59,7 +61,9 @@ interface Props {
   canvasPicker: ReactNode;
   videoPicker?: ReactNode;
   references: ReactNode;
+  sourceContext?: ReactNode;
   experiments?: ReactNode;
+  showStashAction?: boolean;
   onPromptNodesChange(nodes: CreatorPromptNodeInput[]): void;
   onOpenTerm(term: TermListItem): void;
   onOpenRecipe(paletteId: string): void;
@@ -68,6 +72,7 @@ interface Props {
   onRequestRecipeInsert(palette: WordPaletteDto, position: number): void;
   onRequestIdeas(): void | Promise<void>;
   onBuildPrompt(webSearchMode: AssistantWebSearchMode): void | Promise<void>;
+  onHandoffPrompt(): void;
   onGenerationTargetsChange(targets: GenerationTargetInput[]): void;
   onConfigureExtension(extensionId: string): void;
   onGenerate(): void;
@@ -89,6 +94,7 @@ export function MinimalCreationStarter({
   composerRef,
   assistantBusy,
   assistantMode,
+  companionHandoffBusy,
   canRequestIdeas,
   canBuildPrompt,
   routes,
@@ -109,7 +115,9 @@ export function MinimalCreationStarter({
   canvasPicker,
   videoPicker,
   references,
+  sourceContext,
   experiments,
+  showStashAction = true,
   onPromptNodesChange,
   onOpenTerm,
   onOpenRecipe,
@@ -118,6 +126,7 @@ export function MinimalCreationStarter({
   onRequestRecipeInsert,
   onRequestIdeas,
   onBuildPrompt,
+  onHandoffPrompt,
   onGenerationTargetsChange,
   onConfigureExtension,
   onGenerate,
@@ -168,6 +177,7 @@ export function MinimalCreationStarter({
               fullWindow && 'flex min-h-0 flex-1 flex-col',
             )}
           >
+            {sourceContext}
             <div className="flex h-10 shrink-0 items-center justify-between gap-3 px-5 pt-1">
               <span className="text-xs font-semibold text-foreground-secondary">
                 {locale === 'zh' ? '输入' : 'Input'}
@@ -226,6 +236,14 @@ export function MinimalCreationStarter({
                 {canvasPicker}
               </div>
               <div data-prompt-assistant-actions className="ml-auto flex items-center gap-1">
+                <CompanionHandoffButton
+                  variant="ghost"
+                  disabled={!canBuildPrompt || assistantBusy || companionHandoffBusy}
+                  busy={companionHandoffBusy}
+                  onHandoff={() => onHandoffPrompt()}
+                  targets={['chatgpt']}
+                  zh={locale === 'zh'}
+                />
                 <Button
                   type="button"
                   variant="ghost"
@@ -260,16 +278,18 @@ export function MinimalCreationStarter({
                 generationCount={generationCount}
                 readiness={readiness}
                 starting={starting}
-                interactionBlocked={stashing}
+                interactionBlocked={showStashAction && stashing}
                 secondaryAction={
-                  <InspirationStashAction
-                    locale={locale}
-                    ready={stashReady}
-                    busy={stashing}
-                    saved={stashed}
-                    blocked={starting}
-                    onClick={onStashInspiration}
-                  />
+                  showStashAction ? (
+                    <InspirationStashAction
+                      locale={locale}
+                      ready={stashReady}
+                      busy={stashing}
+                      saved={stashed}
+                      blocked={starting}
+                      onClick={onStashInspiration}
+                    />
+                  ) : undefined
                 }
                 onGenerationTargetsChange={onGenerationTargetsChange}
                 onConfigureExtension={onConfigureExtension}

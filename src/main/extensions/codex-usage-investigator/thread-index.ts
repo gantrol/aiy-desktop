@@ -11,16 +11,22 @@ const indexedThreadSchema = z
   .object({
     id: z.string().min(1).max(512),
     rolloutPath: z.string().min(1).max(32_000),
+    createdAtMs: z.number().int().nonnegative().safe(),
     updatedAtMs: z.number().int().nonnegative().safe(),
     tokensUsed: z.number().int().positive().safe(),
     model: z.string().max(200).nullable(),
+    threadSource: z.string().trim().max(200).nullable(),
   })
   .strict();
+
+export type CodexUsageThreadSource = 'USER' | 'SUBAGENT' | 'OTHER';
 
 export interface IndexedCodexUsageFile {
   filePath: string;
   sessionId: string;
   fallbackModel: string | null;
+  threadSource: CodexUsageThreadSource;
+  createdAtMs: number;
   size: number;
   mtimeMs: number;
   mtimeNs: string;
@@ -78,14 +84,24 @@ function readIndexedThreads(databasePath: string) {
     const updatedAtExpression = columns.has('updated_at_ms')
       ? 'COALESCE(updated_at_ms, updated_at * 1000)'
       : 'updated_at * 1000';
+    const createdAtExpression = columns.has('created_at_ms')
+      ? columns.has('created_at')
+        ? `COALESCE(created_at_ms, created_at * 1000, ${updatedAtExpression})`
+        : `COALESCE(created_at_ms, ${updatedAtExpression})`
+      : columns.has('created_at')
+        ? `COALESCE(created_at * 1000, ${updatedAtExpression})`
+        : updatedAtExpression;
     const modelExpression = columns.has('model') ? 'model' : 'NULL';
+    const threadSourceExpression = columns.has('thread_source') ? 'thread_source' : 'NULL';
     const statement = database.prepare(`
       SELECT
         id,
         rollout_path AS rolloutPath,
+        ${createdAtExpression} AS createdAtMs,
         ${updatedAtExpression} AS updatedAtMs,
         tokens_used AS tokensUsed,
-        ${modelExpression} AS model
+        ${modelExpression} AS model,
+        ${threadSourceExpression} AS threadSource
       FROM threads
       WHERE tokens_used > 0
         AND rollout_path <> ''
@@ -96,6 +112,12 @@ function readIndexedThreads(databasePath: string) {
   } finally {
     database.close();
   }
+}
+
+function normalizedThreadSource(value: string | null): CodexUsageThreadSource {
+  if (value === 'user') return 'USER';
+  if (value === 'subagent') return 'SUBAGENT';
+  return 'OTHER';
 }
 
 async function safeRolloutRoots(codexHome: string) {
@@ -136,6 +158,8 @@ async function validateIndexedFile(
         filePath: realFile,
         sessionId: row.id,
         fallbackModel: row.model,
+        threadSource: normalizedThreadSource(row.threadSource),
+        createdAtMs: row.createdAtMs,
         size: Number(metadata.size),
         mtimeMs,
         mtimeNs: metadata.mtimeNs.toString(),

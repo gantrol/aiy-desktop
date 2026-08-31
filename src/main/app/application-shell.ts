@@ -1,4 +1,4 @@
-import { app, BrowserWindow, dialog, Menu, nativeImage, Tray } from 'electron';
+import { app, BrowserWindow, dialog, Menu, nativeImage, screen, Tray, type Rectangle } from 'electron';
 import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import type { CodexService } from '@/main/assistant/codex-service';
@@ -12,10 +12,36 @@ import { closeSandboxedImageDecoder } from '@/main/media/sandboxed-image-decoder
 import type { BackgroundGenerationClient } from '@/main/model-worker/client';
 import { productNameForLocale } from '@/shared/product';
 import { appWindowStateSchema } from '@/shared/contracts/app-window';
+import { WindowStateStore } from '@/main/app/window-state-store';
+
+const DEFAULT_WINDOW_WIDTH = 1_500;
+const DEFAULT_WINDOW_HEIGHT = 920;
+const MINIMUM_WINDOW_WIDTH = 1_100;
+const MINIMUM_WINDOW_HEIGHT = 720;
+
+function clamp(value: number, minimum: number, maximum: number) {
+  return Math.min(Math.max(value, minimum), maximum);
+}
+
+function restoreWindowBounds(bounds: Rectangle): Rectangle {
+  const display = screen.getDisplayMatching(bounds);
+  const workArea = display.workArea;
+  const width = Math.min(Math.max(bounds.width, MINIMUM_WINDOW_WIDTH), workArea.width);
+  const height = Math.min(Math.max(bounds.height, MINIMUM_WINDOW_HEIGHT), workArea.height);
+  return {
+    x: clamp(bounds.x, workArea.x, Math.max(workArea.x, workArea.x + workArea.width - width)),
+    y: clamp(bounds.y, workArea.y, Math.max(workArea.y, workArea.y + workArea.height - height)),
+    width,
+    height,
+  };
+}
 
 interface DesktopApplicationShellOptions {
   backgroundColor: string;
   title: string;
+  allowWindowPresentation: boolean;
+  onSecondInstanceArguments?(commandLine: string[]): void;
+  onOpenUrl?(url: string): void;
   backgroundModelTasks?: {
     readonly activeCount: number;
     cancelAll(): Promise<void>;
@@ -71,6 +97,7 @@ export class DesktopApplicationShell {
   private readonly BACKGROUND_AUTO_EXIT_DELAY_MS = 30_000;
 
   private readonly showMainWindow = () => {
+    if (!this.options.allowWindowPresentation) return;
     this.quitAfterBackgroundTasks = false;
     if (this.backgroundAutoExitTimer) clearTimeout(this.backgroundAutoExitTimer);
     this.backgroundAutoExitTimer = null;
@@ -555,11 +582,13 @@ export class DesktopApplicationShell {
 
   readonly createWindow = () => {
     const expectedRendererUrl = this.developmentRendererUrl() ?? new URL(PACKAGED_RENDERER_URL);
+    const windowStateStore = new WindowStateStore(app.getPath('userData'));
+    const restoredWindowState = windowStateStore.load();
+    const restoredBounds = restoredWindowState ? restoreWindowBounds(restoredWindowState.normalBounds) : null;
     const window = new BrowserWindow({
-      width: 1500,
-      height: 920,
-      minWidth: 1100,
-      minHeight: 720,
+      ...(restoredBounds ?? { width: DEFAULT_WINDOW_WIDTH, height: DEFAULT_WINDOW_HEIGHT }),
+      minWidth: MINIMUM_WINDOW_WIDTH,
+      minHeight: MINIMUM_WINDOW_HEIGHT,
       backgroundColor: this.options.backgroundColor,
       title: this.options.title,
       icon: this.appIcon(),
@@ -575,14 +604,42 @@ export class DesktopApplicationShell {
     });
     this.mainWindow = window;
     this.rendererEvents.attach(window);
+    let windowStateSaveTimer: ReturnType<typeof setTimeout> | null = null;
+    const saveWindowState = () => {
+      if (windowStateSaveTimer) clearTimeout(windowStateSaveTimer);
+      windowStateSaveTimer = null;
+      if (window.isDestroyed() || window.isMinimized()) return;
+      try {
+        windowStateStore.save({
+          schemaVersion: 1,
+          normalBounds: window.getNormalBounds(),
+          maximized: window.isMaximized(),
+        });
+      } catch (error) {
+        console.error('[window-state] Failed to persist window state', error);
+      }
+    };
+    const scheduleWindowStateSave = () => {
+      if (windowStateSaveTimer) clearTimeout(windowStateSaveTimer);
+      windowStateSaveTimer = setTimeout(saveWindowState, 250);
+    };
     const sendWindowState = () =>
       this.rendererEvents.send(
         'app-window:state-changed',
         appWindowStateSchema.parse({ maximized: window.isMaximized() }),
       );
-    window.on('maximize', sendWindowState);
-    window.on('unmaximize', sendWindowState);
+    window.on('move', scheduleWindowStateSave);
+    window.on('resize', scheduleWindowStateSave);
+    window.on('maximize', () => {
+      sendWindowState();
+      scheduleWindowStateSave();
+    });
+    window.on('unmaximize', () => {
+      sendWindowState();
+      scheduleWindowStateSave();
+    });
     window.on('close', (event) => {
+      saveWindowState();
       if (this.appQuitRequested) return;
       if (this.appUpdateInstallPreparing) {
         event.preventDefault();
@@ -619,6 +676,7 @@ export class DesktopApplicationShell {
     });
     installWindowNavigationPolicy(window, expectedRendererUrl);
     window.on('closed', () => {
+      if (windowStateSaveTimer) clearTimeout(windowStateSaveTimer);
       closeSandboxedImageDecoder();
       if (this.mainWindow === window) this.mainWindow = null;
     });
@@ -627,6 +685,7 @@ export class DesktopApplicationShell {
     } else {
       void window.loadURL(PACKAGED_RENDERER_URL);
     }
+    if (restoredWindowState?.maximized) window.maximize();
     window.once('ready-to-show', async () => {
       const restartReadyFile = process.env.AIY_RESTART_READY_FILE;
       if (restartReadyFile) {
@@ -634,7 +693,7 @@ export class DesktopApplicationShell {
         writeFileSync(restartReadyFile, 'ready', 'utf8');
         delete process.env.AIY_RESTART_READY_FILE;
       }
-      window.show();
+      if (this.options.allowWindowPresentation) window.show();
       this.updateAppTray();
       this.activeLibraryContext?.startBackgroundServices();
       this.appUpdates?.startAutomaticChecks();
@@ -646,7 +705,14 @@ export class DesktopApplicationShell {
     private readonly rendererEvents: RendererEventDispatcher,
     private readonly options: DesktopApplicationShellOptions,
   ) {
-    app.on('second-instance', () => {
+    app.on('second-instance', (_event, commandLine) => {
+      this.options.onSecondInstanceArguments?.(commandLine);
+      this.showMainWindow();
+    });
+
+    app.on('open-url', (event, url) => {
+      event.preventDefault();
+      this.options.onOpenUrl?.(url);
       this.showMainWindow();
     });
 

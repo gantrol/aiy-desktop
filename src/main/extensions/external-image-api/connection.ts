@@ -155,8 +155,10 @@ export class ExternalImageApiConnections {
 
   runtimeConfigurations(
     permissionGranted: (extensionId: ExternalImageApiExtensionId, permission: string) => boolean = () => true,
+    extensionActivated: (extensionId: ExternalImageApiExtensionId) => boolean = () => true,
   ): ExternalImageApiRuntimeConfiguration[] {
     return EXTERNAL_IMAGE_API_EXTENSION_IDS.flatMap((extensionId) => {
+      if (!extensionActivated(extensionId)) return [];
       try {
         const record = this.readRecord(extensionId);
         if (!record) return [];

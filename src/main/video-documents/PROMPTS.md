@@ -5,7 +5,7 @@
 `generation-pipeline.ts` 只负责阶段编排、预算、重试和校验，不得再内联业务 Prompt。
 
 组件边界、运行时序、领域合同、状态机和版本失效规则见
-[视频图文生成运行时与 Prompt Profile 设计](../../../docs/design/video-article-generation-prompt-runtime.md)。
+[v0.3.8 文档、视频与发布设计](../../../../../tools/docs/v0.3.8/08-documents-video-and-publishing.md)。
 
 ## Profile 规则
 

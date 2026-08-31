@@ -14,6 +14,8 @@
     "addedToAlbum": "已加入图集",
     "useInCreation": "作为参考图开始创作",
     "addedToCreation": "已加入创作参考图",
+    "imageBreakdown": "拆解图片",
+    "imageBreakdownCreated": "已新建图片拆解",
     "saveAs": "导出图片",
     "reveal": "打开所在文件目录",
     "revealPlacement": "打开资料库映射目录",
@@ -33,7 +35,7 @@
     "failed": "文件操作失败"
   },
   "app": {
-    "title": "AIY生图管理工具",
+    "title": "AIY",
     "libraryFallback": "本地空间",
     "loading": "正在打开本地空间…",
     "retry": "重试",
@@ -54,11 +56,29 @@
       "documents": "文稿",
       "dictionary": "参考",
       "gallery": "图库",
-      "codexImages": "Codex 图片",
+      "companion": "伴侣",
+      "codexImages": "Codex",
       "transitionShowcase": "过场调试",
       "packs": "拓展",
       "aiCenter": "AI 中心",
       "settings": "设置"
+    },
+    "workspace": {
+      "tabs": "工作区标签页",
+      "newTab": "新建标签页",
+      "closeTab": "关闭标签页",
+      "closeOthers": "关闭其他标签页",
+      "moveLeft": "向左移动标签页",
+      "moveRight": "向右移动标签页",
+      "moveToOtherGroup": "移至另一组",
+      "layout": "工作区布局",
+      "openToSide": "在旁边打开",
+      "splitColumns": "左右分屏",
+      "splitRows": "上下分屏",
+      "mergeGroups": "合并分组",
+      "resetLayout": "恢复默认布局",
+      "resizeColumns": "调整左右分组大小",
+      "resizeRows": "调整上下分组大小"
     },
     "windowControls": {
       "label": "窗口控制",
@@ -208,6 +228,7 @@
       "creationAlbum": "创作图集",
       "materialAlbum": "素材图集",
       "promptSeries": "图像创作",
+      "imageBreakdown": "图片拆解",
       "ideaCreation": "构思创作",
       "inspirationStash": "灵感",
       "socialPost": "贴图创作",
@@ -354,6 +375,7 @@
       "experimentStarted": "实验已发起",
       "experimentDirector": "实验编排",
       "articleCall": "文稿生成",
+      "articleCheckCall": "文章检查",
       "transcriptionCall": "语音识别",
       "translationCall": "字幕翻译",
       "usage": {
@@ -471,6 +493,7 @@
       "generate": "生图",
       "edit": "编辑",
       "videoArticle": "视频转文稿",
+      "articleCheck": "文章检查",
       "transcribe": "语音识别",
       "translate": "字幕翻译"
     },
@@ -506,6 +529,8 @@
     },
     "actions": {
       "locate": "定位",
+      "openArticle": "打开文章",
+      "addComments": "加入评论",
       "openCodex": "打开 Codex",
       "retry": "重试",
       "reEdit": "重新编辑",
@@ -534,6 +559,10 @@
       "quality": "质量",
       "dimensions": "尺寸",
       "result": "结果",
+      "findings": "检查意见",
+      "noFindings": "未发现明确问题",
+      "commentsAdded": "已加入文章评论",
+      "commentsPending": "等待加入评论",
       "sourceImage": "来源图片",
       "codexTask": "Codex 任务",
       "createdAt": "发起时间",
@@ -588,6 +617,7 @@
       "optimizeAction": "AI帮写",
       "titleAction": "起标题",
       "subtitleTranslationAction": "翻译字幕",
+      "articleCheckAction": "检查文章",
       "model": "模型",
       "codexModel": "模型",
       "reasoningEffort": "推理强度",
@@ -710,12 +740,17 @@
       "plugins": "拓展与集成",
       "contentPacks": "内容包"
     },
+    "pluginTabs": {
+      "feature": "功能",
+      "settings": "设置"
+    },
     "enabled": "已启用",
     "disabled": "已禁用",
     "compatible": "兼容",
     "incompatible": "不兼容",
     "required": "必需",
     "optional": "可选",
+    "runtimeScoped": "当前端点",
     "kinds": {
       "CAPABILITY": "功能拓展",
       "LANGUAGE": "语言拓展"
@@ -770,7 +805,8 @@
       "workflows": "工作流",
       "tools": "工具",
       "searchProviders": "搜索 Provider",
-      "modelProviders": "模型 Provider"
+      "modelProviders": "模型 Provider",
+      "deliveryChannels": "投递渠道"
     },
     "notices": {
       "enabled": "拓展已启用",
@@ -910,6 +946,191 @@
         }
       }
     },
+    "codexArtifacts": {
+      "title": "Codex",
+      "unavailable": "Codex 功能不可用",
+      "tabs": {
+        "history": "记录",
+        "usage": "用量",
+        "images": "图片",
+        "visualizations": "可视化"
+      },
+      "actions": {
+        "showInSidebar": "在侧边栏显示 Codex"
+      }
+    },
+    "codexHistorySearch": {
+      "title": "Codex 聊天记录",
+      "searchLabel": "搜索 Codex 聊天记录",
+      "searchPlaceholder": "搜索任务标题和消息",
+      "unavailable": "Codex 聊天记录不可用",
+      "empty": "没有匹配的 Codex 会话",
+      "subagent": "子代理",
+      "matches": {
+        "$params": ["count"],
+        "$template": "{count} 个会话"
+      },
+      "matchOccurrences": {
+        "$params": ["count"],
+        "$template": "{count} 处匹配"
+      },
+      "indexed": {
+        "$params": ["threads", "messages"],
+        "$template": "{threads} 个会话 · {messages} 条消息"
+      },
+      "indexing": {
+        "$params": ["progress"],
+        "$template": "正在建立索引 {progress}%"
+      },
+      "archive": {
+        "ALL": "全部",
+        "ACTIVE": "活跃",
+        "ARCHIVED": "已归档"
+      },
+      "roles": {
+        "ALL": "全部文本",
+        "USER": "用户",
+        "ASSISTANT": "助手"
+      },
+      "filters": {
+        "archive": "归档状态",
+        "role": "消息角色",
+        "subagents": "子代理",
+        "workspace": "工作区",
+        "workspacePlaceholder": "筛选工作区路径",
+        "branch": "分支",
+        "branchPlaceholder": "筛选分支",
+        "project": "项目",
+        "allProjects": "全部项目",
+        "searchProjects": "搜索项目",
+        "noProjects": "没有匹配的项目",
+        "projectThreads": {
+          "$params": ["count"],
+          "$template": "{count} 个会话"
+        },
+        "session": "会话",
+        "allSessions": "全部会话",
+        "searchSessions": "搜索会话",
+        "noSessions": "没有匹配的会话",
+        "date": "日期",
+        "more": "筛选",
+        "from": "开始日期",
+        "to": "结束日期"
+      },
+      "actions": {
+        "refresh": "刷新索引",
+        "rebuild": "重建索引",
+        "clearFilters": "清除筛选",
+        "loadingMore": "正在加载更多会话",
+        "retry": "重试"
+      }
+    },
+    "codexVisualizationDiscovery": {
+      "title": "Codex 可视化",
+      "root": "来源目录",
+      "unavailable": "Codex 可视化目录不可用",
+      "empty": "未发现可视化结果",
+      "emptyHidden": "没有已隐藏的可视化会话",
+      "untitledTask": "无标题 Codex 任务",
+      "sessions": {
+        "$params": ["count"],
+        "$template": "{count} 个会话"
+      },
+      "artifacts": {
+        "$params": ["count"],
+        "$template": "{count} 个产物"
+      },
+      "results": {
+        "$params": ["count"],
+        "$template": "{count} 个结果"
+      },
+      "supporting": {
+        "$params": ["count"],
+        "$template": "{count} 个配套文件"
+      },
+      "matches": {
+        "$params": ["count"],
+        "$template": "{count} 个匹配"
+      },
+      "page": {
+        "$params": ["page", "count"],
+        "$template": "第 {page} / {count} 页"
+      },
+      "kinds": {
+        "INTERACTIVE": "交互可视化",
+        "IMAGE": "静态可视化",
+        "VECTOR": "矢量图",
+        "DOCUMENT": "文档",
+        "DIAGRAM_SOURCE": "图表源文件",
+        "SUPPORT": "配套文件"
+      },
+      "filters": {
+        "label": "可见状态",
+        "visible": {
+          "$params": ["count"],
+          "$template": "可见 {count}"
+        },
+        "hidden": {
+          "$params": ["count"],
+          "$template": "已隐藏 {count}"
+        }
+      },
+      "threadDiagrams": {
+        "label": "UML/图表",
+        "noMatches": "无 UML",
+        "count": {
+          "$params": ["count"],
+          "$template": "{count} 个"
+        },
+        "stopped": "已停止",
+        "apply": "应用",
+        "stopAndClear": "停止并清除",
+        "permissionRequired": "需授权",
+        "presets": {
+          "label": "日期快捷范围",
+          "today": "今天",
+          "sevenDays": "近 7 天",
+          "thirtyDays": "近 30 天",
+          "custom": "自定义"
+        }
+      },
+      "actions": {
+        "refresh": "刷新可视化",
+        "preview": "安全预览",
+        "open": "打开",
+        "openExternal": "外部打开",
+        "reveal": "在文件夹中显示",
+        "export": "导出结果",
+        "exportSession": "导出会话",
+        "favorite": "收藏会话",
+        "unfavorite": "取消收藏",
+        "hide": "隐藏会话",
+        "restore": "恢复会话",
+        "openCodex": "打开 Codex",
+        "previous": "上一页",
+        "next": "下一页"
+      },
+      "preview": {
+        "restricted": "静态 · 已关闭脚本和网络",
+        "frameTitle": {
+          "$params": ["fileName"],
+          "$template": "安全预览 {fileName}"
+        },
+        "unavailable": "无法预览此 Mermaid 图表",
+        "zoomOut": "缩小",
+        "fit": "适合窗口",
+        "read": "阅读比例",
+        "minimap": "图表总览；点击定位",
+        "zoomIn": "放大"
+      },
+      "notices": {
+        "exportedResult": "已导出可视化结果",
+        "exportedSession": {
+          "$params": ["count"],
+          "$template": "已导出 {count} 个文件"
+        }
+      }
+    },
     "codexImageDiscovery": {
       "title": "Codex 图片",
       "root": "来源目录",
@@ -1024,7 +1245,12 @@
         "LAST_7_DAYS": "7 天",
         "LAST_30_DAYS": "30 天",
         "LAST_90_DAYS": "90 天",
-        "ALL": "全部"
+        "ALL": "全部",
+        "CUSTOM": "自定义"
+      },
+      "datePicker": {
+        "presets": "日期快捷范围",
+        "apply": "应用"
       },
       "actions": {
         "scan": "开始调查",
@@ -1068,7 +1294,7 @@
           "LOCAL_INDEX": "本地用量索引已清理"
         }
       },
-      "apiEquivalentNote": "按公开 Standard API 费率计算的等值，不是账单或实际扣费；Fast 倍率仅用于 Codex Credits 等值。",
+      "apiEquivalentNote": "统一折算为同模型在事件日期的公开 Standard API 费率；Fast 不加倍。这不是账单或实际扣费。",
       "metrics": {
         "apiEquivalent": "API 等值",
         "cacheSavings": "节省额度",
@@ -1081,6 +1307,75 @@
         "files": "个文件",
         "scannedFiles": "个实读文件",
         "cachedFiles": "个缓存文件"
+      },
+      "turnSpeed": {
+        "title": "Fast 与 Standard 完成轮次耗时",
+        "official": "官方模型速度",
+        "actualSpeed": "实测倍速",
+        "officialSpeed": "官方模型速度",
+        "standardMedian": "Standard 中位耗时",
+        "fastMedian": "Fast 中位耗时",
+        "cohort": "同模型 / 推理强度",
+        "turns": "轮",
+        "completed": "轮已完成",
+        "comparable": "轮可比较",
+        "unknownMode": "轮模式未知",
+        "unknownCohort": "轮模型或推理强度未知",
+        "invalidDuration": "轮耗时无效",
+        "empty": "当前范围没有同时包含 Standard 与 Fast 的同模型、同推理强度样本",
+        "units": {
+          "seconds": "秒",
+          "minutes": "分",
+          "hours": "小时"
+        }
+      },
+      "detailedStatistics": {
+        "option": "详细统计",
+        "title": "完整会话总览与轮均 Token/API 成本",
+        "sessionSource": "会话来源",
+        "sources": {
+          "USER_DIRECT": "用户直聊",
+          "USER_FORK": "Fork",
+          "SUBAGENT": "子代理"
+        },
+        "modelComparison": "模型（合并全部服务模式）",
+        "rangeCompleteSessions": "范围内完整会话",
+        "tokenComparableSessions": "Token 可比较会话",
+        "overallApiPricedSessions": "API 可定价会话",
+        "tokenComparisonCoverage": "Token 样本覆盖",
+        "overallLowestTokenRange": "总体最低轮均 Token 区间",
+        "overallLowestApiRange": "总体最低轮均 API 价区间",
+        "overallSustainedIncrease": "总体持续上升起点",
+        "newSessionRecommendation": "新建会话参考轮数",
+        "comparisonGroups": "个有效比较组",
+        "insufficientEvidence": "证据不足",
+        "apiNormalizationNote": "全部服务模式统一折算为同模型在事件日期的 Standard API 费率；模式未知的会话仍可定价。",
+        "cacheWriteNote": "这是原始 Token 计数，不是费用。当前 Codex rollout 将其上报为 0；缓存复用体现在缓存输入 Token 中。",
+        "sessionLengthNote": "组数随样本量对数增长，并限制为每约 5 个完整会话至多增加一组；相同轮数不会拆分，超大同轮数组后会重新均衡剩余组。少于 5 个会话的组仍展示，但不参与趋势信号。",
+        "subagentSessionLengthNote": "仅统计该子代理线程新产生的 Chat turns；继承历史不计入轮数与成本，但仍可能抬高峰值上下文。",
+        "sessions": "会话数",
+        "totalChatTurns": "总 Chat turns",
+        "totalOwnedChatTurns": "总自有 Chat turns",
+        "sessionTurnsPercentiles": "会话轮数 P50 / P90 / 最大值",
+        "ownedSessionTurnsPercentiles": "自有会话轮数 P50 / P90 / 最大值",
+        "averageContextCompactions": "上下文压缩次数平均值",
+        "apiPricedSessions": "API 可定价会话数",
+        "sessionLength": "会话轮数",
+        "ownedSessionLength": "自有会话轮数",
+        "sessionTurnDistribution": "精确分布（轮数 × 会话数）",
+        "lowestTokenRange": "最低轮均 Token 中位数区间",
+        "lowestApiCostRange": "最低轮均 API 价中位数区间",
+        "sustainedIncrease": "持续上升起点与相对涨幅",
+        "onsetContextRange": "起点上下文 P25–P75",
+        "peakContextRange": "峰值上下文 P25–P75",
+        "medianUncachedInput": "轮均普通输入中位数",
+        "medianCachedInput": "轮均缓存输入中位数",
+        "medianCacheWriteInput": "轮均缓存写入中位数",
+        "medianOutput": "轮均输出中位数",
+        "medianReasoningOutput": "轮均推理输出中位数",
+        "medianTotal": "轮均 Token 中位数",
+        "medianApiCost": "轮均 API 价中位数",
+        "pricingCoverage": "API 定价覆盖"
       },
       "quotaYield": {
         "title": "周额度连续观测账",
@@ -1242,6 +1537,10 @@
       "apiKey": "API Key",
       "keyPlaceholder": "输入 DeepSeek API Key",
       "model": "文本模型",
+      "visionEndpoint": "视觉模型端点",
+      "visionEndpointPlaceholder": "https://host/v1/chat/completions",
+      "visionModel": "视觉模型",
+      "visionModelPlaceholder": "deepseek-vl2",
       "secureStorage": "系统加密保存",
       "savedKey": "已保存",
       "lastVerified": "上次验证",
@@ -1331,14 +1630,16 @@
       "install": "安装到此空间",
       "disable": "在此空间禁用",
       "enable": "在此空间重新允许",
-      "remove": "从此空间卸载"
+      "remove": "从此空间卸载",
+      "useRelease": "使用此版本"
     },
     "actionComplete": {
       "import": "内容包已导入",
       "install": "资料包已安装",
       "disable": "资料包已在此空间禁用",
       "enable": "资料包已在此空间重新允许",
-      "remove": "资料包已从此空间卸载"
+      "remove": "资料包已从此空间卸载",
+      "useRelease": "已应用内容包版本"
     },
     "fields": {
       "version": "版本",
@@ -1349,7 +1650,44 @@
     },
     "sections": {
       "contents": "内容",
-      "dependencies": "依赖"
+      "dependencies": "依赖",
+      "releases": "版本"
+    },
+    "currentRelease": "当前",
+    "importDialog": {
+      "title": "导入内容包",
+      "choose": "选择内容包",
+      "cancel": "取消",
+      "operations": {
+        "INSTALL": "安装",
+        "UPDATE": "更新",
+        "REINSTALL": "校验",
+        "DOWNGRADE": "恢复"
+      },
+      "apply": {
+        "INSTALL": "安装",
+        "UPDATE": "应用更新",
+        "REINSTALL": "校验版本",
+        "DOWNGRADE": "恢复版本"
+      },
+      "summary": {
+        "added": "新增",
+        "updated": "更新",
+        "removed": "退役",
+        "unchanged": "未变化",
+        "localForks": "本地分叉",
+        "conflicts": "冲突"
+      },
+      "changeKinds": {
+        "ADD": "新增",
+        "UPDATE": "更新",
+        "REMOVE": "退役"
+      },
+      "localStates": {
+        "FOLLOW_PACK": "跟随内容包",
+        "LOCAL_FORK": "保留本地分叉",
+        "CONFLICT": "保留本地封面"
+      }
     },
     "itemCount": {
       "$params": ["count"],
@@ -1638,6 +1976,7 @@
         "settings": "自动保存设置",
         "enabled": "编辑时自动保存",
         "failed": "无法自动保存这些更改。",
+        "paused": "疑似异常，已暂停自动保存。撤销异常内容或手动保存即可恢复。",
         "delay": {
           "label": "闲置多久后保存",
           "fiveSeconds": "5 秒",
@@ -1650,6 +1989,7 @@
           "saved": "所有更改均已保存",
           "pending": "更改正在等待保存",
           "saving": "正在自动保存…",
+          "paused": "疑似异常，自动保存已暂停",
           "failed": "自动保存失败"
         }
       },
@@ -1691,10 +2031,31 @@
         "codeBlock": "代码块",
         "blockquote": "引用",
         "horizontalRule": "分隔线",
+        "searchAndReplace": "搜索和替换",
+        "search": "搜索",
+        "showReplace": "展开替换",
+        "hideReplace": "收起替换",
+        "previousMatch": "上一个匹配项",
+        "nextMatch": "下一个匹配项",
+        "matchCase": "区分大小写",
+        "wholeWord": "全字匹配",
+        "replaceWith": "替换为",
+        "replaceCurrent": "替换",
+        "replaceAll": "全部替换",
+        "closeSearch": "关闭搜索",
+        "noMatches": "无匹配项",
+        "searchResultCount": {
+          "$params": ["current", "total"],
+          "$template": "第 {current} 项，共 {total} 项"
+        },
         "table": "表格",
         "insertTable": "插入表格",
-        "addRow": "向下添加一行",
-        "addColumn": "向右添加一列",
+        "addRowBefore": "上方加行",
+        "addRow": "下方加行",
+        "deleteRow": "删除当前行",
+        "addColumnBefore": "左侧加列",
+        "addColumn": "右侧加列",
+        "deleteColumn": "删除当前列",
         "deleteTable": "删除表格",
         "undo": "撤销",
         "redo": "重做",

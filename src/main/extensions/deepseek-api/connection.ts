@@ -7,6 +7,7 @@ import { decodeProviderResponseJson } from '@/main/providers/provider-response';
 import type { SecretProtector } from '@/main/extensions/secure-credentials';
 import { secretHint, validateApiSecret } from '@/main/extensions/secure-credentials';
 import type { DeepSeekApiRuntimeConfiguration } from '@/main/extensions/deepseek-api/types';
+import { validatedDeepSeekVisionSettings } from '@/main/extensions/deepseek-api/vision-endpoint';
 import type { DeepSeekApiConnectionDto, DeepSeekApiConnectionStatus, DeepSeekApiSaveInput } from '@/shared/contracts';
 
 const connectionStatusSchema = z.enum(['UNVERIFIED', 'READY', 'ERROR']) satisfies z.ZodType<
@@ -22,6 +23,8 @@ const persistedConnectionSchema = z
     connectionMessage: z.string(),
     updatedAt: z.string(),
     lastVerifiedAt: z.string().nullable(),
+    visionEndpoint: z.string().default(''),
+    visionModelId: z.string().default(''),
   })
   .strict();
 
@@ -42,6 +45,8 @@ function notConfigured(provider = DEEPSEEK_PROVIDER): DeepSeekApiConnectionDto {
     message: 'DeepSeek API credentials are not configured',
     apiKeyHint: null,
     modelId: provider.modelId,
+    visionEndpoint: '',
+    visionModelId: '',
     updatedAt: null,
     lastVerifiedAt: null,
   };
@@ -54,6 +59,8 @@ function toDto(record: PersistedConnection, provider = DEEPSEEK_PROVIDER): DeepS
     message: record.connectionMessage,
     apiKeyHint: record.apiKeyHint,
     modelId: provider.modelId,
+    visionEndpoint: record.visionEndpoint,
+    visionModelId: record.visionModelId,
     updatedAt: record.updatedAt,
     lastVerifiedAt: record.lastVerifiedAt,
   };
@@ -112,6 +119,8 @@ export class DeepSeekApiConnection {
         apiKey: this.decryptApiKey(record),
         modelId: this.provider.modelId,
         responsesUrl: this.provider.responsesUrl,
+        visionEndpoint: record.visionEndpoint,
+        visionModelId: record.visionModelId,
         configurationRevision: record.updatedAt,
         verified: record.connectionStatus === 'READY',
         connectionMessage: record.connectionMessage,
@@ -133,6 +142,7 @@ export class DeepSeekApiConnection {
             throw new Error('DeepSeek API key is required');
           })();
     const timestamp = new Date().toISOString();
+    const vision = validatedDeepSeekVisionSettings(input.visionEndpoint, input.visionModelId);
     const record: PersistedConnection = {
       schemaVersion: 1,
       encryptedApiKey: this.protector.protect(apiKey).toString('base64'),
@@ -144,6 +154,7 @@ export class DeepSeekApiConnection {
           : 'Credentials saved; connection has not been verified',
       updatedAt: timestamp,
       lastVerifiedAt: existing?.lastVerifiedAt ?? null,
+      ...vision,
     };
     const revision = ++this.mutationRevision;
     this.writeRecord(record);
@@ -242,7 +253,10 @@ export class DeepSeekApiConnection {
       const parsed: unknown = JSON.parse(readFileSync(this.filePath, 'utf8'));
       const decoded = persistedConnectionSchema.safeParse(parsed);
       if (!decoded.success) throw new Error('Stored DeepSeek API connection is invalid');
-      return decoded.data;
+      return {
+        ...decoded.data,
+        ...validatedDeepSeekVisionSettings(decoded.data.visionEndpoint, decoded.data.visionModelId),
+      };
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code === 'ENOENT') return null;
       throw error;

@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { ActivityIcon, CircleAlertIcon, CircleCheckIcon, LoaderCircleIcon, XIcon } from 'lucide-react';
 import type {
   AssistantRunDto,
+  BackgroundIssueDto,
   CodexHealth,
   DirectionExperimentDirectorTaskDto,
   ImageGenerationRouteDto,
@@ -16,13 +17,10 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/renderer/components/u
 import { generationElapsed, generationPhaseLabel } from '@/renderer/components/generation/task-presentation';
 import { groupGenerationTasks, leadGenerationTask } from '@/renderer/components/generation/generationTaskGroups';
 import { GenerationErrorNotice } from '@/renderer/components/generation/GenerationErrorNotice';
-import {
-  loadDismissedGenerationRunIds,
-  saveDismissedGenerationRunIds,
-} from '@/renderer/components/generation/dismissedGenerationErrors';
 import { DirectionExperimentTaskCenterItem } from '@/renderer/components/app/DirectionExperimentTaskCenterItem';
 import { GenerationIssueActions } from '@/renderer/components/app/GenerationIssueActions';
 import { VideoDocumentTranscriptTaskCenterItem } from '@/renderer/components/app/VideoDocumentTranscriptTaskCenterItem';
+import { useBackgroundIssues } from '@/renderer/features/background-issues/BackgroundIssueProvider';
 
 interface Props {
   workerStatus: ModelWorkerStatusDto | null;
@@ -61,6 +59,29 @@ function backgroundStatusText(
   return labels.idle;
 }
 
+function generationIssues(
+  series: PromptSeriesDto[],
+  agentRunIds: ReadonlySet<string>,
+  isAcknowledged: (issue: BackgroundIssueDto | null | undefined) => boolean,
+) {
+  const rows = series.flatMap((item) =>
+    item.versions.flatMap((version) => version.runs.map((run) => ({ run, seriesId: item.id, title: item.title }))),
+  );
+  const retried = new Set(rows.flatMap(({ run }) => (run.retryOfRunId ? [run.retryOfRunId] : [])));
+  return rows
+    .filter(
+      ({ run }) =>
+        ['FAILED', 'INTERRUPTED'].includes(run.status) &&
+        !retried.has(run.id) &&
+        !agentRunIds.has(run.id) &&
+        !isAcknowledged(run.backgroundIssue),
+    )
+    .sort(
+      (left, right) => right.run.createdAt.localeCompare(left.run.createdAt) || right.run.id.localeCompare(left.run.id),
+    )
+    .slice(0, 5);
+}
+
 export function GenerationStatusPopover({
   workerStatus,
   codexHealth,
@@ -77,32 +98,28 @@ export function GenerationStatusPopover({
   notify,
 }: Props) {
   const { locale, messages } = useI18n();
+  const backgroundIssues = useBackgroundIssues();
   const l = messages.app.generationStatus;
   const taskLabels = messages.creator.generationTasks;
-  const [dismissedRunIds, setDismissedRunIds] = useState(loadDismissedGenerationRunIds);
   const [open, setOpen] = useState(false);
   const [busyRunId, setBusyRunId] = useState<string | null>(null);
   const [nowMs, setNowMs] = useState(() => Date.now());
   const titleBySeriesId = useMemo(() => new Map(series.map((item) => [item.id, item.title])), [series]);
   const modelNameByKey = useMemo(() => new Map(routes.map((model) => [model.key, model.name])), [routes]);
-  const issues = useMemo(() => {
-    const rows = series.flatMap((item) =>
-      item.versions.flatMap((version) => version.runs.map((run) => ({ run, seriesId: item.id, title: item.title }))),
-    );
-    const retried = new Set(rows.flatMap(({ run }) => (run.retryOfRunId ? [run.retryOfRunId] : [])));
-    return rows
-      .filter(({ run }) => ['FAILED', 'INTERRUPTED'].includes(run.status) && !retried.has(run.id))
-      .sort(
-        (left, right) =>
-          right.run.createdAt.localeCompare(left.run.createdAt) || right.run.id.localeCompare(left.run.id),
-      )
-      .slice(0, 5);
-  }, [series]);
+  const agentRunIds = useMemo(() => new Set(agentTasks.flatMap((task) => task.runIds)), [agentTasks]);
+  const issues = useMemo(
+    () => generationIssues(series, agentRunIds, backgroundIssues.isAcknowledged),
+    [agentRunIds, backgroundIssues.isAcknowledged, series],
+  );
   const activeAssistantRuns = useMemo(() => assistantRuns.filter((run) => run.status === 'RUNNING'), [assistantRuns]);
   const activeDirectorTasks = agentTasks.filter((task) => ACTIVE_DIRECTOR_STATUSES.has(task.status));
-  const directorIssues = agentTasks.filter((task) => ['PARTIAL_SUCCESS', 'FAILED'].includes(task.status)).slice(0, 3);
-  const agentRunIds = new Set(agentTasks.flatMap((task) => task.runIds));
-  const standaloneIssues = issues.filter(({ run }) => !agentRunIds.has(run.id) && !dismissedRunIds.has(run.id));
+  const directorIssues = agentTasks
+    .filter(
+      (task) =>
+        ['PARTIAL_SUCCESS', 'FAILED'].includes(task.status) && !backgroundIssues.isAcknowledged(task.backgroundIssue),
+    )
+    .slice(0, 3);
+  const standaloneIssues = issues;
   const coveredRunIds = new Set(activeDirectorTasks.flatMap((task) => task.runIds));
   const visibleGenerationTasks = tasks.filter((task) => !coveredRunIds.has(task.runId));
   const visibleGenerationTaskGroups = groupGenerationTasks(visibleGenerationTasks);
@@ -115,7 +132,6 @@ export function GenerationStatusPopover({
   const reconnecting = !workerStatus || workerStatus.state === 'RECONNECTING';
   const attentionCount = standaloneIssues.length + directorIssues.length;
 
-  useEffect(() => saveDismissedGenerationRunIds(dismissedRunIds), [dismissedRunIds]);
   useEffect(() => {
     if (!open || (!tasks.some((task) => task.status === 'RUNNING') && transcriptTasks.length === 0)) return undefined;
     const timer = window.setInterval(() => setNowMs(Date.now()), 1_000);
@@ -156,10 +172,6 @@ export function GenerationStatusPopover({
     } finally {
       setBusyRunId(null);
     }
-  }
-
-  function dismissRun(runId: string) {
-    setDismissedRunIds((current) => new Set(current).add(runId));
   }
 
   function reEdit(runId: string) {
@@ -302,14 +314,14 @@ export function GenerationStatusPopover({
               </span>
               <GenerationIssueActions
                 status={run.status}
-                busy={Boolean(busyRunId)}
+                busy={Boolean(busyRunId) || backgroundIssues.isPending(run.backgroundIssue)}
                 reEditLabel={l.reEdit}
                 retryLabel={l.retry}
                 regenerateLabel={l.regenerate}
                 dismissLabel={taskLabels.dismiss}
                 onReEdit={() => reEdit(run.id)}
                 onRetry={() => void retry(run.id)}
-                onDismiss={() => dismissRun(run.id)}
+                onDismiss={() => void backgroundIssues.acknowledge(run.backgroundIssue)}
               />
             </div>
           ))}

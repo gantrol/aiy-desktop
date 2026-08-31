@@ -19,7 +19,6 @@ import revision4CreationItemPinnedSql from '@/main/database/sql/v03-revision-004
 import revision4CreationItemsSql from '@/main/database/sql/v03-revision-004-creation-items.sql?raw';
 import revision4InspirationStashesSql from '@/main/database/sql/v03-revision-004-inspiration-stashes.sql?raw';
 import revision4SocialPostDraftsSql from '@/main/database/sql/v03-revision-004-social-post-drafts.sql?raw';
-import revision4ArticlesSql from '@/main/database/sql/v03-revision-004-articles.sql?raw';
 import revision4DerivedVisualsSql from '@/main/database/sql/v03-revision-004-derived-visuals.sql?raw';
 import revision4CreationAlbumMembersSql from '@/main/database/sql/v03-revision-004-creation-album-members.sql?raw';
 import {
@@ -27,17 +26,26 @@ import {
   ensureCreationEntityComposition,
   ensureCreationItemLocations,
 } from '@/main/database/creations/creation-composition-schema';
+import { evaluationSuiteShape } from '@/main/database/creations/evaluation-suite-schema';
+import { articleStorageShape, ensureArticles } from '@/main/database/creations/article-storage-schema';
+import {
+  articleCheckRunStorageShape,
+  ensureArticleCheckRuns,
+} from '@/main/database/creations/article-check-run-schema';
+import { agentCliShape, ensureRevision5Schema } from '@/main/database/core/revision-5-schema';
+import { assertCurrentVideoWorkspaceColumns } from '@/main/database/core/video-workspace-schema';
 import {
   contentLifecycleShape,
   ensureContentLifecycle,
   ensureRecoveryLifecycle,
   recoveryLifecycleShape,
 } from '@/main/database/recovery/content-lifecycle-schema';
+import { articleDeliveryJobShape } from '@/main/database/extensions/article-delivery-job-schema';
 
 export const DATABASE_PRODUCT_BASELINE = '0.3.0';
-// v0.3.6 advances the public schema exactly once from revision 3 to revision 4.
-// Do not number individual unreleased features separately.
-export const DATABASE_SCHEMA_REVISION = 4;
+// v0.3.7 advances the public schema exactly once from revision 4 to revision 5.
+// Keep unreleased feature fragments consolidated behind this single revision.
+export const DATABASE_SCHEMA_REVISION = 5;
 const DATABASE_SHUTDOWN_STATE_KEY = 'database_shutdown_state';
 
 const releasedRevision1RequiredTables = [
@@ -94,14 +102,25 @@ const revision2RequiredTables = [
 
 const currentRequiredTables = [
   ...revision2RequiredTables,
+  'article_comment_replies',
+  'article_check_runs',
+  'article_comments',
+  'article_delivery_jobs',
+  'article_elements',
+  'article_revision_packs',
+  'article_revision_elements',
   'article_revisions',
   'articles',
+  'background_issue_acknowledgements',
   'creation_forms',
   'creation_items',
   'content_lifecycle_batch_members',
   'content_lifecycle_batches',
   'derived_visuals',
+  'evaluation_suite_revisions',
+  'evaluation_suites',
   'inspiration_stashes',
+  'image_breakdowns',
   'prompt_series_cover_assets',
   'prompt_series_output_exclusions',
   'recycle_bin_entries',
@@ -113,14 +132,6 @@ const canonicalTitleColumns = [
   { table: 'albums', columns: ['title', 'title_locale'] },
   { table: 'creation_drafts', columns: ['title'] },
   { table: 'prompt_series', columns: ['title', 'title_locale'] },
-] as const;
-
-const currentVideoWorkspaceColumns = [
-  {
-    table: 'video_assets',
-    columns: ['audio_status', 'audio_track_count', 'audio_primary_codec', 'audio_detected_at', 'audio_error_code'],
-  },
-  { table: 'video_document_generation_runs', columns: ['error_detail_json'] },
 ] as const;
 
 const releasedRevision1TitleColumns = [
@@ -167,6 +178,27 @@ function columnNames(db: Database.Database, table: string) {
   );
 }
 
+function backgroundIssueAcknowledgementShape(db: Database.Database) {
+  if (!tableNames(db).has('background_issue_acknowledgements')) return 'ABSENT' as const;
+  const columns = columnNames(db, 'background_issue_acknowledgements');
+  const required = ['id', 'issue_kind', 'subject_id', 'occurrence_id', 'acknowledged_at'];
+  if (!required.every((column) => columns.has(column))) unsupportedSchema();
+  const definition = db
+    .prepare("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'background_issue_acknowledgements'")
+    .pluck()
+    .get();
+  if (typeof definition !== 'string') unsupportedSchema();
+  const normalizedDefinition = definition.replace(/\s+/g, ' ');
+  if (
+    !normalizedDefinition.includes("'GENERATION_RUN'") ||
+    !normalizedDefinition.includes("'DIRECTION_EXPERIMENT_DIRECTOR'") ||
+    !normalizedDefinition.includes('UNIQUE(issue_kind, subject_id, occurrence_id)')
+  ) {
+    unsupportedSchema();
+  }
+  return 'COMPLETE' as const;
+}
+
 function assertCanonicalTitleColumns(db: Database.Database) {
   for (const requirement of canonicalTitleColumns) {
     const columns = columnNames(db, requirement.table);
@@ -174,24 +206,11 @@ function assertCanonicalTitleColumns(db: Database.Database) {
   }
 }
 
-function assertCurrentVideoWorkspaceColumns(db: Database.Database) {
-  for (const requirement of currentVideoWorkspaceColumns) {
-    const columns = columnNames(db, requirement.table);
-    if (requirement.columns.some((column) => !columns.has(column))) unsupportedSchema();
-  }
-}
+const hasPromptVersionSourceImportColumn = (db: Database.Database) =>
+  columnNames(db, 'prompt_versions').has('source_import_id');
 
-function hasPromptVersionSourceImportColumn(db: Database.Database) {
-  return columnNames(db, 'prompt_versions').has('source_import_id');
-}
-
-function ensurePromptVersionSourceImportColumn(db: Database.Database) {
-  if (!hasPromptVersionSourceImportColumn(db)) db.exec(revision2PromptSourceImportSql);
-}
-
-function hasCreationOutputSortOrderColumn(db: Database.Database) {
-  return columnNames(db, 'creation_output_imports').has('sort_order');
-}
+const hasCreationOutputSortOrderColumn = (db: Database.Database) =>
+  columnNames(db, 'creation_output_imports').has('sort_order');
 
 function ensureCreationOutputSortOrderColumn(db: Database.Database) {
   if (!hasCreationOutputSortOrderColumn(db)) db.exec(revision3CreationOutputOrderSql);
@@ -248,7 +267,7 @@ function creationLibraryShape(db: Database.Database) {
     'archived_at',
     'deleted_at',
   ];
-  const requiredFormColumns = [
+  const revision4FormColumns = [
     'id',
     'creation_item_id',
     'role',
@@ -267,17 +286,45 @@ function creationLibraryShape(db: Database.Database) {
       }>
     ).map((index) => index.name),
   );
-  const requiredIndexes = [
+  const formDefinition = db
+    .prepare("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'creation_forms'")
+    .pluck()
+    .get();
+  const uniqueRoleDefinition = db
+    .prepare("SELECT sql FROM sqlite_master WHERE type = 'index' AND name = 'idx_creation_forms_active_unique_role'")
+    .pluck()
+    .get();
+  if (typeof formDefinition !== 'string') unsupportedSchema();
+  const preLineageIndexes = [
     'idx_creation_forms_active_entity',
     'idx_creation_forms_active_singleton_role',
     'idx_creation_forms_active_article_inline_anchor',
   ];
-  if (
-    requiredItemColumns.every((column) => itemColumns.has(column)) &&
-    requiredFormColumns.every((column) => formColumns.has(column)) &&
-    requiredIndexes.every((index) => indexes.has(index))
-  ) {
-    return itemColumns.has('pinned') ? ('COMPLETE' as const) : ('MISSING_PINNED' as const);
+  const lineageIndexes = [
+    'idx_creation_forms_active_entity',
+    'idx_creation_forms_active_unique_role',
+    'idx_creation_forms_active_article_inline_anchor',
+    'idx_creation_forms_active_source',
+  ];
+  if (!requiredItemColumns.every((column) => itemColumns.has(column))) unsupportedSchema();
+  if (!revision4FormColumns.every((column) => formColumns.has(column))) unsupportedSchema();
+
+  const hasPinned = itemColumns.has('pinned');
+  const hasLineage = formColumns.has('source_form_id');
+  const hasPreLineageIndexes = preLineageIndexes.every((index) => indexes.has(index));
+  const hasLineageIndexes = lineageIndexes.every((index) => indexes.has(index));
+
+  if (!hasLineage && hasPreLineageIndexes) {
+    return hasPinned ? ('PRE_LINEAGE' as const) : ('MISSING_PINNED' as const);
+  }
+  if (hasLineage && hasPinned && hasLineageIndexes && !indexes.has('idx_creation_forms_active_singleton_role')) {
+    if (typeof uniqueRoleDefinition !== 'string') unsupportedSchema();
+    const supportsImageBreakdown =
+      formDefinition.includes("'IMAGE_BREAKDOWN'") && uniqueRoleDefinition.includes("'IMAGE_BREAKDOWN'");
+    if (!supportsImageBreakdown) return 'LINEAGE' as const;
+    const supportsEvaluationSuite =
+      formDefinition.includes("'EVALUATION_SUITE'") && uniqueRoleDefinition.includes("'EVALUATION_SUITE'");
+    return supportsEvaluationSuite ? ('COMPLETE' as const) : ('IMAGE_BREAKDOWN' as const);
   }
   unsupportedSchema();
 }
@@ -286,6 +333,57 @@ function ensureCreationLibrary(db: Database.Database) {
   const shape = creationLibraryShape(db);
   if (shape === 'ABSENT') db.exec(revision4CreationItemsSql);
   if (shape === 'MISSING_PINNED') db.exec(revision4CreationItemPinnedSql);
+}
+
+function imageBreakdownShape(db: Database.Database) {
+  if (!tableNames(db).has('image_breakdowns')) return 'ABSENT' as const;
+  const columns = columnNames(db, 'image_breakdowns');
+  const required = [
+    'id',
+    'source_asset_id',
+    'title',
+    'focus',
+    'route_key',
+    'model_key',
+    'status',
+    'result_json',
+    'error_code',
+    'error_message',
+    'created_at',
+    'updated_at',
+    'archived_at',
+    'deleted_at',
+  ];
+  if (!required.every((column) => columns.has(column))) unsupportedSchema();
+  const definition = db
+    .prepare("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'image_breakdowns'")
+    .pluck()
+    .get();
+  if (typeof definition !== 'string') unsupportedSchema();
+  const normalizedDefinition = definition.replace(/\s+/g, ' ');
+  if (normalizedDefinition.includes("CHECK(route_key IN ('ANTIGRAVITY_CLI', 'GOOGLE_GEMINI', 'DEEPSEEK_VL'))")) {
+    return 'COMPLETE' as const;
+  }
+  if (normalizedDefinition.includes("CHECK(route_key IN ('GOOGLE_GEMINI', 'DEEPSEEK_VL'))")) {
+    return 'LEGACY_ROUTE_CONSTRAINT' as const;
+  }
+  unsupportedSchema();
+}
+
+function ensureCurrentRevision5Schema(db: Database.Database) {
+  const creationShape = creationLibraryShape(db);
+  const breakdownShape = imageBreakdownShape(db);
+  const suiteShape = evaluationSuiteShape(db);
+  ensureRevision5Schema(db, {
+    creationLibrary: creationShape,
+    imageBreakdown: breakdownShape,
+    evaluationSuite: suiteShape,
+    articleStorage: articleStorageShape(db),
+    articleDeliveryJobsComplete: articleDeliveryJobShape(db) === 'COMPLETE',
+    agentCliComplete: agentCliShape(db) === 'COMPLETE',
+    backgroundIssueAcknowledgementsComplete: backgroundIssueAcknowledgementShape(db) === 'COMPLETE',
+    contentLifecycleComplete: contentLifecycleShape(db) === 'COMPLETE',
+  });
 }
 
 function inspirationStashShape(db: Database.Database) {
@@ -342,39 +440,6 @@ function socialPostDraftShape(db: Database.Database) {
 
 function ensureSocialPostDrafts(db: Database.Database) {
   if (socialPostDraftShape(db) === 'ABSENT') db.exec(revision4SocialPostDraftsSql);
-}
-
-function articleShape(db: Database.Database) {
-  const tables = tableNames(db);
-  const articlePresent = tables.has('articles');
-  const revisionPresent = tables.has('article_revisions');
-  if (!articlePresent && !revisionPresent) return 'ABSENT' as const;
-  if (!articlePresent || !revisionPresent) unsupportedSchema();
-  const articleColumns = columnNames(db, 'articles');
-  const revisionColumns = columnNames(db, 'article_revisions');
-  const articleRequired = [
-    'id',
-    'album_id',
-    'source_inspiration_stash_id',
-    'current_revision_id',
-    'status',
-    'created_at',
-    'updated_at',
-    'archived_at',
-    'deleted_at',
-  ];
-  const revisionRequired = ['id', 'article_id', 'revision_no', 'content_json', 'content_hash', 'created_at'];
-  if (
-    articleRequired.every((column) => articleColumns.has(column)) &&
-    revisionRequired.every((column) => revisionColumns.has(column))
-  ) {
-    return 'COMPLETE' as const;
-  }
-  unsupportedSchema();
-}
-
-function ensureArticles(db: Database.Database) {
-  if (articleShape(db) === 'ABSENT') db.exec(revision4ArticlesSql);
 }
 
 function derivedVisualShape(db: Database.Database) {
@@ -607,9 +672,10 @@ const preVideoWorkspaceRequiredTables = revision2RequiredTables.filter(
 const preVideoDocumentAiActivityRequiredTables = revision2RequiredTables.filter(
   (table) => table !== 'video_document_transcription_runs' && table !== 'video_document_translation_runs',
 );
-// Recovery-only markers emitted by private builds before the next public
-// revision was consolidated. They are never written by the final schema.
-const unreleasedDevelopmentStages = [2, 3, 4, 5, 6] as const;
+// Accepted historical revisions plus recovery-only markers emitted by pre-release
+// builds before the next public revision was consolidated. Values 6 and 7 are
+// never written by the final schema.
+const unreleasedDevelopmentStages = [2, 3, 4, 5, 6, 7] as const;
 type UnreleasedDevelopmentStage = (typeof unreleasedDevelopmentStages)[number];
 
 function isCurrentSchemaShapeBeforePromptSourceImport(db: Database.Database) {
@@ -643,19 +709,29 @@ function isRevision3SchemaShape(db: Database.Database) {
   );
 }
 
+const currentFeatureShapeChecks = [
+  creationLibraryShape,
+  imageBreakdownShape,
+  evaluationSuiteShape,
+  inspirationStashShape,
+  socialPostDraftShape,
+  articleStorageShape,
+  articleCheckRunStorageShape,
+  articleDeliveryJobShape,
+  agentCliShape,
+  backgroundIssueAcknowledgementShape,
+  derivedVisualShape,
+  creationAlbumOwnershipShape,
+  recoveryLifecycleShape,
+  contentLifecycleShape,
+] as const;
+
+function currentFeatureShapesComplete(db: Database.Database) {
+  return currentFeatureShapeChecks.every((check) => check(db) === 'COMPLETE');
+}
+
 function isCurrentSchemaShape(db: Database.Database) {
-  return (
-    isRevision3SchemaShape(db) &&
-    creationLibraryShape(db) === 'COMPLETE' &&
-    inspirationStashShape(db) === 'COMPLETE' &&
-    socialPostDraftShape(db) === 'COMPLETE' &&
-    articleShape(db) === 'COMPLETE' &&
-    derivedVisualShape(db) === 'COMPLETE' &&
-    creationAlbumOwnershipShape(db) === 'COMPLETE' &&
-    creationCompositionComplete(db) &&
-    recoveryLifecycleShape(db) === 'COMPLETE' &&
-    contentLifecycleShape(db) === 'COMPLETE'
-  );
+  return isRevision3SchemaShape(db) && currentFeatureShapesComplete(db) && creationCompositionComplete(db);
 }
 
 function retireLegacyTitles(db: Database.Database) {
@@ -672,19 +748,18 @@ function retireLegacyTitles(db: Database.Database) {
 /**
  * Finish the single public revision-2 schema from a known intermediate shape.
  *
- * Values 2-6 were written only by unreleased development builds. They are
- * stages, not public revisions: accepting them here preserves local developer
- * libraries while normalizing the old shape to public revision 2 before the
- * revision-3 migration is applied.
+ * Shape checks make historical public revisions and unreleased development
+ * markers safe migration sources. Accepting development markers 6 and 7 preserves
+ * local developer libraries while normalizing them to public revision 5.
  */
 function finishRevision2FromDevelopmentStage(db: Database.Database, stage: UnreleasedDevelopmentStage) {
   if (isRevision2SchemaShape(db)) return;
-  // Some private revision-2 builds already produced the complete table shape.
+  // Some pre-release revision-2 builds already produced the complete table shape.
   // Complete the newly consolidated nullable column without replaying the
   // earlier, non-idempotent development-stage migrations.
   if (stage === 2 && isCurrentSchemaShapeBeforePromptSourceImport(db)) {
     ensureVideoDocumentGenerationSupportsVisualInput(db);
-    ensurePromptVersionSourceImportColumn(db);
+    if (!hasPromptVersionSourceImportColumn(db)) db.exec(revision2PromptSourceImportSql);
     ensureVideoDocumentBranchesSupportNotes(db);
     ensureVideoDocumentTranscriptionRuns(db);
     ensureVideoDocumentTranslationRuns(db);
@@ -706,7 +781,7 @@ function finishRevision2FromDevelopmentStage(db: Database.Database, stage: Unrel
     db.exec(revision2VideoDocumentWorkspaceSql);
   }
   ensureVideoDocumentGenerationSupportsVisualInput(db);
-  ensurePromptVersionSourceImportColumn(db);
+  if (!hasPromptVersionSourceImportColumn(db)) db.exec(revision2PromptSourceImportSql);
   ensureVideoDocumentBranchesSupportNotes(db);
   ensureVideoDocumentTranscriptionRuns(db);
   ensureVideoDocumentTranslationRuns(db);
@@ -717,11 +792,9 @@ function migrateReleasedDatabase(db: Database.Database) {
   if (metadata(db, 'product_data_baseline') !== DATABASE_PRODUCT_BASELINE) unsupportedSchema();
 
   const storedRevision = Number(metadata(db, 'database_schema_revision'));
-  const isReleasedBaseline = storedRevision === 1 || storedRevision === 2;
-  const isUnreleasedDevelopmentStage = unreleasedDevelopmentStages.some((stage) => stage === storedRevision);
-  if (!Number.isSafeInteger(storedRevision) || (!isReleasedBaseline && !isUnreleasedDevelopmentStage)) {
-    unsupportedSchema();
-  }
+  const isAcceptedStoredRevision =
+    storedRevision === 1 || unreleasedDevelopmentStages.some((stage) => stage === storedRevision);
+  if (!Number.isSafeInteger(storedRevision) || !isAcceptedStoredRevision) unsupportedSchema();
   if (storedRevision === DATABASE_SCHEMA_REVISION && isCurrentSchemaShape(db)) return false;
 
   db.pragma('foreign_keys = OFF');
@@ -743,11 +816,14 @@ function migrateReleasedDatabase(db: Database.Database) {
       ensureInspirationStashes(db);
       ensureSocialPostDrafts(db);
       ensureArticles(db);
+      ensureArticleCheckRuns(db);
       ensureDerivedVisuals(db);
-      ensureCreationEntityComposition(db);
       ensureCreationItemAlbumOwnership(db);
-      ensureCreationItemLocations(db);
       ensureRecoveryLifecycle(db);
+      ensureContentLifecycle(db);
+      ensureCurrentRevision5Schema(db);
+      ensureCreationEntityComposition(db);
+      ensureCreationItemLocations(db);
       ensureContentLifecycle(db);
       if (!isCurrentSchemaShape(db)) unsupportedSchema();
 
@@ -783,15 +859,8 @@ export function assertDatabaseSchemaCompatible(db: Database.Database) {
   if (!hasCreationOutputSortOrderColumn(db)) unsupportedSchema();
   if (!hasCreationOutputOrganizationColumns(db)) unsupportedSchema();
   if (creationOutputPresentationShape(db) !== 'COMPLETE') unsupportedSchema();
-  if (creationLibraryShape(db) !== 'COMPLETE') unsupportedSchema();
-  if (inspirationStashShape(db) !== 'COMPLETE') unsupportedSchema();
-  if (socialPostDraftShape(db) !== 'COMPLETE') unsupportedSchema();
-  if (articleShape(db) !== 'COMPLETE') unsupportedSchema();
-  if (derivedVisualShape(db) !== 'COMPLETE') unsupportedSchema();
-  if (creationAlbumOwnershipShape(db) !== 'COMPLETE') unsupportedSchema();
+  if (!currentFeatureShapesComplete(db)) unsupportedSchema();
   if (!creationCompositionComplete(db)) unsupportedSchema();
-  if (recoveryLifecycleShape(db) !== 'COMPLETE') unsupportedSchema();
-  if (contentLifecycleShape(db) !== 'COMPLETE') unsupportedSchema();
   if (retiredTitleColumnShape(db) !== 'ABSENT') unsupportedSchema();
   if (metadata(db, 'product_data_baseline') !== DATABASE_PRODUCT_BASELINE) unsupportedSchema();
   if (Number(metadata(db, 'database_schema_revision')) !== DATABASE_SCHEMA_REVISION) unsupportedSchema();

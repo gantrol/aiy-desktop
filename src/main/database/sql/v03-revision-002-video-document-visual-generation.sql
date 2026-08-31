@@ -1,4 +1,4 @@
--- Revision-2 repair fragment for private builds that created generation runs
+-- Revision-2 repair fragment for pre-release builds that created generation runs
 -- before visual-only article generation was supported.
 
 CREATE TABLE video_document_generation_runs_visual_input (

@@ -1,4 +1,5 @@
 import { lstatSync, readFileSync, realpathSync } from 'node:fs';
+import { lstat, readFile, realpath } from 'node:fs/promises';
 import path from 'node:path';
 
 type JsonMap = Record<string, unknown>;
@@ -159,6 +160,40 @@ function contained(rootPath: string, candidatePath: string) {
   return relative === '' || (!relative.startsWith(`..${path.sep}`) && relative !== '..' && !path.isAbsolute(relative));
 }
 
+function parseDictionaryImportSource(realPath: string, source: string) {
+  if (path.extname(realPath).toLowerCase() === '.csv') {
+    const [headers = [], ...csvRows] = parseCsv(source);
+    return {
+      rows: csvRows.map((cells) =>
+        normalizeTerm(Object.fromEntries(headers.map((header, index) => [header.trim(), cells[index] ?? '']))),
+      ),
+      nestedPaths: [] as string[],
+    };
+  }
+
+  const parsed = JSON.parse(source) as unknown;
+  if (Array.isArray(parsed)) {
+    return {
+      rows: parsed.map((row) => normalizeTerm(requiredMap(row, 'Dictionary term'))),
+      nestedPaths: [] as string[],
+    };
+  }
+  const dictionary = requiredMap(parsed, 'Dictionary source');
+  if (!Array.isArray(dictionary.terms)) throw new Error('JSON must be a v0.3.0 term array or dictionary source');
+  if (text(dictionary.schemaVersion) !== '0.3.0') throw new Error('Dictionary JSON must use schema v0.3.0');
+  const termFiles = dictionary.termFiles === undefined ? [] : dictionary.termFiles;
+  if (!Array.isArray(termFiles) || !termFiles.every((fileName): fileName is string => typeof fileName === 'string')) {
+    throw new Error('Dictionary JSON contains an invalid term file list');
+  }
+  return {
+    rows: fromDictionaryCore(dictionary),
+    nestedPaths: termFiles.map((fileName) => {
+      if (path.isAbsolute(fileName)) throw new Error('Dictionary term file paths must be relative');
+      return path.resolve(path.dirname(realPath), fileName);
+    }),
+  };
+}
+
 function readDictionaryImportFile(filePath: string, state: DictionaryImportReadState, depth: number): JsonMap[] {
   if (depth > MAX_NESTING_DEPTH) throw new Error('Dictionary import nesting is too deep');
   if (path.isAbsolute(filePath) && !contained(state.rootPath, path.resolve(filePath))) {
@@ -181,38 +216,60 @@ function readDictionaryImportFile(filePath: string, state: DictionaryImportReadS
   state.active.add(realPath);
   try {
     const bytes = readFileSync(realPath);
+    if (bytes.byteLength !== entry.size) throw new Error('Dictionary import source changed while it was being read');
     if (bytes.byteLength > state.maxFileBytes || state.totalBytes + bytes.byteLength > state.maxTotalBytes) {
       throw new Error('Dictionary import exceeds its file-size budget');
     }
     state.totalBytes += bytes.byteLength;
     const source = bytes.toString('utf8').replace(/^\uFEFF/, '');
-    let rows: JsonMap[];
-    if (path.extname(realPath).toLowerCase() === '.csv') {
-      const [headers = [], ...csvRows] = parseCsv(source);
-      rows = csvRows.map((cells) =>
-        normalizeTerm(Object.fromEntries(headers.map((header, index) => [header.trim(), cells[index] ?? '']))),
-      );
-    } else {
-      const parsed = JSON.parse(source) as unknown;
-      if (Array.isArray(parsed)) rows = parsed.map((row) => normalizeTerm(requiredMap(row, 'Dictionary term')));
-      else if (parsed && typeof parsed === 'object' && Array.isArray(requiredMap(parsed, 'Dictionary source').terms)) {
-        const dictionary = requiredMap(parsed, 'Dictionary source');
-        if (text(dictionary.schemaVersion) !== '0.3.0') {
-          throw new Error('Dictionary JSON must use schema v0.3.0');
-        }
-        rows = fromDictionaryCore(dictionary);
-        const termFiles = dictionary.termFiles === undefined ? [] : dictionary.termFiles;
-        if (
-          !Array.isArray(termFiles) ||
-          !termFiles.every((fileName): fileName is string => typeof fileName === 'string')
-        ) {
-          throw new Error('Dictionary JSON contains an invalid term file list');
-        }
-        for (const fileName of termFiles) {
-          if (path.isAbsolute(fileName)) throw new Error('Dictionary term file paths must be relative');
-          rows.push(...readDictionaryImportFile(path.resolve(path.dirname(realPath), fileName), state, depth + 1));
-        }
-      } else throw new Error('JSON must be a v0.3.0 term array or dictionary source');
+    const parsed = parseDictionaryImportSource(realPath, source);
+    const rows = [...parsed.rows];
+    for (const nestedPath of parsed.nestedPaths) {
+      rows.push(...readDictionaryImportFile(nestedPath, state, depth + 1));
+    }
+    state.cache.set(realPath, rows);
+    return rows;
+  } finally {
+    state.active.delete(realPath);
+  }
+}
+
+async function readDictionaryImportFileAsync(
+  filePath: string,
+  state: DictionaryImportReadState,
+  depth: number,
+): Promise<JsonMap[]> {
+  if (depth > MAX_NESTING_DEPTH) throw new Error('Dictionary import nesting is too deep');
+  if (path.isAbsolute(filePath) && !contained(state.rootPath, path.resolve(filePath))) {
+    throw new Error('Dictionary import references a file outside its root');
+  }
+  const resolvedPath = path.resolve(filePath);
+  const entry = await lstat(resolvedPath);
+  if (!entry.isFile() || entry.isSymbolicLink()) throw new Error('Dictionary import source must be a regular file');
+  const realPath = await realpath(resolvedPath);
+  if (!contained(state.rootPath, realPath)) throw new Error('Dictionary import references a file outside its root');
+  const cached = state.cache.get(realPath);
+  if (cached) return cached;
+  if (state.active.has(realPath)) throw new Error('Dictionary import contains a recursive file reference');
+  if (state.cache.size + state.active.size >= state.maxFiles) {
+    throw new Error('Dictionary import contains too many files');
+  }
+  if (entry.size <= 0 || entry.size > state.maxFileBytes || state.totalBytes + entry.size > state.maxTotalBytes) {
+    throw new Error('Dictionary import exceeds its file-size budget');
+  }
+  state.active.add(realPath);
+  try {
+    const bytes = await readFile(realPath);
+    if (bytes.byteLength !== entry.size) throw new Error('Dictionary import source changed while it was being read');
+    if (bytes.byteLength > state.maxFileBytes || state.totalBytes + bytes.byteLength > state.maxTotalBytes) {
+      throw new Error('Dictionary import exceeds its file-size budget');
+    }
+    state.totalBytes += bytes.byteLength;
+    const source = bytes.toString('utf8').replace(/^\uFEFF/, '');
+    const parsed = parseDictionaryImportSource(realPath, source);
+    const rows = [...parsed.rows];
+    for (const nestedPath of parsed.nestedPaths) {
+      rows.push(...(await readDictionaryImportFileAsync(nestedPath, state, depth + 1)));
     }
     state.cache.set(realPath, rows);
     return rows;
@@ -238,6 +295,27 @@ export function readDictionaryImports(
     active: new Set(),
   };
   return resolvedPaths.flatMap((filePath) => readDictionaryImportFile(filePath, state, 0));
+}
+
+export async function readDictionaryImportsAsync(
+  filePaths: readonly string[],
+  options: DictionaryImportReadOptions = {},
+): Promise<JsonMap[]> {
+  if (!filePaths.length) return [];
+  const resolvedPaths = filePaths.map((filePath) => path.resolve(filePath));
+  const rootPath = await realpath(options.rootPath ? path.resolve(options.rootPath) : path.dirname(resolvedPaths[0]));
+  const state: DictionaryImportReadState = {
+    rootPath,
+    maxFileBytes: options.maxFileBytes ?? DEFAULT_MAX_FILE_BYTES,
+    maxTotalBytes: options.maxTotalBytes ?? DEFAULT_MAX_TOTAL_BYTES,
+    maxFiles: options.maxFiles ?? DEFAULT_MAX_FILES,
+    totalBytes: 0,
+    cache: new Map(),
+    active: new Set(),
+  };
+  const rows: JsonMap[] = [];
+  for (const filePath of resolvedPaths) rows.push(...(await readDictionaryImportFileAsync(filePath, state, 0)));
+  return rows;
 }
 
 export function readDictionaryImport(filePath: string, options: DictionaryImportReadOptions = {}): JsonMap[] {

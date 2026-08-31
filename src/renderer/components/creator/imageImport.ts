@@ -47,6 +47,17 @@ export function clipboardImageFiles(clipboard: DataTransfer): File[] {
   return imageFiles(itemFiles.length ? itemFiles : clipboard.files);
 }
 
+export function clipboardHasImagePayload(clipboard: DataTransfer) {
+  if ([...clipboard.items].some((item) => item.kind === 'file' && item.type.startsWith('image/'))) return true;
+
+  const html = clipboard.getData('text/html');
+  if (html) {
+    const document = new DOMParser().parseFromString(html, 'text/html');
+    if (document.querySelector('img, picture, source')) return true;
+  }
+  return false;
+}
+
 export function clipboardHasUserText(clipboard: DataTransfer) {
   const html = clipboard.getData('text/html');
   if (html) {

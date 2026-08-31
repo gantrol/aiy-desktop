@@ -1,6 +1,7 @@
 import { ulid } from 'ulid';
 import { type JsonMap, now, text } from '@/main/database/core/values';
 import { PackCatalogRepository } from '@/main/database/packs/pack-catalog-repository';
+import { applyPackReleaseSelection } from '@/main/database/packs/pack-release-application';
 import {
   type BeginPackInstallAttemptInput,
   type InstallExactPackReleaseInput,
@@ -22,44 +23,82 @@ import {
 export class PackInstallationRepository extends PackCatalogRepository {
   listPackCatalog(): PackCatalogRecord[] {
     const installations = new Map(this.listPackInstallations(true).map((item) => [item.packId, item]));
-    return this.listPacks().map((pack) => ({
-      pack,
-      releases: (
-        this.db
-          .prepare(
-            `SELECT release.id, release.pack_id, release.version,
+    const packs = this.listPacks();
+    const releasesByPack = new Map<string, PackCatalogRecord['releases']>(packs.map((pack) => [pack.id, []]));
+    const packIds = [...releasesByPack.keys()];
+    for (let offset = 0; offset < packIds.length; offset += 400) {
+      const chunk = packIds.slice(offset, offset + 400);
+      const placeholders = chunk.map(() => '?').join(', ');
+      const rows = this.db
+        .prepare(
+          `SELECT release.id, release.pack_id, release.version,
             release.manifest_version, release.content_hash, release.published_at, release.sealed_at,
             (SELECT COUNT(*) FROM pack_release_items item WHERE item.release_id = release.id) AS item_count,
             (SELECT COUNT(*) FROM pack_dependencies dependency
               WHERE dependency.release_id = release.id) AS dependency_count
           FROM pack_releases release
-          WHERE release.pack_id = ? AND release.sealed_at IS NOT NULL
-          ORDER BY release.created_at DESC, release.id DESC`,
-          )
-          .all(pack.id) as JsonMap[]
-      ).map((release) => ({
-        id: text(release.id),
-        packId: text(release.pack_id),
-        version: text(release.version),
-        manifestVersion: Number(release.manifest_version),
-        contentHash: text(release.content_hash),
-        publishedAt: nullableText(release.published_at),
-        sealedAt: text(release.sealed_at),
-        itemCount: Number(release.item_count),
-        dependencyCount: Number(release.dependency_count),
-      })),
+          WHERE release.pack_id IN (${placeholders}) AND release.sealed_at IS NOT NULL
+          ORDER BY release.pack_id, release.created_at DESC, release.id DESC`,
+        )
+        .all(...chunk) as JsonMap[];
+      for (const release of rows) {
+        releasesByPack.get(text(release.pack_id))!.push({
+          id: text(release.id),
+          packId: text(release.pack_id),
+          version: text(release.version),
+          manifestVersion: Number(release.manifest_version),
+          contentHash: text(release.content_hash),
+          publishedAt: nullableText(release.published_at),
+          sealedAt: text(release.sealed_at),
+          itemCount: Number(release.item_count),
+          dependencyCount: Number(release.dependency_count),
+        });
+      }
+    }
+    return packs.map((pack) => ({
+      pack,
+      releases: releasesByPack.get(pack.id) ?? [],
       installation: installations.get(pack.id) ?? null,
     }));
   }
 
   installExactPackRelease(input: InstallExactPackReleaseInput): PackInstallationRecord {
+    return this.installExactPackReleaseInternal(input, false);
+  }
+
+  repairExactPackRelease(input: InstallExactPackReleaseInput): PackInstallationRecord {
+    return this.installExactPackReleaseInternal(input, true);
+  }
+
+  private installExactPackReleaseInternal(
+    input: InstallExactPackReleaseInput,
+    repairExisting: boolean,
+  ): PackInstallationRecord {
     const current = this.listPackInstallations(true).find((item) => item.packId === input.packId);
     if (
       current?.deletedAt === null &&
       current.selectedReleaseId === input.releaseId &&
       (current.state === 'INSTALLED' || current.state === 'DISABLED')
     ) {
-      return current;
+      if (!repairExisting) return current;
+      const attempt = this.beginPackInstallAttempt({
+        packId: input.packId,
+        targetReleaseId: input.releaseId,
+        operation: 'VERIFY',
+        source: input.source,
+      });
+      try {
+        return this.db.transaction(() => {
+          const application = applyPackReleaseSelection(this.storage, input.packId, input.releaseId, input.releaseId);
+          return this.completePackInstallAttempt(attempt.id, { ...input.verification, application });
+        })();
+      } catch (error) {
+        this.failPackInstallAttempt(attempt.id, {
+          code: 'EXACT_RELEASE_VERIFY_FAILED',
+          message: error instanceof Error ? error.message : String(error),
+        });
+        throw error;
+      }
     }
     const attempt = this.beginPackInstallAttempt({
       packId: input.packId,
@@ -69,7 +108,15 @@ export class PackInstallationRepository extends PackCatalogRepository {
       dependencies: input.dependencies,
     });
     try {
-      return this.completePackInstallAttempt(attempt.id, input.verification);
+      return this.db.transaction(() => {
+        const application = applyPackReleaseSelection(
+          this.storage,
+          input.packId,
+          input.releaseId,
+          attempt.previousReleaseId,
+        );
+        return this.completePackInstallAttempt(attempt.id, { ...input.verification, application });
+      })();
     } catch (error) {
       this.failPackInstallAttempt(attempt.id, {
         code: 'EXACT_RELEASE_INSTALL_FAILED',
@@ -239,13 +286,24 @@ export class PackInstallationRepository extends PackCatalogRepository {
           )
           .run(attempt.previousReleaseId, attempt.previousInstallationState, timestamp, attempt.installationId);
       } else {
+        const installedState = attempt.previousInstallationState === 'DISABLED' ? 'DISABLED' : 'INSTALLED';
         this.db
           .prepare(
-            `UPDATE pack_installations SET selected_release_id = ?, state = 'INSTALLED',
-            installed_at = COALESCE(installed_at, ?), disabled_at = NULL, removal_requested_at = NULL,
+            `UPDATE pack_installations SET selected_release_id = ?, state = ?,
+            installed_at = COALESCE(installed_at, ?),
+            disabled_at = CASE WHEN ? = 'DISABLED' THEN COALESCE(disabled_at, ?) ELSE NULL END,
+            removal_requested_at = NULL,
             last_error_json = NULL, updated_at = ?, deleted_at = NULL WHERE id = ?`,
           )
-          .run(attempt.targetReleaseId, timestamp, timestamp, attempt.installationId);
+          .run(
+            attempt.targetReleaseId,
+            installedState,
+            timestamp,
+            installedState,
+            timestamp,
+            timestamp,
+            attempt.installationId,
+          );
       }
       this.db
         .prepare(

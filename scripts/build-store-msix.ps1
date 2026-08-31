@@ -35,6 +35,26 @@ function Assert-Equal {
   }
 }
 
+function Assert-AiyProtocolRegistration {
+  param(
+    [Parameter(Mandatory = $true)]
+    [xml]$Manifest,
+    [Parameter(Mandatory = $true)]
+    [string]$Label
+  )
+
+  $namespaces = [System.Xml.XmlNamespaceManager]::new($Manifest.NameTable)
+  $namespaces.AddNamespace('foundation', 'http://schemas.microsoft.com/appx/manifest/foundation/windows10')
+  $namespaces.AddNamespace('uap', 'http://schemas.microsoft.com/appx/manifest/uap/windows10')
+  $protocol = $Manifest.SelectSingleNode(
+    '/foundation:Package/foundation:Applications/foundation:Application/foundation:Extensions/uap:Extension[@Category="windows.protocol"]/uap:Protocol[@Name="aiy"]',
+    $namespaces
+  )
+  if ($null -eq $protocol) {
+    throw "$Label does not register the aiy URI protocol."
+  }
+}
+
 function Assert-BuildChildPath {
   param(
     [Parameter(Mandatory = $true)]
@@ -150,6 +170,7 @@ Assert-Equal -Label 'Identity.Version' -Actual ([string]$sourceManifest.Package.
 Assert-Equal -Label 'Identity.ProcessorArchitecture' -Actual ([string]$sourceManifest.Package.Identity.ProcessorArchitecture) -Expected 'x64'
 Assert-Equal -Label 'Properties.DisplayName' -Actual ([string]$sourceManifest.Package.Properties.DisplayName) -Expected 'AIY'
 Assert-Equal -Label 'Properties.PublisherDisplayName' -Actual ([string]$sourceManifest.Package.Properties.PublisherDisplayName) -Expected $expectedPublisherDisplayName
+Assert-AiyProtocolRegistration -Manifest $sourceManifest -Label 'Source manifest'
 
 $buildRoot = Join-Path $repositoryRoot "release\store-msix-$appVersion"
 $modeName = if ($LocalTest) { 'local-test' } else { 'submission' }
@@ -286,6 +307,7 @@ Assert-Equal -Label 'Packed Identity.Name' -Actual ([string]$packedManifest.Pack
 Assert-Equal -Label 'Packed Identity.Publisher' -Actual ([string]$packedManifest.Package.Identity.Publisher) -Expected $expectedPublisher
 Assert-Equal -Label 'Packed Identity.Version' -Actual ([string]$packedManifest.Package.Identity.Version) -Expected $storeVersion
 Assert-Equal -Label 'Packed Identity.ProcessorArchitecture' -Actual ([string]$packedManifest.Package.Identity.ProcessorArchitecture) -Expected 'x64'
+Assert-AiyProtocolRegistration -Manifest $packedManifest -Label 'Packed manifest'
 
 if (Test-Path -LiteralPath (Join-Path $inspectionDirectory 'resources\content-packs\human-portrait')) {
   throw 'The Store package contains the prohibited production human-portrait content pack.'

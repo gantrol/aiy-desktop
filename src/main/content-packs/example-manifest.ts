@@ -15,6 +15,7 @@ const stableKey = z
 
 const contentPackExampleSchema = z
   .object({
+    key: stableKey.optional(),
     assetId: exampleId,
     source: z.string().trim().min(1).max(240),
     termStableKey: stableKey,

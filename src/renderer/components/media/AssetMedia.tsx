@@ -10,6 +10,7 @@ export function isVideoAsset(asset: Pick<AssetDto, 'mimeType'> | null | undefine
 
 interface Props {
   asset: MediaAsset;
+  src?: string;
   className?: string;
   alt?: string;
   loading?: 'eager' | 'lazy';
@@ -29,6 +30,7 @@ interface Props {
  */
 export function AssetMedia({
   asset,
+  src = asset.mediaUrl,
   className,
   alt = '',
   loading = 'eager',
@@ -66,13 +68,13 @@ export function AssetMedia({
     );
     observer.observe(element);
     return () => observer.disconnect();
-  }, [asset.mediaUrl, loading, video]);
+  }, [loading, src, video]);
 
   if (!video) {
     return (
       <img
         className={className}
-        src={asset.mediaUrl}
+        src={src}
         alt={alt}
         loading={loading}
         decoding={decoding}
@@ -88,7 +90,7 @@ export function AssetMedia({
     <video
       ref={videoRef}
       className={className}
-      src={shouldLoadVideo ? asset.mediaUrl : undefined}
+      src={shouldLoadVideo ? src : undefined}
       aria-label={alt || undefined}
       aria-hidden={alt || controls ? undefined : true}
       crossOrigin={crossOrigin}

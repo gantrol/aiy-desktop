@@ -29,6 +29,7 @@ import {
   LocalSpaceTransferDialog,
   type LocalSpaceTransferOperation,
 } from '@/renderer/components/spaces/LocalSpaceTransferDialog';
+import { useArticleEditorSessionFlush } from '@/renderer/components/creator/article-editor/ArticleEditorSessionProvider';
 
 interface Props {
   spaceName: string;
@@ -122,6 +123,7 @@ function SpaceDataActions({
 
 export function LocalSpaceSwitcher({ spaceName, spaceCoverUrl, busy, transitioning, notify }: Props) {
   const { messages } = useI18n();
+  const flushArticleEditors = useArticleEditorSessionFlush();
   const l = messages.space;
   const [open, setOpen] = useState(false);
   const [registry, setRegistry] = useState<LocalSpaceRegistryDto | null>(null);
@@ -159,6 +161,7 @@ export function LocalSpaceSwitcher({ spaceName, spaceCoverUrl, busy, transitioni
     if (transitionPending || busy) return;
     setPending(true);
     try {
+      await flushArticleEditors();
       const result = await action();
       if (result.status === 'switched') {
         setRegistry(null);

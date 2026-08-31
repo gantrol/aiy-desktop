@@ -1,8 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type {
   BootstrapDto,
-  ImportedCreationOutputDto,
-  IntakeCommitIntent,
   IntakeCommitResult,
   Locale,
   LocalSpaceTransitionEvent,
@@ -16,69 +14,96 @@ import {
 } from '@/renderer/components/app/AppLoadingState';
 import { AppTitleBar } from '@/renderer/components/app/AppTitleBar';
 import { SettingsDialog } from '@/renderer/components/app/SettingsDialog';
-import { AppWorkspaceViews } from '@/renderer/components/app/AppWorkspaceViews';
-import { createWorkspaceLoadingBoundaries } from '@/renderer/components/app/appWorkspaceLoadingBoundaries';
 import { useTermDetails } from '@/renderer/components/app/useTermDetails';
 import {
   initialAppLocation,
-  sameAppLocation,
   type AppLocation,
   type AiCenterLocation,
-  type CreatorLocation,
-  type DictionaryLocation,
-  type ExtensionsLocation,
-  type GalleryLocation,
   type HistoryNavigationGuard,
   type NavigationMode,
-  type VideoDocumentsLocation,
 } from '@/renderer/components/app/app-navigation';
-import { useNavigationHistory } from '@/renderer/components/app/useNavigationHistory';
+import { useAppDeepLinkNavigation } from '@/renderer/components/app/useAppDeepLinkNavigation';
+import { useWorkspaceController } from '@/renderer/components/workspace/useWorkspaceController';
+import { useWorkspaceAlbumContext } from '@/renderer/components/workspace/useWorkspaceAlbumContext';
+import { AppWorkspaceGroup } from '@/renderer/components/workspace/AppWorkspaceGroup';
+import { WorkspaceSplitLayout } from '@/renderer/components/workspace/WorkspaceSplitLayout';
+import {
+  activeLocation as workspaceTabLocation,
+  findWorkspaceTab,
+  type WorkspaceRuntimeGroup,
+} from '@/renderer/components/workspace/workspace-state';
+import { workspaceLocationKey } from '@/renderer/components/workspace/workspace-location';
 import { LocalSpaceTransitionOverlay } from '@/renderer/components/spaces/LocalSpaceTransitionOverlay';
 import { Button } from '@/renderer/components/ui/button';
 import { ToastViewport, useToastQueue } from '@/renderer/components/ui/toast';
-import { AssetMenuActionsProvider } from '@/renderer/components/media/AssetMenuActionsProvider';
-import { mergeImportedOutput, mergeIntakeResult } from '@/renderer/features/intake/applyIntakeResult';
-import { LibraryStartScreen } from '@/renderer/features/intake/lazyLibraryStartScreen';
-import type { AiActivityRecord } from '@/renderer/features/ai-center/AiCenterScreen';
-import { aiActivityNavigationTarget } from '@/renderer/features/ai-center/aiActivityNavigation';
+import { useAppAssetMenuActions } from '@/renderer/components/media/useAppAssetMenuActions';
+import { mergeIntakeResult } from '@/renderer/features/intake/applyIntakeResult';
 import { generationReEditLocation } from '@/renderer/features/ai-center/generationReEditNavigation';
 import { useCodexImagesNavigation } from '@/renderer/features/extensions/codexImageNavigation';
 import { useTransitionShowcaseNavigation } from '@/renderer/features/extensions/transitionShowcaseNavigation';
 import { useVideoDocumentTranscriptBackgroundTasks } from '@/renderer/features/video-documents/useVideoDocumentTranscriptBackgroundTasks';
 import { useAppUpdateNotification } from '@/renderer/features/app-update/useAppUpdateNotification';
-import { ContentManagementScreen } from '@/renderer/features/content-management/ContentManagementScreen';
 import { loadCreatorScreen } from '@/renderer/features/creator/lazyCreatorScreen';
 import { useI18n } from '@/renderer/i18n/useI18n';
 import { publishLanguagePluginState } from '@/renderer/i18n/languagePluginState';
 import { mergeGenerationProjection, useGenerationProjectionEvents } from '@/renderer/generationProjectionRefresh';
 import { createTrailingRefreshQueue, requestTrailingRefresh, synchronizeRefresh } from '@/renderer/startupRefreshQueue';
-import { appGridRows, appMaterialsReturnSummary, DEFAULT_MOUSE_NAVIGATION_BINDINGS } from '@/renderer/appPresentation';
+import { appGridRows } from '@/renderer/appPresentation';
+import { useAppDataUpdates } from '@/renderer/useAppDataUpdates';
+import { ArticleEditorSessionRegistryProvider } from '@/renderer/components/creator/article-editor/ArticleEditorSessionProvider';
+import { useAppWorkspaceShortcuts } from '@/renderer/commands/useAppWorkspaceShortcuts';
+import { AppRuntimeProviders } from '@/renderer/components/app/AppRuntimeProviders';
+
+function newWorkspaceTabLocation(destination: AppLocation['view'] | AppLocation) {
+  return typeof destination === 'string' ? { ...initialAppLocation, view: destination } : destination;
+}
 
 export function App() {
   const { locale, messages } = useI18n();
-  const {
-    current: location,
-    navigate: navigateLocation,
-    replace: replaceLocation,
-    goBack: navigateBack,
-    goForward: navigateForward,
-    canGoBack,
-    canGoForward,
-  } = useNavigationHistory(initialAppLocation, sameAppLocation);
-  const { view, materialsReturnContext } = location;
-  const visitedViews = useRef(new Set<AppView>());
-  const preTransitionVisitedViewsRef = useRef<Set<AppView> | null>(null);
-  visitedViews.current.add(view);
+  const [data, setData] = useState<BootstrapDto | null>(null);
+  const workspace = useWorkspaceController(data);
+  const workspaceState = workspace.state;
+  const navigateWorkspace = workspace.navigate;
+  const goBackWorkspace = workspace.goBack;
+  const goForwardWorkspace = workspace.goForward;
+  const flushWorkspace = workspace.flush;
+  const location = workspace.activeLocation ?? initialAppLocation;
+  const activeTab = workspace.activeTab;
+  const activeTabId = activeTab?.id ?? null;
+  const workspaceAlbums = useWorkspaceAlbumContext(data?.spaceId ?? null, activeTabId);
+  const navigateLocation = useCallback(
+    (destination: AppLocation | ((current: AppLocation) => AppLocation)) => {
+      if (activeTabId) navigateWorkspace(activeTabId, destination, 'push');
+    },
+    [activeTabId, navigateWorkspace],
+  );
+  const replaceLocation = useCallback(
+    (destination: AppLocation | ((current: AppLocation) => AppLocation)) => {
+      if (activeTabId) navigateWorkspace(activeTabId, destination, 'replace');
+    },
+    [activeTabId, navigateWorkspace],
+  );
+  const canGoBack = Boolean(activeTab && activeTab.history.index > 0);
+  const canGoForward = Boolean(activeTab && activeTab.history.index < activeTab.history.entries.length - 1);
+  const { view } = location;
+  const visibleViews = useMemo(
+    () =>
+      workspaceState?.groups.map((group) => {
+        const tab = group.tabs.find((candidate) => candidate.id === group.activeTabId) ?? group.tabs[0];
+        return workspaceTabLocation(tab).view;
+      }) ?? [view],
+    [view, workspaceState],
+  );
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [comparisonFullWindow, setComparisonFullWindow] = useState(false);
   const [creationPromptFullWindow, setCreationPromptFullWindow] = useState(false);
+  useAppDeepLinkNavigation(navigateLocation, setSettingsOpen, setComparisonFullWindow, setCreationPromptFullWindow);
   const appFullWindow = comparisonFullWindow || creationPromptFullWindow;
   const [defaultPromptLocale, setDefaultPromptLocale] = useState<Locale | null>(() => {
     const stored = localStorage.getItem('aiy.prompt-locale.v1');
     if (stored === 'none') return null;
     return stored === 'zh' ? 'zh' : 'en';
   });
-  const [data, setData] = useState<BootstrapDto | null>(null);
   const { tasks: transcriptBackgroundTasks, lastTerminal: lastTranscriptTerminal } =
     useVideoDocumentTranscriptBackgroundTasks();
   const [spaceTransition, setSpaceTransition] = useState<LocalSpaceTransitionEvent | null>(null);
@@ -91,25 +116,33 @@ export function App() {
   const [dataRevision, setDataRevision] = useState(0);
   const [documentNavigationRevision, setDocumentNavigationRevision] = useState(0);
   const creatorStartRevision = useRef(0);
-  const [creatorActiveAlbumId, setCreatorActiveAlbumId] = useState<string | null>(null);
-  const [galleryActiveAlbumId, setGalleryActiveAlbumId] = useState<string | null>(null);
   const [error, setError] = useState('');
-  const showLoadingState = !spaceTransition && !data && !error;
+  const workspaceReady = Boolean(data && workspaceState?.spaceId === data.spaceId);
+  const showLoadingState = !spaceTransition && (!data || !workspaceReady) && !error;
   const refreshRevision = useRef(0);
   const refreshQueueRef = useRef(createTrailingRefreshQueue<Locale>());
-  const historyNavigationGuardRef = useRef<HistoryNavigationGuard | null>(null);
+  const historyNavigationGuardsRef = useRef(new Map<string, HistoryNavigationGuard>());
+  const articleLocationFlushersRef = useRef(new Map<string, () => void>());
+  const setArticleLocationFlusher = useCallback((tabId: string, flush: (() => void) | null) => {
+    if (flush) articleLocationFlushersRef.current.set(tabId, flush);
+    else articleLocationFlushersRef.current.delete(tabId);
+  }, []);
   const lastHistoryCommandRef = useRef<{ command: NavigationCommand; timestamp: number } | null>(null);
   const lastNotifiedTranscriptOperationIdRef = useRef<string | null>(null);
   const localeRef = useRef(locale);
   localeRef.current = locale;
+  useEffect(() => {
+    const flushBeforePageExit = () => {
+      articleLocationFlushersRef.current.forEach((flush) => flush());
+      void flushWorkspace();
+    };
+    window.addEventListener('pagehide', flushBeforePageExit);
+    return () => window.removeEventListener('pagehide', flushBeforePageExit);
+  }, [flushWorkspace]);
   const { messages: notifications, notify, dismiss: dismissNotification } = useToastQueue();
   useAppUpdateNotification({ settingsOpen, notify });
   const codexImagesNavigation = useCodexImagesNavigation(data?.extensions, view, replaceLocation);
   const transitionShowcaseNavigation = useTransitionShowcaseNavigation(data?.extensions, view, replaceLocation);
-  const workspaceLoadingBoundaries = useMemo(
-    () => createWorkspaceLoadingBoundaries(loadingPreviews, view),
-    [loadingPreviews, view],
-  );
 
   const loadData = useCallback(async () => {
     const revision = ++refreshRevision.current;
@@ -132,7 +165,7 @@ export function App() {
 
   const requestTermDetails = useTermDetails({
     data,
-    view,
+    views: visibleViews,
     refreshRevision,
     localeRef,
     setData,
@@ -147,10 +180,7 @@ export function App() {
     setDocumentNavigationRevision((current) => current + 1);
   }, []);
 
-  const updateImportedOutput = useCallback((output: ImportedCreationOutputDto) => {
-    setData((current) => mergeImportedOutput(current, output));
-    setDataRevision((current) => current + 1);
-  }, []);
+  const { updateArticle, updateImportedOutput } = useAppDataUpdates(setData, setDataRevision);
 
   const refreshDocumentNavigation = useCallback(() => setDocumentNavigationRevision((current) => current + 1), []);
 
@@ -206,9 +236,6 @@ export function App() {
       window.desktopApi.onLocalSpaceTransition((transition) => {
         applyLoadingPreviewTransition(transition);
         if (transition.phase === 'FAILED') {
-          const previousVisitedViews = preTransitionVisitedViewsRef.current;
-          if (previousVisitedViews) visitedViews.current = previousVisitedViews;
-          preTransitionVisitedViewsRef.current = null;
           setData(preTransitionDataRef.current);
           preTransitionDataRef.current = null;
           setSpaceTransition(null);
@@ -219,9 +246,11 @@ export function App() {
         setComparisonFullWindow(false);
         setCreationPromptFullWindow(false);
         if (transition.phase === 'STARTING') {
+          articleLocationFlushersRef.current.forEach((flush) => flush());
+          void flushWorkspace().catch((error) =>
+            console.error('[workspace-layout] Failed to flush before switch', error),
+          );
           refreshRevision.current += 1;
-          preTransitionVisitedViewsRef.current = new Set(visitedViews.current);
-          visitedViews.current = new Set([view]);
           setData((current) => {
             preTransitionDataRef.current = current;
             return null;
@@ -230,11 +259,8 @@ export function App() {
         }
         if (transition.phase === 'PROGRESS') return;
         setError('');
-        setCreatorActiveAlbumId(null);
-        setGalleryActiveAlbumId(null);
         void loadData().then((loaded) => {
           preTransitionDataRef.current = null;
-          preTransitionVisitedViewsRef.current = null;
           if (!loaded) {
             setSpaceTransition((current) => (current?.space.id === transition.space.id ? null : current));
             return;
@@ -249,40 +275,81 @@ export function App() {
           }, 220);
         });
       }),
-    [applyLoadingPreviewTransition, loadData, view],
+    [applyLoadingPreviewTransition, flushWorkspace, loadData],
   );
 
   useEffect(() => {
     if (view !== 'creator') setCreationPromptFullWindow(false);
   }, [view]);
 
+  const commitTabLocation = useCallback(
+    (
+      tabId: string,
+      destination: AppLocation | ((current: AppLocation) => AppLocation),
+      mode: NavigationMode = 'push',
+    ) => {
+      const state = workspaceState;
+      if (!state) return;
+      const found = findWorkspaceTab(state, tabId);
+      if (!found) return;
+      const next = typeof destination === 'function' ? destination(workspaceTabLocation(found.tab)) : destination;
+      const nextKey = workspaceLocationKey(next);
+      const duplicate = found.group.tabs.some(
+        (tab) => tab.id !== tabId && workspaceLocationKey(workspaceTabLocation(tab)) === nextKey,
+      );
+      const apply = () => {
+        articleLocationFlushersRef.current.get(tabId)?.();
+        navigateWorkspace(tabId, next, mode);
+      };
+      if (duplicate && historyNavigationGuardsRef.current.get(tabId)?.('forward', apply)) return;
+      apply();
+    },
+    [navigateWorkspace, workspaceState],
+  );
   const commitLocation = useCallback(
     (destination: AppLocation | ((current: AppLocation) => AppLocation), mode: NavigationMode = 'push') => {
-      if (mode === 'replace') replaceLocation(destination);
-      else navigateLocation(destination);
+      if (activeTabId) commitTabLocation(activeTabId, destination, mode);
     },
-    [navigateLocation, replaceLocation],
+    [activeTabId, commitTabLocation],
+  );
+
+  const goBackInTab = useCallback(
+    (tabId: string) => {
+      const found = workspaceState ? findWorkspaceTab(workspaceState, tabId) : null;
+      if (!found || found.tab.history.index <= 0) return;
+      const continueNavigation = () => {
+        articleLocationFlushersRef.current.get(tabId)?.();
+        setComparisonFullWindow(false);
+        goBackWorkspace(tabId);
+      };
+      if (historyNavigationGuardsRef.current.get(tabId)?.('back', continueNavigation)) return;
+      continueNavigation();
+    },
+    [goBackWorkspace, workspaceState],
+  );
+
+  const goForwardInTab = useCallback(
+    (tabId: string) => {
+      const found = workspaceState ? findWorkspaceTab(workspaceState, tabId) : null;
+      if (!found || found.tab.history.index >= found.tab.history.entries.length - 1) return;
+      const continueNavigation = () => {
+        articleLocationFlushersRef.current.get(tabId)?.();
+        setComparisonFullWindow(false);
+        goForwardWorkspace(tabId);
+      };
+      if (historyNavigationGuardsRef.current.get(tabId)?.('forward', continueNavigation)) return;
+      continueNavigation();
+    },
+    [goForwardWorkspace, workspaceState],
   );
 
   const goBack = useCallback(() => {
-    if (!canGoBack) return;
-    const continueNavigation = () => {
-      setComparisonFullWindow(false);
-      navigateBack();
-    };
-    if (historyNavigationGuardRef.current?.('back', continueNavigation)) return;
-    continueNavigation();
-  }, [canGoBack, navigateBack]);
+    if (activeTabId) goBackInTab(activeTabId);
+  }, [activeTabId, goBackInTab]);
 
   const goForward = useCallback(() => {
-    if (!canGoForward) return;
-    const continueNavigation = () => {
-      setComparisonFullWindow(false);
-      navigateForward();
-    };
-    if (historyNavigationGuardRef.current?.('forward', continueNavigation)) return;
-    continueNavigation();
-  }, [canGoForward, navigateForward]);
+    if (activeTabId) goForwardInTab(activeTabId);
+  }, [activeTabId, goForwardInTab]);
 
   const invokeHistoryNavigation = useCallback(
     (command: NavigationCommand) => {
@@ -299,54 +366,46 @@ export function App() {
 
   useEffect(() => window.desktopApi.onNavigationCommand(invokeHistoryNavigation), [invokeHistoryNavigation]);
 
-  const setHistoryNavigationGuard = useCallback((guard: HistoryNavigationGuard | null) => {
-    historyNavigationGuardRef.current = guard;
+  const setHistoryNavigationGuard = useCallback((tabId: string, guard: HistoryNavigationGuard | null) => {
+    if (guard) historyNavigationGuardsRef.current.set(tabId, guard);
+    else historyNavigationGuardsRef.current.delete(tabId);
   }, []);
 
-  const returnToMaterials = useCallback(() => {
-    setComparisonFullWindow(false);
-    if (canGoBack) {
-      navigateBack();
-      return;
-    }
-    navigateLocation((current) => ({ ...current, view: 'gallery', materialsReturnContext: null }));
-  }, [canGoBack, navigateBack, navigateLocation]);
+  const startCreationInTab = useCallback(
+    (tabId: string, albumId: string | null) => {
+      setComparisonFullWindow(false);
+      const requestId = ++creatorStartRevision.current;
+      commitTabLocation(tabId, (current) => ({
+        ...current,
+        view: 'creator',
+        creator: { surface: 'new-creation', albumId, requestId },
+        materialsReturnContext: null,
+      }));
+    },
+    [commitTabLocation],
+  );
 
   const startCreation = useCallback(
     (albumId: string | null) => {
-      setComparisonFullWindow(false);
-      const requestId = ++creatorStartRevision.current;
-      if (data?.libraryEmpty) {
-        void window.desktopApi
-          .creationDraftStart({ albumId, termPromptLocale: defaultPromptLocale ?? locale })
-          .then(async () => {
-            commitLocation(
-              (current) => ({
-                ...current,
-                view: 'creator',
-                creator: { surface: 'new-creation', albumId, requestId },
-                materialsReturnContext: null,
-              }),
-              'replace',
-            );
-            await refresh();
-          })
-          .catch((reason) => notify(reason instanceof Error ? reason.message : String(reason)));
-      } else {
-        commitLocation((current) => ({
-          ...current,
-          view: 'creator',
-          creator: { surface: 'new-creation', albumId, requestId },
-          materialsReturnContext: null,
-        }));
-      }
+      if (!activeTabId) return;
+      const guard = historyNavigationGuardsRef.current.get(activeTabId);
+      const start = () => startCreationInTab(activeTabId, albumId);
+      if (guard?.('forward', start)) return;
+      start();
     },
-    [commitLocation, data?.libraryEmpty, defaultPromptLocale, locale, notify, refresh],
+    [activeTabId, startCreationInTab],
   );
 
   const useAssetInCreation = useCallback(
     async (assetId: string) => {
-      const albumId = view === 'gallery' ? galleryActiveAlbumId : view === 'creator' ? creatorActiveAlbumId : null;
+      const targetTabId = activeTabId;
+      if (!targetTabId) return;
+      const albumId =
+        view === 'gallery'
+          ? workspaceAlbums.galleryAlbumId
+          : view === 'creator'
+            ? workspaceAlbums.creatorAlbumId
+            : null;
       const draft = await window.desktopApi.creationDraftStart({
         albumId,
         termPromptLocale: defaultPromptLocale ?? locale,
@@ -374,27 +433,30 @@ export function App() {
       setComparisonFullWindow(false);
       setCreationPromptFullWindow(false);
       const requestId = ++creatorStartRevision.current;
-      commitLocation((current) => ({
+      commitTabLocation(targetTabId, (current) => ({
         ...current,
         view: 'creator',
-        creator: { surface: 'new-creation', albumId: savedDraft.targetAlbumId, requestId },
+        creator: { surface: 'creation-draft', draftId: savedDraft.id, requestId },
         materialsReturnContext: null,
       }));
     },
     [
-      commitLocation,
-      creatorActiveAlbumId,
+      activeTabId,
+      commitTabLocation,
       defaultPromptLocale,
-      galleryActiveAlbumId,
       locale,
       messages.assetFile.referenceLimit,
       refresh,
       view,
+      workspaceAlbums.creatorAlbumId,
+      workspaceAlbums.galleryAlbumId,
     ],
   );
 
   const createDocumentFromVideo = useCallback(
     async (materialId: string, albumId: string | null) => {
+      const targetTabId = activeTabId;
+      if (!targetTabId) return;
       try {
         const document = await window.desktopApi.videoDocumentCreate({
           videoMaterialId: materialId,
@@ -403,7 +465,7 @@ export function App() {
           albumId,
         });
         void refreshAlbums().catch((reason) => notify(reason instanceof Error ? reason.message : String(reason)));
-        commitLocation((current) => ({
+        commitTabLocation(targetTabId, (current) => ({
           ...current,
           view: 'documents',
           documents: {
@@ -416,254 +478,69 @@ export function App() {
         notify(reason instanceof Error ? reason.message : String(reason));
       }
     },
-    [commitLocation, locale, notify, refreshAlbums],
+    [activeTabId, commitTabLocation, locale, notify, refreshAlbums],
   );
 
-  const assetMenuActions = useMemo(
-    () => ({
-      albums: data?.albums ?? [],
-      notify,
-      useInCreation: useAssetInCreation,
-      createDocumentFromVideo,
-      refreshLibrary: refresh,
-    }),
-    [createDocumentFromVideo, data?.albums, notify, refresh, useAssetInCreation],
-  );
+  const assetMenuActions = useAppAssetMenuActions({
+    albums: data?.albums ?? [],
+    breakdownAlbumId:
+      view === 'gallery' ? workspaceAlbums.galleryAlbumId : view === 'creator' ? workspaceAlbums.creatorAlbumId : null,
+    locale,
+    notify,
+    useInCreation: useAssetInCreation,
+    createDocumentFromVideo,
+    refreshLibrary: refresh,
+    navigate: commitLocation,
+  });
 
   const startNewCreationFromContext = useCallback(() => {
-    const albumId = view === 'creator' ? creatorActiveAlbumId : view === 'gallery' ? galleryActiveAlbumId : null;
+    const albumId =
+      view === 'creator' ? workspaceAlbums.creatorAlbumId : view === 'gallery' ? workspaceAlbums.galleryAlbumId : null;
     startCreation(albumId);
-  }, [creatorActiveAlbumId, galleryActiveAlbumId, startCreation, view]);
+  }, [startCreation, view, workspaceAlbums.creatorAlbumId, workspaceAlbums.galleryAlbumId]);
 
-  useEffect(() => {
-    const handleNewCreation = (event: KeyboardEvent) => {
-      if (
-        event.repeat ||
-        !(event.ctrlKey || event.metaKey) ||
-        event.altKey ||
-        event.shiftKey ||
-        event.key.toLowerCase() !== 'n'
-      )
-        return;
-      if (document.querySelector('[role="dialog"]')) return;
-      event.preventDefault();
-      startNewCreationFromContext();
-    };
-    window.addEventListener('keydown', handleNewCreation);
-    return () => window.removeEventListener('keydown', handleNewCreation);
-  }, [startNewCreationFromContext]);
+  useAppWorkspaceShortcuts({
+    state: workspaceState,
+    activateGroupByIndex: workspace.activateGroupByIndex,
+    activateTabByIndex: workspace.activateTabByIndex,
+    navigateHistory: invokeHistoryNavigation,
+    startNew: startNewCreationFromContext,
+  });
 
-  useEffect(() => {
-    const handleHistoryNavigation = (event: KeyboardEvent) => {
-      if (event.repeat) return;
-      const command: NavigationCommand | null =
-        event.key === 'BrowserBack' || event.code === 'BrowserBack' || event.keyCode === 166
-          ? 'back'
-          : event.key === 'BrowserForward' || event.code === 'BrowserForward' || event.keyCode === 167
-            ? 'forward'
-            : event.altKey && !event.ctrlKey && !event.metaKey && !event.shiftKey && event.key === 'ArrowLeft'
-              ? 'back'
-              : event.altKey && !event.ctrlKey && !event.metaKey && !event.shiftKey && event.key === 'ArrowRight'
-                ? 'forward'
-                : null;
-      if (!command) return;
-      if (document.querySelector('[role="dialog"]')) return;
-      event.preventDefault();
-      invokeHistoryNavigation(command);
-    };
-    window.addEventListener('keydown', handleHistoryNavigation);
-    return () => window.removeEventListener('keydown', handleHistoryNavigation);
-  }, [invokeHistoryNavigation]);
+  function requestTabExit(tabId: string, action: () => void) {
+    const guard = historyNavigationGuardsRef.current.get(tabId);
+    if (guard?.('forward', action)) return;
+    action();
+  }
 
-  useEffect(() => {
-    const handleMouseNavigation = (event: MouseEvent) => {
-      const command = DEFAULT_MOUSE_NAVIGATION_BINDINGS.get(event.button);
-      if (!command) return;
-      // Chromium may otherwise apply its own back/forward action after mouseup.
-      event.preventDefault();
-      invokeHistoryNavigation(command);
-    };
-    window.addEventListener('mouseup', handleMouseNavigation, true);
-    return () => window.removeEventListener('mouseup', handleMouseNavigation, true);
-  }, [invokeHistoryNavigation]);
+  function requestTabExits(tabIds: readonly string[], action: () => void, index = 0) {
+    const tabId = tabIds[index];
+    if (!tabId) return action();
+    requestTabExit(tabId, () => requestTabExits(tabIds, action, index + 1));
+  }
 
-  const returnSummary = appMaterialsReturnSummary(materialsReturnContext, data, locale);
+  function changeViewInTab(tabId: string, nextView: AppView) {
+    const found = workspace.state ? findWorkspaceTab(workspace.state, tabId) : null;
+    if (!found || workspaceTabLocation(found.tab).view === nextView) return;
+    requestTabExit(tabId, () => {
+      setComparisonFullWindow(false);
+      commitTabLocation(tabId, (current) => ({ ...current, view: nextView, materialsReturnContext: null }));
+    });
+  }
 
   function changeView(nextView: AppView) {
-    if (nextView === view) return;
-    setComparisonFullWindow(false);
-    navigateLocation((current) => ({
-      ...current,
-      view: nextView,
-      materialsReturnContext: null,
-    }));
-  }
-
-  function navigateCreator(creator: CreatorLocation, mode: NavigationMode = 'push') {
-    commitLocation(
-      (current) => ({
-        ...current,
-        view: 'creator',
-        creator,
-        materialsReturnContext: null,
-      }),
-      mode,
-    );
-  }
-
-  async function openImportedCreation(seriesId: string, assetId: string | null) {
-    await refresh();
-    navigateCreator({ surface: 'existing-creation', seriesId, assetId });
-  }
-
-  function navigateDictionary(dictionary: DictionaryLocation, mode: NavigationMode = 'push') {
-    commitLocation(
-      (current) => ({
-        ...current,
-        view: 'dictionary',
-        dictionary,
-        materialsReturnContext: null,
-      }),
-      mode,
-    );
-  }
-
-  function navigateVideoDocuments(documents: VideoDocumentsLocation, mode: NavigationMode = 'push') {
-    setComparisonFullWindow(false);
-    setCreationPromptFullWindow(false);
-    commitLocation(
-      (current) => ({
-        ...current,
-        view: 'documents',
-        documents,
-        materialsReturnContext:
-          current.materialsReturnContext?.destination === 'documents' &&
-          documents.documentId === current.materialsReturnContext.documentId
-            ? current.materialsReturnContext
-            : null,
-      }),
-      mode,
-    );
-  }
-
-  function navigateGallery(gallery: GalleryLocation, mode: NavigationMode = 'push') {
-    commitLocation(
-      (current) => ({
-        ...current,
-        view: 'gallery',
-        gallery,
-        materialsReturnContext: null,
-      }),
-      mode,
-    );
-  }
-
-  function navigateExtensions(extensions: ExtensionsLocation, mode: NavigationMode = 'push') {
-    commitLocation(
-      (current) => ({
-        ...current,
-        view: 'packs',
-        extensions,
-        materialsReturnContext: null,
-      }),
-      mode,
-    );
+    if (activeTabId) changeViewInTab(activeTabId, nextView);
   }
 
   function navigateAiCenter(aiCenter: AiCenterLocation, mode: NavigationMode = 'push') {
-    commitLocation(
-      (current) => ({
-        ...current,
-        view: 'aiCenter',
-        aiCenter,
-        materialsReturnContext: null,
-      }),
-      mode,
+    if (!activeTabId) return;
+    requestTabExit(activeTabId, () =>
+      commitTabLocation(
+        activeTabId,
+        (current) => ({ ...current, view: 'aiCenter', aiCenter, materialsReturnContext: null }),
+        mode,
+      ),
     );
-  }
-
-  function locateAiActivity(record: AiActivityRecord) {
-    setComparisonFullWindow(false);
-    const target = aiActivityNavigationTarget(record, data);
-    if (target?.view === 'documents') navigateVideoDocuments(target.location);
-    if (target?.view === 'creator') navigateCreator(target.location);
-  }
-
-  const manageAiPlugins = (pluginId: string | null = null) =>
-    navigateExtensions({ tab: 'plugins', pluginId, packId: null });
-
-  function openGalleryResult(seriesId: string, assetId: string) {
-    setComparisonFullWindow(false);
-    navigateLocation((current) => ({
-      ...current,
-      view: 'creator',
-      creator: { surface: 'existing-creation', seriesId, assetId },
-      materialsReturnContext: { destination: 'creator', seriesId },
-    }));
-  }
-
-  function openGalleryTerm(termId: string) {
-    setComparisonFullWindow(false);
-    navigateLocation((current) => ({
-      ...current,
-      view: 'dictionary',
-      dictionary: { surface: 'detail', termId, browseContext: null },
-      materialsReturnContext: { destination: 'dictionary', termId },
-    }));
-  }
-
-  function openCreatorMaterial(materialId: string) {
-    setComparisonFullWindow(false);
-    navigateLocation((current) => ({
-      ...current,
-      view: 'gallery',
-      materialsReturnContext: null,
-      gallery: {
-        collection: { kind: 'all' },
-        selectedMaterialKey: null,
-        requestedMaterialId: materialId,
-      },
-    }));
-  }
-
-  async function finishIntake(intent: IntakeCommitIntent, result?: IntakeCommitResult) {
-    setComparisonFullWindow(false);
-    const creatorLocation: CreatorLocation | null =
-      intent === 'START_CREATION'
-        ? {
-            surface: 'new-creation',
-            albumId: result?.draft?.targetAlbumId ?? null,
-            requestId: ++creatorStartRevision.current,
-          }
-        : null;
-    navigateLocation((current) => ({
-      ...current,
-      view: intent === 'START_CREATION' ? 'creator' : 'gallery',
-      creator: creatorLocation ?? current.creator,
-      gallery:
-        intent === 'IMPORT'
-          ? {
-              collection: { kind: 'all' },
-              selectedMaterialKey: null,
-              requestedMaterialId: result?.imageMaterialIds[0] ?? result?.materialIds[0] ?? null,
-            }
-          : current.gallery,
-    }));
-    // The commit result already carries everything the screens need. Reloading
-    // the whole bootstrap here is what made an import feel like a freeze.
-    if (result) {
-      applyIntakeResult(result);
-      return;
-    }
-    await refresh();
-  }
-
-  async function finishGalleryIntake(result: IntakeCommitResult) {
-    if (result.intent === 'START_CREATION') {
-      await finishIntake(result.intent, result);
-      return;
-    }
-    applyIntakeResult(result);
   }
 
   async function cancelGeneration(runId: string) {
@@ -680,168 +557,241 @@ export function App() {
     await refresh();
   }
 
-  function reEditGeneration(runId: string) {
+  function reEditGenerationInTab(tabId: string, runId: string) {
     const next = data && generationReEditLocation(data, runId, Date.now());
     if (!next)
       return void notify(
         locale === 'zh' ? '找不到该生成任务所属的创作' : 'The creation for this generation is unavailable',
       );
     setComparisonFullWindow(false);
-    navigateCreator(next);
+    commitTabLocation(tabId, (current) => ({
+      ...current,
+      view: 'creator',
+      creator: next,
+      materialsReturnContext: null,
+    }));
+  }
+
+  function reEditGeneration(runId: string) {
+    if (activeTabId) requestTabExit(activeTabId, () => reEditGenerationInTab(activeTabId, runId));
+  }
+
+  function activateTab(group: WorkspaceRuntimeGroup, tabId: string) {
+    if (tabId === group.activeTabId) {
+      workspace.activateGroup(group.id);
+      return;
+    }
+    requestTabExit(group.activeTabId, () => {
+      articleLocationFlushersRef.current.get(group.activeTabId)?.();
+      setComparisonFullWindow(false);
+      setCreationPromptFullWindow(false);
+      workspace.activateTab(group.id, tabId);
+    });
+  }
+
+  function closeTab(tabId: string) {
+    requestTabExit(tabId, () => {
+      articleLocationFlushersRef.current.get(tabId)?.();
+      workspace.closeTab(tabId);
+    });
+  }
+
+  function resetLayout() {
+    if (!workspace.state) return;
+    const visibleTabIds = workspace.state.groups.map((group) => group.activeTabId);
+    requestTabExits(visibleTabIds, () => {
+      visibleTabIds.forEach((tabId) => articleLocationFlushersRef.current.get(tabId)?.());
+      workspace.reset();
+    });
+  }
+
+  function changeGroupFullWindow(groupId: string, surface: 'comparison' | 'creation', open: boolean) {
+    if (!open) {
+      if (workspace.state?.activeGroupId !== groupId) return;
+      if (surface === 'comparison') setComparisonFullWindow(false);
+      else setCreationPromptFullWindow(false);
+      return;
+    }
+    const apply = () => {
+      workspace.activateGroup(groupId);
+      if (surface === 'comparison') setComparisonFullWindow(true);
+      else setCreationPromptFullWindow(true);
+    };
+    const otherGroup = workspace.state?.groups.find((group) => group.id !== groupId);
+    requestTabExits(otherGroup ? [otherGroup.activeTabId] : [], apply);
+  }
+
+  function renderWorkspaceGroup(group: WorkspaceRuntimeGroup) {
+    if (!data) return null;
+    return (
+      <AppWorkspaceGroup
+        key={group.id}
+        group={group}
+        active={group.id === workspace.state?.activeGroupId}
+        tabsVisible={!appFullWindow}
+        data={data}
+        dataRevision={dataRevision}
+        locale={locale}
+        defaultPromptLocale={defaultPromptLocale}
+        comparisonFullWindow={comparisonFullWindow}
+        creationPromptFullWindow={creationPromptFullWindow}
+        loadingPreviews={loadingPreviews}
+        codexImagesNavigation={codexImagesNavigation}
+        transitionShowcaseNavigation={transitionShowcaseNavigation}
+        documentNavigationRevision={documentNavigationRevision}
+        articleEditorStates={workspace.state?.articleEditors ?? []}
+        articleEditOwners={workspace.state?.articleEditOwners ?? []}
+        onArticleEditorStateChange={workspace.updateArticleEditorState}
+        onArticleLocationChange={workspace.updateArticleViewLocation}
+        onArticleLocationNavigate={workspace.navigateArticleViewLocation}
+        onRequestEditOwnership={workspace.claimArticleEditOwnership}
+        onLocationFlushChange={setArticleLocationFlusher}
+        onActivateGroup={() => workspace.activateGroup(group.id)}
+        onActivateTab={(tabId) => activateTab(group, tabId)}
+        onCloseTab={closeTab}
+        onCloseOtherTabs={(tabId) =>
+          tabId === group.activeTabId
+            ? workspace.closeOtherTabs(group.id, tabId)
+            : requestTabExit(group.activeTabId, () => workspace.closeOtherTabs(group.id, tabId))
+        }
+        onReorderTab={(tabId, delta) => workspace.reorderTab(group.id, tabId, delta)}
+        onNewTab={(sourceTabId, destination) => {
+          articleLocationFlushersRef.current.get(sourceTabId)?.();
+          workspace.openTab(newWorkspaceTabLocation(destination), group.id, typeof destination === 'string');
+        }}
+        onOpenBeside={(sourceTabId, nextView) => {
+          articleLocationFlushersRef.current.get(sourceTabId)?.();
+          workspace.openBeside({ ...initialAppLocation, view: nextView });
+        }}
+        split={(workspace.state?.groups.length ?? 0) > 1}
+        onMergeGroups={() => {
+          articleLocationFlushersRef.current.forEach((flush) => flush());
+          workspace.mergeGroups();
+        }}
+        onMoveTabToOtherGroup={(tabId) => {
+          articleLocationFlushersRef.current.get(tabId)?.();
+          workspace.moveTabToOtherGroup(tabId);
+        }}
+        onSplit={(sourceTabId, axis) => {
+          articleLocationFlushersRef.current.get(sourceTabId)?.();
+          workspace.split(axis);
+        }}
+        onReset={resetLayout}
+        onCommitLocation={commitTabLocation}
+        onGoBack={goBackInTab}
+        onHistoryNavigationGuardChange={setHistoryNavigationGuard}
+        onComparisonFullWindowChange={(open) => changeGroupFullWindow(group.id, 'comparison', open)}
+        onCreationPromptFullWindowChange={(open) => changeGroupFullWindow(group.id, 'creation', open)}
+        onCreatorActiveAlbumChange={(tabId, albumId) => workspaceAlbums.setCreatorAlbum(tabId, albumId)}
+        onGalleryActiveAlbumChange={(tabId, albumId) => workspaceAlbums.setGalleryAlbum(tabId, albumId)}
+        refresh={refresh}
+        refreshAlbums={refreshAlbums}
+        onTermDetailsRequest={requestTermDetails}
+        onImportedOutputSaved={updateImportedOutput}
+        onArticleSaved={updateArticle}
+        onApplyIntakeResult={applyIntakeResult}
+        onVideoDocumentsChange={refreshDocumentNavigation}
+        onRetryGeneration={retryGeneration}
+        notify={notify}
+      />
+    );
   }
 
   return (
-    <AssetMenuActionsProvider value={assetMenuActions}>
-      <main className={`grid h-full min-h-0 overflow-hidden bg-background ${appGridRows(appFullWindow)}`}>
-        {!appFullWindow && (
-          <AppTitleBar
-            workerStatus={data?.modelWorker ?? null}
-            codexHealth={data?.codex ?? null}
-            generationTasks={data?.generationTasks ?? []}
-            transcriptBackgroundTasks={transcriptBackgroundTasks}
-            imageGenerationRoutes={data?.imageGenerationRoutes ?? []}
-            assistantRuns={data?.assistantRuns ?? []}
-            agentTasks={data?.agentTasks ?? []}
-            series={data?.series ?? []}
-            view={view}
-            menuDisabled={Boolean(spaceTransition)}
-            codexImagesVisible={codexImagesNavigation.visible}
-            transitionShowcaseVisible={transitionShowcaseNavigation.visible}
-            canGoBack={canGoBack}
-            canGoForward={canGoForward}
-            notify={notify}
-            onNewCreation={startNewCreationFromContext}
-            onViewChange={changeView}
-            onSettingsOpen={() => setSettingsOpen(true)}
-            onQuit={() => {
-              void window.desktopApi.appRequestQuit();
-            }}
-            onGoBack={goBack}
-            onGoForward={goForward}
-            onGenerationCancel={cancelGeneration}
-            onTranscriptRecognitionCancel={cancelTranscriptRecognition}
-            onGenerationRetry={retryGeneration}
-            onGenerationReEdit={reEditGeneration}
-          />
-        )}
-        <div className="flex min-h-0 overflow-hidden">
-          <div className={appFullWindow ? 'hidden' : 'contents'}>
-            <AppSidebar
-              spaceName={spaceTransition?.space.name ?? data?.spaceName ?? messages.app.libraryFallback}
-              spaceCoverUrl={spaceTransition?.space.coverUrl ?? data?.spaceCoverUrl ?? null}
-              spaceTransitioning={Boolean(spaceTransition)}
-              libraryBusy={Boolean(data?.generationTasks.length || transcriptBackgroundTasks.length)}
+    <ArticleEditorSessionRegistryProvider>
+      <AppRuntimeProviders assetMenuActions={assetMenuActions} spaceId={data?.spaceId ?? null} refresh={refresh}>
+        <main className={`grid h-full min-h-0 overflow-hidden bg-background ${appGridRows(appFullWindow)}`}>
+          {!appFullWindow && (
+            <AppTitleBar
+              workerStatus={data?.modelWorker ?? null}
+              codexHealth={data?.codex ?? null}
+              generationTasks={data?.generationTasks ?? []}
+              transcriptBackgroundTasks={transcriptBackgroundTasks}
+              imageGenerationRoutes={data?.imageGenerationRoutes ?? []}
+              assistantRuns={data?.assistantRuns ?? []}
+              agentTasks={data?.agentTasks ?? []}
+              series={data?.series ?? []}
+              view={view}
+              menuDisabled={Boolean(spaceTransition)}
               codexImagesVisible={codexImagesNavigation.visible}
               transitionShowcaseVisible={transitionShowcaseNavigation.visible}
-              view={view}
+              canGoBack={canGoBack}
+              canGoForward={canGoForward}
+              notify={notify}
+              onNewCreation={startNewCreationFromContext}
               onViewChange={changeView}
               onSettingsOpen={() => setSettingsOpen(true)}
-              notify={notify}
+              onQuit={() => {
+                articleLocationFlushersRef.current.forEach((flush) => flush());
+                void workspace.flush().finally(() => window.desktopApi.appRequestQuit());
+              }}
+              onGoBack={goBack}
+              onGoForward={goForward}
+              onGenerationCancel={cancelGeneration}
+              onTranscriptRecognitionCancel={cancelTranscriptRecognition}
+              onGenerationRetry={retryGeneration}
+              onGenerationReEdit={reEditGeneration}
             />
-          </div>
-          <section className="relative min-h-0 min-w-0 flex-1 overflow-hidden">
-            {spaceTransition && <LocalSpaceTransitionOverlay transition={spaceTransition} />}
-            {showLoadingState && <AppLoadingState previews={loadingPreviews} variant={loadingVariants[view]} />}
-            {error && (
-              <div className="flex size-full flex-col items-center justify-center gap-3 text-muted-foreground">
-                <strong className="text-foreground">{messages.app.unavailable}</strong>
-                <small className="max-w-lg text-center">{error}</small>
-                <Button variant="outline" onClick={() => void refresh()}>
-                  {messages.app.retry}
-                </Button>
-              </div>
-            )}
-            {data &&
-              data.libraryEmpty &&
-              view === 'creator' &&
-              workspaceLoadingBoundaries.creator(
-                <LibraryStartScreen
-                  onCommitted={(result) => void finishIntake(result.intent, result)}
-                  onContentPackImported={refresh}
-                  notify={notify}
-                />,
-              )}
-            {data && (
-              <AppWorkspaceViews
+          )}
+          <div className="flex min-h-0 overflow-hidden">
+            <div className={appFullWindow ? 'hidden' : 'contents'}>
+              <AppSidebar
+                spaceName={spaceTransition?.space.name ?? data?.spaceName ?? messages.app.libraryFallback}
+                spaceCoverUrl={spaceTransition?.space.coverUrl ?? data?.spaceCoverUrl ?? null}
+                spaceTransitioning={Boolean(spaceTransition)}
+                libraryBusy={Boolean(data?.generationTasks.length || transcriptBackgroundTasks.length)}
+                codexImagesVisible={codexImagesNavigation.visible}
+                transitionShowcaseVisible={transitionShowcaseNavigation.visible}
                 view={view}
-                visitedViews={visitedViews.current}
-                data={data}
-                dataRevision={dataRevision}
-                locale={locale}
-                defaultPromptLocale={defaultPromptLocale}
-                location={location}
-                comparisonFullWindow={comparisonFullWindow}
-                creationPromptFullWindow={creationPromptFullWindow}
-                materialsReturnContext={materialsReturnContext}
-                returnSummary={returnSummary}
-                codexImagesNavigation={codexImagesNavigation}
-                transitionShowcaseNavigation={transitionShowcaseNavigation}
-                loadingBoundaries={workspaceLoadingBoundaries}
-                onReturnToMaterials={returnToMaterials}
-                documentNavigationRevision={documentNavigationRevision}
-                onCreatorNavigate={navigateCreator}
-                onComparisonFullWindowChange={setComparisonFullWindow}
-                onCreationPromptFullWindowChange={setCreationPromptFullWindow}
-                onOpenCreatorMaterial={openCreatorMaterial}
-                onConfigureExtension={manageAiPlugins}
-                onCreatorActiveAlbumChange={setCreatorActiveAlbumId}
-                refresh={refresh}
-                refreshAlbums={refreshAlbums}
-                onTermDetailsRequest={requestTermDetails}
-                onImportedOutputSaved={updateImportedOutput}
-                notify={notify}
-                onVideoDocumentsChange={refreshDocumentNavigation}
-                onVideoDocumentsNavigate={navigateVideoDocuments}
-                onDictionaryNavigate={navigateDictionary}
-                onNavigateBack={goBack}
-                onHistoryNavigationGuardChange={setHistoryNavigationGuard}
-                onOpenDictionaryCreation={(seriesId, assetId, versionId) =>
-                  navigateCreator({
-                    surface: 'existing-creation',
-                    seriesId,
-                    assetId,
-                    ...(versionId ? { versionId } : {}),
-                  })
-                }
-                onGalleryNavigate={navigateGallery}
-                onOpenGalleryResult={openGalleryResult}
-                onOpenGalleryTerm={openGalleryTerm}
-                onGalleryIntakeCommitted={finishGalleryIntake}
-                onGalleryActiveAlbumChange={setGalleryActiveAlbumId}
-                onExtensionsNavigate={navigateExtensions}
-                onOpenImportedCreation={openImportedCreation}
-                onAiCenterNavigate={navigateAiCenter}
-                onLocateAiActivity={locateAiActivity}
-                onReEditGeneration={reEditGeneration}
-                onRetryGeneration={retryGeneration}
-              />
-            )}
-            {data && view === 'contentManagement' && (
-              <ContentManagementScreen
-                active
-                canNavigateBack={canGoBack}
-                onNavigateBack={goBack}
-                onContentChange={refresh}
+                onViewChange={changeView}
+                onSettingsOpen={() => setSettingsOpen(true)}
                 notify={notify}
               />
-            )}
-          </section>
-        </div>
-        <SettingsDialog
-          promptLocale={defaultPromptLocale}
-          open={settingsOpen}
-          onOpenChange={setSettingsOpen}
-          onPromptLocaleChange={setDefaultPromptLocale}
-          onAiFeatureModelsOpen={() => navigateAiCenter({ tab: 'capabilities', recordId: null })}
-          onContentManagementOpen={() => changeView('contentManagement')}
-        />
-        <ToastViewport
-          messages={notifications}
-          label={messages.app.notifications}
-          closeLabel={messages.common.close}
-          onDismiss={dismissNotification}
-        />
-      </main>
-    </AssetMenuActionsProvider>
+            </div>
+            <section className="relative min-h-0 min-w-0 flex-1 overflow-hidden">
+              {spaceTransition && <LocalSpaceTransitionOverlay transition={spaceTransition} />}
+              {showLoadingState && <AppLoadingState previews={loadingPreviews} variant={loadingVariants[view]} />}
+              {error && (
+                <div className="flex size-full flex-col items-center justify-center gap-3 text-muted-foreground">
+                  <strong className="text-foreground">{messages.app.unavailable}</strong>
+                  <small className="max-w-lg text-center">{error}</small>
+                  <Button variant="outline" onClick={() => void refresh()}>
+                    {messages.app.retry}
+                  </Button>
+                </div>
+              )}
+              {workspaceReady &&
+                workspace.activeGroup &&
+                workspaceState &&
+                (appFullWindow || workspaceState.arrangement.kind === 'single' ? (
+                  renderWorkspaceGroup(workspace.activeGroup)
+                ) : (
+                  <WorkspaceSplitLayout
+                    arrangement={workspaceState.arrangement}
+                    childrenByGroupId={
+                      new Map(workspaceState.groups.map((group) => [group.id, renderWorkspaceGroup(group)]))
+                    }
+                    onRatioCommit={workspace.setSplitRatio}
+                  />
+                ))}
+            </section>
+          </div>
+          <SettingsDialog
+            promptLocale={defaultPromptLocale}
+            open={settingsOpen}
+            onOpenChange={setSettingsOpen}
+            onPromptLocaleChange={setDefaultPromptLocale}
+            onAiFeatureModelsOpen={() => navigateAiCenter({ tab: 'capabilities', recordId: null })}
+            onContentManagementOpen={() => changeView('contentManagement')}
+          />
+          <ToastViewport
+            messages={notifications}
+            label={messages.app.notifications}
+            closeLabel={messages.common.close}
+            onDismiss={dismissNotification}
+          />
+        </main>
+      </AppRuntimeProviders>
+    </ArticleEditorSessionRegistryProvider>
   );
 }

@@ -182,6 +182,8 @@ const contentLifecycleEntityTypeSchema = z.enum([
   'PROMPT_SERIES',
   'CREATION',
   'INSPIRATION_STASH',
+  'IMAGE_BREAKDOWN',
+  'EVALUATION_SUITE',
   'SOCIAL_POST',
   'ARTICLE',
   'VIDEO_DOCUMENT',
@@ -255,6 +257,12 @@ export const materialAlbumTargetSchema = z.discriminatedUnion('kind', [
   z.object({ kind: z.literal('MATERIAL'), materialId: id }),
   z.object({ kind: z.literal('IMAGE_ASSET'), imageAssetId: id }),
 ]);
+
+export const materialImageAssetsResolveSchema = z
+  .object({
+    targets: z.array(materialAlbumTargetSchema).min(1).max(200),
+  })
+  .strict();
 
 export const materialAlbumAddManySchema = z.object({
   albumId: id,
@@ -426,7 +434,13 @@ export const openAiImageApiSaveSchema = z
   })
   .strict();
 
-export const deepSeekApiSaveSchema = z.object({ apiKey: z.string().max(500) }).strict();
+export const deepSeekApiSaveSchema = z
+  .object({
+    apiKey: z.string().max(500),
+    visionEndpoint: z.string().max(2_048),
+    visionModelId: z.string().max(200),
+  })
+  .strict();
 
 export const assistantReasoningEffortSchema = z.enum(['minimal', 'low', 'medium', 'high', 'xhigh', 'max', 'ultra']);
 
@@ -446,6 +460,7 @@ export const assistantRoutingSaveSchema = z
         optimize: assistantRoutingSelectionSchema,
         title: assistantRoutingSelectionSchema,
         subtitleTranslation: assistantRoutingSelectionSchema,
+        articleCheck: assistantRoutingSelectionSchema,
       })
       .strict(),
   })

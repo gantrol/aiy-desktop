@@ -1,13 +1,20 @@
 import { decodeDeepSeekTitleResult, DeepSeekAssistantAdapter } from '@/main/assistant-models/deepseek';
 import { AntigravityAssistantAdapter } from '@/main/assistant-models/antigravity';
 import { GoogleGeminiAssistantAdapter } from '@/main/assistant-models/google-gemini';
+import { ImageBreakdownModelAdapter } from '@/main/assistant-models/image-breakdown';
 import { DEEPSEEK_DEFAULT_MODEL_ID, DEEPSEEK_PROVIDER_KEY } from '@/main/assistant-models/deepseek-provider';
 import { CodexAdapter } from '@/main/assistant/codex';
+import type { AgentGenerationService } from '@/main/agent/agent-generation-service';
 import { LibraryDatabase } from '@/main/database';
 import { readDictionaryImport } from '@/main/dictionary/dictionary-import';
 import { DeepSeekApiRuntime } from '@/main/extensions/deepseek-api/runtime';
+import {
+  deepSeekVisionEndpointPermission,
+  DEEPSEEK_VISION_REFERENCE_PERMISSION,
+} from '@/main/extensions/deepseek-api/vision-endpoint';
 import { AntigravityCliRuntime } from '@/main/extensions/antigravity-cli/runtime';
 import { ExternalImageApiRuntime } from '@/main/extensions/external-image-api/runtime';
+import { externalImageApiEndpointPermission } from '@/main/extensions/external-image-api/endpoints';
 import { OpenAiImageApiRuntime } from '@/main/extensions/openai-image-api/runtime';
 import { ExtensionRegistry } from '@/main/extensions/registry';
 import { GenerationCoordinator } from '@/main/generation/coordinator';
@@ -24,6 +31,7 @@ import {
   DEEPSEEK_API_EXTENSION_ID,
   GOOGLE_GEMINI_API_EXTENSION_ID,
   GOOGLE_GEMINI_ASSISTANT_PROVIDER_KEY,
+  OPENAI_IMAGE_API_EXTENSION_ID,
 } from '@/shared/extension-ids';
 
 const unhandled = Symbol('unhandled-model-worker-method');
@@ -31,6 +39,7 @@ const modelRuntimeCallRunner = new ModelRuntimeCallRunner();
 
 export interface ModelWorkerRequestDispatcherOptions {
   database: LibraryDatabase;
+  agent: AgentGenerationService;
   generation: GenerationCoordinator;
   videoDocuments?: VideoDocumentGenerationService;
   videoDocumentTranslations?: VideoDocumentTranscriptTranslationService;
@@ -39,6 +48,7 @@ export interface ModelWorkerRequestDispatcherOptions {
   antigravity?: AntigravityCliRuntime;
   antigravityAssistant?: AntigravityAssistantAdapter;
   googleGemini?: GoogleGeminiAssistantAdapter;
+  imageBreakdown: ImageBreakdownModelAdapter;
   extensions: ExtensionRegistry;
   openAiImageApi: OpenAiImageApiRuntime;
   deepSeekApi: DeepSeekApiRuntime;
@@ -54,6 +64,38 @@ export interface ModelWorkerRequestDispatcherOptions {
   scheduleGracefulShutdown(): void;
   scheduleShutdownWhenIdle(): void;
   scheduleForceShutdown(): void;
+}
+
+function assertImageBreakdownAccess(
+  options: ModelWorkerRequestDispatcherOptions,
+  input: Parameters<ImageBreakdownModelAdapter['run']>[0],
+) {
+  if (input.routeKey === 'ANTIGRAVITY_CLI') {
+    if (!options.antigravity || !options.extensions.isActivated(ANTIGRAVITY_CLI_EXTENSION_ID)) {
+      throw new Error('Enable the Antigravity CLI extension and grant its required permissions');
+    }
+    return;
+  }
+  const extensionId = input.routeKey === 'GOOGLE_GEMINI' ? GOOGLE_GEMINI_API_EXTENSION_ID : DEEPSEEK_API_EXTENSION_ID;
+  if (!options.extensions.isActivated(extensionId)) {
+    throw new Error('Enable the selected vision model extension and grant its required permissions');
+  }
+  if (
+    input.routeKey === 'DEEPSEEK_VL' &&
+    !options.extensions.isPermissionGranted(extensionId, DEEPSEEK_VISION_REFERENCE_PERMISSION)
+  ) {
+    throw new Error(`Grant extension permission ${DEEPSEEK_VISION_REFERENCE_PERMISSION} before reading the image`);
+  }
+  const endpointPermission =
+    input.routeKey === 'GOOGLE_GEMINI'
+      ? externalImageApiEndpointPermission(
+          GOOGLE_GEMINI_API_EXTENSION_ID,
+          options.externalImageApis.credentials(GOOGLE_GEMINI_API_EXTENSION_ID).settings,
+        )
+      : deepSeekVisionEndpointPermission(options.deepSeekApi.connectionSnapshot().visionEndpoint);
+  if (endpointPermission && !options.extensions.isPermissionGranted(extensionId, endpointPermission)) {
+    throw new Error(`Grant extension permission ${endpointPermission} before using this vision endpoint`);
+  }
 }
 
 function throwIfRequestCancelled(signal: AbortSignal) {
@@ -153,6 +195,7 @@ async function dispatchStorageAndGeneration(
   options: ModelWorkerRequestDispatcherOptions,
   method: ModelWorkerMethod,
   params: unknown[],
+  signal: AbortSignal,
 ) {
   const { database, generation } = options;
   switch (method) {
@@ -160,6 +203,26 @@ async function dispatchStorageAndGeneration(
       parseModelWorkerMethodParams(method, params);
       database.refreshLibraryFileView();
       return undefined;
+    case 'agent.asset.import': {
+      const [input] = parseModelWorkerMethodParams(method, params);
+      return options.agent.importAsset(input, signal);
+    }
+    case 'agent.draft.prepare': {
+      const [input] = parseModelWorkerMethodParams(method, params);
+      return options.agent.prepareDraft(input);
+    }
+    case 'agent.generation.start': {
+      const [input] = parseModelWorkerMethodParams(method, params);
+      return options.agent.startGeneration(input);
+    }
+    case 'agent.job.get': {
+      const [input] = parseModelWorkerMethodParams(method, params);
+      return options.agent.getJob(input);
+    }
+    case 'agent.job.cancel': {
+      const [input] = parseModelWorkerMethodParams(method, params);
+      return options.agent.cancelJob(input);
+    }
     case 'dictionary.stage-import': {
       const [fileName, filePath] = parseModelWorkerMethodParams(method, params);
       return database.stageImport(fileName, readDictionaryImport(filePath));
@@ -246,6 +309,10 @@ async function dispatchAssistantAndCodex(
     case 'codex.list-models':
       parseModelWorkerMethodParams(method, params);
       return codex.listModels(signal);
+    case 'codex.check-article': {
+      const [input, execution] = parseModelWorkerMethodParams(method, params);
+      return codex.checkArticle(input, execution, signal);
+    }
     case 'video-document.article-generate': {
       const [input] = parseModelWorkerMethodParams(method, params);
       if (!options.videoDocuments) throw new Error('Video document generation service is unavailable');
@@ -294,6 +361,11 @@ async function dispatchAssistantAndCodex(
     case 'assistant.run': {
       const [runId] = parseModelWorkerMethodParams(method, params);
       return withAssistantJob(options, () => runPersistedAssistant(options, runId, signal));
+    }
+    case 'image-breakdown.run': {
+      const [input] = parseModelWorkerMethodParams(method, params);
+      assertImageBreakdownAccess(options, input);
+      return withAssistantJob(options, () => options.imageBreakdown.run(input, signal));
     }
     case 'codex.chat': {
       const [job] = parseModelWorkerMethodParams(method, params);
@@ -492,25 +564,35 @@ async function dispatchExtensionsAndLifecycle(
     case 'antigravity.refresh-status': {
       parseModelWorkerMethodParams(method, params);
       if (!options.antigravity) throw new Error('Antigravity CLI runtime is unavailable');
+      if (!options.extensions.isActivated(ANTIGRAVITY_CLI_EXTENSION_ID)) {
+        throw new Error('Antigravity CLI extension is disabled or missing permissions');
+      }
       const status = await options.antigravity.refresh(signal);
       options.broadcastSnapshot();
       return status;
     }
     case 'extensions.configure-openai-image-api': {
       const [configuration] = parseModelWorkerMethodParams(method, params);
-      options.openAiImageApi.configure(configuration);
+      options.extensions.list();
+      options.openAiImageApi.configure(
+        options.extensions.isActivated(OPENAI_IMAGE_API_EXTENSION_ID) ? configuration : null,
+      );
       options.broadcastSnapshot();
       return undefined;
     }
     case 'extensions.configure-deepseek-api': {
       const [configuration] = parseModelWorkerMethodParams(method, params);
-      options.deepSeekApi.configure(configuration);
+      options.extensions.list();
+      options.deepSeekApi.configure(options.extensions.isActivated(DEEPSEEK_API_EXTENSION_ID) ? configuration : null);
       options.broadcastSnapshot();
       return undefined;
     }
     case 'extensions.configure-external-image-apis': {
       const [configurations] = parseModelWorkerMethodParams(method, params);
-      options.externalImageApis.configure(configurations);
+      options.extensions.list();
+      options.externalImageApis.configure(
+        configurations.filter((configuration) => options.extensions.isActivated(configuration.extensionId)),
+      );
       options.broadcastSnapshot();
       return undefined;
     }
@@ -540,7 +622,7 @@ export function createModelWorkerRequestDispatcher(options: ModelWorkerRequestDi
       parseModelWorkerMethodParams(method, params);
       return options.snapshot();
     }
-    const storageResult = await dispatchStorageAndGeneration(options, method, params);
+    const storageResult = await dispatchStorageAndGeneration(options, method, params, signal);
     if (storageResult !== unhandled) return storageResult;
     const assistantResult = await dispatchAssistantAndCodex(options, method, params, signal);
     if (assistantResult !== unhandled) return assistantResult;

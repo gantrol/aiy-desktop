@@ -102,32 +102,39 @@ export class DerivedVisualRepository {
         const parentEntity = target.article
           ? ({ kind: 'ARTICLE', id: target.article.id } as const)
           : ({ kind: 'SOCIAL_POST', id: target.socialPost!.id } as const);
-        const item = this.creationItems.findForEntity(parentEntity);
-        if (!item) throw new Error('The source creation item is unavailable');
+        const sourceForm = this.creationItems.getForm(input.sourceFormId);
+        if (sourceForm.entity.kind !== parentEntity.kind || sourceForm.entity.id !== parentEntity.id) {
+          throw new Error('The selected source form does not match this visual');
+        }
+        const item = this.creationItems.get(sourceForm.creationItemId);
 
         const role = input.role;
         const anchorKey = creationFormAnchorKey(input);
-        const existing = this.creationItems.findForm(item.id, role, anchorKey);
-        if (existing) {
-          if (existing.entity.kind !== 'DERIVED_VISUAL') {
-            throw new Error('The existing creation form has an invalid entity');
+        if (role === 'ARTICLE_INLINE') {
+          if (!anchorKey) throw new Error('An article illustration form requires an anchor');
+          const existingForm = this.creationItems.findForm(item.id, role, anchorKey);
+          if (existingForm) {
+            if (existingForm.entity.kind !== 'DERIVED_VISUAL') {
+              throw new Error('The article illustration workspace is invalid');
+            }
+            return this.resumeWorkspace(existingForm.entity.id);
           }
-          return this.resumeWorkspace(existing.entity.id);
         }
-
         const workspace = this.createWorkspace(input, target);
         const entity = { kind: 'DERIVED_VISUAL' as const, id: workspace.visual.id };
         if (role === 'ARTICLE_INLINE') {
           if (!anchorKey) throw new Error('An article illustration form requires an anchor');
-          this.creationItems.addOrGetForm({
+          this.creationItems.addForm({
             creationItemId: item.id,
+            sourceFormId: sourceForm.id,
             role,
             entity,
             anchorKey,
           });
         } else {
-          this.creationItems.addOrGetForm({
+          this.creationItems.addForm({
             creationItemId: item.id,
+            sourceFormId: sourceForm.id,
             role,
             entity,
             anchorKey: null,
@@ -332,11 +339,10 @@ export class DerivedVisualRepository {
       }
     }
 
-    return this.articles.save({
-      id: current.id,
-      albumId: current.albumId,
-      sourceInspirationStashId: current.sourceInspirationStashId,
-      consumeCreationDraftId: null,
+    return this.articles.saveSystemRevision({
+      articleId: current.id,
+      expectedRevisionId: current.revisionId,
+      requestId: `derived-visual:${visual.id}:${imageAssetId}`,
       content: {
         ...content,
         markdown,

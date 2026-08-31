@@ -2,7 +2,7 @@ import { createHash } from 'node:crypto';
 import { open } from 'node:fs/promises';
 import { z } from 'zod';
 import type { CodexUsageQuotaKind, CodexUsageServiceTier } from '@/shared/contracts/codex-usage';
-import type { CodexUsageBreakdown } from '@/main/extensions/codex-usage-investigator/pricing';
+import { normalizeCodexUsageModel, type CodexUsageBreakdown } from '@/main/extensions/codex-usage-investigator/pricing';
 import {
   inferredServiceTier,
   type CodexUsageServiceTierFallback,
@@ -11,11 +11,26 @@ import {
 const READ_CHUNK_BYTES = 256 * 1024;
 const MAX_RECORD_BYTES = 16 * 1024 * 1024;
 const MAX_PENDING_USAGE_EVENTS = 10_000;
+const MAX_CHAT_TURNS = 100_000;
+const MAX_ENVELOPE_PREFIX_BYTES = 4 * 1024;
 const TOKEN_COUNT_MARKER = Buffer.from('"token_count"');
 const TURN_CONTEXT_MARKER = Buffer.from('"turn_context"');
 const THREAD_SETTINGS_MARKER = Buffer.from('"thread_settings_applied"');
+const TASK_STARTED_MARKER = Buffer.from('"task_started"');
+const TASK_COMPLETE_MARKER = Buffer.from('"task_complete"');
+const TURN_ABORTED_MARKER = Buffer.from('"turn_aborted"');
+const COMPACTED_MARKER = Buffer.from('"type":"compacted"');
 
 const safeTokenSchema = z.number().int().nonnegative().safe();
+const rowEnvelopeSchema = z
+  .object({
+    type: z.string().max(100),
+    payload: z
+      .object({ type: z.string().max(100).optional() })
+      .passthrough()
+      .optional(),
+  })
+  .passthrough();
 const rolloutTokenUsageSchema = z
   .object({
     input_tokens: safeTokenSchema,
@@ -91,8 +106,44 @@ const turnContextRowSchema = z
     payload: z
       .object({
         model: z.string().trim().min(1).max(200),
+        turn_id: z.string().trim().min(1).max(512),
+        effort: z.string().trim().min(1).max(100).nullable().optional(),
       })
       .passthrough(),
+  })
+  .passthrough();
+
+const taskStartedRowSchema = z
+  .object({
+    timestamp: z.string().min(1).max(100),
+    type: z.literal('event_msg'),
+    payload: z
+      .object({
+        type: z.literal('task_started'),
+        turn_id: z.string().trim().min(1).max(512),
+      })
+      .passthrough(),
+  })
+  .passthrough();
+
+const taskTerminalRowSchema = z
+  .object({
+    timestamp: z.string().min(1).max(100),
+    type: z.literal('event_msg'),
+    payload: z
+      .object({
+        type: z.enum(['task_complete', 'turn_aborted']),
+        turn_id: z.string().trim().min(1).max(512),
+        duration_ms: safeTokenSchema.nullable().optional(),
+      })
+      .passthrough(),
+  })
+  .passthrough();
+
+const compactedRowSchema = z
+  .object({
+    timestamp: z.string().min(1).max(100),
+    type: z.literal('compacted'),
   })
   .passthrough();
 
@@ -133,6 +184,7 @@ export const codexUsageInternalEventSchema = z
   .object({
     sessionId: z.string().min(1).max(512),
     eventFingerprint: z.string().regex(/^[0-9a-f]{64}$/),
+    turnId: z.string().min(1).max(512).nullable(),
     timestamp: z.string().datetime(),
     model: z.string().min(1).max(200),
     serviceTier: z.enum(['STANDARD', 'FAST', 'UNKNOWN']),
@@ -150,9 +202,27 @@ export const codexUsageInternalEventSchema = z
   })
   .strict();
 
+export const codexUsageInternalChatTurnSchema = z
+  .object({
+    sessionId: z.string().min(1).max(512),
+    turnOrder: safeTokenSchema,
+    turnId: z.string().min(1).max(512),
+    startedAt: z.string().datetime(),
+    terminalAt: z.string().datetime().nullable(),
+    terminalState: z.enum(['COMPLETED', 'ABORTED']).nullable(),
+    durationMs: safeTokenSchema.nullable(),
+    model: z.string().min(1).max(200).nullable(),
+    reasoningEffort: z.string().min(1).max(100).nullable(),
+    serviceTier: z.enum(['STANDARD', 'FAST', 'UNKNOWN']),
+  })
+  .strict();
+
 export const codexUsageSessionReadResultSchema = z
   .object({
     events: z.array(codexUsageInternalEventSchema).max(100_000),
+    chatTurns: z.array(codexUsageInternalChatTurnSchema).max(MAX_CHAT_TURNS),
+    contextCompactionCount: safeTokenSchema,
+    turnMetadataComplete: z.boolean(),
     invalidRecords: safeTokenSchema,
     oversizedRecords: safeTokenSchema,
     bytesRead: safeTokenSchema,
@@ -161,6 +231,7 @@ export const codexUsageSessionReadResultSchema = z
 
 export type CodexUsageInternalRow = z.infer<typeof codexUsageInternalRowSchema>;
 export type CodexUsageInternalEvent = z.infer<typeof codexUsageInternalEventSchema>;
+export type CodexUsageInternalChatTurn = z.infer<typeof codexUsageInternalChatTurnSchema>;
 export type SessionReadResult = z.infer<typeof codexUsageSessionReadResultSchema>;
 
 interface ReverseReadStats {
@@ -186,6 +257,7 @@ interface PendingUsage {
 
 interface PendingUsageGroup {
   model: string;
+  turnId: string | null;
   events: PendingUsage[];
 }
 
@@ -195,11 +267,30 @@ interface SessionUsageCandidate {
   reverseOrder: number;
 }
 
+interface MutableChatTurn {
+  turnId: string;
+  startedAt: string | null;
+  terminalAt: string | null;
+  terminalState: 'COMPLETED' | 'ABORTED' | null;
+  durationMs: number | null;
+  models: Set<string>;
+  reasoningEfforts: Set<string>;
+}
+
 type ParsedSessionLine =
   | { kind: 'IGNORED' }
   | { kind: 'INVALID' }
+  | { kind: 'COMPACTION'; timestamp: { epoch: number; iso: string } }
   | { kind: 'TOKEN'; row: z.infer<typeof tokenCountRowSchema>; timestamp: { epoch: number; iso: string } }
-  | { kind: 'CONTEXT'; model: string }
+  | { kind: 'CONTEXT'; model: string; reasoningEffort: string | null; turnId: string }
+  | { kind: 'TURN_STARTED'; turnId: string; timestamp: string }
+  | {
+      kind: 'TURN_TERMINAL';
+      turnId: string;
+      timestamp: string;
+      terminalState: 'COMPLETED' | 'ABORTED';
+      durationMs: number | null;
+    }
   | { kind: 'SETTINGS'; model: string | null; serviceTier: CodexUsageServiceTier };
 
 type ParsedTokenLine = Extract<ParsedSessionLine, { kind: 'TOKEN' }>;
@@ -356,10 +447,46 @@ function normalizeSessionUsage(candidates: readonly SessionUsageCandidate[]): Co
   });
 }
 
+function observedTurnServiceTiers(events: readonly CodexUsageInternalEvent[]) {
+  const observed = new Map<string, Set<Exclude<CodexUsageServiceTier, 'UNKNOWN'>>>();
+  for (const event of events) {
+    if (!event.turnId || event.serviceTierInferred || event.serviceTier === 'UNKNOWN') continue;
+    const tiers = observed.get(event.turnId) ?? new Set<Exclude<CodexUsageServiceTier, 'UNKNOWN'>>();
+    tiers.add(event.serviceTier);
+    observed.set(event.turnId, tiers);
+  }
+  return new Map(
+    [...observed].map(([turnId, tiers]) => [turnId, tiers.size === 1 ? [...tiers][0]! : ('UNKNOWN' as const)]),
+  );
+}
+
+function normalizeChatTurns(
+  sessionId: string,
+  turns: ReadonlyMap<string, MutableChatTurn>,
+  observedServiceTiers: ReadonlyMap<string, CodexUsageServiceTier>,
+) {
+  return [...turns.values()]
+    .filter((turn): turn is MutableChatTurn & { startedAt: string } => turn.startedAt !== null)
+    .sort((left, right) => left.startedAt.localeCompare(right.startedAt) || left.turnId.localeCompare(right.turnId))
+    .map((turn, turnOrder): CodexUsageInternalChatTurn => ({
+      sessionId,
+      turnOrder,
+      turnId: turn.turnId,
+      startedAt: turn.startedAt,
+      terminalAt: turn.terminalAt,
+      terminalState: turn.terminalState,
+      durationMs: turn.durationMs,
+      model: turn.models.size === 1 ? normalizeCodexUsageModel([...turn.models][0]!) : null,
+      reasoningEffort: turn.reasoningEfforts.size === 1 ? [...turn.reasoningEfforts][0]!.trim().toLowerCase() : null,
+      serviceTier: observedServiceTiers.get(turn.turnId) ?? 'UNKNOWN',
+    }));
+}
+
 function appendPendingEvents(
   events: SessionUsageCandidate[],
   sessionId: string,
   model: string,
+  turnId: string | null,
   serviceTier: CodexUsageServiceTier,
   serviceTierInferred: boolean,
   pending: readonly PendingUsage[],
@@ -368,6 +495,7 @@ function appendPendingEvents(
     events.push({
       event: {
         sessionId,
+        turnId,
         timestamp: pendingEvent.timestamp,
         model,
         serviceTier,
@@ -410,31 +538,92 @@ function parsedTimestamp(timestamp: string) {
   return { epoch, iso: new Date(epoch).toISOString() };
 }
 
+function recognizedRecordEnvelope(line: Buffer) {
+  const prefix = line.subarray(0, Math.min(line.length, MAX_ENVELOPE_PREFIX_BYTES)).toString('utf8');
+  const types = [...prefix.matchAll(/"type"\s*:\s*"([a-z_]+)"/g)].map((match) => match[1]);
+  if (types[0] === 'turn_context' || types[0] === 'compacted') return true;
+  return (
+    types[0] === 'event_msg' &&
+    ['token_count', 'thread_settings_applied', 'task_started', 'task_complete', 'turn_aborted'].includes(types[1] ?? '')
+  );
+}
+
 function isBelowRange(timestampEpoch: number, fromEpoch: number | null) {
   return fromEpoch !== null && timestampEpoch < fromEpoch;
 }
 
+function hasRecognizedRecordMarker(line: Buffer) {
+  return (
+    line.includes(TOKEN_COUNT_MARKER) ||
+    line.includes(TURN_CONTEXT_MARKER) ||
+    line.includes(THREAD_SETTINGS_MARKER) ||
+    line.includes(TASK_STARTED_MARKER) ||
+    line.includes(TASK_COMPLETE_MARKER) ||
+    line.includes(TURN_ABORTED_MARKER) ||
+    line.includes(COMPACTED_MARKER)
+  );
+}
+
 function parseSessionLine(line: Buffer): ParsedSessionLine {
-  if (
-    !line.includes(TOKEN_COUNT_MARKER) &&
-    !line.includes(TURN_CONTEXT_MARKER) &&
-    !line.includes(THREAD_SETTINGS_MARKER)
-  ) {
-    return { kind: 'IGNORED' };
-  }
+  if (!hasRecognizedRecordMarker(line)) return { kind: 'IGNORED' };
+  if (!recognizedRecordEnvelope(line)) return { kind: 'IGNORED' };
   let value: unknown;
   try {
     value = JSON.parse(line.toString('utf8')) as unknown;
   } catch {
     return { kind: 'INVALID' };
   }
-  const tokenRow = tokenCountRowSchema.safeParse(value);
-  if (tokenRow.success) {
+  const envelope = rowEnvelopeSchema.safeParse(value);
+  if (!envelope.success) return { kind: 'IGNORED' };
+  if (envelope.data.type === 'compacted') {
+    const compactedRow = compactedRowSchema.safeParse(value);
+    if (!compactedRow.success) return { kind: 'INVALID' };
+    const timestamp = parsedTimestamp(compactedRow.data.timestamp);
+    return timestamp ? { kind: 'COMPACTION', timestamp } : { kind: 'INVALID' };
+  }
+  if (envelope.data.type === 'turn_context') {
+    const contextRow = turnContextRowSchema.safeParse(value);
+    return contextRow.success
+      ? {
+          kind: 'CONTEXT',
+          model: contextRow.data.payload.model,
+          reasoningEffort: contextRow.data.payload.effort?.trim().toLowerCase() ?? null,
+          turnId: contextRow.data.payload.turn_id,
+        }
+      : { kind: 'INVALID' };
+  }
+  if (envelope.data.type !== 'event_msg') return { kind: 'IGNORED' };
+  const eventType = envelope.data.payload?.type;
+  if (eventType === 'token_count') {
+    const tokenRow = tokenCountRowSchema.safeParse(value);
+    if (!tokenRow.success) return { kind: 'INVALID' };
     const timestamp = parsedTimestamp(tokenRow.data.timestamp);
     return timestamp ? { kind: 'TOKEN', row: tokenRow.data, timestamp } : { kind: 'INVALID' };
   }
-  const contextRow = turnContextRowSchema.safeParse(value);
-  if (contextRow.success) return { kind: 'CONTEXT', model: contextRow.data.payload.model };
+  if (eventType === 'task_started') {
+    const startedRow = taskStartedRowSchema.safeParse(value);
+    if (!startedRow.success) return { kind: 'INVALID' };
+    const timestamp = parsedTimestamp(startedRow.data.timestamp);
+    return timestamp
+      ? { kind: 'TURN_STARTED', turnId: startedRow.data.payload.turn_id, timestamp: timestamp.iso }
+      : { kind: 'INVALID' };
+  }
+  if (eventType === 'task_complete' || eventType === 'turn_aborted') {
+    const terminalRow = taskTerminalRowSchema.safeParse(value);
+    if (!terminalRow.success) return { kind: 'INVALID' };
+    const timestamp = parsedTimestamp(terminalRow.data.timestamp);
+    return timestamp
+      ? {
+          kind: 'TURN_TERMINAL',
+          turnId: terminalRow.data.payload.turn_id,
+          timestamp: timestamp.iso,
+          terminalState: terminalRow.data.payload.type === 'task_complete' ? 'COMPLETED' : 'ABORTED',
+          durationMs:
+            terminalRow.data.payload.type === 'task_complete' ? (terminalRow.data.payload.duration_ms ?? null) : null,
+        }
+      : { kind: 'INVALID' };
+  }
+  if (eventType !== 'thread_settings_applied') return { kind: 'IGNORED' };
   const settingsRow = threadSettingsRowSchema.safeParse(value);
   if (!settingsRow.success) return { kind: 'INVALID' };
   return {
@@ -485,6 +674,7 @@ function collectTokenUsage(
 export async function readCodexUsageSession(
   filePath: string,
   sessionId: string,
+  threadCreatedMs: number,
   fallbackModel: string | null,
   fromEpoch: number | null,
   toEpoch: number,
@@ -496,27 +686,59 @@ export async function readCodexUsageSession(
   const candidates: SessionUsageCandidate[] = [];
   const pending: PendingUsage[] = [];
   const pendingTierGroups: PendingUsageGroup[] = [];
+  const chatTurns = new Map<string, MutableChatTurn>();
   let groupedEventCount = 0;
   let invalidRecords = 0;
+  let contextCompactionCount = 0;
+  let turnMetadataComplete = true;
   let crossedLowerBound = false;
   let reverseOrder = 0;
 
-  const groupPending = (model: string) => {
+  const mutableChatTurn = (turnId: string) => {
+    const existing = chatTurns.get(turnId);
+    if (existing) return existing;
+    if (chatTurns.size >= MAX_CHAT_TURNS) {
+      invalidRecords += 1;
+      turnMetadataComplete = false;
+      return null;
+    }
+    const turn: MutableChatTurn = {
+      turnId,
+      startedAt: null,
+      terminalAt: null,
+      terminalState: null,
+      durationMs: null,
+      models: new Set(),
+      reasoningEfforts: new Set(),
+    };
+    chatTurns.set(turnId, turn);
+    return turn;
+  };
+
+  const groupPending = (model: string, turnId: string | null) => {
     if (!pending.length) return;
     const events = pending.splice(0);
-    pendingTierGroups.push({ model, events });
+    pendingTierGroups.push({ model, turnId, events });
     groupedEventCount += events.length;
   };
 
   const flushPendingTierGroups = (tier: CodexUsageServiceTier, inferMissing = false) => {
     for (const group of pendingTierGroups) {
       if (!inferMissing) {
-        appendPendingEvents(candidates, sessionId, group.model, tier, false, group.events);
+        appendPendingEvents(candidates, sessionId, group.model, group.turnId, tier, false, group.events);
         continue;
       }
       for (const event of group.events) {
         const inferredTier = inferredServiceTier(event.timestamp, serviceTierFallback);
-        appendPendingEvents(candidates, sessionId, group.model, inferredTier ?? tier, inferredTier !== null, [event]);
+        appendPendingEvents(
+          candidates,
+          sessionId,
+          group.model,
+          group.turnId,
+          inferredTier ?? tier,
+          inferredTier !== null,
+          [event],
+        );
       }
     }
     pendingTierGroups.length = 0;
@@ -529,29 +751,60 @@ export async function readCodexUsageSession(
     if (parsed.kind === 'IGNORED') continue;
     if (parsed.kind === 'INVALID') {
       invalidRecords += 1;
+      turnMetadataComplete = false;
       continue;
     }
-    if (parsed.kind === 'TOKEN') {
+    if (parsed.kind === 'COMPACTION') {
+      if (threadCreatedMs === 0 || parsed.timestamp.epoch >= threadCreatedMs) {
+        contextCompactionCount = Math.min(Number.MAX_SAFE_INTEGER, contextCompactionCount + 1);
+      }
+    } else if (parsed.kind === 'TOKEN') {
       const status = collectTokenUsage(parsed, fromEpoch, toEpoch, pending, groupedEventCount, reverseOrder);
       reverseOrder += 1;
       if (status === 'BELOW_RANGE') crossedLowerBound = true;
       else if (status === 'OVERFLOW') {
-        groupPending(fallbackModel || 'unknown');
+        groupPending(fallbackModel || 'unknown', null);
         flushPendingTierGroups('UNKNOWN', true);
         invalidRecords += 1;
+        turnMetadataComplete = false;
       }
     } else if (parsed.kind === 'CONTEXT') {
-      groupPending(parsed.model);
-    } else {
-      groupPending(parsed.model || fallbackModel || 'unknown');
+      groupPending(parsed.model, parsed.turnId);
+      const turn = mutableChatTurn(parsed.turnId);
+      turn?.models.add(parsed.model);
+      if (parsed.reasoningEffort) turn?.reasoningEfforts.add(parsed.reasoningEffort);
+    } else if (parsed.kind === 'SETTINGS') {
+      groupPending(parsed.model || fallbackModel || 'unknown', null);
       flushPendingTierGroups(parsed.serviceTier);
+    } else {
+      const turn = mutableChatTurn(parsed.turnId);
+      if (!turn) continue;
+      if (parsed.kind === 'TURN_STARTED') {
+        if (turn.startedAt === null || parsed.timestamp < turn.startedAt) turn.startedAt = parsed.timestamp;
+      } else if (turn.terminalAt === null || parsed.timestamp > turn.terminalAt) {
+        turn.terminalAt = parsed.timestamp;
+        turn.terminalState = parsed.terminalState;
+        turn.durationMs = parsed.durationMs;
+      }
     }
     if (crossedLowerBound && pending.length === 0 && pendingTierGroups.length === 0) break;
   }
-  groupPending(fallbackModel || 'unknown');
+  groupPending(fallbackModel || 'unknown', null);
   flushPendingTierGroups('UNKNOWN', true);
+  const normalizedEvents = normalizeSessionUsage(candidates);
+  const normalizedTurns = normalizeChatTurns(sessionId, chatTurns, observedTurnServiceTiers(normalizedEvents));
+  const knownTurnIds = new Set(normalizedTurns.map(({ turnId }) => turnId));
+  if (
+    normalizedTurns.length !== chatTurns.size ||
+    normalizedEvents.some(({ turnId, usage }) => usage.totalTokens > 0 && (!turnId || !knownTurnIds.has(turnId)))
+  ) {
+    turnMetadataComplete = false;
+  }
   return {
-    events: normalizeSessionUsage(candidates),
+    events: normalizedEvents,
+    chatTurns: normalizedTurns,
+    contextCompactionCount,
+    turnMetadataComplete,
     invalidRecords,
     oversizedRecords: reverseStats.oversizedRecords,
     bytesRead: reverseStats.bytesRead,

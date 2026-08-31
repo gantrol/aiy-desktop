@@ -18,12 +18,14 @@ export function AntigravityCliConfiguration({ active, onConnectionChanged }: Pro
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const connectionChangedRef = useRef(onConnectionChanged);
+  const loadedRef = useRef(false);
 
   useEffect(() => {
     connectionChangedRef.current = onConnectionChanged;
   }, [onConnectionChanged]);
 
   const load = useCallback(async (refresh: boolean) => {
+    loadedRef.current = true;
     setBusy(true);
     setError('');
     try {
@@ -34,6 +36,7 @@ export function AntigravityCliConfiguration({ active, onConnectionChanged }: Pro
         await connectionChangedRef.current();
       }
     } catch (reason) {
+      loadedRef.current = false;
       setError(reason instanceof Error ? reason.message : String(reason));
     } finally {
       setBusy(false);
@@ -41,7 +44,7 @@ export function AntigravityCliConfiguration({ active, onConnectionChanged }: Pro
   }, []);
 
   useEffect(() => {
-    if (active) void load(true);
+    if (active && !loadedRef.current) void load(true);
   }, [active, load]);
 
   const state = status?.state ?? 'checking';

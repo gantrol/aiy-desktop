@@ -189,6 +189,21 @@ export interface FixturePackSourceRecipe {
   source: JsonMap;
 }
 
+export interface FixturePackSupplementalItem {
+  itemKey: string;
+  objectType: string;
+  objectRevisionId: string;
+  contentHash: string;
+  inclusionKind: 'CORE' | 'OPTIONAL' | 'EXAMPLE';
+  visibility: 'VISIBLE' | 'HIDDEN' | 'INTERNAL';
+  rightsStatus: string;
+  metadata: JsonMap;
+  provenance: JsonMap;
+  localObjectType: string;
+  localObjectId: string;
+  localRevisionId: string;
+}
+
 export interface FixturePackSource {
   profile: FixturePackProfile;
   sourceDigest: string;
@@ -198,6 +213,7 @@ export interface FixturePackSource {
   paletteRevision: string;
   terms: FixturePackSourceTerm[];
   recipes: FixturePackSourceRecipe[];
+  supplementalItems: FixturePackSupplementalItem[];
   documents: FixturePackSourceDocuments;
 }
 
@@ -205,6 +221,7 @@ export interface FixturePackSourcePaths {
   fixturePath: string;
   dictionaryPath: string;
   palettePath?: string;
+  supplementalItems?: readonly FixturePackSupplementalItem[];
   prepared?: PreparedFixturePackSourceDocuments;
 }
 
@@ -293,6 +310,20 @@ export function readFixturePackSource(profile: FixturePackProfile, paths: Fixtur
       source: recipe,
     };
   });
+  const supplementalItems = [...(paths.supplementalItems ?? [])].sort((left, right) =>
+    left.itemKey.localeCompare(right.itemKey),
+  );
+  for (const item of supplementalItems) {
+    if (item.objectType !== 'TERM_EXAMPLE') continue;
+    const termStableKey = text(item.metadata.termStableKey);
+    if (!stableKeys.has(termStableKey)) {
+      throw new Error(`Content package example references a term outside the release: ${termStableKey}`);
+    }
+  }
+  const itemKeys = [...terms, ...recipes, ...supplementalItems].map((item) => item.itemKey);
+  if (new Set(itemKeys).size !== itemKeys.length) {
+    throw new Error('Content package release item identities must be unique');
+  }
 
   const sourceDigest = fixtureContentHash({
     contract: 'CONTENT_PACKAGE_V1',
@@ -307,9 +338,9 @@ export function readFixturePackSource(profile: FixturePackProfile, paths: Fixtur
     },
     palette: { schemaVersion: palette.schemaVersion, revision: paletteRevision },
     ...(profile.releaseVersion ? { declaredVersion: profile.releaseVersion } : {}),
-    items: [...terms, ...recipes].map((item) => ({
+    items: [...terms, ...recipes, ...supplementalItems].map((item) => ({
       itemKey: item.itemKey,
-      packageRevisionId: item.packageRevisionId,
+      objectRevisionId: 'packageRevisionId' in item ? item.packageRevisionId : item.objectRevisionId,
       contentHash: item.contentHash,
     })),
   });
@@ -327,6 +358,7 @@ export function readFixturePackSource(profile: FixturePackProfile, paths: Fixtur
     paletteRevision,
     terms,
     recipes,
+    supplementalItems,
     documents: { fixture, dictionary, dictionaryCatalogRows, palette },
   };
 }

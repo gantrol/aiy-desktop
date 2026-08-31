@@ -38,6 +38,14 @@ function outcomeReference(
   context: AiActivityOutlineContext,
   creationTitleById: ReadonlyMap<string, string>,
 ): OutcomeReference {
+  if (record.kind === 'ARTICLE_CHECK') {
+    return {
+      id: `article:${record.run.articleId}`,
+      kind: 'DOCUMENT',
+      title: record.run.articleTitle || null,
+      cover: null,
+    };
+  }
   if (record.kind === 'VIDEO_DOCUMENT') {
     return {
       id: `document:${record.activity.run.documentId}`,
@@ -111,6 +119,8 @@ function parentRecordId(
     const sourceAssetId = record.run.derivation?.sourceAssetId ?? record.version.sourceImageId;
     return sourceAssetId ? (generationByAssetId.get(sourceAssetId)?.id ?? null) : null;
   }
+
+  if (record.kind === 'ARTICLE_CHECK') return null;
 
   if (
     (record.activity.type === 'ARTICLE_GENERATION' || record.activity.type === 'TRANSCRIPT_TRANSLATION') &&

@@ -3,8 +3,16 @@ import type Database from 'better-sqlite3';
 import removeInspirationParentSeriesSql from '@/main/database/sql/v03-revision-004-remove-inspiration-parent-series.sql?raw';
 
 type EntityKind =
-  'PROMPT_SERIES' | 'INSPIRATION_STASH' | 'SOCIAL_POST' | 'ARTICLE' | 'VIDEO_DOCUMENT' | 'DERIVED_VISUAL';
-type PrimaryRole = 'IMAGE_CREATION' | 'SOCIAL_POST' | 'ARTICLE' | 'VIDEO_DOCUMENT';
+  | 'PROMPT_SERIES'
+  | 'IMAGE_BREAKDOWN'
+  | 'INSPIRATION_STASH'
+  | 'SOCIAL_POST'
+  | 'ARTICLE'
+  | 'VIDEO_DOCUMENT'
+  | 'EVALUATION_SUITE'
+  | 'DERIVED_VISUAL';
+type PrimaryRole =
+  'IMAGE_BREAKDOWN' | 'IMAGE_CREATION' | 'SOCIAL_POST' | 'ARTICLE' | 'VIDEO_DOCUMENT' | 'EVALUATION_SUITE';
 type FormRole = PrimaryRole | 'INSPIRATION' | 'SOCIAL_POST_COVER' | 'ARTICLE_HEADER' | 'ARTICLE_INLINE';
 type DerivedVisualRole = 'SOCIAL_POST_COVER' | 'ARTICLE_HEADER' | 'ARTICLE_INLINE';
 
@@ -12,7 +20,14 @@ interface Row {
   [key: string]: unknown;
 }
 
-const primaryRoles = new Set<FormRole>(['IMAGE_CREATION', 'SOCIAL_POST', 'ARTICLE', 'VIDEO_DOCUMENT']);
+const primaryRoles = new Set<FormRole>([
+  'IMAGE_BREAKDOWN',
+  'IMAGE_CREATION',
+  'SOCIAL_POST',
+  'ARTICLE',
+  'VIDEO_DOCUMENT',
+  'EVALUATION_SUITE',
+]);
 
 function text(value: unknown) {
   if (typeof value !== 'string') throw new Error('Creation composition contains an invalid identifier');
@@ -209,6 +224,26 @@ function ensurePrimaryEntityForms(db: Database.Database) {
     createItemWithForm(db, {
       role: 'VIDEO_DOCUMENT',
       entityType: 'VIDEO_DOCUMENT',
+      entityId: id,
+      createdAt: text(row.created_at),
+      updatedAt: text(row.updated_at),
+      archivedAt: row.archived_at == null ? null : text(row.archived_at),
+      deletedAt: row.deleted_at == null ? null : text(row.deleted_at),
+    });
+  }
+
+  const evaluationRows = db
+    .prepare(
+      `SELECT id, created_at, updated_at, archived_at, deleted_at FROM evaluation_suites
+      ORDER BY created_at, id`,
+    )
+    .all() as Row[];
+  for (const row of evaluationRows) {
+    const id = text(row.id);
+    if (formForEntity(db, 'EVALUATION_SUITE', id)) continue;
+    createItemWithForm(db, {
+      role: 'EVALUATION_SUITE',
+      entityType: 'EVALUATION_SUITE',
       entityId: id,
       createdAt: text(row.created_at),
       updatedAt: text(row.updated_at),
@@ -477,9 +512,15 @@ function entityAlbumIds(db: Database.Database, creationItemId: string) {
       FROM creation_forms form
       JOIN articles article
         ON form.entity_type = 'ARTICLE' AND article.id = form.entity_id
-      WHERE form.creation_item_id = ? AND form.deleted_at IS NULL AND article.deleted_at IS NULL`,
+      WHERE form.creation_item_id = ? AND form.deleted_at IS NULL AND article.deleted_at IS NULL
+      UNION
+      SELECT suite.album_id
+      FROM creation_forms form
+      JOIN evaluation_suites suite
+        ON form.entity_type = 'EVALUATION_SUITE' AND suite.id = form.entity_id
+      WHERE form.creation_item_id = ? AND form.deleted_at IS NULL AND suite.deleted_at IS NULL`,
     )
-    .all(creationItemId, creationItemId, creationItemId) as Row[];
+    .all(creationItemId, creationItemId, creationItemId, creationItemId) as Row[];
   return [...new Set(rows.flatMap((row) => (row.album_id == null ? [] : [text(row.album_id)])))];
 }
 
@@ -508,13 +549,15 @@ function addItemAlbumMembership(db: Database.Database, creationItemId: string, a
 }
 
 function syncEntityAlbumIds(db: Database.Database, creationItemId: string, albumId: string | null, timestamp: string) {
-  for (const table of ['inspiration_stashes', 'social_post_drafts', 'articles'] as const) {
+  for (const table of ['inspiration_stashes', 'social_post_drafts', 'articles', 'evaluation_suites'] as const) {
     const entityType =
       table === 'inspiration_stashes'
         ? 'INSPIRATION_STASH'
         : table === 'social_post_drafts'
           ? 'SOCIAL_POST'
-          : 'ARTICLE';
+          : table === 'articles'
+            ? 'ARTICLE'
+            : 'EVALUATION_SUITE';
     db.prepare(
       `UPDATE ${table} SET album_id = ?, updated_at = ?
       WHERE id IN (
@@ -557,6 +600,8 @@ export function creationCompositionComplete(db: Database.Database) {
         WHERE series.deleted_at IS NULL
           AND NOT EXISTS (SELECT 1 FROM derived_visuals visual WHERE visual.prompt_series_id = series.id)
         UNION ALL
+        SELECT 'IMAGE_BREAKDOWN', id FROM image_breakdowns WHERE deleted_at IS NULL
+        UNION ALL
         SELECT 'INSPIRATION_STASH', id FROM inspiration_stashes WHERE deleted_at IS NULL
         UNION ALL
         SELECT 'SOCIAL_POST', id FROM social_post_drafts WHERE deleted_at IS NULL
@@ -564,6 +609,8 @@ export function creationCompositionComplete(db: Database.Database) {
         SELECT 'ARTICLE', id FROM articles WHERE deleted_at IS NULL
         UNION ALL
         SELECT 'VIDEO_DOCUMENT', id FROM documents WHERE deleted_at IS NULL
+        UNION ALL
+        SELECT 'EVALUATION_SUITE', id FROM evaluation_suites WHERE deleted_at IS NULL
       ) entity
       WHERE NOT EXISTS (
         SELECT 1 FROM creation_forms form
@@ -600,7 +647,9 @@ export function creationCompositionComplete(db: Database.Database) {
           SELECT 1 FROM creation_forms form
           WHERE form.id = item.primary_form_id AND form.creation_item_id = item.id
             AND form.deleted_at IS NULL
-            AND form.role IN ('IMAGE_CREATION', 'SOCIAL_POST', 'ARTICLE', 'VIDEO_DOCUMENT')
+            AND form.role IN (
+              'IMAGE_BREAKDOWN', 'IMAGE_CREATION', 'SOCIAL_POST', 'ARTICLE', 'VIDEO_DOCUMENT', 'EVALUATION_SUITE'
+            )
         ))
       ) LIMIT 1`,
     )

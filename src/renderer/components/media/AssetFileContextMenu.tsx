@@ -38,7 +38,11 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/renderer/components/ui/dialog';
-import { useAssetMenuActions } from '@/renderer/components/media/AssetMenuActionsProvider';
+import {
+  useAssetBreakdownSourceFormId,
+  useAssetMenuActions,
+} from '@/renderer/components/media/AssetMenuActionsProvider';
+import { ImageBreakdownContextMenuItem } from '@/renderer/components/media/ImageBreakdownContextMenuItem';
 
 interface Props {
   assetId: string;
@@ -76,19 +80,27 @@ function AssetMenuIcon({ icon: Icon, className }: { icon: LucideIcon; className?
   );
 }
 
+function LazyAssetContextMenuContent({ open, children }: { open: boolean; children: ReactNode }) {
+  if (!open) return null;
+  return <ContextMenuContent className="w-56">{children}</ContextMenuContent>;
+}
+
 function DeleteAssetDialog({
+  enabled,
   open,
   busy,
   labels,
   onOpenChange,
   onDelete,
 }: {
+  enabled: boolean;
   open: boolean;
   busy: boolean;
   labels: MessageCatalog['assetFile'];
   onOpenChange(open: boolean): void;
   onDelete(): void;
 }) {
+  if (!enabled || !open) return null;
   return (
     <Dialog open={open} onOpenChange={(next) => !busy && onOpenChange(next)}>
       <DialogContent>
@@ -118,12 +130,26 @@ function startNativeFileDrag(
   notify: (message: string) => void,
 ) {
   if (!enabled) return;
-  const request = startImageAssetDrag(event, [assetId]);
-  if (request) {
-    void request.catch((reason) => {
-      notify(`${failedLabel}: ${reason instanceof Error ? reason.message : String(reason)}`);
-    });
+  try {
+    startImageAssetDrag(event, [assetId]);
+  } catch (reason) {
+    notify(`${failedLabel}: ${reason instanceof Error ? reason.message : String(reason)}`);
   }
+}
+
+function ContextualImageBreakdownMenuItem({
+  assetId,
+  disabled,
+  notify,
+}: {
+  assetId: string;
+  disabled: boolean;
+  notify(message: string): void;
+}) {
+  const sourceFormId = useAssetBreakdownSourceFormId();
+  return (
+    <ImageBreakdownContextMenuItem assetId={assetId} sourceFormId={sourceFormId} disabled={disabled} notify={notify} />
+  );
 }
 
 export function AssetFileContextMenu({
@@ -149,13 +175,13 @@ export function AssetFileContextMenu({
     key: string;
     targets: AssetFileRevealTargetDto[];
   } | null>(null);
+  const [menuOpen, setMenuOpen] = useState(false);
   const [revealTargetsLoadingKey, setRevealTargetsLoadingKey] = useState<string | null>(null);
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [deleteBusy, setDeleteBusy] = useState(false);
   const [fileActionBusy, setFileActionBusy] = useState<FileAction | null>(null);
   latestRevealRequestKey.current = revealRequestKey;
   const revealTargets = revealTargetState?.key === revealRequestKey ? revealTargetState.targets : null;
-  const revealTargetsLoading = revealTargetsLoadingKey === revealRequestKey;
 
   async function run(action: FileAction, context = revealContext) {
     if (fileActionBusy) return;
@@ -224,7 +250,7 @@ export function AssetFileContextMenu({
   const aggregateRevealContext = revealContext.kind === 'ALL_MATERIALS' || revealContext.kind === 'DICTIONARY';
 
   function loadRevealTargets() {
-    if (!aggregateRevealContext || revealTargetsLoading) return;
+    if (!aggregateRevealContext || revealTargetsLoadingKey === revealRequestKey) return;
     const requestKey = revealRequestKey;
     const revision = ++revealRequestRevision.current;
     setRevealTargetState(null);
@@ -253,7 +279,7 @@ export function AssetFileContextMenu({
       <AssetMenuIcon icon={FolderOpenIcon} />
       {labels.revealPlacement}
     </ContextMenuItem>
-  ) : revealTargetsLoading || revealTargets === null ? (
+  ) : revealTargetsLoadingKey === revealRequestKey || revealTargets === null ? (
     <ContextMenuItem disabled>
       <AssetMenuIcon icon={LoaderCircleIcon} className="animate-spin" />
       {labels.locating}
@@ -293,6 +319,7 @@ export function AssetFileContextMenu({
     <>
       <ContextMenu
         onOpenChange={(open) => {
+          setMenuOpen(open);
           if (open) loadRevealTargets();
         }}
       >
@@ -310,7 +337,7 @@ export function AssetFileContextMenu({
             {children}
           </div>
         </ContextMenuTrigger>
-        <ContextMenuContent className="w-56">
+        <LazyAssetContextMenuContent open={menuOpen}>
           {actions.length > 0 && (
             <>
               <ActionContextMenuItems actions={actions} />
@@ -346,6 +373,7 @@ export function AssetFileContextMenu({
             <AssetMenuIcon icon={SquarePenIcon} />
             {labels.useInCreation}
           </ContextMenuItem>
+          <ContextualImageBreakdownMenuItem assetId={assetId} disabled={!usableInCreation} notify={notify} />
           <ContextMenuSeparator />
           <ContextMenuItem onSelect={() => void run('SAVE_AS')}>
             <AssetMenuIcon icon={DownloadIcon} />
@@ -369,10 +397,11 @@ export function AssetFileContextMenu({
           ) : (
             <ActionContextMenuItems actions={lifecycleActions} />
           )}
-        </ContextMenuContent>
+        </LazyAssetContextMenuContent>
       </ContextMenu>
       <DeleteAssetDialog
-        open={lifecycleActions === undefined && deleteOpen}
+        enabled={lifecycleActions === undefined}
+        open={deleteOpen}
         busy={deleteBusy}
         labels={labels}
         onOpenChange={setDeleteOpen}

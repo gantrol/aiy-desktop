@@ -19,6 +19,7 @@ export type AppView =
   | 'documents'
   | 'dictionary'
   | 'gallery'
+  | 'companion'
   | 'codexImages'
   | 'transitionShowcase'
   | 'packs'

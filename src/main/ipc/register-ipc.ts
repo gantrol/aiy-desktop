@@ -4,14 +4,17 @@ import { chmod, copyFile } from 'node:fs/promises';
 import path from 'node:path';
 import { z } from 'zod';
 import type {
+  ArticleCheckInput,
   Locale,
   VideoDocumentArticleGenerateInput,
   VideoDocumentArticleGenerateResult,
   VideoDocumentTranscriptTranslationResult,
   VideoDocumentTranscriptTranslationWorkerInput,
 } from '@/shared/contracts';
+import type { ArticleCheckExecutionResult } from '@/shared/contracts/article';
 import type { CodexService } from '@/main/assistant/codex-service';
 import type { AssistantService } from '@/main/assistant/assistant-service';
+import { listImageBreakdownRoutes } from '@/main/assistant-models/image-breakdown-routes';
 import { AssetFileActions } from '@/main/media/asset-file-actions';
 import { ArticleExportService } from '@/main/creations/article-export-service';
 import { ArticleWechatCopyService } from '@/main/creations/article-wechat-copy-service';
@@ -24,6 +27,10 @@ import { rasterizeSvgBytesInSandbox, rasterizeSvgFileInSandbox } from '@/main/me
 import type { GenerationService } from '@/main/generation/service';
 import type { ExtensionRegistry } from '@/main/extensions/registry';
 import type { CodexImageDiscovery } from '@/main/extensions/codex-image-discovery';
+import type { CodexHistorySearch } from '@/main/extensions/codex-history-search';
+import type { CodexVisualizationDiscovery } from '@/main/extensions/codex-visualization-discovery';
+import { ArticleDeliveryConnections } from '@/main/extensions/article-delivery/connection';
+import type { ArticleDeliveryJobCoordinator } from '@/main/extensions/article-delivery/job-coordinator';
 import type { OpenAiImageApiConnection } from '@/main/extensions/openai-image-api/connection';
 import type { DeepSeekApiConnection } from '@/main/extensions/deepseek-api/connection';
 import type { LocalQwenAsrSidecarManager } from '@/main/extensions/local-qwen-asr/sidecar-manager';
@@ -41,9 +48,22 @@ import { registerExtensionSettingsIpc } from '@/main/ipc/extension-settings-hand
 import { registerGenerationIpc } from '@/main/ipc/generation-handlers';
 import { registerIntakeIpc } from '@/main/ipc/intake-handlers';
 import { registerLibraryIpc } from '@/main/ipc/library-handlers';
+import { registerImageBreakdownIpc } from '@/main/ipc/image-breakdown-handlers';
 import { registerVideoDocumentIpc } from '@/main/ipc/video-document-handlers';
 import { registerAppSupportIpc } from '@/main/ipc/app-support-handlers';
 import { registerAppWindowIpc } from '@/main/ipc/app-window-handlers';
+import { registerWorkspaceLayoutIpc } from '@/main/ipc/workspace-layout-handlers';
+import type { WorkspaceLayoutStore } from '@/main/app/workspace-layout-store';
+import { registerArticleEditorRecoveryIpc } from '@/main/ipc/article-editor-recovery-handlers';
+import { registerBackgroundIssueIpc } from '@/main/ipc/background-issue-handlers';
+import { registerArticleDeliveryIpc } from '@/main/ipc/article-delivery-handlers';
+import type { ArticleEditorRecoveryStore } from '@/main/app/article-editor-recovery-store';
+import { registerBrowserCompanionIpc } from '@/main/ipc/browser-companion-handlers';
+import { resolveBrowserCompanionDataPath } from '@/main/browser-companion/data-path';
+import { BrowserCompanionHandoffStore } from '@/main/browser-companion/handoff-store';
+import { BrowserCompanionRuntime } from '@/main/browser-companion/runtime';
+import { BrowserCompanionBrowserController } from '@/main/browser-companion/browser-controller';
+import { BrowserCompanionNativeHostRegistration } from '@/main/browser-companion/native-host-registration';
 import { VideoKeyChangeService } from '@/main/video-documents/key-change-service';
 import { VideoDocumentExportService } from '@/main/video-documents/export-service';
 import { VideoDocumentAudioProbeService } from '@/main/video-documents/audio-probe-service';
@@ -116,7 +136,9 @@ function creativeLibraryContainers(database: LibraryDatabase) {
     articles: database.listArticles(),
     creations: database.listCreations(),
     creationItems: database.listCreationItems(),
+    evaluationSuites: database.listEvaluationSuites(),
     inspirationStashes: database.listInspirationStashes(),
+    imageBreakdowns: database.listImageBreakdowns(),
     socialPosts: database.listSocialPosts(),
     derivedVisuals: database.listDerivedVisuals(),
   };
@@ -133,35 +155,47 @@ function bootstrapDictionaryProjection(database: LibraryDatabase, locale: Locale
   };
 }
 
-export function registerIpc(
-  database: LibraryDatabase,
-  codex: CodexService,
-  assistant: AssistantService,
-  generation: GenerationService & VideoDocumentGenerationApi,
-  extensions: ExtensionRegistry,
-  codexImageDiscovery: CodexImageDiscovery,
-  openAiImageApi: OpenAiImageApiConnection,
-  deepSeekApi: DeepSeekApiConnection,
-  localQwenAsrSidecar: LocalQwenAsrSidecarManager,
-  transcriptBackgroundTasks: VideoDocumentTranscriptBackgroundTaskRegistry,
-  assistantRouting: AssistantRoutingConfiguration,
-  externalImageApis: ExternalImageApiConnections,
-  generationConcurrency: GenerationConcurrencyConfiguration,
-  importStarterPack: () => string,
-  canvasPresetPaths: string | readonly string[],
-  derivedVisualPromptPaths: string | readonly string[],
+function registerApplicationIpc(
   getWindow: () => BrowserWindow | null,
-  sendRendererEvent: (channel: string, ...args: unknown[]) => boolean,
-  requestAppQuit: () => Promise<void>,
-  localSpaces: LocalSpaceActions,
-  runInLibraryContext?: TrustedIpcInvocationRunner,
+  workspaceLayouts: WorkspaceLayoutStore,
+  articleEditorRecovery: ArticleEditorRecoveryStore,
 ) {
-  const appIpcMain = createTrustedIpcHandlerRegistrar(getWindow);
-  registerAppSupportIpc(appIpcMain);
-  registerAppWindowIpc(appIpcMain, getWindow);
-  const ipcMain = createTrustedIpcHandlerRegistrar(getWindow, runInLibraryContext);
-  const videoKeyChanges = new VideoKeyChangeService(database);
-  const videoDocumentAudio = new VideoDocumentAudioProbeService(database);
+  const ipcMain = createTrustedIpcHandlerRegistrar(getWindow);
+  registerAppSupportIpc(ipcMain);
+  registerAppWindowIpc(ipcMain, getWindow);
+  registerWorkspaceLayoutIpc(ipcMain, workspaceLayouts);
+  registerArticleEditorRecoveryIpc(ipcMain, articleEditorRecovery);
+}
+
+function createBrowserCompanionRuntime(database: LibraryDatabase): BrowserCompanionRuntime {
+  const dataPath = resolveBrowserCompanionDataPath({
+    appDataRoot: app.getPath('appData'),
+    configuredUserDataPath: process.env.AIY_USER_DATA_DIR,
+  });
+  const nativeHost = new BrowserCompanionNativeHostRegistration({
+    appPath: app.getAppPath(),
+    dataPath,
+    environment: process.env,
+    platform: process.platform,
+    resourcesPath: process.resourcesPath,
+  });
+  const browser = new BrowserCompanionBrowserController({
+    dataPath,
+    environment: process.env,
+    nativeHost,
+    platform: process.platform,
+  });
+  return new BrowserCompanionRuntime(new BrowserCompanionHandoffStore(dataPath), browser, (assetId) =>
+    database.resolveAssetFile(assetId),
+  );
+}
+
+function showOpenDialog(getWindow: () => BrowserWindow | null, options: Electron.OpenDialogOptions) {
+  const parent = getWindow();
+  return parent ? dialog.showOpenDialog(parent, options) : dialog.showOpenDialog(options);
+}
+
+function createContentIpcServices(database: LibraryDatabase, getWindow: () => BrowserWindow | null) {
   const videoDocumentExports = new VideoDocumentExportService(database, {
     showSaveDialog: (options) => {
       const parent = getWindow();
@@ -184,14 +218,108 @@ export function registerIpc(
     convertWebpToPng,
     convertSvgToPng,
   });
-  const articleExports = new ArticleExportService(database, {
-    showSaveDialog: (options) => showDownloadsSaveDialog(getWindow, options),
-  });
-  const articleWechatCopy = new ArticleWechatCopyService(database, {
-    writeClipboard: (data) => clipboard.write(data),
-    convertWebpBytesToPng,
-    convertSvgBytesToPng,
-  });
+  return {
+    videoKeyChanges: new VideoKeyChangeService(database),
+    videoDocumentAudio: new VideoDocumentAudioProbeService(database),
+    videoDocumentExports,
+    articleExports: new ArticleExportService(database, {
+      showSaveDialog: (options) => showDownloadsSaveDialog(getWindow, options),
+    }),
+    articleWechatCopy: new ArticleWechatCopyService(database, {
+      writeClipboard: (data) => clipboard.write(data),
+      convertWebpBytesToPng,
+      convertSvgBytesToPng,
+    }),
+  };
+}
+
+function createArticleCheckRequestRunner(
+  database: LibraryDatabase,
+  assistantRouting: AssistantRoutingConfiguration,
+  extensions: ExtensionRegistry,
+  codex: CodexService,
+) {
+  return async (request: ArticleCheckInput): Promise<ArticleCheckExecutionResult> => {
+    const execution = assistantRouting.resolve('articleCheck');
+    if (execution.providerKey !== 'codex' || !execution.reasoningEffort) {
+      throw Object.assign(new Error('The configured article check model is not supported'), {
+        code: 'ARTICLE_CHECK_PROVIDER_UNSUPPORTED' as const,
+      });
+    }
+    const operationDatabase = Object.freeze({
+      startArticleCheck: database.startArticleCheck.bind(database),
+      completeArticleCheck: database.completeArticleCheck.bind(database),
+      failArticleCheck: database.failArticleCheck.bind(database),
+    });
+    const checkArticle = codex.checkArticle.bind(codex);
+    const run = operationDatabase.startArticleCheck({
+      articleId: request.articleId,
+      expectedRevisionId: request.expectedRevisionId,
+      locale: request.locale,
+      providerKey: execution.providerKey,
+      requestedModel: execution.modelKey,
+      reasoningEffort: execution.reasoningEffort,
+    });
+    try {
+      const extension = extensions.get(execution.extensionId);
+      if (!extension?.enabled || extension.connectionState !== 'READY') {
+        throw Object.assign(
+          new Error(
+            `${execution.name} is unavailable: ${extension?.connectionMessage || 'provider extension unavailable'}`,
+          ),
+          { code: 'ARTICLE_CHECK_PROVIDER_CONFIGURATION_REQUIRED' as const },
+        );
+      }
+      const result = await checkArticle(request, { model: execution.modelKey, effort: execution.reasoningEffort });
+      return operationDatabase.completeArticleCheck(run.id, result);
+    } catch (reason) {
+      try {
+        operationDatabase.failArticleCheck(run.id, reason);
+      } catch (persistenceError) {
+        console.error('[article-check] failed to persist terminal state', {
+          runId: run.id,
+          diagnostic: persistenceError instanceof Error ? persistenceError.message : String(persistenceError),
+        });
+      }
+      throw reason;
+    }
+  };
+}
+
+export function registerIpc(
+  database: LibraryDatabase,
+  codex: CodexService,
+  assistant: AssistantService,
+  generation: GenerationService & VideoDocumentGenerationApi,
+  extensions: ExtensionRegistry,
+  codexImageDiscovery: CodexImageDiscovery,
+  codexHistorySearch: CodexHistorySearch,
+  codexVisualizationDiscovery: CodexVisualizationDiscovery,
+  articleDeliveryConnections: ArticleDeliveryConnections,
+  articleDeliveryJobs: ArticleDeliveryJobCoordinator,
+  openAiImageApi: OpenAiImageApiConnection,
+  deepSeekApi: DeepSeekApiConnection,
+  localQwenAsrSidecar: LocalQwenAsrSidecarManager,
+  transcriptBackgroundTasks: VideoDocumentTranscriptBackgroundTaskRegistry,
+  assistantRouting: AssistantRoutingConfiguration,
+  externalImageApis: ExternalImageApiConnections,
+  generationConcurrency: GenerationConcurrencyConfiguration,
+  importStarterPack: () => Promise<string>,
+  canvasPresetPaths: string | readonly string[],
+  derivedVisualPromptPaths: string | readonly string[],
+  getWindow: () => BrowserWindow | null,
+  sendRendererEvent: (channel: string, ...args: unknown[]) => boolean,
+  requestAppQuit: () => Promise<void>,
+  workspaceLayouts: WorkspaceLayoutStore,
+  articleEditorRecovery: ArticleEditorRecoveryStore,
+  localSpaces: LocalSpaceActions,
+  runInLibraryContext?: TrustedIpcInvocationRunner,
+) {
+  registerApplicationIpc(getWindow, workspaceLayouts, articleEditorRecovery);
+  const ipcMain = createTrustedIpcHandlerRegistrar(getWindow, runInLibraryContext);
+  registerBrowserCompanionIpc(ipcMain, createBrowserCompanionRuntime(database), extensions);
+  registerArticleDeliveryIpc(ipcMain, database, extensions, articleDeliveryConnections, articleDeliveryJobs);
+  const contentServices = createContentIpcServices(database, getWindow);
   const runAssistantRequest = (request: z.infer<typeof creatorAgentAssistSchema>) => {
     const execution = assistantRouting.resolve(request.mode);
     const extension = extensions.get(execution.extensionId);
@@ -232,11 +360,9 @@ export function registerIpc(
       reasoningEffort: execution.reasoningEffort,
     });
   };
+  const runArticleCheckRequest = createArticleCheckRequestRunner(database, assistantRouting, extensions, codex);
 
-  const chooseFile = (options: Electron.OpenDialogOptions) => {
-    const parent = getWindow();
-    return parent ? dialog.showOpenDialog(parent, options) : dialog.showOpenDialog(options);
-  };
+  const chooseFile = (options: Electron.OpenDialogOptions) => showOpenDialog(getWindow, options);
   registerStorageIpc(
     database,
     localSpaces,
@@ -264,11 +390,15 @@ export function registerIpc(
     importStarterPack,
     ipcMain,
   );
-  registerCreatorImportIpc(ipcMain, database, () =>
-    chooseFile({
-      properties: ['openFile', 'multiSelections'],
-      filters: [{ name: 'Images', extensions: ['png', 'jpg', 'jpeg', 'webp', 'svg'] }],
-    }),
+  registerCreatorImportIpc(
+    ipcMain,
+    database,
+    () =>
+      chooseFile({
+        properties: ['openFile', 'multiSelections'],
+        filters: [{ name: 'Images', extensions: ['png', 'jpg', 'jpeg', 'webp', 'svg'] }],
+      }),
+    () => clipboard.readImage(),
   );
   registerDictionaryIpc(
     ipcMain,
@@ -314,10 +444,13 @@ export function registerIpc(
   ipcMain.handle('app:bootstrap', (_event, rawLocale) => {
     const locale = localeSchema.parse(rawLocale) as Locale;
     const workbench = database.getWorkbench(locale, compactExecutionWorkbenchOptions);
+    const spaceId = localSpaces.currentSpaceId();
     return {
       locale,
+      spaceId,
       spaceName: database.getLibraryName(),
       spaceCoverUrl: localSpaces.currentCoverUrl(),
+      workspaceLayout: workspaceLayouts.load(spaceId),
       ...bootstrapDictionaryProjection(database, locale),
       canvasPresets: readCanvasPresets(canvasPresetPaths, locale),
       derivedVisualPrompts: readDerivedVisualPrompts(derivedVisualPromptPaths, locale),
@@ -326,6 +459,12 @@ export function registerIpc(
       extensions: extensions.list(),
       modelWorker: generation.workerStatus,
       imageGenerationRoutes: generation.imageGenerationRoutes,
+      imageBreakdownRoutes: listImageBreakdownRoutes(
+        extensions,
+        externalImageApis,
+        deepSeekApi,
+        generation.antigravityCliStatus,
+      ),
       generationTasks: generation.tasks,
       assistantRuns: database.listAssistantRuns(),
       ...creativeLibraryContainers(database),
@@ -348,6 +487,8 @@ export function registerIpc(
     ipcMain,
     extensions,
     codexImageDiscovery,
+    codexHistorySearch,
+    codexVisualizationDiscovery,
     openAiImageApi,
     deepSeekApi,
     assistantRouting,
@@ -364,9 +505,9 @@ export function registerIpc(
     ipcMain,
     database,
     generation,
-    videoKeyChanges,
-    videoDocumentAudio,
-    videoDocumentExports,
+    videoKeyChanges: contentServices.videoKeyChanges,
+    videoDocumentAudio: contentServices.videoDocumentAudio,
+    videoDocumentExports: contentServices.videoDocumentExports,
     localQwenAsrSidecar,
     transcriptBackgroundTasks,
     assistantRouting,
@@ -379,10 +520,21 @@ export function registerIpc(
     chooseFile,
     runAssistantRequest,
     runTitleRequest,
-    articleExports,
-    articleWechatCopy,
+    runArticleCheckRequest,
+    articleExports: contentServices.articleExports,
+    articleWechatCopy: contentServices.articleWechatCopy,
   });
   registerLibraryIpc(ipcMain, database);
+  registerImageBreakdownIpc({
+    ipcMain,
+    database,
+    assistant,
+    extensions,
+    externalImageApis,
+    deepSeekApi,
+    generation,
+  });
+  registerBackgroundIssueIpc(ipcMain, database);
   registerGenerationIpc(ipcMain, database, generation, imageTransforms, runAssistantRequest);
   registerAssetIpc(ipcMain, database, assetFiles, localSpaces.refreshCurrentPreviews);
 }

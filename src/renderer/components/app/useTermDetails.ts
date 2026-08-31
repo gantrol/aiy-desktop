@@ -4,7 +4,7 @@ import type { AppView } from '@/renderer/components/app/AppSidebar';
 
 interface Options {
   data: BootstrapDto | null;
-  view: AppView;
+  views: readonly AppView[];
   refreshRevision: { current: number };
   localeRef: { current: Locale };
   setData: Dispatch<SetStateAction<BootstrapDto | null>>;
@@ -12,7 +12,7 @@ interface Options {
   notify(message: string): void;
 }
 
-export function useTermDetails({ data, view, refreshRevision, localeRef, setData, setDataRevision, notify }: Options) {
+export function useTermDetails({ data, views, refreshRevision, localeRef, setData, setDataRevision, notify }: Options) {
   const inFlightRef = useRef<{ revision: number; promise: Promise<void> } | null>(null);
   const ensure = useCallback(() => {
     if (!data || data.termDetailsIncluded !== false) return Promise.resolve();
@@ -51,9 +51,9 @@ export function useTermDetails({ data, view, refreshRevision, localeRef, setData
   }, [ensure, notify]);
 
   useEffect(() => {
-    if (view !== 'dictionary' && view !== 'gallery' && view !== 'transitionShowcase' && view !== 'packs') return;
+    if (!views.some((view) => ['dictionary', 'gallery', 'transitionShowcase', 'packs'].includes(view))) return;
     void request();
-  }, [request, view]);
+  }, [request, views]);
 
   return request;
 }

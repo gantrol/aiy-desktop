@@ -308,6 +308,7 @@ export function AiStatisticsView({ active, records, routes, locale }: Props) {
     OPTIMIZE: l.kinds.optimize,
     EXPERIMENT: l.kinds.experiment,
     VIDEO_ARTICLE: l.kinds.videoArticle,
+    ARTICLE_CHECK: l.kinds.articleCheck,
     TRANSCRIBE: l.kinds.transcribe,
     TRANSLATE: l.kinds.translate,
   };

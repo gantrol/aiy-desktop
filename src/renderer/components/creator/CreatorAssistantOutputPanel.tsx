@@ -73,7 +73,7 @@ export function CreatorRecordPanel({
 
   if (collapsed) {
     return (
-      <section className="relative hidden size-full min-h-0 flex-col items-center bg-secondary pt-3 min-[840px]:flex">
+      <section className="relative hidden size-full min-h-0 flex-col items-center bg-secondary pt-3 @min-[840px]/creator:flex">
         <CreatorPaneResizeHandle
           edge="left"
           label={locale === 'zh' ? '调整产出区宽度' : 'Resize output'}
@@ -139,7 +139,7 @@ export function CreatorRecordPanel({
         type="button"
         variant="secondary"
         size="icon-sm"
-        className="absolute bottom-2 left-2 z-30 hidden shadow-overlay min-[840px]:inline-flex"
+        className="absolute bottom-2 left-2 z-30 hidden shadow-overlay @min-[840px]/creator:inline-flex"
         title={locale === 'zh' ? '收起记录区' : `Collapse ${recordLabel}`}
         aria-label={locale === 'zh' ? '收起记录区' : `Collapse ${recordLabel}`}
         onClick={() => onCollapsedChange(true)}

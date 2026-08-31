@@ -56,8 +56,11 @@ class LibraryDatabaseCore {
     localSpaceIdentity?: SynchronizeLocalSpaceIdentityInput,
     options: LibraryDatabaseInitializeOptions = {},
   ) {
-    const { assistantRuns, creations, db, generationJobs, packs, videoDocuments } = this.repositories;
+    const { articleChecks, articleDeliveryJobs, assistantRuns, creations, db, generationJobs, packs, videoDocuments } =
+      this.repositories;
     initializeDatabaseSchema(db);
+    articleChecks.interruptRunningAtStartup();
+    articleDeliveryJobs.recoverRunning();
     if (options.recoverAssistantRuns !== false) {
       assistantRuns.interruptRunningAtStartup();
       creations.reconcileInterruptedAssistantRuns();
@@ -113,6 +116,18 @@ class LibraryDatabaseCore {
     return this.repositories.contentPacks.importPackage(packagePath);
   }
 
+  previewContentPack(packagePath: string) {
+    return this.repositories.contentPacks.previewPackage(packagePath);
+  }
+
+  importPreviewedContentPack(packagePath: string, expectedContentHash: string, expectedPackageFingerprint: string) {
+    return this.repositories.contentPacks.importPreviewedPackage(
+      packagePath,
+      expectedContentHash,
+      expectedPackageFingerprint,
+    );
+  }
+
   /**
    * Called only after the background process has acquired its singleton IPC
    * endpoint. This prevents a duplicate worker from interrupting live jobs.
@@ -133,6 +148,8 @@ class LibraryDatabaseCore {
 
   close() {
     if (this.closed) return;
+    this.repositories.articleRevisionPacks.stopScheduling();
+    this.repositories.articleRevisionPacks.assertDrained();
     this.closed = true;
     this.repositories.libraryFileView.stopSynchronization();
     try {
@@ -164,6 +181,7 @@ class LibraryDatabaseCore {
   }
 
   startBackgroundStorage() {
+    this.repositories.articleRevisionPacks.start();
     this.startLibraryFileViewSynchronization();
     this.startRecycleBinCleanup();
   }
@@ -176,6 +194,7 @@ class LibraryDatabaseCore {
   }
 
   async drainBackgroundStorage() {
+    await this.repositories.articleRevisionPacks.stopAndDrain();
     await this.drainRecycleBinCleanup();
     await this.drainLibraryFileViewSynchronization();
   }

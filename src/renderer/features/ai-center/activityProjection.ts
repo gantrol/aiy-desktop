@@ -1,4 +1,5 @@
 import type {
+  ArticleCheckRunDto,
   AssistantRunDto,
   BootstrapDto,
   GenerationRunDto,
@@ -39,12 +40,29 @@ export interface VideoDocumentActivityRecord extends ActivityBase {
   activity: VideoDocumentAiActivityDto;
 }
 
+export interface ArticleCheckActivityRecord extends ActivityBase {
+  kind: 'ARTICLE_CHECK';
+  run: ArticleCheckRunDto;
+}
+
 export type AiActivityRecord =
-  AssistantActivityRecord | ExperimentActivityRecord | GenerationActivityRecord | VideoDocumentActivityRecord;
+  | AssistantActivityRecord
+  | ExperimentActivityRecord
+  | GenerationActivityRecord
+  | VideoDocumentActivityRecord
+  | ArticleCheckActivityRecord;
 
 export type AiActivityDomain = 'IMAGE' | 'TEXT' | 'DOCUMENT';
 export type AiActivityCategory =
-  'DIRECTIONS' | 'OPTIMIZE' | 'EXPERIMENT' | 'GENERATE' | 'EDIT' | 'VIDEO_ARTICLE' | 'TRANSCRIBE' | 'TRANSLATE';
+  | 'DIRECTIONS'
+  | 'OPTIMIZE'
+  | 'EXPERIMENT'
+  | 'GENERATE'
+  | 'EDIT'
+  | 'VIDEO_ARTICLE'
+  | 'ARTICLE_CHECK'
+  | 'TRANSCRIBE'
+  | 'TRANSLATE';
 export type AiActivityCategoryFilter = 'ALL' | AiActivityDomain | AiActivityCategory;
 
 export type AiActivityStatusFilter = 'ALL' | 'ATTENTION' | 'RUNNING' | 'COMPLETED' | 'EXPIRED';
@@ -65,6 +83,7 @@ function generationOperation(run: GenerationRunDto, version: PromptVersionDto): 
 export function projectAiActivities(
   data: BootstrapDto,
   videoDocumentActivities: VideoDocumentAiActivityDto[] = [],
+  articleCheckRuns: ArticleCheckRunDto[] = [],
 ): AiActivityRecord[] {
   const seriesById = new Map(data.series.map((series) => [series.id, series]));
   const assistantById = new Map(data.assistantRuns.map((run) => [run.id, run]));
@@ -121,12 +140,25 @@ export function projectAiActivities(
     activity,
   }));
 
-  return [...assistantRecords, ...experimentRecords, ...generationRecords, ...videoDocumentRecords].sort(
-    (left, right) => right.createdAt.localeCompare(left.createdAt) || right.id.localeCompare(left.id),
-  );
+  const articleCheckRecords = articleCheckRuns.map((run): ArticleCheckActivityRecord => ({
+    id: `article-check:${run.id}`,
+    kind: 'ARTICLE_CHECK',
+    createdAt: run.startedAt,
+    sourceSeries: null,
+    run,
+  }));
+
+  return [
+    ...assistantRecords,
+    ...experimentRecords,
+    ...generationRecords,
+    ...videoDocumentRecords,
+    ...articleCheckRecords,
+  ].sort((left, right) => right.createdAt.localeCompare(left.createdAt) || right.id.localeCompare(left.id));
 }
 
 export function activityCategory(record: AiActivityRecord): AiActivityCategory {
+  if (record.kind === 'ARTICLE_CHECK') return 'ARTICLE_CHECK';
   if (record.kind === 'ASSISTANT') return record.run.mode === 'directions' ? 'DIRECTIONS' : 'OPTIMIZE';
   if (record.kind === 'EXPERIMENT') return 'EXPERIMENT';
   if (record.kind === 'VIDEO_DOCUMENT') {
@@ -137,11 +169,16 @@ export function activityCategory(record: AiActivityRecord): AiActivityCategory {
 }
 
 export function activityDomain(record: AiActivityRecord): AiActivityDomain {
-  if (record.kind === 'VIDEO_DOCUMENT') return 'DOCUMENT';
+  if (record.kind === 'VIDEO_DOCUMENT' || record.kind === 'ARTICLE_CHECK') return 'DOCUMENT';
   return record.kind === 'ASSISTANT' ? 'TEXT' : 'IMAGE';
 }
 
 export function activityStatusFilter(record: AiActivityRecord): Exclude<AiActivityStatusFilter, 'ALL'> {
+  if (record.kind === 'ARTICLE_CHECK') {
+    if (record.run.status === 'RUNNING') return 'RUNNING';
+    if (record.run.status === 'FAILED' || record.run.status === 'INTERRUPTED') return 'ATTENTION';
+    return 'COMPLETED';
+  }
   if (record.kind === 'ASSISTANT') {
     if (record.run.status === 'RUNNING') return 'RUNNING';
     if (record.run.proposal?.status === 'EXPIRED') return 'EXPIRED';
@@ -181,22 +218,26 @@ export function activityMatchesFilters(
 export function activityDuration(record: AiActivityRecord, now = Date.now()): AiActivityDuration | null {
   const running = activityStatusFilter(record) === 'RUNNING';
   const startValue =
-    record.kind === 'ASSISTANT'
-      ? record.run.createdAt
-      : record.kind === 'EXPERIMENT'
-        ? record.batch.createdAt
-        : record.kind === 'VIDEO_DOCUMENT'
-          ? record.activity.run.startedAt
-          : record.run.createdAt;
+    record.kind === 'ARTICLE_CHECK'
+      ? record.run.startedAt
+      : record.kind === 'ASSISTANT'
+        ? record.run.createdAt
+        : record.kind === 'EXPERIMENT'
+          ? record.batch.createdAt
+          : record.kind === 'VIDEO_DOCUMENT'
+            ? record.activity.run.startedAt
+            : record.run.createdAt;
   const endValue = running
     ? now
-    : record.kind === 'ASSISTANT'
+    : record.kind === 'ARTICLE_CHECK'
       ? record.run.finishedAt
-      : record.kind === 'EXPERIMENT'
-        ? record.batch.updatedAt
-        : record.kind === 'VIDEO_DOCUMENT'
-          ? record.activity.run.finishedAt
-          : record.run.finishedAt;
+      : record.kind === 'ASSISTANT'
+        ? record.run.finishedAt
+        : record.kind === 'EXPERIMENT'
+          ? record.batch.updatedAt
+          : record.kind === 'VIDEO_DOCUMENT'
+            ? record.activity.run.finishedAt
+            : record.run.finishedAt;
   const start = Date.parse(startValue);
   const end = typeof endValue === 'number' ? endValue : endValue ? Date.parse(endValue) : Number.NaN;
   if (!Number.isFinite(start) || !Number.isFinite(end) || end < start) return null;
@@ -204,6 +245,7 @@ export function activityDuration(record: AiActivityRecord, now = Date.now()): Ai
 }
 
 export function activityStatus(record: AiActivityRecord) {
+  if (record.kind === 'ARTICLE_CHECK') return record.run.status;
   if (record.kind === 'ASSISTANT') {
     return record.run.status === 'SUCCEEDED' && record.run.proposal ? record.run.proposal.status : record.run.status;
   }

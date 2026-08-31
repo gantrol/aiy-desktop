@@ -12,7 +12,7 @@ import {
   type AppUpdateSupportReason,
 } from '@/shared/contracts/app-update';
 
-const INITIAL_AUTOMATIC_CHECK_DELAY_MS = 30_000;
+const POST_FIRST_WINDOW_SHOW_CHECK_DELAY_MS = 1_000;
 const AUTOMATIC_CHECK_INTERVAL_MS = 6 * 60 * 60 * 1_000;
 
 interface AppUpdateServiceEnvironment {
@@ -61,6 +61,7 @@ export class AppUpdateService {
   private installFailureRecovery: (() => void) | null = null;
   private automaticCheckTimer: ReturnType<typeof setTimeout> | null = null;
   private automaticCheckInterval: ReturnType<typeof setInterval> | null = null;
+  private hasStartedCheck = false;
   private disposed = false;
   private readonly storeUpdater: WindowsStoreUpdateBackend;
   private readonly getNativeWindowHandle: () => Buffer | null;
@@ -101,10 +102,10 @@ export class AppUpdateService {
     }
     this.automaticCheckTimer = setTimeout(() => {
       this.automaticCheckTimer = null;
-      void this.check();
+      if (!this.hasStartedCheck) void this.check();
       this.automaticCheckInterval = setInterval(() => void this.check(), AUTOMATIC_CHECK_INTERVAL_MS);
       this.automaticCheckInterval.unref();
-    }, INITIAL_AUTOMATIC_CHECK_DELAY_MS);
+    }, POST_FIRST_WINDOW_SHOW_CHECK_DELAY_MS);
     this.automaticCheckTimer.unref();
   }
 
@@ -123,6 +124,7 @@ export class AppUpdateService {
     }
     if (this.checkPromise) return this.checkPromise;
 
+    this.hasStartedCheck = true;
     this.replaceState({ phase: 'CHECKING', progress: null, error: null });
     this.checkPromise = this.storeUpdater
       .check()

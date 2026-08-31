@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { termDraftSchema } from '@/main/database/dictionary/term-draft-schema';
 import { importedImageMetadataSchema, importedImageRelationshipSchema } from '@/main/ipc/import-metadata-schema';
+import { creationDraftLoadInputSchema } from '@/shared/contracts/creation-draft';
 
 export const localeSchema = z.enum(['zh', 'en']);
 
@@ -284,6 +285,7 @@ export const generationBaseSchema = z.object({
   titleLocale: localeSchema,
   creationDraftId: id.nullable().optional().default(null),
   inspirationStashId: id.nullable().optional().default(null),
+  imageBreakdownId: id.nullable().optional().default(null),
   baseVersionId: id.nullable().optional().default(null),
   sourceImportId: id.nullable().optional().default(null),
   manualPrompt: z.string().max(30_000),
@@ -373,7 +375,7 @@ export const styleExplorationSlotSchema = z
     risk: z.string().max(1_000),
     userInstruction: z.string().max(30_000),
     input: generationBaseSchema
-      .omit({ seriesId: true, creationDraftId: true, inspirationStashId: true, modelKey: true })
+      .omit({ seriesId: true, creationDraftId: true, inspirationStashId: true, imageBreakdownId: true, modelKey: true })
       .superRefine(validateGenerationCanvas),
   })
   .superRefine((value, context) => {
@@ -663,17 +665,19 @@ export const assistantProposalAdoptionSchema = assistantProposalAdoptionBaseSche
     .optional(),
 });
 
+export const creationDraftLoadSchema = creationDraftLoadInputSchema;
+
 export const creationDraftStartSchema = z
   .object({
     albumId: id.nullable(),
     termPromptLocale: localeSchema,
-    fresh: z.boolean().default(false),
   })
   .strict();
 
 export const creationDraftCommitSchema = z.object({
   creationDraftId: id,
   inspirationStashId: id.nullable().optional().default(null),
+  imageBreakdownId: id.nullable().optional().default(null),
   title: z.string().max(300),
   manualPrompt: z.string().max(30_000),
   promptNodes: z.array(creatorPromptNodeSchema).max(2_000).optional(),

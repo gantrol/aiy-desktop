@@ -1,13 +1,14 @@
 import { KeyRoundIcon, LoaderCircleIcon, PlugZapIcon, ShieldCheckIcon, Trash2Icon } from 'lucide-react';
 import { useEffect, useState } from 'react';
-import type { ExtensionManifestDto, ExternalImageApiConnectionDto } from '@/shared/contracts';
+import type { ExtensionManifestDto, ProviderConnectionDto } from '@/shared/contracts';
 import { localizeExtensionManifest } from '@/shared/extension-localization';
-import type { ExternalImageApiExtensionId } from '@/shared/extension-ids';
+import { externalImageConnectionId, type ExternalImageApiExtensionId } from '@/shared/extension-ids';
 import { Badge } from '@/renderer/components/ui/badge';
 import { Button } from '@/renderer/components/ui/button';
 import { Field, FieldControl, FieldLabel } from '@/renderer/components/ui/field';
 import { Input } from '@/renderer/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/renderer/components/ui/select';
+import { loadProviderConnection } from '@/renderer/features/extensions/providerConnectionClient';
 import { useI18n } from '@/renderer/i18n/useI18n';
 
 interface Props {
@@ -21,9 +22,10 @@ export function ExternalImageApiConfiguration({ active, manifest, notify, onConn
   const { locale, messages } = useI18n();
   const l = messages.extensions.externalImageApi;
   const extensionId = manifest.id as ExternalImageApiExtensionId;
-  const configuration = manifest.configuration;
+  const connectionId = externalImageConnectionId(extensionId);
+  const configuration = manifest.configuration?.kind === 'IMAGE_API' ? manifest.configuration : null;
   const pluginCopy = localizeExtensionManifest(manifest, locale).configuration;
-  const [connection, setConnection] = useState<ExternalImageApiConnectionDto | null>(null);
+  const [connection, setConnection] = useState<ProviderConnectionDto | null>(null);
   const [apiKey, setApiKey] = useState('');
   const [settings, setSettings] = useState<Record<string, string>>({});
   const [busy, setBusy] = useState('');
@@ -37,7 +39,7 @@ export function ExternalImageApiConfiguration({ active, manifest, notify, onConn
   async function load() {
     setError('');
     try {
-      const next = await window.desktopApi.externalImageApiGet(extensionId);
+      const next = await loadProviderConnection(connectionId);
       setConnection(next);
       setSettings(next.settings);
       setApiKey('');
@@ -48,7 +50,7 @@ export function ExternalImageApiConfiguration({ active, manifest, notify, onConn
 
   useEffect(() => {
     if (active) void load();
-  }, [active, extensionId]);
+  }, [active, connectionId]);
 
   async function run(action: 'save' | 'test' | 'clear') {
     setBusy(action);
@@ -56,10 +58,10 @@ export function ExternalImageApiConfiguration({ active, manifest, notify, onConn
     try {
       const next =
         action === 'save'
-          ? await window.desktopApi.externalImageApiSave({ extensionId, apiKey, settings })
+          ? await window.desktopApi.providerConnectionSave({ connectionId, apiKey, settings })
           : action === 'test'
-            ? await window.desktopApi.externalImageApiTest(extensionId)
-            : await window.desktopApi.externalImageApiClear(extensionId);
+            ? await window.desktopApi.providerConnectionVerify(connectionId)
+            : await window.desktopApi.providerConnectionRemove(connectionId);
       setConnection(next);
       setApiKey('');
       setSettings(next.settings);
@@ -72,7 +74,7 @@ export function ExternalImageApiConfiguration({ active, manifest, notify, onConn
     }
   }
 
-  const status = connection?.status ?? 'NOT_CONFIGURED';
+  const status = connection?.connectionState ?? 'NOT_CONFIGURED';
   const activeSettingFields =
     configuration?.settingFields.filter((field) => field.endpointPresetIds.includes(endpointPresetId)) ?? [];
   const canSave =
@@ -85,7 +87,7 @@ export function ExternalImageApiConfiguration({ active, manifest, notify, onConn
       ? l.neverChecked
       : l.verifyOnFirstUse;
 
-  if (!configuration || configuration.kind !== 'IMAGE_API' || !pluginCopy) return null;
+  if (!configuration || !pluginCopy) return null;
 
   return (
     <section data-external-image-api-configuration={extensionId} className="rounded-lg border">
@@ -106,7 +108,7 @@ export function ExternalImageApiConfiguration({ active, manifest, notify, onConn
               spellCheck={false}
               disabled={Boolean(busy)}
               value={apiKey}
-              placeholder={connection?.apiKeyHint ?? pluginCopy.apiKeyPlaceholder}
+              placeholder={connection?.credentialHint ?? pluginCopy.apiKeyPlaceholder}
               onChange={(event) => setApiKey(event.target.value)}
             />
           </FieldControl>
@@ -200,7 +202,7 @@ export function ExternalImageApiConfiguration({ active, manifest, notify, onConn
             <ShieldCheckIcon className="size-3.5 text-success" />
           </dd>
           <dt className="text-muted-foreground">{l.savedKey}</dt>
-          <dd className="text-right font-mono">{connection?.apiKeyHint ?? '—'}</dd>
+          <dd className="text-right font-mono">{connection?.credentialHint ?? '—'}</dd>
           <dt className="text-muted-foreground">{l.lastVerified}</dt>
           <dd className="text-right">{lastVerified}</dd>
         </dl>

@@ -81,7 +81,7 @@ export function ToastViewport({ messages, label, closeLabel, className, duration
       aria-live="polite"
       aria-relevant="additions text"
       className={cn(
-        'pointer-events-none fixed top-28 right-4 z-50 flex max-h-[calc(100vh-8rem)] flex-col items-end gap-2',
+        'pointer-events-none fixed top-28 right-4 z-[60] flex max-h-[calc(100vh-8rem)] flex-col items-end gap-2',
         className,
       )}
     >

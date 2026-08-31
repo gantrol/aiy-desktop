@@ -203,7 +203,10 @@ export class GenerationCoordinator extends GenerationCoordinatorRuntime implemen
     });
   }
 
-  startBatch(batch: GenerationBatchInput) {
+  startBatch(
+    batch: GenerationBatchInput,
+    beforeLaunch?: (result: { batchId: string | null; runIds: string[]; seriesId: string; versionId: string }) => void,
+  ) {
     if (this.disposed) throw new Error('Generation service is unavailable');
     if (!batch.targets.length) throw new Error('Select at least one model');
     const expandedTargets = batch.targets.flatMap((target) => {
@@ -265,8 +268,17 @@ export class GenerationCoordinator extends GenerationCoordinatorRuntime implemen
       }
       throw error;
     }
+    const result = { batchId, runIds: preparedRuns.map(({ runId }) => runId), seriesId: seriesId!, versionId };
+    try {
+      beforeLaunch?.(result);
+    } catch (error) {
+      for (const prepared of preparedRuns) {
+        this.database.markRun(prepared.runId, 'CANCELLED', undefined, 'BATCH_SUBMISSION_ABORTED');
+      }
+      throw error;
+    }
     this.launchBatch(preparedRuns);
-    return { batchId, runIds: preparedRuns.map(({ runId }) => runId), seriesId: seriesId!, versionId };
+    return result;
   }
 
   startStyleExploration(exploration: StyleExplorationStartInput) {

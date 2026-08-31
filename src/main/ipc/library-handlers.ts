@@ -10,6 +10,11 @@ import {
   creationItemSetPrimaryInputSchema,
 } from '@/shared/contracts/creation-library';
 import {
+  evaluationSuiteCreateInputSchema,
+  evaluationSuiteGetInputSchema,
+  evaluationSuiteSaveInputSchema,
+} from '@/shared/contracts/evaluation-suite';
+import {
   albumAddMembersSchema,
   albumCreateFromMaterialsSchema,
   albumCreateSchema,
@@ -34,6 +39,7 @@ import {
   materialAlbumMoveSchema,
   materialAlbumRemoveSchema,
   materialAlbumRenameSchema,
+  materialImageAssetsResolveSchema,
   materialMetadataUpdateSchema,
   recycleBinListSchema,
   recycleBinPurgePlanSchema,
@@ -62,6 +68,17 @@ export function registerLibraryIpc(ipcMain: IpcHandlerRegistrar, database: Libra
   ipcMain.handle('creation-item:set-primary', (_event, raw) =>
     database.setCreationItemPrimaryForm(creationItemSetPrimaryInputSchema.parse(raw)),
   );
+  ipcMain.handle('evaluation-suites:list', () => database.listEvaluationSuites());
+  ipcMain.handle('evaluation-suite:get', (_event, raw) => {
+    const input = evaluationSuiteGetInputSchema.parse(raw);
+    return database.getEvaluationSuite(input.id);
+  });
+  ipcMain.handle('evaluation-suite:create', (_event, raw) =>
+    database.createEvaluationSuite(evaluationSuiteCreateInputSchema.parse(raw)),
+  );
+  ipcMain.handle('evaluation-suite:save', (_event, raw) =>
+    database.saveEvaluationSuite(evaluationSuiteSaveInputSchema.parse(raw)),
+  );
   ipcMain.handle('material-albums:list', (_event, raw) =>
     database.listMaterialAlbums(materialAlbumListSchema.parse(raw)),
   );
@@ -80,6 +97,9 @@ export function registerLibraryIpc(ipcMain: IpcHandlerRegistrar, database: Libra
   );
   ipcMain.handle('material-albums:remove', (_event, raw) =>
     database.removeMaterialAlbumMembers(materialAlbumRemoveSchema.parse(raw)),
+  );
+  ipcMain.handle('material-image-assets:resolve', (_event, raw) =>
+    database.resolveMaterialImageAssets(materialImageAssetsResolveSchema.parse(raw)),
   );
   ipcMain.handle('albums:list', (_event, rawLocale) => database.listAlbums(localeSchema.parse(rawLocale)));
   ipcMain.handle('albums:list-text-materials', (_event, rawId) => database.listAlbumTextMaterials(id.parse(rawId)));

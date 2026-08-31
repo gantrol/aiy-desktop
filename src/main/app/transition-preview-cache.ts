@@ -17,10 +17,9 @@ const maximumThumbnailBytes = 1024 * 1024;
 const maximumDetailBytes = 2 * 1024 * 1024;
 const renditionRecipe = 'progressive-216x288-q72-648x864-q86-v1';
 const temporaryRenditionFilePattern = /^[A-Za-z0-9_-]{16,64}\.jpg\.\d+-[0-9a-f-]{36}\.tmp$/;
-// Eligibility is data provenance, not file format. Name it explicitly so a
-// future policy change invalidates stale private media without inflating the
-// structural manifest version.
-const selectionPolicy = 'public-library-assets' as const;
+// Selection policy is data provenance and presentation priority, not file format. Name it explicitly so a
+// future policy change invalidates stale media without inflating the structural manifest version.
+const selectionPolicy = 'presentation-ranked-public-library-assets' as const;
 // The renderer keeps the snapshot returned before a background refresh. Retain that generation
 // plus the newly installed one so delayed IntersectionObserver requests never lose their URL.
 const retainedGenerationLimit = 2;

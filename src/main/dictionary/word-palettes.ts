@@ -68,7 +68,13 @@ function paletteContentHash(input: NormalizedPalette) {
     .digest('hex');
 }
 
-function createPaletteRevision(db: Database.Database, paletteId: string, input: NormalizedPalette, timestamp: string) {
+function createPaletteRevision(
+  db: Database.Database,
+  paletteId: string,
+  input: NormalizedPalette,
+  timestamp: string,
+  advanceCurrent = true,
+) {
   const current = db
     .prepare(
       `SELECT r.id, r.revision_no, r.content_hash
@@ -191,11 +197,13 @@ function createPaletteRevision(db: Database.Database, paletteId: string, input: 
       nodeIndex,
     );
   }
-  db.prepare('UPDATE word_palettes SET current_revision_id = ?, updated_at = ? WHERE id = ?').run(
-    revisionId,
-    timestamp,
-    paletteId,
-  );
+  if (advanceCurrent || !current.id) {
+    db.prepare('UPDATE word_palettes SET current_revision_id = ?, updated_at = ? WHERE id = ?').run(
+      revisionId,
+      timestamp,
+      paletteId,
+    );
+  }
   return { revisionId, revisionNo, created: true };
 }
 
@@ -305,7 +313,7 @@ export function reconcileWordPaletteCatalog(
       } else {
         db.prepare('UPDATE word_palettes SET pinned = ? WHERE id = ?').run(Number(Boolean(palette.pinned)), paletteId);
       }
-      createPaletteRevision(db, paletteId, normalized, timestamp);
+      createPaletteRevision(db, paletteId, normalized, timestamp, !existing);
     }
     db.prepare('INSERT OR REPLACE INTO app_meta(key, value) VALUES (?, ?)').run(revisionMarkerKey, revision);
   })();

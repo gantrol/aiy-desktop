@@ -11,20 +11,23 @@ import {
 import {
   ArrowLeftIcon,
   ArrowRightIcon,
-  CheckIcon,
-  CircleAlertIcon,
   CopyIcon,
-  FileTextIcon,
-  GripVerticalIcon,
   ImagePlusIcon,
+  Link2Icon,
   LoaderCircleIcon,
-  Maximize2Icon,
   StarIcon,
   Trash2Icon,
 } from 'lucide-react';
-import type { AssetDto, CanvasPresetDto, Locale, SocialPostContentInput, SocialPostDto } from '@/shared/contracts';
+import type {
+  AssetDto,
+  BrowserCompanionTarget,
+  CanvasPresetDto,
+  Locale,
+  SocialPostContentInput,
+  SocialPostDto,
+} from '@/shared/contracts';
 import { useI18n } from '@/renderer/i18n/useI18n';
-import { hasExternalFilesDrag, hasMaterialsDrag } from '@/renderer/components/albums/albumDrag';
+import { hasExternalFilesDrag, hasMaterialsDrag, readMaterialsDrag } from '@/renderer/components/albums/albumDrag';
 import {
   clipboardImageFiles,
   clipboardHasUserText,
@@ -40,23 +43,45 @@ import { Button } from '@/renderer/components/ui/button';
 import { Input } from '@/renderer/components/ui/input';
 import { ScrollArea } from '@/renderer/components/ui/scroll-area';
 import { Textarea } from '@/renderer/components/ui/textarea';
+import type { ActionMenuAction } from '@/renderer/components/ui/action-menu';
 import { AssetFileContextMenu } from '@/renderer/components/media/AssetFileContextMenu';
+import { AssetFileDragHandle } from '@/renderer/components/media/AssetFileDragHandle';
+import { MediaActionMenu } from '@/renderer/components/media/MediaActionMenu';
+import { MediaOrderHandle } from '@/renderer/components/media/MediaOrderHandle';
 import { SocialPostMediaPreviewDialog } from '@/renderer/components/creator/SocialPostMediaPreviewDialog';
-
+import { SocialPostHeader } from '@/renderer/components/creator/SocialPostHeader';
+import {
+  hasSocialPostMediaReorderDrag,
+  socialPostMediaReorderSourceId,
+  startSocialPostMediaDrag,
+} from '@/renderer/components/creator/socialPostMediaDrag';
+import { useBrowserCompanionHandoff } from '@/renderer/features/browser-companion/useBrowserCompanionHandoff';
+import { prepareSocialPostHandoff } from '@/renderer/features/browser-companion/prepareSocialPostHandoff';
+import {
+  CreationRelationsPreview,
+  CreationRelationsSheet,
+  type CreationRelationItem,
+} from '@/renderer/components/creator/CreationRelationsSheet';
 interface Props {
   post: SocialPostDto;
   locale: Locale;
   canvasPresets: CanvasPresetDto[];
-  coverWorkspaceExists: boolean;
-  onSave(content: SocialPostContentInput): Promise<void>;
-  onCreateArticle(content: SocialPostContentInput, mediaAssets: readonly AssetDto[]): Promise<void>;
-  onGenerateCover(content: SocialPostContentInput, preset: CanvasPresetDto): Promise<void>;
+  handoffTargets: readonly BrowserCompanionTarget[];
+  relations: readonly CreationRelationItem[];
+  onSave(content: SocialPostContentInput): Promise<SocialPostDto>;
+  onCreateSocialPost(content: SocialPostContentInput, copySourceContent: boolean): Promise<void>;
+  onCreateArticle(
+    content: SocialPostContentInput,
+    mediaAssets: readonly AssetDto[],
+    copySourceContent: boolean,
+  ): Promise<void>;
+  onGenerateCover(post: SocialPostDto, content: SocialPostContentInput, preset: CanvasPresetDto): Promise<void>;
+  onOpenRelation(item: CreationRelationItem): void;
   notify(message: string): void;
 }
 
 const socialPostMediaLimit = 100;
 const importBatchLimit = 8;
-const socialPostMediaDragType = 'application/x-aiy-social-post-media';
 
 function editableContent(post: SocialPostDto): SocialPostContentInput {
   const { mediaAssets: _mediaAssets, ...content } = post.content;
@@ -215,6 +240,46 @@ function useSocialPostMediaIntake({
     }
   }
 
+  async function addMaterialImages(dataTransfer: DataTransfer) {
+    const targets = readMaterialsDrag(dataTransfer);
+    if (!targets.length) return;
+    if (addingRef.current) {
+      notify(zh ? '图片仍在添加' : 'Images are still being added');
+      return;
+    }
+    const capacity = Math.max(0, socialPostMediaLimit - contentRef.current.mediaAssetIds.length);
+    if (!capacity) {
+      notify(
+        zh ? `一条贴图最多 ${socialPostMediaLimit} 张图片` : `A post can contain up to ${socialPostMediaLimit} images`,
+      );
+      return;
+    }
+
+    addingRef.current = true;
+    setAdding(true);
+    try {
+      const assets = await window.desktopApi.materialImageAssetsResolve({ targets: targets.slice(0, capacity) });
+      const added = appendMediaAssets(assets);
+      notify(
+        added
+          ? zh
+            ? `已添加 ${added} 张图片`
+            : `${added} image${added === 1 ? '' : 's'} added`
+          : zh
+            ? '这些图片已在当前贴图中'
+            : 'These images are already in this post',
+      );
+      if (targets.length > capacity) {
+        notify(zh ? `已达到 ${socialPostMediaLimit} 张上限` : `The ${socialPostMediaLimit}-image limit was reached`);
+      }
+    } catch (reason) {
+      notify(reason instanceof Error ? reason.message : String(reason));
+    } finally {
+      addingRef.current = false;
+      setAdding(false);
+    }
+  }
+
   function pasteImages(event: ClipboardEvent<HTMLDivElement>) {
     if (event.defaultPrevented) return;
     const files = clipboardImageFiles(event.clipboardData).filter((file) => imageMimeType(file));
@@ -223,10 +288,12 @@ function useSocialPostMediaIntake({
     void importMediaFiles(files, 'PASTE', transferSourceUrl(event.clipboardData));
   }
 
-  function dragExternalFiles(event: DragEvent<HTMLDivElement>, active: boolean) {
+  function dragMedia(event: DragEvent<HTMLDivElement>, active: boolean) {
     if (event.defaultPrevented) return;
     if (hasMaterialsDrag(event.dataTransfer)) {
-      setDragActive(false);
+      event.preventDefault();
+      if (event.type === 'dragover') event.dataTransfer.dropEffect = 'copy';
+      setDragActive(active);
       return;
     }
     if (!hasExternalFilesDrag(event.dataTransfer)) return;
@@ -235,101 +302,24 @@ function useSocialPostMediaIntake({
     setDragActive(active);
   }
 
-  function dropExternalFiles(event: DragEvent<HTMLDivElement>) {
-    if (event.defaultPrevented || !hasExternalFilesDrag(event.dataTransfer)) return;
+  function dropMedia(event: DragEvent<HTMLDivElement>) {
+    if (event.defaultPrevented) {
+      setDragActive(false);
+      return;
+    }
+    if (hasMaterialsDrag(event.dataTransfer)) {
+      event.preventDefault();
+      setDragActive(false);
+      void addMaterialImages(event.dataTransfer);
+      return;
+    }
+    if (!hasExternalFilesDrag(event.dataTransfer)) return;
     event.preventDefault();
     setDragActive(false);
     void importMediaFiles(imageFiles(event.dataTransfer.files), 'DROP', transferSourceUrl(event.dataTransfer));
   }
 
-  return { adding, chooseMedia, dragActive, dragExternalFiles, dropExternalFiles, pasteImages };
-}
-
-function SocialPostHeader({
-  coverWorkspaceExists,
-  creatingArticle,
-  generatingCover,
-  dirty,
-  onCreateArticle,
-  onGenerateCover,
-  onRetrySave,
-  saveFailed,
-  saving,
-  title,
-  zh,
-}: {
-  coverWorkspaceExists: boolean;
-  creatingArticle: boolean;
-  generatingCover: boolean;
-  dirty: boolean;
-  onCreateArticle(): void;
-  onGenerateCover(): void;
-  onRetrySave(): void;
-  saveFailed: boolean;
-  saving: boolean;
-  title: string;
-  zh: boolean;
-}) {
-  return (
-    <header className="flex h-14 shrink-0 items-center justify-between gap-3 border-b px-4">
-      <div className="flex min-w-0 items-center gap-2">
-        <span className="truncate font-semibold">{title || (zh ? '未命名贴图' : 'Untitled post')}</span>
-        <span className="text-xs text-muted-foreground">{zh ? '贴图' : 'Social post'}</span>
-      </div>
-      <div className="flex items-center gap-1">
-        <Button
-          type="button"
-          variant="ghost"
-          size="sm"
-          data-action="open-social-cover-workspace"
-          data-workspace-state={coverWorkspaceExists ? 'existing' : 'new'}
-          disabled={generatingCover}
-          onClick={onGenerateCover}
-        >
-          {generatingCover ? (
-            <LoaderCircleIcon className="size-4 animate-spin" />
-          ) : (
-            <ImagePlusIcon className="size-4" />
-          )}
-          {coverWorkspaceExists
-            ? zh
-              ? '继续封面创作'
-              : 'Continue cover creation'
-            : zh
-              ? '生成封面'
-              : 'Generate cover'}
-        </Button>
-        <Button type="button" variant="ghost" size="sm" disabled={creatingArticle} onClick={onCreateArticle}>
-          {creatingArticle ? <LoaderCircleIcon className="size-4 animate-spin" /> : <FileTextIcon className="size-4" />}
-          {zh ? '写成文章' : 'Make article'}
-        </Button>
-        <div className="grid size-8 place-items-center text-muted-foreground">
-          {saving ? (
-            <LoaderCircleIcon className="size-4 animate-spin" aria-label={zh ? '正在自动保存' : 'Autosaving'} />
-          ) : saveFailed ? (
-            <Button
-              type="button"
-              variant="ghost"
-              size="icon-sm"
-              className="text-destructive"
-              title={zh ? '自动保存失败，点击重试' : 'Autosave failed. Retry'}
-              aria-label={zh ? '重试自动保存' : 'Retry autosave'}
-              onClick={onRetrySave}
-            >
-              <CircleAlertIcon className="size-4" />
-            </Button>
-          ) : dirty ? (
-            <span
-              className="size-1.5 rounded-full bg-muted-foreground"
-              title={zh ? '等待自动保存' : 'Waiting to autosave'}
-            />
-          ) : (
-            <CheckIcon className="size-4" aria-label={zh ? '已自动保存' : 'Autosaved'} />
-          )}
-        </div>
-      </div>
-    </header>
-  );
+  return { adding, chooseMedia, dragActive, dragMedia, dropMedia, pasteImages };
 }
 
 function SocialPostMediaSection({
@@ -340,7 +330,10 @@ function SocialPostMediaSection({
   notify,
   onAdd,
   onChangeIds,
+  onOpenRelations,
+  onSelectRelation,
   onSetCover,
+  relations,
 }: {
   adding: boolean;
   assetsById: ReadonlyMap<string, AssetDto>;
@@ -349,10 +342,15 @@ function SocialPostMediaSection({
   notify(message: string): void;
   onAdd(): void;
   onChangeIds(ids: string[]): void;
+  onOpenRelations(assetId: string | null): void;
+  onSelectRelation(item: CreationRelationItem): void;
   onSetCover(assetId: string): void;
+  relations: readonly CreationRelationItem[];
 }) {
   const zh = locale === 'zh';
-  const fileLabels = useI18n().messages.assetFile;
+  const { messages } = useI18n();
+  const fileLabels = messages.assetFile;
+  const moreActionsLabel = messages.creator.album.moreActions;
   const [dragTargetId, setDragTargetId] = useState<string | null>(null);
   const [previewAssetId, setPreviewAssetId] = useState<string | null>(null);
   const [copyingAssetId, setCopyingAssetId] = useState<string | null>(null);
@@ -397,25 +395,76 @@ function SocialPostMediaSection({
         {content.mediaAssetIds.map((assetId, index) => {
           const asset = assetsById.get(assetId);
           const cover = content.coverAssetId === assetId;
+          const actions: ActionMenuAction[] = [
+            ...(!cover
+              ? [
+                  {
+                    id: 'social-post-media-set-cover',
+                    label: zh ? '设为首图' : 'Set as cover',
+                    icon: StarIcon,
+                    onSelect: () => onSetCover(assetId),
+                  } satisfies ActionMenuAction,
+                ]
+              : []),
+            {
+              id: 'social-post-media-move-earlier',
+              label: zh ? '前移' : 'Move earlier',
+              icon: ArrowLeftIcon,
+              disabled: index === 0,
+              onSelect: () => onChangeIds(move(content.mediaAssetIds, index, -1)),
+            },
+            {
+              id: 'social-post-media-move-later',
+              label: zh ? '后移' : 'Move later',
+              icon: ArrowRightIcon,
+              disabled: index === content.mediaAssetIds.length - 1,
+              onSelect: () => onChangeIds(move(content.mediaAssetIds, index, 1)),
+            },
+            {
+              id: 'social-post-media-copy',
+              label: fileLabels.copy,
+              icon: copyingAssetId === assetId ? LoaderCircleIcon : CopyIcon,
+              busy: copyingAssetId === assetId,
+              disabled: !asset || Boolean(copyingAssetId),
+              onSelect: () => asset && void copyImage(asset.id),
+            },
+            {
+              id: 'social-post-media-remove',
+              label: zh ? '从贴图移除' : 'Remove from post',
+              icon: Trash2Icon,
+              destructive: true,
+              separatorBefore: true,
+              onSelect: () => removeImage(assetId),
+            },
+          ];
+          const contextActions = actions.filter(
+            (action) => action.id !== 'social-post-media-copy' && action.id !== 'social-post-media-remove',
+          );
+          const usageCount = relations.filter((item) => item.imageAssetIds.includes(assetId)).length;
           return (
             <figure
               key={assetId}
-              className={cn(
-                'group relative aspect-square min-w-0 overflow-hidden rounded-lg border bg-surface-sunken',
-                dragTargetId === assetId && 'ring-2 ring-selected-border',
-              )}
+              className={cn('group min-w-0', dragTargetId === assetId && 'ring-2 ring-selected-border')}
+              onDragEnter={(event) => {
+                if (!hasSocialPostMediaReorderDrag(event.dataTransfer)) return;
+                event.preventDefault();
+                event.stopPropagation();
+                setDragTargetId(assetId);
+              }}
               onDragOver={(event) => {
-                if (!event.dataTransfer.types.includes(socialPostMediaDragType)) return;
+                if (!hasSocialPostMediaReorderDrag(event.dataTransfer)) return;
                 event.preventDefault();
                 event.stopPropagation();
                 event.dataTransfer.dropEffect = 'move';
                 setDragTargetId(assetId);
               }}
+              onDragLeave={(event) => {
+                if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setDragTargetId(null);
+              }}
               onDrop={(event) => {
-                const sourceId = event.dataTransfer.getData(socialPostMediaDragType);
+                const sourceId = socialPostMediaReorderSourceId(event.dataTransfer, content.mediaAssetIds);
                 if (!sourceId) return;
                 event.preventDefault();
-                event.stopPropagation();
                 setDragTargetId(null);
                 onChangeIds(
                   moveTo(
@@ -426,120 +475,84 @@ function SocialPostMediaSection({
                 );
               }}
             >
-              {asset ? (
-                <AssetFileContextMenu assetId={asset.id} notify={notify}>
-                  <button
-                    type="button"
-                    className="relative size-full overflow-hidden outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
-                    title={zh ? '放大图片' : 'Enlarge image'}
-                    aria-label={zh ? `放大图片 ${index + 1}` : `Enlarge image ${index + 1}`}
-                    onClick={() => setPreviewAssetId(asset.id)}
-                  >
-                    <img
-                      src={asset.mediaUrl}
-                      alt=""
-                      className="size-full bg-media-surround-light object-contain"
-                      draggable={false}
-                    />
-                    <span className="pointer-events-none absolute inset-0 grid place-items-center bg-background/0 opacity-0 transition-[background-color,opacity] group-hover:bg-background/20 group-hover:opacity-100 group-focus-within:bg-background/20 group-focus-within:opacity-100">
-                      <span className="grid size-8 place-items-center rounded-md bg-overlay/90 shadow-overlay">
-                        <Maximize2Icon className="size-4" />
-                      </span>
-                    </span>
-                  </button>
-                </AssetFileContextMenu>
-              ) : (
-                <div className="grid size-full place-items-center text-xs text-muted-foreground">
-                  {zh ? '图片不可用' : 'Unavailable'}
-                </div>
-              )}
-              <button
-                type="button"
-                draggable
-                className="absolute top-1.5 left-1.5 z-20 flex h-6 cursor-grab items-center gap-0.5 rounded bg-overlay/90 px-1.5 text-2xs tabular-nums active:cursor-grabbing"
-                title={zh ? '拖动调整顺序' : 'Drag to reorder'}
-                aria-label={zh ? `拖动第 ${index + 1} 张图片调整顺序` : `Drag image ${index + 1} to reorder`}
-                onDragStart={(event) => {
-                  event.stopPropagation();
-                  event.dataTransfer.effectAllowed = 'move';
-                  event.dataTransfer.setData(socialPostMediaDragType, assetId);
-                }}
-                onDragEnd={() => setDragTargetId(null)}
-              >
-                <GripVerticalIcon className="size-3" />
-                {index + 1}
-              </button>
-              {cover && (
-                <span className="pointer-events-none absolute top-1.5 right-1.5 z-10 flex items-center gap-1 rounded bg-overlay/90 px-1.5 py-0.5 text-2xs">
-                  <StarIcon className="size-3 fill-current" />
-                  {zh ? '首图' : 'Cover'}
-                </span>
-              )}
-              <div className="absolute inset-x-1.5 bottom-1.5 z-20 flex items-center justify-end gap-1 opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100">
-                <Button
-                  type="button"
-                  variant="secondary"
-                  size="2xs"
-                  className="size-6 p-0"
-                  disabled={!asset || Boolean(copyingAssetId)}
-                  title={fileLabels.copy}
-                  aria-label={fileLabels.copy}
-                  onClick={() => asset && void copyImage(asset.id)}
+              <div className="relative aspect-square overflow-hidden rounded-lg border bg-surface-sunken">
+                {asset ? (
+                  <AssetFileContextMenu assetId={asset.id} notify={notify} actions={contextActions} draggable={false}>
+                    <button
+                      type="button"
+                      draggable
+                      className="relative size-full cursor-grab overflow-hidden outline-none active:cursor-grabbing focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
+                      title={zh ? '拖动调整顺序，单击放大' : 'Drag to reorder, click to enlarge'}
+                      aria-label={
+                        zh
+                          ? `第 ${index + 1} 张图片：拖动调整顺序，单击放大`
+                          : `Image ${index + 1}: drag to reorder, click to enlarge`
+                      }
+                      onDragStart={(event) => startSocialPostMediaDrag(event, assetId)}
+                      onDragEnd={() => setDragTargetId(null)}
+                      onClick={() => setPreviewAssetId(asset.id)}
+                    >
+                      <img
+                        src={asset.mediaUrl}
+                        alt=""
+                        className="pointer-events-none size-full bg-media-surround-light object-contain"
+                        draggable={false}
+                      />
+                    </button>
+                  </AssetFileContextMenu>
+                ) : (
+                  <div className="grid size-full place-items-center text-xs text-muted-foreground">
+                    {zh ? '图片不可用' : 'Unavailable'}
+                  </div>
+                )}
+                <MediaOrderHandle
+                  draggable
+                  className="absolute top-1.5 left-1.5 z-20 tabular-nums"
+                  label={zh ? `拖动第 ${index + 1} 张图片调整顺序` : `Drag image ${index + 1} to reorder`}
+                  onDragStart={(event) => startSocialPostMediaDrag(event, assetId)}
+                  onDragEnd={() => setDragTargetId(null)}
                 >
-                  {copyingAssetId === assetId ? (
-                    <LoaderCircleIcon className="size-3 animate-spin" />
-                  ) : (
-                    <CopyIcon className="size-3" />
-                  )}
-                </Button>
-                <Button
-                  type="button"
-                  variant="secondary"
-                  size="2xs"
-                  className="size-6 p-0"
-                  disabled={index === 0}
-                  title={zh ? '前移' : 'Move earlier'}
-                  onClick={() => onChangeIds(move(content.mediaAssetIds, index, -1))}
-                >
-                  <ArrowLeftIcon className="size-3" />
-                </Button>
-                <Button
-                  type="button"
-                  variant="secondary"
-                  size="2xs"
-                  className="size-6 p-0"
-                  disabled={index === content.mediaAssetIds.length - 1}
-                  title={zh ? '后移' : 'Move later'}
-                  onClick={() => onChangeIds(move(content.mediaAssetIds, index, 1))}
-                >
-                  <ArrowRightIcon className="size-3" />
-                </Button>
-                <Button
-                  type="button"
-                  variant="secondary"
-                  size="2xs"
-                  className="size-6 p-0"
-                  disabled={cover}
-                  title={zh ? '设为首图' : 'Set as cover'}
-                  onClick={() => onSetCover(assetId)}
-                >
-                  <StarIcon className="size-3" />
-                </Button>
-                <Button
-                  type="button"
-                  variant="secondary"
-                  size="2xs"
-                  className="size-6 p-0"
-                  title={zh ? '移除' : 'Remove'}
-                  onClick={() => removeImage(assetId)}
-                >
-                  <Trash2Icon className="size-3" />
-                </Button>
+                  {index + 1}
+                </MediaOrderHandle>
+                {asset && (
+                  <AssetFileDragHandle
+                    assetId={asset.id}
+                    label={zh ? `拖动第 ${index + 1} 张图片到其他应用` : `Drag image ${index + 1} to another app`}
+                    notify={notify}
+                    className="absolute bottom-1.5 left-1.5 z-20 size-7"
+                  />
+                )}
+                {cover && (
+                  <span className="pointer-events-none absolute top-1.5 right-1.5 z-10 flex items-center gap-1 rounded bg-overlay/90 px-1.5 py-0.5 text-2xs">
+                    <StarIcon className="size-3 fill-current" />
+                    {zh ? '首图' : 'Cover'}
+                  </span>
+                )}
+                <MediaActionMenu
+                  actions={actions}
+                  label={moreActionsLabel}
+                  className="absolute right-1.5 bottom-1.5 z-20 size-7"
+                />
               </div>
+              {usageCount > 0 && (
+                <figcaption>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    className="mt-1 h-7 px-1.5 text-xs text-muted-foreground"
+                    onClick={() => onOpenRelations(assetId)}
+                  >
+                    <Link2Icon className="size-3.5" />
+                    {zh ? `用于 ${usageCount}` : `Used by ${usageCount}`}
+                  </Button>
+                </figcaption>
+              )}
             </figure>
           );
         })}
       </div>
+      <CreationRelationsPreview items={relations} locale={locale} onSelect={onSelectRelation} />
       <SocialPostMediaPreviewDialog
         assetIds={content.mediaAssetIds}
         assetsById={assetsById}
@@ -562,10 +575,13 @@ export function SocialPostEditor({
   post,
   locale,
   canvasPresets,
-  coverWorkspaceExists,
+  handoffTargets,
+  relations,
   onSave,
+  onCreateSocialPost,
   onCreateArticle,
   onGenerateCover,
+  onOpenRelation,
   notify,
 }: Props) {
   const zh = locale === 'zh';
@@ -574,11 +590,14 @@ export function SocialPostEditor({
   const [savedJson, setSavedJson] = useState(() => JSON.stringify(editableContent(post)));
   const savedJsonRef = useRef(savedJson);
   const postIdRef = useRef(post.id);
+  const savedPostRef = useRef(post);
   const savingRef = useRef(false);
   const [saving, setSaving] = useState(false);
   const [failedJson, setFailedJson] = useState<string | null>(null);
-  const [creatingArticle, setCreatingArticle] = useState(false);
+  const [creatingForm, setCreatingForm] = useState(false);
   const [generatingCover, setGeneratingCover] = useState(false);
+  const [relationsOpen, setRelationsOpen] = useState(false);
+  const [relationAssetId, setRelationAssetId] = useState<string | null>(null);
   const defaultCoverPreset = canvasPresets.find((preset) => preset.stableKey === 'xiaohongshu_portrait_3_4');
   const contentJson = useMemo(() => JSON.stringify(content), [content]);
   const dirty = contentJson !== savedJson;
@@ -586,14 +605,14 @@ export function SocialPostEditor({
   const assetsById = useMemo(() => new Map(mediaAssets.map((asset) => [asset.id, asset])), [mediaAssets]);
   const saveForEffect = useStableCallback(onSave);
   const notifyForEffect = useStableCallback(notify);
-  const { adding, chooseMedia, dragActive, dragExternalFiles, dropExternalFiles, pasteImages } =
-    useSocialPostMediaIntake({ content, locale, notify, setContent, setMediaAssets });
+  const mediaIntake = useSocialPostMediaIntake({ content, locale, notify, setContent, setMediaAssets });
 
   useEffect(() => {
     const incoming = editableContent(post);
     const incomingJson = JSON.stringify(incoming);
     if (postIdRef.current !== post.id) {
       postIdRef.current = post.id;
+      savedPostRef.current = post;
       savedJsonRef.current = incomingJson;
       setContent(incoming);
       setMediaAssets(post.content.mediaAssets);
@@ -603,6 +622,7 @@ export function SocialPostEditor({
     }
 
     const previousSavedJson = savedJsonRef.current;
+    savedPostRef.current = post;
     savedJsonRef.current = incomingJson;
     setSavedJson(incomingJson);
     setFailedJson((current) => (current === incomingJson ? null : current));
@@ -621,7 +641,8 @@ export function SocialPostEditor({
     savingRef.current = true;
     setSaving(true);
     try {
-      await saveForEffect(snapshot);
+      const savedPost = await saveForEffect(snapshot);
+      savedPostRef.current = savedPost;
       savedJsonRef.current = snapshotJson;
       setSavedJson(snapshotJson);
       setFailedJson(null);
@@ -635,6 +656,11 @@ export function SocialPostEditor({
       savingRef.current = false;
       setSaving(false);
     }
+  });
+  const { busy: handingOff, handoff: handoffToBrowser } = useBrowserCompanionHandoff({
+    notify,
+    zh,
+    prepare: (target) => prepareSocialPostHandoff({ content, dirty, notify, persist, postId: post.id, target, zh }),
   });
 
   useEffect(() => {
@@ -665,17 +691,25 @@ export function SocialPostEditor({
     }));
   }
 
-  async function createArticle() {
-    if (creatingArticle) return;
+  async function runCreateAction(action: () => Promise<void>) {
+    if (creatingForm) return;
     if (dirty && !(await persist(content))) return;
-    setCreatingArticle(true);
+    setCreatingForm(true);
     try {
-      await onCreateArticle(content, mediaAssets);
+      await action();
     } catch (reason) {
       notify(reason instanceof Error ? reason.message : String(reason));
     } finally {
-      setCreatingArticle(false);
+      setCreatingForm(false);
     }
+  }
+
+  async function createSocialPost(copySourceContent: boolean) {
+    await runCreateAction(() => onCreateSocialPost(content, copySourceContent));
+  }
+
+  async function createArticle(copySourceContent: boolean) {
+    await runCreateAction(() => onCreateArticle(content, mediaAssets, copySourceContent));
   }
 
   async function generateCover() {
@@ -687,7 +721,7 @@ export function SocialPostEditor({
     if (dirty && !(await persist(content))) return;
     setGeneratingCover(true);
     try {
-      await onGenerateCover(content, defaultCoverPreset);
+      await onGenerateCover(savedPostRef.current, content, defaultCoverPreset);
     } catch (reason) {
       notify(reason instanceof Error ? reason.message : String(reason));
     } finally {
@@ -700,23 +734,26 @@ export function SocialPostEditor({
       data-social-post-editor
       className={cn(
         'flex min-h-0 min-w-0 flex-1 flex-col bg-background',
-        dragActive && 'ring-2 ring-inset ring-selected-border',
+        mediaIntake.dragActive && 'ring-2 ring-inset ring-selected-border',
       )}
-      onPaste={pasteImages}
-      onDragEnter={(event) => dragExternalFiles(event, true)}
-      onDragOver={(event) => dragExternalFiles(event, true)}
+      onPaste={mediaIntake.pasteImages}
+      onDragEnter={(event) => mediaIntake.dragMedia(event, true)}
+      onDragOver={(event) => mediaIntake.dragMedia(event, true)}
       onDragLeave={(event) => {
-        if (!event.currentTarget.contains(event.relatedTarget as Node | null)) dragExternalFiles(event, false);
+        if (!event.currentTarget.contains(event.relatedTarget as Node | null)) mediaIntake.dragMedia(event, false);
       }}
-      onDrop={dropExternalFiles}
+      onDrop={mediaIntake.dropMedia}
     >
       <SocialPostHeader
-        coverWorkspaceExists={coverWorkspaceExists}
-        creatingArticle={creatingArticle}
+        creatingForm={creatingForm}
         generatingCover={generatingCover}
         dirty={dirty}
-        onCreateArticle={() => void createArticle()}
+        handingOff={handingOff}
+        handoffTargets={handoffTargets}
+        onCreateArticle={(copySourceContent) => void createArticle(copySourceContent)}
+        onCreateSocialPost={(copySourceContent) => void createSocialPost(copySourceContent)}
         onGenerateCover={() => void generateCover()}
+        onHandoff={(target) => void handoffToBrowser(target)}
         onRetrySave={() => void persist(content)}
         saveFailed={saveFailed}
         saving={saving}
@@ -749,17 +786,34 @@ export function SocialPostEditor({
           </label>
 
           <SocialPostMediaSection
-            adding={adding}
+            adding={mediaIntake.adding}
             assetsById={assetsById}
             content={content}
             locale={locale}
             notify={notify}
-            onAdd={() => void chooseMedia()}
+            onAdd={() => void mediaIntake.chooseMedia()}
             onChangeIds={updateMediaIds}
+            onOpenRelations={(assetId) => {
+              setRelationAssetId(assetId);
+              setRelationsOpen(true);
+            }}
+            onSelectRelation={onOpenRelation}
             onSetCover={(assetId) => setContent((current) => ({ ...current, coverAssetId: assetId }))}
+            relations={relations}
           />
         </div>
       </ScrollArea>
+      <CreationRelationsSheet
+        items={relations}
+        locale={locale}
+        open={relationsOpen}
+        filteredAssetId={relationAssetId}
+        onOpenChange={(open) => {
+          setRelationsOpen(open);
+          if (!open) setRelationAssetId(null);
+        }}
+        onSelect={onOpenRelation}
+      />
     </div>
   );
 }

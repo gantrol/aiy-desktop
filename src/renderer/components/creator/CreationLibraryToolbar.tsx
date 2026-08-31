@@ -25,6 +25,7 @@ export function CreationLibraryToolbar({ query, filter, onQueryChange, onFilterC
   const inspirationLabel = locale === 'zh' ? '灵感' : labels.filterInspirations;
   const socialPostLabel = locale === 'zh' ? '贴图' : 'Social posts';
   const articleLabel = locale === 'zh' ? '文章' : 'Articles';
+  const evaluationLabel = locale === 'zh' ? '评测集' : 'Evaluation suites';
   const emptyFilterLabel = locale === 'zh' ? '无' : labels.filterNone;
   const [searchOpen, setSearchOpen] = useState(Boolean(query));
   const searchVisible = searchOpen || Boolean(query);
@@ -35,6 +36,7 @@ export function CreationLibraryToolbar({ query, filter, onQueryChange, onFilterC
     ...(filter.articles ? [articleLabel] : []),
     ...(filter.socialPosts ? [socialPostLabel] : []),
     ...(filter.inspirations ? [inspirationLabel] : []),
+    ...(filter.evaluations ? [evaluationLabel] : []),
   ];
   const filterValueLabel = filterActive
     ? selectedFilterLabels.length
@@ -134,6 +136,7 @@ export function CreationLibraryToolbar({ query, filter, onQueryChange, onFilterC
               ['articles', articleLabel],
               ['socialPosts', socialPostLabel],
               ['inspirations', inspirationLabel],
+              ['evaluations', evaluationLabel],
             ] as const
           ).map(([key, label]) => (
             <label

@@ -1,18 +1,26 @@
-import { lstatSync, readFileSync, realpathSync } from 'node:fs';
+import { createHash } from 'node:crypto';
+import { createReadStream } from 'node:fs';
+import { lstat, readFile, realpath } from 'node:fs/promises';
 import path from 'node:path';
-import type Database from 'better-sqlite3';
 import type { ContentPackExample, ContentPackExamplesDocument } from '@/main/content-packs/example-manifest';
-import type { LibraryStorage } from '@/main/database/core/storage';
-import { type JsonMap, now, text } from '@/main/database/core/values';
+import type { LibraryStorage, StoredObject } from '@/main/database/core/storage';
+import { now, text, type JsonMap } from '@/main/database/core/values';
+import { fixtureContentHash, type FixturePackSupplementalItem } from '@/main/database/packs/fixture-pack-source';
 
+const MAX_EXAMPLE_ASSET_BYTES = 32 * 1024 * 1024;
+const MAX_EXAMPLE_ASSET_TOTAL_BYTES = 512 * 1024 * 1024;
 const pngSignature = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
 
-function revisionMarkerKey(packId: string) {
-  const identity = packId
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, '_')
-    .replace(/^_+|_+$/g, '');
-  return `content_pack_${identity}_examples_revision`;
+export interface PreparedContentPackExample {
+  example: ContentPackExample;
+  itemKey: string;
+  sourcePath: string;
+  byteSize: number;
+  objectHash: string;
+  assetId: string;
+  mediaId: string;
+  evidenceId: string;
+  releaseItem: FixturePackSupplementalItem;
 }
 
 function isContained(root: string, candidate: string) {
@@ -20,7 +28,7 @@ function isContained(root: string, candidate: string) {
   return relative !== '' && !relative.startsWith(`..${path.sep}`) && relative !== '..' && !path.isAbsolute(relative);
 }
 
-function resolveExampleAsset(root: string, source: string) {
+async function resolveExampleAsset(root: string, source: string) {
   if (path.isAbsolute(source)) throw new Error('Content pack example source must be asset-relative');
   const rootName = path.basename(root);
   const sourceRelative = source.startsWith(`${rootName}/`)
@@ -29,210 +37,239 @@ function resolveExampleAsset(root: string, source: string) {
       ? source.slice(rootName.length + 1)
       : source;
   const candidate = path.resolve(root, sourceRelative);
-  if (!isContained(root, candidate))
+  if (!isContained(root, candidate)) {
     throw new Error(`Content pack example source is outside the asset root: ${source}`);
-  const entry = lstatSync(candidate);
-  if (!entry.isFile() || entry.isSymbolicLink())
-    throw new Error(`Content pack example source is not a regular file: ${source}`);
-  const realFile = realpathSync(candidate);
-  if (!isContained(root, realFile)) throw new Error(`Content pack example source is outside the asset root: ${source}`);
-  return realFile;
-}
-
-function acceptedExamples(document: ContentPackExamplesDocument) {
-  const accepted = document.examples.filter((example) => example.status === 'ACCEPTED');
-  for (const example of accepted) {
-    if (!example.mediaId || !example.evidenceId) {
-      throw new Error(`Accepted content example is missing media/evidence IDs: ${example.assetId}`);
-    }
   }
-  return accepted as Array<ContentPackExample & { mediaId: string; evidenceId: string }>;
+  const entry = await lstat(candidate);
+  if (!entry.isFile() || entry.isSymbolicLink()) {
+    throw new Error(`Content pack example source is not a regular file: ${source}`);
+  }
+  if (entry.size <= 0 || entry.size > MAX_EXAMPLE_ASSET_BYTES) {
+    throw new Error(`Content pack example has an invalid size: ${source}`);
+  }
+  const realFile = await realpath(candidate);
+  if (!isContained(root, realFile)) {
+    throw new Error(`Content pack example source is outside the asset root: ${source}`);
+  }
+  return { path: realFile, size: entry.size };
 }
 
-function roleFor(example: ContentPackExample) {
+async function hashExampleAsset(sourcePath: string, expectedSize: number, source: string) {
+  const hash = createHash('sha256');
+  const signature = Buffer.alloc(pngSignature.byteLength);
+  let signatureBytes = 0;
+  let byteSize = 0;
+  for await (const chunk of createReadStream(sourcePath, { highWaterMark: 1024 * 1024 })) {
+    const bytes = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
+    if (signatureBytes < signature.byteLength) {
+      const copied = Math.min(signature.byteLength - signatureBytes, bytes.byteLength);
+      bytes.copy(signature, signatureBytes, 0, copied);
+      signatureBytes += copied;
+    }
+    byteSize += bytes.byteLength;
+    if (byteSize > expectedSize) throw new Error(`Content pack example changed while being read: ${source}`);
+    hash.update(bytes);
+  }
+  if (byteSize !== expectedSize || signatureBytes !== signature.byteLength || !signature.equals(pngSignature)) {
+    throw new Error(`Content pack example must be a stable PNG file: ${source}`);
+  }
+  return hash.digest('hex');
+}
+
+function scopedId(prefix: string, packId: string, itemKey: string) {
+  return `${prefix}_${fixtureContentHash({ packId, itemKey }).slice(0, 40)}`;
+}
+
+function normalizedRole(example: ContentPackExample) {
+  if (example.status === 'REJECTED') {
+    if (example.role && example.role !== 'NEGATIVE_EVIDENCE') {
+      throw new Error(`Rejected content example has an invalid role: ${example.assetId}`);
+    }
+    return 'NEGATIVE_EVIDENCE' as const;
+  }
   if (example.role === 'NEGATIVE_EVIDENCE') {
     throw new Error(`Accepted content example cannot use NEGATIVE_EVIDENCE: ${example.assetId}`);
   }
-  return example.role === 'COVER' ? 'COVER' : 'RELATED';
+  return example.role === 'COVER' ? ('COVER' as const) : ('RELATED' as const);
 }
 
-function assertUniqueIds(examples: readonly ContentPackExample[]) {
-  const ids = new Map<string, string>();
+async function mapWithConcurrency<Input, Output>(
+  items: readonly Input[],
+  concurrency: number,
+  transform: (item: Input, index: number) => Promise<Output>,
+) {
+  const output = new Array<Output>(items.length);
+  let nextIndex = 0;
+  let failure: unknown;
+  await Promise.all(
+    Array.from({ length: Math.min(concurrency, items.length) }, async () => {
+      while (failure === undefined && nextIndex < items.length) {
+        const index = nextIndex;
+        nextIndex += 1;
+        try {
+          output[index] = await transform(items[index], index);
+        } catch (reason) {
+          failure = reason ?? new Error('Content pack asset processing failed');
+        }
+      }
+    }),
+  );
+  if (failure !== undefined) throw failure;
+  return output;
+}
+
+export async function prepareContentPackExamples(
+  packId: string,
+  document: ContentPackExamplesDocument | undefined,
+  assetsRoot: string | undefined,
+) {
+  if (!document) return [];
+  if (!assetsRoot) throw new Error('Content pack examples require an asset root');
+
+  const itemKeys = new Set<string>();
   const coverTerms = new Set<string>();
-  for (const example of examples) {
-    if (example.role === 'COVER') {
+  const identities = document.examples.map((example) => {
+    const role = normalizedRole(example);
+    if (role === 'COVER') {
       if (coverTerms.has(example.termStableKey)) {
         throw new Error(`Content pack examples contain multiple covers for one term: ${example.termStableKey}`);
       }
       coverTerms.add(example.termStableKey);
     }
-    for (const [kind, id] of [
-      ['asset', example.assetId],
-      ['media', example.mediaId],
-      ['evidence', example.evidenceId],
-    ] as const) {
-      const previous = ids.get(`${kind}:${id}`);
-      if (previous && previous !== example.termStableKey) {
-        throw new Error(`Content pack example ${kind} ID is reused: ${id}`);
-      }
-      ids.set(`${kind}:${id}`, example.termStableKey);
-    }
+    const logicalKey = example.key ?? example.evidenceId ?? example.mediaId ?? example.assetId;
+    const itemKey = `example:${example.termStableKey}:${logicalKey}`;
+    if (itemKeys.has(itemKey)) throw new Error(`Duplicate content pack example identity: ${itemKey}`);
+    itemKeys.add(itemKey);
+
+    return { example, role, logicalKey, itemKey };
+  });
+  const resolved = await mapWithConcurrency(identities, 2, async (identity) => ({
+    ...identity,
+    resolved: await resolveExampleAsset(assetsRoot, identity.example.source),
+  }));
+  const totalBytes = resolved.reduce((total, item) => total + item.resolved.size, 0);
+  if (totalBytes > MAX_EXAMPLE_ASSET_TOTAL_BYTES) {
+    throw new Error('Content pack example assets exceed the total byte budget');
   }
+  return mapWithConcurrency(
+    resolved,
+    2,
+    async ({ example, role, logicalKey, itemKey, resolved: asset }): Promise<PreparedContentPackExample> => {
+      const objectHash = await hashExampleAsset(asset.path, asset.size, example.source);
+      const assetId = `pack_asset_${objectHash}`;
+      const mediaId = scopedId('tml_pack', packId, itemKey);
+      const evidenceId = scopedId('te_pack', packId, itemKey);
+      const semanticHash = fixtureContentHash({
+        contract: 'CONTENT_PACK_EXAMPLE_V2',
+        termStableKey: example.termStableKey,
+        logicalKey,
+        status: example.status,
+        role,
+        note: example.note ?? '',
+        objectHash,
+      });
+      const metadata: JsonMap = {
+        contract: 'CONTENT_PACK_EXAMPLE_V2',
+        termStableKey: example.termStableKey,
+        exampleKey: logicalKey,
+        status: example.status,
+        role,
+        note: example.note ?? '',
+        assetId,
+        mediaId,
+        evidenceId,
+        objectHash,
+      };
+      return {
+        example,
+        itemKey,
+        sourcePath: asset.path,
+        byteSize: asset.size,
+        objectHash,
+        assetId,
+        mediaId,
+        evidenceId,
+        releaseItem: {
+          itemKey,
+          objectType: 'TERM_EXAMPLE',
+          objectRevisionId: `content-example:${semanticHash.slice(0, 32)}`,
+          contentHash: `sha256:${semanticHash}`,
+          inclusionKind: 'EXAMPLE',
+          visibility: 'VISIBLE',
+          rightsStatus: 'UNKNOWN',
+          metadata,
+          provenance: { source: 'CONTENT_PACKAGE', packageId: packId, sourcePath: example.source },
+          localObjectType: 'IMAGE_ASSET',
+          localObjectId: assetId,
+          localRevisionId: assetId,
+        },
+      };
+    },
+  );
 }
 
-function rowsForIds(db: Database.Database, table: string, ids: readonly string[], activeClause: string) {
-  const found = new Set<string>();
-  for (let offset = 0; offset < ids.length; offset += 500) {
-    const chunk = ids.slice(offset, offset + 500);
-    const slots = chunk.map(() => '?').join(', ');
-    const rows = db
-      .prepare(`SELECT id FROM ${table} WHERE id IN (${slots}) ${activeClause}`)
-      .all(...chunk) as JsonMap[];
-    for (const row of rows) found.add(text(row.id));
-  }
-  return found;
-}
-
-function assertTermsExist(db: Database.Database, examples: readonly ContentPackExample[]) {
-  const stableKeys = [...new Set(examples.map((example) => example.termStableKey))];
+function assertTermsExist(storage: LibraryStorage, examples: readonly PreparedContentPackExample[]) {
+  const stableKeys = [...new Set(examples.map((item) => item.example.termStableKey))];
   const found = new Set<string>();
   for (let offset = 0; offset < stableKeys.length; offset += 500) {
     const chunk = stableKeys.slice(offset, offset + 500);
     const slots = chunk.map(() => '?').join(', ');
-    const rows = db
-      .prepare(`SELECT stable_key FROM terms WHERE stable_key IN (${slots}) AND archived_at IS NULL`)
+    const rows = storage.db
+      .prepare(`SELECT stable_key FROM terms WHERE stable_key IN (${slots})`)
       .all(...chunk) as JsonMap[];
     for (const row of rows) found.add(text(row.stable_key));
   }
   const missing = stableKeys.filter((stableKey) => !found.has(stableKey));
-  if (missing.length)
+  if (missing.length) {
     throw new Error(`Content pack examples reference unknown terms: ${missing.slice(0, 5).join(', ')}`);
-}
-
-export function contentPackExamplesAreCurrent(
-  db: Database.Database,
-  packId: string,
-  document: ContentPackExamplesDocument,
-) {
-  const marker = db.prepare('SELECT value FROM app_meta WHERE key = ?').get(revisionMarkerKey(packId)) as
-    JsonMap | undefined;
-  if (text(marker?.value) !== document.revision) return false;
-
-  const examples = acceptedExamples(document);
-  const mediaIds = examples.map((example) => example.mediaId);
-  const evidenceIds = examples.map((example) => example.evidenceId);
-  const assetIds = examples.map((example) => example.assetId);
-  return (
-    rowsForIds(db, 'image_assets', assetIds, 'AND deleted_at IS NULL').size === assetIds.length &&
-    rowsForIds(db, 'term_media_links', mediaIds, 'AND deleted_at IS NULL').size === mediaIds.length &&
-    rowsForIds(db, 'term_evidence', evidenceIds, '').size === evidenceIds.length
-  );
-}
-
-function storeExampleAsset(storage: LibraryStorage, example: ContentPackExample, sourcePath: string) {
-  const existing = storage.db
-    .prepare('SELECT object_hash, deleted_at FROM image_assets WHERE id = ?')
-    .get(example.assetId) as JsonMap | undefined;
-  if (existing && existing.deleted_at === null) return;
-
-  const bytes = readFileSync(sourcePath);
-  if (!bytes.subarray(0, pngSignature.byteLength).equals(pngSignature)) {
-    throw new Error(`Content pack example is not a PNG: ${example.source}`);
-  }
-  const stored = storage.storeBuffer(bytes, '.png');
-  if (stored.width <= 0 || stored.height <= 0 || stored.byteSize <= 0) {
-    throw new Error(`Content pack example has invalid image dimensions: ${example.source}`);
-  }
-
-  if (existing && text(existing.object_hash) !== stored.hash) {
-    throw new Error(`Content pack example asset ID already belongs to another image: ${example.assetId}`);
-  }
-  storage.db
-    .prepare(
-      `INSERT INTO image_assets
-      (id, kind, origin_type, object_hash, relative_path, width, height, mime_type, byte_size, created_at, deleted_at)
-      VALUES (?, 'REFERENCE', 'EXTERNAL_IMPORT', ?, ?, ?, ?, 'image/png', ?, ?, NULL)
-      ON CONFLICT(id) DO UPDATE SET object_hash = excluded.object_hash,
-        relative_path = excluded.relative_path, width = excluded.width, height = excluded.height,
-        mime_type = excluded.mime_type, byte_size = excluded.byte_size, deleted_at = NULL`,
-    )
-    .run(example.assetId, stored.hash, stored.relativePath, stored.width, stored.height, stored.byteSize, now());
-}
-
-function retireConflictingMediaLinks(
-  db: Database.Database,
-  termId: string,
-  assetId: string,
-  mediaId: string,
-  role: 'COVER' | 'RELATED',
-  deletedAt: string,
-) {
-  const conflicts = db
-    .prepare(
-      `SELECT id FROM term_media_links
-      WHERE term_id = ? AND deleted_at IS NULL AND id <> ?
-        AND (image_asset_id = ? OR (role = 'COVER' AND ? = 'COVER'))`,
-    )
-    .all(termId, mediaId, assetId, role) as JsonMap[];
-  for (const conflict of conflicts) {
-    const conflictId = text(conflict.id);
-    if (!conflictId.startsWith('term_media_dictionary_') && !conflictId.startsWith('tml_')) {
-      throw new Error(`Content pack example conflicts with a local media link: ${conflictId}`);
-    }
-    db.prepare('UPDATE term_media_links SET deleted_at = ? WHERE id = ?').run(deletedAt, conflictId);
   }
 }
 
-export function reconcileContentPackExamples(
+export interface StagedContentPackExampleAsset {
+  item: PreparedContentPackExample;
+  stored: StoredObject;
+}
+
+export async function stageContentPackExampleAssets(
   storage: LibraryStorage,
-  packId: string,
-  document: ContentPackExamplesDocument,
-  assetsRoot: string,
+  examples: readonly PreparedContentPackExample[],
 ) {
-  const examples = acceptedExamples(document);
-  assertUniqueIds(examples);
-  assertTermsExist(storage.db, examples);
+  return mapWithConcurrency(examples, 2, async (item): Promise<StagedContentPackExampleAsset> => {
+    const bytes = await readFile(item.sourcePath);
+    if (bytes.byteLength !== item.byteSize || !bytes.subarray(0, pngSignature.byteLength).equals(pngSignature)) {
+      throw new Error(`Content pack example changed after preview: ${item.example.source}`);
+    }
+    const stored = await storage.storeBufferAsync(bytes, '.png');
+    if (stored.hash !== item.objectHash || stored.width <= 0 || stored.height <= 0 || stored.byteSize <= 0) {
+      throw new Error(`Content pack example could not be decoded: ${item.example.source}`);
+    }
+    return { item, stored };
+  });
+}
 
-  const resolvedSources = examples.map((example) => ({
-    example,
-    sourcePath: resolveExampleAsset(assetsRoot, example.source),
-  }));
-  const sortOrders = new Map<string, number>();
-  const importedAt = now();
-
-  for (const { example, sourcePath } of resolvedSources) {
-    const role = roleFor(example);
-    storeExampleAsset(storage, example, sourcePath);
-    const sortOrder = sortOrders.get(example.termStableKey) ?? 0;
-    sortOrders.set(example.termStableKey, sortOrder + 1);
-    const term = storage.db
-      .prepare('SELECT id FROM terms WHERE stable_key = ? AND archived_at IS NULL')
-      .get(example.termStableKey) as JsonMap | undefined;
-    if (!term) throw new Error(`Content pack example term disappeared during import: ${example.termStableKey}`);
-
-    retireConflictingMediaLinks(storage.db, text(term.id), example.assetId, example.mediaId, role, importedAt);
+export function commitContentPackExampleAssets(
+  storage: LibraryStorage,
+  stagedAssets: readonly StagedContentPackExampleAsset[],
+) {
+  assertTermsExist(
+    storage,
+    stagedAssets.map(({ item }) => item),
+  );
+  for (const { item, stored } of stagedAssets) {
+    const existing = storage.db.prepare('SELECT object_hash FROM image_assets WHERE id = ?').get(item.assetId) as
+      JsonMap | undefined;
+    if (existing && text(existing.object_hash) !== item.objectHash) {
+      throw new Error(`Content-addressed example asset conflicts with existing content: ${item.assetId}`);
+    }
     storage.db
       .prepare(
-        `INSERT INTO term_media_links
-        (id, term_id, image_asset_id, role, sort_order, focal_x, focal_y, created_at, deleted_at)
-        VALUES (?, ?, ?, ?, ?, 0.5, 0.5, ?, NULL)
-        ON CONFLICT(id) DO UPDATE SET term_id = excluded.term_id, image_asset_id = excluded.image_asset_id,
-          role = excluded.role, sort_order = excluded.sort_order, focal_x = excluded.focal_x,
-          focal_y = excluded.focal_y, deleted_at = NULL`,
+        `INSERT INTO image_assets
+        (id, kind, origin_type, object_hash, relative_path, width, height, mime_type, byte_size, created_at, deleted_at)
+        VALUES (?, 'REFERENCE', 'EXTERNAL_IMPORT', ?, ?, ?, ?, 'image/png', ?, ?, NULL)
+        ON CONFLICT(id) DO UPDATE SET relative_path = excluded.relative_path,
+          width = excluded.width, height = excluded.height, mime_type = excluded.mime_type,
+          byte_size = excluded.byte_size, deleted_at = NULL`,
       )
-      .run(example.mediaId, text(term.id), example.assetId, role, sortOrder, importedAt);
-    storage.db
-      .prepare(
-        `INSERT INTO term_evidence
-        (id, term_id, image_asset_id, verdict, note, created_at)
-        VALUES (?, ?, ?, 'ACCEPTED', ?, ?)
-        ON CONFLICT(id) DO UPDATE SET term_id = excluded.term_id, image_asset_id = excluded.image_asset_id,
-          verdict = excluded.verdict, note = excluded.note`,
-      )
-      .run(example.evidenceId, text(term.id), example.assetId, example.note ?? '', importedAt);
+      .run(item.assetId, item.objectHash, stored.relativePath, stored.width, stored.height, stored.byteSize, now());
   }
-
-  storage.db
-    .prepare('INSERT OR REPLACE INTO app_meta(key, value) VALUES (?, ?)')
-    .run(revisionMarkerKey(packId), document.revision);
 }

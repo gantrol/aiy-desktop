@@ -1,7 +1,9 @@
-import { ChevronDownIcon, FlaskConicalIcon } from 'lucide-react';
+import { ChevronDownIcon, FlaskConicalIcon, XIcon } from 'lucide-react';
 import type { DirectionExperimentDirectorTaskDto, GenerationTaskDto, Locale } from '@/shared/contracts';
 import { useI18n } from '@/renderer/i18n/useI18n';
 import { generationPhaseLabel } from '@/renderer/components/generation/task-presentation';
+import { Button } from '@/renderer/components/ui/button';
+import { useBackgroundIssues } from '@/renderer/features/background-issues/BackgroundIssueProvider';
 
 interface Props {
   locale: Locale;
@@ -37,13 +39,33 @@ const statusCopy = {
 } as const;
 
 export function DirectionExperimentTaskCenterItem({ locale, task, generationTasks = [] }: Props) {
-  const phaseLabels = useI18n().messages.app.generationStatus;
+  const messages = useI18n().messages;
+  const phaseLabels = messages.app.generationStatus;
+  const backgroundIssues = useBackgroundIssues();
   return (
     <details data-agent-task={task.id} className="group border-b text-xs last:border-b-0">
       <summary className="flex min-h-10 cursor-pointer list-none items-center gap-2 px-3 py-1.5 outline-none hover:bg-muted/45 focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring [&::-webkit-details-marker]:hidden">
         <FlaskConicalIcon className="size-3.5 shrink-0 text-primary" />
         <span className="min-w-0 flex-1 truncate">{task.objective}</span>
         <span className="shrink-0 text-muted-foreground">{statusCopy[locale][task.status]}</span>
+        {task.backgroundIssue && (
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon-sm"
+            className="size-7"
+            title={messages.creator.generationTasks.dismiss}
+            aria-label={messages.creator.generationTasks.dismiss}
+            disabled={backgroundIssues.isPending(task.backgroundIssue)}
+            onClick={(event) => {
+              event.preventDefault();
+              event.stopPropagation();
+              void backgroundIssues.acknowledge(task.backgroundIssue);
+            }}
+          >
+            <XIcon className="size-3.5" />
+          </Button>
+        )}
         <ChevronDownIcon className="size-3.5 shrink-0 transition-transform group-open:rotate-180" />
       </summary>
       <div className="grid gap-1 border-t bg-surface-sunken/30 px-3 py-2 text-2xs text-muted-foreground">

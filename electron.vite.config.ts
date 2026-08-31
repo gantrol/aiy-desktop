@@ -5,6 +5,52 @@ import { defineConfig, externalizeDepsPlugin } from 'electron-vite';
 import type { Plugin } from 'vite';
 
 const sourceAlias = { '@': path.resolve(__dirname, 'src') };
+const rendererDevPort = Number.parseInt(process.env.AIY_RENDERER_DEV_PORT ?? '5173', 10);
+const rendererApplicationChunkBudgetBytes = 500_000;
+const rendererVendorChunkWarningLimitKilobytes = 700;
+
+function rendererManualChunk(id: string) {
+  const normalizedId = id.replaceAll('\\', '/');
+  if (
+    normalizedId.includes('/node_modules/react/') ||
+    normalizedId.includes('/node_modules/react-dom/') ||
+    normalizedId.includes('/node_modules/scheduler/') ||
+    normalizedId.includes('/node_modules/use-sync-external-store/')
+  ) {
+    return 'react-runtime';
+  }
+  if (normalizedId.endsWith('/src/renderer/i18n/locales/en.ts')) return 'english-catalog';
+  if (normalizedId.includes('/node_modules/tailwind-merge/')) return 'tailwind-merge';
+  if (normalizedId.includes('/node_modules/zod/')) return 'schema-runtime';
+  if (normalizedId.includes('/node_modules/re2js/')) return 'rich-text-regex';
+  return undefined;
+}
+
+function enforceRendererApplicationChunkBudget(): Plugin {
+  const sourceDirectory = path.resolve(__dirname, 'src').replaceAll('\\', '/');
+  return {
+    name: 'aiy-renderer-application-chunk-budget',
+    generateBundle(_options, bundle) {
+      for (const output of Object.values(bundle)) {
+        if (output.type !== 'chunk') continue;
+        const bytes = Buffer.byteLength(output.code);
+        if (bytes <= rendererApplicationChunkBudgetBytes) continue;
+        const applicationModules = Object.entries(output.modules)
+          .filter(([id]) => id.replaceAll('\\', '/').startsWith(`${sourceDirectory}/`))
+          .sort(([, left], [, right]) => right.renderedLength - left.renderedLength);
+        if (!applicationModules.length) continue;
+        const largestModules = applicationModules
+          .slice(0, 5)
+          .map(([id]) => path.relative(__dirname, id).replaceAll('\\', '/'))
+          .join(', ');
+        this.error(
+          `Renderer application chunk ${output.fileName} is ${(bytes / 1_000).toFixed(2)} kB; ` +
+            `the limit is ${rendererApplicationChunkBudgetBytes / 1_000} kB. Largest application modules: ${largestModules}`,
+        );
+      }
+    },
+  };
+}
 
 function supportNonInteractiveIsolatedEntryBuilds() {
   // electron-vite 5.0.0's isolated-entry reporter assumes stdout is a TTY.
@@ -85,6 +131,7 @@ export default defineConfig(({ command }) => {
         rollupOptions: {
           input: {
             index: path.resolve(__dirname, 'src/main/index.ts'),
+            'agent-cli': path.resolve(__dirname, 'src/main/agent-cli-entry.ts'),
             'model-worker': path.resolve(__dirname, 'src/main/model-worker-entry.ts'),
           },
           output: { entryFileNames: '[name].js' },
@@ -110,9 +157,13 @@ export default defineConfig(({ command }) => {
     renderer: {
       root: path.resolve(__dirname, 'src/renderer'),
       resolve: { alias: sourceAlias },
-      plugins: [react(), tailwindcss(), reloadRendererForLanguageCatalog()],
-      server: { host: '127.0.0.1' },
-      build: { ...productionOutput },
+      plugins: [react(), tailwindcss(), reloadRendererForLanguageCatalog(), enforceRendererApplicationChunkBudget()],
+      server: { host: '127.0.0.1', port: rendererDevPort },
+      build: {
+        ...productionOutput,
+        chunkSizeWarningLimit: rendererVendorChunkWarningLimitKilobytes,
+        rollupOptions: { output: { manualChunks: rendererManualChunk } },
+      },
     },
   };
 });

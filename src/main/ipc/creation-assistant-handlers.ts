@@ -1,6 +1,8 @@
 import { shell, type OpenDialogOptions, type OpenDialogReturnValue } from 'electron';
 import { z } from 'zod';
 import type { CodexService } from '@/main/assistant/codex-service';
+import type { ArticleCheckInput } from '@/shared/contracts';
+import type { ArticleCheckExecutionResult } from '@/shared/contracts/article';
 import { CreatorImageStagingService } from '@/main/creations/creator-image-staging';
 import type { ArticleExportService } from '@/main/creations/article-export-service';
 import type { ArticleWechatCopyService } from '@/main/creations/article-wechat-copy-service';
@@ -13,16 +15,28 @@ import {
 } from '@/shared/contracts/inspiration-stash';
 import {
   socialPostFormAddInputSchema,
+  socialPostFormCreateInputSchema,
   socialPostMoveInputSchema,
   socialPostSaveInputSchema,
   socialPostSetArchivedInputSchema,
 } from '@/shared/contracts/social-post';
 import {
+  articleCheckInvocationResultSchema,
+  articleCheckInputSchema,
+  articleCheckRunApplyInputSchema,
+  articleCheckRunApplyResultSchema,
+  articleCheckRunsListInputSchema,
+  articleCheckRunsPageSchema,
   articleFormAddInputSchema,
+  articleFormCreateInputSchema,
   articleCopyForWechatInputSchema,
+  articleCommentMutationInputSchema,
   articleExportMarkdownInputSchema,
   articleMoveInputSchema,
   articleRenameInputSchema,
+  articleRevisionGetInputSchema,
+  articleRevisionHistoryInputSchema,
+  articleRevisionSaveInputSchema,
   articleSaveInputSchema,
   articleSetArchivedInputSchema,
 } from '@/shared/contracts/article';
@@ -30,6 +44,7 @@ import {
   derivedVisualAdoptInputSchema,
   derivedVisualWorkspaceOpenInputSchema,
 } from '@/shared/contracts/derived-visual';
+import { codexThreadHref, codexThreadIdSchema } from '@/shared/contracts/codex-thread';
 import {
   promptSeriesCoverSetInputSchema,
   promptSeriesOutputRemoveInputSchema,
@@ -37,6 +52,7 @@ import {
 import {
   assistantProposalAdoptionSchema,
   creationDraftCommitSchema,
+  creationDraftLoadSchema,
   creationDraftSaveSchema,
   creationDraftStartSchema,
   creationAlbumRenameSchema,
@@ -60,8 +76,18 @@ interface CreationAssistantIpcOptions {
   chooseFile: (options: OpenDialogOptions) => Promise<OpenDialogReturnValue>;
   runAssistantRequest: (request: z.infer<typeof creatorAgentAssistSchema>) => unknown;
   runTitleRequest: (request: z.infer<typeof titleSchema>) => unknown;
+  runArticleCheckRequest: (request: ArticleCheckInput) => Promise<ArticleCheckExecutionResult>;
   articleExports: ArticleExportService;
   articleWechatCopy: ArticleWechatCopyService;
+}
+
+function articleCheckInvocationFailure(reason: unknown) {
+  const source = reason && typeof reason === 'object' ? reason : null;
+  const rawCode = source && 'code' in source && typeof source.code === 'string' ? source.code : 'ARTICLE_CHECK_FAILED';
+  const code = rawCode.trim().slice(0, 100) || 'ARTICLE_CHECK_FAILED';
+  const rawMessage = reason instanceof Error ? reason.message : String(reason);
+  const message = rawMessage.trim().slice(0, 2_000) || 'Article check failed';
+  return { code, message };
 }
 
 export function registerCreationAssistantIpc({
@@ -71,12 +97,16 @@ export function registerCreationAssistantIpc({
   chooseFile,
   runAssistantRequest,
   runTitleRequest,
+  runArticleCheckRequest,
   articleExports,
   articleWechatCopy,
 }: CreationAssistantIpcOptions) {
   const referenceStages = new CreatorImageStagingService(() => database);
   ipcMain.handle('creation-draft:start', (_event, raw) =>
     database.startCreationDraft(creationDraftStartSchema.parse(raw)),
+  );
+  ipcMain.handle('creation-draft:load', (_event, raw) =>
+    database.loadCreationDraft(creationDraftLoadSchema.parse(raw)),
   );
   ipcMain.handle('creation-draft:save', (_event, raw) =>
     database.saveCreationDraft(creationDraftSaveSchema.parse(raw)),
@@ -109,12 +139,49 @@ export function registerCreationAssistantIpc({
   ipcMain.handle('social-post:form-add', (_event, raw) =>
     database.addSocialPostForm(socialPostFormAddInputSchema.parse(raw)),
   );
+  ipcMain.handle('social-post:form-create', (_event, raw) =>
+    database.createSocialPostForm(socialPostFormCreateInputSchema.parse(raw)),
+  );
   ipcMain.handle('social-post:move', (_event, raw) => database.moveSocialPost(socialPostMoveInputSchema.parse(raw)));
   ipcMain.handle('social-post:set-archived', (_event, raw) =>
     database.setSocialPostArchived(socialPostSetArchivedInputSchema.parse(raw)),
   );
   ipcMain.handle('article:save', (_event, raw) => database.saveArticle(articleSaveInputSchema.parse(raw)));
+  ipcMain.handle('article:revision-history', (_event, raw) =>
+    database.getArticleRevisionHistory(articleRevisionHistoryInputSchema.parse(raw)),
+  );
+  ipcMain.handle('article:revision-get', (_event, raw) =>
+    database.getArticleRevision(articleRevisionGetInputSchema.parse(raw)),
+  );
+  ipcMain.handle('article:revision-save', (_event, raw) =>
+    database.saveArticleRevision(articleRevisionSaveInputSchema.parse(raw)),
+  );
+  ipcMain.handle('article:comment-mutate', (_event, raw) =>
+    database.mutateArticleComment(articleCommentMutationInputSchema.parse(raw)),
+  );
+  ipcMain.handle('article:check', async (_event, raw) => {
+    try {
+      return articleCheckInvocationResultSchema.parse({
+        status: 'success',
+        result: await runArticleCheckRequest(articleCheckInputSchema.parse(raw)),
+      });
+    } catch (reason) {
+      return articleCheckInvocationResultSchema.parse({
+        status: 'error',
+        error: articleCheckInvocationFailure(reason),
+      });
+    }
+  });
+  ipcMain.handle('article:check-runs-list', (_event, raw) =>
+    articleCheckRunsPageSchema.parse(database.listArticleCheckRuns(articleCheckRunsListInputSchema.parse(raw))),
+  );
+  ipcMain.handle('article:check-run-apply', (_event, raw) =>
+    articleCheckRunApplyResultSchema.parse(database.applyArticleCheckRun(articleCheckRunApplyInputSchema.parse(raw))),
+  );
   ipcMain.handle('article:form-add', (_event, raw) => database.addArticleForm(articleFormAddInputSchema.parse(raw)));
+  ipcMain.handle('article:form-create', (_event, raw) =>
+    database.createArticleForm(articleFormCreateInputSchema.parse(raw)),
+  );
   ipcMain.handle('article:rename', (_event, raw) => database.renameArticle(articleRenameInputSchema.parse(raw)));
   ipcMain.handle('article:move', (_event, raw) => database.moveArticle(articleMoveInputSchema.parse(raw)));
   ipcMain.handle('article:set-archived', (_event, raw) =>
@@ -148,8 +215,8 @@ export function registerCreationAssistantIpc({
   });
   ipcMain.handle('codex:health', () => codex.refreshHealth());
   ipcMain.handle('codex:open-thread', (_event, rawThreadId) => {
-    const threadId = id.parse(rawThreadId);
-    return shell.openExternal(`codex://threads/${encodeURIComponent(threadId)}`);
+    const threadId = codexThreadIdSchema.parse(rawThreadId);
+    return shell.openExternal(codexThreadHref(threadId));
   });
   ipcMain.handle('agent:history', (_event, raw) =>
     database.listCreatorAgentTurnPage(creatorAgentHistorySchema.parse(raw)),

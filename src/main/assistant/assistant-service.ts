@@ -4,6 +4,8 @@ import type {
   AssistantRunDto,
   CodexTitleInput,
   CodexTitleResult,
+  ImageBreakdownResult,
+  ImageBreakdownWorkerInput,
 } from '@/shared/contracts';
 
 export interface AssistantTitleExecution {
@@ -16,5 +18,6 @@ export interface AssistantTitleExecution {
 export interface AssistantService {
   run(runId: string): Promise<AssistantRunDto>;
   suggestTitles(input: CodexTitleInput, execution: AssistantTitleExecution): Promise<CodexTitleResult>;
+  imageBreakdown(input: ImageBreakdownWorkerInput): Promise<ImageBreakdownResult>;
   onProgress(listener: (event: AssistantActivityEventDto) => void): () => void;
 }

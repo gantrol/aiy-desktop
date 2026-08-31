@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import { z } from 'zod';
 import type { CreatorImageImportItemInput } from '@/shared/contracts';
 import { CreatorImageStagingService } from '@/main/creations/creator-image-staging';
@@ -8,6 +9,11 @@ import { importedImageMetadataSchema } from '@/main/ipc/import-metadata-schema';
 interface ImageSelection {
   canceled: boolean;
   filePaths: string[];
+}
+
+interface ClipboardImageSelection {
+  isEmpty(): boolean;
+  toPNG(): Buffer;
 }
 
 const id = z.string().min(1).max(200);
@@ -45,6 +51,9 @@ const imageItemsSchema = z
     message: 'Import must be 100 MB or smaller',
   });
 const imageImportSchema = z.object({ context: importContextSchema, items: imageItemsSchema });
+const clipboardReferenceImportSchema = z
+  .object({ context: importContextSchema.extend({ source: z.literal('PASTE') }) })
+  .strict();
 const stagedImageImportSchema = z
   .object({
     context: importContextSchema,
@@ -156,6 +165,7 @@ export function registerCreatorImportIpc(
   ipcMain: IpcHandlerRegistrar,
   database: LibraryDatabase,
   chooseImages: () => Promise<ImageSelection>,
+  readClipboardImage: () => ClipboardImageSelection,
 ) {
   const stages = new CreatorImageStagingService(() => database);
   const stageDirectItems = async (items: CreatorImageImportItemInput[]) => {
@@ -171,6 +181,20 @@ export function registerCreatorImportIpc(
   ipcMain.handle('creator:references-import', async (_event, raw) => {
     const input = imageImportSchema.parse(raw);
     const staged = await stageDirectItems(input.items);
+    return stages.importReferences(input.context.source, staged.stageIds);
+  });
+  ipcMain.handle('creator:clipboard-reference-import', async (_event, raw) => {
+    const input = clipboardReferenceImportSchema.parse(raw);
+    const image = readClipboardImage();
+    if (image.isEmpty()) throw new Error('Clipboard does not contain readable image pixels');
+    const staged = await stageDirectItems([
+      {
+        id: randomUUID(),
+        name: 'clipboard-image.png',
+        mimeType: 'image/png',
+        bytes: new Uint8Array(image.toPNG()),
+      },
+    ]);
     return stages.importReferences(input.context.source, staged.stageIds);
   });
   ipcMain.handle('creator:outputs-import', (_event, raw) => stages.import(stagedImageImportSchema.parse(raw)));

@@ -27,11 +27,13 @@ const FRAMES_PER_FILM_STRIP = 12;
 const MAX_PREVIEW_COUNT = FILM_STRIP_COUNT * FRAMES_PER_FILM_STRIP;
 const FILM_SCROLL_SPEED_PX_PER_SECOND = 28;
 const DEFAULT_FILM_SCROLL_DURATION_MS = 89_000;
-// A 13rem frame pitch and 1.625rem perforation pitch keep exactly eight perforations beside every frame.
+const FILM_APERTURE_MAX_WIDTH_REM = 8;
+const FILM_APERTURE_MAX_HEIGHT_REM = 12;
+// Keep in sync with the film-segment mask pitch so duplicated groups meet on a full perforation row.
+const FILM_PERFORATION_PITCH_REM = 1.625;
 const POLAROID_CARD_COUNT = 5;
 const POLAROID_PREVIEW_SLOT_ORDER = [4, 2, 0, 1, 3] as const;
 const POLAROID_CARD_SCALES = [0.8, 0.95, 1.12, 0.95, 0.8] as const;
-const PLACEHOLDER_ASPECTS = [0.75, 0.5625, 1, 0.8, 1.5, 0.6667, 1.7778, 0.75] as const;
 const FILM_STRIP_CLASSES = [
   'app-loading-filmstrip app-loading-filmstrip-primary absolute -inset-y-48 left-[30%] z-[2] w-48 -translate-x-1/2 rotate-[4deg] overflow-hidden rounded-none',
   'app-loading-filmstrip app-loading-filmstrip-secondary absolute -inset-y-48 left-[70%] z-[1] w-48 -translate-x-1/2 -rotate-[4deg] scale-[0.875] overflow-hidden rounded-none',
@@ -60,7 +62,7 @@ interface LoadingPreviews {
 
 interface FilmFrameModel {
   key: string;
-  preview: TransitionPreviewDto | null;
+  preview: TransitionPreviewDto;
 }
 
 type PreviewStyle = CSSProperties & Record<`--${string}`, string | number>;
@@ -81,6 +83,7 @@ function readAppLoadingVariants() {
     documents: DEFAULT_APP_LOADING_VARIANT,
     dictionary: variantAt(1),
     gallery: variantAt(2),
+    companion: DEFAULT_APP_LOADING_VARIANT,
     codexImages: variantAt(3),
     transitionShowcase: DEFAULT_APP_LOADING_VARIANT,
     packs: variantAt(4),
@@ -276,21 +279,32 @@ function LazyTransitionPreview({
 }
 
 function buildFilmFrames(previews: readonly TransitionPreviewDto[], stripIndex: number) {
-  const frames = previews
+  const assigned = previews
     .filter((_, index) => index % FILM_STRIP_COUNT === stripIndex)
-    .slice(0, FRAMES_PER_FILM_STRIP)
-    .map((preview, index): FilmFrameModel => ({
+    .slice(0, FRAMES_PER_FILM_STRIP);
+  const sources = assigned.length > 0 ? assigned : previews.slice(0, 1);
+  if (sources.length === 0) return [];
+  return Array.from({ length: FRAMES_PER_FILM_STRIP }, (_, index): FilmFrameModel => {
+    const preview = sources[index % sources.length]!;
+    return {
       key: `${stripIndex}-preview-${index}-${preview.url}-${preview.detailUrl ?? preview.url}`,
       preview,
-    }));
-  while (frames.length < FRAMES_PER_FILM_STRIP) {
-    const index = frames.length;
-    frames.push({
-      key: `${stripIndex}-placeholder-${index}`,
-      preview: null,
-    });
-  }
-  return frames;
+    };
+  });
+}
+
+function filmFrameLayout(preview: Pick<TransitionPreviewDto, 'width' | 'height'>) {
+  const aspect = clampTransitionPreviewAspect(preview.width, preview.height);
+  const height = Math.min(FILM_APERTURE_MAX_HEIGHT_REM, FILM_APERTURE_MAX_WIDTH_REM / aspect);
+  return {
+    aperture: {
+      width: `${height * aspect}rem`,
+      height: `${height}rem`,
+    } satisfies CSSProperties,
+    frame: {
+      height: `${Math.ceil(height / FILM_PERFORATION_PITCH_REM) * FILM_PERFORATION_PITCH_REM}rem`,
+    } satisfies CSSProperties,
+  };
 }
 
 function FilmFrame({
@@ -306,23 +320,43 @@ function FilmFrame({
   mediaState: TransitionSceneMediaState;
   loadAllPreviews: boolean;
 }) {
+  const layout = filmFrameLayout(frame.preview);
   return (
-    <span className="relative z-[2] flex h-52 shrink-0 items-center justify-center">
+    <span className="relative z-[2] flex shrink-0 items-center justify-center" style={layout.frame}>
       <span
-        className="app-loading-aperture relative block aspect-[2/3] w-32 flex-none overflow-hidden rounded-none bg-media-surround-dark"
-        data-loading-preview={frame.preview ? (mediaState === 'ready' ? 'image' : mediaState) : 'abstract'}
+        className="app-loading-aperture relative block flex-none overflow-hidden rounded-none bg-media-surround-dark"
+        data-loading-preview={mediaState === 'ready' ? 'image' : mediaState}
+        style={layout.aperture}
       >
-        {frame.preview && (
-          <LazyTransitionPreview
-            preview={frame.preview}
-            mediaState={mediaState}
-            preloadRoot={rootRef}
-            loadImmediately={loadAllPreviews}
-            imageClassName="bg-media-surround-light object-contain"
-            key={`${duplicate}-${frame.preview.url}-${frame.preview.detailUrl ?? frame.preview.url}`}
-          />
-        )}
+        <LazyTransitionPreview
+          preview={frame.preview}
+          mediaState={mediaState}
+          preloadRoot={rootRef}
+          loadImmediately={loadAllPreviews}
+          imageClassName="object-contain"
+          key={`${duplicate}-${frame.preview.url}-${frame.preview.detailUrl ?? frame.preview.url}`}
+        />
       </span>
+    </span>
+  );
+}
+
+function NeutralLoadingScene({ motion = {} }: { motion?: TransitionSceneMotion }) {
+  return (
+    <span
+      data-transition-surface="neutral"
+      data-motion-paused={motion.paused ? 'true' : undefined}
+      data-reduced-motion={motion.reduced ? 'true' : undefined}
+      className="relative grid size-full place-items-center overflow-hidden"
+      aria-hidden="true"
+    >
+      <span className="absolute size-48 rounded-full bg-selected opacity-20 blur-3xl" />
+      <img
+        className="app-loading-neutral-icon relative size-20 object-contain"
+        src="./icon.png"
+        alt=""
+        draggable={false}
+      />
     </span>
   );
 }
@@ -406,9 +440,11 @@ export function PortraitFilmScene({
   mediaState?: TransitionSceneMediaState;
   loadAllPreviews?: boolean;
 }) {
+  if (previews.length === 0) return <NeutralLoadingScene motion={motion} />;
   return (
     <span
-      className="app-loading-scene relative block size-full"
+      data-transition-surface="portrait"
+      className="app-loading-scene relative block h-full w-[min(42rem,calc(100%_-_2rem))]"
       data-motion-paused={motion.paused ? 'true' : undefined}
       data-reduced-motion={motion.reduced ? 'true' : undefined}
       aria-hidden="true"
@@ -432,12 +468,10 @@ export function PortraitFilmScene({
 }
 
 function polaroidFrameAt(previews: readonly TransitionPreviewDto[], cardIndex: number) {
-  const preview = previews[POLAROID_PREVIEW_SLOT_ORDER[cardIndex]] ?? null;
+  const preview = previews[POLAROID_PREVIEW_SLOT_ORDER[cardIndex] % previews.length]!;
   return {
     preview,
-    aspect: preview
-      ? clampTransitionPreviewAspect(preview.width, preview.height)
-      : PLACEHOLDER_ASPECTS[(cardIndex + 2) % PLACEHOLDER_ASPECTS.length]!,
+    aspect: clampTransitionPreviewAspect(preview.width, preview.height),
   };
 }
 
@@ -450,6 +484,7 @@ export function PolaroidScene({
   motion?: TransitionSceneMotion;
   mediaState?: TransitionSceneMediaState;
 }) {
+  if (previews.length === 0) return <NeutralLoadingScene motion={motion} />;
   const frames = Array.from({ length: POLAROID_CARD_COUNT }, (_, index) => polaroidFrameAt(previews, index));
   const speedMultiplier = Math.max(0.25, motion.speedMultiplier ?? 1);
   const sceneStyle = {
@@ -458,6 +493,7 @@ export function PolaroidScene({
   } as PreviewStyle;
   return (
     <span
+      data-transition-surface="ribbon"
       className="app-loading-polaroid-scene"
       data-motion-paused={motion.paused ? 'true' : undefined}
       data-reduced-motion={motion.reduced ? 'true' : undefined}
@@ -480,9 +516,9 @@ export function PolaroidScene({
             >
               <span
                 className="app-loading-polaroid-aperture"
-                data-loading-preview={preview ? (mediaState === 'ready' ? 'image' : mediaState) : 'abstract'}
+                data-loading-preview={mediaState === 'ready' ? 'image' : mediaState}
               >
-                {preview && <LazyTransitionPreview preview={preview} mediaState={mediaState} />}
+                <LazyTransitionPreview preview={preview} mediaState={mediaState} />
                 {cardIndex === 2 && <span className="app-loading-polaroid-focus" />}
               </span>
               <span className="app-loading-polaroid-footer">
@@ -503,8 +539,10 @@ export function AppLoadingState({ previews, variant = DEFAULT_APP_LOADING_VARIAN
   return (
     <div
       data-app-loading-state
+      data-transition-owner="app-loading"
       data-app-loading-variant={variant}
       data-preview-count={normalizedPreviews.length}
+      data-preview-state={normalizedPreviews.length > 0 ? 'available' : 'empty'}
       className="grid size-full place-items-center overflow-hidden bg-background"
       role="status"
       aria-busy="true"

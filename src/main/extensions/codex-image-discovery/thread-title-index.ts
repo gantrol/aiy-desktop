@@ -79,6 +79,7 @@ async function indexSessionFiles(codexHome: string) {
       }
       for (const entry of entries) {
         if (entry.isSymbolicLink()) continue;
+        if (entry.name.toLowerCase().includes('trash')) continue;
         const entryPath = path.join(directoryPath, entry.name);
         if (entry.isDirectory()) {
           pending.push(entryPath);

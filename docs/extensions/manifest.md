@@ -41,13 +41,13 @@
 | `i18n`                | 否       | 见下文                               | 扩展自身的名称、描述和配置界面翻译 |
 | `language`            | 条件必填 | 仅 `LANGUAGE` 可用                   | 应用界面语言包声明                 |
 | `runtime`             | 否       | 仅受控 `CAPABILITY` 包可用           | 宿主运行时绑定                     |
-| `configuration`       | 否       | 当前仅 `IMAGE_API`                   | 宿主渲染的声明式配置               |
+| `configuration`       | 否       | `IMAGE_API` 或 `ARTICLE_DELIVERY`    | 宿主渲染并执行的声明式配置         |
 
 `source`、安装时间、启用状态和授权状态由宿主管理，不写入 manifest。
 
 ## 宿主兼容性
 
-当前宿主 engine key 是 `aiy`，产品版本是 `0.3.0`。支持三种范围格式：
+当前宿主 engine key 是 `aiy`，宿主 API 版本是 `0.3.7`。支持三种范围格式：
 
 ```json
 { "engines": { "aiy": "*" } }
@@ -75,7 +75,8 @@
     "workflows": ["example.generate"],
     "tools": ["example.image.generate"],
     "searchProviders": ["example.assets"],
-    "modelProviders": ["example-image-api"]
+    "modelProviders": ["example-image-api"],
+    "deliveryChannels": ["example-social"]
   }
 }
 ```
@@ -84,16 +85,20 @@
 
 ## 权限
 
-权限 key 长度为 3–240，格式为 `^[A-Za-z0-9][A-Za-z0-9._:/-]*$`。同一权限不能同时出现在必需和可选列表中。
+权限 key 长度为 3–240，格式为 `^[A-Za-z0-9][A-Za-z0-9._:/-]*$`。同一权限不能同时出现在必需和可选列表中；通过格式校验但不在宿主权限目录中的 key 仍会被拒绝。
 
 ```json
 {
-  "permissions": ["network:https://api.example.com", "secrets:example-api-key"],
+  "permissions": ["network:https://api.example.com", "credentials.use:example-api-key"],
   "optionalPermissions": ["network:user-configured-https-endpoint"]
 }
 ```
 
-必需权限未授权时，扩展状态为 `PERMISSION_REQUIRED`。权限只是声明和授权边界；能力扩展的宿主实现仍必须在执行路径中检查权限。
+必需权限未授权时，扩展状态为 `PERMISSION_REQUIRED`。`network:user-configured-https-endpoint` 是只能放入 `optionalPermissions` 的运行时模板，模板本身不会被授权；宿主在用户保存配置时记录精确网络 origin。
+
+`LANGUAGE` 是纯数据包，不能声明权限、能力贡献、runtime、能力 category 或 `configuration`。
+
+权限只是声明和持久授权边界；能力扩展的宿主实现仍必须在执行路径中检查权限，并用本次调用的不可变资源范围限制实际访问。完整规则见 [扩展权限模型](permissions.md)。
 
 ## manifest 自身的 i18n
 
@@ -152,7 +157,7 @@
 - `LANGUAGE` 必须声明 `language`；外部语言包还必须指定 `language.catalog: "messages.json"`。
 - `CAPABILITY` 不能声明 `language`。
 - 外部 `CAPABILITY` 必须声明受支持的 `runtime.kind: "HOST"`，并满足对应宿主契约。
-- `configuration` 当前只接受 `kind: "IMAGE_API"`，详见 [能力扩展](capability-extensions.md)。
+- `configuration` 接受 `kind: "IMAGE_API"` 或 `kind: "ARTICLE_DELIVERY"`，详见 [能力扩展](capability-extensions.md)。
 
 ## 外部包读取限制
 

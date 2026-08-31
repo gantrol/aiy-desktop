@@ -31,499 +31,59 @@
         background: #f8f7f3;
       }
 
-      .app-loading-scene {
+      [data-initial-frame] .app-loading-neutral-scene {
         position: relative;
-        display: block;
+        display: grid;
         width: 100%;
         height: 100%;
+        place-items: center;
+        overflow: hidden;
       }
 
-      [data-app-loading-scene='ribbon'] {
-        display: none;
-      }
-
-      html[data-app-loading-variant='ribbon'] [data-app-loading-scene='portrait'] {
-        display: none;
-      }
-
-      html[data-app-loading-variant='ribbon'] [data-app-loading-scene='ribbon'] {
-        display: block;
-      }
-
-      .app-loading-aura {
+      [data-initial-frame] .app-loading-neutral-aura {
         position: absolute;
-        top: 50%;
-        left: 50%;
-        width: 32rem;
-        height: 28rem;
+        width: 12rem;
+        height: 12rem;
         border-radius: 999px;
         background: #efe5e9;
-        filter: blur(4rem);
-        opacity: 0.48;
-        transform: translate(-50%, -50%);
+        filter: blur(3rem);
+        opacity: 0.34;
       }
 
-      .app-loading-filmstrip {
-        position: absolute;
-        top: -12rem;
-        bottom: -12rem;
-        display: block;
-        width: 12rem;
-        overflow: hidden;
-        border-radius: 0;
-        filter: drop-shadow(0 0.2rem 0.25rem rgba(38, 35, 32, 0.18));
-      }
-
-      .app-loading-filmstrip-primary {
-        left: 30%;
-        z-index: 2;
-        transform: translateX(-50%) rotate(4deg);
-      }
-
-      .app-loading-filmstrip-secondary {
-        left: 70%;
-        z-index: 1;
-        transform: translateX(-50%) rotate(-4deg) scale(0.875);
-      }
-
-      .app-loading-aperture-track {
-        position: absolute;
-        top: 0;
-        right: 0;
-        left: 0;
-        display: flex;
-        flex-direction: column;
-        will-change: transform;
-      }
-
-      .app-loading-aperture-track-up {
-        animation: initial-frame-film-scroll-up 89s linear infinite;
-      }
-
-      .app-loading-aperture-track-down {
-        animation: initial-frame-film-scroll-down 89s linear infinite;
-        animation-delay: -3.7s;
-      }
-
-      .app-loading-aperture-group {
-        position: relative;
-        display: flex;
-        width: 100%;
-        flex: none;
-        flex-direction: column;
-        overflow: hidden;
-        background: rgba(28, 28, 28, 0.95);
-        isolation: isolate;
-        -webkit-mask-image:
-          linear-gradient(#fff 0 0),
-          linear-gradient(to bottom, transparent 0 0.5rem, #fff 0.5rem 1.125rem, transparent 1.125rem 1.625rem),
-          linear-gradient(to bottom, transparent 0 0.5rem, #fff 0.5rem 1.125rem, transparent 1.125rem 1.625rem);
-        -webkit-mask-position:
-          0 0,
-          left 0.5rem top,
-          right 0.5rem top;
-        -webkit-mask-size:
-          100% 100%,
-          0.875rem 1.625rem,
-          0.875rem 1.625rem;
-        -webkit-mask-repeat: no-repeat, repeat-y, repeat-y;
-        -webkit-mask-composite: xor, xor;
-        mask-image:
-          linear-gradient(#fff 0 0),
-          linear-gradient(to bottom, transparent 0 0.5rem, #fff 0.5rem 1.125rem, transparent 1.125rem 1.625rem),
-          linear-gradient(to bottom, transparent 0 0.5rem, #fff 0.5rem 1.125rem, transparent 1.125rem 1.625rem);
-        mask-position:
-          0 0,
-          left 0.5rem top,
-          right 0.5rem top;
-        mask-size:
-          100% 100%,
-          0.875rem 1.625rem,
-          0.875rem 1.625rem;
-        mask-repeat: no-repeat, repeat-y, repeat-y;
-        mask-composite: exclude, exclude;
-      }
-
-      .app-loading-aperture-group::before,
-      .app-loading-aperture-group::after {
-        position: absolute;
-        inset: 0;
-        content: '';
-        pointer-events: none;
-      }
-
-      .app-loading-aperture-group::before {
-        z-index: 3;
-        background:
-          radial-gradient(circle at 32% 38%, rgba(230, 230, 230, 0.34) 0 0.035rem, transparent 0.055rem) 0 0 / 1.35rem
-            1.7rem,
-          repeating-linear-gradient(
-            to bottom,
-            transparent 0 0.72rem,
-            rgba(230, 230, 230, 0.18) 0.75rem,
-            transparent 0.78rem 1.6rem
-          );
-        mix-blend-mode: soft-light;
-        opacity: 0.2;
-      }
-
-      .app-loading-aperture-group::after {
-        z-index: 1;
-        background: linear-gradient(to right, rgba(230, 230, 230, 0.2), transparent 14% 82%, rgba(230, 230, 230, 0.14));
-        box-shadow:
-          inset 1px 0 rgba(230, 230, 230, 0.24),
-          inset -1px 0 rgba(230, 230, 230, 0.18);
-        opacity: 0.48;
-      }
-
-      .app-loading-aperture {
-        position: relative;
-        z-index: 2;
-        display: block;
-        width: 8rem;
-        height: 12rem;
-        flex: none;
-        margin: 0.5rem auto;
-        overflow: hidden;
-        border-radius: 0;
-        background:
-          radial-gradient(circle at 72% 22%, #6e4052 0 8%, transparent 9%),
-          linear-gradient(145deg, #1c1c1c 0 38%, #767676 39% 68%, #6e4052 69%);
-      }
-
-      .app-loading-polaroid-scene {
+      [data-initial-frame] .app-loading-neutral-icon {
         position: relative;
         display: block;
-        width: min(54rem, calc(100% - 2rem));
-        height: min(25rem, calc(100% - 2rem));
-        min-height: min(16rem, calc(100% - 2rem));
-        perspective: 64rem;
-        transform: translate(36px, 18px);
-        animation: initial-frame-polaroid-in 220ms cubic-bezier(0.2, 0, 0, 1) both;
+        width: 5rem;
+        height: 5rem;
+        object-fit: contain;
+        animation: initial-frame-neutral-breathe 1.8s cubic-bezier(0.2, 0, 0, 1) infinite;
       }
 
-      .app-loading-polaroid-aura {
-        position: absolute;
-        top: 54%;
-        left: 50%;
-        width: 76%;
-        height: 66%;
-        border-radius: 999px;
-        background: #ddced5;
-        filter: blur(4.5rem);
-        opacity: 0.42;
-        transform: translate(-50%, -50%);
-      }
-
-      .app-loading-polaroid-stage {
-        position: absolute;
-        inset: 0;
-        display: grid;
-        place-items: center;
-        transform-style: preserve-3d;
-      }
-
-      .app-loading-polaroid-spread {
-        position: relative;
-        display: flex;
-        width: 100%;
-        max-width: 52rem;
-        align-items: center;
-        justify-content: center;
-        padding: 2rem 1rem;
-        box-sizing: border-box;
-        transform-style: preserve-3d;
-      }
-
-      .app-loading-polaroid-card {
-        position: relative;
-        display: block;
-        box-sizing: border-box;
-        flex: var(--polaroid-card-weight, 1) 1 0;
-        min-width: 0;
-        max-width: 14rem;
-        padding: clamp(0.3rem, 0.7vw, 0.58rem) clamp(0.3rem, 0.7vw, 0.58rem) clamp(1.25rem, 2.8vw, 2rem);
-        border: 1px solid #d8d1ca;
-        border-radius: 0.38rem;
-        background: #fffefb;
-        box-shadow:
-          0 1.45rem 2.7rem -1.65rem rgba(38, 35, 32, 0.42),
-          inset 0 1px #fff;
-        transform-origin: center bottom;
-        transform-style: preserve-3d;
-      }
-
-      .app-loading-polaroid-card + .app-loading-polaroid-card {
-        margin-left: clamp(-1.2rem, -1.5vw, -0.45rem);
-      }
-
-      .app-loading-polaroid-card-0 {
-        z-index: 1;
-        transform: translateY(1.75rem) rotateY(15deg) rotateZ(-7deg);
-      }
-
-      .app-loading-polaroid-card-1 {
-        z-index: 2;
-        transform: translateY(0.6rem) rotateY(6deg) rotateZ(-3deg);
-      }
-
-      .app-loading-polaroid-card-2 {
-        z-index: 5;
-        box-shadow:
-          0 1.8rem 3rem -1.65rem rgba(38, 35, 32, 0.48),
-          inset 0 1px #fff;
-        transform: translateY(-0.45rem) translateZ(1.8rem) rotateZ(0.5deg);
-      }
-
-      .app-loading-polaroid-card-3 {
-        z-index: 2;
-        transform: translateY(0.6rem) rotateY(-6deg) rotateZ(3deg);
-      }
-
-      .app-loading-polaroid-card-4 {
-        z-index: 1;
-        transform: translateY(1.75rem) rotateY(-15deg) rotateZ(7deg);
-      }
-
-      .app-loading-polaroid-aperture {
-        position: relative;
-        display: block;
-        box-sizing: border-box;
-        width: 100%;
-        aspect-ratio: var(--preview-aspect, 0.75);
-        overflow: hidden;
-        border: 1px solid #c8c2b8;
-        border-radius: 0.22rem;
-        background:
-          radial-gradient(circle at 68% 24%, #f5eff0 0 8%, transparent 9%),
-          linear-gradient(145deg, #f6f3f1 0 36%, #9a9a99 37% 68%, #ede4e6 69%);
-        box-shadow: inset 0 0 0 1px #fff;
-      }
-
-      .app-loading-polaroid-footer {
-        position: absolute;
-        right: clamp(0.45rem, 0.85vw, 0.7rem);
-        bottom: clamp(0.45rem, 0.9vw, 0.75rem);
-        left: clamp(0.45rem, 0.85vw, 0.7rem);
-        display: flex;
-        height: clamp(0.35rem, 0.9vw, 0.62rem);
-        align-items: center;
-        justify-content: space-between;
-        gap: 0.35rem;
-      }
-
-      .app-loading-polaroid-footer > span:first-child {
-        display: block;
-        width: 46%;
-        height: 1px;
-        border-radius: 999px;
-        background: rgba(100, 93, 85, 0.34);
-      }
-
-      .app-loading-polaroid-footer > span:last-child {
-        display: block;
-        width: 0.28rem;
-        height: 0.28rem;
-        border-radius: 999px;
-        background: rgba(100, 93, 85, 0.34);
-      }
-
-      .app-loading-polaroid-focus {
-        position: absolute;
-        z-index: 3;
-        inset: 0.16rem;
-        background:
-          linear-gradient(#926c7e, #926c7e) left top / 1.6rem 0.18rem no-repeat,
-          linear-gradient(#926c7e, #926c7e) left top / 0.18rem 1.6rem no-repeat,
-          linear-gradient(#926c7e, #926c7e) right top / 1.6rem 0.18rem no-repeat,
-          linear-gradient(#926c7e, #926c7e) right top / 0.18rem 1.6rem no-repeat,
-          linear-gradient(#926c7e, #926c7e) left bottom / 1.6rem 0.18rem no-repeat,
-          linear-gradient(#926c7e, #926c7e) left bottom / 0.18rem 1.6rem no-repeat,
-          linear-gradient(#926c7e, #926c7e) right bottom / 1.6rem 0.18rem no-repeat,
-          linear-gradient(#926c7e, #926c7e) right bottom / 0.18rem 1.6rem no-repeat;
-        filter: drop-shadow(0 0 0.65rem rgba(146, 108, 126, 0.46));
-      }
-
-      @keyframes initial-frame-polaroid-in {
-        from {
+      @keyframes initial-frame-neutral-breathe {
+        0%,
+        100% {
           opacity: 0.78;
-          transform: translate(36px, 23px) scale(0.99);
+          transform: scale(0.97);
         }
-        to {
+        50% {
           opacity: 1;
-          transform: translate(36px, 18px) scale(1);
-        }
-      }
-
-      @keyframes initial-frame-film-scroll-up {
-        from {
-          transform: translateY(0);
-        }
-        to {
-          transform: translateY(-50%);
-        }
-      }
-
-      @keyframes initial-frame-film-scroll-down {
-        from {
-          transform: translateY(-50%);
-        }
-        to {
-          transform: translateY(0);
+          transform: scale(1);
         }
       }
 
       @media (prefers-reduced-motion: reduce) {
-        .app-loading-scene,
-        .app-loading-polaroid-scene,
-        .app-loading-polaroid-stage,
-        .app-loading-polaroid-focus,
-        .app-loading-aperture-track {
+        [data-initial-frame] .app-loading-neutral-icon {
           animation: none;
-        }
-      }
-
-      @media (max-width: 560px) {
-        .app-loading-filmstrip-primary {
-          left: 24%;
-          transform: translateX(-50%) rotate(2deg) scale(0.729);
-        }
-
-        .app-loading-filmstrip-secondary {
-          left: 76%;
-          transform: translateX(-50%) rotate(-2deg) scale(0.646);
-        }
-
-        .app-loading-polaroid-scene {
-          transform: translate(0, 18px) scale(0.78);
-        }
-
-        @keyframes initial-frame-polaroid-in {
-          from {
-            opacity: 0.78;
-            transform: translate(0, 23px) scale(0.77);
-          }
-          to {
-            opacity: 1;
-            transform: translate(0, 18px) scale(0.78);
-          }
         }
       }
     </style>
   </head>
   <body>
     <div id="root">
-      <div data-initial-frame aria-hidden="true">
-        <span class="app-loading-scene" data-app-loading-scene="portrait">
-          <span class="app-loading-aura"></span>
-          <span class="app-loading-filmstrip app-loading-filmstrip-primary">
-            <span class="app-loading-aperture-track app-loading-aperture-track-up">
-              <span class="app-loading-aperture-group">
-                <span class="app-loading-aperture" data-loading-preview="abstract"></span>
-                <span class="app-loading-aperture" data-loading-preview="abstract"></span>
-                <span class="app-loading-aperture" data-loading-preview="abstract"></span>
-                <span class="app-loading-aperture" data-loading-preview="abstract"></span>
-                <span class="app-loading-aperture" data-loading-preview="abstract"></span>
-                <span class="app-loading-aperture" data-loading-preview="abstract"></span>
-                <span class="app-loading-aperture" data-loading-preview="abstract"></span>
-                <span class="app-loading-aperture" data-loading-preview="abstract"></span>
-                <span class="app-loading-aperture" data-loading-preview="abstract"></span>
-                <span class="app-loading-aperture" data-loading-preview="abstract"></span>
-                <span class="app-loading-aperture" data-loading-preview="abstract"></span>
-                <span class="app-loading-aperture" data-loading-preview="abstract"></span>
-              </span>
-              <span class="app-loading-aperture-group" aria-hidden="true">
-                <span class="app-loading-aperture" data-loading-preview="abstract"></span>
-                <span class="app-loading-aperture" data-loading-preview="abstract"></span>
-                <span class="app-loading-aperture" data-loading-preview="abstract"></span>
-                <span class="app-loading-aperture" data-loading-preview="abstract"></span>
-                <span class="app-loading-aperture" data-loading-preview="abstract"></span>
-                <span class="app-loading-aperture" data-loading-preview="abstract"></span>
-                <span class="app-loading-aperture" data-loading-preview="abstract"></span>
-                <span class="app-loading-aperture" data-loading-preview="abstract"></span>
-                <span class="app-loading-aperture" data-loading-preview="abstract"></span>
-                <span class="app-loading-aperture" data-loading-preview="abstract"></span>
-                <span class="app-loading-aperture" data-loading-preview="abstract"></span>
-                <span class="app-loading-aperture" data-loading-preview="abstract"></span>
-              </span>
-            </span>
-          </span>
-          <span class="app-loading-filmstrip app-loading-filmstrip-secondary">
-            <span class="app-loading-aperture-track app-loading-aperture-track-down">
-              <span class="app-loading-aperture-group">
-                <span class="app-loading-aperture" data-loading-preview="abstract"></span>
-                <span class="app-loading-aperture" data-loading-preview="abstract"></span>
-                <span class="app-loading-aperture" data-loading-preview="abstract"></span>
-                <span class="app-loading-aperture" data-loading-preview="abstract"></span>
-                <span class="app-loading-aperture" data-loading-preview="abstract"></span>
-                <span class="app-loading-aperture" data-loading-preview="abstract"></span>
-                <span class="app-loading-aperture" data-loading-preview="abstract"></span>
-                <span class="app-loading-aperture" data-loading-preview="abstract"></span>
-                <span class="app-loading-aperture" data-loading-preview="abstract"></span>
-                <span class="app-loading-aperture" data-loading-preview="abstract"></span>
-                <span class="app-loading-aperture" data-loading-preview="abstract"></span>
-                <span class="app-loading-aperture" data-loading-preview="abstract"></span>
-              </span>
-              <span class="app-loading-aperture-group" aria-hidden="true">
-                <span class="app-loading-aperture" data-loading-preview="abstract"></span>
-                <span class="app-loading-aperture" data-loading-preview="abstract"></span>
-                <span class="app-loading-aperture" data-loading-preview="abstract"></span>
-                <span class="app-loading-aperture" data-loading-preview="abstract"></span>
-                <span class="app-loading-aperture" data-loading-preview="abstract"></span>
-                <span class="app-loading-aperture" data-loading-preview="abstract"></span>
-                <span class="app-loading-aperture" data-loading-preview="abstract"></span>
-                <span class="app-loading-aperture" data-loading-preview="abstract"></span>
-                <span class="app-loading-aperture" data-loading-preview="abstract"></span>
-                <span class="app-loading-aperture" data-loading-preview="abstract"></span>
-                <span class="app-loading-aperture" data-loading-preview="abstract"></span>
-                <span class="app-loading-aperture" data-loading-preview="abstract"></span>
-              </span>
-            </span>
-          </span>
-        </span>
-        <span class="app-loading-polaroid-scene" data-app-loading-scene="ribbon">
-          <span class="app-loading-polaroid-aura"></span>
-          <span class="app-loading-polaroid-stage">
-            <span class="app-loading-polaroid-spread">
-              <span
-                class="app-loading-polaroid-card app-loading-polaroid-card-0"
-                style="--preview-aspect: 1; --polaroid-card-weight: 0.8"
-              >
-                <span class="app-loading-polaroid-aperture" data-loading-preview="abstract"></span>
-                <span class="app-loading-polaroid-footer"><span></span><span></span></span>
-              </span>
-              <span
-                class="app-loading-polaroid-card app-loading-polaroid-card-1"
-                style="--preview-aspect: 0.8; --polaroid-card-weight: 0.76"
-              >
-                <span class="app-loading-polaroid-aperture" data-loading-preview="abstract"></span>
-                <span class="app-loading-polaroid-footer"><span></span><span></span></span>
-              </span>
-              <span
-                class="app-loading-polaroid-card app-loading-polaroid-card-2"
-                style="--preview-aspect: 1.5; --polaroid-card-weight: 1.68"
-              >
-                <span class="app-loading-polaroid-aperture" data-loading-preview="abstract">
-                  <span class="app-loading-polaroid-focus"></span>
-                </span>
-                <span class="app-loading-polaroid-footer"><span></span><span></span></span>
-              </span>
-              <span
-                class="app-loading-polaroid-card app-loading-polaroid-card-3"
-                style="--preview-aspect: 0.6667; --polaroid-card-weight: 0.6334"
-              >
-                <span class="app-loading-polaroid-aperture" data-loading-preview="abstract"></span>
-                <span class="app-loading-polaroid-footer"><span></span><span></span></span>
-              </span>
-              <span
-                class="app-loading-polaroid-card app-loading-polaroid-card-4"
-                style="--preview-aspect: 1.7778; --polaroid-card-weight: 1.4222"
-              >
-                <span class="app-loading-polaroid-aperture" data-loading-preview="abstract"></span>
-                <span class="app-loading-polaroid-footer"><span></span><span></span></span>
-              </span>
-            </span>
-          </span>
+      <div data-initial-frame data-transition-owner="initial" data-preview-state="pending" aria-hidden="true">
+        <span class="app-loading-neutral-scene">
+          <span class="app-loading-neutral-aura"></span>
+          <img class="app-loading-neutral-icon" src="./icon.png" alt="" draggable="false" />
         </span>
       </div>
     </div>

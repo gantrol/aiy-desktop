@@ -9,11 +9,10 @@ import {
 import type { CodexService } from '@/main/assistant/codex-service';
 import { ASSISTANT_MODEL_DEFINITIONS, type AssistantRoutingConfiguration } from '@/main/assistant/assistant-routing';
 import type { CodexImageDiscovery } from '@/main/extensions/codex-image-discovery';
+import type { CodexHistorySearch } from '@/main/extensions/codex-history-search';
+import type { CodexVisualizationDiscovery } from '@/main/extensions/codex-visualization-discovery';
 import type { DeepSeekApiConnection } from '@/main/extensions/deepseek-api/connection';
-import {
-  externalImageApiEndpointPermission,
-  type ExternalImageApiConnections,
-} from '@/main/extensions/external-image-api';
+import type { ExternalImageApiConnections } from '@/main/extensions/external-image-api';
 import type { OpenAiImageApiConnection } from '@/main/extensions/openai-image-api/connection';
 import type { ExtensionRegistry } from '@/main/extensions/registry';
 import type { GenerationConcurrencyConfiguration } from '@/main/generation/concurrency-configuration';
@@ -23,34 +22,39 @@ import {
   codexGeneratedImageImportSchema,
   codexGeneratedImageListSchema,
   codexGeneratedImageRecoverSchema,
-  deepSeekApiSaveSchema,
   extensionSetEnabledSchema,
   extensionSetPermissionSchema,
-  externalImageApiExtensionIdSchema,
-  externalImageApiSaveSchema,
   generationConcurrencySaveSchema,
   id,
-  openAiImageApiSaveSchema,
 } from '@/main/ipc/schemas';
+import { registerProviderConnectionIpc } from '@/main/ipc/provider-connection-handlers';
 import type { IpcHandlerRegistrar } from '@/main/ipc/trusted-handlers';
 import { registerCodexUsageIpc } from '@/main/ipc/codex-usage-handlers';
+import { registerCodexHistorySearchIpc } from '@/main/ipc/codex-history-search-handlers';
+import { registerCodexVisualizationIpc } from '@/main/ipc/codex-visualization-handlers';
 import type { AntigravityCliStatusDto, CodexTextModelDto } from '@/shared/contracts';
 import {
   ANTIGRAVITY_CLI_DEFAULT_MODEL_KEY,
+  ANTIGRAVITY_CLI_EXTENSION_ID,
   ANTIGRAVITY_CLI_PROVIDER_KEY,
   CODEX_APP_SERVER_EXTENSION_ID,
+  CODEX_HISTORY_SEARCH_EXTENSION_ID,
   CODEX_IMAGE_DISCOVERY_EXTENSION_ID,
+  CODEX_VISUALIZATION_DISCOVERY_EXTENSION_ID,
   CODEX_USAGE_INVESTIGATOR_EXTENSION_ID,
+  DEEPSEEK_API_EXTENSION_ID,
   EXTERNAL_IMAGE_API_EXTENSION_IDS,
-  OPENAI_IMAGE_CONNECTION_ID,
-  externalImageConnectionId,
+  OPENAI_IMAGE_API_EXTENSION_ID,
 } from '@/shared/extension-ids';
-import { resolveImageGenerationRouteExecutionIdentity } from '@/shared/image-generation-route-identity';
+
+const externalImageApiExtensionIds = new Set<string>(EXTERNAL_IMAGE_API_EXTENSION_IDS);
 
 interface ExtensionSettingsIpcOptions {
   ipcMain: IpcHandlerRegistrar;
   extensions: ExtensionRegistry;
   codexImageDiscovery: CodexImageDiscovery;
+  codexHistorySearch: CodexHistorySearch;
+  codexVisualizationDiscovery: CodexVisualizationDiscovery;
   openAiImageApi: OpenAiImageApiConnection;
   deepSeekApi: DeepSeekApiConnection;
   assistantRouting: AssistantRoutingConfiguration;
@@ -88,10 +92,24 @@ function registerCodexImageDiscoveryIpc(
   );
 }
 
+function unavailableAntigravityStatus(): AntigravityCliStatusDto {
+  return {
+    state: 'unavailable',
+    version: '',
+    authenticated: false,
+    message: 'Background model service is unavailable',
+    currentModel: null,
+    models: [],
+    quota: { warning: 'UNAVAILABLE', groups: [], checkedAt: null, message: 'Quota is unavailable' },
+  };
+}
+
 export function registerExtensionSettingsIpc({
   ipcMain,
   extensions,
   codexImageDiscovery,
+  codexHistorySearch,
+  codexVisualizationDiscovery,
   openAiImageApi,
   deepSeekApi,
   assistantRouting,
@@ -103,24 +121,23 @@ export function registerExtensionSettingsIpc({
   chooseSaveFile,
   sendRendererEvent,
 }: ExtensionSettingsIpcOptions) {
-  const unavailableAntigravityStatus = (): AntigravityCliStatusDto => ({
-    state: 'unavailable',
-    version: '',
-    authenticated: false,
-    message: 'Background model service is unavailable',
-    currentModel: null,
-    models: [],
-    quota: { warning: 'UNAVAILABLE', groups: [], checkedAt: null, message: 'Quota is unavailable' },
-  });
   const syncExternalImageApiRuntime = async () => {
     await generation.configureExternalImageApis?.(
-      externalImageApis.runtimeConfigurations((extensionId, permission) =>
-        extensions.isPermissionGranted(extensionId, permission),
+      externalImageApis.runtimeConfigurations(
+        (extensionId, permission) => extensions.isPermissionGranted(extensionId, permission),
+        (extensionId) => extensions.isActivated(extensionId),
       ),
     );
   };
+  const syncOpenAiImageApiRuntime = async () => {
+    await generation.configureOpenAiImageApi?.(
+      extensions.isActivated(OPENAI_IMAGE_API_EXTENSION_ID) ? openAiImageApi.runtimeConfiguration() : null,
+    );
+  };
   const syncDeepSeekApiRuntime = async () => {
-    await generation.configureDeepSeekApi?.(deepSeekApi.runtimeConfiguration());
+    await generation.configureDeepSeekApi?.(
+      extensions.isActivated(DEEPSEEK_API_EXTENSION_ID) ? deepSeekApi.runtimeConfiguration() : null,
+    );
   };
   ipcMain.handle('extensions:list', () => extensions.list());
   const codexUsage = registerCodexUsageIpc({
@@ -134,7 +151,8 @@ export function registerExtensionSettingsIpc({
   const hasPendingExtensionWork = (extensionId: string) =>
     generation.hasPending ||
     codex.hasPending ||
-    (extensionId === CODEX_USAGE_INVESTIGATOR_EXTENSION_ID && codexUsage.hasPending);
+    (extensionId === CODEX_USAGE_INVESTIGATOR_EXTENSION_ID && codexUsage.hasPending) ||
+    (extensionId === CODEX_VISUALIZATION_DISCOVERY_EXTENSION_ID && codexVisualizationDiscovery.hasPending);
   ipcMain.handle('extension-language-packs:list', () => extensions.listLanguagePacks());
   ipcMain.handle('extension:install-local', async () => {
     const selection = await chooseFile({ properties: ['openDirectory'] });
@@ -148,16 +166,46 @@ export function registerExtensionSettingsIpc({
   );
   const syncCodexImageDiscovery = () =>
     codexImageDiscovery.setActive(extensions.isActivated(CODEX_IMAGE_DISCOVERY_EXTENSION_ID));
+  const syncCodexHistorySearch = () =>
+    codexHistorySearch.setActive(extensions.isActivated(CODEX_HISTORY_SEARCH_EXTENSION_ID));
+  const syncCodexVisualizationDiscovery = () =>
+    codexVisualizationDiscovery.setActive(extensions.isActivated(CODEX_VISUALIZATION_DISCOVERY_EXTENSION_ID));
+  const syncExtensionRuntime = async (extensionId: string) => {
+    if (extensionId === CODEX_HISTORY_SEARCH_EXTENSION_ID) {
+      syncCodexHistorySearch();
+      return;
+    }
+    if (extensionId === CODEX_IMAGE_DISCOVERY_EXTENSION_ID) {
+      await syncCodexImageDiscovery();
+      return;
+    }
+    if (extensionId === CODEX_VISUALIZATION_DISCOVERY_EXTENSION_ID) {
+      syncCodexVisualizationDiscovery();
+      return;
+    }
+    if (extensionId === ANTIGRAVITY_CLI_EXTENSION_ID) {
+      await generation.refreshExtensions?.();
+      return;
+    }
+    if (extensionId === OPENAI_IMAGE_API_EXTENSION_ID) {
+      await syncOpenAiImageApiRuntime();
+      return;
+    }
+    if (extensionId === DEEPSEEK_API_EXTENSION_ID) {
+      await syncDeepSeekApiRuntime();
+      return;
+    }
+    if (externalImageApiExtensionIds.has(extensionId)) {
+      await syncExternalImageApiRuntime();
+    }
+  };
   ipcMain.handle('extension:set-enabled', async (_event, raw) => {
     const input = extensionSetEnabledSchema.parse(raw);
     if (!input.enabled && hasPendingExtensionWork(input.extensionId)) {
       throw new Error('Wait for active model tasks to finish before disabling an extension');
     }
     extensions.setEnabled(input.extensionId, input.enabled);
-    await syncCodexImageDiscovery();
-    await generation.refreshExtensions?.();
-    await syncDeepSeekApiRuntime();
-    await syncExternalImageApiRuntime();
+    await syncExtensionRuntime(input.extensionId);
     return extensions.list();
   });
   ipcMain.handle('extension:set-permission', async (_event, raw) => {
@@ -166,75 +214,29 @@ export function registerExtensionSettingsIpc({
       throw new Error('Wait for active model tasks to finish before revoking a permission');
     }
     extensions.setPermission(input.extensionId, input.permission, input.granted);
-    await syncCodexImageDiscovery();
-    await generation.refreshExtensions?.();
-    await syncDeepSeekApiRuntime();
-    await syncExternalImageApiRuntime();
+    await syncExtensionRuntime(input.extensionId);
+    if (input.extensionId === CODEX_HISTORY_SEARCH_EXTENSION_ID && !input.granted) {
+      await codexHistorySearch.purge();
+    }
     return extensions.list();
   });
   registerCodexImageDiscoveryIpc(ipcMain, extensions, codexImageDiscovery);
-  const syncOpenAiImageApiRuntime = async () => {
-    await generation.configureOpenAiImageApi?.(openAiImageApi.runtimeConfiguration());
-  };
-  const hasPendingImageConnection = (connectionId: string) => {
-    const pendingRouteKeys = new Set(generation.tasks.map((task) => task.modelKey));
-    return generation.imageGenerationRoutes.some(
-      (route) =>
-        pendingRouteKeys.has(route.key) &&
-        resolveImageGenerationRouteExecutionIdentity(route).connectionId === connectionId,
-    );
-  };
-  const assertOpenAiImageApiMutable = () => {
-    if (hasPendingImageConnection(OPENAI_IMAGE_CONNECTION_ID)) {
-      throw new Error('Wait for active OpenAI image tasks before changing OpenAI API configuration');
-    }
-  };
-  ipcMain.handle('openai-image-api:get', () => openAiImageApi.status());
-  ipcMain.handle('openai-image-api:save', async (_event, raw) => {
-    const input = openAiImageApiSaveSchema.parse(raw);
-    if (generation.hasPending && openAiImageApi.changesRequestCredentials(input)) {
-      assertOpenAiImageApiMutable();
-    }
-    const result = openAiImageApi.save(input);
-    await syncOpenAiImageApiRuntime();
-    return result;
-  });
-  ipcMain.handle('openai-image-api:test', async () => {
-    assertOpenAiImageApiMutable();
-    const result = await openAiImageApi.test();
-    await syncOpenAiImageApiRuntime();
-    return result;
-  });
-  ipcMain.handle('openai-image-api:clear', async () => {
-    assertOpenAiImageApiMutable();
-    const result = openAiImageApi.clear();
-    await syncOpenAiImageApiRuntime();
-    return result;
-  });
-  const assertDeepSeekApiMutable = () => {
-    if (codex.hasPending) throw new Error('Wait for active AI tasks before changing DeepSeek API configuration');
-  };
-  ipcMain.handle('deepseek-api:get', () => deepSeekApi.status());
-  ipcMain.handle('deepseek-api:save', async (_event, raw) => {
-    assertDeepSeekApiMutable();
-    const result = await deepSeekApi.saveAndTest(deepSeekApiSaveSchema.parse(raw));
-    await syncDeepSeekApiRuntime();
-    return result;
-  });
-  ipcMain.handle('deepseek-api:test', async () => {
-    assertDeepSeekApiMutable();
-    const result = await deepSeekApi.test();
-    await syncDeepSeekApiRuntime();
-    return result;
-  });
-  ipcMain.handle('deepseek-api:clear', async () => {
-    assertDeepSeekApiMutable();
-    const result = deepSeekApi.clear();
-    await syncDeepSeekApiRuntime();
-    return result;
+  registerCodexHistorySearchIpc(ipcMain, extensions, codexHistorySearch);
+  registerCodexVisualizationIpc(ipcMain, extensions, codexVisualizationDiscovery, chooseFile, chooseSaveFile);
+  registerProviderConnectionIpc({
+    ipcMain,
+    extensions,
+    openAiImageApi,
+    deepSeekApi,
+    externalImageApis,
+    generation,
+    codex,
   });
   ipcMain.handle('antigravity-cli:get', () => generation.antigravityCliStatus ?? unavailableAntigravityStatus());
   ipcMain.handle('antigravity-cli:refresh', async () => {
+    if (!extensions.isActivated(ANTIGRAVITY_CLI_EXTENSION_ID)) {
+      throw new Error('Antigravity CLI extension is disabled or missing permissions');
+    }
     if (!generation.refreshAntigravityCli) return generation.antigravityCliStatus ?? unavailableAntigravityStatus();
     return await generation.refreshAntigravityCli();
   });
@@ -303,38 +305,5 @@ export function registerExtensionSettingsIpc({
     const configuration = generationConcurrency.save(input);
     await generation.configureConcurrency?.(configuration);
     return configuration;
-  });
-  const assertExternalImageApiMutable = (extensionId: (typeof EXTERNAL_IMAGE_API_EXTENSION_IDS)[number]) => {
-    if (hasPendingImageConnection(externalImageConnectionId(extensionId))) {
-      throw new Error('Wait for active tasks using this image API connection before changing its configuration');
-    }
-  };
-  ipcMain.handle('external-image-api:get', (_event, rawExtensionId) =>
-    externalImageApis.status(externalImageApiExtensionIdSchema.parse(rawExtensionId)),
-  );
-  ipcMain.handle('external-image-api:save', async (_event, raw) => {
-    const input = externalImageApiSaveSchema.parse(raw);
-    assertExternalImageApiMutable(input.extensionId);
-    const endpointPermission = externalImageApiEndpointPermission(input.extensionId, input.settings);
-    if (endpointPermission && !extensions.isPermissionGranted(input.extensionId, endpointPermission)) {
-      throw new Error(`Grant extension permission ${endpointPermission} before saving this endpoint`);
-    }
-    const result = await externalImageApis.saveAndTest(input);
-    await syncExternalImageApiRuntime();
-    return result;
-  });
-  ipcMain.handle('external-image-api:test', async (_event, rawExtensionId) => {
-    const extensionId = externalImageApiExtensionIdSchema.parse(rawExtensionId);
-    assertExternalImageApiMutable(extensionId);
-    const result = await externalImageApis.test(extensionId);
-    await syncExternalImageApiRuntime();
-    return result;
-  });
-  ipcMain.handle('external-image-api:clear', async (_event, rawExtensionId) => {
-    const extensionId = externalImageApiExtensionIdSchema.parse(rawExtensionId);
-    assertExternalImageApiMutable(extensionId);
-    const result = externalImageApis.clear(extensionId);
-    await syncExternalImageApiRuntime();
-    return result;
   });
 }

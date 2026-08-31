@@ -125,6 +125,17 @@ interface ProcessOptions {
   onStdoutLine?(line: string): void;
 }
 
+interface AntigravityPrintOptions {
+  cwd: string;
+  prompt: string;
+  timeoutMs: number;
+  signal?: AbortSignal;
+  model?: string | null;
+  jsonSchemaPath?: string;
+  mode?: 'plan' | 'accept-edits';
+  workspaceDirectories?: readonly string[];
+}
+
 export class AntigravityCliProcessError extends Error {
   constructor(
     message: string,
@@ -139,6 +150,23 @@ export class AntigravityCliProcessError extends Error {
 
 function cancelledError() {
   return Object.assign(new Error('Antigravity CLI request was cancelled'), { code: 'CANCELLED' as const });
+}
+
+function processFailureDetail(stdout: string, stderr: string) {
+  const standardError = stderr.trim();
+  if (standardError) return standardError.slice(-1_000);
+
+  const standardOutput = stdout.trim();
+  if (!standardOutput) return '';
+  try {
+    const envelope = printEnvelopeSchema.safeParse(JSON.parse(standardOutput) as unknown);
+    if (envelope.success) {
+      return (envelope.data.error?.trim() || envelope.data.response.trim() || envelope.data.status).slice(0, 1_000);
+    }
+  } catch {
+    // Non-print commands return plain text, so fall through to a bounded excerpt.
+  }
+  return standardOutput.slice(0, 1_000);
 }
 
 function resolveAntigravityBinary() {
@@ -259,7 +287,7 @@ function runProcess(binary: string, args: string[], options: ProcessOptions): Pr
           return reject(new AntigravityCliProcessError('Antigravity CLI timed out', stdout, stderr, code));
         }
         if (code === 0) return resolve({ stdout: stdout.trim(), stderr: stderr.trim() });
-        const detail = stderr.trim().slice(-1_000);
+        const detail = processFailureDetail(stdout, stderr);
         return reject(
           new AntigravityCliProcessError(
             `Antigravity CLI ${signal ? `was terminated by ${signal}` : `exited with ${code}`}${detail ? `: ${detail}` : ''}`,
@@ -451,15 +479,7 @@ export class AntigravityCliRuntime {
     return this.status;
   }
 
-  async runPrintJson(options: {
-    cwd: string;
-    prompt: string;
-    timeoutMs: number;
-    signal?: AbortSignal;
-    model?: string | null;
-    jsonSchemaPath?: string;
-    mode?: 'plan' | 'accept-edits';
-  }): Promise<AntigravityPrintEnvelope> {
+  async runPrintJson(options: AntigravityPrintOptions): Promise<AntigravityPrintEnvelope> {
     await this.ensureReady(options.signal);
     const result = await runProcess(this.binary, this.printArguments(options, 'json'), {
       cwd: options.cwd,
@@ -471,15 +491,11 @@ export class AntigravityCliRuntime {
     return envelope;
   }
 
-  async runPrintStream(options: {
-    cwd: string;
-    prompt: string;
-    timeoutMs: number;
-    signal?: AbortSignal;
-    model?: string | null;
-    mode?: 'plan' | 'accept-edits';
-    onEvent(event: AntigravityStreamEvent): void;
-  }): Promise<AntigravityPrintEnvelope> {
+  async runPrintStream(
+    options: AntigravityPrintOptions & {
+      onEvent(event: AntigravityStreamEvent): void;
+    },
+  ): Promise<AntigravityPrintEnvelope> {
     await this.ensureReady(options.signal);
     let terminal: AntigravityPrintEnvelope | null = null;
     await runProcess(this.binary, this.printArguments(options, 'stream-json'), {
@@ -508,16 +524,7 @@ export class AntigravityCliRuntime {
     return envelope;
   }
 
-  private printArguments(
-    options: {
-      prompt: string;
-      timeoutMs: number;
-      model?: string | null;
-      jsonSchemaPath?: string;
-      mode?: 'plan' | 'accept-edits';
-    },
-    outputFormat: 'json' | 'stream-json',
-  ) {
+  private printArguments(options: AntigravityPrintOptions, outputFormat: 'json' | 'stream-json') {
     const model = options.model?.trim();
     if (model && !/^[A-Za-z0-9][A-Za-z0-9._-]{0,199}$/.test(model)) {
       throw new Error('Invalid Antigravity model selection');
@@ -533,6 +540,7 @@ export class AntigravityCliRuntime {
       ...(options.mode ? ['--mode', options.mode] : []),
       ...(model ? ['--model', model] : []),
       ...(options.jsonSchemaPath ? ['--json-schema', options.jsonSchemaPath] : []),
+      ...(options.workspaceDirectories ?? []).flatMap((directory) => ['--add-dir', directory]),
     ];
   }
 

@@ -3,6 +3,7 @@ import type {
   DeepSeekApiRuntimeConfiguration,
   DeepSeekApiRuntimeStatus,
 } from '@/main/extensions/deepseek-api/types';
+import { DEEPSEEK_API_CONNECTION_ID } from '@/shared/extension-ids';
 
 /** In-memory-only DeepSeek credential boundary owned by the detached model worker. */
 export class DeepSeekApiRuntime {
@@ -26,9 +27,11 @@ export class DeepSeekApiRuntime {
   connectionSnapshot(): DeepSeekApiConnectionSnapshot {
     const configuration = this.readyConfiguration();
     return Object.freeze({
-      connectionId: 'deepseek-api-default',
+      connectionId: DEEPSEEK_API_CONNECTION_ID,
       modelId: configuration.modelId,
       responsesUrl: configuration.responsesUrl,
+      visionEndpoint: configuration.visionEndpoint,
+      visionModelId: configuration.visionModelId,
       configurationRevision: configuration.configurationRevision,
     });
   }
@@ -39,6 +42,8 @@ export class DeepSeekApiRuntime {
       apiKey: configuration.apiKey,
       modelId: configuration.modelId,
       responsesUrl: configuration.responsesUrl,
+      visionEndpoint: configuration.visionEndpoint,
+      visionModelId: configuration.visionModelId,
       configurationRevision: configuration.configurationRevision,
     };
   }

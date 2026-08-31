@@ -22,6 +22,7 @@ export function createWorkspaceLoadingBoundaries(
     ),
     dictionary: currentView,
     gallery: currentView,
+    companion: currentView,
     extensions: currentView,
     aiCenter: currentView,
   };

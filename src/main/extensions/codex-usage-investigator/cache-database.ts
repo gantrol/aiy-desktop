@@ -1,4 +1,3 @@
-import { createHash } from 'node:crypto';
 import { mkdirSync } from 'node:fs';
 import path from 'node:path';
 import Database from 'better-sqlite3';
@@ -6,6 +5,9 @@ import { z } from 'zod';
 import codexUsageCacheRevision3Sql from '@/main/database/sql/v03-codex-usage-cache-revision-003.sql?raw';
 import codexUsageCacheRevision4Sql from '@/main/database/sql/v03-codex-usage-cache-revision-004.sql?raw';
 import codexUsageCacheRevision5Sql from '@/main/database/sql/v03-codex-usage-cache-revision-005.sql?raw';
+import codexUsageCacheRevision6Sql from '@/main/database/sql/v03-codex-usage-cache-revision-006.sql?raw';
+import codexUsageCacheRevision6ContextCompactionsSql from '@/main/database/sql/v03-codex-usage-cache-revision-006-context-compactions.sql?raw';
+import codexUsageCacheRevision6TurnSpeedSql from '@/main/database/sql/v03-codex-usage-cache-revision-006-turn-speed.sql?raw';
 import {
   codexUsageCleanupCountsSchema,
   codexUsageHistoryItemSchema,
@@ -20,23 +22,46 @@ import {
   type CodexUsageTask,
 } from '@/shared/contracts/codex-usage';
 import {
-  codexUsageInternalEventSchema,
   codexUsageInternalRowSchema,
   codexUsageSessionReadResultSchema,
   type CodexUsageInternalEvent,
   type CodexUsageInternalRow,
   type SessionReadResult,
 } from '@/main/extensions/codex-usage-investigator/session-reader';
+import {
+  CODEX_USAGE_EVENT_PAGE_SIZE,
+  eventFromStoredRow,
+  storedEventRowSchema,
+  type CodexUsageEventCoverage,
+  type CodexUsageFileFingerprint,
+  type CodexUsageSessionSourceRecord,
+  type CodexUsageStoredChatTurn,
+  type StoredEventRow,
+} from '@/main/extensions/codex-usage-investigator/cache-records';
+import {
+  chatTurnPages as readChatTurnPages,
+  processingWorkload as readProcessingWorkload,
+  sessionAnalysisEventPages as readSessionAnalysisEventPages,
+  sessionSourcePages as readSessionSourcePages,
+} from '@/main/extensions/codex-usage-investigator/session-length-cache';
+import { codexUsageSourceCacheKey } from '@/main/extensions/codex-usage-investigator/source-cache-key';
 import type { CodexUsageServiceTierFallback } from '@/main/extensions/codex-usage-investigator/service-tier-fallback';
+import { readCodexTurnSpeedAnalysis } from '@/main/extensions/codex-usage-investigator/turn-speed';
 
-const DATABASE_SCHEMA_VERSION = 5;
-const SOURCE_ANALYSIS_VERSION = 6;
+export { codexUsageSourceCacheKey } from '@/main/extensions/codex-usage-investigator/source-cache-key';
+
+export type {
+  CodexUsageEventCoverage,
+  CodexUsageFileFingerprint,
+} from '@/main/extensions/codex-usage-investigator/cache-records';
+
+const DATABASE_SCHEMA_VERSION = 6;
+const UNRELEASED_DATABASE_SCHEMA_VERSIONS = new Set([7, 8]);
 const MAX_TASK_JSON_BYTES = 256 * 1024;
 const MAX_HISTORY_JSON_BYTES = 64 * 1024;
 const MAX_INVESTIGATION_JSON_BYTES = 32 * 1024 * 1024;
 const MAX_EXPORT_ROWS_JSON_BYTES = 256 * 1024 * 1024;
 const MAX_PROCESSED_JSON_BYTES = 256 * 1024 * 1024;
-const EVENT_PAGE_SIZE = 2_000;
 
 const taskRowSchema = z.object({ taskJson: z.string() }).strict();
 const historyRowSchema = z.object({ historyJson: z.string() }).strict();
@@ -58,80 +83,6 @@ const coverageRowSchema = z
     sourceEventCount: z.number().int().nonnegative().safe(),
   })
   .strict();
-const storedEventRowSchema = z
-  .object({
-    sessionId: z.string(),
-    eventOrder: z.number().int().nonnegative().safe(),
-    eventFingerprint: z.string().regex(/^[0-9a-f]{64}$/),
-    timestampMs: z.number().int().nonnegative().safe(),
-    timestamp: z.string(),
-    model: z.string(),
-    serviceTier: z.enum(['STANDARD', 'FAST', 'UNKNOWN']),
-    serviceTierInferred: z.union([z.literal(0), z.literal(1)]),
-    quotaKind: z.enum(['MAIN', 'SEPARATE', 'UNKNOWN']),
-    limitId: z.string().nullable(),
-    planType: z.string().nullable(),
-    usedPercent: z.number().finite().nonnegative().nullable(),
-    windowDurationMins: z.number().finite().nonnegative().nullable(),
-    resetsAt: z.number().int().nonnegative().safe().nullable(),
-    secondaryUsedPercent: z.number().finite().nonnegative().nullable(),
-    secondaryWindowDurationMins: z.number().finite().nonnegative().nullable(),
-    secondaryResetsAt: z.number().int().nonnegative().safe().nullable(),
-    inputTokens: z.number().int().nonnegative().safe(),
-    cachedInputTokens: z.number().int().nonnegative().safe(),
-    cacheWriteInputTokens: z.number().int().nonnegative().safe(),
-    outputTokens: z.number().int().nonnegative().safe(),
-    reasoningOutputTokens: z.number().int().nonnegative().safe(),
-    totalTokens: z.number().int().nonnegative().safe(),
-  })
-  .strict();
-
-type StoredEventRow = z.infer<typeof storedEventRowSchema>;
-
-function eventFromStoredRow(row: StoredEventRow): CodexUsageInternalEvent {
-  return codexUsageInternalEventSchema.parse({
-    sessionId: row.sessionId,
-    eventFingerprint: row.eventFingerprint,
-    timestamp: row.timestamp,
-    model: row.model,
-    serviceTier: row.serviceTier,
-    serviceTierInferred: row.serviceTierInferred === 1,
-    quotaKind: row.quotaKind,
-    limitId: row.limitId,
-    planType: row.planType,
-    usedPercent: row.usedPercent,
-    windowDurationMins: row.windowDurationMins,
-    resetsAt: row.resetsAt,
-    secondaryUsedPercent: row.secondaryUsedPercent,
-    secondaryWindowDurationMins: row.secondaryWindowDurationMins,
-    secondaryResetsAt: row.secondaryResetsAt,
-    usage: {
-      inputTokens: row.inputTokens,
-      cachedInputTokens: row.cachedInputTokens,
-      cacheWriteInputTokens: row.cacheWriteInputTokens,
-      outputTokens: row.outputTokens,
-      reasoningOutputTokens: row.reasoningOutputTokens,
-      totalTokens: row.totalTokens,
-    },
-  });
-}
-
-export interface CodexUsageFileFingerprint {
-  sessionId: string;
-  fallbackModel: string | null;
-  size: number;
-  mtimeMs: number;
-  mtimeNs: string;
-  ctimeNs: string;
-}
-
-export interface CodexUsageEventCoverage {
-  storedFrom: string | null;
-  storedTo: string | null;
-  storedSessionCount: number;
-  sourceEventCount: number;
-}
-
 function parseBoundedJson<T>(encoded: string, maximumBytes: number, schema: z.ZodType<T>) {
   if (Buffer.byteLength(encoded, 'utf8') > maximumBytes) return null;
   let decoded: unknown;
@@ -149,8 +100,10 @@ function historyItem(investigation: CodexUsageInvestigation): CodexUsageHistoryI
     investigationId: investigation.investigationId,
     generatedAt: investigation.generatedAt,
     range: investigation.range,
+    dateRange: investigation.dateRange,
     timeZone: investigation.timeZone,
     granularity: investigation.granularity,
+    detailedStatistics: investigation.sessionLength !== null,
     algorithmVersion: investigation.quotaYield?.algorithmVersion ?? 7,
     yieldEstimateCount: investigation.quotaYield?.estimates.length ?? 0,
     yieldSampleCount: investigation.quotaYield?.samples.length ?? 0,
@@ -165,34 +118,6 @@ function historyItem(investigation: CodexUsageInvestigation): CodexUsageHistoryI
     bytesRead: investigation.bytesRead,
     durationMs: investigation.durationMs,
   });
-}
-
-export function codexUsageSourceCacheKey(
-  file: CodexUsageFileFingerprint,
-  serviceTierFallback?: CodexUsageServiceTierFallback | null,
-) {
-  const applicableFallback =
-    serviceTierFallback && file.mtimeMs >= serviceTierFallback.effectiveFromEpoch ? serviceTierFallback : null;
-  return createHash('sha256')
-    .update(
-      JSON.stringify({
-        version: SOURCE_ANALYSIS_VERSION,
-        sessionId: file.sessionId,
-        fallbackModel: file.fallbackModel,
-        size: file.size,
-        mtimeNs: file.mtimeNs,
-        ctimeNs: file.ctimeNs,
-        serviceTierFallback: applicableFallback
-          ? {
-              serviceTier: applicableFallback.serviceTier,
-              effectiveFromEpoch: applicableFallback.effectiveFromEpoch,
-              sourceRevision: applicableFallback.sourceRevision,
-            }
-          : null,
-      }),
-      'utf8',
-    )
-    .digest('hex');
 }
 
 export class CodexUsageCacheDatabase {
@@ -327,39 +252,52 @@ export class CodexUsageCacheDatabase {
     const parsed = codexUsageSessionReadResultSchema.parse(result);
     const events = [...parsed.events].sort(
       (left, right) =>
-        Date.parse(left.timestamp) - Date.parse(right.timestamp) || left.model.localeCompare(right.model),
+        Date.parse(left.timestamp) - Date.parse(right.timestamp) ||
+        (left.turnId ?? '').localeCompare(right.turnId ?? ''),
     );
+    const chatTurns = [...parsed.chatTurns].sort((left, right) => left.turnOrder - right.turnOrder);
     const cacheKey = codexUsageSourceCacheKey(file, serviceTierFallback);
     const firstEventMs = events.length ? Date.parse(events[0]!.timestamp) : null;
     const lastEventMs = events.length ? Date.parse(events.at(-1)!.timestamp) : null;
     const updatedAt = new Date().toISOString();
     const upsertSource = this.database.prepare(
       `INSERT INTO usage_source_files (
-        session_id, cache_key, size_bytes, mtime_ns, ctime_ns, first_event_ms, last_event_ms,
-        event_count, invalid_records, oversized_records, bytes_read, updated_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        session_id, cache_key, size_bytes, mtime_ns, ctime_ns, thread_source, thread_created_ms,
+        first_event_ms, last_event_ms, event_count, invalid_records, oversized_records,
+        bytes_read, context_compaction_count, turn_metadata_complete, updated_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       ON CONFLICT(session_id) DO UPDATE SET
         cache_key = excluded.cache_key,
         size_bytes = excluded.size_bytes,
         mtime_ns = excluded.mtime_ns,
         ctime_ns = excluded.ctime_ns,
+        thread_source = excluded.thread_source,
+        thread_created_ms = excluded.thread_created_ms,
         first_event_ms = excluded.first_event_ms,
         last_event_ms = excluded.last_event_ms,
         event_count = excluded.event_count,
         invalid_records = excluded.invalid_records,
         oversized_records = excluded.oversized_records,
         bytes_read = excluded.bytes_read,
+        context_compaction_count = excluded.context_compaction_count,
+        turn_metadata_complete = excluded.turn_metadata_complete,
         updated_at = excluded.updated_at`,
     );
     const insertEvent = this.database.prepare(
       `INSERT INTO usage_events (
-        source_session_id, event_order, event_fingerprint, timestamp_ms, timestamp, model,
+        source_session_id, event_order, event_fingerprint, turn_id, timestamp_ms, timestamp, model,
         service_tier, service_tier_inferred, quota_kind,
         limit_id, plan_type, used_percent, window_duration_mins, resets_at,
         secondary_used_percent, secondary_window_duration_mins, secondary_resets_at,
         input_tokens, cached_input_tokens, cache_write_input_tokens, output_tokens,
         reasoning_output_tokens, total_tokens
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    );
+    const insertChatTurn = this.database.prepare(
+      `INSERT INTO usage_chat_turns (
+        source_session_id, turn_order, turn_id, started_ms, started_at,
+        terminal_ms, terminal_at, terminal_state, duration_ms, model, reasoning_effort, service_tier
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     );
     this.database.transaction(() => {
       upsertSource.run(
@@ -368,20 +306,42 @@ export class CodexUsageCacheDatabase {
         file.size,
         file.mtimeNs,
         file.ctimeNs,
+        file.threadSource,
+        file.createdAtMs,
         firstEventMs,
         lastEventMs,
         events.length,
         parsed.invalidRecords,
         parsed.oversizedRecords,
         parsed.bytesRead,
+        parsed.contextCompactionCount,
+        parsed.turnMetadataComplete ? 1 : 0,
         updatedAt,
       );
       this.database.prepare('DELETE FROM usage_events WHERE source_session_id = ?').run(file.sessionId);
+      this.database.prepare('DELETE FROM usage_chat_turns WHERE source_session_id = ?').run(file.sessionId);
+      chatTurns.forEach((turn) => {
+        insertChatTurn.run(
+          file.sessionId,
+          turn.turnOrder,
+          turn.turnId,
+          Date.parse(turn.startedAt),
+          turn.startedAt,
+          turn.terminalAt ? Date.parse(turn.terminalAt) : null,
+          turn.terminalAt,
+          turn.terminalState,
+          turn.durationMs,
+          turn.model,
+          turn.reasoningEffort,
+          turn.serviceTier,
+        );
+      });
       events.forEach((event, eventOrder) => {
         insertEvent.run(
           file.sessionId,
           eventOrder,
           event.eventFingerprint,
+          event.turnId,
           Date.parse(event.timestamp),
           event.timestamp,
           event.model,
@@ -431,6 +391,7 @@ export class CodexUsageCacheDatabase {
           current.source_session_id AS sessionId,
           current.event_order AS eventOrder,
           current.event_fingerprint AS eventFingerprint,
+          current.turn_id AS turnId,
           current.timestamp_ms AS timestampMs,
           current.timestamp,
           current.model,
@@ -483,16 +444,46 @@ export class CodexUsageCacheDatabase {
     while (true) {
       const rows = z
         .array(storedEventRowSchema)
-        .max(EVENT_PAGE_SIZE)
+        .max(CODEX_USAGE_EVENT_PAGE_SIZE)
         .parse(
-          statement.all(fromEpoch, toEpoch, cursor.timestampMs, cursor.sessionId, cursor.eventOrder, EVENT_PAGE_SIZE),
+          statement.all(
+            fromEpoch,
+            toEpoch,
+            cursor.timestampMs,
+            cursor.sessionId,
+            cursor.eventOrder,
+            CODEX_USAGE_EVENT_PAGE_SIZE,
+          ),
         );
       if (!rows.length) return;
       yield rows.map(eventFromStoredRow);
       const last = rows.at(-1);
-      if (!last || rows.length < EVENT_PAGE_SIZE) return;
+      if (!last || rows.length < CODEX_USAGE_EVENT_PAGE_SIZE) return;
       cursor = last;
     }
+  }
+
+  *sessionSourcePages(): Iterable<ReadonlyArray<CodexUsageSessionSourceRecord>> {
+    yield* readSessionSourcePages(this.database);
+  }
+
+  processingWorkload() {
+    return readProcessingWorkload(this.database);
+  }
+
+  *chatTurnPages(): Iterable<ReadonlyArray<CodexUsageStoredChatTurn>> {
+    yield* readChatTurnPages(this.database);
+  }
+
+  *sessionAnalysisEventPages(
+    fromEpoch: number | null,
+    toEpoch: number,
+  ): Iterable<ReadonlyArray<CodexUsageInternalEvent>> {
+    yield* readSessionAnalysisEventPages(this.database, fromEpoch, toEpoch);
+  }
+
+  turnSpeedAnalysis(fromEpoch: number | null, toEpoch: number) {
+    return readCodexTurnSpeedAnalysis(this.database, fromEpoch, toEpoch);
   }
 
   currentDataRevision() {
@@ -673,7 +664,9 @@ export class CodexUsageCacheDatabase {
       .int()
       .nonnegative()
       .parse(this.database.pragma('user_version', { simple: true }));
-    if (version > DATABASE_SCHEMA_VERSION) throw new Error('Codex usage cache database is newer than this app');
+    if (version > DATABASE_SCHEMA_VERSION && !UNRELEASED_DATABASE_SCHEMA_VERSIONS.has(version)) {
+      throw new Error('Codex usage cache database is newer than this app');
+    }
     const hasEventFingerprintColumn = z
       .array(sqliteTableInfoRowSchema)
       .parse(this.database.pragma('table_info(usage_events)'))
@@ -682,7 +675,38 @@ export class CodexUsageCacheDatabase {
       .array(sqliteTableInfoRowSchema)
       .parse(this.database.pragma('table_info(usage_events)'))
       .some((column) => column.name === 'service_tier_inferred');
-    if (version === DATABASE_SCHEMA_VERSION && hasEventFingerprintColumn && hasServiceTierInferredColumn) return;
+    const hasTurnIdColumn = z
+      .array(sqliteTableInfoRowSchema)
+      .parse(this.database.pragma('table_info(usage_events)'))
+      .some((column) => column.name === 'turn_id');
+    const sourceColumns = z
+      .array(sqliteTableInfoRowSchema)
+      .parse(this.database.pragma('table_info(usage_source_files)'));
+    const hasThreadSourceColumn = sourceColumns.some((column) => column.name === 'thread_source');
+    const hasTurnMetadataCompleteColumn = sourceColumns.some((column) => column.name === 'turn_metadata_complete');
+    const hasThreadCreatedMsColumn = sourceColumns.some((column) => column.name === 'thread_created_ms');
+    const hasContextCompactionCountColumn = sourceColumns.some((column) => column.name === 'context_compaction_count');
+    const chatTurnColumns = z
+      .array(sqliteTableInfoRowSchema)
+      .parse(this.database.pragma('table_info(usage_chat_turns)'));
+    const hasChatTurnsTable = chatTurnColumns.length > 0;
+    const hasTurnSpeedColumns = ['duration_ms', 'model', 'reasoning_effort', 'service_tier'].every((name) =>
+      chatTurnColumns.some((column) => column.name === name),
+    );
+    if (
+      version === DATABASE_SCHEMA_VERSION &&
+      hasEventFingerprintColumn &&
+      hasServiceTierInferredColumn &&
+      hasTurnIdColumn &&
+      hasThreadSourceColumn &&
+      hasTurnMetadataCompleteColumn &&
+      hasThreadCreatedMsColumn &&
+      hasContextCompactionCountColumn &&
+      hasChatTurnsTable &&
+      hasTurnSpeedColumns
+    ) {
+      return;
+    }
     this.database.transaction(() => {
       if (version < 1) {
         this.database.exec(
@@ -769,6 +793,37 @@ export class CodexUsageCacheDatabase {
       if (version < 3) this.database.exec(codexUsageCacheRevision3Sql);
       if (!hasEventFingerprintColumn) this.database.exec(codexUsageCacheRevision4Sql);
       if (!hasServiceTierInferredColumn) this.database.exec(codexUsageCacheRevision5Sql);
+      if (
+        !hasTurnIdColumn ||
+        !hasThreadSourceColumn ||
+        !hasTurnMetadataCompleteColumn ||
+        !hasThreadCreatedMsColumn ||
+        !hasChatTurnsTable
+      ) {
+        if (!hasThreadSourceColumn) {
+          this.database.exec(
+            `ALTER TABLE usage_source_files
+             ADD COLUMN thread_source TEXT NOT NULL DEFAULT 'OTHER'
+             CHECK (thread_source IN ('USER', 'SUBAGENT', 'OTHER'))`,
+          );
+        }
+        if (!hasTurnMetadataCompleteColumn) {
+          this.database.exec(
+            `ALTER TABLE usage_source_files
+             ADD COLUMN turn_metadata_complete INTEGER NOT NULL DEFAULT 0
+             CHECK (turn_metadata_complete IN (0, 1))`,
+          );
+        }
+        if (!hasThreadCreatedMsColumn) {
+          this.database.exec('ALTER TABLE usage_source_files ADD COLUMN thread_created_ms INTEGER NOT NULL DEFAULT 0');
+        }
+        if (!hasTurnIdColumn) {
+          this.database.exec('ALTER TABLE usage_events ADD COLUMN turn_id TEXT');
+        }
+        this.database.exec(codexUsageCacheRevision6Sql);
+      }
+      if (!hasContextCompactionCountColumn) this.database.exec(codexUsageCacheRevision6ContextCompactionsSql);
+      if (!hasTurnSpeedColumns) this.database.exec(codexUsageCacheRevision6TurnSpeedSql);
       this.database.pragma(`user_version = ${DATABASE_SCHEMA_VERSION}`);
     })();
   }

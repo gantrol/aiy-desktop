@@ -35,6 +35,10 @@
     var(--ease-enter) both;
 }
 
+.local-space-transition[data-stage='READY'] .local-space-transition-card {
+  animation: none;
+}
+
 .local-space-transition-stage {
   animation: local-space-transition-stage-in var(--space-transition-stage-duration, var(--motion-fast))
     var(--ease-enter) both;

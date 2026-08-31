@@ -1,36 +1,14 @@
-import { useEffect, useMemo, useState } from 'react';
-import type { BootstrapDto, ExtensionContributionPoint, ExtensionDto } from '@/shared/contracts';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import type { BootstrapDto, ExtensionDto } from '@/shared/contracts';
 import { localizeExtensionManifest } from '@/shared/extension-localization';
-import { EXTENSION_HOST_ENGINE_KEY } from '@/shared/product';
-import {
-  BlocksIcon,
-  LanguagesIcon,
-  PackagePlusIcon,
-  PowerIcon,
-  RefreshCwIcon,
-  ShieldCheckIcon,
-  Trash2Icon,
-} from 'lucide-react';
+import { BlocksIcon, LanguagesIcon, PackagePlusIcon, PowerIcon, RefreshCwIcon, Trash2Icon } from 'lucide-react';
 import { Badge } from '@/renderer/components/ui/badge';
 import { Button } from '@/renderer/components/ui/button';
-import { Checkbox } from '@/renderer/components/ui/checkbox';
 import { ScrollArea } from '@/renderer/components/ui/scroll-area';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/renderer/components/ui/tabs';
 import { cn } from '@/renderer/lib/utils';
 import { useI18n } from '@/renderer/i18n/useI18n';
-import {
-  ANTIGRAVITY_CLI_EXTENSION_ID,
-  CODEX_IMAGE_DISCOVERY_EXTENSION_ID,
-  CODEX_USAGE_INVESTIGATOR_EXTENSION_ID,
-  DEEPSEEK_API_EXTENSION_ID,
-  EXTERNAL_IMAGE_API_EXTENSION_IDS,
-  FEATURE_DEMO_EXTENSION_ID,
-  OPENAI_IMAGE_API_EXTENSION_ID,
-  TRANSITION_SHOWCASE_EXTENSION_ID,
-} from '@/shared/extension-ids';
-import { CodexImageDiscoveryConfiguration } from '@/renderer/features/extensions/CodexImageDiscoveryConfiguration';
-import { OpenAiImageApiConfiguration } from '@/renderer/features/extensions/OpenAiImageApiConfiguration';
-import { DeepSeekApiConfiguration } from '@/renderer/features/extensions/DeepSeekApiConfiguration';
-import { ExternalImageApiConfiguration } from '@/renderer/features/extensions/ExternalImageApiConfiguration';
+import { DEEPSEEK_API_EXTENSION_ID, FEATURE_DEMO_EXTENSION_ID } from '@/shared/extension-ids';
 import { publishLanguagePluginState } from '@/renderer/i18n/languagePluginState';
 import type { NavigationMode } from '@/renderer/components/app/app-navigation';
 import { DeleteEntityDialog } from '@/renderer/components/app/DeleteEntityDialog';
@@ -41,11 +19,13 @@ import {
   visibleExtensionCenterItems,
 } from '@/renderer/features/extensions/extensionPluginGroups';
 import type { CodexImagesNavigationState } from '@/renderer/features/extensions/codexImageNavigation';
+import { ExtensionFeatureErrorBoundary } from '@/renderer/features/extensions/ExtensionFeatureErrorBoundary';
+import {
+  ExtensionPluginFeaturePage,
+  hasExtensionPluginFeature,
+} from '@/renderer/features/extensions/ExtensionPluginFeaturePage';
+import { ExtensionPluginSettingsPage } from '@/renderer/features/extensions/ExtensionPluginSettingsPage';
 import type { TransitionShowcaseNavigationState } from '@/renderer/features/extensions/transitionShowcaseNavigation';
-import { TransitionShowcase } from '@/renderer/features/extensions/TransitionShowcase';
-import { FeatureDemoShowcase } from '@/renderer/features/extensions/FeatureDemoShowcase';
-import { AntigravityCliConfiguration } from '@/renderer/features/extensions/AntigravityCliConfiguration';
-import { CodexUsageInvestigatorConfiguration } from '@/renderer/features/extensions/CodexUsageInvestigatorConfiguration';
 
 interface Props {
   active: boolean;
@@ -60,109 +40,20 @@ interface Props {
   onOpenCreation(seriesId: string, assetId: string | null): Promise<void>;
 }
 
-const contributionOrder: ExtensionContributionPoint[] = [
-  'modelProviders',
-  'tools',
-  'workflows',
-  'commands',
-  'searchProviders',
-  'filters',
-  'fields',
-  'themes',
-];
-const externalImageApiExtensionIds = new Set<string>(EXTERNAL_IMAGE_API_EXTENSION_IDS);
-
-function TransitionShowcasePanel({
-  active,
-  data,
-  dataRevision,
-  extension,
-  notify,
-}: {
-  active: boolean;
-  data: BootstrapDto;
-  dataRevision: number;
-  extension: ExtensionDto;
-  notify(message: string): void;
-}) {
-  if (extension.manifest.id !== TRANSITION_SHOWCASE_EXTENSION_ID || !extension.enabled) return null;
-  return (
-    <TransitionShowcase
-      active={active}
-      libraryKey={data.spaceName}
-      dataRevision={dataRevision}
-      terms={data.terms}
-      facets={data.facets}
-      notify={notify}
-    />
-  );
+function hasPendingExtensionMutation(busyKey: string, pendingPermissionKeys: ReadonlySet<string>) {
+  return Boolean(busyKey) || pendingPermissionKeys.size > 0;
 }
 
-function FeatureDemoPanel({
-  data,
-  extension,
-  extensions,
-  notify,
-}: {
-  data: BootstrapDto;
-  extension: ExtensionDto;
-  extensions: readonly ExtensionDto[];
-  notify(message: string): void;
-}) {
-  if (extension.manifest.id !== FEATURE_DEMO_EXTENSION_ID || !extension.enabled) return null;
-  return <FeatureDemoShowcase data={data} extensions={extensions} notify={notify} />;
-}
-
-function AntigravityConfigurationPanel({
-  active,
-  extension,
-  onConnectionChanged,
-}: {
-  active: boolean;
-  extension: ExtensionDto;
-  onConnectionChanged(): void | Promise<void>;
-}) {
-  if (extension.manifest.id !== ANTIGRAVITY_CLI_EXTENSION_ID) return null;
-  return <AntigravityCliConfiguration active={active && extension.enabled} onConnectionChanged={onConnectionChanged} />;
-}
-
-function ExtensionNavigationPreference({
-  busy,
-  extension,
-  codexImagesNavigation,
-  transitionShowcaseNavigation,
-}: {
-  busy: boolean;
-  extension: ExtensionDto;
-  codexImagesNavigation: CodexImagesNavigationState;
-  transitionShowcaseNavigation: TransitionShowcaseNavigationState;
-}) {
-  const l = useI18n().messages.extensions;
-  if (extension.manifest.id === CODEX_IMAGE_DISCOVERY_EXTENSION_ID) {
-    return (
-      <label className="flex min-h-11 cursor-pointer items-center justify-between gap-4 rounded-lg border px-4 py-3 text-sm font-medium">
-        <span>{l.codexImageDiscovery.actions.showInSidebar}</span>
-        <Checkbox
-          checked={codexImagesNavigation.enabled}
-          disabled={!extension.enabled || busy}
-          onCheckedChange={(checked) => codexImagesNavigation.setEnabled(checked === true)}
-        />
-      </label>
-    );
+function initialSelectedExtensionId(requestedId: string | null, extensions: readonly ExtensionDto[]) {
+  const visibleExtensions = visibleExtensionCenterItems(extensions);
+  if (
+    requestedId &&
+    requestedId !== FEATURE_DEMO_EXTENSION_ID &&
+    visibleExtensions.some((extension) => extension.manifest.id === requestedId)
+  ) {
+    return requestedId;
   }
-  if (extension.manifest.id === TRANSITION_SHOWCASE_EXTENSION_ID) {
-    return (
-      <label className="flex min-h-11 cursor-pointer items-center justify-between gap-4 rounded-lg border px-4 py-3 text-sm font-medium">
-        <span>{l.transitionShowcase.showInSidebar}</span>
-        <Checkbox
-          checked={transitionShowcaseNavigation.enabled}
-          disabled={!extension.enabled || busy}
-          onCheckedChange={(checked) => transitionShowcaseNavigation.setEnabled(checked === true)}
-        />
-      </label>
-    );
-  }
-  return null;
+  return firstGroupedExtensionId(visibleExtensions);
 }
 
 export function ExtensionPluginScreen({
@@ -179,14 +70,18 @@ export function ExtensionPluginScreen({
 }: Props) {
   const { locale, messages } = useI18n();
   const l = messages.extensions;
-  const [extensions, setExtensions] = useState<ExtensionDto[]>([]);
-  const [selectedId, setSelectedId] = useState(
-    requestedId && requestedId !== FEATURE_DEMO_EXTENSION_ID ? requestedId : '',
-  );
+  const [extensions, setExtensions] = useState<ExtensionDto[]>(() => data.extensions ?? []);
+  const appliedBootstrapExtensionsRef = useRef(data.extensions);
+  const [selectedId, setSelectedId] = useState(() => initialSelectedExtensionId(requestedId, data.extensions ?? []));
   const [loading, setLoading] = useState(false);
   const [busyKey, setBusyKey] = useState('');
+  const [pendingPermissionKeys, setPendingPermissionKeys] = useState<Set<string>>(() => new Set());
   const [error, setError] = useState('');
   const [uninstallTarget, setUninstallTarget] = useState<ExtensionDto | null>(null);
+  const [tabSelection, setTabSelection] = useState<{
+    extensionId: string;
+    tab: 'feature' | 'settings';
+  } | null>(null);
 
   async function load(refreshConnection = false) {
     setLoading(true);
@@ -213,18 +108,43 @@ export function ExtensionPluginScreen({
   }
 
   useEffect(() => {
-    if (active) void load();
-  }, [active]);
+    if (appliedBootstrapExtensionsRef.current === data.extensions) return;
+    appliedBootstrapExtensionsRef.current = data.extensions;
+    const next = data.extensions ?? [];
+    setExtensions(next);
+    setSelectedId((current) => {
+      const visibleNext = visibleExtensionCenterItems(next);
+      return visibleNext.some((extension) => extension.manifest.id === current)
+        ? current
+        : firstGroupedExtensionId(visibleNext);
+    });
+  }, [data.extensions]);
 
   useEffect(() => {
-    if (requestedId !== null && requestedId !== FEATURE_DEMO_EXTENSION_ID) setSelectedId(requestedId);
-  }, [requestedId]);
+    if (
+      requestedId !== null &&
+      requestedId !== FEATURE_DEMO_EXTENSION_ID &&
+      visibleExtensionCenterItems(extensions).some((extension) => extension.manifest.id === requestedId)
+    ) {
+      setSelectedId(requestedId);
+    }
+  }, [extensions, requestedId]);
 
   const visibleExtensions = useMemo(() => visibleExtensionCenterItems(extensions), [extensions]);
   const selected = useMemo(
     () => visibleExtensions.find((extension) => extension.manifest.id === selectedId) ?? null,
     [selectedId, visibleExtensions],
   );
+
+  function setPermissionPending(key: string, pending: boolean) {
+    setPendingPermissionKeys((current) => {
+      const next = new Set(current);
+      if (pending) next.add(key);
+      else next.delete(key);
+      return next;
+    });
+  }
+
   async function setEnabled(extension: ExtensionDto, enabled: boolean) {
     setBusyKey(`enabled:${extension.manifest.id}`);
     setError('');
@@ -246,7 +166,8 @@ export function ExtensionPluginScreen({
 
   async function setPermission(extension: ExtensionDto, permission: string, granted: boolean) {
     const key = `permission:${extension.manifest.id}:${permission}`;
-    setBusyKey(key);
+    if (busyKey || pendingPermissionKeys.has(key)) return;
+    setPermissionPending(key, true);
     setError('');
     try {
       const next = await window.desktopApi.extensionSetPermission({
@@ -260,7 +181,7 @@ export function ExtensionPluginScreen({
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : String(reason));
     } finally {
-      setBusyKey('');
+      setPermissionPending(key, false);
     }
   }
 
@@ -316,6 +237,10 @@ export function ExtensionPluginScreen({
   ).length;
   const selectedIsLastLanguage =
     selected?.manifest.kind === 'LANGUAGE' && selected.enabled && enabledLanguageCount === 1;
+  const hasFeature = Boolean(selected && hasExtensionPluginFeature(selected));
+  const requestedTab = tabSelection && tabSelection.extensionId === selected?.manifest.id ? tabSelection.tab : null;
+  const pluginTab = hasFeature && requestedTab !== 'settings' ? 'feature' : 'settings';
+  const controlsBusy = hasPendingExtensionMutation(busyKey, pendingPermissionKeys);
 
   return (
     <div
@@ -328,7 +253,7 @@ export function ExtensionPluginScreen({
             type="button"
             variant="outline"
             className="w-full"
-            disabled={Boolean(busyKey)}
+            disabled={controlsBusy}
             onClick={() => void installLocal()}
           >
             <PackagePlusIcon className="size-4" />
@@ -383,7 +308,7 @@ export function ExtensionPluginScreen({
                   variant="ghost"
                   size="icon"
                   aria-label={l.actions.refresh}
-                  disabled={loading || Boolean(busyKey)}
+                  disabled={loading || controlsBusy}
                   onClick={() => void load(true)}
                 >
                   <RefreshCwIcon className={cn('size-4', loading && 'animate-spin')} />
@@ -391,7 +316,7 @@ export function ExtensionPluginScreen({
                 <Button
                   type="button"
                   variant={selected.enabled ? 'outline' : 'default'}
-                  disabled={Boolean(busyKey) || selectedIsLastLanguage}
+                  disabled={controlsBusy || selectedIsLastLanguage}
                   title={selectedIsLastLanguage ? l.notices.languageRequired : undefined}
                   onClick={() => void setEnabled(selected, !selected.enabled)}
                 >
@@ -402,7 +327,7 @@ export function ExtensionPluginScreen({
                   <Button
                     type="button"
                     variant="destructive"
-                    disabled={Boolean(busyKey)}
+                    disabled={controlsBusy}
                     onClick={() => {
                       setError('');
                       setUninstallTarget(selected);
@@ -415,124 +340,48 @@ export function ExtensionPluginScreen({
               </div>
             </div>
 
-            <dl className="grid grid-cols-2 gap-px overflow-hidden rounded-lg border bg-border text-sm sm:grid-cols-4">
-              <div className="bg-background p-3">
-                <dt className="text-xs text-muted-foreground">{l.fields.manifest}</dt>
-                <dd className="mt-1 font-medium">{selected.manifest.manifestVersion}</dd>
-              </div>
-              <div className="bg-background p-3">
-                <dt className="text-xs text-muted-foreground">{l.fields.engine}</dt>
-                <dd className="mt-1 font-medium">{selected.manifest.engines[EXTENSION_HOST_ENGINE_KEY]}</dd>
-              </div>
-              <div className="bg-background p-3">
-                <dt className="text-xs text-muted-foreground">{l.fields.source}</dt>
-                <dd className="mt-1 font-medium">{l.source[selected.source]}</dd>
-              </div>
-              <div className="bg-background p-3">
-                <dt className="text-xs text-muted-foreground">{l.fields.compatibility}</dt>
-                <dd className="mt-1 font-medium">{selected.compatible ? l.compatible : l.incompatible}</dd>
-              </div>
-              {selected.manifest.runtime && (
-                <div className="bg-background p-3">
-                  <dt className="text-xs text-muted-foreground">{l.fields.runtime}</dt>
-                  <dd className="mt-1 font-medium">{selected.manifest.runtime.id}</dd>
-                </div>
+            <Tabs
+              value={pluginTab}
+              onValueChange={(tab) =>
+                setTabSelection({ extensionId: selected.manifest.id, tab: tab as 'feature' | 'settings' })
+              }
+              className="gap-6"
+            >
+              <TabsList>
+                {hasFeature && <TabsTrigger value="feature">{l.pluginTabs.feature}</TabsTrigger>}
+                <TabsTrigger value="settings">{l.pluginTabs.settings}</TabsTrigger>
+              </TabsList>
+              {hasFeature && (
+                <TabsContent value="feature">
+                  <ExtensionFeatureErrorBoundary scope={`${selected.manifest.id}:feature`}>
+                    <ExtensionPluginFeaturePage
+                      active={active}
+                      data={data}
+                      dataRevision={dataRevision}
+                      extension={selected}
+                      extensions={extensions}
+                      notify={notify}
+                      onOpenCreation={onOpenCreation}
+                    />
+                  </ExtensionFeatureErrorBoundary>
+                </TabsContent>
               )}
-            </dl>
-
-            <ExtensionNavigationPreference
-              busy={Boolean(busyKey)}
-              extension={selected}
-              codexImagesNavigation={codexImagesNavigation}
-              transitionShowcaseNavigation={transitionShowcaseNavigation}
-            />
-
-            {selected.manifest.id === OPENAI_IMAGE_API_EXTENSION_ID && (
-              <OpenAiImageApiConfiguration active={active} notify={notify} onConnectionChanged={() => load(false)} />
-            )}
-            {selected.manifest.id === DEEPSEEK_API_EXTENSION_ID && (
-              <DeepSeekApiConfiguration active={active} notify={notify} onConnectionChanged={() => load(false)} />
-            )}
-            <AntigravityConfigurationPanel
-              active={active}
-              extension={selected}
-              onConnectionChanged={() => load(false)}
-            />
-            {externalImageApiExtensionIds.has(selected.manifest.id) && (
-              <ExternalImageApiConfiguration
-                active={active}
-                manifest={selected.manifest}
-                notify={notify}
-                onConnectionChanged={() => load(false)}
-              />
-            )}
-            {selected.manifest.id === CODEX_IMAGE_DISCOVERY_EXTENSION_ID && (
-              <CodexImageDiscoveryConfiguration
-                active={active}
-                extension={selected}
-                notify={notify}
-                onOpenCreation={onOpenCreation}
-              />
-            )}
-            {selected.manifest.id === CODEX_USAGE_INVESTIGATOR_EXTENSION_ID && (
-              <CodexUsageInvestigatorConfiguration active={active} extension={selected} notify={notify} />
-            )}
-            <TransitionShowcasePanel
-              active={active}
-              data={data}
-              dataRevision={dataRevision}
-              extension={selected}
-              notify={notify}
-            />
-            <FeatureDemoPanel data={data} extension={selected} extensions={extensions} notify={notify} />
-
-            <div className="grid gap-5 lg:grid-cols-2">
-              <section className="rounded-lg border">
-                <h3 className="flex items-center gap-2 border-b px-4 py-3 text-sm font-semibold">
-                  <BlocksIcon className="size-4" />
-                  {l.sections.contributions}
-                </h3>
-                <div className="divide-y">
-                  {contributionOrder.flatMap((point) =>
-                    (selected.manifest.contributes[point] ?? []).map((contribution) => (
-                      <div key={`${point}:${contribution}`} className="flex items-center gap-3 px-4 py-2.5 text-sm">
-                        <span className="min-w-0 flex-1 truncate">{contribution}</span>
-                        <Badge variant="outline">{l.contributionPoints[point]}</Badge>
-                      </div>
-                    )),
-                  )}
-                </div>
-              </section>
-
-              <section className="rounded-lg border">
-                <h3 className="flex items-center gap-2 border-b px-4 py-3 text-sm font-semibold">
-                  <ShieldCheckIcon className="size-4" />
-                  {l.sections.permissions}
-                </h3>
-                <div className="divide-y">
-                  {selected.permissions.map((permission) => {
-                    const key = `permission:${selected.manifest.id}:${permission.key}`;
-                    return (
-                      <label
-                        key={permission.key}
-                        className="flex cursor-pointer items-center gap-3 px-4 py-2.5 text-sm"
-                      >
-                        <Checkbox
-                          checked={permission.granted}
-                          disabled={Boolean(busyKey)}
-                          onCheckedChange={(checked) => void setPermission(selected, permission.key, checked === true)}
-                        />
-                        <span className="min-w-0 flex-1 break-all font-mono text-xs">{permission.key}</span>
-                        <Badge variant={permission.required ? 'secondary' : 'outline'}>
-                          {permission.required ? l.required : l.optional}
-                        </Badge>
-                        {busyKey === key && <RefreshCwIcon className="size-3.5 animate-spin text-muted-foreground" />}
-                      </label>
-                    );
-                  })}
-                </div>
-              </section>
-            </div>
+              <TabsContent value="settings">
+                <ExtensionFeatureErrorBoundary scope={`${selected.manifest.id}:settings`}>
+                  <ExtensionPluginSettingsPage
+                    active={active}
+                    busyKey={busyKey}
+                    pendingPermissionKeys={pendingPermissionKeys}
+                    extension={selected}
+                    codexImagesNavigation={codexImagesNavigation}
+                    transitionShowcaseNavigation={transitionShowcaseNavigation}
+                    notify={notify}
+                    onConnectionChanged={() => load(false)}
+                    onPermissionChange={(permission, granted) => setPermission(selected, permission, granted)}
+                  />
+                </ExtensionFeatureErrorBoundary>
+              </TabsContent>
+            </Tabs>
 
             {error && (
               <div
@@ -562,7 +411,7 @@ export function ExtensionPluginScreen({
         busy={busyKey.startsWith('uninstall:')}
         error={uninstallTarget ? error : undefined}
         onOpenChange={(open) => {
-          if (!open && !busyKey) setUninstallTarget(null);
+          if (!open && !controlsBusy) setUninstallTarget(null);
         }}
         onConfirm={() => void uninstallLocal()}
       />

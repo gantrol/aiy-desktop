@@ -3,21 +3,24 @@ import {
   BoldIcon,
   CheckIcon,
   ChevronDownIcon,
+  ChevronLeftIcon,
+  ChevronRightIcon,
   Code2Icon,
-  Columns3Icon,
   ItalicIcon,
   ImagePlusIcon,
   LinkIcon,
   ListChecksIcon,
   ListIcon,
   ListOrderedIcon,
+  MessageSquareIcon,
+  MessageSquarePlusIcon,
   MinusIcon,
+  MapPinIcon,
   QuoteIcon,
   Redo2Icon,
-  Rows3Icon,
+  RouteIcon,
+  SearchIcon,
   StrikethroughIcon,
-  Table2Icon,
-  Trash2Icon,
   Undo2Icon,
   UnlinkIcon,
   UploadIcon,
@@ -25,6 +28,10 @@ import {
 import type { ReactNode } from 'react';
 import { useRef, useState } from 'react';
 import type {
+  ArticleEditTrailEntryDto,
+  ArticleEditorLocationDto,
+  ArticleCommentDto,
+  AssetDto,
   CreatorImageImportSource,
   VideoDocumentFrameCaptureResult,
   VideoDocumentMediaBinding,
@@ -39,19 +46,79 @@ import { Separator } from '@/renderer/components/ui/separator';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/renderer/components/ui/tooltip';
 import { VideoDocumentFramePicker } from '@/renderer/features/video-documents/VideoDocumentFramePicker';
 import {
+  VideoDocumentTableMenu,
+  VideoDocumentTableOperations,
+  type VideoDocumentTableControlsLabels,
+} from '@/renderer/features/video-documents/VideoDocumentTableControls';
+import {
   insertVideoDocumentImage,
   type VideoDocumentEditorImageAttributes,
   videoDocumentFrameImageAttributes,
 } from '@/renderer/features/video-documents/videoDocumentEditorMedia';
 import { cn } from '@/renderer/lib/utils';
+import { commandShortcutText } from '@/renderer/commands/app-shortcuts';
 
 export interface VideoDocumentEditorImageImport {
   binding: VideoDocumentMediaBinding;
   media: VideoDocumentRevisionMediaDto;
 }
 
-interface ImportedEditorImage extends VideoDocumentEditorImageImport {
+export interface ImportedEditorImage extends VideoDocumentEditorImageImport {
   attributes: VideoDocumentEditorImageAttributes;
+}
+
+function editorImageFromAsset(
+  asset: AssetDto,
+  fallbackByteSize: number,
+  alt: string | null,
+  sourcePath: string,
+): ImportedEditorImage {
+  if (
+    asset.mimeType !== 'image/png' &&
+    asset.mimeType !== 'image/jpeg' &&
+    asset.mimeType !== 'image/webp' &&
+    asset.mimeType !== 'image/gif' &&
+    asset.mimeType !== 'image/svg+xml'
+  ) {
+    throw new Error('Image import produced an unsupported asset');
+  }
+  const mimeType = asset.mimeType;
+  const binding: VideoDocumentMediaBinding = {
+    path: sourcePath,
+    assetId: asset.id,
+    kind: 'IMAGE',
+    timestampMs: null,
+    endTimestampMs: null,
+    posterAssetId: null,
+  };
+  const media: VideoDocumentRevisionMediaDto = {
+    assetId: asset.id,
+    mediaUrl: asset.mediaUrl,
+    mimeType,
+    width: asset.width,
+    height: asset.height,
+    byteSize: Math.max(1, asset.byteSize ?? fallbackByteSize),
+    durationMs: null,
+  };
+  return {
+    binding,
+    media,
+    attributes: { src: media.mediaUrl, sourcePath: binding.path, title: null, alt },
+  };
+}
+
+export function videoDocumentEditorImageFromAsset(asset: AssetDto, existingPath?: string): ImportedEditorImage {
+  const extension =
+    asset.mimeType === 'image/png'
+      ? 'png'
+      : asset.mimeType === 'image/webp'
+        ? 'webp'
+        : asset.mimeType === 'image/gif'
+          ? 'gif'
+          : asset.mimeType === 'image/svg+xml'
+            ? 'svg'
+            : 'jpg';
+  return editorImageFromAsset(asset, 1, null, existingPath ?? `assets/material-${asset.id}.${extension}`);
 }
 
 export async function importVideoDocumentEditorImage(
@@ -72,48 +139,25 @@ export async function importVideoDocumentEditorImage(
   });
   const asset = assets[0];
   if (!asset) throw new Error('Image import produced no asset');
-  if (
-    asset.mimeType !== 'image/png' &&
-    asset.mimeType !== 'image/jpeg' &&
-    asset.mimeType !== 'image/webp' &&
-    asset.mimeType !== 'image/svg+xml'
-  ) {
-    throw new Error('Image import produced an unsupported asset');
-  }
-  const mimeType = asset.mimeType;
   const extension =
-    mimeType === 'image/png'
+    asset.mimeType === 'image/png'
       ? 'png'
-      : mimeType === 'image/webp'
+      : asset.mimeType === 'image/webp'
         ? 'webp'
-        : mimeType === 'image/svg+xml'
-          ? 'svg'
-          : 'jpg';
-  const binding: VideoDocumentMediaBinding = {
-    path: `assets/upload-${asset.id}.${extension}`,
-    assetId: asset.id,
-    kind: 'IMAGE',
-    timestampMs: null,
-    endTimestampMs: null,
-    posterAssetId: null,
-  };
-  const media: VideoDocumentRevisionMediaDto = {
-    assetId: asset.id,
-    mediaUrl: asset.mediaUrl,
-    mimeType,
-    width: asset.width,
-    height: asset.height,
-    byteSize: asset.byteSize ?? item.bytes.byteLength,
-    durationMs: null,
-  };
-  return {
-    binding,
-    media,
-    attributes: { src: media.mediaUrl, sourcePath: binding.path, title: null, alt: item.name || null },
-  };
+        : asset.mimeType === 'image/gif'
+          ? 'gif'
+          : asset.mimeType === 'image/svg+xml'
+            ? 'svg'
+            : 'jpg';
+  return editorImageFromAsset(
+    asset,
+    item.bytes.byteLength,
+    item.name || null,
+    `assets/upload-${asset.id}.${extension}`,
+  );
 }
 
-export interface VideoDocumentWysiwygEditorLabels {
+export interface VideoDocumentWysiwygEditorLabels extends VideoDocumentTableControlsLabels {
   headingMenu: string;
   paragraph: string;
   heading2: string;
@@ -134,11 +178,20 @@ export interface VideoDocumentWysiwygEditorLabels {
   codeBlock: string;
   blockquote: string;
   horizontalRule: string;
-  table: string;
-  insertTable: string;
-  addRow: string;
-  addColumn: string;
-  deleteTable: string;
+  searchAndReplace: string;
+  search: string;
+  showReplace: string;
+  hideReplace: string;
+  previousMatch: string;
+  nextMatch: string;
+  matchCase: string;
+  wholeWord: string;
+  replaceWith: string;
+  replaceCurrent: string;
+  replaceAll: string;
+  closeSearch: string;
+  noMatches: string;
+  searchResultCount(current: number, total: number): string;
   undo: string;
   redo: string;
   insertFrame: string;
@@ -171,17 +224,41 @@ export interface VideoDocumentWysiwygToolbarState {
   image: boolean;
   imageSourcePath: string | null;
   selectedText: string;
+  articleElementId: string | null;
+}
+
+export interface VideoDocumentArticleElementControls {
+  comments: readonly ArticleCommentDto[];
+  commentsOpen: boolean;
+  hoveredCommentId: string | null;
+  selectedCommentId: string | null;
+  editTrail: readonly ArticleEditTrailEntryDto[];
+  elementPreviews: Readonly<Record<string, string>>;
+  busy: boolean;
+  commentLabel: string;
+  commentsLabel: string;
+  historyLabel: string;
+  previousEditLabel: string;
+  nextEditLabel: string;
+  onAddComment(): void;
+  onCommentHover(commentId: string | null): void;
+  onCommentSelect(commentId: string): void;
+  onCommentsToggle(): void;
+  onEditTrailSelect(location: ArticleEditorLocationDto): void;
+  onPreviousEdit(): void;
+  onNextEdit(): void;
 }
 
 interface FormatButtonProps {
   label: string;
   active?: boolean;
   disabled?: boolean;
+  expanded?: boolean;
   onClick(): void;
   children: ReactNode;
 }
 
-function FormatButton({ label, active = false, disabled = false, onClick, children }: FormatButtonProps) {
+function FormatButton({ label, active = false, disabled = false, expanded, onClick, children }: FormatButtonProps) {
   return (
     <Tooltip>
       <TooltipTrigger asChild>
@@ -192,6 +269,7 @@ function FormatButton({ label, active = false, disabled = false, onClick, childr
           className={cn('size-7', active && 'bg-selected text-selected-foreground hover:bg-selected/80')}
           aria-label={label}
           aria-pressed={active}
+          aria-expanded={expanded}
           disabled={disabled}
           onClick={onClick}
         >
@@ -217,11 +295,11 @@ function HeadingMenu({
   const [open, setOpen] = useState(false);
   const options = [
     { level: 0 as const, label: labels.paragraph, shortcut: '' },
-    { level: 2 as const, label: labels.heading2, shortcut: 'Alt+2' },
-    { level: 3 as const, label: labels.heading3, shortcut: 'Alt+3' },
-    { level: 4 as const, label: labels.heading4, shortcut: 'Alt+4' },
-    { level: 5 as const, label: labels.heading5, shortcut: 'Alt+5' },
-    { level: 6 as const, label: labels.heading6, shortcut: 'Alt+6' },
+    ...([2, 3, 4, 5, 6] as const).map((level) => ({
+      level,
+      label: labels[`heading${level}`],
+      shortcut: commandShortcutText(`format.heading.${level}`, window.desktopApi.appPlatform),
+    })),
   ];
   return (
     <Popover open={open} onOpenChange={setOpen}>
@@ -337,57 +415,54 @@ function LinkMenu({
   );
 }
 
-function TableMenu({
-  editor,
-  state,
-  labels,
-}: {
-  editor: Editor;
-  state: VideoDocumentWysiwygToolbarState;
-  labels: VideoDocumentWysiwygEditorLabels;
-}) {
-  const [open, setOpen] = useState(false);
-  const actions = state.table
-    ? [
-        { label: labels.addRow, icon: Rows3Icon, run: () => editor.chain().focus().addRowAfter().run() },
-        { label: labels.addColumn, icon: Columns3Icon, run: () => editor.chain().focus().addColumnAfter().run() },
-        { label: labels.deleteTable, icon: Trash2Icon, run: () => editor.chain().focus().deleteTable().run() },
-      ]
-    : [
-        {
-          label: labels.insertTable,
-          icon: Table2Icon,
-          run: () => editor.chain().focus().insertTable({ rows: 3, cols: 3, withHeaderRow: true }).run(),
-        },
-      ];
+function ArticleEditTrailMenu({ controls }: { controls: VideoDocumentArticleElementControls }) {
+  const entries = [...controls.editTrail].reverse().slice(0, 30);
   return (
-    <Popover open={open} onOpenChange={setOpen}>
+    <Popover>
       <PopoverTrigger asChild>
         <span>
-          <FormatButton label={labels.table} active={state.table} onClick={() => setOpen(true)}>
-            <Table2Icon className="size-3.5" />
+          <FormatButton label={controls.historyLabel} disabled={!entries.length} onClick={() => undefined}>
+            <RouteIcon className="size-3.5" />
           </FormatButton>
         </span>
       </PopoverTrigger>
-      <PopoverContent align="start" className="w-48 p-1">
-        {actions.map((action) => {
-          const Icon = action.icon;
-          return (
-            <Button
-              key={action.label}
-              type="button"
-              variant="ghost"
-              className="h-8 w-full justify-start rounded-sm px-2 text-xs font-normal"
-              onClick={() => {
-                action.run();
-                setOpen(false);
-              }}
-            >
-              <Icon className="size-3.5" />
-              {action.label}
-            </Button>
-          );
-        })}
+      <PopoverContent align="end" className="max-h-80 w-72 overflow-y-auto p-1">
+        <div className="mb-1 grid grid-cols-2 gap-1 border-b pb-1">
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            className="h-8 justify-start gap-1.5 rounded-sm px-2 text-xs font-normal"
+            onClick={controls.onPreviousEdit}
+          >
+            <ChevronLeftIcon className="size-3.5" />
+            {controls.previousEditLabel}
+          </Button>
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            className="h-8 justify-start gap-1.5 rounded-sm px-2 text-xs font-normal"
+            onClick={controls.onNextEdit}
+          >
+            <ChevronRightIcon className="size-3.5" />
+            {controls.nextEditLabel}
+          </Button>
+        </div>
+        {entries.map((entry, index) => (
+          <Button
+            key={`${entry.recordedAt}:${entry.elementId}:${index}`}
+            type="button"
+            variant="ghost"
+            size="sm"
+            className="h-auto w-full justify-start gap-2 rounded-sm px-2 py-1.5 text-left font-normal"
+            disabled={!Object.hasOwn(controls.elementPreviews, entry.elementId)}
+            onClick={() => controls.onEditTrailSelect(entry)}
+          >
+            <MapPinIcon className="size-3.5 shrink-0 text-muted-foreground" />
+            <span className="min-w-0 truncate">{controls.elementPreviews[entry.elementId] || entry.elementId}</span>
+          </Button>
+        ))}
       </PopoverContent>
     </Popover>
   );
@@ -406,8 +481,11 @@ interface Props {
   onFrameCaptured(result: VideoDocumentFrameCaptureResult): void;
   onImageImported(result: VideoDocumentEditorImageImport): void;
   onImageImportError(): void;
+  searchOpen: boolean;
+  onSearchToggle(): void;
   illustrationLabel?: string;
   onIllustrationRequest?(selectedText: string): void;
+  articleElementControls?: VideoDocumentArticleElementControls;
 }
 
 export function VideoDocumentWysiwygToolbar({
@@ -423,8 +501,11 @@ export function VideoDocumentWysiwygToolbar({
   onFrameCaptured,
   onImageImported,
   onImageImportError,
+  searchOpen,
+  onSearchToggle,
   illustrationLabel,
   onIllustrationRequest,
+  articleElementControls,
 }: Props) {
   const imageInputRef = useRef<HTMLInputElement>(null);
   const [uploadingImage, setUploadingImage] = useState(false);
@@ -507,7 +588,7 @@ export function VideoDocumentWysiwygToolbar({
         >
           <Code2Icon className="size-3.5" />
         </FormatButton>
-        <TableMenu editor={editor} state={state} labels={labels} />
+        <VideoDocumentTableMenu editor={editor} active={state.table} labels={labels} />
         <FormatButton label={labels.horizontalRule} onClick={() => editor.chain().focus().setHorizontalRule().run()}>
           <MinusIcon className="size-3.5" />
         </FormatButton>
@@ -567,6 +648,30 @@ export function VideoDocumentWysiwygToolbar({
           }}
         />
         <span className="ml-auto flex items-center gap-0.5 pl-2">
+          {articleElementControls && (
+            <>
+              <FormatButton
+                label={articleElementControls.commentLabel}
+                disabled={!state.articleElementId || articleElementControls.busy}
+                onClick={articleElementControls.onAddComment}
+              >
+                <MessageSquarePlusIcon className="size-3.5" />
+              </FormatButton>
+              <FormatButton
+                label={`${articleElementControls.commentsLabel} (${articleElementControls.comments.filter((comment) => comment.status === 'OPEN').length})`}
+                active={articleElementControls.commentsOpen}
+                expanded={articleElementControls.commentsOpen}
+                onClick={articleElementControls.onCommentsToggle}
+              >
+                <MessageSquareIcon className="size-3.5" />
+              </FormatButton>
+              <ArticleEditTrailMenu controls={articleElementControls} />
+              <Separator orientation="vertical" className="mx-1 h-4" />
+            </>
+          )}
+          <FormatButton label={labels.search} active={searchOpen} expanded={searchOpen} onClick={onSearchToggle}>
+            <SearchIcon className="size-3.5" />
+          </FormatButton>
           <FormatButton
             label={labels.undo}
             disabled={!state.canUndo}
@@ -583,6 +688,7 @@ export function VideoDocumentWysiwygToolbar({
           </FormatButton>
         </span>
       </div>
+      {state.table && <VideoDocumentTableOperations editor={editor} labels={labels} />}
     </TooltipProvider>
   );
 }

@@ -1,6 +1,7 @@
 import { ArchiveRestoreIcon, CheckIcon, SquareArrowOutUpRightIcon } from 'lucide-react';
 import { useMemo } from 'react';
 import type { CodexGeneratedImageDto } from '@/shared/contracts';
+import { codexThreadIdSchema } from '@/shared/contracts/codex-thread';
 import { Badge } from '@/renderer/components/ui/badge';
 import { Button } from '@/renderer/components/ui/button';
 import { useI18n } from '@/renderer/i18n/useI18n';
@@ -25,7 +26,11 @@ interface Props {
   onRecoverImage(image: CodexGeneratedImageDto): void;
 }
 
-const CODEX_THREAD_ID_PATTERN = /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i;
+const CODEX_GENERATED_IMAGE_THUMBNAIL_SIZE = 512;
+
+function codexGeneratedImageThumbnailUrl(image: CodexGeneratedImageDto) {
+  return `aiy-media://codex-generated-thumbnail/${encodeURIComponent(image.id)}?size=${CODEX_GENERATED_IMAGE_THUMBNAIL_SIZE}&revision=${encodeURIComponent(image.modifiedAt)}`;
+}
 
 export function CodexImageTaskGroup({
   group,
@@ -43,7 +48,7 @@ export function CodexImageTaskGroup({
   const selectionBatch = selectableImages.slice(0, 8);
   const batchSelected = selectionBatch.length > 0 && selectionBatch.every((image) => selectedIds.has(image.id));
   const selectedCount = group.images.filter((image) => selectedIds.has(image.id)).length;
-  const canOpenCodex = group.threadTitleAvailable && CODEX_THREAD_ID_PATTERN.test(group.threadId);
+  const canOpenCodex = group.threadTitleAvailable && codexThreadIdSchema.safeParse(group.threadId).success;
   const displayName = group.threadTitleAvailable ? group.threadName : l.untitledTask;
   const recoveryImage = group.images.find(
     (image) => image.importable && !image.imported && image.recoveryTarget !== null,
@@ -131,11 +136,13 @@ export function CodexImageTaskGroup({
           const selectable = image.importable && !image.imported;
           const opensCreation = image.imported && Boolean(image.importedSeriesId);
           const disabled = !selectable && !opensCreation;
+          const thumbnailUrl = codexGeneratedImageThumbnailUrl(image);
           return (
             <button
               key={image.id}
               type="button"
               data-codex-discovery-id={image.id}
+              data-codex-thread-id={canOpenCodex ? group.threadId : undefined}
               aria-pressed={selectable ? selected : undefined}
               aria-label={
                 opensCreation
@@ -157,9 +164,9 @@ export function CodexImageTaskGroup({
               }}
             >
               <span className="relative isolate block aspect-square overflow-hidden bg-surface-sunken">
-                <ImageAmbientBackdrop src={image.mediaUrl} loading="lazy" />
+                <ImageAmbientBackdrop src={thumbnailUrl} loading="lazy" />
                 <img
-                  src={image.mediaUrl}
+                  src={thumbnailUrl}
                   alt=""
                   loading="lazy"
                   draggable={false}

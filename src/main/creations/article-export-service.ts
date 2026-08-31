@@ -2,6 +2,7 @@ import { copyFile, rm } from 'node:fs/promises';
 import path from 'node:path';
 import type { ResolvedAssetFile } from '@/main/database/assets/asset-file-repository';
 import { safeAssetFileName } from '@/main/database/assets/asset-file-repository';
+import { normalizedArticleMediaPath, rewriteArticleImageReferences } from '@/main/creations/article-media-references';
 import { writeDirectoryAtomically, writeValidatedFileAtomically } from '@/main/video-documents/export-file-system';
 import type { ArticleDto, ArticleExportMarkdownInput, ArticleExportMarkdownResult } from '@/shared/contracts';
 
@@ -25,10 +26,6 @@ function safeArticleStem(value: string) {
 
 function markdownFilePath(filePath: string) {
   return path.extname(filePath).toLowerCase() === '.md' ? filePath : `${filePath}.md`;
-}
-
-function replaceAll(value: string, search: string, replacement: string) {
-  return value.split(search).join(replacement);
 }
 
 function uniqueAssetName(value: string, fallback: string, extension: string, used: Set<string>) {
@@ -84,13 +81,20 @@ export class ArticleExportService {
         destinationDirectory,
         (collisionIndex) => `${stem}.assets${collisionIndex === 1 ? '' : `-${collisionIndex}`}`,
         async (temporaryDirectory, finalName) => {
+          const destinationsByPath = new Map<string, string>();
+          const destinationsByAssetId = new Map<string, string>();
           for (const item of resolved) {
             await copyFile(item.file.absolutePath, path.join(temporaryDirectory, item.name));
-            markdown = replaceAll(markdown, item.binding.path, `${finalName}/${item.name}`);
+            const destination = `${finalName}/${item.name}`;
+            destinationsByPath.set(normalizedArticleMediaPath(item.binding.path), destination);
+            destinationsByAssetId.set(item.binding.assetId, destination);
           }
+          markdown = rewriteArticleImageReferences(markdown, destinationsByPath, destinationsByAssetId);
         },
       );
       exportedAssetDirectory = bundle.directoryPath;
+    } else {
+      markdown = rewriteArticleImageReferences(markdown, new Map(), new Map());
     }
 
     try {

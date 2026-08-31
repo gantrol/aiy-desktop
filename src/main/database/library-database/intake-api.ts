@@ -1,6 +1,6 @@
 import type { LibraryDatabaseRepositories } from '@/main/database/library-database/repositories';
 import { emptyAlbumCreationDefaults } from '@/shared/album-creation-defaults';
-import type { CreationDraftStartInput, IntakeCommitInput, Locale } from '@/shared/contracts';
+import type { CreationDraftLoadInput, CreationDraftStartInput, IntakeCommitInput, Locale } from '@/shared/contracts';
 
 export function createIntakeApi(
   repositories: Pick<LibraryDatabaseRepositories, 'albums' | 'intake' | 'packs' | 'workbench'>,
@@ -19,6 +19,10 @@ export function createIntakeApi(
 
     getCreationDraft() {
       return repositories.intake.latestDraft();
+    },
+
+    loadCreationDraft(input: CreationDraftLoadInput) {
+      return repositories.intake.loadDraft(input.draftId);
     },
 
     startCreationDraft(input: CreationDraftStartInput) {

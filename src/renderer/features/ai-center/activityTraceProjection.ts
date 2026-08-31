@@ -9,6 +9,7 @@ import type {
 import type { MessageCatalog } from '@/renderer/i18n/types';
 import type {
   AiActivityRecord,
+  ArticleCheckActivityRecord,
   AssistantActivityRecord,
   ExperimentActivityRecord,
   GenerationActivityRecord,
@@ -477,6 +478,60 @@ function projectVideoDocumentTrace(
   return { entries, resolution: 'SUMMARY' };
 }
 
+function projectArticleCheckTrace(
+  record: ArticleCheckActivityRecord,
+  labels: AiCenterLabels,
+  now: number,
+): AiActivityTraceProjection {
+  const run = record.run;
+  const running = run.status === 'RUNNING';
+  const entries: AiActivityTraceEntry[] = [
+    {
+      id: `${record.id}:input`,
+      sequence: 1,
+      lane: 'INPUT',
+      label: labels.trace.inputCaptured,
+      details: [run.articleTitle],
+      startedAt: run.startedAt,
+      endedAt: null,
+      point: true,
+      call: false,
+    },
+    {
+      id: `${record.id}:model`,
+      sequence: 2,
+      lane: 'MODEL',
+      label: labels.trace.articleCheckCall,
+      details: compactDetails([
+        field(labels.trace.fields.provider, run.providerKey),
+        field(labels.trace.fields.model, run.requestedModel),
+        field(labels.trace.fields.status, statusLabel(run.status, labels)),
+      ]),
+      startedAt: run.startedAt,
+      endedAt: run.finishedAt ?? (running ? new Date(now).toISOString() : null),
+      point: !run.finishedAt && !running,
+      call: true,
+    },
+  ];
+  if (run.finishedAt) {
+    entries.push({
+      id: `${record.id}:terminal`,
+      sequence: 3,
+      lane: 'PROCESS',
+      label: statusLabel(run.status, labels),
+      details: compactDetails([
+        field(labels.trace.fields.output, run.findingCount),
+        field(labels.trace.fields.errorCode, run.errorCode),
+      ]),
+      startedAt: run.finishedAt,
+      endedAt: null,
+      point: true,
+      call: false,
+    });
+  }
+  return { entries, resolution: 'SUMMARY' };
+}
+
 export function projectAiActivityTrace(
   record: AiActivityRecord,
   data: BootstrapDto,
@@ -488,6 +543,7 @@ export function projectAiActivityTrace(
   if (record.kind === 'ASSISTANT') return projectAssistantTrace(record, labels, now);
   if (record.kind === 'EXPERIMENT') return projectExperimentTrace(record, data, labels, now);
   if (record.kind === 'VIDEO_DOCUMENT') return projectVideoDocumentTrace(record, labels, now);
+  if (record.kind === 'ARTICLE_CHECK') return projectArticleCheckTrace(record, labels, now);
   return processEvents.length > 0
     ? projectDetailedGenerationTrace(record, processEvents, processSummary, labels)
     : projectGenerationSummaryTrace(record, data, labels, now);

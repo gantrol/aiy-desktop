@@ -14,7 +14,7 @@
     "searchProviders": ["example.assets"]
   },
   "permissions": ["network:https://api.example.com"],
-  "optionalPermissions": ["library.write:creations"],
+  "optionalPermissions": ["library.create:creations"],
   "i18n": {
     "defaultLocale": "en",
     "locales": {

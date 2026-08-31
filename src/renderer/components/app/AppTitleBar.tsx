@@ -16,6 +16,8 @@ import type { AppView } from '@/renderer/components/app/AppSidebar';
 import { AppIconMenu } from '@/renderer/components/app/AppIconMenu';
 import { GenerationStatusPopover } from '@/renderer/components/app/GenerationStatusPopover';
 import { AppWindowControls } from '@/renderer/components/app/AppWindowControls';
+import { commandAriaShortcut } from '@/renderer/commands/app-shortcuts';
+import { useArticleEditorSessionFlush } from '@/renderer/components/creator/article-editor/ArticleEditorSessionProvider';
 
 interface Props {
   workerStatus: ModelWorkerStatusDto | null;
@@ -73,6 +75,7 @@ export function AppTitleBar({
   onGenerationReEdit,
 }: Props) {
   const { messages } = useI18n();
+  const flushArticleEditors = useArticleEditorSessionFlush();
   const labels = messages.app.navigation;
   return (
     <TooltipProvider>
@@ -89,7 +92,7 @@ export function AppTitleBar({
             onNewCreation={onNewCreation}
             onViewChange={onViewChange}
             onSettingsOpen={onSettingsOpen}
-            onQuit={onQuit}
+            onQuit={() => void flushArticleEditors().finally(onQuit)}
           />
         </div>
         <nav className="app-title-bar-actions ml-3 flex items-center gap-0.5" aria-label={labels.history}>
@@ -103,7 +106,7 @@ export function AppTitleBar({
                 className="size-7 text-muted-foreground"
                 disabled={!canGoBack}
                 aria-label={labels.back}
-                aria-keyshortcuts="Alt+ArrowLeft"
+                aria-keyshortcuts={commandAriaShortcut('navigation.back', window.desktopApi.appPlatform)}
                 onClick={onGoBack}
               >
                 <ChevronLeftIcon className="size-4" />
@@ -121,7 +124,7 @@ export function AppTitleBar({
                 className="size-7 text-muted-foreground"
                 disabled={!canGoForward}
                 aria-label={labels.forward}
-                aria-keyshortcuts="Alt+ArrowRight"
+                aria-keyshortcuts={commandAriaShortcut('navigation.forward', window.desktopApi.appPlatform)}
                 onClick={onGoForward}
               >
                 <ChevronRightIcon className="size-4" />

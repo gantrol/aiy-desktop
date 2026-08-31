@@ -1,6 +1,7 @@
 import { isDeepStrictEqual } from 'node:util';
 import { z } from 'zod';
 import type {
+  ArticleCheckInput,
   CodexImageRefinementInput,
   CodexTitleInput,
   GenerationBatchInput,
@@ -11,14 +12,21 @@ import type {
   ImageEditBatchStartInput,
   ImageEditStartInput,
   ImageReframeStartInput,
+  ImageBreakdownWorkerInput,
   StyleExplorationStartInput,
   VideoDocumentArticleGenerateInput,
   VideoDocumentTranscriptTranslationWorkerInput,
 } from '@/shared/contracts';
+import { articleCheckInputSchema } from '@/shared/contracts/article';
 import { videoDocumentArticleGenerateInputSchema } from '@/shared/contracts/video-document';
 import { videoDocumentTranscriptTranslationWorkerInputSchema } from '@/shared/contracts/video-document-translation';
+import { imageBreakdownWorkerInputSchema } from '@/shared/contracts/image-breakdown';
 import type { AssistantTitleExecution } from '@/main/assistant/assistant-service';
-import type { CodexChatJob, CodexTitleExecutionOptions } from '@/main/assistant/codex-service';
+import type {
+  CodexArticleCheckExecutionOptions,
+  CodexChatJob,
+  CodexTitleExecutionOptions,
+} from '@/main/assistant/codex-service';
 import type { DeepSeekApiRuntimeConfiguration } from '@/main/extensions/deepseek-api/types';
 import type { ExternalImageApiRuntimeConfiguration } from '@/main/extensions/external-image-api/types';
 import type { OpenAiImageApiRuntimeConfiguration } from '@/main/extensions/openai-image-api/types';
@@ -28,6 +36,18 @@ import {
   MIN_IMAGE_GENERATION_MAX_CONCURRENT,
 } from '@/shared/image-generation-concurrency';
 import type { ModelWorkerMethod } from '@/main/model-worker/protocol';
+import {
+  agentAssetImportRequestSchema,
+  agentDraftPrepareRequestSchema,
+  agentGenerationStartRequestSchema,
+  agentJobCancelRequestSchema,
+  agentJobGetRequestSchema,
+  type AgentAssetImportRequest,
+  type AgentDraftPrepareRequest,
+  type AgentGenerationStartRequest,
+  type AgentJobCancelRequest,
+  type AgentJobGetRequest,
+} from '@/shared/contracts/agent-cli';
 
 const identifier = z.string().min(1).max(200);
 const boundedPath = z.string().min(1).max(32_768);
@@ -57,6 +77,7 @@ const generationBase = z
     seriesId: identifier.nullable(),
     creationDraftId: identifier.nullable().optional().default(null),
     inspirationStashId: identifier.nullable().optional().default(null),
+    imageBreakdownId: identifier.nullable().optional().default(null),
     baseVersionId: identifier.nullable().optional().default(null),
     sourceImportId: identifier.nullable().optional().default(null),
     sourceAssetId: identifier.nullable().optional(),
@@ -172,7 +193,7 @@ const styleExplorationSlot = z
     risk: z.string().max(1_000),
     userInstruction: z.string().max(30_000),
     input: generationBase
-      .omit({ seriesId: true, creationDraftId: true, inspirationStashId: true, modelKey: true })
+      .omit({ seriesId: true, creationDraftId: true, inspirationStashId: true, imageBreakdownId: true, modelKey: true })
       .superRefine(validateCanvas),
   })
   .strict()
@@ -486,6 +507,9 @@ const assistantTitleExecution = z
   .object({ providerKey: identifier, modelKey: identifier, reasoningEffort: reasoningEffort.nullable() })
   .strict();
 const codexTitleOptions = z.object({ model: identifier.optional(), effort: reasoningEffort.optional() }).strict();
+const codexArticleCheckOptions: z.ZodType<CodexArticleCheckExecutionOptions> = z
+  .object({ model: identifier, effort: reasoningEffort })
+  .strict();
 const openAiConfiguration = z
   .object({
     apiKey: z.string().min(1).max(500),
@@ -502,6 +526,8 @@ const deepSeekConfiguration = z
     apiKey: z.string().min(1).max(500),
     modelId: identifier,
     responsesUrl: z.string().url().max(2_048),
+    visionEndpoint: z.string().max(2_048),
+    visionModelId: z.string().max(200),
     configurationRevision: identifier,
     verified: z.boolean(),
     connectionMessage: z.string().max(10_000),
@@ -546,6 +572,11 @@ export interface ModelWorkerMethodParams {
   'dictionary.stage-import': [fileName: string, filePath: string];
   'dictionary.commit-import': [batchId: string];
   'image-transform.crop': [input: ImageCropInput];
+  'agent.asset.import': [input: AgentAssetImportRequest];
+  'agent.draft.prepare': [input: AgentDraftPrepareRequest];
+  'agent.generation.start': [input: AgentGenerationStartRequest];
+  'agent.job.get': [input: AgentJobGetRequest];
+  'agent.job.cancel': [input: AgentJobCancelRequest];
   'generation.start': [input: GenerationInput];
   'generation.start-batch': [input: GenerationBatchInput];
   'generation.start-image-edit': [input: ImageEditStartInput];
@@ -561,11 +592,13 @@ export interface ModelWorkerMethodParams {
   'generation.configure-concurrency': [configuration: ImageGenerationConcurrencyDto];
   'codex.refresh-health': [];
   'codex.list-models': [];
+  'codex.check-article': [input: ArticleCheckInput, options: CodexArticleCheckExecutionOptions];
   'antigravity.refresh-status': [];
   'video-document.article-generate': [input: VideoDocumentArticleGenerateInput];
   'video-document.transcript-translate': [input: VideoDocumentTranscriptTranslationWorkerInput];
   'assistant.run': [runId: string];
   'assistant.suggest-titles': [input: CodexTitleInput, execution: AssistantTitleExecution];
+  'image-breakdown.run': [input: ImageBreakdownWorkerInput];
   'codex.chat': [job: CodexChatJob];
   'codex.suggest-titles': [input: CodexTitleInput, options?: CodexTitleExecutionOptions | null];
   'codex.cancel-all': [];
@@ -587,6 +620,11 @@ const schemas = {
   'dictionary.stage-import': z.tuple([z.string().min(1).max(500), boundedPath]),
   'dictionary.commit-import': z.tuple([identifier]),
   'image-transform.crop': z.tuple([imageCropInput]),
+  'agent.asset.import': z.tuple([agentAssetImportRequestSchema]),
+  'agent.draft.prepare': z.tuple([agentDraftPrepareRequestSchema]),
+  'agent.generation.start': z.tuple([agentGenerationStartRequestSchema]),
+  'agent.job.get': z.tuple([agentJobGetRequestSchema]),
+  'agent.job.cancel': z.tuple([agentJobCancelRequestSchema]),
   'generation.start': z.tuple([generationInput]),
   'generation.start-batch': z.tuple([generationBatchInput]),
   'generation.start-image-edit': z.tuple([imageEditInput]),
@@ -614,11 +652,13 @@ const schemas = {
   'generation.configure-concurrency': z.tuple([generationConcurrencyConfiguration]),
   'codex.refresh-health': empty,
   'codex.list-models': empty,
+  'codex.check-article': z.tuple([articleCheckInputSchema, codexArticleCheckOptions]),
   'antigravity.refresh-status': empty,
   'video-document.article-generate': z.tuple([videoDocumentArticleGenerateInputSchema]),
   'video-document.transcript-translate': z.tuple([videoDocumentTranscriptTranslationWorkerInputSchema]),
   'assistant.run': z.tuple([identifier]),
   'assistant.suggest-titles': z.tuple([titleInput, assistantTitleExecution]),
+  'image-breakdown.run': z.tuple([imageBreakdownWorkerInputSchema]),
   'codex.chat': z.tuple([codexChatJob]),
   'codex.suggest-titles': z.tuple([titleInput, codexTitleOptions.nullish()]),
   'codex.cancel-all': empty,

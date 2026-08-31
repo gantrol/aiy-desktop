@@ -13,6 +13,7 @@ import {
   socialPostContentSchema,
   socialPostStoredContentSchema,
   type SocialPostFormAddInput,
+  type SocialPostFormCreateInput,
 } from '@/shared/contracts/social-post';
 import type { LibraryStorage } from '@/main/database/core/storage';
 import { type JsonMap, mediaUrl, now, text } from '@/main/database/core/values';
@@ -190,8 +191,14 @@ export class SocialPostRepository {
           .run(id, item.albumId, input.sourceInspirationStashId, timestamp, timestamp);
         const revisionId = this.insertRevision(id, 1, content, hash, timestamp);
         this.db.prepare('UPDATE social_post_drafts SET current_revision_id = ? WHERE id = ?').run(revisionId, id);
+        const sourceFormId = input.sourceInspirationStashId
+          ? (item.forms.find(
+              (form) => form.entity.kind === 'INSPIRATION_STASH' && form.entity.id === input.sourceInspirationStashId,
+            )?.id ?? null)
+          : null;
         this.creationItems.addOrGetForm({
           creationItemId: item.id,
+          sourceFormId,
           role: 'SOCIAL_POST',
           entity: { kind: 'SOCIAL_POST', id },
           anchorKey: null,
@@ -204,6 +211,55 @@ export class SocialPostRepository {
           {
             albumId: item.albumId,
             creationItemId: item.id,
+            sourceInspirationStashId: input.sourceInspirationStashId,
+            revisionId,
+          },
+          { affectsFileView: false },
+        );
+        return this.dto(this.row(id));
+      })
+      .immediate();
+  }
+
+  createForm(input: SocialPostFormCreateInput): SocialPostDto {
+    return this.db
+      .transaction(() => {
+        const sourceForm = this.creationItems.getForm(input.sourceFormId);
+        const item = this.creationItems.get(sourceForm.creationItemId);
+        if (item.lifecycle !== 'ACTIVE') throw new Error('Archived creation items cannot be changed');
+        this.assertAlbumAvailable(item.albumId);
+        this.assertSourceAvailable(input.sourceInspirationStashId, item.id);
+
+        const content = normalizedContent(input.content);
+        this.assertMediaAvailable(content.mediaAssetIds);
+        const hash = contentHash(content);
+        const timestamp = now();
+        const id = ulid();
+        this.db
+          .prepare(
+            `INSERT INTO social_post_drafts
+            (id, album_id, source_inspiration_stash_id, current_revision_id, status,
+              created_at, updated_at, archived_at, deleted_at)
+            VALUES (?, ?, ?, NULL, 'ACTIVE', ?, ?, NULL, NULL)`,
+          )
+          .run(id, item.albumId, input.sourceInspirationStashId, timestamp, timestamp);
+        const revisionId = this.insertRevision(id, 1, content, hash, timestamp);
+        this.db.prepare('UPDATE social_post_drafts SET current_revision_id = ? WHERE id = ?').run(revisionId, id);
+        this.creationItems.addForm({
+          creationItemId: item.id,
+          sourceFormId: sourceForm.id,
+          role: 'SOCIAL_POST',
+          entity: { kind: 'SOCIAL_POST', id },
+          anchorKey: null,
+        });
+        this.storage.recordChange(
+          'SOCIAL_POST_DRAFT',
+          id,
+          'CREATE',
+          {
+            albumId: item.albumId,
+            creationItemId: item.id,
+            sourceFormId: sourceForm.id,
             sourceInspirationStashId: input.sourceInspirationStashId,
             revisionId,
           },

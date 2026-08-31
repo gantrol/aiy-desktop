@@ -7,6 +7,7 @@ import {
   ImageIcon,
   ImagesIcon,
   Layers3Icon,
+  ListChecksIcon,
   NotebookTextIcon,
   PanelLeftCloseIcon,
   PanelLeftOpenIcon,
@@ -15,6 +16,7 @@ import {
   PinIcon,
   PinOffIcon,
   PlusIcon,
+  ScanSearchIcon,
   Trash2Icon,
 } from 'lucide-react';
 import {
@@ -70,9 +72,11 @@ import { ContextMenu, ContextMenuContent, ContextMenuTrigger } from '@/renderer/
 import { QuietEmpty } from '@/renderer/components/ui/quiet-empty';
 import { ScrollArea } from '@/renderer/components/ui/scroll-area';
 import { CreatorPaneResizeHandle } from '@/renderer/components/creator/CreatorPaneResizeHandle';
+import { CreationLibraryChildList } from '@/renderer/components/creator/CreationLibraryChildDisclosure';
 import { CreationLibraryToolbar } from '@/renderer/components/creator/CreationLibraryToolbar';
 import type { CreationLibraryFilter } from '@/renderer/components/creator/creationLibraryFilter';
 import { creationAlbumPreviewAssets } from '@/renderer/components/creator/creationAlbumPreviewAssets';
+import { creationFormTabTarget } from '@/renderer/components/creator/creationFormTabTarget';
 import {
   buildCreationLibraryProjection,
   creationFormPreviewAssetIds,
@@ -82,6 +86,10 @@ import {
 } from '@/renderer/components/creator/creationLibraryProjection';
 import { buildCreationSessionProjection } from '@/renderer/components/creator/creationSessionProjection';
 import {
+  useCreationAlbumChildVisibility,
+  type CreationAlbumChildVisibilityEntry,
+} from '@/renderer/components/creator/useCreationAlbumChildVisibility';
+import {
   CreationLibraryTreeItem,
   getCreationTreeMediaNodeMetrics,
 } from '@/renderer/components/creator/CreationLibraryTreeItem';
@@ -89,11 +97,14 @@ import { allAssets } from '@/renderer/components/creator/utils';
 import { MediaStackPreview, type MediaStackSpread } from '@/renderer/components/media/MediaStackPreview';
 import { useVideoDocumentList } from '@/renderer/features/video-documents/useVideoDocumentList';
 import { useVideoDocumentNavigation } from '@/renderer/features/video-documents/useVideoDocumentNavigation';
+import type { CreatorOpenTabTarget } from '@/renderer/components/app/app-navigation';
 
 export type ResultLibraryMode = 'full' | 'images';
 export type ResultLibrarySurface =
   | 'new-creation'
   | 'inspiration-stash'
+  | 'image-breakdown'
+  | 'evaluation-suite'
   | 'social-post'
   | 'article'
   | 'idea-creation'
@@ -107,8 +118,11 @@ interface Props {
   activeContent: 'images' | 'documents';
   filter: CreationLibraryFilter;
   selectedSeriesId: string | null;
+  selectedDerivedVisualId?: string | null;
   selectedCreationId: string | null;
   selectedInspirationStashId: string | null;
+  selectedImageBreakdownId: string | null;
+  selectedEvaluationSuiteId: string | null;
   selectedSocialPostId: string | null;
   selectedArticleId: string | null;
   selectedAlbumId: string | null;
@@ -128,6 +142,8 @@ interface Props {
   onResizeValueChange(value: number): void;
   onFilterChange(filter: CreationLibraryFilter): void;
   onSelectInspirationStash(stashId: string): void;
+  onSelectImageBreakdown(breakdownId: string): void;
+  onSelectEvaluationSuite(suiteId: string): void;
   onSelectSocialPost(postId: string): void;
   onSelectArticle(articleId: string): void;
   onRenameArticle(article: ArticleDto): void;
@@ -135,6 +151,7 @@ interface Props {
   onSelect(seriesId: string, assetId?: string): void;
   onOpenDerivedVisual(visualId: string): void;
   onSelectDocument(documentId: string, albumId: string | null): void;
+  onOpenInNewTab(target: CreatorOpenTabTarget): void;
   onRenameDocument(document: VideoDocumentSummaryDto): void;
   onSelectAlbum(albumId: string): void;
   onMore(seriesId: string): void;
@@ -162,6 +179,22 @@ function creationSidebarEntryKey(entry: RootEntry) {
   return entry.kind === 'ALBUM' ? `ALBUM:${entry.album.id}` : `CREATION_ITEM:${entry.item.key}`;
 }
 
+function creationSidebarEntryVisibility(entry: RootEntry): CreationAlbumChildVisibilityEntry {
+  return entry.kind === 'ALBUM'
+    ? {
+        key: creationSidebarEntryKey(entry),
+        pinned: entry.album.pinned,
+        activityAt: entry.album.activityAt,
+        createdAt: entry.album.createdAt,
+      }
+    : {
+        key: creationSidebarEntryKey(entry),
+        pinned: entry.item.item.pinned,
+        activityAt: entry.item.activityAt,
+        createdAt: entry.item.item.createdAt,
+      };
+}
+
 function compareCreationSidebarEntries(left: RootEntry, right: RootEntry) {
   const leftPinned = left.kind === 'ALBUM' ? left.album.pinned : left.item.item.pinned;
   const rightPinned = right.kind === 'ALBUM' ? right.album.pinned : right.item.item.pinned;
@@ -187,6 +220,10 @@ function formMatchesFilter(form: CreationFormProjection, filter: CreationLibrary
   switch (form.role) {
     case 'INSPIRATION':
       return filter.inspirations;
+    case 'IMAGE_BREAKDOWN':
+      return filter.images;
+    case 'EVALUATION_SUITE':
+      return filter.evaluations;
     case 'SOCIAL_POST':
       return filter.socialPosts;
     case 'ARTICLE':
@@ -205,6 +242,10 @@ function formIcon(form: CreationFormProjection) {
   switch (form.role) {
     case 'INSPIRATION':
       return BookmarkIcon;
+    case 'IMAGE_BREAKDOWN':
+      return ScanSearchIcon;
+    case 'EVALUATION_SUITE':
+      return ListChecksIcon;
     case 'SOCIAL_POST':
       return PanelsTopLeftIcon;
     case 'ARTICLE':
@@ -225,6 +266,10 @@ function formKindLabel(form: CreationFormProjection, locale: Locale) {
     switch (form.role) {
       case 'INSPIRATION':
         return '灵感';
+      case 'IMAGE_BREAKDOWN':
+        return '图片拆解';
+      case 'EVALUATION_SUITE':
+        return '评测集';
       case 'SOCIAL_POST':
         return '贴图';
       case 'ARTICLE':
@@ -234,7 +279,7 @@ function formKindLabel(form: CreationFormProjection, locale: Locale) {
       case 'IMAGE_CREATION':
         return '图像创作';
       case 'SOCIAL_POST_COVER':
-        return '贴图封面';
+        return '封面设计';
       case 'ARTICLE_HEADER':
         return '文章题图';
       case 'ARTICLE_INLINE':
@@ -244,6 +289,10 @@ function formKindLabel(form: CreationFormProjection, locale: Locale) {
   switch (form.role) {
     case 'INSPIRATION':
       return 'Inspiration';
+    case 'IMAGE_BREAKDOWN':
+      return 'Image breakdown';
+    case 'EVALUATION_SUITE':
+      return 'Evaluation suite';
     case 'SOCIAL_POST':
       return 'Social post';
     case 'ARTICLE':
@@ -253,7 +302,7 @@ function formKindLabel(form: CreationFormProjection, locale: Locale) {
     case 'IMAGE_CREATION':
       return 'Image creation';
     case 'SOCIAL_POST_COVER':
-      return 'Social cover';
+      return 'Cover design';
     case 'ARTICLE_HEADER':
       return 'Article header';
     case 'ARTICLE_INLINE':
@@ -286,8 +335,11 @@ export function ResultLibrary({
   activeContent,
   filter,
   selectedSeriesId,
+  selectedDerivedVisualId = null,
   selectedCreationId,
   selectedInspirationStashId,
+  selectedImageBreakdownId,
+  selectedEvaluationSuiteId,
   selectedSocialPostId,
   selectedArticleId,
   selectedAlbumId,
@@ -307,6 +359,8 @@ export function ResultLibrary({
   onResizeValueChange,
   onFilterChange,
   onSelectInspirationStash,
+  onSelectImageBreakdown,
+  onSelectEvaluationSuite,
   onSelectSocialPost,
   onSelectArticle,
   onRenameArticle,
@@ -314,6 +368,7 @@ export function ResultLibrary({
   onSelect,
   onOpenDerivedVisual,
   onSelectDocument,
+  onOpenInNewTab,
   onRenameDocument,
   onSelectAlbum,
   onMore,
@@ -341,6 +396,7 @@ export function ResultLibrary({
   const viewportRef = useRef<HTMLDivElement>(null);
   const albumExpansion = useTreeBranchExpansion(viewportRef);
   const itemExpansion = useTreeBranchExpansion(viewportRef);
+  const albumChildVisibility = useCreationAlbumChildVisibility();
   const lastAutoRevealedAlbumSelectionRef = useRef<string | null>(null);
   const setAlbumPersistent = albumExpansion.setPersistent;
   const setItemPersistent = itemExpansion.setPersistent;
@@ -380,6 +436,8 @@ export function ResultLibrary({
         creationItems: data.creationItems,
         locale,
         series: data.series,
+        imageBreakdowns: data.imageBreakdowns ?? [],
+        evaluationSuites: data.evaluationSuites ?? [],
         sessions,
         inspirationStashes: data.inspirationStashes ?? [],
         socialPosts: data.socialPosts ?? [],
@@ -392,6 +450,8 @@ export function ResultLibrary({
       data.creationItems,
       data.derivedVisuals,
       data.inspirationStashes,
+      data.imageBreakdowns,
+      data.evaluationSuites,
       data.series,
       data.socialPosts,
       locale,
@@ -411,26 +471,27 @@ export function ResultLibrary({
     }
     for (const series of data.series) allAssets(series, { includeFailed: true }).forEach(add);
     for (const stash of data.inspirationStashes ?? []) stash.content.referenceAssets.forEach(add);
+    for (const breakdown of data.imageBreakdowns ?? []) add(breakdown.sourceAsset);
     for (const post of data.socialPosts ?? []) post.content.mediaAssets.forEach(add);
     for (const article of data.articles ?? []) article.content.mediaAssets.forEach(add);
     for (const document of navigationDocuments) {
       add(document.source.asset);
     }
     return result;
-  }, [data.albums, data.articles, data.inspirationStashes, data.series, data.socialPosts, navigationDocuments]);
+  }, [
+    data.albums,
+    data.articles,
+    data.imageBreakdowns,
+    data.inspirationStashes,
+    data.series,
+    data.socialPosts,
+    navigationDocuments,
+  ]);
 
   const selectedForm = useMemo(() => {
-    const directRefs = [
-      selectedDocumentId ? 'VIDEO_DOCUMENT:' + selectedDocumentId : null,
-      selectedArticleId ? 'ARTICLE:' + selectedArticleId : null,
-      selectedSocialPostId ? 'SOCIAL_POST:' + selectedSocialPostId : null,
-      selectedInspirationStashId ? 'INSPIRATION_STASH:' + selectedInspirationStashId : null,
-      selectedSeriesId ? 'PROMPT_SERIES:' + selectedSeriesId : null,
-    ];
-    for (const key of directRefs) {
-      if (!key) continue;
-      const form = projection.formByEntityRef.get(key);
-      if (form) return form;
+    if (selectedDerivedVisualId) {
+      const derived = projection.formByEntityRef.get('DERIVED_VISUAL:' + selectedDerivedVisualId);
+      if (derived) return derived;
     }
     if (selectedSeriesId) {
       const derived = projection.items
@@ -441,6 +502,20 @@ export function ResultLibrary({
             form.entity?.promptSeriesId === selectedSeriesId,
         );
       if (derived) return derived;
+    }
+    const directRefs = [
+      selectedEvaluationSuiteId ? 'EVALUATION_SUITE:' + selectedEvaluationSuiteId : null,
+      selectedImageBreakdownId ? 'IMAGE_BREAKDOWN:' + selectedImageBreakdownId : null,
+      selectedDocumentId ? 'VIDEO_DOCUMENT:' + selectedDocumentId : null,
+      selectedArticleId ? 'ARTICLE:' + selectedArticleId : null,
+      selectedSocialPostId ? 'SOCIAL_POST:' + selectedSocialPostId : null,
+      selectedInspirationStashId ? 'INSPIRATION_STASH:' + selectedInspirationStashId : null,
+      selectedSeriesId ? 'PROMPT_SERIES:' + selectedSeriesId : null,
+    ];
+    for (const key of directRefs) {
+      if (!key) continue;
+      const form = projection.formByEntityRef.get(key);
+      if (form) return form;
     }
     if (selectedCreationId) {
       const creation = (data.creations ?? []).find((candidate: CreationDto) => candidate.id === selectedCreationId);
@@ -456,18 +531,70 @@ export function ResultLibrary({
     selectedArticleId,
     selectedCreationId,
     selectedDocumentId,
+    selectedDerivedVisualId,
     selectedInspirationStashId,
+    selectedImageBreakdownId,
+    selectedEvaluationSuiteId,
     selectedSeriesId,
     selectedSocialPostId,
   ]);
   const selectedItem = selectedForm ? (projection.itemById.get(selectedForm.form.creationItemId) ?? null) : null;
   const selectedItemId = selectedItem?.key ?? null;
   const selectedFormId = selectedForm?.form.id ?? null;
+  const selectedAlbumPath = useMemo(() => {
+    const targetAlbumId = selectedAlbumId ?? selectedItem?.item.albumId ?? selectedDocumentAlbumId;
+    if (!targetAlbumId) return [];
+    const path: string[] = [];
+    const visited = new Set<string>();
+    let albumId: string | null = targetAlbumId;
+    while (albumId && !visited.has(albumId)) {
+      visited.add(albumId);
+      path.push(albumId);
+      albumId = tree.parentById.get(albumId) ?? null;
+    }
+    return path;
+  }, [selectedAlbumId, selectedDocumentAlbumId, selectedItem?.item.albumId, tree.parentById]);
+  const selectedAlbumPathSet = useMemo(() => new Set(selectedAlbumPath), [selectedAlbumPath]);
   const newCreationAlbumId = creationAlbumContext(selectedAlbumId, selectedItem, selectedDocumentAlbumId);
 
   function startNewCreationInContext() {
     if (newCreationAlbumId) onNewInAlbum(newCreationAlbumId);
     else onNew();
+  }
+
+  function socialCoverGroup(form: CreationFormProjection) {
+    if (form.role !== 'SOCIAL_POST_COVER') return [form];
+    const item = projection.itemById.get(form.form.creationItemId);
+    return (
+      item?.orderedForms.filter(
+        (candidate) => candidate.role === 'SOCIAL_POST_COVER' && candidate.form.sourceFormId === form.form.sourceFormId,
+      ) ?? [form]
+    );
+  }
+
+  function formDisplayTitle(form: CreationFormProjection) {
+    return form.role === 'SOCIAL_POST_COVER'
+      ? locale === 'zh'
+        ? '封面设计'
+        : 'Cover design'
+      : creationFormTitle(form, locale);
+  }
+
+  function formDisplayKind(form: CreationFormProjection) {
+    if (form.role !== 'SOCIAL_POST_COVER') return formKindLabel(form, locale);
+    const count = socialCoverGroup(form).length;
+    if (locale === 'zh') return count > 1 ? `封面 · ${count} 方案` : '封面';
+    return count > 1 ? `Cover · ${count} concepts` : 'Cover';
+  }
+
+  function formTreeKey(form: CreationFormProjection) {
+    return form.role === 'SOCIAL_POST_COVER'
+      ? `cover-design:${form.form.creationItemId}:${form.form.sourceFormId ?? 'legacy'}`
+      : `form:${form.form.id}`;
+  }
+
+  function formGroupSelected(form: CreationFormProjection) {
+    return socialCoverGroup(form).some((candidate) => candidate.form.id === selectedFormId);
   }
 
   useEffect(() => {
@@ -476,19 +603,9 @@ export function ResultLibrary({
   }, [selectedForm, selectedItem, setItemPersistent]);
 
   useEffect(() => {
-    const targetAlbumId = selectedAlbumId ?? selectedItem?.item.albumId ?? selectedDocumentAlbumId;
-    if (!targetAlbumId) {
+    if (selectedAlbumPath.length === 0) {
       lastAutoRevealedAlbumSelectionRef.current = null;
       return;
-    }
-
-    let albumId: string | null = targetAlbumId;
-    const visited = new Set<string>();
-    const albumPath: string[] = [];
-    while (albumId && !visited.has(albumId)) {
-      visited.add(albumId);
-      albumPath.push(albumId);
-      albumId = tree.parentById.get(albumId) ?? null;
     }
 
     const selectionKey = JSON.stringify([
@@ -496,21 +613,12 @@ export function ResultLibrary({
       selectedItemId,
       selectedFormId,
       selectedDocumentId,
-      ...albumPath,
+      ...selectedAlbumPath,
     ]);
     if (lastAutoRevealedAlbumSelectionRef.current === selectionKey) return;
     lastAutoRevealedAlbumSelectionRef.current = selectionKey;
-    for (const currentAlbumId of albumPath) setAlbumPersistent('album:' + currentAlbumId, true);
-  }, [
-    selectedAlbumId,
-    selectedDocumentAlbumId,
-    selectedDocumentId,
-    selectedFormId,
-    selectedItem?.item.albumId,
-    selectedItemId,
-    setAlbumPersistent,
-    tree.parentById,
-  ]);
+    for (const currentAlbumId of selectedAlbumPath) setAlbumPersistent('album:' + currentAlbumId, true);
+  }, [selectedAlbumId, selectedAlbumPath, selectedDocumentId, selectedFormId, selectedItemId, setAlbumPersistent]);
 
   useEffect(() => {
     if (!includeDocuments) return;
@@ -561,15 +669,36 @@ export function ResultLibrary({
   }, [data.albums, itemsByAlbumId, locale, queryKey, tree]);
 
   function visibleItemForms(item: CreationItemProjection) {
-    return item.orderedForms.filter((form) => {
-      if (form.form.id === selectedFormId) return true;
-      if (!formMatchesFilter(form, filter)) return false;
-      return !queryKey || normalized(creationFormTitle(form, locale), locale).includes(queryKey);
-    });
+    const visible: CreationFormProjection[] = [];
+    const seenGroups = new Set<string>();
+    for (const form of item.orderedForms) {
+      if (form.role !== 'SOCIAL_POST_COVER') {
+        if (form.form.id === selectedFormId) visible.push(form);
+        else if (
+          formMatchesFilter(form, filter) &&
+          (!queryKey || normalized(creationFormTitle(form, locale), locale).includes(queryKey))
+        )
+          visible.push(form);
+        continue;
+      }
+      const groupKey = formTreeKey(form);
+      if (seenGroups.has(groupKey)) continue;
+      seenGroups.add(groupKey);
+      const group = socialCoverGroup(form);
+      const selected = group.find((candidate) => candidate.form.id === selectedFormId);
+      const representative = selected ?? group.at(-1) ?? form;
+      const queryMatches =
+        !queryKey ||
+        normalized(formDisplayTitle(representative), locale).includes(queryKey) ||
+        group.some((candidate) => normalized(creationFormTitle(candidate, locale), locale).includes(queryKey));
+      if (selected || (formMatchesFilter(representative, filter) && queryMatches)) visible.push(representative);
+    }
+    return visible;
   }
 
   function formAssets(form: CreationFormProjection) {
-    const assets = creationFormPreviewAssetIds(form).flatMap((assetId) => assetsById.get(assetId) ?? []);
+    const assetIds = socialCoverGroup(form).flatMap(creationFormPreviewAssetIds);
+    const assets = [...new Set(assetIds)].flatMap((assetId) => assetsById.get(assetId) ?? []);
     if (assets.length > 0 || form.role !== 'VIDEO_DOCUMENT' || !form.entity) return assets;
     return [form.entity.source.asset];
   }
@@ -582,10 +711,29 @@ export function ResultLibrary({
     return [...assets.values()];
   }
 
+  function albumChildDisclosureAssets(entries: readonly AlbumChildEntry[]) {
+    const assets = new Map<string, AssetDto>();
+    for (const entry of entries) {
+      const entryAssets =
+        entry.kind === 'ALBUM' ? creationAlbumPreviewAssets(entry.album, filter) : creationItemAssets(entry.item);
+      for (const asset of entryAssets) {
+        assets.set(asset.id, asset);
+        if (assets.size >= 3) return [...assets.values()];
+      }
+    }
+    return [...assets.values()];
+  }
+
   function openForm(form: CreationFormProjection) {
     switch (form.role) {
       case 'INSPIRATION':
         onSelectInspirationStash(form.entityRef.id);
+        break;
+      case 'IMAGE_BREAKDOWN':
+        onSelectImageBreakdown(form.entityRef.id);
+        break;
+      case 'EVALUATION_SUITE':
+        onSelectEvaluationSuite(form.entityRef.id);
         break;
       case 'IMAGE_CREATION':
         onSelect(form.session?.primarySeries.id ?? form.entityRef.id);
@@ -678,7 +826,7 @@ export function ResultLibrary({
   }
 
   function childFormActions(form: CreationFormProjection): ActionMenuAction[] {
-    const title = creationFormTitle(form, locale);
+    const title = formDisplayTitle(form);
     const actions: ActionMenuAction[] = [
       {
         id: 'open-form',
@@ -700,27 +848,25 @@ export function ResultLibrary({
   }
 
   function renderChildForm(form: CreationFormProjection, topology: TreeBranchItemTopology) {
-    const title = creationFormTitle(form, locale);
+    const title = formDisplayTitle(form);
+    const kindLabel = formDisplayKind(form);
     const assets = formAssets(form);
     const metrics = getCreationTreeMediaNodeMetrics(assets.map((asset) => ({ asset })));
     const actions = childFormActions(form);
     const row = (
       <CreationLibraryTreeItem
-        key={form.form.id}
         dataAttributes={{
           'data-creation-item-id': form.form.creationItemId,
           'data-creation-form-id': form.form.id,
           'data-creation-form-role': form.role,
-          'data-tree-node-id': 'form:' + form.form.id,
+          'data-tree-node-id': formTreeKey(form),
         }}
-        selected={selectedFormId === form.form.id}
+        selected={formGroupSelected(form)}
         branchTopology={topology}
-        ariaLabel={formKindLabel(form, locale) + ': ' + title}
+        ariaLabel={kindLabel + ': ' + title}
         openLabel={(locale === 'zh' ? '打开：' : 'Open: ') + title}
         title={title}
-        metadata={
-          <span className="mt-0.5 block truncate text-xs text-muted-foreground">{formKindLabel(form, locale)}</span>
-        }
+        metadata={<span className="mt-0.5 block truncate text-xs text-muted-foreground">{kindLabel}</span>}
         previewBounds={metrics.bounds}
         previewStyle={{ width: metrics.width }}
         preview={formPreview(form, 'settled')}
@@ -737,7 +883,7 @@ export function ResultLibrary({
       />
     );
     return (
-      <ContextMenu key={form.form.id}>
+      <ContextMenu key={formTreeKey(form)}>
         <ContextMenuTrigger asChild>{row}</ContextMenuTrigger>
         <ContextMenuContent>
           <ActionContextMenuItems actions={actions} />
@@ -754,6 +900,7 @@ export function ResultLibrary({
   ): ActionMenuAction[] {
     const defaultForm = item.defaultForm;
     const title = itemLifecycleTitle(item, locale);
+    const tabTarget = creationFormTabTarget(openTarget, item.item.albumId);
     const actions: ActionMenuAction[] = [];
     actions.push({
       id: 'open-item',
@@ -761,6 +908,14 @@ export function ResultLibrary({
       icon: formIcon(openTarget),
       onSelect: () => openForm(openTarget),
     });
+    if (tabTarget) {
+      actions.push({
+        id: 'open-item-in-new-tab',
+        label: locale === 'zh' ? '在新标签页打开' : 'Open in new tab',
+        icon: PlusIcon,
+        onSelect: () => onOpenInNewTab(tabTarget),
+      });
+    }
     if (defaultForm) {
       if (defaultForm.role === 'ARTICLE' && defaultForm.entity) {
         actions.push({
@@ -937,13 +1092,7 @@ export function ResultLibrary({
     if (!defaultForm) return null;
     const branchId = 'item:' + item.key;
     const forms = visibleItemForms(item);
-    const openTarget =
-      (selectedForm?.form.creationItemId === item.key &&
-        forms.some((form) => form.form.id === selectedForm.form.id) &&
-        selectedForm) ||
-      forms.find((form) => form.form.id === defaultForm.form.id) ||
-      forms[0] ||
-      defaultForm;
+    const openTarget = defaultForm;
     const expandable = forms.length > 1;
     const expanded = itemExpansion.isOpen(branchId);
     const title = itemLifecycleTitle(item, locale);
@@ -1129,6 +1278,28 @@ export function ResultLibrary({
   function renderAlbum(album: AlbumDto, topology?: TreeBranchItemTopology): ReactNode {
     const branchId = 'album:' + album.id;
     const children = albumChildren(album);
+    const childVisibilityEntries = children.map(creationSidebarEntryVisibility);
+    const requiredChildKeys = new Set<string>();
+    for (const entry of children) {
+      if (entry.kind === 'ALBUM' && selectedAlbumPathSet.has(entry.album.id)) {
+        requiredChildKeys.add(creationSidebarEntryKey(entry));
+      } else if (entry.kind === 'ITEM' && selectedAlbumId === null && entry.item.key === selectedItemId) {
+        requiredChildKeys.add(creationSidebarEntryKey(entry));
+      }
+    }
+    const childVisibility = albumChildVisibility.project(
+      album.id,
+      childVisibilityEntries,
+      requiredChildKeys,
+      Boolean(queryKey),
+    );
+    const visibleChildren = children.slice(0, childVisibility.visibleCount);
+    const hiddenChildren = children.slice(childVisibility.visibleCount);
+    const showChildDisclosure = childVisibility.disclosure !== null;
+    const renderedChildCount = visibleChildren.length + Number(showChildDisclosure);
+    const childDisclosureTopology = showChildDisclosure
+      ? getTreeBranchItemTopology(visibleChildren.length, renderedChildCount)
+      : undefined;
     const expanded = albumExpansion.isOpen(branchId);
     const expandable = children.length > 0 || (includeDocuments && album.creationItemCount > 0);
     const selected = selectedAlbumId === album.id;
@@ -1250,18 +1421,31 @@ export function ResultLibrary({
             onCollapse={() => albumExpansion.collapse(branchId)}
           />
         )}
-        {children.length > 0 && (
-          <TreeBranchContent>
-            <TreeBranchCollapseProvider onCollapse={() => albumExpansion.collapse(branchId)}>
-              {children.map((entry, index) => {
-                const childTopology = getTreeBranchItemTopology(index, children.length);
-                return entry.kind === 'ALBUM'
-                  ? renderAlbum(entry.album, childTopology)
-                  : renderCreationItem(entry.item, childTopology);
-              })}
-            </TreeBranchCollapseProvider>
-          </TreeBranchContent>
-        )}
+        <CreationLibraryChildList
+          branchTopology={childDisclosureTopology}
+          collapseLabel={locale === 'zh' ? '收起图集' : 'Collapse album'}
+          hasVisibleChildren={visibleChildren.length > 0}
+          label={
+            childVisibility.disclosure === 'fewer' ? libraryLabels.showFewerChildren : libraryLabels.showMoreChildren
+          }
+          loading={false}
+          previewAssets={childVisibility.disclosure === 'more' ? albumChildDisclosureAssets(hiddenChildren) : []}
+          resetLabel={childVisibility.canReset ? libraryLabels.restoreDefaultVisibleItems : undefined}
+          showDisclosure={showChildDisclosure}
+          onCollapse={() => albumExpansion.collapse(branchId)}
+          onReveal={() => {
+            if (childVisibility.disclosure === 'fewer') albumChildVisibility.reset(album.id);
+            else albumChildVisibility.revealMore(album.id, childVisibilityEntries, childVisibility.visibleCount);
+          }}
+          onReset={() => albumChildVisibility.reset(album.id)}
+        >
+          {visibleChildren.map((entry, index) => {
+            const childTopology = getTreeBranchItemTopology(index, renderedChildCount);
+            return entry.kind === 'ALBUM'
+              ? renderAlbum(entry.album, childTopology)
+              : renderCreationItem(entry.item, childTopology);
+          })}
+        </CreationLibraryChildList>
       </Collapsible>
     );
   }
@@ -1321,7 +1505,7 @@ export function ResultLibrary({
     const defaultForm = entry.item.defaultForm;
     if (!defaultForm) return null;
     const forms = visibleItemForms(entry.item);
-    const openTarget = forms.find((form) => form.form.id === defaultForm.form.id) ?? forms[0] ?? defaultForm;
+    const openTarget = defaultForm;
     const assets = creationItemAssets(entry.item);
     const title = itemLifecycleTitle(entry.item, locale);
     const actions = itemActions(entry.item, openTarget, itemExpansion.isOpen('item:' + entry.item.key), forms.length);

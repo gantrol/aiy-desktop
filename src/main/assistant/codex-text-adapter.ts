@@ -2,6 +2,8 @@ import { randomUUID } from 'node:crypto';
 import { existsSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import type {
+  ArticleCheckInput,
+  ArticleCheckResult,
   CodexAssistInput,
   CodexAssistResult,
   CodexTitleInput,
@@ -24,7 +26,9 @@ import {
   throwIfCodexCancelled,
   titleSchema,
 } from '@/main/assistant/codex-runtime';
-import type { CodexTitleExecutionOptions } from '@/main/assistant/codex-service';
+import type { CodexArticleCheckExecutionOptions, CodexTitleExecutionOptions } from '@/main/assistant/codex-service';
+import { articleCheckOutputSchema, decodeArticleCheckResult } from '@/main/assistant/article-check';
+import { buildArticleCheckPromptProfile } from '@/main/assistant-models/prompts/article-check-prompt';
 import {
   decodeCodexAssistOutputFile,
   decodeCodexAssistOutputMessage,
@@ -43,6 +47,30 @@ import {
 } from '@/main/assistant/title-suggestion';
 
 export class CodexTextAdapter extends CodexAdapterCore {
+  async checkArticle(
+    input: ArticleCheckInput,
+    options: CodexArticleCheckExecutionOptions,
+    signal?: AbortSignal,
+  ): Promise<ArticleCheckResult> {
+    const promptProfile = buildArticleCheckPromptProfile(input);
+    const result = await this.runStructuredText(
+      {
+        scopeId: `article-check:${input.articleId}:${input.expectedRevisionId}`,
+        title: input.title.trim() || 'Article check',
+        developerInstructions: promptProfile.developerInstructions,
+        prompt: promptProfile.prompt,
+        model: options.model,
+        effort: options.effort,
+        localImages: [],
+        outputSchema: articleCheckOutputSchema,
+        timeoutMs: 300_000,
+      },
+      signal,
+      { trackPending: true },
+    );
+    return decodeArticleCheckResult(input, result.finalMessage);
+  }
+
   async preflightStructuredText(
     input: Pick<CodexStructuredTextInput, 'model' | 'effort'>,
     signal?: AbortSignal,

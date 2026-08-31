@@ -4,6 +4,10 @@ import path from 'node:path';
 import { LibraryDatabase } from '@/main/database';
 import { ExtensionRegistry } from '@/main/extensions/registry';
 import { CodexImageDiscovery } from '@/main/extensions/codex-image-discovery';
+import { CodexVisualizationDiscovery } from '@/main/extensions/codex-visualization-discovery';
+import { CodexHistorySearch } from '@/main/extensions/codex-history-search';
+import { ArticleDeliveryConnections } from '@/main/extensions/article-delivery/connection';
+import { ArticleDeliveryJobCoordinator } from '@/main/extensions/article-delivery/job-coordinator';
 import { OpenAiImageApiConnection } from '@/main/extensions/openai-image-api/connection';
 import { DeepSeekApiConnection } from '@/main/extensions/deepseek-api/connection';
 import { LocalQwenAsrSidecarManager } from '@/main/extensions/local-qwen-asr/sidecar-manager';
@@ -13,19 +17,25 @@ import { ExternalImageApiConnections } from '@/main/extensions/external-image-ap
 import type { SecretProtector } from '@/main/extensions/secure-credentials';
 import { registerIpc } from '@/main/ipc/register-ipc';
 import { AppUpdateService } from '@/main/app/app-update-service';
+import { resolveAiyUserDataPath } from '@/main/app/user-data-path';
 import { DesktopApplicationShell } from '@/main/app/application-shell';
-import { applyMediaResponseHeaders, CONTEXT_INDEPENDENT_MEDIA_HOSTS, fetchLocalFile } from '@/main/app/media-response';
+import { WorkspaceLayoutStore } from '@/main/app/workspace-layout-store';
+import { ArticleEditorRecoveryStore } from '@/main/app/article-editor-recovery-store';
+import { installMediaProtocol } from '@/main/app/media-protocol';
 import { TransitionPreviewCache, TRANSITION_PREVIEW_LIMIT } from '@/main/app/transition-preview-cache';
 import { createTransitionPreviewRatingRefreshScheduler } from '@/main/app/transition-preview-rating-refresh';
 import { registerAppUpdateIpc } from '@/main/ipc/app-update-handlers';
+import { registerAppDeepLinkIpc } from '@/main/ipc/app-deep-link-handlers';
 import { createTrustedIpcHandlerRegistrar } from '@/main/ipc/trusted-handlers';
 import { installStarterContentPack } from '@/main/content-packs/starter-pack-installer';
-import { MediaThumbnailCache, normalizeMediaThumbnailSize } from '@/main/media/media-thumbnail-cache';
-import { resolveVideoKeyChangeMediaPath } from '@/main/video-documents/key-change-service';
+import { MediaThumbnailCache } from '@/main/media/media-thumbnail-cache';
 import { VideoDocumentTranscriptBackgroundTaskRegistry } from '@/main/video-transcript/background-task-registry';
 import { ImageTransformService } from '@/main/media/image-transform-service';
 import { RendererEventDispatcher } from '@/main/app/renderer-event-dispatcher';
-import { installRendererProtocol, RENDERER_SCHEME } from '@/main/app/renderer-protocol';
+import { installRendererProtocol } from '@/main/app/renderer-protocol';
+import { installCodexVisualizationPreviewProtocol } from '@/main/app/codex-visualization-preview-protocol';
+import { registerApplicationSchemes } from '@/main/app/protocol-schemes';
+import { AppDeepLinkController, registerAiyDeepLinkProtocolClient } from '@/main/app/external-deep-link';
 import { installSessionSecurityPolicy } from '@/main/app/window-security';
 import type { ActiveLibraryContext } from '@/main/libraries/active-library-context';
 import { LibraryRegistry, libraryDatabasePath, type LibraryDescriptor } from '@/main/libraries/library-registry';
@@ -36,6 +46,7 @@ import { prepareLocalSpaceCover } from '@/main/libraries/local-space-cover';
 import { LocalSpaceTransferService } from '@/main/libraries/local-space-transfer';
 import { createLocalSpaceTransferActions } from '@/main/libraries/local-space-transfer-controller';
 import { LibraryContextLifecycle } from '@/main/libraries/library-context-lifecycle';
+import { createLibraryContextRendererEvents } from '@/main/libraries/library-context-renderer-events';
 import { BackgroundGenerationClient } from '@/main/model-worker/client';
 import type {
   GenerationChangedEvent,
@@ -43,17 +54,12 @@ import type {
   LocalSpaceTransitionEvent,
   LocalSpaceTransitionStage,
   LocalSpaceTransferProgressEvent,
-  ModelWorkerStatusDto,
   TransitionPreviewDto,
 } from '@/shared/contracts';
-import {
-  DEFAULT_PRODUCT_NAME,
-  productNameForLocale,
-  STORE_USER_DATA_DIRECTORY_NAME,
-  USER_DATA_DIRECTORY_NAME,
-} from '@/shared/product';
+import { DEFAULT_PRODUCT_NAME, productNameForLocale } from '@/shared/product';
 import {
   ALIBABA_MODEL_STUDIO_IMAGE_API_EXTENSION_ID,
+  CODEX_HISTORY_SEARCH_EXTENSION_ID,
   CODEX_IMAGE_DISCOVERY_EXTENSION_ID,
   GOOGLE_GEMINI_IMAGE_API_EXTENSION_ID,
   OPENAI_IMAGE_PROVIDER_KEY,
@@ -67,30 +73,34 @@ const imageApiExtensionByProvider: Partial<Record<string, ExternalImageApiExtens
   volcengine: VOLCENGINE_ARK_IMAGE_API_EXTENSION_ID,
 };
 
-protocol.registerSchemesAsPrivileged([
-  {
-    scheme: RENDERER_SCHEME,
-    privileges: { standard: true, secure: true, supportFetchAPI: true, codeCache: true },
-  },
-  {
-    scheme: 'aiy-media',
-    privileges: { standard: true, secure: true, supportFetchAPI: true, corsEnabled: true, stream: true },
-  },
-]);
+function refreshOpenAiImageApiWorker(generation: BackgroundGenerationClient, connection: OpenAiImageApiConnection) {
+  void generation.configureOpenAiImageApi(connection.runtimeConfiguration()).catch((error) => {
+    console.error('[openai-image-api] failed to refresh worker verification', error);
+  });
+}
+
+registerApplicationSchemes();
 const rendererEvents = new RendererEventDispatcher();
+const appDeepLinks = new AppDeepLinkController(rendererEvents);
 const localQwenAsrSidecar = new LocalQwenAsrSidecarManager();
 const transcriptBackgroundTasks = new VideoDocumentTranscriptBackgroundTaskRegistry();
 let legacySpaceMigration: LegacySpaceMigrationService | null = null;
 let localSpaceTransfer: LocalSpaceTransferService | null = null;
+let managedCodexHistorySearch: CodexHistorySearch | null = null;
+const allowWindowPresentation = process.env.AIY_E2E !== '1' || process.env.AIY_E2E_OBSERVE === '1';
 const appShell = new DesktopApplicationShell(rendererEvents, {
   backgroundColor: '#f8f7f3',
   title: productNameForLocale(app.getLocale()),
+  allowWindowPresentation,
+  onSecondInstanceArguments: (commandLine) => appDeepLinks.acceptCommandLine(commandLine),
+  onOpenUrl: (url) => appDeepLinks.acceptUrl(url),
   backgroundModelTasks: transcriptBackgroundTasks,
   stopManagedLocalModels: () => localQwenAsrSidecar.dispose(),
   stopBackgroundFileOperations: () =>
     Promise.all([
       legacySpaceMigration?.dispose() ?? Promise.resolve(),
       localSpaceTransfer?.dispose() ?? Promise.resolve(),
+      managedCodexHistorySearch?.dispose() ?? Promise.resolve(),
     ]).then(() => undefined),
 });
 transcriptBackgroundTasks.onChanged((event) => {
@@ -120,10 +130,11 @@ function liveServiceProxy<T extends object>(resolve: (context: ActiveLibraryCont
 }
 
 const configuredUserDataPath = process.env.AIY_USER_DATA_DIR?.trim();
-const userDataDirectoryName = process.windowsStore ? STORE_USER_DATA_DIRECTORY_NAME : USER_DATA_DIRECTORY_NAME;
-const userDataPath = configuredUserDataPath
-  ? path.resolve(configuredUserDataPath)
-  : path.resolve(app.getPath('appData'), userDataDirectoryName);
+const userDataPath = resolveAiyUserDataPath({
+  appDataRoot: app.getPath('appData'),
+  configuredPath: configuredUserDataPath,
+  windowsStore: process.windowsStore,
+});
 const configuredLegacyUserDataPath = process.env.AIY_LEGACY_USER_DATA_DIR?.trim();
 const legacyUserDataPath = configuredLegacyUserDataPath ? path.resolve(configuredLegacyUserDataPath) : null;
 const forbiddenLocalSpaceDestinationRoots = localSpaceForbiddenDestinationRoots({
@@ -136,26 +147,34 @@ app.setName(DEFAULT_PRODUCT_NAME);
 
 const ownsSingleInstanceLock = app.requestSingleInstanceLock();
 if (!ownsSingleInstanceLock) app.quit();
+if (ownsSingleInstanceLock) appDeepLinks.acceptCommandLine(process.argv);
 
 if (ownsSingleInstanceLock)
   app
     .whenReady()
     .then(async () => {
+      registerAiyDeepLinkProtocolClient();
+      const appIpc = createTrustedIpcHandlerRegistrar(() => appShell.mainWindow);
+      registerAppDeepLinkIpc(appIpc, appDeepLinks);
       if (process.platform === 'win32') appShell.ensureAppTray();
       const updates = new AppUpdateService((state) => {
         rendererEvents.send('app-update:changed', state);
       });
       appShell.setAppUpdates(updates);
-      registerAppUpdateIpc(
-        createTrustedIpcHandlerRegistrar(() => appShell.mainWindow),
-        {
-          getState: () => updates.getState(),
-          check: () => updates.check(),
-          download: () => updates.download(),
-          install: () => updates.install(appShell.prepareAppUpdateInstall, appShell.relaunchAfterFailedUpdateInstall),
-        },
-      );
+      registerAppUpdateIpc(appIpc, {
+        getState: () => updates.getState(),
+        check: () => updates.check(),
+        download: () => updates.download(),
+        install: () => updates.install(appShell.prepareAppUpdateInstall, appShell.relaunchAfterFailedUpdateInstall),
+      });
       const transitionPreviews = new TransitionPreviewCache(path.join(app.getPath('userData'), 'space-previews'));
+      const workspaceLayouts = new WorkspaceLayoutStore(app.getPath('userData'));
+      const articleEditorRecovery = new ArticleEditorRecoveryStore(app.getPath('userData'));
+      const codexHistorySearch = new CodexHistorySearch(
+        path.join(app.getPath('userData'), 'extension-data', CODEX_HISTORY_SEARCH_EXTENSION_ID),
+      );
+      codexHistorySearch.on('changed', () => rendererEvents.send('codex-history-search:changed'));
+      managedCodexHistorySearch = codexHistorySearch;
       libraryRegistry = new LibraryRegistry(app.getPath('userData'));
       let activeLibrary = libraryRegistry.initialize();
       const discoveredLegacyUserDataRoots = await legacyUserDataRoots({
@@ -201,6 +220,10 @@ if (ownsSingleInstanceLock)
         path.join(connectionDirectory, 'deepseek-api.json'),
         secretProtector,
       );
+      const articleDeliveryConnections = new ArticleDeliveryConnections(
+        path.join(connectionDirectory, 'article-delivery'),
+        secretProtector,
+      );
       const assistantRouting = new AssistantRoutingConfiguration(
         path.join(connectionDirectory, 'assistant-routing.json'),
       );
@@ -235,14 +258,14 @@ if (ownsSingleInstanceLock)
           openMode: createsDatabase ? 'create' : 'must-exist',
         });
         let targetGeneration: BackgroundGenerationClient | null = null;
-        let targetImageDiscovery: CodexImageDiscovery | null = null;
+        const targetImageDiscovery = new CodexImageDiscovery(targetDatabase);
+        const targetVisualizationDiscovery = new CodexVisualizationDiscovery();
         const targetThumbnails = new MediaThumbnailCache(library.rootPath);
         const targetImageTransforms = new ImageTransformService(targetDatabase);
         try {
           initializeLibrary(targetDatabase, library);
           if (createsDatabase) libraryRegistry?.markDatabaseCreated(library.id);
           reportProgress?.('CONNECTING_SERVICES', 55);
-          targetImageDiscovery = new CodexImageDiscovery(targetDatabase);
           targetGeneration = await BackgroundGenerationClient.create({
             databasePath: libraryDatabasePath(library),
             libraryRoot: library.rootPath,
@@ -256,14 +279,14 @@ if (ownsSingleInstanceLock)
           targetDatabase.setLibraryFileViewBackgroundSynchronizer(() =>
             targetGeneration!.callWorker<void>('library-file-view.refresh', [], 120_000),
           );
-          const targetCodex = targetGeneration.codex;
-          const targetAssistant = targetGeneration.assistant;
+          const { codex: targetCodex, assistant: targetAssistant } = targetGeneration;
           reportProgress?.('LOADING_EXTENSIONS', 72);
           const targetExtensions: ExtensionRegistry = new ExtensionRegistry(targetDatabase, {
             extensionRoots,
             codexHealth: () => targetCodex.cachedHealth,
             antigravityCliStatus: () => targetGeneration!.antigravityCliStatus,
             codexImageDiscoveryStatus: () => targetImageDiscovery!.status(),
+            codexVisualizationDiscoveryStatus: () => targetVisualizationDiscovery!.status(),
             openAiImageApiStatus: () => {
               const status = openAiImageApi.status();
               return {
@@ -276,6 +299,7 @@ if (ownsSingleInstanceLock)
               const status = deepSeekApi.status();
               return { configured: status.configured, ready: status.status === 'READY', message: status.message };
             },
+            articleDeliveryStatus: (extensionId) => articleDeliveryConnections.extensionStatus(extensionId),
             externalImageApiStatus: (extensionId) => {
               const status = externalImageApis.status(extensionId);
               const permissionRequired = externalImageApis.endpointPermission(extensionId);
@@ -295,11 +319,8 @@ if (ownsSingleInstanceLock)
             externalImageApis.runtimeConfigurations((extensionId, permission) =>
               targetExtensions.isPermissionGranted(extensionId, permission),
             );
-          const refreshOpenAiImageApiRuntimeConfiguration = () => {
-            void targetGeneration!.configureOpenAiImageApi(openAiImageApi.runtimeConfiguration()).catch((error) => {
-              console.error('[openai-image-api] failed to refresh worker verification', error);
-            });
-          };
+          const refreshOpenAiImageApiRuntimeConfiguration = () =>
+            refreshOpenAiImageApiWorker(targetGeneration!, openAiImageApi);
           reportProgress?.('APPLYING_SETTINGS', 82);
           await targetGeneration.configureOpenAiImageApi(openAiImageApi.runtimeConfiguration());
           await targetGeneration.configureDeepSeekApi(deepSeekApi.runtimeConfiguration());
@@ -352,13 +373,15 @@ if (ownsSingleInstanceLock)
             rendererEvents.send('generation:changed', event);
             appShell.updateAppTray();
           };
-          const onWorkerStatusChanged = (status: ModelWorkerStatusDto) => {
-            if (activated) rendererEvents.send('model-worker:changed', status);
-          };
-          const onDiscoveryChanged = () => {
-            if (activated) rendererEvents.send('codex-generated-images:changed');
-          };
+          const contextRendererEvents = createLibraryContextRendererEvents(rendererEvents, () => activated);
           const lifecycle = new LibraryContextLifecycle();
+          const targetArticleDeliveryJobs = new ArticleDeliveryJobCoordinator(
+            targetDatabase,
+            targetExtensions,
+            articleDeliveryConnections,
+            () => lifecycle.acquireOperation(),
+            contextRendererEvents.articleDeliveryJobChanged,
+          );
           const context: ActiveLibraryContext = {
             epoch: ++nextLibraryContextEpoch,
             get state() {
@@ -370,7 +393,9 @@ if (ownsSingleInstanceLock)
             codex: targetCodex,
             assistant: targetAssistant,
             imageDiscovery: targetImageDiscovery,
+            visualizationDiscovery: targetVisualizationDiscovery,
             extensions: targetExtensions,
+            articleDeliveryJobs: targetArticleDeliveryJobs,
             thumbnails: targetThumbnails,
             acquireOperation() {
               return lifecycle.acquireOperation();
@@ -386,8 +411,9 @@ if (ownsSingleInstanceLock)
               lifecycle.activate();
               activated = true;
               targetGeneration!.on('changed', onGenerationChanged);
-              targetGeneration!.on('worker-status-changed', onWorkerStatusChanged);
-              targetImageDiscovery!.on('changed', onDiscoveryChanged);
+              targetGeneration!.on('worker-status-changed', contextRendererEvents.modelWorkerChanged);
+              targetImageDiscovery!.on('changed', contextRendererEvents.codexImagesChanged);
+              targetVisualizationDiscovery!.on('changed', contextRendererEvents.codexVisualizationsChanged);
               unsubscribeCodexPending = targetCodex.onPendingChanged(appShell.updateAppTray);
               unsubscribeAssistantProgress = targetAssistant.onProgress((event) => {
                 rendererEvents.send('assistant-run:progress', event);
@@ -401,6 +427,7 @@ if (ownsSingleInstanceLock)
                 backgroundServicesStarted = true;
                 try {
                   targetDatabase.startBackgroundStorage();
+                  targetArticleDeliveryJobs.start();
                 } catch (error) {
                   console.error('[library-file-view] initial synchronization failed', error);
                 }
@@ -444,12 +471,14 @@ if (ownsSingleInstanceLock)
                 unsubscribeAssistantProgress?.();
                 unsubscribeCodexPending = null;
                 targetGeneration!.off('changed', onGenerationChanged);
-                targetGeneration!.off('worker-status-changed', onWorkerStatusChanged);
-                targetImageDiscovery!.off('changed', onDiscoveryChanged);
+                targetGeneration!.off('worker-status-changed', contextRendererEvents.modelWorkerChanged);
+                targetImageDiscovery!.off('changed', contextRendererEvents.codexImagesChanged);
+                targetVisualizationDiscovery!.off('changed', contextRendererEvents.codexVisualizationsChanged);
+                await targetArticleDeliveryJobs.stopAndDrain();
                 await targetDatabase.drainBackgroundStorage();
                 await targetThumbnails.dispose();
                 targetGeneration!.dispose();
-                await targetImageDiscovery!.dispose();
+                await Promise.all([targetImageDiscovery.dispose(), targetVisualizationDiscovery.dispose()]);
                 targetDatabase.close();
               });
             },
@@ -463,7 +492,7 @@ if (ownsSingleInstanceLock)
           await targetDatabase.drainBackgroundStorage();
           await targetThumbnails.dispose();
           targetGeneration?.dispose();
-          await targetImageDiscovery?.dispose();
+          await Promise.all([targetImageDiscovery.dispose(), targetVisualizationDiscovery.dispose()]);
           targetDatabase.close();
           throw error;
         }
@@ -474,6 +503,7 @@ if (ownsSingleInstanceLock)
         appShell.setActiveLibraryContext(context);
         activeLibrary = context.library;
         context.activate();
+        codexHistorySearch.setActive(context.extensions.isActivated(CODEX_HISTORY_SEARCH_EXTENSION_ID));
         if (appShell.mainWindow?.isVisible()) context.startBackgroundServices();
         appShell.updateAppTray();
         if (previous) {
@@ -655,6 +685,10 @@ if (ownsSingleInstanceLock)
         liveServiceProxy((context) => context.generation),
         liveServiceProxy((context) => context.extensions),
         liveServiceProxy((context) => context.imageDiscovery),
+        codexHistorySearch,
+        liveServiceProxy((context) => context.visualizationDiscovery),
+        articleDeliveryConnections,
+        liveServiceProxy((context) => context.articleDeliveryJobs),
         openAiImageApi,
         deepSeekApi,
         localQwenAsrSidecar,
@@ -677,6 +711,8 @@ if (ownsSingleInstanceLock)
         () => appShell.mainWindow,
         (channel, ...args) => rendererEvents.send(channel, ...args),
         appShell.requestAppQuit,
+        workspaceLayouts,
+        articleEditorRecovery,
         {
           listSpaces: () => {
             if (!libraryRegistry) throw new Error('Local space registry is unavailable');
@@ -685,6 +721,10 @@ if (ownsSingleInstanceLock)
           discoverLegacy: legacyMigrationActions.discoverLegacy,
           migrateLegacy: legacyMigrationActions.migrateLegacy,
           cancelLegacyMigration: legacyMigrationActions.cancelLegacyMigration,
+          currentSpaceId: () => {
+            if (!libraryRegistry) throw new Error('Local space registry is unavailable');
+            return libraryRegistry.getCurrent().id;
+          },
           currentSpaceName: () => libraryRegistry?.getCurrent().name ?? 'AIY Space',
           exportCurrent: transferActions.exportCurrent,
           importArchive: transferActions.importArchive,
@@ -731,56 +771,11 @@ if (ownsSingleInstanceLock)
         runInLibraryContext,
       );
       installRendererProtocol(protocol, path.join(app.getAppPath(), 'out', 'renderer'));
-      protocol.handle('aiy-media', async (request) => {
-        const url = new URL(request.url);
-        const identifier = decodeURIComponent(url.pathname.slice(1));
-        const context = CONTEXT_INDEPENDENT_MEDIA_HOSTS.has(url.hostname) ? null : appShell.activeLibraryContext;
-        const release = context?.acquireOperation();
-        try {
-          const assetPath =
-            url.hostname === 'asset' || url.hostname === 'asset-thumbnail'
-              ? context?.database.getAssetPath(identifier)
-              : null;
-          let filePath =
-            url.hostname === 'space-preview'
-              ? transitionPreviews.resolveFile(identifier)
-              : url.hostname === 'space-cover'
-                ? libraryRegistry?.resolveCoverPath(identifier, url.searchParams.get('revision'))
-                : url.hostname === 'asset'
-                  ? assetPath
-                  : url.hostname === 'video-evidence' && context
-                    ? resolveVideoKeyChangeMediaPath(context.database.libraryRoot, identifier)
-                    : url.hostname === 'codex-generated' &&
-                        context?.extensions.isActivated(CODEX_IMAGE_DISCOVERY_EXTENSION_ID)
-                      ? context.imageDiscovery.resolveMediaPath(identifier)
-                      : null;
-          let thumbnail = false;
-          if (url.hostname === 'asset-thumbnail' && context && assetPath) {
-            try {
-              filePath = await context.thumbnails.get(
-                identifier,
-                assetPath,
-                normalizeMediaThumbnailSize(url.searchParams.get('size')),
-              );
-              thumbnail = true;
-            } catch (error) {
-              console.warn('[media-thumbnail] falling back to the original asset', { assetId: identifier, error });
-              filePath = assetPath;
-            }
-          }
-          if (!filePath) return new Response('Not found', { status: 404 });
-
-          const response = await fetchLocalFile(filePath, request.headers.get('range'));
-          const headers = new Headers(response.headers);
-          applyMediaResponseHeaders(headers, url.hostname, filePath, thumbnail);
-          return new Response(response.body, {
-            status: response.status,
-            statusText: response.statusText,
-            headers,
-          });
-        } finally {
-          release?.();
-        }
+      installCodexVisualizationPreviewProtocol(protocol, () => appShell.activeLibraryContext);
+      installMediaProtocol(protocol, {
+        activeLibraryContext: () => appShell.activeLibraryContext,
+        libraryRegistry: () => libraryRegistry,
+        transitionPreviews,
       });
       installSessionSecurityPolicy(session.defaultSession, appShell.developmentRendererUrl());
       appShell.createWindow();

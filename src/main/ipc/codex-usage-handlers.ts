@@ -17,8 +17,9 @@ import {
   codexUsageTaskSchema,
 } from '@/shared/contracts/codex-usage';
 import { CODEX_USAGE_INVESTIGATOR_EXTENSION_ID } from '@/shared/extension-ids';
+import { EXTENSION_PERMISSION } from '@/shared/extension-permissions';
 
-const QUOTA_PERMISSION = 'codex:account-rate-limits';
+const QUOTA_PERMISSION = EXTENSION_PERMISSION.accountReadCodexRateLimits;
 
 interface Options {
   ipcMain: IpcHandlerRegistrar;

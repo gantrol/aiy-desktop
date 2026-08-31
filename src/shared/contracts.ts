@@ -1,6 +1,60 @@
 import type { ResolvedPromptComposition } from '@/shared/prompt-composition';
 import type { ExtensionHostEngineKey } from '@/shared/product';
 import type {
+  ArticleEditorRecoveryCheckpoint,
+  ArticleEditorRecoveryIdentity,
+  ArticleEditorRecoveryScope,
+} from '@/shared/contracts/article-editor-recovery';
+import type {
+  BackgroundIssueAcknowledgeInput,
+  BackgroundIssueAcknowledgeResult,
+  BackgroundIssueDto,
+  LegacyGenerationDismissalImportInput,
+  LegacyGenerationDismissalImportResult,
+} from '@/shared/contracts/background-issue';
+import type { AssetFileDragRequest, AssetFileDragResult } from '@/shared/contracts/asset-file-drag';
+export type {
+  ArticleEditorRecoveryCheckpoint,
+  ArticleEditorRecoveryIdentity,
+  ArticleEditorRecoveryScope,
+} from '@/shared/contracts/article-editor-recovery';
+export type {
+  BackgroundIssueAcknowledgeInput,
+  BackgroundIssueAcknowledgeResult,
+  BackgroundIssueDto,
+  BackgroundIssueKind,
+  LegacyGenerationDismissalImportInput,
+  LegacyGenerationDismissalImportResult,
+} from '@/shared/contracts/background-issue';
+export type {
+  AssetFileDragIntent,
+  AssetFileDragRequest,
+  AssetFileDragResult,
+} from '@/shared/contracts/asset-file-drag';
+import type {
+  WorkspaceLayoutSaveInput,
+  WorkspaceLayoutSaveResult,
+  WorkspaceLayoutSnapshotDto,
+} from '@/shared/contracts/workspace-layout';
+import type { CreationDraftDto, CreationDraftLoadInput } from '@/shared/contracts/creation-draft';
+export type { CreationDraftDto, CreationDraftLoadInput } from '@/shared/contracts/creation-draft';
+export type {
+  ArticleEditTrailEntryDto,
+  ArticleEditorLocationDto,
+  WorkspaceAppView,
+  WorkspaceArticleEditOwnerDto,
+  WorkspaceArticleEditorStateDto,
+  WorkspaceArrangementDto,
+  WorkspaceGroupDto,
+  WorkspaceLayoutSaveInput,
+  WorkspaceLayoutSaveResult,
+  WorkspaceLayoutSnapshotDto,
+  WorkspaceLayoutStateDto,
+  WorkspaceNavigationEntryDto,
+  WorkspaceTabDto,
+  WorkspaceTarget,
+} from '@/shared/contracts/workspace-layout';
+import type {
   CreationFormAddOrGetInput,
   CreationFormAddOrGetResult,
   CreationItemDto,
@@ -42,6 +96,52 @@ export type {
   CreationItemSetPrimaryResult,
 } from '@/shared/contracts/creation-library';
 import type {
+  EvaluationSuiteCreateInput,
+  EvaluationSuiteDto,
+  EvaluationSuiteGetInput,
+  EvaluationSuiteSaveInput,
+} from '@/shared/contracts/evaluation-suite';
+export type {
+  EvaluationCase,
+  EvaluationCaseKind,
+  EvaluationCriterion,
+  EvaluationInputPart,
+  EvaluationInputPartKind,
+  EvaluationPreprocessing,
+  EvaluationSuiteContentInput,
+  EvaluationSuiteCreateInput,
+  EvaluationSuiteDto,
+  EvaluationSuiteGetInput,
+  EvaluationSuiteSaveInput,
+  EvaluationTargetCondition,
+  EvaluationTargetType,
+} from '@/shared/contracts/evaluation-suite';
+import type {
+  ImageBreakdownCreateInput,
+  ImageBreakdownCreateResult,
+  ImageBreakdownDto,
+  ImageBreakdownImageFormCreateInput,
+  ImageBreakdownImageFormCreateResult,
+  ImageBreakdownReplaceSourceInput,
+  ImageBreakdownRouteDto,
+  ImageBreakdownRunInput,
+} from '@/shared/contracts/image-breakdown';
+export type {
+  ImageBreakdownCreateInput,
+  ImageBreakdownCreateResult,
+  ImageBreakdownDto,
+  ImageBreakdownImageFormCreateInput,
+  ImageBreakdownImageFormCreateResult,
+  ImageBreakdownPromptKind,
+  ImageBreakdownReplaceSourceInput,
+  ImageBreakdownResult,
+  ImageBreakdownRouteDto,
+  ImageBreakdownRouteKey,
+  ImageBreakdownRunInput,
+  ImageBreakdownStatus,
+  ImageBreakdownWorkerInput,
+} from '@/shared/contracts/image-breakdown';
+import type {
   InspirationStashContentInput,
   InspirationStashMoveInput,
   InspirationStashSaveInput,
@@ -56,18 +156,62 @@ export type {
 import type {
   SocialPostContentInput,
   SocialPostFormAddInput,
+  SocialPostFormCreateInput,
   SocialPostMoveInput,
   SocialPostSaveInput,
   SocialPostSetArchivedInput,
 } from '@/shared/contracts/social-post';
 import type {
+  BrowserCompanionDeleteInput,
+  BrowserCompanionDeleteResult,
+  BrowserCompanionDestinationSelectInput,
+  BrowserCompanionDestinationsResult,
+  BrowserCompanionHistoryItem,
+  BrowserCompanionOpenInput,
+  BrowserCompanionOpenResult,
+  BrowserCompanionStageInput,
+  BrowserCompanionStageResult,
+} from '@/shared/contracts/browser-companion';
+import type {
+  ArticleDeliveryArticleProfile,
+  ArticleDeliveryArticleProfileSaveInput,
+  ArticleDeliveryArticleTarget,
+  ArticleDeliveryConnectionDto,
+  ArticleDeliveryConnectionSaveInput,
+  ArticleDeliveryExtensionTarget,
+  ArticleDeliveryJob,
+  ArticleDeliveryJobChangedEvent,
+  ArticleDeliveryJobListInput,
+  ArticleDeliveryJobRetryInput,
+  ArticleDeliveryStatus,
+  ArticleDeliveryUploadInput,
+  ArticleDeliveryUploadResult,
+} from '@/shared/contracts/article-delivery';
+import type {
+  ArticleCheckExecutionResult,
+  ArticleCheckInput,
+  ArticleCheckRunApplyInput,
+  ArticleCheckRunApplyResult,
+  ArticleCheckRunsListInput,
+  ArticleCheckRunsPage,
   ArticleContentInput,
   ArticleCopyForWechatInput,
   ArticleCopyForWechatResult,
+  ArticleCommentDto,
+  ArticleCommentMutationInput,
+  ArticleCommentMutationResult,
+  ArticleElementPlacementInput,
   ArticleExportMarkdownInput,
   ArticleFormAddInput,
+  ArticleFormCreateInput,
   ArticleMoveInput,
   ArticleRenameInput,
+  ArticleRevisionDto,
+  ArticleRevisionGetInput,
+  ArticleRevisionHistoryInput,
+  ArticleRevisionHistoryResult,
+  ArticleRevisionSaveInput,
+  ArticleRevisionSaveResult,
   ArticleSaveInput,
   ArticleSetArchivedInput,
 } from '@/shared/contracts/article';
@@ -78,16 +222,48 @@ import type {
   DerivedVisualWorkspaceOpenInput,
 } from '@/shared/contracts/derived-visual';
 export type {
+  ArticleCheckApplyInput,
+  ArticleCheckApplyResult,
+  ArticleCheckBlockInput,
+  ArticleCheckExecutionResult,
+  ArticleCheckFinding,
+  ArticleCheckInput,
+  ArticleCheckResult,
+  ArticleCheckRunApplyInput,
+  ArticleCheckRunApplyResult,
+  ArticleCheckRunDto,
+  ArticleCheckRunsListInput,
+  ArticleCheckRunsPage,
+  ArticleCheckRunStatus,
   ArticleContentInput,
   ArticleCopyForWechatInput,
   ArticleCopyForWechatResult,
+  ArticleCommentAnchorInput,
+  ArticleCommentAnchorUpdateInput,
+  ArticleCommentDto,
+  ArticleCommentModelAuthor,
+  ArticleCommentMutationInput,
+  ArticleCommentMutationResult,
+  ArticleCommentReplyDto,
+  ArticleCommentStatus,
+  ArticleElementNodeType,
+  ArticleElementPlacementInput,
   ArticleExportMarkdownInput,
   ArticleFormAddInput,
+  ArticleFormCreateInput,
   ArticleMediaBindingInput,
   ArticleMoveInput,
   ArticleRenameInput,
+  ArticleRevisionDto,
+  ArticleRevisionGetInput,
+  ArticleRevisionHistoryInput,
+  ArticleRevisionHistoryResult,
+  ArticleRevisionSaveInput,
+  ArticleRevisionSaveResult,
+  ArticleRevisionSummaryDto,
   ArticleSaveInput,
   ArticleSetArchivedInput,
+  ArticleWechatCopyOptions,
 } from '@/shared/contracts/article';
 export type {
   ArticleInlineVisualAnchor,
@@ -99,10 +275,39 @@ export type {
 export type {
   SocialPostContentInput,
   SocialPostFormAddInput,
+  SocialPostFormCreateInput,
   SocialPostMoveInput,
   SocialPostSaveInput,
   SocialPostSetArchivedInput,
 } from '@/shared/contracts/social-post';
+export type {
+  BrowserCompanionBrowser,
+  BrowserCompanionBrowserId,
+  BrowserCompanionContentKind,
+  BrowserCompanionBrowserOpenError,
+  BrowserCompanionDestination,
+  BrowserCompanionDestinationSelectInput,
+  BrowserCompanionDestinationsResult,
+  BrowserCompanionDeleteInput,
+  BrowserCompanionDeleteResult,
+  BrowserCompanionHandoffState,
+  BrowserCompanionHistoryItem,
+  BrowserCompanionOpenInput,
+  BrowserCompanionOpenResult,
+  BrowserCompanionProfile,
+  BrowserCompanionSource,
+  BrowserCompanionStageInput,
+  BrowserCompanionStageResult,
+  BrowserCompanionTarget,
+} from '@/shared/contracts/browser-companion';
+import type {
+  CodexHistoryFilterOptions,
+  CodexHistoryFilterOptionsInput,
+  CodexHistoryIndexState,
+  CodexHistoryRefreshInput,
+  CodexHistorySearchInput,
+  CodexHistorySearchPage,
+} from '@/shared/contracts/codex-history-search';
 import type {
   CodexUsageCleanupInput,
   CodexUsageCleanupResult,
@@ -115,6 +320,16 @@ import type {
   CodexUsageState,
   CodexUsageTask,
 } from '@/shared/contracts/codex-usage';
+import type {
+  CodexVisualizationArtifactActionInput,
+  CodexVisualizationExportResult,
+  CodexVisualizationHtmlPreviewDto,
+  CodexVisualizationHtmlPreviewReleaseInput,
+  CodexVisualizationListInput,
+  CodexVisualizationMermaidPreviewDto,
+  CodexVisualizationSessionActionInput,
+  CodexVisualizationSnapshotDto,
+} from '@/shared/contracts/codex-visualizations';
 import type {
   LegacyLocalSpaceCandidateDto,
   LocalSpaceCoverUpdateResult,
@@ -131,6 +346,8 @@ import type {
   TransitionPreviewRefreshEvent,
 } from '@/shared/contracts/local-space';
 import type {
+  PackApplyImportInput,
+  PackApplyImportResult,
   PackCatalogItemDto,
   PackImportLocalResult,
   PackInstallExactInput,
@@ -138,6 +355,7 @@ import type {
   PackReleaseDto,
 } from '@/shared/contracts/packs';
 import type {
+  CreatorClipboardReferenceImportInput,
   CreatorImageChooseInput,
   CreatorImageImportInput,
   CreatorImageImportItemInput,
@@ -162,9 +380,18 @@ import type {
   GenerationProcessSummaryDto,
 } from '@/shared/contracts/generation-process';
 import type { AppUpdateStateDto } from '@/shared/contracts/app-update';
+import type { AppDeepLinkCommand } from '@/shared/contracts/app-deep-link';
 import type { AppSupportDestination } from '@/shared/contracts/app-support';
 import type { AppWindowStateDto, DesktopPlatform } from '@/shared/contracts/app-window';
+import type { ProviderConnectionDto, ProviderConnectionSaveInput } from '@/shared/contracts/provider-connections';
 import type { TransitionShowcaseExportImageSnapshot } from '@/shared/contracts/transition-showcase';
+export type {
+  ProviderConnectionAction,
+  ProviderConnectionDto,
+  ProviderConnectionSaveInput,
+  ProviderConnectionState,
+  ProviderConnectionTargetInput,
+} from '@/shared/contracts/provider-connections';
 import type {
   TermIllustrationAdoptInput,
   TermIllustrationDecisionResult,
@@ -236,11 +463,46 @@ export type {
 } from '@/shared/contracts/local-space';
 export type { TransitionShowcaseExportImageSnapshot } from '@/shared/contracts/transition-showcase';
 export type { AppWindowStateDto, DesktopPlatform } from '@/shared/contracts/app-window';
+export type { AppDeepLinkCommand } from '@/shared/contracts/app-deep-link';
+export type {
+  ArticleDeliveryArticleProfile,
+  ArticleDeliveryArticleProfileSaveInput,
+  ArticleDeliveryArticleTarget,
+  ArticleDeliveryConnectionDto,
+  ArticleDeliveryConnectionSaveInput,
+  ArticleDeliveryConnectionState,
+  ArticleDeliveryExtensionTarget,
+  ArticleDeliveryJob,
+  ArticleDeliveryJobChangedEvent,
+  ArticleDeliveryJobListInput,
+  ArticleDeliveryJobRetryInput,
+  ArticleDeliveryJobStatus,
+  ArticleDeliveryStatus,
+  ArticleDeliveryUploadInput,
+  ArticleDeliveryUploadResult,
+} from '@/shared/contracts/article-delivery';
+export type {
+  CodexHistoryArchiveFilter,
+  CodexHistoryFilterOptions,
+  CodexHistoryFilterOptionsInput,
+  CodexHistoryIndexState,
+  CodexHistoryIndexStatus,
+  CodexHistoryMatchRole,
+  CodexHistoryRefreshInput,
+  CodexHistoryProjectOption,
+  CodexHistoryRoleFilter,
+  CodexHistorySearchInput,
+  CodexHistorySearchPage,
+  CodexHistorySearchResult,
+  CodexHistoryThreadOption,
+  CodexHistoryThreadSource,
+} from '@/shared/contracts/codex-history-search';
 export type {
   CodexUsageCleanupCounts,
   CodexUsageCleanupInput,
   CodexUsageCleanupLevel,
   CodexUsageCleanupResult,
+  CodexUsageDateRange,
   CodexUsageDailyBreakdown,
   CodexUsageExportFormat,
   CodexUsageExportInput,
@@ -273,6 +535,12 @@ export type {
   CodexUsageResumeInput,
   CodexUsageScanInput,
   CodexUsageScanProgress,
+  CodexUsageSessionLengthAnalysis,
+  CodexUsageSessionLengthBucket,
+  CodexUsageSessionLengthComparison,
+  CodexUsageSessionLengthRange,
+  CodexUsageSessionLengthTrend,
+  CodexUsageSessionSource,
   CodexUsageServiceTier,
   CodexUsageState,
   CodexUsageTask,
@@ -281,6 +549,23 @@ export type {
   CodexUsageWarningCode,
 } from '@/shared/contracts/codex-usage';
 export type {
+  CodexVisualizationArtifactActionInput,
+  CodexVisualizationArtifactDto,
+  CodexVisualizationArtifactKind,
+  CodexVisualizationArtifactRole,
+  CodexVisualizationExportResult,
+  CodexVisualizationFilter,
+  CodexVisualizationHtmlPreviewDto,
+  CodexVisualizationHtmlPreviewReleaseInput,
+  CodexVisualizationListInput,
+  CodexVisualizationMermaidPreviewDto,
+  CodexVisualizationSessionActionInput,
+  CodexVisualizationSessionDto,
+  CodexVisualizationSnapshotDto,
+} from '@/shared/contracts/codex-visualizations';
+export type {
+  PackApplyImportInput,
+  PackApplyImportResult,
   PackCatalogItemDto,
   PackDependencyDto,
   PackDto,
@@ -292,8 +577,15 @@ export type {
   PackReleaseDto,
   PackReleaseItemDto,
   PackReleaseSummaryDto,
+  PackImportPreviewDto,
+  PackUpdateChangeDto,
+  PackUpdateChangeKindDto,
+  PackUpdateLocalStateDto,
+  PackUpdateOperationDto,
+  PackUpdateSummaryDto,
 } from '@/shared/contracts/packs';
 export type {
+  CreatorClipboardReferenceImportInput,
   CreatorImageChooseInput,
   CreatorImageImportContext,
   CreatorImageImportInput,
@@ -521,7 +813,15 @@ export interface AntigravityCliStatusDto {
 }
 
 export type ExtensionContributionPoint =
-  'themes' | 'fields' | 'filters' | 'commands' | 'workflows' | 'tools' | 'searchProviders' | 'modelProviders';
+  | 'themes'
+  | 'fields'
+  | 'filters'
+  | 'commands'
+  | 'workflows'
+  | 'tools'
+  | 'searchProviders'
+  | 'modelProviders'
+  | 'deliveryChannels';
 
 export type ExtensionKind = 'CAPABILITY' | 'LANGUAGE';
 export type ExtensionCategory = 'FRONTEND_DESIGN';
@@ -552,6 +852,20 @@ export interface ExtensionImageApiConfigurationDto {
   customModelIdAllowed: boolean;
   /** Presets for which the host can perform a non-generation capability check. */
   connectionCheckPresetIds: string[];
+}
+
+export interface ExtensionArticleDeliveryEndpointDto {
+  id: string;
+  /** Credential-free site origin implementing the AIY article import protocol. */
+  siteUrl: string;
+}
+
+/** Declarative article delivery channel executed by the trusted host broker. */
+export interface ExtensionArticleDeliveryConfigurationDto {
+  kind: 'ARTICLE_DELIVERY';
+  defaultEndpointId: string;
+  endpoints: ExtensionArticleDeliveryEndpointDto[];
+  pathPrefix: string;
 }
 
 export interface ExtensionConfigurationFieldLocalizationDto {
@@ -614,13 +928,15 @@ export interface ExtensionManifestDto {
   language?: ExtensionLanguageDto;
   /** Binds a packaged capability to a runtime explicitly implemented and authorized by the host. */
   runtime?: ExtensionHostRuntimeDto;
-  configuration?: ExtensionImageApiConfigurationDto;
+  configuration?: ExtensionImageApiConfigurationDto | ExtensionArticleDeliveryConfigurationDto;
 }
 
 export interface ExtensionPermissionDto {
   key: string;
   required: boolean;
   granted: boolean;
+  /** Granted only by the owning workflow for one concrete runtime scope. */
+  runtimeScoped: boolean;
 }
 
 export interface ExtensionDto {
@@ -789,6 +1105,8 @@ export interface DeepSeekApiConnectionDto {
   message: string;
   apiKeyHint: string | null;
   modelId: string;
+  visionEndpoint: string;
+  visionModelId: string;
   updatedAt: string | null;
   lastVerifiedAt: string | null;
 }
@@ -796,9 +1114,12 @@ export interface DeepSeekApiConnectionDto {
 export interface DeepSeekApiSaveInput {
   /** Blank preserves the currently stored key. A new connection requires a key. */
   apiKey: string;
+  /** OpenAI-compatible Chat Completions endpoint for a separately hosted DeepSeek-VL model. */
+  visionEndpoint: string;
+  visionModelId: string;
 }
 
-export type AssistantOperation = 'directions' | 'optimize' | 'title' | 'subtitleTranslation';
+export type AssistantOperation = 'directions' | 'optimize' | 'title' | 'subtitleTranslation' | 'articleCheck';
 export type AssistantWebSearchMode = 'DISABLED' | 'REQUIRED';
 export type AssistantModelKind = 'TEXT' | 'AGENT';
 export type AssistantModelState = 'READY' | 'UNAVAILABLE';
@@ -839,6 +1160,7 @@ export interface AssistantRoutingSelections {
   optimize: AssistantRoutingSelection;
   title: AssistantRoutingSelection;
   subtitleTranslation: AssistantRoutingSelection;
+  articleCheck: AssistantRoutingSelection;
 }
 
 export interface AssistantRoutingDto {
@@ -1746,6 +2068,8 @@ export interface GenerationRunDto {
   providerReturnedDescriptions?: ProviderReturnedDescriptionDto[];
   /** Present only after a Codex-backed run has created its persistent Codex task. */
   codexTask?: CodexTaskReferenceDto | null;
+  /** Terminal background issue occurrence, including its durable acknowledgement state. */
+  backgroundIssue?: BackgroundIssueDto | null;
 }
 
 export interface GenerationOutputSetFailedInput {
@@ -2151,9 +2475,11 @@ export type ContentLifecycleSubtype =
   | 'PROMPT_SERIES'
   | 'IDEA_CREATION'
   | 'INSPIRATION_STASH'
+  | 'IMAGE_BREAKDOWN'
   | 'SOCIAL_POST'
   | 'ARTICLE'
   | 'VIDEO_DOCUMENT'
+  | 'EVALUATION_SUITE'
   | 'IMAGE_MATERIAL'
   | 'VIDEO_MATERIAL'
   | 'TEXT_MATERIAL';
@@ -2163,9 +2489,11 @@ export type ContentLifecycleEntityType =
   | 'PROMPT_SERIES'
   | 'CREATION'
   | 'INSPIRATION_STASH'
+  | 'IMAGE_BREAKDOWN'
   | 'SOCIAL_POST'
   | 'ARTICLE'
   | 'VIDEO_DOCUMENT'
+  | 'EVALUATION_SUITE'
   | 'MATERIAL'
   | 'IMAGE_ASSET';
 export type ContentLifecyclePurgeState = 'RETAINED' | 'PURGE_PENDING' | 'FAILED';
@@ -2378,6 +2706,10 @@ export interface MaterialAlbumMoveInput {
 export type MaterialSelectionTargetInput =
   { kind: 'MATERIAL'; materialId: string } | { kind: 'IMAGE_ASSET'; imageAssetId: string };
 
+export interface MaterialImageAssetsResolveInput {
+  targets: MaterialSelectionTargetInput[];
+}
+
 export interface MaterialAlbumAddManyInput {
   albumId: string;
   locale?: Locale;
@@ -2429,8 +2761,10 @@ export interface CanvasPresetDto {
 
 export interface BootstrapDto {
   locale: Locale;
+  spaceId: string;
   spaceName: string;
   spaceCoverUrl: string | null;
+  workspaceLayout: WorkspaceLayoutSnapshotDto | null;
   terms: TermListItem[];
   /** False when activity metrics and media previews are deferred until a consumer opens. */
   termDetailsIncluded?: boolean;
@@ -2450,6 +2784,9 @@ export interface BootstrapDto {
   creations?: CreationDto[];
   /** Stable creator-library aggregates. Forms reference the typed content arrays below. */
   creationItems: CreationItemDto[];
+  evaluationSuites?: EvaluationSuiteDto[];
+  imageBreakdowns?: ImageBreakdownDto[];
+  imageBreakdownRoutes?: ImageBreakdownRouteDto[];
   inspirationStashes?: InspirationStashDto[];
   socialPosts?: SocialPostDto[];
   articles?: ArticleDto[];
@@ -2468,26 +2805,6 @@ export interface GenerationProjectionDto {
   creationItems: CreationItemDto[];
   styleExplorationBatches: StyleExplorationBatchDto[];
   agentTasks: DirectionExperimentDirectorTaskDto[];
-}
-
-export interface CreationDraftDto {
-  id: string;
-  targetAlbumId: string | null;
-  title: string;
-  text: string;
-  promptNodes?: CreatorPromptNodeInput[];
-  referenceAssets: AssetDto[];
-  termPromptLocale: Locale;
-  termIds: string[];
-  wordPaletteReferences: WordPaletteReferenceInput[];
-  dictionaryScope: CreationDictionaryScopeDto;
-  canvasPresetKey: string | null;
-  quality: GenerationQuality;
-  selectedModelKeys: string[];
-  repeatCount: number;
-  modelTargets: GenerationTargetInput[];
-  createdAt: string;
-  updatedAt: string;
 }
 
 export interface CreationDraftSaveInput {
@@ -2511,7 +2828,6 @@ export interface CreationDraftSaveInput {
 export interface CreationDraftStartInput {
   albumId: string | null;
   termPromptLocale: Locale;
-  fresh?: boolean;
 }
 
 export interface CreationInputSnapshotInput {
@@ -2591,6 +2907,8 @@ export interface ArticleDto {
   contentHash: string;
   revisionId: string;
   revisionNo: number;
+  elements: ArticleElementPlacementInput[];
+  comments: ArticleCommentDto[];
   status: 'ACTIVE' | 'ARCHIVED';
   createdAt: string;
   updatedAt: string;
@@ -3319,6 +3637,7 @@ export interface GenerationInput {
   creationDraftId?: string | null;
   /** Explicit user-selected inspiration stash to contain in the resulting creation. */
   inspirationStashId?: string | null;
+  imageBreakdownId?: string | null;
   /** Selected historical version to reuse or branch from instead of the series head. */
   baseVersionId?: string | null;
   /** Imported output whose exact Prompt is the source of this generation. */
@@ -3368,6 +3687,7 @@ export interface PromptVersionCreateResult {
 export interface CreationDraftCommitInput {
   creationDraftId: string;
   inspirationStashId?: string | null;
+  imageBreakdownId?: string | null;
   title: string;
   manualPrompt: string;
   promptNodes?: CreatorPromptNodeInput[];
@@ -3405,7 +3725,7 @@ export interface StyleExplorationSlotInput {
   variableAxis: string;
   risk: string;
   userInstruction: string;
-  input: Omit<GenerationInput, 'seriesId' | 'creationDraftId' | 'inspirationStashId' | 'modelKey'>;
+  input: Omit<GenerationInput, 'seriesId' | 'creationDraftId' | 'inspirationStashId' | 'imageBreakdownId' | 'modelKey'>;
 }
 
 export interface DirectionExperimentDecisionReceiptDto {
@@ -3488,6 +3808,7 @@ export interface DirectionExperimentDirectorTaskDto {
   createdAt: string;
   updatedAt: string;
   finishedAt: string | null;
+  backgroundIssue?: BackgroundIssueDto | null;
 }
 
 export interface StyleExplorationStartInput {
@@ -3788,10 +4109,20 @@ export interface DesktopApi {
   readonly appPlatform: DesktopPlatform;
   /** Up to 24 already-cached local-space previews; cache misses resolve to an empty list. */
   appLoadingPreviews(): Promise<TransitionPreviewDto[]>;
+  appDeepLinksTake(): Promise<AppDeepLinkCommand[]>;
+  onAppDeepLinksAvailable(callback: () => void): () => void;
   transitionShowcaseExportImages(assetIds: readonly string[]): Promise<TransitionShowcaseExportImageSnapshot[]>;
   onAppLoadingPreviewsRefreshed(callback: (event: TransitionPreviewRefreshEvent) => void): () => void;
   bootstrap(locale: Locale): Promise<BootstrapDto>;
+  articleEditorRecoveryList(input: ArticleEditorRecoveryScope): ArticleEditorRecoveryCheckpoint[];
+  articleEditorRecoveryWrite(checkpoint: ArticleEditorRecoveryCheckpoint): void;
+  articleEditorRecoveryRemove(input: ArticleEditorRecoveryIdentity): void;
+  workspaceLayoutSave(input: WorkspaceLayoutSaveInput): Promise<WorkspaceLayoutSaveResult>;
   generationProjection(locale: Locale): Promise<GenerationProjectionDto>;
+  backgroundIssueAcknowledge(input: BackgroundIssueAcknowledgeInput): Promise<BackgroundIssueAcknowledgeResult>;
+  backgroundIssueImportLegacyGenerationDismissals(
+    input: LegacyGenerationDismissalImportInput,
+  ): Promise<LegacyGenerationDismissalImportResult>;
   appWindowGetState(): Promise<AppWindowStateDto>;
   appWindowMinimize(): Promise<void>;
   appWindowToggleMaximized(): Promise<AppWindowStateDto>;
@@ -3809,9 +4140,40 @@ export interface DesktopApi {
   extensionUninstallLocal(extensionId: string): Promise<ExtensionDto[]>;
   extensionSetEnabled(input: ExtensionSetEnabledInput): Promise<ExtensionDto[]>;
   extensionSetPermission(input: ExtensionSetPermissionInput): Promise<ExtensionDto[]>;
+  articleDeliveryConnectionGet(input: ArticleDeliveryExtensionTarget): Promise<ArticleDeliveryConnectionDto>;
+  articleDeliveryConnectionSave(input: ArticleDeliveryConnectionSaveInput): Promise<ArticleDeliveryConnectionDto>;
+  articleDeliveryConnectionTest(input: ArticleDeliveryExtensionTarget): Promise<ArticleDeliveryConnectionDto>;
+  articleDeliveryConnectionClear(input: ArticleDeliveryExtensionTarget): Promise<ArticleDeliveryConnectionDto>;
+  articleDeliveryStatus(input: ArticleDeliveryArticleTarget): Promise<ArticleDeliveryStatus>;
+  articleDeliveryArticleProfileSave(
+    input: ArticleDeliveryArticleProfileSaveInput,
+  ): Promise<ArticleDeliveryArticleProfile>;
+  articleDeliveryUpload(input: ArticleDeliveryUploadInput): Promise<ArticleDeliveryUploadResult>;
+  articleDeliveryJobEnqueue(input: ArticleDeliveryUploadInput): Promise<ArticleDeliveryJob>;
+  articleDeliveryJobsList(input: ArticleDeliveryJobListInput): Promise<ArticleDeliveryJob[]>;
+  articleDeliveryJobRetry(input: ArticleDeliveryJobRetryInput): Promise<ArticleDeliveryJob>;
+  onArticleDeliveryJobChanged(callback: (event: ArticleDeliveryJobChangedEvent) => void): () => void;
   codexGeneratedImagesList(input: CodexImageDiscoveryListInput): Promise<CodexImageDiscoverySnapshotDto>;
   codexGeneratedImagesImport(input: CodexGeneratedImageImportInput): Promise<CodexGeneratedImageImportResult>;
   codexGeneratedImagesRecover(input: CodexGeneratedImageRecoverInput): Promise<CodexGeneratedImageRecoverResult>;
+  codexHistorySearchState(): Promise<CodexHistoryIndexState>;
+  codexHistorySearch(input: CodexHistorySearchInput): Promise<CodexHistorySearchPage>;
+  codexHistorySearchFilterOptions(input: CodexHistoryFilterOptionsInput): Promise<CodexHistoryFilterOptions>;
+  codexHistorySearchRefresh(input: CodexHistoryRefreshInput): Promise<CodexHistoryIndexState>;
+  onCodexHistorySearchChanged(callback: () => void): () => void;
+  codexVisualizationsList(input: CodexVisualizationListInput): Promise<CodexVisualizationSnapshotDto>;
+  codexVisualizationOpen(input: CodexVisualizationArtifactActionInput): Promise<void>;
+  codexVisualizationPrepareHtmlPreview(
+    input: CodexVisualizationArtifactActionInput,
+  ): Promise<CodexVisualizationHtmlPreviewDto>;
+  codexVisualizationPrepareMermaidPreview(
+    input: CodexVisualizationArtifactActionInput,
+  ): Promise<CodexVisualizationMermaidPreviewDto>;
+  codexVisualizationReleaseHtmlPreview(input: CodexVisualizationHtmlPreviewReleaseInput): Promise<void>;
+  codexVisualizationReveal(input: CodexVisualizationArtifactActionInput): Promise<void>;
+  codexVisualizationExport(input: CodexVisualizationArtifactActionInput): Promise<CodexVisualizationExportResult>;
+  codexVisualizationExportSession(input: CodexVisualizationSessionActionInput): Promise<CodexVisualizationExportResult>;
+  onCodexVisualizationsChanged(callback: () => void): () => void;
   codexUsageState(): Promise<CodexUsageState>;
   codexUsageInvestigation(input: CodexUsageInvestigationGetInput): Promise<CodexUsageInvestigation>;
   codexUsageScan(input: CodexUsageScanInput): Promise<CodexUsageTask>;
@@ -3820,22 +4182,14 @@ export interface DesktopApi {
   codexUsageClear(input: CodexUsageCleanupInput): Promise<CodexUsageCleanupResult>;
   codexUsageExport(input: CodexUsageExportInput): Promise<CodexUsageExportResult>;
   onCodexUsageTaskChanged(callback: (task: CodexUsageTask) => void): () => void;
-  openAiImageApiGet(): Promise<OpenAiImageApiConnectionDto>;
-  openAiImageApiSave(input: OpenAiImageApiSaveInput): Promise<OpenAiImageApiConnectionDto>;
-  openAiImageApiTest(): Promise<OpenAiImageApiConnectionDto>;
-  openAiImageApiClear(): Promise<OpenAiImageApiConnectionDto>;
-  deepSeekApiGet(): Promise<DeepSeekApiConnectionDto>;
-  deepSeekApiSave(input: DeepSeekApiSaveInput): Promise<DeepSeekApiConnectionDto>;
-  deepSeekApiTest(): Promise<DeepSeekApiConnectionDto>;
-  deepSeekApiClear(): Promise<DeepSeekApiConnectionDto>;
+  providerConnectionsList(): Promise<ProviderConnectionDto[]>;
+  providerConnectionSave(input: ProviderConnectionSaveInput): Promise<ProviderConnectionDto>;
+  providerConnectionVerify(connectionId: string): Promise<ProviderConnectionDto>;
+  providerConnectionRemove(connectionId: string): Promise<ProviderConnectionDto>;
   localQwenAsrSidecarGet(): Promise<LocalQwenAsrSidecarDto>;
   assistantRoutingGet(): Promise<AssistantRoutingDto>;
   assistantRoutingSave(input: AssistantRoutingSaveInput): Promise<AssistantRoutingDto>;
   imageGenerationConcurrencySave(input: ImageGenerationConcurrencySaveInput): Promise<ImageGenerationConcurrencyDto>;
-  externalImageApiGet(extensionId: string): Promise<ExternalImageApiConnectionDto>;
-  externalImageApiSave(input: ExternalImageApiSaveInput): Promise<ExternalImageApiConnectionDto>;
-  externalImageApiTest(extensionId: string): Promise<ExternalImageApiConnectionDto>;
-  externalImageApiClear(extensionId: string): Promise<ExternalImageApiConnectionDto>;
   antigravityCliGet(): Promise<AntigravityCliStatusDto>;
   antigravityCliRefresh(): Promise<AntigravityCliStatusDto>;
   localSpacesList(): Promise<LocalSpaceRegistryDto>;
@@ -3855,6 +4209,8 @@ export interface DesktopApi {
   onLocalSpaceTransferProgress(callback: (event: LocalSpaceTransferProgressEvent) => void): () => void;
   packsList(): Promise<PackCatalogItemDto[]>;
   packImportLocal(): Promise<PackImportLocalResult>;
+  packApplyImport(input: PackApplyImportInput): Promise<PackApplyImportResult>;
+  packDiscardImport(requestId: string): Promise<void>;
   packImportStarter(): Promise<string>;
   packReleaseGet(releaseId: string): Promise<PackReleaseDto>;
   packInstallExact(input: PackInstallExactInput): Promise<PackInstallationDto>;
@@ -3898,6 +4254,7 @@ export interface DesktopApi {
   videoDocumentKeyChangesGet(documentId: string): Promise<VideoKeyChangeResultDto | null>;
   videoDocumentKeyChangesExtract(input: VideoKeyChangeExtractInput): Promise<VideoKeyChangeResultDto>;
   videoDocumentFrameCapture(input: VideoDocumentFrameCaptureInput): Promise<VideoDocumentFrameCaptureResult>;
+  creatorClipboardReferenceImport(input: CreatorClipboardReferenceImportInput): Promise<AssetDto[]>;
   creatorReferencesImport(input: CreatorImageImportInput): Promise<AssetDto[]>;
   creatorOutputsImport(input: CreatorStagedImageImportInput): Promise<CreatorOutputsImportResult>;
   creatorNewExternalCreationImport(input: NewExternalCreationImportInput): Promise<NewExternalCreationImportResult>;
@@ -3910,6 +4267,7 @@ export interface DesktopApi {
   promptSeriesCoverSet(input: PromptSeriesCoverSetInput): Promise<PromptSeriesOutputPresentationResult>;
   promptVersionCreate(input: PromptVersionCreateInput): Promise<PromptVersionCreateResult>;
   creationDraftStart(input: CreationDraftStartInput): Promise<CreationDraftDto>;
+  creationDraftLoad(input: CreationDraftLoadInput): Promise<CreationDraftDto>;
   creationDraftSave(input: CreationDraftSaveInput): Promise<CreationDraftDto>;
   creationDraftCommit(input: CreationDraftCommitInput): Promise<CreationDraftCommitResult>;
   creationItemsList(input?: CreationItemListInput): Promise<CreationItemListResult>;
@@ -3919,6 +4277,17 @@ export interface DesktopApi {
   creationItemMove(input: CreationItemMoveInput): Promise<CreationItemMoveResult>;
   creationItemSetPinned(input: CreationItemSetPinnedInput): Promise<CreationItemSetPinnedResult>;
   creationItemSetPrimary(input: CreationItemSetPrimaryInput): Promise<CreationItemSetPrimaryResult>;
+  evaluationSuitesList(): Promise<EvaluationSuiteDto[]>;
+  evaluationSuiteGet(input: EvaluationSuiteGetInput): Promise<EvaluationSuiteDto>;
+  evaluationSuiteCreate(input: EvaluationSuiteCreateInput): Promise<EvaluationSuiteDto>;
+  evaluationSuiteSave(input: EvaluationSuiteSaveInput): Promise<EvaluationSuiteDto>;
+  imageBreakdownCreate(input: ImageBreakdownCreateInput): Promise<ImageBreakdownCreateResult>;
+  imageBreakdownRoutes(): Promise<ImageBreakdownRouteDto[]>;
+  imageBreakdownReplaceSource(input: ImageBreakdownReplaceSourceInput): Promise<ImageBreakdownDto>;
+  imageBreakdownRun(input: ImageBreakdownRunInput): Promise<ImageBreakdownDto>;
+  imageBreakdownCreateImageForm(
+    input: ImageBreakdownImageFormCreateInput,
+  ): Promise<ImageBreakdownImageFormCreateResult>;
   derivedVisualWorkspaceOpen(input: DerivedVisualWorkspaceOpenInput): Promise<DerivedVisualWorkspaceOpenResult>;
   derivedVisualAdopt(input: DerivedVisualAdoptInput): Promise<DerivedVisualAdoptResult>;
   creationInputStashesList(scope: CreatorAgentScope): Promise<CreationInputStashDto[]>;
@@ -3928,10 +4297,27 @@ export interface DesktopApi {
   inspirationStashSetArchived(input: InspirationStashSetArchivedInput): Promise<InspirationStashDto>;
   socialPostSave(input: SocialPostSaveInput): Promise<SocialPostDto>;
   socialPostFormAdd(input: SocialPostFormAddInput): Promise<SocialPostDto>;
+  socialPostFormCreate(input: SocialPostFormCreateInput): Promise<SocialPostDto>;
   socialPostMove(input: SocialPostMoveInput): Promise<SocialPostDto>;
   socialPostSetArchived(input: SocialPostSetArchivedInput): Promise<SocialPostDto>;
+  browserCompanionStage(input: BrowserCompanionStageInput): Promise<BrowserCompanionStageResult>;
+  browserCompanionDestinations(): Promise<BrowserCompanionDestinationsResult>;
+  browserCompanionOpen(input: BrowserCompanionOpenInput): Promise<BrowserCompanionOpenResult>;
+  browserCompanionSelectDestination(
+    input: BrowserCompanionDestinationSelectInput,
+  ): Promise<BrowserCompanionDestinationsResult>;
+  browserCompanionHistory(): Promise<BrowserCompanionHistoryItem[]>;
+  browserCompanionDelete(input: BrowserCompanionDeleteInput): Promise<BrowserCompanionDeleteResult>;
   articleSave(input: ArticleSaveInput): Promise<ArticleDto>;
+  articleRevisionHistory(input: ArticleRevisionHistoryInput): Promise<ArticleRevisionHistoryResult>;
+  articleRevisionGet(input: ArticleRevisionGetInput): Promise<ArticleRevisionDto>;
+  articleRevisionSave(input: ArticleRevisionSaveInput): Promise<ArticleRevisionSaveResult>;
+  articleCommentMutate(input: ArticleCommentMutationInput): Promise<ArticleCommentMutationResult>;
+  articleCheck(input: ArticleCheckInput): Promise<ArticleCheckExecutionResult>;
+  articleCheckRunsList(input: ArticleCheckRunsListInput): Promise<ArticleCheckRunsPage>;
+  articleCheckRunApply(input: ArticleCheckRunApplyInput): Promise<ArticleCheckRunApplyResult>;
   articleFormAdd(input: ArticleFormAddInput): Promise<ArticleDto>;
+  articleFormCreate(input: ArticleFormCreateInput): Promise<ArticleDto>;
   articleRename(input: ArticleRenameInput): Promise<ArticleDto>;
   articleMove(input: ArticleMoveInput): Promise<ArticleDto>;
   articleSetArchived(input: ArticleSetArchivedInput): Promise<ArticleDto>;
@@ -3978,6 +4364,7 @@ export interface DesktopApi {
   ): Promise<DictionaryClassificationMergePreviewDto>;
   dictionaryClassificationMerge(input: DictionaryClassificationMergeInput): Promise<DictionaryClassificationTreeDto>;
   materialsAddToDestinations(input: AddMaterialsToDestinationsInput): Promise<AddMaterialsToDestinationsResult>;
+  materialImageAssetsResolve(input: MaterialImageAssetsResolveInput): Promise<AssetDto[]>;
   dictionaryChooseImport(): Promise<ImportPreview | null>;
   dictionaryCommitImport(batchId: string): Promise<{ imported: number; skipped: number }>;
   wordPaletteCreate(input: CreateWordPaletteInput): Promise<WordPaletteDto>;
@@ -4083,7 +4470,8 @@ export interface DesktopApi {
   assetFileAvailability(assetId: string): Promise<AssetFileAvailabilityDto>;
   assetFileCopy(assetId: string): Promise<void>;
   assetFileSaveAs(assetId: string): Promise<AssetFileSaveResult>;
-  assetFilesStartDrag(assetIds: readonly string[]): Promise<void>;
+  assetFilesStartDrag(request: AssetFileDragRequest): void;
+  onAssetFilesDragFinished(callback: (result: AssetFileDragResult) => void): () => void;
   assetFileRevealTargets(assetId: string, context?: AssetFileRevealTargetContext): Promise<AssetFileRevealTargetDto[]>;
   assetFileReveal(assetId: string, context?: AssetFileRevealContext): Promise<void>;
   assetFileOpen(assetId: string): Promise<void>;

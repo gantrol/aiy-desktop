@@ -65,6 +65,14 @@ export const socialPostFormAddInputSchema = z
   })
   .strict();
 
+export const socialPostFormCreateInputSchema = z
+  .object({
+    sourceFormId: idSchema,
+    sourceInspirationStashId: idSchema.nullable(),
+    content: socialPostContentSchema,
+  })
+  .strict();
+
 export const socialPostSetArchivedInputSchema = z
   .object({
     id: idSchema,
@@ -82,5 +90,6 @@ export const socialPostMoveInputSchema = z
 export type SocialPostContentInput = z.infer<typeof socialPostContentSchema>;
 export type SocialPostSaveInput = z.infer<typeof socialPostSaveInputSchema>;
 export type SocialPostFormAddInput = z.infer<typeof socialPostFormAddInputSchema>;
+export type SocialPostFormCreateInput = z.infer<typeof socialPostFormCreateInputSchema>;
 export type SocialPostSetArchivedInput = z.infer<typeof socialPostSetArchivedInputSchema>;
 export type SocialPostMoveInput = z.infer<typeof socialPostMoveInputSchema>;

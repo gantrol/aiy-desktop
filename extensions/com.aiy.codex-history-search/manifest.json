@@ -1,0 +1,35 @@
+{
+  "manifestVersion": 1,
+  "kind": "CAPABILITY",
+  "id": "com.aiy.codex-history-search",
+  "version": "0.1.0",
+  "displayName": "Codex History Search",
+  "description": "Build a private local index for fast full-text search across Codex task titles, user messages, and final answers.",
+  "engines": {
+    "aiy": "^0.3.0"
+  },
+  "runtime": {
+    "kind": "HOST",
+    "id": "codex-history-search"
+  },
+  "contributes": {
+    "commands": ["codexHistory.refresh", "codexHistory.rebuild"],
+    "workflows": ["codexHistory.search"],
+    "searchProviders": ["codex.threads"]
+  },
+  "permissions": ["filesystem.read:codex-session-metadata", "filesystem.read:codex-thread-content"],
+  "optionalPermissions": [],
+  "i18n": {
+    "defaultLocale": "en",
+    "locales": {
+      "en": {
+        "displayName": "Codex History Search",
+        "description": "Build a private local index for fast full-text search across Codex task titles, user messages, and final answers."
+      },
+      "zh": {
+        "displayName": "Codex 聊天记录搜索",
+        "description": "建立私有本地索引，快速搜索 Codex 任务标题、用户消息和最终回答。"
+      }
+    }
+  }
+}

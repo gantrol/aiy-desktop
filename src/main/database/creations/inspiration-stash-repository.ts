@@ -121,7 +121,7 @@ export class InspirationStashRepository {
           if (existingForm.entity.kind !== 'INSPIRATION_STASH') {
             throw new Error('The existing inspiration form has an invalid entity');
           }
-          return this.get(existingForm.entity.id);
+          return this.finalizeSave(this.get(existingForm.entity.id), input.consumeCreationDraftId);
         }
       }
       const content = normalizedContent(input.content);
@@ -138,7 +138,9 @@ export class InspirationStashRepository {
           )
           .get(input.id) as JsonMap | undefined;
         if (!existing) throw new Error('Inspiration stash is no longer available');
-        if (text(existing.content_hash) === hash) return this.dto(existing);
+        if (text(existing.content_hash) === hash) {
+          return this.finalizeSave(this.dto(existing), input.consumeCreationDraftId);
+        }
         this.db
           .prepare(
             `UPDATE inspiration_stashes
@@ -152,7 +154,7 @@ export class InspirationStashRepository {
         this.storage.recordChange('INSPIRATION_STASH', input.id, 'UPDATE', {
           contentHash: hash,
         });
-        return this.dto(this.row(input.id));
+        return this.finalizeSave(this.dto(this.row(input.id)), input.consumeCreationDraftId);
       }
 
       const albumId = input.mode === 'ADD_FORM' ? targetItem!.albumId : input.albumId;
@@ -165,7 +167,9 @@ export class InspirationStashRepository {
           ORDER BY updated_at DESC, id DESC LIMIT 1`,
         )
         .get(hash, albumId) as JsonMap | undefined;
-      if (duplicate && !targetItem) return this.dto(duplicate);
+      if (duplicate && !targetItem) {
+        return this.finalizeSave(this.dto(duplicate), input.consumeCreationDraftId);
+      }
 
       const id = ulid();
       this.db
@@ -198,7 +202,7 @@ export class InspirationStashRepository {
         creationItemId: targetItem?.id ?? null,
         contentHash: hash,
       });
-      return this.dto(this.row(id));
+      return this.finalizeSave(this.dto(this.row(id)), input.consumeCreationDraftId);
     })();
   }
 
@@ -231,6 +235,26 @@ export class InspirationStashRepository {
       );
       return this.dto(this.row(input.id));
     })();
+  }
+
+  private finalizeSave(stash: InspirationStashDto, creationDraftId: string | null) {
+    if (!creationDraftId) return stash;
+    const consumedAt = now();
+    const consumed = this.db
+      .prepare(
+        `UPDATE creation_drafts SET consumed_at = ?, updated_at = ?
+        WHERE id = ? AND consumed_at IS NULL AND deleted_at IS NULL`,
+      )
+      .run(consumedAt, consumedAt, creationDraftId);
+    if (consumed.changes !== 1) throw new Error('Creation input is no longer available');
+    this.storage.recordChange(
+      'CREATION_DRAFT',
+      creationDraftId,
+      'CONSUME_INSPIRATION_STASH',
+      { inspirationStashId: stash.id },
+      { affectsFileView: false },
+    );
+    return stash;
   }
 
   private row(id: string) {

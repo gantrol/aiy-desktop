@@ -1,6 +1,6 @@
 import { LoaderCircleIcon, PencilIcon, PlusIcon, RefreshCwIcon, SaveIcon, XIcon } from 'lucide-react';
 import { memo, type ReactNode } from 'react';
-import ReactMarkdown, { defaultUrlTransform, type Components } from 'react-markdown';
+import ReactMarkdown, { type Components } from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import type {
   VideoDocumentMediaBinding,
@@ -25,12 +25,19 @@ import {
   VideoDocumentWysiwygEditor,
   type VideoDocumentEditorImageImport,
   type VideoDocumentQuickInsertNoteRequest,
+  type VideoDocumentWysiwygEditorHandle,
   type VideoDocumentWysiwygEditorLabels,
 } from '@/renderer/features/video-documents/VideoDocumentWysiwygEditor';
 import { useVideoDocumentArticleAutosave } from '@/renderer/features/video-documents/useVideoDocumentArticleAutosave';
 import { useVideoDocumentArticleOutline } from '@/renderer/features/video-documents/useVideoDocumentArticleOutline';
 import { useVideoDocumentRichNotes } from '@/renderer/features/video-documents/useVideoDocumentRichNotes';
 import { videoDocumentArticleHasVisibleContent } from '@/renderer/features/video-documents/videoDocumentArticleContent';
+import {
+  articleDocumentWidthClassName,
+  articleRichTextClassName,
+  articleTextMeasureClassName,
+} from '@/renderer/lib/articleTypography';
+import { codexMarkdownUrlTransform } from '@/renderer/lib/codexThreadLinks';
 import { cn } from '@/renderer/lib/utils';
 
 interface Props {
@@ -132,7 +139,8 @@ interface ArticleBodyProps {
   generating: boolean;
   generationDisabled: boolean;
   markdown: string;
-  draftMarkdown: string;
+  editorSessionIdentity: string;
+  initialMarkdown: string;
   saveError: string;
   articleTextLabel: string;
   editLabel: string;
@@ -148,6 +156,7 @@ interface ArticleBodyProps {
   timelineSegments: readonly VideoDocumentTimelineSegment[];
   quickInsertNoteRequest?: VideoDocumentQuickInsertNoteRequest | null;
   components: Components;
+  onEditorHandleChange(handle: VideoDocumentWysiwygEditorHandle | null): void;
   onDraftChange(value: string): void;
   onFrameCaptured(result: VideoDocumentFrameCaptureResult): void;
   onImageImported(result: VideoDocumentEditorImageImport): void;
@@ -209,9 +218,16 @@ const ArticleMarkdown = memo(function ArticleMarkdown({
   components: Components;
 }) {
   return (
-    <ReactMarkdown remarkPlugins={[remarkGfm]} components={components} skipHtml urlTransform={defaultUrlTransform}>
-      {markdown}
-    </ReactMarkdown>
+    <div className={`mx-auto w-full ${articleTextMeasureClassName} ${articleRichTextClassName}`}>
+      <ReactMarkdown
+        remarkPlugins={[remarkGfm]}
+        components={components}
+        skipHtml
+        urlTransform={codexMarkdownUrlTransform}
+      >
+        {markdown}
+      </ReactMarkdown>
+    </div>
   );
 });
 
@@ -265,7 +281,8 @@ function ArticleBody({
   generating,
   generationDisabled,
   markdown,
-  draftMarkdown,
+  editorSessionIdentity,
+  initialMarkdown,
   saveError,
   articleTextLabel,
   editLabel,
@@ -281,6 +298,7 @@ function ArticleBody({
   timelineSegments,
   quickInsertNoteRequest,
   components,
+  onEditorHandleChange,
   onDraftChange,
   onFrameCaptured,
   onImageImported,
@@ -295,26 +313,30 @@ function ArticleBody({
     <>
       {saveError && <p className="mb-3 text-sm text-destructive">{saveError}</p>}
       {editing ? (
-        <VideoDocumentWysiwygEditor
-          markdown={draftMarkdown}
-          mediaBindings={mediaBindings}
-          media={media}
-          documentId={documentId}
-          sourceVideoUrl={sourceVideoUrl}
-          currentTimeMs={currentTimeMs}
-          durationMs={durationMs}
-          timelineSegments={timelineSegments}
-          quickInsertNoteRequest={quickInsertNoteRequest}
-          ariaLabel={articleTextLabel}
-          labels={richTextLabels}
-          onChange={onDraftChange}
-          onFrameCaptured={onFrameCaptured}
-          onImageImported={onImageImported}
-          onImageImportError={onImageImportError}
-          onQuickInsertNoteBusyChange={onQuickInsertNoteBusyChange}
-          onQuickInsertNoteError={onQuickInsertNoteError}
-          onSave={onSave}
-        />
+        <div className={`mx-auto w-full ${articleDocumentWidthClassName}`}>
+          <VideoDocumentWysiwygEditor
+            markdown={initialMarkdown}
+            sessionIdentity={editorSessionIdentity}
+            mediaBindings={mediaBindings}
+            media={media}
+            documentId={documentId}
+            sourceVideoUrl={sourceVideoUrl}
+            currentTimeMs={currentTimeMs}
+            durationMs={durationMs}
+            timelineSegments={timelineSegments}
+            quickInsertNoteRequest={quickInsertNoteRequest}
+            ariaLabel={articleTextLabel}
+            labels={richTextLabels}
+            onEditorHandleChange={onEditorHandleChange}
+            onChange={onDraftChange}
+            onFrameCaptured={onFrameCaptured}
+            onImageImported={onImageImported}
+            onImageImportError={onImageImportError}
+            onQuickInsertNoteBusyChange={onQuickInsertNoteBusyChange}
+            onQuickInsertNoteError={onQuickInsertNoteError}
+            onSave={onSave}
+          />
+        </div>
       ) : blank ? (
         <ArticleBlankActions
           editable={editable}
@@ -384,7 +406,10 @@ export function VideoDocumentArticle({
   });
   const {
     editing,
-    draftMarkdown,
+    initialMarkdown,
+    editorSessionIdentity,
+    draftHasContent,
+    draftHeadings,
     draftMediaBindings,
     draftMedia,
     saving,
@@ -392,14 +417,12 @@ export function VideoDocumentArticle({
     autoSavePreferences,
     autoSaveStatus,
     setAutoSavePreferences,
-    setDraftMediaBindings,
-    setDraftMedia,
     setSaveError,
   } = articleEditor;
   const { articleRef, outlineItems, activeOutlineId, headingIdForNode, selectOutlineItem } =
     useVideoDocumentArticleOutline({
       markdown: content?.markdown ?? '',
-      draftMarkdown,
+      draftHeadings,
       editing,
     });
 
@@ -512,7 +535,7 @@ export function VideoDocumentArticle({
             target={toolbarTarget ?? null}
             editing={editing}
             saving={saving}
-            saveDisabled={saving || generating || !draftMarkdown.trim()}
+            saveDisabled={saving || generating || !draftHasContent}
             canEdit={interactionState.canEdit}
             editLabel={editorLabels.edit}
             cancelLabel={editorLabels.cancel}
@@ -530,7 +553,8 @@ export function VideoDocumentArticle({
             generating={generating}
             generationDisabled={interactionState.generationDisabled}
             markdown={content.markdown}
-            draftMarkdown={draftMarkdown}
+            editorSessionIdentity={editorSessionIdentity}
+            initialMarkdown={initialMarkdown}
             saveError={saveError}
             articleTextLabel={editorLabels.articleText}
             editLabel={editorLabels.edit}
@@ -546,27 +570,10 @@ export function VideoDocumentArticle({
             timelineSegments={content.timelineSegments ?? []}
             quickInsertNoteRequest={quickInsertNoteRequest}
             components={components}
+            onEditorHandleChange={articleEditor.registerEditor}
             onDraftChange={articleEditor.changeDraftMarkdown}
-            onFrameCaptured={(result) => {
-              setDraftMediaBindings((current) => [
-                ...current.filter((binding) => binding.path !== result.binding.path),
-                result.binding,
-              ]);
-              setDraftMedia((current) => [
-                ...current.filter((media) => media.assetId !== result.media.assetId),
-                result.media,
-              ]);
-            }}
-            onImageImported={({ binding, media }) => {
-              setDraftMediaBindings((current) => [
-                ...current.filter((candidate) => candidate.path !== binding.path),
-                binding,
-              ]);
-              setDraftMedia((current) => [
-                ...current.filter((candidate) => candidate.assetId !== media.assetId),
-                media,
-              ]);
-            }}
+            onFrameCaptured={(result) => articleEditor.addDraftMedia(result.binding, result.media)}
+            onImageImported={({ binding, media }) => articleEditor.addDraftMedia(binding, media)}
             onImageImportError={() => setSaveError(editorLabels.richText.uploadImageFailed)}
             onQuickInsertNoteBusyChange={onQuickInsertNoteBusyChange}
             onQuickInsertNoteError={() => setSaveError(editorLabels.richText.captureFrameFailed)}

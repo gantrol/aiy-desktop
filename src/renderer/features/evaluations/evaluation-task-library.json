@@ -1,0 +1,814 @@
+{
+  "schemaVersion": 1,
+  "rubric": [
+    {
+      "key": "problem-scope",
+      "phase": "IDEATION",
+      "label": { "zh": "问题与边界", "en": "Problem and scope" },
+      "description": {
+        "zh": "目标用户、核心问题、成功结果与非目标明确；证据为简短决策记录。",
+        "en": "Target user, core problem, success outcome, and non-goals are explicit; evidence is a concise decision record."
+      },
+      "weight": 7,
+      "isGate": false
+    },
+    {
+      "key": "plan-risks",
+      "phase": "IDEATION",
+      "label": { "zh": "方案与风险", "en": "Plan and risks" },
+      "description": {
+        "zh": "实现路径、关键取舍、风险和验收顺序可执行，且没有用长篇说明替代交付。",
+        "en": "The implementation path, trade-offs, risks, and acceptance order are actionable without substituting prose for delivery."
+      },
+      "weight": 8,
+      "isGate": false
+    },
+    {
+      "key": "flow-states",
+      "phase": "DESIGN",
+      "label": { "zh": "流程与状态", "en": "Flow and states" },
+      "description": {
+        "zh": "主流程、空态、错误态、加载态和关键交互状态完整且一致。",
+        "en": "The primary flow, empty, error, loading, and key interaction states are complete and consistent."
+      },
+      "weight": 10,
+      "isGate": false
+    },
+    {
+      "key": "visual-accessibility",
+      "phase": "DESIGN",
+      "label": { "zh": "视觉与可访问性", "en": "Visuals and accessibility" },
+      "description": {
+        "zh": "遵守题目视觉约束，并覆盖键盘、焦点、标签、对比度和响应式布局。",
+        "en": "The task's visual constraints are followed, including keyboard, focus, labels, contrast, and responsive layout."
+      },
+      "weight": 10,
+      "isGate": false
+    },
+    {
+      "key": "functional-acceptance",
+      "phase": "DEVELOPMENT",
+      "label": { "zh": "功能验收", "en": "Functional acceptance" },
+      "description": {
+        "zh": "所有核心验收项可操作并产生正确结果；关键路径失败即触发门槛。",
+        "en": "Every core acceptance item is operable and produces the correct result; a critical-path failure triggers the gate."
+      },
+      "weight": 25,
+      "isGate": true
+    },
+    {
+      "key": "architecture",
+      "phase": "DEVELOPMENT",
+      "label": { "zh": "架构与可维护性", "en": "Architecture and maintainability" },
+      "description": {
+        "zh": "组件边界、状态归属、数据流、命名与依赖控制清晰，避免单体组件和重复状态。",
+        "en": "Component boundaries, state ownership, data flow, naming, and dependencies are clear without monoliths or duplicate state."
+      },
+      "weight": 12,
+      "isGate": false
+    },
+    {
+      "key": "robustness",
+      "phase": "DEVELOPMENT",
+      "label": { "zh": "稳健性", "en": "Robustness" },
+      "description": {
+        "zh": "边界输入、失败恢复、安全、性能和持久化行为与题目风险相称。",
+        "en": "Boundary input, failure recovery, security, performance, and persistence match the task's risk."
+      },
+      "weight": 8,
+      "isGate": false
+    },
+    {
+      "key": "feedback-resolution",
+      "phase": "ITERATION",
+      "label": { "zh": "反馈闭环", "en": "Feedback resolution" },
+      "description": {
+        "zh": "准确复现指定反馈或测试问题，修复根因，并保留原有核心行为；未解决的问题触发门槛。",
+        "en": "Assigned feedback or test problems are reproduced, their root cause is corrected, and core behavior is preserved; unresolved problems trigger the gate."
+      },
+      "weight": 12,
+      "isGate": true
+    },
+    {
+      "key": "regression-delta",
+      "phase": "ITERATION",
+      "label": { "zh": "回归与增量", "en": "Regression and delta" },
+      "description": {
+        "zh": "用与首轮相同的验收口径复核，报告分数增量、回归和新增成本。",
+        "en": "The original acceptance basis is rerun, with score delta, regressions, and incremental cost reported."
+      },
+      "weight": 8,
+      "isGate": false
+    }
+  ],
+  "sharedPhases": {
+    "IDEATION": {
+      "zh": "先写不超过 12 行的决策记录：目标用户、问题、MVP、非目标、主要风险和验收顺序。随后继续完成任务，不要等待确认。",
+      "en": "Write a decision record of no more than 12 lines covering target user, problem, MVP, non-goals, primary risks, and acceptance order. Then continue without waiting for confirmation."
+    },
+    "DESIGN": {
+      "zh": "使用 shadcn 与现有组件，保持组件化。界面不放描述性营销文本；不用蓝紫夜间配色、大圆角卡片、无目的嵌套边框、重阴影或无意义渐变；不要做成 SaaS 落地页。覆盖键盘、焦点、空态、错误态和窄屏。",
+      "en": "Use shadcn and existing components with clear component boundaries. Do not add descriptive marketing copy, blue-purple dark styling, oversized rounded cards, purposeless nested borders, heavy shadows, meaningless gradients, or a SaaS landing-page composition. Cover keyboard, focus, empty, error, and narrow-screen states."
+    },
+    "DEVELOPMENT": {
+      "zh": "在评测器提供的 pnpm、Vite、React、TypeScript、Tailwind 与 shadcn 纯前端 SPA 基线中实现完整可运行产品。不得更换框架、构建器或包管理器，不新增后端、外部 API 或部署配置；只使用预装依赖并修改任务所需文件。用现有静态检查验证，不新增测试代码。",
+      "en": "Implement a complete runnable product in the evaluator-provided frontend-only SPA baseline using pnpm, Vite, React, TypeScript, Tailwind, and shadcn. Do not replace the framework, build tool, or package manager, and do not add a backend, external API, or deployment configuration; use only preinstalled dependencies and touch task-relevant files. Validate with existing static checks without adding test code."
+    },
+    "ITERATION": {
+      "zh": "首轮完成后再读取固定反馈或测试问题清单。先复现，再做最小根因修复，重新运行同一套验收，并区分修复成本与首轮成本。",
+      "en": "Read assigned feedback or the test-problem list only after the first pass. Reproduce it, make the smallest root-cause correction, rerun the same acceptance basis, and separate iteration cost from first-pass cost."
+    }
+  },
+  "tasks": [
+    {
+      "id": "passsecure",
+      "title": { "zh": "密安密码生成器", "en": "Mian Password Generator" },
+      "source": {
+        "label": { "zh": "用户规格 · 2026-08-29", "en": "User specification · 2026-08-29" },
+        "url": null,
+        "revision": "user-spec-2026-08-29"
+      },
+      "difficulty": "SMALL",
+      "readiness": "READY",
+      "tags": ["idea-eval", "security-tool", "i18n", "accessibility"],
+      "phases": {
+        "IDEATION": {
+          "zh": "面向需要快速生成本地密码的普通用户。密码长度是一个可选范围，生成时在范围内随机取实际长度；安全随机、默认隐私和跨语言可用性优先于账户、同步或云存储。",
+          "en": "Target people who need quick local password generation. Password length is a selectable range and each generation chooses an actual length within it; secure randomness, privacy by default, and multilingual use take priority over accounts, sync, or cloud storage."
+        },
+        "DESIGN": {
+          "zh": "使用双指针滑动条控制最小与最大长度，默认 8–20，边界 1–64，并同时显示所选范围与本次实际长度。密码默认掩码，提供显隐、重新生成和复制；字符组选项与语言切换保持紧凑。双指针各自具备可访问名称和键盘操作。",
+          "en": "Use a dual-thumb slider for minimum and maximum length, defaulting to 8–20 with bounds of 1–64, and show both the selected range and current generated length. Mask the password by default with reveal, regenerate, and copy actions; keep character-set controls and language switching compact. Each thumb has an accessible name and keyboard behavior."
+        },
+        "DEVELOPMENT": {
+          "zh": "使用 Web Crypto 安全随机生成；每次实际长度均落在当前范围内。提供大小写字母、数字、符号开关，至少保留一组并保证启用组有字符进入结果。密码初始和每次重新生成后均隐藏。支持 zh-CN、en、ja、ko、es、fr、de、pt 八种语言；首次按浏览器语言匹配，未知语言回退英文；可手动切换并持久化选择。复制后不把明文写入日志或持久存储，密码与翻译数据均不得产生网络请求。",
+          "en": "Generate with Web Crypto; every actual length stays within the selected range. Offer uppercase, lowercase, number, and symbol toggles, retain at least one group, and ensure enabled groups appear in the result. Hide the password initially and after every regeneration. Support zh-CN, en, ja, ko, es, fr, de, and pt; initially match browser language, fall back to English, allow manual switching, and persist that choice. Never write plaintext passwords to logs or persistent storage after copying, and make no network request for passwords or translations."
+        },
+        "ITERATION": {
+          "zh": "首轮完成后由评测器运行明暗测试。收到失败问题清单后，先按用户可观察行为复现，再修复根因并重跑明测试；暗测试的源码、步骤、断言和输入组合不会披露。不得修改或移除公开定位符来规避失败。",
+          "en": "After the first pass, the evaluator runs public and private tests. When given a failed-behavior list, reproduce it through observable behavior, correct the root cause, and rerun the public tests; private source, steps, assertions, and input combinations are never disclosed. Do not change or remove public locators to evade failures."
+        }
+      },
+      "expected": {
+        "zh": "门槛：双指针范围默认 8–20、最大 64 且不可交叉；实际长度在范围内；Web Crypto；字符组选项有效；密码默认隐藏；复制不持久化明文；八种语言、浏览器自动选择、英文回退、手动切换与持久化均可用；密码与翻译数据不产生网络请求。",
+        "en": "Gates: the dual-thumb range defaults to 8–20, caps at 64, and cannot cross; actual length stays in range; Web Crypto is used; character groups work; passwords are hidden by default; copied plaintext is not persisted; eight languages, browser matching, English fallback, manual switching, and persistence work; passwords and translations make no network requests."
+      },
+      "verification": {
+        "firstPassNotice": {
+          "zh": "这是首轮实现。完成后会有一批明测试和一批隔离的暗测试；首轮只提供稳定定位符，不提供测试步骤、断言或失败样例。",
+          "en": "This is the first implementation pass. A public batch and an isolated private batch will run afterward; the first pass provides only stable locators, not test steps, assertions, or failure examples."
+        },
+        "locatorAttribute": "data-testid",
+        "locators": [
+          {
+            "id": "language-select",
+            "label": { "zh": "语言选择", "en": "Language selection" }
+          },
+          {
+            "id": "length-min",
+            "label": { "zh": "最小长度滑块", "en": "Minimum-length thumb" }
+          },
+          {
+            "id": "length-max",
+            "label": { "zh": "最大长度滑块", "en": "Maximum-length thumb" }
+          },
+          {
+            "id": "length-range-value",
+            "label": { "zh": "当前长度范围", "en": "Selected length range" }
+          },
+          {
+            "id": "generated-length",
+            "label": { "zh": "本次密码长度", "en": "Generated password length" }
+          },
+          {
+            "id": "password-output",
+            "label": { "zh": "密码输出", "en": "Password output" }
+          },
+          {
+            "id": "password-visibility",
+            "label": { "zh": "密码显隐", "en": "Password visibility toggle" }
+          },
+          {
+            "id": "password-regenerate",
+            "label": { "zh": "重新生成", "en": "Regenerate password" }
+          },
+          {
+            "id": "password-copy",
+            "label": { "zh": "复制密码", "en": "Copy password" }
+          },
+          {
+            "id": "password-status",
+            "label": { "zh": "操作状态", "en": "Operation status" }
+          },
+          {
+            "id": "include-uppercase",
+            "label": { "zh": "大写字母开关", "en": "Uppercase toggle" }
+          },
+          {
+            "id": "include-lowercase",
+            "label": { "zh": "小写字母开关", "en": "Lowercase toggle" }
+          },
+          {
+            "id": "include-numbers",
+            "label": { "zh": "数字开关", "en": "Number toggle" }
+          },
+          {
+            "id": "include-symbols",
+            "label": { "zh": "符号开关", "en": "Symbol toggle" }
+          }
+        ],
+        "publicTests": [
+          {
+            "id": "PSS-P01",
+            "title": { "zh": "默认范围与默认隐藏", "en": "Default range and masking" },
+            "locatorIds": [
+              "length-min",
+              "length-max",
+              "length-range-value",
+              "generated-length",
+              "password-output",
+              "password-visibility"
+            ],
+            "steps": {
+              "zh": "首次打开应用，读取两个滑块、范围文本、本次长度和密码输出；切换一次显隐，再切换回来。",
+              "en": "Open the app fresh, read both thumbs, range text, generated length, and password output; toggle visibility on and back off."
+            },
+            "expected": {
+              "zh": "范围为 8–20，本次长度落在范围内；密码初始掩码，显隐只改变呈现而不改变密码值。",
+              "en": "The range is 8–20 and generated length is within it; the password starts masked and visibility changes presentation without changing its value."
+            }
+          },
+          {
+            "id": "PSS-P02",
+            "title": { "zh": "固定边界长度", "en": "Fixed boundary lengths" },
+            "locatorIds": [
+              "length-min",
+              "length-max",
+              "length-range-value",
+              "generated-length",
+              "password-output",
+              "password-regenerate"
+            ],
+            "steps": {
+              "zh": "把范围设为 1–1 后重新生成，再把范围设为 64–64 后重新生成；每次读取范围、长度和输出。",
+              "en": "Set the range to 1–1 and regenerate, then set it to 64–64 and regenerate; read range, length, and output after each change."
+            },
+            "expected": {
+              "zh": "两次输出长度分别恰为 1 和 64，两个滑块始终不交叉，范围文本与输出一致。",
+              "en": "Output lengths are exactly 1 and 64, the thumbs never cross, and range text agrees with the output."
+            }
+          },
+          {
+            "id": "PSS-P03",
+            "title": { "zh": "字符组约束", "en": "Character-group constraints" },
+            "locatorIds": [
+              "include-uppercase",
+              "include-lowercase",
+              "include-numbers",
+              "include-symbols",
+              "password-regenerate",
+              "password-output"
+            ],
+            "steps": {
+              "zh": "依次让大写、小写、数字、符号成为唯一启用组并重新生成；随后重新启用四组。切换时先启用目标组，再关闭其余组。",
+              "en": "Make uppercase, lowercase, numbers, and symbols the sole enabled group in turn and regenerate; then enable all four again. Enable the target before disabling the others."
+            },
+            "expected": {
+              "zh": "单组模式的输出只包含该组字符；最后一个启用组不能被关闭；四组启用时结果至少包含每个启用组一个字符。",
+              "en": "Single-group output contains only that group; the last enabled group cannot be disabled; with all groups enabled the result contains at least one character from each group."
+            }
+          },
+          {
+            "id": "PSS-P04",
+            "title": { "zh": "语言与设置持久化", "en": "Language and setting persistence" },
+            "locatorIds": ["language-select", "length-min", "length-max", "length-range-value"],
+            "steps": {
+              "zh": "切换到日语，将范围改为 12–24，重新加载页面；再切换到英文。",
+              "en": "Switch to Japanese, set the range to 12–24, reload the page, then switch to English."
+            },
+            "expected": {
+              "zh": "重载后仍为日语且范围仍为 12–24；切换语言不重置范围或其他功能状态。",
+              "en": "After reload the locale remains Japanese and the range remains 12–24; changing language does not reset the range or other functional state."
+            }
+          },
+          {
+            "id": "PSS-P05",
+            "title": { "zh": "重新生成与复制隐私", "en": "Regeneration and copy privacy" },
+            "locatorIds": [
+              "password-output",
+              "password-visibility",
+              "password-regenerate",
+              "password-copy",
+              "password-status"
+            ],
+            "steps": {
+              "zh": "显示当前密码，记录其值后重新生成；确认新值的呈现状态，再复制并读取操作状态与剪贴板；检查浏览器持久存储。",
+              "en": "Reveal and record the current password, regenerate, inspect the new presentation state, then copy and read status and clipboard; inspect browser persistent storage."
+            },
+            "expected": {
+              "zh": "重新生成得到新值并恢复掩码；剪贴板等于当前密码，状态可感知；localStorage 与 sessionStorage 不含任何生成的密码明文。",
+              "en": "Regeneration produces a new value and restores masking; clipboard equals the current password and status is perceivable; localStorage and sessionStorage contain no generated plaintext password."
+            }
+          }
+        ],
+        "privateSuiteId": "idea-eval/passsecure/v1"
+      }
+    },
+    {
+      "id": "csv-json-converter",
+      "title": { "zh": "CSV 与 JSON 转换器", "en": "CSV and JSON Converter" },
+      "source": {
+        "label": {
+          "zh": "florinpop17/app-ideas · CSV2JSON",
+          "en": "florinpop17/app-ideas · CSV2JSON"
+        },
+        "url": "https://github.com/florinpop17/app-ideas/blob/9e8dd00f10b881babc273d66949b7ffa0e310097/Projects/1-Beginner/CSV2JSON-App.md",
+        "revision": "9e8dd00f10b881babc273d66949b7ffa0e310097"
+      },
+      "difficulty": "SMALL",
+      "readiness": "DRAFT",
+      "tags": ["idea-eval", "app-ideas", "parser", "local-first"],
+      "phases": {
+        "IDEATION": {
+          "zh": "实现纯本地的 CSV 与 JSON 双向转换，服务需要快速检查或改写小型表格数据的用户。MVP 只处理表头加记录构成的 CSV 与扁平对象数组；嵌套 JSON、文件导入导出和云同步不在范围内。",
+          "en": "Build a local-only CSV and JSON converter for people who need to inspect or reshape small tabular datasets. The MVP handles CSV headers plus records and arrays of flat objects; nested JSON, file import/export, and cloud sync are out of scope."
+        },
+        "DESIGN": {
+          "zh": "使用左右双栏编辑器，窄屏改为上下布局；一侧输入 CSV，另一侧输入 JSON。提供转换方向、转换和清空操作，并在对应编辑区内显示可定位的校验错误。只保留字段标签、状态和操作，不添加宣传说明。",
+          "en": "Use two side-by-side editors that stack on narrow screens, with CSV on one side and JSON on the other. Provide direction, convert, and clear controls, and show locatable validation errors beside the relevant editor. Keep the interface to field labels, states, and actions without promotional copy."
+        },
+        "DEVELOPMENT": {
+          "zh": "不得使用 CSV/JSON 转换库。CSV 转 JSON 时以首行作为字段名，正确处理逗号、双引号转义、空字段、CRLF/LF 与列数不一致；JSON 转 CSV 时只接受扁平对象数组，按稳定字段顺序输出并正确转义。空输入、无表头、非法 CSV、非法 JSON、嵌套值和非对象数组均给出错误且不覆盖上一次有效结果。清空同时重置两侧和错误，所有处理均在本地完成。",
+          "en": "Do not use a CSV/JSON conversion library. For CSV to JSON, use the first row as field names and correctly handle commas, escaped double quotes, empty fields, CRLF/LF, and inconsistent column counts. For JSON to CSV, accept only arrays of flat objects, preserve a stable field order, and escape output correctly. Empty input, missing headers, invalid CSV, invalid JSON, nested values, and non-object arrays show errors without replacing the last valid result. Clear resets both sides and errors, and all processing stays local."
+        },
+        "ITERATION": {
+          "zh": "固定反馈：带引号字段中的换行、连续两个双引号和末尾空列会被拆成错误记录。不要按行或逗号直接切分，改为有明确 quoted-field 状态的单次解析；复核 CSV→JSON→CSV 后记录数、字段数与值不变。",
+          "en": "Fixed feedback: a newline inside a quoted field, doubled quotes, and a trailing empty column are split into incorrect records. Replace line/comma splitting with a single-pass parser that has an explicit quoted-field state; verify CSV→JSON→CSV preserves record count, field count, and values."
+        }
+      },
+      "expected": {
+        "zh": "门槛：CSV 与扁平对象数组可双向转换；不用转换库；引号、逗号、换行、空字段和 CRLF/LF 正确；非法或嵌套输入安全报错且不破坏有效结果；清空可用；无网络请求。",
+        "en": "Gates: CSV and arrays of flat objects convert in both directions without a conversion library; quotes, commas, newlines, empty fields, and CRLF/LF are correct; invalid or nested input fails safely without destroying valid output; clear works; there are no network requests."
+      }
+    },
+    {
+      "id": "pomodoro-clock",
+      "title": { "zh": "番茄钟", "en": "Pomodoro Clock" },
+      "source": {
+        "label": {
+          "zh": "florinpop17/app-ideas · Pomodoro Clock",
+          "en": "florinpop17/app-ideas · Pomodoro Clock"
+        },
+        "url": "https://github.com/florinpop17/app-ideas/blob/9e8dd00f10b881babc273d66949b7ffa0e310097/Projects/1-Beginner/Pomodoro-Clock.md",
+        "revision": "9e8dd00f10b881babc273d66949b7ffa0e310097"
+      },
+      "difficulty": "SMALL",
+      "readiness": "DRAFT",
+      "tags": ["idea-eval", "app-ideas", "timer", "state-machine"],
+      "phases": {
+        "IDEATION": {
+          "zh": "实现无需账户的本地番茄钟，以专注与休息两个阶段构成可重复循环。MVP 包含可靠计时、阶段切换和基本控制；任务管理、统计、通知权限和云同步不在范围内。",
+          "en": "Build an account-free local Pomodoro clock with a repeatable focus/break cycle. The MVP covers reliable timing, phase transitions, and core controls; task management, analytics, notification permissions, and cloud sync are out of scope."
+        },
+        "DESIGN": {
+          "zh": "界面只呈现当前阶段、剩余时间、已完成专注轮次、开始/暂停/停止/重置操作，以及专注和休息时长设置。控制在窄屏仍可完整操作，阶段不能只靠颜色区分，状态变化通过可访问的实时区域播报。",
+          "en": "Show only the current phase, remaining time, completed focus rounds, start/pause/stop/reset actions, and focus/break duration settings. Controls remain operable on narrow screens, phase is not conveyed by color alone, and state changes are announced through an accessible live region."
+        },
+        "DEVELOPMENT": {
+          "zh": "默认专注 25 分钟、休息 5 分钟，可在未运行时修改两者。开始继续当前阶段，暂停保留剩余时间，停止回到当前阶段初始时长，重置回到第一个专注阶段并清零轮次。倒计时到零自动切换阶段；每完成一个专注阶段轮次加一，并提供默认关闭的提示音开关。重复点击控制不得创建多个计时器；卸载时清理计时器；不访问网络。",
+          "en": "Default to 25-minute focus and 5-minute break periods, both editable while idle. Start resumes the current phase, pause preserves remaining time, stop restores that phase's initial duration, and reset returns to the first focus period with zero completed rounds. Reaching zero automatically changes phase; each completed focus period increments the round count, with an off-by-default sound toggle. Repeated control clicks must not create multiple timers; clean up timers on unmount and make no network requests."
+        },
+        "ITERATION": {
+          "zh": "固定反馈：标签页在后台停留两分钟后，返回时倒计时只减少几秒，并可能连续切换两次。用墙上时间截止点计算剩余值，暂停时冻结快照，恢复可见时只协调一次逾期转换；复核暂停、继续、停止和重置语义不变。",
+          "en": "Fixed feedback: after the tab stays in the background for two minutes, returning reduces the countdown by only a few seconds and may transition twice. Derive remaining time from a wall-clock deadline, freeze a snapshot while paused, and reconcile an overdue transition only once on visibility return; preserve pause, resume, stop, and reset semantics."
+        }
+      },
+      "expected": {
+        "zh": "门槛：默认 25/5 分钟；开始、暂停、停止、重置与时长设置语义正确；到零自动切换且专注轮次准确；无重复计时器；后台恢复不漂移或双重切换；提示音默认关闭；无网络请求。",
+        "en": "Gates: defaults are 25/5 minutes; start, pause, stop, reset, and duration settings have correct semantics; zero changes phase and focus rounds are accurate; no duplicate timers exist; background recovery neither drifts nor double-transitions; sound defaults off; there are no network requests."
+      }
+    },
+    {
+      "id": "quiz-app",
+      "title": { "zh": "本地四选一测验", "en": "Local Multiple-Choice Quiz" },
+      "source": {
+        "label": {
+          "zh": "florinpop17/app-ideas · Quiz App",
+          "en": "florinpop17/app-ideas · Quiz App"
+        },
+        "url": "https://github.com/florinpop17/app-ideas/blob/9e8dd00f10b881babc273d66949b7ffa0e310097/Projects/1-Beginner/Quiz-App.md",
+        "revision": "9e8dd00f10b881babc273d66949b7ffa0e310097"
+      },
+      "difficulty": "SMALL",
+      "readiness": "DRAFT",
+      "tags": ["idea-eval", "app-ideas", "multi-step", "local-first"],
+      "phases": {
+        "IDEATION": {
+          "zh": "实现使用内置固定题目的单人四选一测验，验证多步骤状态流、计时与结果汇总。MVP 不使用外部题库 API，不包含账户、排行榜、社交分享或出题后台。",
+          "en": "Build a single-player four-option quiz with a fixed bundled question set to exercise multi-step state, timing, and result aggregation. The MVP uses no external question API and excludes accounts, leaderboards, social sharing, and authoring tools."
+        },
+        "DESIGN": {
+          "zh": "开始态只显示开始操作；答题态显示题号进度、题目、四个答案与下一题操作；结果态显示用时、答对数、总题数、通过/未通过和重新开始。答案使用可键盘选择的单选组，未选择时不可前进，焦点随步骤合理移动。",
+          "en": "The start state shows a start action; the question state shows progress, prompt, four answers, and a next action; the result state shows elapsed time, correct and total counts, pass/fail, and restart. Answers use a keyboard-operable radio group, next is unavailable before selection, and focus moves appropriately between steps."
+        },
+        "DEVELOPMENT": {
+          "zh": "内置至少 8 道确定性题目，每题恰有四个选项和一个正确答案。开始后启动用时统计；每题只能记分一次；选择后可进入下一题，最后一题后汇总结果；答对率至少 60% 判定通过。重新开始必须清空答案、分数、用时和题号并建立全新会话。刷新页面不要求保留进度；不得访问网络。",
+          "en": "Bundle at least eight deterministic questions, each with exactly four choices and one correct answer. Start elapsed-time tracking when the quiz begins; score each question at most once; proceed after a selection and summarize after the final question; a score of at least 60% passes. Restart clears answers, score, elapsed time, and position and creates a fresh session. Progress need not survive reload and no network requests are allowed."
+        },
+        "ITERATION": {
+          "zh": "固定反馈：快速双击“下一题”会跳过一题，结果页立即重新开始后旧计时器仍继续更新。把提交步骤做成幂等转换，并让计时器和异步回调绑定当前会话标识；复核每题只计分一次且重新开始从 0 秒、0 分、第一题开始。",
+          "en": "Fixed feedback: double-clicking Next quickly skips a question, and restarting immediately from results leaves the old timer updating. Make submission an idempotent transition and bind timers and asynchronous callbacks to the active session identity; verify every question scores once and restart begins at zero seconds, zero score, and question one."
+        }
+      },
+      "expected": {
+        "zh": "门槛：至少 8 道内置四选一题；开始、选择、前进、结果与重新开始流程完整；用时、得分和 60% 通过判定正确；键盘与焦点可用；双击不跳题、旧计时器不污染新会话；无网络请求。",
+        "en": "Gates: at least eight bundled four-option questions; complete start, select, advance, result, and restart flow; correct elapsed time, score, and 60% pass rule; keyboard and focus work; double clicks do not skip and old timers cannot affect a new session; there are no network requests."
+      }
+    },
+    {
+      "id": "calculator",
+      "title": { "zh": "基础计算器", "en": "Basic Calculator" },
+      "source": {
+        "label": {
+          "zh": "florinpop17/app-ideas · Calculator",
+          "en": "florinpop17/app-ideas · Calculator"
+        },
+        "url": "https://github.com/florinpop17/app-ideas/blob/9e8dd00f10b881babc273d66949b7ffa0e310097/Projects/1-Beginner/Calculator-App.md",
+        "revision": "9e8dd00f10b881babc273d66949b7ffa0e310097"
+      },
+      "difficulty": "SMALL",
+      "readiness": "DRAFT",
+      "tags": ["idea-eval", "app-ideas", "calculator", "state-machine"],
+      "phases": {
+        "IDEATION": {
+          "zh": "实现遵循普通口袋计算器即时执行语义的基础计算器，用于验证输入建模和状态转换。MVP 支持单次显示与连续二元运算；表达式编辑器、科学函数、历史记录和单位换算不在范围内。",
+          "en": "Build a basic calculator with immediate-execution pocket-calculator semantics to exercise input modeling and state transitions. The MVP supports one display and chained binary operations; expression editing, scientific functions, history, and unit conversion are out of scope."
+        },
+        "DESIGN": {
+          "zh": "界面由结果显示区和紧凑按键区组成，包含 0–9、小数点、正负号、加减乘除、等号、C 与 AC。显示区区分当前值和必要错误状态；按键支持键盘映射、清晰焦点和窄屏操作，不放使用说明或营销文本。",
+          "en": "Use a result display and compact keypad containing 0–9, decimal point, sign toggle, add/subtract/multiply/divide, equals, C, and AC. The display distinguishes the current value from necessary error state; keys support keyboard mappings, visible focus, and narrow screens without instructions or promotional copy."
+        },
+        "DEVELOPMENT": {
+          "zh": "不得使用 eval 或动态代码执行。每个操作数最多 8 个数字，小数最多 3 位；支持连续即时运算、负数和浮点数。C 清除当前输入或最后一个待执行操作，AC 恢复初始 0；除零、非有限结果或超过显示容量时显示 ERR。运算符后的数字开始新输入，等号完成当前运算；鼠标与键盘产生相同状态变化，所有计算均在本地完成。",
+          "en": "Do not use eval or dynamic code execution. Limit each operand to eight digits and three decimal places; support chained immediate operations, negative values, and decimals. C clears the current entry or last pending operation, while AC restores the initial zero; division by zero, non-finite results, or display overflow show ERR. A digit after an operator starts a new entry and equals completes the pending operation; pointer and keyboard input produce the same state transitions and all calculation is local."
+        },
+        "ITERATION": {
+          "zh": "固定反馈：输入 5 + − 2 = 得到 7 或 ERR，而 8 ÷ 0 = 后输入 3 仍停留在 ERR。第二个操作数尚未开始时，新运算符应替换待执行运算符；错误态中的数字应开始全新计算。复核 C、AC、键盘和连续运算没有回归。",
+          "en": "Fixed feedback: 5 + − 2 = returns 7 or ERR, and entering 3 after 8 ÷ 0 = remains stuck on ERR. Before a second operand begins, a new operator replaces the pending operator; a digit in the error state starts a fresh calculation. Recheck C, AC, keyboard input, and chained operations for regressions."
+        }
+      },
+      "expected": {
+        "zh": "门槛：加减乘除、连续即时运算、小数、正负号、C 与 AC 正确；8 位和 3 位小数限制明确；除零与溢出可恢复；连续运算符采用替换语义；键盘与点击一致；不使用 eval；无网络请求。",
+        "en": "Gates: arithmetic, chained immediate operations, decimals, sign toggle, C, and AC work; eight-digit and three-decimal limits are explicit; division-by-zero and overflow errors recover; consecutive operators replace; keyboard and pointer behavior match; eval is not used; there are no network requests."
+      }
+    },
+    {
+      "id": "notes-app",
+      "title": { "zh": "本地便签", "en": "Local Notes" },
+      "source": {
+        "label": {
+          "zh": "florinpop17/app-ideas · Notes App",
+          "en": "florinpop17/app-ideas · Notes App"
+        },
+        "url": "https://github.com/florinpop17/app-ideas/blob/9e8dd00f10b881babc273d66949b7ffa0e310097/Projects/1-Beginner/Notes-App.md",
+        "revision": "9e8dd00f10b881babc273d66949b7ffa0e310097"
+      },
+      "difficulty": "SMALL",
+      "readiness": "DRAFT",
+      "tags": ["idea-eval", "app-ideas", "crud", "local-storage"],
+      "phases": {
+        "IDEATION": {
+          "zh": "实现无需账户的本地便签，用于快速创建、修改、查找和删除短文本。MVP 使用浏览器本地存储并允许重复标题；Markdown、富文本、标签、同步、协作和附件不在范围内。",
+          "en": "Build an account-free local notes app for quickly creating, editing, finding, and deleting short text. The MVP uses browser-local storage and permits duplicate titles; Markdown, rich text, tags, sync, collaboration, and attachments are out of scope."
+        },
+        "DESIGN": {
+          "zh": "宽屏使用便签列表与编辑区双栏，窄屏使用可返回列表的单栏流程。提供新建、搜索、保存和删除操作；列表显示标题与更新时间，编辑区显示标题、正文和保存状态。空态、无搜索结果和删除确认使用现有 shadcn 组件。",
+          "en": "Use a note list and editor side by side on wide screens and a single-column flow with a return action on narrow screens. Provide create, search, save, and delete actions; list items show title and updated time, while the editor shows title, body, and save state. Use existing shadcn components for empty state, no search results, and delete confirmation."
+        },
+        "DEVELOPMENT": {
+          "zh": "用户可创建、编辑、保存和删除便签，并按标题或正文进行不区分大小写的本地搜索。标题去除首尾空白后不能为空，正文可为空；保存后更新时间变化，创建时间保持不变。每条便签持有稳定唯一 ID，重复标题不合并；数据以带版本的 JSON 保存在 localStorage，重载后恢复。无效或不可解析的存储数据安全回退为空列表并提示错误，不发起网络请求。",
+          "en": "Users can create, edit, save, and delete notes and search title or body locally without case sensitivity. A trimmed title is required while body may be empty; saving updates the modified time without changing creation time. Every note has a stable unique ID and duplicate titles never merge; versioned JSON is stored in localStorage and restored after reload. Invalid or unparseable stored data falls back safely to an empty list with an error state, and no network request is made."
+        },
+        "ITERATION": {
+          "zh": "固定反馈：创建两个同名便签后，编辑或删除其中一个会影响另一个，搜索状态下删除还会选中错误项。所有读写、选择和删除必须只按稳定 ID 定位；删除后从当前过滤结果选择合理相邻项，无剩余项则回到空态。",
+          "en": "Fixed feedback: after creating two notes with the same title, editing or deleting one affects the other, and deletion while filtered selects the wrong item. Resolve reads, writes, selection, and deletion only by stable ID; after deletion select a sensible adjacent item from the current filtered result, or return to empty state when none remain."
+        }
+      },
+      "expected": {
+        "zh": "门槛：创建、编辑、保存、删除和搜索完整；标题必填、正文可空；重复标题彼此独立；创建/更新时间正确；刷新后从带版本的本地数据恢复；损坏数据安全回退；删除与筛选后的选择按稳定 ID；无网络请求。",
+        "en": "Gates: create, edit, save, delete, and search work; title is required and body may be empty; duplicate titles remain independent; created/updated times are correct; versioned local data restores after reload; corrupt data falls back safely; deletion and filtered selection use stable IDs; there are no network requests."
+      }
+    },
+    {
+      "id": "card-memory-game",
+      "title": { "zh": "卡片记忆游戏", "en": "Card Memory Game" },
+      "source": {
+        "label": {
+          "zh": "florinpop17/app-ideas · Card Memory Game",
+          "en": "florinpop17/app-ideas · Card Memory Game"
+        },
+        "url": "https://github.com/florinpop17/app-ideas/blob/9e8dd00f10b881babc273d66949b7ffa0e310097/Projects/2-Intermediate/Card-Memory-Game.md",
+        "revision": "9e8dd00f10b881babc273d66949b7ffa0e310097"
+      },
+      "difficulty": "MEDIUM",
+      "readiness": "DRAFT",
+      "tags": ["idea-eval", "app-ideas", "game", "async-state"],
+      "phases": {
+        "IDEATION": {
+          "zh": "实现单人配对记忆游戏，用常见规则验证随机布局、计时与受控异步状态。MVP 固定为 4×4、8 对内置符号；难度等级、账户、历史统计、联网素材、音效和排行榜不在范围内。",
+          "en": "Build a single-player matching game with familiar rules to exercise shuffled layout, timing, and controlled asynchronous state. The MVP is a fixed 4×4 board with eight bundled symbol pairs; difficulty levels, accounts, history, network assets, audio, and leaderboards are out of scope."
+        },
+        "DESIGN": {
+          "zh": "开始态显示 4×4 牌面与开始操作；进行中显示计时、步数、重新开始和牌面；完成态使用对话框显示用时、步数与再玩一次。卡片状态同时使用图形、可访问名称和禁用状态表达，键盘可逐张翻牌，窄屏保持正方形网格。",
+          "en": "The initial state shows the 4×4 board and start action; play shows time, moves, restart, and the board; completion uses a dialog with elapsed time, moves, and play again. Card state is conveyed with graphics, accessible names, and disabled state, cards are keyboard operable, and the square grid remains usable on narrow screens."
+        },
+        "DEVELOPMENT": {
+          "zh": "开始或重新开始时在本地洗牌 8 对内置符号，所有牌初始背面朝上；开始后计时。每回合选择两张不同且未匹配的牌并将步数加一：相同则保持可见并不可再选，不同则短暂展示后翻回。匹配全部牌后停止计时并显示完成对话框。已翻开、已匹配或解析不匹配中的牌不可重复选择；重新开始重置洗牌、计时、步数和全部牌状态；不访问网络。",
+          "en": "On start or restart, locally shuffle eight bundled symbol pairs with every card initially face down, then start timing. Each turn selects two distinct unmatched cards and increments moves once: a match stays visible and unavailable, while a mismatch remains visible briefly before flipping back. Stop timing and show completion when all pairs match. Visible, matched, or mismatch-resolution cards cannot be selected again; restart resets shuffle, time, moves, and all card state; no network requests are made."
+        },
+        "ITERATION": {
+          "zh": "固定反馈：不匹配的两张牌等待翻回时仍可点击第三张，导致三张牌可见、错误配对或多计一步；此时重新开始还会被旧的延时回调翻动新牌。解析一对牌期间锁定牌面，并使延时回调绑定当前游戏会话；重新开始取消或失效旧回调。",
+          "en": "Fixed feedback: while a mismatched pair waits to flip back, a third card can be selected, producing three visible cards, wrong matches, or an extra move; restarting then lets the old timeout flip cards in the new game. Lock the board while resolving a pair, bind delayed callbacks to the active game session, and cancel or invalidate old callbacks on restart."
+        }
+      },
+      "expected": {
+        "zh": "门槛：4×4、8 对内置符号；开始/重新开始正确洗牌并重置；配对、未配对翻回、步数和计时正确；完成时停止并汇总；解析期间锁定且旧回调不污染新局；键盘可操作；无联网素材或请求。",
+        "en": "Gates: a 4×4 board with eight bundled pairs; start/restart shuffle and reset correctly; matches, mismatch rollback, moves, and timing are correct; completion stops and summarizes; resolution locks the board and stale callbacks cannot affect a new game; keyboard works; there are no network assets or requests."
+      }
+    },
+    {
+      "id": "pokemon-type-matchup",
+      "title": { "zh": "宝可梦属性相克查询器", "en": "Pokémon Type Matchup" },
+      "source": {
+        "label": { "zh": "用户规格 · 2026-08-30", "en": "User specification · 2026-08-30" },
+        "url": null,
+        "revision": "user-spec-2026-08-30"
+      },
+      "difficulty": "MEDIUM",
+      "readiness": "DRAFT",
+      "tags": ["idea-eval", "mobile-first", "rules-engine", "local-first"],
+      "phases": {
+        "IDEATION": {
+          "zh": "实现面向手机端单手操作的本地属性相克查询器，供对战中快速确认攻击有效性和防守弱点、抗性与免疫。MVP 覆盖 18 种属性、单属性、双属性和太晶化；宝可梦图鉴、队伍管理、伤害数值计算、招式数据库、联网资料与账户不在范围内。",
+          "en": "Build a local, one-handed mobile type-matchup reference for quickly checking offensive effectiveness and defensive weaknesses, resistances, and immunities during play. The MVP covers all 18 types, single types, dual types, and Terastallization; a Pokédex, team builder, numeric damage calculator, move database, network data, and accounts are out of scope."
+        },
+        "DESIGN": {
+          "zh": "采用手机优先的单列布局，以攻击和防守两个视角组织操作。18 种属性使用紧凑且不小于 44×44 像素的点击目标；当前主属性、副属性、太晶属性与模式具有明确的选中和禁用状态。结果按 4×、2×、1×、1/2×、1/4×、0× 分组，倍率必须同时使用文字或符号表达，不能只依赖颜色；不添加说明性段落或宣传文案。",
+          "en": "Use a mobile-first single-column layout organized into offensive and defensive views. Present all 18 types as compact tap targets of at least 44×44 pixels, with explicit selected and disabled states for primary, secondary, Tera type, and mode. Group results by 4×, 2×, 1×, 1/2×, 1/4×, and 0×, expressing multipliers with text or symbols rather than color alone; add no explanatory paragraphs or promotional copy."
+        },
+        "DEVELOPMENT": {
+          "zh": "在本地内置规范的 18×18 属性克制矩阵，不调用外部 API。防守视角选择一个主属性和可选且不可重复的副属性，逐项相乘得到所有来袭属性的最终倍率，并列出弱点、抗性、免疫与普通伤害。攻击视角选择招式属性并针对当前单/双属性防守方显示倍率。启用太晶化后，防守属性只替换为所选太晶属性，不再叠加原始单/双属性；退出太晶模式恢复此前选择。切换、清空和交换属性后结果必须立即一致，刷新不要求持久化；键盘、焦点和触屏均可操作，且无网络请求。",
+          "en": "Embed the canonical 18×18 type chart locally without an external API. In defense view, select one primary and an optional non-duplicate secondary type, multiply each incoming type's modifiers, and list weaknesses, resistances, immunities, and neutral damage. In offense view, select a move type and show its multiplier against the current single- or dual-type defender. When Terastallization is enabled, defensive typing is replaced solely by the selected Tera type rather than combined with the original type or pair; leaving Tera mode restores the prior selection. Switching, clearing, or swapping types updates results consistently, persistence across reload is not required, keyboard/focus/touch operation works, and no network request is made."
+        },
+        "ITERATION": {
+          "zh": "固定反馈：双属性计算把 0× 与 2× 错误合并为普通伤害，并且太晶化后仍叠加原始属性的弱点和抗性。使用以 1 为初值的明确倍率乘法，保证免疫结果始终为 0；把普通防守属性与太晶防守属性建模为互斥输入，再复核典型的 4×、1/4×、免疫和太晶替换组合。",
+          "en": "Fixed feedback: dual-type calculation incorrectly combines 0× and 2× into neutral damage, and Terastallization still carries original weaknesses and resistances. Use explicit multiplier composition starting at 1 so immunity always remains 0; model normal defensive typing and Tera defensive typing as mutually exclusive inputs, then recheck representative 4×, 1/4×, immunity, and Tera-replacement combinations."
+        }
+      },
+      "expected": {
+        "zh": "门槛：18 种属性矩阵正确且完全本地；单/双属性的攻击倍率、防守弱点、抗性、免疫和普通伤害正确；副属性不可重复；太晶化只采用太晶属性进行防守计算并可无损退出；切换、交换和清空状态一致；手机触控、键盘与焦点可用；倍率不只靠颜色表达；无网络请求。",
+        "en": "Gates: the complete 18-type chart is correct and local; offensive multipliers and defensive weaknesses, resistances, immunities, and neutral damage are correct for single and dual types; the secondary type cannot duplicate the primary; Tera defense uses only the Tera type and exits without losing the prior selection; switch, swap, and clear states stay consistent; mobile touch, keyboard, and focus work; multipliers are not color-only; there are no network requests."
+      }
+    },
+    {
+      "id": "kinship-calculator",
+      "title": { "zh": "亲戚关系计算器", "en": "Kinship Calculator" },
+      "source": {
+        "label": {
+          "zh": "mumuy/relationship · 有限范围题",
+          "en": "mumuy/relationship · scoped benchmark"
+        },
+        "url": "https://github.com/mumuy/relationship/tree/12918c3f47551752427a871ca001b21de66b7d5b",
+        "revision": "12918c3f47551752427a871ca001b21de66b7d5b"
+      },
+      "difficulty": "SMALL",
+      "readiness": "READY",
+      "tags": ["idea-eval", "kinship", "rule-engine", "local-first"],
+      "phases": {
+        "IDEATION": {
+          "zh": "实现有限范围的中文亲戚称谓计算器，用链式选择帮助用户确认常见三代内称呼。MVP 只处理明确列出的基础关系和最多 3 步关系链；自由文本解析、反向称呼、年龄推断、方言、合称与完整亲属数据库不在范围内。",
+          "en": "Build a deliberately scoped Chinese kinship-title calculator using relation-chain selection for common titles within three generations. The MVP handles only the listed primitives and chains up to three steps; free-text parsing, reverse addressing, age inference, dialects, pair titles, and a complete kinship database are out of scope."
+        },
+        "DESIGN": {
+          "zh": "界面包含当前关系链、结果区，以及父亲、母亲、丈夫、妻子、哥哥、弟弟、姐姐、妹妹、儿子、女儿 10 个关系键；提供退一步、清空和计算操作。关系链以“我的…”逐步显示，结果区区分未计算、已匹配和暂未收录；全部按键支持键盘与可见焦点，窄屏保持可操作。",
+          "en": "Show the current relation chain, result, and ten relation keys: father, mother, husband, wife, older brother, younger brother, older sister, younger sister, son, and daughter, plus undo, clear, and calculate. Render the chain incrementally from “my…”, distinguish idle, matched, and unsupported results, and keep every key keyboard operable with visible focus on narrow screens."
+        },
+        "DEVELOPMENT": {
+          "zh": "用稳定 token 表示 10 个基础关系，最多接受 3 步；第四步不可加入并显示边界状态。至少正确计算：父/母/夫/妻/兄/弟/姐/妹/子/女→爸爸/妈妈/丈夫/妻子/哥哥/弟弟/姐姐/妹妹/儿子/女儿；父父/父母→爷爷/奶奶；母父/母母→外公/外婆；父兄/父弟/父姐或妹→伯父/叔叔/姑姑；母兄或弟/母姐或妹→舅舅/姨妈；兄或弟的子女→侄子/侄女；姐或妹的子女→外甥/外甥女；妻父/妻母→岳父/岳母；夫父/夫母→公公/婆婆；父兄妻/父弟妻/父姐或妹的夫→伯母/婶婶/姑父；母兄或弟的妻/母姐或妹的夫→舅妈/姨父。未列出的合法或非法链统一返回“暂未收录”，不得猜测；不安装完整关系库、不持久化输入、不访问网络。",
+          "en": "Represent the ten primitives with stable tokens and accept at most three steps, rejecting a fourth with a boundary state. At minimum resolve each primitive to 爸爸/妈妈/丈夫/妻子/哥哥/弟弟/姐姐/妹妹/儿子/女儿; paternal grandfather/grandmother→爷爷/奶奶; maternal grandfather/grandmother→外公/外婆; father's older brother/younger brother/sister→伯父/叔叔/姑姑; mother's brother/sister→舅舅/姨妈; a brother's children→侄子/侄女; a sister's children→外甥/外甥女; wife's parents→岳父/岳母; husband's parents→公公/婆婆; father's older brother's wife/younger brother's wife/sister's husband→伯母/婶婶/姑父; mother's brother's wife/sister's husband→舅妈/姨父. Return “暂未收录” for every unlisted valid or invalid chain without guessing; do not install a full relationship library, persist input, or access the network."
+        },
+        "ITERATION": {
+          "zh": "首轮完成后由评测器运行明暗测试。收到失败问题清单后，只依据可观察的称谓、关系链和控制状态复现并修复；暗测试的源码、步骤、断言和输入链不会披露。必须保留公开定位符，不得按暗测猜测扩张完整称谓库。",
+          "en": "After the first pass, the evaluator runs public and private tests. When given a failed-behavior list, reproduce and correct it only through observable titles, chains, and control state; private source, steps, assertions, and input chains are never disclosed. Preserve public locators and do not guess private cases by expanding into a full kinship database."
+        }
+      },
+      "expected": {
+        "zh": "门槛：10 个关系键和最多 3 步边界正确；规定的一至三步称谓全部匹配；哥哥/弟弟、姐姐/妹妹不会在规范化时合并；退一步、清空和重新计算无旧结果；未列出关系只返回“暂未收录”；键盘可用；不安装完整关系库且无网络请求。",
+        "en": "Gates: all ten relation keys and the three-step limit work; every specified one-to-three-step title resolves; older/younger brother and sister tokens never collapse during normalization; undo, clear, and recalculation cannot show stale results; unlisted chains only return “暂未收录”; keyboard works; no full kinship library is installed and no network request is made."
+      },
+      "verification": {
+        "firstPassNotice": {
+          "zh": "这是首轮实现。完成后会有一批明测试和一批隔离的暗测试；首轮只提供稳定定位符，不提供测试步骤、断言、关系链组合或失败样例。",
+          "en": "This is the first implementation pass. A public batch and an isolated private batch will run afterward; the first pass provides only stable locators, not test steps, assertions, relation-chain combinations, or failure examples."
+        },
+        "locatorAttribute": "data-testid",
+        "locators": [
+          {
+            "id": "relation-chain",
+            "label": { "zh": "当前关系链", "en": "Current relation chain" }
+          },
+          {
+            "id": "kinship-result",
+            "label": { "zh": "称谓结果", "en": "Kinship result" }
+          },
+          {
+            "id": "relation-father",
+            "label": { "zh": "父亲关系键", "en": "Father relation key" }
+          },
+          {
+            "id": "relation-mother",
+            "label": { "zh": "母亲关系键", "en": "Mother relation key" }
+          },
+          {
+            "id": "relation-husband",
+            "label": { "zh": "丈夫关系键", "en": "Husband relation key" }
+          },
+          {
+            "id": "relation-wife",
+            "label": { "zh": "妻子关系键", "en": "Wife relation key" }
+          },
+          {
+            "id": "relation-older-brother",
+            "label": { "zh": "哥哥关系键", "en": "Older-brother relation key" }
+          },
+          {
+            "id": "relation-younger-brother",
+            "label": { "zh": "弟弟关系键", "en": "Younger-brother relation key" }
+          },
+          {
+            "id": "relation-older-sister",
+            "label": { "zh": "姐姐关系键", "en": "Older-sister relation key" }
+          },
+          {
+            "id": "relation-younger-sister",
+            "label": { "zh": "妹妹关系键", "en": "Younger-sister relation key" }
+          },
+          {
+            "id": "relation-son",
+            "label": { "zh": "儿子关系键", "en": "Son relation key" }
+          },
+          {
+            "id": "relation-daughter",
+            "label": { "zh": "女儿关系键", "en": "Daughter relation key" }
+          },
+          {
+            "id": "relation-undo",
+            "label": { "zh": "退一步", "en": "Undo one relation" }
+          },
+          {
+            "id": "relation-clear",
+            "label": { "zh": "清空关系链", "en": "Clear relation chain" }
+          },
+          {
+            "id": "relation-calculate",
+            "label": { "zh": "计算称谓", "en": "Calculate title" }
+          },
+          {
+            "id": "relation-limit-status",
+            "label": { "zh": "关系链上限状态", "en": "Relation-limit status" }
+          }
+        ],
+        "publicTests": [
+          {
+            "id": "KIN-P01",
+            "title": { "zh": "十个单步关系", "en": "Ten primitive relations" },
+            "locatorIds": [
+              "relation-chain",
+              "kinship-result",
+              "relation-father",
+              "relation-mother",
+              "relation-husband",
+              "relation-wife",
+              "relation-older-brother",
+              "relation-younger-brother",
+              "relation-older-sister",
+              "relation-younger-sister",
+              "relation-son",
+              "relation-daughter",
+              "relation-clear",
+              "relation-calculate"
+            ],
+            "steps": {
+              "zh": "分别从空链选择 10 个关系键，每次检查链文本、计算结果，然后清空。",
+              "en": "From an empty chain select each of the ten relation keys, checking chain text and calculated result before clearing."
+            },
+            "expected": {
+              "zh": "依次得到爸爸、妈妈、丈夫、妻子、哥哥、弟弟、姐姐、妹妹、儿子、女儿；链文本与所选关系一致，清空后回到未计算状态。",
+              "en": "Results are 爸爸, 妈妈, 丈夫, 妻子, 哥哥, 弟弟, 姐姐, 妹妹, 儿子, and 女儿; chain text matches each choice and clear returns to idle."
+            }
+          },
+          {
+            "id": "KIN-P02",
+            "title": { "zh": "祖辈与父母的兄弟姐妹", "en": "Grandparents and parents' siblings" },
+            "locatorIds": [
+              "relation-chain",
+              "kinship-result",
+              "relation-father",
+              "relation-mother",
+              "relation-older-brother",
+              "relation-younger-brother",
+              "relation-older-sister",
+              "relation-younger-sister",
+              "relation-clear",
+              "relation-calculate"
+            ],
+            "steps": {
+              "zh": "逐一计算父父、父母、母父、母母，以及父兄、父弟、父姐、父妹、母兄、母弟、母姐、母妹；每条链之间清空。",
+              "en": "Calculate father-father, father-mother, mother-father, mother-mother, then each parent's older/younger brother and older/younger sister, clearing between chains."
+            },
+            "expected": {
+              "zh": "祖辈分别为爷爷、奶奶、外公、外婆；父兄为伯父、父弟为叔叔、父姐妹为姑姑、母兄弟为舅舅、母姐妹为姨妈。",
+              "en": "Grandparents resolve to 爷爷, 奶奶, 外公, and 外婆; father's older/younger brothers resolve to 伯父/叔叔, his sisters to 姑姑, mother's brothers to 舅舅, and her sisters to 姨妈."
+            }
+          },
+          {
+            "id": "KIN-P03",
+            "title": { "zh": "兄弟姐妹子女与配偶父母", "en": "Siblings' children and spouse's parents" },
+            "locatorIds": [
+              "kinship-result",
+              "relation-father",
+              "relation-mother",
+              "relation-husband",
+              "relation-wife",
+              "relation-older-brother",
+              "relation-younger-brother",
+              "relation-older-sister",
+              "relation-younger-sister",
+              "relation-son",
+              "relation-daughter",
+              "relation-clear",
+              "relation-calculate"
+            ],
+            "steps": {
+              "zh": "计算哥哥、弟弟的儿子和女儿，姐姐、妹妹的儿子和女儿，以及妻父、妻母、夫父、夫母；每条链之间清空。",
+              "en": "Calculate each brother's and sister's son and daughter, then wife's father/mother and husband's father/mother, clearing between chains."
+            },
+            "expected": {
+              "zh": "兄弟子女为侄子/侄女，姐妹子女为外甥/外甥女，妻子父母为岳父/岳母，丈夫父母为公公/婆婆。",
+              "en": "Brothers' children resolve to 侄子/侄女, sisters' children to 外甥/外甥女, wife's parents to 岳父/岳母, and husband's parents to 公公/婆婆."
+            }
+          },
+          {
+            "id": "KIN-P04",
+            "title": { "zh": "三步姻亲称谓", "en": "Three-step in-law titles" },
+            "locatorIds": [
+              "kinship-result",
+              "relation-father",
+              "relation-mother",
+              "relation-husband",
+              "relation-wife",
+              "relation-older-brother",
+              "relation-younger-brother",
+              "relation-older-sister",
+              "relation-younger-sister",
+              "relation-clear",
+              "relation-calculate"
+            ],
+            "steps": {
+              "zh": "依次计算父兄妻、父弟妻、父姐夫、父妹夫、母兄妻、母弟妻、母姐夫、母妹夫；每条链之间清空。",
+              "en": "Calculate father's older brother's wife, younger brother's wife, each sister's husband, mother's brothers' wives, and mother's sisters' husbands, clearing between chains."
+            },
+            "expected": {
+              "zh": "分别得到伯母、婶婶、姑父、姑父、舅妈、舅妈、姨父、姨父；兄弟长幼 token 不得合并。",
+              "en": "Results are 伯母, 婶婶, 姑父, 姑父, 舅妈, 舅妈, 姨父, and 姨父; older/younger brother tokens must not collapse."
+            }
+          },
+          {
+            "id": "KIN-P05",
+            "title": { "zh": "撤销、未收录与三步上限", "en": "Undo, unsupported chains, and step limit" },
+            "locatorIds": [
+              "relation-chain",
+              "kinship-result",
+              "relation-father",
+              "relation-husband",
+              "relation-son",
+              "relation-undo",
+              "relation-clear",
+              "relation-calculate",
+              "relation-limit-status"
+            ],
+            "steps": {
+              "zh": "用键盘加入父、父、父并尝试第四步，检查上限状态；退一步后改选儿子并计算；清空后计算父亲的丈夫。",
+              "en": "Use the keyboard to add father, father, father and attempt a fourth step; inspect limit state, undo once and choose son, then calculate; clear and calculate father's husband."
+            },
+            "expected": {
+              "zh": "第四步不进入关系链且出现可感知边界状态；退一步清除旧结果并允许新的第三步；清空重置所有状态；未列出的父亲的丈夫只返回“暂未收录”。",
+              "en": "The fourth step is not appended and a perceivable limit state appears; undo clears stale output and permits a new third step; clear resets all state; the unlisted father's husband returns only 暂未收录."
+            }
+          }
+        ],
+        "privateSuiteId": "idea-eval/kinship-calculator/v1"
+      }
+    }
+  ]
+}

@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import type { ExtensionManifestDto } from '@/shared/contracts';
+import { isExtensionPermissionTemplate, validateDeclaredExtensionPermission } from '@/shared/extension-permissions';
 import { EXTENSION_HOST_ENGINE_KEY } from '@/shared/product';
 
 const identifier = z
@@ -97,6 +98,29 @@ const imageApiConfigurationSchema = z
     connectionCheckPresetIds: z.array(identifier).max(30),
   })
   .strict();
+const articleDeliveryConfigurationSchema = z
+  .object({
+    kind: z.literal('ARTICLE_DELIVERY'),
+    defaultEndpointId: identifier,
+    endpoints: z
+      .array(
+        z
+          .object({
+            id: identifier,
+            siteUrl: z.string().trim().min(8).max(500),
+          })
+          .strict(),
+      )
+      .min(1)
+      .max(10),
+    pathPrefix: z
+      .string()
+      .trim()
+      .min(1)
+      .max(120)
+      .regex(/^\/(?:[A-Za-z0-9._~-]+\/)*$/u),
+  })
+  .strict();
 
 const manifestSchema = z
   .object({
@@ -127,6 +151,7 @@ const manifestSchema = z
         tools: contributionIds.optional(),
         searchProviders: contributionIds.optional(),
         modelProviders: contributionIds.optional(),
+        deliveryChannels: contributionIds.optional(),
       })
       .strict(),
     permissions: z.array(permissionKey).max(80),
@@ -158,7 +183,9 @@ const manifestSchema = z
       })
       .strict()
       .optional(),
-    configuration: imageApiConfigurationSchema.optional(),
+    configuration: z
+      .discriminatedUnion('kind', [imageApiConfigurationSchema, articleDeliveryConfigurationSchema])
+      .optional(),
   })
   .strict();
 
@@ -167,6 +194,12 @@ export function parseExtensionManifest(value: unknown): ExtensionManifestDto {
   const required = new Set(manifest.permissions);
   if (manifest.optionalPermissions.some((permission) => required.has(permission))) {
     throw new Error(`Extension ${manifest.id} declares a permission as both required and optional`);
+  }
+  for (const permission of [...manifest.permissions, ...manifest.optionalPermissions]) {
+    validateDeclaredExtensionPermission(permission);
+  }
+  if (manifest.permissions.some(isExtensionPermissionTemplate)) {
+    throw new Error(`Extension ${manifest.id} declares a runtime permission template as required`);
   }
   if (manifest.i18n && !manifest.i18n.locales[manifest.i18n.defaultLocale]) {
     throw new Error(`Extension ${manifest.id} is missing its default locale`);
@@ -180,12 +213,26 @@ export function parseExtensionManifest(value: unknown): ExtensionManifestDto {
   if (manifest.kind === 'LANGUAGE' && manifest.runtime) {
     throw new Error(`Language extension ${manifest.id} cannot declare a runtime`);
   }
-  if (manifest.configuration) validateImageApiConfiguration(manifest);
+  if (manifest.kind === 'LANGUAGE' && (manifest.permissions.length || manifest.optionalPermissions.length)) {
+    throw new Error(`Language extension ${manifest.id} cannot declare permissions`);
+  }
+  if (
+    manifest.kind === 'LANGUAGE' &&
+    Object.values(manifest.contributes).some((contributions) => contributions?.length)
+  ) {
+    throw new Error(`Language extension ${manifest.id} cannot declare capability contributions`);
+  }
+  if (manifest.kind === 'LANGUAGE' && (manifest.category || manifest.configuration)) {
+    throw new Error(`Language extension ${manifest.id} cannot declare capability configuration`);
+  }
+  if (manifest.configuration?.kind === 'IMAGE_API') validateImageApiConfiguration(manifest);
+  if (manifest.configuration?.kind === 'ARTICLE_DELIVERY') validateArticleDeliveryConfiguration(manifest);
   return manifest;
 }
 
 function validateImageApiConfiguration(manifest: ExtensionManifestDto) {
-  const configuration = manifest.configuration!;
+  const configuration = manifest.configuration;
+  if (configuration?.kind !== 'IMAGE_API') throw new Error(`Extension ${manifest.id} is missing image configuration`);
   const presetIds = new Set(configuration.endpointPresets.map((preset) => preset.id));
   if (presetIds.size !== configuration.endpointPresets.length) {
     throw new Error(`Extension ${manifest.id} declares duplicate endpoint presets`);
@@ -231,6 +278,37 @@ function validateImageApiConfiguration(manifest: ExtensionManifestDto) {
     }
     if (configuration.settingFields.some((field) => !localization.configuration?.fields[field.key])) {
       throw new Error(`Extension ${manifest.id} locale is missing a configuration field`);
+    }
+  }
+}
+
+function validateArticleDeliveryConfiguration(manifest: ExtensionManifestDto) {
+  const configuration = manifest.configuration;
+  if (configuration?.kind !== 'ARTICLE_DELIVERY') {
+    throw new Error(`Extension ${manifest.id} is missing article delivery configuration`);
+  }
+  const endpointIds = new Set(configuration.endpoints.map((endpoint) => endpoint.id));
+  if (endpointIds.size !== configuration.endpoints.length) {
+    throw new Error(`Extension ${manifest.id} declares duplicate article delivery endpoints`);
+  }
+  if (!endpointIds.has(configuration.defaultEndpointId)) {
+    throw new Error(`Extension ${manifest.id} has an unknown default article delivery endpoint`);
+  }
+  for (const endpoint of configuration.endpoints) {
+    let siteUrl: URL;
+    try {
+      siteUrl = new URL(endpoint.siteUrl);
+    } catch {
+      throw new Error(`Extension ${manifest.id} declares an invalid article delivery endpoint`);
+    }
+    const loopback = ['localhost', '127.0.0.1', '[::1]'].includes(siteUrl.hostname);
+    if (
+      endpoint.siteUrl !== siteUrl.origin ||
+      siteUrl.username ||
+      siteUrl.password ||
+      (siteUrl.protocol !== 'https:' && !(siteUrl.protocol === 'http:' && loopback))
+    ) {
+      throw new Error(`Extension ${manifest.id} article delivery endpoints must be HTTPS origins or HTTP loopback`);
     }
   }
 }

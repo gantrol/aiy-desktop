@@ -193,11 +193,10 @@ export function GenerationComparison({
   const modelLabel = (model: ImageGenerationRouteDto) =>
     model.key === 'internal-library-random' ? messages.creator.generationTargets.internalLibraryRandom : model.name;
   const startComparisonAssetDrag = (event: ReactDragEvent<HTMLElement>, assetId: string) => {
-    const request = startImageAssetDrag(event, [assetId]);
-    if (request) {
-      void request.catch((reason) => {
-        notify(`${messages.assetFile.failed}: ${reason instanceof Error ? reason.message : String(reason)}`);
-      });
+    try {
+      startImageAssetDrag(event, [assetId]);
+    } catch (reason) {
+      notify(`${messages.assetFile.failed}: ${reason instanceof Error ? reason.message : String(reason)}`);
     }
   };
   const versions = useMemo(

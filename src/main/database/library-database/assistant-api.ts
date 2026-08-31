@@ -49,6 +49,7 @@ export function createAssistantApi(
         seriesId: null,
         creationDraftId: input.creationDraftId,
         inspirationStashId: input.inspirationStashId,
+        imageBreakdownId: input.imageBreakdownId,
         title: input.title,
         titleLocale: input.termPromptLocale,
         manualPrompt: input.manualPrompt,

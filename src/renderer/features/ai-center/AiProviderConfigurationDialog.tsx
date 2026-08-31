@@ -39,7 +39,17 @@ export function AiProviderConfigurationDialog({ open, extension, locale, notify,
   const extensionCopy = messages.extensions;
   const [current, setCurrent] = useState<ExtensionDto | null>(extension);
   const [busy, setBusy] = useState('');
+  const [pendingPermissionKeys, setPendingPermissionKeys] = useState<Set<string>>(() => new Set());
   const [error, setError] = useState('');
+
+  function setPermissionPending(permission: string, pending: boolean) {
+    setPendingPermissionKeys((currentKeys) => {
+      const next = new Set(currentKeys);
+      if (pending) next.add(permission);
+      else next.delete(permission);
+      return next;
+    });
+  }
 
   async function load(refreshCodex = false) {
     if (!extension) return;
@@ -62,7 +72,7 @@ export function AiProviderConfigurationDialog({ open, extension, locale, notify,
   }, [extension?.manifest.id, open]);
 
   async function changeEnabled(enabled: boolean) {
-    if (!current || busy) return;
+    if (!current || busy || pendingPermissionKeys.size > 0) return;
     setBusy('enabled');
     setError('');
     try {
@@ -81,8 +91,8 @@ export function AiProviderConfigurationDialog({ open, extension, locale, notify,
   }
 
   async function changePermission(permission: string, granted: boolean) {
-    if (!current || busy) return;
-    setBusy(`permission:${permission}`);
+    if (!current || busy || pendingPermissionKeys.has(permission)) return;
+    setPermissionPending(permission, true);
     setError('');
     try {
       const extensions = await window.desktopApi.extensionSetPermission({
@@ -91,12 +101,12 @@ export function AiProviderConfigurationDialog({ open, extension, locale, notify,
         granted,
       });
       setCurrent(extensions.find((item) => item.manifest.id === current.manifest.id) ?? current);
-      await onChanged();
+      void onChanged().catch((reason) => setError(reason instanceof Error ? reason.message : String(reason)));
       notify(granted ? extensionCopy.notices.permissionGranted : extensionCopy.notices.permissionRevoked);
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : String(reason));
     } finally {
-      setBusy('');
+      setPermissionPending(permission, false);
     }
   }
 
@@ -106,7 +116,7 @@ export function AiProviderConfigurationDialog({ open, extension, locale, notify,
   }
 
   async function refreshConnection() {
-    if (busy) return;
+    if (busy || pendingPermissionKeys.size > 0) return;
     setBusy('refresh');
     try {
       await load(true);
@@ -118,12 +128,13 @@ export function AiProviderConfigurationDialog({ open, extension, locale, notify,
 
   const copy = current ? localizeExtensionManifest(current.manifest, locale) : null;
   const ready = current?.enabled && current.connectionState === 'READY';
+  const controlsBusy = Boolean(busy) || pendingPermissionKeys.size > 0;
 
   return (
     <Dialog
       open={open}
       onOpenChange={(next) => {
-        if (!busy) onOpenChange(next);
+        if (!controlsBusy) onOpenChange(next);
       }}
     >
       <DialogContent className="grid h-[min(760px,calc(100vh-2rem))] max-w-3xl grid-rows-[auto_minmax(0,1fr)] gap-0 overflow-hidden p-0">
@@ -149,7 +160,7 @@ export function AiProviderConfigurationDialog({ open, extension, locale, notify,
                     type="button"
                     variant={current.enabled ? 'outline' : 'default'}
                     size="sm"
-                    disabled={Boolean(busy)}
+                    disabled={controlsBusy}
                     onClick={() => void changeEnabled(!current.enabled)}
                   >
                     <PowerIcon className="size-3.5" />
@@ -173,14 +184,22 @@ export function AiProviderConfigurationDialog({ open, extension, locale, notify,
                       >
                         <Checkbox
                           checked={permission.granted}
-                          disabled={Boolean(busy)}
+                          disabled={
+                            Boolean(busy) ||
+                            pendingPermissionKeys.has(permission.key) ||
+                            (permission.runtimeScoped && !permission.granted)
+                          }
                           onCheckedChange={(checked) => void changePermission(permission.key, checked === true)}
                         />
                         <span className="min-w-0 flex-1 break-all font-mono text-xs">{permission.key}</span>
                         <Badge variant={permission.required ? 'secondary' : 'outline'}>
-                          {permission.required ? extensionCopy.required : extensionCopy.optional}
+                          {permission.runtimeScoped
+                            ? extensionCopy.runtimeScoped
+                            : permission.required
+                              ? extensionCopy.required
+                              : extensionCopy.optional}
                         </Badge>
-                        {busy === `permission:${permission.key}` && (
+                        {pendingPermissionKeys.has(permission.key) && (
                           <RefreshCwIcon className="size-3.5 animate-spin text-muted-foreground" />
                         )}
                       </label>
@@ -194,7 +213,7 @@ export function AiProviderConfigurationDialog({ open, extension, locale, notify,
                   <Button
                     type="button"
                     variant="outline"
-                    disabled={Boolean(busy)}
+                    disabled={controlsBusy}
                     onClick={() => void refreshConnection()}
                   >
                     <RefreshCwIcon className={cn('size-4', busy === 'refresh' && 'animate-spin')} />

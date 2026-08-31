@@ -112,6 +112,10 @@ export function createGenerationApi(
       return repositories.workbench.importReferenceAsync(sourcePath);
     },
 
+    importReferenceBytes(sourceName: string, bytes: Uint8Array) {
+      return repositories.workbench.importReferenceBytes(sourceName, bytes);
+    },
+
     capturePromptCommonInput(
       input: Pick<
         GenerationInput,
@@ -225,6 +229,10 @@ export function createGenerationApi(
 
     getGenerationJob(runId: string) {
       return repositories.generationJobs.getForRun(runId);
+    },
+
+    getGenerationOutputAssetId(runId: string) {
+      return repositories.generationJobs.outputAssetId(runId);
     },
 
     getGenerationProcessSummary(runId: string) {

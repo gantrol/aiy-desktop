@@ -46,10 +46,11 @@ import { useI18n } from '@/renderer/i18n/useI18n';
 import { cn } from '@/renderer/lib/utils';
 import { Button } from '@/renderer/components/ui/button';
 import { Badge } from '@/renderer/components/ui/badge';
-import { HoverRevealButton } from '@/renderer/components/ui/hover-reveal-button';
+import type { ActionMenuAction } from '@/renderer/components/ui/action-menu';
 import { Segmented, SegmentedItem } from '@/renderer/components/ui/segmented';
 import { AssetFileContextMenu } from '@/renderer/components/media/AssetFileContextMenu';
 import { ImageAmbientBackdrop } from '@/renderer/components/media/AmbientImage';
+import { MediaActionMenu } from '@/renderer/components/media/MediaActionMenu';
 import { getMediaPreviewAspectRatio } from '@/renderer/components/media/mediaAspectRatio';
 import { mediaThumbnailUrl } from '@/renderer/components/media/mediaThumbnailUrl';
 import { AnnotationComposer } from '@/renderer/components/creator/annotations/AnnotationComposer';
@@ -128,6 +129,7 @@ interface Props {
   onImportedOutputUpdated(): Promise<void>;
   onImportedOutputSaved(output: ImportedCreationOutputDto): void;
   derivedVisual?: DerivedVisualDto | null;
+  appliedDerivedVisualAssetId?: string | null;
   onAdoptDerivedVisual?(visualId: string, imageAssetId: string): Promise<void>;
   notify(message: string): void;
 }
@@ -217,6 +219,7 @@ export function OutputInspector({
   onImportedOutputUpdated,
   onImportedOutputSaved,
   derivedVisual = null,
+  appliedDerivedVisualAssetId,
   onAdoptDerivedVisual,
   notify,
 }: Props) {
@@ -901,6 +904,59 @@ export function OutputInspector({
           ? 'Insert in article'
           : 'Set as cover'
     : '';
+  const currentDerivedVisualAssetId =
+    appliedDerivedVisualAssetId === undefined
+      ? (derivedVisual?.selectedImageAssetId ?? null)
+      : appliedDerivedVisualAssetId;
+
+  const openAnnotationCount = annotations.filter((annotation) => annotation.status === 'OPEN').length;
+  const stageActions: ActionMenuAction[] = [
+    {
+      id: 'output-annotate',
+      label: `${labels.annotate}${openAnnotationCount ? ` · ${openAnnotationCount}` : ''}`,
+      icon: MessageSquareIcon,
+      onSelect: openAnnotationWorkspace,
+    },
+    {
+      id: 'output-transform',
+      label: messages.creator.imageTransform.title,
+      icon: transforming ? LoaderCircleIcon : CropIcon,
+      busy: transforming,
+      disabled: transforming,
+      onSelect: () => {
+        setOutputMagnifierActive(false);
+        setAspectDialogOpen(true);
+      },
+    },
+    ...(reuseVersion
+      ? [
+          {
+            id: 'output-reuse-prompt',
+            label: messages.creator.generationRecord.reusePrompt,
+            icon: reusingPrompt ? LoaderCircleIcon : RotateCcwIcon,
+            busy: reusingPrompt,
+            disabled: reusingPrompt,
+            onSelect: () => void reusePrompt(),
+          } satisfies ActionMenuAction,
+        ]
+      : []),
+    {
+      id: 'output-distill-knowledge',
+      label: messages.creator.knowledgeDistillation.title,
+      icon: distilling ? LoaderCircleIcon : PackageOpenIcon,
+      busy: distilling,
+      disabled: distilling || !asset,
+      onSelect: () => {
+        if (asset) void onDistillKnowledge(asset.id);
+      },
+    },
+  ];
+  if (asset) {
+    const presentationActions = presentationActionsForAsset(asset.id);
+    stageActions.push(
+      ...presentationActions.map((action, index) => (index === 0 ? { ...action, separatorBefore: true } : action)),
+    );
+  }
 
   const hasVersionStripContent =
     outputProjection.some(
@@ -915,6 +971,7 @@ export function OutputInspector({
       groups={outputProjection}
       ungroupedAssets={ungroupedAssets}
       selectedAssetId={asset?.id ?? null}
+      adoptedAssetId={currentDerivedVisualAssetId}
       locale={locale}
       onSelect={selectAsset}
       onSetFailed={setOutputFailed}
@@ -1116,11 +1173,13 @@ export function OutputInspector({
                 </div>
               ) : (
                 <div className="absolute right-3 bottom-3 z-20 flex items-center gap-1.5">
-                  <HoverRevealButton
+                  <Button
                     type="button"
                     data-action="image-magnifier-toggle"
                     variant="secondary"
-                    label={messages.creator.comparison.magnifier}
+                    size="icon-sm"
+                    title={messages.creator.comparison.magnifier}
+                    aria-label={messages.creator.comparison.magnifier}
                     aria-pressed={outputMagnifierActive}
                     className={cn(
                       'shadow-overlay',
@@ -1130,60 +1189,8 @@ export function OutputInspector({
                     onClick={() => setOutputMagnifierActive((current) => !current)}
                   >
                     <SearchIcon className="size-4" />
-                  </HoverRevealButton>
-                  {reuseVersion && (
-                    <HoverRevealButton
-                      type="button"
-                      data-action="reuse-prompt"
-                      variant="secondary"
-                      label={messages.creator.generationRecord.reusePrompt}
-                      className="shadow-overlay"
-                      disabled={reusingPrompt}
-                      onClick={() => void reusePrompt()}
-                    >
-                      {reusingPrompt ? (
-                        <LoaderCircleIcon className="size-4 animate-spin" />
-                      ) : (
-                        <RotateCcwIcon className="size-4" />
-                      )}
-                    </HoverRevealButton>
-                  )}
-                  <HoverRevealButton
-                    type="button"
-                    variant="secondary"
-                    label={messages.creator.knowledgeDistillation.title}
-                    className="shadow-overlay"
-                    disabled={distilling}
-                    onClick={() => void onDistillKnowledge(asset.id)}
-                  >
-                    {distilling ? (
-                      <LoaderCircleIcon className="size-4 animate-spin" />
-                    ) : (
-                      <PackageOpenIcon className="size-4" />
-                    )}
-                  </HoverRevealButton>
-                  <HoverRevealButton
-                    type="button"
-                    data-action="image-transform-open"
-                    variant="secondary"
-                    label={messages.creator.imageTransform.title}
-                    className="shadow-overlay"
-                    onClick={() => {
-                      setOutputMagnifierActive(false);
-                      setAspectDialogOpen(true);
-                    }}
-                  >
-                    <CropIcon className="size-4" />
-                  </HoverRevealButton>
-                  <HoverRevealButton
-                    type="button"
-                    variant="secondary"
-                    label={`${labels.annotate}${annotations.some((annotation) => annotation.status === 'OPEN') ? ` ${annotations.filter((annotation) => annotation.status === 'OPEN').length}` : ''}`}
-                    className="shadow-overlay"
-                    onClick={openAnnotationWorkspace}
-                  >
-                    <MessageSquareIcon className="size-4" />
-                  </HoverRevealButton>
+                  </Button>
+                  <MediaActionMenu actions={stageActions} label={messages.creator.album.moreActions} />
                 </div>
               )}
               {annotationWorkspaceOpen && !pendingAnnotation && !editingAnnotationId && annotations.length > 0 && (
@@ -1209,7 +1216,7 @@ export function OutputInspector({
                     <Button
                       type="button"
                       className="w-full"
-                      disabled={adoptingDerivedVisual || derivedVisual.selectedImageAssetId === asset.id}
+                      disabled={adoptingDerivedVisual || currentDerivedVisualAssetId === asset.id}
                       onClick={() => void adoptDerivedVisual()}
                     >
                       {adoptingDerivedVisual ? (
@@ -1217,7 +1224,7 @@ export function OutputInspector({
                       ) : (
                         <CheckIcon className="size-4" />
                       )}
-                      {derivedVisual.selectedImageAssetId === asset.id
+                      {currentDerivedVisualAssetId === asset.id
                         ? locale === 'zh'
                           ? '已采用'
                           : 'Applied'
@@ -1330,8 +1337,8 @@ export function OutputInspector({
         variant="secondary"
         size="icon-sm"
         className={cn(
-          'absolute bottom-2 left-2 z-30 hidden shadow-overlay min-[840px]:inline-flex',
-          comparisonFullWindow && 'min-[840px]:hidden',
+          'absolute bottom-2 left-2 z-30 hidden shadow-overlay @min-[840px]/creator:inline-flex',
+          comparisonFullWindow && '@min-[840px]/creator:hidden',
         )}
         title={gallery.collapse}
         aria-label={gallery.collapse}
@@ -1384,7 +1391,7 @@ export function OutputInspector({
   if (collapsed && !comparisonFullWindow)
     return (
       <>
-        <div className="hidden size-full min-h-0 min-[840px]:block">
+        <div className="hidden size-full min-h-0 @min-[840px]/creator:block">
           <OutputThumbnailRail
             assets={assets}
             selectedAssetId={asset?.id ?? null}
@@ -1410,7 +1417,7 @@ export function OutputInspector({
             thumbnailLabel={(_asset, index) => `${gallery.preview} ${index + 1}`}
           />
         </div>
-        <div className="size-full min-h-0 min-[840px]:hidden">{inspector}</div>
+        <div className="size-full min-h-0 @min-[840px]/creator:hidden">{inspector}</div>
       </>
     );
 

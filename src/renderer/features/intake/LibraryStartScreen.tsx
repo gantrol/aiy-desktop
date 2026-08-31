@@ -12,6 +12,7 @@ import { StarterPackImportDialog } from '@/renderer/features/intake/StarterPackI
 import { isCreatorImageMimeType } from '@/renderer/features/intake/intakeImageFormats';
 import { useIntakeController } from '@/renderer/features/intake/useIntakeController';
 import { LegacySpaceMigrationDialog } from '@/renderer/components/spaces/LegacySpaceMigrationDialog';
+import { useArticleEditorSessionFlush } from '@/renderer/components/creator/article-editor/ArticleEditorSessionProvider';
 
 interface Props {
   onCommitted(result: IntakeCommitResult): void;
@@ -21,6 +22,7 @@ interface Props {
 
 export function LibraryStartScreen({ onCommitted, onContentPackImported, notify }: Props) {
   const { messages } = useI18n();
+  const flushArticleEditors = useArticleEditorSessionFlush();
   const l = messages.intake.start;
   const controller = useIntakeController('LIBRARY_START', onCommitted);
   const { state } = controller;
@@ -82,6 +84,7 @@ export function LibraryStartScreen({ onCommitted, onContentPackImported, notify 
     if (openingLibrary) return;
     setOpeningLibrary(true);
     try {
+      await flushArticleEditors();
       const result = await window.desktopApi.localSpacesOpen();
       if (result.status === 'switched') return;
       setOpeningLibrary(false);

@@ -1,25 +1,26 @@
 import type { Editor, JSONContent, MarkdownParseHelpers, MarkdownToken } from '@tiptap/core';
+import FindAndReplace from '@tiptap/extension-find-and-replace';
 import Image from '@tiptap/extension-image';
 import { TableKit } from '@tiptap/extension-table';
 import TaskItem from '@tiptap/extension-task-item';
 import TaskList from '@tiptap/extension-task-list';
 import { Markdown } from '@tiptap/markdown';
-import { EditorContent, NodeViewWrapper, ReactNodeViewRenderer, useEditor, useEditorState } from '@tiptap/react';
+import { redoDepth, undoDepth } from '@tiptap/pm/history';
+import { NodeViewWrapper, ReactNodeViewRenderer, useEditor, useEditorState } from '@tiptap/react';
 import type { NodeViewProps } from '@tiptap/react';
 import StarterKit from '@tiptap/starter-kit';
-import { useEffect, useMemo, useRef } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type {
   CreatorImageImportSource,
   VideoDocumentFrameCaptureResult,
   VideoDocumentMediaBinding,
   VideoDocumentRevisionMediaDto,
-  VideoDocumentTimelineSegment,
 } from '@/shared/contracts';
+import { parseCodexThreadHref } from '@/shared/contracts/codex-thread';
 import {
   importVideoDocumentEditorImage,
-  VideoDocumentWysiwygToolbar,
   type VideoDocumentEditorImageImport,
-  type VideoDocumentWysiwygEditorLabels,
+  type VideoDocumentArticleElementControls,
   type VideoDocumentWysiwygToolbarState,
 } from '@/renderer/features/video-documents/VideoDocumentWysiwygToolbar';
 import {
@@ -33,37 +34,62 @@ import {
   videoDocumentFrameImageAttributes,
 } from '@/renderer/features/video-documents/videoDocumentEditorMedia';
 import { ImageAmbientBackdrop } from '@/renderer/components/media/AmbientImage';
+import { CjkStrongMarkdown } from '@/renderer/features/video-documents/cjkStrongMarkdown';
+import { normalizeMarkdownForWysiwyg } from '@/renderer/features/video-documents/markdownForWysiwyg';
+import type { VideoDocumentSearchReplaceMode } from '@/renderer/features/video-documents/VideoDocumentSearchReplace';
+import { VideoDocumentEditorChrome } from '@/renderer/features/video-documents/VideoDocumentEditorChrome';
+import { useStableCallback } from '@/renderer/lib/useStableCallback';
+import { materialImageDropHandler } from '@/renderer/features/video-documents/videoDocumentMaterialImageDrop';
+import { commandMatchesShortcut } from '@/renderer/commands/app-shortcuts';
+import { VideoDocumentTableView } from '@/renderer/features/video-documents/videoDocumentTableView';
+import { VideoDocumentEditorSurfaces } from '@/renderer/features/video-documents/VideoDocumentEditorSurfaces';
+import {
+  synchronizeVideoDocumentEditorSelectionFromDom,
+  VideoDocumentListIndent,
+} from '@/renderer/features/video-documents/videoDocumentListIndent';
+import { useVideoDocumentSplitEditorView } from '@/renderer/features/video-documents/videoDocumentSplitEditorView';
+import {
+  activeArticleElementId,
+  articleCheckBlocks,
+  articleCommentAnchorRect,
+  articleCommentTargetResolution,
+  articleElementIdentityTransaction,
+  captureArticleCommentTarget,
+  captureArticleEditorLocation,
+  captureArticleViewportLocation,
+  createArticleElementIdentityExtension,
+  focusArticleElement,
+  mappedArticleCommentAnchors,
+  resolveArticleCommentLocation,
+  revealArticleEditorLocation,
+  restoreArticleEditorLocation,
+} from '@/renderer/features/video-documents/articleElementIdentity';
+import { useArticleElementEditorEffects } from '@/renderer/features/video-documents/useArticleElementEditorEffects';
+import { useArticleCommentDomInteractions } from '@/renderer/features/video-documents/useArticleCommentDomInteractions';
+import {
+  useVideoDocumentEditorComposition,
+  type EditorCompositionPhase,
+} from '@/renderer/features/video-documents/videoDocumentEditorComposition';
+import { followInternalArticleHeadingLink } from '@/renderer/features/video-documents/videoDocumentEditorNavigation';
+import {
+  publishVideoDocumentEditor,
+  type VideoDocumentWysiwygPersistenceSnapshot,
+} from '@/renderer/features/video-documents/videoDocumentEditorPublication';
+import { articleRichTextClassName } from '@/renderer/lib/articleTypography';
+import type {
+  VideoDocumentQuickInsertNoteRequest,
+  VideoDocumentWysiwygEditorHandle,
+  VideoDocumentWysiwygEditorProps as Props,
+} from '@/renderer/features/video-documents/videoDocumentEditorTypes';
 
 export type { VideoDocumentWysiwygEditorLabels } from '@/renderer/features/video-documents/VideoDocumentWysiwygToolbar';
 export type { VideoDocumentEditorImageImport } from '@/renderer/features/video-documents/VideoDocumentWysiwygToolbar';
-
-export interface VideoDocumentQuickInsertNoteRequest {
-  revision: number;
-  timestampMs: number;
-}
-
-interface Props {
-  markdown: string;
-  mediaBindings: readonly VideoDocumentMediaBinding[];
-  media: readonly VideoDocumentRevisionMediaDto[];
-  documentId?: string;
-  sourceVideoUrl?: string;
-  currentTimeMs: number;
-  durationMs: number;
-  timelineSegments: readonly VideoDocumentTimelineSegment[];
-  quickInsertNoteRequest?: VideoDocumentQuickInsertNoteRequest | null;
-  ariaLabel: string;
-  labels: VideoDocumentWysiwygEditorLabels;
-  onChange(markdown: string): void;
-  onFrameCaptured(result: VideoDocumentFrameCaptureResult): void;
-  onImageImported(result: VideoDocumentEditorImageImport): void;
-  onImageImportError(): void;
-  illustrationLabel?: string;
-  onIllustrationRequest?(selectedText: string): void;
-  onQuickInsertNoteBusyChange?(busy: boolean): void;
-  onQuickInsertNoteError?(): void;
-  onSave(markdown: string): void;
-}
+export type { VideoDocumentArticleElementControls } from '@/renderer/features/video-documents/VideoDocumentWysiwygToolbar';
+export type {
+  VideoDocumentQuickInsertNoteRequest,
+  VideoDocumentWysiwygEditorHandle,
+} from '@/renderer/features/video-documents/videoDocumentEditorTypes';
+export type { VideoDocumentWysiwygPersistenceSnapshot } from '@/renderer/features/video-documents/videoDocumentEditorPublication';
 
 function normalizedMediaPath(value: string) {
   const path = value.split(/[?#]/, 1)[0]!.replace(/^\.\//, '');
@@ -72,6 +98,26 @@ function normalizedMediaPath(value: string) {
   } catch {
     return path;
   }
+}
+
+function internalImageAssetId(value: string) {
+  const match = /^aiy-media:\/\/asset\/([^/?#]+)(?:[?#].*)?$/u.exec(value);
+  if (!match) return null;
+  try {
+    return decodeURIComponent(match[1]!);
+  } catch {
+    return null;
+  }
+}
+
+function persistentDocumentImageSource(sourcePath: string, src: string, mediaSnapshot: DocumentImageMediaSnapshot) {
+  const candidate = sourcePath || src;
+  const assetId = internalImageAssetId(candidate);
+  if (!assetId) return candidate;
+  return (
+    mediaSnapshot.mediaBindings.find((binding) => binding.kind === 'IMAGE' && binding.assetId === assetId)?.path ??
+    candidate
+  );
 }
 
 function markdownTokenText(token: MarkdownToken, property: 'href' | 'title' | 'text') {
@@ -89,7 +135,7 @@ function DocumentImageNodeView({ node }: NodeViewProps) {
   const alt = typeof node.attrs.alt === 'string' ? node.attrs.alt : '';
   const title = typeof node.attrs.title === 'string' ? node.attrs.title : undefined;
   return (
-    <NodeViewWrapper className="relative isolate my-5 block max-h-[34rem] w-full overflow-hidden rounded-lg border bg-surface-sunken">
+    <NodeViewWrapper className="relative isolate my-7 block max-h-[34rem] w-full overflow-hidden rounded-md bg-surface-sunken">
       {src && <ImageAmbientBackdrop src={src} loading="lazy" />}
       <img
         src={src}
@@ -110,6 +156,10 @@ function createDocumentImageExtension(resolveMedia: () => DocumentImageMediaSnap
         ...this.parent?.(),
         sourcePath: {
           default: null,
+          parseHTML: (element) => {
+            const src = element.getAttribute('src') ?? '';
+            return persistentDocumentImageSource('', src, resolveMedia()) || null;
+          },
           rendered: false,
         },
       };
@@ -118,7 +168,7 @@ function createDocumentImageExtension(resolveMedia: () => DocumentImageMediaSnap
       const { mediaBindings, media } = resolveMedia();
       const bindingByPath = new Map(mediaBindings.map((binding) => [normalizedMediaPath(binding.path), binding]));
       const mediaById = new Map(media.map((item) => [item.assetId, item]));
-      const sourcePath = markdownTokenText(token, 'href');
+      const sourcePath = persistentDocumentImageSource(markdownTokenText(token, 'href'), '', { mediaBindings, media });
       const binding = bindingByPath.get(normalizedMediaPath(sourcePath));
       const boundMedia = binding?.kind === 'IMAGE' ? mediaById.get(binding.assetId) : null;
       return helpers.createNode('image', {
@@ -130,7 +180,11 @@ function createDocumentImageExtension(resolveMedia: () => DocumentImageMediaSnap
     },
     renderMarkdown(node: JSONContent) {
       const sourcePath = typeof node.attrs?.sourcePath === 'string' ? node.attrs.sourcePath : '';
-      const src = sourcePath || (typeof node.attrs?.src === 'string' ? node.attrs.src : '');
+      const src = persistentDocumentImageSource(
+        sourcePath,
+        typeof node.attrs?.src === 'string' ? node.attrs.src : '',
+        resolveMedia(),
+      );
       const alt = typeof node.attrs?.alt === 'string' ? node.attrs.alt : '';
       const title = typeof node.attrs?.title === 'string' ? node.attrs.title : '';
       return title ? `![${alt}](${src} "${title}")` : `![${alt}](${src})`;
@@ -143,6 +197,38 @@ function createDocumentImageExtension(resolveMedia: () => DocumentImageMediaSnap
       class: 'my-5 max-h-[34rem] w-full rounded-lg border bg-surface-sunken object-contain',
     },
   });
+}
+
+function createVideoDocumentEditorExtensions(
+  imageExtension: ReturnType<typeof createDocumentImageExtension>,
+  articleElementExtension: ReturnType<typeof createArticleElementIdentityExtension> | null,
+) {
+  return [
+    VideoDocumentListIndent,
+    StarterKit.configure({
+      heading: { levels: [1, 2, 3, 4, 5, 6] },
+      link: {
+        openOnClick: false,
+        defaultProtocol: 'https',
+        markdownLinks: true,
+        protocols: ['codex'],
+        isAllowedUri: (url, { defaultValidate }) =>
+          url.trimStart().toLowerCase().startsWith('codex:')
+            ? parseCodexThreadHref(url) !== null
+            : defaultValidate(url),
+      },
+    }),
+    TaskList,
+    TaskItem.configure({ nested: true }),
+    imageExtension,
+    TableKit.configure({
+      table: { resizable: false, renderWrapper: true, View: VideoDocumentTableView },
+    }),
+    FindAndReplace.configure({ injectCSS: false, searchDebounceMs: 0, useRegex: false }),
+    CjkStrongMarkdown,
+    ...(articleElementExtension ? [articleElementExtension] : []),
+    Markdown,
+  ];
 }
 
 function activeHeadingLevel(editor: Editor): 0 | 2 | 3 | 4 | 5 | 6 {
@@ -171,6 +257,7 @@ const emptyToolbarState: VideoDocumentWysiwygToolbarState = {
   image: false,
   imageSourcePath: null,
   selectedText: '',
+  articleElementId: null,
 };
 
 function selectToolbarState(editor: Editor | null): VideoDocumentWysiwygToolbarState {
@@ -190,12 +277,29 @@ function selectToolbarState(editor: Editor | null): VideoDocumentWysiwygToolbarS
     codeBlock: editor.isActive('codeBlock'),
     blockquote: editor.isActive('blockquote'),
     table: editor.isActive('table'),
-    canUndo: editor.can().chain().undo().run(),
-    canRedo: editor.can().chain().redo().run(),
+    canUndo: undoDepth(editor.state) > 0,
+    canRedo: redoDepth(editor.state) > 0,
     image,
     imageSourcePath: typeof imageAttributes?.sourcePath === 'string' ? imageAttributes.sourcePath : null,
     selectedText: from === to ? '' : editor.state.doc.textBetween(from, to, '\n').trim(),
+    articleElementId: activeArticleElementId(editor),
   };
+}
+
+function selectedHeadingIndex(editor: Editor) {
+  const selectionPosition = editor.state.selection.from;
+  let headingIndex = 0;
+  let selectedIndex: number | null = null;
+  editor.state.doc.descendants((node, position) => {
+    if (node.type.name !== 'heading') return true;
+    const level = Number(node.attrs.level);
+    if (level >= 2 && level <= 6) {
+      if (position <= selectionPosition) selectedIndex = headingIndex;
+      headingIndex += 1;
+    }
+    return false;
+  });
+  return selectedIndex;
 }
 
 function useQuickInsertNote({
@@ -250,123 +354,291 @@ function useQuickInsertNote({
   }, [documentId, editor, request]);
 }
 
-export function VideoDocumentWysiwygEditor({
-  markdown,
-  mediaBindings,
-  media,
-  documentId,
-  sourceVideoUrl,
-  currentTimeMs,
-  durationMs,
-  timelineSegments,
-  quickInsertNoteRequest,
-  ariaLabel,
-  labels,
-  onChange,
-  onFrameCaptured,
-  onImageImported,
-  onImageImportError,
-  illustrationLabel,
-  onIllustrationRequest,
-  onQuickInsertNoteBusyChange,
-  onQuickInsertNoteError,
-  onSave,
-}: Props) {
-  const onChangeRef = useRef(onChange);
-  const onSaveRef = useRef(onSave);
-  const currentMarkdownRef = useRef(markdown);
+function useEditorRegistration(
+  editor: Editor | null,
+  refs: {
+    editor: { current: Editor | null };
+    comments: { current: VideoDocumentArticleElementControls['comments'] | undefined };
+    persistence: { current: VideoDocumentWysiwygPersistenceSnapshot };
+    composition: { current: EditorCompositionPhase };
+    onHandleChange: { current: Props['onEditorHandleChange'] };
+  },
+) {
+  useEffect(() => {
+    refs.editor.current = editor;
+    return () => {
+      if (refs.editor.current === editor) refs.editor.current = null;
+    };
+  }, [editor, refs.editor]);
+
+  useEffect(() => {
+    if (!editor || editor.isDestroyed) {
+      refs.onHandleChange.current?.(null, null);
+      return undefined;
+    }
+    const handle: VideoDocumentWysiwygEditorHandle = {
+      getArticleCheckBlocks: () => articleCheckBlocks(editor),
+      getPersistenceSnapshot: () => ({
+        markdown: refs.persistence.current.markdown,
+        articleElements: refs.persistence.current.articleElements.map((element) => ({ ...element })),
+      }),
+      getArticleCommentAnchors: () => mappedArticleCommentAnchors(editor, refs.comments.current ?? []),
+      getArticleCommentAnchorRect: (commentId) => articleCommentAnchorRect(editor, commentId),
+      getArticleCommentTargetResolution: (commentId) => articleCommentTargetResolution(editor, commentId),
+      captureArticleCommentTarget: () =>
+        refs.composition.current === 'idle' ? captureArticleCommentTarget(editor) : null,
+      resolveArticleCommentLocation: (commentId) => resolveArticleCommentLocation(editor, commentId),
+      captureArticleLocation: () => captureArticleEditorLocation(editor),
+      captureArticleViewportLocation: (scrollRoot) => captureArticleViewportLocation(editor, scrollRoot),
+      revealArticleLocation: (location, scrollRoot) => revealArticleEditorLocation(editor, location, scrollRoot),
+      restoreArticleLocation: (location) => restoreArticleEditorLocation(editor, location),
+      focusArticleElement: (elementId) => focusArticleElement(editor, elementId),
+    };
+    refs.onHandleChange.current?.(handle, null);
+    return () => refs.onHandleChange.current?.(null, handle);
+  }, [editor, refs.comments, refs.composition, refs.onHandleChange, refs.persistence]);
+}
+
+interface ArticleEditorCallbackSnapshot {
+  onArticleElementsChange: Props['onArticleElementsChange'];
+  onArticleLocationChange: Props['onArticleLocationChange'];
+  onArticleEditLocation: Props['onArticleEditLocation'];
+  onArticleNavigationLocation: Props['onArticleNavigationLocation'];
+}
+
+function useImageEnqueue(
+  editor: { current: Editor | null },
+  queue: { current: Promise<void> },
+  callbacks: {
+    current: {
+      onImageImported(result: VideoDocumentEditorImageImport): void;
+      onImageImportError(): void;
+    };
+  },
+) {
+  return useCallback(
+    (files: readonly File[], source: CreatorImageImportSource) => {
+      const candidates = files.filter((file) => imageMimeType(file));
+      if (!candidates.length) return;
+      queue.current = queue.current.then(async () => {
+        let failed = false;
+        for (const file of candidates) {
+          const currentEditor = editor.current;
+          if (!currentEditor || currentEditor.isDestroyed) return;
+          try {
+            const result = await importVideoDocumentEditorImage(file, source);
+            if (!insertVideoDocumentImage(currentEditor, result.attributes)) {
+              throw new Error('Image could not be inserted into the editor');
+            }
+            callbacks.current.onImageImported(result);
+          } catch {
+            failed = true;
+          }
+        }
+        const currentEditor = editor.current;
+        if (failed && currentEditor && !currentEditor.isDestroyed) callbacks.current.onImageImportError();
+      });
+    },
+    [callbacks, editor, queue],
+  );
+}
+
+function useVideoDocumentEditorRuntimeRefs(
+  props: Pick<
+    Props,
+    | 'markdown'
+    | 'articleElements'
+    | 'articleElementControls'
+    | 'mediaBindings'
+    | 'media'
+    | 'onChange'
+    | 'onSave'
+    | 'onEditorHandleChange'
+    | 'onImageImported'
+    | 'onImageImportError'
+    | 'onArticleElementsChange'
+    | 'onArticleLocationChange'
+    | 'onArticleEditLocation'
+    | 'onArticleNavigationLocation'
+  >,
+) {
+  const initialMarkdownRef = useRef<string | null>(null);
+  if (initialMarkdownRef.current === null) initialMarkdownRef.current = normalizeMarkdownForWysiwyg(props.markdown);
+  const initialArticleElementsRef = useRef(props.articleElements ?? []);
+  const lastMarkdownRef = useRef(initialMarkdownRef.current);
+  const persistenceSnapshotRef = useRef<VideoDocumentWysiwygPersistenceSnapshot>({
+    markdown: initialMarkdownRef.current,
+    articleElements: initialArticleElementsRef.current.map((element) => ({ ...element })),
+  });
+  const onChangeRef = useRef(props.onChange);
+  const onSaveRef = useRef(props.onSave);
+  const onEditorHandleChangeRef = useRef(props.onEditorHandleChange);
+  const imageImportCallbacksRef = useRef({
+    onImageImported: props.onImageImported,
+    onImageImportError: props.onImageImportError,
+  });
+  const articleCallbacksRef = useRef<ArticleEditorCallbackSnapshot>({
+    onArticleElementsChange: props.onArticleElementsChange,
+    onArticleLocationChange: props.onArticleLocationChange,
+    onArticleEditLocation: props.onArticleEditLocation,
+    onArticleNavigationLocation: props.onArticleNavigationLocation,
+  });
+  const articleCommentsRef = useRef(props.articleElementControls?.comments ?? []);
+  articleCommentsRef.current = props.articleElementControls?.comments ?? [];
+  const imageMediaRef = useRef<DocumentImageMediaSnapshot>({ mediaBindings: props.mediaBindings, media: props.media });
+
+  useEffect(() => {
+    onChangeRef.current = props.onChange;
+    onSaveRef.current = props.onSave;
+    onEditorHandleChangeRef.current = props.onEditorHandleChange;
+    imageImportCallbacksRef.current = {
+      onImageImported: props.onImageImported,
+      onImageImportError: props.onImageImportError,
+    };
+    articleCallbacksRef.current = {
+      onArticleElementsChange: props.onArticleElementsChange,
+      onArticleLocationChange: props.onArticleLocationChange,
+      onArticleEditLocation: props.onArticleEditLocation,
+      onArticleNavigationLocation: props.onArticleNavigationLocation,
+    };
+    imageMediaRef.current = { mediaBindings: props.mediaBindings, media: props.media };
+  }, [props]);
+
+  return {
+    initialMarkdown: initialMarkdownRef.current,
+    initialArticleElementsRef,
+    lastMarkdownRef,
+    persistenceSnapshotRef,
+    onChangeRef,
+    onSaveRef,
+    onEditorHandleChangeRef,
+    imageImportCallbacksRef,
+    articleCallbacksRef,
+    articleCommentsRef,
+    imageMediaRef,
+  };
+}
+
+function useEditorDomProjection({
+  editor,
+  root,
+  mediaById,
+  videoBindingByPath,
+}: {
+  editor: Editor | null;
+  root: { current: HTMLDivElement | null };
+  mediaById: ReadonlyMap<string, VideoDocumentRevisionMediaDto>;
+  videoBindingByPath: ReadonlyMap<string, VideoDocumentMediaBinding>;
+}) {
+  useEffect(() => {
+    if (!editor) return undefined;
+    const frame = window.requestAnimationFrame(() => {
+      if (editor.isDestroyed) return;
+      const headings = root.current?.querySelectorAll<HTMLElement>('h2, h3, h4, h5, h6') ?? [];
+      headings.forEach((heading, index) => {
+        heading.dataset.articleHeadingId = `article-heading-${index + 1}`;
+      });
+      const links = root.current?.querySelectorAll<HTMLAnchorElement>('a[href]') ?? [];
+      links.forEach((link) => {
+        const path = normalizedMediaPath(link.getAttribute('href') ?? '');
+        const binding = videoBindingByPath.get(path);
+        if (!binding) {
+          delete link.dataset.videoBinding;
+          link.style.removeProperty('background-image');
+          return;
+        }
+        link.dataset.videoBinding = 'true';
+        const poster = binding.posterAssetId ? mediaById.get(binding.posterAssetId) : null;
+        link.style.backgroundImage = poster
+          ? `var(--image-overlay-copy-scrim), url(${JSON.stringify(poster.mediaUrl)})`
+          : 'var(--image-overlay-copy-scrim)';
+      });
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [editor, mediaById, root, videoBindingByPath]);
+}
+
+function VideoDocumentWysiwygEditorSession(props: Props) {
+  const runtimeRefs = useVideoDocumentEditorRuntimeRefs(props);
+  const {
+    initialMarkdown,
+    initialArticleElementsRef,
+    lastMarkdownRef,
+    persistenceSnapshotRef,
+    onChangeRef,
+    onSaveRef,
+    onEditorHandleChangeRef,
+    imageImportCallbacksRef,
+    articleCallbacksRef,
+    articleCommentsRef,
+    imageMediaRef,
+  } = runtimeRefs;
+  const notifyActiveHeading = useStableCallback((index: number | null) => props.onActiveHeadingChange?.(index));
   const editorRootRef = useRef<HTMLDivElement>(null);
   const editorRef = useRef<Editor | null>(null);
+  const publishDocumentRef = useRef<(editor: Editor, identityChanged: boolean) => void>(() => undefined);
+  const composition = useVideoDocumentEditorComposition({ editor: editorRef, publish: publishDocumentRef });
+  const [searchReplaceMode, setSearchReplaceMode] = useState<VideoDocumentSearchReplaceMode>(null);
   const imageImportQueueRef = useRef(Promise.resolve());
-  const imageImportCallbacksRef = useRef({ onImageImported, onImageImportError });
-  useEffect(() => {
-    onChangeRef.current = onChange;
-    onSaveRef.current = onSave;
-    imageImportCallbacksRef.current = { onImageImported, onImageImportError };
-  }, [onChange, onImageImportError, onImageImported, onSave]);
 
-  function enqueueImages(files: readonly File[], source: CreatorImageImportSource) {
-    const candidates = files.filter((file) => imageMimeType(file));
-    if (!candidates.length) return;
-    imageImportQueueRef.current = imageImportQueueRef.current.then(async () => {
-      let failed = false;
-      for (const file of candidates) {
-        const currentEditor = editorRef.current;
-        if (!currentEditor || currentEditor.isDestroyed) return;
-        try {
-          const result = await importVideoDocumentEditorImage(file, source);
-          if (!insertVideoDocumentImage(currentEditor, result.attributes)) {
-            throw new Error('Image could not be inserted into the editor');
-          }
-          imageImportCallbacksRef.current.onImageImported(result);
-        } catch {
-          failed = true;
-        }
-      }
-      const currentEditor = editorRef.current;
-      if (failed && currentEditor && !currentEditor.isDestroyed) {
-        imageImportCallbacksRef.current.onImageImportError();
-      }
+  const enqueueImages = useImageEnqueue(editorRef, imageImportQueueRef, imageImportCallbacksRef);
+
+  const imageExtension = useMemo(() => createDocumentImageExtension(() => imageMediaRef.current), [imageMediaRef]);
+  const articleElementsEnabled = props.articleElements !== undefined;
+  const articleElementHydrationReadyRef = useRef(!articleElementsEnabled);
+  publishDocumentRef.current = (current, identityChanged) => {
+    publishVideoDocumentEditor(current, identityChanged, articleElementsEnabled, {
+      persistence: persistenceSnapshotRef,
+      lastMarkdown: lastMarkdownRef,
+      onChange: onChangeRef,
+      callbacks: articleCallbacksRef,
     });
-  }
-
-  const imageMediaRef = useRef<DocumentImageMediaSnapshot>({ mediaBindings, media });
-  useEffect(() => {
-    imageMediaRef.current = { mediaBindings, media };
-  }, [media, mediaBindings]);
-  const imageExtension = useMemo(() => createDocumentImageExtension(() => imageMediaRef.current), []);
+    notifyActiveHeading(selectedHeadingIndex(current));
+  };
+  const articleElementExtension = useMemo(
+    () => (articleElementsEnabled ? createArticleElementIdentityExtension(() => articleCommentsRef.current) : null),
+    [articleCommentsRef, articleElementsEnabled],
+  );
   const videoBindingByPath = useMemo(
     () =>
       new Map(
-        mediaBindings
+        props.mediaBindings
           .filter((binding) => binding.kind === 'VIDEO')
           .map((binding) => [normalizedMediaPath(binding.path), binding]),
       ),
-    [mediaBindings],
+    [props.mediaBindings],
   );
-  const mediaById = useMemo(() => new Map(media.map((item) => [item.assetId, item])), [media]);
+  const mediaById = useMemo(() => new Map(props.media.map((item) => [item.assetId, item])), [props.media]);
   const extensions = useMemo(
-    () => [
-      StarterKit.configure({
-        heading: { levels: [1, 2, 3, 4, 5, 6] },
-        link: { openOnClick: false, defaultProtocol: 'https' },
-      }),
-      TaskList,
-      TaskItem.configure({ nested: true }),
-      imageExtension,
-      TableKit.configure({ table: { resizable: false, renderWrapper: true } }),
-      Markdown,
-    ],
-    [imageExtension],
+    () => createVideoDocumentEditorExtensions(imageExtension, articleElementExtension),
+    [articleElementExtension, imageExtension],
   );
+  const materialDrop = materialImageDropHandler(editorRef, imageMediaRef, imageImportQueueRef, imageImportCallbacksRef);
   const editor = useEditor(
     {
       extensions,
-      content: markdown,
+      content: initialMarkdown,
       contentType: 'markdown',
+      enableContentCheck: true,
       immediatelyRender: true,
       editorProps: {
         attributes: {
-          'aria-label': ariaLabel,
+          'aria-label': props.ariaLabel,
           'aria-multiline': 'true',
           role: 'textbox',
-          class:
-            'min-h-[60vh] px-6 py-5 text-[15px] leading-7 text-foreground outline-none [&>h1:first-child]:hidden [&_h2]:mb-4 [&_h2]:mt-10 [&_h2]:text-xl [&_h2]:font-semibold [&_h2]:leading-tight [&_h3]:mb-3 [&_h3]:mt-8 [&_h3]:text-lg [&_h3]:font-semibold [&_h3]:leading-tight [&_h4]:mb-2 [&_h4]:mt-6 [&_h4]:font-semibold [&_h5]:mb-2 [&_h5]:mt-5 [&_h5]:text-sm [&_h5]:font-semibold [&_h6]:mb-2 [&_h6]:mt-4 [&_h6]:text-xs [&_h6]:font-semibold [&_h6]:uppercase [&_h6]:tracking-wide [&_p]:my-4 [&_a]:text-selected-foreground [&_a]:underline [&_a]:decoration-selected-border [&_a]:underline-offset-4 [&_a[data-video-binding]]:flex [&_a[data-video-binding]]:aspect-video [&_a[data-video-binding]]:items-end [&_a[data-video-binding]]:rounded-lg [&_a[data-video-binding]]:border [&_a[data-video-binding]]:bg-media-surround-dark [&_a[data-video-binding]]:bg-cover [&_a[data-video-binding]]:bg-center [&_a[data-video-binding]]:p-4 [&_a[data-video-binding]]:font-medium [&_a[data-video-binding]]:text-media-checker-a [&_a[data-video-binding]]:no-underline [&_blockquote]:my-5 [&_blockquote]:border-l-2 [&_blockquote]:pl-4 [&_blockquote]:text-sm [&_blockquote]:leading-6 [&_blockquote]:text-muted-foreground [&_ul]:my-4 [&_ul]:list-disc [&_ul]:space-y-2 [&_ul]:pl-6 [&_ol]:my-4 [&_ol]:list-decimal [&_ol]:space-y-2 [&_ol]:pl-6 [&_ul[data-type=taskList]]:list-none [&_ul[data-type=taskList]]:pl-0 [&_li[data-type=taskItem]]:flex [&_li[data-type=taskItem]]:items-start [&_li[data-type=taskItem]]:gap-2 [&_li[data-type=taskItem]>label]:pt-1 [&_li[data-type=taskItem]>div]:min-w-0 [&_li[data-type=taskItem]>div]:flex-1 [&_pre]:my-5 [&_pre]:overflow-x-auto [&_pre]:bg-surface-sunken [&_pre]:p-4 [&_pre]:font-mono [&_pre]:text-sm [&_hr]:my-8 [&_hr]:border-border-strong [&_.tableWrapper]:my-5 [&_.tableWrapper]:overflow-x-auto [&_table]:w-full [&_table]:border-collapse [&_table]:text-sm [&_th]:border [&_th]:bg-surface-sunken [&_th]:px-4 [&_th]:py-2.5 [&_th]:text-left [&_th]:font-medium [&_td]:border [&_td]:px-4 [&_td]:py-2.5 [&_td]:align-top [&_.ProseMirror-selectednode]:ring-2 [&_.ProseMirror-selectednode]:ring-selected-border',
+          class: `${articleRichTextClassName} min-h-[60vh] px-6 py-7 outline-none [&>p:has(>br.ProseMirror-trailingBreak:only-child)]:my-0 [&_a[data-video-binding]]:flex [&_a[data-video-binding]]:aspect-video [&_a[data-video-binding]]:items-end [&_a[data-video-binding]]:rounded-md [&_a[data-video-binding]]:border [&_a[data-video-binding]]:bg-media-surround-dark [&_a[data-video-binding]]:bg-cover [&_a[data-video-binding]]:bg-center [&_a[data-video-binding]]:p-4 [&_a[data-video-binding]]:font-medium [&_a[data-video-binding]]:text-media-checker-a [&_a[data-video-binding]]:no-underline`,
         },
-        handleKeyDown: (_view, event) => {
-          if ((event.ctrlKey || event.metaKey) && event.key.toLocaleLowerCase() === 's') {
-            event.preventDefault();
-            onSaveRef.current(currentMarkdownRef.current);
-            return true;
-          }
-          if (event.altKey && !event.ctrlKey && !event.metaKey && /^[2-6]$/.test(event.key)) {
-            event.preventDefault();
-            const level = Number(event.key) as 2 | 3 | 4 | 5 | 6;
-            editor?.chain().focus().setHeading({ level }).run();
-            return true;
-          }
-          return false;
+        handleDOMEvents: {
+          compositionstart: composition.start,
+          compositionend: composition.end,
         },
+        handleClick: (view, _position, event) =>
+          followInternalArticleHeadingLink(
+            editorRef.current,
+            view.dom.closest<HTMLElement>('[data-slot="video-document-wysiwyg-editor"]') ?? editorRootRef.current,
+            event,
+            articleCallbacksRef.current.onArticleNavigationLocation,
+          ),
         handlePaste: (_view, event) => {
           const clipboardData = event.clipboardData;
           if (!clipboardData) return false;
@@ -384,6 +656,7 @@ export function VideoDocumentWysiwygEditor({
           if (moved) return false;
           const dataTransfer = event.dataTransfer;
           if (!dataTransfer) return false;
+          if (materialDrop(view, event)) return true;
           const files = imageFiles(dataTransfer.files).filter((file) => imageMimeType(file));
           if (!files.length) return false;
           event.preventDefault();
@@ -392,63 +665,97 @@ export function VideoDocumentWysiwygEditor({
           enqueueImages(files, 'DROP');
           return true;
         },
+        handleKeyDown: (view, event) => {
+          if (event.key === 'Enter' && event.repeat) {
+            event.preventDefault();
+            return true;
+          }
+          const current = editorRef.current;
+          if (current && !current.isDestroyed && !event.isComposing && (event.key === 'Enter' || event.key === 'Tab')) {
+            synchronizeVideoDocumentEditorSelectionFromDom(current, view);
+          }
+          if (commandMatchesShortcut(event, window.desktopApi.appPlatform, 'document.save')) {
+            event.preventDefault();
+            onSaveRef.current(persistenceSnapshotRef.current.markdown);
+            return true;
+          }
+          for (let level = 2; level <= 6; level += 1) {
+            if (!commandMatchesShortcut(event, window.desktopApi.appPlatform, `format.heading.${level}`)) continue;
+            event.preventDefault();
+            editorRef.current
+              ?.chain()
+              .setHeading({ level: level as 2 | 3 | 4 | 5 | 6 })
+              .run();
+            return true;
+          }
+          return false;
+        },
       },
-      onUpdate: ({ editor: current }) => {
-        const nextMarkdown = current.getMarkdown();
-        currentMarkdownRef.current = nextMarkdown;
-        onChangeRef.current(nextMarkdown);
+      onUpdate: ({ editor: current, transaction, appendedTransactions }) => {
+        if (
+          composition.defers(current, transaction) ||
+          appendedTransactions.some(composition.defers.bind(null, current))
+        )
+          return;
+        const identityChanged =
+          articleElementHydrationReadyRef.current &&
+          [transaction, ...appendedTransactions].some(articleElementIdentityTransaction);
+        publishDocumentRef.current(current, identityChanged);
+      },
+      onSelectionUpdate: ({ editor: current }) => {
+        if (composition.phase.current !== 'idle' || current.view.composing) return;
+        notifyActiveHeading(selectedHeadingIndex(current));
+        const location = articleElementsEnabled ? captureArticleEditorLocation(current) : null;
+        if (location) articleCallbacksRef.current.onArticleLocationChange?.(location);
       },
     },
     [extensions],
   );
+  const secondaryEditorRootRef = useMemo(
+    () => ({ current: props.secondaryEditorRoot ?? null }),
+    [props.secondaryEditorRoot],
+  );
+  useVideoDocumentSplitEditorView({
+    ariaLabel: props.secondaryAriaLabel ?? props.ariaLabel,
+    editor,
+    root: props.secondaryEditorRoot ?? null,
+  });
 
-  useEffect(() => {
-    editorRef.current = editor;
-    return () => {
-      if (editorRef.current === editor) editorRef.current = null;
-    };
-  }, [editor]);
+  const finishComposition = useArticleElementEditorEffects({
+    editor,
+    enabled: articleElementsEnabled,
+    initialElements: initialArticleElementsRef,
+    callbacks: articleCallbacksRef,
+    comments: props.articleElementControls?.comments,
+    compositionPhase: composition.phase,
+    hydrationReady: articleElementHydrationReadyRef,
+  });
+  composition.finish.current = finishComposition;
 
-  useEffect(() => {
-    currentMarkdownRef.current = markdown;
-    if (!editor || editor.isDestroyed || editor.getMarkdown() === markdown) return;
-    editor.commands.setContent(markdown, { contentType: 'markdown', emitUpdate: false });
-  }, [editor, markdown]);
+  useEditorRegistration(editor, {
+    editor: editorRef,
+    comments: articleCommentsRef,
+    persistence: persistenceSnapshotRef,
+    composition: composition.phase,
+    onHandleChange: onEditorHandleChangeRef,
+  });
 
-  useEffect(() => {
-    if (!editor) return undefined;
-    const frame = window.requestAnimationFrame(() => {
-      if (editor.isDestroyed) return;
-      const headings = editorRootRef.current?.querySelectorAll<HTMLElement>('h2, h3, h4, h5, h6') ?? [];
-      headings.forEach((heading, index) => {
-        heading.dataset.articleHeadingId = `article-heading-${index + 1}`;
-      });
-      const links = editorRootRef.current?.querySelectorAll<HTMLAnchorElement>('a[href]') ?? [];
-      links.forEach((link) => {
-        const path = normalizedMediaPath(link.getAttribute('href') ?? '');
-        const binding = videoBindingByPath.get(path);
-        if (!binding) {
-          delete link.dataset.videoBinding;
-          link.style.removeProperty('background-image');
-          return;
-        }
-        link.dataset.videoBinding = 'true';
-        const poster = binding.posterAssetId ? mediaById.get(binding.posterAssetId) : null;
-        link.style.backgroundImage = poster
-          ? `var(--image-overlay-copy-scrim), url(${JSON.stringify(poster.mediaUrl)})`
-          : 'var(--image-overlay-copy-scrim)';
-      });
-    });
-    return () => window.cancelAnimationFrame(frame);
-  }, [editor, markdown, mediaById, videoBindingByPath]);
+  useEditorDomProjection({ editor, root: editorRootRef, mediaById, videoBindingByPath });
+  useEditorDomProjection({ editor, root: secondaryEditorRootRef, mediaById, videoBindingByPath });
+  useArticleCommentDomInteractions(editorRootRef, props.articleElementControls, Boolean(editor));
+  useArticleCommentDomInteractions(
+    secondaryEditorRootRef,
+    props.articleElementControls,
+    Boolean(editor && props.secondaryEditorRoot),
+  );
 
   useQuickInsertNote({
     editor,
-    documentId,
-    request: quickInsertNoteRequest,
-    onFrameCaptured,
-    onBusyChange: onQuickInsertNoteBusyChange,
-    onError: onQuickInsertNoteError,
+    documentId: props.documentId,
+    request: props.quickInsertNoteRequest,
+    onFrameCaptured: props.onFrameCaptured,
+    onBusyChange: props.onQuickInsertNoteBusyChange,
+    onError: props.onQuickInsertNoteError,
   });
 
   const state =
@@ -460,30 +767,24 @@ export function VideoDocumentWysiwygEditor({
   if (!editor || editor.isDestroyed) return null;
 
   return (
-    <div
-      ref={editorRootRef}
-      data-slot="video-document-wysiwyg-editor"
-      className="group/editor relative min-w-0 w-full border-y bg-surface focus-within:border-selected-border"
-    >
-      <VideoDocumentWysiwygToolbar
-        editor={editor}
-        state={state}
-        labels={labels}
-        documentId={documentId}
-        sourceVideoUrl={sourceVideoUrl}
-        currentTimeMs={currentTimeMs}
-        durationMs={durationMs}
-        timelineSegments={timelineSegments}
-        mediaBindings={mediaBindings}
-        onFrameCaptured={onFrameCaptured}
-        onImageImported={onImageImported}
-        onImageImportError={onImageImportError}
-        illustrationLabel={illustrationLabel}
-        onIllustrationRequest={onIllustrationRequest}
-      />
-      <div className="min-w-0 overflow-hidden">
-        <EditorContent className="min-w-0 w-full [&>.ProseMirror]:min-w-0 [&>.ProseMirror]:w-full" editor={editor} />
-      </div>
-    </div>
+    <VideoDocumentEditorSurfaces
+      chrome={
+        <VideoDocumentEditorChrome
+          editor={editor}
+          props={props}
+          searchReplaceMode={searchReplaceMode}
+          setSearchReplaceMode={setSearchReplaceMode}
+          state={state}
+        />
+      }
+      editor={editor}
+      editorRootRef={editorRootRef}
+      secondaryChromeRoot={props.secondaryChromeRoot}
+    />
   );
+}
+
+export function VideoDocumentWysiwygEditor(props: Props) {
+  const sessionIdentity = props.sessionIdentity ?? 'unversioned';
+  return <VideoDocumentWysiwygEditorSession key={sessionIdentity} {...props} />;
 }

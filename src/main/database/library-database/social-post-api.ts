@@ -1,5 +1,5 @@
 import type { SocialPostMoveInput, SocialPostSaveInput, SocialPostSetArchivedInput } from '@/shared/contracts';
-import type { SocialPostFormAddInput } from '@/shared/contracts/social-post';
+import type { SocialPostFormAddInput, SocialPostFormCreateInput } from '@/shared/contracts/social-post';
 import type { LibraryDatabaseRepositories } from '@/main/database/library-database/repositories';
 
 export function createSocialPostApi(repositories: Pick<LibraryDatabaseRepositories, 'socialPosts'>) {
@@ -14,6 +14,10 @@ export function createSocialPostApi(repositories: Pick<LibraryDatabaseRepositori
 
     addSocialPostForm(input: SocialPostFormAddInput) {
       return repositories.socialPosts.addForm(input);
+    },
+
+    createSocialPostForm(input: SocialPostFormCreateInput) {
+      return repositories.socialPosts.createForm(input);
     },
 
     moveSocialPost(input: SocialPostMoveInput) {

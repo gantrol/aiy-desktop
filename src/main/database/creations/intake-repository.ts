@@ -222,6 +222,17 @@ export class IntakeRepository {
     return row ? this.getDraft(text(row.id)) : null;
   }
 
+  loadDraft(draftId: string): CreationDraftDto {
+    const active = this.db
+      .prepare(
+        `SELECT 1 FROM creation_drafts
+        WHERE id = ? AND consumed_at IS NULL AND deleted_at IS NULL`,
+      )
+      .get(draftId);
+    if (!active) throw new Error('Creation draft is unavailable');
+    return this.getDraft(draftId);
+  }
+
   startDraft(input: CreationDraftStartInput, defaults: AlbumCreationDefaultsDto): CreationDraftDto {
     return this.db
       .transaction(() => {
@@ -234,30 +245,6 @@ export class IntakeRepository {
             .get(input.albumId) as JsonMap | undefined;
           if (!album) throw new Error('Album not found');
           if (album.archived_at) throw new Error('Archived albums cannot start a new creation');
-        }
-        const existingRows = this.db
-          .prepare(
-            `SELECT id FROM creation_drafts
-        WHERE target_album_id IS ? AND consumed_at IS NULL AND deleted_at IS NULL
-        ORDER BY updated_at DESC, id DESC`,
-          )
-          .all(input.albumId) as JsonMap[];
-        const existing = existingRows[0];
-        if (existing && !input.fresh) return this.getDraft(text(existing.id));
-        if (input.fresh && existingRows.length > 0) {
-          const discardedAt = now();
-          this.db
-            .prepare(
-              `UPDATE creation_drafts
-              SET deleted_at = ?, updated_at = ?
-              WHERE target_album_id IS ? AND consumed_at IS NULL AND deleted_at IS NULL`,
-            )
-            .run(discardedAt, discardedAt, input.albumId);
-          for (const row of existingRows) {
-            this.storage.recordChange('CREATION_DRAFT', text(row.id), 'DISCARD_FOR_NEW_SESSION', {
-              albumId: input.albumId,
-            });
-          }
         }
         for (const reference of defaults.recipes) {
           if (
@@ -491,6 +478,7 @@ export class IntakeRepository {
       EXISTS(SELECT 1 FROM materials WHERE deleted_at IS NULL) OR
       EXISTS(SELECT 1 FROM creation_drafts WHERE deleted_at IS NULL) OR
       EXISTS(SELECT 1 FROM inspiration_stashes WHERE status = 'ACTIVE' AND deleted_at IS NULL) OR
+      EXISTS(SELECT 1 FROM evaluation_suites WHERE status = 'ACTIVE' AND deleted_at IS NULL) OR
       EXISTS(SELECT 1 FROM prompt_series WHERE deleted_at IS NULL) OR
       EXISTS(SELECT 1 FROM albums WHERE deleted_at IS NULL) OR
       EXISTS(SELECT 1 FROM terms) OR

@@ -13,7 +13,7 @@ The maintained distribution target is Microsoft Store MSIX for Windows Desktop x
 
 ## Run from source
 
-Run commands from the repository root:
+For a standalone checkout of `aiy-desktop`, run these commands from that repository's root. If the desktop repository is nested inside a larger workspace, first change into the desktop application directory; the workspace root may not contain the desktop dependency lockfile.
 
 ```bash
 npm ci
@@ -21,6 +21,46 @@ npm run dev
 ```
 
 `npm run dev` installs the Electron version required by the project first. Renderer changes use Vite HMR; main/preload changes rebuild and restart Electron. After changing `electron.vite.config.ts`, stop the dev process completely and start it again so the host reloads its entry configuration.
+
+### Browser companion during development
+
+`npm run dev` starts Electron only. It does not build the browser companion Native Host or start the WXT development server, so browser companion issues do not block debugging the desktop app.
+
+To develop the browser companion, start it separately from the umbrella workspace root in a second terminal:
+
+```powershell
+npm run dev:browser
+```
+
+This command prepares the SEA Native Host and starts the browser companion WXT server on `127.0.0.1:3017`. The unpacked development output remains at `../browser-companion/.output/chrome-mv3-dev`, so a development Profile can keep one stable extension path while WXT handles subsequent source updates. Start `npm run dev` separately when the desktop app is also needed. Production builds use the separate `../browser-companion/.output/chrome-mv3` directory and cannot replace a running development bundle.
+
+Load `chrome-mv3-dev` as an unpacked extension once in every intended Chrome or Edge Profile. If a Profile previously loaded `chrome-mv3`, remove that old unpacked entry once and load the new development directory; reloading the old entry cannot change its registered filesystem path. In AIY, configure the browser Profile for ChatGPT, Weibo, and WeChat Official Account independently from the menu beside “上传”; development mode accepts a Profile only when the browser's persisted extension path matches the current checkout. The Chrome `How` Profile used by the automated smoke is `Profile 1` and follows this same rule.
+
+Chrome does not allow a running extension to replace itself with a different unpacked bundle. Start `npm run dev:browser` before opening the development Profile. If the Profile is already running an older production bundle in another Chrome process, close that old Profile session once and let the next AIY handoff reopen it after WXT is ready. Edits made during that development session use WXT HMR and do not require a manual extension reload.
+
+### External deep links during development
+
+Ordinary `npm run dev` does not change the operating-system handler for `aiy://`. To register the current Windows checkout for the lifetime of one development session, use:
+
+```powershell
+npm run dev:deep-link
+```
+
+While that process is running, an external link such as `aiy://open/gallery` is routed to the development app. A normal exit removes the development registration. If the launcher is terminated before cleanup, remove the remaining registration explicitly:
+
+```powershell
+npm run deep-link:unregister
+```
+
+For a registration that must outlive one development session, manage it explicitly:
+
+```powershell
+npm run deep-link:register
+npm run dev
+npm run deep-link:unregister
+```
+
+Development registration temporarily takes ownership of `aiy://` from any installed build. `aiy-media://` remains an application-internal media protocol and is never registered as an external handler. See [External deep links](deep-links.md) for the supported route and integration examples.
 
 On Linux, the npm-installed Chromium setuid helper cannot be owned by root, and
 Ubuntu 24.04 restricts its unprivileged-user-namespace fallback. The source-only
@@ -56,18 +96,24 @@ For backup and recovery boundaries, see [Local spaces, backup, and recovery](tut
 
 ## Development commands
 
-| Purpose                    | Command                        |
-| -------------------------- | ------------------------------ |
-| Start the development app  | `npm run dev`                  |
-| Type-check                 | `npm run typecheck`            |
-| Check formatting           | `npm run format:check`         |
-| Lint                       | `npm run lint`                 |
-| Public startup smoke       | `npm test`                     |
-| Check public test boundary | `npm run verify:test-boundary` |
-| Production build           | `npm run build`                |
-| Full verification          | `npm run verify`               |
+| Purpose                              | Command                        |
+| ------------------------------------ | ------------------------------ |
+| Start the development app            | `npm run dev`                  |
+| Start with temporary deep-link owner | `npm run dev:deep-link`        |
+| Persist dev deep-link registration   | `npm run deep-link:register`   |
+| Remove dev deep-link registration    | `npm run deep-link:unregister` |
+| Check touched files                  | `npm run verify:touched`       |
+| Type-check                           | `npm run typecheck`            |
+| Check formatting                     | `npm run format:check`         |
+| Lint                                 | `npm run lint`                 |
+| Public startup smoke                 | `npm test`                     |
+| Check public test boundary           | `npm run verify:test-boundary` |
+| Production build                     | `npm run build`                |
+| Full verification                    | `npm run verify`               |
 
 The public repository keeps only a generic startup-storage smoke check. `npm run verify` runs formatting, lint, type-checking, the public test-boundary check, that smoke check, and a production build. Traditional coverage percentages are reference data and are not part of public verification.
+
+`npm run verify:touched` is the fast feedback lane for an active worktree. It checks format-capable and lintable files reported by Git as staged, unstaged, or untracked, without scanning the whole repository or modifying the checked files. To include committed changes relative to a branch or ref, run `npm run verify:touched -- --base <git-ref>`. This command does not replace type-checking, builds, or the full release gate.
 
 Normal development does not require packaging or updating `release/`.
 

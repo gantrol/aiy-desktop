@@ -1,11 +1,13 @@
 import { KeyRoundIcon, LoaderCircleIcon, PlugZapIcon, SaveIcon, ShieldCheckIcon, Trash2Icon } from 'lucide-react';
 import { useEffect, useState } from 'react';
-import type { OpenAiImageApiConnectionDto, OpenAiImageModeration } from '@/shared/contracts';
+import type { OpenAiImageModeration, ProviderConnectionDto } from '@/shared/contracts';
+import { OPENAI_IMAGE_CONNECTION_ID } from '@/shared/extension-ids';
 import { Badge } from '@/renderer/components/ui/badge';
 import { Button } from '@/renderer/components/ui/button';
 import { Field, FieldControl, FieldLabel } from '@/renderer/components/ui/field';
 import { Input } from '@/renderer/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/renderer/components/ui/select';
+import { loadProviderConnection } from '@/renderer/features/extensions/providerConnectionClient';
 import { useI18n } from '@/renderer/i18n/useI18n';
 
 interface Props {
@@ -17,7 +19,7 @@ interface Props {
 export function OpenAiImageApiConfiguration({ active, notify, onConnectionChanged }: Props) {
   const { locale, messages } = useI18n();
   const l = messages.extensions.openAiImageApi;
-  const [connection, setConnection] = useState<OpenAiImageApiConnectionDto | null>(null);
+  const [connection, setConnection] = useState<ProviderConnectionDto | null>(null);
   const [apiKey, setApiKey] = useState('');
   const [organizationId, setOrganizationId] = useState('');
   const [projectId, setProjectId] = useState('');
@@ -28,11 +30,11 @@ export function OpenAiImageApiConfiguration({ active, notify, onConnectionChange
   async function load() {
     setError('');
     try {
-      const next = await window.desktopApi.openAiImageApiGet();
+      const next = await loadProviderConnection(OPENAI_IMAGE_CONNECTION_ID);
       setConnection(next);
-      setOrganizationId(next.organizationId);
-      setProjectId(next.projectId);
-      setModeration(next.moderation);
+      setOrganizationId(next.settings.organizationId ?? '');
+      setProjectId(next.settings.projectId ?? '');
+      setModeration(next.settings.moderation === 'low' ? 'low' : 'auto');
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : String(reason));
     }
@@ -48,15 +50,19 @@ export function OpenAiImageApiConfiguration({ active, notify, onConnectionChange
     try {
       const next =
         action === 'save'
-          ? await window.desktopApi.openAiImageApiSave({ apiKey, organizationId, projectId, moderation })
+          ? await window.desktopApi.providerConnectionSave({
+              connectionId: OPENAI_IMAGE_CONNECTION_ID,
+              apiKey,
+              settings: { organizationId, projectId, moderation },
+            })
           : action === 'test'
-            ? await window.desktopApi.openAiImageApiTest()
-            : await window.desktopApi.openAiImageApiClear();
+            ? await window.desktopApi.providerConnectionVerify(OPENAI_IMAGE_CONNECTION_ID)
+            : await window.desktopApi.providerConnectionRemove(OPENAI_IMAGE_CONNECTION_ID);
       setConnection(next);
       setApiKey('');
-      setOrganizationId(next.organizationId);
-      setProjectId(next.projectId);
-      setModeration(next.moderation);
+      setOrganizationId(next.settings.organizationId ?? '');
+      setProjectId(next.settings.projectId ?? '');
+      setModeration(next.settings.moderation === 'low' ? 'low' : 'auto');
       await onConnectionChanged();
       notify(action === 'clear' ? l.notices.cleared : action === 'test' ? l.notices.tested : l.notices.saved);
     } catch (reason) {
@@ -66,7 +72,7 @@ export function OpenAiImageApiConfiguration({ active, notify, onConnectionChange
     }
   }
 
-  const status = connection?.status ?? 'NOT_CONFIGURED';
+  const status = connection?.connectionState ?? 'NOT_CONFIGURED';
   const canSave = Boolean(apiKey.trim() || connection?.configured);
   const lastVerified = connection?.lastVerifiedAt
     ? new Date(connection.lastVerifiedAt).toLocaleString(locale === 'zh' ? 'zh-CN' : 'en-US')
@@ -92,7 +98,7 @@ export function OpenAiImageApiConfiguration({ active, notify, onConnectionChange
                 spellCheck={false}
                 disabled={Boolean(busy)}
                 value={apiKey}
-                placeholder={connection?.apiKeyHint ?? l.keyPlaceholder}
+                placeholder={connection?.credentialHint ?? l.keyPlaceholder}
                 onChange={(event) => setApiKey(event.target.value)}
               />
             </FieldControl>
@@ -151,7 +157,7 @@ export function OpenAiImageApiConfiguration({ active, notify, onConnectionChange
             <ShieldCheckIcon className="size-3.5 text-success" />
           </dd>
           <dt className="text-muted-foreground">{l.savedKey}</dt>
-          <dd className="text-right font-mono">{connection?.apiKeyHint ?? '—'}</dd>
+          <dd className="text-right font-mono">{connection?.credentialHint ?? '—'}</dd>
           <dt className="text-muted-foreground">{l.lastVerified}</dt>
           <dd className="text-right">{lastVerified}</dd>
         </dl>

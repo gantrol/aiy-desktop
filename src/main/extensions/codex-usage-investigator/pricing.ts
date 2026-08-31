@@ -312,7 +312,7 @@ export function estimateCodexUsage(
       ? (cachedInputTokens * (apiPrice.inputPerMillionUsd - apiPrice.cachedInputPerMillionUsd) * inputMultiplier) /
         TOKENS_PER_MILLION
       : null;
-  // Codex's public token-based rate card does not charge cache writes.
+  // The Codex credits rate card does not publish a separate cache-write category.
   const codexCredits =
     creditPrice && creditMultiplier !== null
       ? ((uncachedInputTokens * creditPrice.inputPerMillion +
