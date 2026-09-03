@@ -100,7 +100,7 @@ export function WorkspaceSplitLayout({ arrangement, childrenByGroupId, onRatioCo
         aria-valuemax={75}
         aria-valuenow={Math.round(liveRatio / 100)}
         className={cn(
-          'group relative z-20 shrink-0 touch-none bg-border outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring',
+          'group relative z-20 shrink-0 touch-none bg-border-strong outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring',
           columns ? 'h-full w-px cursor-col-resize' : 'h-px w-full cursor-row-resize',
         )}
         onPointerDown={beginResize}

@@ -16,6 +16,7 @@ import type { AppView } from '@/renderer/components/app/AppSidebar';
 import {
   appLocationToWorkspaceTarget,
   normalizeWorkspaceTarget,
+  workspaceLocationCanSplit,
   workspaceLocationKey,
 } from '@/renderer/components/workspace/workspace-location';
 
@@ -95,6 +96,25 @@ export function findWorkspaceTab(state: WorkspaceRuntimeState, tabId: string) {
   return null;
 }
 
+function findWorkspaceTabAtLocation(
+  state: WorkspaceRuntimeState,
+  location: AppLocation,
+  sourceGroupId: string,
+  excludedTabId?: string,
+) {
+  const targetKey = workspaceLocationKey(location);
+  const groups = workspaceLocationCanSplit(location)
+    ? state.groups.filter((group) => group.id === sourceGroupId)
+    : state.groups;
+  for (const group of groups) {
+    const tab = group.tabs.find(
+      (candidate) => candidate.id !== excludedTabId && workspaceLocationKey(activeLocation(candidate)) === targetKey,
+    );
+    if (tab) return { group, tab };
+  }
+  return null;
+}
+
 export function activeWorkspaceGroup(state: WorkspaceRuntimeState) {
   return state.groups.find((group) => group.id === state.activeGroupId) ?? state.groups[0];
 }
@@ -102,6 +122,16 @@ export function activeWorkspaceGroup(state: WorkspaceRuntimeState) {
 export function activeWorkspaceTab(state: WorkspaceRuntimeState) {
   const group = activeWorkspaceGroup(state);
   return group.tabs.find((tab) => tab.id === group.activeTabId) ?? group.tabs[0];
+}
+
+function uniqueTabsByLocation(tabs: readonly WorkspaceRuntimeTab[]) {
+  const seen = new Set<string>();
+  return tabs.filter((tab) => {
+    const key = workspaceLocationKey(activeLocation(tab));
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
 }
 
 export function collapseWorkspaceGroups(state: WorkspaceRuntimeState): WorkspaceRuntimeState {
@@ -113,10 +143,10 @@ export function collapseWorkspaceGroups(state: WorkspaceRuntimeState): Workspace
     state.arrangement.groupId === activeGroup.id;
   if (alreadySingle) return state;
 
-  const tabs = [
+  const tabs = uniqueTabsByLocation([
     ...activeGroup.tabs,
     ...state.groups.filter((group) => group.id !== activeGroup.id).flatMap((group) => group.tabs),
-  ].slice(0, MAX_TABS_PER_GROUP);
+  ]).slice(0, MAX_TABS_PER_GROUP);
   return {
     ...state,
     activeGroupId: activeGroup.id,
@@ -144,8 +174,12 @@ export function restoreWorkspaceState(data: BootstrapDto): WorkspaceRuntimeState
   if (!snapshot || snapshot.spaceId !== data.spaceId) return createDefaultWorkspaceState(data.spaceId);
 
   const groups: WorkspaceRuntimeGroup[] = [];
+  const unsplittableTabsByLocation = new Map<string, { groupId: string; tabId: string }>();
+  let restoredActiveGroupId: string | null = null;
   for (const group of snapshot.state.groups) {
     const tabs: WorkspaceRuntimeTab[] = [];
+    const tabIdsByLocation = new Map<string, string>();
+    let activeTabId: string | null = null;
     for (const tab of group.tabs) {
       const entries = (
         tab.history?.length
@@ -155,23 +189,43 @@ export function restoreWorkspaceState(data: BootstrapDto): WorkspaceRuntimeState
           : [navigationEntry(normalizeWorkspaceTarget(tab.target, data))]
       ).slice(-MAX_HISTORY_ENTRIES);
       const index = Math.min(tab.historyIndex ?? entries.length - 1, entries.length - 1);
-      tabs.push({
+      const restoredTab = {
         id: tab.id,
         history: { entries, index },
         visitedViews: [...new Set(entries.map((entry) => entry.location.view))],
-      });
+      };
+      const locationKey = workspaceLocationKey(activeLocation(restoredTab));
+      const existingTabId = tabIdsByLocation.get(locationKey);
+      if (existingTabId) {
+        if (tab.id === group.activeTabId) activeTabId = existingTabId;
+        continue;
+      }
+      const existingUnsplittableTab = unsplittableTabsByLocation.get(locationKey);
+      if (!workspaceLocationCanSplit(activeLocation(restoredTab)) && existingUnsplittableTab) {
+        if (tab.id === group.activeTabId && group.id === snapshot.state.activeGroupId) {
+          restoredActiveGroupId = existingUnsplittableTab.groupId;
+        }
+        continue;
+      }
+      tabIdsByLocation.set(locationKey, tab.id);
+      if (!workspaceLocationCanSplit(activeLocation(restoredTab))) {
+        unsplittableTabsByLocation.set(locationKey, { groupId: group.id, tabId: tab.id });
+      }
+      tabs.push(restoredTab);
+      if (tab.id === group.activeTabId) activeTabId = tab.id;
     }
     if (!tabs.length) continue;
     groups.push({
       id: group.id,
-      activeTabId: tabs.some((tab) => tab.id === group.activeTabId) ? group.activeTabId : tabs[0].id,
+      activeTabId: activeTabId ?? tabs[0].id,
       tabs,
     });
   }
   if (!groups.length) return createDefaultWorkspaceState(data.spaceId, snapshot.revision);
 
-  const activeGroupId = groups.some((group) => group.id === snapshot.state.activeGroupId)
-    ? snapshot.state.activeGroupId
+  const requestedActiveGroupId = restoredActiveGroupId ?? snapshot.state.activeGroupId;
+  const activeGroupId = groups.some((group) => group.id === requestedActiveGroupId)
+    ? requestedActiveGroupId
     : groups[0].id;
   const arrangedGroupIds =
     snapshot.state.arrangement.kind === 'split'
@@ -244,11 +298,13 @@ export function navigateWorkspaceTab(
   if (!found) return state;
   const currentLocation = activeLocation(found.tab);
   const nextLocation = typeof destination === 'function' ? destination(currentLocation) : destination;
-  const nextKey = workspaceLocationKey(nextLocation);
-  const duplicate = found.group.tabs.find(
-    (tab) => tab.id !== tabId && workspaceLocationKey(activeLocation(tab)) === nextKey,
-  );
-  if (duplicate) return activateWorkspaceTab(state, found.group.id, duplicate.id);
+  const duplicate = findWorkspaceTabAtLocation(state, nextLocation, found.group.id, tabId);
+  if (duplicate) {
+    const activated = activateWorkspaceTab(state, duplicate.group.id, duplicate.tab.id);
+    return mode === 'replace' && currentLocation.view === 'creator' && currentLocation.creator.surface === 'default'
+      ? closeWorkspaceTab(activated, tabId)
+      : activated;
+  }
   return withTab(state, tabId, (tab) => {
     const current = activeLocation(tab);
     const next = nextLocation;
@@ -355,10 +411,13 @@ export function navigateWorkspaceArticleLocation(
 }
 
 export function navigateWorkspaceHistory(state: WorkspaceRuntimeState, tabId: string, delta: -1 | 1) {
-  return withTab(state, tabId, (tab) => {
-    const index = Math.min(Math.max(tab.history.index + delta, 0), tab.history.entries.length - 1);
-    return index === tab.history.index ? tab : { ...tab, history: { ...tab.history, index } };
-  });
+  const found = findWorkspaceTab(state, tabId);
+  if (!found) return state;
+  const index = Math.min(Math.max(found.tab.history.index + delta, 0), found.tab.history.entries.length - 1);
+  if (index === found.tab.history.index) return state;
+  const duplicate = findWorkspaceTabAtLocation(state, found.tab.history.entries[index].location, found.group.id, tabId);
+  if (duplicate) return activateWorkspaceTab(state, duplicate.group.id, duplicate.tab.id);
+  return withTab(state, tabId, (tab) => ({ ...tab, history: { ...tab.history, index } }));
 }
 
 export function activateWorkspaceTab(state: WorkspaceRuntimeState, groupId: string, tabId: string) {
@@ -391,20 +450,13 @@ export function activateWorkspaceTabByIndex(state: WorkspaceRuntimeState, index:
   return tab ? activateWorkspaceTab(state, group.id, tab.id) : state;
 }
 
-export function openWorkspaceTab(
-  state: WorkspaceRuntimeState,
-  location: AppLocation,
-  requestedGroupId?: string,
-  reuseExisting = true,
-) {
-  const targetKey = workspaceLocationKey(location);
+export function openWorkspaceTab(state: WorkspaceRuntimeState, location: AppLocation, requestedGroupId?: string) {
   const groupId = requestedGroupId ?? state.activeGroupId;
   const targetGroup = state.groups.find((group) => group.id === groupId);
-  if (!targetGroup || targetGroup.tabs.length >= 24) return state;
-  const existing = reuseExisting
-    ? targetGroup.tabs.find((tab) => workspaceLocationKey(activeLocation(tab)) === targetKey)
-    : undefined;
-  if (existing) return activateWorkspaceTab(state, targetGroup.id, existing.id);
+  if (!targetGroup) return state;
+  const existing = findWorkspaceTabAtLocation(state, location, targetGroup.id);
+  if (existing) return activateWorkspaceTab(state, existing.group.id, existing.tab.id);
+  if (targetGroup.tabs.length >= MAX_TABS_PER_GROUP) return state;
   const tab = runtimeTab(location);
   return {
     ...state,
@@ -415,11 +467,23 @@ export function openWorkspaceTab(
   };
 }
 
-export function openWorkspaceTabBeside(state: WorkspaceRuntimeState, location: AppLocation): WorkspaceRuntimeState {
-  const sourceGroup = activeWorkspaceGroup(state);
+export function openWorkspaceTabBeside(
+  state: WorkspaceRuntimeState,
+  sourceTabId: string,
+  location: AppLocation,
+): WorkspaceRuntimeState {
+  const source = findWorkspaceTab(state, sourceTabId);
+  if (!source) return state;
+  const sourceGroup = source.group;
   if (state.groups.length === 2) {
     const targetGroup = state.groups.find((group) => group.id !== sourceGroup.id);
     return targetGroup ? openWorkspaceTab(state, location, targetGroup.id) : state;
+  }
+  if (!workspaceLocationCanSplit(location)) {
+    const existing = sourceGroup.tabs.find(
+      (tab) => workspaceLocationKey(activeLocation(tab)) === workspaceLocationKey(location),
+    );
+    if (existing) return activateWorkspaceTab(state, sourceGroup.id, existing.id);
   }
   const secondGroupId = identity('group');
   const secondTab = runtimeTab(location);
@@ -497,18 +561,24 @@ export function reorderWorkspaceTab(state: WorkspaceRuntimeState, groupId: strin
   };
 }
 
-export function splitWorkspace(state: WorkspaceRuntimeState, axis: 'columns' | 'rows'): WorkspaceRuntimeState {
+export function splitWorkspace(
+  state: WorkspaceRuntimeState,
+  sourceTabId: string,
+  axis: 'columns' | 'rows',
+): WorkspaceRuntimeState {
   if (state.groups.length === 2) {
     return state.arrangement.kind === 'split' ? { ...state, arrangement: { ...state.arrangement, axis } } : state;
   }
-  const sourceTab = activeWorkspaceTab(state);
-  const sourceEntry = activeNavigationEntry(sourceTab);
+  const source = findWorkspaceTab(state, sourceTabId);
+  if (!source) return state;
+  const sourceEntry = activeNavigationEntry(source.tab);
+  if (!workspaceLocationCanSplit(sourceEntry.location)) return state;
   const secondGroupId = identity('group');
   const secondTab = runtimeTab(sourceEntry.location, identity('tab'), sourceEntry.articleLocation);
   return {
     ...state,
     activeGroupId: secondGroupId,
-    arrangement: { kind: 'split', axis, ratio: 5_000, groupIds: [state.groups[0].id, secondGroupId] },
+    arrangement: { kind: 'split', axis, ratio: 5_000, groupIds: [source.group.id, secondGroupId] },
     groups: [...state.groups, { id: secondGroupId, activeTabId: secondTab.id, tabs: [secondTab] }],
   };
 }
@@ -526,14 +596,17 @@ export function moveWorkspaceTabToOtherGroup(state: WorkspaceRuntimeState, tabId
   const found = findWorkspaceTab(state, tabId);
   if (!found) return state;
   const targetGroup = state.groups.find((group) => group.id !== found.group.id)!;
-  if (targetGroup.tabs.length >= 24) return state;
+  const targetTab = targetGroup.tabs.find(
+    (tab) => workspaceLocationKey(activeLocation(tab)) === workspaceLocationKey(activeLocation(found.tab)),
+  );
+  if (!targetTab && targetGroup.tabs.length >= MAX_TABS_PER_GROUP) return state;
   if (found.group.tabs.length === 1) {
-    const tabs = [...targetGroup.tabs, found.tab];
+    const tabs = targetTab ? targetGroup.tabs : [...targetGroup.tabs, found.tab];
     return {
       ...state,
       activeGroupId: targetGroup.id,
       arrangement: singleArrangement(targetGroup.id),
-      groups: [{ ...targetGroup, activeTabId: found.tab.id, tabs }],
+      groups: [{ ...targetGroup, activeTabId: targetTab?.id ?? found.tab.id, tabs }],
     };
   }
   const sourceTabs = found.group.tabs.filter((tab) => tab.id !== tabId);
@@ -545,19 +618,21 @@ export function moveWorkspaceTabToOtherGroup(state: WorkspaceRuntimeState, tabId
     groups: state.groups.map((group) => {
       if (group.id === found.group.id) return { ...group, activeTabId: sourceActiveTabId, tabs: sourceTabs };
       if (group.id === targetGroup.id) {
-        return { ...group, activeTabId: tabId, tabs: [...group.tabs, found.tab] };
+        return targetTab
+          ? { ...group, activeTabId: targetTab.id }
+          : { ...group, activeTabId: tabId, tabs: [...group.tabs, found.tab] };
       }
       return group;
     }),
   };
 }
 
-export function mergeWorkspaceGroups(state: WorkspaceRuntimeState) {
+export function mergeWorkspaceGroups(state: WorkspaceRuntimeState, sourceGroupId: string) {
   if (state.groups.length !== 2) return state;
-  const activeGroup = activeWorkspaceGroup(state);
+  const activeGroup = state.groups.find((group) => group.id === sourceGroupId) ?? activeWorkspaceGroup(state);
   const otherGroup = state.groups.find((group) => group.id !== activeGroup.id)!;
-  if (activeGroup.tabs.length + otherGroup.tabs.length > 24) return state;
-  const tabs = [...activeGroup.tabs, ...otherGroup.tabs];
+  const tabs = uniqueTabsByLocation([...activeGroup.tabs, ...otherGroup.tabs]);
+  if (tabs.length > MAX_TABS_PER_GROUP) return state;
   return {
     ...state,
     activeGroupId: activeGroup.id,

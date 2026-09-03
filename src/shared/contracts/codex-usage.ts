@@ -8,6 +8,7 @@ const percentageSchema = z.number().finite().min(0);
 const nullableMoneySchema = nonNegativeNumberSchema.nullable();
 
 export const codexUsageRangeSchema = z.enum([
+  'TODAY',
   'LAST_24_HOURS',
   'LAST_7_DAYS',
   'LAST_30_DAYS',
@@ -229,8 +230,11 @@ export const codexUsageQuotaCycleSchema = z
     outputTokens: nonNegativeIntegerSchema,
     reasoningOutputTokens: nonNegativeIntegerSchema,
     totalTokens: nonNegativeIntegerSchema,
+    standardEquivalentTokens: nonNegativeNumberSchema.nullable().default(null),
     tokensPerOnePercent: nonNegativeNumberSchema,
     nonCachedTokensPerOnePercent: nonNegativeNumberSchema,
+    standardEquivalentTokensPerOnePercent: nonNegativeNumberSchema.nullable().default(null),
+    standardEquivalentNonCachedTokensPerOnePercent: nonNegativeNumberSchema.nullable().default(null),
     cachedInputPercent: percentageSchema,
     modelShares: z.array(codexUsageQuotaCycleModelShareSchema).max(200),
   })

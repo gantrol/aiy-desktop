@@ -8,8 +8,11 @@ import { Calendar } from '@/renderer/components/ui/calendar';
 import { Popover, PopoverContent, PopoverTrigger } from '@/renderer/components/ui/popover';
 import { Segmented, SegmentedItem } from '@/renderer/components/ui/segmented';
 import { useI18n } from '@/renderer/i18n/useI18n';
+import { cn } from '@/renderer/lib/utils';
 
 interface Props {
+  className?: string;
+  collapseLabel?: boolean;
   disabled: boolean;
   label?: string;
   range: CodexUsageRange;
@@ -18,6 +21,7 @@ interface Props {
 }
 
 const presets: Exclude<CodexUsageRange, 'CUSTOM'>[] = [
+  'TODAY',
   'LAST_24_HOURS',
   'LAST_7_DAYS',
   'LAST_30_DAYS',
@@ -47,7 +51,16 @@ function presetCalendarRange(range: Exclude<CodexUsageRange, 'CUSTOM'>): DateRan
   const to = new Date();
   to.setHours(0, 0, 0, 0);
   const from = new Date(to);
-  const days = range === 'LAST_24_HOURS' ? 2 : range === 'LAST_7_DAYS' ? 7 : range === 'LAST_30_DAYS' ? 30 : 90;
+  const days =
+    range === 'TODAY'
+      ? 1
+      : range === 'LAST_24_HOURS'
+        ? 2
+        : range === 'LAST_7_DAYS'
+          ? 7
+          : range === 'LAST_30_DAYS'
+            ? 30
+            : 90;
   from.setDate(from.getDate() - (days - 1));
   return { from, to };
 }
@@ -73,7 +86,15 @@ export function formatCodexUsageDateRange(range: CodexUsageDateRange, locale: 'e
   return `${fullDate.format(from)} – ${fullDate.format(to)}`;
 }
 
-export function CodexUsageDateRangePicker({ disabled, label, range, dateRange, onChange }: Props) {
+export function CodexUsageDateRangePicker({
+  className,
+  collapseLabel = false,
+  disabled,
+  label,
+  range,
+  dateRange,
+  onChange,
+}: Props) {
   const { locale, messages } = useI18n();
   const l = messages.extensions.codexUsageInvestigator;
   const [open, setOpen] = useState(false);
@@ -127,11 +148,14 @@ export function CodexUsageDateRangePicker({ disabled, label, range, dateRange, o
           size="sm"
           disabled={disabled}
           aria-label={`${rangeLabel}: ${selectionText}`}
-          className="min-w-0 max-w-80 justify-start text-left font-normal data-[state=open]:bg-hover"
+          className={cn('min-w-0 max-w-80 justify-start text-left font-normal data-[state=open]:bg-hover', className)}
         >
           <CalendarRangeIcon className="size-4 text-muted-foreground" />
-          <span className="truncate">
-            {rangeLabel} · {selectionText}
+          <span className="flex min-w-0 items-center">
+            <span className={cn('shrink-0', collapseLabel && 'hidden @3xl/codex-usage:inline')}>
+              {rangeLabel} ·&nbsp;
+            </span>
+            <span className="truncate">{selectionText}</span>
           </span>
           <ChevronDownIcon className="ml-auto size-3.5 shrink-0 text-muted-foreground" />
         </Button>

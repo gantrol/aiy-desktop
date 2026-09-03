@@ -164,7 +164,7 @@ export function GenerationLauncher(props: Props) {
       {batchPlan.totalCount > 1 && (
         <span
           data-generation-batch-summary
-          className="hidden shrink-0 text-xs tabular-nums text-muted-foreground min-[720px]:inline"
+          className="hidden shrink-0 text-xs tabular-nums text-muted-foreground @min-[720px]/launcher:inline"
         >
           {batchSummary}
         </span>
@@ -181,9 +181,9 @@ export function GenerationLauncher(props: Props) {
         embedded ? 'border-t bg-surface-sunken/15' : 'rounded-xl border bg-surface',
       )}
     >
-      <div className="grid min-h-16 grid-cols-[minmax(0,1fr)_auto] items-center gap-3 px-3 py-2">
+      <div className="grid min-h-16 grid-cols-1 items-center gap-2 px-3 py-2 @min-[640px]/launcher:grid-cols-[minmax(0,1fr)_auto] @min-[640px]/launcher:gap-3">
         {summary}
-        <div className="flex items-center gap-2">
+        <div className="flex min-w-0 items-center justify-end gap-2">
           {secondaryAction}
           {generateButton}
         </div>

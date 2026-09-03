@@ -46,8 +46,10 @@ interface AutoSaveCoordinatorOptions {
   readSnapshot(): ArticleContentInput;
   readElements?(): readonly ArticleElementPlacementInput[];
   readCommentAnchors?(): readonly ArticleCommentAnchorUpdateInput[];
+  prepareForSave?(): void;
   persist(input: ArticleRevisionSaveInput): Promise<ArticleRevisionSaveResult>;
   onAcknowledged(article: ArticleDto, request: ArticleRevisionSaveInput): void;
+  onUnchanged?(request: ArticleRevisionSaveInput): void;
   onConflict(conflict: Extract<ArticleRevisionSaveResult, { status: 'CONFLICT' }>): void;
   onError(mode: ArticleSaveMode, detail: string): void;
   requestMatchesPersisted?(request: ArticleRevisionSaveInput): boolean;
@@ -86,7 +88,9 @@ export class AutoSaveCoordinator {
   readonly #persist: (input: ArticleRevisionSaveInput) => Promise<ArticleRevisionSaveResult>;
   readonly #readElements: (() => readonly ArticleElementPlacementInput[]) | null;
   readonly #readCommentAnchors: (() => readonly ArticleCommentAnchorUpdateInput[]) | null;
+  readonly #prepareForSave: (() => void) | null;
   readonly #onAcknowledged: (article: ArticleDto, request: ArticleRevisionSaveInput) => void;
+  readonly #onUnchanged: ((request: ArticleRevisionSaveInput) => void) | null;
   readonly #onConflict: (conflict: Extract<ArticleRevisionSaveResult, { status: 'CONFLICT' }>) => void;
   readonly #onError: (mode: ArticleSaveMode, detail: string) => void;
   readonly #requestMatchesPersisted: ((request: ArticleRevisionSaveInput) => boolean) | null;
@@ -103,14 +107,17 @@ export class AutoSaveCoordinator {
   #latestSnapshot: ArticleContentInput | null = null;
   #latestElements: ArticleElementPlacementInput[] | null = null;
   #latestCommentAnchors: ArticleCommentAnchorUpdateInput[] | null = null;
+  #pendingChangeSequence: number | null = null;
 
   constructor(options: AutoSaveCoordinatorOptions) {
     this.#session = options.session;
     this.#readSnapshot = options.readSnapshot;
     this.#readElements = options.readElements ?? null;
     this.#readCommentAnchors = options.readCommentAnchors ?? null;
+    this.#prepareForSave = options.prepareForSave ?? null;
     this.#persist = options.persist;
     this.#onAcknowledged = options.onAcknowledged;
+    this.#onUnchanged = options.onUnchanged ?? null;
     this.#onConflict = options.onConflict;
     this.#onError = options.onError;
     this.#requestMatchesPersisted = options.requestMatchesPersisted ?? null;
@@ -132,13 +139,11 @@ export class AutoSaveCoordinator {
     const elements = this.#readElements?.().map((element) => ({ ...element })) ?? null;
     const commentAnchors =
       this.#readCommentAnchors?.().map((item) => ({ ...item, anchor: { ...item.anchor } })) ?? null;
-    if (this.#retryRequest && !requestMatchesDraft(this.#retryRequest, capturedSnapshot, elements, commentAnchors)) {
-      this.#retryRequest = null;
-    }
     this.#latestSnapshot = capturedSnapshot;
     this.#latestElements = elements;
     this.#latestCommentAnchors = commentAnchors;
     const draftSeq = this.#session.beginDraft(Boolean(snapshot.markdown.trim()));
+    this.#pendingChangeSequence = draftSeq;
     beforeSchedule?.(draftSeq, { elements: elements ?? [], commentAnchors: commentAnchors ?? [] });
     void sha256Hex(canonicalArticleContentJson(snapshot))
       .then((contentHash) => this.#session.resolveDraftHash(draftSeq, contentHash))
@@ -191,9 +196,14 @@ export class AutoSaveCoordinator {
   #ensureDrain(mode: ArticleSaveMode, cause: ArticleRevisionSaveInput['cause']): Promise<boolean> {
     if (this.#disposed || this.#session.getSnapshot().save.phase === 'conflict') return Promise.resolve(false);
     if (this.#drainPromise) return this.#drainPromise;
-    if (mode === 'auto' && !this.#retryRequest && !articleEditorSessionDirty(this.#session.getSnapshot())) {
-      // A clean lifecycle flush must not persist derived projections such as
-      // comment-anchor relocation when the user has not changed the draft.
+    if (
+      mode === 'auto' &&
+      !this.#retryRequest &&
+      this.#pendingChangeSequence === null &&
+      !articleEditorSessionDirty(this.#session.getSnapshot())
+    ) {
+      // A clean lifecycle flush with no captured editor change must not persist
+      // incidental projections such as comment-anchor relocation.
       this.#flushDrainRequested = false;
       return Promise.resolve(true);
     }
@@ -267,20 +277,30 @@ export class AutoSaveCoordinator {
         ? this.#requestMatchesPersisted(request)
         : request.contentHash === after.persisted.contentHash
     ) {
+      this.#settlePendingChange(identity.draftSeq);
+      this.#onUnchanged?.(request);
       return null;
     }
     return request;
   }
 
+  #settlePendingChange(draftSeq: number) {
+    if (this.#pendingChangeSequence !== null && this.#pendingChangeSequence <= draftSeq) {
+      this.#pendingChangeSequence = null;
+    }
+  }
+
   async #saveOnce(mode: ArticleSaveMode, cause: ArticleRevisionSaveInput['cause']) {
-    let request = this.#retryRequest;
-    if (!request) {
-      try {
+    let request: ArticleRevisionSaveInput | null;
+    try {
+      this.#prepareForSave?.();
+      request = this.#retryRequest;
+      if (!request) {
         request = await this.#newRequest(cause);
-      } catch (reason) {
-        if (!this.#disposed) this.#onError(mode, errorMessage(reason));
-        return false;
       }
+    } catch (reason) {
+      if (!this.#disposed) this.#onError(mode, errorMessage(reason));
+      return false;
     }
     if (!request) return true;
     if (!this.#session.beginSave(request)) return false;
@@ -311,6 +331,7 @@ export class AutoSaveCoordinator {
       }
       this.#retryRequest = null;
       if (!this.#session.acknowledgeSave(request, result.article)) return false;
+      this.#settlePendingChange(request.draftSeq);
       if (this.#session.getSnapshot().draft.sequence > request.draftSeq) this.#trailingRequested = true;
       try {
         this.#onAcknowledged(result.article, request);

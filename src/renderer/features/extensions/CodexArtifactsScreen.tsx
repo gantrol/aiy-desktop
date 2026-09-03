@@ -1,26 +1,24 @@
 import { GaugeIcon, ImagesIcon, PanelsTopLeftIcon, SearchIcon } from 'lucide-react';
 import { useState } from 'react';
 import type { ExtensionDto } from '@/shared/contracts';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/renderer/components/ui/tabs';
+import { Button } from '@/renderer/components/ui/button';
 import { useI18n } from '@/renderer/i18n/useI18n';
 import { CodexImageDiscoveryConfiguration } from '@/renderer/features/extensions/CodexImageDiscoveryConfiguration';
 import { CodexHistorySearchConfiguration } from '@/renderer/features/extensions/CodexHistorySearchConfiguration';
 import { CodexUsageInvestigatorConfiguration } from '@/renderer/features/extensions/CodexUsageInvestigatorConfiguration';
 import { CodexVisualizationDiscoveryConfiguration } from '@/renderer/features/extensions/CodexVisualizationDiscoveryConfiguration';
 import { ExtensionFeatureErrorBoundary } from '@/renderer/features/extensions/ExtensionFeatureErrorBoundary';
+import { cn } from '@/renderer/lib/utils';
 
 interface Props {
   active: boolean;
-  historyExtension: ExtensionDto | null;
-  imageExtension: ExtensionDto | null;
-  usageExtension: ExtensionDto | null;
-  visualizationExtension: ExtensionDto | null;
+  extension: ExtensionDto | null;
   notify(message: string): void;
   onOpenCreation(seriesId: string, assetId: string | null): Promise<void>;
 }
 
 type ArtifactTab = 'history' | 'usage' | 'images' | 'visualizations';
-const TAB_STORAGE_KEY = 'aiy.codex-artifacts-tab.v2';
+const TAB_STORAGE_KEY = 'aiy.codex-artifacts-tab.v3';
 
 function authorized(extension: ExtensionDto | null) {
   return Boolean(
@@ -39,40 +37,46 @@ function initialTab(): ArtifactTab {
   }
 }
 
-export function CodexArtifactsScreen({
-  active,
-  historyExtension,
-  imageExtension,
-  usageExtension,
-  visualizationExtension,
-  notify,
-  onOpenCreation,
-}: Props) {
+export function CodexArtifactsScreen({ active, extension, notify, onOpenCreation }: Props) {
   const l = useI18n().messages.extensions.codexArtifacts;
-  const historyAvailable = authorized(historyExtension);
-  const imageAvailable = authorized(imageExtension);
-  const usageAvailable = authorized(usageExtension);
-  const visualizationAvailable = authorized(visualizationExtension);
   const [tab, setTab] = useState<ArtifactTab>(initialTab);
-  const availableTabs: ArtifactTab[] = [
-    ...(historyAvailable ? (['history'] as const) : []),
-    ...(usageAvailable ? (['usage'] as const) : []),
-    ...(imageAvailable ? (['images'] as const) : []),
-    ...(visualizationAvailable ? (['visualizations'] as const) : []),
-  ];
-  const activeTab = availableTabs.includes(tab) ? tab : (availableTabs[0] ?? tab);
 
-  function changeTab(value: string) {
-    const next = value as ArtifactTab;
+  function changeTab(next: ArtifactTab) {
     setTab(next);
     try {
       localStorage.setItem(TAB_STORAGE_KEY, next);
     } catch {
-      // The current surface still works without persisted navigation state.
+      // The workspace remains usable without persisted navigation state.
     }
   }
 
-  if (!historyAvailable && !imageAvailable && !usageAvailable && !visualizationAvailable) {
+  const navigation = (
+    <nav className="grid gap-0.5" aria-label={l.title}>
+      {(
+        [
+          ['history', SearchIcon, l.tabs.history],
+          ['usage', GaugeIcon, l.tabs.usage],
+          ['images', ImagesIcon, l.tabs.images],
+          ['visualizations', PanelsTopLeftIcon, l.tabs.visualizations],
+        ] as const
+      ).map(([value, Icon, label]) => (
+        <Button
+          key={value}
+          type="button"
+          variant="ghost"
+          size="sm"
+          data-current={tab === value || undefined}
+          className="w-full justify-start px-2 text-xs font-normal data-[current]:bg-selected data-[current]:font-semibold data-[current]:text-selected-foreground"
+          onClick={() => changeTab(value)}
+        >
+          <Icon className="size-4" />
+          {label}
+        </Button>
+      ))}
+    </nav>
+  );
+
+  if (!authorized(extension) || !extension) {
     return (
       <section className="flex size-full min-h-0 flex-col bg-background">
         <header className="flex h-14 shrink-0 items-center gap-2 border-b px-5">
@@ -84,88 +88,79 @@ export function CodexArtifactsScreen({
     );
   }
 
+  const feature =
+    tab === 'usage' ? (
+      <CodexUsageInvestigatorConfiguration
+        active={active}
+        extension={extension}
+        standalone
+        workspaceNavigation={navigation}
+        notify={notify}
+      />
+    ) : tab === 'images' ? (
+      <CodexImageDiscoveryConfiguration
+        active={active}
+        extension={extension}
+        standalone
+        standaloneHeadingLevel="h2"
+        notify={notify}
+        onOpenCreation={onOpenCreation}
+      />
+    ) : (
+      <CodexVisualizationDiscoveryConfiguration active={active} extension={extension} standalone notify={notify} />
+    );
+
   return (
-    <Tabs value={activeTab} onValueChange={changeTab} className="flex size-full min-h-0 flex-col bg-background">
-      <header className="flex h-14 shrink-0 items-center gap-3 border-b px-5">
-        <PanelsTopLeftIcon className="size-4" />
-        <h1 className="text-base font-semibold">{l.title}</h1>
-        <TabsList className="ml-3 h-14 border-0">
-          {historyAvailable && (
-            <TabsTrigger value="history" className="h-14">
-              <SearchIcon className="size-4" />
-              {l.tabs.history}
-            </TabsTrigger>
-          )}
-          {usageAvailable && (
-            <TabsTrigger value="usage" className="h-14">
-              <GaugeIcon className="size-4" />
-              {l.tabs.usage}
-            </TabsTrigger>
-          )}
-          {imageAvailable && (
-            <TabsTrigger value="images" className="h-14">
-              <ImagesIcon className="size-4" />
-              {l.tabs.images}
-            </TabsTrigger>
-          )}
-          {visualizationAvailable && (
-            <TabsTrigger value="visualizations" className="h-14">
-              <PanelsTopLeftIcon className="size-4" />
-              {l.tabs.visualizations}
-            </TabsTrigger>
-          )}
-        </TabsList>
+    <section className="flex size-full min-h-0 flex-col bg-background">
+      <header className="flex min-h-12 shrink-0 items-center gap-1 border-b px-2 md:hidden">
+        {(
+          [
+            ['history', SearchIcon, l.tabs.history],
+            ['usage', GaugeIcon, l.tabs.usage],
+            ['images', ImagesIcon, l.tabs.images],
+            ['visualizations', PanelsTopLeftIcon, l.tabs.visualizations],
+          ] as const
+        ).map(([value, Icon, label]) => (
+          <Button
+            key={value}
+            type="button"
+            variant={tab === value ? 'secondary' : 'ghost'}
+            size="sm"
+            className="min-w-0 flex-1 px-2 text-xs"
+            title={label}
+            onClick={() => changeTab(value)}
+          >
+            <Icon className="size-4 shrink-0" />
+            <span className="hidden min-[520px]:inline">{label}</span>
+          </Button>
+        ))}
       </header>
-      {historyExtension && (
-        <TabsContent value="history" className="min-h-0 flex-1">
-          <ExtensionFeatureErrorBoundary scope={`${historyExtension.manifest.id}:artifacts`}>
+      <div className="min-h-0 flex-1">
+        {tab === 'history' ? (
+          <ExtensionFeatureErrorBoundary scope={`${extension.manifest.id}:history`}>
             <CodexHistorySearchConfiguration
-              active={active && activeTab === 'history'}
-              extension={historyExtension}
+              active={active}
+              extension={extension}
               standalone
+              workspaceNavigation={navigation}
               notify={notify}
             />
           </ExtensionFeatureErrorBoundary>
-        </TabsContent>
-      )}
-      {usageExtension && (
-        <TabsContent value="usage" className="min-h-0 flex-1">
-          <ExtensionFeatureErrorBoundary scope={`${usageExtension.manifest.id}:artifacts`}>
-            <CodexUsageInvestigatorConfiguration
-              active={active && activeTab === 'usage'}
-              extension={usageExtension}
-              standalone
-              notify={notify}
-            />
-          </ExtensionFeatureErrorBoundary>
-        </TabsContent>
-      )}
-      {imageExtension && (
-        <TabsContent value="images" className="min-h-0 flex-1">
-          <ExtensionFeatureErrorBoundary scope={`${imageExtension.manifest.id}:artifacts`}>
-            <CodexImageDiscoveryConfiguration
-              active={active && activeTab === 'images'}
-              extension={imageExtension}
-              standalone
-              standaloneHeadingLevel="h2"
-              notify={notify}
-              onOpenCreation={onOpenCreation}
-            />
-          </ExtensionFeatureErrorBoundary>
-        </TabsContent>
-      )}
-      {visualizationExtension && (
-        <TabsContent value="visualizations" className="min-h-0 flex-1">
-          <ExtensionFeatureErrorBoundary scope={`${visualizationExtension.manifest.id}:artifacts`}>
-            <CodexVisualizationDiscoveryConfiguration
-              active={active && activeTab === 'visualizations'}
-              extension={visualizationExtension}
-              standalone
-              notify={notify}
-            />
-          </ExtensionFeatureErrorBoundary>
-        </TabsContent>
-      )}
-    </Tabs>
+        ) : (
+          <div className="flex size-full min-h-0">
+            {tab !== 'usage' && (
+              <aside className="hidden h-full w-60 shrink-0 border-r bg-surface-sunken/20 p-2 md:block">
+                {navigation}
+              </aside>
+            )}
+            <div className={cn('min-w-0 flex-1', !active && 'pointer-events-none')}>
+              <ExtensionFeatureErrorBoundary scope={`${extension.manifest.id}:${tab}`}>
+                {feature}
+              </ExtensionFeatureErrorBoundary>
+            </div>
+          </div>
+        )}
+      </div>
+    </section>
   );
 }

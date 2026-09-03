@@ -1573,7 +1573,7 @@ export function ResultLibrary({
     return (
       <aside
         aria-label={libraryLabels.library}
-        className="relative flex size-full min-h-0 flex-col border-r bg-surface-sunken"
+        className="relative isolate flex size-full min-h-0 flex-col border-r bg-surface-sunken"
       >
         {resizeHandle}
         <header className="grid h-14 shrink-0 place-items-center border-b border-border/60">
@@ -1598,7 +1598,7 @@ export function ResultLibrary({
             type="button"
             variant="secondary"
             size="icon-sm"
-            className="absolute bottom-2 left-1/2 z-20 -translate-x-1/2 shadow-overlay"
+            className="absolute bottom-2 left-1/2 z-chrome -translate-x-1/2 shadow-overlay"
             title={libraryLabels.full}
             aria-label={libraryLabels.full}
             disabled={!canExpand}
@@ -1615,10 +1615,10 @@ export function ResultLibrary({
   return (
     <aside
       aria-label={libraryLabels.library}
-      className="relative flex min-h-0 min-w-0 flex-col border-r bg-surface-sunken"
+      className="relative isolate flex min-h-0 min-w-0 flex-col border-r bg-surface-sunken"
     >
       {resizeHandle}
-      <header className="flex h-14 shrink-0 items-center justify-between gap-1 border-b border-border/60 px-3">
+      <header className="relative flex h-14 shrink-0 items-center justify-between gap-1 border-b border-border/60 px-3">
         <h1 className="truncate text-lg font-semibold tracking-tight">{libraryLabels.library}</h1>
         <div className="flex items-center gap-1">
           <Button
@@ -1644,9 +1644,14 @@ export function ResultLibrary({
           >
             <PlusIcon className="size-4" />
           </Button>
+          <CreationLibraryToolbar
+            query={query}
+            filter={filter}
+            onQueryChange={setQuery}
+            onFilterChange={onFilterChange}
+          />
         </div>
       </header>
-      <CreationLibraryToolbar query={query} filter={filter} onQueryChange={setQuery} onFilterChange={onFilterChange} />
       <ScrollArea
         type="always"
         className="min-h-0 flex-1 [&_[data-slot=scroll-area-viewport]>div]:!block [&_[data-slot=scroll-area-viewport]>div]:min-h-full"
@@ -1685,7 +1690,7 @@ export function ResultLibrary({
           type="button"
           variant="secondary"
           size="icon-sm"
-          className="absolute bottom-2 left-2 z-20 shadow-overlay"
+          className="absolute bottom-2 left-2 z-chrome shadow-overlay"
           title={libraryLabels.imagesOnly}
           aria-label={libraryLabels.imagesOnly}
           onClick={() => onModeChange('images')}

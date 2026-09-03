@@ -16,6 +16,10 @@ interface MarkdownNode {
   checked?: boolean | null;
   align?: Array<'left' | 'right' | 'center' | null>;
   children?: MarkdownNode[];
+  position?: {
+    start: { offset?: number };
+    end: { offset?: number };
+  };
 }
 
 export interface ArticleWechatImageSource {
@@ -163,6 +167,10 @@ function safeHttpsUrl(value: string) {
   } catch {
     return null;
   }
+}
+
+function articleImageSourceRequiresMediaBinding(value: string) {
+  return safeHttpsUrl(value) === null;
 }
 
 function isWechatArticleUrl(value: string) {
@@ -565,6 +573,30 @@ export function articleWechatImageReferences(markdown: string) {
 
 export function articleMarkdownImageReferences(markdown: string) {
   return imageReferences(resolveMarkdownReferences(parseMarkdown(markdown)));
+}
+
+export function removeUnboundArticleMarkdownImages(markdown: string, boundMediaPaths: readonly string[]) {
+  const boundPaths = new Set(boundMediaPaths.map(normalizeArticleWechatMediaPath));
+  const removals: Array<{ start: number; end: number }> = [];
+  visitMarkdown(resolveMarkdownReferences(parseMarkdown(markdown)), (node) => {
+    if (
+      node.type !== 'image' ||
+      !node.url ||
+      !articleImageSourceRequiresMediaBinding(node.url) ||
+      boundPaths.has(normalizeArticleWechatMediaPath(node.url))
+    ) {
+      return;
+    }
+    const start = node.position?.start.offset;
+    const end = node.position?.end.offset;
+    if (start === undefined || end === undefined || start < 0 || end > markdown.length || start >= end) return;
+    removals.push({ start, end });
+  });
+  let normalized = markdown;
+  for (const removal of removals.sort((left, right) => right.start - left.start)) {
+    normalized = `${normalized.slice(0, removal.start)}${normalized.slice(removal.end)}`;
+  }
+  return normalized;
 }
 
 function renderEndReferences(references: readonly EndReference[], title: string) {

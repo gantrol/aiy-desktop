@@ -24,7 +24,7 @@ npm run dev
 
 ### Browser companion during development
 
-`npm run dev` starts Electron only. It does not build the browser companion Native Host or start the WXT development server, so browser companion issues do not block debugging the desktop app.
+`npm run dev` starts Electron and its main-process browser-companion loopback service. It does not start the WXT development server, so browser companion extension issues do not block debugging the desktop app.
 
 To develop the browser companion, start it separately from the umbrella workspace root in a second terminal:
 
@@ -32,7 +32,7 @@ To develop the browser companion, start it separately from the umbrella workspac
 npm run dev:browser
 ```
 
-This command prepares the SEA Native Host and starts the browser companion WXT server on `127.0.0.1:3017`. The unpacked development output remains at `../browser-companion/.output/chrome-mv3-dev`, so a development Profile can keep one stable extension path while WXT handles subsequent source updates. Start `npm run dev` separately when the desktop app is also needed. Production builds use the separate `../browser-companion/.output/chrome-mv3` directory and cannot replace a running development bundle.
+This command starts the browser companion WXT server on `127.0.0.1:3017`. The unpacked development output remains at `../browser-companion/.output/chrome-mv3-dev`, so a development Profile can keep one stable extension path while WXT handles subsequent source updates. Start `npm run dev` separately when the desktop app and its `127.0.0.1:47831` companion service are also needed. Production builds use the separate `../browser-companion/.output/chrome-mv3` directory and cannot replace a running development bundle.
 
 Load `chrome-mv3-dev` as an unpacked extension once in every intended Chrome or Edge Profile. If a Profile previously loaded `chrome-mv3`, remove that old unpacked entry once and load the new development directory; reloading the old entry cannot change its registered filesystem path. In AIY, configure the browser Profile for ChatGPT, Weibo, and WeChat Official Account independently from the menu beside “上传”; development mode accepts a Profile only when the browser's persisted extension path matches the current checkout. The Chrome `How` Profile used by the automated smoke is `Profile 1` and follows this same rule.
 

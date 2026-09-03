@@ -456,7 +456,7 @@ export function VideoDocumentLibraryPane({
         type="button"
         variant="secondary"
         size="icon-sm"
-        className="absolute bottom-2 left-2 z-20 shadow-overlay"
+        className="absolute bottom-2 left-2 z-chrome shadow-overlay"
         aria-label={labels.sidebar.collapse}
         title={labels.sidebar.collapse}
         onClick={() => updateCollapsed(true)}

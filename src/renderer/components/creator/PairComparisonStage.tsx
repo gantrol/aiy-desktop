@@ -429,7 +429,7 @@ function ComparisonMagnifierOverlay({
         <span
           aria-hidden="true"
           className={cn(
-            'absolute bottom-2 left-1/2 z-50 -translate-x-1/2 rounded-sm border bg-overlay/95 px-1.5 py-0.5 font-mono text-[10px] leading-none tabular-nums transition-opacity duration-fast motion-reduce:transition-none',
+            'absolute bottom-2 left-1/2 z-40 -translate-x-1/2 rounded-sm border bg-overlay/95 px-1.5 py-0.5 font-mono text-[10px] leading-none tabular-nums transition-opacity duration-fast motion-reduce:transition-none',
             scaleFeedbackVisible ? 'opacity-100' : 'opacity-0',
           )}
         >

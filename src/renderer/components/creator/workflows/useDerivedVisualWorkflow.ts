@@ -18,10 +18,7 @@ import {
   buildArticleInlinePrompt,
   buildSocialCoverPrompt,
 } from '@/renderer/components/creator/derivedVisualPrompt';
-import {
-  derivedVisualCanvasPresetKeys,
-  derivedVisualWorkspaceAvailable,
-} from '@/renderer/components/creator/derivedVisualWorkspace';
+import { derivedVisualWorkspaceAvailable } from '@/renderer/components/creator/derivedVisualWorkspace';
 import { useStableCallback } from '@/renderer/lib/useStableCallback';
 
 interface Options {
@@ -236,31 +233,26 @@ export function useDerivedVisualWorkflow(options: Options) {
     },
   );
 
-  const createSocialCoverScheme = useStableCallback(
-    async (post: SocialPostDto, currentPreset: CanvasPresetDto | null) => {
-      if (creatingSocialCoverSchemeRef.current) return;
-      creatingSocialCoverSchemeRef.current = true;
-      setCreatingSocialCoverScheme(true);
-      const selectionIdentity = captureSelectionIdentity();
-      try {
-        if (!(await preserveBeforeNavigation()) || captureSelectionIdentity() !== selectionIdentity) return;
-        const allowedKeys = new Set(derivedVisualCanvasPresetKeys.SOCIAL_POST_COVER);
-        const preset =
-          (currentPreset && allowedKeys.has(currentPreset.stableKey) ? currentPreset : null) ??
-          canvasPresets.find((candidate) => candidate.stableKey === 'xiaohongshu_portrait_3_4');
-        if (!preset) {
-          notify(options.locale === 'zh' ? '贴图封面画幅不可用' : 'Social cover canvas is unavailable');
-          return;
-        }
-        await openSocialCoverWorkspace(post, socialPostContent(post), preset);
-      } catch (reason) {
-        notify(reason instanceof Error ? reason.message : String(reason));
-      } finally {
-        creatingSocialCoverSchemeRef.current = false;
-        if (mountedRef.current) setCreatingSocialCoverScheme(false);
+  const createSocialCoverScheme = useStableCallback(async (post: SocialPostDto) => {
+    if (creatingSocialCoverSchemeRef.current) return;
+    creatingSocialCoverSchemeRef.current = true;
+    setCreatingSocialCoverScheme(true);
+    const selectionIdentity = captureSelectionIdentity();
+    try {
+      if (!(await preserveBeforeNavigation()) || captureSelectionIdentity() !== selectionIdentity) return;
+      const preset = canvasPresets.find((candidate) => candidate.stableKey === 'xiaohongshu_portrait_3_4');
+      if (!preset) {
+        notify(options.locale === 'zh' ? '贴图封面画幅不可用' : 'Social cover canvas is unavailable');
+        return;
       }
-    },
-  );
+      await openSocialCoverWorkspace(post, socialPostContent(post), preset);
+    } catch (reason) {
+      notify(reason instanceof Error ? reason.message : String(reason));
+    } finally {
+      creatingSocialCoverSchemeRef.current = false;
+      if (mountedRef.current) setCreatingSocialCoverScheme(false);
+    }
+  });
 
   const resumeDerivedVisual = useStableCallback(async (visualId: string) => {
     const selectionIdentity = captureSelectionIdentity();

@@ -12,7 +12,6 @@ import {
   ArrowLeftIcon,
   ArrowRightIcon,
   CopyIcon,
-  ImagePlusIcon,
   Link2Icon,
   LoaderCircleIcon,
   StarIcon,
@@ -45,11 +44,11 @@ import { ScrollArea } from '@/renderer/components/ui/scroll-area';
 import { Textarea } from '@/renderer/components/ui/textarea';
 import type { ActionMenuAction } from '@/renderer/components/ui/action-menu';
 import { AssetFileContextMenu } from '@/renderer/components/media/AssetFileContextMenu';
-import { AssetFileDragHandle } from '@/renderer/components/media/AssetFileDragHandle';
 import { MediaActionMenu } from '@/renderer/components/media/MediaActionMenu';
-import { MediaOrderHandle } from '@/renderer/components/media/MediaOrderHandle';
 import { SocialPostMediaPreviewDialog } from '@/renderer/components/creator/SocialPostMediaPreviewDialog';
 import { SocialPostHeader } from '@/renderer/components/creator/SocialPostHeader';
+import { SocialPostMediaActions } from '@/renderer/components/creator/SocialPostMediaActions';
+import { editableContent, move, moveTo } from '@/renderer/components/creator/socialPostEditorTransforms';
 import {
   hasSocialPostMediaReorderDrag,
   socialPostMediaReorderSourceId,
@@ -82,31 +81,6 @@ interface Props {
 
 const socialPostMediaLimit = 100;
 const importBatchLimit = 8;
-
-function editableContent(post: SocialPostDto): SocialPostContentInput {
-  const { mediaAssets: _mediaAssets, ...content } = post.content;
-  return {
-    ...content,
-    mediaAssetIds: [...content.mediaAssetIds],
-  };
-}
-
-function move<T>(items: readonly T[], index: number, offset: -1 | 1) {
-  const target = index + offset;
-  if (target < 0 || target >= items.length) return [...items];
-  const next = [...items];
-  [next[index], next[target]] = [next[target], next[index]];
-  return next;
-}
-
-function moveTo<T>(items: readonly T[], sourceIndex: number, targetIndex: number) {
-  if (sourceIndex === targetIndex || sourceIndex < 0 || targetIndex < 0) return [...items];
-  const next = [...items];
-  const [item] = next.splice(sourceIndex, 1);
-  if (item === undefined) return [...items];
-  next.splice(targetIndex, 0, item);
-  return next;
-}
 
 function useSocialPostMediaIntake({
   content,
@@ -326,10 +300,12 @@ function SocialPostMediaSection({
   adding,
   assetsById,
   content,
+  generatingCover,
   locale,
   notify,
   onAdd,
   onChangeIds,
+  onGenerateCover,
   onOpenRelations,
   onSelectRelation,
   onSetCover,
@@ -338,10 +314,12 @@ function SocialPostMediaSection({
   adding: boolean;
   assetsById: ReadonlyMap<string, AssetDto>;
   content: SocialPostContentInput;
+  generatingCover: boolean;
   locale: Locale;
   notify(message: string): void;
   onAdd(): void;
   onChangeIds(ids: string[]): void;
+  onGenerateCover(): void;
   onOpenRelations(assetId: string | null): void;
   onSelectRelation(item: CreationRelationItem): void;
   onSetCover(assetId: string): void;
@@ -382,14 +360,17 @@ function SocialPostMediaSection({
 
   return (
     <section className="grid gap-3 border-t pt-4">
-      <div className="flex h-8 items-center justify-between gap-3">
+      <div className="flex min-h-8 flex-wrap items-center justify-between gap-2">
         <span className="text-xs font-medium text-foreground-secondary">
           {zh ? `图片 · ${content.mediaAssetIds.length}` : `Images · ${content.mediaAssetIds.length}`}
         </span>
-        <Button type="button" variant="outline" size="sm" disabled={adding} onClick={onAdd}>
-          {adding ? <LoaderCircleIcon className="size-4 animate-spin" /> : <ImagePlusIcon className="size-4" />}
-          {zh ? '添加图片' : 'Add images'}
-        </Button>
+        <SocialPostMediaActions
+          adding={adding}
+          generatingCover={generatingCover}
+          onAdd={onAdd}
+          onGenerateCover={onGenerateCover}
+          zh={zh}
+        />
       </div>
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
         {content.mediaAssetIds.map((assetId, index) => {
@@ -446,13 +427,13 @@ function SocialPostMediaSection({
               key={assetId}
               className={cn('group min-w-0', dragTargetId === assetId && 'ring-2 ring-selected-border')}
               onDragEnter={(event) => {
-                if (!hasSocialPostMediaReorderDrag(event.dataTransfer)) return;
+                if (!hasSocialPostMediaReorderDrag(event.dataTransfer, content.mediaAssetIds)) return;
                 event.preventDefault();
                 event.stopPropagation();
                 setDragTargetId(assetId);
               }}
               onDragOver={(event) => {
-                if (!hasSocialPostMediaReorderDrag(event.dataTransfer)) return;
+                if (!hasSocialPostMediaReorderDrag(event.dataTransfer, content.mediaAssetIds)) return;
                 event.preventDefault();
                 event.stopPropagation();
                 event.dataTransfer.dropEffect = 'move';
@@ -482,14 +463,19 @@ function SocialPostMediaSection({
                       type="button"
                       draggable
                       className="relative size-full cursor-grab overflow-hidden outline-none active:cursor-grabbing focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
-                      title={zh ? '拖动调整顺序，单击放大' : 'Drag to reorder, click to enlarge'}
+                      title={zh ? '拖动调整顺序或导出，单击放大' : 'Drag to reorder or export, click to enlarge'}
                       aria-label={
                         zh
-                          ? `第 ${index + 1} 张图片：拖动调整顺序，单击放大`
-                          : `Image ${index + 1}: drag to reorder, click to enlarge`
+                          ? `第 ${index + 1} 张图片：拖动调整顺序或导出，单击放大`
+                          : `Image ${index + 1}: drag to reorder or export, click to enlarge`
                       }
-                      onDragStart={(event) => startSocialPostMediaDrag(event, assetId)}
-                      onDragEnd={() => setDragTargetId(null)}
+                      onDragStart={(event) => {
+                        try {
+                          startSocialPostMediaDrag(event, assetId);
+                        } catch (reason) {
+                          notify(`${fileLabels.failed}: ${reason instanceof Error ? reason.message : String(reason)}`);
+                        }
+                      }}
                       onClick={() => setPreviewAssetId(asset.id)}
                     >
                       <img
@@ -504,23 +490,6 @@ function SocialPostMediaSection({
                   <div className="grid size-full place-items-center text-xs text-muted-foreground">
                     {zh ? '图片不可用' : 'Unavailable'}
                   </div>
-                )}
-                <MediaOrderHandle
-                  draggable
-                  className="absolute top-1.5 left-1.5 z-20 tabular-nums"
-                  label={zh ? `拖动第 ${index + 1} 张图片调整顺序` : `Drag image ${index + 1} to reorder`}
-                  onDragStart={(event) => startSocialPostMediaDrag(event, assetId)}
-                  onDragEnd={() => setDragTargetId(null)}
-                >
-                  {index + 1}
-                </MediaOrderHandle>
-                {asset && (
-                  <AssetFileDragHandle
-                    assetId={asset.id}
-                    label={zh ? `拖动第 ${index + 1} 张图片到其他应用` : `Drag image ${index + 1} to another app`}
-                    notify={notify}
-                    className="absolute bottom-1.5 left-1.5 z-20 size-7"
-                  />
                 )}
                 {cover && (
                   <span className="pointer-events-none absolute top-1.5 right-1.5 z-10 flex items-center gap-1 rounded bg-overlay/90 px-1.5 py-0.5 text-2xs">
@@ -752,7 +721,6 @@ export function SocialPostEditor({
         handoffTargets={handoffTargets}
         onCreateArticle={(copySourceContent) => void createArticle(copySourceContent)}
         onCreateSocialPost={(copySourceContent) => void createSocialPost(copySourceContent)}
-        onGenerateCover={() => void generateCover()}
         onHandoff={(target) => void handoffToBrowser(target)}
         onRetrySave={() => void persist(content)}
         saveFailed={saveFailed}
@@ -789,10 +757,12 @@ export function SocialPostEditor({
             adding={mediaIntake.adding}
             assetsById={assetsById}
             content={content}
+            generatingCover={generatingCover}
             locale={locale}
             notify={notify}
             onAdd={() => void mediaIntake.chooseMedia()}
             onChangeIds={updateMediaIds}
+            onGenerateCover={() => void generateCover()}
             onOpenRelations={(assetId) => {
               setRelationAssetId(assetId);
               setRelationsOpen(true);

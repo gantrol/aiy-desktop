@@ -23,6 +23,7 @@ import {
   type VideoDocumentArticleElementControls,
   type VideoDocumentWysiwygToolbarState,
 } from '@/renderer/features/video-documents/VideoDocumentWysiwygToolbar';
+import { AssetImageCopyButton } from '@/renderer/components/media/AssetImageCopyButton';
 import {
   clipboardHasUserText,
   clipboardImageFiles,
@@ -50,6 +51,7 @@ import {
 import { useVideoDocumentSplitEditorView } from '@/renderer/features/video-documents/videoDocumentSplitEditorView';
 import {
   activeArticleElementId,
+  activeArticleOutlineHeadingIndex,
   articleCheckBlocks,
   articleCommentAnchorRect,
   articleCommentTargetResolution,
@@ -61,9 +63,11 @@ import {
   focusArticleElement,
   mappedArticleCommentAnchors,
   resolveArticleCommentLocation,
+  resolveArticleOutlineHeadingLocation,
   revealArticleEditorLocation,
   restoreArticleEditorLocation,
 } from '@/renderer/features/video-documents/articleElementIdentity';
+import { hydrateArticleElementJsonIdentities } from '@/renderer/features/video-documents/articleElementJsonIdentity';
 import { useArticleElementEditorEffects } from '@/renderer/features/video-documents/useArticleElementEditorEffects';
 import { useArticleCommentDomInteractions } from '@/renderer/features/video-documents/useArticleCommentDomInteractions';
 import {
@@ -100,6 +104,37 @@ function normalizedMediaPath(value: string) {
   }
 }
 
+function imageSourceRequiresMediaBinding(value: string) {
+  try {
+    return new URL(value).protocol !== 'https:';
+  } catch {
+    return true;
+  }
+}
+
+function removeUnboundDocumentImages(editor: Editor, boundMediaPaths: readonly string[]) {
+  if (editor.isDestroyed) return false;
+  const boundPaths = new Set(boundMediaPaths.map(normalizedMediaPath));
+  const removals: Array<{ from: number; to: number }> = [];
+  editor.state.doc.descendants((node, position) => {
+    if (node.type.name !== 'image') return;
+    const sourcePath = typeof node.attrs.sourcePath === 'string' ? node.attrs.sourcePath : '';
+    const src = typeof node.attrs.src === 'string' ? node.attrs.src : '';
+    const source = sourcePath || src;
+    if (!source || !imageSourceRequiresMediaBinding(source) || boundPaths.has(normalizedMediaPath(source))) {
+      return;
+    }
+    removals.push({ from: position, to: position + node.nodeSize });
+  });
+  if (!removals.length) return false;
+  const transaction = editor.state.tr;
+  for (const removal of removals.sort((left, right) => right.from - left.from)) {
+    transaction.delete(removal.from, removal.to);
+  }
+  editor.view.dispatch(transaction);
+  return true;
+}
+
 function internalImageAssetId(value: string) {
   const match = /^aiy-media:\/\/asset\/([^/?#]+)(?:[?#].*)?$/u.exec(value);
   if (!match) return null;
@@ -134,8 +169,9 @@ function DocumentImageNodeView({ node }: NodeViewProps) {
   const src = typeof node.attrs.src === 'string' ? node.attrs.src : '';
   const alt = typeof node.attrs.alt === 'string' ? node.attrs.alt : '';
   const title = typeof node.attrs.title === 'string' ? node.attrs.title : undefined;
+  const assetId = internalImageAssetId(src);
   return (
-    <NodeViewWrapper className="relative isolate my-7 block max-h-[34rem] w-full overflow-hidden rounded-md bg-surface-sunken">
+    <NodeViewWrapper className="group/article-image relative isolate my-7 block max-h-[34rem] w-full overflow-hidden rounded-md bg-surface-sunken">
       {src && <ImageAmbientBackdrop src={src} loading="lazy" />}
       <img
         src={src}
@@ -145,6 +181,7 @@ function DocumentImageNodeView({ node }: NodeViewProps) {
         loading="lazy"
         draggable={false}
       />
+      {assetId && <AssetImageCopyButton assetId={assetId} />}
     </NodeViewWrapper>
   );
 }
@@ -256,6 +293,7 @@ const emptyToolbarState: VideoDocumentWysiwygToolbarState = {
   canRedo: false,
   image: false,
   imageSourcePath: null,
+  imageAltText: '',
   selectedText: '',
   articleElementId: null,
 };
@@ -281,25 +319,10 @@ function selectToolbarState(editor: Editor | null): VideoDocumentWysiwygToolbarS
     canRedo: redoDepth(editor.state) > 0,
     image,
     imageSourcePath: typeof imageAttributes?.sourcePath === 'string' ? imageAttributes.sourcePath : null,
+    imageAltText: typeof imageAttributes?.alt === 'string' ? imageAttributes.alt : '',
     selectedText: from === to ? '' : editor.state.doc.textBetween(from, to, '\n').trim(),
     articleElementId: activeArticleElementId(editor),
   };
-}
-
-function selectedHeadingIndex(editor: Editor) {
-  const selectionPosition = editor.state.selection.from;
-  let headingIndex = 0;
-  let selectedIndex: number | null = null;
-  editor.state.doc.descendants((node, position) => {
-    if (node.type.name !== 'heading') return true;
-    const level = Number(node.attrs.level);
-    if (level >= 2 && level <= 6) {
-      if (position <= selectionPosition) selectedIndex = headingIndex;
-      headingIndex += 1;
-    }
-    return false;
-  });
-  return selectedIndex;
 }
 
 function useQuickInsertNote({
@@ -382,12 +405,14 @@ function useEditorRegistration(
         markdown: refs.persistence.current.markdown,
         articleElements: refs.persistence.current.articleElements.map((element) => ({ ...element })),
       }),
+      removeUnboundImages: (boundMediaPaths) => removeUnboundDocumentImages(editor, boundMediaPaths),
       getArticleCommentAnchors: () => mappedArticleCommentAnchors(editor, refs.comments.current ?? []),
       getArticleCommentAnchorRect: (commentId) => articleCommentAnchorRect(editor, commentId),
       getArticleCommentTargetResolution: (commentId) => articleCommentTargetResolution(editor, commentId),
       captureArticleCommentTarget: () =>
         refs.composition.current === 'idle' ? captureArticleCommentTarget(editor) : null,
       resolveArticleCommentLocation: (commentId) => resolveArticleCommentLocation(editor, commentId),
+      resolveArticleOutlineHeadingLocation: (sourceIndex) => resolveArticleOutlineHeadingLocation(editor, sourceIndex),
       captureArticleLocation: () => captureArticleEditorLocation(editor),
       captureArticleViewportLocation: (scrollRoot) => captureArticleViewportLocation(editor, scrollRoot),
       revealArticleLocation: (location, scrollRoot) => revealArticleEditorLocation(editor, location, scrollRoot),
@@ -593,7 +618,7 @@ function VideoDocumentWysiwygEditorSession(props: Props) {
       onChange: onChangeRef,
       callbacks: articleCallbacksRef,
     });
-    notifyActiveHeading(selectedHeadingIndex(current));
+    notifyActiveHeading(activeArticleOutlineHeadingIndex(current));
   };
   const articleElementExtension = useMemo(
     () => (articleElementsEnabled ? createArticleElementIdentityExtension(() => articleCommentsRef.current) : null),
@@ -621,6 +646,11 @@ function VideoDocumentWysiwygEditorSession(props: Props) {
       contentType: 'markdown',
       enableContentCheck: true,
       immediatelyRender: true,
+      onBeforeCreate: ({ editor: initializingEditor }) => {
+        const content = initializingEditor.options.content;
+        if (!articleElementsEnabled || !content || typeof content !== 'object' || Array.isArray(content)) return;
+        hydrateArticleElementJsonIdentities(content, initialArticleElementsRef.current);
+      },
       editorProps: {
         attributes: {
           'aria-label': props.ariaLabel,
@@ -704,7 +734,7 @@ function VideoDocumentWysiwygEditorSession(props: Props) {
       },
       onSelectionUpdate: ({ editor: current }) => {
         if (composition.phase.current !== 'idle' || current.view.composing) return;
-        notifyActiveHeading(selectedHeadingIndex(current));
+        notifyActiveHeading(activeArticleOutlineHeadingIndex(current));
         const location = articleElementsEnabled ? captureArticleEditorLocation(current) : null;
         if (location) articleCallbacksRef.current.onArticleLocationChange?.(location);
       },

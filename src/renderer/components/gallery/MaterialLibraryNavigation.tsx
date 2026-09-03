@@ -167,7 +167,10 @@ export function MaterialLibraryNavigation({
   }
 
   return (
-    <aside data-slot="material-library-navigation" className="flex w-64 shrink-0 flex-col border-r bg-muted/25">
+    <aside
+      data-slot="material-library-navigation"
+      className="flex w-64 shrink-0 flex-col border-r border-border-strong bg-surface-sunken/45"
+    >
       <div className="border-b p-2">
         <Segmented
           type="single"

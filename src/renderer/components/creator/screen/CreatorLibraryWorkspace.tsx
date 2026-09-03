@@ -45,7 +45,7 @@ export function CreatorLibraryWorkspace({ model }: Pick<Props, 'model'>) {
           ? 'hidden'
           : cn(
               projection.panes.compactPanel === 'library' ? 'block' : 'hidden',
-              'min-h-0 min-w-0 overflow-hidden min-[840px]:block [&>*]:size-full',
+              'min-h-0 min-w-0 overflow-hidden @min-[840px]/creator:block [&>*]:size-full',
             )
       }
     >

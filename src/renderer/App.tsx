@@ -32,7 +32,7 @@ import {
   findWorkspaceTab,
   type WorkspaceRuntimeGroup,
 } from '@/renderer/components/workspace/workspace-state';
-import { workspaceLocationKey } from '@/renderer/components/workspace/workspace-location';
+import { workspaceLocationCanSplit, workspaceLocationKey } from '@/renderer/components/workspace/workspace-location';
 import { LocalSpaceTransitionOverlay } from '@/renderer/components/spaces/LocalSpaceTransitionOverlay';
 import { Button } from '@/renderer/components/ui/button';
 import { ToastViewport, useToastQueue } from '@/renderer/components/ui/toast';
@@ -294,8 +294,9 @@ export function App() {
       if (!found) return;
       const next = typeof destination === 'function' ? destination(workspaceTabLocation(found.tab)) : destination;
       const nextKey = workspaceLocationKey(next);
-      const duplicate = found.group.tabs.some(
-        (tab) => tab.id !== tabId && workspaceLocationKey(workspaceTabLocation(tab)) === nextKey,
+      const candidateGroups = workspaceLocationCanSplit(next) ? [found.group] : state.groups;
+      const duplicate = candidateGroups.some((group) =>
+        group.tabs.some((tab) => tab.id !== tabId && workspaceLocationKey(workspaceTabLocation(tab)) === nextKey),
       );
       const apply = () => {
         articleLocationFlushersRef.current.get(tabId)?.();
@@ -414,6 +415,7 @@ export function App() {
       if (referenceAssetIds.length > 8) throw new Error(messages.assetFile.referenceLimit);
       const savedDraft = await window.desktopApi.creationDraftSave({
         id: draft.id,
+        expectedUpdatedAt: draft.updatedAt,
         targetAlbumId: draft.targetAlbumId,
         title: draft.title,
         text: draft.text,
@@ -596,12 +598,36 @@ export function App() {
     });
   }
 
+  function closeOtherTabs(group: WorkspaceRuntimeGroup, tabId: string) {
+    const closingTabIds = group.tabs.filter((tab) => tab.id !== tabId).map((tab) => tab.id);
+    requestTabExits(closingTabIds, () => {
+      closingTabIds.forEach((closingTabId) => articleLocationFlushersRef.current.get(closingTabId)?.());
+      workspace.closeOtherTabs(group.id, tabId);
+    });
+  }
+
   function resetLayout() {
     if (!workspace.state) return;
-    const visibleTabIds = workspace.state.groups.map((group) => group.activeTabId);
-    requestTabExits(visibleTabIds, () => {
-      visibleTabIds.forEach((tabId) => articleLocationFlushersRef.current.get(tabId)?.());
+    const tabIds = workspace.state.groups.flatMap((group) => group.tabs.map((tab) => tab.id));
+    requestTabExits(tabIds, () => {
+      tabIds.forEach((tabId) => articleLocationFlushersRef.current.get(tabId)?.());
       workspace.reset();
+    });
+  }
+
+  function mergeWorkspaceGroupsFrom(sourceGroup: WorkspaceRuntimeGroup) {
+    const otherGroup = workspace.state?.groups.find((group) => group.id !== sourceGroup.id);
+    const remountingTabIds = otherGroup?.tabs.map((tab) => tab.id) ?? [];
+    requestTabExits(remountingTabIds, () => {
+      remountingTabIds.forEach((tabId) => articleLocationFlushersRef.current.get(tabId)?.());
+      workspace.mergeGroups(sourceGroup.id);
+    });
+  }
+
+  function moveTabToOtherGroup(tabId: string) {
+    requestTabExit(tabId, () => {
+      articleLocationFlushersRef.current.get(tabId)?.();
+      workspace.moveTabToOtherGroup(tabId);
     });
   }
 
@@ -649,32 +675,22 @@ export function App() {
         onActivateGroup={() => workspace.activateGroup(group.id)}
         onActivateTab={(tabId) => activateTab(group, tabId)}
         onCloseTab={closeTab}
-        onCloseOtherTabs={(tabId) =>
-          tabId === group.activeTabId
-            ? workspace.closeOtherTabs(group.id, tabId)
-            : requestTabExit(group.activeTabId, () => workspace.closeOtherTabs(group.id, tabId))
-        }
+        onCloseOtherTabs={(tabId) => closeOtherTabs(group, tabId)}
         onReorderTab={(tabId, delta) => workspace.reorderTab(group.id, tabId, delta)}
         onNewTab={(sourceTabId, destination) => {
           articleLocationFlushersRef.current.get(sourceTabId)?.();
-          workspace.openTab(newWorkspaceTabLocation(destination), group.id, typeof destination === 'string');
+          workspace.openTab(newWorkspaceTabLocation(destination), group.id);
         }}
         onOpenBeside={(sourceTabId, nextView) => {
           articleLocationFlushersRef.current.get(sourceTabId)?.();
-          workspace.openBeside({ ...initialAppLocation, view: nextView });
+          workspace.openBeside(sourceTabId, { ...initialAppLocation, view: nextView });
         }}
-        split={(workspace.state?.groups.length ?? 0) > 1}
-        onMergeGroups={() => {
-          articleLocationFlushersRef.current.forEach((flush) => flush());
-          workspace.mergeGroups();
-        }}
-        onMoveTabToOtherGroup={(tabId) => {
-          articleLocationFlushersRef.current.get(tabId)?.();
-          workspace.moveTabToOtherGroup(tabId);
-        }}
+        splitAxis={workspace.state?.arrangement.kind === 'split' ? workspace.state.arrangement.axis : null}
+        onMergeGroups={() => mergeWorkspaceGroupsFrom(group)}
+        onMoveTabToOtherGroup={moveTabToOtherGroup}
         onSplit={(sourceTabId, axis) => {
           articleLocationFlushersRef.current.get(sourceTabId)?.();
-          workspace.split(axis);
+          workspace.split(sourceTabId, axis);
         }}
         onReset={resetLayout}
         onCommitLocation={commitTabLocation}
@@ -712,7 +728,7 @@ export function App() {
               agentTasks={data?.agentTasks ?? []}
               series={data?.series ?? []}
               view={view}
-              menuDisabled={Boolean(spaceTransition)}
+              menuDisabled={Boolean(spaceTransition) || !data}
               codexImagesVisible={codexImagesNavigation.visible}
               transitionShowcaseVisible={transitionShowcaseNavigation.visible}
               canGoBack={canGoBack}
@@ -738,7 +754,7 @@ export function App() {
               <AppSidebar
                 spaceName={spaceTransition?.space.name ?? data?.spaceName ?? messages.app.libraryFallback}
                 spaceCoverUrl={spaceTransition?.space.coverUrl ?? data?.spaceCoverUrl ?? null}
-                spaceTransitioning={Boolean(spaceTransition)}
+                spaceTransitioning={Boolean(spaceTransition) || !data}
                 libraryBusy={Boolean(data?.generationTasks.length || transcriptBackgroundTasks.length)}
                 codexImagesVisible={codexImagesNavigation.visible}
                 transitionShowcaseVisible={transitionShowcaseNavigation.visible}
@@ -788,6 +804,9 @@ export function App() {
             messages={notifications}
             label={messages.app.notifications}
             closeLabel={messages.common.close}
+            copyLabel={messages.app.generationErrors.copyDetails}
+            copiedLabel={messages.app.generationErrors.copied}
+            copyFailedLabel={messages.app.generationErrors.copyFailed}
             onDismiss={dismissNotification}
           />
         </main>

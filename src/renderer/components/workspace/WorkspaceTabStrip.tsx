@@ -22,7 +22,7 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/rend
 import { useI18n } from '@/renderer/i18n/useI18n';
 import { cn } from '@/renderer/lib/utils';
 import { activeLocation, type WorkspaceRuntimeGroup } from '@/renderer/components/workspace/workspace-state';
-import { workspaceTabTitle } from '@/renderer/components/workspace/workspace-location';
+import { workspaceLocationCanSplit, workspaceTabTitle } from '@/renderer/components/workspace/workspace-location';
 import { useWorkspaceTabActivationTransition } from '@/renderer/components/workspace/useWorkspaceTabActivationTransition';
 
 interface Props {
@@ -35,7 +35,7 @@ interface Props {
   onReorder(tabId: string, delta: -1 | 1): void;
   onNewTab(view: AppView): void;
   onOpenBeside(view: AppView): void;
-  split: boolean;
+  splitAxis: 'columns' | 'rows' | null;
   onMerge(): void;
   onMoveToOtherGroup(tabId: string): void;
   onSplit(axis: 'columns' | 'rows'): void;
@@ -52,7 +52,7 @@ export function WorkspaceTabStrip({
   onReorder,
   onNewTab,
   onOpenBeside,
-  split,
+  splitAxis,
   onMerge,
   onMoveToOtherGroup,
   onSplit,
@@ -78,7 +78,14 @@ export function WorkspaceTabStrip({
     contentManagement: navigation.settings,
     settings: navigation.settings,
   };
+  const titleLabels = {
+    views: viewLabels,
+    newCreation: messages.creator.results.newCreation,
+    creationKinds: messages.contentManagement.subtypes,
+  };
   const availableViews = ['creator', 'dictionary', 'gallery', 'companion', 'packs', 'aiCenter'] as const;
+  const activeTab = group.tabs.find((tab) => tab.id === group.activeTabId) ?? group.tabs[0];
+  const canSplit = workspaceLocationCanSplit(activeLocation(activeTab));
 
   function closeTab(tabId: string) {
     clearPendingActivation(tabId);
@@ -96,7 +103,7 @@ export function WorkspaceTabStrip({
           {group.tabs.map((tab, index) => {
             const current = tab.id === group.activeTabId;
             const pending = tab.id === pendingTabId && !current;
-            const title = workspaceTabTitle(activeLocation(tab), data, viewLabels);
+            const title = workspaceTabTitle(activeLocation(tab), data, titleLabels);
             return (
               <ContextMenu key={tab.id}>
                 <ContextMenuTrigger asChild>
@@ -159,7 +166,7 @@ export function WorkspaceTabStrip({
                     <ArrowRightIcon />
                     {labels.moveRight}
                   </ContextMenuItem>
-                  {split && (
+                  {splitAxis && (
                     <>
                       <ContextMenuSeparator />
                       <ContextMenuItem onSelect={() => onMoveToOtherGroup(tab.id)}>
@@ -226,9 +233,19 @@ export function WorkspaceTabStrip({
                   ))}
                 </DropdownMenuSubContent>
               </DropdownMenuSub>
-              <DropdownMenuItem onSelect={() => onSplit('columns')}>{labels.splitColumns}</DropdownMenuItem>
-              <DropdownMenuItem onSelect={() => onSplit('rows')}>{labels.splitRows}</DropdownMenuItem>
-              {split && <DropdownMenuItem onSelect={onMerge}>{labels.mergeGroups}</DropdownMenuItem>}
+              <DropdownMenuItem
+                disabled={splitAxis === 'columns' || (!splitAxis && !canSplit)}
+                onSelect={() => onSplit('columns')}
+              >
+                {splitAxis ? labels.arrangeColumns : labels.splitColumns}
+              </DropdownMenuItem>
+              <DropdownMenuItem
+                disabled={splitAxis === 'rows' || (!splitAxis && !canSplit)}
+                onSelect={() => onSplit('rows')}
+              >
+                {splitAxis ? labels.arrangeRows : labels.splitRows}
+              </DropdownMenuItem>
+              {splitAxis && <DropdownMenuItem onSelect={onMerge}>{labels.mergeGroups}</DropdownMenuItem>}
               <DropdownMenuItem onSelect={onReset}>{labels.resetLayout}</DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>

@@ -47,7 +47,8 @@ export function registerAssetIpc(
         return source;
       });
       const files = [...new Set(sources.map((source) => source.absolutePath))];
-      event.sender.startDrag({ file: files[0], files, icon: createAssetFileDragIcon(files[0]) });
+      const icon = createAssetFileDragIcon(files[0]);
+      event.sender.startDrag(files.length === 1 ? { file: files[0], icon } : { file: files[0], files, icon });
       if (!event.sender.isDestroyed()) {
         event.reply(
           assetFilesDragFinishedChannel,

@@ -18,10 +18,14 @@ interface OutputImportMessages {
 
 interface OutputImportOptions {
   createContext(source: RendererImageImportSource, sourceUrl?: string): CreatorImageImportContext;
+  prepareContext?(context: CreatorImageImportContext): Promise<{
+    context: CreatorImageImportContext;
+    defaultPromptVersionId: string | null;
+  }>;
   defaultPromptVersionId: string | null;
   applyImportedOutputs(result: Pick<CreatorOutputsImportResult, 'seriesId' | 'assetIds'>): void;
   refresh(): Promise<void>;
-  notify(message: string): void;
+  notify(message: string, options?: { copyText: string }): void;
   messages: OutputImportMessages;
 }
 
@@ -39,6 +43,7 @@ function releasePreviewUrls(rows: readonly RendererImageImportPreviewRow[] | nul
 
 export function useCreatorOutputImport({
   createContext,
+  prepareContext,
   defaultPromptVersionId,
   applyImportedOutputs,
   refresh,
@@ -49,6 +54,13 @@ export function useCreatorOutputImport({
   const [committing, setCommitting] = useState(false);
   const [preview, setPreview] = useState<OutputImportPreview | null>(null);
   const busy = staging || committing;
+  const notifyImportError = useCallback(
+    (reason: unknown) => {
+      const message = `${messages.importFailed}: ${reason instanceof Error ? reason.message : String(reason)}`;
+      notify(message, { copyText: message });
+    },
+    [messages.importFailed, notify],
+  );
 
   const appendRows = useCallback(
     (
@@ -102,12 +114,12 @@ export function useCreatorOutputImport({
       } catch (reason) {
         for (const url of previewUrls.values()) URL.revokeObjectURL(url);
         if (!preview) setPreview(null);
-        notify(`${messages.importFailed}: ${reason instanceof Error ? reason.message : String(reason)}`);
+        notifyImportError(reason);
       } finally {
         setStaging(false);
       }
     },
-    [appendRows, busy, createContext, defaultPromptVersionId, messages, notify, preview],
+    [appendRows, busy, createContext, defaultPromptVersionId, messages, notify, notifyImportError, preview],
   );
 
   const previewFiles = useCallback(
@@ -119,10 +131,10 @@ export function useCreatorOutputImport({
         const previewUrls = new Map(items.map((item, index) => [item.id, URL.createObjectURL(files[index])] as const));
         await previewItems(items, source, sourceUrl, previewUrls);
       } catch (reason) {
-        notify(`${messages.importFailed}: ${reason instanceof Error ? reason.message : String(reason)}`);
+        notifyImportError(reason);
       }
     },
-    [busy, messages.importFailed, notify, previewItems],
+    [busy, notifyImportError, previewItems],
   );
 
   const chooseFiles = useCallback(async () => {
@@ -140,11 +152,11 @@ export function useCreatorOutputImport({
       }
       appendRows(context, rows);
     } catch (reason) {
-      notify(`${messages.importFailed}: ${reason instanceof Error ? reason.message : String(reason)}`);
+      notifyImportError(reason);
     } finally {
       setStaging(false);
     }
-  }, [appendRows, busy, createContext, messages, notify, preview]);
+  }, [appendRows, busy, createContext, messages, notify, notifyImportError, preview]);
 
   const commit = useCallback(async () => {
     if (!preview?.rows || busy) return;
@@ -154,16 +166,34 @@ export function useCreatorOutputImport({
     setCommitting(true);
     let result: CreatorOutputsImportResult;
     try {
+      const prepared = prepareContext
+        ? await prepareContext(preview.context)
+        : { context: preview.context, defaultPromptVersionId: preview.defaultVersionId };
+      setPreview((current) =>
+        current === preview
+          ? {
+              ...current,
+              context: prepared.context,
+              defaultVersionId: prepared.defaultPromptVersionId,
+              rows: current.rows
+                ? current.rows.map((row) => ({
+                    ...row,
+                    promptVersionId: row.promptVersionId ?? prepared.defaultPromptVersionId,
+                  }))
+                : null,
+            }
+          : current,
+      );
       result = await window.desktopApi.creatorOutputsImport({
-        context: preview.context,
+        context: prepared.context,
         items: readyRows.map((row) => ({
           stageId: row.item.stageId!,
-          promptVersionId: row.promptVersionId,
+          promptVersionId: row.promptVersionId ?? prepared.defaultPromptVersionId,
           displayName: row.displayName.trim(),
         })),
       });
     } catch (reason) {
-      notify(`${messages.importFailed}: ${reason instanceof Error ? reason.message : String(reason)}`);
+      notifyImportError(reason);
       setCommitting(false);
       return;
     }
@@ -174,14 +204,14 @@ export function useCreatorOutputImport({
     try {
       await refresh();
     } catch (reason) {
-      notify(`${messages.importFailed}: ${reason instanceof Error ? reason.message : String(reason)}`);
+      notifyImportError(reason);
     }
     const duplicates = duplicateCount + result.duplicateCount;
     notify(
       `${messages.imported} · ${result.assetIds.length}${duplicates ? ` · ${messages.duplicates} ${duplicates}` : ''}`,
     );
     setCommitting(false);
-  }, [applyImportedOutputs, busy, messages, notify, preview, refresh]);
+  }, [applyImportedOutputs, busy, messages, notify, notifyImportError, prepareContext, preview, refresh]);
 
   const dismiss = useCallback(() => {
     if (busy) return;

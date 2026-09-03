@@ -98,6 +98,8 @@ interface Props {
 const pageSize = 24;
 const emptyPage: GalleryPageDto = { items: [], total: 0, nextCursor: null };
 const galleryCacheLimit = 12;
+const galleryCacheItemLimit = pageSize * 12;
+const galleryCachePerQueryItemLimit = pageSize * 4;
 
 function sourceForCollection(collection: GalleryCollection): MaterialSourceFilter {
   if (collection.kind === 'creation') return 'CREATION';
@@ -126,8 +128,14 @@ interface GallerySnapshot {
 
 function rememberGallerySnapshot(cache: Map<string, GallerySnapshot>, key: string, snapshot: GallerySnapshot) {
   cache.delete(key);
+  if (snapshot.items.length + snapshot.favoriteTexts.length > galleryCachePerQueryItemLimit) return;
   cache.set(key, snapshot);
-  while (cache.size > galleryCacheLimit) {
+  const cachedItemCount = () =>
+    [...cache.values()].reduce(
+      (total, candidate) => total + candidate.items.length + candidate.favoriteTexts.length,
+      0,
+    );
+  while (cache.size > galleryCacheLimit || cachedItemCount() > galleryCacheItemLimit) {
     const oldestKey = cache.keys().next().value;
     if (oldestKey === undefined) break;
     cache.delete(oldestKey);

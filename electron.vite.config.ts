@@ -1,3 +1,4 @@
+import { builtinModules } from 'node:module';
 import path from 'node:path';
 import tailwindcss from '@tailwindcss/vite';
 import react from '@vitejs/plugin-react';
@@ -8,9 +9,44 @@ const sourceAlias = { '@': path.resolve(__dirname, 'src') };
 const rendererDevPort = Number.parseInt(process.env.AIY_RENDERER_DEV_PORT ?? '5173', 10);
 const rendererApplicationChunkBudgetBytes = 500_000;
 const rendererVendorChunkWarningLimitKilobytes = 700;
+const bundledMainDependencies = ['docx', 'mediabunny', 'remark-gfm', 'remark-parse', 'ulid', 'unified', 'zod'];
+const allowedMainRuntimeExternals = new Set([
+  ...builtinModules,
+  ...builtinModules.map((id) => `node:${id}`),
+  'better-sqlite3',
+  'electron',
+]);
+
+function enforceMainRuntimeDependencyBoundary(): Plugin {
+  return {
+    name: 'aiy-main-runtime-dependency-boundary',
+    generateBundle(_options, bundle) {
+      const unexpectedExternals = new Set<string>();
+      for (const output of Object.values(bundle)) {
+        if (output.type !== 'chunk') continue;
+        for (const dependencyId of [...output.imports, ...output.dynamicImports]) {
+          if (
+            !(dependencyId in bundle) &&
+            !dependencyId.startsWith('.') &&
+            !allowedMainRuntimeExternals.has(dependencyId)
+          ) {
+            unexpectedExternals.add(dependencyId);
+          }
+        }
+      }
+      if (unexpectedExternals.size) {
+        this.error(
+          `Main build contains undeclared runtime dependencies: ${[...unexpectedExternals].sort().join(', ')}. ` +
+            'Bundle pure JavaScript dependencies or explicitly add the required native runtime files to electron-builder.yml.',
+        );
+      }
+    },
+  };
+}
 
 function rendererManualChunk(id: string) {
   const normalizedId = id.replaceAll('\\', '/');
+  if (normalizedId.includes('/src/renderer/components/workspace/')) return 'workspace-runtime';
   if (
     normalizedId.includes('/node_modules/react/') ||
     normalizedId.includes('/node_modules/react-dom/') ||
@@ -125,7 +161,7 @@ export default defineConfig(({ command }) => {
   return {
     main: {
       resolve: { alias: sourceAlias },
-      plugins: [externalizeDepsPlugin()],
+      plugins: [externalizeDepsPlugin({ exclude: bundledMainDependencies }), enforceMainRuntimeDependencyBoundary()],
       build: {
         ...productionOutput,
         rollupOptions: {

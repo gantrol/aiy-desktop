@@ -300,6 +300,10 @@ export function MinimalCreationStarter({
           {planning && (
             <CreationOutcomePlanner
               locale={locale}
+              routes={routes}
+              generationTargets={generationTargets}
+              generationCount={generationCount}
+              readiness={readiness}
               stashReady={stashReady}
               stashing={stashing}
               stashed={stashed}
@@ -308,6 +312,9 @@ export function MinimalCreationStarter({
               onStashInspiration={onStashInspiration}
               onStartCreation={onStartCreation}
               onChooseVideoDocument={onChooseVideoDocument}
+              onGenerationTargetsChange={onGenerationTargetsChange}
+              onConfigureExtension={onConfigureExtension}
+              onGenerate={onGenerate}
             />
           )}
           {!fullWindow && experiments}

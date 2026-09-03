@@ -25,18 +25,35 @@ export function CodexUsageTaskControls({
   return (
     <>
       {running ? (
-        <Button type="button" variant="outline" disabled={action !== null} onClick={onPause}>
+        <Button
+          type="button"
+          variant="outline"
+          className="w-full @lg/codex-usage:w-auto"
+          disabled={action !== null}
+          onClick={onPause}
+        >
           {action === 'PAUSE' ? <LoaderCircleIcon className="size-4 animate-spin" /> : <PauseIcon className="size-4" />}
           {labels.pause}
         </Button>
       ) : resumable ? (
-        <Button type="button" variant="outline" disabled={action !== null} onClick={onResume}>
+        <Button
+          type="button"
+          variant="outline"
+          className="w-full @lg/codex-usage:w-auto"
+          disabled={action !== null}
+          onClick={onResume}
+        >
           {action === 'RESUME' ? <LoaderCircleIcon className="size-4 animate-spin" /> : <PlayIcon className="size-4" />}
           {labels.resume}
         </Button>
       ) : null}
       {!running && (
-        <Button type="button" disabled={!authorized || action !== null} onClick={onScan}>
+        <Button
+          type="button"
+          className="w-full @lg/codex-usage:w-auto"
+          disabled={!authorized || action !== null}
+          onClick={onScan}
+        >
           {action === 'SCAN' ? (
             <LoaderCircleIcon className="size-4 animate-spin" />
           ) : (

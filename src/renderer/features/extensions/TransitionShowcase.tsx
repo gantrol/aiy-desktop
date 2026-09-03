@@ -325,7 +325,7 @@ function TransitionShowcaseStage({
           viewport === 'desktop' && 'h-[32rem] w-full',
           viewport === 'tablet' && 'h-[32rem] w-[min(42rem,100%)]',
           viewport === 'mobile' && 'h-[36rem] w-[22rem] max-w-full',
-          fullscreen && 'fixed inset-0 z-[2147483647] m-0 h-dvh w-dvw max-w-none rounded-none border-0',
+          fullscreen && 'fixed inset-0 z-fullscreen m-0 h-dvh w-dvw max-w-none rounded-none border-0',
         )}
       >
         <Button
@@ -333,7 +333,7 @@ function TransitionShowcaseStage({
           type="button"
           variant="outline"
           size="icon-sm"
-          className="absolute right-3 top-3 z-[60] bg-overlay/95 shadow-overlay backdrop-blur-sm"
+          className="absolute right-3 top-3 z-chrome bg-overlay/95 shadow-overlay backdrop-blur-sm"
           aria-label={fullscreen ? l.exitFullscreen : l.enterFullscreen}
           aria-pressed={fullscreen}
           title={fullscreen ? l.exitFullscreen : l.enterFullscreen}

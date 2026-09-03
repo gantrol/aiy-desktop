@@ -2,9 +2,9 @@
   "manifestVersion": 1,
   "kind": "CAPABILITY",
   "id": "com.aiy.codex-usage-investigator",
-  "version": "0.1.3",
+  "version": "0.1.5",
   "displayName": "Did Codex Work Hard Today?",
-  "description": "Analyze measured Fast versus Standard turn speed, deduplicated Token history, adaptive complete-session length, per-turn Token/API cost, and weekly quota observations.",
+  "description": "Review today-first Codex activity, report history, measured Fast versus Standard speed, complete-session cost, and weekly quota observations.",
   "engines": {
     "aiy": "^0.3.0"
   },
@@ -23,11 +23,11 @@
     "locales": {
       "en": {
         "displayName": "Did Codex Work Hard Today?",
-        "description": "Analyze measured Fast versus Standard turn speed, deduplicated Token history, adaptive complete-session length, per-turn Token/API cost, and weekly quota observations."
+        "description": "Review today-first Codex activity, report history, measured Fast versus Standard speed, complete-session cost, and weekly quota observations."
       },
       "zh": {
-        "displayName": "今天Codex努力了吗",
-        "description": "分析 Fast 与 Standard 实测轮次速度、跨会话去重 Token 历史、动态完整会话长度、轮均 Token/API 成本及连续周额度观测段。"
+        "displayName": "Codex今天努力了吗？",
+        "description": "以今日总览和报告历史整合 Codex 活动，并分析 Fast 与 Standard 实测速度、完整会话成本及连续周额度观测段。"
       }
     }
   }

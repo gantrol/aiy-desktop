@@ -32,7 +32,8 @@ export function useArticleEditorOutlineNavigation({ cursorRequest, followCursor,
     const update = () => {
       window.cancelAnimationFrame(frame);
       frame = window.requestAnimationFrame(() => {
-        const threshold = scrollRoot.getBoundingClientRect().top + 56;
+        const rootRect = scrollRoot.getBoundingClientRect();
+        const threshold = rootRect.top + rootRect.height / 2;
         const elements = editorHeadingElements(scrollRoot);
         let active = items[0]?.id ?? null;
         for (const [index, item] of items.entries()) {

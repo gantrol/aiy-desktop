@@ -1,9 +1,8 @@
 import { ArrowLeftIcon, ArrowRightIcon, CopyIcon, LoaderCircleIcon, Trash2Icon } from 'lucide-react';
-import type { DragEvent as ReactDragEvent } from 'react';
 import type { AssetDto, AssetFileRevealContext, Locale } from '@/shared/contracts';
+import { readSingleImageAssetDrag } from '@/renderer/components/albums/albumDrag';
 import { AssetFileContextMenu } from '@/renderer/components/media/AssetFileContextMenu';
 import { MediaActionMenu } from '@/renderer/components/media/MediaActionMenu';
-import { MediaOrderHandle } from '@/renderer/components/media/MediaOrderHandle';
 import { mediaThumbnailUrl } from '@/renderer/components/media/mediaThumbnailUrl';
 import type { ActionMenuAction } from '@/renderer/components/ui/action-menu';
 import { cn } from '@/renderer/lib/utils';
@@ -26,12 +25,9 @@ interface Props {
   onRemove(assetId: string): void;
 }
 
-const creatorReferenceMediaDragType = 'application/x-aiy-creator-reference-media';
-
-function startReferenceMediaDrag(event: ReactDragEvent<HTMLElement>, assetId: string) {
-  event.stopPropagation();
-  event.dataTransfer.effectAllowed = 'move';
-  event.dataTransfer.setData(creatorReferenceMediaDragType, assetId);
+function referenceDragSourceId(dataTransfer: DataTransfer, referenceAssets: readonly AssetDto[]) {
+  const sourceId = readSingleImageAssetDrag(dataTransfer);
+  return sourceId && referenceAssets.some((asset) => asset.id === sourceId) ? sourceId : null;
 }
 
 function move<T>(items: readonly T[], index: number, offset: -1 | 1) {
@@ -111,7 +107,7 @@ export function CreatorReferenceImageCard({
         dragTargetId === asset.id && 'ring-2 ring-selected-border',
       )}
       onDragOver={(event) => {
-        if (!event.dataTransfer.types.includes(creatorReferenceMediaDragType)) return;
+        if (!referenceDragSourceId(event.dataTransfer, referenceAssets)) return;
         event.preventDefault();
         event.stopPropagation();
         event.dataTransfer.dropEffect = 'move';
@@ -121,7 +117,7 @@ export function CreatorReferenceImageCard({
         if (!event.currentTarget.contains(event.relatedTarget as Node | null)) onDragTargetIdChange(null);
       }}
       onDrop={(event) => {
-        const sourceId = event.dataTransfer.getData(creatorReferenceMediaDragType);
+        const sourceId = referenceDragSourceId(event.dataTransfer, referenceAssets);
         if (!sourceId) return;
         event.preventDefault();
         event.stopPropagation();
@@ -135,24 +131,17 @@ export function CreatorReferenceImageCard({
         );
       }}
     >
-      <AssetFileContextMenu
-        assetId={asset.id}
-        notify={notify}
-        revealContext={revealContext}
-        actions={contextActions}
-        draggable={false}
-      >
+      <AssetFileContextMenu assetId={asset.id} notify={notify} revealContext={revealContext} actions={contextActions}>
         <button
           type="button"
           draggable
           className="relative size-full cursor-grab overflow-hidden outline-none active:cursor-grabbing focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
-          title={locale === 'zh' ? '拖动调整顺序，单击放大' : 'Drag to reorder, click to enlarge'}
+          title={locale === 'zh' ? '拖动调整顺序或导出，单击放大' : 'Drag to reorder or export, click to enlarge'}
           aria-label={
             locale === 'zh'
-              ? `第 ${index + 1} 张图片：拖动调整顺序，单击放大`
-              : `Image ${index + 1}: drag to reorder, click to enlarge`
+              ? `第 ${index + 1} 张图片：拖动调整顺序或导出，单击放大`
+              : `Image ${index + 1}: drag to reorder or export, click to enlarge`
           }
-          onDragStart={(event) => startReferenceMediaDrag(event, asset.id)}
           onDragEnd={() => onDragTargetIdChange(null)}
           onClick={() => onPreview(asset.id)}
         >
@@ -168,15 +157,6 @@ export function CreatorReferenceImageCard({
           />
         </button>
       </AssetFileContextMenu>
-      <MediaOrderHandle
-        draggable
-        className="absolute top-1.5 left-1.5 z-20 tabular-nums"
-        label={locale === 'zh' ? `拖动第 ${index + 1} 张图片调整顺序` : `Drag image ${index + 1} to reorder`}
-        onDragStart={(event) => startReferenceMediaDrag(event, asset.id)}
-        onDragEnd={() => onDragTargetIdChange(null)}
-      >
-        {index + 1}
-      </MediaOrderHandle>
       <MediaActionMenu
         actions={actions}
         label={moreActionsLabel}

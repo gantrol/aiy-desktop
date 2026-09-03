@@ -128,6 +128,10 @@ function indexIsInRange(index: number, range: VirtualRange) {
   return index >= range.start && index <= range.end;
 }
 
+function sameRange(left: VirtualRange, right: VirtualRange) {
+  return left.start === right.start && left.end === right.end;
+}
+
 export function encodeVirtualGridDomKey(value: string) {
   const encoded = encodeURIComponent(value);
   return `${encoded.length}-${encoded}`;
@@ -167,6 +171,8 @@ function VirtualGridInner<Row, Column>(
 ) {
   const gridId = React.useId();
   const containerRef = React.useRef<HTMLDivElement>(null);
+  const viewportFrameRef = React.useRef<number | null>(null);
+  const pendingViewportRef = React.useRef({ width: 0, height: 0, scrollLeft: 0, scrollTop: 0 });
   const [internalActiveCell, setInternalActiveCell] = React.useState<VirtualGridCell | null>(defaultActiveCell);
   const [focusedContentCell, setFocusedContentCell] = React.useState<VirtualGridCell | null>(null);
   const [focusedRowHeaderKey, setFocusedRowHeaderKey] = React.useState<string | null>(null);
@@ -198,16 +204,55 @@ function VirtualGridInner<Row, Column>(
     [controlledActiveCell, onActiveCellChange],
   );
 
+  const commitViewport = React.useCallback(() => {
+    viewportFrameRef.current = null;
+    const next = pendingViewportRef.current;
+    setViewport((current) => {
+      const currentRows = getVirtualRange(
+        rows.length,
+        rowHeight,
+        current.scrollTop,
+        Math.max(0, current.height - headerHeight),
+        overscan,
+      );
+      const nextRows = getVirtualRange(
+        rows.length,
+        rowHeight,
+        next.scrollTop,
+        Math.max(0, next.height - headerHeight),
+        overscan,
+      );
+      const currentColumns = getVirtualRange(
+        columns.length,
+        columnWidth,
+        current.scrollLeft,
+        Math.max(0, current.width - rowHeaderWidth),
+        overscan,
+      );
+      const nextColumns = getVirtualRange(
+        columns.length,
+        columnWidth,
+        next.scrollLeft,
+        Math.max(0, next.width - rowHeaderWidth),
+        overscan,
+      );
+      return sameRange(currentRows, nextRows) && sameRange(currentColumns, nextColumns) ? current : next;
+    });
+  }, [columnWidth, columns.length, headerHeight, overscan, rowHeaderWidth, rowHeight, rows.length]);
+
   const measure = React.useCallback(() => {
     const node = containerRef.current;
     if (!node) return;
-    setViewport({
+    pendingViewportRef.current = {
       width: node.clientWidth,
       height: node.clientHeight,
       scrollLeft: node.scrollLeft,
       scrollTop: node.scrollTop,
-    });
-  }, []);
+    };
+    if (viewportFrameRef.current === null) {
+      viewportFrameRef.current = globalThis.requestAnimationFrame(commitViewport);
+    }
+  }, [commitViewport]);
 
   React.useEffect(() => {
     const node = containerRef.current;
@@ -221,6 +266,13 @@ function VirtualGridInner<Row, Column>(
     observer.observe(node);
     return () => observer.disconnect();
   }, [measure]);
+
+  React.useEffect(
+    () => () => {
+      if (viewportFrameRef.current !== null) globalThis.cancelAnimationFrame(viewportFrameRef.current);
+    },
+    [],
+  );
 
   const cellDomId = React.useCallback(
     (rowIndex: number, columnIndex: number) =>
@@ -409,12 +461,15 @@ function VirtualGridInner<Row, Column>(
       style={style}
       onScroll={(event) => {
         const node = event.currentTarget;
-        setViewport({
+        pendingViewportRef.current = {
           width: node.clientWidth,
           height: node.clientHeight,
           scrollLeft: node.scrollLeft,
           scrollTop: node.scrollTop,
-        });
+        };
+        if (viewportFrameRef.current === null) {
+          viewportFrameRef.current = globalThis.requestAnimationFrame(commitViewport);
+        }
         onScroll?.(event);
       }}
       onKeyDown={handleGridKeyDown}

@@ -3,6 +3,7 @@ import type {
   AssistantRunDto,
   BootstrapDto,
   CreationDraftDto,
+  CreatorImageImportContext,
   GenerationTargetInput,
   Locale,
   PromptSeriesDto,
@@ -18,6 +19,10 @@ import type { useCreatorSelectionSession } from '@/renderer/components/creator/s
 import type { useCreatorPromptSession } from '@/renderer/components/creator/screen/useCreatorPromptSession';
 import { useCreatorDictionaryMaterials } from '@/renderer/components/creator/workflows/useCreatorDictionaryMaterials';
 import { useCreatorGenerationConfiguration } from '@/renderer/components/creator/workflows/useCreatorGenerationConfiguration';
+import {
+  creatorOutputImportTarget,
+  useDerivedVisualOutputImportContext,
+} from '@/renderer/components/creator/workflows/useDerivedVisualOutputImportContext';
 import { useCreatorInputHydration } from '@/renderer/components/creator/workflows/useCreatorInputHydration';
 import {
   creatorReferenceImportContext,
@@ -28,6 +33,7 @@ import {
   creatorInputMatchesVersion,
   resolveCreatorPrompt,
 } from '@/renderer/components/creator/utils';
+import { useStableCallback } from '@/renderer/lib/useStableCallback';
 
 type SelectionSession = ReturnType<typeof useCreatorSelectionSession>;
 type PromptSession = ReturnType<typeof useCreatorPromptSession>;
@@ -49,6 +55,7 @@ interface Options {
     recipeSaved: string;
   };
   notify(message: string): void;
+  onCreationCommitted(target: { keepEditorOpen: boolean; seriesId: string; versionId: string }): void;
   prompt: PromptSession;
   refresh(): Promise<void>;
   selection: SelectionSession;
@@ -94,6 +101,7 @@ export function useCreatorGenerationInputSession({
   location,
   messages,
   notify,
+  onCreationCommitted,
   prompt,
   refresh,
   selection,
@@ -142,9 +150,15 @@ export function useCreatorGenerationInputSession({
     setTermPromptLocale: promptDocument.setTermPromptLocale,
   });
   const creatorImportVersionId = matchingImportVersionId(creationMode, hydration.version, promptDocument);
+  const importTarget = creatorOutputImportTarget(
+    data,
+    creationMode,
+    creationDraftSession.draftId,
+    seriesId,
+    creatorImportVersionId,
+  );
   const creatorImportContextBase = {
-    seriesId: creationMode === 'existing' ? seriesId : null,
-    versionId: creatorImportVersionId,
+    ...importTarget,
     title: creationMode === 'new' ? newTitle.trim() : (series?.title ?? ''),
     titleLocale: locale,
   };
@@ -161,9 +175,38 @@ export function useCreatorGenerationInputSession({
         : `draft:${creationDraftSession.draftId ?? 'new'}:session:${inputSessionRevision}`,
     updateReferenceAssets: promptDocument.updateReferenceAssets,
   });
+
+  const prepareDerivedVisualOutputImportContext = useDerivedVisualOutputImportContext({
+    creationDraftSession,
+    creationMode,
+    data,
+    locale,
+    newTitle,
+    promptDocument,
+    promptProfileId: configuration.promptProfileId,
+  });
+  const prepareOutputImportContext = useStableCallback(
+    async (context: CreatorImageImportContext, requirePromptVersion = false) => {
+      const prepared = await prepareDerivedVisualOutputImportContext(context, requirePromptVersion);
+      const committed = prepared.committedDraft;
+      if (committed && creationMode === 'new' && creationDraftSession.getDraftId() === committed.creationDraftId) {
+        creationDraftSession.replaceDraftSession(null);
+        selection.setCreationMode('existing');
+        selection.setTargetAlbumId(null);
+        selection.contentSelection.setSelectedInspirationStashId(null);
+        selection.contentSelection.setSelectedIdeaCreationId(null);
+        selection.setSeriesId(committed.seriesId);
+        hydration.setVersionId(committed.versionId);
+        onCreationCommitted(committed);
+        void refresh().catch((reason) => notify(reason instanceof Error ? reason.message : String(reason)));
+      }
+      return prepared;
+    },
+  );
   const outputImport = useCreatorOutputImport({
     createContext: creatorImportContext,
-    defaultPromptVersionId: creationMode === 'existing' ? (hydration.version?.id ?? null) : null,
+    prepareContext: prepareOutputImportContext,
+    defaultPromptVersionId: creatorImportContextBase.versionId,
     applyImportedOutputs,
     refresh,
     notify,
@@ -174,6 +217,12 @@ export function useCreatorGenerationInputSession({
       tooManyImages: messages.importDraftLimit,
     },
   });
+  async function prepareBrowserCompanionOutputTarget() {
+    const prepared = await prepareOutputImportContext(creatorImportContext('UPLOAD'), true);
+    const { seriesId, versionId } = prepared.context;
+    if (!seriesId || !versionId) return null;
+    return { seriesId, promptVersionId: versionId };
+  }
   const quality = generationTargets[0]?.quality ?? 'low';
   const repeatCount = generationTargets[0]?.count ?? 1;
   const promptResolution = useMemo(
@@ -245,6 +294,7 @@ export function useCreatorGenerationInputSession({
     generationTargets,
     hydration,
     outputImport,
+    prepareBrowserCompanionOutputTarget,
     promptDocument,
     promptResolution,
     quality,

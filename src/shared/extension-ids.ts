@@ -1,6 +1,8 @@
 import { EXTENSION_PERMISSION } from '@/shared/extension-permissions';
 
 export const CODEX_APP_SERVER_EXTENSION_ID = 'com.aiy.codex-app-server';
+/** Stable public identity for the unified Codex capability. */
+export const CODEX_EXTENSION_ID = CODEX_APP_SERVER_EXTENSION_ID;
 export const CODEX_PROVIDER_ID = 'codex';
 export const CODEX_ASSISTANT_DEFAULT_MODEL_KEY = 'gpt-5.6-luna';
 export const CODEX_ASSISTANT_DEFAULT_REASONING_EFFORT = 'low' as const;
@@ -18,7 +20,15 @@ export const CODEX_HISTORY_SEARCH_EXTENSION_ID = 'com.aiy.codex-history-search';
 export const CODEX_VISUALIZATION_DISCOVERY_EXTENSION_ID = 'com.aiy.codex-visualization-discovery';
 export const CODEX_VISUALIZATION_THREAD_CONTENT_PERMISSION = EXTENSION_PERMISSION.filesystemReadCodexThreadContent;
 export const CODEX_USAGE_INVESTIGATOR_EXTENSION_ID = 'com.aiy.codex-usage-investigator';
+/** Previous split-package identities retained for data and installation migration only. */
+export const LEGACY_CODEX_EXTENSION_IDS = [
+  CODEX_HISTORY_SEARCH_EXTENSION_ID,
+  CODEX_IMAGE_DISCOVERY_EXTENSION_ID,
+  CODEX_USAGE_INVESTIGATOR_EXTENSION_ID,
+  CODEX_VISUALIZATION_DISCOVERY_EXTENSION_ID,
+] as const;
 export const WEIBO_CHANNEL_EXTENSION_ID = 'com.aiy.channel.weibo';
+export const NATURAL_WATERMARK_EXTENSION_ID = 'com.aiy.natural-watermark';
 export const ANTIGRAVITY_CLI_EXTENSION_ID = 'com.aiy.antigravity-cli';
 export const ANTIGRAVITY_CLI_PROVIDER_KEY = 'antigravity-cli';
 export const ANTIGRAVITY_CLI_CONNECTION_ID = `${ANTIGRAVITY_CLI_EXTENSION_ID}:cli`;

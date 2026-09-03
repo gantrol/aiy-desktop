@@ -24,8 +24,10 @@ import type { CreationItemRepository } from '@/main/database/creations/creation-
 const allowedCanvasPresets = {
   ARTICLE_HEADER: new Set(['wechat_article_cover_2_35_1']),
   ARTICLE_INLINE: new Set(['landscape_4_3', 'square_1_1', 'xiaohongshu_portrait_3_4', 'video_landscape_16_9']),
-  SOCIAL_POST_COVER: new Set(['xiaohongshu_portrait_3_4', 'social_portrait_4_5', 'square_1_1']),
+  SOCIAL_POST_COVER: new Set(['xiaohongshu_portrait_3_4']),
 } as const;
+
+const maxDraftReferenceAssets = 8;
 
 function imageExtension(mimeType: string) {
   if (mimeType === 'image/png') return 'png';
@@ -42,6 +44,16 @@ function articleContent(article: ArticleDto): ArticleContentInput {
 function socialPostContent(post: SocialPostDto): SocialPostContentInput {
   const { mediaAssets: _mediaAssets, ...content } = post.content;
   return { ...content, mediaAssetIds: [...content.mediaAssetIds] };
+}
+
+function socialPostReferenceAssetIds(post: SocialPostDto) {
+  const orderedIds = [post.content.coverAssetId, ...post.content.mediaAssetIds];
+  const seen = new Set<string>();
+  return orderedIds.flatMap((id) => {
+    if (!id || seen.has(id) || seen.size >= maxDraftReferenceAssets) return [];
+    seen.add(id);
+    return [id];
+  });
 }
 
 function derivedPath(visualId: string, mimeType: string) {
@@ -181,13 +193,14 @@ export class DerivedVisualRepository {
       target.article?.content.title ||
       target.socialPost?.content.title ||
       (input.locale === 'zh' ? '未命名' : 'Untitled');
+    const referenceAssetIds = target.socialPost ? socialPostReferenceAssetIds(target.socialPost) : [];
     return this.intake.saveDraft({
       id,
       targetAlbumId: target.article?.albumId ?? target.socialPost?.albumId ?? null,
       title: `${sourceTitle} · ${roleLabel(input.role, input.locale)}`.slice(0, 300),
       text: input.prompt,
       promptNodes: [{ kind: 'TEXT', text: input.prompt }],
-      referenceAssetIds: [],
+      referenceAssetIds,
       termPromptLocale: input.locale,
       termIds: [],
       wordPaletteReferences: [],

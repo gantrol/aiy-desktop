@@ -75,6 +75,8 @@
       "openToSide": "在旁边打开",
       "splitColumns": "左右分屏",
       "splitRows": "上下分屏",
+      "arrangeColumns": "排列为左右",
+      "arrangeRows": "排列为上下",
       "mergeGroups": "合并分组",
       "resetLayout": "恢复默认布局",
       "resizeColumns": "调整左右分组大小",
@@ -108,14 +110,16 @@
         "$params": ["percent"],
         "$template": "正在下载更新… {percent}%"
       },
-      "updateReady": "更新已下载，可以重启并更新",
-      "installingUpdate": "正在重启并安装更新…",
+      "updateReady": "更新已下载，可以安装并重启",
+      "installingUpdate": "正在安装更新…",
+      "updateInstalledRestartRequired": "更新已安装，可以重启",
       "updateCheckFailed": "无法检查更新",
       "updateDownloadFailed": "无法下载更新",
       "updateInstallFailed": "无法启动 Microsoft Store 更新",
       "checkForUpdates": "检查",
       "downloadUpdate": "下载",
-      "restartAndUpdate": "重启并更新",
+      "restartAndUpdate": "安装并重启",
+      "restartToFinishUpdate": "重启",
       "retryUpdate": "重试",
       "none": "无",
       "chinese": "中文",
@@ -231,6 +235,7 @@
       "imageBreakdown": "图片拆解",
       "ideaCreation": "构思创作",
       "inspirationStash": "灵感",
+      "evaluationSuite": "评测集",
       "socialPost": "贴图创作",
       "article": "文章",
       "videoDocument": "视频文稿",
@@ -895,7 +900,7 @@
       "exitFullscreen": "退出全屏",
       "stage": "切换阶段",
       "progress": "切换进度",
-      "spacePreviewName": "AIY：AI帮你DIY",
+      "spacePreviewName": "AIY — AI × DIY",
       "previewAria": "过场动画预览舞台",
       "realEmpty": "素材中没有匹配该比例的图片。",
       "imageCount": {
@@ -981,6 +986,19 @@
       "indexing": {
         "$params": ["progress"],
         "$template": "正在建立索引 {progress}%"
+      },
+      "navigation": {
+        "label": "Codex 聊天记录导航",
+        "allChats": "全部聊天",
+        "archived": "已归档",
+        "projects": "项目",
+        "recents": "最近"
+      },
+      "preview": {
+        "open": "在 Codex 中打开",
+        "match": "匹配文本",
+        "workspace": "工作区",
+        "branch": "分支"
       },
       "archive": {
         "ALL": "全部",
@@ -1238,9 +1256,10 @@
       }
     },
     "codexUsageInvestigator": {
-      "title": "今天Codex努力了吗",
+      "title": "Codex今天努力了吗？",
       "rangeLabel": "调查范围",
       "ranges": {
+        "TODAY": "今天",
         "LAST_24_HOURS": "24 小时",
         "LAST_7_DAYS": "7 天",
         "LAST_30_DAYS": "30 天",
@@ -1266,6 +1285,33 @@
       "paused": "调查已暂停；完成的文件已安全缓存",
       "taskFailed": "后台调查失败",
       "history": "调查记录",
+      "reportRail": {
+        "empty": "暂无调查报告",
+        "taskStatuses": {
+          "RUNNING": "调查进行中",
+          "PAUSED": "调查已暂停",
+          "INTERRUPTED": "调查已中断",
+          "FAILED": "调查失败"
+        }
+      },
+      "views": {
+        "overview": "总览",
+        "speed": "速度",
+        "sessions": "会话",
+        "quota": "额度",
+        "models": "模型",
+        "noSpeedData": "这份报告暂无完成轮次速度数据",
+        "detailedRequired": "开启详细统计后重新调查此范围"
+      },
+      "overview": {
+        "sessions": "会话",
+        "requests": "请求",
+        "completedTurns": "完成轮次",
+        "cacheRate": "缓存输入",
+        "activeDays": "活跃天数",
+        "leadingModel": "主要模型",
+        "fastShare": "Fast Token 占比"
+      },
       "background": "后台运行",
       "eta": "预计剩余",
       "elapsed": "已用时",
@@ -1420,6 +1466,7 @@
         "allModels": "全部模型",
         "allModes": "全部模式",
         "tokensPerOnePercent": "Token / 1% 额度",
+        "standardEquivalentTokensPerOnePercent": "Standard 等效 Token / 1% 额度",
         "nonCachedTokensPerOnePercent": "非缓存 + 输出 Token / 1%",
         "cachedInputPercent": "缓存输入占比",
         "insufficientSamples": "样本不足",
@@ -2069,7 +2116,12 @@
         "invalidFrameTime": "请输入视频范围内的时间。",
         "captureFrameFailed": "无法提取这个画面。",
         "uploadImage": "上传图片",
-        "uploadImageFailed": "无法上传这张图片。"
+        "uploadImageFailed": "无法上传这张图片。",
+        "image": "图片",
+        "replaceImage": "替换图片",
+        "imageAltText": "编辑替代文本",
+        "applyImageAltText": "应用替代文本",
+        "removeImage": "从文章移除"
       }
     },
     "noRevision": "尚未生成修订。",

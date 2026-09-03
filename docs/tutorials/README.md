@@ -1,6 +1,6 @@
 # 使用教程
 
-这组教程面向第一次使用 AIY Image Tools 的用户，也覆盖需要在 Windows 上验证 Store MSIX 候选版本的维护者。
+这组教程面向第一次使用 AIY 的用户，也覆盖需要在 Windows 上验证 Store MSIX 候选版本的维护者。
 
 建议按以下顺序阅读：
 

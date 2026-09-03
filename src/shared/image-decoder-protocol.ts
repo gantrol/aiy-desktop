@@ -1,15 +1,22 @@
 import { z } from 'zod';
+import {
+  NATURAL_WATERMARK_CUSTOM_LOGO_MAX_BYTES,
+  naturalWatermarkPlacementSchema,
+  naturalWatermarkStyleSchema,
+  naturalWatermarkTextSchema,
+} from '@/shared/contracts/natural-watermark';
 
 export const IMAGE_DECODER_REQUEST_CHANNEL = 'image-decoder:request';
 export const IMAGE_DECODER_RESPONSE_CHANNEL = 'image-decoder:response';
 export const MAX_IMAGE_DECODER_INPUT_BYTES = 64 * 1024 * 1024;
 export const MAX_IMAGE_DECODER_OUTPUT_BYTES = 128 * 1024 * 1024;
 export const MAX_IMAGE_DECODER_THUMBNAIL_BYTES = 32 * 1024 * 1024;
+export const MAX_IMAGE_DECODER_WATERMARK_OUTPUT_BYTES = 32 * 1024 * 1024;
 export const MAX_IMAGE_DECODER_DIMENSION = 32_768;
 export const MAX_IMAGE_DECODER_PIXELS = 4_096 * 4_096;
 
 const requestIdSchema = z.string().uuid();
-const operationSchema = z.enum(['thumbnail', 'crop', 'normalize']);
+const operationSchema = z.enum(['thumbnail', 'crop', 'normalize', 'watermark']);
 export const imageDecoderSourceMimeTypeSchema = z.enum([
   'image/png',
   'image/jpeg',
@@ -26,6 +33,13 @@ const pngBytesSchema = z
 const thumbnailPngBytesSchema = z
   .instanceof(Uint8Array)
   .refine((bytes) => bytes.byteLength > 0 && bytes.byteLength <= MAX_IMAGE_DECODER_THUMBNAIL_BYTES);
+const watermarkLogoBytesSchema = z
+  .instanceof(Uint8Array)
+  .refine((bytes) => bytes.byteLength > 0 && bytes.byteLength <= NATURAL_WATERMARK_CUSTOM_LOGO_MAX_BYTES);
+const watermarkOutputBytesSchema = z
+  .instanceof(Uint8Array)
+  .refine((bytes) => bytes.byteLength > 0 && bytes.byteLength <= MAX_IMAGE_DECODER_WATERMARK_OUTPUT_BYTES);
+const watermarkOutputMimeTypeSchema = z.enum(['image/png', 'image/jpeg', 'image/webp']);
 const dimensionSchema = z.number().int().positive().max(MAX_IMAGE_DECODER_DIMENSION);
 
 export const imageDecoderRequestSchema = z.discriminatedUnion('operation', [
@@ -56,11 +70,24 @@ export const imageDecoderRequestSchema = z.discriminatedUnion('operation', [
       sourceBytes: sourceBytesSchema,
     })
     .strict(),
+  z
+    .object({
+      requestId: requestIdSchema,
+      operation: z.literal('watermark'),
+      sourceMimeType: imageDecoderSourceMimeTypeSchema,
+      sourceBytes: sourceBytesSchema,
+      logoMimeType: z.enum(['image/png', 'image/svg+xml']),
+      logoBytes: watermarkLogoBytesSchema,
+      style: naturalWatermarkStyleSchema,
+      text: naturalWatermarkTextSchema,
+      placement: naturalWatermarkPlacementSchema,
+      opacity: z.number().min(0.35).max(0.95),
+    })
+    .strict(),
 ]);
 
 const responseBase = {
   requestId: requestIdSchema,
-  pngBytes: pngBytesSchema,
   width: dimensionSchema,
   height: dimensionSchema,
   sourceWidth: dimensionSchema,
@@ -75,6 +102,7 @@ export const imageDecoderResponseSchema = z
       .object({
         ...responseBase,
         operation: z.literal('crop'),
+        pngBytes: pngBytesSchema,
         ratioWidth: z.number().int().min(1).max(100),
         ratioHeight: z.number().int().min(1).max(100),
         cropX: z.number().int().nonnegative().max(MAX_IMAGE_DECODER_DIMENSION),
@@ -83,7 +111,15 @@ export const imageDecoderResponseSchema = z
         cropHeight: dimensionSchema,
       })
       .strict(),
-    z.object({ ...responseBase, operation: z.literal('normalize') }).strict(),
+    z.object({ ...responseBase, operation: z.literal('normalize'), pngBytes: pngBytesSchema }).strict(),
+    z
+      .object({
+        ...responseBase,
+        operation: z.literal('watermark'),
+        outputBytes: watermarkOutputBytesSchema,
+        outputMimeType: watermarkOutputMimeTypeSchema,
+      })
+      .strict(),
     z
       .object({
         requestId: requestIdSchema,

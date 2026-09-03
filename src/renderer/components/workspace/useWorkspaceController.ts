@@ -152,12 +152,12 @@ export function useWorkspaceController(data: BootstrapDto | null) {
     [update],
   );
   const openTab = useCallback(
-    (location: AppLocation, groupId?: string, reuseExisting = true) =>
-      update((current) => openWorkspaceTab(current, location, groupId, reuseExisting)),
+    (location: AppLocation, groupId?: string) => update((current) => openWorkspaceTab(current, location, groupId)),
     [update],
   );
   const openBeside = useCallback(
-    (location: AppLocation) => update((current) => openWorkspaceTabBeside(current, location)),
+    (sourceTabId: string, location: AppLocation) =>
+      update((current) => openWorkspaceTabBeside(current, sourceTabId, location)),
     [update],
   );
   const activateGroup = useCallback(
@@ -187,8 +187,14 @@ export function useWorkspaceController(data: BootstrapDto | null) {
     [update],
   );
   const reset = useCallback(() => update(resetWorkspace), [update]);
-  const split = useCallback((axis: 'columns' | 'rows') => update((current) => splitWorkspace(current, axis)), [update]);
-  const mergeGroups = useCallback(() => update(mergeWorkspaceGroups), [update]);
+  const split = useCallback(
+    (sourceTabId: string, axis: 'columns' | 'rows') => update((current) => splitWorkspace(current, sourceTabId, axis)),
+    [update],
+  );
+  const mergeGroups = useCallback(
+    (sourceGroupId: string) => update((current) => mergeWorkspaceGroups(current, sourceGroupId)),
+    [update],
+  );
   const setSplitRatio = useCallback(
     (ratio: number) => update((current) => setWorkspaceSplitRatio(current, ratio)),
     [update],

@@ -172,6 +172,7 @@ import type {
   BrowserCompanionStageInput,
   BrowserCompanionStageResult,
 } from '@/shared/contracts/browser-companion';
+import type { NaturalWatermarkConfiguration, NaturalWatermarkCustomLogo } from '@/shared/contracts/natural-watermark';
 import type {
   ArticleDeliveryArticleProfile,
   ArticleDeliveryArticleProfileSaveInput,
@@ -300,6 +301,14 @@ export type {
   BrowserCompanionStageResult,
   BrowserCompanionTarget,
 } from '@/shared/contracts/browser-companion';
+export type {
+  NaturalWatermarkBrand,
+  NaturalWatermarkConfiguration,
+  NaturalWatermarkCustomLogo,
+  NaturalWatermarkLogo,
+  NaturalWatermarkPlacement,
+  NaturalWatermarkStyle,
+} from '@/shared/contracts/natural-watermark';
 import type {
   CodexHistoryFilterOptions,
   CodexHistoryFilterOptionsInput,
@@ -2809,6 +2818,8 @@ export interface GenerationProjectionDto {
 
 export interface CreationDraftSaveInput {
   id: string | null;
+  /** Last observed persisted revision. Existing drafts fail closed when it no longer matches. */
+  expectedUpdatedAt?: string | null;
   targetAlbumId?: string | null;
   title: string;
   text: string;
@@ -4114,9 +4125,9 @@ export interface DesktopApi {
   transitionShowcaseExportImages(assetIds: readonly string[]): Promise<TransitionShowcaseExportImageSnapshot[]>;
   onAppLoadingPreviewsRefreshed(callback: (event: TransitionPreviewRefreshEvent) => void): () => void;
   bootstrap(locale: Locale): Promise<BootstrapDto>;
-  articleEditorRecoveryList(input: ArticleEditorRecoveryScope): ArticleEditorRecoveryCheckpoint[];
-  articleEditorRecoveryWrite(checkpoint: ArticleEditorRecoveryCheckpoint): void;
-  articleEditorRecoveryRemove(input: ArticleEditorRecoveryIdentity): void;
+  articleEditorRecoveryList(input: ArticleEditorRecoveryScope): Promise<ArticleEditorRecoveryCheckpoint[]>;
+  articleEditorRecoveryWrite(checkpoint: ArticleEditorRecoveryCheckpoint): Promise<void>;
+  articleEditorRecoveryRemove(input: ArticleEditorRecoveryIdentity): Promise<void>;
   workspaceLayoutSave(input: WorkspaceLayoutSaveInput): Promise<WorkspaceLayoutSaveResult>;
   generationProjection(locale: Locale): Promise<GenerationProjectionDto>;
   backgroundIssueAcknowledge(input: BackgroundIssueAcknowledgeInput): Promise<BackgroundIssueAcknowledgeResult>;
@@ -4140,6 +4151,10 @@ export interface DesktopApi {
   extensionUninstallLocal(extensionId: string): Promise<ExtensionDto[]>;
   extensionSetEnabled(input: ExtensionSetEnabledInput): Promise<ExtensionDto[]>;
   extensionSetPermission(input: ExtensionSetPermissionInput): Promise<ExtensionDto[]>;
+  naturalWatermarkConfigurationGet(): Promise<NaturalWatermarkConfiguration>;
+  naturalWatermarkConfigurationSave(input: NaturalWatermarkConfiguration): Promise<NaturalWatermarkConfiguration>;
+  naturalWatermarkCustomLogoGet(id: string): Promise<NaturalWatermarkCustomLogo>;
+  naturalWatermarkCustomLogoImport(): Promise<NaturalWatermarkCustomLogo | null>;
   articleDeliveryConnectionGet(input: ArticleDeliveryExtensionTarget): Promise<ArticleDeliveryConnectionDto>;
   articleDeliveryConnectionSave(input: ArticleDeliveryConnectionSaveInput): Promise<ArticleDeliveryConnectionDto>;
   articleDeliveryConnectionTest(input: ArticleDeliveryExtensionTarget): Promise<ArticleDeliveryConnectionDto>;

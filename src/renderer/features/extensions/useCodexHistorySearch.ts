@@ -20,6 +20,8 @@ const INITIAL_INDEX_STATE: CodexHistoryIndexState = {
 };
 const INITIAL_FILTER_OPTIONS: CodexHistoryFilterOptions = {
   projects: [],
+  sections: [],
+  recentThreads: [],
   threads: [],
   threadsTruncated: false,
 };
@@ -45,7 +47,16 @@ function resolvedDateRange(range: CodexUsageRange, customRange: CodexUsageDateRa
   const to = new Date();
   to.setHours(0, 0, 0, 0);
   const from = new Date(to);
-  const days = range === 'LAST_24_HOURS' ? 2 : range === 'LAST_7_DAYS' ? 7 : range === 'LAST_30_DAYS' ? 30 : 90;
+  const days =
+    range === 'TODAY'
+      ? 1
+      : range === 'LAST_24_HOURS'
+        ? 2
+        : range === 'LAST_7_DAYS'
+          ? 7
+          : range === 'LAST_30_DAYS'
+            ? 30
+            : 90;
   from.setDate(from.getDate() - (days - 1));
   return { from: dateKey(from), to: dateKey(to) };
 }
@@ -67,6 +78,7 @@ export function useCodexHistorySearch({ active, authorized, notify }: Options) {
   const [role, setRole] = useState<CodexHistoryRoleFilter>('ALL');
   const [includeSubagents, setIncludeSubagents] = useState(false);
   const [projectId, setProjectIdState] = useState('');
+  const [sectionId, setSectionIdState] = useState('');
   const [selectedThread, setSelectedThread] = useState<CodexHistoryThreadOption | null>(null);
   const [threadQuery, setThreadQuery] = useState('');
   const [workspace, setWorkspace] = useState('');
@@ -109,6 +121,7 @@ export function useCodexHistorySearch({ active, authorized, notify }: Options) {
           role,
           includeSubagents,
           projectId,
+          sectionId,
           threadId: selectedThread?.threadId ?? '',
           workspace,
           branch,
@@ -140,6 +153,7 @@ export function useCodexHistorySearch({ active, authorized, notify }: Options) {
       projectId,
       query,
       role,
+      sectionId,
       selectedThread?.threadId,
       workspace,
     ],
@@ -166,7 +180,13 @@ export function useCodexHistorySearch({ active, authorized, notify }: Options) {
       setFiltersLoading(true);
       setFiltersError(null);
       void window.desktopApi
-        .codexHistorySearchFilterOptions({ archive, includeSubagents, projectId, query: threadQuery.trim() })
+        .codexHistorySearchFilterOptions({
+          archive,
+          includeSubagents,
+          projectId,
+          sectionId,
+          query: threadQuery.trim(),
+        })
         .then((next) => {
           if (filtersRequestRevision.current === revision) setFilterOptions(next);
         })
@@ -179,7 +199,7 @@ export function useCodexHistorySearch({ active, authorized, notify }: Options) {
         });
     }, QUERY_DEBOUNCE_MS);
     return () => window.clearTimeout(timer);
-  }, [active, archive, authorized, includeSubagents, index.updatedAt, projectId, threadQuery]);
+  }, [active, archive, authorized, includeSubagents, index.updatedAt, projectId, sectionId, threadQuery]);
 
   useEffect(() => {
     if (!active || !authorized) return;
@@ -232,6 +252,14 @@ export function useCodexHistorySearch({ active, authorized, notify }: Options) {
 
   const setProjectId = useCallback((nextProjectId: string) => {
     setProjectIdState(nextProjectId);
+    setSectionIdState('');
+    setSelectedThread(null);
+    setThreadQuery('');
+  }, []);
+
+  const setSectionId = useCallback((nextSectionId: string) => {
+    setSectionIdState(nextSectionId);
+    setProjectIdState('');
     setSelectedThread(null);
     setThreadQuery('');
   }, []);
@@ -275,6 +303,8 @@ export function useCodexHistorySearch({ active, authorized, notify }: Options) {
     setIncludeSubagents,
     projectId,
     setProjectId,
+    sectionId,
+    setSectionId,
     selectedThread,
     selectThread,
     threadQuery,

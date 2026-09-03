@@ -8,10 +8,7 @@ import {
   codexVisualizationListInputSchema,
   codexVisualizationSessionActionInputSchema,
 } from '@/shared/contracts/codex-visualizations';
-import {
-  CODEX_VISUALIZATION_DISCOVERY_EXTENSION_ID,
-  CODEX_VISUALIZATION_THREAD_CONTENT_PERMISSION,
-} from '@/shared/extension-ids';
+import { CODEX_EXTENSION_ID, CODEX_VISUALIZATION_THREAD_CONTENT_PERMISSION } from '@/shared/extension-ids';
 
 export function registerCodexVisualizationIpc(
   ipcMain: IpcHandlerRegistrar,
@@ -21,7 +18,7 @@ export function registerCodexVisualizationIpc(
   chooseSaveFile: (options: Electron.SaveDialogOptions) => Promise<Electron.SaveDialogReturnValue>,
 ) {
   const active = () => {
-    if (!extensions.isActivated(CODEX_VISUALIZATION_DISCOVERY_EXTENSION_ID)) {
+    if (!extensions.isActivated(CODEX_EXTENSION_ID)) {
       throw new Error('Codex Visualizations is disabled or missing permissions');
     }
   };
@@ -30,10 +27,7 @@ export function registerCodexVisualizationIpc(
     return await operation();
   };
   const threadContentAuthorized = () =>
-    extensions.isPermissionGranted(
-      CODEX_VISUALIZATION_DISCOVERY_EXTENSION_ID,
-      CODEX_VISUALIZATION_THREAD_CONTENT_PERMISSION,
-    );
+    extensions.isPermissionGranted(CODEX_EXTENSION_ID, CODEX_VISUALIZATION_THREAD_CONTENT_PERMISSION);
   const requireThreadContentPermission = () => {
     if (!threadContentAuthorized()) {
       throw new Error('Reading Codex task content requires optional permission');

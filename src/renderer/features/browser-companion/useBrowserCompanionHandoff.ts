@@ -23,9 +23,21 @@ const OPEN_ERROR_LABELS: Record<BrowserCompanionBrowserOpenError, { en: string; 
     en: 'AIY Companion is not installed in the selected browser Profile',
     zh: '所选浏览器 Profile 未安装 AIY 伴侣',
   },
+  DESKTOP_SERVICE_UNAVAILABLE: { en: 'AIY desktop companion service is unavailable', zh: 'AIY 桌面伴侣服务不可用' },
   NATIVE_HOST_UNAVAILABLE: { en: 'AIY desktop connection could not be registered', zh: 'AIY 桌面连接注册失败' },
   LAUNCH_FAILED: { en: 'The selected browser Profile could not be opened', zh: '无法打开所选浏览器 Profile' },
 };
+
+function openedMessage(target: BrowserCompanionTarget, targetLabel: string, zh: boolean) {
+  if (target === 'chatgpt') {
+    return zh
+      ? '已打开 ChatGPT；生成后可在对应图片上选择“回填 AIY”'
+      : 'ChatGPT opened; choose “Return to AIY” on the generated image';
+  }
+  return zh
+    ? `已打开${targetLabel}，AIY 伴侣将自动填入；请确认后再发布`
+    : `${targetLabel} opened; AIY Companion will fill it automatically`;
+}
 
 export function useBrowserCompanionHandoff({
   notify,
@@ -50,9 +62,7 @@ export function useBrowserCompanionHandoff({
       const targetLabel = TARGET_LABELS[target][zh ? 'zh' : 'en'];
       notify(
         result.browserOpened
-          ? zh
-            ? `已打开${targetLabel}，AIY 伴侣将自动填入；请确认后再发布`
-            : `${targetLabel} opened; AIY Companion will fill it automatically`
+          ? openedMessage(target, targetLabel, zh)
           : result.browserOpenError
             ? `${OPEN_ERROR_LABELS[result.browserOpenError][zh ? 'zh' : 'en']} · ${
                 zh ? '内容已保存在伴侣历史中' : 'Saved to Companion history'

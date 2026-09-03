@@ -263,7 +263,7 @@ function SourcePaneBody({
             'overflow-hidden rounded-lg border bg-media-surround-dark',
             player.state.fullscreen && 'flex h-screen w-screen flex-col rounded-none border-0',
             player.state.fallbackFullscreen &&
-              'fixed inset-0 z-[2147483647] m-0 h-dvh w-dvw max-w-none rounded-none border-0',
+              'fixed inset-0 z-fullscreen m-0 h-dvh w-dvw max-w-none rounded-none border-0',
           )}
         >
           <video

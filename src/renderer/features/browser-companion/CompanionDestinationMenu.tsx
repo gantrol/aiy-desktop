@@ -1,4 +1,4 @@
-import { CheckIcon, ChevronDownIcon, CircleSlashIcon, LoaderCircleIcon } from 'lucide-react';
+import { CheckIcon, ChevronDownIcon, CircleSlashIcon, LoaderCircleIcon, Settings2Icon } from 'lucide-react';
 import { useEffect, useState, type ComponentProps } from 'react';
 import { Button } from '@/renderer/components/ui/button';
 import {
@@ -91,17 +91,7 @@ function BrowserDestinationItems({
   });
 }
 
-export function CompanionDestinationMenu({
-  busy,
-  targets,
-  variant,
-  zh,
-}: {
-  busy: boolean;
-  targets: readonly BrowserCompanionTarget[];
-  variant: ComponentProps<typeof Button>['variant'];
-  zh: boolean;
-}) {
+function useCompanionDestinations() {
   const [state, setState] = useState<BrowserCompanionDestinationsResult | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -138,8 +128,146 @@ export function CompanionDestinationMenu({
     }
   }
 
-  const title = targets.map((target) => routeLabel(state, target, zh)).join(' / ');
+  return { error, loading, refresh, selectDestination, state };
+}
+
+function CompanionDestinationOptions({
+  busy,
+  error,
+  loading,
+  onSelect,
+  state,
+  targets,
+  zh,
+}: {
+  busy: boolean;
+  error: string | null;
+  loading: boolean;
+  onSelect(target: BrowserCompanionTarget, browserId: BrowserCompanionBrowserId, profileDirectory: string): void;
+  state: BrowserCompanionDestinationsResult | null;
+  targets: readonly BrowserCompanionTarget[];
+  zh: boolean;
+}) {
   const availableBrowsers = state?.browsers.filter((browser) => browser.available) ?? [];
+
+  if (loading && !state) {
+    return (
+      <DropdownMenuItem disabled>
+        <DropdownMenuIcon>
+          <LoaderCircleIcon className="animate-spin" />
+        </DropdownMenuIcon>
+        {zh ? '读取浏览器 Profile' : 'Loading browser Profiles'}
+      </DropdownMenuItem>
+    );
+  }
+  if (error) {
+    return (
+      <DropdownMenuItem disabled>
+        <DropdownMenuIcon>
+          <CircleSlashIcon />
+        </DropdownMenuIcon>
+        <span className="truncate">{error}</span>
+      </DropdownMenuItem>
+    );
+  }
+  if (!state || availableBrowsers.length === 0) {
+    return (
+      <DropdownMenuItem disabled>
+        <DropdownMenuIcon>
+          <CircleSlashIcon />
+        </DropdownMenuIcon>
+        {zh ? '未找到支持的浏览器' : 'No supported browser found'}
+      </DropdownMenuItem>
+    );
+  }
+  if (targets.length === 0) {
+    return <DropdownMenuItem disabled>{zh ? '没有可用的上传目标' : 'No upload targets available'}</DropdownMenuItem>;
+  }
+  if (targets.length === 1) {
+    return (
+      <BrowserDestinationItems
+        browsers={state.browsers}
+        busy={busy || loading}
+        onSelect={onSelect}
+        state={state}
+        target={targets[0]}
+        zh={zh}
+      />
+    );
+  }
+  return targets.map((target) => (
+    <DropdownMenuSub key={target}>
+      <DropdownMenuSubTrigger disabled={busy}>
+        <span className="min-w-0 flex-1 truncate">{routeLabel(state, target, zh)}</span>
+      </DropdownMenuSubTrigger>
+      <DropdownMenuSubContent className="w-64">
+        <BrowserDestinationItems
+          browsers={state.browsers}
+          busy={busy || loading}
+          onSelect={onSelect}
+          state={state}
+          target={target}
+          zh={zh}
+        />
+      </DropdownMenuSubContent>
+    </DropdownMenuSub>
+  ));
+}
+
+export function CompanionDestinationSettingsSubmenu({
+  busy,
+  targets,
+  zh,
+}: {
+  busy: boolean;
+  targets: readonly BrowserCompanionTarget[];
+  zh: boolean;
+}) {
+  const { error, loading, refresh, selectDestination, state } = useCompanionDestinations();
+
+  return (
+    <DropdownMenuSub onOpenChange={(open) => open && void refresh()}>
+      <DropdownMenuSubTrigger
+        data-action="browser-companion-profile-menu"
+        data-browser-companion-destination-menu
+        disabled={busy || targets.length === 0}
+      >
+        <DropdownMenuIcon>
+          <Settings2Icon />
+        </DropdownMenuIcon>
+        {zh ? '上传目标设置' : 'Upload destination settings'}
+      </DropdownMenuSubTrigger>
+      <DropdownMenuSubContent className="w-64">
+        <CompanionDestinationOptions
+          busy={busy}
+          error={error}
+          loading={loading}
+          onSelect={(target, browserId, profileDirectory) =>
+            void selectDestination(target, browserId, profileDirectory)
+          }
+          state={state}
+          targets={targets}
+          zh={zh}
+        />
+      </DropdownMenuSubContent>
+    </DropdownMenuSub>
+  );
+}
+
+export function CompanionDestinationMenu({
+  busy,
+  targets,
+  variant,
+  zh,
+}: {
+  busy: boolean;
+  targets: readonly BrowserCompanionTarget[];
+  variant: ComponentProps<typeof Button>['variant'];
+  zh: boolean;
+}) {
+  const { error, loading, refresh, selectDestination, state } = useCompanionDestinations();
+
+  const title = targets.map((target) => routeLabel(state, target, zh)).join(' / ');
 
   return (
     <DropdownMenu onOpenChange={(open) => open && void refresh()}>
@@ -159,59 +287,17 @@ export function CompanionDestinationMenu({
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" className="w-64">
-        {loading && !state ? (
-          <DropdownMenuItem disabled>
-            <DropdownMenuIcon>
-              <LoaderCircleIcon className="animate-spin" />
-            </DropdownMenuIcon>
-            {zh ? '读取浏览器 Profile' : 'Loading browser Profiles'}
-          </DropdownMenuItem>
-        ) : error ? (
-          <DropdownMenuItem disabled>
-            <DropdownMenuIcon>
-              <CircleSlashIcon />
-            </DropdownMenuIcon>
-            <span className="truncate">{error}</span>
-          </DropdownMenuItem>
-        ) : !state || availableBrowsers.length === 0 ? (
-          <DropdownMenuItem disabled>
-            <DropdownMenuIcon>
-              <CircleSlashIcon />
-            </DropdownMenuIcon>
-            {zh ? '未找到支持的浏览器' : 'No supported browser found'}
-          </DropdownMenuItem>
-        ) : targets.length === 1 ? (
-          <BrowserDestinationItems
-            browsers={state.browsers}
-            busy={loading}
-            onSelect={(target, browserId, profileDirectory) =>
-              void selectDestination(target, browserId, profileDirectory)
-            }
-            state={state}
-            target={targets[0]}
-            zh={zh}
-          />
-        ) : (
-          targets.map((target) => (
-            <DropdownMenuSub key={target}>
-              <DropdownMenuSubTrigger>
-                <span className="min-w-0 flex-1 truncate">{routeLabel(state, target, zh)}</span>
-              </DropdownMenuSubTrigger>
-              <DropdownMenuSubContent className="w-64">
-                <BrowserDestinationItems
-                  browsers={state.browsers}
-                  busy={loading}
-                  onSelect={(selectedTarget, browserId, profileDirectory) =>
-                    void selectDestination(selectedTarget, browserId, profileDirectory)
-                  }
-                  state={state}
-                  target={target}
-                  zh={zh}
-                />
-              </DropdownMenuSubContent>
-            </DropdownMenuSub>
-          ))
-        )}
+        <CompanionDestinationOptions
+          busy={busy}
+          error={error}
+          loading={loading}
+          onSelect={(target, browserId, profileDirectory) =>
+            void selectDestination(target, browserId, profileDirectory)
+          }
+          state={state}
+          targets={targets}
+          zh={zh}
+        />
       </DropdownMenuContent>
     </DropdownMenu>
   );

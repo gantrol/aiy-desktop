@@ -9,6 +9,7 @@ import type {
   CodexUsageServiceTier,
 } from '@/shared/contracts/codex-usage';
 import { codexUsageDefaultGranularity } from '@/shared/codex-usage-time';
+import { codexUsageStandardEquivalentMultiplier } from '@/shared/codex-usage-speed';
 import type { CodexUsageEventCoverage } from '@/main/extensions/codex-usage-investigator/cache-database';
 import {
   estimateCodexUsage,
@@ -56,6 +57,8 @@ interface CycleState {
   usage: CodexUsageBreakdown;
   requestCount: number;
   models: Map<string, MutableModelUsage>;
+  standardEquivalentTokens: number;
+  standardEquivalentNonCachedTokens: number;
   credits: number;
   creditsComplete: boolean;
 }
@@ -350,7 +353,7 @@ export class CodexQuotaYieldAccumulator {
     return {
       definition: 'OBSERVED_TOKENS_PER_SUBSCRIPTION_QUOTA_PERCENT',
       calculationBasis: 'OBSERVATION_SEGMENT',
-      algorithmVersion: 8,
+      algorithmVersion: 9,
       timeZone: this.#timeZone,
       defaultGranularity: codexUsageDefaultGranularity(this.#range),
       storedFrom: this.#coverage.storedFrom,
@@ -394,6 +397,8 @@ export class CodexQuotaYieldAccumulator {
       usage: emptyUsage(),
       requestCount: 0,
       models: new Map(),
+      standardEquivalentTokens: 0,
+      standardEquivalentNonCachedTokens: 0,
       credits: 0,
       creditsComplete: true,
     };
@@ -428,6 +433,14 @@ export class CodexQuotaYieldAccumulator {
     modelUsage.totalTokens = addSafe(modelUsage.totalTokens, event.usage.totalTokens);
     modelUsage.requestCount = addSafe(modelUsage.requestCount, 1);
     state.models.set(modelTierKey, modelUsage);
+    const speedMultiplier = codexUsageStandardEquivalentMultiplier(model, event.serviceTier);
+    const nonCachedTokens =
+      Math.max(0, event.usage.inputTokens - event.usage.cachedInputTokens) + event.usage.outputTokens;
+    state.standardEquivalentTokens = addSafe(state.standardEquivalentTokens, event.usage.totalTokens * speedMultiplier);
+    state.standardEquivalentNonCachedTokens = addSafe(
+      state.standardEquivalentNonCachedTokens,
+      nonCachedTokens * speedMultiplier,
+    );
     const valuation = estimateCodexUsage(model, event.usage, event.serviceTier, event.timestamp);
     state.credits += valuation.codexCredits ?? 0;
     state.creditsComplete &&= valuation.codexCredits !== null;
@@ -474,8 +487,11 @@ export class CodexQuotaYieldAccumulator {
       quotaPercentConsumed,
       requestCount: state.requestCount,
       ...state.usage,
+      standardEquivalentTokens: state.standardEquivalentTokens,
       tokensPerOnePercent: state.usage.totalTokens / quotaPercentConsumed,
       nonCachedTokensPerOnePercent: nonCachedTokens / quotaPercentConsumed,
+      standardEquivalentTokensPerOnePercent: state.standardEquivalentTokens / quotaPercentConsumed,
+      standardEquivalentNonCachedTokensPerOnePercent: state.standardEquivalentNonCachedTokens / quotaPercentConsumed,
       cachedInputPercent:
         state.usage.inputTokens > 0 ? (state.usage.cachedInputTokens / state.usage.inputTokens) * 100 : 0,
       modelShares: [...state.models.values()]

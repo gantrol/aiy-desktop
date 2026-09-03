@@ -630,6 +630,7 @@ export const intakeSchema = z
 
 export const creationDraftSaveSchema = z.object({
   id: id.nullable(),
+  expectedUpdatedAt: z.string().min(1).max(100).nullable().optional(),
   targetAlbumId: id.nullable(),
   title: z.string().max(300),
   text: z.string().max(30_000),

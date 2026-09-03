@@ -1,4 +1,4 @@
-import type { Dispatch, SetStateAction } from 'react';
+import { useEffect, type Dispatch, type SetStateAction } from 'react';
 import type { BootstrapDto, DerivedVisualWorkspaceOpenResult, Locale, WordPaletteDto } from '@/shared/contracts';
 import type { CreationOutputMode } from '@/renderer/components/creator/CreationOutputTabs';
 import type { useCreatorDraftInputSession } from '@/renderer/components/creator/screen/useCreatorDraftInputSession';
@@ -13,6 +13,7 @@ import { creationDraftSnapshotHasMeaningfulInput } from '@/renderer/components/c
 import { useCreationDraftAutosave } from '@/renderer/components/creator/workflows/useCreationDraftSession';
 import { useCreatorContentWorkflows } from '@/renderer/components/creator/workflows/useCreatorContentWorkflows';
 import { useCreatorInspirationSession } from '@/renderer/components/creator/workflows/useCreatorInspirationSession';
+import { useStableCallback } from '@/renderer/lib/useStableCallback';
 
 type DraftInputSession = ReturnType<typeof useCreatorDraftInputSession>;
 type GenerationInputSession = ReturnType<typeof useCreatorGenerationInputSession>;
@@ -187,10 +188,26 @@ export function useCreatorWorkflowRuntime({
     selection.targetAlbum?.creationDefaults ?? null,
     initialGenerationTargets({ creationDraft: null, imageGenerationRoutes: data.imageGenerationRoutes }),
   );
+  const draftPersistenceAllowed = autosaveEnabled(selection, assistant.workflows.adoption.busy, starting);
+  const preserveActiveDraft = useStableCallback(() => {
+    if (!draftPersistenceAllowed || (!hasDraftContent && !draftSession.getDraftId())) return;
+    try {
+      const snapshot = draftInput.draftProjection.captureDraft();
+      void draftSession
+        .preserveCapturedSnapshot(snapshot)
+        .catch((reason) => notify(reason instanceof Error ? reason.message : String(reason)));
+    } catch (reason) {
+      notify(reason instanceof Error ? reason.message : String(reason));
+    }
+  });
+  useEffect(() => {
+    if (!active) return undefined;
+    return preserveActiveDraft;
+  }, [active, preserveActiveDraft]);
   useCreationDraftAutosave({
     autosaveKey: `${locale}:${JSON.stringify(autosaveSnapshot)}`,
     draftId: draftSession.draftId,
-    enabled: autosaveEnabled(selection, assistant.workflows.adoption.busy, starting),
+    enabled: active && draftPersistenceAllowed,
     hasContent: hasDraftContent,
     captureIdentity: draftSession.captureAutosaveIdentity,
     saveIfCurrent: draftSession.saveAutosaveIfCurrent,

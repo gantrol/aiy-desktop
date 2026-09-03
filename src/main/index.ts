@@ -1,4 +1,4 @@
-import { app, BrowserWindow, dialog, protocol, safeStorage, session } from 'electron';
+import { app, BrowserWindow, dialog, safeStorage } from 'electron';
 import { AsyncLocalStorage } from 'node:async_hooks';
 import path from 'node:path';
 import { LibraryDatabase } from '@/main/database';
@@ -14,14 +14,15 @@ import { LocalQwenAsrSidecarManager } from '@/main/extensions/local-qwen-asr/sid
 import { AssistantRoutingConfiguration } from '@/main/assistant/assistant-routing';
 import { GenerationConcurrencyConfiguration } from '@/main/generation/concurrency-configuration';
 import { ExternalImageApiConnections } from '@/main/extensions/external-image-api';
+import { createNaturalWatermarkRuntime } from '@/main/extensions/natural-watermark/runtime';
 import type { SecretProtector } from '@/main/extensions/secure-credentials';
 import { registerIpc } from '@/main/ipc/register-ipc';
+import { createCompanionLoopback } from '@/main/browser-companion/loopback-runtime';
 import { AppUpdateService } from '@/main/app/app-update-service';
 import { resolveAiyUserDataPath } from '@/main/app/user-data-path';
 import { DesktopApplicationShell } from '@/main/app/application-shell';
 import { WorkspaceLayoutStore } from '@/main/app/workspace-layout-store';
 import { ArticleEditorRecoveryStore } from '@/main/app/article-editor-recovery-store';
-import { installMediaProtocol } from '@/main/app/media-protocol';
 import { TransitionPreviewCache, TRANSITION_PREVIEW_LIMIT } from '@/main/app/transition-preview-cache';
 import { createTransitionPreviewRatingRefreshScheduler } from '@/main/app/transition-preview-rating-refresh';
 import { registerAppUpdateIpc } from '@/main/ipc/app-update-handlers';
@@ -32,11 +33,9 @@ import { MediaThumbnailCache } from '@/main/media/media-thumbnail-cache';
 import { VideoDocumentTranscriptBackgroundTaskRegistry } from '@/main/video-transcript/background-task-registry';
 import { ImageTransformService } from '@/main/media/image-transform-service';
 import { RendererEventDispatcher } from '@/main/app/renderer-event-dispatcher';
-import { installRendererProtocol } from '@/main/app/renderer-protocol';
-import { installCodexVisualizationPreviewProtocol } from '@/main/app/codex-visualization-preview-protocol';
 import { registerApplicationSchemes } from '@/main/app/protocol-schemes';
 import { AppDeepLinkController, registerAiyDeepLinkProtocolClient } from '@/main/app/external-deep-link';
-import { installSessionSecurityPolicy } from '@/main/app/window-security';
+import { prepareStartupShell } from '@/main/app/startup-shell';
 import type { ActiveLibraryContext } from '@/main/libraries/active-library-context';
 import { LibraryRegistry, libraryDatabasePath, type LibraryDescriptor } from '@/main/libraries/library-registry';
 import { LegacySpaceMigrationService } from '@/main/libraries/legacy-space-migration';
@@ -59,8 +58,8 @@ import type {
 import { DEFAULT_PRODUCT_NAME, productNameForLocale } from '@/shared/product';
 import {
   ALIBABA_MODEL_STUDIO_IMAGE_API_EXTENSION_ID,
+  CODEX_EXTENSION_ID,
   CODEX_HISTORY_SEARCH_EXTENSION_ID,
-  CODEX_IMAGE_DISCOVERY_EXTENSION_ID,
   GOOGLE_GEMINI_IMAGE_API_EXTENSION_ID,
   OPENAI_IMAGE_PROVIDER_KEY,
   VOLCENGINE_ARK_IMAGE_API_EXTENSION_ID,
@@ -87,6 +86,7 @@ const transcriptBackgroundTasks = new VideoDocumentTranscriptBackgroundTaskRegis
 let legacySpaceMigration: LegacySpaceMigrationService | null = null;
 let localSpaceTransfer: LocalSpaceTransferService | null = null;
 let managedCodexHistorySearch: CodexHistorySearch | null = null;
+const browserCompanionService = createCompanionLoopback(() => appShell.activeLibraryContext, rendererEvents);
 const allowWindowPresentation = process.env.AIY_E2E !== '1' || process.env.AIY_E2E_OBSERVE === '1';
 const appShell = new DesktopApplicationShell(rendererEvents, {
   backgroundColor: '#f8f7f3',
@@ -101,6 +101,7 @@ const appShell = new DesktopApplicationShell(rendererEvents, {
       legacySpaceMigration?.dispose() ?? Promise.resolve(),
       localSpaceTransfer?.dispose() ?? Promise.resolve(),
       managedCodexHistorySearch?.dispose() ?? Promise.resolve(),
+      browserCompanionService.stop(),
     ]).then(() => undefined),
 });
 transcriptBackgroundTasks.onChanged((event) => {
@@ -153,13 +154,14 @@ if (ownsSingleInstanceLock)
   app
     .whenReady()
     .then(async () => {
+      await browserCompanionService.startSafely();
       registerAiyDeepLinkProtocolClient();
       const appIpc = createTrustedIpcHandlerRegistrar(() => appShell.mainWindow);
       registerAppDeepLinkIpc(appIpc, appDeepLinks);
       if (process.platform === 'win32') appShell.ensureAppTray();
-      const updates = new AppUpdateService((state) => {
+      const updates = await new AppUpdateService((state) => {
         rendererEvents.send('app-update:changed', state);
-      });
+      }).initialize();
       appShell.setAppUpdates(updates);
       registerAppUpdateIpc(appIpc, {
         getState: () => updates.getState(),
@@ -452,7 +454,7 @@ if (ownsSingleInstanceLock)
                       discoveryStartTimer = null;
                       if (!activated) return;
                       void targetImageDiscovery!
-                        .setActive(targetExtensions.isActivated(CODEX_IMAGE_DISCOVERY_EXTENSION_ID))
+                        .setActive(targetExtensions.isActivated(CODEX_EXTENSION_ID))
                         .catch((error) => {
                           console.error('[codex-image-discovery] initial scan failed', error);
                         });
@@ -503,8 +505,8 @@ if (ownsSingleInstanceLock)
         appShell.setActiveLibraryContext(context);
         activeLibrary = context.library;
         context.activate();
-        codexHistorySearch.setActive(context.extensions.isActivated(CODEX_HISTORY_SEARCH_EXTENSION_ID));
-        if (appShell.mainWindow?.isVisible()) context.startBackgroundServices();
+        codexHistorySearch.setActive(context.extensions.isActivated(CODEX_EXTENSION_ID));
+        appShell.requestBackgroundServicesStart(context);
         appShell.updateAppTray();
         if (previous) {
           await previous.dispose().catch((error) => {
@@ -512,6 +514,16 @@ if (ownsSingleInstanceLock)
           });
         }
       };
+
+      const startupShell = prepareStartupShell({
+        articleEditorRecovery,
+        currentSpaceId: () => activeLibrary.id,
+        ipcMain: appIpc,
+        libraryRegistry: () => libraryRegistry,
+        shell: appShell,
+        transitionPreviews,
+        workspaceLayouts,
+      });
 
       const initialContext = await createLibraryContext(activeLibrary);
       await activateLibraryContext(initialContext);
@@ -680,6 +692,7 @@ if (ownsSingleInstanceLock)
       };
       registerIpc(
         liveServiceProxy((context) => context.database),
+        browserCompanionService,
         liveServiceProxy((context) => context.codex),
         liveServiceProxy((context) => context.assistant),
         liveServiceProxy((context) => context.generation),
@@ -696,6 +709,7 @@ if (ownsSingleInstanceLock)
         assistantRouting,
         externalImageApis,
         generationConcurrency,
+        ...createNaturalWatermarkRuntime(app, bundledExtensionsPath),
         () => {
           const targetDatabase = requireActiveContext().database;
           return installStarterContentPack(targetDatabase, starterContentPackPath);
@@ -768,17 +782,9 @@ if (ownsSingleInstanceLock)
             return libraryRegistry.removeCover(spaceId);
           },
         },
-        runInLibraryContext,
+        startupShell.ipcRuntime(runInLibraryContext),
       );
-      installRendererProtocol(protocol, path.join(app.getAppPath(), 'out', 'renderer'));
-      installCodexVisualizationPreviewProtocol(protocol, () => appShell.activeLibraryContext);
-      installMediaProtocol(protocol, {
-        activeLibraryContext: () => appShell.activeLibraryContext,
-        libraryRegistry: () => libraryRegistry,
-        transitionPreviews,
-      });
-      installSessionSecurityPolicy(session.defaultSession, appShell.developmentRendererUrl());
-      appShell.createWindow();
+      startupShell.createDeferredWindow();
       app.on('activate', () => {
         if (BrowserWindow.getAllWindows().length === 0) appShell.createWindow();
       });

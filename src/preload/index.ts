@@ -84,6 +84,11 @@ import {
   browserCompanionStageResultSchema,
 } from '@/shared/contracts/browser-companion';
 import {
+  naturalWatermarkConfigurationSchema,
+  naturalWatermarkCustomLogoIdSchema,
+  naturalWatermarkCustomLogoSchema,
+} from '@/shared/contracts/natural-watermark';
+import {
   derivedVisualAdoptInputSchema,
   derivedVisualWorkspaceOpenInputSchema,
 } from '@/shared/contracts/derived-visual';
@@ -179,22 +184,25 @@ const api: DesktopApi = {
       ),
     ),
   bootstrap: (locale) => ipcRenderer.invoke('app:bootstrap', locale),
-  articleEditorRecoveryList: (input) => {
+  articleEditorRecoveryList: async (input) => {
     const result = articleEditorRecoveryListResultSchema.parse(
-      ipcRenderer.sendSync('article-editor-recovery:list', articleEditorRecoveryScopeSchema.parse(input)),
+      await ipcRenderer.invoke('article-editor-recovery:list', articleEditorRecoveryScopeSchema.parse(input)),
     );
     if (result.status === 'error') throw new Error(result.message);
     return result.checkpoints;
   },
-  articleEditorRecoveryWrite: (checkpoint) => {
+  articleEditorRecoveryWrite: async (checkpoint) => {
     const result = articleEditorRecoveryMutationResultSchema.parse(
-      ipcRenderer.sendSync('article-editor-recovery:write', articleEditorRecoveryCheckpointSchema.parse(checkpoint)),
+      await ipcRenderer.invoke(
+        'article-editor-recovery:write',
+        articleEditorRecoveryCheckpointSchema.parse(checkpoint),
+      ),
     );
     if (result.status === 'error') throw new Error(result.message);
   },
-  articleEditorRecoveryRemove: (input) => {
+  articleEditorRecoveryRemove: async (input) => {
     const result = articleEditorRecoveryMutationResultSchema.parse(
-      ipcRenderer.sendSync('article-editor-recovery:remove', articleEditorRecoveryIdentitySchema.parse(input)),
+      await ipcRenderer.invoke('article-editor-recovery:remove', articleEditorRecoveryIdentitySchema.parse(input)),
     );
     if (result.status === 'error') throw new Error(result.message);
   },
@@ -227,6 +235,21 @@ const api: DesktopApi = {
   extensionUninstallLocal: (extensionId) => ipcRenderer.invoke('extension:uninstall-local', extensionId),
   extensionSetEnabled: (input) => ipcRenderer.invoke('extension:set-enabled', input),
   extensionSetPermission: (input) => ipcRenderer.invoke('extension:set-permission', input),
+  naturalWatermarkConfigurationGet: async () =>
+    naturalWatermarkConfigurationSchema.parse(await ipcRenderer.invoke('natural-watermark:configuration-get')),
+  naturalWatermarkConfigurationSave: async (input) =>
+    naturalWatermarkConfigurationSchema.parse(
+      await ipcRenderer.invoke(
+        'natural-watermark:configuration-save',
+        naturalWatermarkConfigurationSchema.parse(input),
+      ),
+    ),
+  naturalWatermarkCustomLogoGet: async (id) =>
+    naturalWatermarkCustomLogoSchema.parse(
+      await ipcRenderer.invoke('natural-watermark:custom-logo-get', naturalWatermarkCustomLogoIdSchema.parse(id)),
+    ),
+  naturalWatermarkCustomLogoImport: async () =>
+    naturalWatermarkCustomLogoSchema.nullable().parse(await ipcRenderer.invoke('natural-watermark:custom-logo-import')),
   ...createArticleDeliveryPreloadApi(ipcRenderer),
   ...createProviderConnectionPreloadApi(ipcRenderer),
   ...createCodexArtifactsPreloadApi(ipcRenderer),

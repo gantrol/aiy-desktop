@@ -174,34 +174,130 @@ export function workspaceLocationKey(location: AppLocation) {
   return JSON.stringify(appLocationToWorkspaceTarget(location));
 }
 
-export function workspaceTabTitle(
-  location: AppLocation,
-  data: BootstrapDto,
-  labels: Record<AppLocation['view'] | 'settings', string>,
-) {
+interface WorkspaceTabTitleLabels {
+  views: Record<AppLocation['view'] | 'settings', string>;
+  newCreation: string;
+  creationKinds: {
+    creationAlbum: string;
+    promptSeries: string;
+    imageBreakdown: string;
+    ideaCreation: string;
+    inspirationStash: string;
+    evaluationSuite: string;
+    socialPost: string;
+    article: string;
+    videoDocument: string;
+  };
+}
+
+function displayTitle(value: string | null | undefined, fallback: string) {
+  return value?.trim() || fallback;
+}
+
+function newCreationTabTitle(albumId: string | null, data: BootstrapDto, labels: WorkspaceTabTitleLabels) {
+  const albumTitle = albumId ? data.albums.find((album) => album.id === albumId)?.title.trim() : null;
+  return albumTitle ? `${labels.newCreation} · ${albumTitle}` : labels.newCreation;
+}
+
+function creatorTabTitle(creator: CreatorLocation, data: BootstrapDto, labels: WorkspaceTabTitleLabels) {
+  const kinds = labels.creationKinds;
+  switch (creator.surface) {
+    case 'default':
+      return labels.views.creator;
+    case 'new-creation':
+      return newCreationTabTitle(creator.albumId, data, labels);
+    case 'creation-draft':
+      return data.creationDraft?.id === creator.draftId
+        ? displayTitle(data.creationDraft.title, labels.newCreation)
+        : labels.newCreation;
+    case 'inspiration-stash':
+      return displayTitle(
+        data.inspirationStashes?.find((stash) => stash.id === creator.stashId)?.title,
+        kinds.inspirationStash,
+      );
+    case 'image-breakdown':
+      return displayTitle(
+        data.imageBreakdowns?.find((breakdown) => breakdown.id === creator.breakdownId)?.title,
+        kinds.imageBreakdown,
+      );
+    case 'evaluation-suite':
+      return displayTitle(
+        data.evaluationSuites?.find((suite) => suite.id === creator.suiteId)?.content.title,
+        kinds.evaluationSuite,
+      );
+    case 'social-post':
+      return displayTitle(
+        data.socialPosts?.find((post) => post.id === creator.postId)?.content.title,
+        kinds.socialPost,
+      );
+    case 'article':
+      return displayTitle(
+        data.articles?.find((article) => article.id === creator.articleId)?.content.title,
+        kinds.article,
+      );
+    case 'idea-creation':
+      return displayTitle(
+        data.creations?.find((creation) => creation.id === creator.creationId)?.title,
+        kinds.ideaCreation,
+      );
+    case 'existing-creation':
+      return displayTitle(data.series.find((series) => series.id === creator.seriesId)?.title, kinds.promptSeries);
+    case 'album-detail':
+      return displayTitle(data.albums.find((album) => album.id === creator.albumId)?.title, kinds.creationAlbum);
+  }
+}
+
+export function workspaceTabTitle(location: AppLocation, data: BootstrapDto, labels: WorkspaceTabTitleLabels) {
   if (location.view === 'creator') {
-    const creator = location.creator;
-    if (creator.surface === 'existing-creation') {
-      return data.series.find((series) => series.id === creator.seriesId)?.title || labels.creator;
+    return creatorTabTitle(location.creator, data, labels);
+  }
+  if (location.view === 'documents') {
+    const returnContext = location.materialsReturnContext;
+    if (
+      location.documents.documentId &&
+      returnContext?.destination === 'documents' &&
+      returnContext.documentId === location.documents.documentId
+    ) {
+      return displayTitle(returnContext.title, labels.creationKinds.videoDocument);
     }
-    if (creator.surface === 'creation-draft') {
-      return data.creationDraft?.id === creator.draftId ? data.creationDraft.title || labels.creator : labels.creator;
-    }
-    if (creator.surface === 'article') {
-      return data.articles?.find((article) => article.id === creator.articleId)?.content.title || labels.creator;
-    }
-    if (creator.surface === 'social-post') {
-      return data.socialPosts?.find((post) => post.id === creator.postId)?.content.title || labels.creator;
-    }
-    if (creator.surface === 'inspiration-stash') {
-      return data.inspirationStashes?.find((stash) => stash.id === creator.stashId)?.title || labels.creator;
+    if (location.documents.collection.kind === 'album') {
+      const albumId = location.documents.collection.albumId;
+      return displayTitle(data.albums.find((album) => album.id === albumId)?.title, labels.views.documents);
     }
   }
   if (location.view === 'dictionary') {
     const dictionary = location.dictionary;
     if (dictionary.surface === 'detail' || dictionary.surface === 'edit') {
-      return data.terms.find((term) => term.id === dictionary.termId)?.title || labels.dictionary;
+      return displayTitle(data.terms.find((term) => term.id === dictionary.termId)?.title, labels.views.dictionary);
+    }
+    if (dictionary.surface === 'classifications' && dictionary.classificationId) {
+      const name = data.categories.find((category) => category.id === dictionary.classificationId)?.name;
+      return displayTitle(name?.split(' / ').at(-1), labels.views.dictionary);
     }
   }
-  return location.view === 'contentManagement' ? labels.settings : labels[location.view];
+  if (location.view === 'gallery' && location.gallery.collection.kind === 'album') {
+    const albumId = location.gallery.collection.albumId;
+    return displayTitle(data.albums.find((album) => album.id === albumId)?.title, labels.views.gallery);
+  }
+  if (location.view === 'contentManagement') {
+    return labels.views.settings;
+  }
+  return labels.views[location.view];
+}
+
+export function workspaceLocationCanSplit(location: AppLocation) {
+  if (location.view === 'creator') {
+    return !(
+      location.creator.surface === 'default' ||
+      location.creator.surface === 'new-creation' ||
+      location.creator.surface === 'creation-draft'
+    );
+  }
+  if (location.view === 'documents') {
+    return location.documents.documentId === null;
+  }
+  if (location.view === 'dictionary') {
+    return location.dictionary.surface !== 'edit';
+  }
+  return true;
 }

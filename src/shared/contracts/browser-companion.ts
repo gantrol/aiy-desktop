@@ -23,6 +23,13 @@ export const browserCompanionSourceSchema = z.discriminatedUnion('kind', [
     .object({
       kind: z.literal('creation-draft'),
       id: idSchema,
+      outputTarget: z
+        .object({
+          seriesId: idSchema,
+          promptVersionId: idSchema,
+        })
+        .strict()
+        .optional(),
     })
     .strict(),
 ]);
@@ -69,6 +76,7 @@ export const browserCompanionStageResultSchema = z
         'PROFILE_NOT_SELECTED',
         'PROFILE_UNAVAILABLE',
         'COMPANION_NOT_INSTALLED',
+        'DESKTOP_SERVICE_UNAVAILABLE',
         'NATIVE_HOST_UNAVAILABLE',
         'LAUNCH_FAILED',
       ])

@@ -1168,21 +1168,21 @@ export const WordPaletteInlinePromptEditor = forwardRef<WordPaletteInlinePromptE
         {dropPreview?.intent === 'insert' && (
           <span
             aria-hidden="true"
-            className="pointer-events-none fixed z-50 w-0.5 rounded-full bg-primary"
+            className="pointer-events-none fixed z-drag w-0.5 rounded-full bg-primary"
             style={{ left: dropPreview.left, top: dropPreview.top, height: dropPreview.height }}
           />
         )}
         {dropPreview && dropPreview.intent !== 'insert' && (
           <span
             aria-hidden="true"
-            className="pointer-events-none fixed z-40 rounded-md border-2 border-primary bg-primary/10 ring-2 ring-primary/25 ring-offset-2"
+            className="pointer-events-none fixed z-drag rounded-md border-2 border-primary bg-primary/10 ring-2 ring-primary/25 ring-offset-2"
             style={dropPreview.targetRect}
           />
         )}
         {dropPreview && dropPreview.intent !== 'insert' && (
           <div
             role="status"
-            className="pointer-events-none fixed z-50 flex max-w-80 -translate-x-1/2 -translate-y-full items-center gap-1.5 rounded-md bg-primary px-2.5 py-1.5 text-xs font-medium text-primary-foreground shadow-overlay"
+            className="pointer-events-none fixed z-drag flex max-w-80 -translate-x-1/2 -translate-y-full items-center gap-1.5 rounded-md bg-primary px-2.5 py-1.5 text-xs font-medium text-primary-foreground shadow-overlay"
             style={{ left: dropPreview.left, top: dropPreview.top }}
           >
             {dropPreview.intent === 'combine' ? <BracesIcon className="size-3.5" /> : <PlusIcon className="size-3.5" />}

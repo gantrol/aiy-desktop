@@ -1,12 +1,17 @@
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
-import { XIcon } from 'lucide-react';
+import { CheckIcon, CopyIcon, XIcon } from 'lucide-react';
 import { cn } from '@/renderer/lib/utils';
 import { Button } from '@/renderer/components/ui/button';
+
+export interface ToastOptions {
+  copyText?: string;
+}
 
 export interface ToastMessage {
   id: number;
   message: ReactNode;
+  copyText?: string;
 }
 
 export function useToastQueue(limit = 8) {
@@ -14,9 +19,9 @@ export function useToastQueue(limit = 8) {
   const nextId = useRef(0);
 
   const notify = useCallback(
-    (message: ReactNode) => {
+    (message: ReactNode, options: ToastOptions = {}) => {
       nextId.current += 1;
-      const next = { id: nextId.current, message };
+      const next = { id: nextId.current, message, copyText: options.copyText };
       setMessages((current) => [...current, next].slice(-limit));
     },
     [limit],
@@ -32,24 +37,46 @@ export function useToastQueue(limit = 8) {
 interface ToastProps {
   toast: ToastMessage;
   closeLabel: string;
+  copiedLabel: string;
+  copyFailedLabel: string;
+  copyLabel: string;
   duration?: number;
   onDismiss(id: number): void;
 }
 
-function Toast({ toast, closeLabel, duration = 5000, onDismiss }: ToastProps) {
+function Toast({ toast, closeLabel, copiedLabel, copyFailedLabel, copyLabel, duration = 5000, onDismiss }: ToastProps) {
+  const [copyState, setCopyState] = useState<'idle' | 'copied' | 'failed'>('idle');
+
   useEffect(() => {
     const timer = window.setTimeout(() => onDismiss(toast.id), duration);
     return () => window.clearTimeout(timer);
-  }, [duration, onDismiss, toast.id]);
+  }, [copyState, duration, onDismiss, toast.id]);
+
+  async function copyDetails() {
+    if (!toast.copyText) return;
+    try {
+      await navigator.clipboard.writeText(toast.copyText);
+      setCopyState('copied');
+    } catch {
+      setCopyState('failed');
+    }
+  }
 
   return (
     <li
       data-slot="toast"
+      data-overlay-surface=""
       role="status"
       aria-atomic="true"
       className="pointer-events-none flex min-w-72 max-w-[min(28rem,calc(100vw-2rem))] items-center gap-3 rounded-lg border bg-overlay px-3 py-2 text-sm text-foreground shadow-overlay"
     >
       <span className="min-w-0 flex-1 break-words">{toast.message}</span>
+      {toast.copyText && (
+        <Button type="button" variant="ghost" size="xs" className="pointer-events-auto h-7 px-2" onClick={copyDetails}>
+          {copyState === 'copied' ? <CheckIcon className="size-3.5" /> : <CopyIcon className="size-3.5" />}
+          {copyState === 'copied' ? copiedLabel : copyState === 'failed' ? copyFailedLabel : copyLabel}
+        </Button>
+      )}
       <Button
         type="button"
         variant="ghost"
@@ -68,24 +95,48 @@ interface ToastViewportProps {
   messages: ToastMessage[];
   label: string;
   closeLabel: string;
+  copiedLabel: string;
+  copyFailedLabel: string;
+  copyLabel: string;
   className?: string;
   duration?: number;
   onDismiss(id: number): void;
 }
 
-export function ToastViewport({ messages, label, closeLabel, className, duration, onDismiss }: ToastViewportProps) {
+export function ToastViewport({
+  messages,
+  label,
+  closeLabel,
+  copiedLabel,
+  copyFailedLabel,
+  copyLabel,
+  className,
+  duration,
+  onDismiss,
+}: ToastViewportProps) {
   const viewport = (
     <ol
       data-slot="toast-viewport"
+      data-overlay-layer="toast"
       aria-label={label}
       aria-live="polite"
       aria-relevant="additions text"
       className={cn(
-        'pointer-events-none fixed top-28 right-4 z-[60] flex max-h-[calc(100vh-8rem)] flex-col items-end gap-2',
+        'pointer-events-none fixed top-28 right-4 z-toast flex max-h-[calc(100vh-8rem)] flex-col items-end gap-2',
         className,
       )}
     >
-      {messages[0] && <Toast toast={messages[0]} closeLabel={closeLabel} duration={duration} onDismiss={onDismiss} />}
+      {messages[0] && (
+        <Toast
+          toast={messages[0]}
+          closeLabel={closeLabel}
+          copiedLabel={copiedLabel}
+          copyFailedLabel={copyFailedLabel}
+          copyLabel={copyLabel}
+          duration={duration}
+          onDismiss={onDismiss}
+        />
+      )}
     </ol>
   );
   return typeof document === 'undefined' ? viewport : createPortal(viewport, document.body);

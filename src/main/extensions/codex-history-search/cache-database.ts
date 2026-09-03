@@ -4,8 +4,9 @@ import Database from 'better-sqlite3';
 import { z } from 'zod';
 import codexHistorySearchCacheRevision1Sql from '@/main/database/sql/v03-codex-history-search-cache-revision-001.sql?raw';
 import codexHistorySearchCacheRevision1ProjectMetadataSql from '@/main/database/sql/v03-codex-history-search-cache-revision-001-project-metadata.sql?raw';
+import codexHistorySearchCacheRevision2IncrementalSql from '@/main/database/sql/v03-codex-history-search-cache-revision-002-incremental.sql?raw';
+import codexHistorySearchCacheRevision3OrganizationSql from '@/main/database/sql/v03-codex-history-search-cache-revision-003-organization.sql?raw';
 import type {
-  CodexHistoryFilterOptions,
   CodexHistoryFilterOptionsInput,
   CodexHistoryIndexState,
   CodexHistoryMatchRole,
@@ -14,19 +15,28 @@ import type {
   CodexHistorySearchResult,
   CodexHistoryThreadSource,
 } from '@/shared/contracts/codex-history-search';
-import type { CodexHistorySourceSnapshot } from '@/main/extensions/codex-history-search/source-reader';
+import type {
+  CodexHistorySourceSnapshot,
+  CodexHistorySourceThread,
+} from '@/main/extensions/codex-history-search/source-reader';
+import { readCodexHistoryFilterOptions } from '@/main/extensions/codex-history-search/cache-navigation';
 
-const DATABASE_SCHEMA_VERSION = 1;
-const UNRELEASED_DATABASE_SCHEMA_VERSIONS = new Set([2]);
+const DATABASE_SCHEMA_VERSION = 3;
+const MAX_CACHED_THREADS = 100_000;
+const CACHED_THREAD_LOOKUP_BATCH_SIZE = 500;
 const MAX_SEARCH_CANDIDATES = 5_000;
-const MAX_FILTER_PROJECTS = 1_000;
-const MAX_FILTER_THREADS = 50;
 const MAX_INDEXED_MESSAGE_TEXT_CHARACTERS = 1024 * 1024;
 const SNIPPET_CONTEXT_CHARACTERS = 120;
 
 const indexMetaRowSchema = z
   .object({
     sourceSignature: z.string().length(64).nullable(),
+    sourceHistoryId: z.string().length(64).nullable(),
+    sourceHistoryRowId: z.number().int().nonnegative().safe(),
+    sourceStateId: z.string().length(64).nullable(),
+    sourceThreadUpdatedAtMs: z.number().int().nonnegative().safe(),
+    sourceThreadCount: z.number().int().nonnegative().safe(),
+    sourceProjectSignature: z.string().length(64).nullable(),
     indexedAt: z.string().datetime({ offset: true }).nullable(),
     indexedThreads: z.number().int().nonnegative().safe(),
     indexedMessages: z.number().int().nonnegative().safe(),
@@ -34,6 +44,28 @@ const indexMetaRowSchema = z
   .strict();
 const countRowSchema = z.object({ count: z.number().int().nonnegative().safe() }).strict();
 const sqliteTableInfoRowSchema = z.object({ name: z.string() }).passthrough();
+const cachedThreadRowSchema = z
+  .object({
+    rowId: z.number().int().positive().safe(),
+    threadId: z.string().min(1).max(512),
+    title: z.string().min(1).max(500),
+    titleAvailable: z.number().int().min(0).max(1),
+    projectId: z.string().max(512),
+    projectName: z.string().max(500),
+    sectionId: z.string().max(512),
+    sectionName: z.string().max(500),
+    sectionPosition: z.number().int().nonnegative().safe().nullable(),
+    pinned: z.number().int().min(0).max(1),
+    workspace: z.string().max(32_768),
+    branch: z.string().max(1_024),
+    archived: z.number().int().min(0).max(1),
+    source: z.enum(['USER', 'SUBAGENT', 'OTHER']),
+    createdAtMs: z.number().int().nonnegative().safe(),
+    updatedAtMs: z.number().int().nonnegative().safe(),
+    preview: z.string().max(256 * 1024),
+    metadataText: z.string().max(256 * 1024),
+  })
+  .strict();
 const candidateThreadRowSchema = z
   .object({
     threadId: z.string().min(1).max(512),
@@ -41,6 +73,10 @@ const candidateThreadRowSchema = z
     titleAvailable: z.number().int().min(0).max(1),
     projectId: z.string().max(512),
     projectName: z.string().max(500),
+    sectionId: z.string().max(512),
+    sectionName: z.string().max(500),
+    sectionPosition: z.number().int().nonnegative().safe().nullable(),
+    pinned: z.number().int().min(0).max(1),
     workspace: z.string().max(32_768),
     branch: z.string().max(1_024),
     archived: z.number().int().min(0).max(1),
@@ -50,24 +86,6 @@ const candidateThreadRowSchema = z
     preview: z.string().max(256 * 1024),
     matchText: z.string().max(MAX_INDEXED_MESSAGE_TEXT_CHARACTERS),
     rank: z.number().finite(),
-  })
-  .strict();
-const projectOptionRowSchema = z
-  .object({
-    projectId: z.string().trim().min(1).max(512),
-    name: z.string().trim().min(1).max(500),
-    workspace: z.string().max(32_768),
-    threadCount: z.number().int().positive().safe(),
-  })
-  .strict();
-const threadOptionRowSchema = z
-  .object({
-    threadId: z.string().trim().min(1).max(512),
-    title: z.string().trim().min(1).max(500),
-    projectId: z.string().max(512),
-    projectName: z.string().max(500),
-    workspace: z.string().max(32_768),
-    updatedAtMs: z.number().int().nonnegative().safe(),
   })
   .strict();
 const candidateMessageRowSchema = candidateThreadRowSchema
@@ -83,6 +101,10 @@ interface SearchCandidate {
   titleAvailable: boolean;
   projectId: string;
   projectName: string;
+  sectionId: string;
+  sectionName: string;
+  sectionPosition: number | null;
+  pinned: boolean;
   workspace: string;
   branch: string;
   archived: boolean;
@@ -128,6 +150,10 @@ function threadFilters(input: CodexHistorySearchInput, alias = 't') {
     clauses.push(`${alias}.project_id = ?`);
     parameters.push(input.projectId);
   }
+  if (input.sectionId) {
+    clauses.push(`${alias}.section_id = ?`);
+    parameters.push(input.sectionId);
+  }
   if (input.threadId) {
     clauses.push(`${alias}.thread_id = ?`);
     parameters.push(input.threadId);
@@ -150,15 +176,6 @@ function threadFilters(input: CodexHistorySearchInput, alias = 't') {
     parameters.push(toExclusiveMs);
   }
   return { clauses, parameters };
-}
-
-function filterOptionVisibility(input: CodexHistoryFilterOptionsInput, alias = 't') {
-  const clauses = [
-    input.includeSubagents ? `${alias}.thread_source IN ('USER', 'SUBAGENT')` : `${alias}.thread_source = 'USER'`,
-  ];
-  if (input.archive === 'ACTIVE') clauses.push(`${alias}.archived = 0`);
-  if (input.archive === 'ARCHIVED') clauses.push(`${alias}.archived = 1`);
-  return clauses;
 }
 
 function isoTimestamp(epochMs: number) {
@@ -184,6 +201,10 @@ function searchResult(candidate: SearchCandidate, query: string): CodexHistorySe
     titleAvailable: candidate.titleAvailable,
     projectId: candidate.projectId,
     projectName: candidate.projectName,
+    sectionId: candidate.sectionId,
+    sectionName: candidate.sectionName,
+    sectionPosition: candidate.sectionPosition,
+    pinned: candidate.pinned,
     workspace: candidate.workspace,
     branch: candidate.branch,
     archived: candidate.archived,
@@ -194,6 +215,61 @@ function searchResult(candidate: SearchCandidate, query: string): CodexHistorySe
     snippet: compactSnippet(candidate.text, query).slice(0, 1_200),
     matchCount: candidate.matchCount,
   };
+}
+
+function cachedThreadMatches(row: z.infer<typeof cachedThreadRowSchema>, thread: CodexHistorySourceThread) {
+  return (
+    row.title === thread.title &&
+    row.titleAvailable === (thread.titleAvailable ? 1 : 0) &&
+    row.projectId === thread.projectId &&
+    row.projectName === thread.projectName &&
+    row.sectionId === thread.sectionId &&
+    row.sectionName === thread.sectionName &&
+    row.sectionPosition === thread.sectionPosition &&
+    row.pinned === (thread.pinned ? 1 : 0) &&
+    row.workspace === thread.workspace &&
+    row.branch === thread.branch &&
+    row.archived === (thread.archived ? 1 : 0) &&
+    row.source === thread.source &&
+    row.createdAtMs === thread.createdAtMs &&
+    row.updatedAtMs === thread.updatedAtMs &&
+    row.preview === thread.preview &&
+    row.metadataText === thread.metadataText
+  );
+}
+
+function safeRowId(value: number | bigint) {
+  const rowId = Number(value);
+  if (!Number.isSafeInteger(rowId) || rowId <= 0) throw new Error('Codex history cache generated an invalid row id');
+  return rowId;
+}
+
+function readCachedThreads(database: Database.Database, threadIds: readonly string[] | null) {
+  const select = `SELECT
+     row_id AS rowId, thread_id AS threadId, title, title_available AS titleAvailable,
+     project_id AS projectId, project_name AS projectName,
+     section_id AS sectionId, section_name AS sectionName, section_position AS sectionPosition, pinned,
+     workspace, branch, archived,
+     thread_source AS source, created_at_ms AS createdAtMs, updated_at_ms AS updatedAtMs,
+     preview, metadata_text AS metadataText
+   FROM codex_history_threads`;
+  if (threadIds === null) {
+    return z.array(cachedThreadRowSchema).max(MAX_CACHED_THREADS).parse(database.prepare(select).all());
+  }
+  const rows: unknown[] = [];
+  for (let offset = 0; offset < threadIds.length; offset += CACHED_THREAD_LOOKUP_BATCH_SIZE) {
+    const batch = threadIds.slice(offset, offset + CACHED_THREAD_LOOKUP_BATCH_SIZE);
+    const placeholders = batch.map(() => '?').join(', ');
+    rows.push(...database.prepare(`${select} WHERE thread_id IN (${placeholders})`).all(...batch));
+  }
+  return z.array(cachedThreadRowSchema).max(MAX_CACHED_THREADS).parse(rows);
+}
+
+export class CodexHistoryThreadSnapshotRequiredError extends Error {
+  constructor() {
+    super('Codex task metadata changed outside the incremental cursor');
+    this.name = 'CodexHistoryThreadSnapshotRequiredError';
+  }
 }
 
 export class CodexHistorySearchCacheDatabase {
@@ -215,6 +291,12 @@ export class CodexHistorySearchCacheDatabase {
         .prepare(
           `SELECT
              source_signature AS sourceSignature,
+             source_history_id AS sourceHistoryId,
+             source_history_row_id AS sourceHistoryRowId,
+             source_state_id AS sourceStateId,
+             source_thread_updated_at_ms AS sourceThreadUpdatedAtMs,
+             source_thread_count AS sourceThreadCount,
+             source_project_signature AS sourceProjectSignature,
              indexed_at AS indexedAt,
              indexed_threads AS indexedThreads,
              indexed_messages AS indexedMessages
@@ -225,38 +307,87 @@ export class CodexHistorySearchCacheDatabase {
     );
   }
 
-  replace(snapshot: CodexHistorySourceSnapshot) {
+  apply(snapshot: CodexHistorySourceSnapshot, rebuildMessages: boolean) {
+    const cachedThreads = readCachedThreads(
+      this.database,
+      snapshot.fullThreadSnapshot ? null : snapshot.threads.map(({ threadId }) => threadId),
+    );
+    if (!snapshot.fullThreadSnapshot) {
+      const cachedThreadIds = new Set(cachedThreads.map(({ threadId }) => threadId));
+      const addedThreads = snapshot.threads.filter(({ threadId }) => !cachedThreadIds.has(threadId)).length;
+      const currentThreads = countRowSchema.parse(
+        this.database.prepare('SELECT COUNT(*) AS count FROM codex_history_threads').get(),
+      ).count;
+      if (currentThreads + addedThreads !== snapshot.sourceThreadCount) {
+        throw new CodexHistoryThreadSnapshotRequiredError();
+      }
+    }
     const insertThread = this.database.prepare(
       `INSERT INTO codex_history_threads (
-         row_id, thread_id, title, title_available, project_id, project_name, workspace, branch, archived, thread_source,
-         created_at_ms, updated_at_ms, preview, metadata_text, search_text
-       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+         thread_id, title, title_available, project_id, project_name,
+         section_id, section_name, section_position, pinned,
+         workspace, branch, archived, thread_source, created_at_ms, updated_at_ms, preview, metadata_text, search_text
+       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    );
+    const updateThread = this.database.prepare(
+      `UPDATE codex_history_threads
+       SET title = ?, title_available = ?, project_id = ?, project_name = ?,
+           section_id = ?, section_name = ?, section_position = ?, pinned = ?,
+           workspace = ?, branch = ?, archived = ?, thread_source = ?, created_at_ms = ?, updated_at_ms = ?,
+           preview = ?, metadata_text = ?, search_text = ?
+       WHERE row_id = ?`,
+    );
+    const insertProject = this.database.prepare(
+      `INSERT INTO codex_history_projects (project_id, name, workspace, position) VALUES (?, ?, ?, ?)`,
+    );
+    const insertSection = this.database.prepare(
+      `INSERT INTO codex_history_sections (section_id, name, position) VALUES (?, ?, ?)`,
     );
     const insertThreadFts = this.database.prepare(
       'INSERT INTO codex_history_thread_fts (rowid, metadata_text) VALUES (?, ?)',
     );
+    const deleteThreadFts = this.database.prepare('DELETE FROM codex_history_thread_fts WHERE rowid = ?');
+    const deleteMessageFtsForThread = this.database.prepare(
+      `DELETE FROM codex_history_message_fts
+       WHERE rowid IN (SELECT row_id FROM codex_history_messages WHERE thread_id = ?)`,
+    );
+    const deleteThread = this.database.prepare('DELETE FROM codex_history_threads WHERE row_id = ?');
     const insertMessage = this.database.prepare(
       `INSERT INTO codex_history_messages (
-         row_id, source_row_id, thread_id, role, created_at_ms, text, search_text
-       ) VALUES (?, ?, ?, ?, ?, ?, ?)`,
+         source_row_id, thread_id, role, created_at_ms, text, search_text
+       ) VALUES (?, ?, ?, ?, ?, ?)
+       ON CONFLICT(source_row_id) DO NOTHING`,
     );
     const insertMessageFts = this.database.prepare('INSERT INTO codex_history_message_fts (rowid, text) VALUES (?, ?)');
     const indexedAt = new Date().toISOString();
     this.database.transaction(() => {
-      this.database.prepare('DELETE FROM codex_history_message_fts').run();
-      this.database.prepare('DELETE FROM codex_history_messages').run();
-      this.database.prepare('DELETE FROM codex_history_thread_fts').run();
-      this.database.prepare('DELETE FROM codex_history_threads').run();
-      snapshot.threads.forEach((thread, index) => {
-        const rowId = index + 1;
+      this.database.prepare('DELETE FROM codex_history_projects').run();
+      for (const project of snapshot.projects) {
+        insertProject.run(project.projectId, project.name, project.workspace, project.position);
+      }
+      this.database.prepare('DELETE FROM codex_history_sections').run();
+      for (const section of snapshot.sections) {
+        insertSection.run(section.sectionId, section.name, section.position);
+      }
+      if (rebuildMessages) {
+        this.database.prepare('DELETE FROM codex_history_message_fts').run();
+        this.database.prepare('DELETE FROM codex_history_messages').run();
+      }
+      const removedThreads = new Map(cachedThreads.map((thread) => [thread.threadId, thread]));
+      for (const thread of snapshot.threads) {
+        const cached = removedThreads.get(thread.threadId);
+        removedThreads.delete(thread.threadId);
+        if (cached && cachedThreadMatches(cached, thread)) continue;
         const searchText = normalizeSearchText(thread.metadataText);
-        insertThread.run(
-          rowId,
-          thread.threadId,
+        const values = [
           thread.title,
           thread.titleAvailable ? 1 : 0,
           thread.projectId,
           thread.projectName,
+          thread.sectionId,
+          thread.sectionName,
+          thread.sectionPosition,
+          thread.pinned ? 1 : 0,
           thread.workspace,
           thread.branch,
           thread.archived ? 1 : 0,
@@ -266,14 +397,23 @@ export class CodexHistorySearchCacheDatabase {
           thread.preview,
           thread.metadataText,
           searchText,
-        );
+        ] as const;
+        const rowId = cached
+          ? (updateThread.run(...values, cached.rowId), cached.rowId)
+          : safeRowId(insertThread.run(thread.threadId, ...values).lastInsertRowid);
+        if (cached) deleteThreadFts.run(rowId);
         insertThreadFts.run(rowId, searchText);
-      });
-      snapshot.messages.forEach((message, index) => {
-        const rowId = index + 1;
+      }
+      if (snapshot.fullThreadSnapshot) {
+        for (const thread of removedThreads.values()) {
+          deleteMessageFtsForThread.run(thread.threadId);
+          deleteThreadFts.run(thread.rowId);
+          deleteThread.run(thread.rowId);
+        }
+      }
+      for (const message of snapshot.messages) {
         const searchText = normalizeSearchText(message.text);
-        insertMessage.run(
-          rowId,
+        const result = insertMessage.run(
           message.sourceRowId,
           message.threadId,
           message.role,
@@ -281,15 +421,34 @@ export class CodexHistorySearchCacheDatabase {
           message.text,
           searchText,
         );
-        insertMessageFts.run(rowId, searchText);
-      });
+        if (result.changes) insertMessageFts.run(safeRowId(result.lastInsertRowid), searchText);
+      }
+      const indexedThreads = countRowSchema.parse(
+        this.database.prepare('SELECT COUNT(*) AS count FROM codex_history_threads').get(),
+      ).count;
+      const indexedMessages = countRowSchema.parse(
+        this.database.prepare('SELECT COUNT(*) AS count FROM codex_history_messages').get(),
+      ).count;
       this.database
         .prepare(
           `UPDATE codex_history_index_meta
-           SET source_signature = ?, indexed_at = ?, indexed_threads = ?, indexed_messages = ?
+           SET source_signature = ?, source_history_id = ?, source_history_row_id = ?, source_state_id = ?,
+               source_thread_updated_at_ms = ?, source_thread_count = ?, source_project_signature = ?,
+               indexed_at = ?, indexed_threads = ?, indexed_messages = ?
            WHERE id = 1`,
         )
-        .run(snapshot.paths.signature, indexedAt, snapshot.threads.length, snapshot.messages.length);
+        .run(
+          snapshot.paths.signature,
+          snapshot.paths.historySourceId,
+          snapshot.scannedThroughRowId,
+          snapshot.paths.stateSourceId,
+          snapshot.sourceThreadUpdatedAtMs,
+          snapshot.sourceThreadCount,
+          snapshot.sourceProjectSignature,
+          indexedAt,
+          indexedThreads,
+          indexedMessages,
+        );
     })();
     return this.meta();
   }
@@ -301,10 +460,14 @@ export class CodexHistorySearchCacheDatabase {
       this.database.prepare('DELETE FROM codex_history_messages').run();
       this.database.prepare('DELETE FROM codex_history_thread_fts').run();
       this.database.prepare('DELETE FROM codex_history_threads').run();
+      this.database.prepare('DELETE FROM codex_history_projects').run();
+      this.database.prepare('DELETE FROM codex_history_sections').run();
       this.database
         .prepare(
           `UPDATE codex_history_index_meta
-           SET source_signature = NULL, indexed_at = NULL, indexed_threads = 0, indexed_messages = 0
+           SET source_signature = NULL, source_history_id = NULL, source_history_row_id = 0,
+               source_state_id = NULL, source_thread_updated_at_ms = 0, source_thread_count = 0,
+               source_project_signature = NULL, indexed_at = NULL, indexed_threads = 0, indexed_messages = 0
            WHERE id = 1`,
         )
         .run();
@@ -314,70 +477,8 @@ export class CodexHistorySearchCacheDatabase {
     this.database.pragma('wal_checkpoint(TRUNCATE)');
   }
 
-  filterOptions(input: CodexHistoryFilterOptionsInput): CodexHistoryFilterOptions {
-    const visibility = filterOptionVisibility(input);
-    const projectRows = z
-      .array(projectOptionRowSchema)
-      .max(MAX_FILTER_PROJECTS + 1)
-      .parse(
-        this.database
-          .prepare(
-            `SELECT
-               t.project_id AS projectId,
-               COALESCE(NULLIF(MAX(t.project_name), ''), t.project_id) AS name,
-               MAX(t.workspace) AS workspace,
-               COUNT(*) AS threadCount
-             FROM codex_history_threads AS t
-             WHERE ${visibility.join(' AND ')} AND t.project_id <> ''
-             GROUP BY t.project_id
-             ORDER BY name COLLATE NOCASE, t.project_id
-             LIMIT ?`,
-          )
-          .all(MAX_FILTER_PROJECTS + 1),
-      );
-    const threadClauses = [...visibility];
-    const threadParameters: string[] = [];
-    if (input.projectId) {
-      threadClauses.push('t.project_id = ?');
-      threadParameters.push(input.projectId);
-    }
-    const query = normalizeSearchText(input.query);
-    if (query) {
-      threadClauses.push('(instr(t.search_text, ?) > 0 OR instr(lower(t.thread_id), ?) > 0)');
-      threadParameters.push(query, query);
-    }
-    const threadRows = z
-      .array(threadOptionRowSchema)
-      .max(MAX_FILTER_THREADS + 1)
-      .parse(
-        this.database
-          .prepare(
-            `SELECT
-               t.thread_id AS threadId,
-               t.title,
-               t.project_id AS projectId,
-               t.project_name AS projectName,
-               t.workspace,
-               t.updated_at_ms AS updatedAtMs
-             FROM codex_history_threads AS t
-             WHERE ${threadClauses.join(' AND ')}
-             ORDER BY t.updated_at_ms DESC, t.thread_id
-             LIMIT ?`,
-          )
-          .all(...threadParameters, MAX_FILTER_THREADS + 1),
-      );
-    return {
-      projects: projectRows.slice(0, MAX_FILTER_PROJECTS),
-      threads: threadRows.slice(0, MAX_FILTER_THREADS).map((thread) => ({
-        threadId: thread.threadId,
-        title: thread.title,
-        projectId: thread.projectId,
-        projectName: thread.projectName,
-        workspace: thread.workspace,
-        updatedAt: isoTimestamp(thread.updatedAtMs),
-      })),
-      threadsTruncated: threadRows.length > MAX_FILTER_THREADS,
-    };
+  filterOptions(input: CodexHistoryFilterOptionsInput) {
+    return readCodexHistoryFilterOptions(this.database, input);
   }
 
   search(input: CodexHistorySearchInput, index: CodexHistoryIndexState): CodexHistorySearchPage {
@@ -393,22 +494,28 @@ export class CodexHistorySearchCacheDatabase {
       threadParameters.push(query);
     }
     threadParameters.push(...filters.parameters, MAX_SEARCH_CANDIDATES + 1);
+    // A relational tie-breaker here makes FTS materialize and sort every hit. Keep the SQL order rank-only so
+    // LIMIT can short-circuit; the bounded candidate merge below applies updated-at and title tie-breakers.
     const threadSql = useFts
       ? `SELECT
            t.thread_id AS threadId, t.title, t.title_available AS titleAvailable,
            t.project_id AS projectId, t.project_name AS projectName,
+           t.section_id AS sectionId, t.section_name AS sectionName,
+           t.section_position AS sectionPosition, t.pinned,
            t.workspace, t.branch, t.archived, t.thread_source AS source,
            t.created_at_ms AS createdAtMs, t.updated_at_ms AS updatedAtMs,
            t.preview, t.metadata_text AS matchText,
-           bm25(codex_history_thread_fts) AS rank
+           codex_history_thread_fts.rank AS rank
          FROM codex_history_thread_fts
          JOIN codex_history_threads AS t ON t.row_id = codex_history_thread_fts.rowid
          WHERE codex_history_thread_fts MATCH ? AND ${filters.clauses.join(' AND ')}
-         ORDER BY rank ASC, t.updated_at_ms DESC
+         ORDER BY codex_history_thread_fts.rank ASC
          LIMIT ?`
       : `SELECT
            t.thread_id AS threadId, t.title, t.title_available AS titleAvailable,
            t.project_id AS projectId, t.project_name AS projectName,
+           t.section_id AS sectionId, t.section_name AS sectionName,
+           t.section_position AS sectionPosition, t.pinned,
            t.workspace, t.branch, t.archived, t.thread_source AS source,
            t.created_at_ms AS createdAtMs, t.updated_at_ms AS updatedAtMs,
            t.preview, t.metadata_text AS matchText, 0 AS rank
@@ -438,18 +545,22 @@ export class CodexHistorySearchCacheDatabase {
       ? `SELECT
            t.thread_id AS threadId, t.title, t.title_available AS titleAvailable,
            t.project_id AS projectId, t.project_name AS projectName,
+           t.section_id AS sectionId, t.section_name AS sectionName,
+           t.section_position AS sectionPosition, t.pinned,
            t.workspace, t.branch, t.archived, t.thread_source AS source,
            t.created_at_ms AS createdAtMs, t.updated_at_ms AS updatedAtMs,
-           m.role, m.text AS matchText, bm25(codex_history_message_fts) AS rank
+           m.role, m.text AS matchText, codex_history_message_fts.rank AS rank
          FROM codex_history_message_fts
          JOIN codex_history_messages AS m ON m.row_id = codex_history_message_fts.rowid
          JOIN codex_history_threads AS t ON t.thread_id = m.thread_id
          WHERE codex_history_message_fts MATCH ? AND ${messageWhere.slice(0).join(' AND ')}
-         ORDER BY rank ASC, t.updated_at_ms DESC
+         ORDER BY codex_history_message_fts.rank ASC
          LIMIT ?`
       : `SELECT
            t.thread_id AS threadId, t.title, t.title_available AS titleAvailable,
            t.project_id AS projectId, t.project_name AS projectName,
+           t.section_id AS sectionId, t.section_name AS sectionName,
+           t.section_position AS sectionPosition, t.pinned,
            t.workspace, t.branch, t.archived, t.thread_source AS source,
            t.created_at_ms AS createdAtMs, t.updated_at_ms AS updatedAtMs,
            m.role, m.text AS matchText, 1 AS rank
@@ -472,6 +583,10 @@ export class CodexHistorySearchCacheDatabase {
         titleAvailable: row.titleAvailable === 1,
         projectId: row.projectId,
         projectName: row.projectName,
+        sectionId: row.sectionId,
+        sectionName: row.sectionName,
+        sectionPosition: row.sectionPosition,
+        pinned: row.pinned === 1,
         workspace: row.workspace,
         branch: row.branch,
         archived: row.archived === 1,
@@ -494,6 +609,10 @@ export class CodexHistorySearchCacheDatabase {
         titleAvailable: row.titleAvailable === 1,
         projectId: row.projectId,
         projectName: row.projectName,
+        sectionId: row.sectionId,
+        sectionName: row.sectionName,
+        sectionPosition: row.sectionPosition,
+        pinned: row.pinned === 1,
         workspace: row.workspace,
         branch: row.branch,
         archived: row.archived === 1,
@@ -521,6 +640,9 @@ export class CodexHistorySearchCacheDatabase {
 
   private recent(input: CodexHistorySearchInput, index: CodexHistoryIndexState): CodexHistorySearchPage {
     const filters = threadFilters(input);
+    const orderBy = input.sectionId
+      ? 't.section_position IS NULL, t.section_position, t.updated_at_ms DESC, t.thread_id'
+      : 't.updated_at_ms DESC, t.thread_id';
     const total = countRowSchema.parse(
       this.database
         .prepare(`SELECT COUNT(*) AS count FROM codex_history_threads AS t WHERE ${filters.clauses.join(' AND ')}`)
@@ -536,12 +658,14 @@ export class CodexHistorySearchCacheDatabase {
             `SELECT
                t.thread_id AS threadId, t.title, t.title_available AS titleAvailable,
                t.project_id AS projectId, t.project_name AS projectName,
+               t.section_id AS sectionId, t.section_name AS sectionName,
+               t.section_position AS sectionPosition, t.pinned,
                t.workspace, t.branch, t.archived, t.thread_source AS source,
                t.created_at_ms AS createdAtMs, t.updated_at_ms AS updatedAtMs,
                t.preview, t.preview AS matchText, 0 AS rank
              FROM codex_history_threads AS t
              WHERE ${filters.clauses.join(' AND ')}
-             ORDER BY t.updated_at_ms DESC, t.thread_id
+             ORDER BY ${orderBy}
              LIMIT ? OFFSET ?`,
           )
           .all(...filters.parameters, input.pageSize, offset),
@@ -561,6 +685,10 @@ export class CodexHistorySearchCacheDatabase {
             titleAvailable: row.titleAvailable === 1,
             projectId: row.projectId,
             projectName: row.projectName,
+            sectionId: row.sectionId,
+            sectionName: row.sectionName,
+            sectionPosition: row.sectionPosition,
+            pinned: row.pinned === 1,
             workspace: row.workspace,
             branch: row.branch,
             archived: row.archived === 1,
@@ -615,19 +743,54 @@ export class CodexHistorySearchCacheDatabase {
       .int()
       .nonnegative()
       .parse(this.database.pragma('user_version', { simple: true }));
-    if (version > DATABASE_SCHEMA_VERSION && !UNRELEASED_DATABASE_SCHEMA_VERSIONS.has(version)) {
-      throw new Error('Codex history cache database is newer than this app');
-    }
+    if (version > DATABASE_SCHEMA_VERSION) throw new Error('Codex history cache database is newer than this app');
     const threadColumns = z
       .array(sqliteTableInfoRowSchema)
       .parse(this.database.pragma('table_info(codex_history_threads)'));
+    const metaColumns = z
+      .array(sqliteTableInfoRowSchema)
+      .parse(this.database.pragma('table_info(codex_history_index_meta)'));
+    const projectCatalogColumns = z
+      .array(sqliteTableInfoRowSchema)
+      .parse(this.database.pragma('table_info(codex_history_projects)'));
+    const sectionCatalogColumns = z
+      .array(sqliteTableInfoRowSchema)
+      .parse(this.database.pragma('table_info(codex_history_sections)'));
     const hasProjectMetadataColumns = ['project_id', 'project_name'].every((name) =>
       threadColumns.some((column) => column.name === name),
     );
-    if (version === DATABASE_SCHEMA_VERSION && hasProjectMetadataColumns) return;
+    const hasIncrementalMetadataColumns = [
+      'source_history_id',
+      'source_history_row_id',
+      'source_state_id',
+      'source_thread_updated_at_ms',
+      'source_thread_count',
+      'source_project_signature',
+    ].every((name) => metaColumns.some((column) => column.name === name));
+    const hasOrganizationMetadata = ['section_id', 'section_name', 'section_position', 'pinned'].every((name) =>
+      threadColumns.some((column) => column.name === name),
+    );
+    const hasOrganizationCatalogs =
+      ['project_id', 'name', 'workspace', 'position'].every((name) =>
+        projectCatalogColumns.some((column) => column.name === name),
+      ) &&
+      ['section_id', 'name', 'position'].every((name) => sectionCatalogColumns.some((column) => column.name === name));
+    if (
+      version === DATABASE_SCHEMA_VERSION &&
+      hasProjectMetadataColumns &&
+      hasIncrementalMetadataColumns &&
+      hasOrganizationMetadata &&
+      hasOrganizationCatalogs
+    ) {
+      return;
+    }
     this.database.transaction(() => {
       if (version < 1) this.database.exec(codexHistorySearchCacheRevision1Sql);
       if (!hasProjectMetadataColumns) this.database.exec(codexHistorySearchCacheRevision1ProjectMetadataSql);
+      if (!hasIncrementalMetadataColumns) this.database.exec(codexHistorySearchCacheRevision2IncrementalSql);
+      if (!hasOrganizationMetadata || !hasOrganizationCatalogs) {
+        this.database.exec(codexHistorySearchCacheRevision3OrganizationSql);
+      }
       this.database.pragma(`user_version = ${DATABASE_SCHEMA_VERSION}`);
     })();
   }

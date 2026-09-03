@@ -81,7 +81,8 @@ export function AppTitleBar({
     <TooltipProvider>
       <header
         data-app-title-bar
-        className="app-title-bar relative flex h-9 items-center border-b bg-muted pl-3 pr-36 text-xs text-muted-foreground"
+        data-overlay-layer="chrome"
+        className="app-title-bar relative z-chrome flex h-9 items-center border-b bg-muted pl-3 pr-36 text-xs text-muted-foreground"
       >
         <div className="app-title-bar-actions flex min-w-0 items-center">
           <AppIconMenu

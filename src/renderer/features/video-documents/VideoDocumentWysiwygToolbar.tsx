@@ -51,6 +51,10 @@ import {
   type VideoDocumentTableControlsLabels,
 } from '@/renderer/features/video-documents/VideoDocumentTableControls';
 import {
+  VideoDocumentImageOperations,
+  type VideoDocumentImageControlsLabels,
+} from '@/renderer/features/video-documents/VideoDocumentImageOperations';
+import {
   insertVideoDocumentImage,
   type VideoDocumentEditorImageAttributes,
   videoDocumentFrameImageAttributes,
@@ -157,7 +161,8 @@ export async function importVideoDocumentEditorImage(
   );
 }
 
-export interface VideoDocumentWysiwygEditorLabels extends VideoDocumentTableControlsLabels {
+export interface VideoDocumentWysiwygEditorLabels
+  extends VideoDocumentTableControlsLabels, VideoDocumentImageControlsLabels {
   headingMenu: string;
   paragraph: string;
   heading2: string;
@@ -223,6 +228,7 @@ export interface VideoDocumentWysiwygToolbarState {
   canRedo: boolean;
   image: boolean;
   imageSourcePath: string | null;
+  imageAltText: string;
   selectedText: string;
   articleElementId: string | null;
 }
@@ -593,13 +599,15 @@ export function VideoDocumentWysiwygToolbar({
           <MinusIcon className="size-3.5" />
         </FormatButton>
         <Separator orientation="vertical" className="mx-1 h-4" />
-        <FormatButton
-          label={labels.uploadImage}
-          disabled={uploadingImage}
-          onClick={() => imageInputRef.current?.click()}
-        >
-          <UploadIcon className={uploadingImage ? 'size-3.5 animate-pulse' : 'size-3.5'} />
-        </FormatButton>
+        {!state.image && (
+          <FormatButton
+            label={labels.uploadImage}
+            disabled={uploadingImage}
+            onClick={() => imageInputRef.current?.click()}
+          >
+            <UploadIcon className={uploadingImage ? 'size-3.5 animate-pulse' : 'size-3.5'} />
+          </FormatButton>
+        )}
         {illustrationLabel && onIllustrationRequest && (
           <FormatButton
             label={illustrationLabel}
@@ -689,6 +697,17 @@ export function VideoDocumentWysiwygToolbar({
         </span>
       </div>
       {state.table && <VideoDocumentTableOperations editor={editor} labels={labels} />}
+      {state.image && (
+        <VideoDocumentImageOperations
+          altText={state.imageAltText}
+          editor={editor}
+          labels={labels}
+          mediaBindings={mediaBindings}
+          replacing={uploadingImage}
+          sourcePath={state.imageSourcePath}
+          onReplace={() => imageInputRef.current?.click()}
+        />
+      )}
     </TooltipProvider>
   );
 }

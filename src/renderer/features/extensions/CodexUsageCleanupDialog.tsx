@@ -11,6 +11,7 @@ import {
   DialogTitle,
 } from '@/renderer/components/ui/dialog';
 import { Segmented, SegmentedItem } from '@/renderer/components/ui/segmented';
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/renderer/components/ui/tooltip';
 import type { useI18n } from '@/renderer/i18n/useI18n';
 
 type CleanupLabels = ReturnType<typeof useI18n>['messages']['extensions']['codexUsageInvestigator']['cleanup'];
@@ -52,10 +53,22 @@ export function CodexUsageCleanupControl({
 
   return (
     <>
-      <Button type="button" variant="outline" disabled={disabled || busy} onClick={() => setOpen(true)}>
-        <EraserIcon className="size-4" />
-        {labels.action}
-      </Button>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <Button
+            type="button"
+            variant="outline"
+            className="w-full @lg/codex-usage:w-auto"
+            disabled={disabled || busy}
+            aria-label={labels.action}
+            onClick={() => setOpen(true)}
+          >
+            <EraserIcon className="size-4" />
+            <span className="hidden @lg/codex-usage:inline">{labels.action}</span>
+          </Button>
+        </TooltipTrigger>
+        <TooltipContent>{labels.action}</TooltipContent>
+      </Tooltip>
       <CodexUsageCleanupDialog
         open={open}
         level={level}

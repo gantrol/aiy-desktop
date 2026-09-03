@@ -45,7 +45,7 @@ export function CreatorPaneResizeHandle({
       aria-disabled={disabled || undefined}
       tabIndex={keyboardEnabled ? 0 : undefined}
       className={cn(
-        'group absolute inset-y-0 z-50 hidden h-full w-3 cursor-col-resize touch-none select-none outline-none @min-[840px]/creator:block',
+        'group absolute inset-y-0 z-40 hidden h-full w-3 cursor-col-resize touch-none select-none outline-none @min-[840px]/creator:block',
         edge === 'left' ? '-left-1.5' : '-right-1.5',
         disabled && 'pointer-events-none cursor-default',
       )}

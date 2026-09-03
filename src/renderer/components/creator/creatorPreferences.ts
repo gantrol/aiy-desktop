@@ -21,7 +21,7 @@ const storedCreatorPreferencesSchema = z
 
 export const resultThumbnailWidth = 84;
 export const outputThumbnailWidth = 72;
-export const minimumCenterWidth = 320;
+export const minimumCenterWidth = 480;
 export const minimumResultListWidth = 240;
 export const minimumOutputWidth = 280;
 export const defaultOutputPanelRatio = 0.515;

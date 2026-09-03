@@ -1,9 +1,9 @@
 import {
   ArrowRightIcon,
+  ChevronDownIcon,
   CircleAlertIcon,
   CopyIcon,
   FileTextIcon,
-  ImagePlusIcon,
   LoaderCircleIcon,
   PanelsTopLeftIcon,
   PlusIcon,
@@ -17,7 +17,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/renderer/components/ui/dropdown-menu';
-import { CompanionHandoffButton } from '@/renderer/features/browser-companion/CompanionHandoffButton';
+import { CompanionHandoffMenu } from '@/renderer/features/browser-companion/CompanionHandoffMenu';
 import type { BrowserCompanionTarget } from '@/shared/contracts';
 
 interface Props {
@@ -28,7 +28,6 @@ interface Props {
   handoffTargets: readonly BrowserCompanionTarget[];
   onCreateArticle(copySourceContent: boolean): void;
   onCreateSocialPost(copySourceContent: boolean): void;
-  onGenerateCover(): void;
   onHandoff(target: BrowserCompanionTarget): void;
   onRetrySave(): void;
   saveFailed: boolean;
@@ -53,7 +52,7 @@ function SocialPostSaveStatus({
   if (!saving && !saveFailed && !dirty) return null;
 
   return (
-    <div className="grid size-8 place-items-center text-muted-foreground">
+    <div className="grid size-6 place-items-center text-muted-foreground">
       {saving ? (
         <LoaderCircleIcon className="size-4 animate-spin" aria-label={zh ? '正在自动保存' : 'Autosaving'} />
       ) : saveFailed ? (
@@ -61,7 +60,7 @@ function SocialPostSaveStatus({
           type="button"
           variant="ghost"
           size="icon-sm"
-          className="text-destructive"
+          className="size-6 text-destructive"
           title={zh ? '自动保存失败，点击重试' : 'Autosave failed. Retry'}
           aria-label={zh ? '重试自动保存' : 'Retry autosave'}
           onClick={onRetrySave}
@@ -86,7 +85,6 @@ export function SocialPostHeader({
   handoffTargets,
   onCreateArticle,
   onCreateSocialPost,
-  onGenerateCover,
   onHandoff,
   onRetrySave,
   saveFailed,
@@ -99,38 +97,35 @@ export function SocialPostHeader({
       <div className="flex min-w-0 items-center gap-2">
         <span className="truncate font-semibold">{title || (zh ? '未命名贴图' : 'Untitled post')}</span>
         <span className="text-xs text-muted-foreground">{zh ? '贴图' : 'Social post'}</span>
+        <SocialPostSaveStatus dirty={dirty} onRetrySave={onRetrySave} saveFailed={saveFailed} saving={saving} zh={zh} />
       </div>
       <div className="flex items-center gap-1">
-        <CompanionHandoffButton
-          disabled={handingOff || creatingForm || generatingCover}
-          busy={handingOff}
-          onHandoff={onHandoff}
-          targets={handoffTargets}
-          zh={zh}
-        />
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <Button
               type="button"
-              variant="ghost"
-              size="icon-sm"
-              aria-label={zh ? '新建衍生' : 'New derivative'}
-              title={zh ? '新建衍生' : 'New derivative'}
-              aria-busy={creatingForm || generatingCover || undefined}
+              variant="outline"
+              size="sm"
+              disabled={creatingForm || generatingCover}
+              aria-busy={creatingForm || undefined}
             >
-              {creatingForm || generatingCover ? (
-                <LoaderCircleIcon className="size-4 animate-spin" />
-              ) : (
-                <PlusIcon className="size-4" />
-              )}
+              {creatingForm ? <LoaderCircleIcon className="size-4 animate-spin" /> : <PlusIcon className="size-4" />}
+              {zh ? '创建' : 'Create'}
+              <ChevronDownIcon className="size-3.5" />
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end" className="w-52">
-            <DropdownMenuItem disabled={generatingCover || creatingForm} onSelect={onGenerateCover}>
+            <DropdownMenuItem disabled={creatingForm || generatingCover} onSelect={() => onCreateSocialPost(true)}>
               <DropdownMenuIcon>
-                <ImagePlusIcon />
+                <CopyIcon />
               </DropdownMenuIcon>
-              {zh ? '新建封面贴图' : 'New cover visual'}
+              {zh ? '克隆贴图' : 'Fork social post'}
+            </DropdownMenuItem>
+            <DropdownMenuItem disabled={creatingForm || generatingCover} onSelect={() => onCreateArticle(true)}>
+              <DropdownMenuIcon>
+                <ArrowRightIcon />
+              </DropdownMenuIcon>
+              {zh ? '转为文章' : 'Convert to article'}
             </DropdownMenuItem>
             <DropdownMenuSeparator />
             <DropdownMenuItem disabled={creatingForm || generatingCover} onSelect={() => onCreateSocialPost(false)}>
@@ -139,28 +134,21 @@ export function SocialPostHeader({
               </DropdownMenuIcon>
               {zh ? '新建贴图' : 'New social post'}
             </DropdownMenuItem>
-            <DropdownMenuItem disabled={creatingForm || generatingCover} onSelect={() => onCreateSocialPost(true)}>
-              <DropdownMenuIcon>
-                <CopyIcon />
-              </DropdownMenuIcon>
-              {zh ? '克隆贴图' : 'Fork social post'}
-            </DropdownMenuItem>
-            <DropdownMenuSeparator />
             <DropdownMenuItem disabled={creatingForm || generatingCover} onSelect={() => onCreateArticle(false)}>
               <DropdownMenuIcon>
                 <FileTextIcon />
               </DropdownMenuIcon>
               {zh ? '新建文章' : 'New article'}
             </DropdownMenuItem>
-            <DropdownMenuItem disabled={creatingForm || generatingCover} onSelect={() => onCreateArticle(true)}>
-              <DropdownMenuIcon>
-                <ArrowRightIcon />
-              </DropdownMenuIcon>
-              {zh ? '转为文章' : 'Convert to article'}
-            </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
-        <SocialPostSaveStatus dirty={dirty} onRetrySave={onRetrySave} saveFailed={saveFailed} saving={saving} zh={zh} />
+        <CompanionHandoffMenu
+          disabled={handingOff || creatingForm || generatingCover}
+          busy={handingOff}
+          onHandoff={onHandoff}
+          targets={handoffTargets}
+          zh={zh}
+        />
       </div>
     </header>
   );

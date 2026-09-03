@@ -28,6 +28,7 @@ import {
 } from '@/main/database/assets/external-material-import-metadata';
 import {
   creationDraftReferenceAssetIds,
+  nextCreationDraftUpdatedAt,
   normalizeCreationDraftSave,
   storedCreationDraftMatches,
 } from '@/main/database/creations/creation-draft-save';
@@ -262,6 +263,7 @@ export class IntakeRepository {
         }
         const draft = this.saveDraft({
           id: null,
+          expectedUpdatedAt: null,
           targetAlbumId: input.albumId,
           title: '',
           text: '',
@@ -299,6 +301,7 @@ export class IntakeRepository {
               )
               .get(input.id) as JsonMap | undefined)
           : undefined;
+        if (input.id && !existing) throw new Error('Creation draft is unavailable');
         const targetAlbumId =
           input.targetAlbumId === undefined
             ? existing?.target_album_id
@@ -323,9 +326,12 @@ export class IntakeRepository {
         if (existing) {
           const storedReferenceAssetIds = creationDraftReferenceAssetIds(this.db, draftId);
           if (storedCreationDraftMatches(existing, normalized, storedReferenceAssetIds)) return this.getDraft(draftId);
+          if (input.expectedUpdatedAt !== undefined && input.expectedUpdatedAt !== text(existing.updated_at)) {
+            throw new Error('Creation draft changed in another workspace; the newer state was kept');
+          }
         }
 
-        const savedAt = now();
+        const savedAt = nextCreationDraftUpdatedAt(existing ? text(existing.updated_at) : null);
         const values = [
           normalized.targetAlbumId,
           normalized.text,

@@ -15,8 +15,11 @@ import type { DeepSeekApiConnection } from '@/main/extensions/deepseek-api/conne
 import type { ExternalImageApiConnections } from '@/main/extensions/external-image-api';
 import type { OpenAiImageApiConnection } from '@/main/extensions/openai-image-api/connection';
 import type { ExtensionRegistry } from '@/main/extensions/registry';
+import type { NaturalWatermarkConfigurationStore } from '@/main/extensions/natural-watermark/configuration';
+import type { NaturalWatermarkService } from '@/main/extensions/natural-watermark/service';
 import type { GenerationConcurrencyConfiguration } from '@/main/generation/concurrency-configuration';
 import type { GenerationService } from '@/main/generation/service';
+import { CODEX_HISTORY_SEARCH_PERMISSIONS } from '@/main/extensions/host-runtime-contracts';
 import {
   assistantRoutingSaveSchema,
   codexGeneratedImageImportSchema,
@@ -34,16 +37,19 @@ import { registerCodexHistorySearchIpc } from '@/main/ipc/codex-history-search-h
 import { registerCodexVisualizationIpc } from '@/main/ipc/codex-visualization-handlers';
 import type { AntigravityCliStatusDto, CodexTextModelDto } from '@/shared/contracts';
 import {
+  naturalWatermarkConfigurationSchema,
+  naturalWatermarkCustomLogoIdSchema,
+} from '@/shared/contracts/natural-watermark';
+import {
   ANTIGRAVITY_CLI_DEFAULT_MODEL_KEY,
   ANTIGRAVITY_CLI_EXTENSION_ID,
   ANTIGRAVITY_CLI_PROVIDER_KEY,
   CODEX_APP_SERVER_EXTENSION_ID,
-  CODEX_HISTORY_SEARCH_EXTENSION_ID,
-  CODEX_IMAGE_DISCOVERY_EXTENSION_ID,
-  CODEX_VISUALIZATION_DISCOVERY_EXTENSION_ID,
+  CODEX_EXTENSION_ID,
   CODEX_USAGE_INVESTIGATOR_EXTENSION_ID,
   DEEPSEEK_API_EXTENSION_ID,
   EXTERNAL_IMAGE_API_EXTENSION_IDS,
+  NATURAL_WATERMARK_EXTENSION_ID,
   OPENAI_IMAGE_API_EXTENSION_ID,
 } from '@/shared/extension-ids';
 
@@ -61,6 +67,8 @@ interface ExtensionSettingsIpcOptions {
   externalImageApis: ExternalImageApiConnections;
   generation: GenerationService;
   generationConcurrency: GenerationConcurrencyConfiguration;
+  naturalWatermarkConfiguration: NaturalWatermarkConfigurationStore;
+  naturalWatermarkService: NaturalWatermarkService;
   codex: CodexService;
   chooseFile: (options: OpenDialogOptions) => Promise<OpenDialogReturnValue>;
   chooseSaveFile: (options: SaveDialogOptions) => Promise<SaveDialogReturnValue>;
@@ -73,7 +81,7 @@ function registerCodexImageDiscoveryIpc(
   codexImageDiscovery: CodexImageDiscovery,
 ) {
   const active = () => {
-    if (!extensions.isActivated(CODEX_IMAGE_DISCOVERY_EXTENSION_ID)) {
+    if (!extensions.isActivated(CODEX_EXTENSION_ID)) {
       throw new Error('Codex Image Discovery is disabled or missing permissions');
     }
   };
@@ -116,6 +124,8 @@ export function registerExtensionSettingsIpc({
   externalImageApis,
   generation,
   generationConcurrency,
+  naturalWatermarkConfiguration,
+  naturalWatermarkService,
   codex,
   chooseFile,
   chooseSaveFile,
@@ -140,6 +150,28 @@ export function registerExtensionSettingsIpc({
     );
   };
   ipcMain.handle('extensions:list', () => extensions.list());
+  ipcMain.handle('natural-watermark:configuration-get', () => naturalWatermarkConfiguration.get());
+  ipcMain.handle('natural-watermark:configuration-save', async (_event, raw) => {
+    const configuration = naturalWatermarkConfigurationSchema.parse(raw);
+    if (configuration.logo.kind === 'CUSTOM') await naturalWatermarkService.customLogo(configuration.logo.id);
+    return naturalWatermarkConfiguration.save(configuration);
+  });
+  ipcMain.handle('natural-watermark:custom-logo-get', (_event, rawId) =>
+    naturalWatermarkService.customLogo(naturalWatermarkCustomLogoIdSchema.parse(rawId)),
+  );
+  ipcMain.handle('natural-watermark:custom-logo-import', async () => {
+    if (!extensions.isActivated(NATURAL_WATERMARK_EXTENSION_ID)) {
+      throw new Error('Natural Watermark is disabled or missing permissions');
+    }
+    const selection = await chooseFile({
+      properties: ['openFile'],
+      filters: [{ name: 'Images', extensions: ['png', 'jpg', 'jpeg', 'webp', 'svg'] }],
+    });
+    if (selection.canceled) return null;
+    const selectedPath = selection.filePaths[0];
+    if (!selectedPath) throw new Error('No custom watermark logo was selected');
+    return naturalWatermarkService.importCustomLogo(selectedPath);
+  });
   const codexUsage = registerCodexUsageIpc({
     ipcMain,
     extensions,
@@ -151,8 +183,7 @@ export function registerExtensionSettingsIpc({
   const hasPendingExtensionWork = (extensionId: string) =>
     generation.hasPending ||
     codex.hasPending ||
-    (extensionId === CODEX_USAGE_INVESTIGATOR_EXTENSION_ID && codexUsage.hasPending) ||
-    (extensionId === CODEX_VISUALIZATION_DISCOVERY_EXTENSION_ID && codexVisualizationDiscovery.hasPending);
+    (extensionId === CODEX_EXTENSION_ID && (codexUsage.hasPending || codexVisualizationDiscovery.hasPending));
   ipcMain.handle('extension-language-packs:list', () => extensions.listLanguagePacks());
   ipcMain.handle('extension:install-local', async () => {
     const selection = await chooseFile({ properties: ['openDirectory'] });
@@ -164,23 +195,16 @@ export function registerExtensionSettingsIpc({
   ipcMain.handle('extension:uninstall-local', (_event, rawExtensionId) =>
     extensions.uninstallLocal(id.parse(rawExtensionId)),
   );
-  const syncCodexImageDiscovery = () =>
-    codexImageDiscovery.setActive(extensions.isActivated(CODEX_IMAGE_DISCOVERY_EXTENSION_ID));
-  const syncCodexHistorySearch = () =>
-    codexHistorySearch.setActive(extensions.isActivated(CODEX_HISTORY_SEARCH_EXTENSION_ID));
+  const syncCodexImageDiscovery = () => codexImageDiscovery.setActive(extensions.isActivated(CODEX_EXTENSION_ID));
+  const syncCodexHistorySearch = () => codexHistorySearch.setActive(extensions.isActivated(CODEX_EXTENSION_ID));
   const syncCodexVisualizationDiscovery = () =>
-    codexVisualizationDiscovery.setActive(extensions.isActivated(CODEX_VISUALIZATION_DISCOVERY_EXTENSION_ID));
+    codexVisualizationDiscovery.setActive(extensions.isActivated(CODEX_EXTENSION_ID));
   const syncExtensionRuntime = async (extensionId: string) => {
-    if (extensionId === CODEX_HISTORY_SEARCH_EXTENSION_ID) {
+    if (extensionId === CODEX_EXTENSION_ID) {
       syncCodexHistorySearch();
-      return;
-    }
-    if (extensionId === CODEX_IMAGE_DISCOVERY_EXTENSION_ID) {
       await syncCodexImageDiscovery();
-      return;
-    }
-    if (extensionId === CODEX_VISUALIZATION_DISCOVERY_EXTENSION_ID) {
       syncCodexVisualizationDiscovery();
+      await generation.refreshExtensions?.();
       return;
     }
     if (extensionId === ANTIGRAVITY_CLI_EXTENSION_ID) {
@@ -215,7 +239,11 @@ export function registerExtensionSettingsIpc({
     }
     extensions.setPermission(input.extensionId, input.permission, input.granted);
     await syncExtensionRuntime(input.extensionId);
-    if (input.extensionId === CODEX_HISTORY_SEARCH_EXTENSION_ID && !input.granted) {
+    if (
+      input.extensionId === CODEX_EXTENSION_ID &&
+      !input.granted &&
+      CODEX_HISTORY_SEARCH_PERMISSIONS.some((permission) => permission === input.permission)
+    ) {
       await codexHistorySearch.purge();
     }
     return extensions.list();

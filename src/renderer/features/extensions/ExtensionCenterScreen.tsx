@@ -1,11 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import type { BootstrapDto, ExtensionDto } from '@/shared/contracts';
-import {
-  CODEX_HISTORY_SEARCH_EXTENSION_ID,
-  CODEX_IMAGE_DISCOVERY_EXTENSION_ID,
-  CODEX_USAGE_INVESTIGATOR_EXTENSION_ID,
-  CODEX_VISUALIZATION_DISCOVERY_EXTENSION_ID,
-} from '@/shared/extension-ids';
+import { CODEX_EXTENSION_ID } from '@/shared/extension-ids';
 import { Badge } from '@/renderer/components/ui/badge';
 import {
   navigationLocationKey,
@@ -69,18 +64,7 @@ export function ExtensionCenterScreen({
     return (
       <CodexArtifactsScreen
         active
-        historyExtension={
-          extensions.find((extension) => extension.manifest.id === CODEX_HISTORY_SEARCH_EXTENSION_ID) ?? null
-        }
-        imageExtension={
-          extensions.find((extension) => extension.manifest.id === CODEX_IMAGE_DISCOVERY_EXTENSION_ID) ?? null
-        }
-        usageExtension={
-          extensions.find((extension) => extension.manifest.id === CODEX_USAGE_INVESTIGATOR_EXTENSION_ID) ?? null
-        }
-        visualizationExtension={
-          extensions.find((extension) => extension.manifest.id === CODEX_VISUALIZATION_DISCOVERY_EXTENSION_ID) ?? null
-        }
+        extension={extensions.find((extension) => extension.manifest.id === CODEX_EXTENSION_ID) ?? null}
         notify={notify}
         onOpenCreation={onOpenCreation}
       />

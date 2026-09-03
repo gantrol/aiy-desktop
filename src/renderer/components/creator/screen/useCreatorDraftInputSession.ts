@@ -107,6 +107,7 @@ export function useCreatorDraftInputSession({
     zh: locale === 'zh',
     prepare: async () => {
       const captured = document.capture();
+      const mediaAssetIds = document.referenceAssets.map((asset) => asset.id);
       const resolved = resolveCreatorPrompt({
         manualPrompt: captured.manualPrompt,
         promptNodes: captured.nodes,
@@ -126,10 +127,16 @@ export function useCreatorDraftInputSession({
         return null;
       }
       const draft = await creationDraftSession.saveDraftNow(undefined, captured);
+      const outputTarget = await generation.prepareBrowserCompanionOutputTarget();
       return {
-        source: { kind: 'creation-draft' as const, id: draft.id },
+        source: {
+          kind: 'creation-draft' as const,
+          id: draft.id,
+          ...(outputTarget ? { outputTarget } : {}),
+        },
         contentKind: 'prompt' as const,
         text: resolved,
+        mediaAssetIds,
       };
     },
   });

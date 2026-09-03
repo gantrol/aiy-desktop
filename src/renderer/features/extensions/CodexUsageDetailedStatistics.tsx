@@ -100,7 +100,7 @@ export function CodexUsageDetailedStatisticsToggle({
   onCheckedChange(value: boolean): void;
 }) {
   return (
-    <div className="flex h-8 items-center gap-2 border-l pl-3">
+    <div className="flex h-8 items-center gap-2 @md/codex-usage:border-l @md/codex-usage:pl-3">
       <Checkbox
         id="codex-usage-detailed-statistics"
         checked={checked}
@@ -391,13 +391,13 @@ function OverallSessionLengthSignals({
   numbers: Intl.NumberFormat;
 }) {
   return (
-    <dl className="grid grid-cols-2 divide-x border-y sm:grid-cols-4">
-      <div className="grid gap-1 bg-accent/30 px-4 py-3">
+    <dl className="grid grid-cols-2 gap-px bg-border @4xl/codex-usage:grid-cols-4 [&>*]:bg-background">
+      <div className="grid gap-1 !bg-accent/30 px-4 py-3">
         <dt className="text-xs text-muted-foreground">{labels.overallLowestTokenRange}</dt>
-        <dd className="text-2xl font-semibold tabular-nums">
+        <dd className="text-xl font-semibold tabular-nums @xl/codex-usage:text-2xl">
           {tokenConsensus.range ? rangeLabel(tokenConsensus.range) : '—'}
         </dd>
-        <dd className="text-[11px] text-muted-foreground">
+        <dd className="hidden text-[11px] text-muted-foreground @xl/codex-usage:block">
           {numbers.format(tokenConsensus.supportingComparisons)}/{numbers.format(tokenConsensus.eligibleComparisons)}{' '}
           {labels.comparisonGroups}
         </dd>
@@ -406,20 +406,20 @@ function OverallSessionLengthSignals({
         <dt className="text-xs text-muted-foreground">
           <TooltipLabel label={labels.overallLowestApiRange} content={labels.apiNormalizationNote} />
         </dt>
-        <dd className="text-2xl font-semibold tabular-nums">
+        <dd className="text-xl font-semibold tabular-nums @xl/codex-usage:text-2xl">
           {apiConsensus.range ? rangeLabel(apiConsensus.range) : '—'}
         </dd>
-        <dd className="text-[11px] text-muted-foreground">
+        <dd className="hidden text-[11px] text-muted-foreground @xl/codex-usage:block">
           {numbers.format(apiConsensus.supportingComparisons)}/{numbers.format(apiConsensus.eligibleComparisons)}{' '}
           {labels.comparisonGroups}
         </dd>
       </div>
       <div className="grid gap-1 px-4 py-3">
         <dt className="text-xs text-muted-foreground">{labels.overallSustainedIncrease}</dt>
-        <dd className="text-2xl font-semibold tabular-nums">
+        <dd className="text-xl font-semibold tabular-nums @xl/codex-usage:text-2xl">
           {sustainedConsensus.range ? rangeLabel(sustainedConsensus.range) : '—'}
         </dd>
-        <dd className="text-[11px] text-muted-foreground">
+        <dd className="hidden text-[11px] text-muted-foreground @xl/codex-usage:block">
           {numbers.format(sustainedConsensus.supportingComparisons)}/
           {numbers.format(sustainedConsensus.eligibleComparisons)} {labels.comparisonGroups}
         </dd>
@@ -500,10 +500,10 @@ export function CodexUsageSessionLengthResults({
     : null;
   const summaryLabels = sourceSummaryLabels(selectedSource, labels);
   return (
-    <section className="grid gap-3 border-b pb-3">
-      <div className="flex flex-wrap items-center justify-between gap-2">
+    <section className="grid gap-3">
+      <div className="grid min-w-0 gap-2 @4xl/codex-usage:flex @4xl/codex-usage:items-center @4xl/codex-usage:justify-between">
         <div className="text-sm font-semibold">{labels.title}</div>
-        <div className="flex flex-wrap items-center gap-2">
+        <div className="grid min-w-0 gap-2 @2xl/codex-usage:grid-cols-[minmax(0,10rem)_minmax(0,18rem)]">
           <Select
             value={selectedSource}
             onValueChange={(value) => {
@@ -511,7 +511,7 @@ export function CodexUsageSessionLengthResults({
               setSelectedComparisonKey('');
             }}
           >
-            <SelectTrigger className="h-8 min-w-40" aria-label={labels.sessionSource}>
+            <SelectTrigger className="h-8 w-full min-w-0" aria-label={labels.sessionSource}>
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
@@ -527,7 +527,7 @@ export function CodexUsageSessionLengthResults({
             onValueChange={setSelectedComparisonKey}
             disabled={!selectedComparison}
           >
-            <SelectTrigger className="h-8 min-w-72" aria-label={labels.modelComparison}>
+            <SelectTrigger className="h-8 w-full min-w-0" aria-label={labels.modelComparison}>
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
@@ -540,24 +540,32 @@ export function CodexUsageSessionLengthResults({
           </Select>
         </div>
       </div>
-      <dl className="grid grid-cols-2 divide-x border-y sm:grid-cols-4">
+      <dl className="grid grid-cols-2 gap-px bg-border @4xl/codex-usage:grid-cols-4 [&>*]:bg-background">
         <div className="grid gap-1 px-4 py-3">
           <dt className="text-xs text-muted-foreground">{labels.rangeCompleteSessions}</dt>
-          <dd className="text-lg font-semibold tabular-nums">{numbers.format(analysis.rangeSessionCount)}</dd>
+          <dd className="text-base font-semibold tabular-nums @xl/codex-usage:text-lg">
+            {numbers.format(analysis.rangeSessionCount)}
+          </dd>
         </div>
         <div className="grid gap-1 px-4 py-3">
           <dt className="text-xs text-muted-foreground">{labels.tokenComparableSessions}</dt>
-          <dd className="text-lg font-semibold tabular-nums">{numbers.format(analysis.comparisonSessionCount)}</dd>
+          <dd className="text-base font-semibold tabular-nums @xl/codex-usage:text-lg">
+            {numbers.format(analysis.comparisonSessionCount)}
+          </dd>
         </div>
         <div className="grid gap-1 px-4 py-3">
           <dt className="text-xs text-muted-foreground">
             <TooltipLabel label={labels.overallApiPricedSessions} content={labels.apiNormalizationNote} />
           </dt>
-          <dd className="text-lg font-semibold tabular-nums">{numbers.format(overallApiPricedSessions)}</dd>
+          <dd className="text-base font-semibold tabular-nums @xl/codex-usage:text-lg">
+            {numbers.format(overallApiPricedSessions)}
+          </dd>
         </div>
         <div className="grid gap-1 px-4 py-3">
           <dt className="text-xs text-muted-foreground">{labels.tokenComparisonCoverage}</dt>
-          <dd className="text-lg font-semibold tabular-nums">{numbers.format(tokenCoverage)}%</dd>
+          <dd className="text-base font-semibold tabular-nums @xl/codex-usage:text-lg">
+            {numbers.format(tokenCoverage)}%
+          </dd>
         </div>
       </dl>
       <OverallSessionLengthSignals
@@ -567,22 +575,22 @@ export function CodexUsageSessionLengthResults({
         labels={labels}
         numbers={numbers}
       />
-      <dl className="grid grid-cols-2 divide-x border-y md:grid-cols-5">
+      <dl className="grid grid-cols-2 gap-px bg-border @5xl/codex-usage:grid-cols-5 [&>*]:bg-background">
         <div className="grid gap-1 px-4 py-3">
           <dt className="text-xs text-muted-foreground">{labels.sessions}</dt>
-          <dd className="text-lg font-semibold tabular-nums">
+          <dd className="text-base font-semibold tabular-nums @xl/codex-usage:text-lg">
             {numbers.format(selectedComparison?.sessionCount ?? 0)}
           </dd>
         </div>
         <div className="grid gap-1 px-4 py-3">
           <dt className="text-xs text-muted-foreground">{summaryLabels.totalChatTurns}</dt>
-          <dd className="text-lg font-semibold tabular-nums">
+          <dd className="text-base font-semibold tabular-nums @xl/codex-usage:text-lg">
             {numbers.format(selectedComparison?.totalChatTurns ?? 0)}
           </dd>
         </div>
         <div className="grid gap-1 px-4 py-3">
           <dt className="text-xs text-muted-foreground">{summaryLabels.sessionTurnsPercentiles}</dt>
-          <dd className="text-lg font-semibold tabular-nums">
+          <dd className="text-base font-semibold tabular-nums @xl/codex-usage:text-lg">
             {numbers.format(selectedComparison?.medianSessionTurns ?? 0)} ·{' '}
             {numbers.format(selectedComparison?.percentile90SessionTurns ?? 0)} ·{' '}
             {numbers.format(selectedComparison?.maximumSessionTurns ?? 0)}
@@ -590,22 +598,22 @@ export function CodexUsageSessionLengthResults({
         </div>
         <div className="grid gap-1 px-4 py-3">
           <dt className="text-xs text-muted-foreground">{labels.averageContextCompactions}</dt>
-          <dd className="text-lg font-semibold tabular-nums">
+          <dd className="text-base font-semibold tabular-nums @xl/codex-usage:text-lg">
             {formatAverageContextCompactions(selectedComparison, numbers)}
           </dd>
         </div>
         <div className="grid gap-1 px-4 py-3">
           <dt className="text-xs text-muted-foreground">{labels.apiPricedSessions}</dt>
-          <dd className="text-lg font-semibold tabular-nums">
+          <dd className="text-base font-semibold tabular-nums @xl/codex-usage:text-lg">
             {numbers.format(selectedComparison?.apiPricedSessionCount ?? 0)}/
             {numbers.format(selectedComparison?.sessionCount ?? 0)}
           </dd>
         </div>
       </dl>
-      <dl className="grid grid-cols-2 divide-x border-y sm:grid-cols-4">
+      <dl className="grid grid-cols-2 gap-px bg-border @4xl/codex-usage:grid-cols-4 [&>*]:bg-background">
         <div className="grid gap-1 px-4 py-3">
           <dt className="text-xs text-muted-foreground">{labels.lowestTokenRange}</dt>
-          <dd className="text-lg font-semibold tabular-nums">
+          <dd className="text-base font-semibold tabular-nums @xl/codex-usage:text-lg">
             {formatRanges(selectedComparison?.lowestMedianTokenRanges ?? [])}
           </dd>
         </div>
@@ -613,13 +621,13 @@ export function CodexUsageSessionLengthResults({
           <dt className="text-xs text-muted-foreground">
             <TooltipLabel label={labels.lowestApiCostRange} content={labels.apiNormalizationNote} />
           </dt>
-          <dd className="text-lg font-semibold tabular-nums">
+          <dd className="text-base font-semibold tabular-nums @xl/codex-usage:text-lg">
             {formatRanges(selectedComparison?.lowestMedianApiCostRanges ?? [])}
           </dd>
         </div>
         <div className="grid gap-1 px-4 py-3">
           <dt className="text-xs text-muted-foreground">{labels.sustainedIncrease}</dt>
-          <dd className="text-lg font-semibold tabular-nums">
+          <dd className="text-base font-semibold tabular-nums @xl/codex-usage:text-lg">
             {selectedComparison?.sustainedApiCostIncrease
               ? `${rangeLabel(selectedComparison.sustainedApiCostIncrease)} · +${numbers.format(
                   selectedComparison.sustainedApiCostIncrease.relativeToLowestPercent,
@@ -629,7 +637,7 @@ export function CodexUsageSessionLengthResults({
         </div>
         <div className="grid gap-1 px-4 py-3">
           <dt className="text-xs text-muted-foreground">{labels.onsetContextRange}</dt>
-          <dd className="text-lg font-semibold tabular-nums">
+          <dd className="text-base font-semibold tabular-nums @xl/codex-usage:text-lg">
             {onsetBucket ? contextRange(onsetBucket, tokens) : '—'}
           </dd>
         </div>

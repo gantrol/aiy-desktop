@@ -9,8 +9,14 @@ import {
   PresentationIcon,
   VideoIcon,
 } from 'lucide-react';
-import type { Locale } from '@/shared/contracts';
+import type { GenerationTargetInput, ImageGenerationRouteDto, Locale } from '@/shared/contracts';
+import { GenerationLauncher } from '@/renderer/components/creator/GenerationLauncher';
+import type { GenerationReadiness } from '@/renderer/components/creator/generationReadiness';
 import { InspirationStashAction } from '@/renderer/components/creator/InspirationStashAction';
+import {
+  readCreationOutcomeKind,
+  writeCreationOutcomeKind,
+} from '@/renderer/components/creator/creationOutcomePreference';
 import { Button } from '@/renderer/components/ui/button';
 import { cn } from '@/renderer/lib/utils';
 
@@ -26,6 +32,10 @@ interface Props {
 
 interface PlannerProps {
   locale: Locale;
+  routes: ImageGenerationRouteDto[];
+  generationTargets: GenerationTargetInput[];
+  generationCount: number;
+  readiness: GenerationReadiness;
   stashReady: boolean;
   stashing: boolean;
   stashed: boolean;
@@ -34,6 +44,9 @@ interface PlannerProps {
   onStashInspiration(): void;
   onStartCreation(plan: CreationOutcomePlan): void;
   onChooseVideoDocument(): void;
+  onGenerationTargetsChange(targets: GenerationTargetInput[]): void;
+  onConfigureExtension(extensionId: string): void;
+  onGenerate(): void;
 }
 
 const outcomeIcons = {
@@ -42,10 +55,6 @@ const outcomeIcons = {
   article: FileTextIcon,
   presentation: PresentationIcon,
 } satisfies Record<CreationOutcomeKind, typeof ImageIcon>;
-
-function toggleValue<T extends string>(values: T[], value: T) {
-  return values.includes(value) ? values.filter((item) => item !== value) : [...values, value];
-}
 
 export function CreationOutcomePicker({ locale, value, onValueChange, onChooseVideoDocument }: Props) {
   const zh = locale === 'zh';
@@ -56,7 +65,7 @@ export function CreationOutcomePicker({ locale, value, onValueChange, onChooseVi
     { kind: 'presentation', label: zh ? '演示文稿' : 'Presentation', available: false },
   ];
   function toggleOutcome(kind: CreationOutcomeKind) {
-    onValueChange(toggleValue(value, kind));
+    onValueChange([kind]);
   }
 
   return (
@@ -117,6 +126,10 @@ export function CreationOutcomePicker({ locale, value, onValueChange, onChooseVi
 
 export function CreationOutcomePlanner({
   locale,
+  routes,
+  generationTargets,
+  generationCount,
+  readiness,
   stashReady,
   stashing,
   stashed,
@@ -125,8 +138,11 @@ export function CreationOutcomePlanner({
   onStashInspiration,
   onStartCreation,
   onChooseVideoDocument,
+  onGenerationTargetsChange,
+  onConfigureExtension,
+  onGenerate,
 }: PlannerProps) {
-  const [outcomes, setOutcomes] = useState<CreationOutcomeKind[]>([]);
+  const [outcomes, setOutcomes] = useState<CreationOutcomeKind[]>(() => [readCreationOutcomeKind()]);
   const unavailableOutcomes = outcomes.filter((outcome) => outcome === 'presentation');
   const selectedPlan: CreationOutcomePlan | null =
     outcomes.length !== 1
@@ -155,32 +171,62 @@ export function CreationOutcomePlanner({
       <CreationOutcomePicker
         locale={locale}
         value={outcomes}
-        onValueChange={setOutcomes}
+        onValueChange={(value) => {
+          setOutcomes(value);
+          const outcome = value[0];
+          if (outcome && outcome !== 'presentation') writeCreationOutcomeKind(outcome);
+        }}
         onChooseVideoDocument={onChooseVideoDocument}
       />
-      <div className="mt-4 flex min-h-10 items-center justify-end gap-2 border-t pt-4">
-        <InspirationStashAction
-          locale={locale}
-          ready={stashReady}
-          busy={stashing}
-          saved={stashed}
-          blocked={starting}
-          onClick={onStashInspiration}
-        />
-        <Button
-          data-action="start-creation"
-          type="button"
-          size="lg"
-          disabled={!canStartCreation}
-          title={blockedTitle}
-          aria-busy={starting}
-          onClick={() => selectedPlan && onStartCreation(selectedPlan)}
-        >
-          {starting ? <LoaderCircleIcon className="size-4 animate-spin" /> : <CirclePlayIcon className="size-4" />}
-          {locale === 'zh' ? '开启创作' : 'Start creating'}
-          {outcomes.length > 1 ? ` · ${outcomes.length}` : ''}
-        </Button>
-      </div>
+      {selectedPlan?.kind === 'image' ? (
+        <div className="mt-4">
+          <GenerationLauncher
+            locale={locale}
+            routes={routes}
+            generationTargets={generationTargets}
+            generationCount={generationCount}
+            readiness={readiness}
+            starting={starting}
+            interactionBlocked={stashing}
+            secondaryAction={
+              <InspirationStashAction
+                locale={locale}
+                ready={stashReady}
+                busy={stashing}
+                saved={stashed}
+                blocked={starting}
+                onClick={onStashInspiration}
+              />
+            }
+            onGenerationTargetsChange={onGenerationTargetsChange}
+            onConfigureExtension={onConfigureExtension}
+            onGenerate={onGenerate}
+          />
+        </div>
+      ) : (
+        <div className="mt-4 flex min-h-10 items-center justify-end gap-2 border-t pt-4">
+          <InspirationStashAction
+            locale={locale}
+            ready={stashReady}
+            busy={stashing}
+            saved={stashed}
+            blocked={starting}
+            onClick={onStashInspiration}
+          />
+          <Button
+            data-action="start-creation"
+            type="button"
+            size="lg"
+            disabled={!canStartCreation}
+            title={blockedTitle}
+            aria-busy={starting}
+            onClick={() => selectedPlan && onStartCreation(selectedPlan)}
+          >
+            {starting ? <LoaderCircleIcon className="size-4 animate-spin" /> : <CirclePlayIcon className="size-4" />}
+            {locale === 'zh' ? '开启创作' : 'Start creating'}
+          </Button>
+        </div>
+      )}
     </>
   );
 }

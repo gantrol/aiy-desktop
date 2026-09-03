@@ -1,9 +1,9 @@
 {
   "name": "@aiy/desktop",
-  "version": "0.3.7",
+  "version": "0.3.9",
   "private": true,
-  "description": "Local-first AI image generation and asset management workbench",
-  "author": "AIY Image Tools",
+  "description": "AI × DIY: a local-first creative workspace where you create and AI helps",
+  "author": "AIY",
   "license": "PolyForm-Noncommercial-1.0.0",
   "repository": {
     "type": "git",
@@ -16,7 +16,7 @@
   "bugs": {
     "url": "https://github.com/gantrol/aiy-desktop/issues"
   },
-  "productName": "AIY Image Tools",
+  "productName": "AIY",
   "main": "out/main/index.js",
   "scripts": {
     "electron:install": "node node_modules/electron/install.js --no",
@@ -29,8 +29,7 @@
     "start": "electron-vite dev --watch",
     "build": "electron-vite build",
     "aiy:agent": "node out/main/agent-cli.js",
-    "build:native-host": "node scripts/build-browser-companion-host.mjs",
-    "build:unpacked": "npm run electron:install && npm run build:native-host && npm run build && electron-builder --win dir --x64",
+    "build:unpacked": "npm run electron:install && npm run build && electron-builder --win dir --x64",
     "lint": "eslint . --cache --cache-location .tmp/eslint/ --max-warnings 0",
     "lint:fix": "eslint . --cache --cache-location .tmp/eslint/ --fix",
     "format": "prettier --write .",
@@ -40,9 +39,9 @@
     "preview": "electron-vite preview",
     "package": "npm run release:store",
     "make": "npm run release:store",
-    "make:store": "npm run electron:install && npm run build:native-host && npm run build && powershell -NoProfile -ExecutionPolicy Bypass -File scripts/build-store-msix.ps1",
+    "make:store": "npm run electron:install && npm run build && powershell -NoProfile -ExecutionPolicy Bypass -File scripts/build-store-msix.ps1",
     "release:store": "npm run verify:store && npm run make:store",
-    "make:store:local": "npm run electron:install && npm run build:native-host && npm run build && powershell -NoProfile -ExecutionPolicy Bypass -File scripts/build-store-msix.ps1 -LocalTest",
+    "make:store:local": "npm run electron:install && npm run build && powershell -NoProfile -ExecutionPolicy Bypass -File scripts/build-store-msix.ps1 -LocalTest",
     "typecheck": "tsc --noEmit",
     "test": "npm run test:smoke",
     "test:smoke": "vitest run --config vitest.smoke.config.ts",
@@ -104,7 +103,6 @@
     "@microsoft/winappcli": "0.6.0"
   },
   "devDependencies": {
-    "@electron/windows-sign": "1.2.2",
     "@eslint/js": "^10.0.1",
     "@playwright/test": "^1.62.1",
     "@tailwindcss/vite": "4.3.3",
@@ -126,7 +124,6 @@
     "eslint-plugin-react-hooks": "^7.1.1",
     "globals": "^17.9.0",
     "jsdom": "^27.4.0",
-    "postject": "1.0.0-alpha.6",
     "prettier": "^3.9.6",
     "tailwindcss": "4.3.3",
     "typescript": "5.9.3",

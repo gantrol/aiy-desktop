@@ -60,6 +60,29 @@ function isSupersededError(reason: unknown): reason is CreationDraftSessionSuper
   return reason instanceof CreationDraftSessionSupersededError;
 }
 
+function queuedSaveBaseline(
+  state: CreationDraftSessionState,
+  previous: CreationDraftQueueTail,
+  previousDraft: CreationDraftDto | null,
+  sessionGeneration: number,
+) {
+  const queuedDraft =
+    previous.sessionGeneration === sessionGeneration &&
+    previousDraft &&
+    (!state.draftId || previousDraft.id === state.draftId)
+      ? previousDraft
+      : null;
+  const rememberedDraft = state.draftId && state.savedDraft?.id === state.draftId ? state.savedDraft : null;
+  return queuedDraft ?? rememberedDraft;
+}
+
+function draftRevisionInput(draftId: string | null, baseline: CreationDraftDto | null) {
+  return {
+    id: draftId,
+    expectedUpdatedAt: draftId ? (baseline?.updatedAt ?? null) : null,
+  };
+}
+
 export function useCreationDraftSession({ initialDraft, captureSnapshot }: UseCreationDraftSessionOptions) {
   const [draftId, setDraftId] = useState<string | null>(initialDraft?.id ?? null);
   const stateRef = useRef<CreationDraftSessionState>({
@@ -107,11 +130,11 @@ export function useCreationDraftSession({ initialDraft, captureSnapshot }: UseCr
           ) {
             throw new CreationDraftSessionSupersededError();
           }
+          const baseline = queuedSaveBaseline(stateBeforeSave, previous, previousDraft, sessionGeneration);
+          const targetDraftId = stateBeforeSave.draftId ?? baseline?.id ?? null;
           const savedDraft = await window.desktopApi.creationDraftSave({
             ...snapshot,
-            id:
-              stateBeforeSave.draftId ??
-              (previous.sessionGeneration === sessionGeneration ? (previousDraft?.id ?? null) : null),
+            ...draftRevisionInput(targetDraftId, baseline),
           });
           const stateAfterSave = stateRef.current;
           if (
@@ -152,16 +175,40 @@ export function useCreationDraftSession({ initialDraft, captureSnapshot }: UseCr
   const preserveCapturedSnapshot = useStableCallback((snapshot: CreationDraftSaveSnapshot) => {
     const sessionGeneration = stateRef.current.sessionGeneration;
     const capturedDraftId = stateRef.current.draftId;
+    const capturedDraft =
+      capturedDraftId && stateRef.current.savedDraft?.id === capturedDraftId ? stateRef.current.savedDraft : null;
     const previous = queueTailRef.current;
     const promise = previous.promise
       .catch((reason) => (isSupersededError(reason) ? reason.persistedDraft : null))
-      .then((previousDraft) =>
-        window.desktopApi.creationDraftSave({
+      .then(async (previousDraft) => {
+        const baseline = queuedSaveBaseline(
+          {
+            sessionGeneration,
+            autosaveEpoch: stateRef.current.autosaveEpoch,
+            draftId: capturedDraftId,
+            savedDraft: capturedDraft,
+          },
+          previous,
+          previousDraft,
+          sessionGeneration,
+        );
+        const targetDraftId = capturedDraftId ?? baseline?.id ?? null;
+        const savedDraft = await window.desktopApi.creationDraftSave({
           ...snapshot,
-          id:
-            capturedDraftId ?? (previous.sessionGeneration === sessionGeneration ? (previousDraft?.id ?? null) : null),
-        }),
-      );
+          ...draftRevisionInput(targetDraftId, baseline),
+        });
+        const current = stateRef.current;
+        if (
+          mountedRef.current &&
+          current.sessionGeneration === sessionGeneration &&
+          current.draftId === capturedDraftId
+        ) {
+          current.savedDraft = savedDraft;
+          current.draftId = savedDraft.id;
+          setDraftId(savedDraft.id);
+        }
+        return savedDraft;
+      });
     queueTailRef.current = { sessionGeneration, promise };
     return promise;
   });
@@ -242,8 +289,12 @@ export function useCreationDraftAutosave({
   onError,
 }: UseCreationDraftAutosaveOptions) {
   const onErrorStable = useStableCallback(onError);
+  const observedKeyRef = useRef(autosaveKey);
 
   useEffect(() => {
+    const changed = observedKeyRef.current !== autosaveKey;
+    observedKeyRef.current = autosaveKey;
+    if (!changed) return undefined;
     if (!enabled || (!hasContent && !draftId)) return undefined;
     const identity = captureIdentity();
     const timer = window.setTimeout(() => {

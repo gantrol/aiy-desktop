@@ -13,26 +13,18 @@ import type {
   ArticleElementPlacementInput,
 } from '@/shared/contracts';
 import { articleElementTextFingerprint } from '@/shared/contracts/article';
+import {
+  ARTICLE_ELEMENT_ATTRIBUTE,
+  articleElementNodeTypes,
+  isArticleElementNodeType,
+  nextArticleElementId,
+  takeSavedArticleElement,
+} from '@/renderer/features/video-documents/articleElementIdentityModel';
 
-const ARTICLE_ELEMENT_ATTRIBUTE = 'articleElementId';
 const ARTICLE_ELEMENT_IDENTITY_META = 'articleElementIdentity';
 type ArticleElementIdentityOrigin = 'hydrate' | 'identity';
 const ARTICLE_VIEWPORT_INSET_PX = 24;
 const articleElementPluginKey = new PluginKey('articleElementIdentity');
-const articleElementNodeTypes: readonly ArticleElementNodeType[] = [
-  'paragraph',
-  'heading',
-  'listItem',
-  'taskItem',
-  'blockquote',
-  'codeBlock',
-  'image',
-  'table',
-  'tableRow',
-  'tableHeader',
-  'tableCell',
-];
-const articleElementNodeTypeSet = new Set<string>(articleElementNodeTypes);
 const articleCheckNodeTypeSet = new Set<ArticleElementNodeType>([
   'paragraph',
   'heading',
@@ -47,13 +39,23 @@ const articleCheckNodeTypeSet = new Set<ArticleElementNodeType>([
 interface LocatedArticleElement {
   node: ProseMirrorNode;
   position: number;
-  placement: ArticleElementPlacementInput;
+  elementId: string;
+  blockIndex: number;
+  nodeType: ArticleElementNodeType;
+  outlineHeadingIndex: number | null;
 }
 
 interface LocatedArticleElementIndex {
   elements: readonly LocatedArticleElement[];
   byId: ReadonlyMap<string, LocatedArticleElement>;
 }
+
+interface ArticleElementTextProjection {
+  textFingerprint: string;
+  preview: string;
+}
+
+const articleElementTextProjectionCache = new WeakMap<ProseMirrorNode, ArticleElementTextProjection>();
 
 function normalizedPreview(text: string) {
   return text.replace(/\s+/gu, ' ').trim().slice(0, 280);
@@ -73,29 +75,50 @@ function elementText(node: ProseMirrorNode) {
     .join(' ');
 }
 
+function articleElementTextProjection(node: ProseMirrorNode, nodeType: ArticleElementNodeType) {
+  const cached = articleElementTextProjectionCache.get(node);
+  if (cached) return cached;
+  const text = elementText(node);
+  const projection = {
+    textFingerprint: articleElementTextFingerprint(nodeType, text),
+    preview: normalizedPreview(text),
+  };
+  articleElementTextProjectionCache.set(node, projection);
+  return projection;
+}
+
+function articleElementPlacement(element: LocatedArticleElement): ArticleElementPlacementInput {
+  return {
+    elementId: element.elementId,
+    blockIndex: element.blockIndex,
+    nodeType: element.nodeType,
+    ...articleElementTextProjection(element.node, element.nodeType),
+  };
+}
+
 function isArticleElementNode(document: ProseMirrorNode, node: ProseMirrorNode, position: number) {
-  if (!articleElementNodeTypeSet.has(node.type.name)) return false;
+  if (!isArticleElementNodeType(node.type.name)) return false;
   if (node.type.name !== 'paragraph') return true;
   return document.resolve(position).parent === document;
 }
 
 function locatedArticleElements(document: ProseMirrorNode): LocatedArticleElement[] {
   const located: LocatedArticleElement[] = [];
+  let outlineHeadingIndex: number | null = null;
   document.descendants((node, position) => {
     if (!isArticleElementNode(document, node, position)) return true;
     const nodeType = node.type.name as ArticleElementNodeType;
-    const text = elementText(node);
+    const level = Number(node.attrs.level);
+    if (nodeType === 'heading' && level >= 2 && level <= 6) {
+      outlineHeadingIndex = (outlineHeadingIndex ?? -1) + 1;
+    }
     located.push({
       node,
       position,
-      placement: {
-        elementId:
-          typeof node.attrs[ARTICLE_ELEMENT_ATTRIBUTE] === 'string' ? node.attrs[ARTICLE_ELEMENT_ATTRIBUTE] : '',
-        blockIndex: located.length,
-        nodeType,
-        textFingerprint: articleElementTextFingerprint(nodeType, text),
-        preview: normalizedPreview(text),
-      },
+      elementId: typeof node.attrs[ARTICLE_ELEMENT_ATTRIBUTE] === 'string' ? node.attrs[ARTICLE_ELEMENT_ATTRIBUTE] : '',
+      blockIndex: located.length,
+      nodeType,
+      outlineHeadingIndex,
     });
     return true;
   });
@@ -104,16 +127,14 @@ function locatedArticleElements(document: ProseMirrorNode): LocatedArticleElemen
 
 function locatedArticleElementIndex(document: ProseMirrorNode): LocatedArticleElementIndex {
   const elements = locatedArticleElements(document);
+  const byId = new Map<string, LocatedArticleElement>();
+  for (const element of elements) {
+    if (element.elementId) byId.set(element.elementId, element);
+  }
   return {
     elements,
-    byId: new Map(
-      elements.flatMap((element) => (element.placement.elementId ? [[element.placement.elementId, element]] : [])),
-    ),
+    byId,
   };
-}
-
-function nextElementId() {
-  return globalThis.crypto.randomUUID();
 }
 
 function transactionHasCompositionOrigin(transaction: Transaction): boolean {
@@ -122,18 +143,19 @@ function transactionHasCompositionOrigin(transaction: Transaction): boolean {
   return appendedTransaction instanceof Transaction && transactionHasCompositionOrigin(appendedTransaction);
 }
 
-function identityTransaction(document: ProseMirrorNode, transaction: Transaction) {
+function identityTransaction(
+  document: ProseMirrorNode,
+  transaction: Transaction,
+  elements: readonly LocatedArticleElement[] = locatedArticleElements(document),
+) {
   const seen = new Set<string>();
   let changed = false;
-  for (const located of locatedArticleElements(document)) {
-    const current = located.placement.elementId;
-    const elementId = current && !seen.has(current) ? current : nextElementId();
+  for (const located of elements) {
+    const current = located.elementId;
+    const elementId = current && !seen.has(current) ? current : nextArticleElementId();
     seen.add(elementId);
     if (elementId === current) continue;
-    transaction.setNodeMarkup(located.position, undefined, {
-      ...located.node.attrs,
-      [ARTICLE_ELEMENT_ATTRIBUTE]: elementId,
-    });
+    transaction.setNodeAttribute(located.position, ARTICLE_ELEMENT_ATTRIBUTE, elementId);
     changed = true;
   }
   if (!changed) return null;
@@ -191,8 +213,8 @@ function commentDecorations(
   if (!start || !end) return [];
   let relocated =
     forceRelocated ||
-    start.placement.elementId !== comment.anchor.startElementId ||
-    end.placement.elementId !== comment.anchor.endElementId;
+    start.elementId !== comment.anchor.startElementId ||
+    end.elementId !== comment.anchor.endElementId;
   let startOffset = comment.anchor.startOffset;
   let endOffset = comment.anchor.endOffset;
   if (!relocated && start === end && comment.anchor.kind === 'TEXT_RANGE' && comment.anchor.exactQuote) {
@@ -223,6 +245,7 @@ function commentDecorations(
 }
 
 interface ArticleElementPluginState {
+  index: LocatedArticleElementIndex;
   decorations: DecorationSet;
   decorationByCommentId: ReadonlyMap<string, Decoration>;
   resolutionByCommentId: ReadonlyMap<string, ArticleCommentDto['targetResolution']>;
@@ -248,6 +271,7 @@ function articleElementPluginState(
     resolutionByCommentId.set(comment.id, decoration.spec.relocated ? 'RELOCATED' : 'AVAILABLE');
   }
   return {
+    index,
     decorations: DecorationSet.create(document, decorations),
     decorationByCommentId,
     resolutionByCommentId,
@@ -289,11 +313,17 @@ function mapArticleElementPluginState(
     );
   }
   return {
+    index,
     decorations: additions.length ? DecorationSet.create(transaction.doc, [...decorations, ...additions]) : mapped,
     decorationByCommentId,
     resolutionByCommentId,
     hasElements: index.elements.length > 0,
   };
+}
+
+function articleElementIndexForEditor(editor: Editor) {
+  const state = articleElementPluginKey.getState(editor.state) as ArticleElementPluginState | undefined;
+  return state?.index ?? locatedArticleElementIndex(editor.state.doc);
 }
 
 export function createArticleElementIdentityExtension(comments: () => readonly ArticleCommentDto[]) {
@@ -328,7 +358,8 @@ export function createArticleElementIdentityExtension(comments: () => readonly A
           appendTransaction(transactions, _oldState, newState) {
             if (!transactions.some((transaction) => transaction.docChanged)) return null;
             if (transactions.some(transactionHasCompositionOrigin)) return null;
-            return identityTransaction(newState.doc, newState.tr);
+            const state = articleElementPluginKey.getState(newState) as ArticleElementPluginState | undefined;
+            return identityTransaction(newState.doc, newState.tr, state?.index.elements);
           },
           props: {
             decorations: (state) =>
@@ -343,7 +374,11 @@ export function createArticleElementIdentityExtension(comments: () => readonly A
 
 export function reconcileArticleElementIdentities(editor: Editor, view: EditorView = editor.view) {
   if (editor.isDestroyed || view.composing) return false;
-  const transaction = identityTransaction(editor.state.doc, editor.state.tr);
+  const transaction = identityTransaction(
+    editor.state.doc,
+    editor.state.tr,
+    articleElementIndexForEditor(editor).elements,
+  );
   if (!transaction) return false;
   view.dispatch(transaction);
   return true;
@@ -355,33 +390,15 @@ export function hydrateArticleElements(
   view: EditorView = editor.view,
 ) {
   if (editor.isDestroyed || view.composing) return false;
-  const located = locatedArticleElements(editor.state.doc);
+  const located = articleElementIndexForEditor(editor).elements;
   const unused = new Map(saved.map((placement) => [placement.elementId, placement]));
   const transaction = editor.state.tr;
   let changed = false;
   for (const item of located) {
-    const exact = saved.find(
-      (placement) =>
-        placement.blockIndex === item.placement.blockIndex &&
-        placement.nodeType === item.placement.nodeType &&
-        placement.textFingerprint === item.placement.textFingerprint &&
-        unused.has(placement.elementId),
-    );
-    const matching =
-      exact ??
-      saved.find(
-        (placement) =>
-          placement.nodeType === item.placement.nodeType &&
-          placement.textFingerprint === item.placement.textFingerprint &&
-          unused.has(placement.elementId),
-      );
-    const elementId = matching?.elementId ?? nextElementId();
-    if (matching) unused.delete(matching.elementId);
-    if (item.placement.elementId === elementId) continue;
-    transaction.setNodeMarkup(item.position, undefined, {
-      ...item.node.attrs,
-      [ARTICLE_ELEMENT_ATTRIBUTE]: elementId,
-    });
+    const matching = takeSavedArticleElement(saved, unused, articleElementPlacement(item));
+    const elementId = matching?.elementId ?? nextArticleElementId();
+    if (item.elementId === elementId) continue;
+    transaction.setNodeAttribute(item.position, ARTICLE_ELEMENT_ATTRIBUTE, elementId);
     changed = true;
   }
   if (!changed) return false;
@@ -393,20 +410,20 @@ export function hydrateArticleElements(
 
 export function articleElementPlacements(editor: Editor) {
   if (editor.isDestroyed) return [];
-  return locatedArticleElements(editor.state.doc).map((located) => located.placement);
+  return articleElementIndexForEditor(editor).elements.map(articleElementPlacement);
 }
 
 export function articleCheckBlocks(editor: Editor): ArticleCheckBlockInput[] {
   if (editor.isDestroyed) return [];
-  return locatedArticleElements(editor.state.doc).flatMap(({ node, placement }) => {
-    if (!articleCheckNodeTypeSet.has(placement.nodeType)) return [];
+  return articleElementIndexForEditor(editor).elements.flatMap(({ node, elementId, blockIndex, nodeType }) => {
+    if (!articleCheckNodeTypeSet.has(nodeType)) return [];
     const text = elementText(node);
     if (!text.trim()) return [];
     return [
       {
-        elementId: placement.elementId,
-        blockIndex: placement.blockIndex,
-        nodeType: placement.nodeType,
+        elementId,
+        blockIndex,
+        nodeType,
         text,
       },
     ];
@@ -416,19 +433,41 @@ export function articleCheckBlocks(editor: Editor): ArticleCheckBlockInput[] {
 function activeLocatedElement(editor: Editor) {
   const selection = editor.state.selection;
   const from = selection.from;
-  const candidates = locatedArticleElements(editor.state.doc).filter(
+  const candidates = articleElementIndexForEditor(editor).elements.filter(
     (located) => located.position <= from && from <= located.position + located.node.nodeSize,
   );
   return candidates[candidates.length - 1] ?? null;
 }
 
 export function activeArticleElementId(editor: Editor) {
-  return activeLocatedElement(editor)?.placement.elementId || null;
+  return activeLocatedElement(editor)?.elementId || null;
+}
+
+export function activeArticleOutlineHeadingIndex(editor: Editor) {
+  if (editor.isDestroyed) return null;
+  return (
+    locatedElementAtPosition(editor.state.doc, articleElementIndexForEditor(editor), editor.state.selection.from)
+      ?.outlineHeadingIndex ?? null
+  );
 }
 
 export function captureArticleEditorLocation(editor: Editor): ArticleEditorLocationDto | null {
   if (editor.isDestroyed) return null;
   return articleEditorLocationAtPosition(editor, editor.state.selection.from);
+}
+
+export function resolveArticleOutlineHeadingLocation(editor: Editor, sourceIndex: number) {
+  if (editor.isDestroyed || !Number.isInteger(sourceIndex) || sourceIndex < 0) return null;
+  const heading = articleElementIndexForEditor(editor).elements.filter(({ node }) => {
+    const level = Number(node.attrs.level);
+    return node.type.name === 'heading' && level >= 2 && level <= 6;
+  })[sourceIndex];
+  if (!heading?.elementId) return null;
+  return {
+    elementId: heading.elementId,
+    relativeOffset: 0,
+    blockIndex: heading.blockIndex,
+  } satisfies ArticleEditorLocationDto;
 }
 
 function locatedElementAtPosition(document: ProseMirrorNode, index: LocatedArticleElementIndex, position: number) {
@@ -456,18 +495,14 @@ function articleEditorLocationAtPositionInIndex(
   position: number,
 ): ArticleEditorLocationDto | null {
   const located = locatedElementAtPosition(document, index, position);
-  if (!located?.placement.elementId) return null;
+  if (!located?.elementId) return null;
   const relativeOffset = Math.max(0, Math.min(position - located.position - 1, located.node.content.size));
-  return { elementId: located.placement.elementId, relativeOffset, blockIndex: located.placement.blockIndex };
+  return { elementId: located.elementId, relativeOffset, blockIndex: located.blockIndex };
 }
 
 export function articleEditorLocationAtPosition(editor: Editor, position: number): ArticleEditorLocationDto | null {
   if (editor.isDestroyed) return null;
-  return articleEditorLocationAtPositionInIndex(
-    editor.state.doc,
-    locatedArticleElementIndex(editor.state.doc),
-    position,
-  );
+  return articleEditorLocationAtPositionInIndex(editor.state.doc, articleElementIndexForEditor(editor), position);
 }
 
 export interface CapturedArticleCommentTarget {
@@ -522,25 +557,25 @@ function capturedWholeElementTarget(editor: Editor, target: LocatedArticleElemen
   const to = target.position + target.node.nodeSize;
   return {
     anchor: {
-      kind: wholeElementAnchorKind(target.placement.nodeType),
-      startElementId: target.placement.elementId,
+      kind: wholeElementAnchorKind(target.nodeType),
+      startElementId: target.elementId,
       startOffset: 0,
-      endElementId: target.placement.elementId,
+      endElementId: target.elementId,
       endOffset: target.node.content.size,
-      startBlockIndex: target.placement.blockIndex,
-      endBlockIndex: target.placement.blockIndex,
+      startBlockIndex: target.blockIndex,
+      endBlockIndex: target.blockIndex,
       exactQuote,
       prefix: editor.state.doc.textBetween(Math.max(0, from - 200), from, ' ').slice(-200),
       suffix: editor.state.doc.textBetween(to, Math.min(editor.state.doc.content.size, to + 200), ' ').slice(0, 200),
     },
-    preview: normalizedPreview(exactQuote || target.placement.preview),
+    preview: normalizedPreview(exactQuote || elementText(target.node)),
     rect: articleCommentElementRect(editor, target),
   };
 }
 
 export function captureArticleCommentTarget(editor: Editor): CapturedArticleCommentTarget | null {
   if (editor.isDestroyed || editor.view.composing) return null;
-  const elements = locatedArticleElements(editor.state.doc);
+  const elements = articleElementIndexForEditor(editor).elements;
   const selection = editor.state.selection;
   const { from, to, empty } = selection;
   const start = elements
@@ -557,12 +592,12 @@ export function captureArticleCommentTarget(editor: Editor): CapturedArticleComm
     : selection instanceof NodeSelection
       ? (elements.find((element) => element.position === from) ?? start)
       : cellSelection
-        ? start.placement.elementId === end.placement.elementId
+        ? start.elementId === end.elementId
           ? start
           : elements
               .filter(
                 (element) =>
-                  (element.placement.nodeType === 'tableRow' || element.placement.nodeType === 'table') &&
+                  (element.nodeType === 'tableRow' || element.nodeType === 'table') &&
                   element.position <= from &&
                   endPosition <= element.position + element.node.nodeSize,
               )
@@ -575,17 +610,17 @@ export function captureArticleCommentTarget(editor: Editor): CapturedArticleComm
   return {
     anchor: {
       kind: 'TEXT_RANGE',
-      startElementId: start.placement.elementId,
+      startElementId: start.elementId,
       startOffset,
-      endElementId: end.placement.elementId,
+      endElementId: end.elementId,
       endOffset,
-      startBlockIndex: start.placement.blockIndex,
-      endBlockIndex: end.placement.blockIndex,
+      startBlockIndex: start.blockIndex,
+      endBlockIndex: end.blockIndex,
       exactQuote,
       prefix: editor.state.doc.textBetween(Math.max(0, from - 200), from, ' ').slice(-200),
       suffix: editor.state.doc.textBetween(to, Math.min(editor.state.doc.content.size, to + 200), ' ').slice(0, 200),
     },
-    preview: normalizedPreview(exactQuote || start.placement.preview),
+    preview: normalizedPreview(exactQuote || elementText(start.node)),
     rect: articleCommentPositionRect(editor, to),
   };
 }
@@ -597,15 +632,15 @@ export function articleCommentAnchorRect(editor: Editor, commentId: string): Art
 }
 
 function locatedForLocation(editor: Editor, location: ArticleEditorLocationDto) {
-  const elements = locatedArticleElements(editor.state.doc);
+  const elements = articleElementIndexForEditor(editor).elements;
   return (
-    elements.find((candidate) => candidate.placement.elementId === location.elementId) ??
+    elements.find((candidate) => candidate.elementId === location.elementId) ??
     (location.blockIndex === undefined
       ? null
       : elements.reduce<(typeof elements)[number] | null>((closest, candidate) => {
           if (!closest) return candidate;
-          return Math.abs(candidate.placement.blockIndex - location.blockIndex!) <
-            Math.abs(closest.placement.blockIndex - location.blockIndex!)
+          return Math.abs(candidate.blockIndex - location.blockIndex!) <
+            Math.abs(closest.blockIndex - location.blockIndex!)
             ? candidate
             : closest;
         }, null))
@@ -620,7 +655,7 @@ export function captureArticleViewportLocation(editor: Editor, scrollRoot: HTMLE
     left: Math.min(editorRect.right - 1, editorRect.left + ARTICLE_VIEWPORT_INSET_PX),
     top: rootRect.top + ARTICLE_VIEWPORT_INSET_PX,
   })?.pos;
-  const elements = locatedArticleElements(editor.state.doc);
+  const elements = articleElementIndexForEditor(editor).elements;
   const located =
     (position === undefined
       ? null
@@ -640,10 +675,10 @@ export function captureArticleViewportLocation(editor: Editor, scrollRoot: HTMLE
       ? Math.max(0, Math.round(rootRect.top + ARTICLE_VIEWPORT_INSET_PX - elementDom.getBoundingClientRect().top))
       : undefined;
   return {
-    elementId: located.placement.elementId,
+    elementId: located.elementId,
     relativeOffset:
       position === undefined ? 0 : Math.max(0, Math.min(position - located.position - 1, located.node.content.size)),
-    blockIndex: located.placement.blockIndex,
+    blockIndex: located.blockIndex,
     ...(viewportOffset === undefined ? {} : { viewportOffset }),
   } satisfies ArticleEditorLocationDto;
 }
@@ -699,13 +734,10 @@ export function restoreArticleEditorLocation(editor: Editor, location: ArticleEd
 export function resolveArticleCommentLocation(editor: Editor, commentId: string) {
   if (editor.isDestroyed) return null;
   const state = articleElementPluginKey.getState(editor.state) as ArticleElementPluginState | undefined;
-  const decoration = state?.decorationByCommentId.get(commentId);
+  if (!state) return null;
+  const decoration = state.decorationByCommentId.get(commentId);
   if (!decoration) return null;
-  return articleEditorLocationAtPositionInIndex(
-    editor.state.doc,
-    locatedArticleElementIndex(editor.state.doc),
-    decoration.from,
-  );
+  return articleEditorLocationAtPositionInIndex(editor.state.doc, state.index, decoration.from);
 }
 
 export function articleCommentTargetResolution(editor: Editor, commentId: string) {
@@ -721,7 +753,7 @@ export function mappedArticleCommentAnchors(
   if (editor.isDestroyed) return [];
   const state = articleElementPluginKey.getState(editor.state) as ArticleElementPluginState | undefined;
   if (!state) return [];
-  const index = locatedArticleElementIndex(editor.state.doc);
+  const index = state.index;
   return comments.flatMap((comment) => {
     const decoration = state.decorationByCommentId.get(comment.id);
     if (!decoration || decoration.spec.relocated) return [];
@@ -740,8 +772,8 @@ export function mappedArticleCommentAnchors(
             endElementId: start.elementId,
             startOffset: 0,
             endOffset: located.node.content.size,
-            startBlockIndex: located.placement.blockIndex,
-            endBlockIndex: located.placement.blockIndex,
+            startBlockIndex: located.blockIndex,
+            endBlockIndex: located.blockIndex,
             exactQuote,
           },
         },

@@ -69,7 +69,7 @@ export function CreatorOutputWorkspace({ model, sourceFormId }: Props) {
             ? 'block min-h-0 min-w-0 overflow-hidden [&>*]:size-full'
             : cn(
                 panes.multiPane || panes.compactPanel === 'output' ? 'block' : 'hidden',
-                'min-h-0 min-w-0 overflow-hidden [&>*]:size-full',
+                '@container/output min-h-0 min-w-0 overflow-hidden [&>*]:size-full',
               )
         }
       >

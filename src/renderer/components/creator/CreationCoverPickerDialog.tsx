@@ -6,7 +6,6 @@ import { useI18n } from '@/renderer/i18n/useI18n';
 import { cn } from '@/renderer/lib/utils';
 import { ImageAmbientBackdrop } from '@/renderer/components/media/AmbientImage';
 import { mediaThumbnailUrl } from '@/renderer/components/media/mediaThumbnailUrl';
-import { MediaOrderHandle } from '@/renderer/components/media/MediaOrderHandle';
 import { Button } from '@/renderer/components/ui/button';
 import {
   Dialog,
@@ -151,7 +150,24 @@ export function CreationCoverPickerDialog({
                     key={asset.id}
                     role="listitem"
                     data-dragging={draggingAssetId === asset.id ? 'true' : undefined}
-                    className="relative aspect-[4/3] h-16 shrink-0 overflow-hidden rounded-md border bg-surface opacity-100 outline-none data-[dragging=true]:opacity-50"
+                    draggable={!busy}
+                    tabIndex={busy ? -1 : 0}
+                    title={`${copy.dragToReorder} · ${copy.coverPosition(index + 1)}`}
+                    aria-label={`${copy.dragToReorder} · ${copy.coverPosition(index + 1)}`}
+                    className="relative aspect-[4/3] h-16 shrink-0 cursor-grab overflow-hidden rounded-md border bg-surface opacity-100 outline-none active:cursor-grabbing focus-visible:ring-2 focus-visible:ring-ring data-[dragging=true]:opacity-50"
+                    onDragStart={(event) => {
+                      setDraggingAssetId(asset.id);
+                      event.dataTransfer.effectAllowed = 'move';
+                      event.dataTransfer.setData('text/plain', asset.id);
+                    }}
+                    onDragEnd={() => setDraggingAssetId(null)}
+                    onKeyDown={(event) => {
+                      const offset = event.key === 'ArrowLeft' ? -1 : event.key === 'ArrowRight' ? 1 : 0;
+                      const target = selectedAssets[index + offset];
+                      if (!offset || !target) return;
+                      event.preventDefault();
+                      setSelectedAssetIds((current) => reorderCoverIds(current, asset.id, target.id, offset > 0));
+                    }}
                     onDragOver={(event) => {
                       const sourceId = draggingAssetId ?? event.dataTransfer.getData('text/plain');
                       if (!sourceId || sourceId === asset.id) return;
@@ -179,20 +195,6 @@ export function CreationCoverPickerDialog({
                     <span className="absolute top-1 left-1 grid size-5 place-items-center rounded bg-overlay/90 text-[10px] font-semibold tabular-nums text-foreground">
                       {index + 1}
                     </span>
-                    <MediaOrderHandle
-                      draggable={!busy}
-                      disabled={busy}
-                      label={`${copy.dragToReorder} · ${copy.coverPosition(index + 1)}`}
-                      className="absolute right-8 bottom-1 left-1 z-10 h-5 min-w-0 justify-start truncate px-1.5 text-[10px]"
-                      onDragStart={(event) => {
-                        setDraggingAssetId(asset.id);
-                        event.dataTransfer.effectAllowed = 'move';
-                        event.dataTransfer.setData('text/plain', asset.id);
-                      }}
-                      onDragEnd={() => setDraggingAssetId(null)}
-                    >
-                      <span className="truncate">{copy.coverPosition(index + 1)}</span>
-                    </MediaOrderHandle>
                     <Button
                       type="button"
                       variant="secondary"

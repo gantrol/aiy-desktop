@@ -9,6 +9,7 @@ import type {
 } from '@/shared/contracts';
 import { parseCodexThreadHref } from '@/shared/contracts/codex-thread';
 import { CodexThreadAnchor } from '@/renderer/components/content/CodexThreadAnchor';
+import { AssetImageCopyButton } from '@/renderer/components/media/AssetImageCopyButton';
 import { useArticleEditorMarkdownProjection } from '@/renderer/components/creator/article-editor/ArticleEditorSessionProvider';
 import { useWorkspaceArticleEditorState } from '@/renderer/components/workspace/WorkspaceArticleEditorStateProvider';
 import {
@@ -74,14 +75,17 @@ const ArticleComparisonMarkdown = memo(function ArticleComparisonMarkdown({
           );
         }
         return (
-          <img
-            src={resolved.mediaUrl}
-            alt={alt ?? ''}
-            className="my-7 max-h-[34rem] w-full rounded-md bg-surface-sunken object-contain"
-            loading="lazy"
-            decoding="async"
-            draggable={false}
-          />
+          <span className="group/article-image relative isolate my-7 block max-h-[34rem] w-full overflow-hidden rounded-md bg-surface-sunken">
+            <img
+              src={resolved.mediaUrl}
+              alt={alt ?? ''}
+              className="max-h-[34rem] w-full object-contain"
+              loading="lazy"
+              decoding="async"
+              draggable={false}
+            />
+            <AssetImageCopyButton assetId={resolved.assetId} />
+          </span>
         );
       },
       table: ({ children }) => (

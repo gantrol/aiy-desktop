@@ -419,10 +419,12 @@ function derivedVisualCompositionComplete(db: Database.Database) {
       return false;
     }
     const key = derivedVisualPlacementKey(placement);
-    if (occupiedPlacements.has(key)) return false;
     occupiedPlacements.add(key);
   }
 
+  // Revision 5 keeps each cover/header attempt as its own lineage form. Older
+  // pre-composition attempts may still share that represented placement without
+  // having a form of their own; inline-anchor uniqueness remains database-enforced.
   for (const visual of visuals) {
     const placement = derivedVisualPlacement(db, visual);
     if (!placement || !occupiedPlacements.has(derivedVisualPlacementKey(placement))) return false;

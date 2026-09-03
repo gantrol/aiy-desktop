@@ -33,6 +33,14 @@ export function createCreationImportApi(
       return repositories.creationImports.importOutputs(input);
     },
 
+    getBrowserCompanionOutputTarget(input: { creationDraftId: string; seriesId: string; promptVersionId: string }) {
+      return repositories.creationImports.browserCompanionOutputTarget(input);
+    },
+
+    findImportedCreatorOutputAssetByHash(seriesId: string, objectHash: string) {
+      return repositories.creationImports.importedOutputAssetByHash(seriesId, objectHash);
+    },
+
     async storeVerifiedCreatorImportFile(
       sourcePath: string,
       extension: string,

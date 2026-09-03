@@ -8,6 +8,7 @@ export const appUpdatePhaseSchema = z.enum([
   'DOWNLOADING',
   'READY',
   'INSTALLING',
+  'RESTART_REQUIRED',
   'UP_TO_DATE',
   'ERROR',
 ]);
@@ -39,6 +40,7 @@ export const appUpdateStateSchema = z
   .object({
     phase: appUpdatePhaseSchema,
     currentVersion: z.string().min(1).max(64),
+    targetVersion: z.string().min(1).max(64).nullable(),
     supportReason: appUpdateSupportReasonSchema.nullable(),
     progress: appUpdateProgressSchema.nullable(),
     error: appUpdateErrorSchema.nullable(),

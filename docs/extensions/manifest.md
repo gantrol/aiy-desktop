@@ -47,7 +47,7 @@
 
 ## 宿主兼容性
 
-当前宿主 engine key 是 `aiy`，宿主 API 版本是 `0.3.7`。支持三种范围格式：
+当前宿主 engine key 是 `aiy`，宿主 API 版本是 `0.3.9`。支持三种范围格式：
 
 ```json
 { "engines": { "aiy": "*" } }

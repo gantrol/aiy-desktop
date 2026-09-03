@@ -154,7 +154,11 @@ export function LocalSpaceTransitionOverlay({
       data-progress={transition.progress}
       data-motion-paused={motion.paused ? 'true' : undefined}
       data-reduced-motion={motion.reduced ? 'true' : undefined}
-      className="local-space-transition absolute inset-0 z-50 grid place-items-center overflow-hidden bg-background"
+      data-overlay-layer={previewOnly ? undefined : 'takeover'}
+      className={cn(
+        'local-space-transition absolute inset-0 grid place-items-center overflow-hidden bg-background',
+        previewOnly ? 'z-0' : 'z-takeover',
+      )}
       style={
         {
           '--space-transition-card-duration': `${320 / speedMultiplier}ms`,

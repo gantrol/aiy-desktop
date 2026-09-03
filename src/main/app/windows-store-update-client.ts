@@ -4,7 +4,7 @@ import type { Readable } from 'node:stream';
 import { StringDecoder } from 'node:string_decoder';
 import { z } from 'zod';
 
-const STORE_HELPER_PROTOCOL_VERSION = 1;
+const STORE_HELPER_PROTOCOL_VERSION = 2;
 const MAX_HELPER_STDOUT_BYTES = 512 * 1_024;
 const MAX_HELPER_STDERR_BYTES = 64 * 1_024;
 const MAX_HELPER_LINE_CHARACTERS = 16 * 1_024;
@@ -16,6 +16,14 @@ const helperErrorCodeSchema = z
   .min(1)
   .max(100)
   .regex(/^[A-Z0-9_]+$/);
+const helperPackageVersionSchema = z
+  .object({
+    major: z.number().int().min(0).max(65_535),
+    minor: z.number().int().min(0).max(65_535),
+    build: z.number().int().min(0).max(65_535),
+    revision: z.number().int().min(0).max(65_535),
+  })
+  .strict();
 const helperProgressSchema = z
   .object({
     type: z.literal('progress'),
@@ -41,12 +49,20 @@ const helperCheckResultSchema = z
   .object({
     type: z.literal('check-result'),
     available: z.boolean(),
+    targetVersion: helperPackageVersionSchema.nullable(),
   })
   .strict();
 const helperOperationResultSchema = z
   .object({
     type: z.literal('operation-result'),
     operation: z.enum(['DOWNLOAD', 'INSTALL']),
+    status: z.literal('COMPLETED'),
+    targetVersion: helperPackageVersionSchema,
+  })
+  .strict();
+const helperActivationResultSchema = z
+  .object({
+    type: z.literal('activation-result'),
     status: z.literal('COMPLETED'),
   })
   .strict();
@@ -64,12 +80,18 @@ const helperMessageSchema = z.discriminatedUnion('type', [
   helperProgressSchema,
   helperCheckResultSchema,
   helperOperationResultSchema,
+  helperActivationResultSchema,
   helperErrorSchema,
   helperProtocolSchema,
 ]);
 
 export interface WindowsStoreCheckResult {
   available: boolean;
+  targetStoreVersion: string | null;
+}
+
+export interface WindowsStoreOperationResult {
+  targetStoreVersion: string;
 }
 
 export interface WindowsStoreProgress {
@@ -80,8 +102,12 @@ export interface WindowsStoreProgress {
 
 export interface WindowsStoreUpdateBackend {
   check(): Promise<WindowsStoreCheckResult>;
-  download(ownerWindowHandle: Buffer, onProgress: (progress: WindowsStoreProgress) => void): Promise<void>;
-  install(ownerWindowHandle: Buffer): Promise<void>;
+  download(
+    ownerWindowHandle: Buffer,
+    onProgress: (progress: WindowsStoreProgress) => void,
+  ): Promise<WindowsStoreOperationResult>;
+  install(ownerWindowHandle: Buffer): Promise<WindowsStoreOperationResult>;
+  activate(): Promise<void>;
   dispose(): void;
 }
 
@@ -99,6 +125,7 @@ export class WindowsStoreUpdateError extends Error {
 type HelperTerminalMessage =
   | z.infer<typeof helperCheckResultSchema>
   | z.infer<typeof helperOperationResultSchema>
+  | z.infer<typeof helperActivationResultSchema>
   | z.infer<typeof helperErrorSchema>;
 type StoreHelperProcess = ChildProcessByStdio<null, Readable, Readable>;
 
@@ -135,6 +162,10 @@ function windowHandleAsDecimal(handle: Buffer) {
   return value.toString(10);
 }
 
+function packageVersionText(version: z.infer<typeof helperPackageVersionSchema>) {
+  return `${version.major}.${version.minor}.${version.build}.${version.revision}`;
+}
+
 export class WindowsStoreUpdateClient implements WindowsStoreUpdateBackend {
   private readonly children = new Set<StoreHelperProcess>();
   private disposed = false;
@@ -147,7 +178,13 @@ export class WindowsStoreUpdateClient implements WindowsStoreUpdateBackend {
     const result = await this.run(['check'], STORE_CHECK_TIMEOUT_MS);
     if (result.type === 'error') throw new WindowsStoreUpdateError(result.code, result.retryable);
     if (result.type !== 'check-result') throw new WindowsStoreUpdateError('STORE_HELPER_PROTOCOL_INVALID', false);
-    return { available: result.available };
+    if (result.available !== (result.targetVersion !== null)) {
+      throw new WindowsStoreUpdateError('STORE_HELPER_PROTOCOL_INVALID', false);
+    }
+    return {
+      available: result.available,
+      targetStoreVersion: result.targetVersion ? packageVersionText(result.targetVersion) : null,
+    };
   }
 
   async download(ownerWindowHandle: Buffer, onProgress: (progress: WindowsStoreProgress) => void) {
@@ -167,15 +204,33 @@ export class WindowsStoreUpdateClient implements WindowsStoreUpdateBackend {
     if (result.type !== 'operation-result' || result.operation !== 'DOWNLOAD') {
       throw new WindowsStoreUpdateError('STORE_HELPER_PROTOCOL_INVALID', false);
     }
+    return { targetStoreVersion: packageVersionText(result.targetVersion) };
   }
 
   async install(ownerWindowHandle: Buffer) {
     const result = await this.run(
-      ['install', '--window-handle', windowHandleAsDecimal(ownerWindowHandle)],
+      [
+        'install',
+        '--window-handle',
+        windowHandleAsDecimal(ownerWindowHandle),
+        '--parent-process-id',
+        process.pid.toString(10),
+      ],
       STORE_UPDATE_TIMEOUT_MS,
+      undefined,
+      true,
     );
     if (result.type === 'error') throw new WindowsStoreUpdateError(result.code, result.retryable);
     if (result.type !== 'operation-result' || result.operation !== 'INSTALL') {
+      throw new WindowsStoreUpdateError('STORE_HELPER_PROTOCOL_INVALID', false);
+    }
+    return { targetStoreVersion: packageVersionText(result.targetVersion) };
+  }
+
+  async activate() {
+    const result = await this.run(['activate'], STORE_CHECK_TIMEOUT_MS);
+    if (result.type === 'error') throw new WindowsStoreUpdateError(result.code, result.retryable);
+    if (result.type !== 'activation-result') {
       throw new WindowsStoreUpdateError('STORE_HELPER_PROTOCOL_INVALID', false);
     }
   }
@@ -191,6 +246,7 @@ export class WindowsStoreUpdateClient implements WindowsStoreUpdateBackend {
     arguments_: string[],
     timeoutMs: number,
     onProgress?: (progress: z.infer<typeof helperProgressSchema>) => void,
+    resolveSuccessfulOperationBeforeExit = false,
   ): Promise<HelperTerminalMessage> {
     if (this.disposed) return Promise.reject(new WindowsStoreUpdateError('STORE_CLIENT_DISPOSED', false));
 
@@ -198,6 +254,7 @@ export class WindowsStoreUpdateClient implements WindowsStoreUpdateBackend {
       let child: StoreHelperProcess;
       try {
         child = spawn(this.executablePath, arguments_, {
+          detached: resolveSuccessfulOperationBeforeExit,
           env: sanitizedHelperEnvironment(),
           shell: false,
           stdio: ['ignore', 'pipe', 'pipe'],
@@ -216,6 +273,21 @@ export class WindowsStoreUpdateClient implements WindowsStoreUpdateBackend {
       let terminal: HelperTerminalMessage | null = null;
       let failure: WindowsStoreUpdateError | null = null;
       let completed = false;
+
+      const resolveBeforeExit = () => {
+        if (completed || terminal?.type !== 'operation-result') return;
+        // The detached helper now owns relaunch and must outlive the old Electron process.
+        completed = true;
+        clearTimeout(timeout);
+        this.children.delete(child);
+        child.stdout.removeAllListeners();
+        child.stderr.removeAllListeners();
+        child.removeAllListeners();
+        child.stdout.destroy();
+        child.stderr.destroy();
+        child.unref();
+        resolve(terminal);
+      };
 
       const stopWith = (error: WindowsStoreUpdateError) => {
         if (failure) return;
@@ -246,6 +318,7 @@ export class WindowsStoreUpdateClient implements WindowsStoreUpdateBackend {
           return;
         }
         terminal = parsedMessage.data;
+        if (resolveSuccessfulOperationBeforeExit) resolveBeforeExit();
       };
       const consumeText = (text: string) => {
         pendingLine += text;

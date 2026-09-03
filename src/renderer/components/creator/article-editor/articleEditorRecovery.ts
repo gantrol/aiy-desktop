@@ -22,6 +22,7 @@ import { editableArticleContent } from '@/renderer/components/creator/article-ed
 
 const storagePrefix = 'aiy.article-editor-recovery.v1';
 const maxStoredCheckpointCharacters = 4_000_000;
+const recoveryWriteIdleMs = 800;
 type RecoveryCheckpoint = ArticleEditorRecoveryCheckpoint;
 
 export interface ArticleEditorRecoveredDraft {
@@ -33,6 +34,7 @@ export interface ArticleEditorRecoveredDraft {
 
 export type ArticleEditorRecoveryResult =
   | { kind: 'none' }
+  | { kind: 'resumed'; draft: ArticleEditorRecoveredDraft; updatedAt: number }
   | { kind: 'restored'; draft: ArticleEditorRecoveredDraft; updatedAt: number }
   | { kind: 'conflict'; draft: ArticleEditorRecoveredDraft; updatedAt: number };
 
@@ -115,26 +117,37 @@ function recoverableFromCurrent(checkpoint: RecoveryCheckpoint, article: Article
 }
 
 export class ArticleEditorRecoveryStore {
-  readonly result: ArticleEditorRecoveryResult;
   readonly #storage: Storage | null;
+  readonly #prefix: string;
   readonly #key: string;
   readonly #spaceId: string;
   readonly #articleId: string;
   readonly #sessionEpoch: string;
+  readonly #onError: () => void;
   #checkpoint: RecoveryCheckpoint | null = null;
   #sourceCheckpoint: { sessionEpoch: string; localKey: string | null } | null = null;
+  #pendingCheckpoint: RecoveryCheckpoint | null = null;
+  #writeTimer: ReturnType<typeof globalThis.setTimeout> | null = null;
+  #writeInFlight: Promise<boolean> | null = null;
+  #mutationTail: Promise<void> = Promise.resolve();
+  #disposed = false;
 
-  constructor(spaceId: string, article: ArticleDto, sessionEpoch: string) {
+  constructor(spaceId: string, articleId: string, sessionEpoch: string, onError: () => void) {
     this.#spaceId = spaceId;
-    this.#articleId = article.id;
+    this.#articleId = articleId;
     this.#sessionEpoch = sessionEpoch;
-    const prefix = checkpointPrefix(spaceId, article.id);
-    this.#key = checkpointKey(prefix, sessionEpoch);
+    this.#onError = onError;
+    this.#prefix = checkpointPrefix(spaceId, articleId);
+    this.#key = checkpointKey(this.#prefix, sessionEpoch);
     try {
       this.#storage = window.localStorage;
     } catch {
       this.#storage = null;
     }
+  }
+
+  async load(article: ArticleDto): Promise<ArticleEditorRecoveryResult> {
+    if (article.id !== this.#articleId) throw new Error('Article editor recovery identity mismatch');
     const currentContent = editableArticleContent(article);
     const checkpoints = new Map<string, { key: string | null; checkpoint: RecoveryCheckpoint }>();
     const acceptCandidate = (key: string | null, checkpoint: RecoveryCheckpoint) => {
@@ -146,40 +159,40 @@ export class ArticleEditorRecoveryStore {
         });
       }
     };
+    try {
+      (await window.desktopApi.articleEditorRecoveryList({ spaceId: this.#spaceId, articleId: article.id })).forEach(
+        (checkpoint) => acceptCandidate(null, checkpoint),
+      );
+    } catch {
+      this.#onError();
+    }
     const storage = this.#storage;
     if (storage) {
       try {
-        for (const key of storageKeys(storage, prefix)) {
+        for (const key of storageKeys(storage, this.#prefix)) {
           const checkpoint = parseCheckpoint(storage.getItem(key));
-          if (!checkpoint || checkpoint.spaceId !== spaceId || checkpoint.articleId !== article.id) {
+          if (!checkpoint || checkpoint.spaceId !== this.#spaceId || checkpoint.articleId !== article.id) {
             storage.removeItem(key);
             continue;
           }
           acceptCandidate(key, checkpoint);
         }
       } catch {
-        // Durable main-process checkpoints remain available when localStorage fails.
+        // The durable main-process checkpoint remains authoritative.
       }
-    }
-    try {
-      window.desktopApi
-        .articleEditorRecoveryList({ spaceId, articleId: article.id })
-        .forEach((checkpoint) => acceptCandidate(null, checkpoint));
-    } catch {
-      // The renderer-local checkpoint remains a fallback when the durable store is unavailable.
     }
 
-    const candidates = [...checkpoints.values()].flatMap((candidate) => {
+    const candidates: ({ key: string | null; checkpoint: RecoveryCheckpoint } & { recoverable: boolean })[] = [];
+    for (const candidate of checkpoints.values()) {
       if (sameCheckpointAsArticle(candidate.checkpoint, article, currentContent)) {
-        this.#removeStoredCheckpoint(candidate.checkpoint.sessionEpoch, candidate.key);
-        return [];
+        await this.#removeStoredCheckpoint(candidate.checkpoint.sessionEpoch, candidate.key);
+        continue;
       }
-      return [{ ...candidate, recoverable: recoverableFromCurrent(candidate.checkpoint, article) }];
-    });
+      candidates.push({ ...candidate, recoverable: recoverableFromCurrent(candidate.checkpoint, article) });
+    }
     const ordered = candidates.sort((left, right) => right.checkpoint.updatedAt - left.checkpoint.updatedAt);
     if (!ordered.length) {
-      this.result = { kind: 'none' };
-      return;
+      return { kind: 'none' };
     }
     const selected = ordered.find((candidate) => candidate.recoverable);
     if (!selected) {
@@ -188,25 +201,26 @@ export class ArticleEditorRecoveryStore {
         sessionEpoch: conflict.checkpoint.sessionEpoch,
         localKey: conflict.key,
       };
-      this.result = {
+      return {
         kind: 'conflict',
         draft: copyDraft(conflict.checkpoint),
         updatedAt: conflict.checkpoint.updatedAt,
       };
-      return;
     }
 
+    const resumeWithoutPrompt = sameContent(selected.checkpoint.content, currentContent);
     this.#checkpoint = {
       ...selected.checkpoint,
-      sessionEpoch,
+      sessionEpoch: this.#sessionEpoch,
       baseRevisionId: article.revisionId,
       baseContentHash: article.contentHash,
       pendingSave: null,
       updatedAt: Date.now(),
     };
-    const migrated = this.#write();
-    if (selected.checkpoint.sessionEpoch !== sessionEpoch) {
-      if (migrated) this.#removeStoredCheckpoint(selected.checkpoint.sessionEpoch, selected.key);
+    this.#pendingCheckpoint = this.#checkpoint;
+    const migrated = await this.flush();
+    if (selected.checkpoint.sessionEpoch !== this.#sessionEpoch) {
+      if (migrated) await this.#removeStoredCheckpoint(selected.checkpoint.sessionEpoch, selected.key);
       else {
         this.#sourceCheckpoint = {
           sessionEpoch: selected.checkpoint.sessionEpoch,
@@ -214,15 +228,16 @@ export class ArticleEditorRecoveryStore {
         };
       }
     }
-    this.result = {
-      kind: 'restored',
+    return {
+      kind: resumeWithoutPrompt ? 'resumed' : 'restored',
       draft: copyDraft(this.#checkpoint),
       updatedAt: selected.checkpoint.updatedAt,
     };
   }
 
   record(input: RecordDraftInput) {
-    const parsed = articleEditorRecoveryCheckpointSchema.safeParse({
+    if (this.#disposed) return false;
+    this.#checkpoint = {
       schemaVersion: 1,
       spaceId: this.#spaceId,
       articleId: this.#articleId,
@@ -236,10 +251,9 @@ export class ArticleEditorRecoveryStore {
       commentAnchors: input.commentAnchors.map((item) => ({ ...item, anchor: { ...item.anchor } })),
       pendingSave: this.#checkpoint?.pendingSave ?? null,
       updatedAt: Date.now(),
-    });
-    if (!parsed.success) return false;
-    this.#checkpoint = parsed.data;
-    return this.#write();
+    };
+    this.#queueWrite(this.#checkpoint);
+    return true;
   }
 
   markPending(input: ArticleRevisionSaveInput) {
@@ -254,14 +268,15 @@ export class ArticleEditorRecoveryStore {
       },
       updatedAt: Date.now(),
     };
-    return this.#write();
+    this.#queueWrite(this.#checkpoint);
+    return true;
   }
 
   acknowledge(input: ArticleRevisionSaveInput, article: ArticleDto) {
     const checkpoint = this.#checkpoint;
     if (!checkpoint || checkpoint.sessionEpoch !== input.sessionEpoch) return true;
     if (checkpoint.draftSeq <= input.draftSeq && sameCheckpointAsRequest(checkpoint, input)) {
-      this.clear();
+      void this.clear();
       return true;
     }
     this.#checkpoint = {
@@ -271,50 +286,125 @@ export class ArticleEditorRecoveryStore {
       pendingSave: checkpoint.pendingSave?.requestId === input.requestId ? null : checkpoint.pendingSave,
       updatedAt: Date.now(),
     };
-    return this.#write();
+    this.#queueWrite(this.#checkpoint);
+    return true;
   }
 
-  clear() {
+  async clear() {
     this.#checkpoint = null;
-    this.#removeStoredCheckpoint(this.#sessionEpoch, this.#key);
+    this.#pendingCheckpoint = null;
+    this.#cancelTimer();
+    const removals = [this.#removeStoredCheckpoint(this.#sessionEpoch, this.#key)];
     if (this.#sourceCheckpoint) {
-      this.#removeStoredCheckpoint(this.#sourceCheckpoint.sessionEpoch, this.#sourceCheckpoint.localKey);
-      this.#sourceCheckpoint = null;
+      removals.push(this.#removeStoredCheckpoint(this.#sourceCheckpoint.sessionEpoch, this.#sourceCheckpoint.localKey));
     }
+    const successful = (await Promise.all(removals)).every(Boolean);
+    if (successful) this.#sourceCheckpoint = null;
+    return successful;
   }
 
-  #removeStoredCheckpoint(sessionEpoch: string, localKey: string | null) {
-    try {
-      if (localKey) this.#storage?.removeItem(localKey);
-    } catch {
-      // A failed cleanup leaves only an already-persisted recovery copy.
+  async flush() {
+    if (this.#disposed) return !this.#pendingCheckpoint && !this.#writeInFlight;
+    this.#cancelTimer();
+    let successful = true;
+    while (this.#pendingCheckpoint || this.#writeInFlight) {
+      const result = await (this.#writeInFlight ?? this.#writeOnce());
+      successful &&= result;
+      if (!result) break;
     }
     try {
-      window.desktopApi.articleEditorRecoveryRemove({
-        spaceId: this.#spaceId,
-        articleId: this.#articleId,
-        sessionEpoch,
+      await this.#mutationTail;
+    } catch {
+      successful = false;
+    }
+    return successful;
+  }
+
+  dispose() {
+    this.#disposed = true;
+    this.#cancelTimer();
+  }
+
+  async #removeStoredCheckpoint(sessionEpoch: string, localKey: string | null) {
+    let successful = true;
+    try {
+      const keys = new Set([checkpointKey(this.#prefix, sessionEpoch), ...(localKey ? [localKey] : [])]);
+      keys.forEach((key) => this.#storage?.removeItem(key));
+    } catch {
+      successful = false;
+      this.#onError();
+    }
+    try {
+      await this.#enqueueMutation(() =>
+        window.desktopApi.articleEditorRecoveryRemove({
+          spaceId: this.#spaceId,
+          articleId: this.#articleId,
+          sessionEpoch,
+        }),
+      );
+    } catch {
+      successful = false;
+      this.#onError();
+    }
+    return successful;
+  }
+
+  #queueWrite(checkpoint: RecoveryCheckpoint) {
+    this.#pendingCheckpoint = checkpoint;
+    this.#cancelTimer();
+    this.#writeTimer = globalThis.setTimeout(() => {
+      this.#writeTimer = null;
+      void this.#writeAfterInFlight();
+    }, recoveryWriteIdleMs);
+  }
+
+  async #writeAfterInFlight() {
+    if (this.#writeInFlight && !(await this.#writeInFlight)) return;
+    if (!this.#disposed && this.#pendingCheckpoint) await this.#writeOnce();
+  }
+
+  #writeOnce() {
+    if (this.#writeInFlight) return this.#writeInFlight;
+    const checkpoint = this.#pendingCheckpoint;
+    if (!checkpoint) return Promise.resolve(true);
+    if (this.#disposed) return Promise.resolve(false);
+    this.#pendingCheckpoint = null;
+    let scheduleTrailing = true;
+    const pending = this.#enqueueMutation(() => window.desktopApi.articleEditorRecoveryWrite(checkpoint))
+      .then(() => true)
+      .catch(() => {
+        if (
+          this.#checkpoint === checkpoint &&
+          (!this.#pendingCheckpoint || this.#pendingCheckpoint.updatedAt <= checkpoint.updatedAt)
+        ) {
+          this.#pendingCheckpoint = checkpoint;
+          scheduleTrailing = false;
+        }
+        this.#onError();
+        return false;
+      })
+      .finally(() => {
+        if (this.#writeInFlight === pending) this.#writeInFlight = null;
+        if (scheduleTrailing && !this.#disposed && this.#pendingCheckpoint && this.#writeTimer === null) {
+          this.#writeTimer = globalThis.setTimeout(() => {
+            this.#writeTimer = null;
+            void this.#writeAfterInFlight();
+          }, recoveryWriteIdleMs);
+        }
       });
-    } catch {
-      // A later load can discard a durable copy that already matches the persisted article.
-    }
+    this.#writeInFlight = pending;
+    return pending;
   }
 
-  #write() {
-    if (!this.#checkpoint) return false;
-    let durable = false;
-    try {
-      window.desktopApi.articleEditorRecoveryWrite(this.#checkpoint);
-      durable = true;
-    } catch {
-      // The renderer copy below remains useful for graceful reloads.
-    }
-    try {
-      const serialized = JSON.stringify(this.#checkpoint);
-      if (serialized.length <= maxStoredCheckpointCharacters) this.#storage?.setItem(this.#key, serialized);
-    } catch {
-      // Durable main-process persistence is authoritative for restart recovery.
-    }
-    return durable;
+  #enqueueMutation(operation: () => Promise<void>) {
+    const pending = this.#mutationTail.catch(() => undefined).then(operation);
+    this.#mutationTail = pending;
+    return pending;
+  }
+
+  #cancelTimer() {
+    if (this.#writeTimer === null) return;
+    globalThis.clearTimeout(this.#writeTimer);
+    this.#writeTimer = null;
   }
 }

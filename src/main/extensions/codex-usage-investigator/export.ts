@@ -77,7 +77,9 @@ function quotaCycleRows(investigation: CodexUsageInvestigation): CsvRecord[] {
     window_kind: cycle.windowKind,
     window_duration_minutes: cycle.windowDurationMins,
     tokens_per_subscription_quota_1_percent: cycle.tokensPerOnePercent,
+    standard_equivalent_tokens_per_subscription_quota_1_percent: cycle.standardEquivalentTokensPerOnePercent,
     median_non_cached_tokens_per_1_percent: cycle.nonCachedTokensPerOnePercent,
+    standard_equivalent_non_cached_tokens_per_1_percent: cycle.standardEquivalentNonCachedTokensPerOnePercent,
     cached_input_percent: cycle.cachedInputPercent,
     sample_count: 1,
     quota_percent_observed: cycle.quotaPercentConsumed,
@@ -94,8 +96,9 @@ function quotaCycleRows(investigation: CodexUsageInvestigation): CsvRecord[] {
     output_tokens: cycle.outputTokens,
     reasoning_output_tokens: cycle.reasoningOutputTokens,
     total_tokens: cycle.totalTokens,
+    standard_equivalent_total_tokens: cycle.standardEquivalentTokens,
     model_token_shares: JSON.stringify(cycle.modelShares),
-    valuation_kind: 'weekly_quota_observation_segment_tokens_per_observed_quota_percent',
+    valuation_kind: 'weekly_quota_observation_segment_raw_and_standard_equivalent_tokens',
   }));
 }
 
@@ -262,8 +265,10 @@ const CSV_HEADERS = [
   'session_source',
   'inferred_service_tier_tokens',
   'tokens_per_subscription_quota_1_percent',
+  'standard_equivalent_tokens_per_subscription_quota_1_percent',
   'mean_tokens_per_1_percent',
   'median_non_cached_tokens_per_1_percent',
+  'standard_equivalent_non_cached_tokens_per_1_percent',
   'median_tokens_per_1_percent',
   'p25_tokens_per_1_percent',
   'p75_tokens_per_1_percent',
@@ -295,6 +300,7 @@ const CSV_HEADERS = [
   'output_tokens',
   'reasoning_output_tokens',
   'total_tokens',
+  'standard_equivalent_total_tokens',
   'api_equivalent_usd',
   'api_cache_savings_usd',
   'codex_credit_equivalent',
@@ -529,10 +535,11 @@ function csvExport(investigation: CodexUsageInvestigation, rows: readonly CodexU
 function jsonExport(investigation: CodexUsageInvestigation, rows: readonly CodexUsageInternalRow[]) {
   return `${JSON.stringify(
     {
-      schemaVersion: 10,
+      schemaVersion: 11,
       valuationKind: 'public_rate_equivalent_not_billed_spend',
       turnSpeedKind: 'completed_turn_median_duration_ratio',
       quotaYieldKind: 'weekly_quota_observation_segment_tokens_per_observed_quota_percent',
+      quotaSpeedNormalizationKind: 'fast_credit_multiplier_to_standard_equivalent_tokens',
       sessionLengthCostKind: 'complete_session_event_date_standard_api_equivalent_per_owned_chat_turn',
       investigation,
       sessionModelDays: rows.map((row) => ({

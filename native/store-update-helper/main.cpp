@@ -14,15 +14,18 @@
 #include <iostream>
 #include <limits>
 #include <mutex>
+#include <optional>
 #include <sstream>
 #include <stdexcept>
 #include <string>
 #include <string_view>
+#include <tuple>
 #include <utility>
 #include <vector>
 
 namespace {
 using winrt::Windows::ApplicationModel::Package;
+using winrt::Windows::ApplicationModel::PackageVersion;
 using winrt::Windows::Foundation::AsyncStatus;
 using winrt::Windows::Services::Store::StoreContext;
 using winrt::Windows::Services::Store::StorePackageUpdate;
@@ -31,7 +34,8 @@ using winrt::Windows::Services::Store::StorePackageUpdateState;
 using winrt::Windows::Services::Store::StorePackageUpdateStatus;
 
 constexpr std::wstring_view kExpectedPackageName = L"Gantrol.AIY";
-constexpr int kProtocolVersion = 1;
+constexpr std::wstring_view kExpectedApplicationId = L"AIY";
+constexpr int kProtocolVersion = 2;
 
 class HelperError final : public std::runtime_error {
  public:
@@ -121,7 +125,20 @@ StoreContext CreateStoreContext(HWND owner_window = nullptr) {
 
 struct CurrentPackageUpdates {
   std::vector<StorePackageUpdate> updates;
+  std::optional<PackageVersion> target_version;
 };
+
+bool VersionLessThan(const PackageVersion& left, const PackageVersion& right) {
+  return std::tie(left.Major, left.Minor, left.Build, left.Revision) <
+         std::tie(right.Major, right.Minor, right.Build, right.Revision);
+}
+
+std::string VersionJson(const PackageVersion& version) {
+  std::ostringstream stream;
+  stream << "{\"major\":" << version.Major << ",\"minor\":" << version.Minor << ",\"build\":"
+         << version.Build << ",\"revision\":" << version.Revision << "}";
+  return stream.str();
+}
 
 CurrentPackageUpdates GetCurrentPackageUpdates(const StoreContext& context) {
   CurrentPackageUpdates selected;
@@ -130,6 +147,10 @@ CurrentPackageUpdates GetCurrentPackageUpdates(const StoreContext& context) {
     const auto package = update.Package();
     if (package.Id().Name() != kExpectedPackageName) continue;
     selected.updates.push_back(update);
+    const auto version = package.Id().Version();
+    if (!selected.target_version || VersionLessThan(*selected.target_version, version)) {
+      selected.target_version = version;
+    }
   }
   return selected;
 }
@@ -211,13 +232,41 @@ void ValidateOperationResult(const StorePackageUpdateResult& result) {
 void RunCheck() {
   const auto selected = GetCurrentPackageUpdates(CreateStoreContext());
   if (selected.updates.empty()) {
-    EmitLine("{\"type\":\"check-result\",\"available\":false}");
+    EmitLine("{\"type\":\"check-result\",\"available\":false,\"targetVersion\":null}");
     return;
   }
-  EmitLine("{\"type\":\"check-result\",\"available\":true}");
+  EmitLine("{\"type\":\"check-result\",\"available\":true,\"targetVersion\":" +
+           VersionJson(*selected.target_version) + "}");
 }
 
-void RunUpdateOperation(const std::string& operation_name, HWND owner_window) {
+void ActivateRegisteredApplication(bool emit_result = true) {
+  const auto package = Package::Current();
+  if (package.Id().Name() != kExpectedPackageName) {
+    throw HelperError("STORE_PACKAGE_IDENTITY_MISMATCH", false);
+  }
+
+  std::wstring application_user_model_id(package.Id().FamilyName().c_str());
+  application_user_model_id.push_back(L'!');
+  application_user_model_id.append(kExpectedApplicationId.data(), kExpectedApplicationId.size());
+
+  winrt::com_ptr<IApplicationActivationManager> activation_manager;
+  winrt::check_hresult(CoCreateInstance(CLSID_ApplicationActivationManager, nullptr, CLSCTX_INPROC_SERVER,
+                                        __uuidof(IApplicationActivationManager), activation_manager.put_void()));
+  DWORD activated_process_id = 0;
+  winrt::check_hresult(
+      activation_manager->ActivateApplication(application_user_model_id.c_str(), nullptr, AO_NONE,
+                                               &activated_process_id));
+  if (emit_result) EmitLine("{\"type\":\"activation-result\",\"status\":\"COMPLETED\"}");
+}
+
+void RunUpdateOperation(const std::string& operation_name, HWND owner_window, DWORD parent_process_id = 0) {
+  winrt::handle parent_process;
+  if (parent_process_id != 0) {
+    // Hold the process object before Store deployment can terminate the old package.
+    parent_process.attach(OpenProcess(SYNCHRONIZE, FALSE, parent_process_id));
+    if (!parent_process) throw HelperError("STORE_PARENT_PROCESS_UNAVAILABLE", true);
+  }
+
   const auto context = CreateStoreContext(owner_window);
   auto selected = GetCurrentPackageUpdates(context);
   if (selected.updates.empty()) throw HelperError("STORE_UPDATE_NO_LONGER_AVAILABLE", true);
@@ -233,7 +282,14 @@ void RunUpdateOperation(const std::string& operation_name, HWND owner_window) {
     ValidateOperationResult(WaitWithMessagePump(operation));
   }
   EmitLine("{\"type\":\"operation-result\",\"operation\":\"" + operation_name +
-           "\",\"status\":\"COMPLETED\"}");
+           "\",\"status\":\"COMPLETED\",\"targetVersion\":" + VersionJson(*selected.target_version) + "}");
+  if (parent_process) {
+    // Package activation must happen after the old instance releases its single-instance lock.
+    if (WaitForSingleObject(parent_process.get(), INFINITE) != WAIT_OBJECT_0) {
+      throw HelperError("STORE_PARENT_PROCESS_WAIT_FAILED", false);
+    }
+    ActivateRegisteredApplication(false);
+  }
 }
 
 HWND RequireWindowHandle(int argc, wchar_t* argv[]) {
@@ -241,6 +297,24 @@ HWND RequireWindowHandle(int argc, wchar_t* argv[]) {
     throw HelperError("STORE_COMMAND_INVALID", false);
   }
   return ParseAndValidateWindowHandle(argv[3]);
+}
+
+HWND RequireInstallWindowHandle(int argc, wchar_t* argv[]) {
+  if (argc != 6 || std::wstring_view(argv[2]) != L"--window-handle") {
+    throw HelperError("STORE_COMMAND_INVALID", false);
+  }
+  return ParseAndValidateWindowHandle(argv[3]);
+}
+
+DWORD RequireParentProcessId(int argc, wchar_t* argv[]) {
+  if (argc != 6 || std::wstring_view(argv[4]) != L"--parent-process-id") {
+    throw HelperError("STORE_COMMAND_INVALID", false);
+  }
+  const auto numeric_process_id = ParseWindowHandle(argv[5]);
+  if (numeric_process_id > std::numeric_limits<DWORD>::max() || numeric_process_id == GetCurrentProcessId()) {
+    throw HelperError("STORE_PARENT_PROCESS_INVALID", false);
+  }
+  return static_cast<DWORD>(numeric_process_id);
 }
 }  // namespace
 
@@ -256,12 +330,16 @@ int wmain(int argc, wchar_t* argv[]) {
       RunCheck();
       return 0;
     }
+    if (argc == 2 && std::wstring_view(argv[1]) == L"activate") {
+      ActivateRegisteredApplication();
+      return 0;
+    }
     if (argc >= 2 && std::wstring_view(argv[1]) == L"download") {
       RunUpdateOperation("DOWNLOAD", RequireWindowHandle(argc, argv));
       return 0;
     }
     if (argc >= 2 && std::wstring_view(argv[1]) == L"install") {
-      RunUpdateOperation("INSTALL", RequireWindowHandle(argc, argv));
+      RunUpdateOperation("INSTALL", RequireInstallWindowHandle(argc, argv), RequireParentProcessId(argc, argv));
       return 0;
     }
     throw HelperError("STORE_COMMAND_INVALID", false);

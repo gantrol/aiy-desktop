@@ -262,6 +262,14 @@ function validateResponseSemantics(
     return;
   }
 
+  if (request.operation === 'watermark') {
+    if (response.operation !== 'watermark') throw new Error('Image decoder returned the wrong operation');
+    if (response.width !== response.sourceWidth || response.height !== response.sourceHeight) {
+      throw new Error('Image decoder returned invalid watermark dimensions');
+    }
+    return;
+  }
+
   if (response.operation !== 'crop') throw new Error('Image decoder returned the wrong operation');
   const divisor = greatestCommonDivisor(request.ratioWidth, request.ratioHeight);
   const ratioWidth = request.ratioWidth / divisor;

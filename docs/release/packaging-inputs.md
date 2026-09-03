@@ -24,6 +24,7 @@ Git 发布约定见[Git 协作与发布约定](../git-workflow.md)。本文件�
 | `out/preload/**` | preload bridge | 由当前源码重新构建 |
 | `out/renderer/**` | renderer bundle | 由当前源码重新构建 |
 | `package.json` | 运行时元数据 | 与版本和入口一致 |
+| `node_modules/better-sqlite3/lib/**`、`prebuilds/win32-x64.node` | SQLite 运行时驱动 | 只保留 Windows x64 loader 和预构建二进制；其余纯 JavaScript 依赖进入构建产物，不复制依赖源码树 |
 | `extensions/` | 内置扩展 | 必须来自当前 checkout |
 | `content-packs/` | 内置内容包 | JSON、manifest 和媒体引用必须完整可复现 |
 | `configuration/` | 默认运行配置 | 只放可公开的默认配置，不放凭据 |

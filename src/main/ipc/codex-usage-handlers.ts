@@ -16,7 +16,7 @@ import {
   codexUsageStateSchema,
   codexUsageTaskSchema,
 } from '@/shared/contracts/codex-usage';
-import { CODEX_USAGE_INVESTIGATOR_EXTENSION_ID } from '@/shared/extension-ids';
+import { CODEX_EXTENSION_ID } from '@/shared/extension-ids';
 import { EXTENSION_PERMISSION } from '@/shared/extension-permissions';
 
 const QUOTA_PERMISSION = EXTENSION_PERMISSION.accountReadCodexRateLimits;
@@ -53,12 +53,12 @@ export function registerCodexUsageIpc({
     onTaskChanged: (task) => sendRendererEvent('codex-usage:task-changed', codexUsageTaskSchema.parse(task)),
   });
   const active = () => {
-    if (!extensions.isActivated(CODEX_USAGE_INVESTIGATOR_EXTENSION_ID)) {
+    if (!extensions.isActivated(CODEX_EXTENSION_ID)) {
       throw new Error('Did Codex Work Hard Today? is disabled or missing permissions');
     }
   };
   const runOptions = () => ({
-    quotaPermissionGranted: extensions.isPermissionGranted(CODEX_USAGE_INVESTIGATOR_EXTENSION_ID, QUOTA_PERMISSION),
+    quotaPermissionGranted: extensions.isPermissionGranted(CODEX_EXTENSION_ID, QUOTA_PERMISSION),
     readQuota: codex.readUsageQuota ? (signal: AbortSignal) => codex.readUsageQuota!(signal) : undefined,
   });
   ipcMain.handle('codex-usage:state', () => {

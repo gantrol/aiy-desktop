@@ -27,11 +27,6 @@ import {
 import type { VideoDocumentArticleElementsChangeReason } from '@/renderer/features/video-documents/videoDocumentEditorPublication';
 import type { VideoDocumentArticleHeading } from '@/renderer/features/video-documents/useVideoDocumentArticleOutline';
 
-function headingLocation(elements: readonly ArticleElementPlacementInput[], sourceIndex: number) {
-  const heading = elements.filter((element) => element.nodeType === 'heading')[sourceIndex];
-  return heading ? { elementId: heading.elementId, relativeOffset: 0, blockIndex: heading.blockIndex } : null;
-}
-
 function firstArticleLocation(elements: readonly ArticleElementPlacementInput[]) {
   const first = elements[0];
   return first ? { elementId: first.elementId, relativeOffset: 0, blockIndex: first.blockIndex } : null;
@@ -129,6 +124,7 @@ interface ArticleEditorDocumentPaneProps {
   onCommentHover(commentId: string | null): void;
   onCommentSelect(commentId: string): void;
   onCommentStatusChange(commentId: string, status: ArticleCommentStatus): void;
+  onHeadingNavigate(sourceIndex: number): void;
   onPersist(mode: ArticleSaveMode): void;
   onTitleChange(title: string): void;
 }
@@ -152,6 +148,7 @@ function ArticleEditorDocumentPane({
   onCommentHover,
   onCommentSelect,
   onCommentStatusChange,
+  onHeadingNavigate,
   onPersist,
   onTitleChange,
 }: ArticleEditorDocumentPaneProps) {
@@ -184,10 +181,7 @@ function ArticleEditorDocumentPane({
           onCommentHover={onCommentHover}
           onCommentSelect={onCommentSelect}
           onCommentStatusChange={onCommentStatusChange}
-          onHeadingNavigate={(sourceIndex) => {
-            const location = headingLocation(elements, sourceIndex);
-            if (location) onArticleNavigationLocation(location);
-          }}
+          onHeadingNavigate={onHeadingNavigate}
           onTopNavigate={() => {
             const location = firstArticleLocation(elements);
             if (location) onArticleNavigationLocation(location);
@@ -243,6 +237,7 @@ interface Props {
   onCommentHover(commentId: string | null): void;
   onCommentSelect(commentId: string): void;
   onCommentStatusChange(commentId: string, status: ArticleCommentStatus): void;
+  onHeadingNavigate(sourceIndex: number): void;
   onEditorHandleChange(
     handle: VideoDocumentWysiwygEditorHandle | null,
     previousHandle: VideoDocumentWysiwygEditorHandle | null,
@@ -294,6 +289,7 @@ export function ArticleEditorDocumentPanes({
   onCommentHover,
   onCommentSelect,
   onCommentStatusChange,
+  onHeadingNavigate,
   onEditorHandleChange,
   onImageImportError,
   onImageImported,
@@ -324,6 +320,7 @@ export function ArticleEditorDocumentPanes({
           onCommentHover={onCommentHover}
           onCommentSelect={onCommentSelect}
           onCommentStatusChange={onCommentStatusChange}
+          onHeadingNavigate={onHeadingNavigate}
           onPersist={onPersist}
           onTitleChange={onTitleChange}
           {...(splitOpen ? { onClose: () => onClose('LEFT') } : {})}
@@ -382,6 +379,7 @@ export function ArticleEditorDocumentPanes({
           onCommentHover={onCommentHover}
           onCommentSelect={onCommentSelect}
           onCommentStatusChange={onCommentStatusChange}
+          onHeadingNavigate={onHeadingNavigate}
           onPersist={onPersist}
           onTitleChange={onTitleChange}
         >

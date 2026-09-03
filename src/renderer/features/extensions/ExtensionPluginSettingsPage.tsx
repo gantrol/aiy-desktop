@@ -2,12 +2,10 @@ import { BlocksIcon, RefreshCwIcon, ShieldCheckIcon } from 'lucide-react';
 import type { ExtensionContributionPoint, ExtensionDto } from '@/shared/contracts';
 import {
   ANTIGRAVITY_CLI_EXTENSION_ID,
-  CODEX_IMAGE_DISCOVERY_EXTENSION_ID,
-  CODEX_HISTORY_SEARCH_EXTENSION_ID,
-  CODEX_USAGE_INVESTIGATOR_EXTENSION_ID,
-  CODEX_VISUALIZATION_DISCOVERY_EXTENSION_ID,
+  CODEX_EXTENSION_ID,
   DEEPSEEK_API_EXTENSION_ID,
   EXTERNAL_IMAGE_API_EXTENSION_IDS,
+  NATURAL_WATERMARK_EXTENSION_ID,
   OPENAI_IMAGE_API_EXTENSION_ID,
   TRANSITION_SHOWCASE_EXTENSION_ID,
 } from '@/shared/extension-ids';
@@ -20,6 +18,7 @@ import type { CodexImagesNavigationState } from '@/renderer/features/extensions/
 import { DeepSeekApiConfiguration } from '@/renderer/features/extensions/DeepSeekApiConfiguration';
 import { ExternalImageApiConfiguration } from '@/renderer/features/extensions/ExternalImageApiConfiguration';
 import { OpenAiImageApiConfiguration } from '@/renderer/features/extensions/OpenAiImageApiConfiguration';
+import { NaturalWatermarkConfigurationPanel } from '@/renderer/features/extensions/NaturalWatermarkConfiguration';
 import type { TransitionShowcaseNavigationState } from '@/renderer/features/extensions/transitionShowcaseNavigation';
 import { useI18n } from '@/renderer/i18n/useI18n';
 
@@ -55,12 +54,7 @@ function ExtensionNavigationPreference({
   transitionShowcaseNavigation,
 }: Pick<Props, 'busyKey' | 'extension' | 'codexImagesNavigation' | 'transitionShowcaseNavigation'>) {
   const l = useI18n().messages.extensions;
-  if (
-    extension.manifest.id === CODEX_HISTORY_SEARCH_EXTENSION_ID ||
-    extension.manifest.id === CODEX_IMAGE_DISCOVERY_EXTENSION_ID ||
-    extension.manifest.id === CODEX_USAGE_INVESTIGATOR_EXTENSION_ID ||
-    extension.manifest.id === CODEX_VISUALIZATION_DISCOVERY_EXTENSION_ID
-  ) {
+  if (extension.manifest.id === CODEX_EXTENSION_ID) {
     return (
       <label className="flex min-h-11 cursor-pointer items-center justify-between gap-4 rounded-lg border px-4 py-3 text-sm font-medium">
         <span>{l.codexArtifacts.actions.showInSidebar}</span>
@@ -156,6 +150,9 @@ export function ExtensionPluginSettingsPage({
           notify={notify}
           onConnectionChanged={onConnectionChanged}
         />
+      )}
+      {extension.manifest.id === NATURAL_WATERMARK_EXTENSION_ID && (
+        <NaturalWatermarkConfigurationPanel active={active && extension.enabled} notify={notify} />
       )}
       <div className="grid gap-5 lg:grid-cols-2">
         <section className="rounded-lg border">

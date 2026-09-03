@@ -67,3 +67,10 @@ export function storedCreationDraftMatches(
     JSON.stringify(storedReferenceAssetIds) === JSON.stringify(normalized.referenceAssetIds)
   );
 }
+
+export function nextCreationDraftUpdatedAt(previous: string | null) {
+  const current = new Date().toISOString();
+  if (!previous || current > previous) return current;
+  const previousMilliseconds = Date.parse(previous);
+  return Number.isFinite(previousMilliseconds) ? new Date(previousMilliseconds + 1).toISOString() : current;
+}

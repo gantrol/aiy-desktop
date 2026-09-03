@@ -2,6 +2,7 @@ import * as React from 'react';
 import * as DropdownMenuPrimitive from '@radix-ui/react-dropdown-menu';
 import { ChevronRightIcon } from 'lucide-react';
 import { cn } from '@/renderer/lib/utils';
+import { useOverlayPortalContainer } from '@/renderer/components/ui/overlay-layer';
 
 function DropdownMenuIcon({ className, ...props }: React.ComponentProps<'span'>) {
   return (
@@ -18,8 +19,12 @@ function DropdownMenu({ modal = false, ...props }: React.ComponentProps<typeof D
 }
 
 const DropdownMenuTrigger = DropdownMenuPrimitive.Trigger;
-const DropdownMenuPortal = DropdownMenuPrimitive.Portal;
 const DropdownMenuSub = DropdownMenuPrimitive.Sub;
+
+function DropdownMenuPortal({ container, ...props }: React.ComponentProps<typeof DropdownMenuPrimitive.Portal>) {
+  const inheritedContainer = useOverlayPortalContainer();
+  return <DropdownMenuPrimitive.Portal container={container ?? inheritedContainer ?? undefined} {...props} />;
+}
 
 function DropdownMenuContent({
   className,
@@ -32,10 +37,12 @@ function DropdownMenuContent({
     <DropdownMenuPortal>
       <DropdownMenuPrimitive.Content
         data-slot="dropdown-menu-content"
+        data-overlay-layer="popup"
+        data-overlay-surface=""
         align={align}
         sideOffset={sideOffset}
         className={cn(
-          'pointer-events-auto z-50 min-w-40 overflow-hidden rounded-md border border-border bg-overlay p-1 text-foreground shadow-overlay outline-none',
+          'pointer-events-auto z-popup min-w-40 overflow-hidden rounded-md border border-border bg-overlay p-1 text-foreground shadow-overlay outline-none',
           className,
         )}
         style={{ ...style, pointerEvents: 'auto' }}
@@ -100,8 +107,10 @@ function DropdownMenuSubContent({
   return (
     <DropdownMenuPrimitive.SubContent
       data-slot="dropdown-menu-sub-content"
+      data-overlay-layer="popup"
+      data-overlay-surface=""
       className={cn(
-        'pointer-events-auto z-50 min-w-40 overflow-hidden rounded-md border border-border bg-overlay p-1 text-foreground shadow-overlay outline-none',
+        'pointer-events-auto z-popup min-w-40 overflow-hidden rounded-md border border-border bg-overlay p-1 text-foreground shadow-overlay outline-none',
         className,
       )}
       {...props}

@@ -1,4 +1,4 @@
-import { useMemo, useState, type DragEvent as ReactDragEvent } from 'react';
+import { useMemo, useState, type DragEvent as ReactDragEvent, type RefObject } from 'react';
 import type { AssetFileRevealContext, MaterialAlbumDto, MaterialSelectionTargetInput } from '@/shared/contracts';
 import {
   COLLECTION_GAP,
@@ -52,6 +52,7 @@ interface Props {
   notify(message: string): void;
   onDragStart?(event: ReactDragEvent<HTMLElement>, item: MaterialLibraryItem): void;
   revealContextForItem?(item: MaterialLibraryItem): AssetFileRevealContext | undefined;
+  viewportRef?: RefObject<HTMLElement | null>;
 }
 
 type MaterialZoneEntry =
@@ -177,6 +178,7 @@ export function MaterialZoneMasonry({
   notify,
   onDragStart,
   revealContextForItem,
+  viewportRef,
 }: Props) {
   const { messages } = useI18n();
   const [masonryLayout, setMasonryLayout] = useState<MasonryLayout | null>(null);
@@ -231,6 +233,8 @@ export function MaterialZoneMasonry({
         gap={COLLECTION_GAP}
         sectionBreak={sectionBreak}
         onLayoutChange={showBoundary ? setMasonryLayout : undefined}
+        virtualize={Boolean(viewportRef)}
+        viewportRef={viewportRef}
         renderItem={(_item, index, placement, layout) => {
           const entry = entries[index];
           if (entry.kind === 'SKELETON') return <Skeleton className="size-full rounded-xl" />;

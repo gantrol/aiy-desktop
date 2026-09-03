@@ -77,6 +77,11 @@ export function CreatorScreen(props: CreatorScreenProps) {
       recipeSaved: c.recipeSaved,
     },
     notify: props.notify,
+    onCreationCommitted: ({ keepEditorOpen, seriesId, versionId }) => {
+      if (!keepEditorOpen) {
+        draftInput.navigation.commit({ surface: 'existing-creation', seriesId, assetId: null, versionId }, 'replace');
+      }
+    },
     prompt,
     refresh: props.refresh,
     selection,

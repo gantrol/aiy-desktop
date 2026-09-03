@@ -1,4 +1,5 @@
 import type { CodexUsagePricingBasis, CodexUsageServiceTier } from '@/shared/contracts/codex-usage';
+import { codexUsageSpeedCreditMultiplier } from '@/shared/codex-usage-speed';
 
 const TOKENS_PER_MILLION = 1_000_000;
 export const CODEX_USAGE_LONG_CONTEXT_THRESHOLD = 272_000;
@@ -6,7 +7,7 @@ export const CODEX_USAGE_LONG_CONTEXT_THRESHOLD = 272_000;
 export const CODEX_USAGE_PRICING_BASIS: CodexUsagePricingBasis = {
   apiVerifiedAt: '2026-08-25',
   apiSourceUrl: 'https://developers.openai.com/api/docs/changelog',
-  creditVerifiedAt: '2026-08-23',
+  creditVerifiedAt: '2026-09-02',
   creditSourceUrl: 'https://learn.chatgpt.com/docs/pricing',
   longContextThresholdTokens: CODEX_USAGE_LONG_CONTEXT_THRESHOLD,
 };
@@ -260,16 +261,6 @@ function boundedInputCategories(usage: CodexUsageBreakdown) {
   return { uncachedInputTokens, cachedInputTokens, cacheWriteInputTokens };
 }
 
-function codexCreditMultiplier(model: string, serviceTier: CodexUsageServiceTier) {
-  if (serviceTier === 'STANDARD') return 1;
-  if (serviceTier !== 'FAST') return null;
-  if (model === 'gpt-5.6-sol' || model === 'gpt-5.6-terra' || model === 'gpt-5.6-luna' || model === 'gpt-5.5') {
-    return 2.5;
-  }
-  if (model === 'gpt-5.4') return 2;
-  return null;
-}
-
 export interface CodexUsagePriceEstimate {
   apiEquivalentUsd: number | null;
   apiCacheSavingsUsd: number | null;
@@ -290,7 +281,7 @@ export function estimateCodexUsage(
   const apiPrice = apiPriceAt(key, occurredAt);
   const creditPrice = key in CREDIT_PRICES ? CREDIT_PRICES[key as CreditPriceKey] : null;
   const { uncachedInputTokens, cachedInputTokens, cacheWriteInputTokens } = boundedInputCategories(usage);
-  const creditMultiplier = codexCreditMultiplier(key, serviceTier);
+  const creditMultiplier = codexUsageSpeedCreditMultiplier(key, serviceTier);
   const longContext = Boolean(apiPrice?.longContext && usage.inputTokens > CODEX_USAGE_LONG_CONTEXT_THRESHOLD);
   const inputMultiplier = longContext ? 2 : 1;
   const outputMultiplier = longContext ? 1.5 : 1;

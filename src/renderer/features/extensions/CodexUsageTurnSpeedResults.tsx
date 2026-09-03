@@ -55,50 +55,54 @@ export function CodexUsageTurnSpeedResults({ analysis, labels, numbers }: Props)
     analysis.comparisons[0] ??
     null;
   return (
-    <section className="grid gap-2 border-b pb-3">
+    <section className="grid gap-2">
       <div className="flex flex-wrap items-center gap-2 text-sm font-semibold">
         <GaugeIcon className="size-4" />
         {labels.title}
-        <Badge variant="outline">
+        <Badge variant="outline" className="hidden @md/codex-usage:inline-flex">
           {labels.official} {analysis.officialSpeedMultiplier}×
         </Badge>
         {primary && (
           <>
             <Badge variant="secondary">{primary.model}</Badge>
-            <Badge variant="outline">{primary.reasoningEffort}</Badge>
+            <Badge variant="outline" className="hidden @xl/codex-usage:inline-flex">
+              {primary.reasoningEffort}
+            </Badge>
           </>
         )}
       </div>
 
-      <dl className="grid grid-cols-2 divide-x border-y sm:grid-cols-4">
+      <dl className="grid grid-cols-2 gap-px bg-border @4xl/codex-usage:grid-cols-4 [&>*]:bg-background">
         <div className="grid gap-1 px-4 py-3">
           <dt className="text-xs text-muted-foreground">{labels.actualSpeed}</dt>
-          <dd className="text-xl font-semibold tabular-nums">
+          <dd className="text-lg font-semibold tabular-nums @xl/codex-usage:text-xl">
             {formatMultiplier(primary?.actualSpeedMultiplier ?? null, numbers)}
           </dd>
         </div>
         <div className="grid gap-1 px-4 py-3">
           <dt className="text-xs text-muted-foreground">{labels.officialSpeed}</dt>
-          <dd className="text-xl font-semibold tabular-nums">{analysis.officialSpeedMultiplier}×</dd>
+          <dd className="text-lg font-semibold tabular-nums @xl/codex-usage:text-xl">
+            {analysis.officialSpeedMultiplier}×
+          </dd>
         </div>
         <div className="grid gap-1 px-4 py-3">
           <dt className="text-xs text-muted-foreground">{labels.standardMedian}</dt>
-          <dd className="text-xl font-semibold tabular-nums">
+          <dd className="text-lg font-semibold tabular-nums @xl/codex-usage:text-xl">
             {formatDuration(primary?.standard.medianDurationMs ?? null, numbers, labels.units)}
           </dd>
           {primary && (
-            <dd className="text-[11px] text-muted-foreground">
+            <dd className="hidden text-[11px] text-muted-foreground @xl/codex-usage:block">
               {primary.standard.completedTurnCount} {labels.turns}
             </dd>
           )}
         </div>
         <div className="grid gap-1 px-4 py-3">
           <dt className="text-xs text-muted-foreground">{labels.fastMedian}</dt>
-          <dd className="text-xl font-semibold tabular-nums">
+          <dd className="text-lg font-semibold tabular-nums @xl/codex-usage:text-xl">
             {formatDuration(primary?.fast.medianDurationMs ?? null, numbers, labels.units)}
           </dd>
           {primary && (
-            <dd className="text-[11px] text-muted-foreground">
+            <dd className="hidden text-[11px] text-muted-foreground @xl/codex-usage:block">
               {primary.fast.completedTurnCount} {labels.turns}
             </dd>
           )}
@@ -140,7 +144,7 @@ export function CodexUsageTurnSpeedResults({ analysis, labels, numbers }: Props)
           </Table>
         </div>
       ) : (
-        <div className="grid min-h-16 place-items-center border-y text-sm text-muted-foreground">{labels.empty}</div>
+        <div className="grid min-h-16 place-items-center text-sm text-muted-foreground">{labels.empty}</div>
       )}
 
       <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">

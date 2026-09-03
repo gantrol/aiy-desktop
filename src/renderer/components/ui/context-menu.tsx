@@ -2,6 +2,7 @@ import * as React from 'react';
 import * as ContextMenuPrimitive from '@radix-ui/react-context-menu';
 import { CheckIcon, ChevronRightIcon, CircleIcon } from 'lucide-react';
 import { cn } from '@/renderer/lib/utils';
+import { useOverlayPortalContainer } from '@/renderer/components/ui/overlay-layer';
 
 function ContextMenuIcon({ className, ...props }: React.ComponentProps<'span'>) {
   return (
@@ -18,18 +19,23 @@ function ContextMenu({ modal = false, ...props }: React.ComponentProps<typeof Co
 }
 const ContextMenuTrigger = ContextMenuPrimitive.Trigger;
 const ContextMenuGroup = ContextMenuPrimitive.Group;
-const ContextMenuPortal = ContextMenuPrimitive.Portal;
 const ContextMenuSub = ContextMenuPrimitive.Sub;
 const ContextMenuRadioGroup = ContextMenuPrimitive.RadioGroup;
 
+function ContextMenuPortal({ container, ...props }: React.ComponentProps<typeof ContextMenuPrimitive.Portal>) {
+  const inheritedContainer = useOverlayPortalContainer();
+  return <ContextMenuPrimitive.Portal container={container ?? inheritedContainer ?? undefined} {...props} />;
+}
+
 function ContextMenuContent({ className, ...props }: React.ComponentProps<typeof ContextMenuPrimitive.Content>) {
-  // Modal sheets disable pointer events on body; this portal must opt back in.
   return (
     <ContextMenuPortal>
       <ContextMenuPrimitive.Content
         data-slot="context-menu-content"
+        data-overlay-layer="popup"
+        data-overlay-surface=""
         className={cn(
-          'pointer-events-auto z-50 min-w-40 overflow-hidden rounded-md border border-border bg-overlay p-1 text-foreground shadow-overlay',
+          'pointer-events-auto z-popup min-w-40 overflow-hidden rounded-md border border-border bg-overlay p-1 text-foreground shadow-overlay',
           className,
         )}
         {...props}
@@ -169,8 +175,10 @@ function ContextMenuSubContent({ className, ...props }: React.ComponentProps<typ
   return (
     <ContextMenuPrimitive.SubContent
       data-slot="context-menu-sub-content"
+      data-overlay-layer="popup"
+      data-overlay-surface=""
       className={cn(
-        'pointer-events-auto z-50 min-w-40 overflow-hidden rounded-md border border-border bg-overlay p-1 text-foreground shadow-overlay',
+        'pointer-events-auto z-popup min-w-40 overflow-hidden rounded-md border border-border bg-overlay p-1 text-foreground shadow-overlay',
         className,
       )}
       {...props}

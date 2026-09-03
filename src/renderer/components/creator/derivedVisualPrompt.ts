@@ -72,6 +72,6 @@ export function buildSocialCoverPrompt(
     高度: String(preset.height),
     对应画幅的构图约束: compositionConstraint(templates, 'SOCIAL_POST_COVER', preset),
     题目: title.trim() || '未命名贴图',
-    正文: clipped(body, 24_000),
+    正文: clipped(body, 9_000),
   });
 }

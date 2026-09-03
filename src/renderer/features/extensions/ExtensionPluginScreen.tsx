@@ -272,11 +272,11 @@ export function ExtensionPluginScreen({
         </ScrollArea>
       </div>
 
-      <ScrollArea className="min-h-0">
+      <ScrollArea className="@container/extension-detail min-h-0 min-w-0">
         {selected && (
-          <article className="mx-auto grid w-full max-w-6xl gap-6 p-6">
-            <div className="flex items-start gap-4">
-              <div className="grid size-11 shrink-0 place-items-center rounded-lg border bg-muted">
+          <article className="mx-auto grid w-full max-w-6xl gap-5 p-4 @5xl/extension-detail:gap-6 @5xl/extension-detail:p-6">
+            <div className="grid grid-cols-[auto_minmax(0,1fr)] items-start gap-x-3 gap-y-3 @4xl/extension-detail:grid-cols-[auto_minmax(0,1fr)_auto] @4xl/extension-detail:gap-x-4">
+              <div className="grid size-10 shrink-0 place-items-center rounded-lg border bg-muted @xl/extension-detail:size-11">
                 {selected.manifest.kind === 'LANGUAGE' ? (
                   <LanguagesIcon className="size-5" />
                 ) : (
@@ -285,7 +285,7 @@ export function ExtensionPluginScreen({
               </div>
               <div className="min-w-0 flex-1">
                 <div className="flex flex-wrap items-center gap-2">
-                  <h2 className="text-xl font-semibold">
+                  <h2 className="text-lg font-semibold @xl/extension-detail:text-xl">
                     {localizeExtensionManifest(selected.manifest, locale).displayName}
                   </h2>
                   <Badge variant="outline">{selected.manifest.version}</Badge>
@@ -294,20 +294,25 @@ export function ExtensionPluginScreen({
                     {l.connectionStates[selected.connectionState]}
                   </Badge>
                 </div>
-                <p className="mt-2 text-sm text-muted-foreground">
+                <p className="mt-2 hidden text-sm text-muted-foreground @xl/extension-detail:block">
                   {localizeExtensionManifest(selected.manifest, locale).description}
                 </p>
                 {!(
                   selected.manifest.id === DEEPSEEK_API_EXTENSION_ID &&
                   selected.connectionState === 'NEEDS_CONFIGURATION'
-                ) && <p className="mt-1 text-xs text-muted-foreground">{selected.connectionMessage}</p>}
+                ) && (
+                  <p className="mt-1 hidden text-xs text-muted-foreground @2xl/extension-detail:block">
+                    {selected.connectionMessage}
+                  </p>
+                )}
               </div>
-              <div className="flex shrink-0 items-center gap-2">
+              <div className="col-start-2 flex min-w-0 flex-wrap items-center gap-2 @4xl/extension-detail:col-auto @4xl/extension-detail:flex-nowrap">
                 <Button
                   type="button"
                   variant="ghost"
                   size="icon"
                   aria-label={l.actions.refresh}
+                  title={l.actions.refresh}
                   disabled={loading || controlsBusy}
                   onClick={() => void load(true)}
                 >
@@ -317,24 +322,35 @@ export function ExtensionPluginScreen({
                   type="button"
                   variant={selected.enabled ? 'outline' : 'default'}
                   disabled={controlsBusy || selectedIsLastLanguage}
-                  title={selectedIsLastLanguage ? l.notices.languageRequired : undefined}
+                  aria-label={selected.enabled ? l.actions.disable : l.actions.enable}
+                  title={
+                    selectedIsLastLanguage
+                      ? l.notices.languageRequired
+                      : selected.enabled
+                        ? l.actions.disable
+                        : l.actions.enable
+                  }
                   onClick={() => void setEnabled(selected, !selected.enabled)}
                 >
                   <PowerIcon className="size-4" />
-                  {selected.enabled ? l.actions.disable : l.actions.enable}
+                  <span className="hidden @lg/extension-detail:inline">
+                    {selected.enabled ? l.actions.disable : l.actions.enable}
+                  </span>
                 </Button>
                 {selected.source === 'LOCAL' && (
                   <Button
                     type="button"
                     variant="destructive"
                     disabled={controlsBusy}
+                    aria-label={l.actions.uninstall}
+                    title={l.actions.uninstall}
                     onClick={() => {
                       setError('');
                       setUninstallTarget(selected);
                     }}
                   >
                     <Trash2Icon className="size-4" />
-                    {l.actions.uninstall}
+                    <span className="hidden @lg/extension-detail:inline">{l.actions.uninstall}</span>
                   </Button>
                 )}
               </div>
@@ -345,7 +361,7 @@ export function ExtensionPluginScreen({
               onValueChange={(tab) =>
                 setTabSelection({ extensionId: selected.manifest.id, tab: tab as 'feature' | 'settings' })
               }
-              className="gap-6"
+              className="gap-4 @xl/extension-detail:gap-6"
             >
               <TabsList>
                 {hasFeature && <TabsTrigger value="feature">{l.pluginTabs.feature}</TabsTrigger>}

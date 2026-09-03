@@ -67,8 +67,8 @@ export function CodexUsageScanProgress({
   const percent = scanProgressPercent(progress);
   const roundedPercent = percent === null ? null : Math.round(percent);
   return (
-    <div className="grid gap-2 border-y py-3" aria-busy={active}>
-      <div className="flex items-center justify-between gap-3 text-xs">
+    <div className="grid gap-2 py-2" aria-busy={active}>
+      <div className="flex flex-wrap items-center justify-between gap-2 text-xs">
         <span className="flex items-center gap-2 font-medium">
           {active ? <LoaderCircleIcon className="size-3.5 animate-spin" /> : <PauseIcon className="size-3.5" />}
           {phaseLabel}
@@ -78,8 +78,12 @@ export function CodexUsageScanProgress({
           {roundedPercent === null ? null : `${numbers.format(roundedPercent)}% · `}
           {progress.phase === 'SCANNING' ? (
             <>
-              {progress.filesProcessed}/{progress.filesDiscovered} · {formatBytes(progress.bytesRead, numbers)} /{' '}
-              {formatBytes(progress.bytesTotal, numbers)} · {formatBytes(progress.throughputBytesPerSecond, numbers)}/s
+              {progress.filesProcessed}/{progress.filesDiscovered}
+              <span className="hidden @2xl/codex-usage:inline">
+                {' '}
+                · {formatBytes(progress.bytesRead, numbers)} / {formatBytes(progress.bytesTotal, numbers)} ·{' '}
+                {formatBytes(progress.throughputBytesPerSecond, numbers)}/s
+              </span>{' '}
               ·{' '}
             </>
           ) : null}
@@ -103,7 +107,7 @@ export function CodexUsageScanProgress({
           style={{ width: percent === null ? '33.333%' : `${percent}%` }}
         />
       </div>
-      <div className="flex justify-between text-[11px] text-muted-foreground">
+      <div className="flex flex-wrap justify-between gap-x-3 gap-y-1 text-[11px] text-muted-foreground">
         <span>
           {progress.filesCached} {cachedFilesLabel} · {progress.filesScanned} {scannedFilesLabel}
         </span>

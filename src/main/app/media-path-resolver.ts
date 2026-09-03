@@ -2,7 +2,7 @@ import type { ActiveLibraryContext } from '@/main/libraries/active-library-conte
 import type { LibraryRegistry } from '@/main/libraries/library-registry';
 import type { TransitionPreviewCache } from '@/main/app/transition-preview-cache';
 import { resolveVideoKeyChangeMediaPath } from '@/main/video-documents/key-change-service';
-import { CODEX_IMAGE_DISCOVERY_EXTENSION_ID, CODEX_VISUALIZATION_DISCOVERY_EXTENSION_ID } from '@/shared/extension-ids';
+import { CODEX_EXTENSION_ID } from '@/shared/extension-ids';
 
 interface Options {
   url: URL;
@@ -17,7 +17,7 @@ export function resolveMediaRequestPaths({ url, identifier, context, transitionP
     url.hostname === 'asset' || url.hostname === 'asset-thumbnail' ? context?.database.getAssetPath(identifier) : null;
   const codexGeneratedPath =
     (url.hostname === 'codex-generated' || url.hostname === 'codex-generated-thumbnail') &&
-    context?.extensions.isActivated(CODEX_IMAGE_DISCOVERY_EXTENSION_ID)
+    context?.extensions.isActivated(CODEX_EXTENSION_ID)
       ? context.imageDiscovery.resolveMediaPath(identifier)
       : null;
   const filePath =
@@ -31,8 +31,7 @@ export function resolveMediaRequestPaths({ url, identifier, context, transitionP
             ? resolveVideoKeyChangeMediaPath(context.database.libraryRoot, identifier)
             : url.hostname === 'codex-generated'
               ? codexGeneratedPath
-              : url.hostname === 'codex-visualization' &&
-                  context?.extensions.isActivated(CODEX_VISUALIZATION_DISCOVERY_EXTENSION_ID)
+              : url.hostname === 'codex-visualization' && context?.extensions.isActivated(CODEX_EXTENSION_ID)
                 ? context.visualizationDiscovery.resolveMediaPath(identifier)
                 : null;
   return { assetPath, codexGeneratedPath, filePath };

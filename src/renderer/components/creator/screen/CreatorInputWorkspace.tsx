@@ -332,10 +332,7 @@ export function CreatorInputWorkspace({ model, sourceFormId }: Props) {
           onCreateAlbum={(parent) => library.setCreateAlbumRequest({ parent, destination: 'NEW_CREATION' })}
           onCreateDerivedScheme={() => {
             if (selected.selectedSocialPost) {
-              void workflow.content.derivedVisual.createSocialCoverScheme(
-                selected.selectedSocialPost,
-                generation.canvasPreset ?? null,
-              );
+              void workflow.content.derivedVisual.createSocialCoverScheme(selected.selectedSocialPost);
             }
           }}
           onOpenExternalImport={() => navigation.external.openExternalCreation(selection.targetAlbumId)}

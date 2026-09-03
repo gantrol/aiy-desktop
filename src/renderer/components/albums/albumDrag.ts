@@ -236,3 +236,10 @@ export function readMaterialsDrag(dataTransfer: DataTransfer): MaterialSelection
     return [];
   }
 }
+
+export function readSingleImageAssetDrag(dataTransfer: DataTransfer) {
+  const targets = readMaterialsDrag(dataTransfer);
+  if (targets.length !== 1) return null;
+  const target = targets[0];
+  return target?.kind === 'IMAGE_ASSET' ? target.imageAssetId : null;
+}

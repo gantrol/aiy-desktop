@@ -1,4 +1,11 @@
-import { useEffect, useRef, useState, type CSSProperties, type PointerEvent as ReactPointerEvent } from 'react';
+import {
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+  type CSSProperties,
+  type PointerEvent as ReactPointerEvent,
+} from 'react';
 import type { ResultLibraryMode } from '@/renderer/components/creator/ResultLibrary';
 import {
   loadCreatorPreferences,
@@ -146,7 +153,7 @@ export function useCreatorPanes({ showResultLibrary, showOutputInspector, compar
   const stored = useRef(loadCreatorPreferences()).current;
   const workspaceRef = useRef<HTMLDivElement | null>(null);
   const [workspaceWidth, setWorkspaceWidth] = useState(window.innerWidth);
-  const [multiPane, setMultiPane] = useState(() => window.matchMedia('(min-width: 840px)').matches);
+  const multiPane = workspaceWidth >= 840;
   const [compactPanel, setCompactPanel] = useState<'library' | 'creator' | 'output'>('creator');
   const [resultLibraryMode, setResultLibraryMode] = useState<ResultLibraryMode>(stored.resultLibraryMode);
   const [resultPanelWidth, setResultPanelWidth] = useState(stored.resultPanelWidth);
@@ -195,17 +202,10 @@ export function useCreatorPanes({ showResultLibrary, showOutputInspector, compar
   );
 
   useEffect(() => {
-    const multiPaneWindow = window.matchMedia('(min-width: 840px)');
-    const matchWindow = (event: MediaQueryListEvent) => setMultiPane(event.matches);
-    multiPaneWindow.addEventListener('change', matchWindow);
-    return () => multiPaneWindow.removeEventListener('change', matchWindow);
-  }, []);
-
-  useEffect(() => {
     if (!showOutputInspector && compactPanel === 'output') setCompactPanel('creator');
   }, [compactPanel, showOutputInspector]);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     const workspace = workspaceRef.current;
     if (!workspace) return undefined;
     const updateWorkspaceWidth = (width: number) => {

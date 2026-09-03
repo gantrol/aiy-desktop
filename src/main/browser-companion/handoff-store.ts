@@ -13,9 +13,10 @@ import {
   browserCompanionRecordBaseSchema,
   normalizeBrowserCompanionRecord,
   type BrowserCompanionClaimedRecord,
+  type BrowserCompanionDeliveredRecord,
   type BrowserCompanionMedia,
   type BrowserCompanionMediaMimeType,
-  type BrowserCompanionNativeResponse,
+  type BrowserCompanionResponse,
   type BrowserCompanionRecord,
   type BrowserCompanionRecordBase,
 } from '@/main/browser-companion/protocol';
@@ -42,10 +43,24 @@ const MEDIA_EXTENSIONS: Record<BrowserCompanionMediaMimeType, string> = {
 
 type HandoffStateDirectory = (typeof STATE_DIRECTORIES)[number];
 
-export interface BrowserCompanionMediaSource {
-  absolutePath: string;
-  suggestedName: string;
-  mimeType: string;
+export type BrowserCompanionMediaSource =
+  | {
+      kind: 'file';
+      absolutePath: string;
+      suggestedName: string;
+      mimeType: string;
+    }
+  | {
+      kind: 'bytes';
+      bytes: Uint8Array<ArrayBufferLike>;
+      suggestedName: string;
+      mimeType: string;
+    };
+
+export interface BrowserCompanionMediaFile {
+  kind: 'media-file';
+  media: BrowserCompanionMedia;
+  handle: Awaited<ReturnType<typeof open>>;
 }
 
 export class BrowserCompanionStateError extends Error {
@@ -59,7 +74,7 @@ function hasErrorCode(reason: unknown, code: string): boolean {
   return reason instanceof Error && 'code' in reason && Reflect.get(reason, 'code') === code;
 }
 
-function nativeError(code: Extract<BrowserCompanionNativeResponse, { kind: 'error' }>['code']) {
+function companionError(code: Extract<BrowserCompanionResponse, { kind: 'error' }>['code']) {
   return {
     protocolVersion: BROWSER_COMPANION_PROTOCOL_VERSION,
     ok: false,
@@ -225,16 +240,23 @@ export class BrowserCompanionHandoffStore {
     try {
       for (const source of sources) {
         const mimeType = browserCompanionMediaMimeTypeSchema.parse(source.mimeType);
-        const sourceHandle = await open(source.absolutePath, 'r');
         let byteSize: number;
-        try {
-          const stats = await sourceHandle.stat();
-          if (!stats.isFile() || stats.size <= 0 || stats.size > BROWSER_COMPANION_MAX_MEDIA_BYTES) {
+        if (source.kind === 'file') {
+          const sourceHandle = await open(source.absolutePath, 'r');
+          try {
+            const stats = await sourceHandle.stat();
+            if (!stats.isFile() || stats.size <= 0 || stats.size > BROWSER_COMPANION_MAX_MEDIA_BYTES) {
+              throw new BrowserCompanionStateError('Browser companion media exceeds the per-file size limit');
+            }
+            byteSize = stats.size;
+          } finally {
+            await sourceHandle.close();
+          }
+        } else {
+          byteSize = source.bytes.byteLength;
+          if (byteSize <= 0 || byteSize > BROWSER_COMPANION_MAX_MEDIA_BYTES) {
             throw new BrowserCompanionStateError('Browser companion media exceeds the per-file size limit');
           }
-          byteSize = stats.size;
-        } finally {
-          await sourceHandle.close();
         }
         totalBytes += byteSize;
         if (totalBytes > BROWSER_COMPANION_MAX_TOTAL_MEDIA_BYTES) {
@@ -244,7 +266,8 @@ export class BrowserCompanionHandoffStore {
         const mediaId = randomUUID();
         const fileName = path.basename(source.suggestedName);
         const destination = path.join(directory, `${mediaId}${MEDIA_EXTENSIONS[mimeType]}`);
-        await copyFile(source.absolutePath, destination, constants.COPYFILE_EXCL);
+        if (source.kind === 'file') await copyFile(source.absolutePath, destination, constants.COPYFILE_EXCL);
+        else await writeFile(destination, source.bytes, { flag: 'wx', mode: 0o600 });
         staged.push({
           mediaId,
           fileName,
@@ -345,14 +368,14 @@ export class BrowserCompanionHandoffStore {
   private async claimRecord(
     handoffId: string,
     target: BrowserCompanionTarget,
-  ): Promise<BrowserCompanionNativeResponse | null> {
+  ): Promise<BrowserCompanionResponse | null> {
     const readyPath = this.statePath('ready', handoffId);
     const claimedPath = this.statePath('claimed', handoffId);
     try {
       await rename(readyPath, claimedPath);
     } catch (reason) {
       if (!hasErrorCode(reason, 'ENOENT')) throw reason;
-      if (await readBoundedRecord(claimedPath)) return nativeError('DRAFT_ALREADY_CLAIMED');
+      if (await readBoundedRecord(claimedPath)) return companionError('DRAFT_ALREADY_CLAIMED');
       return null;
     }
 
@@ -363,7 +386,7 @@ export class BrowserCompanionHandoffStore {
     }
     if (parsed.data.target !== target) {
       await rename(claimedPath, readyPath);
-      return nativeError('TARGET_MISMATCH');
+      return companionError('TARGET_MISMATCH');
     }
 
     const claimedAt = new Date();
@@ -400,13 +423,13 @@ export class BrowserCompanionHandoffStore {
     };
   }
 
-  async claim(target: BrowserCompanionTarget, handoffId?: string): Promise<BrowserCompanionNativeResponse> {
+  async claim(target: BrowserCompanionTarget, handoffId?: string): Promise<BrowserCompanionResponse> {
     await this.ensureDirectories();
     await this.recoverInterruptedClaims();
 
     if (handoffId) {
       const response = await this.claimRecord(handoffId, target);
-      return response ?? nativeError('HANDOFF_NOT_FOUND');
+      return response ?? companionError('HANDOFF_NOT_FOUND');
     }
 
     const candidates = (await this.recordsForState('ready'))
@@ -422,62 +445,56 @@ export class BrowserCompanionHandoffStore {
   private async claimedRecord(
     handoffId: string,
     completionToken: string,
-  ): Promise<BrowserCompanionClaimedRecord | BrowserCompanionNativeResponse> {
+    target: BrowserCompanionTarget,
+  ): Promise<BrowserCompanionClaimedRecord | BrowserCompanionResponse> {
     const raw = await readBoundedRecord(this.statePath('claimed', handoffId));
     const claimed = browserCompanionClaimedRecordSchema.safeParse(raw);
-    if (!claimed.success) return nativeError('HANDOFF_NOT_FOUND');
-    if (claimed.data.completionToken !== completionToken) return nativeError('HANDOFF_TOKEN_MISMATCH');
+    if (!claimed.success) return companionError('HANDOFF_NOT_FOUND');
+    if (claimed.data.completionToken !== completionToken) return companionError('HANDOFF_TOKEN_MISMATCH');
+    if (claimed.data.target !== target) return companionError('TARGET_MISMATCH');
     return claimed.data;
   }
 
-  async readMediaChunk(
+  async openMedia(
     handoffId: string,
     completionToken: string,
     mediaId: string,
-    offset: number,
-    maxBytes: number,
-  ): Promise<BrowserCompanionNativeResponse> {
+    target: BrowserCompanionTarget,
+  ): Promise<BrowserCompanionMediaFile | BrowserCompanionResponse> {
     await this.ensureDirectories();
-    const record = await this.claimedRecord(handoffId, completionToken);
+    const record = await this.claimedRecord(handoffId, completionToken, target);
     if ('kind' in record) return record;
     const media = record.media.find((candidate) => candidate.mediaId === mediaId);
-    if (!media) return nativeError('MEDIA_NOT_FOUND');
-    if (offset > media.byteSize) return nativeError('MEDIA_CHANGED');
+    if (!media) return companionError('MEDIA_NOT_FOUND');
 
     let handle: Awaited<ReturnType<typeof open>>;
     try {
       handle = await open(this.mediaPath(handoffId, media), 'r');
     } catch (reason) {
-      if (hasErrorCode(reason, 'ENOENT')) return nativeError('MEDIA_NOT_FOUND');
+      if (hasErrorCode(reason, 'ENOENT')) return companionError('MEDIA_NOT_FOUND');
       throw reason;
     }
+
     try {
       const stats = await handle.stat();
-      if (!stats.isFile() || stats.size !== media.byteSize) return nativeError('MEDIA_CHANGED');
-      const length = Math.min(maxBytes, media.byteSize - offset);
-      const bytes = Buffer.alloc(length);
-      const result = length === 0 ? { bytesRead: 0 } : await handle.read(bytes, 0, length, offset);
-      if (result.bytesRead !== length) return nativeError('MEDIA_CHANGED');
-      const nextOffset = offset + length;
-      return {
-        protocolVersion: BROWSER_COMPANION_PROTOCOL_VERSION,
-        ok: true,
-        kind: 'media-chunk',
-        handoffId,
-        mediaId,
-        offset,
-        nextOffset,
-        eof: nextOffset === media.byteSize,
-        base64: bytes.toString('base64'),
-      };
-    } finally {
+      if (stats.isFile() && stats.size === media.byteSize) {
+        return { kind: 'media-file', media, handle };
+      }
       await handle.close();
+      return companionError('MEDIA_CHANGED');
+    } catch (reason) {
+      await handle.close().catch(() => undefined);
+      throw reason;
     }
   }
 
-  async complete(handoffId: string, completionToken: string): Promise<BrowserCompanionNativeResponse> {
+  async complete(
+    handoffId: string,
+    completionToken: string,
+    target: BrowserCompanionTarget,
+  ): Promise<BrowserCompanionResponse> {
     await this.ensureDirectories();
-    const record = await this.claimedRecord(handoffId, completionToken);
+    const record = await this.claimedRecord(handoffId, completionToken, target);
     if ('kind' in record) return record;
 
     const delivered = browserCompanionDeliveredRecordSchema.parse({
@@ -491,14 +508,30 @@ export class BrowserCompanionHandoffStore {
       await rename(claimedPath, this.statePath('delivered', handoffId));
     } catch (reason) {
       if (!hasErrorCode(reason, 'ENOENT')) throw reason;
-      return nativeError('HANDOFF_NOT_FOUND');
+      return companionError('HANDOFF_NOT_FOUND');
     }
     return { protocolVersion: BROWSER_COMPANION_PROTOCOL_VERSION, ok: true, kind: 'completed', handoffId };
   }
 
-  async release(handoffId: string, completionToken: string): Promise<BrowserCompanionNativeResponse> {
+  async getDelivered(
+    handoffId: string,
+    target: BrowserCompanionTarget,
+  ): Promise<BrowserCompanionDeliveredRecord | BrowserCompanionResponse> {
     await this.ensureDirectories();
-    const record = await this.claimedRecord(handoffId, completionToken);
+    const raw = await readBoundedRecord(this.statePath('delivered', handoffId));
+    const delivered = browserCompanionDeliveredRecordSchema.safeParse(raw);
+    if (!delivered.success) return companionError('HANDOFF_NOT_FOUND');
+    if (delivered.data.target !== target) return companionError('TARGET_MISMATCH');
+    return delivered.data;
+  }
+
+  async release(
+    handoffId: string,
+    completionToken: string,
+    target: BrowserCompanionTarget,
+  ): Promise<BrowserCompanionResponse> {
+    await this.ensureDirectories();
+    const record = await this.claimedRecord(handoffId, completionToken, target);
     if ('kind' in record) return record;
 
     const claimedPath = this.statePath('claimed', handoffId);
@@ -506,7 +539,7 @@ export class BrowserCompanionHandoffStore {
     try {
       await rename(claimedPath, this.statePath('ready', handoffId));
     } catch (reason) {
-      if (hasErrorCode(reason, 'ENOENT')) return nativeError('HANDOFF_NOT_FOUND');
+      if (hasErrorCode(reason, 'ENOENT')) return companionError('HANDOFF_NOT_FOUND');
       throw reason;
     }
     return { protocolVersion: BROWSER_COMPANION_PROTOCOL_VERSION, ok: true, kind: 'released', handoffId };

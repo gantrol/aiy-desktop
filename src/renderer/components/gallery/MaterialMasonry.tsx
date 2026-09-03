@@ -1,5 +1,5 @@
 import { useMemo } from 'react';
-import type { DragEvent as ReactDragEvent } from 'react';
+import type { DragEvent as ReactDragEvent, RefObject } from 'react';
 import type { AssetFileRevealContext } from '@/shared/contracts';
 import {
   computeShortestColumnMasonry,
@@ -38,6 +38,7 @@ export interface MaterialMasonryProps {
   onDragStart?(event: ReactDragEvent<HTMLElement>, item: MaterialLibraryItem): void;
   revealContext?: AssetFileRevealContext;
   revealContextForItem?(item: MaterialLibraryItem): AssetFileRevealContext | undefined;
+  viewportRef?: RefObject<HTMLElement | null>;
 }
 
 /** Gallery defaults around the shared shortest-column layout calculation. */
@@ -70,6 +71,7 @@ export function MaterialMasonry({
   onDragStart,
   revealContext,
   revealContextForItem,
+  viewportRef,
 }: MaterialMasonryProps) {
   const layoutItems = useMemo(
     () => items.map((item) => ({ id: item.key, aspectRatio: getMaterialCardAspectRatio(item) })),
@@ -82,6 +84,8 @@ export function MaterialMasonry({
       minColumnWidth={minColumnWidth}
       gap={gap}
       className={className}
+      virtualize={Boolean(viewportRef)}
+      viewportRef={viewportRef}
       renderItem={(_layoutItem, index) => (
         <MaterialCard
           item={items[index]}

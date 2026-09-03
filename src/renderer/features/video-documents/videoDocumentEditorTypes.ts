@@ -31,11 +31,13 @@ export interface VideoDocumentQuickInsertNoteRequest {
 export interface VideoDocumentWysiwygEditorHandle {
   getArticleCheckBlocks(): ReturnType<typeof articleCheckBlocks>;
   getPersistenceSnapshot(): VideoDocumentWysiwygPersistenceSnapshot;
+  removeUnboundImages(boundMediaPaths: readonly string[]): boolean;
   getArticleCommentAnchors(): ReturnType<typeof mappedArticleCommentAnchors>;
   getArticleCommentAnchorRect(commentId: string): ReturnType<typeof articleCommentAnchorRect>;
   getArticleCommentTargetResolution(commentId: string): ReturnType<typeof articleCommentTargetResolution>;
   captureArticleCommentTarget(): ReturnType<typeof captureArticleCommentTarget>;
   resolveArticleCommentLocation(commentId: string): ArticleEditorLocationDto | null;
+  resolveArticleOutlineHeadingLocation(sourceIndex: number): ArticleEditorLocationDto | null;
   captureArticleLocation(): ArticleEditorLocationDto | null;
   captureArticleViewportLocation(scrollRoot: HTMLElement): ArticleEditorLocationDto | null;
   revealArticleLocation(location: ArticleEditorLocationDto, scrollRoot: HTMLElement): boolean;

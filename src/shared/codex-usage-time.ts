@@ -185,7 +185,7 @@ function nextCalendarDate(value: { year: number; month: number; day: number }) {
 }
 
 export function codexUsageDefaultGranularity(range: CodexUsageRange): CodexUsageResolvedGranularity {
-  if (range === 'LAST_24_HOURS') return 'HOUR';
+  if (range === 'TODAY' || range === 'LAST_24_HOURS') return 'HOUR';
   if (range === 'LAST_7_DAYS') return 'SIX_HOURS';
   if (range === 'ALL') return 'WEEK';
   return 'DAY';
@@ -199,6 +199,10 @@ export function codexUsageRangeStartEpoch(range: CodexUsageRange, toEpoch: numbe
   if (range === 'ALL') return null;
   if (range === 'CUSTOM') throw new Error('Custom Codex usage ranges require explicit calendar dates');
   if (range === 'LAST_24_HOURS') return Math.max(0, toEpoch - DAY_MS);
+  if (range === 'TODAY') {
+    const current = zonedParts(toEpoch, timeZone);
+    return zonedDateTimeEpoch({ year: current.year, month: current.month, day: current.day, hour: 0 }, timeZone);
+  }
   const days = range === 'LAST_7_DAYS' ? 7 : range === 'LAST_30_DAYS' ? 30 : 90;
   const current = zonedParts(toEpoch, timeZone);
   const target = new Date(Date.UTC(current.year, current.month - 1, current.day));

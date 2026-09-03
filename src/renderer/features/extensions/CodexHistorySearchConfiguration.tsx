@@ -1,19 +1,21 @@
+import { useMemo, useState, type ReactNode } from 'react';
 import {
   ArchiveIcon,
-  BotIcon,
   ExternalLinkIcon,
   FolderIcon,
   GitBranchIcon,
   LoaderCircleIcon,
+  MessageSquareTextIcon,
   RefreshCwIcon,
   RotateCcwIcon,
   SearchIcon,
   UserIcon,
 } from 'lucide-react';
-import type { CodexHistoryIndexState, ExtensionDto } from '@/shared/contracts';
+import type { CodexHistoryIndexState, CodexHistorySearchResult, ExtensionDto } from '@/shared/contracts';
 import { Badge } from '@/renderer/components/ui/badge';
 import { Button } from '@/renderer/components/ui/button';
 import { CodexHistoryAutoPager } from '@/renderer/features/extensions/CodexHistoryAutoPager';
+import { CodexHistoryNavigation } from '@/renderer/features/extensions/CodexHistoryNavigation';
 import { CodexHistorySearchFilters } from '@/renderer/features/extensions/CodexHistorySearchFilters';
 import { useCodexHistorySearch } from '@/renderer/features/extensions/useCodexHistorySearch';
 import { useI18n } from '@/renderer/i18n/useI18n';
@@ -23,6 +25,7 @@ interface Props {
   active: boolean;
   extension: ExtensionDto;
   standalone?: boolean;
+  workspaceNavigation?: ReactNode;
   notify(message: string): void;
 }
 
@@ -57,7 +60,80 @@ function HistoryIndexNotice({ error, index }: { error: string | null; index: Cod
   );
 }
 
-export function CodexHistorySearchConfiguration({ active, extension, standalone = false, notify }: Props) {
+function ResultIcon({ role }: Pick<CodexHistorySearchResult, 'role'>) {
+  if (role === 'ASSISTANT') return <MessageSquareTextIcon className="size-3.5" />;
+  if (role === 'THREAD') return <SearchIcon className="size-3.5" />;
+  return <UserIcon className="size-3.5" />;
+}
+
+function HistoryPreview({
+  item,
+  locale,
+  onOpen,
+}: {
+  item: CodexHistorySearchResult | null;
+  locale: string;
+  onOpen(threadId: string): void;
+}) {
+  const l = useI18n().messages.extensions.codexHistorySearch;
+  if (!item) return null;
+  return (
+    <aside className="hidden min-w-0 flex-1 flex-col border-l xl:flex">
+      <header className="flex min-h-14 items-start gap-3 border-b px-4 py-3">
+        <div className="min-w-0 flex-1">
+          <h3 className="line-clamp-2 text-sm font-semibold leading-5">{item.title}</h3>
+          <span className="mt-1 block text-2xs text-muted-foreground">
+            {new Intl.DateTimeFormat(locale, { dateStyle: 'medium', timeStyle: 'short' }).format(
+              new Date(item.updatedAt),
+            )}
+          </span>
+        </div>
+        <Button type="button" size="sm" onClick={() => onOpen(item.threadId)}>
+          <ExternalLinkIcon className="size-3.5" />
+          {l.preview.open}
+        </Button>
+      </header>
+      <div className="min-h-0 flex-1 overflow-y-auto p-4">
+        <div className="flex flex-wrap gap-1.5">
+          {item.sectionName && <Badge variant="secondary">{item.sectionName}</Badge>}
+          {item.projectName && <Badge variant="outline">{item.projectName}</Badge>}
+          {item.archived && <Badge variant="outline">{l.navigation.archived}</Badge>}
+          {item.source === 'SUBAGENT' && <Badge variant="outline">{l.subagent}</Badge>}
+        </div>
+        {item.snippet && (
+          <section className="mt-5 border-l-2 border-primary/40 pl-3">
+            <h4 className="mb-2 text-2xs font-semibold uppercase tracking-wide text-muted-foreground">
+              {l.preview.match}
+            </h4>
+            <p className="whitespace-pre-wrap text-sm leading-6">{item.snippet}</p>
+          </section>
+        )}
+        <dl className="mt-6 grid gap-3 text-xs">
+          {item.workspace && (
+            <div className="grid gap-1">
+              <dt className="text-muted-foreground">{l.preview.workspace}</dt>
+              <dd className="break-all font-mono text-2xs">{item.workspace}</dd>
+            </div>
+          )}
+          {item.branch && (
+            <div className="grid gap-1">
+              <dt className="text-muted-foreground">{l.preview.branch}</dt>
+              <dd className="font-mono text-2xs">{item.branch}</dd>
+            </div>
+          )}
+        </dl>
+      </div>
+    </aside>
+  );
+}
+
+export function CodexHistorySearchConfiguration({
+  active,
+  extension,
+  standalone = false,
+  workspaceNavigation = null,
+  notify,
+}: Props) {
   const { locale, messages } = useI18n();
   const l = messages.extensions.codexHistorySearch;
   const authorized =
@@ -66,147 +142,170 @@ export function CodexHistorySearchConfiguration({ active, extension, standalone 
     extension.permissions.every((permission) => !permission.required || permission.granted);
   const state = useCodexHistorySearch({ active, authorized, notify });
   const snapshot = state.snapshot;
-  const Heading = standalone ? 'h2' : 'h3';
+  const [selectedThreadId, setSelectedThreadId] = useState('');
+  const selectedItem = useMemo(
+    () => snapshot?.items.find((item) => item.threadId === selectedThreadId) ?? snapshot?.items[0] ?? null,
+    [selectedThreadId, snapshot?.items],
+  );
 
   return (
     <section
       data-codex-history-search-configuration
-      className={cn(
-        'overflow-hidden bg-background',
-        standalone ? 'flex size-full min-h-0 flex-col' : 'rounded-lg border',
-      )}
+      className={cn('overflow-hidden bg-background', standalone ? 'flex size-full min-h-0' : 'rounded-lg border')}
     >
-      <header className={cn('flex items-center gap-2 border-b', standalone ? 'min-h-14 px-5 py-2' : 'px-4 py-3')}>
-        <SearchIcon className="size-4" />
-        <Heading className={cn('font-semibold', standalone ? 'text-base' : 'text-sm')}>{l.title}</Heading>
-        <div className="ml-auto flex items-center gap-1">
-          <Button
-            type="button"
-            variant="ghost"
-            size="icon-sm"
-            aria-label={l.actions.refresh}
-            title={l.actions.refresh}
-            disabled={!authorized || state.refreshing}
-            onClick={() => void state.refresh(false)}
-          >
-            {state.refreshing ? (
-              <LoaderCircleIcon className="size-4 animate-spin" />
-            ) : (
-              <RefreshCwIcon className="size-4" />
-            )}
-          </Button>
-          <Button
-            type="button"
-            variant="ghost"
-            size="icon-sm"
-            aria-label={l.actions.rebuild}
-            title={l.actions.rebuild}
-            disabled={!authorized || state.refreshing}
-            onClick={() => void state.refresh(true)}
-          >
-            <RotateCcwIcon className="size-4" />
-          </Button>
-        </div>
-      </header>
+      {standalone && <CodexHistoryNavigation state={state} workspaceNavigation={workspaceNavigation} />}
+      <div className="flex min-w-0 flex-1 flex-col">
+        <h2 className="sr-only">{l.title}</h2>
+        {authorized && <CodexHistorySearchFilters authorized={authorized} state={state} />}
 
-      {authorized && <CodexHistorySearchFilters authorized={authorized} state={state} />}
-
-      {state.index.status === 'INDEXING' && (
-        <div className="shrink-0 border-b px-4 py-2">
-          <div className="flex items-center gap-3 text-xs text-muted-foreground">
-            <LoaderCircleIcon className="size-3.5 animate-spin" />
-            <span>{l.indexing(state.index.progress)}</span>
-            <div className="h-1 min-w-20 flex-1 overflow-hidden rounded-full bg-surface-sunken">
-              <div className="h-full bg-primary" style={{ width: `${state.index.progress}%` }} />
+        {state.index.status === 'INDEXING' && (
+          <div className="shrink-0 border-b px-4 py-2">
+            <div className="flex items-center gap-3 text-xs text-muted-foreground">
+              <LoaderCircleIcon className="size-3.5 animate-spin" />
+              <span>{l.indexing(state.index.progress)}</span>
+              <div className="h-1 min-w-20 flex-1 overflow-hidden rounded-full bg-surface-sunken">
+                <div className="h-full bg-primary" style={{ width: `${state.index.progress}%` }} />
+              </div>
             </div>
           </div>
-        </div>
-      )}
+        )}
 
-      <HistoryIndexNotice error={state.error ?? state.filtersError} index={state.index} />
+        <HistoryIndexNotice error={state.error ?? state.filtersError} index={state.index} />
 
-      <div className={cn('min-h-0 p-4', standalone && 'flex-1 overflow-y-auto')}>
         {!authorized || state.index.status === 'UNAVAILABLE' ? (
-          <div className="grid min-h-32 place-items-center text-sm text-muted-foreground">{l.unavailable}</div>
-        ) : snapshot?.items.length ? (
-          <div className="overflow-hidden rounded-md border">
-            <div className="flex items-center justify-between border-b bg-surface-sunken/40 px-3 py-2 text-xs text-muted-foreground">
-              <span>{snapshot.truncated ? `${l.matches(snapshot.total)}+` : l.matches(snapshot.total)}</span>
-              <span>{l.indexed(state.index.indexedThreads, state.index.indexedMessages)}</span>
-            </div>
-            <div className="divide-y">
-              {snapshot.items.map((item) => (
-                <button
-                  key={item.threadId}
-                  type="button"
-                  className="group flex w-full items-start gap-3 px-3 py-3 text-left outline-none hover:bg-hover focus-visible:bg-hover focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
-                  onClick={() => void state.openThread(item.threadId)}
-                >
-                  <span className="mt-0.5 grid size-7 shrink-0 place-items-center rounded-md bg-surface-sunken text-muted-foreground">
-                    {item.role === 'ASSISTANT' ? (
-                      <BotIcon className="size-3.5" />
-                    ) : item.role === 'THREAD' ? (
-                      <SearchIcon className="size-3.5" />
+          <div className="grid min-h-0 flex-1 place-items-center text-sm text-muted-foreground">{l.unavailable}</div>
+        ) : (
+          <div className="flex min-h-0 flex-1">
+            <main className="flex min-w-0 flex-[1.45] flex-col">
+              <header className="flex min-h-11 items-center gap-2 border-b px-3 text-xs text-muted-foreground">
+                <span>{snapshot?.truncated ? `${l.matches(snapshot.total)}+` : l.matches(snapshot?.total ?? 0)}</span>
+                <span className="hidden sm:inline">
+                  {l.indexed(state.index.indexedThreads, state.index.indexedMessages)}
+                </span>
+                <div className="ml-auto flex items-center gap-1">
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon-sm"
+                    aria-label={l.actions.refresh}
+                    title={l.actions.refresh}
+                    disabled={state.refreshing}
+                    onClick={() => void state.refresh(false)}
+                  >
+                    {state.refreshing ? (
+                      <LoaderCircleIcon className="size-4 animate-spin" />
                     ) : (
-                      <UserIcon className="size-3.5" />
+                      <RefreshCwIcon className="size-4" />
                     )}
-                  </span>
-                  <span className="min-w-0 flex-1">
-                    <span className="flex min-w-0 items-center gap-2">
-                      <span className="truncate text-sm font-medium">
-                        <HighlightedText text={item.title} query={state.draftQuery} />
-                      </span>
-                      {item.archived && <ArchiveIcon className="size-3.5 shrink-0 text-muted-foreground" />}
-                      {item.source === 'SUBAGENT' && <Badge variant="outline">{l.subagent}</Badge>}
-                      {item.matchCount > 1 && <Badge variant="secondary">{l.matchOccurrences(item.matchCount)}</Badge>}
-                    </span>
-                    {item.snippet && (
-                      <span className="mt-1 line-clamp-2 block text-xs leading-5 text-muted-foreground">
-                        <HighlightedText text={item.snippet} query={state.draftQuery} />
-                      </span>
-                    )}
-                    <span className="mt-1.5 flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1 text-2xs text-muted-foreground">
-                      {(item.projectName || item.workspace) && (
-                        <span className="inline-flex min-w-0 items-center gap-1">
-                          <FolderIcon className="size-3 shrink-0" />
-                          <span className="max-w-52 truncate">{item.projectName || item.workspace}</span>
-                        </span>
-                      )}
-                      {item.projectName && item.workspace && (
-                        <span className="max-w-64 truncate" title={item.workspace}>
-                          {item.workspace}
-                        </span>
-                      )}
-                      {item.branch && (
-                        <span className="inline-flex items-center gap-1">
-                          <GitBranchIcon className="size-3" />
-                          {item.branch}
-                        </span>
-                      )}
-                      <span>
-                        {new Intl.DateTimeFormat(locale, { dateStyle: 'medium', timeStyle: 'short' }).format(
-                          new Date(item.updatedAt),
-                        )}
-                      </span>
-                    </span>
-                  </span>
-                  <ExternalLinkIcon className="mt-1 size-4 shrink-0 text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100" />
-                </button>
-              ))}
-            </div>
-            <CodexHistoryAutoPager
-              error={state.error}
-              hasMore={state.hasMore}
-              loading={state.loadingMore}
-              onLoadMore={() => void state.loadMore()}
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon-sm"
+                    aria-label={l.actions.rebuild}
+                    title={l.actions.rebuild}
+                    disabled={state.refreshing}
+                    onClick={() => void state.refresh(true)}
+                  >
+                    <RotateCcwIcon className="size-4" />
+                  </Button>
+                </div>
+              </header>
+              <div className="min-h-0 flex-1 overflow-y-auto">
+                {snapshot?.items.length ? (
+                  <div className="divide-y">
+                    {snapshot.items.map((item) => {
+                      const selected = item.threadId === selectedItem?.threadId;
+                      return (
+                        <article
+                          key={item.threadId}
+                          data-current={selected || undefined}
+                          className="group flex data-[current]:bg-selected/70 hover:bg-hover"
+                        >
+                          <button
+                            type="button"
+                            className="flex min-w-0 flex-1 items-start gap-3 px-3 py-3 text-left outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
+                            onClick={() => setSelectedThreadId(item.threadId)}
+                            onDoubleClick={() => void state.openThread(item.threadId)}
+                          >
+                            <span className="mt-0.5 grid size-7 shrink-0 place-items-center rounded-md bg-surface-sunken text-muted-foreground">
+                              <ResultIcon role={item.role} />
+                            </span>
+                            <span className="min-w-0 flex-1">
+                              <span className="flex min-w-0 items-center gap-2">
+                                <span className="truncate text-sm font-medium">
+                                  <HighlightedText text={item.title} query={state.draftQuery} />
+                                </span>
+                                {item.archived && <ArchiveIcon className="size-3.5 shrink-0 text-muted-foreground" />}
+                                {item.source === 'SUBAGENT' && <Badge variant="outline">{l.subagent}</Badge>}
+                                {item.matchCount > 1 && (
+                                  <Badge variant="secondary">{l.matchOccurrences(item.matchCount)}</Badge>
+                                )}
+                              </span>
+                              {item.snippet && (
+                                <span className="mt-1 line-clamp-2 block text-xs leading-5 text-muted-foreground">
+                                  <HighlightedText text={item.snippet} query={state.draftQuery} />
+                                </span>
+                              )}
+                              <span className="mt-1.5 flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1 text-2xs text-muted-foreground">
+                                {(item.projectName || item.workspace) && (
+                                  <span className="inline-flex min-w-0 items-center gap-1">
+                                    <FolderIcon className="size-3 shrink-0" />
+                                    <span className="max-w-52 truncate">{item.projectName || item.workspace}</span>
+                                  </span>
+                                )}
+                                {item.sectionName && <span>{item.sectionName}</span>}
+                                {item.branch && (
+                                  <span className="inline-flex items-center gap-1">
+                                    <GitBranchIcon className="size-3" />
+                                    {item.branch}
+                                  </span>
+                                )}
+                                <span>
+                                  {new Intl.DateTimeFormat(locale, {
+                                    dateStyle: 'medium',
+                                    timeStyle: 'short',
+                                  }).format(new Date(item.updatedAt))}
+                                </span>
+                              </span>
+                            </span>
+                          </button>
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="icon-sm"
+                            className="mr-2 mt-2 shrink-0 opacity-0 group-hover:opacity-100 group-focus-within:opacity-100"
+                            aria-label={l.preview.open}
+                            title={l.preview.open}
+                            onClick={() => void state.openThread(item.threadId)}
+                          >
+                            <ExternalLinkIcon className="size-4" />
+                          </Button>
+                        </article>
+                      );
+                    })}
+                    <CodexHistoryAutoPager
+                      error={state.error}
+                      hasMore={state.hasMore}
+                      loading={state.loadingMore}
+                      onLoadMore={() => void state.loadMore()}
+                    />
+                  </div>
+                ) : state.loading || state.index.status === 'INDEXING' ? (
+                  <div className="grid min-h-40 place-items-center">
+                    <LoaderCircleIcon className="size-5 animate-spin text-muted-foreground" />
+                  </div>
+                ) : (
+                  <div className="grid min-h-40 place-items-center text-sm text-muted-foreground">{l.empty}</div>
+                )}
+              </div>
+            </main>
+            <HistoryPreview
+              item={selectedItem}
+              locale={locale}
+              onOpen={(threadId) => void state.openThread(threadId)}
             />
           </div>
-        ) : state.loading || state.index.status === 'INDEXING' ? (
-          <div className="grid min-h-32 place-items-center">
-            <LoaderCircleIcon className="size-5 animate-spin text-muted-foreground" />
-          </div>
-        ) : (
-          <div className="grid min-h-32 place-items-center text-sm text-muted-foreground">{l.empty}</div>
         )}
       </div>
     </section>

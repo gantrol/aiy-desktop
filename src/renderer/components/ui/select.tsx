@@ -2,6 +2,7 @@ import * as React from 'react';
 import * as SelectPrimitive from '@radix-ui/react-select';
 import { CheckIcon, ChevronDownIcon, ChevronUpIcon } from 'lucide-react';
 import { cn } from '@/renderer/lib/utils';
+import { useOverlayPortalContainer } from '@/renderer/components/ui/overlay-layer';
 
 const Select = SelectPrimitive.Root;
 const SelectValue = SelectPrimitive.Value;
@@ -30,14 +31,17 @@ function SelectContent({
   position = 'popper',
   ...props
 }: React.ComponentProps<typeof SelectPrimitive.Content>) {
-  // Modal sheets disable pointer events on body; this portal must opt back in.
+  const container = useOverlayPortalContainer();
+  // Modal scopes and their body-level fallback both require an interactive surface.
   return (
-    <SelectPrimitive.Portal>
+    <SelectPrimitive.Portal container={container ?? undefined}>
       <SelectPrimitive.Content
         data-slot="select-content"
+        data-overlay-layer="popup"
+        data-overlay-surface=""
         position={position}
         className={cn(
-          'pointer-events-auto z-50 max-h-72 min-w-[8rem] overflow-hidden rounded-md border border-border bg-overlay text-foreground shadow-overlay',
+          'pointer-events-auto z-popup max-h-72 min-w-[8rem] overflow-hidden rounded-md border border-border bg-overlay text-foreground shadow-overlay',
           position === 'popper' && 'w-[var(--radix-select-trigger-width)]',
           className,
         )}

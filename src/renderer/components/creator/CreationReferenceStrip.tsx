@@ -7,11 +7,11 @@ import {
   resolveWordPaletteParameterName,
 } from '@/shared/word-palette-localization';
 import { CloseIcon, DictionaryIcon, ImageIcon } from '@/renderer/icons';
+import { readSingleImageAssetDrag } from '@/renderer/components/albums/albumDrag';
 import { TermPreviewTooltip } from '@/renderer/components/media/TermPreviewTooltip';
 import { AssetFileContextMenu } from '@/renderer/components/media/AssetFileContextMenu';
 import { ImageAmbientBackdrop } from '@/renderer/components/media/AmbientImage';
 import { MediaPreviewDialog } from '@/renderer/components/media/MediaPreviewDialog';
-import { MediaOrderHandle } from '@/renderer/components/media/MediaOrderHandle';
 import { Button } from '@/renderer/components/ui/button';
 import { Popover, PopoverAnchor, PopoverContent } from '@/renderer/components/ui/popover';
 import { TooltipProvider } from '@/renderer/components/ui/tooltip';
@@ -35,8 +35,6 @@ interface Props {
   hidePromptMaterials?: boolean;
 }
 
-const creationReferenceMediaDragType = 'application/x-aiy-creation-reference-media';
-
 function reorderAssets(assets: readonly AssetDto[], sourceId: string, targetId: string, placeAfterTarget: boolean) {
   const source = assets.find((asset) => asset.id === sourceId);
   if (!source || sourceId === targetId) return [...assets];
@@ -45,6 +43,11 @@ function reorderAssets(assets: readonly AssetDto[], sourceId: string, targetId: 
   if (targetIndex < 0) return [...assets];
   next.splice(targetIndex + Number(placeAfterTarget), 0, source);
   return next;
+}
+
+function referenceAssetDragSourceId(dataTransfer: DataTransfer, assets: readonly AssetDto[]) {
+  const sourceId = readSingleImageAssetDrag(dataTransfer);
+  return sourceId && assets.some((asset) => asset.id === sourceId) ? sourceId : null;
 }
 
 function paletteLabel(reference: AppliedWordPalette) {
@@ -295,7 +298,7 @@ export function CreationReferenceStrip({
             )}
             key={asset.id}
             onDragOver={(event) => {
-              if (!event.dataTransfer.types.includes(creationReferenceMediaDragType)) return;
+              if (!referenceAssetDragSourceId(event.dataTransfer, assets)) return;
               event.preventDefault();
               event.stopPropagation();
               event.dataTransfer.dropEffect = 'move';
@@ -305,7 +308,7 @@ export function CreationReferenceStrip({
               if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setDragTargetAssetId(null);
             }}
             onDrop={(event) => {
-              const sourceId = event.dataTransfer.getData(creationReferenceMediaDragType);
+              const sourceId = referenceAssetDragSourceId(event.dataTransfer, assets);
               if (!sourceId) return;
               event.preventDefault();
               event.stopPropagation();
@@ -320,9 +323,22 @@ export function CreationReferenceStrip({
               <Button
                 type="button"
                 variant="ghost"
-                className="relative isolate size-12 cursor-zoom-in overflow-hidden rounded-md p-0 shadow-none hover:bg-transparent focus-visible:ring-inset focus-visible:ring-offset-0"
-                title={locale === 'zh' ? '放大图片' : 'Enlarge image'}
-                aria-label={locale === 'zh' ? `放大图片 ${index + 1}` : `Enlarge image ${index + 1}`}
+                draggable
+                className="relative isolate size-12 cursor-grab overflow-hidden rounded-md p-0 shadow-none hover:bg-transparent active:cursor-grabbing focus-visible:ring-inset focus-visible:ring-offset-0"
+                title={locale === 'zh' ? '拖动调整顺序或导出，单击放大' : 'Drag to reorder or export, click to enlarge'}
+                aria-label={
+                  locale === 'zh'
+                    ? `第 ${index + 1} 张图片：拖动调整顺序或导出，单击放大`
+                    : `Image ${index + 1}: drag to reorder or export, click to enlarge`
+                }
+                onDragEnd={() => setDragTargetAssetId(null)}
+                onKeyDown={(event) => {
+                  const offset = event.key === 'ArrowLeft' ? -1 : event.key === 'ArrowRight' ? 1 : 0;
+                  const target = assets[index + offset];
+                  if (!offset || !target) return;
+                  event.preventDefault();
+                  onAssetsChange(reorderAssets(assets, asset.id, target.id, offset > 0));
+                }}
                 onClick={() => setPreviewAssetId(asset.id)}
               >
                 <ImageAmbientBackdrop src={asset.mediaUrl} />
@@ -344,28 +360,6 @@ export function CreationReferenceStrip({
             >
               <CloseIcon className="size-3" />
             </Button>
-            {assets.length > 1 && (
-              <MediaOrderHandle
-                draggable
-                className="absolute bottom-1 left-1 z-20 h-5 min-w-0 gap-0 px-1 text-[10px] tabular-nums [&>svg]:size-2.5"
-                label={locale === 'zh' ? `拖动第 ${index + 1} 张图片调整顺序` : `Drag image ${index + 1} to reorder`}
-                onDragStart={(event) => {
-                  event.stopPropagation();
-                  event.dataTransfer.effectAllowed = 'move';
-                  event.dataTransfer.setData(creationReferenceMediaDragType, asset.id);
-                }}
-                onDragEnd={() => setDragTargetAssetId(null)}
-                onKeyDown={(event) => {
-                  const offset = event.key === 'ArrowLeft' ? -1 : event.key === 'ArrowRight' ? 1 : 0;
-                  const target = assets[index + offset];
-                  if (!offset || !target) return;
-                  event.preventDefault();
-                  onAssetsChange(reorderAssets(assets, asset.id, target.id, offset > 0));
-                }}
-              >
-                {index + 1}
-              </MediaOrderHandle>
-            )}
           </span>
         ))}
         <TooltipProvider delayDuration={280}>

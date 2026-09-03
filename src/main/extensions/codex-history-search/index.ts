@@ -7,7 +7,10 @@ import type {
   CodexHistoryRefreshInput,
   CodexHistorySearchInput,
 } from '@/shared/contracts/codex-history-search';
-import { CodexHistorySearchCacheDatabase } from '@/main/extensions/codex-history-search/cache-database';
+import {
+  CodexHistorySearchCacheDatabase,
+  CodexHistoryThreadSnapshotRequiredError,
+} from '@/main/extensions/codex-history-search/cache-database';
 import {
   discoverCodexHistorySources,
   readCodexHistorySourceSnapshot,
@@ -205,15 +208,34 @@ export class CodexHistorySearch extends EventEmitter {
       this.progress = 100;
       return this.indexState(database);
     }
-    const snapshot = await readCodexHistorySourceSnapshot(sources, signal, (progress) => {
+    const rebuildMessages = rebuild || !meta.indexedAt || meta.sourceHistoryId !== sources.historySourceId;
+    const rebuildThreads = rebuild || !meta.indexedAt || meta.sourceStateId !== sources.stateSourceId;
+    const cursor = {
+      historyRowId: rebuildMessages ? 0 : meta.sourceHistoryRowId,
+      threadUpdatedAtMs: rebuildThreads ? 0 : meta.sourceThreadUpdatedAtMs,
+      threadCount: rebuildThreads ? 0 : meta.sourceThreadCount,
+      projectSignature: rebuildThreads ? null : meta.sourceProjectSignature,
+      fullThreads: rebuildThreads,
+    };
+    const reportProgress = (progress: number) => {
       this.progress = progress;
       this.emit('changed');
-    });
+    };
+    let snapshot = await readCodexHistorySourceSnapshot(sources, cursor, signal, reportProgress);
     signal.throwIfAborted();
     this.progress = 85;
     this.emit('changed');
     await new Promise<void>((resolve) => setImmediate(resolve));
-    database.replace(snapshot);
+    try {
+      database.apply(snapshot, rebuildMessages || snapshot.sourceReset);
+    } catch (reason) {
+      if (!(reason instanceof CodexHistoryThreadSnapshotRequiredError) || snapshot.fullThreadSnapshot) throw reason;
+      snapshot = await readCodexHistorySourceSnapshot(sources, { ...cursor, fullThreads: true }, signal, (progress) =>
+        reportProgress(85 + Math.round(progress * 0.1)),
+      );
+      signal.throwIfAborted();
+      database.apply(snapshot, rebuildMessages || snapshot.sourceReset);
+    }
     this.progress = 100;
     this.lastError = null;
     this.sourceUnavailable = false;

@@ -1,7 +1,6 @@
 <div align="center">
-  <img src="build/icon.png" alt="AIY 生图管理工具" width="104" />
+  <img src="build/icon.png" alt="AIY" width="104" />
   <h1>AIY：AI帮你DIY</h1>
-  <p>收集、对比AI成果，优化Prompt、积累经验</p>
   <p>
     <a href="README.md"><img src="https://img.shields.io/badge/English-README-2563eb?style=flat-square" alt="English README" /></a>
     <a href="README.zh-CN.md"><img src="https://img.shields.io/badge/%E7%AE%80%E4%BD%93%E4%B8%AD%E6%96%87-README-9f1239?style=flat-square" alt="简体中文 README" /></a>
@@ -92,7 +91,7 @@ AIY 可以扫描本机 Codex 的生成图片目录，按任务分组、避免重
 
 ## ❕早期阶段
 
-AIY 目前仍处于早期开发阶段。到 v0.3.7，图像创作与素材库已可用，扩展与内容包后续仍可能变化。
+AIY 目前仍处于早期开发阶段。到 v0.3.9，图像创作与素材库已可用，扩展与内容包后续仍可能变化。
 
 框架已经搭好，需要真实用户反馈，才能决定这个项目往哪里走。
 

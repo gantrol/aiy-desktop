@@ -9,10 +9,10 @@ import type {
 import {
   ANTIGRAVITY_CLI_EXTENSION_ID,
   CODEX_APP_SERVER_EXTENSION_ID,
-  CODEX_IMAGE_DISCOVERY_EXTENSION_ID,
-  CODEX_VISUALIZATION_DISCOVERY_EXTENSION_ID,
   DEEPSEEK_API_EXTENSION_ID,
   EXTERNAL_IMAGE_API_EXTENSION_IDS,
+  LEGACY_CODEX_EXTENSION_IDS,
+  NATURAL_WATERMARK_EXTENSION_ID,
   OPENAI_IMAGE_API_EXTENSION_ID,
   type ExternalImageApiExtensionId,
 } from '@/shared/extension-ids';
@@ -50,7 +50,11 @@ interface ExtensionRegistryOptions {
 }
 
 const externalImageApiExtensionIds = new Set<string>(EXTERNAL_IMAGE_API_EXTENSION_IDS);
-const disabledByDefaultExtensionIds = new Set<string>(EXTERNAL_IMAGE_API_EXTENSION_IDS);
+const legacyCodexExtensionIds = new Set<string>(LEGACY_CODEX_EXTENSION_IDS);
+const disabledByDefaultExtensionIds = new Set<string>([
+  ...EXTERNAL_IMAGE_API_EXTENSION_IDS,
+  NATURAL_WATERMARK_EXTENSION_ID,
+]);
 
 export class ExtensionRegistry {
   private manifests: readonly ExtensionManifestDto[] = [];
@@ -87,6 +91,7 @@ export class ExtensionRegistry {
       packagePath: null,
     }));
     for (const loaded of loadedPackages) {
+      if (legacyCodexExtensionIds.has(loaded.manifest.id)) continue;
       const existingIndex = definitions.findIndex((definition) => definition.manifest.id === loaded.manifest.id);
       if (existingIndex >= 0) {
         const existing = definitions[existingIndex]!;
@@ -137,6 +142,7 @@ export class ExtensionRegistry {
       definitions.map(({ manifest, source }) => ({
         manifest,
         source,
+        legacyExtensionIds: manifest.id === CODEX_APP_SERVER_EXTENSION_ID ? LEGACY_CODEX_EXTENSION_IDS : undefined,
         enabledByDefault:
           manifest.kind === 'LANGUAGE' || (source === 'BUILT_IN' && !disabledByDefaultExtensionIds.has(manifest.id)),
         grantRequiredPermissionsByDefault: source === 'BUILT_IN',
@@ -408,20 +414,6 @@ export class ExtensionRegistry {
         return { state: 'CONNECTING', message: status?.message || 'Checking local Antigravity CLI' };
       }
       return status.state === 'ready'
-        ? { state: 'READY', message: status.message }
-        : { state: 'UNAVAILABLE', message: status.message };
-    }
-    if (manifest.id === CODEX_IMAGE_DISCOVERY_EXTENSION_ID) {
-      const status = this.options.codexImageDiscoveryStatus?.();
-      if (!status) return { state: 'READY', message: 'Ready' };
-      return status.available
-        ? { state: 'READY', message: status.message }
-        : { state: 'UNAVAILABLE', message: status.message };
-    }
-    if (manifest.id === CODEX_VISUALIZATION_DISCOVERY_EXTENSION_ID) {
-      const status = this.options.codexVisualizationDiscoveryStatus?.();
-      if (!status) return { state: 'READY', message: 'Ready' };
-      return status.available
         ? { state: 'READY', message: status.message }
         : { state: 'UNAVAILABLE', message: status.message };
     }

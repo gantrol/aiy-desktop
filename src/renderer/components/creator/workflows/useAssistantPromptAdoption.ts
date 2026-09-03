@@ -1,5 +1,10 @@
 import { useEffect, useRef, useState } from 'react';
-import type { AssistantProposalApplyValue, AssistantRunDto, Locale } from '@/shared/contracts';
+import type {
+  AssistantProposalAdoptionInput,
+  AssistantProposalApplyValue,
+  AssistantRunDto,
+  Locale,
+} from '@/shared/contracts';
 import {
   prepareAssistantPromptAdoption,
   type AssistantPromptAdoptionFailure,
@@ -13,6 +18,7 @@ interface Options {
   locale: Locale;
   notify(message: string): void;
   onApplyPrompt(prompt: CreationDraftPromptSnapshot): void;
+  onPersistenceCommitted(persistence: NonNullable<AssistantProposalAdoptionInput['persistence']>): Promise<void>;
   onRunAdopted(run: AssistantRunDto): void;
   preparePersistence(persistence: NonNullable<AssistantPromptAdoptionSource['persistence']>): Promise<void>;
   refresh(): Promise<void>;
@@ -44,6 +50,7 @@ export function useAssistantPromptAdoption(options: Options) {
   const captureSource = useStableCallback(options.captureSource);
   const notify = useStableCallback(options.notify);
   const onApplyPrompt = useStableCallback(options.onApplyPrompt);
+  const onPersistenceCommitted = useStableCallback(options.onPersistenceCommitted);
   const onRunAdopted = useStableCallback(options.onRunAdopted);
   const preparePersistence = useStableCallback(options.preparePersistence);
   const refresh = useStableCallback(options.refresh);
@@ -86,7 +93,8 @@ export function useAssistantPromptAdoption(options: Options) {
         if (message) notify(message);
         return false;
       }
-      const adopted = await window.desktopApi.assistantProposalAdopt(preparation.input);
+      const adopted = await window.desktopApi.assistantProposalAdopt(readyPreparation.input);
+      await onPersistenceCommitted(readyPreparation.input.persistence!);
       if (!mountedRef.current) return true;
       onRunAdopted(adopted);
       let currentPreparation;
@@ -96,7 +104,7 @@ export function useAssistantPromptAdoption(options: Options) {
         currentPreparation = null;
       }
       if (currentPreparation?.ok && currentPreparation.identity === preparation.identity) {
-        onApplyPrompt(preparation.prompt);
+        onApplyPrompt(readyPreparation.prompt);
         notify(options.successMessage);
       } else {
         notify(

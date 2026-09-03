@@ -17,7 +17,7 @@ import type { CreationDraftPromptSnapshot } from '@/renderer/components/creator/
 import { creationDraftCommitIdentity } from '@/renderer/components/creator/workflows/creationDraftSnapshot';
 import { useStableCallback } from '@/renderer/lib/useStableCallback';
 
-type DraftSaveSnapshot = Omit<CreationDraftSaveInput, 'id'>;
+type DraftSaveSnapshot = Omit<CreationDraftSaveInput, 'id' | 'expectedUpdatedAt'>;
 
 interface OutcomeSnapshot {
   automaticChangeSummary: string;

@@ -1,6 +1,7 @@
 import * as React from 'react';
 import * as PopoverPrimitive from '@radix-ui/react-popover';
 import { cn } from '@/renderer/lib/utils';
+import { useOverlayPortalContainer } from '@/renderer/components/ui/overlay-layer';
 
 function Popover(props: React.ComponentProps<typeof PopoverPrimitive.Root>) {
   return <PopoverPrimitive.Root data-slot="popover" {...props} />;
@@ -17,17 +18,19 @@ function PopoverContent({
   style,
   ...props
 }: React.ComponentProps<typeof PopoverPrimitive.Content>) {
-  // Radix can transiently calculate this portaled layer as being behind a
-  // modal sheet. Its inline `pointer-events: none` would beat a utility class
-  // and make visible options click through to the form underneath.
+  const container = useOverlayPortalContainer();
+  // Keep the inline fallback for the first commit before a modal scope has a
+  // container and for Radix's body-level modal pointer-events guard.
   return (
-    <PopoverPrimitive.Portal>
+    <PopoverPrimitive.Portal container={container ?? undefined}>
       <PopoverPrimitive.Content
         data-slot="popover-content"
+        data-overlay-layer="popup"
+        data-overlay-surface=""
         align={align}
         sideOffset={sideOffset}
         className={cn(
-          'pointer-events-auto z-50 w-72 rounded-md border bg-overlay p-4 text-foreground shadow-overlay outline-none',
+          'pointer-events-auto z-popup w-72 rounded-md border bg-overlay p-4 text-foreground shadow-overlay outline-none',
           className,
         )}
         style={{ ...style, pointerEvents: 'auto' }}

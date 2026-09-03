@@ -7,7 +7,7 @@ import {
   codexVisualizationPreviewContentSecurityPolicy,
 } from '@/main/app/codex-visualization-preview-policy';
 import { imageDimensions } from '@/main/media/image-dimensions';
-import { CODEX_VISUALIZATION_DISCOVERY_EXTENSION_ID } from '@/shared/extension-ids';
+import { CODEX_EXTENSION_ID } from '@/shared/extension-ids';
 
 const previewIdPattern = /^[a-f0-9]{48}$/;
 const maximumPreviewImageDimension = 8_192;
@@ -153,7 +153,7 @@ export function installCodexVisualizationPreviewProtocol(
     }
 
     const context = getContext();
-    if (!context?.extensions.isActivated(CODEX_VISUALIZATION_DISCOVERY_EXTENSION_ID)) {
+    if (!context?.extensions.isActivated(CODEX_EXTENSION_ID)) {
       return new Response('Not found', { status: 404 });
     }
     const release = context.acquireOperation();

@@ -1,4 +1,5 @@
 import { createContext, useContext, useEffect, useMemo, useRef, useSyncExternalStore, type ReactNode } from 'react';
+import { LoaderCircleIcon } from 'lucide-react';
 import { useSyncExternalStoreWithSelector } from 'use-sync-external-store/shim/with-selector';
 import type {
   ArticleCheckBlockInput,
@@ -22,6 +23,7 @@ import type {
 import { AutoSaveCoordinator } from '@/renderer/components/creator/article-editor/AutoSaveCoordinator';
 import {
   ArticleEditorRecoveryStore,
+  type ArticleEditorRecoveredDraft,
   type ArticleEditorRecoveryResult,
 } from '@/renderer/components/creator/article-editor/articleEditorRecovery';
 import type {
@@ -37,9 +39,11 @@ import { ArticleEditorSessionModel } from '@/renderer/components/creator/article
 import { Button } from '@/renderer/components/ui/button';
 import { useStableCallback } from '@/renderer/lib/useStableCallback';
 
+type ArticleEditorRecoveryStatus = ArticleEditorRecoveryResult['kind'] | 'loading';
+
 interface ArticleEditorSessionRuntime {
   model: ArticleEditorSessionModel;
-  recovery: ArticleEditorRecoveryResult['kind'];
+  recovery: ArticleEditorRecoveryStatus;
   recoveryUpdatedAt: number | null;
   capturePersistedArticle(): ArticleDto;
   captureSnapshot(): ArticleContentInput;
@@ -49,11 +53,12 @@ interface ArticleEditorSessionRuntime {
   getArticleElementsProjection(): readonly ArticleElementPlacementInput[];
   getArticleCommentAnchorsProjection(): readonly ArticleCommentAnchorUpdateInput[];
   getRecoveryPending(): boolean;
+  getRecoveryStatus(): ArticleEditorRecoveryStatus;
   subscribeMarkdownProjection(listener: () => void): () => void;
   subscribeRecovery(listener: () => void): () => void;
   subscribeAcknowledged(listener: (article: ArticleDto, request: ArticleRevisionSaveInput) => void): () => void;
   adoptRecovery(): void;
-  discardRecovery(): void;
+  discardRecovery(): Promise<boolean>;
   keepRecovery(): void;
   documentChanged(markdown: string): number;
   articleElementsChanged(): number;
@@ -105,6 +110,54 @@ function requestMatchesArticle(request: ArticleRevisionSaveInput, article: Artic
   return (
     !request.commentAnchors ||
     articleCommentAnchorUpdatesAreApplied(request.commentAnchors, articleCommentAnchorUpdates(article.comments))
+  );
+}
+
+function createSessionSeed(article: ArticleDto, sessionEpoch: string, draft: ArticleEditorRecoveredDraft | null) {
+  return {
+    model: new ArticleEditorSessionModel(article, {
+      epoch: sessionEpoch,
+      ...(draft ? { initialDraft: { content: draft.content, media: draft.media } } : {}),
+    }),
+    markdown: draft?.content.markdown ?? article.content.markdown,
+    elements: (draft?.elements ?? article.elements).map((element) => ({ ...element })),
+    commentAnchors: (draft?.commentAnchors ?? articleCommentAnchorUpdates(article.comments)).map((item) => ({
+      ...item,
+      anchor: { ...item.anchor },
+    })),
+  };
+}
+
+async function loadRecovery(
+  recoveryStore: ArticleEditorRecoveryStore,
+  article: ArticleDto,
+  onError: () => void,
+): Promise<ArticleEditorRecoveryResult> {
+  try {
+    return await recoveryStore.load(article);
+  } catch {
+    onError();
+    return { kind: 'none' };
+  }
+}
+
+function cloneArticleCommentAnchors(items: readonly ArticleCommentAnchorUpdateInput[]) {
+  return items.map((item) => ({ ...item, anchor: { ...item.anchor } }));
+}
+
+function createDeferredOnce(callback: () => void) {
+  let reported = false;
+  return () => {
+    if (reported) return;
+    reported = true;
+    queueMicrotask(callback);
+  };
+}
+
+function removeUnboundEditorImages(handle: VideoDocumentWysiwygEditorHandle | null, model: ArticleEditorSessionModel) {
+  return (
+    handle?.removeUnboundImages(model.getSnapshot().draft.metadata.mediaBindings.map((binding) => binding.path)) ??
+    false
   );
 }
 
@@ -169,26 +222,22 @@ function createRuntime({
   spaceId: string;
 }): ArticleEditorSessionRuntime {
   const sessionEpoch = globalThis.crypto.randomUUID();
-  const recoveryStore = new ArticleEditorRecoveryStore(spaceId, article, sessionEpoch);
-  const recoveredDraft = recoveryStore.result.kind === 'restored' ? recoveryStore.result.draft : null;
-  const recoveryUpdatedAt = recoveryStore.result.kind === 'none' ? null : recoveryStore.result.updatedAt;
-  let model = new ArticleEditorSessionModel(article, {
-    epoch: sessionEpoch,
-    ...(recoveredDraft ? { initialDraft: { content: recoveredDraft.content, media: recoveredDraft.media } } : {}),
-  });
-  const initialMarkdown = recoveredDraft?.content.markdown ?? article.content.markdown;
-  const initialElements = recoveredDraft?.elements ?? article.elements;
+  const reportRecoveryError = createDeferredOnce(onRecoveryError);
+  const recoveryStore = new ArticleEditorRecoveryStore(spaceId, article.id, sessionEpoch, reportRecoveryError);
+  let recoveredDraft: ArticleEditorRecoveredDraft | null = null;
+  let recoveryStatus: ArticleEditorRecoveryStatus = 'loading';
+  let recoveryUpdatedAt: number | null = null;
+  const initialSeed = createSessionSeed(article, sessionEpoch, null);
+  let model = initialSeed.model;
   let persistedArticle = article;
   let editorHandle: VideoDocumentWysiwygEditorHandle | null = null;
-  let markdownProjection = initialMarkdown;
-  let latestElements = initialElements.map((element) => ({ ...element }));
-  let latestCommentAnchors: ArticleCommentAnchorUpdateInput[] = (
-    recoveredDraft?.commentAnchors ?? articleCommentAnchorUpdates(article.comments)
-  ).map((item) => ({ ...item, anchor: { ...item.anchor } }));
-  let recoveryErrorReported = false;
-  let recoveryPending = recoveryStore.result.kind !== 'none';
+  let markdownProjection = initialSeed.markdown;
+  let latestElements = initialSeed.elements;
+  let latestCommentAnchors: ArticleCommentAnchorUpdateInput[] = initialSeed.commentAnchors;
+  let recoveryPending = true;
   let recoveryAdopted = false;
   let started = false;
+  let disposed = false;
   let editorSessionRevision = 0;
   const markdownProjectionListeners = new Set<() => void>();
   const recoveryListeners = new Set<() => void>();
@@ -197,21 +246,17 @@ function createRuntime({
     const editorSnapshot = editorHandle?.getPersistenceSnapshot();
     return articleEditorSnapshot(model.getSnapshot().draft.metadata, editorSnapshot?.markdown ?? markdownProjection);
   };
-  const captureElements = () => editorHandle?.getPersistenceSnapshot().articleElements ?? latestElements;
   const captureCommentAnchors = () => editorHandle?.getArticleCommentAnchors() ?? latestCommentAnchors;
-  const reportRecoveryError = () => {
-    if (recoveryErrorReported) return;
-    recoveryErrorReported = true;
-    queueMicrotask(onRecoveryError);
-  };
   const createCoordinator = () =>
     new AutoSaveCoordinator({
       session: model,
       readSnapshot: captureSnapshot,
-      readElements: captureElements,
+      readElements: () => editorHandle?.getPersistenceSnapshot().articleElements ?? latestElements,
       readCommentAnchors: captureCommentAnchors,
-      persist(input) {
+      prepareForSave: () => removeUnboundEditorImages(editorHandle, model),
+      async persist(input) {
         if (!recoveryStore.markPending(input)) reportRecoveryError();
+        if (!(await recoveryStore.flush())) reportRecoveryError();
         return onSave(input);
       },
       onAcknowledged(savedArticle, request) {
@@ -219,6 +264,9 @@ function createRuntime({
         persistedArticle = savedArticle;
         onSaved(savedArticle);
         acknowledgedListeners.forEach((listener) => listener(savedArticle, request));
+      },
+      onUnchanged(request) {
+        if (!recoveryStore.acknowledge(request, persistedArticle)) reportRecoveryError();
       },
       onConflict,
       onError,
@@ -254,27 +302,40 @@ function createRuntime({
     started = true;
     if (recoveredDraft && recoveryAdopted) recordChange(recoveredDraft.content);
   };
-  const resetToPersistedArticle = () => {
+  const resetSession = (draft: typeof recoveredDraft) => {
     coordinator.dispose();
-    model.dispose();
-    model = new ArticleEditorSessionModel(article, { epoch: sessionEpoch });
+    const next = createSessionSeed(article, sessionEpoch, draft);
+    model = next.model;
     persistedArticle = article;
     editorHandle = null;
-    markdownProjection = article.content.markdown;
-    latestElements = article.elements.map((element) => ({ ...element }));
-    latestCommentAnchors = articleCommentAnchorUpdates(article.comments).map((item) => ({
-      ...item,
-      anchor: { ...item.anchor },
-    }));
+    markdownProjection = next.markdown;
+    latestElements = next.elements;
+    latestCommentAnchors = next.commentAnchors;
     coordinator = createCoordinator();
     markdownProjectionListeners.forEach((listener) => listener());
   };
+  const resetToPersistedArticle = () => resetSession(null);
+  const initialization = loadRecovery(recoveryStore, article, reportRecoveryError).then((result) => {
+    if (disposed) return;
+    recoveryStatus = result.kind;
+    recoveryUpdatedAt = result.kind === 'none' ? null : result.updatedAt;
+    recoveredDraft = result.kind === 'restored' || result.kind === 'resumed' ? result.draft : null;
+    if (recoveredDraft) resetSession(recoveredDraft);
+    recoveryAdopted = result.kind === 'resumed';
+    recoveryPending = result.kind === 'restored' || result.kind === 'conflict';
+    recoveryListeners.forEach((listener) => listener());
+    if (!recoveryPending) start();
+  });
   return {
     get model() {
       return model;
     },
-    recovery: recoveryStore.result.kind,
-    recoveryUpdatedAt,
+    get recovery() {
+      return recoveryStatus;
+    },
+    get recoveryUpdatedAt() {
+      return recoveryUpdatedAt;
+    },
     capturePersistedArticle: () => persistedArticle,
     captureSnapshot,
     getEditorSessionIdentity: () => `${article.id}:${sessionEpoch}:load:${editorSessionRevision}`,
@@ -284,6 +345,7 @@ function createRuntime({
     getArticleCommentAnchorsProjection: () =>
       latestCommentAnchors.map((item) => ({ ...item, anchor: { ...item.anchor } })),
     getRecoveryPending: () => recoveryPending,
+    getRecoveryStatus: () => (recoveryPending ? recoveryStatus : 'none'),
     subscribeMarkdownProjection(listener) {
       markdownProjectionListeners.add(listener);
       return () => markdownProjectionListeners.delete(listener);
@@ -303,18 +365,19 @@ function createRuntime({
       recoveryListeners.forEach((listener) => listener());
       start();
     },
-    discardRecovery() {
-      if (!recoveryPending) return;
-      recoveryStore.clear();
+    async discardRecovery() {
+      if (!recoveryPending) return true;
+      if (!(await recoveryStore.clear())) return false;
       recoveryAdopted = false;
       recoveryPending = false;
       started = false;
       resetToPersistedArticle();
       recoveryListeners.forEach((listener) => listener());
       start();
+      return true;
     },
     keepRecovery() {
-      if (!recoveryPending || recoveryStore.result.kind !== 'conflict') return;
+      if (!recoveryPending || recoveryStatus !== 'conflict') return;
       recoveryPending = false;
       recoveryListeners.forEach((listener) => listener());
       start();
@@ -340,15 +403,15 @@ function createRuntime({
     registerEditor(handle, previousHandle) {
       if (!handle) {
         if (!previousHandle || editorHandle !== previousHandle) return;
+        removeUnboundEditorImages(previousHandle, model);
         const snapshot = previousHandle.getPersistenceSnapshot();
         latestElements = snapshot.articleElements.map((element) => ({ ...element }));
-        latestCommentAnchors = previousHandle
-          .getArticleCommentAnchors()
-          .map((item) => ({ ...item, anchor: { ...item.anchor } }));
+        latestCommentAnchors = cloneArticleCommentAnchors(previousHandle.getArticleCommentAnchors());
         editorHandle = null;
         return;
       }
       editorHandle = handle;
+      removeUnboundEditorImages(handle, model);
       const snapshot = handle.getPersistenceSnapshot();
       latestElements = snapshot.articleElements.map((element) => ({ ...element }));
       latestCommentAnchors = handle.getArticleCommentAnchors().map((item) => ({ ...item, anchor: { ...item.anchor } }));
@@ -369,11 +432,24 @@ function createRuntime({
       markdownProjectionListeners.forEach((listener) => listener());
       return coordinator.flush('manual', 'RESTORE');
     },
-    flush: (mode) => (recoveryPending ? Promise.resolve(true) : coordinator.flush(mode)),
-    retry: () => (recoveryPending ? Promise.resolve(false) : coordinator.retry()),
+    async flush(mode) {
+      await initialization;
+      const saved = recoveryPending ? true : await coordinator.flush(mode);
+      const recovered = await recoveryStore.flush();
+      return saved && recovered;
+    },
+    async retry() {
+      await initialization;
+      if (recoveryPending) return false;
+      const saved = await coordinator.retry();
+      const recovered = await recoveryStore.flush();
+      return saved && recovered;
+    },
     start,
     dispose() {
+      disposed = true;
       coordinator.dispose();
+      recoveryStore.dispose();
       acknowledgedListeners.clear();
       markdownProjectionListeners.clear();
       recoveryListeners.clear();
@@ -390,6 +466,18 @@ function ArticleEditorRecoveryDecision({
   zh: boolean;
   onAdopt(): void;
 }) {
+  if (runtime.recovery === 'loading') {
+    return (
+      <div
+        data-article-editor-recovery-loading
+        role="status"
+        aria-label={zh ? '正在检查本地草稿' : 'Checking local drafts'}
+        className="flex min-h-0 min-w-0 flex-1 items-center justify-center bg-background"
+      >
+        <LoaderCircleIcon className="size-4 animate-spin text-muted-foreground" aria-hidden="true" />
+      </div>
+    );
+  }
   const conflicted = runtime.recovery === 'conflict';
   const recoveredAt = runtime.recoveryUpdatedAt
     ? new Intl.DateTimeFormat(zh ? 'zh-CN' : 'en', { dateStyle: 'medium', timeStyle: 'short' }).format(
@@ -412,7 +500,7 @@ function ArticleEditorRecoveryDecision({
               : `Unsaved draft found${recoveredAt ? ` · ${recoveredAt}` : ''}`}
         </strong>
         <div className="flex items-center gap-2">
-          <Button type="button" variant="outline" onClick={() => runtime.discardRecovery()}>
+          <Button type="button" variant="outline" onClick={() => void runtime.discardRecovery()}>
             {zh ? '丢弃草稿' : 'Discard draft'}
           </Button>
           {conflicted ? (
@@ -481,11 +569,12 @@ export function ArticleEditorSessionProvider({ article, children, notify, onSave
     runtimeRef.current = registry ? registry.getOrCreate(registryKey, create) : create();
   }
   const runtime = runtimeRef.current;
-  const recoveryPending = useSyncExternalStore(
+  const recoveryStatus = useSyncExternalStore(
     runtime.subscribeRecovery,
-    runtime.getRecoveryPending,
-    runtime.getRecoveryPending,
+    runtime.getRecoveryStatus,
+    runtime.getRecoveryStatus,
   );
+  const recoveryPending = recoveryStatus !== 'none';
   useEffect(() => {
     lifecycleRevisionRef.current += 1;
     registry?.retain(registryKey, runtime);

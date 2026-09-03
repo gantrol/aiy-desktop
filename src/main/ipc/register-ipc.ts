@@ -38,6 +38,8 @@ import type { VideoDocumentTranscriptBackgroundTaskRegistry } from '@/main/video
 import type { AssistantRoutingConfiguration } from '@/main/assistant/assistant-routing';
 import type { GenerationConcurrencyConfiguration } from '@/main/generation/concurrency-configuration';
 import type { ExternalImageApiConnections } from '@/main/extensions/external-image-api';
+import type { NaturalWatermarkConfigurationStore } from '@/main/extensions/natural-watermark/configuration';
+import type { NaturalWatermarkService } from '@/main/extensions/natural-watermark/service';
 import { registerStorageIpc, type LocalSpaceActions } from '@/main/ipc/storage-handlers';
 import { createTrustedIpcHandlerRegistrar, type TrustedIpcInvocationRunner } from '@/main/ipc/trusted-handlers';
 import { registerCreatorImportIpc } from '@/main/ipc/creator-import-handlers';
@@ -59,15 +61,14 @@ import { registerBackgroundIssueIpc } from '@/main/ipc/background-issue-handlers
 import { registerArticleDeliveryIpc } from '@/main/ipc/article-delivery-handlers';
 import type { ArticleEditorRecoveryStore } from '@/main/app/article-editor-recovery-store';
 import { registerBrowserCompanionIpc } from '@/main/ipc/browser-companion-handlers';
-import { resolveBrowserCompanionDataPath } from '@/main/browser-companion/data-path';
-import { BrowserCompanionHandoffStore } from '@/main/browser-companion/handoff-store';
 import { BrowserCompanionRuntime } from '@/main/browser-companion/runtime';
 import { BrowserCompanionBrowserController } from '@/main/browser-companion/browser-controller';
-import { BrowserCompanionNativeHostRegistration } from '@/main/browser-companion/native-host-registration';
+import type { BrowserCompanionLoopbackServer } from '@/main/browser-companion/loopback-server';
 import { VideoKeyChangeService } from '@/main/video-documents/key-change-service';
 import { VideoDocumentExportService } from '@/main/video-documents/export-service';
 import { VideoDocumentAudioProbeService } from '@/main/video-documents/audio-probe-service';
 import { creatorAgentAssistSchema, localeSchema, titleSchema } from '@/main/ipc/schemas';
+import { NATURAL_WATERMARK_EXTENSION_ID } from '@/shared/extension-ids';
 
 interface VideoDocumentGenerationApi {
   generateVideoDocumentArticle(
@@ -155,7 +156,56 @@ function bootstrapDictionaryProjection(database: LibraryDatabase, locale: Locale
   };
 }
 
-function registerApplicationIpc(
+interface BootstrapLoaderOptions {
+  canvasPresetPaths: string | readonly string[];
+  codex: CodexService;
+  database: LibraryDatabase;
+  deepSeekApi: DeepSeekApiConnection;
+  derivedVisualPromptPaths: string | readonly string[];
+  extensions: ExtensionRegistry;
+  externalImageApis: ExternalImageApiConnections;
+  generation: GenerationService & VideoDocumentGenerationApi;
+  localSpaces: LocalSpaceActions;
+  workspaceLayouts: WorkspaceLayoutStore;
+}
+
+function createBootstrapLoader(options: BootstrapLoaderOptions) {
+  return (rawLocale: unknown) => {
+    const locale = localeSchema.parse(rawLocale) as Locale;
+    const workbench = options.database.getWorkbench(locale, compactExecutionWorkbenchOptions);
+    const spaceId = options.localSpaces.currentSpaceId();
+    return {
+      locale,
+      spaceId,
+      spaceName: options.database.getLibraryName(),
+      spaceCoverUrl: options.localSpaces.currentCoverUrl(),
+      workspaceLayout: options.workspaceLayouts.load(spaceId),
+      ...bootstrapDictionaryProjection(options.database, locale),
+      canvasPresets: readCanvasPresets(options.canvasPresetPaths, locale),
+      derivedVisualPrompts: readDerivedVisualPrompts(options.derivedVisualPromptPaths, locale),
+      ...workbench,
+      codex: options.codex.cachedHealth,
+      extensions: options.extensions.list(),
+      modelWorker: options.generation.workerStatus,
+      imageGenerationRoutes: options.generation.imageGenerationRoutes,
+      imageBreakdownRoutes: listImageBreakdownRoutes(
+        options.extensions,
+        options.externalImageApis,
+        options.deepSeekApi,
+        options.generation.antigravityCliStatus,
+      ),
+      generationTasks: options.generation.tasks,
+      assistantRuns: options.database.listAssistantRuns(),
+      ...creativeLibraryContainers(options.database),
+      styleExplorationBatches: options.database.listStyleExplorationBatches(),
+      agentTasks: options.database.listDirectionExperimentDirectorTasks(),
+      libraryEmpty: options.database.isLibraryEmpty(),
+      creationDraft: options.database.getCreationDraft(),
+    };
+  };
+}
+
+export function registerApplicationIpc(
   getWindow: () => BrowserWindow | null,
   workspaceLayouts: WorkspaceLayoutStore,
   articleEditorRecovery: ArticleEditorRecoveryStore,
@@ -167,27 +217,31 @@ function registerApplicationIpc(
   registerArticleEditorRecoveryIpc(ipcMain, articleEditorRecovery);
 }
 
-function createBrowserCompanionRuntime(database: LibraryDatabase): BrowserCompanionRuntime {
-  const dataPath = resolveBrowserCompanionDataPath({
-    appDataRoot: app.getPath('appData'),
-    configuredUserDataPath: process.env.AIY_USER_DATA_DIR,
-  });
-  const nativeHost = new BrowserCompanionNativeHostRegistration({
-    appPath: app.getAppPath(),
-    dataPath,
-    environment: process.env,
-    platform: process.platform,
-    resourcesPath: process.resourcesPath,
-  });
+export interface RegisterIpcRuntimeOptions {
+  applicationIpcRegistered?: boolean;
+  startupChannelsRegistered?: boolean;
+  installBootstrapHandler?(handler: (rawLocale: unknown) => unknown): void;
+  runInLibraryContext?: TrustedIpcInvocationRunner;
+}
+
+function createBrowserCompanionRuntime(
+  database: LibraryDatabase,
+  service: BrowserCompanionLoopbackServer,
+  extensions: ExtensionRegistry,
+  naturalWatermarkConfiguration: NaturalWatermarkConfigurationStore,
+  naturalWatermarkService: NaturalWatermarkService,
+): BrowserCompanionRuntime {
   const browser = new BrowserCompanionBrowserController({
-    dataPath,
+    dataPath: service.dataPath,
     environment: process.env,
-    nativeHost,
     platform: process.platform,
+    prepareLaunchUrl: (target, destinationUrl) => service.prepareLaunchUrl(target, destinationUrl),
   });
-  return new BrowserCompanionRuntime(new BrowserCompanionHandoffStore(dataPath), browser, (assetId) =>
-    database.resolveAssetFile(assetId),
-  );
+  return new BrowserCompanionRuntime(service.handoffs, browser, (assetId) => database.resolveAssetFile(assetId), {
+    configuration: naturalWatermarkConfiguration,
+    service: naturalWatermarkService,
+    isActivated: () => extensions.isActivated(NATURAL_WATERMARK_EXTENSION_ID),
+  });
 }
 
 function showOpenDialog(getWindow: () => BrowserWindow | null, options: Electron.OpenDialogOptions) {
@@ -288,6 +342,7 @@ function createArticleCheckRequestRunner(
 
 export function registerIpc(
   database: LibraryDatabase,
+  browserCompanionService: BrowserCompanionLoopbackServer,
   codex: CodexService,
   assistant: AssistantService,
   generation: GenerationService & VideoDocumentGenerationApi,
@@ -304,6 +359,8 @@ export function registerIpc(
   assistantRouting: AssistantRoutingConfiguration,
   externalImageApis: ExternalImageApiConnections,
   generationConcurrency: GenerationConcurrencyConfiguration,
+  naturalWatermarkConfiguration: NaturalWatermarkConfigurationStore,
+  naturalWatermarkService: NaturalWatermarkService,
   importStarterPack: () => Promise<string>,
   canvasPresetPaths: string | readonly string[],
   derivedVisualPromptPaths: string | readonly string[],
@@ -313,11 +370,21 @@ export function registerIpc(
   workspaceLayouts: WorkspaceLayoutStore,
   articleEditorRecovery: ArticleEditorRecoveryStore,
   localSpaces: LocalSpaceActions,
-  runInLibraryContext?: TrustedIpcInvocationRunner,
+  runtime: RegisterIpcRuntimeOptions = {},
 ) {
-  registerApplicationIpc(getWindow, workspaceLayouts, articleEditorRecovery);
-  const ipcMain = createTrustedIpcHandlerRegistrar(getWindow, runInLibraryContext);
-  registerBrowserCompanionIpc(ipcMain, createBrowserCompanionRuntime(database), extensions);
+  if (!runtime.applicationIpcRegistered) registerApplicationIpc(getWindow, workspaceLayouts, articleEditorRecovery);
+  const ipcMain = createTrustedIpcHandlerRegistrar(getWindow, runtime.runInLibraryContext);
+  registerBrowserCompanionIpc(
+    ipcMain,
+    createBrowserCompanionRuntime(
+      database,
+      browserCompanionService,
+      extensions,
+      naturalWatermarkConfiguration,
+      naturalWatermarkService,
+    ),
+    extensions,
+  );
   registerArticleDeliveryIpc(ipcMain, database, extensions, articleDeliveryConnections, articleDeliveryJobs);
   const contentServices = createContentIpcServices(database, getWindow);
   const runAssistantRequest = (request: z.infer<typeof creatorAgentAssistSchema>) => {
@@ -410,7 +477,7 @@ export function registerIpc(
       }),
     generation,
   );
-  ipcMain.handle('app:request-quit', () => requestAppQuit());
+  if (!runtime.startupChannelsRegistered) ipcMain.handle('app:request-quit', () => requestAppQuit());
   const assetFiles = new AssetFileActions(
     (assetId) => database.resolveAssetFile(assetId),
     {
@@ -440,40 +507,23 @@ export function registerIpc(
     },
   );
   const imageTransforms = new ImageTransformService(database);
-  ipcMain.handle('app:loading-previews', () => localSpaces.currentPreviews());
-  ipcMain.handle('app:bootstrap', (_event, rawLocale) => {
-    const locale = localeSchema.parse(rawLocale) as Locale;
-    const workbench = database.getWorkbench(locale, compactExecutionWorkbenchOptions);
-    const spaceId = localSpaces.currentSpaceId();
-    return {
-      locale,
-      spaceId,
-      spaceName: database.getLibraryName(),
-      spaceCoverUrl: localSpaces.currentCoverUrl(),
-      workspaceLayout: workspaceLayouts.load(spaceId),
-      ...bootstrapDictionaryProjection(database, locale),
-      canvasPresets: readCanvasPresets(canvasPresetPaths, locale),
-      derivedVisualPrompts: readDerivedVisualPrompts(derivedVisualPromptPaths, locale),
-      ...workbench,
-      codex: codex.cachedHealth,
-      extensions: extensions.list(),
-      modelWorker: generation.workerStatus,
-      imageGenerationRoutes: generation.imageGenerationRoutes,
-      imageBreakdownRoutes: listImageBreakdownRoutes(
-        extensions,
-        externalImageApis,
-        deepSeekApi,
-        generation.antigravityCliStatus,
-      ),
-      generationTasks: generation.tasks,
-      assistantRuns: database.listAssistantRuns(),
-      ...creativeLibraryContainers(database),
-      styleExplorationBatches: database.listStyleExplorationBatches(),
-      agentTasks: database.listDirectionExperimentDirectorTasks(),
-      libraryEmpty: database.isLibraryEmpty(),
-      creationDraft: database.getCreationDraft(),
-    };
+  if (!runtime.startupChannelsRegistered) {
+    ipcMain.handle('app:loading-previews', () => localSpaces.currentPreviews());
+  }
+  const loadBootstrap = createBootstrapLoader({
+    canvasPresetPaths,
+    codex,
+    database,
+    deepSeekApi,
+    derivedVisualPromptPaths,
+    extensions,
+    externalImageApis,
+    generation,
+    localSpaces,
+    workspaceLayouts,
   });
+  if (runtime.installBootstrapHandler) runtime.installBootstrapHandler(loadBootstrap);
+  else ipcMain.handle('app:bootstrap', (_event, rawLocale) => loadBootstrap(rawLocale));
   ipcMain.handle('generation:projection', (_event, rawLocale) => {
     const locale = localeSchema.parse(rawLocale) as Locale;
     return {
@@ -495,6 +545,8 @@ export function registerIpc(
     externalImageApis,
     generation,
     generationConcurrency,
+    naturalWatermarkConfiguration,
+    naturalWatermarkService,
     codex,
     chooseFile,
     chooseSaveFile: (options) => showDownloadsSaveDialog(getWindow, options),

@@ -11,7 +11,6 @@ import type { CodexHistoryThreadOption } from '@/shared/contracts';
 import { Badge } from '@/renderer/components/ui/badge';
 import { Button } from '@/renderer/components/ui/button';
 import { Checkbox } from '@/renderer/components/ui/checkbox';
-import { Combobox } from '@/renderer/components/ui/combobox';
 import {
   Command,
   CommandEmpty,
@@ -231,18 +230,10 @@ function AdvancedFilters({ state }: { state: HistorySearchState }) {
 
 export function CodexHistorySearchFilters({ authorized, state }: { authorized: boolean; state: HistorySearchState }) {
   const l = useI18n().messages.extensions.codexHistorySearch;
-  const projectOptions = [
-    { value: '', label: l.filters.allProjects },
-    ...state.filterOptions.projects.map((project) => ({
-      value: project.projectId,
-      label: project.name,
-      description: [project.workspace, l.filters.projectThreads(project.threadCount)].filter(Boolean).join(' · '),
-    })),
-  ];
 
   return (
-    <div className="grid shrink-0 gap-3 border-b px-4 py-3">
-      <div className="relative">
+    <div className="flex min-h-14 shrink-0 flex-wrap items-center gap-2 border-b px-3 py-2.5">
+      <div className="relative min-w-52 flex-1">
         <SearchIcon className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
         <Input
           value={state.draftQuery}
@@ -252,37 +243,23 @@ export function CodexHistorySearchFilters({ authorized, state }: { authorized: b
           onChange={(event) => state.setDraftQuery(event.target.value)}
         />
       </div>
-      <div className="flex flex-wrap items-center gap-2">
-        <Combobox
-          value={state.projectId}
-          options={projectOptions}
-          onValueChange={state.setProjectId}
-          ariaLabel={l.filters.project}
-          placeholder={l.filters.allProjects}
-          searchPlaceholder={l.filters.searchProjects}
-          emptyText={l.filters.noProjects}
-          disabled={!authorized}
-          className="h-9 min-w-40 max-w-64 text-xs"
-          contentClassName="w-72"
-        />
-        <SessionFilter
-          disabled={!authorized}
-          loading={state.filtersLoading}
-          selected={state.selectedThread}
-          options={state.filterOptions.threads}
-          query={state.threadQuery}
-          onQueryChange={state.setThreadQuery}
-          onSelect={state.selectThread}
-        />
-        <CodexUsageDateRangePicker
-          disabled={!authorized}
-          label={l.filters.date}
-          range={state.range}
-          dateRange={state.dateRange}
-          onChange={state.setDateSelection}
-        />
-        <AdvancedFilters state={state} />
-      </div>
+      <SessionFilter
+        disabled={!authorized}
+        loading={state.filtersLoading}
+        selected={state.selectedThread}
+        options={state.filterOptions.threads}
+        query={state.threadQuery}
+        onQueryChange={state.setThreadQuery}
+        onSelect={state.selectThread}
+      />
+      <CodexUsageDateRangePicker
+        disabled={!authorized}
+        label={l.filters.date}
+        range={state.range}
+        dateRange={state.dateRange}
+        onChange={state.setDateSelection}
+      />
+      <AdvancedFilters state={state} />
     </div>
   );
 }

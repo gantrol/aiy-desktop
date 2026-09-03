@@ -21,6 +21,7 @@ import { useStableCallback } from '@/renderer/lib/useStableCallback';
 
 type TabSurfaceProps = ComponentProps<typeof WorkspaceTabSurface>;
 const MemoizedWorkspaceTabSurface = memo(WorkspaceTabSurface);
+const maxMountedTabsPerGroup = 3;
 
 interface Props {
   group: WorkspaceRuntimeGroup;
@@ -50,7 +51,7 @@ interface Props {
   onReorderTab(tabId: string, delta: -1 | 1): void;
   onNewTab(sourceTabId: string, destination: AppLocation['view'] | AppLocation): void;
   onOpenBeside(sourceTabId: string, view: AppLocation['view']): void;
-  split: boolean;
+  splitAxis: 'columns' | 'rows' | null;
   onMergeGroups(): void;
   onMoveTabToOtherGroup(tabId: string): void;
   onSplit(sourceTabId: string, axis: 'columns' | 'rows'): void;
@@ -167,16 +168,21 @@ export function AppWorkspaceGroup({
   onReorderTab,
   onNewTab,
   onOpenBeside,
-  split,
+  splitAxis,
   onMergeGroups,
   onMoveTabToOtherGroup,
   onSplit,
   onReset,
   ...surfaceProps
 }: Props) {
-  const mountedTabIdsRef = useRef(new Set<string>());
-  mountedTabIdsRef.current.add(group.activeTabId);
-  const mountedTabs = group.tabs.filter((tab) => mountedTabIdsRef.current.has(tab.id));
+  const mountedTabIdsRef = useRef<string[]>([]);
+  const availableTabIds = new Set(group.tabs.map((tab) => tab.id));
+  mountedTabIdsRef.current = [
+    group.activeTabId,
+    ...mountedTabIdsRef.current.filter((tabId) => tabId !== group.activeTabId && availableTabIds.has(tabId)),
+  ].slice(0, maxMountedTabsPerGroup);
+  const mountedTabIds = new Set(mountedTabIdsRef.current);
+  const mountedTabs = group.tabs.filter((tab) => mountedTabIds.has(tab.id));
 
   return (
     <div
@@ -196,7 +202,7 @@ export function AppWorkspaceGroup({
           onReorder={onReorderTab}
           onNewTab={(destination) => onNewTab(group.activeTabId, destination)}
           onOpenBeside={(view) => onOpenBeside(group.activeTabId, view)}
-          split={split}
+          splitAxis={splitAxis}
           onMerge={onMergeGroups}
           onMoveToOtherGroup={onMoveTabToOtherGroup}
           onSplit={(axis) => onSplit(group.activeTabId, axis)}

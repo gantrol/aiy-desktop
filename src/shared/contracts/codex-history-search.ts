@@ -4,6 +4,7 @@ const isoTimestampSchema = z.string().datetime({ offset: true });
 const calendarDateSchema = z.iso.date();
 const threadIdSchema = z.string().trim().min(1).max(512);
 const projectIdSchema = z.string().trim().max(512);
+const sectionIdSchema = z.string().trim().max(512);
 
 export const codexHistoryArchiveFilterSchema = z.enum(['ALL', 'ACTIVE', 'ARCHIVED']);
 export const codexHistoryRoleFilterSchema = z.enum(['ALL', 'USER', 'ASSISTANT']);
@@ -18,6 +19,7 @@ export const codexHistorySearchInputSchema = z
     role: codexHistoryRoleFilterSchema.default('ALL'),
     includeSubagents: z.boolean().default(false),
     projectId: projectIdSchema.default(''),
+    sectionId: sectionIdSchema.default(''),
     threadId: z.string().trim().max(512).default(''),
     workspace: z.string().trim().max(32_768).default(''),
     branch: z.string().trim().max(1_024).default(''),
@@ -34,6 +36,7 @@ export const codexHistoryFilterOptionsInputSchema = z
     archive: codexHistoryArchiveFilterSchema.default('ALL'),
     includeSubagents: z.boolean().default(false),
     projectId: projectIdSchema.default(''),
+    sectionId: sectionIdSchema.default(''),
     query: z.string().trim().max(500).default(''),
   })
   .strict();
@@ -62,6 +65,10 @@ export const codexHistorySearchResultSchema = z
     titleAvailable: z.boolean(),
     projectId: projectIdSchema,
     projectName: z.string().max(500),
+    sectionId: sectionIdSchema,
+    sectionName: z.string().max(500),
+    sectionPosition: z.number().int().nonnegative().safe().nullable(),
+    pinned: z.boolean(),
     workspace: z.string().max(32_768),
     branch: z.string().max(1_024),
     archived: z.boolean(),
@@ -79,7 +86,7 @@ export const codexHistoryProjectOptionSchema = z
     projectId: z.string().trim().min(1).max(512),
     name: z.string().trim().min(1).max(500),
     workspace: z.string().max(32_768),
-    threadCount: z.number().int().positive().safe(),
+    threadCount: z.number().int().nonnegative().safe(),
   })
   .strict();
 
@@ -89,14 +96,30 @@ export const codexHistoryThreadOptionSchema = z
     title: z.string().trim().min(1).max(500),
     projectId: projectIdSchema,
     projectName: z.string().max(500),
+    sectionId: sectionIdSchema,
+    sectionName: z.string().max(500),
+    sectionPosition: z.number().int().nonnegative().safe().nullable(),
+    archived: z.boolean(),
     workspace: z.string().max(32_768),
     updatedAt: isoTimestampSchema,
+  })
+  .strict();
+
+export const codexHistorySectionOptionSchema = z
+  .object({
+    sectionId: z.string().trim().min(1).max(512),
+    name: z.string().trim().min(1).max(500),
+    threadCount: z.number().int().nonnegative().safe(),
+    threads: z.array(codexHistoryThreadOptionSchema).max(50),
+    threadsTruncated: z.boolean(),
   })
   .strict();
 
 export const codexHistoryFilterOptionsSchema = z
   .object({
     projects: z.array(codexHistoryProjectOptionSchema).max(1_000),
+    sections: z.array(codexHistorySectionOptionSchema).max(100),
+    recentThreads: z.array(codexHistoryThreadOptionSchema).max(20),
     threads: z.array(codexHistoryThreadOptionSchema).max(50),
     threadsTruncated: z.boolean(),
   })
@@ -125,6 +148,7 @@ export type CodexHistorySearchInput = z.infer<typeof codexHistorySearchInputSche
 export type CodexHistoryFilterOptionsInput = z.infer<typeof codexHistoryFilterOptionsInputSchema>;
 export type CodexHistoryFilterOptions = z.infer<typeof codexHistoryFilterOptionsSchema>;
 export type CodexHistoryProjectOption = z.infer<typeof codexHistoryProjectOptionSchema>;
+export type CodexHistorySectionOption = z.infer<typeof codexHistorySectionOptionSchema>;
 export type CodexHistoryThreadOption = z.infer<typeof codexHistoryThreadOptionSchema>;
 export type CodexHistoryRefreshInput = z.infer<typeof codexHistoryRefreshInputSchema>;
 export type CodexHistorySearchResult = z.infer<typeof codexHistorySearchResultSchema>;

@@ -69,6 +69,15 @@ interface ImportedOutputUpdateOptions {
   provenanceConfidence?: ImportedCreationOutputDto['provenanceConfidence'];
 }
 
+export interface BrowserCompanionOutputTarget {
+  seriesId: string;
+  promptVersionId: string;
+  title: string;
+  titleLocale: 'zh' | 'en';
+  derivedVisualId: string | null;
+  selectedImageAssetId: string | null;
+}
+
 function hasExpectedSignature(item: CreatorImageImportItemInput) {
   const bytes = item.bytes;
   if (item.mimeType === 'image/png') {
@@ -138,6 +147,54 @@ export class CreationImportRepository {
         );
       })
       .immediate();
+  }
+
+  browserCompanionOutputTarget(input: {
+    creationDraftId: string;
+    seriesId: string;
+    promptVersionId: string;
+  }): BrowserCompanionOutputTarget {
+    const row = this.db
+      .prepare(
+        `SELECT series.id AS series_id, version.id AS prompt_version_id,
+          series.title, series.title_locale, visual.id AS derived_visual_id,
+          visual.selected_image_asset_id
+        FROM creation_drafts draft
+        JOIN prompt_series series
+          ON series.id = draft.source_series_id AND series.deleted_at IS NULL
+        JOIN prompt_versions version
+          ON version.id = ? AND version.series_id = series.id
+        LEFT JOIN derived_visuals visual
+          ON visual.creation_draft_id = draft.id
+        WHERE draft.id = ? AND draft.deleted_at IS NULL AND series.id = ?
+          AND (visual.id IS NULL OR visual.prompt_series_id = series.id)`,
+      )
+      .get(input.promptVersionId, input.creationDraftId, input.seriesId) as JsonMap | undefined;
+    if (!row) throw new Error('The ChatGPT output target is no longer available');
+    return {
+      seriesId: text(row.series_id),
+      promptVersionId: text(row.prompt_version_id),
+      title: text(row.title),
+      titleLocale: text(row.title_locale) === 'en' ? 'en' : 'zh',
+      derivedVisualId: row.derived_visual_id == null ? null : text(row.derived_visual_id),
+      selectedImageAssetId: row.selected_image_asset_id == null ? null : text(row.selected_image_asset_id),
+    };
+  }
+
+  importedOutputAssetByHash(seriesId: string, objectHash: string): string | null {
+    const row = this.db
+      .prepare(
+        `SELECT asset.id
+        FROM creation_output_imports imported
+        JOIN image_assets asset
+          ON asset.id = imported.image_asset_id AND asset.deleted_at IS NULL
+        WHERE imported.series_id = ? AND imported.deleted_at IS NULL
+          AND asset.object_hash = ?
+        ORDER BY imported.created_at, imported.id
+        LIMIT 1`,
+      )
+      .get(seriesId, objectHash) as JsonMap | undefined;
+    return row ? text(row.id) : null;
   }
 
   importStoredOutputs(

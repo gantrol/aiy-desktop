@@ -18,13 +18,13 @@ export function CreationOutputTabs({ value, locale, onValueChange }: Props) {
       onValueChange={(next) => next && onValueChange(next as CreationOutputMode)}
       aria-label={locale === 'zh' ? '创作视图' : 'Creation view'}
     >
-      <SegmentedItem value="results" className="whitespace-nowrap px-3">
+      <SegmentedItem value="results" className="whitespace-nowrap px-2 @min-[480px]/output:px-3">
         {locale === 'zh' ? '成果' : 'Results'}
       </SegmentedItem>
-      <SegmentedItem value="inputs" className="whitespace-nowrap px-3">
+      <SegmentedItem value="inputs" className="whitespace-nowrap px-2 @min-[480px]/output:px-3">
         {locale === 'zh' ? '输入' : 'Inputs'}
       </SegmentedItem>
-      <SegmentedItem value="records" className="whitespace-nowrap px-3">
+      <SegmentedItem value="records" className="whitespace-nowrap px-2 @min-[480px]/output:px-3">
         {locale === 'zh' ? '记录' : 'Records'}
       </SegmentedItem>
     </Segmented>

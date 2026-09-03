@@ -29,6 +29,7 @@ export type AssistantPromptAdoptionPersistence =
   | {
       kind: 'DRAFT';
       id: string;
+      expectedUpdatedAt: string;
       targetAlbumId: string | null;
       title: string;
       dictionaryScope: CreationDictionaryScopeDto;
@@ -176,6 +177,7 @@ function adoptionPersistence(
       kind: 'DRAFT',
       draft: {
         id: persistence.id,
+        expectedUpdatedAt: persistence.expectedUpdatedAt,
         ...creationDraftSaveSnapshot({
           targetAlbumId: persistence.targetAlbumId,
           title: persistence.title,
@@ -223,6 +225,19 @@ function adoptionIdentity(
   resultContextKey: string,
   prompt: CreationDraftPromptSnapshot,
 ) {
+  const persistence =
+    source.persistence?.kind === 'DRAFT'
+      ? {
+          kind: source.persistence.kind,
+          id: source.persistence.id,
+          targetAlbumId: source.persistence.targetAlbumId,
+          title: source.persistence.title,
+          dictionaryScope: source.persistence.dictionaryScope,
+          quality: source.persistence.quality,
+          selectedModelKeys: source.persistence.selectedModelKeys,
+          repeatCount: source.persistence.repeatCount,
+        }
+      : source.persistence;
   return JSON.stringify({
     baseContextKey,
     resultContextKey,
@@ -237,7 +252,7 @@ function adoptionIdentity(
       termRevisions: prompt.selectedTerms.map((term) => [term.id, term.termRevisionId]),
       palettes: paletteReferences(prompt.appliedPalettes),
     },
-    persistence: source.persistence,
+    persistence,
     promptProfileId: source.promptProfileId,
     referenceAssets: source.referenceAssets.map((asset) => ({
       id: asset.id,

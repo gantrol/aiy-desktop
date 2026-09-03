@@ -1,6 +1,8 @@
 <div align="center">
-  <img src="build/icon.png" alt="AIY Image Management Tool" width="104" />
-  <h1>AIY: AI helps you DIY</h1>
+  <img src="build/icon.png" alt="AIY" width="104" />
+  <h1>AIY</h1>
+  <p><strong>AI × DIY</strong></p>
+  <p>You create. AI helps.</p>
   <p>Collect and compare AI results, refine prompts, and build on what works</p>
   <p>
     <a href="README.md"><img src="https://img.shields.io/badge/English-README-2563eb?style=flat-square" alt="English README" /></a>
@@ -93,7 +95,7 @@ Normal build scripts no longer produce NSIS installers, portable ZIPs, macOS DMG
 
 ## ❕Early stage
 
-AIY is still very early. As of `v0.3.7`, image creation and the library are usable, but extensions and content packs may still change.
+AIY is still very early. As of `v0.3.9`, image creation and the library are usable, but extensions and content packs may still change.
 
 The basic framework is in place. Real user feedback is what will determine where this project goes next.
 

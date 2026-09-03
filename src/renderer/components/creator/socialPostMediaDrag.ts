@@ -1,18 +1,15 @@
 import type { DragEvent } from 'react';
-
-const socialPostMediaDragType = 'application/x-aiy-social-post-media';
+import { readSingleImageAssetDrag, startNativeImageAssetDrag } from '@/renderer/components/albums/albumDrag';
 
 export function startSocialPostMediaDrag(event: DragEvent<HTMLElement>, assetId: string) {
-  event.stopPropagation();
-  event.dataTransfer.effectAllowed = 'move';
-  event.dataTransfer.setData(socialPostMediaDragType, assetId);
+  return startNativeImageAssetDrag(event, [assetId]);
 }
 
 export function socialPostMediaReorderSourceId(dataTransfer: DataTransfer, mediaAssetIds: readonly string[]) {
-  const internalSourceId = dataTransfer.getData(socialPostMediaDragType).trim();
-  return internalSourceId && mediaAssetIds.includes(internalSourceId) ? internalSourceId : null;
+  const sourceId = readSingleImageAssetDrag(dataTransfer);
+  return sourceId && mediaAssetIds.includes(sourceId) ? sourceId : null;
 }
 
-export function hasSocialPostMediaReorderDrag(dataTransfer: DataTransfer) {
-  return dataTransfer.types.includes(socialPostMediaDragType);
+export function hasSocialPostMediaReorderDrag(dataTransfer: DataTransfer, mediaAssetIds: readonly string[]) {
+  return Boolean(socialPostMediaReorderSourceId(dataTransfer, mediaAssetIds));
 }

@@ -1,11 +1,10 @@
-import { CheckIcon, SearchIcon, SlidersHorizontalIcon, XIcon } from 'lucide-react';
+import { ArrowLeftIcon, CheckIcon, SearchIcon, SlidersHorizontalIcon, XIcon } from 'lucide-react';
 import { useState } from 'react';
 import { Button } from '@/renderer/components/ui/button';
 import { Checkbox } from '@/renderer/components/ui/checkbox';
 import { Input } from '@/renderer/components/ui/input';
 import { Popover, PopoverContent, PopoverTrigger } from '@/renderer/components/ui/popover';
 import { useI18n } from '@/renderer/i18n/useI18n';
-import { cn } from '@/renderer/lib/utils';
 import {
   allCreationLibraryFilters,
   isAllCreationLibraryFilter,
@@ -27,6 +26,7 @@ export function CreationLibraryToolbar({ query, filter, onQueryChange, onFilterC
   const articleLabel = locale === 'zh' ? '文章' : 'Articles';
   const evaluationLabel = locale === 'zh' ? '评测集' : 'Evaluation suites';
   const emptyFilterLabel = locale === 'zh' ? '无' : labels.filterNone;
+  const exitSearchLabel = locale === 'zh' ? '退出搜索' : 'Exit search';
   const [searchOpen, setSearchOpen] = useState(Boolean(query));
   const searchVisible = searchOpen || Boolean(query);
   const filterActive = !isAllCreationLibraryFilter(filter);
@@ -49,70 +49,89 @@ export function CreationLibraryToolbar({ query, filter, onQueryChange, onFilterC
     onFilterChange({ ...filter, [key]: checked });
   }
 
-  return (
-    <div className="flex h-10 shrink-0 items-center justify-end gap-1 border-b border-border/60 px-3">
-      {searchVisible ? (
-        <label className="relative min-w-0 flex-1">
-          <SearchIcon className="pointer-events-none absolute top-1/2 left-2.5 size-3.5 -translate-y-1/2 text-muted-foreground" />
-          <Input
-            autoFocus
-            value={query}
-            className="h-8 pr-8 pl-8 text-xs focus-visible:border-ring"
-            placeholder={labels.searchPlaceholder}
-            aria-label={labels.search}
-            onBlur={(event) => {
-              if (!event.currentTarget.value) setSearchOpen(false);
-            }}
-            onChange={(event) => onQueryChange(event.target.value)}
-            onKeyDown={(event) => {
-              if (event.key !== 'Escape') return;
-              onQueryChange('');
-              setSearchOpen(false);
-            }}
+  function closeSearch() {
+    onQueryChange('');
+    setSearchOpen(false);
+  }
+
+  if (!searchVisible) {
+    const triggerLabel = filterActive ? `${labels.search} · ${filterControlLabel}` : labels.search;
+    return (
+      <Button
+        type="button"
+        variant={filterActive ? 'secondary' : 'ghost'}
+        size="icon-sm"
+        className="relative text-muted-foreground hover:text-foreground"
+        title={triggerLabel}
+        aria-label={triggerLabel}
+        onClick={() => setSearchOpen(true)}
+      >
+        <SearchIcon className="size-4" />
+        {filterActive && (
+          <span
+            aria-hidden="true"
+            className="pointer-events-none absolute top-1 right-1 size-1.5 rounded-full bg-selected-foreground"
           />
-          {query && (
-            <Button
-              type="button"
-              variant="ghost"
-              size="icon-sm"
-              className="absolute top-1/2 right-0.5 size-7 -translate-y-1/2"
-              title={labels.clearSearch}
-              aria-label={labels.clearSearch}
-              onMouseDown={(event) => event.preventDefault()}
-              onClick={() => onQueryChange('')}
-            >
-              <XIcon className="size-3.5" />
-            </Button>
-          )}
-        </label>
-      ) : (
-        <Button
-          type="button"
-          variant="ghost"
-          size="icon-sm"
-          className="text-muted-foreground hover:text-foreground"
-          title={labels.search}
+        )}
+      </Button>
+    );
+  }
+
+  return (
+    <div className="absolute inset-0 z-30 flex items-center gap-1 bg-surface-sunken px-3">
+      <Button
+        type="button"
+        variant="ghost"
+        size="icon-sm"
+        className="shrink-0 text-muted-foreground hover:text-foreground"
+        title={exitSearchLabel}
+        aria-label={exitSearchLabel}
+        onClick={closeSearch}
+      >
+        <ArrowLeftIcon className="size-4" />
+      </Button>
+      <label className="relative min-w-0 flex-1">
+        <SearchIcon className="pointer-events-none absolute top-1/2 left-2.5 size-3.5 -translate-y-1/2 text-muted-foreground" />
+        <Input
+          autoFocus
+          value={query}
+          className="h-8 pr-8 pl-8 text-xs focus-visible:border-ring"
+          placeholder={labels.searchPlaceholder}
           aria-label={labels.search}
-          onClick={() => setSearchOpen(true)}
-        >
-          <SearchIcon className="size-4" />
-        </Button>
-      )}
+          onChange={(event) => onQueryChange(event.target.value)}
+          onKeyDown={(event) => {
+            if (event.key !== 'Escape') return;
+            event.preventDefault();
+            if (query) onQueryChange('');
+            else setSearchOpen(false);
+          }}
+        />
+        {query && (
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon-sm"
+            className="absolute top-1/2 right-0.5 size-7 -translate-y-1/2"
+            title={labels.clearSearch}
+            aria-label={labels.clearSearch}
+            onMouseDown={(event) => event.preventDefault()}
+            onClick={() => onQueryChange('')}
+          >
+            <XIcon className="size-3.5" />
+          </Button>
+        )}
+      </label>
       <Popover>
         <PopoverTrigger asChild>
           <Button
             type="button"
             variant={filterActive ? 'secondary' : 'ghost'}
-            size={filterActive ? 'sm' : 'icon-sm'}
-            className={cn(
-              'h-8 shrink-0 gap-1.5 text-xs',
-              filterActive && 'max-w-[9rem] bg-selected px-2 text-selected-foreground hover:bg-selected',
-            )}
+            size="icon-sm"
+            className="h-8 shrink-0"
             title={filterControlLabel}
             aria-label={filterControlLabel}
           >
             <SlidersHorizontalIcon className="size-4 shrink-0" />
-            {filterActive && <span className="truncate">{filterValueLabel}</span>}
           </Button>
         </PopoverTrigger>
         <PopoverContent align="end" className="w-44 p-1.5">

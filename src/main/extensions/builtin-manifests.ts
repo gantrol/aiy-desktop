@@ -30,6 +30,17 @@ import {
   BYTEPLUS_EU_ENDPOINT_PERMISSION,
   externalImageApiConfiguration,
 } from '@/main/extensions/external-image-api/endpoints';
+import {
+  CODEX_HISTORY_SEARCH_CONTRIBUTIONS,
+  CODEX_HISTORY_SEARCH_PERMISSIONS,
+  CODEX_IMAGE_DISCOVERY_CONTRIBUTIONS,
+  CODEX_IMAGE_DISCOVERY_PERMISSIONS,
+  CODEX_USAGE_INVESTIGATOR_CONTRIBUTIONS,
+  CODEX_USAGE_INVESTIGATOR_OPTIONAL_PERMISSIONS,
+  CODEX_USAGE_INVESTIGATOR_PERMISSIONS,
+  CODEX_VISUALIZATION_DISCOVERY_CONTRIBUTIONS,
+  CODEX_VISUALIZATION_DISCOVERY_PERMISSIONS,
+} from '@/main/extensions/host-runtime-contracts';
 
 export const CODEX_APP_SERVER_PERMISSIONS = [
   EXTENSION_PERMISSION.integrationConnectCodexAppServer,
@@ -110,7 +121,7 @@ export const BUILTIN_EXTENSION_MANIFESTS: readonly ExtensionManifestDto[] = [
     manifestVersion: 1,
     kind: 'LANGUAGE',
     id: ENGLISH_LANGUAGE_EXTENSION_ID,
-    version: '0.3.7',
+    version: '0.3.9',
     displayName: 'English',
     description: "Provides the app's English interface.",
     engines: BUILTIN_EXTENSION_ENGINES,
@@ -165,28 +176,56 @@ export const BUILTIN_EXTENSION_MANIFESTS: readonly ExtensionManifestDto[] = [
     manifestVersion: 1,
     kind: 'CAPABILITY',
     id: CODEX_APP_SERVER_EXTENSION_ID,
-    version: '0.3.3',
-    displayName: 'Codex App Server',
-    description: 'Codex tasks, creative proposals, and separate App Server and CLI image generation routes.',
+    version: '0.3.4',
+    displayName: 'Did Codex Work Hard Today?',
+    description: 'Connect Codex and manage local task history, usage, images, and visualizations in one workspace.',
     engines: BUILTIN_EXTENSION_ENGINES,
     contributes: {
-      commands: ['codex.refreshConnection'],
-      workflows: ['codex.promptAssist', 'codex.directionExploration', 'codex.targetedImageRefinement'],
+      commands: [
+        'codex.refreshConnection',
+        ...(CODEX_HISTORY_SEARCH_CONTRIBUTIONS.commands ?? []),
+        ...(CODEX_IMAGE_DISCOVERY_CONTRIBUTIONS.commands ?? []),
+        ...(CODEX_USAGE_INVESTIGATOR_CONTRIBUTIONS.commands ?? []),
+        ...(CODEX_VISUALIZATION_DISCOVERY_CONTRIBUTIONS.commands ?? []),
+      ],
+      workflows: [
+        'codex.promptAssist',
+        'codex.directionExploration',
+        'codex.targetedImageRefinement',
+        ...(CODEX_HISTORY_SEARCH_CONTRIBUTIONS.workflows ?? []),
+        ...(CODEX_IMAGE_DISCOVERY_CONTRIBUTIONS.workflows ?? []),
+        ...(CODEX_USAGE_INVESTIGATOR_CONTRIBUTIONS.workflows ?? []),
+        ...(CODEX_VISUALIZATION_DISCOVERY_CONTRIBUTIONS.workflows ?? []),
+      ],
       tools: ['codex.image.generate', 'codex.image.refine'],
+      searchProviders: [
+        ...(CODEX_HISTORY_SEARCH_CONTRIBUTIONS.searchProviders ?? []),
+        ...(CODEX_IMAGE_DISCOVERY_CONTRIBUTIONS.searchProviders ?? []),
+        ...(CODEX_VISUALIZATION_DISCOVERY_CONTRIBUTIONS.searchProviders ?? []),
+      ],
       modelProviders: [CODEX_PROVIDER_ID],
     },
-    permissions: [...CODEX_APP_SERVER_PERMISSIONS],
-    optionalPermissions: [],
+    permissions: [
+      ...new Set([
+        ...CODEX_APP_SERVER_PERMISSIONS,
+        ...CODEX_HISTORY_SEARCH_PERMISSIONS,
+        ...CODEX_IMAGE_DISCOVERY_PERMISSIONS,
+        ...CODEX_USAGE_INVESTIGATOR_PERMISSIONS,
+        ...CODEX_VISUALIZATION_DISCOVERY_PERMISSIONS,
+      ]),
+    ],
+    optionalPermissions: [...CODEX_USAGE_INVESTIGATOR_OPTIONAL_PERMISSIONS],
     i18n: {
       defaultLocale: 'en',
       locales: {
         en: {
-          displayName: 'Codex App Server',
-          description: 'Codex tasks, creative proposals, and separate App Server and CLI image generation routes.',
+          displayName: 'Did Codex Work Hard Today?',
+          description:
+            'Connect Codex and manage local task history, usage, images, and visualizations in one workspace.',
         },
         zh: {
-          displayName: 'Codex 应用服务器',
-          description: '连接 Codex 任务与创作提案，并提供彼此独立的 App Server、CLI 生图路径和基于评注的定向精修能力。',
+          displayName: 'Codex今天努力了吗？',
+          description: '连接 Codex，并在一个工作台管理本地聊天记录、用量、图片和可视化。',
         },
       },
     },

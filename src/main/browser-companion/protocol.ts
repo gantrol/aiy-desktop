@@ -5,12 +5,37 @@ import {
   browserCompanionTargetSchema,
 } from '@/shared/contracts/browser-companion';
 
-export const BROWSER_COMPANION_PROTOCOL_VERSION = 4 as const;
-export const BROWSER_COMPANION_NATIVE_HOST_NAME = 'com.catai.aiy.browser_companion';
-export const BROWSER_COMPANION_EXTENSION_ORIGIN = 'chrome-extension://eagfpifnbkfmojcjfbababmlmagmdopg/';
-export const BROWSER_COMPANION_MEDIA_CHUNK_BYTES = 512 * 1024;
+export const BROWSER_COMPANION_PROTOCOL_VERSION = 5 as const;
+export const BROWSER_COMPANION_EXTENSION_ID = 'eagfpifnbkfmojcjfbababmlmagmdopg';
+export const BROWSER_COMPANION_EXTENSION_ORIGIN = `chrome-extension://${BROWSER_COMPANION_EXTENSION_ID}/`;
+export const BROWSER_COMPANION_LOOPBACK_HOST = '127.0.0.1';
+export const BROWSER_COMPANION_LOOPBACK_PORT = 47_831;
+export const BROWSER_COMPANION_LOOPBACK_ORIGIN =
+  `http://${BROWSER_COMPANION_LOOPBACK_HOST}:${BROWSER_COMPANION_LOOPBACK_PORT}` as const;
+export const BROWSER_COMPANION_BOOTSTRAP_PATH_PREFIX = '/v1/connect/';
+export const BROWSER_COMPANION_REQUEST_PATH = '/v1/requests';
+export const BROWSER_COMPANION_MEDIA_PATH = '/v1/media';
+export const BROWSER_COMPANION_OUTPUT_IMPORT_PATH_PREFIX = '/v1/output-imports/';
+export const BROWSER_COMPANION_REQUEST_SIGNATURE_HEADER = 'x-aiy-companion-signature';
+export const BROWSER_COMPANION_RESPONSE_SIGNATURE_HEADER = 'x-aiy-companion-response-signature';
 export const BROWSER_COMPANION_MAX_MEDIA_BYTES = 32 * 1024 * 1024;
 export const BROWSER_COMPANION_MAX_TOTAL_MEDIA_BYTES = 128 * 1024 * 1024;
+export const BROWSER_COMPANION_MAX_OUTPUT_IMPORT_BYTES = 25 * 1024 * 1024;
+export const BROWSER_COMPANION_MAX_REQUEST_BYTES = 64 * 1024;
+export const BROWSER_COMPANION_MAX_RESPONSE_BYTES = 64 * 1024;
+export const BROWSER_COMPANION_REQUEST_CLOCK_SKEW_MS = 60_000;
+
+const browserCompanionWebOriginTarget = {
+  'https://chatgpt.com': 'chatgpt',
+  'https://mp.weixin.qq.com': 'wechat',
+  'https://weibo.com': 'weibo',
+  'https://www.weibo.com': 'weibo',
+} as const;
+
+export function browserCompanionTargetFromWebOrigin(value: string | undefined) {
+  if (!value) return null;
+  return browserCompanionWebOriginTarget[value as keyof typeof browserCompanionWebOriginTarget] ?? null;
+}
 
 export const browserCompanionMediaMimeTypeSchema = z.enum([
   'image/png',
@@ -29,6 +54,28 @@ export const browserCompanionMediaSchema = z
     sha256: z.string().regex(/^[a-f0-9]{64}$/),
   })
   .strict();
+
+export const browserCompanionOutputImageSchema = z
+  .object({
+    fileName: z.string().trim().min(1).max(240),
+    mimeType: z.enum(['image/png', 'image/jpeg', 'image/webp']),
+    byteSize: z.number().int().positive().max(BROWSER_COMPANION_MAX_OUTPUT_IMPORT_BYTES),
+    sha256: z.string().regex(/^[a-f0-9]{64}$/),
+  })
+  .strict();
+
+const chatGptConversationUrlSchema = z
+  .string()
+  .url()
+  .max(4_096)
+  .refine((value) => {
+    try {
+      const url = new URL(value);
+      return url.protocol === 'https:' && url.origin === 'https://chatgpt.com' && !url.username && !url.password;
+    } catch {
+      return false;
+    }
+  });
 
 const currentRecordFields = {
   schemaVersion: z.literal(4),
@@ -148,7 +195,7 @@ const authenticatedRequestFields = {
   completionToken: z.string().uuid(),
 } as const;
 
-export const browserCompanionNativeRequestSchema = z.discriminatedUnion('kind', [
+export const browserCompanionRequestSchema = z.discriminatedUnion('kind', [
   z
     .object({
       protocolVersion: z.literal(BROWSER_COMPANION_PROTOCOL_VERSION),
@@ -167,15 +214,6 @@ export const browserCompanionNativeRequestSchema = z.discriminatedUnion('kind', 
   z
     .object({
       ...authenticatedRequestFields,
-      kind: z.literal('read-media-chunk'),
-      mediaId: z.string().uuid(),
-      offset: z.number().int().nonnegative().max(BROWSER_COMPANION_MAX_MEDIA_BYTES),
-      maxBytes: z.number().int().positive().max(BROWSER_COMPANION_MEDIA_CHUNK_BYTES),
-    })
-    .strict(),
-  z
-    .object({
-      ...authenticatedRequestFields,
       kind: z.literal('complete-handoff'),
     })
     .strict(),
@@ -185,32 +223,52 @@ export const browserCompanionNativeRequestSchema = z.discriminatedUnion('kind', 
       kind: z.literal('release-handoff'),
     })
     .strict(),
+  z
+    .object({
+      protocolVersion: z.literal(BROWSER_COMPANION_PROTOCOL_VERSION),
+      kind: z.literal('prepare-output-import'),
+      handoffId: z.string().uuid(),
+      sourceUrl: chatGptConversationUrlSchema,
+      image: browserCompanionOutputImageSchema,
+    })
+    .strict(),
 ]);
 
-const nativeHandoffSchema = browserCompanionClaimedRecordSchema
-  .omit({ schemaVersion: true, leaseExpiresAt: true })
+export const browserCompanionMediaRequestSchema = z
+  .object({
+    ...authenticatedRequestFields,
+    kind: z.literal('read-media'),
+    mediaId: z.string().uuid(),
+  })
   .strict();
 
-export const browserCompanionNativeResponseSchema = z.discriminatedUnion('kind', [
+export const browserCompanionLoopbackEnvelopeSchema = z
+  .object({
+    protocolVersion: z.literal(BROWSER_COMPANION_PROTOCOL_VERSION),
+    requestId: z.string().uuid(),
+    sentAt: z.number().int().nonnegative(),
+    nonce: z.string().uuid(),
+    target: browserCompanionTargetSchema,
+    request: z.union([browserCompanionRequestSchema, browserCompanionMediaRequestSchema]),
+  })
+  .strict();
+
+export const browserCompanionBridgeCredentialsSchema = z
+  .object({
+    schemaVersion: z.literal(1),
+    token: z.string().regex(/^[A-Za-z0-9_-]{43}$/),
+  })
+  .strict();
+
+const handoffSchema = browserCompanionClaimedRecordSchema.omit({ schemaVersion: true, leaseExpiresAt: true }).strict();
+
+export const browserCompanionResponseSchema = z.discriminatedUnion('kind', [
   z
     .object({
       protocolVersion: z.literal(BROWSER_COMPANION_PROTOCOL_VERSION),
       ok: z.literal(true),
       kind: z.literal('handoff'),
-      handoff: nativeHandoffSchema,
-    })
-    .strict(),
-  z
-    .object({
-      protocolVersion: z.literal(BROWSER_COMPANION_PROTOCOL_VERSION),
-      ok: z.literal(true),
-      kind: z.literal('media-chunk'),
-      handoffId: z.string().uuid(),
-      mediaId: z.string().uuid(),
-      offset: z.number().int().nonnegative(),
-      nextOffset: z.number().int().nonnegative(),
-      eof: z.boolean(),
-      base64: z.string().max(Math.ceil((BROWSER_COMPANION_MEDIA_CHUNK_BYTES * 4) / 3) + 4),
+      handoff: handoffSchema,
     })
     .strict(),
   z
@@ -231,6 +289,27 @@ export const browserCompanionNativeResponseSchema = z.discriminatedUnion('kind',
   z
     .object({
       protocolVersion: z.literal(BROWSER_COMPANION_PROTOCOL_VERSION),
+      ok: z.literal(true),
+      kind: z.literal('output-import-ready'),
+      handoffId: z.string().uuid(),
+      uploadToken: z.string().uuid(),
+    })
+    .strict(),
+  z
+    .object({
+      protocolVersion: z.literal(BROWSER_COMPANION_PROTOCOL_VERSION),
+      ok: z.literal(true),
+      kind: z.literal('output-imported'),
+      handoffId: z.string().uuid(),
+      seriesId: z.string().min(1).max(200),
+      promptVersionId: z.string().min(1).max(200),
+      imageAssetId: z.string().min(1).max(200),
+      adopted: z.boolean(),
+    })
+    .strict(),
+  z
+    .object({
+      protocolVersion: z.literal(BROWSER_COMPANION_PROTOCOL_VERSION),
       ok: z.literal(false),
       kind: z.literal('error'),
       code: z.enum([
@@ -242,6 +321,9 @@ export const browserCompanionNativeResponseSchema = z.discriminatedUnion('kind',
         'HANDOFF_TOKEN_MISMATCH',
         'MEDIA_NOT_FOUND',
         'MEDIA_CHANGED',
+        'OUTPUT_IMPORT_NOT_ALLOWED',
+        'OUTPUT_UPLOAD_NOT_FOUND',
+        'OUTPUT_UPLOAD_CHANGED',
         'STATE_CONFLICT',
         'CORRUPT_STATE',
         'INTERNAL_ERROR',
@@ -256,9 +338,9 @@ export type BrowserCompanionClaimedRecord = z.infer<typeof browserCompanionClaim
 export type BrowserCompanionDeliveredRecord = z.infer<typeof browserCompanionDeliveredRecordSchema>;
 export type BrowserCompanionMedia = z.infer<typeof browserCompanionMediaSchema>;
 export type BrowserCompanionMediaMimeType = z.infer<typeof browserCompanionMediaMimeTypeSchema>;
-export type BrowserCompanionNativeRequest = z.infer<typeof browserCompanionNativeRequestSchema>;
-export type BrowserCompanionNativeResponse = z.infer<typeof browserCompanionNativeResponseSchema>;
-
-export function browserCompanionNativeOrigin(argv: readonly string[]): string | null {
-  return argv.find((argument) => /^chrome-extension:\/\/[a-p]{32}\/$/.test(argument)) ?? null;
-}
+export type BrowserCompanionOutputImage = z.infer<typeof browserCompanionOutputImageSchema>;
+export type BrowserCompanionRequest = z.infer<typeof browserCompanionRequestSchema>;
+export type BrowserCompanionMediaRequest = z.infer<typeof browserCompanionMediaRequestSchema>;
+export type BrowserCompanionLoopbackEnvelope = z.infer<typeof browserCompanionLoopbackEnvelopeSchema>;
+export type BrowserCompanionBridgeCredentials = z.infer<typeof browserCompanionBridgeCredentialsSchema>;
+export type BrowserCompanionResponse = z.infer<typeof browserCompanionResponseSchema>;

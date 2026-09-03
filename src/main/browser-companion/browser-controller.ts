@@ -3,7 +3,6 @@ import { randomUUID } from 'node:crypto';
 import { mkdir, open, rename, rm, stat, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { z } from 'zod';
-import { BrowserCompanionNativeHostRegistration } from '@/main/browser-companion/native-host-registration';
 import {
   browserCompanionBrowserIdSchema,
   browserCompanionDestinationSchema,
@@ -226,8 +225,8 @@ export class BrowserCompanionBrowserController {
     private readonly options: {
       dataPath: string;
       environment: NodeJS.ProcessEnv;
-      nativeHost: BrowserCompanionNativeHostRegistration;
       platform: NodeJS.Platform;
+      prepareLaunchUrl(target: BrowserCompanionTarget, destinationUrl: string): string;
     },
   ) {
     this.selectionPath = path.join(options.dataPath, 'browser-destinations.json');
@@ -422,11 +421,12 @@ export class BrowserCompanionBrowserController {
         'AIY Companion is not installed in this Profile',
       );
     }
+    let launchUrl: string;
     try {
-      await this.options.nativeHost.register(destination.browserId);
+      launchUrl = this.options.prepareLaunchUrl(target, url);
     } catch (reason) {
       throw new BrowserCompanionLaunchError(
-        'NATIVE_HOST_UNAVAILABLE',
+        'DESKTOP_SERVICE_UNAVAILABLE',
         reason instanceof Error ? reason.message : String(reason),
       );
     }
@@ -434,7 +434,7 @@ export class BrowserCompanionBrowserController {
     const args = [`--profile-directory=${profile.directory}`];
     const overrideRoot = this.options.environment[definition.userDataOverride]?.trim();
     if (overrideRoot) args.unshift(`--user-data-dir=${path.resolve(overrideRoot)}`);
-    args.push(url);
+    args.push(launchUrl);
     await new Promise<void>((resolve, reject) => {
       const child = spawn(executable, args, { detached: true, stdio: 'ignore', windowsHide: false });
       child.once('error', (reason) => reject(new BrowserCompanionLaunchError('LAUNCH_FAILED', reason.message)));

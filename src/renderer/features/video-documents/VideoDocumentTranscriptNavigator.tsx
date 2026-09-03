@@ -306,7 +306,7 @@ export function VideoDocumentTranscriptNavigator({
           />
           <span
             role="tooltip"
-            className="pointer-events-none absolute left-10 z-50 w-64 -translate-y-1/2 rounded-md border border-border bg-overlay/95 px-3 py-2 text-left shadow-overlay backdrop-blur-sm"
+            className="pointer-events-none absolute left-10 z-40 w-64 -translate-y-1/2 rounded-md border border-border bg-overlay/95 px-3 py-2 text-left shadow-overlay backdrop-blur-sm"
             style={{
               top: `clamp(2.75rem, ${positionOf(hoverTimestampMs, normalizedDurationMs)}%, calc(100% - 2.75rem))`,
             }}

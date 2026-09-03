@@ -51,10 +51,10 @@ interface DesktopApplicationShellOptions {
   stopBackgroundFileOperations?(): Promise<void>;
 }
 
-type ReadyUpdatePromptResult = 'NOT_READY' | 'UPDATE' | 'CONTINUE' | 'CANCEL';
-
 export class DesktopApplicationShell {
   mainWindow: BrowserWindow | null = null;
+
+  private backgroundServicesStartDeferred = false;
 
   private generation: BackgroundGenerationClient | null = null;
 
@@ -85,8 +85,6 @@ export class DesktopApplicationShell {
   private appUpdates: AppUpdateService | null = null;
 
   appUpdateInstallPreparing = false;
-
-  private appUpdatePromptOpen = false;
 
   private appUpdateRecoveryRequested = false;
 
@@ -185,65 +183,10 @@ export class DesktopApplicationShell {
     app.quit();
   };
 
-  private readonly promptReadyUpdate = async (mode: 'HIDE' | 'QUIT'): Promise<ReadyUpdatePromptResult> => {
-    const updates = this.appUpdates;
-    if (!updates || updates.getState().phase !== 'READY') return 'NOT_READY';
-    if (this.appUpdatePromptOpen) return 'CANCEL';
-
-    this.appUpdatePromptOpen = true;
-    const isChinese = app.getLocale().toLowerCase().startsWith('zh');
-    const quitting = mode === 'QUIT';
-    const options: Electron.MessageBoxOptions = {
-      type: 'info',
-      title: productNameForLocale(app.getLocale()),
-      message: isChinese
-        ? 'Microsoft Store 更新已下载，是否重启并更新？'
-        : 'A Microsoft Store update is downloaded. Restart and update now?',
-      buttons: quitting
-        ? isChinese
-          ? ['重启并更新', '退出但不更新', '取消']
-          : ['Restart and Update', 'Quit Without Updating', 'Cancel']
-        : isChinese
-          ? ['重启并更新', '稍后']
-          : ['Restart and Update', 'Later'],
-      defaultId: 0,
-      cancelId: quitting ? 2 : 1,
-      noLink: true,
-    };
-    try {
-      const parent =
-        this.mainWindow && !this.mainWindow.isDestroyed() && this.mainWindow.isVisible() ? this.mainWindow : null;
-      const { response } = parent ? await dialog.showMessageBox(parent, options) : await dialog.showMessageBox(options);
-      if (response === 0) return 'UPDATE';
-      if (response === 1) return 'CONTINUE';
-      return 'CANCEL';
-    } finally {
-      this.appUpdatePromptOpen = false;
-    }
-  };
-
-  private readonly installReadyUpdate = async () => {
-    const updates = this.appUpdates;
-    if (!updates || updates.getState().phase !== 'READY') return;
-    await updates.install(this.prepareAppUpdateInstall, this.relaunchAfterFailedUpdateInstall);
-  };
-
-  private readonly handleReadyUpdateWindowClose = async (window: BrowserWindow) => {
-    const decision = await this.promptReadyUpdate('HIDE');
-    if (this.appQuitRequested || window.isDestroyed()) return;
-    if (decision === 'UPDATE') {
-      await this.installReadyUpdate();
-      return;
-    }
-    if (decision !== 'CONTINUE') return;
-    window.hide();
-    this.ensureAppTray();
-    this.updateAppTray();
-  };
-
   readonly prepareAppUpdateInstall = async () => {
     if (this.pendingCloseGuardOpen || this.appUpdateInstallPreparing || this.libraryTransitionPending) return false;
     this.appUpdateInstallPreparing = true;
+    let prepared = false;
     try {
       const count = this.pendingModelTaskCount();
       if (count > 0) {
@@ -289,15 +232,17 @@ export class DesktopApplicationShell {
         throw error;
       }
       this.appQuitRequested = true;
+      prepared = true;
       return true;
     } finally {
-      this.appUpdateInstallPreparing = false;
+      if (!prepared) this.appUpdateInstallPreparing = false;
     }
   };
 
   readonly relaunchAfterFailedUpdateInstall = () => {
     if (this.appUpdateRecoveryRequested) return;
     this.appUpdateRecoveryRequested = true;
+    this.appUpdateInstallPreparing = false;
     console.warn('[app-update] relaunching the current version after an update installation failure');
     try {
       app.relaunch();
@@ -427,13 +372,6 @@ export class DesktopApplicationShell {
       app.quit();
       return;
     }
-    const updateDecision = await this.promptReadyUpdate('QUIT');
-    if (this.appQuitRequested) return;
-    if (updateDecision === 'UPDATE') {
-      await this.installReadyUpdate();
-      return;
-    }
-    if (updateDecision === 'CANCEL') return;
     if (this.pendingModelTaskCount() > 0) {
       await this.guardPendingClose();
       return;
@@ -645,11 +583,6 @@ export class DesktopApplicationShell {
         event.preventDefault();
         return;
       }
-      if (process.platform === 'win32' && this.appUpdates?.getState().phase === 'READY') {
-        event.preventDefault();
-        void this.handleReadyUpdateWindowClose(window);
-        return;
-      }
       if (process.platform === 'win32') {
         event.preventDefault();
         window.hide();
@@ -695,7 +628,7 @@ export class DesktopApplicationShell {
       }
       if (this.options.allowWindowPresentation) window.show();
       this.updateAppTray();
-      this.activeLibraryContext?.startBackgroundServices();
+      this.requestBackgroundServicesStart();
       this.appUpdates?.startAutomaticChecks();
       await runDevelopmentCapture(window);
     });
@@ -758,6 +691,20 @@ export class DesktopApplicationShell {
     this.libraryContextShutdownComplete = false;
     this.libraryContextShutdownPromise = null;
     this.applicationShutdownPromise = null;
+  }
+
+  deferBackgroundServicesStart() {
+    this.backgroundServicesStartDeferred = true;
+  }
+
+  resumeBackgroundServicesStart() {
+    this.backgroundServicesStartDeferred = false;
+    this.requestBackgroundServicesStart();
+  }
+
+  requestBackgroundServicesStart(context = this.activeLibraryContext) {
+    if (this.backgroundServicesStartDeferred || !this.mainWindow?.isVisible()) return;
+    context?.startBackgroundServices();
   }
 
   setAppUpdates(updates: AppUpdateService) {

@@ -1,9 +1,11 @@
-import { BrowserCompanionHandoffStore } from '@/main/browser-companion/handoff-store';
+import { BrowserCompanionHandoffStore, type BrowserCompanionMediaSource } from '@/main/browser-companion/handoff-store';
 import {
   BrowserCompanionBrowserController,
   BrowserCompanionLaunchError,
 } from '@/main/browser-companion/browser-controller';
 import type { ResolvedAssetFile } from '@/main/database/assets/asset-file-repository';
+import type { NaturalWatermarkConfigurationStore } from '@/main/extensions/natural-watermark/configuration';
+import type { NaturalWatermarkService } from '@/main/extensions/natural-watermark/service';
 import {
   browserCompanionDestinationsResultSchema,
   browserCompanionDeleteResultSchema,
@@ -27,10 +29,38 @@ const TARGET_URLS: Record<BrowserCompanionTarget, string> = {
   weibo: 'https://weibo.com/',
 };
 
+interface NaturalWatermarkRuntime {
+  configuration: NaturalWatermarkConfigurationStore;
+  service: NaturalWatermarkService;
+  isActivated(): boolean;
+}
+
 function launchUrl(target: BrowserCompanionTarget, handoffId: string): string {
   const url = new URL(TARGET_URLS[target]);
   url.hash = `aiy-handoff=${handoffId}`;
   return url.toString();
+}
+
+function fileMediaSource(file: ResolvedAssetFile): BrowserCompanionMediaSource {
+  return {
+    kind: 'file',
+    absolutePath: file.absolutePath,
+    suggestedName: file.suggestedName,
+    mimeType: file.mimeType,
+  };
+}
+
+async function watermarkedMediaSources(
+  files: readonly ResolvedAssetFile[],
+  runtime: NaturalWatermarkRuntime,
+): Promise<BrowserCompanionMediaSource[]> {
+  const configuration = await runtime.configuration.get();
+  return Promise.all(
+    files.map(async (file) => ({
+      kind: 'bytes' as const,
+      ...(await runtime.service.apply(file, configuration)),
+    })),
+  );
 }
 
 export class BrowserCompanionRuntime {
@@ -38,10 +68,11 @@ export class BrowserCompanionRuntime {
     private readonly handoffs: BrowserCompanionHandoffStore,
     private readonly browser: BrowserCompanionBrowserController,
     private readonly resolveAssetFile: (assetId: string) => ResolvedAssetFile | null,
+    private readonly naturalWatermark?: NaturalWatermarkRuntime,
   ) {}
 
   async stage(input: BrowserCompanionStageInput): Promise<BrowserCompanionStageResult> {
-    const media = (input.mediaAssetIds ?? []).map((assetId) => {
+    const resolvedMedia = (input.mediaAssetIds ?? []).map((assetId) => {
       const file = this.resolveAssetFile(assetId);
       if (!file) throw new Error(`Browser companion image is unavailable: ${assetId}`);
       if (!file.mimeType.startsWith('image/')) {
@@ -49,6 +80,10 @@ export class BrowserCompanionRuntime {
       }
       return file;
     });
+    const naturalWatermark = this.naturalWatermark?.isActivated() ? this.naturalWatermark : null;
+    const media = naturalWatermark
+      ? await watermarkedMediaSources(resolvedMedia, naturalWatermark)
+      : resolvedMedia.map(fileMediaSource);
     const handoff = await this.handoffs.stage(input, media);
     let browserOpened = true;
     let browserOpenError: BrowserCompanionStageResult['browserOpenError'] = null;

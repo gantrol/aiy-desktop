@@ -1,7 +1,7 @@
 import { forwardRef, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { MousePointer2Icon } from 'lucide-react';
 import type { BootstrapDto, ExtensionDto } from '@/shared/contracts';
-import { CODEX_IMAGE_DISCOVERY_EXTENSION_ID } from '@/shared/extension-ids';
+import { CODEX_EXTENSION_ID } from '@/shared/extension-ids';
 import { Badge } from '@/renderer/components/ui/badge';
 import { GenerationComparison } from '@/renderer/components/creator/GenerationComparison';
 import { StyleExplorationPanel } from '@/renderer/components/creator/StyleExplorationPanel';
@@ -51,7 +51,7 @@ function DemoScene({
       style={{ visibility: active ? 'visible' : 'hidden' }}
     >
       {children}
-      <div className="absolute inset-0 z-50" aria-hidden="true" />
+      <div className="absolute inset-0 z-10" aria-hidden="true" />
     </div>
   );
 }
@@ -61,7 +61,7 @@ function FeatureDemoCursor({ x, y }: { x: number; y: number }) {
     <MousePointer2Icon
       data-feature-demo-cursor
       aria-hidden="true"
-      className="pointer-events-none absolute z-[80] size-10 fill-background text-foreground"
+      className="pointer-events-none absolute z-30 size-10 fill-background text-foreground"
       style={{ left: x, top: y, transform: 'translate(-3px, -3px)' }}
     />
   );
@@ -90,7 +90,7 @@ export const FeatureDemoStage = forwardRef<HTMLDivElement, FeatureDemoStageProps
     () => data.series.find((series) => series.id === plan.comparisonSeriesId) ?? null,
     [data.series, plan.comparisonSeriesId],
   );
-  const codexExtension = extensions.find((extension) => extension.manifest.id === CODEX_IMAGE_DISCOVERY_EXTENSION_ID);
+  const codexExtension = extensions.find((extension) => extension.manifest.id === CODEX_EXTENSION_ID);
   const detailsProgress =
     position.scene.id === 'directionDetailsExpand'
       ? ease((position.progress - 0.16) / 0.5)
@@ -291,7 +291,7 @@ export const FeatureDemoStage = forwardRef<HTMLDivElement, FeatureDemoStageProps
         </div>
       </DemoScene>
 
-      <div className="pointer-events-none absolute inset-x-0 top-0 z-[70] flex h-14 items-center gap-3 border-b bg-overlay/95 px-5 backdrop-blur-sm">
+      <div className="pointer-events-none absolute inset-x-0 top-0 z-20 flex h-14 items-center gap-3 border-b bg-overlay/95 px-5 backdrop-blur-sm">
         <Badge variant="secondary" className="tabular-nums">
           {String(position.sceneIndex + 1).padStart(2, '0')}
         </Badge>

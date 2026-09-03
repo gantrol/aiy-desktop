@@ -25,12 +25,12 @@ export function CreatorScreenView({ model }: Props) {
   const sourceForms = activeSourceForms(model);
   const specializedWorkspaceVisible = hasSpecializedWorkspace(model);
   return (
-    <div className="flex size-full min-h-0 min-w-0 flex-col overflow-hidden">
+    <div className="@container/creator flex size-full min-h-0 min-w-0 flex-col overflow-hidden">
       <nav
         className={
           app.comparisonFullWindow || app.promptFullWindow
             ? 'hidden'
-            : 'flex h-11 shrink-0 items-center justify-center border-b bg-muted/40 px-3 min-[840px]:hidden'
+            : 'flex h-11 shrink-0 items-center justify-center border-b bg-muted/40 px-3 @min-[840px]/creator:hidden'
         }
         aria-label={messages.app.navigation.creator}
       >

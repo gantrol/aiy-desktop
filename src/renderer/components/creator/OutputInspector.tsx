@@ -1005,15 +1005,15 @@ export function OutputInspector({
       )}
       <header
         className={cn(
-          'flex h-14 shrink-0 items-center justify-between gap-2 border-b border-border/60 bg-secondary px-3',
+          'flex h-14 shrink-0 items-center justify-between gap-1 border-b border-border/60 bg-secondary px-2 @min-[480px]/output:gap-2 @min-[480px]/output:px-3',
           comparisonFullWindow && 'hidden',
         )}
       >
-        <div className="flex min-w-0 flex-col gap-0.5">
+        <div className="flex min-w-0 flex-1 flex-col gap-0.5">
           <div className="flex min-w-0 items-center gap-2">
             {headerNavigation}
             {asset && (
-              <small className="truncate text-xs text-muted-foreground">
+              <small className="hidden truncate text-xs text-muted-foreground @min-[520px]/output:inline">
                 {asset.width} × {asset.height}
               </small>
             )}
@@ -1033,7 +1033,7 @@ export function OutputInspector({
             </div>
           )}
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex shrink-0 items-center gap-1 @min-[480px]/output:gap-2">
           <Button
             type="button"
             variant="ghost"
@@ -1053,10 +1053,14 @@ export function OutputInspector({
                 onValueChange={(value) => value && changeDisplayMode(value as typeof displayMode)}
                 className="h-7"
               >
-                <SegmentedItem value="preview" className="h-6 px-2.5">
+                <SegmentedItem value="preview" className="h-6 whitespace-nowrap px-1.5 @min-[480px]/output:px-2.5">
                   {gallery.preview}
                 </SegmentedItem>
-                <SegmentedItem data-action="output-comparison" value="comparison" className="h-6 px-2.5">
+                <SegmentedItem
+                  data-action="output-comparison"
+                  value="comparison"
+                  className="h-6 whitespace-nowrap px-1.5 @min-[480px]/output:px-2.5"
+                >
                   {gallery.comparison}
                 </SegmentedItem>
               </Segmented>
@@ -1337,7 +1341,7 @@ export function OutputInspector({
         variant="secondary"
         size="icon-sm"
         className={cn(
-          'absolute bottom-2 left-2 z-30 hidden shadow-overlay @min-[840px]/creator:inline-flex',
+          'absolute bottom-2 left-2 z-chrome hidden shadow-overlay @min-[840px]/creator:inline-flex',
           comparisonFullWindow && '@min-[840px]/creator:hidden',
         )}
         title={gallery.collapse}

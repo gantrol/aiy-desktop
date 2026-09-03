@@ -3,7 +3,7 @@ import type { DerivedVisualDto } from '@/shared/contracts';
 export const derivedVisualCanvasPresetKeys: Record<DerivedVisualDto['role'], readonly string[]> = {
   ARTICLE_HEADER: ['wechat_article_cover_2_35_1'],
   ARTICLE_INLINE: ['landscape_4_3', 'square_1_1', 'xiaohongshu_portrait_3_4', 'video_landscape_16_9'],
-  SOCIAL_POST_COVER: ['xiaohongshu_portrait_3_4', 'social_portrait_4_5', 'square_1_1'],
+  SOCIAL_POST_COVER: ['xiaohongshu_portrait_3_4'],
 };
 
 export function derivedVisualWorkspaceAvailable(

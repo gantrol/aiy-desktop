@@ -1,4 +1,4 @@
-import { useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { useLayoutEffect, useMemo, useRef, useState, type ReactNode, type RefObject } from 'react';
 import { cn } from '@/renderer/lib/utils';
 
 const DEFAULT_MIN_COLUMN_WIDTH = 240;
@@ -45,6 +45,14 @@ export interface ShortestColumnMasonryProps {
   className?: string;
   sectionBreak?: Readonly<MasonrySectionBreak>;
   onLayoutChange?(layout: MasonryLayout): void;
+  virtualize?: boolean;
+  viewportRef?: RefObject<HTMLElement | null>;
+  virtualOverscan?: number;
+}
+
+interface MasonryRenderWindow {
+  start: number;
+  end: number;
 }
 
 function validPositiveNumber(value: number, fallback: number) {
@@ -116,9 +124,14 @@ export function ShortestColumnMasonry({
   className,
   sectionBreak,
   onLayoutChange,
+  virtualize = false,
+  viewportRef,
+  virtualOverscan = 800,
 }: ShortestColumnMasonryProps) {
   const rootRef = useRef<HTMLDivElement>(null);
+  const viewportFrameRef = useRef<number | null>(null);
   const [containerWidth, setContainerWidth] = useState(0);
+  const [renderWindow, setRenderWindow] = useState<MasonryRenderWindow | null>(null);
 
   useLayoutEffect(() => {
     const root = rootRef.current;
@@ -155,6 +168,48 @@ export function ShortestColumnMasonry({
 
   useLayoutEffect(() => onLayoutChange?.(layout), [layout, onLayoutChange]);
 
+  useLayoutEffect(() => {
+    if (!virtualize) return undefined;
+    const root = rootRef.current;
+    const viewport = viewportRef?.current;
+    if (!root || !viewport) return undefined;
+    const overscan = Math.max(0, virtualOverscan);
+    const bucketSize = Math.max(200, overscan / 2);
+    const update = () => {
+      viewportFrameRef.current = null;
+      const rootRect = root.getBoundingClientRect();
+      const viewportRect = viewport.getBoundingClientRect();
+      const visibleStart = viewportRect.top - rootRect.top;
+      const visibleEnd = viewportRect.bottom - rootRect.top;
+      const start = Math.max(0, Math.floor((visibleStart - overscan) / bucketSize) * bucketSize);
+      const end = Math.max(start, Math.ceil((visibleEnd + overscan) / bucketSize) * bucketSize);
+      setRenderWindow((current) => (current?.start === start && current.end === end ? current : { start, end }));
+    };
+    const schedule = () => {
+      if (viewportFrameRef.current === null) viewportFrameRef.current = window.requestAnimationFrame(update);
+    };
+    schedule();
+    viewport.addEventListener('scroll', schedule, { passive: true });
+    window.addEventListener('resize', schedule);
+    const observer = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(schedule);
+    observer?.observe(viewport);
+    return () => {
+      viewport.removeEventListener('scroll', schedule);
+      window.removeEventListener('resize', schedule);
+      observer?.disconnect();
+      if (viewportFrameRef.current !== null) window.cancelAnimationFrame(viewportFrameRef.current);
+      viewportFrameRef.current = null;
+    };
+  }, [layout.height, viewportRef, virtualize, virtualOverscan]);
+
+  const renderedPlacements = useMemo(() => {
+    if (!virtualize) return layout.placements;
+    const window = renderWindow ?? { start: 0, end: Math.max(2_000, virtualOverscan * 2) };
+    return layout.placements.filter(
+      (placement) => placement.y + placement.height >= window.start && placement.y <= window.end,
+    );
+  }, [layout.placements, renderWindow, virtualOverscan, virtualize]);
+
   // These cards do not animate between columns. Real offsets keep the browser's
   // image visibility and raster bounds aligned with where each card is painted.
   return (
@@ -165,7 +220,7 @@ export function ShortestColumnMasonry({
       className={cn('relative w-full', !containerWidth && 'invisible', className)}
       style={{ height: layout.height }}
     >
-      {layout.placements.map((placement) => (
+      {renderedPlacements.map((placement) => (
         <div
           key={placement.id}
           data-masonry-item={placement.id}

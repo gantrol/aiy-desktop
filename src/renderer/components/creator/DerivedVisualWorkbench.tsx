@@ -11,6 +11,7 @@ import type {
   PromptSeriesDto,
 } from '@/shared/contracts';
 import { CreatorPaneResizeHandle } from '@/renderer/components/creator/CreatorPaneResizeHandle';
+import { derivedVisualCanvasPresetKeys } from '@/renderer/components/creator/derivedVisualWorkspace';
 import { GenerationLauncher } from '@/renderer/components/creator/GenerationLauncher';
 import type { GenerationReadiness } from '@/renderer/components/creator/generationReadiness';
 import { AssetFileContextMenu } from '@/renderer/components/media/AssetFileContextMenu';
@@ -47,12 +48,6 @@ interface Props {
   onClose(): void;
   notify(message: string): void;
 }
-
-const presetKeysByRole: Record<DerivedVisualDto['role'], readonly string[]> = {
-  ARTICLE_HEADER: ['wechat_article_cover_2_35_1'],
-  ARTICLE_INLINE: ['landscape_4_3', 'square_1_1', 'xiaohongshu_portrait_3_4', 'video_landscape_16_9'],
-  SOCIAL_POST_COVER: ['xiaohongshu_portrait_3_4', 'social_portrait_4_5', 'square_1_1'],
-};
 
 function availableAssets(series: PromptSeriesDto | undefined) {
   if (!series) return [];
@@ -232,7 +227,7 @@ export function DerivedVisualWorkbench({
   const zh = locale === 'zh';
   const assets = useMemo(() => availableAssets(series), [series]);
   const presets = useMemo(() => {
-    const allowed = new Set(presetKeysByRole[visual.role]);
+    const allowed = new Set(derivedVisualCanvasPresetKeys[visual.role]);
     return canvasPresets.filter((preset) => allowed.has(preset.stableKey));
   }, [canvasPresets, visual.role]);
   const [selectedAssetId, setSelectedAssetId] = useState<string | null>(visual.selectedImageAssetId);

@@ -32,7 +32,7 @@ export interface CreationDraftSnapshotSource {
   generationTargets: GenerationTargetInput[];
 }
 
-export type CreationDraftSaveSnapshot = Omit<CreationDraftSaveInput, 'id'>;
+export type CreationDraftSaveSnapshot = Omit<CreationDraftSaveInput, 'id' | 'expectedUpdatedAt'>;
 
 export function creationDraftSaveSnapshot(source: CreationDraftSnapshotSource): CreationDraftSaveSnapshot {
   return {

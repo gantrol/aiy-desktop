@@ -15,9 +15,9 @@ function errorMessage(reason: unknown) {
   return message.slice(0, 2_000) || 'Article editor recovery persistence failed';
 }
 
-function mutation(operation: () => void): ArticleEditorRecoveryMutationResult {
+async function mutation(operation: () => Promise<void>): Promise<ArticleEditorRecoveryMutationResult> {
   try {
-    operation();
+    await operation();
     return articleEditorRecoveryMutationResultSchema.parse({ status: 'ok' });
   } catch (reason) {
     return articleEditorRecoveryMutationResultSchema.parse({ status: 'error', message: errorMessage(reason) });
@@ -25,22 +25,22 @@ function mutation(operation: () => void): ArticleEditorRecoveryMutationResult {
 }
 
 export function registerArticleEditorRecoveryIpc(ipcMain: IpcHandlerRegistrar, recovery: ArticleEditorRecoveryStore) {
-  ipcMain.on('article-editor-recovery:list', (event, raw) => {
+  ipcMain.handle('article-editor-recovery:list', async (_event, raw) => {
     let result: ArticleEditorRecoveryListResult;
     try {
       result = {
         status: 'ok',
-        checkpoints: recovery.list(articleEditorRecoveryScopeSchema.parse(raw)),
+        checkpoints: await recovery.list(articleEditorRecoveryScopeSchema.parse(raw)),
       };
     } catch (reason) {
       result = { status: 'error', message: errorMessage(reason) };
     }
-    event.returnValue = articleEditorRecoveryListResultSchema.parse(result);
+    return articleEditorRecoveryListResultSchema.parse(result);
   });
-  ipcMain.on('article-editor-recovery:write', (event, raw) => {
-    event.returnValue = mutation(() => recovery.write(articleEditorRecoveryCheckpointSchema.parse(raw)));
-  });
-  ipcMain.on('article-editor-recovery:remove', (event, raw) => {
-    event.returnValue = mutation(() => recovery.remove(articleEditorRecoveryIdentitySchema.parse(raw)));
-  });
+  ipcMain.handle('article-editor-recovery:write', (_event, raw) =>
+    mutation(() => recovery.write(articleEditorRecoveryCheckpointSchema.parse(raw))),
+  );
+  ipcMain.handle('article-editor-recovery:remove', (_event, raw) =>
+    mutation(() => recovery.remove(articleEditorRecoveryIdentitySchema.parse(raw))),
+  );
 }

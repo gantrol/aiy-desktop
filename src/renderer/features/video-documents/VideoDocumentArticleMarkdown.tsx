@@ -13,6 +13,7 @@ import { parseCodexThreadHref } from '@/shared/contracts/codex-thread';
 import { CodexThreadAnchor } from '@/renderer/components/content/CodexThreadAnchor';
 import { HoverCard, HoverCardContent, HoverCardTrigger } from '@/renderer/components/ui/hover-card';
 import { ImageAmbientBackdrop } from '@/renderer/components/media/AmbientImage';
+import { AssetImageCopyButton } from '@/renderer/components/media/AssetImageCopyButton';
 import { VideoDocumentInlineVideo } from '@/renderer/features/video-documents/VideoDocumentInlineVideo';
 
 type MarkdownContent = Extract<VideoDocumentRevisionContent, { format: 'MARKDOWN' }>;
@@ -354,7 +355,7 @@ function createComponents({
         </span>
       );
       return (
-        <figure className="overflow-hidden rounded-md bg-surface">
+        <figure className="group/article-image relative overflow-hidden rounded-md bg-surface">
           {binding.timestampMs === null ? (
             image
           ) : (
@@ -367,6 +368,7 @@ function createComponents({
               {image}
             </button>
           )}
+          <AssetImageCopyButton assetId={media.assetId} />
           {binding.timestampMs !== null && (
             <figcaption className="flex items-center px-3 py-2 text-xs text-muted-foreground">
               <MediaTime binding={binding} />

@@ -348,7 +348,7 @@ export function VideoDocumentsScreen({
         onReplace={(file) => void contentActions.replaceVideo(file)}
       />
       {externalDragActive && (
-        <div className="pointer-events-none absolute inset-3 z-50 grid place-items-center rounded-xl border-2 border-dashed border-selected-foreground/60 bg-background/95 text-sm font-medium text-selected-foreground shadow-overlay backdrop-blur-sm">
+        <div className="pointer-events-none absolute inset-3 z-40 grid place-items-center rounded-xl border-2 border-dashed border-selected-foreground/60 bg-background/95 text-sm font-medium text-selected-foreground shadow-overlay backdrop-blur-sm">
           {labels.start.dropOverlay}
         </div>
       )}

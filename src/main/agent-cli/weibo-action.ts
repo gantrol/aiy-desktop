@@ -5,7 +5,10 @@ import type { AgentCliWorkspace } from '@/main/agent-cli/workspace';
 import type { AgentCliWorkerClient } from '@/main/agent-cli/worker-client';
 import { BrowserCompanionBrowserController } from '@/main/browser-companion/browser-controller';
 import { BrowserCompanionHandoffStore } from '@/main/browser-companion/handoff-store';
-import { BrowserCompanionNativeHostRegistration } from '@/main/browser-companion/native-host-registration';
+import {
+  createBrowserCompanionBridgeUrl,
+  readBrowserCompanionCredentials,
+} from '@/main/browser-companion/loopback-credentials';
 import { BrowserCompanionRuntime } from '@/main/browser-companion/runtime';
 import type { ResolvedAssetFile } from '@/main/database/assets/asset-file-repository';
 import { loadExtensionPackage } from '@/main/extensions/package-loader';
@@ -71,24 +74,17 @@ function resolvedAssetFile(output: JobOutput): ResolvedAssetFile {
   };
 }
 
-function createRuntime(
-  workspace: AgentCliWorkspace,
-  outputs: readonly JobOutput[],
-  options: AgentWeiboActionRuntimeOptions,
-) {
+async function createRuntime(workspace: AgentCliWorkspace, outputs: readonly JobOutput[]) {
   const dataPath = workspace.browserCompanionDataPath;
-  const nativeHost = new BrowserCompanionNativeHostRegistration({
-    appPath: path.resolve(options.appPath),
-    dataPath,
-    environment: process.env,
-    platform: process.platform,
-    resourcesPath: path.resolve(options.resourcesPath),
-  });
+  const credentials = await readBrowserCompanionCredentials(dataPath);
   const browser = new BrowserCompanionBrowserController({
     dataPath,
     environment: process.env,
-    nativeHost,
     platform: process.platform,
+    prepareLaunchUrl: (target, destinationUrl) => {
+      if (!credentials) throw new Error('AIY desktop companion service is unavailable');
+      return createBrowserCompanionBridgeUrl(credentials, target, destinationUrl);
+    },
   });
   const assets = new Map(outputs.map((output) => [output.assetId, resolvedAssetFile(output)]));
   return new BrowserCompanionRuntime(
@@ -136,7 +132,9 @@ export async function runAgentWeiboAction({
   const outputs = completedOutputs(job);
   let staged;
   try {
-    staged = await createRuntime(workspace, outputs, runtimeOptions).stage({
+    staged = await (
+      await createRuntime(workspace, outputs)
+    ).stage({
       target: 'weibo',
       source: { kind: 'creation-draft', id: job.draftId },
       contentKind: 'social-post-body',

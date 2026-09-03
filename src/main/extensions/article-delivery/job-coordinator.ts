@@ -70,7 +70,12 @@ export class ArticleDeliveryJobCoordinator {
     const definition = resolveArticleDeliveryDefinition(this.extensions, input);
     const connection = await this.connections.get(input.extensionId);
     const delivery = new ArticleDeliveryService(this.database, this.extensions, connection, definition);
-    const status = delivery.status(input);
+    const status = delivery.status({
+      extensionId: input.extensionId,
+      channelId: input.channelId,
+      spaceId: input.spaceId,
+      articleId: input.articleId,
+    });
     if (status.connection.state !== 'READY') throw new Error(status.connection.message);
     if (!status.profile) throw new Error('Article delivery target is not configured');
     const job = this.database.enqueueArticleDeliveryJob({

@@ -47,6 +47,8 @@ export interface ExtensionInstallationState {
 export interface ExtensionReconcileEntry {
   manifest: ExtensionManifestDto;
   source: ExtensionSource;
+  /** Previous package identities whose enabled state and permission grants are inherited once. */
+  legacyExtensionIds?: readonly string[];
   /** Initial state for a newly discovered extension. Existing user choices are never overwritten. */
   enabledByDefault?: boolean;
   /** Only trusted, application-distributed extensions may receive initial required grants. */
@@ -89,6 +91,7 @@ export class ExtensionRepository {
           entry.source,
           entry.enabledByDefault ?? false,
           entry.grantRequiredPermissionsByDefault ?? false,
+          entry.legacyExtensionIds ?? [],
         );
       }
     })();
@@ -235,6 +238,7 @@ export class ExtensionRepository {
     source: ExtensionSource,
     enabledByDefault: boolean,
     grantRequiredPermissionsByDefault: boolean,
+    legacyExtensionIds: readonly string[],
   ) {
     const hash = manifestHash(manifest);
     const timestamp = now();
@@ -246,30 +250,44 @@ export class ExtensionRepository {
       )
       .get(manifest.id) as InstallationRow | undefined;
     if (!existing) {
+      const inheritedEnabled = legacyExtensionIds.length
+        ? Boolean(
+            this.storage.db
+              .prepare(
+                `SELECT 1 FROM extension_installations
+                 WHERE enabled = 1 AND extension_id IN (${legacyExtensionIds.map(() => '?').join(', ')})
+                 LIMIT 1`,
+              )
+              .get(...legacyExtensionIds),
+          )
+        : false;
+      const enabled = enabledByDefault || inheritedEnabled;
       this.storage.db
         .prepare(
           `INSERT INTO extension_installations(
         extension_id, installed_version, source_kind, enabled, manifest_hash, installed_at, updated_at
       ) VALUES (?, ?, ?, ?, ?, ?, ?)`,
         )
-        .run(manifest.id, manifest.version, source, enabledByDefault ? 1 : 0, hash, timestamp, timestamp);
+        .run(manifest.id, manifest.version, source, enabled ? 1 : 0, hash, timestamp, timestamp);
       for (const permission of manifest.permissions) {
+        const inheritedGrant = this.inheritedPermissionGrant(manifest.id, permission, legacyExtensionIds);
         this.storage.db
           .prepare(
             `INSERT INTO extension_permission_grants(
           extension_id, permission_key, granted, updated_at
         ) VALUES (?, ?, ?, ?)`,
           )
-          .run(manifest.id, permission, grantRequiredPermissionsByDefault ? 1 : 0, timestamp);
+          .run(manifest.id, permission, grantRequiredPermissionsByDefault || inheritedGrant ? 1 : 0, timestamp);
       }
       for (const permission of manifest.optionalPermissions) {
+        const inheritedGrant = this.inheritedPermissionGrant(manifest.id, permission, legacyExtensionIds);
         this.storage.db
           .prepare(
             `INSERT INTO extension_permission_grants(
           extension_id, permission_key, granted, updated_at
         ) VALUES (?, ?, 0, ?)`,
           )
-          .run(manifest.id, permission, timestamp);
+          .run(manifest.id, permission, inheritedGrant ? 1 : 0, timestamp);
       }
       this.recordEvent(
         manifest.id,
@@ -277,7 +295,7 @@ export class ExtensionRepository {
         {
           version: manifest.version,
           source,
-          enabled: enabledByDefault,
+          enabled,
           requiredPermissionsGranted: grantRequiredPermissionsByDefault,
         },
         timestamp,
@@ -308,7 +326,7 @@ export class ExtensionRepository {
       );
     }
     for (const permission of [...manifest.permissions, ...manifest.optionalPermissions]) {
-      const inheritedGrant = this.inheritedPermissionGrant(manifest.id, permission);
+      const inheritedGrant = this.inheritedPermissionGrant(manifest.id, permission, legacyExtensionIds);
       this.storage.db
         .prepare(
           `INSERT OR IGNORE INTO extension_permission_grants(
@@ -319,17 +337,24 @@ export class ExtensionRepository {
     }
   }
 
-  private inheritedPermissionGrant(extensionId: string, permission: string) {
-    const aliases = extensionPermissionLegacyAliases(permission);
-    if (!aliases.length) return false;
-    const placeholders = aliases.map(() => '?').join(', ');
+  private inheritedPermissionGrant(
+    extensionId: string,
+    permission: string,
+    legacyExtensionIds: readonly string[] = [],
+  ) {
+    const extensionIds = [...new Set([extensionId, ...legacyExtensionIds])];
+    const permissions = [...new Set([permission, ...extensionPermissionLegacyAliases(permission)])];
+    const extensionPlaceholders = extensionIds.map(() => '?').join(', ');
+    const permissionPlaceholders = permissions.map(() => '?').join(', ');
     const row = this.storage.db
       .prepare(
         `SELECT 1 FROM extension_permission_grants
-         WHERE extension_id = ? AND granted = 1 AND permission_key IN (${placeholders})
+         WHERE extension_id IN (${extensionPlaceholders})
+           AND granted = 1
+           AND permission_key IN (${permissionPlaceholders})
          LIMIT 1`,
       )
-      .get(extensionId, ...aliases);
+      .get(...extensionIds, ...permissions);
     return Boolean(row);
   }
 

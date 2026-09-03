@@ -221,7 +221,7 @@ catch {
   throw 'The Store update helper returned malformed protocol metadata.'
 }
 Assert-Equal -Label 'Store update helper protocol type' -Actual ([string]$helperProtocol.type) -Expected 'protocol'
-Assert-Equal -Label 'Store update helper protocol version' -Actual ([string]$helperProtocol.version) -Expected '1'
+Assert-Equal -Label 'Store update helper protocol version' -Actual ([string]$helperProtocol.version) -Expected '2'
 
 Write-Host "Building Electron x64 layout for AIY $appVersion..."
 Invoke-CheckedCommand -FilePath $electronBuilder -Arguments @(
@@ -330,7 +330,7 @@ catch {
   throw 'The packed Store update helper returned malformed protocol metadata.'
 }
 Assert-Equal -Label 'Packed Store update helper protocol type' -Actual ([string]$packedHelperProtocol.type) -Expected 'protocol'
-Assert-Equal -Label 'Packed Store update helper protocol version' -Actual ([string]$packedHelperProtocol.version) -Expected '1'
+Assert-Equal -Label 'Packed Store update helper protocol version' -Actual ([string]$packedHelperProtocol.version) -Expected '2'
 
 $signaturePath = Join-Path $inspectionDirectory 'AppxSignature.p7x'
 if ($LocalTest -and -not (Test-Path -LiteralPath $signaturePath)) {

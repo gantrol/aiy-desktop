@@ -151,7 +151,7 @@ export function VideoDocumentOutlineRail({ items, activeId, ariaLabel, onSelect 
       {openGroup && (
         <div
           className={cn(
-            'absolute left-8 z-50 w-64 border border-selected-border border-l-2 border-l-selected-foreground bg-overlay/95 py-1 shadow-overlay backdrop-blur-sm transition-[opacity,transform] duration-150 ease-out',
+            'absolute left-8 z-40 w-64 border border-selected-border border-l-2 border-l-selected-foreground bg-overlay/95 py-1 shadow-overlay backdrop-blur-sm transition-[opacity,transform] duration-150 ease-out',
             opensUpward ? 'bottom-0' : 'top-0',
             detailsVisible ? 'translate-x-0 opacity-100' : '-translate-x-1 opacity-0',
           )}

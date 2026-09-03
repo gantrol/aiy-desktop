@@ -14,5 +14,5 @@ export function socialPostBrowserCompanionTargets(
         (permission) => permission.key === EXTENSION_PERMISSION.browserHandoffWeibo && permission.granted,
       ),
   );
-  return weiboAvailable ? ['wechat', 'weibo', 'chatgpt'] : ['wechat', 'chatgpt'];
+  return weiboAvailable ? ['wechat', 'weibo'] : ['wechat'];
 }

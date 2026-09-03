@@ -12,7 +12,7 @@ export function IntakeProgressOverlay({ active, label }: Props) {
   return (
     <div
       data-slot="intake-progress-overlay"
-      className="pointer-events-none absolute right-4 top-16 z-50 max-w-[min(22rem,calc(100%-2rem))]"
+      className="pointer-events-none absolute right-4 top-16 z-40 max-w-[min(22rem,calc(100%-2rem))]"
       role="status"
       aria-live="polite"
       aria-atomic="true"

@@ -1,6 +1,7 @@
 import * as React from 'react';
 import * as TooltipPrimitive from '@radix-ui/react-tooltip';
 import { cn } from '@/renderer/lib/utils';
+import { useOverlayPortalContainer } from '@/renderer/components/ui/overlay-layer';
 
 function TooltipProvider({ delayDuration = 0, ...props }: React.ComponentProps<typeof TooltipPrimitive.Provider>) {
   return <TooltipPrimitive.Provider data-slot="tooltip-provider" delayDuration={delayDuration} {...props} />;
@@ -20,13 +21,16 @@ function TooltipContent({
   children,
   ...props
 }: React.ComponentProps<typeof TooltipPrimitive.Content>) {
+  const container = useOverlayPortalContainer();
   return (
-    <TooltipPrimitive.Portal>
+    <TooltipPrimitive.Portal container={container ?? undefined}>
       <TooltipPrimitive.Content
         data-slot="tooltip-content"
+        data-overlay-layer="tooltip"
+        data-overlay-surface=""
         sideOffset={sideOffset}
         className={cn(
-          'z-50 w-fit rounded-md border border-border bg-overlay px-3 py-1.5 text-xs text-foreground shadow-overlay',
+          'pointer-events-auto z-tooltip w-fit rounded-md border border-border bg-overlay px-3 py-1.5 text-xs text-foreground shadow-overlay',
           className,
         )}
         {...props}

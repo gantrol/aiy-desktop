@@ -30,7 +30,7 @@ import {
   type ArticleRevisionSaveInput,
   type ArticleRevisionSaveResult,
 } from '@/shared/contracts/article';
-import { articleMarkdownImageReferences, normalizeArticleWechatMediaPath } from '@/shared/article-wechat-renderer';
+import { removeUnboundArticleMarkdownImages } from '@/shared/article-wechat-renderer';
 import type { LibraryStorage } from '@/main/database/core/storage';
 import { type JsonMap, mediaUrl, now, text } from '@/main/database/core/values';
 import type { ArticleRevisionContentLocator } from '@/main/database/creations/article-revision-pack-codec';
@@ -60,18 +60,11 @@ function normalizedContent(input: ArticleContentInput): ArticleContentInput {
     ...input,
     mediaBindings: input.mediaBindings.map((binding) => ({ ...binding })),
   });
-  const boundPaths = new Set(content.mediaBindings.map((binding) => normalizeArticleWechatMediaPath(binding.path)));
-  const unboundPaths = articleMarkdownImageReferences(content.markdown).localImagePaths.filter(
-    (path) => !boundPaths.has(path),
+  const markdown = removeUnboundArticleMarkdownImages(
+    content.markdown,
+    content.mediaBindings.map((binding) => binding.path),
   );
-  if (unboundPaths.length) {
-    const firstPath = JSON.stringify(unboundPaths[0]!.slice(0, 260));
-    const remaining = unboundPaths.length > 1 ? ` (+${unboundPaths.length - 1} more)` : '';
-    throw new Error(
-      `Article Markdown contains an image that is not backed by its media bindings: ${firstPath}${remaining}`,
-    );
-  }
-  return content;
+  return markdown === content.markdown ? content : { ...content, markdown };
 }
 
 function contentHash(content: ArticleContentInput) {

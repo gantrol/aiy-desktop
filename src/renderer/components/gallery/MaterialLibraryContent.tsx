@@ -143,6 +143,7 @@ function MaterialResults({
   notify,
   onDragStart,
   revealContextForItem,
+  viewportRef,
 }: Props) {
   const { messages } = useI18n();
   const hasCreationCollections = overviewCreationCollections.length > 0;
@@ -204,6 +205,7 @@ function MaterialResults({
           notify={notify}
           onDragStart={onDragStart}
           revealContextForItem={revealContextForItem}
+          viewportRef={viewportRef}
         />
       </section>
     );
@@ -265,6 +267,7 @@ function MaterialResults({
               notify={notify}
               onDragStart={onDragStart}
               revealContextForItem={revealContextForItem}
+              viewportRef={viewportRef}
             />
           )}
         </section>

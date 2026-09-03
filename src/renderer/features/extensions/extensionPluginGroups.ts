@@ -1,5 +1,5 @@
 import type { ExtensionDto } from '@/shared/contracts';
-import { FEATURE_DEMO_EXTENSION_ID } from '@/shared/extension-ids';
+import { CODEX_EXTENSION_ID, FEATURE_DEMO_EXTENSION_ID } from '@/shared/extension-ids';
 
 export type ExtensionPluginGroup = 'models' | 'frontendDesign' | 'features' | 'languages';
 
@@ -20,6 +20,7 @@ export function visibleExtensionCenterItems(extensions: readonly ExtensionDto[])
 
 export function extensionPluginGroup(extension: ExtensionDto): ExtensionPluginGroup {
   if (extension.manifest.kind === 'LANGUAGE') return 'languages';
+  if (extension.manifest.id === CODEX_EXTENSION_ID) return 'features';
   if ((extension.manifest.contributes.modelProviders?.length ?? 0) > 0) return 'models';
   if (extension.manifest.category === 'FRONTEND_DESIGN') return 'frontendDesign';
   return 'features';

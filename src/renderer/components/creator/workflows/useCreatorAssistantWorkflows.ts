@@ -4,6 +4,7 @@ import type {
   AssetDto,
   BootstrapDto,
   CreationDictionaryScopeDto,
+  CreationDraftDto,
   CreatorAgentScope,
   GenerationTargetInput,
   Locale,
@@ -33,7 +34,6 @@ interface Options {
   capturePrompt(): CreationDraftPromptSnapshot;
   configurationRequiredMessage: string;
   creationMode: 'existing' | 'new';
-  currentDraftId: string | null;
   data: BootstrapDto;
   defaultPromptLocale: Locale | null;
   dictionaryPackReleaseIds: readonly string[];
@@ -42,6 +42,8 @@ interface Options {
   effectiveTermIds: readonly string[];
   ensureScope(): Promise<CreatorAgentScope>;
   generationTargets: readonly GenerationTargetInput[];
+  getCurrentDraftId(): string | null;
+  getSavedDraft(): CreationDraftDto | null;
   initialRun: AssistantRunDto | null;
   inputSessionRevision: number;
   invalidateDraftAutosaves(): void;
@@ -59,6 +61,7 @@ interface Options {
   referenceAssets: readonly AssetDto[];
   refresh(): Promise<void>;
   repeatCount: number;
+  rememberSavedDraft(draft: CreationDraftDto): void;
   selectedModelKeys: readonly string[];
   selectedTerms: CreationDraftPromptSnapshot['selectedTerms'];
   sessionHostSeries: PromptSeriesDto | null;
@@ -179,15 +182,18 @@ export function useCreatorAssistantWorkflows(options: Options) {
 
   const captureAdoptionSource = useStableCallback((): AssistantPromptAdoptionSource => {
     const currentPrompt = options.capturePrompt();
+    const savedDraft = options.getSavedDraft();
     const availablePalettes = new Map(options.appliedPaletteCacheRef.current);
     for (const reference of currentPrompt.appliedPalettes) availablePalettes.set(reference.palette.id, reference);
     const persistence =
       options.assistantScope?.kind === 'DRAFT' &&
       options.creationMode === 'new' &&
-      options.currentDraftId === options.assistantScope.id
+      options.getCurrentDraftId() === options.assistantScope.id &&
+      savedDraft?.id === options.assistantScope.id
         ? {
             kind: 'DRAFT' as const,
             id: options.assistantScope.id,
+            expectedUpdatedAt: savedDraft.updatedAt,
             targetAlbumId: options.targetAlbumId,
             title: options.newTitle,
             dictionaryScope: options.dictionaryScope,
@@ -232,6 +238,17 @@ export function useCreatorAssistantWorkflows(options: Options) {
       if (persistence.kind !== 'DRAFT') return;
       options.invalidateDraftAutosaves();
       await options.awaitPendingDraftSave();
+    },
+    async onPersistenceCommitted(persistence) {
+      if (persistence.kind !== 'DRAFT') return;
+      const draftId = persistence.draft.id;
+      if (!draftId) return;
+      try {
+        const draft = await window.desktopApi.creationDraftLoad({ draftId });
+        if (options.getCurrentDraftId() === draft.id) options.rememberSavedDraft(draft);
+      } catch (reason) {
+        options.notify(reason instanceof Error ? reason.message : String(reason));
+      }
     },
     refresh: options.refresh,
     successMessage: options.successMessage,

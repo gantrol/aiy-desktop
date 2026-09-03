@@ -502,6 +502,10 @@ export function ArticleEditorDocument(props: Props) {
         onCommentHover={hoverComment}
         onCommentSelect={revealComment}
         onCommentStatusChange={onCommentStatusChange}
+        onHeadingNavigate={(sourceIndex) => {
+          const location = editorHandleRef.current?.resolveArticleOutlineHeadingLocation(sourceIndex);
+          if (location) navigateArticleLocation(location);
+        }}
         onEditorHandleChange={handleEditorChange}
         onImageImportError={onImageImportError}
         onImageImported={onImageImported}

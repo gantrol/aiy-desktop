@@ -6,6 +6,7 @@ import {
   CODEX_VISUALIZATION_THREAD_CONTENT_PERMISSION,
   CODEX_USAGE_INVESTIGATOR_EXTENSION_ID,
   FEATURE_DEMO_EXTENSION_ID,
+  NATURAL_WATERMARK_EXTENSION_ID,
   WEIBO_CHANNEL_EXTENSION_ID,
 } from '@/shared/extension-ids';
 import { EXTENSION_PERMISSION } from '@/shared/extension-permissions';
@@ -17,6 +18,7 @@ export const CODEX_USAGE_INVESTIGATOR_HOST_RUNTIME_ID = 'codex-usage-investigato
 export const FEATURE_DEMO_HOST_RUNTIME_ID = 'feature-demo';
 export const ARTICLE_DELIVERY_HOST_RUNTIME_ID = 'article-draft-delivery';
 export const WEIBO_BROWSER_HANDOFF_HOST_RUNTIME_ID = 'weibo-browser-handoff';
+export const NATURAL_WATERMARK_HOST_RUNTIME_ID = 'natural-watermark';
 
 export const CODEX_IMAGE_DISCOVERY_PERMISSIONS = [
   EXTENSION_PERMISSION.filesystemReadCodexGeneratedImages,
@@ -41,19 +43,19 @@ export const CODEX_USAGE_INVESTIGATOR_PERMISSIONS = [EXTENSION_PERMISSION.filesy
 
 export const CODEX_USAGE_INVESTIGATOR_OPTIONAL_PERMISSIONS = [EXTENSION_PERMISSION.accountReadCodexRateLimits] as const;
 
-const CODEX_IMAGE_DISCOVERY_CONTRIBUTIONS: ExtensionManifestDto['contributes'] = {
+export const CODEX_IMAGE_DISCOVERY_CONTRIBUTIONS: ExtensionManifestDto['contributes'] = {
   commands: ['codexImages.refresh'],
   workflows: ['codexImages.importGenerated', 'codexImages.recoverGeneration'],
   searchProviders: ['codex.generatedImages'],
 };
 
-const CODEX_HISTORY_SEARCH_CONTRIBUTIONS: ExtensionManifestDto['contributes'] = {
+export const CODEX_HISTORY_SEARCH_CONTRIBUTIONS: ExtensionManifestDto['contributes'] = {
   commands: ['codexHistory.refresh', 'codexHistory.rebuild'],
   workflows: ['codexHistory.search'],
   searchProviders: ['codex.threads'],
 };
 
-const CODEX_VISUALIZATION_DISCOVERY_CONTRIBUTIONS: ExtensionManifestDto['contributes'] = {
+export const CODEX_VISUALIZATION_DISCOVERY_CONTRIBUTIONS: ExtensionManifestDto['contributes'] = {
   commands: [
     'codexVisualizations.refresh',
     'codexVisualizations.preview',
@@ -65,7 +67,7 @@ const CODEX_VISUALIZATION_DISCOVERY_CONTRIBUTIONS: ExtensionManifestDto['contrib
   searchProviders: ['codex.visualizations'],
 };
 
-const CODEX_USAGE_INVESTIGATOR_CONTRIBUTIONS: ExtensionManifestDto['contributes'] = {
+export const CODEX_USAGE_INVESTIGATOR_CONTRIBUTIONS: ExtensionManifestDto['contributes'] = {
   commands: ['codexUsage.scan', 'codexUsage.pause', 'codexUsage.resume', 'codexUsage.export'],
   workflows: ['codexUsage.investigate'],
 };
@@ -77,6 +79,11 @@ const FEATURE_DEMO_CONTRIBUTIONS: ExtensionManifestDto['contributes'] = {
 const WEIBO_BROWSER_HANDOFF_CONTRIBUTIONS: ExtensionManifestDto['contributes'] = {
   workflows: ['delivery.weibo.fillDraft'],
   deliveryChannels: ['weibo'],
+};
+
+const NATURAL_WATERMARK_CONTRIBUTIONS: ExtensionManifestDto['contributes'] = {
+  filters: ['image.naturalWatermark'],
+  workflows: ['browserCompanion.stageWatermarkedMedia'],
 };
 
 interface HostRuntimeContract {
@@ -122,6 +129,12 @@ const hostRuntimeContracts: Readonly<Record<string, HostRuntimeContract>> = {
     permissions: [EXTENSION_PERMISSION.browserHandoffWeibo],
     optionalPermissions: [],
     contributes: WEIBO_BROWSER_HANDOFF_CONTRIBUTIONS,
+  },
+  [NATURAL_WATERMARK_HOST_RUNTIME_ID]: {
+    extensionId: NATURAL_WATERMARK_EXTENSION_ID,
+    permissions: [EXTENSION_PERMISSION.libraryReadSelectedReferences],
+    optionalPermissions: [],
+    contributes: NATURAL_WATERMARK_CONTRIBUTIONS,
   },
 };
 
