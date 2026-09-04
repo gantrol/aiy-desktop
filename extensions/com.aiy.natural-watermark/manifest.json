@@ -2,9 +2,9 @@
   "manifestVersion": 1,
   "kind": "CAPABILITY",
   "id": "com.aiy.natural-watermark",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "displayName": "Natural Watermark",
-  "description": "Apply an adaptive logo and editable text only to browser-handoff copies.",
+  "description": "Apply a selected named watermark profile with proportional placement and optional position jitter during delivery.",
   "engines": {
     "aiy": "^0.3.0"
   },
@@ -23,11 +23,11 @@
     "locales": {
       "en": {
         "displayName": "Natural Watermark",
-        "description": "Apply an adaptive logo and editable text only to browser-handoff copies."
+        "description": "Apply a selected named watermark profile with proportional placement and optional position jitter during delivery."
       },
       "zh": {
         "displayName": "自然水印",
-        "description": "仅对浏览器交接副本应用自适应标识与可编辑文字。"
+        "description": "在交付时对副本应用用户选择的命名水印方案，支持比例定位和位置波动。"
       }
     }
   }

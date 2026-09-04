@@ -1,5 +1,7 @@
+import { randomInt } from 'node:crypto';
 import path from 'node:path';
 import type { NaturalWatermarkCustomLogoStore } from '@/main/extensions/natural-watermark/custom-logo-store';
+import type { NaturalWatermarkPreviewImageStore } from '@/main/extensions/natural-watermark/preview-image-store';
 import { readBoundedImageFile } from '@/main/media/bounded-image-file';
 import { imageDimensions } from '@/main/media/image-dimensions';
 import { validateCanvasPngAsync } from '@/main/media/png-validation';
@@ -7,8 +9,9 @@ import { withDecodedImageFileInSandbox } from '@/main/media/sandboxed-image-deco
 import type { ResolvedAssetFile } from '@/main/database/assets/asset-file-repository';
 import type {
   NaturalWatermarkBrand,
-  NaturalWatermarkConfiguration,
   NaturalWatermarkLogo,
+  NaturalWatermarkPosition,
+  NaturalWatermarkProfile,
 } from '@/shared/contracts/natural-watermark';
 
 const outputExtensionByMimeType = {
@@ -41,6 +44,25 @@ function watermarkedName(fileName: string, extension: string) {
   return `${baseName.slice(0, maximumStemLength)}${suffix}${extension}`;
 }
 
+function randomRatio(minimum: number, maximum: number) {
+  if (minimum >= maximum) return minimum;
+  return minimum + (randomInt(0, 1_000_001) / 1_000_000) * (maximum - minimum);
+}
+
+function resolvedPosition(profile: NaturalWatermarkProfile): NaturalWatermarkPosition {
+  if (!profile.positionJitter.enabled) return { ...profile.position };
+  return {
+    x: randomRatio(
+      Math.max(0, profile.position.x - profile.positionJitter.x),
+      Math.min(1, profile.position.x + profile.positionJitter.x),
+    ),
+    y: randomRatio(
+      Math.max(0, profile.position.y - profile.positionJitter.y),
+      Math.min(1, profile.position.y + profile.positionJitter.y),
+    ),
+  };
+}
+
 export class NaturalWatermarkService {
   private readonly logoReads = new Map<NaturalWatermarkBrand, Promise<Buffer>>();
 
@@ -49,6 +71,7 @@ export class NaturalWatermarkService {
       Record<NaturalWatermarkBrand, { absolutePath: string; mimeType: 'image/png' | 'image/svg+xml' }>
     >,
     private readonly customLogos: NaturalWatermarkCustomLogoStore,
+    private readonly previewImageStore: NaturalWatermarkPreviewImageStore,
   ) {}
 
   private builtInLogo(brand: NaturalWatermarkBrand) {
@@ -79,9 +102,17 @@ export class NaturalWatermarkService {
     return this.customLogos.importFromFile(filePath);
   }
 
+  previewImage() {
+    return this.previewImageStore.get();
+  }
+
+  importPreviewImage(filePath: string) {
+    return this.previewImageStore.importFromFile(filePath);
+  }
+
   async apply(
     file: Pick<ResolvedAssetFile, 'absolutePath' | 'extension' | 'mimeType' | 'suggestedName'>,
-    configuration: NaturalWatermarkConfiguration,
+    profile: NaturalWatermarkProfile,
   ): Promise<NaturalWatermarkOutput> {
     const expectedExtensions = sourceExtensionsByMimeType[file.mimeType];
     const sourceExtension = file.extension.toLowerCase();
@@ -89,15 +120,16 @@ export class NaturalWatermarkService {
       if (file.mimeType === 'image/gif') throw new Error('Natural watermark does not flatten animated GIF images');
       throw new Error(`Natural watermark does not support ${file.mimeType}`);
     }
-    const logo = await this.logo(configuration.logo);
+    const logo = await this.logo(profile.logo);
     return withDecodedImageFileInSandbox(
       file.absolutePath,
       {
         operation: 'watermark',
         style: logo.style,
-        text: configuration.text,
-        placement: configuration.placement,
-        opacity: configuration.opacity,
+        text: profile.text,
+        sizeRatio: profile.sizeRatio,
+        position: resolvedPosition(profile),
+        opacity: profile.opacity,
         logoBytes: Uint8Array.from(logo.bytes),
         logoMimeType: logo.mimeType,
       },

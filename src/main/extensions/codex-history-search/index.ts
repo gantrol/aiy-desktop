@@ -6,6 +6,7 @@ import type {
   CodexHistoryIndexState,
   CodexHistoryRefreshInput,
   CodexHistorySearchInput,
+  CodexHistoryThreadMessagesInput,
 } from '@/shared/contracts/codex-history-search';
 import {
   CodexHistorySearchCacheDatabase,
@@ -15,6 +16,7 @@ import {
   discoverCodexHistorySources,
   readCodexHistorySourceSnapshot,
 } from '@/main/extensions/codex-history-search/source-reader';
+import { readCodexHistoryThreadMessages } from '@/main/extensions/codex-history-search/thread-reader';
 
 const SOURCE_REFRESH_INTERVAL_MS = 30_000;
 
@@ -34,7 +36,9 @@ export class CodexHistorySearch extends EventEmitter {
   private active = false;
   private databasePromise: Promise<CodexHistorySearchCacheDatabase> | null = null;
   private refreshPromise: Promise<CodexHistoryIndexState> | null = null;
+  private queuedRebuildPromise: Promise<CodexHistoryIndexState> | null = null;
   private refreshController: AbortController | null = null;
+  private threadMessagesController: AbortController | null = null;
   private progress = 0;
   private lastError: string | null = null;
   private sourceUnavailable = false;
@@ -55,7 +59,10 @@ export class CodexHistorySearch extends EventEmitter {
 
   setActive(active: boolean) {
     this.active = active;
-    if (!active) this.refreshController?.abort();
+    if (!active) {
+      this.refreshController?.abort();
+      this.threadMessagesController?.abort();
+    }
   }
 
   async state() {
@@ -79,6 +86,21 @@ export class CodexHistorySearch extends EventEmitter {
     return database.filterOptions(input);
   }
 
+  async threadMessages(input: CodexHistoryThreadMessagesInput) {
+    this.assertActive();
+    this.threadMessagesController?.abort();
+    const controller = new AbortController();
+    this.threadMessagesController = controller;
+    try {
+      const sources = await discoverCodexHistorySources(this.codexHome);
+      controller.signal.throwIfAborted();
+      if (!sources) throw new Error('Codex task databases were not found');
+      return await readCodexHistoryThreadMessages(sources, this.codexHome, input, controller.signal);
+    } finally {
+      if (this.threadMessagesController === controller) this.threadMessagesController = null;
+    }
+  }
+
   async refresh(input: CodexHistoryRefreshInput) {
     this.assertActive();
     await this.startRefresh(input.rebuild);
@@ -87,6 +109,7 @@ export class CodexHistorySearch extends EventEmitter {
 
   async purge() {
     this.refreshController?.abort();
+    this.threadMessagesController?.abort();
     await this.refreshPromise?.catch(() => undefined);
     const database = await this.database();
     database.purge();
@@ -99,6 +122,7 @@ export class CodexHistorySearch extends EventEmitter {
   async dispose() {
     this.active = false;
     this.refreshController?.abort();
+    this.threadMessagesController?.abort();
     await this.refreshPromise?.catch(() => undefined);
     const pendingDatabase = this.databasePromise;
     this.databasePromise = null;
@@ -165,8 +189,23 @@ export class CodexHistorySearch extends EventEmitter {
     });
   }
 
-  private startRefresh(rebuild: boolean) {
-    if (this.refreshPromise) return this.refreshPromise;
+  private startRefresh(rebuild: boolean): Promise<CodexHistoryIndexState> {
+    if (this.refreshPromise) {
+      if (!rebuild) return this.refreshPromise;
+      if (this.queuedRebuildPromise) return this.queuedRebuildPromise;
+      const pending = this.refreshPromise;
+      this.refreshController?.abort();
+      const queued = pending
+        .then(() => {
+          this.assertActive();
+          return this.startRefresh(true);
+        })
+        .finally(() => {
+          this.queuedRebuildPromise = null;
+        });
+      this.queuedRebuildPromise = queued;
+      return this.queuedRebuildPromise;
+    }
     const controller = new AbortController();
     this.refreshController = controller;
     this.progress = 1;

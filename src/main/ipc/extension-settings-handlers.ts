@@ -153,12 +153,16 @@ export function registerExtensionSettingsIpc({
   ipcMain.handle('natural-watermark:configuration-get', () => naturalWatermarkConfiguration.get());
   ipcMain.handle('natural-watermark:configuration-save', async (_event, raw) => {
     const configuration = naturalWatermarkConfigurationSchema.parse(raw);
-    if (configuration.logo.kind === 'CUSTOM') await naturalWatermarkService.customLogo(configuration.logo.id);
+    const customLogoIds = new Set(
+      configuration.profiles.flatMap(({ logo }) => (logo.kind === 'CUSTOM' ? [logo.id] : [])),
+    );
+    await Promise.all([...customLogoIds].map((customLogoId) => naturalWatermarkService.customLogo(customLogoId)));
     return naturalWatermarkConfiguration.save(configuration);
   });
   ipcMain.handle('natural-watermark:custom-logo-get', (_event, rawId) =>
     naturalWatermarkService.customLogo(naturalWatermarkCustomLogoIdSchema.parse(rawId)),
   );
+  ipcMain.handle('natural-watermark:preview-image-get', () => naturalWatermarkService.previewImage());
   ipcMain.handle('natural-watermark:custom-logo-import', async () => {
     if (!extensions.isActivated(NATURAL_WATERMARK_EXTENSION_ID)) {
       throw new Error('Natural Watermark is disabled or missing permissions');
@@ -171,6 +175,19 @@ export function registerExtensionSettingsIpc({
     const selectedPath = selection.filePaths[0];
     if (!selectedPath) throw new Error('No custom watermark logo was selected');
     return naturalWatermarkService.importCustomLogo(selectedPath);
+  });
+  ipcMain.handle('natural-watermark:preview-image-import', async () => {
+    if (!extensions.isActivated(NATURAL_WATERMARK_EXTENSION_ID)) {
+      throw new Error('Natural Watermark is disabled or missing permissions');
+    }
+    const selection = await chooseFile({
+      properties: ['openFile'],
+      filters: [{ name: 'Images', extensions: ['png', 'jpg', 'jpeg', 'webp'] }],
+    });
+    if (selection.canceled) return null;
+    const selectedPath = selection.filePaths[0];
+    if (!selectedPath) throw new Error('No watermark preview image was selected');
+    return naturalWatermarkService.importPreviewImage(selectedPath);
   });
   const codexUsage = registerCodexUsageIpc({
     ipcMain,

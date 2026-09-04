@@ -231,6 +231,7 @@ export const codexUsageQuotaCycleSchema = z
     reasoningOutputTokens: nonNegativeIntegerSchema,
     totalTokens: nonNegativeIntegerSchema,
     standardEquivalentTokens: nonNegativeNumberSchema.nullable().default(null),
+    standardEquivalentApiUsd: nullableMoneySchema.default(null),
     tokensPerOnePercent: nonNegativeNumberSchema,
     nonCachedTokensPerOnePercent: nonNegativeNumberSchema,
     standardEquivalentTokensPerOnePercent: nonNegativeNumberSchema.nullable().default(null),

@@ -6,6 +6,7 @@ import codexHistorySearchCacheRevision1Sql from '@/main/database/sql/v03-codex-h
 import codexHistorySearchCacheRevision1ProjectMetadataSql from '@/main/database/sql/v03-codex-history-search-cache-revision-001-project-metadata.sql?raw';
 import codexHistorySearchCacheRevision2IncrementalSql from '@/main/database/sql/v03-codex-history-search-cache-revision-002-incremental.sql?raw';
 import codexHistorySearchCacheRevision3OrganizationSql from '@/main/database/sql/v03-codex-history-search-cache-revision-003-organization.sql?raw';
+import codexHistorySearchCacheRevision4SourceSemanticsSql from '@/main/database/sql/v03-codex-history-search-cache-revision-004-source-semantics.sql?raw';
 import type {
   CodexHistoryFilterOptionsInput,
   CodexHistoryIndexState,
@@ -21,7 +22,7 @@ import type {
 } from '@/main/extensions/codex-history-search/source-reader';
 import { readCodexHistoryFilterOptions } from '@/main/extensions/codex-history-search/cache-navigation';
 
-const DATABASE_SCHEMA_VERSION = 3;
+const DATABASE_SCHEMA_VERSION = 4;
 const MAX_CACHED_THREADS = 100_000;
 const CACHED_THREAD_LOOKUP_BATCH_SIZE = 500;
 const MAX_SEARCH_CANDIDATES = 5_000;
@@ -151,8 +152,12 @@ function threadFilters(input: CodexHistorySearchInput, alias = 't') {
     parameters.push(input.projectId);
   }
   if (input.sectionId) {
-    clauses.push(`${alias}.section_id = ?`);
-    parameters.push(input.sectionId);
+    clauses.push(
+      `(${alias}.section_id = ? OR ${alias}.project_id IN (
+         SELECT p.project_id FROM codex_history_projects AS p WHERE p.section_id = ?
+       ))`,
+    );
+    parameters.push(input.sectionId, input.sectionId);
   }
   if (input.threadId) {
     clauses.push(`${alias}.thread_id = ?`);
@@ -338,7 +343,9 @@ export class CodexHistorySearchCacheDatabase {
        WHERE row_id = ?`,
     );
     const insertProject = this.database.prepare(
-      `INSERT INTO codex_history_projects (project_id, name, workspace, position) VALUES (?, ?, ?, ?)`,
+      `INSERT INTO codex_history_projects (
+         project_id, name, workspace, position, section_id, section_position
+       ) VALUES (?, ?, ?, ?, ?, ?)`,
     );
     const insertSection = this.database.prepare(
       `INSERT INTO codex_history_sections (section_id, name, position) VALUES (?, ?, ?)`,
@@ -363,7 +370,14 @@ export class CodexHistorySearchCacheDatabase {
     this.database.transaction(() => {
       this.database.prepare('DELETE FROM codex_history_projects').run();
       for (const project of snapshot.projects) {
-        insertProject.run(project.projectId, project.name, project.workspace, project.position);
+        insertProject.run(
+          project.projectId,
+          project.name,
+          project.workspace,
+          project.position,
+          project.sectionId,
+          project.sectionPosition,
+        );
       }
       this.database.prepare('DELETE FROM codex_history_sections').run();
       for (const section of snapshot.sections) {
@@ -523,10 +537,13 @@ export class CodexHistorySearchCacheDatabase {
          WHERE ${threadWhere.join(' AND ')}
          ORDER BY t.updated_at_ms DESC
          LIMIT ?`;
-    const threadRows = z
-      .array(candidateThreadRowSchema)
-      .max(MAX_SEARCH_CANDIDATES + 1)
-      .parse(this.database.prepare(threadSql).all(...threadParameters));
+    const threadRows =
+      input.role === 'ALL'
+        ? z
+            .array(candidateThreadRowSchema)
+            .max(MAX_SEARCH_CANDIDATES + 1)
+            .parse(this.database.prepare(threadSql).all(...threadParameters))
+        : [];
 
     const messageWhere = [...filters.clauses];
     const messageParameters: Array<string | number> = [];
@@ -771,7 +788,7 @@ export class CodexHistorySearchCacheDatabase {
       threadColumns.some((column) => column.name === name),
     );
     const hasOrganizationCatalogs =
-      ['project_id', 'name', 'workspace', 'position'].every((name) =>
+      ['project_id', 'name', 'workspace', 'position', 'section_id', 'section_position'].every((name) =>
         projectCatalogColumns.some((column) => column.name === name),
       ) &&
       ['section_id', 'name', 'position'].every((name) => sectionCatalogColumns.some((column) => column.name === name));
@@ -788,8 +805,11 @@ export class CodexHistorySearchCacheDatabase {
       if (version < 1) this.database.exec(codexHistorySearchCacheRevision1Sql);
       if (!hasProjectMetadataColumns) this.database.exec(codexHistorySearchCacheRevision1ProjectMetadataSql);
       if (!hasIncrementalMetadataColumns) this.database.exec(codexHistorySearchCacheRevision2IncrementalSql);
-      if (!hasOrganizationMetadata || !hasOrganizationCatalogs) {
+      if (!hasOrganizationMetadata || !projectCatalogColumns.length || !sectionCatalogColumns.length) {
         this.database.exec(codexHistorySearchCacheRevision3OrganizationSql);
+      }
+      if (version < 4 || !hasOrganizationCatalogs) {
+        this.database.exec(codexHistorySearchCacheRevision4SourceSemanticsSql);
       }
       this.database.pragma(`user_version = ${DATABASE_SCHEMA_VERSION}`);
     })();

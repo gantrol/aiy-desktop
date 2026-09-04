@@ -1,14 +1,15 @@
 import { HardDriveIcon, TargetIcon } from 'lucide-react';
 import type { CodexUsageQuotaCycle, CodexUsageQuotaYieldAnalysis, CodexUsageServiceTier } from '@/shared/contracts';
-import { codexUsageStandardEquivalentMultiplier } from '@/shared/codex-usage-speed';
+import { codexUsageQuotaTokenBounds } from '@/shared/codex-usage-quota';
 import { Badge } from '@/renderer/components/ui/badge';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/renderer/components/ui/table';
 import { CodexUsageServiceTierLabel } from '@/renderer/features/extensions/CodexUsageServiceTierLabel';
+import { formatCodexUsageTokenRange } from '@/renderer/features/extensions/codexUsageTokenRange';
 import type { useI18n } from '@/renderer/i18n/useI18n';
 
 type UsageLabels = ReturnType<typeof useI18n>['messages']['extensions']['codexUsageInvestigator'];
 
-const publicReportVersion = 3;
+const publicReportVersion = 4;
 
 interface QuotaYieldResultsProps {
   analysis: CodexUsageQuotaYieldAnalysis;
@@ -33,14 +34,14 @@ function cyclePeriod(cycle: CodexUsageQuotaCycle, date: Intl.DateTimeFormat) {
   return `${date.format(new Date(cycle.observedFrom))} – ${date.format(new Date(cycle.observedTo))}`;
 }
 
-function standardEquivalentTokensPerOnePercent(cycle: CodexUsageQuotaCycle) {
-  if (cycle.standardEquivalentTokensPerOnePercent !== null) return cycle.standardEquivalentTokensPerOnePercent;
-  let standardEquivalentTokens = cycle.totalTokens;
-  for (const share of cycle.modelShares) {
-    const multiplier = codexUsageStandardEquivalentMultiplier(share.model, share.serviceTier);
-    standardEquivalentTokens += share.totalTokens * (multiplier - 1);
-  }
-  return standardEquivalentTokens / cycle.quotaPercentConsumed;
+function standardEquivalentTokensPerOnePercent(cycle: CodexUsageQuotaCycle, tokens: Intl.NumberFormat) {
+  const bounds = codexUsageQuotaTokenBounds(cycle);
+  if (!bounds) return '—';
+  return formatCodexUsageTokenRange(
+    bounds.minimumTokens / cycle.quotaPercentConsumed,
+    bounds.maximumTokens === null ? null : bounds.maximumTokens / cycle.quotaPercentConsumed,
+    tokens,
+  );
 }
 
 export function CodexQuotaYieldResults({ analysis, labels, tokens, numbers, date }: QuotaYieldResultsProps) {
@@ -88,7 +89,7 @@ export function CodexQuotaYieldResults({ analysis, labels, tokens, numbers, date
           </TableHeader>
           <TableBody>
             {cycles.map((cycle) => {
-              const standardEquivalentTokens = standardEquivalentTokensPerOnePercent(cycle);
+              const standardEquivalentTokens = standardEquivalentTokensPerOnePercent(cycle, tokens);
               return (
                 <TableRow key={cycle.cycleKey}>
                   <TableCell className="whitespace-nowrap text-xs">{cyclePeriod(cycle, date)}</TableCell>
@@ -105,7 +106,7 @@ export function CodexQuotaYieldResults({ analysis, labels, tokens, numbers, date
                     {tokens.format(cycle.tokensPerOnePercent)}
                   </TableCell>
                   <TableCell numeric className="font-semibold">
-                    {tokens.format(standardEquivalentTokens)}
+                    {standardEquivalentTokens}
                   </TableCell>
                   <TableCell numeric>{tokens.format(cycle.nonCachedTokensPerOnePercent)}</TableCell>
                   <TableCell numeric>{numbers.format(cycle.cachedInputPercent)}%</TableCell>

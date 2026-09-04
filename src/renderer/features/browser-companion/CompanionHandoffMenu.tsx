@@ -1,5 +1,5 @@
 import { ChevronDownIcon, CloudUploadIcon, LoaderCircleIcon } from 'lucide-react';
-import type { ComponentProps } from 'react';
+import { useState, type ComponentProps } from 'react';
 import { Button } from '@/renderer/components/ui/button';
 import {
   DropdownMenu,
@@ -10,7 +10,8 @@ import {
   DropdownMenuTrigger,
 } from '@/renderer/components/ui/dropdown-menu';
 import { CompanionDestinationSettingsSubmenu } from '@/renderer/features/browser-companion/CompanionDestinationMenu';
-import type { BrowserCompanionTarget } from '@/shared/contracts';
+import { CompanionWatermarkSubmenu } from '@/renderer/features/browser-companion/CompanionWatermarkMenu';
+import type { BrowserCompanionTarget, BrowserCompanionWatermarkSelection } from '@/shared/contracts';
 
 const TARGET_LABELS: Record<BrowserCompanionTarget, { en: string; zh: string }> = {
   chatgpt: { en: 'ChatGPT', zh: 'ChatGPT' },
@@ -24,16 +25,27 @@ export function CompanionHandoffMenu({
   onHandoff,
   targets,
   variant = 'default',
+  watermarkAvailable,
   zh,
 }: {
   busy: boolean;
   disabled: boolean;
-  onHandoff(target: BrowserCompanionTarget): void;
+  onHandoff(target: BrowserCompanionTarget, watermark: BrowserCompanionWatermarkSelection): void;
   targets: readonly BrowserCompanionTarget[];
   variant?: ComponentProps<typeof Button>['variant'];
+  watermarkAvailable: boolean;
   zh: boolean;
 }) {
-  const label = busy ? (zh ? '上传中' : 'Uploading') : zh ? '上传' : 'Upload';
+  const [watermark, setWatermark] = useState<BrowserCompanionWatermarkSelection>({ kind: 'NONE' });
+  const label = busy
+    ? zh
+      ? '上传中'
+      : 'Uploading'
+    : watermarkAvailable
+      ? `${zh ? '上传' : 'Upload'} · ${watermark.kind === 'NONE' ? (zh ? '无水印' : 'No watermark') : zh ? '水印' : 'Watermark'}`
+      : zh
+        ? '上传'
+        : 'Upload';
 
   return (
     <DropdownMenu>
@@ -57,7 +69,7 @@ export function CompanionHandoffMenu({
             key={target}
             data-browser-companion-target={target}
             disabled={busy}
-            onSelect={() => onHandoff(target)}
+            onSelect={() => onHandoff(target, watermarkAvailable ? watermark : { kind: 'NONE' })}
           >
             <DropdownMenuIcon>
               <CloudUploadIcon />
@@ -66,6 +78,12 @@ export function CompanionHandoffMenu({
           </DropdownMenuItem>
         ))}
         <DropdownMenuSeparator />
+        {watermarkAvailable && (
+          <>
+            <CompanionWatermarkSubmenu busy={busy} selection={watermark} zh={zh} onSelectionChange={setWatermark} />
+            <DropdownMenuSeparator />
+          </>
+        )}
         <CompanionDestinationSettingsSubmenu busy={busy} targets={targets} zh={zh} />
       </DropdownMenuContent>
     </DropdownMenu>

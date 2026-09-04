@@ -77,6 +77,7 @@ export interface WorkspaceTabSurfaceProps {
 }
 
 function intakeLocation(current: AppLocation, result: IntakeCommitResult, requestId: number): AppLocation {
+  if (result.intent === 'IMPORT' && current.view === 'gallery') return current;
   const creator =
     result.intent === 'START_CREATION'
       ? result.draft

@@ -11,6 +11,7 @@ export const codexHistoryRoleFilterSchema = z.enum(['ALL', 'USER', 'ASSISTANT'])
 export const codexHistoryMatchRoleSchema = z.enum(['THREAD', 'USER', 'ASSISTANT']);
 export const codexHistoryThreadSourceSchema = z.enum(['USER', 'SUBAGENT', 'OTHER']);
 export const codexHistoryIndexStatusSchema = z.enum(['EMPTY', 'INDEXING', 'READY', 'UNAVAILABLE', 'ERROR']);
+export const codexHistoryThreadMessagesSourceSchema = z.enum(['PAGINATED', 'LEGACY']);
 
 export const codexHistorySearchInputSchema = z
   .object({
@@ -44,6 +45,38 @@ export const codexHistoryFilterOptionsInputSchema = z
 export const codexHistoryRefreshInputSchema = z
   .object({
     rebuild: z.boolean().default(false),
+  })
+  .strict();
+
+export const codexHistoryThreadMessagesInputSchema = z
+  .object({
+    threadId: threadIdSchema,
+    cursor: z.number().int().nonnegative().safe().nullable().default(null),
+    pageSize: z.number().int().min(10).max(50),
+  })
+  .strict();
+
+export const codexHistoryMessageSchema = z
+  .object({
+    messageId: z.string().trim().min(1).max(512),
+    role: z.enum(['USER', 'ASSISTANT']),
+    createdAt: isoTimestampSchema,
+    text: z
+      .string()
+      .min(1)
+      .max(1024 * 1024),
+  })
+  .strict();
+
+export const codexHistoryThreadMessagesPageSchema = z
+  .object({
+    threadId: threadIdSchema,
+    source: codexHistoryThreadMessagesSourceSchema,
+    modelProvider: z.string().trim().min(1).max(200).nullable(),
+    model: z.string().trim().min(1).max(200).nullable(),
+    messages: z.array(codexHistoryMessageSchema).max(50),
+    nextCursor: z.number().int().nonnegative().safe().nullable(),
+    scanLimited: z.boolean(),
   })
   .strict();
 
@@ -87,6 +120,8 @@ export const codexHistoryProjectOptionSchema = z
     name: z.string().trim().min(1).max(500),
     workspace: z.string().max(32_768),
     threadCount: z.number().int().nonnegative().safe(),
+    sectionId: sectionIdSchema,
+    sectionPosition: z.number().int().nonnegative().safe().nullable(),
   })
   .strict();
 
@@ -110,8 +145,11 @@ export const codexHistorySectionOptionSchema = z
     sectionId: z.string().trim().min(1).max(512),
     name: z.string().trim().min(1).max(500),
     threadCount: z.number().int().nonnegative().safe(),
+    projectCount: z.number().int().nonnegative().safe(),
     threads: z.array(codexHistoryThreadOptionSchema).max(50),
     threadsTruncated: z.boolean(),
+    projects: z.array(codexHistoryProjectOptionSchema).max(50),
+    projectsTruncated: z.boolean(),
   })
   .strict();
 
@@ -142,6 +180,7 @@ export type CodexHistoryArchiveFilter = z.infer<typeof codexHistoryArchiveFilter
 export type CodexHistoryRoleFilter = z.infer<typeof codexHistoryRoleFilterSchema>;
 export type CodexHistoryMatchRole = z.infer<typeof codexHistoryMatchRoleSchema>;
 export type CodexHistoryThreadSource = z.infer<typeof codexHistoryThreadSourceSchema>;
+export type CodexHistoryThreadMessagesSource = z.infer<typeof codexHistoryThreadMessagesSourceSchema>;
 export type CodexHistoryIndexStatus = z.infer<typeof codexHistoryIndexStatusSchema>;
 export type CodexHistoryIndexState = z.infer<typeof codexHistoryIndexStateSchema>;
 export type CodexHistorySearchInput = z.infer<typeof codexHistorySearchInputSchema>;
@@ -153,3 +192,6 @@ export type CodexHistoryThreadOption = z.infer<typeof codexHistoryThreadOptionSc
 export type CodexHistoryRefreshInput = z.infer<typeof codexHistoryRefreshInputSchema>;
 export type CodexHistorySearchResult = z.infer<typeof codexHistorySearchResultSchema>;
 export type CodexHistorySearchPage = z.infer<typeof codexHistorySearchPageSchema>;
+export type CodexHistoryMessage = z.infer<typeof codexHistoryMessageSchema>;
+export type CodexHistoryThreadMessagesInput = z.infer<typeof codexHistoryThreadMessagesInputSchema>;
+export type CodexHistoryThreadMessagesPage = z.infer<typeof codexHistoryThreadMessagesPageSchema>;

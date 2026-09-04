@@ -564,9 +564,7 @@ export const articleRevisionSaveResultSchema = z.discriminatedUnion('status', [
       sessionEpoch: idSchema,
       draftSeq: z.number().int().nonnegative(),
       expectedRevisionId: idSchema,
-      reason: z.enum(['REVISION_CHANGED', 'HISTORICAL_REPLAY']),
-      historicalRevisionId: idSchema.nullable(),
-      historicalRevisionNo: z.number().int().positive().nullable(),
+      reason: z.literal('REVISION_CHANGED'),
       currentArticle: articleDtoSchema,
     })
     .strict(),

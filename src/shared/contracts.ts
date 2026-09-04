@@ -172,7 +172,11 @@ import type {
   BrowserCompanionStageInput,
   BrowserCompanionStageResult,
 } from '@/shared/contracts/browser-companion';
-import type { NaturalWatermarkConfiguration, NaturalWatermarkCustomLogo } from '@/shared/contracts/natural-watermark';
+import type {
+  NaturalWatermarkConfiguration,
+  NaturalWatermarkCustomLogo,
+  NaturalWatermarkPreviewImage,
+} from '@/shared/contracts/natural-watermark';
 import type {
   ArticleDeliveryArticleProfile,
   ArticleDeliveryArticleProfileSaveInput,
@@ -300,6 +304,7 @@ export type {
   BrowserCompanionStageInput,
   BrowserCompanionStageResult,
   BrowserCompanionTarget,
+  BrowserCompanionWatermarkSelection,
 } from '@/shared/contracts/browser-companion';
 export type {
   NaturalWatermarkBrand,
@@ -307,6 +312,10 @@ export type {
   NaturalWatermarkCustomLogo,
   NaturalWatermarkLogo,
   NaturalWatermarkPlacement,
+  NaturalWatermarkPosition,
+  NaturalWatermarkPositionJitter,
+  NaturalWatermarkPreviewImage,
+  NaturalWatermarkProfile,
   NaturalWatermarkStyle,
 } from '@/shared/contracts/natural-watermark';
 import type {
@@ -316,6 +325,8 @@ import type {
   CodexHistoryRefreshInput,
   CodexHistorySearchInput,
   CodexHistorySearchPage,
+  CodexHistoryThreadMessagesInput,
+  CodexHistoryThreadMessagesPage,
 } from '@/shared/contracts/codex-history-search';
 import type {
   CodexUsageCleanupInput,
@@ -391,6 +402,7 @@ import type {
 import type { AppUpdateStateDto } from '@/shared/contracts/app-update';
 import type { AppDeepLinkCommand } from '@/shared/contracts/app-deep-link';
 import type { AppSupportDestination } from '@/shared/contracts/app-support';
+import type { RendererDiagnosticInput } from '@/shared/contracts/renderer-diagnostics';
 import type { AppWindowStateDto, DesktopPlatform } from '@/shared/contracts/app-window';
 import type { ProviderConnectionDto, ProviderConnectionSaveInput } from '@/shared/contracts/provider-connections';
 import type { TransitionShowcaseExportImageSnapshot } from '@/shared/contracts/transition-showcase';
@@ -503,7 +515,11 @@ export type {
   CodexHistorySearchInput,
   CodexHistorySearchPage,
   CodexHistorySearchResult,
+  CodexHistoryMessage,
   CodexHistoryThreadOption,
+  CodexHistoryThreadMessagesInput,
+  CodexHistoryThreadMessagesPage,
+  CodexHistoryThreadMessagesSource,
   CodexHistoryThreadSource,
 } from '@/shared/contracts/codex-history-search';
 export type {
@@ -4117,6 +4133,7 @@ export interface AnnotationStatusInput {
 export type NavigationCommand = 'back' | 'forward';
 
 export interface DesktopApi {
+  rendererDiagnosticRecord(input: RendererDiagnosticInput): void;
   readonly appPlatform: DesktopPlatform;
   /** Up to 24 already-cached local-space previews; cache misses resolve to an empty list. */
   appLoadingPreviews(): Promise<TransitionPreviewDto[]>;
@@ -4155,6 +4172,8 @@ export interface DesktopApi {
   naturalWatermarkConfigurationSave(input: NaturalWatermarkConfiguration): Promise<NaturalWatermarkConfiguration>;
   naturalWatermarkCustomLogoGet(id: string): Promise<NaturalWatermarkCustomLogo>;
   naturalWatermarkCustomLogoImport(): Promise<NaturalWatermarkCustomLogo | null>;
+  naturalWatermarkPreviewImageGet(): Promise<NaturalWatermarkPreviewImage | null>;
+  naturalWatermarkPreviewImageImport(): Promise<NaturalWatermarkPreviewImage | null>;
   articleDeliveryConnectionGet(input: ArticleDeliveryExtensionTarget): Promise<ArticleDeliveryConnectionDto>;
   articleDeliveryConnectionSave(input: ArticleDeliveryConnectionSaveInput): Promise<ArticleDeliveryConnectionDto>;
   articleDeliveryConnectionTest(input: ArticleDeliveryExtensionTarget): Promise<ArticleDeliveryConnectionDto>;
@@ -4175,6 +4194,7 @@ export interface DesktopApi {
   codexHistorySearch(input: CodexHistorySearchInput): Promise<CodexHistorySearchPage>;
   codexHistorySearchFilterOptions(input: CodexHistoryFilterOptionsInput): Promise<CodexHistoryFilterOptions>;
   codexHistorySearchRefresh(input: CodexHistoryRefreshInput): Promise<CodexHistoryIndexState>;
+  codexHistoryThreadMessages(input: CodexHistoryThreadMessagesInput): Promise<CodexHistoryThreadMessagesPage>;
   onCodexHistorySearchChanged(callback: () => void): () => void;
   codexVisualizationsList(input: CodexVisualizationListInput): Promise<CodexVisualizationSnapshotDto>;
   codexVisualizationOpen(input: CodexVisualizationArtifactActionInput): Promise<void>;

@@ -54,11 +54,17 @@ interface CycleState {
   observedFrom: string;
   observedTo: string;
   quotaSnapshots: Map<number, CycleQuotaSnapshot>;
+  pendingBucket: number | null;
+  pendingEvents: CodexUsageInternalEvent[];
+  previousUsedPercent: number | null;
   usage: CodexUsageBreakdown;
   requestCount: number;
   models: Map<string, MutableModelUsage>;
   standardEquivalentTokens: number;
   standardEquivalentNonCachedTokens: number;
+  standardEquivalentApiUsd: number;
+  standardEquivalentComplete: boolean;
+  apiComplete: boolean;
   credits: number;
   creditsComplete: boolean;
 }
@@ -330,15 +336,16 @@ export class CodexQuotaYieldAccumulator {
     const states = [...this.#completedStates, ...this.#activeStates.values()];
     const eligibleCycleStates = states
       .flatMap((state) => {
+        this.#commitBucketUsage(state);
         const quotaSpan = this.#quotaSpan(state);
-        const quotaPercentConsumed = quotaSpan.maximumUsedPercent - quotaSpan.baselineUsedPercent;
+        const { quotaPercentConsumed } = quotaSpan;
         if (quotaPercentConsumed <= EPSILON) return [];
         if (!state.usage.totalTokens) {
           discardedIncompleteIntervals = addSafe(discardedIncompleteIntervals, 1);
           unattributedQuotaPercent += quotaPercentConsumed;
           return [];
         }
-        return [{ state, cycle: this.#cycle(state, quotaSpan.baselineUsedPercent, quotaSpan.maximumUsedPercent) }];
+        return [{ state, cycle: this.#cycle(state, quotaSpan) }];
       })
       .sort(
         (left, right) =>
@@ -353,7 +360,7 @@ export class CodexQuotaYieldAccumulator {
     return {
       definition: 'OBSERVED_TOKENS_PER_SUBSCRIPTION_QUOTA_PERCENT',
       calculationBasis: 'OBSERVATION_SEGMENT',
-      algorithmVersion: 9,
+      algorithmVersion: 10,
       timeZone: this.#timeZone,
       defaultGranularity: codexUsageDefaultGranularity(this.#range),
       storedFrom: this.#coverage.storedFrom,
@@ -394,11 +401,17 @@ export class CodexQuotaYieldAccumulator {
       observedFrom: observation.timestamp,
       observedTo: observation.timestamp,
       quotaSnapshots: new Map(),
+      pendingBucket: null,
+      pendingEvents: [],
+      previousUsedPercent: null,
       usage: emptyUsage(),
       requestCount: 0,
       models: new Map(),
       standardEquivalentTokens: 0,
       standardEquivalentNonCachedTokens: 0,
+      standardEquivalentApiUsd: 0,
+      standardEquivalentComplete: true,
+      apiComplete: true,
       credits: 0,
       creditsComplete: true,
     };
@@ -408,6 +421,10 @@ export class CodexQuotaYieldAccumulator {
     if (observation.timestamp < state.observedFrom) state.observedFrom = observation.timestamp;
     if (observation.timestamp > state.observedTo) state.observedTo = observation.timestamp;
     const observationBucket = Math.floor(Date.parse(observation.timestamp) / OBSERVATION_BUCKET_MS);
+    if (state.pendingBucket !== observationBucket) {
+      this.#commitBucketUsage(state);
+      state.pendingBucket = observationBucket;
+    }
     const quotaSnapshot = state.quotaSnapshots.get(observationBucket);
     if (!quotaSnapshot || observation.usedPercent > quotaSnapshot.usedPercent) {
       state.quotaSnapshots.set(observationBucket, { usedPercent: observation.usedPercent });
@@ -415,7 +432,22 @@ export class CodexQuotaYieldAccumulator {
     if (observation.resetsAt > state.resetsAt) {
       state.resetsAt = observation.resetsAt;
     }
-    if (!event.usage.totalTokens) return;
+    if (event.usage.totalTokens) state.pendingEvents.push(event);
+  }
+
+  #commitBucketUsage(state: CycleState) {
+    if (state.pendingBucket === null) return;
+    const snapshot = state.quotaSnapshots.get(state.pendingBucket)!;
+    // Initial and reset/release minutes establish a baseline. Their usage cannot be paired with a quota delta.
+    if (state.previousUsedPercent !== null && snapshot.usedPercent + EPSILON >= state.previousUsedPercent) {
+      for (const event of state.pendingEvents) this.#addUsage(state, event);
+    }
+    state.previousUsedPercent = snapshot.usedPercent;
+    state.pendingEvents = [];
+    state.pendingBucket = null;
+  }
+
+  #addUsage(state: CycleState, event: CodexUsageInternalEvent) {
     addUsage(state.usage, event.usage);
     state.requestCount = addSafe(state.requestCount, 1);
     const model = normalizeCodexUsageModel(event.model) || 'unknown';
@@ -436,12 +468,18 @@ export class CodexQuotaYieldAccumulator {
     const speedMultiplier = codexUsageStandardEquivalentMultiplier(model, event.serviceTier);
     const nonCachedTokens =
       Math.max(0, event.usage.inputTokens - event.usage.cachedInputTokens) + event.usage.outputTokens;
-    state.standardEquivalentTokens = addSafe(state.standardEquivalentTokens, event.usage.totalTokens * speedMultiplier);
+    state.standardEquivalentComplete &&= speedMultiplier !== null;
+    state.standardEquivalentTokens = addSafe(
+      state.standardEquivalentTokens,
+      event.usage.totalTokens * (speedMultiplier ?? 0),
+    );
     state.standardEquivalentNonCachedTokens = addSafe(
       state.standardEquivalentNonCachedTokens,
-      nonCachedTokens * speedMultiplier,
+      nonCachedTokens * (speedMultiplier ?? 0),
     );
     const valuation = estimateCodexUsage(model, event.usage, event.serviceTier, event.timestamp);
+    state.standardEquivalentApiUsd += (valuation.apiEquivalentUsd ?? 0) * (speedMultiplier ?? 0);
+    state.apiComplete &&= valuation.apiEquivalentUsd !== null;
     state.credits += valuation.codexCredits ?? 0;
     state.creditsComplete &&= valuation.codexCredits !== null;
   }
@@ -453,7 +491,12 @@ export class CodexQuotaYieldAccumulator {
       (maximum, [, snapshot]) => Math.max(maximum, snapshot.usedPercent),
       baselineUsedPercent,
     );
-    return { baselineUsedPercent, maximumUsedPercent };
+    // A reset/release starts a new baseline, not a negative charge or an assumed full 100% spend.
+    let quotaPercentConsumed = 0;
+    for (let index = 1; index < snapshots.length; index += 1) {
+      quotaPercentConsumed += Math.max(0, snapshots[index]![1].usedPercent - snapshots[index - 1]![1].usedPercent);
+    }
+    return { baselineUsedPercent, maximumUsedPercent, quotaPercentConsumed };
   }
 
   #quotaReleaseCount(state: CycleState) {
@@ -467,8 +510,18 @@ export class CodexQuotaYieldAccumulator {
     return released;
   }
 
-  #cycle(state: CycleState, baselineUsedPercent: number, maximumUsedPercent: number): CodexUsageQuotaCycle {
-    const quotaPercentConsumed = maximumUsedPercent - baselineUsedPercent;
+  #cycle(
+    state: CycleState,
+    {
+      baselineUsedPercent,
+      maximumUsedPercent,
+      quotaPercentConsumed,
+    }: {
+      baselineUsedPercent: number;
+      maximumUsedPercent: number;
+      quotaPercentConsumed: number;
+    },
+  ): CodexUsageQuotaCycle {
     const nonCachedTokens =
       Math.max(0, state.usage.inputTokens - state.usage.cachedInputTokens) + state.usage.outputTokens;
     return {
@@ -487,11 +540,17 @@ export class CodexQuotaYieldAccumulator {
       quotaPercentConsumed,
       requestCount: state.requestCount,
       ...state.usage,
-      standardEquivalentTokens: state.standardEquivalentTokens,
+      standardEquivalentTokens: state.standardEquivalentComplete ? state.standardEquivalentTokens : null,
+      standardEquivalentApiUsd:
+        state.standardEquivalentComplete && state.apiComplete ? state.standardEquivalentApiUsd : null,
       tokensPerOnePercent: state.usage.totalTokens / quotaPercentConsumed,
       nonCachedTokensPerOnePercent: nonCachedTokens / quotaPercentConsumed,
-      standardEquivalentTokensPerOnePercent: state.standardEquivalentTokens / quotaPercentConsumed,
-      standardEquivalentNonCachedTokensPerOnePercent: state.standardEquivalentNonCachedTokens / quotaPercentConsumed,
+      standardEquivalentTokensPerOnePercent: state.standardEquivalentComplete
+        ? state.standardEquivalentTokens / quotaPercentConsumed
+        : null,
+      standardEquivalentNonCachedTokensPerOnePercent: state.standardEquivalentComplete
+        ? state.standardEquivalentNonCachedTokens / quotaPercentConsumed
+        : null,
       cachedInputPercent:
         state.usage.inputTokens > 0 ? (state.usage.cachedInputTokens / state.usage.inputTokens) * 100 : 0,
       modelShares: [...state.models.values()]

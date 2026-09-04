@@ -200,7 +200,7 @@ export function registerCreationAssistantIpc({
   ipcMain.handle('assets:choose-references', async () => {
     const result = await chooseFile({
       properties: ['openFile', 'multiSelections'],
-      filters: [{ name: 'Images', extensions: ['png', 'jpg', 'jpeg', 'webp', 'svg'] }],
+      filters: [{ name: 'Images', extensions: ['png', 'jpg', 'jpeg', 'webp', 'gif', 'svg'] }],
     });
     if (result.canceled) return { assets: [] };
     if (result.filePaths.length > 8) throw new Error('Import supports at most 8 images');

@@ -4,7 +4,6 @@ import {
   BROWSER_COMPANION_BOOTSTRAP_PATH_PREFIX,
   BROWSER_COMPANION_EXTENSION_ID,
   BROWSER_COMPANION_LOOPBACK_HOST,
-  BROWSER_COMPANION_LOOPBACK_ORIGIN,
   BROWSER_COMPANION_LOOPBACK_PORT,
   BROWSER_COMPANION_MAX_REQUEST_BYTES,
   BROWSER_COMPANION_MAX_RESPONSE_BYTES,
@@ -18,6 +17,7 @@ import {
   BROWSER_COMPANION_RESPONSE_SIGNATURE_HEADER,
   browserCompanionLoopbackEnvelopeSchema,
   browserCompanionTargetFromWebOrigin,
+  resolveBrowserCompanionLoopbackPort,
   type BrowserCompanionBridgeCredentials,
   type BrowserCompanionDeliveredRecord,
   type BrowserCompanionLoopbackEnvelope,
@@ -150,7 +150,10 @@ export class BrowserCompanionLoopbackServer {
   private readonly pendingOutputImports = new Map<string, PendingOutputImport>();
   private outputImporter: BrowserCompanionOutputImporter | null = null;
 
-  constructor(readonly dataPath: string) {
+  constructor(
+    readonly dataPath: string,
+    private readonly port = BROWSER_COMPANION_LOOPBACK_PORT,
+  ) {
     this.handoffs = new BrowserCompanionHandoffStore(dataPath);
   }
 
@@ -160,6 +163,7 @@ export class BrowserCompanionLoopbackServer {
         appDataRoot,
         configuredUserDataPath: environment.AIY_USER_DATA_DIR,
       }),
+      resolveBrowserCompanionLoopbackPort(environment),
     );
   }
 
@@ -197,7 +201,7 @@ export class BrowserCompanionLoopbackServer {
       };
       server.once('error', onError);
       server.once('listening', onListening);
-      server.listen({ host: BROWSER_COMPANION_LOOPBACK_HOST, port: BROWSER_COMPANION_LOOPBACK_PORT, exclusive: true });
+      server.listen({ host: BROWSER_COMPANION_LOOPBACK_HOST, port: this.port, exclusive: true });
     });
     this.credentials = credentials;
     this.server = server;
@@ -220,7 +224,7 @@ export class BrowserCompanionLoopbackServer {
   prepareLaunchUrl(target: BrowserCompanionTarget, destinationUrl: string): string {
     if (!this.server?.listening || !this.credentials)
       throw new Error('Browser companion desktop service is unavailable');
-    const parameters = createBrowserCompanionBridgeParameters(this.credentials, target, destinationUrl);
+    const parameters = createBrowserCompanionBridgeParameters(this.credentials, target, destinationUrl, this.port);
     if (this.pendingBootstraps.size >= BOOTSTRAP_LIMIT) {
       const oldest = this.pendingBootstraps.keys().next().value as string | undefined;
       if (oldest) {
@@ -232,7 +236,7 @@ export class BrowserCompanionLoopbackServer {
     const expiry = setTimeout(() => this.pendingBootstraps.delete(bootstrapId), BOOTSTRAP_LEASE_MS);
     expiry.unref();
     this.pendingBootstraps.set(bootstrapId, { parameters, expiry });
-    return `${BROWSER_COMPANION_LOOPBACK_ORIGIN}${BROWSER_COMPANION_BOOTSTRAP_PATH_PREFIX}${bootstrapId}`;
+    return `http://${BROWSER_COMPANION_LOOPBACK_HOST}:${this.port}${BROWSER_COMPANION_BOOTSTRAP_PATH_PREFIX}${bootstrapId}`;
   }
 
   private sendBootstrap(request: IncomingMessage, response: ServerResponse, id: string): void {
@@ -305,7 +309,7 @@ export class BrowserCompanionLoopbackServer {
   private validLoopbackHost(request: IncomingMessage): boolean {
     return (
       request.socket.remoteAddress === BROWSER_COMPANION_LOOPBACK_HOST &&
-      request.headers.host === `${BROWSER_COMPANION_LOOPBACK_HOST}:${BROWSER_COMPANION_LOOPBACK_PORT}`
+      request.headers.host === `${BROWSER_COMPANION_LOOPBACK_HOST}:${this.port}`
     );
   }
 

@@ -13,6 +13,7 @@ import type { BackgroundGenerationClient } from '@/main/model-worker/client';
 import { productNameForLocale } from '@/shared/product';
 import { appWindowStateSchema } from '@/shared/contracts/app-window';
 import { WindowStateStore } from '@/main/app/window-state-store';
+import { attachRendererDiagnostics, flushRendererDiagnostics } from '@/main/app/renderer-diagnostics';
 
 const DEFAULT_WINDOW_WIDTH = 1_500;
 const DEFAULT_WINDOW_HEIGHT = 920;
@@ -169,7 +170,9 @@ export class DesktopApplicationShell {
       this.options.stopManagedLocalModels?.() ?? Promise.resolve(),
       this.options.stopBackgroundFileOperations?.() ?? Promise.resolve(),
       this.shutdownActiveLibraryContext(),
-    ]).then(() => undefined);
+    ])
+      .then(() => undefined)
+      .finally(flushRendererDiagnostics);
     return this.applicationShutdownPromise;
   };
 
@@ -541,6 +544,7 @@ export class DesktopApplicationShell {
       },
     });
     this.mainWindow = window;
+    attachRendererDiagnostics(window);
     this.rendererEvents.attach(window);
     let windowStateSaveTimer: ReturnType<typeof setTimeout> | null = null;
     const saveWindowState = () => {

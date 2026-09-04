@@ -6,6 +6,8 @@ import {
   codexHistoryRefreshInputSchema,
   codexHistorySearchInputSchema,
   codexHistorySearchPageSchema,
+  codexHistoryThreadMessagesInputSchema,
+  codexHistoryThreadMessagesPageSchema,
 } from '@/shared/contracts/codex-history-search';
 import {
   codexVisualizationArtifactActionInputSchema,
@@ -27,6 +29,7 @@ type CodexArtifactsPreloadApi = Pick<
   | 'codexHistorySearch'
   | 'codexHistorySearchFilterOptions'
   | 'codexHistorySearchRefresh'
+  | 'codexHistoryThreadMessages'
   | 'onCodexHistorySearchChanged'
   | 'codexVisualizationsList'
   | 'codexVisualizationOpen'
@@ -62,6 +65,13 @@ export function createCodexArtifactsPreloadApi(
     codexHistorySearchRefresh: async (input) =>
       codexHistoryIndexStateSchema.parse(
         await ipcRenderer.invoke('codex-history-search:refresh', codexHistoryRefreshInputSchema.parse(input)),
+      ),
+    codexHistoryThreadMessages: async (input) =>
+      codexHistoryThreadMessagesPageSchema.parse(
+        await ipcRenderer.invoke(
+          'codex-history-search:thread-messages',
+          codexHistoryThreadMessagesInputSchema.parse(input),
+        ),
       ),
     onCodexHistorySearchChanged: (callback) => {
       const listener = () => callback();

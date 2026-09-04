@@ -23,7 +23,9 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/renderer/components/
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/renderer/components/ui/tooltip';
 import { CodexQuotaYieldResults } from '@/renderer/features/extensions/CodexQuotaYieldResults';
 import { CodexUsageSessionLengthResults } from '@/renderer/features/extensions/CodexUsageDetailedStatistics';
+import { CodexUsagePulseMetric as PulseMetric } from '@/renderer/features/extensions/CodexUsagePulseMetric';
 import { CodexUsageServiceTierLabel } from '@/renderer/features/extensions/CodexUsageServiceTierLabel';
+import { CodexUsageTokenMetric } from '@/renderer/features/extensions/CodexUsageTokenMetric';
 import { CodexUsageTurnSpeedResults } from '@/renderer/features/extensions/CodexUsageTurnSpeedResults';
 import type { useI18n } from '@/renderer/i18n/useI18n';
 
@@ -49,10 +51,16 @@ function ReportTabTrigger({ value, label, icon }: { value: string; label: string
   return (
     <Tooltip>
       <TooltipTrigger asChild>
-        <TabsTrigger value={value} className="gap-1.5 px-2 @lg/codex-usage:px-3" aria-label={label}>
-          {icon}
-          <span className="hidden @lg/codex-usage:inline">{label}</span>
-        </TabsTrigger>
+        <span className="inline-flex">
+          <TabsTrigger
+            value={value}
+            className="gap-1.5 px-2 data-[state=active]:bg-selected data-[state=active]:text-selected-foreground @lg/codex-usage:px-3"
+            aria-label={label}
+          >
+            {icon}
+            <span className="hidden @lg/codex-usage:inline">{label}</span>
+          </TabsTrigger>
+        </span>
       </TooltipTrigger>
       <TooltipContent>{label}</TooltipContent>
     </Tooltip>
@@ -257,31 +265,6 @@ function TokenTrendChart({
   );
 }
 
-function PulseMetric({
-  icon,
-  label,
-  value,
-  detail,
-}: {
-  icon: ReactNode;
-  label: string;
-  value: string;
-  detail?: string;
-}) {
-  return (
-    <div className="grid min-w-0 gap-1 bg-background px-3 py-3">
-      <dt className="flex min-w-0 items-center gap-1.5 text-xs text-muted-foreground">
-        <span aria-hidden className="[&_svg]:size-3.5">
-          {icon}
-        </span>
-        <span className="truncate">{label}</span>
-      </dt>
-      <dd className="truncate text-base font-semibold tabular-nums @xl/codex-usage:text-lg">{value}</dd>
-      {detail && <dd className="hidden truncate text-[11px] text-muted-foreground @xl/codex-usage:block">{detail}</dd>}
-    </div>
-  );
-}
-
 function WorkPulse({
   investigation,
   labels,
@@ -318,15 +301,17 @@ function WorkPulse({
         value={formatSavings(investigation.totals.codexCreditCacheSavings)}
         detail={`${labels.metrics.cachedInput} ${formatters.tokens.format(investigation.totals.cachedInputTokens)}`}
       />
+      <CodexUsageTokenMetric
+        investigation={investigation}
+        labels={labels}
+        tokens={formatters.tokens}
+        numbers={formatters.numbers}
+        date={formatters.date}
+      />
       <PulseMetric
         icon={<ActivityIcon />}
         label={labels.overview.completedTurns}
         value={investigation.turnSpeed ? formatters.numbers.format(investigation.turnSpeed.completedTurnCount) : '—'}
-      />
-      <PulseMetric
-        icon={<ZapIcon />}
-        label={labels.metrics.totalTokens}
-        value={formatters.tokens.format(investigation.totals.totalTokens)}
       />
       <PulseMetric
         icon={<GaugeIcon />}

@@ -1,9 +1,17 @@
+import { z } from 'zod';
 import type { ImportedImageMetadataInput } from '@/shared/contracts/import-metadata';
 
 export type CreatorImageImportSource = 'PASTE' | 'DROP' | 'UPLOAD';
 
-export type CreatorRasterImageMimeType = 'image/png' | 'image/jpeg' | 'image/webp';
-export type CreatorImageImportMimeType = CreatorRasterImageMimeType | 'image/svg+xml';
+export const creatorImageImportMimeTypeSchema = z.enum([
+  'image/png',
+  'image/jpeg',
+  'image/webp',
+  'image/gif',
+  'image/svg+xml',
+]);
+export type CreatorImageImportMimeType = z.infer<typeof creatorImageImportMimeTypeSchema>;
+export type CreatorRasterImageMimeType = Exclude<CreatorImageImportMimeType, 'image/svg+xml'>;
 
 export interface CreatorImageImportItemInput {
   id: string;

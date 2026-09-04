@@ -14,6 +14,8 @@ export interface ArticleEditorSessionMetadata {
 }
 
 export interface ArticleEditorSaveIdentity {
+  readonly articleId: string;
+  readonly expectedRevisionId: string;
   readonly requestId: string;
   readonly sessionEpoch: string;
   readonly draftSeq: number;
@@ -26,11 +28,8 @@ export interface ArticleEditorSaveFailure extends ArticleEditorSaveIdentity {
 }
 
 export interface ArticleEditorConflict extends ArticleEditorSaveIdentity {
-  readonly expectedRevisionId: string;
   readonly currentRevisionId: string;
   readonly reason: Extract<ArticleRevisionSaveResult, { status: 'CONFLICT' }>['reason'];
-  readonly historicalRevisionId: string | null;
-  readonly historicalRevisionNo: number | null;
 }
 
 export interface ArticleEditorSessionIdentity {
@@ -39,13 +38,13 @@ export interface ArticleEditorSessionIdentity {
 }
 
 export interface ArticleEditorPersistedBaseline {
+  readonly draftSeq: number;
   readonly revisionId: string;
   readonly contentHash: string;
 }
 
 export interface ArticleEditorDraftState {
   readonly sequence: number;
-  readonly contentHash: string | null;
   readonly metadata: ArticleEditorSessionMetadata;
   readonly media: readonly VideoDocumentRevisionMediaDto[];
   readonly hasBody: boolean;
@@ -67,6 +66,8 @@ export interface ArticleEditorSessionState {
 
 export function articleEditorSaveIdentity(input: ArticleRevisionSaveInput): ArticleEditorSaveIdentity {
   return {
+    articleId: input.articleId,
+    expectedRevisionId: input.expectedRevisionId,
     requestId: input.requestId,
     sessionEpoch: input.sessionEpoch,
     draftSeq: input.draftSeq,
@@ -76,6 +77,8 @@ export function articleEditorSaveIdentity(input: ArticleRevisionSaveInput): Arti
 
 export function articleEditorSaveIdentityMatches(identity: ArticleEditorSaveIdentity, input: ArticleRevisionSaveInput) {
   return (
+    identity.articleId === input.articleId &&
+    identity.expectedRevisionId === input.expectedRevisionId &&
     identity.requestId === input.requestId &&
     identity.sessionEpoch === input.sessionEpoch &&
     identity.draftSeq === input.draftSeq &&
@@ -92,7 +95,7 @@ export function articleEditorSaveResultMatches(input: ArticleRevisionSaveInput, 
 }
 
 export function articleEditorSessionDirty(state: ArticleEditorSessionState) {
-  return state.draft.contentHash === null || state.draft.contentHash !== state.persisted.contentHash;
+  return state.draft.sequence > state.persisted.draftSeq;
 }
 
 export function articleEditorSessionSaving(state: ArticleEditorSessionState) {

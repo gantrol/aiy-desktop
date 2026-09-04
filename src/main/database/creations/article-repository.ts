@@ -11,11 +11,7 @@ import type {
   AssetDto,
 } from '@/shared/contracts';
 import {
-  articleCommentAnchorUpdates,
-  articleCommentAnchorUpdatesAreApplied,
-  articleContentSchema,
   canonicalArticleContentJson,
-  sameArticleElementPlacements,
   type ArticleCommentMutationInput,
   type ArticleCommentMutationResult,
   type ArticleCheckApplyInput,
@@ -30,7 +26,7 @@ import {
   type ArticleRevisionSaveInput,
   type ArticleRevisionSaveResult,
 } from '@/shared/contracts/article';
-import { removeUnboundArticleMarkdownImages } from '@/shared/article-wechat-renderer';
+import { articleRevisionMatchesArticle, normalizeArticleContent } from '@/shared/article-revision';
 import type { LibraryStorage } from '@/main/database/core/storage';
 import { type JsonMap, mediaUrl, now, text } from '@/main/database/core/values';
 import type { ArticleRevisionContentLocator } from '@/main/database/creations/article-revision-pack-codec';
@@ -53,18 +49,6 @@ function assetDto(row: JsonMap): AssetDto {
     mediaUrl: mediaUrl(id),
     createdAt: text(row.created_at),
   };
-}
-
-function normalizedContent(input: ArticleContentInput): ArticleContentInput {
-  const content = articleContentSchema.parse({
-    ...input,
-    mediaBindings: input.mediaBindings.map((binding) => ({ ...binding })),
-  });
-  const markdown = removeUnboundArticleMarkdownImages(
-    content.markdown,
-    content.mediaBindings.map((binding) => binding.path),
-  );
-  return markdown === content.markdown ? content : { ...content, markdown };
 }
 
 function contentHash(content: ArticleContentInput) {
@@ -195,7 +179,7 @@ export class ArticleRepository {
 
   save(input: ArticleSaveInput): ArticleDto {
     return this.db.transaction(() => {
-      const content = normalizedContent(input.content);
+      const content = normalizeArticleContent(input.content);
       const assetIds = content.mediaBindings.map((binding) => binding.assetId);
       this.assertMediaAvailable(assetIds);
       const hash = contentHash(content);
@@ -238,7 +222,7 @@ export class ArticleRepository {
 
   saveRevision(input: ArticleRevisionSaveInput): ArticleRevisionSaveResult {
     const save = (): ArticleRevisionSaveResult => {
-      const content = normalizedContent(input.content);
+      const content = normalizeArticleContent(input.content);
       const assetIds = content.mediaBindings.map((binding) => binding.assetId);
       this.assertMediaAvailable(assetIds);
       const hash = contentHash(content);
@@ -246,15 +230,7 @@ export class ArticleRepository {
 
       const existing = this.activeRow(input.articleId);
       const currentArticle = this.dto(existing);
-      const contentMatches = text(existing.content_hash) === hash;
-      const elementsMatch = !input.elements || sameArticleElementPlacements(input.elements, currentArticle.elements);
-      const commentAnchorsMatch =
-        !input.commentAnchors ||
-        articleCommentAnchorUpdatesAreApplied(
-          input.commentAnchors,
-          articleCommentAnchorUpdates(currentArticle.comments),
-        );
-      if (contentMatches && elementsMatch && commentAnchorsMatch) {
+      if (articleRevisionMatchesArticle(input, currentArticle)) {
         return {
           status: 'ACKNOWLEDGED' as const,
           requestId: input.requestId,
@@ -273,32 +249,6 @@ export class ArticleRepository {
           draftSeq: input.draftSeq,
           expectedRevisionId: input.expectedRevisionId,
           reason: 'REVISION_CHANGED' as const,
-          historicalRevisionId: null,
-          historicalRevisionNo: null,
-          currentArticle,
-        };
-      }
-
-      const historicalRevision =
-        input.cause === 'EDITOR' && !contentMatches
-          ? (this.db
-              .prepare(
-                `SELECT id, revision_no FROM article_revisions
-                WHERE article_id = ? AND id <> ? AND content_hash = ?
-                ORDER BY revision_no DESC LIMIT 1`,
-              )
-              .get(input.articleId, input.expectedRevisionId, hash) as JsonMap | undefined)
-          : undefined;
-      if (historicalRevision) {
-        return {
-          status: 'CONFLICT' as const,
-          requestId: input.requestId,
-          sessionEpoch: input.sessionEpoch,
-          draftSeq: input.draftSeq,
-          expectedRevisionId: input.expectedRevisionId,
-          reason: 'HISTORICAL_REPLAY' as const,
-          historicalRevisionId: text(historicalRevision.id),
-          historicalRevisionNo: Number(historicalRevision.revision_no),
           currentArticle,
         };
       }
@@ -360,7 +310,7 @@ export class ArticleRepository {
     requestId: string;
     content: ArticleContentInput;
   }): ArticleDto {
-    const content = normalizedContent(input.content);
+    const content = normalizeArticleContent(input.content);
     const result = this.saveRevision({
       requestId: input.requestId,
       articleId: input.articleId,
@@ -399,7 +349,7 @@ export class ArticleRepository {
         this.assertSourceAvailable(input.sourceInspirationStashId, item.id);
         this.assertCreationDraftAvailable(input.consumeCreationDraftId);
 
-        const content = normalizedContent(input.content);
+        const content = normalizeArticleContent(input.content);
         this.assertMediaAvailable(content.mediaBindings.map((binding) => binding.assetId));
         const hash = contentHash(content);
         const timestamp = now();
@@ -453,7 +403,7 @@ export class ArticleRepository {
         this.assertAlbumAvailable(item.albumId);
         this.assertSourceAvailable(input.sourceInspirationStashId, item.id);
 
-        const content = normalizedContent(input.content);
+        const content = normalizeArticleContent(input.content);
         this.assertMediaAvailable(content.mediaBindings.map((binding) => binding.assetId));
         const hash = contentHash(content);
         const timestamp = now();
@@ -494,28 +444,17 @@ export class ArticleRepository {
   }
 
   rename(input: ArticleRenameInput): ArticleDto {
-    return this.db.transaction(() => {
-      const existing = this.activeRow(input.id);
-      const current = this.storedContent(existing);
-      const content = normalizedContent({ ...current, title: input.title });
-      const hash = contentHash(content);
-      if (text(existing.content_hash) === hash) return this.dto(existing);
-      const timestamp = now();
-      const revisionId = this.insertRevision(input.id, Number(existing.revision_no) + 1, content, hash, timestamp);
-      this.elements.copyPlacements(input.id, text(existing.revision_id), revisionId, timestamp);
-      this.db
-        .prepare('UPDATE articles SET current_revision_id = ?, updated_at = ? WHERE id = ?')
-        .run(revisionId, timestamp, input.id);
-      this.creationItems.touchForEntity({ kind: 'ARTICLE', id: input.id }, timestamp);
-      this.storage.recordChange(
-        'ARTICLE',
-        input.id,
-        'UPDATE',
-        { contentHash: hash, revisionId },
-        { affectsFileView: false },
-      );
-      return this.dto(this.row(input.id));
-    })();
+    return this.db
+      .transaction(() => {
+        const existing = this.activeRow(input.id);
+        return this.saveSystemRevision({
+          articleId: input.id,
+          expectedRevisionId: text(existing.revision_id),
+          requestId: ulid(),
+          content: { ...this.storedContent(existing), title: input.title },
+        });
+      })
+      .immediate();
   }
 
   move(input: ArticleMoveInput): ArticleDto {

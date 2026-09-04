@@ -42,6 +42,7 @@ const extensionByMimeType = {
   'image/png': '.png',
   'image/jpeg': '.jpg',
   'image/webp': '.webp',
+  'image/gif': '.gif',
   'image/svg+xml': '.svg',
 } as const;
 
@@ -85,6 +86,10 @@ function hasExpectedSignature(item: CreatorImageImportItemInput) {
   }
   if (item.mimeType === 'image/jpeg') {
     return bytes.byteLength >= 3 && bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff;
+  }
+  if (item.mimeType === 'image/gif') {
+    const dimensions = imageDimensions(Buffer.from(bytes.subarray(0, 10)), '.gif');
+    return dimensions !== null && dimensions.width > 0 && dimensions.height > 0;
   }
   if (item.mimeType === 'image/svg+xml') {
     return (

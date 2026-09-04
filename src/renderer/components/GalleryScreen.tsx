@@ -36,6 +36,7 @@ import {
   type MaterialLibraryCategory,
 } from '@/renderer/components/gallery/MaterialLibraryNavigation';
 import { MaterialAlbumHeader } from '@/renderer/components/gallery/MaterialAlbumHeader';
+import { MaterialAlbumMoveProvider } from '@/renderer/components/gallery/MaterialAlbumMoveProvider';
 import { MaterialDetailPage } from '@/renderer/components/gallery/MaterialInspector';
 import { MaterialLibraryContent } from '@/renderer/components/gallery/MaterialLibraryContent';
 import {
@@ -56,7 +57,7 @@ import {
   materialAlbumAncestors,
 } from '@/renderer/components/gallery/materialAlbumBrowse';
 import { materialLibraryNavigationLabels } from '@/renderer/components/gallery/materialLibraryNavigationLabels';
-import { buildMaterialAlbumTree } from '@/renderer/components/gallery/materialAlbumTree';
+import { buildMaterialAlbumTree, canMoveMaterialAlbumTo } from '@/renderer/components/gallery/materialAlbumTree';
 import { useCreationCollectionBrowse } from '@/renderer/components/gallery/useCreationCollectionBrowse';
 import { nextGallerySelection } from '@/renderer/components/gallery/gallerySelection';
 import { startNativeAssetFilesDrag, writeMaterialsDrag } from '@/renderer/components/albums/albumDrag';
@@ -1166,20 +1167,7 @@ export function GalleryScreen({
   }
 
   function canMoveMaterialAlbum(albumId: string, parentAlbumId: string | null) {
-    const tree = materialAlbumBrowse.tree;
-    const source = tree.byId.get(albumId);
-    if (!source) return false;
-    if (parentAlbumId === null) return source.parentId !== null;
-    if (parentAlbumId === albumId || source.parentId === parentAlbumId || !tree.byId.has(parentAlbumId)) return false;
-
-    const visited = new Set<string>();
-    let currentId: string | undefined = parentAlbumId;
-    while (currentId) {
-      if (currentId === albumId || visited.has(currentId)) return false;
-      visited.add(currentId);
-      currentId = tree.parentById.get(currentId);
-    }
-    return true;
+    return canMoveMaterialAlbumTo(materialAlbumBrowse.tree, albumId, parentAlbumId);
   }
 
   function canMoveCreationAlbum(albumId: string, parentAlbumId: string | null) {
@@ -1414,7 +1402,7 @@ export function GalleryScreen({
       ? messages.gallery.albums.materials(creationScopeActive ? displayedResultTotal : activeAlbum.materialCount)
       : '';
 
-  return (
+  const library = (
     <GalleryIntakeAdapter
       ref={intakeRef}
       active={active}
@@ -1682,5 +1670,10 @@ export function GalleryScreen({
         {contentLifecycleActions.confirmationDialog}
       </section>
     </GalleryIntakeAdapter>
+  );
+  return (
+    <MaterialAlbumMoveProvider key={libraryKey} albums={albums} busy={contentLifecycleBusy} onMove={moveAlbum}>
+      {library}
+    </MaterialAlbumMoveProvider>
   );
 }

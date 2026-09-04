@@ -1,4 +1,5 @@
 import type { IntakeMediaMimeType, IntakeVideoMimeType } from '@/shared/contracts';
+import { creatorImageImportMimeTypeSchema } from '@/shared/contracts/creator-import';
 
 export const intakeMediaAccept =
   'image/png,image/jpeg,image/webp,image/gif,image/svg+xml,video/mp4,video/webm,video/quicktime,.png,.jpg,.jpeg,.webp,.gif,.svg,.mp4,.m4v,.webm,.mov';
@@ -38,7 +39,5 @@ export function isIntakeVideoMimeType(mimeType: IntakeMediaMimeType): mimeType i
 }
 
 export function isCreatorImageMimeType(mimeType: string) {
-  return (
-    mimeType === 'image/png' || mimeType === 'image/jpeg' || mimeType === 'image/webp' || mimeType === 'image/svg+xml'
-  );
+  return creatorImageImportMimeTypeSchema.safeParse(mimeType).success;
 }

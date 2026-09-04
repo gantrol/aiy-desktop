@@ -183,13 +183,13 @@ export function CreatorOutputWorkspace({ model, sourceFormId }: Props) {
             locale={app.locale}
             scope={projection.activeIdeaCreation?.sourceScope ?? workbench.assistantScope}
             runs={workflow.assistant.recordAssistantRuns}
-            progressEvents={projection.activeIdeaCreation?.activityEvents ?? assistant.request.progressEvents}
+            progressEvents={assistant.request.progressEvents}
             prompt={document.manualPrompt}
             promptNodes={document.promptNodes}
             currentContextKey={generation.assistantContextKey}
             busy={assistant.request.busy}
             activeMode={assistant.request.mode}
-            error={assistant.request.error || projection.activeIdeaCreation?.failureMessage || ''}
+            error={assistant.request.error}
             collapsed={panes.outputCollapsed}
             resizeValue={panes.outputWidth}
             resizeMin={panes.outputResizeMin}

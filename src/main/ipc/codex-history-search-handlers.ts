@@ -5,6 +5,7 @@ import {
   codexHistoryFilterOptionsInputSchema,
   codexHistoryRefreshInputSchema,
   codexHistorySearchInputSchema,
+  codexHistoryThreadMessagesInputSchema,
 } from '@/shared/contracts/codex-history-search';
 import { CODEX_EXTENSION_ID } from '@/shared/extension-ids';
 
@@ -34,5 +35,9 @@ export function registerCodexHistorySearchIpc(
   ipcMain.handle('codex-history-search:refresh', async (_event, raw) => {
     active();
     return await historySearch.refresh(codexHistoryRefreshInputSchema.parse(raw));
+  });
+  ipcMain.handle('codex-history-search:thread-messages', async (_event, raw) => {
+    active();
+    return await historySearch.threadMessages(codexHistoryThreadMessagesInputSchema.parse(raw));
   });
 }

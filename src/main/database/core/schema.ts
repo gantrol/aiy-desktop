@@ -1,4 +1,6 @@
 import type Database from 'better-sqlite3';
+import { verifyDatabaseIntegrity } from '@/main/database/core/database-integrity';
+export { verifyDatabaseIntegrity } from '@/main/database/core/database-integrity';
 import baselineSql from '@/main/database/sql/v03-baseline.sql?raw';
 import revision2AiProcessSql from '@/main/database/sql/v03-revision-002-ai-process-observability.sql?raw';
 import revision2PromptSourceImportSql from '@/main/database/sql/v03-revision-002-prompt-source-import.sql?raw';
@@ -41,6 +43,7 @@ import {
   recoveryLifecycleShape,
 } from '@/main/database/recovery/content-lifecycle-schema';
 import { articleDeliveryJobShape } from '@/main/database/extensions/article-delivery-job-schema';
+import * as assistantRunSchema from '@/main/database/assistant/assistant-run-schema';
 
 export const DATABASE_PRODUCT_BASELINE = '0.3.0';
 // v0.3.7 advances the public schema exactly once from revision 4 to revision 5.
@@ -710,6 +713,7 @@ function isRevision3SchemaShape(db: Database.Database) {
 }
 
 const currentFeatureShapeChecks = [
+  assistantRunSchema.assistantRunReasoningEffortShape,
   creationLibraryShape,
   imageBreakdownShape,
   evaluationSuiteShape,
@@ -825,6 +829,7 @@ function migrateReleasedDatabase(db: Database.Database) {
       ensureCreationEntityComposition(db);
       ensureCreationItemLocations(db);
       ensureContentLifecycle(db);
+      assistantRunSchema.ensureAssistantRunReasoningEfforts(db);
       if (!isCurrentSchemaShape(db)) unsupportedSchema();
 
       if (storedRevision !== DATABASE_SCHEMA_REVISION) {
@@ -864,14 +869,6 @@ export function assertDatabaseSchemaCompatible(db: Database.Database) {
   if (retiredTitleColumnShape(db) !== 'ABSENT') unsupportedSchema();
   if (metadata(db, 'product_data_baseline') !== DATABASE_PRODUCT_BASELINE) unsupportedSchema();
   if (Number(metadata(db, 'database_schema_revision')) !== DATABASE_SCHEMA_REVISION) unsupportedSchema();
-}
-
-/** Expensive whole-database validation run by the primary library initializer. */
-export function verifyDatabaseIntegrity(db: Database.Database) {
-  const integrity = db.prepare('PRAGMA integrity_check').pluck().get();
-  if (integrity !== 'ok') throw new Error(`Database integrity check failed: ${String(integrity)}`);
-  const foreignKeyViolation = db.prepare('PRAGMA foreign_key_check').get();
-  if (foreignKeyViolation) throw new Error('Database foreign-key check failed');
 }
 
 export function initializeDatabaseSchema(db: Database.Database) {

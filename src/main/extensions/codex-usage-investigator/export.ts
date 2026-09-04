@@ -97,6 +97,7 @@ function quotaCycleRows(investigation: CodexUsageInvestigation): CsvRecord[] {
     reasoning_output_tokens: cycle.reasoningOutputTokens,
     total_tokens: cycle.totalTokens,
     standard_equivalent_total_tokens: cycle.standardEquivalentTokens,
+    standard_equivalent_api_usd: cycle.standardEquivalentApiUsd,
     model_token_shares: JSON.stringify(cycle.modelShares),
     valuation_kind: 'weekly_quota_observation_segment_raw_and_standard_equivalent_tokens',
   }));
@@ -301,6 +302,7 @@ const CSV_HEADERS = [
   'reasoning_output_tokens',
   'total_tokens',
   'standard_equivalent_total_tokens',
+  'standard_equivalent_api_usd',
   'api_equivalent_usd',
   'api_cache_savings_usd',
   'codex_credit_equivalent',

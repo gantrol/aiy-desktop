@@ -10,6 +10,8 @@ import { cn } from '@/renderer/lib/utils';
 type HistorySearchState = ReturnType<typeof useCodexHistorySearch>;
 
 interface Props {
+  onSelectThread(threadId: string): void;
+  selectedThreadId: string;
   state: HistorySearchState;
   workspaceNavigation: ReactNode;
 }
@@ -40,7 +42,7 @@ function NavigationButton({
   );
 }
 
-export function CodexHistoryNavigation({ state, workspaceNavigation }: Props) {
+export function CodexHistoryNavigation({ onSelectThread, selectedThreadId, state, workspaceNavigation }: Props) {
   const l = useI18n().messages.extensions.codexHistorySearch;
   const [projectsOpen, setProjectsOpen] = useState(true);
   const [recentsOpen, setRecentsOpen] = useState(true);
@@ -49,6 +51,7 @@ export function CodexHistoryNavigation({ state, workspaceNavigation }: Props) {
     state.setProjectId('');
     state.setSectionId('');
     state.selectThread(null);
+    onSelectThread('');
   };
 
   return (
@@ -58,7 +61,13 @@ export function CodexHistoryNavigation({ state, workspaceNavigation }: Props) {
         <nav className="grid gap-4 p-2" aria-label={l.navigation.label}>
           <div className="grid gap-0.5">
             <NavigationButton
-              active={state.archive === 'ALL' && !state.projectId && !state.sectionId && !state.selectedThread}
+              active={
+                state.archive === 'ALL' &&
+                !state.projectId &&
+                !state.sectionId &&
+                !state.selectedThread &&
+                !selectedThreadId
+              }
               onClick={() => {
                 state.setArchive('ALL');
                 clearScope();
@@ -68,7 +77,13 @@ export function CodexHistoryNavigation({ state, workspaceNavigation }: Props) {
               <span className="min-w-0 flex-1 truncate">{l.navigation.allChats}</span>
             </NavigationButton>
             <NavigationButton
-              active={state.archive === 'ARCHIVED' && !state.projectId && !state.sectionId && !state.selectedThread}
+              active={
+                state.archive === 'ARCHIVED' &&
+                !state.projectId &&
+                !state.sectionId &&
+                !state.selectedThread &&
+                !selectedThreadId
+              }
               onClick={() => {
                 clearScope();
                 state.setArchive('ARCHIVED');
@@ -79,38 +94,78 @@ export function CodexHistoryNavigation({ state, workspaceNavigation }: Props) {
             </NavigationButton>
           </div>
 
-          {state.filterOptions.sections.map((section) => (
-            <section key={section.sectionId} className="grid gap-0.5">
-              <NavigationButton
-                active={state.sectionId === section.sectionId && !state.selectedThread}
-                className="font-semibold text-foreground"
-                onClick={() => {
-                  state.setArchive('ALL');
-                  state.setSectionId(section.sectionId);
-                }}
-              >
-                <span className="min-w-0 flex-1 truncate">{section.name}</span>
-                <Badge variant="secondary" className="h-5 min-w-5 justify-center px-1.5 text-2xs">
-                  {section.threadCount}
-                </Badge>
-              </NavigationButton>
-              {section.threads.map((thread) => (
+          {state.filterOptions.sections.map((section) => {
+            const items = [
+              ...section.threads.map((thread) => ({
+                kind: 'thread' as const,
+                id: thread.threadId,
+                position: thread.sectionPosition,
+                thread,
+              })),
+              ...section.projects.map((project) => ({
+                kind: 'project' as const,
+                id: project.projectId,
+                position: project.sectionPosition,
+                project,
+              })),
+            ].sort(
+              (left, right) =>
+                (left.position ?? Number.MAX_SAFE_INTEGER) - (right.position ?? Number.MAX_SAFE_INTEGER) ||
+                left.id.localeCompare(right.id),
+            );
+            return (
+              <section key={section.sectionId} className="grid gap-0.5">
                 <NavigationButton
-                  key={thread.threadId}
-                  active={state.selectedThread?.threadId === thread.threadId}
-                  className="pl-5"
+                  active={state.sectionId === section.sectionId && !state.selectedThread && !selectedThreadId}
+                  className="font-semibold text-foreground"
                   onClick={() => {
-                    state.setArchive(thread.archived ? 'ARCHIVED' : 'ALL');
+                    state.setArchive('ALL');
                     state.setSectionId(section.sectionId);
-                    state.selectThread(thread);
+                    onSelectThread('');
                   }}
                 >
-                  <MessageSquareIcon className="size-3.5 shrink-0" />
-                  <span className="min-w-0 flex-1 truncate">{thread.title}</span>
+                  <span className="min-w-0 flex-1 truncate">{section.name}</span>
+                  <Badge variant="secondary" className="h-5 min-w-5 justify-center px-1.5 text-2xs">
+                    {section.threadCount + section.projectCount}
+                  </Badge>
                 </NavigationButton>
-              ))}
-            </section>
-          ))}
+                {items.map((item) =>
+                  item.kind === 'thread' ? (
+                    <NavigationButton
+                      key={`thread:${item.thread.threadId}`}
+                      active={selectedThreadId === item.thread.threadId}
+                      className="pl-5"
+                      onClick={() => {
+                        state.setArchive(item.thread.archived ? 'ARCHIVED' : 'ALL');
+                        state.setSectionId(section.sectionId);
+                        onSelectThread(item.thread.threadId);
+                      }}
+                    >
+                      <MessageSquareIcon className="size-3.5 shrink-0" />
+                      <span className="min-w-0 flex-1 truncate">{item.thread.title}</span>
+                    </NavigationButton>
+                  ) : (
+                    <NavigationButton
+                      key={`project:${item.project.projectId}`}
+                      active={state.projectId === item.project.projectId && !selectedThreadId}
+                      className="pl-5"
+                      onClick={() => {
+                        state.setArchive('ALL');
+                        state.setProjectId(item.project.projectId);
+                        onSelectThread('');
+                      }}
+                    >
+                      <FolderIcon className="size-3.5 shrink-0" />
+                      <span className="min-w-0 flex-1 truncate" title={item.project.workspace || item.project.name}>
+                        {item.project.name}
+                      </span>
+                      <span className="tabular-nums text-2xs text-muted-foreground">{item.project.threadCount}</span>
+                    </NavigationButton>
+                  ),
+                )}
+              </section>
+            );
+          })}
 
           <Collapsible open={projectsOpen} onOpenChange={setProjectsOpen}>
             <CollapsibleTrigger className="flex h-8 w-full items-center gap-2 rounded-md px-2 text-xs font-semibold outline-none hover:bg-hover focus-visible:ring-2 focus-visible:ring-ring">
@@ -121,11 +176,12 @@ export function CodexHistoryNavigation({ state, workspaceNavigation }: Props) {
               {state.filterOptions.projects.map((project) => (
                 <NavigationButton
                   key={project.projectId}
-                  active={state.projectId === project.projectId && !state.selectedThread}
+                  active={state.projectId === project.projectId && !state.selectedThread && !selectedThreadId}
                   className="pl-5"
                   onClick={() => {
                     state.setArchive('ALL');
                     state.setProjectId(project.projectId);
+                    onSelectThread('');
                   }}
                 >
                   <FolderIcon className="size-3.5 shrink-0" />
@@ -147,12 +203,12 @@ export function CodexHistoryNavigation({ state, workspaceNavigation }: Props) {
               {state.filterOptions.recentThreads.map((thread) => (
                 <NavigationButton
                   key={thread.threadId}
-                  active={state.selectedThread?.threadId === thread.threadId}
+                  active={selectedThreadId === thread.threadId}
                   className="pl-5"
                   onClick={() => {
                     state.setArchive('ALL');
                     clearScope();
-                    state.selectThread(thread);
+                    onSelectThread(thread.threadId);
                   }}
                 >
                   <MessageSquareIcon className="size-3.5 shrink-0" />

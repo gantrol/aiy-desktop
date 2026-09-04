@@ -16,6 +16,5 @@ export function codexUsageSpeedCreditMultiplier(normalizedModel: string, service
 }
 
 export function codexUsageStandardEquivalentMultiplier(normalizedModel: string, serviceTier: CodexUsageServiceTier) {
-  // Keep unknown or unsupported usage at its observed 1x value; only confirmed Fast usage may increase the estimate.
-  return codexUsageSpeedCreditMultiplier(normalizedModel, serviceTier) ?? 1;
+  return codexUsageSpeedCreditMultiplier(normalizedModel, serviceTier);
 }

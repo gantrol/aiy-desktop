@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { z } from 'zod';
 import type { CreatorImageImportItemInput } from '@/shared/contracts';
+import { creatorImageImportMimeTypeSchema } from '@/shared/contracts/creator-import';
 import { CreatorImageStagingService } from '@/main/creations/creator-image-staging';
 import type { LibraryDatabase } from '@/main/database';
 import type { IpcHandlerRegistrar } from '@/main/ipc/trusted-handlers';
@@ -39,7 +40,7 @@ const importContextSchema = z.object({
 const imageItemSchema = z.object({
   id,
   name: z.string().min(1).max(500),
-  mimeType: z.enum(['image/png', 'image/jpeg', 'image/webp', 'image/svg+xml']),
+  mimeType: creatorImageImportMimeTypeSchema,
   bytes: imageBytesSchema,
   metadata: importedImageMetadataSchema.optional(),
 });

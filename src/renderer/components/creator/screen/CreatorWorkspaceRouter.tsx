@@ -11,7 +11,10 @@ import { EvaluationSuiteEditor } from '@/renderer/features/evaluations/Evaluatio
 import { creatorMaterialLifecycleTarget } from '@/renderer/components/creator/screen/creatorScreenProjection';
 import { materialTitle } from '@/renderer/components/gallery/materialLibraryTypes';
 import type { CreationSessionProjection } from '@/renderer/components/creator/creationSessionProjection';
-import { socialPostBrowserCompanionTargets } from '@/renderer/features/browser-companion/browserCompanionTargets';
+import {
+  naturalWatermarkBrowserCompanionAvailable,
+  socialPostBrowserCompanionTargets,
+} from '@/renderer/features/browser-companion/browserCompanionTargets';
 import { CODEX_APP_SERVER_EXTENSION_ID } from '@/shared/extension-ids';
 
 type SocialProps = ComponentProps<typeof SocialPostEditor>;
@@ -132,6 +135,7 @@ export function CreatorWorkspaceRouter(props: Props) {
             locale={props.locale}
             canvasPresets={props.data.canvasPresets}
             handoffTargets={socialPostBrowserCompanionTargets(props.data.extensions ?? [])}
+            watermarkAvailable={naturalWatermarkBrowserCompanionAvailable(props.data.extensions ?? [])}
             relations={props.socialPostRelations}
             onSave={(content) => props.socialPostActions.save(props.socialPost!, content)}
             onCreateSocialPost={(...args) => props.socialPostActions.createSocialPost(props.socialPost!, ...args)}

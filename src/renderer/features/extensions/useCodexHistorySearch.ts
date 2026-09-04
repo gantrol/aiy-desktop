@@ -96,6 +96,7 @@ export function useCodexHistorySearch({ active, authorized, notify }: Options) {
   const [filtersError, setFiltersError] = useState<string | null>(null);
   const requestRevision = useRef(0);
   const filtersRequestRevision = useRef(0);
+  const stateRequestRevision = useRef(0);
   const loadMorePending = useRef(false);
   const effectiveDateRange = useMemo(() => resolvedDateRange(range, dateRange), [dateRange, range]);
 
@@ -205,10 +206,11 @@ export function useCodexHistorySearch({ active, authorized, notify }: Options) {
     if (!active || !authorized) return;
     let disposed = false;
     const unsubscribe = window.desktopApi.onCodexHistorySearchChanged(() => {
+      const revision = ++stateRequestRevision.current;
       void window.desktopApi
         .codexHistorySearchState()
         .then((nextIndex) => {
-          if (disposed) return;
+          if (disposed || stateRequestRevision.current !== revision) return;
           setIndex(nextIndex);
           if (nextIndex.status !== 'INDEXING') void load(1);
         })
@@ -216,6 +218,7 @@ export function useCodexHistorySearch({ active, authorized, notify }: Options) {
     });
     return () => {
       disposed = true;
+      stateRequestRevision.current += 1;
       unsubscribe();
     };
   }, [active, authorized, load]);

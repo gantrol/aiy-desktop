@@ -18,6 +18,7 @@ import type { StoredCreatorImage } from '@/main/database/creations/creation-impo
 import { sha256HexAsync } from '@/main/database/core/storage';
 import { readBoundedImageFile } from '@/main/media/bounded-image-file';
 import { imageDimensions } from '@/main/media/image-dimensions';
+import { withDecodedImageFileInSandbox } from '@/main/media/sandboxed-image-decoder';
 import { rasterizeSvgBytesInSandbox } from '@/main/media/svg-rasterization';
 import { storeSvgRasterCacheFile } from '@/main/media/svg-raster-cache';
 
@@ -32,6 +33,7 @@ const extensionByMimeType = {
   'image/png': '.png',
   'image/jpeg': '.jpg',
   'image/webp': '.webp',
+  'image/gif': '.gif',
   'image/svg+xml': '.svg',
 } as const;
 
@@ -40,6 +42,7 @@ const mimeTypeByExtension = new Map<string, CreatorImageImportItemInput['mimeTyp
   ['.jpg', 'image/jpeg'],
   ['.jpeg', 'image/jpeg'],
   ['.webp', 'image/webp'],
+  ['.gif', 'image/gif'],
   ['.svg', 'image/svg+xml'],
 ]);
 
@@ -81,6 +84,10 @@ function hasExpectedSignature(bytes: Uint8Array, mimeType: CreatorImageImportIte
   }
   if (mimeType === 'image/jpeg') {
     return bytes.byteLength >= 3 && bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff;
+  }
+  if (mimeType === 'image/gif') {
+    const dimensions = imageDimensions(bufferView(bytes), '.gif');
+    return dimensions !== null && dimensions.width > 0 && dimensions.height > 0;
   }
   if (mimeType === 'image/svg+xml') {
     return imageDimensions(bufferView(bytes), '.svg') !== null;
@@ -147,6 +154,7 @@ export class CreatorImageStagingService {
   }
 
   async stageFiles(filePaths: string[]): Promise<CreatorImageStagePreviewRow[]> {
+    const libraryRoot = this.resolveDatabase().libraryRoot;
     const entries = await Promise.all(
       filePaths.map(async (filePath) => {
         const fileStat = await stat(filePath);
@@ -156,7 +164,6 @@ export class CreatorImageStagingService {
       }),
     );
     this.assertBatch(entries.map(({ fileStat }) => (fileStat.isFile() ? fileStat.size : 0)));
-    const libraryRoot = this.resolveDatabase().libraryRoot;
     const seenHashes = new Set<string>();
     const rows: CreatorImageStagePreviewRow[] = [];
     const svgRasterByteSizes: number[] = [];
@@ -392,8 +399,20 @@ export class CreatorImageStagingService {
     const directory = await this.prepareDirectory(input.libraryRoot);
     const filePath = path.join(directory, `${stageId}${extensionByMimeType[input.item.mimeType]}`);
     let hash: string;
+    let dimensions = input.dimensions;
     try {
       hash = await input.write(filePath);
+      if (input.item.mimeType === 'image/gif') {
+        // Validate decoding without replacing the original animation with a rasterized frame.
+        dimensions = await withDecodedImageFileInSandbox(
+          filePath,
+          { operation: 'thumbnail', size: 16 },
+          (response) => ({
+            width: response.sourceWidth,
+            height: response.sourceHeight,
+          }),
+        );
+      }
     } catch (error) {
       try {
         await unlink(filePath);
@@ -428,7 +447,7 @@ export class CreatorImageStagingService {
     }
     input.seenHashes.add(hash);
     const extension = extensionByMimeType[input.item.mimeType];
-    const dimensions = input.dimensions ?? imageDimensions(input.header, extension);
+    dimensions ??= imageDimensions(input.header, extension) ?? undefined;
     const expiry = setTimeout(() => {
       void this.discard([stageId]);
     }, stageLifetimeMs);

@@ -37,6 +37,7 @@ import {
   type RendererImageImportSource,
 } from '@/renderer/components/creator/imageImport';
 import { useStableCallback } from '@/renderer/lib/useStableCallback';
+import { useSocialPostDiagnostics } from '@/renderer/components/creator/useSocialPostDiagnostics';
 import { cn } from '@/renderer/lib/utils';
 import { Button } from '@/renderer/components/ui/button';
 import { Input } from '@/renderer/components/ui/input';
@@ -48,9 +49,11 @@ import { MediaActionMenu } from '@/renderer/components/media/MediaActionMenu';
 import { SocialPostMediaPreviewDialog } from '@/renderer/components/creator/SocialPostMediaPreviewDialog';
 import { SocialPostHeader } from '@/renderer/components/creator/SocialPostHeader';
 import { SocialPostMediaActions } from '@/renderer/components/creator/SocialPostMediaActions';
+import { SocialPostMediaOrderHandle } from '@/renderer/components/creator/SocialPostMediaOrderHandle';
 import { editableContent, move, moveTo } from '@/renderer/components/creator/socialPostEditorTransforms';
 import {
   hasSocialPostMediaReorderDrag,
+  socialPostMediaDropEffect,
   socialPostMediaReorderSourceId,
   startSocialPostMediaDrag,
 } from '@/renderer/components/creator/socialPostMediaDrag';
@@ -66,6 +69,7 @@ interface Props {
   locale: Locale;
   canvasPresets: CanvasPresetDto[];
   handoffTargets: readonly BrowserCompanionTarget[];
+  watermarkAvailable: boolean;
   relations: readonly CreationRelationItem[];
   onSave(content: SocialPostContentInput): Promise<SocialPostDto>;
   onCreateSocialPost(content: SocialPostContentInput, copySourceContent: boolean): Promise<void>;
@@ -436,7 +440,7 @@ function SocialPostMediaSection({
                 if (!hasSocialPostMediaReorderDrag(event.dataTransfer, content.mediaAssetIds)) return;
                 event.preventDefault();
                 event.stopPropagation();
-                event.dataTransfer.dropEffect = 'move';
+                event.dataTransfer.dropEffect = socialPostMediaDropEffect(event.dataTransfer);
                 setDragTargetId(assetId);
               }}
               onDragLeave={(event) => {
@@ -491,6 +495,13 @@ function SocialPostMediaSection({
                     {zh ? '图片不可用' : 'Unavailable'}
                   </div>
                 )}
+                <SocialPostMediaOrderHandle
+                  assetId={assetId}
+                  index={index}
+                  zh={zh}
+                  onDragEnd={() => setDragTargetId(null)}
+                  onMove={(offset) => onChangeIds(move(content.mediaAssetIds, index, offset))}
+                />
                 {cover && (
                   <span className="pointer-events-none absolute top-1.5 right-1.5 z-10 flex items-center gap-1 rounded bg-overlay/90 px-1.5 py-0.5 text-2xs">
                     <StarIcon className="size-3 fill-current" />
@@ -545,6 +556,7 @@ export function SocialPostEditor({
   locale,
   canvasPresets,
   handoffTargets,
+  watermarkAvailable,
   relations,
   onSave,
   onCreateSocialPost,
@@ -571,6 +583,7 @@ export function SocialPostEditor({
   const contentJson = useMemo(() => JSON.stringify(content), [content]);
   const dirty = contentJson !== savedJson;
   const saveFailed = failedJson === contentJson;
+  const diagnostics = useSocialPostDiagnostics({ post, content, dirty, saving, saveFailed });
   const assetsById = useMemo(() => new Map(mediaAssets.map((asset) => [asset.id, asset])), [mediaAssets]);
   const saveForEffect = useStableCallback(onSave);
   const notifyForEffect = useStableCallback(notify);
@@ -605,8 +618,12 @@ export function SocialPostEditor({
 
   const persist = useStableCallback(async (snapshot: SocialPostContentInput) => {
     const snapshotJson = JSON.stringify(snapshot);
-    if (snapshotJson === savedJsonRef.current) return true;
-    if (savingRef.current) return false;
+    const matchesSaved = snapshotJson === savedJsonRef.current;
+    if (matchesSaved || savingRef.current) {
+      diagnostics.skippedSave(matchesSaved);
+      return matchesSaved;
+    }
+    const finishDiagnostic = diagnostics.beginSave(snapshot);
     savingRef.current = true;
     setSaving(true);
     try {
@@ -615,8 +632,10 @@ export function SocialPostEditor({
       savedJsonRef.current = snapshotJson;
       setSavedJson(snapshotJson);
       setFailedJson(null);
+      finishDiagnostic.success(savedPost.revisionNo);
       return true;
     } catch (reason) {
+      finishDiagnostic.failure(reason);
       setFailedJson(snapshotJson);
       const detail = reason instanceof Error ? reason.message : String(reason);
       notifyForEffect(zh ? `贴图自动保存失败：${detail}` : `Could not autosave the social post: ${detail}`);
@@ -701,6 +720,7 @@ export function SocialPostEditor({
   return (
     <div
       data-social-post-editor
+      ref={diagnostics.rootRef}
       className={cn(
         'flex min-h-0 min-w-0 flex-1 flex-col bg-background',
         mediaIntake.dragActive && 'ring-2 ring-inset ring-selected-border',
@@ -719,9 +739,10 @@ export function SocialPostEditor({
         dirty={dirty}
         handingOff={handingOff}
         handoffTargets={handoffTargets}
+        watermarkAvailable={watermarkAvailable}
         onCreateArticle={(copySourceContent) => void createArticle(copySourceContent)}
         onCreateSocialPost={(copySourceContent) => void createSocialPost(copySourceContent)}
-        onHandoff={(target) => void handoffToBrowser(target)}
+        onHandoff={(target, watermark) => void handoffToBrowser(target, watermark)}
         onRetrySave={() => void persist(content)}
         saveFailed={saveFailed}
         saving={saving}
@@ -736,7 +757,10 @@ export function SocialPostEditor({
             <Input
               value={content.title}
               maxLength={200}
-              onChange={(event) => setContent((current) => ({ ...current, title: event.target.value }))}
+              onChange={(event) => {
+                diagnostics.noteChange();
+                setContent((current) => ({ ...current, title: event.target.value }));
+              }}
             />
           </label>
 
@@ -749,7 +773,10 @@ export function SocialPostEditor({
               value={content.body}
               className="min-h-52 resize-y text-base leading-7"
               maxLength={100_000}
-              onChange={(event) => setContent((current) => ({ ...current, body: event.target.value }))}
+              onChange={(event) => {
+                diagnostics.noteChange();
+                setContent((current) => ({ ...current, body: event.target.value }));
+              }}
             />
           </label>
 

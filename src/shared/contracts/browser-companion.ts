@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { naturalWatermarkProfileIdSchema } from '@/shared/contracts/natural-watermark';
 
 const idSchema = z.string().min(1).max(200);
 const handoffIdSchema = z.string().uuid();
@@ -36,6 +37,16 @@ export const browserCompanionSourceSchema = z.discriminatedUnion('kind', [
 
 export const browserCompanionContentKindSchema = z.enum(['social-post-body', 'prompt']);
 export const browserCompanionHandoffStateSchema = z.enum(['ready', 'claimed', 'delivered']);
+export const browserCompanionWatermarkSelectionSchema = z.discriminatedUnion('kind', [
+  z.object({ kind: z.literal('NONE') }).strict(),
+  z.object({ kind: z.literal('PREFERRED') }).strict(),
+  z
+    .object({
+      kind: z.literal('PROFILE'),
+      profileId: naturalWatermarkProfileIdSchema,
+    })
+    .strict(),
+]);
 
 export const browserCompanionStageInputSchema = z
   .object({
@@ -45,6 +56,7 @@ export const browserCompanionStageInputSchema = z
     title: z.string().trim().min(1).max(200).optional(),
     text: z.string().trim().min(1).max(10_000),
     mediaAssetIds: z.array(idSchema).max(20).optional(),
+    watermark: browserCompanionWatermarkSelectionSchema.optional(),
   })
   .strict();
 
@@ -158,6 +170,7 @@ export type BrowserCompanionBrowserId = z.infer<typeof browserCompanionBrowserId
 export type BrowserCompanionSource = z.infer<typeof browserCompanionSourceSchema>;
 export type BrowserCompanionContentKind = z.infer<typeof browserCompanionContentKindSchema>;
 export type BrowserCompanionHandoffState = z.infer<typeof browserCompanionHandoffStateSchema>;
+export type BrowserCompanionWatermarkSelection = z.infer<typeof browserCompanionWatermarkSelectionSchema>;
 export type BrowserCompanionStageInput = z.infer<typeof browserCompanionStageInputSchema>;
 export type BrowserCompanionHistoryItem = z.infer<typeof browserCompanionHistoryItemSchema>;
 export type BrowserCompanionStageResult = z.infer<typeof browserCompanionStageResultSchema>;

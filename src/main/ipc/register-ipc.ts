@@ -53,6 +53,7 @@ import { registerLibraryIpc } from '@/main/ipc/library-handlers';
 import { registerImageBreakdownIpc } from '@/main/ipc/image-breakdown-handlers';
 import { registerVideoDocumentIpc } from '@/main/ipc/video-document-handlers';
 import { registerAppSupportIpc } from '@/main/ipc/app-support-handlers';
+import { registerRendererDiagnostics } from '@/main/app/renderer-diagnostics';
 import { registerAppWindowIpc } from '@/main/ipc/app-window-handlers';
 import { registerWorkspaceLayoutIpc } from '@/main/ipc/workspace-layout-handlers';
 import type { WorkspaceLayoutStore } from '@/main/app/workspace-layout-store';
@@ -211,6 +212,7 @@ export function registerApplicationIpc(
   articleEditorRecovery: ArticleEditorRecoveryStore,
 ) {
   const ipcMain = createTrustedIpcHandlerRegistrar(getWindow);
+  registerRendererDiagnostics(getWindow);
   registerAppSupportIpc(ipcMain);
   registerAppWindowIpc(ipcMain, getWindow);
   registerWorkspaceLayoutIpc(ipcMain, workspaceLayouts);
@@ -463,7 +465,7 @@ export function registerIpc(
     () =>
       chooseFile({
         properties: ['openFile', 'multiSelections'],
-        filters: [{ name: 'Images', extensions: ['png', 'jpg', 'jpeg', 'webp', 'svg'] }],
+        filters: [{ name: 'Images', extensions: ['png', 'jpg', 'jpeg', 'webp', 'gif', 'svg'] }],
       }),
     () => clipboard.readImage(),
   );

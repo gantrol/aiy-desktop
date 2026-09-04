@@ -12,6 +12,21 @@ export interface MaterialAlbumTreeRow {
   depth: number;
 }
 
+export function canMoveMaterialAlbumTo(tree: MaterialAlbumTreeIndex, albumId: string, parentAlbumId: string | null) {
+  const source = tree.byId.get(albumId);
+  if (source?.kind !== 'USER') return false;
+  if (parentAlbumId === null) return source.parentId !== null;
+  if (source.parentId === parentAlbumId || tree.byId.get(parentAlbumId)?.kind !== 'USER') return false;
+  const visited = new Set<string>();
+  let currentId: string | undefined = parentAlbumId;
+  while (currentId) {
+    if (currentId === albumId || visited.has(currentId)) return false;
+    visited.add(currentId);
+    currentId = tree.parentById.get(currentId);
+  }
+  return true;
+}
+
 /** Builds the material-album hierarchy from its explicit parent IDs. */
 export function buildMaterialAlbumTree(albums: readonly MaterialAlbumDto[]): MaterialAlbumTreeIndex {
   const byId = new Map(albums.map((album) => [album.id, album]));

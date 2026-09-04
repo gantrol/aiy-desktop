@@ -17,6 +17,7 @@ import { Button } from '@/renderer/components/ui/button';
 import { CodexHistoryAutoPager } from '@/renderer/features/extensions/CodexHistoryAutoPager';
 import { CodexHistoryNavigation } from '@/renderer/features/extensions/CodexHistoryNavigation';
 import { CodexHistorySearchFilters } from '@/renderer/features/extensions/CodexHistorySearchFilters';
+import { CodexHistoryThreadDetail } from '@/renderer/features/extensions/CodexHistoryThreadDetail';
 import { useCodexHistorySearch } from '@/renderer/features/extensions/useCodexHistorySearch';
 import { useI18n } from '@/renderer/i18n/useI18n';
 import { cn } from '@/renderer/lib/utils';
@@ -66,65 +67,9 @@ function ResultIcon({ role }: Pick<CodexHistorySearchResult, 'role'>) {
   return <UserIcon className="size-3.5" />;
 }
 
-function HistoryPreview({
-  item,
-  locale,
-  onOpen,
-}: {
-  item: CodexHistorySearchResult | null;
-  locale: string;
-  onOpen(threadId: string): void;
-}) {
-  const l = useI18n().messages.extensions.codexHistorySearch;
-  if (!item) return null;
-  return (
-    <aside className="hidden min-w-0 flex-1 flex-col border-l xl:flex">
-      <header className="flex min-h-14 items-start gap-3 border-b px-4 py-3">
-        <div className="min-w-0 flex-1">
-          <h3 className="line-clamp-2 text-sm font-semibold leading-5">{item.title}</h3>
-          <span className="mt-1 block text-2xs text-muted-foreground">
-            {new Intl.DateTimeFormat(locale, { dateStyle: 'medium', timeStyle: 'short' }).format(
-              new Date(item.updatedAt),
-            )}
-          </span>
-        </div>
-        <Button type="button" size="sm" onClick={() => onOpen(item.threadId)}>
-          <ExternalLinkIcon className="size-3.5" />
-          {l.preview.open}
-        </Button>
-      </header>
-      <div className="min-h-0 flex-1 overflow-y-auto p-4">
-        <div className="flex flex-wrap gap-1.5">
-          {item.sectionName && <Badge variant="secondary">{item.sectionName}</Badge>}
-          {item.projectName && <Badge variant="outline">{item.projectName}</Badge>}
-          {item.archived && <Badge variant="outline">{l.navigation.archived}</Badge>}
-          {item.source === 'SUBAGENT' && <Badge variant="outline">{l.subagent}</Badge>}
-        </div>
-        {item.snippet && (
-          <section className="mt-5 border-l-2 border-primary/40 pl-3">
-            <h4 className="mb-2 text-2xs font-semibold uppercase tracking-wide text-muted-foreground">
-              {l.preview.match}
-            </h4>
-            <p className="whitespace-pre-wrap text-sm leading-6">{item.snippet}</p>
-          </section>
-        )}
-        <dl className="mt-6 grid gap-3 text-xs">
-          {item.workspace && (
-            <div className="grid gap-1">
-              <dt className="text-muted-foreground">{l.preview.workspace}</dt>
-              <dd className="break-all font-mono text-2xs">{item.workspace}</dd>
-            </div>
-          )}
-          {item.branch && (
-            <div className="grid gap-1">
-              <dt className="text-muted-foreground">{l.preview.branch}</dt>
-              <dd className="font-mono text-2xs">{item.branch}</dd>
-            </div>
-          )}
-        </dl>
-      </div>
-    </aside>
-  );
+function repeatsTitle(item: CodexHistorySearchResult) {
+  const normalized = (value: string) => value.normalize('NFKC').replace(/\s+/g, ' ').trim().toLocaleLowerCase();
+  return normalized(item.snippet) === normalized(item.title);
 }
 
 export function CodexHistorySearchConfiguration({
@@ -153,7 +98,14 @@ export function CodexHistorySearchConfiguration({
       data-codex-history-search-configuration
       className={cn('overflow-hidden bg-background', standalone ? 'flex size-full min-h-0' : 'rounded-lg border')}
     >
-      {standalone && <CodexHistoryNavigation state={state} workspaceNavigation={workspaceNavigation} />}
+      {standalone && (
+        <CodexHistoryNavigation
+          state={state}
+          workspaceNavigation={workspaceNavigation}
+          selectedThreadId={selectedThreadId}
+          onSelectThread={setSelectedThreadId}
+        />
+      )}
       <div className="flex min-w-0 flex-1 flex-col">
         <h2 className="sr-only">{l.title}</h2>
         {authorized && <CodexHistorySearchFilters authorized={authorized} state={state} />}
@@ -242,7 +194,7 @@ export function CodexHistorySearchConfiguration({
                                   <Badge variant="secondary">{l.matchOccurrences(item.matchCount)}</Badge>
                                 )}
                               </span>
-                              {item.snippet && (
+                              {item.snippet && !repeatsTitle(item) && (
                                 <span className="mt-1 line-clamp-2 block text-xs leading-5 text-muted-foreground">
                                   <HighlightedText text={item.snippet} query={state.draftQuery} />
                                 </span>
@@ -300,7 +252,7 @@ export function CodexHistorySearchConfiguration({
                 )}
               </div>
             </main>
-            <HistoryPreview
+            <CodexHistoryThreadDetail
               item={selectedItem}
               locale={locale}
               onOpen={(threadId) => void state.openThread(threadId)}

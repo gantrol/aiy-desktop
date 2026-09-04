@@ -998,7 +998,12 @@
         "open": "在 Codex 中打开",
         "match": "匹配文本",
         "workspace": "工作区",
-        "branch": "分支"
+        "branch": "分支",
+        "user": "用户",
+        "assistant": "助手",
+        "loadOlder": "加载更早消息",
+        "noMessages": "没有可用消息",
+        "partialHistory": "部分记录"
       },
       "archive": {
         "ALL": "全部",
@@ -1310,7 +1315,21 @@
         "cacheRate": "缓存输入",
         "activeDays": "活跃天数",
         "leadingModel": "主要模型",
-        "fastShare": "Fast Token 占比"
+        "fastShare": "Fast Token 占比",
+        "normalQuotaEquivalent": "等效一般 Token",
+        "totalTokensNote": "所选报告时段内，所有模型、Fast、Standard 和未记录模式的原始 Token 累计，包含缓存输入与输出。未按模式倍率加权，也未折算到 100% 周额度。",
+        "normalQuotaScope": "这是每 100% 主周额度的估算可用量，使用报告时段内有有效额度消耗观测的 Token；与该时段的 Token 累计不是同一口径，因此可能更小。纳入观测中的所有模型，不限定 Sol，也未统一折算为 Sol；模型占比变化会影响估算。额外额度池和缺少有效观测的 Token 不纳入。",
+        "reportPeriod": "报告时段",
+        "quotaObservedPeriod": "纳入观测的起止时间",
+        "quotaObservedTokens": "纳入观测的原始 Token",
+        "quotaModels": "纳入模型（原始 Token 占比）",
+        "quotaOtherModels": "其他模型",
+        "quotaUnclassifiedModel": "模型未分类",
+        "knownMode": "模式覆盖",
+        "partialQuota": "仅使用可用观测段",
+        "legacyQuota": "由历史观测转换；重新调查可更新 reset 口径",
+        "normalQuotaNote": "折算为 100% 周额度对应的一般（非 Fast）Token 总量。逐模型 Token 乘模式倍率，累计后除以观测消耗百分点，再乘 100。模式未记录时按 Standard（1×）至该模型 Fast 倍率显示范围，倍率不明时只显示下限。模式覆盖是已知或可推断模式的 Token 占比。包含缓存输入与输出；额度重置不抵消此前消耗，不依赖 API 费率。",
+        "normalQuotaUnavailable": "没有可用的周额度消耗观测，或报告混合了不能共用 100% 分母的不同额度池。"
       },
       "background": "后台运行",
       "eta": "预计剩余",
@@ -1460,9 +1479,9 @@
         "modes": {
           "STANDARD": "Standard",
           "FAST": "Fast",
-          "UNKNOWN": "未知"
+          "UNKNOWN": "未记录"
         },
-        "inferredMode": "部分 Token 的模式依据扫描时有效的 Codex 配置推断。",
+        "inferredMode": "部分 Token 的模式由完整设置快照的默认状态、同一轮的明确模式，或该时刻有效的 Codex 配置补回。",
         "allModels": "全部模型",
         "allModes": "全部模式",
         "tokensPerOnePercent": "Token / 1% 额度",

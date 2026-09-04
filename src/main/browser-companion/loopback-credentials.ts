@@ -83,6 +83,7 @@ export function createBrowserCompanionBridgeParameters(
   credentials: BrowserCompanionBridgeCredentials,
   rawTarget: BrowserCompanionTarget,
   rawDestinationUrl: string,
+  port = BROWSER_COMPANION_LOOPBACK_PORT,
 ) {
   const target = browserCompanionTargetSchema.parse(rawTarget);
   const destination = new URL(rawDestinationUrl);
@@ -92,7 +93,7 @@ export function createBrowserCompanionBridgeParameters(
 
   return {
     protocolVersion: BROWSER_COMPANION_PROTOCOL_VERSION,
-    port: BROWSER_COMPANION_LOOPBACK_PORT,
+    port,
     token: credentials.token,
     target,
     destination: destination.toString(),
@@ -103,8 +104,9 @@ export function createBrowserCompanionBridgeUrl(
   credentials: BrowserCompanionBridgeCredentials,
   rawTarget: BrowserCompanionTarget,
   rawDestinationUrl: string,
+  port = BROWSER_COMPANION_LOOPBACK_PORT,
 ): string {
-  const parameters = createBrowserCompanionBridgeParameters(credentials, rawTarget, rawDestinationUrl);
+  const parameters = createBrowserCompanionBridgeParameters(credentials, rawTarget, rawDestinationUrl, port);
   const fragment = new URLSearchParams({
     protocolVersion: String(parameters.protocolVersion),
     port: String(parameters.port),

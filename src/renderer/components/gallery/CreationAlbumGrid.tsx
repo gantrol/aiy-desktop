@@ -14,6 +14,7 @@ import {
   readMaterialsDrag,
 } from '@/renderer/components/albums/albumDrag';
 import { ImageAmbientBackdrop } from '@/renderer/components/media/AmbientImage';
+import { useMaterialAlbumMoveActions } from '@/renderer/components/gallery/MaterialAlbumMoveProvider';
 import { DEFAULT_MEDIA_ASPECT_RATIO, getSourceMediaAspectRatio } from '@/renderer/components/media/mediaAspectRatio';
 import { mediaThumbnailUrl } from '@/renderer/components/media/mediaThumbnailUrl';
 import { ActionContextMenuItems, ActionMenuButton, type ActionMenuAction } from '@/renderer/components/ui/action-menu';
@@ -394,6 +395,24 @@ function collectionLifecycleActions({
   return actions;
 }
 
+function collectionPreviewActions(
+  canExpand: boolean,
+  pinned: boolean,
+  label: string,
+  toggle: () => void,
+): ActionMenuAction[] {
+  return canExpand
+    ? [
+        {
+          id: pinned ? 'collapse-preview' : 'pin-preview',
+          label,
+          icon: pinned ? PinOffIcon : PinIcon,
+          onSelect: toggle,
+        },
+      ]
+    : [];
+}
+
 interface CollectionAlbumCardProps {
   album: MaterialAlbumDto;
   containerAspectRatio: number;
@@ -440,6 +459,7 @@ export function CollectionAlbumCard({
   const [contextMenuOpen, setContextMenuOpen] = useState(false);
   const creation = album.systemKey === 'CREATION_SERIES';
   const writableMaterialAlbum = album.kind === 'USER';
+  const moveActions = useMaterialAlbumMoveActions(album, busy);
   const albumDragKind = collectionDragKind(
     album,
     busy,
@@ -473,16 +493,8 @@ export function CollectionAlbumCard({
   };
   const actions: ActionMenuAction[] = [
     { id: 'open', label: openLabel, icon: FolderOpenIcon, onSelect: () => onOpen(album.id) },
-    ...(canExpand
-      ? [
-          {
-            id: previewPinned ? 'collapse-preview' : 'pin-preview',
-            label: previewActionLabel,
-            icon: previewPinned ? PinOffIcon : PinIcon,
-            onSelect: togglePreviewPinned,
-          },
-        ]
-      : []),
+    ...collectionPreviewActions(canExpand, previewPinned, previewActionLabel, togglePreviewPinned),
+    ...moveActions,
     ...collectionLifecycleActions({
       album,
       writable: writableMaterialAlbum,

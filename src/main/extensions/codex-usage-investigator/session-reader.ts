@@ -91,6 +91,7 @@ const threadSettingsRowSchema = z
         thread_settings: z
           .object({
             model: z.string().trim().min(1).max(200).nullable().optional(),
+            model_provider_id: z.string().trim().min(1).max(200).nullable().optional(),
             service_tier: z.string().trim().min(1).max(100).nullable().optional(),
           })
           .passthrough(),
@@ -291,7 +292,7 @@ type ParsedSessionLine =
       terminalState: 'COMPLETED' | 'ABORTED';
       durationMs: number | null;
     }
-  | { kind: 'SETTINGS'; model: string | null; serviceTier: CodexUsageServiceTier };
+  | { kind: 'SETTINGS'; model: string | null; serviceTier: CodexUsageServiceTier; serviceTierInferred: boolean };
 
 type ParsedTokenLine = Extract<ParsedSessionLine, { kind: 'TOKEN' }>;
 type TokenCollectionStatus = 'IGNORED' | 'BELOW_RANGE' | 'ADDED' | 'OVERFLOW';
@@ -377,7 +378,14 @@ function emptyUsage(): CodexUsageBreakdown {
   };
 }
 
-function cumulativeUsageDelta(previous: CodexUsageBreakdown, current: CodexUsageBreakdown) {
+function cumulativeUsageDelta(
+  previous: CodexUsageBreakdown,
+  current: CodexUsageBreakdown,
+  lastUsage: CodexUsageBreakdown,
+) {
+  // After a counter restart the cumulative usage is the single latest request,
+  // even when that request is larger than the preceding counter's total.
+  if (current.totalTokens === lastUsage.totalTokens && current.totalTokens !== previous.totalTokens) return null;
   if (
     current.inputTokens < previous.inputTokens ||
     current.cachedInputTokens < previous.cachedInputTokens ||
@@ -427,6 +435,7 @@ function eventFingerprint(event: Omit<CodexUsageInternalEvent, 'eventFingerprint
 }
 
 function normalizeSessionUsage(candidates: readonly SessionUsageCandidate[]): CodexUsageInternalEvent[] {
+  const turnServiceTiers = observedTurnServiceTiers(candidates.map(({ event }) => event));
   const chronological = [...candidates].sort(
     (left, right) =>
       left.event.timestamp.localeCompare(right.event.timestamp) || right.reverseOrder - left.reverseOrder,
@@ -436,18 +445,26 @@ function normalizeSessionUsage(candidates: readonly SessionUsageCandidate[]): Co
     let usage = candidate.event.usage;
     if (candidate.cumulativeUsage) {
       if (previousCumulative) {
-        usage = cumulativeUsageDelta(previousCumulative, candidate.cumulativeUsage) ?? usage;
+        usage = cumulativeUsageDelta(previousCumulative, candidate.cumulativeUsage, usage) ?? usage;
       }
       previousCumulative = candidate.cumulativeUsage;
     } else {
       previousCumulative = null;
     }
-    const event = { ...candidate.event, usage: { ...usage } };
+    const recoveredTier = candidate.event.turnId ? turnServiceTiers.get(candidate.event.turnId) : undefined;
+    const recover = candidate.event.serviceTier === 'UNKNOWN' && recoveredTier && recoveredTier !== 'UNKNOWN';
+    const event = {
+      ...candidate.event,
+      ...(recover ? { serviceTier: recoveredTier, serviceTierInferred: true } : {}),
+      usage: { ...usage },
+    };
     return { ...event, eventFingerprint: eventFingerprint(event) };
   });
 }
 
-function observedTurnServiceTiers(events: readonly CodexUsageInternalEvent[]) {
+function observedTurnServiceTiers(
+  events: readonly Pick<CodexUsageInternalEvent, 'turnId' | 'serviceTier' | 'serviceTierInferred'>[],
+) {
   const observed = new Map<string, Set<Exclude<CodexUsageServiceTier, 'UNKNOWN'>>>();
   for (const event of events) {
     if (!event.turnId || event.serviceTierInferred || event.serviceTier === 'UNKNOWN') continue;
@@ -564,6 +581,21 @@ function hasRecognizedRecordMarker(line: Buffer) {
   );
 }
 
+function parsedSettings(value: unknown): ParsedSessionLine {
+  const settingsRow = threadSettingsRowSchema.safeParse(value);
+  if (!settingsRow.success) return { kind: 'INVALID' };
+  const settings = settingsRow.data.payload.thread_settings;
+  // A complete ThreadSettingsSnapshot omits service_tier when no tier is requested.
+  // Sparse/legacy records without the snapshot's model/provider identity remain unknown.
+  const defaultTier = settings.service_tier == null && Boolean(settings.model && settings.model_provider_id);
+  return {
+    kind: 'SETTINGS',
+    model: settings.model ?? null,
+    serviceTier: defaultTier ? 'STANDARD' : serviceTier(settings.service_tier),
+    serviceTierInferred: defaultTier,
+  };
+}
+
 function parseSessionLine(line: Buffer): ParsedSessionLine {
   if (!hasRecognizedRecordMarker(line)) return { kind: 'IGNORED' };
   if (!recognizedRecordEnvelope(line)) return { kind: 'IGNORED' };
@@ -624,13 +656,7 @@ function parseSessionLine(line: Buffer): ParsedSessionLine {
       : { kind: 'INVALID' };
   }
   if (eventType !== 'thread_settings_applied') return { kind: 'IGNORED' };
-  const settingsRow = threadSettingsRowSchema.safeParse(value);
-  if (!settingsRow.success) return { kind: 'INVALID' };
-  return {
-    kind: 'SETTINGS',
-    model: settingsRow.data.payload.thread_settings.model ?? null,
-    serviceTier: serviceTier(settingsRow.data.payload.thread_settings.service_tier),
-  };
+  return parsedSettings(value);
 }
 
 function pendingUsageFromToken(parsed: ParsedTokenLine, reverseOrder: number): PendingUsage | null {
@@ -722,10 +748,10 @@ export async function readCodexUsageSession(
     groupedEventCount += events.length;
   };
 
-  const flushPendingTierGroups = (tier: CodexUsageServiceTier, inferMissing = false) => {
+  const flushPendingTierGroups = (tier: CodexUsageServiceTier, inferMissing = false, tierInferred = false) => {
     for (const group of pendingTierGroups) {
       if (!inferMissing) {
-        appendPendingEvents(candidates, sessionId, group.model, group.turnId, tier, false, group.events);
+        appendPendingEvents(candidates, sessionId, group.model, group.turnId, tier, tierInferred, group.events);
         continue;
       }
       for (const event of group.events) {
@@ -775,7 +801,7 @@ export async function readCodexUsageSession(
       if (parsed.reasoningEffort) turn?.reasoningEfforts.add(parsed.reasoningEffort);
     } else if (parsed.kind === 'SETTINGS') {
       groupPending(parsed.model || fallbackModel || 'unknown', null);
-      flushPendingTierGroups(parsed.serviceTier);
+      flushPendingTierGroups(parsed.serviceTier, false, parsed.serviceTierInferred);
     } else {
       const turn = mutableChatTurn(parsed.turnId);
       if (!turn) continue;

@@ -45,7 +45,7 @@ function throwIfAborted(signal?: AbortSignal) {
 }
 
 function isWithin(root: string, candidate: string) {
-  const relative = path.relative(root, candidate);
+  const relative = path.relative(path.toNamespacedPath(root), path.toNamespacedPath(candidate));
   return relative === '' || (relative !== '..' && !relative.startsWith(`..${path.sep}`) && !path.isAbsolute(relative));
 }
 
@@ -125,7 +125,8 @@ async function safeRolloutRoots(codexHome: string) {
   const roots = await Promise.all(
     lexicalRoots.map(async (lexical) => {
       try {
-        return { lexical, real: await realpath(lexical) };
+        const real = await realpath(lexical);
+        return hasForbiddenSegment(real) ? null : { lexical, real };
       } catch {
         return null;
       }
@@ -149,7 +150,7 @@ async function validateIndexedFile(
     if (!metadata.isFile() || metadata.isSymbolicLink()) return null;
     if (metadata.size > BigInt(Number.MAX_SAFE_INTEGER)) return null;
     const realFile = await realpath(filePath);
-    if (!isWithin(owningRoot.real, realFile)) return null;
+    if (hasForbiddenSegment(realFile) || !isWithin(owningRoot.real, realFile)) return null;
     const mtimeMs = Number(metadata.mtimeNs / 1_000_000n);
     if (fromEpoch !== null && row.updatedAtMs < fromEpoch && mtimeMs < fromEpoch) return { status: 'IGNORED' };
     return {

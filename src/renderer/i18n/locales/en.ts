@@ -836,6 +836,11 @@ export const enMessages = {
         match: 'Matched text',
         workspace: 'Workspace',
         branch: 'Branch',
+        user: 'User',
+        assistant: 'Assistant',
+        loadOlder: 'Load older messages',
+        noMessages: 'No messages available',
+        partialHistory: 'Partial history',
       },
       archive: {
         ALL: 'All',
@@ -1050,6 +1055,24 @@ export const enMessages = {
         activeDays: 'Active days',
         leadingModel: 'Leading model',
         fastShare: 'Fast token share',
+        normalQuotaEquivalent: 'Standard-equivalent tokens',
+        totalTokensNote:
+          'Raw tokens accumulated across all models and Fast, Standard, and unrecorded modes in the selected report period, including cached input and output. No mode weighting or normalization to 100% weekly quota is applied.',
+        normalQuotaScope:
+          'Estimated capacity per 100% main weekly quota, using tokens with usable quota-consumption observations within the report period. This has a different denominator from the period’s cumulative tokens and can be smaller. All models in those observations are included, without a Sol-only filter or conversion to Sol. Changes in model mix affect the estimate. Additional quota pools and tokens without usable observations are excluded.',
+        reportPeriod: 'Report period',
+        quotaObservedPeriod: 'Included observation span',
+        quotaObservedTokens: 'Raw tokens in included observations',
+        quotaModels: 'Included models (raw token share)',
+        quotaOtherModels: 'Other models',
+        quotaUnclassifiedModel: 'Unclassified model',
+        knownMode: 'Mode coverage',
+        partialQuota: 'Available observation segments only',
+        legacyQuota: 'Converted from historical observations; investigate again to refresh reset accounting',
+        normalQuotaNote:
+          'Estimated Standard (non-Fast) tokens per 100% weekly quota. Sum tokens × each model’s mode multiplier, divide by observed quota consumption, then × 100. Unrecorded modes contribute a range from Standard (1×) to the model’s Fast quota multiplier. Unknown multipliers allow only a lower bound. Mode coverage is the share of tokens with an identified or inferred mode. Includes cached input and output. Reset baselines keep prior consumption; API pricing is not used.',
+        normalQuotaUnavailable:
+          'No usable weekly quota consumption observations, or the report contains different quota pools that cannot share a 100% denominator.',
       },
       background: 'Background',
       eta: 'ETA',
@@ -1201,9 +1224,10 @@ export const enMessages = {
         modes: {
           STANDARD: 'Standard',
           FAST: 'Fast',
-          UNKNOWN: 'Unknown',
+          UNKNOWN: 'Unrecorded',
         },
-        inferredMode: 'Some tokens use the mode inferred from the Codex configuration effective at scan time.',
+        inferredMode:
+          'Some token modes were recovered from a complete settings snapshot’s default, the same turn’s explicit mode, or the Codex configuration effective at that time.',
         allModels: 'All models',
         allModes: 'All modes',
         tokensPerOnePercent: 'Tokens / 1% quota',

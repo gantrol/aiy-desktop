@@ -48,7 +48,7 @@ import type { CodexUsageCacheDatabase } from '@/main/extensions/codex-usage-inve
 const MAX_FILES = 100_000;
 const MAX_EXPORT_ROWS = 100_000;
 const DISCOVERY_STAT_CONCURRENCY = 12;
-const PROCESSED_ANALYSIS_VERSION = 13;
+const PROCESSED_ANALYSIS_VERSION = 14;
 const DETAILED_STATISTICS_VERSION = 4;
 const FILE_YIELD_INTERVAL = 32;
 const safeIntegerSchema = z.number().int().nonnegative().safe();

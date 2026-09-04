@@ -8,6 +8,7 @@ import type {
 const MAX_FILTER_PROJECTS = 1_000;
 const MAX_FILTER_SECTIONS = 100;
 const MAX_SECTION_THREADS = 50;
+const MAX_SECTION_PROJECTS = 50;
 const MAX_RECENT_THREADS = 20;
 const MAX_FILTER_THREADS = 50;
 
@@ -17,6 +18,8 @@ const projectOptionRowSchema = z
     name: z.string().trim().min(1).max(500),
     workspace: z.string().max(32_768),
     threadCount: z.number().int().nonnegative().safe(),
+    sectionId: z.string().max(512),
+    sectionPosition: z.number().int().nonnegative().safe().nullable(),
   })
   .strict();
 const threadOptionRowSchema = z
@@ -38,6 +41,7 @@ const sectionOptionRowSchema = z
     sectionId: z.string().trim().min(1).max(512),
     name: z.string().trim().min(1).max(500),
     threadCount: z.number().int().nonnegative().safe(),
+    projectCount: z.number().int().nonnegative().safe(),
   })
   .strict();
 
@@ -101,11 +105,14 @@ export function readCodexHistoryFilterOptions(
              p.project_id AS projectId,
              p.name,
              p.workspace,
-             COUNT(t.thread_id) AS threadCount
+             COUNT(t.thread_id) AS threadCount,
+             p.section_id AS sectionId,
+             p.section_position AS sectionPosition
            FROM codex_history_projects AS p
            LEFT JOIN codex_history_threads AS t
              ON t.project_id = p.project_id AND ${visibility.join(' AND ')}
-           GROUP BY p.project_id, p.name, p.workspace, p.position
+           WHERE p.section_id = ''
+           GROUP BY p.project_id, p.name, p.workspace, p.position, p.section_id, p.section_position
            ORDER BY p.position, p.name COLLATE NOCASE, p.project_id
            LIMIT ?`,
         )
@@ -120,7 +127,8 @@ export function readCodexHistoryFilterOptions(
           `SELECT
              s.section_id AS sectionId,
              s.name,
-             COUNT(t.thread_id) AS threadCount
+             COUNT(t.thread_id) AS threadCount,
+             (SELECT COUNT(*) FROM codex_history_projects AS p WHERE p.section_id = s.section_id) AS projectCount
            FROM codex_history_sections AS s
            LEFT JOIN codex_history_threads AS t
              ON t.section_id = s.section_id AND ${visibility.join(' AND ')}
@@ -136,15 +144,37 @@ export function readCodexHistoryFilterOptions(
      ORDER BY t.section_position IS NULL, t.section_position, t.updated_at_ms DESC, t.thread_id
      LIMIT ?`,
   );
+  const sectionProjectStatement = database.prepare(
+    `SELECT
+       p.project_id AS projectId,
+       p.name,
+       p.workspace,
+       COUNT(t.thread_id) AS threadCount,
+       p.section_id AS sectionId,
+       p.section_position AS sectionPosition
+     FROM codex_history_projects AS p
+     LEFT JOIN codex_history_threads AS t
+       ON t.project_id = p.project_id AND ${visibility.join(' AND ')}
+     WHERE p.section_id = ?
+     GROUP BY p.project_id, p.name, p.workspace, p.position, p.section_id, p.section_position
+     ORDER BY p.section_position IS NULL, p.section_position, p.position, p.name COLLATE NOCASE, p.project_id
+     LIMIT ?`,
+  );
   const sections = sectionRows.slice(0, MAX_FILTER_SECTIONS).map((section) => {
     const threads = z
       .array(threadOptionRowSchema)
       .max(MAX_SECTION_THREADS + 1)
       .parse(sectionThreadStatement.all(section.sectionId, MAX_SECTION_THREADS + 1));
+    const projects = z
+      .array(projectOptionRowSchema)
+      .max(MAX_SECTION_PROJECTS + 1)
+      .parse(sectionProjectStatement.all(section.sectionId, MAX_SECTION_PROJECTS + 1));
     return {
       ...section,
       threads: threads.slice(0, MAX_SECTION_THREADS).map(threadOption),
       threadsTruncated: threads.length > MAX_SECTION_THREADS,
+      projects: projects.slice(0, MAX_SECTION_PROJECTS),
+      projectsTruncated: projects.length > MAX_SECTION_PROJECTS,
     };
   });
   const recentRows = z
@@ -167,8 +197,10 @@ export function readCodexHistoryFilterOptions(
     threadParameters.push(input.projectId);
   }
   if (input.sectionId) {
-    threadClauses.push('t.section_id = ?');
-    threadParameters.push(input.sectionId);
+    threadClauses.push(
+      '(t.section_id = ? OR t.project_id IN (SELECT p.project_id FROM codex_history_projects AS p WHERE p.section_id = ?))',
+    );
+    threadParameters.push(input.sectionId, input.sectionId);
   }
   const query = normalizeSearchText(input.query);
   if (query) {

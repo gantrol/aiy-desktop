@@ -18,7 +18,7 @@ import {
   DropdownMenuTrigger,
 } from '@/renderer/components/ui/dropdown-menu';
 import { CompanionHandoffMenu } from '@/renderer/features/browser-companion/CompanionHandoffMenu';
-import type { BrowserCompanionTarget } from '@/shared/contracts';
+import type { BrowserCompanionTarget, BrowserCompanionWatermarkSelection } from '@/shared/contracts';
 
 interface Props {
   creatingForm: boolean;
@@ -26,9 +26,10 @@ interface Props {
   dirty: boolean;
   handingOff: boolean;
   handoffTargets: readonly BrowserCompanionTarget[];
+  watermarkAvailable: boolean;
   onCreateArticle(copySourceContent: boolean): void;
   onCreateSocialPost(copySourceContent: boolean): void;
-  onHandoff(target: BrowserCompanionTarget): void;
+  onHandoff(target: BrowserCompanionTarget, watermark: BrowserCompanionWatermarkSelection): void;
   onRetrySave(): void;
   saveFailed: boolean;
   saving: boolean;
@@ -83,6 +84,7 @@ export function SocialPostHeader({
   dirty,
   handingOff,
   handoffTargets,
+  watermarkAvailable,
   onCreateArticle,
   onCreateSocialPost,
   onHandoff,
@@ -147,6 +149,7 @@ export function SocialPostHeader({
           busy={handingOff}
           onHandoff={onHandoff}
           targets={handoffTargets}
+          watermarkAvailable={watermarkAvailable}
           zh={zh}
         />
       </div>

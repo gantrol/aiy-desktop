@@ -95,7 +95,7 @@ Normal build scripts no longer produce NSIS installers, portable ZIPs, macOS DMG
 
 ## ❕Early stage
 
-AIY is still very early. As of `v0.3.9`, image creation and the library are usable, but extensions and content packs may still change.
+AIY is still very early. As of `v0.3.10`, image creation and the library are usable, but extensions and content packs may still change.
 
 The basic framework is in place. Real user feedback is what will determine where this project goes next.
 

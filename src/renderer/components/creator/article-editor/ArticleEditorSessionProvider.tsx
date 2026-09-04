@@ -11,11 +11,7 @@ import type {
   ArticleRevisionSaveInput,
   ArticleRevisionSaveResult,
 } from '@/shared/contracts';
-import {
-  articleCommentAnchorUpdatesAreApplied,
-  articleCommentAnchorUpdates,
-  sameArticleElementPlacements,
-} from '@/shared/contracts/article';
+import { articleCommentAnchorUpdates } from '@/shared/contracts/article';
 import type {
   VideoDocumentEditorImageImport,
   VideoDocumentWysiwygEditorHandle,
@@ -103,15 +99,6 @@ interface ArticleEditorSessionRegistry {
 
 const ArticleEditorSessionRegistryContext = createContext<ArticleEditorSessionRegistry | null>(null);
 const ArticleEditorSessionFlushContext = createContext<() => Promise<boolean>>(async () => true);
-
-function requestMatchesArticle(request: ArticleRevisionSaveInput, article: ArticleDto) {
-  if (request.contentHash !== article.contentHash) return false;
-  if (request.elements && !sameArticleElementPlacements(request.elements, article.elements)) return false;
-  return (
-    !request.commentAnchors ||
-    articleCommentAnchorUpdatesAreApplied(request.commentAnchors, articleCommentAnchorUpdates(article.comments))
-  );
-}
 
 function createSessionSeed(article: ArticleDto, sessionEpoch: string, draft: ArticleEditorRecoveredDraft | null) {
   return {
@@ -254,6 +241,24 @@ function createRuntime({
       readElements: () => editorHandle?.getPersistenceSnapshot().articleElements ?? latestElements,
       readCommentAnchors: captureCommentAnchors,
       prepareForSave: () => removeUnboundEditorImages(editorHandle, model),
+      onDraftCaptured(draft) {
+        const state = model.getSnapshot();
+        latestElements = draft.elements ?? [];
+        latestCommentAnchors = draft.commentAnchors ?? [];
+        if (
+          !recoveryStore.record({
+            draftSeq: draft.draftSeq,
+            baseRevisionId: state.persisted.revisionId,
+            baseContentHash: state.persisted.contentHash,
+            content: draft.content,
+            media: state.draft.media,
+            elements: latestElements,
+            commentAnchors: latestCommentAnchors,
+          })
+        ) {
+          reportRecoveryError();
+        }
+      },
       async persist(input) {
         if (!recoveryStore.markPending(input)) reportRecoveryError();
         if (!(await recoveryStore.flush())) reportRecoveryError();
@@ -265,38 +270,11 @@ function createRuntime({
         onSaved(savedArticle);
         acknowledgedListeners.forEach((listener) => listener(savedArticle, request));
       },
-      onUnchanged(request) {
-        if (!recoveryStore.acknowledge(request, persistedArticle)) reportRecoveryError();
-      },
       onConflict,
       onError,
-      requestMatchesPersisted: (request) => requestMatchesArticle(request, persistedArticle),
-      acknowledgementMatchesRequest: requestMatchesArticle,
     });
   let coordinator = createCoordinator();
-  const recordChange = (snapshot: ArticleContentInput) => {
-    let recordedDraftSeq = model.getSnapshot().draft.sequence;
-    coordinator.noteChange(snapshot, (draftSeq, auxiliary) => {
-      recordedDraftSeq = draftSeq;
-      const state = model.getSnapshot();
-      latestElements = auxiliary.elements.map((element) => ({ ...element }));
-      latestCommentAnchors = auxiliary.commentAnchors.map((item) => ({ ...item, anchor: { ...item.anchor } }));
-      if (
-        !recoveryStore.record({
-          draftSeq,
-          baseRevisionId: state.persisted.revisionId,
-          baseContentHash: state.persisted.contentHash,
-          content: snapshot,
-          media: state.draft.media,
-          elements: latestElements,
-          commentAnchors: latestCommentAnchors,
-        })
-      ) {
-        reportRecoveryError();
-      }
-    });
-    return recordedDraftSeq;
-  };
+  const recordChange = (snapshot: ArticleContentInput) => coordinator.noteChange(snapshot);
   const start = () => {
     if (started || recoveryPending) return;
     started = true;
@@ -522,16 +500,8 @@ export function ArticleEditorSessionProvider({ article, children, notify, onSave
   const stableNotify = useStableCallback(notify);
   const stableSave = useStableCallback(onSave);
   const stableSaved = useStableCallback(onSaved);
-  const stableConflict = useStableCallback((conflict: ArticleRevisionConflict) =>
-    stableNotify(
-      conflict.reason === 'HISTORICAL_REPLAY'
-        ? zh
-          ? `已阻止编辑器自动写回历史版本 ${conflict.historicalRevisionNo ?? ''}；当前版本未被覆盖`
-          : `Blocked an automatic replay of historical version ${conflict.historicalRevisionNo ?? ''}; the current version was kept`
-        : zh
-          ? '文章已在其他位置更新，当前草稿未被覆盖'
-          : 'The article changed elsewhere; your draft was kept',
-    ),
+  const stableConflict = useStableCallback(() =>
+    stableNotify(zh ? '文章已在其他位置更新，当前草稿未被覆盖' : 'The article changed elsewhere; your draft was kept'),
   );
   const stableError = useStableCallback((mode: ArticleSaveMode, detail: string) =>
     stableNotify(

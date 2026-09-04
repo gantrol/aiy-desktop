@@ -6,6 +6,7 @@ import {
 import type { ResolvedAssetFile } from '@/main/database/assets/asset-file-repository';
 import type { NaturalWatermarkConfigurationStore } from '@/main/extensions/natural-watermark/configuration';
 import type { NaturalWatermarkService } from '@/main/extensions/natural-watermark/service';
+import type { NaturalWatermarkProfile } from '@/shared/contracts/natural-watermark';
 import {
   browserCompanionDestinationsResultSchema,
   browserCompanionDeleteResultSchema,
@@ -21,6 +22,7 @@ import {
   type BrowserCompanionStageInput,
   type BrowserCompanionStageResult,
   type BrowserCompanionTarget,
+  type BrowserCompanionWatermarkSelection,
 } from '@/shared/contracts/browser-companion';
 
 const TARGET_URLS: Record<BrowserCompanionTarget, string> = {
@@ -53,14 +55,25 @@ function fileMediaSource(file: ResolvedAssetFile): BrowserCompanionMediaSource {
 async function watermarkedMediaSources(
   files: readonly ResolvedAssetFile[],
   runtime: NaturalWatermarkRuntime,
+  profile: NaturalWatermarkProfile,
 ): Promise<BrowserCompanionMediaSource[]> {
-  const configuration = await runtime.configuration.get();
   return Promise.all(
     files.map(async (file) => ({
       kind: 'bytes' as const,
-      ...(await runtime.service.apply(file, configuration)),
+      ...(await runtime.service.apply(file, profile)),
     })),
   );
+}
+
+async function selectedWatermarkProfile(
+  selection: BrowserCompanionWatermarkSelection | undefined,
+  runtime: NaturalWatermarkRuntime | undefined,
+): Promise<NaturalWatermarkProfile | null> {
+  if (!selection || selection.kind === 'NONE') return null;
+  if (!runtime?.isActivated()) throw new Error('Natural Watermark is disabled or missing permissions');
+  return selection.kind === 'PREFERRED'
+    ? runtime.configuration.preferredProfile()
+    : runtime.configuration.profile(selection.profileId);
 }
 
 export class BrowserCompanionRuntime {
@@ -80,10 +93,13 @@ export class BrowserCompanionRuntime {
       }
       return file;
     });
-    const naturalWatermark = this.naturalWatermark?.isActivated() ? this.naturalWatermark : null;
-    const media = naturalWatermark
-      ? await watermarkedMediaSources(resolvedMedia, naturalWatermark)
-      : resolvedMedia.map(fileMediaSource);
+    const watermarkProfile = resolvedMedia.length
+      ? await selectedWatermarkProfile(input.watermark, this.naturalWatermark)
+      : null;
+    const media =
+      watermarkProfile && this.naturalWatermark
+        ? await watermarkedMediaSources(resolvedMedia, this.naturalWatermark, watermarkProfile)
+        : resolvedMedia.map(fileMediaSource);
     const handoff = await this.handoffs.stage(input, media);
     let browserOpened = true;
     let browserOpenError: BrowserCompanionStageResult['browserOpenError'] = null;

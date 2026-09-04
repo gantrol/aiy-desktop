@@ -2,7 +2,7 @@
   "manifestVersion": 1,
   "kind": "CAPABILITY",
   "id": "com.aiy.codex-history-search",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "displayName": "Codex History Search",
   "description": "Build a private local index for fast full-text search across Codex task titles, user messages, and final answers.",
   "engines": {

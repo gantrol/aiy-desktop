@@ -2,7 +2,7 @@ import { createHash } from 'node:crypto';
 import type { CodexUsageFileFingerprint } from '@/main/extensions/codex-usage-investigator/cache-records';
 import type { CodexUsageServiceTierFallback } from '@/main/extensions/codex-usage-investigator/service-tier-fallback';
 
-const SOURCE_ANALYSIS_VERSION = 9;
+const SOURCE_ANALYSIS_VERSION = 10;
 
 export function codexUsageSourceCacheKey(
   file: CodexUsageFileFingerprint,
@@ -14,6 +14,7 @@ export function codexUsageSourceCacheKey(
     .update(
       JSON.stringify({
         version: SOURCE_ANALYSIS_VERSION,
+        cumulativeUsageBasis: 'LAST_USAGE_ON_COUNTER_RESTART',
         sessionId: file.sessionId,
         fallbackModel: file.fallbackModel,
         threadSource: file.threadSource,

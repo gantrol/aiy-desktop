@@ -3,6 +3,7 @@ import type {
   CreatorImageStagePreviewRow,
   ImportedCreationOutputDto,
 } from '@/shared/contracts';
+import { creatorImageImportMimeTypeSchema } from '@/shared/contracts/creator-import';
 
 export type RendererImageImportSource = 'PASTE' | 'DROP' | 'UPLOAD';
 
@@ -15,24 +16,18 @@ export type RendererImageImportPreviewRow = CreatorImageStagePreviewRow & {
 
 const maxImageBytes = 25 * 1024 * 1024;
 const maxImages = 8;
-const supportedImageTypes = new Set<RendererImageImportItem['mimeType']>([
-  'image/png',
-  'image/jpeg',
-  'image/webp',
-  'image/svg+xml',
-]);
 const imageTypeByExtension = new Map<string, RendererImageImportItem['mimeType']>([
   ['png', 'image/png'],
   ['jpg', 'image/jpeg'],
   ['jpeg', 'image/jpeg'],
   ['webp', 'image/webp'],
+  ['gif', 'image/gif'],
   ['svg', 'image/svg+xml'],
 ]);
 
 export function imageMimeType(file: File): RendererImageImportItem['mimeType'] | null {
-  if (supportedImageTypes.has(file.type as RendererImageImportItem['mimeType'])) {
-    return file.type as RendererImageImportItem['mimeType'];
-  }
+  const mimeType = creatorImageImportMimeTypeSchema.safeParse(file.type);
+  if (mimeType.success) return mimeType.data;
   return imageTypeByExtension.get(file.name.split('.').pop()?.toLowerCase() ?? '') ?? null;
 }
 

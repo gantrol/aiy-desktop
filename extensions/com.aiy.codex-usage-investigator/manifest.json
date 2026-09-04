@@ -2,7 +2,7 @@
   "manifestVersion": 1,
   "kind": "CAPABILITY",
   "id": "com.aiy.codex-usage-investigator",
-  "version": "0.1.5",
+  "version": "0.1.6",
   "displayName": "Did Codex Work Hard Today?",
   "description": "Review today-first Codex activity, report history, measured Fast versus Standard speed, complete-session cost, and weekly quota observations.",
   "engines": {

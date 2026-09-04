@@ -39,12 +39,12 @@ function initialSessionState(
       epoch,
     },
     persisted: {
+      draftSeq: 0,
       revisionId: article.revisionId,
       contentHash: article.contentHash,
     },
     draft: {
-      sequence: 0,
-      contentHash: initialDraft ? null : article.contentHash,
+      sequence: initialDraft ? 1 : 0,
       metadata: draftContent ? articleEditorMetadataFromContent(draftContent) : articleEditorMetadata(article),
       media: initialDraft?.media.map((item) => ({ ...item })) ?? articleEditorMedia(article),
       hasBody: Boolean((draftContent?.markdown ?? article.content.markdown).trim()),
@@ -86,7 +86,7 @@ export class ArticleEditorSessionModel {
       ...state,
       draft: {
         ...state.draft,
-        contentHash: null,
+        sequence: state.draft.sequence + 1,
         metadata: articleEditorMetadataFromContent(content),
         media: media.map((item) => ({ ...item })),
         hasBody: Boolean(content.markdown.trim()),
@@ -130,20 +130,10 @@ export class ArticleEditorSessionModel {
       draft: {
         ...state.draft,
         sequence,
-        contentHash: null,
         hasBody,
       },
     });
     return sequence;
-  }
-
-  resolveDraftHash(sequence: number, contentHash: string) {
-    const state = this.#state;
-    if (state.lifecycle === 'disposed' || state.draft.sequence !== sequence) return;
-    this.#commit({
-      ...state,
-      draft: { ...state.draft, contentHash },
-    });
   }
 
   beginSave(input: ArticleRevisionSaveInput) {
@@ -152,6 +142,9 @@ export class ArticleEditorSessionModel {
       state.lifecycle === 'disposed' ||
       state.session.articleId !== input.articleId ||
       state.session.epoch !== input.sessionEpoch ||
+      state.persisted.revisionId !== input.expectedRevisionId ||
+      input.draftSeq <= state.persisted.draftSeq ||
+      input.draftSeq > state.draft.sequence ||
       state.save.phase === 'saving' ||
       state.save.phase === 'conflict'
     ) {
@@ -170,12 +163,12 @@ export class ArticleEditorSessionModel {
     this.#commit({
       ...state,
       persisted: {
+        draftSeq: input.draftSeq,
         revisionId: savedArticle.revisionId,
         contentHash: input.contentHash,
       },
       draft: {
         ...state.draft,
-        contentHash: state.draft.sequence === input.draftSeq ? input.contentHash : state.draft.contentHash,
         media: mergeArticleEditorMedia(state.draft.media, articleEditorMedia(savedArticle)),
       },
       save: { phase: 'idle' },
@@ -205,11 +198,8 @@ export class ArticleEditorSessionModel {
         phase: 'conflict',
         conflict: {
           ...articleEditorSaveIdentity(input),
-          expectedRevisionId: input.expectedRevisionId,
           currentRevisionId: conflict.currentArticle.revisionId,
           reason: conflict.reason,
-          historicalRevisionId: conflict.historicalRevisionId,
-          historicalRevisionNo: conflict.historicalRevisionNo,
         },
       },
     });

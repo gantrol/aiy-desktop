@@ -3,6 +3,7 @@ import type {
   BrowserCompanionBrowserOpenError,
   BrowserCompanionStageInput,
   BrowserCompanionTarget,
+  BrowserCompanionWatermarkSelection,
 } from '@/shared/contracts';
 
 const TARGET_LABELS: Record<BrowserCompanionTarget, { en: string; zh: string }> = {
@@ -11,7 +12,7 @@ const TARGET_LABELS: Record<BrowserCompanionTarget, { en: string; zh: string }> 
   weibo: { en: 'Weibo', zh: '微博' },
 };
 
-type PreparedHandoff = Omit<BrowserCompanionStageInput, 'target'>;
+type PreparedHandoff = Omit<BrowserCompanionStageInput, 'target' | 'watermark'>;
 
 const OPEN_ERROR_LABELS: Record<BrowserCompanionBrowserOpenError, { en: string; zh: string }> = {
   BROWSER_NOT_FOUND: { en: 'The configured browser was not found', zh: '未找到已配置的浏览器' },
@@ -34,6 +35,11 @@ function openedMessage(target: BrowserCompanionTarget, targetLabel: string, zh: 
       ? '已打开 ChatGPT；生成后可在对应图片上选择“回填 AIY”'
       : 'ChatGPT opened; choose “Return to AIY” on the generated image';
   }
+  if (target === 'wechat') {
+    return zh
+      ? '已打开微信公众号，AIY 伴侣将进入“贴图”并填入内容；请确认后再发布'
+      : 'WeChat Official Account opened; AIY Companion will open the social post editor and fill it; review before publishing';
+  }
   return zh
     ? `已打开${targetLabel}，AIY 伴侣将自动填入；请确认后再发布`
     : `${targetLabel} opened; AIY Companion will fill it automatically`;
@@ -51,14 +57,21 @@ export function useBrowserCompanionHandoff({
   const busyRef = useRef(false);
   const [busy, setBusy] = useState(false);
 
-  async function handoff(target: BrowserCompanionTarget): Promise<void> {
+  async function handoff(
+    target: BrowserCompanionTarget,
+    watermark?: BrowserCompanionWatermarkSelection,
+  ): Promise<void> {
     if (busyRef.current) return;
     busyRef.current = true;
     setBusy(true);
     try {
       const prepared = await prepare(target);
       if (!prepared) return;
-      const result = await window.desktopApi.browserCompanionStage({ target, ...prepared });
+      const result = await window.desktopApi.browserCompanionStage({
+        target,
+        ...prepared,
+        ...(watermark ? { watermark } : {}),
+      });
       const targetLabel = TARGET_LABELS[target][zh ? 'zh' : 'en'];
       notify(
         result.browserOpened

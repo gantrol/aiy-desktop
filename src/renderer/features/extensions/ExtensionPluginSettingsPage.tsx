@@ -94,8 +94,10 @@ export function ExtensionPluginSettingsPage({
 }: Props) {
   const messages = useI18n().messages;
   const l = messages.extensions;
+  const naturalWatermark = extension.manifest.id === NATURAL_WATERMARK_EXTENSION_ID;
   return (
     <section data-extension-plugin-settings className="grid gap-6">
+      {naturalWatermark && <NaturalWatermarkConfigurationPanel active={active && extension.enabled} notify={notify} />}
       <dl className="grid grid-cols-2 gap-px overflow-hidden rounded-lg border bg-border text-sm sm:grid-cols-4">
         <div className="bg-background p-3">
           <dt className="text-xs text-muted-foreground">{l.fields.manifest}</dt>
@@ -150,9 +152,6 @@ export function ExtensionPluginSettingsPage({
           notify={notify}
           onConnectionChanged={onConnectionChanged}
         />
-      )}
-      {extension.manifest.id === NATURAL_WATERMARK_EXTENSION_ID && (
-        <NaturalWatermarkConfigurationPanel active={active && extension.enabled} notify={notify} />
       )}
       <div className="grid gap-5 lg:grid-cols-2">
         <section className="rounded-lg border">

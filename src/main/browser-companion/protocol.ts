@@ -25,6 +25,18 @@ export const BROWSER_COMPANION_MAX_REQUEST_BYTES = 64 * 1024;
 export const BROWSER_COMPANION_MAX_RESPONSE_BYTES = 64 * 1024;
 export const BROWSER_COMPANION_REQUEST_CLOCK_SKEW_MS = 60_000;
 
+export function resolveBrowserCompanionLoopbackPort(environment: NodeJS.ProcessEnv): number {
+  if (environment.AIY_E2E !== '1') return BROWSER_COMPANION_LOOPBACK_PORT;
+  const configured = environment.AIY_BROWSER_COMPANION_LOOPBACK_PORT?.trim();
+  if (!configured) return BROWSER_COMPANION_LOOPBACK_PORT;
+  if (!/^\d{4,5}$/.test(configured)) throw new Error('Invalid browser companion E2E loopback port');
+  const port = Number(configured);
+  if (!Number.isSafeInteger(port) || port < 1_024 || port > 65_535) {
+    throw new Error('Invalid browser companion E2E loopback port');
+  }
+  return port;
+}
+
 const browserCompanionWebOriginTarget = {
   'https://chatgpt.com': 'chatgpt',
   'https://mp.weixin.qq.com': 'wechat',

@@ -2,6 +2,7 @@ import { z } from 'zod';
 import { termDraftSchema } from '@/main/database/dictionary/term-draft-schema';
 import { importedImageMetadataSchema, importedImageRelationshipSchema } from '@/main/ipc/import-metadata-schema';
 import { creationDraftLoadInputSchema } from '@/shared/contracts/creation-draft';
+import { creatorImageImportMimeTypeSchema } from '@/shared/contracts/creator-import';
 
 export const localeSchema = z.enum(['zh', 'en']);
 
@@ -548,7 +549,7 @@ export const intakeMediaBytesSchema = z
     message: 'Media must be 100 MB or smaller',
   });
 
-export const creatorIntakeMimeTypes = new Set(['image/png', 'image/jpeg', 'image/webp', 'image/svg+xml']);
+export const creatorIntakeMimeTypes = new Set<string>(creatorImageImportMimeTypeSchema.options);
 
 export const intakeSchema = z
   .object({

@@ -1,7 +1,9 @@
 import { z } from 'zod';
 import {
   NATURAL_WATERMARK_CUSTOM_LOGO_MAX_BYTES,
-  naturalWatermarkPlacementSchema,
+  NATURAL_WATERMARK_MAX_SIZE_RATIO,
+  NATURAL_WATERMARK_MIN_SIZE_RATIO,
+  naturalWatermarkPositionSchema,
   naturalWatermarkStyleSchema,
   naturalWatermarkTextSchema,
 } from '@/shared/contracts/natural-watermark';
@@ -80,7 +82,8 @@ export const imageDecoderRequestSchema = z.discriminatedUnion('operation', [
       logoBytes: watermarkLogoBytesSchema,
       style: naturalWatermarkStyleSchema,
       text: naturalWatermarkTextSchema,
-      placement: naturalWatermarkPlacementSchema,
+      sizeRatio: z.number().min(NATURAL_WATERMARK_MIN_SIZE_RATIO).max(NATURAL_WATERMARK_MAX_SIZE_RATIO),
+      position: naturalWatermarkPositionSchema,
       opacity: z.number().min(0.35).max(0.95),
     })
     .strict(),

@@ -87,6 +87,7 @@ import {
   naturalWatermarkConfigurationSchema,
   naturalWatermarkCustomLogoIdSchema,
   naturalWatermarkCustomLogoSchema,
+  naturalWatermarkPreviewImageSchema,
 } from '@/shared/contracts/natural-watermark';
 import {
   derivedVisualAdoptInputSchema,
@@ -172,8 +173,10 @@ import {
 import { createAppShellPreloadApi } from '@/preload/app-shell-api';
 import { createBackgroundIssuePreloadApi } from '@/preload/background-issue-api';
 import { createCodexArtifactsPreloadApi } from '@/preload/codex-artifacts-api';
+import { recordRendererDiagnostic, traceRendererRequest } from '@/preload/renderer-diagnostics';
 
 const api: DesktopApi = {
+  rendererDiagnosticRecord: recordRendererDiagnostic,
   appPlatform: desktopPlatformSchema.parse(process.platform),
   ...createAppShellPreloadApi(),
   transitionShowcaseExportImages: async (assetIds) =>
@@ -183,7 +186,7 @@ const api: DesktopApi = {
         transitionShowcaseExportImageIdsSchema.parse(assetIds),
       ),
     ),
-  bootstrap: (locale) => ipcRenderer.invoke('app:bootstrap', locale),
+  bootstrap: (locale) => traceRendererRequest('bootstrap', () => ipcRenderer.invoke('app:bootstrap', locale)),
   articleEditorRecoveryList: async (input) => {
     const result = articleEditorRecoveryListResultSchema.parse(
       await ipcRenderer.invoke('article-editor-recovery:list', articleEditorRecoveryScopeSchema.parse(input)),
@@ -250,6 +253,14 @@ const api: DesktopApi = {
     ),
   naturalWatermarkCustomLogoImport: async () =>
     naturalWatermarkCustomLogoSchema.nullable().parse(await ipcRenderer.invoke('natural-watermark:custom-logo-import')),
+  naturalWatermarkPreviewImageGet: async () =>
+    naturalWatermarkPreviewImageSchema
+      .nullable()
+      .parse(await ipcRenderer.invoke('natural-watermark:preview-image-get')),
+  naturalWatermarkPreviewImageImport: async () =>
+    naturalWatermarkPreviewImageSchema
+      .nullable()
+      .parse(await ipcRenderer.invoke('natural-watermark:preview-image-import')),
   ...createArticleDeliveryPreloadApi(ipcRenderer),
   ...createProviderConnectionPreloadApi(ipcRenderer),
   ...createCodexArtifactsPreloadApi(ipcRenderer),
@@ -545,7 +556,12 @@ const api: DesktopApi = {
         imageBreakdownImageFormCreateInputSchema.parse(input),
       ),
     ),
-  socialPostSave: (input) => ipcRenderer.invoke('social-post:save', socialPostSaveInputSchema.parse(input)),
+  socialPostSave: (input) =>
+    traceRendererRequest(
+      'post-ipc',
+      () => ipcRenderer.invoke('social-post:save', socialPostSaveInputSchema.parse(input)),
+      { postId: input.id ?? undefined },
+    ),
   socialPostFormAdd: (input) => ipcRenderer.invoke('social-post:form-add', socialPostFormAddInputSchema.parse(input)),
   socialPostFormCreate: (input) =>
     ipcRenderer.invoke('social-post:form-create', socialPostFormCreateInputSchema.parse(input)),
@@ -777,3 +793,4 @@ const api: DesktopApi = {
 };
 
 contextBridge.exposeInMainWorld('desktopApi', api);
+recordRendererDiagnostic({ event: 'preload-ready', details: {} });

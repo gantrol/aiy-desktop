@@ -1,6 +1,7 @@
 import type {
   ArticleContentInput,
   ArticleDto,
+  ArticleRevisionSaveInput,
   ArticleWechatCopyOptions,
   CreationItemDto,
   InspirationStashDto,
@@ -13,7 +14,6 @@ import {
   socialPostBodyFromMarkdown,
 } from '@/renderer/components/creator/article-editor/articleContentTransforms';
 import { creationFormByEntity, creationItemByFormEntity } from '@/renderer/components/creator/creationFormEntities';
-import { useCreatorArticlePersistence } from '@/renderer/components/creator/workflows/useCreatorArticlePersistence';
 import { useStableCallback } from '@/renderer/lib/useStableCallback';
 
 interface Options {
@@ -44,7 +44,9 @@ function articleContentSnapshot(content: ArticleContentInput): ArticleContentInp
 }
 
 export function useCreatorArticleWorkflow(options: Options) {
-  const { saveArticleRevision } = useCreatorArticlePersistence();
+  const saveArticleRevision = useStableCallback((input: ArticleRevisionSaveInput) =>
+    window.desktopApi.articleRevisionSave(input),
+  );
   const getCreationDraftCommitIdentity = useStableCallback(options.getCreationDraftCommitIdentity);
   const notify = useStableCallback(options.notify);
   const onDraftArticleCreated = useStableCallback(options.onDraftArticleCreated);

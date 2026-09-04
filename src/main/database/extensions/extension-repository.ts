@@ -285,7 +285,7 @@ export class ExtensionRepository {
           .prepare(
             `INSERT INTO extension_permission_grants(
           extension_id, permission_key, granted, updated_at
-        ) VALUES (?, ?, 0, ?)`,
+        ) VALUES (?, ?, ?, ?)`,
           )
           .run(manifest.id, permission, inheritedGrant ? 1 : 0, timestamp);
       }

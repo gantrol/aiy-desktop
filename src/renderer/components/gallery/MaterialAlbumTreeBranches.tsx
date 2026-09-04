@@ -1,4 +1,4 @@
-import { ArchiveIcon, FolderInputIcon, ImagesIcon, PencilIcon, PlusIcon, Trash2Icon } from 'lucide-react';
+import { ArchiveIcon, ImagesIcon, PencilIcon, PlusIcon, Trash2Icon } from 'lucide-react';
 import type { Dispatch, DragEvent, SetStateAction } from 'react';
 import type { MaterialAlbumDto, MaterialSelectionTargetInput } from '@/shared/contracts';
 import {
@@ -33,7 +33,9 @@ import { Collapsible } from '@/renderer/components/ui/collapsible';
 import { ContextMenu, ContextMenuContent, ContextMenuTrigger } from '@/renderer/components/ui/context-menu';
 import { cn } from '@/renderer/lib/utils';
 import type { MaterialAlbumEditorState } from '@/renderer/components/gallery/MaterialAlbumDialogs';
-import type { MaterialAlbumTreeIndex } from '@/renderer/components/gallery/materialAlbumTree';
+import { canMoveMaterialAlbumTo, type MaterialAlbumTreeIndex } from '@/renderer/components/gallery/materialAlbumTree';
+import { MaterialAlbumDragHandle } from '@/renderer/components/gallery/MaterialAlbumDragHandle';
+import { useMaterialAlbumMoveActions } from '@/renderer/components/gallery/MaterialAlbumMoveProvider';
 
 export interface MaterialAlbumBranchLabels {
   open: string;
@@ -96,19 +98,6 @@ interface CreationAlbumBranchProps extends SharedBranchProps {
   onMoveCreationAlbum?(albumId: string, parentAlbumId: string | null): Promise<void>;
 }
 
-function canMoveAlbumTo(tree: MaterialAlbumTreeIndex, sourceAlbumId: string, parentAlbumId: string) {
-  const source = tree.byId.get(sourceAlbumId);
-  if (!source || sourceAlbumId === parentAlbumId || source.parentId === parentAlbumId) return false;
-  const visited = new Set<string>();
-  let currentId: string | undefined = parentAlbumId;
-  while (currentId) {
-    if (currentId === sourceAlbumId || visited.has(currentId)) return false;
-    visited.add(currentId);
-    currentId = tree.parentById.get(currentId);
-  }
-  return true;
-}
-
 function materialAlbumLifecycleActions(
   album: MaterialAlbumDto,
   labels: MaterialAlbumBranchLabels,
@@ -159,7 +148,7 @@ export function MaterialAlbumBranch(props: MaterialAlbumBranchProps) {
   } = props;
   const children = tree.childrenByParentId.get(album.id) ?? [];
   const expanded = expansion.isOpen(album.id);
-  const hasParent = Boolean(album.parentId && tree.byId.has(album.parentId));
+  const moveActions = useMaterialAlbumMoveActions(album, busy);
   const clickHandlers = children.length
     ? click.handlers<HTMLButtonElement>(
         () => {
@@ -172,7 +161,7 @@ export function MaterialAlbumBranch(props: MaterialAlbumBranchProps) {
   const acceptedAlbumMove = (event: DragEvent<HTMLElement>) => {
     if (browseOnly || busy || !onMove || !hasMaterialAlbumDrag(event.dataTransfer)) return null;
     const sourceAlbumId = readMaterialAlbumDrag(event.dataTransfer);
-    return sourceAlbumId && canMoveAlbumTo(tree, sourceAlbumId, album.id) ? sourceAlbumId : null;
+    return sourceAlbumId && canMoveMaterialAlbumTo(tree, sourceAlbumId, album.id) ? sourceAlbumId : null;
   };
   const actions: ActionMenuAction[] = [
     { id: 'open', label: labels.open, icon: ImagesIcon, onSelect: () => onSelectAlbum(album.id) },
@@ -195,17 +184,7 @@ export function MaterialAlbumBranch(props: MaterialAlbumBranchProps) {
             disabled: busy,
             onSelect: () => onEditorChange({ mode: 'create', parent: album }),
           } satisfies ActionMenuAction,
-          ...(hasParent && onMove
-            ? [
-                {
-                  id: 'move-to-root',
-                  label: labels.moveToRoot,
-                  icon: FolderInputIcon,
-                  disabled: busy,
-                  onSelect: () => void onMove(album.id, null),
-                } satisfies ActionMenuAction,
-              ]
-            : []),
+          ...(onMove ? moveActions : []),
           {
             id: 'rename',
             label: labels.rename,
@@ -335,6 +314,7 @@ export function MaterialAlbumBranch(props: MaterialAlbumBranchProps) {
           {album.title}
         </span>
       </Button>
+      <MaterialAlbumDragHandle album={album} disabled={browseOnly || busy || !onMove} />
       <ActionMenuButton
         actions={actions}
         label={labels.moreActions(album.title)}

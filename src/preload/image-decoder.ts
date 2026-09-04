@@ -86,18 +86,18 @@ function clamp(value: number, minimum: number, maximum: number) {
 }
 
 function watermarkPosition(
-  placement: WatermarkRequest['placement'],
+  position: WatermarkRequest['position'],
   canvasWidth: number,
   canvasHeight: number,
   width: number,
   height: number,
   margin: number,
 ) {
-  const right = placement === 'TOP_RIGHT' || placement === 'BOTTOM_RIGHT';
-  const bottom = placement === 'BOTTOM_LEFT' || placement === 'BOTTOM_RIGHT';
+  const availableWidth = Math.max(0, canvasWidth - margin * 2 - width);
+  const availableHeight = Math.max(0, canvasHeight - margin * 2 - height);
   return {
-    x: right ? canvasWidth - width - margin : margin,
-    y: bottom ? canvasHeight - height - margin : margin,
+    x: margin + Math.round(position.x * availableWidth),
+    y: margin + Math.round(position.y * availableHeight),
   };
 }
 
@@ -177,8 +177,8 @@ function watermarkLayout(
   canvasHeight: number,
 ) {
   const shortSide = Math.min(canvasWidth, canvasHeight);
-  const baseLogoHeight = clamp(Math.round(shortSide * 0.052), 22, 104);
-  const baseFontSize = clamp(Math.round(baseLogoHeight * 0.72), 16, 76);
+  const baseLogoHeight = Math.max(8, Math.round(shortSide * request.sizeRatio));
+  const baseFontSize = Math.max(6, Math.round(baseLogoHeight * 0.72));
   const baseGap = Math.max(5, Math.round(baseLogoHeight * 0.18));
   const basePaddingX = Math.max(6, Math.round(baseLogoHeight * 0.2));
   const basePaddingY = Math.max(4, Math.round(baseLogoHeight * 0.12));
@@ -240,7 +240,7 @@ function drawNaturalWatermark(
     watermarkLayout(context, request, logo, canvasWidth, canvasHeight);
   context.font = `700 ${fontSize}px "Segoe UI", Arial, sans-serif`;
   context.textBaseline = 'alphabetic';
-  const origin = watermarkPosition(request.placement, canvasWidth, canvasHeight, width, height, margin);
+  const origin = watermarkPosition(request.position, canvasWidth, canvasHeight, width, height, margin);
   const sample = sampledLuminance(context, origin.x, origin.y, width, height);
   const darkBackground = sample.mean < 0.5;
   const busyBackground = sample.variance > 0.045 || (sample.mean > 0.34 && sample.mean < 0.68);

@@ -3,18 +3,26 @@ import { lstat, readdir } from 'node:fs/promises';
 import path from 'node:path';
 import Database from 'better-sqlite3';
 import { z } from 'zod';
+import {
+  codexUserRequestText,
+  parseProjectedCodexHistoryItem,
+} from '@/main/extensions/codex-history-search/message-content';
+import {
+  readCodexSidebarState,
+  type CodexSidebarState,
+} from '@/main/extensions/codex-history-search/sidebar-state-reader';
 import type { CodexHistoryThreadSource } from '@/shared/contracts/codex-history-search';
 
 const STATE_DATABASE_PATTERN = /^state_(\d+)\.sqlite$/;
 const THREAD_HISTORY_DATABASE_PATTERN = /^thread_history_(\d+)\.sqlite$/;
+const GLOBAL_STATE_FILE = '.codex-global-state.json';
+const SOURCE_SEMANTICS_REVISION = 'codex-history-source-v4';
 const MAX_THREADS = 100_000;
 const THREAD_LOOKUP_BATCH_SIZE = 500;
 const MESSAGE_PAGE_SIZE = 500;
 const MAX_MESSAGE_PAGE_BYTES = 32 * 1024 * 1024;
 const MAX_MESSAGE_ITEMS = 250_000;
 const MAX_ITEM_JSON_BYTES = 4 * 1024 * 1024 + 16 * 1024;
-const MAX_SOURCE_MESSAGE_TEXT_CHARACTERS = 4 * 1024 * 1024;
-const MAX_INDEXED_MESSAGE_TEXT_CHARACTERS = 1024 * 1024;
 const MAX_METADATA_TEXT_CHARACTERS = 64 * 1024;
 const MAX_PROJECT_ROWS = 10_000;
 const MAX_SECTIONS = 1_000;
@@ -84,27 +92,8 @@ const indexedMessageRowSchema = z
     itemJson: z.string().min(2).max(MAX_ITEM_JSON_BYTES),
   })
   .strict();
-const userTextPartSchema = z
-  .object({
-    type: z.literal('text'),
-    text: z.string().max(MAX_SOURCE_MESSAGE_TEXT_CHARACTERS),
-  })
-  .passthrough();
-const indexedUserMessageSchema = z
-  .object({
-    type: z.literal('userMessage'),
-    content: z.array(z.unknown()).max(256),
-  })
-  .passthrough();
-const indexedAgentMessageSchema = z
-  .object({
-    type: z.literal('agentMessage'),
-    text: z.string().max(MAX_SOURCE_MESSAGE_TEXT_CHARACTERS),
-    phase: z.string().max(64).nullable().optional(),
-  })
-  .passthrough();
-
 export interface CodexHistorySourcePaths {
+  globalStatePath: string | null;
   stateDatabasePath: string;
   threadHistoryDatabasePath: string;
   stateSourceId: string;
@@ -145,6 +134,8 @@ export interface CodexHistorySourceProject {
   name: string;
   workspace: string;
   position: number;
+  sectionId: string;
+  sectionPosition: number | null;
 }
 
 export interface CodexHistorySourceSection {
@@ -188,7 +179,8 @@ function normalizedText(value: string | null, maximumCharacters: number) {
 
 function normalizedThreadSource(value: string | null, sourceDescriptor: string | null): CodexHistoryThreadSource {
   if (value === 'subagent' || sourceDescriptor?.includes('"subagent"')) return 'SUBAGENT';
-  return 'USER';
+  if (value === 'user' || (!value && (sourceDescriptor === 'vscode' || sourceDescriptor === 'cli'))) return 'USER';
+  return 'OTHER';
 }
 
 interface IndexedProject {
@@ -196,6 +188,8 @@ interface IndexedProject {
   projectName: string;
   position: number;
   roots: Array<{ workspace: string; canonical: string }>;
+  sectionId: string;
+  sectionPosition: number | null;
 }
 
 interface IndexedProjectCatalog {
@@ -272,6 +266,8 @@ function readProjects(database: Database.Database): IndexedProjectCatalog {
       projectName: normalizedText(row.projectName, 500) || normalizedText(row.projectId, 500),
       position: row.projectPosition,
       roots: [],
+      sectionId: '',
+      sectionPosition: null,
     };
     const root = normalizedText(row.projectRoot, 32_768);
     const normalizedRoot = root ? normalizedAbsolutePath(root) : null;
@@ -293,20 +289,57 @@ function readProjects(database: Database.Database): IndexedProjectCatalog {
   };
 }
 
-function resolvedProject(explicitProjectId: string | null, workspace: string, projects: IndexedProjectCatalog) {
-  const explicit = explicitProjectId ? projects.byId.get(explicitProjectId) : undefined;
+function sidebarProjectCatalog(sidebar: CodexSidebarState): IndexedProjectCatalog {
+  const projects = sidebar.projects.map((project): IndexedProject => ({
+    projectId: project.projectId,
+    projectName: project.name,
+    position: project.position,
+    roots: project.rootPaths.flatMap((root) => {
+      const normalized = normalizedAbsolutePath(normalizedText(root, 32_768));
+      return normalized ? [normalized] : [];
+    }),
+    sectionId: project.sectionId,
+    sectionPosition: project.sectionPosition,
+  }));
+  return {
+    byId: new Map(projects.map((project) => [project.projectId, project])),
+    projects,
+    roots: [],
+    signature: sidebar.signature,
+  };
+}
+
+function resolvedProject(
+  explicitProjectId: string | null,
+  threadId: string,
+  projects: IndexedProjectCatalog,
+  sidebar: CodexSidebarState | null,
+) {
+  const assignedProjectId = sidebar?.projectIdByThreadId.get(threadId);
+  const resolvedExplicitProjectId = explicitProjectId
+    ? (sidebar?.projectIdByLegacyProjectId.get(explicitProjectId) ?? explicitProjectId)
+    : null;
+  const projectId = assignedProjectId ?? resolvedExplicitProjectId;
+  const explicit = projectId ? projects.byId.get(projectId) : undefined;
   if (explicit) return explicit;
-  const normalizedWorkspace = normalizedAbsolutePath(workspace);
-  if (normalizedWorkspace) {
-    const matched = projects.roots.find(({ canonical }) => {
-      const relative = path.relative(canonical, normalizedWorkspace.canonical);
-      return (
-        relative === '' || (relative !== '..' && !relative.startsWith(`..${path.sep}`) && !path.isAbsolute(relative))
-      );
-    })?.project;
-    if (matched) return matched;
+  if (projectId) {
+    return {
+      projectId,
+      projectName: projectId,
+      position: 0,
+      roots: [],
+      sectionId: '',
+      sectionPosition: null,
+    };
   }
-  return { projectId: '', projectName: '', position: 0, roots: [] };
+  return {
+    projectId: '',
+    projectName: '',
+    position: 0,
+    roots: [],
+    sectionId: '',
+    sectionPosition: null,
+  };
 }
 
 function readSections(database: Database.Database) {
@@ -369,6 +402,14 @@ export async function discoverCodexHistorySources(codexHome: string): Promise<Co
     currentDatabase(resolvedHome, THREAD_HISTORY_DATABASE_PATTERN),
   ]);
   if (!stateDatabase || !threadHistoryDatabase) return null;
+  const globalStateCandidate = path.join(resolvedHome, GLOBAL_STATE_FILE);
+  let globalStateMetadata = null;
+  try {
+    const metadata = await lstat(globalStateCandidate);
+    if (metadata.isFile() && !metadata.isSymbolicLink()) globalStateMetadata = metadata;
+  } catch {
+    globalStateMetadata = null;
+  }
   const mutableFileSignature = async (databasePath: string, size: number, mtimeMs: number) => {
     try {
       const wal = await lstat(`${databasePath}-wal`);
@@ -385,16 +426,28 @@ export async function discoverCodexHistorySources(codexHome: string): Promise<Co
       threadHistoryDatabase.metadata.mtimeMs,
     ),
   ]);
+  const globalStateSignature = globalStateMetadata
+    ? [globalStateCandidate, globalStateMetadata.size, globalStateMetadata.mtimeMs]
+    : [globalStateCandidate, 0, 0];
   const signature = createHash('sha256')
-    .update([...stateSignature, ...historySignature].join('\n'))
+    .update([SOURCE_SEMANTICS_REVISION, ...stateSignature, ...historySignature, ...globalStateSignature].join('\n'))
     .digest('hex');
   const databaseSourceId = (database: NonNullable<Awaited<ReturnType<typeof currentDatabase>>>) =>
     createHash('sha256')
-      .update([database.path, database.metadata.dev, database.metadata.ino, database.metadata.birthtimeMs].join('\n'))
+      .update(
+        [
+          SOURCE_SEMANTICS_REVISION,
+          database.path,
+          database.metadata.dev,
+          database.metadata.ino,
+          database.metadata.birthtimeMs,
+        ].join('\n'),
+      )
       .digest('hex');
   const stateSourceId = databaseSourceId(stateDatabase);
   const historySourceId = databaseSourceId(threadHistoryDatabase);
   return {
+    globalStatePath: globalStateMetadata ? globalStateCandidate : null,
     stateDatabasePath: stateDatabase.path,
     threadHistoryDatabasePath: threadHistoryDatabase.path,
     stateSourceId,
@@ -416,6 +469,7 @@ function readThreads(
   databasePath: string,
   cursor: CodexHistorySourceCursor,
   requiredThreadIds: readonly string[],
+  sidebar: CodexSidebarState | null,
   signal: AbortSignal,
 ) {
   const database = new Database(databasePath, { readonly: true, fileMustExist: true, timeout: 1_000 });
@@ -439,8 +493,13 @@ function readThreads(
     const textExpression = (column: string, maximumCharacters: number) =>
       columns.has(column) ? `substr(${column}, 1, ${maximumCharacters})` : 'NULL';
     signal.throwIfAborted();
-    const projects = readProjects(database);
-    const sections = readSections(database);
+    const projects = sidebar ? sidebarProjectCatalog(sidebar) : readProjects(database);
+    const sections = sidebar
+      ? {
+          byId: new Map(sidebar.sections.map((section) => [section.sectionId, section])),
+          sections: sidebar.sections,
+        }
+      : readSections(database);
     const sourceThreadCount = sourceThreadCountRowSchema.parse(
       database.prepare('SELECT COUNT(*) AS count FROM threads').get(),
     ).count;
@@ -464,6 +523,7 @@ function readThreads(
       projects: projects.signature,
       sections: sections.sections,
       threads: organizationRows,
+      sidebar: sidebar?.signature ?? null,
     });
     const modernUpdatedAt = columns.has('updated_at_ms')
       ? sourceThreadTimestampRowSchema.parse(
@@ -535,25 +595,34 @@ function readThreads(
     if (rowsByThreadId.size > MAX_THREADS) throw new Error('Codex task metadata exceeds the local index limit');
     const rows = [...rowsByThreadId.values()];
     const threads = rows.map((row): CodexHistorySourceThread => {
-      const explicitTitle = normalizedText(row.title || row.name, 500);
-      const firstUserMessage = normalizedText(row.firstUserMessage, MAX_METADATA_TEXT_CHARACTERS);
-      const preview = normalizedText(row.preview, MAX_METADATA_TEXT_CHARACTERS);
+      const threadId = row.threadId.toLowerCase();
+      const displayTitle = normalizedText(row.name, 500);
+      const sourceTitle = normalizedText(codexUserRequestText(row.title ?? ''), 500);
+      const explicitTitle = displayTitle || sourceTitle;
+      const firstUserMessage = normalizedText(
+        codexUserRequestText(row.firstUserMessage ?? ''),
+        MAX_METADATA_TEXT_CHARACTERS,
+      );
+      const preview = normalizedText(codexUserRequestText(row.preview ?? ''), MAX_METADATA_TEXT_CHARACTERS);
       const title = explicitTitle || firstUserMessage.slice(0, 500) || 'Untitled Codex task';
       const rawWorkspace = normalizedText(row.workspace, 32_768);
       const workspace = normalizedAbsolutePath(rawWorkspace)?.workspace ?? rawWorkspace;
       const branch = normalizedText(row.branch, 1_024);
-      const project = resolvedProject(row.projectId, workspace, projects);
-      const section = row.sectionId ? sections.byId.get(row.sectionId) : undefined;
+      const project = resolvedProject(row.projectId, threadId, projects, sidebar);
+      const sidebarPlacement = sidebar?.placementByThreadId.get(threadId);
+      const mappedSectionId = row.sectionId ? sidebar?.sectionIdByLegacySectionId.get(row.sectionId) : undefined;
+      const sectionId = sidebarPlacement?.sectionId ?? mappedSectionId ?? (sidebar ? '' : row.sectionId);
+      const section = sectionId ? sections.byId.get(sectionId) : undefined;
       return {
-        threadId: row.threadId.toLowerCase(),
+        threadId,
         title,
         titleAvailable: Boolean(explicitTitle),
         projectId: project.projectId,
         projectName: project.projectName,
         sectionId: section?.sectionId ?? '',
         sectionName: section?.name ?? '',
-        sectionPosition: section ? row.sectionPosition : null,
-        pinned: row.pinned === 1,
+        sectionPosition: section ? (sidebarPlacement?.position ?? row.sectionPosition) : null,
+        pinned: sidebar ? section?.sectionId === 'pinned' : row.pinned === 1,
         workspace,
         branch,
         archived: row.archived === 1,
@@ -578,6 +647,8 @@ function readThreads(
         name: project.projectName,
         workspace: project.roots[0]?.workspace ?? '',
         position: project.position,
+        sectionId: project.sectionId,
+        sectionPosition: project.sectionPosition,
       })),
       sections: sections.sections,
       fullSnapshot,
@@ -591,43 +662,14 @@ function readThreads(
 }
 
 function parsedMessage(row: z.infer<typeof indexedMessageRowSchema>): CodexHistorySourceMessage | null {
-  let decoded: unknown;
-  try {
-    decoded = JSON.parse(row.itemJson) as unknown;
-  } catch {
-    return null;
-  }
-  if (row.itemType === 'agentMessage') {
-    const parsed = indexedAgentMessageSchema.safeParse(decoded);
-    if (!parsed.success || (parsed.data.phase && parsed.data.phase !== 'final_answer')) return null;
-    const text = parsed.data.text.trim().slice(0, MAX_INDEXED_MESSAGE_TEXT_CHARACTERS);
-    return text
-      ? {
-          sourceRowId: row.sourceRowId,
-          threadId: row.threadId.toLowerCase(),
-          role: 'ASSISTANT',
-          createdAtMs: row.createdAtMs,
-          text,
-        }
-      : null;
-  }
-  const parsed = indexedUserMessageSchema.safeParse(decoded);
-  if (!parsed.success) return null;
-  const text = parsed.data.content
-    .flatMap((part) => {
-      const candidate = userTextPartSchema.safeParse(part);
-      return candidate.success ? [candidate.data.text] : [];
-    })
-    .join('\n')
-    .trim()
-    .slice(0, MAX_INDEXED_MESSAGE_TEXT_CHARACTERS);
-  return text
+  const parsed = parseProjectedCodexHistoryItem(row.itemType, row.itemJson);
+  return parsed
     ? {
         sourceRowId: row.sourceRowId,
         threadId: row.threadId.toLowerCase(),
-        role: 'USER',
+        role: parsed.role,
         createdAtMs: row.createdAtMs,
-        text,
+        text: parsed.text,
       }
     : null;
 }
@@ -723,14 +765,18 @@ export async function readCodexHistorySourceSnapshot(
   onProgress: (progress: number) => void,
 ): Promise<CodexHistorySourceSnapshot> {
   signal.throwIfAborted();
-  const messageSnapshot = await readMessages(paths.threadHistoryDatabasePath, cursor.historyRowId, signal, (progress) =>
-    onProgress(Math.round(progress * 0.65)),
-  );
+  const [messageSnapshot, sidebar] = await Promise.all([
+    readMessages(paths.threadHistoryDatabasePath, cursor.historyRowId, signal, (progress) =>
+      onProgress(Math.round(progress * 0.65)),
+    ),
+    readCodexSidebarState(paths.globalStatePath, signal),
+  ]);
   await new Promise<void>((resolve) => setImmediate(resolve));
   const threadSnapshot = readThreads(
     paths.stateDatabasePath,
     cursor,
     messageSnapshot.messages.map(({ threadId }) => threadId),
+    sidebar,
     signal,
   );
   onProgress(80);

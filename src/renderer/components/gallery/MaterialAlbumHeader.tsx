@@ -2,6 +2,7 @@ import { ArchiveIcon, ChevronRightIcon, Trash2Icon } from 'lucide-react';
 import type { MaterialAlbumDto } from '@/shared/contracts';
 import { useI18n } from '@/renderer/i18n/useI18n';
 import { MaterialAlbumPreview } from '@/renderer/components/gallery/MaterialAlbumPreview';
+import { useMaterialAlbumMoveActions } from '@/renderer/components/gallery/MaterialAlbumMoveProvider';
 import { Button } from '@/renderer/components/ui/button';
 import { ActionMenuButton, type ActionMenuAction } from '@/renderer/components/ui/action-menu';
 
@@ -28,7 +29,9 @@ export function MaterialAlbumHeader({
 }) {
   const { messages } = useI18n();
   const preview = album.previewAssets[0];
+  const moveActions = useMaterialAlbumMoveActions(album, busy);
   const actions: ActionMenuAction[] = [
+    ...moveActions,
     ...(onArchive
       ? [
           {
