@@ -1,5 +1,6 @@
 import type {
   BootstrapDto,
+  CreationFormDto,
   EvaluationSuiteContentInput,
   EvaluationSuiteDto,
   InspirationStashDto,
@@ -11,6 +12,9 @@ import type { CreationRelationItem } from '@/renderer/components/creator/Creatio
 import type { CreationOutputMode } from '@/renderer/components/creator/CreationOutputTabs';
 import { imageSeriesIdForCreationItem } from '@/renderer/components/creator/screen/creatorScreenProjection';
 import { useStableCallback } from '@/renderer/lib/useStableCallback';
+import { useI18n } from '@/renderer/i18n/useI18n';
+import { useGifMakerLauncher } from '@/renderer/features/gif-making/GifMakerProvider';
+import type { DerivedVisualWorkspaceViewState } from '@/renderer/components/creator/derivedVisualWorkspace';
 
 type ChooseSeries = (
   id: string,
@@ -28,11 +32,12 @@ interface Options {
   notify(message: string): void;
   onComparisonFullWindowChange(open: boolean): void;
   onPromptFullWindowChange(open: boolean): void;
+  onSelectDocument(id: string, albumId: string | null): void;
   openParentEditor(): void;
   preserveBeforeNavigation(): Promise<boolean>;
   refresh(): Promise<void>;
   restoreInspiration(stash: InspirationStashDto): void;
-  resumeDerivedVisual(visualId: string): Promise<unknown>;
+  resumeDerivedVisual(visualId: string, view?: DerivedVisualWorkspaceViewState): Promise<unknown>;
   selectAlbum(id: string): void;
   selectArticle(id: string): void;
   selectEvaluationSuite(id: string): void;
@@ -48,6 +53,8 @@ interface Options {
 
 // Keeps record/document navigation independent from draft persistence and generation ownership.
 export function useCreatorContentNavigation(options: Options) {
+  const animation = useGifMakerLauncher();
+  const labels = useI18n().messages.creator.workNavigation;
   const resetOutput = useStableCallback(() => {
     options.setOutputMode('results');
     options.setRequestedAssetId(null);
@@ -146,21 +153,58 @@ export function useCreatorContentNavigation(options: Options) {
     return true;
   });
 
+  const chooseCreationForm = useStableCallback(async (form: CreationFormDto, assetId?: string) => {
+    const id = form.entity.id;
+    switch (form.entity.kind) {
+      case 'ARTICLE':
+        return chooseArticle(id);
+      case 'SOCIAL_POST':
+        return chooseSocialPost(id);
+      case 'PROMPT_SERIES':
+        return options.chooseSeries(id, assetId);
+      case 'INSPIRATION_STASH':
+        return chooseInspirationStash(id);
+      case 'IMAGE_BREAKDOWN':
+        return chooseImageBreakdown(id);
+      case 'EVALUATION_SUITE':
+        return chooseEvaluationSuite(id);
+      case 'DERIVED_VISUAL':
+        return options.resumeDerivedVisual(id, assetId ? { assetId } : undefined);
+      case 'GIF_DOCUMENT':
+        if (!animation) {
+          options.notify(labels.openFailed);
+          return;
+        }
+        if ((await options.preserveBeforeNavigation()) && animation.isCurrent())
+          await animation.open({ documentId: id });
+        return;
+      case 'VIDEO_DOCUMENT':
+        if (await options.preserveBeforeNavigation()) {
+          const item = options.data.creationItems.find((item) => item.id === form.creationItemId);
+          options.onSelectDocument(id, item?.albumId ?? null);
+        }
+        return;
+    }
+  });
+
   const openCreationRelation = useStableCallback(async (relation: CreationRelationItem) => {
     const form = options.data.creationItems
       .flatMap((item) => item.forms)
       .find((candidate) => candidate.id === relation.formId);
     if (!form) {
-      options.notify(options.locale === 'zh' ? '关联内容不可用' : 'Related content is unavailable');
+      options.notify(labels.openFailed);
       return;
     }
-    if (form.entity.kind === 'ARTICLE') await chooseArticle(form.entity.id);
-    else if (form.entity.kind === 'SOCIAL_POST') await chooseSocialPost(form.entity.id);
-    else if (form.entity.kind === 'DERIVED_VISUAL') await options.resumeDerivedVisual(form.entity.id);
+    try {
+      await chooseCreationForm(form, relation.assetId);
+    } catch {
+      options.notify(labels.openFailed);
+    }
   });
 
   return {
     chooseAlbum,
+    chooseCreationForm,
     chooseArticle,
     chooseEvaluationSuite,
     chooseImageBreakdown,

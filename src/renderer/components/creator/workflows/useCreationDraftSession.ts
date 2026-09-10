@@ -1,3 +1,5 @@
+import { contentImagesRecoverable } from '@/renderer/features/content-editor/contentImageRecovery';
+import { ContentCheckpointTimer } from '@/renderer/features/content-editor/ContentCheckpointTimer';
 import { useEffect, useRef, useState } from 'react';
 import type { CreationDraftDto } from '@/shared/contracts';
 import type {
@@ -73,6 +75,9 @@ function queuedSaveBaseline(
       ? previousDraft
       : null;
   const rememberedDraft = state.draftId && state.savedDraft?.id === state.draftId ? state.savedDraft : null;
+  // Proposal adoption persists outside this queue and then remembers its revision.
+  // A completed queue entry must not replace that newer local baseline.
+  if (queuedDraft && rememberedDraft && rememberedDraft.updatedAt > queuedDraft.updatedAt) return rememberedDraft;
   return queuedDraft ?? rememberedDraft;
 }
 
@@ -94,6 +99,7 @@ export function useCreationDraftSession({ initialDraft, captureSnapshot }: UseCr
   const queueTailRef = useRef<CreationDraftQueueTail>({ sessionGeneration: 0, promise: Promise.resolve(null) });
   const pendingSaveRef = useRef<Promise<CreationDraftDto> | null>(null);
   const mountedRef = useRef(true);
+  const lifecycleRevisionRef = useRef(0);
   const captureSnapshotStable = useStableCallback(captureSnapshot);
 
   useEffect(() => {
@@ -101,7 +107,8 @@ export function useCreationDraftSession({ initialDraft, captureSnapshot }: UseCr
     mountedRef.current = true;
     return () => {
       mountedRef.current = false;
-      sessionState.sessionGeneration += 1;
+      // Cancel UI work without severing the revision chain needed by the final save.
+      lifecycleRevisionRef.current += 1;
       sessionState.autosaveEpoch += 1;
     };
   }, []);
@@ -115,41 +122,16 @@ export function useCreationDraftSession({ initialDraft, captureSnapshot }: UseCr
     };
   });
 
-  const saveSnapshot = useStableCallback(
-    (snapshot: CreationDraftSaveSnapshot, requiredIdentity?: CreationDraftSessionIdentity) => {
-      const sessionGeneration = stateRef.current.sessionGeneration;
-      const previous = queueTailRef.current;
-      const promise = previous.promise
-        .catch((reason) => (isSupersededError(reason) ? reason.persistedDraft : null))
-        .then(async (previousDraft) => {
-          const stateBeforeSave = stateRef.current;
-          if (
-            !mountedRef.current ||
-            stateBeforeSave.sessionGeneration !== sessionGeneration ||
-            (requiredIdentity && !sameIdentity(stateBeforeSave, requiredIdentity))
-          ) {
-            throw new CreationDraftSessionSupersededError();
-          }
-          const baseline = queuedSaveBaseline(stateBeforeSave, previous, previousDraft, sessionGeneration);
-          const targetDraftId = stateBeforeSave.draftId ?? baseline?.id ?? null;
-          const savedDraft = await window.desktopApi.creationDraftSave({
-            ...snapshot,
-            ...draftRevisionInput(targetDraftId, baseline),
-          });
-          const stateAfterSave = stateRef.current;
-          if (
-            !mountedRef.current ||
-            stateAfterSave.sessionGeneration !== sessionGeneration ||
-            (requiredIdentity && !sameIdentity(stateAfterSave, requiredIdentity))
-          ) {
-            throw new CreationDraftSessionSupersededError(savedDraft);
-          }
-          stateAfterSave.savedDraft = savedDraft;
-          stateAfterSave.draftId = savedDraft.id;
-          setDraftId(savedDraft.id);
-          return savedDraft;
-        });
-      queueTailRef.current = { sessionGeneration, promise };
+  const trackSave = useStableCallback(
+    (sessionGeneration: number, previous: CreationDraftQueueTail, promise: Promise<CreationDraftDto>) => {
+      queueTailRef.current = {
+        sessionGeneration,
+        // A cancelled or failed entry must not erase an earlier successful write.
+        promise: promise.catch((reason) => {
+          if (isSupersededError(reason) && reason.persistedDraft) return reason.persistedDraft;
+          return previous.sessionGeneration === sessionGeneration ? previous.promise : null;
+        }),
+      };
       pendingSaveRef.current = promise;
       void promise.then(
         () => {
@@ -160,6 +142,56 @@ export function useCreationDraftSession({ initialDraft, captureSnapshot }: UseCr
         },
       );
       return promise;
+    },
+  );
+
+  const saveSnapshot = useStableCallback(
+    (snapshot: CreationDraftSaveSnapshot, requiredIdentity?: CreationDraftSessionIdentity) => {
+      const sessionGeneration = stateRef.current.sessionGeneration;
+      const lifecycleRevision = lifecycleRevisionRef.current;
+      const previous = queueTailRef.current;
+      const promise = previous.promise.then(async (previousDraft) => {
+        const stateBeforeSave = stateRef.current;
+        if (
+          !mountedRef.current ||
+          lifecycleRevisionRef.current !== lifecycleRevision ||
+          stateBeforeSave.sessionGeneration !== sessionGeneration ||
+          (requiredIdentity && !sameIdentity(stateBeforeSave, requiredIdentity))
+        ) {
+          throw new CreationDraftSessionSupersededError();
+        }
+        if (snapshot.document && !(await contentImagesRecoverable(snapshot.document)))
+          throw new Error('BLOCK_IMAGE_IMPORT_NOT_DURABLE');
+        // Image staging can yield while navigation or adoption invalidates this save.
+        if (
+          !mountedRef.current ||
+          lifecycleRevisionRef.current !== lifecycleRevision ||
+          stateBeforeSave.sessionGeneration !== sessionGeneration ||
+          (requiredIdentity && !sameIdentity(stateBeforeSave, requiredIdentity))
+        ) {
+          throw new CreationDraftSessionSupersededError();
+        }
+        const baseline = queuedSaveBaseline(stateBeforeSave, previous, previousDraft, sessionGeneration);
+        const targetDraftId = stateBeforeSave.draftId ?? baseline?.id ?? null;
+        const savedDraft = await window.desktopApi.creationDraftSave({
+          ...snapshot,
+          ...draftRevisionInput(targetDraftId, baseline),
+        });
+        const stateAfterSave = stateRef.current;
+        if (
+          !mountedRef.current ||
+          lifecycleRevisionRef.current !== lifecycleRevision ||
+          stateAfterSave.sessionGeneration !== sessionGeneration ||
+          (requiredIdentity && !sameIdentity(stateAfterSave, requiredIdentity))
+        ) {
+          throw new CreationDraftSessionSupersededError(savedDraft);
+        }
+        stateAfterSave.savedDraft = savedDraft;
+        stateAfterSave.draftId = savedDraft.id;
+        setDraftId(savedDraft.id);
+        return savedDraft;
+      });
+      return trackSave(sessionGeneration, previous, promise);
     },
   );
 
@@ -178,39 +210,41 @@ export function useCreationDraftSession({ initialDraft, captureSnapshot }: UseCr
     const capturedDraft =
       capturedDraftId && stateRef.current.savedDraft?.id === capturedDraftId ? stateRef.current.savedDraft : null;
     const previous = queueTailRef.current;
-    const promise = previous.promise
-      .catch((reason) => (isSupersededError(reason) ? reason.persistedDraft : null))
-      .then(async (previousDraft) => {
-        const baseline = queuedSaveBaseline(
-          {
-            sessionGeneration,
-            autosaveEpoch: stateRef.current.autosaveEpoch,
-            draftId: capturedDraftId,
-            savedDraft: capturedDraft,
-          },
-          previous,
-          previousDraft,
+    const promise = previous.promise.then(async (previousDraft) => {
+      if (snapshot.document && !(await contentImagesRecoverable(snapshot.document)))
+        throw new Error('BLOCK_IMAGE_IMPORT_NOT_DURABLE');
+      const stateBeforeSave = stateRef.current;
+      const stillCurrent =
+        stateBeforeSave.sessionGeneration === sessionGeneration && stateBeforeSave.draftId === capturedDraftId;
+      const baseline = queuedSaveBaseline(
+        {
           sessionGeneration,
-        );
-        const targetDraftId = capturedDraftId ?? baseline?.id ?? null;
-        const savedDraft = await window.desktopApi.creationDraftSave({
-          ...snapshot,
-          ...draftRevisionInput(targetDraftId, baseline),
-        });
-        const current = stateRef.current;
-        if (
-          mountedRef.current &&
-          current.sessionGeneration === sessionGeneration &&
-          current.draftId === capturedDraftId
-        ) {
-          current.savedDraft = savedDraft;
-          current.draftId = savedDraft.id;
-          setDraftId(savedDraft.id);
-        }
-        return savedDraft;
+          autosaveEpoch: stateRef.current.autosaveEpoch,
+          draftId: capturedDraftId,
+          savedDraft: stillCurrent ? stateBeforeSave.savedDraft : capturedDraft,
+        },
+        previous,
+        previousDraft,
+        sessionGeneration,
+      );
+      const targetDraftId = capturedDraftId ?? baseline?.id ?? null;
+      const savedDraft = await window.desktopApi.creationDraftSave({
+        ...snapshot,
+        ...draftRevisionInput(targetDraftId, baseline),
       });
-    queueTailRef.current = { sessionGeneration, promise };
-    return promise;
+      const current = stateRef.current;
+      if (
+        mountedRef.current &&
+        current.sessionGeneration === sessionGeneration &&
+        current.draftId === capturedDraftId
+      ) {
+        current.savedDraft = savedDraft;
+        current.draftId = savedDraft.id;
+        setDraftId(savedDraft.id);
+      }
+      return savedDraft;
+    });
+    return trackSave(sessionGeneration, previous, promise);
   });
 
   const saveIfCurrent = useStableCallback(async (identity: CreationDraftSessionIdentity) => {
@@ -241,6 +275,8 @@ export function useCreationDraftSession({ initialDraft, captureSnapshot }: UseCr
   });
 
   const rememberSavedDraft = useStableCallback((draft: CreationDraftDto | null) => {
+    const savedDraft = stateRef.current.savedDraft;
+    if (draft && savedDraft?.id === draft.id && savedDraft.updatedAt > draft.updatedAt) return;
     stateRef.current.savedDraft = draft;
   });
 
@@ -290,16 +326,20 @@ export function useCreationDraftAutosave({
 }: UseCreationDraftAutosaveOptions) {
   const onErrorStable = useStableCallback(onError);
   const observedKeyRef = useRef(autosaveKey);
+  const [checkpointTimer] = useState(() => new ContentCheckpointTimer());
+  useEffect(() => () => checkpointTimer.cancel(), [checkpointTimer]);
 
   useEffect(() => {
     const changed = observedKeyRef.current !== autosaveKey;
     observedKeyRef.current = autosaveKey;
+    if (!enabled || (!hasContent && !draftId)) {
+      checkpointTimer.cancel();
+      return;
+    }
     if (!changed) return undefined;
-    if (!enabled || (!hasContent && !draftId)) return undefined;
     const identity = captureIdentity();
-    const timer = window.setTimeout(() => {
+    checkpointTimer.schedule(() => {
       void saveIfCurrent(identity).catch(onErrorStable);
     }, CREATION_DRAFT_AUTOSAVE_IDLE_MS);
-    return () => window.clearTimeout(timer);
-  }, [autosaveKey, captureIdentity, draftId, enabled, hasContent, onErrorStable, saveIfCurrent]);
+  }, [autosaveKey, captureIdentity, checkpointTimer, draftId, enabled, hasContent, onErrorStable, saveIfCurrent]);
 }

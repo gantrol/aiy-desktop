@@ -1,12 +1,3 @@
-import type {
-  AssetDto,
-  CreationDictionaryScopeDto,
-  CreationInputSnapshotDto,
-  CreatorAgentScope,
-  GenerationTargetInput,
-  Locale,
-  PromptSeriesDto,
-} from '@/shared/contracts';
 import {
   creationDraftCommitIdentity,
   creationDraftSaveSnapshot,
@@ -14,6 +5,17 @@ import {
   type CreationDraftSaveSnapshot,
 } from '@/renderer/components/creator/workflows/creationDraftSnapshot';
 import { useStableCallback } from '@/renderer/lib/useStableCallback';
+import { blockDocumentAssetIds } from '@/shared/contracts/block-document';
+import type {
+  AssetDto,
+  CreationDictionaryScopeDto,
+  CreationInputSnapshotDto,
+  CreationVideoAttachmentDto,
+  CreatorAgentScope,
+  GenerationTargetInput,
+  Locale,
+  PromptSeriesDto,
+} from '@/shared/contracts';
 
 interface Options {
   appliedPalettes: CreationDraftPromptSnapshot['appliedPalettes'];
@@ -25,10 +27,13 @@ interface Options {
   getDraftId(): string | null;
   manualPrompt: string;
   promptNodes: CreationDraftPromptSnapshot['nodes'];
+  document?: CreationDraftPromptSnapshot['document'];
   quality: GenerationTargetInput['quality'];
   referenceAssets: readonly AssetDto[];
+  videoAttachments?: readonly CreationVideoAttachmentDto[];
   repeatCount: number;
   resolvedPrompt: string;
+  resolvePrompt(prompt: CreationDraftPromptSnapshot): string;
   saveDraft(albumId?: string | null): Promise<{ id: string }>;
   selectedModelKeys: readonly string[];
   selectedTerms: CreationDraftPromptSnapshot['selectedTerms'];
@@ -48,6 +53,7 @@ export function useCreatorDraftProjection(options: Options) {
       title: options.title,
       prompt,
       referenceAssetIds: options.referenceAssets.map((asset) => asset.id),
+      videoMaterialIds: (options.videoAttachments ?? []).map((video) => video.materialId),
       termPromptLocale: options.termPromptLocale,
       dictionaryScope: options.dictionaryScope,
       canvasPresetKey: options.canvasPresetKey,
@@ -88,9 +94,17 @@ export function useCreatorDraftProjection(options: Options) {
     title: options.creationMode === 'new' ? options.title : (options.sessionHostSeries?.title ?? ''),
     manualPrompt: options.manualPrompt,
     promptNodes: options.promptNodes,
+    document: options.document,
     resolvedPrompt: options.resolvedPrompt,
-    referenceAssetIds: options.referenceAssets.map((asset) => asset.id),
+    referenceAssetIds: [
+      ...new Set([
+        ...options.referenceAssets.map((asset) => asset.id),
+        ...(options.document ? blockDocumentAssetIds(options.document) : []),
+      ]),
+    ],
     referenceAssets: [...options.referenceAssets],
+    videoMaterialIds: (options.videoAttachments ?? []).map((video) => video.materialId),
+    videoAttachments: [...(options.videoAttachments ?? [])],
     termPromptLocale: options.termPromptLocale,
     termIds: options.selectedTerms.map((term) => term.id),
     wordPaletteReferences: options.appliedPalettes.map((reference) => ({
@@ -104,5 +118,28 @@ export function useCreatorDraftProjection(options: Options) {
     generationTargets: options.generationTargets.map((target) => ({ ...target })),
   };
 
-  return { captureCommitIdentity, captureDraft, currentInput, ensureScope, isScopeCurrent, snapshotForPrompt };
+  const captureInput = useStableCallback((): CreationInputSnapshotDto => {
+    const prompt = options.capturePrompt();
+    const snapshot = snapshotForPrompt(prompt);
+    return {
+      ...currentInput,
+      manualPrompt: prompt.manualPrompt,
+      resolvedPrompt: options.resolvePrompt(prompt),
+      promptNodes: prompt.nodes,
+      document: prompt.document,
+      referenceAssetIds: snapshot.referenceAssetIds,
+      termIds: snapshot.termIds,
+      wordPaletteReferences: snapshot.wordPaletteReferences,
+    };
+  });
+
+  return {
+    captureCommitIdentity,
+    captureDraft,
+    captureInput,
+    currentInput,
+    ensureScope,
+    isScopeCurrent,
+    snapshotForPrompt,
+  };
 }

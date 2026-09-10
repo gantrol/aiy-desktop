@@ -1,0 +1,22 @@
+/** Compact authoring uses normal text rhythm instead of the article reading layout. */
+export const compactContentTypography = [
+  'text-[15px] leading-[1.65] tracking-normal text-inherit',
+  '[&>p]:my-2 [&>:first-child]:mt-0 [&>:last-child]:mb-0',
+  '[&_h1]:my-3 [&_h1]:text-base [&_h1]:font-semibold',
+  '[&_h2]:my-3 [&_h2]:text-base [&_h2]:font-semibold',
+  '[&_h3]:my-2 [&_h3]:text-[15px] [&_h3]:font-semibold',
+  '[&_h4]:my-2 [&_h4]:font-semibold [&_h5]:my-2 [&_h5]:font-semibold [&_h6]:my-2 [&_h6]:font-semibold',
+  '[&_a]:underline [&_a]:underline-offset-2 [&_strong]:font-semibold',
+  '[&_ul]:my-2 [&_ul]:list-disc [&_ul]:pl-4 [&_ol]:my-2 [&_ol]:list-decimal [&_ol]:pl-4',
+  '[&_li]:my-0.5 [&_li_p]:my-0 [&_li>ul]:my-1 [&_li>ol]:my-1',
+  '[&_ul[data-type=taskList]]:list-none [&_ul[data-type=taskList]]:pl-0',
+  '[&_li[data-type=taskItem]]:flex [&_li[data-type=taskItem]]:items-start [&_li[data-type=taskItem]]:gap-2',
+  '[&_li[data-type=taskItem]>label]:pt-0.5 [&_li[data-type=taskItem]>div]:min-w-0 [&_li[data-type=taskItem]>div]:flex-1',
+  '[&_blockquote]:my-2 [&_blockquote]:border-l-2 [&_blockquote]:border-current/20 [&_blockquote]:pl-2',
+  '[&_pre]:my-2 [&_pre]:overflow-x-auto [&_pre]:bg-foreground/5 [&_pre]:p-2 [&_pre]:text-sm',
+  '[&_code]:font-mono [&_code]:text-[0.9em] [&_hr]:my-3 [&_hr]:border-current/15',
+  '[&_.tableWrapper]:my-2 [&_.tableWrapper]:overflow-x-auto [&_table]:w-full [&_table]:border-collapse',
+  '[&_th]:border [&_th]:border-current/15 [&_th]:px-2 [&_th]:py-1 [&_th]:text-left',
+  '[&_td]:border [&_td]:border-current/15 [&_td]:px-2 [&_td]:py-1',
+  '[&_.ProseMirror-selectednode]:outline [&_.ProseMirror-selectednode]:outline-1 [&_.ProseMirror-selectednode]:outline-current/30',
+].join(' ');

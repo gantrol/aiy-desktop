@@ -30,11 +30,13 @@ export async function resolveMediaThumbnailRequest({ url, identifier, assetPath,
       thumbnail: true,
     };
   } catch (error) {
-    console.warn('[media-thumbnail] falling back to the original media', {
+    console.warn('[media-thumbnail] static thumbnail unavailable', {
       hostname: url.hostname,
       identifier,
       error,
     });
-    return { filePath: request.sourcePath, thumbnail: false };
+    // A thumbnail URL must never serve animated originals, including formats
+    // added later. Keep failure distinct from an unrecognized media request.
+    return { filePath: null, thumbnail: true };
   }
 }

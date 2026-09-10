@@ -2,6 +2,7 @@ import type { Editor } from '@tiptap/core';
 import type { VideoDocumentFrameCaptureResult } from '@/shared/contracts';
 
 export interface VideoDocumentEditorImageAttributes {
+  assetId?: string;
   src: string;
   sourcePath: string;
   title: string | null;
@@ -12,6 +13,7 @@ export function videoDocumentFrameImageAttributes(
   result: VideoDocumentFrameCaptureResult,
 ): VideoDocumentEditorImageAttributes {
   return {
+    assetId: result.binding.assetId,
     src: result.media.mediaUrl,
     sourcePath: result.binding.path,
     title: null,

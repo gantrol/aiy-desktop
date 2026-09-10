@@ -3,6 +3,12 @@ import process from 'node:process';
 import type { ZodType } from 'zod';
 import { z } from 'zod';
 import {
+  agentIntakeCapabilities,
+  agentIntakeImportRequestSchema,
+  agentIntakeGetRequestSchema,
+  agentIntakeResultSchema,
+} from '@/shared/contracts/agent-intake';
+import {
   agentWeiboActionAvailable,
   runAgentWeiboAction,
   type AgentWeiboActionRuntimeOptions,
@@ -44,6 +50,8 @@ function usage() {
 Usage:
   aiy-agent capabilities [--user-data-dir PATH]
   aiy-agent asset import --input REQUEST.json [--user-data-dir PATH]
+  aiy-agent intake import --input REQUEST.json [--user-data-dir PATH]
+  aiy-agent intake get --input REQUEST.json [--user-data-dir PATH]
   aiy-agent draft prepare --input REQUEST.json [--user-data-dir PATH]
   aiy-agent generation start --input REQUEST.json [--user-data-dir PATH]
   aiy-agent job get --input REQUEST.json [--user-data-dir PATH]
@@ -79,6 +87,8 @@ function parseArguments(argv: readonly string[]): ParsedArguments {
   const supported = [
     'capabilities',
     'asset import',
+    'intake import',
+    'intake get',
     'draft prepare',
     'generation start',
     'job get',
@@ -137,6 +147,16 @@ function parseInput<T>(schema: ZodType<T>, value: unknown): T {
 }
 
 const commandDefinitions = {
+  'intake import': {
+    method: 'agent.intake.import',
+    input: agentIntakeImportRequestSchema,
+    output: agentIntakeResultSchema,
+  },
+  'intake get': {
+    method: 'agent.intake.get',
+    input: agentIntakeGetRequestSchema,
+    output: agentIntakeResultSchema,
+  },
   'asset import': {
     method: 'agent.asset.import',
     input: agentAssetImportRequestSchema,
@@ -236,6 +256,7 @@ export async function runAgentCli(
         cliProtocolVersion: AIY_AGENT_PROTOCOL_VERSION,
         workerProtocolVersion: MODEL_WORKER_PROTOCOL_VERSION,
         library,
+        intake: agentIntakeCapabilities,
         attachmentContract: {
           pathIngressCommand: 'asset import',
           acceptedPathKinds: ['absolute-local-file'],

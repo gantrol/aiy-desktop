@@ -1,4 +1,5 @@
 import { ipcRenderer } from 'electron';
+import { watermarkGif } from '@/preload/gif-watermark';
 import {
   IMAGE_DECODER_REQUEST_CHANNEL,
   IMAGE_DECODER_RESPONSE_CHANNEL,
@@ -310,6 +311,28 @@ async function watermarkOutput(canvas: OffscreenCanvas, sourceMimeType: Watermar
 }
 
 async function decodeRequest(request: ImageDecoderRequest): Promise<ImageDecoderSuccessResponse> {
+  if (request.operation === 'watermark' && request.sourceMimeType === 'image/gif') {
+    const logo = await bitmapFromBytes(request.logoBytes, request.logoMimeType);
+    try {
+      assertSafeDimensions(logo.width, logo.height);
+      const output = watermarkGif(request.sourceBytes, (context, width, height) =>
+        drawNaturalWatermark(context, request, logo, width, height),
+      );
+      return {
+        requestId: request.requestId,
+        operation: request.operation,
+        ok: true,
+        outputBytes: output.bytes,
+        outputMimeType: 'image/gif',
+        width: output.width,
+        height: output.height,
+        sourceWidth: output.width,
+        sourceHeight: output.height,
+      };
+    } finally {
+      logo.close();
+    }
+  }
   let bitmap: ImageBitmap | null = await sourceBitmap(request);
   try {
     assertSafeDimensions(bitmap.width, bitmap.height);
@@ -373,9 +396,6 @@ async function decodeRequest(request: ImageDecoderRequest): Promise<ImageDecoder
     }
 
     if (request.operation === 'watermark') {
-      if (request.sourceMimeType === 'image/gif') {
-        throw new Error('Animated GIF watermarking is unavailable');
-      }
       const canvas = new OffscreenCanvas(bitmap.width, bitmap.height);
       const context = canvas.getContext('2d');
       if (!context) throw new Error('Chromium canvas is unavailable');

@@ -1,15 +1,15 @@
-import { useEffect, useRef, useState } from 'react';
+import type { AnnotationRefinementState } from '@/renderer/components/creator/annotationRefinement';
+import type { CreationDraftPromptSnapshot } from '@/renderer/components/creator/workflows/creationDraftSnapshot';
+import { useStableCallback } from '@/renderer/lib/useStableCallback';
 import type {
-  GenerationTargetInput,
   GenerationQuality,
+  GenerationTargetInput,
   ImageEditBatchStartInput,
   Locale,
   WordPaletteReferenceInput,
 } from '@/shared/contracts';
 import type { ResolvedPromptComposition } from '@/shared/prompt-composition';
-import type { AnnotationRefinementState } from '@/renderer/components/creator/annotationRefinement';
-import type { CreationDraftPromptSnapshot } from '@/renderer/components/creator/workflows/creationDraftSnapshot';
-import { useStableCallback } from '@/renderer/lib/useStableCallback';
+import { useEffect, useRef, useState } from 'react';
 
 interface GenerationBatchResult {
   batchId: string | null;
@@ -45,6 +45,7 @@ interface Options {
   active: boolean;
   blocked(): boolean;
   captureSnapshot(): CreatorGenerationLaunchSnapshot;
+  preserveWorkingInput(): Promise<boolean>;
   failedMessage: string;
   invalidateAutosaves(): void;
   notify(message: string): void;
@@ -73,6 +74,7 @@ export function useCreatorGenerationLaunch(options: Options) {
   const onRefinementGenerated = useStableCallback(options.onRefinementGenerated);
   const refresh = useStableCallback(options.refresh);
   const saveDraft = useStableCallback(options.saveDraft);
+  const preserveWorkingInput = useStableCallback(options.preserveWorkingInput);
 
   useEffect(() => {
     operationRevisionRef.current += 1;
@@ -97,6 +99,7 @@ export function useCreatorGenerationLaunch(options: Options) {
     inFlightRef.current = true;
     setStarting(true);
     try {
+      if (!(await preserveWorkingInput()) || !requestIsCurrent()) return;
       if (snapshot.annotationRefinement) {
         const refinement = snapshot.annotationRefinement;
         const result = await window.desktopApi.imageEditStartBatch({
@@ -126,6 +129,7 @@ export function useCreatorGenerationLaunch(options: Options) {
           titleLocale: snapshot.locale,
           manualPrompt: snapshot.prompt.manualPrompt,
           promptNodes: snapshot.prompt.nodes,
+          document: snapshot.prompt.document,
           prompt: snapshot.finalPrompt,
           resolvedPrompt: snapshot.resolvedPrompt,
           changeSummary: snapshot.automaticChangeSummary,
@@ -140,6 +144,10 @@ export function useCreatorGenerationLaunch(options: Options) {
         },
         targets: snapshot.generationTargets.map((target) => ({ ...target })),
       });
+      if (!(await preserveWorkingInput()) || !requestIsCurrent()) {
+        await refresh();
+        return;
+      }
       await refresh();
       if (!requestIsCurrent()) return;
       onGenerated(result, snapshot);

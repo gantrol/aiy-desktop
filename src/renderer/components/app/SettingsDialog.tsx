@@ -9,6 +9,7 @@ import { Segmented, SegmentedItem } from '@/renderer/components/ui/segmented';
 import { AppUpdateSection } from '@/renderer/features/app-update/AppUpdateSection';
 import { KeyboardShortcutsSettings } from '@/renderer/components/app/KeyboardShortcutsSettings';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/renderer/components/ui/tabs';
+import { PetalMaintenance } from '@/renderer/features/desktop-petals/PetalMaintenance';
 
 interface Props {
   promptLocale: Locale | null;
@@ -49,8 +50,9 @@ export function SettingsDialog({
         </DialogHeader>
         <Tabs value={page} onValueChange={setPage} className="gap-4">
           <TabsList>
-            <TabsTrigger value="general">{locale === 'zh' ? '常规' : 'General'}</TabsTrigger>
-            <TabsTrigger value="shortcuts">{locale === 'zh' ? '快捷键' : 'Shortcuts'}</TabsTrigger>
+            <TabsTrigger value="general">{l.generalTab}</TabsTrigger>
+            <TabsTrigger value="shortcuts">{l.shortcutsTab}</TabsTrigger>
+            <TabsTrigger value="maintenance">{l.maintenanceTab}</TabsTrigger>
           </TabsList>
           <TabsContent value="general" className="grid gap-4">
             <div className="grid gap-2">
@@ -133,6 +135,9 @@ export function SettingsDialog({
           </TabsContent>
           <TabsContent value="shortcuts">
             <KeyboardShortcutsSettings locale={locale} />
+          </TabsContent>
+          <TabsContent value="maintenance">
+            <PetalMaintenance />
           </TabsContent>
         </Tabs>
       </DialogContent>

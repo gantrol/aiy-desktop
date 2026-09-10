@@ -79,6 +79,8 @@ export function WorkspaceTabStrip({
     settings: navigation.settings,
   };
   const titleLabels = {
+    animation: messages.creator.gifMaker.workspaceTitle,
+    outline: messages.creator.outline.title,
     views: viewLabels,
     newCreation: messages.creator.results.newCreation,
     creationKinds: messages.contentManagement.subtypes,

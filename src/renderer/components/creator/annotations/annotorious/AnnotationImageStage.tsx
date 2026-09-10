@@ -302,7 +302,7 @@ export const AnnotationImageStage = forwardRef(function AnnotationImageStage(
   }, [annotatorReady, asset.id, dimensions, onPendingChange, onSelect]);
 
   return (
-    <div className={cn('relative isolate min-h-0 min-w-0 overflow-hidden bg-surface-sunken', className)}>
+    <div className={cn('relative isolate min-h-0 min-w-0 overflow-hidden', className)}>
       <ImageAmbientBackdrop src={asset.mediaUrl} />
       <div
         ref={viewportRef}
@@ -335,7 +335,8 @@ export const AnnotationImageStage = forwardRef(function AnnotationImageStage(
           >
             <div
               className={cn(
-                'relative shrink-0 overflow-hidden bg-media-surround-light ring-1 ring-foreground/10',
+                'relative shrink-0 overflow-hidden',
+                active && 'ring-1 ring-foreground/10',
                 active && mode !== 'view' && 'cursor-crosshair',
                 magnifierActive && !active && 'cursor-crosshair',
               )}

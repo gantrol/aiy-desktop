@@ -179,10 +179,10 @@ export function MaterialLibraryNavigation({
           aria-label={`${labels.material} / ${labels.dictionary}`}
           onValueChange={(value) => value && onSelectCategory(value as MaterialLibraryCategory)}
         >
-          <SegmentedItem value="MATERIAL" className="min-w-0 px-2">
+          <SegmentedItem data-action="material-tab-library" value="MATERIAL" className="min-w-0 px-2">
             {labels.material}
           </SegmentedItem>
-          <SegmentedItem value="DICTIONARY" className="min-w-0 px-2">
+          <SegmentedItem data-action="material-tab-dictionary" value="DICTIONARY" className="min-w-0 px-2">
             {labels.dictionary}
           </SegmentedItem>
         </Segmented>

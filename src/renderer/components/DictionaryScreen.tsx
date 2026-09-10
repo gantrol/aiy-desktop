@@ -1,4 +1,5 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { lazy, useEffect, useMemo, useRef, useState } from 'react';
+import { WorkspaceDetailLoadingBoundary } from '@/renderer/components/app/WorkspaceDetailLoadingBoundary';
 import type {
   AssetDto,
   BootstrapDto,
@@ -30,8 +31,6 @@ import { DictionaryMaintenanceDialog } from '@/renderer/components/dictionary/Di
 import { DictionaryClassificationScreen } from '@/renderer/components/dictionary/classifications/DictionaryClassificationScreen';
 import { ImportPreviewDialog } from '@/renderer/components/dictionary/ImportPreviewDialog';
 import { NewTermDialog } from '@/renderer/components/dictionary/NewTermDialog';
-import { TermDetailView } from '@/renderer/components/dictionary/TermDetailView';
-import { TermEditor } from '@/renderer/components/dictionary/TermEditor';
 import { TermOverview } from '@/renderer/components/dictionary/TermOverview';
 import { TermIllustrationAction } from '@/renderer/features/term-illustration/TermIllustrationAction';
 import { TermIllustrationPanel } from '@/renderer/features/term-illustration/TermIllustrationPanel';
@@ -49,6 +48,13 @@ import {
   type HistoryNavigationGuard,
   type NavigationMode,
 } from '@/renderer/components/app/app-navigation';
+
+const TermDetailView = lazy(() =>
+  import('@/renderer/components/dictionary/TermDetailView').then((module) => ({ default: module.TermDetailView })),
+);
+const TermEditor = lazy(() =>
+  import('@/renderer/components/dictionary/TermEditor').then((module) => ({ default: module.TermEditor })),
+);
 
 interface Props {
   data: BootstrapDto;
@@ -779,80 +785,82 @@ export function DictionaryScreen({
             notify={notify}
           />
           <div className="min-h-0 min-w-0 flex-1 overflow-hidden">
-            {surface === 'detail' &&
-              (detail ? (
-                <TermIllustrationProvider
-                  key={detail.id}
-                  term={detail}
-                  locale={locale}
-                  routes={data.imageGenerationRoutes}
-                  availableAssets={availableAssets}
-                  mediaBusy={mediaBusy}
-                  onAddMedia={addMedia}
-                  onImportMedia={importMedia}
-                  onTermMediaChanged={reloadCurrentTerm}
-                  onOpenCreation={onOpenCreation}
-                  notify={notify}
-                >
-                  <TermDetailView
-                    className="size-full"
+            <WorkspaceDetailLoadingBoundary>
+              {surface === 'detail' &&
+                (detail ? (
+                  <TermIllustrationProvider
+                    key={detail.id}
                     term={detail}
                     locale={locale}
-                    selected={selectionTermIds.includes(detail.id)}
+                    routes={data.imageGenerationRoutes}
+                    availableAssets={availableAssets}
+                    mediaBusy={mediaBusy}
+                    onAddMedia={addMedia}
+                    onImportMedia={importMedia}
+                    onTermMediaChanged={reloadCurrentTerm}
+                    onOpenCreation={onOpenCreation}
+                    notify={notify}
+                  >
+                    <TermDetailView
+                      className="size-full"
+                      term={detail}
+                      locale={locale}
+                      selected={selectionTermIds.includes(detail.id)}
+                      loading={detailLoading}
+                      error={detailLoadError}
+                      onRetry={retryDetail}
+                      onBack={() => requestNavigation({ kind: 'overview' })}
+                      showBack={false}
+                      onSelectedChange={toggleSelection}
+                      onEdit={() => editTerm()}
+                      headerAction={<TermIllustrationAction />}
+                      afterContent={<TermIllustrationPanel />}
+                      notify={notify}
+                    />
+                  </TermIllustrationProvider>
+                ) : (
+                  <TermDetailView
+                    className="size-full"
+                    term={null}
+                    locale={locale}
+                    selected={false}
                     loading={detailLoading}
                     error={detailLoadError}
                     onRetry={retryDetail}
                     onBack={() => requestNavigation({ kind: 'overview' })}
                     showBack={false}
                     onSelectedChange={toggleSelection}
-                    onEdit={() => editTerm()}
-                    headerAction={<TermIllustrationAction />}
-                    afterContent={<TermIllustrationPanel />}
                     notify={notify}
                   />
-                </TermIllustrationProvider>
-              ) : (
-                <TermDetailView
-                  className="size-full"
-                  term={null}
-                  locale={locale}
-                  selected={false}
-                  loading={detailLoading}
-                  error={detailLoadError}
-                  onRetry={retryDetail}
-                  onBack={() => requestNavigation({ kind: 'overview' })}
-                  showBack={false}
-                  onSelectedChange={toggleSelection}
-                  notify={notify}
-                />
-              ))}
+                ))}
 
-            {surface === 'edit' && (
-              <TermEditor
-                copy={c}
-                locale={locale}
-                categories={data.categories}
-                detail={detail}
-                draft={draft}
-                dirty={Boolean(dirty)}
-                busy={busy}
-                mediaBusy={mediaBusy}
-                mediaFocusKey={0}
-                availableAssets={availableAssets}
-                onSet={setDraftField}
-                onBack={returnToDetail}
-                onSave={() => void save()}
-                onApprove={() => void approve()}
-                onWithdraw={() => void withdrawApproval()}
-                onArchive={() => void setArchived(true)}
-                onRestore={() => void setArchived(false)}
-                onAddMedia={addMedia}
-                onImportMedia={importMedia}
-                onSetMediaCover={setMediaCover}
-                onRemoveMedia={removeMedia}
-                onReorderMedia={reorderMedia}
-              />
-            )}
+              {surface === 'edit' && (
+                <TermEditor
+                  copy={c}
+                  locale={locale}
+                  categories={data.categories}
+                  detail={detail}
+                  draft={draft}
+                  dirty={Boolean(dirty)}
+                  busy={busy}
+                  mediaBusy={mediaBusy}
+                  mediaFocusKey={0}
+                  availableAssets={availableAssets}
+                  onSet={setDraftField}
+                  onBack={returnToDetail}
+                  onSave={() => void save()}
+                  onApprove={() => void approve()}
+                  onWithdraw={() => void withdrawApproval()}
+                  onArchive={() => void setArchived(true)}
+                  onRestore={() => void setArchived(false)}
+                  onAddMedia={addMedia}
+                  onImportMedia={importMedia}
+                  onSetMediaCover={setMediaCover}
+                  onRemoveMedia={removeMedia}
+                  onReorderMedia={reorderMedia}
+                />
+              )}
+            </WorkspaceDetailLoadingBoundary>
           </div>
         </div>
       )}

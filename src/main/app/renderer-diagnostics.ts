@@ -1,6 +1,8 @@
 import { app, type BrowserWindow } from 'electron';
 import path from 'node:path';
 import { RendererDiagnosticLog } from '@/main/app/renderer-diagnostic-log';
+import { isPackagedApplication } from '@/main/app/runtime-mode';
+import { startupTimingDetails } from '@/main/app/startup-timing';
 import { createTrustedIpcHandlerRegistrar } from '@/main/ipc/trusted-handlers';
 import { RENDERER_DIAGNOSTIC_CHANNEL, rendererDiagnosticRecordSchema } from '@/shared/contracts/renderer-diagnostics';
 import { rendererDiagnosticError } from '@/shared/renderer-diagnostic-error';
@@ -16,6 +18,11 @@ export function registerRendererDiagnostics(getWindow: () => BrowserWindow | nul
     const parsed = rendererDiagnosticRecordSchema.safeParse(value);
     if (parsed.success) diagnosticLog().write({ source: 'renderer', ...parsed.data });
   });
+  app.on('child-process-gone', (_event, details) => {
+    if (details.reason === 'clean-exit' || details.reason === 'killed') return;
+    diagnosticLog().write({ source: 'main', event: 'child-process-gone', details });
+    console.warn('[runtime] child process failed', details);
+  });
 }
 
 export async function flushRendererDiagnostics() {
@@ -23,11 +30,20 @@ export async function flushRendererDiagnostics() {
 }
 
 export function attachRendererDiagnostics(window: BrowserWindow) {
+  const createdAt = performance.now();
   const contents = window.webContents;
   const webContentsId = contents.id;
   const write = (event: string, details: object = {}) =>
     diagnosticLog().write({ source: 'main', event, webContentsId, details });
-  write('window-created', { version: app.getVersion(), packaged: app.isPackaged });
+  write('window-created', { version: app.getVersion(), packaged: isPackagedApplication(app) });
+  window.once('ready-to-show', () => {
+    const details = {
+      ...startupTimingDetails(),
+      windowLoadMs: Math.round(performance.now() - createdAt),
+    };
+    write('window-ready', details);
+    console.info('[startup] main window ready', details);
+  });
   contents.on('did-start-navigation', (details) => {
     if (details.isMainFrame && !details.isSameDocument) write('navigation-start');
   });

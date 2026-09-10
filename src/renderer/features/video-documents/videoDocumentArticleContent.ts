@@ -1,9 +1,10 @@
 import type { VideoDocumentRevisionContent } from '@/shared/contracts';
 
-const hiddenArticleTitlePattern = /^[\t ]*#[\t ]+[^\r\n]*(?:\r?\n|$)/;
-
 export function videoDocumentArticleHasVisibleContent(markdown: string) {
-  return markdown.replace(hiddenArticleTitlePattern, '').trim().length > 0;
+  const firstLineEnd = markdown.indexOf('\n');
+  const firstLine = firstLineEnd < 0 ? markdown : markdown.slice(0, firstLineEnd);
+  const body = /^[\t ]*#[\t ]/.test(firstLine) ? (firstLineEnd < 0 ? '' : markdown.slice(firstLineEnd + 1)) : markdown;
+  return body.trim().length > 0;
 }
 
 export function selectVideoDocumentArticle(

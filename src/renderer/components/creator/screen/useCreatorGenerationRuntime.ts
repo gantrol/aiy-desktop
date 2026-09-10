@@ -111,8 +111,9 @@ export function useCreatorGenerationRuntime({
   const requestIdentity = `${selection.inputSessionRevision}:${navigationLocationKey(navigation.workbenchLocation())}`;
   const launch = useCreatorGenerationLaunch({
     active,
-    blocked,
+    blocked: () => blocked() || draftInput.recovery.state.status === 'loading',
     captureSnapshot,
+    preserveWorkingInput: draftInput.recovery.flush,
     failedMessage: messages.failed,
     invalidateAutosaves: draftSession.invalidateAutosaves,
     notify,

@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 import type { AssetDto, AssetFileRevealContext } from '@/shared/contracts';
 import { ImageIcon } from '@/renderer/icons';
 import { cn } from '@/renderer/lib/utils';
@@ -24,7 +24,9 @@ interface Props {
   items: MediaStackItem[];
   size?: 'xs' | 'rail' | 'tree' | 'sm' | 'md' | 'card';
   className?: string;
+  emptyContent?: ReactNode;
   expanded?: boolean;
+  animate?: boolean;
   spread?: MediaStackSpread;
   maxItems?: number;
   expandedStep?: number;
@@ -244,7 +246,9 @@ export function MediaStackPreview({
   items,
   size = 'md',
   className,
+  emptyContent,
   expanded: controlledExpanded,
+  animate = true,
   spread: controlledSpread,
   maxItems = 3,
   expandedStep,
@@ -302,11 +306,11 @@ export function MediaStackPreview({
       {!visible.length && (
         <span
           className={cn(
-            'absolute inset-1 grid place-items-center rounded-md border bg-surface-sunken text-muted-foreground',
+            'absolute inset-1 grid place-items-center overflow-hidden rounded-md border bg-surface-sunken text-muted-foreground',
             size === 'tree' && 'corner-continuous',
           )}
         >
-          <ImageIcon className={size === 'sm' ? 'size-4' : 'size-5'} />
+          {emptyContent ?? <ImageIcon className={size === 'sm' ? 'size-4' : 'size-5'} />}
         </span>
       )}
       {visible.map((item, index) => {
@@ -331,6 +335,7 @@ export function MediaStackPreview({
           width: frame.width,
           height: frame.height,
           transform: `translateX(${x}px) rotate(${rotation}deg)`,
+          ...(!animate && { transition: 'none' }),
         });
         const mediaStyle = { objectPosition: `${(item.focalX ?? 0.5) * 100}% ${(item.focalY ?? 0.5) * 100}%` };
         const image = !mediaAdmitted ? null : isVideoAsset(item.asset) ? (

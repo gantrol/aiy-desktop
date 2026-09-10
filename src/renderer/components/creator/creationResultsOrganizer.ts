@@ -23,11 +23,6 @@ export interface OrganizerVersionOption {
   changeSummary: string;
 }
 
-export function organizerVersionLabel(version: OrganizerVersionOption) {
-  const label = `V${String(version.versionNo).padStart(2, '0')}`;
-  return version.changeSummary ? `${label} · ${version.changeSummary}` : label;
-}
-
 export function organizerRelationRequiresTarget(kind: CreationOutputRelationshipKind) {
   return kind === 'VARIANT' || kind === 'DERIVED' || kind === 'POST_EDIT';
 }

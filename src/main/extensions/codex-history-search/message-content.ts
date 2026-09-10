@@ -48,10 +48,17 @@ export function codexUserRequestText(value: string) {
 export function parseProjectedCodexHistoryValue(
   itemType: 'userMessage' | 'agentMessage',
   value: unknown,
+  includeCommentary = false,
 ): ParsedCodexHistoryMessage | null {
   if (itemType === 'agentMessage') {
     const parsed = projectedAgentMessageSchema.safeParse(value);
-    if (!parsed.success || (parsed.data.phase && parsed.data.phase !== 'final_answer')) return null;
+    if (!parsed.success) return null;
+    if (
+      parsed.data.phase &&
+      parsed.data.phase !== 'final_answer' &&
+      !(includeCommentary && parsed.data.phase === 'commentary')
+    )
+      return null;
     const text = parsed.data.text.trim().slice(0, MAX_CODEX_HISTORY_MESSAGE_TEXT_CHARACTERS);
     return text ? { messageId: parsed.data.id ?? null, role: 'ASSISTANT', text } : null;
   }
@@ -68,12 +75,16 @@ export function parseProjectedCodexHistoryValue(
   return text ? { messageId: parsed.data.id ?? null, role: 'USER', text } : null;
 }
 
-export function parseProjectedCodexHistoryItem(itemType: 'userMessage' | 'agentMessage', itemJson: string) {
+export function parseProjectedCodexHistoryItem(
+  itemType: 'userMessage' | 'agentMessage',
+  itemJson: string,
+  includeCommentary = false,
+) {
   let value: unknown;
   try {
     value = JSON.parse(itemJson);
   } catch {
     return null;
   }
-  return parseProjectedCodexHistoryValue(itemType, value);
+  return parseProjectedCodexHistoryValue(itemType, value, includeCommentary);
 }

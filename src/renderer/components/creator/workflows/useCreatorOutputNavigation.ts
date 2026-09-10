@@ -18,6 +18,7 @@ interface Options {
   data: BootstrapDto;
   locale: Locale;
   notify(message: string): void;
+  preserveWorkingInput(): Promise<boolean>;
   restoreVersion(version: PromptVersionDto): void;
   selectedAlbumId: string | null;
   seriesId: string | null;
@@ -81,6 +82,7 @@ export function useCreatorOutputNavigation(options: Options) {
       const targetSeries = options.data.series.find((item) => item.id === targetSeriesId);
       const targetVersion = targetSeries?.versions.find((item) => item.id === targetVersionId);
       if (!targetSeries || !targetVersion) return null;
+      if (!(await options.preserveWorkingInput())) return null;
       if (
         options.creationMode === 'existing' &&
         options.seriesId === targetSeriesId &&

@@ -1,3 +1,4 @@
+import type { NaturalWatermarkRuntime } from '@/main/extensions/natural-watermark/selection';
 import { z } from 'zod';
 import { ArticleDeliveryConnections } from '@/main/extensions/article-delivery/connection';
 import type { ArticleDeliveryJobCoordinator } from '@/main/extensions/article-delivery/job-coordinator';
@@ -48,6 +49,7 @@ export function registerArticleDeliveryIpc(
   extensions: ExtensionRegistry,
   connections: ArticleDeliveryConnections,
   jobs: ArticleDeliveryJobCoordinator,
+  naturalWatermark?: NaturalWatermarkRuntime,
 ) {
   const captureExtensions = () => ({
     get: extensions.get,
@@ -55,9 +57,11 @@ export function registerArticleDeliveryIpc(
     isPermissionGranted: extensions.isPermissionGranted,
   });
   const captureDatabase = () => ({
+    libraryRoot: database.libraryRoot,
     getArticle: database.getArticle,
     getArticleRevision: database.getArticleRevision,
-    resolveAssetFile: database.resolveAssetFile,
+    contentLibrary: database.contentLibrary,
+    resolveAssetFilesAsync: database.resolveAssetFilesAsync,
   });
   const context = async (
     target: ArticleDeliveryExtensionTarget,
@@ -100,7 +104,14 @@ export function registerArticleDeliveryIpc(
     const capturedExtensions = captureExtensions();
     const capturedDatabase = captureDatabase();
     const { definition, connection } = await context(input, capturedExtensions);
-    const delivery = new ArticleDeliveryService(capturedDatabase, capturedExtensions, connection, definition);
+    const delivery = new ArticleDeliveryService(
+      capturedDatabase,
+      capturedExtensions,
+      connection,
+      definition,
+      undefined,
+      naturalWatermark,
+    );
     return articleDeliveryStatusSchema.parse(delivery.status(input));
   });
   ipcMain.handle('article-delivery:profile-save', async (_event, rawInput) => {
@@ -109,7 +120,14 @@ export function registerArticleDeliveryIpc(
     const capturedDatabase = captureDatabase();
     active(input, capturedExtensions);
     const { definition, connection } = await context(input, capturedExtensions);
-    const delivery = new ArticleDeliveryService(capturedDatabase, capturedExtensions, connection, definition);
+    const delivery = new ArticleDeliveryService(
+      capturedDatabase,
+      capturedExtensions,
+      connection,
+      definition,
+      undefined,
+      naturalWatermark,
+    );
     return articleDeliveryArticleProfileSchema.parse(await delivery.saveProfile(input));
   });
   ipcMain.handle('article-delivery:upload', async (_event, rawInput) => {
@@ -117,7 +135,14 @@ export function registerArticleDeliveryIpc(
     const capturedExtensions = captureExtensions();
     const capturedDatabase = captureDatabase();
     const { definition, connection } = await context(input, capturedExtensions);
-    const delivery = new ArticleDeliveryService(capturedDatabase, capturedExtensions, connection, definition);
+    const delivery = new ArticleDeliveryService(
+      capturedDatabase,
+      capturedExtensions,
+      connection,
+      definition,
+      undefined,
+      naturalWatermark,
+    );
     return articleDeliveryUploadResultSchema.parse(await delivery.upload(input));
   });
   ipcMain.handle('article-delivery:job-enqueue', async (_event, rawInput) => {

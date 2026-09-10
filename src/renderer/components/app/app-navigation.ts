@@ -1,5 +1,6 @@
 import type { DictionaryBrowseContext } from '@/renderer/components/dictionary/dictionary-navigation';
 import type { CreationRelationFilter } from '@/shared/contracts';
+import type { GifWorkspaceState } from '@/shared/contracts/gif-making';
 import type { AppView } from '@/renderer/components/app/AppSidebar';
 
 export type NavigationMode = 'push' | 'replace';
@@ -7,9 +8,20 @@ export type HistoryNavigationDirection = 'back' | 'forward';
 export type HistoryNavigationGuard = (direction: HistoryNavigationDirection, continueNavigation: () => void) => boolean;
 
 export type CreatorLocation =
+  | {
+      surface: 'animation';
+      documentId: string;
+      seriesId: string | null;
+      step: GifWorkspaceState['step'];
+      title: string;
+      frameId?: string;
+      candidateId?: string;
+      adoptionTarget?: import('@/shared/contracts/gif-making').GifAdoptionTarget;
+    }
   | { surface: 'default' }
+  | { surface: 'outline'; albumId: string | null }
   | { surface: 'new-creation'; albumId: string | null; requestId?: number }
-  | { surface: 'creation-draft'; draftId: string; requestId?: number }
+  | { surface: 'creation-draft'; draftId: string; derivedVisualId?: string; requestId?: number }
   | { surface: 'inspiration-stash'; stashId: string }
   | { surface: 'image-breakdown'; breakdownId: string }
   | { surface: 'evaluation-suite'; suiteId: string }
@@ -19,6 +31,8 @@ export type CreatorLocation =
   | {
       surface: 'existing-creation';
       seriesId: string;
+      outputSeriesId?: string;
+      derivedVisualId?: string;
       assetId: string | null;
       versionId?: string;
       workspace?: 'prompt' | 'annotations';
@@ -119,7 +133,17 @@ export const initialAppLocation: AppLocation = {
 };
 
 export function navigationLocationKey(location: unknown) {
-  return JSON.stringify(location);
+  // Restore, persistence, and live navigation build the same location in different
+  // property orders. Those differences must not trigger another workspace restore.
+  return JSON.stringify(location, (_key, value: unknown) => {
+    if (value === null || typeof value !== 'object' || Array.isArray(value)) return value;
+    const record = value as Record<string, unknown>;
+    return Object.fromEntries(
+      Object.keys(record)
+        .sort()
+        .map((key) => [key, record[key]]),
+    );
+  });
 }
 
 export function sameAppLocation(left: AppLocation, right: AppLocation) {

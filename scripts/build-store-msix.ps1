@@ -302,6 +302,10 @@ Invoke-CheckedCommand -FilePath $winApp -Arguments @(
 )
 
 $packedManifestPath = Join-Path $inspectionDirectory 'AppxManifest.xml'
+Invoke-CheckedCommand -FilePath 'node' -Arguments @(
+  (Join-Path $PSScriptRoot 'verify-store-payload.mjs'),
+  $inspectionDirectory
+)
 [xml]$packedManifest = Get-Content -LiteralPath $packedManifestPath -Raw
 Assert-Equal -Label 'Packed Identity.Name' -Actual ([string]$packedManifest.Package.Identity.Name) -Expected $expectedIdentityName
 Assert-Equal -Label 'Packed Identity.Publisher' -Actual ([string]$packedManifest.Package.Identity.Publisher) -Expected $expectedPublisher

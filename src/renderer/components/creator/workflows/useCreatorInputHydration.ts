@@ -1,18 +1,3 @@
-import { useEffect, useMemo, useRef, useState, type Dispatch, type SetStateAction } from 'react';
-import type {
-  BootstrapDto,
-  AssetDto,
-  CreationDictionaryScopeDto,
-  CreationDraftDto,
-  CreationInputStashDto,
-  GenerationTargetInput,
-  Locale,
-  PromptSeriesDto,
-  PromptVersionDto,
-  CreatorPromptNodeInput,
-  WordPaletteReferenceInput,
-} from '@/shared/contracts';
-import { emptyAlbumCreationDefaults, emptyCreationDictionaryScope } from '@/shared/album-creation-defaults';
 import {
   creatorPromptNodesFromCommonInput,
   creatorPromptNodesFromReferences,
@@ -22,9 +7,27 @@ import {
   latestVersionGenerationRun,
   latestVersionGenerationTargets,
 } from '@/renderer/components/creator/generationTargetDefaults';
-import type { PromptDocumentReplacement } from '@/renderer/components/creator/workflows/useCreatorPromptDocument';
 import { appliedWordPalettesFromReferences } from '@/renderer/components/creator/utils';
+import type { PromptDocumentReplacement } from '@/renderer/components/creator/workflows/useCreatorPromptDocument';
 import { useStableCallback } from '@/renderer/lib/useStableCallback';
+import { emptyAlbumCreationDefaults, emptyCreationDictionaryScope } from '@/shared/album-creation-defaults';
+import type {
+  AssetDto,
+  BootstrapDto,
+  CreationDictionaryScopeDto,
+  CreationDraftDto,
+  CreationInputStashDto,
+  CreationVideoAttachmentDto,
+  CreatorPromptNodeInput,
+  GenerationTargetInput,
+  Locale,
+  PromptSeriesDto,
+  PromptVersionDto,
+  WordPaletteReferenceInput,
+} from '@/shared/contracts';
+import type { BlockDocument } from '@/shared/contracts/block-document';
+import type { CreatorInputRecoverySnapshot } from '@/shared/contracts/creator-input-recovery';
+import { useEffect, useMemo, useRef, useState, type Dispatch, type SetStateAction } from 'react';
 
 type CreationMode = 'existing' | 'new';
 
@@ -47,9 +50,11 @@ interface Options {
 }
 
 interface HydratedPromptSource {
+  document?: BlockDocument;
   manualPrompt: string;
   promptNodes?: readonly CreatorPromptNodeInput[];
   referenceAssets: AssetDto[];
+  videoAttachments?: CreationVideoAttachmentDto[];
   termIds: string[];
   termPromptLocale: Locale;
   wordPaletteReferences: WordPaletteReferenceInput[];
@@ -57,6 +62,7 @@ interface HydratedPromptSource {
 
 function promptDocument(data: BootstrapDto, source: HydratedPromptSource): PromptDocumentReplacement {
   return {
+    document: source.document,
     promptNodes: creatorPromptNodesFromReferences({
       manualPrompt: source.manualPrompt,
       termIds: source.termIds,
@@ -64,6 +70,7 @@ function promptDocument(data: BootstrapDto, source: HydratedPromptSource): Promp
       nodes: source.promptNodes,
     }),
     referenceAssets: source.referenceAssets,
+    videoAttachments: source.videoAttachments ?? [],
     selectedTerms: source.termIds.flatMap((termId) => data.terms.find((term) => term.id === termId) ?? []),
     appliedPalettes: appliedWordPalettesFromReferences(data.wordPalettes, source.wordPaletteReferences),
     termPromptLocale: source.termPromptLocale,
@@ -74,6 +81,7 @@ export function useCreatorInputHydration(options: Options) {
   const [versionId, setVersionId] = useState(options.initialVersionId);
   const [hydratedVersionId, setHydratedVersionId] = useState<string | null>(null);
   const restoredVersionIdRef = useRef<string | null>(null);
+  const hydratedLocationRef = useRef<string | null>(null);
   const version = useMemo(
     () => options.series?.versions.find((item) => item.id === versionId),
     [options.series, versionId],
@@ -104,6 +112,7 @@ export function useCreatorInputHydration(options: Options) {
       promptDocument(options.data, {
         ...next,
         promptNodes: creatorPromptNodesFromCommonInput(next.promptInputSnapshot.commonInput),
+        document: next.promptInputSnapshot.commonInput.document,
       }),
     );
     const latestRun = latestVersionGenerationRun(next, options.series?.versions ?? []);
@@ -143,7 +152,9 @@ export function useCreatorInputHydration(options: Options) {
       promptDocument(options.data, {
         manualPrompt: draft?.text ?? '',
         promptNodes: draft?.promptNodes ?? [],
+        document: draft?.document,
         referenceAssets: draft?.referenceAssets ?? [],
+        videoAttachments: draft?.videoAttachments ?? [],
         termIds: draft?.termIds ?? [],
         wordPaletteReferences: draft?.wordPaletteReferences ?? [],
         termPromptLocale,
@@ -202,16 +213,17 @@ export function useCreatorInputHydration(options: Options) {
     );
   });
 
-  const applyInputStash = useStableCallback((stash: CreationInputStashDto) => {
-    options.replacePromptDocument(promptDocument(options.data, stash.snapshot));
-    options.setDictionaryScope(stash.snapshot.dictionaryScope);
-    options.setCanvasPresetKey(stash.snapshot.canvasPresetKey ?? '');
-    options.setGenerationTargets(stash.snapshot.generationTargets);
+  const applyInputSnapshot = useStableCallback((snapshot: CreatorInputRecoverySnapshot) => {
+    options.replacePromptDocument(promptDocument(options.data, snapshot));
+    options.setDictionaryScope(snapshot.dictionaryScope);
+    options.setCanvasPresetKey(snapshot.canvasPresetKey ?? '');
+    options.setGenerationTargets(snapshot.generationTargets);
     if (options.creationMode === 'new') {
-      options.setNewTitle(stash.snapshot.title);
-      options.patchSavedDraftTitle(stash.snapshot.title);
+      options.setNewTitle(snapshot.title);
+      options.patchSavedDraftTitle(snapshot.title);
     }
   });
+  const applyInputStash = useStableCallback((stash: CreationInputStashDto) => applyInputSnapshot(stash.snapshot));
 
   const resetHydration = useStableCallback(() => {
     restoredVersionIdRef.current = null;
@@ -219,21 +231,24 @@ export function useCreatorInputHydration(options: Options) {
   });
 
   useEffect(() => {
-    if (options.creationMode !== 'existing' || !options.series) return;
+    if (options.creationMode !== 'existing' || !options.series) {
+      hydratedLocationRef.current = null;
+      return;
+    }
+    const locationKey = JSON.stringify([options.series.id, options.locationVersionId]);
+    const locationChanged = hydratedLocationRef.current !== locationKey;
+    hydratedLocationRef.current = locationKey;
     const next =
-      options.series.versions.find((item) => item.id === options.locationVersionId) ??
+      (locationChanged ? options.series.versions.find((item) => item.id === options.locationVersionId) : undefined) ??
+      options.series.versions.find((item) => item.id === versionId) ??
       options.series.versions.find((item) => item.id === options.series?.currentVersionId) ??
       options.series.versions[0];
     setVersionId(next?.id ?? '');
     if (restoredVersionIdRef.current !== (next?.id ?? null)) restoreVersion(next);
-  }, [options.creationMode, options.locationVersionId, options.series, restoreVersion]);
-
-  useEffect(() => {
-    if (options.creationMode !== 'existing' || !version || restoredVersionIdRef.current === version.id) return;
-    restoreVersion(version);
-  }, [options.creationMode, restoreVersion, version]);
+  }, [options.creationMode, options.locationVersionId, options.series, restoreVersion, versionId]);
 
   return {
+    applyInputSnapshot,
     applyInputStash,
     chooseVersion,
     hydratedVersionId,

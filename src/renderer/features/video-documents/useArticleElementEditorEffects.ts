@@ -2,7 +2,6 @@ import { useCallback, useEffect } from 'react';
 import type { Editor } from '@tiptap/core';
 import type { EditorView } from '@tiptap/pm/view';
 import type { ArticleCommentDto, ArticleElementPlacementInput } from '@/shared/contracts';
-import { sameArticleElementPlacements } from '@/shared/contracts/article';
 import {
   articleElementPlacements,
   hydrateArticleElements,
@@ -42,8 +41,6 @@ export function useArticleElementEditorEffects({
     if (!enabled || !editor) return undefined;
     let cancelled = false;
     let frame: number | null = null;
-    // Split views and trailing editor nodes may settle in later mount frames.
-    let remainingSettleFrames = 2;
 
     const hydrateWhenSettled = () => {
       if (cancelled || editor.isDestroyed) return;
@@ -52,17 +49,9 @@ export function useArticleElementEditorEffects({
         return;
       }
       hydrateArticleElements(editor, initialElements.current);
-      if (remainingSettleFrames > 0) {
-        remainingSettleFrames -= 1;
-        frame = window.requestAnimationFrame(hydrateWhenSettled);
-        return;
-      }
       const elements = articleElementPlacements(editor);
       hydrationReady.current = true;
-      callbacks.current.onArticleElementsChange?.(
-        elements,
-        sameArticleElementPlacements(initialElements.current, elements) ? 'hydrate' : 'identity',
-      );
+      callbacks.current.onArticleElementsChange?.(elements, 'hydrate');
     };
 
     queueMicrotask(hydrateWhenSettled);

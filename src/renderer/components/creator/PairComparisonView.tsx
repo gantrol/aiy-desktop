@@ -56,6 +56,7 @@ export interface PairComparisonViewProps {
   labels: PairComparisonLabels;
   className?: string;
   initialMode?: PairComparisonMode;
+  mode?: PairComparisonMode;
   onModeChange?(mode: PairComparisonMode): void;
   onAssetDragStart?(event: ReactDragEvent<HTMLElement>, assetId: string): void;
 }
@@ -98,12 +99,14 @@ export function PairComparisonView({
   onClose,
   className,
   initialMode = 'SIDE_BY_SIDE',
+  mode: controlledMode,
   labels,
   onModeChange,
   onAssetDragStart,
 }: PairComparisonViewProps) {
   const rootRef = useRef<HTMLDivElement>(null);
-  const [mode, setMode] = useState<PairComparisonMode>(initialMode);
+  const [localMode, setMode] = useState<PairComparisonMode>(initialMode);
+  const mode = controlledMode ?? localMode;
   const [soloSlot, setSoloSlot] = useState<PairComparisonSlot | null>(null);
   const [splitPosition, setSplitPosition] = useState(50);
   const [overlayMix, setOverlayMix] = useState(50);
@@ -113,8 +116,8 @@ export function PairComparisonView({
   const [magnifierScale, setMagnifierScale] = useState(1);
 
   useEffect(() => {
-    rootRef.current?.focus({ preventScroll: true });
-  }, []);
+    if (controlledMode === undefined) rootRef.current?.focus({ preventScroll: true });
+  }, [controlledMode]);
 
   function changeMode(nextMode: PairComparisonMode) {
     setMode(nextMode);

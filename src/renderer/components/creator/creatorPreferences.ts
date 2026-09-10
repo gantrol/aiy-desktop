@@ -9,7 +9,7 @@ export interface CreatorPreferences {
 }
 
 const storageKey = 'aiy.creator-preferences.v1';
-const resultLibraryModes = ['full', 'images'] as const satisfies readonly ResultLibraryMode[];
+const resultLibraryModes = ['full', 'images', 'outline'] as const satisfies readonly ResultLibraryMode[];
 const storedCreatorPreferencesSchema = z
   .object({
     resultLibraryMode: z.enum(resultLibraryModes).optional().catch(undefined),
@@ -19,7 +19,7 @@ const storedCreatorPreferencesSchema = z
   })
   .passthrough();
 
-export const resultThumbnailWidth = 84;
+export const resultThumbnailWidth = 52;
 export const outputThumbnailWidth = 72;
 export const minimumCenterWidth = 480;
 export const minimumResultListWidth = 240;

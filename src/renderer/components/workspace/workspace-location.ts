@@ -1,5 +1,9 @@
 import type { BootstrapDto, WorkspaceTarget } from '@/shared/contracts';
 import {
+  derivedVisualForLocation,
+  derivedVisualParentLocation,
+} from '@/renderer/components/creator/derivedVisualWorkspace';
+import {
   initialAppLocation,
   type AppLocation,
   type CreatorLocation,
@@ -11,13 +15,22 @@ function persistedCreatorLocation(location: CreatorLocation): WorkspaceTarget & 
     case 'new-creation':
       return { kind: 'creator', location: { surface: location.surface, albumId: location.albumId } };
     case 'creation-draft':
-      return { kind: 'creator', location: { surface: location.surface, draftId: location.draftId } };
+      return {
+        kind: 'creator',
+        location: {
+          surface: location.surface,
+          draftId: location.draftId,
+          ...(location.derivedVisualId ? { derivedVisualId: location.derivedVisualId } : {}),
+        },
+      };
     case 'existing-creation':
       return {
         kind: 'creator',
         location: {
           surface: location.surface,
           seriesId: location.seriesId,
+          ...(location.outputSeriesId ? { outputSeriesId: location.outputSeriesId } : {}),
+          ...(location.derivedVisualId ? { derivedVisualId: location.derivedVisualId } : {}),
           assetId: location.assetId,
           ...(location.versionId ? { versionId: location.versionId } : {}),
           ...(location.workspace ? { workspace: location.workspace } : {}),
@@ -111,7 +124,25 @@ export function workspaceTargetToAppLocation(target: WorkspaceTarget): AppLocati
   }
 }
 
+function normalizeDerivedVisualLocation(location: CreatorLocation, data: BootstrapDto): CreatorLocation | null {
+  if ((location.surface === 'existing-creation' || location.surface === 'creation-draft') && location.derivedVisualId) {
+    const visual = derivedVisualForLocation(data, location);
+    const parent = derivedVisualParentLocation(visual);
+    if (!visual || !parent) return { surface: 'default' };
+    const available =
+      parent.surface === 'article'
+        ? data.articles?.some((item) => item.id === parent.articleId)
+        : parent.surface === 'social-post' && data.socialPosts?.some((item) => item.id === parent.postId);
+    if (!available) return { surface: 'default' };
+    if (visual.promptSeriesId && !data.series.some((series) => series.id === visual.promptSeriesId)) return parent;
+    return location;
+  }
+  return null;
+}
+
 function normalizeCreatorLocation(location: CreatorLocation, data: BootstrapDto): CreatorLocation {
+  const derived = normalizeDerivedVisualLocation(location, data);
+  if (derived) return derived;
   switch (location.surface) {
     case 'existing-creation':
       return data.series.some((series) => series.id === location.seriesId) ? location : { surface: 'default' };
@@ -137,6 +168,10 @@ function normalizeCreatorLocation(location: CreatorLocation, data: BootstrapDto)
       return data.albums.some((album) => album.id === location.albumId) ? location : { surface: 'default' };
     case 'new-creation':
       return location.albumId && !data.albums.some((album) => album.id === location.albumId)
+        ? { ...location, albumId: null }
+        : location;
+    case 'outline':
+      return location.albumId && !data.albums.some((album) => album.id === location.albumId && !album.archivedAt)
         ? { ...location, albumId: null }
         : location;
     default:
@@ -171,10 +206,14 @@ export function normalizeWorkspaceTarget(target: WorkspaceTarget, data: Bootstra
 }
 
 export function workspaceLocationKey(location: AppLocation) {
+  if (location.view === 'creator' && location.creator.surface === 'animation')
+    return JSON.stringify({ kind: 'animation', documentId: location.creator.documentId });
   return JSON.stringify(appLocationToWorkspaceTarget(location));
 }
 
 interface WorkspaceTabTitleLabels {
+  animation?: string;
+  outline: string;
   views: Record<AppLocation['view'] | 'settings', string>;
   newCreation: string;
   creationKinds: {
@@ -199,11 +238,36 @@ function newCreationTabTitle(albumId: string | null, data: BootstrapDto, labels:
   return albumTitle ? `${labels.newCreation} · ${albumTitle}` : labels.newCreation;
 }
 
-function creatorTabTitle(creator: CreatorLocation, data: BootstrapDto, labels: WorkspaceTabTitleLabels) {
+function outlineTabTitle(albumId: string | null, data: BootstrapDto, labels: WorkspaceTabTitleLabels) {
+  const album = data.albums.find((item) => item.id === albumId);
+  return album ? `${labels.outline} · ${album.title}` : labels.outline;
+}
+
+function derivedVisualTabTitle(creator: CreatorLocation, data: BootstrapDto, fallback: string) {
+  const visual = derivedVisualForLocation(data, creator);
+  if (visual)
+    return displayTitle(
+      data.series.find((series) => series.id === visual.promptSeriesId)?.title ??
+        data.articles?.find((article) => article.id === visual.articleId)?.content.title ??
+        data.socialPosts?.find((post) => post.id === visual.socialPostId)?.content.title,
+      fallback,
+    );
+  return null;
+}
+
+function creatorTabTitle(
+  creator: Exclude<CreatorLocation, { surface: 'animation' }>,
+  data: BootstrapDto,
+  labels: WorkspaceTabTitleLabels,
+) {
   const kinds = labels.creationKinds;
+  const derived = derivedVisualTabTitle(creator, data, kinds.promptSeries);
+  if (derived) return derived;
   switch (creator.surface) {
     case 'default':
       return labels.views.creator;
+    case 'outline':
+      return outlineTabTitle(creator.albumId, data, labels);
     case 'new-creation':
       return newCreationTabTitle(creator.albumId, data, labels);
     case 'creation-draft':
@@ -249,6 +313,8 @@ function creatorTabTitle(creator: CreatorLocation, data: BootstrapDto, labels: W
 
 export function workspaceTabTitle(location: AppLocation, data: BootstrapDto, labels: WorkspaceTabTitleLabels) {
   if (location.view === 'creator') {
+    if (location.creator.surface === 'animation')
+      return displayTitle(location.creator.title, labels.animation ?? labels.creationKinds.videoDocument);
     return creatorTabTitle(location.creator, data, labels);
   }
   if (location.view === 'documents') {
@@ -289,6 +355,7 @@ export function workspaceLocationCanSplit(location: AppLocation) {
   if (location.view === 'creator') {
     return !(
       location.creator.surface === 'default' ||
+      location.creator.surface === 'animation' ||
       location.creator.surface === 'new-creation' ||
       location.creator.surface === 'creation-draft'
     );

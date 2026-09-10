@@ -12,13 +12,13 @@ import {
 import { MediaStackPreview } from '@/renderer/components/media/MediaStackPreview';
 import { ActionContextMenuItems, ActionMenuButton, type ActionMenuAction } from '@/renderer/components/ui/action-menu';
 import { ContextMenu, ContextMenuContent, ContextMenuTrigger } from '@/renderer/components/ui/context-menu';
+import { useI18n } from '@/renderer/i18n/useI18n';
 import { cn } from '@/renderer/lib/utils';
 
 interface Props extends CreationLibraryTreePlacementProps, CreationLibraryTreeDragProps {
   article: ArticleDto;
   selected: boolean;
   busy: boolean;
-  locale: 'zh' | 'en';
   dataAttributes?: CreationLibraryTreeDataAttributes;
   childBranch?: CreationTreeChildBranch;
   additionalActions?: readonly ActionMenuAction[];
@@ -32,6 +32,18 @@ interface Props extends CreationLibraryTreePlacementProps, CreationLibraryTreeDr
   onDelete(articleId: string): void;
 }
 
+interface Labels {
+  archive: string;
+  delete: string;
+  drag: string;
+  kind: string;
+  moreActions: string;
+  move: string;
+  open: string;
+  rename: string;
+  untitled: string;
+}
+
 function orderedMedia(article: ArticleDto) {
   const coverId = article.content.coverAssetId;
   return [...article.content.mediaAssets].sort(
@@ -39,27 +51,20 @@ function orderedMedia(article: ArticleDto) {
   );
 }
 
-function actions({
-  article,
-  busy,
-  locale,
-  additionalActions = [],
-  onSelect,
-  onRename,
-  onMove,
-  onArchive,
-  onDelete,
-}: Props): ActionMenuAction[] {
+function actions(
+  { article, busy, additionalActions = [], onSelect, onRename, onMove, onArchive, onDelete }: Props,
+  labels: Labels,
+): ActionMenuAction[] {
   return [
     {
       id: 'open',
-      label: locale === 'zh' ? '打开' : 'Open',
+      label: labels.open,
       icon: FileTextIcon,
       onSelect: () => onSelect(article.id),
     },
     {
       id: 'rename',
-      label: locale === 'zh' ? '重命名…' : 'Rename…',
+      label: labels.rename,
       icon: PencilIcon,
       disabled: busy,
       onSelect: () => onRename(article),
@@ -68,7 +73,7 @@ function actions({
       ? [
           {
             id: 'move',
-            label: locale === 'zh' ? '移动…' : 'Move…',
+            label: labels.move,
             icon: FolderInputIcon,
             disabled: busy,
             onSelect: () => onMove(article),
@@ -78,7 +83,7 @@ function actions({
     ...additionalActions,
     {
       id: 'archive',
-      label: locale === 'zh' ? '归档' : 'Archive',
+      label: labels.archive,
       icon: ArchiveIcon,
       separatorBefore: true,
       disabled: busy,
@@ -86,7 +91,7 @@ function actions({
     },
     {
       id: 'delete',
-      label: locale === 'zh' ? '删除' : 'Delete',
+      label: labels.delete,
       icon: Trash2Icon,
       destructive: true,
       disabled: busy,
@@ -95,8 +100,8 @@ function actions({
   ];
 }
 
-function ArticleTypeBadge({ locale }: Pick<Props, 'locale'>) {
-  const label = locale === 'zh' ? '文章' : 'Article';
+function ArticleTypeBadge() {
+  const label = useI18n().messages.creator.manuscriptEditor.kind;
   return (
     <span
       title={label}
@@ -112,7 +117,6 @@ export function ArticleLibraryRow(props: Props) {
   const {
     article,
     selected,
-    locale,
     dataAttributes,
     childBranch,
     branchTopology,
@@ -123,8 +127,20 @@ export function ArticleLibraryRow(props: Props) {
     onDragStart,
     onDragEnd,
   } = props;
-  const menuActions = actions(props);
-  const title = article.content.title || (locale === 'zh' ? '未命名文章' : 'Untitled article');
+  const { messages } = useI18n();
+  const labels: Labels = {
+    archive: messages.creator.album.archive,
+    delete: messages.creator.album.delete,
+    drag: messages.creator.manuscriptEditor.drag,
+    kind: messages.creator.manuscriptEditor.kind,
+    moreActions: messages.creator.album.moreActions,
+    move: messages.creator.album.move,
+    open: messages.creator.album.open,
+    rename: messages.creator.album.rename,
+    untitled: messages.creator.manuscriptEditor.untitled,
+  };
+  const menuActions = actions(props, labels);
+  const title = article.content.title || labels.untitled;
   const previewItems = orderedMedia(article).map((asset) => ({ asset }));
   const previewMetrics = getCreationTreeMediaNodeMetrics(previewItems);
   const row = (
@@ -132,8 +148,8 @@ export function ArticleLibraryRow(props: Props) {
       dataAttributes={{ 'data-article-id': article.id, ...dataAttributes }}
       selected={selected}
       branchTopology={branchTopology}
-      ariaLabel={`${locale === 'zh' ? '文章' : 'Article'}: ${title}`}
-      openLabel={`${locale === 'zh' ? '打开' : 'Open'}: ${title}`}
+      ariaLabel={`${labels.kind}: ${title}`}
+      openLabel={`${labels.open}: ${title}`}
       title={title}
       childBranch={childBranch}
       previewBounds={previewMetrics.bounds}
@@ -147,21 +163,17 @@ export function ArticleLibraryRow(props: Props) {
             items={previewItems}
             maxItems={3}
           />
-          <ArticleTypeBadge locale={locale} />
+          <ArticleTypeBadge />
         </span>
       }
       controls={
         <div className="pointer-events-none absolute inset-y-0 right-1 z-30 flex items-center opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100">
           {onDragStart && (
-            <TreeDragHandle
-              label={locale === 'zh' ? '拖动文章' : 'Drag article'}
-              onDragStart={onDragStart}
-              onDragEnd={() => onDragEnd?.()}
-            />
+            <TreeDragHandle label={labels.drag} onDragStart={onDragStart} onDragEnd={() => onDragEnd?.()} />
           )}
           <ActionMenuButton
             actions={menuActions}
-            label={`${locale === 'zh' ? '更多操作' : 'More actions'}: ${title}`}
+            label={`${labels.moreActions}: ${title}`}
             className="pointer-events-auto size-6 rounded-md bg-overlay/95 shadow-overlay"
           />
         </div>
@@ -183,15 +195,27 @@ export function ArticleLibraryRow(props: Props) {
 }
 
 export function ArticleCompactItem(props: Props) {
-  const { article, selected, locale, onSelect, onDragStart, onDragEnd } = props;
-  const menuActions = actions(props);
-  const title = article.content.title || (locale === 'zh' ? '未命名文章' : 'Untitled article');
+  const { article, selected, onSelect, onDragStart, onDragEnd } = props;
+  const { messages } = useI18n();
+  const labels: Labels = {
+    archive: messages.creator.album.archive,
+    delete: messages.creator.album.delete,
+    drag: messages.creator.manuscriptEditor.drag,
+    kind: messages.creator.manuscriptEditor.kind,
+    moreActions: messages.creator.album.moreActions,
+    move: messages.creator.album.move,
+    open: messages.creator.album.open,
+    rename: messages.creator.album.rename,
+    untitled: messages.creator.manuscriptEditor.untitled,
+  };
+  const menuActions = actions(props, labels);
+  const title = article.content.title || labels.untitled;
   const previewItems = orderedMedia(article).map((asset) => ({ asset }));
   const content = (
     <button
       type="button"
       title={title}
-      aria-label={`${locale === 'zh' ? '文章' : 'Article'}: ${title}`}
+      aria-label={`${labels.kind}: ${title}`}
       aria-current={selected ? 'page' : undefined}
       data-result-library-selected={selected ? 'true' : undefined}
       draggable={Boolean(onDragStart)}
@@ -211,7 +235,7 @@ export function ArticleCompactItem(props: Props) {
         items={previewItems}
         maxItems={3}
       />
-      <ArticleTypeBadge locale={locale} />
+      <ArticleTypeBadge />
     </button>
   );
   return (

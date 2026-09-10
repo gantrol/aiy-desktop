@@ -1,5 +1,6 @@
-import { createHash } from 'node:crypto';
 import type { PromptCommonInputDto, PromptInputSnapshotDto } from '@/shared/contracts';
+import { blockDocumentSchema } from '@/shared/contracts/block-document';
+import { createHash } from 'node:crypto';
 
 function objectValue(value: unknown, label: string): Record<string, unknown> {
   let parsed = value;
@@ -76,5 +77,6 @@ export function parsePromptCommonInput(value: unknown): PromptCommonInputDto {
   if ('contentNodes' in input && !Array.isArray(input.contentNodes)) {
     throw new Error('Prompt input snapshot contentNodes must be an array');
   }
+  if ('document' in input) blockDocumentSchema.parse(input.document);
   return input as unknown as PromptCommonInputDto;
 }

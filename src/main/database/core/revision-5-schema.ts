@@ -1,4 +1,6 @@
+import { ensureArticleDeliveryWatermark } from '@/main/database/extensions/article-delivery-job-schema';
 import type Database from 'better-sqlite3';
+import { ensureAgentIntakeSchema } from '@/main/database/core/agent-intake-schema';
 import type { ArticleStorageShape } from '@/main/database/creations/article-storage-schema';
 import articleCommentDecisionsSql from '@/main/database/sql/v03-revision-005-article-comment-decisions.sql?raw';
 import articleElementsSql from '@/main/database/sql/v03-revision-005-article-elements.sql?raw';
@@ -105,6 +107,8 @@ export function ensureRevision5Schema(db: Database.Database, shape: Revision5Sou
   if (shape.articleStorage === 'LEGACY_COMMENT_STATUS') db.exec(articleCommentDecisionsSql);
   else if (shape.articleStorage !== 'COMPLETE') db.exec(articleCommentsSql);
   if (!shape.articleDeliveryJobsComplete) db.exec(articleDeliveryJobsSql);
+  ensureArticleDeliveryWatermark(db);
   if (!shape.agentCliComplete) db.exec(agentCliSql);
+  ensureAgentIntakeSchema(db);
   if (!shape.backgroundIssueAcknowledgementsComplete) db.exec(backgroundIssueAcknowledgementsSql);
 }

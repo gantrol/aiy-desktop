@@ -1,4 +1,5 @@
 import type { BrowserWindow, Session } from 'electron';
+import { featureDemoFrameUrl, isFeatureDemoFrameUrl, PACKAGED_RENDERER_URL } from '@/main/app/renderer-location';
 import {
   CODEX_VISUALIZATION_PREVIEW_SCHEME,
   codexVisualizationPreviewContentSecurityPolicy,
@@ -32,7 +33,11 @@ export function installWindowNavigationPolicy(window: BrowserWindow, expectedRen
       details.preventDefault();
       return;
     }
-    if (target.protocol !== `${CODEX_VISUALIZATION_PREVIEW_SCHEME}:`) details.preventDefault();
+    if (
+      target.protocol !== `${CODEX_VISUALIZATION_PREVIEW_SCHEME}:` &&
+      !isFeatureDemoFrameUrl(target, expectedRendererUrl)
+    )
+      details.preventDefault();
   });
   window.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
 }
@@ -46,8 +51,17 @@ function trustedDevelopmentSources(rendererUrl?: URL | null) {
   return ` ${rendererUrl.origin} ${socketProtocol}//${rendererUrl.host}`;
 }
 
-export function rendererContentSecurityPolicy(developmentRendererUrl?: URL | null) {
+export function rendererContentSecurityPolicy(developmentRendererUrl?: URL | null, responseUrl?: string) {
   const developmentSources = trustedDevelopmentSources(developmentRendererUrl);
+  const rendererUrl =
+    developmentSources && developmentRendererUrl ? developmentRendererUrl : new URL(PACKAGED_RENDERER_URL);
+  const demoUrl = featureDemoFrameUrl(rendererUrl);
+  let demoResponse = false;
+  try {
+    demoResponse = Boolean(responseUrl && isFeatureDemoFrameUrl(new URL(responseUrl), rendererUrl));
+  } catch {
+    // Malformed or unrelated responses retain the default no-embedding policy.
+  }
   const inlineScriptPolicy = developmentSources ? " 'unsafe-inline'" : ` ${APP_LOADING_VARIANT_SCRIPT_HASH}`;
   return [
     `default-src 'self'${developmentSources}`,
@@ -57,8 +71,8 @@ export function rendererContentSecurityPolicy(developmentRendererUrl?: URL | nul
     `script-src 'self'${inlineScriptPolicy}${developmentSources}`,
     `connect-src 'self'${developmentSources}`,
     `object-src 'none'`,
-    `frame-src ${CODEX_VISUALIZATION_PREVIEW_SCHEME}:`,
-    `frame-ancestors 'none'`,
+    demoResponse ? `frame-src 'none'` : `frame-src ${CODEX_VISUALIZATION_PREVIEW_SCHEME}: ${demoUrl.href}`,
+    demoResponse ? `frame-ancestors ${rendererUrl.protocol}//${rendererUrl.host}` : `frame-ancestors 'none'`,
     `base-uri 'none'`,
     `form-action 'none'`,
   ].join('; ');
@@ -73,7 +87,7 @@ export function installSessionSecurityPolicy(targetSession: Session, development
         'Content-Security-Policy': [
           previewResponse
             ? codexVisualizationPreviewContentSecurityPolicy()
-            : rendererContentSecurityPolicy(developmentRendererUrl),
+            : rendererContentSecurityPolicy(developmentRendererUrl, details.url),
         ],
         'X-Content-Type-Options': ['nosniff'],
       },

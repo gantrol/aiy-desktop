@@ -1,7 +1,7 @@
 import { rmSync } from 'node:fs';
 import path from 'node:path';
 import { z } from 'zod';
-import { OPENAI_IMAGE_PROVIDER } from '@/main/extensions/openai-image-api/definition';
+import { OPENAI_IMAGE_MODELS, OPENAI_IMAGE_PROVIDER } from '@/main/extensions/openai-image-api/definition';
 import type { OpenAiImageApiRuntime } from '@/main/extensions/openai-image-api/runtime';
 import type {
   GenerationAdapter,
@@ -123,7 +123,7 @@ function outputSize(request: NormalizedGenerationRequest) {
     : 'auto';
 }
 
-function validateGptImage2Size(output: NormalizedGenerationOutput) {
+function validateGptImageSize(output: NormalizedGenerationOutput) {
   const { width, height } = output;
   if (width === null || height === null) return;
   const longEdge = Math.max(width, height);
@@ -139,7 +139,7 @@ function validateGptImage2Size(output: NormalizedGenerationOutput) {
   ) {
     throw new GenerationAdapterError({
       code: 'INVALID_REQUEST',
-      message: 'GPT Image 2 output dimensions are outside the supported size constraints',
+      message: 'GPT Image output dimensions are outside the supported size constraints',
       details: { width, height },
     });
   }
@@ -192,20 +192,20 @@ export class OpenAiImageAdapter implements GenerationAdapter {
   ) {}
 
   validateOutput(output: NormalizedGenerationOutput) {
-    validateGptImage2Size(output);
+    validateGptImageSize(output);
   }
 
   validateRequest(request: NormalizedGenerationRequest) {
-    if (request.modelId !== OPENAI_IMAGE_PROVIDER.modelId) {
+    if (!OPENAI_IMAGE_MODELS.some((model) => model.modelId === request.modelId)) {
       throw new GenerationAdapterError({
         code: 'INVALID_REQUEST',
-        message: `OpenAI Image adapter only supports ${OPENAI_IMAGE_PROVIDER.modelId}`,
+        message: `Unsupported OpenAI image model: ${request.modelId}`,
       });
     }
     if (request.prompt.length > 32_000) {
       throw new GenerationAdapterError({
         code: 'INVALID_REQUEST',
-        message: 'GPT Image 2 prompts must not exceed 32,000 characters',
+        message: 'GPT Image prompts must not exceed 32,000 characters',
       });
     }
     moderationForRequest(request);

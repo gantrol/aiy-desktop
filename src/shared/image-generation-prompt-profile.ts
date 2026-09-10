@@ -1,4 +1,9 @@
-import { CODEX_APP_SERVER_IMAGE_MODEL_KEY, OPENAI_IMAGE_MODEL_KEY } from '@/shared/extension-ids';
+import {
+  CODEX_APP_SERVER_IMAGE_MODEL_KEY,
+  OPENAI_IMAGE_FLARE_MODEL_KEY,
+  OPENAI_IMAGE_MODEL_KEY,
+  OPENAI_IMAGE_SUNBURST_MODEL_KEY,
+} from '@/shared/extension-ids';
 
 /**
  * Existing dictionary expressions are keyed by this profile. Keeping the
@@ -18,10 +23,15 @@ export function imageGenerationPromptProfileId(route: PromptProfileRoute | null 
   if (explicit) return explicit;
 
   // Preserve the pre-profile lookup contract for old snapshots and lightweight
-  // routes: App Server and OpenAI are aliases for the GPT Image 2 dialect;
+  // routes: App Server and OpenAI reuse the existing GPT Image 2 expressions;
   // every other route historically looked expressions up by its route key.
   const routeKey = route?.key.trim();
-  if (routeKey === CODEX_APP_SERVER_IMAGE_MODEL_KEY || routeKey === OPENAI_IMAGE_MODEL_KEY) {
+  if (
+    routeKey === CODEX_APP_SERVER_IMAGE_MODEL_KEY ||
+    routeKey === OPENAI_IMAGE_MODEL_KEY ||
+    routeKey === OPENAI_IMAGE_SUNBURST_MODEL_KEY ||
+    routeKey === OPENAI_IMAGE_FLARE_MODEL_KEY
+  ) {
     return DEFAULT_IMAGE_PROMPT_PROFILE_ID;
   }
   return routeKey || route?.modelId.trim() || DEFAULT_IMAGE_PROMPT_PROFILE_ID;

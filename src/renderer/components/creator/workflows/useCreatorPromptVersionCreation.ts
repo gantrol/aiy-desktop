@@ -1,13 +1,14 @@
-import { useEffect, useRef, useState } from 'react';
-import type { AssetDto, Locale, PromptSeriesDto, PromptVersionCreateResult } from '@/shared/contracts';
-import type { CreationDraftPromptSnapshot } from '@/renderer/components/creator/workflows/creationDraftSnapshot';
 import { resolveCreatorPrompt } from '@/renderer/components/creator/utils';
+import type { CreationDraftPromptSnapshot } from '@/renderer/components/creator/workflows/creationDraftSnapshot';
 import { useStableCallback } from '@/renderer/lib/useStableCallback';
+import type { AssetDto, Locale, PromptSeriesDto, PromptVersionCreateResult } from '@/shared/contracts';
+import { useEffect, useRef, useState } from 'react';
 
 interface Options {
   automaticChangeSummary: string;
   baseVersionId: string | null;
   capturePrompt(): CreationDraftPromptSnapshot;
+  preserveWorkingInput(): Promise<boolean>;
   creatingBlocked: boolean;
   locale: Locale;
   notify(message: string): void;
@@ -81,6 +82,7 @@ export function useCreatorPromptVersionCreation(options: Options) {
     synchronizePrompt(prompt);
     setCreating(true);
     try {
+      if (!(await options.preserveWorkingInput()) || !operationIsCurrent()) return null;
       const result = await window.desktopApi.promptVersionCreate({
         seriesId: series.id,
         baseVersionId: options.baseVersionId,
@@ -88,6 +90,7 @@ export function useCreatorPromptVersionCreation(options: Options) {
         titleLocale: options.locale,
         manualPrompt: prompt.manualPrompt,
         promptNodes: prompt.nodes,
+        document: prompt.document,
         prompt: resolution.livePrompt,
         changeSummary: options.automaticChangeSummary,
         referenceAssetIds: options.referenceAssets.map((asset) => asset.id),
@@ -100,6 +103,7 @@ export function useCreatorPromptVersionCreation(options: Options) {
           promptLocale: reference.promptLocale,
         })),
       });
+      if (!(await options.preserveWorkingInput()) || !operationIsCurrent()) return null;
       await refresh();
       if (!operationIsCurrent()) return null;
       setVersionId(result.versionId);

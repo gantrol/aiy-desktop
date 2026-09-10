@@ -114,14 +114,20 @@ const routesSchema = z
     chatgpt: browserCompanionDestinationSchema.nullable(),
     wechat: browserCompanionDestinationSchema.nullable(),
     weibo: browserCompanionDestinationSchema.nullable(),
+    x: browserCompanionDestinationSchema.nullable(),
+    xiaohongshu: browserCompanionDestinationSchema.nullable().default(null),
   })
   .strict();
 
 const selectionSchema = z
   .object({
-    schemaVersion: z.literal(3),
+    schemaVersion: z.literal(4),
     routes: routesSchema,
   })
+  .strict();
+
+const versionThreeSelectionSchema = z
+  .object({ schemaVersion: z.literal(3), routes: routesSchema.omit({ x: true, xiaohongshu: true }) })
   .strict();
 
 const previousSelectionSchema = z
@@ -145,7 +151,7 @@ const legacySelectionSchema = z
 
 type BrowserCompanionRoutes = z.infer<typeof routesSchema>;
 
-const EMPTY_ROUTES: BrowserCompanionRoutes = { chatgpt: null, wechat: null, weibo: null };
+const EMPTY_ROUTES: BrowserCompanionRoutes = { chatgpt: null, wechat: null, weibo: null, x: null, xiaohongshu: null };
 
 function hasErrorCode(reason: unknown, code: string): boolean {
   return reason instanceof Error && 'code' in reason && Reflect.get(reason, 'code') === code;
@@ -316,11 +322,16 @@ export class BrowserCompanionBrowserController {
     const current = selectionSchema.safeParse(rawSelection);
     if (current.success) return current.data.routes;
 
+    const versionThree = versionThreeSelectionSchema.safeParse(rawSelection);
+    if (versionThree.success) return { ...versionThree.data.routes, x: null, xiaohongshu: null };
+
     const previous = previousSelectionSchema.safeParse(rawSelection);
     if (previous.success) {
       return {
         ...previous.data.routes,
         wechat: previous.data.routes.chatgpt ?? previous.data.routes.weibo,
+        x: null,
+        xiaohongshu: null,
       };
     }
 
@@ -330,7 +341,7 @@ export class BrowserCompanionBrowserController {
       browserId: 'chrome',
       profileDirectory: legacy.data.selectedProfileDirectory,
     });
-    return { chatgpt: destination, wechat: destination, weibo: destination };
+    return { chatgpt: destination, wechat: destination, weibo: destination, x: null, xiaohongshu: null };
   }
 
   private inferredRoutes(browsers: readonly BrowserCompanionBrowser[]): BrowserCompanionRoutes {
@@ -342,7 +353,13 @@ export class BrowserCompanionBrowserController {
         : [],
     );
     if (destinations.length !== 1) return EMPTY_ROUTES;
-    return { chatgpt: destinations[0], wechat: destinations[0], weibo: destinations[0] };
+    return {
+      chatgpt: destinations[0],
+      wechat: destinations[0],
+      weibo: destinations[0],
+      x: destinations[0],
+      xiaohongshu: destinations[0],
+    };
   }
 
   async destinations(): Promise<BrowserCompanionDestinationsResult> {
@@ -357,7 +374,7 @@ export class BrowserCompanionBrowserController {
   }
 
   private async persistRoutes(routes: BrowserCompanionRoutes): Promise<void> {
-    const selection = selectionSchema.parse({ schemaVersion: 3, routes });
+    const selection = selectionSchema.parse({ schemaVersion: 4, routes });
     await mkdir(path.dirname(this.selectionPath), { recursive: true });
     const bytes = Buffer.from(JSON.stringify(selection), 'utf8');
     const temporaryPath = `${this.selectionPath}.${randomUUID()}.tmp`;

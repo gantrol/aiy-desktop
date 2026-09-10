@@ -10,11 +10,18 @@ import {
   PencilIcon,
   VideoIcon,
 } from 'lucide-react';
-import { useState, type DragEvent as ReactDragEvent } from 'react';
+import { useMemo, useState, type DragEvent as ReactDragEvent } from 'react';
 import type { VideoDocumentNavigationEntry } from '@/shared/contracts';
 import type { AlbumMoveTarget } from '@/renderer/components/albums/AlbumMoveDialog';
 import { AlbumTreePreview } from '@/renderer/components/albums/AlbumTreePreview';
 import { TreeDragHandle } from '@/renderer/components/albums/TreeDragHandle';
+import { TreeBranchTransitRail } from '@/renderer/components/albums/TreeDisclosureRail';
+import {
+  getTreeBranchItemTopology,
+  TREE_CONNECTION_GEOMETRY,
+  type TreeBranchItemTopology,
+} from '@/renderer/components/albums/treeConnectionGeometry';
+import { CreationTreeNodeFrame } from '@/renderer/components/creator/CreationLibraryTreeItem';
 import { ActionContextMenuItems, ActionMenuButton, type ActionMenuAction } from '@/renderer/components/ui/action-menu';
 import { Button } from '@/renderer/components/ui/button';
 import { Collapsible } from '@/renderer/components/ui/collapsible';
@@ -48,6 +55,8 @@ interface DragState {
 
 interface RowProps {
   row: VideoDocumentVisibleEntry;
+  branchTopology?: TreeBranchItemTopology;
+  ancestorRails: Array<{ depth: number; topology: TreeBranchItemTopology }>;
   selected: boolean;
   expanded: boolean;
   childPage?: VideoDocumentNavigationPageState;
@@ -66,6 +75,8 @@ interface RowProps {
 
 function NavigationEntryRow({
   row,
+  branchTopology,
+  ancestorRails,
   selected,
   expanded,
   childPage,
@@ -84,7 +95,7 @@ function NavigationEntryRow({
   const { messages } = useI18n();
   const labels = messages.videoDocuments;
   const { entry } = row;
-  const title = entry.kind === 'ALBUM' ? entry.title : entry.document.title;
+  const title = entry.kind === 'ALBUM' ? entry.title : entry.document.displayTitle;
   const expandable = entry.kind === 'ALBUM' && entry.childCount > 0;
 
   function activate() {
@@ -103,16 +114,26 @@ function NavigationEntryRow({
         <ContextMenuTrigger asChild>
           <div
             className={cn('relative transition-opacity', dragging && 'opacity-45')}
-            style={{ paddingLeft: row.depth * 18 }}
+            style={{ paddingLeft: row.depth * TREE_CONNECTION_GEOMETRY.contentIndentX }}
             data-album-branch-id={entry.kind === 'ALBUM' ? entry.albumId : undefined}
             data-tree-branch-id={entry.kind === 'ALBUM' ? entry.albumId : undefined}
           >
-            {row.depth > 0 && (
+            {ancestorRails.map(({ depth, topology }) => (
               <span
-                className="pointer-events-none absolute bottom-0 top-0 border-l border-selected-border"
-                style={{ left: 9 + (row.depth - 1) * 18 }}
-                aria-hidden="true"
-              />
+                key={depth}
+                className="absolute inset-y-0"
+                style={{ left: depth * TREE_CONNECTION_GEOMETRY.contentIndentX }}
+              >
+                <TreeBranchTransitRail topology={topology} />
+              </span>
+            ))}
+            {entry.kind === 'ALBUM' && branchTopology && (
+              <span
+                className="absolute inset-y-0"
+                style={{ left: row.depth * TREE_CONNECTION_GEOMETRY.contentIndentX }}
+              >
+                <TreeBranchTransitRail topology={branchTopology} />
+              </span>
             )}
             <div
               className={cn(
@@ -155,6 +176,7 @@ function NavigationEntryRow({
                     expandable={expandable}
                     expandLabel={expanded ? labels.collapseAlbum(entry.title) : labels.expandAlbum(entry.title)}
                     overlayStyle="solid"
+                    branchTopology={branchTopology}
                     disclosureInteractive
                     onGestureExpand={onGestureExpand}
                     onPointerTrackStart={onPointerTrackStart}
@@ -172,10 +194,17 @@ function NavigationEntryRow({
               ) : (
                 <button
                   type="button"
-                  className="relative z-10 flex min-w-0 flex-1 items-center gap-1 self-stretch overflow-hidden text-left outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
+                  className="relative z-10 flex min-w-0 flex-1 items-center gap-1 self-stretch text-left outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
                   onClick={activate}
                 >
-                  <VideoDocumentPreview document={entry.document} />
+                  <CreationTreeNodeFrame
+                    bounds={{ left: 0, top: 0, right: 64, bottom: 36 }}
+                    rowInsetY={16}
+                    branchTopology={branchTopology}
+                    className="-ml-1 flex h-[4.25rem] w-16 items-center"
+                  >
+                    <VideoDocumentPreview document={entry.document} />
+                  </CreationTreeNodeFrame>
                   <span className="min-w-0 flex-1 px-1">
                     <strong className="line-clamp-2 block break-words text-base font-medium leading-5">{title}</strong>
                     <span className="mt-0.5 block truncate text-xs text-muted-foreground">
@@ -202,7 +231,7 @@ function NavigationEntryRow({
               </div>
             </div>
             {entry.kind === 'ALBUM' && expanded && childPage?.nextCursor && (
-              <div className="px-3 py-1" style={{ paddingLeft: 50 + (row.depth + 1) * 18 }}>
+              <div className="px-3 py-1" style={{ paddingLeft: 64 + TREE_CONNECTION_GEOMETRY.contentIndentX }}>
                 <Button type="button" variant="ghost" size="sm" disabled={childPage.loadingMore} onClick={onLoadMore}>
                   {childPage.loadingMore && <LoaderCircleIcon className="size-3.5 animate-spin" />}
                   {labels.loadMore}
@@ -236,7 +265,7 @@ function CompactNavigationEntryRow({
   const { messages } = useI18n();
   const labels = messages.videoDocuments;
   const { entry } = row;
-  const title = entry.kind === 'ALBUM' ? entry.title : entry.document.title;
+  const title = entry.kind === 'ALBUM' ? entry.title : entry.document.displayTitle;
   return (
     <ContextMenu>
       <ContextMenuTrigger asChild>
@@ -357,6 +386,28 @@ export function VideoDocumentNavigationTree({
   const { messages } = useI18n();
   const labels = messages.videoDocuments;
   const [drag, setDrag] = useState<DragState | null>(null);
+  const placedEntries = useMemo(() => {
+    const siblings = new Map<string | null, VideoDocumentVisibleEntry[]>();
+    for (const row of visibleEntries) {
+      const group = siblings.get(row.parentAlbumId) ?? [];
+      group.push(row);
+      siblings.set(row.parentAlbumId, group);
+    }
+    const topologies = new Map<string, TreeBranchItemTopology>();
+    for (const group of siblings.values()) {
+      group.forEach((row, index) => topologies.set(row.entry.nodeId, getTreeBranchItemTopology(index, group.length)));
+    }
+    const ancestors: Array<TreeBranchItemTopology | undefined> = [];
+    return visibleEntries.map((row) => {
+      ancestors.length = row.depth;
+      const ancestorRails = ancestors.flatMap((topology, depth) =>
+        topology?.hasSuccessor ? [{ depth, topology }] : [],
+      );
+      const branchTopology = row.depth > 0 ? topologies.get(row.entry.nodeId) : undefined;
+      ancestors[row.depth] = branchTopology;
+      return { row, branchTopology, ancestorRails };
+    });
+  }, [visibleEntries]);
 
   function siblingsFor(parentAlbumId: string | null) {
     return parentAlbumId ? (children[parentAlbumId]?.items ?? []) : root.items;
@@ -445,7 +496,7 @@ export function VideoDocumentNavigationTree({
           onRequestMove({
             kind: entry.kind,
             id: entry.kind === 'ALBUM' ? entry.albumId : entry.documentId,
-            title: entry.kind === 'ALBUM' ? entry.title : entry.document.title,
+            title: entry.kind === 'ALBUM' ? entry.title : entry.document.displayTitle,
             currentAlbumId: row.parentAlbumId,
           }),
       },
@@ -468,10 +519,10 @@ export function VideoDocumentNavigationTree({
 
   return (
     <nav
-      className={cn(compact ? 'flex flex-col items-center gap-2 px-2 pb-14 pt-3' : 'space-y-0.5 px-2 py-2')}
+      className={cn(compact ? 'flex flex-col items-center gap-2 px-2 pb-14 pt-3' : 'px-2 py-2')}
       aria-label={labels.collections}
     >
-      {visibleEntries.map((row) => {
+      {placedEntries.map(({ row, branchTopology, ancestorRails }) => {
         const { entry } = row;
         const expanded = entry.kind === 'ALBUM' && expandedAlbumIds.has(entry.albumId);
         const Row = compact ? CompactNavigationEntryRow : NavigationEntryRow;
@@ -479,6 +530,8 @@ export function VideoDocumentNavigationTree({
           <Row
             key={entry.nodeId}
             row={row}
+            branchTopology={branchTopology}
+            ancestorRails={ancestorRails}
             selected={entry.kind === 'DOCUMENT' && selectedDocumentId === entry.documentId}
             expanded={expanded}
             childPage={entry.kind === 'ALBUM' ? children[entry.albumId] : undefined}

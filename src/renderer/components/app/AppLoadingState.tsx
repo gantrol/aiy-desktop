@@ -351,12 +351,7 @@ function NeutralLoadingScene({ motion = {} }: { motion?: TransitionSceneMotion }
       aria-hidden="true"
     >
       <span className="absolute size-48 rounded-full bg-selected opacity-20 blur-3xl" />
-      <img
-        className="app-loading-neutral-icon relative size-20 object-contain"
-        src="./icon.png"
-        alt=""
-        draggable={false}
-      />
+      <AiyIdentity className="app-loading-neutral-icon relative size-20" />
     </span>
   );
 }
@@ -557,3 +552,4 @@ export function AppLoadingState({ previews, variant = DEFAULT_APP_LOADING_VARIAN
     </div>
   );
 }
+import { AiyIdentity } from '@/renderer/components/brand/AiyIdentity';

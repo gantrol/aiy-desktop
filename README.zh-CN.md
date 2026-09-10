@@ -13,6 +13,7 @@
   </p>
 
   <p>
+    <img src="https://img.shields.io/badge/SonarQube-4b5563?style=flat-square" alt="SonarQube" />&nbsp;
     <img src="https://img.shields.io/badge/Reliability-A-2ea043?style=flat-square" alt="可靠性评级：A" />
     <img src="https://img.shields.io/badge/Security-A-2ea043?style=flat-square" alt="安全性评级：A" />
     <img src="https://img.shields.io/badge/Maintainability-A-2ea043?style=flat-square" alt="可维护性评级：A" />
@@ -26,6 +27,8 @@
     <a href="https://github.com/gantrol/aiy-desktop/issues">反馈</a>
   </p>
 </div>
+
+上方的四项 A 评级（4A）来自 **SonarQube** 代码分析工具，分别为可靠性、安全性、可维护性和安全审查。
 
 我用AI生图以后，经常遇到一个问题：图片越来越多，Prompt 和原会话却散落在不同地方，过几天自己都找不到。
 
@@ -89,6 +92,8 @@ AIY 可以扫描本机 Codex 的生成图片目录，按任务分组、避免重
 
 普通构建脚本不再生成 NSIS、便携 ZIP、macOS DMG、macOS ZIP 或独立 unpacked 版本。历史安装包仍保留在 [GitHub Releases](https://github.com/gantrol/aiy-desktop/releases)，但不属于当前维护矩阵；当前版本通过 Microsoft Store 认证后由 Store 分发。
 
+Windows 请从 [Microsoft Store 下载](https://apps.microsoft.com/detail/9nwd1hg6tczh)。其他平台暂时需要自行从源码编译，参见[开发文档](docs/development.md)。
+
 ## ❕早期阶段
 
 AIY 目前仍处于早期开发阶段。到 v0.3.10，图像创作与素材库已可用，扩展与内容包后续仍可能变化。
@@ -109,6 +114,8 @@ npm run dev
 ```
 
 AIY 基于 Electron、React、TypeScript、Tailwind CSS 和 SQLite 构建。运行时数据位置、验证命令、扩展开发和发布流程见[开发文档](docs/development.md)。
+
+[浏览器伴侣](browser-companion/README.md) 在本仓库内管理，保留独立依赖和版本。先运行 `npm run install:browser`，再运行 `npm run build:browser`，在 Chrome 或 Edge 中加载 `browser-companion/.output/chrome-mv3`。开发插件使用 `npm run dev:browser`。
 
 ## 许可与安全
 

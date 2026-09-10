@@ -2,9 +2,11 @@ import { useMemo } from 'react';
 import type { MaterialAlbumDto, MaterialSelectionTargetInput } from '@/shared/contracts';
 import {
   COLLECTION_GAP,
+  COLLECTION_CARD_HEIGHT,
   COLLECTION_MIN_COLUMN_WIDTH,
   CollectionAlbumCard,
   collectionAspectRatio,
+  collectionContainerAspectRatio,
   previewSpreadForPlacement,
 } from '@/renderer/components/gallery/CreationAlbumGrid';
 import type { MaterialAlbumBrowseSummary } from '@/renderer/components/gallery/materialAlbumBrowse';
@@ -50,7 +52,8 @@ export function MaterialAlbumGrid({
     () =>
       cardAlbums.map((album) => ({
         id: album.id,
-        aspectRatio: collectionAspectRatio(album.previewAssets[0]),
+        aspectRatio: collectionAspectRatio(),
+        height: COLLECTION_CARD_HEIGHT,
       })),
     [cardAlbums],
   );
@@ -76,7 +79,7 @@ export function MaterialAlbumGrid({
           return (
             <CollectionAlbumCard
               album={album}
-              containerAspectRatio={layoutItems[index].aspectRatio}
+              containerAspectRatio={collectionContainerAspectRatio(placement)}
               spread={previewSpreadForPlacement(album.previewAssets.length, placement, layout)}
               detail={detail}
               childAlbumCount={summary.childAlbumCount}

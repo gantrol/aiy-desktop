@@ -1,9 +1,17 @@
-import { createHash } from 'node:crypto';
-import { ulid } from 'ulid';
+import type { LibraryStorage } from '@/main/database/core/storage';
+import { mediaUrl, now, text, type JsonMap } from '@/main/database/core/values';
+import { ArticleCommentRepository } from '@/main/database/creations/article-comment-repository';
+import { ArticleElementRepository } from '@/main/database/creations/article-element-repository';
+import type { ArticleRevisionContentLocator } from '@/main/database/creations/article-revision-pack-codec';
+import { ArticleRevisionPackStore } from '@/main/database/creations/article-revision-pack-store';
+import { CreationItemRepository } from '@/main/database/creations/creation-item-repository';
+import { ContentLifecycleRepository } from '@/main/database/recovery/content-lifecycle-repository';
+import { articleRevisionMatchesArticle, normalizeArticleContent } from '@/shared/article-revision';
 import type {
   ArticleContentDto,
   ArticleContentInput,
   ArticleDto,
+  ArticleElementPlacementInput,
   ArticleMoveInput,
   ArticleRenameInput,
   ArticleSaveInput,
@@ -12,29 +20,23 @@ import type {
 } from '@/shared/contracts';
 import {
   canonicalArticleContentJson,
-  type ArticleCommentMutationInput,
-  type ArticleCommentMutationResult,
   type ArticleCheckApplyInput,
   type ArticleCheckApplyResult,
+  type ArticleCommentMutationInput,
+  type ArticleCommentMutationResult,
   type ArticleFormAddInput,
   type ArticleFormCreateInput,
   type ArticleRevisionDto,
   type ArticleRevisionGetInput,
   type ArticleRevisionHistoryInput,
   type ArticleRevisionHistoryResult,
-  type ArticleRevisionSummaryDto,
   type ArticleRevisionSaveInput,
   type ArticleRevisionSaveResult,
+  type ArticleRevisionSummaryDto,
 } from '@/shared/contracts/article';
-import { articleRevisionMatchesArticle, normalizeArticleContent } from '@/shared/article-revision';
-import type { LibraryStorage } from '@/main/database/core/storage';
-import { type JsonMap, mediaUrl, now, text } from '@/main/database/core/values';
-import type { ArticleRevisionContentLocator } from '@/main/database/creations/article-revision-pack-codec';
-import { ArticleElementRepository } from '@/main/database/creations/article-element-repository';
-import { ArticleCommentRepository } from '@/main/database/creations/article-comment-repository';
-import { ArticleRevisionPackStore } from '@/main/database/creations/article-revision-pack-store';
-import { CreationItemRepository } from '@/main/database/creations/creation-item-repository';
-import { ContentLifecycleRepository } from '@/main/database/recovery/content-lifecycle-repository';
+import { assertBlockDocumentReady } from '@/shared/contracts/block-document';
+import { createHash } from 'node:crypto';
+import { ulid } from 'ulid';
 
 function assetDto(row: JsonMap): AssetDto {
   const id = text(row.id);
@@ -101,7 +103,9 @@ export class ArticleRepository {
       const revisionId = text(row.revision_id);
       const content = contentsByRevision.get(revisionId);
       if (!content) throw new Error('Stored article revision content is unavailable');
-      const mediaAssets = content.mediaBindings.flatMap((binding) => assetsById.get(binding.assetId) ?? []);
+      const mediaAssets = [...new Set(content.mediaBindings.map((binding) => binding.assetId))].flatMap(
+        (id) => assetsById.get(id) ?? [],
+      );
       return this.dtoFromParts(
         row,
         content,
@@ -180,6 +184,7 @@ export class ArticleRepository {
   save(input: ArticleSaveInput): ArticleDto {
     return this.db.transaction(() => {
       const content = normalizeArticleContent(input.content);
+      assertBlockDocumentReady(content.document);
       const assetIds = content.mediaBindings.map((binding) => binding.assetId);
       this.assertMediaAvailable(assetIds);
       const hash = contentHash(content);
@@ -223,6 +228,7 @@ export class ArticleRepository {
   saveRevision(input: ArticleRevisionSaveInput): ArticleRevisionSaveResult {
     const save = (): ArticleRevisionSaveResult => {
       const content = normalizeArticleContent(input.content);
+      assertBlockDocumentReady(content.document);
       const assetIds = content.mediaBindings.map((binding) => binding.assetId);
       this.assertMediaAvailable(assetIds);
       const hash = contentHash(content);
@@ -230,6 +236,7 @@ export class ArticleRepository {
 
       const existing = this.activeRow(input.articleId);
       const currentArticle = this.dto(existing);
+      if (currentArticle.content.document && !content.document) throw new Error('BLOCK_DOCUMENT_REQUIRED');
       if (articleRevisionMatchesArticle(input, currentArticle)) {
         return {
           status: 'ACKNOWLEDGED' as const,
@@ -309,6 +316,7 @@ export class ArticleRepository {
     expectedRevisionId: string;
     requestId: string;
     content: ArticleContentInput;
+    elements?: ArticleElementPlacementInput[];
   }): ArticleDto {
     const content = normalizeArticleContent(input.content);
     const result = this.saveRevision({
@@ -317,6 +325,7 @@ export class ArticleRepository {
       sessionEpoch: input.requestId,
       draftSeq: 0,
       cause: 'SYSTEM',
+      elements: input.elements,
       expectedRevisionId: input.expectedRevisionId,
       contentHash: contentHash(content),
       content,
@@ -350,6 +359,7 @@ export class ArticleRepository {
         this.assertCreationDraftAvailable(input.consumeCreationDraftId);
 
         const content = normalizeArticleContent(input.content);
+        assertBlockDocumentReady(content.document);
         this.assertMediaAvailable(content.mediaBindings.map((binding) => binding.assetId));
         const hash = contentHash(content);
         const timestamp = now();
@@ -404,6 +414,7 @@ export class ArticleRepository {
         this.assertSourceAvailable(input.sourceInspirationStashId, item.id);
 
         const content = normalizeArticleContent(input.content);
+        assertBlockDocumentReady(content.document);
         this.assertMediaAvailable(content.mediaBindings.map((binding) => binding.assetId));
         const hash = contentHash(content);
         const timestamp = now();
@@ -611,6 +622,7 @@ export class ArticleRepository {
   }
 
   private assertMediaAvailable(assetIds: readonly string[]) {
+    assetIds = [...new Set(assetIds)];
     if (!assetIds.length) return;
     const placeholders = assetIds.map(() => '?').join(', ');
     const count = Number(
@@ -683,7 +695,7 @@ export class ArticleRepository {
 
   private mediaAssets(ids: readonly string[]) {
     const byId = this.mediaAssetsById(ids);
-    return ids.flatMap((id) => byId.get(id) ?? []);
+    return [...new Set(ids)].flatMap((id) => byId.get(id) ?? []);
   }
 
   private mediaAssetsById(ids: readonly string[]) {

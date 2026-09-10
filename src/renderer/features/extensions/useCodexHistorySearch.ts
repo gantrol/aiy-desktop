@@ -4,6 +4,7 @@ import type {
   CodexHistoryFilterOptions,
   CodexHistoryIndexState,
   CodexHistoryRoleFilter,
+  CodexHistorySearchInput,
   CodexHistorySearchPage,
   CodexHistoryThreadOption,
   CodexUsageDateRange,
@@ -27,6 +28,7 @@ const INITIAL_FILTER_OPTIONS: CodexHistoryFilterOptions = {
 };
 const PAGE_SIZE = 20;
 const QUERY_DEBOUNCE_MS = 140;
+type SearchCriteria = Omit<CodexHistorySearchInput, 'page'>;
 
 interface Options {
   active: boolean;
@@ -71,6 +73,67 @@ function mergedPage(current: CodexHistorySearchPage | null, next: CodexHistorySe
   return { ...next, items };
 }
 
+function useSearchResults(
+  active: boolean,
+  authorized: boolean,
+  criteria: SearchCriteria,
+  onIndexChange: (index: CodexHistoryIndexState) => void,
+) {
+  const [snapshot, setSnapshot] = useState<CodexHistorySearchPage | null>(null);
+  const [snapshotCriteria, setSnapshotCriteria] = useState<SearchCriteria | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const requestRevision = useRef(0);
+
+  const load = useCallback(
+    async (nextPage: number, append = false) => {
+      if (!active || !authorized) return;
+      const revision = ++requestRevision.current;
+      if (append) setLoadingMore(true);
+      else {
+        setLoading(true);
+        setLoadingMore(false);
+      }
+      setError(null);
+      try {
+        const next = await window.desktopApi.codexHistorySearch({ ...criteria, page: nextPage });
+        if (requestRevision.current !== revision) return;
+        setSnapshot((current) => mergedPage(current, next, append));
+        setSnapshotCriteria(criteria);
+        onIndexChange(next.index);
+      } catch (reason) {
+        if (requestRevision.current !== revision) return;
+        setError(reason instanceof Error ? reason.message : String(reason));
+      } finally {
+        if (requestRevision.current === revision) {
+          setLoading(false);
+          setLoadingMore(false);
+        }
+      }
+    },
+    [active, authorized, criteria, onIndexChange],
+  );
+
+  useEffect(() => {
+    if (!active || !authorized) {
+      requestRevision.current += 1;
+      setSnapshot(null);
+      setSnapshotCriteria(null);
+      setLoading(false);
+      setLoadingMore(false);
+      return;
+    }
+    // Keep the displayed results and thread preview until their replacement is ready.
+    void load(1);
+    return () => {
+      requestRevision.current += 1;
+    };
+  }, [active, authorized, load]);
+
+  return { snapshot, snapshotCriteria, loading, loadingMore, error, setError, load };
+}
+
 export function useCodexHistorySearch({ active, authorized, notify }: Options) {
   const [draftQuery, setDraftQuery] = useState('');
   const [query, setQuery] = useState('');
@@ -85,69 +148,32 @@ export function useCodexHistorySearch({ active, authorized, notify }: Options) {
   const [branch, setBranch] = useState('');
   const [range, setRange] = useState<CodexUsageRange>('ALL');
   const [dateRange, setDateRange] = useState<CodexUsageDateRange | null>(null);
-  const [snapshot, setSnapshot] = useState<CodexHistorySearchPage | null>(null);
   const [filterOptions, setFilterOptions] = useState<CodexHistoryFilterOptions>(INITIAL_FILTER_OPTIONS);
   const [index, setIndex] = useState<CodexHistoryIndexState>(INITIAL_INDEX_STATE);
-  const [loading, setLoading] = useState(false);
-  const [loadingMore, setLoadingMore] = useState(false);
   const [filtersLoading, setFiltersLoading] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
-  const [error, setError] = useState<string | null>(null);
   const [filtersError, setFiltersError] = useState<string | null>(null);
-  const requestRevision = useRef(0);
   const filtersRequestRevision = useRef(0);
   const stateRequestRevision = useRef(0);
   const loadMorePending = useRef(false);
   const effectiveDateRange = useMemo(() => resolvedDateRange(range, dateRange), [dateRange, range]);
-
-  useEffect(() => {
-    const timer = window.setTimeout(() => setQuery(draftQuery.trim()), QUERY_DEBOUNCE_MS);
-    return () => window.clearTimeout(timer);
-  }, [draftQuery]);
-
-  const load = useCallback(
-    async (nextPage: number, append = false) => {
-      if (!active || !authorized) return;
-      const revision = ++requestRevision.current;
-      if (append) setLoadingMore(true);
-      else {
-        setLoading(true);
-        setLoadingMore(false);
-      }
-      setError(null);
-      try {
-        const next = await window.desktopApi.codexHistorySearch({
-          query,
-          archive,
-          role,
-          includeSubagents,
-          projectId,
-          sectionId,
-          threadId: selectedThread?.threadId ?? '',
-          workspace,
-          branch,
-          from: effectiveDateRange?.from ?? null,
-          to: effectiveDateRange?.to ?? null,
-          page: nextPage,
-          pageSize: PAGE_SIZE,
-        });
-        if (requestRevision.current !== revision) return;
-        setSnapshot((current) => mergedPage(current, next, append));
-        setIndex(next.index);
-      } catch (reason) {
-        if (requestRevision.current !== revision) return;
-        setError(reason instanceof Error ? reason.message : String(reason));
-      } finally {
-        if (requestRevision.current === revision) {
-          setLoading(false);
-          setLoadingMore(false);
-        }
-      }
-    },
-    [
-      active,
+  const criteria = useMemo<SearchCriteria>(
+    () => ({
+      query,
       archive,
-      authorized,
+      role,
+      includeSubagents,
+      projectId,
+      sectionId,
+      threadId: selectedThread?.threadId ?? '',
+      workspace,
+      branch,
+      from: effectiveDateRange?.from ?? null,
+      to: effectiveDateRange?.to ?? null,
+      pageSize: PAGE_SIZE,
+    }),
+    [
+      archive,
       branch,
       effectiveDateRange,
       includeSubagents,
@@ -159,16 +185,27 @@ export function useCodexHistorySearch({ active, authorized, notify }: Options) {
       workspace,
     ],
   );
+  const { snapshot, snapshotCriteria, loading, loadingMore, error, setError, load } = useSearchResults(
+    active,
+    authorized,
+    criteria,
+    setIndex,
+  );
+  const queryPending = draftQuery.trim() !== query;
+  const hasMore = Boolean(
+    active &&
+    authorized &&
+    !loading &&
+    !queryPending &&
+    snapshotCriteria === criteria &&
+    snapshot &&
+    snapshot.page < snapshot.pageCount,
+  );
 
   useEffect(() => {
-    if (!active || !authorized) {
-      requestRevision.current += 1;
-      setSnapshot(null);
-      return;
-    }
-    setSnapshot(null);
-    void load(1);
-  }, [active, authorized, load]);
+    const timer = window.setTimeout(() => setQuery(draftQuery.trim()), QUERY_DEBOUNCE_MS);
+    return () => window.clearTimeout(timer);
+  }, [draftQuery]);
 
   useEffect(() => {
     if (!active || !authorized) {
@@ -239,7 +276,7 @@ export function useCodexHistorySearch({ active, authorized, notify }: Options) {
         setRefreshing(false);
       }
     },
-    [active, authorized, load, notify, refreshing],
+    [active, authorized, load, notify, refreshing, setError],
   );
 
   const openThread = useCallback(
@@ -286,14 +323,14 @@ export function useCodexHistorySearch({ active, authorized, notify }: Options) {
   }, []);
 
   const loadMore = useCallback(async () => {
-    if (loadMorePending.current || !snapshot || loading || loadingMore || snapshot.page >= snapshot.pageCount) return;
+    if (loadMorePending.current || !hasMore || !snapshot || loadingMore) return;
     loadMorePending.current = true;
     try {
       await load(snapshot.page + 1, true);
     } finally {
       loadMorePending.current = false;
     }
-  }, [load, loading, loadingMore, snapshot]);
+  }, [hasMore, load, loadingMore, snapshot]);
 
   return {
     draftQuery,
@@ -323,13 +360,13 @@ export function useCodexHistorySearch({ active, authorized, notify }: Options) {
     snapshot,
     filterOptions,
     index,
-    loading,
+    loading: loading || queryPending,
     loadingMore,
     filtersLoading,
     refreshing,
     error,
     filtersError,
-    hasMore: Boolean(snapshot && snapshot.page < snapshot.pageCount),
+    hasMore,
     loadMore,
     refresh,
     openThread,

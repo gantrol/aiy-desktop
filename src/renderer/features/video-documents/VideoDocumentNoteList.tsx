@@ -20,7 +20,7 @@ export function VideoDocumentNoteList({ notes, activeNoteId, renameLabel, onSele
 
   async function saveRename(noteId: string) {
     const nextTitle = title.trim();
-    if (!nextTitle || saving) return;
+    if (saving) return;
     setSaving(true);
     try {
       await onRename(noteId, nextTitle);

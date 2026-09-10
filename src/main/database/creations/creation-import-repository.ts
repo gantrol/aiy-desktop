@@ -29,6 +29,7 @@ import {
   type ExistingImportedOutputLinkInput,
 } from '@/main/database/creations/imported-output-linker';
 import { insertCreationOutputBatch } from '@/main/database/creations/creation-output-import-batch';
+import { resolveImportedPromptVersion } from '@/main/database/creations/imported-prompt-version';
 import { organizeCreationOutputs } from '@/main/database/creations/creation-output-organizer';
 import { updatedCreationOutputProvenanceConfidence } from '@/main/database/creations/creation-output-provenance';
 import { imageDimensions } from '@/main/media/image-dimensions';
@@ -77,6 +78,7 @@ export interface BrowserCompanionOutputTarget {
   titleLocale: 'zh' | 'en';
   derivedVisualId: string | null;
   selectedImageAssetId: string | null;
+  sourceRevisionId: string | null;
 }
 
 function hasExpectedSignature(item: CreatorImageImportItemInput) {
@@ -163,7 +165,7 @@ export class CreationImportRepository {
       .prepare(
         `SELECT series.id AS series_id, version.id AS prompt_version_id,
           series.title, series.title_locale, visual.id AS derived_visual_id,
-          visual.selected_image_asset_id
+          visual.selected_image_asset_id, COALESCE(visual.article_revision_id, visual.social_post_revision_id) AS source_revision_id
         FROM creation_drafts draft
         JOIN prompt_series series
           ON series.id = draft.source_series_id AND series.deleted_at IS NULL
@@ -183,6 +185,7 @@ export class CreationImportRepository {
       titleLocale: text(row.title_locale) === 'en' ? 'en' : 'zh',
       derivedVisualId: row.derived_visual_id == null ? null : text(row.derived_visual_id),
       selectedImageAssetId: row.selected_image_asset_id == null ? null : text(row.selected_image_asset_id),
+      sourceRevisionId: row.source_revision_id == null ? null : text(row.source_revision_id),
     };
   }
 
@@ -574,6 +577,8 @@ export class CreationImportRepository {
       ensureReferenceAsset: (image, source) => this.ensureReferenceAsset(image, source),
       availableDisplayName: (name, used) => this.availableDisplayName(name, used),
       outputDto: (outputId) => this.outputDto(outputId),
+      resolveNewVersion: (versionNo) =>
+        resolveImportedPromptVersion(this.storage, this.executionSnapshots, context.seriesId, versionNo),
     });
   }
 

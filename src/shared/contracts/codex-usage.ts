@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { codexModelComparisonAnalysisSchema } from '@/shared/contracts/codex-model-comparison';
 
 const nonNegativeIntegerSchema = z.number().int().nonnegative().safe();
 const positiveIntegerSchema = z.number().int().positive().safe();
@@ -533,6 +534,7 @@ export const codexUsageInvestigationSchema = z
     models: z.array(codexUsageModelBreakdownSchema).max(1_000),
     days: z.array(codexUsageDailyBreakdownSchema).max(10_000),
     turnSpeed: codexUsageTurnSpeedAnalysisSchema.nullable().default(null),
+    modelComparison: codexModelComparisonAnalysisSchema.nullable().default(null),
     sessionLength: codexUsageSessionLengthAnalysisSchema.nullable().default(null),
     quotaYield: codexUsageQuotaYieldAnalysisSchema.nullable().default(null),
     quotaState: codexUsageQuotaStateSchema,

@@ -1,3 +1,4 @@
+import { naturalWatermarkProfileSchema, type NaturalWatermarkProfile } from '@/shared/contracts/natural-watermark';
 import { ulid } from 'ulid';
 import type { LibraryStorage } from '@/main/database/core/storage';
 import { type JsonMap, now, text } from '@/main/database/core/values';
@@ -19,6 +20,7 @@ export type ArticleDeliveryJobCreateInput = {
   articleContentHash: string;
   targetSlug: string;
   targetDescription: string;
+  watermarkProfile?: NaturalWatermarkProfile | null;
   retryOfJobId?: string | null;
 };
 
@@ -54,6 +56,10 @@ function jobDto(row: JsonMap): ArticleDeliveryJob {
     articleContentHash: text(row.article_content_hash),
     targetSlug: text(row.target_slug),
     targetDescription: text(row.target_description),
+    watermarkProfile:
+      row.watermark_profile_json == null
+        ? null
+        : naturalWatermarkProfileSchema.parse(JSON.parse(text(row.watermark_profile_json))),
     status: text(row.status),
     attemptCount: Number(row.attempt_count),
     result: storedResult(row.result_json),
@@ -80,17 +86,42 @@ export class ArticleDeliveryJobRepository {
       .prepare(
         `SELECT * FROM article_delivery_jobs
         WHERE extension_id = ? AND channel_id = ? AND space_id = ? AND article_id = ?
-          AND article_revision_id = ? AND status IN ('QUEUED', 'RUNNING')
+          AND article_revision_id = ? AND watermark_profile_json IS ? AND status IN ('QUEUED', 'RUNNING')
         ORDER BY created_at DESC, id DESC LIMIT 1`,
       )
-      .get(input.extensionId, input.channelId, input.spaceId, input.articleId, input.articleRevisionId) as
-      JsonMap | undefined;
+      .get(
+        input.extensionId,
+        input.channelId,
+        input.spaceId,
+        input.articleId,
+        input.articleRevisionId,
+        input.watermarkProfile ? JSON.stringify(naturalWatermarkProfileSchema.parse(input.watermarkProfile)) : null,
+      ) as JsonMap | undefined;
     if (active) return jobDto(active);
     return this.insert(input);
   }
 
   list(rawInput: ArticleDeliveryJobListInput): ArticleDeliveryJob[] {
     const input = articleDeliveryJobListInputSchema.parse(rawInput);
+    if (!input.articleId) {
+      const rows = this.db
+        .prepare(
+          `SELECT job.* FROM article_delivery_jobs job
+          JOIN articles article ON article.id = job.article_id AND article.deleted_at IS NULL
+          WHERE job.space_id = ? AND (
+            job.status IN ('QUEUED', 'RUNNING') OR NOT EXISTS (
+              SELECT 1 FROM article_delivery_jobs newer
+              WHERE newer.space_id = job.space_id AND newer.article_id = job.article_id
+                AND newer.extension_id = job.extension_id AND newer.channel_id = job.channel_id
+                AND (newer.created_at > job.created_at OR (newer.created_at = job.created_at AND newer.id > job.id))
+            )
+          )
+          ORDER BY CASE WHEN job.status IN ('QUEUED', 'RUNNING') THEN 0 WHEN job.status = 'FAILED' THEN 1 ELSE 2 END,
+            job.created_at DESC, job.id DESC LIMIT ?`,
+        )
+        .all(input.spaceId, input.limit) as JsonMap[];
+      return rows.map(jobDto);
+    }
     const rows = this.db
       .prepare(
         `SELECT * FROM article_delivery_jobs
@@ -180,6 +211,7 @@ export class ArticleDeliveryJobRepository {
         articleContentHash: text(source.article_content_hash),
         targetSlug: text(source.target_slug),
         targetDescription: text(source.target_description),
+        watermarkProfile: jobDto(source).watermarkProfile,
         retryOfJobId: text(source.id),
       });
     })();
@@ -205,9 +237,9 @@ export class ArticleDeliveryJobRepository {
       .prepare(
         `INSERT INTO article_delivery_jobs
         (id,extension_id,channel_id,space_id,article_id,article_revision_id,article_content_hash,
-          target_slug,target_description,status,attempt_count,result_json,error_code,error_message,retryable,
+          target_slug,target_description,watermark_profile_json,status,attempt_count,result_json,error_code,error_message,retryable,
           retry_of_job_id,created_at,started_at,completed_at,updated_at)
-        VALUES (?,?,?,?,?,?,?,?,?,'QUEUED',0,NULL,NULL,NULL,0,?,?,NULL,NULL,?)`,
+        VALUES (?,?,?,?,?,?,?,?,?,?,'QUEUED',0,NULL,NULL,NULL,0,?,?,NULL,NULL,?)`,
       )
       .run(
         id,
@@ -219,6 +251,7 @@ export class ArticleDeliveryJobRepository {
         input.articleContentHash,
         input.targetSlug,
         input.targetDescription,
+        input.watermarkProfile ? JSON.stringify(naturalWatermarkProfileSchema.parse(input.watermarkProfile)) : null,
         input.retryOfJobId ?? null,
         timestamp,
         timestamp,

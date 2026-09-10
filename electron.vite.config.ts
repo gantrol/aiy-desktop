@@ -2,20 +2,66 @@ import { builtinModules } from 'node:module';
 import path from 'node:path';
 import tailwindcss from '@tailwindcss/vite';
 import react from '@vitejs/plugin-react';
-import { defineConfig, externalizeDepsPlugin } from 'electron-vite';
+import { defineConfig } from 'electron-vite';
+import MagicString from 'magic-string';
 import type { Plugin } from 'vite';
 
 const sourceAlias = { '@': path.resolve(__dirname, 'src') };
 const rendererDevPort = Number.parseInt(process.env.AIY_RENDERER_DEV_PORT ?? '5173', 10);
 const rendererApplicationChunkBudgetBytes = 500_000;
 const rendererVendorChunkWarningLimitKilobytes = 700;
-const bundledMainDependencies = ['docx', 'mediabunny', 'remark-gfm', 'remark-parse', 'ulid', 'unified', 'zod'];
 const allowedMainRuntimeExternals = new Set([
   ...builtinModules,
   ...builtinModules.map((id) => `node:${id}`),
   'better-sqlite3',
   'electron',
 ]);
+
+function applyElectronRollupOptions(): Plugin {
+  return {
+    name: 'aiy-electron-rolldown-options',
+    enforce: 'post',
+    config(config) {
+      // electron-vite 5 presets still update the Rollup compatibility field.
+      if (config.build?.rollupOptions) config.build.rolldownOptions = config.build.rollupOptions;
+    },
+  };
+}
+
+function preserveVFileNodeInterop(): Plugin {
+  return {
+    name: 'aiy-vfile-node-interop',
+    transform: {
+      filter: { id: /[/\\]vfile[/\\]lib[/\\]min(proc|path)\.js$/ },
+      handler(code) {
+        // Rolldown beta.53 drops the CJS default-import adapter when these
+        // re-export-only modules are tree-shaken (process.default is undefined).
+        return { code, moduleSideEffects: 'no-treeshake' };
+      },
+    },
+  };
+}
+
+function supportPreloadDocumentDetection(): Plugin {
+  return {
+    name: 'aiy-preload-document-detection',
+    transform: {
+      filter: { id: /[/\\]prosemirror-view[/\\]dist[/\\]index\.(?:c?js)$/ },
+      handler(code, id) {
+        // Shared content schemas use Tiptap's serializer. In an Electron
+        // preload, document exists before documentElement has been created.
+        const lookup = 'doc.documentElement.style';
+        const index = code.indexOf(lookup);
+        if (index < 0 || code.indexOf(lookup, index + lookup.length) >= 0) {
+          this.error('ProseMirror document detection changed; review the preload compatibility adapter.');
+        }
+        const output = new MagicString(code);
+        output.overwrite(index, index + lookup.length, '(doc.documentElement?.style ?? {})');
+        return { code: output.toString(), map: output.generateMap({ source: id, hires: true }) };
+      },
+    },
+  };
+}
 
 function enforceMainRuntimeDependencyBoundary(): Plugin {
   return {
@@ -56,6 +102,8 @@ function rendererManualChunk(id: string) {
     return 'react-runtime';
   }
   if (normalizedId.endsWith('/src/renderer/i18n/locales/en.ts')) return 'english-catalog';
+  // Shared icons must not pull the workspace chunk into lightweight petal windows.
+  if (normalizedId.includes('/node_modules/lucide-react/')) return 'icons';
   if (normalizedId.includes('/node_modules/tailwind-merge/')) return 'tailwind-merge';
   if (normalizedId.includes('/node_modules/zod/')) return 'schema-runtime';
   if (normalizedId.includes('/node_modules/re2js/')) return 'rich-text-regex';
@@ -99,7 +147,13 @@ function supportNonInteractiveIsolatedEntryBuilds() {
 supportNonInteractiveIsolatedEntryBuilds();
 
 function requireStandalonePreloadEntries(): Plugin {
-  const expectedEntries = new Set(['index.js', 'image-decoder.js']);
+  const expectedEntries = new Set([
+    'index.js',
+    'image-decoder.js',
+    'desktop-petals.js',
+    'gif-renderer.js',
+    'tray-menu.js',
+  ]);
   return {
     name: 'aiy-require-standalone-preload-entries',
     generateBundle(_options, bundle) {
@@ -154,17 +208,20 @@ function reloadRendererForLanguageCatalog(): Plugin {
 export default defineConfig(({ command }) => {
   const productionBuild = command === 'build';
   const productionOutput = {
-    minify: productionBuild ? ('esbuild' as const) : false,
+    minify: productionBuild ? ('oxc' as const) : false,
     sourcemap: !productionBuild,
   };
 
   return {
     main: {
       resolve: { alias: sourceAlias },
-      plugins: [externalizeDepsPlugin({ exclude: bundledMainDependencies }), enforceMainRuntimeDependencyBoundary()],
+      plugins: [applyElectronRollupOptions(), preserveVFileNodeInterop(), enforceMainRuntimeDependencyBoundary()],
       build: {
         ...productionOutput,
+        // Package pure JavaScript dependencies; only the native SQLite loader ships separately.
+        externalizeDeps: false,
         rollupOptions: {
+          external: ['better-sqlite3'],
           input: {
             index: path.resolve(__dirname, 'src/main/index.ts'),
             'agent-cli': path.resolve(__dirname, 'src/main/agent-cli-entry.ts'),
@@ -176,7 +233,7 @@ export default defineConfig(({ command }) => {
     },
     preload: {
       resolve: { alias: sourceAlias },
-      plugins: [requireStandalonePreloadEntries()],
+      plugins: [applyElectronRollupOptions(), supportPreloadDocumentDetection(), requireStandalonePreloadEntries()],
       build: {
         ...productionOutput,
         externalizeDeps: false,
@@ -185,6 +242,9 @@ export default defineConfig(({ command }) => {
           input: {
             index: path.resolve(__dirname, 'src/preload/index.ts'),
             'image-decoder': path.resolve(__dirname, 'src/preload/image-decoder.ts'),
+            'gif-renderer': path.resolve(__dirname, 'src/preload/gif-renderer.ts'),
+            'desktop-petals': path.resolve(__dirname, 'src/preload/desktop-petals.ts'),
+            'tray-menu': path.resolve(__dirname, 'src/preload/tray-menu.ts'),
           },
           output: { entryFileNames: '[name].js' },
         },
@@ -193,12 +253,29 @@ export default defineConfig(({ command }) => {
     renderer: {
       root: path.resolve(__dirname, 'src/renderer'),
       resolve: { alias: sourceAlias },
-      plugins: [react(), tailwindcss(), reloadRendererForLanguageCatalog(), enforceRendererApplicationChunkBudget()],
+      plugins: [
+        react(),
+        tailwindcss(),
+        applyElectronRollupOptions(),
+        reloadRendererForLanguageCatalog(),
+        enforceRendererApplicationChunkBudget(),
+      ],
       server: { host: '127.0.0.1', port: rendererDevPort },
       build: {
         ...productionOutput,
         chunkSizeWarningLimit: rendererVendorChunkWarningLimitKilobytes,
-        rollupOptions: { output: { manualChunks: rendererManualChunk } },
+        rollupOptions: {
+          // HTML entries mount their own React root. Shared components must never
+          // import an entry and run another window's bootstrap as a side effect.
+          preserveEntrySignatures: 'strict',
+          input: {
+            index: path.resolve(__dirname, 'src/renderer/index.html'),
+            petals: path.resolve(__dirname, 'src/renderer/petals.html'),
+            'demo-petals': path.resolve(__dirname, 'src/renderer/demo-petals.html'),
+            'tray-menu': path.resolve(__dirname, 'src/renderer/tray-menu.html'),
+          },
+          output: { manualChunks: rendererManualChunk },
+        },
       },
     },
   };

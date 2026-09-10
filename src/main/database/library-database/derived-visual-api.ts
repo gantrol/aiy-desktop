@@ -1,5 +1,11 @@
 import type { DerivedVisualAdoptInput, DerivedVisualWorkspaceOpenInput } from '@/shared/contracts';
 import type { LibraryDatabaseRepositories } from '@/main/database/library-database/repositories';
+import type {
+  DerivedVisualOperationIdentity,
+  DerivedVisualOperationsListInput,
+  DerivedVisualUndoInput,
+  DerivedVisualOperationRequest,
+} from '@/shared/contracts/derived-visual-operations';
 
 export function createDerivedVisualApi(repositories: Pick<LibraryDatabaseRepositories, 'derivedVisuals'>) {
   return {
@@ -13,6 +19,18 @@ export function createDerivedVisualApi(repositories: Pick<LibraryDatabaseReposit
 
     adoptDerivedVisual(input: DerivedVisualAdoptInput) {
       return repositories.derivedVisuals.adopt(input);
+    },
+    undoDerivedVisual(input: DerivedVisualUndoInput) {
+      return repositories.derivedVisuals.operations.execute({ ...input, kind: 'UNDO' });
+    },
+    getDerivedVisualOperation(input: DerivedVisualOperationIdentity) {
+      return repositories.derivedVisuals.operations.get(input);
+    },
+    listDerivedVisualOperations(input: DerivedVisualOperationsListInput) {
+      return repositories.derivedVisuals.operations.list(input);
+    },
+    cancelDerivedVisualOperation(input: DerivedVisualOperationRequest) {
+      return repositories.derivedVisuals.operations.cancel(input);
     },
   };
 }

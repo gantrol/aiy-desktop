@@ -70,18 +70,39 @@ function requestDocument(request: NormalizedGenerationRequest, localMedia: Array
   );
 }
 
+function collectPngPaths(text: string, output: Set<string>) {
+  // Consume disjoint spans once; unmatched opening delimiters cannot rescan the tail.
+  for (const match of text.matchAll(/[^()\r\n]+/gu)) {
+    if (output.size >= MAX_DISCOVERED_FILES) return;
+    const candidate = match[0];
+    if (text[match.index - 1] === '(' && text[match.index + candidate.length] === ')' && /\.png$/iu.test(candidate)) {
+      output.add(candidate.trim());
+    }
+  }
+  for (const match of text.matchAll(/[^"\r\n<>|]+/gu)) {
+    const segment = match[0];
+    let start = 0;
+    for (const extension of segment.matchAll(/\.png/giu)) {
+      if (output.size >= MAX_DISCOVERED_FILES) return;
+      const end = extension.index;
+      const stem = segment.slice(start, end);
+      const prefix = /[A-Za-z]:[\\/]|(?:^|\s)\.{0,2}[\\/]/u.exec(stem);
+      if (prefix && stem.length > prefix.index + prefix[0].length) {
+        output.add(segment.slice(start + prefix.index, end + 4).trim());
+      }
+      start = end + 4;
+    }
+    if (output.size >= MAX_DISCOVERED_FILES) return;
+  }
+}
+
 function collectCandidateStrings(value: unknown, output: Set<string>, depth = 0) {
   if (depth > 6 || output.size >= MAX_DISCOVERED_FILES) return;
   if (typeof value === 'string') {
     const trimmed = value.trim();
     if (!trimmed || trimmed.length > 1_000_000) return;
     output.add(trimmed);
-    for (const match of trimmed.matchAll(
-      /\(([^)\r\n]+\.png)\)|([A-Za-z]:[\\/][^"\r\n<>|]+?\.png)|((?:^|\s)\.?\.?[\\/][^"\r\n<>|]+?\.png)/gi,
-    )) {
-      const candidate = match[1] || match[2] || match[3];
-      if (candidate) output.add(candidate.trim());
-    }
+    collectPngPaths(trimmed, output);
     if ((trimmed.startsWith('{') || trimmed.startsWith('[')) && trimmed.length <= 100_000) {
       try {
         collectCandidateStrings(JSON.parse(trimmed), output, depth + 1);

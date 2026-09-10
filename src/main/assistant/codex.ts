@@ -22,6 +22,8 @@ import {
   codexImageReferenceAssetIds,
 } from '@/main/extensions/codex-app-server/image-runtime';
 import { validatePngFileAsync } from '@/main/media/png-validation';
+import { codexImageOutputError } from '@/main/assistant/codex-image-output';
+import type { CodexAppServerImageResult } from '@/main/extensions/codex-app-server/client';
 import { CODEX_APP_SERVER_EXTENSION_ID } from '@/shared/extension-ids';
 
 export {
@@ -213,9 +215,11 @@ export class CodexAdapter extends CodexTextAdapter {
             onEvent: (event) => this.reportGenerationEvent(event, onProgress),
           });
           onProgress?.({ stage: 'FINALIZING', message: 'Collecting generated image' });
-          await this.materializeAppServerImage(turn.image, outputPath);
+          await this.materializeAppServerImage(turn.image, outputPath, turn.finalMessage);
           if (!(await validatePngFileAsync(outputPath)))
-            throw new Error('Codex output is not a complete valid PNG file');
+            throw Object.assign(new Error('Codex output is not a complete valid PNG file'), {
+              code: 'IMAGE_GENERATION_INVALID_OUTPUT',
+            });
           return outputPath;
         },
         cleanup: () => this.tempJobRemover(this.libraryRoot, 'generation', runId),
@@ -245,10 +249,12 @@ export class CodexAdapter extends CodexTextAdapter {
   }
 
   private async materializeAppServerImage(
-    image: { savedPath: string | null; result: string } | null,
+    image: CodexAppServerImageResult | null,
     outputPath: string,
+    finalMessage: string,
   ) {
-    if (!image) throw new Error('Codex completed without an image generation item');
+    if (!image || image.status === 'failed' || image.status === 'cancelled' || image.failure)
+      throw codexImageOutputError(image, finalMessage);
     const savedPath = image.savedPath ? nativeLocalPath(image.savedPath) : null;
     const resultPath = image.result.length < 4_096 ? nativeLocalPath(image.result) : '';
     const source =
@@ -265,6 +271,8 @@ export class CodexAdapter extends CodexTextAdapter {
       return;
     }
     const dataUrl = /^data:image\/png;base64,([A-Za-z0-9+/=\r\n]+)$/.exec(image.result);
-    if (dataUrl) await writeFile(outputPath, Buffer.from(dataUrl[1], 'base64'));
+    const base64 = dataUrl?.[1] ?? (/^iVBORw0KGgo[A-Za-z0-9+/=\r\n]+$/.test(image.result) ? image.result : null);
+    if (!base64) throw codexImageOutputError(image, finalMessage);
+    await writeFile(outputPath, Buffer.from(base64, 'base64'));
   }
 }

@@ -1,4 +1,7 @@
-import { app, BrowserWindow, dialog, safeStorage } from 'electron';
+import { bindNaturalWatermarkRuntime } from '@/main/extensions/natural-watermark/selection';
+import { app, dialog, safeStorage } from 'electron';
+import { CodexContentService } from '@/main/extensions/codex-content/service';
+import { codexContentLifecycle } from '@/main/extensions/codex-content/library-lifecycle';
 import { AsyncLocalStorage } from 'node:async_hooks';
 import path from 'node:path';
 import { LibraryDatabase } from '@/main/database';
@@ -19,8 +22,10 @@ import type { SecretProtector } from '@/main/extensions/secure-credentials';
 import { registerIpc } from '@/main/ipc/register-ipc';
 import { createCompanionLoopback } from '@/main/browser-companion/loopback-runtime';
 import { AppUpdateService } from '@/main/app/app-update-service';
+import { isPackagedApplication } from '@/main/app/runtime-mode';
 import { resolveAiyUserDataPath } from '@/main/app/user-data-path';
 import { DesktopApplicationShell } from '@/main/app/application-shell';
+import { createDesktopPetalsController } from '@/main/desktop-petals/desktop-petals-controller';
 import { WorkspaceLayoutStore } from '@/main/app/workspace-layout-store';
 import { ArticleEditorRecoveryStore } from '@/main/app/article-editor-recovery-store';
 import { TransitionPreviewCache, TRANSITION_PREVIEW_LIMIT } from '@/main/app/transition-preview-cache';
@@ -36,7 +41,9 @@ import { RendererEventDispatcher } from '@/main/app/renderer-event-dispatcher';
 import { registerApplicationSchemes } from '@/main/app/protocol-schemes';
 import { AppDeepLinkController, registerAiyDeepLinkProtocolClient } from '@/main/app/external-deep-link';
 import { prepareStartupShell } from '@/main/app/startup-shell';
+import { finishStartupStage } from '@/main/app/startup-timing';
 import type { ActiveLibraryContext } from '@/main/libraries/active-library-context';
+import { createLibraryStartupTiming } from '@/main/libraries/library-startup-timing';
 import { LibraryRegistry, libraryDatabasePath, type LibraryDescriptor } from '@/main/libraries/library-registry';
 import { LegacySpaceMigrationService } from '@/main/libraries/legacy-space-migration';
 import { createLegacySpaceMigrationActions } from '@/main/libraries/legacy-space-migration-controller';
@@ -45,6 +52,7 @@ import { prepareLocalSpaceCover } from '@/main/libraries/local-space-cover';
 import { LocalSpaceTransferService } from '@/main/libraries/local-space-transfer';
 import { createLocalSpaceTransferActions } from '@/main/libraries/local-space-transfer-controller';
 import { LibraryContextLifecycle } from '@/main/libraries/library-context-lifecycle';
+import { createLibraryIpcRunner } from '@/main/libraries/library-ipc-runner';
 import { createLibraryContextRendererEvents } from '@/main/libraries/library-context-renderer-events';
 import { BackgroundGenerationClient } from '@/main/model-worker/client';
 import type {
@@ -59,7 +67,6 @@ import { DEFAULT_PRODUCT_NAME, productNameForLocale } from '@/shared/product';
 import {
   ALIBABA_MODEL_STUDIO_IMAGE_API_EXTENSION_ID,
   CODEX_EXTENSION_ID,
-  CODEX_HISTORY_SEARCH_EXTENSION_ID,
   GOOGLE_GEMINI_IMAGE_API_EXTENSION_ID,
   OPENAI_IMAGE_PROVIDER_KEY,
   VOLCENGINE_ARK_IMAGE_API_EXTENSION_ID,
@@ -78,6 +85,7 @@ function refreshOpenAiImageApiWorker(generation: BackgroundGenerationClient, con
   });
 }
 
+finishStartupStage('loadMainModule');
 registerApplicationSchemes();
 const rendererEvents = new RendererEventDispatcher();
 const appDeepLinks = new AppDeepLinkController(rendererEvents);
@@ -86,12 +94,15 @@ const transcriptBackgroundTasks = new VideoDocumentTranscriptBackgroundTaskRegis
 let legacySpaceMigration: LegacySpaceMigrationService | null = null;
 let localSpaceTransfer: LocalSpaceTransferService | null = null;
 let managedCodexHistorySearch: CodexHistorySearch | null = null;
+let desktopPetals: ReturnType<typeof createDesktopPetalsController> | null = null;
 const browserCompanionService = createCompanionLoopback(() => appShell.activeLibraryContext, rendererEvents);
 const allowWindowPresentation = process.env.AIY_E2E !== '1' || process.env.AIY_E2E_OBSERVE === '1';
 const appShell = new DesktopApplicationShell(rendererEvents, {
   backgroundColor: '#f8f7f3',
   title: productNameForLocale(app.getLocale()),
   allowWindowPresentation,
+  drainDesktopPetals: () => desktopPetals?.drain() ?? Promise.resolve(true),
+  resumeDesktopPetals: () => desktopPetals?.resume(),
   onSecondInstanceArguments: (commandLine) => appDeepLinks.acceptCommandLine(commandLine),
   onOpenUrl: (url) => appDeepLinks.acceptUrl(url),
   backgroundModelTasks: transcriptBackgroundTasks,
@@ -154,11 +165,32 @@ if (ownsSingleInstanceLock)
   app
     .whenReady()
     .then(async () => {
-      await browserCompanionService.startSafely();
+      finishStartupStage('electronReady');
+      desktopPetals = createDesktopPetalsController(appShell, allowWindowPresentation);
       registerAiyDeepLinkProtocolClient();
       const appIpc = createTrustedIpcHandlerRegistrar(() => appShell.mainWindow);
       registerAppDeepLinkIpc(appIpc, appDeepLinks);
+      const transitionPreviews = new TransitionPreviewCache(path.join(app.getPath('userData'), 'space-previews'));
+      const workspaceLayouts = new WorkspaceLayoutStore(app.getPath('userData'));
+      const articleEditorRecovery = new ArticleEditorRecoveryStore(app.getPath('userData'));
+      libraryRegistry = new LibraryRegistry(app.getPath('userData'));
+      let activeLibrary = libraryRegistry.initialize();
+      const startupShell = prepareStartupShell({
+        articleEditorRecovery,
+        currentSpaceId: () => activeLibrary.id,
+        ipcMain: appIpc,
+        libraryRegistry: () => libraryRegistry,
+        shell: appShell,
+        transitionPreviews,
+        workspaceLayouts,
+      });
+      startupShell.createWindow();
+      app.on('activate', () => {
+        if (!appShell.mainWindow || appShell.mainWindow.isDestroyed()) appShell.createWindow();
+      });
+
       if (process.platform === 'win32') appShell.ensureAppTray();
+      await browserCompanionService.startSafely();
       const updates = await new AppUpdateService((state) => {
         rendererEvents.send('app-update:changed', state);
       }).initialize();
@@ -169,16 +201,12 @@ if (ownsSingleInstanceLock)
         download: () => updates.download(),
         install: () => updates.install(appShell.prepareAppUpdateInstall, appShell.relaunchAfterFailedUpdateInstall),
       });
-      const transitionPreviews = new TransitionPreviewCache(path.join(app.getPath('userData'), 'space-previews'));
-      const workspaceLayouts = new WorkspaceLayoutStore(app.getPath('userData'));
-      const articleEditorRecovery = new ArticleEditorRecoveryStore(app.getPath('userData'));
-      const codexHistorySearch = new CodexHistorySearch(
-        path.join(app.getPath('userData'), 'extension-data', CODEX_HISTORY_SEARCH_EXTENSION_ID),
+      const codexHistorySearch = CodexHistorySearch.forApplication(
+        app.getPath('userData'),
+        () => appShell.activeLibraryContext?.codexContent.repository.historyThreadIds() ?? [],
       );
       codexHistorySearch.on('changed', () => rendererEvents.send('codex-history-search:changed'));
       managedCodexHistorySearch = codexHistorySearch;
-      libraryRegistry = new LibraryRegistry(app.getPath('userData'));
-      let activeLibrary = libraryRegistry.initialize();
       const discoveredLegacyUserDataRoots = await legacyUserDataRoots({
         configuredRoot: legacyUserDataPath,
         currentUserDataRoot: app.getPath('userData'),
@@ -195,17 +223,12 @@ if (ownsSingleInstanceLock)
         temporaryRoot: path.join(app.getPath('temp'), 'aiy-space-transfer'),
         forbiddenDestinationRoots: forbiddenLocalSpaceDestinationRoots,
       });
-      const initializeLibrary = (target: LibraryDatabase, library: LibraryDescriptor) => {
-        target.initialize(
-          library.name,
-          { id: library.id, name: library.name, createdAt: library.createdAt },
-          {
-            recoverGenerationRuns: false,
-            recoverAssistantRuns: false,
-          },
-        );
-      };
-      const internalModelsEnabled = import.meta.env.DEV;
+      const initializeLibrary = (target: LibraryDatabase, library: LibraryDescriptor) =>
+        target.initialize(library.name, library, {
+          recoverGenerationRuns: false,
+          recoverAssistantRuns: false,
+          recoverGifRuns: true,
+        });
       const connectionDirectory = path.join(app.getPath('userData'), 'connections');
       const secretProtector: SecretProtector = {
         isAvailable: () =>
@@ -234,16 +257,12 @@ if (ownsSingleInstanceLock)
       );
       const externalImageApis = new ExternalImageApiConnections(connectionDirectory, secretProtector);
       const configuredWorkerIdleExitMs = Number(process.env.AIY_MODEL_WORKER_IDLE_EXIT_MS);
-      const bundledExtensionsPath = app.isPackaged
-        ? path.join(process.resourcesPath, 'extensions')
-        : path.join(app.getAppPath(), 'extensions');
-      const bundledContentPacksPath = app.isPackaged
-        ? path.join(process.resourcesPath, 'content-packs')
-        : path.join(app.getAppPath(), 'content-packs');
+      const bundledResourcesPath = isPackagedApplication(app) ? process.resourcesPath : app.getAppPath();
+      const bundledExtensionsPath = path.join(bundledResourcesPath, 'extensions');
+      const naturalWatermarkRuntime = createNaturalWatermarkRuntime(app, bundledExtensionsPath);
+      const bundledContentPacksPath = path.join(bundledResourcesPath, 'content-packs');
       const starterContentPackPath = path.join(bundledContentPacksPath, 'creation-starter');
-      const bundledConfigurationPath = app.isPackaged
-        ? path.join(process.resourcesPath, 'configuration')
-        : path.join(app.getAppPath(), 'configuration');
+      const bundledConfigurationPath = path.join(bundledResourcesPath, 'configuration');
       const extensionRoots = [
         { rootPath: bundledExtensionsPath, source: 'BUILT_IN' as const },
         { rootPath: path.join(app.getPath('userData'), 'extensions'), source: 'LOCAL' as const },
@@ -253,7 +272,7 @@ if (ownsSingleInstanceLock)
         library: LibraryDescriptor,
         reportProgress?: (stage: LocalSpaceTransitionStage, progress: number) => void,
       ): Promise<ActiveLibraryContext> => {
-        const startedAt = Date.now();
+        const { finishStage, logReady } = createLibraryStartupTiming();
         reportProgress?.('OPENING_DATABASE', 20);
         const createsDatabase = libraryRegistry?.requiresDatabaseCreation(library.id) === true;
         const targetDatabase = new LibraryDatabase(libraryDatabasePath(library), library.rootPath, {
@@ -264,15 +283,17 @@ if (ownsSingleInstanceLock)
         const targetVisualizationDiscovery = new CodexVisualizationDiscovery();
         const targetThumbnails = new MediaThumbnailCache(library.rootPath);
         const targetImageTransforms = new ImageTransformService(targetDatabase);
+        finishStage('openDatabase');
         try {
-          initializeLibrary(targetDatabase, library);
+          const databaseCheck = initializeLibrary(targetDatabase, library);
           if (createsDatabase) libraryRegistry?.markDatabaseCreated(library.id);
+          finishStage('initializeDatabase');
           reportProgress?.('CONNECTING_SERVICES', 55);
           targetGeneration = await BackgroundGenerationClient.create({
             databasePath: libraryDatabasePath(library),
             libraryRoot: library.rootPath,
             workerBundlePath: path.join(app.getAppPath(), 'out', 'main', 'model-worker.js'),
-            internalModelsEnabled,
+            internalModelsEnabled: import.meta.env.DEV,
             cropImage: (input) => targetImageTransforms.crop(input),
             ...(Number.isFinite(configuredWorkerIdleExitMs) && configuredWorkerIdleExitMs >= 1_000
               ? { idleExitMs: configuredWorkerIdleExitMs }
@@ -282,6 +303,7 @@ if (ownsSingleInstanceLock)
             targetGeneration!.callWorker<void>('library-file-view.refresh', [], 120_000),
           );
           const { codex: targetCodex, assistant: targetAssistant } = targetGeneration;
+          finishStage('connectServices');
           reportProgress?.('LOADING_EXTENSIONS', 72);
           const targetExtensions: ExtensionRegistry = new ExtensionRegistry(targetDatabase, {
             extensionRoots,
@@ -323,11 +345,13 @@ if (ownsSingleInstanceLock)
             );
           const refreshOpenAiImageApiRuntimeConfiguration = () =>
             refreshOpenAiImageApiWorker(targetGeneration!, openAiImageApi);
+          finishStage('loadExtensions');
           reportProgress?.('APPLYING_SETTINGS', 82);
           await targetGeneration.configureOpenAiImageApi(openAiImageApi.runtimeConfiguration());
           await targetGeneration.configureDeepSeekApi(deepSeekApi.runtimeConfiguration());
           await targetGeneration.configureExternalImageApis(externalImageApiRuntimeConfigurations());
           await targetGeneration.configureConcurrency(generationConcurrency.get());
+          finishStage('applySettings');
 
           let activated = false;
           let backgroundServicesStarted = false;
@@ -377,12 +401,14 @@ if (ownsSingleInstanceLock)
           };
           const contextRendererEvents = createLibraryContextRendererEvents(rendererEvents, () => activated);
           const lifecycle = new LibraryContextLifecycle();
+          const targetCodexContent = new CodexContentService(targetDatabase, targetExtensions, targetCodex);
           const targetArticleDeliveryJobs = new ArticleDeliveryJobCoordinator(
             targetDatabase,
             targetExtensions,
             articleDeliveryConnections,
             () => lifecycle.acquireOperation(),
             contextRendererEvents.articleDeliveryJobChanged,
+            bindNaturalWatermarkRuntime(naturalWatermarkRuntime, targetExtensions),
           );
           const context: ActiveLibraryContext = {
             epoch: ++nextLibraryContextEpoch,
@@ -393,6 +419,7 @@ if (ownsSingleInstanceLock)
             database: targetDatabase,
             generation: targetGeneration,
             codex: targetCodex,
+            ...codexContentLifecycle(targetCodexContent, lifecycle),
             assistant: targetAssistant,
             imageDiscovery: targetImageDiscovery,
             visualizationDiscovery: targetVisualizationDiscovery,
@@ -401,12 +428,6 @@ if (ownsSingleInstanceLock)
             thumbnails: targetThumbnails,
             acquireOperation() {
               return lifecycle.acquireOperation();
-            },
-            drain() {
-              return lifecycle.drain();
-            },
-            resume() {
-              lifecycle.resume();
             },
             activate() {
               if (activated) return;
@@ -477,6 +498,7 @@ if (ownsSingleInstanceLock)
                 targetImageDiscovery!.off('changed', contextRendererEvents.codexImagesChanged);
                 targetVisualizationDiscovery!.off('changed', contextRendererEvents.codexVisualizationsChanged);
                 await targetArticleDeliveryJobs.stopAndDrain();
+                await targetCodexContent.dispose();
                 await targetDatabase.drainBackgroundStorage();
                 await targetThumbnails.dispose();
                 targetGeneration!.dispose();
@@ -485,10 +507,8 @@ if (ownsSingleInstanceLock)
               });
             },
           };
-          console.info('[local-space] context ready', {
-            libraryId: library.id,
-            durationMs: Date.now() - startedAt,
-          });
+          finishStage('createContext');
+          logReady(library.id, databaseCheck);
           return context;
         } catch (error) {
           await targetDatabase.drainBackgroundStorage();
@@ -500,11 +520,14 @@ if (ownsSingleInstanceLock)
         }
       };
 
-      const activateLibraryContext = async (context: ActiveLibraryContext) => {
+      const activateLibraryContext = async (context: ActiveLibraryContext, restorePetalsAfter?: Promise<void>) => {
         const previous = appShell.activeLibraryContext;
         appShell.setActiveLibraryContext(context);
         activeLibrary = context.library;
         context.activate();
+        await desktopPetals
+          ?.activate(context, restorePetalsAfter)
+          .catch((error) => console.error('[desktop-petals] restore failed', error));
         codexHistorySearch.setActive(context.extensions.isActivated(CODEX_EXTENSION_ID));
         appShell.requestBackgroundServicesStart(context);
         appShell.updateAppTray();
@@ -515,18 +538,11 @@ if (ownsSingleInstanceLock)
         }
       };
 
-      const startupShell = prepareStartupShell({
-        articleEditorRecovery,
-        currentSpaceId: () => activeLibrary.id,
-        ipcMain: appIpc,
-        libraryRegistry: () => libraryRegistry,
-        shell: appShell,
-        transitionPreviews,
-        workspaceLayouts,
-      });
-
+      finishStartupStage('hostSetup');
       const initialContext = await createLibraryContext(activeLibrary);
-      await activateLibraryContext(initialContext);
+      finishStartupStage('libraryInit');
+      await activateLibraryContext(initialContext, startupShell.afterFirstBootstrap);
+      finishStartupStage('contextActivation');
       libraryRegistry.updateCurrentName(initialContext.database.getLibraryName());
       activeLibrary = libraryRegistry.get(activeLibrary.id);
       initialContext.library = activeLibrary;
@@ -579,6 +595,7 @@ if (ownsSingleInstanceLock)
         let registryCommitted = false;
         try {
           if (!previousContext) throw new Error('Library services are unavailable');
+          if (!((await desktopPetals?.drain()) ?? true)) throw new Error('便利贴尚未保存，请核对后再切换资料库');
           await previousContext.drain();
           await new Promise<void>((resolve) => setImmediate(resolve));
           nextContext = await createLibraryContext(library, (stage, progress) => {
@@ -599,6 +616,7 @@ if (ownsSingleInstanceLock)
         } catch (error) {
           if (nextContext) await nextContext.dispose();
           if (appShell.activeLibraryContext === previousContext) previousContext?.resume();
+          desktopPetals?.resume();
           if (registryCommitted && activeLibrary.id === previousLibraryId) {
             libraryRegistry.setCurrent(previousLibraryId);
           }
@@ -668,28 +686,12 @@ if (ownsSingleInstanceLock)
         'video-document:transcript-translation-cancel',
         'video-document:transcript-background-tasks-get',
       ]);
-      const runInLibraryContext = (channel: string, invoke: () => unknown) => {
-        if (
-          appShell.appUpdateInstallPreparing &&
-          channel !== 'app:request-quit' &&
-          channel !== 'app:loading-previews' &&
-          channel !== 'video-document:transcript-recognition-cancel' &&
-          channel !== 'video-document:transcript-translation-cancel' &&
-          channel !== 'video-document:transcript-background-tasks-get'
-        ) {
-          throw new Error('Application services are shutting down for an update');
-        }
-        if (contextIndependentIpcChannels.has(channel)) return invoke();
-        const context = requireActiveContext();
-        const release = context.acquireOperation();
-        return libraryContextStorage.run(context, async () => {
-          try {
-            return await invoke();
-          } finally {
-            release();
-          }
-        });
-      };
+      const runInLibraryContext = createLibraryIpcRunner({
+        updating: () => appShell.appUpdateInstallPreparing,
+        independentChannels: contextIndependentIpcChannels,
+        context: requireActiveContext,
+        storage: libraryContextStorage,
+      });
       registerIpc(
         liveServiceProxy((context) => context.database),
         browserCompanionService,
@@ -709,7 +711,7 @@ if (ownsSingleInstanceLock)
         assistantRouting,
         externalImageApis,
         generationConcurrency,
-        ...createNaturalWatermarkRuntime(app, bundledExtensionsPath),
+        ...naturalWatermarkRuntime,
         () => {
           const targetDatabase = requireActiveContext().database;
           return installStarterContentPack(targetDatabase, starterContentPackPath);
@@ -784,10 +786,7 @@ if (ownsSingleInstanceLock)
         },
         startupShell.ipcRuntime(runInLibraryContext),
       );
-      startupShell.createDeferredWindow();
-      app.on('activate', () => {
-        if (BrowserWindow.getAllWindows().length === 0) appShell.createWindow();
-      });
+      finishStartupStage('registerIpc');
     })
     .catch((error) => {
       if (startupFailureReported) return;

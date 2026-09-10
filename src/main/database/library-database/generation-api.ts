@@ -13,16 +13,16 @@ import type {
   GenerationInput,
   GenerationVersionInput,
   ImageGenerationRouteDto,
-  PromptVersionCreateInput,
   PromptCommonInputDto,
+  PromptVersionCreateInput,
   ProviderReturnedDescriptionInput,
   RenamePromptSeriesInput,
 } from '@/shared/contracts';
-import type { GenerationProcessEventPageInput } from '@/shared/contracts/generation-process';
 import type {
   PromptSeriesCoverSetInput,
   PromptSeriesOutputRemoveInput,
 } from '@/shared/contracts/creation-output-presentation';
+import type { GenerationProcessEventPageInput } from '@/shared/contracts/generation-process';
 
 export function createGenerationApi(
   repositories: Pick<
@@ -119,7 +119,13 @@ export function createGenerationApi(
     capturePromptCommonInput(
       input: Pick<
         GenerationInput,
-        'manualPrompt' | 'promptNodes' | 'termPromptLocale' | 'termIds' | 'wordPaletteReferences' | 'referenceAssetIds'
+        | 'manualPrompt'
+        | 'promptNodes'
+        | 'document'
+        | 'termPromptLocale'
+        | 'termIds'
+        | 'wordPaletteReferences'
+        | 'referenceAssetIds'
       >,
     ) {
       return repositories.executionSnapshots.captureCommonInput(input);

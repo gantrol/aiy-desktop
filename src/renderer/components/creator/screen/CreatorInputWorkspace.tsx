@@ -1,26 +1,31 @@
-import type { ComponentProps, ReactNode } from 'react';
-import { FileTextIcon, VideoIcon } from 'lucide-react';
-import type { AssetDto } from '@/shared/contracts';
-import { DictionaryIcon, ImageIcon } from '@/renderer/icons';
-import { AssetBreakdownSourceFormProvider } from '@/renderer/components/media/AssetMenuActionsProvider';
 import { CanvasPresetPicker } from '@/renderer/components/creator/CanvasPresetPicker';
 import { CreationMaterialPicker } from '@/renderer/components/creator/CreationMaterialPicker';
 import { CreationReferenceStrip } from '@/renderer/components/creator/CreationReferenceStrip';
+import { CreationVideoAttachments } from '@/renderer/components/creator/CreationVideoAttachments';
 import { DerivedVisualSourceContext } from '@/renderer/components/creator/DerivedVisualSourceContext';
 import { DictionaryPicker } from '@/renderer/components/creator/DictionaryPicker';
 import { GenerationTaskTray } from '@/renderer/components/creator/GenerationTaskTray';
 import { PasteDropSurface } from '@/renderer/components/creator/intake/PasteDropSurface';
 import { MinimalCreationStarter } from '@/renderer/components/creator/MinimalCreationStarter';
-import { StyleExplorationPanel } from '@/renderer/components/creator/StyleExplorationPanel';
-import { CreatorDialogHost } from '@/renderer/components/creator/screen/CreatorDialogHost';
 import { CreatorInputHeader } from '@/renderer/components/creator/screen/CreatorInputHeader';
 import type { CreatorScreenViewModel } from '@/renderer/components/creator/screen/creatorScreenViewModel';
+import { StyleExplorationPanel } from '@/renderer/components/creator/StyleExplorationPanel';
+import { useCreatorVideoImport } from '@/renderer/components/creator/workflows/useCreatorVideoImport';
+import { AssetBreakdownSourceFormProvider } from '@/renderer/components/media/AssetMenuActionsProvider';
 import { Button } from '@/renderer/components/ui/button';
+import { Input } from '@/renderer/components/ui/input';
 import { Popover, PopoverContent, PopoverTrigger } from '@/renderer/components/ui/popover';
-import { cn } from '@/renderer/lib/utils';
+import { NoteContentEditor } from '@/renderer/features/content-editor/NoteContentEditor';
+import { PinNoteButton } from '@/renderer/features/desktop-petals/PinNoteButton';
 import { VideoDocumentCreationStarter } from '@/renderer/features/video-documents/VideoDocumentCreationStarter';
 import { VideoFileInput } from '@/renderer/features/video-documents/VideoDocumentFileInputs';
 import { useI18n } from '@/renderer/i18n/useI18n';
+import { DictionaryIcon, ImageIcon } from '@/renderer/icons';
+import { cn } from '@/renderer/lib/utils';
+import { replaceContentPromptText } from '@/shared/content-document';
+import type { AssetDto } from '@/shared/contracts';
+import { FileTextIcon, VideoIcon } from 'lucide-react';
+import { useEffect, useRef, useState, type ComponentProps, type ReactNode } from 'react';
 
 interface Props {
   model: CreatorScreenViewModel;
@@ -38,8 +43,11 @@ interface Accessories {
   video: ReactNode;
 }
 
-function useCreatorInputAccessories(model: CreatorScreenViewModel): Accessories {
-  const { app, draftInput, generation, navigation, projection, prompt, selection, workbench, workflow } = model;
+function useCreatorInputAccessories(
+  model: CreatorScreenViewModel,
+  videos: ReturnType<typeof useCreatorVideoImport>,
+): Accessories {
+  const { app, generation, navigation, projection, prompt, selection, workbench, workflow } = model;
   const { messages } = useI18n();
   const c = messages.creator.workbench;
   const document = generation.promptDocument;
@@ -104,8 +112,11 @@ function useCreatorInputAccessories(model: CreatorScreenViewModel): Accessories 
         value={generation.canvasPreset}
         compact
         toolbar
-        allowUnspecified={!workbench.editorSocialCoverVisual}
-        onChange={(preset) => generation.setCanvasPresetKey(preset?.stableKey ?? '')}
+        allowUnspecified={!workbench.editorDerivedVisual}
+        onChange={(preset) => {
+          if (workbench.editorDerivedVisual && preset) navigation.derivedVisual.changeCanvas(preset);
+          else generation.setCanvasPresetKey(preset?.stableKey ?? '');
+        }}
       />
     ),
     dictionary: (
@@ -183,24 +194,20 @@ function useCreatorInputAccessories(model: CreatorScreenViewModel): Accessories 
         revealContext={workbench.series ? { kind: 'CREATION', seriesId: workbench.series.id } : undefined}
       />
     ),
-    sourceContext: workbench.editorSocialCoverVisual ? (
+    sourceContext: workbench.editorDerivedVisual ? (
       <DerivedVisualSourceContext
-        locale={app.locale}
         sourceTitle={workbench.editorDerivedVisualSourceTitle}
         assets={workbench.editorDerivedVisualSourceAssets}
         referenceAssetIds={document.referenceAssets.map((asset) => asset.id)}
         onOpenSource={openSource}
-        onToggleReference={(asset) => toggleReferenceAsset(model, asset)}
+        onToggleReference={(asset) => toggleReferenceAsset(model, asset, messages.contentEditor.referenceLimit)}
       />
     ) : null,
     video: (
       <>
         <VideoFileInput
           inputRef={prompt.newCreationVideoInputRef}
-          onSelect={(file) => {
-            draftInput.navigation.selectCreationStartMode('video-document');
-            selection.setVideoCreationRequest({ file, source: 'UPLOAD' });
-          }}
+          onSelectFiles={(files) => void videos.importFiles(files, 'UPLOAD')}
         />
         <Button
           data-action="creation-video-picker"
@@ -208,8 +215,9 @@ function useCreatorInputAccessories(model: CreatorScreenViewModel): Accessories 
           variant="outline"
           size="icon"
           className="rounded-full"
-          title={app.locale === 'zh' ? '视频转文稿' : 'Video to document'}
-          aria-label={app.locale === 'zh' ? '视频转文稿' : 'Video to document'}
+          title={messages.contentEditor.addVideos}
+          aria-label={messages.contentEditor.addVideos}
+          disabled={videos.importing}
           onClick={() => prompt.newCreationVideoInputRef.current?.click()}
         >
           <VideoIcon className="size-4" />
@@ -219,17 +227,40 @@ function useCreatorInputAccessories(model: CreatorScreenViewModel): Accessories 
   };
 }
 
-function toggleReferenceAsset(model: CreatorScreenViewModel, asset: AssetDto) {
+function toggleReferenceAsset(model: CreatorScreenViewModel, asset: AssetDto, limitMessage: string) {
   const references = model.generation.promptDocument.referenceAssets;
   if (references.some((reference) => reference.id === asset.id)) {
     model.generation.referenceImport.removeReferenceAsset(asset.id);
     return;
   }
   if (references.length >= 8) {
-    model.app.notify(model.app.locale === 'zh' ? '最多添加 8 张参考图' : 'You can add up to 8 reference images');
+    model.app.notify(limitMessage);
     return;
   }
   model.generation.referenceImport.applyReferenceAssets([...references, asset]);
+}
+
+function appendPromptImage(
+  model: Props['model'],
+  image: import('@/renderer/features/content-editor/contentImageAsset').ImportedEditorImage,
+) {
+  model.generation.promptDocument.updateReferenceAssets((current) =>
+    current.some((asset) => asset.id === image.binding.assetId)
+      ? current
+      : [
+          ...current,
+          {
+            id: image.binding.assetId,
+            kind: 'REFERENCE',
+            width: image.media.width,
+            height: image.media.height,
+            mimeType: image.media.mimeType,
+            byteSize: image.media.byteSize,
+            mediaUrl: image.media.mediaUrl,
+            createdAt: new Date().toISOString(),
+          },
+        ],
+  );
 }
 
 export function CreatorInputWorkspace({ model, sourceFormId }: Props) {
@@ -250,54 +281,52 @@ export function CreatorInputWorkspace({ model, sourceFormId }: Props) {
   const c = messages.creator.workbench;
   const selected = selection.contentSelection;
   const document = generation.promptDocument;
-  const accessories = useCreatorInputAccessories(model);
-  const hidden =
-    app.documentWorkspaceActive ||
-    app.comparisonFullWindow ||
-    selected.selectedAlbum ||
-    selected.selectedArticle ||
-    selected.selectedEvaluationSuite ||
-    selected.selectedImageBreakdown ||
-    (selected.selectedSocialPost && !workbench.editorSocialCoverVisual);
+  const videoScopeKey = generation.inputScopeKey;
+  const videoScopeRef = useRef(videoScopeKey);
+  videoScopeRef.current = videoScopeKey;
+  useEffect(() => {
+    videoScopeRef.current = videoScopeKey;
+    return () => {
+      videoScopeRef.current = '';
+    };
+  }, [videoScopeKey]);
+  const videos = useCreatorVideoImport({
+    scopeKey: videoScopeKey,
+    attachToDraft: selection.creationMode === 'new',
+    locale: app.locale,
+    notify: app.notify,
+    updateAttachments: document.updateVideoAttachments,
+  });
+  const accessories = useCreatorInputAccessories(model, videos);
+  const hidden = creatorInputHidden(model);
+  const noteWorkspace = useCreatorNoteWorkspace(model, Boolean(hidden));
+  if (noteWorkspace.editor)
+    return <div className={creatorInputClassName(model, Boolean(hidden))}>{noteWorkspace.editor}</div>;
   return (
     <AssetBreakdownSourceFormProvider sourceFormId={sourceFormId}>
       <PasteDropSurface
-        disabled={generation.referenceImport.referenceImporting}
+        respectEditableImagePaste
+        disabled={Boolean(hidden) || generation.referenceImport.referenceImporting || videos.importing}
         onImages={(files, source, sourceUrl) => {
-          if (projection.newCreationSurface) draftInput.navigation.selectCreationStartMode('image');
           void generation.referenceImport.importReferenceFiles(files, source, sourceUrl);
         }}
         onClipboardImage={(sourceUrl) => {
-          if (projection.newCreationSurface) draftInput.navigation.selectCreationStartMode('image');
           void generation.referenceImport.importClipboardReference(sourceUrl);
         }}
-        onVideo={(file, source) => {
-          if (!projection.newCreationSurface) return;
-          draftInput.navigation.selectCreationStartMode('video-document');
-          selection.setVideoCreationRequest({ file, source });
-        }}
+        onVideos={(files, source, sourceUrl) => void videos.importFiles(files, source, sourceUrl)}
         onText={document.appendText}
         overlay={
           projection.newCreationSurface ? (
             <div className="flex items-center gap-3 text-muted-foreground">
               <ImageIcon className="size-8" />
+              <VideoIcon className="size-8" />
               <FileTextIcon className="size-8" />
             </div>
           ) : (
             <ImageIcon className="size-8 text-muted-foreground" />
           )
         }
-        className={
-          hidden
-            ? 'hidden'
-            : cn(
-                app.promptFullWindow || projection.panes.multiPane || projection.panes.compactPanel === 'creator'
-                  ? 'flex'
-                  : 'hidden',
-                'relative min-h-0 min-w-0 flex-col overflow-hidden bg-background',
-                projection.showOutputPane && !app.promptFullWindow && 'border-r',
-              )
-        }
+        className={creatorInputClassName(model, Boolean(hidden))}
       >
         <CreatorInputHeader
           albums={app.data.albums}
@@ -308,6 +337,15 @@ export function CreatorInputWorkspace({ model, sourceFormId }: Props) {
           derived={derivedHeader(model)}
           experiment={workbench.seriesExperimentContext}
           inspirationSelected={Boolean(selected.selectedInspirationStash)}
+          desktopNoteAction={
+            selected.selectedInspirationStashId ? (
+              <PinNoteButton
+                stashId={selected.selectedInspirationStashId}
+                saved={workflow.inspiration.savedContentKey === workflow.inspiration.currentContentKey}
+                notify={app.notify}
+              />
+            ) : undefined
+          }
           inputStashBusy={draftInput.inputStashes.busy}
           labels={{
             importedPrompt: messages.creator.comparison.importedPrompt,
@@ -328,18 +366,43 @@ export function CreatorInputWorkspace({ model, sourceFormId }: Props) {
           viewingExperimentBranch={workbench.viewingExperimentBranch}
           onBackToSource={() => backToSource(model)}
           onChangeAlbum={(albumId) => void draftInput.navigation.changeNewCreationAlbum(albumId)}
-          onChooseVersion={generation.hydration.chooseVersion}
+          onChooseVersion={async (versionId) => {
+            if (versionId === generation.hydration.versionId) return;
+            if (await draftInput.recovery.flush()) generation.hydration.chooseVersion(versionId);
+          }}
           onCreateAlbum={(parent) => library.setCreateAlbumRequest({ parent, destination: 'NEW_CREATION' })}
           onCreateDerivedScheme={() => {
-            if (selected.selectedSocialPost) {
-              void workflow.content.derivedVisual.createSocialCoverScheme(selected.selectedSocialPost);
+            if (workbench.editorDerivedVisual) {
+              void workflow.content.derivedVisual.createDerivedScheme(workbench.editorDerivedVisual.id);
             }
           }}
-          onOpenExternalImport={() => navigation.external.openExternalCreation(selection.targetAlbumId)}
           onOpenInputStashes={() => void draftInput.inputStashes.openDialog()}
           onRenameSeries={() => library.setRenameSeriesOpen(true)}
           onResumeDerivedVisual={(visualId) => void workflow.content.derivedVisual.resumeDerivedVisual(visualId)}
           onSelectImageMode={() => draftInput.navigation.selectCreationStartMode('image')}
+        />
+        {noteWorkspace.back}
+        <CreationVideoAttachments
+          videos={document.videoAttachments}
+          locale={app.locale}
+          importing={videos.importing}
+          onRemove={(materialId) =>
+            document.updateVideoAttachments((current) => current.filter((video) => video.materialId !== materialId))
+          }
+          onCreateDocument={async (video) => {
+            const capturedScope = videoScopeKey;
+            if (!(await draftInput.recovery.flush())) return;
+            if (selection.creationMode === 'new') await selection.creationDraftSession.saveDraftNow();
+            if (videoScopeRef.current !== capturedScope) return;
+            const created = await window.desktopApi.videoDocumentCreate({
+              videoMaterialId: video.materialId,
+              title: video.name.replace(/\.[^.]+$/, '') || video.name,
+              titleLocale: app.locale,
+              albumId: selection.targetAlbumId,
+            });
+            if (videoScopeRef.current === capturedScope) app.onSelectDocument(created.id, created.albumId);
+          }}
+          notify={app.notify}
         />
         {projection.newCreationSurface && selection.creationStartMode === 'video-document' ? (
           <VideoDocumentCreationStarter
@@ -360,6 +423,9 @@ export function CreatorInputWorkspace({ model, sourceFormId }: Props) {
             promptProfileId={generation.configuration.promptProfileId}
             prompt={document.manualPrompt}
             promptNodes={document.promptNodes}
+            document={document.document}
+            onImageImported={(image) => appendPromptImage(model, image)}
+            onImageImportError={() => app.notify(messages.contentEditor.imageImportFailed)}
             terms={app.data.terms}
             palettes={app.data.wordPalettes}
             appliedPalettes={document.appliedPalettes}
@@ -373,15 +439,15 @@ export function CreatorInputWorkspace({ model, sourceFormId }: Props) {
             generationTargets={generation.generationTargets}
             generationCount={projection.generationCount}
             readiness={projection.readiness}
-            stashReady={hasPromptNodes(document.promptNodes)}
+            stashReady={hasPromptNodes(document.promptNodes) || document.referenceAssets.length > 0}
             stashing={workflow.inspiration.busy}
             stashed={
               Boolean(selected.selectedInspirationStashId) &&
               workflow.inspiration.savedContentKey === workflow.inspiration.currentContentKey
             }
             starting={workflow.starting || navigation.promptVersion.creating}
-            planning={selection.creationMode === 'new' && !workbench.editorSocialCoverVisual}
-            startReady={Boolean(generation.promptResolution.livePrompt.trim())}
+            planning={selection.creationMode === 'new' && !workbench.editorDerivedVisual}
+            startReady={hasPromptNodes(document.promptNodes) || document.referenceAssets.length > 0}
             fullWindow={app.promptFullWindow}
             annotationRefinement={outputUi.annotationRefinement}
             materialPicker={accessories.material}
@@ -391,7 +457,19 @@ export function CreatorInputWorkspace({ model, sourceFormId }: Props) {
             videoPicker={accessories.video}
             references={accessories.references}
             sourceContext={accessories.sourceContext}
-            showStashAction={!workbench.editorSocialCoverVisual}
+            titleInput={
+              selection.creationMode === 'new' && !workbench.editorDerivedVisual ? (
+                <Input
+                  value={generation.title}
+                  aria-label={messages.creator.starter.title}
+                  placeholder={messages.creator.starter.title}
+                  maxLength={200}
+                  className="h-11 shrink-0 rounded-none border-0 bg-transparent px-12 text-lg font-medium focus-visible:ring-inset focus-visible:ring-offset-0"
+                  onChange={(event) => generation.setTitle(event.target.value)}
+                />
+              ) : undefined
+            }
+            showStashAction={!workbench.editorDerivedVisual}
             experiments={accessories.experiments}
             onPromptNodesChange={document.updatePromptDocument}
             onOpenTerm={generation.dictionaryMaterials.openTerm}
@@ -409,6 +487,7 @@ export function CreatorInputWorkspace({ model, sourceFormId }: Props) {
             onGenerate={() => void generationRuntime.launch.generate()}
             onStashInspiration={() => void workflow.inspiration.stash()}
             onStartCreation={workflow.content.outcome.start}
+            onOpenExternalImport={() => navigation.external.openExternalCreation(selection.targetAlbumId)}
             onChooseVideoDocument={() => draftInput.navigation.selectCreationStartMode('video-document')}
             onFullWindowChange={draftInput.navigation.changePromptFullWindow}
           />
@@ -424,113 +503,17 @@ export function CreatorInputWorkspace({ model, sourceFormId }: Props) {
             notify={app.notify}
           />
         )}
-        <CreatorInputDialogs model={model} />
       </PasteDropSurface>
     </AssetBreakdownSourceFormProvider>
   );
 }
 
-function CreatorInputDialogs({ model }: Pick<Props, 'model'>) {
-  const { app, draftInput, generation, library, navigation, selection, workbench, workflow } = model;
-  const { messages } = useI18n();
-  const assistant = workflow.assistant.workflows;
-  return (
-    <CreatorDialogHost
-      albumDefaults={library.settingsAlbum}
-      appliedPalettes={generation.promptDocument.appliedPalettes}
-      confirmationDialog={library.lifecycle.confirmationDialog}
-      createAlbumBusy={library.busy}
-      createAlbumLabels={{
-        title: messages.gallery.albums.createTitle,
-        childTitle: messages.gallery.albums.createChild,
-        name: messages.gallery.albums.name,
-        placeholder: messages.gallery.albums.namePlaceholder,
-        cancel: messages.gallery.albums.cancel,
-        create: messages.gallery.albums.create,
-        operationFailed: messages.gallery.albums.operationFailed,
-      }}
-      createAlbumRequest={library.createAlbumRequest}
-      currentInput={draftInput.draftProjection.currentInput}
-      data={app.data}
-      defaultPromptLocale={app.defaultPromptLocale}
-      direction={{
-        open: assistant.direction.dialog.open,
-        directions: assistant.direction.dialog.directions,
-        targets: assistant.direction.dialog.targets,
-        routes: generation.configuration.imageGenerationRoutes,
-        commonConstraints: assistant.direction.dialog.commonConstraints,
-        assumptions: assistant.direction.dialog.assumptions,
-        objective: assistant.direction.dialog.objective,
-        canvasLabel: assistant.direction.dialog.canvasLabel,
-        remoteScope: assistant.direction.dialog.remoteScope,
-        busy: assistant.direction.starting,
-        error: assistant.direction.error,
-        onOpenChange: assistant.direction.changeDialogOpen,
-        onConfirm: assistant.direction.start,
-      }}
-      distilledPalette={library.distilledPalette}
-      distillation={{
-        open: assistant.distillation.dialogOpen,
-        locale: app.locale,
-        proposals: assistant.distillation.proposals,
-        busy: assistant.distillation.busy,
-        error: assistant.distillation.error,
-        acceptingProposalId: assistant.distillation.acceptingProposalId,
-        onOpenChange: assistant.distillation.changeDialogOpen,
-        onCreate: assistant.distillation.create,
-        onAccept: assistant.distillation.accept,
-      }}
-      externalAlbumId={navigation.external.externalCreationAlbumId}
-      externalOpen={navigation.external.externalCreationOpen}
-      inputStashBusy={draftInput.inputStashes.busy}
-      inputStashes={draftInput.inputStashes.stashes}
-      inputStashOpen={draftInput.inputStashes.dialogOpen}
-      locale={app.locale}
-      notify={app.notify}
-      outputImport={generation.outputImport}
-      paletteInspector={generation.dictionaryMaterials.paletteInspector}
-      paletteToApply={generation.dictionaryMaterials.paletteToApply}
-      recipeSavedMessage={messages.creator.workbench.recipeSaved}
-      renameAlbum={library.renameAlbum}
-      renameArticle={library.renameArticle}
-      renameDocument={library.renameDocument}
-      renameSeriesOpen={library.renameSeriesOpen}
-      series={selection.creationMode === 'existing' ? workbench.series : undefined}
-      seriesPrompt={generation.hydration.version?.finalPrompt ?? generation.promptResolution.livePrompt}
-      onAlbumDefaultsChange={library.setSettingsAlbum}
-      onAlbumDefaultsSaved={app.refreshAlbums}
-      onApplyPalette={generation.dictionaryMaterials.applyPalette}
-      onCreateAlbum={library.actions.createAlbum}
-      onCreateAlbumRequestChange={library.setCreateAlbumRequest}
-      onCreateExternal={navigation.external.createExternalCreation}
-      onDistilledPaletteChange={library.setDistilledPalette}
-      onExternalOpenChange={(open) => {
-        if (!open) navigation.external.openExternalCreation(undefined);
-      }}
-      onInputStashOpenChange={draftInput.inputStashes.changeDialogOpen}
-      onPaletteApplicationDismiss={generation.dictionaryMaterials.dismissPaletteApplication}
-      onPaletteInspectorChange={generation.dictionaryMaterials.setPaletteInspector}
-      onPaletteSaved={generation.dictionaryMaterials.paletteSaved}
-      onRefresh={app.refresh}
-      onRenameAlbum={library.actions.renameAlbum}
-      onRenameAlbumChange={library.setRenameAlbum}
-      onRenameArticle={workflow.content.article.renameArticle}
-      onRenameArticleChange={library.setRenameArticle}
-      onRenameDocument={library.actions.renameDocument}
-      onRenameDocumentChange={library.setRenameDocument}
-      onRenameSeriesOpenChange={library.setRenameSeriesOpen}
-      onRestoreInputStash={draftInput.inputStashes.restoreStash}
-      onStashCurrentInput={draftInput.inputStashes.createStash}
-    />
-  );
-}
-
 function derivedHeader(model: CreatorScreenViewModel) {
-  const visual = model.workbench.editorSocialCoverVisual;
+  const visual = model.workbench.editorDerivedVisual;
   if (!visual) return null;
   return {
-    appliedAssetId: model.selection.contentSelection.selectedSocialPost?.content.coverAssetId ?? null,
-    creating: model.workflow.content.derivedVisual.creatingSocialCoverScheme,
+    appliedAssetId: model.workbench.appliedDerivedVisualAssetId,
+    creating: model.workflow.content.derivedVisual.creatingDerivedScheme,
     schemeIndex: model.workbench.editorDerivedVisualSchemeIndex,
     schemes: model.workbench.editorDerivedVisualSchemes,
     sourceTitle: model.workbench.editorDerivedVisualSourceTitle,
@@ -548,4 +531,86 @@ function backToSource(model: CreatorScreenViewModel) {
 
 function hasPromptNodes(nodes: CreatorScreenViewModel['generation']['promptDocument']['promptNodes']) {
   return nodes.some((node) => node.kind !== 'TEXT' || Boolean(node.text.trim()));
+}
+
+function useCreatorNoteWorkspace(model: CreatorScreenViewModel, hidden: boolean) {
+  const { app, selection, workflow } = model;
+  const { messages } = useI18n();
+  const selected = selection.contentSelection;
+  const [materialEditorId, setMaterialEditorId] = useState<string | null>(null);
+  let editor: ReactNode = null;
+  if (selected.selectedInspirationStash && !hidden && materialEditorId !== selected.selectedInspirationStash.id)
+    editor = (
+      <NoteContentEditor
+        libraryId={app.data.spaceId}
+        key={selected.selectedInspirationStash.id}
+        stash={selected.selectedInspirationStash}
+        albums={app.data.albums}
+        refresh={app.refresh}
+        notify={app.notify}
+        onEditMaterials={async (note) => {
+          const stash = selected.selectedInspirationStash!;
+          const assets = await window.desktopApi.materialImageAssetsResolve({
+            targets: note.references.map((reference) => ({ kind: 'IMAGE_ASSET', imageAssetId: reference.assetId })),
+          });
+          workflow.inspiration.restore({
+            ...stash,
+            contentHash: note.contentHash,
+            title: note.title,
+            displayTitle: note.displayTitle,
+            albumId: note.albumId,
+            content: {
+              ...stash.content,
+              schemaVersion: note.document ? 2 : 1,
+              document: note.document,
+              title: note.title,
+              format: note.format,
+              manualPrompt: note.text,
+              promptNodes: replaceContentPromptText(stash.content.promptNodes, note.text),
+              referenceAssets: assets,
+              referenceAssetIds: assets.map((asset) => asset.id),
+            },
+          });
+          setMaterialEditorId(note.stashId);
+        }}
+      />
+    );
+
+  return {
+    editor,
+    back: selected.selectedInspirationStash && (
+      <Button
+        variant="ghost"
+        size="sm"
+        className="self-start"
+        disabled={workflow.inspiration.savedContentKey !== workflow.inspiration.currentContentKey}
+        onClick={() => setMaterialEditorId(null)}
+      >
+        {messages.desktopPetals.document.body}
+      </Button>
+    ),
+  };
+}
+
+function creatorInputHidden({ app, selection, workbench }: CreatorScreenViewModel) {
+  const selected = selection.contentSelection;
+  return (
+    app.documentWorkspaceActive ||
+    app.comparisonFullWindow ||
+    selected.selectedAlbum ||
+    (selected.selectedArticle && !workbench.editorDerivedVisual) ||
+    selected.selectedEvaluationSuite ||
+    selected.selectedImageBreakdown ||
+    (selected.selectedSocialPost && !workbench.editorDerivedVisual)
+  );
+}
+
+function creatorInputClassName({ app, projection }: CreatorScreenViewModel, hidden: boolean) {
+  return cn(
+    hidden || !(app.promptFullWindow || projection.panes.multiPane || projection.panes.compactPanel === 'creator')
+      ? 'hidden'
+      : 'flex',
+    'relative min-h-0 min-w-0 flex-col overflow-hidden bg-background',
+    projection.showOutputPane && !app.promptFullWindow && 'border-r',
+  );
 }

@@ -1,13 +1,7 @@
-import {
-  ArrowRightIcon,
-  ChevronDownIcon,
-  CircleAlertIcon,
-  CopyIcon,
-  FileTextIcon,
-  LoaderCircleIcon,
-  PanelsTopLeftIcon,
-  PlusIcon,
-} from 'lucide-react';
+import { useI18n } from '@/renderer/i18n/useI18n';
+import { CreationWorkNavigation } from '@/renderer/components/creator/CreationWorkNavigation';
+import type { ReactNode } from 'react';
+import { ChevronDownIcon, CircleAlertIcon, CopyIcon, FileTextIcon, LoaderCircleIcon, PlusIcon } from 'lucide-react';
 import { Button } from '@/renderer/components/ui/button';
 import {
   DropdownMenu,
@@ -21,6 +15,8 @@ import { CompanionHandoffMenu } from '@/renderer/features/browser-companion/Comp
 import type { BrowserCompanionTarget, BrowserCompanionWatermarkSelection } from '@/shared/contracts';
 
 interface Props {
+  pinAction?: ReactNode;
+  conflicted?: boolean;
   creatingForm: boolean;
   generatingCover: boolean;
   dirty: boolean;
@@ -28,7 +24,6 @@ interface Props {
   handoffTargets: readonly BrowserCompanionTarget[];
   watermarkAvailable: boolean;
   onCreateArticle(copySourceContent: boolean): void;
-  onCreateSocialPost(copySourceContent: boolean): void;
   onHandoff(target: BrowserCompanionTarget, watermark: BrowserCompanionWatermarkSelection): void;
   onRetrySave(): void;
   saveFailed: boolean;
@@ -38,47 +33,53 @@ interface Props {
 }
 
 function SocialPostSaveStatus({
+  conflicted,
   dirty,
   onRetrySave,
   saveFailed,
   saving,
-  zh,
 }: {
+  conflicted?: boolean;
   dirty: boolean;
   onRetrySave(): void;
   saveFailed: boolean;
   saving: boolean;
-  zh: boolean;
 }) {
+  const socialCopy = useI18n().messages.creator.socialPostEditor;
+  if (conflicted)
+    return (
+      <span role="status" title={socialCopy.saveConflict}>
+        <CircleAlertIcon className="size-4 text-destructive" />
+      </span>
+    );
   if (!saving && !saveFailed && !dirty) return null;
 
   return (
     <div className="grid size-6 place-items-center text-muted-foreground">
       {saving ? (
-        <LoaderCircleIcon className="size-4 animate-spin" aria-label={zh ? '正在自动保存' : 'Autosaving'} />
+        <LoaderCircleIcon className="size-4 animate-spin" aria-label={socialCopy.saving} />
       ) : saveFailed ? (
         <Button
           type="button"
           variant="ghost"
           size="icon-sm"
           className="size-6 text-destructive"
-          title={zh ? '自动保存失败，点击重试' : 'Autosave failed. Retry'}
-          aria-label={zh ? '重试自动保存' : 'Retry autosave'}
+          title={socialCopy.saveFailed}
+          aria-label={socialCopy.retrySave}
           onClick={onRetrySave}
         >
           <CircleAlertIcon className="size-4" />
         </Button>
       ) : (
-        <span
-          className="size-1.5 rounded-full bg-muted-foreground"
-          title={zh ? '等待自动保存' : 'Waiting to autosave'}
-        />
+        <span className="size-1.5 rounded-full bg-muted-foreground" title={socialCopy.saveWaiting} />
       )}
     </div>
   );
 }
 
 export function SocialPostHeader({
+  pinAction,
+  conflicted,
   creatingForm,
   generatingCover,
   dirty,
@@ -86,7 +87,6 @@ export function SocialPostHeader({
   handoffTargets,
   watermarkAvailable,
   onCreateArticle,
-  onCreateSocialPost,
   onHandoff,
   onRetrySave,
   saveFailed,
@@ -94,53 +94,55 @@ export function SocialPostHeader({
   title,
   zh,
 }: Props) {
+  const socialCopy = useI18n().messages.creator.socialPostEditor;
   return (
     <header className="flex h-14 shrink-0 items-center justify-between gap-3 border-b px-4">
       <div className="flex min-w-0 items-center gap-2">
-        <span className="truncate font-semibold">{title || (zh ? '未命名贴图' : 'Untitled post')}</span>
-        <span className="text-xs text-muted-foreground">{zh ? '贴图' : 'Social post'}</span>
-        <SocialPostSaveStatus dirty={dirty} onRetrySave={onRetrySave} saveFailed={saveFailed} saving={saving} zh={zh} />
+        <span className="truncate font-semibold">{title || socialCopy.untitledPost}</span>
+        <span className="text-xs text-muted-foreground">{socialCopy.socialPost}</span>
+        <SocialPostSaveStatus
+          conflicted={conflicted}
+          dirty={dirty}
+          onRetrySave={onRetrySave}
+          saveFailed={saveFailed}
+          saving={saving}
+        />
       </div>
-      <div className="flex items-center gap-1">
+      <div className="flex shrink-0 items-center gap-1">
+        {pinAction}
+        <CreationWorkNavigation />
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <Button
               type="button"
+              data-action="content-create-menu"
               variant="outline"
               size="sm"
               disabled={creatingForm || generatingCover}
               aria-busy={creatingForm || undefined}
             >
               {creatingForm ? <LoaderCircleIcon className="size-4 animate-spin" /> : <PlusIcon className="size-4" />}
-              {zh ? '创建' : 'Create'}
+              {socialCopy.create}
               <ChevronDownIcon className="size-3.5" />
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end" className="w-52">
-            <DropdownMenuItem disabled={creatingForm || generatingCover} onSelect={() => onCreateSocialPost(true)}>
+            <DropdownMenuItem
+              data-action="copy-social-post-to-manuscript"
+              disabled={creatingForm || generatingCover}
+              onSelect={() => onCreateArticle(true)}
+            >
               <DropdownMenuIcon>
                 <CopyIcon />
               </DropdownMenuIcon>
-              {zh ? '克隆贴图' : 'Fork social post'}
-            </DropdownMenuItem>
-            <DropdownMenuItem disabled={creatingForm || generatingCover} onSelect={() => onCreateArticle(true)}>
-              <DropdownMenuIcon>
-                <ArrowRightIcon />
-              </DropdownMenuIcon>
-              {zh ? '转为文章' : 'Convert to article'}
+              {socialCopy.forkManuscript}
             </DropdownMenuItem>
             <DropdownMenuSeparator />
-            <DropdownMenuItem disabled={creatingForm || generatingCover} onSelect={() => onCreateSocialPost(false)}>
-              <DropdownMenuIcon>
-                <PanelsTopLeftIcon />
-              </DropdownMenuIcon>
-              {zh ? '新建贴图' : 'New social post'}
-            </DropdownMenuItem>
             <DropdownMenuItem disabled={creatingForm || generatingCover} onSelect={() => onCreateArticle(false)}>
               <DropdownMenuIcon>
                 <FileTextIcon />
               </DropdownMenuIcon>
-              {zh ? '新建文章' : 'New article'}
+              {socialCopy.newManuscript}
             </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>

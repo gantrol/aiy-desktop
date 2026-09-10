@@ -1,10 +1,12 @@
 import { ArchiveIcon, ChevronRightIcon, Trash2Icon } from 'lucide-react';
 import type { MaterialAlbumDto } from '@/shared/contracts';
+import type { PinSource } from '@/shared/contracts/petal-board';
 import { useI18n } from '@/renderer/i18n/useI18n';
 import { MaterialAlbumPreview } from '@/renderer/components/gallery/MaterialAlbumPreview';
 import { useMaterialAlbumMoveActions } from '@/renderer/components/gallery/MaterialAlbumMoveProvider';
 import { Button } from '@/renderer/components/ui/button';
 import { ActionMenuButton, type ActionMenuAction } from '@/renderer/components/ui/action-menu';
+import { PinContentButton } from '@/renderer/features/desktop-petals/PinContentAction';
 
 export function MaterialAlbumHeader({
   album,
@@ -16,6 +18,7 @@ export function MaterialAlbumHeader({
   busy = false,
   onArchive,
   onDelete,
+  notify,
 }: {
   album: MaterialAlbumDto;
   countLabel: string;
@@ -26,9 +29,16 @@ export function MaterialAlbumHeader({
   busy?: boolean;
   onArchive?(album: MaterialAlbumDto): void;
   onDelete?(album: MaterialAlbumDto): void;
+  notify(message: string): void;
 }) {
   const { messages } = useI18n();
   const preview = album.previewAssets[0];
+  const pinSource: PinSource | null =
+    album.kind === 'USER'
+      ? { kind: 'MATERIAL_ALBUM', id: album.id }
+      : album.sourceAlbumId
+        ? { kind: 'ALBUM', id: album.sourceAlbumId }
+        : null;
   const moveActions = useMaterialAlbumMoveActions(album, busy);
   const actions: ActionMenuAction[] = [
     ...moveActions,
@@ -101,11 +111,16 @@ export function MaterialAlbumHeader({
         {pathLabel && <p className="mt-0.5 truncate text-xs text-muted-foreground">{pathLabel}</p>}
         <p className="mt-0.5 text-xs text-muted-foreground">{countLabel}</p>
       </div>
+      {pinSource && (
+        <div className="ml-auto">
+          <PinContentButton source={pinSource} disabled={busy} notify={notify} iconOnly />
+        </div>
+      )}
       {actions.length > 0 && (
         <ActionMenuButton
           actions={actions}
           label={`${messages.gallery.albums.moreActions}: ${album.title}`}
-          className="ml-auto"
+          className={pinSource ? undefined : 'ml-auto'}
         />
       )}
     </div>

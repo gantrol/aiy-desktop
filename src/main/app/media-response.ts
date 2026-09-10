@@ -1,4 +1,4 @@
-import { statSync } from 'node:fs';
+import { stat } from 'node:fs/promises';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { net } from 'electron';
@@ -53,7 +53,7 @@ export async function fetchLocalFile(filePath: string, requestedRange: string | 
   if (!requestedRange) return net.fetch(pathToFileURL(filePath).toString());
   let totalSize = 0;
   try {
-    const stats = statSync(filePath);
+    const stats = await stat(filePath);
     if (!stats.isFile()) return new Response('Not found', { status: 404 });
     totalSize = stats.size;
   } catch {

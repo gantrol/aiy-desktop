@@ -1,5 +1,7 @@
 import { app, BrowserWindow } from 'electron';
+import { trimSurroundingCharacters } from '@/shared/string-boundaries';
 import { AppUpdateRecoveryStore } from '@/main/app/app-update-recovery-store';
+import { isPackagedApplication } from '@/main/app/runtime-mode';
 import type { AppUpdateRecoveryBackend, AppUpdateRecoveryRecord } from '@/main/app/app-update-recovery-store';
 import {
   WindowsStoreUpdateClient,
@@ -24,7 +26,7 @@ interface AppUpdateServiceEnvironment {
 }
 
 function detectUnsupportedReason(): AppUpdateSupportReason | null {
-  if (!app.isPackaged) return 'DEVELOPMENT';
+  if (!isPackagedApplication(app)) return 'DEVELOPMENT';
   if (process.platform !== 'win32') return 'PLATFORM';
   if (!process.windowsStore) return 'NOT_MICROSOFT_STORE';
   return null;
@@ -33,11 +35,10 @@ function detectUnsupportedReason(): AppUpdateSupportReason | null {
 function normalizedErrorCode(error: unknown) {
   const externalCode =
     typeof error === 'object' && error !== null && 'code' in error && typeof error.code === 'string' ? error.code : '';
-  const normalized = externalCode
-    .toUpperCase()
-    .replace(/[^A-Z0-9_]+/g, '_')
-    .replace(/^_+|_+$/g, '')
-    .slice(0, 100);
+  const normalized = trimSurroundingCharacters(externalCode.toUpperCase().replace(/[^A-Z0-9_]+/g, '_'), '_').slice(
+    0,
+    100,
+  );
   return normalized || 'STORE_UPDATE_FAILED';
 }
 

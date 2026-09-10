@@ -23,7 +23,7 @@ import {
 } from '@/renderer/components/gallery/useMaterialImagePickerData';
 import { useI18n } from '@/renderer/i18n/useI18n';
 import { cn } from '@/renderer/lib/utils';
-import { ImageAmbientBackdrop } from '@/renderer/components/media/AmbientImage';
+import { AssetThumbnail } from '@/renderer/components/media/AssetThumbnail';
 
 const ignoreMaterialMutation = () => Promise.resolve();
 
@@ -106,8 +106,9 @@ function MaterialImagePickerSelectionStrip<T extends MaterialImagePickerImage>({
               setDraggingId(null);
             }}
           >
-            <img
-              src={image.mediaUrl}
+            <AssetThumbnail
+              asset={image}
+              size={192}
               alt=""
               className="size-full bg-media-surround-light object-contain"
               draggable={false}
@@ -155,6 +156,7 @@ function MaterialImagePickerCandidate({
       type="button"
       disabled={disabled}
       aria-label={`${chooseLabel}: ${index + 1} · ${asset.width}×${asset.height}`}
+      data-picker-asset-id={asset.id}
       aria-pressed={selected}
       className={cn(
         'relative isolate aspect-[4/3] overflow-hidden rounded-lg border-2 border-transparent bg-surface-sunken outline-none transition-colors hover:border-border-strong focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring',
@@ -162,9 +164,10 @@ function MaterialImagePickerCandidate({
       )}
       onClick={() => onToggle(asset.id)}
     >
-      <ImageAmbientBackdrop src={asset.mediaUrl} loading="lazy" />
-      <img
-        src={asset.mediaUrl}
+      <AssetThumbnail
+        asset={asset}
+        size={512}
+        ambient
         width={asset.width}
         height={asset.height}
         className="relative z-10 size-full object-contain"

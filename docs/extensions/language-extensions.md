@@ -58,6 +58,14 @@ com.example.language.zh-cn/
 
 当前 `language.locale` 只接受 `zh` 或 `en`；`htmlLanguage` 使用 2–35 字符的 BCP 47 标签。外部语言扩展必须把 `catalog` 写为固定文件名 `messages.json`。
 
+## Electron 语言资源与新增语言提醒
+
+AIY 的界面语言包与 Electron/Chromium 自身的语言资源分别维护。Windows 安装包在 `electron-builder.yml` 的 `win.electronLanguages` 中只保留 `en-US`、`zh-CN`；`scripts/verify-store-payload.mjs` 会核对最终包中的对应 `.pak` 文件，并要求保留共享的 `icudtl.dat`。该裁剪不删除 AIY 的英文基准或中文 `messages.json`。
+
+**新增第三种语言时，不能只增加翻译文件或修改 `htmlLanguage`。** 需要同时扩展宿主允许的 locale 契约和语言选择逻辑，维护对应 catalog；若发行版要提供该语言的 Electron 本地化，还需同步更新 `win.electronLanguages`、打包检查中的 `electronLocales` 允许清单及本文说明。保留 `en-US`，不要因新增一种语言恢复打包所有语言，也不要删除 ICU、字体或通用渲染资源。
+
+安装本地语言扩展不会补装 Electron 的 `.pak`，应用内切换语言也不等同于切换所有 Electron 原生界面的语言。发布验收需分别核对应用文案、Electron 本地化及未支持的系统语言下的回退行为；基础启动检查不能替代这些验证。打包规则见[发布输入与安装包边界](../release/packaging-inputs.md#安装包资源优化约束)。
+
 ## catalog 的来源契约
 
 宿主英文 catalog [`src/renderer/i18n/locales/en.ts`](../../src/renderer/i18n/locales/en.ts) 是 key、嵌套结构和函数参数顺序的来源：
@@ -240,6 +248,7 @@ active: (count: number) => `${count} running`;
 
 - manifest 能通过 [manifest v1](manifest.md) 约束。
 - locale 没有与已安装语言插件重复。
+- 新增语言时已核对宿主 locale 契约、Electron 语言允许清单及回退行为；参见[新增语言提醒](#electron-语言资源与新增语言提醒)。
 - 所有英文字符串 key 在 `messages.json` 中是字符串。
 - 所有英文函数 key 都有 `$params` 和 `$template`，参数顺序一致。
 - 零值、空值、布尔值和枚举分支都手动检查过。

@@ -17,7 +17,7 @@ interface AssetFileActionPorts {
 
 export class AssetFileActions {
   constructor(
-    private readonly resolve: (assetId: string) => ResolvedAssetFile | null,
+    private readonly resolve: (assetId: string) => ResolvedAssetFile | null | Promise<ResolvedAssetFile | null>,
     private readonly ports: AssetFileActionPorts,
     private readonly resolveRevealPath?: (
       asset: ResolvedAssetFile,
@@ -25,12 +25,12 @@ export class AssetFileActions {
     ) => string | Promise<string>,
   ) {}
 
-  availability(assetId: string): AssetFileAvailabilityDto {
-    return { available: Boolean(this.resolve(assetId)) };
+  async availability(assetId: string): Promise<AssetFileAvailabilityDto> {
+    return { available: Boolean(await this.resolve(assetId)) };
   }
 
   async copy(assetId: string) {
-    const source = this.require(assetId);
+    const source = await this.require(assetId);
     try {
       if (!this.ports.copyImage) throw new Error('Clipboard is unavailable');
       await this.ports.copyImage(source.absolutePath);
@@ -40,7 +40,7 @@ export class AssetFileActions {
   }
 
   async saveAs(assetId: string): Promise<AssetFileSaveResult> {
-    const source = this.require(assetId);
+    const source = await this.require(assetId);
     const extensions = acceptedAssetExportExtensions(source.mimeType).map((extension) => extension.slice(1));
     let result: SaveDialogResult;
     try {
@@ -61,7 +61,7 @@ export class AssetFileActions {
 
     // Re-resolve immediately before the copy so a deleted or missing source
     // cannot be exported from a stale renderer capability check.
-    const current = this.require(assetId);
+    const current = await this.require(assetId);
     if (path.resolve(current.absolutePath) !== path.resolve(result.filePath)) {
       try {
         await this.ports.copyFile(current.absolutePath, result.filePath);
@@ -73,31 +73,30 @@ export class AssetFileActions {
   }
 
   async reveal(assetId: string, context?: AssetFileRevealContext) {
-    const source = this.require(assetId);
+    const source = await this.require(assetId);
     try {
-      const revealPath = context
-        ? ((await this.resolveRevealPath?.(source, context)) ?? source.absolutePath)
-        : source.absolutePath;
+      const revealPath = await this.resolveRevealPath?.(source, context ?? { kind: 'ALL_MATERIALS' });
+      if (!revealPath) throw new Error('Readable asset directory unavailable');
       this.ports.showItemInFolder(revealPath);
     } catch {
       throw new Error('Unable to show the image in the file manager');
     }
   }
 
-  async open(assetId: string) {
-    const source = this.require(assetId);
+  async open(assetId: string, context?: AssetFileRevealContext) {
+    const source = await this.require(assetId);
     try {
-      // Opening does not expose a directory. Use the immutable source so an
-      // asset with several album or term projections is still unambiguous.
-      const error = await this.ports.openPath(source.absolutePath);
+      const readablePath = await this.resolveRevealPath?.(source, context ?? { kind: 'ALL_MATERIALS' });
+      if (!readablePath) throw new Error('Readable asset file unavailable');
+      const error = await this.ports.openPath(readablePath);
       if (error) throw new Error('open failed');
     } catch {
       throw new Error('Unable to open the image');
     }
   }
 
-  private require(assetId: string) {
-    const file = this.resolve(assetId);
+  private async require(assetId: string) {
+    const file = await this.resolve(assetId);
     if (!file) throw new Error('Asset file is unavailable');
     return file;
   }

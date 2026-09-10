@@ -27,6 +27,7 @@ import {
 import { creationItemIncludesSeries } from '@/main/database/creations/creation-output-presentation-sql';
 
 const primaryRoles = new Set<CreationFormRole>([
+  'ANIMATION',
   'IMAGE_BREAKDOWN',
   'IMAGE_CREATION',
   'SOCIAL_POST',
@@ -163,6 +164,35 @@ export class CreationItemRepository {
       )
       .get(assetId, assetId, assetId, assetId, assetId, preferredFormId, preferredFormId, preferredFormId) as
       JsonMap | undefined;
+    return row ? formDto(row) : null;
+  }
+
+  findSourceFormForImageSeries(seriesId: string): CreationFormDto | null {
+    const row = this.db
+      .prepare(
+        `WITH owner_forms AS (
+          SELECT form.*, series.id AS owner_series_id
+          FROM creation_forms form
+          LEFT JOIN derived_visuals visual ON form.entity_type='DERIVED_VISUAL' AND visual.id=form.entity_id
+          JOIN prompt_series series ON series.id=CASE
+            WHEN form.entity_type='PROMPT_SERIES' THEN form.entity_id ELSE visual.prompt_series_id END
+            AND series.deleted_at IS NULL
+          JOIN creation_items item ON item.id=form.creation_item_id
+            AND item.archived_at IS NULL AND item.deleted_at IS NULL
+          WHERE form.deleted_at IS NULL AND (form.entity_type='DERIVED_VISUAL'
+            OR (form.entity_type='PROMPT_SERIES' AND form.role='IMAGE_CREATION'))
+        ), candidates AS (
+          SELECT owner_forms.*, CASE WHEN owner_series_id=@seriesId THEN 0 ELSE 1 END AS match_priority
+          FROM owner_forms WHERE ${creationItemIncludesSeries('owner_series_id', '@seriesId')}
+        ), preferred AS (
+          SELECT * FROM candidates WHERE match_priority=(SELECT MIN(match_priority) FROM candidates)
+        )
+        SELECT * FROM preferred
+        WHERE (SELECT COUNT(DISTINCT creation_item_id) FROM preferred)=1
+        ORDER BY CASE WHEN entity_type='DERIVED_VISUAL' THEN 0 ELSE 1 END, sort_order, created_at, id
+        LIMIT 1`,
+      )
+      .get({ seriesId }) as JsonMap | undefined;
     return row ? formDto(row) : null;
   }
 
@@ -527,9 +557,11 @@ export class CreationItemRepository {
         ORDER BY form.creation_item_id, form.sort_order, form.created_at, form.id`,
       )
       .all(JSON.stringify(itemIds)) as JsonMap[];
+    const activeFormIds = new Set(forms.map((row) => text(row.id)));
     const formsByItem = new Map<string, CreationFormDto[]>();
     for (const row of forms) {
-      const form = formDto(row);
+      const sourceFormId = row.source_form_id == null ? null : text(row.source_form_id);
+      const form = formDto(sourceFormId && !activeFormIds.has(sourceFormId) ? { ...row, source_form_id: null } : row);
       const values = formsByItem.get(form.creationItemId);
       if (values) values.push(form);
       else formsByItem.set(form.creationItemId, [form]);
@@ -596,6 +628,7 @@ export class CreationItemRepository {
 
   private assertEntityAvailable(entity: CreationFormEntityRef) {
     const table = {
+      GIF_DOCUMENT: 'gif_documents',
       PROMPT_SERIES: 'prompt_series',
       IMAGE_BREAKDOWN: 'image_breakdowns',
       INSPIRATION_STASH: 'inspiration_stashes',

@@ -1,5 +1,6 @@
 import type { App } from 'electron';
 import path from 'node:path';
+import { isPackagedApplication } from '@/main/app/runtime-mode';
 import { NaturalWatermarkConfigurationStore } from '@/main/extensions/natural-watermark/configuration';
 import { NaturalWatermarkCustomLogoStore } from '@/main/extensions/natural-watermark/custom-logo-store';
 import { NaturalWatermarkPreviewImageStore } from '@/main/extensions/natural-watermark/preview-image-store';
@@ -20,7 +21,7 @@ export function createNaturalWatermarkRuntime(app: App, bundledExtensionsPath: s
     new NaturalWatermarkService(
       {
         AIY: {
-          absolutePath: app.isPackaged
+          absolutePath: isPackagedApplication(app)
             ? path.join(process.resourcesPath, 'icon.png')
             : path.join(app.getAppPath(), 'build', 'icon.png'),
           mimeType: 'image/png',

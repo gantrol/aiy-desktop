@@ -1,23 +1,17 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { BootstrapDto, ExtensionDto } from '@/shared/contracts';
-import { localizeExtensionManifest } from '@/shared/extension-localization';
-import { BlocksIcon, LanguagesIcon, PackagePlusIcon, PowerIcon, RefreshCwIcon, Trash2Icon } from 'lucide-react';
-import { Badge } from '@/renderer/components/ui/badge';
+import { PackagePlusIcon, PowerIcon, RefreshCwIcon, Trash2Icon } from 'lucide-react';
 import { Button } from '@/renderer/components/ui/button';
 import { ScrollArea } from '@/renderer/components/ui/scroll-area';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/renderer/components/ui/tabs';
 import { cn } from '@/renderer/lib/utils';
 import { useI18n } from '@/renderer/i18n/useI18n';
-import { DEEPSEEK_API_EXTENSION_ID, FEATURE_DEMO_EXTENSION_ID } from '@/shared/extension-ids';
 import { publishLanguagePluginState } from '@/renderer/i18n/languagePluginState';
 import type { NavigationMode } from '@/renderer/components/app/app-navigation';
 import { DeleteEntityDialog } from '@/renderer/components/app/DeleteEntityDialog';
+import { ExtensionPluginHeader } from '@/renderer/features/extensions/ExtensionPluginHeader';
 import { ExtensionPluginList } from '@/renderer/features/extensions/ExtensionPluginList';
-import {
-  firstGroupedExtensionId,
-  isExtensionCenterItemVisible,
-  visibleExtensionCenterItems,
-} from '@/renderer/features/extensions/extensionPluginGroups';
+import { firstGroupedExtensionId } from '@/renderer/features/extensions/extensionPluginGroups';
 import type { CodexImagesNavigationState } from '@/renderer/features/extensions/codexImageNavigation';
 import { ExtensionFeatureErrorBoundary } from '@/renderer/features/extensions/ExtensionFeatureErrorBoundary';
 import {
@@ -45,15 +39,10 @@ function hasPendingExtensionMutation(busyKey: string, pendingPermissionKeys: Rea
 }
 
 function initialSelectedExtensionId(requestedId: string | null, extensions: readonly ExtensionDto[]) {
-  const visibleExtensions = visibleExtensionCenterItems(extensions);
-  if (
-    requestedId &&
-    requestedId !== FEATURE_DEMO_EXTENSION_ID &&
-    visibleExtensions.some((extension) => extension.manifest.id === requestedId)
-  ) {
+  if (requestedId && extensions.some((extension) => extension.manifest.id === requestedId)) {
     return requestedId;
   }
-  return firstGroupedExtensionId(visibleExtensions);
+  return firstGroupedExtensionId(extensions);
 }
 
 export function ExtensionPluginScreen({
@@ -68,7 +57,7 @@ export function ExtensionPluginScreen({
   notify,
   onOpenCreation,
 }: Props) {
-  const { locale, messages } = useI18n();
+  const { messages } = useI18n();
   const l = messages.extensions;
   const [extensions, setExtensions] = useState<ExtensionDto[]>(() => data.extensions ?? []);
   const appliedBootstrapExtensionsRef = useRef(data.extensions);
@@ -89,15 +78,14 @@ export function ExtensionPluginScreen({
     try {
       if (refreshConnection) await window.desktopApi.codexHealth();
       const next = await window.desktopApi.extensionsList();
-      const visibleNext = visibleExtensionCenterItems(next);
       setExtensions(next);
       publishLanguagePluginState(next);
       const preferredId =
-        requestedId && visibleNext.some((item) => item.manifest.id === requestedId)
+        requestedId && next.some((item) => item.manifest.id === requestedId)
           ? requestedId
-          : selectedId && visibleNext.some((item) => item.manifest.id === selectedId)
+          : selectedId && next.some((item) => item.manifest.id === selectedId)
             ? selectedId
-            : firstGroupedExtensionId(visibleNext);
+            : firstGroupedExtensionId(next);
       setSelectedId(preferredId);
       if (preferredId && preferredId !== requestedId) onSelectedIdChange(preferredId, 'replace');
     } catch (reason) {
@@ -113,27 +101,19 @@ export function ExtensionPluginScreen({
     const next = data.extensions ?? [];
     setExtensions(next);
     setSelectedId((current) => {
-      const visibleNext = visibleExtensionCenterItems(next);
-      return visibleNext.some((extension) => extension.manifest.id === current)
-        ? current
-        : firstGroupedExtensionId(visibleNext);
+      return next.some((extension) => extension.manifest.id === current) ? current : firstGroupedExtensionId(next);
     });
   }, [data.extensions]);
 
   useEffect(() => {
-    if (
-      requestedId !== null &&
-      requestedId !== FEATURE_DEMO_EXTENSION_ID &&
-      visibleExtensionCenterItems(extensions).some((extension) => extension.manifest.id === requestedId)
-    ) {
+    if (requestedId !== null && extensions.some((extension) => extension.manifest.id === requestedId)) {
       setSelectedId(requestedId);
     }
   }, [extensions, requestedId]);
 
-  const visibleExtensions = useMemo(() => visibleExtensionCenterItems(extensions), [extensions]);
   const selected = useMemo(
-    () => visibleExtensions.find((extension) => extension.manifest.id === selectedId) ?? null,
-    [selectedId, visibleExtensions],
+    () => extensions.find((extension) => extension.manifest.id === selectedId) ?? null,
+    [selectedId, extensions],
   );
 
   function setPermissionPending(key: string, pending: boolean) {
@@ -196,7 +176,7 @@ export function ExtensionPluginScreen({
       const installed = result.extensionId
         ? result.extensions.find((extension) => extension.manifest.id === result.extensionId)
         : null;
-      if (installed && isExtensionCenterItemVisible(installed)) {
+      if (installed) {
         setSelectedId(installed.manifest.id);
         onSelectedIdChange(installed.manifest.id);
       }
@@ -217,10 +197,9 @@ export function ExtensionPluginScreen({
       setExtensions(next);
       onExtensionsChange();
       publishLanguagePluginState(next);
-      const visibleNext = visibleExtensionCenterItems(next);
-      const preferredId = visibleNext.some((extension) => extension.manifest.id === uninstallTarget.manifest.id)
+      const preferredId = next.some((extension) => extension.manifest.id === uninstallTarget.manifest.id)
         ? uninstallTarget.manifest.id
-        : firstGroupedExtensionId(visibleNext);
+        : firstGroupedExtensionId(next);
       setSelectedId(preferredId);
       onSelectedIdChange(preferredId, 'replace');
       setUninstallTarget(null);
@@ -262,7 +241,7 @@ export function ExtensionPluginScreen({
         </div>
         <ScrollArea className="min-h-0 flex-1">
           <ExtensionPluginList
-            extensions={visibleExtensions}
+            extensions={extensions}
             selectedId={selectedId}
             onSelect={(extensionId) => {
               setSelectedId(extensionId);
@@ -275,86 +254,59 @@ export function ExtensionPluginScreen({
       <ScrollArea className="@container/extension-detail min-h-0 min-w-0">
         {selected && (
           <article className="mx-auto grid w-full max-w-6xl gap-5 p-4 @5xl/extension-detail:gap-6 @5xl/extension-detail:p-6">
-            <div className="grid grid-cols-[auto_minmax(0,1fr)] items-start gap-x-3 gap-y-3 @4xl/extension-detail:grid-cols-[auto_minmax(0,1fr)_auto] @4xl/extension-detail:gap-x-4">
-              <div className="grid size-10 shrink-0 place-items-center rounded-lg border bg-muted @xl/extension-detail:size-11">
-                {selected.manifest.kind === 'LANGUAGE' ? (
-                  <LanguagesIcon className="size-5" />
-                ) : (
-                  <BlocksIcon className="size-5" />
-                )}
-              </div>
-              <div className="min-w-0 flex-1">
-                <div className="flex flex-wrap items-center gap-2">
-                  <h2 className="text-lg font-semibold @xl/extension-detail:text-xl">
-                    {localizeExtensionManifest(selected.manifest, locale).displayName}
-                  </h2>
-                  <Badge variant="outline">{selected.manifest.version}</Badge>
-                  <Badge variant="outline">{l.kinds[selected.manifest.kind]}</Badge>
-                  <Badge variant={selected.connectionState === 'READY' ? 'default' : 'secondary'}>
-                    {l.connectionStates[selected.connectionState]}
-                  </Badge>
-                </div>
-                <p className="mt-2 hidden text-sm text-muted-foreground @xl/extension-detail:block">
-                  {localizeExtensionManifest(selected.manifest, locale).description}
-                </p>
-                {!(
-                  selected.manifest.id === DEEPSEEK_API_EXTENSION_ID &&
-                  selected.connectionState === 'NEEDS_CONFIGURATION'
-                ) && (
-                  <p className="mt-1 hidden text-xs text-muted-foreground @2xl/extension-detail:block">
-                    {selected.connectionMessage}
-                  </p>
-                )}
-              </div>
-              <div className="col-start-2 flex min-w-0 flex-wrap items-center gap-2 @4xl/extension-detail:col-auto @4xl/extension-detail:flex-nowrap">
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="icon"
-                  aria-label={l.actions.refresh}
-                  title={l.actions.refresh}
-                  disabled={loading || controlsBusy}
-                  onClick={() => void load(true)}
-                >
-                  <RefreshCwIcon className={cn('size-4', loading && 'animate-spin')} />
-                </Button>
-                <Button
-                  type="button"
-                  variant={selected.enabled ? 'outline' : 'default'}
-                  disabled={controlsBusy || selectedIsLastLanguage}
-                  aria-label={selected.enabled ? l.actions.disable : l.actions.enable}
-                  title={
-                    selectedIsLastLanguage
-                      ? l.notices.languageRequired
-                      : selected.enabled
-                        ? l.actions.disable
-                        : l.actions.enable
-                  }
-                  onClick={() => void setEnabled(selected, !selected.enabled)}
-                >
-                  <PowerIcon className="size-4" />
-                  <span className="hidden @lg/extension-detail:inline">
-                    {selected.enabled ? l.actions.disable : l.actions.enable}
-                  </span>
-                </Button>
-                {selected.source === 'LOCAL' && (
+            <ExtensionPluginHeader
+              extension={selected}
+              actions={
+                <>
                   <Button
                     type="button"
-                    variant="destructive"
-                    disabled={controlsBusy}
-                    aria-label={l.actions.uninstall}
-                    title={l.actions.uninstall}
-                    onClick={() => {
-                      setError('');
-                      setUninstallTarget(selected);
-                    }}
+                    variant="ghost"
+                    size="icon"
+                    aria-label={l.actions.refresh}
+                    title={l.actions.refresh}
+                    disabled={loading || controlsBusy}
+                    onClick={() => void load(true)}
                   >
-                    <Trash2Icon className="size-4" />
-                    <span className="hidden @lg/extension-detail:inline">{l.actions.uninstall}</span>
+                    <RefreshCwIcon className={cn('size-4', loading && 'animate-spin')} />
                   </Button>
-                )}
-              </div>
-            </div>
+                  <Button
+                    type="button"
+                    variant={selected.enabled ? 'outline' : 'default'}
+                    disabled={controlsBusy || selectedIsLastLanguage}
+                    aria-label={selected.enabled ? l.actions.disable : l.actions.enable}
+                    title={
+                      selectedIsLastLanguage
+                        ? l.notices.languageRequired
+                        : selected.enabled
+                          ? l.actions.disable
+                          : l.actions.enable
+                    }
+                    onClick={() => void setEnabled(selected, !selected.enabled)}
+                  >
+                    <PowerIcon className="size-4" />
+                    <span className="hidden @lg/extension-detail:inline">
+                      {selected.enabled ? l.actions.disable : l.actions.enable}
+                    </span>
+                  </Button>
+                  {selected.source === 'LOCAL' && (
+                    <Button
+                      type="button"
+                      variant="destructive"
+                      disabled={controlsBusy}
+                      aria-label={l.actions.uninstall}
+                      title={l.actions.uninstall}
+                      onClick={() => {
+                        setError('');
+                        setUninstallTarget(selected);
+                      }}
+                    >
+                      <Trash2Icon className="size-4" />
+                      <span className="hidden @lg/extension-detail:inline">{l.actions.uninstall}</span>
+                    </Button>
+                  )}
+                </>
+              }
+            />
 
             <Tabs
               value={pluginTab}

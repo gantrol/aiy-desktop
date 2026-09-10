@@ -1,8 +1,10 @@
 import type { ContentLifecycleItemDto, ContentLifecycleSubtype, Locale } from '@/shared/contracts';
 import type { MessageCatalog } from '@/renderer/i18n/types';
 import { formatDateTime } from '@/renderer/lib/dateFormat';
+import { mediaThumbnailUrl } from '@/renderer/components/media/mediaThumbnailUrl';
 
 const subtypeMessageKeys = {
+  GIF_DOCUMENT: 'animation',
   CREATION_ALBUM: 'creationAlbum',
   MATERIAL_ALBUM: 'materialAlbum',
   PROMPT_SERIES: 'promptSeries',
@@ -41,5 +43,5 @@ export function lifecycleExpiryLabel(item: ContentLifecycleItemDto, messages: Me
 }
 
 export function lifecycleThumbnailUrl(assetId: string) {
-  return `aiy-media://asset-thumbnail/${encodeURIComponent(assetId)}?size=144`;
+  return mediaThumbnailUrl({ id: assetId }, 144);
 }

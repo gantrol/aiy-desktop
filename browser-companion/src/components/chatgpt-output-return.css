@@ -1,0 +1,54 @@
+[data-aiy-chatgpt-output-return] {
+  position: fixed;
+  z-index: 2147483646;
+  min-height: 30px;
+  padding: 5px 10px;
+  border: 1px solid rgb(255 255 255 / 48%);
+  border-radius: 6px;
+  background: rgb(24 24 21 / 92%);
+  color: #faf9f5;
+  box-shadow: 0 3px 12px rgb(0 0 0 / 18%);
+  font-family:
+    Inter,
+    ui-sans-serif,
+    system-ui,
+    -apple-system,
+    BlinkMacSystemFont,
+    'Segoe UI',
+    sans-serif;
+  font-size: 12px;
+  font-weight: 650;
+  line-height: 18px;
+  cursor: pointer;
+}
+
+[data-aiy-chatgpt-output-return]:hover:not(:disabled) {
+  background: rgb(43 42 37 / 96%);
+}
+
+[data-aiy-chatgpt-output-return]:focus-visible {
+  outline: 2px solid #d59b54;
+  outline-offset: 2px;
+}
+
+[data-aiy-chatgpt-output-return][data-state='busy'] {
+  cursor: wait;
+  opacity: 0.82;
+}
+
+[data-aiy-chatgpt-output-return][data-state='done'] {
+  background: #355b46;
+  cursor: default;
+}
+
+[data-aiy-chatgpt-output-return][hidden] {
+  display: none;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  [data-aiy-chatgpt-output-return] {
+    transition:
+      background-color 120ms ease-out,
+      opacity 120ms ease-out;
+  }
+}

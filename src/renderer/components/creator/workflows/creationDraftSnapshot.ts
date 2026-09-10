@@ -1,3 +1,5 @@
+import type { AppliedWordPalette } from '@/renderer/components/creator/utils';
+import { emptyAlbumCreationDefaults } from '@/shared/album-creation-defaults';
 import type {
   AlbumCreationDefaultsDto,
   CreationDictionaryScopeDto,
@@ -8,10 +10,10 @@ import type {
   Locale,
   TermListItem,
 } from '@/shared/contracts';
-import { emptyAlbumCreationDefaults } from '@/shared/album-creation-defaults';
-import type { AppliedWordPalette } from '@/renderer/components/creator/utils';
+import { blockDocumentAssetIds, blockDocumentImportIds, type BlockDocument } from '@/shared/contracts/block-document';
 
 export interface CreationDraftPromptSnapshot {
+  document?: BlockDocument;
   nodes: CreatorPromptNodeInput[];
   manualPrompt: string;
   selectedTerms: TermListItem[];
@@ -23,6 +25,7 @@ export interface CreationDraftSnapshotSource {
   title: string;
   prompt: CreationDraftPromptSnapshot;
   referenceAssetIds: string[];
+  videoMaterialIds?: string[];
   termPromptLocale: Locale;
   dictionaryScope: CreationDictionaryScopeDto;
   canvasPresetKey: string | null;
@@ -40,7 +43,14 @@ export function creationDraftSaveSnapshot(source: CreationDraftSnapshotSource): 
     title: source.title,
     text: source.prompt.manualPrompt,
     promptNodes: source.prompt.nodes,
-    referenceAssetIds: source.referenceAssetIds,
+    ...(source.prompt.document ? { document: source.prompt.document } : {}),
+    referenceAssetIds: [
+      ...new Set([
+        ...source.referenceAssetIds,
+        ...(source.prompt.document ? blockDocumentAssetIds(source.prompt.document) : []),
+      ]),
+    ],
+    ...(source.videoMaterialIds ? { videoMaterialIds: [...source.videoMaterialIds] } : {}),
     termPromptLocale: source.termPromptLocale,
     termIds: source.prompt.selectedTerms.map((term) => term.id),
     wordPaletteReferences: source.prompt.appliedPalettes.map((reference) => ({
@@ -67,11 +77,17 @@ function paletteReferenceKey(reference: CreationDraftSaveSnapshot['wordPaletteRe
   ]);
 }
 
+// Canonical keys need code-unit ordering, including strings that a locale collates equally.
+function compareSnapshotKeys(left: string, right: string) {
+  if (left === right) return 0;
+  return left < right ? -1 : 1;
+}
+
 function dictionaryScopeKey(scope: CreationDictionaryScopeDto) {
   return JSON.stringify([
     scope.mode,
     scope.includeLocalTerms,
-    scope.sources.map((source) => `${source.packId}:${source.packReleaseId}`).sort(),
+    scope.sources.map((source) => `${source.packId}:${source.packReleaseId}`).sort(compareSnapshotKeys),
   ]);
 }
 
@@ -89,6 +105,8 @@ export function creationDraftSnapshotHasMeaningfulInput(
     snapshot.title.trim() ||
     snapshot.text.trim() ||
     snapshot.referenceAssetIds.length ||
+    (snapshot.document && blockDocumentImportIds(snapshot.document).length > 0) ||
+    snapshot.videoMaterialIds?.length ||
     snapshot.termIds.length ||
     (snapshot.promptNodes ?? []).some(
       (node) => node.kind === 'TERM' || (node.kind === 'TEXT' && Boolean(node.text.trim())),
@@ -96,8 +114,8 @@ export function creationDraftSnapshotHasMeaningfulInput(
   ) {
     return true;
   }
-  const defaultPaletteKeys = resolvedDefaults.recipes.map(paletteReferenceKey).sort();
-  const currentPaletteKeys = snapshot.wordPaletteReferences.map(paletteReferenceKey).sort();
+  const defaultPaletteKeys = resolvedDefaults.recipes.map(paletteReferenceKey).sort(compareSnapshotKeys);
+  const currentPaletteKeys = snapshot.wordPaletteReferences.map(paletteReferenceKey).sort(compareSnapshotKeys);
   if (JSON.stringify(currentPaletteKeys) !== JSON.stringify(defaultPaletteKeys)) return true;
   if (
     snapshot.dictionaryScope &&

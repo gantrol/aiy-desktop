@@ -36,6 +36,27 @@ export interface ProvenanceSourceServiceDefinition {
 
 export const PROVENANCE_MODEL_FAMILIES = [
   {
+    id: 'openai/gpt-image-2.5',
+    name: 'GPT Image 2.5',
+    ownerId: 'openai',
+    group: 'OPENAI',
+    aliases: ['gpt-image-2.5'],
+  },
+  {
+    id: 'openai/gpt-image-2.5-sunburst',
+    name: 'GPT Image 2.5 Sunburst',
+    ownerId: 'openai',
+    group: 'OPENAI',
+    aliases: ['gpt-image-2.5-sunburst', 'GPT Image 2.5 Sunburst · API'],
+  },
+  {
+    id: 'openai/gpt-image-2.5-flare',
+    name: 'GPT Image 2.5 Flare',
+    ownerId: 'openai',
+    group: 'OPENAI',
+    aliases: ['gpt-image-2.5-flare', 'GPT Image 2.5 Flare · API'],
+  },
+  {
     id: 'openai/gpt-image-2',
     name: 'GPT Image 2',
     ownerId: 'openai',
@@ -213,6 +234,9 @@ export const PROVENANCE_MODEL_FAMILIES = [
 ] as const satisfies readonly ProvenanceModelFamilyDefinition[];
 
 const openAiModelFamilyIds = [
+  'openai/gpt-image-2.5',
+  'openai/gpt-image-2.5-sunburst',
+  'openai/gpt-image-2.5-flare',
   'openai/gpt-image-2',
   'openai/gpt-image-1.5',
   'openai/gpt-image-1',
@@ -242,7 +266,12 @@ export const PROVENANCE_SOURCE_SERVICES = [
     group: 'PRODUCT',
     surfaces: ['APP', 'CLI'],
     aliases: ['Codex App', 'Codex App Server', 'Codex CLI', 'Codex ImageGen'],
-    modelFamilyIds: ['openai/gpt-image-2'],
+    modelFamilyIds: [
+      'openai/gpt-image-2.5',
+      'openai/gpt-image-2.5-sunburst',
+      'openai/gpt-image-2.5-flare',
+      'openai/gpt-image-2',
+    ],
   },
   {
     id: 'google/gemini',
@@ -276,7 +305,13 @@ export const PROVENANCE_SOURCE_SERVICES = [
     organizationId: 'openai',
     group: 'OFFICIAL_API',
     surfaces: ['API'],
-    aliases: ['OpenAI API', 'GPT Image 2 · API', OPENAI_IMAGE_PROVIDER_KEY],
+    aliases: [
+      'OpenAI API',
+      'GPT Image 2 · API',
+      'GPT Image 2.5 Sunburst · API',
+      'GPT Image 2.5 Flare · API',
+      OPENAI_IMAGE_PROVIDER_KEY,
+    ],
     modelFamilyIds: openAiModelFamilyIds,
   },
   {

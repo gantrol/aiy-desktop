@@ -12,9 +12,11 @@ export const EXTENSION_PERMISSION = {
   filesystemReadCodexSessionUsage: 'filesystem.read:codex-session-usage',
   filesystemReadCodexThreadContent: 'filesystem.read:codex-thread-content',
   filesystemReadCodexVisualizations: 'filesystem.read:codex-visualizations',
+  filesystemReadMaintenanceGuides: 'filesystem.read:maintenance-guides',
   integrationConnectCodexAppServer: 'integration.connect:codex-app-server',
   libraryCreateCreations: 'library.create:creations',
   libraryReadSelectedReferences: 'library.read:selected-references',
+  libraryReadSelectedContent: 'library.read:selected-content',
   processExecuteAntigravityCli: 'process.execute:antigravity-cli',
 } as const;
 

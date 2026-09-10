@@ -1,5 +1,7 @@
-import { createHash } from 'node:crypto';
-import { ulid } from 'ulid';
+import type { LibraryStorage } from '@/main/database/core/storage';
+import { mediaUrl, now, text, type JsonMap } from '@/main/database/core/values';
+import { CreationItemRepository } from '@/main/database/creations/creation-item-repository';
+import { ContentLifecycleRepository } from '@/main/database/recovery/content-lifecycle-repository';
 import type {
   AssetDto,
   SocialPostContentDto,
@@ -9,16 +11,19 @@ import type {
   SocialPostSaveInput,
   SocialPostSetArchivedInput,
 } from '@/shared/contracts';
+import { assertBlockDocumentReady } from '@/shared/contracts/block-document';
 import {
+  canonicalSocialPostContentJson,
   socialPostContentSchema,
+  socialPostRevisionSaveInputSchema,
   socialPostStoredContentSchema,
   type SocialPostFormAddInput,
   type SocialPostFormCreateInput,
+  type SocialPostRevisionSaveInput,
+  type SocialPostRevisionSaveResult,
 } from '@/shared/contracts/social-post';
-import type { LibraryStorage } from '@/main/database/core/storage';
-import { type JsonMap, mediaUrl, now, text } from '@/main/database/core/values';
-import { CreationItemRepository } from '@/main/database/creations/creation-item-repository';
-import { ContentLifecycleRepository } from '@/main/database/recovery/content-lifecycle-repository';
+import { createHash } from 'node:crypto';
+import { ulid } from 'ulid';
 
 function assetDto(row: JsonMap): AssetDto {
   const id = text(row.id);
@@ -36,6 +41,7 @@ function assetDto(row: JsonMap): AssetDto {
 }
 
 function normalizedContent(input: SocialPostContentInput): SocialPostContentInput {
+  assertBlockDocumentReady(input.document);
   return socialPostContentSchema.parse({
     ...input,
     mediaAssetIds: [...input.mediaAssetIds],
@@ -54,7 +60,7 @@ function parseStoredContent(value: unknown) {
 }
 
 function canonicalContentJson(content: SocialPostContentInput) {
-  return JSON.stringify(content);
+  return canonicalSocialPostContentJson(content);
 }
 
 function contentHash(content: SocialPostContentInput) {
@@ -100,6 +106,11 @@ export class SocialPostRepository {
       if (input.id) {
         if (input.consumeCreationDraftId) throw new Error('An existing social post cannot consume another input');
         const existing = this.activeRow(input.id);
+        if (parseStoredContent(existing.content_json).document && !content.document)
+          throw new Error('BLOCK_DOCUMENT_REQUIRED');
+        if (!input.expectedRevisionId || text(existing.revision_id) !== input.expectedRevisionId) {
+          throw new Error('The social post changed or no reviewed revision was supplied; the saved content was kept');
+        }
         const sourceId =
           existing.source_inspiration_stash_id == null ? null : text(existing.source_inspiration_stash_id);
         if (sourceId !== input.sourceInspirationStashId) throw new Error('A social post source cannot be replaced');
@@ -108,12 +119,13 @@ export class SocialPostRepository {
         if (text(existing.content_hash) !== hash) {
           revisionId = this.insertRevision(input.id, Number(existing.revision_no) + 1, content, hash, timestamp);
         }
-        this.db
+        const updated = this.db
           .prepare(
             `UPDATE social_post_drafts
-            SET current_revision_id = ?, updated_at = ? WHERE id = ?`,
+            SET current_revision_id = ?, updated_at = ? WHERE id = ? AND current_revision_id = ?`,
           )
-          .run(revisionId, timestamp, input.id);
+          .run(revisionId, timestamp, input.id, input.expectedRevisionId);
+        if (updated.changes !== 1) throw new Error('The social post changed during save; the saved content was kept');
         this.creationItems.touchForEntity({ kind: 'SOCIAL_POST', id: input.id }, timestamp);
         this.storage.recordChange(
           'SOCIAL_POST_DRAFT',
@@ -158,6 +170,66 @@ export class SocialPostRepository {
       );
       return this.dto(this.row(id));
     })();
+  }
+
+  saveRevision(raw: SocialPostRevisionSaveInput): SocialPostRevisionSaveResult {
+    const input = socialPostRevisionSaveInputSchema.parse(raw);
+    const hash = createHash('sha256').update(canonicalSocialPostContentJson(input.content)).digest('hex');
+    if (hash !== input.contentHash) throw new Error('Social post content hash does not match the save snapshot');
+    const requestHash = createHash('sha256').update(JSON.stringify(input)).digest('hex');
+    const identity = {
+      postId: input.postId,
+      requestId: input.requestId,
+      sessionEpoch: input.sessionEpoch,
+      draftSeq: input.draftSeq,
+    };
+    return this.db
+      .transaction((): SocialPostRevisionSaveResult => {
+        const receipt = this.db
+          .prepare('SELECT * FROM social_post_save_receipts WHERE request_id = ?')
+          .get(input.requestId) as JsonMap | undefined;
+        if (receipt) {
+          if (text(receipt.request_hash) !== requestHash) throw new Error('SOCIAL_POST_REQUEST_REUSED');
+          const row = this.db
+            .prepare(
+              `SELECT draft.*, revision.id AS revision_id, revision.revision_no,
+            revision.content_json, revision.content_hash
+          FROM social_post_drafts draft JOIN social_post_revisions revision ON revision.draft_id = draft.id
+          WHERE draft.id = ? AND revision.id = ?`,
+            )
+            .get(input.postId, text(receipt.revision_id)) as JsonMap | undefined;
+          if (!row) throw new Error('The saved social post revision is unavailable');
+          return {
+            ...identity,
+            status: 'ACKNOWLEDGED',
+            contentHash: hash,
+            createdRevision: false,
+            post: this.dto(row),
+          };
+        }
+        const currentPost = this.get(input.postId);
+        if (currentPost.status !== 'ACTIVE') throw new Error('The social post is no longer available');
+        if (currentPost.revisionId !== input.expectedRevisionId) {
+          return { ...identity, status: 'CONFLICT', expectedRevisionId: input.expectedRevisionId, currentPost };
+        }
+        const post = this.save({
+          id: currentPost.id,
+          expectedRevisionId: input.expectedRevisionId,
+          albumId: currentPost.albumId,
+          sourceInspirationStashId: currentPost.sourceInspirationStashId,
+          consumeCreationDraftId: null,
+          content: input.content,
+        });
+        const createdRevision = post.revisionId !== currentPost.revisionId;
+        this.db
+          .prepare(
+            `INSERT INTO social_post_save_receipts
+        (request_id, request_hash, post_id, revision_id, created_revision) VALUES (?, ?, ?, ?, ?)`,
+          )
+          .run(input.requestId, requestHash, post.id, post.revisionId, Number(createdRevision));
+        return { ...identity, status: 'ACKNOWLEDGED', contentHash: hash, createdRevision, post };
+      })
+      .immediate();
   }
 
   addForm(input: SocialPostFormAddInput): SocialPostDto {
@@ -365,6 +437,19 @@ export class SocialPostRepository {
       .get(id) as JsonMap | undefined;
     if (!row) throw new Error('Social post is no longer available');
     return row;
+  }
+
+  getRevision(postId: string, revisionId: string): SocialPostDto {
+    const row = this.db
+      .prepare(
+        `SELECT draft.*, revision.id AS revision_id, revision.revision_no,
+      revision.content_json, revision.content_hash FROM social_post_drafts draft
+      JOIN social_post_revisions revision ON revision.draft_id = draft.id
+      WHERE draft.id = ? AND revision.id = ? AND draft.deleted_at IS NULL`,
+      )
+      .get(postId, revisionId) as JsonMap | undefined;
+    if (!row) throw new Error('Social post revision not found');
+    return this.dto(row);
   }
 
   private row(id: string) {

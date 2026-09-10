@@ -316,60 +316,56 @@ export function creationScopeAssetFilter(
   scope: CreationScopeSql,
   relation: CreationRelationFilter,
 ): { predicate: string; parameters: string[] } {
-  const output = `(
-    NOT EXISTS (
-      SELECT 1 FROM prompt_series_output_exclusions scoped_exclusion
-      WHERE scoped_exclusion.series_id = scoped_series.id
-        AND scoped_exclusion.image_asset_id = asset.id
-    ) AND (
-    EXISTS (
-      SELECT 1 FROM generation_runs scoped_run
-      JOIN prompt_versions scoped_version ON scoped_version.id = scoped_run.prompt_version_id
-      WHERE scoped_version.series_id = scoped_series.id
-        AND scoped_run.result_asset_id = asset.id AND scoped_run.status = 'SUCCEEDED'
+  const output = `SELECT scoped_output.asset_id FROM (
+      SELECT scoped_series.id AS series_id, scoped_run.result_asset_id AS asset_id
+      FROM scoped_series
+      JOIN prompt_versions scoped_version ON scoped_version.series_id = scoped_series.id
+      JOIN generation_runs scoped_run ON scoped_run.prompt_version_id = scoped_version.id
+      WHERE scoped_run.status = 'SUCCEEDED' AND scoped_run.result_asset_id IS NOT NULL
         AND NOT EXISTS (
           SELECT 1 FROM generation_output_reviews scoped_review
           WHERE scoped_review.generation_run_id = scoped_run.id AND scoped_review.disposition = 'FAILED'
         )
-    ) OR EXISTS (
-      SELECT 1 FROM creation_output_imports scoped_import
-      WHERE scoped_import.series_id = scoped_series.id
-        AND scoped_import.image_asset_id = asset.id AND scoped_import.deleted_at IS NULL
-    ) OR EXISTS (
-      SELECT 1 FROM image_transform_runs scoped_transform
-      WHERE scoped_transform.series_id = scoped_series.id
-        AND scoped_transform.output_asset_id = asset.id AND scoped_transform.deleted_at IS NULL
-    )
-    )
-  )`;
-  const input = `(
-    EXISTS (
-      SELECT 1 FROM prompt_series scoped_input_series
+      UNION ALL
+      SELECT scoped_series.id, scoped_import.image_asset_id
+      FROM scoped_series
+      JOIN creation_output_imports scoped_import ON scoped_import.series_id = scoped_series.id
+      WHERE scoped_import.deleted_at IS NULL
+      UNION ALL
+      SELECT scoped_series.id, scoped_transform.output_asset_id
+      FROM scoped_series
+      JOIN image_transform_runs scoped_transform ON scoped_transform.series_id = scoped_series.id
+      WHERE scoped_transform.deleted_at IS NULL
+    ) scoped_output
+    WHERE NOT EXISTS (
+      SELECT 1 FROM prompt_series_output_exclusions scoped_exclusion
+      WHERE scoped_exclusion.series_id = scoped_output.series_id
+        AND scoped_exclusion.image_asset_id = scoped_output.asset_id
+    )`;
+  const input = `SELECT scoped_binding.image_asset_id AS asset_id
+      FROM scoped_series
+      JOIN prompt_series scoped_input_series ON scoped_input_series.id = scoped_series.id
       JOIN reference_bindings scoped_binding
         ON scoped_binding.prompt_version_id = scoped_input_series.current_version_id
         AND scoped_binding.source_type = 'DIRECT'
-      WHERE scoped_input_series.id = scoped_series.id AND scoped_binding.image_asset_id = asset.id
-    ) OR EXISTS (
-      SELECT 1 FROM prompt_series scoped_source_series
+      UNION ALL
+      SELECT scoped_source_version.source_image_id AS asset_id
+      FROM scoped_series
+      JOIN prompt_series scoped_source_series ON scoped_source_series.id = scoped_series.id
       JOIN prompt_versions scoped_source_version
-        ON scoped_source_version.id = scoped_source_series.current_version_id
-      WHERE scoped_source_series.id = scoped_series.id
-        AND scoped_source_version.source_image_id = asset.id
-    )
-  )`;
-  const materialIdentity = `EXISTS (
-    SELECT 1 FROM materials scoped_material
-    WHERE scoped_material.kind = 'IMAGE' AND scoped_material.image_asset_id = asset.id
-      AND scoped_material.deleted_at IS NULL AND scoped_material.archived_at IS NULL
-  )`;
-  const visibleInput = `(${input} AND ${materialIdentity})`;
+        ON scoped_source_version.id = scoped_source_series.current_version_id`;
+  const visibleInput = `SELECT scoped_input.asset_id FROM (${input}) scoped_input
+    JOIN materials scoped_material ON scoped_material.image_asset_id = scoped_input.asset_id
+      AND scoped_material.kind = 'IMAGE'
+      AND scoped_material.deleted_at IS NULL AND scoped_material.archived_at IS NULL`;
   const relationship =
-    relation === 'OUTPUT' ? output : relation === 'INPUT' ? visibleInput : `(${output} OR ${visibleInput})`;
+    relation === 'OUTPUT' ? output : relation === 'INPUT' ? visibleInput : `${output} UNION ALL ${visibleInput}`;
   return {
-    predicate: `EXISTS (
-      ${scope.cte}
-      SELECT 1 FROM scoped_series
-      WHERE ${relationship}
+    // Build the scoped asset set once, instead of walking every series for each gallery asset.
+    // Exclude NULL so negating this predicate retains the former NOT EXISTS behavior.
+    predicate: `asset.id IN (
+      ${scope.cte}, scoped_assets(asset_id) AS (${relationship})
+      SELECT asset_id FROM scoped_assets WHERE asset_id IS NOT NULL
     )`,
     parameters: scope.parameters,
   };
@@ -379,36 +375,23 @@ function creationContentAssetFilter(
   scope: CreationContentScopeSql,
   relation: CreationRelationFilter,
 ): { predicate: string; parameters: string[] } {
-  const output = `(
-    EXISTS (
-      SELECT 1 FROM scoped_social_posts post
+  const output = `SELECT media.value AS asset_id FROM scoped_social_posts post
       JOIN social_post_revisions revision ON revision.id = post.current_revision_id
       JOIN json_each(revision.content_json, '$.mediaAssetIds') media
-      WHERE media.value = asset.id
-    ) OR EXISTS (
-      SELECT 1 FROM scoped_articles article
+      UNION ALL
+      SELECT json_extract(binding.value, '$.assetId') AS asset_id FROM scoped_articles article
       JOIN article_revisions revision ON revision.id = article.current_revision_id
-      JOIN json_each(revision.content_json, '$.mediaBindings') binding
-      WHERE json_extract(binding.value, '$.assetId') = asset.id
-    )
-  )`;
-  const materialIdentity = `EXISTS (
-    SELECT 1 FROM materials scoped_material
-    WHERE scoped_material.kind = 'IMAGE' AND scoped_material.image_asset_id = asset.id
-      AND scoped_material.deleted_at IS NULL AND scoped_material.archived_at IS NULL
-  )`;
-  const input = `(
-    EXISTS (
-      SELECT 1 FROM scoped_inspirations inspiration
+      JOIN json_each(revision.content_json, '$.mediaBindings') binding`;
+  const input = `SELECT reference.value AS asset_id FROM scoped_inspirations inspiration
       JOIN json_each(inspiration.input_json, '$.referenceAssetIds') reference
-      WHERE reference.value = asset.id
-    ) AND ${materialIdentity}
-  )`;
-  const relationship = relation === 'OUTPUT' ? output : relation === 'INPUT' ? input : `(${output} OR ${input})`;
+      JOIN materials scoped_material ON scoped_material.image_asset_id = reference.value
+        AND scoped_material.kind = 'IMAGE'
+        AND scoped_material.deleted_at IS NULL AND scoped_material.archived_at IS NULL`;
+  const relationship = relation === 'OUTPUT' ? output : relation === 'INPUT' ? input : `${output} UNION ALL ${input}`;
   return {
-    predicate: `EXISTS (
-      ${scope.cte}
-      SELECT 1 WHERE ${relationship}
+    predicate: `asset.id IN (
+      ${scope.cte}, scoped_content_assets(asset_id) AS (${relationship})
+      SELECT asset_id FROM scoped_content_assets WHERE asset_id IS NOT NULL
     )`,
     parameters: scope.parameters,
   };

@@ -181,7 +181,11 @@ async function imageBase64(filePath: string, maxBytes: number) {
 
 function parsedResult(text: string): ImageBreakdownResult {
   const trimmed = text.trim();
-  const payload = trimmed.startsWith('```') ? trimmed.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '') : trimmed;
+  const withoutOpeningFence = trimmed.startsWith('```') ? trimmed.replace(/^```(?:json)?\s*/i, '') : trimmed;
+  const payload =
+    trimmed.startsWith('```') && withoutOpeningFence.endsWith('```')
+      ? withoutOpeningFence.slice(0, -3).trimEnd()
+      : withoutOpeningFence;
   let value: unknown;
   try {
     value = JSON.parse(payload) as unknown;

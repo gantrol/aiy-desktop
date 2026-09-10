@@ -7,6 +7,7 @@ import { Button } from '@/renderer/components/ui/button';
 import { useI18n } from '@/renderer/i18n/useI18n';
 import { cn } from '@/renderer/lib/utils';
 import { ImageAmbientBackdrop } from '@/renderer/components/media/AmbientImage';
+import { codexGeneratedThumbnailUrl } from '@/renderer/components/media/mediaThumbnailUrl';
 
 export interface CodexImageTaskGroupData {
   threadId: string;
@@ -19,6 +20,7 @@ interface Props {
   group: CodexImageTaskGroupData;
   selectedIds: ReadonlySet<string>;
   busy: boolean;
+  getThumbnailUrl?(image: CodexGeneratedImageDto): string;
   onToggleImage(image: CodexGeneratedImageDto): void;
   onSelectTask(images: readonly CodexGeneratedImageDto[]): void;
   onOpenCodex(threadId: string): void;
@@ -29,13 +31,14 @@ interface Props {
 const CODEX_GENERATED_IMAGE_THUMBNAIL_SIZE = 512;
 
 function codexGeneratedImageThumbnailUrl(image: CodexGeneratedImageDto) {
-  return `aiy-media://codex-generated-thumbnail/${encodeURIComponent(image.id)}?size=${CODEX_GENERATED_IMAGE_THUMBNAIL_SIZE}&revision=${encodeURIComponent(image.modifiedAt)}`;
+  return codexGeneratedThumbnailUrl(image, CODEX_GENERATED_IMAGE_THUMBNAIL_SIZE);
 }
 
 export function CodexImageTaskGroup({
   group,
   selectedIds,
   busy,
+  getThumbnailUrl = codexGeneratedImageThumbnailUrl,
   onToggleImage,
   onSelectTask,
   onOpenCodex,
@@ -136,7 +139,7 @@ export function CodexImageTaskGroup({
           const selectable = image.importable && !image.imported;
           const opensCreation = image.imported && Boolean(image.importedSeriesId);
           const disabled = !selectable && !opensCreation;
-          const thumbnailUrl = codexGeneratedImageThumbnailUrl(image);
+          const thumbnailUrl = getThumbnailUrl(image);
           return (
             <button
               key={image.id}

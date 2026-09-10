@@ -127,7 +127,7 @@ export class ArticleEditorRecoveryStore {
   #checkpoint: RecoveryCheckpoint | null = null;
   #sourceCheckpoint: { sessionEpoch: string; localKey: string | null } | null = null;
   #pendingCheckpoint: RecoveryCheckpoint | null = null;
-  #writeTimer: ReturnType<typeof globalThis.setTimeout> | null = null;
+  readonly #writeTimer = new ContentCheckpointTimer();
   #writeInFlight: Promise<boolean> | null = null;
   #mutationTail: Promise<void> = Promise.resolve();
   #disposed = false;
@@ -303,6 +303,11 @@ export class ArticleEditorRecoveryStore {
     return successful;
   }
 
+  /** A retained copy is independent of this session's acknowledgement cleanup. */
+  retainSource() {
+    this.#sourceCheckpoint = null;
+  }
+
   async flush() {
     if (this.#disposed) return !this.#pendingCheckpoint && !this.#writeInFlight;
     this.#cancelTimer();
@@ -351,9 +356,7 @@ export class ArticleEditorRecoveryStore {
 
   #queueWrite(checkpoint: RecoveryCheckpoint) {
     this.#pendingCheckpoint = checkpoint;
-    this.#cancelTimer();
-    this.#writeTimer = globalThis.setTimeout(() => {
-      this.#writeTimer = null;
+    this.#writeTimer.schedule(() => {
       void this.#writeAfterInFlight();
     }, recoveryWriteIdleMs);
   }
@@ -385,9 +388,8 @@ export class ArticleEditorRecoveryStore {
       })
       .finally(() => {
         if (this.#writeInFlight === pending) this.#writeInFlight = null;
-        if (scheduleTrailing && !this.#disposed && this.#pendingCheckpoint && this.#writeTimer === null) {
-          this.#writeTimer = globalThis.setTimeout(() => {
-            this.#writeTimer = null;
+        if (scheduleTrailing && !this.#disposed && this.#pendingCheckpoint && !this.#writeTimer.pending) {
+          this.#writeTimer.schedule(() => {
             void this.#writeAfterInFlight();
           }, recoveryWriteIdleMs);
         }
@@ -403,8 +405,7 @@ export class ArticleEditorRecoveryStore {
   }
 
   #cancelTimer() {
-    if (this.#writeTimer === null) return;
-    globalThis.clearTimeout(this.#writeTimer);
-    this.#writeTimer = null;
+    this.#writeTimer.cancel();
   }
 }
+import { ContentCheckpointTimer } from '@/renderer/features/content-editor/ContentCheckpointTimer';

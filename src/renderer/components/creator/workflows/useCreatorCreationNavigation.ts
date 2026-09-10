@@ -35,6 +35,7 @@ interface Options {
   notify(message: string): void;
   onComparisonFullWindowChange(open: boolean): void;
   preserveCapturedDraft(snapshot: CreationDraftSaveSnapshot): Promise<unknown>;
+  preserveWorkingInput(): Promise<boolean>;
   referenceAssetCount: number;
   resetInputs(): void;
   restoreAssistant(scope: CreatorAgentScope | null): void;
@@ -82,6 +83,7 @@ export function useCreatorCreationNavigation(options: Options) {
   const hasDraftState = useStableCallback(() => Boolean(options.creationDraftId || options.meaningfulDraftInput));
 
   const preserveBeforeNavigation = useStableCallback(async () => {
+    if (!(await options.preserveWorkingInput())) return false;
     if (options.selectedContent || options.creationMode !== 'new' || !hasDraftState()) return true;
     try {
       await options.saveDraft();
@@ -123,6 +125,7 @@ export function useCreatorCreationNavigation(options: Options) {
   const startNewCreation = useStableCallback(
     async (albumId: string | null = null, mode: NavigationMode | null = 'push', preserveCurrent = true) => {
       const commandRevision = ++commandRevisionRef.current;
+      if (!(await options.preserveWorkingInput())) return false;
       if (preserveCurrent) await preserveCurrentDraft();
       if (commandRevisionRef.current !== commandRevision) return false;
       let draft: CreationDraftDto;
@@ -149,6 +152,7 @@ export function useCreatorCreationNavigation(options: Options) {
 
   const resumeCreationDraft = useStableCallback(async (draftId: string, mode: NavigationMode | null = 'push') => {
     const commandRevision = ++commandRevisionRef.current;
+    if (!(await options.preserveWorkingInput())) return false;
     if (options.creationDraftId !== draftId) void preserveCurrentDraft();
     replaceWithBlankSession(null);
     if (mode) {

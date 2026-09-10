@@ -1,3 +1,4 @@
+import { videoDocumentFileStem } from '@/main/database/video-documents/video-document-list-values';
 import type { VideoDocumentSummaryDto } from '@/shared/contracts';
 import { type JsonMap, mediaUrl, text } from '@/main/database/core/values';
 
@@ -44,6 +45,8 @@ export function videoDocumentSummaryDto(row: JsonMap): VideoDocumentSummaryDto {
   return {
     id: text(row.id),
     title: text(row.title),
+    displayTitle:
+      text(row.title) || videoDocumentFileStem(text(row.source_display_name) || text(row.source_original_name)),
     titleLocale: text(row.title_locale) === 'en' ? 'en' : 'zh',
     status: text(row.status) === 'ARCHIVED' ? 'ARCHIVED' : 'ACTIVE',
     albumId: row.album_id ? text(row.album_id) : null,

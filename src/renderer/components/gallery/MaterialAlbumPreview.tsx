@@ -1,7 +1,7 @@
 import { ImagesIcon, VideoIcon } from 'lucide-react';
 import type { AssetDto } from '@/shared/contracts';
 import { cn } from '@/renderer/lib/utils';
-import { ImageAmbientBackdrop } from '@/renderer/components/media/AmbientImage';
+import { AssetThumbnail } from '@/renderer/components/media/AssetThumbnail';
 import { AssetMedia, isVideoAsset } from '@/renderer/components/media/AssetMedia';
 
 interface Props {
@@ -24,8 +24,7 @@ export function MaterialAlbumPreview({ asset, className, iconClassName, previewV
       {video && !previewVideo ? (
         <VideoIcon className={cn('size-3.5', iconClassName)} />
       ) : asset ? (
-        <>
-          {!video && <ImageAmbientBackdrop src={asset.mediaUrl} loading="lazy" />}
+        video ? (
           <AssetMedia
             asset={asset}
             alt=""
@@ -34,7 +33,9 @@ export function MaterialAlbumPreview({ asset, className, iconClassName, previewV
             className="relative z-10 size-full object-contain"
             muted
           />
-        </>
+        ) : (
+          <AssetThumbnail asset={asset} size={96} ambient className="size-full object-contain" />
+        )
       ) : (
         <ImagesIcon className={cn('size-3.5', iconClassName)} />
       )}

@@ -4,8 +4,8 @@
   "category": "FRONTEND_DESIGN",
   "id": "com.aiy.feature-demo",
   "version": "0.1.0",
-  "displayName": "Feature Demo (Unfinished)",
-  "description": "Unfinished preview of current AIY feature views with local-space data and 2K video export.",
+  "displayName": "Feature Demo",
+  "description": "Preview current AIY feature views with local-space data and 2K video export.",
   "engines": {
     "aiy": "^0.3.0"
   },
@@ -22,12 +22,12 @@
     "defaultLocale": "en",
     "locales": {
       "en": {
-        "displayName": "Feature Demo (Unfinished)",
-        "description": "Unfinished preview of current AIY feature views with local-space data and 2K video export."
+        "displayName": "Feature Demo",
+        "description": "Preview current AIY feature views with local-space data and 2K video export."
       },
       "zh": {
-        "displayName": "演示（未完成）",
-        "description": "未完成：使用当前空间数据演示 AIY 现有功能，并导出为 2K 视频。"
+        "displayName": "演示",
+        "description": "使用当前空间数据演示 AIY 现有功能，并导出为 2K 视频。"
       }
     }
   }

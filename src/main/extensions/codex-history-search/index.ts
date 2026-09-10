@@ -1,12 +1,15 @@
 import { EventEmitter } from 'node:events';
 import os from 'node:os';
 import path from 'node:path';
+import { CODEX_HISTORY_SEARCH_EXTENSION_ID } from '@/shared/extension-ids';
 import type {
   CodexHistoryFilterOptionsInput,
   CodexHistoryIndexState,
   CodexHistoryRefreshInput,
   CodexHistorySearchInput,
   CodexHistoryThreadMessagesInput,
+  CodexHistoryThreadUsage,
+  CodexHistoryThreadUsageInput,
 } from '@/shared/contracts/codex-history-search';
 import {
   CodexHistorySearchCacheDatabase,
@@ -17,6 +20,8 @@ import {
   readCodexHistorySourceSnapshot,
 } from '@/main/extensions/codex-history-search/source-reader';
 import { readCodexHistoryThreadMessages } from '@/main/extensions/codex-history-search/thread-reader';
+
+import { CodexHistoryThreadUsageReader } from '@/main/extensions/codex-history-search/thread-usage';
 
 const SOURCE_REFRESH_INTERVAL_MS = 30_000;
 
@@ -32,12 +37,23 @@ function errorMessage(reason: unknown) {
 }
 
 export class CodexHistorySearch extends EventEmitter {
+  static forApplication(userDataDirectory: string, userTaskThreadIds: () => readonly string[]) {
+    return new CodexHistorySearch(
+      path.join(userDataDirectory, 'extension-data', CODEX_HISTORY_SEARCH_EXTENSION_ID),
+      undefined,
+      userTaskThreadIds,
+    );
+  }
+
   readonly codexHome: string;
   private active = false;
   private databasePromise: Promise<CodexHistorySearchCacheDatabase> | null = null;
   private refreshPromise: Promise<CodexHistoryIndexState> | null = null;
   private queuedRebuildPromise: Promise<CodexHistoryIndexState> | null = null;
   private refreshController: AbortController | null = null;
+  private readonly usageReader = new CodexHistoryThreadUsageReader();
+  private usageThreadId: string | null = null;
+  private usageController: AbortController | null = null;
   private threadMessagesController: AbortController | null = null;
   private progress = 0;
   private lastError: string | null = null;
@@ -47,6 +63,7 @@ export class CodexHistorySearch extends EventEmitter {
   constructor(
     private readonly dataDirectory: string,
     codexHome?: string,
+    private readonly userTaskThreadIds: () => readonly string[] = () => [],
   ) {
     super();
     const configuredHome = codexHome ?? process.env.CODEX_HOME?.trim();
@@ -62,6 +79,7 @@ export class CodexHistorySearch extends EventEmitter {
     if (!active) {
       this.refreshController?.abort();
       this.threadMessagesController?.abort();
+      this.usageController?.abort();
     }
   }
 
@@ -86,6 +104,35 @@ export class CodexHistorySearch extends EventEmitter {
     return database.filterOptions(input);
   }
 
+  cancelThreadUsage(threadId: string) {
+    if (this.usageThreadId === threadId) this.usageController?.abort();
+  }
+
+  async threadUsage(input: CodexHistoryThreadUsageInput): Promise<CodexHistoryThreadUsage | null> {
+    this.assertActive();
+    this.usageController?.abort();
+    const controller = new AbortController();
+    this.usageController = controller;
+    this.usageThreadId = input.threadId;
+    try {
+      const sources = await discoverCodexHistorySources(this.codexHome);
+      controller.signal.throwIfAborted();
+      if (!sources) throw new Error('Codex task databases were not found');
+      const usage = await this.usageReader.read(sources, this.codexHome, input.threadId, controller.signal);
+      controller.signal.throwIfAborted();
+      return usage;
+    } catch (reason) {
+      // Replaced requests and closed views cancel normally; do not reject their IPC invocations.
+      if (controller.signal.aborted && reason instanceof Error && reason.name === 'AbortError') return null;
+      throw reason;
+    } finally {
+      if (this.usageController === controller) {
+        this.usageController = null;
+        this.usageThreadId = null;
+      }
+    }
+  }
+
   async threadMessages(input: CodexHistoryThreadMessagesInput) {
     this.assertActive();
     this.threadMessagesController?.abort();
@@ -108,6 +155,8 @@ export class CodexHistorySearch extends EventEmitter {
   }
 
   async purge() {
+    this.usageController?.abort();
+    this.usageReader.clear();
     this.refreshController?.abort();
     this.threadMessagesController?.abort();
     await this.refreshPromise?.catch(() => undefined);
@@ -120,6 +169,8 @@ export class CodexHistorySearch extends EventEmitter {
   }
 
   async dispose() {
+    this.usageController?.abort();
+    this.usageReader.clear();
     this.active = false;
     this.refreshController?.abort();
     this.threadMessagesController?.abort();
@@ -235,6 +286,7 @@ export class CodexHistorySearch extends EventEmitter {
   private async performRefresh(rebuild: boolean, signal: AbortSignal): Promise<CodexHistoryIndexState> {
     const database = await this.database();
     signal.throwIfAborted();
+    database.userTasks.include(this.userTaskThreadIds());
     const sources = await discoverCodexHistorySources(this.codexHome);
     signal.throwIfAborted();
     if (!sources) {

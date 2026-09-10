@@ -10,6 +10,7 @@ import {
   TRANSITION_SHOWCASE_EXTENSION_ID,
 } from '@/shared/extension-ids';
 import { EXTENSION_HOST_ENGINE_KEY } from '@/shared/product';
+import { EXTENSION_PERMISSION } from '@/shared/extension-permissions';
 import { Badge } from '@/renderer/components/ui/badge';
 import { Checkbox } from '@/renderer/components/ui/checkbox';
 import { AntigravityCliConfiguration } from '@/renderer/features/extensions/AntigravityCliConfiguration';
@@ -24,6 +25,7 @@ import { useI18n } from '@/renderer/i18n/useI18n';
 
 const externalImageApiExtensionIds = new Set<string>(EXTERNAL_IMAGE_API_EXTENSION_IDS);
 const contributionOrder: ExtensionContributionPoint[] = [
+  'contentApplications',
   'deliveryChannels',
   'modelProviders',
   'tools',
@@ -187,7 +189,11 @@ export function ExtensionPluginSettingsPage({
                     disabled={Boolean(busyKey) || permissionBusy || (permission.runtimeScoped && !permission.granted)}
                     onCheckedChange={(checked) => void onPermissionChange(permission.key, checked === true)}
                   />
-                  <span className="min-w-0 flex-1 break-all font-mono text-xs">{permission.key}</span>
+                  <span className="min-w-0 flex-1 break-words text-xs" title={permission.key}>
+                    {permission.key === EXTENSION_PERMISSION.libraryReadSelectedContent
+                      ? messages.desktopPetals.externalApplications.readSelectedContent
+                      : permission.key}
+                  </span>
                   <Badge variant={permission.required ? 'secondary' : 'outline'}>
                     {permission.runtimeScoped ? l.runtimeScoped : permission.required ? l.required : l.optional}
                   </Badge>

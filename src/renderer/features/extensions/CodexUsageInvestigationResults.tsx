@@ -22,6 +22,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/renderer/components/ui/tabs';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/renderer/components/ui/tooltip';
 import { CodexQuotaYieldResults } from '@/renderer/features/extensions/CodexQuotaYieldResults';
+import { CodexModelComparisonResults } from '@/renderer/features/extensions/CodexModelComparisonResults';
 import { CodexUsageSessionLengthResults } from '@/renderer/features/extensions/CodexUsageDetailedStatistics';
 import { CodexUsagePulseMetric as PulseMetric } from '@/renderer/features/extensions/CodexUsagePulseMetric';
 import { CodexUsageServiceTierLabel } from '@/renderer/features/extensions/CodexUsageServiceTierLabel';
@@ -437,6 +438,14 @@ function EconomicsSummary({
         <dt className="flex items-center gap-1.5 text-xs text-muted-foreground">
           <CoinsIcon className="size-3.5" />
           {labels.metrics.creditEquivalent}
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <span tabIndex={0} aria-label={labels.metrics.creditEquivalent} className="inline-flex">
+                <InfoIcon className="size-3" />
+              </span>
+            </TooltipTrigger>
+            <TooltipContent className="max-w-sm">{labels.modelComparison.creditQuota}</TooltipContent>
+          </Tooltip>
         </dt>
         <dd className="text-lg font-semibold tabular-nums @xl/codex-usage:text-xl">
           {investigation.totals.codexCredits === null
@@ -685,6 +694,14 @@ export const CodexUsageInvestigationResults = memo(function CodexUsageInvestigat
       </TabsContent>
 
       <TabsContent value="models" className="grid gap-3 pt-3 @xl/codex-usage:gap-4 @xl/codex-usage:pt-4">
+        <CodexModelComparisonResults
+          analysis={investigation.modelComparison}
+          labels={labels.modelComparison}
+          numbers={formatters.numbers}
+          tokens={formatters.tokens}
+          money={formatters.money}
+          date={formatters.date}
+        />
         <EconomicsSummary
           investigation={investigation}
           labels={labels}

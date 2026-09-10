@@ -108,12 +108,17 @@ export class MediaThumbnailCache {
       return createThumbnailInSandbox(sourcePath, outputPath, size, this.abortController.signal);
     }
 
-    let thumbnail = await nativeImage.createThumbnailFromPath(sourcePath, { width: size, height: size });
+    // System thumbnail providers vary by installed codecs. Rejection and an
+    // empty result both mean the sandboxed still-image decoder must take over.
+    const nativeThumbnail = await nativeImage
+      .createThumbnailFromPath(sourcePath, { width: size, height: size })
+      .catch(() => null);
     this.abortController.signal.throwIfAborted();
-    if (thumbnail.isEmpty()) {
+    if (!nativeThumbnail || nativeThumbnail.isEmpty()) {
       return createThumbnailInSandbox(sourcePath, outputPath, size, this.abortController.signal);
     }
 
+    let thumbnail = nativeThumbnail;
     const dimensions = thumbnail.getSize();
     if (Math.max(dimensions.width, dimensions.height) > size) {
       thumbnail = thumbnail.resize({

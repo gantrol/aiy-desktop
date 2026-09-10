@@ -16,6 +16,7 @@ import { ScrollArea } from '@/renderer/components/ui/scroll-area';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/renderer/components/ui/select';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/renderer/components/ui/tabs';
 import { Textarea } from '@/renderer/components/ui/textarea';
+import { CreationWorkNavigation } from '@/renderer/components/creator/CreationWorkNavigation';
 
 interface Props {
   breakdown: ImageBreakdownDto;
@@ -289,6 +290,7 @@ export function ImageBreakdownWorkspace({ breakdown, routes, locale, refresh, on
           {statusLabel}
         </Badge>
         <div className="ml-auto flex min-w-0 items-center gap-2">
+          <CreationWorkNavigation />
           <Select value={routeId} onValueChange={setRouteId}>
             <SelectTrigger className="w-52" aria-label={copy.title}>
               <SelectValue />

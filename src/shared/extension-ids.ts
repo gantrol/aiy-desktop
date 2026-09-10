@@ -6,6 +6,8 @@ export const CODEX_EXTENSION_ID = CODEX_APP_SERVER_EXTENSION_ID;
 export const CODEX_PROVIDER_ID = 'codex';
 export const CODEX_ASSISTANT_DEFAULT_MODEL_KEY = 'gpt-5.6-luna';
 export const CODEX_ASSISTANT_DEFAULT_REASONING_EFFORT = 'low' as const;
+export const CODEX_GIF_PLANNING_DEFAULT_MODEL_KEY = 'gpt-5.6-luna';
+export const CODEX_GIF_PLANNING_DEFAULT_REASONING_EFFORT = 'low' as const;
 export const CODEX_IMAGE_MODEL_ID = 'gpt-image-2';
 // Keep the historical key on the CLI option: existing drafts and the runs
 // created by the pinned-image workaround already use this value.
@@ -37,8 +39,11 @@ export const ANTIGRAVITY_CLI_IMAGE_MODEL_ID = 'antigravity-agent-image';
 export const ANTIGRAVITY_CLI_IMAGE_MODEL_KEY = `${ANTIGRAVITY_CLI_PROVIDER_KEY}/${ANTIGRAVITY_CLI_IMAGE_MODEL_ID}`;
 export const TRANSITION_SHOWCASE_EXTENSION_ID = 'com.aiy.transition-showcase';
 export const FEATURE_DEMO_EXTENSION_ID = 'com.aiy.feature-demo';
+export const MAINTENANCE_GUIDE_EXTENSION_ID = 'com.aiy.maintenance-guide';
 export const OPENAI_IMAGE_API_EXTENSION_ID = 'com.aiy.openai-image-api';
 export const OPENAI_IMAGE_MODEL_KEY = 'openai/gpt-image-2';
+export const OPENAI_IMAGE_SUNBURST_MODEL_KEY = 'openai/gpt-image-2.5-sunburst';
+export const OPENAI_IMAGE_FLARE_MODEL_KEY = 'openai/gpt-image-2.5-flare';
 export const OPENAI_IMAGE_PROVIDER_KEY = 'openai';
 export const OPENAI_IMAGE_CONNECTION_ID = `${OPENAI_IMAGE_API_EXTENSION_ID}:default`;
 export const DEEPSEEK_API_EXTENSION_ID = 'com.aiy.deepseek-api';

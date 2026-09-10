@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto';
+import { trimTrailingCharacters } from '@/shared/string-boundaries';
 import { createReadStream, createWriteStream } from 'node:fs';
 import { chmod, link, lstat, mkdir, realpath, readdir, rename, rm, statfs, utimes } from 'node:fs/promises';
 import path from 'node:path';
@@ -191,10 +192,7 @@ export async function planLocalSpaceFiles(
 }
 
 function safeDirectoryName(name: string) {
-  const normalized = name
-    .replace(/[<>:"/\\|?*\u0000-\u001f]/g, ' ')
-    .replace(/\s+/g, ' ')
-    .replace(/[. ]+$/g, '')
+  const normalized = trimTrailingCharacters(name.replace(/[<>:"/\\|?*\u0000-\u001f]/g, ' ').replace(/\s+/g, ' '), '. ')
     .trim()
     .slice(0, 100);
   return normalized || 'AIY Space';

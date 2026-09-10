@@ -1,3 +1,5 @@
+import { naturalWatermarkProfileSchema } from '@/shared/contracts/natural-watermark';
+import { browserCompanionWatermarkSelectionSchema } from '@/shared/contracts/browser-companion';
 import { z } from 'zod';
 
 const identifierSchema = z.string().trim().min(1).max(200);
@@ -87,6 +89,7 @@ export const articleDeliveryStatusSchema = z
 export const articleDeliveryUploadInputSchema = articleDeliveryArticleTargetSchema
   .extend({
     expectedRevisionId: identifierSchema,
+    watermark: browserCompanionWatermarkSelectionSchema.optional(),
   })
   .strict();
 
@@ -114,6 +117,7 @@ export const articleDeliveryJobSchema = articleDeliveryArticleTargetSchema
     articleContentHash: z.string().regex(/^[0-9a-f]{64}$/u),
     targetSlug: slugSchema,
     targetDescription: z.string().max(500),
+    watermarkProfile: naturalWatermarkProfileSchema.nullable().optional(),
     status: articleDeliveryJobStatusSchema,
     attemptCount: z.number().int().nonnegative(),
     result: articleDeliveryUploadResultSchema.nullable(),
@@ -131,14 +135,24 @@ export const articleDeliveryJobSchema = articleDeliveryArticleTargetSchema
 export const articleDeliveryJobListInputSchema = z
   .object({
     spaceId: identifierSchema,
-    articleId: identifierSchema,
+    articleId: identifierSchema.optional(),
     limit: z.number().int().min(1).max(50),
   })
   .strict();
 
 export const articleDeliveryJobRetryInputSchema = z.object({ jobId: identifierSchema }).strict();
 
-export const articleDeliveryJobChangedEventSchema = z.object({ job: articleDeliveryJobSchema }).strict();
+export const articleDeliveryProgressSchema = z
+  .object({
+    phase: z.enum(['PREPARING', 'UPLOADING_MEDIA', 'PUBLISHING']),
+    completedMedia: z.number().int().min(0).max(100),
+    totalMedia: z.number().int().min(0).max(100),
+  })
+  .strict();
+
+export const articleDeliveryJobChangedEventSchema = z
+  .object({ job: articleDeliveryJobSchema, progress: articleDeliveryProgressSchema.optional() })
+  .strict();
 
 export type ArticleDeliveryExtensionTarget = z.infer<typeof articleDeliveryExtensionTargetSchema>;
 export type ArticleDeliveryConnectionState = z.infer<typeof articleDeliveryConnectionStateSchema>;
@@ -155,3 +169,4 @@ export type ArticleDeliveryJob = z.infer<typeof articleDeliveryJobSchema>;
 export type ArticleDeliveryJobListInput = z.infer<typeof articleDeliveryJobListInputSchema>;
 export type ArticleDeliveryJobRetryInput = z.infer<typeof articleDeliveryJobRetryInputSchema>;
 export type ArticleDeliveryJobChangedEvent = z.infer<typeof articleDeliveryJobChangedEventSchema>;
+export type ArticleDeliveryProgress = z.infer<typeof articleDeliveryProgressSchema>;

@@ -1,5 +1,24 @@
 import type Database from 'better-sqlite3';
-import { verifyDatabaseIntegrity } from '@/main/database/core/database-integrity';
+import { ensureGifMakingSchema, gifMakingShape } from '@/main/database/core/gif-making-schema';
+import {
+  columnNames,
+  metadata,
+  tableNames,
+  unsupportedSchema,
+  assertRequiredTables,
+} from '@/main/database/core/schema-inspection';
+import { agentIntakeShape } from '@/main/database/core/agent-intake-schema';
+import { desktopNotesShape, ensureDesktopNotesSchema } from '@/main/database/core/desktop-notes-schema';
+import { unifiedContentShape, ensureUnifiedContentSchema } from '@/main/database/core/unified-content-schema';
+import { codexContentShape, ensureCodexContentSchema } from '@/main/database/core/codex-content-schema';
+import { petalBoardShape, ensurePetalBoardSchema } from '@/main/database/core/petal-board-schema';
+import { beginDatabaseSession } from '@/main/database/core/database-shutdown-state';
+export { markDatabaseCleanShutdown } from '@/main/database/core/database-shutdown-state';
+import { ensureSocialPostSaves, socialPostSaveShape } from '@/main/database/creations/social-post-save-schema';
+import {
+  derivedVisualStorageComplete,
+  ensureDerivedVisualStorage,
+} from '@/main/database/creations/derived-visual-operation-schema';
 export { verifyDatabaseIntegrity } from '@/main/database/core/database-integrity';
 import baselineSql from '@/main/database/sql/v03-baseline.sql?raw';
 import revision2AiProcessSql from '@/main/database/sql/v03-revision-002-ai-process-observability.sql?raw';
@@ -42,14 +61,12 @@ import {
   ensureRecoveryLifecycle,
   recoveryLifecycleShape,
 } from '@/main/database/recovery/content-lifecycle-schema';
-import { articleDeliveryJobShape } from '@/main/database/extensions/article-delivery-job-schema';
+import * as articleDeliverySchema from '@/main/database/extensions/article-delivery-job-schema';
 import * as assistantRunSchema from '@/main/database/assistant/assistant-run-schema';
 
 export const DATABASE_PRODUCT_BASELINE = '0.3.0';
-// v0.3.7 advances the public schema exactly once from revision 4 to revision 5.
-// Keep unreleased feature fragments consolidated behind this single revision.
-export const DATABASE_SCHEMA_REVISION = 5;
-const DATABASE_SHUTDOWN_STATE_KEY = 'database_shutdown_state';
+// v0.3.11 consolidates desktop notes and content-save protection in one forward revision.
+export const DATABASE_SCHEMA_REVISION = 6;
 
 const releasedRevision1RequiredTables = [
   'albums',
@@ -147,39 +164,6 @@ const retiredTitleColumns = [
   { table: 'creation_drafts', columns: ['title_zh', 'title_en'] },
   { table: 'prompt_series', columns: ['title_zh', 'title_en'] },
 ] as const;
-
-function tableNames(db: Database.Database) {
-  return new Set(
-    (
-      db
-        .prepare(
-          `SELECT name FROM sqlite_master
-    WHERE type = 'table' AND name NOT LIKE 'sqlite_%'`,
-        )
-        .all() as Array<{ name: string }>
-    ).map((row) => row.name),
-  );
-}
-
-function metadata(db: Database.Database, key: string) {
-  if (!tableNames(db).has('app_meta')) return undefined;
-  return db.prepare('SELECT value FROM app_meta WHERE key = ?').pluck().get(key);
-}
-
-function unsupportedSchema(): never {
-  throw new Error('Unsupported database schema: AIY 0.3.0 requires its first public release baseline');
-}
-
-function assertRequiredTables(db: Database.Database, requiredTables: readonly string[]) {
-  const tables = tableNames(db);
-  if (requiredTables.some((table) => !tables.has(table))) unsupportedSchema();
-}
-
-function columnNames(db: Database.Database, table: string) {
-  return new Set(
-    (db.prepare(`PRAGMA table_info(${table})`).all() as Array<{ name: string }>).map((column) => column.name),
-  );
-}
 
 function backgroundIssueAcknowledgementShape(db: Database.Database) {
   if (!tableNames(db).has('background_issue_acknowledgements')) return 'ABSENT' as const;
@@ -382,7 +366,7 @@ function ensureCurrentRevision5Schema(db: Database.Database) {
     imageBreakdown: breakdownShape,
     evaluationSuite: suiteShape,
     articleStorage: articleStorageShape(db),
-    articleDeliveryJobsComplete: articleDeliveryJobShape(db) === 'COMPLETE',
+    articleDeliveryJobsComplete: articleDeliverySchema.articleDeliveryJobShape(db) === 'COMPLETE',
     agentCliComplete: agentCliShape(db) === 'COMPLETE',
     backgroundIssueAcknowledgementsComplete: backgroundIssueAcknowledgementShape(db) === 'COMPLETE',
     contentLifecycleComplete: contentLifecycleShape(db) === 'COMPLETE',
@@ -676,8 +660,8 @@ const preVideoDocumentAiActivityRequiredTables = revision2RequiredTables.filter(
   (table) => table !== 'video_document_transcription_runs' && table !== 'video_document_translation_runs',
 );
 // Accepted historical revisions plus recovery-only markers emitted by pre-release
-// builds before the next public revision was consolidated. Values 6 and 7 are
-// never written by the final schema.
+// builds before a public revision was consolidated. Historical marker 7 is
+// accepted for recovery; the current writer emits only DATABASE_SCHEMA_REVISION.
 const unreleasedDevelopmentStages = [2, 3, 4, 5, 6, 7] as const;
 type UnreleasedDevelopmentStage = (typeof unreleasedDevelopmentStages)[number];
 
@@ -721,8 +705,9 @@ const currentFeatureShapeChecks = [
   socialPostDraftShape,
   articleStorageShape,
   articleCheckRunStorageShape,
-  articleDeliveryJobShape,
+  articleDeliverySchema.currentArticleDeliveryJobShape,
   agentCliShape,
+  agentIntakeShape,
   backgroundIssueAcknowledgementShape,
   derivedVisualShape,
   creationAlbumOwnershipShape,
@@ -731,7 +716,16 @@ const currentFeatureShapeChecks = [
 ] as const;
 
 function currentFeatureShapesComplete(db: Database.Database) {
-  return currentFeatureShapeChecks.every((check) => check(db) === 'COMPLETE');
+  return (
+    currentFeatureShapeChecks.every((check) => check(db) === 'COMPLETE') &&
+    desktopNotesShape(db) === 'COMPLETE' &&
+    unifiedContentShape(db) &&
+    gifMakingShape(db) &&
+    codexContentShape(db) === 'COMPLETE' &&
+    petalBoardShape(db) === 'COMPLETE' &&
+    socialPostSaveShape(db) === 'COMPLETE' &&
+    derivedVisualStorageComplete(db)
+  );
 }
 
 function isCurrentSchemaShape(db: Database.Database) {
@@ -754,7 +748,7 @@ function retireLegacyTitles(db: Database.Database) {
  *
  * Shape checks make historical public revisions and unreleased development
  * markers safe migration sources. Accepting development markers 6 and 7 preserves
- * local developer libraries while normalizing them to public revision 5.
+ * local developer libraries while advancing them to DATABASE_SCHEMA_REVISION.
  */
 function finishRevision2FromDevelopmentStage(db: Database.Database, stage: UnreleasedDevelopmentStage) {
   if (isRevision2SchemaShape(db)) return;
@@ -830,6 +824,13 @@ function migrateReleasedDatabase(db: Database.Database) {
       ensureCreationItemLocations(db);
       ensureContentLifecycle(db);
       assistantRunSchema.ensureAssistantRunReasoningEfforts(db);
+      ensureDesktopNotesSchema(db);
+      ensureUnifiedContentSchema(db);
+      ensureGifMakingSchema(db);
+      ensureCodexContentSchema(db);
+      ensurePetalBoardSchema(db);
+      ensureSocialPostSaves(db);
+      ensureDerivedVisualStorage(db);
       if (!isCurrentSchemaShape(db)) unsupportedSchema();
 
       if (storedRevision !== DATABASE_SCHEMA_REVISION) {
@@ -888,12 +889,5 @@ export function initializeDatabaseSchema(db: Database.Database) {
   const migrated = migrateReleasedDatabase(db);
 
   assertDatabaseSchemaCompatible(db);
-  const previousShutdownWasClean = metadata(db, DATABASE_SHUTDOWN_STATE_KEY) === 'clean';
-  db.prepare('INSERT OR REPLACE INTO app_meta(key, value) VALUES (?, ?)').run(DATABASE_SHUTDOWN_STATE_KEY, 'dirty');
-
-  if (created || migrated || !previousShutdownWasClean) verifyDatabaseIntegrity(db);
-}
-
-export function markDatabaseCleanShutdown(db: Database.Database) {
-  db.prepare('INSERT OR REPLACE INTO app_meta(key, value) VALUES (?, ?)').run(DATABASE_SHUTDOWN_STATE_KEY, 'clean');
+  return beginDatabaseSession(db, { created, migrated });
 }

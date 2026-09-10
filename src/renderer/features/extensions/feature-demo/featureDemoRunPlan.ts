@@ -1,4 +1,5 @@
-import type { BootstrapDto, PromptSeriesDto } from '@/shared/contracts';
+import type { AssetDto, BootstrapDto, PromptSeriesDto } from '@/shared/contracts';
+import { styleExplorationSlotAssets } from '@/renderer/components/creator/styleExplorationAssets';
 import {
   FEATURE_DEMO_SCENES,
   type FeatureDemoScene,
@@ -8,16 +9,22 @@ import {
 export interface FeatureDemoRunPlan {
   seed: number;
   scenes: readonly FeatureDemoScene[];
+  creationSeriesId: string | null;
+  creationVersionId: string | null;
   styleBatchId: string | null;
+  styleSlotId: string | null;
   comparisonSeriesId: string | null;
   comparisonAssetId: string | null;
+  comparisonSecondAssetId: string | null;
 }
 
 const FEATURE_DEMO_CHAPTERS: readonly (readonly FeatureDemoSceneId[])[] = [
-  ['directionDetailsExpand', 'directionDetailsCollapse'],
+  ['petalNote'],
   ['directoryExpand', 'directoryCollapse'],
-  ['codexImages'],
+  ['imageCreation'],
   ['promptCompare'],
+  ['directionDetailsExpand', 'directionDetailsCollapse'],
+  ['codexImages'],
   ['videoDocument'],
 ] as const;
 
@@ -30,15 +37,6 @@ function seededRandom(seed: number) {
     value ^= value + Math.imul(value ^ (value >>> 7), value | 61);
     return ((value ^ (value >>> 14)) >>> 0) / 4_294_967_296;
   };
-}
-
-function shuffled<T>(items: readonly T[], random: () => number) {
-  const result = [...items];
-  for (let index = result.length - 1; index > 0; index -= 1) {
-    const swapIndex = Math.floor(random() * (index + 1));
-    [result[index], result[swapIndex]] = [result[swapIndex]!, result[index]!];
-  }
-  return result;
 }
 
 function chooseWeighted<T>(items: readonly T[], weight: (item: T) => number, random: () => number) {
@@ -57,16 +55,17 @@ function visibleSeriesImageIds(series: PromptSeriesDto) {
   const ids = new Set<string>();
   for (const version of series.versions) {
     for (const run of version.runs ?? []) {
-      if (run.asset?.mimeType.startsWith('image/') && run.outputDisposition !== 'FAILED') ids.add(run.asset.id);
+      if (run.asset && validImage(run.asset) && run.outputDisposition !== 'FAILED') ids.add(run.asset.id);
     }
   }
   for (const output of series.importedOutputs ?? []) {
-    if (output.asset.mimeType.startsWith('image/')) ids.add(output.asset.id);
-  }
-  for (const output of series.transformedOutputs ?? []) {
-    if (output.asset.mimeType.startsWith('image/')) ids.add(output.asset.id);
+    if (validImage(output.asset)) ids.add(output.asset.id);
   }
   return [...ids];
+}
+
+function validImage(asset: AssetDto) {
+  return asset.mimeType.startsWith('image/') && Boolean(asset.mediaUrl) && asset.width > 0 && asset.height > 0;
 }
 
 export function createFeatureDemoSeed() {
@@ -78,24 +77,40 @@ export function createFeatureDemoSeed() {
 export function createFeatureDemoRunPlan(data: BootstrapDto, seed = createFeatureDemoSeed()): FeatureDemoRunPlan {
   const random = seededRandom(seed);
   const sceneById = new Map(FEATURE_DEMO_SCENES.map((scene) => [scene.id, scene] as const));
-  const scenes = shuffled(FEATURE_DEMO_CHAPTERS, random).flatMap((chapter) =>
-    chapter.map((sceneId) => sceneById.get(sceneId)!),
-  );
+  const scenes = FEATURE_DEMO_CHAPTERS.flatMap((chapter) => chapter.map((sceneId) => sceneById.get(sceneId)!));
   const seriesImages = data.series.map((series) => ({ series, assetIds: visibleSeriesImageIds(series) }));
-  const imageChoices = seriesImages.flatMap(({ series, assetIds }) =>
-    assetIds.map((assetId) => ({ seriesId: series.id, assetId })),
-  );
+  const imageChoices = seriesImages
+    .filter(({ assetIds }) => assetIds.length >= 2)
+    .flatMap(({ series, assetIds }) => assetIds.map((assetId) => ({ seriesId: series.id, assetId })));
   const imageChoice = imageChoices[Math.floor(random() * imageChoices.length)] ?? null;
   const fallbackSeries = chooseWeighted(
-    seriesImages,
+    seriesImages.filter(({ assetIds }) => assetIds.length >= 2),
     ({ series, assetIds }) => assetIds.length * 100 + series.versions.length * 10 + 1,
     random,
   );
   const comparisonSeriesId = imageChoice?.seriesId ?? fallbackSeries?.series.id ?? null;
   const comparisonAssetId = imageChoice?.assetId ?? fallbackSeries?.assetIds[0] ?? null;
+  const comparisonSecondAssetId =
+    seriesImages
+      .find(({ series }) => series.id === comparisonSeriesId)
+      ?.assetIds.find((id) => id !== comparisonAssetId) ?? null;
   const imageCountBySeriesId = new Map(seriesImages.map(({ series, assetIds }) => [series.id, assetIds.length]));
+  const creationChoices = data.series.flatMap((series) =>
+    series.versions
+      .filter((version) => Boolean(version.finalPrompt.trim() || version.manualPrompt.trim()))
+      .map((version) => ({ series, version })),
+  );
+  const creation =
+    creationChoices.find(
+      ({ series, version }) =>
+        series.id === comparisonSeriesId && version.runs.some((run) => run.asset?.id === comparisonAssetId),
+    ) ??
+    creationChoices.find(({ series }) => series.id === comparisonSeriesId) ??
+    creationChoices[0];
   const styleBatch = chooseWeighted(
-    data.styleExplorationBatches,
+    data.styleExplorationBatches.filter((batch) =>
+      batch.slots.some((slot) => styleExplorationSlotAssets(slot, data.series).length > 0),
+    ),
     (batch) =>
       Math.max(
         1,
@@ -107,8 +122,12 @@ export function createFeatureDemoRunPlan(data: BootstrapDto, seed = createFeatur
   return {
     seed: seed >>> 0,
     scenes,
+    creationSeriesId: creation?.series.id ?? null,
+    creationVersionId: creation?.version.id ?? null,
     styleBatchId: styleBatch?.id ?? null,
+    styleSlotId: styleBatch?.slots.find((slot) => styleExplorationSlotAssets(slot, data.series).length > 0)?.id ?? null,
     comparisonSeriesId,
     comparisonAssetId,
+    comparisonSecondAssetId,
   };
 }

@@ -1,4 +1,14 @@
-import { useMemo } from 'react';
+import type { CreatorLocation, NavigationMode } from '@/renderer/components/app/app-navigation';
+import type { DerivedVisualWorkspaceViewState } from '@/renderer/components/creator/derivedVisualWorkspace';
+import type {
+  CreationDraftPromptSnapshot,
+  CreationDraftSaveSnapshot,
+} from '@/renderer/components/creator/workflows/creationDraftSnapshot';
+import { useCreatorArticleWorkflow } from '@/renderer/components/creator/workflows/useCreatorArticleWorkflow';
+import { useCreatorImageVariantWorkflow } from '@/renderer/components/creator/workflows/useCreatorImageVariantWorkflow';
+import { useCreatorOutcomeWorkflow } from '@/renderer/components/creator/workflows/useCreatorOutcomeWorkflow';
+import { useCreatorSocialPostWorkflow } from '@/renderer/components/creator/workflows/useCreatorSocialPostWorkflow';
+import { useDerivedVisualWorkflow } from '@/renderer/components/creator/workflows/useDerivedVisualWorkflow';
 import type {
   ArticleDto,
   AssetDto,
@@ -8,44 +18,33 @@ import type {
   Locale,
   SocialPostDto,
 } from '@/shared/contracts';
-import type { CreatorLocation, NavigationMode } from '@/renderer/components/app/app-navigation';
-import type { CreationDraftPromptSnapshot } from '@/renderer/components/creator/workflows/creationDraftSnapshot';
-import type { CreationDraftSaveSnapshot } from '@/renderer/components/creator/workflows/creationDraftSnapshot';
-import { useCreatorArticleWorkflow } from '@/renderer/components/creator/workflows/useCreatorArticleWorkflow';
-import { useCreatorOutcomeWorkflow } from '@/renderer/components/creator/workflows/useCreatorOutcomeWorkflow';
-import { useCreatorSocialPostWorkflow } from '@/renderer/components/creator/workflows/useCreatorSocialPostWorkflow';
-import { useDerivedVisualWorkflow } from '@/renderer/components/creator/workflows/useDerivedVisualWorkflow';
-import { resolveCreatorPrompt } from '@/renderer/components/creator/utils';
+import { useMemo } from 'react';
 
 interface Options {
-  automaticChangeSummary: string;
   captureDraftCommitIdentity(): string | null;
   captureDraftSaveSnapshot(prompt: CreationDraftPromptSnapshot): CreationDraftSaveSnapshot;
   capturePrompt(): CreationDraftPromptSnapshot;
   clearSavedInspiration(): void;
   commit(location: CreatorLocation, mode?: NavigationMode): void;
   data: BootstrapDto;
-  editorSocialCoverVisualId: string | null;
+  editorDerivedVisualId: string | null;
   generationRequestIdentity: string;
   getSavedDraftTitle(): string;
   invalidateAutosaves(): void;
   locale: Locale;
   newTitle: string;
   notify(message: string): void;
-  onOpenDerivedVisualWorkspace(result: DerivedVisualWorkspaceOpenResult): void;
+  onSocialPostSaved(post: SocialPostDto): void;
+  onOpenDerivedVisualWorkspace(result: DerivedVisualWorkspaceOpenResult, view?: DerivedVisualWorkspaceViewState): void;
   preserveBeforeNavigation(): Promise<boolean>;
-  promptProfileId: string;
   referenceAssets: readonly AssetDto[];
   refresh(): Promise<void>;
-  replaceDraftSession(draft: CreationDraftDto | null): void;
   resetInputs(): void;
   restoreDraft(draft: CreationDraftDto | null): void;
   saveCapturedDraft(snapshot: CreationDraftSaveSnapshot): Promise<CreationDraftDto>;
   saveDraft(prompt: CreationDraftPromptSnapshot): Promise<CreationDraftDto>;
   selectedInspirationStashId: string | null;
   setCompactPanel(panel: 'creator' | 'output'): void;
-  setCreationMode(mode: 'existing' | 'new'): void;
-  setOutputCollapsed(collapsed: boolean): void;
   setOutputMode(mode: 'results'): void;
   setOutputSeriesId(seriesId: string | null): void;
   setRequestedAssetId(assetId: string | null): void;
@@ -54,12 +53,9 @@ interface Options {
   setSelectedIdeaCreationId(creationId: string | null): void;
   setSelectedInspirationStashId(stashId: string | null): void;
   setSelectedSocialPostId(postId: string | null): void;
-  setSeriesId(seriesId: string | null): void;
   setTargetAlbumId(albumId: string | null): void;
-  setVersionId(versionId: string): void;
   synchronizePrompt(prompt: CreationDraftPromptSnapshot): void;
   targetAlbumId: string | null;
-  termPromptLocale: Locale;
 }
 
 export function useCreatorContentWorkflows(options: Options) {
@@ -69,18 +65,10 @@ export function useCreatorContentWorkflows(options: Options) {
     options.commit({ surface: 'article', articleId: article.id }, 'push');
   }
 
-  function openSocialPost(post: SocialPostDto) {
-    options.setSelectedArticleId(null);
-    options.setSelectedSocialPostId(post.id);
-    options.commit({ surface: 'social-post', postId: post.id }, 'push');
-  }
-
-  function finishDraftContent(destination: { article: ArticleDto } | { post: SocialPostDto }) {
-    const article = 'article' in destination ? destination.article : null;
-    const post = 'post' in destination ? destination.post : null;
+  function finishDraftContent(article: ArticleDto) {
     options.setTargetAlbumId(null);
-    options.setSelectedSocialPostId(post?.id ?? null);
-    options.setSelectedArticleId(article?.id ?? null);
+    options.setSelectedSocialPostId(null);
+    options.setSelectedArticleId(article.id);
     options.setSelectedInspirationStashId(null);
     options.clearSavedInspiration();
     options.setSelectedIdeaCreationId(null);
@@ -91,90 +79,64 @@ export function useCreatorContentWorkflows(options: Options) {
     options.resetInputs();
     options.restoreDraft(null);
     options.setCompactPanel('creator');
-    options.commit(
-      article ? { surface: 'article', articleId: article.id } : { surface: 'social-post', postId: post!.id },
-      'replace',
-    );
+    options.commit({ surface: 'article', articleId: article.id }, 'replace');
   }
 
+  const createImageVariant = useCreatorImageVariantWorkflow({
+    data: options.data,
+    captureSelectionIdentity: () => options.generationRequestIdentity,
+    refresh: options.refresh,
+    notify: options.notify,
+    onOpenArticle: (created) => {
+      options.setCompactPanel('creator');
+      openArticle(created);
+    },
+  });
   const article = useCreatorArticleWorkflow({
     creationItems: options.data.creationItems,
     getCreationDraftCommitIdentity: options.captureDraftCommitIdentity,
     inspirationStashes: options.data.inspirationStashes ?? [],
     locale: options.locale,
     notify: options.notify,
-    onDraftArticleCreated: (created) => finishDraftContent({ article: created }),
+    onDraftArticleCreated: finishDraftContent,
     onOpenArticle: openArticle,
-    onOpenSocialPost: openSocialPost,
     refresh: options.refresh,
   });
   const socialPost = useCreatorSocialPostWorkflow({
+    onSaved: options.onSocialPostSaved,
     creationItems: options.data.creationItems,
-    getCreationDraftCommitIdentity: options.captureDraftCommitIdentity,
     inspirationStashes: options.data.inspirationStashes ?? [],
     locale: options.locale,
     notify: options.notify,
-    onDraftSocialPostCreated: (created) => finishDraftContent({ post: created }),
     onOpenArticle: openArticle,
-    onOpenSocialPost: openSocialPost,
     refresh: options.refresh,
   });
   const outcome = useCreatorOutcomeWorkflow({
     captureDraftSaveSnapshot: options.captureDraftSaveSnapshot,
     captureSnapshot() {
       const prompt = options.capturePrompt();
-      const resolution = resolveCreatorPrompt({
-        manualPrompt: prompt.manualPrompt,
-        promptNodes: prompt.nodes,
-        selectedTerms: prompt.selectedTerms,
-        appliedPalettes: prompt.appliedPalettes,
-        termPromptLocale: options.termPromptLocale,
-        promptProfileId: options.promptProfileId,
-      });
       return {
-        automaticChangeSummary: options.automaticChangeSummary,
-        livePrompt: resolution.livePrompt,
-        locale: options.locale,
         prompt,
         referenceAssets: [...options.referenceAssets],
-        resolvedPrompt: resolution.composition,
         savedDraftTitle: options.getSavedDraftTitle(),
         sourceInspirationStashId: options.selectedInspirationStashId,
         targetAlbumId: options.targetAlbumId,
-        termPromptLocale: options.termPromptLocale,
         typedTitle: options.newTitle.trim(),
       };
     },
     createArticleFromDraft: article.createArticleFromDraft,
-    createSocialPostFromDraft: socialPost.createSocialPostFromDraft,
     invalidateAutosaves: options.invalidateAutosaves,
     notify: options.notify,
-    onImageCommitted(result) {
-      options.replaceDraftSession(null);
-      options.setTargetAlbumId(null);
-      options.setSelectedSocialPostId(null);
-      options.setSelectedArticleId(null);
-      options.setSelectedInspirationStashId(null);
-      options.clearSavedInspiration();
-      options.setSelectedIdeaCreationId(null);
-      options.setOutputMode('results');
-      options.setSelectedAlbumId(null);
-      options.setCreationMode('existing');
-      options.setSeriesId(result.seriesId);
-      options.setOutputSeriesId(result.seriesId);
-      options.setVersionId(result.versionId);
-      options.setOutputCollapsed(false);
-      options.setCompactPanel('output');
-      options.commit({ surface: 'existing-creation', seriesId: result.seriesId, assetId: null }, 'replace');
-    },
     onPromptCaptured: options.synchronizePrompt,
-    refresh: options.refresh,
     requestIdentity: options.generationRequestIdentity,
     saveCapturedDraft: options.saveCapturedDraft,
     saveDraft: options.saveDraft,
   });
   const seriesIds = useMemo(() => new Set(options.data.series.map((item) => item.id)), [options.data.series]);
   const derivedVisual = useDerivedVisualWorkflow({
+    spaceId: options.data.spaceId,
+    articles: options.data.articles ?? [],
+    socialPosts: options.data.socialPosts ?? [],
     canvasPresets: options.data.canvasPresets,
     captureSelectionIdentity: () => options.generationRequestIdentity,
     creationDraftId: options.data.creationDraft?.id ?? null,
@@ -182,26 +144,14 @@ export function useCreatorContentWorkflows(options: Options) {
     derivedVisuals: options.data.derivedVisuals ?? [],
     locale: options.locale,
     notify: options.notify,
-    onAdoptedArticle(created) {
-      options.setSelectedSocialPostId(null);
-      options.setSelectedArticleId(created.id);
-      options.setCompactPanel('creator');
-      options.commit({ surface: 'article', articleId: created.id }, 'replace');
-    },
-    onAdoptedSocialPost(created) {
-      options.setSelectedArticleId(null);
-      options.setSelectedSocialPostId(created.id);
-      options.setCompactPanel('creator');
-      options.commit({ surface: 'social-post', postId: created.id }, 'replace');
-    },
     onKeepAdoptedWorkspace: options.setRequestedAssetId,
     onOpenWorkspace: options.onOpenDerivedVisualWorkspace,
     preserveBeforeNavigation: options.preserveBeforeNavigation,
     promptTemplates: options.data.derivedVisualPrompts,
     refresh: options.refresh,
     seriesIds,
-    stayInWorkspace: (visualId) => options.editorSocialCoverVisualId === visualId,
+    stayInWorkspace: (visualId) => options.editorDerivedVisualId === visualId,
   });
 
-  return { article, derivedVisual, outcome, socialPost };
+  return { article, createImageVariant, derivedVisual, outcome, socialPost };
 }

@@ -1,13 +1,8 @@
 import type { CanvasPresetDto, DerivedVisualPromptTemplatesDto, DerivedVisualRole } from '@/shared/contracts';
+import { contentMarkdownText } from '@/shared/content-markdown';
 
 function normalizedContext(value: string) {
-  return value
-    .replace(/\r\n?/gu, '\n')
-    .replaceAll('&#x20;', ' ')
-    .replace(/!\[[^\]]*\]\([^\r\n)]*\)/gu, '')
-    .replace(/\[([^\]]+)\]\([^\r\n)]*\)/gu, '$1')
-    .replace(/^#{1,6}\s+/gmu, '')
-    .trim();
+  return contentMarkdownText(value.replace(/\r\n?/gu, '\n').replaceAll('&#x20;', ' '), () => '');
 }
 
 function clipped(value: string, limit: number) {
@@ -37,7 +32,7 @@ function compositionConstraint(
 
 export function buildArticleHeaderPrompt(templates: DerivedVisualPromptTemplatesDto, title: string, markdown: string) {
   return fill(templates.articleHeader, {
-    题目: title.trim() || '未命名文章',
+    题目: title.trim() || '未命名图文',
     正文: clipped(markdown, 24_000),
   });
 }
@@ -54,7 +49,7 @@ export function buildArticleInlinePrompt(
     宽度: String(preset.width),
     高度: String(preset.height),
     对应画幅的构图约束: compositionConstraint(templates, 'ARTICLE_INLINE', preset),
-    题目: title.trim() || '未命名文章',
+    题目: title.trim() || '未命名图文',
     段落: clipped(selectedText, 5_000),
     正文: clipped(markdown, 18_000),
   });
@@ -71,7 +66,7 @@ export function buildSocialCoverPrompt(
     宽度: String(preset.width),
     高度: String(preset.height),
     对应画幅的构图约束: compositionConstraint(templates, 'SOCIAL_POST_COVER', preset),
-    题目: title.trim() || '未命名贴图',
+    题目: title.trim() || '未命名图文',
     正文: clipped(body, 9_000),
   });
 }

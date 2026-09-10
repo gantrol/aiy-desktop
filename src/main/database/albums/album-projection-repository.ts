@@ -178,7 +178,9 @@ export interface AlbumProjectionSummary {
   activityAt: string;
 }
 
-function appendPreviewRows(summaries: Map<string, AlbumProjectionSummary>, rows: readonly JsonMap[]) {
+type AlbumPreviewAssets = Pick<AlbumProjectionSummary, 'previewAssets' | 'documentPreviewAssets'>;
+
+function appendPreviewRows(summaries: Map<string, AlbumPreviewAssets>, rows: readonly JsonMap[]) {
   for (const row of rows) {
     const summary = summaries.get(text(row.album_id));
     if (!summary) continue;
@@ -580,6 +582,19 @@ export class AlbumProjectionRepository {
       });
     }
 
+    for (const [id, previews] of this.listPreviewAssets(albumIds)) {
+      const summary = summaries.get(id);
+      if (summary) Object.assign(summary, previews);
+    }
+    return summaries;
+  }
+
+  listPreviewAssets(albumIds: readonly string[]): Map<string, AlbumPreviewAssets> {
+    const summaries = new Map<string, AlbumPreviewAssets>(
+      albumIds.map((id) => [id, { previewAssets: [], documentPreviewAssets: [] }]),
+    );
+    if (!albumIds.length) return summaries;
+    const projection = batchProjectionCte(albumIds.length);
     const previewRows = this.db
       .prepare(
         `${projection}, direct_assets(root_id, id, activity_at) AS (

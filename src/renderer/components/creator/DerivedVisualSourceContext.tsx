@@ -1,11 +1,11 @@
 import { CheckIcon, ExternalLinkIcon, Link2Icon } from 'lucide-react';
-import type { AssetDto, Locale } from '@/shared/contracts';
-import { mediaThumbnailUrl } from '@/renderer/components/media/mediaThumbnailUrl';
+import type { AssetDto } from '@/shared/contracts';
+import { useI18n } from '@/renderer/i18n/useI18n';
+import { AssetThumbnail } from '@/renderer/components/media/AssetThumbnail';
 import { Button } from '@/renderer/components/ui/button';
 import { cn } from '@/renderer/lib/utils';
 
 interface Props {
-  locale: Locale;
   sourceTitle: string;
   assets: readonly AssetDto[];
   referenceAssetIds: readonly string[];
@@ -14,21 +14,20 @@ interface Props {
 }
 
 export function DerivedVisualSourceContext({
-  locale,
   sourceTitle,
   assets,
   referenceAssetIds,
   onOpenSource,
   onToggleReference,
 }: Props) {
-  const zh = locale === 'zh';
+  const labels = useI18n().messages.creator.derivedVisual;
   const selectedIds = new Set(referenceAssetIds);
 
   return (
     <div className="flex min-h-11 min-w-0 items-center gap-2 border-b bg-surface-sunken/25 px-3">
       <span className="flex shrink-0 items-center gap-1.5 text-xs font-medium text-foreground-secondary">
         <Link2Icon className="size-3.5" />
-        {zh ? '来源' : 'Source'}
+        {labels.source}
       </span>
       <Button
         type="button"
@@ -44,13 +43,7 @@ export function DerivedVisualSourceContext({
         <div className="flex min-w-0 flex-1 items-center gap-1 overflow-x-auto py-1">
           {assets.map((asset, index) => {
             const selected = selectedIds.has(asset.id);
-            const actionLabel = selected
-              ? zh
-                ? `移除参考图 ${index + 1}`
-                : `Remove reference ${index + 1}`
-              : zh
-                ? `使用贴图图片 ${index + 1} 作为参考`
-                : `Use post image ${index + 1} as reference`;
+            const actionLabel = selected ? labels.removeReference(index + 1) : labels.useSourceReference(index + 1);
             return (
               <Button
                 key={asset.id}
@@ -66,8 +59,9 @@ export function DerivedVisualSourceContext({
                 aria-pressed={selected}
                 onClick={() => onToggleReference(asset)}
               >
-                <img
-                  src={mediaThumbnailUrl(asset, 96)}
+                <AssetThumbnail
+                  asset={asset}
+                  size={96}
                   alt=""
                   width={asset.width}
                   height={asset.height}
@@ -89,8 +83,8 @@ export function DerivedVisualSourceContext({
         variant="ghost"
         size="icon-sm"
         className="shrink-0"
-        title={zh ? '查看来源贴图' : 'Open source post'}
-        aria-label={zh ? '查看来源贴图' : 'Open source post'}
+        title={labels.openSource}
+        aria-label={labels.openSource}
         onClick={onOpenSource}
       >
         <ExternalLinkIcon className="size-3.5" />

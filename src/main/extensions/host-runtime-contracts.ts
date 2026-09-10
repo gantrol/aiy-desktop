@@ -6,6 +6,7 @@ import {
   CODEX_VISUALIZATION_THREAD_CONTENT_PERMISSION,
   CODEX_USAGE_INVESTIGATOR_EXTENSION_ID,
   FEATURE_DEMO_EXTENSION_ID,
+  MAINTENANCE_GUIDE_EXTENSION_ID,
   NATURAL_WATERMARK_EXTENSION_ID,
   WEIBO_CHANNEL_EXTENSION_ID,
 } from '@/shared/extension-ids';
@@ -94,6 +95,12 @@ interface HostRuntimeContract {
 }
 
 const hostRuntimeContracts: Readonly<Record<string, HostRuntimeContract>> = {
+  'maintenance-guide': {
+    extensionId: MAINTENANCE_GUIDE_EXTENSION_ID,
+    permissions: [EXTENSION_PERMISSION.filesystemReadMaintenanceGuides],
+    optionalPermissions: [],
+    contributes: { commands: ['maintenanceGuide.open'] },
+  },
   [CODEX_HISTORY_SEARCH_HOST_RUNTIME_ID]: {
     extensionId: CODEX_HISTORY_SEARCH_EXTENSION_ID,
     permissions: CODEX_HISTORY_SEARCH_PERMISSIONS,

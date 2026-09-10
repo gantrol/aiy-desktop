@@ -1,3 +1,7 @@
+import { emptyArticleContent } from '@/renderer/components/creator/article-editor/articleContentTransforms';
+import { creationFormByEntity, creationItemByFormEntity } from '@/renderer/components/creator/creationFormEntities';
+import { useI18n } from '@/renderer/i18n/useI18n';
+import { useStableCallback } from '@/renderer/lib/useStableCallback';
 import type {
   ArticleContentInput,
   ArticleDto,
@@ -6,15 +10,8 @@ import type {
   CreationItemDto,
   InspirationStashDto,
   Locale,
-  SocialPostDto,
 } from '@/shared/contracts';
-import {
-  emptyArticleContent,
-  emptySocialPostContent,
-  socialPostBodyFromMarkdown,
-} from '@/renderer/components/creator/article-editor/articleContentTransforms';
-import { creationFormByEntity, creationItemByFormEntity } from '@/renderer/components/creator/creationFormEntities';
-import { useStableCallback } from '@/renderer/lib/useStableCallback';
+import { captureBlockDocument } from '@/shared/contracts/block-document';
 
 interface Options {
   creationItems: readonly CreationItemDto[];
@@ -24,7 +21,6 @@ interface Options {
   notify(message: string): void;
   onDraftArticleCreated(article: ArticleDto): void;
   onOpenArticle(article: ArticleDto): void;
-  onOpenSocialPost(post: SocialPostDto): void;
   refresh(): Promise<void>;
 }
 
@@ -44,6 +40,7 @@ function articleContentSnapshot(content: ArticleContentInput): ArticleContentInp
 }
 
 export function useCreatorArticleWorkflow(options: Options) {
+  const socialCopy = useI18n().messages.creator.socialPostEditor;
   const saveArticleRevision = useStableCallback((input: ArticleRevisionSaveInput) =>
     window.desktopApi.articleRevisionSave(input),
   );
@@ -51,17 +48,16 @@ export function useCreatorArticleWorkflow(options: Options) {
   const notify = useStableCallback(options.notify);
   const onDraftArticleCreated = useStableCallback(options.onDraftArticleCreated);
   const openArticle = useStableCallback(options.onOpenArticle);
-  const openSocialPost = useStableCallback(options.onOpenSocialPost);
   const refresh = useStableCallback(options.refresh);
 
   function activeSourceId(sourceId: string | null) {
     return sourceId && options.inspirationStashes.some((stash) => stash.id === sourceId) ? sourceId : null;
   }
 
-  function formId(kind: 'ARTICLE' | 'SOCIAL_POST', entityId: string) {
-    const context = creationFormByEntity(options.creationItems, kind, entityId);
+  function formId(entityId: string) {
+    const context = creationFormByEntity(options.creationItems, 'ARTICLE', entityId);
     if (!context) {
-      throw new Error(options.locale === 'zh' ? '所属创作项不可用' : 'The containing creation item is unavailable');
+      throw new Error(socialCopy.itemUnavailable);
     }
     return context.form.id;
   }
@@ -72,15 +68,9 @@ export function useCreatorArticleWorkflow(options: Options) {
     notify(message);
   });
 
-  const finishSocialPost = useStableCallback(async (post: SocialPostDto, message: string) => {
-    await refresh();
-    openSocialPost(post);
-    notify(message);
-  });
-
   const exportMarkdown = useStableCallback(async (articleId: string) => {
     const result = await window.desktopApi.articleExportMarkdown({ id: articleId });
-    if (result.status === 'SAVED') notify(options.locale === 'zh' ? '已导出 Markdown' : 'Markdown exported');
+    if (result.status === 'SAVED') notify(socialCopy.markdownExported);
   });
 
   const copyForWechat = useStableCallback(async (articleId: string, copyOptions: ArticleWechatCopyOptions) => {
@@ -107,48 +97,16 @@ export function useCreatorArticleWorkflow(options: Options) {
   const createArticleFromArticle = useStableCallback(
     async (sourceArticle: ArticleDto, content: ArticleContentInput, copySourceContent: boolean) => {
       const article = await window.desktopApi.articleFormCreate({
-        sourceFormId: formId('ARTICLE', sourceArticle.id),
+        sourceFormId: formId(sourceArticle.id),
         sourceInspirationStashId: activeSourceId(sourceArticle.sourceInspirationStashId),
-        content: copySourceContent ? content : emptyArticleContent(),
-      });
-      await finishArticle(
-        article,
-        copySourceContent
-          ? options.locale === 'zh'
-            ? '已克隆文章'
-            : 'Article forked'
-          : options.locale === 'zh'
-            ? '已新建文章'
-            : 'Article created',
-      );
-    },
-  );
-
-  const createSocialPostFromArticle = useStableCallback(
-    async (article: ArticleDto, content: ArticleContentInput, copySourceContent: boolean) => {
-      const post = await window.desktopApi.socialPostFormCreate({
-        sourceFormId: formId('ARTICLE', article.id),
-        sourceInspirationStashId: activeSourceId(article.sourceInspirationStashId),
         content: copySourceContent
           ? {
-              schemaVersion: 1,
-              title: content.title,
-              body: socialPostBodyFromMarkdown(content.markdown),
-              mediaAssetIds: content.mediaBindings.map((binding) => binding.assetId),
-              coverAssetId: content.coverAssetId,
+              ...content,
+              ...(content.document ? { document: captureBlockDocument(content.document.root, [], true) } : {}),
             }
-          : emptySocialPostContent(),
+          : emptyArticleContent(),
       });
-      await finishSocialPost(
-        post,
-        copySourceContent
-          ? options.locale === 'zh'
-            ? '已转为贴图'
-            : 'Converted to social post'
-          : options.locale === 'zh'
-            ? '已新建贴图'
-            : 'Social post created',
-      );
+      await finishArticle(article, copySourceContent ? socialCopy.articleForked : socialCopy.articleCreated);
     },
   );
 
@@ -161,9 +119,7 @@ export function useCreatorArticleWorkflow(options: Options) {
       ? creationItemByFormEntity(options.creationItems, 'INSPIRATION_STASH', snapshot.sourceInspirationStashId)
       : null;
     if (snapshot.sourceInspirationStashId && !sourceItem) {
-      throw new Error(
-        options.locale === 'zh' ? '灵感所属创作项不可用' : 'The inspiration creation item is unavailable',
-      );
+      throw new Error(socialCopy.inspirationUnavailable);
     }
     const article = sourceItem
       ? await window.desktopApi.articleFormAdd({
@@ -182,20 +138,19 @@ export function useCreatorArticleWorkflow(options: Options) {
     await refresh();
     if (getCreationDraftCommitIdentity() !== snapshot.creationDraftCommitIdentity) return;
     onDraftArticleCreated(article);
-    notify(options.locale === 'zh' ? '已创建文章' : 'Article created');
+    notify(socialCopy.articleCreated);
   });
 
   const renameArticle = useStableCallback(async (article: ArticleDto, title: string) => {
     await window.desktopApi.articleRename({ id: article.id, title });
     await refresh();
-    notify(options.locale === 'zh' ? '文章标题已更新' : 'Article title updated');
+    notify(socialCopy.articleTitleUpdated);
   });
 
   return {
     copyForWechat,
     createArticleFromArticle,
     createArticleFromDraft,
-    createSocialPostFromArticle,
     exportMarkdown,
     renameArticle,
     saveArticleRevision,

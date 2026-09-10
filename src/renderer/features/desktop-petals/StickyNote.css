@@ -1,0 +1,30 @@
+.sticky-note {
+  animation: note-open 0.16s ease-out;
+  transform-origin: top left;
+}
+.sticky-note.note-closing {
+  animation: note-close 0.12s ease-in forwards;
+  pointer-events: none;
+}
+@keyframes note-open {
+  from {
+    transform: translateY(4px) scale(0.97);
+    opacity: 0;
+  }
+  to {
+    transform: scale(1);
+    opacity: 1;
+  }
+}
+@keyframes note-close {
+  to {
+    transform: translateY(3px) scale(0.97);
+    opacity: 0;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .sticky-note,
+  .sticky-note.note-closing {
+    animation-duration: 1ms;
+  }
+}

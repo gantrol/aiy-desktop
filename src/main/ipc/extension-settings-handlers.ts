@@ -33,6 +33,7 @@ import {
 import { registerProviderConnectionIpc } from '@/main/ipc/provider-connection-handlers';
 import type { IpcHandlerRegistrar } from '@/main/ipc/trusted-handlers';
 import { registerCodexUsageIpc } from '@/main/ipc/codex-usage-handlers';
+import { registerMaintenanceGuideIpc } from '@/main/ipc/maintenance-guide-handlers';
 import { registerCodexHistorySearchIpc } from '@/main/ipc/codex-history-search-handlers';
 import { registerCodexVisualizationIpc } from '@/main/ipc/codex-visualization-handlers';
 import type { AntigravityCliStatusDto, CodexTextModelDto } from '@/shared/contracts';
@@ -50,6 +51,7 @@ import {
   DEEPSEEK_API_EXTENSION_ID,
   EXTERNAL_IMAGE_API_EXTENSION_IDS,
   NATURAL_WATERMARK_EXTENSION_ID,
+  MAINTENANCE_GUIDE_EXTENSION_ID,
   OPENAI_IMAGE_API_EXTENSION_ID,
 } from '@/shared/extension-ids';
 
@@ -131,6 +133,13 @@ export function registerExtensionSettingsIpc({
   chooseSaveFile,
   sendRendererEvent,
 }: ExtensionSettingsIpcOptions) {
+  registerMaintenanceGuideIpc({
+    ipcMain,
+    extensions,
+    chooseFile,
+    chooseSaveFile,
+    dataDirectory: path.join(app.getPath('userData'), 'extension-data', MAINTENANCE_GUIDE_EXTENSION_ID),
+  });
   const syncExternalImageApiRuntime = async () => {
     await generation.configureExternalImageApis?.(
       externalImageApis.runtimeConfigurations(

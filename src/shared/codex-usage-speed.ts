@@ -4,6 +4,7 @@ export function codexUsageSpeedCreditMultiplier(normalizedModel: string, service
   if (serviceTier === 'STANDARD') return 1;
   if (serviceTier !== 'FAST') return null;
   if (
+    normalizedModel === 'gpt-6-astra' ||
     normalizedModel === 'gpt-5.6-sol' ||
     normalizedModel === 'gpt-5.6-terra' ||
     normalizedModel === 'gpt-5.6-luna' ||

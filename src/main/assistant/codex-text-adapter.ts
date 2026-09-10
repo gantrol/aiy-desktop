@@ -1,4 +1,6 @@
 import { randomUUID } from 'node:crypto';
+import { planGifMotion } from '@/main/media/gif-planning';
+import type { GifPlanRequest } from '@/shared/contracts/gif-motion-plan';
 import { existsSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import type {
@@ -26,7 +28,11 @@ import {
   throwIfCodexCancelled,
   titleSchema,
 } from '@/main/assistant/codex-runtime';
-import type { CodexArticleCheckExecutionOptions, CodexTitleExecutionOptions } from '@/main/assistant/codex-service';
+import type {
+  CodexArticleCheckExecutionOptions,
+  CodexGifPlanningExecutionOptions,
+  CodexTitleExecutionOptions,
+} from '@/main/assistant/codex-service';
 import { articleCheckOutputSchema, decodeArticleCheckResult } from '@/main/assistant/article-check';
 import { buildArticleCheckPromptProfile } from '@/main/assistant-models/prompts/article-check-prompt';
 import {
@@ -47,6 +53,9 @@ import {
 } from '@/main/assistant/title-suggestion';
 
 export class CodexTextAdapter extends CodexAdapterCore {
+  planGif(input: GifPlanRequest, options: CodexGifPlanningExecutionOptions, signal?: AbortSignal) {
+    return planGifMotion(this, this.database, input, options, signal);
+  }
   async checkArticle(
     input: ArticleCheckInput,
     options: CodexArticleCheckExecutionOptions,

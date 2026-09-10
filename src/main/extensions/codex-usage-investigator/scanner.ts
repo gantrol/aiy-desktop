@@ -3,6 +3,7 @@ import { lstat, readdir } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { z } from 'zod';
+import { codexModelComparisonAnalysisSchema } from '@/shared/contracts/codex-model-comparison';
 import {
   codexUsageDailyBreakdownSchema,
   codexUsageModelBreakdownSchema,
@@ -44,11 +45,15 @@ import {
   type IndexedCodexUsageFile,
 } from '@/main/extensions/codex-usage-investigator/thread-index';
 import type { CodexUsageCacheDatabase } from '@/main/extensions/codex-usage-investigator/cache-database';
+import {
+  codexUsagePreviousSourceCacheKey,
+  codexUsageSourceCacheKey,
+} from '@/main/extensions/codex-usage-investigator/source-cache-key';
 
 const MAX_FILES = 100_000;
 const MAX_EXPORT_ROWS = 100_000;
 const DISCOVERY_STAT_CONCURRENCY = 12;
-const PROCESSED_ANALYSIS_VERSION = 14;
+const PROCESSED_ANALYSIS_VERSION = 17;
 const DETAILED_STATISTICS_VERSION = 4;
 const FILE_YIELD_INTERVAL = 32;
 const safeIntegerSchema = z.number().int().nonnegative().safe();
@@ -61,6 +66,7 @@ const processedSnapshotSchema = z
     models: z.array(codexUsageModelBreakdownSchema).max(1_000),
     days: z.array(codexUsageDailyBreakdownSchema).max(10_000),
     turnSpeed: codexUsageTurnSpeedAnalysisSchema,
+    modelComparison: codexModelComparisonAnalysisSchema,
     sessionLength: codexUsageSessionLengthAnalysisSchema.nullable().default(null),
     quotaYield: codexUsageQuotaYieldAnalysisSchema,
     exportRows: z.array(codexUsageInternalRowSchema).max(MAX_EXPORT_ROWS),
@@ -548,7 +554,7 @@ async function processStoredEvents(
     }
     onProgress?.(70);
     let processedSessionEvents = 0;
-    for (const page of options.cache.sessionAnalysisEventPages(options.fromEpoch, options.toEpoch)) {
+    for (const page of options.cache.sessionAnalysisEventPages(sessionLength.selectedSessionTurns())) {
       for (const event of page) {
         throwIfAborted(options.signal);
         sessionLength.addEvent(event, rowFromEvent(event, options.timeZone));
@@ -572,6 +578,7 @@ async function processStoredEvents(
     models: modelBreakdowns(models),
     days: dailyBreakdowns(days),
     turnSpeed: options.cache.turnSpeedAnalysis(options.fromEpoch, queryToEpoch),
+    modelComparison: await options.cache.modelComparisonAnalysis(options.fromEpoch, queryToEpoch, options.signal),
     sessionLength: sessionLength?.result() ?? null,
     quotaYield: quotaYield.result(),
     exportRows: allExportRows.slice(0, MAX_EXPORT_ROWS),
@@ -614,9 +621,21 @@ export async function scanCodexUsage(options: ScanOptions): Promise<CodexUsageSc
   let calculationPercent = 0;
   let calculationStartedAt: number | null = null;
   const cacheHits = new Set<string>();
+  const sourceStates = new Map<string, { cacheKey: string; needsModeRecovery: 0 | 1 }>();
+  for (const page of options.cache.ingestedSourcePages()) {
+    for (const source of page) sourceStates.set(source.sessionId, source);
+    await yieldToMainThread(signal);
+  }
   for (const [index, file] of files.entries()) {
     throwIfAborted(signal);
-    if (options.cache.hasIngestedSource(file, serviceTierFallback)) cacheHits.add(file.sessionId);
+    const stored = sourceStates.get(file.sessionId);
+    if (
+      stored &&
+      (stored.cacheKey === codexUsageSourceCacheKey(file, serviceTierFallback) ||
+        (!stored.needsModeRecovery && stored.cacheKey === codexUsagePreviousSourceCacheKey(file, serviceTierFallback)))
+    ) {
+      cacheHits.add(file.sessionId);
+    }
     if ((index + 1) % FILE_YIELD_INTERVAL === 0) await yieldToMainThread(signal);
   }
   let bytesTotal = files.reduce((sum, file) => (cacheHits.has(file.sessionId) ? sum : addSafe(sum, file.size)), 0);
@@ -725,6 +744,13 @@ export async function scanCodexUsage(options: ScanOptions): Promise<CodexUsageSc
     });
     options.cache.saveProcessed(cacheKey, processed, processedSnapshotSchema);
   }
+  if (processed.modelComparison.byReasoningEffort.some((row) => row.samples === null)) {
+    processed = {
+      ...processed,
+      modelComparison: await options.cache.modelComparisonAnalysis(fromEpoch, queryToEpoch, options.signal),
+    };
+    options.cache.saveProcessed(cacheKey, processed, processedSnapshotSchema);
+  }
   calculationPercent = 100;
   progress(true, 'FINALIZING');
   const sourceAvailable = discovery.availableRoots > 0 || coverage.sourceEventCount > 0;
@@ -753,6 +779,7 @@ export async function scanCodexUsage(options: ScanOptions): Promise<CodexUsageSc
     models: processed.models,
     days: processed.days,
     turnSpeed: processed.turnSpeed,
+    modelComparison: processed.modelComparison,
     sessionLength: processed.sessionLength,
     quotaYield: processed.quotaYield,
     quotaState: 'UNAVAILABLE',

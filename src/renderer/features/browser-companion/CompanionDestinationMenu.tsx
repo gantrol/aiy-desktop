@@ -1,3 +1,5 @@
+import { useI18n } from '@/renderer/i18n/useI18n';
+import type { MessageCatalog } from '@/renderer/i18n/types';
 import { CheckIcon, ChevronDownIcon, CircleSlashIcon, LoaderCircleIcon, Settings2Icon } from 'lucide-react';
 import { useEffect, useState, type ComponentProps } from 'react';
 import { Button } from '@/renderer/components/ui/button';
@@ -18,20 +20,14 @@ import type {
   BrowserCompanionTarget,
 } from '@/shared/contracts';
 
-const TARGET_LABELS: Record<BrowserCompanionTarget, { en: string; zh: string }> = {
-  chatgpt: { en: 'ChatGPT', zh: 'ChatGPT' },
-  wechat: { en: 'WeChat Official Account', zh: '微信公众号' },
-  weibo: { en: 'Weibo', zh: '微博' },
-};
-
 function routeLabel(
   state: BrowserCompanionDestinationsResult | null,
   target: BrowserCompanionTarget,
-  zh: boolean,
+  copy: MessageCatalog['browserCompanion'],
 ): string {
-  const targetLabel = TARGET_LABELS[target][zh ? 'zh' : 'en'];
+  const targetLabel = copy.targets[target];
   const route = state?.routes[target];
-  if (!route) return `${targetLabel} · ${zh ? '未配置' : 'Not configured'}`;
+  if (!route) return `${targetLabel} · ${copy.notConfigured}`;
   const browser = state.browsers.find((candidate) => candidate.id === route.browserId);
   const profile = browser?.profiles.find((candidate) => candidate.directory === route.profileDirectory);
   return `${targetLabel} · ${browser?.name ?? route.browserId} · ${profile?.name ?? route.profileDirectory}`;
@@ -43,15 +39,15 @@ function BrowserDestinationItems({
   onSelect,
   state,
   target,
-  zh,
 }: {
   browsers: readonly BrowserCompanionBrowser[];
   busy: boolean;
   onSelect(target: BrowserCompanionTarget, browserId: BrowserCompanionBrowserId, profileDirectory: string): void;
   state: BrowserCompanionDestinationsResult;
   target: BrowserCompanionTarget;
-  zh: boolean;
+  zh?: boolean;
 }) {
+  const copy = useI18n().messages.browserCompanion;
   const route = state.routes[target];
   return browsers.flatMap((browser) => {
     if (!browser.available || browser.profiles.length === 0) {
@@ -62,7 +58,7 @@ function BrowserDestinationItems({
           </DropdownMenuIcon>
           <span className="min-w-0 flex-1 truncate">{browser.name}</span>
           <span className="text-xs text-muted-foreground">
-            {!browser.available ? (zh ? '未安装' : 'Unavailable') : zh ? '无 Profile' : 'No Profiles'}
+            {!browser.available ? copy.unavailable : copy.noProfiles}
           </span>
         </DropdownMenuItem>,
       ];
@@ -82,9 +78,7 @@ function BrowserDestinationItems({
           <span className="min-w-0 flex-1 truncate">
             {browser.name} · {profile.name}
           </span>
-          {!profile.companionInstalled && (
-            <span className="text-xs text-muted-foreground">{zh ? '无伴侣' : 'No Companion'}</span>
-          )}
+          {!profile.companionInstalled && <span className="text-xs text-muted-foreground">{copy.noCompanion}</span>}
         </DropdownMenuItem>
       );
     });
@@ -138,7 +132,6 @@ function CompanionDestinationOptions({
   onSelect,
   state,
   targets,
-  zh,
 }: {
   busy: boolean;
   error: string | null;
@@ -146,8 +139,9 @@ function CompanionDestinationOptions({
   onSelect(target: BrowserCompanionTarget, browserId: BrowserCompanionBrowserId, profileDirectory: string): void;
   state: BrowserCompanionDestinationsResult | null;
   targets: readonly BrowserCompanionTarget[];
-  zh: boolean;
+  zh?: boolean;
 }) {
+  const copy = useI18n().messages.browserCompanion;
   const availableBrowsers = state?.browsers.filter((browser) => browser.available) ?? [];
 
   if (loading && !state) {
@@ -156,7 +150,7 @@ function CompanionDestinationOptions({
         <DropdownMenuIcon>
           <LoaderCircleIcon className="animate-spin" />
         </DropdownMenuIcon>
-        {zh ? '读取浏览器 Profile' : 'Loading browser Profiles'}
+        {copy.loadingProfiles}
       </DropdownMenuItem>
     );
   }
@@ -176,12 +170,12 @@ function CompanionDestinationOptions({
         <DropdownMenuIcon>
           <CircleSlashIcon />
         </DropdownMenuIcon>
-        {zh ? '未找到支持的浏览器' : 'No supported browser found'}
+        {copy.noBrowsers}
       </DropdownMenuItem>
     );
   }
   if (targets.length === 0) {
-    return <DropdownMenuItem disabled>{zh ? '没有可用的上传目标' : 'No upload targets available'}</DropdownMenuItem>;
+    return <DropdownMenuItem disabled>{copy.noTargets}</DropdownMenuItem>;
   }
   if (targets.length === 1) {
     return (
@@ -191,14 +185,13 @@ function CompanionDestinationOptions({
         onSelect={onSelect}
         state={state}
         target={targets[0]}
-        zh={zh}
       />
     );
   }
   return targets.map((target) => (
     <DropdownMenuSub key={target}>
-      <DropdownMenuSubTrigger disabled={busy}>
-        <span className="min-w-0 flex-1 truncate">{routeLabel(state, target, zh)}</span>
+      <DropdownMenuSubTrigger disabled={busy} data-browser-companion-profile-target={target}>
+        <span className="min-w-0 flex-1 truncate">{routeLabel(state, target, copy)}</span>
       </DropdownMenuSubTrigger>
       <DropdownMenuSubContent className="w-64">
         <BrowserDestinationItems
@@ -207,7 +200,6 @@ function CompanionDestinationOptions({
           onSelect={onSelect}
           state={state}
           target={target}
-          zh={zh}
         />
       </DropdownMenuSubContent>
     </DropdownMenuSub>
@@ -217,12 +209,12 @@ function CompanionDestinationOptions({
 export function CompanionDestinationSettingsSubmenu({
   busy,
   targets,
-  zh,
 }: {
   busy: boolean;
   targets: readonly BrowserCompanionTarget[];
-  zh: boolean;
+  zh?: boolean;
 }) {
+  const copy = useI18n().messages.browserCompanion;
   const { error, loading, refresh, selectDestination, state } = useCompanionDestinations();
 
   return (
@@ -235,7 +227,7 @@ export function CompanionDestinationSettingsSubmenu({
         <DropdownMenuIcon>
           <Settings2Icon />
         </DropdownMenuIcon>
-        {zh ? '上传目标设置' : 'Upload destination settings'}
+        {copy.destinationSettings}
       </DropdownMenuSubTrigger>
       <DropdownMenuSubContent className="w-64">
         <CompanionDestinationOptions
@@ -247,7 +239,6 @@ export function CompanionDestinationSettingsSubmenu({
           }
           state={state}
           targets={targets}
-          zh={zh}
         />
       </DropdownMenuSubContent>
     </DropdownMenuSub>
@@ -258,16 +249,16 @@ export function CompanionDestinationMenu({
   busy,
   targets,
   variant,
-  zh,
 }: {
   busy: boolean;
   targets: readonly BrowserCompanionTarget[];
   variant: ComponentProps<typeof Button>['variant'];
-  zh: boolean;
+  zh?: boolean;
 }) {
+  const copy = useI18n().messages.browserCompanion;
   const { error, loading, refresh, selectDestination, state } = useCompanionDestinations();
 
-  const title = targets.map((target) => routeLabel(state, target, zh)).join(' / ');
+  const title = targets.map((target) => routeLabel(state, target, copy)).join(' / ');
 
   return (
     <DropdownMenu onOpenChange={(open) => open && void refresh()}>
@@ -296,7 +287,6 @@ export function CompanionDestinationMenu({
           }
           state={state}
           targets={targets}
-          zh={zh}
         />
       </DropdownMenuContent>
     </DropdownMenu>

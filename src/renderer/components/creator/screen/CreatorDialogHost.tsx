@@ -152,7 +152,6 @@ export function CreatorDialogHost(props: Props) {
           open
           rows={props.outputImport.preview.rows}
           versions={props.series?.versions ?? []}
-          defaultVersionId={props.outputImport.preview.defaultVersionId}
           busy={props.outputImport.busy}
           staging={props.outputImport.staging}
           onOpenChange={(open) => {
@@ -160,12 +159,11 @@ export function CreatorDialogHost(props: Props) {
           }}
           onAddFiles={() => void props.outputImport.chooseFiles()}
           onAddImages={(files, source, sourceUrl) => void props.outputImport.previewFiles(files, source, sourceUrl)}
-          onDefaultVersionChange={props.outputImport.setDefaultVersionId}
           onRowChange={props.outputImport.updateRow}
           onAssignVersion={props.outputImport.assignVersion}
           onMoveRow={props.outputImport.moveRow}
           onRemoveRow={props.outputImport.removeRow}
-          onConfirm={() => void props.outputImport.commit()}
+          onConfirm={(rowIds) => void props.outputImport.commit(rowIds)}
         />
       )}
       {props.externalOpen && (

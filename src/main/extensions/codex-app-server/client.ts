@@ -1,5 +1,7 @@
 import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process';
 import { z } from 'zod';
+import { resolveCodexAppServerBinary } from '@/main/extensions/codex-app-server/binary';
+import { captureCodexCompletedItem } from '@/main/extensions/codex-app-server/completed-items';
 import {
   CodexAppServerCaptureError,
   CodexAppServerEmptyResponseError,
@@ -8,9 +10,7 @@ import {
 import {
   CODEX_APP_SERVER_MAX_MESSAGE_BYTES,
   accountReadResponseSchema,
-  agentMessageCompletedItemSchema,
   codexReasoningEffortSchema,
-  imageGenerationCompletedItemSchema,
   itemCompletedNotificationSchema,
   mergeCodexAppServerRateLimits,
   modelCatalogResponseSchema,
@@ -88,6 +88,8 @@ interface PendingRequest {
 }
 
 export interface CodexAppServerImageResult {
+  status?: string;
+  failure?: unknown;
   savedPath: string | null;
   revisedPrompt: string | null;
   result: string;
@@ -99,6 +101,7 @@ export interface CodexAppServerTurnResult {
   status: 'completed';
   finalMessage: string;
   image: CodexAppServerImageResult | null;
+  images?: CodexAppServerImageResult[];
   usage: NonNullable<CodexAppServerTurnEvent['usage']> | null;
 }
 
@@ -107,6 +110,7 @@ interface TurnTracker {
   turnId: string;
   finalMessage: string;
   image: CodexAppServerImageResult | null;
+  images: CodexAppServerImageResult[];
   usage: NonNullable<CodexAppServerTurnEvent['usage']> | null;
   onEvent?: (event: CodexAppServerTurnEvent) => void;
   resolve(value: CodexAppServerTurnResult): void;
@@ -125,11 +129,13 @@ export interface StartThreadInput {
   developerInstructions: string;
   webSearchMode?: 'disabled' | 'live';
   ephemeral?: boolean;
+  userTask?: boolean;
 }
 
 export interface StartTurnInput {
   threadId: string;
   cwd: string;
+  writableRoots?: string[];
   text: string;
   model?: string;
   effort?: AssistantReasoningEffort;
@@ -177,6 +183,7 @@ export class CodexAppServerClient {
   private requestSequence = 0;
   private stderrTail = '';
   private disposed = false;
+  private disposal: Promise<void> | null = null;
   private readonly requests = new Map<RequestId, PendingRequest>();
   private readonly turns = new Map<string, TurnTracker>();
   private readonly earlyTurnMessages = new Map<string, BufferedTurnMessage[]>();
@@ -191,6 +198,10 @@ export class CodexAppServerClient {
     private readonly defaultCwd: string,
   ) {}
 
+  resolveBinary(): Promise<string> {
+    return resolveCodexAppServerBinary(this.binary);
+  }
+
   async startThread(input: StartThreadInput) {
     return this.request(
       'thread/start',
@@ -202,7 +213,7 @@ export class CodexAppServerClient {
         developerInstructions: input.developerInstructions,
         ...threadConfiguration(input),
         ephemeral: input.ephemeral ?? false,
-        threadSource: 'aiy_beauty_dictionary',
+        threadSource: input.userTask ? 'user' : 'aiy_beauty_dictionary',
       },
       threadResponseSchema,
       30_000,
@@ -345,7 +356,7 @@ export class CodexAppServerClient {
         approvalPolicy: 'never',
         sandboxPolicy: {
           type: 'workspaceWrite',
-          writableRoots: [input.cwd],
+          writableRoots: input.writableRoots?.length ? input.writableRoots : [input.cwd],
           networkAccess: true,
           excludeTmpdirEnvVar: false,
           excludeSlashTmp: false,
@@ -368,6 +379,7 @@ export class CodexAppServerClient {
         turnId,
         finalMessage: '',
         image: null,
+        images: [],
         usage: null,
         onEvent: input.onEvent,
         resolve,
@@ -411,7 +423,12 @@ export class CodexAppServerClient {
     }
   }
 
-  async dispose() {
+  dispose(): Promise<void> {
+    this.disposal ??= this.close();
+    return this.disposal;
+  }
+
+  private async close() {
     if (this.disposed) return;
     const active = [...this.turns.values()];
     await Promise.all(active.map((turn) => this.interruptTurn(turn.threadId, turn.turnId)));
@@ -419,14 +436,17 @@ export class CodexAppServerClient {
     const child = this.child;
     this.failConnection(new Error('Codex App Server connection closed'));
     if (!child || child.exitCode !== null || child.signalCode !== null) return;
-    await new Promise<void>((resolve) => {
-      const timer = setTimeout(resolve, 5_000);
+    await new Promise<void>((resolve, reject) => {
+      const timer = setTimeout(() => {
+        if (!child.kill()) reject(new Error('Codex App Server could not be closed'));
+      }, 5_000);
       timer.unref();
       child.once('close', () => {
         clearTimeout(timer);
         resolve();
       });
-      child.kill();
+      // EOF lets app-server release its sessions before exiting. Force termination is a fallback.
+      child.stdin.end();
     });
   }
 
@@ -451,13 +471,15 @@ export class CodexAppServerClient {
   }
 
   private async start() {
+    const binary = await this.resolveBinary();
+    if (this.disposed) throw new Error('Codex App Server client is disposed');
     const environment: NodeJS.ProcessEnv = { ...process.env, NO_COLOR: '1' };
     // The Codex plugin uses the user's Codex sign-in. API credentials belong to
     // the separate OpenAI Image API plugin and must not silently change billing.
     delete environment.OPENAI_API_KEY;
     delete environment.CODEX_API_KEY;
     delete environment.CODEX_ACCESS_TOKEN;
-    const child = spawn(this.binary, ['app-server', '--listen', 'stdio://'], {
+    const child = spawn(binary, ['app-server', '--listen', 'stdio://'], {
       cwd: this.defaultCwd,
       env: environment,
       shell: false,
@@ -755,29 +777,9 @@ export class CodexAppServerClient {
     this.emitTurnEvent(tracker, event);
     const completedItem =
       method === 'item/completed' ? itemCompletedNotificationSchema.safeParse(message.params) : null;
-    if (completedItem?.success && this.captureCompletedItem(completedItem.data.item, tracker)) return;
+    if (completedItem?.success && captureCodexCompletedItem(completedItem.data.item, tracker)) return;
     if (method !== 'turn/completed') return;
     this.completeTurn(message, tracker);
-  }
-
-  private captureCompletedItem(item: JsonObject, tracker: TurnTracker) {
-    if (item.type === 'agentMessage') {
-      const parsed = agentMessageCompletedItemSchema.safeParse(item);
-      if (!parsed.success) return true;
-      if (parsed.data.phase === 'final_answer' || !tracker.finalMessage) tracker.finalMessage = parsed.data.text;
-      return true;
-    }
-    if (item.type === 'imageGeneration') {
-      const parsed = imageGenerationCompletedItemSchema.safeParse(item);
-      if (!parsed.success) return true;
-      tracker.image = {
-        savedPath: parsed.data.savedPath ?? null,
-        revisedPrompt: parsed.data.revisedPrompt ?? null,
-        result: parsed.data.result ?? '',
-      };
-      return true;
-    }
-    return false;
   }
 
   private completeTurn(message: RpcMessage, tracker: TurnTracker) {
@@ -795,7 +797,7 @@ export class CodexAppServerClient {
     const status = completed.data.turn.status;
     if (status === 'completed') {
       const hasImageResponse = Boolean(tracker.image?.savedPath || tracker.image?.result.trim());
-      if (!tracker.finalMessage.trim() && !hasImageResponse) {
+      if (!tracker.finalMessage.trim() && !hasImageResponse && !tracker.image) {
         tracker.reject(new CodexAppServerEmptyResponseError(tracker.threadId, tracker.turnId, tracker.usage));
         return;
       }
@@ -805,6 +807,7 @@ export class CodexAppServerClient {
         status: 'completed',
         finalMessage: tracker.finalMessage,
         image: tracker.image,
+        images: tracker.images,
         usage: tracker.usage,
       });
       return;

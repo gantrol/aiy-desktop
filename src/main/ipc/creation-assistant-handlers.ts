@@ -18,6 +18,7 @@ import {
   socialPostFormCreateInputSchema,
   socialPostMoveInputSchema,
   socialPostSaveInputSchema,
+  socialPostRevisionSaveInputSchema,
   socialPostSetArchivedInputSchema,
 } from '@/shared/contracts/social-post';
 import {
@@ -38,12 +39,20 @@ import {
   articleRevisionHistoryInputSchema,
   articleRevisionSaveInputSchema,
   articleSaveInputSchema,
+  articleOpenInputSchema,
+  articleOpenResultSchema,
   articleSetArchivedInputSchema,
 } from '@/shared/contracts/article';
 import {
   derivedVisualAdoptInputSchema,
   derivedVisualWorkspaceOpenInputSchema,
 } from '@/shared/contracts/derived-visual';
+import {
+  derivedVisualUndoInputSchema,
+  derivedVisualOperationIdentitySchema,
+  derivedVisualOperationsListInputSchema,
+  derivedVisualOperationRequestSchema,
+} from '@/shared/contracts/derived-visual-operations';
 import { codexThreadHref, codexThreadIdSchema } from '@/shared/contracts/codex-thread';
 import {
   promptSeriesCoverSetInputSchema,
@@ -117,8 +126,24 @@ export function registerCreationAssistantIpc({
   ipcMain.handle('derived-visual:workspace-open', (_event, raw) =>
     database.openDerivedVisualWorkspace(derivedVisualWorkspaceOpenInputSchema.parse(raw)),
   );
+  function visualOperationScope<T extends { spaceId: string }>(input: T): T {
+    if (database.getLocalSpace().id !== input.spaceId) throw new Error('DERIVED_VISUAL_SPACE_MISMATCH');
+    return input;
+  }
   ipcMain.handle('derived-visual:adopt', (_event, raw) =>
-    database.adoptDerivedVisual(derivedVisualAdoptInputSchema.parse(raw)),
+    database.adoptDerivedVisual(visualOperationScope(derivedVisualAdoptInputSchema.parse(raw))),
+  );
+  ipcMain.handle('derived-visual:undo', (_event, raw) =>
+    database.undoDerivedVisual(visualOperationScope(derivedVisualUndoInputSchema.parse(raw))),
+  );
+  ipcMain.handle('derived-visual:operation-get', (_event, raw) =>
+    database.getDerivedVisualOperation(visualOperationScope(derivedVisualOperationIdentitySchema.parse(raw))),
+  );
+  ipcMain.handle('derived-visual:operations-list', (_event, raw) =>
+    database.listDerivedVisualOperations(visualOperationScope(derivedVisualOperationsListInputSchema.parse(raw))),
+  );
+  ipcMain.handle('derived-visual:operation-cancel', (_event, raw) =>
+    database.cancelDerivedVisualOperation(visualOperationScope(derivedVisualOperationRequestSchema.parse(raw))),
   );
   ipcMain.handle('creation-input-stashes:list', (_event, raw) =>
     database.listCreationInputStashes(creatorAgentScopeSchema.parse(raw)),
@@ -136,6 +161,11 @@ export function registerCreationAssistantIpc({
     database.setInspirationStashArchived(inspirationStashSetArchivedInputSchema.parse(raw)),
   );
   ipcMain.handle('social-post:save', (_event, raw) => database.saveSocialPost(socialPostSaveInputSchema.parse(raw)));
+  ipcMain.handle('social-post:revision-save', (_event, raw, rawSpaceId) => {
+    const spaceId = z.string().min(1).max(200).optional().parse(rawSpaceId);
+    if (spaceId && database.getLocalSpace().id !== spaceId) throw new Error('SOCIAL_POST_SPACE_MISMATCH');
+    return database.saveSocialPostRevision(socialPostRevisionSaveInputSchema.parse(raw));
+  });
   ipcMain.handle('social-post:form-add', (_event, raw) =>
     database.addSocialPostForm(socialPostFormAddInputSchema.parse(raw)),
   );
@@ -147,6 +177,11 @@ export function registerCreationAssistantIpc({
     database.setSocialPostArchived(socialPostSetArchivedInputSchema.parse(raw)),
   );
   ipcMain.handle('article:save', (_event, raw) => database.saveArticle(articleSaveInputSchema.parse(raw)));
+  ipcMain.handle('article:open', (_event, raw) => {
+    const input = articleOpenInputSchema.parse(raw);
+    if (database.getLocalSpace().id !== input.spaceId) throw new Error('Article belongs to a different local space');
+    return articleOpenResultSchema.parse({ spaceId: input.spaceId, article: database.getArticle(input.articleId) });
+  });
   ipcMain.handle('article:revision-history', (_event, raw) =>
     database.getArticleRevisionHistory(articleRevisionHistoryInputSchema.parse(raw)),
   );

@@ -28,7 +28,14 @@ interface Props {
   onConfigureProvider(extensionId: string): void;
 }
 
-const operations: AssistantOperation[] = ['directions', 'optimize', 'title', 'subtitleTranslation', 'articleCheck'];
+const operations: AssistantOperation[] = [
+  'directions',
+  'optimize',
+  'title',
+  'gifPlanning',
+  'subtitleTranslation',
+  'articleCheck',
+];
 
 export function AiAssistantRoutingPanel({ active, extensions, notify, onConfigureProvider }: Props) {
   const { messages } = useI18n();
@@ -70,6 +77,7 @@ export function AiAssistantRoutingPanel({ active, extensions, notify, onConfigur
   function operationLabel(operation: AssistantOperation) {
     if (operation === 'directions') return l.directionsAction;
     if (operation === 'optimize') return l.optimizeAction;
+    if (operation === 'gifPlanning') return l.gifPlanningAction;
     if (operation === 'subtitleTranslation') return l.subtitleTranslationAction;
     if (operation === 'articleCheck') return l.articleCheckAction;
     return l.titleAction;
@@ -97,6 +105,7 @@ export function AiAssistantRoutingPanel({ active, extensions, notify, onConfigur
       directions: { ...routing.selections.directions },
       optimize: { ...routing.selections.optimize },
       title: { ...routing.selections.title },
+      gifPlanning: { ...routing.selections.gifPlanning },
       subtitleTranslation: { ...routing.selections.subtitleTranslation },
       articleCheck: { ...routing.selections.articleCheck },
     });

@@ -22,7 +22,8 @@ import { Button } from '@/renderer/components/ui/button';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/renderer/components/ui/dialog';
 import { ScrollArea } from '@/renderer/components/ui/scroll-area';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/renderer/components/ui/select';
-import { AmbientImage } from '@/renderer/components/media/AmbientImage';
+import { AssetThumbnail } from '@/renderer/components/media/AssetThumbnail';
+import { useI18n } from '@/renderer/i18n/useI18n';
 
 interface Props {
   open: boolean;
@@ -104,7 +105,7 @@ function textValue(value: string) {
   return <span className="whitespace-pre-wrap break-words">{value || '—'}</span>;
 }
 
-function referenceValue(snapshot: ComparableSnapshot, locale: Locale) {
+function referenceValue(snapshot: ComparableSnapshot, unavailableLabel: string) {
   if (!snapshot.referenceAssetIds.length) return <span>—</span>;
   const byId = new Map(snapshot.referenceAssets.map((asset) => [asset.id, asset]));
   return (
@@ -112,16 +113,12 @@ function referenceValue(snapshot: ComparableSnapshot, locale: Locale) {
       {snapshot.referenceAssetIds.map((id, index) => {
         const asset = byId.get(id);
         return asset ? (
-          <AmbientImage
-            key={`${id}:${index}`}
-            src={asset.mediaUrl}
-            alt=""
-            frameClassName="size-10 rounded border"
-            className="size-full object-contain"
-          />
+          <span key={`${id}:${index}`} className="relative isolate block size-10 overflow-hidden rounded border">
+            <AssetThumbnail asset={asset} size={96} ambient className="size-full object-contain" />
+          </span>
         ) : (
           <span key={`${id}:${index}`} className="rounded border px-1.5 py-1 text-2xs text-muted-foreground">
-            {locale === 'zh' ? '不可用' : 'Unavailable'}
+            {unavailableLabel}
           </span>
         );
       })}
@@ -144,6 +141,7 @@ export function CreationInputStashDialog({
   onCreate,
   onRestore,
 }: Props) {
+  const { messages } = useI18n();
   const zh = locale === 'zh';
   const candidates = useMemo<Candidate[]>(
     () => [
@@ -253,8 +251,8 @@ export function CreationInputStashDialog({
     {
       key: 'references',
       label: zh ? '参考图' : 'References',
-      left: referenceValue(left.snapshot, locale),
-      right: referenceValue(right.snapshot, locale),
+      left: referenceValue(left.snapshot, messages.contentEditor.imageUnavailable),
+      right: referenceValue(right.snapshot, messages.contentEditor.imageUnavailable),
       changed: normalized(left.snapshot.referenceAssetIds) !== normalized(right.snapshot.referenceAssetIds),
     },
     {

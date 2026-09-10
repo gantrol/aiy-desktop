@@ -15,10 +15,12 @@ import type {
 import { articleElementTextFingerprint } from '@/shared/contracts/article';
 import {
   ARTICLE_ELEMENT_ATTRIBUTE,
+  articleElementImageText,
   articleElementNodeTypes,
   isArticleElementNodeType,
   nextArticleElementId,
   takeSavedArticleElement,
+  takeSavedArticleImageElement,
 } from '@/renderer/features/video-documents/articleElementIdentityModel';
 
 const ARTICLE_ELEMENT_IDENTITY_META = 'articleElementIdentity';
@@ -70,9 +72,7 @@ function wholeElementAnchorKind(nodeType: ArticleElementNodeType): ArticleCommen
 
 function elementText(node: ProseMirrorNode) {
   if (node.type.name !== 'image') return node.textContent;
-  return [node.attrs.alt, node.attrs.title, node.attrs.sourcePath, node.attrs.src]
-    .filter((value): value is string => typeof value === 'string' && Boolean(value.trim()))
-    .join(' ');
+  return articleElementImageText(node.attrs);
 }
 
 function articleElementTextProjection(node: ProseMirrorNode, nodeType: ArticleElementNodeType) {
@@ -199,6 +199,15 @@ function matchingQuoteRange(element: LocatedArticleElement, comment: ArticleComm
   return offset < 0 ? null : { startOffset: offset, endOffset: offset + quote.length };
 }
 
+function commentDecorationAttributes(comment: ArticleCommentDto, relocated: boolean) {
+  return {
+    class: `box-decoration-clone bg-[var(--article-comment-background)] underline decoration-[var(--article-comment-decoration)] underline-offset-4 [text-decoration-thickness:var(--article-comment-thickness)] transition-[background-color,text-decoration-color,text-decoration-thickness] duration-fast ${relocated ? 'decoration-dashed' : 'decoration-solid'}`,
+    'data-article-comment-id': comment.id,
+    'data-article-comment-status': comment.status,
+    style: `--article-comment-background: transparent; --article-comment-decoration: ${comment.status === 'OPEN' ? 'color-mix(in srgb, var(--warning) 70%, transparent)' : 'transparent'}; --article-comment-thickness: 1px;`,
+  };
+}
+
 function commentDecorations(
   document: ProseMirrorNode,
   index: LocatedArticleElementIndex,
@@ -230,12 +239,7 @@ function commentDecorations(
     if (quote && anchoredText !== quote) relocated = true;
   }
   const specification = { commentId: comment.id, relocated };
-  const attributes = {
-    class: `box-decoration-clone bg-[var(--article-comment-background)] underline decoration-[var(--article-comment-decoration)] underline-offset-4 [text-decoration-thickness:var(--article-comment-thickness)] transition-[background-color,text-decoration-color,text-decoration-thickness] duration-fast ${relocated ? 'decoration-dashed' : 'decoration-solid'}`,
-    'data-article-comment-id': comment.id,
-    'data-article-comment-status': comment.status,
-    style: `--article-comment-background: transparent; --article-comment-decoration: ${comment.status === 'OPEN' ? 'color-mix(in srgb, var(--warning) 70%, transparent)' : 'transparent'}; --article-comment-thickness: 1px;`,
-  };
+  const attributes = commentDecorationAttributes(comment, relocated);
   if (relocated) {
     return [Decoration.node(start.position, start.position + start.node.nodeSize, attributes, specification)];
   }
@@ -255,13 +259,22 @@ interface ArticleElementPluginState {
 function articleElementPluginState(
   document: ProseMirrorNode,
   comments: readonly ArticleCommentDto[],
+  previous?: ArticleElementPluginState,
 ): ArticleElementPluginState {
   const index = locatedArticleElementIndex(document);
   const decorations: Decoration[] = [];
   const decorationByCommentId = new Map<string, Decoration>();
   const resolutionByCommentId = new Map<string, ArticleCommentDto['targetResolution']>();
   for (const comment of comments) {
-    const decoration = commentDecorations(document, index, comment)[0];
+    // Existing ranges belong to the live document, even if a save response
+    // carries anchor coordinates from an earlier document revision.
+    const mapped = previous?.decorationByCommentId.get(comment.id);
+    const decoration =
+      mapped && !mapped.spec.relocated
+        ? comment.anchor.kind === 'TEXT_RANGE'
+          ? Decoration.inline(mapped.from, mapped.to, commentDecorationAttributes(comment, false), mapped.spec)
+          : Decoration.node(mapped.from, mapped.to, commentDecorationAttributes(comment, false), mapped.spec)
+        : commentDecorations(document, index, comment)[0];
     if (!decoration) {
       resolutionByCommentId.set(comment.id, index.elements.length ? 'RELOCATED' : 'MISSING');
       continue;
@@ -283,6 +296,7 @@ function mapArticleElementPluginState(
   transaction: Transaction,
   current: ArticleElementPluginState,
   comments: readonly ArticleCommentDto[],
+  composing = false,
 ): ArticleElementPluginState {
   const index = locatedArticleElementIndex(transaction.doc);
   const mapped = current.decorations.map(transaction.mapping, transaction.doc);
@@ -292,6 +306,7 @@ function mapArticleElementPluginState(
   );
   const additions: Decoration[] = [];
   for (const comment of comments) {
+    if (composing) break;
     if (decorationByCommentId.has(comment.id)) continue;
     const decoration = commentDecorations(transaction.doc, index, comment, true)[0];
     if (!decoration) continue;
@@ -326,7 +341,10 @@ function articleElementIndexForEditor(editor: Editor) {
   return state?.index ?? locatedArticleElementIndex(editor.state.doc);
 }
 
-export function createArticleElementIdentityExtension(comments: () => readonly ArticleCommentDto[]) {
+export function createArticleElementIdentityExtension(
+  comments: () => readonly ArticleCommentDto[],
+  inputPending = () => false,
+) {
   return Extension.create({
     name: 'articleElementIdentity',
     addGlobalAttributes() {
@@ -350,12 +368,15 @@ export function createArticleElementIdentityExtension(comments: () => readonly A
             init: (_configuration, state) => articleElementPluginState(state.doc, comments()),
             apply(transaction, state) {
               if (transaction.getMeta(articleElementPluginKey)) {
-                return articleElementPluginState(transaction.doc, comments());
+                return articleElementPluginState(transaction.doc, comments(), state);
               }
-              return transaction.docChanged ? mapArticleElementPluginState(transaction, state, comments()) : state;
+              return transaction.docChanged
+                ? mapArticleElementPluginState(transaction, state, comments(), inputPending())
+                : state;
             },
           },
           appendTransaction(transactions, _oldState, newState) {
+            if (inputPending()) return null;
             if (!transactions.some((transaction) => transaction.docChanged)) return null;
             if (transactions.some(transactionHasCompositionOrigin)) return null;
             const state = articleElementPluginKey.getState(newState) as ArticleElementPluginState | undefined;
@@ -392,17 +413,30 @@ export function hydrateArticleElements(
   if (editor.isDestroyed || view.composing) return false;
   const located = articleElementIndexForEditor(editor).elements;
   const unused = new Map(saved.map((placement) => [placement.elementId, placement]));
+  // The document owns existing identities; fingerprints only recover missing ones.
+  const reserved = new Set(located.map((item) => item.elementId).filter(Boolean));
+  for (const elementId of reserved) unused.delete(elementId);
+  const seen = new Set<string>();
   const transaction = editor.state.tr;
   let changed = false;
   for (const item of located) {
-    const matching = takeSavedArticleElement(saved, unused, articleElementPlacement(item));
+    if (item.elementId && !seen.has(item.elementId)) {
+      seen.add(item.elementId);
+      continue;
+    }
+    const imagePath = item.node.attrs.mediaPath || item.node.attrs.sourcePath;
+    const matching =
+      takeSavedArticleElement(saved, unused, articleElementPlacement(item)) ??
+      (item.nodeType === 'image' ? takeSavedArticleImageElement(saved, unused, item.blockIndex, imagePath) : undefined);
     const elementId = matching?.elementId ?? nextArticleElementId();
+    seen.add(elementId);
     if (item.elementId === elementId) continue;
     transaction.setNodeAttribute(item.position, ARTICLE_ELEMENT_ATTRIBUTE, elementId);
     changed = true;
   }
   if (!changed) return false;
   transaction.setMeta(ARTICLE_ELEMENT_IDENTITY_META, 'hydrate' satisfies ArticleElementIdentityOrigin);
+  transaction.setMeta('preventUpdate', true);
   transaction.setMeta('addToHistory', false);
   view.dispatch(transaction);
   return true;

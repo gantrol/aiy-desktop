@@ -52,6 +52,7 @@ npm run make:store:local
 - Store identity、publisher、Windows Desktop x64 架构和四段 Store 版本；
 - `package.json` 的三段应用版本与 manifest Store 版本映射；
 - `creation-starter` 是唯一随包内容包，且不包含生产人像内容；
+- Electron 语言允许清单、ICU、演示资源去重与运行时图片格式符合[安装包资源优化约束](../release/packaging-inputs.md#安装包资源优化约束)；
 - 原生 Store 更新 helper 存在，并声明受支持的协议版本；
 - submission 包没有签名，local-test 包具有签名；
 - MSIX 的 SHA-256、源提交和工作区 dirty 状态写入构建元数据。

@@ -29,7 +29,7 @@ export function VideoDocumentRenameDialog({ open, title: savedTitle, onOpenChang
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const nextTitle = title.trim();
-    if (!nextTitle || saving) return;
+    if (saving) return;
     setSaving(true);
     setError('');
     try {
@@ -69,7 +69,7 @@ export function VideoDocumentRenameDialog({ open, title: savedTitle, onOpenChang
             <Button type="button" variant="outline" disabled={saving} onClick={() => onOpenChange(false)}>
               {labels.editor.cancel}
             </Button>
-            <Button type="submit" disabled={saving || !title.trim()}>
+            <Button type="submit" disabled={saving}>
               {saving && <LoaderCircleIcon className="size-4 animate-spin" />}
               {saving ? labels.editor.saving : labels.editor.save}
             </Button>

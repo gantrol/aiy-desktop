@@ -302,7 +302,7 @@ export function LocalSpaceTransitionOverlay({
               <span className="absolute inset-y-2 left-1 w-1/2 origin-right rotate-[-8deg] rounded-l-2xl border bg-surface shadow-overlay" />
               <span className="absolute inset-y-2 right-1 w-1/2 origin-left rotate-[8deg] rounded-r-2xl border bg-surface shadow-overlay" />
               <span className="absolute inset-x-3 inset-y-1 grid place-items-center overflow-hidden rounded-2xl border bg-surface shadow-overlay">
-                <img className="size-16 object-contain" src="./icon.png" alt="" draggable={false} />
+                <AiyIdentity className="size-full" />
                 {transition.space.coverUrl && (
                   <img
                     key={transition.space.coverUrl}
@@ -369,3 +369,4 @@ export function LocalSpaceTransitionOverlay({
     </div>
   );
 }
+import { AiyIdentity } from '@/renderer/components/brand/AiyIdentity';

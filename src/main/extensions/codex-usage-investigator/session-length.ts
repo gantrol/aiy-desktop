@@ -10,6 +10,7 @@ import type {
   CodexUsageStoredChatTurn,
 } from '@/main/extensions/codex-usage-investigator/cache-records';
 import { normalizeCodexUsageModel } from '@/main/extensions/codex-usage-investigator/pricing';
+import { codexUuidV7Timestamp } from '@/main/extensions/codex-usage-investigator/turn-identity';
 import type {
   CodexUsageInternalEvent,
   CodexUsageInternalRow,
@@ -86,7 +87,7 @@ function median(values: readonly number[]) {
 
 function mean(values: readonly number[]) {
   if (!values.length) return 0;
-  return values.reduce(addSafe, 0) / values.length;
+  return values.reduce((sum, value) => addSafe(sum, value), 0) / values.length;
 }
 
 function inputs(row: CodexUsageInternalRow) {
@@ -282,7 +283,7 @@ function comparisonResult(comparison: ComparisonState): CodexUsageSessionLengthC
     source: comparison.source,
     model: comparison.model,
     sessionCount: comparison.sessions.length,
-    totalChatTurns: chatTurns.reduce(addSafe, 0),
+    totalChatTurns: chatTurns.reduce((sum, value) => addSafe(sum, value), 0),
     medianSessionTurns: median(chatTurns),
     percentile90SessionTurns: percentile(chatTurns, 0.9),
     maximumSessionTurns: Math.max(0, ...chatTurns),
@@ -320,15 +321,8 @@ function initialSession(source: CodexUsageSessionSourceRecord): SessionState {
   };
 }
 
-function uuidV7Timestamp(value: string) {
-  const match = value.match(/^([0-9a-f]{8})-([0-9a-f]{4})-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i);
-  if (!match) return null;
-  const timestamp = Number.parseInt(`${match[1]}${match[2]}`, 16);
-  return Number.isSafeInteger(timestamp) ? timestamp : null;
-}
-
 function belongsToCreatedThread(turn: CodexUsageStoredChatTurn) {
-  const createdAt = uuidV7Timestamp(turn.turnId);
+  const createdAt = codexUuidV7Timestamp(turn.turnId);
   return createdAt === null || turn.threadCreatedMs === 0 || createdAt >= turn.threadCreatedMs;
 }
 
@@ -336,7 +330,7 @@ export class CodexSessionLengthAccumulator {
   readonly #fromEpoch: number | null;
   readonly #toEpoch: number;
   readonly #sessions = new Map<string, SessionState>();
-  readonly #ownedTurnIds = new Set<string>();
+  readonly #ownedTurnIds = new Map<string, string>();
 
   constructor(fromEpoch: number | null, toEpoch: number) {
     this.#fromEpoch = fromEpoch;
@@ -354,13 +348,31 @@ export class CodexSessionLengthAccumulator {
       session.inheritedTurnCount = addSafe(session.inheritedTurnCount, 1);
       return;
     }
-    this.#ownedTurnIds.add(turn.turnId);
+    this.#ownedTurnIds.set(turn.turnId, turn.sessionId);
     session.ownedTurnCount = addSafe(session.ownedTurnCount, 1);
     if (turn.terminalMs === null || turn.terminalState === null) {
       session.openOwnedTurnCount = addSafe(session.openOwnedTurnCount, 1);
       return;
     }
     session.lastTerminalMs = Math.max(session.lastTerminalMs ?? 0, turn.terminalMs);
+  }
+
+  selectedSessionTurns(): [sessionId: string, turnId: string][] {
+    const sessions = new Set(
+      [...this.#sessions.values()]
+        .filter(
+          (session) =>
+            session.ownedTurnCount > 0 &&
+            session.openOwnedTurnCount === 0 &&
+            session.lastTerminalMs !== null &&
+            session.lastTerminalMs <= this.#toEpoch &&
+            (this.#fromEpoch === null || session.lastTerminalMs >= this.#fromEpoch),
+        )
+        .map((session) => session.sessionId),
+    );
+    return [...this.#ownedTurnIds]
+      .filter(([, sessionId]) => sessions.has(sessionId))
+      .map(([turnId, sessionId]) => [sessionId, turnId]);
   }
 
   addEvent(event: CodexUsageInternalEvent, row: CodexUsageInternalRow) {

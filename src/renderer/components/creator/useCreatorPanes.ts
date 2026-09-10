@@ -88,7 +88,7 @@ export function creatorPaneGeometry({
   );
   const canExpandResultLibrary = showResultLibrary && maximumResultWidth >= minimumResultListWidth;
   const effectiveResultLibraryMode =
-    showResultLibrary && resultLibraryMode === 'full' && !canExpandResultLibrary ? 'images' : resultLibraryMode;
+    showResultLibrary && resultLibraryMode !== 'images' && !canExpandResultLibrary ? 'images' : resultLibraryMode;
   const resultWidth = !showResultLibrary
     ? 0
     : effectiveResultLibraryMode === 'images'
@@ -237,7 +237,7 @@ export function useCreatorPanes({ showResultLibrary, showOutputInspector, compar
       return;
     }
     setResultPanelWidth(Math.max(minimumResultListWidth, next));
-    setResultLibraryMode('full');
+    setResultLibraryMode((current) => (current === 'outline' ? 'outline' : 'full'));
   }
 
   function beginOutputResize(event: ReactPointerEvent<HTMLDivElement>) {
@@ -269,7 +269,7 @@ export function useCreatorPanes({ showResultLibrary, showOutputInspector, compar
     multiPane,
     compactPanel,
     setCompactPanel,
-    resultLibraryMode: geometry.resultLibraryMode,
+    resultLibraryMode: multiPane ? geometry.resultLibraryMode : resultLibraryMode,
     canExpandResultLibrary: geometry.canExpandResultLibrary,
     setResultLibraryMode,
     resultWidth,

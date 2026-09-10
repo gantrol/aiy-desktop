@@ -19,6 +19,8 @@ export interface LibraryDatabaseInitializeOptions {
   recoverGenerationRuns?: boolean;
   /** Long-running assistant jobs are also owned by the detached model worker. */
   recoverAssistantRuns?: boolean;
+  /** GIF exports belong to the desktop main process, never the detached model worker. */
+  recoverGifRuns?: boolean;
 }
 
 export interface FixtureImportOptions {
@@ -58,7 +60,13 @@ class LibraryDatabaseCore {
   ) {
     const { articleChecks, articleDeliveryJobs, assistantRuns, creations, db, generationJobs, packs, videoDocuments } =
       this.repositories;
-    initializeDatabaseSchema(db);
+    const startupCheck = initializeDatabaseSchema(db);
+    if (options.recoverGifRuns) {
+      db.prepare("UPDATE gif_export_runs SET state='FAILED',error_code='GIF_FAILED' WHERE state='RUNNING'").run();
+      db.prepare(
+        "UPDATE gif_generation_runs SET state='FAILED',error_code='GIF_GENERATION_FAILED' WHERE state IN ('PREPARING','GENERATING','COMPOSITING')",
+      ).run();
+    }
     articleChecks.interruptRunningAtStartup();
     articleDeliveryJobs.recoverRunning();
     if (options.recoverAssistantRuns !== false) {
@@ -79,6 +87,7 @@ class LibraryDatabaseCore {
     }
     if (localSpaceIdentity) packs.renameLocalSpace(this.repositories.workbench.getLibraryName());
     this.initialized = true;
+    return startupCheck;
   }
 
   /**

@@ -152,6 +152,7 @@ const manifestSchema = z
         searchProviders: contributionIds.optional(),
         modelProviders: contributionIds.optional(),
         deliveryChannels: contributionIds.optional(),
+        contentApplications: contributionIds.optional(),
       })
       .strict(),
     permissions: z.array(permissionKey).max(80),

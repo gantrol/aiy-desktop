@@ -3,6 +3,7 @@ import type Database from 'better-sqlite3';
 import removeInspirationParentSeriesSql from '@/main/database/sql/v03-revision-004-remove-inspiration-parent-series.sql?raw';
 
 type EntityKind =
+  | 'GIF_DOCUMENT'
   | 'PROMPT_SERIES'
   | 'IMAGE_BREAKDOWN'
   | 'INSPIRATION_STASH'
@@ -12,7 +13,13 @@ type EntityKind =
   | 'EVALUATION_SUITE'
   | 'DERIVED_VISUAL';
 type PrimaryRole =
-  'IMAGE_BREAKDOWN' | 'IMAGE_CREATION' | 'SOCIAL_POST' | 'ARTICLE' | 'VIDEO_DOCUMENT' | 'EVALUATION_SUITE';
+  | 'ANIMATION'
+  | 'IMAGE_BREAKDOWN'
+  | 'IMAGE_CREATION'
+  | 'SOCIAL_POST'
+  | 'ARTICLE'
+  | 'VIDEO_DOCUMENT'
+  | 'EVALUATION_SUITE';
 type FormRole = PrimaryRole | 'INSPIRATION' | 'SOCIAL_POST_COVER' | 'ARTICLE_HEADER' | 'ARTICLE_INLINE';
 type DerivedVisualRole = 'SOCIAL_POST_COVER' | 'ARTICLE_HEADER' | 'ARTICLE_INLINE';
 
@@ -21,6 +28,7 @@ interface Row {
 }
 
 const primaryRoles = new Set<FormRole>([
+  'ANIMATION',
   'IMAGE_BREAKDOWN',
   'IMAGE_CREATION',
   'SOCIAL_POST',
@@ -186,6 +194,13 @@ function parentItemForInspiration(db: Database.Database, parentSeriesId: string 
 }
 
 function ensurePrimaryEntityForms(db: Database.Database) {
+  const internalSeries = tableColumns(db, 'gif_execution_series').has('series_id')
+    ? new Set(
+        (db.prepare('SELECT series_id FROM gif_execution_series').all() as { series_id: string }[]).map(
+          (row) => row.series_id,
+        ),
+      )
+    : new Set<string>();
   const derivedSeries = new Set(
     (db.prepare('SELECT prompt_series_id FROM derived_visuals WHERE prompt_series_id IS NOT NULL').all() as Row[]).map(
       (row) => text(row.prompt_series_id),
@@ -200,7 +215,7 @@ function ensurePrimaryEntityForms(db: Database.Database) {
     .all() as Row[];
   for (const row of seriesRows) {
     const id = text(row.id);
-    if (derivedSeries.has(id) || formForEntity(db, 'PROMPT_SERIES', id)) continue;
+    if (internalSeries.has(id) || derivedSeries.has(id) || formForEntity(db, 'PROMPT_SERIES', id)) continue;
     createItemWithForm(db, {
       role: 'IMAGE_CREATION',
       entityType: 'PROMPT_SERIES',
@@ -594,12 +609,15 @@ export function ensureCreationItemLocations(db: Database.Database) {
 
 export function creationCompositionComplete(db: Database.Database) {
   if (tableColumns(db, 'inspiration_stashes').has('parent_series_id')) return false;
+  const hasAnimations = tableColumns(db, 'gif_execution_series').has('series_id');
+  const animationForms = tableColumns(db, 'gif_documents').has('deleted_at');
   const missing = db
     .prepare(
       `SELECT 1 FROM (
         SELECT 'PROMPT_SERIES' AS entity_type, series.id
         FROM prompt_series series
         WHERE series.deleted_at IS NULL
+          ${hasAnimations ? 'AND NOT EXISTS (SELECT 1 FROM gif_execution_series internal WHERE internal.series_id=series.id)' : ''}
           AND NOT EXISTS (SELECT 1 FROM derived_visuals visual WHERE visual.prompt_series_id = series.id)
         UNION ALL
         SELECT 'IMAGE_BREAKDOWN', id FROM image_breakdowns WHERE deleted_at IS NULL
@@ -613,6 +631,7 @@ export function creationCompositionComplete(db: Database.Database) {
         SELECT 'VIDEO_DOCUMENT', id FROM documents WHERE deleted_at IS NULL
         UNION ALL
         SELECT 'EVALUATION_SUITE', id FROM evaluation_suites WHERE deleted_at IS NULL
+        ${animationForms ? "UNION ALL SELECT 'GIF_DOCUMENT', id FROM gif_documents WHERE purpose='GIF' AND deleted_at IS NULL" : ''}
       ) entity
       WHERE NOT EXISTS (
         SELECT 1 FROM creation_forms form
@@ -650,7 +669,7 @@ export function creationCompositionComplete(db: Database.Database) {
           WHERE form.id = item.primary_form_id AND form.creation_item_id = item.id
             AND form.deleted_at IS NULL
             AND form.role IN (
-              'IMAGE_BREAKDOWN', 'IMAGE_CREATION', 'SOCIAL_POST', 'ARTICLE', 'VIDEO_DOCUMENT', 'EVALUATION_SUITE'
+              'ANIMATION', 'IMAGE_BREAKDOWN', 'IMAGE_CREATION', 'SOCIAL_POST', 'ARTICLE', 'VIDEO_DOCUMENT', 'EVALUATION_SUITE'
             )
         ))
       ) LIMIT 1`,

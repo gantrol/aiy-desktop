@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react';
+import { creatorInputScopeKey } from '@/renderer/components/creator/workflows/creatorInputScopeKey';
 import type {
   AssistantRunDto,
   BootstrapDto,
@@ -165,14 +166,19 @@ export function useCreatorGenerationInputSession({
   function creatorImportContext(source: RendererImageImportSource, sourceUrl = '') {
     return creatorReferenceImportContext(creatorImportContextBase, source, sourceUrl);
   }
+  const inputScopeKey = creatorInputScopeKey({
+    libraryKey: data.spaceName,
+    sessionGeneration: creationDraftSession.captureAutosaveIdentity().sessionGeneration,
+    inputSessionRevision,
+    creationMode,
+    seriesId,
+    versionId: hydration.versionId,
+  });
   const referenceImport = useCreatorReferenceImport({
     context: creatorImportContextBase,
     importFailedMessage: messages.importFailed,
     notify,
-    scopeKey:
-      creationMode === 'existing'
-        ? `series:${seriesId ?? ''}:version:${hydration.versionId}:session:${inputSessionRevision}`
-        : `draft:${creationDraftSession.draftId ?? 'new'}:session:${inputSessionRevision}`,
+    scopeKey: inputScopeKey,
     updateReferenceAssets: promptDocument.updateReferenceAssets,
   });
 
@@ -286,6 +292,7 @@ export function useCreatorGenerationInputSession({
 
   return {
     assistantContextKey,
+    inputScopeKey,
     canvasPreset,
     canvasPresetKey,
     configuration,
@@ -302,6 +309,7 @@ export function useCreatorGenerationInputSession({
     repeatCount,
     setCanvasPresetKey,
     setGenerationTargets,
+    setTitle: setNewTitle,
     title: newTitle,
   };
 }

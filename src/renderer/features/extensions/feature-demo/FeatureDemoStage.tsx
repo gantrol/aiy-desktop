@@ -1,15 +1,26 @@
-import { forwardRef, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { forwardRef, useMemo, type ReactNode } from 'react';
 import { MousePointer2Icon } from 'lucide-react';
-import type { BootstrapDto, ExtensionDto } from '@/shared/contracts';
-import { CODEX_EXTENSION_ID } from '@/shared/extension-ids';
+import type { BootstrapDto } from '@/shared/contracts';
 import { Badge } from '@/renderer/components/ui/badge';
 import { GenerationComparison } from '@/renderer/components/creator/GenerationComparison';
-import { StyleExplorationPanel } from '@/renderer/components/creator/StyleExplorationPanel';
-import type { VideoDocumentsLocation } from '@/renderer/components/app/app-navigation';
-import { CodexImageDiscoveryConfiguration } from '@/renderer/features/extensions/CodexImageDiscoveryConfiguration';
+import { FeatureDemoCodexImages } from '@/renderer/features/extensions/feature-demo/FeatureDemoCodexImages';
 import { FeatureDemoDirectoryTree } from '@/renderer/features/extensions/feature-demo/FeatureDemoDirectoryTree';
+import { FeatureDemoDirections } from '@/renderer/features/extensions/feature-demo/FeatureDemoDirections';
+import { FeatureDemoVideoDocument } from '@/renderer/features/extensions/feature-demo/FeatureDemoVideoDocument';
+import { FeatureDemoImageCreation } from '@/renderer/features/extensions/feature-demo/FeatureDemoImageCreation';
+import { FeatureDemoPetalNote } from '@/renderer/features/extensions/feature-demo/FeatureDemoPetalNote';
+import {
+  DIRECTORY_DEMO_LAYOUT,
+  directoryDemoStateAt,
+  isDirectoryScene,
+} from '@/renderer/features/extensions/feature-demo/featureDemoDirectoryScene';
+import {
+  comparisonDemoStateAt,
+  featureDemoCursorAt,
+  directionDemoStateAt,
+} from '@/renderer/features/extensions/feature-demo/featureDemoSceneState';
 import type { FeatureDemoRunPlan } from '@/renderer/features/extensions/feature-demo/featureDemoRunPlan';
-import { VideoDocumentsScreen } from '@/renderer/features/video-documents/VideoDocumentsScreen';
+import type { FeatureDemoVideoState } from '@/renderer/features/extensions/feature-demo/useFeatureDemoVideoSnapshot';
 import { useI18n } from '@/renderer/i18n/useI18n';
 import { cn } from '@/renderer/lib/utils';
 import {
@@ -20,38 +31,20 @@ import {
 
 interface FeatureDemoStageProps {
   data: BootstrapDto;
-  extensions: readonly ExtensionDto[];
   plan: FeatureDemoRunPlan;
+  videoState: FeatureDemoVideoState;
   timeInSeconds: number;
   notify(message: string): void;
 }
 
-function clamp(value: number, minimum = 0, maximum = 1) {
-  return Math.min(maximum, Math.max(minimum, value));
-}
+const ignore = () => undefined;
+const ignoreAsync = async () => undefined;
 
-function ease(value: number) {
-  const bounded = clamp(value);
-  return bounded < 0.5 ? 4 * bounded * bounded * bounded : 1 - Math.pow(-2 * bounded + 2, 3) / 2;
-}
-
-function DemoScene({
-  active,
-  className,
-  children,
-}: {
-  active: boolean;
-  className?: string;
-  children: React.ReactNode;
-}) {
+function DemoScene({ active, className, children }: { active: boolean; className?: string; children: ReactNode }) {
+  if (!active) return null;
   return (
-    <div
-      aria-hidden={!active}
-      className={cn('absolute inset-0 overflow-hidden', className)}
-      style={{ visibility: active ? 'visible' : 'hidden' }}
-    >
+    <div inert className={cn('absolute inset-0 overflow-hidden', className)}>
       {children}
-      <div className="absolute inset-0 z-10" aria-hidden="true" />
     </div>
   );
 }
@@ -68,184 +61,60 @@ function FeatureDemoCursor({ x, y }: { x: number; y: number }) {
 }
 
 export const FeatureDemoStage = forwardRef<HTMLDivElement, FeatureDemoStageProps>(function FeatureDemoStage(
-  { data, extensions, plan, timeInSeconds, notify },
+  { data, plan, videoState, timeInSeconds, notify },
   forwardedRef,
 ) {
   const { messages } = useI18n();
+  const copy = messages.extensions.featureDemo;
   const position = featureDemoSceneAt(timeInSeconds, plan.scenes);
-  const styleRootRef = useRef<HTMLDivElement | null>(null);
-  const directoryRootRef = useRef<HTMLDivElement | null>(null);
-  const openedBatchIdRef = useRef<string | null>(null);
-  const directoryHoverPreviewRef = useRef<HTMLElement | null>(null);
-  const [directoryCursorTarget, setDirectoryCursorTarget] = useState({ x: 74, y: 190 });
-  const [documentLocation, setDocumentLocation] = useState<VideoDocumentsLocation>({
-    collection: { kind: 'all' },
-    documentId: null,
-  });
-  const demoBatch = useMemo(
-    () => data.styleExplorationBatches.filter((batch) => batch.id === plan.styleBatchId).slice(0, 1),
-    [data.styleExplorationBatches, plan.styleBatchId],
-  );
   const comparisonSeries = useMemo(
     () => data.series.find((series) => series.id === plan.comparisonSeriesId) ?? null,
     [data.series, plan.comparisonSeriesId],
   );
-  const codexExtension = extensions.find((extension) => extension.manifest.id === CODEX_EXTENSION_ID);
-  const detailsProgress =
-    position.scene.id === 'directionDetailsExpand'
-      ? ease((position.progress - 0.16) / 0.5)
-      : position.scene.id === 'directionDetailsCollapse'
-        ? 1 - ease((position.progress - 0.18) / 0.5)
-        : 0;
-  const directoryOpenProgress =
-    position.scene.id === 'directoryExpand'
-      ? ease((position.progress - 0.34) / 0.26)
-      : position.scene.id === 'directoryCollapse'
-        ? 1 - ease((position.progress - 0.3) / 0.26)
-        : 0;
+  const pairIds: readonly [string, string] | null =
+    plan.comparisonAssetId && plan.comparisonSecondAssetId
+      ? [plan.comparisonAssetId, plan.comparisonSecondAssetId]
+      : null;
+  const comparison = comparisonDemoStateAt(position.progress);
   const styleSceneActive =
     position.scene.id === 'directionDetailsExpand' || position.scene.id === 'directionDetailsCollapse';
-  const directorySceneActive = position.scene.id === 'directoryExpand' || position.scene.id === 'directoryCollapse';
-
-  const directionApproach = ease(clamp((position.progress - 0.04) / 0.3));
-  const directionLeave = ease(clamp((position.progress - 0.18) / 0.42));
-  const directionCursor =
-    position.scene.id === 'directionDetailsCollapse'
-      ? {
-          x: 356 + (1160 - 356) * directionLeave,
-          y: 338 + (650 - 338) * directionLeave,
-        }
-      : {
-          x: 1160 + (356 - 1160) * directionApproach,
-          y: 650 + (338 - 650) * directionApproach,
-        };
-  const directoryApproach = ease(clamp((position.progress - 0.04) / 0.24));
-  const directoryGesture = ease(clamp((position.progress - 0.32) / 0.3));
-  const directoryCursor =
-    position.scene.id === 'directoryCollapse'
-      ? {
-          x: directoryCursorTarget.x,
-          y: directoryCursorTarget.y + 46 - 82 * directoryGesture,
-        }
-      : {
-          x: 1160 + (directoryCursorTarget.x - 1160) * directoryApproach,
-          y: 650 + (directoryCursorTarget.y - 650) * directoryApproach + 46 * directoryGesture,
-        };
-
-  useEffect(() => {
-    const batchId = demoBatch[0]?.id ?? null;
-    if (!batchId || openedBatchIdRef.current === batchId) return;
-    const frame = window.requestAnimationFrame(() => {
-      const trigger = styleRootRef.current?.querySelector<HTMLButtonElement>(
-        '[data-style-exploration-batch] header button[aria-expanded="false"]',
-      );
-      trigger?.click();
-      openedBatchIdRef.current = batchId;
-    });
-    return () => window.cancelAnimationFrame(frame);
-  }, [demoBatch]);
-
-  useLayoutEffect(() => {
-    function applyDetailsProgress() {
-      const details = styleRootRef.current?.querySelector<HTMLDetailsElement>('[data-slot-title-region]');
-      const panel = details?.querySelector<HTMLElement>('[data-slot-details]');
-      if (!details || !panel) return;
-      details.open = detailsProgress > 0.001;
-      details.style.backgroundColor =
-        detailsProgress > 0.001 ? 'color-mix(in srgb, var(--overlay) 95%, transparent)' : 'transparent';
-      details.style.opacity = '1';
-      panel.style.visibility = detailsProgress > 0.001 ? 'visible' : 'hidden';
-      panel.style.maxHeight = `${Math.round(320 * detailsProgress)}px`;
-      panel.style.opacity = String(detailsProgress);
-      panel.style.paddingBottom = `${Math.round(12 * detailsProgress)}px`;
-    }
-
-    applyDetailsProgress();
-    const frame = window.requestAnimationFrame(applyDetailsProgress);
-    return () => window.cancelAnimationFrame(frame);
-  }, [demoBatch, detailsProgress]);
-
-  useLayoutEffect(() => {
-    if (!directorySceneActive) return;
-
-    function locateDirectoryPreview() {
-      const root = directoryRootRef.current;
-      const preview = root?.querySelector<HTMLElement>('[data-album-tree-preview]');
-      if (!root || !preview) return;
-
-      if (directoryHoverPreviewRef.current !== preview) {
-        directoryHoverPreviewRef.current?.dispatchEvent(
-          new MouseEvent('mouseout', { bubbles: true, relatedTarget: document.body }),
-        );
-        preview.dispatchEvent(new MouseEvent('mouseover', { bubbles: true }));
-        directoryHoverPreviewRef.current = preview;
-      }
-
-      const rootRect = root.getBoundingClientRect();
-      const previewRect = preview.getBoundingClientRect();
-      const stageRect = root.closest<HTMLElement>('[data-feature-demo-stage]')?.getBoundingClientRect() ?? rootRect;
-      const scale = stageRect.width > 0 ? FEATURE_DEMO_PREVIEW_WIDTH / stageRect.width : 1;
-      const nextTarget = {
-        x: (previewRect.left - stageRect.left + previewRect.width * 0.5) * scale,
-        y: (previewRect.top - stageRect.top + previewRect.height * 0.5) * scale,
-      };
-      setDirectoryCursorTarget((current) =>
-        Math.abs(current.x - nextTarget.x) < 0.5 && Math.abs(current.y - nextTarget.y) < 0.5 ? current : nextTarget,
-      );
-    }
-
-    locateDirectoryPreview();
-    const frame = window.requestAnimationFrame(locateDirectoryPreview);
-    return () => window.cancelAnimationFrame(frame);
-  }, [directorySceneActive]);
-
-  useEffect(() => {
-    if (directorySceneActive) return;
-    directoryHoverPreviewRef.current?.dispatchEvent(
-      new MouseEvent('mouseout', { bubbles: true, relatedTarget: document.body }),
-    );
-    directoryHoverPreviewRef.current = null;
-  }, [directorySceneActive]);
+  const directoryState = isDirectoryScene(position.scene.id)
+    ? directoryDemoStateAt(position.scene.id, position.progress)
+    : null;
+  const cursor = featureDemoCursorAt(position.scene.id, position.progress);
 
   return (
     <div
       ref={forwardedRef}
       data-feature-demo-stage
-      aria-label={messages.extensions.featureDemo.previewAria}
+      aria-label={copy.previewAria}
       className="relative isolate overflow-hidden bg-background text-foreground"
       style={{ width: FEATURE_DEMO_PREVIEW_WIDTH, height: FEATURE_DEMO_PREVIEW_HEIGHT }}
     >
-      <DemoScene active={styleSceneActive} className="bg-surface-sunken p-5 pt-16">
-        <div ref={styleRootRef} className="size-full overflow-hidden rounded-xl border bg-background p-4">
-          <StyleExplorationPanel
-            batches={demoBatch}
-            series={data.series}
-            onStop={() => undefined}
-            onRetrySlot={() => undefined}
-            onProposeAdjacent={() => undefined}
-            onContinueDirection={() => undefined}
-            onOpenAsset={() => undefined}
-          />
-        </div>
+      <DemoScene active={position.scene.id === 'petalNote'} className="bg-background">
+        <FeatureDemoPetalNote progress={position.progress} />
+      </DemoScene>
+      <DemoScene active={styleSceneActive} className="bg-surface-sunken px-8 pb-8 pt-[5.5rem]">
+        <FeatureDemoDirections
+          data={data}
+          plan={plan}
+          state={directionDemoStateAt(position.scene.id, position.progress)}
+        />
+      </DemoScene>
+
+      <DemoScene active={position.scene.id === 'imageCreation'} className="bg-background pt-14">
+        <FeatureDemoImageCreation data={data} plan={plan} progress={position.progress} />
       </DemoScene>
 
       <DemoScene active={position.scene.id === 'codexImages'} className="bg-background pt-14">
-        {codexExtension && (
-          <CodexImageDiscoveryConfiguration
-            active
-            standalone
-            extension={codexExtension}
-            notify={notify}
-            onOpenCreation={async () => undefined}
-          />
-        )}
+        <FeatureDemoCodexImages />
       </DemoScene>
 
       <DemoScene active={position.scene.id === 'promptCompare'} className="bg-background pt-14">
-        {comparisonSeries && (
+        {comparisonSeries && pairIds ? (
           <div
-            className="flex size-full min-h-0 overflow-hidden border-t"
-            data-feature-demo-selected-asset={plan.comparisonAssetId ?? undefined}
+            className="flex size-full min-h-0 overflow-hidden"
+            data-feature-demo-selected-asset={comparison.secondAsset ? pairIds[1] : pairIds[0]}
           >
             <GenerationComparison
               series={comparisonSeries}
@@ -254,55 +123,52 @@ export const FeatureDemoStage = forwardRef<HTMLDivElement, FeatureDemoStageProps
               wordPalettes={data.wordPalettes}
               routes={data.imageGenerationRoutes}
               tasks={data.generationTasks}
+              presentation={{
+                assetIds: pairIds,
+                focusAssetId: comparison.secondAsset ? pairIds[1] : pairIds[0],
+                view: comparison.view,
+                mode: comparison.mode,
+              }}
               fullWindow={false}
-              onFullWindowChange={() => undefined}
-              onSelectAsset={() => undefined}
-              onGenerate={async () => undefined}
-              onGeneratePrompt={async () => undefined}
-              onRetry={async () => undefined}
-              onReEdit={() => undefined}
+              onFullWindowChange={ignore}
+              onSelectAsset={ignore}
+              onGenerate={ignoreAsync}
+              onGeneratePrompt={ignoreAsync}
+              onRetry={ignoreAsync}
+              onReEdit={ignore}
               notify={notify}
             />
           </div>
+        ) : (
+          <div className="grid size-full place-items-center text-sm text-muted-foreground">{copy.noComparison}</div>
         )}
       </DemoScene>
 
-      <DemoScene active={directorySceneActive} className="bg-surface-sunken p-8 pt-[5.5rem]">
-        <div className="size-full overflow-hidden rounded-xl border bg-background">
-          <div ref={directoryRootRef} className="h-full w-[28rem] border-r">
-            <FeatureDemoDirectoryTree data={data} openProgress={directoryOpenProgress} />
-          </div>
+      <DemoScene active={directoryState !== null} className="bg-surface-sunken">
+        <div
+          className="absolute"
+          style={{
+            left: DIRECTORY_DEMO_LAYOUT.left,
+            right: DIRECTORY_DEMO_LAYOUT.left,
+            top: DIRECTORY_DEMO_LAYOUT.top,
+            bottom: DIRECTORY_DEMO_LAYOUT.bottom,
+          }}
+        >
+          {directoryState && <FeatureDemoDirectoryTree data={data} state={directoryState} />}
         </div>
       </DemoScene>
 
-      <DemoScene active={position.scene.id === 'videoDocument'} className="bg-background pt-14">
-        <div className="size-full">
-          <VideoDocumentsScreen
-            active
-            externalDocumentUpdate={null}
-            albums={data.albums}
-            location={documentLocation}
-            onNavigate={setDocumentLocation}
-            onAlbumsChange={() => undefined}
-            onLibraryChange={() => undefined}
-            onOpenSourceMaterial={() => undefined}
-            notify={notify}
-          />
-        </div>
+      <DemoScene active={position.scene.id === 'videoDocument'} className="bg-background px-8 pb-8 pt-[5.5rem]">
+        <FeatureDemoVideoDocument state={videoState} progress={position.progress} />
       </DemoScene>
 
       <div className="pointer-events-none absolute inset-x-0 top-0 z-20 flex h-14 items-center gap-3 border-b bg-overlay/95 px-5 backdrop-blur-sm">
         <Badge variant="secondary" className="tabular-nums">
           {String(position.sceneIndex + 1).padStart(2, '0')}
         </Badge>
-        <strong className="text-sm">{messages.extensions.featureDemo.scenes[position.scene.id].title}</strong>
-        <span className="truncate text-xs text-muted-foreground">
-          {messages.extensions.featureDemo.scenes[position.scene.id].subtitle}
-        </span>
+        <strong className="text-sm">{copy.scenes[position.scene.id].title}</strong>
       </div>
-
-      {styleSceneActive && <FeatureDemoCursor x={directionCursor.x} y={directionCursor.y} />}
-      {directorySceneActive && <FeatureDemoCursor x={directoryCursor.x} y={directoryCursor.y} />}
+      {cursor && <FeatureDemoCursor x={cursor.x} y={cursor.y} />}
     </div>
   );
 });

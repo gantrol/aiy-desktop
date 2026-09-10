@@ -3,10 +3,12 @@ import { randomUUID } from 'node:crypto';
 import path from 'node:path';
 import { readBoundedImageFile } from '@/main/media/bounded-image-file';
 import { imageDimensions } from '@/main/media/image-dimensions';
+import { gifMetadata } from '@/shared/gif-metadata';
 import {
   IMAGE_DECODER_REQUEST_CHANNEL,
   IMAGE_DECODER_RESPONSE_CHANNEL,
   MAX_IMAGE_DECODER_DIMENSION,
+  MAX_IMAGE_DECODER_GIF_FRAMES,
   MAX_IMAGE_DECODER_INPUT_BYTES,
   MAX_IMAGE_DECODER_PIXELS,
   imageDecoderRequestSchema,
@@ -234,6 +236,31 @@ function matchesSourceDimensions(
   );
 }
 
+function validateWatermarkAnimation(
+  request: Extract<ImageDecoderRequest, { operation: 'watermark' }>,
+  response: Extract<ImageDecoderSuccessResponse, { operation: 'watermark' }>,
+) {
+  if (request.sourceMimeType !== 'image/gif') {
+    if (response.outputMimeType === 'image/gif') throw new Error('Image decoder returned an unexpected GIF');
+    return;
+  }
+  if (response.outputMimeType !== 'image/gif') throw new Error('Image decoder flattened an animated GIF');
+  const source = gifMetadata(request.sourceBytes, {
+    requireFullCanvasFrames: false,
+    maxFrames: MAX_IMAGE_DECODER_GIF_FRAMES,
+  });
+  const output = gifMetadata(response.outputBytes, { maxFrames: MAX_IMAGE_DECODER_GIF_FRAMES });
+  if (
+    output.width !== source.width ||
+    output.height !== source.height ||
+    output.loop !== source.loop ||
+    output.durations.length !== source.durations.length ||
+    output.durations.some((duration, index) => duration !== source.durations[index])
+  ) {
+    throw new Error('Watermarked GIF does not preserve its source animation');
+  }
+}
+
 function validateResponseSemantics(
   request: ImageDecoderRequest,
   response: ImageDecoderSuccessResponse,
@@ -267,6 +294,7 @@ function validateResponseSemantics(
     if (response.width !== response.sourceWidth || response.height !== response.sourceHeight) {
       throw new Error('Image decoder returned invalid watermark dimensions');
     }
+    validateWatermarkAnimation(request, response);
     return;
   }
 

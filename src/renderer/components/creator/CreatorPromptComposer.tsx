@@ -1,30 +1,7 @@
-import { mergeAttributes, Node, type Editor } from '@tiptap/core';
-import type { Node as ProseMirrorNode } from '@tiptap/pm/model';
-import { NodeViewWrapper, ReactNodeViewRenderer, type NodeViewProps, useEditor } from '@tiptap/react';
-import StarterKit from '@tiptap/starter-kit';
-import { BookOpenIcon, ChevronDownIcon, SlidersHorizontalIcon } from 'lucide-react';
-import {
-  forwardRef,
-  useCallback,
-  useEffect,
-  useImperativeHandle,
-  useMemo,
-  useRef,
-  useState,
-  type DragEvent as ReactDragEvent,
-} from 'react';
-import type { CreatorPromptNodeInput, Locale, TermListItem, WordPaletteDto } from '@/shared/contracts';
-import { DEFAULT_IMAGE_PROMPT_PROFILE_ID } from '@/shared/image-generation-prompt-profile';
-import { resolveAlternateTermTitle, resolveTermExpression, resolveTermTitle } from '@/shared/term-localization';
-import {
-  resolveLocalizedName,
-  resolveWordPaletteOptionLabel,
-  resolveWordPaletteParameterName,
-} from '@/shared/word-palette-localization';
-import { Button } from '@/renderer/components/ui/button';
-import { Popover, PopoverTrigger } from '@/renderer/components/ui/popover';
-import { useExternalEditorDocument } from '@/renderer/hooks/useExternalEditorDocument';
-import { useLatestMicrotask } from '@/renderer/hooks/useLatestMicrotask';
+import { normalizeCreatorPromptNodes } from '@/renderer/components/creator/creatorPromptDocument';
+import { CreatorPromptEditorSurface } from '@/renderer/components/creator/CreatorPromptEditorSurface';
+import { imageFiles, imageMimeType } from '@/renderer/components/creator/imageImport';
+import { type AppliedWordPalette } from '@/renderer/components/creator/utils';
 import {
   activeWordPaletteRecipeDrag,
   activeWordPaletteTermDrag,
@@ -32,459 +9,38 @@ import {
   clearWordPaletteTermDrag,
   readWordPaletteRecipeDrag,
   readWordPaletteTermDrag,
-  writeWordPaletteRecipeDrag,
-  writeWordPaletteTermDrag,
 } from '@/renderer/components/palette/wordPaletteInteractions';
-import { normalizeCreatorPromptNodes } from '@/renderer/components/creator/creatorPromptDocument';
+import { beginContentImageInsertion } from '@/renderer/features/content-editor/contentImageInsertion';
+import { pasteContentImages } from '@/renderer/features/content-editor/contentImagePaste';
+import { registerContentImageRecovery } from '@/renderer/features/content-editor/contentImageRecovery';
+import { ContentInputOperations } from '@/renderer/features/content-editor/contentInputOperations';
+import { useContentEditor } from '@/renderer/features/content-editor/useContentEditor';
+import { useVideoDocumentEditorComposition } from '@/renderer/features/video-documents/videoDocumentEditorComposition';
 import {
-  CreatorRecipeNodeDetails,
-  CreatorTermNodeDetails,
-} from '@/renderer/components/creator/CreatorPromptNodeDetails';
-import { CreatorPromptEditorSurface } from '@/renderer/components/creator/CreatorPromptEditorSurface';
-import type { AppliedWordPalette } from '@/renderer/components/creator/utils';
+  importVideoDocumentEditorImage,
+  type ImportedEditorImage,
+} from '@/renderer/features/video-documents/VideoDocumentWysiwygToolbar';
+import { useExternalEditorDocument } from '@/renderer/hooks/useExternalEditorDocument';
+import { plainTextBlockDocument } from '@/shared/block-document-codecs';
+import type { CreatorPromptNodeInput, Locale, TermListItem, WordPaletteDto } from '@/shared/contracts';
+import { captureBlockDocument, type BlockDocument } from '@/shared/contracts/block-document';
+import { type Editor } from '@tiptap/core';
+import type { Node as ProseMirrorNode } from '@tiptap/pm/model';
+import { forwardRef, useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState } from 'react';
 
-const [TERM_NODE, RECIPE_NODE] = ['creatorTerm', 'creatorRecipe'] as const;
-let nodeSerial = 0;
-
-function nextNodeKey(prefix: string) {
-  nodeSerial += 1;
-  return `${prefix}_${Date.now().toString(36)}_${nodeSerial.toString(36)}`;
-}
-
-interface ComposerCallbacks {
-  nodesChanged(nodes: CreatorPromptNodeInput[]): void;
-  openTerm(term: TermListItem): void;
-  openRecipe(paletteId: string): void;
-  configureRecipe(palette: WordPaletteDto): void;
-  changeRecipeLocale(paletteId: string, promptLocale: Locale): void;
-  requestRecipeInsert(palette: WordPaletteDto, position: number): void;
-}
-
-interface ComposerBridgeStorage {
-  locale: Locale;
-  termPromptLocale: Locale;
-  promptProfileId: string;
-  termsById: Map<string, TermListItem>;
-  palettesById: Map<string, WordPaletteDto>;
-  appliedByPaletteId: Map<string, AppliedWordPalette>;
-  callbacks: ComposerCallbacks;
-}
-
-const composerBridges = new WeakMap<Editor, ComposerBridgeStorage>();
-
-function composerBridge(editor: Editor) {
-  let bridge = composerBridges.get(editor);
-  if (!bridge) {
-    bridge = {
-      locale: 'zh',
-      termPromptLocale: 'en',
-      promptProfileId: DEFAULT_IMAGE_PROMPT_PROFILE_ID,
-      termsById: new Map(),
-      palettesById: new Map(),
-      appliedByPaletteId: new Map(),
-      callbacks: {
-        nodesChanged: () => undefined,
-        openTerm: () => undefined,
-        openRecipe: () => undefined,
-        configureRecipe: () => undefined,
-        changeRecipeLocale: () => undefined,
-        requestRecipeInsert: () => undefined,
-      },
-    };
-    composerBridges.set(editor, bridge);
-  }
-  return bridge;
-}
-
-function termLabel(term: TermListItem, promptLocale: Locale) {
-  return resolveTermTitle(term, promptLocale);
-}
-
-function termExpression(term: TermListItem, promptProfileId: string, promptLocale: Locale) {
-  return resolveTermExpression(term, promptProfileId, promptLocale)?.positive;
-}
-
-function termAttributes(
-  term: TermListItem,
-  promptProfileId: string,
-  promptLocale: Locale,
-  editorKey = nextNodeKey('term'),
-) {
-  return {
-    editorKey,
-    termId: term.id,
-    promptLocale,
-    label: termLabel(term, promptLocale),
-    promptText: termExpression(term, promptProfileId, promptLocale) ?? termLabel(term, promptLocale),
-  };
-}
-
-function recipeLabel(reference: AppliedWordPalette | undefined, palette: WordPaletteDto | undefined, locale: Locale) {
-  const revision = reference?.revision;
-  if (revision) return resolveLocalizedName(revision, locale);
-  return palette ? resolveLocalizedName(palette, locale) : '';
-}
-
-function recipeAttributes(
-  paletteId: string,
-  bridge: Pick<ComposerBridgeStorage, 'locale' | 'palettesById' | 'appliedByPaletteId'>,
-  editorKey = nextNodeKey('recipe'),
-) {
-  const reference = bridge.appliedByPaletteId.get(paletteId);
-  const palette = bridge.palettesById.get(paletteId) ?? reference?.palette;
-  return {
-    editorKey,
-    paletteId,
-    label: recipeLabel(reference, palette, bridge.locale) || paletteId,
-    revisionNo: reference?.revision.revisionNo ?? palette?.revisionNo ?? 0,
-    promptLocale: reference?.promptLocale ?? bridge.locale,
-  };
-}
-
-function deleteNode(editor: Editor, getPos: NodeViewProps['getPos'], nodeSize: number) {
-  const position = getPos();
-  if (typeof position === 'number')
-    editor
-      .chain()
-      .focus()
-      .deleteRange({ from: position, to: position + nodeSize })
-      .run();
-}
-
-function CreatorTermNodeView({ editor, node, getPos }: NodeViewProps) {
-  const [open, setOpen] = useState(false);
-  const bridge = composerBridge(editor);
-  const term = bridge.termsById.get(String(node.attrs.termId));
-  if (!term)
-    return (
-      <NodeViewWrapper as="span" contentEditable={false} className="rounded border px-1 text-destructive">
-        {String(node.attrs.label)}
-      </NodeViewWrapper>
-    );
-  const nodeKey = String(node.attrs.editorKey);
-  const promptLocale: Locale =
-    node.attrs.promptLocale === 'zh' ? 'zh' : node.attrs.promptLocale === 'en' ? 'en' : bridge.termPromptLocale;
-  const label = termLabel(term, promptLocale);
-  const secondaryName = resolveAlternateTermTitle(term, promptLocale);
-  const promptFragment = termExpression(term, bridge.promptProfileId, promptLocale) ?? label;
-  return (
-    <NodeViewWrapper
-      as="span"
-      data-creator-term-node=""
-      data-creator-node-key={nodeKey}
-      data-creator-term-id={term.id}
-      draggable
-      contentEditable={false}
-      className="mx-0.5 inline-flex cursor-grab rounded-lg align-middle active:cursor-grabbing"
-      onDragStart={(event: ReactDragEvent<HTMLSpanElement>) =>
-        writeWordPaletteTermDrag(event.dataTransfer, {
-          termId: term.id,
-          origin: 'editor',
-          nodeKey,
-          plainText: promptFragment || label,
-        })
-      }
-      onDragEnd={clearWordPaletteTermDrag}
-    >
-      <Popover open={open} onOpenChange={setOpen}>
-        <PopoverTrigger asChild>
-          <Button
-            type="button"
-            variant="outline"
-            className="h-8 gap-1.5 rounded-lg border-success/35 bg-success-surface px-2 font-normal text-foreground hover:bg-success-surface"
-            onMouseDown={(event) => event.stopPropagation()}
-          >
-            <BookOpenIcon className="size-4" />
-            <span className="max-w-48 truncate">{label}</span>
-            <span className="text-[10px] text-muted-foreground">{promptLocale.toUpperCase()}</span>
-            <ChevronDownIcon className="size-3.5" />
-          </Button>
-        </PopoverTrigger>
-        <CreatorTermNodeDetails
-          locale={bridge.locale}
-          label={label}
-          secondaryName={secondaryName}
-          promptFragment={promptFragment}
-          promptLocale={promptLocale}
-          onPromptLocaleChange={(value) => {
-            const position = getPos();
-            if (typeof position !== 'number') return;
-            editor.view.dispatch(
-              editor.state.tr.setNodeMarkup(
-                position,
-                undefined,
-                termAttributes(term, bridge.promptProfileId, value, nodeKey),
-              ),
-            );
-          }}
-          onOpen={() => {
-            setOpen(false);
-            bridge.callbacks.openTerm(term);
-          }}
-          onRemove={() => deleteNode(editor, getPos, node.nodeSize)}
-        />
-      </Popover>
-    </NodeViewWrapper>
-  );
-}
-
-function selectedRecipeParameters(reference: AppliedWordPalette, locale: Locale) {
-  return reference.revision.parameters.flatMap((parameter) => {
-    const selected = parameter.options.find(
-      (option) => option.value === reference.parameterValues[parameter.stableKey],
-    );
-    if (!selected) return [];
-    return [
-      {
-        id: parameter.id,
-        name: resolveWordPaletteParameterName(parameter, locale),
-        value: resolveWordPaletteOptionLabel(selected, locale),
-      },
-    ];
-  });
-}
-
-function CreatorRecipeNodeView({ editor, node, getPos }: NodeViewProps) {
-  const [open, setOpen] = useState(false);
-  const bridge = composerBridge(editor);
-  const paletteId = String(node.attrs.paletteId);
-  const reference = bridge.appliedByPaletteId.get(paletteId);
-  const palette = bridge.palettesById.get(paletteId) ?? reference?.palette;
-  const label = recipeLabel(reference, palette, bridge.locale) || String(node.attrs.label);
-  const promptLocale: Locale = reference?.promptLocale ?? (node.attrs.promptLocale === 'zh' ? 'zh' : 'en');
-  const parameters = reference ? selectedRecipeParameters(reference, promptLocale) : [];
-  const nodeKey = String(node.attrs.editorKey);
-  if (!palette)
-    return (
-      <NodeViewWrapper as="span" contentEditable={false} className="rounded border px-1 text-destructive">
-        {label}
-      </NodeViewWrapper>
-    );
-  return (
-    <NodeViewWrapper
-      as="span"
-      data-creator-recipe-node=""
-      data-creator-node-key={nodeKey}
-      data-creator-palette-id={paletteId}
-      draggable
-      contentEditable={false}
-      className="mx-0.5 inline-flex cursor-grab rounded-lg align-middle active:cursor-grabbing"
-      onDragStart={(event: ReactDragEvent<HTMLSpanElement>) =>
-        writeWordPaletteRecipeDrag(event.dataTransfer, {
-          paletteId,
-          origin: 'editor',
-          nodeKey,
-          plainText: label,
-        })
-      }
-      onDragEnd={clearWordPaletteRecipeDrag}
-    >
-      <Popover open={open} onOpenChange={setOpen}>
-        <PopoverTrigger asChild>
-          <Button
-            type="button"
-            variant="outline"
-            className="h-8 gap-1.5 rounded-lg border-warning/45 bg-warning-surface px-2 font-normal text-foreground hover:bg-warning-surface"
-            onMouseDown={(event) => event.stopPropagation()}
-          >
-            <SlidersHorizontalIcon className="size-4" />
-            <span className="max-w-56 truncate">{label}</span>
-            <span className="text-[10px] text-muted-foreground">
-              V{reference?.revision.revisionNo ?? palette.revisionNo} · {promptLocale.toUpperCase()}
-            </span>
-            <ChevronDownIcon className="size-3.5" />
-          </Button>
-        </PopoverTrigger>
-        <CreatorRecipeNodeDetails
-          locale={bridge.locale}
-          label={label}
-          version={reference?.revision.revisionNo ?? palette.revisionNo}
-          promptLocale={promptLocale}
-          parameters={parameters}
-          onPromptLocaleChange={(value) => bridge.callbacks.changeRecipeLocale(paletteId, value)}
-          onConfigure={() => {
-            setOpen(false);
-            bridge.callbacks.configureRecipe(palette);
-          }}
-          onOpen={() => {
-            setOpen(false);
-            bridge.callbacks.openRecipe(paletteId);
-          }}
-          onRemove={() => deleteNode(editor, getPos, node.nodeSize)}
-        />
-      </Popover>
-    </NodeViewWrapper>
-  );
-}
-
-const CreatorTermNode = Node.create({
-  name: TERM_NODE,
-  group: 'inline',
-  inline: true,
-  atom: true,
-  selectable: true,
-  draggable: true,
-  addAttributes() {
-    return {
-      editorKey: { default: '' },
-      termId: { default: '' },
-      promptLocale: { default: '' },
-      label: { default: '' },
-      promptText: { default: '' },
-    };
-  },
-  parseHTML() {
-    return [{ tag: 'span[data-creator-term-node]' }];
-  },
-  renderHTML({ HTMLAttributes }) {
-    return ['span', mergeAttributes(HTMLAttributes, { 'data-creator-term-node': '' })];
-  },
-  renderText({ node }) {
-    return String(node.attrs.promptText);
-  },
-  addNodeView() {
-    return ReactNodeViewRenderer(CreatorTermNodeView);
-  },
-});
-
-const CreatorRecipeNode = Node.create({
-  name: RECIPE_NODE,
-  group: 'inline',
-  inline: true,
-  atom: true,
-  selectable: true,
-  draggable: true,
-  addAttributes() {
-    return {
-      editorKey: { default: '' },
-      paletteId: { default: '' },
-      label: { default: '' },
-      revisionNo: { default: 0 },
-      promptLocale: { default: '' },
-    };
-  },
-  parseHTML() {
-    return [{ tag: 'span[data-creator-recipe-node]' }];
-  },
-  renderHTML({ HTMLAttributes }) {
-    return ['span', mergeAttributes(HTMLAttributes, { 'data-creator-recipe-node': '' })];
-  },
-  renderText({ node }) {
-    return String(node.attrs.label);
-  },
-  addNodeView() {
-    return ReactNodeViewRenderer(CreatorRecipeNodeView);
-  },
-});
-
-function editorJsonFromNodes(
-  nodes: readonly CreatorPromptNodeInput[],
-  bridge: Pick<
-    ComposerBridgeStorage,
-    'locale' | 'termPromptLocale' | 'promptProfileId' | 'termsById' | 'palettesById' | 'appliedByPaletteId'
-  >,
-) {
-  const paragraphs: Array<{ type: 'paragraph'; content: Array<Record<string, unknown>> }> = [
-    { type: 'paragraph', content: [] },
-  ];
-  const paragraph = () => paragraphs.at(-1)!;
-  const appendText = (value: string) => {
-    value.split('\n').forEach((line, index, lines) => {
-      if (line) paragraph().content.push({ type: 'text', text: line });
-      if (index < lines.length - 1) paragraphs.push({ type: 'paragraph', content: [] });
-    });
-  };
-  for (const node of normalizeCreatorPromptNodes(nodes)) {
-    if (node.kind === 'TEXT') appendText(node.text);
-    else if (node.kind === 'TERM') {
-      const term = bridge.termsById.get(node.termId);
-      if (term)
-        paragraph().content.push({
-          type: TERM_NODE,
-          attrs: termAttributes(term, bridge.promptProfileId, node.promptLocale ?? bridge.termPromptLocale),
-        });
-    } else if (bridge.palettesById.has(node.paletteId) || bridge.appliedByPaletteId.has(node.paletteId)) {
-      paragraph().content.push({ type: RECIPE_NODE, attrs: recipeAttributes(node.paletteId, bridge) });
-    }
-  }
-  return { type: 'doc', content: paragraphs };
-}
-
-function documentFromProseMirror(doc: ProseMirrorNode): CreatorPromptNodeInput[] {
-  const nodes: CreatorPromptNodeInput[] = [];
-  const appendText = (text: string) => {
-    const previous = nodes.at(-1);
-    if (previous?.kind === 'TEXT') previous.text += text;
-    else nodes.push({ kind: 'TEXT', text });
-  };
-  doc.forEach((paragraph: ProseMirrorNode, _offset: number, paragraphIndex: number) => {
-    if (paragraphIndex > 0) appendText('\n');
-    paragraph.forEach((node) => {
-      if (node.isText) appendText(node.text ?? '');
-      else if (node.type.name === TERM_NODE) {
-        const promptLocale =
-          node.attrs.promptLocale === 'zh' ? 'zh' : node.attrs.promptLocale === 'en' ? 'en' : undefined;
-        nodes.push({
-          kind: 'TERM',
-          termId: String(node.attrs.termId),
-          ...(promptLocale ? { promptLocale } : {}),
-        });
-      } else if (node.type.name === RECIPE_NODE)
-        nodes.push({ kind: 'RECIPE', paletteId: String(node.attrs.paletteId) });
-    });
-  });
-  return normalizeCreatorPromptNodes(nodes);
-}
-
-function documentFromEditor(editor: Editor) {
-  return documentFromProseMirror(editor.state.doc);
-}
-
-type ComposerBridgeSnapshot = Parameters<typeof editorJsonFromNodes>[1];
-
-function useComposerBridgeSynchronization(editor: Editor | null, snapshot: ComposerBridgeSnapshot) {
-  useLatestMicrotask(editor, snapshot, (currentEditor) => {
-    if (currentEditor.isDestroyed) return;
-    const bridge = composerBridge(currentEditor);
-    bridge.locale = snapshot.locale;
-    bridge.termPromptLocale = snapshot.termPromptLocale;
-    bridge.promptProfileId = snapshot.promptProfileId;
-    bridge.termsById = snapshot.termsById;
-    bridge.palettesById = snapshot.palettesById;
-    bridge.appliedByPaletteId = snapshot.appliedByPaletteId;
-
-    let transaction = currentEditor.state.tr.setMeta('addToHistory', false).setMeta('preventUpdate', true);
-    currentEditor.state.doc.descendants((node: ProseMirrorNode, position: number) => {
-      if (node.type.name === TERM_NODE) {
-        const term = snapshot.termsById.get(String(node.attrs.termId));
-        if (term) {
-          transaction = transaction.setNodeMarkup(
-            position,
-            undefined,
-            termAttributes(
-              term,
-              snapshot.promptProfileId,
-              node.attrs.promptLocale === 'zh' || node.attrs.promptLocale === 'en'
-                ? node.attrs.promptLocale
-                : snapshot.termPromptLocale,
-              String(node.attrs.editorKey),
-            ),
-          );
-        }
-      } else if (node.type.name === RECIPE_NODE) {
-        const paletteId = String(node.attrs.paletteId);
-        if (snapshot.palettesById.has(paletteId) || snapshot.appliedByPaletteId.has(paletteId)) {
-          transaction = transaction.setNodeMarkup(
-            position,
-            undefined,
-            recipeAttributes(paletteId, snapshot, String(node.attrs.editorKey)),
-          );
-        }
-      }
-    });
-    if (transaction.docChanged) currentEditor.view.dispatch(transaction);
-  });
-}
+import {
+  composerBridge,
+  ComposerCallbacks,
+  CreatorRecipeNode,
+  CreatorTermNode,
+  documentFromEditor,
+  editorJsonFromNodes,
+  RECIPE_NODE,
+  recipeAttributes,
+  TERM_NODE,
+  termAttributes,
+  useComposerBridgeSynchronization,
+} from '@/renderer/components/creator/creatorPromptNodes';
 
 function findNodePosition(editor: Editor, nodeKey: string) {
   let found = -1;
@@ -545,6 +101,10 @@ function moveOrInsertAtom(
 
 export interface CreatorPromptComposerHandle {
   getNodes(): CreatorPromptNodeInput[];
+  getDocument(): BlockDocument;
+  whenSettled(): Promise<void>;
+  appendText(value: string): void;
+  reconcileReferences(termIds: readonly string[], paletteIds: readonly string[]): void;
   insertTerm(termId: string, position?: number): void;
   insertRecipe(paletteId: string, position?: number): void;
   removeTerm(termId: string): void;
@@ -559,13 +119,16 @@ interface Props {
   termPromptLocale: Locale;
   promptProfileId: string;
   nodes: CreatorPromptNodeInput[];
+  document?: BlockDocument;
+  onImageImported?(image: ImportedEditorImage): void;
+  onImageImportError?(): void;
   terms: TermListItem[];
   palettes: WordPaletteDto[];
   appliedPalettes: AppliedWordPalette[];
   placeholder: string;
   ariaLabel: string;
   fullWindow?: boolean;
-  onNodesChange(nodes: CreatorPromptNodeInput[]): void;
+  onNodesChange(nodes: CreatorPromptNodeInput[], document?: BlockDocument): void;
   onOpenTerm(term: TermListItem): void;
   onOpenRecipe(paletteId: string): void;
   onConfigureRecipe(palette: WordPaletteDto): void;
@@ -579,6 +142,9 @@ export const CreatorPromptComposer = forwardRef<CreatorPromptComposerHandle, Pro
     termPromptLocale,
     promptProfileId,
     nodes,
+    document,
+    onImageImported,
+    onImageImportError,
     terms,
     palettes,
     appliedPalettes,
@@ -628,23 +194,51 @@ export const CreatorPromptComposer = forwardRef<CreatorPromptComposerHandle, Pro
     changeRecipeLocale: onRecipePromptLocaleChange,
     requestRecipeInsert: onRequestRecipeInsert,
   };
-  const initialContent = useMemo(() => editorJsonFromNodes(nodes, bridgeSnapshot), []);
+  const initialContent = useMemo(
+    () => document?.root ?? captureBlockDocument(editorJsonFromNodes(nodes, bridgeSnapshot)).root,
+    [],
+  );
   const editorRef = useRef<Editor | null>(null);
-  const editor = useEditor({
-    extensions: [
-      StarterKit.configure({
-        blockquote: false,
-        bulletList: false,
-        code: false,
-        codeBlock: false,
-        heading: false,
-        horizontalRule: false,
-        listItem: false,
-        orderedList: false,
-      }),
-      CreatorTermNode,
-      CreatorRecipeNode,
-    ],
+  const [inputs] = useState(() => new ContentInputOperations());
+  const importCallbacks = useRef({ onImageImported, onImageImportError });
+  importCallbacks.current = { onImageImported, onImageImportError };
+  const publish = useRef((current: Editor) => {
+    setEditorIsEmpty(current.isEmpty);
+    callbacksRef.current.nodesChanged(documentFromEditor(current), captureBlockDocument(current.getJSON()));
+  });
+  const composition = useVideoDocumentEditorComposition({ editor: editorRef, publish });
+  composition.finish.current = (view) => {
+    const before = view.state.doc;
+    view.dispatch(view.state.tr.setMeta('blockIdentityRepair', true));
+    return before !== view.state.doc;
+  };
+  const imageQueue = useRef(Promise.resolve());
+  const enqueueImages = (files: readonly File[], source: 'PASTE' | 'DROP', importIds: readonly string[] = []) => {
+    const current = editorRef.current;
+    if (!current) return;
+    for (const [index, file] of files.filter((candidate) => imageMimeType(candidate)).entries())
+      inputs.track(
+        beginContentImageInsertion(
+          current,
+          file,
+          source,
+          (file, source, importId) => {
+            const operation = imageQueue.current.then(() => importVideoDocumentEditorImage(file, source, importId));
+            imageQueue.current = operation.then(
+              () => undefined,
+              () => undefined,
+            );
+            return operation;
+          },
+          (image) => importCallbacks.current.onImageImported?.(image),
+          () => importCallbacks.current.onImageImportError?.(),
+          importIds[index],
+        ),
+      );
+  };
+  const extensions = useMemo(() => [CreatorTermNode, CreatorRecipeNode], []);
+  const editor = useContentEditor({
+    extensions,
     content: initialContent,
     editorProps: {
       attributes: {
@@ -654,6 +248,8 @@ export const CreatorPromptComposer = forwardRef<CreatorPromptComposerHandle, Pro
         'aria-label': ariaLabel,
       },
       handleDOMEvents: {
+        compositionstart: composition.start,
+        compositionend: composition.end,
         dragover: (_view, event) => {
           if (!event.dataTransfer) return false;
           const term = activeWordPaletteTermDrag() ?? readWordPaletteTermDrag(event.dataTransfer);
@@ -668,6 +264,10 @@ export const CreatorPromptComposer = forwardRef<CreatorPromptComposerHandle, Pro
           clearWordPaletteRecipeDrag();
           return false;
         },
+      },
+      handlePaste: (_view, event, slice) => {
+        const editor = editorRef.current;
+        return editor ? pasteContentImages(editor, event, slice, enqueueImages) : false;
       },
       handleDrop: (view, event) => {
         const currentEditor = editorRef.current;
@@ -697,7 +297,14 @@ export const CreatorPromptComposer = forwardRef<CreatorPromptComposerHandle, Pro
           return true;
         }
         const recipePayload = readWordPaletteRecipeDrag(event.dataTransfer);
-        if (!recipePayload) return false;
+        if (!recipePayload) {
+          const files = imageFiles(event.dataTransfer.files);
+          if (!files.length) return false;
+          event.preventDefault();
+          currentEditor.commands.setTextSelection(coordinates.pos);
+          enqueueImages(files, 'DROP');
+          return true;
+        }
         const bridge = composerBridge(currentEditor);
         const palette = bridge.palettesById.get(recipePayload.paletteId);
         if (!palette) return false;
@@ -719,14 +326,24 @@ export const CreatorPromptComposer = forwardRef<CreatorPromptComposerHandle, Pro
       },
     },
     onCreate: ({ editor: current }) => setEditorIsEmpty(current.isEmpty),
-    onUpdate: ({ editor: current }) => {
-      setEditorIsEmpty(current.isEmpty);
-      callbacksRef.current.nodesChanged(documentFromEditor(current));
+    onUpdate: ({ editor: current, transaction }) => {
+      if (!composition.defers(current, transaction)) publish.current(current);
     },
   });
   editorRef.current = editor;
 
   useComposerBridgeSynchronization(editor, bridgeSnapshot);
+  useEffect(() => {
+    if (!editor) return;
+    const unregister = registerContentImageRecovery(editor, {
+      imported: (image) => importCallbacks.current.onImageImported?.(image),
+      failed: () => importCallbacks.current.onImageImportError?.(),
+      track: inputs.track,
+    });
+    return () => {
+      unregister();
+    };
+  }, [editor, inputs]);
 
   useEffect(() => {
     if (!editor) return;
@@ -741,14 +358,16 @@ export const CreatorPromptComposer = forwardRef<CreatorPromptComposerHandle, Pro
     };
   }, [editor]);
 
-  const nodesSignature = JSON.stringify(normalizeCreatorPromptNodes(nodes));
+  const desired = { nodes, document };
   useExternalEditorDocument({
     editor,
-    nodes,
-    signature: nodesSignature,
+    nodes: [desired],
+    signature: document ? JSON.stringify(document) : JSON.stringify(normalizeCreatorPromptNodes(nodes)),
     bridge: bridgeSnapshot,
-    currentSignature: (currentEditor) => JSON.stringify(documentFromEditor(currentEditor)),
-    content: editorJsonFromNodes,
+    currentSignature: (current) =>
+      document ? JSON.stringify(captureBlockDocument(current.getJSON())) : JSON.stringify(documentFromEditor(current)),
+    content: ([value], bridge) =>
+      value.document?.root ?? captureBlockDocument(editorJsonFromNodes(value.nodes, bridge)).root,
     onEmptyChange: setEditorIsEmpty,
   });
 
@@ -780,6 +399,46 @@ export const CreatorPromptComposer = forwardRef<CreatorPromptComposerHandle, Pro
   useImperativeHandle(
     ref,
     () => ({
+      whenSettled: async () => {
+        if (!(await composition.whenSettled())) throw new Error('EDITOR_INPUT_UNSETTLED');
+        await inputs.settle();
+      },
+      appendText(value) {
+        if (!editor || !value) return;
+        editor.commands.insertContentAt(
+          editor.state.doc.content.size,
+          plainTextBlockDocument(value).root.content ?? [],
+        );
+      },
+      reconcileReferences(termIds, paletteIds) {
+        if (!editor) return;
+        const desiredTerms = new Set(termIds);
+        const desiredRecipes = new Set(paletteIds);
+        const removals: Array<{ from: number; to: number }> = [];
+        editor.state.doc.descendants((node, from) => {
+          if (node.type.name === TERM_NODE && !desiredTerms.delete(String(node.attrs.termId)))
+            removals.push({ from, to: from + node.nodeSize });
+          if (node.type.name === RECIPE_NODE && !desiredRecipes.delete(String(node.attrs.paletteId)))
+            removals.push({ from, to: from + node.nodeSize });
+        });
+        const transaction = editor.state.tr;
+        for (const range of removals.reverse()) transaction.delete(range.from, range.to);
+        const additions = [...desiredTerms].flatMap((id) => {
+          const term = termsById.get(id);
+          return term
+            ? [editor.schema.nodes[TERM_NODE].create(termAttributes(term, promptProfileId, termPromptLocale))]
+            : [];
+        });
+        for (const id of desiredRecipes)
+          additions.push(editor.schema.nodes[RECIPE_NODE].create(recipeAttributes(id, bridgeSnapshot)));
+        if (additions.length)
+          transaction.insert(transaction.doc.content.size, editor.schema.nodes.paragraph.create(null, additions));
+        if (transaction.docChanged) editor.view.dispatch(transaction);
+      },
+      getDocument() {
+        if (!composition.canReadSnapshot()) throw new Error('EDITOR_INPUT_UNSETTLED');
+        return captureBlockDocument(editor?.getJSON() ?? initialContent);
+      },
       getNodes() {
         return editor ? documentFromEditor(editor) : normalizeCreatorPromptNodes(nodes);
       },
@@ -804,7 +463,7 @@ export const CreatorPromptComposer = forwardRef<CreatorPromptComposerHandle, Pro
           const target = insertPosition(editor, position);
           const recipe = editor.schema.nodes[RECIPE_NODE].create(recipeAttributes(paletteId, bridgeSnapshot));
           const transaction = editor.state.tr.insert(target, recipe);
-          callbacksRef.current.nodesChanged(documentFromProseMirror(transaction.doc));
+          editor.view.dispatch(transaction);
         }
       },
       removeTerm(termId) {

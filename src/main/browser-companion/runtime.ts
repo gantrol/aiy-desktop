@@ -1,11 +1,10 @@
+import { selectedWatermarkProfile, type NaturalWatermarkRuntime } from '@/main/extensions/natural-watermark/selection';
 import { BrowserCompanionHandoffStore, type BrowserCompanionMediaSource } from '@/main/browser-companion/handoff-store';
 import {
   BrowserCompanionBrowserController,
   BrowserCompanionLaunchError,
 } from '@/main/browser-companion/browser-controller';
 import type { ResolvedAssetFile } from '@/main/database/assets/asset-file-repository';
-import type { NaturalWatermarkConfigurationStore } from '@/main/extensions/natural-watermark/configuration';
-import type { NaturalWatermarkService } from '@/main/extensions/natural-watermark/service';
 import type { NaturalWatermarkProfile } from '@/shared/contracts/natural-watermark';
 import {
   browserCompanionDestinationsResultSchema,
@@ -22,24 +21,24 @@ import {
   type BrowserCompanionStageInput,
   type BrowserCompanionStageResult,
   type BrowserCompanionTarget,
-  type BrowserCompanionWatermarkSelection,
 } from '@/shared/contracts/browser-companion';
 
 const TARGET_URLS: Record<BrowserCompanionTarget, string> = {
   chatgpt: 'https://chatgpt.com/',
   wechat: 'https://mp.weixin.qq.com/',
   weibo: 'https://weibo.com/',
+  x: 'https://x.com/compose/post',
+  xiaohongshu: 'https://creator.xiaohongshu.com/publish/publish?source=official&target=image',
 };
 
-interface NaturalWatermarkRuntime {
-  configuration: NaturalWatermarkConfigurationStore;
-  service: NaturalWatermarkService;
-  isActivated(): boolean;
-}
-
-function launchUrl(target: BrowserCompanionTarget, handoffId: string): string {
+function launchUrl(
+  target: BrowserCompanionTarget,
+  handoffId: string,
+  contentKind: BrowserCompanionStageInput['contentKind'],
+): string {
   const url = new URL(TARGET_URLS[target]);
   url.hash = `aiy-handoff=${handoffId}`;
+  if (target === 'wechat') url.hash += `&aiy-content=${contentKind}`;
   return url.toString();
 }
 
@@ -63,17 +62,6 @@ async function watermarkedMediaSources(
       ...(await runtime.service.apply(file, profile)),
     })),
   );
-}
-
-async function selectedWatermarkProfile(
-  selection: BrowserCompanionWatermarkSelection | undefined,
-  runtime: NaturalWatermarkRuntime | undefined,
-): Promise<NaturalWatermarkProfile | null> {
-  if (!selection || selection.kind === 'NONE') return null;
-  if (!runtime?.isActivated()) throw new Error('Natural Watermark is disabled or missing permissions');
-  return selection.kind === 'PREFERRED'
-    ? runtime.configuration.preferredProfile()
-    : runtime.configuration.profile(selection.profileId);
 }
 
 export class BrowserCompanionRuntime {
@@ -104,7 +92,7 @@ export class BrowserCompanionRuntime {
     let browserOpened = true;
     let browserOpenError: BrowserCompanionStageResult['browserOpenError'] = null;
     try {
-      await this.browser.open(handoff.target, launchUrl(handoff.target, handoff.handoffId));
+      await this.browser.open(handoff.target, launchUrl(handoff.target, handoff.handoffId, handoff.contentKind));
     } catch (reason) {
       browserOpened = false;
       browserOpenError = reason instanceof BrowserCompanionLaunchError ? reason.code : 'LAUNCH_FAILED';

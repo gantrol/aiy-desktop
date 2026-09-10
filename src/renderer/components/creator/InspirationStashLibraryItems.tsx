@@ -121,7 +121,7 @@ export function InspirationStashLibraryRow(props: ItemProps) {
     <Checkbox
       checked={batchSelection.checked}
       className="relative z-20"
-      aria-label={`${batchSelection.label}: ${stash.title}`}
+      aria-label={`${batchSelection.label}: ${stash.displayTitle || labels.category}`}
       onClick={(event) => event.stopPropagation()}
       onCheckedChange={(checked) => batchSelection.onCheckedChange(stash.id, checked === true)}
     />
@@ -141,7 +141,7 @@ export function InspirationStashLibraryRow(props: ItemProps) {
     <div data-result-library-row-control className={rowControlsClassName}>
       {onDragStart && (
         <TreeDragHandle
-          label={`${labels.move}: ${stash.title}`}
+          label={`${labels.move}: ${stash.displayTitle || labels.category}`}
           className={rowControlClassName}
           onDragStart={onDragStart}
           onDragEnd={() => onDragEnd?.()}
@@ -149,7 +149,7 @@ export function InspirationStashLibraryRow(props: ItemProps) {
       )}
       <ActionMenuButton
         actions={actions}
-        label={`${labels.moreActions}: ${stash.title}`}
+        label={`${labels.moreActions}: ${stash.displayTitle || labels.category}`}
         className={cn(rowControlClassName, 'size-6')}
       />
     </div>
@@ -161,9 +161,9 @@ export function InspirationStashLibraryRow(props: ItemProps) {
         selected={selected}
         branchTopology={branchTopology}
         childBranch={childBranch}
-        ariaLabel={`${labels.category}: ${stash.title}`}
-        openLabel={`${labels.open}: ${stash.title}`}
-        title={stash.title}
+        ariaLabel={`${labels.category}: ${stash.displayTitle || labels.category}`}
+        openLabel={`${labels.open}: ${stash.displayTitle || labels.category}`}
+        title={stash.displayTitle || labels.category}
         previewBounds={{ left: 16, top: 14, right: 48, bottom: 46 }}
         previewClassName="justify-center"
         preview={categoryPreview}
@@ -180,7 +180,7 @@ export function InspirationStashLibraryRow(props: ItemProps) {
         data-inspiration-stash-id={stash.id}
         data-result-library-selected={selected ? 'true' : undefined}
         role="group"
-        aria-label={`${labels.category}: ${stash.title}`}
+        aria-label={`${labels.category}: ${stash.displayTitle || labels.category}`}
         className={cn(
           'group relative flex min-w-0 cursor-pointer items-center gap-2 rounded-lg transition-colors hover:bg-hover',
           contained ? 'h-10 pl-8 pr-1' : 'h-12 px-2',
@@ -190,7 +190,7 @@ export function InspirationStashLibraryRow(props: ItemProps) {
       >
         <button
           type="button"
-          aria-label={`${labels.open}: ${stash.title}`}
+          aria-label={`${labels.open}: ${stash.displayTitle || labels.category}`}
           aria-current={selected ? 'page' : undefined}
           className="absolute inset-0 z-0 rounded-lg outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
           onClick={() => onSelect(stash.id)}
@@ -198,7 +198,7 @@ export function InspirationStashLibraryRow(props: ItemProps) {
         {selectionControl}
         {categoryPreview}
         <span className="pointer-events-none relative z-10 min-w-0 flex-1 truncate text-sm font-medium">
-          {stash.title}
+          {stash.displayTitle || labels.category}
         </span>
         {controls}
       </div>
@@ -219,8 +219,8 @@ export function InspirationStashCompactItem(props: ItemProps) {
   const content = (
     <button
       type="button"
-      title={`${labels.category}: ${stash.title}`}
-      aria-label={`${labels.category}: ${stash.title}`}
+      title={`${labels.category}: ${stash.displayTitle || labels.category}`}
+      aria-label={`${labels.category}: ${stash.displayTitle || labels.category}`}
       aria-current={selected ? 'page' : undefined}
       data-result-library-selected={selected ? 'true' : undefined}
       draggable={Boolean(onDragStart)}

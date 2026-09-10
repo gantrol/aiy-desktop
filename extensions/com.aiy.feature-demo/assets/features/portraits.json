@@ -1,0 +1,29 @@
+[
+  {
+    "id": "demo-portrait-1",
+    "sha256": "6f967faa8c80179f1fdc35556571392045731fccc593bbf8a7c51bd749956dd0",
+    "fileName": "portrait-1.png",
+    "mediaUrl": "portrait-1.png",
+    "byteSize": 2013013,
+    "createdAt": "2026-08-08T10:44:59.923Z",
+    "modifiedAt": "2026-08-08T10:44:59.924Z"
+  },
+  {
+    "id": "demo-portrait-2",
+    "sha256": "a2a416610d8806d85b78713beeb413a81b79655e35f18f0f383630eee89af008",
+    "fileName": "portrait-2.png",
+    "mediaUrl": "portrait-2.png",
+    "byteSize": 1904952,
+    "createdAt": "2026-08-08T10:46:07.339Z",
+    "modifiedAt": "2026-08-08T10:46:07.340Z"
+  },
+  {
+    "id": "demo-portrait-3",
+    "sha256": "774ecab68981208470eb9354eefa7adbf333feeaf0928c78bd56bf5a86fe8cae",
+    "fileName": "portrait-3.png",
+    "mediaUrl": "portrait-3.png",
+    "byteSize": 1974723,
+    "createdAt": "2026-08-08T10:53:46.590Z",
+    "modifiedAt": "2026-08-08T10:53:46.591Z"
+  }
+]

@@ -8,7 +8,11 @@ import type { ArticleDto, ArticleExportMarkdownInput, ArticleExportMarkdownResul
 
 interface ArticleExportDatabase {
   getArticle(id: string): ArticleDto;
-  resolveAssetFile(assetId: string): ResolvedAssetFile | null;
+  resolveAssetFilesAsync(assetIds: readonly string[]): Promise<ReadonlyMap<string, ResolvedAssetFile>>;
+  contentLibrary: Pick<
+    import('@/main/database/creations/content-library-repository').ContentLibraryRepository,
+    'expandArticle'
+  >;
 }
 
 interface SaveDialogResult {
@@ -52,7 +56,8 @@ export class ArticleExportService {
   ) {}
 
   async exportMarkdown(input: ArticleExportMarkdownInput): Promise<ArticleExportMarkdownResult> {
-    const article = this.database.getArticle(input.id);
+    const saved = this.database.getArticle(input.id);
+    const article = { ...saved, content: this.database.contentLibrary.expandArticle(saved.content) };
     const stem = safeArticleStem(article.content.title);
     const result = await this.ports.showSaveDialog({
       title: '导出 Markdown',
@@ -68,8 +73,11 @@ export class ArticleExportService {
 
     if (article.content.mediaBindings.length) {
       const usedNames = new Set<string>();
+      const files = await this.database.resolveAssetFilesAsync(
+        article.content.mediaBindings.map((binding) => binding.assetId),
+      );
       const resolved = article.content.mediaBindings.map((binding) => {
-        const file = this.database.resolveAssetFile(binding.assetId);
+        const file = files.get(binding.assetId);
         if (!file || !file.mimeType.startsWith('image/')) {
           throw new Error('An article image is unavailable for export');
         }

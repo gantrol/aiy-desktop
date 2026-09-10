@@ -16,8 +16,15 @@ import { useI18n } from '@/renderer/i18n/useI18n';
 import { cn } from '@/renderer/lib/utils';
 import { Button } from '@/renderer/components/ui/button';
 import { Kbd, KbdGroup } from '@/renderer/components/ui/kbd';
-import { Popover, PopoverContent, PopoverTrigger } from '@/renderer/components/ui/popover';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuTrigger,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+} from '@/renderer/components/ui/dropdown-menu';
 import type { AppView } from '@/renderer/components/app/AppSidebar';
+import { DesktopPetalsMenuAction } from '@/renderer/features/desktop-petals/DesktopPetalsMenuAction';
 
 interface Props {
   view: AppView;
@@ -65,8 +72,8 @@ export function AppIconMenu({
   }
 
   return (
-    <Popover open={open} onOpenChange={setOpen}>
-      <PopoverTrigger asChild>
+    <DropdownMenu open={open} onOpenChange={setOpen}>
+      <DropdownMenuTrigger asChild>
         <Button
           type="button"
           data-action="app-menu"
@@ -76,21 +83,25 @@ export function AppIconMenu({
           aria-label={labels.open}
           aria-expanded={open}
         >
-          <img className="size-4 shrink-0" src="./icon.png" alt="" />
+          <AiyIdentity avatar className="size-4 shrink-0" />
           <span className="truncate text-foreground">{messages.app.title}</span>
           <ChevronDownIcon
             className={cn('size-3 text-muted-foreground transition-transform duration-fast', open && 'rotate-180')}
           />
         </Button>
-      </PopoverTrigger>
-      <PopoverContent side="bottom" align="start" sideOffset={4} className="w-60 p-1.5" aria-label={labels.label}>
-        <Button
-          type="button"
+      </DropdownMenuTrigger>
+      <DropdownMenuContent
+        side="bottom"
+        align="start"
+        sideOffset={4}
+        className="max-h-[var(--radix-dropdown-menu-content-available-height)] w-60 overflow-y-auto p-1.5"
+        aria-label={labels.label}
+      >
+        <DropdownMenuItem
           data-action="app-menu-new-creation"
-          variant="ghost"
           className="h-9 w-full justify-start gap-2 px-2 font-normal"
           aria-keyshortcuts="Control+N Meta+N"
-          onClick={() => select(onNewCreation)}
+          onSelect={() => select(onNewCreation)}
         >
           <SquarePenIcon className="size-4" />
           <span>{labels.newCreation}</span>
@@ -98,62 +109,60 @@ export function AppIconMenu({
             <Kbd>Ctrl</Kbd>
             <Kbd>N</Kbd>
           </KbdGroup>
-        </Button>
+        </DropdownMenuItem>
 
-        <div className="-mx-0.5 my-1 h-px bg-border" />
+        <DropdownMenuSeparator />
 
-        <nav className="grid gap-0.5" aria-label={navigation.label}>
+        <div role="group" aria-label={navigation.label}>
           {visibleViewItems.map(({ id, icon: Icon }) => {
             const current = id === 'creator' ? view === 'creator' || view === 'documents' : view === id;
             return (
-              <Button
+              <DropdownMenuItem
                 key={id}
-                type="button"
                 data-app-menu-view={id}
-                variant="ghost"
                 className={cn(
                   'h-9 w-full justify-start gap-2 px-2 font-normal',
                   current && 'bg-selected text-selected-foreground hover:bg-selected active:bg-selected',
                 )}
                 aria-current={current ? 'page' : undefined}
-                onClick={() => select(() => onViewChange(id))}
+                onSelect={() => select(() => onViewChange(id))}
               >
                 <Icon className="size-4" />
                 <span>{navigation[id]}</span>
                 {current && <CheckIcon className="ml-auto size-4" aria-hidden="true" />}
-              </Button>
+              </DropdownMenuItem>
             );
           })}
-        </nav>
+        </div>
 
-        <div className="-mx-0.5 my-1 h-px bg-border" />
+        <DropdownMenuSeparator />
 
-        <Button
-          type="button"
+        <DesktopPetalsMenuAction onOpened={() => setOpen(false)} />
+        <DropdownMenuSeparator />
+
+        <DropdownMenuItem
           data-action="app-menu-settings"
-          variant="ghost"
           className={cn(
             'h-9 w-full justify-start gap-2 px-2 font-normal',
             view === 'contentManagement' && 'bg-selected text-selected-foreground hover:bg-selected active:bg-selected',
           )}
           aria-current={view === 'contentManagement' ? 'page' : undefined}
-          onClick={() => select(onSettingsOpen)}
+          onSelect={() => select(onSettingsOpen)}
         >
           <SettingsIcon className="size-4" />
           <span>{navigation.settings}</span>
           {view === 'contentManagement' && <CheckIcon className="ml-auto size-4" aria-hidden="true" />}
-        </Button>
-        <Button
-          type="button"
+        </DropdownMenuItem>
+        <DropdownMenuItem
           data-action="app-menu-quit"
-          variant="ghost"
           className="h-9 w-full justify-start gap-2 px-2 font-normal text-destructive hover:text-destructive"
-          onClick={() => select(onQuit)}
+          onSelect={() => select(onQuit)}
         >
           <LogOutIcon className="size-4" />
           <span>{labels.quit}</span>
-        </Button>
-      </PopoverContent>
-    </Popover>
+        </DropdownMenuItem>
+      </DropdownMenuContent>
+    </DropdownMenu>
   );
 }
+import { AiyIdentity } from '@/renderer/components/brand/AiyIdentity';

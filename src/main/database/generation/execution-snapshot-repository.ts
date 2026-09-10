@@ -1,4 +1,14 @@
-import { ulid } from 'ulid';
+import type { LibraryStorage } from '@/main/database/core/storage';
+import { now, text, type JsonMap } from '@/main/database/core/values';
+import { readRecipeContentSnapshot, recipeContentTerms } from '@/main/database/dictionary/word-palette-content';
+import {
+  canonicalSnapshotJson,
+  parsePromptCommonInput,
+  promptInputContentHash,
+  promptInputSourceKind,
+  snapshotContentHash,
+} from '@/main/database/generation/snapshot-content';
+import type { GenerationExecutionRequestSnapshot } from '@/main/generation-models/types';
 import {
   type ExecutionInputSnapshotDto,
   type GenerationExecutionCommonInputDto,
@@ -11,8 +21,8 @@ import {
   type PromptCommonRecipeReferenceDto,
   type PromptInputSnapshotDto,
 } from '@/shared/contracts';
+import { assertBlockDocumentReady } from '@/shared/contracts/block-document';
 import { imageGenerationPromptProfileId } from '@/shared/image-generation-prompt-profile';
-import { selectTermExpressionCandidate } from '@/shared/term-localization';
 import {
   resolvePromptComposition,
   type PromptRecipeContentExpressionInput,
@@ -20,17 +30,8 @@ import {
   type PromptTermInput,
   type ResolvedPromptComposition,
 } from '@/shared/prompt-composition';
-import type { GenerationExecutionRequestSnapshot } from '@/main/generation-models/types';
-import type { LibraryStorage } from '@/main/database/core/storage';
-import { type JsonMap, now, text } from '@/main/database/core/values';
-import { readRecipeContentSnapshot, recipeContentTerms } from '@/main/database/dictionary/word-palette-content';
-import {
-  canonicalSnapshotJson,
-  promptInputContentHash,
-  promptInputSourceKind,
-  parsePromptCommonInput,
-  snapshotContentHash,
-} from '@/main/database/generation/snapshot-content';
+import { selectTermExpressionCandidate } from '@/shared/term-localization';
+import { ulid } from 'ulid';
 
 function jsonValue(value: unknown): unknown {
   return JSON.parse(JSON.stringify(value)) as unknown;
@@ -111,7 +112,13 @@ export class ExecutionSnapshotRepository {
   captureCommonInput(
     input: Pick<
       GenerationInput,
-      'manualPrompt' | 'promptNodes' | 'termPromptLocale' | 'termIds' | 'wordPaletteReferences' | 'referenceAssetIds'
+      | 'manualPrompt'
+      | 'promptNodes'
+      | 'document'
+      | 'termPromptLocale'
+      | 'termIds'
+      | 'wordPaletteReferences'
+      | 'referenceAssetIds'
     >,
   ): PromptCommonInputDto {
     const defaultTermPromptLocale = input.termPromptLocale === 'zh' ? ('zh' as const) : ('en' as const);
@@ -261,6 +268,7 @@ export class ExecutionSnapshotRepository {
         throw new Error(`Structured prompt recipe is missing its reference: ${missingRecipe.paletteId}`);
       }
     }
+    assertBlockDocumentReady(input.document);
     const contentNodes = input.promptNodes
       ? (() => {
           const directTermIds = new Set(directTerms.map((term) => term.termId));
@@ -307,6 +315,7 @@ export class ExecutionSnapshotRepository {
       recipes,
       directReferences,
       ...(contentNodes ? { contentNodes } : {}),
+      ...(input.document ? { document: input.document } : {}),
     };
   }
 

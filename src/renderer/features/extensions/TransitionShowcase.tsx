@@ -234,7 +234,14 @@ function TransitionShowcaseHeader({
         <p className="mt-1 text-xs text-muted-foreground">{l.imageCount(imageCount)}</p>
       </div>
       <div className="flex flex-wrap items-center gap-2">
-        <Button type="button" variant="outline" size="sm" disabled={!canChooseImages} onClick={onChooseImages}>
+        <Button
+          data-action="transition-choose-images"
+          type="button"
+          variant="outline"
+          size="sm"
+          disabled={!canChooseImages}
+          onClick={onChooseImages}
+        >
           <ImagesIcon className="size-3.5" />
           {l.chooseImages}
           {manualImageCount > 0 && ` · ${manualImageCount}`}

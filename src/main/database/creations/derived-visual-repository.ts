@@ -1,4 +1,3 @@
-import { createHash } from 'node:crypto';
 import { ulid } from 'ulid';
 import type {
   ArticleContentInput,
@@ -14,12 +13,17 @@ import type {
 } from '@/shared/contracts';
 import { articleInlineVisualAnchorSchema, derivedVisualRoleSchema } from '@/shared/contracts/derived-visual';
 import { emptyCreationDictionaryScope } from '@/shared/album-creation-defaults';
+import { derivedVisualImageExtension, isDerivedVisualMediaPath } from '@/shared/derived-visual-media';
+import { articleIllustrationInsertionOffset } from '@/shared/article-wechat-renderer';
+import { adoptArticleInlineVisual } from '@/main/database/creations/article-inline-visual-adoption';
 import type { LibraryStorage } from '@/main/database/core/storage';
 import { type JsonMap, now, text } from '@/main/database/core/values';
 import type { ArticleRepository } from '@/main/database/creations/article-repository';
 import type { IntakeRepository } from '@/main/database/creations/intake-repository';
 import type { SocialPostRepository } from '@/main/database/creations/social-post-repository';
 import type { CreationItemRepository } from '@/main/database/creations/creation-item-repository';
+import { DerivedVisualOperationRepository } from '@/main/database/creations/derived-visual-operation-repository';
+import { gifOutputExists } from '@/main/database/creations/creation-output-presentation-sql';
 
 const allowedCanvasPresets = {
   ARTICLE_HEADER: new Set(['wechat_article_cover_2_35_1']),
@@ -28,13 +32,6 @@ const allowedCanvasPresets = {
 } as const;
 
 const maxDraftReferenceAssets = 8;
-
-function imageExtension(mimeType: string) {
-  if (mimeType === 'image/png') return 'png';
-  if (mimeType === 'image/webp') return 'webp';
-  if (mimeType === 'image/svg+xml') return 'svg';
-  return 'jpg';
-}
 
 function articleContent(article: ArticleDto): ArticleContentInput {
   const { mediaAssets: _mediaAssets, ...content } = article.content;
@@ -56,22 +53,8 @@ function socialPostReferenceAssetIds(post: SocialPostDto) {
   });
 }
 
-function derivedPath(visualId: string, mimeType: string) {
-  return `assets/visual-${visualId}.${imageExtension(mimeType)}`;
-}
-
-function roleLabel(
-  role: DerivedVisualWorkspaceCreateInput['role'],
-  locale: DerivedVisualWorkspaceCreateInput['locale'],
-) {
-  if (locale === 'zh') {
-    if (role === 'ARTICLE_HEADER') return '题图';
-    if (role === 'ARTICLE_INLINE') return '配图';
-    return '封面';
-  }
-  if (role === 'ARTICLE_HEADER') return 'Hero image';
-  if (role === 'ARTICLE_INLINE') return 'Illustration';
-  return 'Cover';
+function derivedPath(visualId: string, imageAssetId: string, mimeType: string) {
+  return `assets/visual-${visualId}-${imageAssetId}.${derivedVisualImageExtension(mimeType)}`;
 }
 
 interface DerivedVisualWorkspaceTarget {
@@ -79,28 +62,35 @@ interface DerivedVisualWorkspaceTarget {
   socialPost: SocialPostDto | null;
 }
 
-function creationFormAnchorKey(input: DerivedVisualWorkspaceCreateInput) {
-  if (input.role !== 'ARTICLE_INLINE') return null;
-  return createHash('sha256').update(input.articleId).update('\0').update(input.anchor.selectedText).digest('hex');
-}
-
 export class DerivedVisualRepository {
+  readonly operations: DerivedVisualOperationRepository;
   constructor(
     private readonly storage: LibraryStorage,
     private readonly intake: IntakeRepository,
     private readonly articles: ArticleRepository,
     private readonly socialPosts: SocialPostRepository,
     private readonly creationItems: CreationItemRepository,
-  ) {}
+  ) {
+    this.operations = new DerivedVisualOperationRepository(storage, articles, socialPosts, {
+      get: (id) => this.get(id),
+      apply: (input, current) => this.applyAdoption(input, current),
+    });
+  }
 
   private get db() {
     return this.storage.db;
   }
 
   list(): DerivedVisualDto[] {
-    return (this.db.prepare('SELECT * FROM derived_visuals ORDER BY created_at DESC, id DESC').all() as JsonMap[]).map(
-      (row) => this.dto(row),
-    );
+    return (
+      this.db
+        .prepare(
+          `SELECT visual.*, position.anchor_json AS position_anchor_json, position.ever_adopted
+      FROM derived_visuals visual LEFT JOIN article_visual_positions position ON position.id = visual.position_id
+      ORDER BY visual.created_at DESC, visual.id DESC`,
+        )
+        .all() as JsonMap[]
+    ).map((row) => this.dto(row));
   }
 
   openWorkspace(input: DerivedVisualWorkspaceOpenInput): DerivedVisualWorkspaceOpenResult {
@@ -121,27 +111,16 @@ export class DerivedVisualRepository {
         const item = this.creationItems.get(sourceForm.creationItemId);
 
         const role = input.role;
-        const anchorKey = creationFormAnchorKey(input);
-        if (role === 'ARTICLE_INLINE') {
-          if (!anchorKey) throw new Error('An article illustration form requires an anchor');
-          const existingForm = this.creationItems.findForm(item.id, role, anchorKey);
-          if (existingForm) {
-            if (existingForm.entity.kind !== 'DERIVED_VISUAL') {
-              throw new Error('The article illustration workspace is invalid');
-            }
-            return this.resumeWorkspace(existingForm.entity.id);
-          }
-        }
-        const workspace = this.createWorkspace(input, target);
+        const positionId = input.role === 'ARTICLE_INLINE' ? this.resolvePosition(input, target.article!) : null;
+        const workspace = this.createWorkspace(input, target, positionId);
         const entity = { kind: 'DERIVED_VISUAL' as const, id: workspace.visual.id };
         if (role === 'ARTICLE_INLINE') {
-          if (!anchorKey) throw new Error('An article illustration form requires an anchor');
           this.creationItems.addForm({
             creationItemId: item.id,
             sourceFormId: sourceForm.id,
             role,
             entity,
-            anchorKey,
+            anchorKey: `${positionId}:${workspace.visual.id}`,
           });
         } else {
           this.creationItems.addForm({
@@ -169,6 +148,35 @@ export class DerivedVisualRepository {
     return { kind: 'DRAFT', reused: true, draft: this.intake.getDraft(visual.creationDraftId), visual };
   }
 
+  private resolvePosition(
+    input: Extract<DerivedVisualWorkspaceCreateInput, { role: 'ARTICLE_INLINE' }>,
+    article: ArticleDto,
+  ) {
+    if (input.positionId) {
+      const position = this.db
+        .prepare('SELECT article_id, anchor_json FROM article_visual_positions WHERE id = ?')
+        .get(input.positionId) as JsonMap | undefined;
+      if (
+        !position ||
+        position.article_id !== article.id ||
+        JSON.stringify(articleInlineVisualAnchorSchema.parse(JSON.parse(text(position.anchor_json)))) !==
+          JSON.stringify(input.anchor)
+      )
+        throw new Error('ARTICLE_VISUAL_POSITION_MISMATCH');
+      return input.positionId;
+    }
+    if (articleIllustrationInsertionOffset(article.content.markdown, input.anchor.selectedText) === null)
+      throw new Error('ARTICLE_VISUAL_ANCHOR_UNAVAILABLE');
+    const id = ulid();
+    this.db
+      .prepare(
+        `INSERT INTO article_visual_positions (id, article_id, source_revision_id, anchor_json, created_at)
+      VALUES (?, ?, ?, ?, ?)`,
+      )
+      .run(id, article.id, article.revisionId, JSON.stringify(input.anchor), now());
+    return id;
+  }
+
   private resolveWorkspaceTarget(input: DerivedVisualWorkspaceCreateInput): DerivedVisualWorkspaceTarget {
     if (input.role === 'SOCIAL_POST_COVER') {
       const socialPost = this.socialPosts.get(input.socialPostId);
@@ -189,15 +197,11 @@ export class DerivedVisualRepository {
     target: DerivedVisualWorkspaceTarget,
     id: string | null,
   ) {
-    const sourceTitle =
-      target.article?.content.title ||
-      target.socialPost?.content.title ||
-      (input.locale === 'zh' ? '未命名' : 'Untitled');
     const referenceAssetIds = target.socialPost ? socialPostReferenceAssetIds(target.socialPost) : [];
     return this.intake.saveDraft({
       id,
       targetAlbumId: target.article?.albumId ?? target.socialPost?.albumId ?? null,
-      title: `${sourceTitle} · ${roleLabel(input.role, input.locale)}`.slice(0, 300),
+      title: input.workspaceTitle,
       text: input.prompt,
       promptNodes: [{ kind: 'TEXT', text: input.prompt }],
       referenceAssetIds,
@@ -216,6 +220,7 @@ export class DerivedVisualRepository {
   private createWorkspace(
     input: DerivedVisualWorkspaceCreateInput,
     target: DerivedVisualWorkspaceTarget,
+    positionId: string | null,
   ): DerivedVisualWorkspaceOpenResult {
     const draft = this.saveWorkspaceDraft(input, target, null);
     const id = ulid();
@@ -225,8 +230,8 @@ export class DerivedVisualRepository {
         `INSERT INTO derived_visuals
           (id, role, article_id, article_revision_id, social_post_id, social_post_revision_id,
             anchor_json, creation_draft_id, prompt_series_id, selected_image_asset_id,
-            created_at, updated_at, adopted_at)
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?, NULL, NULL, ?, ?, NULL)`,
+            created_at, updated_at, adopted_at, position_id)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, NULL, NULL, ?, ?, NULL, ?)`,
       )
       .run(
         id,
@@ -239,6 +244,7 @@ export class DerivedVisualRepository {
         draft.id,
         timestamp,
         timestamp,
+        positionId,
       );
     this.storage.recordChange('DERIVED_VISUAL', id, 'CREATE', {
       role: input.role,
@@ -250,34 +256,64 @@ export class DerivedVisualRepository {
   }
 
   adopt(input: DerivedVisualAdoptInput): DerivedVisualAdoptResult {
+    return this.operations.execute({ ...input, kind: 'ADOPT' });
+  }
+
+  private applyAdoption(input: DerivedVisualAdoptInput, target: ArticleDto | SocialPostDto) {
     return this.db
       .transaction(() => {
         const visual = this.get(input.id);
+        if (
+          (visual.role === 'ARTICLE_INLINE' && input.intent !== 'REPLACE_INLINE') ||
+          (visual.role !== 'ARTICLE_INLINE' && input.intent === 'REPLACE_INLINE') ||
+          (visual.role !== 'SOCIAL_POST_COVER' && input.intent === 'SET_COVER_AND_FIRST') ||
+          (visual.role !== 'ARTICLE_INLINE' && input.relocateAfterText !== undefined)
+        ) {
+          throw new Error('The adoption action does not match this visual');
+        }
         if (!visual.promptSeriesId) throw new Error('Generate this visual before adopting an image');
         const asset = this.assertSeriesAsset(visual.promptSeriesId, input.imageAssetId);
         let article: ArticleDto | null = null;
         let socialPost: SocialPostDto | null = null;
 
         if (visual.articleId) {
-          const current = this.articles.get(visual.articleId);
+          if (target.id !== visual.articleId || !('elements' in target))
+            throw new Error('DERIVED_VISUAL_TARGET_MISMATCH');
+          const current = target;
+          if (current.revisionId !== input.expectedRevisionId)
+            throw new Error('The article changed before adoption; review the current article first');
           if (current.status !== 'ACTIVE') throw new Error('The article is no longer available');
-          if (!visual.selectedImageAssetId && current.revisionId !== visual.articleRevisionId) {
-            throw new Error('The article changed while the image was being generated; start from the current article');
-          }
-          article = this.adoptIntoArticle(visual, current, input.imageAssetId, text(asset.mime_type));
+          article =
+            visual.role === 'ARTICLE_INLINE'
+              ? this.articles.saveSystemRevision({
+                  articleId: current.id,
+                  expectedRevisionId: current.revisionId,
+                  requestId: input.requestId,
+                  content: adoptArticleInlineVisual(
+                    visual,
+                    current,
+                    input,
+                    derivedVisualImageExtension(text(asset.mime_type)),
+                  ),
+                })
+              : this.adoptIntoArticle(visual, current, input.imageAssetId, text(asset.mime_type), input.requestId);
         } else if (visual.socialPostId) {
-          const current = this.socialPosts.get(visual.socialPostId);
+          if (target.id !== visual.socialPostId || 'elements' in target)
+            throw new Error('DERIVED_VISUAL_TARGET_MISMATCH');
+          const current = target;
+          if (current.revisionId !== input.expectedRevisionId)
+            throw new Error('The social post changed before adoption; review the current post first');
           if (current.status !== 'ACTIVE') throw new Error('The social post is no longer available');
-          if (!visual.selectedImageAssetId && current.revisionId !== visual.socialPostRevisionId) {
-            throw new Error('The social post changed while the cover was being generated; start from the current post');
-          }
           const content = socialPostContent(current);
-          const mediaAssetIds = [
-            input.imageAssetId,
-            ...content.mediaAssetIds.filter((id) => id !== input.imageAssetId),
-          ];
+          const mediaAssetIds =
+            input.intent === 'SET_COVER_AND_FIRST'
+              ? [input.imageAssetId, ...content.mediaAssetIds.filter((id) => id !== input.imageAssetId)]
+              : content.mediaAssetIds.includes(input.imageAssetId)
+                ? content.mediaAssetIds
+                : [...content.mediaAssetIds, input.imageAssetId];
           socialPost = this.socialPosts.save({
             id: current.id,
+            expectedRevisionId: input.expectedRevisionId,
             albumId: current.albumId,
             sourceInspirationStashId: current.sourceInspirationStashId,
             consumeCreationDraftId: null,
@@ -286,6 +322,8 @@ export class DerivedVisualRepository {
         }
 
         const adoptedAt = now();
+        if (visual.positionId)
+          this.db.prepare('UPDATE article_visual_positions SET ever_adopted = 1 WHERE id = ?').run(visual.positionId);
         this.db
           .prepare(
             `UPDATE derived_visuals
@@ -295,7 +333,9 @@ export class DerivedVisualRepository {
           .run(input.imageAssetId, adoptedAt, adoptedAt, visual.id);
         this.storage.recordChange('DERIVED_VISUAL', visual.id, 'ADOPT', {
           role: visual.role,
+          intent: input.intent,
           imageAssetId: input.imageAssetId,
+          requestId: input.requestId,
           articleId: visual.articleId,
           socialPostId: visual.socialPostId,
         });
@@ -304,48 +344,26 @@ export class DerivedVisualRepository {
       .immediate();
   }
 
-  private adoptIntoArticle(visual: DerivedVisualDto, current: ArticleDto, imageAssetId: string, mimeType: string) {
+  private adoptIntoArticle(
+    visual: DerivedVisualDto,
+    current: ArticleDto,
+    imageAssetId: string,
+    mimeType: string,
+    requestId: string,
+  ) {
     const content = articleContent(current);
-    const preferredPath = derivedPath(visual.id, mimeType);
+    const preferredPath = derivedPath(visual.id, imageAssetId, mimeType);
     const existingBinding = content.mediaBindings.find((binding) => binding.assetId === imageAssetId);
     const nextPath = existingBinding?.path ?? preferredPath;
     let mediaBindings = content.mediaBindings.map((binding) => ({ ...binding }));
     if (!existingBinding) mediaBindings.push({ path: nextPath, assetId: imageAssetId });
 
-    let markdown = content.markdown;
-    if (visual.role === 'ARTICLE_INLINE') {
-      const previousBinding = visual.selectedImageAssetId
-        ? mediaBindings.find((binding) => binding.assetId === visual.selectedImageAssetId)
-        : null;
-      if (previousBinding) {
-        if (!markdown.includes(previousBinding.path))
-          throw new Error('The generated illustration anchor is no longer present');
-        markdown = markdown.replaceAll(previousBinding.path, nextPath);
-        if (
-          previousBinding.assetId !== imageAssetId &&
-          previousBinding.path.startsWith(`assets/visual-${visual.id}.`) &&
-          content.coverAssetId !== previousBinding.assetId
-        ) {
-          mediaBindings = mediaBindings.filter((binding) => binding !== previousBinding);
-        }
-      } else {
-        const selectedText = visual.anchor?.selectedText ?? '';
-        const first = markdown.indexOf(selectedText);
-        if (first < 0 || first !== markdown.lastIndexOf(selectedText)) {
-          throw new Error('Select a unique passage in the current article before generating an illustration');
-        }
-        const selectedEnd = first + selectedText.length;
-        const paragraphEnd = markdown.indexOf('\n\n', selectedEnd);
-        const insertionAt = paragraphEnd < 0 ? markdown.length : paragraphEnd;
-        const before = markdown.slice(0, insertionAt).trimEnd();
-        const after = markdown.slice(insertionAt).trimStart();
-        markdown = [before, `![配图](${nextPath})`, after].filter(Boolean).join('\n\n');
-      }
-    } else if (visual.selectedImageAssetId && visual.selectedImageAssetId !== imageAssetId) {
+    const markdown = content.markdown;
+    if (visual.selectedImageAssetId && visual.selectedImageAssetId !== imageAssetId) {
       const previousBinding = mediaBindings.find((binding) => binding.assetId === visual.selectedImageAssetId);
       if (
         previousBinding &&
-        previousBinding.path.startsWith(`assets/visual-${visual.id}.`) &&
+        isDerivedVisualMediaPath(previousBinding.path, visual.id) &&
         !markdown.includes(previousBinding.path)
       ) {
         mediaBindings = mediaBindings.filter((binding) => binding !== previousBinding);
@@ -355,12 +373,12 @@ export class DerivedVisualRepository {
     return this.articles.saveSystemRevision({
       articleId: current.id,
       expectedRevisionId: current.revisionId,
-      requestId: `derived-visual:${visual.id}:${imageAssetId}`,
+      requestId,
       content: {
         ...content,
         markdown,
         mediaBindings,
-        coverAssetId: visual.role === 'ARTICLE_HEADER' ? imageAssetId : content.coverAssetId,
+        coverAssetId: imageAssetId,
       },
     });
   }
@@ -384,15 +402,22 @@ export class DerivedVisualRepository {
                 SELECT 1 FROM image_transform_runs transform
                 WHERE transform.series_id = ? AND transform.output_asset_id = asset.id
               )
+              OR ${gifOutputExists('?', 'asset.id')}
             )`,
       )
-      .get(imageAssetId, seriesId, seriesId, seriesId) as JsonMap | undefined;
+      .get(imageAssetId, seriesId, seriesId, seriesId, seriesId) as JsonMap | undefined;
     if (!asset) throw new Error('The selected image does not belong to this visual generation');
     return asset;
   }
 
   private get(id: string) {
-    const row = this.db.prepare('SELECT * FROM derived_visuals WHERE id = ?').get(id) as JsonMap | undefined;
+    const row = this.db
+      .prepare(
+        `SELECT visual.*, position.anchor_json AS position_anchor_json, position.ever_adopted
+      FROM derived_visuals visual LEFT JOIN article_visual_positions position ON position.id = visual.position_id
+      WHERE visual.id = ?`,
+      )
+      .get(id) as JsonMap | undefined;
     if (!row) throw new Error('Derived visual not found');
     return this.dto(row);
   }
@@ -401,13 +426,17 @@ export class DerivedVisualRepository {
     const role = derivedVisualRoleSchema.parse(row.role);
     let parsedAnchor: unknown;
     try {
-      parsedAnchor = JSON.parse(text(row.anchor_json)) as unknown;
+      parsedAnchor = JSON.parse(text(row.position_anchor_json ?? row.anchor_json)) as unknown;
     } catch {
       throw new Error('Stored derived visual anchor is invalid');
     }
     const anchor = role === 'ARTICLE_INLINE' ? articleInlineVisualAnchorSchema.parse(parsedAnchor) : null;
+    if (role === 'ARTICLE_INLINE' && (row.position_id == null || row.position_anchor_json == null))
+      throw new Error('ARTICLE_VISUAL_POSITION_UNAVAILABLE');
     return {
       id: text(row.id),
+      positionId: row.position_id == null ? null : text(row.position_id),
+      positionWasUsed: Boolean(row.ever_adopted),
       role,
       articleId: row.article_id == null ? null : text(row.article_id),
       articleRevisionId: row.article_revision_id == null ? null : text(row.article_revision_id),

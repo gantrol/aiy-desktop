@@ -1,6 +1,7 @@
 import { app } from 'electron';
 import { z } from 'zod';
 import { RendererEventDispatcher } from '@/main/app/renderer-event-dispatcher';
+import { isPackagedApplication } from '@/main/app/runtime-mode';
 import {
   AIY_DEEP_LINK_SCHEME,
   APP_DEEP_LINK_AVAILABLE_CHANNEL,
@@ -39,7 +40,6 @@ export function parseAiyDeepLink(rawValue: unknown): AppDeepLinkCommand | null {
   if (
     url.protocol !== `${AIY_DEEP_LINK_SCHEME}:` ||
     url.hostname !== 'open' ||
-    url.pathname !== '/gallery' ||
     url.username !== '' ||
     url.password !== '' ||
     url.port !== '' ||
@@ -49,7 +49,19 @@ export function parseAiyDeepLink(rawValue: unknown): AppDeepLinkCommand | null {
     return null;
   }
 
-  return appDeepLinkCommandSchema.parse({ schemaVersion: 1, action: 'open', target: 'gallery' });
+  if (url.pathname === '/gallery') {
+    return appDeepLinkCommandSchema.parse({ schemaVersion: 1, action: 'open', target: 'gallery' });
+  }
+  const route = /^\/space\/([A-Za-z0-9._:-]+)\/(article|material)\/([A-Za-z0-9._:-]+)$/.exec(url.pathname);
+  if (!route) return null;
+  const command = appDeepLinkCommandSchema.safeParse({
+    schemaVersion: 1,
+    action: 'open',
+    target: route[2],
+    spaceId: route[1],
+    entityId: route[3],
+  });
+  return command.success ? command.data : null;
 }
 
 export class AppDeepLinkController {
@@ -84,7 +96,7 @@ export class AppDeepLinkController {
 }
 
 export function registerAiyDeepLinkProtocolClient() {
-  if (!app.isPackaged || process.windowsStore) return;
+  if (!isPackagedApplication(app) || process.windowsStore) return;
   if (!app.setAsDefaultProtocolClient(AIY_DEEP_LINK_SCHEME)) {
     console.warn('[deep-link] Failed to register the aiy URL protocol');
   }

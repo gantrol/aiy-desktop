@@ -1,13 +1,10 @@
 import {
-  ArrowRightIcon,
   CircleAlertIcon,
   CopyIcon,
   DownloadIcon,
   FileTextIcon,
   ImagePlusIcon,
-  Link2Icon,
   LoaderCircleIcon,
-  PanelsTopLeftIcon,
   PlusIcon,
   TextCursorInputIcon,
   XIcon,
@@ -24,6 +21,8 @@ import {
 } from '@/renderer/components/ui/dropdown-menu';
 import { Separator } from '@/renderer/components/ui/separator';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/renderer/components/ui/tooltip';
+import { useI18n } from '@/renderer/i18n/useI18n';
+import { CreationWorkNavigation } from '@/renderer/components/creator/CreationWorkNavigation';
 
 export function ArticleHeaderIconButton({
   children,
@@ -51,16 +50,14 @@ export function ArticleHeaderAiActions({
   checkAction,
   hasBody,
   suggesting,
-  zh,
   onSuggestTitle,
 }: {
   checkAction: ReactNode;
   hasBody: boolean;
   suggesting: boolean;
-  zh: boolean;
   onSuggestTitle(): Promise<void>;
 }) {
-  const titleLabel = zh ? 'AI 起标题' : 'AI title';
+  const titleLabel = useI18n().messages.creator.manuscriptEditor.aiTitle;
   return (
     <>
       {checkAction}
@@ -81,21 +78,20 @@ export function SuggestedArticleTitle({
   onApply,
   onDismiss,
   title,
-  zh,
 }: {
   onApply(): void;
   onDismiss(): void;
   title: string;
-  zh: boolean;
 }) {
+  const labels = useI18n().messages.creator.manuscriptEditor;
   return (
     <div className="flex shrink-0 items-center gap-2 border-b bg-surface-sunken px-4 py-2">
       <TextCursorInputIcon className="size-4 shrink-0 text-muted-foreground" />
       <span className="min-w-0 flex-1 truncate text-sm">{title}</span>
       <Button type="button" variant="outline" size="sm" onClick={onApply}>
-        {zh ? '采用' : 'Apply'}
+        {labels.apply}
       </Button>
-      <Button type="button" variant="ghost" size="icon-sm" title={zh ? '忽略' : 'Dismiss'} onClick={onDismiss}>
+      <Button type="button" variant="ghost" size="icon-sm" title={labels.dismiss} onClick={onDismiss}>
         <XIcon className="size-4" />
       </Button>
     </div>
@@ -109,9 +105,7 @@ export function ArticleHeaderActions({
   generatingHeader,
   hasBody,
   relationCount,
-  zh,
   onCreateArticle,
-  onCreateSocialPost,
   onExport,
   onGenerateHeader,
   onOpenRelations,
@@ -122,27 +116,18 @@ export function ArticleHeaderActions({
   generatingHeader: boolean;
   hasBody: boolean;
   relationCount: number;
-  zh: boolean;
   onCreateArticle(copySourceContent: boolean): Promise<void>;
-  onCreateSocialPost(copySourceContent: boolean): Promise<void>;
   onExport(): Promise<void>;
   onGenerateHeader(): Promise<void>;
   onOpenRelations(): void;
 }) {
-  const relationsLabel = zh ? `关联 ${relationCount}` : `Related ${relationCount}`;
-  const derivativeLabel = zh ? '新建衍生' : 'New derivative';
-  const exportLabel = zh ? '导出 Markdown' : 'Export Markdown';
+  const labels = useI18n().messages.creator.manuscriptEditor;
+  const derivativeLabel = labels.newDerivative;
+  const exportLabel = labels.exportMarkdown;
 
   return (
     <>
-      <ArticleHeaderIconButton
-        variant="ghost"
-        disabled={!relationCount}
-        label={relationsLabel}
-        onClick={onOpenRelations}
-      >
-        <Link2Icon className="size-4" />
-      </ArticleHeaderIconButton>
+      <CreationWorkNavigation relationsAction={{ count: relationCount, onOpen: onOpenRelations }} />
       <DropdownMenu>
         <Tooltip>
           <TooltipTrigger asChild>
@@ -172,33 +157,20 @@ export function ArticleHeaderActions({
             <DropdownMenuIcon>
               <ImagePlusIcon />
             </DropdownMenuIcon>
-            {zh ? '新建题图' : 'New hero image'}
+            {labels.newHeroImage}
           </DropdownMenuItem>
           <DropdownMenuSeparator />
           <DropdownMenuItem disabled={creatingForm || generatingHeader} onSelect={() => void onCreateArticle(false)}>
             <DropdownMenuIcon>
               <FileTextIcon />
             </DropdownMenuIcon>
-            {zh ? '新建文章' : 'New article'}
+            {labels.newManuscript}
           </DropdownMenuItem>
           <DropdownMenuItem disabled={creatingForm || generatingHeader} onSelect={() => void onCreateArticle(true)}>
             <DropdownMenuIcon>
               <CopyIcon />
             </DropdownMenuIcon>
-            {zh ? '克隆文章' : 'Fork article'}
-          </DropdownMenuItem>
-          <DropdownMenuSeparator />
-          <DropdownMenuItem disabled={creatingForm || generatingHeader} onSelect={() => void onCreateSocialPost(false)}>
-            <DropdownMenuIcon>
-              <PanelsTopLeftIcon />
-            </DropdownMenuIcon>
-            {zh ? '新建贴图' : 'New social post'}
-          </DropdownMenuItem>
-          <DropdownMenuItem disabled={creatingForm || generatingHeader} onSelect={() => void onCreateSocialPost(true)}>
-            <DropdownMenuIcon>
-              <ArrowRightIcon />
-            </DropdownMenuIcon>
-            {zh ? '转为贴图' : 'Convert to social post'}
+            {labels.forkManuscript}
           </DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>
@@ -215,43 +187,36 @@ export function ArticleSaveStatus({
   dirty,
   failed,
   saving,
-  zh,
   onRetry,
 }: {
   conflict: boolean;
   dirty: boolean;
   failed: boolean;
   saving: boolean;
-  zh: boolean;
   onRetry(): void;
 }) {
+  const labels = useI18n().messages.creator.manuscriptEditor;
   const idle = !conflict && !dirty && !failed && !saving;
   return (
     <div className="grid size-6 shrink-0 place-items-center text-muted-foreground" aria-hidden={idle || undefined}>
       {saving ? (
-        <LoaderCircleIcon className="size-4 animate-spin" aria-label={zh ? '正在自动保存' : 'Autosaving'} />
+        <LoaderCircleIcon className="size-4 animate-spin" aria-label={labels.autosaving} />
       ) : conflict ? (
-        <CircleAlertIcon
-          className="size-4 text-destructive"
-          aria-label={zh ? '文章存在版本冲突' : 'Article revision conflict'}
-        />
+        <CircleAlertIcon className="size-4 text-destructive" aria-label={labels.revisionConflict} />
       ) : failed ? (
         <Button
           type="button"
           variant="ghost"
           size="icon-sm"
           className="size-6 text-destructive"
-          title={zh ? '自动保存失败，点击重试' : 'Autosave failed. Retry'}
-          aria-label={zh ? '重试自动保存' : 'Retry autosave'}
+          title={labels.autosaveFailed}
+          aria-label={labels.retryAutosave}
           onClick={onRetry}
         >
           <CircleAlertIcon className="size-4" />
         </Button>
       ) : dirty ? (
-        <span
-          className="size-1.5 rounded-full bg-muted-foreground"
-          title={zh ? '等待自动保存' : 'Waiting to autosave'}
-        />
+        <span className="size-1.5 rounded-full bg-muted-foreground" title={labels.waitingToAutosave} />
       ) : null}
     </div>
   );

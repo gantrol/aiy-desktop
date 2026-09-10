@@ -7,6 +7,7 @@ import { mediaThumbnailUrl } from '@/renderer/components/media/mediaThumbnailUrl
 import { ImageAmbientBackdrop } from '@/renderer/components/media/AmbientImage';
 import { ActionMenuButton, type ActionMenuAction } from '@/renderer/components/ui/action-menu';
 import { Button } from '@/renderer/components/ui/button';
+import { PinContentButton } from '@/renderer/features/desktop-petals/PinContentAction';
 import { AlbumEditorDialog } from '@/renderer/components/gallery/AlbumDialogs';
 import type { AlbumNavigationLabels } from '@/renderer/components/gallery/AlbumNavigation';
 
@@ -31,6 +32,7 @@ interface Props {
   onArchive(album: AlbumDto): Promise<void>;
   onCreateCreation?(): void;
   onSettings?(): void;
+  notify(message: string): void;
 }
 
 export function AlbumDetailHeader({
@@ -46,6 +48,7 @@ export function AlbumDetailHeader({
   onArchive,
   onCreateCreation,
   onSettings,
+  notify,
 }: Props) {
   const [renaming, setRenaming] = useState(false);
   const archived = effectivelyArchived ?? Boolean(album.archivedAt);
@@ -109,6 +112,12 @@ export function AlbumDetailHeader({
           {album.pinned ? <PinOffIcon className="size-4" /> : <PinIcon className="size-4" />}
           {album.pinned ? labels.unpin : labels.pin}
         </Button>
+        <PinContentButton
+          source={{ kind: 'ALBUM', id: album.id }}
+          disabled={busy || archived}
+          notify={notify}
+          iconOnly
+        />
         <ActionMenuButton actions={actions} label={labels.moreActions(album.title)} />
       </section>
 

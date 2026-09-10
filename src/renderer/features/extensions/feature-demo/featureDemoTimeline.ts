@@ -5,6 +5,8 @@ export const FEATURE_DEMO_PREVIEW_HEIGHT = 720;
 export const FEATURE_DEMO_FPS = 30;
 
 export type FeatureDemoSceneId =
+  | 'petalNote'
+  | 'imageCreation'
   | 'directionDetailsExpand'
   | 'directionDetailsCollapse'
   | 'directoryExpand'
@@ -19,6 +21,8 @@ export interface FeatureDemoScene {
 }
 
 export const FEATURE_DEMO_SCENES: readonly FeatureDemoScene[] = [
+  { id: 'petalNote', durationInSeconds: 10 },
+  { id: 'imageCreation', durationInSeconds: 12 },
   { id: 'directionDetailsExpand', durationInSeconds: 6 },
   { id: 'directionDetailsCollapse', durationInSeconds: 5 },
   { id: 'directoryExpand', durationInSeconds: 7 },

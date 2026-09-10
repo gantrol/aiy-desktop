@@ -3,6 +3,11 @@ import type { CreatorLocation } from '@/renderer/components/app/app-navigation';
 import { creationItemByFormEntity } from '@/renderer/components/creator/creationFormEntities';
 import type { CreationSessionProjection } from '@/renderer/components/creator/creationSessionProjection';
 import {
+  derivedVisualForLocation,
+  derivedVisualWorkspaceVersion,
+} from '@/renderer/components/creator/derivedVisualWorkspace';
+import { allAssets } from '@/renderer/components/creator/utils';
+import {
   defaultDerivedDraftParentLocation,
   defaultStandaloneCreationDraft,
   defaultStandaloneCreationSeriesId,
@@ -72,7 +77,35 @@ function activeAssistantRun(
   );
 }
 
-export function creatorInitialSession(
+function savedDerivedVisualViewAvailable(data: BootstrapDto, location: CreatorLocation): boolean {
+  if (location.surface !== 'existing-creation') return true;
+  const series = data.series.find((item) => item.id === location.seriesId);
+  if (!series) return false;
+  if (location.versionId && !derivedVisualWorkspaceVersion(series, location.versionId)) return false;
+  const output = location.outputSeriesId ? data.series.find((item) => item.id === location.outputSeriesId) : series;
+  return Boolean(output && (!location.assetId || allAssets(output).some((asset) => asset.id === location.assetId)));
+}
+
+function initialDerivedVisualSession(data: BootstrapDto, location: CreatorLocation): CreatorInitialSession | null {
+  const visual = derivedVisualForLocation(data, location);
+  if (!visual) return null;
+  const viewAvailable = savedDerivedVisualViewAvailable(data, location);
+  const initialSeriesId = viewAvailable ? visual.promptSeriesId : null;
+  const initialDraft =
+    viewAvailable && !initialSeriesId && data.creationDraft?.id === visual.creationDraftId ? data.creationDraft : null;
+  const initialCreationMode = initialSeriesId ? 'existing' : 'new';
+  return {
+    derivedDraftParentLocation: null,
+    initialAssistantRun: activeAssistantRun(data, initialCreationMode, initialDraft, initialSeriesId),
+    initialCreationMode,
+    initialDraft,
+    initialSeriesId,
+    initialInspirationItemAlbumId: null,
+    initialInspirationStashAlbumId: null,
+  };
+}
+
+function standardCreatorInitialSession(
   data: BootstrapDto,
   location: CreatorLocation,
   creationSessions: readonly CreationSessionProjection[],
@@ -149,4 +182,12 @@ export function creatorInitialSession(
     initialInspirationStashAlbumId: initialInspirationStash?.albumId ?? null,
     initialSeriesId,
   };
+}
+
+export function creatorInitialSession(
+  data: BootstrapDto,
+  location: CreatorLocation,
+  creationSessions: readonly CreationSessionProjection[],
+) {
+  return initialDerivedVisualSession(data, location) ?? standardCreatorInitialSession(data, location, creationSessions);
 }

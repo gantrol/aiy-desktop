@@ -2,11 +2,12 @@ import { AssetBreakdownSourceFormProvider } from '@/renderer/components/media/As
 import { CreatorRecordPanel } from '@/renderer/components/creator/CreatorAssistantOutputPanel';
 import { CreatorInputPanel } from '@/renderer/components/creator/CreatorInputPanel';
 import { CreationOutputTabs } from '@/renderer/components/creator/CreationOutputTabs';
-import { DerivedVisualWorkbench } from '@/renderer/components/creator/DerivedVisualWorkbench';
 import { OutputInspector } from '@/renderer/components/creator/OutputInspector';
 import type { CreatorScreenViewModel } from '@/renderer/components/creator/screen/creatorScreenViewModel';
 import { Button } from '@/renderer/components/ui/button';
 import { cn } from '@/renderer/lib/utils';
+import { ArrowLeftIcon } from 'lucide-react';
+import { useI18n } from '@/renderer/i18n/useI18n';
 
 interface Props {
   model: CreatorScreenViewModel;
@@ -14,46 +15,50 @@ interface Props {
 }
 
 function OutputHeader({ model }: Pick<Props, 'model'>) {
+  const labels = useI18n().messages.creator.derivedVisual;
+  const ownSeries = model.workbench.series;
+  const showingOtherSeries =
+    model.workbench.editorDerivedVisual && ownSeries && model.workbench.outputSeries?.id !== ownSeries.id;
   return (
-    <CreationOutputTabs
-      value={model.outputUi.mode}
-      locale={model.app.locale}
-      onValueChange={(value) => void model.navigation.idea.changeOutputMode(value)}
-    />
+    <div className="flex items-center gap-2">
+      {showingOtherSeries && (
+        <Button
+          variant="ghost"
+          size="icon-sm"
+          title={labels.ownSchemeResults}
+          aria-label={labels.ownSchemeResults}
+          onClick={() => {
+            model.workbench.setOutputSeriesId(ownSeries.id);
+            model.outputUi.setRequestedAssetId(null);
+          }}
+        >
+          <ArrowLeftIcon className="size-4" aria-hidden="true" />
+        </Button>
+      )}
+      <CreationOutputTabs
+        value={model.outputUi.mode}
+        onValueChange={(value) => void model.navigation.idea.changeOutputMode(value)}
+      />
+    </div>
   );
 }
 
 function OutputEmptyState({ model }: Pick<Props, 'model'>) {
-  const { locale } = model.app;
+  const labels = useI18n().messages.creator.workNavigation;
   return (
     <div className="flex flex-1 items-center justify-center px-6">
       <div className="flex max-w-md flex-col items-center gap-4">
-        <span className="text-sm font-semibold">{locale === 'zh' ? '新建成果' : 'New result'}</span>
-        <div className="flex flex-wrap justify-center gap-2">
-          <Button type="button" variant="secondary" onClick={() => model.projection.panes.setCompactPanel('creator')}>
-            {locale === 'zh' ? '图片' : 'Image'}
-          </Button>
-          {(['文章', '视频', '音频'] as const).map((label, index) => (
-            <Button
-              key={label}
-              type="button"
-              variant="outline"
-              disabled
-              title={locale === 'zh' ? '尚未接入' : 'Not available yet'}
-            >
-              {locale === 'zh' ? label : (['Article', 'Video', 'Audio'] as const)[index]}
-            </Button>
-          ))}
-        </div>
+        <span className="text-sm font-semibold">{labels.emptyOutput}</span>
+        <Button type="button" variant="secondary" onClick={() => model.projection.panes.setCompactPanel('creator')}>
+          {labels.backToInput}
+        </Button>
       </div>
     </div>
   );
 }
 
 export function CreatorOutputWorkspace({ model, sourceFormId }: Props) {
-  const { app, generation, generationRuntime, navigation, outputUi, projection, selection, workbench, workflow } =
-    model;
-  const selected = selection.contentSelection;
+  const { app, generation, generationRuntime, navigation, outputUi, projection, workbench, workflow } = model;
   const document = generation.promptDocument;
   const assistant = workflow.assistant.workflows;
   const content = workflow.content;
@@ -73,39 +78,11 @@ export function CreatorOutputWorkspace({ model, sourceFormId }: Props) {
               )
         }
       >
-        {workbench.editorDerivedVisual && !workbench.editorSocialCoverVisual ? (
-          <DerivedVisualWorkbench
-            visual={workbench.editorDerivedVisual}
-            locale={app.locale}
-            prompt={document.manualPrompt}
-            canvasPreset={generation.canvasPreset}
-            canvasPresets={app.data.canvasPresets}
-            series={workbench.outputSeries}
-            routes={generation.configuration.imageGenerationRoutes}
-            generationTargets={generation.generationTargets}
-            generationCount={projection.generationCount}
-            generationTasks={app.data.generationTasks}
-            readiness={projection.readiness}
-            starting={workflow.starting || navigation.promptVersion.creating}
-            resizeValue={panes.outputWidth}
-            resizeMin={panes.outputResizeMin}
-            resizeMax={panes.outputResizeMax}
-            onResizeStart={panes.beginOutputResize}
-            onResizeValueChange={panes.setOutputWidth}
-            onPromptChange={navigation.derivedVisual.changePrompt}
-            onCanvasPresetChange={navigation.derivedVisual.changeCanvas}
-            onGenerationTargetsChange={generation.setGenerationTargets}
-            onConfigureExtension={app.onConfigureExtension}
-            onGenerate={() => void generationRuntime.launch.generate()}
-            onAdopt={content.derivedVisual.adoptDerivedVisual}
-            onClose={() => {
-              workbench.setDismissedDerivedVisualId(workbench.editorDerivedVisual!.id);
-              panes.setCompactPanel('creator');
-            }}
-            notify={app.notify}
-          />
-        ) : outputUi.mode === 'results' ? (
+        {outputUi.mode === 'results' ? (
           <OutputInspector
+            animations={app.data.animations}
+            onBeforeOpenVariant={navigation.creation.preserveBeforeNavigation}
+            onCreateContentVariant={content.createImageVariant}
             headerNavigation={headerNavigation}
             emptyState={<OutputEmptyState model={model} />}
             series={workbench.outputSeries}
@@ -151,13 +128,14 @@ export function CreatorOutputWorkspace({ model, sourceFormId }: Props) {
             onCreatePromptVersion={navigation.promptVersion.create}
             onImportedOutputUpdated={app.refresh}
             onImportedOutputSaved={app.onImportedOutputSaved}
-            derivedVisual={workbench.editorSocialCoverVisual ?? workbench.outputDerivedVisual}
-            appliedDerivedVisualAssetId={
-              workbench.editorSocialCoverVisual
-                ? (selected.selectedSocialPost?.content.coverAssetId ?? null)
-                : undefined
-            }
-            onAdoptDerivedVisual={content.derivedVisual.adoptDerivedVisual}
+            derivedVisual={workbench.editorDerivedVisual ?? workbench.outputDerivedVisual}
+            appliedDerivedVisualAssetId={workbench.appliedDerivedVisualAssetId}
+            appliedDerivedVisualAsset={workbench.appliedDerivedVisualAsset}
+            derivedVisualTargetTitle={workbench.derivedVisualTargetTitle}
+            spaceId={app.data.spaceId}
+            derivedVisualTargetRevisionId={workbench.derivedVisualTargetRevisionId}
+            derivedVisualTargetArticle={workbench.derivedVisualTargetArticle}
+            onRunDerivedVisualOperation={content.derivedVisual.runDerivedVisualOperation}
             notify={app.notify}
           />
         ) : outputUi.mode === 'inputs' ? (

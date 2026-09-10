@@ -17,6 +17,8 @@ import {
   CODEX_APP_SERVER_EXTENSION_ID,
   CODEX_ASSISTANT_DEFAULT_MODEL_KEY,
   CODEX_ASSISTANT_DEFAULT_REASONING_EFFORT,
+  CODEX_GIF_PLANNING_DEFAULT_MODEL_KEY,
+  CODEX_GIF_PLANNING_DEFAULT_REASONING_EFFORT,
   DEEPSEEK_API_EXTENSION_ID,
   GOOGLE_GEMINI_API_EXTENSION_ID,
   GOOGLE_GEMINI_ASSISTANT_MODEL_KEY,
@@ -36,7 +38,7 @@ export interface AssistantModelDefinition {
 }
 
 interface PersistedAssistantRouting {
-  schemaVersion: 3;
+  schemaVersion: 4;
   selections: AssistantRoutingSelections;
   updatedAt: string;
 }
@@ -82,7 +84,7 @@ export const ASSISTANT_MODEL_DEFINITIONS: readonly AssistantModelDefinition[] = 
     extensionId: CODEX_APP_SERVER_EXTENSION_ID,
     name: 'Codex Agent',
     kind: 'AGENT',
-    supportedOperations: ['directions', 'optimize', 'title', 'subtitleTranslation', 'articleCheck'],
+    supportedOperations: ['directions', 'optimize', 'title', 'gifPlanning', 'subtitleTranslation', 'articleCheck'],
     modelSelectionMode: 'CATALOG',
     reasoningEffort: CODEX_ASSISTANT_DEFAULT_REASONING_EFFORT,
   },
@@ -92,6 +94,12 @@ const DEFAULT_SELECTIONS: AssistantRoutingSelections = {
   directions: { routeKey: 'codex', modelKey: null, reasoningEffort: null },
   optimize: { routeKey: 'codex', modelKey: null, reasoningEffort: null },
   title: { routeKey: 'codex', modelKey: null, reasoningEffort: null },
+  // Keep this cost-bounded even if the general Codex route default changes.
+  gifPlanning: {
+    routeKey: 'codex',
+    modelKey: CODEX_GIF_PLANNING_DEFAULT_MODEL_KEY,
+    reasoningEffort: CODEX_GIF_PLANNING_DEFAULT_REASONING_EFFORT,
+  },
   subtitleTranslation: { routeKey: 'codex', modelKey: null, reasoningEffort: 'max' },
   articleCheck: { routeKey: 'codex', modelKey: null, reasoningEffort: null },
 };
@@ -157,25 +165,51 @@ const persistedAssistantRoutingV3Schema = z
     updatedAt: z.string().datetime(),
   })
   .strict();
+const persistedAssistantRoutingV4Schema = z
+  .object({
+    schemaVersion: z.literal(4),
+    selections: z
+      .object({
+        directions: assistantRoutingSelectionSchema,
+        optimize: assistantRoutingSelectionSchema,
+        title: assistantRoutingSelectionSchema,
+        gifPlanning: assistantRoutingSelectionSchema,
+        subtitleTranslation: assistantRoutingSelectionSchema,
+        articleCheck: assistantRoutingSelectionSchema,
+      })
+      .strict(),
+    updatedAt: z.string().datetime(),
+  })
+  .strict();
 const persistedAssistantRoutingSchema: z.ZodType<PersistedAssistantRouting> = z.union([
   persistedAssistantRoutingV1Schema.transform((record): PersistedAssistantRouting => ({
-    schemaVersion: 3,
+    schemaVersion: 4,
     selections: {
       ...record.selections,
+      gifPlanning: { ...DEFAULT_SELECTIONS.gifPlanning },
       subtitleTranslation: { ...DEFAULT_SELECTIONS.subtitleTranslation },
       articleCheck: { ...DEFAULT_SELECTIONS.articleCheck },
     },
     updatedAt: record.updatedAt,
   })),
   persistedAssistantRoutingV2Schema.transform((record): PersistedAssistantRouting => ({
-    schemaVersion: 3,
+    schemaVersion: 4,
     selections: {
       ...record.selections,
+      gifPlanning: { ...DEFAULT_SELECTIONS.gifPlanning },
       articleCheck: { ...DEFAULT_SELECTIONS.articleCheck },
     },
     updatedAt: record.updatedAt,
   })),
-  persistedAssistantRoutingV3Schema,
+  persistedAssistantRoutingV3Schema.transform((record): PersistedAssistantRouting => ({
+    schemaVersion: 4,
+    selections: {
+      ...record.selections,
+      gifPlanning: { ...DEFAULT_SELECTIONS.gifPlanning },
+    },
+    updatedAt: record.updatedAt,
+  })),
+  persistedAssistantRoutingV4Schema,
 ]);
 
 function copySelections(selections: AssistantRoutingSelections): AssistantRoutingSelections {
@@ -183,6 +217,7 @@ function copySelections(selections: AssistantRoutingSelections): AssistantRoutin
     directions: { ...selections.directions },
     optimize: { ...selections.optimize },
     title: { ...selections.title },
+    gifPlanning: { ...selections.gifPlanning },
     subtitleTranslation: { ...selections.subtitleTranslation },
     articleCheck: { ...selections.articleCheck },
   };
@@ -208,7 +243,7 @@ export class AssistantRoutingConfiguration {
   save(input: AssistantRoutingSaveInput) {
     this.validate(input.selections);
     const record: PersistedAssistantRouting = {
-      schemaVersion: 3,
+      schemaVersion: 4,
       selections: copySelections(input.selections),
       updatedAt: new Date().toISOString(),
     };
@@ -228,7 +263,14 @@ export class AssistantRoutingConfiguration {
   }
 
   private validate(selections: AssistantRoutingSelections) {
-    for (const operation of ['directions', 'optimize', 'title', 'subtitleTranslation', 'articleCheck'] as const) {
+    for (const operation of [
+      'directions',
+      'optimize',
+      'title',
+      'gifPlanning',
+      'subtitleTranslation',
+      'articleCheck',
+    ] as const) {
       const selection = selections[operation];
       const model = modelFor(operation, selection.routeKey);
       if (!model) {

@@ -28,6 +28,7 @@ export const rendererDiagnosticDetailsSchema = z
   .object({
     requestId: identifier.optional(),
     sessionId: identifier.optional(),
+    articleId: identifier.optional(),
     postId: identifier.optional(),
     revisionNo: count.optional(),
     draftSequence: count.optional(),
@@ -44,6 +45,8 @@ export const rendererDiagnosticDetailsSchema = z
     composing: z.boolean().optional(),
     matchesSaved: z.boolean().optional(),
     durationMs: z.number().finite().nonnegative().optional(),
+    demoResources: z.array(identifier).max(8).optional(),
+    demoTime: z.number().finite().nonnegative().optional(),
     error: rendererDiagnosticErrorSchema.optional(),
   })
   .strict();
@@ -63,6 +66,9 @@ export const rendererDiagnosticInputSchema = z
       'bootstrap-success',
       'bootstrap-failure',
       'bootstrap-slow',
+      'demo-load-ready',
+      'demo-load-slow',
+      'demo-load-failed',
       'post-ipc-start',
       'post-ipc-success',
       'post-ipc-failure',
@@ -81,6 +87,14 @@ export const rendererDiagnosticInputSchema = z
       'post-save-success',
       'post-save-failure',
       'post-save-skipped',
+      'article-save-start',
+      'article-save-acknowledged',
+      'article-save-failed',
+      'article-external-revision',
+      'article-conflict',
+      'article-input-pending',
+      'article-input-settled',
+      'article-drain',
     ]),
     details: rendererDiagnosticDetailsSchema,
   })

@@ -1,9 +1,10 @@
-import { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { lazy, Suspense, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { flushSync } from 'react-dom';
 import { DownloadIcon, PauseIcon, PlayIcon, RotateCcwIcon, SquareIcon } from 'lucide-react';
 import type { BootstrapDto, ExtensionDto } from '@/shared/contracts';
 import { Button } from '@/renderer/components/ui/button';
 import { Slider } from '@/renderer/components/ui/slider';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/renderer/components/ui/tabs';
 import {
   downloadFeatureDemoVideo,
   exportFeatureDemoVideo,
@@ -16,14 +17,13 @@ import {
   featureDemoSceneAt,
   featureDemoSceneStart,
 } from '@/renderer/features/extensions/feature-demo/featureDemoTimeline';
-import {
-  createFeatureDemoRunPlan,
-  createFeatureDemoSeed,
-} from '@/renderer/features/extensions/feature-demo/featureDemoRunPlan';
+import { createFeatureDemoRunPlan } from '@/renderer/features/extensions/feature-demo/featureDemoRunPlan';
+import { useFeatureDemoVideoSnapshot } from '@/renderer/features/extensions/feature-demo/useFeatureDemoVideoSnapshot';
 import { useI18n } from '@/renderer/i18n/useI18n';
 import { cn } from '@/renderer/lib/utils';
 
 interface FeatureDemoShowcaseProps {
+  active: boolean;
   data: BootstrapDto;
   extensions: readonly ExtensionDto[];
   notify(message: string): void;
@@ -41,7 +41,33 @@ function afterPaint() {
   });
 }
 
-export function FeatureDemoShowcase({ data, extensions, notify }: FeatureDemoShowcaseProps) {
+const DemoV050Showcase = lazy(() =>
+  import('@/renderer/features/extensions/feature-demo/v050/DemoV050Showcase').then((module) => ({
+    default: module.DemoV050Showcase,
+  })),
+);
+
+export function FeatureDemoShowcase(props: FeatureDemoShowcaseProps) {
+  const copy = useI18n().messages.extensions.featureDemo;
+  return (
+    <Tabs defaultValue="v050" className="grid gap-4">
+      <TabsList>
+        <TabsTrigger value="v050">{copy.v050.title}</TabsTrigger>
+        <TabsTrigger value="features">{copy.title}</TabsTrigger>
+      </TabsList>
+      <TabsContent value="v050">
+        <Suspense fallback={null}>
+          <DemoV050Showcase active={props.active} />
+        </Suspense>
+      </TabsContent>
+      <TabsContent value="features">
+        <CurrentFeatureDemoShowcase {...props} />
+      </TabsContent>
+    </Tabs>
+  );
+}
+
+function CurrentFeatureDemoShowcase({ active, data, notify }: FeatureDemoShowcaseProps) {
   const { messages } = useI18n();
   const l = messages.extensions.featureDemo;
   const viewportRef = useRef<HTMLDivElement | null>(null);
@@ -53,8 +79,14 @@ export function FeatureDemoShowcase({ data, extensions, notify }: FeatureDemoSho
   const [playing, setPlaying] = useState(true);
   const [stageScale, setStageScale] = useState(1);
   const [exportProgress, setExportProgress] = useState<number | null>(null);
-  const [plan, setPlan] = useState(() => createFeatureDemoRunPlan(data));
+  const [demoData] = useState(data);
+  const [plan] = useState(() => createFeatureDemoRunPlan(data));
   const duration = featureDemoDuration(plan.scenes);
+  const position = featureDemoSceneAt(time, plan.scenes);
+  const exporting = exportProgress !== null;
+  const videoState = useFeatureDemoVideoSnapshot(active && (position.scene.id === 'videoDocument' || exporting));
+  const stageBusy =
+    position.scene.id === 'videoDocument' && (videoState.status === 'loading' || videoState.status === 'idle');
 
   useLayoutEffect(() => {
     const viewport = viewportRef.current;
@@ -67,11 +99,12 @@ export function FeatureDemoShowcase({ data, extensions, notify }: FeatureDemoSho
   }, []);
 
   useEffect(() => {
-    if (!playing) return;
-    const startedAt = performance.now() - timeRef.current * 1000;
+    if (!active || !playing || stageBusy) return;
+    let previousFrameAt = performance.now();
     let lastPublishedAt = 0;
     const tick = (now: number) => {
-      const next = (now - startedAt) / 1000;
+      const next = timeRef.current + (now - previousFrameAt) / 1000;
+      previousFrameAt = now;
       if (next >= duration) {
         timeRef.current = duration;
         setTime(duration);
@@ -90,7 +123,7 @@ export function FeatureDemoShowcase({ data, extensions, notify }: FeatureDemoSho
       if (animationFrameRef.current !== null) window.cancelAnimationFrame(animationFrameRef.current);
       animationFrameRef.current = null;
     };
-  }, [duration, playing]);
+  }, [active, duration, playing, stageBusy]);
 
   useEffect(
     () => () => {
@@ -99,8 +132,9 @@ export function FeatureDemoShowcase({ data, extensions, notify }: FeatureDemoSho
     [],
   );
 
-  const position = featureDemoSceneAt(time, plan.scenes);
-  const exporting = exportProgress !== null;
+  useEffect(() => {
+    if (!active) exportAbortRef.current?.abort();
+  }, [active]);
 
   function seek(next: number) {
     const bounded = Math.min(duration, Math.max(0, next));
@@ -118,11 +152,13 @@ export function FeatureDemoShowcase({ data, extensions, notify }: FeatureDemoSho
 
   function togglePlayback() {
     if (playing) stopPlayback();
-    else setPlaying(true);
+    else {
+      if (timeRef.current >= duration) seek(0);
+      setPlaying(true);
+    }
   }
 
   function replay() {
-    setPlan(createFeatureDemoRunPlan(data, createFeatureDemoSeed()));
     seek(0);
     setPlaying(true);
   }
@@ -164,11 +200,6 @@ export function FeatureDemoShowcase({ data, extensions, notify }: FeatureDemoSho
         renderAt: async (nextTime) => {
           flushSync(() => seek(nextTime));
           await afterPaint();
-          const sceneId = featureDemoSceneAt(nextTime, plan.scenes).scene.id;
-          if (sceneId === 'directoryExpand' || sceneId === 'directoryCollapse') {
-            await new Promise<void>((resolve) => window.setTimeout(resolve, 320));
-            await afterPaint();
-          }
         },
       });
       downloadFeatureDemoVideo(video);
@@ -184,18 +215,18 @@ export function FeatureDemoShowcase({ data, extensions, notify }: FeatureDemoSho
   }
 
   return (
-    <section data-feature-demo-showcase className="grid gap-4 rounded-lg border bg-surface p-4">
+    <section data-feature-demo-showcase className="grid min-w-0 gap-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h3 className="text-sm font-semibold">{l.title}</h3>
           <p className="mt-1 text-xs text-muted-foreground">{formatTime(duration)} · 2560×1440 · 30 FPS</p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
-          <Button type="button" variant="outline" size="sm" onClick={togglePlayback}>
+          <Button type="button" variant="outline" size="sm" disabled={exporting} onClick={togglePlayback}>
             {playing ? <PauseIcon className="size-3.5" /> : <PlayIcon className="size-3.5" />}
             {playing ? l.pause : l.play}
           </Button>
-          <Button type="button" variant="outline" size="sm" onClick={replay}>
+          <Button type="button" variant="outline" size="sm" disabled={exporting} onClick={replay}>
             <RotateCcwIcon className="size-3.5" />
             {l.replay}
           </Button>
@@ -208,22 +239,25 @@ export function FeatureDemoShowcase({ data, extensions, notify }: FeatureDemoSho
 
       <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
         {plan.scenes.map((scene, index) => (
-          <button
+          <Button
             type="button"
             key={scene.id}
+            variant="ghost"
+            disabled={exporting}
+            aria-pressed={position.scene.id === scene.id}
             className={cn(
-              'rounded-md border px-3 py-2 text-left text-xs transition-colors',
-              position.scene.id === scene.id ? 'border-primary bg-primary/5 font-semibold' : 'bg-background',
+              'h-auto justify-start whitespace-normal px-3 py-2 text-left text-xs',
+              position.scene.id === scene.id && 'bg-selected font-semibold text-selected-foreground',
             )}
             onClick={() => selectScene(index)}
           >
             {l.scenes[scene.id].title}
-          </button>
+          </Button>
         ))}
       </div>
 
       <div className="grid gap-2">
-        <div ref={viewportRef} className="relative aspect-video w-full overflow-hidden rounded-lg border bg-muted">
+        <div ref={viewportRef} className="relative aspect-video w-full overflow-hidden border bg-muted">
           <div
             className="absolute left-0 top-0 origin-top-left"
             style={{
@@ -234,8 +268,8 @@ export function FeatureDemoShowcase({ data, extensions, notify }: FeatureDemoSho
           >
             <FeatureDemoStage
               ref={stageRef}
-              data={data}
-              extensions={extensions}
+              data={demoData}
+              videoState={videoState}
               plan={plan}
               timeInSeconds={time}
               notify={notify}
@@ -244,6 +278,7 @@ export function FeatureDemoShowcase({ data, extensions, notify }: FeatureDemoSho
           </div>
         </div>
         <Slider
+          disabled={exporting}
           value={[time]}
           min={0}
           max={duration}

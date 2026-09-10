@@ -1,15 +1,17 @@
-import { ulid } from 'ulid';
+import type { LibraryStorage } from '@/main/database/core/storage';
+import { type JsonMap, mediaUrl, now, text } from '@/main/database/core/values';
+import { creationVideoAttachments } from '@/main/database/creations/creation-video-attachments';
+import { canonicalSnapshotJson, snapshotContentHash } from '@/main/database/generation/snapshot-content';
 import type {
   AssetDto,
   CreationInputSnapshotDto,
   CreationInputSnapshotInput,
   CreationInputStashCreateInput,
   CreationInputStashDto,
+  CreationVideoAttachmentDto,
   CreatorAgentScope,
 } from '@/shared/contracts';
-import { canonicalSnapshotJson, snapshotContentHash } from '@/main/database/generation/snapshot-content';
-import type { LibraryStorage } from '@/main/database/core/storage';
-import { type JsonMap, mediaUrl, now, text } from '@/main/database/core/values';
+import { ulid } from 'ulid';
 
 function assetDto(row: JsonMap): AssetDto {
   const id = text(row.id);
@@ -46,9 +48,11 @@ function normalizedSnapshot(input: CreationInputSnapshotInput): CreationInputSna
     schemaVersion: 1,
     title: title,
     manualPrompt: input.manualPrompt,
+    ...(input.document ? { document: input.document } : {}),
     ...(input.promptNodes ? { promptNodes: input.promptNodes.map((node) => ({ ...node })) } : {}),
     resolvedPrompt: input.resolvedPrompt,
     referenceAssetIds: [...input.referenceAssetIds],
+    ...(input.videoMaterialIds ? { videoMaterialIds: [...new Set(input.videoMaterialIds)] } : {}),
     termPromptLocale: input.termPromptLocale,
     termIds: [...input.termIds],
     wordPaletteReferences: input.wordPaletteReferences.map((reference) => ({
@@ -116,7 +120,12 @@ export class CreationInputStashRepository {
       ORDER BY revision_no DESC, id DESC LIMIT 100`,
       )
       .all(scope.kind, scope.id) as JsonMap[];
-    return rows.map((row) => this.dto(row));
+    const videos = creationVideoAttachments(
+      this.db,
+      rows.flatMap((row) => snapshotFromJson(row.input_json).videoMaterialIds ?? []),
+    );
+    const videosById = new Map(videos.map((video) => [video.materialId, video]));
+    return rows.map((row) => this.dto(row, videosById));
   }
 
   create(input: CreationInputStashCreateInput): CreationInputStashDto {
@@ -124,6 +133,10 @@ export class CreationInputStashRepository {
       this.assertScopeAvailable(input.scope);
       const snapshot = normalizedSnapshot(input.snapshot);
       this.assertReferencesAvailable(snapshot.referenceAssetIds);
+      const videoIds = snapshot.videoMaterialIds ?? [];
+      if (videoIds.length > 8 || creationVideoAttachments(this.db, videoIds).length !== videoIds.length) {
+        throw new Error('Video attachments are unavailable');
+      }
       const revisionNo = Number(
         (
           this.db
@@ -189,10 +202,16 @@ export class CreationInputStashRepository {
     if (count !== uniqueIds.length) throw new Error('A reference image is no longer available');
   }
 
-  private dto(row: JsonMap): CreationInputStashDto {
+  private dto(row: JsonMap, videosById?: ReadonlyMap<string, CreationVideoAttachmentDto>): CreationInputStashDto {
     const stored = normalizedSnapshot(snapshotFromJson(row.input_json));
     const assets = this.referenceAssets(stored.referenceAssetIds);
-    const snapshot: CreationInputSnapshotDto = { ...stored, referenceAssets: assets };
+    const snapshot: CreationInputSnapshotDto = {
+      ...stored,
+      referenceAssets: assets,
+      videoAttachments: videosById
+        ? (stored.videoMaterialIds ?? []).flatMap((id) => videosById.get(id) ?? [])
+        : creationVideoAttachments(this.db, stored.videoMaterialIds ?? []),
+    };
     return {
       id: text(row.id),
       scope: {

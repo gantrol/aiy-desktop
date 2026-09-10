@@ -1,8 +1,9 @@
-import type { BootstrapDto, CreatorImageImportContext, Locale } from '@/shared/contracts';
-import type { useCreatorPromptDocument } from '@/renderer/components/creator/workflows/useCreatorPromptDocument';
-import type { useCreationDraftSession } from '@/renderer/components/creator/workflows/useCreationDraftSession';
 import { resolveCreatorPrompt } from '@/renderer/components/creator/utils';
+import type { useCreationDraftSession } from '@/renderer/components/creator/workflows/useCreationDraftSession';
+import type { useCreatorPromptDocument } from '@/renderer/components/creator/workflows/useCreatorPromptDocument';
+import { useI18n } from '@/renderer/i18n/useI18n';
 import { useStableCallback } from '@/renderer/lib/useStableCallback';
+import type { BootstrapDto, CreatorImageImportContext, Locale } from '@/shared/contracts';
 
 type CreationDraftSession = Pick<ReturnType<typeof useCreationDraftSession>, 'getDraftId' | 'saveDraftNow'>;
 type PromptDocument = Pick<
@@ -54,6 +55,7 @@ export function creatorOutputImportTarget(
 }
 
 export function useDerivedVisualOutputImportContext(options: Options) {
+  const labels = useI18n().messages.creator.derivedVisual;
   return useStableCallback(
     async (context: CreatorImageImportContext, requirePromptVersion = false): Promise<PreparedOutputImportContext> => {
       if (context.seriesId || options.creationMode !== 'new') {
@@ -87,21 +89,18 @@ export function useDerivedVisualOutputImportContext(options: Options) {
         promptProfileId: options.promptProfileId ?? undefined,
       });
       const finalPrompt = promptResolution.livePrompt.trim();
-      if (!finalPrompt) throw new Error(options.locale === 'zh' ? '请先填写 Prompt' : 'Write a prompt first');
+      if (!finalPrompt) throw new Error(labels.promptRequired);
       const referenceAssetIds = options.promptDocument.referenceAssets.map((asset) => asset.id);
       const draft = await options.creationDraftSession.saveDraftNow(undefined, captured);
       if ((visual && draft.id !== visual.creationDraftId) || options.creationDraftSession.getDraftId() !== draftId) {
-        throw new Error(
-          options.locale === 'zh'
-            ? '导入前封面创作上下文已变化，请重试'
-            : 'The cover creation context changed before import; try again',
-        );
+        throw new Error(labels.importContextChanged);
       }
       const committed = await window.desktopApi.creationDraftCommit({
         creationDraftId: draft.id,
         title: options.newTitle.trim() || '新创作',
         manualPrompt: captured.manualPrompt,
         promptNodes: captured.nodes,
+        document: captured.document,
         prompt: finalPrompt,
         resolvedPrompt: promptResolution.composition,
         changeSummary: 'MANUAL_PROMPT',

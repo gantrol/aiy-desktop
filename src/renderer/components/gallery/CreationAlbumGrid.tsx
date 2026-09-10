@@ -41,10 +41,9 @@ const MAX_PREVIEW_ASSETS = 5;
 const DEFAULT_COLLECTION_ASPECT_RATIO = DEFAULT_MEDIA_ASPECT_RATIO;
 export const COLLECTION_MIN_COLUMN_WIDTH = 240;
 export const COLLECTION_GAP = 16;
+export const COLLECTION_CARD_HEIGHT = 176;
 const PREVIEW_THUMBNAIL_SIZE = 512;
 const PREVIEW_BACKDROP_THUMBNAIL_SIZE = 256;
-const MIN_COLLECTION_ASPECT_RATIO = 1 / 2;
-const MAX_COLLECTION_ASPECT_RATIO = 2;
 const PREVIEW_SPREAD_EDGE_RESERVE_RATIO = 0.14;
 
 type PreviewSpreadDirection = 'left' | 'right';
@@ -60,13 +59,14 @@ interface PreviewFrameBounds {
   heightPercentage: number;
 }
 
-export function collectionAspectRatio(asset: AssetDto | undefined) {
-  const sourceAspectRatio = getSourceMediaAspectRatio(
-    asset?.width ?? 0,
-    asset?.height ?? 0,
-    DEFAULT_COLLECTION_ASPECT_RATIO,
-  );
-  return Math.max(MIN_COLLECTION_ASPECT_RATIO, Math.min(MAX_COLLECTION_ASPECT_RATIO, sourceAspectRatio));
+export function collectionAspectRatio() {
+  return DEFAULT_COLLECTION_ASPECT_RATIO;
+}
+
+export function collectionContainerAspectRatio(placement: Pick<MasonryPlacement, 'width' | 'height'>) {
+  return placement.width > 0 && placement.height > 0
+    ? placement.width / placement.height
+    : DEFAULT_COLLECTION_ASPECT_RATIO;
 }
 
 function previewNeedsEdgeFill(asset: AssetDto, frameAspectRatio: number) {
@@ -74,18 +74,10 @@ function previewNeedsEdgeFill(asset: AssetDto, frameAspectRatio: number) {
   return Math.abs(sourceAspectRatio - frameAspectRatio) > 0.001;
 }
 
-function previewFrameBounds(asset: AssetDto, containerAspectRatio: number): PreviewFrameBounds {
-  const aspectRatio = collectionAspectRatio(asset);
-  if (aspectRatio >= containerAspectRatio) {
-    return {
-      aspectRatio,
-      widthPercentage: 100,
-      heightPercentage: (containerAspectRatio / aspectRatio) * 100,
-    };
-  }
+function previewFrameBounds(containerAspectRatio: number): PreviewFrameBounds {
   return {
-    aspectRatio,
-    widthPercentage: (aspectRatio / containerAspectRatio) * 100,
+    aspectRatio: containerAspectRatio,
+    widthPercentage: 100,
     heightPercentage: 100,
   };
 }
@@ -128,7 +120,7 @@ function previewFrameStyle(
 ): CSSProperties {
   const lifted = expanded && index === hoveredIndex;
   const direction = spread.direction === 'right' ? 1 : -1;
-  const transformOrigin = spread.direction === 'right' ? '18% 94%' : '82% 94%';
+  const transformOrigin = spread.direction === 'right' ? '18% 6%' : '82% 6%';
   const horizontalTranslation = (percentage: number) => (percentage * 100) / frame.widthPercentage;
   const verticalTranslation = (percentage: number) => (percentage * 100) / frame.heightPercentage;
   const frameStyle: CSSProperties = {
@@ -141,7 +133,7 @@ function previewFrameStyle(
       ...frameStyle,
       zIndex: lifted ? count + 10 : count,
       transform: lifted
-        ? `translate3d(0, ${verticalTranslation(-2)}%, 0) rotate(0deg) scale(1.025)`
+        ? `translate3d(0, ${verticalTranslation(2)}%, 0) rotate(0deg) scale(1.025)`
         : 'translate3d(0, 0, 0) rotate(0deg) scale(1)',
       transformOrigin,
     };
@@ -151,7 +143,7 @@ function previewFrameStyle(
     const progress = index / (count - 1);
     const translateX = horizontalTranslation(spread.maximumTranslation * progress * direction);
     const translateY = verticalTranslation(progress * 1.5);
-    const liftedTranslateY = verticalTranslation(progress * 1.5 - 2);
+    const liftedTranslateY = verticalTranslation(progress * 1.5 + 2);
     const rotation = (-1.5 + progress * 7.5) * direction;
 
     return {
@@ -167,8 +159,8 @@ function previewFrameStyle(
   const offset = Math.min(index, MAX_PREVIEW_ASSETS - 1);
   const availableSpreadRatio = Math.min(1, spread.maximumTranslation / Math.max(defaultPreviewTranslation(count), 1));
   const translateX = horizontalTranslation(offset * 2.4 * availableSpreadRatio * direction);
-  const raisedTranslateY = verticalTranslation(offset * -2.8);
-  const settledTranslateY = verticalTranslation(offset * -0.8);
+  const raisedTranslateY = verticalTranslation(offset * 2.8);
+  const settledTranslateY = verticalTranslation(offset * 0.8);
   const rotation = offset * 1.1 * availableSpreadRatio * direction;
 
   return {
@@ -301,13 +293,13 @@ function CreationCollectionPreview({
         visibleAssets.map((asset, index) => {
           const thumbnailUrl = mediaThumbnailUrl(asset, PREVIEW_THUMBNAIL_SIZE);
           const backdropUrl = mediaThumbnailUrl(asset, PREVIEW_BACKDROP_THUMBNAIL_SIZE);
-          const frame = previewFrameBounds(asset, containerAspectRatio);
+          const frame = previewFrameBounds(containerAspectRatio);
           const needsEdgeFill = previewNeedsEdgeFill(asset, frame.aspectRatio);
           return (
             <span
               key={asset.id}
               data-preview-asset-id={asset.id}
-              className="absolute bottom-0 left-0 isolate overflow-hidden rounded-xl bg-surface-sunken shadow-overlay transition-transform duration-overlay ease-enter will-change-transform motion-reduce:transition-none"
+              className="absolute top-0 left-0 isolate overflow-hidden rounded-xl bg-surface-sunken shadow-overlay transition-transform duration-overlay ease-enter will-change-transform motion-reduce:transition-none"
               data-preview-active={hoveredIndex === index ? 'true' : 'false'}
               data-preview-aspect-ratio={frame.aspectRatio.toFixed(3)}
               data-preview-edge-fill={needsEdgeFill ? 'true' : undefined}
@@ -683,7 +675,8 @@ export function CreationAlbumGrid({ albums, title, busy, onOpen, canMoveCreation
     () =>
       albums.map((album) => ({
         id: album.id,
-        aspectRatio: collectionAspectRatio(album.previewAssets[0]),
+        aspectRatio: collectionAspectRatio(),
+        height: COLLECTION_CARD_HEIGHT,
       })),
     [albums],
   );
@@ -701,10 +694,10 @@ export function CreationAlbumGrid({ albums, title, busy, onOpen, canMoveCreation
         items={masonryAlbums}
         minColumnWidth={COLLECTION_MIN_COLUMN_WIDTH}
         gap={COLLECTION_GAP}
-        renderItem={(item, index, placement, layout) => (
+        renderItem={(_item, index, placement, layout) => (
           <CollectionAlbumCard
             album={albums[index]}
-            containerAspectRatio={item.aspectRatio}
+            containerAspectRatio={collectionContainerAspectRatio(placement)}
             spread={previewSpreadForPlacement(
               Math.min(albums[index].previewAssets.length, MAX_PREVIEW_ASSETS),
               placement,

@@ -83,19 +83,7 @@ export function createBrowserCompanionOutputImporter({
       if (!imageAssetId) throw new Error('The ChatGPT image could not be resolved after import');
       context.database.setPromptSeriesCover({ seriesId: target.seriesId, imageAssetIds: [imageAssetId] });
 
-      let adopted = target.derivedVisualId === null;
-      if (target.derivedVisualId) {
-        if (target.selectedImageAssetId === imageAssetId) {
-          adopted = true;
-        } else {
-          try {
-            context.database.adoptDerivedVisual({ id: target.derivedVisualId, imageAssetId });
-            adopted = true;
-          } catch (reason) {
-            console.warn('[browser-companion] imported ChatGPT image but could not adopt the visual', reason);
-          }
-        }
-      }
+      const adopted = target.derivedVisualId === null;
       onImported(context);
       return {
         seriesId: target.seriesId,

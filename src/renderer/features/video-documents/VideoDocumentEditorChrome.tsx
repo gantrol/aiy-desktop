@@ -1,5 +1,5 @@
 import type { Editor } from '@tiptap/core';
-import type { Dispatch, SetStateAction } from 'react';
+import type { Dispatch, SetStateAction, ReactNode } from 'react';
 import {
   VideoDocumentWysiwygToolbar,
   type VideoDocumentWysiwygToolbarState,
@@ -12,12 +12,16 @@ import { articleEditorLocationAtPosition } from '@/renderer/features/video-docum
 import type { VideoDocumentWysiwygEditorProps } from '@/renderer/features/video-documents/videoDocumentEditorTypes';
 
 export function VideoDocumentEditorChrome({
+  referenceAction,
+  onImageOperation,
   editor,
   props,
   searchReplaceMode,
   setSearchReplaceMode,
   state,
 }: {
+  referenceAction?: ReactNode;
+  onImageOperation?(operation: Promise<void>): void;
   editor: Editor;
   props: VideoDocumentWysiwygEditorProps;
   searchReplaceMode: VideoDocumentSearchReplaceMode;
@@ -27,6 +31,10 @@ export function VideoDocumentEditorChrome({
   return (
     <>
       <VideoDocumentWysiwygToolbar
+        embedded={props.embedded}
+        referenceAction={referenceAction}
+        onImageOperation={onImageOperation}
+        importImage={props.importImage}
         editor={editor}
         state={state}
         labels={props.labels}

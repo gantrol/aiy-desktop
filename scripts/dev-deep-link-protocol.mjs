@@ -1,16 +1,17 @@
 import { spawnSync } from 'node:child_process';
-import { createRequire } from 'node:module';
 import { fileURLToPath } from 'node:url';
 
-const require = createRequire(import.meta.url);
-const electronExecutable = require('electron');
 const clientPath = fileURLToPath(new URL('./dev-deep-link-client.cjs', import.meta.url));
 const repositoryRoot = fileURLToPath(new URL('..', import.meta.url));
 const supportedOperations = new Set(['register', 'unregister']);
 
-export function updateDevDeepLinkProtocol(operation) {
+export function updateDevDeepLinkProtocol(operation, electronExecutable) {
   if (!supportedOperations.has(operation)) {
     console.error('[deep-link] Expected register or unregister.');
+    return 1;
+  }
+  if (!electronExecutable) {
+    console.error('[deep-link] Electron executable is required.');
     return 1;
   }
   if (process.platform !== 'win32') {

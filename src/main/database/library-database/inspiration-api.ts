@@ -7,6 +7,9 @@ import type { LibraryDatabaseRepositories } from '@/main/database/library-databa
 
 export function createInspirationApi(repositories: Pick<LibraryDatabaseRepositories, 'inspirationStashes'>) {
   return {
+    getInspirationStash(id: string) {
+      return repositories.inspirationStashes.get(id);
+    },
     listInspirationStashes() {
       return repositories.inspirationStashes.list();
     },

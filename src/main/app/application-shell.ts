@@ -1,10 +1,15 @@
 import { app, BrowserWindow, dialog, Menu, nativeImage, screen, Tray, type Rectangle } from 'electron';
-import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
+import { existsSync } from 'node:fs';
+import { mkdir, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import type { CodexService } from '@/main/assistant/codex-service';
+import { TrayMenuWindow } from '@/main/app/tray-menu-window';
+import { appShellMessages } from '@/shared/i18n/app-shell';
+import { trayTaskStatus, type AppShellLanguage, type TrayMenuState } from '@/shared/contracts/tray-menu';
 import { AppUpdateService } from '@/main/app/app-update-service';
 import { RendererEventDispatcher } from '@/main/app/renderer-event-dispatcher';
 import { PACKAGED_RENDERER_URL } from '@/main/app/renderer-protocol';
+import { isPackagedApplication } from '@/main/app/runtime-mode';
 import { installWindowNavigationPolicy } from '@/main/app/window-security';
 import { runDevelopmentCapture } from '@/main/development/capture';
 import type { ActiveLibraryContext } from '@/main/libraries/active-library-context';
@@ -13,12 +18,14 @@ import type { BackgroundGenerationClient } from '@/main/model-worker/client';
 import { productNameForLocale } from '@/shared/product';
 import { appWindowStateSchema } from '@/shared/contracts/app-window';
 import { WindowStateStore } from '@/main/app/window-state-store';
+import { cancelArticleEditorDrain, drainArticleEditors } from '@/main/app/article-editor-drain';
 import { attachRendererDiagnostics, flushRendererDiagnostics } from '@/main/app/renderer-diagnostics';
 
 const DEFAULT_WINDOW_WIDTH = 1_500;
 const DEFAULT_WINDOW_HEIGHT = 920;
 const MINIMUM_WINDOW_WIDTH = 1_100;
 const MINIMUM_WINDOW_HEIGHT = 720;
+const DEVELOPMENT_APP_USER_MODEL_ID = 'com.catai.aiy.dev';
 
 function clamp(value: number, minimum: number, maximum: number) {
   return Math.min(Math.max(value, minimum), maximum);
@@ -50,10 +57,13 @@ interface DesktopApplicationShellOptions {
   };
   stopManagedLocalModels?(): Promise<void>;
   stopBackgroundFileOperations?(): Promise<void>;
+  drainDesktopPetals?(): Promise<boolean>;
+  resumeDesktopPetals?(): void;
 }
 
 export class DesktopApplicationShell {
   mainWindow: BrowserWindow | null = null;
+  private mainWindowReady = false;
 
   private backgroundServicesStartDeferred = false;
 
@@ -62,8 +72,24 @@ export class DesktopApplicationShell {
   private codexAdapter: CodexService | null = null;
 
   private appTray: Tray | null = null;
+  private trayMenu: TrayMenuWindow | null = null;
+  private language: AppShellLanguage = { locale: 'en', messages: appShellMessages };
+
+  readonly setLanguage = (language: AppShellLanguage) => {
+    this.language = language;
+    this.updateAppTray();
+  };
+
+  private readonly trayState = (): TrayMenuState => ({
+    language: this.language,
+    windowReady: Boolean(this.mainWindow && !this.mainWindow.isDestroyed()),
+    taskCount: this.pendingModelTaskCount(),
+    quittingSoon: this.quitAfterBackgroundTasks && this.backgroundCompletionNotified,
+  });
 
   private appQuitRequested = false;
+  private rendererDrainComplete = false;
+  private rendererDrainPending = false;
 
   private backgroundCompletionNotified = false;
 
@@ -83,6 +109,8 @@ export class DesktopApplicationShell {
 
   private applicationShutdownPromise: Promise<void> | null = null;
 
+  private applicationShutdownComplete = false;
+
   private appUpdates: AppUpdateService | null = null;
 
   appUpdateInstallPreparing = false;
@@ -97,6 +125,7 @@ export class DesktopApplicationShell {
 
   private readonly showMainWindow = () => {
     if (!this.options.allowWindowPresentation) return;
+    this.trayMenu?.hide();
     this.quitAfterBackgroundTasks = false;
     if (this.backgroundAutoExitTimer) clearTimeout(this.backgroundAutoExitTimer);
     this.backgroundAutoExitTimer = null;
@@ -166,13 +195,24 @@ export class DesktopApplicationShell {
 
   private readonly shutdownApplicationServices = () => {
     if (this.applicationShutdownPromise) return this.applicationShutdownPromise;
-    this.applicationShutdownPromise = Promise.all([
+    this.applicationShutdownPromise = Promise.allSettled([
       this.options.stopManagedLocalModels?.() ?? Promise.resolve(),
       this.options.stopBackgroundFileOperations?.() ?? Promise.resolve(),
       this.shutdownActiveLibraryContext(),
     ])
-      .then(() => undefined)
-      .finally(flushRendererDiagnostics);
+      .then((results) => {
+        const failures = results.filter((result) => result.status === 'rejected');
+        if (failures.length) {
+          throw new AggregateError(
+            failures.map((result) => result.reason),
+            'Application service cleanup failed',
+          );
+        }
+      })
+      .finally(flushRendererDiagnostics)
+      .finally(() => {
+        this.applicationShutdownComplete = true;
+      });
     return this.applicationShutdownPromise;
   };
 
@@ -194,17 +234,13 @@ export class DesktopApplicationShell {
       const count = this.pendingModelTaskCount();
       if (count > 0) {
         this.pendingCloseGuardOpen = true;
-        const isChinese = app.getLocale().toLowerCase().startsWith('zh');
+        const copy = this.language.messages;
         const options: Electron.MessageBoxOptions = {
           type: 'warning',
-          title: productNameForLocale(app.getLocale()),
-          message: isChinese
-            ? `安装更新前需要停止 ${count} 个正在运行的大模型任务`
-            : `${count} running model task${count === 1 ? '' : 's'} must stop before updating`,
-          detail: isChinese
-            ? '取消任务后，应用会安全关闭当前资料库并安装已经下载的更新。'
-            : 'After cancelling the tasks, the app will close the current local space safely and install the downloaded update.',
-          buttons: isChinese ? ['取消任务并更新', '暂不更新'] : ['Cancel Tasks and Update', 'Not Now'],
+          title: productNameForLocale(this.language.locale),
+          message: copy.updatePending.replace('{count}', String(count)),
+          detail: copy.updateDetail,
+          buttons: [copy.cancelAndUpdate, copy.notNow],
           defaultId: 1,
           cancelId: 1,
           noLink: true,
@@ -226,6 +262,9 @@ export class DesktopApplicationShell {
       this.backgroundCompletionTimer = null;
       if (this.backgroundAutoExitTimer) clearTimeout(this.backgroundAutoExitTimer);
       this.backgroundAutoExitTimer = null;
+      if (!(await drainArticleEditors(this.mainWindow))) return false;
+      if (!((await this.options.drainDesktopPetals?.()) ?? true)) return false;
+      this.rendererDrainComplete = true;
       try {
         await this.stopModelServices(count > 0);
         await this.options.stopManagedLocalModels?.();
@@ -238,7 +277,14 @@ export class DesktopApplicationShell {
       prepared = true;
       return true;
     } finally {
-      if (!prepared) this.appUpdateInstallPreparing = false;
+      if (!prepared) {
+        this.appUpdateInstallPreparing = false;
+        if (!this.appUpdateRecoveryRequested) {
+          this.rendererDrainComplete = false;
+          cancelArticleEditorDrain(this.mainWindow);
+          this.options.resumeDesktopPetals?.();
+        }
+      }
     }
   };
 
@@ -286,18 +332,14 @@ export class DesktopApplicationShell {
   };
 
   private readonly confirmForceQuit = async (reason?: string) => {
-    const isChinese = app.getLocale().toLowerCase().startsWith('zh');
-    const productName = productNameForLocale(app.getLocale());
+    const copy = this.language.messages;
+    const productName = productNameForLocale(this.language.locale);
     const options: Electron.MessageBoxOptions = {
       type: 'warning',
       title: productName,
-      message: isChinese ? '强制退出并中断后台任务？' : 'Force quit and interrupt background tasks?',
-      detail: reason
-        ? `${reason}\n\n${isChinese ? '强制退出会中断未完成任务，尚未保存的结果可能丢失。' : 'Force quitting interrupts unfinished tasks and may discard results that have not been saved.'}`
-        : isChinese
-          ? '强制退出会中断未完成任务，尚未保存的结果可能丢失；已经保存的内容不会受影响。'
-          : 'Force quitting interrupts unfinished tasks and may discard unsaved results. Saved work is not affected.',
-      buttons: isChinese ? ['返回', '强制退出'] : ['Go Back', 'Force Quit'],
+      message: copy.forceQuitQuestion,
+      detail: reason ? `${reason}\n\n${copy.forceQuitDetail}` : copy.forceQuitDetail,
+      buttons: [copy.goBack, copy.forceQuit],
       defaultId: 0,
       cancelId: 0,
       noLink: true,
@@ -318,21 +360,15 @@ export class DesktopApplicationShell {
       return;
     }
     this.pendingCloseGuardOpen = true;
-    const isChinese = app.getLocale().toLowerCase().startsWith('zh');
-    const productName = productNameForLocale(app.getLocale());
+    const copy = this.language.messages;
+    const productName = productNameForLocale(this.language.locale);
     try {
       const options: Electron.MessageBoxOptions = {
         type: 'warning',
         title: productName,
-        message: isChinese
-          ? `仍有 ${count} 个大模型任务正在运行`
-          : `${count} model task${count === 1 ? '' : 's'} still running`,
-        detail: isChinese
-          ? '可以隐藏窗口让任务继续、取消任务后退出，或在二次确认后强制中断。'
-          : 'Keep the tasks running in the background, cancel them before quitting, or force an interruption after confirmation.',
-        buttons: isChinese
-          ? ['继续在后台运行', '取消任务并退出', '强制退出…', '返回']
-          : ['Continue in Background', 'Cancel Tasks and Quit', 'Force Quit…', 'Go Back'],
+        message: copy.pendingClose.replace('{count}', String(count)),
+        detail: copy.pendingCloseDetail,
+        buttons: [copy.continueBackground, copy.cancelAndQuit, copy.forceQuitPending, copy.goBack],
         defaultId: 0,
         cancelId: 3,
         noLink: true,
@@ -352,9 +388,7 @@ export class DesktopApplicationShell {
           await this.finishUserQuit(true);
         } catch (error) {
           const message = error instanceof Error ? error.message : String(error);
-          const forced = await this.confirmForceQuit(
-            `${isChinese ? '无法取消后台任务' : 'Unable to cancel background tasks'}: ${message}`,
-          );
+          const forced = await this.confirmForceQuit(copy.cancelFailed.replace('{reason}', message));
           if (!forced) this.showMainWindow();
         }
         return;
@@ -383,67 +417,52 @@ export class DesktopApplicationShell {
       await this.finishUserQuit(false);
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
-      await this.confirmForceQuit(`Unable to close the background model service cleanly: ${message}`);
+      await this.confirmForceQuit(this.language.messages.shutdownFailed.replace('{reason}', message));
     }
   };
 
-  private readonly updateAppTrayMenu = (count: number, isChinese: boolean) => {
-    if (!this.appTray) return;
-    const productName = productNameForLocale(isChinese ? 'zh' : 'en');
-    const windowReady = Boolean(this.mainWindow && !this.mainWindow.isDestroyed());
-    const status = !windowReady
-      ? isChinese
-        ? '正在启动…'
-        : 'Starting…'
-      : count > 0
-        ? isChinese
-          ? `后台任务：${count} 个运行中`
-          : `Background tasks: ${count} running`
-        : this.quitAfterBackgroundTasks && this.backgroundCompletionNotified
-          ? isChinese
-            ? '后台任务：已完成 · 即将退出'
-            : 'Background tasks: completed · quitting soon'
-          : isChinese
-            ? '后台任务：空闲'
-            : 'Background tasks: idle';
-    const template: Electron.MenuItemConstructorOptions[] = [
-      {
-        label: isChinese ? `打开 ${productName}` : `Open ${productName}`,
-        enabled: windowReady,
-        click: this.showMainWindow,
-      },
+  // Keep a localized native escape hatch only if the custom menu cannot load.
+  private readonly trayMenuFailed = (error: unknown) => {
+    console.error('[tray-menu] Failed to show the application menu', error);
+    this.appTray?.popUpContextMenu(this.nativeTrayMenu());
+  };
+
+  private readonly nativeTrayMenu = () => {
+    const state = this.trayState();
+    const copy = this.language.messages;
+    return Menu.buildFromTemplate([
+      { label: copy.open, enabled: state.windowReady, click: this.showMainWindow },
       { type: 'separator' },
-      { label: status, enabled: false },
+      { label: trayTaskStatus(state, copy), enabled: false },
       { type: 'separator' },
       {
-        label: count > 0 ? (isChinese ? '退出…' : 'Quit…') : isChinese ? '退出' : 'Quit',
+        label: state.taskCount > 0 ? copy.quitPending : copy.quit,
         click: () => {
           void this.requestAppQuit();
         },
       },
-      ...(count > 0
+      ...(state.taskCount > 0
         ? [
             {
-              label: isChinese ? '强制退出…' : 'Force Quit…',
+              label: copy.forceQuitPending,
               click: () => {
                 void this.confirmForceQuit();
               },
-            } satisfies Electron.MenuItemConstructorOptions,
+            },
           ]
         : []),
-    ];
-    this.appTray.setContextMenu(Menu.buildFromTemplate(template));
+    ]);
   };
 
   readonly updateAppTray = () => {
     if (!this.appTray) return;
     const count = this.pendingModelTaskCount();
-    const isChinese = app.getLocale().toLowerCase().startsWith('zh');
-    const productName = productNameForLocale(app.getLocale());
-    this.appTray.setToolTip(
-      count > 0 ? `${productName} · ${isChinese ? `${count} 个任务` : `${count} tasks`}` : productName,
-    );
-    this.updateAppTrayMenu(count, isChinese);
+    const copy = this.language.messages;
+    const productName = productNameForLocale(this.language.locale);
+    this.appTray.setToolTip(count > 0 ? copy.tasksTooltip.replace('{count}', String(count)) : productName);
+    // Electron only emits tray right-click on Windows and macOS.
+    if (process.platform === 'linux') this.appTray.setContextMenu(this.nativeTrayMenu());
+    this.trayMenu?.update();
     if (count > 0) {
       if (this.backgroundCompletionTimer) clearTimeout(this.backgroundCompletionTimer);
       this.backgroundCompletionTimer = null;
@@ -472,13 +491,12 @@ export class DesktopApplicationShell {
         return;
       }
       this.backgroundCompletionNotified = true;
-      this.updateAppTrayMenu(0, isChinese);
+      if (process.platform === 'linux') this.appTray.setContextMenu(this.nativeTrayMenu());
+      this.trayMenu?.update();
       if (process.platform === 'win32')
         this.appTray.displayBalloon({
           title: productName,
-          content: isChinese
-            ? '后台任务已完成，软件将在 30 秒后退出'
-            : 'Background tasks completed. The app will quit in 30 seconds.',
+          content: this.language.messages.completionNotification,
         });
       if (!this.quitAfterBackgroundTasks || this.backgroundAutoExitTimer) return;
       this.backgroundAutoExitTimer = setTimeout(() => {
@@ -496,6 +514,19 @@ export class DesktopApplicationShell {
   readonly ensureAppTray = () => {
     if (this.appTray) return;
     this.appTray = new Tray(this.appIcon());
+    this.trayMenu ??= new TrayMenuWindow(
+      () => this.developmentRendererUrl() ?? new URL(PACKAGED_RENDERER_URL),
+      this.trayState,
+      async (action) => {
+        if (action === 'open') this.showMainWindow();
+        if (action === 'quit') await this.requestAppQuit();
+        if (action === 'force-quit') await this.confirmForceQuit();
+      },
+      this.trayMenuFailed,
+    );
+    this.appTray.on('right-click', () => {
+      if (this.options.allowWindowPresentation) this.trayMenu?.show(screen.getCursorScreenPoint());
+    });
     if (process.platform === 'win32') {
       this.appTray.on('click', this.showMainWindow);
       this.appTray.on('balloon-click', this.showMainWindow);
@@ -508,7 +539,7 @@ export class DesktopApplicationShell {
 
   private readonly appIcon = () => {
     const iconName = process.platform === 'win32' ? 'icon.ico' : 'icon.png';
-    const candidates = app.isPackaged
+    const candidates = isPackagedApplication(app)
       ? [path.join(process.resourcesPath, iconName)]
       : [path.resolve(__dirname, '../../build', iconName), path.join(app.getAppPath(), 'build', iconName)];
     const iconPath = candidates.find((candidate) => existsSync(candidate));
@@ -518,11 +549,14 @@ export class DesktopApplicationShell {
   };
 
   readonly developmentRendererUrl = () => {
-    return !app.isPackaged && process.env.ELECTRON_RENDERER_URL ? new URL(process.env.ELECTRON_RENDERER_URL) : null;
+    return !isPackagedApplication(app) && process.env.ELECTRON_RENDERER_URL
+      ? new URL(process.env.ELECTRON_RENDERER_URL)
+      : null;
   };
 
   readonly createWindow = () => {
     const expectedRendererUrl = this.developmentRendererUrl() ?? new URL(PACKAGED_RENDERER_URL);
+    const icon = this.appIcon();
     const windowStateStore = new WindowStateStore(app.getPath('userData'));
     const restoredWindowState = windowStateStore.load();
     const restoredBounds = restoredWindowState ? restoreWindowBounds(restoredWindowState.normalBounds) : null;
@@ -532,7 +566,7 @@ export class DesktopApplicationShell {
       minHeight: MINIMUM_WINDOW_HEIGHT,
       backgroundColor: this.options.backgroundColor,
       title: this.options.title,
-      icon: this.appIcon(),
+      icon,
       titleBarStyle: 'hidden',
       roundedCorners: true,
       show: false,
@@ -543,7 +577,31 @@ export class DesktopApplicationShell {
         sandbox: true,
       },
     });
+    if (process.platform === 'win32') {
+      const applyTaskbarIdentity = () => {
+        window.setIcon(icon);
+        if (isPackagedApplication(app) || typeof icon !== 'string') return;
+        // The branded executable has an immutable, icon-dependent directory.
+        // Use its resource so Explorer does not reuse the cache for build/icon.ico.
+        // Explicit Electron runtime overrides still need the standalone AIY icon.
+        const taskbarIconPath = /^aiy-development-[a-f0-9]{16}$/i.test(path.basename(path.dirname(process.execPath)))
+          ? process.execPath
+          : icon;
+        // Reapply both the native icon and shell identity when Windows recreates
+        // the taskbar button after a tray restore.
+        window.setAppDetails({
+          appId: DEVELOPMENT_APP_USER_MODEL_ID,
+          appIconPath: taskbarIconPath,
+          appIconIndex: 0,
+          relaunchCommand: `"${process.execPath}" "${app.getAppPath()}"`,
+          relaunchDisplayName: this.options.title,
+        });
+      };
+      applyTaskbarIdentity();
+      window.on('show', applyTaskbarIdentity);
+    }
     this.mainWindow = window;
+    this.mainWindowReady = false;
     attachRendererDiagnostics(window);
     this.rendererEvents.attach(window);
     let windowStateSaveTimer: ReturnType<typeof setTimeout> | null = null;
@@ -615,25 +673,33 @@ export class DesktopApplicationShell {
     window.on('closed', () => {
       if (windowStateSaveTimer) clearTimeout(windowStateSaveTimer);
       closeSandboxedImageDecoder();
-      if (this.mainWindow === window) this.mainWindow = null;
+      if (this.mainWindow === window) {
+        this.mainWindow = null;
+        this.mainWindowReady = false;
+      }
     });
-    if (!app.isPackaged && process.env.ELECTRON_RENDERER_URL) {
+    if (!isPackagedApplication(app) && process.env.ELECTRON_RENDERER_URL) {
       void window.loadURL(process.env.ELECTRON_RENDERER_URL);
     } else {
       void window.loadURL(PACKAGED_RENDERER_URL);
     }
     if (restoredWindowState?.maximized) window.maximize();
     window.once('ready-to-show', async () => {
-      const restartReadyFile = process.env.AIY_RESTART_READY_FILE;
-      if (restartReadyFile) {
-        mkdirSync(path.dirname(restartReadyFile), { recursive: true });
-        writeFileSync(restartReadyFile, 'ready', 'utf8');
-        delete process.env.AIY_RESTART_READY_FILE;
-      }
-      if (this.options.allowWindowPresentation) window.show();
+      this.mainWindowReady = true;
+      this.showMainWindow();
       this.updateAppTray();
       this.requestBackgroundServicesStart();
       this.appUpdates?.startAutomaticChecks();
+      const restartReadyFile = process.env.AIY_RESTART_READY_FILE;
+      if (restartReadyFile) {
+        delete process.env.AIY_RESTART_READY_FILE;
+        try {
+          await mkdir(path.dirname(restartReadyFile), { recursive: true });
+          await writeFile(restartReadyFile, 'ready', 'utf8');
+        } catch (error) {
+          console.error('[startup] Failed to write restart ready file', error);
+        }
+      }
       await runDevelopmentCapture(window);
     });
   };
@@ -642,6 +708,10 @@ export class DesktopApplicationShell {
     private readonly rendererEvents: RendererEventDispatcher,
     private readonly options: DesktopApplicationShellOptions,
   ) {
+    if (process.platform === 'win32' && !isPackagedApplication(app)) {
+      app.setAppUserModelId(DEVELOPMENT_APP_USER_MODEL_ID);
+    }
+
     app.on('second-instance', (_event, commandLine) => {
       this.options.onSecondInstanceArguments?.(commandLine);
       this.showMainWindow();
@@ -658,17 +728,44 @@ export class DesktopApplicationShell {
     });
 
     app.on('before-quit', (event) => {
+      if (!this.forceQuitRequested && !this.rendererDrainComplete) {
+        event.preventDefault();
+        if (!this.rendererDrainPending) {
+          this.rendererDrainPending = true;
+          void drainArticleEditors(this.mainWindow)
+            .then(async (saved) => saved && ((await this.options.drainDesktopPetals?.()) ?? true))
+            .catch((error) => {
+              console.error('[shutdown] failed to finish saving editors', error);
+              return false;
+            })
+            .then((saved) => {
+              this.rendererDrainPending = false;
+              if (!saved) {
+                this.appQuitRequested = false;
+                cancelArticleEditorDrain(this.mainWindow);
+                this.options.resumeDesktopPetals?.();
+                this.showMainWindow();
+                return;
+              }
+              this.rendererDrainComplete = true;
+              app.quit();
+            });
+        }
+        return;
+      }
       this.appQuitRequested = true;
       this.quitAfterBackgroundTasks = false;
       if (this.backgroundCompletionTimer) clearTimeout(this.backgroundCompletionTimer);
       this.backgroundCompletionTimer = null;
       if (this.backgroundAutoExitTimer) clearTimeout(this.backgroundAutoExitTimer);
       this.backgroundAutoExitTimer = null;
+      this.trayMenu?.dispose();
       this.appTray?.destroy();
       this.appTray = null;
       this.appUpdates?.dispose();
       this.appUpdates = null;
-      if (!this.forceQuitRequested && !this.libraryContextShutdownComplete && this.activeLibraryContext) {
+      // A repeated quit must wait even after cleanup detaches the active context.
+      if (!this.forceQuitRequested && !this.applicationShutdownComplete) {
         event.preventDefault();
         if (!this.applicationShutdownPromise) {
           this.shutdownApplicationServices()
@@ -695,6 +792,7 @@ export class DesktopApplicationShell {
     this.libraryContextShutdownComplete = false;
     this.libraryContextShutdownPromise = null;
     this.applicationShutdownPromise = null;
+    this.applicationShutdownComplete = false;
   }
 
   deferBackgroundServicesStart() {
@@ -713,6 +811,7 @@ export class DesktopApplicationShell {
 
   setAppUpdates(updates: AppUpdateService) {
     this.appUpdates = updates;
+    if (this.mainWindowReady) updates.startAutomaticChecks();
   }
 
   markQuitRequested() {

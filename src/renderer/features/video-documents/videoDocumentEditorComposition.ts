@@ -27,11 +27,20 @@ export function useVideoDocumentEditorComposition({
 }) {
   const controller = useMemo(() => {
     const phase = { current: 'idle' as EditorCompositionPhase };
+    let released = false;
     const activeView = { current: null as EditorView | null };
     const revision = { current: 0 };
     const deferredRevision = { current: 0 };
     const timer = { current: null as number | null };
     const finish = { current: ((_view: EditorView) => false) as (view: EditorView) => boolean };
+    const listeners = new Set<() => void>();
+    const waiters = new Set<(settled: boolean) => void>();
+    const changed = () => listeners.forEach((listener) => listener());
+    const resolve = (settled: boolean) => {
+      waiters.forEach((waiter) => waiter(settled));
+      waiters.clear();
+      changed();
+    };
     const start = (view: EditorView) => {
       revision.current += 1;
       deferredRevision.current += 1;
@@ -41,6 +50,7 @@ export function useVideoDocumentEditorComposition({
       }
       activeView.current = view;
       phase.current = 'composing';
+      changed();
       return false;
     };
     const end = (view: EditorView) => {
@@ -48,6 +58,7 @@ export function useVideoDocumentEditorComposition({
       deferredRevision.current += 1;
       activeView.current = view;
       phase.current = 'ending';
+      changed();
       if (timer.current !== null) window.clearTimeout(timer.current);
       const scheduleSettle = () => {
         const expectedDeferredRevision = deferredRevision.current;
@@ -60,6 +71,7 @@ export function useVideoDocumentEditorComposition({
             timer.current = null;
             activeView.current = null;
             phase.current = 'idle';
+            resolve(false);
             return;
           }
           const composingView = activeView.current;
@@ -76,6 +88,7 @@ export function useVideoDocumentEditorComposition({
           activeView.current = null;
           phase.current = 'idle';
           publish.current(current, identityChanged);
+          resolve(true);
         }
       };
       scheduleSettle();
@@ -86,13 +99,32 @@ export function useVideoDocumentEditorComposition({
       finish,
       start,
       end,
+      activate() {
+        released = false;
+      },
+      canReadSnapshot: () => !released && phase.current === 'idle' && !editor.current?.view.composing,
+      isInputPending: () => phase.current !== 'idle',
+      subscribeInput(listener: () => void) {
+        listeners.add(listener);
+        return () => listeners.delete(listener);
+      },
+      whenSettled(): Promise<boolean> {
+        return phase.current === 'idle' ? Promise.resolve(true) : new Promise((resolve) => waiters.add(resolve));
+      },
       cancel() {
+        // Release the final committed state before the view is detached. No
+        // identity/decorations transactions are allowed during this handoff.
+        const current = editor.current;
+        const committed = phase.current !== 'composing';
+        if (phase.current === 'ending' && current && !current.isDestroyed) publish.current(current, false);
+        released = true;
         revision.current += 1;
         deferredRevision.current += 1;
         if (timer.current !== null) window.clearTimeout(timer.current);
         timer.current = null;
         activeView.current = null;
         phase.current = 'idle';
+        resolve(committed);
       },
       defers(current: Editor, transaction: EditorTransactionMetadata) {
         const composingView = activeView.current;
@@ -107,6 +139,9 @@ export function useVideoDocumentEditorComposition({
     };
   }, [editor, publish]);
 
-  useEffect(() => () => controller.cancel(), [controller]);
+  useEffect(() => {
+    controller.activate();
+    return () => controller.cancel();
+  }, [controller]);
   return controller;
 }

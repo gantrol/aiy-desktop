@@ -1,4 +1,4 @@
-import { mkdirSync } from 'node:fs';
+import { mkdir } from 'node:fs/promises';
 import path from 'node:path';
 import Database from 'better-sqlite3';
 import { z } from 'zod';
@@ -29,14 +29,12 @@ import {
   type SessionReadResult,
 } from '@/main/extensions/codex-usage-investigator/session-reader';
 import {
-  CODEX_USAGE_EVENT_PAGE_SIZE,
   eventFromStoredRow,
   storedEventRowSchema,
   type CodexUsageEventCoverage,
   type CodexUsageFileFingerprint,
   type CodexUsageSessionSourceRecord,
   type CodexUsageStoredChatTurn,
-  type StoredEventRow,
 } from '@/main/extensions/codex-usage-investigator/cache-records';
 import {
   chatTurnPages as readChatTurnPages,
@@ -47,13 +45,12 @@ import {
 import { codexUsageSourceCacheKey } from '@/main/extensions/codex-usage-investigator/source-cache-key';
 import type { CodexUsageServiceTierFallback } from '@/main/extensions/codex-usage-investigator/service-tier-fallback';
 import { readCodexTurnSpeedAnalysis } from '@/main/extensions/codex-usage-investigator/turn-speed';
+import { readCodexModelComparison } from '@/main/extensions/codex-usage-investigator/model-comparison';
+import { sqlitePages } from '@/main/extensions/codex-usage-investigator/sqlite-pages';
 
 export { codexUsageSourceCacheKey } from '@/main/extensions/codex-usage-investigator/source-cache-key';
 
-export type {
-  CodexUsageEventCoverage,
-  CodexUsageFileFingerprint,
-} from '@/main/extensions/codex-usage-investigator/cache-records';
+export type { CodexUsageEventCoverage, CodexUsageFileFingerprint };
 
 const DATABASE_SCHEMA_VERSION = 6;
 const UNRELEASED_DATABASE_SCHEMA_VERSIONS = new Set([7, 8]);
@@ -70,6 +67,9 @@ const investigationRowSchema = z.object({ investigationJson: z.string() }).stric
 const exportLengthRowSchema = z.object({ exportBytes: z.number().int().nonnegative() }).strict();
 const exportRowSchema = z.object({ exportRowsJson: z.string() }).strict();
 const sourceKeyRowSchema = z.object({ cacheKey: z.string() }).strict();
+const sourceStateRowSchema = z
+  .object({ sessionId: z.string(), cacheKey: z.string(), needsModeRecovery: z.union([z.literal(0), z.literal(1)]) })
+  .strict();
 const revisionRowSchema = z.object({ dataRevision: z.number().int().nonnegative().safe() }).strict();
 const sqliteTableInfoRowSchema = z.object({ name: z.string() }).passthrough();
 const processedRowSchema = z
@@ -123,9 +123,13 @@ function historyItem(investigation: CodexUsageInvestigation): CodexUsageHistoryI
 export class CodexUsageCacheDatabase {
   private readonly database: Database.Database;
 
-  constructor(directory: string) {
+  static async open(directory: string) {
     const root = path.resolve(directory);
-    mkdirSync(root, { recursive: true });
+    await mkdir(root, { recursive: true });
+    return new CodexUsageCacheDatabase(root);
+  }
+
+  private constructor(root: string) {
     this.database = new Database(path.join(root, 'usage-cache.sqlite'), { timeout: 5_000 });
     const journalMode = z
       .string()
@@ -242,6 +246,19 @@ export class CodexUsageCacheDatabase {
         .get(file.sessionId),
     );
     return row.success && row.data.cacheKey === codexUsageSourceCacheKey(file, serviceTierFallback);
+  }
+
+  *ingestedSourcePages() {
+    const statement = this.database.prepare(
+      `SELECT source.session_id AS sessionId, source.cache_key AS cacheKey,
+         CASE WHEN unresolved.source_session_id IS NULL THEN 0 ELSE 1 END AS needsModeRecovery
+       FROM usage_source_files AS source
+       LEFT JOIN (
+         SELECT DISTINCT source_session_id FROM usage_events
+         WHERE service_tier = 'UNKNOWN' AND turn_id IS NULL
+       ) AS unresolved ON unresolved.source_session_id = source.session_id`,
+    );
+    yield* sqlitePages(statement.iterate(), sourceStateRowSchema);
   }
 
   replaceIngestedSource(
@@ -414,7 +431,6 @@ export class CodexUsageCacheDatabase {
           current.total_tokens AS totalTokens
          FROM usage_events AS current
          WHERE current.timestamp_ms >= COALESCE(?, 0) AND current.timestamp_ms <= ?
-           AND (current.timestamp_ms, current.source_session_id, current.event_order) > (?, ?, ?)
            AND (
              current.total_tokens = 0
              OR NOT EXISTS (
@@ -433,33 +449,10 @@ export class CodexUsageCacheDatabase {
                  )
              )
            )
-         ORDER BY current.timestamp_ms ASC, current.source_session_id ASC, current.event_order ASC
-         LIMIT ?`,
+         ORDER BY current.timestamp_ms ASC, current.source_session_id ASC, current.event_order ASC`,
     );
-    let cursor: Pick<StoredEventRow, 'timestampMs' | 'sessionId' | 'eventOrder'> = {
-      timestampMs: (fromEpoch ?? 0) - 1,
-      sessionId: '',
-      eventOrder: 0,
-    };
-    while (true) {
-      const rows = z
-        .array(storedEventRowSchema)
-        .max(CODEX_USAGE_EVENT_PAGE_SIZE)
-        .parse(
-          statement.all(
-            fromEpoch,
-            toEpoch,
-            cursor.timestampMs,
-            cursor.sessionId,
-            cursor.eventOrder,
-            CODEX_USAGE_EVENT_PAGE_SIZE,
-          ),
-        );
-      if (!rows.length) return;
+    for (const rows of sqlitePages(statement.iterate(fromEpoch, toEpoch), storedEventRowSchema)) {
       yield rows.map(eventFromStoredRow);
-      const last = rows.at(-1);
-      if (!last || rows.length < CODEX_USAGE_EVENT_PAGE_SIZE) return;
-      cursor = last;
     }
   }
 
@@ -476,14 +469,17 @@ export class CodexUsageCacheDatabase {
   }
 
   *sessionAnalysisEventPages(
-    fromEpoch: number | null,
-    toEpoch: number,
+    turns: readonly [sessionId: string, turnId: string][],
   ): Iterable<ReadonlyArray<CodexUsageInternalEvent>> {
-    yield* readSessionAnalysisEventPages(this.database, fromEpoch, toEpoch);
+    yield* readSessionAnalysisEventPages(this.database, turns);
   }
 
   turnSpeedAnalysis(fromEpoch: number | null, toEpoch: number) {
     return readCodexTurnSpeedAnalysis(this.database, fromEpoch, toEpoch);
+  }
+
+  modelComparisonAnalysis(fromEpoch: number | null, toEpoch: number, signal?: AbortSignal) {
+    return readCodexModelComparison(this.database, fromEpoch, toEpoch, signal);
   }
 
   currentDataRevision() {

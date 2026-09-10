@@ -1,4 +1,4 @@
-import { CopyIcon, DownloadIcon, ExternalLinkIcon, FolderOpenIcon, LoaderCircleIcon } from 'lucide-react';
+import { CopyIcon, DownloadIcon, ExternalLinkIcon, FolderOpenIcon, LoaderCircleIcon, PinIcon } from 'lucide-react';
 import {
   cloneElement,
   useRef,
@@ -12,8 +12,10 @@ import { startImageAssetDrag } from '@/renderer/components/albums/albumDrag';
 import { Button } from '@/renderer/components/ui/button';
 import { Popover, PopoverAnchor, PopoverContent } from '@/renderer/components/ui/popover';
 import { useI18n } from '@/renderer/i18n/useI18n';
+import type { AssetFileRevealContext, AssetFileRevealTargetDto } from '@/shared/contracts';
+import { assetFileRevealContextFromElement } from '@/renderer/components/media/AssetFileRevealContext';
 
-type FileAction = 'COPY' | 'SAVE_AS' | 'REVEAL' | 'OPEN';
+type FileAction = 'COPY' | 'SAVE_AS' | 'REVEAL' | 'OPEN' | 'PIN';
 
 interface AssetMediaTarget {
   assetId: string;
@@ -83,13 +85,17 @@ export function AssetFileCapabilityLayer({
   const labels = messages.assetFile;
   const selectedAssetIdRef = useRef<string | null>(null);
   const [selectedAssetId, setSelectedAssetId] = useState<string | null>(null);
+  const [imageSelected, setImageSelected] = useState(false);
   const [anchorPoint, setAnchorPoint] = useState({ x: 0, y: 0 });
   const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState<FileAction | null>(null);
+  const context = useRef<AssetFileRevealContext | undefined>(undefined);
+  const [targets, setTargets] = useState<AssetFileRevealTargetDto[]>([]);
 
   function selectTarget(target: AssetMediaTarget | null) {
     selectedAssetIdRef.current = target?.assetId ?? null;
     setSelectedAssetId(target?.assetId ?? null);
+    setImageSelected(target?.element instanceof HTMLImageElement);
     return target;
   }
 
@@ -99,6 +105,15 @@ export function AssetFileCapabilityLayer({
     event.preventDefault();
     event.stopPropagation();
     selectTarget(target);
+    setTargets([]);
+    context.current = assetFileRevealContextFromElement(target.element);
+    if (!context.current)
+      void window.desktopApi
+        .assetFileRevealTargets(target.assetId)
+        .then((rows) => {
+          if (selectedAssetIdRef.current === target.assetId) setTargets(rows);
+        })
+        .catch(() => undefined);
     setAnchorPoint({ x: event.clientX, y: event.clientY });
     setOpen(true);
   }
@@ -125,7 +140,7 @@ export function AssetFileCapabilityLayer({
     }
   }
 
-  async function run(action: FileAction) {
+  async function run(action: FileAction, selectedContext = context.current) {
     const assetId = selectedAssetIdRef.current;
     if (!assetId || busy) return;
     setBusy(action);
@@ -138,9 +153,11 @@ export function AssetFileCapabilityLayer({
         const result = await window.desktopApi.assetFileSaveAs(assetId);
         if (result.status === 'saved') notify(labels.saved);
       } else if (action === 'REVEAL') {
-        await window.desktopApi.assetFileReveal(assetId);
+        await window.desktopApi.assetFileReveal(assetId, selectedContext);
+      } else if (action === 'PIN') {
+        await window.desktopPetals.boardCommand({ kind: 'pin', source: { kind: 'IMAGE', id: assetId } });
       } else {
-        await window.desktopApi.assetFileOpen(assetId);
+        await window.desktopApi.assetFileOpen(assetId, selectedContext);
       }
     } catch (reason) {
       notify(`${labels.failed}: ${reason instanceof Error ? reason.message : String(reason)}`);
@@ -206,8 +223,27 @@ export function AssetFileCapabilityLayer({
           >
             {actionButton('COPY', labels.copy, CopyIcon)}
             {actionButton('SAVE_AS', labels.saveAs, DownloadIcon)}
-            {actionButton('REVEAL', labels.reveal, FolderOpenIcon)}
-            {actionButton('OPEN', labels.open, ExternalLinkIcon)}
+            {imageSelected && actionButton('PIN', messages.desktopPetals.note.pin, PinIcon)}
+            {targets.length > 1
+              ? targets.map((target) => (
+                  <Button
+                    key={JSON.stringify(target.context)}
+                    type="button"
+                    role="menuitem"
+                    variant="ghost"
+                    disabled={Boolean(busy)}
+                    className="h-8 w-full justify-start gap-2 px-2 font-normal"
+                    onClick={() => {
+                      setOpen(false);
+                      void run('REVEAL', target.context);
+                    }}
+                  >
+                    <FolderOpenIcon className="size-4 shrink-0" />
+                    <span className="truncate">{target.label}</span>
+                  </Button>
+                ))
+              : actionButton('REVEAL', labels.reveal, FolderOpenIcon)}
+            {targets.length <= 1 && actionButton('OPEN', labels.open, ExternalLinkIcon)}
           </PopoverContent>
         )}
       </Popover>

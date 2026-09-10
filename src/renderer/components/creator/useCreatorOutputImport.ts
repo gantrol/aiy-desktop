@@ -1,13 +1,16 @@
-import { useCallback, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import type { CreatorImageImportContext, CreatorOutputsImportResult } from '@/shared/contracts';
 import {
   imageImportItems,
-  type RendererImageImportItem,
+  type ImportVersionAssignment,
   type RendererImageImportPreviewRow,
   type RendererImageImportSource,
 } from '@/renderer/components/creator/imageImport';
+import { useStableCallback } from '@/renderer/lib/useStableCallback';
+import { useI18n } from '@/renderer/i18n/useI18n';
 
 const maxDraftImages = 8;
+const maxBatchBytes = 100 * 1024 * 1024;
 
 interface OutputImportMessages {
   importFailed: string;
@@ -20,7 +23,6 @@ interface OutputImportOptions {
   createContext(source: RendererImageImportSource, sourceUrl?: string): CreatorImageImportContext;
   prepareContext?(context: CreatorImageImportContext): Promise<{
     context: CreatorImageImportContext;
-    defaultPromptVersionId: string | null;
   }>;
   defaultPromptVersionId: string | null;
   applyImportedOutputs(result: Pick<CreatorOutputsImportResult, 'seriesId' | 'assetIds'>): void;
@@ -31,259 +33,275 @@ interface OutputImportOptions {
 
 interface OutputImportPreview {
   context: CreatorImageImportContext;
-  defaultVersionId: string | null;
   rows: RendererImageImportPreviewRow[] | null;
 }
 
 function releasePreviewUrls(rows: readonly RendererImageImportPreviewRow[] | null) {
   for (const row of rows ?? []) {
-    if (row.previewUrl) URL.revokeObjectURL(row.previewUrl);
+    if (row.previewUrl?.startsWith('blob:')) URL.revokeObjectURL(row.previewUrl);
   }
 }
 
-export function useCreatorOutputImport({
-  createContext,
-  prepareContext,
-  defaultPromptVersionId,
-  applyImportedOutputs,
-  refresh,
-  notify,
-  messages,
-}: OutputImportOptions) {
+async function discardRows(rows: readonly RendererImageImportPreviewRow[]) {
+  releasePreviewUrls(rows);
+  const ids = rows.flatMap((row) => row.item.stageId ?? []);
+  if (ids.length) await window.desktopApi.creatorOutputsDiscard(ids);
+}
+
+function useImportPreviewState() {
+  const [preview, setPreviewState] = useState<OutputImportPreview | null>(null);
+  const previewRef = useRef(preview);
+  const mountedRef = useRef(true);
+
+  const setPreview = useStableCallback((value: OutputImportPreview | null) => {
+    previewRef.current = value;
+    if (mountedRef.current) setPreviewState(value);
+  });
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+      const current = previewRef.current;
+      previewRef.current = null;
+      if (current?.rows) void discardRows(current.rows).catch(() => undefined);
+    };
+  }, []);
+
+  return { preview, previewRef, mountedRef, setPreview };
+}
+
+export function useCreatorOutputImport(options: OutputImportOptions) {
+  const labels = useI18n().messages.creator.workbench;
+  const { createContext, prepareContext, defaultPromptVersionId, applyImportedOutputs, refresh, notify, messages } =
+    options;
   const [staging, setStaging] = useState(false);
   const [committing, setCommitting] = useState(false);
-  const [preview, setPreview] = useState<OutputImportPreview | null>(null);
+  const { preview, previewRef, mountedRef, setPreview } = useImportPreviewState();
+  const busyRef = useRef(false);
   const busy = staging || committing;
-  const notifyImportError = useCallback(
-    (reason: unknown) => {
-      const message = `${messages.importFailed}: ${reason instanceof Error ? reason.message : String(reason)}`;
-      notify(message, { copyText: message });
-    },
-    [messages.importFailed, notify],
-  );
+  const notifyImportError = useStableCallback((reason: unknown) => {
+    const message = `${messages.importFailed}: ${reason instanceof Error ? reason.message : String(reason)}`;
+    if (mountedRef.current) notify(message, { copyText: message });
+  });
 
-  const appendRows = useCallback(
-    (
+  const appendRows = useStableCallback(
+    async (
       context: CreatorImageImportContext,
       rows: Awaited<ReturnType<typeof window.desktopApi.creatorOutputsStage>>,
-      previewUrls: ReadonlyMap<string, string> = new Map(),
-    ) => {
-      setPreview((current) => {
-        const inheritedVersionId = current ? current.defaultVersionId : defaultPromptVersionId;
-        const nextRows = rows.map((row) => ({
-          ...row,
-          displayName: row.item.name,
-          promptVersionId: inheritedVersionId,
-          previewUrl: previewUrls.get(row.item.id) ?? null,
-        }));
-        return {
-          context: current?.context ?? context,
-          defaultVersionId: inheritedVersionId,
-          rows: [...(current?.rows ?? []), ...nextRows],
-        };
-      });
-    },
-    [defaultPromptVersionId],
-  );
-
-  const previewItems = useCallback(
-    async (
-      items: RendererImageImportItem[],
       source: RendererImageImportSource,
-      sourceUrl = '',
+      sourceUrl: string,
       previewUrls: ReadonlyMap<string, string> = new Map(),
     ) => {
-      if (busy) {
-        for (const url of previewUrls.values()) URL.revokeObjectURL(url);
+      const nextRows: RendererImageImportPreviewRow[] = rows.map((row) => ({
+        ...row,
+        displayName: row.item.name,
+        promptVersionId: context.versionId,
+        source,
+        sourceUrl,
+        previewUrl: previewUrls.get(row.item.id) ?? row.previewUrl ?? null,
+      }));
+      if (!mountedRef.current) {
+        await discardRows(nextRows);
         return;
       }
-      const currentCount = preview?.rows?.length ?? 0;
-      if (currentCount + items.length > maxDraftImages) {
-        for (const url of previewUrls.values()) URL.revokeObjectURL(url);
+      const currentRows = previewRef.current?.rows ?? [];
+      if (currentRows.length + nextRows.length > maxDraftImages) {
+        await discardRows(nextRows);
         notify(messages.tooManyImages);
         return;
       }
-      const context = preview?.context ?? createContext(source, sourceUrl);
-      if (!preview) {
-        setPreview({ context, defaultVersionId: defaultPromptVersionId, rows: null });
+      const totalBytes = [...currentRows, ...nextRows].reduce((sum, row) => sum + row.item.byteSize, 0);
+      if (totalBytes > maxBatchBytes) {
+        await discardRows(nextRows);
+        notify(labels.importBatchTooLarge);
+        return;
       }
-      setStaging(true);
-      try {
-        const rows = await window.desktopApi.creatorOutputsStage(items);
-        appendRows(context, rows, previewUrls);
-      } catch (reason) {
-        for (const url of previewUrls.values()) URL.revokeObjectURL(url);
-        if (!preview) setPreview(null);
-        notifyImportError(reason);
-      } finally {
-        setStaging(false);
-      }
+      setPreview({ context: previewRef.current?.context ?? context, rows: [...currentRows, ...nextRows] });
     },
-    [appendRows, busy, createContext, defaultPromptVersionId, messages, notify, notifyImportError, preview],
   );
 
-  const previewFiles = useCallback(
-    async (files: File[], source: RendererImageImportSource, sourceUrl = '') => {
-      if (busy) return;
+  const previewFiles = useStableCallback(
+    async (files: File[], source: RendererImageImportSource, sourceUrl: string = '') => {
+      if (busyRef.current || !files.length) return;
+      const currentRows = previewRef.current?.rows ?? [];
+      if (currentRows.length + files.length > maxDraftImages) {
+        notify(messages.tooManyImages);
+        return;
+      }
+      const totalBytes =
+        currentRows.reduce((sum, row) => sum + row.item.byteSize, 0) + files.reduce((sum, file) => sum + file.size, 0);
+      if (totalBytes > maxBatchBytes) {
+        notify(labels.importBatchTooLarge);
+        return;
+      }
+      busyRef.current = true;
+      setStaging(true);
+      const context = previewRef.current?.context ?? {
+        ...createContext(source, sourceUrl),
+        versionId: defaultPromptVersionId,
+      };
+      const previewUrls = new Map<string, string>();
+      if (!previewRef.current) setPreview({ context, rows: null });
       try {
         const items = await imageImportItems(files);
-        if (!items.length) return;
-        const previewUrls = new Map(items.map((item, index) => [item.id, URL.createObjectURL(files[index])] as const));
-        await previewItems(items, source, sourceUrl, previewUrls);
+        if (!mountedRef.current) return;
+        for (const [index, item] of items.entries()) previewUrls.set(item.id, URL.createObjectURL(files[index]));
+        const rows = await window.desktopApi.creatorOutputsStage(items, context.seriesId);
+        await appendRows(context, rows, source, sourceUrl, previewUrls);
       } catch (reason) {
+        for (const url of previewUrls.values()) URL.revokeObjectURL(url);
+        if (!previewRef.current?.rows) setPreview(null);
         notifyImportError(reason);
+      } finally {
+        busyRef.current = false;
+        if (mountedRef.current) setStaging(false);
       }
     },
-    [busy, notifyImportError, previewItems],
   );
 
-  const chooseFiles = useCallback(async () => {
-    if (busy) return;
+  const chooseFiles = useStableCallback(async () => {
+    if (busyRef.current) return;
+    busyRef.current = true;
     setStaging(true);
     try {
-      const context = preview?.context ?? createContext('UPLOAD');
+      const context = previewRef.current?.context ?? { ...createContext('UPLOAD'), versionId: defaultPromptVersionId };
       const rows = await window.desktopApi.creatorOutputsChoose({ context });
-      if (!rows) return;
-      if ((preview?.rows?.length ?? 0) + rows.length > maxDraftImages) {
-        const stageIds = rows.flatMap((row) => row.item.stageId ?? []);
-        if (stageIds.length) await window.desktopApi.creatorOutputsDiscard(stageIds);
-        notify(messages.tooManyImages);
-        return;
-      }
-      appendRows(context, rows);
+      if (rows) await appendRows(context, rows, 'UPLOAD', '');
     } catch (reason) {
       notifyImportError(reason);
     } finally {
-      setStaging(false);
+      busyRef.current = false;
+      if (mountedRef.current) setStaging(false);
     }
-  }, [appendRows, busy, createContext, messages, notify, notifyImportError, preview]);
+  });
 
-  const commit = useCallback(async () => {
-    if (!preview?.rows || busy) return;
-    const readyRows = preview.rows.filter((row) => row.state === 'READY' && row.item.stageId);
+  const commit = useStableCallback(async (selectedRowIds: readonly string[]) => {
+    const current = previewRef.current;
+    if (!current?.rows || busyRef.current) return;
+    const selected = new Set(selectedRowIds);
+    const readyRows = current.rows.filter(
+      (row) => selected.has(row.item.id) && row.state === 'READY' && row.item.stageId,
+    );
     if (!readyRows.length || readyRows.some((row) => !row.displayName.trim())) return;
-    const duplicateCount = preview.rows.filter((row) => row.state === 'DUPLICATE').length;
-    setCommitting(true);
-    let result: CreatorOutputsImportResult;
-    try {
-      const prepared = prepareContext
-        ? await prepareContext(preview.context)
-        : { context: preview.context, defaultPromptVersionId: preview.defaultVersionId };
-      setPreview((current) =>
-        current === preview
-          ? {
-              ...current,
-              context: prepared.context,
-              defaultVersionId: prepared.defaultPromptVersionId,
-              rows: current.rows
-                ? current.rows.map((row) => ({
-                    ...row,
-                    promptVersionId: row.promptVersionId ?? prepared.defaultPromptVersionId,
-                  }))
-                : null,
-            }
-          : current,
-      );
-      result = await window.desktopApi.creatorOutputsImport({
-        context: prepared.context,
-        items: readyRows.map((row) => ({
-          stageId: row.item.stageId!,
-          promptVersionId: row.promptVersionId ?? prepared.defaultPromptVersionId,
-          displayName: row.displayName.trim(),
-        })),
-      });
-    } catch (reason) {
-      notifyImportError(reason);
-      setCommitting(false);
+    if (readyRows.some((row) => row.expiresAt !== undefined && row.expiresAt <= Date.now())) {
+      notify(labels.importExpiredRetry);
       return;
     }
-
-    applyImportedOutputs(result);
-    releasePreviewUrls(preview.rows);
-    setPreview(null);
+    busyRef.current = true;
+    setCommitting(true);
     try {
-      await refresh();
+      const prepared = prepareContext ? await prepareContext(current.context) : { context: current.context };
+      if (!mountedRef.current) return;
+      // A row's explicit choice, including null, survives creation preparation unchanged.
+      const preparedRows = current.rows;
+      setPreview({ context: prepared.context, rows: preparedRows });
+      let result: CreatorOutputsImportResult;
+      try {
+        result = await window.desktopApi.creatorOutputsImport({
+          context: prepared.context,
+          items: preparedRows
+            .filter((row) => selected.has(row.item.id) && row.state === 'READY' && row.item.stageId)
+            .map((row) => ({
+              stageId: row.item.stageId!,
+              promptVersionId: row.promptVersionId,
+              newVersionNo: row.newVersionNo,
+              displayName: row.displayName.trim(),
+              source: row.source,
+              sourceUrl: row.sourceUrl,
+            })),
+        });
+      } catch (reason) {
+        notifyImportError(reason);
+        return;
+      }
+      setPreview(null);
+      releasePreviewUrls(current.rows);
+      const remaining = current.rows.filter((row) => !selected.has(row.item.id));
+      try {
+        await discardRows(remaining);
+      } catch (reason) {
+        if (mountedRef.current) notify(String(reason));
+      }
+      if (!mountedRef.current) return;
+      const duplicates = current.rows.filter((row) => row.state === 'DUPLICATE').length + result.duplicateCount;
+      notify(
+        `${messages.imported} · ${result.assetIds.length}${duplicates ? ` · ${messages.duplicates} ${duplicates}` : ''}`,
+      );
+      try {
+        applyImportedOutputs(result);
+        await refresh();
+      } catch (reason) {
+        notify(`${labels.importRefreshFailed}: ${reason instanceof Error ? reason.message : String(reason)}`);
+      }
     } catch (reason) {
       notifyImportError(reason);
+    } finally {
+      busyRef.current = false;
+      if (mountedRef.current) setCommitting(false);
     }
-    const duplicates = duplicateCount + result.duplicateCount;
-    notify(
-      `${messages.imported} · ${result.assetIds.length}${duplicates ? ` · ${messages.duplicates} ${duplicates}` : ''}`,
-    );
-    setCommitting(false);
-  }, [applyImportedOutputs, busy, messages, notify, notifyImportError, prepareContext, preview, refresh]);
+  });
 
-  const dismiss = useCallback(() => {
-    if (busy) return;
-    const rows = preview?.rows ?? null;
-    const stageIds = rows?.flatMap((row) => row.item.stageId ?? []) ?? [];
-    releasePreviewUrls(rows);
+  const dismiss = useStableCallback(() => {
+    if (busyRef.current) return;
+    const rows = previewRef.current?.rows ?? [];
     setPreview(null);
-    if (stageIds.length) {
-      void window.desktopApi.creatorOutputsDiscard(stageIds).catch((reason) => {
-        notify(reason instanceof Error ? reason.message : String(reason));
+    void discardRows(rows).catch((reason) => notify(String(reason)));
+  });
+
+  const updateRow = useStableCallback(
+    (
+      rowId: string,
+      update: Partial<Pick<RendererImageImportPreviewRow, 'displayName' | 'promptVersionId' | 'newVersionNo'>>,
+    ) => {
+      const current = previewRef.current;
+      if (!current?.rows || busyRef.current) return;
+      const explicitVersion = 'promptVersionId' in update || 'newVersionNo' in update;
+      setPreview({
+        ...current,
+        rows: current.rows.map((row) =>
+          row.item.id === rowId
+            ? {
+                ...row,
+                ...(explicitVersion ? { newVersionNo: undefined } : {}),
+                ...update,
+              }
+            : row,
+        ),
       });
-    }
-  }, [busy, notify, preview]);
-
-  const setDefaultVersionId = useCallback((promptVersionId: string | null) => {
-    setPreview((current) => (current ? { ...current, defaultVersionId: promptVersionId } : current));
-  }, []);
-
-  const updateRow = useCallback(
-    (rowId: string, update: Partial<Pick<RendererImageImportPreviewRow, 'displayName' | 'promptVersionId'>>) => {
-      setPreview((current) =>
-        current?.rows
-          ? { ...current, rows: current.rows.map((row) => (row.item.id === rowId ? { ...row, ...update } : row)) }
-          : current,
-      );
     },
-    [],
   );
 
-  const assignVersion = useCallback((rowIds: readonly string[], promptVersionId: string | null) => {
+  const assignVersion = useStableCallback((rowIds: readonly string[], version: ImportVersionAssignment) => {
+    const current = previewRef.current;
+    if (!current?.rows || busyRef.current) return;
     const selected = new Set(rowIds);
-    setPreview((current) =>
-      current?.rows
-        ? {
-            ...current,
-            rows: current.rows.map((row) =>
-              selected.has(row.item.id) && row.state === 'READY' ? { ...row, promptVersionId } : row,
-            ),
-          }
-        : current,
-    );
-  }, []);
-
-  const moveRow = useCallback((rowId: string, direction: -1 | 1) => {
-    setPreview((current) => {
-      if (!current?.rows) return current;
-      const index = current.rows.findIndex((row) => row.item.id === rowId);
-      const destination = index + direction;
-      if (index < 0 || destination < 0 || destination >= current.rows.length) return current;
-      const rows = [...current.rows];
-      [rows[index], rows[destination]] = [rows[destination], rows[index]];
-      return { ...current, rows };
+    setPreview({
+      ...current,
+      rows: current.rows.map((row) =>
+        selected.has(row.item.id) && row.state === 'READY' ? { ...row, newVersionNo: undefined, ...version } : row,
+      ),
     });
-  }, []);
+  });
 
-  const removeRow = useCallback(
-    (rowId: string) => {
-      if (busy) return;
-      const row = preview?.rows?.find((candidate) => candidate.item.id === rowId);
-      if (!row) return;
-      if (row.previewUrl) URL.revokeObjectURL(row.previewUrl);
-      setPreview((current) =>
-        current?.rows ? { ...current, rows: current.rows.filter((candidate) => candidate.item.id !== rowId) } : current,
-      );
-      if (row.item.stageId) {
-        void window.desktopApi.creatorOutputsDiscard([row.item.stageId]).catch((reason) => {
-          notify(reason instanceof Error ? reason.message : String(reason));
-        });
-      }
-    },
-    [busy, notify, preview],
-  );
+  const moveRow = useStableCallback((rowId: string, direction: -1 | 1) => {
+    const current = previewRef.current;
+    if (!current?.rows || busyRef.current) return;
+    const rows = [...current.rows];
+    const index = rows.findIndex((row) => row.item.id === rowId);
+    const destination = index + direction;
+    if (index < 0 || destination < 0 || destination >= rows.length) return;
+    [rows[index], rows[destination]] = [rows[destination], rows[index]];
+    setPreview({ ...current, rows });
+  });
+
+  const removeRow = useStableCallback((rowId: string) => {
+    const current = previewRef.current;
+    if (!current?.rows || busyRef.current) return;
+    const row = current.rows.find((candidate) => candidate.item.id === rowId);
+    if (!row) return;
+    setPreview({ ...current, rows: current.rows.filter((candidate) => candidate !== row) });
+    void discardRows([row]).catch((reason) => notify(String(reason)));
+  });
 
   return {
     busy,
@@ -293,7 +311,6 @@ export function useCreatorOutputImport({
     chooseFiles,
     commit,
     dismiss,
-    setDefaultVersionId,
     updateRow,
     assignVersion,
     moveRow,

@@ -109,7 +109,10 @@ export class CreatorImageStagingService {
 
   constructor(private readonly resolveDatabase: () => LibraryDatabase) {}
 
-  async stageItems(items: CreatorImageImportItemInput[]): Promise<CreatorImageStagePreviewRow[]> {
+  async stageItems(
+    items: CreatorImageImportItemInput[],
+    options: { seriesId?: string | null; review?: boolean } = {},
+  ): Promise<CreatorImageStagePreviewRow[]> {
     this.assertBatch(items.map((item) => item.bytes.byteLength));
     const libraryRoot = this.resolveDatabase().libraryRoot;
     const seenHashes = new Set<string>();
@@ -132,6 +135,8 @@ export class CreatorImageStagingService {
         rows.push(
           await this.stageCandidate({
             libraryRoot,
+            seriesId: options.seriesId,
+            review: options.review,
             item: stagedItem,
             byteSize: bytes.byteLength,
             header: bytes.subarray(0, headerBytes),
@@ -153,7 +158,13 @@ export class CreatorImageStagingService {
     return rows;
   }
 
-  async stageFiles(filePaths: string[]): Promise<CreatorImageStagePreviewRow[]> {
+  async stageFiles(
+    filePaths: string[],
+    options: { seriesId?: string | null; review?: boolean } = {},
+  ): Promise<CreatorImageStagePreviewRow[]> {
+    if (!filePaths.length || filePaths.length > maxImageCount) {
+      throw new Error(`Import supports 1 to ${maxImageCount} images`);
+    }
     const libraryRoot = this.resolveDatabase().libraryRoot;
     const entries = await Promise.all(
       filePaths.map(async (filePath) => {
@@ -177,6 +188,9 @@ export class CreatorImageStagingService {
           rows.push(
             await this.stageCandidate({
               libraryRoot,
+              seriesId: options.seriesId,
+              includePreview: options.review,
+              review: options.review,
               item: { id: randomUUID(), name: path.basename(filePath), mimeType },
               byteSize: bytes.byteLength,
               header: bytes.subarray(0, headerBytes),
@@ -196,6 +210,9 @@ export class CreatorImageStagingService {
         rows.push(
           await this.stageCandidate({
             libraryRoot,
+            seriesId: options.seriesId,
+            includePreview: options.review,
+            review: options.review,
             item: { id: randomUUID(), name: path.basename(filePath), mimeType },
             byteSize: fileStat.size,
             header,
@@ -381,6 +398,9 @@ export class CreatorImageStagingService {
 
   private async stageCandidate(input: {
     libraryRoot: string;
+    seriesId?: string | null;
+    includePreview?: boolean;
+    review?: boolean;
     item: StagedImageItem;
     byteSize: number;
     header: Buffer;
@@ -400,17 +420,20 @@ export class CreatorImageStagingService {
     const filePath = path.join(directory, `${stageId}${extensionByMimeType[input.item.mimeType]}`);
     let hash: string;
     let dimensions = input.dimensions;
+    let previewUrl: string | undefined;
     try {
       hash = await input.write(filePath);
-      if (input.item.mimeType === 'image/gif') {
+      if (input.includePreview || input.item.mimeType === 'image/gif') {
         // Validate decoding without replacing the original animation with a rasterized frame.
         dimensions = await withDecodedImageFileInSandbox(
           filePath,
-          { operation: 'thumbnail', size: 16 },
-          (response) => ({
-            width: response.sourceWidth,
-            height: response.sourceHeight,
-          }),
+          { operation: 'thumbnail', size: input.includePreview ? 192 : 16 },
+          (response) => {
+            if (response.operation !== 'thumbnail') throw new Error('Invalid import preview response');
+            if (input.includePreview)
+              previewUrl = `data:image/png;base64,${Buffer.from(response.pngBytes).toString('base64')}`;
+            return { width: response.sourceWidth, height: response.sourceHeight };
+          },
         );
       }
     } catch (error) {
@@ -424,11 +447,15 @@ export class CreatorImageStagingService {
     const duplicateStage = [...this.records.values()].some(
       (record) => path.resolve(record.libraryRoot) === path.resolve(input.libraryRoot) && record.hash === hash,
     );
-    if (input.seenHashes.has(hash) || duplicateStage) {
+    const alreadyImported = input.seriesId
+      ? this.resolveDatabase().findImportedCreatorOutputAssetByHash(input.seriesId, hash)
+      : null;
+    if (input.seenHashes.has(hash) || duplicateStage || alreadyImported) {
       await unlink(filePath);
       return {
         item: { ...input.item, stageId: null, byteSize: input.byteSize },
         state: 'DUPLICATE',
+        ...(previewUrl ? { previewUrl } : {}),
       };
     }
     const modelRasterPath = input.modelRaster ? path.join(directory, `${stageId}.model.png`) : null;
@@ -466,6 +493,8 @@ export class CreatorImageStagingService {
     return {
       item: { ...input.item, stageId, byteSize: input.byteSize },
       state: 'READY',
+      ...(previewUrl ? { previewUrl } : {}),
+      ...(input.review ? { expiresAt: Date.now() + stageLifetimeMs } : {}),
     };
   }
 

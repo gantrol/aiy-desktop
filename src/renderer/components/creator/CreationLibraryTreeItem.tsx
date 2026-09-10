@@ -148,6 +148,7 @@ export const CreationLibraryTreeItem = forwardRef<HTMLDivElement, CreationLibrar
         <Button
           type="button"
           variant="ghost"
+          data-action="open-creation-tree-item"
           aria-label={openLabel}
           aria-current={selected ? 'page' : undefined}
           className="absolute inset-0 z-0 size-auto rounded-lg p-0 hover:bg-transparent focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"

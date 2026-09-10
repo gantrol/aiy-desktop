@@ -1,11 +1,3 @@
-import type {
-  CreationItemDto,
-  InspirationStashContentInput,
-  InspirationStashDto,
-  Locale,
-  TermListItem,
-  WordPaletteDto,
-} from '@/shared/contracts';
 import { creatorPromptNodesFromReferences } from '@/renderer/components/creator/creatorPromptDocument';
 import type { CreationDraftPromptSnapshot } from '@/renderer/components/creator/workflows/creationDraftSnapshot';
 import {
@@ -14,6 +6,15 @@ import {
 } from '@/renderer/components/creator/workflows/useCreatorInspirationWorkflow';
 import type { PromptDocumentReplacement } from '@/renderer/components/creator/workflows/useCreatorPromptDocument';
 import { useStableCallback } from '@/renderer/lib/useStableCallback';
+import { blockDocumentAssetIds } from '@/shared/contracts/block-document';
+import type {
+  CreationItemDto,
+  InspirationStashContentInput,
+  InspirationStashDto,
+  Locale,
+  TermListItem,
+  WordPaletteDto,
+} from '@/shared/contracts';
 
 interface Options {
   capturePrompt(): CreationDraftPromptSnapshot;
@@ -26,6 +27,7 @@ interface Options {
   notify(message: string): void;
   onOpenStash(stash: InspirationStashDto): void;
   palettes: readonly WordPaletteDto[];
+  document?: CreationDraftPromptSnapshot['document'];
   promptNodes: CreationDraftPromptSnapshot['nodes'];
   referenceAssetIds: readonly string[];
   refresh(): Promise<void>;
@@ -33,20 +35,29 @@ interface Options {
   restartNewCreation(albumId: string | null): Promise<boolean>;
   saveCreationDraft(prompt: CreationDraftPromptSnapshot): Promise<{ id: string }>;
   selectedStashId: string | null;
+  selectedStash?: InspirationStashDto | null;
   selectedTerms: readonly TermListItem[];
   synchronizePrompt(prompt: CreationDraftPromptSnapshot): void;
   targetAlbumId: string | null;
   termPromptLocale: Locale;
   terms: readonly TermListItem[];
+  title: string;
+  onTitleChange(title: string): void;
   wordPaletteReferences: InspirationStashContentInput['wordPaletteReferences'];
 }
 
 function currentContent(options: Options, prompt: CreationDraftPromptSnapshot): InspirationStashContentInput {
+  const title = options.creationMode === 'new' ? options.title : options.selectedStash?.content.title;
   return {
     schemaVersion: 1,
+    ...(title || options.selectedStash?.content.title !== undefined ? { title } : {}),
+    ...(options.selectedStash?.content.format ? { format: options.selectedStash.content.format } : {}),
+    ...(prompt.document ? { schemaVersion: 2, document: prompt.document } : {}),
     manualPrompt: prompt.manualPrompt,
     promptNodes: prompt.nodes,
-    referenceAssetIds: [...options.referenceAssetIds],
+    referenceAssetIds: [
+      ...new Set([...options.referenceAssetIds, ...(prompt.document ? blockDocumentAssetIds(prompt.document) : [])]),
+    ],
     termPromptLocale: options.termPromptLocale,
     termIds: prompt.selectedTerms.map((term) => term.id),
     wordPaletteReferences: options.wordPaletteReferences.map((reference) => ({
@@ -60,6 +71,7 @@ export function useCreatorInspirationSession(options: Options) {
   const renderedPrompt: CreationDraftPromptSnapshot = {
     manualPrompt: options.manualPrompt,
     nodes: options.promptNodes,
+    document: options.document,
     selectedTerms: [...options.selectedTerms],
     appliedPalettes: [],
   };
@@ -85,6 +97,7 @@ export function useCreatorInspirationSession(options: Options) {
 
   const restore = useStableCallback((stash: InspirationStashDto) => {
     const { referenceAssets, ...content } = stash.content;
+    options.onTitleChange(content.title ?? '');
     const selectedTerms = content.termIds.flatMap((termId) => options.terms.find((term) => term.id === termId) ?? []);
     const appliedPalettes = content.wordPaletteReferences.flatMap((reference) => {
       const palette = options.palettes.find((item) => item.id === reference.paletteId);
@@ -94,6 +107,7 @@ export function useCreatorInspirationSession(options: Options) {
         : [];
     });
     options.replacePromptDocument({
+      document: content.document,
       promptNodes: creatorPromptNodesFromReferences({
         manualPrompt: content.manualPrompt,
         termIds: content.termIds,
@@ -105,7 +119,7 @@ export function useCreatorInspirationSession(options: Options) {
       appliedPalettes,
       termPromptLocale: content.termPromptLocale,
     });
-    workflow.rememberSavedContent(content);
+    workflow.rememberSavedContent(content, stash.contentHash);
   });
 
   const stash = useStableCallback(async () => {

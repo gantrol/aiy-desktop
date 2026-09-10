@@ -4,7 +4,7 @@ import type {
   ArticleDto,
   CanvasPresetDto,
   CreationItemDto,
-  DerivedVisualAdoptResult,
+  DerivedVisualAdoptInput,
   DerivedVisualDto,
   DerivedVisualPromptTemplatesDto,
   DerivedVisualWorkspaceOpenResult,
@@ -18,10 +18,22 @@ import {
   buildArticleInlinePrompt,
   buildSocialCoverPrompt,
 } from '@/renderer/components/creator/derivedVisualPrompt';
-import { derivedVisualWorkspaceAvailable } from '@/renderer/components/creator/derivedVisualWorkspace';
+import {
+  derivedVisualWorkspaceAvailable,
+  DerivedVisualViewUnavailableError,
+  type DerivedVisualWorkspaceViewState,
+} from '@/renderer/components/creator/derivedVisualWorkspace';
 import { useStableCallback } from '@/renderer/lib/useStableCallback';
+import type { MessageCatalog } from '@/renderer/i18n/types';
+import { useI18n } from '@/renderer/i18n/useI18n';
+import type { DerivedVisualOperationRequest } from '@/shared/contracts/derived-visual-operations';
+import { articleIllustrationInsertionOffset } from '@/shared/article-wechat-renderer';
+import { useWorkspaceVisualResume } from '@/renderer/components/workspace/WorkspaceVisualResumeProvider';
 
 interface Options {
+  spaceId: string;
+  articles: readonly ArticleDto[];
+  socialPosts: readonly SocialPostDto[];
   canvasPresets: readonly CanvasPresetDto[];
   captureSelectionIdentity(): string;
   creationDraftId: string | null;
@@ -29,15 +41,25 @@ interface Options {
   derivedVisuals: readonly DerivedVisualDto[];
   locale: Locale;
   notify(message: string): void;
-  onAdoptedArticle(article: ArticleDto): void;
-  onAdoptedSocialPost(post: SocialPostDto): void;
   onKeepAdoptedWorkspace(imageAssetId: string): void;
-  onOpenWorkspace(result: DerivedVisualWorkspaceOpenResult): void;
+  onOpenWorkspace(result: DerivedVisualWorkspaceOpenResult, view?: DerivedVisualWorkspaceViewState): void;
   preserveBeforeNavigation(): Promise<boolean>;
   promptTemplates: DerivedVisualPromptTemplatesDto | undefined;
   refresh(): Promise<void>;
   seriesIds: ReadonlySet<string>;
   stayInWorkspace(visualId: string): boolean;
+}
+
+interface ResumeFailure {
+  visualId: string;
+  spaceId: string;
+  selectionIdentity: string;
+  operationGeneration: number;
+  message: string;
+}
+
+function resumeFailureForSelection(failure: ResumeFailure | null, spaceId: string, selectionIdentity: string) {
+  return failure?.spaceId === spaceId && failure.selectionIdentity === selectionIdentity ? failure : null;
 }
 
 function articleContentSnapshot(content: ArticleContentInput): ArticleContentInput {
@@ -59,27 +81,35 @@ function socialPostContent(post: SocialPostDto): SocialPostContentInput {
   return socialPostContentSnapshot(content);
 }
 
-function adoptedMessage(result: DerivedVisualAdoptResult, locale: Locale) {
-  if (locale === 'zh') {
-    if (result.visual.role === 'ARTICLE_HEADER') return '已设为文章题图';
-    if (result.visual.role === 'ARTICLE_INLINE') return '已插入文章正文';
-    return '已设为贴图首图';
+function adoptedMessage(
+  visual: DerivedVisualDto,
+  labels: MessageCatalog['creator']['derivedVisual'],
+  intent: DerivedVisualAdoptInput['intent'],
+) {
+  if (visual.role === 'ARTICLE_HEADER') return labels.heroAdopted;
+  if (visual.role === 'ARTICLE_INLINE') return labels.illustrationAdopted;
+  return intent === 'SET_COVER_AND_FIRST' ? labels.coverAndFirstAdopted : labels.coverAdopted;
+}
+
+function requiredPromptTemplates(options: Options, unavailableMessage: string) {
+  const templates = options.promptTemplates;
+  if (!templates?.articleHeader || !templates.articleInline || !templates.socialCover) {
+    throw new Error(unavailableMessage);
   }
-  if (result.visual.role === 'ARTICLE_HEADER') return 'Article hero updated';
-  if (result.visual.role === 'ARTICLE_INLINE') return 'Illustration inserted in the article';
-  return 'Social cover updated';
+  return templates;
 }
 
 export function useDerivedVisualWorkflow(options: Options) {
-  const [creatingSocialCoverScheme, setCreatingSocialCoverScheme] = useState(false);
-  const creatingSocialCoverSchemeRef = useRef(false);
+  const findResumeView = useWorkspaceVisualResume(options.spaceId);
+  const labels = useI18n().messages.creator.derivedVisual;
+  const [creatingDerivedScheme, setCreatingDerivedScheme] = useState(false);
+  const [resumeFailure, setResumeFailure] = useState<ResumeFailure | null>(null);
+  const creatingDerivedSchemeRef = useRef(false);
   const mountedRef = useRef(true);
   const operationGenerationRef = useRef(0);
   const canvasPresets = useMemo(() => [...options.canvasPresets], [options.canvasPresets]);
   const captureSelectionIdentity = useStableCallback(options.captureSelectionIdentity);
   const notify = useStableCallback(options.notify);
-  const onAdoptedArticle = useStableCallback(options.onAdoptedArticle);
-  const onAdoptedSocialPost = useStableCallback(options.onAdoptedSocialPost);
   const onKeepAdoptedWorkspace = useStableCallback(options.onKeepAdoptedWorkspace);
   const onOpenWorkspace = useStableCallback(options.onOpenWorkspace);
   const preserveBeforeNavigation = useStableCallback(options.preserveBeforeNavigation);
@@ -94,13 +124,7 @@ export function useDerivedVisualWorkflow(options: Options) {
     };
   }, []);
 
-  function promptTemplates() {
-    const templates = options.promptTemplates;
-    if (!templates?.articleHeader || !templates.articleInline || !templates.socialCover) {
-      throw new Error(options.locale === 'zh' ? '配图提示词配置不可用' : 'Visual prompt configuration is unavailable');
-    }
-    return templates;
-  }
+  const promptTemplates = () => requiredPromptTemplates(options, labels.promptConfigurationUnavailable);
 
   const finishOpen = useStableCallback(
     async (
@@ -108,6 +132,7 @@ export function useDerivedVisualWorkflow(options: Options) {
       operationGeneration: number,
       selectionIdentity: string,
       message?: string,
+      view?: DerivedVisualWorkspaceViewState,
     ) => {
       await refresh();
       if (
@@ -116,7 +141,22 @@ export function useDerivedVisualWorkflow(options: Options) {
         captureSelectionIdentity() !== selectionIdentity
       )
         return;
-      onOpenWorkspace(result);
+      const remembered = !view && result.kind === 'SERIES' ? findResumeView(result.visual.id) : undefined;
+      const resumeView = remembered?.seriesId === result.visual.promptSeriesId ? remembered : undefined;
+      try {
+        onOpenWorkspace(result, view ?? resumeView);
+      } catch (reason) {
+        if (!(reason instanceof DerivedVisualViewUnavailableError)) throw reason;
+        setResumeFailure({
+          visualId: result.visual.id,
+          spaceId: options.spaceId,
+          selectionIdentity,
+          operationGeneration,
+          message: reason.message,
+        });
+        return;
+      }
+      setResumeFailure(null);
       if (message) notify(message);
     },
   );
@@ -125,15 +165,15 @@ export function useDerivedVisualWorkflow(options: Options) {
     const operationGeneration = ++operationGenerationRef.current;
     const selectionIdentity = captureSelectionIdentity();
     const source = creationFormByEntity(options.creationItems, 'ARTICLE', article.id);
-    if (!source) throw new Error(options.locale === 'zh' ? '题图来源不可用' : 'Hero source is unavailable');
+    if (!source) throw new Error(labels.heroSourceUnavailable);
     const preset = canvasPresets.find((item) => item.stableKey === 'wechat_article_cover_2_35_1');
-    if (!preset)
-      throw new Error(options.locale === 'zh' ? '公众号题图画幅不可用' : 'WeChat hero canvas is unavailable');
+    if (!preset) throw new Error(labels.heroCanvasUnavailable);
     const snapshot = articleContentSnapshot(content);
     const prompt = buildArticleHeaderPrompt(promptTemplates(), snapshot.title, snapshot.markdown);
     const result = await window.desktopApi.derivedVisualWorkspaceOpen({
       mode: 'CREATE',
       role: 'ARTICLE_HEADER',
+      workspaceTitle: `${snapshot.title || labels.untitled} · ${labels.targetRoles.ARTICLE_HEADER}`.slice(0, 300),
       sourceFormId: source.form.id,
       articleId: article.id,
       articleRevisionId: article.revisionId,
@@ -141,54 +181,46 @@ export function useDerivedVisualWorkflow(options: Options) {
       canvasPresetKey: preset.stableKey,
       locale: options.locale,
     });
-    await finishOpen(
-      result,
-      operationGeneration,
-      selectionIdentity,
-      options.locale === 'zh' ? '已打开题图创作' : 'Hero creation opened',
-    );
+    await finishOpen(result, operationGeneration, selectionIdentity, labels.heroOpened);
   });
 
   const openArticleIllustrationWorkspace = useStableCallback(
-    async (article: ArticleDto, content: ArticleContentInput, selectedText: string, preset: CanvasPresetDto) => {
+    async (
+      article: ArticleDto,
+      content: ArticleContentInput,
+      selectedText: string,
+      preset: CanvasPresetDto,
+      positionVisual?: DerivedVisualDto,
+    ) => {
       const operationGeneration = ++operationGenerationRef.current;
       const selectionIdentity = captureSelectionIdentity();
       const snapshot = articleContentSnapshot(content);
       const anchorText = selectedText.trim();
-      const first = snapshot.markdown.indexOf(anchorText);
-      if (!anchorText || first < 0 || first !== snapshot.markdown.lastIndexOf(anchorText)) {
-        throw new Error(
-          options.locale === 'zh'
-            ? '请选择当前文章中一段唯一的连续文字'
-            : 'Select one unique continuous passage in the current article',
-        );
+      if (!positionVisual && articleIllustrationInsertionOffset(snapshot.markdown, anchorText) === null) {
+        throw new Error(labels.uniquePassageRequired);
       }
       const existingWorkspace = options.derivedVisuals.find(
         (visual) =>
           visual.role === 'ARTICLE_INLINE' &&
           visual.articleId === article.id &&
           visual.anchor?.selectedText === anchorText &&
-          derivedVisualWorkspaceAvailable(visual, options.seriesIds, options.creationDraftId),
+          derivedVisualWorkspaceAvailable(visual, options.seriesIds),
       );
-      if (existingWorkspace) {
+      if (!positionVisual && existingWorkspace) {
         const result = await window.desktopApi.derivedVisualWorkspaceOpen({
           mode: 'RESUME',
           visualId: existingWorkspace.id,
         });
-        await finishOpen(
-          result,
-          operationGeneration,
-          selectionIdentity,
-          options.locale === 'zh' ? '已继续正文配图创作' : 'Illustration creation resumed',
-        );
+        await finishOpen(result, operationGeneration, selectionIdentity, labels.illustrationResumed);
         return;
       }
       const source = creationFormByEntity(options.creationItems, 'ARTICLE', article.id);
-      if (!source) throw new Error(options.locale === 'zh' ? '配图来源不可用' : 'Illustration source is unavailable');
+      if (!source) throw new Error(labels.illustrationSourceUnavailable);
       const prompt = buildArticleInlinePrompt(promptTemplates(), preset, snapshot.title, anchorText, snapshot.markdown);
       const result = await window.desktopApi.derivedVisualWorkspaceOpen({
         mode: 'CREATE',
         role: 'ARTICLE_INLINE',
+        workspaceTitle: `${snapshot.title || labels.untitled} · ${labels.targetRoles.ARTICLE_INLINE}`.slice(0, 300),
         sourceFormId: source.form.id,
         articleId: article.id,
         articleRevisionId: article.revisionId,
@@ -196,13 +228,9 @@ export function useDerivedVisualWorkflow(options: Options) {
         canvasPresetKey: preset.stableKey,
         locale: options.locale,
         anchor: { selectedText: anchorText },
+        ...(positionVisual?.positionId ? { positionId: positionVisual.positionId } : {}),
       });
-      await finishOpen(
-        result,
-        operationGeneration,
-        selectionIdentity,
-        options.locale === 'zh' ? '已打开正文配图创作' : 'Illustration creation opened',
-      );
+      await finishOpen(result, operationGeneration, selectionIdentity, labels.illustrationOpened);
     },
   );
 
@@ -211,12 +239,13 @@ export function useDerivedVisualWorkflow(options: Options) {
       const operationGeneration = ++operationGenerationRef.current;
       const selectionIdentity = captureSelectionIdentity();
       const source = creationFormByEntity(options.creationItems, 'SOCIAL_POST', post.id);
-      if (!source) throw new Error(options.locale === 'zh' ? '封面来源不可用' : 'Cover source is unavailable');
+      if (!source) throw new Error(labels.coverSourceUnavailable);
       const snapshot = socialPostContentSnapshot(content);
       const prompt = buildSocialCoverPrompt(promptTemplates(), preset, snapshot.title, snapshot.body);
       const result = await window.desktopApi.derivedVisualWorkspaceOpen({
         mode: 'CREATE',
         role: 'SOCIAL_POST_COVER',
+        workspaceTitle: `${snapshot.title || labels.untitled} · ${labels.targetRoles.SOCIAL_POST_COVER}`.slice(0, 300),
         sourceFormId: source.form.id,
         socialPostId: post.id,
         socialPostRevisionId: post.revisionId,
@@ -224,81 +253,105 @@ export function useDerivedVisualWorkflow(options: Options) {
         canvasPresetKey: preset.stableKey,
         locale: options.locale,
       });
-      await finishOpen(
-        result,
-        operationGeneration,
-        selectionIdentity,
-        options.locale === 'zh' ? '已打开封面创作' : 'Cover creation opened',
-      );
+      await finishOpen(result, operationGeneration, selectionIdentity, labels.coverOpened);
     },
   );
 
-  const createSocialCoverScheme = useStableCallback(async (post: SocialPostDto) => {
-    if (creatingSocialCoverSchemeRef.current) return;
-    creatingSocialCoverSchemeRef.current = true;
-    setCreatingSocialCoverScheme(true);
+  const createDerivedScheme = useStableCallback(async (visualId: string) => {
+    if (creatingDerivedSchemeRef.current) return;
+    const visual = options.derivedVisuals.find((item) => item.id === visualId);
+    if (!visual) return;
+    creatingDerivedSchemeRef.current = true;
+    setCreatingDerivedScheme(true);
     const selectionIdentity = captureSelectionIdentity();
     try {
       if (!(await preserveBeforeNavigation()) || captureSelectionIdentity() !== selectionIdentity) return;
+      if (visual.role === 'ARTICLE_INLINE') {
+        const article = options.articles.find((item) => item.id === visual.articleId);
+        if (!article || !visual.anchor || !visual.positionId) throw new Error(labels.sourceArticleUnavailable);
+        const preset = canvasPresets.find((candidate) => candidate.stableKey === 'landscape_4_3');
+        if (!preset) throw new Error(labels.illustrationCanvasUnavailable);
+        await openArticleIllustrationWorkspace(article, article.content, visual.anchor.selectedText, preset, visual);
+        return;
+      }
+      if (visual.role === 'ARTICLE_HEADER') {
+        const article = options.articles.find((item) => item.id === visual.articleId);
+        if (!article) throw new Error(labels.sourceArticleUnavailable);
+        await openArticleHeaderWorkspace(article, article.content);
+        return;
+      }
+      const post = options.socialPosts.find((item) => item.id === visual.socialPostId);
+      if (!post) throw new Error(labels.sourcePostUnavailable);
       const preset = canvasPresets.find((candidate) => candidate.stableKey === 'xiaohongshu_portrait_3_4');
       if (!preset) {
-        notify(options.locale === 'zh' ? '贴图封面画幅不可用' : 'Social cover canvas is unavailable');
+        notify(labels.coverCanvasUnavailable);
         return;
       }
       await openSocialCoverWorkspace(post, socialPostContent(post), preset);
     } catch (reason) {
       notify(reason instanceof Error ? reason.message : String(reason));
     } finally {
-      creatingSocialCoverSchemeRef.current = false;
-      if (mountedRef.current) setCreatingSocialCoverScheme(false);
+      creatingDerivedSchemeRef.current = false;
+      if (mountedRef.current) setCreatingDerivedScheme(false);
     }
   });
 
-  const resumeDerivedVisual = useStableCallback(async (visualId: string) => {
+  const resumeDerivedVisual = useStableCallback(async (visualId: string, view?: DerivedVisualWorkspaceViewState) => {
     const selectionIdentity = captureSelectionIdentity();
     try {
       if (!(await preserveBeforeNavigation()) || captureSelectionIdentity() !== selectionIdentity) return;
+      setResumeFailure(null);
       const operationGeneration = ++operationGenerationRef.current;
       const result = await window.desktopApi.derivedVisualWorkspaceOpen({ mode: 'RESUME', visualId });
-      await finishOpen(result, operationGeneration, selectionIdentity);
+      await finishOpen(result, operationGeneration, selectionIdentity, undefined, view);
     } catch (reason) {
       notify(reason instanceof Error ? reason.message : String(reason));
     }
   });
 
-  const adoptDerivedVisual = useStableCallback(async (visualId: string, imageAssetId: string) => {
-    const operationGeneration = ++operationGenerationRef.current;
+  const openCurrentDerivedVisual = useStableCallback(async () => {
+    const failed = resumeFailureForSelection(resumeFailure, options.spaceId, captureSelectionIdentity());
+    setResumeFailure(null);
+    if (!failed || failed.operationGeneration !== operationGenerationRef.current) return;
+    await resumeDerivedVisual(failed.visualId, { assetId: null });
+  });
+
+  const runDerivedVisualOperation = useStableCallback(async (request: DerivedVisualOperationRequest) => {
     const selectionIdentity = captureSelectionIdentity();
-    const keepWorkspace = stayInWorkspace(visualId);
-    const result = await window.desktopApi.derivedVisualAdopt({ id: visualId, imageAssetId });
-    await refresh();
-    if (
-      !mountedRef.current ||
-      operationGenerationRef.current !== operationGeneration ||
-      captureSelectionIdentity() !== selectionIdentity
-    )
-      return;
-    if (keepWorkspace) {
-      onKeepAdoptedWorkspace(imageAssetId);
-      notify(adoptedMessage(result, options.locale));
-      return;
+    if (request.spaceId !== options.spaceId) throw new Error(labels.targetUnavailable);
+    if (!(await preserveBeforeNavigation()) || captureSelectionIdentity() !== selectionIdentity) return null;
+    const result = await (async () => {
+      if (request.kind === 'ADOPT') {
+        const { kind: _kind, ...input } = request;
+        return window.desktopApi.derivedVisualAdopt(input);
+      }
+      const { kind: _kind, ...input } = request;
+      return window.desktopApi.derivedVisualUndo(input);
+    })();
+    // The durable operation result remains valid even if refreshing the workspace fails.
+    if (result.status === 'SUCCEEDED') {
+      void refresh().catch((reason) => notify(String(reason)));
+      if (mountedRef.current && captureSelectionIdentity() === selectionIdentity) {
+        const visual = options.derivedVisuals.find((item) => item.id === request.id);
+        if (request.kind === 'ADOPT' && visual) {
+          if (stayInWorkspace(request.id)) onKeepAdoptedWorkspace(request.imageAssetId);
+          notify(adoptedMessage(visual, labels, request.intent));
+        } else notify(labels.adoption.undone);
+      }
     }
-    if (result.article) {
-      onAdoptedArticle(result.article);
-      notify(adoptedMessage(result, options.locale));
-    } else if (result.socialPost) {
-      onAdoptedSocialPost(result.socialPost);
-      notify(adoptedMessage(result, options.locale));
-    }
+    return result;
   });
 
   return {
-    adoptDerivedVisual,
-    createSocialCoverScheme,
-    creatingSocialCoverScheme,
+    runDerivedVisualOperation,
+    createDerivedScheme,
+    creatingDerivedScheme,
     openArticleHeaderWorkspace,
     openArticleIllustrationWorkspace,
     openSocialCoverWorkspace,
     resumeDerivedVisual,
+    resumeFailure: resumeFailureForSelection(resumeFailure, options.spaceId, options.captureSelectionIdentity()),
+    dismissResumeFailure: () => setResumeFailure(null),
+    openCurrentDerivedVisual,
   };
 }

@@ -1,3 +1,4 @@
+import { selectedWatermarkProfile, type NaturalWatermarkRuntime } from '@/main/extensions/natural-watermark/selection';
 import type { LibraryDatabase } from '@/main/database';
 import { ArticleDeliveryConnections } from '@/main/extensions/article-delivery/connection';
 import {
@@ -16,6 +17,7 @@ import {
   type ArticleDeliveryJobListInput,
   type ArticleDeliveryJobRetryInput,
   type ArticleDeliveryUploadInput,
+  type ArticleDeliveryProgress,
 } from '@/shared/contracts/article-delivery';
 
 type ArticleDeliveryJobDatabase = Pick<
@@ -25,10 +27,12 @@ type ArticleDeliveryJobDatabase = Pick<
   | 'failArticleDeliveryJob'
   | 'getArticle'
   | 'getArticleRevision'
+  | 'contentLibrary'
+  | 'libraryRoot'
   | 'listArticleDeliveryJobs'
   | 'markArticleDeliveryJobRunning'
   | 'nextQueuedArticleDeliveryJob'
-  | 'resolveAssetFile'
+  | 'resolveAssetFilesAsync'
   | 'retryArticleDeliveryJob'
 >;
 
@@ -39,7 +43,7 @@ type ArticleDeliveryFailureDetail = {
 };
 
 function deliveryFailure(reason: unknown) {
-  const detail = reason as ArticleDeliveryFailureDetail;
+  const detail = (reason ?? {}) as ArticleDeliveryFailureDetail;
   const message = reason instanceof Error ? reason.message : String(reason);
   const code = typeof detail.code === 'string' && detail.code.trim() ? detail.code.trim() : 'DELIVERY_FAILED';
   const status = Number(detail.status);
@@ -60,6 +64,7 @@ export class ArticleDeliveryJobCoordinator {
     private readonly connections: ArticleDeliveryConnections,
     private readonly acquireOperation: () => () => void,
     private readonly onChanged: (event: ArticleDeliveryJobChangedEvent) => void,
+    private readonly naturalWatermark?: NaturalWatermarkRuntime,
   ) {}
 
   async enqueue(rawInput: ArticleDeliveryUploadInput) {
@@ -69,7 +74,14 @@ export class ArticleDeliveryJobCoordinator {
     assertArticleDeliveryExtensionActivated(this.extensions, input.extensionId);
     const definition = resolveArticleDeliveryDefinition(this.extensions, input);
     const connection = await this.connections.get(input.extensionId);
-    const delivery = new ArticleDeliveryService(this.database, this.extensions, connection, definition);
+    const delivery = new ArticleDeliveryService(
+      this.database,
+      this.extensions,
+      connection,
+      definition,
+      undefined,
+      this.naturalWatermark,
+    );
     const status = delivery.status({
       extensionId: input.extensionId,
       channelId: input.channelId,
@@ -87,6 +99,7 @@ export class ArticleDeliveryJobCoordinator {
       articleContentHash: article.contentHash,
       targetSlug: status.profile.slug,
       targetDescription: status.profile.description,
+      watermarkProfile: await selectedWatermarkProfile(input.watermark, this.naturalWatermark),
     });
     this.emit(job);
     this.kick();
@@ -157,7 +170,14 @@ export class ArticleDeliveryJobCoordinator {
   private async execute(job: ArticleDeliveryJob) {
     const definition = resolveArticleDeliveryDefinition(this.extensions, job);
     const connection = await this.connections.get(job.extensionId);
-    const delivery = new ArticleDeliveryService(this.database, this.extensions, connection, definition);
+    const delivery = new ArticleDeliveryService(
+      this.database,
+      this.extensions,
+      connection,
+      definition,
+      undefined,
+      this.naturalWatermark,
+    );
     return delivery.uploadRevision(
       {
         extensionId: job.extensionId,
@@ -168,10 +188,12 @@ export class ArticleDeliveryJobCoordinator {
       },
       { slug: job.targetSlug, description: job.targetDescription },
       job.articleContentHash,
+      (progress) => this.emit(job, progress),
+      job.watermarkProfile ?? null,
     );
   }
 
-  private emit(job: ArticleDeliveryJob) {
-    this.onChanged(articleDeliveryJobChangedEventSchema.parse({ job }));
+  private emit(job: ArticleDeliveryJob, progress?: ArticleDeliveryProgress) {
+    this.onChanged(articleDeliveryJobChangedEventSchema.parse({ job, progress }));
   }
 }

@@ -1,12 +1,11 @@
-import { useCallback, useEffect, useLayoutEffect, useRef, useState, type RefObject } from 'react';
 import type {
   ArticleEditorPanePreferenceScope,
   ArticleEditorSidebarPanel,
 } from '@/renderer/components/creator/article-editor/articleEditorOutlinePreferences';
 import { useArticleEditorOutlinePane } from '@/renderer/components/creator/article-editor/useArticleEditorOutlinePane';
+import { useCallback, useEffect, useLayoutEffect, useRef, useState, type RefObject } from 'react';
 
 const minimumDockedSidebarContainerWidth = 960;
-const minimumDualSidebarContainerWidth = 1480;
 
 export type ArticleEditorSidebarMode = 'OVERLAY' | 'SINGLE' | 'DUAL';
 
@@ -19,9 +18,8 @@ export function useArticleEditorSidebar(
   }: { enabled?: boolean; preferenceScope?: ArticleEditorPanePreferenceScope } = {},
 ) {
   const pane = useArticleEditorOutlinePane(preferenceScope);
-  const { preferences, setActivePanel, setExpanded, setPanelExpanded } = pane;
+  const { preferences, setActivePanel, setExpanded } = pane;
   const [mode, setMode] = useState<ArticleEditorSidebarMode>('SINGLE');
-  const [compactOpen, setCompactOpen] = useState(false);
   const commentIdsRef = useRef(new Set(comments.map((comment) => comment.id)));
 
   useLayoutEffect(() => {
@@ -30,13 +28,7 @@ export function useArticleEditorSidebar(
     if (!container) return;
     const update = () => {
       const width = container.getBoundingClientRect().width;
-      setMode(
-        width < minimumDockedSidebarContainerWidth
-          ? 'OVERLAY'
-          : width < minimumDualSidebarContainerWidth
-            ? 'SINGLE'
-            : 'DUAL',
-      );
+      setMode(width < minimumDockedSidebarContainerWidth ? 'OVERLAY' : 'SINGLE');
     };
     update();
     if (typeof ResizeObserver === 'undefined') return;
@@ -46,26 +38,15 @@ export function useArticleEditorSidebar(
   }, [containerRef, enabled]);
 
   const panelOpen = useCallback(
-    (panel: ArticleEditorSidebarPanel) => {
-      if (mode === 'DUAL') return panel === 'OUTLINE' ? preferences.outlineExpanded : preferences.commentsExpanded;
-      if (preferences.activePanel !== panel) return false;
-      return mode === 'OVERLAY' ? compactOpen : preferences.expanded;
-    },
-    [compactOpen, mode, preferences],
+    (panel: ArticleEditorSidebarPanel) => preferences.activePanel === panel && preferences.expanded,
+    [preferences],
   );
-
   const setPanelOpen = useCallback(
     (panel: ArticleEditorSidebarPanel, open: boolean) => {
-      if (mode === 'DUAL') {
-        setPanelExpanded(panel, open);
-        if (open) setActivePanel(panel);
-        return;
-      }
       if (open) setActivePanel(panel);
-      if (mode === 'OVERLAY') setCompactOpen(open);
-      else setExpanded(open);
+      setExpanded(open);
     },
-    [mode, setActivePanel, setExpanded, setPanelExpanded],
+    [setActivePanel, setExpanded],
   );
 
   const showPanel = useCallback((panel: ArticleEditorSidebarPanel) => setPanelOpen(panel, true), [setPanelOpen]);

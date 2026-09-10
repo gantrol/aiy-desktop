@@ -207,6 +207,14 @@ async function dispatchStorageAndGeneration(
       const [input] = parseModelWorkerMethodParams(method, params);
       return options.agent.importAsset(input, signal);
     }
+    case 'agent.intake.import': {
+      const [input] = parseModelWorkerMethodParams(method, params);
+      return database.importAgentIntake(input, signal);
+    }
+    case 'agent.intake.get': {
+      const [input] = parseModelWorkerMethodParams(method, params);
+      return database.getAgentIntake(input);
+    }
     case 'agent.draft.prepare': {
       const [input] = parseModelWorkerMethodParams(method, params);
       return options.agent.prepareDraft(input);
@@ -309,6 +317,10 @@ async function dispatchAssistantAndCodex(
     case 'codex.list-models':
       parseModelWorkerMethodParams(method, params);
       return codex.listModels(signal);
+    case 'codex.plan-gif': {
+      const [input, execution] = parseModelWorkerMethodParams(method, params);
+      return codex.planGif(input, execution, signal);
+    }
     case 'codex.check-article': {
       const [input, execution] = parseModelWorkerMethodParams(method, params);
       return codex.checkArticle(input, execution, signal);

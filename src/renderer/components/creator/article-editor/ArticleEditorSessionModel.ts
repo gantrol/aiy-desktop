@@ -1,5 +1,7 @@
 import type {
   ArticleContentInput,
+  ArticleCommentDto,
+  ArticleCommentAnchorUpdateInput,
   ArticleDto,
   ArticleMediaBindingInput,
   ArticleRevisionSaveInput,
@@ -25,6 +27,7 @@ type SessionListener = () => void;
 interface ArticleEditorInitialDraft {
   content: ArticleContentInput;
   media: readonly VideoDocumentRevisionMediaDto[];
+  commentAnchors?: readonly ArticleCommentAnchorUpdateInput[];
 }
 
 function initialSessionState(
@@ -33,12 +36,14 @@ function initialSessionState(
   initialDraft: ArticleEditorInitialDraft | undefined,
 ): ArticleEditorSessionState {
   const draftContent = initialDraft?.content;
+  const anchors = new Map(initialDraft?.commentAnchors?.map((item) => [item.commentId, item.anchor]));
   return {
     session: {
       articleId: article.id,
       epoch,
     },
     persisted: {
+      article,
       draftSeq: 0,
       revisionId: article.revisionId,
       contentHash: article.contentHash,
@@ -48,9 +53,13 @@ function initialSessionState(
       metadata: draftContent ? articleEditorMetadataFromContent(draftContent) : articleEditorMetadata(article),
       media: initialDraft?.media.map((item) => ({ ...item })) ?? articleEditorMedia(article),
       hasBody: Boolean((draftContent?.markdown ?? article.content.markdown).trim()),
+      comments: article.comments.map((comment) => ({ ...comment, anchor: anchors.get(comment.id) ?? comment.anchor })),
     },
     save: { phase: 'idle' },
     lifecycle: 'active',
+    editorPending: false,
+    documentVersion: 0,
+    externalArticle: null,
   };
 }
 
@@ -79,9 +88,58 @@ export class ArticleEditorSessionModel {
     return () => this.#listeners.delete(listener);
   };
 
+  setEditorPending(editorPending: boolean) {
+    if (this.#state.lifecycle === 'disposed' || this.#state.editorPending === editorPending) return;
+    this.#commit({ ...this.#state, editorPending });
+  }
+
+  loadArticle(article: ArticleDto, initialDraft?: ArticleEditorInitialDraft) {
+    const state = this.#state;
+    if (state.lifecycle === 'disposed' || state.save.phase === 'saving' || state.save.phase === 'preparing')
+      return false;
+    this.#commit({
+      ...initialSessionState(article, state.session.epoch, initialDraft),
+      documentVersion: state.documentVersion + 1,
+    });
+    return true;
+  }
+
+  receiveExternalArticle(article: ArticleDto) {
+    if (this.#state.lifecycle === 'disposed' || article.id !== this.#state.session.articleId) return;
+    this.#commit({ ...this.#state, externalArticle: article });
+  }
+
+  updateComments(comments: readonly ArticleCommentDto[]) {
+    const state = this.#state;
+    if (state.lifecycle === 'disposed') return;
+    this.#commit({
+      ...state,
+      persisted: { ...state.persisted, article: { ...state.persisted.article, comments: [...comments] } },
+      draft: { ...state.draft, comments },
+    });
+  }
+
+  beginPreparation(draftSeq: number) {
+    if (this.#state.lifecycle === 'disposed') return;
+    this.#commit({ ...this.#state, save: { phase: 'preparing', draftSeq } });
+  }
+
+  failPreparation(mode: ArticleSaveMode, message: string) {
+    const state = this.#state;
+    if (state.lifecycle === 'disposed' || state.save.phase === 'saving' || state.save.phase === 'conflict') return;
+    this.#commit({
+      ...state,
+      save: {
+        phase: 'failed',
+        failure: { stage: 'prepare', draftSeq: state.draft.sequence, request: null, message, mode },
+      },
+    });
+  }
+
   replaceDraft(content: ArticleContentInput, media: readonly VideoDocumentRevisionMediaDto[]) {
     const state = this.#state;
-    if (state.lifecycle === 'disposed' || state.save.phase === 'saving') return false;
+    if (state.lifecycle === 'disposed' || state.save.phase === 'saving' || state.save.phase === 'preparing')
+      return false;
     this.#commit({
       ...state,
       draft: {
@@ -92,6 +150,7 @@ export class ArticleEditorSessionModel {
         hasBody: Boolean(content.markdown.trim()),
       },
       save: { phase: 'idle' },
+      documentVersion: state.documentVersion + 1,
     });
     return true;
   }
@@ -163,6 +222,7 @@ export class ArticleEditorSessionModel {
     this.#commit({
       ...state,
       persisted: {
+        article: savedArticle,
         draftSeq: input.draftSeq,
         revisionId: savedArticle.revisionId,
         contentHash: input.contentHash,
@@ -170,6 +230,7 @@ export class ArticleEditorSessionModel {
       draft: {
         ...state.draft,
         media: mergeArticleEditorMedia(state.draft.media, articleEditorMedia(savedArticle)),
+        comments: savedArticle.comments,
       },
       save: { phase: 'idle' },
     });
@@ -183,7 +244,13 @@ export class ArticleEditorSessionModel {
       ...state,
       save: {
         phase: 'failed',
-        failure: { ...articleEditorSaveIdentity(input), message, mode },
+        failure: {
+          request: articleEditorSaveIdentity(input),
+          stage: 'persist',
+          draftSeq: input.draftSeq,
+          message,
+          mode,
+        },
       },
     });
     return true;

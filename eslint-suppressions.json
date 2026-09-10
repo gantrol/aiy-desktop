@@ -106,9 +106,6 @@
     }
   },
   "src/renderer/components/creator/GenerationComparison.tsx": {
-    "complexity": {
-      "count": 2
-    },
     "max-lines": {
       "count": 1
     },

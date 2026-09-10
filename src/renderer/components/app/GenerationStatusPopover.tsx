@@ -21,6 +21,9 @@ import { DirectionExperimentTaskCenterItem } from '@/renderer/components/app/Dir
 import { GenerationIssueActions } from '@/renderer/components/app/GenerationIssueActions';
 import { VideoDocumentTranscriptTaskCenterItem } from '@/renderer/components/app/VideoDocumentTranscriptTaskCenterItem';
 import { useBackgroundIssues } from '@/renderer/features/background-issues/BackgroundIssueProvider';
+import { useArticleDeliveries } from '@/renderer/features/article-delivery/ArticleDeliveryProvider';
+import { ArticleDeliveryTaskItem } from '@/renderer/features/article-delivery/ArticleDeliveryTaskItem';
+import { articleDeliveryActive } from '@/renderer/features/article-delivery/presentation';
 
 interface Props {
   workerStatus: ModelWorkerStatusDto | null;
@@ -82,6 +85,11 @@ function generationIssues(
     .slice(0, 5);
 }
 
+function backgroundTaskIconClassName(reconnecting: boolean, activeCount: number, attentionCount: number) {
+  if (reconnecting || activeCount > 0) return 'size-3.5 animate-spin';
+  return attentionCount > 0 ? 'size-3.5 text-destructive' : 'size-3.5 text-success';
+}
+
 export function GenerationStatusPopover({
   workerStatus,
   codexHealth,
@@ -99,6 +107,10 @@ export function GenerationStatusPopover({
 }: Props) {
   const { locale, messages } = useI18n();
   const backgroundIssues = useBackgroundIssues();
+  const { entries: deliveries } = useArticleDeliveries();
+  const activeDeliveries = deliveries.filter(({ job }) => articleDeliveryActive(job));
+  const failedDeliveries = deliveries.filter(({ job }) => job.status === 'FAILED');
+  const completedDeliveries = deliveries.filter(({ job }) => job.status === 'SUCCEEDED').slice(0, 3);
   const l = messages.app.generationStatus;
   const taskLabels = messages.creator.generationTasks;
   const [open, setOpen] = useState(false);
@@ -126,11 +138,16 @@ export function GenerationStatusPopover({
   const coveredActiveRunCount = tasks.length - visibleGenerationTasks.length;
   const generationTaskCount = Math.max(0, (workerStatus?.generationTaskCount ?? tasks.length) - coveredActiveRunCount);
   const codexTaskCount = workerStatus?.codexTaskCount ?? activeAssistantRuns.length;
-  const activeCount = generationTaskCount + codexTaskCount + activeDirectorTasks.length + transcriptTasks.length;
+  const activeCount =
+    generationTaskCount +
+    codexTaskCount +
+    activeDirectorTasks.length +
+    transcriptTasks.length +
+    activeDeliveries.length;
   const visibleAssistantRuns = activeAssistantRuns.slice(0, codexTaskCount);
   const otherCodexTaskCount = Math.max(0, codexTaskCount - visibleAssistantRuns.length);
   const reconnecting = !workerStatus || workerStatus.state === 'RECONNECTING';
-  const attentionCount = standaloneIssues.length + directorIssues.length;
+  const attentionCount = standaloneIssues.length + directorIssues.length + failedDeliveries.length;
 
   useEffect(() => {
     if (!open || (!tasks.some((task) => task.status === 'RUNNING') && transcriptTasks.length === 0)) return undefined;
@@ -195,17 +212,12 @@ export function GenerationStatusPopover({
           className="h-7 gap-1.5 px-2 text-xs font-normal text-muted-foreground"
           aria-label={label}
         >
-          <StatusIcon
-            className={
-              reconnecting || activeCount > 0
-                ? 'size-3.5 animate-spin'
-                : attentionCount > 0
-                  ? 'size-3.5 text-destructive'
-                  : 'size-3.5 text-success'
-            }
-          />
+          <StatusIcon className={backgroundTaskIconClassName(reconnecting, activeCount, attentionCount)} />
           <span>{l.backgroundTasks}</span>
           <span className="text-foreground">{statusText}</span>
+          {attentionCount > 0 && (activeCount > 0 || reconnecting) && (
+            <span className="text-destructive">{l.attention(attentionCount)}</span>
+          )}
         </Button>
       </PopoverTrigger>
       <PopoverContent side="bottom" align="end" sideOffset={4} className="w-96 p-0">
@@ -226,9 +238,12 @@ export function GenerationStatusPopover({
           </span>
         </div>
         <div className="max-h-64 overflow-y-auto">
-          {!activeCount && !standaloneIssues.length && !directorIssues.length && (
+          {!activeCount && !attentionCount && !completedDeliveries.length && (
             <div className="px-3 py-3 text-xs text-muted-foreground">{l.idle}</div>
           )}
+          {[...activeDeliveries, ...failedDeliveries, ...completedDeliveries].map((entry) => (
+            <ArticleDeliveryTaskItem key={entry.job.id} entry={entry} zh={locale === 'zh'} />
+          ))}
           {transcriptTasks.map((task) => (
             <VideoDocumentTranscriptTaskCenterItem
               key={task.operationId}

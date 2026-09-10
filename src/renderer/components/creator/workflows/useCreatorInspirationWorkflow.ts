@@ -54,6 +54,7 @@ export function useCreatorInspirationWorkflow(options: Options) {
   const [busy, setBusy] = useState(false);
   const [savedContentKey, setSavedContentKey] = useState<string | null>(null);
   const busyRef = useRef(false);
+  const savedHashRef = useRef<string | null>(null);
   const generationRef = useRef(0);
   const mountedRef = useRef(true);
   const captureSaveIdentity = useStableCallback(options.captureSaveIdentity);
@@ -72,10 +73,12 @@ export function useCreatorInspirationWorkflow(options: Options) {
 
   const clearSavedContent = useStableCallback(() => {
     generationRef.current += 1;
+    savedHashRef.current = null;
     setSavedContentKey(null);
   });
 
-  const rememberSavedContent = useStableCallback((content: InspirationStashContentInput) => {
+  const rememberSavedContent = useStableCallback((content: InspirationStashContentInput, hash?: string) => {
+    savedHashRef.current = hash ?? null;
     generationRef.current += 1;
     setSavedContentKey(JSON.stringify(contentSnapshot(content)));
   });
@@ -91,6 +94,12 @@ export function useCreatorInspirationWorkflow(options: Options) {
       ? creationItemByFormEntity(options.creationItems, 'PROMPT_SERIES', input.currentSeriesId)
       : null;
     try {
+      if (input.selectedStashId && !savedHashRef.current)
+        throw new Error(
+          options.locale === 'zh'
+            ? '请重新打开随记以确认保存基线，当前输入仍保留'
+            : 'Reopen the note to establish its saved version. Your input is retained.',
+        );
       if (input.currentSeriesId && !currentItem) {
         throw new Error(options.locale === 'zh' ? '所属创作项不可用' : 'The containing creation item is unavailable');
       }
@@ -98,6 +107,7 @@ export function useCreatorInspirationWorkflow(options: Options) {
         ? {
             mode: 'UPDATE',
             id: input.selectedStashId,
+            expectedContentHash: savedHashRef.current!,
             content,
             consumeCreationDraftId: input.restartNewCreation ? input.creationDraftId : null,
           }
@@ -110,6 +120,7 @@ export function useCreatorInspirationWorkflow(options: Options) {
               consumeCreationDraftId: input.restartNewCreation ? input.creationDraftId : null,
             };
       const stash = await window.desktopApi.inspirationStashSave(saveInput);
+      if (generationRef.current === operationGeneration) savedHashRef.current = stash.contentHash;
       const operationIsCurrent = () =>
         mountedRef.current && generationRef.current === operationGeneration && captureSaveIdentity() === saveIdentity;
       if (input.restartNewCreation && operationIsCurrent()) {

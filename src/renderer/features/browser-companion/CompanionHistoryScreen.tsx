@@ -1,5 +1,6 @@
+import { useI18n } from '@/renderer/i18n/useI18n';
 import { RefreshCwIcon, Trash2Icon } from 'lucide-react';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useState } from 'react';
 import type { BrowserCompanionHistoryItem, Locale } from '@/shared/contracts';
 import { Button } from '@/renderer/components/ui/button';
 import { Checkbox } from '@/renderer/components/ui/checkbox';
@@ -14,12 +15,6 @@ import {
 import { ScrollArea } from '@/renderer/components/ui/scroll-area';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/renderer/components/ui/table';
 import { useStableCallback } from '@/renderer/lib/useStableCallback';
-
-const TARGET_LABELS = {
-  chatgpt: { en: 'ChatGPT', zh: 'ChatGPT' },
-  wechat: { en: 'WeChat Official Account', zh: '微信公众号' },
-  weibo: { en: 'Weibo', zh: '微博' },
-} as const;
 
 function displayTime(value: string, locale: Locale): string {
   return new Intl.DateTimeFormat(locale === 'zh' ? 'zh-CN' : 'en', {
@@ -37,7 +32,7 @@ export function CompanionHistoryScreen({
   locale: Locale;
   notify(message: string): void;
 }) {
-  const zh = locale === 'zh';
+  const copy = useI18n().messages.browserCompanion;
   const [items, setItems] = useState<BrowserCompanionHistoryItem[]>([]);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [loading, setLoading] = useState(false);
@@ -45,15 +40,6 @@ export function CompanionHistoryScreen({
   const [confirmOpen, setConfirmOpen] = useState(false);
   const selectedCount = selectedIds.size;
   const allSelected = items.length > 0 && selectedCount === items.length;
-  const stateLabels = useMemo(
-    () => ({
-      ready: zh ? '待交接' : 'Ready',
-      claimed: zh ? '填入中' : 'Filling',
-      delivered: zh ? '已填入' : 'Delivered',
-    }),
-    [zh],
-  );
-
   const loadHistory = useStableCallback(async (): Promise<void> => {
     if (loading) return;
     setLoading(true);
@@ -92,11 +78,7 @@ export function CompanionHistoryScreen({
       setItems((current) => current.filter((item) => !deleted.has(item.handoffId)));
       setSelectedIds(new Set());
       setConfirmOpen(false);
-      notify(
-        zh
-          ? `已删除 ${result.deletedHandoffIds.length} 条交接记录`
-          : `Deleted ${result.deletedHandoffIds.length} handoff records`,
-      );
+      notify(copy.history.deleted.replace('{count}', String(result.deletedHandoffIds.length)));
     } catch (reason) {
       notify(reason instanceof Error ? reason.message : String(reason));
     } finally {
@@ -107,15 +89,15 @@ export function CompanionHistoryScreen({
   return (
     <main data-browser-companion-history className="flex size-full min-h-0 flex-col bg-background">
       <header className="flex h-14 shrink-0 items-center justify-between gap-3 border-b px-5">
-        <h1 className="font-semibold">{zh ? 'AIY 伴侣历史' : 'AIY Companion history'}</h1>
+        <h1 className="font-semibold">{copy.history.title}</h1>
         <div className="flex items-center gap-1">
           <Button
             type="button"
             variant="ghost"
             size="icon-sm"
             disabled={loading || deleting}
-            aria-label={zh ? '刷新' : 'Refresh'}
-            title={zh ? '刷新' : 'Refresh'}
+            aria-label={copy.history.refresh}
+            title={copy.history.refresh}
             onClick={() => void loadHistory()}
           >
             <RefreshCwIcon className={loading ? 'size-4 animate-spin' : 'size-4'} />
@@ -130,9 +112,8 @@ export function CompanionHistoryScreen({
             onClick={() => setConfirmOpen(true)}
           >
             <Trash2Icon className="size-4" />
-            {zh
-              ? `删除${selectedCount ? ` (${selectedCount})` : ''}`
-              : `Delete${selectedCount ? ` (${selectedCount})` : ''}`}
+            {copy.history.delete}
+            {selectedCount ? ` (${selectedCount})` : ''}
           </Button>
         </div>
       </header>
@@ -144,18 +125,18 @@ export function CompanionHistoryScreen({
               <TableRow>
                 <TableHead className="w-10">
                   <Checkbox
-                    aria-label={zh ? '全选' : 'Select all'}
+                    aria-label={copy.history.selectAll}
                     checked={allSelected ? true : selectedCount > 0 ? 'indeterminate' : false}
                     onCheckedChange={(checked) =>
                       setSelectedIds(checked ? new Set(items.map((item) => item.handoffId)) : new Set())
                     }
                   />
                 </TableHead>
-                <TableHead>{zh ? '内容' : 'Content'}</TableHead>
-                <TableHead>{zh ? '目标' : 'Target'}</TableHead>
-                <TableHead>{zh ? '类型' : 'Type'}</TableHead>
-                <TableHead>{zh ? '状态' : 'Status'}</TableHead>
-                <TableHead>{zh ? '时间' : 'Time'}</TableHead>
+                <TableHead>{copy.history.content}</TableHead>
+                <TableHead>{copy.history.target}</TableHead>
+                <TableHead>{copy.history.type}</TableHead>
+                <TableHead>{copy.history.status}</TableHead>
+                <TableHead>{copy.history.time}</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -169,7 +150,7 @@ export function CompanionHistoryScreen({
                   >
                     <TableCell>
                       <Checkbox
-                        aria-label={zh ? '选择交接记录' : 'Select handoff record'}
+                        aria-label={copy.history.selectRecord}
                         checked={selected}
                         onCheckedChange={(checked) => select(item.handoffId, Boolean(checked))}
                       />
@@ -179,9 +160,9 @@ export function CompanionHistoryScreen({
                         {item.text}
                       </span>
                     </TableCell>
-                    <TableCell>{TARGET_LABELS[item.target][zh ? 'zh' : 'en']}</TableCell>
-                    <TableCell>{item.contentKind === 'prompt' ? 'Prompt' : zh ? '贴文正文' : 'Social post'}</TableCell>
-                    <TableCell data-handoff-state={item.state}>{stateLabels[item.state]}</TableCell>
+                    <TableCell>{copy.targets[item.target]}</TableCell>
+                    <TableCell>{copy.history.kinds[item.contentKind]}</TableCell>
+                    <TableCell data-handoff-state={item.state}>{copy.history.states[item.state]}</TableCell>
                     <TableCell>{displayTime(item.createdAt, locale)}</TableCell>
                   </TableRow>
                 );
@@ -189,7 +170,7 @@ export function CompanionHistoryScreen({
               {!loading && items.length === 0 && (
                 <TableRow>
                   <TableCell colSpan={6} className="h-24 text-center text-muted-foreground">
-                    {zh ? '暂无交接记录' : 'No handoff history'}
+                    {copy.history.empty}
                   </TableCell>
                 </TableRow>
               )}
@@ -201,14 +182,12 @@ export function CompanionHistoryScreen({
       <Dialog open={confirmOpen} onOpenChange={setConfirmOpen}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>
-              {zh ? `删除 ${selectedCount} 条交接记录？` : `Delete ${selectedCount} handoff records?`}
-            </DialogTitle>
+            <DialogTitle>{copy.history.confirmDelete.replace('{count}', String(selectedCount))}</DialogTitle>
           </DialogHeader>
           <DialogFooter>
             <DialogClose asChild>
               <Button type="button" variant="outline" disabled={deleting}>
-                {zh ? '取消' : 'Cancel'}
+                {copy.history.cancel}
               </Button>
             </DialogClose>
             <Button
@@ -218,7 +197,7 @@ export function CompanionHistoryScreen({
               disabled={deleting}
               onClick={() => void deleteSelected()}
             >
-              {deleting ? (zh ? '删除中' : 'Deleting') : zh ? '删除' : 'Delete'}
+              {deleting ? copy.history.deleting : copy.history.delete}
             </Button>
           </DialogFooter>
         </DialogContent>

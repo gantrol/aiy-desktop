@@ -1,11 +1,22 @@
-import { createHash } from 'node:crypto';
-import path from 'node:path';
-import { ulid } from 'ulid';
+import type { LibraryStorage } from '@/main/database/core/storage';
+import { type JsonMap, mediaUrl, now, text } from '@/main/database/core/values';
+import { CreationItemRepository } from '@/main/database/creations/creation-item-repository';
+import { VideoDocumentAiActivityRepository } from '@/main/database/video-documents/video-document-ai-activity-repository';
+import { VideoDocumentGenerationRunRepository } from '@/main/database/video-documents/video-document-generation-run-repository';
+import {
+  decodeVideoDocumentCursor,
+  encodeVideoDocumentCursor,
+  escapeVideoDocumentLikePattern,
+} from '@/main/database/video-documents/video-document-list-values';
+import { VideoDocumentNavigationRepository } from '@/main/database/video-documents/video-document-navigation-repository';
+import { VideoDocumentTranscriptionRunRepository } from '@/main/database/video-documents/video-document-transcription-run-repository';
+import { VideoDocumentTranslationRepository } from '@/main/database/video-documents/video-document-translation-repository';
+import { videoDocumentSelect, videoDocumentSummaryDto } from '@/main/database/video-documents/video-document-values';
 import type {
-  VideoDocumentBranchDto,
   VideoDocumentAiActivitiesListInput,
   VideoDocumentAiActivitiesPage,
   VideoDocumentAudioInfo,
+  VideoDocumentBranchDto,
   VideoDocumentCreateInput,
   VideoDocumentDto,
   VideoDocumentGenerationRunsListInput,
@@ -24,25 +35,14 @@ import type {
   VideoDocumentSourceReplaceInput,
   VideoDocumentTokenUsage,
 } from '@/shared/contracts';
+import { assertBlockDocumentReady } from '@/shared/contracts/block-document';
 import {
   VIDEO_DOCUMENT_SOURCE_REPLACEMENT_MAX_DURATION_DELTA_MS,
   videoDocumentRevisionContentSchema,
 } from '@/shared/contracts/video-document';
-import { VideoDocumentGenerationRunRepository } from '@/main/database/video-documents/video-document-generation-run-repository';
-import { VideoDocumentAiActivityRepository } from '@/main/database/video-documents/video-document-ai-activity-repository';
-import { VideoDocumentNavigationRepository } from '@/main/database/video-documents/video-document-navigation-repository';
-import { VideoDocumentTranscriptionRunRepository } from '@/main/database/video-documents/video-document-transcription-run-repository';
-import { VideoDocumentTranslationRepository } from '@/main/database/video-documents/video-document-translation-repository';
-import {
-  decodeVideoDocumentCursor,
-  encodeVideoDocumentCursor,
-  escapeVideoDocumentLikePattern,
-  videoDocumentFileStem,
-} from '@/main/database/video-documents/video-document-list-values';
-import type { LibraryStorage } from '@/main/database/core/storage';
-import { type JsonMap, mediaUrl, now, text } from '@/main/database/core/values';
-import { CreationItemRepository } from '@/main/database/creations/creation-item-repository';
-import { videoDocumentSelect, videoDocumentSummaryDto } from '@/main/database/video-documents/video-document-values';
+import { createHash } from 'node:crypto';
+import path from 'node:path';
+import { ulid } from 'ulid';
 
 function parseRevisionContent(value: unknown) {
   let parsed: unknown;
@@ -255,11 +255,7 @@ export class VideoDocumentRepository {
       )
       .get(input.videoMaterialId) as JsonMap | undefined;
     if (!source) throw new Error('Video material not found');
-    const fallbackName = text(source.display_name) || text(source.original_name);
-    const title =
-      (input.title ?? '').trim() ||
-      videoDocumentFileStem(fallbackName) ||
-      (input.titleLocale === 'zh' ? '视频文稿' : 'Video document');
+    const title = (input.title ?? '').trim();
 
     const documentId = this.db
       .transaction(() => {
@@ -461,6 +457,8 @@ export class VideoDocumentRepository {
 
   private writeRevision(input: VideoDocumentRevisionSaveInput, origin: VideoDocumentRevisionOrigin) {
     const content = videoDocumentRevisionContentSchema.parse(input.content);
+    if (content.format === 'MARKDOWN') assertBlockDocumentReady(content.document);
+    if (content.format === 'NOTE_COLLECTION') content.notes.forEach((note) => assertBlockDocumentReady(note.document));
     const contentJson = JSON.stringify(content);
     const contentHash = createHash('sha256').update(contentJson, 'utf8').digest('hex');
     const revisionId = ulid();

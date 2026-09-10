@@ -1,5 +1,8 @@
 import { MATERIAL_LIBRARY_ALBUM_INTENT } from '@/main/database/albums/album-intents';
-import { creationItemCoverSortOrder } from '@/main/database/creations/creation-output-presentation-sql';
+import {
+  creationItemCoverSortOrder,
+  creationOutputNotExcluded,
+} from '@/main/database/creations/creation-output-presentation-sql';
 
 export const creationSeriesMaterialSummariesSql = `WITH series_relationships(series_id, asset_id, relationship_role) AS (
   SELECT version.series_id, run.result_asset_id, 'OUTPUT'
@@ -38,6 +41,14 @@ export const creationSeriesMaterialSummariesSql = `WITH series_relationships(ser
       WHERE exclusion.series_id = transform.series_id
         AND exclusion.image_asset_id = transform.output_asset_id
     )
+  UNION
+  SELECT series.id, gif.output_asset_id, 'OUTPUT'
+  FROM gif_export_runs gif
+  JOIN gif_documents document ON document.id = gif.document_id
+  JOIN prompt_series series ON series.id = document.series_id
+    AND series.deleted_at IS NULL AND series.archived_at IS NULL
+  WHERE gif.state = 'SUCCEEDED'
+    AND ${creationOutputNotExcluded('series.id', 'gif.output_asset_id')}
   UNION
   SELECT series.id, binding.image_asset_id, 'INPUT'
   FROM prompt_series series

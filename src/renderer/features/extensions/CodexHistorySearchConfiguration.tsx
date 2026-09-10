@@ -1,4 +1,4 @@
-import { useMemo, useState, type ReactNode } from 'react';
+import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import {
   ArchiveIcon,
   ExternalLinkIcon,
@@ -88,6 +88,14 @@ export function CodexHistorySearchConfiguration({
   const state = useCodexHistorySearch({ active, authorized, notify });
   const snapshot = state.snapshot;
   const [selectedThreadId, setSelectedThreadId] = useState('');
+  const [detailOpen, setDetailOpen] = useState(false);
+  const [wide, setWide] = useState(() => window.matchMedia('(min-width: 1280px)').matches);
+  useEffect(() => {
+    const query = window.matchMedia('(min-width: 1280px)');
+    const change = () => setWide(query.matches);
+    query.addEventListener('change', change);
+    return () => query.removeEventListener('change', change);
+  }, []);
   const selectedItem = useMemo(
     () => snapshot?.items.find((item) => item.threadId === selectedThreadId) ?? snapshot?.items[0] ?? null,
     [selectedThreadId, snapshot?.items],
@@ -103,7 +111,10 @@ export function CodexHistorySearchConfiguration({
           state={state}
           workspaceNavigation={workspaceNavigation}
           selectedThreadId={selectedThreadId}
-          onSelectThread={setSelectedThreadId}
+          onSelectThread={(id) => {
+            setSelectedThreadId(id);
+            setDetailOpen(true);
+          }}
         />
       )}
       <div className="flex min-w-0 flex-1 flex-col">
@@ -128,7 +139,7 @@ export function CodexHistorySearchConfiguration({
           <div className="grid min-h-0 flex-1 place-items-center text-sm text-muted-foreground">{l.unavailable}</div>
         ) : (
           <div className="flex min-h-0 flex-1">
-            <main className="flex min-w-0 flex-[1.45] flex-col">
+            <main className={cn('min-w-0 flex-[1.45] flex-col', detailOpen && !wide ? 'hidden' : 'flex')}>
               <header className="flex min-h-11 items-center gap-2 border-b px-3 text-xs text-muted-foreground">
                 <span>{snapshot?.truncated ? `${l.matches(snapshot.total)}+` : l.matches(snapshot?.total ?? 0)}</span>
                 <span className="hidden sm:inline">
@@ -163,7 +174,7 @@ export function CodexHistorySearchConfiguration({
                   </Button>
                 </div>
               </header>
-              <div className="min-h-0 flex-1 overflow-y-auto">
+              <div className="min-h-0 flex-1 overflow-y-auto" aria-busy={state.loading}>
                 {snapshot?.items.length ? (
                   <div className="divide-y">
                     {snapshot.items.map((item) => {
@@ -177,7 +188,10 @@ export function CodexHistorySearchConfiguration({
                           <button
                             type="button"
                             className="flex min-w-0 flex-1 items-start gap-3 px-3 py-3 text-left outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
-                            onClick={() => setSelectedThreadId(item.threadId)}
+                            onClick={() => {
+                              setSelectedThreadId(item.threadId);
+                              setDetailOpen(true);
+                            }}
                             onDoubleClick={() => void state.openThread(item.threadId)}
                           >
                             <span className="mt-0.5 grid size-7 shrink-0 place-items-center rounded-md bg-surface-sunken text-muted-foreground">
@@ -186,7 +200,7 @@ export function CodexHistorySearchConfiguration({
                             <span className="min-w-0 flex-1">
                               <span className="flex min-w-0 items-center gap-2">
                                 <span className="truncate text-sm font-medium">
-                                  <HighlightedText text={item.title} query={state.draftQuery} />
+                                  <HighlightedText text={item.title} query={snapshot.query} />
                                 </span>
                                 {item.archived && <ArchiveIcon className="size-3.5 shrink-0 text-muted-foreground" />}
                                 {item.source === 'SUBAGENT' && <Badge variant="outline">{l.subagent}</Badge>}
@@ -196,7 +210,7 @@ export function CodexHistorySearchConfiguration({
                               </span>
                               {item.snippet && !repeatsTitle(item) && (
                                 <span className="mt-1 line-clamp-2 block text-xs leading-5 text-muted-foreground">
-                                  <HighlightedText text={item.snippet} query={state.draftQuery} />
+                                  <HighlightedText text={item.snippet} query={snapshot.query} />
                                 </span>
                               )}
                               <span className="mt-1.5 flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1 text-2xs text-muted-foreground">
@@ -252,11 +266,14 @@ export function CodexHistorySearchConfiguration({
                 )}
               </div>
             </main>
-            <CodexHistoryThreadDetail
-              item={selectedItem}
-              locale={locale}
-              onOpen={(threadId) => void state.openThread(threadId)}
-            />
+            {active && (wide || detailOpen) && (
+              <CodexHistoryThreadDetail
+                onClose={() => setDetailOpen(false)}
+                item={selectedItem}
+                locale={locale}
+                onOpen={(threadId) => void state.openThread(threadId)}
+              />
+            )}
           </div>
         )}
       </div>

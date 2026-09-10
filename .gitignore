@@ -97,6 +97,26 @@ logs/
 !build/micro-icon-source.png
 !src/renderer/public/icon-24.png
 !src/renderer/public/icon.png
+!src/renderer/assets/aiy-reading.png
+
+# Fixed first-party demo inputs referenced by the production renderer.
+!/extensions/com.aiy.feature-demo/assets/features/portrait-1.png
+!/extensions/com.aiy.feature-demo/assets/features/portrait-2.png
+!/extensions/com.aiy.feature-demo/assets/features/portrait-3.png
+!/extensions/com.aiy.feature-demo/assets/v050/opening.mp4
+!/extensions/com.aiy.feature-demo/assets/v050/hand.png
+!/extensions/com.aiy.feature-demo/assets/v050/first.webp
+!/extensions/com.aiy.feature-demo/assets/v050/settled.webp
+!/extensions/com.aiy.feature-demo/assets/v050/monitor.webp
+!/extensions/com.aiy.feature-demo/assets/v050/character.webp
+!/extensions/com.aiy.feature-demo/assets/v050/roses-original.webp
+!/extensions/com.aiy.feature-demo/assets/v050/smile-02.webp
+!/extensions/com.aiy.feature-demo/assets/v050/smile-03.webp
+!/extensions/com.aiy.feature-demo/assets/v050/smile-04.webp
+!/extensions/com.aiy.feature-demo/assets/v050/smile-05.webp
+!/extensions/com.aiy.feature-demo/assets/v050/smile-06.webp
+!/extensions/com.aiy.feature-demo/assets/v050/smile-07.webp
+!/extensions/com.aiy.feature-demo/assets/v050/smile-08.webp
 
 # Microsoft Store package inputs are reproducible application assets.
 !build/msix/
@@ -137,3 +157,4 @@ Desktop.ini
 
 # Tool caches
 .eslintcache
+.sonar/

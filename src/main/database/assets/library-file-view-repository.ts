@@ -1,4 +1,6 @@
 import { realpathSync } from 'node:fs';
+import { realpath, stat, lstat } from 'node:fs/promises';
+import { readablePath } from '@/main/database/assets/readable-content-paths';
 import path from 'node:path';
 import type {
   AssetFileRevealContext,
@@ -28,6 +30,14 @@ import { type JsonMap, text } from '@/main/database/core/values';
  * expected source object. User-created or replaced files are never overwritten.
  */
 export class LibraryFileViewRepository extends LibraryFileViewCacheRepository {
+  private contentProjection:
+    import('@/main/database/assets/readable-content-repository').ReadableContentRepository | null = null;
+  private stopContentChanges: (() => void) | null = null;
+  attachContentProjection(
+    projection: import('@/main/database/assets/readable-content-repository').ReadableContentRepository,
+  ) {
+    this.contentProjection = projection;
+  }
   private started = false;
   private synchronizationTimer: ReturnType<typeof setTimeout> | null = null;
   private synchronizationRequested = false;
@@ -52,6 +62,8 @@ export class LibraryFileViewRepository extends LibraryFileViewCacheRepository {
     if (!this.started) {
       this.started = true;
       this.storage.setChangeListener(this.onRecordedChange);
+      this.contentProjection?.start();
+      this.stopContentChanges = this.storage.changes.subscribe((changes) => this.contentProjection?.changed(changes));
     }
     if (this.backgroundSynchronizer) {
       this.scheduleSynchronization();
@@ -61,6 +73,9 @@ export class LibraryFileViewRepository extends LibraryFileViewCacheRepository {
   }
 
   stopSynchronization() {
+    this.contentProjection?.stop();
+    this.stopContentChanges?.();
+    this.stopContentChanges = null;
     const shouldFlush = this.started;
     this.started = false;
     if (this.synchronizationTimer) clearTimeout(this.synchronizationTimer);
@@ -85,6 +100,7 @@ export class LibraryFileViewRepository extends LibraryFileViewCacheRepository {
   async drainSynchronization() {
     this.stopSynchronization();
     await this.synchronizationPromise;
+    await this.contentProjection?.drain();
   }
 
   scheduleSynchronization() {
@@ -191,16 +207,85 @@ export class LibraryFileViewRepository extends LibraryFileViewCacheRepository {
 
   async resolveRevealPathAsync(asset: ResolvedAssetFile, context?: AssetFileRevealContext): Promise<string> {
     const effectiveContext = context ?? { kind: 'ALL_MATERIALS' };
-    if (!this.backgroundSynchronizer) return this.resolveRevealPath(asset, effectiveContext);
-    try {
-      return this.resolveRevealPath(asset, effectiveContext, false);
-    } catch {
-      // Missing/stale managed paths may require a full library reconciliation.
-      // Keep that scan in the detached worker, then resolve only from its
-      // checkpoint on the Electron host.
-      await this.backgroundSynchronizer();
-      return this.resolveRevealPath(asset, effectiveContext, false);
+    if (effectiveContext.kind === 'CONTENT') {
+      if (!this.contentProjection) throw new Error('Readable content unavailable');
+      return this.contentProjection.assetPath(asset.assetId, effectiveContext.source);
     }
+    let targets = await this.readableEntries(asset);
+    if (!targets.length && this.backgroundSynchronizer) {
+      await this.backgroundSynchronizer();
+      targets = await this.readableEntries(asset);
+    }
+    let contextualAlbumId: string | null = null;
+    if (effectiveContext.kind === 'ALBUM')
+      contextualAlbumId = this.albumForAlbumContext(asset.assetId, effectiveContext.albumId, this.loadAlbumTree());
+    if (effectiveContext.kind === 'CREATION')
+      contextualAlbumId = this.albumForCreationContext(asset.assetId, effectiveContext.seriesId, this.loadAlbumTree());
+    const selected = targets.filter((row) =>
+      effectiveContext.kind === 'TERM'
+        ? row.context_type === 'TERM' && row.context_id === effectiveContext.termId
+        : effectiveContext.kind === 'DICTIONARY'
+          ? row.context_type === 'TERM'
+          : effectiveContext.kind === 'ALBUM' || effectiveContext.kind === 'CREATION'
+            ? row.context_type === 'ALBUM' && row.context_id === contextualAlbumId
+            : true,
+    );
+    if (effectiveContext.kind === 'ALL_MATERIALS') {
+      const contents = this.contentProjection?.listAssetTargets(asset.assetId) ?? [];
+      if (selected.length + contents.length !== 1) throw new Error('Choose an organized directory for this asset');
+      if (contents.length)
+        return this.contentProjection!.assetPath(
+          asset.assetId,
+          (contents[0]!.context as Extract<AssetFileRevealContext, { kind: 'CONTENT' }>).source,
+        );
+    }
+    if (selected.length !== 1) throw new Error('Choose an organized directory for this asset');
+    return path.join(await realpath(this.storage.libraryRoot), selected[0]!.relative_path);
+  }
+
+  private async readableEntries(asset: ResolvedAssetFile) {
+    const rows = this.db
+      .prepare(
+        "SELECT context_type, context_id, relative_path FROM file_projection_links WHERE image_asset_id = ? AND state = 'ACTIVE'",
+      )
+      .all(asset.assetId) as { context_type: 'ALBUM' | 'TERM'; context_id: string; relative_path: string }[];
+    const source = await stat(asset.absolutePath),
+      result: typeof rows = [];
+    for (const row of rows) {
+      try {
+        const parent = await readablePath(this.storage.libraryRoot, path.dirname(row.relative_path));
+        const candidate = await lstat(path.join(parent, path.basename(row.relative_path)));
+        if (
+          candidate.isFile() &&
+          !candidate.isSymbolicLink() &&
+          source.dev === candidate.dev &&
+          source.ino === candidate.ino
+        )
+          result.push(row);
+      } catch {
+        /* Missing projections can be repaired without exposing object-store paths. */
+      }
+    }
+    return result;
+  }
+  async listRevealTargetsAsync(
+    asset: ResolvedAssetFile,
+    context?: AssetFileRevealTargetContext,
+  ): Promise<AssetFileRevealTargetDto[]> {
+    const rows = await this.readableEntries(asset);
+    const targets: AssetFileRevealTargetDto[] = rows
+      .filter((row) => context?.kind !== 'DICTIONARY' || row.context_type === 'TERM')
+      .map((row) => ({
+        context:
+          row.context_type === 'ALBUM'
+            ? { kind: 'ALBUM', albumId: row.context_id }
+            : { kind: 'TERM', termId: row.context_id },
+        label: path.basename(path.dirname(row.relative_path)),
+        relativeDirectory: path.dirname(row.relative_path).split(path.sep).join('/'),
+      }));
+    return context?.kind === 'DICTIONARY'
+      ? targets
+      : [...targets, ...(this.contentProjection?.listAssetTargets(asset.assetId) ?? [])];
   }
 
   listRevealTargets(asset: ResolvedAssetFile, context?: AssetFileRevealTargetContext): AssetFileRevealTargetDto[] {

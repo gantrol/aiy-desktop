@@ -12,7 +12,7 @@ import { imageGenerationPromptProfileId } from '@/shared/image-generation-prompt
 
 // The wire version tracks message compatibility. The runtime fingerprint
 // separately prevents a host from reusing worker code from another build.
-export const MODEL_WORKER_PROTOCOL_VERSION = 4;
+export const MODEL_WORKER_PROTOCOL_VERSION = 6;
 export const MODEL_WORKER_MAX_MESSAGE_BYTES = 16 * 1024 * 1024;
 
 export const modelWorkerMethods = [
@@ -22,6 +22,8 @@ export const modelWorkerMethods = [
   'dictionary.commit-import',
   'image-transform.crop',
   'agent.asset.import',
+  'agent.intake.import',
+  'agent.intake.get',
   'agent.draft.prepare',
   'agent.generation.start',
   'agent.job.get',
@@ -42,6 +44,7 @@ export const modelWorkerMethods = [
   'codex.refresh-health',
   'codex.list-models',
   'codex.check-article',
+  'codex.plan-gif',
   'antigravity.refresh-status',
   'video-document.article-generate',
   'video-document.transcript-translate',

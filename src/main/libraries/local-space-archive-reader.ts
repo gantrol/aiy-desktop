@@ -1,4 +1,5 @@
 import { createHash, randomUUID } from 'node:crypto';
+import { trimTrailingCharacters } from '@/shared/string-boundaries';
 import {
   chmod,
   link,
@@ -74,10 +75,7 @@ function containsTrash(value: string) {
 }
 
 function safeDirectoryName(name: string) {
-  const normalized = name
-    .replace(/[<>:"/\\|?*\u0000-\u001f]/g, ' ')
-    .replace(/\s+/g, ' ')
-    .replace(/[. ]+$/g, '')
+  const normalized = trimTrailingCharacters(name.replace(/[<>:"/\\|?*\u0000-\u001f]/g, ' ').replace(/\s+/g, ' '), '. ')
     .trim()
     .slice(0, 100);
   return normalized || 'AIY Space';

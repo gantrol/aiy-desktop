@@ -2,9 +2,11 @@ import { useMemo, useState, type DragEvent as ReactDragEvent, type RefObject } f
 import type { AssetFileRevealContext, MaterialAlbumDto, MaterialSelectionTargetInput } from '@/shared/contracts';
 import {
   COLLECTION_GAP,
+  COLLECTION_CARD_HEIGHT,
   COLLECTION_MIN_COLUMN_WIDTH,
   CollectionAlbumCard,
   collectionAspectRatio,
+  collectionContainerAspectRatio,
   previewSpreadForPlacement,
 } from '@/renderer/components/gallery/CreationAlbumGrid';
 import { getMaterialCardAspectRatio, MaterialCard } from '@/renderer/components/gallery/MaterialCard';
@@ -213,15 +215,18 @@ export function MaterialZoneMasonry({
   }, [albums, creationAlbums, materials, skeletonCount]);
   const layoutItems = useMemo(
     () =>
-      entries.map((entry) => ({
-        id: entry.id,
-        aspectRatio:
-          entry.kind === 'CREATION' || entry.kind === 'ALBUM'
-            ? collectionAspectRatio(entry.album.previewAssets[0])
+      entries.map((entry) => {
+        const collection = entry.kind === 'CREATION' || entry.kind === 'ALBUM';
+        return {
+          id: entry.id,
+          aspectRatio: collection
+            ? collectionAspectRatio()
             : entry.kind === 'MATERIAL'
               ? getMaterialCardAspectRatio(entry.item)
               : 4 / 3,
-      })),
+          height: collection ? COLLECTION_CARD_HEIGHT : undefined,
+        };
+      }),
     [entries],
   );
 
@@ -264,7 +269,7 @@ export function MaterialZoneMasonry({
             return (
               <CollectionAlbumCard
                 album={entry.album}
-                containerAspectRatio={layoutItems[index].aspectRatio}
+                containerAspectRatio={collectionContainerAspectRatio(placement)}
                 spread={previewSpreadForPlacement(
                   Math.min(entry.album.previewAssets.length, MAX_COLLECTION_PREVIEWS),
                   placement,
@@ -286,7 +291,7 @@ export function MaterialZoneMasonry({
           return (
             <CollectionAlbumCard
               album={entry.album}
-              containerAspectRatio={layoutItems[index].aspectRatio}
+              containerAspectRatio={collectionContainerAspectRatio(placement)}
               spread={previewSpreadForPlacement(entry.album.previewAssets.length, placement, layout)}
               detail={detail}
               childAlbumCount={entry.summary.childAlbumCount}

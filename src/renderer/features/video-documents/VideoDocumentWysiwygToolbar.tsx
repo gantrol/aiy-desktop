@@ -1,3 +1,41 @@
+import { commandShortcutText } from '@/renderer/commands/app-shortcuts';
+import { imageImportItems } from '@/renderer/components/creator/imageImport';
+import { Button } from '@/renderer/components/ui/button';
+import { Input } from '@/renderer/components/ui/input';
+import { Popover, PopoverContent, PopoverTrigger } from '@/renderer/components/ui/popover';
+import { Separator } from '@/renderer/components/ui/separator';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/renderer/components/ui/tooltip';
+import {
+  editorImageFromAsset,
+  type ImportedEditorImage,
+  type VideoDocumentEditorImageImport,
+} from '@/renderer/features/content-editor/contentImageAsset';
+import { beginContentImageInsertion } from '@/renderer/features/content-editor/contentImageInsertion';
+import { contentImageApi, stageContentImage } from '@/renderer/features/content-editor/contentImageRecovery';
+import { VideoDocumentFramePicker } from '@/renderer/features/video-documents/VideoDocumentFramePicker';
+import {
+  VideoDocumentImageOperations,
+  type VideoDocumentImageControlsLabels,
+} from '@/renderer/features/video-documents/VideoDocumentImageOperations';
+import {
+  VideoDocumentTableMenu,
+  VideoDocumentTableOperations,
+  type VideoDocumentTableControlsLabels,
+} from '@/renderer/features/video-documents/VideoDocumentTableControls';
+import {
+  insertVideoDocumentImage,
+  videoDocumentFrameImageAttributes,
+} from '@/renderer/features/video-documents/videoDocumentEditorMedia';
+import { cn } from '@/renderer/lib/utils';
+import type {
+  ArticleCommentDto,
+  ArticleEditTrailEntryDto,
+  ArticleEditorLocationDto,
+  CreatorImageImportSource,
+  VideoDocumentFrameCaptureResult,
+  VideoDocumentMediaBinding,
+  VideoDocumentTimelineSegment,
+} from '@/shared/contracts';
 import type { Editor } from '@tiptap/core';
 import {
   BoldIcon,
@@ -6,16 +44,16 @@ import {
   ChevronLeftIcon,
   ChevronRightIcon,
   Code2Icon,
-  ItalicIcon,
   ImagePlusIcon,
+  ItalicIcon,
   LinkIcon,
   ListChecksIcon,
   ListIcon,
   ListOrderedIcon,
+  MapPinIcon,
   MessageSquareIcon,
   MessageSquarePlusIcon,
   MinusIcon,
-  MapPinIcon,
   QuoteIcon,
   Redo2Icon,
   RouteIcon,
@@ -27,121 +65,21 @@ import {
 } from 'lucide-react';
 import type { ReactNode } from 'react';
 import { useRef, useState } from 'react';
-import type {
-  ArticleEditTrailEntryDto,
-  ArticleEditorLocationDto,
-  ArticleCommentDto,
-  AssetDto,
-  CreatorImageImportSource,
-  VideoDocumentFrameCaptureResult,
-  VideoDocumentMediaBinding,
-  VideoDocumentRevisionMediaDto,
-  VideoDocumentTimelineSegment,
-} from '@/shared/contracts';
-import { imageImportItems } from '@/renderer/components/creator/imageImport';
-import { Button } from '@/renderer/components/ui/button';
-import { Input } from '@/renderer/components/ui/input';
-import { Popover, PopoverContent, PopoverTrigger } from '@/renderer/components/ui/popover';
-import { Separator } from '@/renderer/components/ui/separator';
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/renderer/components/ui/tooltip';
-import { VideoDocumentFramePicker } from '@/renderer/features/video-documents/VideoDocumentFramePicker';
-import {
-  VideoDocumentTableMenu,
-  VideoDocumentTableOperations,
-  type VideoDocumentTableControlsLabels,
-} from '@/renderer/features/video-documents/VideoDocumentTableControls';
-import {
-  VideoDocumentImageOperations,
-  type VideoDocumentImageControlsLabels,
-} from '@/renderer/features/video-documents/VideoDocumentImageOperations';
-import {
-  insertVideoDocumentImage,
-  type VideoDocumentEditorImageAttributes,
-  videoDocumentFrameImageAttributes,
-} from '@/renderer/features/video-documents/videoDocumentEditorMedia';
-import { cn } from '@/renderer/lib/utils';
-import { commandShortcutText } from '@/renderer/commands/app-shortcuts';
-
-export interface VideoDocumentEditorImageImport {
-  binding: VideoDocumentMediaBinding;
-  media: VideoDocumentRevisionMediaDto;
-}
-
-export interface ImportedEditorImage extends VideoDocumentEditorImageImport {
-  attributes: VideoDocumentEditorImageAttributes;
-}
-
-function editorImageFromAsset(
-  asset: AssetDto,
-  fallbackByteSize: number,
-  alt: string | null,
-  sourcePath: string,
-): ImportedEditorImage {
-  if (
-    asset.mimeType !== 'image/png' &&
-    asset.mimeType !== 'image/jpeg' &&
-    asset.mimeType !== 'image/webp' &&
-    asset.mimeType !== 'image/gif' &&
-    asset.mimeType !== 'image/svg+xml'
-  ) {
-    throw new Error('Image import produced an unsupported asset');
-  }
-  const mimeType = asset.mimeType;
-  const binding: VideoDocumentMediaBinding = {
-    path: sourcePath,
-    assetId: asset.id,
-    kind: 'IMAGE',
-    timestampMs: null,
-    endTimestampMs: null,
-    posterAssetId: null,
-  };
-  const media: VideoDocumentRevisionMediaDto = {
-    assetId: asset.id,
-    mediaUrl: asset.mediaUrl,
-    mimeType,
-    width: asset.width,
-    height: asset.height,
-    byteSize: Math.max(1, asset.byteSize ?? fallbackByteSize),
-    durationMs: null,
-  };
-  return {
-    binding,
-    media,
-    attributes: { src: media.mediaUrl, sourcePath: binding.path, title: null, alt },
-  };
-}
-
-export function videoDocumentEditorImageFromAsset(asset: AssetDto, existingPath?: string): ImportedEditorImage {
-  const extension =
-    asset.mimeType === 'image/png'
-      ? 'png'
-      : asset.mimeType === 'image/webp'
-        ? 'webp'
-        : asset.mimeType === 'image/gif'
-          ? 'gif'
-          : asset.mimeType === 'image/svg+xml'
-            ? 'svg'
-            : 'jpg';
-  return editorImageFromAsset(asset, 1, null, existingPath ?? `assets/material-${asset.id}.${extension}`);
-}
+export { videoDocumentEditorImageFromAsset } from '@/renderer/features/content-editor/contentImageAsset';
+export type {
+  ImportedEditorImage,
+  VideoDocumentEditorImageImport,
+} from '@/renderer/features/content-editor/contentImageAsset';
 
 export async function importVideoDocumentEditorImage(
   file: File,
   source: CreatorImageImportSource,
+  importId: string = crypto.randomUUID(),
 ): Promise<ImportedEditorImage> {
   const item = (await imageImportItems([file]))[0];
   if (!item) throw new Error('Image import produced no item');
-  const assets = await window.desktopApi.creatorReferencesImport({
-    context: {
-      seriesId: null,
-      versionId: null,
-      title: '',
-      titleLocale: 'en',
-      source,
-    },
-    items: [item],
-  });
-  const asset = assets[0];
+  await stageContentImage({ importId, source, item: { name: item.name, mimeType: item.mimeType, bytes: item.bytes } });
+  const asset = await contentImageApi().contentImageResolve(importId);
   if (!asset) throw new Error('Image import produced no asset');
   const extension =
     asset.mimeType === 'image/png'
@@ -157,7 +95,7 @@ export async function importVideoDocumentEditorImage(
     asset,
     item.bytes.byteLength,
     item.name || null,
-    `assets/upload-${asset.id}.${extension}`,
+    `assets/upload-${crypto.randomUUID()}.${extension}`,
   );
 }
 
@@ -304,7 +242,7 @@ function HeadingMenu({
     ...([2, 3, 4, 5, 6] as const).map((level) => ({
       level,
       label: labels[`heading${level}`],
-      shortcut: commandShortcutText(`format.heading.${level}`, window.desktopApi.appPlatform),
+      shortcut: commandShortcutText(`format.heading.${level}`, window.desktopApi?.appPlatform ?? 'win32'),
     })),
   ];
   return (
@@ -475,16 +413,20 @@ function ArticleEditTrailMenu({ controls }: { controls: VideoDocumentArticleElem
 }
 
 interface Props {
+  embedded?: boolean;
+  referenceAction?: ReactNode;
+  onImageOperation?(operation: Promise<void>): void;
+  importImage?: typeof importVideoDocumentEditorImage;
   editor: Editor;
   state: VideoDocumentWysiwygToolbarState;
   labels: VideoDocumentWysiwygEditorLabels;
   documentId?: string;
   sourceVideoUrl?: string;
-  currentTimeMs: number;
-  durationMs: number;
-  timelineSegments: readonly VideoDocumentTimelineSegment[];
+  currentTimeMs?: number;
+  durationMs?: number;
+  timelineSegments?: readonly VideoDocumentTimelineSegment[];
   mediaBindings: readonly VideoDocumentMediaBinding[];
-  onFrameCaptured(result: VideoDocumentFrameCaptureResult): void;
+  onFrameCaptured?(result: VideoDocumentFrameCaptureResult): void;
   onImageImported(result: VideoDocumentEditorImageImport): void;
   onImageImportError(): void;
   searchOpen: boolean;
@@ -495,14 +437,18 @@ interface Props {
 }
 
 export function VideoDocumentWysiwygToolbar({
+  embedded,
+  referenceAction,
+  importImage = importVideoDocumentEditorImage,
+  onImageOperation,
   editor,
   state,
   labels,
   documentId,
   sourceVideoUrl,
-  currentTimeMs,
-  durationMs,
-  timelineSegments,
+  currentTimeMs = 0,
+  durationMs = 0,
+  timelineSegments = [],
   mediaBindings,
   onFrameCaptured,
   onImageImported,
@@ -522,11 +468,7 @@ export function VideoDocumentWysiwygToolbar({
   async function uploadImage(file: File) {
     setUploadingImage(true);
     try {
-      const result = await importVideoDocumentEditorImage(file, 'UPLOAD');
-      if (!insertVideoDocumentImage(editor, result.attributes, editor.isActive('image'))) {
-        throw new Error('Image could not be inserted into the editor');
-      }
-      onImageImported(result);
+      await beginContentImageInsertion(editor, file, 'UPLOAD', importImage, onImageImported, onImageImportError);
     } catch {
       if (!editor.isDestroyed) onImageImportError();
     } finally {
@@ -536,7 +478,14 @@ export function VideoDocumentWysiwygToolbar({
 
   return (
     <TooltipProvider delayDuration={450}>
-      <div className="sticky top-0 z-30 flex min-h-9 items-center gap-0.5 overflow-x-auto border-b bg-background/96 px-1.5 backdrop-blur-sm [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+      <div
+        className={cn(
+          'z-30 flex min-h-8 items-center gap-0.5 overflow-x-auto px-1.5 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden',
+          embedded
+            ? 'relative bg-transparent text-inherit'
+            : 'sticky top-0 min-h-9 border-b bg-background/96 backdrop-blur-sm',
+        )}
+      >
         <HeadingMenu editor={editor} state={state} labels={labels} />
         <Separator orientation="vertical" className="mx-1 h-4" />
         <FormatButton label={labels.bold} active={state.bold} onClick={() => editor.chain().focus().toggleBold().run()}>
@@ -580,6 +529,7 @@ export function VideoDocumentWysiwygToolbar({
         </FormatButton>
         <Separator orientation="vertical" className="mx-1 h-4" />
         <LinkMenu editor={editor} active={state.link} labels={labels} />
+        {referenceAction}
         <FormatButton
           label={labels.blockquote}
           active={state.blockquote}
@@ -639,7 +589,7 @@ export function VideoDocumentWysiwygToolbar({
             }}
             onCapture={(result) => {
               if (!insertVideoDocumentImage(editor, videoDocumentFrameImageAttributes(result), state.image)) return;
-              onFrameCaptured(result);
+              onFrameCaptured?.(result);
             }}
           />
         )}
@@ -652,7 +602,10 @@ export function VideoDocumentWysiwygToolbar({
           onChange={(event) => {
             const file = event.currentTarget.files?.[0];
             event.currentTarget.value = '';
-            if (file) void uploadImage(file);
+            if (file) {
+              const operation = uploadImage(file);
+              onImageOperation?.(operation);
+            }
           }}
         />
         <span className="ml-auto flex items-center gap-0.5 pl-2">

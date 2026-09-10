@@ -2,6 +2,8 @@ import type { ArticleContentInput, AssetDto, Locale, SocialPostContentInput } fr
 import { articleMarkdownFromPlainText } from '@/renderer/components/creator/articleMarkdownFromPlainText';
 
 function articleImageExtension(asset: AssetDto) {
+  if (asset.mimeType === 'image/gif') return 'gif';
+  if (asset.mimeType === 'image/avif') return 'avif';
   if (asset.mimeType === 'image/png') return 'png';
   if (asset.mimeType === 'image/webp') return 'webp';
   if (asset.mimeType === 'image/svg+xml') return 'svg';

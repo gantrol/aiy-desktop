@@ -122,9 +122,11 @@ export class CodexAdapterCore {
     }
     try {
       const cwd = path.resolve(this.libraryRoot);
+      const binary = this.transport === 'app-server' ? await this.appServer.resolveBinary() : this.binary;
+      throwIfCodexCancelled(signal);
       const [version, auth] = await Promise.all([
-        this.processRunner(this.binary, ['--version'], '', cwd, 10_000, undefined, signal),
-        this.processRunner(this.binary, ['login', 'status'], '', cwd, 15_000, undefined, signal),
+        this.processRunner(binary, ['--version'], '', cwd, 10_000, undefined, signal),
+        this.processRunner(binary, ['login', 'status'], '', cwd, 15_000, undefined, signal),
       ]);
       throwIfCodexCancelled(signal);
       const authenticated = /logged in/i.test(`${auth.stdout}\n${auth.stderr}`);

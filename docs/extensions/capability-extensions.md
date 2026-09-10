@@ -8,6 +8,7 @@
 
 - [`templates/capability/manifest.json`](templates/capability/manifest.json)：通用能力声明。
 - [`templates/image-api/manifest.json`](templates/image-api/manifest.json)：带声明式连接配置的图像 API 能力。
+- [内容应用接口](content-applications.md)：便签中的外部应用贡献、宿主适配器与内容访问权限。
 
 ## 声明与实现是两层
 
@@ -45,7 +46,7 @@ manifest 负责让扩展中心知道“这个扩展是什么、贡献什么、�
 - `codex-image-discovery`：发现并导入 Codex 生成图片，清单位于 [`extensions/com.aiy.codex-image-discovery/`](../../extensions/com.aiy.codex-image-discovery/)。
 - `codex-history-search`：从 Codex 只读任务元数据与聊天投影建立扩展私有 FTS5 索引，搜索标题、用户消息和最终回答；支持归档状态、角色、子代理、工作区、分支和日期筛选。搜索查询不读取 rollout；选中单个任务后，详情区按页读取该任务的聊天投影，旧版任务则在严格路径校验后按固定字节上限倒序读取对应 rollout。索引不进入资料库、不上传，并在任一必需权限撤销时清空。清单位于 [`extensions/com.aiy.codex-history-search/`](../../extensions/com.aiy.codex-history-search/)。
 - `codex-visualization-discovery`：按 Codex 任务发现 HTML 交互可视化、静态可视化、SVG、PDF、线框图、UML 与图表源文件；HTML 仅按需进入关闭脚本、网络、表单和下载的短期沙箱静态预览，并受文件、请求数和总资源体积限制。能力包不改动来源文件，同时提供外部打开、定位和导出。清单位于 [`extensions/com.aiy.codex-visualization-discovery/`](../../extensions/com.aiy.codex-visualization-discovery/)。
-- `codex-usage-investigator`（Codex今天努力了吗？）：以 Codex `state_*.sqlite` 为任务索引，将逐次 token、Chat turn 终态与完成耗时、会话来源、上下文压缩次数、订阅套餐、模型、Standard/Fast 及 primary/secondary 额度窗口增量导入拓展专用 SQLite；每完成一个 rollout 即提交检查点，中断后从未完成文件继续。界面默认按本地日历“今天”调查，以左侧报告历史轨和右侧总览、速度、会话、额度、模型分区组织结果。Fast 实测按完成时刻归属所选范围，只比较同一规范化模型与同一推理强度中明确记录模式的完成轮次，分别计算 Standard/Fast `task_complete.duration_ms` 中位数，并以两者之比对照[官方 1.5 倍模型速度标称](https://learn.chatgpt.com/docs/agent-configuration/speed)；Fork 继承轮次只保留最早自有记录。导入时以会话累计计数器还原真实增量，为每个用量事件生成不含内容的稳定指纹，并在读取时只保留跨会话历史重放中的全局最早事件。可选详细统计以完整会话为一级单位，按末个自有终态 Chat turn 归属时间范围；Fork 继承的 Chat turn 与上下文压缩均不重复计数，用户直聊、Fork 与子代理分开比较，仅按单一规范化模型控制样本，Standard、Fast、混合及未知服务模式合并进入 Token 分桶。会话按轮数排序后采用动态近似等频分桶：组数随样本量对数增长，并限制为每约 5 个完整会话至多增加一组；同轮数会话不拆分，超大同轮数组后重新均衡剩余组。低于 5 个样本的组继续展示，但不参与成本最低点及趋势信号。API 等值统一折算为同模型在事件日期的 Standard 公开费率，因此模式未知的会话仍可进入 API 中位数。界面同时展示总体覆盖、跨比较组轮数信号、上下文压缩次数平均值、轮均 Token/API 中位数与会话峰值上下文范围。Credits 等值仍按事件的 Standard/Fast 模式应用公开倍率；会话缺少模式事件时，仅对 Codex 配置文件修改时间之后的事件使用其中的模式兜底，显式会话标记始终优先。API 等值仅作为公开费率对照而非账单。额度换算只统计 `resetsAt` 之前且落在 10080 分钟周窗口内的事件；`resetsAt` 仅作为下一次重置预测，按 5 分钟容差推进同一额度流，旧预测快照会被丢弃，预测前移时结束当前连续观测段。每个观测段以去重后的 Token 总数除以该段观测到的额度消耗百分点，并列出 Sol、Luna、Terra 及其他模型与 Standard/Fast 组合的 Token 占比、非缓存输入加输出 Token 与缓存输入占比。扫描与计算阶段分别报告可访问的后台进度，加工结果按原始数据修订号和算法版本缓存。拓展不会保存或导出 Prompt、回复、工作目录或本机绝对路径。清单位于 [`extensions/com.aiy.codex-usage-investigator/`](../../extensions/com.aiy.codex-usage-investigator/)。
+- `codex-usage-investigator`（Codex今天努力了吗？）：以 Codex `state_*.sqlite` 为任务索引，将逐次 token、Chat turn 终态与完成耗时、会话来源、上下文压缩次数、订阅套餐、模型、Standard/Fast 及 primary/secondary 额度窗口增量导入拓展专用 SQLite；每完成一个 rollout 即提交检查点，中断后从未完成文件继续。界面默认按本地日历“今天”调查，以左侧报告历史轨和右侧总览、速度、会话、额度、模型分区组织结果。Fast 实测按完成时刻归属所选范围，只比较同一规范化模型与同一推理强度中已解析为单一模式的完成轮次，分别计算 Standard/Fast `task_complete.duration_ms` 中位数，并以两者之比对照[官方 1.5 倍模型速度标称](https://learn.chatgpt.com/docs/agent-configuration/speed)；Fork 继承轮次只保留最早自有记录。导入时以会话累计计数器还原真实增量，为每个用量事件生成不含内容的稳定指纹，并在读取时只保留跨会话历史重放中的全局最早事件。可选详细统计以完整会话为一级单位，按末个自有终态 Chat turn 归属时间范围；Fork 继承的 Chat turn 与上下文压缩均不重复计数，用户直聊、Fork 与子代理分开比较，仅按单一规范化模型控制样本，Standard、Fast、混合及未知服务模式合并进入 Token 分桶。会话按轮数排序后采用动态近似等频分桶：组数随样本量对数增长，并限制为每约 5 个完整会话至多增加一组；同轮数会话不拆分，超大同轮数组后重新均衡剩余组。低于 5 个样本的组继续展示，但不参与成本最低点及趋势信号。API 等值统一折算为同模型在事件日期的 Standard 公开费率，因此模式未知的会话仍可进入 API 中位数。界面同时展示总体覆盖、跨比较组轮数信号、上下文压缩次数平均值、轮均 Token/API 中位数与会话峰值上下文范围。Credits 等值仍按事件的 Standard/Fast 模式应用公开倍率；会话缺少模式事件时，仅对 Codex 配置文件修改时间之后的事件使用其中的模式兜底，显式会话标记始终优先。API 等值仅作为公开费率对照而非账单。额度换算只统计 `resetsAt` 之前且落在 10080 分钟周窗口内的事件；`resetsAt` 仅作为下一次重置预测，按 5 分钟容差推进同一额度流，旧预测快照会被丢弃，预测前移时结束当前连续观测段。每个观测段以去重后的 Token 总数除以该段观测到的额度消耗百分点，并列出 Sol、Luna、Terra 及其他模型与 Standard/Fast 组合的 Token 占比、非缓存输入加输出 Token 与缓存输入占比。扫描与计算阶段分别报告可访问的后台进度，加工结果按原始数据修订号和算法版本缓存。拓展不会保存或导出 Prompt、回复、工作目录或本机绝对路径。清单位于 [`extensions/com.aiy.codex-usage-investigator/`](../../extensions/com.aiy.codex-usage-investigator/)。
 - `weibo-browser-handoff`：把当前内容和已验证的资产交给浏览器伴侣填入微博草稿。它只接受 `com.aiy.channel.weibo`，并要求 `browser.handoff:weibo`；最终发布仍由用户在微博页面完成。清单位于 [`extensions/com.aiy.channel.weibo/`](../../extensions/com.aiy.channel.weibo/)。
 - `article-draft-delivery`：由外部扩展声明唯一渠道、站点 origin、URL 前缀和凭据权限；宿主只代管密钥、捕获不可变文章修订、上传已绑定图片并调用固定的 AIY 文章导入协议。扩展包不执行 JavaScript，渠道包可在站点仓库独立维护和安装。
 
@@ -55,7 +56,11 @@ manifest 负责让扩展中心知道“这个扩展是什么、贡献什么、�
 
 每分钟取最高额度快照，累计相邻分钟的正向消耗。首次观测分钟与额度下降分钟只建立基线，其用量不参与换算；重置预测前移后重新分段。因此 reset 不会抵消此前消耗，也不会被直接当成已用满 100% 额度。模式覆盖按已明确或补回模式的 Token 占比计算。截断与历史算法报告可从可用观测转换，并在提示中标明范围限制；混合套餐或额度池及没有有效额度消耗的报告仍不强行合并。
 
-读取模式时，完整 `thread_settings_applied` 设置快照中省略或清空 `service_tier` 的情况按默认 Standard 补回，并保留推断标记；缺少模型与 provider 身份的稀疏记录不使用该规则。[Codex 的设置快照协议](https://github.com/openai/codex/blob/main/codex-rs/protocol/src/protocol.rs)在没有指定档位时省略该字段。同一轮仅有一种明确模式时，可补回该轮缺失的模式；整轮没有设置记录时保留“未记录”，不把后来的设置或当前配置套到过去。修复只更新可重建的扩展索引与报告，不修改 Codex 原始日志。
+读取模式时，完整 `thread_settings_applied` 设置快照中省略或清空 `service_tier` 的情况按默认 Standard 补回，并保留推断标记；缺少模型与 provider 身份的稀疏记录不使用该规则。[Codex 的设置快照协议](https://github.com/openai/codex/blob/main/codex-rs/protocol/src/protocol.rs)在没有指定档位时省略该字段。同一轮仅有一种已解析模式时，可补回该轮缺失的模式；若初始轮只有完整 `turn_context` 而没有更早的模式设置，则按 Codex 默认 Standard 补回。缺少轮次上下文的孤立用量仍保留“未记录”，不把后来的设置套到过去。修复只更新可重建的扩展索引与报告，不修改 Codex 原始日志。
+
+部分 Fork 或子代理日志会给继承的历史重新打上时间戳，同时省略原轮次与模式。读取器仅在 `session_meta` 明确记录父会话、且能用 UUIDv7 确认首个自有轮次的情况下，排除该轮启动前缺少上下文的未知模式用量。继承记录仍参与累计计数器的基线还原，避免改变首个自有请求的真实增量；不满足这些证据的孤立记录继续显示“未记录”。升级后定向重解析受影响的来源，未受影响的旧来源缓存继续复用。已保存报告保持快照语义，重新调查后显示修正结果。
+
+计算时以单个 SQLite 游标按有界批次读取事件，每批之间让出主线程并检查取消。详细统计复用会话与轮次阶段已经确定的归属，只批量读取选中会话的自有轮次用量，避免每页重复计算全库轮次归属。来源缓存状态也通过批量查询读取；缓存目录按需异步创建，未启用拓展时不初始化统计数据库。
 
 ## 通用能力 manifest
 

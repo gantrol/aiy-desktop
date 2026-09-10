@@ -9,7 +9,7 @@ import {
 } from 'react';
 import {
   CropIcon,
-  CheckIcon,
+  Columns2Icon,
   FlaskConicalIcon,
   LoaderCircleIcon,
   MessageSquareIcon,
@@ -17,6 +17,7 @@ import {
   PanelRightCloseIcon,
   RotateCcwIcon,
   SearchIcon,
+  SquareIcon,
   UploadIcon,
 } from 'lucide-react';
 import type {
@@ -64,6 +65,8 @@ import {
 import { GenerationComparison } from '@/renderer/components/creator/GenerationComparison';
 import { CreatorPaneResizeHandle } from '@/renderer/components/creator/CreatorPaneResizeHandle';
 import { OutputGenerationRecord } from '@/renderer/components/creator/OutputGenerationRecord';
+import { DerivedVisualAdoptionBar } from '@/renderer/components/creator/DerivedVisualAdoptionBar';
+import type { DerivedVisualOperationRunner } from '@/renderer/components/creator/useDerivedVisualOperations';
 import { OutputThumbnailRail } from '@/renderer/components/creator/OutputThumbnailRail';
 import { allAssets } from '@/renderer/components/creator/utils';
 import { isEditableTarget, type RendererImageImportSource } from '@/renderer/components/creator/imageImport';
@@ -80,7 +83,14 @@ import {
 } from '@/renderer/components/creator/ImageEditConfirmDialog';
 import { ImageAspectDialog, type ImageAspectRatio } from '@/renderer/components/creator/ImageAspectDialog';
 
+import { ImageVariantMenu } from '@/renderer/components/creator/ImageVariantMenu';
+import type { ImageContentVariantKind } from '@/renderer/components/creator/workflows/useCreatorImageVariantWorkflow';
+import type { GifDocumentSummary } from '@/shared/contracts/gif-making';
+
 interface Props {
+  animations?: readonly GifDocumentSummary[];
+  onBeforeOpenVariant(): Promise<boolean>;
+  onCreateContentVariant(kind: ImageContentVariantKind, asset: AssetDto, seriesId: string): Promise<void>;
   headerNavigation: ReactNode;
   emptyState?: ReactNode;
   series: PromptSeriesDto | undefined;
@@ -130,7 +140,12 @@ interface Props {
   onImportedOutputSaved(output: ImportedCreationOutputDto): void;
   derivedVisual?: DerivedVisualDto | null;
   appliedDerivedVisualAssetId?: string | null;
-  onAdoptDerivedVisual?(visualId: string, imageAssetId: string): Promise<void>;
+  appliedDerivedVisualAsset?: AssetDto | null;
+  derivedVisualTargetTitle?: string;
+  derivedVisualTargetRevisionId?: string | null;
+  derivedVisualTargetArticle?: import('@/shared/contracts').ArticleDto | null;
+  spaceId: string;
+  onRunDerivedVisualOperation?: DerivedVisualOperationRunner;
   notify(message: string): void;
 }
 
@@ -175,6 +190,9 @@ function pendingFromAnnotation(annotation: AnnotationDto): PendingAnnotation {
 }
 
 export function OutputInspector({
+  animations = [],
+  onBeforeOpenVariant,
+  onCreateContentVariant,
   headerNavigation,
   emptyState,
   series,
@@ -220,7 +238,12 @@ export function OutputInspector({
   onImportedOutputSaved,
   derivedVisual = null,
   appliedDerivedVisualAssetId,
-  onAdoptDerivedVisual,
+  appliedDerivedVisualAsset,
+  derivedVisualTargetTitle,
+  derivedVisualTargetRevisionId,
+  derivedVisualTargetArticle,
+  spaceId,
+  onRunDerivedVisualOperation,
   notify,
 }: Props) {
   const { messages } = useI18n();
@@ -355,7 +378,6 @@ export function OutputInspector({
   const [refinementError, setRefinementError] = useState('');
   const [aspectDialogOpen, setAspectDialogOpen] = useState(false);
   const [transforming, setTransforming] = useState(false);
-  const [adoptingDerivedVisual, setAdoptingDerivedVisual] = useState(false);
   const [reusingPrompt, setReusingPrompt] = useState(false);
   const [busyAnnotationId, setBusyAnnotationId] = useState<string | null>(null);
   const [displayMode, setDisplayMode] = useState<'preview' | 'comparison'>('preview');
@@ -879,31 +901,6 @@ export function OutputInspector({
     );
   }
 
-  async function adoptDerivedVisual() {
-    if (!asset || !derivedVisual || !onAdoptDerivedVisual || adoptingDerivedVisual) return;
-    setAdoptingDerivedVisual(true);
-    try {
-      await onAdoptDerivedVisual(derivedVisual.id, asset.id);
-    } catch (reason) {
-      notify(reason instanceof Error ? reason.message : String(reason));
-    } finally {
-      setAdoptingDerivedVisual(false);
-    }
-  }
-
-  const derivedVisualActionLabel = derivedVisual
-    ? locale === 'zh'
-      ? derivedVisual.role === 'ARTICLE_HEADER'
-        ? '设为题图'
-        : derivedVisual.role === 'ARTICLE_INLINE'
-          ? '插入文章'
-          : '设为首图'
-      : derivedVisual.role === 'ARTICLE_HEADER'
-        ? 'Set as hero'
-        : derivedVisual.role === 'ARTICLE_INLINE'
-          ? 'Insert in article'
-          : 'Set as cover'
-    : '';
   const currentDerivedVisualAssetId =
     appliedDerivedVisualAssetId === undefined
       ? (derivedVisual?.selectedImageAssetId ?? null)
@@ -922,7 +919,7 @@ export function OutputInspector({
       label: messages.creator.imageTransform.title,
       icon: transforming ? LoaderCircleIcon : CropIcon,
       busy: transforming,
-      disabled: transforming,
+      disabled: transforming || asset?.mimeType === 'image/gif',
       onSelect: () => {
         setOutputMagnifierActive(false);
         setAspectDialogOpen(true);
@@ -1005,11 +1002,11 @@ export function OutputInspector({
       )}
       <header
         className={cn(
-          'flex h-14 shrink-0 items-center justify-between gap-1 border-b border-border/60 bg-secondary px-2 @min-[480px]/output:gap-2 @min-[480px]/output:px-3',
+          'flex min-h-14 shrink-0 flex-wrap items-center justify-between gap-1 border-b border-border/60 bg-secondary px-2 py-2 @min-[480px]/output:gap-2 @min-[480px]/output:px-3',
           comparisonFullWindow && 'hidden',
         )}
       >
-        <div className="flex min-w-0 flex-1 flex-col gap-0.5">
+        <div className="flex min-w-fit flex-1 flex-col gap-0.5">
           <div className="flex min-w-0 items-center gap-2">
             {headerNavigation}
             {asset && (
@@ -1034,6 +1031,24 @@ export function OutputInspector({
           )}
         </div>
         <div className="flex shrink-0 items-center gap-1 @min-[480px]/output:gap-2">
+          <ImageVariantMenu
+            seriesId={assetOwnerSeries?.id ?? inspectorSeries?.id ?? null}
+            asset={asset ?? null}
+            animations={animations}
+            beforeOpen={onBeforeOpenVariant}
+            onCreateContent={onCreateContentVariant}
+            notify={notify}
+            adoptionTarget={
+              derivedVisual && derivedVisualTargetRevisionId
+                ? {
+                    visualId: derivedVisual.id,
+                    expectedRevisionId: derivedVisualTargetRevisionId,
+                    title: derivedVisualTargetTitle ?? '',
+                    intent: derivedVisual.role === 'ARTICLE_INLINE' ? 'REPLACE_INLINE' : 'SET_COVER',
+                  }
+                : undefined
+            }
+          />
           <Button
             type="button"
             variant="ghost"
@@ -1051,17 +1066,24 @@ export function OutputInspector({
                 type="single"
                 value={displayMode}
                 onValueChange={(value) => value && changeDisplayMode(value as typeof displayMode)}
-                className="h-7"
+                className="h-9 shrink-0"
               >
-                <SegmentedItem value="preview" className="h-6 whitespace-nowrap px-1.5 @min-[480px]/output:px-2.5">
-                  {gallery.preview}
+                <SegmentedItem
+                  value="preview"
+                  className="size-8 shrink-0 p-0"
+                  title={gallery.preview}
+                  aria-label={gallery.preview}
+                >
+                  <SquareIcon className="size-4" aria-hidden="true" />
                 </SegmentedItem>
                 <SegmentedItem
                   data-action="output-comparison"
                   value="comparison"
-                  className="h-6 whitespace-nowrap px-1.5 @min-[480px]/output:px-2.5"
+                  className="size-8 shrink-0 p-0"
+                  title={gallery.comparison}
+                  aria-label={gallery.comparison}
                 >
-                  {gallery.comparison}
+                  <Columns2Icon className="size-4" aria-hidden="true" />
                 </SegmentedItem>
               </Segmented>
             )}
@@ -1215,27 +1237,23 @@ export function OutputInspector({
             </div>
             {!annotationWorkspaceOpen && (
               <>
-                {derivedVisual && derivedVisual.promptSeriesId === assetOwnerSeries?.id && onAdoptDerivedVisual && (
-                  <div className="shrink-0 border-t border-border/60 bg-background p-2">
-                    <Button
-                      type="button"
-                      className="w-full"
-                      disabled={adoptingDerivedVisual || currentDerivedVisualAssetId === asset.id}
-                      onClick={() => void adoptDerivedVisual()}
-                    >
-                      {adoptingDerivedVisual ? (
-                        <LoaderCircleIcon className="size-4 animate-spin" />
-                      ) : (
-                        <CheckIcon className="size-4" />
-                      )}
-                      {currentDerivedVisualAssetId === asset.id
-                        ? locale === 'zh'
-                          ? '已采用'
-                          : 'Applied'
-                        : derivedVisualActionLabel}
-                    </Button>
-                  </div>
-                )}
+                {derivedVisual &&
+                  derivedVisual.promptSeriesId === assetOwnerSeries?.id &&
+                  onRunDerivedVisualOperation && (
+                    <DerivedVisualAdoptionBar
+                      key={`${spaceId}:${derivedVisual.id}`}
+                      spaceId={spaceId}
+                      targetRevisionId={derivedVisualTargetRevisionId ?? null}
+                      targetArticle={derivedVisualTargetArticle ?? null}
+                      visual={derivedVisual}
+                      targetTitle={derivedVisualTargetTitle}
+                      currentAsset={appliedDerivedVisualAsset}
+                      currentAssetId={currentDerivedVisualAssetId}
+                      candidateAssetId={asset.id}
+                      runOperation={onRunDerivedVisualOperation}
+                      refresh={onImportedOutputUpdated}
+                    />
+                  )}
                 <OutputGenerationRecord
                   series={assetOwnerSeries}
                   experimentContext={experimentContext}

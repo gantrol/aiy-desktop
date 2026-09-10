@@ -1,19 +1,8 @@
-import { useEffect, useRef, type ReactNode, type Ref } from 'react';
-import { LightbulbIcon, LoaderCircleIcon, Maximize2Icon, Minimize2Icon } from 'lucide-react';
-import type {
-  AssistantWebSearchMode,
-  CreatorPromptNodeInput,
-  ImageGenerationRouteDto,
-  GenerationTargetInput,
-  Locale,
-  TermListItem,
-  WordPaletteDto,
-} from '@/shared/contracts';
-import { AssistantWritingAction } from '@/renderer/components/creator/AssistantWritingAction';
-import { AnnotationRefinementInput } from '@/renderer/components/creator/AnnotationRefinementInput';
 import type { AnnotationRefinementState } from '@/renderer/components/creator/annotationRefinement';
+import { AnnotationRefinementInput } from '@/renderer/components/creator/AnnotationRefinementInput';
+import { AssistantWritingAction } from '@/renderer/components/creator/AssistantWritingAction';
 import type { CreationAssistantMode } from '@/renderer/components/creator/CreationCollaborationPanel';
-import { CreationOutcomePlanner, type CreationOutcomePlan } from '@/renderer/components/creator/CreationOutcomePicker';
+import { CreationStartActions, type CreationStartPlan } from '@/renderer/components/creator/CreationStartActions';
 import {
   CreatorPromptComposer,
   type CreatorPromptComposerHandle,
@@ -22,11 +11,24 @@ import { GenerationLauncher } from '@/renderer/components/creator/GenerationLaun
 import type { GenerationReadiness } from '@/renderer/components/creator/generationReadiness';
 import { InspirationStashAction } from '@/renderer/components/creator/InspirationStashAction';
 import type { AppliedWordPalette } from '@/renderer/components/creator/utils';
-import { CompanionHandoffButton } from '@/renderer/features/browser-companion/CompanionHandoffButton';
 import { Button } from '@/renderer/components/ui/button';
 import { ScrollArea } from '@/renderer/components/ui/scroll-area';
+import { CompanionHandoffButton } from '@/renderer/features/browser-companion/CompanionHandoffButton';
+import type { ImportedEditorImage } from '@/renderer/features/video-documents/VideoDocumentWysiwygToolbar';
 import { useI18n } from '@/renderer/i18n/useI18n';
 import { cn } from '@/renderer/lib/utils';
+import type {
+  AssistantWebSearchMode,
+  CreatorPromptNodeInput,
+  GenerationTargetInput,
+  ImageGenerationRouteDto,
+  Locale,
+  TermListItem,
+  WordPaletteDto,
+} from '@/shared/contracts';
+import type { BlockDocument } from '@/shared/contracts/block-document';
+import { LightbulbIcon, LoaderCircleIcon, Maximize2Icon, Minimize2Icon } from 'lucide-react';
+import { useEffect, useRef, type ReactNode, type Ref } from 'react';
 
 interface Props {
   locale: Locale;
@@ -34,6 +36,9 @@ interface Props {
   promptProfileId: string;
   prompt: string;
   promptNodes: CreatorPromptNodeInput[];
+  document?: BlockDocument;
+  onImageImported?(image: ImportedEditorImage): void;
+  onImageImportError?(): void;
   terms: TermListItem[];
   palettes: WordPaletteDto[];
   appliedPalettes: AppliedWordPalette[];
@@ -52,6 +57,7 @@ interface Props {
   stashed: boolean;
   starting: boolean;
   planning: boolean;
+  imageToolsOpen?: boolean;
   startReady: boolean;
   fullWindow: boolean;
   annotationRefinement: AnnotationRefinementState | null;
@@ -62,9 +68,10 @@ interface Props {
   videoPicker?: ReactNode;
   references: ReactNode;
   sourceContext?: ReactNode;
+  titleInput?: ReactNode;
   experiments?: ReactNode;
   showStashAction?: boolean;
-  onPromptNodesChange(nodes: CreatorPromptNodeInput[]): void;
+  onPromptNodesChange(nodes: CreatorPromptNodeInput[], document?: BlockDocument): void;
   onOpenTerm(term: TermListItem): void;
   onOpenRecipe(paletteId: string): void;
   onConfigureRecipe(palette: WordPaletteDto): void;
@@ -77,7 +84,8 @@ interface Props {
   onConfigureExtension(extensionId: string): void;
   onGenerate(): void;
   onStashInspiration(): void;
-  onStartCreation(plan: CreationOutcomePlan): void;
+  onStartCreation(plan: CreationStartPlan): void;
+  onOpenExternalImport(): void;
   onChooseVideoDocument(): void;
   onFullWindowChange(open: boolean): void;
 }
@@ -88,6 +96,9 @@ export function MinimalCreationStarter({
   promptProfileId,
   prompt,
   promptNodes,
+  document,
+  onImageImported,
+  onImageImportError,
   terms,
   palettes,
   appliedPalettes,
@@ -106,6 +117,7 @@ export function MinimalCreationStarter({
   stashed,
   starting,
   planning,
+  imageToolsOpen,
   startReady,
   fullWindow,
   annotationRefinement,
@@ -116,6 +128,7 @@ export function MinimalCreationStarter({
   videoPicker,
   references,
   sourceContext,
+  titleInput,
   experiments,
   showStashAction = true,
   onPromptNodesChange,
@@ -132,10 +145,12 @@ export function MinimalCreationStarter({
   onGenerate,
   onStashInspiration,
   onStartCreation,
+  onOpenExternalImport,
   onChooseVideoDocument,
   onFullWindowChange,
 }: Props) {
   const labels = useI18n().messages.creator.starter;
+  const inputLabel = useI18n().messages.contentEditor.input;
   const characterCount = Array.from(prompt).length;
   const fullWindowButtonRef = useRef<HTMLButtonElement>(null);
 
@@ -179,9 +194,7 @@ export function MinimalCreationStarter({
           >
             {sourceContext}
             <div className="flex h-10 shrink-0 items-center justify-between gap-3 px-5 pt-1">
-              <span className="text-xs font-semibold text-foreground-secondary">
-                {locale === 'zh' ? '输入' : 'Input'}
-              </span>
+              <span className="text-xs font-semibold text-foreground-secondary">{inputLabel}</span>
               <div className="flex items-center gap-2">
                 {characterCount > 0 && (
                   <span className="text-2xs tabular-nums text-muted-foreground">
@@ -200,12 +213,16 @@ export function MinimalCreationStarter({
                 </Button>
               </div>
             </div>
+            {titleInput}
             <CreatorPromptComposer
               ref={composerRef}
               locale={locale}
               termPromptLocale={termPromptLocale}
               promptProfileId={promptProfileId}
               nodes={promptNodes}
+              document={document}
+              onImageImported={onImageImported}
+              onImageImportError={onImageImportError}
               terms={terms}
               palettes={palettes}
               appliedPalettes={appliedPalettes}
@@ -298,7 +315,8 @@ export function MinimalCreationStarter({
             )}
           </section>
           {planning && (
-            <CreationOutcomePlanner
+            <CreationStartActions
+              imageToolsOpen={imageToolsOpen}
               locale={locale}
               routes={routes}
               generationTargets={generationTargets}
@@ -311,6 +329,7 @@ export function MinimalCreationStarter({
               starting={starting}
               onStashInspiration={onStashInspiration}
               onStartCreation={onStartCreation}
+              onOpenExternalImport={onOpenExternalImport}
               onChooseVideoDocument={onChooseVideoDocument}
               onGenerationTargetsChange={onGenerationTargetsChange}
               onConfigureExtension={onConfigureExtension}

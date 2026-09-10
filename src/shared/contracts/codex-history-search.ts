@@ -3,6 +3,30 @@ import { z } from 'zod';
 const isoTimestampSchema = z.string().datetime({ offset: true });
 const calendarDateSchema = z.iso.date();
 const threadIdSchema = z.string().trim().min(1).max(512);
+export const codexHistoryThreadUsageInputSchema = z.object({ threadId: threadIdSchema }).strict();
+const usageCount = z.number().int().nonnegative().safe();
+export const codexHistoryThreadUsageModelSchema = z
+  .object({
+    model: z.string(),
+    totalTokens: usageCount,
+    inputTokens: usageCount,
+    cachedInputTokens: usageCount,
+    cacheWriteInputTokens: usageCount,
+    outputTokens: usageCount,
+    reasoningOutputTokens: usageCount,
+    apiPricedTokens: usageCount,
+    apiEquivalentUsd: z.number().finite().nonnegative().nullable(),
+  })
+  .strict();
+export const codexHistoryThreadUsageSchema = z
+  .object({
+    threadId: threadIdSchema,
+    models: z.array(codexHistoryThreadUsageModelSchema),
+    partial: z.boolean(),
+  })
+  .strict();
+export type CodexHistoryThreadUsageInput = z.infer<typeof codexHistoryThreadUsageInputSchema>;
+export type CodexHistoryThreadUsage = z.infer<typeof codexHistoryThreadUsageSchema>;
 const projectIdSchema = z.string().trim().max(512);
 const sectionIdSchema = z.string().trim().max(512);
 

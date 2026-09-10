@@ -615,6 +615,17 @@ export class RecycleBinRepository {
   }
 
   private async purgeImageAsset(row: EntryRow) {
+    // GIF revisions are editable source documents, including older saved revisions.
+    // Retain their source files before any filesystem unlink is attempted.
+    if (
+      this.db
+        .prepare(
+          'SELECT 1 FROM gif_document_assets WHERE asset_id=? UNION ALL SELECT 1 FROM gif_generation_assets WHERE asset_id=? LIMIT 1',
+        )
+        .get(row.entity_id, row.entity_id)
+    ) {
+      throw new Error('GIF_ASSET_IN_USE');
+    }
     const asset = this.db
       .prepare('SELECT relative_path FROM image_assets WHERE id = ? AND deleted_at IS NOT NULL')
       .get(row.entity_id) as JsonMap | undefined;

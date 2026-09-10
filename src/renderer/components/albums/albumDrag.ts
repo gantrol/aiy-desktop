@@ -7,6 +7,34 @@ export const CREATION_COLLECTION_DRAG_TYPE = 'application/x-aiy-creation-collect
 export const MATERIAL_ALBUM_DRAG_TYPE = 'application/x-aiy-material-album';
 export const MATERIALS_DRAG_TYPE = 'application/x-aiy-materials';
 
+type CreationTreeDrag = { kind: 'ALBUM' | 'CREATION_ITEM'; id: string };
+let activeCreationTreeDrag: (CreationTreeDrag & { finish(): void }) | null = null;
+
+export function endCreationTreeDrag() {
+  activeCreationTreeDrag?.finish();
+}
+
+function beginCreationTreeDrag(target: CreationTreeDrag) {
+  endCreationTreeDrag();
+  const finish = () => {
+    window.removeEventListener('dragend', finish, true);
+    if (activeCreationTreeDrag?.finish === finish) activeCreationTreeDrag = null;
+  };
+  activeCreationTreeDrag = { ...target, finish };
+  window.addEventListener('dragend', finish, { capture: true, once: true });
+}
+
+/** DataTransfer hides payloads during dragover; keep this renderer's identity
+ * available so destinations can reject cycles before a drop occurs. */
+export function readCreationTreeDrag(dataTransfer: DataTransfer): CreationTreeDrag | null {
+  const session = activeCreationTreeDrag;
+  if (!session) return null;
+  const type = session.kind === 'ALBUM' ? ALBUM_DRAG_TYPE : CREATION_ITEM_DRAG_TYPE;
+  if (!dataTransfer.types.includes(type)) return null;
+  const transferredId = dataTransfer.getData(type).trim();
+  return transferredId && transferredId !== session.id ? null : { kind: session.kind, id: session.id };
+}
+
 interface CreationCollectionDragSession {
   id: number;
   albumId: string;
@@ -191,6 +219,7 @@ export function writeAlbumDrag(dataTransfer: DataTransfer, albumId: string) {
   dataTransfer.effectAllowed = 'move';
   dataTransfer.setData(ALBUM_DRAG_TYPE, albumId);
   dataTransfer.setData('text/plain', albumId);
+  beginCreationTreeDrag({ kind: 'ALBUM', id: albumId });
 }
 
 export function writeCreationItemDrag(dataTransfer: DataTransfer, creationItemId: string) {
@@ -199,6 +228,7 @@ export function writeCreationItemDrag(dataTransfer: DataTransfer, creationItemId
   dataTransfer.effectAllowed = 'move';
   dataTransfer.setData(CREATION_ITEM_DRAG_TYPE, id);
   dataTransfer.setData('text/plain', id);
+  beginCreationTreeDrag({ kind: 'CREATION_ITEM', id });
 }
 
 export function readCreationItemDrag(dataTransfer: DataTransfer): string | null {

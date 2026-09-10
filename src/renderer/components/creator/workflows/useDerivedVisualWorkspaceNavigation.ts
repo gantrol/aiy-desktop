@@ -16,12 +16,15 @@ import { emptyCreationDictionaryScope } from '@/shared/album-creation-defaults';
 import type { CreatorLocation, NavigationMode } from '@/renderer/components/app/app-navigation';
 import { replaceCreatorPromptText } from '@/renderer/components/creator/creatorPromptDocument';
 import {
-  buildArticleHeaderPrompt,
-  buildArticleInlinePrompt,
-  buildSocialCoverPrompt,
-} from '@/renderer/components/creator/derivedVisualPrompt';
+  derivedVisualCanvasPresetKeys,
+  derivedVisualWorkspaceVersion,
+  DerivedVisualViewUnavailableError,
+  type DerivedVisualWorkspaceViewState,
+} from '@/renderer/components/creator/derivedVisualWorkspace';
+import { allAssets } from '@/renderer/components/creator/utils';
 import type { CreationOutputMode } from '@/renderer/components/creator/CreationOutputTabs';
 import { useStableCallback } from '@/renderer/lib/useStableCallback';
+import { useI18n } from '@/renderer/i18n/useI18n';
 
 interface Options {
   clearSavedInspiration(): void;
@@ -61,44 +64,71 @@ interface Options {
 }
 
 export function useDerivedVisualWorkspaceNavigation(options: Options) {
+  const labels = useI18n().messages.creator.derivedVisual;
   const changePrompt = useStableCallback((prompt: string) => {
     options.updatePromptDocument(replaceCreatorPromptText(options.promptNodesRef.current, prompt));
   });
 
-  const openDraftWorkspace = useStableCallback((draft: CreationDraftDto) => {
-    options.onComparisonFullWindowChange(false);
-    if (!options.preserveParentSelection) options.clearSelection();
-    options.clearSavedInspiration();
-    options.setOutputMode('results');
-    options.setVideoCreationRequest(null);
-    options.setCreationMode('new');
-    options.setSeriesId(null);
-    options.setOutputSeriesId(null);
-    options.setVersionId('');
-    options.setRequestedAssetId(null);
-    options.setOutputGalleryOpen(false);
-    options.resetInputs();
-    options.restoreDraft(draft);
-    options.restoreAssistant({ kind: 'DRAFT', id: draft.id });
-    options.setDismissedDerivedVisualId(null);
-    options.setOutputCollapsed(false);
-    options.setCompactPanel('output');
-  });
+  const openDraftWorkspace = useStableCallback(
+    (draft: CreationDraftDto, visual?: DerivedVisualDto, view?: DerivedVisualWorkspaceViewState) => {
+      if (
+        visual &&
+        !(visual.articleId
+          ? options.data.articles?.some((article) => article.id === visual.articleId)
+          : options.data.socialPosts?.some((post) => post.id === visual.socialPostId))
+      )
+        throw new Error(labels.parentUnavailable);
+      options.onComparisonFullWindowChange(false);
+      if (!options.preserveParentSelection) options.clearSelection();
+      if (visual?.articleId) options.selectArticle(visual.articleId);
+      else if (visual?.socialPostId) options.selectSocialPost(visual.socialPostId);
+      options.clearSavedInspiration();
+      options.setOutputMode('results');
+      options.setVideoCreationRequest(null);
+      options.setCreationMode('new');
+      options.setSeriesId(null);
+      options.setOutputSeriesId(null);
+      options.setVersionId('');
+      options.setRequestedAssetId(null);
+      options.setOutputGalleryOpen(false);
+      options.resetInputs();
+      options.restoreDraft(draft);
+      options.restoreAssistant({ kind: 'DRAFT', id: draft.id });
+      options.setDismissedDerivedVisualId(null);
+      options.setOutputCollapsed(false);
+      options.setCompactPanel('output');
+      if (visual)
+        options.commit(
+          { surface: 'creation-draft', draftId: draft.id, derivedVisualId: visual.id },
+          view?.navigationMode ?? 'push',
+        );
+    },
+  );
 
   const openSeriesWorkspace = useStableCallback(
     (
       visual: DerivedVisualDto,
       hostSeriesId: string,
-      workspace: { outputSeriesId?: string; assetId?: string; prompt?: string; canvasPreset?: CanvasPresetDto } = {},
+      workspace: DerivedVisualWorkspaceViewState & {
+        prompt?: string;
+        canvasPreset?: CanvasPresetDto;
+      } = {},
     ) => {
       const hostSeries = options.data.series.find((candidate) => candidate.id === hostSeriesId);
       if (!hostSeries || visual.promptSeriesId !== hostSeries.id) {
-        throw new Error(
-          options.locale === 'zh' ? '派生创作工作区不可用' : 'The derived creation workspace is unavailable',
-        );
+        throw new Error(labels.workspaceUnavailable);
       }
-      const targetVersion =
-        hostSeries.versions.find((candidate) => candidate.id === hostSeries.currentVersionId) ?? hostSeries.versions[0];
+      const targetVersion = derivedVisualWorkspaceVersion(hostSeries, workspace.versionId);
+      if (!targetVersion) {
+        if (workspace.versionId) throw new DerivedVisualViewUnavailableError(labels.savedVersionUnavailable);
+        throw new Error(labels.workspaceUnavailable);
+      }
+      const outputSeries = workspace.outputSeriesId
+        ? options.data.series.find((item) => item.id === workspace.outputSeriesId)
+        : hostSeries;
+      if (!outputSeries) throw new DerivedVisualViewUnavailableError(labels.savedOutputUnavailable);
+      if (workspace.assetId && !allAssets(outputSeries).some((asset) => asset.id === workspace.assetId))
+        throw new DerivedVisualViewUnavailableError(labels.savedCandidateUnavailable);
       const targetArticle = visual.articleId
         ? (options.data.articles ?? []).find((article) => article.id === visual.articleId)
         : null;
@@ -106,7 +136,7 @@ export function useDerivedVisualWorkspaceNavigation(options: Options) {
         ? (options.data.socialPosts ?? []).find((post) => post.id === visual.socialPostId)
         : null;
       if (!targetArticle && !targetPost) {
-        throw new Error(options.locale === 'zh' ? '父创作不可用' : 'The parent creation is unavailable');
+        throw new Error(labels.parentUnavailable);
       }
       options.replaceDraftSession(null);
       options.onComparisonFullWindowChange(false);
@@ -119,7 +149,7 @@ export function useDerivedVisualWorkspaceNavigation(options: Options) {
       options.setCreationMode('existing');
       options.setSeriesId(hostSeries.id);
       options.setOutputSeriesId(workspace.outputSeriesId ?? hostSeries.id);
-      options.setVersionId(targetVersion?.id ?? '');
+      options.setVersionId(targetVersion.id);
       options.setRequestedAssetId(workspace.assetId ?? null);
       options.setOutputGalleryOpen(false);
       options.setDictionaryScope(emptyCreationDictionaryScope());
@@ -131,63 +161,36 @@ export function useDerivedVisualWorkspaceNavigation(options: Options) {
       options.setOutputCollapsed(false);
       options.setCompactPanel('output');
       options.commit(
-        targetArticle
-          ? { surface: 'article', articleId: targetArticle.id }
-          : { surface: 'social-post', postId: targetPost!.id },
-        'replace',
+        {
+          surface: 'existing-creation',
+          seriesId: hostSeries.id,
+          ...(workspace.outputSeriesId && workspace.outputSeriesId !== hostSeries.id
+            ? { outputSeriesId: workspace.outputSeriesId }
+            : {}),
+          versionId: targetVersion.id,
+          assetId: workspace.assetId ?? null,
+          derivedVisualId: visual.id,
+        },
+        workspace.navigationMode ?? 'push',
       );
     },
   );
 
-  const openWorkspace = useStableCallback((result: DerivedVisualWorkspaceOpenResult) => {
-    if (result.kind === 'DRAFT') openDraftWorkspace(result.draft);
-    else
-      openSeriesWorkspace(result.visual, result.seriesId, {
-        assetId: result.visual.selectedImageAssetId ?? undefined,
-      });
-  });
+  const openWorkspace = useStableCallback(
+    (result: DerivedVisualWorkspaceOpenResult, view?: DerivedVisualWorkspaceViewState) => {
+      if (result.kind === 'DRAFT') openDraftWorkspace(result.draft, result.visual, view);
+      else
+        openSeriesWorkspace(result.visual, result.seriesId, {
+          assetId: result.visual.selectedImageAssetId ?? undefined,
+          ...view,
+        });
+    },
+  );
 
   const changeCanvas = useStableCallback((preset: CanvasPresetDto) => {
     const visual = options.editorDerivedVisual;
-    if (!visual) return;
-    try {
-      const templates = options.data.derivedVisualPrompts;
-      if (!templates?.articleHeader || !templates.articleInline || !templates.socialCover) {
-        throw new Error(
-          options.locale === 'zh' ? '配图提示词配置不可用' : 'Visual prompt configuration is unavailable',
-        );
-      }
-      let prompt: string;
-      if (visual.role === 'ARTICLE_HEADER') {
-        if (!options.selectedArticle) return;
-        prompt = buildArticleHeaderPrompt(
-          templates,
-          options.selectedArticle.content.title,
-          options.selectedArticle.content.markdown,
-        );
-      } else if (visual.role === 'ARTICLE_INLINE') {
-        if (!options.selectedArticle || !visual.anchor) return;
-        prompt = buildArticleInlinePrompt(
-          templates,
-          preset,
-          options.selectedArticle.content.title,
-          visual.anchor.selectedText,
-          options.selectedArticle.content.markdown,
-        );
-      } else {
-        if (!options.selectedSocialPost) return;
-        prompt = buildSocialCoverPrompt(
-          templates,
-          preset,
-          options.selectedSocialPost.content.title,
-          options.selectedSocialPost.content.body,
-        );
-      }
-      options.setCanvasPresetKey(preset.stableKey);
-      changePrompt(prompt);
-    } catch (reason) {
-      options.notify(reason instanceof Error ? reason.message : String(reason));
-    }
+    if (!visual || !derivedVisualCanvasPresetKeys[visual.role].includes(preset.stableKey)) return;
+    options.setCanvasPresetKey(preset.stableKey);
   });
 
   return { changeCanvas, changePrompt, openDraftWorkspace, openSeriesWorkspace, openWorkspace };

@@ -1,22 +1,23 @@
-import { z } from 'zod';
+import type { CodexAdapter } from '@/main/assistant/codex';
+import type { LibraryDatabase } from '@/main/database';
+import { VideoDocumentGenerationCheckpointStore } from '@/main/video-documents/generation-checkpoint-store';
+import {
+  normalizeVideoDocumentTokenUsage,
+  VideoDocumentGenerationPipeline,
+} from '@/main/video-documents/generation-pipeline';
+import { formatVideoDocumentTimestamp, type VideoDocumentDraftBatch } from '@/main/video-documents/generation-profile';
+import { VideoKeyChangeService, type VideoKeyChangeModelEvidence } from '@/main/video-documents/key-change-service';
+import { markdownBlockDocument } from '@/shared/block-document-codecs';
 import type {
   VideoDocumentArticleGenerateResult,
   VideoDocumentBranchDto,
   VideoDocumentDto,
   VideoDocumentRevisionContent,
   VideoDocumentRichNote,
-  VideoDocumentTimelineSegment,
   VideoDocumentTimedTranscriptContent,
+  VideoDocumentTimelineSegment,
 } from '@/shared/contracts';
-import type { CodexAdapter } from '@/main/assistant/codex';
-import type { LibraryDatabase } from '@/main/database';
-import { VideoKeyChangeService, type VideoKeyChangeModelEvidence } from '@/main/video-documents/key-change-service';
-import { VideoDocumentGenerationCheckpointStore } from '@/main/video-documents/generation-checkpoint-store';
-import { formatVideoDocumentTimestamp, type VideoDocumentDraftBatch } from '@/main/video-documents/generation-profile';
-import {
-  normalizeVideoDocumentTokenUsage,
-  VideoDocumentGenerationPipeline,
-} from '@/main/video-documents/generation-pipeline';
+import { z } from 'zod';
 
 const requestedModel = 'gpt-5.6-luna';
 const maximumMarkdownCharacters = 500_000;
@@ -232,7 +233,8 @@ function timelineSegments(
 }
 
 function latestBranchRevision(database: LibraryDatabase, branchId: string) {
-  return database.getLatestVideoDocumentRevision(branchId);
+  const revision = database.getLatestVideoDocumentRevision(branchId);
+  return revision ? database.contentLibrary.expandVideoRevision(revision) : null;
 }
 
 type NoteCollectionContent = Extract<VideoDocumentRevisionContent, { format: 'NOTE_COLLECTION' }>;
@@ -261,6 +263,7 @@ function mergeGeneratedNote(
   const replacement: VideoDocumentRichNote = {
     ...targetNote,
     markdown: generatedContent.markdown,
+    document: markdownBlockDocument(generatedContent.markdown, generatedContent.mediaBindings),
     transcriptBasis: generatedContent.transcriptBasis,
     sourceUrl: generatedContent.sourceUrl,
     generation: generatedContent.generation,

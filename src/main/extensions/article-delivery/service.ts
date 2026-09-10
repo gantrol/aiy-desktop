@@ -1,9 +1,17 @@
+import { selectedWatermarkProfile, type NaturalWatermarkRuntime } from '@/main/extensions/natural-watermark/selection';
+import type { NaturalWatermarkProfile } from '@/shared/contracts/natural-watermark';
 import { createHash } from 'node:crypto';
-import { readFile } from 'node:fs/promises';
 import { z } from 'zod';
 import type { LibraryDatabase } from '@/main/database';
 import type { ResolvedAssetFile } from '@/main/database/assets/asset-file-repository';
-import { normalizedArticleMediaPath, rewriteArticleImageReferences } from '@/main/creations/article-media-references';
+import {
+  normalizedArticleMediaPath,
+  referencedArticleMediaBindings,
+  rewriteArticleImageReferences,
+} from '@/main/creations/article-media-references';
+import { readBoundedImageFile } from '@/main/media/bounded-image-file';
+import { rasterizeSvgBytesInSandbox } from '@/main/media/svg-rasterization';
+import { readSvgRasterCacheBytes } from '@/main/media/svg-raster-cache';
 import {
   ArticleDeliveryConnection,
   readArticleDeliveryJsonResponse,
@@ -22,6 +30,7 @@ import {
   type ArticleDeliveryArticleProfileSaveInput,
   type ArticleDeliveryArticleTarget,
   type ArticleDeliveryUploadInput,
+  type ArticleDeliveryProgress,
 } from '@/shared/contracts/article-delivery';
 import { networkOriginExtensionPermission } from '@/shared/extension-permissions';
 
@@ -111,18 +120,26 @@ function apiData<T>(envelope: { data: T } | { error: { code: string; message: st
 async function mapConcurrent<Input, Output>(
   values: readonly Input[],
   limit: number,
-  operation: (value: Input) => Promise<Output>,
+  operation: (value: Input, signal: AbortSignal) => Promise<Output>,
 ) {
   const output = new Array<Output>(values.length);
+  const controller = new AbortController();
   let nextIndex = 0;
   const workers = Array.from({ length: Math.min(limit, values.length) }, async () => {
-    while (nextIndex < values.length) {
+    while (nextIndex < values.length && !controller.signal.aborted) {
       const index = nextIndex;
       nextIndex += 1;
-      output[index] = await operation(values[index]!);
+      try {
+        output[index] = await operation(values[index]!, controller.signal);
+      } catch (reason) {
+        controller.abort(reason);
+        throw reason;
+      }
     }
   });
-  await Promise.all(workers);
+  // Drain cancelled siblings before another queued article may start uploading.
+  await Promise.allSettled(workers);
+  controller.signal.throwIfAborted();
   return output;
 }
 
@@ -132,11 +149,15 @@ function requestHeaders(token: string) {
 
 export class ArticleDeliveryService {
   constructor(
-    private readonly database: Pick<LibraryDatabase, 'getArticle' | 'getArticleRevision' | 'resolveAssetFile'>,
+    private readonly database: Pick<
+      LibraryDatabase,
+      'libraryRoot' | 'getArticle' | 'getArticleRevision' | 'resolveAssetFilesAsync' | 'contentLibrary'
+    >,
     private readonly extensions: Pick<ExtensionRegistry, 'get' | 'isActivated' | 'isPermissionGranted'>,
     private readonly connection: ArticleDeliveryConnection,
     private readonly definition: ArticleDeliveryDefinition,
     private readonly fetchImpl: typeof fetch = fetch,
+    private readonly naturalWatermark?: NaturalWatermarkRuntime,
   ) {}
 
   status(rawInput: ArticleDeliveryArticleTarget) {
@@ -165,6 +186,8 @@ export class ArticleDeliveryService {
     rawInput: ArticleDeliveryUploadInput,
     rawTarget?: Readonly<{ slug: string; description: string }>,
     expectedContentHash?: string,
+    onProgress?: (progress: ArticleDeliveryProgress) => void,
+    capturedWatermarkProfile?: NaturalWatermarkProfile | null,
   ) {
     const input = articleDeliveryUploadInputSchema.parse(rawInput);
     this.assertAvailable();
@@ -183,11 +206,27 @@ export class ArticleDeliveryService {
     if (expectedContentHash && article.contentHash !== expectedContentHash) {
       throw new Error('Article revision content changed before delivery');
     }
+    article.content = this.database.contentLibrary.expandArticle(article.content);
     if (article.content.title.trim().length > 120) throw new Error('Article title exceeds 120 characters');
     if (Buffer.byteLength(article.content.markdown, 'utf8') > MAX_ARTICLE_MARKDOWN_BYTES) {
       throw new Error('Article Markdown exceeds 512 KB');
     }
-    const capturedMedia = this.captureMedia(article.content.mediaBindings);
+    const bindings = referencedArticleMediaBindings(
+      article.content.markdown,
+      article.content.mediaBindings,
+      article.content.coverAssetId,
+    );
+    const totalMedia = new Set(bindings.map((binding) => binding.assetId)).size;
+    if (totalMedia > 100) throw new Error('An article can contain at most 100 images for delivery');
+    onProgress?.({ phase: 'PREPARING', completedMedia: 0, totalMedia });
+    const capturedMedia = await this.captureMedia(bindings);
+    const watermarkProfile =
+      capturedWatermarkProfile === undefined
+        ? await selectedWatermarkProfile(input.watermark, this.naturalWatermark)
+        : capturedWatermarkProfile;
+    if (watermarkProfile && !this.naturalWatermark?.isActivated()) {
+      throw new Error('Natural Watermark is disabled or missing permissions');
+    }
     const source = Object.freeze({
       spaceId: input.spaceId,
       articleId: article.articleId,
@@ -200,7 +239,15 @@ export class ArticleDeliveryService {
       media: capturedMedia,
     });
 
-    const uploaded = await mapConcurrent(source.media, 3, (item) => this.uploadMedia(configuration, item));
+    let completedMedia = 0;
+    onProgress?.({ phase: 'UPLOADING_MEDIA', completedMedia, totalMedia });
+    // Two bounded 25 MB sources at a time, including SVG conversion and upload.
+    const uploaded = await mapConcurrent(source.media, 2, async (item, signal) => {
+      const result = await this.uploadMedia(configuration, item, signal, watermarkProfile);
+      completedMedia += 1;
+      onProgress?.({ phase: 'UPLOADING_MEDIA', completedMedia, totalMedia });
+      return result;
+    });
     const destinationsByPath = new Map<string, string>();
     const destinationsByAssetId = new Map<string, string>();
     for (const item of uploaded) {
@@ -223,6 +270,7 @@ export class ArticleDeliveryService {
       media: uploaded.map((item) => ({ assetId: item.assetId, key: item.key, checksum: item.checksum })),
     });
     const idempotencyKey = createHash('sha256').update('aiy-article-import-v1\0').update(body).digest('hex');
+    onProgress?.({ phase: 'PUBLISHING', completedMedia, totalMedia });
     const response = await this.fetchImpl(`${configuration.siteUrl}/api/integrations/aiy/documents`, {
       method: 'POST',
       headers: {
@@ -256,19 +304,23 @@ export class ArticleDeliveryService {
     if (this.connection.status(this.definition).state !== 'READY') throw new Error('Delivery connection is not ready');
   }
 
-  private captureMedia(bindings: readonly { path: string; assetId: string }[]) {
+  private async captureMedia(bindings: readonly { path: string; assetId: string }[]) {
     const byAssetId = new Map<string, MutableCapturedMedia>();
+    const files = await this.database.resolveAssetFilesAsync(bindings.map((binding) => binding.assetId));
     for (const binding of bindings) {
       const existing = byAssetId.get(binding.assetId);
       if (existing) {
         existing.paths.push(binding.path);
         continue;
       }
-      const file = this.database.resolveAssetFile(binding.assetId);
-      if (!file || !['image/png', 'image/jpeg', 'image/webp', 'image/gif'].includes(file.mimeType)) {
-        throw new Error('An article image is unavailable for delivery');
+      const file = files.get(binding.assetId);
+      if (!file) throw Object.assign(new Error(binding.path), { code: 'DELIVERY_MEDIA_UNAVAILABLE' });
+      if (!['image/png', 'image/jpeg', 'image/webp', 'image/gif', 'image/svg+xml'].includes(file.mimeType)) {
+        throw Object.assign(new Error(`${binding.path} (${file.mimeType})`), { code: 'DELIVERY_MEDIA_UNSUPPORTED' });
       }
-      if (file.byteSize < 1 || file.byteSize > MAX_IMAGE_BYTES) throw new Error('An article image exceeds 25 MB');
+      if (file.byteSize < 1 || file.byteSize > MAX_IMAGE_BYTES) {
+        throw Object.assign(new Error(binding.path), { code: 'DELIVERY_MEDIA_TOO_LARGE' });
+      }
       byAssetId.set(binding.assetId, { assetId: binding.assetId, file: { ...file }, paths: [binding.path] });
     }
     return [...byAssetId.values()].map((item) => Object.freeze({ ...item, paths: Object.freeze([...item.paths]) }));
@@ -277,19 +329,51 @@ export class ArticleDeliveryService {
   private async uploadMedia(
     configuration: Readonly<{ siteUrl: string; token: string }>,
     item: CapturedMedia,
+    signal: AbortSignal,
+    watermarkProfile: NaturalWatermarkProfile | null,
   ): Promise<UploadedMedia> {
-    const bytes = await readFile(item.file.absolutePath);
-    if (bytes.byteLength !== item.file.byteSize || bytes.byteLength > MAX_IMAGE_BYTES) {
-      throw new Error('An article image changed before delivery');
+    let bytes: Buffer;
+    try {
+      bytes = await readBoundedImageFile(item.file.absolutePath, signal, MAX_IMAGE_BYTES);
+    } catch (reason) {
+      signal.throwIfAborted();
+      throw Object.assign(new Error(item.paths[0], { cause: reason }), { code: 'DELIVERY_MEDIA_UNAVAILABLE' });
+    }
+    const sourceChecksum = createHash('sha256').update(bytes).digest('hex');
+    if (bytes.byteLength !== item.file.byteSize || sourceChecksum !== item.file.objectHash) {
+      throw Object.assign(new Error(item.paths[0]), { code: 'DELIVERY_MEDIA_CHANGED' });
+    }
+    let mimeType = item.file.mimeType;
+    let fileName = item.file.suggestedName;
+    if (watermarkProfile && this.naturalWatermark) {
+      const output = await this.naturalWatermark.service.apply(item.file, watermarkProfile);
+      bytes = output.bytes;
+      mimeType = output.mimeType;
+      fileName = output.suggestedName;
+    } else if (mimeType === 'image/svg+xml') {
+      try {
+        bytes =
+          (await readSvgRasterCacheBytes(this.database.libraryRoot, item.file.objectHash, signal)) ??
+          (await rasterizeSvgBytesInSandbox(bytes)).bytes;
+      } catch (reason) {
+        signal.throwIfAborted();
+        throw Object.assign(new Error(item.paths[0], { cause: reason }), { code: 'DELIVERY_MEDIA_CONVERSION_FAILED' });
+      }
+      mimeType = 'image/png';
+      fileName = fileName.replace(/\.svg$/iu, '.png');
+    }
+    signal.throwIfAborted();
+    if (bytes.byteLength > MAX_IMAGE_BYTES) {
+      throw Object.assign(new Error(item.paths[0]), { code: 'DELIVERY_MEDIA_TOO_LARGE' });
     }
     const checksum = createHash('sha256').update(bytes).digest('hex');
     const form = new FormData();
-    form.append('file', new Blob([Uint8Array.from(bytes)], { type: item.file.mimeType }), item.file.suggestedName);
+    form.append('file', new Blob([Uint8Array.from(bytes)], { type: mimeType }), fileName);
     const response = await this.fetchImpl(`${configuration.siteUrl}/api/integrations/aiy/media`, {
       method: 'POST',
       headers: { ...requestHeaders(configuration.token), 'x-aiy-content-sha256': checksum },
       body: form,
-      signal: AbortSignal.timeout(120_000),
+      signal: AbortSignal.any([signal, AbortSignal.timeout(120_000)]),
     });
     const parsedMediaEnvelope = mediaEnvelopeSchema.safeParse(await readArticleDeliveryJsonResponse(response));
     if (!parsedMediaEnvelope.success) {

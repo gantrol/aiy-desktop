@@ -1,13 +1,33 @@
-import { createHash } from 'node:crypto';
-import { ulid } from 'ulid';
+import {
+  defaultImportedImageMetadata,
+  writeImportedMaterialMetadata,
+} from '@/main/database/assets/external-material-import-metadata';
+import type { LibraryStorage } from '@/main/database/core/storage';
+import { type JsonMap, mediaUrl, now, text } from '@/main/database/core/values';
+import {
+  creationDraftReferenceAssetIds,
+  nextCreationDraftUpdatedAt,
+  normalizeCreationDraftSave,
+  storedCreationDraftMatches,
+} from '@/main/database/creations/creation-draft-save';
+import type { CreationImportRepository } from '@/main/database/creations/creation-import-repository';
+import {
+  creationDraftVideoMaterialIds,
+  creationVideoAttachments,
+} from '@/main/database/creations/creation-video-attachments';
+import {
+  extensionByMimeType,
+  hasExpectedMediaSignature,
+  type StagedMedia,
+} from '@/main/database/creations/intake-media';
+import { emptyCreationDictionaryScope } from '@/shared/album-creation-defaults';
 import type {
-  AssetDto,
   AlbumCreationDefaultsDto,
+  AssetDto,
+  CreationDictionaryScopeDto,
   CreationDraftDto,
   CreationDraftSaveInput,
   CreationDraftStartInput,
-  CreationDictionaryScopeDto,
-  CreatorPromptNodeInput,
   FavoriteAddResult,
   FavoriteTextMaterialDto,
   GenerationTargetInput,
@@ -18,31 +38,20 @@ import type {
   MaterialSelectionTargetInput,
   WordPaletteReferenceInput,
 } from '@/shared/contracts';
-import type { LibraryStorage } from '@/main/database/core/storage';
-import { emptyCreationDictionaryScope } from '@/shared/album-creation-defaults';
-import { type JsonMap, mediaUrl, now, text } from '@/main/database/core/values';
-import type { CreationImportRepository } from '@/main/database/creations/creation-import-repository';
-import {
-  defaultImportedImageMetadata,
-  writeImportedMaterialMetadata,
-} from '@/main/database/assets/external-material-import-metadata';
-import {
-  creationDraftReferenceAssetIds,
-  nextCreationDraftUpdatedAt,
-  normalizeCreationDraftSave,
-  storedCreationDraftMatches,
-} from '@/main/database/creations/creation-draft-save';
-import {
-  extensionByMimeType,
-  hasExpectedMediaSignature,
-  type StagedMedia,
-} from '@/main/database/creations/intake-media';
+import { readCreationPromptStorage } from '@/shared/creation-prompt-storage';
+import { createHash } from 'node:crypto';
+import { ulid } from 'ulid';
 
 async function waitForE2eCommitDelay() {
   if (process.env.AIY_E2E !== '1') return;
   const requested = Number(process.env.AIY_E2E_INTAKE_COMMIT_DELAY_MS ?? 0);
   if (!Number.isFinite(requested) || requested <= 0) return;
   await new Promise<void>((resolve) => setTimeout(resolve, Math.min(10_000, Math.trunc(requested))));
+}
+
+function assertDraftDocumentCompatible(existing: JsonMap | undefined, input: CreationDraftSaveInput) {
+  if (existing && readCreationPromptStorage(text(existing.prompt_nodes_json)).document && !input.document)
+    throw new Error('BLOCK_DOCUMENT_REQUIRED');
 }
 
 export class IntakeRepository {
@@ -78,6 +87,10 @@ export class IntakeRepository {
         mimeType: item.mimeType,
       });
     }
+    return this.commitStaged(input, stagedMedia);
+  }
+
+  commitStaged(input: IntakeCommitInput, stagedMedia: ReadonlyMap<string, StagedMedia>): IntakeCommitResult {
     const favorite = input.favorite === true;
 
     return this.db
@@ -172,6 +185,7 @@ export class IntakeRepository {
             materialIds,
             imageMaterialIds,
             videoMaterialIds,
+            videoAttachments: creationVideoAttachments(this.db, videoMaterialIds),
             linkedOutputs,
             albumId,
           };
@@ -302,6 +316,7 @@ export class IntakeRepository {
               .get(input.id) as JsonMap | undefined)
           : undefined;
         if (input.id && !existing) throw new Error('Creation draft is unavailable');
+        assertDraftDocumentCompatible(existing, input);
         const targetAlbumId =
           input.targetAlbumId === undefined
             ? existing?.target_album_id
@@ -323,9 +338,18 @@ export class IntakeRepository {
         const draftId = existing ? text(existing.id) : ulid();
         const modelTargets = this.normalizeModelTargets(input);
         const normalized = normalizeCreationDraftSave(input, targetAlbumId, dictionaryScope, modelTargets);
+        const storedVideoIds = existing ? creationDraftVideoMaterialIds(this.db, draftId) : [];
+        const videoIds = [...new Set(input.videoMaterialIds ?? storedVideoIds)];
+        if (videoIds.length > 8 || creationVideoAttachments(this.db, videoIds).length !== videoIds.length) {
+          throw new Error('Video attachments are unavailable or exceed the limit of eight');
+        }
         if (existing) {
           const storedReferenceAssetIds = creationDraftReferenceAssetIds(this.db, draftId);
-          if (storedCreationDraftMatches(existing, normalized, storedReferenceAssetIds)) return this.getDraft(draftId);
+          if (
+            storedCreationDraftMatches(existing, normalized, storedReferenceAssetIds) &&
+            JSON.stringify(storedVideoIds) === JSON.stringify(videoIds)
+          )
+            return this.getDraft(draftId);
           if (input.expectedUpdatedAt !== undefined && input.expectedUpdatedAt !== text(existing.updated_at)) {
             throw new Error('Creation draft changed in another workspace; the newer state was kept');
           }
@@ -400,6 +424,11 @@ export class IntakeRepository {
           (id, creation_draft_id, material_id, role, sort_order) VALUES (?, ?, ?, 'REFERENCE', ?)`,
             )
             .run(ulid(), draftId, materialId, sortOrder);
+        }
+        const insertVideo = this.db.prepare(`INSERT INTO creation_draft_materials
+          (id, creation_draft_id, material_id, role, sort_order) VALUES (?, ?, ?, 'ATTACHMENT', ?)`);
+        for (const [sortOrder, materialId] of videoIds.entries()) {
+          insertVideo.run(ulid(), draftId, materialId, sortOrder);
         }
         this.storage.recordChange('CREATION_DRAFT', draftId, existing ? 'UPDATE' : 'CREATE', {});
         return this.getDraft(draftId);
@@ -645,10 +674,9 @@ export class IntakeRepository {
       targetAlbumId: draft.target_album_id ? text(draft.target_album_id) : null,
       title: title,
       text: text(draft.text_content),
-      ...(this.promptNodes(draft.prompt_nodes_json).length
-        ? { promptNodes: this.promptNodes(draft.prompt_nodes_json) }
-        : {}),
+      ...readCreationPromptStorage(text(draft.prompt_nodes_json)),
       referenceAssets,
+      videoAttachments: creationVideoAttachments(this.db, creationDraftVideoMaterialIds(this.db, draftId)),
       termPromptLocale: text(draft.term_prompt_locale) === 'zh' ? 'zh' : 'en',
       termIds: this.stringArray(draft.term_ids_json),
       wordPaletteReferences: this.paletteReferences(draft.palette_references_json),
@@ -713,37 +741,6 @@ export class IntakeRepository {
         return [
           { modelKey: candidate.modelKey, count, quality: candidate.quality as GenerationTargetInput['quality'] },
         ];
-      });
-    } catch {
-      return [];
-    }
-  }
-
-  private promptNodes(value: unknown): CreatorPromptNodeInput[] {
-    try {
-      const parsed = JSON.parse(text(value));
-      if (!Array.isArray(parsed)) return [];
-      const seenTerms = new Set<string>();
-      const seenPalettes = new Set<string>();
-      return parsed.flatMap((item): CreatorPromptNodeInput[] => {
-        if (!item || typeof item !== 'object') return [];
-        const node = item as Record<string, unknown>;
-        if (node.kind === 'TEXT' && typeof node.text === 'string') return [{ kind: 'TEXT', text: node.text }];
-        if (node.kind === 'TERM' && typeof node.termId === 'string' && !seenTerms.has(node.termId)) {
-          seenTerms.add(node.termId);
-          return [
-            {
-              kind: 'TERM',
-              termId: node.termId,
-              ...(node.promptLocale === 'zh' || node.promptLocale === 'en' ? { promptLocale: node.promptLocale } : {}),
-            },
-          ];
-        }
-        if (node.kind === 'RECIPE' && typeof node.paletteId === 'string' && !seenPalettes.has(node.paletteId)) {
-          seenPalettes.add(node.paletteId);
-          return [{ kind: 'RECIPE', paletteId: node.paletteId }];
-        }
-        return [];
       });
     } catch {
       return [];

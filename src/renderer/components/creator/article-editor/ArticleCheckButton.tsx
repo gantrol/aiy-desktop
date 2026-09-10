@@ -1,18 +1,9 @@
 import { ListChecksIcon, LoaderCircleIcon } from 'lucide-react';
 import { ArticleHeaderIconButton } from '@/renderer/components/creator/article-editor/ArticleEditorHeader';
+import { useI18n } from '@/renderer/i18n/useI18n';
 
-export function ArticleCheckButton({
-  busy,
-  disabled,
-  zh,
-  onClick,
-}: {
-  busy: boolean;
-  disabled: boolean;
-  zh: boolean;
-  onClick(): void;
-}) {
-  const label = zh ? 'AI 检查并添加评论' : 'AI check and add comments';
+export function ArticleCheckButton({ busy, disabled, onClick }: { busy: boolean; disabled: boolean; onClick(): void }) {
+  const label = useI18n().messages.creator.manuscriptEditor.aiCheck;
   return (
     <ArticleHeaderIconButton
       type="button"

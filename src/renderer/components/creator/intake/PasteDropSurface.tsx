@@ -20,7 +20,7 @@ interface Props {
   respectEditableImagePaste?: boolean;
   onImages(files: File[], source: RendererImageImportSource, sourceUrl: string): void;
   onClipboardImage?(sourceUrl: string): void;
-  onVideo?(file: File, source: 'DROP'): void;
+  onVideos?(files: File[], source: 'DROP', sourceUrl: string): void;
   onText?(text: string): void;
 }
 
@@ -32,16 +32,16 @@ export function PasteDropSurface({
   respectEditableImagePaste,
   onImages,
   onClipboardImage,
-  onVideo,
+  onVideos,
   onText,
 }: Props) {
   const [dragActive, setDragActive] = useState(false);
 
   function paste(event: ClipboardEvent<HTMLElement>) {
     if (disabled || event.defaultPrevented) return;
+    if (respectEditableImagePaste && isEditableTarget(event.target)) return;
     const files = clipboardImageFiles(event.clipboardData);
     if (files.length) {
-      if (respectEditableImagePaste && isEditableTarget(event.target)) return;
       event.preventDefault();
       event.stopPropagation();
       const sourceUrl = transferSourceUrl(event.clipboardData);
@@ -91,15 +91,12 @@ export function PasteDropSurface({
     if (!hasExternalFilesDrag(event.dataTransfer)) return;
     event.preventDefault();
     setDragActive(false);
-    const video = Array.from(event.dataTransfer.files).find((file) => {
+    const videos = Array.from(event.dataTransfer.files).filter((file) => {
       const mimeType = intakeMediaMimeType(file);
       return Boolean(mimeType && isIntakeVideoMimeType(mimeType));
     });
-    if (video && onVideo) {
-      onVideo(video, 'DROP');
-      return;
-    }
-    const files = imageFiles(event.dataTransfer.files);
+    if (videos.length && onVideos) onVideos(videos, 'DROP', transferSourceUrl(event.dataTransfer));
+    const files = imageFiles(event.dataTransfer.files).filter((file) => !onVideos || !videos.includes(file));
     if (files.length) onImages(files, 'DROP', transferSourceUrl(event.dataTransfer));
   }
 

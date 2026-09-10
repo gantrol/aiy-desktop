@@ -9,6 +9,7 @@ import { type JsonMap, now, text } from '@/main/database/core/values';
 import {
   creationItemIncludesSeries,
   creationOutputNotExcluded,
+  gifOutputExists,
 } from '@/main/database/creations/creation-output-presentation-sql';
 import { CreationItemRepository } from '@/main/database/creations/creation-item-repository';
 
@@ -164,7 +165,7 @@ export class CreationOutputPresentationRepository {
               SELECT 1 FROM image_transform_runs transform
               WHERE transform.series_id = series.id AND transform.output_asset_id = asset.id
                 AND transform.deleted_at IS NULL
-            )
+            ) OR ${gifOutputExists('series.id', 'asset.id')}
           )
         LIMIT 1`,
       )
@@ -200,7 +201,7 @@ export class CreationOutputPresentationRepository {
               SELECT 1 FROM image_transform_runs transform
               WHERE transform.series_id = output_owner.id AND transform.output_asset_id = asset.id
                 AND transform.deleted_at IS NULL
-            )
+            ) OR ${gifOutputExists('output_owner.id', 'asset.id')}
           )
         LIMIT 1`,
       )

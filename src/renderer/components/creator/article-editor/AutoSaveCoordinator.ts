@@ -7,6 +7,7 @@ import type {
   ArticleRevisionSaveResult,
 } from '@/shared/contracts';
 import { articleRevisionMatchesArticle, normalizeArticleContent } from '@/shared/article-revision';
+import { articleContentSchema } from '@/shared/contracts/article';
 import {
   articleEditorSaveResultMatches,
   type ArticleSaveMode,
@@ -29,17 +30,22 @@ interface CapturedDraft {
   readonly cause: ArticleRevisionSaveInput['cause'];
 }
 
+/** One editor publication: content and positions must describe the same document. */
+export interface ArticleEditorDraftSnapshot extends ArticleContentInput {
+  elements?: readonly ArticleElementPlacementInput[];
+  commentAnchors?: readonly ArticleCommentAnchorUpdateInput[];
+}
+
 interface AutoSaveCoordinatorOptions {
   session: ArticleEditorSessionModel;
-  readSnapshot(): ArticleContentInput;
-  readElements?(): readonly ArticleElementPlacementInput[];
-  readCommentAnchors?(): readonly ArticleCommentAnchorUpdateInput[];
-  prepareForSave?(): void;
+  readSnapshot(): ArticleEditorDraftSnapshot;
+  whenSettled?(): Promise<boolean>;
   persist(input: ArticleRevisionSaveInput): Promise<ArticleRevisionSaveResult>;
   onDraftCaptured?(draft: CapturedDraft): void;
   onAcknowledged(article: ArticleDto, request: ArticleRevisionSaveInput): void;
   onConflict(conflict: Extract<ArticleRevisionSaveResult, { status: 'CONFLICT' }>): void;
   onError(mode: ArticleSaveMode, detail: string): void;
+  onIdle?(): void;
   idleDelayMs?: number;
   scheduler?: AutoSaveScheduler;
   createRequest?: typeof createArticleRevisionSaveRequest;
@@ -59,7 +65,8 @@ export class AutoSaveCoordinator {
   readonly #session: ArticleEditorSessionModel;
   readonly #scheduler: AutoSaveScheduler;
   #timer: unknown = null;
-  #savePromise: Promise<boolean> | null = null;
+  #operationTail: Promise<unknown> = Promise.resolve();
+  #pendingOperations = 0;
   // Retain only an immutable queued snapshot and an unconfirmed request.
   // A newer edit replaces the queued snapshot; it never replaces an uncertain save.
   #pendingDraft: CapturedDraft | null = null;
@@ -72,36 +79,81 @@ export class AutoSaveCoordinator {
     this.#scheduler = options.scheduler ?? defaultScheduler;
   }
 
-  noteChange(snapshot: ArticleContentInput, cause: ArticleRevisionSaveInput['cause'] = 'EDITOR') {
+  noteChange(snapshot: ArticleEditorDraftSnapshot, cause: ArticleRevisionSaveInput['cause'] = 'EDITOR') {
     if (this.#disposed) return this.#session.getSnapshot().draft.sequence;
-    const content = normalizeArticleContent(snapshot);
-    const elements = this.#options.readElements?.().map((element) => ({ ...element })) ?? null;
-    const commentAnchors =
-      this.#options.readCommentAnchors?.().map((item) => ({ ...item, anchor: { ...item.anchor } })) ?? null;
+    const { elements: snapshotElements, commentAnchors: snapshotAnchors, ...input } = snapshot;
+    const content = articleContentSchema.parse(input);
+    const elements = snapshotElements?.map((element) => ({ ...element })) ?? null;
+    const commentAnchors = snapshotAnchors?.map((item) => ({ ...item, anchor: { ...item.anchor } })) ?? null;
+    const previous = this.#pendingDraft;
+    if (
+      previous &&
+      JSON.stringify([previous.content, previous.elements, previous.commentAnchors]) ===
+        JSON.stringify([content, elements, commentAnchors])
+    )
+      return previous.draftSeq;
     const draftSeq = this.#session.beginDraft(Boolean(content.markdown.trim()));
     const draft = { content, elements, commentAnchors, draftSeq, cause };
     this.#pendingDraft = draft;
     this.#options.onDraftCaptured?.(draft);
-    if (!this.#savePromise && this.#session.getSnapshot().save.phase !== 'conflict') this.#schedule();
+    if (!this.busy && this.#session.getSnapshot().save.phase !== 'conflict') this.#schedule();
     return draftSeq;
   }
 
   flush(mode: ArticleSaveMode = 'manual', cause: ArticleRevisionSaveInput['cause'] = 'EDITOR') {
     if (this.#disposed) return Promise.resolve(false);
-    if (mode === 'manual') {
+    return this.#enqueue(async () => {
       try {
-        this.#options.prepareForSave?.();
-        this.noteChange(this.#options.readSnapshot(), cause);
+        if (this.#options.whenSettled && !(await this.#options.whenSettled())) return false;
+        if (mode === 'manual') this.noteChange(this.#options.readSnapshot(), cause);
       } catch (reason) {
+        this.#session.failPreparation(mode, errorMessage(reason));
         this.#options.onError(mode, errorMessage(reason));
-        return Promise.resolve(false);
+        return false;
       }
-    }
-    return this.#flush(mode);
+      return this.#flush(mode);
+    });
   }
 
   retry() {
-    return this.#flush('manual');
+    return this.flush('manual');
+  }
+
+  get busy() {
+    return this.#pendingOperations > 0;
+  }
+
+  /** Comments and document revisions share a single write lane. */
+  mutate<T>(operation: () => Promise<T>): Promise<T | null> {
+    return this.#enqueue(async () => {
+      if (this.#disposed) return null;
+      if (this.#options.whenSettled && !(await this.#options.whenSettled())) return null;
+      this.noteChange(this.#options.readSnapshot());
+      if (!(await this.#flush('manual'))) return null;
+      return operation();
+    });
+  }
+
+  #enqueue<T>(operation: () => Promise<T>): Promise<T> {
+    this.#cancelTimer();
+    this.#pendingOperations += 1;
+    const pending = this.#operationTail.then(operation).finally(() => {
+      this.#pendingOperations -= 1;
+      if (!this.busy) this.#options.onIdle?.();
+      if (!this.#disposed && !this.busy && this.#pendingDraft && this.#session.getSnapshot().save.phase === 'idle') {
+        this.#schedule();
+      }
+    });
+    this.#operationTail = pending.catch(() => undefined);
+    return pending;
+  }
+
+  reset() {
+    if (this.busy) return false;
+    this.#cancelTimer();
+    this.#pendingDraft = null;
+    this.#unacknowledgedRequest = null;
+    return true;
   }
 
   dispose() {
@@ -116,7 +168,13 @@ export class AutoSaveCoordinator {
   async #flush(mode: ArticleSaveMode) {
     this.#cancelTimer();
     do {
-      if (!(await this.#ensureSave(mode))) return false;
+      if (
+        this.#disposed ||
+        this.#session.getSnapshot().save.phase === 'conflict' ||
+        this.#session.getSnapshot().externalArticle
+      )
+        return false;
+      if (!(await this.#saveOnce(mode))) return false;
       this.#cancelTimer();
     } while (this.#pendingDraft || this.#unacknowledgedRequest);
     return !this.#disposed;
@@ -126,7 +184,7 @@ export class AutoSaveCoordinator {
     this.#cancelTimer();
     this.#timer = this.#scheduler.set(() => {
       this.#timer = null;
-      void this.#ensureSave('auto');
+      void this.flush('auto');
     }, this.#options.idleDelayMs ?? ARTICLE_AUTOSAVE_IDLE_MS);
   }
 
@@ -136,30 +194,13 @@ export class AutoSaveCoordinator {
     this.#timer = null;
   }
 
-  #ensureSave(mode: ArticleSaveMode): Promise<boolean> {
-    if (this.#disposed || this.#session.getSnapshot().save.phase === 'conflict') return Promise.resolve(false);
-    if (this.#savePromise) return this.#savePromise;
-    if (!this.#unacknowledgedRequest && !this.#pendingDraft) return Promise.resolve(true);
-    let successful = false;
-    const pending = Promise.resolve()
-      .then(async () => {
-        successful = await this.#saveOnce(mode);
-        return successful;
-      })
-      .finally(() => {
-        this.#savePromise = null;
-        if (successful && !this.#disposed && this.#pendingDraft && this.#session.getSnapshot().save.phase === 'idle') {
-          this.#schedule();
-        }
-      });
-    this.#savePromise = pending;
-    return pending;
-  }
-
   async #newRequest() {
-    this.#options.prepareForSave?.();
     const draft = this.#pendingDraft;
     if (!draft) return null;
+    this.#session.beginPreparation(draft.draftSeq);
+    if (normalizeArticleContent(draft.content).markdown !== draft.content.markdown) {
+      throw new Error('An article image is unavailable. Import or remove it before saving.');
+    }
     const state = this.#session.getSnapshot();
     const request = await (this.#options.createRequest ?? createArticleRevisionSaveRequest)(draft.content, {
       articleId: state.session.articleId,
@@ -180,7 +221,10 @@ export class AutoSaveCoordinator {
     try {
       request = this.#unacknowledgedRequest ?? (await this.#newRequest());
     } catch (reason) {
-      if (!this.#disposed) this.#options.onError(mode, errorMessage(reason));
+      if (!this.#disposed) {
+        this.#session.failPreparation(mode, errorMessage(reason));
+        this.#options.onError(mode, errorMessage(reason));
+      }
       return false;
     }
     if (!request) return !this.#disposed;

@@ -1,11 +1,5 @@
 import { useRef, useState } from 'react';
-import type {
-  ArticleCheckBlockInput,
-  ArticleCheckInput,
-  ArticleCheckApplyResult,
-  ArticleContentInput,
-  Locale,
-} from '@/shared/contracts';
+import type { ArticleCheckBlockInput, ArticleCheckInput, ArticleContentInput, Locale } from '@/shared/contracts';
 import type { useArticleEditorSession } from '@/renderer/components/creator/article-editor/ArticleEditorSessionProvider';
 
 function copiedBlocks(blocks: readonly ArticleCheckBlockInput[]) {
@@ -27,14 +21,12 @@ export function useArticleCheck({
   session,
   notify,
   onConfigureProvider,
-  onApplied,
 }: {
   locale: Locale;
   commentsBusy: boolean;
   session: ReturnType<typeof useArticleEditorSession>;
   notify(message: string): void;
   onConfigureProvider(): void;
-  onApplied(result: ArticleCheckApplyResult): void;
 }) {
   const [checking, setChecking] = useState(false);
   const operationRef = useRef(0);
@@ -88,9 +80,17 @@ export function useArticleCheck({
         );
         return;
       }
-      const applied = await window.desktopApi.articleCheckRunApply({ runId: result.run.id });
+      const applied = await session.mutateComments(async (current) => {
+        if (checkIdentity(current.revisionId, session.captureSnapshot()) !== identity)
+          throw new Error(
+            locale === 'zh'
+              ? '文章已变化，检查结果已保留在 AI 中心'
+              : 'The article changed; the check result is available in AI Center',
+          );
+        return window.desktopApi.articleCheckRunApply({ runId: result.run.id });
+      });
       if (operationRef.current !== operation) return;
-      onApplied(applied);
+      if (!applied) return;
       notify(
         locale === 'zh'
           ? `${applied.createdCommentIds.length} 条检查意见已加入评论`

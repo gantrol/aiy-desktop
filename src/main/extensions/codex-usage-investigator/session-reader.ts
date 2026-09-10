@@ -4,6 +4,14 @@ import { z } from 'zod';
 import type { CodexUsageQuotaKind, CodexUsageServiceTier } from '@/shared/contracts/codex-usage';
 import { normalizeCodexUsageModel, type CodexUsageBreakdown } from '@/main/extensions/codex-usage-investigator/pricing';
 import {
+  applyChatTurnTiming,
+  CodexSessionLineage,
+  parseSessionLineage,
+  type ChatTurnTimingEvent,
+  type MutableChatTurn,
+  type SessionLineageRecord,
+} from '@/main/extensions/codex-usage-investigator/session-turn-metadata';
+import {
   inferredServiceTier,
   type CodexUsageServiceTierFallback,
 } from '@/main/extensions/codex-usage-investigator/service-tier-fallback';
@@ -20,6 +28,7 @@ const TASK_STARTED_MARKER = Buffer.from('"task_started"');
 const TASK_COMPLETE_MARKER = Buffer.from('"task_complete"');
 const TURN_ABORTED_MARKER = Buffer.from('"turn_aborted"');
 const COMPACTED_MARKER = Buffer.from('"type":"compacted"');
+const SESSION_META_MARKER = Buffer.from('"session_meta"');
 
 const safeTokenSchema = z.number().int().nonnegative().safe();
 const rowEnvelopeSchema = z
@@ -268,30 +277,14 @@ interface SessionUsageCandidate {
   reverseOrder: number;
 }
 
-interface MutableChatTurn {
-  turnId: string;
-  startedAt: string | null;
-  terminalAt: string | null;
-  terminalState: 'COMPLETED' | 'ABORTED' | null;
-  durationMs: number | null;
-  models: Set<string>;
-  reasoningEfforts: Set<string>;
-}
-
 type ParsedSessionLine =
   | { kind: 'IGNORED' }
+  | SessionLineageRecord
+  | ChatTurnTimingEvent
   | { kind: 'INVALID' }
   | { kind: 'COMPACTION'; timestamp: { epoch: number; iso: string } }
   | { kind: 'TOKEN'; row: z.infer<typeof tokenCountRowSchema>; timestamp: { epoch: number; iso: string } }
   | { kind: 'CONTEXT'; model: string; reasoningEffort: string | null; turnId: string }
-  | { kind: 'TURN_STARTED'; turnId: string; timestamp: string }
-  | {
-      kind: 'TURN_TERMINAL';
-      turnId: string;
-      timestamp: string;
-      terminalState: 'COMPLETED' | 'ABORTED';
-      durationMs: number | null;
-    }
   | { kind: 'SETTINGS'; model: string | null; serviceTier: CodexUsageServiceTier; serviceTierInferred: boolean };
 
 type ParsedTokenLine = Extract<ParsedSessionLine, { kind: 'TOKEN' }>;
@@ -434,14 +427,17 @@ function eventFingerprint(event: Omit<CodexUsageInternalEvent, 'eventFingerprint
     .digest('hex');
 }
 
-function normalizeSessionUsage(candidates: readonly SessionUsageCandidate[]): CodexUsageInternalEvent[] {
+function normalizeSessionUsage(
+  candidates: readonly SessionUsageCandidate[],
+  inheritedBeforeReverseOrder: number | null,
+): CodexUsageInternalEvent[] {
   const turnServiceTiers = observedTurnServiceTiers(candidates.map(({ event }) => event));
   const chronological = [...candidates].sort(
     (left, right) =>
       left.event.timestamp.localeCompare(right.event.timestamp) || right.reverseOrder - left.reverseOrder,
   );
   let previousCumulative: CodexUsageBreakdown | null = null;
-  return chronological.map((candidate) => {
+  return chronological.flatMap((candidate) => {
     let usage = candidate.event.usage;
     if (candidate.cumulativeUsage) {
       if (previousCumulative) {
@@ -451,6 +447,16 @@ function normalizeSessionUsage(candidates: readonly SessionUsageCandidate[]): Co
     } else {
       previousCumulative = null;
     }
+    // Replayed history is still needed as the counter baseline for the first owned request.
+    // Only the lineage-proven, context-free prefix is excluded from the reported usage.
+    if (
+      inheritedBeforeReverseOrder !== null &&
+      candidate.reverseOrder >= inheritedBeforeReverseOrder &&
+      candidate.event.turnId === null &&
+      candidate.event.serviceTier === 'UNKNOWN'
+    ) {
+      return [];
+    }
     const recoveredTier = candidate.event.turnId ? turnServiceTiers.get(candidate.event.turnId) : undefined;
     const recover = candidate.event.serviceTier === 'UNKNOWN' && recoveredTier && recoveredTier !== 'UNKNOWN';
     const event = {
@@ -458,7 +464,7 @@ function normalizeSessionUsage(candidates: readonly SessionUsageCandidate[]): Co
       ...(recover ? { serviceTier: recoveredTier, serviceTierInferred: true } : {}),
       usage: { ...usage },
     };
-    return { ...event, eventFingerprint: eventFingerprint(event) };
+    return [{ ...event, eventFingerprint: eventFingerprint(event) }];
   });
 }
 
@@ -467,7 +473,7 @@ function observedTurnServiceTiers(
 ) {
   const observed = new Map<string, Set<Exclude<CodexUsageServiceTier, 'UNKNOWN'>>>();
   for (const event of events) {
-    if (!event.turnId || event.serviceTierInferred || event.serviceTier === 'UNKNOWN') continue;
+    if (!event.turnId || event.serviceTier === 'UNKNOWN') continue;
     const tiers = observed.get(event.turnId) ?? new Set<Exclude<CodexUsageServiceTier, 'UNKNOWN'>>();
     tiers.add(event.serviceTier);
     observed.set(event.turnId, tiers);
@@ -558,7 +564,7 @@ function parsedTimestamp(timestamp: string) {
 function recognizedRecordEnvelope(line: Buffer) {
   const prefix = line.subarray(0, Math.min(line.length, MAX_ENVELOPE_PREFIX_BYTES)).toString('utf8');
   const types = [...prefix.matchAll(/"type"\s*:\s*"([a-z_]+)"/g)].map((match) => match[1]);
-  if (types[0] === 'turn_context' || types[0] === 'compacted') return true;
+  if (types[0] === 'turn_context' || types[0] === 'compacted' || types[0] === 'session_meta') return true;
   return (
     types[0] === 'event_msg' &&
     ['token_count', 'thread_settings_applied', 'task_started', 'task_complete', 'turn_aborted'].includes(types[1] ?? '')
@@ -577,7 +583,8 @@ function hasRecognizedRecordMarker(line: Buffer) {
     line.includes(TASK_STARTED_MARKER) ||
     line.includes(TASK_COMPLETE_MARKER) ||
     line.includes(TURN_ABORTED_MARKER) ||
-    line.includes(COMPACTED_MARKER)
+    line.includes(COMPACTED_MARKER) ||
+    line.includes(SESSION_META_MARKER)
   );
 }
 
@@ -607,6 +614,9 @@ function parseSessionLine(line: Buffer): ParsedSessionLine {
   }
   const envelope = rowEnvelopeSchema.safeParse(value);
   if (!envelope.success) return { kind: 'IGNORED' };
+  if (envelope.data.type === 'session_meta') {
+    return parseSessionLineage(envelope.data.payload);
+  }
   if (envelope.data.type === 'compacted') {
     const compactedRow = compactedRowSchema.safeParse(value);
     if (!compactedRow.success) return { kind: 'INVALID' };
@@ -719,6 +729,7 @@ export async function readCodexUsageSession(
   let turnMetadataComplete = true;
   let crossedLowerBound = false;
   let reverseOrder = 0;
+  const lineage = new CodexSessionLineage(sessionId, threadCreatedMs);
 
   const mutableChatTurn = (turnId: string) => {
     const existing = chatTurns.get(turnId);
@@ -748,21 +759,27 @@ export async function readCodexUsageSession(
     groupedEventCount += events.length;
   };
 
-  const flushPendingTierGroups = (tier: CodexUsageServiceTier, inferMissing = false, tierInferred = false) => {
+  const flushPendingTierGroups = (
+    tier: CodexUsageServiceTier,
+    inferMissing = false,
+    tierInferred = false,
+    contextDefault: Exclude<CodexUsageServiceTier, 'UNKNOWN'> | null = null,
+  ) => {
     for (const group of pendingTierGroups) {
       if (!inferMissing) {
         appendPendingEvents(candidates, sessionId, group.model, group.turnId, tier, tierInferred, group.events);
         continue;
       }
       for (const event of group.events) {
-        const inferredTier = inferredServiceTier(event.timestamp, serviceTierFallback);
+        const configuredTier = inferredServiceTier(event.timestamp, serviceTierFallback);
+        const contextDefaultApplies = configuredTier === null && group.turnId !== null && contextDefault !== null;
         appendPendingEvents(
           candidates,
           sessionId,
           group.model,
           group.turnId,
-          inferredTier ?? tier,
-          inferredTier !== null,
+          configuredTier ?? (contextDefaultApplies ? contextDefault : tier),
+          configuredTier !== null || contextDefaultApplies,
           [event],
         );
       }
@@ -775,6 +792,10 @@ export async function readCodexUsageSession(
     throwIfAborted(signal);
     const parsed = parseSessionLine(line);
     if (parsed.kind === 'IGNORED') continue;
+    if (parsed.kind === 'LINEAGE') {
+      lineage.addMetadata(parsed);
+      continue;
+    }
     if (parsed.kind === 'INVALID') {
       invalidRecords += 1;
       turnMetadataComplete = false;
@@ -803,21 +824,18 @@ export async function readCodexUsageSession(
       groupPending(parsed.model || fallbackModel || 'unknown', null);
       flushPendingTierGroups(parsed.serviceTier, false, parsed.serviceTierInferred);
     } else {
+      lineage.addTurn(parsed, reverseOrder);
       const turn = mutableChatTurn(parsed.turnId);
       if (!turn) continue;
-      if (parsed.kind === 'TURN_STARTED') {
-        if (turn.startedAt === null || parsed.timestamp < turn.startedAt) turn.startedAt = parsed.timestamp;
-      } else if (turn.terminalAt === null || parsed.timestamp > turn.terminalAt) {
-        turn.terminalAt = parsed.timestamp;
-        turn.terminalState = parsed.terminalState;
-        turn.durationMs = parsed.durationMs;
-      }
+      applyChatTurnTiming(turn, parsed);
     }
     if (crossedLowerBound && pending.length === 0 && pendingTierGroups.length === 0) break;
   }
   groupPending(fallbackModel || 'unknown', null);
-  flushPendingTierGroups('UNKNOWN', true);
-  const normalizedEvents = normalizeSessionUsage(candidates);
+  // A turn context without an earlier settings event uses Codex's default Standard tier.
+  // Keep context-free usage unknown because it cannot be tied to a complete turn configuration.
+  flushPendingTierGroups('UNKNOWN', true, false, 'STANDARD');
+  const normalizedEvents = normalizeSessionUsage(candidates, lineage.inheritedBeforeReverseOrder);
   const normalizedTurns = normalizeChatTurns(sessionId, chatTurns, observedTurnServiceTiers(normalizedEvents));
   const knownTurnIds = new Set(normalizedTurns.map(({ turnId }) => turnId));
   if (

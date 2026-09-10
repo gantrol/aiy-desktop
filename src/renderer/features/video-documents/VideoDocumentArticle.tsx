@@ -1,19 +1,6 @@
-import { LoaderCircleIcon, PencilIcon, PlusIcon, RefreshCwIcon, SaveIcon, XIcon } from 'lucide-react';
-import { memo, type ReactNode } from 'react';
-import ReactMarkdown, { type Components } from 'react-markdown';
-import remarkGfm from 'remark-gfm';
-import type {
-  VideoDocumentMediaBinding,
-  VideoDocumentFrameCaptureResult,
-  VideoDocumentRevisionContent,
-  VideoDocumentRevisionDto,
-  VideoDocumentRevisionMediaDto,
-  VideoDocumentTimelineSegment,
-} from '@/shared/contracts';
 import { Button } from '@/renderer/components/ui/button';
-import { VideoDocumentAutosaveSettings } from '@/renderer/features/video-documents/VideoDocumentAutosaveSettings';
-import { useI18n } from '@/renderer/i18n/useI18n';
 import { useVideoDocumentArticleMarkdown } from '@/renderer/features/video-documents/VideoDocumentArticleMarkdown';
+import { VideoDocumentAutosaveSettings } from '@/renderer/features/video-documents/VideoDocumentAutosaveSettings';
 import { VideoDocumentNoteListHoverCard } from '@/renderer/features/video-documents/VideoDocumentNoteListHoverCard';
 import { VideoDocumentOutlineRail } from '@/renderer/features/video-documents/VideoDocumentOutlineRail';
 import { VideoDocumentRevisionHistory } from '@/renderer/features/video-documents/VideoDocumentRevisionHistory';
@@ -32,6 +19,7 @@ import { useVideoDocumentArticleAutosave } from '@/renderer/features/video-docum
 import { useVideoDocumentArticleOutline } from '@/renderer/features/video-documents/useVideoDocumentArticleOutline';
 import { useVideoDocumentRichNotes } from '@/renderer/features/video-documents/useVideoDocumentRichNotes';
 import { videoDocumentArticleHasVisibleContent } from '@/renderer/features/video-documents/videoDocumentArticleContent';
+import { useI18n } from '@/renderer/i18n/useI18n';
 import {
   articleDocumentWidthClassName,
   articleRichTextClassName,
@@ -39,6 +27,19 @@ import {
 } from '@/renderer/lib/articleTypography';
 import { codexMarkdownUrlTransform } from '@/renderer/lib/codexThreadLinks';
 import { cn } from '@/renderer/lib/utils';
+import type {
+  VideoDocumentFrameCaptureResult,
+  VideoDocumentMediaBinding,
+  VideoDocumentRevisionContent,
+  VideoDocumentRevisionDto,
+  VideoDocumentRevisionMediaDto,
+  VideoDocumentTimelineSegment,
+} from '@/shared/contracts';
+import type { BlockDocument } from '@/shared/contracts/block-document';
+import { LoaderCircleIcon, PencilIcon, PlusIcon, RefreshCwIcon, SaveIcon, XIcon } from 'lucide-react';
+import { memo, type ReactNode } from 'react';
+import ReactMarkdown, { type Components } from 'react-markdown';
+import remarkGfm from 'remark-gfm';
 
 interface Props {
   documentId?: string;
@@ -141,6 +142,7 @@ interface ArticleBodyProps {
   markdown: string;
   editorSessionIdentity: string;
   initialMarkdown: string;
+  initialDocument?: BlockDocument;
   saveError: string;
   articleTextLabel: string;
   editLabel: string;
@@ -283,6 +285,7 @@ function ArticleBody({
   markdown,
   editorSessionIdentity,
   initialMarkdown,
+  initialDocument,
   saveError,
   articleTextLabel,
   editLabel,
@@ -316,6 +319,7 @@ function ArticleBody({
         <div className={`mx-auto w-full ${articleDocumentWidthClassName}`}>
           <VideoDocumentWysiwygEditor
             markdown={initialMarkdown}
+            document={initialDocument}
             sessionIdentity={editorSessionIdentity}
             mediaBindings={mediaBindings}
             media={media}
@@ -407,6 +411,7 @@ export function VideoDocumentArticle({
   const {
     editing,
     initialMarkdown,
+    initialDocument,
     editorSessionIdentity,
     draftHasContent,
     draftHeadings,
@@ -518,7 +523,13 @@ export function VideoDocumentArticle({
   const outlineVisible = outlineItems.length > 0;
 
   return (
-    <article ref={articleRef} data-slot="video-document-article" data-revision-id={revision.id} className="min-w-0">
+    <article
+      ref={articleRef}
+      data-slot="video-document-article"
+      data-revision-id={revision.id}
+      data-content-source={JSON.stringify({ kind: 'VIDEO_DOCUMENT', id: documentId })}
+      className="min-w-0"
+    >
       <div className={cn(outlineVisible && 'grid grid-cols-[2rem_minmax(0,1fr)] items-start gap-2')}>
         {outlineVisible && (
           <VideoDocumentOutlineRail
@@ -555,6 +566,7 @@ export function VideoDocumentArticle({
             markdown={content.markdown}
             editorSessionIdentity={editorSessionIdentity}
             initialMarkdown={initialMarkdown}
+            initialDocument={initialDocument}
             saveError={saveError}
             articleTextLabel={editorLabels.articleText}
             editLabel={editorLabels.edit}

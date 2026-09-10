@@ -2,6 +2,7 @@ import type { ArticleContentInput, ArticleRevisionSaveInput } from '@/shared/con
 import { canonicalArticleContentJson } from '@/shared/contracts/article';
 import { normalizeArticleContent } from '@/shared/article-revision';
 import { sha256Hex } from '@/renderer/lib/sha256Hex';
+import { assertBlockDocumentReady } from '@/shared/contracts/block-document';
 
 interface ArticleRevisionRequestIdentity {
   articleId: string;
@@ -17,6 +18,7 @@ export async function createArticleRevisionSaveRequest(
   identity: ArticleRevisionRequestIdentity,
 ): Promise<ArticleRevisionSaveInput> {
   const content = normalizeArticleContent(input);
+  assertBlockDocumentReady(content.document);
   const contentHash = await sha256Hex(canonicalArticleContentJson(content));
   return {
     requestId: identity.requestId ?? globalThis.crypto.randomUUID(),

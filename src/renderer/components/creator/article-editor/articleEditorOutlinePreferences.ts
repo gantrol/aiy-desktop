@@ -1,6 +1,6 @@
-import { z } from 'zod';
 import type { ArticleEditorOutlineDepthLimit } from '@/renderer/components/creator/article-editor/articleEditorOutlineModel';
 import type { ArticleDocumentWidth } from '@/renderer/lib/articleTypography';
+import { z } from 'zod';
 
 export interface ArticleEditorOutlinePreferences {
   expanded: boolean;
@@ -16,7 +16,7 @@ export interface ArticleEditorOutlinePreferences {
   commentsWidth: number;
 }
 
-export type ArticleEditorSidebarPanel = 'OUTLINE' | 'COMMENTS';
+export type ArticleEditorSidebarPanel = 'OUTLINE' | 'COMMENTS' | 'MEDIA';
 export type ArticleEditorSidebarSide = 'LEFT' | 'RIGHT';
 export type ArticleEditorPanePreferenceScope = 'PRIMARY' | 'SECONDARY';
 
@@ -33,7 +33,7 @@ const storedPreferencesSchema = z
       .optional()
       .catch(undefined),
     followCursor: z.boolean().optional().catch(undefined),
-    activePanel: z.enum(['OUTLINE', 'COMMENTS']).optional().catch(undefined),
+    activePanel: z.enum(['OUTLINE', 'COMMENTS', 'MEDIA']).optional().catch(undefined),
     side: z.enum(['LEFT', 'RIGHT']).optional().catch(undefined),
     documentWidth: z.enum(['STANDARD', 'WIDE']).optional().catch(undefined),
     outlineExpanded: z.boolean().optional().catch(undefined),
@@ -48,10 +48,10 @@ export const maximumArticleEditorOutlineWidth = 360;
 
 export const defaultArticleEditorOutlinePreferences: ArticleEditorOutlinePreferences = {
   expanded: true,
-  width: 256,
+  width: 320,
   depthLimit: 6,
   followCursor: true,
-  activePanel: 'OUTLINE',
+  activePanel: 'MEDIA',
   side: 'RIGHT',
   documentWidth: 'STANDARD',
   outlineExpanded: true,

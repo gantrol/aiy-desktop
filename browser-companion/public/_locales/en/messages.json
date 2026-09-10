@@ -1,0 +1,172 @@
+{
+  "extensionName": { "message": "AIY Companion" },
+  "extensionDescription": {
+    "message": "Automatically receive AIY handoffs on supported sites. You decide whether to send or publish."
+  },
+  "siteChatgpt": { "message": "ChatGPT" },
+  "siteWechat": { "message": "WeChat Official Account" },
+  "siteWeibo": { "message": "Weibo" },
+  "siteX": { "message": "X (Twitter)" },
+  "siteXiaohongshu": { "message": "Xiaohongshu" },
+  "errorXiaohongshuLoginRequired": {
+    "message": "Log in to Xiaohongshu Creator Center in this browser Profile, then upload again from AIY."
+  },
+  "errorXiaohongshuTitleTooLong": {
+    "message": "Shorten the Xiaohongshu title to 20 full-width characters (40 Latin characters)."
+  },
+  "errorXiaohongshuBodyTooLong": {
+    "message": "Shorten the Xiaohongshu text to 1,000 characters."
+  },
+  "errorXiaohongshuMediaUnsupported": {
+    "message": "Use 1–18 PNG/JPEG/WebP images, up to 32 MB each, for Xiaohongshu."
+  },
+  "errorMediaUnsupported": {
+    "message": "Use up to four PNG/JPEG/WebP/GIF files (5 MB per still image, 15 MB per GIF)."
+  },
+  "errorComposerHasMedia": {
+    "message": "The editor already has media. Remove it before filling from AIY."
+  },
+  "popupBadgeNoPublish": { "message": "Never publishes" },
+  "popupSingleContent": { "message": "Single item" },
+  "popupPasteText": { "message": "Paste text" },
+  "popupIdentifyingSite": { "message": "Identifying" },
+  "popupUnsupportedSite": { "message": "Unsupported" },
+  "popupWaitingForContent": { "message": "Waiting for content" },
+  "popupWaitingToFill": { "message": "Ready to fill" },
+  "popupFilling": { "message": "Filling" },
+  "popupConnectingAiy": { "message": "Connecting to AIY" },
+  "popupFillFromHistory": { "message": "Fill from history" },
+  "popupFillCurrentPage": { "message": "Fill current page" },
+  "popupManualFillSuccess": {
+    "message": "Filled $COUNT$ characters. Check the page before continuing.",
+    "placeholders": { "count": { "content": "$1" } }
+  },
+  "popupDesktopFillSuccess": {
+    "message": "Filled $CHARACTERS$ characters and $IMAGES$ images from AIY. Check the page before continuing.",
+    "placeholders": {
+      "characters": { "content": "$1" },
+      "images": { "content": "$2" }
+    }
+  },
+  "popupReceiptFailed": {
+    "message": "Content was filled, but AIY could not confirm the result."
+  },
+  "popupRefreshAndRetry": { "message": "Refresh this page and try again." },
+  "errorInvalidRequest": {
+    "message": "This content could not be read. Try again."
+  },
+  "errorUnsupportedSite": {
+    "message": "Automatic fill is not available on this page."
+  },
+  "errorBusy": { "message": "Another item is being filled. Wait a moment." },
+  "errorComposerNotFound": {
+    "message": "Open the editor on this page, then try again."
+  },
+  "errorComposerAmbiguous": {
+    "message": "More than one editor was found, so nothing was changed."
+  },
+  "errorComposerNotEmpty": {
+    "message": "The editor already has content, so nothing was overwritten."
+  },
+  "errorMediaInputNotFound": {
+    "message": "The image input could not be found on this page."
+  },
+  "errorMediaFillFailed": {
+    "message": "The images could not be confirmed as filled. Try again."
+  },
+  "errorFillFailed": {
+    "message": "The content could not be confirmed as filled. Refresh the page and try again."
+  },
+  "errorDesktopInvalidRequest": {
+    "message": "AIY could not read this connection request."
+  },
+  "errorUnauthorized": {
+    "message": "AIY has not authorized this Companion. Reopen AIY and try again."
+  },
+  "errorTargetMismatch": {
+    "message": "This page does not match the content waiting to be filled."
+  },
+  "errorDraftAlreadyClaimed": {
+    "message": "This content is already being handled in another window."
+  },
+  "errorHandoffNotFound": {
+    "message": "No content is waiting. Return to AIY and upload it again."
+  },
+  "errorHandoffTokenMismatch": {
+    "message": "This handoff has expired. Upload it again from AIY."
+  },
+  "errorMediaNotFound": {
+    "message": "A handoff image is no longer available. Upload it again from AIY."
+  },
+  "errorMediaChanged": {
+    "message": "A handoff image changed. Upload it again from AIY."
+  },
+  "errorOutputImportNotAllowed": {
+    "message": "This ChatGPT handoff is not linked to an AIY image creation."
+  },
+  "errorOutputUploadNotFound": {
+    "message": "The image return expired. Select the image again."
+  },
+  "errorOutputUploadChanged": {
+    "message": "The selected image changed before AIY could import it."
+  },
+  "errorStateConflict": {
+    "message": "The handoff changed in AIY. Upload it again."
+  },
+  "errorCorruptState": {
+    "message": "The handoff record is damaged. Upload it again from AIY."
+  },
+  "errorInternal": {
+    "message": "AIY could not process this handoff. Try again shortly."
+  },
+  "errorDesktopConnection": {
+    "message": "AIY Desktop could not be reached. Make sure AIY is running; the content is still available in history."
+  },
+  "errorMediaDownload": {
+    "message": "A handoff image could not be read. Try again from history."
+  },
+  "automaticHandoffFailedTitle": { "message": "Automatic fill did not finish" },
+  "automaticHandoffDesktopDetail": {
+    "message": "AIY Desktop could not be reached. Make sure AIY is running, open AIY Companion, then choose “Fill from history.” Your content is still available in Companion history."
+  },
+  "automaticHandoffMediaDetail": {
+    "message": "A handoff image could not be read from AIY Desktop. Open AIY Companion and try again from history; your original content is still available."
+  },
+  "automaticHandoffGenericDetail": {
+    "message": "This page could not be filled safely. Open AIY Companion and try again from history; your original content is still available."
+  },
+  "automaticHandoffLogSummary": {
+    "message": "Automatic handoff did not finish"
+  },
+  "automaticHandoffRetryAction": {
+    "message": "Open AIY Companion and choose “Fill from history” to retry"
+  },
+  "chatgptOutputReturnAction": { "message": "Return to AIY" },
+  "chatgptOutputReturning": { "message": "Returning…" },
+  "chatgptOutputReturned": { "message": "Returned" },
+  "chatgptOutputReturnSuccessTitle": { "message": "Returned to AIY" },
+  "chatgptOutputReturnAdoptedDetail": {
+    "message": "The selected image is now the linked cover in AIY."
+  },
+  "chatgptOutputReturnImportedDetail": {
+    "message": "The image was saved in the linked AIY creation; review the cover there."
+  },
+  "chatgptOutputReturnFailedTitle": {
+    "message": "Could not return the image"
+  },
+  "chatgptOutputReturnFailedDetail": {
+    "message": "Keep AIY open, then select this image again."
+  },
+  "conflictSiteHasContent": {
+    "message": "$SITE$ already has content",
+    "placeholders": { "site": { "content": "$1" } }
+  },
+  "conflictCurrentInputHasContent": {
+    "message": "The current editor already has content"
+  },
+  "conflictQuestion": {
+    "message": "Clear the existing content and fill this AIY handoff?"
+  },
+  "conflictKeepExisting": { "message": "Keep existing content" },
+  "conflictReplaceExisting": { "message": "Clear and fill" }
+}

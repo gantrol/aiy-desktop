@@ -54,12 +54,18 @@ export interface CreatorImageStagePreviewRow {
     byteSize: number;
   };
   state: CreatorImageStageState;
+  previewUrl?: string;
+  expiresAt?: number;
 }
 
 export interface CreatorStagedOutputImportItemInput {
   stageId: string;
   promptVersionId: string | null;
+  /** Resolved or created atomically at import, with unknown external prompt provenance. */
+  newVersionNo?: number;
   displayName: string;
+  source?: CreatorImageImportSource;
+  sourceUrl?: string;
 }
 
 export interface CreatorStagedImageImportInput {

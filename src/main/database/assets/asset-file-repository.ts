@@ -1,4 +1,5 @@
 import { closeSync, openSync, readSync, realpathSync, statSync } from 'node:fs';
+import { open, realpath, stat } from 'node:fs/promises';
 import path from 'node:path';
 import type { LibraryStorage } from '@/main/database/core/storage';
 import { type JsonMap, text } from '@/main/database/core/values';
@@ -72,33 +73,37 @@ function hasExpectedMediaSignature(filePath: string, mimeType: ResolvedAssetFile
   try {
     const header = Buffer.alloc(mimeType === 'image/svg+xml' ? Math.min(statSync(filePath).size, 4 * 1024 * 1024) : 12);
     const length = readSync(descriptor, header, 0, header.length, 0);
-    if (mimeType === 'image/png') {
-      return length >= 8 && header.subarray(0, 8).equals(Buffer.from('89504e470d0a1a0a', 'hex'));
-    }
-    if (mimeType === 'image/jpeg') {
-      return length >= 3 && header[0] === 0xff && header[1] === 0xd8 && header[2] === 0xff;
-    }
-    if (mimeType === 'image/gif') {
-      const signature = header.subarray(0, 6).toString('ascii');
-      return length >= 10 && (signature === 'GIF87a' || signature === 'GIF89a');
-    }
-    if (mimeType === 'image/svg+xml') {
-      return imageDimensions(header.subarray(0, length), '.svg') !== null;
-    }
-    if (mimeType === 'video/webm') {
-      return length >= 4 && header.subarray(0, 4).equals(Buffer.from('1a45dfa3', 'hex'));
-    }
-    if (mimeType === 'video/mp4' || mimeType === 'video/quicktime') {
-      return length >= 12 && header.subarray(4, 8).toString('ascii') === 'ftyp';
-    }
-    return (
-      length >= 12 &&
-      header.subarray(0, 4).toString('ascii') === 'RIFF' &&
-      header.subarray(8, 12).toString('ascii') === 'WEBP'
-    );
+    return hasExpectedMediaHeader(header.subarray(0, length), mimeType);
   } finally {
     closeSync(descriptor);
   }
+}
+
+function hasExpectedMediaHeader(header: Buffer, mimeType: ResolvedAssetFile['mimeType']) {
+  if (mimeType === 'image/png') {
+    return header.length >= 8 && header.subarray(0, 8).equals(Buffer.from('89504e470d0a1a0a', 'hex'));
+  }
+  if (mimeType === 'image/jpeg') {
+    return header.length >= 3 && header[0] === 0xff && header[1] === 0xd8 && header[2] === 0xff;
+  }
+  if (mimeType === 'image/gif') {
+    const signature = header.subarray(0, 6).toString('ascii');
+    return header.length >= 10 && (signature === 'GIF87a' || signature === 'GIF89a');
+  }
+  if (mimeType === 'image/svg+xml') {
+    return imageDimensions(header, '.svg') !== null;
+  }
+  if (mimeType === 'video/webm') {
+    return header.length >= 4 && header.subarray(0, 4).equals(Buffer.from('1a45dfa3', 'hex'));
+  }
+  if (mimeType === 'video/mp4' || mimeType === 'video/quicktime') {
+    return header.length >= 12 && header.subarray(4, 8).toString('ascii') === 'ftyp';
+  }
+  return (
+    header.length >= 12 &&
+    header.subarray(0, 4).toString('ascii') === 'RIFF' &&
+    header.subarray(8, 12).toString('ascii') === 'WEBP'
+  );
 }
 
 export class AssetFileRepository {
@@ -108,8 +113,8 @@ export class AssetFileRepository {
     this.db = storage.db;
   }
 
-  resolve(assetId: string): ResolvedAssetFile | null {
-    const row = this.db
+  private rows(assetIds: readonly string[]) {
+    return this.db
       .prepare(
         `SELECT asset.id, asset.object_hash, asset.relative_path, asset.mime_type,
         asset.width, asset.height, asset.byte_size,
@@ -152,9 +157,13 @@ export class AssetFileRepository {
           asset.id
         ) AS display_name
       FROM image_assets asset
-      WHERE asset.id = ? AND asset.deleted_at IS NULL`,
+      WHERE asset.id IN (SELECT value FROM json_each(?)) AND asset.deleted_at IS NULL`,
       )
-      .get(assetId) as JsonMap | undefined;
+      .all(JSON.stringify(assetIds)) as JsonMap[];
+  }
+
+  resolve(assetId: string): ResolvedAssetFile | null {
+    const row = this.rows([assetId])[0];
     if (!row) return null;
 
     const mimeType = text(row.mime_type) as keyof typeof imageFileTypes;
@@ -187,5 +196,55 @@ export class AssetFileRepository {
     } catch {
       return null;
     }
+  }
+
+  async resolveManyAsync(assetIds: readonly string[]): Promise<ReadonlyMap<string, ResolvedAssetFile>> {
+    if (!assetIds.length) return new Map();
+    const rows = this.rows([...new Set(assetIds)]);
+    const files = new Map<string, ResolvedAssetFile>();
+    const root = await realpath(this.storage.libraryRoot);
+    // A single metadata query; file checks are sequential and only read bounded headers.
+    for (const row of rows) {
+      const mimeType = text(row.mime_type) as keyof typeof imageFileTypes;
+      const fileType = imageFileTypes[mimeType];
+      const relativePath = text(row.relative_path);
+      if (!fileType || !relativePath || path.isAbsolute(relativePath)) continue;
+      try {
+        const candidate = path.resolve(root, relativePath);
+        if (!isPathInside(root, candidate)) continue;
+        const absolutePath = await realpath(candidate);
+        if (!isPathInside(root, absolutePath)) continue;
+        const info = await stat(absolutePath);
+        if (
+          !info.isFile() ||
+          !fileType.acceptedExtensions.includes(path.extname(absolutePath).toLowerCase() as never)
+        ) {
+          continue;
+        }
+        const handle = await open(absolutePath, 'r');
+        try {
+          const header = Buffer.alloc(mimeType === 'image/svg+xml' ? Math.min(info.size, 4 * 1024 * 1024) : 12);
+          const { bytesRead } = await handle.read(header, 0, header.length, 0);
+          if (!hasExpectedMediaHeader(header.subarray(0, bytesRead), mimeType)) continue;
+        } finally {
+          await handle.close();
+        }
+        const assetId = text(row.id);
+        files.set(assetId, {
+          assetId,
+          objectHash: text(row.object_hash),
+          absolutePath,
+          suggestedName: safeAssetFileName(text(row.display_name), assetId, fileType.extension),
+          extension: fileType.extension,
+          mimeType,
+          width: Number(row.width),
+          height: Number(row.height),
+          byteSize: Number(row.byte_size),
+        });
+      } catch {
+        // An unavailable file is reported by the caller with its article reference.
+      }
+    }
+    return files;
   }
 }

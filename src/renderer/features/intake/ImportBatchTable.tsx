@@ -9,9 +9,10 @@ import { Input } from '@/renderer/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/renderer/components/ui/select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/renderer/components/ui/table';
 import { ImportResultPreviewHoverCard } from '@/renderer/features/intake/ImportResultPreviewHoverCard';
-import type {
-  IntakeImageMetadataDraft,
-  IntakeImageMetadataDraftUpdate,
+import {
+  isAiGeneratedStatus,
+  type IntakeImageMetadataDraft,
+  type IntakeImageMetadataDraftUpdate,
 } from '@/renderer/features/intake/importMetadata';
 import type { ImportOrganizerMediaItem } from '@/renderer/features/intake/useImportMetadataOrganizer';
 import { useI18n } from '@/renderer/i18n/useI18n';
@@ -51,7 +52,13 @@ function AiGeneratedSelect({
 }) {
   const labels = useI18n().messages.intake.review;
   return (
-    <Select value={value} disabled={disabled} onValueChange={(next) => onChange(next as typeof value)}>
+    <Select
+      value={value}
+      disabled={disabled}
+      onValueChange={(next) => {
+        if (isAiGeneratedStatus(next)) onChange(next);
+      }}
+    >
       <SelectTrigger className="h-8 w-full min-w-28 text-xs" aria-label={labels.aiGeneratedLabel}>
         <SelectValue />
       </SelectTrigger>
@@ -166,8 +173,8 @@ function ImportBulkRow({
           value={aiGeneratedStatus}
           disabled={busy || rows.length === 0}
           onValueChange={(value) => {
-            if (value !== mixedValue)
-              onUpdate({ aiGeneratedStatus: value as IntakeImageMetadataDraft['aiGeneratedStatus'] });
+            // Form-backed selects can emit an empty value while native options mount.
+            if (isAiGeneratedStatus(value)) onUpdate({ aiGeneratedStatus: value });
           }}
         >
           <SelectTrigger className="h-8 w-full min-w-28 text-xs" aria-label={labels.changeAllAiGenerated}>

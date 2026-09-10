@@ -168,7 +168,12 @@ export function LegacySpaceMigrationDialog({ open, candidates, onOpenChange, onS
         )}
 
         <DialogFooter>
-          <Button type="button" variant="outline" onClick={() => void cancel()}>
+          <Button
+            type="button"
+            variant="outline"
+            data-action="skip-legacy-space-migration"
+            onClick={() => void cancel()}
+          >
             {pending ? copy.cancel : copy.notNow}
           </Button>
           {!pending && candidates.length > 0 && (

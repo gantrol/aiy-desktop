@@ -1,4 +1,6 @@
 coverage/
+browser-companion/.output/
+browser-companion/.wxt/
 coverage-*/
 dist/
 .tmp/

@@ -16,6 +16,8 @@ export const MAX_IMAGE_DECODER_THUMBNAIL_BYTES = 32 * 1024 * 1024;
 export const MAX_IMAGE_DECODER_WATERMARK_OUTPUT_BYTES = 32 * 1024 * 1024;
 export const MAX_IMAGE_DECODER_DIMENSION = 32_768;
 export const MAX_IMAGE_DECODER_PIXELS = 4_096 * 4_096;
+export const MAX_IMAGE_DECODER_GIF_FRAMES = 1_000;
+export const MAX_IMAGE_DECODER_GIF_TOTAL_PIXELS = 256 * 1024 * 1024;
 
 const requestIdSchema = z.string().uuid();
 const operationSchema = z.enum(['thumbnail', 'crop', 'normalize', 'watermark']);
@@ -41,7 +43,7 @@ const watermarkLogoBytesSchema = z
 const watermarkOutputBytesSchema = z
   .instanceof(Uint8Array)
   .refine((bytes) => bytes.byteLength > 0 && bytes.byteLength <= MAX_IMAGE_DECODER_WATERMARK_OUTPUT_BYTES);
-const watermarkOutputMimeTypeSchema = z.enum(['image/png', 'image/jpeg', 'image/webp']);
+const watermarkOutputMimeTypeSchema = z.enum(['image/png', 'image/jpeg', 'image/webp', 'image/gif']);
 const dimensionSchema = z.number().int().positive().max(MAX_IMAGE_DECODER_DIMENSION);
 
 export const imageDecoderRequestSchema = z.discriminatedUnion('operation', [

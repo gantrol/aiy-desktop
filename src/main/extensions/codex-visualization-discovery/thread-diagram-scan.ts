@@ -132,18 +132,18 @@ async function discoverActiveSessionFiles(
   if (!available) return { available: false, filePaths: [] as string[] };
   const filePaths: string[] = [];
   const years = await childDirectories(sessionsRoot, YEAR_PATTERN);
-  for (const yearPath of years.sort().reverse()) {
+  for (const yearPath of years.sort((left, right) => right.localeCompare(left, 'en'))) {
     if (scanExpired(deadlineMs, signal)) break;
     const year = path.basename(yearPath);
     if (year < range.from.slice(0, 4) || year > range.to.slice(0, 4)) continue;
     const months = await childDirectories(yearPath, MONTH_DAY_PATTERN);
-    for (const monthPath of months.sort().reverse()) {
+    for (const monthPath of months.sort((left, right) => right.localeCompare(left, 'en'))) {
       if (scanExpired(deadlineMs, signal)) break;
       const month = path.basename(monthPath);
       const monthKey = `${year}-${month}`;
       if (monthKey < range.from.slice(0, 7) || monthKey > range.to.slice(0, 7)) continue;
       const days = await childDirectories(monthPath, MONTH_DAY_PATTERN);
-      for (const dayPath of days.sort().reverse()) {
+      for (const dayPath of days.sort((left, right) => right.localeCompare(left, 'en'))) {
         if (scanExpired(deadlineMs, signal)) break;
         const sessionDate = `${monthKey}-${path.basename(dayPath)}`;
         if (!dateInRange(sessionDate, range)) continue;

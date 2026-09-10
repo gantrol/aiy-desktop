@@ -14,6 +14,7 @@ type SelectionSession = ReturnType<typeof useCreatorSelectionSession>;
 type WorkbenchProjection = ReturnType<typeof useCreatorWorkbenchProjection>;
 
 interface Options {
+  animationWorkspaceActive: boolean;
   comparisonFullWindow: boolean;
   documentWorkspaceActive: boolean;
   generation: GenerationInputSession;
@@ -70,6 +71,7 @@ function outputPaneVisible(
 }
 
 export function useCreatorScreenProjection({
+  animationWorkspaceActive,
   comparisonFullWindow,
   documentWorkspaceActive,
   generation,
@@ -115,23 +117,19 @@ export function useCreatorScreenProjection({
       }),
     [prompt.livePrompt, generation.configuration, promptDocument.referenceAssets.length],
   );
-  const showOutputPane = outputPaneVisible(
-    selection,
-    workbench,
-    documentWorkspaceActive,
-    comparisonFullWindow,
-    outputMode,
-  );
+  const showOutputPane =
+    !animationWorkspaceActive &&
+    outputPaneVisible(selection, workbench, documentWorkspaceActive, comparisonFullWindow, outputMode);
   const panes = useCreatorPanes({
     showResultLibrary: true,
     showOutputInspector: showOutputPane,
-    comparisonFullWindow: comparisonFullWindow || promptFullWindow,
+    comparisonFullWindow: !animationWorkspaceActive && (comparisonFullWindow || promptFullWindow),
   });
 
   return {
     activeIdeaCreation: selection.contentSelection.selectedIdeaCreation ?? workbench.projectIdeaCreation,
     automaticChangeSummary,
-    creatorSurface: selectedCreatorSurface(selection),
+    creatorSurface: animationWorkspaceActive ? ('animation' as const) : selectedCreatorSurface(selection),
     dictionarySelectionCount:
       prompt.effectiveTerms.filter(({ directSource }) => directSource).length + prompt.recipeSources.length,
     generationCount: generation.generationTargets.reduce((total, target) => total + target.count, 0),

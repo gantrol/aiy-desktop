@@ -1,7 +1,9 @@
-import { z } from 'zod';
+import { blockDocumentMarkdown } from '@/shared/block-document-codecs';
+import { blockDocumentSchema } from '@/shared/contracts/block-document';
 import { videoDocumentNoteSchema, videoDocumentNotesContentSchema } from '@/shared/contracts/video-document-notes';
 import { createVideoDocumentRichNoteSchemas } from '@/shared/contracts/video-document-rich-note';
 import { videoDocumentTimedTranscriptContentSchema } from '@/shared/contracts/video-document-transcript-content';
+import { z } from 'zod';
 
 export { videoDocumentNoteSchema, videoDocumentNotesContentSchema } from '@/shared/contracts/video-document-notes';
 export {
@@ -275,7 +277,8 @@ export const videoDocumentTimelineSegmentSchema = z
 
 export const videoDocumentMarkdownRevisionContentSchema = z
   .object({
-    schemaVersion: z.literal(1),
+    schemaVersion: z.union([z.literal(1), z.literal(2)]),
+    document: blockDocumentSchema.optional(),
     format: z.literal('MARKDOWN'),
     markdown: z.string().min(1).max(500_000),
     transcriptBasis: videoDocumentTranscriptBasisSchema,
@@ -293,6 +296,8 @@ export const videoDocumentMarkdownRevisionContentSchema = z
   })
   .strict()
   .superRefine((content, context) => {
+    if (content.schemaVersion === 2 && !content.document)
+      context.addIssue({ code: 'custom', message: 'BLOCK_DOCUMENT_REQUIRED' });
     const paths = new Set<string>();
     for (const [index, binding] of content.mediaBindings.entries()) {
       if (paths.has(binding.path)) {
@@ -315,7 +320,10 @@ export const videoDocumentMarkdownRevisionContentSchema = z
       }
       previousStartTimestampMs = segment.startTimestampMs;
     }
-  });
+  })
+  .transform((value) =>
+    value.document ? { ...value, markdown: blockDocumentMarkdown(value.document, value.mediaBindings) } : value,
+  );
 
 const richNoteSchemas = createVideoDocumentRichNoteSchemas({
   transcriptBasis: videoDocumentTranscriptBasisSchema,
@@ -603,7 +611,8 @@ export const videoDocumentBranchSchema = z.object({
 
 export const videoDocumentSummarySchema = z.object({
   id: z.string().min(1),
-  title: z.string().min(1),
+  title: z.string(),
+  displayTitle: z.string().default(''),
   titleLocale: z.enum(['zh', 'en']),
   status: videoDocumentStatusSchema,
   albumId: z.string().min(1).nullable(),
@@ -734,7 +743,7 @@ export const videoDocumentCreateInputSchema = z
 export const videoDocumentRenameInputSchema = z
   .object({
     documentId: z.string().min(1).max(200),
-    title: z.string().trim().min(1).max(300),
+    title: z.string().trim().max(300),
   })
   .strict();
 

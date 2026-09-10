@@ -9,6 +9,10 @@ export interface IntakeImageMetadataDraft extends ImportedImageMetadataInput {
 
 export type IntakeImageMetadataDraftUpdate = Partial<IntakeImageMetadataDraft>;
 
+export function isAiGeneratedStatus(value: string): value is ImportedImageMetadataInput['aiGeneratedStatus'] {
+  return value === 'YES' || value === 'NO' || value === 'UNKNOWN' || value === 'OTHER';
+}
+
 export type IntakeImageDetails = NonNullable<IntakeCommitOptions['imageDetails']>;
 
 export type BatchMetadataField =

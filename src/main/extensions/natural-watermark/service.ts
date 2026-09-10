@@ -18,12 +18,14 @@ const outputExtensionByMimeType = {
   'image/png': '.png',
   'image/jpeg': '.jpg',
   'image/webp': '.webp',
+  'image/gif': '.gif',
 } as const;
 
 const sourceExtensionsByMimeType: Readonly<Record<string, readonly string[]>> = {
   'image/png': ['.png'],
   'image/jpeg': ['.jpg', '.jpeg'],
   'image/webp': ['.webp'],
+  'image/gif': ['.gif'],
   'image/svg+xml': ['.svg'],
 };
 
@@ -117,7 +119,6 @@ export class NaturalWatermarkService {
     const expectedExtensions = sourceExtensionsByMimeType[file.mimeType];
     const sourceExtension = file.extension.toLowerCase();
     if (!expectedExtensions?.includes(sourceExtension)) {
-      if (file.mimeType === 'image/gif') throw new Error('Natural watermark does not flatten animated GIF images');
       throw new Error(`Natural watermark does not support ${file.mimeType}`);
     }
     const logo = await this.logo(profile.logo);

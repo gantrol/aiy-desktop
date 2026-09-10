@@ -1,14 +1,27 @@
-import { contextBridge, ipcRenderer } from 'electron';
+import { createAppShellPreloadApi } from '@/preload/app-shell-api';
+import { imageMakingApi } from '@/preload/image-making-api';
+import { createAppWindowApi } from '@/preload/app-window-api';
+import { createArticlePreloadApi } from '@/preload/article-api';
+import { createArticleDeliveryPreloadApi } from '@/preload/article-delivery-api';
+import { onArticleEditorDrain } from '@/preload/article-editor-drain';
+import { createBackgroundIssuePreloadApi } from '@/preload/background-issue-api';
+import { createCodexPreloadApi } from '@/preload/codex-api';
+import { createCodexArtifactsPreloadApi } from '@/preload/codex-artifacts-api';
+import { contentImageImportsApi } from '@/preload/content-image-imports-api';
+import { createContentLibraryBridge } from '@/preload/content-library-api';
+import { creatorInputRecoveryApi } from '@/preload/creator-input-recovery-api';
+import { creationOutlineApi } from '@/preload/creation-outline-api';
+import { derivedVisualOperationsApi } from '@/preload/derived-visual-operations-api';
+import { createDesktopPetalsApi } from '@/preload/desktop-petals-api';
+import { createEvaluationSuitePreloadApi } from '@/preload/evaluation-suite-api';
+import { createMaintenanceGuideApi } from '@/preload/maintenance-guide-api';
+import { createProviderConnectionPreloadApi } from '@/preload/provider-connection-api';
+import { recordRendererDiagnostic, traceRendererRequest } from '@/preload/renderer-diagnostics';
+import { socialPostRecoveryApi } from '@/preload/social-post-recovery-api';
 import type { DesktopApi } from '@/shared/contracts';
-import {
-  generationProcessEventPageInputSchema,
-  generationProcessEventPageSchema,
-  generationProcessSummarySchema,
-} from '@/shared/contracts/generation-process';
-import { appUpdateStateSchema } from '@/shared/contracts/app-update';
 import { appSupportDestinationSchema } from '@/shared/contracts/app-support';
-import { appWindowStateSchema, desktopPlatformSchema } from '@/shared/contracts/app-window';
-import { workspaceLayoutSaveInputSchema, workspaceLayoutSaveResultSchema } from '@/shared/contracts/workspace-layout';
+import { appUpdateStateSchema } from '@/shared/contracts/app-update';
+import { desktopPlatformSchema } from '@/shared/contracts/app-window';
 import {
   articleEditorRecoveryCheckpointSchema,
   articleEditorRecoveryIdentitySchema,
@@ -16,20 +29,62 @@ import {
   articleEditorRecoveryMutationResultSchema,
   articleEditorRecoveryScopeSchema,
 } from '@/shared/contracts/article-editor-recovery';
-import { createProviderConnectionPreloadApi } from '@/preload/provider-connection-api';
-import {
-  transitionShowcaseExportImageIdsSchema,
-  transitionShowcaseExportImageSnapshotsSchema,
-} from '@/shared/contracts/transition-showcase';
 import {
   assetFileDragRequestSchema,
   assetFileDragResultSchema,
   assetFilesDragFinishedChannel,
   assetFilesStartDragChannel,
 } from '@/shared/contracts/asset-file-drag';
-import { creatorOutputsOrganizeResultSchema } from '@/shared/contracts/creation-output-organization';
+import {
+  browserCompanionDeleteInputSchema,
+  browserCompanionDeleteResultSchema,
+  browserCompanionDestinationSelectInputSchema,
+  browserCompanionDestinationsResultSchema,
+  browserCompanionHistoryResultSchema,
+  browserCompanionOpenInputSchema,
+  browserCompanionOpenResultSchema,
+  browserCompanionStageInputSchema,
+  browserCompanionStageInvocationSchema,
+} from '@/shared/contracts/browser-companion';
+import {
+  codexUsageCleanupInputSchema,
+  codexUsageCleanupResultSchema,
+  codexUsageExportInputSchema,
+  codexUsageExportResultSchema,
+  codexUsageInvestigationGetInputSchema,
+  codexUsageInvestigationSchema,
+  codexUsageResumeInputSchema,
+  codexUsageScanInputSchema,
+  codexUsageStateSchema,
+  codexUsageTaskSchema,
+} from '@/shared/contracts/codex-usage';
 import { creationDraftDtoSchema } from '@/shared/contracts/creation-draft';
-import { inspirationStashMoveInputSchema, inspirationStashSaveInputSchema } from '@/shared/contracts/inspiration-stash';
+import {
+  creationFormAddOrGetInputSchema,
+  creationFormAddOrGetResultSchema,
+  creationItemCreateWithFormInputSchema,
+  creationItemCreateWithFormResultSchema,
+  creationItemGetInputSchema,
+  creationItemGetResultSchema,
+  creationItemListInputSchema,
+  creationItemListResultSchema,
+  creationItemSetPinnedInputSchema,
+  creationItemSetPinnedResultSchema,
+  creationItemSetPrimaryInputSchema,
+  creationItemSetPrimaryResultSchema,
+} from '@/shared/contracts/creation-library';
+import { creatorOutputsOrganizeResultSchema } from '@/shared/contracts/creation-output-organization';
+import {
+  promptSeriesCoverSetInputSchema,
+  promptSeriesOutputPresentationResultSchema,
+  promptSeriesOutputRemoveInputSchema,
+} from '@/shared/contracts/creation-output-presentation';
+import { derivedVisualWorkspaceOpenInputSchema } from '@/shared/contracts/derived-visual';
+import {
+  generationProcessEventPageInputSchema,
+  generationProcessEventPageSchema,
+  generationProcessSummarySchema,
+} from '@/shared/contracts/generation-process';
 import {
   imageBreakdownCreateInputSchema,
   imageBreakdownCreateResultSchema,
@@ -40,60 +95,7 @@ import {
   imageBreakdownRunInputSchema,
   imageBreakdownSchema,
 } from '@/shared/contracts/image-breakdown';
-import {
-  creationFormAddOrGetInputSchema,
-  creationFormAddOrGetResultSchema,
-  creationItemCreateWithFormInputSchema,
-  creationItemCreateWithFormResultSchema,
-  creationItemGetInputSchema,
-  creationItemGetResultSchema,
-  creationItemListInputSchema,
-  creationItemListResultSchema,
-  creationItemMoveInputSchema,
-  creationItemMoveResultSchema,
-  creationItemSetPinnedInputSchema,
-  creationItemSetPinnedResultSchema,
-  creationItemSetPrimaryInputSchema,
-  creationItemSetPrimaryResultSchema,
-} from '@/shared/contracts/creation-library';
-import { createEvaluationSuitePreloadApi } from '@/preload/evaluation-suite-api';
-import { createArticlePreloadApi } from '@/preload/article-api';
-import { createArticleDeliveryPreloadApi } from '@/preload/article-delivery-api';
-import { createCodexPreloadApi } from '@/preload/codex-api';
-import {
-  promptSeriesCoverSetInputSchema,
-  promptSeriesOutputPresentationResultSchema,
-  promptSeriesOutputRemoveInputSchema,
-} from '@/shared/contracts/creation-output-presentation';
-import {
-  socialPostFormAddInputSchema,
-  socialPostFormCreateInputSchema,
-  socialPostMoveInputSchema,
-  socialPostSaveInputSchema,
-  socialPostSetArchivedInputSchema,
-} from '@/shared/contracts/social-post';
-import {
-  browserCompanionDestinationSelectInputSchema,
-  browserCompanionDestinationsResultSchema,
-  browserCompanionDeleteInputSchema,
-  browserCompanionDeleteResultSchema,
-  browserCompanionHistoryResultSchema,
-  browserCompanionOpenInputSchema,
-  browserCompanionOpenResultSchema,
-  browserCompanionStageInputSchema,
-  browserCompanionStageResultSchema,
-} from '@/shared/contracts/browser-companion';
-import {
-  naturalWatermarkConfigurationSchema,
-  naturalWatermarkCustomLogoIdSchema,
-  naturalWatermarkCustomLogoSchema,
-  naturalWatermarkPreviewImageSchema,
-} from '@/shared/contracts/natural-watermark';
-import {
-  derivedVisualAdoptInputSchema,
-  derivedVisualWorkspaceOpenInputSchema,
-} from '@/shared/contracts/derived-visual';
-import { promptVersionCreateResultSchema } from '@/shared/contracts/prompt-version-create';
+import { inspirationStashMoveInputSchema, inspirationStashSaveInputSchema } from '@/shared/contracts/inspiration-stash';
 import {
   legacyLocalSpaceCandidateListSchema,
   localSpaceExportResultSchema,
@@ -106,6 +108,21 @@ import {
   localSpaceTransitionEventSchema,
 } from '@/shared/contracts/local-space';
 import {
+  naturalWatermarkConfigurationSchema,
+  naturalWatermarkCustomLogoIdSchema,
+  naturalWatermarkCustomLogoSchema,
+  naturalWatermarkPreviewImageSchema,
+} from '@/shared/contracts/natural-watermark';
+import { promptVersionCreateResultSchema } from '@/shared/contracts/prompt-version-create';
+import {
+  socialPostFormAddInputSchema,
+  socialPostFormCreateInputSchema,
+  socialPostMoveInputSchema,
+  socialPostRevisionSaveInputSchema,
+  socialPostSaveInputSchema,
+  socialPostSetArchivedInputSchema,
+} from '@/shared/contracts/social-post';
+import {
   termIllustrationAdoptInputSchema,
   termIllustrationDecisionResultSchema,
   termIllustrationDismissInputSchema,
@@ -114,6 +131,10 @@ import {
   termIllustrationStartInputSchema,
   termIllustrationStartResultSchema,
 } from '@/shared/contracts/term-illustration';
+import {
+  transitionShowcaseExportImageIdsSchema,
+  transitionShowcaseExportImageSnapshotsSchema,
+} from '@/shared/contracts/transition-showcase';
 import {
   localQwenAsrSidecarSchema,
   videoDocumentArticleGenerateInputSchema,
@@ -145,37 +166,28 @@ import {
   videoDocumentTranscriptRecognizeInputSchema,
 } from '@/shared/contracts/video-document';
 import {
-  videoDocumentTranscriptBackgroundTaskSnapshotSchema,
-  videoDocumentTranscriptBackgroundTasksChangedEventSchema,
-} from '@/shared/contracts/video-document-transcription';
-import {
   videoDocumentAiActivitiesListInputSchema,
   videoDocumentAiActivitiesPageSchema,
 } from '@/shared/contracts/video-document-ai-activity';
+import {
+  videoDocumentTranscriptBackgroundTaskSnapshotSchema,
+  videoDocumentTranscriptBackgroundTasksChangedEventSchema,
+} from '@/shared/contracts/video-document-transcription';
 import {
   videoDocumentTranscriptTranslationOperationIdSchema,
   videoDocumentTranscriptTranslationResultSchema,
   videoDocumentTranscriptTranslationStartInputSchema,
 } from '@/shared/contracts/video-document-translation';
 import { videoKeyChangeExtractInputSchema, videoKeyChangeResultSchema } from '@/shared/contracts/video-key-changes';
-import {
-  codexUsageCleanupInputSchema,
-  codexUsageCleanupResultSchema,
-  codexUsageExportInputSchema,
-  codexUsageExportResultSchema,
-  codexUsageInvestigationGetInputSchema,
-  codexUsageInvestigationSchema,
-  codexUsageResumeInputSchema,
-  codexUsageScanInputSchema,
-  codexUsageStateSchema,
-  codexUsageTaskSchema,
-} from '@/shared/contracts/codex-usage';
-import { createAppShellPreloadApi } from '@/preload/app-shell-api';
-import { createBackgroundIssuePreloadApi } from '@/preload/background-issue-api';
-import { createCodexArtifactsPreloadApi } from '@/preload/codex-artifacts-api';
-import { recordRendererDiagnostic, traceRendererRequest } from '@/preload/renderer-diagnostics';
+import { workspaceLayoutSaveInputSchema, workspaceLayoutSaveResultSchema } from '@/shared/contracts/workspace-layout';
+import { contextBridge, ipcRenderer } from 'electron';
 
 const api: DesktopApi = {
+  contentLibrary: createContentLibraryBridge((input) => ipcRenderer.invoke('content-library:command', input)),
+  maintenanceGuide: createMaintenanceGuideApi(),
+  ...creatorInputRecoveryApi,
+  ...socialPostRecoveryApi,
+  ...derivedVisualOperationsApi,
   rendererDiagnosticRecord: recordRendererDiagnostic,
   appPlatform: desktopPlatformSchema.parse(process.platform),
   ...createAppShellPreloadApi(),
@@ -215,19 +227,11 @@ const api: DesktopApi = {
     ),
   generationProjection: (locale) => ipcRenderer.invoke('generation:projection', locale),
   ...createBackgroundIssuePreloadApi(ipcRenderer),
-  appWindowGetState: async () => appWindowStateSchema.parse(await ipcRenderer.invoke('app-window:get-state')),
-  appWindowMinimize: () => ipcRenderer.invoke('app-window:minimize'),
-  appWindowToggleMaximized: async () =>
-    appWindowStateSchema.parse(await ipcRenderer.invoke('app-window:toggle-maximized')),
-  appWindowClose: () => ipcRenderer.invoke('app-window:close'),
+  ...createAppWindowApi(),
   appSupportOpen: (destination) =>
     ipcRenderer.invoke('app-support:open', appSupportDestinationSchema.parse(destination)),
-  onAppWindowStateChanged: (callback) => {
-    const listener = (_event: Electron.IpcRendererEvent, value: unknown) => callback(appWindowStateSchema.parse(value));
-    ipcRenderer.on('app-window:state-changed', listener);
-    return () => ipcRenderer.removeListener('app-window:state-changed', listener);
-  },
   appRequestQuit: () => ipcRenderer.invoke('app:request-quit'),
+  onArticleEditorDrain,
   appUpdateGetState: async () => appUpdateStateSchema.parse(await ipcRenderer.invoke('app-update:get-state')),
   appUpdateCheck: async () => appUpdateStateSchema.parse(await ipcRenderer.invoke('app-update:check')),
   appUpdateDownload: async () => appUpdateStateSchema.parse(await ipcRenderer.invoke('app-update:download')),
@@ -471,11 +475,10 @@ const api: DesktopApi = {
     videoDocumentFrameCaptureResultSchema.parse(
       await ipcRenderer.invoke('video-document:frame-capture', videoDocumentFrameCaptureInputSchema.parse(input)),
     ),
-  creatorClipboardReferenceImport: (input) => ipcRenderer.invoke('creator:clipboard-reference-import', input),
-  creatorReferencesImport: (input) => ipcRenderer.invoke('creator:references-import', input),
+  ...contentImageImportsApi,
   creatorOutputsImport: (input) => ipcRenderer.invoke('creator:outputs-import', input),
   creatorNewExternalCreationImport: (input) => ipcRenderer.invoke('creator:new-external-creation-import', input),
-  creatorOutputsStage: (items) => ipcRenderer.invoke('creator:outputs-stage', items),
+  creatorOutputsStage: (items, seriesId) => ipcRenderer.invoke('creator:outputs-stage', items, seriesId),
   creatorOutputsChoose: (input) => ipcRenderer.invoke('creator:outputs-choose', input),
   creatorOutputsDiscard: (stageIds) => ipcRenderer.invoke('creator:outputs-discard', stageIds),
   creatorOutputUpdate: (input) => ipcRenderer.invoke('creator:output-update', input),
@@ -512,10 +515,7 @@ const api: DesktopApi = {
     creationFormAddOrGetResultSchema.parse(
       await ipcRenderer.invoke('creation-form:add-or-get', creationFormAddOrGetInputSchema.parse(input)),
     ),
-  creationItemMove: async (input) =>
-    creationItemMoveResultSchema.parse(
-      await ipcRenderer.invoke('creation-item:move', creationItemMoveInputSchema.parse(input)),
-    ),
+  ...creationOutlineApi,
   creationItemSetPinned: async (input) =>
     creationItemSetPinnedResultSchema.parse(
       await ipcRenderer.invoke('creation-item:set-pinned', creationItemSetPinnedInputSchema.parse(input)),
@@ -527,7 +527,6 @@ const api: DesktopApi = {
   ...createEvaluationSuitePreloadApi(ipcRenderer),
   derivedVisualWorkspaceOpen: (input) =>
     ipcRenderer.invoke('derived-visual:workspace-open', derivedVisualWorkspaceOpenInputSchema.parse(input)),
-  derivedVisualAdopt: (input) => ipcRenderer.invoke('derived-visual:adopt', derivedVisualAdoptInputSchema.parse(input)),
   creationInputStashesList: (scope) => ipcRenderer.invoke('creation-input-stashes:list', scope),
   creationInputStashCreate: (input) => ipcRenderer.invoke('creation-input-stash:create', input),
   inspirationStashSave: (input) =>
@@ -562,16 +561,21 @@ const api: DesktopApi = {
       () => ipcRenderer.invoke('social-post:save', socialPostSaveInputSchema.parse(input)),
       { postId: input.id ?? undefined },
     ),
+  socialPostRevisionSave: (input, spaceId) =>
+    ipcRenderer.invoke('social-post:revision-save', socialPostRevisionSaveInputSchema.parse(input), spaceId),
   socialPostFormAdd: (input) => ipcRenderer.invoke('social-post:form-add', socialPostFormAddInputSchema.parse(input)),
   socialPostFormCreate: (input) =>
     ipcRenderer.invoke('social-post:form-create', socialPostFormCreateInputSchema.parse(input)),
   socialPostMove: (input) => ipcRenderer.invoke('social-post:move', socialPostMoveInputSchema.parse(input)),
   socialPostSetArchived: (input) =>
     ipcRenderer.invoke('social-post:set-archived', socialPostSetArchivedInputSchema.parse(input)),
-  browserCompanionStage: async (input) =>
-    browserCompanionStageResultSchema.parse(
+  browserCompanionStage: async (input) => {
+    const result = browserCompanionStageInvocationSchema.parse(
       await ipcRenderer.invoke('browser-companion:stage', browserCompanionStageInputSchema.parse(input)),
-    ),
+    );
+    if ('errorCode' in result) throw new Error(result.errorCode);
+    return result;
+  },
   browserCompanionDestinations: async () =>
     browserCompanionDestinationsResultSchema.parse(await ipcRenderer.invoke('browser-companion:destinations')),
   browserCompanionOpen: async (input) =>
@@ -701,11 +705,7 @@ const api: DesktopApi = {
   materialProvenanceSuggestions: () => ipcRenderer.invoke('material-provenance:suggestions'),
   generationStart: (input) => ipcRenderer.invoke('generation:start', input),
   generationStartBatch: (input) => ipcRenderer.invoke('generation:start-batch', input),
-  imageEditStart: (input) => ipcRenderer.invoke('image-edit:start', input),
-  imageEditStartBatch: (input) => ipcRenderer.invoke('image-edit:start-batch', input),
-  imageCrop: (input) => ipcRenderer.invoke('image-transform:crop', input),
-  imageReframeStart: (input) => ipcRenderer.invoke('image-transform:reframe-start', input),
-  codexImageRefinementStart: (input) => ipcRenderer.invoke('codex:image-refinement-start', input),
+  ...imageMakingApi,
   styleExplorationStart: (input) => ipcRenderer.invoke('style-exploration:start', input),
   styleExplorationProposeAdjacent: (slotId) => ipcRenderer.invoke('style-exploration:propose-adjacent', slotId),
   styleExplorationCancel: (batchId) => ipcRenderer.invoke('style-exploration:cancel', batchId),
@@ -750,7 +750,7 @@ const api: DesktopApi = {
   },
   assetFileRevealTargets: (assetId, context) => ipcRenderer.invoke('asset-file:reveal-targets', assetId, context),
   assetFileReveal: (assetId, context) => ipcRenderer.invoke('asset-file:reveal', assetId, context),
-  assetFileOpen: (assetId) => ipcRenderer.invoke('asset-file:open', assetId),
+  assetFileOpen: (assetId, context) => ipcRenderer.invoke('asset-file:open', assetId, context),
   assetDelete: (assetId) => ipcRenderer.invoke('asset:delete', assetId),
   favoriteTextsList: () => ipcRenderer.invoke('favorites:text-list'),
   favoriteAdd: (target) => ipcRenderer.invoke('favorites:add', target),
@@ -793,4 +793,5 @@ const api: DesktopApi = {
 };
 
 contextBridge.exposeInMainWorld('desktopApi', api);
+contextBridge.exposeInMainWorld('desktopPetals', createDesktopPetalsApi());
 recordRendererDiagnostic({ event: 'preload-ready', details: {} });

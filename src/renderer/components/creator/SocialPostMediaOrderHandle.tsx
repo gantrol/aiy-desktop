@@ -19,6 +19,8 @@ export function SocialPostMediaOrderHandle({
   return (
     <Button
       type="button"
+      data-action="reorder-social-post-image"
+      data-asset-id={assetId}
       variant="ghost"
       draggable
       className="absolute top-1.5 left-1.5 z-20 h-6 min-w-6 cursor-grab gap-0.5 rounded bg-overlay/90 px-1.5 text-2xs tabular-nums active:cursor-grabbing"

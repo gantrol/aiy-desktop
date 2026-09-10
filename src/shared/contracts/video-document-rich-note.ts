@@ -1,9 +1,11 @@
+import { blockDocumentMarkdown } from '@/shared/block-document-codecs';
+import { blockDocumentSchema } from '@/shared/contracts/block-document';
 import { z } from 'zod';
 
 interface RichNoteSchemaDependencies<
   TranscriptBasis extends z.ZodType,
   GenerationReceipt extends z.ZodType,
-  MediaBinding extends z.ZodType<{ path: string }>,
+  MediaBinding extends z.ZodType<{ path: string; assetId: string }>,
   TimelineSegment extends z.ZodType<{ startTimestampMs: number }>,
 > {
   transcriptBasis: TranscriptBasis;
@@ -15,7 +17,7 @@ interface RichNoteSchemaDependencies<
 export function createVideoDocumentRichNoteSchemas<
   TranscriptBasis extends z.ZodType,
   GenerationReceipt extends z.ZodType,
-  MediaBinding extends z.ZodType<{ path: string }>,
+  MediaBinding extends z.ZodType<{ path: string; assetId: string }>,
   TimelineSegment extends z.ZodType<{ startTimestampMs: number }>,
 >({
   transcriptBasis,
@@ -26,8 +28,9 @@ export function createVideoDocumentRichNoteSchemas<
   const richNote = z
     .object({
       id: z.string().min(1).max(200),
-      title: z.string().trim().min(1).max(300),
+      title: z.string().trim().max(300),
       markdown: z.string().min(1).max(500_000),
+      document: blockDocumentSchema.optional(),
       transcriptBasis,
       sourceUrl: z
         .string()
@@ -65,11 +68,14 @@ export function createVideoDocumentRichNoteSchemas<
         }
         previousStartTimestampMs = segment.startTimestampMs;
       }
-    });
+    })
+    .transform((note) =>
+      note.document ? { ...note, markdown: blockDocumentMarkdown(note.document, note.mediaBindings) } : note,
+    );
 
   const collection = z
     .object({
-      schemaVersion: z.literal(2),
+      schemaVersion: z.union([z.literal(2), z.literal(3)]),
       format: z.literal('NOTE_COLLECTION'),
       defaultNoteId: z.string().min(1).max(200),
       notes: z.array(richNote).min(1).max(50),

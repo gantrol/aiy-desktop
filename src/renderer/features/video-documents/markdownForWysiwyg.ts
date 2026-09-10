@@ -1,3 +1,5 @@
+import { trimTrailingCharacters } from '@/shared/string-boundaries';
+
 interface MarkdownFence {
   marker: '`' | '~';
   length: number;
@@ -6,7 +8,6 @@ interface MarkdownFence {
 const emptyListItemPattern = /^[\t ]*(?:[-+*]|\d{1,9}[.)])[\t ]*$/u;
 const listItemPattern = /^[\t ]*(?:[-+*]|\d{1,9}[.)])(?:[\t ]+|$)/u;
 const explicitEmptyParagraphPattern = /^[\t ]*(?:&nbsp;|\u00a0)[\t ]*$/u;
-const markdownHardBreakPattern = / {2,}$/u;
 const escapedStrongPattern = /\\\*\\\*(?![\s*])((?:(?!\\\*\\\*)[^\r\n])*?[^\s])\\\*\\\*/gu;
 
 /** Recover paired strong markers that an earlier WYSIWYG round trip persisted as literal text. */
@@ -23,11 +24,11 @@ function trimDocumentEdgeEmptyParagraphs(lines: readonly string[]) {
 }
 
 function openingFence(line: string): MarkdownFence | null {
-  const match = /^ {0,3}(`{3,}|~{3,})(.*)$/u.exec(line);
+  const match = /^ {0,3}(`{3,}|~{3,})/u.exec(line);
   if (!match) return null;
   const run = match[1]!;
   const marker = run[0] as MarkdownFence['marker'];
-  if (marker === '`' && match[2]?.includes('`')) return null;
+  if (marker === '`' && line.slice(match[0].length).includes('`')) return null;
   return { marker, length: run.length };
 }
 
@@ -130,7 +131,8 @@ export function normalizeMarkdownForWysiwyg(value: string) {
       if (normalized.length) {
         const previousIndex = normalized.length - 1;
         if (!pendingBlankLine) {
-          normalized[previousIndex] = normalized[previousIndex]!.replace(markdownHardBreakPattern, '');
+          const previousLine = normalized[previousIndex]!;
+          if (previousLine.endsWith('  ')) normalized[previousIndex] = trimTrailingCharacters(previousLine, ' ');
         }
         if (normalized[previousIndex] !== '') normalized.push('');
       }

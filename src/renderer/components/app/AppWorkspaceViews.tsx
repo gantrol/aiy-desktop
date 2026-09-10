@@ -1,4 +1,8 @@
-import { Activity, lazy, useState, type ComponentProps, type ReactNode } from 'react';
+import type { AppView } from '@/renderer/components/app/AppSidebar';
+import { ReturnToMaterialsBar } from '@/renderer/components/app/ReturnToMaterialsBar';
+import type { AppLocation, MaterialsReturnContext } from '@/renderer/components/app/app-navigation';
+import { CreatorScreen } from '@/renderer/features/creator/lazyCreatorScreen';
+import { useI18n } from '@/renderer/i18n/useI18n';
 import type {
   BootstrapDto,
   ImportedCreationOutputDto,
@@ -6,11 +10,7 @@ import type {
   Locale,
   VideoDocumentDto,
 } from '@/shared/contracts';
-import { ReturnToMaterialsBar } from '@/renderer/components/app/ReturnToMaterialsBar';
-import type { AppView } from '@/renderer/components/app/AppSidebar';
-import type { AppLocation, MaterialsReturnContext } from '@/renderer/components/app/app-navigation';
-import { CreatorScreen } from '@/renderer/features/creator/lazyCreatorScreen';
-import { useI18n } from '@/renderer/i18n/useI18n';
+import { Activity, lazy, useState, type ComponentProps, type ReactNode } from 'react';
 
 const DictionaryScreen = lazy(() =>
   import('@/renderer/components/DictionaryScreen').then((module) => ({ default: module.DictionaryScreen })),
@@ -75,6 +75,7 @@ interface Props {
   onTermDetailsRequest?: ComponentProps<typeof CreatorScreen>['onTermDetailsRequest'];
   onImportedOutputSaved(output: ImportedCreationOutputDto): void;
   onArticleSaved: ComponentProps<typeof CreatorScreen>['onArticleSaved'];
+  onSocialPostSaved: ComponentProps<typeof CreatorScreen>['onSocialPostSaved'];
   notify(message: string): void;
   onVideoDocumentsNavigate: ComponentProps<typeof VideoDocumentsScreen>['onNavigate'];
   onDictionaryNavigate: ComponentProps<typeof DictionaryScreen>['onNavigate'];
@@ -195,7 +196,6 @@ export function AppWorkspaceViews({
   refreshAlbums,
   onTermDetailsRequest,
   onImportedOutputSaved,
-  onArticleSaved,
   notify,
   onVideoDocumentsNavigate,
   onDictionaryNavigate,
@@ -213,6 +213,7 @@ export function AppWorkspaceViews({
   onLocateAiActivity,
   onReEditGeneration,
   onRetryGeneration,
+  ...contentSaveHandlers
 }: Props) {
   const { messages } = useI18n();
   const companionActive = groupOwnsView(groupActive, view, companionViews);
@@ -282,7 +283,7 @@ export function AppWorkspaceViews({
                   refreshAlbums={refreshAlbums}
                   onTermDetailsRequest={onTermDetailsRequest}
                   onImportedOutputSaved={onImportedOutputSaved}
-                  onArticleSaved={onArticleSaved}
+                  {...contentSaveHandlers}
                   notify={notify}
                 />,
               )}

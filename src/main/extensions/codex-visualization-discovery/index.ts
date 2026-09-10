@@ -1,4 +1,5 @@
 import { createHash, randomBytes } from 'node:crypto';
+import { trimTrailingCharacters } from '@/shared/string-boundaries';
 import { EventEmitter } from 'node:events';
 import { lstatSync, realpathSync, watch, type FSWatcher } from 'node:fs';
 import { chmod, copyFile, lstat, mkdir, open, realpath, writeFile } from 'node:fs/promises';
@@ -116,10 +117,7 @@ function htmlPreviewPathSegments(relativePath: string) {
 
 function safeDirectoryStem(value: string) {
   return (
-    value
-      .replace(/[<>:"/\\|?*\u0000-\u001f]/g, ' ')
-      .replace(/\s+/g, ' ')
-      .replace(/[. ]+$/g, '')
+    trimTrailingCharacters(value.replace(/[<>:"/\\|?*\u0000-\u001f]/g, ' ').replace(/\s+/g, ' '), '. ')
       .trim()
       .slice(0, 80) || 'Codex visualization'
   );

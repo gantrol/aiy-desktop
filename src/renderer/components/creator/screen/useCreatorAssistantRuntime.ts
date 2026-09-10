@@ -90,7 +90,7 @@ export function useCreatorAssistantRuntime({
       projection.panes.setOutputCollapsed(false);
       projection.panes.setCompactPanel('output');
       const nextLocation: CreatorLocation = { surface: 'idea-creation', creationId };
-      if (navigation.appliedLocationKeyRef.current !== navigationLocationKey(nextLocation)) {
+      if (navigation.locationApplicationRef.current.appliedKey !== navigationLocationKey(nextLocation)) {
         navigation.commit(nextLocation, 'push');
       }
     },

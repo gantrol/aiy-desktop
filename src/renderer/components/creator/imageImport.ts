@@ -8,11 +8,16 @@ import { creatorImageImportMimeTypeSchema } from '@/shared/contracts/creator-imp
 export type RendererImageImportSource = 'PASTE' | 'DROP' | 'UPLOAD';
 
 export type RendererImageImportItem = CreatorImageImportItemInput;
-export type RendererImageImportPreviewRow = CreatorImageStagePreviewRow & {
+export type RendererImageImportPreviewRow = Omit<CreatorImageStagePreviewRow, 'previewUrl'> & {
   displayName: string;
   promptVersionId: string | null;
+  newVersionNo?: number;
+  source: RendererImageImportSource;
+  sourceUrl: string;
   previewUrl: string | null;
 };
+
+export type ImportVersionAssignment = Pick<RendererImageImportPreviewRow, 'promptVersionId' | 'newVersionNo'>;
 
 const maxImageBytes = 25 * 1024 * 1024;
 const maxImages = 8;

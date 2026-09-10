@@ -1,5 +1,6 @@
 import { ipcRenderer } from 'electron';
 import type { DesktopApi } from '@/shared/contracts';
+import { appShellLanguageSchema } from '@/shared/contracts/tray-menu';
 import {
   APP_DEEP_LINK_AVAILABLE_CHANNEL,
   APP_DEEP_LINKS_TAKE_CHANNEL,
@@ -13,7 +14,11 @@ import {
 
 type AppShellPreloadApi = Pick<
   DesktopApi,
-  'appLoadingPreviews' | 'onAppLoadingPreviewsRefreshed' | 'appDeepLinksTake' | 'onAppDeepLinksAvailable'
+  | 'appLoadingPreviews'
+  | 'onAppLoadingPreviewsRefreshed'
+  | 'appDeepLinksTake'
+  | 'onAppDeepLinksAvailable'
+  | 'appShellSetLanguage'
 >;
 
 let loadingPreviewsInFlight: Promise<TransitionPreviewDto[]> | null = null;
@@ -31,6 +36,8 @@ function appLoadingPreviews() {
 
 export function createAppShellPreloadApi(): AppShellPreloadApi {
   return {
+    appShellSetLanguage: (language) =>
+      ipcRenderer.invoke('app-shell:set-language', appShellLanguageSchema.parse(language)),
     appLoadingPreviews,
     onAppLoadingPreviewsRefreshed: (callback) => {
       const listener = (_event: Electron.IpcRendererEvent, value: unknown) =>

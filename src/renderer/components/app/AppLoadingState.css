@@ -66,7 +66,8 @@
   animation-play-state: paused;
 }
 
-/* The mask punches real transparent perforations out of the moving film segment. */
+/* The mask punches real transparent perforations out of the moving film segment.
+   Use two-value positions: mask-position does not accept background-position's three-value edge offsets. */
 [data-app-loading-state] .app-loading-film-segment {
   -webkit-mask-image:
     linear-gradient(#fff 0 0),
@@ -74,8 +75,8 @@
     linear-gradient(to bottom, transparent 0 0.5rem, #fff 0.5rem 1.125rem, transparent 1.125rem 1.625rem);
   -webkit-mask-position:
     0 0,
-    left 0.5rem top,
-    right 0.5rem top;
+    0.5rem 0,
+    calc(100% - 0.5rem) 0;
   -webkit-mask-size:
     100% 100%,
     0.875rem 1.625rem,
@@ -88,8 +89,8 @@
     linear-gradient(to bottom, transparent 0 0.5rem, #fff 0.5rem 1.125rem, transparent 1.125rem 1.625rem);
   mask-position:
     0 0,
-    left 0.5rem top,
-    right 0.5rem top;
+    0.5rem 0,
+    calc(100% - 0.5rem) 0;
   mask-size:
     100% 100%,
     0.875rem 1.625rem,

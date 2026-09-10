@@ -1,11 +1,12 @@
 import { z } from 'zod';
 import {
+  browserCompanionArticleHtmlSchema,
   browserCompanionContentKindSchema,
   browserCompanionSourceSchema,
   browserCompanionTargetSchema,
 } from '@/shared/contracts/browser-companion';
 
-export const BROWSER_COMPANION_PROTOCOL_VERSION = 5 as const;
+export const BROWSER_COMPANION_PROTOCOL_VERSION = 6 as const;
 export const BROWSER_COMPANION_EXTENSION_ID = 'eagfpifnbkfmojcjfbababmlmagmdopg';
 export const BROWSER_COMPANION_EXTENSION_ORIGIN = `chrome-extension://${BROWSER_COMPANION_EXTENSION_ID}/`;
 export const BROWSER_COMPANION_LOOPBACK_HOST = '127.0.0.1';
@@ -22,7 +23,7 @@ export const BROWSER_COMPANION_MAX_MEDIA_BYTES = 32 * 1024 * 1024;
 export const BROWSER_COMPANION_MAX_TOTAL_MEDIA_BYTES = 128 * 1024 * 1024;
 export const BROWSER_COMPANION_MAX_OUTPUT_IMPORT_BYTES = 25 * 1024 * 1024;
 export const BROWSER_COMPANION_MAX_REQUEST_BYTES = 64 * 1024;
-export const BROWSER_COMPANION_MAX_RESPONSE_BYTES = 64 * 1024;
+export const BROWSER_COMPANION_MAX_RESPONSE_BYTES = 2 * 1024 * 1024;
 export const BROWSER_COMPANION_REQUEST_CLOCK_SKEW_MS = 60_000;
 
 export function resolveBrowserCompanionLoopbackPort(environment: NodeJS.ProcessEnv): number {
@@ -42,6 +43,9 @@ const browserCompanionWebOriginTarget = {
   'https://mp.weixin.qq.com': 'wechat',
   'https://weibo.com': 'weibo',
   'https://www.weibo.com': 'weibo',
+  'https://x.com': 'x',
+  'https://twitter.com': 'x',
+  'https://creator.xiaohongshu.com': 'xiaohongshu',
 } as const;
 
 export function browserCompanionTargetFromWebOrigin(value: string | undefined) {
@@ -96,6 +100,8 @@ const currentRecordFields = {
   source: browserCompanionSourceSchema,
   contentKind: browserCompanionContentKindSchema,
   title: z.string().trim().min(1).max(200).nullable(),
+  articleHtml: browserCompanionArticleHtmlSchema.optional(),
+  articleCoverMediaIndex: z.number().int().min(0).max(19).optional(),
   text: z.string().min(1).max(10_000),
   media: z.array(browserCompanionMediaSchema).max(20),
   createdAt: z.string().datetime({ offset: true }),

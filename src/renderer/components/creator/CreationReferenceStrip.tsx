@@ -10,7 +10,7 @@ import { CloseIcon, DictionaryIcon, ImageIcon } from '@/renderer/icons';
 import { readSingleImageAssetDrag } from '@/renderer/components/albums/albumDrag';
 import { TermPreviewTooltip } from '@/renderer/components/media/TermPreviewTooltip';
 import { AssetFileContextMenu } from '@/renderer/components/media/AssetFileContextMenu';
-import { ImageAmbientBackdrop } from '@/renderer/components/media/AmbientImage';
+import { AssetThumbnail } from '@/renderer/components/media/AssetThumbnail';
 import { MediaPreviewDialog } from '@/renderer/components/media/MediaPreviewDialog';
 import { Button } from '@/renderer/components/ui/button';
 import { Popover, PopoverAnchor, PopoverContent } from '@/renderer/components/ui/popover';
@@ -280,16 +280,6 @@ export function CreationReferenceStrip({
   return (
     <>
       <div className="mt-3 flex flex-wrap gap-2 border-t pt-3">
-        {imageImporting ? (
-          <span
-            role="status"
-            aria-label={locale === 'zh' ? '正在导入图片' : 'Importing image'}
-            data-reference-image-importing=""
-            className="grid size-12 shrink-0 place-items-center rounded-md bg-surface-sunken text-muted-foreground"
-          >
-            <LoaderCircleIcon className="size-4 animate-spin" aria-hidden="true" />
-          </span>
-        ) : null}
         {assets.map((asset, index) => (
           <span
             className={cn(
@@ -323,14 +313,12 @@ export function CreationReferenceStrip({
               <Button
                 type="button"
                 variant="ghost"
+                data-action="preview-reference-image"
+                data-asset-id={asset.id}
                 draggable
                 className="relative isolate size-12 cursor-grab overflow-hidden rounded-md p-0 shadow-none hover:bg-transparent active:cursor-grabbing focus-visible:ring-inset focus-visible:ring-offset-0"
-                title={locale === 'zh' ? '拖动调整顺序或导出，单击放大' : 'Drag to reorder or export, click to enlarge'}
-                aria-label={
-                  locale === 'zh'
-                    ? `第 ${index + 1} 张图片：拖动调整顺序或导出，单击放大`
-                    : `Image ${index + 1}: drag to reorder or export, click to enlarge`
-                }
+                title={messages.contentEditor.imageActions.replace('{index}', String(index + 1))}
+                aria-label={messages.contentEditor.imageActions.replace('{index}', String(index + 1))}
                 onDragEnd={() => setDragTargetAssetId(null)}
                 onKeyDown={(event) => {
                   const offset = event.key === 'ArrowLeft' ? -1 : event.key === 'ArrowRight' ? 1 : 0;
@@ -341,10 +329,11 @@ export function CreationReferenceStrip({
                 }}
                 onClick={() => setPreviewAssetId(asset.id)}
               >
-                <ImageAmbientBackdrop src={asset.mediaUrl} />
-                <img
+                <AssetThumbnail
                   className="relative z-10 size-full rounded-md object-contain"
-                  src={asset.mediaUrl}
+                  asset={asset}
+                  size={96}
+                  ambient
                   alt=""
                   draggable={false}
                 />
@@ -362,6 +351,16 @@ export function CreationReferenceStrip({
             </Button>
           </span>
         ))}
+        {imageImporting ? (
+          <span
+            role="status"
+            aria-label={messages.creator.materialPicker.imageImporting}
+            data-reference-image-importing=""
+            className="grid size-12 shrink-0 place-items-center rounded-md bg-surface-sunken text-muted-foreground"
+          >
+            <LoaderCircleIcon className="size-4 animate-spin" aria-hidden="true" />
+          </span>
+        ) : null}
         <TooltipProvider delayDuration={280}>
           {directTerms.map(({ term, resolved, recipeUseIds }) => (
             <TermPreviewTooltip term={term} key={term.id}>

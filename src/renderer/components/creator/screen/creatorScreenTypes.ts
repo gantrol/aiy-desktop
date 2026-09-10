@@ -1,6 +1,13 @@
-import type { ReactNode } from 'react';
-import type { ArticleDto, BootstrapDto, ImportedCreationOutputDto, Locale, VideoDocumentDto } from '@/shared/contracts';
 import type { CreatorLocation, CreatorOpenTabTarget, NavigationMode } from '@/renderer/components/app/app-navigation';
+import type {
+  ArticleDto,
+  BootstrapDto,
+  ImportedCreationOutputDto,
+  Locale,
+  SocialPostDto,
+  VideoDocumentDto,
+} from '@/shared/contracts';
+import type { ReactNode } from 'react';
 
 export interface CreatorScreenProps {
   data: BootstrapDto;
@@ -31,5 +38,6 @@ export interface CreatorScreenProps {
   onTermDetailsRequest?(): Promise<void>;
   onImportedOutputSaved(output: ImportedCreationOutputDto): void;
   onArticleSaved(article: ArticleDto): void;
+  onSocialPostSaved(post: SocialPostDto): void;
   notify(message: string): void;
 }

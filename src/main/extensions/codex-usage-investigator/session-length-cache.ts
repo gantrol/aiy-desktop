@@ -8,9 +8,9 @@ import {
   storedSessionSourceRowSchema,
   type CodexUsageSessionSourceRecord,
   type CodexUsageStoredChatTurn,
-  type StoredEventRow,
 } from '@/main/extensions/codex-usage-investigator/cache-records';
 import type { CodexUsageInternalEvent } from '@/main/extensions/codex-usage-investigator/session-reader';
+import { sqlitePages } from '@/main/extensions/codex-usage-investigator/sqlite-pages';
 
 const processingWorkloadRowSchema = z
   .object({
@@ -127,44 +127,11 @@ export function* chatTurnPages(database: Database.Database): Iterable<ReadonlyAr
 
 export function* sessionAnalysisEventPages(
   database: Database.Database,
-  fromEpoch: number | null,
-  toEpoch: number,
+  turns: readonly [sessionId: string, turnId: string][],
 ): Iterable<ReadonlyArray<CodexUsageInternalEvent>> {
+  if (!turns.length) return;
   const statement = database.prepare(
-    `WITH self_owned_turns AS (
-       SELECT chat_turn.*
-       FROM usage_chat_turns AS chat_turn
-       INNER JOIN usage_source_files AS source
-         ON source.session_id = chat_turn.source_session_id
-       WHERE source.thread_created_ms = 0
-          OR length(chat_turn.turn_id) <> 36
-          OR lower(substr(chat_turn.turn_id, 15, 1)) <> '7'
-          OR substr(lower(replace(chat_turn.turn_id, '-', '')), 1, 12)
-             >= printf('%012x', source.thread_created_ms)
-     ), owned_turns AS (
-       SELECT current.*
-       FROM self_owned_turns AS current
-       INNER JOIN usage_source_files AS current_source
-         ON current_source.session_id = current.source_session_id
-       WHERE NOT EXISTS (
-         SELECT 1
-         FROM self_owned_turns AS previous
-         INNER JOIN usage_source_files AS previous_source
-           ON previous_source.session_id = previous.source_session_id
-         WHERE previous.turn_id = current.turn_id
-           AND (previous.started_ms, previous_source.thread_created_ms, previous.source_session_id)
-             < (current.started_ms, current_source.thread_created_ms, current.source_session_id)
-       )
-     ), selected_sessions AS (
-       SELECT source_session_id
-       FROM owned_turns
-       GROUP BY source_session_id
-       HAVING COUNT(*) > 0
-         AND SUM(CASE WHEN terminal_ms IS NULL THEN 1 ELSE 0 END) = 0
-         AND MAX(terminal_ms) >= COALESCE(?, 0)
-         AND MAX(terminal_ms) <= ?
-     )
-     SELECT
+    `SELECT
       event.source_session_id AS sessionId,
       event.event_order AS eventOrder,
       event.event_fingerprint AS eventFingerprint,
@@ -190,39 +157,13 @@ export function* sessionAnalysisEventPages(
       event.reasoning_output_tokens AS reasoningOutputTokens,
       event.total_tokens AS totalTokens
      FROM usage_events AS event
-     INNER JOIN owned_turns AS owned
-       ON owned.source_session_id = event.source_session_id
-      AND owned.turn_id = event.turn_id
-     INNER JOIN selected_sessions AS selected
-       ON selected.source_session_id = event.source_session_id
      WHERE event.total_tokens > 0
-       AND (event.timestamp_ms, event.source_session_id, event.event_order) > (?, ?, ?)
-     ORDER BY event.timestamp_ms ASC, event.source_session_id ASC, event.event_order ASC
-     LIMIT ?`,
+       AND (event.source_session_id, event.turn_id) IN (
+         SELECT json_extract(value, '$[0]'), json_extract(value, '$[1]') FROM json_each(?)
+       )
+     ORDER BY event.source_session_id ASC, event.event_order ASC`,
   );
-  let cursor: Pick<StoredEventRow, 'timestampMs' | 'sessionId' | 'eventOrder'> = {
-    timestampMs: -1,
-    sessionId: '',
-    eventOrder: 0,
-  };
-  while (true) {
-    const rows = z
-      .array(storedEventRowSchema)
-      .max(CODEX_USAGE_EVENT_PAGE_SIZE)
-      .parse(
-        statement.all(
-          fromEpoch,
-          toEpoch,
-          cursor.timestampMs,
-          cursor.sessionId,
-          cursor.eventOrder,
-          CODEX_USAGE_EVENT_PAGE_SIZE,
-        ),
-      );
-    if (!rows.length) return;
+  for (const rows of sqlitePages(statement.iterate(JSON.stringify(turns)), storedEventRowSchema)) {
     yield rows.map(eventFromStoredRow);
-    const last = rows.at(-1);
-    if (!last || rows.length < CODEX_USAGE_EVENT_PAGE_SIZE) return;
-    cursor = last;
   }
 }

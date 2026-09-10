@@ -84,7 +84,10 @@ export function LibraryStartScreen({ onCommitted, onContentPackImported, notify 
     if (openingLibrary) return;
     setOpeningLibrary(true);
     try {
-      await flushArticleEditors();
+      if (!(await flushArticleEditors())) {
+        setOpeningLibrary(false);
+        return;
+      }
       const result = await window.desktopApi.localSpacesOpen();
       if (result.status === 'switched') return;
       setOpeningLibrary(false);

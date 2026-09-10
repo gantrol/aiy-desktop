@@ -10,6 +10,7 @@ import {
   browserCompanionOpenInputSchema,
   browserCompanionOpenResultSchema,
   browserCompanionStageInputSchema,
+  browserCompanionStageErrorCodeSchema,
   browserCompanionStageResultSchema,
 } from '@/shared/contracts/browser-companion';
 import { WEIBO_CHANNEL_EXTENSION_ID } from '@/shared/extension-ids';
@@ -29,7 +30,13 @@ export function registerBrowserCompanionIpc(
     ) {
       throw new Error('Weibo browser handoff is disabled or missing permission');
     }
-    return browserCompanionStageResultSchema.parse(await runtime.stage(input));
+    try {
+      return browserCompanionStageResultSchema.parse(await runtime.stage(input));
+    } catch (reason) {
+      const code = browserCompanionStageErrorCodeSchema.safeParse(reason instanceof Error ? reason.message : reason);
+      if (code.success) return { errorCode: code.data };
+      throw reason;
+    }
   });
   ipcMain.handle('browser-companion:destinations', async () =>
     browserCompanionDestinationsResultSchema.parse(await runtime.destinations()),

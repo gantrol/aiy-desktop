@@ -161,16 +161,16 @@ async function childDirectories(directoryPath: string, pattern: RegExp) {
 async function discoverSessionDirectories(rootPath: string, signal?: AbortSignal) {
   const years = await childDirectories(rootPath, YEAR_PATTERN);
   const sessionDirectories: string[] = [];
-  for (const yearPath of years.sort().reverse()) {
+  for (const yearPath of years.sort((left, right) => right.localeCompare(left, 'en'))) {
     signal?.throwIfAborted();
     const months = await childDirectories(yearPath, MONTH_DAY_PATTERN);
-    for (const monthPath of months.sort().reverse()) {
+    for (const monthPath of months.sort((left, right) => right.localeCompare(left, 'en'))) {
       signal?.throwIfAborted();
       const days = await childDirectories(monthPath, MONTH_DAY_PATTERN);
-      for (const dayPath of days.sort().reverse()) {
+      for (const dayPath of days.sort((left, right) => right.localeCompare(left, 'en'))) {
         signal?.throwIfAborted();
         const sessions = await childDirectories(dayPath, SESSION_ID_PATTERN);
-        for (const sessionPath of sessions.sort().reverse()) {
+        for (const sessionPath of sessions.sort((left, right) => right.localeCompare(left, 'en'))) {
           sessionDirectories.push(sessionPath);
           if (sessionDirectories.length >= MAX_SESSION_DIRECTORIES) return sessionDirectories;
         }

@@ -1,10 +1,33 @@
-import { net, type Protocol } from 'electron';
+import type { Protocol } from 'electron';
+import { open, type FileHandle } from 'node:fs/promises';
 import path from 'node:path';
-import { pathToFileURL } from 'node:url';
+import { Readable } from 'node:stream';
 import { rendererContentSecurityPolicy } from '@/main/app/window-security';
+import { RENDERER_SCHEME } from '@/main/app/renderer-location';
 
-export const RENDERER_SCHEME = 'aiy-app';
-export const PACKAGED_RENDERER_URL = `${RENDERER_SCHEME}://renderer/index.html`;
+export { RENDERER_SCHEME, PACKAGED_RENDERER_URL } from '@/main/app/renderer-location';
+
+const rendererMimeTypes: Readonly<Record<string, string>> = {
+  '.html': 'text/html; charset=utf-8',
+  '.css': 'text/css; charset=utf-8',
+  '.js': 'text/javascript; charset=utf-8',
+  '.mjs': 'text/javascript; charset=utf-8',
+  '.json': 'application/json; charset=utf-8',
+  '.svg': 'image/svg+xml',
+  '.png': 'image/png',
+  '.jpg': 'image/jpeg',
+  '.jpeg': 'image/jpeg',
+  '.webp': 'image/webp',
+  '.gif': 'image/gif',
+  '.mp4': 'video/mp4',
+  '.avif': 'image/avif',
+  '.ico': 'image/x-icon',
+  '.woff': 'font/woff',
+  '.woff2': 'font/woff2',
+  '.ttf': 'font/ttf',
+  '.otf': 'font/otf',
+  '.wasm': 'application/wasm',
+};
 
 function isPathInside(root: string, candidate: string) {
   const relative = path.relative(root, candidate);
@@ -50,20 +73,40 @@ export function installRendererProtocol(targetProtocol: Protocol, rendererRoot: 
     const filePath = resolveRendererFile(rendererRoot, request.url);
     if (!filePath) return new Response('Not found', { status: 404 });
 
+    let file: FileHandle | undefined;
     try {
-      const response = await net.fetch(pathToFileURL(filePath).href);
-      if (!response.ok) return new Response('Not found', { status: 404 });
-      const headers = new Headers(response.headers);
-      headers.set('Content-Security-Policy', rendererContentSecurityPolicy());
+      file = await open(filePath, 'r');
+      const stats = await file.stat();
+      if (!stats.isFile()) {
+        await file.close();
+        return new Response('Not found', { status: 404 });
+      }
+      const headers = new Headers({
+        'Content-Type': rendererMimeTypes[path.extname(filePath).toLowerCase()] ?? 'application/octet-stream',
+        'Content-Length': String(stats.size),
+        'Cache-Control': 'no-cache',
+      });
+      headers.set('Content-Security-Policy', rendererContentSecurityPolicy(null, request.url));
       headers.set('X-Content-Type-Options', 'nosniff');
       headers.set('Cross-Origin-Opener-Policy', 'same-origin');
       headers.set('Cross-Origin-Resource-Policy', 'same-origin');
-      return new Response(request.method === 'HEAD' ? null : response.body, {
-        status: response.status,
-        statusText: response.statusText,
-        headers,
-      });
+      if (request.method === 'HEAD') {
+        await file.close();
+        return new Response(null, { headers });
+      }
+      // Stream local assets without a second trip through Chromium's network
+      // service or platform-dependent MIME inference. Cancellation closes the fd.
+      const stream = file.createReadStream({ highWaterMark: 64 * 1024 });
+      const abort = () => stream.destroy();
+      request.signal.addEventListener('abort', abort, { once: true });
+      stream.once('close', () => request.signal.removeEventListener('abort', abort));
+      if (request.signal.aborted) stream.destroy();
+      const body = Readable.toWeb(stream, {
+        strategy: { highWaterMark: 64 * 1024, size: (chunk: Uint8Array) => chunk.byteLength },
+      }) as ReadableStream<Uint8Array>;
+      return new Response(body, { headers });
     } catch {
+      await file?.close().catch(() => undefined);
       return new Response('Not found', { status: 404 });
     }
   });

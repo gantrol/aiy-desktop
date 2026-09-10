@@ -1,12 +1,3 @@
-import type { ComponentProps, ReactNode, RefObject } from 'react';
-import type {
-  ArticleCommentDto,
-  ArticleCommentStatus,
-  ArticleEditorLocationDto,
-  ArticleElementPlacementInput,
-  VideoDocumentMediaBinding,
-  VideoDocumentRevisionMediaDto,
-} from '@/shared/contracts';
 import { ArticleCommentsPanel } from '@/renderer/components/creator/article-editor/ArticleCommentsPanel';
 import { ArticleEditorOutline } from '@/renderer/components/creator/article-editor/ArticleEditorOutline';
 import { ArticleEditorPane } from '@/renderer/components/creator/article-editor/ArticleEditorPane';
@@ -18,30 +9,39 @@ import { ArticleEditorSplit } from '@/renderer/components/creator/article-editor
 import type { ArticleSaveMode } from '@/renderer/components/creator/article-editor/articleEditorSession';
 import type { ArticleEditorOutlineCursorRequest } from '@/renderer/components/creator/article-editor/useArticleEditorOutlineNavigation';
 import type { ArticleEditorSidebarController } from '@/renderer/components/creator/article-editor/useArticleEditorSidebar';
+import { Button } from '@/renderer/components/ui/button';
+import { AssetFileContextMenu } from '@/renderer/components/media/AssetFileContextMenu';
 import {
   VideoDocumentWysiwygEditor,
   type VideoDocumentArticleElementControls,
   type VideoDocumentEditorImageImport,
   type VideoDocumentWysiwygEditorHandle,
 } from '@/renderer/features/video-documents/VideoDocumentWysiwygEditor';
-import type { VideoDocumentArticleElementsChangeReason } from '@/renderer/features/video-documents/videoDocumentEditorPublication';
 import type { VideoDocumentArticleHeading } from '@/renderer/features/video-documents/useVideoDocumentArticleOutline';
+import type { VideoDocumentArticleElementsChangeReason } from '@/renderer/features/video-documents/videoDocumentEditorPublication';
+import { useI18n } from '@/renderer/i18n/useI18n';
+import type {
+  ArticleCommentDto,
+  ArticleCommentStatus,
+  ArticleEditorLocationDto,
+  ArticleElementPlacementInput,
+  VideoDocumentMediaBinding,
+  VideoDocumentRevisionMediaDto,
+} from '@/shared/contracts';
+import type { BlockDocument } from '@/shared/contracts/block-document';
+import type { ComponentProps, ReactNode, RefObject } from 'react';
 
 function firstArticleLocation(elements: readonly ArticleElementPlacementInput[]) {
   const first = elements[0];
   return first ? { elementId: first.elementId, relativeOffset: 0, blockIndex: first.blockIndex } : null;
 }
 
-function illustrationActionLabel(available: boolean, generating: boolean, zh: boolean) {
-  if (!available) return undefined;
-  if (generating) return zh ? '正在打开配图工作区' : 'Opening illustration workspace';
-  return zh ? '生成配图' : 'Generate illustration';
-}
-
 function ArticleDocumentSidebar({
   comments,
   commentMutationBusy,
   controller,
+  mediaPanel,
+  mediaCount,
   cursorRequest,
   hoveredCommentId,
   outlineItems,
@@ -57,6 +57,8 @@ function ArticleDocumentSidebar({
   comments: readonly ArticleCommentDto[];
   commentMutationBusy: boolean;
   controller: ArticleEditorSidebarController;
+  mediaPanel: ReactNode;
+  mediaCount: number;
   cursorRequest: ArticleEditorOutlineCursorRequest;
   hoveredCommentId: string | null;
   outlineItems: readonly VideoDocumentArticleHeading[];
@@ -73,6 +75,8 @@ function ArticleDocumentSidebar({
     <ArticleEditorSidebar
       commentCount={comments.filter((comment) => comment.status === 'OPEN').length}
       controller={controller}
+      media={mediaPanel}
+      mediaCount={mediaCount}
       outlineAvailable={outlineItems.length > 0}
       zh={zh}
       comments={
@@ -110,6 +114,8 @@ interface ArticleEditorDocumentPaneProps {
   comments: readonly ArticleCommentDto[];
   commentMutationBusy: boolean;
   controller: ArticleEditorSidebarController;
+  mediaPanel: ReactNode;
+  mediaCount: number;
   cursorRequest: ArticleEditorOutlineCursorRequest;
   elements: readonly ArticleElementPlacementInput[];
   openCommentHoverId: string | null;
@@ -134,6 +140,8 @@ function ArticleEditorDocumentPane({
   comments,
   commentMutationBusy,
   controller,
+  mediaPanel,
+  mediaCount,
   cursorRequest,
   elements,
   openCommentHoverId,
@@ -169,6 +177,8 @@ function ArticleEditorDocumentPane({
       }
       sidePanel={
         <ArticleDocumentSidebar
+          mediaPanel={mediaPanel}
+          mediaCount={mediaCount}
           comments={comments}
           commentMutationBusy={commentMutationBusy}
           controller={controller}
@@ -208,6 +218,7 @@ interface Props {
   generatingIllustration: boolean;
   initialElements: readonly ArticleElementPlacementInput[];
   initialMarkdown: string;
+  document?: BlockDocument;
   labels: ComponentProps<typeof VideoDocumentWysiwygEditor>['labels'];
   leftPaneRootRef: RefObject<HTMLDivElement | null>;
   leftSidebar: ArticleEditorSidebarController;
@@ -263,6 +274,7 @@ export function ArticleEditorDocumentPanes({
   generatingIllustration,
   initialElements,
   initialMarkdown,
+  document,
   labels,
   leftPaneRootRef,
   leftSidebar,
@@ -300,10 +312,41 @@ export function ArticleEditorDocumentPanes({
   onSecondaryEditorRootChange,
   onTitleChange,
 }: Props) {
+  const copy = useI18n().messages.contentEditor;
+  const mediaPanel = (
+    <div className="flex flex-col gap-3">
+      {onIllustrationRequest && (
+        <Button
+          variant="outline"
+          size="sm"
+          disabled={generatingIllustration}
+          onClick={() => onIllustrationRequest(null)}
+        >
+          {generatingIllustration ? copy.openingMedia : copy.generate}
+        </Button>
+      )}
+      <div className="grid grid-cols-2 gap-2">
+        {media
+          .filter((asset) => asset.mimeType.startsWith('image/'))
+          .map((asset) => (
+            <AssetFileContextMenu key={asset.assetId} assetId={asset.assetId}>
+              <img
+                src={asset.mediaUrl}
+                alt=""
+                loading="lazy"
+                className="aspect-square w-full object-contain bg-muted"
+              />
+            </AssetFileContextMenu>
+          ))}
+      </div>
+    </div>
+  );
   return (
     <ArticleEditorSplit
       left={
         <ArticleEditorDocumentPane
+          mediaPanel={mediaPanel}
+          mediaCount={media.length}
           comments={comments}
           commentMutationBusy={commentMutationBusy}
           controller={leftSidebar}
@@ -327,6 +370,7 @@ export function ArticleEditorDocumentPanes({
         >
           <VideoDocumentWysiwygEditor
             markdown={initialMarkdown}
+            document={document}
             sessionIdentity={editorSessionIdentity}
             articleElements={initialElements}
             articleElementControls={articleElementControls}
@@ -334,13 +378,8 @@ export function ArticleEditorDocumentPanes({
             media={media}
             secondaryEditorRoot={secondaryEditorRoot}
             secondaryChromeRoot={secondaryChromeRoot}
-            secondaryAriaLabel={zh ? '文章正文（右侧分屏）' : 'Article body (right pane)'}
-            currentTimeMs={0}
-            durationMs={0}
-            timelineSegments={[]}
-            ariaLabel={
-              splitOpen ? (zh ? '文章正文（左侧分屏）' : 'Article body (left pane)') : zh ? '文章正文' : 'Article body'
-            }
+            secondaryAriaLabel={copy.bodyRight}
+            ariaLabel={splitOpen ? copy.bodyLeft : copy.body}
             labels={labels}
             onActiveHeadingChange={onActiveHeadingChange}
             onArticleElementsChange={onArticleElementsChange}
@@ -349,10 +388,11 @@ export function ArticleEditorDocumentPanes({
             onArticleNavigationLocation={onArticleNavigationLocation}
             onEditorHandleChange={onEditorHandleChange}
             onChange={onMarkdownChange}
-            onFrameCaptured={() => undefined}
             onImageImported={onImageImported}
             onImageImportError={onImageImportError}
-            illustrationLabel={illustrationActionLabel(Boolean(onIllustrationRequest), generatingIllustration, zh)}
+            illustrationLabel={
+              onIllustrationRequest ? (generatingIllustration ? copy.openingMedia : copy.generate) : undefined
+            }
             onIllustrationRequest={onIllustrationRequest}
             onSave={() => onPersist('manual')}
           />
@@ -362,6 +402,8 @@ export function ArticleEditorDocumentPanes({
       open={splitOpen}
       right={
         <ArticleEditorDocumentPane
+          mediaPanel={mediaPanel}
+          mediaCount={media.length}
           comments={comments}
           commentMutationBusy={commentMutationBusy}
           controller={rightSidebar}

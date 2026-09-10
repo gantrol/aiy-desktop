@@ -93,7 +93,11 @@ export function AppTitleBar({
             onNewCreation={onNewCreation}
             onViewChange={onViewChange}
             onSettingsOpen={onSettingsOpen}
-            onQuit={() => void flushArticleEditors().finally(onQuit)}
+            onQuit={() =>
+              void flushArticleEditors().then((saved) => {
+                if (saved) onQuit();
+              })
+            }
           />
         </div>
         <nav className="app-title-bar-actions ml-3 flex items-center gap-0.5" aria-label={labels.history}>

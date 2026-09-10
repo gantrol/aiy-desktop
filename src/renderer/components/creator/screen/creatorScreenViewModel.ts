@@ -1,3 +1,4 @@
+import type { ReactNode } from 'react';
 import type { CreatorScreenProps } from '@/renderer/components/creator/screen/creatorScreenTypes';
 import type { useCreatorDraftInputSession } from '@/renderer/components/creator/screen/useCreatorDraftInputSession';
 import type { useCreatorGenerationInputSession } from '@/renderer/components/creator/screen/useCreatorGenerationInputSession';
@@ -12,6 +13,7 @@ import type { useCreatorWorkbenchProjection } from '@/renderer/components/creato
 import type { useCreatorWorkflowRuntime } from '@/renderer/components/creator/screen/useCreatorWorkflowRuntime';
 
 export interface CreatorScreenViewModel {
+  animationWorkspace: ReactNode;
   app: CreatorScreenProps;
   draftInput: ReturnType<typeof useCreatorDraftInputSession>;
   generation: ReturnType<typeof useCreatorGenerationInputSession>;

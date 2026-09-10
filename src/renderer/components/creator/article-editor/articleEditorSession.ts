@@ -1,13 +1,17 @@
 import type {
+  ArticleCommentDto,
+  ArticleDto,
   ArticleRevisionSaveInput,
   ArticleRevisionSaveResult,
   VideoDocumentRevisionMediaDto,
 } from '@/shared/contracts';
+import type { BlockDocument } from '@/shared/contracts/block-document';
 
 export type ArticleSaveMode = 'auto' | 'manual';
 
 export interface ArticleEditorSessionMetadata {
-  readonly schemaVersion: 1;
+  readonly schemaVersion: 1 | 2;
+  readonly document?: BlockDocument;
   readonly title: string;
   readonly mediaBindings: ArticleRevisionSaveInput['content']['mediaBindings'];
   readonly coverAssetId: string | null;
@@ -22,9 +26,12 @@ export interface ArticleEditorSaveIdentity {
   readonly contentHash: string;
 }
 
-export interface ArticleEditorSaveFailure extends ArticleEditorSaveIdentity {
+export interface ArticleEditorSaveFailure {
   readonly message: string;
   readonly mode: ArticleSaveMode;
+  readonly stage: 'prepare' | 'persist';
+  readonly draftSeq: number;
+  readonly request: ArticleEditorSaveIdentity | null;
 }
 
 export interface ArticleEditorConflict extends ArticleEditorSaveIdentity {
@@ -38,6 +45,7 @@ export interface ArticleEditorSessionIdentity {
 }
 
 export interface ArticleEditorPersistedBaseline {
+  readonly article: ArticleDto;
   readonly draftSeq: number;
   readonly revisionId: string;
   readonly contentHash: string;
@@ -48,10 +56,12 @@ export interface ArticleEditorDraftState {
   readonly metadata: ArticleEditorSessionMetadata;
   readonly media: readonly VideoDocumentRevisionMediaDto[];
   readonly hasBody: boolean;
+  readonly comments: readonly ArticleCommentDto[];
 }
 
 export type ArticleEditorSaveState =
   | { readonly phase: 'idle' }
+  | { readonly phase: 'preparing'; readonly draftSeq: number }
   | { readonly phase: 'saving'; readonly request: ArticleEditorSaveIdentity }
   | { readonly phase: 'failed'; readonly failure: ArticleEditorSaveFailure }
   | { readonly phase: 'conflict'; readonly conflict: ArticleEditorConflict };
@@ -62,6 +72,9 @@ export interface ArticleEditorSessionState {
   readonly draft: ArticleEditorDraftState;
   readonly save: ArticleEditorSaveState;
   readonly lifecycle: 'active' | 'disposed';
+  readonly editorPending: boolean;
+  readonly documentVersion: number;
+  readonly externalArticle: ArticleDto | null;
 }
 
 export function articleEditorSaveIdentity(input: ArticleRevisionSaveInput): ArticleEditorSaveIdentity {
@@ -95,11 +108,11 @@ export function articleEditorSaveResultMatches(input: ArticleRevisionSaveInput, 
 }
 
 export function articleEditorSessionDirty(state: ArticleEditorSessionState) {
-  return state.draft.sequence > state.persisted.draftSeq;
+  return state.editorPending || state.draft.sequence > state.persisted.draftSeq;
 }
 
 export function articleEditorSessionSaving(state: ArticleEditorSessionState) {
-  return state.save.phase === 'saving';
+  return state.save.phase === 'saving' || state.save.phase === 'preparing';
 }
 
 export function articleEditorSessionFailed(state: ArticleEditorSessionState) {
@@ -107,8 +120,11 @@ export function articleEditorSessionFailed(state: ArticleEditorSessionState) {
 }
 
 export function articleEditorSessionConflicted(state: ArticleEditorSessionState) {
-  return state.save.phase === 'conflict';
+  return state.save.phase === 'conflict' || state.externalArticle !== null;
 }
+
+export const selectArticleEditorDocumentVersion = (state: ArticleEditorSessionState) => state.documentVersion;
+export const selectArticleEditorComments = (state: ArticleEditorSessionState) => state.draft.comments;
 
 export function selectArticleEditorTitle(state: ArticleEditorSessionState) {
   return state.draft.metadata.title;

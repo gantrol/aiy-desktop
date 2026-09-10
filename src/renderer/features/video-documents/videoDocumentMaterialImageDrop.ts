@@ -1,18 +1,11 @@
-import type { Editor } from '@tiptap/core';
-import type { EditorView } from '@tiptap/pm/view';
-import type { RefObject } from 'react';
-import type { VideoDocumentMediaBinding, VideoDocumentRevisionMediaDto } from '@/shared/contracts';
 import { hasMaterialsDrag, readMaterialsDrag } from '@/renderer/components/albums/albumDrag';
 import {
   type VideoDocumentEditorImageImport,
   videoDocumentEditorImageFromAsset,
 } from '@/renderer/features/video-documents/VideoDocumentWysiwygToolbar';
-import { insertVideoDocumentImage } from '@/renderer/features/video-documents/videoDocumentEditorMedia';
-
-interface ImageMediaSnapshot {
-  mediaBindings: readonly VideoDocumentMediaBinding[];
-  media: readonly VideoDocumentRevisionMediaDto[];
-}
+import type { Editor, EditorEvents } from '@tiptap/core';
+import type { EditorView } from '@tiptap/pm/view';
+import type { RefObject } from 'react';
 
 interface ImageImportCallbacks {
   onImageImported(result: VideoDocumentEditorImageImport): void;
@@ -21,7 +14,6 @@ interface ImageImportCallbacks {
 
 export function materialImageDropHandler(
   editorRef: RefObject<Editor | null>,
-  imageMediaRef: RefObject<ImageMediaSnapshot>,
   queueRef: RefObject<Promise<void>>,
   callbacksRef: RefObject<ImageImportCallbacks>,
 ) {
@@ -32,32 +24,41 @@ export function materialImageDropHandler(
     if (!targets.length) return false;
     event.preventDefault();
     const position = view.posAtCoords({ left: event.clientX, top: event.clientY });
-    if (position) editorRef.current?.commands.setTextSelection(position.pos);
-
-    queueRef.current = queueRef.current.then(async () => {
-      let failed = false;
-      try {
-        const assets = await window.desktopApi.materialImageAssetsResolve({ targets });
-        for (const asset of assets) {
-          const editor = editorRef.current;
-          if (!editor || editor.isDestroyed) return;
-          try {
-            const existingPath = imageMediaRef.current.mediaBindings.find(
-              (binding) => binding.kind === 'IMAGE' && binding.assetId === asset.id,
-            )?.path;
-            const result = videoDocumentEditorImageFromAsset(asset, existingPath);
-            if (!insertVideoDocumentImage(editor, result.attributes)) throw new Error('Image insertion failed');
-            callbacksRef.current.onImageImported(result);
-          } catch {
-            failed = true;
-          }
-        }
-      } catch {
-        failed = true;
+    const editor = editorRef.current;
+    if (!editor || editor.isDestroyed) return false;
+    let target = position?.pos ?? editor.state.selection.from;
+    let removed = false;
+    const mapTarget = ({ transaction, appendedTransactions }: EditorEvents['transaction']) => {
+      for (const change of [transaction, ...appendedTransactions]) {
+        const mapped = change.mapping.mapResult(target, 1);
+        target = mapped.pos;
+        removed ||= mapped.deleted;
       }
-      const editor = editorRef.current;
-      if (failed && editor && !editor.isDestroyed) callbacksRef.current.onImageImportError();
-    });
+    };
+    editor.on('transaction', mapTarget);
+    queueRef.current = queueRef.current
+      .catch(() => undefined)
+      .then(async () => {
+        let failed = false;
+        try {
+          const assets = await window.desktopApi.materialImageAssetsResolve({ targets });
+          if (removed || editor.isDestroyed || editorRef.current !== editor) return;
+          const images = assets.map(videoDocumentEditorImageFromAsset);
+          editor.off('transaction', mapTarget);
+          images.forEach((image) => callbacksRef.current.onImageImported(image));
+          if (
+            !editor.commands.insertContentAt(
+              target,
+              images.map((image) => ({ type: 'image', attrs: image.attributes })),
+            )
+          )
+            failed = true;
+        } catch {
+          failed = true;
+        }
+        if (failed && !editor.isDestroyed) callbacksRef.current.onImageImportError();
+      })
+      .finally(() => editor.off('transaction', mapTarget));
     return true;
   };
 }

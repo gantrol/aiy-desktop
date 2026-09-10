@@ -6,6 +6,8 @@ import {
   codexHistoryRefreshInputSchema,
   codexHistorySearchInputSchema,
   codexHistorySearchPageSchema,
+  codexHistoryThreadUsageInputSchema,
+  codexHistoryThreadUsageSchema,
   codexHistoryThreadMessagesInputSchema,
   codexHistoryThreadMessagesPageSchema,
 } from '@/shared/contracts/codex-history-search';
@@ -29,6 +31,8 @@ type CodexArtifactsPreloadApi = Pick<
   | 'codexHistorySearch'
   | 'codexHistorySearchFilterOptions'
   | 'codexHistorySearchRefresh'
+  | 'codexHistoryThreadUsageCancel'
+  | 'codexHistoryThreadUsage'
   | 'codexHistoryThreadMessages'
   | 'onCodexHistorySearchChanged'
   | 'codexVisualizationsList'
@@ -66,6 +70,17 @@ export function createCodexArtifactsPreloadApi(
       codexHistoryIndexStateSchema.parse(
         await ipcRenderer.invoke('codex-history-search:refresh', codexHistoryRefreshInputSchema.parse(input)),
       ),
+    codexHistoryThreadUsageCancel: (input) =>
+      ipcRenderer.invoke('codex-history-search:cancel-thread-usage', codexHistoryThreadUsageInputSchema.parse(input)),
+    codexHistoryThreadUsage: async (input) =>
+      codexHistoryThreadUsageSchema
+        .nullable()
+        .parse(
+          await ipcRenderer.invoke(
+            'codex-history-search:thread-usage',
+            codexHistoryThreadUsageInputSchema.parse(input),
+          ),
+        ),
     codexHistoryThreadMessages: async (input) =>
       codexHistoryThreadMessagesPageSchema.parse(
         await ipcRenderer.invoke(

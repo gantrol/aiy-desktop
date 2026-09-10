@@ -1,3 +1,4 @@
+import type { GifPlanRequest, GifPlanResult } from '@/shared/contracts/gif-motion-plan';
 import type {
   ArticleCheckInput,
   ArticleCheckResult,
@@ -16,6 +17,11 @@ import type {
 export interface CodexTitleExecutionOptions {
   model?: string;
   effort?: AssistantReasoningEffort;
+}
+
+export interface CodexGifPlanningExecutionOptions {
+  model: string;
+  effort: AssistantReasoningEffort;
 }
 
 export interface CodexArticleCheckExecutionOptions {
@@ -38,6 +44,11 @@ export interface CodexChatJob {
 }
 
 export interface CodexService {
+  planGif(
+    input: GifPlanRequest,
+    options: CodexGifPlanningExecutionOptions,
+    signal?: AbortSignal,
+  ): Promise<GifPlanResult>;
   readonly cachedHealth: CodexHealth;
   readonly hasPending: boolean;
   readonly pendingCount: number;

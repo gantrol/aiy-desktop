@@ -34,6 +34,21 @@ interface InsertCreationOutputBatchInput {
   ensureReferenceAsset(image: StoredOutputImage, source: CreatorImageImportContext['source']): string;
   availableDisplayName(originalName: string, used: Set<string>): string;
   outputDto(outputId: string): ImportedCreationOutputDto;
+  resolveNewVersion(versionNo: number): string;
+}
+
+function validateVersionSelections(items: readonly CreatorStagedOutputImportItemInput[]) {
+  for (const itemDetails of items) {
+    if (
+      itemDetails?.newVersionNo !== undefined &&
+      (itemDetails.promptVersionId !== null ||
+        !Number.isSafeInteger(itemDetails.newVersionNo) ||
+        itemDetails.newVersionNo < 1 ||
+        itemDetails.newVersionNo > 999999)
+    ) {
+      throw new Error('Invalid imported version selection');
+    }
+  }
 }
 
 export function insertCreationOutputBatch({
@@ -44,10 +59,12 @@ export function insertCreationOutputBatch({
   ensureReferenceAsset,
   availableDisplayName,
   outputDto,
+  resolveNewVersion,
 }: InsertCreationOutputBatchInput): CreatorOutputsImportResult {
   if (items.length && items.length !== staged.images.length) {
     throw new Error('Imported output details do not match staged images');
   }
+  validateVersionSelections(items);
   const db = storage.db;
   const promptVersionIds = new Set<string>();
   for (const [index] of staged.images.entries()) {
@@ -77,7 +94,7 @@ export function insertCreationOutputBatch({
   for (const [sourceIndex, image] of staged.images.entries()) {
     const itemDetails = items[sourceIndex];
     const promptVersionId = itemDetails ? itemDetails.promptVersionId : context.promptVersionId;
-    const imageAssetId = ensureReferenceAsset(image, context.source);
+    const imageAssetId = ensureReferenceAsset(image, itemDetails?.source ?? context.source);
     outputAssetIds.add(imageAssetId);
     const alreadyLinked = db
       .prepare(
@@ -112,13 +129,17 @@ export function insertCreationOutputBatch({
   );
 
   for (const [sortOrder, candidate] of candidates.entries()) {
-    const { image, itemDetails, promptVersionId, imageAssetId } = candidate;
+    const { image, itemDetails, imageAssetId } = candidate;
+    const promptVersionId = itemDetails?.newVersionNo
+      ? resolveNewVersion(itemDetails.newVersionNo)
+      : candidate.promptVersionId;
+    const source = itemDetails?.source ?? context.source;
     const outputId = ulid();
     const originalName = image.item.name.trim() || 'image';
     const fallbackDisplayName = availableDisplayName(itemDetails?.displayName.trim() || originalName, usedNames);
     const metadata = normalizeImportedImageMetadata(image.item.metadata, {
       displayName: fallbackDisplayName,
-      sourceUrl: context.sourceUrl,
+      sourceUrl: itemDetails?.sourceUrl ?? context.sourceUrl,
       exactPrompt: context.exactPrompt,
     });
     const displayName = itemDetails ? fallbackDisplayName : metadata.displayName;
@@ -136,7 +157,7 @@ export function insertCreationOutputBatch({
       context.seriesId,
       promptVersionId,
       imageAssetId,
-      context.source,
+      source,
       originalName,
       createdAt,
       displayName,
@@ -160,7 +181,7 @@ export function insertCreationOutputBatch({
       seriesId: context.seriesId,
       promptVersionId,
       imageAssetId,
-      sourceType: context.source,
+      sourceType: source,
       sortOrder,
     });
     importedOutputs.push(outputDto(outputId));

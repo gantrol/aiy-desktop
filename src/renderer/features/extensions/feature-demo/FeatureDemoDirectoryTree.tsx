@@ -1,238 +1,175 @@
-import { useEffect, useMemo, useRef } from 'react';
-import type { AssetDto, BootstrapDto, VideoDocumentNavigationEntry, VideoDocumentSummaryDto } from '@/shared/contracts';
-import { useTreeBranchExpansion } from '@/renderer/components/albums/useTreeBranchExpansion';
-import { allAssets } from '@/renderer/components/creator/utils';
+import { useMemo, type ReactNode } from 'react';
+import type { AssetDto, BootstrapDto } from '@/shared/contracts';
+import { AlbumTreePreview } from '@/renderer/components/albums/AlbumTreePreview';
+import { TreeBranchContent } from '@/renderer/components/albums/TreeDisclosureRail';
+import { getTreeBranchItemTopology } from '@/renderer/components/albums/treeConnectionGeometry';
 import {
-  VideoDocumentNavigationTree,
-  type VideoDocumentNavigationPageState,
-  type VideoDocumentVisibleEntry,
-} from '@/renderer/features/video-documents/VideoDocumentNavigationTree';
+  CreationLibraryTreeItem,
+  getCreationTreeMediaNodeMetrics,
+} from '@/renderer/components/creator/CreationLibraryTreeItem';
+import { allAssets } from '@/renderer/components/creator/utils';
+import { AssetMedia } from '@/renderer/components/media/AssetMedia';
+import { MediaStackPreview } from '@/renderer/components/media/MediaStackPreview';
+import { Button } from '@/renderer/components/ui/button';
+import { Collapsible } from '@/renderer/components/ui/collapsible';
+import { ScrollArea } from '@/renderer/components/ui/scroll-area';
+import {
+  DIRECTORY_DEMO_LAYOUT,
+  type DirectoryDemoState,
+} from '@/renderer/features/extensions/feature-demo/featureDemoDirectoryScene';
 import { useI18n } from '@/renderer/i18n/useI18n';
 
 interface FeatureDemoDirectoryTreeProps {
   data: BootstrapDto;
-  openProgress: number;
-}
-
-type AlbumEntry = Extract<VideoDocumentNavigationEntry, { kind: 'ALBUM' }>;
-type DocumentEntry = Extract<VideoDocumentNavigationEntry, { kind: 'DOCUMENT' }>;
-type PreviewAsset = AlbumEntry['previewAssets'][number];
-
-interface DemoMaterial {
-  asset: PreviewAsset;
-  title: string;
-}
-
-const rootAlbumId = 'feature-demo-root-album';
-const childAlbumId = 'feature-demo-child-album';
-const documentDurationsMs = [9 * 60_000 + 52_000, 5 * 60_000 + 9_000, 9 * 60_000 + 59_000];
-
-function asPreviewAsset(asset: AssetDto): PreviewAsset | null {
-  if (!asset.mimeType.startsWith('image/') || asset.width <= 0 || asset.height <= 0 || !asset.mediaUrl) return null;
-  return {
-    id: asset.id,
-    kind: asset.kind,
-    originType: asset.originType?.trim() || 'IMPORTED',
-    mediaUrl: asset.mediaUrl,
-    width: asset.width,
-    height: asset.height,
-    mimeType: asset.mimeType,
-    byteSize: asset.byteSize ?? 0,
-    createdAt: asset.createdAt,
-  };
+  state: DirectoryDemoState;
 }
 
 function collectDemoMaterials(data: BootstrapDto) {
-  const materials: DemoMaterial[] = [];
+  const assets: AssetDto[] = [];
   const seen = new Set<string>();
-
-  function add(asset: AssetDto, title: string) {
-    if (seen.has(asset.id)) return;
-    const previewAsset = asPreviewAsset(asset);
-    if (!previewAsset) return;
+  function add(asset: AssetDto) {
+    if (assets.length >= 3 || seen.has(asset.id) || !asset.mimeType.startsWith('image/') || !asset.mediaUrl) return;
+    if (asset.width <= 0 || asset.height <= 0) return;
     seen.add(asset.id);
-    materials.push({ asset: previewAsset, title: title.trim() });
-  }
-
-  for (const series of data.series) {
-    for (const output of series.importedOutputs ?? []) add(output.asset, output.displayName || series.title);
+    assets.push(asset);
   }
   for (const series of data.series) {
-    for (const asset of allAssets(series)) add(asset, series.title);
-    if (series.cover) add(series.cover, series.title);
+    for (const asset of allAssets(series)) add(asset);
+    if (series.cover) add(series.cover);
+    if (assets.length >= 3) break;
   }
   for (const album of data.albums) {
-    for (const asset of album.previewAssets) add(asset, album.title);
-    for (const asset of album.documentPreviewAssets ?? []) add(asset, album.title);
+    if (assets.length >= 3) break;
+    for (const asset of album.previewAssets) add(asset);
+  }
+  return assets;
+}
+
+// Assemble the same cover, branch and work-row components used by the library.
+// The timeline supplies state; no pointer events or business writes are simulated.
+function DirectoryBranch({
+  assets,
+  title,
+  open,
+  previewExpanded,
+  nested = false,
+  expandLabel,
+  children,
+}: {
+  assets: AssetDto[];
+  title: string;
+  open: boolean;
+  previewExpanded: boolean;
+  nested?: boolean;
+  expandLabel: string;
+  children: ReactNode;
+}) {
+  return (
+    <Collapsible open={open} className="relative">
+      <div className="relative flex h-[4.25rem] min-w-0 items-center gap-1 px-1">
+        <AlbumTreePreview
+          assets={assets}
+          title={title}
+          open={open}
+          previewExpanded={previewExpanded}
+          animate={false}
+          expandable={assets.length > 0}
+          expandLabel={expandLabel}
+          overlayStyle="solid"
+          branchTopology={nested ? getTreeBranchItemTopology(0, 1) : undefined}
+          onClick={() => undefined}
+          onDoubleClick={() => undefined}
+        />
+        <Button variant="ghost" className="h-14 min-w-0 flex-1 justify-start px-1 font-normal">
+          <span className="line-clamp-2 whitespace-normal break-words text-left text-base font-medium leading-5">
+            {title}
+          </span>
+        </Button>
+      </div>
+      <TreeBranchContent style={{ animation: 'none' }}>{children}</TreeBranchContent>
+    </Collapsible>
+  );
+}
+
+export function FeatureDemoDirectoryTree({ data, state }: FeatureDemoDirectoryTreeProps) {
+  const { messages } = useI18n();
+  const copy = messages.extensions.featureDemo.directory;
+  const assets = useMemo(() => collectDemoMaterials(data), [data]);
+  const selectedAsset = state.selected ? assets[0] : null;
+
+  if (!assets.length) {
+    return <div className="grid size-full place-items-center text-sm text-muted-foreground">{copy.empty}</div>;
   }
 
-  return materials;
-}
-
-function createDocumentEntry(
-  material: DemoMaterial,
-  index: number,
-  locale: BootstrapDto['locale'],
-  albumTitle: string,
-  untitled: string,
-): DocumentEntry {
-  const documentId = `feature-demo-document-${index + 1}`;
-  const title = material.title || untitled;
-  const durationMs = documentDurationsMs[index % documentDurationsMs.length] ?? 60_000;
-  const document: VideoDocumentSummaryDto = {
-    id: documentId,
-    title,
-    titleLocale: locale,
-    status: 'ACTIVE',
-    albumId: childAlbumId,
-    albumTitle,
-    thumbnail: {
-      assetId: material.asset.id,
-      mediaUrl: material.asset.mediaUrl,
-      width: material.asset.width,
-      height: material.asset.height,
-    },
-    source: {
-      relationId: `feature-demo-relation-${index + 1}`,
-      materialId: material.asset.id,
-      displayName: title,
-      available: false,
-      sourceUrl: null,
-      audio: {
-        status: 'NO_AUDIO',
-        trackCount: 0,
-        primaryCodec: null,
-        detectedAt: null,
-        errorCode: null,
-      },
-      asset: {
-        ...material.asset,
-        mediaKind: 'VIDEO',
-        durationMs,
-      },
-    },
-    createdAt: material.asset.createdAt,
-    updatedAt: material.asset.createdAt,
-  };
-  return {
-    nodeId: documentId,
-    kind: 'DOCUMENT',
-    documentId,
-    parentAlbumId: childAlbumId,
-    sortOrder: index,
-    document,
-  };
-}
-
-function page(items: VideoDocumentNavigationEntry[]): VideoDocumentNavigationPageState {
-  return {
-    items,
-    nextCursor: null,
-    loading: false,
-    loadingMore: false,
-    loaded: true,
-  };
-}
-
-export function FeatureDemoDirectoryTree({ data, openProgress }: FeatureDemoDirectoryTreeProps) {
-  const { messages } = useI18n();
-  const viewportRef = useRef<HTMLDivElement | null>(null);
-  const { beginPointerTrack, expandFromGesture, openIds, setPersistent, togglePersistent, trackPointer } =
-    useTreeBranchExpansion(viewportRef);
-  const rootOpen = openProgress >= 0.18;
-  const childOpen = openProgress >= 0.62;
-  const tree = useMemo(() => {
-    const materials = collectDemoMaterials(data);
-    const documentMaterials = materials.slice(0, 3);
-    const rootTitle = data.spaceName.trim() || messages.videoDocuments.title;
-    const childTitle =
-      data.albums.find((album) => album.title.trim())?.title.trim() ||
-      data.series.find((series) => series.title.trim())?.title.trim() ||
-      messages.videoDocuments.collections;
-    const documents = documentMaterials.map((material, index) =>
-      createDocumentEntry(material, index, data.locale, childTitle, messages.videoDocuments.article.notes.untitled),
-    );
-    const childAlbum: AlbumEntry = {
-      nodeId: childAlbumId,
-      kind: 'ALBUM',
-      albumId: childAlbumId,
-      parentAlbumId: rootAlbumId,
-      title: childTitle,
-      sortOrder: 0,
-      childCount: documents.length,
-      descendantDocumentCount: documents.length,
-      previewAssets: materials.slice(1, 5).map((material) => material.asset),
-    };
-    const rootAlbum: AlbumEntry = {
-      nodeId: rootAlbumId,
-      kind: 'ALBUM',
-      albumId: rootAlbumId,
-      parentAlbumId: null,
-      title: rootTitle,
-      sortOrder: 0,
-      childCount: 1,
-      descendantDocumentCount: documents.length,
-      previewAssets: materials.slice(0, 4).map((material) => material.asset),
-    };
-    const children: Record<string, VideoDocumentNavigationPageState> = {
-      [rootAlbumId]: page([childAlbum]),
-      [childAlbumId]: page(documents),
-    };
-    return {
-      root: page([rootAlbum]),
-      children,
-    };
-  }, [data, messages.videoDocuments]);
-
-  useEffect(() => {
-    setPersistent(rootAlbumId, rootOpen);
-    setPersistent(childAlbumId, childOpen);
-  }, [childOpen, rootOpen, setPersistent]);
-
-  const visibleEntries = useMemo(() => {
-    const rows: VideoDocumentVisibleEntry[] = [];
-    const visited = new Set<string>();
-    function append(entries: VideoDocumentNavigationEntry[], depth: number, parentAlbumId: string | null) {
-      for (const entry of entries) {
-        if (visited.has(entry.nodeId)) continue;
-        visited.add(entry.nodeId);
-        rows.push({ entry, depth, parentAlbumId });
-        if (entry.kind === 'ALBUM' && openIds.has(entry.albumId)) {
-          append(tree.children[entry.albumId]?.items ?? [], depth + 1, entry.albumId);
-        }
-      }
-    }
-    append(tree.root.items, 0, null);
-    return rows;
-  }, [openIds, tree]);
-
   return (
-    <div
-      ref={viewportRef}
-      data-feature-demo-live-directory-tree
-      className="h-full overflow-y-auto overscroll-contain bg-surface-sunken"
-    >
-      <VideoDocumentNavigationTree
-        root={tree.root}
-        children={tree.children}
-        visibleEntries={visibleEntries}
-        selectedDocumentId={null}
-        expandedAlbumIds={openIds}
-        onToggleAlbum={(entry) => togglePersistent(entry.albumId)}
-        onGestureExpand={(entry) => expandFromGesture(entry.albumId)}
-        onPointerTrackStart={beginPointerTrack}
-        onPointerTrack={trackPointer}
-        onSelectDocument={() => undefined}
-        onLoadRootMore={() => undefined}
-        onLoadChildrenMore={() => undefined}
-        onMoveDocument={() => undefined}
-        onMoveAlbum={() => undefined}
-        onCreateAlbum={() => undefined}
-        onRenameAlbum={() => undefined}
-        onRenameDocument={() => undefined}
-        onRequestMove={() => undefined}
-        onReorder={() => undefined}
-      />
+    <div data-feature-demo-live-directory-tree className="flex size-full min-h-0 bg-background">
+      <ScrollArea className="h-full shrink-0 border-r" style={{ width: DIRECTORY_DEMO_LAYOUT.sidebarWidth }}>
+        <nav aria-label={copy.root} style={{ padding: DIRECTORY_DEMO_LAYOUT.padding }}>
+          <DirectoryBranch
+            assets={assets}
+            title={copy.root}
+            open={state.rootOpen}
+            previewExpanded={state.preview === 'root'}
+            expandLabel={
+              state.rootOpen
+                ? messages.videoDocuments.collapseAlbum(copy.root)
+                : messages.videoDocuments.expandAlbum(copy.root)
+            }
+          >
+            <DirectoryBranch
+              assets={assets}
+              title={copy.collection}
+              open={state.childOpen}
+              previewExpanded={state.preview === 'child'}
+              nested
+              expandLabel={
+                state.childOpen
+                  ? messages.videoDocuments.collapseAlbum(copy.collection)
+                  : messages.videoDocuments.expandAlbum(copy.collection)
+              }
+            >
+              {assets.map((asset, index) => {
+                const items = [{ asset }];
+                const metrics = getCreationTreeMediaNodeMetrics(items);
+                const title = copy.work(index + 1);
+                return (
+                  <CreationLibraryTreeItem
+                    key={asset.id}
+                    selected={selectedAsset?.id === asset.id}
+                    ariaLabel={title}
+                    openLabel={title}
+                    title={title}
+                    preview={<MediaStackPreview items={items} size="tree" spread="settled" animate={false} />}
+                    previewBounds={metrics.bounds}
+                    previewStyle={{ width: metrics.width }}
+                    branchTopology={getTreeBranchItemTopology(index, assets.length)}
+                    onOpen={() => undefined}
+                  />
+                );
+              })}
+            </DirectoryBranch>
+          </DirectoryBranch>
+        </nav>
+      </ScrollArea>
+      <div className="min-w-0 flex-1 p-6">
+        {selectedAsset ? (
+          <figure className="flex h-full min-h-0 flex-col gap-3">
+            <AssetMedia asset={selectedAsset} alt={copy.work(1)} className="min-h-0 w-full flex-1 object-contain" />
+            <figcaption className="text-center text-sm font-medium">{copy.work(1)}</figcaption>
+          </figure>
+        ) : (
+          <div className="grid h-full min-h-0 grid-cols-2 auto-rows-fr gap-4">
+            {assets.map((asset, index) => (
+              <AssetMedia
+                key={asset.id}
+                asset={asset}
+                alt={copy.work(index + 1)}
+                className="size-full min-h-0 object-contain"
+              />
+            ))}
+          </div>
+        )}
+      </div>
     </div>
   );
 }

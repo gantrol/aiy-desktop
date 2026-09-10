@@ -48,6 +48,7 @@ import type { AssistantService, AssistantTitleExecution } from '@/main/assistant
 import type {
   CodexArticleCheckExecutionOptions,
   CodexChatJob,
+  CodexGifPlanningExecutionOptions,
   CodexService,
   CodexTitleExecutionOptions,
 } from '@/main/assistant/codex-service';
@@ -1332,6 +1333,18 @@ export class BackgroundGenerationClient extends EventEmitter implements Generati
 }
 
 class BackgroundCodexService implements CodexService {
+  planGif(
+    input: import('@/shared/contracts/gif-motion-plan').GifPlanRequest,
+    options: CodexGifPlanningExecutionOptions,
+    signal?: AbortSignal,
+  ) {
+    return this.owner.callWorker<import('@/shared/contracts/gif-motion-plan').GifPlanResult>(
+      'codex.plan-gif',
+      [input, options],
+      210000,
+      signal,
+    );
+  }
   constructor(private readonly owner: BackgroundGenerationClient) {}
 
   get cachedHealth() {

@@ -9,6 +9,7 @@ export const creationItemPhaseSchema = z.enum(['DRAFT', 'ACTIVE']);
 export const creationItemLifecycleSchema = z.enum(['ACTIVE', 'ARCHIVED']);
 
 export const creationFormRoleSchema = z.enum([
+  'ANIMATION',
   'INSPIRATION',
   'IMAGE_BREAKDOWN',
   'IMAGE_CREATION',
@@ -22,6 +23,7 @@ export const creationFormRoleSchema = z.enum([
 ]);
 
 export const creationPrimaryFormRoleSchema = z.enum([
+  'ANIMATION',
   'IMAGE_BREAKDOWN',
   'IMAGE_CREATION',
   'SOCIAL_POST',
@@ -39,6 +41,7 @@ export const creationSingletonFormRoleSchema = z.enum([
 ]);
 
 export const creationFormEntityKindSchema = z.enum([
+  'GIF_DOCUMENT',
   'PROMPT_SERIES',
   'IMAGE_BREAKDOWN',
   'INSPIRATION_STASH',
@@ -50,6 +53,7 @@ export const creationFormEntityKindSchema = z.enum([
 ]);
 
 const creationFormEntityRefVariants = [
+  z.object({ kind: z.literal('GIF_DOCUMENT'), id: idSchema }).strict(),
   z.object({ kind: z.literal('PROMPT_SERIES'), id: idSchema }).strict(),
   z.object({ kind: z.literal('IMAGE_BREAKDOWN'), id: idSchema }).strict(),
   z.object({ kind: z.literal('INSPIRATION_STASH'), id: idSchema }).strict(),
@@ -168,6 +172,14 @@ export const articleInlineCreationFormSchema = z
  * or visual remains an independent typed aggregate; it does not inherit this DTO.
  */
 export const creationFormSchema = z.discriminatedUnion('role', [
+  z
+    .object({
+      ...creationFormRecordShape,
+      role: z.literal('ANIMATION'),
+      entity: z.object({ kind: z.literal('GIF_DOCUMENT'), id: idSchema }).strict(),
+      anchorKey: z.null(),
+    })
+    .strict(),
   inspirationCreationFormSchema,
   imageBreakdownCreationFormSchema,
   imageCreationFormSchema,
@@ -346,6 +358,14 @@ export const creationFormAddOrGetInputSchema = z.discriminatedUnion('role', [
   z
     .object({
       ...creationFormAddInputShape,
+      role: z.literal('ANIMATION'),
+      entity: z.object({ kind: z.literal('GIF_DOCUMENT'), id: idSchema }).strict(),
+      anchorKey: z.null(),
+    })
+    .strict(),
+  z
+    .object({
+      ...creationFormAddInputShape,
       role: z.literal('INSPIRATION'),
       entity: z.object({ kind: z.literal('INSPIRATION_STASH'), id: idSchema }).strict(),
       anchorKey: z.null(),
@@ -426,6 +446,13 @@ export const creationFormAddOrGetInputSchema = z.discriminatedUnion('role', [
 ]);
 
 export const creationInitialFormInputSchema = z.discriminatedUnion('role', [
+  z
+    .object({
+      role: z.literal('ANIMATION'),
+      entity: z.object({ kind: z.literal('GIF_DOCUMENT'), id: idSchema }).strict(),
+      anchorKey: z.null(),
+    })
+    .strict(),
   z
     .object({
       role: z.literal('INSPIRATION'),

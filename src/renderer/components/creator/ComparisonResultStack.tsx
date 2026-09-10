@@ -4,7 +4,7 @@ import { cn } from '@/renderer/lib/utils';
 import { Popover, PopoverContent, PopoverTrigger } from '@/renderer/components/ui/popover';
 import { ScrollArea } from '@/renderer/components/ui/scroll-area';
 import { AssetFileContextMenu } from '@/renderer/components/media/AssetFileContextMenu';
-import { ImageAmbientBackdrop } from '@/renderer/components/media/AmbientImage';
+import { AssetThumbnail } from '@/renderer/components/media/AssetThumbnail';
 import { AssetHoverPreview } from '@/renderer/components/creator/AssetHoverPreview';
 
 type PairSlot = 'A' | 'B';
@@ -15,6 +15,7 @@ interface Labels {
 }
 
 interface Props {
+  activeAssetId?: string;
   runs: GenerationRunDto[];
   seriesId: string;
   pairSelecting: boolean;
@@ -46,6 +47,7 @@ function fittedFrame(width: number, height: number) {
 }
 
 export function ComparisonResultStack({
+  activeAssetId,
   runs,
   seriesId,
   pairSelecting,
@@ -69,7 +71,10 @@ export function ComparisonResultStack({
         .reverse(),
     [runs],
   );
-  const visible = successes.slice(0, 3);
+  const preferred = successes.find((item) => item.run.asset.id === activeAssetId);
+  const visible = preferred
+    ? [preferred, ...successes.filter((item) => item !== preferred).slice(0, 2)]
+    : successes.slice(0, 3);
   const cover = visible[0];
   const popoverHeight = Math.min(22, Math.ceil(successes.length / 3) * 7.5);
 
@@ -110,7 +115,8 @@ export function ComparisonResultStack({
         {visible.map((item, depth) => {
           const frame = fittedFrame(item.run.asset.width, item.run.asset.height);
           const slot = pairSlotFor(item.run.id);
-          const active = activeRunId === item.run.id;
+          const active =
+            activeAssetId === undefined ? activeRunId === item.run.id : activeAssetId === item.run.asset.id;
           const translateX = depth * stepX - centerX;
           const translateY = depth * stepY - centerY;
           const rotation = depth * (fanned ? 2.25 : 1.5);
@@ -137,6 +143,7 @@ export function ComparisonResultStack({
                     height: frame.height,
                     zIndex: active ? 30 : 20 - depth,
                     transform: `translate(calc(-50% + ${translateX}px), calc(-50% + ${translateY}px)) rotate(${rotation}deg)`,
+                    transition: activeAssetId === undefined ? undefined : 'none',
                   }}
                   onMouseEnter={() => setActiveRunId(item.run.id)}
                   onMouseLeave={() => setActiveRunId((current) => (current === item.run.id ? null : current))}
@@ -150,12 +157,16 @@ export function ComparisonResultStack({
                       pairSelecting && active && 'ring-2 ring-selected-border',
                       slot && 'ring-2 ring-ring',
                     )}
-                    style={{ transform: active ? `rotate(${-rotation}deg)` : 'none' }}
+                    style={{
+                      transform: active ? `rotate(${-rotation}deg)` : 'none',
+                      transition: activeAssetId === undefined ? undefined : 'none',
+                    }}
                   >
-                    <ImageAmbientBackdrop src={item.run.asset.mediaUrl} />
-                    <img
+                    <AssetThumbnail
                       className="relative z-10 size-full object-contain"
-                      src={item.run.asset.mediaUrl}
+                      asset={item.run.asset}
+                      size={320}
+                      ambient
                       alt=""
                       draggable={false}
                     />
@@ -214,10 +225,11 @@ export function ComparisonResultStack({
                           )}
                           onClick={() => select(item)}
                         >
-                          <ImageAmbientBackdrop src={item.run.asset.mediaUrl} loading="lazy" />
-                          <img
+                          <AssetThumbnail
                             className="relative z-10 size-full object-contain"
-                            src={item.run.asset.mediaUrl}
+                            asset={item.run.asset}
+                            size={192}
+                            ambient
                             alt=""
                             loading="lazy"
                             draggable={false}

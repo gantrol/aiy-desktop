@@ -25,9 +25,11 @@ import { useCreatorCreationNavigation } from '@/renderer/components/creator/work
 import { useCreatorExternalCreationImport } from '@/renderer/components/creator/workflows/useCreatorExternalCreationImport';
 import { useCreatorIdeaNavigation } from '@/renderer/components/creator/workflows/useCreatorIdeaNavigation';
 import { useCreatorLocationSynchronization } from '@/renderer/components/creator/screen/useCreatorLocationSynchronization';
+import type { CreatorLocationApplication } from '@/renderer/components/creator/screen/useCreatorNavigationCore';
 import { useCreatorOutputNavigation } from '@/renderer/components/creator/workflows/useCreatorOutputNavigation';
 import { useCreatorPromptVersionCreation } from '@/renderer/components/creator/workflows/useCreatorPromptVersionCreation';
 import { useDerivedVisualWorkspaceNavigation } from '@/renderer/components/creator/workflows/useDerivedVisualWorkspaceNavigation';
+import type { DerivedVisualWorkspaceViewState } from '@/renderer/components/creator/derivedVisualWorkspace';
 import type {
   CreationDraftPromptSnapshot,
   CreationDraftSaveSnapshot,
@@ -48,12 +50,12 @@ interface Options {
   activeIdeaCreation: CreationDto | null;
   activeSessionSeries: readonly PromptSeriesDto[];
   albumTree: AlbumTreeIndex;
-  appliedLocationKeyRef: MutableRefObject<string>;
+  locationApplicationRef: MutableRefObject<CreatorLocationApplication>;
   appendPromptText(value: string): void;
   automaticChangeSummary: string;
   captureDraft(): CreationDraftSaveSnapshot;
   capturePrompt(): CreationDraftPromptSnapshot;
-  chooseDerivedVisual(visualId: string): Promise<void>;
+  chooseDerivedVisual(visualId: string, view?: DerivedVisualWorkspaceViewState): Promise<void>;
   clearAssistantError(): void;
   clearSavedInspiration(): void;
   clearSelection(): void;
@@ -79,11 +81,13 @@ interface Options {
   onActiveAlbumChange(albumId: string | null): void;
   onComparisonFullWindowChange(open: boolean): void;
   onPromptFullWindowChange(open: boolean): void;
+  onSelectDocument(id: string, albumId: string | null): void;
   outputMode: CreationOutputMode;
   outputSeriesAvailable: boolean;
   panes: Panes;
   preserveParentSelection: boolean;
   preserveCapturedDraft(snapshot: CreationDraftSaveSnapshot): Promise<unknown>;
+  preserveWorkingInput(): Promise<boolean>;
   promptNodesRef: MutableRefObject<CreatorPromptNodeInput[]>;
   promptProfileId: string;
   referenceAssetCount: number;
@@ -177,6 +181,7 @@ function usePrimaryNavigation(options: Options) {
     notify: options.notify,
     onComparisonFullWindowChange: options.onComparisonFullWindowChange,
     preserveCapturedDraft: options.preserveCapturedDraft,
+    preserveWorkingInput: options.preserveWorkingInput,
     referenceAssetCount: options.referenceAssetCount,
     resetInputs: options.resetInputs,
     restoreAssistant: options.restoreAssistant,
@@ -206,6 +211,7 @@ function usePrimaryNavigation(options: Options) {
     targetAlbumUnavailable: options.targetAlbumUnavailable,
   });
   const external = useCreatorExternalCreationImport({
+    preserveWorkingInput: options.preserveWorkingInput,
     clearSavedInspiration: options.clearSavedInspiration,
     clearSelection: options.clearSelection,
     commit: options.commit,
@@ -264,6 +270,7 @@ function usePrimaryNavigation(options: Options) {
     updatePromptDocument: options.updatePromptDocument,
   });
   const promptVersion = useCreatorPromptVersionCreation({
+    preserveWorkingInput: options.preserveWorkingInput,
     automaticChangeSummary: options.automaticChangeSummary,
     baseVersionId: options.versionId,
     capturePrompt: options.capturePrompt,
@@ -295,6 +302,7 @@ function useSecondaryNavigation(options: Options, primary: ReturnType<typeof use
     options.setVersionId('');
   };
   const content = useCreatorContentNavigation({
+    onSelectDocument: options.onSelectDocument,
     chooseSeries: primary.creation.chooseSeries,
     clearSavedInspiration: options.clearSavedInspiration,
     commit: options.commit,
@@ -360,13 +368,14 @@ function useSecondaryNavigation(options: Options, primary: ReturnType<typeof use
     actions: {
       ...content,
       chooseIdeaCreation: idea.chooseIdeaCreation,
+      resumeDerivedVisual: options.chooseDerivedVisual,
       chooseSeries: primary.creation.chooseSeries,
       resumeCreationDraft: primary.creation.resumeCreationDraft,
       startNewCreation: primary.creation.startNewCreation,
     },
     active: options.active,
     activeAlbumContextId: options.activeAlbumContextId,
-    appliedLocationKeyRef: options.appliedLocationKeyRef,
+    locationApplicationRef: options.locationApplicationRef,
     clearSavedInspiration: options.clearSavedInspiration,
     clearSelection: options.clearSelection,
     commit: options.commit,
@@ -387,6 +396,7 @@ function useSecondaryNavigation(options: Options, primary: ReturnType<typeof use
     workbenchLocation: options.workbenchLocation,
   });
   const output = useCreatorOutputNavigation({
+    preserveWorkingInput: options.preserveWorkingInput,
     appendPromptText: options.appendPromptText,
     chooseSeries: primary.creation.chooseSeries,
     commit: options.commit,

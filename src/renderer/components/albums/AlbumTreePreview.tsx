@@ -1,6 +1,7 @@
 import type { MouseEventHandler } from 'react';
 import type { AssetDto } from '@/shared/contracts';
 import { AlbumGlyphIcon } from '@/renderer/icons';
+import { AiyIdentity } from '@/renderer/components/brand/AiyIdentity';
 import { cn } from '@/renderer/lib/utils';
 import {
   getMediaStackHorizontalBounds,
@@ -21,6 +22,8 @@ interface Props {
   assets: AssetDto[];
   title: string;
   open: boolean;
+  previewExpanded?: boolean;
+  animate?: boolean;
   expandable: boolean;
   expandLabel: string;
   overlayStyle?: AlbumTreeOverlayStyle;
@@ -97,6 +100,8 @@ export function AlbumTreePreview({
   assets,
   title,
   open,
+  previewExpanded: controlledPreviewExpanded,
+  animate = true,
   expandable,
   expandLabel,
   overlayStyle = 'blurred',
@@ -122,7 +127,7 @@ export function AlbumTreePreview({
     onPointerTrackStart,
     onPointerTrack,
   });
-  const previewExpanded = previewGesture.previewExpanded;
+  const previewExpanded = controlledPreviewExpanded ?? previewGesture.previewExpanded;
   const spread = previewExpanded ? 'expanded' : open ? 'settled' : 'collapsed';
   const nodeAnchor = getTreeNodeAnchor(getMediaStackPrimaryFrameBounds('tree', stackItems, 5));
   const expandedBounds = getMediaStackHorizontalBounds(
@@ -148,9 +153,11 @@ export function AlbumTreePreview({
       className={onAssetSelect ? 'pointer-events-none relative z-10' : undefined}
       size="tree"
       items={stackItems}
+      emptyContent={<AiyIdentity className="size-full" />}
       spread={spread}
       maxItems={5}
       expandedStep={TREE_BRANCH_INTERACTION.previewSpreadStepPx}
+      animate={animate}
       onAssetSelect={onAssetSelect}
       assetLabel={assetLabel}
       deferOffscreenMedia

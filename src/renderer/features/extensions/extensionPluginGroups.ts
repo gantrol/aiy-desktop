@@ -1,5 +1,5 @@
 import type { ExtensionDto } from '@/shared/contracts';
-import { CODEX_EXTENSION_ID, FEATURE_DEMO_EXTENSION_ID } from '@/shared/extension-ids';
+import { CODEX_EXTENSION_ID } from '@/shared/extension-ids';
 
 export type ExtensionPluginGroup = 'models' | 'frontendDesign' | 'features' | 'languages';
 
@@ -9,14 +9,6 @@ export const extensionPluginGroupOrder: readonly ExtensionPluginGroup[] = [
   'languages',
   'models',
 ];
-
-export function isExtensionCenterItemVisible(extension: ExtensionDto) {
-  return extension.manifest.id !== FEATURE_DEMO_EXTENSION_ID;
-}
-
-export function visibleExtensionCenterItems(extensions: readonly ExtensionDto[]) {
-  return extensions.filter(isExtensionCenterItemVisible);
-}
 
 export function extensionPluginGroup(extension: ExtensionDto): ExtensionPluginGroup {
   if (extension.manifest.kind === 'LANGUAGE') return 'languages';

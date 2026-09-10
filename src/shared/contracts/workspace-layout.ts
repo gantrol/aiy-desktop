@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { gifAdoptionTargetSchema, gifWorkspaceStateSchema } from '@/shared/contracts/gif-making';
 
 const workspaceIdSchema = z.string().min(1).max(200);
 const optionalWorkspaceIdSchema = workspaceIdSchema.nullable();
@@ -17,9 +18,28 @@ export const workspaceAppViewSchema = z.enum([
 ]);
 
 const creatorLocationSchema = z.discriminatedUnion('surface', [
+  z
+    .object({
+      surface: z.literal('animation'),
+      documentId: z.string().uuid(),
+      seriesId: optionalWorkspaceIdSchema,
+      step: gifWorkspaceStateSchema.shape.step,
+      title: z.string().max(200),
+      frameId: workspaceIdSchema.optional(),
+      candidateId: workspaceIdSchema.optional(),
+      adoptionTarget: gifAdoptionTargetSchema.optional(),
+    })
+    .strict(),
   z.object({ surface: z.literal('default') }).strict(),
+  z.object({ surface: z.literal('outline'), albumId: optionalWorkspaceIdSchema }).strict(),
   z.object({ surface: z.literal('new-creation'), albumId: optionalWorkspaceIdSchema }).strict(),
-  z.object({ surface: z.literal('creation-draft'), draftId: workspaceIdSchema }).strict(),
+  z
+    .object({
+      surface: z.literal('creation-draft'),
+      draftId: workspaceIdSchema,
+      derivedVisualId: workspaceIdSchema.optional(),
+    })
+    .strict(),
   z.object({ surface: z.literal('inspiration-stash'), stashId: workspaceIdSchema }).strict(),
   z.object({ surface: z.literal('image-breakdown'), breakdownId: workspaceIdSchema }).strict(),
   z.object({ surface: z.literal('evaluation-suite'), suiteId: workspaceIdSchema }).strict(),
@@ -30,6 +50,8 @@ const creatorLocationSchema = z.discriminatedUnion('surface', [
     .object({
       surface: z.literal('existing-creation'),
       seriesId: workspaceIdSchema,
+      outputSeriesId: workspaceIdSchema.optional(),
+      derivedVisualId: workspaceIdSchema.optional(),
       assetId: optionalWorkspaceIdSchema,
       versionId: workspaceIdSchema.optional(),
       workspace: z.enum(['prompt', 'annotations']).optional(),
@@ -177,6 +199,17 @@ export const workspaceArticleEditOwnerSchema = z
   })
   .strict();
 
+export const workspaceVisualResumeSchema = z
+  .object({
+    visualId: workspaceIdSchema,
+    seriesId: workspaceIdSchema,
+    versionId: workspaceIdSchema,
+    assetId: optionalWorkspaceIdSchema,
+    outputSeriesId: workspaceIdSchema.optional(),
+  })
+  .strict();
+export type WorkspaceVisualResumeDto = z.infer<typeof workspaceVisualResumeSchema>;
+
 export const workspaceLayoutStateSchema = z
   .object({
     activeGroupId: workspaceIdSchema,
@@ -184,10 +217,14 @@ export const workspaceLayoutStateSchema = z
     groups: z.array(workspaceGroupSchema).min(1).max(2),
     articleEditors: z.array(workspaceArticleEditorStateSchema).max(24).default([]),
     articleEditOwners: z.array(workspaceArticleEditOwnerSchema).max(24).default([]),
+    visualWorkspaces: z.array(workspaceVisualResumeSchema).max(100).default([]),
   })
   .strict()
   .superRefine((state, context) => {
     const groupIds = new Set(state.groups.map((group) => group.id));
+    if (new Set(state.visualWorkspaces.map((entry) => entry.visualId)).size !== state.visualWorkspaces.length) {
+      context.addIssue({ code: 'custom', message: 'Visual workspace identities must be unique' });
+    }
     if (groupIds.size !== state.groups.length) {
       context.addIssue({ code: 'custom', message: 'Workspace group IDs must be unique' });
     }

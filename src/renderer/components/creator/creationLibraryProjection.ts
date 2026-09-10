@@ -12,6 +12,9 @@ import type {
   SocialPostDto,
   VideoDocumentSummaryDto,
 } from '@/shared/contracts';
+import type { GifDocumentSummary } from '@/shared/contracts/gif-making';
+import type { MessageCatalog } from '@/renderer/i18n/types';
+export type CreationFormLabels = Pick<MessageCatalog['creator']['album'], 'formKinds' | 'directionExperiment'>;
 import { creationSessionCoverFirstAssets } from '@/renderer/components/creator/creationCoverFirstAssets';
 import type { CreationSessionProjection } from '@/renderer/components/creator/creationSessionProjection';
 
@@ -36,6 +39,7 @@ type VideoDocumentEntityRef = Extract<CreationFormEntityRef, { kind: 'VIDEO_DOCU
 type DerivedVisualEntityRef = Extract<CreationFormEntityRef, { kind: 'DERIVED_VISUAL' }>;
 
 export type CreationFormEntity =
+  | GifDocumentSummary
   | PromptSeriesDto
   | ImageBreakdownDto
   | EvaluationSuiteDto
@@ -46,6 +50,7 @@ export type CreationFormEntity =
   | DerivedVisualDto;
 
 export interface CreationFormEntityIndex {
+  animationById: ReadonlyMap<string, GifDocumentSummary>;
   promptSeriesById: ReadonlyMap<string, PromptSeriesDto>;
   imageBreakdownById: ReadonlyMap<string, ImageBreakdownDto>;
   evaluationSuiteById: ReadonlyMap<string, EvaluationSuiteDto>;
@@ -58,6 +63,7 @@ export interface CreationFormEntityIndex {
 }
 
 export interface CreationFormEntitySource {
+  animations?: readonly GifDocumentSummary[];
   series: readonly PromptSeriesDto[];
   imageBreakdowns: readonly ImageBreakdownDto[];
   evaluationSuites: readonly EvaluationSuiteDto[];
@@ -78,6 +84,7 @@ export function creationFormEntityRefKey(ref: CreationFormEntityRef) {
 }
 
 export function buildCreationFormEntityIndex({
+  animations = [],
   series,
   imageBreakdowns,
   evaluationSuites,
@@ -93,6 +100,7 @@ export function buildCreationFormEntityIndex({
     for (const member of session.memberSeries) sessionBySeriesId.set(member.id, session);
   }
   return {
+    animationById: indexById(animations),
     promptSeriesById: indexById(series),
     imageBreakdownById: indexById(imageBreakdowns),
     evaluationSuiteById: indexById(evaluationSuites),
@@ -105,6 +113,10 @@ export function buildCreationFormEntityIndex({
   };
 }
 
+export function resolveCreationFormEntity(
+  ref: Extract<CreationFormEntityRef, { kind: 'GIF_DOCUMENT' }>,
+  index: CreationFormEntityIndex,
+): GifDocumentSummary | null;
 export function resolveCreationFormEntity(
   ref: PromptSeriesEntityRef,
   index: CreationFormEntityIndex,
@@ -143,6 +155,8 @@ export function resolveCreationFormEntity(
   index: CreationFormEntityIndex,
 ): CreationFormEntity | null {
   switch (ref.kind) {
+    case 'GIF_DOCUMENT':
+      return index.animationById.get(ref.id) ?? null;
     case 'PROMPT_SERIES':
       return index.promptSeriesById.get(ref.id) ?? null;
     case 'IMAGE_BREAKDOWN':
@@ -209,6 +223,7 @@ export type ArticleHeaderCreationFormProjection = DerivedVisualCreationFormProje
 export type ArticleInlineCreationFormProjection = DerivedVisualCreationFormProjectionBase<ArticleInlineCreationFormDto>;
 
 export type CreationFormProjection =
+  | CreationFormProjectionBase<Extract<CreationFormDto, { role: 'ANIMATION' }>, GifDocumentSummary>
   | InspirationCreationFormProjection
   | ImageBreakdownCreationFormProjection
   | EvaluationSuiteCreationFormProjection
@@ -226,6 +241,14 @@ function derivedVisualSeries(visual: DerivedVisualDto | null, index: CreationFor
 
 export function projectCreationForm(form: CreationFormDto, index: CreationFormEntityIndex): CreationFormProjection {
   switch (form.role) {
+    case 'ANIMATION':
+      return {
+        key: form.id,
+        role: form.role,
+        form,
+        entityRef: form.entity,
+        entity: resolveCreationFormEntity(form.entity, index),
+      };
     case 'INSPIRATION':
       return {
         key: form.id,
@@ -361,82 +384,35 @@ export function creationSessionActivity(session: CreationSessionProjection) {
   );
 }
 
-export function creationSessionTitle(session: CreationSessionProjection, locale: Locale) {
-  if (!session.syntheticExperimentRoot) return session.primarySeries.title;
-  return locale === 'zh' ? '方向实验' : 'Direction experiment';
+export function creationSessionTitle(session: CreationSessionProjection, labels: CreationFormLabels) {
+  return session.syntheticExperimentRoot ? labels.directionExperiment : session.primarySeries.title;
 }
 
-function roleFallbackTitle(role: CreationFormDto['role'], locale: Locale) {
-  if (locale === 'zh') {
-    switch (role) {
-      case 'INSPIRATION':
-        return '灵感暂存';
-      case 'IMAGE_BREAKDOWN':
-        return '拆解图片';
-      case 'EVALUATION_SUITE':
-        return '未命名评测集';
-      case 'IMAGE_CREATION':
-        return '未命名创作';
-      case 'SOCIAL_POST':
-        return '未命名贴图';
-      case 'ARTICLE':
-        return '未命名文章';
-      case 'VIDEO_DOCUMENT':
-        return '未命名视频文档';
-      case 'SOCIAL_POST_COVER':
-        return '贴图封面';
-      case 'ARTICLE_HEADER':
-        return '文章题图';
-      case 'ARTICLE_INLINE':
-        return '文章配图';
-    }
-  }
-  switch (role) {
-    case 'INSPIRATION':
-      return 'Inspiration';
-    case 'IMAGE_BREAKDOWN':
-      return 'Image breakdown';
-    case 'EVALUATION_SUITE':
-      return 'Untitled evaluation suite';
-    case 'IMAGE_CREATION':
-      return 'Untitled creation';
-    case 'SOCIAL_POST':
-      return 'Untitled post';
-    case 'ARTICLE':
-      return 'Untitled article';
-    case 'VIDEO_DOCUMENT':
-      return 'Untitled video document';
-    case 'SOCIAL_POST_COVER':
-      return 'Social post cover';
-    case 'ARTICLE_HEADER':
-      return 'Article header';
-    case 'ARTICLE_INLINE':
-      return 'Article image';
-  }
+function roleFallbackTitle(role: CreationFormDto['role'], labels: CreationFormLabels) {
+  return labels.formKinds[role];
 }
 
-export function creationFormTitle(projection: CreationFormProjection, locale: Locale) {
+export function creationFormTitle(projection: CreationFormProjection, labels: CreationFormLabels) {
   switch (projection.role) {
+    case 'ANIMATION':
     case 'INSPIRATION':
-      return projection.entity?.title || roleFallbackTitle(projection.role, locale);
     case 'IMAGE_BREAKDOWN':
-      return projection.entity?.title || roleFallbackTitle(projection.role, locale);
+    case 'VIDEO_DOCUMENT':
+      return projection.entity?.title || roleFallbackTitle(projection.role, labels);
     case 'EVALUATION_SUITE':
-      return projection.entity?.content.title || roleFallbackTitle(projection.role, locale);
+      return projection.entity?.content.title || roleFallbackTitle(projection.role, labels);
     case 'IMAGE_CREATION':
       return projection.session
-        ? creationSessionTitle(projection.session, locale)
-        : projection.entity?.title || roleFallbackTitle(projection.role, locale);
+        ? creationSessionTitle(projection.session, labels)
+        : projection.entity?.title || roleFallbackTitle(projection.role, labels);
     case 'SOCIAL_POST':
-      return projection.entity?.content.title || roleFallbackTitle(projection.role, locale);
+      return projection.entity?.content.title || roleFallbackTitle(projection.role, labels);
     case 'ARTICLE':
-      return projection.entity?.content.title || roleFallbackTitle(projection.role, locale);
-    case 'VIDEO_DOCUMENT':
-      return projection.entity?.title || roleFallbackTitle(projection.role, locale);
+      return projection.entity?.content.title || roleFallbackTitle(projection.role, labels);
     case 'SOCIAL_POST_COVER':
     case 'ARTICLE_HEADER':
     case 'ARTICLE_INLINE':
-      return projection.series?.title || roleFallbackTitle(projection.role, locale);
+      return projection.series?.title || roleFallbackTitle(projection.role, labels);
   }
 }
 
@@ -447,6 +423,8 @@ function coverFirstAssetIds(assetIds: readonly string[], coverAssetId: string | 
 
 export function creationFormPreviewAssetIds(projection: CreationFormProjection): string[] {
   switch (projection.role) {
+    case 'ANIMATION':
+      return projection.entity?.preview ? [projection.entity.preview.id] : [];
     case 'INSPIRATION':
       return projection.entity?.content.referenceAssets.map((asset) => asset.id) ?? [];
     case 'IMAGE_BREAKDOWN':
@@ -493,6 +471,7 @@ export function creationFormActivityAt(projection: CreationFormProjection) {
         projection.form.updatedAt,
         projection.session ? creationSessionActivity(projection.session) : null,
       ]);
+    case 'ANIMATION':
     case 'INSPIRATION':
     case 'IMAGE_BREAKDOWN':
     case 'EVALUATION_SUITE':
@@ -527,7 +506,7 @@ export interface CreationItemProjection {
 export function projectCreationItem(
   item: CreationItemDto,
   index: CreationFormEntityIndex,
-  locale: Locale,
+  labels: CreationFormLabels,
 ): CreationItemProjection {
   const sortedForms = item.forms.map((form) => projectCreationForm(form, index)).sort(compareCreationFormProjections);
   const primaryForm = item.primaryFormId
@@ -545,13 +524,14 @@ export function projectCreationItem(
     primaryForm,
     defaultForm,
     orderedForms,
-    title: defaultForm ? creationFormTitle(defaultForm, locale) : roleFallbackTitle('IMAGE_CREATION', locale),
+    title: defaultForm ? creationFormTitle(defaultForm, labels) : roleFallbackTitle('IMAGE_CREATION', labels),
     activityAt,
     previewAssetIds: defaultForm ? creationFormPreviewAssetIds(defaultForm) : [],
   };
 }
 
 export interface BuildCreationLibraryProjectionInput extends CreationFormEntitySource {
+  labels: CreationFormLabels;
   creationItems: readonly CreationItemDto[];
   locale: Locale;
 }
@@ -579,11 +559,11 @@ function canonicalSessionItem(items: readonly CreationItemProjection[]) {
 
 export function buildCreationLibraryProjection({
   creationItems,
-  locale,
+  labels,
   ...entitySource
 }: BuildCreationLibraryProjectionInput): CreationLibraryProjection {
   const entities = buildCreationFormEntityIndex(entitySource);
-  const projectedItems = creationItems.map((item) => projectCreationItem(item, entities, locale));
+  const projectedItems = creationItems.map((item) => projectCreationItem(item, entities, labels));
   const sessionItems = new Map<string, CreationItemProjection[]>();
   for (const item of projectedItems) {
     const session = item.defaultForm?.role === 'IMAGE_CREATION' ? item.defaultForm.session : null;

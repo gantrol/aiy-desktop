@@ -8,6 +8,8 @@ const DEFAULT_ASPECT_RATIO = 4 / 3;
 export interface MasonryLayoutItem {
   id: string;
   aspectRatio: number;
+  /** Keeps selected rows uniform while aspectRatio remains the responsive fallback. */
+  height?: number;
 }
 
 export interface MasonryPlacement {
@@ -94,7 +96,9 @@ export function computeShortestColumnMasonry(
     }
 
     const aspectRatio = validPositiveNumber(item.aspectRatio, DEFAULT_ASPECT_RATIO);
-    const height = columnWidth / aspectRatio;
+    const proportionalHeight = columnWidth / aspectRatio;
+    const height =
+      item.height === undefined ? proportionalHeight : validPositiveNumber(item.height, proportionalHeight);
     const placement: MasonryPlacement = {
       id: item.id,
       index,

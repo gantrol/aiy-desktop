@@ -1,3 +1,4 @@
+import { formMatchesFilter } from '@/renderer/components/creator/creationLibraryFilter';
 import {
   ArchiveIcon,
   BookmarkIcon,
@@ -17,6 +18,7 @@ import {
   PinOffIcon,
   PlusIcon,
   ScanSearchIcon,
+  SearchIcon,
   Trash2Icon,
 } from 'lucide-react';
 import {
@@ -41,6 +43,7 @@ import type {
 } from '@/shared/contracts';
 import { cn } from '@/renderer/lib/utils';
 import { useI18n } from '@/renderer/i18n/useI18n';
+import { usePinContentAction } from '@/renderer/features/desktop-petals/PinContentAction';
 import {
   ALBUM_DRAG_TYPE,
   CREATION_ITEM_DRAG_TYPE,
@@ -98,9 +101,11 @@ import { MediaStackPreview, type MediaStackSpread } from '@/renderer/components/
 import { useVideoDocumentList } from '@/renderer/features/video-documents/useVideoDocumentList';
 import { useVideoDocumentNavigation } from '@/renderer/features/video-documents/useVideoDocumentNavigation';
 import type { CreatorOpenTabTarget } from '@/renderer/components/app/app-navigation';
+import { CreationOutlineSidebar } from '@/renderer/features/creation-outline/CreationOutlineSidebar';
 
-export type ResultLibraryMode = 'full' | 'images';
+export type ResultLibraryMode = 'full' | 'images' | 'outline';
 export type ResultLibrarySurface =
+  | 'animation'
   | 'new-creation'
   | 'inspiration-stash'
   | 'image-breakdown'
@@ -119,6 +124,7 @@ interface Props {
   filter: CreationLibraryFilter;
   selectedSeriesId: string | null;
   selectedDerivedVisualId?: string | null;
+  selectedAnimationId?: string | null;
   selectedCreationId: string | null;
   selectedInspirationStashId: string | null;
   selectedImageBreakdownId: string | null;
@@ -146,6 +152,7 @@ interface Props {
   onSelectEvaluationSuite(suiteId: string): void;
   onSelectSocialPost(postId: string): void;
   onSelectArticle(articleId: string): void;
+  onSelectAnimation(documentId: string): void;
   onRenameArticle(article: ArticleDto): void;
   onContentLifecycleAction(request: ContentLifecycleActionRequest): void;
   onSelect(seriesId: string, assetId?: string): void;
@@ -165,6 +172,7 @@ interface Props {
   onMoveCreationItem(creationItemId: string, albumId: string | null): Promise<void>;
   onToggleCreationItemPin(creationItemId: string, pinned: boolean): void;
   onImportExternalFiles?(albumId: string, files: File[], sourceUrl: string): void;
+  refresh(): Promise<void>;
   notify(message: string): void;
 }
 
@@ -216,30 +224,10 @@ function normalized(value: string, locale: Locale) {
   return value.trim().toLocaleLowerCase(locale === 'zh' ? 'zh-CN' : 'en');
 }
 
-function formMatchesFilter(form: CreationFormProjection, filter: CreationLibraryFilter) {
-  switch (form.role) {
-    case 'INSPIRATION':
-      return filter.inspirations;
-    case 'IMAGE_BREAKDOWN':
-      return filter.images;
-    case 'EVALUATION_SUITE':
-      return filter.evaluations;
-    case 'SOCIAL_POST':
-      return filter.socialPosts;
-    case 'ARTICLE':
-      return filter.articles;
-    case 'VIDEO_DOCUMENT':
-      return filter.documents;
-    case 'IMAGE_CREATION':
-    case 'SOCIAL_POST_COVER':
-    case 'ARTICLE_HEADER':
-    case 'ARTICLE_INLINE':
-      return filter.images;
-  }
-}
-
 function formIcon(form: CreationFormProjection) {
   switch (form.role) {
+    case 'ANIMATION':
+      return ImagesIcon;
     case 'INSPIRATION':
       return BookmarkIcon;
     case 'IMAGE_BREAKDOWN':
@@ -261,63 +249,10 @@ function formIcon(form: CreationFormProjection) {
   }
 }
 
-function formKindLabel(form: CreationFormProjection, locale: Locale) {
-  if (locale === 'zh') {
-    switch (form.role) {
-      case 'INSPIRATION':
-        return '灵感';
-      case 'IMAGE_BREAKDOWN':
-        return '图片拆解';
-      case 'EVALUATION_SUITE':
-        return '评测集';
-      case 'SOCIAL_POST':
-        return '贴图';
-      case 'ARTICLE':
-        return '文章';
-      case 'VIDEO_DOCUMENT':
-        return '视频文档';
-      case 'IMAGE_CREATION':
-        return '图像创作';
-      case 'SOCIAL_POST_COVER':
-        return '封面设计';
-      case 'ARTICLE_HEADER':
-        return '文章题图';
-      case 'ARTICLE_INLINE':
-        return '文章配图';
-    }
-  }
-  switch (form.role) {
-    case 'INSPIRATION':
-      return 'Inspiration';
-    case 'IMAGE_BREAKDOWN':
-      return 'Image breakdown';
-    case 'EVALUATION_SUITE':
-      return 'Evaluation suite';
-    case 'SOCIAL_POST':
-      return 'Social post';
-    case 'ARTICLE':
-      return 'Article';
-    case 'VIDEO_DOCUMENT':
-      return 'Video document';
-    case 'IMAGE_CREATION':
-      return 'Image creation';
-    case 'SOCIAL_POST_COVER':
-      return 'Cover design';
-    case 'ARTICLE_HEADER':
-      return 'Article header';
-    case 'ARTICLE_INLINE':
-      return 'Article image';
-  }
-}
-
 function uniqueDocuments(items: readonly VideoDocumentSummaryDto[]) {
   const byId = new Map<string, VideoDocumentSummaryDto>();
   for (const item of items) byId.set(item.id, item);
   return [...byId.values()];
-}
-
-function itemLifecycleTitle(item: CreationItemProjection, locale: Locale) {
-  return item.title || (locale === 'zh' ? '未命名创作' : 'Untitled creation');
 }
 
 function creationAlbumContext(
@@ -328,6 +263,34 @@ function creationAlbumContext(
   return selectedAlbumId ?? selectedItem?.item.albumId ?? selectedDocumentAlbumId ?? null;
 }
 
+function ResultLibraryResizeHandle({
+  showModeToggle,
+  canExpand,
+  resizeValue,
+  resizeMin,
+  resizeMax,
+  onResizeValueChange,
+  onResizeStart,
+}: Pick<
+  Props,
+  'showModeToggle' | 'canExpand' | 'resizeValue' | 'resizeMin' | 'resizeMax' | 'onResizeValueChange' | 'onResizeStart'
+>) {
+  const { messages } = useI18n();
+  if (!showModeToggle) return null;
+  return (
+    <CreatorPaneResizeHandle
+      edge="right"
+      label={messages.creator.results.resize}
+      value={resizeValue}
+      min={resizeMin}
+      max={resizeMax}
+      disabled={!canExpand}
+      onValueChange={onResizeValueChange}
+      onPointerDown={onResizeStart}
+    />
+  );
+}
+
 export function ResultLibrary({
   active,
   data,
@@ -336,6 +299,7 @@ export function ResultLibrary({
   filter,
   selectedSeriesId,
   selectedDerivedVisualId = null,
+  selectedAnimationId,
   selectedCreationId,
   selectedInspirationStashId,
   selectedImageBreakdownId,
@@ -363,6 +327,7 @@ export function ResultLibrary({
   onSelectEvaluationSuite,
   onSelectSocialPost,
   onSelectArticle,
+  onSelectAnimation,
   onRenameArticle,
   onContentLifecycleAction,
   onSelect,
@@ -382,13 +347,19 @@ export function ResultLibrary({
   onMoveCreationItem,
   onToggleCreationItemPin,
   onImportExternalFiles,
+  refresh,
   notify,
 }: Props) {
   const { messages } = useI18n();
+  const pinContentAction = usePinContentAction(notify);
+  const formKindLabel = (form: CreationFormProjection) => messages.creator.album.formKinds[form.role];
+  const itemLifecycleTitle = (item: CreationItemProjection) =>
+    item.title || messages.creator.album.formKinds.IMAGE_CREATION;
   const libraryLabels = messages.creator.results;
   const creatorAlbumLabels = messages.creator.album;
   const albumLabels = messages.gallery.albums;
   const [query, setQuery] = useState('');
+  const [searchOpen, setSearchOpen] = useState(false);
   const [moveTarget, setMoveTarget] = useState<AlbumMoveTarget | null>(null);
   const [draggedCreationItemId, setDraggedCreationItemId] = useState<string | null>(null);
   const [draggedAlbumId, setDraggedAlbumId] = useState<string | null>(null);
@@ -403,12 +374,12 @@ export function ResultLibrary({
   const queryKey = normalized(query, locale);
   const includeDocuments = filter.documents || activeContent === 'documents' || selectedDocumentId !== null;
   const documentNavigation = useVideoDocumentNavigation({
-    active: active && includeDocuments,
+    active: active && mode === 'full' && includeDocuments,
     refreshKey: documentNavigationRevision,
     notify,
   });
   const documentSearch = useVideoDocumentList({
-    active: active && filter.documents && Boolean(queryKey),
+    active: active && mode === 'full' && filter.documents && Boolean(queryKey),
     refreshKey: documentNavigationRevision,
     query,
     albumId: null,
@@ -434,6 +405,8 @@ export function ResultLibrary({
     () =>
       buildCreationLibraryProjection({
         creationItems: data.creationItems,
+        animations: data.animations,
+        labels: messages.creator.album,
         locale,
         series: data.series,
         imageBreakdowns: data.imageBreakdowns ?? [],
@@ -446,6 +419,8 @@ export function ResultLibrary({
         derivedVisuals: data.derivedVisuals ?? [],
       }),
     [
+      data.animations,
+      messages.creator.album,
       data.articles,
       data.creationItems,
       data.derivedVisuals,
@@ -474,12 +449,14 @@ export function ResultLibrary({
     for (const breakdown of data.imageBreakdowns ?? []) add(breakdown.sourceAsset);
     for (const post of data.socialPosts ?? []) post.content.mediaAssets.forEach(add);
     for (const article of data.articles ?? []) article.content.mediaAssets.forEach(add);
+    for (const animation of data.animations ?? []) add(animation.preview);
     for (const document of navigationDocuments) {
       add(document.source.asset);
     }
     return result;
   }, [
     data.albums,
+    data.animations,
     data.articles,
     data.imageBreakdowns,
     data.inspirationStashes,
@@ -489,6 +466,7 @@ export function ResultLibrary({
   ]);
 
   const selectedForm = useMemo(() => {
+    if (selectedAnimationId) return projection.formByEntityRef.get('GIF_DOCUMENT:' + selectedAnimationId) ?? null;
     if (selectedDerivedVisualId) {
       const derived = projection.formByEntityRef.get('DERIVED_VISUAL:' + selectedDerivedVisualId);
       if (derived) return derived;
@@ -528,6 +506,7 @@ export function ResultLibrary({
     data.creations,
     projection.formByEntityRef,
     projection.items,
+    selectedAnimationId,
     selectedArticleId,
     selectedCreationId,
     selectedDocumentId,
@@ -573,15 +552,20 @@ export function ResultLibrary({
   }
 
   function formDisplayTitle(form: CreationFormProjection) {
-    return form.role === 'SOCIAL_POST_COVER'
-      ? locale === 'zh'
-        ? '封面设计'
-        : 'Cover design'
-      : creationFormTitle(form, locale);
+    if (form.role === 'SOCIAL_POST_COVER') return messages.creator.album.formKinds.SOCIAL_POST_COVER;
+    const title = creationFormTitle(form, messages.creator.album);
+    if (form.role !== 'ANIMATION') return title;
+    const matches = projection.itemById
+      .get(form.form.creationItemId)
+      ?.orderedForms.filter(
+        (candidate) => candidate.role === 'ANIMATION' && creationFormTitle(candidate, messages.creator.album) === title,
+      );
+    if (!matches || matches.length < 2) return title;
+    return `${title} · ${matches.findIndex((candidate) => candidate.form.id === form.form.id) + 1}`;
   }
 
   function formDisplayKind(form: CreationFormProjection) {
-    if (form.role !== 'SOCIAL_POST_COVER') return formKindLabel(form, locale);
+    if (form.role !== 'SOCIAL_POST_COVER') return formKindLabel(form);
     const count = socialCoverGroup(form).length;
     if (locale === 'zh') return count > 1 ? `封面 · ${count} 方案` : '封面';
     return count > 1 ? `Cover · ${count} concepts` : 'Cover';
@@ -621,20 +605,22 @@ export function ResultLibrary({
   }, [selectedAlbumId, selectedAlbumPath, selectedDocumentId, selectedFormId, selectedItemId, setAlbumPersistent]);
 
   useEffect(() => {
-    if (!includeDocuments) return;
+    if (!active || mode !== 'full' || !includeDocuments) return;
     for (const branchId of albumExpansion.openIds) {
       if (branchId.startsWith('album:')) documentNavigation.ensureChildren(branchId.slice('album:'.length));
     }
-  }, [albumExpansion.openIds, documentNavigation, includeDocuments]);
+  }, [active, albumExpansion.openIds, documentNavigation, includeDocuments, mode]);
 
   const visibleItems = useMemo(() => {
     return projection.items.filter((item) => {
       const categoryForms = item.orderedForms.filter((form) => formMatchesFilter(form, filter));
       if (categoryForms.length === 0 && item.key !== selectedItemId) return false;
       if (!queryKey || item.key === selectedItemId) return true;
-      return categoryForms.some((form) => normalized(creationFormTitle(form, locale), locale).includes(queryKey));
+      return categoryForms.some((form) =>
+        normalized(creationFormTitle(form, messages.creator.album), locale).includes(queryKey),
+      );
     });
-  }, [filter, locale, projection.items, queryKey, selectedItemId]);
+  }, [filter, locale, messages.creator.album, projection.items, queryKey, selectedItemId]);
   const itemsByAlbumId = useMemo(() => {
     const result = new Map<string | null, CreationItemProjection[]>();
     for (const item of visibleItems) {
@@ -676,7 +662,7 @@ export function ResultLibrary({
         if (form.form.id === selectedFormId) visible.push(form);
         else if (
           formMatchesFilter(form, filter) &&
-          (!queryKey || normalized(creationFormTitle(form, locale), locale).includes(queryKey))
+          (!queryKey || normalized(creationFormTitle(form, messages.creator.album), locale).includes(queryKey))
         )
           visible.push(form);
         continue;
@@ -690,7 +676,9 @@ export function ResultLibrary({
       const queryMatches =
         !queryKey ||
         normalized(formDisplayTitle(representative), locale).includes(queryKey) ||
-        group.some((candidate) => normalized(creationFormTitle(candidate, locale), locale).includes(queryKey));
+        group.some((candidate) =>
+          normalized(creationFormTitle(candidate, messages.creator.album), locale).includes(queryKey),
+        );
       if (selected || (formMatchesFilter(representative, filter) && queryMatches)) visible.push(representative);
     }
     return visible;
@@ -726,6 +714,9 @@ export function ResultLibrary({
 
   function openForm(form: CreationFormProjection) {
     switch (form.role) {
+      case 'ANIMATION':
+        onSelectAnimation(form.entityRef.id);
+        break;
       case 'INSPIRATION':
         onSelectInspirationStash(form.entityRef.id);
         break;
@@ -758,7 +749,7 @@ export function ResultLibrary({
   function formPreview(form: CreationFormProjection, spread: MediaStackSpread) {
     const assets = formAssets(form);
     const Icon = formIcon(form);
-    const kindLabel = formKindLabel(form, locale);
+    const kindLabel = formKindLabel(form);
     if (assets.length === 0) {
       return (
         <span className="relative grid size-12 place-items-center rounded-md border bg-background text-foreground-secondary">
@@ -810,7 +801,7 @@ export function ResultLibrary({
 
   function creationItemFormIndicators(item: CreationItemProjection) {
     const forms = [...new Map(item.orderedForms.map((form) => [form.role, form] as const)).values()];
-    const formLabel = forms.map((form) => formKindLabel(form, locale)).join(locale === 'zh' ? '、' : ', ');
+    const formLabel = forms.map((form) => formKindLabel(form)).join(locale === 'zh' ? '、' : ', ');
     const label = item.item.pinned
       ? `${locale === 'zh' ? '已置顶' : 'Pinned'}${locale === 'zh' ? '、' : ', '}${formLabel}`
       : formLabel;
@@ -830,7 +821,7 @@ export function ResultLibrary({
     const actions: ActionMenuAction[] = [
       {
         id: 'open-form',
-        label: locale === 'zh' ? '打开' : 'Open',
+        label: creatorAlbumLabels.open,
         icon: formIcon(form),
         onSelect: () => openForm(form),
       },
@@ -842,6 +833,22 @@ export function ResultLibrary({
         icon: PencilIcon,
         disabled: lifecycleBusy,
         onSelect: () => onRenameArticle(form.entity!),
+      });
+    }
+    if (form.role === 'ANIMATION' && form.entity) {
+      actions.push({
+        id: 'delete-animation-form',
+        label: creatorAlbumLabels.delete,
+        icon: Trash2Icon,
+        destructive: true,
+        separatorBefore: true,
+        disabled: lifecycleBusy,
+        onSelect: () =>
+          onContentLifecycleAction({
+            action: 'DELETE',
+            target: { entityType: 'GIF_DOCUMENT', entityId: form.entityRef.id, scope: 'FORM' },
+            title,
+          }),
       });
     }
     return actions.map((action) => ({ ...action, label: action.label || title }));
@@ -864,7 +871,7 @@ export function ResultLibrary({
         selected={formGroupSelected(form)}
         branchTopology={topology}
         ariaLabel={kindLabel + ': ' + title}
-        openLabel={(locale === 'zh' ? '打开：' : 'Open: ') + title}
+        openLabel={`${creatorAlbumLabels.open}: ${title}`}
         title={title}
         metadata={<span className="mt-0.5 block truncate text-xs text-muted-foreground">{kindLabel}</span>}
         previewBounds={metrics.bounds}
@@ -874,7 +881,7 @@ export function ResultLibrary({
           <div data-result-library-row-control className={rowControlsClassName}>
             <ActionMenuButton
               actions={actions}
-              label={(locale === 'zh' ? '更多操作：' : 'More actions: ') + title}
+              label={`${creatorAlbumLabels.moreActions}: ${title}`}
               className={cn(rowControlClassName, 'size-6')}
             />
           </div>
@@ -899,7 +906,7 @@ export function ResultLibrary({
     formCount: number,
   ): ActionMenuAction[] {
     const defaultForm = item.defaultForm;
-    const title = itemLifecycleTitle(item, locale);
+    const title = itemLifecycleTitle(item);
     const tabTarget = creationFormTabTarget(openTarget, item.item.albumId);
     const actions: ActionMenuAction[] = [];
     actions.push({
@@ -1095,7 +1102,7 @@ export function ResultLibrary({
     const openTarget = defaultForm;
     const expandable = forms.length > 1;
     const expanded = itemExpansion.isOpen(branchId);
-    const title = itemLifecycleTitle(item, locale);
+    const title = itemLifecycleTitle(item);
     const assets = creationItemAssets(item);
     const metrics = getCreationTreeMediaNodeMetrics(assets.map((asset) => ({ asset })));
     const actions = itemActions(item, openTarget, expanded, forms.length);
@@ -1175,20 +1182,22 @@ export function ResultLibrary({
   }
 
   function albumActions(album: AlbumDto, expanded: boolean, expandable: boolean): ActionMenuAction[] {
+    const labels = messages.gallery.albums;
     const actions: ActionMenuAction[] = [
       {
         id: 'open-album',
-        label: locale === 'zh' ? '打开' : 'Open',
+        label: labels.open,
         icon: GalleryVerticalEndIcon,
         onSelect: () => onSelectAlbum(album.id),
       },
+      pinContentAction({ kind: 'ALBUM', id: album.id }, lifecycleBusy || tree.effectivelyArchived.has(album.id)),
     ];
     if (expandable) {
       actions.push(
         createTreeBranchExpansionAction({
           expanded,
-          expandLabel: locale === 'zh' ? '展开图集' : 'Expand album',
-          collapseLabel: locale === 'zh' ? '收起图集' : 'Collapse album',
+          expandLabel: labels.expand,
+          collapseLabel: labels.collapse,
           onExpandedChange: (open) => albumExpansion.setPersistent('album:' + album.id, open),
         }),
       );
@@ -1196,35 +1205,35 @@ export function ResultLibrary({
     actions.push(
       {
         id: 'new-creation',
-        label: locale === 'zh' ? '新建创作' : 'New creation',
+        label: messages.creator.results.newCreation,
         icon: PlusIcon,
         disabled: lifecycleBusy,
         onSelect: () => onNewInAlbum(album.id),
       },
       {
         id: 'new-album',
-        label: locale === 'zh' ? '新建子图集' : 'New subalbum',
+        label: labels.createChild,
         icon: GalleryVerticalEndIcon,
         disabled: lifecycleBusy,
         onSelect: () => onCreateAlbum(album),
       },
       {
         id: 'rename-album',
-        label: locale === 'zh' ? '重命名…' : 'Rename…',
+        label: labels.rename,
         icon: PencilIcon,
         disabled: lifecycleBusy,
         onSelect: () => onRenameAlbum(album),
       },
       {
         id: 'pin-album',
-        label: album.pinned ? (locale === 'zh' ? '取消置顶' : 'Unpin') : locale === 'zh' ? '置顶' : 'Pin',
+        label: album.pinned ? labels.unpin : labels.pin,
         icon: album.pinned ? PinOffIcon : PinIcon,
         disabled: lifecycleBusy,
         onSelect: () => onToggleAlbumPin(album),
       },
       {
         id: 'move-album',
-        label: locale === 'zh' ? '移动…' : 'Move…',
+        label: labels.move,
         icon: FolderInputIcon,
         disabled: lifecycleBusy,
         onSelect: () =>
@@ -1237,7 +1246,7 @@ export function ResultLibrary({
       },
       {
         id: 'archive-album',
-        label: locale === 'zh' ? '归档' : 'Archive',
+        label: labels.archive,
         icon: ArchiveIcon,
         separatorBefore: true,
         disabled: lifecycleBusy,
@@ -1250,7 +1259,7 @@ export function ResultLibrary({
       },
       {
         id: 'delete-album',
-        label: locale === 'zh' ? '删除' : 'Delete',
+        label: labels.delete,
         icon: Trash2Icon,
         destructive: true,
         disabled: lifecycleBusy,
@@ -1467,91 +1476,17 @@ export function ResultLibrary({
     return Promise.resolve();
   }
 
-  function compactEntry(entry: RootEntry) {
-    if (entry.kind === 'ALBUM') {
-      const assets = creationAlbumPreviewAssets(entry.album, filter);
-      return (
-        <ContextMenu key={'compact-album:' + entry.album.id}>
-          <ContextMenuTrigger asChild>
-            <Button
-              type="button"
-              variant="ghost"
-              className="relative size-16 shrink-0 overflow-visible rounded-xl p-0"
-              title={entry.album.title}
-              aria-label={entry.album.title}
-              aria-current={selectedAlbumId === entry.album.id ? 'page' : undefined}
-              onClick={() => onSelectAlbum(entry.album.id)}
-            >
-              <MediaStackPreview
-                className="pointer-events-none"
-                size="rail"
-                items={assets.map((asset) => ({ asset }))}
-                maxItems={3}
-              />
-            </Button>
-          </ContextMenuTrigger>
-          <ContextMenuContent>
-            <ActionContextMenuItems
-              actions={albumActions(
-                entry.album,
-                albumExpansion.isOpen('album:' + entry.album.id),
-                albumChildren(entry.album).length > 0,
-              )}
-            />
-          </ContextMenuContent>
-        </ContextMenu>
-      );
-    }
-    const defaultForm = entry.item.defaultForm;
-    if (!defaultForm) return null;
-    const forms = visibleItemForms(entry.item);
-    const openTarget = defaultForm;
-    const assets = creationItemAssets(entry.item);
-    const title = itemLifecycleTitle(entry.item, locale);
-    const actions = itemActions(entry.item, openTarget, itemExpansion.isOpen('item:' + entry.item.key), forms.length);
-    return (
-      <ContextMenu key={'compact-item:' + entry.item.key}>
-        <ContextMenuTrigger asChild>
-          <Button
-            type="button"
-            variant="ghost"
-            className="relative size-16 shrink-0 overflow-visible rounded-xl p-0"
-            title={title}
-            aria-label={title}
-            aria-current={selectedItemId === entry.item.key ? 'page' : undefined}
-            onClick={() => openForm(openTarget)}
-          >
-            {assets.length > 0 ? (
-              <MediaStackPreview
-                className="pointer-events-none"
-                size="rail"
-                items={assets.map((asset) => ({ asset }))}
-                maxItems={3}
-              />
-            ) : (
-              <Layers3Icon className="size-5 text-muted-foreground" />
-            )}
-          </Button>
-        </ContextMenuTrigger>
-        <ContextMenuContent>
-          <ActionContextMenuItems actions={actions} />
-        </ContextMenuContent>
-      </ContextMenu>
-    );
-  }
-
-  const resizeHandle = showModeToggle ? (
-    <CreatorPaneResizeHandle
-      edge="right"
-      label={libraryLabels.resize}
-      value={resizeValue}
-      min={resizeMin}
-      max={resizeMax}
-      disabled={!canExpand}
-      onValueChange={onResizeValueChange}
-      onPointerDown={onResizeStart}
+  const resizeHandle = (
+    <ResultLibraryResizeHandle
+      showModeToggle={showModeToggle}
+      canExpand={canExpand}
+      resizeValue={resizeValue}
+      resizeMin={resizeMin}
+      resizeMax={resizeMax}
+      onResizeValueChange={onResizeValueChange}
+      onResizeStart={onResizeStart}
     />
-  ) : null;
+  );
   const moveDialog = (
     <AlbumMoveDialog
       albums={data.albums}
@@ -1569,6 +1504,44 @@ export function ResultLibrary({
     />
   );
 
+  const openOutline = () => onModeChange('outline');
+  const outlineButton = (
+    <Button
+      type="button"
+      variant="ghost"
+      size="icon-sm"
+      title={messages.creator.outline.title}
+      aria-label={messages.creator.outline.title}
+      onClick={openOutline}
+    >
+      <ListChecksIcon className="size-4" />
+    </Button>
+  );
+
+  if (mode === 'outline') {
+    return (
+      <CreationOutlineSidebar
+        albums={data.albums}
+        creations={projection.items}
+        active={active}
+        busy={lifecycleBusy}
+        documentNavigationRevision={documentNavigationRevision}
+        resizeHandle={resizeHandle}
+        collapsible={showModeToggle}
+        onClose={() => onModeChange('full')}
+        onCollapse={() => onModeChange('images')}
+        onOpenAlbum={onSelectAlbum}
+        onOpenSeries={onSelect}
+        onOpenCreationForm={openForm}
+        onCommand={async (command) => {
+          const result = await window.desktopApi.creationOutlineCommand(command);
+          if (result.kind !== 'error') await refresh().catch(() => notify(messages.creator.outline.refreshFailed));
+          return result;
+        }}
+      />
+    );
+  }
+
   if (mode === 'images') {
     return (
       <aside
@@ -1576,7 +1549,19 @@ export function ResultLibrary({
         className="relative isolate flex size-full min-h-0 flex-col border-r bg-surface-sunken"
       >
         {resizeHandle}
-        <header className="grid h-14 shrink-0 place-items-center border-b border-border/60">
+        <header className="grid shrink-0 place-items-center gap-2 py-2">
+          {outlineButton}
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon-sm"
+            disabled={lifecycleBusy}
+            title={creatorAlbumLabels.newAlbum}
+            aria-label={creatorAlbumLabels.newAlbum}
+            onClick={() => onCreateAlbum(null)}
+          >
+            <GalleryVerticalEndIcon className="size-4" />
+          </Button>
           <Button
             type="button"
             variant="ghost"
@@ -1589,16 +1574,30 @@ export function ResultLibrary({
           >
             <PlusIcon className="size-4" />
           </Button>
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon-sm"
+            title={libraryLabels.search}
+            aria-label={libraryLabels.search}
+            onClick={() => {
+              if (canExpand) {
+                setSearchOpen(true);
+                onModeChange('full');
+              } else openOutline();
+            }}
+          >
+            <SearchIcon className="size-4" />
+          </Button>
         </header>
-        <ScrollArea type="always" className="min-h-0 flex-1">
-          <div className="flex flex-col items-center gap-2 px-2 py-3 pb-14">{roots.map(compactEntry)}</div>
-        </ScrollArea>
+        <div className="min-h-0 flex-1" />
         {showModeToggle && (
           <Button
             type="button"
             variant="secondary"
             size="icon-sm"
             className="absolute bottom-2 left-1/2 z-chrome -translate-x-1/2 shadow-overlay"
+            data-action="expand-creation-library"
             title={libraryLabels.full}
             aria-label={libraryLabels.full}
             disabled={!canExpand}
@@ -1621,6 +1620,7 @@ export function ResultLibrary({
       <header className="relative flex h-14 shrink-0 items-center justify-between gap-1 border-b border-border/60 px-3">
         <h1 className="truncate text-lg font-semibold tracking-tight">{libraryLabels.library}</h1>
         <div className="flex items-center gap-1">
+          {outlineButton}
           <Button
             type="button"
             variant="ghost"
@@ -1645,6 +1645,8 @@ export function ResultLibrary({
             <PlusIcon className="size-4" />
           </Button>
           <CreationLibraryToolbar
+            searchOpen={searchOpen}
+            onSearchOpenChange={setSearchOpen}
             query={query}
             filter={filter}
             onQueryChange={setQuery}
@@ -1691,8 +1693,8 @@ export function ResultLibrary({
           variant="secondary"
           size="icon-sm"
           className="absolute bottom-2 left-2 z-chrome shadow-overlay"
-          title={libraryLabels.imagesOnly}
-          aria-label={libraryLabels.imagesOnly}
+          title={libraryLabels.collapse}
+          aria-label={libraryLabels.collapse}
           onClick={() => onModeChange('images')}
         >
           <PanelLeftCloseIcon className="size-4" />

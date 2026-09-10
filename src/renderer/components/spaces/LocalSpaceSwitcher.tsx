@@ -19,6 +19,7 @@ import type {
   LocalSpaceSwitchResult,
 } from '@/shared/contracts';
 import { useI18n } from '@/renderer/i18n/useI18n';
+import { AiyIdentity } from '@/renderer/components/brand/AiyIdentity';
 import { cn } from '@/renderer/lib/utils';
 import { Button } from '@/renderer/components/ui/button';
 import { Input } from '@/renderer/components/ui/input';
@@ -42,7 +43,7 @@ interface Props {
 function SpaceCover({ coverUrl, className }: { coverUrl: string | null; className?: string }) {
   return (
     <span className={cn('relative grid shrink-0 place-items-center overflow-hidden bg-background', className)}>
-      <img className="size-full object-contain" src="./icon.png" alt="" />
+      <AiyIdentity avatar className="size-full" />
       {coverUrl && (
         <img
           key={coverUrl}
@@ -161,7 +162,10 @@ export function LocalSpaceSwitcher({ spaceName, spaceCoverUrl, busy, transitioni
     if (transitionPending || busy) return;
     setPending(true);
     try {
-      await flushArticleEditors();
+      if (!(await flushArticleEditors())) {
+        setPending(false);
+        return;
+      }
       const result = await action();
       if (result.status === 'switched') {
         setRegistry(null);

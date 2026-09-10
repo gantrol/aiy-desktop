@@ -58,7 +58,11 @@ export function AppWindowControls() {
         className="h-9 w-12 rounded-none hover:bg-destructive hover:text-destructive-foreground active:bg-destructive-hover focus-visible:ring-inset focus-visible:ring-offset-0"
         aria-label={labels.close}
         title={labels.close}
-        onClick={() => void flushArticleEditors().finally(() => window.desktopApi.appWindowClose())}
+        onClick={() =>
+          void flushArticleEditors().then((saved) => {
+            if (saved) void window.desktopApi.appWindowClose();
+          })
+        }
       >
         <XIcon className="size-3.5" />
       </Button>

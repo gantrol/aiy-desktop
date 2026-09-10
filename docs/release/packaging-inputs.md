@@ -2,7 +2,7 @@
 
 ## 源码快照门禁
 
-安装包只能从已经进入公开 `main` 的最终发行快照或指向该提交的版本标签构建。候选整理过程、临时分支和未提交工作区不是可复现输入。
+本地发行验收可以从已审核、已提交且工作树干净的最终候选构建安装包。对外分发或提交商店前，该包对应的同一提交必须已经进入公开 `main`，或由指向该公开提交的版本标签标识。候选整理过程和未提交工作区不是可复现输入；最终提交变化后必须重新构建和验证。
 
 在开始构建前确认：
 
@@ -35,6 +35,16 @@ Git 发布约定见[Git 协作与发布约定](../git-workflow.md)。本文件�
 | `scripts/build-store-msix.ps1` | 组包、解包复验、摘要和元数据生成 | 必须保留 fail-closed 的身份、内容、签名和协议检查 |
 
 文档、测试、e2e、bench、脚本、历史 release 和源代码不会作为额外运行时资源打入安装包。
+
+## 安装包资源优化约束
+
+- Windows Electron 语言资源仅保留 `en-US`、`zh-CN`，配置位于 `electron-builder.yml` 的 `win.electronLanguages`。保留共享 ICU 数据；应用翻译 catalog 不替代 Electron `.pak`。增加语言时按[语言扩展提醒](../extensions/language-extensions.md#electron-语言资源与新增语言提醒)同步维护契约、配置和打包检查。
+- 演示媒体由 Vite 引用进入 `app.asar`；`extraResources` 对 `com.aiy.feature-demo/assets/**` 保持排除，保留扩展 manifest。不得同时复制媒体源目录；延迟加载 JavaScript 不代表媒体已从安装包排除。
+- 0.5.0 演示使用已验证的无损 WebP 派生文件；保留原始画幅、RGBA 和必要来源信息。`hand.png` 与三张 portrait PNG 保持原格式。转换方法见[运行时图片说明](../../extensions/com.aiy.feature-demo/assets/v050/README.md)。更换编码时同步更新消费者的 MIME、字节数和尺寸元数据；编码设置本身不能证明像素一致。
+- `scripts/build-store-msix.ps1` 在成品 MSIX 解包后执行 `scripts/verify-store-payload.mjs`，拒绝多余或缺失的 Electron locale、丢失 ICU、重复演示资源、被替换后重新入包的 PNG 源图及缺失的运行时图片。此检查只读语言目录、固定文件元信息与有界 ASAR 索引，不扫描或解码媒体内容；无损与来源核对在替换资源时完成。
+- 体积比较分别记录最终安装包大小、包内原始大小和压缩大小；拆分外部资源包后，主包、外部包和合计大小均需实测。不能用图片原始字节数直接推算安装包减幅。
+
+检查失败时修正资源归属、导入或经过审阅的允许清单，不通过关闭检查、恢复完整语言目录或临时复制外部素材绕过。优化不改变下文的干净 checkout 与素材可复现要求。
 
 ## 不可接受的发布输入
 

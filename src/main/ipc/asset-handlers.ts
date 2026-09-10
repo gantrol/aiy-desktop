@@ -74,7 +74,9 @@ export function registerAssetIpc(
   ipcMain.handle('asset-file:reveal', (_event, rawId, rawContext) =>
     assetFiles.reveal(id.parse(rawId), assetFileRevealContextSchema.optional().parse(rawContext)),
   );
-  ipcMain.handle('asset-file:open', (_event, rawId) => assetFiles.open(id.parse(rawId)));
+  ipcMain.handle('asset-file:open', (_event, rawId, rawContext) =>
+    assetFiles.open(id.parse(rawId), assetFileRevealContextSchema.optional().parse(rawContext)),
+  );
   ipcMain.handle('transition-showcase:export-images', (_event, rawAssetIds) => {
     const assetIds = transitionShowcaseExportImageIdsSchema.parse(rawAssetIds);
     const sources = assetIds.map((assetId) => {

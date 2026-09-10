@@ -1,5 +1,6 @@
 import { app, nativeImage, type NativeImage } from 'electron';
 import path from 'node:path';
+import { isPackagedApplication } from '@/main/app/runtime-mode';
 
 const maximumDragIconSize = 96;
 
@@ -14,7 +15,7 @@ function resizeDragIcon(image: NativeImage) {
 }
 
 function applicationIconCandidates() {
-  return app.isPackaged
+  return isPackagedApplication(app)
     ? [path.join(process.resourcesPath, 'icon.png')]
     : [path.resolve(__dirname, '../../build/icon.png'), path.join(app.getAppPath(), 'build/icon.png')];
 }

@@ -57,6 +57,22 @@ const disabledByDefaultExtensionIds = new Set<string>([
 ]);
 
 export class ExtensionRegistry {
+  private readonly changeListeners = new Set<() => void>();
+  onChanged(listener: () => void) {
+    this.changeListeners.add(listener);
+    return () => {
+      this.changeListeners.delete(listener);
+    };
+  }
+  private notifyChanged() {
+    for (const listener of this.changeListeners) {
+      try {
+        listener();
+      } catch (reason) {
+        console.error('[extensions] observer failed', reason);
+      }
+    }
+  }
   private manifests: readonly ExtensionManifestDto[] = [];
   private byId = new Map<string, ExtensionManifestDto>();
   private languageMessagesById: ReadonlyMap<string, Record<string, unknown>> = new Map();
@@ -355,7 +371,9 @@ export class ExtensionRegistry {
       }
     }
     this.database.setExtensionEnabled(extensionId, enabled);
-    return this.toDtos(this.refreshInstallations());
+    const result = this.toDtos(this.refreshInstallations());
+    this.notifyChanged();
+    return result;
   }
 
   setPermission(extensionId: string, permission: string, granted: boolean) {
@@ -367,7 +385,9 @@ export class ExtensionRegistry {
     }
     if (runtime && granted) throw new Error('Runtime-scoped permissions can only be granted by their owning workflow');
     this.database.setExtensionPermission(extensionId, permission, granted);
-    return this.toDtos(this.refreshInstallations());
+    const result = this.toDtos(this.refreshInstallations());
+    this.notifyChanged();
+    return result;
   }
 
   private refreshInstallations() {
@@ -467,6 +487,7 @@ export class ExtensionRegistry {
         ? { state: 'READY', message: status.message }
         : { state: 'UNAVAILABLE', message: status.message };
     }
-    return { state: 'READY', message: 'Ready' };
+    // The renderer localizes this stable state; no redundant English detail is needed.
+    return { state: 'READY', message: '' };
   }
 }

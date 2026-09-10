@@ -10,8 +10,10 @@ import type {
 import { parseCodexThreadHref } from '@/shared/contracts/codex-thread';
 import { CodexThreadAnchor } from '@/renderer/components/content/CodexThreadAnchor';
 import { AssetImageCopyButton } from '@/renderer/components/media/AssetImageCopyButton';
+import { AssetFileContextMenu } from '@/renderer/components/media/AssetFileContextMenu';
 import { useArticleEditorMarkdownProjection } from '@/renderer/components/creator/article-editor/ArticleEditorSessionProvider';
 import { useWorkspaceArticleEditorState } from '@/renderer/components/workspace/WorkspaceArticleEditorStateProvider';
+import { useI18n } from '@/renderer/i18n/useI18n';
 import {
   articleDocumentWidthClassName,
   articleReferenceTitleClassName,
@@ -75,17 +77,19 @@ const ArticleComparisonMarkdown = memo(function ArticleComparisonMarkdown({
           );
         }
         return (
-          <span className="group/article-image relative isolate my-7 block max-h-[34rem] w-full overflow-hidden rounded-md bg-surface-sunken">
-            <img
-              src={resolved.mediaUrl}
-              alt={alt ?? ''}
-              className="max-h-[34rem] w-full object-contain"
-              loading="lazy"
-              decoding="async"
-              draggable={false}
-            />
-            <AssetImageCopyButton assetId={resolved.assetId} />
-          </span>
+          <AssetFileContextMenu assetId={resolved.assetId} inline>
+            <span className="group/article-image relative isolate my-7 block max-h-[34rem] w-full overflow-hidden rounded-md bg-surface-sunken">
+              <img
+                src={resolved.mediaUrl}
+                alt={alt ?? ''}
+                className="max-h-[34rem] w-full object-contain"
+                loading="lazy"
+                decoding="async"
+                draggable={false}
+              />
+              <AssetImageCopyButton assetId={resolved.assetId} />
+            </span>
+          </AssetFileContextMenu>
         );
       },
       table: ({ children }) => (
@@ -114,36 +118,41 @@ const ArticleComparisonMarkdown = memo(function ArticleComparisonMarkdown({
 });
 
 export function ArticleReferenceDocument({
+  articleId,
   markdown,
   media,
   mediaBindings,
   title,
-  zh,
   scrollRootRef,
 }: {
+  articleId?: string;
   markdown: string;
   media: readonly ArticleReferenceMedia[];
   mediaBindings: ArticleContentInput['mediaBindings'];
   title: string;
-  zh: boolean;
   scrollRootRef?: RefObject<HTMLDivElement | null>;
 }) {
+  const { messages } = useI18n();
   const deferredMarkdown = useDeferredValue(markdown);
-  const untitled = zh ? '未命名文章' : 'Untitled article';
   return (
     <div ref={scrollRootRef} className="min-h-0 flex-1 overflow-y-auto overscroll-contain">
-      <article className={`mx-auto w-full ${articleDocumentWidthClassName} px-6 py-7 lg:px-8`}>
-        <h1 className={`${articleReferenceTitleClassName} mb-7`}>{title || untitled}</h1>
+      <article
+        data-content-source={articleId ? JSON.stringify({ kind: 'ARTICLE', id: articleId }) : undefined}
+        className={`mx-auto w-full ${articleDocumentWidthClassName} px-6 py-7 lg:px-8`}
+      >
+        <h1 className={`${articleReferenceTitleClassName} mb-7`}>
+          {title || messages.creator.manuscriptEditor.untitled}
+        </h1>
         {deferredMarkdown.trim() ? (
           <ArticleComparisonMarkdown
             markdown={deferredMarkdown}
             media={media}
             mediaBindings={mediaBindings}
-            unavailableLabel={zh ? '图片不可用' : 'Image unavailable'}
+            unavailableLabel={messages.contentEditor.imageUnavailable}
           />
         ) : (
           <div className="grid min-h-60 place-items-center text-sm text-muted-foreground">
-            {zh ? '暂无正文' : 'No article body'}
+            {messages.creator.manuscriptEditor.noBody}
           </div>
         )}
       </article>
@@ -155,7 +164,6 @@ export function CurrentArticleReference({
   media,
   mediaBindings,
   title,
-  zh,
   articleId,
   elements = [],
   trackPosition = false,
@@ -163,7 +171,6 @@ export function CurrentArticleReference({
   media: readonly VideoDocumentRevisionMediaDto[];
   mediaBindings: ArticleContentInput['mediaBindings'];
   title: string;
-  zh: boolean;
   articleId?: string;
   elements?: readonly ArticleElementPlacementInput[];
   trackPosition?: boolean;
@@ -254,11 +261,11 @@ export function CurrentArticleReference({
   }, [articleId, capturePosition, navigation, trackPosition]);
   return (
     <ArticleReferenceDocument
+      articleId={articleId}
       markdown={markdown}
       media={referenceMedia}
       mediaBindings={mediaBindings}
       title={title}
-      zh={zh}
       scrollRootRef={scrollRootRef}
     />
   );

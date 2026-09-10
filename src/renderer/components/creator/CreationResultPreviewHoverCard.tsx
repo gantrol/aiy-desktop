@@ -4,6 +4,7 @@ import type { CreationResultDraftRow } from '@/renderer/components/creator/creat
 import { comparisonPromptForVersion, diffPromptText } from '@/renderer/components/creator/generationComparisonUtils';
 import { HoverCard, HoverCardContent, HoverCardTrigger } from '@/renderer/components/ui/hover-card';
 import { ImageAmbientBackdrop } from '@/renderer/components/media/AmbientImage';
+import { AssetThumbnail } from '@/renderer/components/media/AssetThumbnail';
 import { useI18n } from '@/renderer/i18n/useI18n';
 
 interface Props {
@@ -40,9 +41,10 @@ export function CreationResultPreviewHoverCard({ row, belowRow, versions }: Prop
           className="relative isolate size-11 overflow-hidden rounded-md border bg-surface-sunken p-0.5 outline-none focus-visible:ring-2 focus-visible:ring-ring"
           aria-label={labels.previewOutput(row.displayName)}
         >
-          <ImageAmbientBackdrop src={row.output.asset.mediaUrl} loading="lazy" />
-          <img
-            src={row.output.asset.mediaUrl}
+          <AssetThumbnail
+            asset={row.output.asset}
+            size={96}
+            ambient
             alt=""
             className="relative z-10 size-full rounded-sm object-contain"
             loading="lazy"

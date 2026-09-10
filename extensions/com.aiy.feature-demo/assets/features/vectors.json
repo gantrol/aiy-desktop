@@ -1,0 +1,314 @@
+{
+  "durationMs": 120000,
+  "previewUrl": "vector-owned-4.svg",
+  "article": {
+    "id": "demo-vectors-article",
+    "branchId": "demo-vectors-article",
+    "draftId": "demo-vectors-article",
+    "parentRevisionId": null,
+    "revisionNo": 1,
+    "content": {
+      "schemaVersion": 1,
+      "format": "MARKDOWN",
+      "markdown": "# Vector routes — an AIY demonstration\n\n## A displacement [00:00](#t=0)\n\nStart at the origin of a coordinate grid. Moving three units to the right and one unit up gives the displacement (3, 1). The arrow records the change in position.\n\n![A displacement](assets/vector-owned-1.svg)\n\n## Horizontal and vertical steps [00:20](#t=20)\n\nThe same move can be split into two steps: (3, 0) followed by (0, 1). These components let us record a movement with two numbers in a fixed order.\n\n![Horizontal and vertical steps](assets/vector-owned-2.svg)\n\n## A second displacement [00:40](#t=40)\n\nNow consider the displacement (1, 2). Its horizontal component is one and its vertical component is two. It points in a different direction from (3, 1).\n\n![A second displacement](assets/vector-owned-3.svg)\n\n## Adding displacements [01:00](#t=60)\n\nTake the move (3, 1), then take (1, 2). Adding the components gives (4, 3). The arrow from the original start to the final destination represents the combined move.\n\n![Adding displacements](assets/vector-owned-4.svg)\n\n## Scaling a displacement [01:20](#t=80)\n\nScaling (1, 2) by two gives (2, 4). Both components double, so the direction stays the same while the distance doubles.\n\n![Scaling a displacement](assets/vector-owned-5.svg)\n\n## A route on the plane [01:40](#t=100)\n\nA route can be built from several displacements. The sum records where we finish relative to where we started, even if we choose different intermediate stops.\n\n![A route on the plane](assets/vector-owned-6.svg)\n",
+      "transcriptBasis": "NONE",
+      "sourceUrl": null,
+      "generation": null,
+      "mediaBindings": [
+        {
+          "path": "assets/vector-owned-1.svg",
+          "assetId": "demo-vector-frame-1",
+          "kind": "IMAGE",
+          "timestampMs": 0,
+          "endTimestampMs": null,
+          "posterAssetId": null
+        },
+        {
+          "path": "assets/vector-owned-2.svg",
+          "assetId": "demo-vector-frame-2",
+          "kind": "IMAGE",
+          "timestampMs": 20000,
+          "endTimestampMs": null,
+          "posterAssetId": null
+        },
+        {
+          "path": "assets/vector-owned-3.svg",
+          "assetId": "demo-vector-frame-3",
+          "kind": "IMAGE",
+          "timestampMs": 40000,
+          "endTimestampMs": null,
+          "posterAssetId": null
+        },
+        {
+          "path": "assets/vector-owned-4.svg",
+          "assetId": "demo-vector-frame-4",
+          "kind": "IMAGE",
+          "timestampMs": 60000,
+          "endTimestampMs": null,
+          "posterAssetId": null
+        },
+        {
+          "path": "assets/vector-owned-5.svg",
+          "assetId": "demo-vector-frame-5",
+          "kind": "IMAGE",
+          "timestampMs": 80000,
+          "endTimestampMs": null,
+          "posterAssetId": null
+        },
+        {
+          "path": "assets/vector-owned-6.svg",
+          "assetId": "demo-vector-frame-6",
+          "kind": "IMAGE",
+          "timestampMs": 100000,
+          "endTimestampMs": null,
+          "posterAssetId": null
+        }
+      ],
+      "timelineSegments": [
+        {
+          "id": "demo-vector-segment-1",
+          "title": "A displacement",
+          "segmentType": "CONCEPT",
+          "startTimestampMs": 0,
+          "endTimestampMs": 20000,
+          "confidence": 1,
+          "startCueSourceIndex": 1,
+          "endCueSourceIndex": 1
+        },
+        {
+          "id": "demo-vector-segment-2",
+          "title": "Horizontal and vertical steps",
+          "segmentType": "CONCEPT",
+          "startTimestampMs": 20000,
+          "endTimestampMs": 40000,
+          "confidence": 1,
+          "startCueSourceIndex": 2,
+          "endCueSourceIndex": 2
+        },
+        {
+          "id": "demo-vector-segment-3",
+          "title": "A second displacement",
+          "segmentType": "CONCEPT",
+          "startTimestampMs": 40000,
+          "endTimestampMs": 60000,
+          "confidence": 1,
+          "startCueSourceIndex": 3,
+          "endCueSourceIndex": 3
+        },
+        {
+          "id": "demo-vector-segment-4",
+          "title": "Adding displacements",
+          "segmentType": "CONCEPT",
+          "startTimestampMs": 60000,
+          "endTimestampMs": 80000,
+          "confidence": 1,
+          "startCueSourceIndex": 4,
+          "endCueSourceIndex": 4
+        },
+        {
+          "id": "demo-vector-segment-5",
+          "title": "Scaling a displacement",
+          "segmentType": "CONCEPT",
+          "startTimestampMs": 80000,
+          "endTimestampMs": 100000,
+          "confidence": 1,
+          "startCueSourceIndex": 5,
+          "endCueSourceIndex": 5
+        },
+        {
+          "id": "demo-vector-segment-6",
+          "title": "A route on the plane",
+          "segmentType": "CONCEPT",
+          "startTimestampMs": 100000,
+          "endTimestampMs": 120000,
+          "confidence": 1,
+          "startCueSourceIndex": 6,
+          "endCueSourceIndex": 6
+        }
+      ]
+    },
+    "contentHash": "079e379d4fd290017e158ade5dfa27a11c75125935545a689ae37298d49be49d",
+    "origin": "AGENT",
+    "media": [
+      {
+        "assetId": "demo-vector-frame-1",
+        "mediaUrl": "vector-owned-1.svg",
+        "mimeType": "image/svg+xml",
+        "width": 960,
+        "height": 540,
+        "byteSize": 1327,
+        "durationMs": null
+      },
+      {
+        "assetId": "demo-vector-frame-2",
+        "mediaUrl": "vector-owned-2.svg",
+        "mimeType": "image/svg+xml",
+        "width": 960,
+        "height": 540,
+        "byteSize": 1494,
+        "durationMs": null
+      },
+      {
+        "assetId": "demo-vector-frame-3",
+        "mediaUrl": "vector-owned-3.svg",
+        "mimeType": "image/svg+xml",
+        "width": 960,
+        "height": 540,
+        "byteSize": 1327,
+        "durationMs": null
+      },
+      {
+        "assetId": "demo-vector-frame-4",
+        "mediaUrl": "vector-owned-4.svg",
+        "mimeType": "image/svg+xml",
+        "width": 960,
+        "height": 540,
+        "byteSize": 1494,
+        "durationMs": null
+      },
+      {
+        "assetId": "demo-vector-frame-5",
+        "mediaUrl": "vector-owned-5.svg",
+        "mimeType": "image/svg+xml",
+        "width": 960,
+        "height": 540,
+        "byteSize": 1494,
+        "durationMs": null
+      },
+      {
+        "assetId": "demo-vector-frame-6",
+        "mediaUrl": "vector-owned-6.svg",
+        "mimeType": "image/svg+xml",
+        "width": 960,
+        "height": 540,
+        "byteSize": 1662,
+        "durationMs": null
+      }
+    ],
+    "createdAt": "2026-09-10T00:00:00.000Z"
+  },
+  "transcript": {
+    "id": "demo-vectors-transcript",
+    "branchId": "demo-vectors-transcript",
+    "draftId": "demo-vectors-transcript",
+    "parentRevisionId": null,
+    "revisionNo": 1,
+    "content": {
+      "schemaVersion": 1,
+      "format": "TIMED_TRANSCRIPT",
+      "transcriptBasis": "AUDIO_TRANSCRIPT",
+      "textTreatment": "VERBATIM",
+      "sourceFileName": "aiy-vector-routes-demo",
+      "sourceHash": "be9343a802588e6eb40d36fdb17720280ce368a778701b21f5c38249a94360fa",
+      "rawText": "Start at the origin of a coordinate grid. Moving three units to the right and one unit up gives the displacement (3, 1). The arrow records the change in position.\nThe same move can be split into two steps: (3, 0) followed by (0, 1). These components let us record a movement with two numbers in a fixed order.\nNow consider the displacement (1, 2). Its horizontal component is one and its vertical component is two. It points in a different direction from (3, 1).\nTake the move (3, 1), then take (1, 2). Adding the components gives (4, 3). The arrow from the original start to the final destination represents the combined move.\nScaling (1, 2) by two gives (2, 4). Both components double, so the direction stays the same while the distance doubles.\nA route can be built from several displacements. The sum records where we finish relative to where we started, even if we choose different intermediate stops.",
+      "cues": [
+        {
+          "sourceIndex": 1,
+          "startTimestampMs": 0,
+          "endTimestampMs": 20000,
+          "text": "Start at the origin of a coordinate grid. Moving three units to the right and one unit up gives the displacement (3, 1). The arrow records the change in position."
+        },
+        {
+          "sourceIndex": 2,
+          "startTimestampMs": 20000,
+          "endTimestampMs": 40000,
+          "text": "The same move can be split into two steps: (3, 0) followed by (0, 1). These components let us record a movement with two numbers in a fixed order."
+        },
+        {
+          "sourceIndex": 3,
+          "startTimestampMs": 40000,
+          "endTimestampMs": 60000,
+          "text": "Now consider the displacement (1, 2). Its horizontal component is one and its vertical component is two. It points in a different direction from (3, 1)."
+        },
+        {
+          "sourceIndex": 4,
+          "startTimestampMs": 60000,
+          "endTimestampMs": 80000,
+          "text": "Take the move (3, 1), then take (1, 2). Adding the components gives (4, 3). The arrow from the original start to the final destination represents the combined move."
+        },
+        {
+          "sourceIndex": 5,
+          "startTimestampMs": 80000,
+          "endTimestampMs": 100000,
+          "text": "Scaling (1, 2) by two gives (2, 4). Both components double, so the direction stays the same while the distance doubles."
+        },
+        {
+          "sourceIndex": 6,
+          "startTimestampMs": 100000,
+          "endTimestampMs": 120000,
+          "text": "A route can be built from several displacements. The sum records where we finish relative to where we started, even if we choose different intermediate stops."
+        }
+      ]
+    },
+    "contentHash": "a348e078af01bebd6dbced64e7db2b67c392c2e81e5bceb12880a8b0cf80efed",
+    "origin": "AGENT",
+    "media": [],
+    "createdAt": "2026-09-10T00:00:00.000Z"
+  },
+  "keyChanges": {
+    "extractionId": "d3549321a296aab3839b25a6e670cedba710cfd754f21e2a73609b09ad6404a2",
+    "documentId": "demo-vectors",
+    "sourceAssetId": "demo-vectors-source",
+    "algorithmVersion": 1,
+    "durationMs": 120000,
+    "sampleIntervalMs": 1000,
+    "scannedFrameCount": 120,
+    "candidates": [
+      {
+        "id": "demo-vector-key-1",
+        "timestampMs": 0,
+        "score": 0,
+        "reason": "SOURCE_START",
+        "imageUrl": "vector-owned-1.svg",
+        "width": 960,
+        "height": 540
+      },
+      {
+        "id": "demo-vector-key-2",
+        "timestampMs": 20000,
+        "score": 1,
+        "reason": "VISUAL_CHANGE",
+        "imageUrl": "vector-owned-2.svg",
+        "width": 960,
+        "height": 540
+      },
+      {
+        "id": "demo-vector-key-3",
+        "timestampMs": 40000,
+        "score": 1,
+        "reason": "VISUAL_CHANGE",
+        "imageUrl": "vector-owned-3.svg",
+        "width": 960,
+        "height": 540
+      },
+      {
+        "id": "demo-vector-key-4",
+        "timestampMs": 60000,
+        "score": 1,
+        "reason": "VISUAL_CHANGE",
+        "imageUrl": "vector-owned-4.svg",
+        "width": 960,
+        "height": 540
+      },
+      {
+        "id": "demo-vector-key-5",
+        "timestampMs": 80000,
+        "score": 1,
+        "reason": "VISUAL_CHANGE",
+        "imageUrl": "vector-owned-5.svg",
+        "width": 960,
+        "height": 540
+      },
+      {
+        "id": "demo-vector-key-6",
+        "timestampMs": 119000,
+        "score": 1,
+        "reason": "SOURCE_END",
+        "imageUrl": "vector-owned-6.svg",
+        "width": 960,
+        "height": 540
+      }
+    ],
+    "createdAt": "2026-09-10T00:00:00.000Z"
+  }
+}

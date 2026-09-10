@@ -13,6 +13,8 @@ import {
   type NavigationMode,
 } from '@/renderer/components/app/app-navigation';
 import type { AppView } from '@/renderer/components/app/AppSidebar';
+import type { WorkspaceVisualResumeDto } from '@/shared/contracts/workspace-layout';
+import { rememberVisualWorkspace } from '@/renderer/components/workspace/workspace-visual-resume';
 import {
   appLocationToWorkspaceTarget,
   normalizeWorkspaceTarget,
@@ -54,6 +56,7 @@ export interface WorkspaceRuntimeState {
   groups: WorkspaceRuntimeGroup[];
   articleEditors: WorkspaceArticleEditorStateDto[];
   articleEditOwners: WorkspaceArticleEditOwnerDto[];
+  visualWorkspaces: WorkspaceVisualResumeDto[];
 }
 
 function identity(prefix: string) {
@@ -82,6 +85,11 @@ function runtimeTab(
 
 export function activeLocation(tab: WorkspaceRuntimeTab) {
   return activeNavigationEntry(tab).location;
+}
+
+export function rememberActiveVisualWorkspace(state: WorkspaceRuntimeState) {
+  const visualWorkspaces = rememberVisualWorkspace(state.visualWorkspaces, activeLocation(activeWorkspaceTab(state)));
+  return visualWorkspaces === state.visualWorkspaces ? state : { ...state, visualWorkspaces };
 }
 
 export function activeNavigationEntry(tab: WorkspaceRuntimeTab) {
@@ -166,6 +174,7 @@ export function createDefaultWorkspaceState(spaceId: string, revision = 0): Work
     groups: [{ id: groupId, activeTabId: tab.id, tabs: [tab] }],
     articleEditors: [],
     articleEditOwners: [],
+    visualWorkspaces: [],
   };
 }
 
@@ -248,6 +257,9 @@ export function restoreWorkspaceState(data: BootstrapDto): WorkspaceRuntimeState
     groups,
     articleEditors: snapshot.state.articleEditors,
     articleEditOwners: snapshot.state.articleEditOwners,
+    visualWorkspaces: (snapshot.state.visualWorkspaces ?? []).filter((entry) =>
+      data.derivedVisuals?.some((visual) => visual.id === entry.visualId && visual.promptSeriesId === entry.seriesId),
+    ),
   });
 }
 
@@ -271,6 +283,7 @@ export function persistedWorkspaceState(state: WorkspaceRuntimeState): Workspace
     })),
     articleEditors: state.articleEditors,
     articleEditOwners: state.articleEditOwners,
+    visualWorkspaces: state.visualWorkspaces,
   };
 }
 
@@ -301,6 +314,18 @@ export function navigateWorkspaceTab(
   const duplicate = findWorkspaceTabAtLocation(state, nextLocation, found.group.id, tabId);
   if (duplicate) {
     const activated = activateWorkspaceTab(state, duplicate.group.id, duplicate.tab.id);
+    if (nextLocation.view === 'creator' && nextLocation.creator.surface === 'animation') {
+      // Reuse the editor, but retain this caller and its exact adoption target.
+      const source = activeNavigationEntry(found.tab);
+      return withTab(activated, duplicate.tab.id, (tab) => {
+        const entries = [
+          ...tab.history.entries.slice(0, tab.history.index + 1),
+          navigationEntry(source.location, source.articleLocation),
+          navigationEntry(nextLocation),
+        ].slice(-MAX_HISTORY_ENTRIES);
+        return { ...tab, history: { entries, index: entries.length - 1 } };
+      });
+    }
     return mode === 'replace' && currentLocation.view === 'creator' && currentLocation.creator.surface === 'default'
       ? closeWorkspaceTab(activated, tabId)
       : activated;
@@ -415,7 +440,8 @@ export function navigateWorkspaceHistory(state: WorkspaceRuntimeState, tabId: st
   if (!found) return state;
   const index = Math.min(Math.max(found.tab.history.index + delta, 0), found.tab.history.entries.length - 1);
   if (index === found.tab.history.index) return state;
-  const duplicate = findWorkspaceTabAtLocation(state, found.tab.history.entries[index].location, found.group.id, tabId);
+  const nextLocation = found.tab.history.entries[index].location;
+  const duplicate = findWorkspaceTabAtLocation(state, nextLocation, found.group.id, tabId);
   if (duplicate) return activateWorkspaceTab(state, duplicate.group.id, duplicate.tab.id);
   return withTab(state, tabId, (tab) => ({ ...tab, history: { ...tab.history, index } }));
 }
@@ -475,6 +501,18 @@ export function openWorkspaceTabBeside(
   const source = findWorkspaceTab(state, sourceTabId);
   if (!source) return state;
   const sourceGroup = source.group;
+  const sourceLocation = activeLocation(source.tab);
+  // Keep the outline visible even when a single-instance editor already lives in its group.
+  if (
+    sourceLocation.view === 'creator' &&
+    sourceLocation.creator.surface === 'outline' &&
+    !workspaceLocationCanSplit(location)
+  ) {
+    const existing = sourceGroup.tabs.find(
+      (tab) => workspaceLocationKey(activeLocation(tab)) === workspaceLocationKey(location),
+    );
+    if (existing) return moveExistingTabBesideOutline(state, sourceGroup, sourceTabId, existing);
+  }
   if (state.groups.length === 2) {
     const targetGroup = state.groups.find((group) => group.id !== sourceGroup.id);
     return targetGroup ? openWorkspaceTab(state, location, targetGroup.id) : state;
@@ -497,6 +535,38 @@ export function openWorkspaceTabBeside(
       groupIds: [sourceGroup.id, secondGroupId],
     },
     groups: [...state.groups, { id: secondGroupId, activeTabId: secondTab.id, tabs: [secondTab] }],
+  };
+}
+
+function moveExistingTabBesideOutline(
+  state: WorkspaceRuntimeState,
+  sourceGroup: WorkspaceRuntimeGroup,
+  outlineTabId: string,
+  tab: WorkspaceRuntimeTab,
+): WorkspaceRuntimeState {
+  if (state.groups.length === 2)
+    return moveWorkspaceTabToOtherGroup(
+      {
+        ...state,
+        groups: state.groups.map((group) =>
+          group.id === sourceGroup.id ? { ...group, activeTabId: outlineTabId } : group,
+        ),
+      },
+      tab.id,
+    );
+  const targetGroupId = identity('group');
+  return {
+    ...state,
+    activeGroupId: targetGroupId,
+    arrangement: { kind: 'split', axis: 'columns', ratio: 6_000, groupIds: [sourceGroup.id, targetGroupId] },
+    groups: [
+      {
+        ...sourceGroup,
+        activeTabId: outlineTabId,
+        tabs: sourceGroup.tabs.filter((candidate) => candidate.id !== tab.id),
+      },
+      { id: targetGroupId, activeTabId: tab.id, tabs: [tab] },
+    ],
   };
 }
 

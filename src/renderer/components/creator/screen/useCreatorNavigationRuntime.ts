@@ -11,6 +11,7 @@ import type { useCreatorWorkbenchProjection } from '@/renderer/components/creato
 import type { useCreatorWorkflowRuntime } from '@/renderer/components/creator/screen/useCreatorWorkflowRuntime';
 import { initialGenerationTargets } from '@/renderer/components/creator/generationTargetDefaults';
 import { creationDraftSnapshotHasMeaningfulInput } from '@/renderer/components/creator/workflows/creationDraftSnapshot';
+import { creationItemByFormEntity } from '@/renderer/components/creator/creationFormEntities';
 import { useCreatorNavigationWorkflows } from '@/renderer/components/creator/workflows/useCreatorNavigationWorkflows';
 
 type DraftInputSession = ReturnType<typeof useCreatorDraftInputSession>;
@@ -40,6 +41,7 @@ interface Options {
   onActiveAlbumChange(albumId: string | null): void;
   onComparisonFullWindowChange(open: boolean): void;
   onPromptFullWindowChange(open: boolean): void;
+  onSelectDocument(id: string, albumId: string | null): void;
   outputMode: CreationOutputMode;
   projection: ScreenProjection;
   refresh(): Promise<void>;
@@ -70,6 +72,7 @@ export function useCreatorNavigationRuntime({
   onActiveAlbumChange,
   onComparisonFullWindowChange,
   onPromptFullWindowChange,
+  onSelectDocument,
   outputMode,
   projection,
   refresh,
@@ -88,14 +91,18 @@ export function useCreatorNavigationRuntime({
   const selected = selection.contentSelection;
   const document = generation.promptDocument;
   return useCreatorNavigationWorkflows({
+    onSelectDocument,
     active,
-    activeAlbumContextId: workbench.activeAlbumContextId,
+    activeAlbumContextId:
+      projection.creatorSurface === 'animation' && location.surface === 'animation'
+        ? (creationItemByFormEntity(data.creationItems, 'GIF_DOCUMENT', location.documentId)?.albumId ?? null)
+        : workbench.activeAlbumContextId,
     activeDerivedVisualId: workbench.activeDerivedVisual?.id ?? null,
     activeIdeaCreation: projection.activeIdeaCreation,
     activeSessionSeries: workbench.activeCreationSession?.memberSeries ?? [],
     albumTree: selection.albumTree,
     appendPromptText: document.appendText,
-    appliedLocationKeyRef: draftInput.navigation.appliedLocationKeyRef,
+    locationApplicationRef: draftInput.navigation.locationApplicationRef,
     automaticChangeSummary: projection.automaticChangeSummary,
     captureDraft: draftInput.draftProjection.captureDraft,
     capturePrompt: document.capture,
@@ -121,6 +128,7 @@ export function useCreatorNavigationRuntime({
     manualPrompt: document.manualPrompt,
     meaningfulDraftInput: creationDraftSnapshotHasMeaningfulInput(
       draftInput.draftProjection.snapshotForPrompt({
+        document: document.document,
         nodes: document.promptNodes,
         manualPrompt: document.manualPrompt,
         selectedTerms: document.selectedTerms,
@@ -139,6 +147,7 @@ export function useCreatorNavigationRuntime({
     panes: projection.panes,
     preserveParentSelection: Boolean(selected.selectedArticle || selected.selectedSocialPost),
     preserveCapturedDraft: selection.creationDraftSession.preserveCapturedSnapshot,
+    preserveWorkingInput: draftInput.recovery.flush,
     promptNodesRef: document.promptNodesRef,
     promptProfileId: generation.configuration.promptProfileId,
     referenceAssetCount: document.referenceAssets.length,
@@ -169,8 +178,7 @@ export function useCreatorNavigationRuntime({
     selectedContent: Boolean(
       selected.selectedEvaluationSuiteId ||
       selected.selectedImageBreakdownId ||
-      selected.selectedSocialPostId ||
-      selected.selectedArticleId,
+      (!workbench.editorDerivedVisual && (selected.selectedSocialPostId || selected.selectedArticleId)),
     ),
     selectedIdeaCreation: selected.selectedIdeaCreation,
     selectedSocialPost: selected.selectedSocialPost,
@@ -200,9 +208,10 @@ export function useCreatorNavigationRuntime({
     setVideoCreationRequest: selection.setVideoCreationRequest,
     startNewSession: generation.hydration.startNewSession,
     startNewSaveBlocked: Boolean(
-      selected.selectedEvaluationSuiteId || selected.selectedSocialPostId || selected.selectedArticleId,
+      selected.selectedEvaluationSuiteId ||
+      (!workbench.editorDerivedVisual && (selected.selectedSocialPostId || selected.selectedArticleId)),
     ),
-    starting,
+    starting: starting || draftInput.recovery.state.status === 'loading',
     synchronizePrompt: document.synchronize,
     targetAlbumId: selection.targetAlbumId,
     targetAlbumUnavailable: selection.targetAlbumUnavailable,

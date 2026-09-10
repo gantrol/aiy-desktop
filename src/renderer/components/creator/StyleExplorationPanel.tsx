@@ -11,7 +11,7 @@ import {
   RefreshCwIcon,
   SquareStopIcon,
 } from 'lucide-react';
-import { useEffect, useState } from 'react';
+import { useEffect, useState, type CSSProperties } from 'react';
 import type {
   PromptSeriesDto,
   StyleExplorationBatchDto,
@@ -20,12 +20,13 @@ import type {
 } from '@/shared/contracts';
 import { useI18n } from '@/renderer/i18n/useI18n';
 import { cn } from '@/renderer/lib/utils';
-import { ImageAmbientBackdrop } from '@/renderer/components/media/AmbientImage';
+import { AssetThumbnail } from '@/renderer/components/media/AssetThumbnail';
 import { AssetFileContextMenu } from '@/renderer/components/media/AssetFileContextMenu';
 import { Button } from '@/renderer/components/ui/button';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/renderer/components/ui/collapsible';
 import { StateTag } from '@/renderer/components/ui/state-tag';
 import { DirectionExperimentDirectorSummary } from '@/renderer/components/creator/DirectionExperimentDirectorSummary';
+import { styleExplorationSlotAssets } from '@/renderer/components/creator/styleExplorationAssets';
 
 interface StyleExplorationPanelProps {
   batches: StyleExplorationBatchDto[];
@@ -41,77 +42,6 @@ interface StyleExplorationPanelProps {
   onOpenAsset?(assetId: string): void;
   notify?(message: string): void;
 }
-
-const copyByLocale = {
-  en: {
-    title: 'Direction experiments',
-    completed: (done: number, total: number) => `${done} of ${total} complete`,
-    active: (count: number) => `${count} active`,
-    failed: (count: number) => `${count} failed`,
-    cancelled: (count: number) => `${count} cancelled`,
-    interrupted: (count: number) => `${count} interrupted`,
-    stop: 'Stop remaining',
-    stopping: 'Stopping',
-    retry: 'Retry failed slot',
-    retrying: 'Retrying',
-    adjacent: 'Try adjacent variable',
-    proposingAdjacent: 'Preparing adjacent directions',
-    continue: 'Continue this direction',
-    variable: 'Only variable',
-    risk: 'Risk',
-    results: 'Results',
-    batchProgress: (index: number) => `Direction experiment ${index} progress`,
-    directionProgress: (label: string) => `${label} progress`,
-    openResult: (label: string, index: number) => `Open ${label} result ${index}`,
-    directionDetails: (label: string) => `${label} direction details`,
-    directions: (count: number) => `${count} ${count === 1 ? 'direction' : 'directions'}`,
-    expand: 'Expand experiment',
-    collapse: 'Collapse experiment',
-    status: {
-      QUEUED: 'Queued',
-      RUNNING: 'Running',
-      PARTIAL: 'Partially complete',
-      SUCCEEDED: 'Complete',
-      FAILED: 'Failed',
-      CANCELLED: 'Cancelled',
-      INTERRUPTED: 'Interrupted',
-    },
-  },
-  zh: {
-    title: '方向实验',
-    completed: (done: number, total: number) => `已完成 ${done} / ${total}`,
-    active: (count: number) => `${count} 项进行中`,
-    failed: (count: number) => `${count} 项失败`,
-    cancelled: (count: number) => `${count} 项已取消`,
-    interrupted: (count: number) => `${count} 项已中断`,
-    stop: '停止剩余任务',
-    stopping: '正在停止',
-    retry: '重试失败槽位',
-    retrying: '正在重试',
-    adjacent: '试相邻变量',
-    proposingAdjacent: '正在准备相邻方向',
-    continue: '继续此方向',
-    variable: '唯一变化轴',
-    risk: '风险',
-    results: '结果',
-    batchProgress: (index: number) => `方向实验 ${index} 进度`,
-    directionProgress: (label: string) => `${label}进度`,
-    openResult: (label: string, index: number) => `打开${label}的第 ${index} 个结果`,
-    directionDetails: (label: string) => `${label}方向详情`,
-    directions: (count: number) => `${count} 个方向`,
-    expand: '展开方向实验',
-    collapse: '收起方向实验',
-    status: {
-      QUEUED: '排队中',
-      RUNNING: '运行中',
-      PARTIAL: '部分完成',
-      SUCCEEDED: '已完成',
-      FAILED: '失败',
-      CANCELLED: '已取消',
-      INTERRUPTED: '已中断',
-    },
-  },
-} as const;
 
 const retryStatuses = new Set<StyleExplorationStatus>(['FAILED', 'CANCELLED', 'INTERRUPTED']);
 
@@ -131,16 +61,8 @@ function statusIcon(status: StyleExplorationStatus) {
   return <Clock3Icon />;
 }
 
-function slotAssets(slot: StyleExplorationSlotDto, series: PromptSeriesDto[]) {
-  const owner = series.find((item) => item.id === slot.seriesId);
-  const version = owner?.versions.find((item) => item.id === slot.versionId);
-  const allowedRunIds = new Set(slot.runIds);
-  return (version?.runs ?? []).flatMap((run) =>
-    run.asset && run.outputDisposition !== 'FAILED' && allowedRunIds.has(run.id) ? [run.asset] : [],
-  );
-}
-
 interface StyleExplorationSlotCardProps {
+  detailsOpen?: boolean;
   batchId: string;
   batchTerminal: boolean;
   slot: StyleExplorationSlotDto;
@@ -154,7 +76,22 @@ interface StyleExplorationSlotCardProps {
   notify?(message: string): void;
 }
 
-function StyleExplorationSlotCard({
+function slotDetailsPresentation(open: boolean | undefined): { container?: CSSProperties; content?: CSSProperties } {
+  if (open === undefined) return {};
+  return {
+    container: { position: 'relative', backgroundColor: open ? 'var(--overlay)' : 'transparent', transition: 'none' },
+    content: {
+      visibility: open ? 'visible' : 'hidden',
+      maxHeight: open ? 'none' : 0,
+      opacity: open ? 1 : 0,
+      paddingBottom: open ? 12 : 0,
+      transition: 'none',
+    },
+  };
+}
+
+export function StyleExplorationSlotCard({
+  detailsOpen,
   batchId,
   batchTerminal,
   slot,
@@ -167,9 +104,9 @@ function StyleExplorationSlotCard({
   onOpenAsset,
   notify,
 }: StyleExplorationSlotCardProps) {
-  const { locale } = useI18n();
-  const copy = copyByLocale[locale];
-  const assets = slotAssets(slot, series);
+  const { locale, messages } = useI18n();
+  const copy = messages.creator.styleExploration;
+  const assets = styleExplorationSlotAssets(slot, series);
   const backgroundAssets = assets.slice(0, 5);
   const retryable =
     retryStatuses.has(slot.status) ||
@@ -185,6 +122,7 @@ function StyleExplorationSlotCard({
   ]
     .filter(Boolean)
     .join(locale === 'zh' ? '，' : ', ');
+  const detailsStyle = slotDetailsPresentation(detailsOpen);
   const visualState = assets.length > 0 ? 'results' : slot.status.toLowerCase();
   const mediaGrid =
     backgroundAssets.length <= 1
@@ -213,16 +151,15 @@ function StyleExplorationSlotCard({
                 'cursor-pointer focus-visible:z-10 focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring',
             );
             const image = (
-              <>
-                <ImageAmbientBackdrop src={asset.mediaUrl} loading="lazy" />
-                <img
-                  src={asset.mediaUrl}
-                  alt=""
-                  className="relative z-10 size-full object-contain transition-transform duration-base ease-enter motion-reduce:transition-none"
-                  loading="lazy"
-                  draggable={false}
-                />
-              </>
+              <AssetThumbnail
+                asset={asset}
+                size={512}
+                ambient
+                alt=""
+                className="relative z-10 size-full object-contain transition-transform duration-base ease-enter motion-reduce:transition-none"
+                loading="lazy"
+                draggable={false}
+              />
             );
             const content = onOpenAsset ? (
               <button
@@ -286,6 +223,8 @@ function StyleExplorationSlotCard({
 
       <details
         data-slot-title-region
+        open={detailsOpen}
+        style={detailsStyle.container}
         className="group/title absolute inset-x-0 top-0 z-20 overflow-hidden bg-transparent outline-none transition-[background-color,opacity] duration-fast peer-hover/media:opacity-30 peer-focus-within/media:opacity-30 hover:bg-overlay/95 hover:opacity-100 focus-within:bg-overlay/95 focus-within:opacity-100 focus-visible:bg-overlay/95 focus-visible:opacity-100 focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
       >
         <summary
@@ -302,6 +241,7 @@ function StyleExplorationSlotCard({
 
         <div
           data-slot-details
+          style={detailsStyle.content}
           className="invisible block max-h-0 overflow-hidden px-3 opacity-0 transition-[max-height,opacity,padding] duration-base group-hover/title:visible group-hover/title:max-h-80 group-hover/title:pb-3 group-hover/title:opacity-100 group-focus-within/title:visible group-focus-within/title:max-h-80 group-focus-within/title:pb-3 group-focus-within/title:opacity-100 group-open/title:visible group-open/title:max-h-80 group-open/title:pb-3 group-open/title:opacity-100 motion-reduce:transition-none"
         >
           <p className="text-xs leading-relaxed text-foreground-secondary">{slot.rationale}</p>
@@ -406,8 +346,8 @@ export function StyleExplorationPanel({
   onOpenAsset,
   notify,
 }: StyleExplorationPanelProps) {
-  const { locale } = useI18n();
-  const copy = copyByLocale[locale];
+  const { locale, messages } = useI18n();
+  const copy = messages.creator.styleExploration;
   const [expandedBatchIds, setExpandedBatchIds] = useState(() =>
     batches.filter((batch) => batch.status !== 'SUCCEEDED').map((batch) => batch.id),
   );

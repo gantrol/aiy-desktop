@@ -6,6 +6,13 @@ export function creationOutputNotExcluded(seriesIdExpression: string, assetIdExp
   )`;
 }
 
+export function gifOutputExists(seriesIdExpression: string, assetIdExpression: string) {
+  return `EXISTS (SELECT 1 FROM gif_export_runs gif_run
+    JOIN gif_documents gif_document ON gif_document.id=gif_run.document_id
+    WHERE gif_document.series_id=${seriesIdExpression} AND gif_run.output_asset_id=${assetIdExpression}
+      AND gif_run.state='SUCCEEDED')`;
+}
+
 /**
  * A visible creation item may project one primary series together with the
  * direction series attached to its exploration batches. Historical batches

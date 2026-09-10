@@ -1,4 +1,13 @@
-import { memo, useRef, type ComponentProps, type FocusEvent } from 'react';
+import type { AppLocation, HistoryNavigationGuard, NavigationMode } from '@/renderer/components/app/app-navigation';
+import type { WorkspaceRuntimeGroup, WorkspaceRuntimeTab } from '@/renderer/components/workspace/workspace-state';
+import { WorkspaceTabStrip } from '@/renderer/components/workspace/WorkspaceTabStrip';
+import {
+  WorkspaceTabSurface,
+  type WorkspaceTabSurfaceProps,
+} from '@/renderer/components/workspace/WorkspaceTabSurface';
+import type { CodexImagesNavigationState } from '@/renderer/features/extensions/codexImageNavigation';
+import type { TransitionShowcaseNavigationState } from '@/renderer/features/extensions/transitionShowcaseNavigation';
+import { useStableCallback } from '@/renderer/lib/useStableCallback';
 import type {
   BootstrapDto,
   ImportedCreationOutputDto,
@@ -8,16 +17,7 @@ import type {
   WorkspaceArticleEditOwnerDto,
   WorkspaceArticleEditorStateDto,
 } from '@/shared/contracts';
-import type { AppLocation, HistoryNavigationGuard, NavigationMode } from '@/renderer/components/app/app-navigation';
-import type { CodexImagesNavigationState } from '@/renderer/features/extensions/codexImageNavigation';
-import type { TransitionShowcaseNavigationState } from '@/renderer/features/extensions/transitionShowcaseNavigation';
-import type { WorkspaceRuntimeGroup, WorkspaceRuntimeTab } from '@/renderer/components/workspace/workspace-state';
-import { WorkspaceTabStrip } from '@/renderer/components/workspace/WorkspaceTabStrip';
-import {
-  WorkspaceTabSurface,
-  type WorkspaceTabSurfaceProps,
-} from '@/renderer/components/workspace/WorkspaceTabSurface';
-import { useStableCallback } from '@/renderer/lib/useStableCallback';
+import { memo, useRef, type ComponentProps, type FocusEvent } from 'react';
 
 type TabSurfaceProps = ComponentProps<typeof WorkspaceTabSurface>;
 const MemoizedWorkspaceTabSurface = memo(WorkspaceTabSurface);
@@ -50,7 +50,7 @@ interface Props {
   onCloseOtherTabs(tabId: string): void;
   onReorderTab(tabId: string, delta: -1 | 1): void;
   onNewTab(sourceTabId: string, destination: AppLocation['view'] | AppLocation): void;
-  onOpenBeside(sourceTabId: string, view: AppLocation['view']): void;
+  onOpenBeside(sourceTabId: string, destination: AppLocation['view'] | AppLocation): void;
   splitAxis: 'columns' | 'rows' | null;
   onMergeGroups(): void;
   onMoveTabToOtherGroup(tabId: string): void;
@@ -72,6 +72,7 @@ interface Props {
   onTermDetailsRequest: TabSurfaceProps['onTermDetailsRequest'];
   onImportedOutputSaved(output: ImportedCreationOutputDto): void;
   onArticleSaved: TabSurfaceProps['onArticleSaved'];
+  onSocialPostSaved: TabSurfaceProps['onSocialPostSaved'];
   onApplyIntakeResult(result: IntakeCommitResult): void;
   onVideoDocumentsChange(): void;
   onRetryGeneration(runId: string): Promise<void>;
@@ -99,6 +100,7 @@ function WorkspaceTabSession({
   const onRequestEditOwnership = useStableCallback(props.onRequestEditOwnership);
   const onLocationFlushChange = useStableCallback(props.onLocationFlushChange);
   const onNewTab = useStableCallback(props.onNewTab);
+  const onOpenBeside = useStableCallback(props.onOpenBeside);
   const onCommitLocation = useStableCallback(props.onCommitLocation);
   const onGoBack = useStableCallback(props.onGoBack);
   const onHistoryNavigationGuardChange = useStableCallback(props.onHistoryNavigationGuardChange);
@@ -111,6 +113,7 @@ function WorkspaceTabSession({
   const onTermDetailsRequest = useStableCallback(async () => props.onTermDetailsRequest?.());
   const onImportedOutputSaved = useStableCallback(props.onImportedOutputSaved);
   const onArticleSaved = useStableCallback(props.onArticleSaved);
+  const onSocialPostSaved = useStableCallback(props.onSocialPostSaved);
   const onApplyIntakeResult = useStableCallback(props.onApplyIntakeResult);
   const onVideoDocumentsChange = useStableCallback(props.onVideoDocumentsChange);
   const onRetryGeneration = useStableCallback(props.onRetryGeneration);
@@ -129,6 +132,7 @@ function WorkspaceTabSession({
     >
       <MemoizedWorkspaceTabSurface
         {...props}
+        visible={visible}
         tab={tab}
         onArticleEditorStateChange={onArticleEditorStateChange}
         onArticleLocationChange={onArticleLocationChange}
@@ -136,6 +140,7 @@ function WorkspaceTabSession({
         onRequestEditOwnership={onRequestEditOwnership}
         onLocationFlushChange={onLocationFlushChange}
         onNewTab={onNewTab}
+        onOpenBeside={onOpenBeside}
         onCommitLocation={onCommitLocation}
         onGoBack={onGoBack}
         onHistoryNavigationGuardChange={onHistoryNavigationGuardChange}
@@ -148,6 +153,7 @@ function WorkspaceTabSession({
         onTermDetailsRequest={props.onTermDetailsRequest ? onTermDetailsRequest : undefined}
         onImportedOutputSaved={onImportedOutputSaved}
         onArticleSaved={onArticleSaved}
+        onSocialPostSaved={onSocialPostSaved}
         onApplyIntakeResult={onApplyIntakeResult}
         onVideoDocumentsChange={onVideoDocumentsChange}
         onRetryGeneration={onRetryGeneration}
@@ -210,19 +216,22 @@ export function AppWorkspaceGroup({
         />
       )}
       <div className="relative min-h-0 min-w-0 flex-1 overflow-hidden">
-        {mountedTabs.map((tab) => {
-          const visible = tab.id === group.activeTabId;
-          return (
-            <WorkspaceTabSession
-              key={tab.id}
-              {...surfaceProps}
-              tab={tab}
-              active={active && visible}
-              visible={visible}
-              onNewTab={onNewTab}
-            />
-          );
-        })}
+        <div>
+          {mountedTabs.map((tab) => {
+            const visible = tab.id === group.activeTabId;
+            return (
+              <WorkspaceTabSession
+                key={tab.id}
+                {...surfaceProps}
+                tab={tab}
+                active={active && visible}
+                visible={visible}
+                onNewTab={onNewTab}
+                onOpenBeside={onOpenBeside}
+              />
+            );
+          })}
+        </div>
       </div>
     </div>
   );

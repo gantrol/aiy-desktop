@@ -30,6 +30,7 @@ import { type JsonMap, now, text } from '@/main/database/core/values';
 import { promptSeriesRecoveryPayloadSchema, recycleBinPurgeAfter } from '@/main/database/recovery/recycle-bin-entry';
 
 const entityTypeSchema = z.enum([
+  'GIF_DOCUMENT',
   'ALBUM',
   'CREATION_ITEM',
   'PROMPT_SERIES',
@@ -45,6 +46,7 @@ const entityTypeSchema = z.enum([
 ]);
 const kindSchema = z.enum(['ALBUM', 'CREATION', 'MATERIAL']);
 const subtypeSchema = z.enum([
+  'GIF_DOCUMENT',
   'CREATION_ALBUM',
   'MATERIAL_ALBUM',
   'PROMPT_SERIES',
@@ -143,6 +145,15 @@ interface PurgeableManagedAsset {
 }
 
 const CONTAINER_PREFIX = 'lifecycle:';
+const CREATION_PRIMARY_ROLES = new Set([
+  'ANIMATION',
+  'IMAGE_BREAKDOWN',
+  'IMAGE_CREATION',
+  'SOCIAL_POST',
+  'ARTICLE',
+  'VIDEO_DOCUMENT',
+  'EVALUATION_SUITE',
+]);
 
 function key(input: Pick<ContentLifecycleTarget, 'entityType' | 'entityId'>) {
   return `${input.entityType}:${input.entityId}`;
@@ -391,6 +402,9 @@ export class ContentLifecycleRepository {
     const normalized = [
       ...new Map(
         targets.map((target) => {
+          if (target.scope === 'FORM' && action !== 'DELETE') {
+            throw new Error('Creation forms can only be moved to the recycle bin');
+          }
           const resolved = this.normalizeTarget(target);
           if (action === 'ARCHIVE' && resolved.entityType === 'IMAGE_ASSET') {
             throw new Error('Image assets require a material identity before archiving');
@@ -409,7 +423,9 @@ export class ContentLifecycleRepository {
           ? this.snapshotAlbum(target.entityId)
           : target.entityType === 'CREATION_ITEM'
             ? this.snapshotCreationItem(target.entityId)
-            : [this.snapshotEntity(target)];
+            : target.entityType === 'GIF_DOCUMENT' && target.scope === 'FORM'
+              ? this.snapshotGifDocument(target.entityId)
+              : [this.snapshotEntity(target)];
       if (members.length === 0) throw new Error('Content is unavailable');
       const root = members.find((member) => key(member) === key(target));
       if (!root) throw new Error('Content is unavailable');
@@ -429,7 +445,12 @@ export class ContentLifecycleRepository {
       hash.update(`root:${key(operation.root)}\n`);
       for (const member of operation.members) {
         hash.update(`${JSON.stringify(member)}\n`);
-        if (member.parentEntityType === 'CREATION_ITEM' || member.stateBeforeAction === 'PRESERVED') continue;
+        if (
+          member.parentEntityType === 'CREATION_ITEM' ||
+          (member.parentEntityType === 'GIF_DOCUMENT' && member.subtype === 'GIF_DOCUMENT') ||
+          member.stateBeforeAction === 'PRESERVED'
+        )
+          continue;
         count += 1;
         if (member.kind === 'ALBUM') albumCount += 1;
       }
@@ -515,6 +536,37 @@ export class ContentLifecycleRepository {
   }
 
   private normalizeTarget(target: ContentLifecycleTarget): ContentLifecycleTarget {
+    if (target.scope === 'FORM') {
+      if (target.entityType !== 'GIF_DOCUMENT') throw new Error('This creation form cannot be deleted separately');
+      const form = this.db
+        .prepare(
+          `SELECT form.id, form.creation_item_id
+          FROM creation_forms form
+          JOIN creation_items item ON item.id = form.creation_item_id
+            AND item.deleted_at IS NULL AND item.archived_at IS NULL
+          JOIN gif_documents document ON document.id = form.entity_id
+            AND document.purpose = 'GIF' AND document.deleted_at IS NULL
+          WHERE form.entity_type = 'GIF_DOCUMENT' AND form.entity_id = ? AND form.deleted_at IS NULL`,
+        )
+        .get(target.entityId) as JsonMap | undefined;
+      if (!form) throw new Error('Animation is unavailable');
+      const creationItemId = text(form.creation_item_id);
+      const remaining = this.db
+        .prepare(
+          `SELECT role FROM creation_forms
+          WHERE creation_item_id = ? AND id <> ? AND deleted_at IS NULL
+          ORDER BY sort_order, created_at, id`,
+        )
+        .all(creationItemId, text(form.id)) as JsonMap[];
+      if (remaining.length === 0) return { entityType: 'CREATION_ITEM', entityId: creationItemId };
+      if (
+        !remaining.some((row) => CREATION_PRIMARY_ROLES.has(text(row.role))) &&
+        remaining.some((row) => text(row.role) !== 'INSPIRATION')
+      ) {
+        throw new Error('Delete dependent creation forms before deleting this animation');
+      }
+      return target;
+    }
     if (target.entityType === 'IMAGE_ASSET') {
       const rows = this.db
         .prepare(
@@ -537,6 +589,41 @@ export class ContentLifecycleRepository {
       )
       .get(formEntityType, target.entityId) as JsonMap | undefined;
     return row ? { entityType: 'CREATION_ITEM', entityId: text(row.creation_item_id) } : target;
+  }
+
+  private snapshotGifDocument(documentId: string): Snapshot[] {
+    const root = this.snapshotEntity({ entityType: 'GIF_DOCUMENT', entityId: documentId });
+    const row = this.db
+      .prepare(
+        `SELECT json_extract(revision.manifest_json, '$.motionDocumentId') AS motion_document_id
+        FROM gif_documents document
+        JOIN gif_document_revisions revision
+          ON revision.document_id = document.id AND revision.revision = document.revision
+        WHERE document.id = ? AND document.purpose = 'GIF'`,
+      )
+      .get(documentId) as JsonMap | undefined;
+    const motionDocumentId = row?.motion_document_id ? text(row.motion_document_id) : null;
+    if (!motionDocumentId || motionDocumentId === documentId) return [root];
+    const available = this.db
+      .prepare(
+        `SELECT 1 FROM gif_documents motion
+        WHERE motion.id = ? AND motion.purpose = 'MOTION' AND motion.deleted_at IS NULL
+          AND NOT EXISTS (
+            SELECT 1 FROM gif_documents editor
+            JOIN gif_document_revisions revision
+              ON revision.document_id = editor.id AND revision.revision = editor.revision
+            WHERE editor.id <> ? AND editor.purpose = 'GIF'
+              AND editor.deleted_at IS NULL AND editor.archived_at IS NULL
+              AND json_extract(revision.manifest_json, '$.motionDocumentId') = motion.id
+          )`,
+      )
+      .get(motionDocumentId, documentId);
+    if (!available) return [root];
+    const motion = this.snapshotEntity({ entityType: 'GIF_DOCUMENT', entityId: motionDocumentId });
+    motion.parentEntityType = 'GIF_DOCUMENT';
+    motion.parentEntityId = documentId;
+    motion.sortOrder = root.sortOrder + 1;
+    return [root, motion];
   }
 
   private snapshotAlbum(albumId: string): Snapshot[] {
@@ -638,15 +725,20 @@ export class ContentLifecycleRepository {
         ORDER BY sort_order, created_at, id`,
       )
       .all(creationItemId) as JsonMap[];
-    const owned: Array<{ formId: string; snapshot: Snapshot }> = [];
+    const owned: Array<{ formId: string | null; snapshot: Snapshot }> = [];
     for (const form of formRows) {
       const entityType = this.creationFormEntityType(text(form.entity_type));
       if (!entityType) continue;
-      const snapshot = this.snapshotEntity({ entityType, entityId: text(form.entity_id) });
+      const snapshots =
+        entityType === 'GIF_DOCUMENT'
+          ? this.snapshotGifDocument(text(form.entity_id))
+          : [this.snapshotEntity({ entityType, entityId: text(form.entity_id) })];
+      const [snapshot, ...dependencies] = snapshots;
       snapshot.parentEntityType = 'CREATION_ITEM';
       snapshot.parentEntityId = creationItemId;
       snapshot.sortOrder = Number(form.sort_order ?? 0);
       owned.push({ formId: text(form.id), snapshot });
+      for (const dependency of dependencies) owned.push({ formId: null, snapshot: dependency });
     }
     if (!owned.length) throw new Error('Creation item has no lifecycle content');
     const primaryFormId = row.primary_form_id ? text(row.primary_form_id) : null;
@@ -668,7 +760,7 @@ export class ContentLifecycleRepository {
       payload: relations.length ? { relations } : {},
       changedAt: text(row.updated_at) || text(row.created_at),
     };
-    return [aggregate, ...owned.map((entry) => entry.snapshot)];
+    return [aggregate, ...new Map(owned.map((entry) => [key(entry.snapshot), entry.snapshot] as const)).values()];
   }
 
   // The closed entity union keeps table/status/title handling auditable at this process boundary.
@@ -761,6 +853,20 @@ export class ContentLifecycleRepository {
       archived = statusBefore === 'ARCHIVED';
       changedAt = row ? text(row.updated_at) : '';
       void ownerColumn;
+    } else if (type === 'GIF_DOCUMENT') {
+      row = this.db
+        .prepare(
+          `SELECT d.*, json_extract(r.manifest_json,'$.frames[0].assetId') AS preview_asset_id
+        FROM gif_documents d JOIN gif_document_revisions r ON r.document_id=d.id AND r.revision=d.revision
+        WHERE d.id=? AND d.deleted_at IS NULL`,
+        )
+        .get(id) as JsonMap | undefined;
+      subtype = 'GIF_DOCUMENT';
+      title = row ? text(row.title) || id : id;
+      previewAssetId = row?.preview_asset_id ? text(row.preview_asset_id) : null;
+      statusBefore = row ? text(row.status) : undefined;
+      archived = Boolean(row?.archived_at);
+      changedAt = row ? text(row.updated_at) : '';
     } else if (type === 'VIDEO_DOCUMENT') {
       row = this.db
         .prepare(
@@ -913,9 +1019,111 @@ export class ContentLifecycleRepository {
         .prepare(`UPDATE ${table} SET deleted_at = ?, updated_at = ? WHERE id = ? AND deleted_at IS NULL`)
         .run(timestamp, timestamp, member.entityId);
     }
+    this.deleteAnimationCreationForm(member, timestamp);
     this.db
       .prepare('INSERT INTO tombstones(id, entity_type, entity_id, deleted_at, sync_state) VALUES (?, ?, ?, ?, ?)')
       .run(ulid(), this.changeEntityType(member.entityType), member.entityId, timestamp, 'LOCAL_ONLY');
+  }
+
+  private deleteAnimationCreationForm(member: Snapshot, timestamp: string) {
+    if (member.entityType !== 'GIF_DOCUMENT') return;
+    const row = this.db
+      .prepare(
+        `SELECT form.id, form.creation_item_id
+        FROM creation_forms form
+        JOIN creation_items item ON item.id = form.creation_item_id AND item.deleted_at IS NULL
+        WHERE form.entity_type = 'GIF_DOCUMENT' AND form.entity_id = ? AND form.deleted_at IS NULL`,
+      )
+      .get(member.entityId) as JsonMap | undefined;
+    if (!row) return;
+    const formId = text(row.id);
+    const creationItemId = text(row.creation_item_id);
+    this.db
+      .prepare('UPDATE creation_forms SET deleted_at = ?, updated_at = ? WHERE id = ? AND deleted_at IS NULL')
+      .run(timestamp, timestamp, formId);
+    this.repairCreationItem(creationItemId, timestamp);
+    this.db
+      .prepare('INSERT INTO tombstones(id, entity_type, entity_id, deleted_at, sync_state) VALUES (?, ?, ?, ?, ?)')
+      .run(ulid(), 'CREATION_FORM', formId, timestamp, 'LOCAL_ONLY');
+    this.storage.recordChange('CREATION_FORM', formId, 'DELETE', {
+      creationItemId,
+      entity: { kind: 'GIF_DOCUMENT', id: member.entityId },
+    });
+    this.storage.recordChange('CREATION_ITEM', creationItemId, 'UPDATE', { deletedFormId: formId });
+  }
+
+  private restoreAnimationCreationForm(member: MemberRow, deletedAt: string) {
+    if (member.entity_type !== 'GIF_DOCUMENT') return;
+    const row = this.db
+      .prepare(
+        `SELECT form.id, form.creation_item_id, item.deleted_at AS item_deleted_at
+        FROM creation_forms form
+        JOIN creation_items item ON item.id = form.creation_item_id
+        WHERE form.entity_type = 'GIF_DOCUMENT' AND form.entity_id = ? AND form.deleted_at = ?`,
+      )
+      .get(member.entity_id, deletedAt) as JsonMap | undefined;
+    if (!row) return;
+    if (row.item_deleted_at) throw new Error('Restore the parent creation before restoring this animation');
+    const timestamp = now();
+    const formId = text(row.id);
+    const creationItemId = text(row.creation_item_id);
+    this.db
+      .prepare('UPDATE creation_forms SET deleted_at = NULL, updated_at = ? WHERE id = ? AND deleted_at = ?')
+      .run(timestamp, formId, deletedAt);
+    this.repairCreationItem(creationItemId, timestamp);
+    this.storage.recordChange('CREATION_FORM', formId, 'RESTORE', {
+      creationItemId,
+      entity: { kind: 'GIF_DOCUMENT', id: member.entity_id },
+    });
+    this.storage.recordChange('CREATION_ITEM', creationItemId, 'UPDATE', { restoredFormId: formId });
+  }
+
+  private repairCreationItem(creationItemId: string, timestamp: string) {
+    const item = this.db
+      .prepare('SELECT primary_form_id FROM creation_items WHERE id = ? AND deleted_at IS NULL')
+      .get(creationItemId) as JsonMap | undefined;
+    if (!item) return;
+    const forms = this.db
+      .prepare(
+        `SELECT id, role FROM creation_forms
+        WHERE creation_item_id = ? AND deleted_at IS NULL
+        ORDER BY sort_order, created_at, id`,
+      )
+      .all(creationItemId) as JsonMap[];
+    if (!forms.length) throw new Error('A creation must retain at least one form');
+    const currentPrimaryId = item.primary_form_id ? text(item.primary_form_id) : null;
+    const primary =
+      forms.find((row) => text(row.id) === currentPrimaryId && CREATION_PRIMARY_ROLES.has(text(row.role))) ??
+      forms.find((row) => CREATION_PRIMARY_ROLES.has(text(row.role)));
+    if (primary) {
+      this.db
+        .prepare(
+          `UPDATE creation_items
+          SET phase = 'ACTIVE', primary_form_id = ?, updated_at = ? WHERE id = ?`,
+        )
+        .run(text(primary.id), timestamp, creationItemId);
+    } else {
+      if (forms.some((row) => text(row.role) !== 'INSPIRATION')) {
+        throw new Error('A creation cannot retain only auxiliary forms');
+      }
+      this.db
+        .prepare(
+          `UPDATE creation_items
+          SET phase = 'DRAFT', primary_form_id = NULL, updated_at = ? WHERE id = ?`,
+        )
+        .run(timestamp, creationItemId);
+    }
+    this.db
+      .prepare(
+        `UPDATE albums
+        SET content_updated_at = MAX(COALESCE(content_updated_at, created_at), ?),
+          updated_at = MAX(updated_at, ?)
+        WHERE id IN (
+          SELECT album_id FROM album_members
+          WHERE target_type = 'CREATION_ITEM' AND target_id = ? AND deleted_at IS NULL
+        ) AND deleted_at IS NULL`,
+      )
+      .run(timestamp, timestamp, creationItemId);
   }
 
   private restoreArchivedMember(member: MemberRow) {
@@ -996,6 +1204,7 @@ export class ContentLifecycleRepository {
         )
         .run(now(), member.entity_id, deletedAt);
     }
+    this.restoreAnimationCreationForm(member, deletedAt);
   }
 
   private restoreLegacyRecoveryPayload(batch: BatchRow) {
@@ -1290,6 +1499,8 @@ export class ContentLifecycleRepository {
         )
         .run(id);
     } else if (member.entity_type === 'INSPIRATION_STASH') {
+      this.db.prepare('DELETE FROM desktop_note_instances WHERE stash_id = ?').run(id);
+      this.db.prepare('DELETE FROM inspiration_stash_revisions WHERE stash_id = ?').run(id);
       this.db
         .prepare(
           "UPDATE inspiration_stashes SET input_json = '{}', content_hash = 'purged:' || id, album_id = NULL WHERE id = ? AND deleted_at IS NOT NULL",
@@ -1338,6 +1549,12 @@ export class ContentLifecycleRepository {
         .prepare(
           'UPDATE articles SET album_id = NULL, source_inspiration_stash_id = NULL WHERE id = ? AND deleted_at IS NOT NULL',
         )
+        .run(id);
+    } else if (member.entity_type === 'GIF_DOCUMENT') {
+      this.db.prepare("UPDATE gif_documents SET title='' WHERE id=? AND deleted_at IS NOT NULL").run(id);
+      this.db.prepare('DELETE FROM gif_document_assets WHERE document_id=?').run(id);
+      this.db
+        .prepare("UPDATE gif_document_revisions SET manifest_json='{}',motion_draft_json=NULL WHERE document_id=?")
         .run(id);
     } else if (member.entity_type === 'VIDEO_DOCUMENT') {
       this.db.prepare("UPDATE documents SET title = 'Purged' WHERE id = ? AND deleted_at IS NOT NULL").run(id);
@@ -1555,7 +1772,8 @@ export class ContentLifecycleRepository {
           COALESCE(SUM(CASE WHEN kind <> 'ALBUM' THEN 1 ELSE 0 END), 0) AS content_count
         FROM content_lifecycle_batch_members
         WHERE batch_id = ? AND state_before_action <> 'PRESERVED'
-          AND COALESCE(parent_entity_type, '') <> 'CREATION_ITEM'`,
+          AND COALESCE(parent_entity_type, '') <> 'CREATION_ITEM'
+          AND NOT (parent_entity_type = 'GIF_DOCUMENT' AND subtype = 'GIF_DOCUMENT')`,
       )
       .get(batchId) as JsonMap;
     return { albumCount: Number(row.album_count), contentCount: Number(row.content_count) };
@@ -1614,6 +1832,7 @@ export class ContentLifecycleRepository {
   private statusTable(
     type: Exclude<ContentLifecycleEntityType, 'ALBUM' | 'CREATION_ITEM' | 'PROMPT_SERIES' | 'MATERIAL' | 'IMAGE_ASSET'>,
   ) {
+    if (type === 'GIF_DOCUMENT') return 'gif_documents';
     if (type === 'CREATION') return 'creations';
     if (type === 'INSPIRATION_STASH') return 'inspiration_stashes';
     if (type === 'IMAGE_BREAKDOWN') return 'image_breakdowns';
@@ -1624,6 +1843,7 @@ export class ContentLifecycleRepository {
   }
 
   private entityTable(type: ContentLifecycleEntityType) {
+    if (type === 'GIF_DOCUMENT') return 'gif_documents';
     if (type === 'ALBUM') return 'albums';
     if (type === 'CREATION_ITEM') return 'creation_items';
     if (type === 'PROMPT_SERIES') return 'prompt_series';
@@ -1677,6 +1897,7 @@ export class ContentLifecycleRepository {
   }
 
   private creationFormEntityType(type: string): ContentLifecycleEntityType | null {
+    if (type === 'GIF_DOCUMENT') return 'GIF_DOCUMENT';
     if (type === 'PROMPT_SERIES') return 'PROMPT_SERIES';
     if (type === 'INSPIRATION_STASH') return 'INSPIRATION_STASH';
     if (type === 'IMAGE_BREAKDOWN') return 'IMAGE_BREAKDOWN';

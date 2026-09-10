@@ -29,6 +29,7 @@ import { FixturePackRepository } from '@/main/database/packs/fixture-pack-reposi
 import { GalleryRepository } from '@/main/database/assets/gallery-repository';
 import { GenerationJobRepository } from '@/main/database/generation/generation-job-repository';
 import { AgentCommandRepository } from '@/main/database/generation/agent-command-repository';
+import { AgentIntakeRepository } from '@/main/database/creations/agent-intake-repository';
 import { GenerationProcessRepository } from '@/main/database/generation/generation-process-repository';
 import { HistoricalTermRecommendationRepository } from '@/main/database/dictionary/historical-term-recommendation-repository';
 import { ImageEditRepository } from '@/main/database/generation/image-edit-repository';
@@ -111,9 +112,11 @@ export function createLibraryDatabaseRepositories(storage: LibraryStorage) {
   const packs = new PackRepository(storage);
   const fixturePacks = new FixturePackRepository(storage, packs);
   const contentPacks = new ContentPackRepository(storage, fixturePacks);
+  const agentIntake = new AgentIntakeRepository(storage, articles, intake, packs);
 
   return {
     agentCommands,
+    agentIntake,
     aiProcesses,
     albums,
     assetFiles,

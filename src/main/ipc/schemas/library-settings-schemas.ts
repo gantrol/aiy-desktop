@@ -177,6 +177,7 @@ export const recycleBinPurgeSchema = recycleBinPurgePlanSchema
 const contentLifecycleStateSchema = z.enum(['ARCHIVED', 'RECYCLE_BIN']);
 const contentLifecycleKindSchema = z.enum(['ALBUM', 'CREATION', 'MATERIAL']);
 const contentLifecycleEntityTypeSchema = z.enum([
+  'GIF_DOCUMENT',
   'ALBUM',
   'CREATION_ITEM',
   'PROMPT_SERIES',
@@ -191,9 +192,15 @@ const contentLifecycleEntityTypeSchema = z.enum([
   'IMAGE_ASSET',
 ]);
 
-const contentLifecycleTargetSchema = z.object({ entityType: contentLifecycleEntityTypeSchema, entityId: id }).strict();
+const contentLifecycleEntityRefSchema = z
+  .object({ entityType: contentLifecycleEntityTypeSchema, entityId: id })
+  .strict();
 
-const contentLifecycleItemRefSchema = contentLifecycleTargetSchema
+const contentLifecycleTargetSchema = contentLifecycleEntityRefSchema
+  .extend({ scope: z.literal('FORM').optional() })
+  .strict();
+
+const contentLifecycleItemRefSchema = contentLifecycleEntityRefSchema
   .extend({ expectedChangedAt: z.string().min(1).max(64) })
   .strict();
 
@@ -459,6 +466,7 @@ export const assistantRoutingSaveSchema = z
         directions: assistantRoutingSelectionSchema,
         optimize: assistantRoutingSelectionSchema,
         title: assistantRoutingSelectionSchema,
+        gifPlanning: assistantRoutingSelectionSchema,
         subtitleTranslation: assistantRoutingSelectionSchema,
         articleCheck: assistantRoutingSelectionSchema,
       })

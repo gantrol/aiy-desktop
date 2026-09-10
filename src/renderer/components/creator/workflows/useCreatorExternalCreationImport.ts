@@ -17,6 +17,7 @@ interface Options {
   onComparisonFullWindowChange(open: boolean): void;
   refresh(): Promise<void>;
   saveDraft(): Promise<unknown>;
+  preserveWorkingInput(): Promise<boolean>;
   setCompactPanel(panel: 'output'): void;
   setCreationMode(mode: 'existing'): void;
   setOutputGalleryOpen(open: boolean): void;
@@ -31,6 +32,7 @@ interface Options {
 export function useCreatorExternalCreationImport(options: Options) {
   const [dialogAlbumId, setDialogAlbumId] = useState<string | null | undefined>(undefined);
   const create = useStableCallback(async (value: NewExternalCreationDialogValue) => {
+    if (!(await options.preserveWorkingInput())) return;
     if (options.creationMode === 'new' && options.hasDraftState()) await options.saveDraft();
     const outputItems = await imageImportItems(value.outputs.map((output) => output.file));
     const result = await window.desktopApi.creatorNewExternalCreationImport({
@@ -45,7 +47,9 @@ export function useCreatorExternalCreationImport(options: Options) {
       sourceUrl: value.sourceUrl,
       outputs: outputItems.map((output, index) => ({ ...output, metadata: value.outputs[index]?.metadata })),
     });
+    setDialogAlbumId(undefined);
     await options.refresh();
+    if (!(await options.preserveWorkingInput())) return;
     const firstAssetId = result.assetIds[0] ?? null;
     options.onComparisonFullWindowChange(false);
     options.clearSelection();

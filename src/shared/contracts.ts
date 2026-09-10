@@ -1,182 +1,39 @@
-import type { ResolvedPromptComposition } from '@/shared/prompt-composition';
-import type { ExtensionHostEngineKey } from '@/shared/product';
+import type { AppDeepLinkCommand } from '@/shared/contracts/app-deep-link';
+import type { CreationOutlineCommand, CreationOutlineResult } from '@/shared/contracts/creation-outline';
+import type { GifMakingApi } from '@/shared/contracts/gif-making';
+import type { AppSupportDestination } from '@/shared/contracts/app-support';
+import type { AppUpdateStateDto } from '@/shared/contracts/app-update';
+import type { AppWindowStateDto, DesktopPlatform } from '@/shared/contracts/app-window';
 import type {
-  ArticleEditorRecoveryCheckpoint,
-  ArticleEditorRecoveryIdentity,
-  ArticleEditorRecoveryScope,
-} from '@/shared/contracts/article-editor-recovery';
-import type {
-  BackgroundIssueAcknowledgeInput,
-  BackgroundIssueAcknowledgeResult,
-  BackgroundIssueDto,
-  LegacyGenerationDismissalImportInput,
-  LegacyGenerationDismissalImportResult,
-} from '@/shared/contracts/background-issue';
-import type { AssetFileDragRequest, AssetFileDragResult } from '@/shared/contracts/asset-file-drag';
-export type {
-  ArticleEditorRecoveryCheckpoint,
-  ArticleEditorRecoveryIdentity,
-  ArticleEditorRecoveryScope,
-} from '@/shared/contracts/article-editor-recovery';
-export type {
-  BackgroundIssueAcknowledgeInput,
-  BackgroundIssueAcknowledgeResult,
-  BackgroundIssueDto,
-  BackgroundIssueKind,
-  LegacyGenerationDismissalImportInput,
-  LegacyGenerationDismissalImportResult,
-} from '@/shared/contracts/background-issue';
-export type {
-  AssetFileDragIntent,
-  AssetFileDragRequest,
-  AssetFileDragResult,
-} from '@/shared/contracts/asset-file-drag';
-import type {
-  WorkspaceLayoutSaveInput,
-  WorkspaceLayoutSaveResult,
-  WorkspaceLayoutSnapshotDto,
-} from '@/shared/contracts/workspace-layout';
-import type { CreationDraftDto, CreationDraftLoadInput } from '@/shared/contracts/creation-draft';
-export type { CreationDraftDto, CreationDraftLoadInput } from '@/shared/contracts/creation-draft';
-export type {
-  ArticleEditTrailEntryDto,
-  ArticleEditorLocationDto,
-  WorkspaceAppView,
-  WorkspaceArticleEditOwnerDto,
-  WorkspaceArticleEditorStateDto,
-  WorkspaceArrangementDto,
-  WorkspaceGroupDto,
-  WorkspaceLayoutSaveInput,
-  WorkspaceLayoutSaveResult,
-  WorkspaceLayoutSnapshotDto,
-  WorkspaceLayoutStateDto,
-  WorkspaceNavigationEntryDto,
-  WorkspaceTabDto,
-  WorkspaceTarget,
-} from '@/shared/contracts/workspace-layout';
-import type {
-  CreationFormAddOrGetInput,
-  CreationFormAddOrGetResult,
-  CreationItemDto,
-  CreationItemCreateWithFormInput,
-  CreationItemCreateWithFormResult,
-  CreationItemGetInput,
-  CreationItemGetResult,
-  CreationItemListInput,
-  CreationItemListResult,
-  CreationItemMoveInput,
-  CreationItemMoveResult,
-  CreationItemSetPinnedInput,
-  CreationItemSetPinnedResult,
-  CreationItemSetPrimaryInput,
-  CreationItemSetPrimaryResult,
-} from '@/shared/contracts/creation-library';
-export type {
-  CreationFormAddOrGetInput,
-  CreationFormAddOrGetResult,
-  CreationFormDto,
-  CreationFormEntityKind,
-  CreationFormEntityRef,
-  CreationFormRole,
-  CreationInitialFormInput,
-  CreationItemDto,
-  CreationItemCreateWithFormInput,
-  CreationItemCreateWithFormResult,
-  CreationItemGetInput,
-  CreationItemGetResult,
-  CreationItemListInput,
-  CreationItemListResult,
-  CreationItemLifecycle,
-  CreationItemMoveInput,
-  CreationItemMoveResult,
-  CreationItemPhase,
-  CreationItemSetPinnedInput,
-  CreationItemSetPinnedResult,
-  CreationItemSetPrimaryInput,
-  CreationItemSetPrimaryResult,
-} from '@/shared/contracts/creation-library';
-import type {
-  EvaluationSuiteCreateInput,
-  EvaluationSuiteDto,
-  EvaluationSuiteGetInput,
-  EvaluationSuiteSaveInput,
-} from '@/shared/contracts/evaluation-suite';
-export type {
-  EvaluationCase,
-  EvaluationCaseKind,
-  EvaluationCriterion,
-  EvaluationInputPart,
-  EvaluationInputPartKind,
-  EvaluationPreprocessing,
-  EvaluationSuiteContentInput,
-  EvaluationSuiteCreateInput,
-  EvaluationSuiteDto,
-  EvaluationSuiteGetInput,
-  EvaluationSuiteSaveInput,
-  EvaluationTargetCondition,
-  EvaluationTargetType,
-} from '@/shared/contracts/evaluation-suite';
-import type {
-  ImageBreakdownCreateInput,
-  ImageBreakdownCreateResult,
-  ImageBreakdownDto,
-  ImageBreakdownImageFormCreateInput,
-  ImageBreakdownImageFormCreateResult,
-  ImageBreakdownReplaceSourceInput,
-  ImageBreakdownRouteDto,
-  ImageBreakdownRunInput,
-} from '@/shared/contracts/image-breakdown';
-export type {
-  ImageBreakdownCreateInput,
-  ImageBreakdownCreateResult,
-  ImageBreakdownDto,
-  ImageBreakdownImageFormCreateInput,
-  ImageBreakdownImageFormCreateResult,
-  ImageBreakdownPromptKind,
-  ImageBreakdownReplaceSourceInput,
-  ImageBreakdownResult,
-  ImageBreakdownRouteDto,
-  ImageBreakdownRouteKey,
-  ImageBreakdownRunInput,
-  ImageBreakdownStatus,
-  ImageBreakdownWorkerInput,
-} from '@/shared/contracts/image-breakdown';
-import type {
-  InspirationStashContentInput,
-  InspirationStashMoveInput,
-  InspirationStashSaveInput,
-  InspirationStashSetArchivedInput,
-} from '@/shared/contracts/inspiration-stash';
-export type {
-  InspirationStashContentInput,
-  InspirationStashMoveInput,
-  InspirationStashSaveInput,
-  InspirationStashSetArchivedInput,
-} from '@/shared/contracts/inspiration-stash';
-import type {
-  SocialPostContentInput,
-  SocialPostFormAddInput,
-  SocialPostFormCreateInput,
-  SocialPostMoveInput,
-  SocialPostSaveInput,
-  SocialPostSetArchivedInput,
-} from '@/shared/contracts/social-post';
-import type {
-  BrowserCompanionDeleteInput,
-  BrowserCompanionDeleteResult,
-  BrowserCompanionDestinationSelectInput,
-  BrowserCompanionDestinationsResult,
-  BrowserCompanionHistoryItem,
-  BrowserCompanionOpenInput,
-  BrowserCompanionOpenResult,
-  BrowserCompanionStageInput,
-  BrowserCompanionStageResult,
-} from '@/shared/contracts/browser-companion';
-import type {
-  NaturalWatermarkConfiguration,
-  NaturalWatermarkCustomLogo,
-  NaturalWatermarkPreviewImage,
-} from '@/shared/contracts/natural-watermark';
+  ArticleCheckExecutionResult,
+  ArticleCheckInput,
+  ArticleCheckRunApplyInput,
+  ArticleCheckRunApplyResult,
+  ArticleCheckRunsListInput,
+  ArticleCheckRunsPage,
+  ArticleCommentDto,
+  ArticleCommentMutationInput,
+  ArticleCommentMutationResult,
+  ArticleContentInput,
+  ArticleCopyForWechatInput,
+  ArticleCopyForWechatResult,
+  ArticleElementPlacementInput,
+  ArticleExportMarkdownInput,
+  ArticleFormAddInput,
+  ArticleFormCreateInput,
+  ArticleMoveInput,
+  ArticleOpenInput,
+  ArticleOpenResult,
+  ArticleRenameInput,
+  ArticleRevisionDto,
+  ArticleRevisionGetInput,
+  ArticleRevisionHistoryInput,
+  ArticleRevisionHistoryResult,
+  ArticleRevisionSaveInput,
+  ArticleRevisionSaveResult,
+  ArticleSaveInput,
+  ArticleSetArchivedInput,
+} from '@/shared/contracts/article';
 import type {
   ArticleDeliveryArticleProfile,
   ArticleDeliveryArticleProfileSaveInput,
@@ -193,131 +50,30 @@ import type {
   ArticleDeliveryUploadResult,
 } from '@/shared/contracts/article-delivery';
 import type {
-  ArticleCheckExecutionResult,
-  ArticleCheckInput,
-  ArticleCheckRunApplyInput,
-  ArticleCheckRunApplyResult,
-  ArticleCheckRunsListInput,
-  ArticleCheckRunsPage,
-  ArticleContentInput,
-  ArticleCopyForWechatInput,
-  ArticleCopyForWechatResult,
-  ArticleCommentDto,
-  ArticleCommentMutationInput,
-  ArticleCommentMutationResult,
-  ArticleElementPlacementInput,
-  ArticleExportMarkdownInput,
-  ArticleFormAddInput,
-  ArticleFormCreateInput,
-  ArticleMoveInput,
-  ArticleRenameInput,
-  ArticleRevisionDto,
-  ArticleRevisionGetInput,
-  ArticleRevisionHistoryInput,
-  ArticleRevisionHistoryResult,
-  ArticleRevisionSaveInput,
-  ArticleRevisionSaveResult,
-  ArticleSaveInput,
-  ArticleSetArchivedInput,
-} from '@/shared/contracts/article';
+  ArticleEditorRecoveryCheckpoint,
+  ArticleEditorRecoveryIdentity,
+  ArticleEditorRecoveryScope,
+} from '@/shared/contracts/article-editor-recovery';
+import type { AssetFileDragRequest, AssetFileDragResult } from '@/shared/contracts/asset-file-drag';
 import type {
-  ArticleInlineVisualAnchor,
-  DerivedVisualAdoptInput,
-  DerivedVisualRole,
-  DerivedVisualWorkspaceOpenInput,
-} from '@/shared/contracts/derived-visual';
-export type {
-  ArticleCheckApplyInput,
-  ArticleCheckApplyResult,
-  ArticleCheckBlockInput,
-  ArticleCheckExecutionResult,
-  ArticleCheckFinding,
-  ArticleCheckInput,
-  ArticleCheckResult,
-  ArticleCheckRunApplyInput,
-  ArticleCheckRunApplyResult,
-  ArticleCheckRunDto,
-  ArticleCheckRunsListInput,
-  ArticleCheckRunsPage,
-  ArticleCheckRunStatus,
-  ArticleContentInput,
-  ArticleCopyForWechatInput,
-  ArticleCopyForWechatResult,
-  ArticleCommentAnchorInput,
-  ArticleCommentAnchorUpdateInput,
-  ArticleCommentDto,
-  ArticleCommentModelAuthor,
-  ArticleCommentMutationInput,
-  ArticleCommentMutationResult,
-  ArticleCommentReplyDto,
-  ArticleCommentStatus,
-  ArticleElementNodeType,
-  ArticleElementPlacementInput,
-  ArticleExportMarkdownInput,
-  ArticleFormAddInput,
-  ArticleFormCreateInput,
-  ArticleMediaBindingInput,
-  ArticleMoveInput,
-  ArticleRenameInput,
-  ArticleRevisionDto,
-  ArticleRevisionGetInput,
-  ArticleRevisionHistoryInput,
-  ArticleRevisionHistoryResult,
-  ArticleRevisionSaveInput,
-  ArticleRevisionSaveResult,
-  ArticleRevisionSummaryDto,
-  ArticleSaveInput,
-  ArticleSetArchivedInput,
-  ArticleWechatCopyOptions,
-} from '@/shared/contracts/article';
-export type {
-  ArticleInlineVisualAnchor,
-  DerivedVisualAdoptInput,
-  DerivedVisualRole,
-  DerivedVisualWorkspaceCreateInput,
-  DerivedVisualWorkspaceOpenInput,
-} from '@/shared/contracts/derived-visual';
-export type {
-  SocialPostContentInput,
-  SocialPostFormAddInput,
-  SocialPostFormCreateInput,
-  SocialPostMoveInput,
-  SocialPostSaveInput,
-  SocialPostSetArchivedInput,
-} from '@/shared/contracts/social-post';
-export type {
-  BrowserCompanionBrowser,
-  BrowserCompanionBrowserId,
-  BrowserCompanionContentKind,
-  BrowserCompanionBrowserOpenError,
-  BrowserCompanionDestination,
-  BrowserCompanionDestinationSelectInput,
-  BrowserCompanionDestinationsResult,
+  BackgroundIssueAcknowledgeInput,
+  BackgroundIssueAcknowledgeResult,
+  BackgroundIssueDto,
+  LegacyGenerationDismissalImportInput,
+  LegacyGenerationDismissalImportResult,
+} from '@/shared/contracts/background-issue';
+import type { BlockDocument } from '@/shared/contracts/block-document';
+import type {
   BrowserCompanionDeleteInput,
   BrowserCompanionDeleteResult,
-  BrowserCompanionHandoffState,
+  BrowserCompanionDestinationSelectInput,
+  BrowserCompanionDestinationsResult,
   BrowserCompanionHistoryItem,
   BrowserCompanionOpenInput,
   BrowserCompanionOpenResult,
-  BrowserCompanionProfile,
-  BrowserCompanionSource,
   BrowserCompanionStageInput,
   BrowserCompanionStageResult,
-  BrowserCompanionTarget,
-  BrowserCompanionWatermarkSelection,
 } from '@/shared/contracts/browser-companion';
-export type {
-  NaturalWatermarkBrand,
-  NaturalWatermarkConfiguration,
-  NaturalWatermarkCustomLogo,
-  NaturalWatermarkLogo,
-  NaturalWatermarkPlacement,
-  NaturalWatermarkPosition,
-  NaturalWatermarkPositionJitter,
-  NaturalWatermarkPreviewImage,
-  NaturalWatermarkProfile,
-  NaturalWatermarkStyle,
-} from '@/shared/contracts/natural-watermark';
 import type {
   CodexHistoryFilterOptions,
   CodexHistoryFilterOptionsInput,
@@ -327,6 +83,8 @@ import type {
   CodexHistorySearchPage,
   CodexHistoryThreadMessagesInput,
   CodexHistoryThreadMessagesPage,
+  CodexHistoryThreadUsage,
+  CodexHistoryThreadUsageInput,
 } from '@/shared/contracts/codex-history-search';
 import type {
   CodexUsageCleanupInput,
@@ -350,6 +108,86 @@ import type {
   CodexVisualizationSessionActionInput,
   CodexVisualizationSnapshotDto,
 } from '@/shared/contracts/codex-visualizations';
+import type { ContentImageImportsApi } from '@/shared/contracts/content-image-import';
+import type {
+  CreationDraftDto,
+  CreationDraftLoadInput,
+  CreationVideoAttachmentDto,
+} from '@/shared/contracts/creation-draft';
+import type {
+  CreationFormAddOrGetInput,
+  CreationFormAddOrGetResult,
+  CreationItemCreateWithFormInput,
+  CreationItemCreateWithFormResult,
+  CreationItemDto,
+  CreationItemGetInput,
+  CreationItemGetResult,
+  CreationItemListInput,
+  CreationItemListResult,
+  CreationItemMoveInput,
+  CreationItemMoveResult,
+  CreationItemSetPinnedInput,
+  CreationItemSetPinnedResult,
+  CreationItemSetPrimaryInput,
+  CreationItemSetPrimaryResult,
+} from '@/shared/contracts/creation-library';
+import type {
+  PromptSeriesCoverSetInput,
+  PromptSeriesOutputPresentationResult,
+  PromptSeriesOutputRemoveInput,
+} from '@/shared/contracts/creation-output-presentation';
+import type {
+  CreatorClipboardReferenceImportInput,
+  CreatorImageChooseInput,
+  CreatorImageImportInput,
+  CreatorImageImportItemInput,
+  CreatorImageImportSource,
+  CreatorImageStagePreviewRow,
+  CreatorStagedImageImportInput,
+} from '@/shared/contracts/creator-import';
+import type { CreatorInputRecoveryApi } from '@/shared/contracts/creator-input-recovery';
+import type {
+  ArticleInlineVisualAnchor,
+  DerivedVisualRole,
+  DerivedVisualWorkspaceOpenInput,
+} from '@/shared/contracts/derived-visual';
+import type {
+  DerivedVisualOperationDto,
+  DerivedVisualOperationsApi,
+} from '@/shared/contracts/derived-visual-operations';
+import type {
+  EvaluationSuiteCreateInput,
+  EvaluationSuiteDto,
+  EvaluationSuiteGetInput,
+  EvaluationSuiteSaveInput,
+} from '@/shared/contracts/evaluation-suite';
+import type {
+  GenerationProcessEventPageDto,
+  GenerationProcessEventPageInput,
+  GenerationProcessSummaryDto,
+} from '@/shared/contracts/generation-process';
+import type {
+  ImageBreakdownCreateInput,
+  ImageBreakdownCreateResult,
+  ImageBreakdownDto,
+  ImageBreakdownImageFormCreateInput,
+  ImageBreakdownImageFormCreateResult,
+  ImageBreakdownReplaceSourceInput,
+  ImageBreakdownRouteDto,
+  ImageBreakdownRunInput,
+} from '@/shared/contracts/image-breakdown';
+import type {
+  ImportedImageAiGeneratedStatus,
+  ImportedImageGenerationTextType,
+  ImportedImageMetadataInput,
+  ImportedImageRelationshipInput,
+} from '@/shared/contracts/import-metadata';
+import type {
+  InspirationStashContentInput,
+  InspirationStashMoveInput,
+  InspirationStashSaveInput,
+  InspirationStashSetArchivedInput,
+} from '@/shared/contracts/inspiration-stash';
 import type {
   LegacyLocalSpaceCandidateDto,
   LocalSpaceCoverUpdateResult,
@@ -365,6 +203,12 @@ import type {
   TransitionPreviewDto,
   TransitionPreviewRefreshEvent,
 } from '@/shared/contracts/local-space';
+import type { MaintenanceGuideApi } from '@/shared/contracts/maintenance-guide';
+import type {
+  NaturalWatermarkConfiguration,
+  NaturalWatermarkCustomLogo,
+  NaturalWatermarkPreviewImage,
+} from '@/shared/contracts/natural-watermark';
 import type {
   PackApplyImportInput,
   PackApplyImportResult,
@@ -374,45 +218,19 @@ import type {
   PackInstallationDto,
   PackReleaseDto,
 } from '@/shared/contracts/packs';
-import type {
-  CreatorClipboardReferenceImportInput,
-  CreatorImageChooseInput,
-  CreatorImageImportInput,
-  CreatorImageImportItemInput,
-  CreatorImageImportSource,
-  CreatorImageStagePreviewRow,
-  CreatorStagedImageImportInput,
-} from '@/shared/contracts/creator-import';
-import type {
-  ImportedImageAiGeneratedStatus,
-  ImportedImageGenerationTextType,
-  ImportedImageMetadataInput,
-  ImportedImageRelationshipInput,
-} from '@/shared/contracts/import-metadata';
-import type {
-  PromptSeriesCoverSetInput,
-  PromptSeriesOutputPresentationResult,
-  PromptSeriesOutputRemoveInput,
-} from '@/shared/contracts/creation-output-presentation';
-import type {
-  GenerationProcessEventPageDto,
-  GenerationProcessEventPageInput,
-  GenerationProcessSummaryDto,
-} from '@/shared/contracts/generation-process';
-import type { AppUpdateStateDto } from '@/shared/contracts/app-update';
-import type { AppDeepLinkCommand } from '@/shared/contracts/app-deep-link';
-import type { AppSupportDestination } from '@/shared/contracts/app-support';
-import type { RendererDiagnosticInput } from '@/shared/contracts/renderer-diagnostics';
-import type { AppWindowStateDto, DesktopPlatform } from '@/shared/contracts/app-window';
 import type { ProviderConnectionDto, ProviderConnectionSaveInput } from '@/shared/contracts/provider-connections';
-import type { TransitionShowcaseExportImageSnapshot } from '@/shared/contracts/transition-showcase';
-export type {
-  ProviderConnectionAction,
-  ProviderConnectionDto,
-  ProviderConnectionSaveInput,
-  ProviderConnectionState,
-  ProviderConnectionTargetInput,
-} from '@/shared/contracts/provider-connections';
+import type { RendererDiagnosticInput } from '@/shared/contracts/renderer-diagnostics';
+import type {
+  SocialPostContentInput,
+  SocialPostFormAddInput,
+  SocialPostFormCreateInput,
+  SocialPostMoveInput,
+  SocialPostRevisionSaveInput,
+  SocialPostRevisionSaveResult,
+  SocialPostSaveInput,
+  SocialPostSetArchivedInput,
+} from '@/shared/contracts/social-post';
+import type { SocialPostRecoveryApi } from '@/shared/contracts/social-post-recovery';
 import type {
   TermIllustrationAdoptInput,
   TermIllustrationDecisionResult,
@@ -422,6 +240,7 @@ import type {
   TermIllustrationStartInput,
   TermIllustrationStartResult,
 } from '@/shared/contracts/term-illustration';
+import type { TransitionShowcaseExportImageSnapshot } from '@/shared/contracts/transition-showcase';
 import type {
   LocalQwenAsrSidecarDto,
   VideoDocumentArticleGenerateInput,
@@ -451,40 +270,237 @@ import type {
   VideoDocumentTranscriptRecognizeInput,
 } from '@/shared/contracts/video-document';
 import type {
-  VideoDocumentTranscriptBackgroundTaskSnapshot,
-  VideoDocumentTranscriptBackgroundTasksChangedEvent,
-} from '@/shared/contracts/video-document-transcription';
-import type {
   VideoDocumentAiActivitiesListInput,
   VideoDocumentAiActivitiesPage,
 } from '@/shared/contracts/video-document-ai-activity';
+import type {
+  VideoDocumentTranscriptBackgroundTaskSnapshot,
+  VideoDocumentTranscriptBackgroundTasksChangedEvent,
+} from '@/shared/contracts/video-document-transcription';
 import type {
   VideoDocumentTranscriptTranslationResult,
   VideoDocumentTranscriptTranslationStartInput,
 } from '@/shared/contracts/video-document-translation';
 import type { VideoKeyChangeExtractInput, VideoKeyChangeResultDto } from '@/shared/contracts/video-key-changes';
-
+import type {
+  WorkspaceLayoutSaveInput,
+  WorkspaceLayoutSaveResult,
+  WorkspaceLayoutSnapshotDto,
+} from '@/shared/contracts/workspace-layout';
+import type { ExtensionHostEngineKey } from '@/shared/product';
+import type { ResolvedPromptComposition } from '@/shared/prompt-composition';
 export type {
-  LegacyLocalSpaceCandidateDto,
-  LocalSpaceCoverUpdateResult,
-  LocalSpaceDescriptorDto,
-  LocalSpaceExportResult,
-  LocalSpaceImportResult,
-  LocalSpaceMigrationErrorCode,
-  LocalSpaceMigrationProgressEvent,
-  LocalSpaceMigrationResult,
-  LocalSpaceRegistryDto,
-  LocalSpaceSwitchResult,
-  LocalSpaceTransferErrorCode,
-  LocalSpaceTransferProgressEvent,
-  LocalSpaceTransitionEvent,
-  LocalSpaceTransitionStage,
-  TransitionPreviewDto,
-  TransitionPreviewRefreshEvent,
-} from '@/shared/contracts/local-space';
-export type { TransitionShowcaseExportImageSnapshot } from '@/shared/contracts/transition-showcase';
-export type { AppWindowStateDto, DesktopPlatform } from '@/shared/contracts/app-window';
+  ArticleCheckApplyInput,
+  ArticleCheckApplyResult,
+  ArticleCheckBlockInput,
+  ArticleCheckExecutionResult,
+  ArticleCheckFinding,
+  ArticleCheckInput,
+  ArticleCheckResult,
+  ArticleCheckRunApplyInput,
+  ArticleCheckRunApplyResult,
+  ArticleCheckRunDto,
+  ArticleCheckRunStatus,
+  ArticleCheckRunsListInput,
+  ArticleCheckRunsPage,
+  ArticleCommentAnchorInput,
+  ArticleCommentAnchorUpdateInput,
+  ArticleCommentDto,
+  ArticleCommentModelAuthor,
+  ArticleCommentMutationInput,
+  ArticleCommentMutationResult,
+  ArticleCommentReplyDto,
+  ArticleCommentStatus,
+  ArticleContentInput,
+  ArticleCopyForWechatInput,
+  ArticleCopyForWechatResult,
+  ArticleElementNodeType,
+  ArticleElementPlacementInput,
+  ArticleExportMarkdownInput,
+  ArticleFormAddInput,
+  ArticleFormCreateInput,
+  ArticleMediaBindingInput,
+  ArticleMoveInput,
+  ArticleRenameInput,
+  ArticleRevisionDto,
+  ArticleRevisionGetInput,
+  ArticleRevisionHistoryInput,
+  ArticleRevisionHistoryResult,
+  ArticleRevisionSaveInput,
+  ArticleRevisionSaveResult,
+  ArticleRevisionSummaryDto,
+  ArticleSaveInput,
+  ArticleSetArchivedInput,
+  ArticleWechatCopyOptions,
+} from '@/shared/contracts/article';
+export type {
+  ArticleEditorRecoveryCheckpoint,
+  ArticleEditorRecoveryIdentity,
+  ArticleEditorRecoveryScope,
+} from '@/shared/contracts/article-editor-recovery';
+export type {
+  AssetFileDragIntent,
+  AssetFileDragRequest,
+  AssetFileDragResult,
+} from '@/shared/contracts/asset-file-drag';
+export type {
+  BackgroundIssueAcknowledgeInput,
+  BackgroundIssueAcknowledgeResult,
+  BackgroundIssueDto,
+  BackgroundIssueKind,
+  LegacyGenerationDismissalImportInput,
+  LegacyGenerationDismissalImportResult,
+} from '@/shared/contracts/background-issue';
+export type {
+  BrowserCompanionBrowser,
+  BrowserCompanionBrowserId,
+  BrowserCompanionBrowserOpenError,
+  BrowserCompanionContentKind,
+  BrowserCompanionDeleteInput,
+  BrowserCompanionDeleteResult,
+  BrowserCompanionDestination,
+  BrowserCompanionDestinationSelectInput,
+  BrowserCompanionDestinationsResult,
+  BrowserCompanionHandoffState,
+  BrowserCompanionHistoryItem,
+  BrowserCompanionOpenInput,
+  BrowserCompanionOpenResult,
+  BrowserCompanionProfile,
+  BrowserCompanionSource,
+  BrowserCompanionStageInput,
+  BrowserCompanionStageResult,
+  BrowserCompanionTarget,
+  BrowserCompanionWatermarkSelection,
+} from '@/shared/contracts/browser-companion';
+export type {
+  CreationDraftDto,
+  CreationDraftLoadInput,
+  CreationVideoAttachmentDto,
+} from '@/shared/contracts/creation-draft';
+export type {
+  CreationFormAddOrGetInput,
+  CreationFormAddOrGetResult,
+  CreationFormDto,
+  CreationFormEntityKind,
+  CreationFormEntityRef,
+  CreationFormRole,
+  CreationInitialFormInput,
+  CreationItemCreateWithFormInput,
+  CreationItemCreateWithFormResult,
+  CreationItemDto,
+  CreationItemGetInput,
+  CreationItemGetResult,
+  CreationItemLifecycle,
+  CreationItemListInput,
+  CreationItemListResult,
+  CreationItemMoveInput,
+  CreationItemMoveResult,
+  CreationItemPhase,
+  CreationItemSetPinnedInput,
+  CreationItemSetPinnedResult,
+  CreationItemSetPrimaryInput,
+  CreationItemSetPrimaryResult,
+} from '@/shared/contracts/creation-library';
+export type {
+  ArticleInlineVisualAnchor,
+  DerivedVisualAdoptInput,
+  DerivedVisualRole,
+  DerivedVisualWorkspaceCreateInput,
+  DerivedVisualWorkspaceOpenInput,
+} from '@/shared/contracts/derived-visual';
+export type {
+  EvaluationCase,
+  EvaluationCaseKind,
+  EvaluationCriterion,
+  EvaluationInputPart,
+  EvaluationInputPartKind,
+  EvaluationPreprocessing,
+  EvaluationSuiteContentInput,
+  EvaluationSuiteCreateInput,
+  EvaluationSuiteDto,
+  EvaluationSuiteGetInput,
+  EvaluationSuiteSaveInput,
+  EvaluationTargetCondition,
+  EvaluationTargetType,
+} from '@/shared/contracts/evaluation-suite';
+export type {
+  ImageBreakdownCreateInput,
+  ImageBreakdownCreateResult,
+  ImageBreakdownDto,
+  ImageBreakdownImageFormCreateInput,
+  ImageBreakdownImageFormCreateResult,
+  ImageBreakdownPromptKind,
+  ImageBreakdownReplaceSourceInput,
+  ImageBreakdownResult,
+  ImageBreakdownRouteDto,
+  ImageBreakdownRouteKey,
+  ImageBreakdownRunInput,
+  ImageBreakdownStatus,
+  ImageBreakdownWorkerInput,
+} from '@/shared/contracts/image-breakdown';
+export type {
+  InspirationStashContentInput,
+  InspirationStashMoveInput,
+  InspirationStashSaveInput,
+  InspirationStashSetArchivedInput,
+} from '@/shared/contracts/inspiration-stash';
+export type {
+  NaturalWatermarkBrand,
+  NaturalWatermarkConfiguration,
+  NaturalWatermarkCustomLogo,
+  NaturalWatermarkLogo,
+  NaturalWatermarkPlacement,
+  NaturalWatermarkPosition,
+  NaturalWatermarkPositionJitter,
+  NaturalWatermarkPreviewImage,
+  NaturalWatermarkProfile,
+  NaturalWatermarkStyle,
+} from '@/shared/contracts/natural-watermark';
+export type {
+  ProviderConnectionAction,
+  ProviderConnectionDto,
+  ProviderConnectionSaveInput,
+  ProviderConnectionState,
+  ProviderConnectionTargetInput,
+} from '@/shared/contracts/provider-connections';
+export type {
+  SocialPostContentInput,
+  SocialPostFormAddInput,
+  SocialPostFormCreateInput,
+  SocialPostMoveInput,
+  SocialPostRevisionSaveInput,
+  SocialPostRevisionSaveResult,
+  SocialPostSaveInput,
+  SocialPostSetArchivedInput,
+} from '@/shared/contracts/social-post';
+export type {
+  ArticleEditTrailEntryDto,
+  ArticleEditorLocationDto,
+  WorkspaceAppView,
+  WorkspaceArrangementDto,
+  WorkspaceArticleEditOwnerDto,
+  WorkspaceArticleEditorStateDto,
+  WorkspaceGroupDto,
+  WorkspaceLayoutSaveInput,
+  WorkspaceLayoutSaveResult,
+  WorkspaceLayoutSnapshotDto,
+  WorkspaceLayoutStateDto,
+  WorkspaceNavigationEntryDto,
+  WorkspaceTabDto,
+  WorkspaceTarget,
+} from '@/shared/contracts/workspace-layout';
+
 export type { AppDeepLinkCommand } from '@/shared/contracts/app-deep-link';
+export type { AppSupportDestination } from '@/shared/contracts/app-support';
+export type {
+  AppUpdateErrorAction,
+  AppUpdateErrorDto,
+  AppUpdatePhase,
+  AppUpdateProgressDto,
+  AppUpdateStateDto,
+  AppUpdateSupportReason,
+} from '@/shared/contracts/app-update';
+export type { AppWindowStateDto, DesktopPlatform } from '@/shared/contracts/app-window';
 export type {
   ArticleDeliveryArticleProfile,
   ArticleDeliveryArticleProfileSaveInput,
@@ -509,26 +525,28 @@ export type {
   CodexHistoryIndexState,
   CodexHistoryIndexStatus,
   CodexHistoryMatchRole,
-  CodexHistoryRefreshInput,
+  CodexHistoryMessage,
   CodexHistoryProjectOption,
+  CodexHistoryRefreshInput,
   CodexHistoryRoleFilter,
   CodexHistorySearchInput,
   CodexHistorySearchPage,
   CodexHistorySearchResult,
-  CodexHistoryMessage,
-  CodexHistoryThreadOption,
   CodexHistoryThreadMessagesInput,
   CodexHistoryThreadMessagesPage,
   CodexHistoryThreadMessagesSource,
+  CodexHistoryThreadOption,
   CodexHistoryThreadSource,
+  CodexHistoryThreadUsage,
+  CodexHistoryThreadUsageInput,
 } from '@/shared/contracts/codex-history-search';
 export type {
   CodexUsageCleanupCounts,
   CodexUsageCleanupInput,
   CodexUsageCleanupLevel,
   CodexUsageCleanupResult,
-  CodexUsageDateRange,
   CodexUsageDailyBreakdown,
+  CodexUsageDateRange,
   CodexUsageExportFormat,
   CodexUsageExportInput,
   CodexUsageExportResult,
@@ -549,8 +567,8 @@ export type {
   CodexUsageQuotaState,
   CodexUsageQuotaWindow,
   CodexUsageQuotaWindowKind,
-  CodexUsageQuotaYieldAttribution,
   CodexUsageQuotaYieldAnalysis,
+  CodexUsageQuotaYieldAttribution,
   CodexUsageQuotaYieldEstimate,
   CodexUsageQuotaYieldSample,
   CodexUsageQuotaYieldServiceTier,
@@ -560,13 +578,13 @@ export type {
   CodexUsageResumeInput,
   CodexUsageScanInput,
   CodexUsageScanProgress,
+  CodexUsageServiceTier,
   CodexUsageSessionLengthAnalysis,
   CodexUsageSessionLengthBucket,
   CodexUsageSessionLengthComparison,
   CodexUsageSessionLengthRange,
   CodexUsageSessionLengthTrend,
   CodexUsageSessionSource,
-  CodexUsageServiceTier,
   CodexUsageState,
   CodexUsageTask,
   CodexUsageTaskStatus,
@@ -589,27 +607,6 @@ export type {
   CodexVisualizationSnapshotDto,
 } from '@/shared/contracts/codex-visualizations';
 export type {
-  PackApplyImportInput,
-  PackApplyImportResult,
-  PackCatalogItemDto,
-  PackDependencyDto,
-  PackDto,
-  PackInstallExactInput,
-  PackInstallationDto,
-  PackImportLocalResult,
-  PackInstallationStateDto,
-  PackKindDto,
-  PackReleaseDto,
-  PackReleaseItemDto,
-  PackReleaseSummaryDto,
-  PackImportPreviewDto,
-  PackUpdateChangeDto,
-  PackUpdateChangeKindDto,
-  PackUpdateLocalStateDto,
-  PackUpdateOperationDto,
-  PackUpdateSummaryDto,
-} from '@/shared/contracts/packs';
-export type {
   CreatorClipboardReferenceImportInput,
   CreatorImageChooseInput,
   CreatorImageImportContext,
@@ -617,18 +614,12 @@ export type {
   CreatorImageImportItemInput,
   CreatorImageImportMimeType,
   CreatorImageImportSource,
-  CreatorRasterImageMimeType,
   CreatorImageStagePreviewRow,
   CreatorImageStageState,
+  CreatorRasterImageMimeType,
   CreatorStagedImageImportInput,
   CreatorStagedOutputImportItemInput,
 } from '@/shared/contracts/creator-import';
-export type {
-  ImportedImageAiGeneratedStatus,
-  ImportedImageGenerationTextType,
-  ImportedImageMetadataInput,
-  ImportedImageRelationshipInput,
-} from '@/shared/contracts/import-metadata';
 export type {
   GenerationProcessEventHeaderDto,
   GenerationProcessEventPageDto,
@@ -638,14 +629,50 @@ export type {
   GenerationProcessSummaryDto,
 } from '@/shared/contracts/generation-process';
 export type {
-  AppUpdateErrorAction,
-  AppUpdateErrorDto,
-  AppUpdatePhase,
-  AppUpdateProgressDto,
-  AppUpdateStateDto,
-  AppUpdateSupportReason,
-} from '@/shared/contracts/app-update';
-export type { AppSupportDestination } from '@/shared/contracts/app-support';
+  ImportedImageAiGeneratedStatus,
+  ImportedImageGenerationTextType,
+  ImportedImageMetadataInput,
+  ImportedImageRelationshipInput,
+} from '@/shared/contracts/import-metadata';
+export type {
+  LegacyLocalSpaceCandidateDto,
+  LocalSpaceCoverUpdateResult,
+  LocalSpaceDescriptorDto,
+  LocalSpaceExportResult,
+  LocalSpaceImportResult,
+  LocalSpaceMigrationErrorCode,
+  LocalSpaceMigrationProgressEvent,
+  LocalSpaceMigrationResult,
+  LocalSpaceRegistryDto,
+  LocalSpaceSwitchResult,
+  LocalSpaceTransferErrorCode,
+  LocalSpaceTransferProgressEvent,
+  LocalSpaceTransitionEvent,
+  LocalSpaceTransitionStage,
+  TransitionPreviewDto,
+  TransitionPreviewRefreshEvent,
+} from '@/shared/contracts/local-space';
+export type {
+  PackApplyImportInput,
+  PackApplyImportResult,
+  PackCatalogItemDto,
+  PackDependencyDto,
+  PackDto,
+  PackImportLocalResult,
+  PackImportPreviewDto,
+  PackInstallExactInput,
+  PackInstallationDto,
+  PackInstallationStateDto,
+  PackKindDto,
+  PackReleaseDto,
+  PackReleaseItemDto,
+  PackReleaseSummaryDto,
+  PackUpdateChangeDto,
+  PackUpdateChangeKindDto,
+  PackUpdateLocalStateDto,
+  PackUpdateOperationDto,
+  PackUpdateSummaryDto,
+} from '@/shared/contracts/packs';
 export type {
   TermIllustrationAdoptInput,
   TermIllustrationBatchDto,
@@ -660,6 +687,7 @@ export type {
   TermIllustrationStartInput,
   TermIllustrationStartResult,
 } from '@/shared/contracts/term-illustration';
+export type { TransitionShowcaseExportImageSnapshot } from '@/shared/contracts/transition-showcase';
 export type {
   LocalQwenAsrGpuTelemetry,
   LocalQwenAsrProviderKey,
@@ -681,46 +709,52 @@ export type {
   VideoDocumentExportResult,
   VideoDocumentFrameCaptureInput,
   VideoDocumentFrameCaptureResult,
-  VideoDocumentGenerationReceipt,
   VideoDocumentGenerationErrorDetails,
+  VideoDocumentGenerationReceipt,
   VideoDocumentGenerationRunDto,
   VideoDocumentGenerationRunsListInput,
   VideoDocumentGenerationRunsPage,
   VideoDocumentListInput,
   VideoDocumentListPageDto,
+  VideoDocumentMediaBinding,
   VideoDocumentMoveInput,
   VideoDocumentNavigationEntry,
   VideoDocumentNavigationListInput,
   VideoDocumentNavigationPage,
   VideoDocumentNavigationReorderInput,
-  VideoDocumentNoteCollectionContent,
   VideoDocumentNote,
+  VideoDocumentNoteCollectionContent,
   VideoDocumentNotesContent,
-  VideoDocumentRichNote,
   VideoDocumentRenameInput,
   VideoDocumentRevealExportInput,
-  VideoDocumentMediaBinding,
   VideoDocumentRevisionContent,
   VideoDocumentRevisionDto,
   VideoDocumentRevisionMediaDto,
   VideoDocumentRevisionOrigin,
   VideoDocumentRevisionSaveInput,
-  VideoDocumentSourceReplaceInput,
-  VideoDocumentSourceDto,
-  VideoDocumentStatus,
+  VideoDocumentRichNote,
   VideoDocumentSegmentType,
+  VideoDocumentSourceDto,
+  VideoDocumentSourceReplaceInput,
+  VideoDocumentStatus,
   VideoDocumentSummaryDto,
-  VideoDocumentTokenUsage,
-  VideoDocumentTokenAvailability,
   VideoDocumentTimedTranscriptContent,
-  VideoDocumentTranscriptCue,
+  VideoDocumentTimelineSegment,
+  VideoDocumentTokenAvailability,
+  VideoDocumentTokenUsage,
   VideoDocumentTranscriptBasis,
+  VideoDocumentTranscriptCue,
   VideoDocumentTranscriptRecognitionErrorCode,
   VideoDocumentTranscriptRecognitionProgress,
   VideoDocumentTranscriptRecognitionResult,
   VideoDocumentTranscriptRecognizeInput,
-  VideoDocumentTimelineSegment,
 } from '@/shared/contracts/video-document';
+export type {
+  VideoDocumentAiActivitiesListInput,
+  VideoDocumentAiActivitiesPage,
+  VideoDocumentAiActivityDto,
+  VideoDocumentTranscriptionRunDto,
+} from '@/shared/contracts/video-document-ai-activity';
 export type {
   VideoDocumentTranscriptBackgroundTask,
   VideoDocumentTranscriptBackgroundTaskSnapshot,
@@ -728,12 +762,6 @@ export type {
   VideoDocumentTranscriptBackgroundTaskTerminal,
   VideoDocumentTranscriptBackgroundTasksChangedEvent,
 } from '@/shared/contracts/video-document-transcription';
-export type {
-  VideoDocumentAiActivitiesListInput,
-  VideoDocumentAiActivitiesPage,
-  VideoDocumentAiActivityDto,
-  VideoDocumentTranscriptionRunDto,
-} from '@/shared/contracts/video-document-ai-activity';
 export type {
   VideoDocumentTranscriptTranslationExecution,
   VideoDocumentTranscriptTranslationResult,
@@ -846,7 +874,8 @@ export type ExtensionContributionPoint =
   | 'tools'
   | 'searchProviders'
   | 'modelProviders'
-  | 'deliveryChannels';
+  | 'deliveryChannels'
+  | 'contentApplications';
 
 export type ExtensionKind = 'CAPABILITY' | 'LANGUAGE';
 export type ExtensionCategory = 'FRONTEND_DESIGN';
@@ -1144,7 +1173,8 @@ export interface DeepSeekApiSaveInput {
   visionModelId: string;
 }
 
-export type AssistantOperation = 'directions' | 'optimize' | 'title' | 'subtitleTranslation' | 'articleCheck';
+export type AssistantOperation =
+  'directions' | 'optimize' | 'title' | 'gifPlanning' | 'subtitleTranslation' | 'articleCheck';
 export type AssistantWebSearchMode = 'DISABLED' | 'REQUIRED';
 export type AssistantModelKind = 'TEXT' | 'AGENT';
 export type AssistantModelState = 'READY' | 'UNAVAILABLE';
@@ -1184,6 +1214,7 @@ export interface AssistantRoutingSelections {
   directions: AssistantRoutingSelection;
   optimize: AssistantRoutingSelection;
   title: AssistantRoutingSelection;
+  gifPlanning: AssistantRoutingSelection;
   subtitleTranslation: AssistantRoutingSelection;
   articleCheck: AssistantRoutingSelection;
 }
@@ -1596,12 +1627,13 @@ export type AssetFileRevealContext =
   | { kind: 'DICTIONARY' }
   | { kind: 'ALBUM'; albumId: string }
   | { kind: 'CREATION'; seriesId: string }
+  | { kind: 'CONTENT'; source: import('@/shared/contracts/content-library').ContentSource }
   | { kind: 'TERM'; termId: string };
 
 export type AssetFileRevealTargetContext = Extract<AssetFileRevealContext, { kind: 'ALL_MATERIALS' | 'DICTIONARY' }>;
 
 export interface AssetFileRevealTargetDto {
-  context: Extract<AssetFileRevealContext, { kind: 'ALBUM' | 'TERM' }>;
+  context: Extract<AssetFileRevealContext, { kind: 'ALBUM' | 'TERM' | 'CONTENT' }>;
   label: string;
   relativeDirectory: string;
 }
@@ -1966,6 +1998,7 @@ export type PromptCommonContentNodeDto =
 
 /** Model-neutral input frozen on a PromptVersion. */
 export interface PromptCommonInputDto {
+  document?: BlockDocument;
   userInstruction: string;
   directTermPromptLocale: Locale;
   directTerms: PromptCommonTermReferenceDto[];
@@ -2495,6 +2528,7 @@ export interface RecycleBinPurgeResult {
 export type ContentLifecycleState = 'ARCHIVED' | 'RECYCLE_BIN';
 export type ContentLifecycleKind = 'ALBUM' | 'CREATION' | 'MATERIAL';
 export type ContentLifecycleSubtype =
+  | 'GIF_DOCUMENT'
   | 'CREATION_ALBUM'
   | 'MATERIAL_ALBUM'
   | 'PROMPT_SERIES'
@@ -2509,6 +2543,7 @@ export type ContentLifecycleSubtype =
   | 'VIDEO_MATERIAL'
   | 'TEXT_MATERIAL';
 export type ContentLifecycleEntityType =
+  | 'GIF_DOCUMENT'
   | 'ALBUM'
   | 'CREATION_ITEM'
   | 'PROMPT_SERIES'
@@ -2532,6 +2567,7 @@ export interface ContentLifecycleItemRef {
 export interface ContentLifecycleTarget {
   entityType: ContentLifecycleEntityType;
   entityId: string;
+  scope?: 'FORM';
 }
 
 export interface ContentLifecycleItemDto extends ContentLifecycleItemRef {
@@ -2785,6 +2821,7 @@ export interface CanvasPresetDto {
 }
 
 export interface BootstrapDto {
+  animations?: import('@/shared/contracts/gif-making').GifDocumentSummary[];
   locale: Locale;
   spaceId: string;
   spaceName: string;
@@ -2825,6 +2862,7 @@ export interface BootstrapDto {
 
 /** Generation-owned library projections refreshed after a run reaches a terminal state. */
 export interface GenerationProjectionDto {
+  animations?: import('@/shared/contracts/gif-making').GifDocumentSummary[];
   series: PromptSeriesDto[];
   albums: AlbumDto[];
   creationItems: CreationItemDto[];
@@ -2839,8 +2877,11 @@ export interface CreationDraftSaveInput {
   targetAlbumId?: string | null;
   title: string;
   text: string;
+  document?: BlockDocument;
   promptNodes?: CreatorPromptNodeInput[];
   referenceAssetIds: string[];
+  /** Source videos attached to the draft, never image-generation references. Omission preserves existing links. */
+  videoMaterialIds?: string[];
   termPromptLocale: Locale;
   termIds: string[];
   wordPaletteReferences: WordPaletteReferenceInput[];
@@ -2861,9 +2902,11 @@ export interface CreationInputSnapshotInput {
   schemaVersion: 1;
   title: string;
   manualPrompt: string;
+  document?: BlockDocument;
   promptNodes?: CreatorPromptNodeInput[];
   resolvedPrompt: string;
   referenceAssetIds: string[];
+  videoMaterialIds?: string[];
   termPromptLocale: Locale;
   termIds: string[];
   wordPaletteReferences: WordPaletteReferenceInput[];
@@ -2874,6 +2917,7 @@ export interface CreationInputSnapshotInput {
 
 export interface CreationInputSnapshotDto extends CreationInputSnapshotInput {
   referenceAssets: AssetDto[];
+  videoAttachments?: CreationVideoAttachmentDto[];
 }
 
 export interface CreationInputStashCreateInput {
@@ -2898,6 +2942,7 @@ export interface InspirationStashDto {
   id: string;
   albumId: string | null;
   title: string;
+  displayTitle: string;
   content: InspirationStashContentDto;
   contentHash: string;
   status: 'ACTIVE' | 'ARCHIVED';
@@ -2950,6 +2995,8 @@ export interface DerivedVisualPromptTemplatesDto {
 
 export interface DerivedVisualDto {
   id: string;
+  positionId: string | null;
+  positionWasUsed: boolean;
   role: DerivedVisualRole;
   articleId: string | null;
   articleRevisionId: string | null;
@@ -2968,11 +3015,7 @@ export type DerivedVisualWorkspaceOpenResult =
   | { kind: 'DRAFT'; reused: boolean; draft: CreationDraftDto; visual: DerivedVisualDto }
   | { kind: 'SERIES'; reused: true; seriesId: string; visual: DerivedVisualDto };
 
-export interface DerivedVisualAdoptResult {
-  visual: DerivedVisualDto;
-  article: ArticleDto | null;
-  socialPost: SocialPostDto | null;
-}
+export type DerivedVisualAdoptResult = DerivedVisualOperationDto;
 
 export type ArticleExportMarkdownResult = { status: 'SAVED'; filePath: string } | { status: 'CANCELLED' };
 
@@ -3031,6 +3074,7 @@ export interface IntakeCommitResult {
   materialIds: string[];
   imageMaterialIds: string[];
   videoMaterialIds: string[];
+  videoAttachments?: CreationVideoAttachmentDto[];
   /** Imported-output relationships created or updated by this review batch. */
   linkedOutputs: ImportedCreationOutputDto[];
   /** Album the materials were filed into, echoed back for post-import feedback. */
@@ -3674,6 +3718,7 @@ export interface GenerationInput {
   title: string;
   titleLocale?: Locale;
   manualPrompt: string;
+  document?: BlockDocument;
   promptNodes?: CreatorPromptNodeInput[];
   prompt: string;
   resolvedPrompt?: ResolvedPromptComposition;
@@ -3697,6 +3742,7 @@ export interface PromptVersionCreateInput {
   title: string;
   titleLocale: Locale;
   manualPrompt: string;
+  document?: BlockDocument;
   promptNodes?: CreatorPromptNodeInput[];
   prompt: string;
   changeSummary: string;
@@ -3717,6 +3763,7 @@ export interface CreationDraftCommitInput {
   imageBreakdownId?: string | null;
   title: string;
   manualPrompt: string;
+  document?: BlockDocument;
   promptNodes?: CreatorPromptNodeInput[];
   prompt: string;
   resolvedPrompt?: ResolvedPromptComposition;
@@ -4132,7 +4179,16 @@ export interface AnnotationStatusInput {
 
 export type NavigationCommand = 'back' | 'forward';
 
-export interface DesktopApi {
+export interface DesktopApi
+  extends
+    ContentImageImportsApi,
+    CreatorInputRecoveryApi,
+    SocialPostRecoveryApi,
+    DerivedVisualOperationsApi,
+    GifMakingApi {
+  contentLibrary: import('@/shared/contracts/content-library').ContentLibraryApi;
+  maintenanceGuide: MaintenanceGuideApi;
+  onArticleEditorDrain(listener: (draining: boolean) => Promise<boolean>): () => void;
   rendererDiagnosticRecord(input: RendererDiagnosticInput): void;
   readonly appPlatform: DesktopPlatform;
   /** Up to 24 already-cached local-space previews; cache misses resolve to an empty list. */
@@ -4158,6 +4214,7 @@ export interface DesktopApi {
   appSupportOpen(destination: AppSupportDestination): Promise<void>;
   onAppWindowStateChanged(callback: (state: AppWindowStateDto) => void): () => void;
   appRequestQuit(): Promise<void>;
+  appShellSetLanguage(language: import('@/shared/contracts/tray-menu').AppShellLanguage): Promise<void>;
   appUpdateGetState(): Promise<AppUpdateStateDto>;
   appUpdateCheck(): Promise<AppUpdateStateDto>;
   appUpdateDownload(): Promise<AppUpdateStateDto>;
@@ -4194,6 +4251,9 @@ export interface DesktopApi {
   codexHistorySearch(input: CodexHistorySearchInput): Promise<CodexHistorySearchPage>;
   codexHistorySearchFilterOptions(input: CodexHistoryFilterOptionsInput): Promise<CodexHistoryFilterOptions>;
   codexHistorySearchRefresh(input: CodexHistoryRefreshInput): Promise<CodexHistoryIndexState>;
+  codexHistoryThreadUsageCancel(input: CodexHistoryThreadUsageInput): Promise<void>;
+  /** Returns null when the usage request is cancelled. */
+  codexHistoryThreadUsage(input: CodexHistoryThreadUsageInput): Promise<CodexHistoryThreadUsage | null>;
   codexHistoryThreadMessages(input: CodexHistoryThreadMessagesInput): Promise<CodexHistoryThreadMessagesPage>;
   onCodexHistorySearchChanged(callback: () => void): () => void;
   codexVisualizationsList(input: CodexVisualizationListInput): Promise<CodexVisualizationSnapshotDto>;
@@ -4293,7 +4353,10 @@ export interface DesktopApi {
   creatorReferencesImport(input: CreatorImageImportInput): Promise<AssetDto[]>;
   creatorOutputsImport(input: CreatorStagedImageImportInput): Promise<CreatorOutputsImportResult>;
   creatorNewExternalCreationImport(input: NewExternalCreationImportInput): Promise<NewExternalCreationImportResult>;
-  creatorOutputsStage(items: CreatorImageImportItemInput[]): Promise<CreatorImageStagePreviewRow[]>;
+  creatorOutputsStage(
+    items: CreatorImageImportItemInput[],
+    seriesId?: string | null,
+  ): Promise<CreatorImageStagePreviewRow[]>;
   creatorOutputsChoose(input: CreatorImageChooseInput): Promise<CreatorImageStagePreviewRow[] | null>;
   creatorOutputsDiscard(stageIds: string[]): Promise<void>;
   creatorOutputUpdate(input: ImportedCreationOutputUpdateInput): Promise<ImportedCreationOutputDto>;
@@ -4310,6 +4373,7 @@ export interface DesktopApi {
   creationItemCreateWithForm(input: CreationItemCreateWithFormInput): Promise<CreationItemCreateWithFormResult>;
   creationFormAddOrGet(input: CreationFormAddOrGetInput): Promise<CreationFormAddOrGetResult>;
   creationItemMove(input: CreationItemMoveInput): Promise<CreationItemMoveResult>;
+  creationOutlineCommand(input: CreationOutlineCommand): Promise<CreationOutlineResult>;
   creationItemSetPinned(input: CreationItemSetPinnedInput): Promise<CreationItemSetPinnedResult>;
   creationItemSetPrimary(input: CreationItemSetPrimaryInput): Promise<CreationItemSetPrimaryResult>;
   evaluationSuitesList(): Promise<EvaluationSuiteDto[]>;
@@ -4324,13 +4388,13 @@ export interface DesktopApi {
     input: ImageBreakdownImageFormCreateInput,
   ): Promise<ImageBreakdownImageFormCreateResult>;
   derivedVisualWorkspaceOpen(input: DerivedVisualWorkspaceOpenInput): Promise<DerivedVisualWorkspaceOpenResult>;
-  derivedVisualAdopt(input: DerivedVisualAdoptInput): Promise<DerivedVisualAdoptResult>;
   creationInputStashesList(scope: CreatorAgentScope): Promise<CreationInputStashDto[]>;
   creationInputStashCreate(input: CreationInputStashCreateInput): Promise<CreationInputStashDto>;
   inspirationStashSave(input: InspirationStashSaveInput): Promise<InspirationStashDto>;
   inspirationStashMove(input: InspirationStashMoveInput): Promise<InspirationStashDto>;
   inspirationStashSetArchived(input: InspirationStashSetArchivedInput): Promise<InspirationStashDto>;
   socialPostSave(input: SocialPostSaveInput): Promise<SocialPostDto>;
+  socialPostRevisionSave(input: SocialPostRevisionSaveInput, spaceId?: string): Promise<SocialPostRevisionSaveResult>;
   socialPostFormAdd(input: SocialPostFormAddInput): Promise<SocialPostDto>;
   socialPostFormCreate(input: SocialPostFormCreateInput): Promise<SocialPostDto>;
   socialPostMove(input: SocialPostMoveInput): Promise<SocialPostDto>;
@@ -4344,6 +4408,7 @@ export interface DesktopApi {
   browserCompanionHistory(): Promise<BrowserCompanionHistoryItem[]>;
   browserCompanionDelete(input: BrowserCompanionDeleteInput): Promise<BrowserCompanionDeleteResult>;
   articleSave(input: ArticleSaveInput): Promise<ArticleDto>;
+  articleOpen(input: ArticleOpenInput): Promise<ArticleOpenResult>;
   articleRevisionHistory(input: ArticleRevisionHistoryInput): Promise<ArticleRevisionHistoryResult>;
   articleRevisionGet(input: ArticleRevisionGetInput): Promise<ArticleRevisionDto>;
   articleRevisionSave(input: ArticleRevisionSaveInput): Promise<ArticleRevisionSaveResult>;
@@ -4509,7 +4574,7 @@ export interface DesktopApi {
   onAssetFilesDragFinished(callback: (result: AssetFileDragResult) => void): () => void;
   assetFileRevealTargets(assetId: string, context?: AssetFileRevealTargetContext): Promise<AssetFileRevealTargetDto[]>;
   assetFileReveal(assetId: string, context?: AssetFileRevealContext): Promise<void>;
-  assetFileOpen(assetId: string): Promise<void>;
+  assetFileOpen(assetId: string, context?: AssetFileRevealContext): Promise<void>;
   assetDelete(assetId: string): Promise<void>;
   favoriteTextsList(): Promise<FavoriteTextMaterialDto[]>;
   favoriteAdd(target: MaterialSelectionTargetInput): Promise<FavoriteAddResult>;

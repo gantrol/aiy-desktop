@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { naturalWatermarkProfileIdSchema } from '@/shared/contracts/natural-watermark';
+import { XIAOHONGSHU_STAGE_ERROR_CODES } from '@/shared/xiaohongshu-publishing';
 
 const idSchema = z.string().min(1).max(200);
 const handoffIdSchema = z.string().uuid();
@@ -10,10 +11,16 @@ const chromeProfileDirectorySchema = z
   .max(100)
   .refine((value) => value !== '.' && value !== '..' && !/[\\/\u0000-\u001f]/.test(value));
 
-export const browserCompanionTargetSchema = z.enum(['weibo', 'wechat', 'chatgpt']);
+export const browserCompanionTargetSchema = z.enum(['weibo', 'wechat', 'chatgpt', 'x', 'xiaohongshu']);
 export const browserCompanionBrowserIdSchema = z.enum(['chrome', 'edge']);
 
 export const browserCompanionSourceSchema = z.discriminatedUnion('kind', [
+  z
+    .object({
+      kind: z.literal('article'),
+      id: idSchema,
+    })
+    .strict(),
   z
     .object({
       kind: z.literal('social-post'),
@@ -35,7 +42,8 @@ export const browserCompanionSourceSchema = z.discriminatedUnion('kind', [
     .strict(),
 ]);
 
-export const browserCompanionContentKindSchema = z.enum(['social-post-body', 'prompt']);
+export const browserCompanionContentKindSchema = z.enum(['social-post-body', 'prompt', 'article-body']);
+export const browserCompanionArticleHtmlSchema = z.string().min(1).max(256_000);
 export const browserCompanionHandoffStateSchema = z.enum(['ready', 'claimed', 'delivered']);
 export const browserCompanionWatermarkSelectionSchema = z.discriminatedUnion('kind', [
   z.object({ kind: z.literal('NONE') }).strict(),
@@ -55,10 +63,29 @@ export const browserCompanionStageInputSchema = z
     contentKind: browserCompanionContentKindSchema,
     title: z.string().trim().min(1).max(200).optional(),
     text: z.string().trim().min(1).max(10_000),
+    articleHtml: browserCompanionArticleHtmlSchema.optional(),
+    articleCoverMediaIndex: z.number().int().min(0).max(19).optional(),
     mediaAssetIds: z.array(idSchema).max(20).optional(),
     watermark: browserCompanionWatermarkSelectionSchema.optional(),
   })
-  .strict();
+  .strict()
+  .refine((input) => input.target !== 'x' || (input.mediaAssetIds?.length ?? 0) <= 4, { path: ['mediaAssetIds'] })
+  .refine((input) => input.target !== 'xiaohongshu' || input.contentKind === 'social-post-body', {
+    path: ['contentKind'],
+  })
+  .refine(
+    (input) =>
+      input.articleCoverMediaIndex === undefined ||
+      (input.contentKind === 'article-body' && input.articleCoverMediaIndex < (input.mediaAssetIds?.length ?? 0)),
+    { path: ['articleCoverMediaIndex'] },
+  )
+  .refine(
+    (input) =>
+      input.contentKind === 'article-body'
+        ? input.target === 'wechat' && input.source.kind === 'article' && Boolean(input.title && input.articleHtml)
+        : input.articleHtml === undefined,
+    { path: ['articleHtml'] },
+  );
 
 export const browserCompanionHistoryItemSchema = z
   .object({
@@ -95,6 +122,17 @@ export const browserCompanionStageResultSchema = z
       .nullable(),
   })
   .strict();
+
+export const browserCompanionStageErrorCodeSchema = z.enum([
+  'X_MEDIA_UNSUPPORTED',
+  'X_MEDIA_TOO_LARGE',
+  ...XIAOHONGSHU_STAGE_ERROR_CODES,
+]);
+
+export const browserCompanionStageInvocationSchema = z.union([
+  browserCompanionStageResultSchema,
+  z.object({ errorCode: browserCompanionStageErrorCodeSchema }).strict(),
+]);
 
 export const browserCompanionOpenInputSchema = z
   .object({
@@ -135,6 +173,8 @@ const browserCompanionRoutesSchema = z
     chatgpt: browserCompanionDestinationSchema.nullable(),
     wechat: browserCompanionDestinationSchema.nullable(),
     weibo: browserCompanionDestinationSchema.nullable(),
+    x: browserCompanionDestinationSchema.nullable(),
+    xiaohongshu: browserCompanionDestinationSchema.nullable(),
   })
   .strict();
 

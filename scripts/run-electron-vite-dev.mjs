@@ -3,6 +3,7 @@ import { createServer } from 'node:net';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { updateDevDeepLinkProtocol } from './dev-deep-link-protocol.mjs';
+import { resolveDevelopmentElectronExecutable } from './windows-development-executable.mjs';
 
 const applicationRoot = fileURLToPath(new URL('..', import.meta.url));
 const electronVite = path.join(applicationRoot, 'node_modules', 'electron-vite', 'bin', 'electron-vite.js');
@@ -11,6 +12,7 @@ const manageDeepLink = process.argv.slice(2).includes('--deep-link');
 let deepLinkRegistered = false;
 let electronProcess = null;
 let cleanupStarted = false;
+let electronExecutable;
 
 function canListen(port) {
   return new Promise((resolve) => {
@@ -31,7 +33,7 @@ async function findRendererPort(startPort = 5173, attempts = 200) {
 function unregisterDeepLink() {
   if (!deepLinkRegistered) return 0;
   deepLinkRegistered = false;
-  return updateDevDeepLinkProtocol('unregister');
+  return updateDevDeepLinkProtocol('unregister', electronExecutable);
 }
 
 function stopChild(child) {
@@ -46,12 +48,6 @@ function cleanUp() {
   return unregisterDeepLink();
 }
 
-if (manageDeepLink) {
-  const registrationExitCode = updateDevDeepLinkProtocol('register');
-  if (registrationExitCode !== 0) process.exit(registrationExitCode);
-  deepLinkRegistered = true;
-}
-
 process.on('exit', cleanUp);
 process.on('SIGINT', () => {
   cleanUp();
@@ -64,12 +60,22 @@ process.on('SIGTERM', () => {
 
 let rendererPort;
 try {
-  rendererPort = await findRendererPort();
+  [rendererPort, electronExecutable] = await Promise.all([
+    findRendererPort(),
+    resolveDevelopmentElectronExecutable(applicationRoot),
+  ]);
   console.info(`[dev] Renderer port: ${rendererPort}`);
+  console.info(`[dev] Electron executable: ${path.relative(applicationRoot, electronExecutable)}`);
 } catch (reason) {
-  console.error('[dev] Failed to select a renderer port.', reason);
+  console.error('[dev] Failed to prepare the development runtime.', reason);
   const cleanupExitCode = cleanUp();
   process.exit(cleanupExitCode || 1);
+}
+
+if (manageDeepLink) {
+  const registrationExitCode = updateDevDeepLinkProtocol('register', electronExecutable);
+  if (registrationExitCode !== 0) process.exit(registrationExitCode);
+  deepLinkRegistered = true;
 }
 
 if (process.platform === 'linux') {
@@ -86,6 +92,7 @@ electronProcess = spawn(process.execPath, arguments_, {
   env: {
     ...process.env,
     AIY_RENDERER_DEV_PORT: String(rendererPort),
+    ELECTRON_EXEC_PATH: electronExecutable,
   },
   stdio: 'inherit',
 });

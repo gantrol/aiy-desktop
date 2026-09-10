@@ -575,6 +575,60 @@ export function articleMarkdownImageReferences(markdown: string) {
   return imageReferences(resolveMarkdownReferences(parseMarkdown(markdown)));
 }
 
+/** Keep occurrences separate: a repeated media path is not a unique editable placement. */
+export function articleMarkdownImageOccurrences(markdown: string) {
+  const paths: string[] = [];
+  visitMarkdown(resolveMarkdownReferences(parseMarkdown(markdown)), (node) => {
+    if (node.type === 'image' && node.url) paths.push(normalizeArticleWechatMediaPath(node.url));
+  });
+  return paths;
+}
+
+export function articleIllustrationBlocks(markdown: string) {
+  return (parseMarkdown(markdown).children ?? []).flatMap((node) => {
+    const start = node.position?.start.offset;
+    const end = node.position?.end.offset;
+    return ['paragraph', 'heading', 'blockquote', 'list'].includes(node.type) &&
+      start !== undefined &&
+      end !== undefined
+      ? [{ start, end }]
+      : [];
+  });
+}
+
+export function articleIllustrationInsertionOffset(
+  markdown: string,
+  selectedText: string,
+  blocks?: readonly { start: number; end: number }[],
+) {
+  if (!selectedText) return null;
+  const start = markdown.indexOf(selectedText);
+  if (start < 0 || start !== markdown.lastIndexOf(selectedText)) return null;
+  const end = start + selectedText.length;
+  return (
+    (blocks ?? articleIllustrationBlocks(markdown)).find((block) => block.start <= start && block.end >= end)?.end ??
+    null
+  );
+}
+
+export function replaceSingleArticleMarkdownImage(markdown: string, previousPath: string, nextPath: string) {
+  const matches: MarkdownNode[] = [];
+  visitMarkdown(resolveMarkdownReferences(parseMarkdown(markdown)), (node) => {
+    if (node.type === 'image' && node.url && normalizeArticleWechatMediaPath(node.url) === previousPath) {
+      matches.push(node);
+    }
+  });
+  const node = matches.length === 1 ? matches[0] : undefined;
+  const start = node?.position?.start.offset;
+  const end = node?.position?.end.offset;
+  if (!node || start === undefined || end === undefined) {
+    throw new Error('The illustration position is missing or ambiguous; select its position in the article');
+  }
+  const alt = (node.alt ?? '').replace(/[\\[\]]/gu, '\\$&');
+  const title = node.title ? ` "${node.title.replace(/[\\"]/gu, '\\$&')}"` : '';
+  return `${markdown.slice(0, start)}![${alt}](${nextPath}${title})${markdown.slice(end)}`;
+}
+
 export function removeUnboundArticleMarkdownImages(markdown: string, boundMediaPaths: readonly string[]) {
   const boundPaths = new Set(boundMediaPaths.map(normalizeArticleWechatMediaPath));
   const removals: Array<{ start: number; end: number }> = [];

@@ -1,4 +1,5 @@
 import { CaptionsIcon, Clock3Icon, ImageOffIcon } from 'lucide-react';
+import { trimTrailingCharacters } from '@/shared/string-boundaries';
 import { Children, isValidElement, useMemo, type ReactNode } from 'react';
 import type { Components } from 'react-markdown';
 import type {
@@ -14,6 +15,7 @@ import { CodexThreadAnchor } from '@/renderer/components/content/CodexThreadAnch
 import { HoverCard, HoverCardContent, HoverCardTrigger } from '@/renderer/components/ui/hover-card';
 import { ImageAmbientBackdrop } from '@/renderer/components/media/AmbientImage';
 import { AssetImageCopyButton } from '@/renderer/components/media/AssetImageCopyButton';
+import { AssetFileContextMenu } from '@/renderer/components/media/AssetFileContextMenu';
 import { VideoDocumentInlineVideo } from '@/renderer/features/video-documents/VideoDocumentInlineVideo';
 
 type MarkdownContent = Extract<VideoDocumentRevisionContent, { format: 'MARKDOWN' }>;
@@ -84,7 +86,7 @@ function sourceTimestampMs(href: string | undefined, sourceUrl: string | null) {
     const target = new URL(href);
     const source = new URL(sourceUrl);
     if (target.protocol !== 'https:' || target.host !== source.host) return null;
-    if (target.pathname.replace(/\/+$/, '') !== source.pathname.replace(/\/+$/, '')) return null;
+    if (trimTrailingCharacters(target.pathname, '/') !== trimTrailingCharacters(source.pathname, '/')) return null;
     const rawSeconds = target.searchParams.get('t');
     if (rawSeconds === null) return null;
     const seconds = Number(rawSeconds);
@@ -166,7 +168,11 @@ function headingWithoutSourceTime(
   });
   while (typeof result.at(-1) === 'string' && /^[\s–—-]*$/.test(String(result.at(-1)))) result.pop();
   const last = result.at(-1);
-  if (typeof last === 'string') result[result.length - 1] = last.replace(/[\s–—-]+$/, '');
+  if (typeof last === 'string') {
+    let end = last.length;
+    while (end > 0 && /[\s–—-]/u.test(last[end - 1]!)) end -= 1;
+    result[result.length - 1] = last.slice(0, end);
+  }
   return result;
 }
 
@@ -355,26 +361,28 @@ function createComponents({
         </span>
       );
       return (
-        <figure className="group/article-image relative overflow-hidden rounded-md bg-surface">
-          {binding.timestampMs === null ? (
-            image
-          ) : (
-            <button
-              type="button"
-              className="block w-full outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
-              aria-label={labels.openAt(formatTimestamp(binding.timestampMs))}
-              onClick={() => onSeek(binding.timestampMs!)}
-            >
-              {image}
-            </button>
-          )}
-          <AssetImageCopyButton assetId={media.assetId} />
-          {binding.timestampMs !== null && (
-            <figcaption className="flex items-center px-3 py-2 text-xs text-muted-foreground">
-              <MediaTime binding={binding} />
-            </figcaption>
-          )}
-        </figure>
+        <AssetFileContextMenu assetId={media.assetId}>
+          <figure className="group/article-image relative overflow-hidden rounded-md bg-surface">
+            {binding.timestampMs === null ? (
+              image
+            ) : (
+              <button
+                type="button"
+                className="block w-full outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
+                aria-label={labels.openAt(formatTimestamp(binding.timestampMs))}
+                onClick={() => onSeek(binding.timestampMs!)}
+              >
+                {image}
+              </button>
+            )}
+            <AssetImageCopyButton assetId={media.assetId} />
+            {binding.timestampMs !== null && (
+              <figcaption className="flex items-center px-3 py-2 text-xs text-muted-foreground">
+                <MediaTime binding={binding} />
+              </figcaption>
+            )}
+          </figure>
+        </AssetFileContextMenu>
       );
     },
     a: ({ href, children }) => {

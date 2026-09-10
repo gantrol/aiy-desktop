@@ -19,7 +19,6 @@ import {
   formatVideoDocumentDuration,
   formatVideoDocumentFileSize,
   useVideoDocumentLocalFile,
-  videoDocumentFileStem,
 } from '@/renderer/features/video-documents/useVideoDocumentLocalFile';
 import { useI18n } from '@/renderer/i18n/useI18n';
 import { ImageAmbientBackdrop } from '@/renderer/components/media/AmbientImage';
@@ -70,7 +69,7 @@ export function VideoDocumentStartDialog({
 
   useEffect(() => {
     if (!open || !file) return undefined;
-    setTitle(videoDocumentFileStem(file.name));
+    setTitle('');
     setAlbumId(defaultAlbumId);
     setGenerateArticle(false);
     setSubmitError('');
@@ -80,7 +79,7 @@ export function VideoDocumentStartDialog({
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const nextTitle = title.trim();
-    if (!file || !mediaInfo || !nextTitle || reading || submitting) return;
+    if (!file || !mediaInfo || reading || submitting) return;
     setSubmitting(true);
     setSubmitError('');
     try {
@@ -184,7 +183,7 @@ export function VideoDocumentStartDialog({
             <Button type="button" variant="outline" disabled={submitting} onClick={() => onOpenChange(false)}>
               {labels.cancel}
             </Button>
-            <Button type="submit" disabled={reading || submitting || !mediaInfo || !title.trim()}>
+            <Button type="submit" disabled={reading || submitting || !mediaInfo}>
               {submitting && <LoaderCircleIcon className="size-4 animate-spin" />}
               {submitting ? labels.creating : labels.create}
             </Button>

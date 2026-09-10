@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type DragEvent as ReactDragEvent } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type DragEvent as ReactDragEvent } from 'react';
 import { CircleIcon, Columns2Icon, Maximize2Icon, Minimize2Icon, PlusIcon } from 'lucide-react';
 import type {
   ImageGenerationRouteDto,
@@ -44,10 +44,20 @@ import {
   importedPromptPlacement,
   normalizedComparisonPrompt,
 } from '@/renderer/components/creator/generationComparisonUtils';
-import { PairComparisonView, type PairComparisonItem } from '@/renderer/components/creator/PairComparisonView';
+import {
+  PairComparisonView,
+  type PairComparisonItem,
+  type PairComparisonMode,
+} from '@/renderer/components/creator/PairComparisonView';
 import { startImageAssetDrag } from '@/renderer/components/albums/albumDrag';
 
 interface Props {
+  presentation?: {
+    assetIds: readonly [string, string];
+    focusAssetId: string;
+    view: 'matrix' | 'pair';
+    mode: PairComparisonMode;
+  };
   series: PromptSeriesDto;
   locale: Locale;
   terms: TermListItem[];
@@ -167,7 +177,30 @@ function versionInstruction(version: PromptVersionDto) {
     : (snapshot.commonInput.flatPrompt ?? '');
 }
 
+function comparisonPairState(
+  presentation: Props['presentation'],
+  items: PairComparisonItem[],
+  localIds: Record<PairSlot, string | null>,
+  localOpen: boolean,
+) {
+  const pairRunIds = presentation
+    ? {
+        A: items.find((item) => item.assetId === presentation.assetIds[0])?.id ?? null,
+        B: items.find((item) => item.assetId === presentation.assetIds[1])?.id ?? null,
+      }
+    : localIds;
+  const pairA = items.find((item) => item.id === pairRunIds.A);
+  const pairB = items.find((item) => item.id === pairRunIds.B);
+  return {
+    pairRunIds,
+    pairA,
+    pairB,
+    pairOpen: presentation ? presentation.view === 'pair' && Boolean(pairA && pairB) : localOpen,
+  };
+}
+
 export function GenerationComparison({
+  presentation,
   series,
   locale,
   terms,
@@ -472,8 +505,8 @@ export function GenerationComparison({
   const [busyCells, setBusyCells] = useState<Set<string>>(() => new Set());
   const [pairSelecting, setPairSelecting] = useState(false);
   const [activePairSlot, setActivePairSlot] = useState<PairSlot>('A');
-  const [pairRunIds, setPairRunIds] = useState<Record<PairSlot, string | null>>({ A: null, B: null });
-  const [pairOpen, setPairOpen] = useState(false);
+  const [localPairRunIds, setPairRunIds] = useState<Record<PairSlot, string | null>>({ A: null, B: null });
+  const [localPairOpen, setPairOpen] = useState(false);
   const [focusedCell, setFocusedCell] = useState<VirtualGridCell | null>(null);
 
   const runsByRowAndModel = useMemo(
@@ -505,6 +538,7 @@ export function GenerationComparison({
     );
   }, [rows, series.id, tasks]);
   const runsFor = (rowId: string, modelKey: string) => runsByRowAndModel.get(rowId)?.get(modelKey) ?? [];
+  const activeTasksFor = (rowId: string, modelKey: string) => activeTasksByRowAndModel.get(rowId)?.get(modelKey) ?? [];
 
   const pairItems = useMemo(
     () =>
@@ -531,9 +565,14 @@ export function GenerationComparison({
       ),
     [modelColumns, rows, runsByRowAndModel, messages.creator.generationTargets.internalLibraryRandom],
   );
-  const pairItemByRunId = useMemo(() => new Map(pairItems.map((item) => [item.id, item])), [pairItems]);
-  const pairA = pairRunIds.A ? pairItemByRunId.get(pairRunIds.A) : undefined;
-  const pairB = pairRunIds.B ? pairItemByRunId.get(pairRunIds.B) : undefined;
+  const { pairRunIds, pairA, pairB, pairOpen } = comparisonPairState(
+    presentation,
+    pairItems,
+    localPairRunIds,
+    localPairOpen,
+  );
+  const controlledPresentation = presentation !== undefined;
+  const focusAssetId = presentation?.focusAssetId;
 
   useEffect(() => {
     if (!modelColumns.some((model) => model.key === anchorModelKey)) setAnchorModelKey(modelColumns[0]?.key ?? '');
@@ -546,6 +585,7 @@ export function GenerationComparison({
   }, [onFullWindowChange, pairA, pairB, pairOpen]);
 
   useEffect(() => {
+    if (controlledPresentation) return;
     onFullWindowChange(false);
     setPairSelecting(false);
     setActivePairSlot('A');
@@ -556,9 +596,10 @@ export function GenerationComparison({
     setFocusedCell(null);
     pairMatrixAnchor.current = null;
     expandedBeforePair.current = false;
-  }, [series.id, onFullWindowChange]);
+  }, [series.id, onFullWindowChange, controlledPresentation]);
 
   useEffect(() => {
+    if (controlledPresentation) return undefined;
     if (!fullWindow && !pairOpen && !pairSelecting) return undefined;
     function onKeyDown(event: KeyboardEvent) {
       if (event.key !== 'Escape' || event.defaultPrevented) return;
@@ -577,7 +618,7 @@ export function GenerationComparison({
     }
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
-  }, [fullWindow, onFullWindowChange, pairOpen, pairSelecting]);
+  }, [fullWindow, onFullWindowChange, pairOpen, pairSelecting, controlledPresentation]);
 
   function changeFullWindow(open: boolean) {
     const anchor = matrixScrollRef.current?.captureAnchor();
@@ -740,7 +781,7 @@ export function GenerationComparison({
   function comparisonCellLabel(row: ComparisonRow, column: ComparisonColumn) {
     const modelKey = column.kind === 'MODEL' ? column.model.key : anchorModelKey;
     const runs = runsFor(row.id, modelKey);
-    const active = activeTasksByRowAndModel.get(row.id)?.get(modelKey) ?? [];
+    const active = activeTasksFor(row.id, modelKey);
     const parts = [row.label, column.kind === 'MODEL' ? modelLabel(column.model) : `R${column.repeatIndex + 1}`];
 
     if (column.kind === 'MODEL') {
@@ -772,12 +813,189 @@ export function GenerationComparison({
     return parts.join(' · ');
   }
 
+  useLayoutEffect(() => {
+    const assetId = focusAssetId;
+    if (!assetId || pairOpen) return;
+    const row = rows.find((candidate) => candidate.runs.some((run) => run.asset?.id === assetId));
+    const run = row?.runs.find((candidate) => candidate.asset?.id === assetId);
+    if (!row || !run) return;
+    const columnKey = `model:${run.modelKey}`;
+    if (!matrixColumns.some((column) => column.key === columnKey)) return;
+    const cell = { rowKey: row.id, columnKey };
+    setFocusedCell(cell);
+    const frame = requestAnimationFrame(() => matrixScrollRef.current?.scrollToCell(cell, 'center'));
+    return () => cancelAnimationFrame(frame);
+  }, [focusAssetId, pairOpen, rows, matrixColumns]);
+
+  function renderModelCell(row: ComparisonRow, model: ImageGenerationRouteDto) {
+    const runs = runsFor(row.id, model.key);
+    const successes = runs.filter((run) => run.asset);
+    const active = activeTasksFor(row.id, model.key);
+    const cellKey = `${row.id}:${model.key}`;
+    const busy = busyCells.has(cellKey);
+    const generatable = Boolean((row.version || row.fullPrompt.trim()) && model.capabilities.includes('GENERATE'));
+    const pending = active.length > 0 || runs.some((run) => ['QUEUED', 'RUNNING'].includes(run.status));
+    const failure = [...runs].reverse().find((run) => ['FAILED', 'INTERRUPTED'].includes(run.status));
+    const activeLabel = active[0] ? generationPhaseLabel(active[0], messages.app.generationStatus) : l.generating;
+    return (
+      <div className="flex size-full min-h-0 flex-col">
+        {successes.length > 0 && (
+          <ComparisonResultStack
+            activeAssetId={focusAssetId}
+            runs={runs}
+            seriesId={series.id}
+            pairSelecting={pairSelecting}
+            contextLabel={`${row.label} · ${modelLabel(model)}`}
+            labels={{ images: l.images, viewAllImages: l.viewAllImages }}
+            pairSlotFor={pairSlotFor}
+            onSelect={onSelectAsset}
+            onPairSelect={choosePairResult}
+            notify={notify}
+          />
+        )}
+        {successes.length === 0 &&
+          (pending ? (
+            <div className="flex min-h-48 flex-1 items-center justify-center">
+              <StatusDot variant="pending" label={activeLabel} labelVisibility="visible" />
+            </div>
+          ) : failure ? (
+            <GenerationFailureState
+              run={failure}
+              retryLabel={
+                failure.status === 'INTERRUPTED'
+                  ? messages.app.generationStatus.regenerate
+                  : messages.app.generationStatus.retry
+              }
+              editLabel={messages.app.generationStatus.reEdit}
+              disabled={busy || model.state !== 'READY'}
+              onEdit={() => onReEdit(failure.id)}
+              onRetry={() => void retry(row, failure)}
+            />
+          ) : generatable ? (
+            <Button
+              type="button"
+              variant="ghost"
+              className="min-h-48 flex-1 rounded-none"
+              disabled={busy || model.state !== 'READY'}
+              aria-busy={busy}
+              onClick={() => void generate(row, model.key)}
+            >
+              {busy ? <CircleIcon className="size-3.5 fill-current" /> : <PlusIcon className="size-4" />}
+              {busy ? l.generating : l.generate}
+            </Button>
+          ) : (
+            <div className="flex min-h-48 flex-1 items-center justify-center text-muted-foreground">—</div>
+          ))}
+        <div className="flex min-h-8 items-center gap-2 border-t px-2 py-1.5">
+          {active.length > 0 && <StatusDot variant="pending" label={activeLabel} labelVisibility="visible" />}
+          <span className="min-w-0 flex-1 text-muted-foreground">
+            <span className="font-mono tabular-nums">{runs.length}</span> {l.runs} ·{' '}
+            <span className="font-mono tabular-nums">{successes.length}</span> {l.images}
+          </span>
+          {generatable && runs.length > 0 && (
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              className="h-7 px-2"
+              disabled={busy || model.state !== 'READY'}
+              aria-busy={busy}
+              onClick={() => void generate(row, model.key)}
+            >
+              {busy ? <CircleIcon className="size-3 fill-current" /> : <PlusIcon className="size-3" />}
+              {busy ? l.generating : l.regenerate}
+            </Button>
+          )}
+        </div>
+      </div>
+    );
+  }
+
+  function renderRepeatCell(row: ComparisonRow, index: number) {
+    const runs = runsFor(row.id, anchorModelKey);
+    const run = runs[index];
+    const hasPrompt = Boolean(row.version || row.fullPrompt.trim());
+    const isNext = hasPrompt && index === runs.length;
+    const model = anchorModel;
+    const busy = busyCells.has(`${row.id}:${anchorModelKey}`);
+    const generatable = hasPrompt && anchorCanGenerate;
+    return (
+      <div className="flex size-full min-h-0 flex-col">
+        {run?.asset && (
+          <ComparisonResultStack
+            activeAssetId={focusAssetId}
+            runs={[run]}
+            seriesId={series.id}
+            repeatOrdinalOffset={index}
+            pairSelecting={pairSelecting}
+            contextLabel={`${row.label} · ${model ? modelLabel(model) : ''}`}
+            labels={{ images: l.images, viewAllImages: l.viewAllImages }}
+            pairSlotFor={pairSlotFor}
+            onSelect={onSelectAsset}
+            onPairSelect={choosePairResult}
+            notify={notify}
+          />
+        )}
+        {run && ['FAILED', 'INTERRUPTED'].includes(run.status) && (
+          <GenerationFailureState
+            run={run}
+            retryLabel={
+              run.status === 'INTERRUPTED'
+                ? messages.app.generationStatus.regenerate
+                : messages.app.generationStatus.retry
+            }
+            editLabel={messages.app.generationStatus.reEdit}
+            disabled={busy || model?.state !== 'READY'}
+            onEdit={() => onReEdit(run.id)}
+            onRetry={() => void retry(row, run)}
+          />
+        )}
+        {run && !run.asset && ['QUEUED', 'RUNNING'].includes(run.status) && (
+          <div className="flex min-h-48 flex-1 items-center justify-center">
+            <StatusDot variant="pending" label={l.generating} labelVisibility="visible" />
+          </div>
+        )}
+        {run && !run.asset && !['FAILED', 'INTERRUPTED', 'QUEUED', 'RUNNING'].includes(run.status) && (
+          <div className="flex min-h-48 flex-1 items-center justify-center text-muted-foreground">—</div>
+        )}
+        {!run && isNext && generatable && (
+          <Button
+            type="button"
+            variant="ghost"
+            className="min-h-56 flex-1 rounded-none"
+            disabled={busy || model?.state !== 'READY'}
+            aria-busy={busy}
+            onClick={() => void generate(row, anchorModelKey)}
+          >
+            {busy ? <CircleIcon className="size-3.5 fill-current" /> : <PlusIcon className="size-4" />}
+            {busy ? l.generating : l.generate}
+          </Button>
+        )}
+        {!run && (!isNext || !generatable) && (
+          <div className="flex min-h-56 flex-1 items-center justify-center text-muted-foreground">—</div>
+        )}
+        {run && (
+          <div className="flex min-h-8 items-center border-t px-2 py-1.5 text-muted-foreground">
+            {run.asset ? (
+              <>
+                <span className="font-mono tabular-nums">1</span>&nbsp;{l.images}
+              </>
+            ) : (
+              run.status
+            )}
+          </div>
+        )}
+      </div>
+    );
+  }
+
   return (
     <FullWindowComparison expanded={fullWindow}>
       {pairOpen && pairA && pairB && (
         <PairComparisonView
           a={pairA}
           b={pairB}
+          mode={presentation?.mode}
           labels={{
             sideBySide: l.sideBySide,
             swipe: l.swipe,
@@ -966,170 +1184,9 @@ export function GenerationComparison({
               }}
             />
           )}
-          renderCell={(row, column) => {
-            if (column.kind === 'MODEL') {
-              const model = column.model;
-              const runs = runsFor(row.id, model.key);
-              const successes = runs.filter((run) => run.asset);
-              const active = activeTasksByRowAndModel.get(row.id)?.get(model.key) ?? [];
-              const cellKey = `${row.id}:${model.key}`;
-              const busy = busyCells.has(cellKey);
-              const generatable = Boolean(
-                (row.version || row.fullPrompt.trim()) && model.capabilities.includes('GENERATE'),
-              );
-              const pending = active.length > 0 || runs.some((run) => ['QUEUED', 'RUNNING'].includes(run.status));
-              const failure = [...runs].reverse().find((run) => ['FAILED', 'INTERRUPTED'].includes(run.status));
-              const activeLabel = active[0]
-                ? generationPhaseLabel(active[0], messages.app.generationStatus)
-                : l.generating;
-              return (
-                <div className="flex size-full min-h-0 flex-col">
-                  {successes.length > 0 && (
-                    <ComparisonResultStack
-                      runs={runs}
-                      seriesId={series.id}
-                      pairSelecting={pairSelecting}
-                      contextLabel={`${row.label} · ${modelLabel(model)}`}
-                      labels={{ images: l.images, viewAllImages: l.viewAllImages }}
-                      pairSlotFor={pairSlotFor}
-                      onSelect={onSelectAsset}
-                      onPairSelect={choosePairResult}
-                      notify={notify}
-                    />
-                  )}
-                  {successes.length === 0 &&
-                    (pending ? (
-                      <div className="flex min-h-48 flex-1 items-center justify-center">
-                        <StatusDot variant="pending" label={activeLabel} labelVisibility="visible" />
-                      </div>
-                    ) : failure ? (
-                      <GenerationFailureState
-                        run={failure}
-                        retryLabel={
-                          failure.status === 'INTERRUPTED'
-                            ? messages.app.generationStatus.regenerate
-                            : messages.app.generationStatus.retry
-                        }
-                        editLabel={messages.app.generationStatus.reEdit}
-                        disabled={busy || model.state !== 'READY'}
-                        onEdit={() => onReEdit(failure.id)}
-                        onRetry={() => void retry(row, failure)}
-                      />
-                    ) : generatable ? (
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        className="min-h-48 flex-1 rounded-none"
-                        disabled={busy || model.state !== 'READY'}
-                        aria-busy={busy}
-                        onClick={() => void generate(row, model.key)}
-                      >
-                        {busy ? <CircleIcon className="size-3.5 fill-current" /> : <PlusIcon className="size-4" />}
-                        {busy ? l.generating : l.generate}
-                      </Button>
-                    ) : (
-                      <div className="flex min-h-48 flex-1 items-center justify-center text-muted-foreground">—</div>
-                    ))}
-                  <div className="flex min-h-8 items-center gap-2 border-t px-2 py-1.5">
-                    {active.length > 0 && <StatusDot variant="pending" label={activeLabel} labelVisibility="visible" />}
-                    <span className="min-w-0 flex-1 text-muted-foreground">
-                      <span className="font-mono tabular-nums">{runs.length}</span> {l.runs} ·{' '}
-                      <span className="font-mono tabular-nums">{successes.length}</span> {l.images}
-                    </span>
-                    {generatable && runs.length > 0 && (
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="sm"
-                        className="h-7 px-2"
-                        disabled={busy || model.state !== 'READY'}
-                        aria-busy={busy}
-                        onClick={() => void generate(row, model.key)}
-                      >
-                        {busy ? <CircleIcon className="size-3 fill-current" /> : <PlusIcon className="size-3" />}
-                        {busy ? l.generating : l.regenerate}
-                      </Button>
-                    )}
-                  </div>
-                </div>
-              );
-            }
-
-            const index = column.repeatIndex;
-            const runs = runsFor(row.id, anchorModelKey);
-            const run = runs[index];
-            const isNext = Boolean(row.version || row.fullPrompt.trim()) && index === runs.length;
-            const model = anchorModel;
-            const busy = busyCells.has(`${row.id}:${anchorModelKey}`);
-            const generatable = Boolean((row.version || row.fullPrompt.trim()) && anchorCanGenerate);
-            return (
-              <div className="flex size-full min-h-0 flex-col">
-                {run?.asset && (
-                  <ComparisonResultStack
-                    runs={[run]}
-                    seriesId={series.id}
-                    repeatOrdinalOffset={index}
-                    pairSelecting={pairSelecting}
-                    contextLabel={`${row.label} · ${model ? modelLabel(model) : ''}`}
-                    labels={{ images: l.images, viewAllImages: l.viewAllImages }}
-                    pairSlotFor={pairSlotFor}
-                    onSelect={onSelectAsset}
-                    onPairSelect={choosePairResult}
-                    notify={notify}
-                  />
-                )}
-                {run && ['FAILED', 'INTERRUPTED'].includes(run.status) && (
-                  <GenerationFailureState
-                    run={run}
-                    retryLabel={
-                      run.status === 'INTERRUPTED'
-                        ? messages.app.generationStatus.regenerate
-                        : messages.app.generationStatus.retry
-                    }
-                    editLabel={messages.app.generationStatus.reEdit}
-                    disabled={busy || model?.state !== 'READY'}
-                    onEdit={() => onReEdit(run.id)}
-                    onRetry={() => void retry(row, run)}
-                  />
-                )}
-                {run && !run.asset && ['QUEUED', 'RUNNING'].includes(run.status) && (
-                  <div className="flex min-h-48 flex-1 items-center justify-center">
-                    <StatusDot variant="pending" label={l.generating} labelVisibility="visible" />
-                  </div>
-                )}
-                {run && !run.asset && !['FAILED', 'INTERRUPTED', 'QUEUED', 'RUNNING'].includes(run.status) && (
-                  <div className="flex min-h-48 flex-1 items-center justify-center text-muted-foreground">—</div>
-                )}
-                {!run && isNext && generatable && (
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    className="min-h-56 flex-1 rounded-none"
-                    disabled={busy || model?.state !== 'READY'}
-                    aria-busy={busy}
-                    onClick={() => void generate(row, anchorModelKey)}
-                  >
-                    {busy ? <CircleIcon className="size-3.5 fill-current" /> : <PlusIcon className="size-4" />}
-                    {busy ? l.generating : l.generate}
-                  </Button>
-                )}
-                {!run && (!isNext || !generatable) && (
-                  <div className="flex min-h-56 flex-1 items-center justify-center text-muted-foreground">—</div>
-                )}
-                {run && (
-                  <div className="flex min-h-8 items-center border-t px-2 py-1.5 text-muted-foreground">
-                    {run.asset ? (
-                      <>
-                        <span className="font-mono tabular-nums">1</span>&nbsp;{l.images}
-                      </>
-                    ) : (
-                      run.status
-                    )}
-                  </div>
-                )}
-              </div>
-            );
-          }}
+          renderCell={(row, column) =>
+            column.kind === 'MODEL' ? renderModelCell(row, column.model) : renderRepeatCell(row, column.repeatIndex)
+          }
         />
       </div>
     </FullWindowComparison>

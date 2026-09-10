@@ -1,13 +1,3 @@
-import { EventEmitter } from 'node:events';
-import type {
-  GenerationChangedEvent,
-  GenerationInput,
-  GenerationTaskDto,
-  GenerationTaskPhase,
-  ImageGenerationConcurrencyDto,
-  ImageGenerationRouteDto,
-  PromptCommonInputDto,
-} from '@/shared/contracts';
 import { LibraryDatabase } from '@/main/database';
 import {
   type GenerationExecutionSignal,
@@ -18,9 +8,19 @@ import { GenerationAdmissionScheduler } from '@/main/generation/admission-schedu
 import { persistedGenerationErrorDetails } from '@/main/generation/error-details';
 import type { PendingGeneration, PendingGenerationLaunch } from '@/main/generation/task-state';
 import { buildImageEditPrompt } from '@/main/image-edit/image-edit-planner';
-import { snapshotImageGenerationRoute } from '@/shared/image-generation-route-identity';
-import { imageGenerationPromptProfileId } from '@/shared/image-generation-prompt-profile';
+import type {
+  GenerationChangedEvent,
+  GenerationInput,
+  GenerationTaskDto,
+  GenerationTaskPhase,
+  ImageGenerationConcurrencyDto,
+  ImageGenerationRouteDto,
+  PromptCommonInputDto,
+} from '@/shared/contracts';
 import { DEFAULT_IMAGE_GENERATION_MAX_CONCURRENT } from '@/shared/image-generation-concurrency';
+import { imageGenerationPromptProfileId } from '@/shared/image-generation-prompt-profile';
+import { snapshotImageGenerationRoute } from '@/shared/image-generation-route-identity';
+import { EventEmitter } from 'node:events';
 
 interface GenerationExecutionState {
   cleanup: (() => void) | null;
@@ -392,7 +392,13 @@ export class GenerationCoordinatorRuntime extends EventEmitter {
   protected capturePromptInput(
     input: Pick<
       GenerationInput,
-      'manualPrompt' | 'promptNodes' | 'termPromptLocale' | 'termIds' | 'wordPaletteReferences' | 'referenceAssetIds'
+      | 'manualPrompt'
+      | 'promptNodes'
+      | 'document'
+      | 'termPromptLocale'
+      | 'termIds'
+      | 'wordPaletteReferences'
+      | 'referenceAssetIds'
     >,
   ): PromptCommonInputDto {
     return this.database.capturePromptCommonInput(input);

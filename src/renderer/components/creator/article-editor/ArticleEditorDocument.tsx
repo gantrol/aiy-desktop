@@ -1,4 +1,28 @@
-import { useMemo, useRef, useState, type ComponentProps, type ReactNode } from 'react';
+import { commandShortcutText } from '@/renderer/commands/app-shortcuts';
+import {
+  ArticleCommentPopover,
+  type ArticleCommentDraftPopover,
+} from '@/renderer/components/creator/article-editor/ArticleCommentPopover';
+import { ArticleEditorDocumentPanes } from '@/renderer/components/creator/article-editor/ArticleEditorDocumentPanes';
+import type { ArticleSaveMode } from '@/renderer/components/creator/article-editor/articleEditorSession';
+import { useArticleEditorSession } from '@/renderer/components/creator/article-editor/ArticleEditorSessionProvider';
+import {
+  useArticleEditLocationShortcuts,
+  useArticleEditorNavigation,
+} from '@/renderer/components/creator/article-editor/useArticleEditorNavigation';
+import type { ArticleEditorOutlineCursorRequest } from '@/renderer/components/creator/article-editor/useArticleEditorOutlineNavigation';
+import { useArticleEditorSidebar } from '@/renderer/components/creator/article-editor/useArticleEditorSidebar';
+import {
+  videoDocumentArticleHeadings,
+  type VideoDocumentArticleHeading,
+} from '@/renderer/features/video-documents/useVideoDocumentArticleOutline';
+import type { VideoDocumentArticleElementsChangeReason } from '@/renderer/features/video-documents/videoDocumentEditorPublication';
+import {
+  VideoDocumentWysiwygEditor,
+  type VideoDocumentArticleElementControls,
+  type VideoDocumentEditorImageImport,
+  type VideoDocumentWysiwygEditorHandle,
+} from '@/renderer/features/video-documents/VideoDocumentWysiwygEditor';
 import type {
   ArticleCommentAnchorInput,
   ArticleCommentDto,
@@ -9,31 +33,8 @@ import type {
   VideoDocumentRevisionMediaDto,
 } from '@/shared/contracts';
 import { sameArticleElementPlacements } from '@/shared/contracts/article';
-import {
-  ArticleCommentPopover,
-  type ArticleCommentDraftPopover,
-} from '@/renderer/components/creator/article-editor/ArticleCommentPopover';
-import { ArticleEditorDocumentPanes } from '@/renderer/components/creator/article-editor/ArticleEditorDocumentPanes';
-import type { ArticleEditorOutlineCursorRequest } from '@/renderer/components/creator/article-editor/useArticleEditorOutlineNavigation';
-import { useArticleEditorSidebar } from '@/renderer/components/creator/article-editor/useArticleEditorSidebar';
-import type { ArticleSaveMode } from '@/renderer/components/creator/article-editor/articleEditorSession';
-import { useArticleEditorSession } from '@/renderer/components/creator/article-editor/ArticleEditorSessionProvider';
-import {
-  VideoDocumentWysiwygEditor,
-  type VideoDocumentArticleElementControls,
-  type VideoDocumentEditorImageImport,
-  type VideoDocumentWysiwygEditorHandle,
-} from '@/renderer/features/video-documents/VideoDocumentWysiwygEditor';
-import {
-  type VideoDocumentArticleHeading,
-  videoDocumentArticleHeadings,
-} from '@/renderer/features/video-documents/useVideoDocumentArticleOutline';
-import { commandShortcutText } from '@/renderer/commands/app-shortcuts';
-import {
-  useArticleEditLocationShortcuts,
-  useArticleEditorNavigation,
-} from '@/renderer/components/creator/article-editor/useArticleEditorNavigation';
-import type { VideoDocumentArticleElementsChangeReason } from '@/renderer/features/video-documents/videoDocumentEditorPublication';
+import type { BlockDocument } from '@/shared/contracts/block-document';
+import { useMemo, useRef, useState, type ComponentProps, type ReactNode } from 'react';
 
 interface Props {
   articleId: string;
@@ -43,6 +44,7 @@ interface Props {
   initialElements: readonly ArticleElementPlacementInput[];
   generatingIllustration?: boolean;
   initialMarkdown: string;
+  document?: BlockDocument;
   labels: ComponentProps<typeof VideoDocumentWysiwygEditor>['labels'];
   media: readonly VideoDocumentRevisionMediaDto[];
   mediaBindings: ArticleContentInput['mediaBindings'];
@@ -464,7 +466,11 @@ export function ArticleEditorDocument(props: Props) {
   };
 
   return (
-    <div ref={documentRootRef} className="relative flex min-h-0 min-w-0 flex-1 flex-col">
+    <div
+      ref={documentRootRef}
+      data-content-source={JSON.stringify({ kind: 'ARTICLE', id: articleId })}
+      className="relative flex min-h-0 min-w-0 flex-1 flex-col"
+    >
       <ArticleEditorDocumentPanes
         articleElementControls={articleElementControls}
         comments={visibleComments}
@@ -476,6 +482,7 @@ export function ArticleEditorDocument(props: Props) {
         generatingIllustration={generatingIllustration}
         initialElements={initialElements}
         initialMarkdown={initialMarkdown}
+        document={props.document}
         labels={labels}
         leftPaneRootRef={leftPaneRootRef}
         leftSidebar={leftSidebar}

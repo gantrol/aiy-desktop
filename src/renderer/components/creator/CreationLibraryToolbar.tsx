@@ -1,5 +1,4 @@
 import { ArrowLeftIcon, CheckIcon, SearchIcon, SlidersHorizontalIcon, XIcon } from 'lucide-react';
-import { useState } from 'react';
 import { Button } from '@/renderer/components/ui/button';
 import { Checkbox } from '@/renderer/components/ui/checkbox';
 import { Input } from '@/renderer/components/ui/input';
@@ -12,29 +11,39 @@ import {
 } from '@/renderer/components/creator/creationLibraryFilter';
 
 interface Props {
+  searchOpen: boolean;
+  onSearchOpenChange(open: boolean): void;
   query: string;
   filter: CreationLibraryFilter;
   onQueryChange(query: string): void;
   onFilterChange(filter: CreationLibraryFilter): void;
 }
 
-export function CreationLibraryToolbar({ query, filter, onQueryChange, onFilterChange }: Props) {
-  const { locale, messages } = useI18n();
+type FilterControlKey = keyof CreationLibraryFilter | 'manuscripts';
+
+export function CreationLibraryToolbar({
+  searchOpen,
+  onSearchOpenChange: setSearchOpen,
+  query,
+  filter,
+  onQueryChange,
+  onFilterChange,
+}: Props) {
+  const { messages } = useI18n();
   const labels = messages.creator.results;
-  const inspirationLabel = locale === 'zh' ? '灵感' : labels.filterInspirations;
-  const socialPostLabel = locale === 'zh' ? '贴图' : 'Social posts';
-  const articleLabel = locale === 'zh' ? '文章' : 'Articles';
-  const evaluationLabel = locale === 'zh' ? '评测集' : 'Evaluation suites';
-  const emptyFilterLabel = locale === 'zh' ? '无' : labels.filterNone;
-  const exitSearchLabel = locale === 'zh' ? '退出搜索' : 'Exit search';
-  const [searchOpen, setSearchOpen] = useState(Boolean(query));
+  const kinds = messages.creator.album.formKinds;
+  const inspirationLabel = kinds.INSPIRATION;
+  const manuscriptLabel = messages.creator.manuscriptEditor.kind;
+  const evaluationLabel = kinds.EVALUATION_SUITE;
+  const emptyFilterLabel = labels.filterNone;
+  const exitSearchLabel = labels.exitSearch;
   const searchVisible = searchOpen || Boolean(query);
   const filterActive = !isAllCreationLibraryFilter(filter);
   const selectedFilterLabels = [
+    ...(filter.animations ? [kinds.ANIMATION] : []),
     ...(filter.images ? [labels.filterImages] : []),
     ...(filter.documents ? [labels.filterDocuments] : []),
-    ...(filter.articles ? [articleLabel] : []),
-    ...(filter.socialPosts ? [socialPostLabel] : []),
+    ...(filter.articles || filter.socialPosts ? [manuscriptLabel] : []),
     ...(filter.inspirations ? [inspirationLabel] : []),
     ...(filter.evaluations ? [evaluationLabel] : []),
   ];
@@ -45,8 +54,16 @@ export function CreationLibraryToolbar({ query, filter, onQueryChange, onFilterC
     : labels.filterAll;
   const filterControlLabel = `${labels.filter}: ${filterValueLabel}`;
 
-  function toggleFilter(key: keyof CreationLibraryFilter, checked: boolean) {
+  function toggleFilter(key: FilterControlKey, checked: boolean) {
+    if (key === 'manuscripts') {
+      onFilterChange({ ...filter, articles: checked, socialPosts: checked });
+      return;
+    }
     onFilterChange({ ...filter, [key]: checked });
+  }
+
+  function filterChecked(key: FilterControlKey) {
+    return key === 'manuscripts' ? filter.articles && filter.socialPosts : filter[key];
   }
 
   function closeSearch() {
@@ -150,10 +167,10 @@ export function CreationLibraryToolbar({ query, filter, onQueryChange, onFilterC
           </button>
           {(
             [
+              ['animations', kinds.ANIMATION],
               ['images', labels.filterImages],
               ['documents', labels.filterDocuments],
-              ['articles', articleLabel],
-              ['socialPosts', socialPostLabel],
+              ['manuscripts', manuscriptLabel],
               ['inspirations', inspirationLabel],
               ['evaluations', evaluationLabel],
             ] as const
@@ -163,7 +180,7 @@ export function CreationLibraryToolbar({ query, filter, onQueryChange, onFilterC
               className="flex h-8 cursor-pointer items-center gap-2 rounded-md px-2 text-xs outline-none hover:bg-hover focus-within:bg-hover"
             >
               <Checkbox
-                checked={filter[key]}
+                checked={filterChecked(key)}
                 aria-label={label}
                 onCheckedChange={(checked) => toggleFilter(key, checked === true)}
               />

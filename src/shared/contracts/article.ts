@@ -1,3 +1,6 @@
+import { browserCompanionWatermarkSelectionSchema } from '@/shared/contracts/browser-companion';
+import { blockDocumentMarkdown } from '@/shared/block-document-codecs';
+import { blockDocumentAssetIds, blockDocumentSchema } from '@/shared/contracts/block-document';
 import { z } from 'zod';
 
 const idSchema = z.string().min(1).max(200);
@@ -115,33 +118,50 @@ export function articleElementTextFingerprint(nodeType: ArticleElementNodeType, 
 
 export const articleContentSchema = z
   .object({
-    schemaVersion: z.literal(1),
+    schemaVersion: z.union([z.literal(1), z.literal(2)]),
+    document: blockDocumentSchema.optional(),
     title: z.string().max(200),
-    markdown: z.string().max(1_000_000),
+    markdown: z.string().max(1_000_000).optional(),
     mediaBindings: z.array(articleMediaBindingSchema).max(100),
     coverAssetId: idSchema.nullable(),
   })
   .strict()
   .superRefine((value, context) => {
+    if (value.schemaVersion === 2 && !value.document)
+      context.addIssue({ code: 'custom', path: ['document'], message: 'BLOCK_DOCUMENT_REQUIRED' });
+    if (value.schemaVersion === 1 && (value.document || value.markdown === undefined))
+      context.addIssue({ code: 'custom', message: 'INVALID_LEGACY_ARTICLE' });
+    if (
+      value.document &&
+      blockDocumentAssetIds(value.document).some((id) => !value.mediaBindings.some((binding) => binding.assetId === id))
+    )
+      context.addIssue({ code: 'custom', path: ['mediaBindings'], message: 'BLOCK_MEDIA_BINDING_MISSING' });
     const paths = value.mediaBindings.map((binding) => binding.path);
     if (new Set(paths).size !== paths.length) {
       context.addIssue({ code: 'custom', path: ['mediaBindings'], message: 'Article media paths must be unique' });
     }
     const assetIds = value.mediaBindings.map((binding) => binding.assetId);
-    if (new Set(assetIds).size !== assetIds.length) {
-      context.addIssue({ code: 'custom', path: ['mediaBindings'], message: 'Article media assets must be unique' });
-    }
     if (value.coverAssetId && !assetIds.includes(value.coverAssetId)) {
       context.addIssue({ code: 'custom', path: ['coverAssetId'], message: 'The cover must be article media' });
     }
-  });
+  })
+  .transform((value) => ({
+    ...value,
+    markdown: value.document ? blockDocumentMarkdown(value.document, value.mediaBindings) : value.markdown!,
+  }));
 
 export function canonicalArticleContentJson(input: z.input<typeof articleContentSchema>) {
   const content = articleContentSchema.parse({
     ...input,
     mediaBindings: input.mediaBindings.map((binding) => ({ ...binding })),
   });
-  return JSON.stringify(content);
+  return JSON.stringify({
+    schemaVersion: content.schemaVersion,
+    title: content.title,
+    ...(content.document ? { document: content.document } : { markdown: content.markdown }),
+    mediaBindings: content.mediaBindings,
+    coverAssetId: content.coverAssetId,
+  });
 }
 
 const articleAssetSchema = z
@@ -160,7 +180,8 @@ const articleAssetSchema = z
 
 const articleContentDtoSchema = z
   .object({
-    schemaVersion: z.literal(1),
+    schemaVersion: z.union([z.literal(1), z.literal(2)]),
+    document: blockDocumentSchema.optional(),
     title: z.string().max(200),
     markdown: z.string().max(1_000_000),
     mediaBindings: z.array(articleMediaBindingSchema).max(100),
@@ -174,15 +195,12 @@ const articleContentDtoSchema = z
       context.addIssue({ code: 'custom', path: ['mediaBindings'], message: 'Article media paths must be unique' });
     }
     const assetIds = value.mediaBindings.map((binding) => binding.assetId);
-    if (new Set(assetIds).size !== assetIds.length) {
-      context.addIssue({ code: 'custom', path: ['mediaBindings'], message: 'Article media assets must be unique' });
-    }
     if (value.coverAssetId && !assetIds.includes(value.coverAssetId)) {
       context.addIssue({ code: 'custom', path: ['coverAssetId'], message: 'The cover must be article media' });
     }
     const hydratedAssetIds = value.mediaAssets.map((asset) => asset.id);
     if (
-      assetIds.length !== hydratedAssetIds.length ||
+      new Set(assetIds).size !== hydratedAssetIds.length ||
       new Set(hydratedAssetIds).size !== hydratedAssetIds.length ||
       assetIds.some((assetId) => !hydratedAssetIds.includes(assetId))
     ) {
@@ -206,6 +224,11 @@ const articleDtoSchema = z
     updatedAt: z.string().min(1),
   })
   .strict();
+
+export const articleOpenInputSchema = z.object({ spaceId: idSchema, articleId: idSchema }).strict();
+export const articleOpenResultSchema = z.object({ spaceId: idSchema, article: articleDtoSchema }).strict();
+export type ArticleOpenInput = z.infer<typeof articleOpenInputSchema>;
+export type ArticleOpenResult = z.infer<typeof articleOpenResultSchema>;
 
 export const articleRevisionSummarySchema = z
   .object({
@@ -593,6 +616,7 @@ export const articleSetArchivedInputSchema = z.object({ id: idSchema, archived: 
 export const articleWechatCopyOptionsSchema = z
   .object({
     linksAsEndReferences: z.boolean(),
+    watermark: browserCompanionWatermarkSelectionSchema.optional(),
     locale: z.enum(['zh', 'en']),
   })
   .strict();

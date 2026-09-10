@@ -1,11 +1,13 @@
-import { randomUUID } from 'node:crypto';
-import { z } from 'zod';
-import type { CreatorImageImportItemInput } from '@/shared/contracts';
-import { creatorImageImportMimeTypeSchema } from '@/shared/contracts/creator-import';
+import { contentImageImports } from '@/main/creations/content-image-imports';
 import { CreatorImageStagingService } from '@/main/creations/creator-image-staging';
 import type { LibraryDatabase } from '@/main/database';
-import type { IpcHandlerRegistrar } from '@/main/ipc/trusted-handlers';
 import { importedImageMetadataSchema } from '@/main/ipc/import-metadata-schema';
+import type { IpcHandlerRegistrar } from '@/main/ipc/trusted-handlers';
+import type { CreatorImageImportItemInput } from '@/shared/contracts';
+import { contentImageImportIdSchema, contentImageStageSchema } from '@/shared/contracts/content-image-import';
+import { creatorImageImportMimeTypeSchema } from '@/shared/contracts/creator-import';
+import { randomUUID } from 'node:crypto';
+import { z } from 'zod';
 
 interface ImageSelection {
   canceled: boolean;
@@ -64,9 +66,15 @@ const stagedImageImportSchema = z
           .object({
             stageId: id,
             promptVersionId: id.nullable(),
+            newVersionNo: z.number().int().min(1).max(999999).optional(),
             displayName: z.string().trim().min(1).max(500),
+            source: importContextSchema.shape.source.optional(),
+            sourceUrl: importContextSchema.shape.sourceUrl.optional(),
           })
-          .strict(),
+          .strict()
+          .refine((item) => !item.newVersionNo || item.promptVersionId === null, {
+            message: 'Choose an existing version or a new version number',
+          }),
       )
       .min(1)
       .max(8)
@@ -168,6 +176,10 @@ export function registerCreatorImportIpc(
   chooseImages: () => Promise<ImageSelection>,
   readClipboardImage: () => ClipboardImageSelection,
 ) {
+  const imports = contentImageImports(database);
+  ipcMain.handle('content-image:accepted', (_event, raw) => imports.accepted(contentImageImportIdSchema.parse(raw)));
+  ipcMain.handle('content-image:stage', (_event, raw) => imports.stage(contentImageStageSchema.parse(raw)));
+  ipcMain.handle('content-image:resolve', (_event, raw) => imports.resolve(contentImageImportIdSchema.parse(raw)));
   const stages = new CreatorImageStagingService(() => database);
   const stageDirectItems = async (items: CreatorImageImportItemInput[]) => {
     const rows = await stages.stageItems(items);
@@ -211,12 +223,17 @@ export function registerCreatorImportIpc(
   ipcMain.handle('creator:outputs-organize', (_event, raw) =>
     database.organizeCreatorOutputs(outputsOrganizeSchema.parse(raw)),
   );
-  ipcMain.handle('creator:outputs-stage', (_event, raw) => stages.stageItems(imageItemsSchema.parse(raw)));
+  ipcMain.handle('creator:outputs-stage', (_event, raw, rawSeriesId) =>
+    stages.stageItems(imageItemsSchema.parse(raw), {
+      seriesId: id.nullable().optional().parse(rawSeriesId),
+      review: true,
+    }),
+  );
   ipcMain.handle('creator:outputs-choose', async (_event, raw) => {
-    imageChooseSchema.parse(raw);
+    const input = imageChooseSchema.parse(raw);
     const result = await chooseImages();
     if (result.canceled || !result.filePaths.length) return null;
-    return stages.stageFiles(result.filePaths);
+    return stages.stageFiles(result.filePaths, { seriesId: input.context.seriesId, review: true });
   });
   ipcMain.handle('creator:outputs-discard', (_event, raw) => stages.discard(stageIdsSchema.parse(raw)));
 }

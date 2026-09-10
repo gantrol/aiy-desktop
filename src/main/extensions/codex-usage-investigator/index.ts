@@ -66,13 +66,14 @@ function initialProgress(): CodexUsageScanProgress {
 }
 
 export class CodexUsageInvestigator {
-  private readonly cache: CodexUsageCacheDatabase;
+  private cache: Promise<CodexUsageCacheDatabase> | null = null;
+  private readonly dataDirectory: string;
   private readonly onTaskChanged: InvestigatorOptions['onTaskChanged'];
   private controller: AbortController | null = null;
   private currentTask: CodexUsageTask | null = null;
 
   constructor(options: InvestigatorOptions) {
-    this.cache = new CodexUsageCacheDatabase(options.dataDirectory);
+    this.dataDirectory = options.dataDirectory;
     this.onTaskChanged = options.onTaskChanged;
   }
 
@@ -80,18 +81,23 @@ export class CodexUsageInvestigator {
     return this.controller !== null;
   }
 
-  state(): CodexUsageState {
-    const persisted = this.cache.state();
+  private getCache() {
+    return (this.cache ??= CodexUsageCacheDatabase.open(this.dataDirectory));
+  }
+
+  async state(): Promise<CodexUsageState> {
+    const persisted = (await this.getCache()).state();
     return this.currentTask ? { ...persisted, task: this.currentTask } : persisted;
   }
 
-  investigation(investigationId: string) {
-    const investigation = this.cache.investigation(investigationId);
+  async investigation(investigationId: string) {
+    const investigation = (await this.getCache()).investigation(investigationId);
     if (!investigation) throw new Error('Codex usage investigation was not found');
     return investigation;
   }
 
-  start(input: CodexUsageScanInput, options: RunOptions) {
+  async start(input: CodexUsageScanInput, options: RunOptions) {
+    const cache = await this.getCache();
     if (this.controller) throw new Error('A Codex usage investigation is already running');
     const now = Date.now();
     const timestamp = new Date(now).toISOString();
@@ -99,7 +105,7 @@ export class CodexUsageInvestigator {
       input.range === 'CUSTOM' && input.dateRange
         ? codexUsageDateRangeEpochs(input.dateRange, input.timeZone, now)
         : { fromEpoch: codexUsageRangeStart(input.range, now, input.timeZone), toEpoch: now };
-    this.cache.cancelPendingTasks();
+    cache.cancelPendingTasks();
     const task = codexUsageTaskSchema.parse({
       taskId: randomUUID(),
       range: input.range,
@@ -117,13 +123,14 @@ export class CodexUsageInvestigator {
       investigationId: null,
       errorMessage: null,
     });
-    this.cache.createTask(task);
-    return this.launch(task, options);
+    cache.createTask(task);
+    return this.launch(task, options, cache);
   }
 
-  resume(taskId: string, options: RunOptions) {
+  async resume(taskId: string, options: RunOptions) {
+    const cache = await this.getCache();
     if (this.controller) throw new Error('A Codex usage investigation is already running');
-    const persisted = this.cache.task(taskId);
+    const persisted = cache.task(taskId);
     if (!persisted || !['PAUSED', 'INTERRUPTED'].includes(persisted.status)) {
       throw new Error('Codex usage investigation cannot be resumed');
     }
@@ -135,11 +142,12 @@ export class CodexUsageInvestigator {
         errorMessage: null,
       }),
       options,
+      cache,
     );
   }
 
-  resumeLatest(options: RunOptions) {
-    const task = this.cache.latestResumableTask();
+  async resumeLatest(options: RunOptions) {
+    const task = (await this.getCache()).latestResumableTask();
     return task ? this.resume(task.taskId, options) : null;
   }
 
@@ -147,33 +155,40 @@ export class CodexUsageInvestigator {
     this.controller?.abort();
   }
 
-  cleanup(level: CodexUsageCleanupLevel): CodexUsageCleanupResult {
+  async cleanup(level: CodexUsageCleanupLevel): Promise<CodexUsageCleanupResult> {
+    const cache = await this.getCache();
     if (this.controller) throw new Error('A running Codex usage investigation cannot be cleared');
-    const removed = this.cache.cleanup(level);
-    const state = this.cache.state();
+    const removed = cache.cleanup(level);
+    const state = cache.state();
     this.currentTask = state.task;
     return codexUsageCleanupResultSchema.parse({ level, removed, state });
   }
 
   async export(investigationId: string, format: CodexUsageExportFormat, destinationPath: string) {
-    const investigation = this.cache.investigation(investigationId);
-    const rows = this.cache.exportRows(investigationId);
+    const cache = await this.getCache();
+    const investigation = cache.investigation(investigationId);
+    const rows = cache.exportRows(investigationId);
     if (!investigation || !rows) throw new Error('Codex usage investigation was not found');
     const contents = serializeCodexUsageExport(investigation, rows, format);
     await writeFile(destinationPath, contents, { encoding: 'utf8' });
   }
 
-  private launch(task: CodexUsageTask, options: RunOptions) {
+  private launch(task: CodexUsageTask, options: RunOptions, cache: CodexUsageCacheDatabase) {
     const controller = new AbortController();
     this.controller = controller;
     this.currentTask = task;
-    this.cache.saveTask(task);
+    cache.saveTask(task);
     this.emit(task);
-    void this.execute(task, options, controller);
+    void this.execute(task, options, controller, cache);
     return task;
   }
 
-  private async execute(task: CodexUsageTask, options: RunOptions, controller: AbortController) {
+  private async execute(
+    task: CodexUsageTask,
+    options: RunOptions,
+    controller: AbortController,
+    cache: CodexUsageCacheDatabase,
+  ) {
     const quotaPromise = resolveQuota(options, controller.signal);
     try {
       const scanned = await scanCodexUsage({
@@ -185,10 +200,10 @@ export class CodexUsageInvestigator {
         detailedStatistics: task.detailedStatistics,
         fromEpoch: task.fromEpoch,
         toEpoch: task.toEpoch,
-        cache: this.cache,
+        cache,
         signal: controller.signal,
-        onProgress: (progress) => this.updateProgress(task.taskId, progress, false),
-        onCheckpoint: (progress) => this.updateProgress(task.taskId, progress, true),
+        onProgress: (progress) => this.updateProgress(task.taskId, progress, false, cache),
+        onCheckpoint: (progress) => this.updateProgress(task.taskId, progress, true, cache),
       });
       const quota = await quotaPromise;
       const warnings = new Set(scanned.investigation.warnings);
@@ -207,7 +222,7 @@ export class CodexUsageInvestigator {
         investigationId: investigation.investigationId,
         errorMessage: null,
       });
-      this.cache.completeTask(completed, investigation, scanned.exportRows);
+      cache.completeTask(completed, investigation, scanned.exportRows);
       this.currentTask = completed;
       this.emit(completed);
     } catch (error) {
@@ -220,14 +235,19 @@ export class CodexUsageInvestigator {
         errorMessage: aborted ? null : String((error as Error).message || error).slice(0, 2_000),
       });
       this.currentTask = terminal;
-      this.cache.saveTask(terminal);
+      cache.saveTask(terminal);
       this.emit(terminal);
     } finally {
       if (this.controller === controller) this.controller = null;
     }
   }
 
-  private updateProgress(taskId: string, progress: CodexUsageScanProgress, checkpoint: boolean) {
+  private updateProgress(
+    taskId: string,
+    progress: CodexUsageScanProgress,
+    checkpoint: boolean,
+    cache: CodexUsageCacheDatabase,
+  ) {
     if (this.currentTask?.taskId !== taskId) return;
     const updated = codexUsageTaskSchema.parse({
       ...this.currentTask,
@@ -235,7 +255,7 @@ export class CodexUsageInvestigator {
       updatedAt: new Date().toISOString(),
     });
     this.currentTask = updated;
-    if (checkpoint) this.cache.saveTask(updated);
+    if (checkpoint) cache.saveTask(updated);
     else this.emit(updated);
   }
 

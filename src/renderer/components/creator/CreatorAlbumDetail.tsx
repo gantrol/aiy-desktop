@@ -1,18 +1,14 @@
-import { ImageIcon, LoaderCircleIcon } from 'lucide-react';
-import { useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react';
+import { ImageIcon, ListChecksIcon, LoaderCircleIcon } from 'lucide-react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import type {
   AlbumDto,
-  AlbumMemberDto,
-  AssetDto,
-  CreationItemDto,
+  BootstrapDto,
   GalleryItemDto,
   GallerySourceFilter,
   ImageRatingDimension,
-  VideoDocumentSummaryDto,
 } from '@/shared/contracts';
 import { useI18n } from '@/renderer/i18n/useI18n';
 import { cn } from '@/renderer/lib/utils';
-import { AlbumCoverBadge } from '@/renderer/components/albums/AlbumTreePreview';
 import { buildAlbumTreeIndex } from '@/renderer/components/albums/albumTree';
 import { AlbumDetailHeader } from '@/renderer/components/gallery/AlbumDetailHeader';
 import { MaterialLibraryToolbar } from '@/renderer/components/gallery/MaterialLibraryToolbar';
@@ -27,36 +23,36 @@ import {
   immediateDescendantUnder,
   type MaterialStack,
 } from '@/renderer/components/gallery/materialStacking';
-import {
-  getMediaStackHorizontalBounds,
-  getMediaStackLayout,
-  MediaStackPreview,
-} from '@/renderer/components/media/MediaStackPreview';
 import { Button } from '@/renderer/components/ui/button';
 import { ScrollArea } from '@/renderer/components/ui/scroll-area';
 import { Skeleton } from '@/renderer/components/ui/skeleton';
-import { AlbumDocumentRow, AlbumDocumentView } from '@/renderer/components/creator/AlbumDocumentContent';
-import {
-  allCreationLibraryFilters,
-  type CreationLibraryFilter,
-} from '@/renderer/components/creator/creationLibraryFilter';
+import type { CreationLibraryFilter } from '@/renderer/components/creator/creationLibraryFilter';
 import { CreatorPaneResizeHandle } from '@/renderer/components/creator/CreatorPaneResizeHandle';
 import { CreatorAlbumMaterialViews } from '@/renderer/components/creator/CreatorAlbumMaterialViews';
-import { shouldShowDocumentView } from '@/renderer/components/creator/albumDocumentView';
-import { creationSessionCoverFirstAssets } from '@/renderer/components/creator/creationCoverFirstAssets';
 import { creationAlbumPreviewAssets } from '@/renderer/components/creator/creationAlbumPreviewAssets';
 import type { CreationSessionProjection } from '@/renderer/components/creator/creationSessionProjection';
 import { useAlbumContentPane } from '@/renderer/components/creator/useAlbumContentPane';
 import { useVideoDocumentList } from '@/renderer/features/video-documents/useVideoDocumentList';
+import { AlbumContents, type AlbumContentsProps } from '@/renderer/components/creator/AlbumContents';
+import { albumContentCount, albumContentEntries } from '@/renderer/components/creator/albumContentEntries';
+import {
+  buildCreationLibraryProjection,
+  type CreationFormProjection,
+} from '@/renderer/components/creator/creationLibraryProjection';
+import { useCreationAlbumDrop } from '@/renderer/components/creator/useCreationAlbumDrop';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/renderer/components/ui/tabs';
 
 interface Props {
   album: AlbumDto;
-  albums: AlbumDto[];
+  data: BootstrapDto;
   creationSessions: readonly CreationSessionProjection[];
-  creationItems: readonly CreationItemDto[];
   filter: CreationLibraryFilter;
   documentNavigationRevision: number;
   busy: boolean;
+  onOpenCreationForm(form: CreationFormProjection): void;
+  onMoveAlbum(albumId: string, parentAlbumId: string | null): Promise<void>;
+  onMoveCreationItem(creationItemId: string, albumId: string | null): Promise<void>;
+  onOpenOutline(albumId: string): void;
   onSelectAlbum(albumId: string): void;
   onSelectSeries(seriesId: string, assetId?: string): void;
   onSelectDocument(documentId: string, albumId: string | null): void;
@@ -74,310 +70,17 @@ interface Props {
 
 const pageSize = 48;
 
-interface AlbumCreationEntry {
-  session: CreationSessionProjection;
-  assets: Array<{ asset: AssetDto; seriesId: string }>;
-}
-
-type AlbumContentEntry =
-  | { kind: 'ALBUM'; album: AlbumDto }
-  | { kind: 'MATERIAL'; member: AlbumMemberDto }
-  | { kind: 'DOCUMENT'; document: VideoDocumentSummaryDto }
-  | ({ kind: 'CREATION' } & AlbumCreationEntry);
-
-function sessionAssets(session: CreationSessionProjection) {
-  return creationSessionCoverFirstAssets(session);
-}
-
-function directCreationEntries(
-  album: AlbumDto,
-  sessions: readonly CreationSessionProjection[],
-  creationItems: readonly CreationItemDto[],
-): AlbumCreationEntry[] {
-  const sessionBySeriesId = new Map<string, CreationSessionProjection>();
-  for (const session of sessions) {
-    for (const series of session.memberSeries) sessionBySeriesId.set(series.id, session);
-  }
-
-  const itemById = new Map(creationItems.map((item) => [item.id, item] as const));
-  const seenSessionIds = new Set<string>();
-  return album.members.flatMap((member) => {
-    if (member.targetType !== 'CREATION_ITEM') return [];
-    const item = itemById.get(member.targetId);
-    const imageForm = item?.forms.find((form) => form.role === 'IMAGE_CREATION');
-    const session = imageForm ? sessionBySeriesId.get(imageForm.entity.id) : null;
-    if (!session || seenSessionIds.has(session.id)) return [];
-    seenSessionIds.add(session.id);
-    return [{ session, assets: sessionAssets(session) }];
-  });
-}
-
-function contentPreviewWidth(assets: readonly AssetDto[]) {
-  const bounds = getMediaStackHorizontalBounds(
-    'tree',
-    assets.map((asset) => ({ asset })),
-    'settled',
-  );
-  return Math.ceil(Math.max(getMediaStackLayout('tree').containerWidth, bounds.right));
-}
-
-export function AlbumContentList({
-  album,
-  childAlbums,
-  sessions,
-  creationItems,
-  documents = [],
-  documentTotal,
-  documentsLoading = false,
-  documentsLoadingMore = false,
-  documentsHasMore = false,
-  filter = allCreationLibraryFilters,
-  locale,
-  contentsLabel,
-  loadMoreDocumentsLabel,
-  onSelectAlbum,
-  onSelectSeries,
-  onSelectDocument,
-  onOpenMaterial,
-  onLoadMoreDocuments,
-  resize,
-}: {
-  album: AlbumDto;
-  childAlbums: readonly AlbumDto[];
-  sessions: readonly CreationSessionProjection[];
-  creationItems: readonly CreationItemDto[];
-  documents?: readonly VideoDocumentSummaryDto[];
-  documentTotal?: number;
-  documentsLoading?: boolean;
-  documentsLoadingMore?: boolean;
-  documentsHasMore?: boolean;
-  filter?: CreationLibraryFilter;
-  locale: 'zh' | 'en';
-  contentsLabel: string;
-  loadMoreDocumentsLabel?: string;
-  onSelectAlbum(albumId: string): void;
-  onSelectSeries(seriesId: string, assetId?: string): void;
-  onSelectDocument?(documentId: string, albumId: string | null): void;
-  onOpenMaterial(materialId: string): void;
-  onLoadMoreDocuments?(): void;
-  resize?: {
-    width: number;
-    minimumWidth: number;
-    maximumWidth: number;
-    label: string;
-    onPointerDown(event: ReactPointerEvent<HTMLDivElement>): void;
-    onWidthChange(width: number): void;
-  };
-}) {
-  const entries = useMemo<AlbumContentEntry[]>(
-    () => [
-      ...childAlbums.map((child) => ({ kind: 'ALBUM' as const, album: child })),
-      ...(!filter.images
-        ? []
-        : [
-            ...directCreationEntries(album, sessions, creationItems).map((entry) => ({
-              kind: 'CREATION' as const,
-              ...entry,
-            })),
-            ...album.members
-              .filter((member) => member.targetType === 'MATERIAL')
-              .map((member) => ({ kind: 'MATERIAL' as const, member })),
-          ]),
-      ...(filter.documents ? documents.map((document) => ({ kind: 'DOCUMENT' as const, document })) : []),
-    ],
-    [album, childAlbums, creationItems, documents, filter, sessions],
-  );
-  const visibleDocumentTotal = filter.documents ? (documentTotal ?? documents.length) : 0;
-  const contentCount = entries.length + Math.max(0, visibleDocumentTotal - documents.length);
-
-  return (
-    <aside
-      className={cn('relative flex min-h-0 shrink-0 flex-col border-r bg-muted/10', !resize && 'w-52 lg:w-60')}
-      style={resize ? { width: resize.width } : undefined}
-      aria-labelledby="album-contents-heading"
-    >
-      <div className="flex h-10 shrink-0 items-center gap-2 border-b px-3">
-        <h2 id="album-contents-heading" className="min-w-0 flex-1 truncate text-xs font-semibold">
-          {contentsLabel}
-        </h2>
-        {documentsLoading && filter.documents && documents.length === 0 ? (
-          <LoaderCircleIcon className="size-3.5 shrink-0 animate-spin text-muted-foreground" aria-hidden="true" />
-        ) : (
-          <span className="shrink-0 text-[11px] tabular-nums text-muted-foreground">{contentCount}</span>
-        )}
-      </div>
-      <ScrollArea type="always" className="min-h-0 flex-1 [&_[data-slot=scroll-area-viewport]>div]:!block">
-        <ul className="space-y-1 p-2">
-          {entries.map((entry) => {
-            if (entry.kind === 'ALBUM') {
-              const assets = creationAlbumPreviewAssets(entry.album, filter);
-              const width = contentPreviewWidth(assets);
-              return (
-                <li
-                  key={entry.album.id}
-                  data-album-child
-                  className="group flex h-[4.25rem] min-w-0 items-center gap-1 rounded-lg px-1 transition-colors hover:bg-hover focus-within:bg-hover"
-                >
-                  <button
-                    type="button"
-                    className="relative flex h-[4.25rem] shrink-0 items-center overflow-visible rounded-md outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
-                    style={{ width }}
-                    title={entry.album.title}
-                    aria-label={entry.album.title}
-                    onClick={() => onSelectAlbum(entry.album.id)}
-                  >
-                    <MediaStackPreview size="tree" spread="settled" items={assets.map((asset) => ({ asset }))} />
-                    <AlbumCoverBadge />
-                  </button>
-                  <button
-                    type="button"
-                    className="flex h-12 min-w-0 flex-1 items-center rounded-md px-1 text-left outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
-                    title={entry.album.title}
-                    aria-label={entry.album.title}
-                    onClick={() => onSelectAlbum(entry.album.id)}
-                  >
-                    <span className="line-clamp-2 min-w-0 flex-1 whitespace-normal break-words text-base font-medium leading-5">
-                      {entry.album.title}
-                    </span>
-                  </button>
-                </li>
-              );
-            }
-            if (entry.kind === 'MATERIAL') {
-              const { member } = entry;
-              const asset = member.imageAsset;
-              const title = member.materialText || (locale === 'zh' ? '图片素材' : 'Image material');
-              const width = asset ? contentPreviewWidth([asset]) : getMediaStackLayout('tree').containerWidth;
-              return (
-                <li
-                  key={member.id}
-                  data-album-direct-material
-                  className="group flex h-[4.25rem] min-w-0 items-center gap-1 rounded-lg px-1 transition-colors hover:bg-hover focus-within:bg-hover"
-                >
-                  <button
-                    type="button"
-                    className="relative flex h-[4.25rem] shrink-0 items-center justify-center overflow-visible rounded-md outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
-                    style={{ width }}
-                    title={title}
-                    aria-label={title}
-                    onClick={() => onOpenMaterial(member.targetId)}
-                  >
-                    {asset ? (
-                      <MediaStackPreview size="tree" spread="settled" items={[{ asset }]} />
-                    ) : (
-                      <ImageIcon className="size-5 text-muted-foreground" />
-                    )}
-                  </button>
-                  <button
-                    type="button"
-                    className="flex h-12 min-w-0 flex-1 items-center rounded-md px-1 text-left outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
-                    title={title}
-                    aria-label={title}
-                    onClick={() => onOpenMaterial(member.targetId)}
-                  >
-                    <span className="line-clamp-2 min-w-0 flex-1 whitespace-normal break-words text-base font-medium leading-5">
-                      {title}
-                    </span>
-                  </button>
-                </li>
-              );
-            }
-            if (entry.kind === 'DOCUMENT') {
-              return (
-                <AlbumDocumentRow
-                  key={entry.document.id}
-                  document={entry.document}
-                  albumId={album.id}
-                  onSelectDocument={onSelectDocument}
-                />
-              );
-            }
-            const { session, assets } = entry;
-            const first = assets[0] ?? null;
-            const title = session.syntheticExperimentRoot
-              ? locale === 'zh'
-                ? '方向实验'
-                : 'Direction experiment'
-              : session.primarySeries.title;
-            const openFirst = () => onSelectSeries(first?.seriesId ?? session.primarySeries.id, first?.asset.id);
-            const width = contentPreviewWidth(assets.map(({ asset }) => asset));
-            return (
-              <li
-                key={session.id}
-                data-album-direct-creation
-                className="group flex h-[4.25rem] min-w-0 items-center gap-1 rounded-lg px-1 transition-colors hover:bg-hover focus-within:bg-hover"
-              >
-                <span className="flex h-[4.25rem] shrink-0 items-center overflow-visible" style={{ width }}>
-                  <MediaStackPreview
-                    size="tree"
-                    spread="settled"
-                    items={assets.map(({ asset }) => ({ asset }))}
-                    onAssetSelect={(asset) => {
-                      const owner =
-                        assets.find((record) => record.asset.id === asset.id)?.seriesId ?? session.primarySeries.id;
-                      onSelectSeries(owner, asset.id);
-                    }}
-                  />
-                </span>
-                <button
-                  type="button"
-                  className="flex h-12 min-w-0 flex-1 items-center rounded-md px-1 text-left outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
-                  title={title}
-                  aria-label={title}
-                  onClick={openFirst}
-                >
-                  <span className="line-clamp-2 min-w-0 flex-1 whitespace-normal break-words text-base font-medium leading-5">
-                    {title}
-                  </span>
-                </button>
-              </li>
-            );
-          })}
-          {documentsLoading && filter.documents && entries.length === 0 && (
-            <li className="grid h-12 place-items-center">
-              <LoaderCircleIcon className="size-3.5 animate-spin text-muted-foreground" aria-hidden="true" />
-            </li>
-          )}
-          {filter.documents && documentsHasMore && onLoadMoreDocuments && loadMoreDocumentsLabel && (
-            <li className="px-1 py-2">
-              <Button
-                type="button"
-                variant="ghost"
-                size="sm"
-                className="w-full"
-                disabled={documentsLoadingMore}
-                onClick={onLoadMoreDocuments}
-              >
-                {documentsLoadingMore && <LoaderCircleIcon className="size-3.5 animate-spin" aria-hidden="true" />}
-                {loadMoreDocumentsLabel}
-              </Button>
-            </li>
-          )}
-        </ul>
-      </ScrollArea>
-      {resize && (
-        <CreatorPaneResizeHandle
-          edge="right"
-          label={resize.label}
-          value={resize.width}
-          min={resize.minimumWidth}
-          max={resize.maximumWidth}
-          onValueChange={resize.onWidthChange}
-          onPointerDown={resize.onPointerDown}
-        />
-      )}
-    </aside>
-  );
-}
-
 export function CreatorAlbumDetail({
   album,
-  albums,
+  data,
   creationSessions,
-  creationItems,
   filter,
   documentNavigationRevision,
   busy,
+  onOpenCreationForm,
+  onMoveAlbum,
+  onMoveCreationItem,
+  onOpenOutline,
   onSelectAlbum,
   onSelectSeries,
   onSelectDocument,
@@ -393,11 +96,22 @@ export function CreatorAlbumDetail({
   notify,
 }: Props) {
   const { locale, messages } = useI18n();
+  const { albums, creationItems } = data;
+  const [tab, setTab] = useState('contents');
   const l = messages.gallery.screen;
   const contentPane = useAlbumContentPane();
+  const documentMembershipKey = useMemo(
+    () =>
+      creationItems
+        .filter((item) => item.albumId === album.id)
+        .flatMap((item) => item.forms.flatMap((form) => (form.role === 'VIDEO_DOCUMENT' ? [form.entity.id] : [])))
+        .sort()
+        .join(':'),
+    [album.id, creationItems],
+  );
   const documentList = useVideoDocumentList({
     active: filter.documents,
-    refreshKey: documentNavigationRevision,
+    refreshKey: `${documentNavigationRevision}:${documentMembershipKey}`,
     query: '',
     albumId: album.id,
     includeDescendants: false,
@@ -423,6 +137,7 @@ export function CreatorAlbumDetail({
     return parentId ? (albumTree.byId.get(parentId) ?? null) : null;
   }, [album.id, albumTree]);
   const effectivelyArchived = albumTree.effectivelyArchived.has(album.id);
+  const activeTab = tab === 'images' && !filter.images ? 'contents' : tab;
   const childAlbums = useMemo(
     () =>
       (albumTree.childrenByParentId.get(album.id) ?? []).filter(
@@ -430,16 +145,64 @@ export function CreatorAlbumDetail({
       ),
     [album.id, albumTree.childrenByParentId, albumTree.effectivelyArchived, effectivelyArchived],
   );
-  const descendantDocumentList = useVideoDocumentList({
-    active: filter.documents && childAlbums.length > 0,
-    refreshKey: documentNavigationRevision,
-    query: '',
+  const projection = useMemo(
+    () =>
+      buildCreationLibraryProjection({
+        creationItems,
+        labels: messages.creator.album,
+        animations: data.animations,
+        locale,
+        series: data.series,
+        sessions: creationSessions,
+        imageBreakdowns: data.imageBreakdowns ?? [],
+        evaluationSuites: data.evaluationSuites ?? [],
+        inspirationStashes: data.inspirationStashes ?? [],
+        socialPosts: data.socialPosts ?? [],
+        articles: data.articles ?? [],
+        derivedVisuals: data.derivedVisuals ?? [],
+        videoDocuments: documentList.items,
+      }),
+    [
+      creationItems,
+      data.animations,
+      messages.creator.album,
+      creationSessions,
+      data.series,
+      data.imageBreakdowns,
+      data.evaluationSuites,
+      data.inspirationStashes,
+      data.socialPosts,
+      data.articles,
+      data.derivedVisuals,
+      documentList.items,
+      locale,
+    ],
+  );
+  const contentEntries = useMemo(
+    () => albumContentEntries(album, childAlbums, projection.items, documentList.items, filter),
+    [album, childAlbums, projection.items, documentList.items, filter],
+  );
+  const contentCount = albumContentCount(contentEntries, filter.documents ? documentList.total : 0);
+  const drop = useCreationAlbumDrop({
     albumId: album.id,
-    includeDescendants: true,
-    unfiledOnly: false,
-    notify,
+    tree: albumTree,
+    creationItems,
+    busy,
+    onMoveAlbum,
+    onMoveCreationItem,
   });
-  const mainDocumentList = childAlbums.length > 0 ? descendantDocumentList : documentList;
+  const contentsProps: Omit<AlbumContentsProps, 'layout'> = {
+    entries: contentEntries,
+    busy: busy || drop.moving || effectivelyArchived,
+    loading: filter.documents && documentList.loading,
+    loadingMore: documentList.loadingMore,
+    hasMore: filter.documents && documentList.hasMore,
+    onLoadMore: () => void documentList.loadMore(),
+    onSelectAlbum,
+    onOpenCreationForm,
+    onSelectDocument,
+    onOpenMaterial,
+  };
   const albumBySeriesId = useMemo(() => {
     const result = new Map<string, string>();
     for (const item of creationItems) {
@@ -510,7 +273,7 @@ export function CreatorAlbumDetail({
   }, [query]);
 
   useEffect(() => {
-    if (!filter.images) {
+    if (activeTab !== 'images' || !filter.images) {
       requestId.current += 1;
       setLoading(false);
       setError('');
@@ -548,7 +311,10 @@ export function CreatorAlbumDetail({
       .finally(() => {
         if (requestId.current === currentRequest) setLoading(false);
       });
-  }, [album.activityAt, album.id, debouncedQuery, filter, locale, retryKey, source, unratedDimensions]);
+    return () => {
+      requestId.current += 1;
+    };
+  }, [activeTab, album, albums, debouncedQuery, filter.images, locale, retryKey, source, unratedDimensions]);
 
   async function loadMore() {
     if (!nextCursor || loading) return;
@@ -627,26 +393,26 @@ export function CreatorAlbumDetail({
     empty: messages.gallery.albums.empty,
     operationFailed: messages.gallery.albums.operationFailed,
     newCreation: messages.creator.results.newCreation,
-    settings: locale === 'zh' ? '图集设置' : 'Album settings',
+    settings: messages.creator.album.settings,
   };
-  const documentView = shouldShowDocumentView({
-    filter,
-    loading,
-    error,
-    query: debouncedQuery,
-    scope,
-    relationship,
-    unratedDimensionCount: unratedDimensions.length,
-    materialCount: materials.length,
-    documentLoading: mainDocumentList.loading,
-    documentTotal: mainDocumentList.total,
-  });
 
   return (
     <section
-      className="flex min-h-0 min-w-0 flex-col overflow-hidden bg-background"
+      {...drop.handlers}
+      className={cn(
+        'relative flex min-h-0 min-w-0 flex-col overflow-hidden bg-background',
+        drop.active && 'ring-2 ring-inset ring-ring',
+      )}
       aria-labelledby="album-detail-title"
     >
+      {drop.active && (
+        <div
+          className="pointer-events-none absolute inset-x-0 top-0 z-30 bg-selected px-3 py-2 text-center text-sm text-selected-foreground"
+          role="status"
+        >
+          {messages.creator.album.moveIntoAlbum(album.title)}
+        </div>
+      )}
       <AlbumDetailHeader
         album={album}
         previewAssets={creationAlbumPreviewAssets(album, filter)}
@@ -660,38 +426,60 @@ export function CreatorAlbumDetail({
         onArchive={onArchive}
         onCreateCreation={onCreateCreation}
         onSettings={onSettings}
+        notify={notify}
       />
       <div ref={contentPane.layoutRef} className="flex min-h-0 min-w-0 flex-1 overflow-hidden">
-        <AlbumContentList
-          album={album}
-          childAlbums={childAlbums}
-          sessions={creationSessions}
-          creationItems={creationItems}
-          documents={documentList.items}
-          documentTotal={documentList.total}
-          documentsLoading={documentList.loading}
-          documentsLoadingMore={documentList.loadingMore}
-          documentsHasMore={documentList.hasMore}
-          filter={filter}
-          locale={locale}
-          contentsLabel={messages.creator.album.contents}
-          loadMoreDocumentsLabel={messages.videoDocuments.loadMore}
-          onSelectAlbum={onSelectAlbum}
-          onSelectSeries={onSelectSeries}
-          onSelectDocument={onSelectDocument}
-          onOpenMaterial={onOpenMaterial}
-          onLoadMoreDocuments={() => void documentList.loadMore()}
-          resize={{
-            width: contentPane.width,
-            minimumWidth: contentPane.minimumWidth,
-            maximumWidth: contentPane.maximumWidth,
-            label: messages.creator.album.resizeContents,
-            onPointerDown: contentPane.beginResize,
-            onWidthChange: contentPane.setWidth,
-          }}
-        />
-        <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
-          {!documentView && (
+        {activeTab === 'images' && (
+          <aside
+            className="relative flex min-h-0 shrink-0 flex-col border-r bg-muted/10"
+            style={{ width: contentPane.width }}
+            aria-labelledby="album-contents-heading"
+          >
+            <div className="flex h-10 shrink-0 items-center gap-2 border-b px-3">
+              <h2 id="album-contents-heading" className="min-w-0 flex-1 truncate text-xs font-semibold">
+                {messages.creator.album.contents}
+              </h2>
+              <span className="text-[11px] tabular-nums text-muted-foreground">{contentCount}</span>
+            </div>
+            <AlbumContents {...contentsProps} layout="list" />
+            <CreatorPaneResizeHandle
+              edge="right"
+              label={messages.creator.album.resizeContents}
+              value={contentPane.width}
+              min={contentPane.minimumWidth}
+              max={contentPane.maximumWidth}
+              onValueChange={contentPane.setWidth}
+              onPointerDown={contentPane.beginResize}
+            />
+          </aside>
+        )}
+        <Tabs value={activeTab} onValueChange={setTab} className="min-w-0 flex-1 overflow-hidden">
+          <div className="flex shrink-0 items-center justify-between gap-2 pr-3">
+            <TabsList className="px-3" aria-label={messages.creator.album.contents}>
+              <TabsTrigger value="contents">
+                {messages.creator.album.contents}
+                <span className="ml-2 tabular-nums text-muted-foreground">{contentCount}</span>
+              </TabsTrigger>
+              {filter.images && <TabsTrigger value="images">{messages.creator.album.browseImages}</TabsTrigger>}
+            </TabsList>
+            <Button
+              variant="ghost"
+              size="icon-sm"
+              disabled={effectivelyArchived}
+              title={messages.creator.outline.title}
+              aria-label={messages.creator.outline.title}
+              onClick={() => onOpenOutline(album.id)}
+            >
+              <ListChecksIcon className="size-4" />
+            </Button>
+          </div>
+          <TabsContent value="contents" className="flex min-h-0 flex-1 flex-col data-[state=inactive]:hidden">
+            <AlbumContents {...contentsProps} layout="grid" />
+          </TabsContent>
+          <TabsContent
+            value="images"
+            className="flex min-h-0 flex-1 flex-col overflow-hidden data-[state=inactive]:hidden"
+          >
             <MaterialLibraryToolbar
               query={query}
               scope={scope}
@@ -710,18 +498,6 @@ export function CreatorAlbumDetail({
               onViewModeChange={setViewMode}
               onSelectionModeChange={() => undefined}
             />
-          )}
-          {documentView ? (
-            <AlbumDocumentView
-              documents={mainDocumentList.items}
-              total={mainDocumentList.total}
-              loading={mainDocumentList.loading}
-              loadingMore={mainDocumentList.loadingMore}
-              hasMore={mainDocumentList.hasMore}
-              onSelectDocument={onSelectDocument}
-              onLoadMore={() => void mainDocumentList.loadMore()}
-            />
-          ) : (
             <div className="relative flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden" aria-busy={loading}>
               {loading && materials.length === 0 ? (
                 <div className="grid grid-cols-[repeat(auto-fill,minmax(190px,1fr))] gap-4 overflow-hidden p-4 sm:p-6">
@@ -793,8 +569,8 @@ export function CreatorAlbumDetail({
                 </Button>
               )}
             </div>
-          )}
-        </div>
+          </TabsContent>
+        </Tabs>
       </div>
     </section>
   );

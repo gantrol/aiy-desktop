@@ -61,31 +61,31 @@ export function registerCodexUsageIpc({
     quotaPermissionGranted: extensions.isPermissionGranted(CODEX_EXTENSION_ID, QUOTA_PERMISSION),
     readQuota: codex.readUsageQuota ? (signal: AbortSignal) => codex.readUsageQuota!(signal) : undefined,
   });
-  ipcMain.handle('codex-usage:state', () => {
+  ipcMain.handle('codex-usage:state', async () => {
     active();
-    return codexUsageStateSchema.parse(investigator.state());
+    return codexUsageStateSchema.parse(await investigator.state());
   });
-  ipcMain.handle('codex-usage:investigation', (_event, raw) => {
+  ipcMain.handle('codex-usage:investigation', async (_event, raw) => {
     active();
     const input = codexUsageInvestigationGetInputSchema.parse(raw);
-    return codexUsageInvestigationSchema.parse(investigator.investigation(input.investigationId));
+    return codexUsageInvestigationSchema.parse(await investigator.investigation(input.investigationId));
   });
-  ipcMain.handle('codex-usage:scan', (_event, raw) => {
+  ipcMain.handle('codex-usage:scan', async (_event, raw) => {
     active();
-    return codexUsageTaskSchema.parse(investigator.start(codexUsageScanInputSchema.parse(raw), runOptions()));
+    return codexUsageTaskSchema.parse(await investigator.start(codexUsageScanInputSchema.parse(raw), runOptions()));
   });
-  ipcMain.handle('codex-usage:resume', (_event, raw) => {
+  ipcMain.handle('codex-usage:resume', async (_event, raw) => {
     active();
     const input = codexUsageResumeInputSchema.parse(raw);
-    return codexUsageTaskSchema.parse(investigator.resume(input.taskId, runOptions()));
+    return codexUsageTaskSchema.parse(await investigator.resume(input.taskId, runOptions()));
   });
   ipcMain.handle('codex-usage:pause', () => {
     investigator.pause();
   });
-  ipcMain.handle('codex-usage:clear', (_event, raw) => {
+  ipcMain.handle('codex-usage:clear', async (_event, raw) => {
     active();
     const input = codexUsageCleanupInputSchema.parse(raw);
-    return codexUsageCleanupResultSchema.parse(investigator.cleanup(input.level));
+    return codexUsageCleanupResultSchema.parse(await investigator.cleanup(input.level));
   });
   ipcMain.handle('codex-usage:export', async (_event, raw) => {
     active();
@@ -103,12 +103,14 @@ export function registerCodexUsageIpc({
     return codexUsageExportResultSchema.parse({ status: 'exported', fileName: path.basename(destination) });
   });
   queueMicrotask(() => {
-    try {
-      active();
-      investigator.resumeLatest(runOptions());
-    } catch {
-      // A disabled extension keeps its checkpoint paused until the user enables it again.
-    }
+    void (async () => {
+      try {
+        active();
+        await investigator.resumeLatest(runOptions());
+      } catch {
+        // A disabled extension keeps its checkpoint paused until the user enables it again.
+      }
+    })();
   });
   return {
     get hasPending() {

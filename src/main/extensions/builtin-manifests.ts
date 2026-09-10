@@ -1,4 +1,5 @@
 import type { ExtensionManifestDto } from '@/shared/contracts';
+import { CODEX_CONTENT_APPLICATION_ID } from '@/shared/contracts/content-applications';
 import { EXTENSION_HOST_ENGINE_KEY, EXTENSION_HOST_VERSION } from '@/shared/product';
 import { DEEPSEEK_PROVIDER } from '@/main/assistant-models/deepseek-provider';
 import {
@@ -121,7 +122,7 @@ export const BUILTIN_EXTENSION_MANIFESTS: readonly ExtensionManifestDto[] = [
     manifestVersion: 1,
     kind: 'LANGUAGE',
     id: ENGLISH_LANGUAGE_EXTENSION_ID,
-    version: '0.3.10',
+    version: '0.5.0',
     displayName: 'English',
     description: "Provides the app's English interface.",
     engines: BUILTIN_EXTENSION_ENGINES,
@@ -204,6 +205,7 @@ export const BUILTIN_EXTENSION_MANIFESTS: readonly ExtensionManifestDto[] = [
         ...(CODEX_VISUALIZATION_DISCOVERY_CONTRIBUTIONS.searchProviders ?? []),
       ],
       modelProviders: [CODEX_PROVIDER_ID],
+      contentApplications: [CODEX_CONTENT_APPLICATION_ID],
     },
     permissions: [
       ...new Set([
@@ -214,7 +216,10 @@ export const BUILTIN_EXTENSION_MANIFESTS: readonly ExtensionManifestDto[] = [
         ...CODEX_VISUALIZATION_DISCOVERY_PERMISSIONS,
       ]),
     ],
-    optionalPermissions: [...CODEX_USAGE_INVESTIGATOR_OPTIONAL_PERMISSIONS],
+    optionalPermissions: [
+      ...CODEX_USAGE_INVESTIGATOR_OPTIONAL_PERMISSIONS,
+      EXTENSION_PERMISSION.libraryReadSelectedContent,
+    ],
     i18n: {
       defaultLocale: 'en',
       locales: {
@@ -236,7 +241,7 @@ export const BUILTIN_EXTENSION_MANIFESTS: readonly ExtensionManifestDto[] = [
     id: OPENAI_IMAGE_API_EXTENSION_ID,
     version: '0.3.2',
     displayName: 'OpenAI Image API',
-    description: 'Call GPT Image 2 with independent OpenAI API credentials.',
+    description: 'Call GPT Image models with independent OpenAI API credentials.',
     engines: BUILTIN_EXTENSION_ENGINES,
     contributes: {
       modelProviders: [OPENAI_IMAGE_PROVIDER_KEY],
@@ -248,11 +253,11 @@ export const BUILTIN_EXTENSION_MANIFESTS: readonly ExtensionManifestDto[] = [
       locales: {
         en: {
           displayName: 'OpenAI Image API',
-          description: 'Call GPT Image 2 with independent OpenAI API credentials.',
+          description: 'Call GPT Image models with independent OpenAI API credentials.',
         },
         zh: {
           displayName: 'OpenAI 图像 API',
-          description: '使用独立 OpenAI API 凭据调用 GPT Image 2。',
+          description: '使用独立 OpenAI API 凭据调用 GPT Image 模型。',
         },
       },
     },

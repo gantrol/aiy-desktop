@@ -1,19 +1,26 @@
-import { useEffect, type Dispatch, type SetStateAction } from 'react';
-import type { BootstrapDto, DerivedVisualWorkspaceOpenResult, Locale, WordPaletteDto } from '@/shared/contracts';
 import type { CreationOutputMode } from '@/renderer/components/creator/CreationOutputTabs';
+import type { DerivedVisualWorkspaceViewState } from '@/renderer/components/creator/derivedVisualWorkspace';
+import { initialGenerationTargets } from '@/renderer/components/creator/generationTargetDefaults';
+import { useCreatorAssistantRuntime } from '@/renderer/components/creator/screen/useCreatorAssistantRuntime';
 import type { useCreatorDraftInputSession } from '@/renderer/components/creator/screen/useCreatorDraftInputSession';
 import type { useCreatorGenerationInputSession } from '@/renderer/components/creator/screen/useCreatorGenerationInputSession';
 import type { useCreatorGenerationRuntime } from '@/renderer/components/creator/screen/useCreatorGenerationRuntime';
 import type { useCreatorScreenProjection } from '@/renderer/components/creator/screen/useCreatorScreenProjection';
 import type { useCreatorSelectionSession } from '@/renderer/components/creator/screen/useCreatorSelectionSession';
 import type { useCreatorWorkbenchProjection } from '@/renderer/components/creator/screen/useCreatorWorkbenchProjection';
-import { useCreatorAssistantRuntime } from '@/renderer/components/creator/screen/useCreatorAssistantRuntime';
-import { initialGenerationTargets } from '@/renderer/components/creator/generationTargetDefaults';
 import { creationDraftSnapshotHasMeaningfulInput } from '@/renderer/components/creator/workflows/creationDraftSnapshot';
 import { useCreationDraftAutosave } from '@/renderer/components/creator/workflows/useCreationDraftSession';
 import { useCreatorContentWorkflows } from '@/renderer/components/creator/workflows/useCreatorContentWorkflows';
 import { useCreatorInspirationSession } from '@/renderer/components/creator/workflows/useCreatorInspirationSession';
 import { useStableCallback } from '@/renderer/lib/useStableCallback';
+import type {
+  BootstrapDto,
+  DerivedVisualWorkspaceOpenResult,
+  Locale,
+  SocialPostDto,
+  WordPaletteDto,
+} from '@/shared/contracts';
+import { useEffect, type Dispatch, type SetStateAction } from 'react';
 
 type DraftInputSession = ReturnType<typeof useCreatorDraftInputSession>;
 type GenerationInputSession = ReturnType<typeof useCreatorGenerationInputSession>;
@@ -33,7 +40,8 @@ interface Options {
   generationStarting: boolean;
   locale: Locale;
   notify(message: string): void;
-  onOpenDerivedVisualWorkspace(result: DerivedVisualWorkspaceOpenResult): void;
+  onSocialPostSaved(post: SocialPostDto): void;
+  onOpenDerivedVisualWorkspace(result: DerivedVisualWorkspaceOpenResult, view?: DerivedVisualWorkspaceViewState): void;
   onPromptFullWindowChange(open: boolean): void;
   preserveBeforeNavigation(): Promise<boolean>;
   projection: ScreenProjection;
@@ -60,6 +68,7 @@ export function useCreatorWorkflowRuntime({
   generationStarting,
   locale,
   notify,
+  onSocialPostSaved,
   onOpenDerivedVisualWorkspace,
   onPromptFullWindowChange,
   preserveBeforeNavigation,
@@ -96,17 +105,21 @@ export function useCreatorWorkflowRuntime({
     },
     palettes: data.wordPalettes,
     promptNodes: document.promptNodes,
+    document: document.document,
     referenceAssetIds: document.referenceAssets.map((asset) => asset.id),
     refresh,
     replacePromptDocument: document.replaceDocument,
     restartNewCreation,
     saveCreationDraft: (prompt) => draftSession.saveDraftNow(undefined, prompt),
     selectedStashId: selection.contentSelection.selectedInspirationStashId,
+    selectedStash: selection.contentSelection.selectedInspirationStash,
     selectedTerms: document.selectedTerms,
     synchronizePrompt: document.synchronize,
     targetAlbumId: selection.targetAlbumId,
     termPromptLocale: document.termPromptLocale,
     terms: data.terms,
+    title: generation.title,
+    onTitleChange: generation.setTitle,
     wordPaletteReferences: document.appliedPalettes.map((reference) => ({
       paletteId: reference.palette.id,
       paletteRevisionId: reference.revision.id,
@@ -115,14 +128,14 @@ export function useCreatorWorkflowRuntime({
     })),
   });
   const content = useCreatorContentWorkflows({
-    automaticChangeSummary: projection.automaticChangeSummary,
+    onSocialPostSaved,
     captureDraftCommitIdentity: draftInput.draftProjection.captureCommitIdentity,
     captureDraftSaveSnapshot: (prompt) => draftInput.draftProjection.captureDraft(undefined, prompt),
     capturePrompt: document.capture,
     clearSavedInspiration: inspiration.clearSavedContent,
     commit: navigation.commit,
     data,
-    editorSocialCoverVisualId: workbench.editorSocialCoverVisual?.id ?? null,
+    editorDerivedVisualId: workbench.editorDerivedVisual?.id ?? null,
     generationRequestIdentity: generationRuntime.requestIdentity,
     getSavedDraftTitle: () => draftSession.getSavedDraft()?.title.trim() ?? '',
     invalidateAutosaves: draftSession.invalidateAutosaves,
@@ -131,18 +144,14 @@ export function useCreatorWorkflowRuntime({
     notify,
     onOpenDerivedVisualWorkspace,
     preserveBeforeNavigation,
-    promptProfileId: generation.configuration.promptProfileId,
     referenceAssets: document.referenceAssets,
     refresh,
-    replaceDraftSession: draftSession.replaceDraftSession,
     resetInputs,
     restoreDraft: generation.hydration.restoreDraft,
     saveCapturedDraft: draftSession.saveCapturedSnapshot,
     saveDraft: (prompt) => draftSession.saveDraftNow(undefined, prompt),
     selectedInspirationStashId: selection.contentSelection.selectedInspirationStashId,
     setCompactPanel: projection.panes.setCompactPanel,
-    setCreationMode: selection.setCreationMode,
-    setOutputCollapsed: projection.panes.setOutputCollapsed,
     setOutputMode,
     setOutputSeriesId: workbench.setOutputSeriesId,
     setRequestedAssetId,
@@ -151,12 +160,9 @@ export function useCreatorWorkflowRuntime({
     setSelectedIdeaCreationId: selection.contentSelection.setSelectedIdeaCreationId,
     setSelectedInspirationStashId: selection.contentSelection.setSelectedInspirationStashId,
     setSelectedSocialPostId: selection.contentSelection.setSelectedSocialPostId,
-    setSeriesId: selection.setSeriesId,
     setTargetAlbumId: selection.setTargetAlbumId,
-    setVersionId: generation.hydration.setVersionId,
     synchronizePrompt: document.synchronize,
     targetAlbumId: selection.targetAlbumId,
-    termPromptLocale: document.termPromptLocale,
   });
   const assistant = useCreatorAssistantRuntime({
     active,
@@ -178,6 +184,7 @@ export function useCreatorWorkflowRuntime({
   });
   const starting = generationStarting || content.outcome.starting;
   const autosaveSnapshot = draftInput.draftProjection.snapshotForPrompt({
+    document: document.document,
     nodes: document.promptNodes,
     manualPrompt: document.manualPrompt,
     selectedTerms: document.selectedTerms,
@@ -188,7 +195,12 @@ export function useCreatorWorkflowRuntime({
     selection.targetAlbum?.creationDefaults ?? null,
     initialGenerationTargets({ creationDraft: null, imageGenerationRoutes: data.imageGenerationRoutes }),
   );
-  const draftPersistenceAllowed = autosaveEnabled(selection, assistant.workflows.adoption.busy, starting);
+  const draftPersistenceAllowed = autosaveEnabled(
+    selection,
+    assistant.workflows.adoption.busy,
+    starting,
+    Boolean(workbench.editorDerivedVisual),
+  );
   const preserveActiveDraft = useStableCallback(() => {
     if (!draftPersistenceAllowed || (!hasDraftContent && !draftSession.getDraftId())) return;
     try {
@@ -221,11 +233,11 @@ export function useCreatorWorkflowRuntime({
     selection.setInputSessionRevision((revision) => revision + 1);
     generation.hydration.resetHydration();
     document.promptNodesRef.current = [];
-    document.setManualPrompt('');
-    document.setPromptNodes([]);
+    document.updatePromptDocument([]);
     document.replaceMaterials({
       ...document.materialsRef.current,
       referenceAssets: [],
+      videoAttachments: [],
       selectedTerms: [],
       appliedPalettes: [],
     });
@@ -239,15 +251,19 @@ export function useCreatorWorkflowRuntime({
   return { assistant, content, inspiration, resetInputs, starting };
 }
 
-function autosaveEnabled(selection: SelectionSession, adoptionBusy: boolean, starting: boolean) {
+function autosaveEnabled(
+  selection: SelectionSession,
+  adoptionBusy: boolean,
+  starting: boolean,
+  editingDerivedVisual: boolean,
+) {
   const selected = selection.contentSelection;
   return Boolean(
     selection.creationMode === 'new' &&
     !selected.selectedEvaluationSuiteId &&
     !selected.selectedImageBreakdownId &&
     !selected.selectedInspirationStashId &&
-    !selected.selectedSocialPostId &&
-    !selected.selectedArticleId &&
+    (editingDerivedVisual || (!selected.selectedSocialPostId && !selected.selectedArticleId)) &&
     !adoptionBusy &&
     !starting,
   );

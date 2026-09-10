@@ -3,6 +3,7 @@ import type { ArticleElementNodeType, ArticleElementPlacementInput } from '@/sha
 import { articleElementTextFingerprint } from '@/shared/contracts/article';
 import {
   ARTICLE_ELEMENT_ATTRIBUTE,
+  articleElementImageText,
   isArticleElementNodeType,
   nextArticleElementId,
   takeSavedArticleElement,
@@ -15,9 +16,7 @@ function jsonContentText(node: JSONContent): string {
 
 function jsonElementText(node: JSONContent, nodeType: ArticleElementNodeType) {
   if (nodeType !== 'image') return jsonContentText(node);
-  return [node.attrs?.alt, node.attrs?.title, node.attrs?.sourcePath, node.attrs?.src]
-    .filter((value): value is string => typeof value === 'string' && Boolean(value.trim()))
-    .join(' ');
+  return articleElementImageText(node.attrs);
 }
 
 export function hydrateArticleElementJsonIdentities(

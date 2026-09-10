@@ -1,4 +1,5 @@
 import type Database from 'better-sqlite3';
+import { trimSurroundingCharacters } from '@/shared/string-boundaries';
 import type {
   PackImportPreviewDto,
   PackUpdateChangeDto,
@@ -104,10 +105,7 @@ function requiredMetadataText(item: PlannedItem, key: string) {
 }
 
 function paletteId(stableKey: string) {
-  return `palette_catalog_${stableKey
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, '_')
-    .replace(/^_+|_+$/g, '')}`;
+  return `palette_catalog_${trimSurroundingCharacters(stableKey.toLowerCase().replace(/[^a-z0-9]+/g, '_'), '_')}`;
 }
 
 function revisionLinkKey(itemKey: string, revisionId: string) {

@@ -5,9 +5,9 @@ const TOKENS_PER_MILLION = 1_000_000;
 export const CODEX_USAGE_LONG_CONTEXT_THRESHOLD = 272_000;
 
 export const CODEX_USAGE_PRICING_BASIS: CodexUsagePricingBasis = {
-  apiVerifiedAt: '2026-08-25',
-  apiSourceUrl: 'https://developers.openai.com/api/docs/changelog',
-  creditVerifiedAt: '2026-09-02',
+  apiVerifiedAt: '2026-09-04',
+  apiSourceUrl: 'https://developers.openai.com/api/docs/pricing',
+  creditVerifiedAt: '2026-09-04',
   creditSourceUrl: 'https://learn.chatgpt.com/docs/pricing',
   longContextThresholdTokens: CODEX_USAGE_LONG_CONTEXT_THRESHOLD,
 };
@@ -56,6 +56,16 @@ const GPT_5_6_SOL_PROMOTIONAL_API_PRICE = {
 } satisfies ApiPrice;
 
 const API_PRICE_HISTORY = {
+  'gpt-6-astra': [
+    {
+      effectiveFrom: '2026-09-04',
+      inputPerMillionUsd: 10,
+      cachedInputPerMillionUsd: 1,
+      cacheWriteInputPerMillionUsd: 12.5,
+      outputPerMillionUsd: 50,
+      longContext: true,
+    },
+  ],
   'gpt-5.6-sol': [
     { effectiveFrom: '2026-07-09', ...GPT_5_6_SOL_INITIAL_API_PRICE },
     { effectiveFrom: '2026-08-21', ...GPT_5_6_SOL_PROMOTIONAL_API_PRICE },
@@ -203,6 +213,7 @@ const API_PRICE_HISTORY = {
 } satisfies Record<string, readonly ApiPricePeriod[]>;
 
 const CREDIT_PRICES = {
+  'gpt-6-astra': { inputPerMillion: 250, cachedInputPerMillion: 25, outputPerMillion: 1250 },
   'gpt-5.6-sol': { inputPerMillion: 100, cachedInputPerMillion: 10, outputPerMillion: 500 },
   'gpt-5.6-terra': { inputPerMillion: 50, cachedInputPerMillion: 5, outputPerMillion: 300 },
   'gpt-5.6-luna': { inputPerMillion: 5, cachedInputPerMillion: 0.5, outputPerMillion: 30 },
@@ -220,6 +231,7 @@ type CreditPriceKey = keyof typeof CREDIT_PRICES;
 
 export function normalizeCodexUsageModel(model: string) {
   const value = model.trim().toLowerCase();
+  if (/^gpt-6-astra(?:$|[-:])/.test(value)) return 'gpt-6-astra';
   if (/^gpt-5\.6-luna(?:$|[-:])/.test(value)) return 'gpt-5.6-luna';
   if (/^gpt-5\.6-terra(?:$|[-:])/.test(value)) return 'gpt-5.6-terra';
   if (/^gpt-5\.6-sol(?:$|[-:])/.test(value) || /^gpt-5\.6(?:$|-\d{4}-)/.test(value)) return 'gpt-5.6-sol';

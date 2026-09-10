@@ -1,4 +1,53 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { appGridRows } from '@/renderer/appPresentation';
+import { useAppWorkspaceShortcuts } from '@/renderer/commands/useAppWorkspaceShortcuts';
+import {
+  AppLoadingState,
+  APP_LOADING_VARIANTS as loadingVariants,
+  useAppLoadingPreviews,
+} from '@/renderer/components/app/AppLoadingState';
+import { AppRuntimeProviders } from '@/renderer/components/app/AppRuntimeProviders';
+import { AppSidebar, type AppView } from '@/renderer/components/app/AppSidebar';
+import { AppTitleBar } from '@/renderer/components/app/AppTitleBar';
+import { SettingsDialog } from '@/renderer/components/app/SettingsDialog';
+import {
+  initialAppLocation,
+  type AiCenterLocation,
+  type AppLocation,
+  type HistoryNavigationGuard,
+  type NavigationMode,
+} from '@/renderer/components/app/app-navigation';
+import { useAppDeepLinkNavigation as useDeepLinks } from '@/renderer/components/app/useAppDeepLinkNavigation';
+import { useTermDetails } from '@/renderer/components/app/useTermDetails';
+import { ArticleEditorSessionRegistryProvider } from '@/renderer/components/creator/article-editor/ArticleEditorSessionProvider';
+import { useAppAssetMenuActions } from '@/renderer/components/media/useAppAssetMenuActions';
+import { LocalSpaceTransitionOverlay } from '@/renderer/components/spaces/LocalSpaceTransitionOverlay';
+import { Button } from '@/renderer/components/ui/button';
+import { ToastViewport, useToastQueue } from '@/renderer/components/ui/toast';
+import { AppWorkspaceGroup } from '@/renderer/components/workspace/AppWorkspaceGroup';
+import { WorkspaceSplitLayout } from '@/renderer/components/workspace/WorkspaceSplitLayout';
+import { WorkspaceVisualResumeProvider } from '@/renderer/components/workspace/WorkspaceVisualResumeProvider';
+import { useWorkspaceAlbumContext } from '@/renderer/components/workspace/useWorkspaceAlbumContext';
+import { useWorkspaceController } from '@/renderer/components/workspace/useWorkspaceController';
+import { registerWorkspaceDrain } from '@/renderer/components/workspace/workspace-drain';
+import { workspaceLocationCanSplit, workspaceLocationKey } from '@/renderer/components/workspace/workspace-location';
+import {
+  findWorkspaceTab,
+  activeLocation as workspaceTabLocation,
+  type WorkspaceRuntimeGroup,
+} from '@/renderer/components/workspace/workspace-state';
+import { generationReEditLocation } from '@/renderer/features/ai-center/generationReEditNavigation';
+import { useAppUpdateNotification } from '@/renderer/features/app-update/useAppUpdateNotification';
+import { loadCreatorScreen } from '@/renderer/features/creator/lazyCreatorScreen';
+import { useDesktopPetalSources } from '@/renderer/features/desktop-petals/use-desktop-petal-sources';
+import { useCodexImagesNavigation } from '@/renderer/features/extensions/codexImageNavigation';
+import { useTransitionShowcaseNavigation } from '@/renderer/features/extensions/transitionShowcaseNavigation';
+import { mergeIntakeResult } from '@/renderer/features/intake/applyIntakeResult';
+import { useVideoDocumentTranscriptBackgroundTasks } from '@/renderer/features/video-documents/useVideoDocumentTranscriptBackgroundTasks';
+import { mergeGenerationProjection, useGenerationProjectionEvents } from '@/renderer/generationProjectionRefresh';
+import { publishLanguagePluginState } from '@/renderer/i18n/languagePluginState';
+import { useI18n } from '@/renderer/i18n/useI18n';
+import { createTrailingRefreshQueue, requestTrailingRefresh, synchronizeRefresh } from '@/renderer/startupRefreshQueue';
+import { useAppDataUpdates } from '@/renderer/useAppDataUpdates';
 import type {
   BootstrapDto,
   IntakeCommitResult,
@@ -6,53 +55,7 @@ import type {
   LocalSpaceTransitionEvent,
   NavigationCommand,
 } from '@/shared/contracts';
-import { AppSidebar, type AppView } from '@/renderer/components/app/AppSidebar';
-import {
-  APP_LOADING_VARIANTS as loadingVariants,
-  AppLoadingState,
-  useAppLoadingPreviews,
-} from '@/renderer/components/app/AppLoadingState';
-import { AppTitleBar } from '@/renderer/components/app/AppTitleBar';
-import { SettingsDialog } from '@/renderer/components/app/SettingsDialog';
-import { useTermDetails } from '@/renderer/components/app/useTermDetails';
-import {
-  initialAppLocation,
-  type AppLocation,
-  type AiCenterLocation,
-  type HistoryNavigationGuard,
-  type NavigationMode,
-} from '@/renderer/components/app/app-navigation';
-import { useAppDeepLinkNavigation } from '@/renderer/components/app/useAppDeepLinkNavigation';
-import { useWorkspaceController } from '@/renderer/components/workspace/useWorkspaceController';
-import { useWorkspaceAlbumContext } from '@/renderer/components/workspace/useWorkspaceAlbumContext';
-import { AppWorkspaceGroup } from '@/renderer/components/workspace/AppWorkspaceGroup';
-import { WorkspaceSplitLayout } from '@/renderer/components/workspace/WorkspaceSplitLayout';
-import {
-  activeLocation as workspaceTabLocation,
-  findWorkspaceTab,
-  type WorkspaceRuntimeGroup,
-} from '@/renderer/components/workspace/workspace-state';
-import { workspaceLocationCanSplit, workspaceLocationKey } from '@/renderer/components/workspace/workspace-location';
-import { LocalSpaceTransitionOverlay } from '@/renderer/components/spaces/LocalSpaceTransitionOverlay';
-import { Button } from '@/renderer/components/ui/button';
-import { ToastViewport, useToastQueue } from '@/renderer/components/ui/toast';
-import { useAppAssetMenuActions } from '@/renderer/components/media/useAppAssetMenuActions';
-import { mergeIntakeResult } from '@/renderer/features/intake/applyIntakeResult';
-import { generationReEditLocation } from '@/renderer/features/ai-center/generationReEditNavigation';
-import { useCodexImagesNavigation } from '@/renderer/features/extensions/codexImageNavigation';
-import { useTransitionShowcaseNavigation } from '@/renderer/features/extensions/transitionShowcaseNavigation';
-import { useVideoDocumentTranscriptBackgroundTasks } from '@/renderer/features/video-documents/useVideoDocumentTranscriptBackgroundTasks';
-import { useAppUpdateNotification } from '@/renderer/features/app-update/useAppUpdateNotification';
-import { loadCreatorScreen } from '@/renderer/features/creator/lazyCreatorScreen';
-import { useI18n } from '@/renderer/i18n/useI18n';
-import { publishLanguagePluginState } from '@/renderer/i18n/languagePluginState';
-import { mergeGenerationProjection, useGenerationProjectionEvents } from '@/renderer/generationProjectionRefresh';
-import { createTrailingRefreshQueue, requestTrailingRefresh, synchronizeRefresh } from '@/renderer/startupRefreshQueue';
-import { appGridRows } from '@/renderer/appPresentation';
-import { useAppDataUpdates } from '@/renderer/useAppDataUpdates';
-import { ArticleEditorSessionRegistryProvider } from '@/renderer/components/creator/article-editor/ArticleEditorSessionProvider';
-import { useAppWorkspaceShortcuts } from '@/renderer/commands/useAppWorkspaceShortcuts';
-import { AppRuntimeProviders } from '@/renderer/components/app/AppRuntimeProviders';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 function newWorkspaceTabLocation(destination: AppLocation['view'] | AppLocation) {
   return typeof destination === 'string' ? { ...initialAppLocation, view: destination } : destination;
@@ -62,6 +65,7 @@ export function App() {
   const { locale, messages } = useI18n();
   const [data, setData] = useState<BootstrapDto | null>(null);
   const workspace = useWorkspaceController(data);
+  useDesktopPetalSources(data?.spaceId ?? null, setData, workspace.openTab);
   const workspaceState = workspace.state;
   const navigateWorkspace = workspace.navigate;
   const goBackWorkspace = workspace.goBack;
@@ -71,12 +75,6 @@ export function App() {
   const activeTab = workspace.activeTab;
   const activeTabId = activeTab?.id ?? null;
   const workspaceAlbums = useWorkspaceAlbumContext(data?.spaceId ?? null, activeTabId);
-  const navigateLocation = useCallback(
-    (destination: AppLocation | ((current: AppLocation) => AppLocation)) => {
-      if (activeTabId) navigateWorkspace(activeTabId, destination, 'push');
-    },
-    [activeTabId, navigateWorkspace],
-  );
   const replaceLocation = useCallback(
     (destination: AppLocation | ((current: AppLocation) => AppLocation)) => {
       if (activeTabId) navigateWorkspace(activeTabId, destination, 'replace');
@@ -97,7 +95,11 @@ export function App() {
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [comparisonFullWindow, setComparisonFullWindow] = useState(false);
   const [creationPromptFullWindow, setCreationPromptFullWindow] = useState(false);
-  useAppDeepLinkNavigation(navigateLocation, setSettingsOpen, setComparisonFullWindow, setCreationPromptFullWindow);
+  useDeepLinks(data, workspace.openTab, setData, [
+    setSettingsOpen,
+    setComparisonFullWindow,
+    setCreationPromptFullWindow,
+  ]);
   const appFullWindow = comparisonFullWindow || creationPromptFullWindow;
   const [defaultPromptLocale, setDefaultPromptLocale] = useState<Locale | null>(() => {
     const stored = localStorage.getItem('aiy.prompt-locale.v1');
@@ -127,6 +129,14 @@ export function App() {
     if (flush) articleLocationFlushersRef.current.set(tabId, flush);
     else articleLocationFlushersRef.current.delete(tabId);
   }, []);
+  useEffect(
+    () =>
+      registerWorkspaceDrain(async () => {
+        articleLocationFlushersRef.current.forEach((flush) => flush());
+        await flushWorkspace();
+      }),
+    [flushWorkspace],
+  );
   const lastHistoryCommandRef = useRef<{ command: NavigationCommand; timestamp: number } | null>(null);
   const lastNotifiedTranscriptOperationIdRef = useRef<string | null>(null);
   const localeRef = useRef(locale);
@@ -180,7 +190,7 @@ export function App() {
     setDocumentNavigationRevision((current) => current + 1);
   }, []);
 
-  const { updateArticle, updateImportedOutput } = useAppDataUpdates(setData, setDataRevision);
+  const { updateArticle, updateSocialPost, updateImportedOutput } = useAppDataUpdates(setData, setDataRevision);
 
   const refreshDocumentNavigation = useCallback(() => setDocumentNavigationRevision((current) => current + 1), []);
 
@@ -681,9 +691,9 @@ export function App() {
           articleLocationFlushersRef.current.get(sourceTabId)?.();
           workspace.openTab(newWorkspaceTabLocation(destination), group.id);
         }}
-        onOpenBeside={(sourceTabId, nextView) => {
+        onOpenBeside={(sourceTabId, destination) => {
           articleLocationFlushersRef.current.get(sourceTabId)?.();
-          workspace.openBeside(sourceTabId, { ...initialAppLocation, view: nextView });
+          workspace.openBeside(sourceTabId, newWorkspaceTabLocation(destination));
         }}
         splitAxis={workspace.state?.arrangement.kind === 'split' ? workspace.state.arrangement.axis : null}
         onMergeGroups={() => mergeWorkspaceGroupsFrom(group)}
@@ -705,6 +715,7 @@ export function App() {
         onTermDetailsRequest={requestTermDetails}
         onImportedOutputSaved={updateImportedOutput}
         onArticleSaved={updateArticle}
+        onSocialPostSaved={updateSocialPost}
         onApplyIntakeResult={applyIntakeResult}
         onVideoDocumentsChange={refreshDocumentNavigation}
         onRetryGeneration={retryGeneration}
@@ -715,102 +726,112 @@ export function App() {
 
   return (
     <ArticleEditorSessionRegistryProvider>
-      <AppRuntimeProviders assetMenuActions={assetMenuActions} spaceId={data?.spaceId ?? null} refresh={refresh}>
-        <main className={`grid h-full min-h-0 overflow-hidden bg-background ${appGridRows(appFullWindow)}`}>
-          {!appFullWindow && (
-            <AppTitleBar
-              workerStatus={data?.modelWorker ?? null}
-              codexHealth={data?.codex ?? null}
-              generationTasks={data?.generationTasks ?? []}
-              transcriptBackgroundTasks={transcriptBackgroundTasks}
-              imageGenerationRoutes={data?.imageGenerationRoutes ?? []}
-              assistantRuns={data?.assistantRuns ?? []}
-              agentTasks={data?.agentTasks ?? []}
-              series={data?.series ?? []}
-              view={view}
-              menuDisabled={Boolean(spaceTransition) || !data}
-              codexImagesVisible={codexImagesNavigation.visible}
-              transitionShowcaseVisible={transitionShowcaseNavigation.visible}
-              canGoBack={canGoBack}
-              canGoForward={canGoForward}
-              notify={notify}
-              onNewCreation={startNewCreationFromContext}
-              onViewChange={changeView}
-              onSettingsOpen={() => setSettingsOpen(true)}
-              onQuit={() => {
-                articleLocationFlushersRef.current.forEach((flush) => flush());
-                void workspace.flush().finally(() => window.desktopApi.appRequestQuit());
-              }}
-              onGoBack={goBack}
-              onGoForward={goForward}
-              onGenerationCancel={cancelGeneration}
-              onTranscriptRecognitionCancel={cancelTranscriptRecognition}
-              onGenerationRetry={retryGeneration}
-              onGenerationReEdit={reEditGeneration}
-            />
-          )}
-          <div className="flex min-h-0 overflow-hidden">
-            <div className={appFullWindow ? 'hidden' : 'contents'}>
-              <AppSidebar
-                spaceName={spaceTransition?.space.name ?? data?.spaceName ?? messages.app.libraryFallback}
-                spaceCoverUrl={spaceTransition?.space.coverUrl ?? data?.spaceCoverUrl ?? null}
-                spaceTransitioning={Boolean(spaceTransition) || !data}
-                libraryBusy={Boolean(data?.generationTasks.length || transcriptBackgroundTasks.length)}
+      <WorkspaceVisualResumeProvider
+        value={workspace.state ? { spaceId: workspace.state.spaceId, entries: workspace.state.visualWorkspaces } : null}
+      >
+        <AppRuntimeProviders
+          assetMenuActions={assetMenuActions}
+          extensions={data?.extensions ?? []}
+          spaceId={data?.spaceId ?? null}
+          terms={data?.terms ?? []}
+          refresh={refresh}
+        >
+          <main className={`grid h-full min-h-0 overflow-hidden bg-background ${appGridRows(appFullWindow)}`}>
+            {!appFullWindow && (
+              <AppTitleBar
+                workerStatus={data?.modelWorker ?? null}
+                codexHealth={data?.codex ?? null}
+                generationTasks={data?.generationTasks ?? []}
+                transcriptBackgroundTasks={transcriptBackgroundTasks}
+                imageGenerationRoutes={data?.imageGenerationRoutes ?? []}
+                assistantRuns={data?.assistantRuns ?? []}
+                agentTasks={data?.agentTasks ?? []}
+                series={data?.series ?? []}
+                view={view}
+                menuDisabled={Boolean(spaceTransition) || !data}
                 codexImagesVisible={codexImagesNavigation.visible}
                 transitionShowcaseVisible={transitionShowcaseNavigation.visible}
-                view={view}
+                canGoBack={canGoBack}
+                canGoForward={canGoForward}
+                notify={notify}
+                onNewCreation={startNewCreationFromContext}
                 onViewChange={changeView}
                 onSettingsOpen={() => setSettingsOpen(true)}
-                notify={notify}
+                onQuit={() => {
+                  articleLocationFlushersRef.current.forEach((flush) => flush());
+                  void workspace.flush().finally(() => window.desktopApi.appRequestQuit());
+                }}
+                onGoBack={goBack}
+                onGoForward={goForward}
+                onGenerationCancel={cancelGeneration}
+                onTranscriptRecognitionCancel={cancelTranscriptRecognition}
+                onGenerationRetry={retryGeneration}
+                onGenerationReEdit={reEditGeneration}
               />
+            )}
+            <div className="flex min-h-0 overflow-hidden">
+              <div className={appFullWindow ? 'hidden' : 'contents'}>
+                <AppSidebar
+                  spaceName={spaceTransition?.space.name ?? data?.spaceName ?? messages.app.libraryFallback}
+                  spaceCoverUrl={spaceTransition?.space.coverUrl ?? data?.spaceCoverUrl ?? null}
+                  spaceTransitioning={Boolean(spaceTransition) || !data}
+                  libraryBusy={Boolean(data?.generationTasks.length || transcriptBackgroundTasks.length)}
+                  codexImagesVisible={codexImagesNavigation.visible}
+                  transitionShowcaseVisible={transitionShowcaseNavigation.visible}
+                  view={view}
+                  onViewChange={changeView}
+                  onSettingsOpen={() => setSettingsOpen(true)}
+                  notify={notify}
+                />
+              </div>
+              <section className="relative min-h-0 min-w-0 flex-1 overflow-hidden">
+                {spaceTransition && <LocalSpaceTransitionOverlay transition={spaceTransition} />}
+                {showLoadingState && <AppLoadingState previews={loadingPreviews} variant={loadingVariants[view]} />}
+                {error && (
+                  <div className="flex size-full flex-col items-center justify-center gap-3 text-muted-foreground">
+                    <strong className="text-foreground">{messages.app.unavailable}</strong>
+                    <small className="max-w-lg text-center">{error}</small>
+                    <Button variant="outline" onClick={() => void refresh()}>
+                      {messages.app.retry}
+                    </Button>
+                  </div>
+                )}
+                {workspaceReady &&
+                  workspace.activeGroup &&
+                  workspaceState &&
+                  (appFullWindow || workspaceState.arrangement.kind === 'single' ? (
+                    renderWorkspaceGroup(workspace.activeGroup)
+                  ) : (
+                    <WorkspaceSplitLayout
+                      arrangement={workspaceState.arrangement}
+                      childrenByGroupId={
+                        new Map(workspaceState.groups.map((group) => [group.id, renderWorkspaceGroup(group)]))
+                      }
+                      onRatioCommit={workspace.setSplitRatio}
+                    />
+                  ))}
+              </section>
             </div>
-            <section className="relative min-h-0 min-w-0 flex-1 overflow-hidden">
-              {spaceTransition && <LocalSpaceTransitionOverlay transition={spaceTransition} />}
-              {showLoadingState && <AppLoadingState previews={loadingPreviews} variant={loadingVariants[view]} />}
-              {error && (
-                <div className="flex size-full flex-col items-center justify-center gap-3 text-muted-foreground">
-                  <strong className="text-foreground">{messages.app.unavailable}</strong>
-                  <small className="max-w-lg text-center">{error}</small>
-                  <Button variant="outline" onClick={() => void refresh()}>
-                    {messages.app.retry}
-                  </Button>
-                </div>
-              )}
-              {workspaceReady &&
-                workspace.activeGroup &&
-                workspaceState &&
-                (appFullWindow || workspaceState.arrangement.kind === 'single' ? (
-                  renderWorkspaceGroup(workspace.activeGroup)
-                ) : (
-                  <WorkspaceSplitLayout
-                    arrangement={workspaceState.arrangement}
-                    childrenByGroupId={
-                      new Map(workspaceState.groups.map((group) => [group.id, renderWorkspaceGroup(group)]))
-                    }
-                    onRatioCommit={workspace.setSplitRatio}
-                  />
-                ))}
-            </section>
-          </div>
-          <SettingsDialog
-            promptLocale={defaultPromptLocale}
-            open={settingsOpen}
-            onOpenChange={setSettingsOpen}
-            onPromptLocaleChange={setDefaultPromptLocale}
-            onAiFeatureModelsOpen={() => navigateAiCenter({ tab: 'capabilities', recordId: null })}
-            onContentManagementOpen={() => changeView('contentManagement')}
-          />
-          <ToastViewport
-            messages={notifications}
-            label={messages.app.notifications}
-            closeLabel={messages.common.close}
-            copyLabel={messages.app.generationErrors.copyDetails}
-            copiedLabel={messages.app.generationErrors.copied}
-            copyFailedLabel={messages.app.generationErrors.copyFailed}
-            onDismiss={dismissNotification}
-          />
-        </main>
-      </AppRuntimeProviders>
+            <SettingsDialog
+              promptLocale={defaultPromptLocale}
+              open={settingsOpen}
+              onOpenChange={setSettingsOpen}
+              onPromptLocaleChange={setDefaultPromptLocale}
+              onAiFeatureModelsOpen={() => navigateAiCenter({ tab: 'capabilities', recordId: null })}
+              onContentManagementOpen={() => changeView('contentManagement')}
+            />
+            <ToastViewport
+              messages={notifications}
+              label={messages.app.notifications}
+              closeLabel={messages.common.close}
+              copyLabel={messages.app.generationErrors.copyDetails}
+              copiedLabel={messages.app.generationErrors.copied}
+              copyFailedLabel={messages.app.generationErrors.copyFailed}
+              onDismiss={dismissNotification}
+            />
+          </main>
+        </AppRuntimeProviders>
+      </WorkspaceVisualResumeProvider>
     </ArticleEditorSessionRegistryProvider>
   );
 }

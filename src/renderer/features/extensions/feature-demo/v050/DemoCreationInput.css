@@ -1,0 +1,14 @@
+/* Scripted caret follows the real editor text without taking host keyboard focus. */
+.demo-v050-input[data-typing='true'] [data-generation-prompt] p:last-child::after {
+  content: '';
+  display: inline-block;
+  height: 1em;
+  margin-left: 1px;
+  vertical-align: -0.12em;
+  border-left: 1px solid currentColor;
+  opacity: 0;
+}
+
+.demo-v050-input[data-typing='true'][data-caret-visible='true'] [data-generation-prompt] p:last-child::after {
+  opacity: 1;
+}

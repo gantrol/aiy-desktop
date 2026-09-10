@@ -6,6 +6,8 @@ The first contract version exposes:
 
 - `capabilities`
 - `asset import`
+- `intake import`
+- `intake get`
 - `draft prepare`
 - `generation start`
 - `job get`
@@ -22,6 +24,8 @@ node out/main/agent-cli.js capabilities
 AIY Desktop must be open, or its detached background worker must still be alive. The CLI reads the current library registry and worker descriptor, authenticates over the existing local socket, and exits after one command.
 
 ## JSON and retries
+
+For collecting standalone Markdown articles and PNG gallery materials, see [Collect local outputs](agent-intake.md).
 
 Every operational request contains `protocolVersion: 1`. Mutating requests also contain an opaque `requestId`. AIY binds that ID to the command and normalized input hash. An exact retry returns the stored result; reuse with different input fails with `AIY_AGENT_REQUEST_CONFLICT`.
 

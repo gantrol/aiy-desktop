@@ -1,16 +1,21 @@
-import { useEffect, useMemo, useState } from 'react';
 import type {
   VideoDocumentMediaBinding,
   VideoDocumentRevisionContent,
   VideoDocumentRevisionDto,
   VideoDocumentRichNote,
 } from '@/shared/contracts';
+import type { BlockDocument } from '@/shared/contracts/block-document';
+import { useEffect, useMemo, useState } from 'react';
+import { trimTrailingCharacters } from '@/shared/string-boundaries';
 
 const DEFAULT_NOTE_ID = 'default';
 
 function markdownTitle(markdown: string, fallback: string) {
-  const match = /^#\s+(.+?)\s*#*\s*$/m.exec(markdown);
-  return match?.[1]?.trim() || fallback;
+  for (const line of markdown.split(/\r?\n/u)) {
+    const match = /^#[\t ]+(\S.*)$/u.exec(line.trimEnd());
+    if (match) return trimTrailingCharacters(match[1]!, '#').trimEnd() || fallback;
+  }
+  return fallback;
 }
 
 function legacyRichNote(
@@ -22,6 +27,7 @@ function legacyRichNote(
     id: DEFAULT_NOTE_ID,
     title: markdownTitle(content.markdown, documentTitle),
     markdown: content.markdown,
+    document: content.document,
     transcriptBasis: content.transcriptBasis,
     sourceUrl: content.sourceUrl,
     generation: content.generation,
@@ -36,9 +42,10 @@ function markdownContentFromNote(
   note: VideoDocumentRichNote,
 ): Extract<VideoDocumentRevisionContent, { format: 'MARKDOWN' }> {
   return {
-    schemaVersion: 1,
+    schemaVersion: note.document ? 2 : 1,
     format: 'MARKDOWN',
     markdown: note.markdown,
+    document: note.document,
     transcriptBasis: note.transcriptBasis,
     sourceUrl: note.sourceUrl,
     generation: note.generation,
@@ -84,20 +91,30 @@ export function useVideoDocumentRichNotes({
   }, [activeNoteId, onActiveNoteChange, selectedNote]);
 
   function collectionContent(nextNotes: VideoDocumentRichNote[]): VideoDocumentRevisionContent {
-    return { schemaVersion: 2, format: 'NOTE_COLLECTION', defaultNoteId, notes: nextNotes };
+    return {
+      schemaVersion: nextNotes.some((note) => note.document) ? 3 : 2,
+      format: 'NOTE_COLLECTION',
+      defaultNoteId,
+      notes: nextNotes,
+    };
   }
 
-  function contentForCurrentNote(markdown: string, mediaBindings: VideoDocumentMediaBinding[]) {
+  function contentForCurrentNote(
+    markdown: string,
+    mediaBindings: VideoDocumentMediaBinding[],
+    document?: BlockDocument,
+  ): VideoDocumentRevisionContent {
     if (!selectedNote || !content) throw new Error('VIDEO_DOCUMENT_NOTE_UNAVAILABLE');
     const updatedNote: VideoDocumentRichNote = {
       ...selectedNote,
+      document,
       markdown,
       mediaBindings,
       updatedAt: new Date().toISOString(),
     };
     return collection
       ? collectionContent(notes.map((note) => (note.id === updatedNote.id ? updatedNote : note)))
-      : { ...content, markdown, mediaBindings };
+      : { ...content, schemaVersion: document ? 2 : 1, document, markdown, mediaBindings };
   }
 
   async function createNote() {

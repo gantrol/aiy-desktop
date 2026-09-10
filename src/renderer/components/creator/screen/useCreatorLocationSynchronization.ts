@@ -6,10 +6,17 @@ import {
   type NavigationMode,
 } from '@/renderer/components/app/app-navigation';
 import type { CreatorActiveSelection } from '@/renderer/components/creator/screen/useCreatorLocationSelection';
+import type { CreatorLocationApplication } from '@/renderer/components/creator/screen/useCreatorNavigationCore';
 import { useCreatorSelectionValidity } from '@/renderer/components/creator/screen/useCreatorSelectionValidity';
 import { useStableCallback } from '@/renderer/lib/useStableCallback';
+import {
+  derivedVisualForLocation,
+  isDerivedVisualLocation,
+  type DerivedVisualWorkspaceViewState,
+} from '@/renderer/components/creator/derivedVisualWorkspace';
 
 interface NavigationActions {
+  resumeDerivedVisual(id: string, view?: DerivedVisualWorkspaceViewState): Promise<void>;
   chooseAlbum(id: string, mode: NavigationMode | null): Promise<boolean>;
   chooseArticle(id: string, mode: NavigationMode | null): Promise<boolean>;
   chooseEvaluationSuite(id: string, mode: NavigationMode | null): Promise<boolean>;
@@ -26,7 +33,7 @@ interface Options {
   actions: NavigationActions;
   active: boolean;
   activeAlbumContextId: string | null;
-  appliedLocationKeyRef: MutableRefObject<string>;
+  locationApplicationRef: MutableRefObject<CreatorLocationApplication>;
   clearSavedInspiration(): void;
   clearSelection(): void;
   commit(location: CreatorLocation, mode?: NavigationMode): void;
@@ -60,6 +67,7 @@ export function useCreatorLocationSynchronization(options: Options) {
   const chooseImageBreakdown = useStableCallback(options.actions.chooseImageBreakdown);
   const chooseInspirationStash = useStableCallback(options.actions.chooseInspirationStash);
   const chooseSeries = useStableCallback(options.actions.chooseSeries);
+  const resumeDerivedVisual = useStableCallback(options.actions.resumeDerivedVisual);
   const chooseSocialPost = useStableCallback(options.actions.chooseSocialPost);
   const resumeCreationDraft = useStableCallback(options.actions.resumeCreationDraft);
   const startNewCreation = useStableCallback(options.actions.startNewCreation);
@@ -116,10 +124,30 @@ export function useCreatorLocationSynchronization(options: Options) {
       return;
     }
     const key = navigationLocationKey(options.location);
-    if (options.appliedLocationKeyRef.current === key) return;
-    options.appliedLocationKeyRef.current = key;
+    if (options.locationApplicationRef.current.requestedKey === key) return;
     closePrompt();
     const location = options.location;
+    const visual = derivedVisualForLocation(options.data, location);
+    // Derived workspaces finish asynchronously; their commit confirms the restored view.
+    options.locationApplicationRef.current = { requestedKey: key, appliedKey: visual ? null : key };
+    if (visual) {
+      void resumeDerivedVisual(
+        visual.id,
+        location.surface === 'existing-creation'
+          ? {
+              versionId: location.versionId,
+              outputSeriesId: location.outputSeriesId,
+              assetId: location.assetId,
+              navigationMode: 'replace',
+            }
+          : { navigationMode: 'replace' },
+      );
+      return;
+    }
+    if (isDerivedVisualLocation(location)) {
+      commit({ surface: 'default' }, 'replace');
+      return;
+    }
     if (location.surface === 'album-detail') void chooseAlbum(location.albumId, null);
     else if (location.surface === 'existing-creation')
       void chooseSeries(location.seriesId, location.assetId ?? undefined, null, location.versionId);
@@ -130,7 +158,7 @@ export function useCreatorLocationSynchronization(options: Options) {
     else if (location.surface === 'social-post') void chooseSocialPost(location.postId, null);
     else if (location.surface === 'article') void chooseArticle(location.articleId, null);
     else if (location.surface === 'creation-draft') void resumeCreationDraft(location.draftId, null);
-    else void startNewCreation(location.albumId, null);
+    else if (location.surface === 'new-creation') void startNewCreation(location.albumId, null);
   }, [
     chooseAlbum,
     chooseArticle,
@@ -143,11 +171,13 @@ export function useCreatorLocationSynchronization(options: Options) {
     closePrompt,
     commit,
     options.active,
-    options.appliedLocationKeyRef,
+    options.locationApplicationRef,
     options.derivedDraftParentLocation,
     options.initialDraft,
     options.initialSeriesId,
     options.location,
+    options.data,
+    resumeDerivedVisual,
     resumeCreationDraft,
     startNewCreation,
   ]);

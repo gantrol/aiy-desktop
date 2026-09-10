@@ -9,6 +9,7 @@ import { EvaluationCasePanel } from '@/renderer/features/evaluations/EvaluationC
 import { EvaluationConditionPanel } from '@/renderer/features/evaluations/EvaluationConditionPanel';
 import { EvaluationMatrixPreview } from '@/renderer/features/evaluations/EvaluationMatrixPreview';
 import { EvaluationTaskLibrary } from '@/renderer/features/evaluations/EvaluationTaskLibrary';
+import { CreationWorkNavigation } from '@/renderer/components/creator/CreationWorkNavigation';
 
 interface Props {
   suite: EvaluationSuiteDto;
@@ -93,6 +94,7 @@ export function EvaluationSuiteEditor({ suite, locale, onSave, notify }: Props) 
           onChange={(event) => setContent((current) => ({ ...current, title: event.target.value }))}
         />
         <div className="ml-auto flex shrink-0 items-center gap-2">
+          <CreationWorkNavigation />
           <label className="flex items-center gap-2 text-xs text-muted-foreground">
             <span>{labels.repeats}</span>
             <Input

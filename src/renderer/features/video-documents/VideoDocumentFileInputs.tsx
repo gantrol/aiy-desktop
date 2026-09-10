@@ -2,22 +2,23 @@ import type { RefObject } from 'react';
 
 const videoFileAccept = 'video/mp4,video/webm,video/quicktime,.mp4,.m4v,.webm,.mov';
 
-interface VideoFileInputProps {
+type VideoFileInputProps = {
   inputRef: RefObject<HTMLInputElement | null>;
-  onSelect(file: File): void;
-}
+} & ({ onSelect(file: File): void; onSelectFiles?: never } | { onSelectFiles(files: File[]): void; onSelect?: never });
 
-export function VideoFileInput({ inputRef, onSelect }: VideoFileInputProps) {
+export function VideoFileInput({ inputRef, onSelect, onSelectFiles }: VideoFileInputProps) {
   return (
     <input
       ref={inputRef}
       type="file"
       accept={videoFileAccept}
+      multiple={Boolean(onSelectFiles)}
       className="hidden"
       onChange={(event) => {
-        const file = event.currentTarget.files?.[0];
+        const files = Array.from(event.currentTarget.files ?? []);
         event.currentTarget.value = '';
-        if (file) onSelect(file);
+        if (files.length && onSelectFiles) onSelectFiles(files);
+        else if (files[0] && onSelect) onSelect(files[0]);
       }}
     />
   );

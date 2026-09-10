@@ -12,7 +12,6 @@ import { CreationResultsOrganizerBulkRow } from '@/renderer/components/creator/C
 import {
   createOrganizerVersionValue,
   organizerRelationValue,
-  organizerVersionLabel,
   parseOrganizerRelationValue,
   type CreationResultDraftRow,
   type OrganizerAiGeneratedStatus,
@@ -20,6 +19,7 @@ import {
   unlinkedOrganizerVersionValue,
 } from '@/renderer/components/creator/creationResultsOrganizer';
 import { useI18n } from '@/renderer/i18n/useI18n';
+import { usePromptVersionLabel } from '@/renderer/components/creator/usePromptVersionLabel';
 
 type RowUpdate = Partial<Omit<CreationResultDraftRow, 'output'>>;
 
@@ -41,6 +41,7 @@ function OutputVersionSelect({
   onCreateVersion,
 }: VersionSelectProps) {
   const labels = useI18n().messages.creator.resultsOrganizer;
+  const versionLabel = usePromptVersionLabel();
   return (
     <Select
       value={row.promptVersionId ?? unlinkedOrganizerVersionValue}
@@ -60,7 +61,7 @@ function OutputVersionSelect({
         <SelectItem value={unlinkedOrganizerVersionValue}>{labels.unlinkedVersion}</SelectItem>
         {versions.map((version) => (
           <SelectItem key={version.id} value={version.id}>
-            {organizerVersionLabel(version)}
+            {versionLabel(version)}
           </SelectItem>
         ))}
         <SelectItem value={createOrganizerVersionValue}>+ {labels.createVersion(nextVersionLabel)}</SelectItem>

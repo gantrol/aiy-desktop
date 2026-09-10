@@ -30,6 +30,7 @@ const threadDescriptorSchema = z
   .object({
     rolloutPath: z.string().min(1).max(32_000),
     historyMode: z.string().trim().max(100),
+    createdAtMs: z.number().nonnegative().nullable(),
     modelProvider: z.string().trim().min(1).max(200).nullable(),
     model: z.string().trim().min(1).max(200).nullable(),
   })
@@ -106,7 +107,7 @@ function tableColumns(database: Database.Database, table: string) {
   );
 }
 
-function readThreadDescriptor(databasePath: string, threadId: string) {
+export function readThreadDescriptor(databasePath: string, threadId: string) {
   const database = new Database(databasePath, { readonly: true, fileMustExist: true, timeout: 1_000 });
   try {
     database.pragma('query_only = ON');
@@ -115,6 +116,13 @@ function readThreadDescriptor(databasePath: string, threadId: string) {
       throw new Error('Codex task metadata database has an unsupported schema');
     }
     const historyMode = columns.has('history_mode') ? 'history_mode' : "'legacy'";
+    const createdAt = columns.has('created_at_ms')
+      ? columns.has('created_at')
+        ? 'COALESCE(created_at_ms, created_at * 1000)'
+        : 'created_at_ms'
+      : columns.has('created_at')
+        ? 'created_at * 1000'
+        : 'NULL';
     const optionalText = (column: string, maximumCharacters: number) =>
       columns.has(column) ? `NULLIF(trim(substr(${column}, 1, ${maximumCharacters})), '')` : 'NULL';
     const value = database
@@ -122,6 +130,7 @@ function readThreadDescriptor(databasePath: string, threadId: string) {
         `SELECT
            substr(rollout_path, 1, 32000) AS rolloutPath,
            ${historyMode} AS historyMode,
+           ${createdAt} AS createdAtMs,
            ${optionalText('model_provider', 200)} AS modelProvider,
            ${optionalText('model', 200)} AS model
          FROM threads
@@ -146,7 +155,7 @@ function parsedTimestamp(value: string) {
 }
 
 function isWithin(root: string, candidate: string) {
-  const relative = path.relative(root, candidate);
+  const relative = path.relative(path.toNamespacedPath(root), path.toNamespacedPath(candidate));
   return relative === '' || (relative !== '..' && !relative.startsWith(`..${path.sep}`) && !path.isAbsolute(relative));
 }
 
@@ -157,7 +166,7 @@ function hasForbiddenSegment(candidate: string) {
     .some((segment) => segment.toLocaleLowerCase().includes('trash'));
 }
 
-async function safeRolloutPath(codexHome: string, rolloutPath: string, signal: AbortSignal) {
+export async function safeRolloutPath(codexHome: string, rolloutPath: string, signal: AbortSignal) {
   signal.throwIfAborted();
   if (!path.isAbsolute(rolloutPath)) throw new Error('Codex task history path is invalid');
   const candidate = path.resolve(rolloutPath);
@@ -247,7 +256,7 @@ async function readProjectedMessages(
       inspectedBytes += rows.reduce((total, row) => total + row.itemBytes, 0);
       cursor = rows.at(-1)!.rolloutOrdinal;
       for (const row of rows) {
-        const parsed = parseProjectedCodexHistoryItem(row.itemType, row.itemJson);
+        const parsed = parseProjectedCodexHistoryItem(row.itemType, row.itemJson, true);
         if (!parsed) continue;
         located.push({
           cursor: row.rolloutOrdinal,
@@ -375,7 +384,7 @@ function parseLegacyMessage(line: Buffer, lineStart: number): LocatedMessage | n
     }
     const completed = completedItemSchema.safeParse(envelope.data.payload);
     if (!completed.success) return null;
-    const parsed = parseProjectedCodexHistoryValue(completed.data.item.type, completed.data.item);
+    const parsed = parseProjectedCodexHistoryValue(completed.data.item.type, completed.data.item, true);
     if (!parsed) return null;
     return {
       cursor: lineStart,
@@ -389,7 +398,8 @@ function parseLegacyMessage(line: Buffer, lineStart: number): LocatedMessage | n
   }
   if (envelope.data.type !== 'response_item') return null;
   const response = assistantResponseSchema.safeParse(envelope.data.payload);
-  if (!response.success || (response.data.phase && response.data.phase !== 'final_answer')) return null;
+  if (!response.success || (response.data.phase && !['final_answer', 'commentary'].includes(response.data.phase)))
+    return null;
   const text = response.data.content
     .flatMap((part) => {
       const parsed = outputTextPartSchema.safeParse(part);

@@ -1,4 +1,26 @@
+import type { CreationFormDto } from '@/shared/contracts';
+
+export function formMatchesFilter(form: Pick<CreationFormDto, 'role'>, filter: CreationLibraryFilter) {
+  switch (form.role) {
+    case 'ANIMATION':
+      return filter.animations;
+    case 'INSPIRATION':
+      return filter.inspirations;
+    case 'EVALUATION_SUITE':
+      return filter.evaluations;
+    case 'SOCIAL_POST':
+      return filter.socialPosts;
+    case 'ARTICLE':
+      return filter.articles;
+    case 'VIDEO_DOCUMENT':
+      return filter.documents;
+    default:
+      return filter.images;
+  }
+}
+
 export interface CreationLibraryFilter {
+  animations: boolean;
   images: boolean;
   documents: boolean;
   articles: boolean;
@@ -8,6 +30,7 @@ export interface CreationLibraryFilter {
 }
 
 export const allCreationLibraryFilters: CreationLibraryFilter = {
+  animations: true,
   images: true,
   documents: true,
   articles: true,
@@ -20,6 +43,7 @@ const storageKey = 'aiy.creation-library-filter.v5';
 
 export function isAllCreationLibraryFilter(filter: CreationLibraryFilter) {
   return (
+    filter.animations &&
     filter.images &&
     filter.documents &&
     filter.articles &&
@@ -31,6 +55,7 @@ export function isAllCreationLibraryFilter(filter: CreationLibraryFilter) {
 
 export function isOnlyInspirationLibraryFilter(filter: CreationLibraryFilter) {
   return (
+    !filter.animations &&
     filter.inspirations &&
     !filter.images &&
     !filter.documents &&
@@ -57,6 +82,7 @@ export function readCreationLibraryFilter(): CreationLibraryFilter {
       return fallback;
     }
     return {
+      animations: typeof record.animations === 'boolean' ? record.animations : true,
       images: record.images,
       documents: record.documents,
       articles: record.articles,

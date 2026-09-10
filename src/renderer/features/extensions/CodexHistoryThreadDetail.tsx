@@ -6,6 +6,7 @@ import { Button } from '@/renderer/components/ui/button';
 import { modelDisplayName, ModelIdentity, ModelMark } from '@/renderer/components/model/ModelIdentity';
 import { CodexHistoryMessageMarkdown } from '@/renderer/features/extensions/CodexHistoryMessageMarkdown';
 import { useI18n } from '@/renderer/i18n/useI18n';
+import { CodexHistoryThreadUsage } from '@/renderer/features/extensions/CodexHistoryThreadUsage';
 
 const MESSAGE_PAGE_SIZE = 20;
 
@@ -13,6 +14,7 @@ interface Props {
   item: CodexHistorySearchResult | null;
   locale: string;
   onOpen(threadId: string): void;
+  onClose(): void;
 }
 
 function mergedMessages(older: readonly CodexHistoryMessage[], current: readonly CodexHistoryMessage[]) {
@@ -20,7 +22,7 @@ function mergedMessages(older: readonly CodexHistoryMessage[], current: readonly
   return [...older, ...current.filter(({ messageId }) => !known.has(messageId))];
 }
 
-export function CodexHistoryThreadDetail({ item, locale, onOpen }: Props) {
+export function CodexHistoryThreadDetail({ item, locale, onOpen, onClose }: Props) {
   const l = useI18n().messages.extensions.codexHistorySearch;
   const [page, setPage] = useState<CodexHistoryThreadMessagesPage | null>(null);
   const [loading, setLoading] = useState(false);
@@ -107,8 +109,11 @@ export function CodexHistoryThreadDetail({ item, locale, onOpen }: Props) {
 
   if (!item) return null;
   return (
-    <aside className="hidden min-w-0 flex-1 flex-col border-l xl:flex">
+    <aside className="flex min-w-0 flex-1 flex-col border-l">
       <header className="flex min-h-14 items-start gap-3 border-b px-4 py-3">
+        <Button type="button" variant="ghost" size="sm" className="xl:hidden" onClick={onClose}>
+          {l.usage.back}
+        </Button>
         <div className="min-w-0 flex-1">
           <h3 className="line-clamp-2 text-sm font-semibold leading-5">{item.title}</h3>
           <div className="mt-1 flex flex-wrap items-center gap-1.5 text-2xs text-muted-foreground">
@@ -128,6 +133,7 @@ export function CodexHistoryThreadDetail({ item, locale, onOpen }: Props) {
           {l.preview.open}
         </Button>
       </header>
+      <CodexHistoryThreadUsage key={item.threadId} threadId={item.threadId} updatedAt={item.updatedAt} />
       <div ref={scrollContainer} className="min-h-0 flex-1 overflow-y-auto">
         {page?.nextCursor != null && (
           <div className="flex justify-center border-b p-2">

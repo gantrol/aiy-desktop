@@ -1,0 +1,19 @@
+.rose-flower .rose-regrow {
+  transform-origin: 100px 100px;
+  animation: rose-grow 0.28s cubic-bezier(0.2, 0.7, 0.2, 1);
+}
+@keyframes rose-grow {
+  from {
+    transform: scale(0.35);
+    opacity: 0;
+  }
+  to {
+    transform: scale(1);
+    opacity: 1;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .rose-flower .rose-regrow {
+    animation-duration: 1ms;
+  }
+}

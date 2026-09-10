@@ -1,0 +1,9 @@
+node_modules/
+.output/
+.wxt/
+
+# Extension identity assets are source inputs.
+!/public/icons/icon-16.png
+!/public/icons/icon-32.png
+!/public/icons/icon-48.png
+!/public/icons/icon-128.png

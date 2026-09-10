@@ -7,6 +7,8 @@ import tseslint from 'typescript-eslint';
 export default tseslint.config(
   {
     ignores: [
+      'browser-companion/.output/**',
+      'browser-companion/.wxt/**',
       '.tmp/**',
       '.electron-vite/**',
       '.webpack/**',
@@ -65,7 +67,8 @@ export default tseslint.config(
         {
           patterns: [
             {
-              regex: '^\\.{1,2}/(?!.*\\.(?:css|scss|sass|less|svg|png|jpe?g|webp|gif|woff2?|json|sql)(?:\\?.*)?$)',
+              regex:
+                '^\\.{1,2}/(?!.*\\.(?:css|scss|sass|less|svg|png|jpe?g|webp|gif|mp4|webm|woff2?|json|sql)(?:\\?.*)?$)',
               message: 'Use the @/ source alias for project-internal TypeScript modules.',
             },
           ],
@@ -81,6 +84,31 @@ export default tseslint.config(
     rules: {
       'react-hooks/exhaustive-deps': 'error',
       'react-hooks/rules-of-hooks': 'error',
+    },
+  },
+  {
+    files: [
+      'src/main/app/media-*.ts',
+      'src/main/media/*thumbnail*.ts',
+      'src/main/database/assets/gallery*.ts',
+      'src/main/database/albums/material-album-{reader,scopes}.ts',
+    ],
+    rules: {
+      'no-restricted-syntax': [
+        'error',
+        {
+          selector: 'ImportDeclaration[source.value=/^(node:)?fs$/] ImportSpecifier[imported.name=/Sync$/]',
+          message: 'Media and gallery loading must use asynchronous file I/O from node:fs/promises.',
+        },
+        {
+          selector: 'CallExpression[callee.name=/Sync$/]',
+          message: 'Synchronous I/O must not block the media or gallery loading path.',
+        },
+        {
+          selector: 'CallExpression[callee.property.name=/Sync$/]',
+          message: 'Synchronous I/O must not block the media or gallery loading path.',
+        },
+      ],
     },
   },
   eslintConfigPrettier,

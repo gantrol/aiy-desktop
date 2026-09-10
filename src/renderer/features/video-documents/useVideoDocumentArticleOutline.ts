@@ -1,4 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { contentMarkdownText } from '@/shared/content-markdown';
+import { trimTrailingCharacters } from '@/shared/string-boundaries';
 import type { VideoDocumentOutlineItem } from '@/renderer/features/video-documents/VideoDocumentOutlineRail';
 
 export interface VideoDocumentArticleHeading extends VideoDocumentOutlineItem {
@@ -12,9 +14,7 @@ interface Options {
 }
 
 function outlineTitle(markdown: string) {
-  return markdown
-    .replace(/!\[([^\]]*)\]\([^)]*\)/g, '$1')
-    .replace(/\[([^\]]+)\]\([^)]*\)/g, '$1')
+  return contentMarkdownText(markdown)
     .replace(/[`*_~]/g, '')
     .trim();
 }
@@ -27,8 +27,8 @@ export function videoDocumentArticleHeadings(markdown: string): VideoDocumentArt
     const line = lines[index]!;
     if (/^\s*(```|~~~)/.test(line)) fenced = !fenced;
     if (!fenced) {
-      const match = /^(#{2,6})\s+(.+?)\s*#*\s*$/.exec(line);
-      const title = match ? outlineTitle(match[2]!) : '';
+      const match = /^(#{2,6})\s+(\S.*)$/.exec(line.trimEnd());
+      const title = match ? outlineTitle(trimTrailingCharacters(match[2]!, '#').trimEnd()) : '';
       if (match && title) {
         headings.push({
           id: `article-heading-${headings.length + 1}`,

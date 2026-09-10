@@ -1,3 +1,4 @@
+import { useI18n } from '@/renderer/i18n/useI18n';
 import { CloudUploadIcon, LoaderCircleIcon } from 'lucide-react';
 import type { ComponentProps } from 'react';
 import { Button } from '@/renderer/components/ui/button';
@@ -16,21 +17,16 @@ export function CompanionHandoffButton({
   onHandoff,
   targets,
   variant = 'outline',
-  zh,
 }: {
   disabled: boolean;
   busy: boolean;
   onHandoff(target: BrowserCompanionTarget): void;
   targets: readonly BrowserCompanionTarget[];
   variant?: ComponentProps<typeof Button>['variant'];
-  zh: boolean;
+  zh?: boolean;
 }) {
-  const label = busy ? (zh ? '上传中' : 'Uploading') : zh ? '上传' : 'Upload';
-  const targetLabels: Record<BrowserCompanionTarget, string> = {
-    chatgpt: 'ChatGPT',
-    wechat: zh ? '微信公众号' : 'WeChat Official Account',
-    weibo: zh ? '微博' : 'Weibo',
-  };
+  const copy = useI18n().messages.browserCompanion;
+  const label = busy ? copy.uploading : copy.upload;
   const onlyTarget = targets.length === 1 ? targets[0] : null;
   const primaryButton = (
     <Button
@@ -63,13 +59,13 @@ export function CompanionHandoffButton({
                 disabled={busy}
                 onSelect={() => onHandoff(target)}
               >
-                {targetLabels[target]}
+                {copy.targets[target]}
               </DropdownMenuItem>
             ))}
           </DropdownMenuContent>
         </DropdownMenu>
       )}
-      <CompanionDestinationMenu busy={busy} targets={targets} variant={variant} zh={zh} />
+      <CompanionDestinationMenu busy={busy} targets={targets} variant={variant} />
     </div>
   );
 }

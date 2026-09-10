@@ -1,5 +1,6 @@
 import type { CodexUsageExportFormat, CodexUsageInvestigation } from '@/shared/contracts/codex-usage';
 import type { CodexUsageInternalRow } from '@/main/extensions/codex-usage-investigator/session-reader';
+import { codexModelComparisonExportRows } from '@/main/extensions/codex-usage-investigator/model-comparison-export';
 
 function csvCell(value: string | number | null) {
   if (value === null) return '';
@@ -247,6 +248,17 @@ const CSV_HEADERS = [
   'standard_median_duration_ms',
   'fast_median_duration_ms',
   'completed_turn_count',
+  'duration_sample_count',
+  'usage_sample_count',
+  'api_priced_turn_count',
+  'credit_priced_turn_count',
+  'median_duration_ms',
+  'median_requests_per_turn',
+  'median_codex_credits_per_turn',
+  'distribution_method',
+  'turn_distributions_json',
+  'samples_truncated',
+  'excluded_model_turn_count',
   'valid_turn_count',
   'comparable_turn_count',
   'excluded_invalid_duration_turn_count',
@@ -354,7 +366,8 @@ const CSV_HEADERS = [
 ] as const;
 
 function csvExport(investigation: CodexUsageInvestigation, rows: readonly CodexUsageInternalRow[]) {
-  const lines = [
+  const lines: CsvRecord[] = [
+    ...codexModelComparisonExportRows(investigation),
     ...turnSpeedRows(investigation),
     ...sessionLengthRows(investigation),
     ...quotaCycleRows(investigation),
@@ -537,7 +550,7 @@ function csvExport(investigation: CodexUsageInvestigation, rows: readonly CodexU
 function jsonExport(investigation: CodexUsageInvestigation, rows: readonly CodexUsageInternalRow[]) {
   return `${JSON.stringify(
     {
-      schemaVersion: 11,
+      schemaVersion: 12,
       valuationKind: 'public_rate_equivalent_not_billed_spend',
       turnSpeedKind: 'completed_turn_median_duration_ratio',
       quotaYieldKind: 'weekly_quota_observation_segment_tokens_per_observed_quota_percent',

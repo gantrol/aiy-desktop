@@ -1,11 +1,21 @@
-import type { BootstrapDto, Locale } from '@/shared/contracts';
+import type { BootstrapDto } from '@/shared/contracts';
+import { useI18n } from '@/renderer/i18n/useI18n';
+import { useCreationWorkIndex } from '@/renderer/components/creator/useCreationWorkIndex';
 import type { CreatorLocation } from '@/renderer/components/app/app-navigation';
 import { creationFormByEntity, creationItemByFormEntity } from '@/renderer/components/creator/creationFormEntities';
 import { creationRelationsForForm } from '@/renderer/components/creator/screen/creatorScreenProjection';
 import { useCreatorLocationSelection } from '@/renderer/components/creator/screen/useCreatorLocationSelection';
+import {
+  derivedVisualForLocation,
+  derivedVisualParentLocation,
+} from '@/renderer/components/creator/derivedVisualWorkspace';
 
-export function useCreatorContentSelection(data: BootstrapDto, location: CreatorLocation, locale: Locale) {
-  const locationSelection = useCreatorLocationSelection(location);
+export function useCreatorContentSelection(data: BootstrapDto, location: CreatorLocation) {
+  const labels = useI18n().messages.creator.album;
+  const index = useCreationWorkIndex(data);
+  const locationSelection = useCreatorLocationSelection(
+    derivedVisualParentLocation(derivedVisualForLocation(data, location)) ?? location,
+  );
   const selectedInspirationStash =
     (data.inspirationStashes ?? []).find((stash) => stash.id === locationSelection.selectedInspirationStashId) ?? null;
   const selectedImageBreakdown =
@@ -32,7 +42,7 @@ export function useCreatorContentSelection(data: BootstrapDto, location: Creator
 
   return {
     ...locationSelection,
-    articleRelations: creationRelationsForForm(data, selectedArticleForm, locale),
+    articleRelations: creationRelationsForForm(data, selectedArticleForm, labels, index),
     selectedAlbum: data.albums.find((album) => album.id === locationSelection.selectedAlbumId) ?? null,
     selectedArticle,
     selectedArticleForm,
@@ -45,6 +55,6 @@ export function useCreatorContentSelection(data: BootstrapDto, location: Creator
     selectedInspirationStash,
     selectedSocialPost,
     selectedSocialPostForm,
-    socialPostRelations: creationRelationsForForm(data, selectedSocialPostForm, locale),
+    socialPostRelations: creationRelationsForForm(data, selectedSocialPostForm, labels, index),
   };
 }

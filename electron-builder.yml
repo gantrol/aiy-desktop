@@ -47,6 +47,10 @@ extraResources:
     to: THIRD_PARTY_NOTICES.md
   - from: extensions
     to: extensions
+    filter:
+      - '**/*'
+      # Feature demo assets are imported by Vite and already included in app.asar.
+      - '!com.aiy.feature-demo/assets/**'
   # Only lightweight, checked-in application content belongs here. Production
   # portrait libraries are imported explicitly and are not bundled.
   - from: content-packs
@@ -60,6 +64,11 @@ extraResources:
 win:
   executableName: aiy
   icon: build/icon.ico
+  # Keep aligned with the Store payload policy and language-extension guide.
+  # AIY message catalogs do not install Electron's native locale resources.
+  electronLanguages:
+    - en-US
+    - zh-CN
   target:
     # electron-builder only prepares the x64 payload consumed by the Store
     # MSIX script. It is not a standalone distribution artifact.

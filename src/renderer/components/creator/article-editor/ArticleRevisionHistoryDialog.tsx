@@ -551,14 +551,14 @@ function ArticleRevisionTextDiff({
   );
 }
 
-function RevisionPreview({ snapshot, zh }: { snapshot: ArticleRevisionDto; zh: boolean }) {
+function RevisionPreview({ snapshot }: { snapshot: ArticleRevisionDto }) {
   return (
     <ArticleReferenceDocument
+      articleId={snapshot.articleId}
       markdown={snapshot.content.markdown}
       media={snapshot.content.mediaAssets.map((asset) => ({ assetId: asset.id, mediaUrl: asset.mediaUrl }))}
       mediaBindings={snapshot.content.mediaBindings}
       title={snapshot.content.title}
-      zh={zh}
     />
   );
 }
@@ -583,7 +583,7 @@ function RevisionContent({
   if (selected.failed) return <RetryButton label={retryLabel} onRetry={selected.retry} />;
   if (index.loading && !index.selectedRevisionId) return <LoadingRevision />;
   if (selected.loading || !selected.snapshot || !index.selectedRevision) return <LoadingRevision />;
-  if (view === 'preview') return <RevisionPreview snapshot={selected.snapshot} zh={zh} />;
+  if (view === 'preview') return <RevisionPreview snapshot={selected.snapshot} />;
 
   const olderMissing = index.selectedRevision.revisionNo > 1 && !index.olderRevision;
   if (olderMissing && index.failed) {

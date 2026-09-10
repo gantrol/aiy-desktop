@@ -1,57 +1,87 @@
-import { useEffect, type Dispatch, type SetStateAction } from 'react';
-import type { AppLocation } from '@/renderer/components/app/app-navigation';
+import { useEffect, useRef, type Dispatch, type SetStateAction } from 'react';
+import type { BootstrapDto } from '@/shared/contracts';
+import type { ArticleOpenResult } from '@/shared/contracts/article';
+import { initialAppLocation, type AppLocation } from '@/renderer/components/app/app-navigation';
+import { MAX_PENDING_APP_DEEP_LINKS, type AppDeepLinkCommand } from '@/shared/contracts/app-deep-link';
 
-type NavigateApp = (destination: AppLocation | ((current: AppLocation) => AppLocation)) => void;
+type CloseOverlay = Dispatch<SetStateAction<boolean>>;
 
-interface AppDeepLinkNavigationOptions {
-  navigate: NavigateApp;
-  setSettingsOpen: Dispatch<SetStateAction<boolean>>;
-  setComparisonFullWindow: Dispatch<SetStateAction<boolean>>;
-  setCreationPromptFullWindow: Dispatch<SetStateAction<boolean>>;
+function contentLocation(command: AppDeepLinkCommand): AppLocation {
+  if (command.target === 'article') {
+    return { ...initialAppLocation, view: 'creator', creator: { surface: 'article', articleId: command.entityId } };
+  }
+  return {
+    ...initialAppLocation,
+    view: 'gallery',
+    gallery: {
+      collection: { kind: 'all' },
+      selectedMaterialKey: null,
+      requestedMaterialId: command.target === 'material' ? command.entityId : null,
+    },
+  };
 }
 
 export function useAppDeepLinkNavigation(
-  navigate: AppDeepLinkNavigationOptions['navigate'],
-  setSettingsOpen: AppDeepLinkNavigationOptions['setSettingsOpen'],
-  setComparisonFullWindow: AppDeepLinkNavigationOptions['setComparisonFullWindow'],
-  setCreationPromptFullWindow: AppDeepLinkNavigationOptions['setCreationPromptFullWindow'],
+  space: Pick<BootstrapDto, 'spaceId'> | null,
+  openTab: (location: AppLocation) => void,
+  setData: Dispatch<SetStateAction<BootstrapDto | null>>,
+  closeOverlays: readonly [CloseOverlay, CloseOverlay, CloseOverlay],
 ) {
-  useEffect(() => {
-    let disposed = false;
-    let drainQueue = Promise.resolve();
+  const spaceId = space?.spaceId;
+  const [closeSettings, closeComparison, closePrompt] = closeOverlays;
+  const pending = useRef<AppDeepLinkCommand[]>([]);
+  const queue = useRef(Promise.resolve());
 
+  useEffect(() => {
+    if (!spaceId) return;
+    let disposed = false;
     const drain = () => {
-      drainQueue = drainQueue
-        .then(() => window.desktopApi.appDeepLinksTake())
-        .then((commands) => {
-          if (disposed || commands.length === 0) return;
-          setSettingsOpen(false);
-          setComparisonFullWindow(false);
-          setCreationPromptFullWindow(false);
-          for (const command of commands) {
-            if (command.action !== 'open' || command.target !== 'gallery') continue;
-            navigate((current) => ({
-              ...current,
-              view: 'gallery',
-              gallery: {
-                collection: { kind: 'all' },
-                selectedMaterialKey: null,
-                requestedMaterialId: null,
-              },
-              materialsReturnContext: null,
-            }));
+      queue.current = queue.current
+        .then(async () => {
+          const commands = await window.desktopApi.appDeepLinksTake();
+          pending.current = [...pending.current, ...commands].slice(-MAX_PENDING_APP_DEEP_LINKS);
+          if (disposed) return;
+          while (pending.current.length && !disposed) {
+            const index = pending.current.findIndex(
+              (command) => command.target === 'gallery' || command.spaceId === spaceId,
+            );
+            if (index < 0) return;
+            const command = pending.current[index];
+            if (command.target === 'article') {
+              const loaded: ArticleOpenResult | null = await window.desktopApi
+                .articleOpen({ spaceId, articleId: command.entityId })
+                .catch((error: unknown) => {
+                  console.error('[deep-link] Article is unavailable', error);
+                  return null;
+                });
+              if (disposed) return;
+              if (!loaded) {
+                pending.current.splice(index, 1);
+                continue;
+              }
+              if (loaded.spaceId !== spaceId) return;
+              setData((current) => {
+                if (current?.spaceId !== spaceId) return current;
+                const articles = current.articles ?? [];
+                if (articles.some((article) => article.id === command.entityId)) return current;
+                return { ...current, articles: [...articles, loaded.article] };
+              });
+            }
+            pending.current.splice(index, 1);
+            closeSettings(false);
+            closeComparison(false);
+            closePrompt(false);
+            // Use a new tab so the current editor retains its document and undo history.
+            openTab(contentLocation(command));
           }
         })
-        .catch((error: unknown) => {
-          console.error('[deep-link] Failed to consume pending navigation', error);
-        });
+        .catch((error: unknown) => console.error('[deep-link] Failed to open content', error));
     };
-
     const unsubscribe = window.desktopApi.onAppDeepLinksAvailable(drain);
     drain();
     return () => {
       disposed = true;
       unsubscribe();
     };
-  }, [navigate, setComparisonFullWindow, setCreationPromptFullWindow, setSettingsOpen]);
+  }, [spaceId, openTab, setData, closeSettings, closeComparison, closePrompt]);
 }

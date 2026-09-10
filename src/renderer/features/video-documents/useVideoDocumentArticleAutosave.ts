@@ -1,10 +1,3 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import type {
-  VideoDocumentMediaBinding,
-  VideoDocumentRevisionContent,
-  VideoDocumentRevisionDto,
-  VideoDocumentRevisionMediaDto,
-} from '@/shared/contracts';
 import type { VideoDocumentAutosaveStatus } from '@/renderer/features/video-documents/VideoDocumentAutosaveSettings';
 import type { VideoDocumentWysiwygEditorHandle } from '@/renderer/features/video-documents/VideoDocumentWysiwygEditor';
 import {
@@ -12,6 +5,15 @@ import {
   videoDocumentArticleHeadings,
 } from '@/renderer/features/video-documents/useVideoDocumentArticleOutline';
 import { useVideoDocumentAutosavePreferences } from '@/renderer/features/video-documents/videoDocumentAutosavePreferences';
+import type {
+  VideoDocumentMediaBinding,
+  VideoDocumentRevisionContent,
+  VideoDocumentRevisionDto,
+  VideoDocumentRevisionMediaDto,
+} from '@/shared/contracts';
+import { blockDocumentAssetIds, type BlockDocument } from '@/shared/contracts/block-document';
+import { blockDocumentMarkdown } from '@/shared/block-document-codecs';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 type MarkdownContent = Extract<VideoDocumentRevisionContent, { format: 'MARKDOWN' }>;
 
@@ -25,10 +27,15 @@ interface Options {
   autoSaveFailedLabel: string;
   onSave?(content: VideoDocumentRevisionContent): Promise<void>;
   onEditingChange?(editing: boolean): void;
-  contentForCurrentNote(markdown: string, mediaBindings: VideoDocumentMediaBinding[]): VideoDocumentRevisionContent;
+  contentForCurrentNote(
+    markdown: string,
+    mediaBindings: VideoDocumentMediaBinding[],
+    document?: BlockDocument,
+  ): VideoDocumentRevisionContent;
 }
 
 interface ArticleDraftSnapshot {
+  document?: BlockDocument;
   markdown: string;
   mediaBindings: VideoDocumentMediaBinding[];
   signature: string;
@@ -73,23 +80,38 @@ interface IncomingRevisionOptions {
 
 const EMPTY_MEDIA_BINDINGS: readonly VideoDocumentMediaBinding[] = [];
 
-function activeMediaBindings(markdown: string, mediaBindings: readonly VideoDocumentMediaBinding[]) {
-  return mediaBindings.filter((binding) => markdown.includes(binding.path));
+function activeMediaBindings(
+  markdown: string,
+  mediaBindings: readonly VideoDocumentMediaBinding[],
+  document?: BlockDocument,
+) {
+  const assetIds = document ? new Set(blockDocumentAssetIds(document)) : null;
+  return mediaBindings.filter((binding) => assetIds?.has(binding.assetId) || markdown.includes(binding.path));
 }
 
-function articleDraftSignature(markdown: string, mediaBindings: readonly VideoDocumentMediaBinding[]) {
-  return JSON.stringify({ markdown, mediaBindings: activeMediaBindings(markdown, mediaBindings) });
+function articleDraftSignature(
+  markdown: string,
+  mediaBindings: readonly VideoDocumentMediaBinding[],
+  document?: BlockDocument,
+) {
+  return JSON.stringify({
+    ...(document ? { document } : { markdown }),
+    mediaBindings: activeMediaBindings(markdown, mediaBindings, document),
+  });
 }
 
 function articleDraftSnapshot(
   markdown: string,
   mediaBindings: readonly VideoDocumentMediaBinding[],
+  document?: BlockDocument,
 ): ArticleDraftSnapshot {
-  const activeBindings = activeMediaBindings(markdown, mediaBindings);
+  const activeBindings = activeMediaBindings(markdown, mediaBindings, document);
+  if (document) markdown = blockDocumentMarkdown(document, activeBindings);
   return {
     markdown,
     mediaBindings: activeBindings,
-    signature: articleDraftSignature(markdown, activeBindings),
+    document,
+    signature: articleDraftSignature(markdown, activeBindings, document),
     hasContent: Boolean(markdown.trim()),
     headings: videoDocumentArticleHeadings(markdown),
   };
@@ -211,6 +233,15 @@ function articleAutoSaveStatus(
   return dirty ? 'pending' : 'saved';
 }
 
+function useIncomingArticleSnapshot(content: MarkdownContent | null) {
+  const markdown = content?.markdown ?? '';
+  const bindings = content?.mediaBindings ?? EMPTY_MEDIA_BINDINGS;
+  return useMemo(
+    () => articleDraftSnapshot(markdown, bindings, content?.document),
+    [markdown, bindings, content?.document],
+  );
+}
+
 export function useVideoDocumentArticleAutosave({
   revision,
   content,
@@ -225,15 +256,11 @@ export function useVideoDocumentArticleAutosave({
 }: Options) {
   const { preferences: autoSavePreferences, setPreferences: setAutoSavePreferences } =
     useVideoDocumentAutosavePreferences();
-  const incomingMarkdown = content?.markdown ?? '';
-  const incomingMediaBindings = content?.mediaBindings ?? EMPTY_MEDIA_BINDINGS;
-  const incomingSnapshot = useMemo(
-    () => articleDraftSnapshot(incomingMarkdown, incomingMediaBindings),
-    [incomingMarkdown, incomingMediaBindings],
-  );
+  const incomingSnapshot = useIncomingArticleSnapshot(content);
   const contextIdentity = `${revision.branchId}:${selectedNoteId}`;
   const initialSnapshotRef = useRef(incomingSnapshot);
   const [loadedContextIdentity, setLoadedContextIdentity] = useState(contextIdentity);
+  const [initialDocument, setInitialDocument] = useState(initialSnapshotRef.current.document);
   const [initialMarkdown, setInitialMarkdown] = useState(initialSnapshotRef.current.markdown);
   const [editorSessionEpoch, setEditorSessionEpoch] = useState(0);
   const [editingState, setEditingState] = useState(false);
@@ -275,7 +302,11 @@ export function useVideoDocumentArticleAutosave({
 
   const publishSnapshot = useCallback(
     (markdown: string, mediaBindings: readonly VideoDocumentMediaBinding[] = draftMediaBindingsRef.current) => {
-      const snapshot = articleDraftSnapshot(markdown, mediaBindings);
+      const snapshot = articleDraftSnapshot(
+        markdown,
+        mediaBindings,
+        editorHandleRef.current?.getPersistenceSnapshot().document ?? latestDraftRef.current.document,
+      );
       latestDraftRef.current = snapshot;
       setDraftState({
         signature: snapshot.signature,
@@ -300,6 +331,7 @@ export function useVideoDocumentArticleAutosave({
       editorHandleRef.current = null;
       setLoadedContextIdentity(nextContextIdentity);
       setInitialMarkdown(snapshot.markdown);
+      setInitialDocument(snapshot.document);
       setDraftState({
         signature: snapshot.signature,
         hasContent: snapshot.hasContent,
@@ -340,6 +372,7 @@ export function useVideoDocumentArticleAutosave({
   useEditingNotification(editing, onEditingChange);
 
   persistDraftRef.current = async (mode, markdownOverride) => {
+    if (editorHandleRef.current && !(await editorHandleRef.current.whenSettled())) return;
     const markdown =
       markdownOverride ?? editorHandleRef.current?.getPersistenceSnapshot().markdown ?? latestDraftRef.current.markdown;
     const snapshot = publishSnapshot(markdown);
@@ -366,7 +399,7 @@ export function useVideoDocumentArticleAutosave({
     setSaveError('');
     setAutoSaveFailed(false);
     try {
-      await onSave(contentForCurrentNote(snapshot.markdown, snapshot.mediaBindings));
+      await onSave(contentForCurrentNote(snapshot.markdown, snapshot.mediaBindings, snapshot.document));
       if (
         contextIdentityRef.current !== request.contextIdentity ||
         activeSaveRef.current?.requestId !== request.requestId
@@ -413,26 +446,21 @@ export function useVideoDocumentArticleAutosave({
 
   const autoSaveStatus = articleAutoSaveStatus(autoSavePreferences.enabled, saveMode, autoSaveFailed, isDirty);
 
-  function startEditing() {
+  function resetEditing(start: boolean) {
     if (!content) return;
-    loadPersistedDraft(contextIdentity, articleDraftSnapshot(content.markdown, content.mediaBindings), revision.media);
-    editingRef.current = true;
-    setEditingState(true);
-  }
-
-  function cancelEditing() {
-    if (!content) return;
-    loadPersistedDraft(contextIdentity, articleDraftSnapshot(content.markdown, content.mediaBindings), revision.media);
+    loadPersistedDraft(
+      contextIdentity,
+      articleDraftSnapshot(content.markdown, content.mediaBindings, content.document),
+      revision.media,
+    );
+    editingRef.current = start;
+    setEditingState(start);
   }
 
   function changeDraftMarkdown(markdown: string) {
     publishSnapshot(markdown);
     setAutoSaveFailed(false);
     setSaveError('');
-  }
-
-  function registerEditor(handle: VideoDocumentWysiwygEditorHandle | null) {
-    editorHandleRef.current = handle;
   }
 
   function addDraftMedia(binding: VideoDocumentMediaBinding, media: VideoDocumentRevisionMediaDto) {
@@ -451,6 +479,7 @@ export function useVideoDocumentArticleAutosave({
   return {
     editing,
     initialMarkdown,
+    initialDocument,
     editorSessionIdentity: `${contextIdentity}:${editorSessionEpoch}`,
     draftHasContent: draftState.hasContent,
     draftHeadings: draftState.headings,
@@ -462,10 +491,12 @@ export function useVideoDocumentArticleAutosave({
     autoSaveStatus,
     setAutoSavePreferences,
     setSaveError,
-    startEditing,
-    cancelEditing,
+    startEditing: () => resetEditing(true),
+    cancelEditing: () => resetEditing(false),
     changeDraftMarkdown,
-    registerEditor,
+    registerEditor: (handle: VideoDocumentWysiwygEditorHandle | null) => {
+      editorHandleRef.current = handle;
+    },
     addDraftMedia,
     save(markdown?: string) {
       return persistDraftRef.current('manual', markdown);

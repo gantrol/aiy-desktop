@@ -18,6 +18,8 @@ import {
   articleMoveInputSchema,
   articleRenameInputSchema,
   articleRevisionGetInputSchema,
+  articleOpenInputSchema,
+  articleOpenResultSchema,
   articleRevisionHistoryInputSchema,
   articleRevisionHistoryResultSchema,
   articleRevisionSchema,
@@ -32,6 +34,7 @@ type ArticlePreloadApi = Pick<
   | 'articleSave'
   | 'articleRevisionHistory'
   | 'articleRevisionGet'
+  | 'articleOpen'
   | 'articleRevisionSave'
   | 'articleCommentMutate'
   | 'articleCheck'
@@ -49,6 +52,8 @@ type ArticlePreloadApi = Pick<
 export function createArticlePreloadApi(ipcRenderer: IpcRenderer): ArticlePreloadApi {
   return {
     articleSave: (input) => ipcRenderer.invoke('article:save', articleSaveInputSchema.parse(input)),
+    articleOpen: async (input) =>
+      articleOpenResultSchema.parse(await ipcRenderer.invoke('article:open', articleOpenInputSchema.parse(input))),
     articleRevisionHistory: async (input) =>
       articleRevisionHistoryResultSchema.parse(
         await ipcRenderer.invoke('article:revision-history', articleRevisionHistoryInputSchema.parse(input)),

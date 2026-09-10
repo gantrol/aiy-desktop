@@ -98,6 +98,7 @@ function ExternalCreationFields({
         {labels.creationTitle}
         <Input
           autoFocus
+          data-control="external-creation-title"
           value={title}
           maxLength={300}
           disabled={disabled}
@@ -196,6 +197,15 @@ function ExternalCreationMetadataDetails({
       onApplyBatch={() => organizer.applyBatch(false)}
     />
   );
+}
+
+function movePendingImage(current: PendingImage[], id: string, direction: -1 | 1) {
+  const index = current.findIndex((image) => image.id === id);
+  const destination = index + direction;
+  if (index < 0 || destination < 0 || destination >= current.length) return current;
+  const next = [...current];
+  [next[index], next[destination]] = [next[destination], next[index]];
+  return next;
 }
 
 export function NewExternalCreationDialog({
@@ -320,14 +330,7 @@ export function NewExternalCreationDialog({
   }
 
   function moveImage(id: string, direction: -1 | 1) {
-    setImages((current) => {
-      const index = current.findIndex((image) => image.id === id);
-      const destination = index + direction;
-      if (index < 0 || destination < 0 || destination >= current.length) return current;
-      const next = [...current];
-      [next[index], next[destination]] = [next[destination], next[index]];
-      return next;
-    });
+    setImages((current) => movePendingImage(current, id, direction));
   }
 
   async function submit(event: FormEvent<HTMLFormElement>) {
@@ -376,7 +379,10 @@ export function NewExternalCreationDialog({
 
   return (
     <Dialog open={open} onOpenChange={changeOpen}>
-      <DialogContent className="max-h-[calc(100vh-2rem)] max-w-[min(96vw,86rem)] gap-0 overflow-hidden p-0">
+      <DialogContent
+        data-dialog="external-creation-import"
+        className="max-h-[calc(100vh-2rem)] max-w-[min(96vw,86rem)] gap-0 overflow-hidden p-0"
+      >
         <PasteDropSurface
           disabled={submitting}
           className="min-h-0"
@@ -446,7 +452,7 @@ export function NewExternalCreationDialog({
               <Button type="button" variant="outline" disabled={submitting} onClick={() => changeOpen(false)}>
                 {labels.cancel}
               </Button>
-              <Button type="submit" disabled={submitting || !valid}>
+              <Button data-action="import-external-creation-submit" type="submit" disabled={submitting || !valid}>
                 {submitting && <LoaderCircleIcon className="size-4 animate-spin" />}
                 {labels.createV01}
               </Button>

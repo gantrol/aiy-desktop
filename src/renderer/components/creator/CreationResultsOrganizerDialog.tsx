@@ -6,7 +6,6 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { CreationResultsOrganizerTable } from '@/renderer/components/creator/CreationResultsOrganizerTable';
 import {
   createOrganizerVersionValue,
-  organizerVersionLabel,
   type OrganizerAiGeneratedStatus,
   type OrganizerVersionOption,
   unchangedOrganizerValue,
@@ -14,6 +13,7 @@ import {
 } from '@/renderer/components/creator/creationResultsOrganizer';
 import { useCreationResultsOrganizer } from '@/renderer/components/creator/useCreationResultsOrganizer';
 import { useI18n } from '@/renderer/i18n/useI18n';
+import { usePromptVersionLabel } from '@/renderer/components/creator/usePromptVersionLabel';
 
 interface ToolbarProps {
   selectedCount: number;
@@ -47,6 +47,7 @@ function OrganizerToolbar({
   onCreateVersion,
 }: ToolbarProps) {
   const labels = useI18n().messages.creator.resultsOrganizer;
+  const versionLabel = usePromptVersionLabel();
   return (
     <div className="flex min-h-14 flex-wrap items-center gap-2 border-b bg-surface-sunken/60 px-4 py-2.5">
       <span className="mr-1 text-xs text-muted-foreground">{labels.selectedCount(selectedCount)}</span>
@@ -59,7 +60,7 @@ function OrganizerToolbar({
           <SelectItem value={unlinkedOrganizerVersionValue}>{labels.unlinkedVersion}</SelectItem>
           {versions.map((version) => (
             <SelectItem key={version.id} value={version.id}>
-              {organizerVersionLabel(version)}
+              {versionLabel(version)}
             </SelectItem>
           ))}
           <SelectItem value={createOrganizerVersionValue}>+ {labels.createVersion(nextVersionLabel)}</SelectItem>

@@ -1,3 +1,4 @@
+import watermarkSql from '@/main/database/sql/v03-revision-006-article-delivery-watermark.sql?raw';
 import type Database from 'better-sqlite3';
 
 function unsupportedSchema(): never {
@@ -47,4 +48,18 @@ export function articleDeliveryJobShape(db: Database.Database) {
     unsupportedSchema();
   }
   return 'COMPLETE' as const;
+}
+
+export function articleDeliveryWatermarkComplete(db: Database.Database) {
+  const columns = db.prepare('PRAGMA table_info(article_delivery_jobs)').all() as Array<{ name: string }>;
+  return columns.some((column) => column.name === 'watermark_profile_json');
+}
+
+export function ensureArticleDeliveryWatermark(db: Database.Database) {
+  if (!articleDeliveryWatermarkComplete(db)) db.exec(watermarkSql);
+}
+
+export function currentArticleDeliveryJobShape(db: Database.Database) {
+  const shape = articleDeliveryJobShape(db);
+  return shape === 'COMPLETE' && !articleDeliveryWatermarkComplete(db) ? 'MISSING_WATERMARK' : shape;
 }

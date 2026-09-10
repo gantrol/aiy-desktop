@@ -1,7 +1,27 @@
-import { useCallback, useEffect, useMemo, useRef, type ComponentProps } from 'react';
+import { appMaterialsReturnSummary } from '@/renderer/appPresentation';
+import { GifWorkspaceScope } from '@/renderer/features/gif-making/GifMakerProvider';
+import { AppWorkspaceViews } from '@/renderer/components/app/AppWorkspaceViews';
 import type {
-  BootstrapDto,
+  AppLocation,
+  CreatorOpenTabTarget,
+  HistoryNavigationGuard,
+  NavigationMode,
+} from '@/renderer/components/app/app-navigation';
+import { createWorkspaceLoadingBoundaries } from '@/renderer/components/app/appWorkspaceLoadingBoundaries';
+import { WorkspaceArticleEditorStateProvider } from '@/renderer/components/workspace/WorkspaceArticleEditorStateProvider';
+import { activeNavigationEntry, type WorkspaceRuntimeTab } from '@/renderer/components/workspace/workspace-state';
+import { appLocationToWorkspaceTarget } from '@/renderer/components/workspace/workspace-location';
+import type { AiActivityRecord } from '@/renderer/features/ai-center/AiCenterScreen';
+import { aiActivityNavigationTarget } from '@/renderer/features/ai-center/aiActivityNavigation';
+import { generationReEditLocation } from '@/renderer/features/ai-center/generationReEditNavigation';
+import { ContentManagementScreen } from '@/renderer/features/content-management/ContentManagementScreen';
+import { CreationOutlineWorkspace } from '@/renderer/features/creation-outline/CreationOutlineWorkspace';
+import type { CodexImagesNavigationState } from '@/renderer/features/extensions/codexImageNavigation';
+import type { TransitionShowcaseNavigationState } from '@/renderer/features/extensions/transitionShowcaseNavigation';
+import { LibraryStartScreen } from '@/renderer/features/intake/lazyLibraryStartScreen';
+import type {
   ArticleEditorLocationDto,
+  BootstrapDto,
   ImportedCreationOutputDto,
   IntakeCommitResult,
   Locale,
@@ -9,28 +29,12 @@ import type {
   WorkspaceArticleEditOwnerDto,
   WorkspaceArticleEditorStateDto,
 } from '@/shared/contracts';
-import { AppWorkspaceViews } from '@/renderer/components/app/AppWorkspaceViews';
-import { createWorkspaceLoadingBoundaries } from '@/renderer/components/app/appWorkspaceLoadingBoundaries';
-import type {
-  AppLocation,
-  CreatorOpenTabTarget,
-  HistoryNavigationGuard,
-  NavigationMode,
-} from '@/renderer/components/app/app-navigation';
-import { WorkspaceArticleEditorStateProvider } from '@/renderer/components/workspace/WorkspaceArticleEditorStateProvider';
-import { activeNavigationEntry, type WorkspaceRuntimeTab } from '@/renderer/components/workspace/workspace-state';
-import { LibraryStartScreen } from '@/renderer/features/intake/lazyLibraryStartScreen';
-import { ContentManagementScreen } from '@/renderer/features/content-management/ContentManagementScreen';
-import { aiActivityNavigationTarget } from '@/renderer/features/ai-center/aiActivityNavigation';
-import type { AiActivityRecord } from '@/renderer/features/ai-center/AiCenterScreen';
-import { generationReEditLocation } from '@/renderer/features/ai-center/generationReEditNavigation';
-import type { CodexImagesNavigationState } from '@/renderer/features/extensions/codexImageNavigation';
-import type { TransitionShowcaseNavigationState } from '@/renderer/features/extensions/transitionShowcaseNavigation';
-import { appMaterialsReturnSummary } from '@/renderer/appPresentation';
+import { useCallback, useEffect, useMemo, useRef, type ComponentProps } from 'react';
 
 type WorkspaceViewProps = ComponentProps<typeof AppWorkspaceViews>;
 
 export interface WorkspaceTabSurfaceProps {
+  visible?: boolean;
   tab: WorkspaceRuntimeTab;
   active: boolean;
   data: BootstrapDto;
@@ -54,6 +58,7 @@ export interface WorkspaceTabSurfaceProps {
   onRequestEditOwnership(articleId: string, tabId: string): void;
   onLocationFlushChange(tabId: string, flush: (() => void) | null): void;
   onNewTab(sourceTabId: string, destination: AppLocation['view'] | AppLocation): void;
+  onOpenBeside(sourceTabId: string, destination: AppLocation['view'] | AppLocation): void;
   onCommitLocation(
     tabId: string,
     destination: AppLocation | ((current: AppLocation) => AppLocation),
@@ -70,6 +75,7 @@ export interface WorkspaceTabSurfaceProps {
   onTermDetailsRequest: WorkspaceViewProps['onTermDetailsRequest'];
   onImportedOutputSaved(output: ImportedCreationOutputDto): void;
   onArticleSaved: WorkspaceViewProps['onArticleSaved'];
+  onSocialPostSaved: WorkspaceViewProps['onSocialPostSaved'];
   onApplyIntakeResult(result: IntakeCommitResult): void;
   onVideoDocumentsChange(): void;
   onRetryGeneration(runId: string): Promise<void>;
@@ -103,6 +109,15 @@ function creatorOpenTabLocation(current: AppLocation, target: CreatorOpenTabTarg
   return target.view === 'creator'
     ? { ...current, view: 'creator', creator: target.location, materialsReturnContext: null }
     : { ...current, view: 'documents', documents: target.location, materialsReturnContext: null };
+}
+
+function returnToMaterials(
+  tab: WorkspaceRuntimeTab,
+  onGoBack: WorkspaceTabSurfaceProps['onGoBack'],
+  onCommitLocation: WorkspaceTabSurfaceProps['onCommitLocation'],
+) {
+  if (tab.history.index > 0) onGoBack(tab.id);
+  else onCommitLocation(tab.id, (current) => ({ ...current, view: 'gallery', materialsReturnContext: null }));
 }
 
 function useCloseInactiveCreatorFullWindow(
@@ -149,44 +164,58 @@ function useArticleEditorBindings(
   return { changeLocation, navigateLocation, requestOwnership, changeLocationFlusher };
 }
 
-export function WorkspaceTabSurface({
-  tab,
-  active,
-  data,
-  dataRevision,
-  locale,
-  defaultPromptLocale,
-  comparisonFullWindow,
-  creationPromptFullWindow,
-  loadingPreviews,
-  codexImagesNavigation,
-  transitionShowcaseNavigation,
-  documentNavigationRevision,
-  articleEditorStates,
-  articleEditOwners,
-  onArticleEditorStateChange,
-  onArticleLocationChange,
-  onArticleLocationNavigate,
-  onRequestEditOwnership,
-  onLocationFlushChange,
-  onNewTab,
-  onCommitLocation,
-  onGoBack,
-  onHistoryNavigationGuardChange,
-  onComparisonFullWindowChange,
-  onCreationPromptFullWindowChange,
-  onCreatorActiveAlbumChange,
-  onGalleryActiveAlbumChange,
-  refresh,
-  refreshAlbums,
-  onTermDetailsRequest,
-  onImportedOutputSaved,
-  onArticleSaved,
-  onApplyIntakeResult,
-  onVideoDocumentsChange,
-  onRetryGeneration,
-  notify,
-}: WorkspaceTabSurfaceProps) {
+function WorkspaceOutlineSurface({ location, ...props }: WorkspaceTabSurfaceProps & { location: AppLocation }) {
+  if (location.creator.surface !== 'outline') return null;
+  return (
+    <CreationOutlineWorkspace
+      data={props.data}
+      visible={props.visible ?? props.active}
+      albumId={location.creator.albumId}
+      refresh={props.refresh}
+      notify={props.notify}
+      documentNavigationRevision={props.documentNavigationRevision}
+      onOpenBeside={(target) => props.onOpenBeside(props.tab.id, creatorOpenTabLocation(location, target))}
+    />
+  );
+}
+
+export function WorkspaceTabSurface(props: WorkspaceTabSurfaceProps) {
+  const {
+    tab,
+    active,
+    visible = active,
+    data,
+    dataRevision,
+    locale,
+    defaultPromptLocale,
+    comparisonFullWindow,
+    creationPromptFullWindow,
+    loadingPreviews,
+    codexImagesNavigation,
+    transitionShowcaseNavigation,
+    documentNavigationRevision,
+    articleEditorStates,
+    articleEditOwners,
+    onArticleEditorStateChange,
+    onNewTab,
+    onCommitLocation,
+    onGoBack,
+    onHistoryNavigationGuardChange,
+    onComparisonFullWindowChange,
+    onCreationPromptFullWindowChange,
+    onCreatorActiveAlbumChange,
+    onGalleryActiveAlbumChange,
+    refresh,
+    refreshAlbums,
+    onTermDetailsRequest,
+    onImportedOutputSaved,
+    onArticleSaved,
+    onSocialPostSaved,
+    onApplyIntakeResult,
+    onVideoDocumentsChange,
+    onRetryGeneration,
+    notify,
+  } = props;
   const creatorStartRevision = useRef(0);
   const navigationEntry = activeNavigationEntry(tab);
   const location = navigationEntry.location;
@@ -197,12 +226,7 @@ export function WorkspaceTabSurface({
   const articleId = view === 'creator' && location.creator.surface === 'article' ? location.creator.articleId : null;
   const editOwner = articleId ? (articleEditOwners.find((owner) => owner.articleId === articleId) ?? null) : null;
 
-  const articleEditorBindings = useArticleEditorBindings(tab.id, {
-    onArticleLocationChange,
-    onArticleLocationNavigate,
-    onRequestEditOwnership,
-    onLocationFlushChange,
-  });
+  const articleEditorBindings = useArticleEditorBindings(tab.id, props);
 
   useCloseInactiveCreatorFullWindow(active, view, onComparisonFullWindowChange, onCreationPromptFullWindowChange);
 
@@ -306,104 +330,114 @@ export function WorkspaceTabSurface({
     commit((current) => intakeLocation(current, result, requestId));
     onApplyIntakeResult(result);
   }
-
+  if (view === 'creator' && location.creator.surface === 'outline') {
+    return <WorkspaceOutlineSurface {...props} location={location} />;
+  }
   return (
     <div className="size-full min-h-0 min-w-0 overflow-hidden">
-      <WorkspaceArticleEditorStateProvider
-        activeArticleId={articleId}
-        tabId={tab.id}
-        navigationEntryId={navigationEntry.id}
-        articleLocation={navigationEntry.articleLocation}
-        editable={!articleId || editOwner?.tabId === tab.id}
-        states={articleEditorStates}
-        onChange={onArticleEditorStateChange}
-        onArticleLocationChange={articleEditorBindings.changeLocation}
-        onArticleLocationNavigate={articleEditorBindings.navigateLocation}
-        onRequestEditOwnership={articleEditorBindings.requestOwnership}
-        onLocationFlushChange={articleEditorBindings.changeLocationFlusher}
+      <GifWorkspaceScope
+        data={data}
+        onOpenWork={(target) => commit(creatorOpenTabLocation(location, target))}
+        active={visible}
+        focused={active}
+        navigationKey={`${navigationEntry.id}:${JSON.stringify(appLocationToWorkspaceTarget(location))}`}
+        route={view === 'creator' && location.creator.surface === 'animation' ? location.creator : null}
+        onNavigate={navigateCreator}
+        onClose={() => (tab.history.index > 0 ? onGoBack(tab.id) : navigateCreator({ surface: 'default' }, 'replace'))}
       >
-        {data.libraryEmpty &&
-          view === 'creator' &&
-          location.creator.surface === 'default' &&
-          loadingBoundaries.creator(
-            <LibraryStartScreen
-              onCommitted={(result) => void finishIntake(result)}
-              onContentPackImported={refresh}
-              notify={notify}
-            />,
-          )}
-        <AppWorkspaceViews
-          groupActive={active}
-          view={view}
-          visitedViews={visitedViews}
-          data={data}
-          dataRevision={dataRevision}
-          locale={locale}
-          defaultPromptLocale={defaultPromptLocale}
-          location={location}
-          comparisonFullWindow={comparisonFullWindow}
-          creationPromptFullWindow={creationPromptFullWindow}
-          materialsReturnContext={location.materialsReturnContext}
-          returnSummary={returnSummary}
-          codexImagesNavigation={codexImagesNavigation}
-          transitionShowcaseNavigation={transitionShowcaseNavigation}
-          loadingBoundaries={loadingBoundaries}
-          documentNavigationRevision={documentNavigationRevision}
-          onReturnToMaterials={() =>
-            tab.history.index > 0
-              ? onGoBack(tab.id)
-              : commit((current) => ({ ...current, view: 'gallery', materialsReturnContext: null }))
-          }
-          onVideoDocumentsChange={onVideoDocumentsChange}
-          onCreatorNavigate={navigateCreator}
-          onCreatorOpenInNewTab={(target) => onNewTab(tab.id, creatorOpenTabLocation(location, target))}
-          onComparisonFullWindowChange={onComparisonFullWindowChange}
-          onCreationPromptFullWindowChange={onCreationPromptFullWindowChange}
-          onOpenCreatorMaterial={openCreatorMaterial}
-          onConfigureExtension={(pluginId) =>
-            navigateExtensions({ tab: 'plugins', pluginId: pluginId ?? null, packId: null })
-          }
-          onCreatorActiveAlbumChange={(albumId) => onCreatorActiveAlbumChange(tab.id, albumId)}
-          refresh={refresh}
-          refreshAlbums={refreshAlbums}
-          onTermDetailsRequest={onTermDetailsRequest}
-          onImportedOutputSaved={onImportedOutputSaved}
-          onArticleSaved={onArticleSaved}
-          notify={notify}
-          onVideoDocumentsNavigate={navigateDocuments}
-          onDictionaryNavigate={navigateDictionary}
-          onNavigateBack={() => onGoBack(tab.id)}
-          onHistoryNavigationGuardChange={(guard) => onHistoryNavigationGuardChange(tab.id, guard)}
-          onOpenDictionaryCreation={(seriesId, assetId, versionId) =>
-            navigateCreator({
-              surface: 'existing-creation',
-              seriesId,
-              assetId,
-              ...(versionId ? { versionId } : {}),
-            })
-          }
-          onGalleryNavigate={navigateGallery}
-          onOpenGalleryResult={openGalleryResult}
-          onOpenGalleryTerm={openGalleryTerm}
-          onGalleryIntakeCommitted={finishIntake}
-          onGalleryActiveAlbumChange={(albumId) => onGalleryActiveAlbumChange(tab.id, albumId)}
-          onExtensionsNavigate={navigateExtensions}
-          onOpenImportedCreation={openImportedCreation}
-          onAiCenterNavigate={navigateAiCenter}
-          onLocateAiActivity={locateAiActivity}
-          onReEditGeneration={reEditGeneration}
-          onRetryGeneration={onRetryGeneration}
-        />
-        {view === 'contentManagement' && (
-          <ContentManagementScreen
-            active={active}
-            canNavigateBack={tab.history.index > 0}
-            onNavigateBack={() => onGoBack(tab.id)}
-            onContentChange={refresh}
+        <WorkspaceArticleEditorStateProvider
+          activeArticleId={articleId}
+          tabId={tab.id}
+          navigationEntryId={navigationEntry.id}
+          articleLocation={navigationEntry.articleLocation}
+          editable={!articleId || editOwner?.tabId === tab.id}
+          states={articleEditorStates}
+          onChange={onArticleEditorStateChange}
+          onArticleLocationChange={articleEditorBindings.changeLocation}
+          onArticleLocationNavigate={articleEditorBindings.navigateLocation}
+          onRequestEditOwnership={articleEditorBindings.requestOwnership}
+          onLocationFlushChange={articleEditorBindings.changeLocationFlusher}
+        >
+          {data.libraryEmpty &&
+            view === 'creator' &&
+            location.creator.surface === 'default' &&
+            loadingBoundaries.creator(
+              <LibraryStartScreen
+                onCommitted={(result) => void finishIntake(result)}
+                onContentPackImported={refresh}
+                notify={notify}
+              />,
+            )}
+          <AppWorkspaceViews
+            groupActive={active}
+            view={view}
+            visitedViews={visitedViews}
+            data={data}
+            dataRevision={dataRevision}
+            locale={locale}
+            defaultPromptLocale={defaultPromptLocale}
+            location={location}
+            comparisonFullWindow={comparisonFullWindow}
+            creationPromptFullWindow={creationPromptFullWindow}
+            materialsReturnContext={location.materialsReturnContext}
+            returnSummary={returnSummary}
+            codexImagesNavigation={codexImagesNavigation}
+            transitionShowcaseNavigation={transitionShowcaseNavigation}
+            loadingBoundaries={loadingBoundaries}
+            documentNavigationRevision={documentNavigationRevision}
+            onReturnToMaterials={() => returnToMaterials(tab, onGoBack, onCommitLocation)}
+            onVideoDocumentsChange={onVideoDocumentsChange}
+            onCreatorNavigate={navigateCreator}
+            onCreatorOpenInNewTab={(target) => onNewTab(tab.id, creatorOpenTabLocation(location, target))}
+            onComparisonFullWindowChange={onComparisonFullWindowChange}
+            onCreationPromptFullWindowChange={onCreationPromptFullWindowChange}
+            onOpenCreatorMaterial={openCreatorMaterial}
+            onConfigureExtension={(pluginId) =>
+              navigateExtensions({ tab: 'plugins', pluginId: pluginId ?? null, packId: null })
+            }
+            onCreatorActiveAlbumChange={(albumId) => onCreatorActiveAlbumChange(tab.id, albumId)}
+            refresh={refresh}
+            refreshAlbums={refreshAlbums}
+            onTermDetailsRequest={onTermDetailsRequest}
+            onImportedOutputSaved={onImportedOutputSaved}
+            onArticleSaved={onArticleSaved}
+            onSocialPostSaved={onSocialPostSaved}
             notify={notify}
+            onVideoDocumentsNavigate={navigateDocuments}
+            onDictionaryNavigate={navigateDictionary}
+            onNavigateBack={() => onGoBack(tab.id)}
+            onHistoryNavigationGuardChange={(guard) => onHistoryNavigationGuardChange(tab.id, guard)}
+            onOpenDictionaryCreation={(seriesId, assetId, versionId) =>
+              navigateCreator({
+                surface: 'existing-creation',
+                seriesId,
+                assetId,
+                ...(versionId ? { versionId } : {}),
+              })
+            }
+            onGalleryNavigate={navigateGallery}
+            onOpenGalleryResult={openGalleryResult}
+            onOpenGalleryTerm={openGalleryTerm}
+            onGalleryIntakeCommitted={finishIntake}
+            onGalleryActiveAlbumChange={(albumId) => onGalleryActiveAlbumChange(tab.id, albumId)}
+            onExtensionsNavigate={navigateExtensions}
+            onOpenImportedCreation={openImportedCreation}
+            onAiCenterNavigate={navigateAiCenter}
+            onLocateAiActivity={locateAiActivity}
+            onReEditGeneration={reEditGeneration}
+            onRetryGeneration={onRetryGeneration}
           />
-        )}
-      </WorkspaceArticleEditorStateProvider>
+          {view === 'contentManagement' && (
+            <ContentManagementScreen
+              active={active}
+              canNavigateBack={tab.history.index > 0}
+              onNavigateBack={() => onGoBack(tab.id)}
+              onContentChange={refresh}
+              notify={notify}
+            />
+          )}
+        </WorkspaceArticleEditorStateProvider>
+      </GifWorkspaceScope>
     </div>
   );
 }

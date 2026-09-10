@@ -1,4 +1,6 @@
 import { useMemo, useState } from 'react';
+import { useI18n } from '@/renderer/i18n/useI18n';
+import { videoDocumentRevisionMediaSchema } from '@/shared/contracts/video-document';
 import { CircleAlertIcon, CopyIcon, LoaderCircleIcon } from 'lucide-react';
 import type {
   ArticleContentInput,
@@ -89,18 +91,19 @@ function copyFailureMessage(reason: unknown, zh: boolean) {
     : `Copy failed before anything was written to the clipboard: ${detail}`;
 }
 
-function WechatCopyDebug({ rendered, zh }: { rendered: ArticleWechatRenderResult; zh: boolean }) {
+function WechatCopyDebug({ rendered }: { rendered: ArticleWechatRenderResult }) {
+  const labels = useI18n().messages.wechatCopyDebug;
   const [format, setFormat] = useState<'html' | 'text'>('html');
   const diagnostics = rendered.diagnostics;
   const metrics = [
-    [zh ? 'HTML' : 'HTML', formatBytes(diagnostics.htmlByteSize)],
-    [zh ? '纯文本' : 'Plain text', formatBytes(diagnostics.textByteSize)],
-    [zh ? '本地图片' : 'Local images', diagnostics.localImageCount],
-    [zh ? '网络图片' : 'Remote images', diagnostics.remoteImageCount],
-    [zh ? '链接' : 'Links', diagnostics.linkCount],
-    [zh ? '文末引用' : 'End references', diagnostics.endReferenceCount],
-    [zh ? '已忽略链接' : 'Ignored links', diagnostics.unsupportedLinkCount],
-    [zh ? '缺失图片' : 'Missing images', diagnostics.unavailableImageCount],
+    [labels.html, formatBytes(diagnostics.htmlByteSize)],
+    [labels.plainText, formatBytes(diagnostics.textByteSize)],
+    [labels.localImages, diagnostics.localImageCount],
+    [labels.remoteImages, diagnostics.remoteImageCount],
+    [labels.links, diagnostics.linkCount],
+    [labels.endReferences, diagnostics.endReferenceCount],
+    [labels.ignoredLinks, diagnostics.unsupportedLinkCount],
+    [labels.missingImages, diagnostics.unavailableImageCount],
   ] as const;
   return (
     <div className="flex min-h-0 flex-1 flex-col">
@@ -116,11 +119,11 @@ function WechatCopyDebug({ rendered, zh }: { rendered: ArticleWechatRenderResult
         <Segmented
           type="single"
           value={format}
-          aria-label={zh ? '调试格式' : 'Debug format'}
+          aria-label={labels.format}
           onValueChange={(value) => (value === 'html' || value === 'text') && setFormat(value)}
         >
-          <SegmentedItem value="html">HTML</SegmentedItem>
-          <SegmentedItem value="text">{zh ? '纯文本' : 'Plain text'}</SegmentedItem>
+          <SegmentedItem value="html">{labels.html}</SegmentedItem>
+          <SegmentedItem value="text">{labels.plainText}</SegmentedItem>
         </Segmented>
       </div>
       <pre className="min-h-0 flex-1 overflow-auto whitespace-pre-wrap break-all bg-surface-sunken p-4 font-mono text-xs leading-relaxed text-foreground">
@@ -206,7 +209,7 @@ function WechatCopyDialog({
             )}
           </TabsContent>
           <TabsContent value="debug" className="min-h-0 flex-1 overflow-hidden">
-            {preview.value ? <WechatCopyDebug rendered={preview.value} zh={zh} /> : null}
+            {preview.value ? <WechatCopyDebug rendered={preview.value} /> : null}
           </TabsContent>
         </Tabs>
         <DialogFooter className="shrink-0 items-center border-t px-4 py-3 sm:justify-between">
@@ -261,12 +264,32 @@ export function ArticleWechatCopyAction({ locale, notify, onCopy }: Props) {
     [linksAsEndReferences, snapshot, zh],
   );
 
-  function openPreview() {
+  async function openPreview() {
     try {
       setCopyError(null);
+      const content = session.captureSnapshot();
+      const expanded = await window.desktopApi.contentLibrary.render(content.markdown);
       setSnapshot({
-        content: session.captureSnapshot(),
-        media: media.map((item) => ({ ...item })),
+        content: {
+          ...content,
+          markdown: expanded.markdown,
+          mediaBindings: [
+            ...new Map(
+              [
+                ...content.mediaBindings,
+                ...expanded.media.map((asset) => ({ path: asset.path, assetId: asset.assetId })),
+              ].map((binding) => [binding.path, binding]),
+            ).values(),
+          ],
+        },
+        media: [
+          ...new Map(
+            [
+              ...media,
+              ...expanded.media.map((asset) => videoDocumentRevisionMediaSchema.parse({ ...asset, durationMs: null })),
+            ].map((asset) => [asset.assetId, asset]),
+          ).values(),
+        ],
       });
       setOpen(true);
     } catch (reason) {

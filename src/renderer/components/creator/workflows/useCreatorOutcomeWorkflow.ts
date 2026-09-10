@@ -1,35 +1,23 @@
-import { useEffect, useRef, useState } from 'react';
-import type {
-  ArticleContentInput,
-  AssetDto,
-  CreationDraftDto,
-  CreationDraftSaveInput,
-  Locale,
-  SocialPostContentInput,
-} from '@/shared/contracts';
-import type { ResolvedPromptComposition } from '@/shared/prompt-composition';
-import {
-  articleMediaBindings,
-  markdownWithImages,
-} from '@/renderer/components/creator/article-editor/articleContentTransforms';
-import type { CreationOutcomePlan } from '@/renderer/components/creator/CreationOutcomePicker';
+import { articleMediaBindings } from '@/renderer/components/creator/article-editor/articleContentTransforms';
+import type { CreationStartPlan } from '@/renderer/components/creator/CreationStartActions';
 import type { CreationDraftPromptSnapshot } from '@/renderer/components/creator/workflows/creationDraftSnapshot';
 import { creationDraftCommitIdentity } from '@/renderer/components/creator/workflows/creationDraftSnapshot';
+import { useI18n } from '@/renderer/i18n/useI18n';
 import { useStableCallback } from '@/renderer/lib/useStableCallback';
+import { blockDocumentMarkdown, blockDocumentText, plainTextBlockDocument } from '@/shared/block-document-codecs';
+import type { ArticleContentInput, AssetDto, CreationDraftDto, CreationDraftSaveInput } from '@/shared/contracts';
+import { blockDocumentAssetIds, captureBlockDocument } from '@/shared/contracts/block-document';
+import { useEffect, useRef, useState } from 'react';
+import { useGifMakerLauncher } from '@/renderer/features/gif-making/GifMakerProvider';
 
 type DraftSaveSnapshot = Omit<CreationDraftSaveInput, 'id' | 'expectedUpdatedAt'>;
 
 interface OutcomeSnapshot {
-  automaticChangeSummary: string;
-  livePrompt: string;
-  locale: Locale;
   prompt: CreationDraftPromptSnapshot;
   referenceAssets: AssetDto[];
-  resolvedPrompt: ResolvedPromptComposition;
   savedDraftTitle: string;
   sourceInspirationStashId: string | null;
   targetAlbumId: string | null;
-  termPromptLocale: Locale;
   typedTitle: string;
 }
 
@@ -45,12 +33,9 @@ interface Options {
   captureDraftSaveSnapshot(prompt: CreationDraftPromptSnapshot): DraftSaveSnapshot;
   captureSnapshot(): OutcomeSnapshot;
   createArticleFromDraft(input: DraftContentInput<ArticleContentInput>): Promise<void>;
-  createSocialPostFromDraft(input: DraftContentInput<SocialPostContentInput>): Promise<void>;
   invalidateAutosaves(): void;
   notify(message: string): void;
-  onImageCommitted(result: { seriesId: string; versionId: string }): void;
   onPromptCaptured(prompt: CreationDraftPromptSnapshot): void;
-  refresh(): Promise<void>;
   requestIdentity: string;
   saveCapturedDraft(snapshot: DraftSaveSnapshot): Promise<CreationDraftDto>;
   saveDraft(prompt: CreationDraftPromptSnapshot): Promise<CreationDraftDto>;
@@ -74,20 +59,27 @@ function outcomeTitle(snapshot: OutcomeSnapshot, fallback: string) {
   );
 }
 
+function hasOutcomeContent(snapshot: OutcomeSnapshot) {
+  return snapshot.prompt.document
+    ? Boolean(
+        blockDocumentText(snapshot.prompt.document).trim() || blockDocumentAssetIds(snapshot.prompt.document).length,
+      )
+    : Boolean(snapshot.prompt.manualPrompt.trim());
+}
+
 export function useCreatorOutcomeWorkflow(options: Options) {
+  const animation = useGifMakerLauncher();
+  const messages = useI18n().messages;
   const [starting, setStarting] = useState(false);
   const busyRef = useRef(false);
   const revisionRef = useRef(0);
   const captureDraftSaveSnapshot = useStableCallback(options.captureDraftSaveSnapshot);
   const captureSnapshot = useStableCallback(options.captureSnapshot);
   const createArticleFromDraft = useStableCallback(options.createArticleFromDraft);
-  const createSocialPostFromDraft = useStableCallback(options.createSocialPostFromDraft);
   const getRequestIdentity = useStableCallback(() => options.requestIdentity);
   const invalidateAutosaves = useStableCallback(options.invalidateAutosaves);
   const notify = useStableCallback(options.notify);
-  const onImageCommitted = useStableCallback(options.onImageCommitted);
   const onPromptCaptured = useStableCallback(options.onPromptCaptured);
-  const refresh = useStableCallback(options.refresh);
   const saveCapturedDraft = useStableCallback(options.saveCapturedDraft);
   const saveDraft = useStableCallback(options.saveDraft);
 
@@ -97,7 +89,7 @@ export function useCreatorOutcomeWorkflow(options: Options) {
     setStarting(false);
   }, [options.requestIdentity]);
 
-  const start = useStableCallback(async (plan: CreationOutcomePlan) => {
+  const start = useStableCallback(async (plan: CreationStartPlan) => {
     if (busyRef.current) return;
     let snapshot: OutcomeSnapshot;
     try {
@@ -106,9 +98,8 @@ export function useCreatorOutcomeWorkflow(options: Options) {
       notify(messageFor(reason));
       return;
     }
-    if (plan.kind === 'image' && !snapshot.livePrompt.trim()) return;
-    if (plan.kind === 'social-post' && !snapshot.prompt.manualPrompt.trim()) return;
-    if (plan.kind === 'article' && !snapshot.prompt.manualPrompt.trim() && !snapshot.referenceAssets.length) return;
+    const hasContent = hasOutcomeContent(snapshot);
+    if (plan.kind === 'manuscript' && !hasContent && !snapshot.referenceAssets.length) return;
     const requestIdentity = getRequestIdentity();
     const revision = ++revisionRef.current;
     const requestIsCurrent = () => revisionRef.current === revision && getRequestIdentity() === requestIdentity;
@@ -117,33 +108,16 @@ export function useCreatorOutcomeWorkflow(options: Options) {
     onPromptCaptured(snapshot.prompt);
     invalidateAutosaves();
     try {
-      if (plan.kind === 'image') {
-        const draft = await saveDraft(snapshot.prompt);
+      if (plan.kind === 'animation') {
+        if (hasContent || snapshot.referenceAssets.length) await saveDraft(snapshot.prompt);
         if (!requestIsCurrent()) return;
-        const title = snapshot.typedTitle || snapshot.savedDraftTitle || '新创作';
-        const result = await window.desktopApi.creationDraftCommit({
-          creationDraftId: draft.id,
-          inspirationStashId: snapshot.sourceInspirationStashId,
-          title,
-          manualPrompt: snapshot.prompt.manualPrompt,
-          promptNodes: snapshot.prompt.nodes,
-          prompt: snapshot.livePrompt,
-          resolvedPrompt: snapshot.resolvedPrompt,
-          changeSummary: snapshot.automaticChangeSummary,
-          referenceAssetIds: snapshot.referenceAssets.map((asset) => asset.id),
-          termPromptLocale: snapshot.termPromptLocale,
-          termIds: snapshot.prompt.selectedTerms.map((term) => term.id),
-          wordPaletteReferences: snapshot.prompt.appliedPalettes.map((reference) => ({
-            paletteId: reference.palette.id,
-            paletteRevisionId: reference.revision.id,
-            parameterValues: { ...reference.parameterValues },
-            promptLocale: reference.promptLocale,
-          })),
+        await animation?.open({
+          forceNew: true,
+          title: snapshot.typedTitle || snapshot.savedDraftTitle,
+          initialPrompt: snapshot.prompt.manualPrompt,
+          assetIds: snapshot.referenceAssets.map((asset) => asset.id),
+          targetAlbumId: snapshot.targetAlbumId,
         });
-        await refresh();
-        if (!requestIsCurrent()) return;
-        onImageCommitted(result);
-        notify(snapshot.locale === 'zh' ? '已开启创作' : 'Creation started');
         return;
       }
       const draftSnapshot = captureDraftSaveSnapshot(snapshot.prompt);
@@ -154,30 +128,30 @@ export function useCreatorOutcomeWorkflow(options: Options) {
         sourceInspirationStashId: snapshot.sourceInspirationStashId,
         targetAlbumId: snapshot.targetAlbumId,
       };
-      if (plan.kind === 'social-post') {
-        await createSocialPostFromDraft({
-          ...common,
-          content: {
-            schemaVersion: 1,
-            title: outcomeTitle(snapshot, '新贴图'),
-            body: snapshot.prompt.manualPrompt,
-            mediaAssetIds: snapshot.referenceAssets.map((asset) => asset.id),
-            coverAssetId: snapshot.referenceAssets[0]?.id ?? null,
-          },
-        });
-      } else {
-        const mediaBindings = articleMediaBindings(snapshot.referenceAssets, 'reference');
-        await createArticleFromDraft({
-          ...common,
-          content: {
-            schemaVersion: 1,
-            title: outcomeTitle(snapshot, '新文章'),
-            markdown: markdownWithImages(snapshot.prompt.manualPrompt.trim(), mediaBindings, snapshot.locale),
-            mediaBindings,
-            coverAssetId: snapshot.referenceAssets[0]?.id ?? null,
-          },
-        });
-      }
+      const sourceDocument = snapshot.prompt.document ?? plainTextBlockDocument(snapshot.prompt.manualPrompt);
+      const document = captureBlockDocument(sourceDocument.root, [], true);
+      const mediaBindings = articleMediaBindings(snapshot.referenceAssets, 'reference');
+      const inlineIds = new Set(blockDocumentAssetIds(document));
+      const articleDocument = captureBlockDocument({
+        ...document.root,
+        content: [
+          ...(document.root.content ?? []),
+          ...mediaBindings
+            .filter((binding) => !inlineIds.has(binding.assetId))
+            .map((binding) => ({ type: 'image', attrs: { assetId: binding.assetId, alt: '' } })),
+        ],
+      });
+      await createArticleFromDraft({
+        ...common,
+        content: {
+          schemaVersion: 2,
+          document: articleDocument,
+          title: outcomeTitle(snapshot, messages.contentEditor.untitledArticle),
+          markdown: blockDocumentMarkdown(articleDocument, mediaBindings),
+          mediaBindings,
+          coverAssetId: snapshot.referenceAssets[0]?.id ?? null,
+        },
+      });
     } catch (reason) {
       if (requestIsCurrent()) notify(messageFor(reason));
     } finally {

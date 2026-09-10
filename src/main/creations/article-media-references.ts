@@ -5,6 +5,7 @@ import * as remarkParseModule from 'remark-parse';
 interface MarkdownNode {
   type: string;
   url?: string;
+  identifier?: string;
   children?: MarkdownNode[];
   position?: {
     start: { offset?: number };
@@ -58,22 +59,68 @@ function internalAssetId(value: string) {
   }
 }
 
+function articleImageNodes(markdown: string) {
+  const root = unified().use(remarkParse).use(remarkGfm).parse(markdown) as unknown as MarkdownNode;
+  const images: MarkdownNode[] = [];
+  const definitions = new Map<string, MarkdownNode>();
+  const references = new Set<string>();
+  visitMarkdown(root, (node) => {
+    if (node.type === 'image') images.push(node);
+    if (node.type === 'definition' && node.identifier && !definitions.has(node.identifier)) {
+      definitions.set(node.identifier, node);
+    }
+    if (node.type === 'imageReference' && node.identifier) references.add(node.identifier);
+  });
+  for (const identifier of references) {
+    const definition = definitions.get(identifier);
+    if (definition) images.push(definition);
+  }
+  return images;
+}
+
+/** Only the selected revision's body and cover belong in a delivery snapshot. */
+export function referencedArticleMediaBindings(
+  markdown: string,
+  bindings: readonly { path: string; assetId: string }[],
+  coverAssetId: string | null,
+) {
+  const paths = new Set<string>();
+  const assetIds = new Set<string>(coverAssetId ? [coverAssetId] : []);
+  for (const node of articleImageNodes(markdown)) {
+    if (!node.url) continue;
+    const assetId = internalAssetId(node.url);
+    if (assetId) assetIds.add(assetId);
+    else paths.add(normalizedArticleMediaPath(node.url));
+  }
+  const selected = bindings.filter((binding) => paths.has(normalizedArticleMediaPath(binding.path)));
+  const selectedIds = new Set(selected.map((binding) => binding.assetId));
+  for (const assetId of assetIds) {
+    if (!selectedIds.has(assetId)) selected.push({ path: `aiy-media://asset/${encodeURIComponent(assetId)}`, assetId });
+  }
+  const boundPaths = new Set(selected.map((binding) => normalizedArticleMediaPath(binding.path)));
+  for (const mediaPath of paths) {
+    if (!boundPaths.has(mediaPath) && !/^(?:https?:|data:|\/media\/)/iu.test(mediaPath)) {
+      throw Object.assign(new Error(mediaPath), { code: 'DELIVERY_MEDIA_UNBOUND' });
+    }
+  }
+  return selected;
+}
+
 export function rewriteArticleImageReferences(
   markdown: string,
   destinationsByPath: ReadonlyMap<string, string>,
   destinationsByAssetId: ReadonlyMap<string, string>,
 ) {
-  const root = unified().use(remarkParse).use(remarkGfm).parse(markdown) as unknown as MarkdownNode;
   const replacements: Array<{ start: number; end: number; value: string }> = [];
-  visitMarkdown(root, (node) => {
-    if (node.type !== 'image' || !node.url) return;
+  for (const node of articleImageNodes(markdown)) {
+    if (!node.url) continue;
     const assetId = internalAssetId(node.url);
     const destination = assetId
       ? destinationsByAssetId.get(assetId)
       : destinationsByPath.get(normalizedArticleMediaPath(node.url));
     if (!destination) {
       if (assetId || node.url.startsWith('aiy-media:')) throw new Error('An article image reference is unavailable');
-      return;
+      continue;
     }
     const start = node.position?.start.offset;
     const end = node.position?.end.offset;
@@ -89,7 +136,7 @@ export function rewriteArticleImageReferences(
       end: start + relativeUrlOffset + node.url.length,
       value: destination,
     });
-  });
+  }
   let rewritten = markdown;
   for (const replacement of replacements.sort((left, right) => right.start - left.start)) {
     rewritten = `${rewritten.slice(0, replacement.start)}${replacement.value}${rewritten.slice(replacement.end)}`;

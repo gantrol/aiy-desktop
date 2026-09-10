@@ -1,3 +1,4 @@
+import { blockDocumentSchema } from '@/shared/contracts/block-document';
 import { z } from 'zod';
 
 const idSchema = z.string().min(1).max(200);
@@ -45,14 +46,26 @@ const assetSchema = z
 
 export const creationDraftLoadInputSchema = z.object({ draftId: idSchema }).strict();
 
+export const creationVideoAttachmentSchema = z
+  .object({
+    materialId: idSchema,
+    name: z.string(),
+    durationMs: z.number().int().positive(),
+    asset: assetSchema,
+  })
+  .strict();
+export type CreationVideoAttachmentDto = z.infer<typeof creationVideoAttachmentSchema>;
+
 export const creationDraftDtoSchema = z
   .object({
     id: idSchema,
     targetAlbumId: idSchema.nullable(),
     title: z.string().max(300),
     text: z.string().max(30_000),
+    document: blockDocumentSchema.optional(),
     promptNodes: z.array(promptNodeSchema).max(2_000).optional(),
-    referenceAssets: z.array(assetSchema).max(8),
+    referenceAssets: z.array(assetSchema).max(100),
+    videoAttachments: z.array(creationVideoAttachmentSchema).max(8).optional(),
     termPromptLocale: localeSchema,
     termIds: z.array(idSchema).max(100),
     wordPaletteReferences: z.array(paletteReferenceSchema).max(50),

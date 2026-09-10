@@ -1,7 +1,12 @@
 import { createHash, randomUUID } from 'node:crypto';
 import { constants } from 'node:fs';
-import { copyFile, mkdir, open, readdir, rename, rm, writeFile } from 'node:fs/promises';
+import { copyFile, link, mkdir, open, readdir, rename, rm, writeFile } from 'node:fs/promises';
 import path from 'node:path';
+import {
+  XIAOHONGSHU_IMAGE_MAX_BYTES,
+  XIAOHONGSHU_IMAGE_TYPES,
+  xiaohongshuHandoffError,
+} from '@/shared/xiaohongshu-publishing';
 import {
   BROWSER_COMPANION_MAX_MEDIA_BYTES,
   BROWSER_COMPANION_MAX_TOTAL_MEDIA_BYTES,
@@ -22,14 +27,16 @@ import {
 } from '@/main/browser-companion/protocol';
 import {
   browserCompanionHistoryItemSchema,
+  browserCompanionStageErrorCodeSchema,
   type BrowserCompanionDeleteResult,
   type BrowserCompanionHistoryItem,
   type BrowserCompanionStageInput,
   type BrowserCompanionTarget,
 } from '@/shared/contracts/browser-companion';
 
-const MAX_HANDOFF_FILE_BYTES = 64 * 1024;
+const MAX_HANDOFF_FILE_BYTES = 2 * 1024 * 1024;
 const CLAIM_LEASE_MS = 2 * 60 * 1000;
+const ARTICLE_CLAIM_LEASE_MS = 10 * 60 * 1000;
 const MAX_HISTORY_ITEMS = 10_000;
 const STATE_DIRECTORIES = ['ready', 'claimed', 'delivered'] as const;
 
@@ -70,6 +77,18 @@ export class BrowserCompanionStateError extends Error {
   }
 }
 
+export class BrowserCompanionMediaError extends Error {
+  readonly code;
+
+  constructor(
+    code: 'X_MEDIA_UNSUPPORTED' | 'X_MEDIA_TOO_LARGE' | 'XIAOHONGSHU_MEDIA_UNSUPPORTED' | 'XIAOHONGSHU_MEDIA_TOO_LARGE',
+  ) {
+    super(code);
+    this.name = 'BrowserCompanionMediaError';
+    this.code = browserCompanionStageErrorCodeSchema.parse(code);
+  }
+}
+
 function hasErrorCode(reason: unknown, code: string): boolean {
   return reason instanceof Error && 'code' in reason && Reflect.get(reason, 'code') === code;
 }
@@ -91,6 +110,8 @@ function baseRecord(record: BrowserCompanionRecord): BrowserCompanionRecordBase 
     source: record.source,
     contentKind: record.contentKind,
     title: record.title,
+    ...(record.articleHtml ? { articleHtml: record.articleHtml } : {}),
+    ...(record.articleCoverMediaIndex !== undefined ? { articleCoverMediaIndex: record.articleCoverMediaIndex } : {}),
     text: record.text,
     media: record.media,
     createdAt: record.createdAt,
@@ -164,7 +185,14 @@ async function writeBoundedJson(filePath: string, value: unknown, flag: 'w' | 'w
   if (bytes.length <= 0 || bytes.length > MAX_HANDOFF_FILE_BYTES) {
     throw new BrowserCompanionStateError('Browser companion handoff exceeds the local size limit');
   }
-  await writeFile(filePath, bytes, { flag, mode: 0o600 });
+  const temporaryPath = `${filePath}.${randomUUID()}.tmp`;
+  try {
+    await writeFile(temporaryPath, bytes, { flag: 'wx', mode: 0o600 });
+    if (flag === 'wx') await link(temporaryPath, filePath);
+    else await rename(temporaryPath, filePath);
+  } finally {
+    await rm(temporaryPath, { force: true });
+  }
 }
 
 async function hashFile(filePath: string, expectedBytes: number): Promise<string> {
@@ -191,7 +219,16 @@ async function hashFile(filePath: string, expectedBytes: number): Promise<string
 }
 
 export class BrowserCompanionHandoffStore {
+  private pendingStateOperation: Promise<unknown> = Promise.resolve();
+
   constructor(private readonly directoryPath: string) {}
+
+  // Recovery and history must not observe the intermediate files of a live transition.
+  private withStateLock<T>(operation: () => Promise<T>): Promise<T> {
+    const pending = this.pendingStateOperation.then(operation);
+    this.pendingStateOperation = pending.catch(() => undefined);
+    return pending;
+  }
 
   private stateDirectory(state: HandoffStateDirectory | 'deleted'): string {
     return path.join(this.directoryPath, state);
@@ -230,8 +267,20 @@ export class BrowserCompanionHandoffStore {
   private async stageMedia(
     handoffId: string,
     sources: readonly BrowserCompanionMediaSource[],
+    target: BrowserCompanionTarget,
   ): Promise<BrowserCompanionMedia[]> {
     if (sources.length === 0) return [];
+    if (
+      target === 'xiaohongshu' &&
+      sources.some((source) => !XIAOHONGSHU_IMAGE_TYPES.some((mimeType) => mimeType === source.mimeType))
+    ) {
+      throw new BrowserCompanionMediaError('XIAOHONGSHU_MEDIA_UNSUPPORTED');
+    }
+    if (target === 'x') {
+      if (sources.some((source) => !['image/png', 'image/jpeg', 'image/webp', 'image/gif'].includes(source.mimeType))) {
+        throw new BrowserCompanionMediaError('X_MEDIA_UNSUPPORTED');
+      }
+    }
     const directory = this.mediaDirectory(handoffId);
     await mkdir(directory, { recursive: false });
     const staged: BrowserCompanionMedia[] = [];
@@ -245,7 +294,7 @@ export class BrowserCompanionHandoffStore {
           const sourceHandle = await open(source.absolutePath, 'r');
           try {
             const stats = await sourceHandle.stat();
-            if (!stats.isFile() || stats.size <= 0 || stats.size > BROWSER_COMPANION_MAX_MEDIA_BYTES) {
+            if (!stats.isFile()) {
               throw new BrowserCompanionStateError('Browser companion media exceeds the per-file size limit');
             }
             byteSize = stats.size;
@@ -254,9 +303,15 @@ export class BrowserCompanionHandoffStore {
           }
         } else {
           byteSize = source.bytes.byteLength;
-          if (byteSize <= 0 || byteSize > BROWSER_COMPANION_MAX_MEDIA_BYTES) {
-            throw new BrowserCompanionStateError('Browser companion media exceeds the per-file size limit');
-          }
+        }
+        if (target === 'xiaohongshu' && byteSize > XIAOHONGSHU_IMAGE_MAX_BYTES) {
+          throw new BrowserCompanionMediaError('XIAOHONGSHU_MEDIA_TOO_LARGE');
+        }
+        if (byteSize <= 0 || byteSize > BROWSER_COMPANION_MAX_MEDIA_BYTES) {
+          throw new BrowserCompanionStateError('Browser companion media exceeds the per-file size limit');
+        }
+        if (target === 'x' && byteSize > (mimeType === 'image/gif' ? 15 : 5) * 1024 * 1024) {
+          throw new BrowserCompanionMediaError('X_MEDIA_TOO_LARGE');
         }
         totalBytes += byteSize;
         if (totalBytes > BROWSER_COMPANION_MAX_TOTAL_MEDIA_BYTES) {
@@ -342,9 +397,13 @@ export class BrowserCompanionHandoffStore {
     input: BrowserCompanionStageInput,
     mediaSources: readonly BrowserCompanionMediaSource[] = [],
   ): Promise<BrowserCompanionHistoryItem> {
+    if (input.target === 'xiaohongshu') {
+      const error = xiaohongshuHandoffError({ ...input, mediaCount: mediaSources.length });
+      if (error) throw new Error(error);
+    }
     await this.ensureDirectories();
     const handoffId = randomUUID();
-    const media = await this.stageMedia(handoffId, mediaSources);
+    const media = await this.stageMedia(handoffId, mediaSources, input.target);
     const record = browserCompanionRecordBaseSchema.parse({
       schemaVersion: 4,
       handoffId,
@@ -352,6 +411,8 @@ export class BrowserCompanionHandoffStore {
       source: input.source,
       contentKind: input.contentKind,
       title: input.title ?? null,
+      ...(input.articleHtml ? { articleHtml: input.articleHtml } : {}),
+      ...(input.articleCoverMediaIndex !== undefined ? { articleCoverMediaIndex: input.articleCoverMediaIndex } : {}),
       text: input.text,
       media,
       createdAt: new Date().toISOString(),
@@ -394,7 +455,9 @@ export class BrowserCompanionHandoffStore {
       ...parsed.data,
       completionToken: randomUUID(),
       claimedAt: claimedAt.toISOString(),
-      leaseExpiresAt: new Date(claimedAt.getTime() + CLAIM_LEASE_MS).toISOString(),
+      leaseExpiresAt: new Date(
+        claimedAt.getTime() + (parsed.data.contentKind === 'article-body' ? ARTICLE_CLAIM_LEASE_MS : CLAIM_LEASE_MS),
+      ).toISOString(),
     });
     try {
       await writeBoundedJson(claimedPath, claimed, 'w');
@@ -415,6 +478,10 @@ export class BrowserCompanionHandoffStore {
         source: claimed.source,
         contentKind: claimed.contentKind,
         title: claimed.title,
+        ...(claimed.articleHtml ? { articleHtml: claimed.articleHtml } : {}),
+        ...(claimed.articleCoverMediaIndex !== undefined
+          ? { articleCoverMediaIndex: claimed.articleCoverMediaIndex }
+          : {}),
         text: claimed.text,
         media: claimed.media,
         createdAt: claimed.createdAt,
@@ -424,22 +491,24 @@ export class BrowserCompanionHandoffStore {
   }
 
   async claim(target: BrowserCompanionTarget, handoffId?: string): Promise<BrowserCompanionResponse> {
-    await this.ensureDirectories();
-    await this.recoverInterruptedClaims();
+    return this.withStateLock(async () => {
+      await this.ensureDirectories();
+      await this.recoverInterruptedClaims();
 
-    if (handoffId) {
-      const response = await this.claimRecord(handoffId, target);
-      return response ?? companionError('HANDOFF_NOT_FOUND');
-    }
+      if (handoffId) {
+        const response = await this.claimRecord(handoffId, target);
+        return response ?? companionError('HANDOFF_NOT_FOUND');
+      }
 
-    const candidates = (await this.recordsForState('ready'))
-      .filter((record) => record.target === target)
-      .sort((left, right) => Date.parse(right.createdAt) - Date.parse(left.createdAt));
-    for (const candidate of candidates) {
-      const response = await this.claimRecord(candidate.handoffId, target);
-      if (response) return response;
-    }
-    return { protocolVersion: BROWSER_COMPANION_PROTOCOL_VERSION, ok: true, kind: 'empty' };
+      const candidates = (await this.recordsForState('ready'))
+        .filter((record) => record.target === target)
+        .sort((left, right) => Date.parse(right.createdAt) - Date.parse(left.createdAt));
+      for (const candidate of candidates) {
+        const response = await this.claimRecord(candidate.handoffId, target);
+        if (response) return response;
+      }
+      return { protocolVersion: BROWSER_COMPANION_PROTOCOL_VERSION, ok: true, kind: 'empty' };
+    });
   }
 
   private async claimedRecord(
@@ -493,24 +562,26 @@ export class BrowserCompanionHandoffStore {
     completionToken: string,
     target: BrowserCompanionTarget,
   ): Promise<BrowserCompanionResponse> {
-    await this.ensureDirectories();
-    const record = await this.claimedRecord(handoffId, completionToken, target);
-    if ('kind' in record) return record;
+    return this.withStateLock(async () => {
+      await this.ensureDirectories();
+      const record = await this.claimedRecord(handoffId, completionToken, target);
+      if ('kind' in record) return record;
 
-    const delivered = browserCompanionDeliveredRecordSchema.parse({
-      ...baseRecord(record),
-      claimedAt: record.claimedAt,
-      deliveredAt: new Date().toISOString(),
+      const delivered = browserCompanionDeliveredRecordSchema.parse({
+        ...baseRecord(record),
+        claimedAt: record.claimedAt,
+        deliveredAt: new Date().toISOString(),
+      });
+      const claimedPath = this.statePath('claimed', handoffId);
+      await writeBoundedJson(claimedPath, delivered, 'w');
+      try {
+        await rename(claimedPath, this.statePath('delivered', handoffId));
+      } catch (reason) {
+        if (!hasErrorCode(reason, 'ENOENT')) throw reason;
+        return companionError('HANDOFF_NOT_FOUND');
+      }
+      return { protocolVersion: BROWSER_COMPANION_PROTOCOL_VERSION, ok: true, kind: 'completed', handoffId };
     });
-    const claimedPath = this.statePath('claimed', handoffId);
-    await writeBoundedJson(claimedPath, delivered, 'w');
-    try {
-      await rename(claimedPath, this.statePath('delivered', handoffId));
-    } catch (reason) {
-      if (!hasErrorCode(reason, 'ENOENT')) throw reason;
-      return companionError('HANDOFF_NOT_FOUND');
-    }
-    return { protocolVersion: BROWSER_COMPANION_PROTOCOL_VERSION, ok: true, kind: 'completed', handoffId };
   }
 
   async getDelivered(
@@ -530,59 +601,65 @@ export class BrowserCompanionHandoffStore {
     completionToken: string,
     target: BrowserCompanionTarget,
   ): Promise<BrowserCompanionResponse> {
-    await this.ensureDirectories();
-    const record = await this.claimedRecord(handoffId, completionToken, target);
-    if ('kind' in record) return record;
+    return this.withStateLock(async () => {
+      await this.ensureDirectories();
+      const record = await this.claimedRecord(handoffId, completionToken, target);
+      if ('kind' in record) return record;
 
-    const claimedPath = this.statePath('claimed', handoffId);
-    await writeBoundedJson(claimedPath, baseRecord(record), 'w');
-    try {
-      await rename(claimedPath, this.statePath('ready', handoffId));
-    } catch (reason) {
-      if (hasErrorCode(reason, 'ENOENT')) return companionError('HANDOFF_NOT_FOUND');
-      throw reason;
-    }
-    return { protocolVersion: BROWSER_COMPANION_PROTOCOL_VERSION, ok: true, kind: 'released', handoffId };
+      const claimedPath = this.statePath('claimed', handoffId);
+      await writeBoundedJson(claimedPath, baseRecord(record), 'w');
+      try {
+        await rename(claimedPath, this.statePath('ready', handoffId));
+      } catch (reason) {
+        if (hasErrorCode(reason, 'ENOENT')) return companionError('HANDOFF_NOT_FOUND');
+        throw reason;
+      }
+      return { protocolVersion: BROWSER_COMPANION_PROTOCOL_VERSION, ok: true, kind: 'released', handoffId };
+    });
   }
 
   async listHistory(): Promise<BrowserCompanionHistoryItem[]> {
-    await this.ensureDirectories();
-    await this.recoverInterruptedClaims();
-    const records = await Promise.all(
-      STATE_DIRECTORIES.map(async (state) =>
-        (await this.recordsForState(state)).map((record) => historyItem(record, state)),
-      ),
-    );
-    return records
-      .flat()
-      .sort((left, right) => Date.parse(right.createdAt) - Date.parse(left.createdAt))
-      .slice(0, MAX_HISTORY_ITEMS);
+    return this.withStateLock(async () => {
+      await this.ensureDirectories();
+      await this.recoverInterruptedClaims();
+      const records = await Promise.all(
+        STATE_DIRECTORIES.map(async (state) =>
+          (await this.recordsForState(state)).map((record) => historyItem(record, state)),
+        ),
+      );
+      return records
+        .flat()
+        .sort((left, right) => Date.parse(right.createdAt) - Date.parse(left.createdAt))
+        .slice(0, MAX_HISTORY_ITEMS);
+    });
   }
 
   async deleteHistory(handoffIds: readonly string[]): Promise<BrowserCompanionDeleteResult> {
-    await this.ensureDirectories();
-    await this.recoverInterruptedClaims();
-    const deletedHandoffIds: string[] = [];
+    return this.withStateLock(async () => {
+      await this.ensureDirectories();
+      await this.recoverInterruptedClaims();
+      const deletedHandoffIds: string[] = [];
 
-    for (const handoffId of new Set(handoffIds)) {
-      const deletedPath = this.statePath('deleted', handoffId);
-      let moved = false;
-      for (const state of STATE_DIRECTORIES) {
-        try {
-          await rename(this.statePath(state, handoffId), deletedPath);
-          moved = true;
-          break;
-        } catch (reason) {
-          if (!hasErrorCode(reason, 'ENOENT')) throw reason;
+      for (const handoffId of new Set(handoffIds)) {
+        const deletedPath = this.statePath('deleted', handoffId);
+        let moved = false;
+        for (const state of STATE_DIRECTORIES) {
+          try {
+            await rename(this.statePath(state, handoffId), deletedPath);
+            moved = true;
+            break;
+          } catch (reason) {
+            if (!hasErrorCode(reason, 'ENOENT')) throw reason;
+          }
         }
+        if (!moved) continue;
+
+        await writeBoundedJson(deletedPath, { schemaVersion: 1, handoffId, deletedAt: new Date().toISOString() }, 'w');
+        await rm(this.mediaDirectory(handoffId), { recursive: true, force: true });
+        deletedHandoffIds.push(handoffId);
       }
-      if (!moved) continue;
 
-      await writeBoundedJson(deletedPath, { schemaVersion: 1, handoffId, deletedAt: new Date().toISOString() }, 'w');
-      await rm(this.mediaDirectory(handoffId), { recursive: true, force: true });
-      deletedHandoffIds.push(handoffId);
-    }
-
-    return { deletedHandoffIds };
+      return { deletedHandoffIds };
+    });
   }
 }

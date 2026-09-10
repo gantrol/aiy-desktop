@@ -10,6 +10,7 @@ import type {
   RenamePromptSeriesInput,
 } from '@/shared/contracts';
 import { ensureImageMaterials } from '@/main/database/albums/image-material-batch';
+import { isGifExecution } from '@/main/database/creations/gif-execution-ownership';
 import type { StoredObject } from '@/main/database/core/storage';
 import { type JsonMap, now, text } from '@/main/database/core/values';
 import { WorkbenchPreparationRepository } from '@/main/database/generation/workbench-preparation-repository';
@@ -398,7 +399,8 @@ export class WorkbenchRunRepository extends WorkbenchPreparationRepository {
           )
           .run(ulid(), committedAssetId, sourceAssetId, runId, now());
       }
-      this.db.transaction(() => ensureImageMaterials(this.storage, [committedAssetId])).immediate();
+      if (!isGifExecution(this.db, runId))
+        this.db.transaction(() => ensureImageMaterials(this.storage, [committedAssetId])).immediate();
       const committed = this.assetDto(committedAssetId);
       if (!committed) throw new Error('Committed generation output is unavailable');
       return committed;
@@ -442,7 +444,7 @@ export class WorkbenchRunRepository extends WorkbenchPreparationRepository {
           .run(ulid(), assetId, sourceAssetId, runId, now());
       }
       this.generationJobs.markOutputSucceeded(runId, assetId);
-      ensureImageMaterials(this.storage, [assetId]);
+      if (!isGifExecution(this.db, runId)) ensureImageMaterials(this.storage, [assetId]);
       this.storage.recordChange('GENERATION_RUN', runId, 'SUCCEED', { assetId, sourceAssetId });
       return assetId;
     })();
@@ -454,7 +456,8 @@ export class WorkbenchRunRepository extends WorkbenchPreparationRepository {
   finishGenerationFromAsset(runId: string, sourceAssetId: string, relationType: 'MODEL_REPLAY'): AssetDto {
     const committedAssetId = this.generationJobs.outputAssetId(runId);
     if (committedAssetId) {
-      this.db.transaction(() => ensureImageMaterials(this.storage, [committedAssetId])).immediate();
+      if (!isGifExecution(this.db, runId))
+        this.db.transaction(() => ensureImageMaterials(this.storage, [committedAssetId])).immediate();
       const committed = this.assetDto(committedAssetId);
       if (!committed) throw new Error('Committed generation output is unavailable');
       return committed;
@@ -500,7 +503,7 @@ export class WorkbenchRunRepository extends WorkbenchPreparationRepository {
         )
         .run(ulid(), assetId, sourceAssetId, relationType, runId, createdAt);
       this.generationJobs.markOutputSucceeded(runId, assetId);
-      ensureImageMaterials(this.storage, [assetId]);
+      if (!isGifExecution(this.db, runId)) ensureImageMaterials(this.storage, [assetId]);
       this.storage.recordChange('GENERATION_RUN', runId, 'SUCCEED', { assetId, sourceAssetId, relationType });
       return assetId;
     })();

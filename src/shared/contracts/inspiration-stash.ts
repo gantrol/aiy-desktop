@@ -1,4 +1,7 @@
+import { blockDocumentMarkdown } from '@/shared/block-document-codecs';
+import { blockDocumentAssetIds, blockDocumentSchema } from '@/shared/contracts/block-document';
 import { z } from 'zod';
+import { noteFileSchema, NOTE_FILE_LIMITS } from '@/shared/contracts/note-files';
 
 const idSchema = z.string().min(1).max(200);
 const localeSchema = z.enum(['zh', 'en']);
@@ -21,21 +24,40 @@ const draftConsumptionSchema = {
 
 export const inspirationStashContentSchema = z
   .object({
-    schemaVersion: z.literal(1),
-    manualPrompt: z.string().max(30_000),
+    schemaVersion: z.union([z.literal(1), z.literal(2)]),
+    document: blockDocumentSchema.optional(),
+    // Optional keys stay absent in old revisions so their canonical hashes remain valid.
+    title: z.string().max(200).optional(),
+    format: z.literal('markdown').optional(),
+    manualPrompt: z.string().max(30_000).optional(),
     promptNodes: z.array(promptNodeSchema).max(2_000),
     referenceAssetIds: z.array(idSchema).max(100),
+    files: z.array(noteFileSchema).max(NOTE_FILE_LIMITS.count).optional(),
     termPromptLocale: localeSchema,
     termIds: z.array(idSchema).max(100),
     wordPaletteReferences: z.array(paletteReferenceSchema).max(50),
   })
-  .strict();
+  .strict()
+  .superRefine((value, context) => {
+    if (value.schemaVersion === 2 && !value.document)
+      context.addIssue({ code: 'custom', message: 'BLOCK_DOCUMENT_REQUIRED' });
+    if (value.schemaVersion === 1 && (value.document || value.manualPrompt === undefined))
+      context.addIssue({ code: 'custom', message: 'INVALID_LEGACY_CONTENT' });
+    if (value.document && blockDocumentAssetIds(value.document).some((id) => !value.referenceAssetIds.includes(id)))
+      context.addIssue({ code: 'custom', message: 'BLOCK_MEDIA_BINDING_MISSING' });
+  })
+  .transform((value) => ({
+    ...value,
+    manualPrompt: value.document ? blockDocumentMarkdown(value.document) : value.manualPrompt!,
+    ...(value.document ? { format: 'markdown' as const } : {}),
+  }));
 
 export const inspirationStashSaveInputSchema = z.discriminatedUnion('mode', [
   z
     .object({
       mode: z.literal('UPDATE'),
       id: idSchema,
+      expectedContentHash: z.string().min(1),
       content: inspirationStashContentSchema,
       ...draftConsumptionSchema,
     })
@@ -52,6 +74,15 @@ export const inspirationStashSaveInputSchema = z.discriminatedUnion('mode', [
     .object({
       mode: z.literal('ADD_FORM'),
       creationItemId: idSchema,
+      content: inspirationStashContentSchema,
+      ...draftConsumptionSchema,
+    })
+    .strict(),
+  z
+    .object({
+      mode: z.literal('CREATE_NOTE'),
+      requestId: idSchema,
+      albumId: idSchema.nullable(),
       content: inspirationStashContentSchema,
       ...draftConsumptionSchema,
     })

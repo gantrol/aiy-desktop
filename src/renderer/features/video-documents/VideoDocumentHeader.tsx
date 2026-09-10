@@ -1,6 +1,7 @@
 import { FolderInputIcon, LoaderCircleIcon } from 'lucide-react';
 import { Button } from '@/renderer/components/ui/button';
 import { Input } from '@/renderer/components/ui/input';
+import { CreationWorkNavigation } from '@/renderer/components/creator/CreationWorkNavigation';
 
 interface Props {
   title: string;
@@ -42,6 +43,7 @@ export function VideoDocumentHeader({
       />
       {saving && <LoaderCircleIcon className="size-4 animate-spin text-selected-foreground" />}
       <div className="ml-auto flex shrink-0 items-center gap-2">
+        <CreationWorkNavigation />
         <Button type="button" variant="outline" size="sm" className="max-w-56" onClick={onMove}>
           <FolderInputIcon className="size-4" />
           <span className="truncate">{albumTitle}</span>

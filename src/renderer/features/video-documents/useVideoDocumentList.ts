@@ -3,7 +3,7 @@ import type { VideoDocumentDto, VideoDocumentSummaryDto } from '@/shared/contrac
 
 interface Options {
   active: boolean;
-  refreshKey?: number;
+  refreshKey?: number | string;
   query: string;
   albumId: string | null;
   includeDescendants?: boolean;

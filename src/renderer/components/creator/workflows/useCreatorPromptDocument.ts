@@ -1,12 +1,3 @@
-import { useEffect, useRef, useState } from 'react';
-import type {
-  AssetDto,
-  CreatorPromptNodeInput,
-  Locale,
-  TermListItem,
-  WordPaletteDto,
-  WordPaletteReferenceInput,
-} from '@/shared/contracts';
 import type { CreatorPromptComposerHandle } from '@/renderer/components/creator/CreatorPromptComposer';
 import {
   appendCreatorPromptText,
@@ -14,13 +5,28 @@ import {
   normalizeCreatorPromptNodes,
   reconcileCreatorPromptNodesWithReferences,
 } from '@/renderer/components/creator/creatorPromptDocument';
-import type { CreationDraftPromptSnapshot } from '@/renderer/components/creator/workflows/creationDraftSnapshot';
-import { appliedWordPalettesFromReferences, type AppliedWordPalette } from '@/renderer/components/creator/utils';
 import { isEditableTarget } from '@/renderer/components/creator/imageImport';
+import { appliedWordPalettesFromReferences, type AppliedWordPalette } from '@/renderer/components/creator/utils';
+import type { CreationDraftPromptSnapshot } from '@/renderer/components/creator/workflows/creationDraftSnapshot';
+import { useI18n } from '@/renderer/i18n/useI18n';
 import { useStableCallback } from '@/renderer/lib/useStableCallback';
+import { plainTextBlockDocument } from '@/shared/block-document-codecs';
+import type {
+  AssetDto,
+  CreationVideoAttachmentDto,
+  CreatorPromptNodeInput,
+  Locale,
+  TermListItem,
+  WordPaletteDto,
+  WordPaletteReferenceInput,
+} from '@/shared/contracts';
+import type { BlockDocument } from '@/shared/contracts/block-document';
+import { captureBlockDocument } from '@/shared/contracts/block-document';
+import { useEffect, useRef, useState } from 'react';
 
 export interface CreationMaterialsSnapshot {
   referenceAssets: AssetDto[];
+  videoAttachments?: CreationVideoAttachmentDto[];
   selectedTerms: TermListItem[];
   appliedPalettes: AppliedWordPalette[];
   termPromptLocale: Locale;
@@ -29,10 +35,12 @@ export interface CreationMaterialsSnapshot {
 interface InitialPromptDocument extends CreationMaterialsSnapshot {
   manualPrompt: string;
   promptNodes: CreatorPromptNodeInput[];
+  document?: BlockDocument;
 }
 
 export interface PromptDocumentReplacement extends CreationMaterialsSnapshot {
   promptNodes: CreatorPromptNodeInput[];
+  document?: BlockDocument;
 }
 
 interface Options {
@@ -45,9 +53,16 @@ interface Options {
 }
 
 export function useCreatorPromptDocument(options: Options) {
+  const copy = useI18n().messages.contentEditor;
+  const [document, setDocument] = useState(options.initial.document);
+  const documentRef = useRef(document);
+  documentRef.current = document;
   const [manualPrompt, setManualPrompt] = useState(options.initial.manualPrompt);
   const [promptNodes, setPromptNodes] = useState<CreatorPromptNodeInput[]>(options.initial.promptNodes);
   const [referenceAssets, setReferenceAssets] = useState<AssetDto[]>(options.initial.referenceAssets);
+  const [videoAttachments, setVideoAttachments] = useState<CreationVideoAttachmentDto[]>(
+    options.initial.videoAttachments ?? [],
+  );
   const [selectedTerms, setSelectedTerms] = useState<TermListItem[]>(options.initial.selectedTerms);
   const [termPromptLocale, setTermPromptLocale] = useState<Locale>(options.initial.termPromptLocale);
   const [appliedPalettes, setAppliedPalettes] = useState<AppliedWordPalette[]>(options.initial.appliedPalettes);
@@ -56,6 +71,7 @@ export function useCreatorPromptDocument(options: Options) {
   const appliedPaletteCacheRef = useRef(new Map(appliedPalettes.map((item) => [item.palette.id, item])));
   const materialsRef = useRef<CreationMaterialsSnapshot>({
     referenceAssets,
+    videoAttachments,
     selectedTerms,
     appliedPalettes,
     termPromptLocale,
@@ -64,10 +80,10 @@ export function useCreatorPromptDocument(options: Options) {
   const capturePersistedPaletteReferences = useStableCallback(options.capturePersistedPaletteReferences);
   const getPalettes = useStableCallback(() => options.palettes);
   const getTerms = useStableCallback(() => options.terms);
-  const getLocale = useStableCallback(() => options.locale);
+
   promptNodesRef.current = promptNodes;
   for (const reference of appliedPalettes) appliedPaletteCacheRef.current.set(reference.palette.id, reference);
-  materialsRef.current = { referenceAssets, selectedTerms, appliedPalettes, termPromptLocale };
+  materialsRef.current = { referenceAssets, videoAttachments, selectedTerms, appliedPalettes, termPromptLocale };
 
   const replaceMaterials = useStableCallback((next: CreationMaterialsSnapshot, remember = false) => {
     const current = materialsRef.current;
@@ -80,6 +96,7 @@ export function useCreatorPromptDocument(options: Options) {
     for (const reference of next.appliedPalettes) appliedPaletteCacheRef.current.set(reference.palette.id, reference);
     materialsRef.current = next;
     setReferenceAssets(next.referenceAssets);
+    setVideoAttachments(next.videoAttachments ?? []);
     setSelectedTerms(next.selectedTerms);
     setAppliedPalettes(next.appliedPalettes);
     setTermPromptLocale(next.termPromptLocale);
@@ -91,6 +108,7 @@ export function useCreatorPromptDocument(options: Options) {
       const next = update(current);
       if (
         next.referenceAssets === current.referenceAssets &&
+        next.videoAttachments === current.videoAttachments &&
         next.selectedTerms === current.selectedTerms &&
         next.appliedPalettes === current.appliedPalettes &&
         next.termPromptLocale === current.termPromptLocale
@@ -107,25 +125,35 @@ export function useCreatorPromptDocument(options: Options) {
     });
   });
 
-  const updatePromptDocument = useStableCallback((nextNodes: CreatorPromptNodeInput[]) => {
-    const normalized = normalizeCreatorPromptNodes(nextNodes);
-    const termIds = normalized.flatMap((node) => (node.kind === 'TERM' ? [node.termId] : []));
-    const paletteIds = normalized.flatMap((node) => (node.kind === 'RECIPE' ? [node.paletteId] : []));
-    const current = materialsRef.current;
-    const availablePalettes = new Map(appliedPaletteCacheRef.current);
-    for (const reference of current.appliedPalettes) availablePalettes.set(reference.palette.id, reference);
-    const nextMaterials = {
-      ...current,
-      selectedTerms: termIds.flatMap((termId) => getTerms().find((term) => term.id === termId) ?? []),
-      appliedPalettes: paletteIds.flatMap((paletteId) => availablePalettes.get(paletteId) ?? []),
-    };
-    promptNodesRef.current = normalized;
-    materialsRef.current = nextMaterials;
-    setPromptNodes(normalized);
-    setManualPrompt(creatorPromptText(normalized));
-    setSelectedTerms(nextMaterials.selectedTerms);
-    setAppliedPalettes(nextMaterials.appliedPalettes);
-  });
+  const updateVideoAttachments = useStableCallback(
+    (update: (current: CreationVideoAttachmentDto[]) => CreationVideoAttachmentDto[]) => {
+      updateMaterials((current) => ({ ...current, videoAttachments: update(current.videoAttachments ?? []) }));
+    },
+  );
+
+  const updatePromptDocument = useStableCallback(
+    (nextNodes: CreatorPromptNodeInput[], nextDocument?: BlockDocument) => {
+      documentRef.current = nextDocument;
+      setDocument(nextDocument);
+      const normalized = normalizeCreatorPromptNodes(nextNodes);
+      const termIds = normalized.flatMap((node) => (node.kind === 'TERM' ? [node.termId] : []));
+      const paletteIds = normalized.flatMap((node) => (node.kind === 'RECIPE' ? [node.paletteId] : []));
+      const current = materialsRef.current;
+      const availablePalettes = new Map(appliedPaletteCacheRef.current);
+      for (const reference of current.appliedPalettes) availablePalettes.set(reference.palette.id, reference);
+      const nextMaterials = {
+        ...current,
+        selectedTerms: termIds.flatMap((termId) => getTerms().find((term) => term.id === termId) ?? []),
+        appliedPalettes: paletteIds.flatMap((paletteId) => availablePalettes.get(paletteId) ?? []),
+      };
+      promptNodesRef.current = normalized;
+      materialsRef.current = nextMaterials;
+      setPromptNodes(normalized);
+      setManualPrompt(creatorPromptText(normalized));
+      setSelectedTerms(nextMaterials.selectedTerms);
+      setAppliedPalettes(nextMaterials.appliedPalettes);
+    },
+  );
 
   const capture = useStableCallback((): CreationDraftPromptSnapshot => {
     const nodes = normalizeCreatorPromptNodes(promptComposerRef.current?.getNodes() ?? promptNodesRef.current);
@@ -133,9 +161,7 @@ export function useCreatorPromptDocument(options: Options) {
     const paletteIds = nodes.flatMap((node) => (node.kind === 'RECIPE' ? [node.paletteId] : []));
     const terms = termIds.flatMap((termId) => getTerms().find((term) => term.id === termId) ?? []);
     if (terms.length !== termIds.length) {
-      throw new Error(
-        getLocale() === 'zh' ? '有词条已不可用，请移除后重试' : 'A term is unavailable. Remove it and try again.',
-      );
+      throw new Error(copy.unavailableTerm);
     }
     const availablePalettes = new Map(appliedPaletteCacheRef.current);
     for (const reference of appliedWordPalettesFromReferences(getPalettes(), capturePersistedPaletteReferences())) {
@@ -148,18 +174,22 @@ export function useCreatorPromptDocument(options: Options) {
     if (palettes.length !== paletteIds.length) {
       const missingId = paletteIds.find((paletteId) => !availablePalettes.has(paletteId));
       const label = getPalettes().find((palette) => palette.id === missingId)?.name ?? missingId ?? '';
-      throw new Error(
-        getLocale() === 'zh'
-          ? `配方“${label}”的配置已失效，请重新应用`
-          : `Recipe “${label}” is no longer configured. Apply it again.`,
-      );
+      throw new Error(copy.unavailableRecipe.replace('{name}', label));
     }
-    return { nodes, manualPrompt: creatorPromptText(nodes), selectedTerms: terms, appliedPalettes: palettes };
+    return {
+      document: promptComposerRef.current?.getDocument() ?? documentRef.current,
+      nodes,
+      manualPrompt: creatorPromptText(nodes),
+      selectedTerms: terms,
+      appliedPalettes: palettes,
+    };
   });
 
   const synchronize = useStableCallback((captured: CreationDraftPromptSnapshot) => {
     for (const reference of captured.appliedPalettes)
       appliedPaletteCacheRef.current.set(reference.palette.id, reference);
+    documentRef.current = captured.document;
+    setDocument(captured.document);
     promptNodesRef.current = captured.nodes;
     materialsRef.current = {
       ...materialsRef.current,
@@ -173,21 +203,35 @@ export function useCreatorPromptDocument(options: Options) {
   });
 
   const replaceDocument = useStableCallback((next: PromptDocumentReplacement) => {
+    documentRef.current = next.document;
+    setDocument(next.document);
     const nodes = normalizeCreatorPromptNodes(next.promptNodes);
     promptNodesRef.current = nodes;
     setPromptNodes(nodes);
     setManualPrompt(creatorPromptText(nodes));
     replaceMaterials({
       referenceAssets: next.referenceAssets,
+      videoAttachments: next.videoAttachments,
       selectedTerms: next.selectedTerms,
       appliedPalettes: next.appliedPalettes,
       termPromptLocale: next.termPromptLocale,
     });
   });
 
-  const appendText = useStableCallback((value: string) =>
-    updatePromptDocument(appendCreatorPromptText(promptNodesRef.current, value)),
-  );
+  const appendText = useStableCallback((value: string) => {
+    if (promptComposerRef.current) {
+      promptComposerRef.current.appendText(value);
+      return;
+    }
+    const current = documentRef.current;
+    const next = current
+      ? captureBlockDocument({
+          ...current.root,
+          content: [...(current.root.content ?? []), ...(plainTextBlockDocument(value).root.content ?? [])],
+        })
+      : undefined;
+    updatePromptDocument(appendCreatorPromptText(promptNodesRef.current, value), next);
+  });
 
   useEffect(() => {
     if (!options.active) return;
@@ -197,6 +241,13 @@ export function useCreatorPromptDocument(options: Options) {
       const previous = materialsUndoRef.current.pop();
       if (!previous) return;
       event.preventDefault();
+      promptComposerRef.current?.reconcileReferences(
+        previous.selectedTerms.map((term) => term.id),
+        previous.appliedPalettes.map((item) => item.palette.id),
+      );
+      const restoredDocument = promptComposerRef.current?.getDocument() ?? documentRef.current;
+      documentRef.current = restoredDocument;
+      setDocument(restoredDocument);
       const nodes = reconcileCreatorPromptNodesWithReferences({
         nodes: promptNodesRef.current,
         termIds: previous.selectedTerms.map((term) => term.id),
@@ -207,6 +258,7 @@ export function useCreatorPromptDocument(options: Options) {
       setPromptNodes(nodes);
       setManualPrompt(creatorPromptText(nodes));
       setReferenceAssets(previous.referenceAssets);
+      setVideoAttachments(previous.videoAttachments ?? []);
       setSelectedTerms(previous.selectedTerms);
       setAppliedPalettes(previous.appliedPalettes);
       setTermPromptLocale(previous.termPromptLocale);
@@ -216,6 +268,7 @@ export function useCreatorPromptDocument(options: Options) {
   }, [options.active]);
 
   return {
+    document,
     appendText,
     appliedPaletteCacheRef,
     appliedPalettes,
@@ -231,7 +284,6 @@ export function useCreatorPromptDocument(options: Options) {
     selectedTerms,
     setAppliedPalettes,
     setManualPrompt,
-    setPromptNodes,
     setReferenceAssets,
     setSelectedTerms,
     setTermPromptLocale,
@@ -240,5 +292,7 @@ export function useCreatorPromptDocument(options: Options) {
     updateMaterials,
     updatePromptDocument,
     updateReferenceAssets,
+    videoAttachments,
+    updateVideoAttachments,
   };
 }

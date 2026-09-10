@@ -10,6 +10,11 @@ import {
   type FeatureDemoScene,
   type FeatureDemoSceneId,
 } from '@/renderer/features/extensions/feature-demo/featureDemoTimeline';
+import {
+  featureDemoCaptureProgress,
+  featureDemoCursorAt,
+} from '@/renderer/features/extensions/feature-demo/featureDemoSceneState';
+import { petalDemoCaptureKey } from '@/renderer/features/extensions/feature-demo/featureDemoPetalScene';
 
 interface ExportFeatureDemoOptions {
   stage: HTMLElement;
@@ -25,28 +30,7 @@ interface ExportedFeatureDemo {
   mimeType: 'video/mp4' | 'video/webm';
 }
 
-interface SceneSnapshots {
-  from: HTMLCanvasElement;
-  to: HTMLCanvasElement;
-}
-
-const animatedSceneIds = new Set<FeatureDemoSceneId>([
-  'directionDetailsExpand',
-  'directionDetailsCollapse',
-  'directoryExpand',
-  'directoryCollapse',
-]);
-
-const TRANSPARENT_PIXEL = 'data:image/gif;base64,R0lGODlhAQABAAD/ACwAAAAAAQABAAACADs=';
-
-function clamp(value: number, minimum = 0, maximum = 1) {
-  return Math.min(maximum, Math.max(minimum, value));
-}
-
-function ease(value: number) {
-  const bounded = clamp(value);
-  return bounded < 0.5 ? 4 * bounded * bounded * bounded : 1 - Math.pow(-2 * bounded + 2, 3) / 2;
-}
+type SceneSnapshots = Array<{ progress: number; canvas: HTMLCanvasElement }>;
 
 function throwIfAborted(signal?: AbortSignal) {
   if (signal?.aborted) throw new DOMException('Feature demo export was cancelled', 'AbortError');
@@ -60,19 +44,72 @@ function exportFileName(extension: ExportedFeatureDemo['extension']) {
   return `aiy-feature-demo-2k-${timestamp}.${extension}`;
 }
 
-async function waitForStageImages(stage: HTMLElement) {
-  const pending = [...stage.querySelectorAll('img')].filter((image) => {
-    const style = getComputedStyle(image);
-    return style.visibility !== 'hidden' && style.display !== 'none' && !image.complete;
+async function waitForStageReady(stage: HTMLElement, signal?: AbortSignal) {
+  await new Promise<void>((resolve, reject) => {
+    const finish = (error?: Error) => {
+      observer.disconnect();
+      window.clearTimeout(timeout);
+      signal?.removeEventListener('abort', cancel);
+      if (error) reject(error);
+      else resolve();
+    };
+    const check = () => {
+      if (
+        stage.querySelector(
+          '[data-feature-demo-state="error"], [data-codex-image-discovery-configuration][data-load-state="error"]',
+        )
+      ) {
+        finish(new Error('Feature demo content failed to load'));
+      } else if (
+        !stage.querySelector(
+          '[data-feature-demo-state="loading"], [data-codex-image-discovery-configuration][data-load-state="loading"]',
+        )
+      ) {
+        finish();
+      }
+    };
+    const cancel = () => finish(new DOMException('Feature demo export was cancelled', 'AbortError'));
+    const observer = new MutationObserver(check);
+    const timeout = window.setTimeout(() => finish(new Error('Feature demo content did not become ready')), 16_000);
+    observer.observe(stage, { attributes: true, childList: true, subtree: true });
+    signal?.addEventListener('abort', cancel, { once: true });
+    if (signal?.aborted) cancel();
+    else check();
   });
-  if (pending.length === 0) return;
-  await Promise.race([
-    Promise.all(pending.map((image) => image.decode().catch(() => undefined))),
-    new Promise<void>((resolve) => window.setTimeout(resolve, 1_500)),
-  ]);
 }
 
-async function captureSnapshots({ stage, scenes, renderAt, signal, onProgress }: ExportFeatureDemoOptions) {
+async function waitForStageImages(stage: HTMLElement, signal?: AbortSignal) {
+  const images = [...stage.querySelectorAll('img')].filter(
+    (image) => image.getClientRects().length > 0 && getComputedStyle(image).visibility !== 'hidden',
+  );
+  if (!images.length) return;
+  await new Promise<void>((resolve, reject) => {
+    const finish = (error?: Error) => {
+      window.clearTimeout(timeout);
+      signal?.removeEventListener('abort', cancel);
+      if (error) reject(error);
+      else resolve();
+    };
+    const cancel = () => finish(new DOMException('Feature demo export was cancelled', 'AbortError'));
+    const timeout = window.setTimeout(() => finish(new Error('Feature demo images did not become ready')), 10_000);
+    signal?.addEventListener('abort', cancel, { once: true });
+    if (signal?.aborted) {
+      cancel();
+      return;
+    }
+    for (const image of images) image.loading = 'eager';
+    void Promise.all(images.map((image) => image.decode())).then(
+      () => {
+        if (images.some((image) => !image.complete || image.naturalWidth === 0))
+          finish(new Error('Feature demo image is unavailable'));
+        else finish();
+      },
+      () => finish(new Error('Feature demo image could not be decoded')),
+    );
+  });
+}
+
+async function createStageCapture({ stage, renderAt, signal }: ExportFeatureDemoOptions) {
   const { getFontEmbedCSS, toCanvas } = await import('html-to-image');
   let fontEmbedCSS: string | undefined;
   try {
@@ -84,7 +121,9 @@ async function captureSnapshots({ stage, scenes, renderAt, signal, onProgress }:
   const capture = async (timeInSeconds: number) => {
     throwIfAborted(signal);
     await renderAt(timeInSeconds);
-    await waitForStageImages(stage);
+    await waitForStageReady(stage, signal);
+    await new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve())));
+    await waitForStageImages(stage, signal);
     throwIfAborted(signal);
     return toCanvas(stage, {
       width: FEATURE_DEMO_PREVIEW_WIDTH,
@@ -95,7 +134,6 @@ async function captureSnapshots({ stage, scenes, renderAt, signal, onProgress }:
       skipAutoScale: true,
       cacheBust: false,
       includeQueryParams: true,
-      imagePlaceholder: TRANSPARENT_PIXEL,
       backgroundColor: getComputedStyle(stage).backgroundColor,
       fontEmbedCSS,
       skipFonts: !fontEmbedCSS,
@@ -104,55 +142,58 @@ async function captureSnapshots({ stage, scenes, renderAt, signal, onProgress }:
     });
   };
 
-  const snapshots = new Map<FeatureDemoSceneId, SceneSnapshots>();
-  const capturesRequired = scenes.reduce((count, scene) => count + (animatedSceneIds.has(scene.id) ? 2 : 1), 0);
-  let capturesCompleted = 0;
+  return capture;
+}
 
+type StageCapture = Awaited<ReturnType<typeof createStageCapture>>;
+
+async function captureSnapshots({ scenes, onProgress }: ExportFeatureDemoOptions, capture: StageCapture) {
+  const snapshots = new Map<FeatureDemoSceneId, SceneSnapshots>();
+  const capturesRequired = scenes.reduce((count, scene) => count + featureDemoCaptureProgress(scene.id).length, 0);
+  let capturesCompleted = 0;
   for (const [sceneIndex, scene] of scenes.entries()) {
     const sceneStart = featureDemoSceneStart(sceneIndex, scenes);
-    const margin = Math.min(0.12, scene.durationInSeconds * 0.02);
-    if (animatedSceneIds.has(scene.id)) {
-      const from = await capture(sceneStart + margin);
+    const frames: SceneSnapshots = [];
+    for (const progress of featureDemoCaptureProgress(scene.id)) {
+      // Sample just inside the state to avoid floating-point boundary drift.
+      const canvas = await capture(sceneStart + (progress + 0.000001) * scene.durationInSeconds);
+      frames.push({ progress, canvas });
       capturesCompleted += 1;
       onProgress?.((capturesCompleted / capturesRequired) * 0.15);
-      const to = await capture(sceneStart + scene.durationInSeconds - margin);
-      capturesCompleted += 1;
-      onProgress?.((capturesCompleted / capturesRequired) * 0.15);
-      snapshots.set(scene.id, { from, to });
-      continue;
     }
-    const frame = await capture(sceneStart + scene.durationInSeconds * 0.5);
-    capturesCompleted += 1;
-    onProgress?.((capturesCompleted / capturesRequired) * 0.15);
-    snapshots.set(scene.id, { from: frame, to: frame });
+    snapshots.set(scene.id, frames);
   }
-
   return snapshots;
 }
 
-function cursorPosition(sceneId: FeatureDemoSceneId, progress: number) {
-  if (sceneId === 'directionDetailsExpand') {
-    const moved = ease(clamp((progress - 0.04) / 0.3));
-    return { x: 1160 + (356 - 1160) * moved, y: 650 + (338 - 650) * moved };
-  }
-  if (sceneId === 'directionDetailsCollapse') {
-    const moved = ease(clamp((progress - 0.18) / 0.42));
-    return { x: 356 + (1160 - 356) * moved, y: 338 + (650 - 338) * moved };
-  }
-  if (sceneId === 'directoryExpand') {
-    const approach = ease(clamp((progress - 0.04) / 0.24));
-    const gesture = ease(clamp((progress - 0.32) / 0.3));
-    return { x: 1160 + (74 - 1160) * approach, y: 650 + (190 - 650) * approach + 46 * gesture };
-  }
-  const gesture = ease(clamp((progress - 0.32) / 0.3));
-  return { x: 74, y: 236 - 82 * gesture };
+/** Keep one rendered motion frame; stationary holds reuse it instead of accumulating 2K canvases. */
+function createPetalMotionRenderer(capture: StageCapture) {
+  let current: { key: string; canvas: HTMLCanvasElement } | null = null;
+  return {
+    async draw(context: CanvasRenderingContext2D, time: number, progress: number) {
+      const key = petalDemoCaptureKey(progress);
+      if (!current || current.key !== key) {
+        const canvas = await capture(time);
+        if (current) current.canvas.width = current.canvas.height = 0;
+        current = { key, canvas };
+      }
+      context.clearRect(0, 0, FEATURE_DEMO_WIDTH, FEATURE_DEMO_HEIGHT);
+      context.drawImage(current.canvas, 0, 0);
+      drawCursor(context, 'petalNote', progress);
+    },
+    dispose() {
+      if (current) current.canvas.width = current.canvas.height = 0;
+      current = null;
+    },
+  };
 }
 
 function drawCursor(context: CanvasRenderingContext2D, sceneId: FeatureDemoSceneId, progress: number) {
-  const { x, y } = cursorPosition(sceneId, progress);
+  const position = featureDemoCursorAt(sceneId, progress);
+  if (!position) return;
   context.save();
   context.scale(2, 2);
-  context.translate(x, y);
+  context.translate(position.x, position.y);
   context.beginPath();
   context.moveTo(0, 0);
   context.lineTo(0, 30);
@@ -170,28 +211,6 @@ function drawCursor(context: CanvasRenderingContext2D, sceneId: FeatureDemoScene
   context.restore();
 }
 
-function drawDownwardReveal(context: CanvasRenderingContext2D, scene: SceneSnapshots, reveal: number) {
-  context.drawImage(scene.from, 0, 0);
-  const boundary = FEATURE_DEMO_HEIGHT * reveal;
-  context.save();
-  context.beginPath();
-  context.rect(0, 0, FEATURE_DEMO_WIDTH, boundary);
-  context.clip();
-  context.drawImage(scene.to, 0, 0);
-  context.restore();
-}
-
-function drawUpwardCollapse(context: CanvasRenderingContext2D, scene: SceneSnapshots, collapse: number) {
-  context.drawImage(scene.from, 0, 0);
-  const boundary = FEATURE_DEMO_HEIGHT * (1 - collapse);
-  context.save();
-  context.beginPath();
-  context.rect(0, boundary, FEATURE_DEMO_WIDTH, FEATURE_DEMO_HEIGHT - boundary);
-  context.clip();
-  context.drawImage(scene.to, 0, 0);
-  context.restore();
-}
-
 function drawFeatureDemoFrame(
   context: CanvasRenderingContext2D,
   snapshots: ReadonlyMap<FeatureDemoSceneId, SceneSnapshots>,
@@ -199,35 +218,15 @@ function drawFeatureDemoFrame(
   scenes: readonly FeatureDemoScene[],
 ) {
   const position = featureDemoSceneAt(timeInSeconds, scenes);
-  const scene = snapshots.get(position.scene.id);
-  if (!scene) throw new Error(`Missing feature demo snapshot: ${position.scene.id}`);
+  const frames = snapshots.get(position.scene.id);
+  if (!frames?.length) throw new Error(`Missing feature demo snapshot: ${position.scene.id}`);
+  const frame = frames.reduce(
+    (current, candidate) => (candidate.progress <= position.progress ? candidate : current),
+    frames[0]!,
+  );
   context.clearRect(0, 0, FEATURE_DEMO_WIDTH, FEATURE_DEMO_HEIGHT);
-
-  if (position.scene.id === 'directionDetailsExpand') {
-    drawDownwardReveal(context, scene, ease((position.progress - 0.16) / 0.5));
-    drawCursor(context, position.scene.id, position.progress);
-    return;
-  }
-
-  if (position.scene.id === 'directionDetailsCollapse') {
-    drawUpwardCollapse(context, scene, ease((position.progress - 0.18) / 0.5));
-    drawCursor(context, position.scene.id, position.progress);
-    return;
-  }
-
-  if (position.scene.id === 'directoryExpand') {
-    drawDownwardReveal(context, scene, ease((position.progress - 0.34) / 0.26));
-    drawCursor(context, position.scene.id, position.progress);
-    return;
-  }
-
-  if (position.scene.id === 'directoryCollapse') {
-    drawUpwardCollapse(context, scene, ease((position.progress - 0.3) / 0.26));
-    drawCursor(context, position.scene.id, position.progress);
-    return;
-  }
-
-  context.drawImage(scene.from, 0, 0);
+  context.drawImage(frame.canvas, 0, 0);
+  drawCursor(context, position.scene.id, position.progress);
 }
 
 export async function exportFeatureDemoVideo({
@@ -237,7 +236,9 @@ export async function exportFeatureDemoVideo({
   signal,
   onProgress,
 }: ExportFeatureDemoOptions): Promise<ExportedFeatureDemo> {
-  const snapshots = await captureSnapshots({ stage, scenes, renderAt, signal, onProgress });
+  const options = { stage, scenes, renderAt, signal, onProgress };
+  const capture = await createStageCapture(options);
+  const snapshots = await captureSnapshots(options, capture);
   throwIfAborted(signal);
   const { BufferTarget, CanvasSource, Mp4OutputFormat, Output, Quality, WebMOutputFormat, canEncodeVideo } =
     await import('mediabunny');
@@ -273,6 +274,7 @@ export async function exportFeatureDemoVideo({
     hardwareAcceleration: 'no-preference',
   });
   output.addVideoTrack(source, { frameRate: FEATURE_DEMO_FPS });
+  const petalMotion = createPetalMotionRenderer(capture);
 
   try {
     await output.start();
@@ -280,7 +282,9 @@ export async function exportFeatureDemoVideo({
     for (let frame = 0; frame < totalFrames; frame += 1) {
       throwIfAborted(signal);
       const timestamp = frame / FEATURE_DEMO_FPS;
-      drawFeatureDemoFrame(context, snapshots, timestamp, scenes);
+      const position = featureDemoSceneAt(timestamp, scenes);
+      if (position.scene.id === 'petalNote') await petalMotion.draw(context, timestamp, position.progress);
+      else drawFeatureDemoFrame(context, snapshots, timestamp, scenes);
       await source.add(timestamp, 1 / FEATURE_DEMO_FPS, {
         keyFrame: frame % (FEATURE_DEMO_FPS * 2) === 0,
       });
@@ -292,6 +296,8 @@ export async function exportFeatureDemoVideo({
   } catch (error) {
     if (output.state !== 'canceled' && output.state !== 'finalized') await output.cancel();
     throw error;
+  } finally {
+    petalMotion.dispose();
   }
 
   if (!target.buffer) throw new Error('Feature demo encoder returned no video');

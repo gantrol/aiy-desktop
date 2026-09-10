@@ -2,6 +2,8 @@ import { randomUUID } from 'node:crypto';
 import { closeSync, openSync, readSync } from 'node:fs';
 import { link, mkdir, unlink, writeFile } from 'node:fs/promises';
 import path from 'node:path';
+import { readBoundedImageFile } from '@/main/media/bounded-image-file';
+import { validateCanvasPngAsync } from '@/main/media/png-validation';
 
 const svgRasterCacheVersion = 'v1';
 const sha256Pattern = /^[a-f0-9]{64}$/u;
@@ -36,6 +38,20 @@ export function resolveSvgRasterCachePath(libraryRoot: string, sourceHash: strin
 export function findSvgRasterCachePath(libraryRoot: string, sourceHash: string) {
   const filePath = resolveSvgRasterCachePath(libraryRoot, sourceHash);
   return filePath && hasPngSignature(filePath) ? filePath : null;
+}
+
+export async function readSvgRasterCacheBytes(libraryRoot: string, sourceHash: string, signal?: AbortSignal) {
+  const filePath = resolveSvgRasterCachePath(libraryRoot, sourceHash);
+  if (!filePath) return null;
+  try {
+    const bytes = await readBoundedImageFile(filePath, signal, 25 * 1024 * 1024);
+    if (!(await validateCanvasPngAsync(bytes))) return null;
+    signal?.throwIfAborted();
+    return bytes;
+  } catch {
+    signal?.throwIfAborted();
+    return null;
+  }
 }
 
 async function publishCacheFile(sourcePath: string, destination: string) {
@@ -78,12 +94,16 @@ export async function storeSvgRasterCache(libraryRoot: string, sourceHash: strin
   const temporaryPath = `${destination}.${process.pid}.${randomUUID()}.tmp`;
   await writeFile(temporaryPath, png, { flag: 'wx' });
   try {
-    return await publishCacheFile(temporaryPath, destination);
-  } finally {
-    try {
-      await unlink(temporaryPath);
-    } catch (error) {
-      if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
-    }
+    await publishCacheFile(temporaryPath, destination);
+  } catch (error) {
+    // A cleanup failure must not hide the error that prevented publication.
+    await unlink(temporaryPath).catch(() => undefined);
+    throw error;
   }
+  try {
+    await unlink(temporaryPath);
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
+  }
+  return destination;
 }

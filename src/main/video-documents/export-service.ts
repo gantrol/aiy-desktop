@@ -79,6 +79,10 @@ interface DirectoryDialogResult {
 }
 
 interface VideoDocumentExportDatabase {
+  contentLibrary: Pick<
+    import('@/main/database/creations/content-library-repository').ContentLibraryRepository,
+    'expandVideoRevision'
+  >;
   getVideoDocument(documentId: string): VideoDocumentDto;
   getLatestVideoDocumentRevision(branchId: string): VideoDocumentRevisionDto | null;
   resolveAssetFile(assetId: string): ResolvedAssetFile | null;
@@ -468,7 +472,7 @@ function renderBlocks(nodes: MarkdownNode[], context: RenderContext): FileChild[
       continue;
     }
     if (node.type === 'html') {
-      const text = (node.value ?? '').replace(/<[^>]+>/g, '').trim();
+      const text = (node.value ?? '').replace(/<[^<>]+>/g, '').trim();
       if (text) result.push(new Paragraph({ text }));
       continue;
     }
@@ -670,7 +674,11 @@ export class VideoDocumentExportService {
     if (branch.role === 'ARTICLE' && !['MARKDOWN', 'NOTE_COLLECTION'].includes(revision.content.format)) {
       throw exportError('VIDEO_DOCUMENT_EXPORT_DOCUMENT_CHANGED', { retryable: true });
     }
-    const selection = selectVideoDocumentExportNote(document, revision, input.noteId);
+    const selection = selectVideoDocumentExportNote(
+      document,
+      this.database.contentLibrary.expandVideoRevision(revision),
+      input.noteId,
+    );
     if (!selection) throw exportError('VIDEO_DOCUMENT_EXPORT_DOCUMENT_CHANGED', { retryable: true });
     return { ...selection, role: branch.role };
   }

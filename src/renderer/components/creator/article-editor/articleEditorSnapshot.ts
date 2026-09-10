@@ -1,3 +1,4 @@
+import type { ArticleEditorSessionMetadata } from '@/renderer/components/creator/article-editor/articleEditorSession';
 import type {
   ArticleContentDto,
   ArticleContentInput,
@@ -6,7 +7,7 @@ import type {
   VideoDocumentRevisionMediaDto,
 } from '@/shared/contracts';
 import { articleContentSchema } from '@/shared/contracts/article';
-import type { ArticleEditorSessionMetadata } from '@/renderer/components/creator/article-editor/articleEditorSession';
+import type { BlockDocument } from '@/shared/contracts/block-document';
 
 export function editableArticleContentDto(content: ArticleContentDto): ArticleContentInput {
   const { mediaAssets: _mediaAssets, ...editable } = content;
@@ -24,6 +25,7 @@ export function articleEditorMetadataFromContent(input: ArticleContentInput): Ar
   const content = articleContentSchema.parse(input);
   return {
     schemaVersion: content.schemaVersion,
+    document: content.document,
     title: content.title,
     mediaBindings: content.mediaBindings.map((binding) => ({ ...binding })),
     coverAssetId: content.coverAssetId,
@@ -50,9 +52,14 @@ export function articleEditorMediaFromContent(content: ArticleContentDto): Video
   }));
 }
 
-export function articleEditorSnapshot(metadata: ArticleEditorSessionMetadata, markdown: string): ArticleContentInput {
+export function articleEditorSnapshot(
+  metadata: ArticleEditorSessionMetadata,
+  markdown: string,
+  document: BlockDocument | undefined = metadata.document,
+): ArticleContentInput {
   return articleContentSchema.parse({
     ...metadata,
+    ...(document ? { schemaVersion: 2, document } : {}),
     markdown,
     mediaBindings: metadata.mediaBindings.map(({ path, assetId }) => ({ path, assetId })),
   });
@@ -63,7 +70,11 @@ export function metadataAfterImageImport(
   binding: ArticleMediaBindingInput,
 ): ArticleEditorSessionMetadata {
   const articleBinding = { path: binding.path, assetId: binding.assetId };
-  if (metadata.mediaBindings.some((candidate) => candidate.assetId === articleBinding.assetId)) return metadata;
+  const existing = metadata.mediaBindings.find((candidate) => candidate.path === articleBinding.path);
+  if (existing) {
+    if (existing.assetId !== articleBinding.assetId) throw new Error('ARTICLE_MEDIA_PATH_CONFLICT');
+    return metadata;
+  }
   return {
     ...metadata,
     mediaBindings: [...metadata.mediaBindings, articleBinding],

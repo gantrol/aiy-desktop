@@ -15,7 +15,7 @@ interface Props {
 }
 
 export function RenameArticleDialog({ article, open, onOpenChange, onSave }: Props) {
-  const { locale, messages } = useI18n();
+  const { messages } = useI18n();
   const [title, setTitle] = useState('');
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
@@ -52,10 +52,10 @@ export function RenameArticleDialog({ article, open, onOpenChange, onSave }: Pro
       <DialogContent className="max-w-sm">
         <form className="grid gap-4" onSubmit={(event) => void submit(event)}>
           <DialogHeader>
-            <DialogTitle>{locale === 'zh' ? '重命名文章' : 'Rename article'}</DialogTitle>
+            <DialogTitle>{messages.creator.manuscriptEditor.renameTitle}</DialogTitle>
           </DialogHeader>
           <div className="grid gap-2">
-            <Label htmlFor="article-rename-title">{locale === 'zh' ? '文章标题' : 'Article title'}</Label>
+            <Label htmlFor="article-rename-title">{messages.contentEditor.title}</Label>
             <Input
               id="article-rename-title"
               autoFocus
@@ -76,7 +76,7 @@ export function RenameArticleDialog({ article, open, onOpenChange, onSave }: Pro
             </Button>
             <Button type="submit" disabled={saving || !title.trim()}>
               {saving && <LoaderCircleIcon className="size-4 animate-spin" />}
-              {saving ? (locale === 'zh' ? '保存中' : 'Saving') : messages.creator.rename.save}
+              {saving ? messages.creator.manuscriptEditor.saving : messages.creator.rename.save}
             </Button>
           </DialogFooter>
         </form>

@@ -270,6 +270,7 @@ export function CodexImageDiscoveryConfiguration({
     <section
       ref={sectionRef}
       data-codex-image-discovery-configuration
+      data-load-state={error ? 'error' : active && authorized && (loading || !snapshot) ? 'loading' : 'ready'}
       className={cn(
         'overflow-hidden bg-background',
         standalone ? 'flex size-full min-h-0 flex-col' : 'rounded-lg border',

@@ -1,5 +1,6 @@
 import { BookOpenIcon, LoaderCircleIcon } from 'lucide-react';
 import {
+  lazy,
   useCallback,
   useEffect,
   useLayoutEffect,
@@ -37,7 +38,7 @@ import {
 } from '@/renderer/components/gallery/MaterialLibraryNavigation';
 import { MaterialAlbumHeader } from '@/renderer/components/gallery/MaterialAlbumHeader';
 import { MaterialAlbumMoveProvider } from '@/renderer/components/gallery/MaterialAlbumMoveProvider';
-import { MaterialDetailPage } from '@/renderer/components/gallery/MaterialInspector';
+import { WorkspaceDetailLoadingBoundary } from '@/renderer/components/app/WorkspaceDetailLoadingBoundary';
 import { MaterialLibraryContent } from '@/renderer/components/gallery/MaterialLibraryContent';
 import {
   MaterialLibraryToolbar,
@@ -59,6 +60,7 @@ import {
 import { materialLibraryNavigationLabels } from '@/renderer/components/gallery/materialLibraryNavigationLabels';
 import { buildMaterialAlbumTree, canMoveMaterialAlbumTo } from '@/renderer/components/gallery/materialAlbumTree';
 import { useCreationCollectionBrowse } from '@/renderer/components/gallery/useCreationCollectionBrowse';
+import { useMaterialAlbumDirectory } from '@/renderer/components/gallery/useMaterialAlbumDirectory';
 import { nextGallerySelection } from '@/renderer/components/gallery/gallerySelection';
 import { startNativeAssetFilesDrag, writeMaterialsDrag } from '@/renderer/components/albums/albumDrag';
 import {
@@ -76,6 +78,10 @@ import {
 } from '@/renderer/components/app/app-navigation';
 import { OTHER_DOMAIN, OTHER_TYPE } from '@/renderer/components/dictionary/dictionary-navigation';
 import { buildDictionaryMaterialTree } from '@/renderer/components/gallery/dictionaryMaterialTree';
+
+const MaterialDetailPage = lazy(() =>
+  import('@/renderer/components/gallery/MaterialInspector').then((module) => ({ default: module.MaterialDetailPage })),
+);
 
 interface Props {
   libraryKey: string;
@@ -167,7 +173,7 @@ export function GalleryScreen({
   const appliedLocationKeyRef = useRef(locationKey);
   const requestId = useRef(0);
   const loadingRef = useRef(false);
-  const albumRequestId = useRef(0);
+  const pendingGalleryQueryKey = useRef<string | null>(null);
   const intakeRef = useRef<GalleryIntakeAdapterHandle | null>(null);
   const galleryCacheRef = useRef<Map<string, GallerySnapshot>>(new Map());
   const displayedLibraryKeyRef = useRef(libraryKey);
@@ -191,7 +197,6 @@ export function GalleryScreen({
   const [selectionMode, setSelectionMode] = useState(false);
   const [collectBusy, setCollectBusy] = useState(false);
   const rangeAnchorKey = useRef<string | null>(null);
-  const [albums, setAlbums] = useState<MaterialAlbumDto[]>([]);
   const [category, setCategory] = useState<MaterialLibraryCategory>(() => categoryForCollection(location.collection));
   const [sourceFilter, setSourceFilter] = useState<MaterialSourceFilter>(() =>
     sourceForCollection(location.collection),
@@ -206,13 +211,27 @@ export function GalleryScreen({
     location.collection.kind === 'dictionary' ? location.collection : null,
   );
   const dictionaryActive = dictionarySelection !== null;
-  const [albumsLoading, setAlbumsLoading] = useState(false);
-  const [albumsLoaded, setAlbumsLoaded] = useState(false);
-  const [albumError, setAlbumError] = useState('');
   const [albumRetryKey, setAlbumRetryKey] = useState(0);
+  const {
+    albums,
+    loading: albumsLoading,
+    loaded: albumsLoaded,
+    error: albumError,
+    read: readAlbumDirectory,
+    reload: reloadAlbums,
+  } = useMaterialAlbumDirectory({ active, libraryKey, dataRevision, locale, retryKey: albumRetryKey });
   const [albumMutationBusy, setAlbumMutationBusy] = useState(false);
   const [busyAlbumIds, setBusyAlbumIds] = useState<Set<string>>(() => new Set());
   const [displayedQueryKey, setDisplayedQueryKey] = useState('');
+
+  useEffect(
+    () => () => {
+      requestId.current += 1;
+      pendingGalleryQueryKey.current = null;
+      loadingRef.current = false;
+    },
+    [],
+  );
 
   const activeAlbum = useMemo(
     () => albums.find((album) => album.id === activeAlbumId) ?? null,
@@ -240,13 +259,6 @@ export function GalleryScreen({
   );
   const creationAlbumTree = useMemo(() => buildMaterialAlbumTree(creationAlbumViews), [creationAlbumViews]);
   const materialAlbumBrowse = useMemo(() => buildMaterialAlbumBrowseIndex(writableAlbums), [writableAlbums]);
-  const organizedMaterialIds = useMemo(() => {
-    const ids = new Set<string>();
-    for (const album of writableAlbums) {
-      for (const member of album.members) ids.add(member.materialId);
-    }
-    return ids;
-  }, [writableAlbums]);
   const activeDirectMaterialIds = useMemo(
     () => new Set(activeAlbum?.kind === 'USER' ? activeAlbum.members.map((member) => member.materialId) : []),
     [activeAlbum],
@@ -590,7 +602,7 @@ export function GalleryScreen({
         ...(termIds.length ? [window.desktopApi.materialsAddToDestinations({ targets, albumIds: [], termIds })] : []),
       ]);
       galleryCacheRef.current.clear();
-      setAlbums(await window.desktopApi.materialAlbumsList({ locale }));
+      await reloadAlbums();
       setRetryKey((value) => value + 1);
       if (termIds.length > 0) await refresh();
       notify(messages.gallery.batch.addedToDestinations(albumIds.length + termIds.length));
@@ -610,7 +622,7 @@ export function GalleryScreen({
     try {
       const album = await window.desktopApi.materialAlbumsCreate({ title, locale });
       await window.desktopApi.materialAlbumsAddMany({ albumId: album.id, targets: checkedTargets(), locale });
-      setAlbums(await window.desktopApi.materialAlbumsList({ locale }));
+      await reloadAlbums();
       galleryCacheRef.current.clear();
       setRetryKey((value) => value + 1);
       notify(messages.gallery.batch.addedToDestinations(1));
@@ -635,37 +647,6 @@ export function GalleryScreen({
   }, [query]);
 
   useEffect(() => {
-    if (!active) {
-      setAlbumsLoading(false);
-      setAlbumsLoaded(false);
-      return undefined;
-    }
-    const activeRequest = ++albumRequestId.current;
-    setAlbumsLoading(true);
-    setAlbumsLoaded(false);
-    setAlbumError('');
-    void window.desktopApi
-      .materialAlbumsList({ locale })
-      .then((nextAlbums) => {
-        if (albumRequestId.current !== activeRequest) return;
-        setAlbums(nextAlbums);
-        setAlbumsLoaded(true);
-        setActiveAlbumId((current) => (current && nextAlbums.some((album) => album.id === current) ? current : null));
-      })
-      .catch((reason) => {
-        if (albumRequestId.current === activeRequest) {
-          setAlbumError(reason instanceof Error ? reason.message : String(reason));
-        }
-      })
-      .finally(() => {
-        if (albumRequestId.current === activeRequest) setAlbumsLoading(false);
-      });
-    return () => {
-      if (albumRequestId.current === activeRequest) albumRequestId.current += 1;
-    };
-  }, [active, albumRetryKey, dataRevision, libraryKey, locale]);
-
-  useEffect(() => {
     if (!active || !albumsLoaded || location.collection.kind !== 'album') return;
     const albumId = location.collection.albumId;
     if (albums.some((album) => album.id === albumId)) return;
@@ -675,16 +656,19 @@ export function GalleryScreen({
   useEffect(() => {
     if (!active) {
       requestId.current += 1;
+      pendingGalleryQueryKey.current = null;
       loadingRef.current = false;
       setLoading(false);
       return;
     }
-    if ((activeAlbumId || overviewBrowseActive) && !albumsLoaded) {
+    if (activeAlbumId && !albumsLoaded) {
       requestId.current += 1;
+      pendingGalleryQueryKey.current = null;
       loadingRef.current = false;
       setLoading(albumsLoading);
       return;
     }
+    if (pendingGalleryQueryKey.current === galleryQueryKey) return;
     const activeRequest = ++requestId.current;
     const cached = galleryCacheRef.current.get(galleryQueryKey);
     const replacingUncachedContent = !cached && displayedQueryKey !== galleryQueryKey;
@@ -701,9 +685,15 @@ export function GalleryScreen({
       setNextCursor(cached.nextCursor);
       setDisplayedQueryKey(galleryQueryKey);
       viewportRef.current?.scrollTo({ top: 0 });
+      pendingGalleryQueryKey.current = null;
+      loadingRef.current = false;
+      setLoading(false);
+      setError('');
+      return;
     }
     setError('');
     loadingRef.current = true;
+    pendingGalleryQueryKey.current = galleryQueryKey;
     setLoading(true);
 
     const imageRequest =
@@ -723,21 +713,25 @@ export function GalleryScreen({
             limit: pageSize,
           })
         : Promise.resolve(emptyPage);
-    const textRequest = (
-      textEnabled
-        ? activeAlbum?.kind === 'USER'
-          ? window.desktopApi.albumsListTextMaterials(activeAlbum.id)
-          : window.desktopApi.favoriteTextsList()
-        : Promise.resolve([] as FavoriteTextMaterialDto[])
-    ).then((texts) => {
-      if (overviewBrowseActive) return texts.filter((item) => !organizedMaterialIds.has(item.id));
-      if (albumBrowseActive) return texts.filter((item) => activeDirectMaterialIds.has(item.id));
-      return texts;
-    });
+    const textRequest = textEnabled
+      ? activeAlbum?.kind === 'USER'
+        ? window.desktopApi.albumsListTextMaterials(activeAlbum.id)
+        : window.desktopApi.favoriteTextsList()
+      : Promise.resolve([] as FavoriteTextMaterialDto[]);
+    const directoryRequest =
+      overviewBrowseActive && textEnabled ? readAlbumDirectory() : Promise.resolve<MaterialAlbumDto[]>([]);
 
-    void Promise.all([imageRequest, textRequest])
-      .then(([page, texts]) => {
+    void Promise.all([imageRequest, textRequest, directoryRequest])
+      .then(([page, allTexts, directory]) => {
         if (requestId.current !== activeRequest) return;
+        const organizedIds = new Set(
+          directory.flatMap((album) => (album.kind === 'USER' ? album.members.map((member) => member.materialId) : [])),
+        );
+        const texts = overviewBrowseActive
+          ? allTexts.filter((item) => !organizedIds.has(item.id))
+          : albumBrowseActive
+            ? allTexts.filter((item) => activeDirectMaterialIds.has(item.id))
+            : allTexts;
         setItems(page.items);
         setFavoriteTexts(texts);
         setTotal(page.total);
@@ -765,6 +759,7 @@ export function GalleryScreen({
       })
       .finally(() => {
         if (requestId.current === activeRequest) {
+          pendingGalleryQueryKey.current = null;
           loadingRef.current = false;
           setLoading(false);
         }
@@ -790,8 +785,8 @@ export function GalleryScreen({
     imageEnabled,
     libraryKey,
     locale,
-    organizedMaterialIds,
     overviewBrowseActive,
+    readAlbumDirectory,
     retryKey,
     textEnabled,
     unratedDimensions,
@@ -911,7 +906,7 @@ export function GalleryScreen({
   }
 
   const loadMore = useCallback(async () => {
-    if (!nextCursor || loadingRef.current || !imageEnabled) return;
+    if (!active || !nextCursor || loadingRef.current || !imageEnabled) return;
     const activeRequest = requestId.current;
     loadingRef.current = true;
     setLoading(true);
@@ -953,6 +948,7 @@ export function GalleryScreen({
       }
     }
   }, [
+    active,
     activeAlbumId,
     backendSource,
     creationRelation,
@@ -972,7 +968,8 @@ export function GalleryScreen({
   ]);
 
   useEffect(() => {
-    if (active && selectedItem && selectedIndex >= materials.length - 3 && nextCursor && !loading && !error) {
+    if (!active) return;
+    if (selectedItem && selectedIndex >= materials.length - 3 && nextCursor && !loading && !error) {
       void loadMore();
       return;
     }
@@ -1160,10 +1157,6 @@ export function GalleryScreen({
       target: { entityType: 'ALBUM', entityId: album.id },
       title: album.title,
     });
-  }
-
-  async function reloadAlbums() {
-    setAlbums(await window.desktopApi.materialAlbumsList({ locale }));
   }
 
   function canMoveMaterialAlbum(albumId: string, parentAlbumId: string | null) {
@@ -1492,6 +1485,7 @@ export function GalleryScreen({
                   busy={contentLifecycleBusy}
                   onArchive={activeHeaderAlbum.kind === 'USER' ? (album) => void archiveAlbum(album) : undefined}
                   onDelete={activeHeaderAlbum.kind === 'USER' ? (album) => void deleteAlbum(album) : undefined}
+                  notify={notify}
                 />
               )}
               {dictionaryActive && (
@@ -1628,44 +1622,46 @@ export function GalleryScreen({
           </div>
         </div>
         {active && selectedItem && (
-          <MaterialDetailPage
-            item={selectedItem}
-            position={selectedIndex + 1}
-            total={Math.max(resultTotal, materials.length)}
-            albums={writableAlbums}
-            ratingBusy={selectedItem.kind === 'IMAGE' && busyAssets.has(selectedItem.image.asset.id)}
-            albumMembershipBusy={busyAlbumIds.size > 0}
-            favorited={Boolean(selectedFavoriteMaterialId)}
-            favoriteBusy={selectedFavoriteBusy}
-            hasPrevious={Boolean(previousItem)}
-            hasNext={Boolean(nextItem)}
-            onClose={closeMaterialInspector}
-            onPrevious={() => {
-              if (previousItem) selectMaterial(previousItem, undefined, 'replace');
-            }}
-            onNext={() => {
-              if (nextItem) selectMaterial(nextItem, undefined, 'replace');
-            }}
-            onOpenResult={(seriesId, assetId) => onOpenResult(activeAlbum?.sourceSeriesId ?? seriesId, assetId)}
-            onOpenTerm={onOpenTerm}
-            onCopyText={(text) => void copyText(text)}
-            lifecycleBusy={contentLifecycleBusy}
-            onArchive={(item) => void requestMaterialLifecycle('ARCHIVE', item)}
-            onDelete={(item) => void requestMaterialLifecycle('DELETE', item)}
-            onAddFavorite={() => void addFavorite(selectedItem)}
-            onRemoveFavorite={() => {
-              if (selectedFavoriteMaterialId) void removeFavorite(selectedFavoriteMaterialId);
-            }}
-            onToggleAlbumMembership={toggleAlbumMembership}
-            onScore={(dimension, score) => {
-              if (selectedItem.kind === 'IMAGE') void scoreItem(selectedItem.image, dimension, score);
-            }}
-            notify={notify}
-            onMetadataUpdated={updateMaterialMetadata}
-            closeAfterRemoveFavorite={favoriteOnly}
-            onHistoryNavigationGuardChange={onHistoryNavigationGuardChange}
-            revealContext={revealContextForMaterial(selectedItem)}
-          />
+          <WorkspaceDetailLoadingBoundary>
+            <MaterialDetailPage
+              item={selectedItem}
+              position={selectedIndex + 1}
+              total={Math.max(resultTotal, materials.length)}
+              albums={writableAlbums}
+              ratingBusy={selectedItem.kind === 'IMAGE' && busyAssets.has(selectedItem.image.asset.id)}
+              albumMembershipBusy={busyAlbumIds.size > 0}
+              favorited={Boolean(selectedFavoriteMaterialId)}
+              favoriteBusy={selectedFavoriteBusy}
+              hasPrevious={Boolean(previousItem)}
+              hasNext={Boolean(nextItem)}
+              onClose={closeMaterialInspector}
+              onPrevious={() => {
+                if (previousItem) selectMaterial(previousItem, undefined, 'replace');
+              }}
+              onNext={() => {
+                if (nextItem) selectMaterial(nextItem, undefined, 'replace');
+              }}
+              onOpenResult={(seriesId, assetId) => onOpenResult(activeAlbum?.sourceSeriesId ?? seriesId, assetId)}
+              onOpenTerm={onOpenTerm}
+              onCopyText={(text) => void copyText(text)}
+              lifecycleBusy={contentLifecycleBusy}
+              onArchive={(item) => void requestMaterialLifecycle('ARCHIVE', item)}
+              onDelete={(item) => void requestMaterialLifecycle('DELETE', item)}
+              onAddFavorite={() => void addFavorite(selectedItem)}
+              onRemoveFavorite={() => {
+                if (selectedFavoriteMaterialId) void removeFavorite(selectedFavoriteMaterialId);
+              }}
+              onToggleAlbumMembership={toggleAlbumMembership}
+              onScore={(dimension, score) => {
+                if (selectedItem.kind === 'IMAGE') void scoreItem(selectedItem.image, dimension, score);
+              }}
+              notify={notify}
+              onMetadataUpdated={updateMaterialMetadata}
+              closeAfterRemoveFavorite={favoriteOnly}
+              onHistoryNavigationGuardChange={onHistoryNavigationGuardChange}
+              revealContext={revealContextForMaterial(selectedItem)}
+            />
+          </WorkspaceDetailLoadingBoundary>
         )}
         {contentLifecycleActions.confirmationDialog}
       </section>

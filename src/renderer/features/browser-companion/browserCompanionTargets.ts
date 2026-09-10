@@ -14,7 +14,7 @@ export function socialPostBrowserCompanionTargets(
         (permission) => permission.key === EXTENSION_PERMISSION.browserHandoffWeibo && permission.granted,
       ),
   );
-  return weiboAvailable ? ['wechat', 'weibo'] : ['wechat'];
+  return weiboAvailable ? ['wechat', 'xiaohongshu', 'weibo', 'x'] : ['wechat', 'xiaohongshu', 'x'];
 }
 
 export function naturalWatermarkBrowserCompanionAvailable(extensions: readonly ExtensionDto[]) {

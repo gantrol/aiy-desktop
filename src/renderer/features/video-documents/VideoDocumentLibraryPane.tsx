@@ -162,7 +162,9 @@ function VideoDocumentSearchResults({
         >
           <VideoDocumentPreview document={document} />
           <span className="min-w-0 flex-1 px-1">
-            <strong className="line-clamp-2 block break-words text-base font-medium leading-5">{document.title}</strong>
+            <strong className="line-clamp-2 block break-words text-base font-medium leading-5">
+              {document.displayTitle || messages.desktopPetals.document.empty}
+            </strong>
             <span className="mt-0.5 block truncate text-xs text-muted-foreground">
               {document.albumTitle || labels.unfiled} · {formatVideoDuration(document.source.asset.durationMs)}
             </span>

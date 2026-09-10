@@ -1,3 +1,4 @@
+import { gifOutputExists, creationOutputNotExcluded } from '@/main/database/creations/creation-output-presentation-sql';
 import { existsSync, lstatSync, mkdirSync, realpathSync, statSync } from 'node:fs';
 import path from 'node:path';
 import {
@@ -260,6 +261,9 @@ export class LibraryFileViewPathRepository {
                 SELECT 1 FROM prompt_series_output_exclusions exclusion
                 WHERE exclusion.series_id = series.id AND exclusion.image_asset_id = transform.output_asset_id
               )
+          ) OR (
+            ${gifOutputExists('series.id', '?')}
+            AND ${creationOutputNotExcluded('series.id', '?')}
           ) OR EXISTS (
             SELECT 1 FROM prompt_versions version
             JOIN reference_bindings binding ON binding.prompt_version_id = version.id
@@ -267,7 +271,7 @@ export class LibraryFileViewPathRepository {
           )
         ) LIMIT 1`,
       )
-      .get(seriesId, assetId, assetId, assetId, assetId);
+      .get(seriesId, assetId, assetId, assetId, assetId, assetId, assetId);
     if (!matches) return null;
 
     const owner = this.db
@@ -367,13 +371,32 @@ export class LibraryFileViewPathRepository {
           AND form.deleted_at IS NULL
         JOIN prompt_series series ON series.id = form.entity_id
           AND series.deleted_at IS NULL AND series.archived_at IS NULL
+        JOIN gif_documents gif_document ON gif_document.series_id = series.id
+        JOIN gif_export_runs gif ON gif.document_id = gif_document.id AND gif.state = 'SUCCEEDED'
+        WHERE member.target_type = 'CREATION_ITEM' AND member.deleted_at IS NULL
+          AND gif.output_asset_id = ?
+          AND NOT EXISTS (
+            SELECT 1 FROM prompt_series_output_exclusions exclusion
+            WHERE exclusion.series_id = series.id AND exclusion.image_asset_id = gif.output_asset_id
+          )
+        UNION
+        SELECT member.album_id
+        FROM album_members member
+        JOIN albums album ON album.id = member.album_id AND album.deleted_at IS NULL
+        JOIN creation_items item ON item.id = member.target_id
+          AND item.deleted_at IS NULL AND item.archived_at IS NULL
+        JOIN creation_forms form ON form.creation_item_id = item.id
+          AND form.role = 'IMAGE_CREATION' AND form.entity_type = 'PROMPT_SERIES'
+          AND form.deleted_at IS NULL
+        JOIN prompt_series series ON series.id = form.entity_id
+          AND series.deleted_at IS NULL AND series.archived_at IS NULL
         JOIN prompt_versions version ON version.series_id = series.id
         JOIN reference_bindings binding ON binding.prompt_version_id = version.id
         WHERE member.target_type = 'CREATION_ITEM' AND member.deleted_at IS NULL
           AND binding.image_asset_id = ?
         ORDER BY album_id`,
       )
-      .all(assetId, assetId, assetId, assetId, assetId) as JsonMap[];
+      .all(assetId, assetId, assetId, assetId, assetId, assetId) as JsonMap[];
     return rows.map((row) => text(row.album_id));
   }
 

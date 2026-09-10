@@ -1,7 +1,8 @@
 import type { VideoDocumentTranscriptCue } from '@/shared/contracts';
+import { trimTrailingCharacters } from '@/shared/string-boundaries';
 
 const VTT_TIME_RANGE =
-  /^(?:(\d{2,}):)?([0-5]\d):([0-5]\d)\.(\d{3})\s+-->\s+(?:(\d{2,}):)?([0-5]\d):([0-5]\d)\.(\d{3})(?:\s+.*)?$/;
+  /^(?:(\d{2,}):)?([0-5]\d):([0-5]\d)\.(\d{3})\s+-->\s+(?:(\d{2,}):)?([0-5]\d):([0-5]\d)\.(\d{3})(?:\s.*)?$/;
 
 function timestampMs(hours: string | undefined, minutes: string, seconds: string, milliseconds: string) {
   return Number(hours ?? 0) * 3_600_000 + Number(minutes) * 60_000 + Number(seconds) * 1_000 + Number(milliseconds);
@@ -15,9 +16,7 @@ export function parseWebVtt(rawText: string): VideoDocumentTranscriptCue[] {
   }
   while (lines.length && lines[0]!.trim()) lines.shift();
   while (lines.length && !lines[0]!.trim()) lines.shift();
-  const blocks = lines
-    .join('\n')
-    .replace(/\n+$/, '')
+  const blocks = trimTrailingCharacters(lines.join('\n'), '\n')
     .split(/\n{2,}/)
     .filter((block) => block.trim().length > 0 && !/^(?:NOTE|STYLE|REGION)(?:\s|$)/.test(block.trimStart()));
   if (!blocks.length) throw new Error('WebVTT file has no cues');

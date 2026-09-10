@@ -1,4 +1,5 @@
 import type { LibraryDatabase } from '@/main/database';
+import { creationOutlineCommandSchema } from '@/shared/contracts/creation-outline';
 import type { IpcHandlerRegistrar } from '@/main/ipc/trusted-handlers';
 import {
   creationFormAddOrGetInputSchema,
@@ -49,6 +50,9 @@ import {
 } from '@/main/ipc/schemas';
 
 export function registerLibraryIpc(ipcMain: IpcHandlerRegistrar, database: LibraryDatabase) {
+  ipcMain.handle('creation-outline:command', (_event, raw) =>
+    database.creationOutlineCommand(creationOutlineCommandSchema.parse(raw)),
+  );
   ipcMain.handle('creation-items:list', (_event, raw) =>
     database.listCreationItems(creationItemListInputSchema.parse(raw ?? {})),
   );

@@ -1,5 +1,10 @@
-import { createHash } from 'node:crypto';
-import { ulid } from 'ulid';
+import { ensureDefaultNotesAlbum } from '@/main/database/albums/default-notes-album';
+import type { LibraryStorage } from '@/main/database/core/storage';
+import { type JsonMap, mediaUrl, now, text } from '@/main/database/core/values';
+import { CreationItemRepository } from '@/main/database/creations/creation-item-repository';
+import { appendInspirationRevision } from '@/main/database/creations/inspiration-history';
+import { ContentLifecycleRepository } from '@/main/database/recovery/content-lifecycle-repository';
+import { contentDisplayTitle } from '@/shared/content-document';
 import type {
   AssetDto,
   InspirationStashContentDto,
@@ -9,11 +14,10 @@ import type {
   InspirationStashSaveInput,
   InspirationStashSetArchivedInput,
 } from '@/shared/contracts';
+import { assertBlockDocumentReady } from '@/shared/contracts/block-document';
 import { inspirationStashContentSchema } from '@/shared/contracts/inspiration-stash';
-import type { LibraryStorage } from '@/main/database/core/storage';
-import { type JsonMap, mediaUrl, now, text } from '@/main/database/core/values';
-import { ContentLifecycleRepository } from '@/main/database/recovery/content-lifecycle-repository';
-import { CreationItemRepository } from '@/main/database/creations/creation-item-repository';
+import { createHash } from 'node:crypto';
+import { ulid } from 'ulid';
 
 function assetDto(row: JsonMap): AssetDto {
   const id = text(row.id);
@@ -31,6 +35,7 @@ function assetDto(row: JsonMap): AssetDto {
 }
 
 function normalizedContent(input: InspirationStashContentInput): InspirationStashContentInput {
+  assertBlockDocumentReady(input.document);
   return inspirationStashContentSchema.parse({
     ...input,
     promptNodes: input.promptNodes.map((node) => ({ ...node })),
@@ -60,11 +65,6 @@ function canonicalContentJson(content: InspirationStashContentInput) {
 
 function contentHash(content: InspirationStashContentInput) {
   return createHash('sha256').update(canonicalContentJson(content)).digest('hex');
-}
-
-function compactTitle(content: InspirationStashContentInput) {
-  const normalized = content.manualPrompt.replace(/\s+/g, ' ').trim();
-  return normalized ? Array.from(normalized).slice(0, 48).join('') : '灵感暂存';
 }
 
 export function rehomeInspirationStashesForAlbum(storage: LibraryStorage, albumId: string) {
@@ -138,9 +138,20 @@ export class InspirationStashRepository {
           )
           .get(input.id) as JsonMap | undefined;
         if (!existing) throw new Error('Inspiration stash is no longer available');
+        if (this.dto(existing).content.document && !content.document) throw new Error('BLOCK_DOCUMENT_REQUIRED');
         if (text(existing.content_hash) === hash) {
           return this.finalizeSave(this.dto(existing), input.consumeCreationDraftId);
         }
+        if (text(existing.content_hash) !== input.expectedContentHash) {
+          throw new Error('随记已在其他窗口修改；当前文字已保留，请核对后再保存');
+        }
+        appendInspirationRevision(
+          this.db,
+          input.id,
+          text(existing.input_json),
+          text(existing.content_hash),
+          text(existing.updated_at),
+        );
         this.db
           .prepare(
             `UPDATE inspiration_stashes
@@ -148,6 +159,7 @@ export class InspirationStashRepository {
             WHERE id = ?`,
           )
           .run(contentJson, hash, updatedAt, input.id);
+        appendInspirationRevision(this.db, input.id, contentJson, hash, updatedAt);
         const item = creationItems.findForEntity({ kind: 'INSPIRATION_STASH', id: input.id });
         if (!item) throw new Error('The inspiration creation item is unavailable');
         creationItems.touchForEntity({ kind: 'INSPIRATION_STASH', id: input.id }, updatedAt);
@@ -157,7 +169,17 @@ export class InspirationStashRepository {
         return this.finalizeSave(this.dto(this.row(input.id)), input.consumeCreationDraftId);
       }
 
-      const albumId = input.mode === 'ADD_FORM' ? targetItem!.albumId : input.albumId;
+      if (
+        !content.title?.trim() &&
+        !content.manualPrompt.trim() &&
+        !content.promptNodes.length &&
+        !content.referenceAssetIds.length &&
+        !content.files?.length
+      ) {
+        throw new Error('Cannot save an empty note');
+      }
+      const albumId =
+        input.mode === 'ADD_FORM' ? targetItem!.albumId : (input.albumId ?? ensureDefaultNotesAlbum(this.storage));
       this.assertAlbumAvailable(albumId);
       const duplicate = this.db
         .prepare(
@@ -167,11 +189,11 @@ export class InspirationStashRepository {
           ORDER BY updated_at DESC, id DESC LIMIT 1`,
         )
         .get(hash, albumId) as JsonMap | undefined;
-      if (duplicate && !targetItem) {
+      if (duplicate && !targetItem && input.mode !== 'CREATE_NOTE') {
         return this.finalizeSave(this.dto(duplicate), input.consumeCreationDraftId);
       }
 
-      const id = ulid();
+      const id = input.mode === 'CREATE_NOTE' ? input.requestId : ulid();
       this.db
         .prepare(
           `INSERT INTO inspiration_stashes
@@ -180,6 +202,7 @@ export class InspirationStashRepository {
           VALUES (?, ?, ?, ?, 'ACTIVE', ?, ?, NULL, NULL)`,
         )
         .run(id, albumId, contentJson, hash, updatedAt, updatedAt);
+      appendInspirationRevision(this.db, id, contentJson, hash, updatedAt);
       if (targetItem) {
         creationItems.addOrGetForm({
           creationItemId: targetItem.id,
@@ -313,7 +336,8 @@ export class InspirationStashRepository {
     return {
       id: text(row.id),
       albumId: row.album_id == null ? null : text(row.album_id),
-      title: compactTitle(content),
+      title: content.title ?? '',
+      displayTitle: contentDisplayTitle(content.title, content.manualPrompt),
       content: hydrated,
       contentHash: text(row.content_hash),
       status: text(row.status) as InspirationStashDto['status'],

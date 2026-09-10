@@ -9,6 +9,7 @@ import path from 'node:path';
 import { ulid } from 'ulid';
 import { now } from '@/main/database/core/values';
 import { imageDimensions } from '@/main/media/image-dimensions';
+import { LibraryChangeSignal } from '@/main/database/core/library-change-signal';
 
 export interface LibraryStorageOptions {
   openMode?: 'create' | 'must-exist';
@@ -87,6 +88,7 @@ async function objectStorePlanAsync(buffer: Buffer, requestedExtension: string) 
 }
 
 export class LibraryStorage {
+  readonly changes = new LibraryChangeSignal();
   readonly db: Database.Database;
   private changeListener: ((change: RecordedLibraryChange) => void) | null = null;
   private changeEventInsert: Database.Statement | null = null;
@@ -112,6 +114,7 @@ export class LibraryStorage {
   }
 
   close() {
+    this.changes.clear();
     this.db.close();
   }
 
@@ -213,5 +216,6 @@ export class LibraryStorage {
     this.changeRevisionSnapshot = null;
     if (entityType === 'IMAGE_ASSET') this.imageAssetRevision += 1;
     this.changeListener?.({ entityType, entityId, operation, affectsFileView: options?.affectsFileView });
+    this.changes.record({ entityType, entityId, operation, affectsFileView: options?.affectsFileView });
   }
 }

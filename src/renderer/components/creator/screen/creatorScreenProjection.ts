@@ -1,4 +1,11 @@
-import type { BootstrapDto, CreationFormDto, CreationItemDto, DerivedVisualDto, Locale } from '@/shared/contracts';
+import type { BootstrapDto, CreationFormDto, CreationItemDto, DerivedVisualDto } from '@/shared/contracts';
+import {
+  creationFormPreviewAssetIds,
+  creationFormTitle,
+  projectCreationForm,
+  type CreationFormEntityIndex,
+  type CreationFormLabels,
+} from '@/renderer/components/creator/creationLibraryProjection';
 import type { ContentLifecycleActionRequest } from '@/renderer/components/albums/useContentLifecycleActions';
 import { creationFormByEntity } from '@/renderer/components/creator/creationFormEntities';
 import type { CreationRelationItem } from '@/renderer/components/creator/CreationRelationsSheet';
@@ -55,17 +62,6 @@ export function commitGeneratedImageLocation(
   if (!keepEditorOpen) commit({ surface: 'existing-creation', seriesId, assetId: null, versionId }, 'replace');
 }
 
-export function derivedVisualRoleTitle(role: DerivedVisualDto['role'], locale: Locale) {
-  if (locale === 'zh') {
-    if (role === 'SOCIAL_POST_COVER') return '封面设计';
-    if (role === 'ARTICLE_HEADER') return '题图设计';
-    return '配图设计';
-  }
-  if (role === 'SOCIAL_POST_COVER') return 'Cover design';
-  if (role === 'ARTICLE_HEADER') return 'Hero design';
-  return 'Illustration design';
-}
-
 export function defaultStandaloneCreationSeriesId(data: BootstrapDto, sessions: readonly CreationSessionProjection[]) {
   const derivedSeriesIds = new Set(
     (data.derivedVisuals ?? []).flatMap((visual) => (visual.promptSeriesId ? [visual.promptSeriesId] : [])),
@@ -83,7 +79,7 @@ export function defaultStandaloneCreationDraft(data: BootstrapDto) {
 }
 
 export function derivedVisualSchemes(activeVisual: DerivedVisualDto | null, data: BootstrapDto) {
-  if (!activeVisual || activeVisual.role === 'ARTICLE_INLINE') return activeVisual ? [activeVisual] : [];
+  if (!activeVisual) return [];
   const context = creationFormByEntity(data.creationItems, 'DERIVED_VISUAL', activeVisual.id);
   if (!context) return [activeVisual];
   const visualById = new Map((data.derivedVisuals ?? []).map((visual) => [visual.id, visual] as const));
@@ -100,19 +96,32 @@ export function derivedVisualSchemes(activeVisual: DerivedVisualDto | null, data
         left.createdAt.localeCompare(right.createdAt) ||
         left.id.localeCompare(right.id),
     )
-    .flatMap((form) => visualById.get(form.entity.id) ?? []);
+    .flatMap((form) => visualById.get(form.entity.id) ?? [])
+    .filter(
+      (visual) =>
+        activeVisual.role !== 'ARTICLE_INLINE' ||
+        (activeVisual.positionId !== null && visual.positionId === activeVisual.positionId),
+    );
   return schemes.some((visual) => visual.id === activeVisual.id) ? schemes : [...schemes, activeVisual];
 }
 
 export function creationRelationsForForm(
   data: BootstrapDto,
   sourceForm: CreationFormDto | null,
-  locale: Locale,
+  labels: CreationFormLabels,
+  entityIndex: CreationFormEntityIndex,
 ): CreationRelationItem[] {
   if (!sourceForm) return [];
   const item = data.creationItems.find((candidate) => candidate.id === sourceForm.creationItemId);
   if (!item) return [];
-  const children = item.forms.filter((form) => form.sourceFormId === sourceForm.id);
+  const visualIds = new Set(
+    item.forms
+      .filter((form) => form.entity.kind === 'DERIVED_VISUAL' && form.sourceFormId === sourceForm.id)
+      .map((form) => form.id),
+  );
+  const children = item.forms.filter(
+    (form) => form.sourceFormId === sourceForm.id || (form.sourceFormId !== null && visualIds.has(form.sourceFormId)),
+  );
   const source = sourceForm.sourceFormId
     ? (item.forms.find((form) => form.id === sourceForm.sourceFormId) ?? null)
     : null;
@@ -120,63 +129,31 @@ export function creationRelationsForForm(
     ...(source ? [{ form: source, direction: 'SOURCE' as const }] : []),
     ...children.map((form) => ({ form, direction: 'DERIVED' as const })),
   ];
+  const usedAssetIds = creationFormPreviewAssetIds(projectCreationForm(sourceForm, entityIndex));
   return related.flatMap(({ form, direction }, index) => {
-    if (form.role === 'ARTICLE' && form.entity.kind === 'ARTICLE') {
-      const article = (data.articles ?? []).find((candidate) => candidate.id === form.entity.id);
-      return article
-        ? [
-            {
-              formId: form.id,
-              role: form.role,
-              direction,
-              title: article.content.title || (locale === 'zh' ? '未命名文章' : 'Untitled article'),
-              imageAssetIds: article.content.mediaBindings.map((binding) => binding.assetId),
-            },
-          ]
-        : [];
-    }
-    if (form.role === 'SOCIAL_POST' && form.entity.kind === 'SOCIAL_POST') {
-      const post = (data.socialPosts ?? []).find((candidate) => candidate.id === form.entity.id);
-      return post
-        ? [
-            {
-              formId: form.id,
-              role: form.role,
-              direction,
-              title: post.content.title || (locale === 'zh' ? '未命名贴图' : 'Untitled post'),
-              imageAssetIds: post.content.mediaAssetIds,
-            },
-          ]
-        : [];
-    }
-    if (form.entity.kind !== 'DERIVED_VISUAL') return [];
-    const visual = (data.derivedVisuals ?? []).find((candidate) => candidate.id === form.entity.id);
-    if (!visual) return [];
-    const seriesTitle = visual.promptSeriesId
-      ? data.series.find((candidate) => candidate.id === visual.promptSeriesId)?.title
-      : null;
+    const projection = projectCreationForm(form, entityIndex);
+    if (!projection.entity && form.entity.kind !== 'VIDEO_DOCUMENT') return [];
     const ordinal = related
       .slice(0, index + 1)
       .filter((candidate) => candidate.form.role === form.role && candidate.direction === direction).length;
-    const label =
-      form.role === 'SOCIAL_POST_COVER'
-        ? locale === 'zh'
-          ? '封面'
-          : 'Cover'
-        : form.role === 'ARTICLE_HEADER'
-          ? locale === 'zh'
-            ? '题图'
-            : 'Hero image'
-          : locale === 'zh'
-            ? '配图'
-            : 'Illustration';
+    const title = creationFormTitle(projection, labels);
+    const imageAssetIds = creationFormPreviewAssetIds(projection);
+    const sourceAssets = new Set(imageAssetIds);
+    const assetId =
+      direction === 'SOURCE' && (form.entity.kind === 'PROMPT_SERIES' || form.entity.kind === 'DERIVED_VISUAL')
+        ? usedAssetIds.find((id) => sourceAssets.has(id))
+        : undefined;
     return [
       {
         formId: form.id,
         role: form.role,
         direction,
-        title: seriesTitle || `${label} ${ordinal}`,
-        imageAssetIds: visual.selectedImageAssetId ? [visual.selectedImageAssetId] : [],
+        title:
+          form.entity.kind === 'DERIVED_VISUAL' && title === labels.formKinds[form.role]
+            ? `${title} ${ordinal}`
+            : title,
+        imageAssetIds,
+        ...(assetId ? { assetId } : {}),
       },
     ];
   });

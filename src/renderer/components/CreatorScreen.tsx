@@ -12,8 +12,11 @@ import { useCreatorScreenProjection } from '@/renderer/components/creator/screen
 import { useCreatorSelectionSession } from '@/renderer/components/creator/screen/useCreatorSelectionSession';
 import { useCreatorWorkflowRuntime } from '@/renderer/components/creator/screen/useCreatorWorkflowRuntime';
 import { useI18n } from '@/renderer/i18n/useI18n';
+import { useGifWorkspace } from '@/renderer/features/gif-making/GifMakerProvider';
 
 export function CreatorScreen(props: CreatorScreenProps) {
+  const animationWorkspace = useGifWorkspace();
+  const inputActive = props.active && !animationWorkspace;
   const { messages } = useI18n();
   const c = messages.creator.workbench;
   const selection = useCreatorSelectionSession({
@@ -24,7 +27,7 @@ export function CreatorScreen(props: CreatorScreenProps) {
   });
   const outputUi = useCreatorOutputUiState(props.location);
   const prompt = useCreatorPromptSession({
-    active: props.active,
+    active: inputActive,
     capturePersistedPaletteReferences: () => [
       ...(generation.hydration.version?.wordPaletteReferences ?? []),
       ...(selection.creationDraftSession.getSavedDraft()?.wordPaletteReferences ?? []),
@@ -88,6 +91,8 @@ export function CreatorScreen(props: CreatorScreenProps) {
     series: selection.workbenchProjection.series,
   });
   const draftInput = useCreatorDraftInputSession({
+    active: inputActive,
+    spaceId: props.data.spaceId,
     generation,
     locale: props.locale,
     location: props.location,
@@ -102,6 +107,7 @@ export function CreatorScreen(props: CreatorScreenProps) {
     setRequestedAssetId: outputUi.setRequestedAssetId,
   });
   const projection = useCreatorScreenProjection({
+    animationWorkspaceActive: Boolean(animationWorkspace),
     comparisonFullWindow: props.comparisonFullWindow,
     documentWorkspaceActive: props.documentWorkspaceActive,
     generation,
@@ -112,7 +118,7 @@ export function CreatorScreen(props: CreatorScreenProps) {
     workbench: selection.workbenchProjection,
   });
   const generationRuntime = useCreatorGenerationRuntime({
-    active: props.active,
+    active: inputActive,
     annotationRefinementState: outputUi.annotationRefinement,
     blocked: () => navigation.promptVersion.creating || workflow.content.outcome.starting,
     clearSavedInspiration: () => workflow.inspiration.clearSavedContent(),
@@ -129,7 +135,8 @@ export function CreatorScreen(props: CreatorScreenProps) {
     workbench: selection.workbenchProjection,
   });
   const workflow = useCreatorWorkflowRuntime({
-    active: props.active,
+    onSocialPostSaved: props.onSocialPostSaved,
+    active: inputActive,
     configurationRequiredMessage: messages.creator.starter.deepSeekConfigurationRequired,
     data: props.data,
     defaultPromptLocale: props.defaultPromptLocale,
@@ -139,7 +146,7 @@ export function CreatorScreen(props: CreatorScreenProps) {
     generationStarting: generationRuntime.launch.starting,
     locale: props.locale,
     notify: props.notify,
-    onOpenDerivedVisualWorkspace: (result) => navigation.derivedVisual.openWorkspace(result),
+    onOpenDerivedVisualWorkspace: (result, view) => navigation.derivedVisual.openWorkspace(result, view),
     onPromptFullWindowChange: props.onPromptFullWindowChange,
     preserveBeforeNavigation: () => navigation.creation.preserveBeforeNavigation(),
     projection,
@@ -179,6 +186,7 @@ export function CreatorScreen(props: CreatorScreenProps) {
     refreshAlbums: props.refreshAlbums,
     requestedAssetId: outputUi.requestedAssetId,
     selectedDocumentId: props.selectedDocumentId,
+    onSelectDocument: props.onSelectDocument,
     selection,
     setOutputGalleryOpen: outputUi.setGalleryOpen,
     setOutputMode: outputUi.setMode,
@@ -189,6 +197,7 @@ export function CreatorScreen(props: CreatorScreenProps) {
     workflow,
   });
   const viewModel: CreatorScreenViewModel = {
+    animationWorkspace,
     app: props,
     draftInput,
     generation,

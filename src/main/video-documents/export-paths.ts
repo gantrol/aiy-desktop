@@ -1,3 +1,5 @@
+import { trimTrailingCharacters } from '@/shared/string-boundaries';
+
 const MAX_FILE_COMPONENT_BYTES = 255;
 
 export type VideoDocumentExportRole = 'CLEAN_TRANSCRIPT' | 'ARTICLE';
@@ -20,12 +22,14 @@ export function truncateUtf8(value: string, maximumBytes: number) {
 }
 
 function sanitizedTitle(value: string) {
-  const clean = value
-    .normalize('NFKC')
-    .replace(/[<>:"/\\|?*\u0000-\u001f\u007f-\u009f]/g, ' ')
-    .replace(/\s+/g, ' ')
-    .trim()
-    .replace(/[. ]+$/g, '');
+  const clean = trimTrailingCharacters(
+    value
+      .normalize('NFKC')
+      .replace(/[<>:"/\\|?*\u0000-\u001f\u007f-\u009f]/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim(),
+    '. ',
+  );
   if (!clean) return 'video-document';
   return /^(con|prn|aux|nul|clock\$|com[1-9]|lpt[1-9])(?:\..*)?$/i.test(clean) ? `_${clean}` : clean;
 }
@@ -43,7 +47,8 @@ function boundedExportBaseName(
   const collisionSuffix = collisionIndex > 1 ? ` (${collisionIndex})` : '';
   const fixedSuffix = `-${roleLabel(role)}${collisionSuffix}`;
   const titleBudget = MAX_FILE_COMPONENT_BYTES - utf8ByteLength(fixedSuffix) - utf8ByteLength(extension);
-  const boundedTitle = truncateUtf8(sanitizedTitle(title), titleBudget).replace(/[. ]+$/g, '') || 'video-document';
+  const boundedTitle =
+    trimTrailingCharacters(truncateUtf8(sanitizedTitle(title), titleBudget), '. ') || 'video-document';
   return `${boundedTitle}${fixedSuffix}`;
 }
 
@@ -57,5 +62,5 @@ export function videoDocumentExportFileName(title: string, role: VideoDocumentEx
 }
 
 export function safeVideoDocumentAssetStem(value: string) {
-  return truncateUtf8(sanitizedTitle(value), 180).replace(/[. ]+$/g, '') || 'asset';
+  return trimTrailingCharacters(truncateUtf8(sanitizedTitle(value), 180), '. ') || 'asset';
 }

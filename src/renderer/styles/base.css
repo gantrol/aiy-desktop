@@ -91,6 +91,20 @@ button:disabled {
   cursor: default;
 }
 
+/* Transparent Electron auxiliary documents share the normal style entry and root rules. */
+html:is([data-window-kind='petals'], [data-window-kind='tray-menu']),
+html:is([data-window-kind='petals'], [data-window-kind='tray-menu']) body,
+html:is([data-window-kind='petals'], [data-window-kind='tray-menu']) #root {
+  margin: 0;
+  min-width: 0;
+  min-height: 0;
+  background: transparent;
+  /* Moving SVG petals must not scroll the desktop canvas or become scroll anchors. */
+  overflow: clip;
+  overflow-anchor: none;
+  overscroll-behavior: none;
+}
+
 .app-title-bar {
   -webkit-app-region: drag;
   user-select: none;

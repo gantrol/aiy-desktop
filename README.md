@@ -16,6 +16,7 @@
   </p>
 
   <p>
+    <img src="https://img.shields.io/badge/SonarQube-4b5563?style=flat-square" alt="SonarQube" />&nbsp;
     <img src="https://img.shields.io/badge/Reliability-A-2ea043?style=flat-square" alt="Reliability rating: A" />
     <img src="https://img.shields.io/badge/Security-A-2ea043?style=flat-square" alt="Security rating: A" />
     <img src="https://img.shields.io/badge/Maintainability-A-2ea043?style=flat-square" alt="Maintainability rating: A" />
@@ -29,6 +30,8 @@
     <a href="https://github.com/gantrol/aiy-desktop/issues">Feedback</a>
   </p>
 </div>
+
+The four A badges above are code-analysis ratings from **SonarQube**: Reliability, Security, Maintainability, and Security Review.
 
 I often ran into the same problem after generating images with AI: the images kept piling up, while the prompts and original conversations were scattered across different places. A few days later, I could not find them either.
 
@@ -93,6 +96,8 @@ The maintained distribution target from `v0.3.7` onward is:
 
 Normal build scripts no longer produce NSIS installers, portable ZIPs, macOS DMGs, macOS ZIPs, or standalone unpacked releases. Historical packages remain in [GitHub Releases](https://github.com/gantrol/aiy-desktop/releases), but they are outside the maintained release matrix. Current packages are distributed through Microsoft Store after certification.
 
+Download the Windows app from [Microsoft Store](https://apps.microsoft.com/detail/9nwd1hg6tczh). Other platforms currently require building from source; see the [development guide](docs/development.md).
+
 ## ❕Early stage
 
 AIY is still very early. As of `v0.3.10`, image creation and the library are usable, but extensions and content packs may still change.
@@ -113,6 +118,8 @@ npm run dev
 ```
 
 AIY is built with Electron, React, TypeScript, Tailwind CSS, and SQLite. See the [development guide](docs/development.md) for runtime data locations, validation commands, extension development, and release workflows.
+
+The [browser companion](browser-companion/README.md) lives in this repository with its own dependencies and version. Run `npm run install:browser`, then `npm run build:browser`; load `browser-companion/.output/chrome-mv3` as an unpacked Chrome or Edge extension. Use `npm run dev:browser` for extension development.
 
 ## License and security
 

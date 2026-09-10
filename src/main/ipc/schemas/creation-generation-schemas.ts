@@ -1,8 +1,10 @@
-import { z } from 'zod';
 import { termDraftSchema } from '@/main/database/dictionary/term-draft-schema';
 import { importedImageMetadataSchema, importedImageRelationshipSchema } from '@/main/ipc/import-metadata-schema';
+import { blockDocumentSchema } from '@/shared/contracts/block-document';
+import { contentSourceSchema } from '@/shared/contracts/content-library';
 import { creationDraftLoadInputSchema } from '@/shared/contracts/creation-draft';
 import { creatorImageImportMimeTypeSchema } from '@/shared/contracts/creator-import';
+import { z } from 'zod';
 
 export const localeSchema = z.enum(['zh', 'en']);
 
@@ -40,6 +42,7 @@ export const assetFileRevealContextSchema = z.discriminatedUnion('kind', [
   z.object({ kind: z.literal('DICTIONARY') }).strict(),
   z.object({ kind: z.literal('ALBUM'), albumId: id }).strict(),
   z.object({ kind: z.literal('CREATION'), seriesId: id }).strict(),
+  z.object({ kind: z.literal('CONTENT'), source: contentSourceSchema }).strict(),
   z.object({ kind: z.literal('TERM'), termId: id }).strict(),
 ]);
 
@@ -213,6 +216,7 @@ export const assistantProposalAdoptionBaseSchema = z.object({
   beforePrompt: z.string().max(30_000),
   afterPrompt: z.string().min(1).max(30_000),
   beforeDocument: z.object({
+    document: blockDocumentSchema.optional(),
     promptNodes: z
       .array(
         z.discriminatedUnion('kind', [
@@ -235,6 +239,7 @@ export const assistantProposalAdoptionBaseSchema = z.object({
       .max(80),
   }),
   afterDocument: z.object({
+    document: blockDocumentSchema.optional(),
     promptNodes: z
       .array(
         z.discriminatedUnion('kind', [
@@ -292,6 +297,7 @@ export const generationBaseSchema = z.object({
   manualPrompt: z.string().max(30_000),
   prompt: z.string().min(1).max(30_000),
   changeSummary: z.string().max(1000),
+  document: blockDocumentSchema.optional(),
   promptNodes: z.array(creatorPromptNodeSchema).max(2_000).optional(),
   referenceAssetIds: stringList,
   termPromptLocale: localeSchema.optional().default('en'),
@@ -338,6 +344,7 @@ export const promptVersionCreateSchema = generationBaseSchema
     manualPrompt: true,
     prompt: true,
     changeSummary: true,
+    document: true,
     promptNodes: true,
     referenceAssetIds: true,
     termPromptLocale: true,
@@ -635,8 +642,10 @@ export const creationDraftSaveSchema = z.object({
   targetAlbumId: id.nullable(),
   title: z.string().max(300),
   text: z.string().max(30_000),
+  document: blockDocumentSchema.optional(),
   promptNodes: z.array(creatorPromptNodeSchema).max(2_000).optional(),
-  referenceAssetIds: z.array(id).max(8),
+  referenceAssetIds: z.array(id).max(100),
+  videoMaterialIds: z.array(id).max(8).optional(),
   termPromptLocale: localeSchema,
   termIds: z.array(id).max(100),
   wordPaletteReferences: z.array(wordPaletteReferenceSchema).max(50),
@@ -682,10 +691,11 @@ export const creationDraftCommitSchema = z.object({
   imageBreakdownId: id.nullable().optional().default(null),
   title: z.string().max(300),
   manualPrompt: z.string().max(30_000),
+  document: blockDocumentSchema.optional(),
   promptNodes: z.array(creatorPromptNodeSchema).max(2_000).optional(),
   prompt: z.string().trim().min(1).max(30_000),
   changeSummary: z.string().max(1_000),
-  referenceAssetIds: z.array(id).max(8),
+  referenceAssetIds: z.array(id).max(100),
   termPromptLocale: localeSchema,
   termIds: z.array(id).max(100),
   wordPaletteReferences: z.array(wordPaletteReferenceSchema).max(50),
@@ -695,9 +705,11 @@ export const creationInputSnapshotSchema = z.object({
   schemaVersion: z.literal(1),
   title: z.string().max(300),
   manualPrompt: z.string().max(30_000),
+  document: blockDocumentSchema.optional(),
   promptNodes: z.array(creatorPromptNodeSchema).max(2_000).optional(),
   resolvedPrompt: z.string().max(30_000),
-  referenceAssetIds: z.array(id).max(8),
+  referenceAssetIds: z.array(id).max(100),
+  videoMaterialIds: z.array(id).max(8).optional(),
   termPromptLocale: localeSchema,
   termIds: z.array(id).max(100),
   wordPaletteReferences: z.array(wordPaletteReferenceSchema).max(50),

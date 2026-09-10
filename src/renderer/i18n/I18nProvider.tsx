@@ -1,4 +1,6 @@
-import { createContext, useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
+import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
+import { I18nContext } from '@/renderer/i18n/I18nContext';
+export { I18nContext } from '@/renderer/i18n/I18nContext';
 import type { ExtensionDto, ExtensionLanguagePackDto, Locale } from '@/shared/contracts';
 import { ENGLISH_LANGUAGE_EXTENSION_ID } from '@/shared/extension-ids';
 import { htmlLanguages, languagePluginOrder, type MessageCatalog } from '@/renderer/i18n/catalog';
@@ -10,15 +12,6 @@ import {
   LANGUAGE_PLUGIN_STATE_EVENT,
   type LanguagePluginStateEventDetail,
 } from '@/renderer/i18n/languagePluginState';
-
-interface I18nContextValue {
-  locale: Locale;
-  setLocale(locale: Locale): void;
-  messages: MessageCatalog;
-  availableLocales: readonly Locale[];
-}
-
-export const I18nContext = createContext<I18nContextValue | null>(null);
 
 function initialLocale(): Locale {
   return localStorage.getItem('aiy.locale.v1') === 'en' ? 'en' : 'zh';
@@ -152,5 +145,12 @@ export function I18nProvider({ children }: { children: ReactNode }) {
     () => ({ locale, setLocale, messages, availableLocales }),
     [availableLocales, locale, messages, setLocale],
   );
+  useEffect(() => {
+    // Do not publish the English fallback while the selected language pack is still loading.
+    if (!languagePacks[locale]) return;
+    void window.desktopApi.appShellSetLanguage({ locale, messages: messages.appShell }).catch((error) => {
+      console.error('[i18n] Failed to synchronize application shell language', error);
+    });
+  }, [languagePacks, locale, messages.appShell]);
   return <I18nContext.Provider value={value}>{children}</I18nContext.Provider>;
 }

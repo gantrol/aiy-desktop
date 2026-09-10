@@ -1,14 +1,14 @@
-import { useRef, useState } from 'react';
-import type { BootstrapDto, CreationDraftDto, Locale, PromptSeriesDto } from '@/shared/contracts';
-import { emptyCreationDictionaryScope } from '@/shared/album-creation-defaults';
 import type { CreatorLocation } from '@/renderer/components/app/app-navigation';
 import {
   creatorPromptNodesFromCommonInput,
   creatorPromptNodesFromReferences,
 } from '@/renderer/components/creator/creatorPromptDocument';
+import { appliedWordPalettesFromReferences } from '@/renderer/components/creator/utils';
 import { useCreatorDictionaryCatalog } from '@/renderer/components/creator/workflows/useCreatorDictionaryCatalog';
 import { useCreatorPromptDocument } from '@/renderer/components/creator/workflows/useCreatorPromptDocument';
-import { appliedWordPalettesFromReferences } from '@/renderer/components/creator/utils';
+import { emptyCreationDictionaryScope } from '@/shared/album-creation-defaults';
+import type { BootstrapDto, CreationDraftDto, Locale, PromptSeriesDto } from '@/shared/contracts';
+import { useRef, useState } from 'react';
 
 interface Options {
   active: boolean;
@@ -96,7 +96,9 @@ export function useCreatorPromptSession({
       appliedPalettes: appliedWordPalettesFromReferences(data.wordPalettes, wordPaletteReferences),
       manualPrompt,
       promptNodes: initialPromptNodes,
+      document: initialDraft?.document ?? initialVersion?.promptInputSnapshot.commonInput.document,
       referenceAssets: initialDraft?.referenceAssets ?? [],
+      videoAttachments: initialDraft?.videoAttachments ?? [],
       selectedTerms: termIds.flatMap((termId) => data.terms.find((term) => term.id === termId) ?? []),
       termPromptLocale:
         initialDraft?.termPromptLocale ?? initialVersion?.termPromptLocale ?? defaultPromptLocale ?? locale,

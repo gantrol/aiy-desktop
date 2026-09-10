@@ -1,9 +1,18 @@
 import type { AgentCommandKind } from '@/main/database/generation/agent-command-repository';
 import type { LibraryDatabaseRepositories } from '@/main/database/library-database/repositories';
 import type { AgentGenerationDraft } from '@/shared/contracts/agent-cli';
+import type { AgentIntakeGetRequest, AgentIntakeImportRequest } from '@/shared/contracts/agent-intake';
 
-export function createAgentApi(repositories: Pick<LibraryDatabaseRepositories, 'agentCommands'>) {
+export function createAgentApi(repositories: Pick<LibraryDatabaseRepositories, 'agentCommands' | 'agentIntake'>) {
   return {
+    importAgentIntake(request: AgentIntakeImportRequest, signal: AbortSignal) {
+      return repositories.agentIntake.import(request, signal);
+    },
+
+    getAgentIntake(request: AgentIntakeGetRequest) {
+      return repositories.agentIntake.get(request);
+    },
+
     getAgentCommand(requestId: string) {
       return repositories.agentCommands.getCommand(requestId);
     },

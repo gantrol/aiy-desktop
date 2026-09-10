@@ -1,6 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
 import type { AlbumDto, GalleryItemDto, Locale, VideoDocumentGenerationRunDto } from '@/shared/contracts';
-import { materialTitle, mediaMaterial } from '@/renderer/components/gallery/materialLibraryTypes';
 import { createVideoDocument } from '@/renderer/features/video-documents/createVideoDocument';
 import { VideoDocumentCreationSettings } from '@/renderer/features/video-documents/VideoDocumentCreationSettings';
 import { VideoFileInput } from '@/renderer/features/video-documents/VideoDocumentFileInputs';
@@ -10,7 +9,6 @@ import {
   formatVideoDocumentDuration,
   formatVideoDocumentFileSize,
   useVideoDocumentLocalFile,
-  videoDocumentFileStem,
 } from '@/renderer/features/video-documents/useVideoDocumentLocalFile';
 import { useRecentVideoMaterials } from '@/renderer/features/video-documents/useRecentVideoMaterials';
 import { useI18n } from '@/renderer/i18n/useI18n';
@@ -92,16 +90,13 @@ export function VideoDocumentCreationStarter({
   useEffect(() => {
     if (!request) return;
     setSelectedGalleryVideo(null);
-    setTitle(videoDocumentFileStem(request.file.name));
+    setTitle('');
     setSubmitError('');
   }, [request]);
 
   const hasSource = Boolean(request || selectedGalleryVideo);
   const canCreate = Boolean(
-    title.trim() &&
-    !localVideo.reading &&
-    !localVideo.error &&
-    ((request && localVideo.mediaInfo) || selectedGalleryVideo?.materialId),
+    !localVideo.reading && !localVideo.error && ((request && localVideo.mediaInfo) || selectedGalleryVideo?.materialId),
   );
   const localDetails = request
     ? [
@@ -118,7 +113,7 @@ export function VideoDocumentCreationStarter({
     if (!item.materialId) return;
     onRequestChange(null);
     setSelectedGalleryVideo(item);
-    setTitle(materialTitle(mediaMaterial(item), labels.start.sourceVideoFallback));
+    setTitle('');
     setSubmitError('');
   }
 
@@ -145,7 +140,7 @@ export function VideoDocumentCreationStarter({
 
   async function submit() {
     const nextTitle = title.trim();
-    if (!canCreate || !nextTitle || submitting) return;
+    if (!canCreate || submitting) return;
     setSubmitting(true);
     setSubmitError('');
     try {

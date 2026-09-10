@@ -24,6 +24,7 @@ import {
   moveWorkspaceTabToOtherGroup,
   persistedWorkspaceState,
   reorderWorkspaceTab,
+  rememberActiveVisualWorkspace,
   resetWorkspace,
   restoreWorkspaceState,
   setWorkspaceSplitRatio,
@@ -68,7 +69,9 @@ export function useWorkspaceController(data: BootstrapDto | null) {
         if (!latestContext || latestContext.epoch !== epoch) return;
         if (result.status === 'saved') {
           latestContext.revision = result.snapshot.revision;
-          latestContext.acknowledgedKey = JSON.stringify(result.snapshot.state);
+          // Acknowledge the submitted snapshot. Schema parsing can reorder the
+          // reply's object keys without changing its content, causing endless writes.
+          latestContext.acknowledgedKey = key;
           setState((current) =>
             current?.spaceId === result.snapshot.spaceId ? { ...current, revision: result.snapshot.revision } : current,
           );
@@ -96,7 +99,7 @@ export function useWorkspaceController(data: BootstrapDto | null) {
   useEffect(() => {
     if (!data || stateRef.current?.spaceId === data.spaceId) return;
     const previous = persistenceRef.current;
-    const restored = restoreWorkspaceState(data);
+    const restored = rememberActiveVisualWorkspace(restoreWorkspaceState(data));
     stateRef.current = restored;
     persistenceRef.current = {
       epoch: (previous?.epoch ?? 0) + 1,
@@ -127,7 +130,7 @@ export function useWorkspaceController(data: BootstrapDto | null) {
   const update = useCallback((operation: (current: WorkspaceRuntimeState) => WorkspaceRuntimeState) => {
     const current = stateRef.current;
     if (!current) return;
-    const next = normalizeWorkspaceArticleEditOwners(operation(current));
+    const next = rememberActiveVisualWorkspace(normalizeWorkspaceArticleEditOwners(operation(current)));
     if (next === current) return;
     stateRef.current = next;
     setState(next);

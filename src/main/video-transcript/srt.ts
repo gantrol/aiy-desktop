@@ -1,7 +1,8 @@
 import type { VideoDocumentTranscriptCue } from '@/shared/contracts';
+import { trimTrailingCharacters } from '@/shared/string-boundaries';
 
 const SRT_TIME_RANGE =
-  /^(\d{2,}):([0-5]\d):([0-5]\d)[,.](\d{3})\s+-->\s+(\d{2,}):([0-5]\d):([0-5]\d)[,.](\d{3})(?:\s+.*)?$/;
+  /^(\d{2,}):([0-5]\d):([0-5]\d)[,.](\d{3})\s+-->\s+(\d{2,}):([0-5]\d):([0-5]\d)[,.](\d{3})(?:\s.*)?$/;
 
 function timestampMs(hours: string, minutes: string, seconds: string, milliseconds: string) {
   return Number(hours) * 3_600_000 + Number(minutes) * 60_000 + Number(seconds) * 1_000 + Number(milliseconds);
@@ -9,8 +10,7 @@ function timestampMs(hours: string, minutes: string, seconds: string, millisecon
 
 export function parseSrt(rawText: string): VideoDocumentTranscriptCue[] {
   const normalized = rawText.replace(/^\uFEFF/, '').replace(/\r\n?/g, '\n');
-  const blocks = normalized
-    .replace(/\n+$/, '')
+  const blocks = trimTrailingCharacters(normalized, '\n')
     .split(/\n{2,}/)
     .filter((block) => block.trim().length > 0);
   if (!blocks.length) throw new Error('Subtitle file has no cues');

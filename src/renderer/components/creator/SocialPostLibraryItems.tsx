@@ -1,4 +1,4 @@
-import { ArchiveIcon, FolderInputIcon, PanelsTopLeftIcon, Trash2Icon } from 'lucide-react';
+import { ArchiveIcon, FileTextIcon, FolderInputIcon, Trash2Icon } from 'lucide-react';
 import type { SocialPostDto } from '@/shared/contracts';
 import { TreeDragHandle } from '@/renderer/components/albums/TreeDragHandle';
 import {
@@ -12,13 +12,13 @@ import {
 import { MediaStackPreview } from '@/renderer/components/media/MediaStackPreview';
 import { ActionContextMenuItems, ActionMenuButton, type ActionMenuAction } from '@/renderer/components/ui/action-menu';
 import { ContextMenu, ContextMenuContent, ContextMenuTrigger } from '@/renderer/components/ui/context-menu';
+import { useI18n } from '@/renderer/i18n/useI18n';
 import { cn } from '@/renderer/lib/utils';
 
 interface Props extends CreationLibraryTreePlacementProps, CreationLibraryTreeDragProps {
   post: SocialPostDto;
   selected: boolean;
   busy: boolean;
-  locale: 'zh' | 'en';
   dataAttributes?: CreationLibraryTreeDataAttributes;
   childBranch?: CreationTreeChildBranch;
   additionalActions?: readonly ActionMenuAction[];
@@ -31,28 +31,33 @@ interface Props extends CreationLibraryTreePlacementProps, CreationLibraryTreeDr
   onDelete(postId: string): void;
 }
 
-function actions({
-  post,
-  busy,
-  locale,
-  additionalActions = [],
-  onSelect,
-  onMove,
-  onArchive,
-  onDelete,
-}: Props): ActionMenuAction[] {
+interface Labels {
+  archive: string;
+  delete: string;
+  drag: string;
+  kind: string;
+  moreActions: string;
+  move: string;
+  open: string;
+  untitled: string;
+}
+
+function actions(
+  { post, busy, additionalActions = [], onSelect, onMove, onArchive, onDelete }: Props,
+  labels: Labels,
+): ActionMenuAction[] {
   return [
     {
       id: 'open',
-      label: locale === 'zh' ? '打开' : 'Open',
-      icon: PanelsTopLeftIcon,
+      label: labels.open,
+      icon: FileTextIcon,
       onSelect: () => onSelect(post.id),
     },
     ...(onMove
       ? [
           {
             id: 'move',
-            label: locale === 'zh' ? '移动…' : 'Move…',
+            label: labels.move,
             icon: FolderInputIcon,
             disabled: busy,
             onSelect: () => onMove(post),
@@ -62,7 +67,7 @@ function actions({
     ...additionalActions,
     {
       id: 'archive',
-      label: locale === 'zh' ? '归档' : 'Archive',
+      label: labels.archive,
       icon: ArchiveIcon,
       separatorBefore: true,
       disabled: busy,
@@ -70,7 +75,7 @@ function actions({
     },
     {
       id: 'delete',
-      label: locale === 'zh' ? '删除' : 'Delete',
+      label: labels.delete,
       icon: Trash2Icon,
       destructive: true,
       disabled: busy,
@@ -79,15 +84,15 @@ function actions({
   ];
 }
 
-function SocialPostTypeBadge({ locale }: Pick<Props, 'locale'>) {
-  const label = locale === 'zh' ? '贴图' : 'Social post';
+function SocialPostTypeBadge() {
+  const label = useI18n().messages.creator.manuscriptEditor.kind;
   return (
     <span
       title={label}
       aria-label={label}
       className="pointer-events-none absolute bottom-0 left-0 z-20 grid size-5 place-items-center rounded-md border bg-overlay/95 text-foreground-secondary shadow-overlay"
     >
-      <PanelsTopLeftIcon className="size-3" />
+      <FileTextIcon className="size-3" />
     </span>
   );
 }
@@ -96,7 +101,6 @@ export function SocialPostLibraryRow(props: Props) {
   const {
     post,
     selected,
-    locale,
     dataAttributes,
     childBranch,
     branchTopology,
@@ -107,8 +111,19 @@ export function SocialPostLibraryRow(props: Props) {
     onDragStart,
     onDragEnd,
   } = props;
-  const menuActions = actions(props);
-  const title = post.content.title || (locale === 'zh' ? '未命名贴图' : 'Untitled post');
+  const { messages } = useI18n();
+  const labels: Labels = {
+    archive: messages.creator.album.archive,
+    delete: messages.creator.album.delete,
+    drag: messages.creator.manuscriptEditor.drag,
+    kind: messages.creator.manuscriptEditor.kind,
+    moreActions: messages.creator.album.moreActions,
+    move: messages.creator.album.move,
+    open: messages.creator.album.open,
+    untitled: messages.creator.manuscriptEditor.untitled,
+  };
+  const menuActions = actions(props, labels);
+  const title = post.content.title || labels.untitled;
   const previewItems = post.content.mediaAssets.map((asset) => ({ asset }));
   const previewMetrics = getCreationTreeMediaNodeMetrics(previewItems);
   const row = (
@@ -116,8 +131,8 @@ export function SocialPostLibraryRow(props: Props) {
       dataAttributes={{ 'data-social-post-id': post.id, ...dataAttributes }}
       selected={selected}
       branchTopology={branchTopology}
-      ariaLabel={`${locale === 'zh' ? '贴图' : 'Social post'}: ${title}`}
-      openLabel={`${locale === 'zh' ? '打开' : 'Open'}: ${title}`}
+      ariaLabel={`${labels.kind}: ${title}`}
+      openLabel={`${labels.open}: ${title}`}
       title={title}
       childBranch={childBranch}
       previewBounds={previewMetrics.bounds}
@@ -131,21 +146,17 @@ export function SocialPostLibraryRow(props: Props) {
             items={previewItems}
             maxItems={3}
           />
-          <SocialPostTypeBadge locale={locale} />
+          <SocialPostTypeBadge />
         </span>
       }
       controls={
         <div className="pointer-events-none absolute inset-y-0 right-1 z-30 flex items-center opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100">
           {onDragStart && (
-            <TreeDragHandle
-              label={locale === 'zh' ? '拖动贴图' : 'Drag social post'}
-              onDragStart={onDragStart}
-              onDragEnd={() => onDragEnd?.()}
-            />
+            <TreeDragHandle label={labels.drag} onDragStart={onDragStart} onDragEnd={() => onDragEnd?.()} />
           )}
           <ActionMenuButton
             actions={menuActions}
-            label={`${locale === 'zh' ? '更多操作' : 'More actions'}: ${title}`}
+            label={`${labels.moreActions}: ${title}`}
             className="pointer-events-auto size-6 rounded-md bg-overlay/95 shadow-overlay"
           />
         </div>
@@ -167,15 +178,26 @@ export function SocialPostLibraryRow(props: Props) {
 }
 
 export function SocialPostCompactItem(props: Props) {
-  const { post, selected, locale, onSelect, onDragStart, onDragEnd } = props;
-  const menuActions = actions(props);
-  const title = post.content.title || (locale === 'zh' ? '未命名贴图' : 'Untitled post');
+  const { post, selected, onSelect, onDragStart, onDragEnd } = props;
+  const { messages } = useI18n();
+  const labels: Labels = {
+    archive: messages.creator.album.archive,
+    delete: messages.creator.album.delete,
+    drag: messages.creator.manuscriptEditor.drag,
+    kind: messages.creator.manuscriptEditor.kind,
+    moreActions: messages.creator.album.moreActions,
+    move: messages.creator.album.move,
+    open: messages.creator.album.open,
+    untitled: messages.creator.manuscriptEditor.untitled,
+  };
+  const menuActions = actions(props, labels);
+  const title = post.content.title || labels.untitled;
   const previewItems = post.content.mediaAssets.map((asset) => ({ asset }));
   const content = (
     <button
       type="button"
       title={title}
-      aria-label={`${locale === 'zh' ? '贴图' : 'Social post'}: ${title}`}
+      aria-label={`${labels.kind}: ${title}`}
       aria-current={selected ? 'page' : undefined}
       data-result-library-selected={selected ? 'true' : undefined}
       draggable={Boolean(onDragStart)}
@@ -195,7 +217,7 @@ export function SocialPostCompactItem(props: Props) {
         items={previewItems}
         maxItems={3}
       />
-      <SocialPostTypeBadge locale={locale} />
+      <SocialPostTypeBadge />
     </button>
   );
   return (

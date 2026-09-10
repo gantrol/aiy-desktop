@@ -1,7 +1,11 @@
+import { articleWechatMessages } from '@/shared/i18n/article-wechat';
+import type { NaturalWatermarkRuntime } from '@/main/extensions/natural-watermark/selection';
 import { app, clipboard, dialog, nativeImage, shell, type BrowserWindow } from 'electron';
+import { trimTrailingCharacters } from '@/shared/string-boundaries';
 import { createHash } from 'node:crypto';
 import { chmod, copyFile } from 'node:fs/promises';
 import path from 'node:path';
+import { registerContentLibraryIpc } from '@/main/ipc/content-library-handlers';
 import { z } from 'zod';
 import type {
   ArticleCheckInput,
@@ -41,8 +45,13 @@ import type { ExternalImageApiConnections } from '@/main/extensions/external-ima
 import type { NaturalWatermarkConfigurationStore } from '@/main/extensions/natural-watermark/configuration';
 import type { NaturalWatermarkService } from '@/main/extensions/natural-watermark/service';
 import { registerStorageIpc, type LocalSpaceActions } from '@/main/ipc/storage-handlers';
-import { createTrustedIpcHandlerRegistrar, type TrustedIpcInvocationRunner } from '@/main/ipc/trusted-handlers';
+import {
+  createTrustedIpcHandlerRegistrar,
+  type IpcHandlerRegistrar,
+  type TrustedIpcInvocationRunner,
+} from '@/main/ipc/trusted-handlers';
 import { registerCreatorImportIpc } from '@/main/ipc/creator-import-handlers';
+import { registerGifMakingIpc } from '@/main/ipc/gif-making-handlers';
 import { registerDictionaryIpc } from '@/main/ipc/dictionary-handlers';
 import { registerAssetIpc } from '@/main/ipc/asset-handlers';
 import { registerCreationAssistantIpc } from '@/main/ipc/creation-assistant-handlers';
@@ -58,6 +67,8 @@ import { registerAppWindowIpc } from '@/main/ipc/app-window-handlers';
 import { registerWorkspaceLayoutIpc } from '@/main/ipc/workspace-layout-handlers';
 import type { WorkspaceLayoutStore } from '@/main/app/workspace-layout-store';
 import { registerArticleEditorRecoveryIpc } from '@/main/ipc/article-editor-recovery-handlers';
+import { registerCreatorInputRecoveryIpc } from '@/main/ipc/creator-input-recovery-handlers';
+import { registerSocialPostRecoveryIpc } from '@/main/ipc/social-post-recovery-handlers';
 import { registerBackgroundIssueIpc } from '@/main/ipc/background-issue-handlers';
 import { registerArticleDeliveryIpc } from '@/main/ipc/article-delivery-handlers';
 import type { ArticleEditorRecoveryStore } from '@/main/app/article-editor-recovery-store';
@@ -83,10 +94,7 @@ interface VideoDocumentGenerationApi {
 }
 
 function safeSpaceArchiveName(name: string) {
-  const stem = name
-    .replace(/[<>:"/\\|?*\u0000-\u001f]/g, ' ')
-    .replace(/\s+/g, ' ')
-    .replace(/[. ]+$/g, '')
+  const stem = trimTrailingCharacters(name.replace(/[<>:"/\\|?*\u0000-\u001f]/g, ' ').replace(/\s+/g, ' '), '. ')
     .trim()
     .slice(0, 100);
   return `${stem || 'AIY Space'}.aiyspace`;
@@ -138,6 +146,7 @@ function creativeLibraryContainers(database: LibraryDatabase) {
     articles: database.listArticles(),
     creations: database.listCreations(),
     creationItems: database.listCreationItems(),
+    animations: database.listAnimationWorks(),
     evaluationSuites: database.listEvaluationSuites(),
     inspirationStashes: database.listInspirationStashes(),
     imageBreakdowns: database.listImageBreakdowns(),
@@ -171,16 +180,16 @@ interface BootstrapLoaderOptions {
 }
 
 function createBootstrapLoader(options: BootstrapLoaderOptions) {
-  return (rawLocale: unknown) => {
+  return async (rawLocale: unknown) => {
     const locale = localeSchema.parse(rawLocale) as Locale;
     const workbench = options.database.getWorkbench(locale, compactExecutionWorkbenchOptions);
     const spaceId = options.localSpaces.currentSpaceId();
-    return {
+    const workspaceLayout = options.workspaceLayouts.load(spaceId);
+    const snapshot = {
       locale,
       spaceId,
       spaceName: options.database.getLibraryName(),
       spaceCoverUrl: options.localSpaces.currentCoverUrl(),
-      workspaceLayout: options.workspaceLayouts.load(spaceId),
       ...bootstrapDictionaryProjection(options.database, locale),
       canvasPresets: readCanvasPresets(options.canvasPresetPaths, locale),
       derivedVisualPrompts: readDerivedVisualPrompts(options.derivedVisualPromptPaths, locale),
@@ -203,6 +212,7 @@ function createBootstrapLoader(options: BootstrapLoaderOptions) {
       libraryEmpty: options.database.isLibraryEmpty(),
       creationDraft: options.database.getCreationDraft(),
     };
+    return { ...snapshot, workspaceLayout: await workspaceLayout };
   };
 }
 
@@ -217,9 +227,12 @@ export function registerApplicationIpc(
   registerAppWindowIpc(ipcMain, getWindow);
   registerWorkspaceLayoutIpc(ipcMain, workspaceLayouts);
   registerArticleEditorRecoveryIpc(ipcMain, articleEditorRecovery);
+  registerCreatorInputRecoveryIpc(ipcMain, app.getPath('userData'));
+  registerSocialPostRecoveryIpc(ipcMain, app.getPath('userData'));
 }
 
 export interface RegisterIpcRuntimeOptions {
+  ipcMain?: IpcHandlerRegistrar;
   applicationIpcRegistered?: boolean;
   startupChannelsRegistered?: boolean;
   installBootstrapHandler?(handler: (rawLocale: unknown) => unknown): void;
@@ -251,7 +264,12 @@ function showOpenDialog(getWindow: () => BrowserWindow | null, options: Electron
   return parent ? dialog.showOpenDialog(parent, options) : dialog.showOpenDialog(options);
 }
 
-function createContentIpcServices(database: LibraryDatabase, getWindow: () => BrowserWindow | null) {
+function createContentIpcServices(
+  database: LibraryDatabase,
+  getWindow: () => BrowserWindow | null,
+  naturalWatermark: NaturalWatermarkRuntime,
+  extensions: ExtensionRegistry,
+) {
   const videoDocumentExports = new VideoDocumentExportService(database, {
     showSaveDialog: (options) => {
       const parent = getWindow();
@@ -281,11 +299,23 @@ function createContentIpcServices(database: LibraryDatabase, getWindow: () => Br
     articleExports: new ArticleExportService(database, {
       showSaveDialog: (options) => showDownloadsSaveDialog(getWindow, options),
     }),
-    articleWechatCopy: new ArticleWechatCopyService(database, {
-      writeClipboard: (data) => clipboard.write(data),
-      convertWebpBytesToPng,
-      convertSvgBytesToPng,
-    }),
+    articleWechatCopy: new ArticleWechatCopyService(
+      database,
+      {
+        referenceTitle: (locale) => {
+          const messages = extensions.listLanguagePacks().find((pack) => pack.locale === locale)?.messages;
+          const copy = messages?.articleWechat;
+          if (copy && typeof copy === 'object' && 'referenceTitle' in copy && typeof copy.referenceTitle === 'string') {
+            return copy.referenceTitle;
+          }
+          return articleWechatMessages.referenceTitle;
+        },
+        writeClipboard: (data) => clipboard.write(data),
+        convertWebpBytesToPng,
+        convertSvgBytesToPng,
+      },
+      naturalWatermark,
+    ),
   };
 }
 
@@ -342,6 +372,44 @@ function createArticleCheckRequestRunner(
   };
 }
 
+function registerPublishingIpc(
+  ipcMain: ReturnType<typeof createTrustedIpcHandlerRegistrar>,
+  database: LibraryDatabase,
+  extensions: ExtensionRegistry,
+  getWindow: () => BrowserWindow | null,
+  browserCompanionService: BrowserCompanionLoopbackServer,
+  articleDeliveryConnections: ArticleDeliveryConnections,
+  articleDeliveryJobs: ArticleDeliveryJobCoordinator,
+  naturalWatermarkConfiguration: NaturalWatermarkConfigurationStore,
+  naturalWatermarkService: NaturalWatermarkService,
+) {
+  registerBrowserCompanionIpc(
+    ipcMain,
+    createBrowserCompanionRuntime(
+      database,
+      browserCompanionService,
+      extensions,
+      naturalWatermarkConfiguration,
+      naturalWatermarkService,
+    ),
+    extensions,
+  );
+  const naturalWatermark: NaturalWatermarkRuntime = {
+    configuration: naturalWatermarkConfiguration,
+    service: naturalWatermarkService,
+    isActivated: () => extensions.isActivated(NATURAL_WATERMARK_EXTENSION_ID),
+  };
+  registerArticleDeliveryIpc(
+    ipcMain,
+    database,
+    extensions,
+    articleDeliveryConnections,
+    articleDeliveryJobs,
+    naturalWatermark,
+  );
+  return createContentIpcServices(database, getWindow, naturalWatermark, extensions);
+}
+
 export function registerIpc(
   database: LibraryDatabase,
   browserCompanionService: BrowserCompanionLoopbackServer,
@@ -375,20 +443,18 @@ export function registerIpc(
   runtime: RegisterIpcRuntimeOptions = {},
 ) {
   if (!runtime.applicationIpcRegistered) registerApplicationIpc(getWindow, workspaceLayouts, articleEditorRecovery);
-  const ipcMain = createTrustedIpcHandlerRegistrar(getWindow, runtime.runInLibraryContext);
-  registerBrowserCompanionIpc(
+  const ipcMain = runtime.ipcMain ?? createTrustedIpcHandlerRegistrar(getWindow, runtime.runInLibraryContext);
+  const contentServices = registerPublishingIpc(
     ipcMain,
-    createBrowserCompanionRuntime(
-      database,
-      browserCompanionService,
-      extensions,
-      naturalWatermarkConfiguration,
-      naturalWatermarkService,
-    ),
+    database,
     extensions,
+    getWindow,
+    browserCompanionService,
+    articleDeliveryConnections,
+    articleDeliveryJobs,
+    naturalWatermarkConfiguration,
+    naturalWatermarkService,
   );
-  registerArticleDeliveryIpc(ipcMain, database, extensions, articleDeliveryConnections, articleDeliveryJobs);
-  const contentServices = createContentIpcServices(database, getWindow);
   const runAssistantRequest = (request: z.infer<typeof creatorAgentAssistSchema>) => {
     const execution = assistantRouting.resolve(request.mode);
     const extension = extensions.get(execution.extensionId);
@@ -531,6 +597,7 @@ export function registerIpc(
     return {
       ...database.getWorkbench(locale, compactExecutionWorkbenchOptions),
       creationItems: database.listCreationItems(),
+      animations: database.listAnimationWorks(),
       styleExplorationBatches: database.listStyleExplorationBatches(),
       agentTasks: database.listDirectionExperimentDirectorTasks(),
     };
@@ -579,6 +646,7 @@ export function registerIpc(
     articleWechatCopy: contentServices.articleWechatCopy,
   });
   registerLibraryIpc(ipcMain, database);
+  registerContentLibraryIpc(ipcMain, database);
   registerImageBreakdownIpc({
     ipcMain,
     database,
@@ -591,4 +659,5 @@ export function registerIpc(
   registerBackgroundIssueIpc(ipcMain, database);
   registerGenerationIpc(ipcMain, database, generation, imageTransforms, runAssistantRequest);
   registerAssetIpc(ipcMain, database, assetFiles, localSpaces.refreshCurrentPreviews);
+  registerGifMakingIpc(ipcMain, database, generation, codex, assistantRouting);
 }

@@ -12,9 +12,10 @@ import {
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import { useLayoutEffect, useRef, useState, type DragEvent as ReactDragEvent, type ReactNode } from 'react';
-import type { AssetFileRevealContext, AssetFileRevealTargetDto } from '@/shared/contracts';
+import type { AssetFileRevealContext } from '@/shared/contracts';
 import type { MessageCatalog } from '@/renderer/i18n/catalog';
 import { useI18n } from '@/renderer/i18n/useI18n';
+import { useAssetFileMenuReveal } from '@/renderer/components/media/useAssetFileMenuReveal';
 import { AlbumTreeContextMenuItems } from '@/renderer/components/albums/AlbumTreeContextMenuItems';
 import { startImageAssetDrag } from '@/renderer/components/albums/albumDrag';
 import {
@@ -43,6 +44,8 @@ import {
   useAssetMenuActions,
 } from '@/renderer/components/media/AssetMenuActionsProvider';
 import { ImageBreakdownContextMenuItem } from '@/renderer/components/media/ImageBreakdownContextMenuItem';
+import { PinContentMenuItem } from '@/renderer/features/desktop-petals/PinContentAction';
+import { GifContextMenuItem } from '@/renderer/features/gif-making/GifContextMenuItem';
 
 interface Props {
   assetId: string;
@@ -54,14 +57,13 @@ interface Props {
   copyable?: boolean;
   usableInCreation?: boolean;
   draggable?: boolean;
+  inline?: boolean;
 }
 
-type FileAction = 'COPY' | 'SAVE_AS' | 'REVEAL' | 'REVEAL_SOURCE' | 'OPEN';
-
-const defaultRevealContext: AssetFileRevealContext = { kind: 'ALL_MATERIALS' };
+type FileAction = 'COPY' | 'SAVE_AS' | 'REVEAL' | 'OPEN';
 
 function useDraggableFirstChild(enabled: boolean) {
-  const containerRef = useRef<HTMLDivElement>(null);
+  const containerRef = useRef<HTMLElement | null>(null);
   useLayoutEffect(() => {
     if (!enabled) return;
     const dragTarget = containerRef.current?.firstElementChild;
@@ -123,7 +125,7 @@ function DeleteAssetDialog({
 }
 
 function startNativeFileDrag(
-  event: ReactDragEvent<HTMLDivElement>,
+  event: ReactDragEvent<HTMLElement>,
   assetId: string,
   enabled: boolean,
   failedLabel: string,
@@ -158,30 +160,28 @@ export function AssetFileContextMenu({
   notify: notifyProp,
   actions = [],
   lifecycleActions,
-  revealContext = defaultRevealContext,
+  revealContext: suppliedRevealContext,
   copyable = true,
   usableInCreation = true,
   draggable = copyable,
+  inline = false,
 }: Props) {
+  const TriggerContainer = inline ? 'span' : 'div';
   const { messages } = useI18n();
   const labels = messages.assetFile;
   const menuActions = useAssetMenuActions();
   const notify = notifyProp ?? menuActions?.notify ?? (() => undefined);
   const dragSurfaceRef = useDraggableFirstChild(draggable);
-  const revealRequestKey = `${assetId}:${JSON.stringify(revealContext)}`;
-  const latestRevealRequestKey = useRef(revealRequestKey);
-  const revealRequestRevision = useRef(0);
-  const [revealTargetState, setRevealTargetState] = useState<{
-    key: string;
-    targets: AssetFileRevealTargetDto[];
-  } | null>(null);
+  const {
+    context: revealContext,
+    targets: revealTargets,
+    loading: revealTargetsLoading,
+    load: loadRevealTargets,
+  } = useAssetFileMenuReveal({ assetId, suppliedContext: suppliedRevealContext, failedLabel: labels.failed, notify });
   const [menuOpen, setMenuOpen] = useState(false);
-  const [revealTargetsLoadingKey, setRevealTargetsLoadingKey] = useState<string | null>(null);
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [deleteBusy, setDeleteBusy] = useState(false);
   const [fileActionBusy, setFileActionBusy] = useState<FileAction | null>(null);
-  latestRevealRequestKey.current = revealRequestKey;
-  const revealTargets = revealTargetState?.key === revealRequestKey ? revealTargetState.targets : null;
 
   async function run(action: FileAction, context = revealContext) {
     if (fileActionBusy) return;
@@ -194,12 +194,10 @@ export function AssetFileContextMenu({
       } else if (action === 'SAVE_AS') {
         const result = await window.desktopApi.assetFileSaveAs(assetId);
         if (result.status === 'saved') notify(labels.saved);
-      } else if (action === 'REVEAL_SOURCE') {
-        await window.desktopApi.assetFileReveal(assetId);
       } else if (action === 'REVEAL') {
         await window.desktopApi.assetFileReveal(assetId, context);
       } else {
-        await window.desktopApi.assetFileOpen(assetId);
+        await window.desktopApi.assetFileOpen(assetId, context);
       }
     } catch (reason) {
       notify(`${labels.failed}: ${reason instanceof Error ? reason.message : String(reason)}`);
@@ -249,37 +247,12 @@ export function AssetFileContextMenu({
 
   const aggregateRevealContext = revealContext.kind === 'ALL_MATERIALS' || revealContext.kind === 'DICTIONARY';
 
-  function loadRevealTargets() {
-    if (!aggregateRevealContext || revealTargetsLoadingKey === revealRequestKey) return;
-    const requestKey = revealRequestKey;
-    const revision = ++revealRequestRevision.current;
-    setRevealTargetState(null);
-    setRevealTargetsLoadingKey(requestKey);
-    void window.desktopApi
-      .assetFileRevealTargets(assetId, revealContext)
-      .then((targets) => {
-        if (latestRevealRequestKey.current === requestKey && revealRequestRevision.current === revision) {
-          setRevealTargetState({ key: requestKey, targets });
-        }
-      })
-      .catch((reason) => {
-        if (latestRevealRequestKey.current !== requestKey || revealRequestRevision.current !== revision) return;
-        setRevealTargetState({ key: requestKey, targets: [] });
-        notify(`${labels.failed}: ${reason instanceof Error ? reason.message : String(reason)}`);
-      })
-      .finally(() => {
-        if (latestRevealRequestKey.current === requestKey && revealRequestRevision.current === revision) {
-          setRevealTargetsLoadingKey(null);
-        }
-      });
-  }
-
   const revealItem = !aggregateRevealContext ? (
     <ContextMenuItem onSelect={() => void run('REVEAL')}>
       <AssetMenuIcon icon={FolderOpenIcon} />
-      {labels.revealPlacement}
+      {labels.reveal}
     </ContextMenuItem>
-  ) : revealTargetsLoadingKey === revealRequestKey || revealTargets === null ? (
+  ) : revealTargetsLoading || revealTargets === null ? (
     <ContextMenuItem disabled>
       <AssetMenuIcon icon={LoaderCircleIcon} className="animate-spin" />
       {labels.locating}
@@ -292,18 +265,18 @@ export function AssetFileContextMenu({
   ) : revealTargets.length === 1 ? (
     <ContextMenuItem onSelect={() => void run('REVEAL', revealTargets[0].context)}>
       <AssetMenuIcon icon={FolderOpenIcon} />
-      {labels.revealPlacement}
+      {labels.reveal}
     </ContextMenuItem>
   ) : (
     <ContextMenuSub>
       <ContextMenuSubTrigger>
         <AssetMenuIcon icon={FolderOpenIcon} />
-        {labels.revealPlacement}
+        {labels.reveal}
       </ContextMenuSubTrigger>
       <ContextMenuSubContent>
         {revealTargets.map((target) => (
           <ContextMenuItem
-            key={target.context.kind === 'ALBUM' ? `album:${target.context.albumId}` : `term:${target.context.termId}`}
+            key={JSON.stringify(target.context)}
             title={target.relativeDirectory}
             onSelect={() => void run('REVEAL', target.context)}
           >
@@ -320,12 +293,14 @@ export function AssetFileContextMenu({
       <ContextMenu
         onOpenChange={(open) => {
           setMenuOpen(open);
-          if (open) loadRevealTargets();
+          if (open) loadRevealTargets(dragSurfaceRef.current);
         }}
       >
         <ContextMenuTrigger asChild>
-          <div
-            ref={dragSurfaceRef}
+          <TriggerContainer
+            ref={(element) => {
+              dragSurfaceRef.current = element;
+            }}
             className="contents"
             data-asset-file-menu={assetId}
             data-native-file-drag={draggable ? 'true' : undefined}
@@ -335,7 +310,7 @@ export function AssetFileContextMenu({
             onDragStart={(event) => startNativeFileDrag(event, assetId, draggable, labels.failed, notify)}
           >
             {children}
-          </div>
+          </TriggerContainer>
         </ContextMenuTrigger>
         <LazyAssetContextMenuContent open={menuOpen}>
           {actions.length > 0 && (
@@ -355,6 +330,7 @@ export function AssetFileContextMenu({
             />
             {labels.copy}
           </ContextMenuItem>
+          <PinContentMenuItem source={{ kind: 'IMAGE', id: assetId }} notify={notify} />
           <ContextMenuSub>
             <ContextMenuSubTrigger>
               <AssetMenuIcon icon={FolderPlusIcon} />
@@ -374,14 +350,11 @@ export function AssetFileContextMenu({
             {labels.useInCreation}
           </ContextMenuItem>
           <ContextualImageBreakdownMenuItem assetId={assetId} disabled={!usableInCreation} notify={notify} />
+          <GifContextMenuItem {...{ assetId, revealContext, usableInCreation }} />
           <ContextMenuSeparator />
           <ContextMenuItem onSelect={() => void run('SAVE_AS')}>
             <AssetMenuIcon icon={DownloadIcon} />
             {labels.saveAs}
-          </ContextMenuItem>
-          <ContextMenuItem data-action="asset-file-reveal-source" onSelect={() => void run('REVEAL_SOURCE')}>
-            <AssetMenuIcon icon={FolderOpenIcon} />
-            {labels.reveal}
           </ContextMenuItem>
           {revealItem}
           <ContextMenuItem onSelect={() => void run('OPEN')}>

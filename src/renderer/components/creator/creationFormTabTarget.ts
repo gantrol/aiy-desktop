@@ -6,6 +6,18 @@ export function creationFormTabTarget(
   albumId: string | null,
 ): CreatorOpenTabTarget | null {
   switch (form.role) {
+    case 'ANIMATION':
+      return {
+        view: 'creator',
+        location: {
+          surface: 'animation',
+          documentId: form.entityRef.id,
+          seriesId: form.entity?.seriesId ?? null,
+          step: 'edit',
+          title: form.entity?.title ?? '',
+          ...form.entity?.workspace,
+        },
+      };
     case 'INSPIRATION':
       return { view: 'creator', location: { surface: 'inspiration-stash', stashId: form.entityRef.id } };
     case 'IMAGE_BREAKDOWN':

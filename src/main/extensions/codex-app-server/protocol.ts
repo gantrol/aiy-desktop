@@ -187,13 +187,15 @@ export const agentMessageCompletedItemSchema = z
 export const imageGenerationCompletedItemSchema = z
   .object({
     type: z.literal('imageGeneration'),
+    status: z.string().max(100).optional(),
+    failure: z.unknown().optional(),
     savedPath: z.string().max(32_000).nullable().optional(),
     revisedPrompt: z.string().max(1_000_000).nullable().optional(),
     // App Server can return the complete generated image as Base64 when no
     // durable saved path is available. The transport already rejects any
     // message above this bound, so a smaller field limit would discard a
     // valid image and misclassify the completed turn as EMPTY_RESPONSE.
-    result: z.string().max(CODEX_APP_SERVER_MAX_MESSAGE_BYTES).optional(),
+    result: z.string().max(CODEX_APP_SERVER_MAX_MESSAGE_BYTES).nullable().optional(),
   })
   .passthrough();
 

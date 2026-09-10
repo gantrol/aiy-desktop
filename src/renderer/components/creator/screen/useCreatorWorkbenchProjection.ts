@@ -1,10 +1,19 @@
 import { useMemo, useState } from 'react';
-import type { ArticleDto, BootstrapDto, CreatorAgentScope, Locale, SocialPostDto } from '@/shared/contracts';
+import type {
+  ArticleDto,
+  BootstrapDto,
+  CreatorAgentScope,
+  DerivedVisualDto,
+  Locale,
+  SocialPostDto,
+} from '@/shared/contracts';
 import type { CreationSessionProjection } from '@/renderer/components/creator/creationSessionProjection';
 import { creationExperimentContextForSeries } from '@/renderer/components/creator/creationExperimentContext';
 import { buildCreationOutputProjection } from '@/renderer/components/creator/creationOutputProjection';
 import { derivedVisualCanvasPresetKeys } from '@/renderer/components/creator/derivedVisualWorkspace';
+import { derivedVisualAppliedAssetId } from '@/shared/derived-visual-media';
 import { derivedVisualSchemes } from '@/renderer/components/creator/screen/creatorScreenProjection';
+import { useI18n } from '@/renderer/i18n/useI18n';
 
 type CreationMode = 'existing' | 'new';
 
@@ -40,6 +49,7 @@ function activeAlbumContext(options: Options, seriesAlbumId: string | null) {
 function resolveAssistantScope(
   options: Options,
   sessionHostSeries: BootstrapDto['series'][number] | undefined,
+  editingDerivedVisual: boolean,
 ): CreatorAgentScope | null {
   const contentSelected = Boolean(
     options.selectedEvaluationSuiteId ||
@@ -47,7 +57,7 @@ function resolveAssistantScope(
     options.selectedSocialPostId ||
     options.selectedArticleId,
   );
-  if (contentSelected) return null;
+  if (contentSelected && !editingDerivedVisual) return null;
   if (options.creationMode === 'existing' && sessionHostSeries) {
     return { kind: 'SERIES', id: sessionHostSeries.id };
   }
@@ -71,7 +81,23 @@ function useOutputProjection(options: Options) {
   return { outputPrimarySeries, outputProjection, outputSeries, setOutputSeriesId };
 }
 
+function useDerivedVisualTarget(visual: DerivedVisualDto | null, data: BootstrapDto) {
+  const article = (data.articles ?? []).find((item) => item.id === visual?.articleId);
+  const post = (data.socialPosts ?? []).find((item) => item.id === visual?.socialPostId);
+  const appliedAssetId = useMemo(() => derivedVisualAppliedAssetId(visual, article, post), [visual, article, post]);
+  return {
+    appliedDerivedVisualAssetId: appliedAssetId,
+    appliedDerivedVisualAsset:
+      (article?.content.mediaAssets ?? post?.content.mediaAssets ?? []).find((asset) => asset.id === appliedAssetId) ??
+      null,
+    derivedVisualTargetTitle: article?.content.title ?? post?.content.title,
+    derivedVisualTargetRevisionId: article?.revisionId ?? post?.revisionId ?? null,
+    derivedVisualTargetArticle: article ?? null,
+  };
+}
+
 function useDerivedVisualProjection(options: Options, outputSeries: BootstrapDto['series'][number] | undefined) {
+  const labels = useI18n().messages.creator.derivedVisual;
   const draftVisual =
     (options.data.derivedVisuals ?? []).find((visual) => visual.creationDraftId === options.creationDraftId) ?? null;
   const seriesVisual =
@@ -88,27 +114,25 @@ function useDerivedVisualProjection(options: Options, outputSeries: BootstrapDto
     activeDerivedVisual && activeDerivedVisual.id !== dismissedId && belongsToSelectedContent
       ? activeDerivedVisual
       : null;
-  const editorSocialCoverVisual = editorDerivedVisual?.role === 'SOCIAL_POST_COVER' ? editorDerivedVisual : null;
-  const schemes = derivedVisualSchemes(editorSocialCoverVisual, options.data);
+  const schemes = derivedVisualSchemes(editorDerivedVisual, options.data);
+  const target = useDerivedVisualTarget(editorDerivedVisual ?? outputDerivedVisual, options.data);
   return {
+    ...target,
     activeDerivedVisual,
     editorDerivedVisual,
-    editorDerivedVisualCanvasPresets: editorSocialCoverVisual
+    editorDerivedVisualCanvasPresets: editorDerivedVisual
       ? options.data.canvasPresets.filter((preset) =>
-          derivedVisualCanvasPresetKeys[editorSocialCoverVisual.role].includes(preset.stableKey),
+          derivedVisualCanvasPresetKeys[editorDerivedVisual.role].includes(preset.stableKey),
         )
       : options.data.canvasPresets,
-    editorDerivedVisualSchemeIndex: editorSocialCoverVisual
-      ? schemes.findIndex((visual) => visual.id === editorSocialCoverVisual.id)
+    editorDerivedVisualSchemeIndex: editorDerivedVisual
+      ? schemes.findIndex((visual) => visual.id === editorDerivedVisual.id)
       : -1,
     editorDerivedVisualSchemes: schemes,
     editorDerivedVisualSourceAssets:
       options.selectedSocialPost?.content.mediaAssets ?? options.selectedArticle?.content.mediaAssets ?? [],
     editorDerivedVisualSourceTitle:
-      options.selectedSocialPost?.content.title ||
-      options.selectedArticle?.content.title ||
-      (options.locale === 'zh' ? '未命名' : 'Untitled'),
-    editorSocialCoverVisual,
+      options.selectedSocialPost?.content.title || options.selectedArticle?.content.title || labels.untitled,
     outputDerivedVisual,
     setDismissedDerivedVisualId,
   };
@@ -137,7 +161,7 @@ export function useCreatorWorkbenchProjection(options: Options) {
     ...output,
     activeAlbumContextId: activeAlbumContext(options, seriesAlbumId),
     activeCreationSession,
-    assistantScope: resolveAssistantScope(options, sessionHostSeries),
+    assistantScope: resolveAssistantScope(options, sessionHostSeries, Boolean(derived.editorDerivedVisual)),
     projectIdeaCreation: sessionHostSeries
       ? ((options.data.creations ?? []).find(
           (creation) =>

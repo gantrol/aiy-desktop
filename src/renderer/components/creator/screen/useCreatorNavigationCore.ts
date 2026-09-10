@@ -5,10 +5,21 @@ import type { CreationStartMode } from '@/renderer/components/creator/creationSt
 import { writeCreationStartMode } from '@/renderer/components/creator/creationStartMode';
 import type { VideoDocumentCreationRequest } from '@/renderer/features/video-documents/VideoDocumentCreationStarter';
 import { useStableCallback } from '@/renderer/lib/useStableCallback';
+import { isDerivedVisualLocation } from '@/renderer/components/creator/derivedVisualWorkspace';
+
+export interface CreatorLocationApplication {
+  /** Remember an attempted restore even when it fails, so renders do not retry it. */
+  requestedKey: string | null;
+  /** Only an applied view may write its current version and candidate back to navigation. */
+  appliedKey: string | null;
+}
 
 interface Options {
   closeDictionary(): void;
   creationMode: 'existing' | 'new';
+  derivedVisualId: string | null;
+  versionId: string | null;
+  outputSeriesId: string | null;
   getDraftId(): string | null;
   initialLocation: CreatorLocation;
   location: CreatorLocation;
@@ -34,24 +45,45 @@ interface Options {
 }
 
 function initialAppliedLocationKey(location: CreatorLocation) {
-  return location.surface === 'inspiration-stash' ||
-    location.surface === 'image-breakdown' ||
-    location.surface === 'evaluation-suite' ||
-    location.surface === 'social-post' ||
-    location.surface === 'article' ||
-    location.surface === 'new-creation' ||
-    location.surface === 'creation-draft'
-    ? ''
-    : navigationLocationKey(location);
+  if (isDerivedVisualLocation(location)) return null;
+  switch (location.surface) {
+    case 'default':
+    case 'album-detail':
+    case 'existing-creation':
+    case 'idea-creation':
+      return navigationLocationKey(location);
+    default:
+      return null;
+  }
 }
 
 export function useCreatorNavigationCore(options: Options) {
-  const appliedLocationKeyRef = useRef(initialAppliedLocationKey(options.initialLocation));
+  const initialKey = initialAppliedLocationKey(options.initialLocation);
+  const locationApplicationRef = useRef<CreatorLocationApplication>({
+    requestedKey: initialKey,
+    appliedKey: initialKey,
+  });
   const commit = useStableCallback((location: CreatorLocation, mode: NavigationMode = 'push') => {
-    appliedLocationKeyRef.current = navigationLocationKey(location);
+    const key = navigationLocationKey(location);
+    locationApplicationRef.current = { requestedKey: key, appliedKey: key };
     options.onNavigate(location, mode);
   });
   const workbenchLocation = useStableCallback((): CreatorLocation => {
+    if (options.derivedVisualId) {
+      if (options.creationMode === 'existing' && options.seriesId)
+        return {
+          surface: 'existing-creation',
+          seriesId: options.seriesId,
+          derivedVisualId: options.derivedVisualId,
+          ...(options.outputSeriesId && options.outputSeriesId !== options.seriesId
+            ? { outputSeriesId: options.outputSeriesId }
+            : {}),
+          assetId: options.requestedAssetId,
+          ...(options.versionId ? { versionId: options.versionId } : {}),
+        };
+      const draftId = options.getDraftId();
+      if (draftId) return { surface: 'creation-draft', draftId, derivedVisualId: options.derivedVisualId };
+    }
     const selected = options.selected;
     if (selected.evaluationSuiteId) return { surface: 'evaluation-suite', suiteId: selected.evaluationSuiteId };
     if (selected.imageBreakdownId) return { surface: 'image-breakdown', breakdownId: selected.imageBreakdownId };
@@ -73,7 +105,19 @@ export function useCreatorNavigationCore(options: Options) {
   const selectOutputAsset = useStableCallback((assetId: string, mode: NavigationMode = 'push') => {
     options.setRequestedAssetId(assetId);
     if (options.creationMode === 'existing' && options.seriesId) {
-      commit({ surface: 'existing-creation', seriesId: options.seriesId, assetId }, mode);
+      commit(
+        {
+          surface: 'existing-creation',
+          seriesId: options.seriesId,
+          assetId,
+          ...(options.derivedVisualId ? { derivedVisualId: options.derivedVisualId } : {}),
+          ...(options.derivedVisualId && options.outputSeriesId && options.outputSeriesId !== options.seriesId
+            ? { outputSeriesId: options.outputSeriesId }
+            : {}),
+          ...(options.versionId ? { versionId: options.versionId } : {}),
+        },
+        mode,
+      );
     }
   });
   const selectCreationStartMode = useStableCallback((mode: CreationStartMode) => {
@@ -103,7 +147,7 @@ export function useCreatorNavigationCore(options: Options) {
   });
 
   return {
-    appliedLocationKeyRef,
+    locationApplicationRef,
     changeNewCreationAlbum,
     changePromptFullWindow,
     commit,

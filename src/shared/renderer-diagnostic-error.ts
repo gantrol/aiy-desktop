@@ -26,7 +26,19 @@ function codeFrames(stack: string) {
         .replaceAll('\\', '/')
         .replace(/\?[^\s):]*/g, '')
         .trim();
-      const location = frame.match(/([\w@./-]+:\d+:\d+)\)?$/)?.[1];
+      const locationFrame = frame.endsWith(')') ? frame.slice(0, -1) : frame;
+      const locationParts = locationFrame.split(':');
+      const file =
+        locationParts
+          .at(-3)
+          ?.split(/[^\w@./-]/u)
+          .at(-1) ?? '';
+      const lineNumber = locationParts.at(-2) ?? '';
+      const column = locationParts.at(-1) ?? '';
+      const location =
+        /^[\w@./-]+$/u.test(file) && /^\d+$/u.test(lineNumber) && /^\d+$/u.test(column)
+          ? `${file}:${lineNumber}:${column}`
+          : null;
       const name = frame.match(/^at ([\w.$<>[\]-]+)(?:\s|$)/)?.[1] ?? 'anonymous';
       return `${name}${location ? ` ${location}` : ''}`.slice(0, 500);
     });

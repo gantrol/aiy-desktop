@@ -1,5 +1,15 @@
-import { isDeepStrictEqual } from 'node:util';
-import { z } from 'zod';
+import type { AssistantTitleExecution } from '@/main/assistant/assistant-service';
+import { gifPlanRequestSchema, type GifPlanRequest } from '@/shared/contracts/gif-motion-plan';
+import type {
+  CodexArticleCheckExecutionOptions,
+  CodexChatJob,
+  CodexGifPlanningExecutionOptions,
+  CodexTitleExecutionOptions,
+} from '@/main/assistant/codex-service';
+import type { DeepSeekApiRuntimeConfiguration } from '@/main/extensions/deepseek-api/types';
+import type { ExternalImageApiRuntimeConfiguration } from '@/main/extensions/external-image-api/types';
+import type { OpenAiImageApiRuntimeConfiguration } from '@/main/extensions/openai-image-api/types';
+import type { ModelWorkerMethod } from '@/main/model-worker/protocol';
 import type {
   ArticleCheckInput,
   CodexImageRefinementInput,
@@ -7,35 +17,16 @@ import type {
   GenerationBatchInput,
   GenerationInput,
   GenerationVersionInput,
-  ImageGenerationConcurrencyDto,
+  ImageBreakdownWorkerInput,
   ImageCropInput,
   ImageEditBatchStartInput,
   ImageEditStartInput,
+  ImageGenerationConcurrencyDto,
   ImageReframeStartInput,
-  ImageBreakdownWorkerInput,
   StyleExplorationStartInput,
   VideoDocumentArticleGenerateInput,
   VideoDocumentTranscriptTranslationWorkerInput,
 } from '@/shared/contracts';
-import { articleCheckInputSchema } from '@/shared/contracts/article';
-import { videoDocumentArticleGenerateInputSchema } from '@/shared/contracts/video-document';
-import { videoDocumentTranscriptTranslationWorkerInputSchema } from '@/shared/contracts/video-document-translation';
-import { imageBreakdownWorkerInputSchema } from '@/shared/contracts/image-breakdown';
-import type { AssistantTitleExecution } from '@/main/assistant/assistant-service';
-import type {
-  CodexArticleCheckExecutionOptions,
-  CodexChatJob,
-  CodexTitleExecutionOptions,
-} from '@/main/assistant/codex-service';
-import type { DeepSeekApiRuntimeConfiguration } from '@/main/extensions/deepseek-api/types';
-import type { ExternalImageApiRuntimeConfiguration } from '@/main/extensions/external-image-api/types';
-import type { OpenAiImageApiRuntimeConfiguration } from '@/main/extensions/openai-image-api/types';
-import { EXTERNAL_IMAGE_API_EXTENSION_IDS } from '@/shared/extension-ids';
-import {
-  MAX_IMAGE_GENERATION_MAX_CONCURRENT,
-  MIN_IMAGE_GENERATION_MAX_CONCURRENT,
-} from '@/shared/image-generation-concurrency';
-import type { ModelWorkerMethod } from '@/main/model-worker/protocol';
 import {
   agentAssetImportRequestSchema,
   agentDraftPrepareRequestSchema,
@@ -48,6 +39,24 @@ import {
   type AgentJobCancelRequest,
   type AgentJobGetRequest,
 } from '@/shared/contracts/agent-cli';
+import {
+  agentIntakeGetRequestSchema,
+  agentIntakeImportRequestSchema,
+  type AgentIntakeGetRequest,
+  type AgentIntakeImportRequest,
+} from '@/shared/contracts/agent-intake';
+import { articleCheckInputSchema } from '@/shared/contracts/article';
+import { blockDocumentSchema } from '@/shared/contracts/block-document';
+import { imageBreakdownWorkerInputSchema } from '@/shared/contracts/image-breakdown';
+import { videoDocumentArticleGenerateInputSchema } from '@/shared/contracts/video-document';
+import { videoDocumentTranscriptTranslationWorkerInputSchema } from '@/shared/contracts/video-document-translation';
+import { EXTERNAL_IMAGE_API_EXTENSION_IDS } from '@/shared/extension-ids';
+import {
+  MAX_IMAGE_GENERATION_MAX_CONCURRENT,
+  MIN_IMAGE_GENERATION_MAX_CONCURRENT,
+} from '@/shared/image-generation-concurrency';
+import { isDeepStrictEqual } from 'node:util';
+import { z } from 'zod';
 
 const identifier = z.string().min(1).max(200);
 const boundedPath = z.string().min(1).max(32_768);
@@ -87,6 +96,7 @@ const generationBase = z
     prompt: z.string().min(1).max(30_000),
     changeSummary: z.string().max(1_000),
     promptNodes: z.array(creatorPromptNode).max(2_000).optional(),
+    document: blockDocumentSchema.optional(),
     referenceAssetIds: stringList,
     termPromptLocale: locale.optional().default('en'),
     termIds: stringList,
@@ -510,6 +520,9 @@ const codexTitleOptions = z.object({ model: identifier.optional(), effort: reaso
 const codexArticleCheckOptions: z.ZodType<CodexArticleCheckExecutionOptions> = z
   .object({ model: identifier, effort: reasoningEffort })
   .strict();
+const codexGifPlanningOptions: z.ZodType<CodexGifPlanningExecutionOptions> = z
+  .object({ model: identifier, effort: reasoningEffort })
+  .strict();
 const openAiConfiguration = z
   .object({
     apiKey: z.string().min(1).max(500),
@@ -573,6 +586,8 @@ export interface ModelWorkerMethodParams {
   'dictionary.commit-import': [batchId: string];
   'image-transform.crop': [input: ImageCropInput];
   'agent.asset.import': [input: AgentAssetImportRequest];
+  'agent.intake.import': [input: AgentIntakeImportRequest];
+  'agent.intake.get': [input: AgentIntakeGetRequest];
   'agent.draft.prepare': [input: AgentDraftPrepareRequest];
   'agent.generation.start': [input: AgentGenerationStartRequest];
   'agent.job.get': [input: AgentJobGetRequest];
@@ -593,6 +608,7 @@ export interface ModelWorkerMethodParams {
   'codex.refresh-health': [];
   'codex.list-models': [];
   'codex.check-article': [input: ArticleCheckInput, options: CodexArticleCheckExecutionOptions];
+  'codex.plan-gif': [input: GifPlanRequest, options: CodexGifPlanningExecutionOptions];
   'antigravity.refresh-status': [];
   'video-document.article-generate': [input: VideoDocumentArticleGenerateInput];
   'video-document.transcript-translate': [input: VideoDocumentTranscriptTranslationWorkerInput];
@@ -621,6 +637,8 @@ const schemas = {
   'dictionary.commit-import': z.tuple([identifier]),
   'image-transform.crop': z.tuple([imageCropInput]),
   'agent.asset.import': z.tuple([agentAssetImportRequestSchema]),
+  'agent.intake.import': z.tuple([agentIntakeImportRequestSchema]),
+  'agent.intake.get': z.tuple([agentIntakeGetRequestSchema]),
   'agent.draft.prepare': z.tuple([agentDraftPrepareRequestSchema]),
   'agent.generation.start': z.tuple([agentGenerationStartRequestSchema]),
   'agent.job.get': z.tuple([agentJobGetRequestSchema]),
@@ -653,6 +671,7 @@ const schemas = {
   'codex.refresh-health': empty,
   'codex.list-models': empty,
   'codex.check-article': z.tuple([articleCheckInputSchema, codexArticleCheckOptions]),
+  'codex.plan-gif': z.tuple([gifPlanRequestSchema, codexGifPlanningOptions]),
   'antigravity.refresh-status': empty,
   'video-document.article-generate': z.tuple([videoDocumentArticleGenerateInputSchema]),
   'video-document.transcript-translate': z.tuple([videoDocumentTranscriptTranslationWorkerInputSchema]),

@@ -7,6 +7,7 @@ import codexHistorySearchCacheRevision1ProjectMetadataSql from '@/main/database/
 import codexHistorySearchCacheRevision2IncrementalSql from '@/main/database/sql/v03-codex-history-search-cache-revision-002-incremental.sql?raw';
 import codexHistorySearchCacheRevision3OrganizationSql from '@/main/database/sql/v03-codex-history-search-cache-revision-003-organization.sql?raw';
 import codexHistorySearchCacheRevision4SourceSemanticsSql from '@/main/database/sql/v03-codex-history-search-cache-revision-004-source-semantics.sql?raw';
+import { CodexHistoryUserTaskSources } from '@/main/extensions/codex-history-search/user-task-sources';
 import type {
   CodexHistoryFilterOptionsInput,
   CodexHistoryIndexState,
@@ -278,7 +279,10 @@ export class CodexHistoryThreadSnapshotRequiredError extends Error {
 }
 
 export class CodexHistorySearchCacheDatabase {
-  private constructor(private readonly database: Database.Database) {}
+  readonly userTasks: CodexHistoryUserTaskSources;
+  private constructor(private readonly database: Database.Database) {
+    this.userTasks = new CodexHistoryUserTaskSources(database);
+  }
 
   static async create(directory: string) {
     const root = path.resolve(directory);
@@ -437,6 +441,7 @@ export class CodexHistorySearchCacheDatabase {
         );
         if (result.changes) insertMessageFts.run(safeRowId(result.lastInsertRowid), searchText);
       }
+      this.userTasks.apply();
       const indexedThreads = countRowSchema.parse(
         this.database.prepare('SELECT COUNT(*) AS count FROM codex_history_threads').get(),
       ).count;
@@ -476,6 +481,7 @@ export class CodexHistorySearchCacheDatabase {
       this.database.prepare('DELETE FROM codex_history_threads').run();
       this.database.prepare('DELETE FROM codex_history_projects').run();
       this.database.prepare('DELETE FROM codex_history_sections').run();
+      this.userTasks.clear();
       this.database
         .prepare(
           `UPDATE codex_history_index_meta
@@ -773,6 +779,7 @@ export class CodexHistorySearchCacheDatabase {
     const sectionCatalogColumns = z
       .array(sqliteTableInfoRowSchema)
       .parse(this.database.pragma('table_info(codex_history_sections)'));
+    const hasUserTaskSources = this.userTasks.hasSchema();
     const hasProjectMetadataColumns = ['project_id', 'project_name'].every((name) =>
       threadColumns.some((column) => column.name === name),
     );
@@ -797,7 +804,8 @@ export class CodexHistorySearchCacheDatabase {
       hasProjectMetadataColumns &&
       hasIncrementalMetadataColumns &&
       hasOrganizationMetadata &&
-      hasOrganizationCatalogs
+      hasOrganizationCatalogs &&
+      hasUserTaskSources
     ) {
       return;
     }
@@ -811,6 +819,7 @@ export class CodexHistorySearchCacheDatabase {
       if (version < 4 || !hasOrganizationCatalogs) {
         this.database.exec(codexHistorySearchCacheRevision4SourceSemanticsSql);
       }
+      if (!hasUserTaskSources) this.userTasks.ensureSchema();
       this.database.pragma(`user_version = ${DATABASE_SCHEMA_VERSION}`);
     })();
   }

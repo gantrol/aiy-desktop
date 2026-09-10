@@ -116,6 +116,10 @@ export function createAssetLibraryApi(
       return repositories.assetFiles.resolve(assetId);
     },
 
+    resolveAssetFilesAsync(assetIds: readonly string[]) {
+      return repositories.assetFiles.resolveManyAsync(assetIds);
+    },
+
     deleteAsset(assetId: string) {
       return repositories.assetLifecycle.delete(assetId);
     },
@@ -166,13 +170,13 @@ export function createAssetLibraryApi(
     },
 
     async resolveAssetRevealPathAsync(assetId: string, context?: AssetFileRevealContext) {
-      const asset = repositories.assetFiles.resolve(assetId);
+      const asset = (await repositories.assetFiles.resolveManyAsync([assetId])).get(assetId);
       return asset ? repositories.libraryFileView.resolveRevealPathAsync(asset, context) : null;
     },
 
-    listAssetRevealTargets(assetId: string, context?: AssetFileRevealTargetContext) {
-      const asset = repositories.assetFiles.resolve(assetId);
-      return asset ? repositories.libraryFileView.listRevealTargets(asset, context) : [];
+    async listAssetRevealTargets(assetId: string, context?: AssetFileRevealTargetContext) {
+      const asset = (await repositories.assetFiles.resolveManyAsync([assetId])).get(assetId);
+      return asset ? repositories.libraryFileView.listRevealTargetsAsync(asset, context) : [];
     },
 
     createMaterialCollectionFromSource(input: CreateMaterialCollectionFromSourceInput) {

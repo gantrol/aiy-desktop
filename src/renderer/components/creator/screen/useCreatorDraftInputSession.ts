@@ -1,19 +1,25 @@
-import type { Locale, PromptSeriesDto } from '@/shared/contracts';
 import type { CreatorLocation, NavigationMode } from '@/renderer/components/app/app-navigation';
+import { navigationLocationKey } from '@/renderer/components/app/app-navigation';
+import { isDerivedVisualLocation } from '@/renderer/components/creator/derivedVisualWorkspace';
 import type { useCreatorGenerationInputSession } from '@/renderer/components/creator/screen/useCreatorGenerationInputSession';
 import { useCreatorNavigationCore } from '@/renderer/components/creator/screen/useCreatorNavigationCore';
 import type { useCreatorPromptSession } from '@/renderer/components/creator/screen/useCreatorPromptSession';
 import type { useCreatorSelectionSession } from '@/renderer/components/creator/screen/useCreatorSelectionSession';
+import { resolveCreatorPrompt } from '@/renderer/components/creator/utils';
 import { useCreationInputStashes } from '@/renderer/components/creator/workflows/useCreationInputStashes';
 import { useCreatorDraftProjection } from '@/renderer/components/creator/workflows/useCreatorDraftProjection';
+import { useCreatorInputRecovery } from '@/renderer/components/creator/workflows/useCreatorInputRecovery';
 import { useBrowserCompanionHandoff } from '@/renderer/features/browser-companion/useBrowserCompanionHandoff';
-import { resolveCreatorPrompt } from '@/renderer/components/creator/utils';
+import type { Locale, PromptSeriesDto } from '@/shared/contracts';
+import { useEffect } from 'react';
 
 type GenerationInputSession = ReturnType<typeof useCreatorGenerationInputSession>;
 type PromptSession = ReturnType<typeof useCreatorPromptSession>;
 type SelectionSession = ReturnType<typeof useCreatorSelectionSession>;
 
 interface Options {
+  active: boolean;
+  spaceId: string;
   generation: GenerationInputSession;
   locale: Locale;
   location: CreatorLocation;
@@ -29,6 +35,8 @@ interface Options {
 }
 
 export function useCreatorDraftInputSession({
+  active,
+  spaceId,
   generation,
   locale,
   location,
@@ -55,10 +63,21 @@ export function useCreatorDraftInputSession({
     getDraftId: creationDraftSession.getDraftId,
     manualPrompt: document.manualPrompt,
     promptNodes: document.promptNodes,
+    document: document.document,
     quality: generation.quality,
     referenceAssets: document.referenceAssets,
+    videoAttachments: document.videoAttachments,
     repeatCount: generation.repeatCount,
     resolvedPrompt: generation.promptResolution.livePrompt,
+    resolvePrompt: (captured) =>
+      resolveCreatorPrompt({
+        manualPrompt: captured.manualPrompt,
+        promptNodes: captured.nodes,
+        selectedTerms: captured.selectedTerms,
+        appliedPalettes: captured.appliedPalettes,
+        termPromptLocale: document.termPromptLocale,
+        promptProfileId: generation.configuration.promptProfileId,
+      }).livePrompt,
     saveDraft: creationDraftSession.saveDraftNow,
     selectedModelKeys: generation.configuration.selectedModelKeys,
     selectedTerms: document.selectedTerms,
@@ -68,15 +87,40 @@ export function useCreatorDraftInputSession({
     title: prompt.newTitle,
   });
   selection.captureCreationDraftRef.current = draftProjection.captureDraft;
+  const visibleInput =
+    Boolean(selection.workbenchProjection.editorDerivedVisual) ||
+    !(
+      contentSelection.selectedArticleId ||
+      contentSelection.selectedSocialPostId ||
+      contentSelection.selectedEvaluationSuiteId ||
+      contentSelection.selectedImageBreakdownId
+    );
+  const recovery = useCreatorInputRecovery({
+    scope:
+      active &&
+      visibleInput &&
+      creationMode === 'existing' &&
+      series &&
+      generation.hydration.version &&
+      generation.hydration.hydratedVersionId === generation.hydration.version.id
+        ? { spaceId, seriesId: series.id, versionId: generation.hydration.version.id }
+        : null,
+    snapshot: draftProjection.currentInput,
+    capture: draftProjection.captureInput,
+    restore: generation.hydration.applyInputSnapshot,
+  });
   const inputStashes = useCreationInputStashes({
     locale,
     notify,
     ensureScope: draftProjection.ensureScope,
     isScopeCurrent: draftProjection.isScopeCurrent,
-    captureSnapshot: () => draftProjection.currentInput,
+    captureSnapshot: draftProjection.captureInput,
     applyStash: generation.hydration.applyInputStash,
   });
   const navigation = useCreatorNavigationCore({
+    derivedVisualId: selection.workbenchProjection.editorDerivedVisual?.id ?? null,
+    versionId: generation.hydration.versionId || null,
+    outputSeriesId: selection.workbenchProjection.outputSeries?.id ?? null,
     closeDictionary: generation.dictionaryMaterials.closeDictionary,
     creationMode,
     getDraftId: creationDraftSession.getDraftId,
@@ -102,6 +146,34 @@ export function useCreatorDraftInputSession({
     setVideoCreationRequest: selection.setVideoCreationRequest,
     targetAlbumId: selection.targetAlbumId,
   });
+  const creationDraftId = creationDraftSession.getDraftId();
+  const currentVisualId = selection.workbenchProjection.editorDerivedVisual?.id;
+  const { locationApplicationRef, workbenchLocation, commit } = navigation;
+  useEffect(() => {
+    if (
+      !active ||
+      !currentVisualId ||
+      !isDerivedVisualLocation(location) ||
+      location.derivedVisualId !== currentVisualId ||
+      locationApplicationRef.current.appliedKey !== navigationLocationKey(location)
+    )
+      return;
+    const next = workbenchLocation();
+    if (navigationLocationKey(next) !== navigationLocationKey(location)) commit(next, 'replace');
+  }, [
+    active,
+    commit,
+    creationDraftId,
+    creationMode,
+    currentVisualId,
+    generation.hydration.versionId,
+    location,
+    locationApplicationRef,
+    requestedAssetId,
+    selection.seriesId,
+    selection.workbenchProjection.outputSeries?.id,
+    workbenchLocation,
+  ]);
   const promptHandoff = useBrowserCompanionHandoff({
     notify,
     zh: locale === 'zh',
@@ -141,5 +213,5 @@ export function useCreatorDraftInputSession({
     },
   });
 
-  return { draftProjection, inputStashes, navigation, promptHandoff, series };
+  return { draftProjection, inputStashes, navigation, promptHandoff, recovery, series };
 }

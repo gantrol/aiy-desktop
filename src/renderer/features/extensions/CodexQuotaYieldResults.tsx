@@ -20,6 +20,7 @@ interface QuotaYieldResultsProps {
 }
 
 function modelLabel(model: string) {
+  if (model === 'gpt-6-astra') return 'Astra';
   if (model === 'gpt-5.6-sol') return 'Sol';
   if (model === 'gpt-5.6-luna') return 'Luna';
   if (model === 'gpt-5.6-terra') return 'Terra';

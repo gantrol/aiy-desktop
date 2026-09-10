@@ -1,6 +1,7 @@
-import type { CreationDictionaryScopeDto, CreationDraftSaveInput, GenerationTargetInput } from '@/shared/contracts';
 import type { LibraryStorage } from '@/main/database/core/storage';
 import { type JsonMap, text } from '@/main/database/core/values';
+import type { CreationDictionaryScopeDto, CreationDraftSaveInput, GenerationTargetInput } from '@/shared/contracts';
+import { writeCreationPromptStorage } from '@/shared/creation-prompt-storage';
 
 export function creationDraftReferenceAssetIds(db: LibraryStorage['db'], draftId: string) {
   return (
@@ -30,7 +31,7 @@ export function normalizeCreationDraftSave(
     termPromptLocale: input.termPromptLocale,
     termIdsJson: JSON.stringify([...new Set(input.termIds)]),
     paletteReferencesJson: JSON.stringify(input.wordPaletteReferences),
-    promptNodesJson: JSON.stringify(input.promptNodes ?? []),
+    promptNodesJson: writeCreationPromptStorage(input),
     dictionaryScopeMode: dictionaryScope.mode,
     dictionarySourcesJson: JSON.stringify(dictionaryScope.sources),
     dictionaryIncludesLocalTerms: dictionaryScope.includeLocalTerms,

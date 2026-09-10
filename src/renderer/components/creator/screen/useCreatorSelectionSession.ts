@@ -27,7 +27,7 @@ export function useCreatorSelectionSession({ data, documentWorkspaceActive, loca
     () => buildCreationSessionProjection(data.series, data.styleExplorationBatches),
     [data.series, data.styleExplorationBatches],
   );
-  const contentSelection = useCreatorContentSelection(data, location, locale);
+  const contentSelection = useCreatorContentSelection(data, location);
   const initial = creatorInitialSession(data, location, creationSessions);
   const [creationMode, setCreationMode] = useState(initial.initialCreationMode);
   const [creationStartMode, setCreationStartMode] = useState(readCreationStartMode);

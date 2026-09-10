@@ -1,0 +1,130 @@
+{
+  "extensionName": { "message": "AIY 伴侣" },
+  "extensionDescription": {
+    "message": "在支持的网站自动接收 AIY 交接内容，由用户决定是否发送或发布。"
+  },
+  "siteChatgpt": { "message": "ChatGPT" },
+  "siteWechat": { "message": "微信公众号" },
+  "siteWeibo": { "message": "微博" },
+  "siteX": { "message": "X（推特）" },
+  "siteXiaohongshu": { "message": "小红书" },
+  "errorXiaohongshuLoginRequired": {
+    "message": "请在当前浏览器 Profile 登录小红书创作服务平台，再从 AIY 重新上传。"
+  },
+  "errorXiaohongshuTitleTooLong": {
+    "message": "小红书标题最多 20 个全角字符（40 个英文字符），请缩短标题。"
+  },
+  "errorXiaohongshuBodyTooLong": {
+    "message": "小红书正文最多 1,000 字，请缩短正文。"
+  },
+  "errorXiaohongshuMediaUnsupported": {
+    "message": "小红书图文请选择 1–18 张 PNG/JPEG/WebP 图片，每张不超过 32 MB。"
+  },
+  "errorMediaUnsupported": {
+    "message": "请选择最多四个 PNG/JPEG/WebP/GIF 文件（静态图片每张 5 MB，GIF 每个 15 MB）。"
+  },
+  "errorComposerHasMedia": {
+    "message": "编辑器已有媒体，请先移除后再从 AIY 填入。"
+  },
+  "popupBadgeNoPublish": { "message": "不代点发布" },
+  "popupSingleContent": { "message": "单条内容" },
+  "popupPasteText": { "message": "粘贴文本" },
+  "popupIdentifyingSite": { "message": "识别中" },
+  "popupUnsupportedSite": { "message": "不支持" },
+  "popupWaitingForContent": { "message": "等待内容" },
+  "popupWaitingToFill": { "message": "等待填入" },
+  "popupFilling": { "message": "正在填入" },
+  "popupConnectingAiy": { "message": "正在连接 AIY" },
+  "popupFillFromHistory": { "message": "从历史填入" },
+  "popupFillCurrentPage": { "message": "填入当前页" },
+  "popupManualFillSuccess": {
+    "message": "已填入 $COUNT$ 字，请在网页确认。",
+    "placeholders": { "count": { "content": "$1" } }
+  },
+  "popupDesktopFillSuccess": {
+    "message": "已从 AIY 填入 $CHARACTERS$ 字、$IMAGES$ 张图，请在网页确认。",
+    "placeholders": {
+      "characters": { "content": "$1" },
+      "images": { "content": "$2" }
+    }
+  },
+  "popupReceiptFailed": { "message": "内容已填入，但 AIY 未能确认结果。" },
+  "popupRefreshAndRetry": { "message": "请刷新当前网页后再试。" },
+  "errorInvalidRequest": { "message": "这条内容无法识别，请重试。" },
+  "errorUnsupportedSite": { "message": "当前网页暂不支持自动填入。" },
+  "errorBusy": { "message": "正在处理上一条内容，请稍候。" },
+  "errorComposerNotFound": {
+    "message": "未找到可安全填入的编辑器，请打开编辑区后重试。"
+  },
+  "errorComposerAmbiguous": {
+    "message": "页面有多个编辑器，无法安全判断填入位置。"
+  },
+  "errorComposerNotEmpty": { "message": "编辑器已有内容，为避免覆盖已停止。" },
+  "errorMediaInputNotFound": { "message": "未找到当前页面的图片入口。" },
+  "errorMediaFillFailed": { "message": "图片未能确认填入，请重试。" },
+  "errorFillFailed": { "message": "内容未能确认填入，请刷新网页后重试。" },
+  "errorDesktopInvalidRequest": { "message": "AIY 无法读取这次连接请求。" },
+  "errorUnauthorized": {
+    "message": "AIY 桌面端未授权此伴侣，请重新打开 AIY 后重试。"
+  },
+  "errorTargetMismatch": { "message": "当前网页与待填入内容不匹配。" },
+  "errorDraftAlreadyClaimed": { "message": "这条内容已在其他窗口处理中。" },
+  "errorHandoffNotFound": {
+    "message": "没有找到待填入内容，请回到 AIY 重新上传。"
+  },
+  "errorHandoffTokenMismatch": { "message": "交接已失效，请从 AIY 重新上传。" },
+  "errorMediaNotFound": { "message": "交接图片已不可用，请从 AIY 重新上传。" },
+  "errorMediaChanged": { "message": "交接图片已变化，请从 AIY 重新上传。" },
+  "errorOutputImportNotAllowed": {
+    "message": "这次 ChatGPT 交接未关联到 AIY 图片创作。"
+  },
+  "errorOutputUploadNotFound": {
+    "message": "图片回填已过期，请重新选择这张图。"
+  },
+  "errorOutputUploadChanged": {
+    "message": "所选图片在 AIY 导入前发生了变化。"
+  },
+  "errorStateConflict": { "message": "AIY 中的交接状态已变化，请重新上传。" },
+  "errorCorruptState": { "message": "交接记录损坏，请从 AIY 重新上传。" },
+  "errorInternal": { "message": "AIY 未能处理这次交接，请稍后重试。" },
+  "errorDesktopConnection": {
+    "message": "无法连接 AIY 桌面端。请确认 AIY 正在运行；内容仍保留在历史中。"
+  },
+  "errorMediaDownload": { "message": "交接图片读取失败，请从历史记录重试。" },
+  "automaticHandoffFailedTitle": { "message": "自动填入未完成" },
+  "automaticHandoffDesktopDetail": {
+    "message": "无法连接 AIY 桌面端。请确认 AIY 正在运行，打开 AIY 伴侣，选择“从历史填入”重试。内容仍保留在伴侣历史中。"
+  },
+  "automaticHandoffMediaDetail": {
+    "message": "交接图片未能从 AIY 桌面端读取。请打开 AIY 伴侣，从历史记录重试；原内容仍会保留。"
+  },
+  "automaticHandoffGenericDetail": {
+    "message": "页面未能安全填入。请打开 AIY 伴侣，从历史记录重试；原内容仍会保留。"
+  },
+  "automaticHandoffLogSummary": { "message": "自动交接未完成" },
+  "automaticHandoffRetryAction": {
+    "message": "打开 AIY 伴侣并选择“从历史填入”重试"
+  },
+  "chatgptOutputReturnAction": { "message": "回填 AIY" },
+  "chatgptOutputReturning": { "message": "回填中…" },
+  "chatgptOutputReturned": { "message": "已回填" },
+  "chatgptOutputReturnSuccessTitle": { "message": "已回填 AIY" },
+  "chatgptOutputReturnAdoptedDetail": {
+    "message": "所选图片已成为对应创作的封面。"
+  },
+  "chatgptOutputReturnImportedDetail": {
+    "message": "图片已保存到对应 AIY 创作，请在 AIY 中确认封面。"
+  },
+  "chatgptOutputReturnFailedTitle": { "message": "图片回填失败" },
+  "chatgptOutputReturnFailedDetail": {
+    "message": "请保持 AIY 打开，然后重新选择这张图。"
+  },
+  "conflictSiteHasContent": {
+    "message": "$SITE$已有内容",
+    "placeholders": { "site": { "content": "$1" } }
+  },
+  "conflictCurrentInputHasContent": { "message": "当前输入框已有内容" },
+  "conflictQuestion": { "message": "是否清空现有内容并填入 AIY 交接？" },
+  "conflictKeepExisting": { "message": "保留现有内容" },
+  "conflictReplaceExisting": { "message": "清空并填入" }
+}

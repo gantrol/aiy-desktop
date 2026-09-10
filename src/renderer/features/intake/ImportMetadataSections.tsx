@@ -7,6 +7,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Textarea } from '@/renderer/components/ui/textarea';
 import { cn } from '@/renderer/lib/utils';
 import {
+  isAiGeneratedStatus,
   updateAiGeneratedStatus,
   type BatchMetadataField,
   type IntakeImageMetadataDraft,
@@ -178,9 +179,9 @@ export function AiMetadataSection({
           <Select
             value={draft.aiGeneratedStatus}
             disabled={fieldDisabled}
-            onValueChange={(value) =>
-              onChange(updateAiGeneratedStatus(draft, value as IntakeImageMetadataDraft['aiGeneratedStatus']))
-            }
+            onValueChange={(value) => {
+              if (isAiGeneratedStatus(value)) onChange(updateAiGeneratedStatus(draft, value));
+            }}
           >
             <SelectTrigger aria-label={labels.aiGeneratedLabel}>
               <SelectValue />
