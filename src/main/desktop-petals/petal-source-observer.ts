@@ -37,10 +37,11 @@ export function observePetalSources(
 ) {
   return context.database.subscribeContentChanges((changes) => {
     if (!current() || context.state !== 'ACTIVE') return;
-    const sources = changes
-      .filter((change) => change.entityType === 'INSPIRATION_STASH')
-      .map((change) => change.entityId);
-    if (!sources.length) return;
+    const sources = changes.filter((change) => change.entityType === 'ARTICLE').map((change) => change.entityId);
+    if (!sources.length) {
+      if (changes.some((change) => change.entityType === 'ARTICLE_COMMENT')) changed(false);
+      return;
+    }
     const unavailable = new Set<string>();
     for (let start = 0; start < sources.length; start += 100)
       for (const id of context.database.reconcileDesktopNoteSources(sources.slice(start, start + 100)))

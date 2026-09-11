@@ -53,6 +53,7 @@ interface Props {
     generateHeader: ArticleProps['onGenerateHeader'];
     generateIllustration: ArticleProps['onGenerateIllustration'];
     onSaved: ArticleProps['onSaved'];
+    editCreationInput: ArticleProps['onEditCreationInput'];
     save: ArticleProps['onSave'];
   };
   articleRelations: ArticleProps['relations'];
@@ -173,6 +174,7 @@ export function CreatorWorkspaceRouter(props: Props) {
               relations={props.articleRelations}
               onSave={props.articleActions.save}
               onSaved={props.articleActions.onSaved}
+              onEditCreationInput={props.articleActions.editCreationInput}
               onCopyForWechat={(...args) => props.articleActions.copy(props.article!.id, ...args)}
               onExport={() => props.articleActions.export(props.article!.id)}
               onCreateArticle={(...args) => props.articleActions.createArticle(props.article!, ...args)}

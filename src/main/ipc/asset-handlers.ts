@@ -86,7 +86,6 @@ export function registerAssetIpc(
     });
     return createTransitionShowcaseExportImages(sources);
   });
-  ipcMain.handle('asset:delete', (_event, rawId) => database.deleteAsset(id.parse(rawId)));
   ipcMain.handle('favorites:text-list', () => database.listFavoriteTexts());
   ipcMain.handle('favorites:add', (_event, rawTarget) =>
     database.addFavorite(materialAlbumTargetSchema.parse(rawTarget)),

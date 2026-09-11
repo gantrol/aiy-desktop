@@ -1,3 +1,4 @@
+import { articleDraftInput } from '@/shared/article-draft';
 import { emptyArticleContent } from '@/renderer/components/creator/article-editor/articleContentTransforms';
 import { creationFormByEntity, creationItemByFormEntity } from '@/renderer/components/creator/creationFormEntities';
 import { useI18n } from '@/renderer/i18n/useI18n';
@@ -14,6 +15,7 @@ import type {
 import { captureBlockDocument } from '@/shared/contracts/block-document';
 
 interface Options {
+  spaceId: string;
   creationItems: readonly CreationItemDto[];
   getCreationDraftCommitIdentity(): string | null;
   inspirationStashes: readonly InspirationStashDto[];
@@ -77,21 +79,13 @@ export function useCreatorArticleWorkflow(options: Options) {
     const result = await window.desktopApi.articleCopyForWechat({ id: articleId, ...copyOptions });
     const referenceNotice =
       result.endReferenceCount > 0
-        ? options.locale === 'zh'
-          ? `；${result.endReferenceCount} 个链接已转为文末引用`
-          : `; ${result.endReferenceCount} link${result.endReferenceCount === 1 ? '' : 's'} converted to end references`
+        ? socialCopy.wechatLinkReferences.replace('{count}', String(result.endReferenceCount))
         : '';
     const imageNotice =
       result.remoteImageCount > 0
-        ? options.locale === 'zh'
-          ? `；${result.remoteImageCount} 张网络图片需在公众号中确认`
-          : `; check ${result.remoteImageCount} remote image${result.remoteImageCount === 1 ? '' : 's'} in WeChat`
+        ? socialCopy.wechatRemoteImages.replace('{count}', String(result.remoteImageCount))
         : '';
-    notify(
-      options.locale === 'zh'
-        ? `已复制公众号正文${referenceNotice}${imageNotice}`
-        : `WeChat article body copied${referenceNotice}${imageNotice}`,
-    );
+    notify(socialCopy.wechatCopied + referenceNotice + imageNotice);
   });
 
   const createArticleFromArticle = useStableCallback(
@@ -116,25 +110,36 @@ export function useCreatorArticleWorkflow(options: Options) {
       content: articleContentSnapshot(input.content),
     };
     const sourceItem = snapshot.sourceInspirationStashId
-      ? creationItemByFormEntity(options.creationItems, 'INSPIRATION_STASH', snapshot.sourceInspirationStashId)
+      ? creationItemByFormEntity(options.creationItems, 'ARTICLE', snapshot.sourceInspirationStashId)
       : null;
     if (snapshot.sourceInspirationStashId && !sourceItem) {
       throw new Error(socialCopy.inspirationUnavailable);
     }
-    const article = sourceItem
-      ? await window.desktopApi.articleFormAdd({
-          creationItemId: sourceItem.id,
-          sourceInspirationStashId: snapshot.sourceInspirationStashId,
-          consumeCreationDraftId: snapshot.creationDraftId,
-          content: snapshot.content,
-        })
-      : await window.desktopApi.articleSave({
-          id: null,
-          albumId: snapshot.targetAlbumId,
-          sourceInspirationStashId: null,
-          consumeCreationDraftId: snapshot.creationDraftId,
-          content: snapshot.content,
-        });
+    let article: ArticleDto;
+    if (sourceItem && snapshot.sourceInspirationStashId) {
+      const source = options.inspirationStashes.find((item) => item.id === snapshot.sourceInspirationStashId);
+      if (!source) throw new Error(socialCopy.inspirationUnavailable);
+      await window.desktopApi.inspirationStashSave({
+        mode: 'UPDATE',
+        id: source.id,
+        expectedContentHash: source.contentHash,
+        expectedRevisionId: source.revisionId,
+        consumeCreationDraftId: snapshot.creationDraftId,
+        content: {
+          ...articleDraftInput(snapshot.content),
+          ...(source.content.files ? { files: source.content.files } : {}),
+        },
+      });
+      article = (await window.desktopApi.articleOpen({ spaceId: options.spaceId, articleId: source.id })).article;
+    } else {
+      article = await window.desktopApi.articleSave({
+        id: null,
+        albumId: snapshot.targetAlbumId,
+        sourceInspirationStashId: null,
+        consumeCreationDraftId: snapshot.creationDraftId,
+        content: snapshot.content,
+      });
+    }
     await refresh();
     if (getCreationDraftCommitIdentity() !== snapshot.creationDraftCommitIdentity) return;
     onDraftArticleCreated(article);

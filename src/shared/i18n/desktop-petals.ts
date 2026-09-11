@@ -42,6 +42,14 @@ export const desktopPetalMessages = {
   },
   editor: contentEditorMessages,
   document: {
+    creationInput: 'Creation input',
+    stash: 'Save draft',
+    stashing: 'Saving draft',
+    stashed: 'Saved',
+    stashEmpty: 'Enter something to save a draft',
+    draftSaved: 'Draft saved',
+    reopenDraft: 'Reopen the article to establish its saved version. Your input is retained.',
+    itemUnavailable: 'The containing creation item is unavailable',
     more: 'Load more',
     materials: 'Edit linked materials',
     bodyRequired: 'Write the post body first',
@@ -167,6 +175,10 @@ export const desktopPetalMessages = {
     hideAll: 'Hide all petals',
     gallery: 'Flower album',
   },
+  cleanup: {
+    title: 'Clear notes by color',
+    action: 'Clear {color} notes',
+  },
   board: {
     title: 'Desktop layers',
     defaultLayer: 'Default',
@@ -260,6 +272,7 @@ export const desktopPetalMessages = {
     icons: 'Petal and note icon',
     changeIcon: 'Change petal icon',
     color: {
+      white: 'Milk white',
       rose: 'Peach',
       cream: 'Cream',
       sage: 'Sage',

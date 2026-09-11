@@ -96,6 +96,20 @@ export class PetalBoardRepository {
         )
         .get(source.id);
       if (!row) throw petalError('sourceUnavailable');
+      if (source.kind === 'ARTICLE') {
+        const existing = this.db
+          .prepare('SELECT id FROM desktop_note_instances WHERE stash_id=? ORDER BY created_at,id LIMIT 1')
+          .get(source.id) as { id: string } | undefined;
+        if (existing) return existing.id;
+        const id = 'article:' + ulid();
+        this.db
+          .prepare(
+            "INSERT INTO desktop_note_instances(id,stash_id,color,icon,created_at,updated_at) VALUES(?,?,'cream','feather',?,?)",
+          )
+          .run(id, source.id, new Date().toISOString(), new Date().toISOString());
+        this.assign(id, layerId);
+        return id;
+      }
       const existing = this.db
         .prepare('SELECT id FROM desktop_content_pins WHERE source_kind=? AND source_id=?')
         .get(source.kind, source.id) as { id: string } | undefined;

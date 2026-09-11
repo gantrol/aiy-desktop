@@ -1,51 +1,40 @@
 import { AlertTriangleIcon, CheckIcon, CircleXIcon, MessageSquareIcon, RotateCcwIcon } from 'lucide-react';
 import { useMemo, useState } from 'react';
-import type { ArticleCommentDto, ArticleCommentStatus } from '@/shared/contracts';
-import { ArticleCommentModelIdentity } from '@/renderer/components/creator/article-editor/ArticleCommentModelIdentity';
+import type { ContentCommentDto, ContentCommentStatus } from '@/shared/contracts';
+import { ContentCommentModelIdentity } from '@/renderer/features/content-editor/ContentCommentModelIdentity';
 import { CodexThreadLinkText } from '@/renderer/components/content/CodexThreadLinkText';
 import { Button } from '@/renderer/components/ui/button';
 import { ScrollArea } from '@/renderer/components/ui/scroll-area';
 import { cn } from '@/renderer/lib/utils';
+import { useI18n } from '@/renderer/i18n/useI18n';
 
-type CommentFilter = ArticleCommentStatus | 'ALL';
+type CommentFilter = ContentCommentStatus | 'ALL';
 
 interface Props {
   busy: boolean;
-  comments: readonly ArticleCommentDto[];
+  comments: readonly ContentCommentDto[];
   hoveredId: string | null;
   selectedId: string | null;
-  zh: boolean;
   onHover(commentId: string | null): void;
   onSelect(commentId: string): void;
-  onStatusChange(commentId: string, status: ArticleCommentStatus): void;
+  onStatusChange(commentId: string, status: ContentCommentStatus): void;
 }
 
-function filterLabel(filter: CommentFilter, count: number, zh: boolean) {
-  if (filter === 'OPEN') return `${zh ? '待处理' : 'Open'} ${count}`;
-  if (filter === 'RESOLVED') return `${zh ? '已解决' : 'Resolved'} ${count}`;
-  if (filter === 'REJECTED') return `${zh ? '已拒绝' : 'Rejected'} ${count}`;
-  return `${zh ? '全部' : 'All'} ${count}`;
-}
-
-function targetResolutionLabel(comment: ArticleCommentDto, zh: boolean) {
+function targetResolutionLabel(comment: ContentCommentDto, relocated: string, missing: string) {
   if (comment.targetResolution === 'AVAILABLE') return null;
-  if (comment.targetResolution === 'RELOCATED') {
-    return zh ? '原文已删除，已附到相邻位置' : 'Original content deleted; attached nearby';
-  }
-  return zh ? '原文已删除，附近没有可附着的位置' : 'Original content deleted; no nearby target remains';
+  return comment.targetResolution === 'RELOCATED' ? relocated : missing;
 }
 
 function CommentFilterBar({
   comments,
   filter,
-  zh,
   onChange,
 }: {
-  comments: readonly ArticleCommentDto[];
+  comments: readonly ContentCommentDto[];
   filter: CommentFilter;
-  zh: boolean;
   onChange(filter: CommentFilter): void;
 }) {
+  const copy = useI18n().messages.contentEditor.comment;
   const counts = {
     OPEN: comments.filter((comment) => comment.status === 'OPEN').length,
     RESOLVED: comments.filter((comment) => comment.status === 'RESOLVED').length,
@@ -64,7 +53,12 @@ function CommentFilterBar({
           aria-pressed={filter === item}
           onClick={() => onChange(item)}
         >
-          <span className="truncate">{filterLabel(item, counts[item], zh)}</span>
+          <span className="truncate">
+            {{ OPEN: copy.open, RESOLVED: copy.resolved, REJECTED: copy.rejected, ALL: copy.all }[item].replace(
+              '{count}',
+              String(counts[item]),
+            )}
+          </span>
         </Button>
       ))}
     </div>
@@ -76,27 +70,26 @@ function CommentRow({
   comment,
   hovered,
   selected,
-  zh,
   onHover,
   onSelect,
   onStatusChange,
 }: {
   busy: boolean;
-  comment: ArticleCommentDto;
+  comment: ContentCommentDto;
   hovered: boolean;
   selected: boolean;
-  zh: boolean;
   onHover(commentId: string | null): void;
   onSelect(commentId: string): void;
-  onStatusChange(commentId: string, status: ArticleCommentStatus): void;
+  onStatusChange(commentId: string, status: ContentCommentStatus): void;
 }) {
-  const body = comment.body.trim() || comment.preview || (zh ? '空评论' : 'Empty comment');
+  const copy = useI18n().messages.contentEditor.comment;
+  const body = comment.body.trim() || comment.preview || copy.empty;
   const target = comment.body.trim() ? comment.preview : '';
   const replyCount = comment.replies.length;
-  const resolveLabel = zh ? '解决评论' : 'Resolve comment';
-  const rejectLabel = zh ? '拒绝意见' : 'Reject suggestion';
-  const reopenLabel = zh ? '重新打开评论' : 'Reopen comment';
-  const targetWarning = targetResolutionLabel(comment, zh);
+  const resolveLabel = copy.resolve;
+  const rejectLabel = copy.reject;
+  const reopenLabel = copy.reopen;
+  const targetWarning = targetResolutionLabel(comment, copy.relocated, copy.missing);
 
   return (
     <div
@@ -130,7 +123,7 @@ function CommentRow({
         )}
         <span className="min-w-0 flex-1">
           {comment.modelAuthor && (
-            <ArticleCommentModelIdentity author={comment.modelAuthor} className="mb-1 flex max-w-full" />
+            <ContentCommentModelIdentity author={comment.modelAuthor} className="mb-1 flex max-w-full" />
           )}
           <span className="line-clamp-2 block text-sm leading-5">
             {selected ? <CodexThreadLinkText value={body} /> : body}
@@ -138,7 +131,7 @@ function CommentRow({
           {target && <span className="mt-1 line-clamp-1 block text-xs text-muted-foreground">{target}</span>}
           {replyCount > 0 && (
             <span className="mt-1 block text-2xs tabular-nums text-muted-foreground">
-              {zh ? `${replyCount} 条回复` : `${replyCount} replies`}
+              {copy.replies.replace('{count}', String(replyCount))}
             </span>
           )}
         </span>
@@ -190,16 +183,16 @@ function CommentRow({
   );
 }
 
-export function ArticleCommentsPanel({
+export function ContentCommentsPanel({
   busy,
   comments,
   hoveredId,
   selectedId,
-  zh,
   onHover,
   onSelect,
   onStatusChange,
 }: Props) {
+  const copy = useI18n().messages.contentEditor.comment;
   const [filter, setFilter] = useState<CommentFilter>('OPEN');
   const filtered = useMemo(
     () => (filter === 'ALL' ? comments : comments.filter((comment) => comment.status === filter)),
@@ -207,8 +200,8 @@ export function ArticleCommentsPanel({
   );
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col" aria-label={zh ? '评论列表' : 'Comment list'}>
-      <CommentFilterBar comments={comments} filter={filter} zh={zh} onChange={setFilter} />
+    <div className="flex min-h-0 flex-1 flex-col" aria-label={copy.list}>
+      <CommentFilterBar comments={comments} filter={filter} onChange={setFilter} />
       <ScrollArea className="min-h-0 flex-1 [&_[data-slot=scroll-area-viewport]>div]:!block">
         {filtered.length ? (
           filtered.map((comment) => (
@@ -218,17 +211,13 @@ export function ArticleCommentsPanel({
               comment={comment}
               hovered={comment.id === hoveredId}
               selected={comment.id === selectedId}
-              zh={zh}
               onHover={onHover}
               onSelect={onSelect}
               onStatusChange={onStatusChange}
             />
           ))
         ) : (
-          <div
-            className="grid h-24 place-items-center text-muted-foreground"
-            aria-label={zh ? '没有评论' : 'No comments'}
-          >
+          <div className="grid h-24 place-items-center text-muted-foreground" aria-label={copy.none}>
             <MessageSquareIcon className="size-4" />
           </div>
         )}

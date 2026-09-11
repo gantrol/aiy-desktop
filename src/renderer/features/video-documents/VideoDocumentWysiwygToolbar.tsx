@@ -28,7 +28,7 @@ import {
 } from '@/renderer/features/video-documents/videoDocumentEditorMedia';
 import { cn } from '@/renderer/lib/utils';
 import type {
-  ArticleCommentDto,
+  ContentCommentDto,
   ArticleEditTrailEntryDto,
   ArticleEditorLocationDto,
   CreatorImageImportSource,
@@ -172,7 +172,7 @@ export interface VideoDocumentWysiwygToolbarState {
 }
 
 export interface VideoDocumentArticleElementControls {
-  comments: readonly ArticleCommentDto[];
+  comments: readonly ContentCommentDto[];
   commentsOpen: boolean;
   hoveredCommentId: string | null;
   selectedCommentId: string | null;

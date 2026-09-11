@@ -1,6 +1,7 @@
 import type { ActiveLibraryContext } from '@/main/libraries/active-library-context';
 import { petalError } from '@/shared/petal-errors';
 import type { NoteFile } from '@/shared/contracts/note-files';
+import { DEFAULT_PETAL_COLOR } from '@/shared/contracts/petal-appearance';
 import type {
   DesktopNote,
   DesktopNoteDraft,
@@ -15,6 +16,9 @@ export class PetalNoteService {
   constructor(private readonly database: ActiveLibraryContext['database']) {}
   isPending(id: string) {
     return this.pending.has(id);
+  }
+  pendingIds(color: PetalColor) {
+    return [...this.pending.values()].filter(({ note }) => note.color === color).map(({ note }) => note.id);
   }
   discard(id: string) {
     this.pending.delete(id);
@@ -33,13 +37,15 @@ export class PetalNoteService {
       stashId: id,
       text: '',
       contentHash: `pending:${id}`,
-      color: 'rose',
+      color: DEFAULT_PETAL_COLOR,
       icon: 'feather',
       editable: true,
       title: '',
       displayTitle: '',
       albumId: this.lastAlbumId(),
       revisionId: null,
+      elements: [],
+      comments: [],
       persisted: false,
       references: [],
     };
@@ -96,15 +102,18 @@ export class PetalNoteService {
       this.pending.delete(id);
       return saved;
     }
-    const { referenceAssets: _assets, ...content } = this.database.getInspirationStash(note.stashId).content;
-    this.database.saveInspirationStash({
-      mode: 'UPDATE',
-      id: note.stashId,
-      consumeCreationDraftId: null,
-      expectedContentHash: expectedHash,
-      content: { ...content, referenceAssetIds: assetIds },
-    });
-    return this.get(id);
+    return this.database.db.transaction(() => {
+      const { referenceAssets: _assets, ...content } = this.database.getInspirationStash(note.stashId).content;
+      this.database.saveInspirationStash({
+        mode: 'UPDATE',
+        id: note.stashId,
+        consumeCreationDraftId: null,
+        expectedContentHash: expectedHash,
+        content: { ...content, referenceAssetIds: assetIds },
+      });
+      this.database.contentLibrary.inheritNoteProjection(note.stashId, note.revisionId, note.elements);
+      return this.get(id);
+    })();
   }
   files(id: string, expectedHash: string, files: NoteFile[]) {
     const note = this.get(id);
@@ -124,15 +133,18 @@ export class PetalNoteService {
       this.pending.delete(id);
       return saved;
     }
-    const { referenceAssets: _assets, ...content } = this.database.getInspirationStash(note.stashId).content;
-    this.database.saveInspirationStash({
-      mode: 'UPDATE',
-      id: note.stashId,
-      consumeCreationDraftId: null,
-      expectedContentHash: expectedHash,
-      content: { ...content, files },
-    });
-    return this.get(id);
+    return this.database.db.transaction(() => {
+      const { referenceAssets: _assets, ...content } = this.database.getInspirationStash(note.stashId).content;
+      this.database.saveInspirationStash({
+        mode: 'UPDATE',
+        id: note.stashId,
+        consumeCreationDraftId: null,
+        expectedContentHash: expectedHash,
+        content: { ...content, files },
+      });
+      this.database.contentLibrary.inheritNoteProjection(note.stashId, note.revisionId, note.elements);
+      return this.get(id);
+    })();
   }
   checkpoint(input: DesktopNoteDraft) {
     const pending = this.pending.get(input.id);
@@ -150,6 +162,8 @@ export class PetalNoteService {
           format: draft.format,
           document: draft.document,
           referenceAssetIds: draft.referenceAssetIds,
+          elements: draft.elements,
+          commentAnchors: draft.commentAnchors,
           expectedContentHash: draft.expectedContentHash,
           editorId: draft.editorId,
           sequence: draft.sequence,

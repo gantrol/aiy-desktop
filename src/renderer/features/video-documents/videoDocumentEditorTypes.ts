@@ -31,6 +31,11 @@ export interface VideoDocumentQuickInsertNoteRequest {
 }
 
 export interface VideoDocumentWysiwygEditorHandle {
+  getImagePlacements(): import('@/renderer/features/video-documents/articleImageOperations').ArticleImagePlacement[];
+  moveImage(elementId: string, targetId: string): boolean;
+  removeImage(elementId: string): boolean;
+  undo(): boolean;
+  redo(): boolean;
   removeImageAssets(assetIds: readonly string[]): void;
   getArticleCheckBlocks(): ReturnType<typeof articleCheckBlocks>;
   getPersistenceSnapshot(): VideoDocumentWysiwygPersistenceSnapshot;
@@ -58,6 +63,7 @@ export interface VideoDocumentWysiwygEditorProps {
   toolbarRoot?: HTMLDivElement | null;
   contentSource?: import('@/shared/contracts/content-library').ContentSource;
   readOnly?: boolean;
+  mediaIntake?: 'INLINE' | 'EXTERNAL';
   importImage?(
     file: File,
     source: import('@/shared/contracts').CreatorImageImportSource,

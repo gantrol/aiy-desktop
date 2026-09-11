@@ -115,7 +115,7 @@ function standardCreatorInitialSession(
       ? (data.inspirationStashes ?? []).find((stash) => stash.id === location.stashId)
       : undefined;
   const initialInspirationItem = initialInspirationStash
-    ? creationItemByFormEntity(data.creationItems, 'INSPIRATION_STASH', initialInspirationStash.id)
+    ? creationItemByFormEntity(data.creationItems, 'ARTICLE', initialInspirationStash.id)
     : null;
   const initialInspirationSeriesId = imageSeriesIdForCreationItem(initialInspirationItem);
   const initialSocialPost =

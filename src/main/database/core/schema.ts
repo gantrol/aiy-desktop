@@ -1,3 +1,4 @@
+import { articleDraftShape, ensureArticleDrafts } from '@/main/database/creations/article-draft-schema';
 import type Database from 'better-sqlite3';
 import { ensureGifMakingSchema, gifMakingShape } from '@/main/database/core/gif-making-schema';
 import {
@@ -713,19 +714,18 @@ const currentFeatureShapeChecks = [
   creationAlbumOwnershipShape,
   recoveryLifecycleShape,
   contentLifecycleShape,
+  desktopNotesShape,
+  unifiedContentShape,
+  gifMakingShape,
+  codexContentShape,
+  petalBoardShape,
+  socialPostSaveShape,
+  derivedVisualStorageComplete,
+  articleDraftShape,
 ] as const;
 
 function currentFeatureShapesComplete(db: Database.Database) {
-  return (
-    currentFeatureShapeChecks.every((check) => check(db) === 'COMPLETE') &&
-    desktopNotesShape(db) === 'COMPLETE' &&
-    unifiedContentShape(db) &&
-    gifMakingShape(db) &&
-    codexContentShape(db) === 'COMPLETE' &&
-    petalBoardShape(db) === 'COMPLETE' &&
-    socialPostSaveShape(db) === 'COMPLETE' &&
-    derivedVisualStorageComplete(db)
-  );
+  return currentFeatureShapeChecks.every((check) => [true, 'COMPLETE'].includes(check(db)));
 }
 
 function isCurrentSchemaShape(db: Database.Database) {
@@ -790,8 +790,7 @@ function migrateReleasedDatabase(db: Database.Database) {
   if (metadata(db, 'product_data_baseline') !== DATABASE_PRODUCT_BASELINE) unsupportedSchema();
 
   const storedRevision = Number(metadata(db, 'database_schema_revision'));
-  const isAcceptedStoredRevision =
-    storedRevision === 1 || unreleasedDevelopmentStages.some((stage) => stage === storedRevision);
+  const isAcceptedStoredRevision = [1, ...unreleasedDevelopmentStages].includes(storedRevision);
   if (!Number.isSafeInteger(storedRevision) || !isAcceptedStoredRevision) unsupportedSchema();
   if (storedRevision === DATABASE_SCHEMA_REVISION && isCurrentSchemaShape(db)) return false;
 
@@ -831,6 +830,7 @@ function migrateReleasedDatabase(db: Database.Database) {
       ensurePetalBoardSchema(db);
       ensureSocialPostSaves(db);
       ensureDerivedVisualStorage(db);
+      ensureArticleDrafts(db);
       if (!isCurrentSchemaShape(db)) unsupportedSchema();
 
       if (storedRevision !== DATABASE_SCHEMA_REVISION) {

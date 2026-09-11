@@ -103,7 +103,7 @@ export function PetalDrawerMenu({ state, snapshot, frame, menu, run, onRestoreFo
               <ArrowDown />
               {drawer.next}
             </DropdownMenuItem>
-            <PetalMenuSection icon={Palette} label={copy.actions.appearance}>
+            <PetalMenuSection icon={Palette} label={copy.actions.appearance} hoverOpen>
               <NoteAppearancePicker
                 note={menuItem}
                 onChange={(patch) => void run(() => appearance(menuItem, { id: menuItem.id, ...patch }), false)}

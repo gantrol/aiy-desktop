@@ -29,6 +29,12 @@ import {
 import type { PetalLanguage } from '@/shared/contracts/petal-language';
 import { z } from 'zod';
 import { noteFileSchema, type NoteFile, type NoteFileCommand } from '@/shared/contracts/note-files';
+import {
+  contentCommentAnchorSchema,
+  contentCommentAnchorUpdateSchema,
+  contentCommentSchema,
+  contentElementPlacementSchema,
+} from '@/shared/contracts/content-comments';
 import type { PetalPreviewContent, PetalPreviewRequest } from '@/shared/petal-preview';
 import {
   petalDrawerStateSchema,
@@ -44,6 +50,36 @@ export {
 } from '@/shared/contracts/petal-appearance';
 
 const id = z.string().min(1).max(200);
+export const noteCommentSchema = contentCommentSchema.extend({ noteId: id }).strict();
+export const noteCommentMutationInputSchema = z.discriminatedUnion('operation', [
+  z
+    .object({
+      operation: z.literal('CREATE'),
+      noteId: id,
+      expectedRevisionId: id,
+      elements: z.array(contentElementPlacementSchema).max(20_000),
+      anchor: contentCommentAnchorSchema,
+      preview: z.string().max(280),
+      body: z.string().max(10_000),
+    })
+    .strict(),
+  z.object({ operation: z.literal('UPDATE_BODY'), noteId: id, commentId: id, body: z.string().max(10_000) }).strict(),
+  z
+    .object({
+      operation: z.literal('SET_STATUS'),
+      noteId: id,
+      commentId: id,
+      status: z.enum(['OPEN', 'RESOLVED', 'REJECTED']),
+    })
+    .strict(),
+  z
+    .object({ operation: z.literal('ADD_REPLY'), noteId: id, commentId: id, body: z.string().min(1).max(10_000) })
+    .strict(),
+  z.object({ operation: z.literal('DELETE'), noteId: id, commentId: id }).strict(),
+]);
+export const noteCommentMutationResultSchema = z
+  .object({ noteId: id, revisionId: id, comments: z.array(noteCommentSchema).max(20_000) })
+  .strict();
 export const petalNoteSizeSchema = z
   .object({
     width: z.number().int().min(280).max(640),
@@ -57,7 +93,7 @@ export const desktopNoteSchema = z
   .object({
     id,
     stashId: id,
-    text: z.string().max(30_000),
+    text: z.string().max(1_000_000),
     contentHash: z.string(),
     color: petalColorSchema,
     icon: petalIconSchema,
@@ -80,6 +116,8 @@ export const desktopNoteSchema = z
       )
       .optional(),
     revisionId: id.nullable(),
+    elements: z.array(contentElementPlacementSchema).max(20_000).default([]),
+    comments: z.array(noteCommentSchema).max(20_000).default([]),
     persisted: z.boolean().default(true),
     files: z.array(noteFileSchema).max(100).optional(),
     references: z
@@ -101,12 +139,15 @@ export const desktopNoteCreateSchema = z
 export const desktopNoteSaveSchema = z
   .object({
     id,
-    text: z.string().max(30_000),
+    text: z.string().max(1_000_000),
     title: z.string().max(200).optional(),
     format: z.literal('markdown').optional(),
     document: blockDocumentSchema.optional(),
     referenceAssetIds: z.array(id).max(100).optional(),
+    elements: z.array(contentElementPlacementSchema).max(20_000).optional(),
+    commentAnchors: z.array(contentCommentAnchorUpdateSchema).max(20_000).optional(),
     expectedContentHash: z.string().min(1),
+    expectedRevisionId: id.nullable().optional(),
     editorId: id,
   })
   .strict();
@@ -121,7 +162,10 @@ export const desktopNoteDraftDtoSchema = z
     format: z.literal('markdown').optional(),
     document: blockDocumentSchema.optional(),
     referenceAssetIds: z.array(id).max(100).optional(),
+    elements: z.array(contentElementPlacementSchema).max(20_000).optional(),
+    commentAnchors: z.array(contentCommentAnchorUpdateSchema).max(20_000).optional(),
     expectedContentHash: z.string(),
+    expectedRevisionId: id.nullable().optional(),
     editorId: id,
     sequence: z.number().int(),
   })
@@ -181,7 +225,11 @@ export interface DesktopNoteInitial {
 export type DesktopPetalSnapshot = z.infer<typeof desktopPetalSnapshotSchema>;
 export type DesktopNoteSave = z.infer<typeof desktopNoteSaveSchema>;
 export type DesktopNoteDraft = z.infer<typeof desktopNoteDraftSchema>;
+export type NoteCommentDto = z.infer<typeof noteCommentSchema>;
+export type NoteCommentMutationInput = z.infer<typeof noteCommentMutationInputSchema>;
+export type NoteCommentMutationResult = z.infer<typeof noteCommentMutationResultSchema>;
 export interface DesktopPetalSourceEvent {
+  article: import('@/shared/contracts').ArticleDto;
   libraryId: string;
   stash: InspirationStashDto;
   item: CreationItemDto | null;
@@ -227,6 +275,7 @@ export interface DesktopPetalsApi extends ContentImageImportsApi {
   showAll(): Promise<void>;
   hideAll(): Promise<void>;
   hidePetals(): Promise<void>;
+  cleanup(color?: PetalColor): Promise<void>;
   reload(): Promise<void>;
   hubView(view: PetalHubView): Promise<void>;
   configureHub(settings: PetalHubSettings): Promise<void>;

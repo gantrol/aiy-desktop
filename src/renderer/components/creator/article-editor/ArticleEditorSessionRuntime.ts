@@ -74,7 +74,9 @@ export interface ArticleEditorSessionRuntime {
   documentChanged(markdown: string): number;
   articleElementsChanged(): number;
   titleChanged(title: string): number;
+  coverChanged(assetId: string | null): number;
   imageImported(result: VideoDocumentEditorImageImport): number;
+  imageRemoved(assetId: string): number;
   registerEditor(
     handle: VideoDocumentWysiwygEditorHandle | null,
     previous: VideoDocumentWysiwygEditorHandle | null,
@@ -453,6 +455,15 @@ class ArticleSession implements ArticleEditorSessionRuntime {
   };
   imageImported = (result: VideoDocumentEditorImageImport) => {
     this.model.addImportedImage(result.binding, result.media);
+    return this.#recordChange();
+  };
+  coverChanged = (assetId: string | null) => {
+    this.model.setCover(assetId);
+    return this.#recordChange();
+  };
+  imageRemoved = (assetId: string) => {
+    if (!this.#editorHandle || !this.model.removeImage(assetId)) return this.model.getSnapshot().draft.sequence;
+    this.#editorHandle.removeImageAssets([assetId]);
     return this.#recordChange();
   };
 

@@ -1,11 +1,11 @@
-import type { ArticleCommentModelAuthor } from '@/shared/contracts';
+import type { ContentCommentModelAuthor } from '@/shared/contracts/content-comments';
 import { ModelIdentity } from '@/renderer/components/model/ModelIdentity';
 
-export function ArticleCommentModelIdentity({
+export function ContentCommentModelIdentity({
   author,
   className,
 }: {
-  author: ArticleCommentModelAuthor;
+  author: ContentCommentModelAuthor;
   className?: string;
 }) {
   return <ModelIdentity providerKey={author.providerKey} modelId={author.modelId} className={className} />;

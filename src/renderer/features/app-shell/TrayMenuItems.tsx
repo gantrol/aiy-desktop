@@ -1,4 +1,4 @@
-import { CircleAlert, House, ListChecks, LogOut } from 'lucide-react';
+import { CircleAlert, Eye, EyeOff, Flower2, House, ListChecks, LogOut, Settings2 } from 'lucide-react';
 import type { ComponentProps } from 'react';
 import { Button } from '@/renderer/components/ui/button';
 import { Separator } from '@/renderer/components/ui/separator';
@@ -8,6 +8,13 @@ import { useI18n } from '@/renderer/i18n/useI18n';
 import { cn } from '@/renderer/lib/utils';
 import { trayTaskStatus, type TrayMenuAction, type TrayMenuState } from '@/shared/contracts/tray-menu';
 
+const petalItems = [
+  { action: 'petals-open', icon: Flower2 },
+  { action: 'petals-show-all', icon: Eye },
+  { action: 'petals-hide-all', icon: EyeOff },
+  { action: 'petals-settings', icon: Settings2 },
+] as const;
+
 /** Shared by the live tray window and the isolated demo's final click. */
 export function TrayMenuItems({
   state,
@@ -15,7 +22,8 @@ export function TrayMenuItems({
   preview = false,
   previewQuitFocused = false,
 }: {
-  state: Pick<TrayMenuState, 'taskCount' | 'windowReady' | 'quittingSoon'>;
+  state: Pick<TrayMenuState, 'taskCount' | 'windowReady' | 'quittingSoon'> &
+    Partial<Pick<TrayMenuState, 'petalsReady'>>;
   onAction(action: TrayMenuAction): void;
   previewQuitFocused?: boolean;
   preview?: boolean;
@@ -30,6 +38,22 @@ export function TrayMenuItems({
         {copy.open}
       </Item>
       <Divider className={cn(petalMenuSeparatorClass, '-mx-1 my-1')} />
+      {!preview && (
+        <>
+          {petalItems.map(({ action, icon: Icon }) => (
+            <Item
+              key={action}
+              className={petalMenuItemClass}
+              disabled={!state.petalsReady}
+              onSelect={() => onAction(action)}
+            >
+              <Icon />
+              {copy[action]}
+            </Item>
+          ))}
+          <Divider className={cn(petalMenuSeparatorClass, '-mx-1 my-1')} />
+        </>
+      )}
       <Item className={cn(petalMenuItemClass, 'data-[disabled]:text-inherit data-[disabled]:opacity-60')} disabled>
         <ListChecks />
         {trayTaskStatus(state, copy)}

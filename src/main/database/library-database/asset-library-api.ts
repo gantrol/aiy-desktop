@@ -50,7 +50,6 @@ export function createAssetLibraryApi(
     LibraryDatabaseRepositories,
     | 'albums'
     | 'assetFiles'
-    | 'assetLifecycle'
     | 'assetRelationships'
     | 'db'
     | 'contentLifecycle'
@@ -118,10 +117,6 @@ export function createAssetLibraryApi(
 
     resolveAssetFilesAsync(assetIds: readonly string[]) {
       return repositories.assetFiles.resolveManyAsync(assetIds);
-    },
-
-    deleteAsset(assetId: string) {
-      return repositories.assetLifecycle.delete(assetId);
     },
 
     listRecycleBin(input: RecycleBinListInput) {

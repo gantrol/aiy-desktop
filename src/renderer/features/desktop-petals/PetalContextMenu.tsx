@@ -20,7 +20,7 @@ import {
   DropdownMenuItem,
   DropdownMenuSeparator,
 } from '@/renderer/components/ui/dropdown-menu';
-import { appearanceStyle } from '@/renderer/features/desktop-petals/petal-appearance';
+import { noteAppearanceStyle } from '@/renderer/features/desktop-petals/petal-appearance';
 import {
   petalMenuItemClass,
   petalMenuSurfaceClass,
@@ -28,6 +28,7 @@ import {
 } from '@/renderer/features/desktop-petals/petal-menu-style';
 import { cn } from '@/renderer/lib/utils';
 import { usePetalMenu } from '@/renderer/features/desktop-petals/use-petal-menu';
+import { PetalCleanupMenu } from '@/renderer/features/desktop-petals/PetalCleanupMenu';
 import { useI18n } from '@/renderer/i18n/useI18n';
 import { petalTimerRemaining } from '@/shared/petal-timer';
 import type { DesktopPetalSnapshot } from '@/shared/contracts/desktop-petals';
@@ -95,7 +96,7 @@ export function PetalContextMenu({
             petalMenuSurfaceClass,
             'max-h-[var(--radix-dropdown-menu-content-available-height)] w-56 max-w-[calc(100vw-16px)] overflow-y-auto',
           )}
-          style={appearanceStyle('rose')}
+          style={noteAppearanceStyle('rose')}
           onCloseAutoFocus={(event) => {
             event.preventDefault();
             menu.restoreFocus();
@@ -154,6 +155,7 @@ export function PetalContextMenu({
             label={snapshot.titlesVisible ? copy.drawer.hideTitles : copy.drawer.showTitles}
             onSelect={() => menu.select(() => window.desktopPetals.drawer({ kind: 'toggle-titles' }))}
           />
+          <PetalCleanupMenu disabled={snapshot.suspended} close={menu.close} onError={onError} />
           <DropdownMenuSeparator className={petalMenuSeparatorClass} />
           <PetalMenuItem
             icon={Settings}

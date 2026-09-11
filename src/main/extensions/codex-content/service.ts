@@ -279,7 +279,7 @@ export class CodexContentService extends EventEmitter {
     if (this.repository.hasActive(input.stashId)) throw error('busy');
     this.require(...executionPermissions);
     const revision = this.database.db
-      .prepare('SELECT id FROM inspiration_stash_revisions WHERE stash_id=? ORDER BY revision_no DESC LIMIT 1')
+      .prepare('SELECT current_revision_id AS id FROM articles WHERE id=?')
       .get(input.stashId) as { id: string } | undefined;
     const task: CodexContentTask = {
       id: input.requestId,

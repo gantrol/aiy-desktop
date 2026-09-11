@@ -1,10 +1,10 @@
+import { sameArticleElementPlacements, articleCommentAnchorUpdatesAreApplied } from '@/shared/contracts/article';
 import type { LibraryStorage } from '@/main/database/core/storage';
-import { mediaUrl, now } from '@/main/database/core/values';
-import { appendInspirationRevision } from '@/main/database/creations/inspiration-history';
+import { now } from '@/main/database/core/values';
+import type { ArticleRepository } from '@/main/database/creations/article-repository';
+import { articleNote, saveArticleNote } from '@/main/database/creations/article-note-repository';
 import { InspirationStashRepository } from '@/main/database/creations/inspiration-stash-repository';
-import { contentDisplayTitle, replaceContentPromptText } from '@/shared/content-document';
 import {
-  desktopNoteSchema,
   type DesktopNote,
   type DesktopNoteDraft,
   type DesktopNoteInitial,
@@ -12,9 +12,9 @@ import {
   type PetalColor,
   type PetalIcon,
 } from '@/shared/contracts/desktop-petals';
-import { inspirationStashContentSchema } from '@/shared/contracts/inspiration-stash';
 import { petalError } from '@/shared/petal-errors';
 import { petalLabel } from '@/shared/petal-preview';
+import { DEFAULT_PETAL_COLOR } from '@/shared/contracts/petal-appearance';
 
 interface NoteRow {
   id: string;
@@ -30,21 +30,23 @@ const hasInitialContent = (initial?: DesktopNoteInitial) =>
   Boolean(
     initial?.title?.trim() || initial?.text.trim() || initial?.referenceAssetIds?.length || initial?.files?.length,
   );
-const noteQuery = `SELECT n.*, s.input_json, s.content_hash, s.album_id,
-  (SELECT id FROM inspiration_stash_revisions WHERE stash_id = s.id ORDER BY revision_no DESC LIMIT 1) AS revision_id
-  FROM desktop_note_instances n JOIN inspiration_stashes s ON s.id = n.stash_id
-  WHERE s.status = 'ACTIVE' AND s.deleted_at IS NULL`;
+const noteQuery = `SELECT n.* FROM desktop_note_instances n JOIN articles s ON s.id = n.stash_id WHERE s.status = 'ACTIVE' AND s.deleted_at IS NULL`;
 
 export class DesktopNotesRepository {
   summaries(): { id: string; title: string; color: PetalColor; icon: PetalIcon; hasImages: boolean }[] {
     const rows = this.db
       .prepare(
-        `SELECT n.id, n.color, n.icon,
-      COALESCE(json_extract(s.input_json, '$.title'), '') AS title,
-      substr(COALESCE(json_extract(s.input_json, '$.manualPrompt'), ''), 1, 480) AS excerpt,
-      COALESCE(json_array_length(s.input_json, '$.referenceAssetIds'), 0) > 0 AS hasImages
-      FROM desktop_note_instances n JOIN inspiration_stashes s ON s.id = n.stash_id
-      WHERE s.status = 'ACTIVE' AND s.deleted_at IS NULL ORDER BY n.created_at, n.id`,
+        `SELECT n.id,n.color,n.icon,
+      COALESCE(json_extract(r.content_json,'$.title'),'') AS title,
+      substr(COALESCE(json_extract(r.content_json,'$.markdown'),
+        (SELECT group_concat(part,' ') FROM (
+          SELECT substr(atom,1,480) AS part FROM json_tree(r.content_json,'$.document.root')
+          WHERE key='text' AND type='text' LIMIT 8
+        )),''),1,480) AS excerpt,
+      COALESCE(json_array_length(r.content_json,'$.mediaBindings'),0)>0 AS hasImages
+      FROM desktop_note_instances n JOIN articles s ON s.id=n.stash_id
+      JOIN article_revisions r ON r.id=s.current_revision_id
+      WHERE s.status='ACTIVE' AND s.deleted_at IS NULL ORDER BY n.created_at,n.id`,
       )
       .all() as { id: string; title: string; excerpt: string; color: PetalColor; icon: PetalIcon; hasImages: number }[];
     return rows.map(({ excerpt, hasImages, ...row }) => ({
@@ -54,24 +56,35 @@ export class DesktopNotesRepository {
     }));
   }
   private readonly inspirations: InspirationStashRepository;
-  constructor(private readonly storage: LibraryStorage) {
-    this.inspirations = new InspirationStashRepository(storage);
+  constructor(
+    private readonly storage: LibraryStorage,
+    private readonly articles: ArticleRepository,
+  ) {
+    this.inspirations = new InspirationStashRepository(storage, articles);
   }
   private get db() {
     return this.storage.db;
   }
 
   list(): DesktopNote[] {
-    return (this.db.prepare(`${noteQuery} ORDER BY n.created_at, n.id`).all() as NoteRow[]).map((row) => this.dto(row));
+    const rows = this.db.prepare(`${noteQuery} ORDER BY n.created_at, n.id`).all() as NoteRow[];
+    const articles = new Map(
+      this.articles.list([...new Set(rows.map((row) => row.stash_id))]).map((article) => [article.id, article]),
+    );
+    return rows.map((row) => ({
+      ...articleNote(articles.get(row.stash_id)!, row.id),
+      color: row.color,
+      icon: row.icon,
+    }));
   }
-  activeIds(): string[] {
+  activeIds(color?: PetalColor): string[] {
     return this.db
       .prepare(
-        `SELECT n.id FROM desktop_note_instances n JOIN inspiration_stashes s ON s.id = n.stash_id
-      WHERE s.status = 'ACTIVE' AND s.deleted_at IS NULL`,
+        `SELECT n.id FROM desktop_note_instances n JOIN articles s ON s.id = n.stash_id
+      WHERE s.status = 'ACTIVE' AND s.deleted_at IS NULL${color ? ' AND n.color = ?' : ''}`,
       )
       .pluck()
-      .all() as string[];
+      .all(...(color ? [color] : [])) as string[];
   }
   get(id: string): DesktopNote {
     const row = this.db.prepare(`${noteQuery} AND n.id = ?`).get(id) as NoteRow | undefined;
@@ -105,16 +118,11 @@ export class DesktopNotesRepository {
             },
           });
       if (stash.status !== 'ACTIVE') throw petalError('sourceUnavailable');
-      const source = this.db
-        .prepare('SELECT input_json, content_hash FROM inspiration_stashes WHERE id = ? AND deleted_at IS NULL')
-        .get(stash.id) as { input_json: string; content_hash: string } | undefined;
-      if (!source) throw petalError('sourceUnavailable');
-      appendInspirationRevision(this.db, stash.id, source.input_json, source.content_hash, now());
       this.db
         .prepare(
           'INSERT INTO desktop_note_instances(id, stash_id, color, icon, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)',
         )
-        .run(requestId, stash.id, initial?.color ?? 'rose', initial?.icon ?? 'feather', now(), now());
+        .run(requestId, stash.id, initial?.color ?? DEFAULT_PETAL_COLOR, initial?.icon ?? 'feather', now(), now());
       return this.get(requestId);
     })();
   }
@@ -125,7 +133,7 @@ export class DesktopNotesRepository {
       const unavailable = this.db
         .prepare(
           `SELECT n.id, s.deleted_at, s.id AS source_id
-        FROM desktop_note_instances n LEFT JOIN inspiration_stashes s ON s.id = n.stash_id
+        FROM desktop_note_instances n LEFT JOIN articles s ON s.id = n.stash_id
         WHERE (s.id IS NULL OR s.deleted_at IS NOT NULL OR s.status <> 'ACTIVE')${filter}`,
         )
         .all(...(stashIds ?? [])) as { id: string; deleted_at: string | null; source_id: string | null }[];
@@ -138,25 +146,7 @@ export class DesktopNotesRepository {
     return this.db.transaction(() => {
       const note = this.get(input.id);
       if (!note.editable) throw petalError('structuredNote');
-      const stash = this.inspirations.get(note.stashId);
-      const { referenceAssets: _assets, ...content } = stash.content;
-      if (content.document && !input.document && input.text !== content.manualPrompt)
-        throw new Error('BLOCK_DOCUMENT_REQUIRED');
-      this.inspirations.save({
-        mode: 'UPDATE',
-        id: note.stashId,
-        consumeCreationDraftId: null,
-        expectedContentHash: input.expectedContentHash,
-        content: {
-          ...content,
-          ...(input.title !== undefined ? { title: input.title } : {}),
-          ...(input.format ? { format: input.format } : {}),
-          ...(input.referenceAssetIds ? { referenceAssetIds: input.referenceAssetIds } : {}),
-          ...(input.document ? { schemaVersion: 2, document: input.document } : {}),
-          manualPrompt: input.text,
-          promptNodes: replaceContentPromptText(content.promptNodes, input.text),
-        },
-      });
+      saveArticleNote(this.articles, input, note.stashId);
       // Only acknowledge the exact draft this editor saved; a newer checkpoint survives.
       this.db
         .prepare(
@@ -167,10 +157,13 @@ export class DesktopNotesRepository {
           input.editorId,
           input.text,
           JSON.stringify({
+            expectedRevisionId: input.expectedRevisionId,
             title: input.title,
             format: input.format,
             referenceAssetIds: input.referenceAssetIds,
             document: input.document,
+            elements: input.elements,
+            commentAnchors: input.commentAnchors,
           }),
         );
       return this.get(input.id);
@@ -189,6 +182,43 @@ export class DesktopNotesRepository {
       this.db.prepare('DELETE FROM desktop_note_instances WHERE id = ?').run(id);
     })();
   }
+  removeByColor(color: PetalColor) {
+    return this.db.transaction(() => {
+      const ids = this.activeIds(color);
+      if (!ids.length) return ids;
+      const selected = JSON.stringify(ids);
+      const drafts = this.db
+        .prepare(
+          'SELECT instance_id,text_content,document_json,base_hash FROM desktop_note_drafts WHERE instance_id IN (SELECT value FROM json_each(?))',
+        )
+        .all(selected) as { instance_id: string; text_content: string; document_json: string; base_hash: string }[];
+      const notes = new Map(this.list().map((note) => [note.id, note]));
+      for (const draft of drafts) {
+        const note = notes.get(draft.instance_id)!;
+        const metadata = JSON.parse(draft.document_json) as Partial<DesktopNoteDraft>;
+        if (
+          draft.base_hash !== note.contentHash ||
+          draft.text_content !== note.text ||
+          (metadata.title !== undefined && metadata.title !== note.title) ||
+          JSON.stringify(metadata.document ?? null) !== JSON.stringify(note.document ?? null) ||
+          (metadata.referenceAssetIds &&
+            JSON.stringify(metadata.referenceAssetIds) !== JSON.stringify(note.references.map((ref) => ref.assetId))) ||
+          (metadata.elements && !sameArticleElementPlacements(metadata.elements, note.elements)) ||
+          (metadata.commentAnchors &&
+            !articleCommentAnchorUpdatesAreApplied(
+              metadata.commentAnchors,
+              note.comments.map((comment) => ({ commentId: comment.id, anchor: comment.anchor })),
+            ))
+        )
+          throw petalError('unsaved');
+      }
+      this.db
+        .prepare('DELETE FROM desktop_petal_memberships WHERE instance_id IN (SELECT value FROM json_each(?))')
+        .run(selected);
+      this.db.prepare('DELETE FROM desktop_note_instances WHERE id IN (SELECT value FROM json_each(?))').run(selected);
+      return ids;
+    })();
+  }
   checkpoint(input: DesktopNoteDraft) {
     this.get(input.id);
     this.db
@@ -203,10 +233,13 @@ export class DesktopNotesRepository {
         input.expectedContentHash,
         input.text,
         JSON.stringify({
+          expectedRevisionId: input.expectedRevisionId,
           title: input.title,
           format: input.format,
           referenceAssetIds: input.referenceAssetIds,
           document: input.document,
+          elements: input.elements,
+          commentAnchors: input.commentAnchors,
         }),
         input.sequence,
         now(),
@@ -222,7 +255,13 @@ export class DesktopNotesRepository {
       | undefined;
     return row
       ? {
-          ...(JSON.parse(row.document_json) as { title?: string; format?: 'markdown'; referenceAssetIds?: string[] }),
+          ...(JSON.parse(row.document_json) as {
+            title?: string;
+            format?: 'markdown';
+            referenceAssetIds?: string[];
+            elements?: DesktopNoteDraft['elements'];
+            commentAnchors?: DesktopNoteDraft['commentAnchors'];
+          }),
           text: row.text_content,
           expectedContentHash: row.base_hash,
           editorId: row.editor_id,
@@ -231,24 +270,6 @@ export class DesktopNotesRepository {
       : null;
   }
   private dto(row: NoteRow): DesktopNote {
-    const content = inspirationStashContentSchema.parse(JSON.parse(row.input_json));
-    const editable = true;
-    return desktopNoteSchema.parse({
-      id: row.id,
-      stashId: row.stash_id,
-      text: content.manualPrompt,
-      document: content.document,
-      contentHash: row.content_hash,
-      title: content.title ?? '',
-      displayTitle: contentDisplayTitle(content.title, content.manualPrompt),
-      albumId: row.album_id,
-      ...(content.format ? { format: content.format } : {}),
-      color: row.color,
-      icon: row.icon,
-      editable,
-      revisionId: row.revision_id,
-      references: content.referenceAssetIds.map((assetId) => ({ assetId, mediaUrl: mediaUrl(assetId) })),
-      files: content.files,
-    });
+    return { ...articleNote(this.articles.get(row.stash_id), row.id), color: row.color, icon: row.icon };
   }
 }

@@ -2,6 +2,7 @@ import { useCallback, useState } from 'react';
 import { Images } from 'lucide-react';
 import { Button } from '@/renderer/components/ui/button';
 import { PetalNoteActions } from '@/renderer/features/desktop-petals/PetalNoteActions';
+import { NoteAppearanceMenu } from '@/renderer/features/desktop-petals/NoteAppearanceMenu';
 import type { PetalNoteMenuActions } from '@/renderer/features/desktop-petals/PetalNoteMenu';
 import { NoteResizeHandle } from '@/renderer/features/desktop-petals/NoteResizeHandle';
 import { CollapsedPetal } from '@/renderer/features/desktop-petals/CollapsedPetal';
@@ -48,6 +49,7 @@ export function ContentPin({ pin, snapshot }: { pin: DesktopPin; snapshot: Deskt
       style={appearanceStyle(pin.color)}
     >
       <header className="flex shrink-0 cursor-move items-center gap-1 px-2 py-1 select-none [-webkit-app-region:drag]">
+        <NoteAppearanceMenu {...noteActions} />
         <strong className="min-w-0 flex-1 truncate text-xs">{title}</strong>
         <PetalNoteActions {...noteActions} onCollapse={() => window.desktopPetals.expand(false)} />
       </header>

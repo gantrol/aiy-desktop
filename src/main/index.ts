@@ -25,7 +25,7 @@ import { AppUpdateService } from '@/main/app/app-update-service';
 import { isPackagedApplication } from '@/main/app/runtime-mode';
 import { resolveAiyUserDataPath } from '@/main/app/user-data-path';
 import { DesktopApplicationShell } from '@/main/app/application-shell';
-import { createDesktopPetalsController } from '@/main/desktop-petals/desktop-petals-controller';
+import { createDesktopPetalsController } from '@/main/desktop-petals/create-desktop-petals-controller';
 import { WorkspaceLayoutStore } from '@/main/app/workspace-layout-store';
 import { ArticleEditorRecoveryStore } from '@/main/app/article-editor-recovery-store';
 import { TransitionPreviewCache, TRANSITION_PREVIEW_LIMIT } from '@/main/app/transition-preview-cache';
@@ -103,6 +103,7 @@ const appShell = new DesktopApplicationShell(rendererEvents, {
   allowWindowPresentation,
   drainDesktopPetals: () => desktopPetals?.drain() ?? Promise.resolve(true),
   resumeDesktopPetals: () => desktopPetals?.resume(),
+  desktopPetals: () => desktopPetals?.tray ?? null,
   onSecondInstanceArguments: (commandLine) => appDeepLinks.acceptCommandLine(commandLine),
   onOpenUrl: (url) => appDeepLinks.acceptUrl(url),
   backgroundModelTasks: transcriptBackgroundTasks,

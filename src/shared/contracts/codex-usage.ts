@@ -322,6 +322,17 @@ export const codexUsageTurnSpeedTierSummarySchema = z
   })
   .strict();
 
+export const codexUsageOfficialSpeedSchema = z
+  .object({
+    multiplier: z.number().finite().positive().nullable(),
+    source: z.enum(['CODEX_MODEL_CATALOG', 'BUNDLED_REFERENCE', 'UNKNOWN']),
+    asOf: z
+      .string()
+      .regex(/^\d{4}-\d{2}-\d{2}$/)
+      .nullable(),
+  })
+  .strict();
+
 export const codexUsageTurnSpeedComparisonSchema = z
   .object({
     model: z.string().min(1).max(200),
@@ -329,6 +340,7 @@ export const codexUsageTurnSpeedComparisonSchema = z
     standard: codexUsageTurnSpeedTierSummarySchema,
     fast: codexUsageTurnSpeedTierSummarySchema,
     actualSpeedMultiplier: z.number().finite().positive().nullable(),
+    officialSpeed: codexUsageOfficialSpeedSchema.default({ multiplier: null, source: 'UNKNOWN', asOf: null }),
   })
   .strict();
 
@@ -338,7 +350,8 @@ export const codexUsageTurnSpeedAnalysisSchema = z
     algorithmVersion: z.literal(1),
     comparisonScope: z.literal('SINGLE_NORMALIZED_MODEL_AND_REASONING_EFFORT'),
     rangeAssignment: z.literal('COMPLETION_TIMESTAMP'),
-    officialSpeedMultiplier: z.literal(1.5),
+    // Accept old reports, but never reuse their model-independent speed claim.
+    officialSpeedMultiplier: z.number().finite().positive().optional(),
     completedTurnCount: nonNegativeIntegerSchema,
     validTurnCount: nonNegativeIntegerSchema,
     comparableTurnCount: nonNegativeIntegerSchema,
@@ -347,7 +360,8 @@ export const codexUsageTurnSpeedAnalysisSchema = z
     excludedUnknownCohortTurnCount: nonNegativeIntegerSchema,
     comparisons: z.array(codexUsageTurnSpeedComparisonSchema).max(1_000),
   })
-  .strict();
+  .strict()
+  .transform(({ officialSpeedMultiplier: _legacyOfficialSpeedMultiplier, ...analysis }) => analysis);
 
 export const codexUsageSessionSourceSchema = z.enum(['USER_DIRECT', 'USER_FORK', 'SUBAGENT']);
 
@@ -705,6 +719,7 @@ export type CodexUsageTokenTotals = z.infer<typeof codexUsageTokenTotalsSchema>;
 export type CodexUsageModelBreakdown = z.infer<typeof codexUsageModelBreakdownSchema>;
 export type CodexUsageDailyBreakdown = z.infer<typeof codexUsageDailyBreakdownSchema>;
 export type CodexUsageTurnSpeedTierSummary = z.infer<typeof codexUsageTurnSpeedTierSummarySchema>;
+export type CodexUsageOfficialSpeed = z.infer<typeof codexUsageOfficialSpeedSchema>;
 export type CodexUsageTurnSpeedComparison = z.infer<typeof codexUsageTurnSpeedComparisonSchema>;
 export type CodexUsageTurnSpeedAnalysis = z.infer<typeof codexUsageTurnSpeedAnalysisSchema>;
 export type CodexUsageSessionSource = z.infer<typeof codexUsageSessionSourceSchema>;

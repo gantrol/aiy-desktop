@@ -3,7 +3,6 @@ import { Layers, Pin, Plus, Images, MoreHorizontal, Eye, EyeOff, Undo2 } from 'l
 import { PetalList } from '@/renderer/features/desktop-petals/PetalList';
 import {
   DropdownMenu,
-  DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
   DropdownMenuSeparator,
@@ -15,6 +14,8 @@ import { PinSourcePicker } from '@/renderer/features/desktop-petals/PinSourcePic
 import { RoseFlower } from '@/renderer/features/desktop-petals/RoseFlower';
 import { DockedPetal } from '@/renderer/features/desktop-petals/DockedPetal';
 import { PetalContextMenu } from '@/renderer/features/desktop-petals/PetalContextMenu';
+import { PetalCleanupMenu } from '@/renderer/features/desktop-petals/PetalCleanupMenu';
+import { PetalMenuContent } from '@/renderer/features/desktop-petals/PetalMenu';
 import { appearanceStyle } from '@/renderer/features/desktop-petals/petal-appearance';
 import { PetalHubSettingsPanel } from '@/renderer/features/desktop-petals/PetalHubSettings';
 import { FlowerCenter, flowerCenterProgress } from '@/renderer/features/desktop-petals/FlowerCenter';
@@ -138,7 +139,7 @@ export function PetalHub({ snapshot }: { snapshot: DesktopPetalSnapshot }) {
                       <MoreHorizontal />
                     </PetalIconButton>
                   </DropdownMenuTrigger>
-                  <DropdownMenuContent align="end">
+                  <PetalMenuContent align="end" className="w-56">
                     <DropdownMenuItem onSelect={() => view('sources')}>
                       <Pin />
                       {copy.board.pin}
@@ -156,7 +157,8 @@ export function PetalHub({ snapshot }: { snapshot: DesktopPetalSnapshot }) {
                       <EyeOff />
                       {copy.menu.hide}
                     </DropdownMenuItem>
-                  </DropdownMenuContent>
+                    <PetalCleanupMenu disabled={snapshot.suspended} onError={onError} />
+                  </PetalMenuContent>
                 </DropdownMenu>
               </>
             }

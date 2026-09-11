@@ -1,3 +1,4 @@
+import { articleCreationInputSchema } from '@/shared/contracts/inspiration-stash';
 import { articleMediaBindings } from '@/renderer/components/creator/article-editor/articleContentTransforms';
 import type { CreationStartPlan } from '@/renderer/components/creator/CreationStartActions';
 import type { CreationDraftPromptSnapshot } from '@/renderer/components/creator/workflows/creationDraftSnapshot';
@@ -129,7 +130,7 @@ export function useCreatorOutcomeWorkflow(options: Options) {
         targetAlbumId: snapshot.targetAlbumId,
       };
       const sourceDocument = snapshot.prompt.document ?? plainTextBlockDocument(snapshot.prompt.manualPrompt);
-      const document = captureBlockDocument(sourceDocument.root, [], true);
+      const document = captureBlockDocument(sourceDocument.root, [], !snapshot.sourceInspirationStashId);
       const mediaBindings = articleMediaBindings(snapshot.referenceAssets, 'reference');
       const inlineIds = new Set(blockDocumentAssetIds(document));
       const articleDocument = captureBlockDocument({
@@ -150,6 +151,14 @@ export function useCreatorOutcomeWorkflow(options: Options) {
           markdown: blockDocumentMarkdown(articleDocument, mediaBindings),
           mediaBindings,
           coverAssetId: snapshot.referenceAssets[0]?.id ?? null,
+          creationInput: articleCreationInputSchema.parse({
+            promptNodes: snapshot.prompt.nodes,
+            termPromptLocale: draftSnapshot.termPromptLocale,
+            termIds: draftSnapshot.termIds,
+            wordPaletteReferences: draftSnapshot.wordPaletteReferences,
+            referenceAssetIds: draftSnapshot.referenceAssetIds,
+            settings: draftSnapshot,
+          }),
         },
       });
     } catch (reason) {

@@ -27,17 +27,19 @@ export async function executeNoteFiles(
     ? notes!
     : {
         get: (id: string) => database.contentLibrary.note(id),
-        files: (id: string, expectedHash: string, files: NoteFile[]) => {
-          const { referenceAssets: _assets, ...content } = database.getInspirationStash(id).content;
-          database.saveInspirationStash({
-            mode: 'UPDATE',
-            id,
-            expectedContentHash: expectedHash,
-            consumeCreationDraftId: null,
-            content: { ...content, files },
-          });
-          return database.contentLibrary.note(id);
-        },
+        files: (id: string, expectedHash: string, files: NoteFile[]) =>
+          database.db.transaction(() => {
+            const previous = database.contentLibrary.note(id);
+            const { referenceAssets: _assets, ...content } = database.getInspirationStash(id).content;
+            database.saveInspirationStash({
+              mode: 'UPDATE',
+              id,
+              expectedContentHash: expectedHash,
+              consumeCreationDraftId: null,
+              content: { ...content, files },
+            });
+            return database.contentLibrary.inheritNoteProjection(id, previous.revisionId, previous.elements);
+          })(),
       };
   const note = await executePetalFiles(database, source, request);
   if (entry && request.kind !== 'open' && note.persisted) changed(note);

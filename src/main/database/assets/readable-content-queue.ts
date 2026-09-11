@@ -5,7 +5,7 @@ import type Database from 'better-sqlite3';
 export const readableSourceTables = {
   ARTICLE: 'articles',
   SOCIAL_POST: 'social_post_drafts',
-  INSPIRATION_STASH: 'inspiration_stashes',
+  INSPIRATION_STASH: 'articles',
   VIDEO_DOCUMENT: 'documents',
 } as const;
 type SourceRow = { source_kind: ContentSource['kind']; source_id: string };
@@ -28,7 +28,9 @@ export class ReadableContentQueue {
           "INSERT INTO readable_content_jobs(source_kind, source_id) SELECT source_kind, source_id FROM readable_content_files WHERE state IN ('PENDING', 'ERROR') ON CONFLICT(source_kind, source_id) DO NOTHING",
         )
         .run();
-      for (const [kind, table] of Object.entries(readableSourceTables)) {
+      for (const [kind, table] of Object.entries(readableSourceTables).filter(
+        ([kind]) => kind !== 'INSPIRATION_STASH',
+      )) {
         this.db
           .prepare(
             `INSERT INTO readable_content_jobs(source_kind, source_id) SELECT f.source_kind, f.source_id FROM readable_content_files f LEFT JOIN ${table} s ON s.id = f.source_id WHERE f.source_kind = ? AND f.state <> 'RETIRED' AND (s.id IS NULL OR s.deleted_at IS NOT NULL OR s.status <> 'ACTIVE') ON CONFLICT(source_kind, source_id) DO NOTHING`,
@@ -38,15 +40,17 @@ export class ReadableContentQueue {
     })();
   }
   enqueue(source: ContentSource) {
+    const kind = source.kind === 'INSPIRATION_STASH' ? 'ARTICLE' : source.kind;
     this.db
       .prepare(
         'INSERT INTO readable_content_jobs(source_kind, source_id) VALUES (?, ?) ON CONFLICT(source_kind, source_id) DO UPDATE SET generation = generation + 1, attempts = 0, retry_at = 0',
       )
-      .run(source.kind, source.id);
+      .run(kind, source.id);
   }
   changed(changes: readonly RecordedLibraryChange[]) {
     const sources = new Map<string, ContentSource>();
     const add = (kind: string, id: string) => {
+      if (kind === 'INSPIRATION_STASH') kind = 'ARTICLE';
       if (kind in readableSourceTables) sources.set(`${kind}:${id}`, { kind: kind as ContentSource['kind'], id });
     };
     const item = (id: string) => {
@@ -110,6 +114,7 @@ export class ReadableContentQueue {
       const row = this.db
         .prepare(
           `SELECT * FROM (${Object.entries(readableSourceTables)
+            .filter(([kind]) => kind !== 'INSPIRATION_STASH')
             .map(
               ([kind, table]) =>
                 `SELECT '${kind}' kind, s.id, '${kind}:' || s.id cursor FROM ${table} s WHERE s.deleted_at IS NULL AND s.status = 'ACTIVE' AND NOT EXISTS(SELECT 1 FROM readable_content_files f WHERE f.source_key = '${kind}:' || s.id AND f.state = 'ACTIVE' AND f.updated_at >= s.updated_at) AND NOT EXISTS(SELECT 1 FROM readable_content_jobs j WHERE j.source_kind = '${kind}' AND j.source_id = s.id)`,

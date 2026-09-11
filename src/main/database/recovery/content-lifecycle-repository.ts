@@ -406,6 +406,13 @@ export class ContentLifecycleRepository {
             throw new Error('Creation forms can only be moved to the recycle bin');
           }
           const resolved = this.normalizeTarget(target);
+          if (
+            action === 'DELETE' &&
+            resolved.entityType === 'IMAGE_ASSET' &&
+            this.imageAssetHasActiveContentReference(resolved.entityId)
+          ) {
+            throw new Error('IMAGE_ASSET_USED_BY_ACTIVE_CONTENT');
+          }
           if (action === 'ARCHIVE' && resolved.entityType === 'IMAGE_ASSET') {
             throw new Error('Image assets require a material identity before archiving');
           }
@@ -536,6 +543,7 @@ export class ContentLifecycleRepository {
   }
 
   private normalizeTarget(target: ContentLifecycleTarget): ContentLifecycleTarget {
+    if (target.entityType === 'INSPIRATION_STASH') return this.normalizeTarget({ ...target, entityType: 'ARTICLE' });
     if (target.scope === 'FORM') {
       if (target.entityType !== 'GIF_DOCUMENT') throw new Error('This creation form cannot be deleted separately');
       const form = this.db
@@ -589,6 +597,44 @@ export class ContentLifecycleRepository {
       )
       .get(formEntityType, target.entityId) as JsonMap | undefined;
     return row ? { entityType: 'CREATION_ITEM', entityId: text(row.creation_item_id) } : target;
+  }
+
+  private imageAssetHasActiveContentReference(assetId: string) {
+    const article = this.db
+      .prepare(
+        `SELECT 1
+        FROM articles article
+        JOIN article_revisions revision ON revision.id = article.current_revision_id
+        WHERE article.deleted_at IS NULL AND EXISTS (
+          SELECT 1
+          FROM json_each(
+            CASE WHEN json_valid(revision.content_json) THEN revision.content_json ELSE '{}' END,
+            '$.mediaBindings'
+          ) binding
+          WHERE json_extract(binding.value, '$.assetId') = ?
+        )
+        LIMIT 1`,
+      )
+      .get(assetId);
+    if (article) return true;
+    return Boolean(
+      this.db
+        .prepare(
+          `SELECT 1
+          FROM social_post_drafts draft
+          JOIN social_post_revisions revision ON revision.id = draft.current_revision_id
+          WHERE draft.deleted_at IS NULL AND EXISTS (
+            SELECT 1
+            FROM json_each(
+              CASE WHEN json_valid(revision.content_json) THEN revision.content_json ELSE '{}' END,
+              '$.mediaAssetIds'
+            ) asset
+            WHERE asset.value = ?
+          )
+          LIMIT 1`,
+        )
+        .get(assetId),
+    );
   }
 
   private snapshotGifDocument(documentId: string): Snapshot[] {
@@ -1099,7 +1145,7 @@ export class ContentLifecycleRepository {
       this.db
         .prepare(
           `UPDATE creation_items
-          SET phase = 'ACTIVE', primary_form_id = ?, updated_at = ? WHERE id = ?`,
+          SET primary_form_id = ?, updated_at = ? WHERE id = ?`,
         )
         .run(text(primary.id), timestamp, creationItemId);
     } else {
@@ -1226,7 +1272,7 @@ export class ContentLifecycleRepository {
         )
         .run(batch.changed_at, JSON.stringify(ids));
     };
-    const restoreArchived = (table: 'creations' | 'inspiration_stashes', ids: readonly string[]) => {
+    const restoreArchived = (table: 'creations' | 'articles', ids: readonly string[]) => {
       if (!ids.length) return;
       this.db
         .prepare(
@@ -1238,7 +1284,7 @@ export class ContentLifecycleRepository {
     restoreDeleted('creation_output_imports', payload.deletedImportIds);
     restoreDeleted('image_transform_runs', payload.deletedTransformIds);
     restoreArchived('creations', payload.archivedCreationIds);
-    restoreArchived('inspiration_stashes', payload.archivedInspirationStashIds);
+    restoreArchived('articles', payload.archivedInspirationStashIds);
   }
 
   private ensureRestoredArchiveBatch(batch: BatchRow) {
@@ -1417,6 +1463,9 @@ export class ContentLifecycleRepository {
 
   private async purgeBatch(batch: BatchRow) {
     const members = this.members(batch.id);
+    if (batch.root_entity_type === 'IMAGE_ASSET' && this.assetHasExternalReferences(batch.root_entity_id, null)) {
+      throw new Error('IMAGE_ASSET_PURGE_BLOCKED_BY_REFERENCES');
+    }
     const managedAssets = this.purgeableManagedAssets(members);
     if (managedAssets.length) {
       await this.synchronizeManagedFiles();

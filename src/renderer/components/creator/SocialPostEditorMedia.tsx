@@ -274,9 +274,8 @@ export function SocialPostMediaSection({
   onSetCover(assetId: string): void;
   relations: readonly CreationRelationItem[];
 }) {
-  const zh = locale === 'zh';
-  const socialCopy = useI18n().messages.creator.socialPostEditor;
   const { messages } = useI18n();
+  const socialCopy = messages.creator.socialPostEditor;
   const fileLabels = messages.assetFile;
   const moreActionsLabel = messages.creator.album.moreActions;
   const [dragTargetId, setDragTargetId] = useState<string | null>(null);
@@ -309,20 +308,20 @@ export function SocialPostMediaSection({
   }
 
   return (
-    <section className="grid gap-3">
-      <div className="flex min-h-8 flex-wrap items-center justify-between gap-2">
-        <span className="text-xs font-medium text-foreground-secondary">
-          {socialCopy.imageCount.replace('{count}', String(content.mediaAssetIds.length))}
-        </span>
+    <section
+      tabIndex={0}
+      aria-label={messages.contentEditor.media}
+      className="grid min-h-full content-start gap-3 outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
+    >
+      <div className="sticky -top-3 z-30 -mx-3 -mt-3 flex min-h-11 flex-wrap items-center justify-end gap-2 border-b bg-background px-3 py-2">
         <SocialPostMediaActions
           adding={adding}
           generatingCover={generatingCover}
           onAdd={onAdd}
           onGenerateCover={onGenerateCover}
-          zh={zh}
         />
       </div>
-      <div className="grid grid-cols-2 gap-3">
+      <div className="grid grid-cols-[repeat(auto-fill,minmax(7rem,1fr))] gap-3">
         {content.mediaAssetIds.map((assetId, index) => {
           const asset = assetsById.get(assetId);
           const cover = content.coverAssetId === assetId;
@@ -368,9 +367,7 @@ export function SocialPostMediaSection({
               onSelect: () => removeImage(assetId),
             },
           ];
-          const contextActions = actions.filter(
-            (action) => action.id !== 'social-post-media-copy' && action.id !== 'social-post-media-remove',
-          );
+          const contextActions = actions.filter((action) => action.id !== 'social-post-media-copy');
           const usageCount = relations.filter((item) => item.imageAssetIds.includes(assetId)).length;
           return (
             <figure
@@ -407,14 +404,15 @@ export function SocialPostMediaSection({
                 );
               }}
             >
-              <div className="relative aspect-square overflow-hidden rounded-lg border bg-surface-sunken">
+              <div className="relative aspect-square overflow-hidden rounded-sm bg-surface-sunken">
                 {asset ? (
                   <AssetFileContextMenu assetId={asset.id} notify={notify} actions={contextActions} draggable={false}>
-                    <button
+                    <Button
                       type="button"
+                      variant="ghost"
                       data-action="preview-social-post-image"
                       draggable
-                      className="relative size-full cursor-grab overflow-hidden outline-none active:cursor-grabbing focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
+                      className="relative size-full cursor-grab overflow-hidden rounded-none p-0 outline-none active:cursor-grabbing focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
                       title={socialCopy.imageAction}
                       aria-label={messages.contentEditor.imageActions.replace('{index}', String(index + 1))}
                       onDragStart={(event) => {
@@ -425,14 +423,16 @@ export function SocialPostMediaSection({
                         }
                       }}
                       onClick={() => setPreviewAssetId(asset.id)}
+                      onDragEnd={() => setDragTargetId(null)}
                     >
                       <img
                         src={asset.mediaUrl}
                         alt=""
                         className="pointer-events-none size-full bg-media-surround-light object-contain"
                         draggable={false}
+                        loading="lazy"
                       />
-                    </button>
+                    </Button>
                   </AssetFileContextMenu>
                 ) : (
                   <div className="grid size-full place-items-center text-xs text-muted-foreground">
@@ -442,7 +442,6 @@ export function SocialPostMediaSection({
                 <SocialPostMediaOrderHandle
                   assetId={assetId}
                   index={index}
-                  zh={zh}
                   onDragEnd={() => setDragTargetId(null)}
                   onMove={(offset) => onChangeIds(move(content.mediaAssetIds, index, offset))}
                 />

@@ -2,11 +2,13 @@ import { ContentBlockEditor } from '@/renderer/features/content-editor/ContentBl
 import {
   importVideoDocumentEditorImage,
   type ImportedEditorImage,
+  type VideoDocumentArticleElementControls,
 } from '@/renderer/features/video-documents/VideoDocumentWysiwygToolbar';
 import type { VideoDocumentWysiwygEditorHandle } from '@/renderer/features/video-documents/videoDocumentEditorTypes';
+import type { VideoDocumentArticleElementsChangeReason } from '@/renderer/features/video-documents/videoDocumentEditorPublication';
 import { useI18n } from '@/renderer/i18n/useI18n';
 import { contentAssetPath } from '@/shared/content-document';
-import type { AssetDto, CreatorImageImportSource } from '@/shared/contracts';
+import type { ArticleElementPlacementInput, AssetDto, CreatorImageImportSource } from '@/shared/contracts';
 import type { BlockDocument } from '@/shared/contracts/block-document';
 import { useMemo } from 'react';
 
@@ -23,6 +25,7 @@ interface Props {
   toolbarRoot?: HTMLDivElement | null;
   contentSource?: import('@/shared/contracts/content-library').ContentSource;
   readOnly?: boolean;
+  mediaIntake?: 'INLINE' | 'EXTERNAL';
   onChange(markdown: string): void;
   onSave(): void;
   onError(): void;
@@ -30,6 +33,12 @@ interface Props {
   importImage?(file: File, source: CreatorImageImportSource, importId?: string): Promise<ImportedEditorImage>;
   onInputPendingChange?(pending: boolean): void;
   onHandleChange?(handle: VideoDocumentWysiwygEditorHandle | null): void;
+  articleElements?: readonly ArticleElementPlacementInput[];
+  articleElementControls?: VideoDocumentArticleElementControls;
+  onArticleElementsChange?(
+    elements: readonly ArticleElementPlacementInput[],
+    reason: VideoDocumentArticleElementsChangeReason,
+  ): void;
 }
 
 /** All authoring surfaces use the same editor. The host owns saving, media and navigation. */

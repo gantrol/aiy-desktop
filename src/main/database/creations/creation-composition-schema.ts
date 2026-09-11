@@ -278,7 +278,7 @@ function ensureInspirationForms(db: Database.Database) {
     .all() as Row[];
   for (const row of rows) {
     const id = text(row.id);
-    if (formForEntity(db, 'INSPIRATION_STASH', id)) continue;
+    if (formForEntity(db, 'INSPIRATION_STASH', id) || formForEntity(db, 'ARTICLE', id)) continue;
     const parentItemId = parentItemForInspiration(
       db,
       hasLegacyParent && row.parent_series_id != null ? text(row.parent_series_id) : null,
@@ -325,7 +325,9 @@ function ensureOutcomeForms(db: Database.Database) {
     const id = text(row.id);
     if (formForEntity(db, entityType, id)) continue;
     const sourceId = row.source_inspiration_stash_id == null ? null : text(row.source_inspiration_stash_id);
-    const sourceForm = sourceId ? formForEntity(db, 'INSPIRATION_STASH', sourceId) : undefined;
+    const sourceForm = sourceId
+      ? (formForEntity(db, 'ARTICLE', sourceId) ?? formForEntity(db, 'INSPIRATION_STASH', sourceId))
+      : undefined;
     const sourceItemId = sourceForm ? text(sourceForm.creation_item_id) : null;
     if (sourceItemId && !formForRole(db, sourceItemId, role, null)) {
       addForm(db, {
@@ -470,10 +472,7 @@ function repairItemState(db: Database.Database, creationItemId: string) {
     db.prepare("UPDATE creation_items SET phase = 'DRAFT', primary_form_id = NULL WHERE id = ?").run(creationItemId);
     return;
   }
-  db.prepare("UPDATE creation_items SET phase = 'ACTIVE', primary_form_id = ? WHERE id = ?").run(
-    text(primary.id),
-    creationItemId,
-  );
+  db.prepare('UPDATE creation_items SET primary_form_id = ? WHERE id = ?').run(text(primary.id), creationItemId);
 }
 
 function retireDerivedWorkspaceImageForms(db: Database.Database) {
@@ -622,7 +621,7 @@ export function creationCompositionComplete(db: Database.Database) {
         UNION ALL
         SELECT 'IMAGE_BREAKDOWN', id FROM image_breakdowns WHERE deleted_at IS NULL
         UNION ALL
-        SELECT 'INSPIRATION_STASH', id FROM inspiration_stashes WHERE deleted_at IS NULL
+        SELECT 'INSPIRATION_STASH', id FROM inspiration_stashes WHERE deleted_at IS NULL AND NOT EXISTS (SELECT 1 FROM articles WHERE articles.id=inspiration_stashes.id)
         UNION ALL
         SELECT 'SOCIAL_POST', id FROM social_post_drafts WHERE deleted_at IS NULL
         UNION ALL
@@ -658,13 +657,13 @@ export function creationCompositionComplete(db: Database.Database) {
           SELECT 1 FROM creation_forms form
           WHERE form.creation_item_id = item.id AND form.deleted_at IS NULL
         )
-        OR (item.phase = 'DRAFT' AND (
-          item.primary_form_id IS NOT NULL OR EXISTS (
+        OR (item.phase = 'DRAFT' AND item.primary_form_id IS NULL AND (
+          EXISTS (
             SELECT 1 FROM creation_forms form
             WHERE form.creation_item_id = item.id AND form.deleted_at IS NULL AND form.role <> 'INSPIRATION'
           )
         ))
-        OR (item.phase = 'ACTIVE' AND NOT EXISTS (
+        OR ((item.phase = 'ACTIVE' OR item.primary_form_id IS NOT NULL) AND NOT EXISTS (
           SELECT 1 FROM creation_forms form
           WHERE form.id = item.primary_form_id AND form.creation_item_id = item.id
             AND form.deleted_at IS NULL

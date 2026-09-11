@@ -311,6 +311,8 @@ export type {
   ArticleCommentMutationResult,
   ArticleCommentReplyDto,
   ArticleCommentStatus,
+  ContentCommentDto,
+  ContentCommentStatus,
   ArticleContentInput,
   ArticleCopyForWechatInput,
   ArticleCopyForWechatResult,
@@ -2940,6 +2942,7 @@ export interface InspirationStashContentDto extends InspirationStashContentInput
 
 export interface InspirationStashDto {
   id: string;
+  revisionId?: string;
   albumId: string | null;
   title: string;
   displayTitle: string;
@@ -4575,7 +4578,6 @@ export interface DesktopApi
   assetFileRevealTargets(assetId: string, context?: AssetFileRevealTargetContext): Promise<AssetFileRevealTargetDto[]>;
   assetFileReveal(assetId: string, context?: AssetFileRevealContext): Promise<void>;
   assetFileOpen(assetId: string, context?: AssetFileRevealContext): Promise<void>;
-  assetDelete(assetId: string): Promise<void>;
   favoriteTextsList(): Promise<FavoriteTextMaterialDto[]>;
   favoriteAdd(target: MaterialSelectionTargetInput): Promise<FavoriteAddResult>;
   favoriteRemove(materialId: string): Promise<boolean>;

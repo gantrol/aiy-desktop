@@ -3,6 +3,11 @@ import type { CSSProperties } from 'react';
 import type { PetalColor, PetalIcon } from '@/shared/contracts/desktop-petals';
 
 export const petalColors: Record<PetalColor, { surface: string; ink: string; edge: string }> = {
+  white: {
+    surface: 'light-dark(#faf8f1,#33312c)',
+    ink: 'light-dark(#514b40,#f3eee3)',
+    edge: 'light-dark(#d6cfc0,#928878)',
+  },
   rose: {
     surface: 'light-dark(#fce9e5,#402b30)',
     ink: 'light-dark(#633a40,#fae2e5)',

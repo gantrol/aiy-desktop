@@ -14,6 +14,7 @@ export function StickyNoteSurface({
   closing = false,
   animate = true,
   nativeDrag = true,
+  appearance,
   actions,
   className,
   style,
@@ -26,6 +27,7 @@ export function StickyNoteSurface({
   closing?: boolean;
   animate?: boolean;
   nativeDrag?: boolean;
+  appearance?: ReactNode;
   actions: ReactNode;
 }) {
   const copy = useI18n().messages.desktopPetals;
@@ -46,8 +48,8 @@ export function StickyNoteSurface({
           nativeDrag ? '[-webkit-app-region:drag]' : '[-webkit-app-region:no-drag]',
         )}
       >
+        {appearance ?? <PetalNoteIcon icon={icon} className="shrink-0 opacity-60" />}
         <span className="flex min-w-0 flex-1 items-center gap-1.5 truncate text-[11px] opacity-60">
-          <PetalNoteIcon icon={icon} />
           <span>{copy.note.title}</span>
           {!editable && (
             <span title={copy.note.structured} role="img" aria-label={copy.note.structured}>

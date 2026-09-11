@@ -1,7 +1,7 @@
 import { useCallback, useEffect } from 'react';
 import type { Editor } from '@tiptap/core';
 import type { EditorView } from '@tiptap/pm/view';
-import type { ArticleCommentDto, ArticleElementPlacementInput } from '@/shared/contracts';
+import type { ContentCommentDto, ArticleElementPlacementInput } from '@/shared/contracts';
 import {
   articleElementPlacements,
   hydrateArticleElements,
@@ -32,7 +32,7 @@ export function useArticleElementEditorEffects({
       ) => void;
     };
   };
-  comments: readonly ArticleCommentDto[] | undefined;
+  comments: readonly ContentCommentDto[] | undefined;
   compositionPhase: { current: EditorCompositionPhase };
   hydrationReady: { current: boolean };
 }) {

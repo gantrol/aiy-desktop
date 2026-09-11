@@ -48,6 +48,11 @@ import {
   type VideoDocumentWysiwygPersistenceSnapshot,
 } from '@/renderer/features/video-documents/videoDocumentEditorPublication';
 import { VideoDocumentEditorSurfaces } from '@/renderer/features/video-documents/VideoDocumentEditorSurfaces';
+import {
+  articleImagePlacements,
+  moveArticleImage,
+  removeArticleImage,
+} from '@/renderer/features/video-documents/articleImageOperations';
 import type {
   VideoDocumentWysiwygEditorProps as Props,
   VideoDocumentQuickInsertNoteRequest,
@@ -223,6 +228,23 @@ function useEditorRegistration(
     let capturedComments = refs.comments.current;
     let publishedSnapshot = refs.persistence.current;
     const handle: VideoDocumentWysiwygEditorHandle = {
+      getImagePlacements: () => articleImagePlacements(editor),
+      undo: () =>
+        !editor.isDestroyed &&
+        editor.isEditable &&
+        !refs.inputs.isPending() &&
+        !refs.composition.isInputPending() &&
+        editor.commands.undo(),
+      redo: () =>
+        !editor.isDestroyed &&
+        editor.isEditable &&
+        !refs.inputs.isPending() &&
+        !refs.composition.isInputPending() &&
+        editor.commands.redo(),
+      moveImage: (elementId, targetId) =>
+        !refs.inputs.isPending() && !refs.composition.isInputPending() && moveArticleImage(editor, elementId, targetId),
+      removeImage: (elementId) =>
+        !refs.inputs.isPending() && !refs.composition.isInputPending() && removeArticleImage(editor, elementId),
       removeImageAssets: (assetIds) => {
         if (editor.isDestroyed || !editor.isEditable || !assetIds.length) return;
         const targets = new Set(assetIds);

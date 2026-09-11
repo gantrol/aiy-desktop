@@ -25,7 +25,7 @@ export function useDesktopPetalSources(
                 ? {
                     ...initialAppLocation,
                     view: 'creator',
-                    creator: { surface: 'inspiration-stash', stashId: event.id },
+                    creator: { surface: 'article', articleId: event.id },
                   }
                 : event.kind === 'MATERIAL'
                   ? {
@@ -69,6 +69,9 @@ export function useDesktopPetalSources(
           const items = current.creationItems ?? [];
           return {
             ...current,
+            articles: (current.articles ?? []).some((article) => article.id === event.article.id)
+              ? (current.articles ?? []).map((article) => (article.id === event.article.id ? event.article : article))
+              : [...(current.articles ?? []), event.article],
             inspirationStashes: stashes.some((stash) => stash.id === event.stash.id)
               ? stashes.map((stash) => (stash.id === event.stash.id ? event.stash : stash))
               : [...stashes, event.stash],
@@ -83,7 +86,7 @@ export function useDesktopPetalSources(
           openTab({
             ...initialAppLocation,
             view: 'creator',
-            creator: { surface: 'inspiration-stash', stashId: event.stash.id },
+            creator: { surface: 'article', articleId: event.article.id },
           });
       }),
     [spaceId, setData, openTab],

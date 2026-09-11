@@ -487,7 +487,7 @@ export function ResultLibrary({
       selectedDocumentId ? 'VIDEO_DOCUMENT:' + selectedDocumentId : null,
       selectedArticleId ? 'ARTICLE:' + selectedArticleId : null,
       selectedSocialPostId ? 'SOCIAL_POST:' + selectedSocialPostId : null,
-      selectedInspirationStashId ? 'INSPIRATION_STASH:' + selectedInspirationStashId : null,
+      selectedInspirationStashId ? 'ARTICLE:' + selectedInspirationStashId : null,
       selectedSeriesId ? 'PROMPT_SERIES:' + selectedSeriesId : null,
     ];
     for (const key of directRefs) {

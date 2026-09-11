@@ -38,7 +38,7 @@ export function selectedCreationItemId(
         (form.entity.kind === 'PROMPT_SERIES' && form.entity.id === selection.seriesId) ||
         (form.entity.kind === 'IMAGE_BREAKDOWN' && form.entity.id === selection.imageBreakdownId) ||
         (form.entity.kind === 'EVALUATION_SUITE' && form.entity.id === selection.evaluationSuiteId) ||
-        (form.entity.kind === 'INSPIRATION_STASH' && form.entity.id === selection.inspirationStashId) ||
+        (form.entity.kind === 'ARTICLE' && form.entity.id === selection.inspirationStashId) ||
         (form.entity.kind === 'SOCIAL_POST' && form.entity.id === selection.socialPostId) ||
         (form.entity.kind === 'ARTICLE' && form.entity.id === selection.articleId) ||
         (form.entity.kind === 'VIDEO_DOCUMENT' && form.entity.id === selection.videoDocumentId),

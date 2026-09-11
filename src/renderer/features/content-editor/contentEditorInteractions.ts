@@ -14,7 +14,7 @@ import type { Editor, EditorOptions } from '@tiptap/core';
 
 type Ref<T> = { current: T };
 interface Options {
-  props: Pick<Props, 'ariaLabel' | 'compact' | 'onInputPendingChange'>;
+  props: Pick<Props, 'ariaLabel' | 'compact' | 'mediaIntake' | 'onInputPendingChange'>;
   composition: ReturnType<typeof useVideoDocumentEditorComposition>;
   editorRef: Ref<Editor | null>;
   editorRootRef: Ref<HTMLDivElement | null>;
@@ -67,11 +67,13 @@ export function contentEditorInteractions({
         articleCallbacksRef.current.onArticleNavigationLocation,
       ),
     handlePaste: (_view, event, slice) => {
+      if (props.mediaIntake === 'EXTERNAL') return false;
       const editor = editorRef.current;
       return editor ? pasteContentImages(editor, event, slice, enqueueImages) : false;
     },
     handleDrop: (view, event, _slice, moved) => {
       if (moved) return false;
+      if (props.mediaIntake === 'EXTERNAL') return false;
       const dataTransfer = event.dataTransfer;
       if (!dataTransfer) return false;
       if (window.desktopApi && materialDrop(view, event)) {

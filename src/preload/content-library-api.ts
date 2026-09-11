@@ -9,7 +9,7 @@ import {
   type ContentLibraryCommand,
   type ContentLibraryApi,
 } from '@/shared/contracts/content-library';
-import { desktopNoteSchema } from '@/shared/contracts/desktop-petals';
+import { desktopNoteSchema, noteCommentMutationResultSchema } from '@/shared/contracts/desktop-petals';
 
 export function createContentLibraryBridge(
   invoke: (command: ContentLibraryCommand) => Promise<unknown>,
@@ -34,6 +34,8 @@ export function createContentLibraryBridge(
     noteCheckpoint: async (input) => {
       await invoke({ kind: 'note-checkpoint', input });
     },
+    noteCommentMutate: async (input) =>
+      noteCommentMutationResultSchema.parse(await invoke({ kind: 'note-comment-mutate', input })),
     reveal: async (source) => {
       await invoke({ kind: 'reveal', source });
     },

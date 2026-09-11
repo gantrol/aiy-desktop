@@ -7,7 +7,17 @@ import type { ComponentProps } from 'react';
 
 type Props = Pick<
   ComponentProps<typeof ContentInput>,
-  'compact' | 'embedded' | 'toolbarVisible' | 'toolbarRoot' | 'readOnly' | 'onHandleChange' | 'importImage' | 'onError'
+  | 'compact'
+  | 'embedded'
+  | 'toolbarVisible'
+  | 'toolbarRoot'
+  | 'readOnly'
+  | 'onHandleChange'
+  | 'importImage'
+  | 'onError'
+  | 'articleElements'
+  | 'articleElementControls'
+  | 'onArticleElementsChange'
 > & {
   session: NoteEditSession;
   state: ReturnType<NoteEditSession['getSnapshot']>;

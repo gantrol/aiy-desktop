@@ -300,8 +300,8 @@ export class CreationItemRepository {
         const form = this.insertForm(registration, timestamp);
         if (primaryRoles.has(form.role)) {
           this.db
-            .prepare("UPDATE creation_items SET phase = 'ACTIVE', primary_form_id = ? WHERE id = ?")
-            .run(form.id, creationItemId);
+            .prepare('UPDATE creation_items SET phase = ?, primary_form_id = ? WHERE id = ?')
+            .run(form.role === 'ARTICLE' ? 'DRAFT' : 'ACTIVE', form.id, creationItemId);
         }
         this.syncAlbumMembership(creationItemId, parsedInput.albumId, timestamp);
         this.storage.recordChange('CREATION_FORM', form.id, 'CREATE', {
@@ -338,7 +338,7 @@ export class CreationItemRepository {
             created: false,
           });
         }
-        if (text(itemRow.phase) === 'DRAFT' && !primaryRoles.has(parsed.role) && parsed.role !== 'INSPIRATION') {
+        if (itemRow.primary_form_id == null && !primaryRoles.has(parsed.role) && parsed.role !== 'INSPIRATION') {
           throw new Error('A draft creation item cannot contain an auxiliary visual form');
         }
         this.assertSourceForm(parsed.creationItemId, parsed.sourceFormId);
@@ -353,11 +353,11 @@ export class CreationItemRepository {
 
         const timestamp = now();
         const form = this.insertForm(parsed, timestamp);
-        if (text(itemRow.phase) === 'DRAFT' && primaryRoles.has(form.role)) {
+        if (itemRow.primary_form_id == null && primaryRoles.has(form.role)) {
           this.db
             .prepare(
               `UPDATE creation_items
-              SET phase = 'ACTIVE', primary_form_id = ?, updated_at = ? WHERE id = ?`,
+              SET primary_form_id = ?, updated_at = ? WHERE id = ?`,
             )
             .run(form.id, timestamp, parsed.creationItemId);
         } else {
@@ -386,7 +386,7 @@ export class CreationItemRepository {
     return this.db
       .transaction(() => {
         const itemRow = this.mutableItemRow(parsed.creationItemId);
-        if (text(itemRow.phase) === 'DRAFT' && !primaryRoles.has(parsed.role) && parsed.role !== 'INSPIRATION') {
+        if (itemRow.primary_form_id == null && !primaryRoles.has(parsed.role) && parsed.role !== 'INSPIRATION') {
           throw new Error('A draft creation item cannot contain an auxiliary visual form');
         }
         this.assertSourceForm(parsed.creationItemId, parsed.sourceFormId);
@@ -401,11 +401,11 @@ export class CreationItemRepository {
 
         const timestamp = now();
         const form = this.insertForm(parsed, timestamp);
-        if (text(itemRow.phase) === 'DRAFT' && primaryRoles.has(form.role)) {
+        if (itemRow.primary_form_id == null && primaryRoles.has(form.role)) {
           this.db
             .prepare(
               `UPDATE creation_items
-              SET phase = 'ACTIVE', primary_form_id = ?, updated_at = ? WHERE id = ?`,
+              SET primary_form_id = ?, updated_at = ? WHERE id = ?`,
             )
             .run(form.id, timestamp, parsed.creationItemId);
         } else {
@@ -450,7 +450,7 @@ export class CreationItemRepository {
         this.db
           .prepare(
             `UPDATE creation_items
-            SET phase = 'ACTIVE', primary_form_id = ?, updated_at = ? WHERE id = ?`,
+            SET primary_form_id = ?, updated_at = ? WHERE id = ?`,
           )
           .run(form.id, timestamp, parsed.creationItemId);
         this.storage.recordChange('CREATION_ITEM', parsed.creationItemId, 'SET_PRIMARY_FORM', {

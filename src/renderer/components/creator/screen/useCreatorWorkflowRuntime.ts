@@ -12,6 +12,7 @@ import { creationDraftSnapshotHasMeaningfulInput } from '@/renderer/components/c
 import { useCreationDraftAutosave } from '@/renderer/components/creator/workflows/useCreationDraftSession';
 import { useCreatorContentWorkflows } from '@/renderer/components/creator/workflows/useCreatorContentWorkflows';
 import { useCreatorInspirationSession } from '@/renderer/components/creator/workflows/useCreatorInspirationSession';
+import { articleCreationInputSchema } from '@/shared/contracts/inspiration-stash';
 import { useStableCallback } from '@/renderer/lib/useStableCallback';
 import type {
   BootstrapDto,
@@ -89,6 +90,20 @@ export function useCreatorWorkflowRuntime({
   const navigation = draftInput.navigation;
   const inspiration = useCreatorInspirationSession({
     capturePrompt: document.capture,
+    settings: articleCreationInputSchema.shape.settings.unwrap().parse(
+      draftInput.draftProjection.snapshotForPrompt({
+        document: document.document,
+        nodes: document.promptNodes,
+        manualPrompt: document.manualPrompt,
+        selectedTerms: document.selectedTerms,
+        appliedPalettes: document.appliedPalettes,
+      }),
+    ),
+    restoreSettings(settings) {
+      generation.dictionaryCatalog.setDictionaryScope(settings.dictionaryScope);
+      generation.setCanvasPresetKey(settings.canvasPresetKey ?? '');
+      generation.setGenerationTargets(settings.modelTargets);
+    },
     creationItems: data.creationItems,
     creationMode: selection.creationMode,
     currentSeriesId: selection.creationMode === 'existing' ? (workbench.sessionHostSeries?.id ?? null) : null,
@@ -101,7 +116,8 @@ export function useCreatorWorkflowRuntime({
       selection.contentSelection.setSelectedIdeaCreationId(null);
       selection.contentSelection.setSelectedAlbumId(null);
       projection.panes.setCompactPanel('creator');
-      navigation.commit({ surface: 'inspiration-stash', stashId: stash.id }, 'replace');
+      selection.contentSelection.setSelectedArticleId(stash.id);
+      navigation.commit({ surface: 'article', articleId: stash.id }, 'replace');
     },
     palettes: data.wordPalettes,
     promptNodes: document.promptNodes,

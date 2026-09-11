@@ -1,7 +1,6 @@
 import { AiProcessRepository } from '@/main/database/assistant/ai-process-repository';
 import { AlbumRepository } from '@/main/database/albums/album-repository';
 import { AssetFileRepository } from '@/main/database/assets/asset-file-repository';
-import { AssetLifecycleRepository } from '@/main/database/assets/asset-lifecycle-repository';
 import { AssetRelationshipRepository } from '@/main/database/assets/asset-relationship-repository';
 import { AssistantRunRepository } from '@/main/database/assistant/assistant-run-repository';
 import { CodexImageDiscoveryRepository } from '@/main/database/extensions/codex-image-discovery-repository';
@@ -67,12 +66,12 @@ export function createLibraryDatabaseRepositories(storage: LibraryStorage) {
   const intake = new IntakeRepository(storage, creationImports);
   const videoDocuments = new VideoDocumentRepository(storage);
   const creationInputStashes = new CreationInputStashRepository(storage);
-  const inspirationStashes = new InspirationStashRepository(storage);
   const imageBreakdowns = new ImageBreakdownRepository(storage);
   const evaluationSuites = new EvaluationSuiteRepository(storage);
   const socialPosts = new SocialPostRepository(storage);
   const articleRevisionPacks = new ArticleRevisionPackStore(storage);
   const articles = new ArticleRepository(storage, articleRevisionPacks);
+  const inspirationStashes = new InspirationStashRepository(storage, articles);
   const articleChecks = new ArticleCheckRunRepository(storage, articles);
   const derivedVisuals = new DerivedVisualRepository(storage, intake, articles, socialPosts, creationItems);
   const creatorAgent = new CreatorAgentRepository(storage);
@@ -95,7 +94,6 @@ export function createLibraryDatabaseRepositories(storage: LibraryStorage) {
   const ratings = new RatingRepository(storage);
   const gallery = new GalleryRepository(storage);
   const assetFiles = new AssetFileRepository(storage);
-  const assetLifecycle = new AssetLifecycleRepository(storage);
   const libraryFileView = new LibraryFileViewRepository(storage);
   const recycleBin = new RecycleBinRepository(storage, () => libraryFileView.synchronizeBeforeObjectPurge());
   const contentLifecycle = new ContentLifecycleRepository(storage, () =>
@@ -120,7 +118,6 @@ export function createLibraryDatabaseRepositories(storage: LibraryStorage) {
     aiProcesses,
     albums,
     assetFiles,
-    assetLifecycle,
     assetRelationships,
     assistantRuns,
     backgroundIssues,

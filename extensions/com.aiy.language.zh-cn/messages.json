@@ -103,6 +103,30 @@
     "format": "调试格式"
   },
   "contentEditor": {
+    "previewImage": "预览第 {index} 张图片",
+    "imageMenu": "图片 {index} 的操作",
+    "reorderImage": "移动图片 {index}",
+    "locateImage": "在正文中定位",
+    "moveImageEarlier": "向前移动",
+    "moveImageLater": "向后移动",
+    "moveImageFirst": "移到首位",
+    "moveImageLast": "移到末位",
+    "moveImageTo": "移到指定位置",
+    "moveImageApply": "移动",
+    "articleCover": "封面",
+    "useAsArticleCover": "设为封面",
+    "removeArticleCover": "移除封面",
+    "imagePosition": "图片位置",
+    "removeImageOccurrence": "移除此处图片",
+    "imageMoved": "图片已移至第 {index} 位，共 {count} 张",
+    "imageMoveFailed": "暂时无法修改图片，请等待编辑完成后重试。",
+    "smallThumbnails": "小缩略图",
+    "largeThumbnails": "大缩略图",
+    "resizePanelWidth": "面板宽度",
+    "resizePanelHeight": "面板高度",
+    "resetPanelSize": "重置尺寸",
+    "maximizePanel": "放大面板",
+    "restorePanel": "还原面板",
     "pastedLinkActions": "粘贴的链接",
     "keepLink": "保留链接",
     "codexLinkCard": "Codex 任务",
@@ -118,9 +142,11 @@
     "removeImage": "移除图片",
     "media": "配图",
     "comments": "评论",
+    "files": "附件",
     "outline": "目录",
     "collapse": "收起面板",
     "expand": "展开面板",
+    "resizePanel": "调整面板尺寸",
     "standardWidth": "标准宽度",
     "wideWidth": "宽版",
     "closePane": "关闭分栏",
@@ -133,6 +159,14 @@
     "unavailableRecipe": "配方“{name}”的配置已失效，请重新应用",
     "imageAdded": "已添加 {count} 张图片",
     "partialImageImport": "已添加 {count} 张，其余图片导入失败：{detail}",
+    "mediaIntake": {
+      "onlyImages": "这里只能添加图片",
+      "importing": "图片仍在导入",
+      "alreadyAttached": "这些图片已添加",
+      "selectionAttached": "所选图片已添加",
+      "imageLimit": "最多可添加 {count} 张图片",
+      "imageLimitReached": "已达到 {count} 张上限"
+    },
     "untitledSocialPost": "未命名图文",
     "untitledCreation": "新创作",
     "creationStarted": "已开启创作",
@@ -150,7 +184,38 @@
     "bodyRight": "图文正文（右侧分屏）",
     "imageActions": "第 {index} 张图片：拖动调整顺序或导出，单击放大",
     "addVideos": "添加视频",
-    "referenceLimit": "最多添加 8 张参考图"
+    "referenceLimit": "最多添加 8 张参考图",
+    "comment": {
+      "list": "评论列表",
+      "none": "没有评论",
+      "open": "待处理 {count}",
+      "resolved": "已解决 {count}",
+      "rejected": "已拒绝 {count}",
+      "all": "全部 {count}",
+      "relocated": "原文已删除，已附到相邻位置",
+      "missing": "原文已删除，附近没有可附着的位置",
+      "empty": "空评论",
+      "replies": "{count} 条回复",
+      "resolve": "解决评论",
+      "reject": "拒绝意见",
+      "reopen": "重新打开评论",
+      "emptyBlock": "空内容块",
+      "new": "新评论",
+      "add": "添加评论",
+      "cancel": "取消",
+      "submit": "评论",
+      "edit": "编辑评论",
+      "delete": "删除评论",
+      "close": "关闭评论",
+      "body": "评论正文",
+      "save": "保存",
+      "reply": "回复",
+      "sendReply": "发送回复",
+      "quickAdd": "添加评论",
+      "history": "编辑历史",
+      "previousEdit": "上一处编辑",
+      "nextEdit": "下一处编辑"
+    }
   },
   "maintenanceGuide": {
     "projects": "项目",
@@ -326,6 +391,10 @@
       "hideAll": "隐藏全部花瓣",
       "gallery": "花花图集"
     },
+    "cleanup": {
+      "title": "按颜色清理便签",
+      "action": "清理{color}便签"
+    },
     "board": {
       "title": "桌面图层",
       "defaultLayer": "默认",
@@ -392,8 +461,8 @@
       "windowTitle": "AIY贴贴便签",
       "newTitle": "新便签",
       "open": "打开AIY贴贴便签：{title}",
-      "duplicate": "同一随记再放一份",
-      "openSource": "在 AIY 中打开这条随记",
+      "duplicate": "同一文章再放一份",
+      "openSource": "在 AIY 中打开这条文章",
       "collapse": "收起成花瓣",
       "hide": "从桌面移除，保留正文",
       "body": "便利贴正文",
@@ -419,6 +488,7 @@
       "icons": "花瓣与便利贴图标",
       "changeIcon": "更换花瓣图标",
       "color": {
+        "white": "奶白色",
         "rose": "浅桃",
         "cream": "奶油",
         "sage": "鼠尾草",
@@ -490,7 +560,7 @@
       "layerLimit": "最多添加 8 个图层。",
       "sourceUnavailable": "便利贴来源已归档、删除或不可用",
       "emptyNote": "写下内容后才会创建灵感",
-      "structuredNote": "此随记包含结构化内容，请在 AIY 中编辑",
+      "structuredNote": "此文章包含结构化内容，请在 AIY 中编辑",
       "saving": "正在保存便利贴，请稍后操作",
       "libraryUnavailable": "资料库暂时不可用，请稍候",
       "wrongLibrary": "请返回便利贴所属资料库后继续",
@@ -609,7 +679,15 @@
       "missingImage": "正文中的图片不在附件列表中",
       "numbering": "chinese",
       "more": "加载更多",
-      "materials": "编辑关联素材"
+      "materials": "编辑关联素材",
+      "creationInput": "创作输入",
+      "draftSaved": "已保存草稿",
+      "reopenDraft": "请重新打开文章以确认保存基线，当前输入仍保留",
+      "itemUnavailable": "所属创作项不可用",
+      "stash": "暂存",
+      "stashing": "暂存中",
+      "stashed": "已暂存",
+      "stashEmpty": "输入内容后可暂存"
     },
     "externalApplications": {
       "optional": "扩展 · 可选",
@@ -666,12 +744,6 @@
     "addToCurrentAlbum": "加入当前图集",
     "open": "用默认应用打开",
     "saved": "图片已保存",
-    "delete": "删除素材",
-    "deleteTitle": "删除这项素材？",
-    "deleteDescription": "素材会进入回收站并保留 30 天；永久清理前保留历史关系。",
-    "cancel": "取消",
-    "confirmDelete": "删除",
-    "deleted": "素材已移至回收站",
     "referenceLimit": "一项创作最多可包含 8 张参考图",
     "failed": "文件操作失败"
   },
@@ -879,10 +951,10 @@
       "promptSeries": "图像创作",
       "imageBreakdown": "图片拆解",
       "ideaCreation": "构思创作",
-      "inspirationStash": "灵感",
+      "inspirationStash": "文章",
       "evaluationSuite": "评测集",
       "socialPost": "图文",
-      "article": "图文",
+      "article": "文章",
       "videoDocument": "视频文稿",
       "imageMaterial": "图片",
       "videoMaterial": "视频",
@@ -939,6 +1011,7 @@
       "permanentlyDeleted": "内容已永久删除",
       "cleared": "回收站已清空",
       "failed": "内容操作失败",
+      "assetInUse": "请先从仍在使用这张图的图文中移除，再删除素材。",
       "stale": "内容已变化，列表已刷新"
     }
   },
@@ -1630,7 +1703,7 @@
         }
       },
       "v050": {
-        "title": "AIY v0.5.0",
+        "title": "AIY v0.5.1",
         "noteText": "送她一些玫瑰花",
         "prepared": "预制演示",
         "sourceImage": "参考图",
@@ -1690,7 +1763,7 @@
           "outroDesktop": "粉红桌面",
           "outroGeneration": "生成说明",
           "outroOrigins": "以人为主",
-          "outroBrand": "AIY v0.5.0",
+          "outroBrand": "AIY v0.5.1",
           "outroDownloads": "获取 AIY",
           "outroExit": "托盘退出"
         }
@@ -2194,9 +2267,14 @@
       },
       "turnSpeed": {
         "title": "Fast 与 Standard 完成轮次耗时",
-        "official": "官方模型速度",
         "actualSpeed": "实测倍速",
-        "officialSpeed": "官方模型速度",
+        "officialSpeed": "当前官方模型速度",
+        "unknownOfficialSpeed": "未知",
+        "officialSources": {
+          "CODEX_MODEL_CATALOG": "Codex 模型目录",
+          "BUNDLED_REFERENCE": "内置参考",
+          "UNKNOWN": "来源未知"
+        },
         "standardMedian": "Standard 中位耗时",
         "fastMedian": "Fast 中位耗时",
         "cohort": "同模型 / 推理强度",
@@ -2959,7 +3037,7 @@
         "replaceImage": "替换图片",
         "imageAltText": "编辑替代文本",
         "applyImageAltText": "应用替代文本",
-        "removeImage": "从文章移除"
+        "removeImage": "从图文移除"
       }
     },
     "noRevision": "尚未生成修订。",
@@ -4326,6 +4404,7 @@
       "autosaveFailed": "自动保存失败，点击重试",
       "retryAutosave": "重试自动保存",
       "waitingToAutosave": "等待自动保存",
+      "viewOptions": "视图选项",
       "splitEditor": "分栏编辑",
       "newerRevision": "图文已有新版本，当前修改已保留。",
       "keepDraftAndLoad": "保留草稿并载入新版本"
@@ -5659,6 +5738,9 @@
       }
     },
     "socialPostEditor": {
+      "createCover": "制作封面",
+      "addImages": "添加图片",
+      "reorderImage": "拖动第 {index} 张图片调整顺序",
       "onlyImages": "这里只能添加图片",
       "importing": "图片仍在导入",
       "alreadyAttached": "这些图片已在当前图文中",
@@ -5686,17 +5768,24 @@
       "markdownExported": "已导出 Markdown",
       "articleForked": "已基于当前版本新建图文",
       "articleCreated": "已新建图文",
-      "inspirationUnavailable": "灵感所属创作项不可用",
+      "inspirationUnavailable": "来源文章不可用",
       "articleTitleUpdated": "图文标题已更新",
       "articleConverted": "已转为图文",
       "imageLimit": "一份图文最多包含 {count} 张组图",
       "imageLimitReached": "已达到 {count} 张上限",
       "imageCount": "图片 · {count}",
-      "usageCount": "用于 {count}"
+      "usageCount": "用于 {count}",
+      "wechatCopied": "已复制公众号正文",
+      "wechatLinkReferences": "；{count} 个链接已转为文末引用",
+      "wechatRemoteImages": "；{count} 张网络图片需在公众号中确认"
     }
   },
   "appShell": {
     "open": "打开 AIY",
+    "petals-open": "打开花花",
+    "petals-show-all": "展开全部花瓣",
+    "petals-hide-all": "收起全部花瓣",
+    "petals-settings": "花花设置",
     "starting": "正在启动…",
     "tasksRunning": "后台任务：{count} 个运行中",
     "tasksIdle": "后台任务：空闲",

@@ -55,6 +55,7 @@ interface Options {
 export function useCreatorContentNavigation(options: Options) {
   const animation = useGifMakerLauncher();
   const labels = useI18n().messages.creator.workNavigation;
+  const unavailableMessage = useI18n().messages.desktopPetals.document.itemUnavailable;
   const resetOutput = useStableCallback(() => {
     options.setOutputMode('results');
     options.setRequestedAssetId(null);
@@ -89,9 +90,9 @@ export function useCreatorContentNavigation(options: Options) {
   const chooseInspirationStash = useStableCallback(async (id: string, mode: NavigationMode | null = 'push') => {
     const stash = (options.data.inspirationStashes ?? []).find((item) => item.id === id);
     if (!stash) return false;
-    const item = creationItemByFormEntity(options.data.creationItems, 'INSPIRATION_STASH', stash.id);
+    const item = creationItemByFormEntity(options.data.creationItems, 'ARTICLE', stash.id);
     if (!item) {
-      options.notify(options.locale === 'zh' ? '灵感所属创作项不可用' : 'The inspiration creation item is unavailable');
+      options.notify(unavailableMessage);
       return false;
     }
     const hostSeriesId = imageSeriesIdForCreationItem(item);

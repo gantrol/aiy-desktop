@@ -5,6 +5,8 @@ import {
   desktopNoteDraftDtoSchema,
   desktopNoteSaveSchema,
   desktopNoteSchema,
+  noteCommentMutationInputSchema,
+  noteCommentMutationResultSchema,
 } from '@/shared/contracts/desktop-petals';
 
 const id = z.string().min(1).max(200);
@@ -83,6 +85,7 @@ export const contentLibraryCommandSchema = z.discriminatedUnion('kind', [
   z.object({ kind: z.literal('note-open'), id }).strict(),
   z.object({ kind: z.literal('note-save'), input: desktopNoteSaveSchema }).strict(),
   z.object({ kind: z.literal('note-checkpoint'), input: desktopNoteDraftSchema }).strict(),
+  z.object({ kind: z.literal('note-comment-mutate'), input: noteCommentMutationInputSchema }).strict(),
   z.object({ kind: z.literal('reveal'), source: contentSourceSchema }).strict(),
 ]);
 export type ContentLibraryCommand = z.infer<typeof contentLibraryCommandSchema>;
@@ -102,6 +105,9 @@ export interface ContentLibraryApi {
   noteOpen(id: string): Promise<z.infer<typeof contentNoteOpenSchema>>;
   noteSave(input: z.infer<typeof desktopNoteSaveSchema>): Promise<z.infer<typeof desktopNoteSchema>>;
   noteCheckpoint(input: z.infer<typeof desktopNoteDraftSchema>): Promise<void>;
+  noteCommentMutate(
+    input: z.infer<typeof noteCommentMutationInputSchema>,
+  ): Promise<z.infer<typeof noteCommentMutationResultSchema>>;
   reveal(source: ContentSource): Promise<void>;
 }
 

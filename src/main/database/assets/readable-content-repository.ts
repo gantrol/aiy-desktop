@@ -152,7 +152,10 @@ export class ReadableContentRepository {
   }
   ensure(source: ContentSource): Promise<string> {
     // Reveal always uses the saved current document, even when initiated from a historical citation.
-    const latest: ContentSource = { kind: source.kind, id: source.id };
+    const latest: ContentSource = {
+      kind: source.kind === 'INSPIRATION_STASH' ? 'ARTICLE' : source.kind,
+      id: source.id,
+    };
     const operation = this.running
       .catch(() => undefined)
       .then(async () => {

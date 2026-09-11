@@ -1,6 +1,7 @@
 import { requestPetalFlush } from '@/main/desktop-petals/petal-editor-flush';
 import { createPetalNote } from '@/main/desktop-petals/petal-create-command';
-import { executePetalHubCommand } from '@/main/desktop-petals/petal-hub-commands';
+import { executePetalHubCommand, hubCommands } from '@/main/desktop-petals/petal-hub-commands';
+import { removePetalPlacement } from '@/main/desktop-petals/petal-note-removal';
 import { executePetalPreview } from '@/main/desktop-petals/petal-content-preview';
 import { contentImageImports } from '@/main/creations/content-image-imports';
 import { linkPreviews, openLinkCard } from '@/main/links/link-preview-service';
@@ -45,35 +46,16 @@ import { PetalDrawerService } from '@/main/desktop-petals/petal-drawer-service';
 import { petalDrawerCommandSchema } from '@/shared/contracts/petal-drawer';
 import { z } from 'zod';
 
+import { createPetalTrayBridge } from '@/main/desktop-petals/petal-tray-bridge';
+
 interface Options {
   userDataRoot: string;
   getMainWindow(): BrowserWindow | null;
   getContext(): ActiveLibraryContext | null;
   allowPresentation: boolean;
+  onTrayStateChanged(): void;
 }
-const hubCommands = new Set([
-  'hub-view',
-  'configure-hub',
-  'timer-action',
-  'hub-quota',
-  'show-all',
-  'hide-all',
-  'hide-petals',
-  'reload',
-]);
 const noteCommands = new Set(['save', 'checkpoint', 'appearance']);
-
-export function createDesktopPetalsController(
-  shell: { mainWindow: BrowserWindow | null; activeLibraryContext: ActiveLibraryContext | null },
-  allowPresentation: boolean,
-) {
-  return new DesktopPetalsController({
-    userDataRoot: app.getPath('userData'),
-    getMainWindow: () => shell.mainWindow,
-    getContext: () => shell.activeLibraryContext,
-    allowPresentation,
-  });
-}
 
 /** Owns a narrow IPC surface. Petal windows never receive the main-window API. */
 export class DesktopPetalsController {
@@ -169,6 +151,18 @@ export class DesktopPetalsController {
       },
     );
   }
+  readonly tray = createPetalTrayBridge({
+    ready: () => this.ready,
+    available: () =>
+      this.options.allowPresentation &&
+      !this.suspended &&
+      !this.restorePromise &&
+      Boolean(this.notes && this.board) &&
+      this.options.getContext()?.state === 'ACTIVE',
+    context: () => this.context(),
+    execute: (command, input, context) => this.executeHub(command, input, context),
+    changed: () => this.options.onTrayStateChanged(),
+  });
   private sender(event: IpcMainInvokeEvent) {
     const entry = this.windows.entries.get(event.sender.id);
     const main = this.options.getMainWindow();
@@ -328,7 +322,17 @@ export class DesktopPetalsController {
         if (entry) await this.windows.hide(entry);
         return;
       case 'remove':
-        return this.removePlacement(context, entry);
+        return removePetalPlacement(
+          {
+            windows: this.windows,
+            board: this.board!,
+            flushNote: (current) => this.flushEntry(current),
+            removeNote: (id) => this.removeNoteWindow(context.library.id, id),
+            changed: () => this.changed(),
+          },
+          context,
+          entry,
+        );
       case 'main':
         return this.openSourceWindow(context, entry);
       default:
@@ -400,24 +404,6 @@ export class DesktopPetalsController {
       this.changed();
     }
     return result;
-  }
-  private async removePlacement(context: ActiveLibraryContext, entry?: PetalWindow) {
-    if (!entry?.instanceId) throw petalError('sourceUnavailable');
-    try {
-      if (!(await this.flushEntry(entry))) throw petalError('unsaved');
-      if (isContentPinId(entry.instanceId)) await this.board!.run({ kind: 'unpin', id: entry.instanceId });
-      else {
-        context.database.removeDesktopNote(entry.instanceId);
-        this.removeNoteWindow(context.library.id, entry.instanceId);
-        await this.windows.flush();
-        this.changed();
-      }
-    } finally {
-      if (!entry.window.isDestroyed()) {
-        entry.editEpoch++;
-        entry.window.webContents.send('desktop-petals:changed');
-      }
-    }
   }
   private async executeContentAction(input: unknown, context: ActiveLibraryContext, entry?: PetalWindow) {
     const request = codexContentCommandSchema.parse(input);
@@ -609,6 +595,13 @@ export class DesktopPetalsController {
         drain: () => this.drain(),
         resume: () => this.resume(),
         activate: (next) => this.activate(next),
+        notes: this.notes!,
+        flushNote: (current) => this.flushEntry(current, true),
+        removeNote: (id) => this.removeNoteWindow(context.library.id, id),
+        suspend: () => {
+          this.suspended = true;
+        },
+        restoration: this.restorePromise,
       },
       command,
       input,
@@ -658,6 +651,7 @@ export class DesktopPetalsController {
     });
   }
   changed() {
+    this.tray.update();
     this.drawer?.invalidate();
     for (const { window } of this.windows.entries.values())
       if (!window.isDestroyed() && window.isVisible()) window.webContents.send('desktop-petals:changed');
@@ -762,6 +756,7 @@ export class DesktopPetalsController {
     context.database.petalBoard.reconcile();
     const board = this.board.snapshot();
     const ids = [...context.database.listDesktopNoteIds(), ...board.pins.map((pin) => pin.id)];
+    this.windows.layouts.migrateArticlePins(context.library.id, ids);
     this.windows.layouts.prune(context.library.id, ids);
     this.dragOrigins.clear();
     this.windows.allowClose = false;
@@ -785,8 +780,12 @@ export class DesktopPetalsController {
     const startRestoring = () => {
       const pending = restore();
       this.restorePromise = pending;
+      this.changed();
       return pending.finally(() => {
-        if (this.restorePromise === pending) this.restorePromise = null;
+        if (this.restorePromise === pending) {
+          this.restorePromise = null;
+          this.changed();
+        }
       });
     };
     if (restoreAfter) {

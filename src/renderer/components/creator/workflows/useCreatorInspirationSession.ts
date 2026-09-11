@@ -18,6 +18,8 @@ import type {
 
 interface Options {
   capturePrompt(): CreationDraftPromptSnapshot;
+  settings: NonNullable<InspirationStashContentInput['settings']>;
+  restoreSettings(settings: NonNullable<InspirationStashContentInput['settings']>): void;
   creationItems: readonly CreationItemDto[];
   creationMode: 'existing' | 'new';
   currentSeriesId: string | null;
@@ -50,6 +52,8 @@ function currentContent(options: Options, prompt: CreationDraftPromptSnapshot): 
   const title = options.creationMode === 'new' ? options.title : options.selectedStash?.content.title;
   return {
     schemaVersion: 1,
+    settings: options.settings,
+    ...(options.selectedStash?.content.files ? { files: options.selectedStash.content.files } : {}),
     ...(title || options.selectedStash?.content.title !== undefined ? { title } : {}),
     ...(options.selectedStash?.content.format ? { format: options.selectedStash.content.format } : {}),
     ...(prompt.document ? { schemaVersion: 2, document: prompt.document } : {}),
@@ -59,8 +63,23 @@ function currentContent(options: Options, prompt: CreationDraftPromptSnapshot): 
       ...new Set([...options.referenceAssetIds, ...(prompt.document ? blockDocumentAssetIds(prompt.document) : [])]),
     ],
     termPromptLocale: options.termPromptLocale,
-    termIds: prompt.selectedTerms.map((term) => term.id),
-    wordPaletteReferences: options.wordPaletteReferences.map((reference) => ({
+    termIds: [
+      ...new Set([
+        ...prompt.selectedTerms.map((term) => term.id),
+        ...(options.selectedStash?.content.termIds.filter((id) => !options.terms.some((term) => term.id === id)) ?? []),
+      ]),
+    ],
+    wordPaletteReferences: [
+      ...options.wordPaletteReferences,
+      ...(options.selectedStash?.content.wordPaletteReferences.filter(
+        (reference) =>
+          !options.palettes.some(
+            (palette) =>
+              palette.id === reference.paletteId &&
+              palette.revisions.some((revision) => revision.id === reference.paletteRevisionId),
+          ),
+      ) ?? []),
+    ].map((reference) => ({
       ...reference,
       parameterValues: { ...reference.parameterValues },
     })),
@@ -98,6 +117,7 @@ export function useCreatorInspirationSession(options: Options) {
   const restore = useStableCallback((stash: InspirationStashDto) => {
     const { referenceAssets, ...content } = stash.content;
     options.onTitleChange(content.title ?? '');
+    if (content.settings) options.restoreSettings(content.settings);
     const selectedTerms = content.termIds.flatMap((termId) => options.terms.find((term) => term.id === termId) ?? []);
     const appliedPalettes = content.wordPaletteReferences.flatMap((reference) => {
       const palette = options.palettes.find((item) => item.id === reference.paletteId);
@@ -119,7 +139,7 @@ export function useCreatorInspirationSession(options: Options) {
       appliedPalettes,
       termPromptLocale: content.termPromptLocale,
     });
-    workflow.rememberSavedContent(content, stash.contentHash);
+    workflow.rememberSavedContent(content, stash.contentHash, stash.revisionId);
   });
 
   const stash = useStableCallback(async () => {

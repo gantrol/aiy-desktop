@@ -96,9 +96,7 @@ export function CreatorReferenceImageCard({
       onSelect: () => onRemove(asset.id),
     },
   ];
-  const contextActions = actions.filter(
-    (action) => action.id !== 'creator-reference-copy' && action.id !== 'creator-reference-remove',
-  );
+  const contextActions = actions.filter((action) => action.id !== 'creator-reference-copy');
 
   return (
     <figure

@@ -1,362 +1,124 @@
+import { createHash } from 'node:crypto';
 import { ensureDefaultNotesAlbum } from '@/main/database/albums/default-notes-album';
 import type { LibraryStorage } from '@/main/database/core/storage';
-import { type JsonMap, mediaUrl, now, text } from '@/main/database/core/values';
+import { now } from '@/main/database/core/values';
 import { CreationItemRepository } from '@/main/database/creations/creation-item-repository';
-import { appendInspirationRevision } from '@/main/database/creations/inspiration-history';
-import { ContentLifecycleRepository } from '@/main/database/recovery/content-lifecycle-repository';
-import { contentDisplayTitle } from '@/shared/content-document';
+import type { ArticleRepository } from '@/main/database/creations/article-repository';
+import { articleDraftContent, articleDraftDto } from '@/shared/article-draft';
+import { canonicalArticleContentJson } from '@/shared/contracts/article';
 import type {
-  AssetDto,
-  InspirationStashContentDto,
-  InspirationStashContentInput,
   InspirationStashDto,
-  InspirationStashMoveInput,
   InspirationStashSaveInput,
+  InspirationStashMoveInput,
   InspirationStashSetArchivedInput,
 } from '@/shared/contracts';
-import { assertBlockDocumentReady } from '@/shared/contracts/block-document';
-import { inspirationStashContentSchema } from '@/shared/contracts/inspiration-stash';
-import { createHash } from 'node:crypto';
 import { ulid } from 'ulid';
 
-function assetDto(row: JsonMap): AssetDto {
-  const id = text(row.id);
-  return {
-    id,
-    kind: text(row.kind) as AssetDto['kind'],
-    originType: text(row.origin_type),
-    width: Number(row.width),
-    height: Number(row.height),
-    mimeType: text(row.mime_type),
-    byteSize: Number(row.byte_size),
-    mediaUrl: mediaUrl(id),
-    createdAt: text(row.created_at),
-  };
-}
-
-function normalizedContent(input: InspirationStashContentInput): InspirationStashContentInput {
-  assertBlockDocumentReady(input.document);
-  return inspirationStashContentSchema.parse({
-    ...input,
-    promptNodes: input.promptNodes.map((node) => ({ ...node })),
-    referenceAssetIds: [...input.referenceAssetIds],
-    termIds: [...input.termIds],
-    wordPaletteReferences: input.wordPaletteReferences.map((reference) => ({
-      ...reference,
-      parameterValues: { ...reference.parameterValues },
-    })),
-  });
-}
-
-function parseStoredContent(value: unknown) {
-  if (typeof value !== 'string') throw new Error('Stored inspiration stash is invalid');
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(value) as unknown;
-  } catch {
-    throw new Error('Stored inspiration stash is invalid');
-  }
-  return inspirationStashContentSchema.parse(parsed);
-}
-
-function canonicalContentJson(content: InspirationStashContentInput) {
-  return JSON.stringify(content);
-}
-
-function contentHash(content: InspirationStashContentInput) {
-  return createHash('sha256').update(canonicalContentJson(content)).digest('hex');
-}
-
-export function rehomeInspirationStashesForAlbum(storage: LibraryStorage, albumId: string) {
-  const rows = storage.db
-    .prepare(
-      `SELECT id FROM inspiration_stashes
-      WHERE album_id = ? AND deleted_at IS NULL`,
-    )
-    .all(albumId) as JsonMap[];
-  if (rows.length === 0) return;
-  const updatedAt = now();
-  storage.db
-    .prepare(
-      `UPDATE inspiration_stashes
-      SET album_id = NULL, updated_at = ?
-      WHERE album_id = ? AND deleted_at IS NULL`,
-    )
-    .run(updatedAt, albumId);
-  for (const row of rows) {
-    storage.recordChange('INSPIRATION_STASH', text(row.id), 'REHOME_ALBUM', { albumId: null });
-  }
-}
-
+/** Compatibility API for saved generation inputs. Articles are the sole writable authority. */
 export class InspirationStashRepository {
-  constructor(private readonly storage: LibraryStorage) {}
-
-  private get db() {
-    return this.storage.db;
-  }
-
-  list(): InspirationStashDto[] {
-    const rows = this.db
-      .prepare(
-        `SELECT * FROM inspiration_stashes
-        WHERE status = 'ACTIVE' AND deleted_at IS NULL
-        ORDER BY updated_at DESC, id DESC`,
-      )
-      .all() as JsonMap[];
-    return rows.map((row) => this.dto(row));
-  }
-
+  constructor(
+    private readonly storage: LibraryStorage,
+    private readonly articles: ArticleRepository,
+  ) {}
   get(id: string): InspirationStashDto {
-    return this.dto(this.row(id));
+    return articleDraftDto(this.articles.get(id));
   }
-
+  list(): InspirationStashDto[] {
+    return this.articles
+      .list()
+      .filter((article) => article.content.creationInput)
+      .map(articleDraftDto);
+  }
   save(input: InspirationStashSaveInput): InspirationStashDto {
-    return this.db.transaction(() => {
-      const creationItems = new CreationItemRepository(this.storage);
-      const targetItem = input.mode === 'ADD_FORM' ? creationItems.get(input.creationItemId) : null;
-      if (targetItem) {
-        if (targetItem.lifecycle !== 'ACTIVE') throw new Error('Archived creation items cannot be changed');
-        const existingForm = creationItems.findForm(targetItem.id, 'INSPIRATION', null);
-        if (existingForm) {
-          if (existingForm.entity.kind !== 'INSPIRATION_STASH') {
-            throw new Error('The existing inspiration form has an invalid entity');
-          }
-          return this.finalizeSave(this.get(existingForm.entity.id), input.consumeCreationDraftId);
-        }
-      }
-      const content = normalizedContent(input.content);
-      this.assertReferencesAvailable(content.referenceAssetIds);
-      const hash = contentHash(content);
-      const contentJson = canonicalContentJson(content);
-      const updatedAt = now();
-
+    return this.storage.db.transaction(() => {
       if (input.mode === 'UPDATE') {
-        const existing = this.db
-          .prepare(
-            `SELECT * FROM inspiration_stashes
-            WHERE id = ? AND status = 'ACTIVE' AND deleted_at IS NULL`,
-          )
-          .get(input.id) as JsonMap | undefined;
-        if (!existing) throw new Error('Inspiration stash is no longer available');
-        if (this.dto(existing).content.document && !content.document) throw new Error('BLOCK_DOCUMENT_REQUIRED');
-        if (text(existing.content_hash) === hash) {
-          return this.finalizeSave(this.dto(existing), input.consumeCreationDraftId);
-        }
-        if (text(existing.content_hash) !== input.expectedContentHash) {
-          throw new Error('随记已在其他窗口修改；当前文字已保留，请核对后再保存');
-        }
-        appendInspirationRevision(
-          this.db,
-          input.id,
-          text(existing.input_json),
-          text(existing.content_hash),
-          text(existing.updated_at),
-        );
-        this.db
-          .prepare(
-            `UPDATE inspiration_stashes
-            SET input_json = ?, content_hash = ?, updated_at = ?
-            WHERE id = ?`,
-          )
-          .run(contentJson, hash, updatedAt, input.id);
-        appendInspirationRevision(this.db, input.id, contentJson, hash, updatedAt);
-        const item = creationItems.findForEntity({ kind: 'INSPIRATION_STASH', id: input.id });
-        if (!item) throw new Error('The inspiration creation item is unavailable');
-        creationItems.touchForEntity({ kind: 'INSPIRATION_STASH', id: input.id }, updatedAt);
-        this.storage.recordChange('INSPIRATION_STASH', input.id, 'UPDATE', {
-          contentHash: hash,
-        });
-        return this.finalizeSave(this.dto(this.row(input.id)), input.consumeCreationDraftId);
+        const article = this.articles.get(input.id);
+        const content = articleDraftContent(input.content, article.content);
+        const same = canonicalArticleContentJson(content) === canonicalArticleContentJson(article.content);
+        if (
+          !same &&
+          (input.expectedContentHash !== article.contentHash ||
+            (input.expectedRevisionId && input.expectedRevisionId !== article.revisionId))
+        )
+          throw new Error('[aiy-petal:unsaved]');
+        const saved = same
+          ? article
+          : this.articles.saveSystemRevision({
+              articleId: article.id,
+              expectedRevisionId: article.revisionId,
+              requestId: ulid(),
+              content,
+            });
+        this.consume(input.consumeCreationDraftId, saved.id);
+        return articleDraftDto(saved);
       }
-
+      const content = articleDraftContent(input.content);
       if (
-        !content.title?.trim() &&
-        !content.manualPrompt.trim() &&
-        !content.promptNodes.length &&
-        !content.referenceAssetIds.length &&
-        !content.files?.length
-      ) {
-        throw new Error('Cannot save an empty note');
-      }
-      const albumId =
-        input.mode === 'ADD_FORM' ? targetItem!.albumId : (input.albumId ?? ensureDefaultNotesAlbum(this.storage));
-      this.assertAlbumAvailable(albumId);
-      const duplicate = this.db
-        .prepare(
-          `SELECT * FROM inspiration_stashes
-          WHERE status = 'ACTIVE' AND deleted_at IS NULL
-            AND content_hash = ? AND album_id IS ?
-          ORDER BY updated_at DESC, id DESC LIMIT 1`,
-        )
-        .get(hash, albumId) as JsonMap | undefined;
-      if (duplicate && !targetItem && input.mode !== 'CREATE_NOTE') {
-        return this.finalizeSave(this.dto(duplicate), input.consumeCreationDraftId);
-      }
-
-      const id = input.mode === 'CREATE_NOTE' ? input.requestId : ulid();
-      this.db
-        .prepare(
-          `INSERT INTO inspiration_stashes
-          (id, album_id, input_json, content_hash, status,
-            created_at, updated_at, archived_at, deleted_at)
-          VALUES (?, ?, ?, ?, 'ACTIVE', ?, ?, NULL, NULL)`,
-        )
-        .run(id, albumId, contentJson, hash, updatedAt, updatedAt);
-      appendInspirationRevision(this.db, id, contentJson, hash, updatedAt);
-      if (targetItem) {
-        creationItems.addOrGetForm({
-          creationItemId: targetItem.id,
-          role: 'INSPIRATION',
-          entity: { kind: 'INSPIRATION_STASH', id },
-          anchorKey: null,
-        });
-      } else {
-        creationItems.createWithForm({
+        !content.title.trim() &&
+        !content.markdown.trim() &&
+        !content.mediaBindings.length &&
+        !content.files?.length &&
+        !content.creationInput?.promptNodes.some((node) => node.kind !== 'TEXT' || node.text.trim())
+      )
+        throw new Error('[aiy-petal:emptyNote]');
+      const item =
+        input.mode === 'ADD_FORM' ? new CreationItemRepository(this.storage).get(input.creationItemId) : null;
+      const albumId = item
+        ? item.albumId
+        : input.mode === 'ADD_FORM'
+          ? null
+          : (input.albumId ?? ensureDefaultNotesAlbum(this.storage));
+      const saved = this.articles.save(
+        {
+          id: null,
           albumId,
-          form: {
-            role: 'INSPIRATION',
-            entity: { kind: 'INSPIRATION_STASH', id },
-            anchorKey: null,
-          },
-        });
-      }
-      this.storage.recordChange('INSPIRATION_STASH', id, 'CREATE', {
-        albumId,
-        creationItemId: targetItem?.id ?? null,
-        contentHash: hash,
-      });
-      return this.finalizeSave(this.dto(this.row(id)), input.consumeCreationDraftId);
-    })();
-  }
-
-  move(input: InspirationStashMoveInput): InspirationStashDto {
-    return this.db.transaction(() => {
-      const existing = this.db
-        .prepare(
-          `SELECT * FROM inspiration_stashes
-          WHERE id = ? AND status = 'ACTIVE' AND deleted_at IS NULL`,
-        )
-        .get(input.id) as JsonMap | undefined;
-      if (!existing) throw new Error('Inspiration stash is no longer available');
-      const creationItems = new CreationItemRepository(this.storage);
-      const item = creationItems.findForEntity({ kind: 'INSPIRATION_STASH', id: input.id });
-      if (!item) throw new Error('The inspiration creation item is unavailable');
-      creationItems.move({ creationItemId: item.id, albumId: input.albumId });
-      return this.dto(this.row(input.id));
-    })();
-  }
-
-  setArchived(input: InspirationStashSetArchivedInput): InspirationStashDto {
-    return this.db.transaction(() => {
-      const existing = this.db
-        .prepare('SELECT * FROM inspiration_stashes WHERE id = ? AND deleted_at IS NULL')
-        .get(input.id) as JsonMap | undefined;
-      if (!existing) throw new Error('Inspiration stash not found');
-      new ContentLifecycleRepository(this.storage, async () => undefined).setDirectArchived(
-        { entityType: 'INSPIRATION_STASH', entityId: input.id },
-        input.archived,
+          sourceInspirationStashId: null,
+          consumeCreationDraftId: input.consumeCreationDraftId,
+          content,
+        },
+        {
+          requestId:
+            input.mode === 'CREATE_NOTE'
+              ? input.requestId
+              : input.consumeCreationDraftId
+                ? 'draft:' + createHash('sha256').update(input.consumeCreationDraftId).digest('hex')
+                : ulid(),
+          ...(item ? { creationItemId: item.id } : {}),
+        },
       );
-      return this.dto(this.row(input.id));
+      return articleDraftDto(saved);
     })();
   }
-
-  private finalizeSave(stash: InspirationStashDto, creationDraftId: string | null) {
-    if (!creationDraftId) return stash;
-    const consumedAt = now();
-    const consumed = this.db
+  move(input: InspirationStashMoveInput) {
+    return articleDraftDto(this.articles.move(input));
+  }
+  setArchived(input: InspirationStashSetArchivedInput) {
+    return articleDraftDto(this.articles.setArchived(input));
+  }
+  private consume(id: string | null, articleId: string) {
+    if (!id) return;
+    const time = now();
+    const result = this.storage.db
       .prepare(
-        `UPDATE creation_drafts SET consumed_at = ?, updated_at = ?
-        WHERE id = ? AND consumed_at IS NULL AND deleted_at IS NULL`,
+        'UPDATE creation_drafts SET consumed_at = ?, updated_at = ? WHERE id = ? AND consumed_at IS NULL AND deleted_at IS NULL',
       )
-      .run(consumedAt, consumedAt, creationDraftId);
-    if (consumed.changes !== 1) throw new Error('Creation input is no longer available');
-    this.storage.recordChange(
-      'CREATION_DRAFT',
-      creationDraftId,
-      'CONSUME_INSPIRATION_STASH',
-      { inspirationStashId: stash.id },
-      { affectsFileView: false },
-    );
-    return stash;
-  }
-
-  private row(id: string) {
-    const row = this.db.prepare('SELECT * FROM inspiration_stashes WHERE id = ?').get(id) as JsonMap | undefined;
-    if (!row) throw new Error('Inspiration stash not found');
-    return row;
-  }
-
-  private assertAlbumAvailable(albumId: string | null) {
-    if (albumId) {
-      const album = this.db
-        .prepare('SELECT archived_at FROM albums WHERE id = ? AND deleted_at IS NULL')
-        .get(albumId) as JsonMap | undefined;
-      if (!album) throw new Error('Album is unavailable');
-      const archivedAncestor = this.db
-        .prepare(
-          `WITH RECURSIVE lineage(id, archived_at) AS (
-            SELECT id, archived_at FROM albums WHERE id = ? AND deleted_at IS NULL
-            UNION
-            SELECT parent.id, parent.archived_at
-            FROM album_members member
-            JOIN lineage child ON member.target_type = 'ALBUM' AND member.target_id = child.id
-            JOIN albums parent ON parent.id = member.album_id AND parent.deleted_at IS NULL
-            WHERE member.deleted_at IS NULL
-          )
-          SELECT 1 FROM lineage WHERE archived_at IS NOT NULL LIMIT 1`,
-        )
-        .get(albumId);
-      if (archivedAncestor) throw new Error('Album is unavailable');
-    }
-  }
-
-  private assertReferencesAvailable(referenceAssetIds: readonly string[]) {
-    if (!referenceAssetIds.length) return;
-    const uniqueIds = [...new Set(referenceAssetIds)];
-    const placeholders = uniqueIds.map(() => '?').join(', ');
-    const count = Number(
-      (
-        this.db
+      .run(time, time, id);
+    if (result.changes !== 1) {
+      if (
+        this.storage.db
           .prepare(
-            `SELECT count(*) AS count FROM image_assets
-            WHERE deleted_at IS NULL AND id IN (${placeholders})`,
+            "SELECT 1 FROM change_events WHERE entity_type='CREATION_DRAFT' AND entity_id=? AND operation='CONSUME_ARTICLE' AND json_extract(payload_json,'$.articleId')=? LIMIT 1",
           )
-          .get(...uniqueIds) as JsonMap
-      ).count,
-    );
-    if (count !== uniqueIds.length) throw new Error('A reference image is no longer available');
-  }
-
-  private dto(row: JsonMap): InspirationStashDto {
-    const content = parseStoredContent(row.input_json);
-    const hydrated: InspirationStashContentDto = {
-      ...content,
-      referenceAssets: this.referenceAssets(content.referenceAssetIds),
-    };
-    return {
-      id: text(row.id),
-      albumId: row.album_id == null ? null : text(row.album_id),
-      title: content.title ?? '',
-      displayTitle: contentDisplayTitle(content.title, content.manualPrompt),
-      content: hydrated,
-      contentHash: text(row.content_hash),
-      status: text(row.status) as InspirationStashDto['status'],
-      createdAt: text(row.created_at),
-      updatedAt: text(row.updated_at),
-    };
-  }
-
-  private referenceAssets(ids: readonly string[]) {
-    if (!ids.length) return [];
-    const uniqueIds = [...new Set(ids)];
-    const placeholders = uniqueIds.map(() => '?').join(', ');
-    const rows = this.db
-      .prepare(
-        `SELECT * FROM image_assets
-        WHERE deleted_at IS NULL AND id IN (${placeholders})`,
+          .get(id, articleId)
       )
-      .all(...uniqueIds) as JsonMap[];
-    const byId = new Map(rows.map((row) => [text(row.id), assetDto(row)]));
-    return ids.flatMap((id) => byId.get(id) ?? []);
+        return;
+      throw new Error('Creation input is no longer available');
+    }
+    this.storage.recordChange('CREATION_DRAFT', id, 'CONSUME_ARTICLE', { articleId }, { affectsFileView: false });
   }
+}
+
+/** Retained for legacy album migration; no new inspiration records are written. */
+export function rehomeInspirationStashesForAlbum(storage: LibraryStorage, albumId: string) {
+  storage.db.prepare('UPDATE inspiration_stashes SET album_id = NULL WHERE album_id = ?').run(albumId);
 }

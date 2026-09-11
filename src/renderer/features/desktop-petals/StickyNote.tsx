@@ -7,6 +7,7 @@ import { NoteTitleInput } from '@/renderer/features/content-editor/NoteTitleInpu
 import { CollapsedPetal } from '@/renderer/features/desktop-petals/CollapsedPetal';
 import { NoteEditSession } from '@/renderer/features/desktop-petals/note-edit-session';
 import { NoteResizeHandle } from '@/renderer/features/desktop-petals/NoteResizeHandle';
+import { NoteAppearanceMenu } from '@/renderer/features/desktop-petals/NoteAppearanceMenu';
 import { noteAppearanceStyle } from '@/renderer/features/desktop-petals/petal-appearance';
 import { PetalExternalApplications } from '@/renderer/features/desktop-petals/PetalExternalApplications';
 import { PetalNoteActions } from '@/renderer/features/desktop-petals/PetalNoteActions';
@@ -22,6 +23,7 @@ import { noteFileCapture } from '@/renderer/features/desktop-petals/note-file-ca
 import { useCodexAgentSignal } from '@/renderer/features/extensions/codex-content/CodexAgentLight';
 import { CodexNoteProvider } from '@/renderer/features/extensions/codex-content/CodexNoteContext';
 import { CODEX_CONTENT_APPLICATION_ID } from '@/shared/contracts/content-applications';
+import { sameArticleElementPlacements } from '@/shared/contracts/article';
 import type { VideoDocumentWysiwygEditorHandle } from '@/renderer/features/video-documents/videoDocumentEditorTypes';
 import { useI18n } from '@/renderer/i18n/useI18n';
 import { petalLabel } from '@/shared/petal-preview';
@@ -188,6 +190,7 @@ function StickyNoteSession({ initialNote, snapshot }: { initialNote: DesktopNote
         icon={state.note.icon}
         editable={state.note.editable}
         closing={closing}
+        appearance={<NoteAppearanceMenu {...noteActions} />}
         actions={<PetalNoteActions {...noteActions} onCollapse={collapse} />}
         onDragOver={references.onDragOver}
         {...noteFileCapture(files.importFiles)}
@@ -205,6 +208,11 @@ function StickyNoteSession({ initialNote, snapshot }: { initialNote: DesktopNote
           <NoteDocumentInput
             session={session}
             state={state}
+            articleElements={state.elements}
+            onArticleElementsChange={(elements, reason) => {
+              if (sameArticleElementPlacements(state.elements, elements)) return;
+              session.updateProjection(elements, [], reason === 'identity');
+            }}
             onHandleChange={(handle) => {
               editorHandle.current = handle;
             }}

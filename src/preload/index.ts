@@ -751,7 +751,6 @@ const api: DesktopApi = {
   assetFileRevealTargets: (assetId, context) => ipcRenderer.invoke('asset-file:reveal-targets', assetId, context),
   assetFileReveal: (assetId, context) => ipcRenderer.invoke('asset-file:reveal', assetId, context),
   assetFileOpen: (assetId, context) => ipcRenderer.invoke('asset-file:open', assetId, context),
-  assetDelete: (assetId) => ipcRenderer.invoke('asset:delete', assetId),
   favoriteTextsList: () => ipcRenderer.invoke('favorites:text-list'),
   favoriteAdd: (target) => ipcRenderer.invoke('favorites:add', target),
   favoriteRemove: (materialId) => ipcRenderer.invoke('favorites:remove', materialId),

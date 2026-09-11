@@ -1,11 +1,7 @@
+import { articleNote, saveArticleNote } from '@/main/database/creations/article-note-repository';
 import { mediaUrl, now } from '@/main/database/core/values';
 import type { LibraryDatabaseRepositories } from '@/main/database/library-database/repositories';
-import {
-  contentAssetPath,
-  contentDisplayTitle,
-  plainTextMarkdown,
-  replaceContentPromptText,
-} from '@/shared/content-document';
+import { contentAssetPath, contentDisplayTitle, plainTextMarkdown } from '@/shared/content-document';
 import {
   contentMarkdownBlocks,
   contentMarkdownMediaPaths,
@@ -23,16 +19,13 @@ import {
   type ContentReference,
   type ContentSource,
 } from '@/shared/contracts/content-library';
-import {
-  desktopNoteDraftSchema,
-  desktopNoteSchema,
-  type DesktopNoteDraft,
-  type DesktopNoteSave,
-} from '@/shared/contracts/desktop-petals';
-import { inspirationStashContentSchema } from '@/shared/contracts/inspiration-stash';
+import { desktopNoteDraftSchema, type DesktopNoteDraft, type DesktopNoteSave } from '@/shared/contracts/desktop-petals';
 import { videoDocumentRevisionMediaSchema } from '@/shared/contracts/video-document';
 import { createHash } from 'node:crypto';
 import { ulid } from 'ulid';
+import { NoteCommentRepository } from '@/main/database/creations/note-comment-repository';
+import type { NoteCommentMutationInput } from '@/shared/contracts/desktop-petals';
+import type { ContentElementPlacementInput } from '@/shared/contracts/content-comments';
 
 type Repositories = Pick<
   LibraryDatabaseRepositories,
@@ -42,7 +35,10 @@ const hash = (value: string) => createHash('sha256').update(value).digest('hex')
 type ContentBody = { title: string; revisionId: string; markdown: string; media: ContentDocument['media'] };
 
 export class ContentLibraryRepository {
-  constructor(private readonly repositories: Repositories) {}
+  private readonly noteComments: NoteCommentRepository;
+  constructor(private readonly repositories: Repositories) {
+    this.noteComments = new NoteCommentRepository(repositories.storage);
+  }
   private get db() {
     return this.repositories.storage.db;
   }
@@ -84,22 +80,14 @@ export class ContentLibraryRepository {
         media: this.media(post.content.mediaAssetIds),
       };
     } else if (source.kind === 'INSPIRATION_STASH') {
-      const stash = this.repositories.inspirationStashes.get(source.id);
-      const revision = this.db
-        .prepare(
-          `SELECT id, content_json FROM inspiration_stash_revisions WHERE stash_id = ? ${source.revisionId ? 'AND id = ?' : ''} ORDER BY revision_no DESC LIMIT 1`,
-        )
-        .get(source.id, ...(source.revisionId ? [source.revisionId] : [])) as
-        { id: string; content_json: string } | undefined;
-      if (source.revisionId && !revision && source.revisionId !== stash.contentHash)
-        throw new ContentReadError('REVISION_UNAVAILABLE', source, stash.contentHash);
-      const content = revision ? inspirationStashContentSchema.parse(JSON.parse(revision.content_json)) : stash.content;
-      body = {
-        title: content.title ?? '',
-        revisionId: revision?.id ?? stash.contentHash,
-        markdown: content.format === 'markdown' ? content.manualPrompt : plainTextMarkdown(content.manualPrompt),
-        media: this.media(content.referenceAssetIds),
-      };
+      const revision = source.revisionId
+        ? (this.db
+            .prepare(
+              'SELECT revision_id FROM article_legacy_revisions WHERE source_id=? AND (revision_id=? OR legacy_hash=?) ORDER BY rowid DESC LIMIT 1',
+            )
+            .get(source.id, source.revisionId, source.revisionId) as { revision_id: string } | undefined)
+        : undefined;
+      return this.read({ ...source, kind: 'ARTICLE', ...(revision ? { revisionId: revision.revision_id } : {}) });
     } else {
       const document = this.repositories.videoDocuments.get(source.id);
       const populated = document.branches.filter((branch) => branch.latestDraftRevisionId);
@@ -180,7 +168,6 @@ export class ContentLibraryRepository {
         `SELECT * FROM (
       SELECT 'ARTICLE' kind, id, NULL branch_id, updated_at FROM articles WHERE deleted_at IS NULL AND status = 'ACTIVE'
       UNION ALL SELECT 'SOCIAL_POST', id, NULL, updated_at FROM social_post_drafts WHERE deleted_at IS NULL AND status = 'ACTIVE'
-      UNION ALL SELECT 'INSPIRATION_STASH', id, NULL, updated_at FROM inspiration_stashes WHERE deleted_at IS NULL AND status = 'ACTIVE'
       UNION ALL SELECT 'VIDEO_DOCUMENT', d.id, b.id, d.updated_at FROM documents d JOIN document_branches b ON b.document_id = d.id WHERE d.deleted_at IS NULL AND d.status = 'ACTIVE' AND b.deleted_at IS NULL AND EXISTS(SELECT 1 FROM document_drafts draft JOIN document_draft_revisions r ON r.draft_id = draft.id WHERE draft.branch_id = b.id)
     ) ORDER BY updated_at DESC, kind, id, branch_id LIMIT 41 OFFSET ?`,
       )
@@ -432,25 +419,7 @@ export class ContentLibraryRepository {
   }
 
   note(id: string) {
-    const stash = this.repositories.inspirationStashes.get(id),
-      content = stash.content;
-    return desktopNoteSchema.parse({
-      id,
-      stashId: id,
-      text: content.manualPrompt,
-      document: content.document,
-      title: content.title ?? '',
-      displayTitle: stash.displayTitle,
-      albumId: stash.albumId,
-      format: content.format,
-      contentHash: stash.contentHash,
-      color: 'cream',
-      icon: 'feather',
-      editable: true,
-      revisionId: null,
-      references: content.referenceAssets.map((asset) => ({ assetId: asset.id, mediaUrl: asset.mediaUrl })),
-      files: content.files,
-    });
+    return articleNote(this.repositories.articles.get(id));
   }
   noteOpen(id: string) {
     const row = this.db
@@ -464,7 +433,10 @@ export class ContentLibraryRepository {
           title: input.title,
           format: input.format,
           referenceAssetIds: input.referenceAssetIds,
+          elements: input.elements,
+          commentAnchors: input.commentAnchors,
           expectedContentHash: input.expectedContentHash,
+          expectedRevisionId: input.expectedRevisionId,
           editorId: input.editorId,
           sequence: input.sequence,
         }
@@ -481,24 +453,7 @@ export class ContentLibraryRepository {
   }
   noteSave(input: DesktopNoteSave) {
     return this.db.transaction(() => {
-      const { referenceAssets: _assets, ...content } = this.repositories.inspirationStashes.get(input.id).content;
-      if (content.document && !input.document && input.text !== content.manualPrompt)
-        throw new Error('BLOCK_DOCUMENT_REQUIRED');
-      this.repositories.inspirationStashes.save({
-        mode: 'UPDATE',
-        id: input.id,
-        expectedContentHash: input.expectedContentHash,
-        consumeCreationDraftId: null,
-        content: {
-          ...content,
-          ...(input.title !== undefined ? { title: input.title } : {}),
-          ...(input.format ? { format: input.format } : {}),
-          ...(input.referenceAssetIds ? { referenceAssetIds: input.referenceAssetIds } : {}),
-          ...(input.document ? { schemaVersion: 2, document: input.document } : {}),
-          manualPrompt: input.text,
-          promptNodes: replaceContentPromptText(content.promptNodes, input.text),
-        },
-      });
+      saveArticleNote(this.repositories.articles, input);
       const row = this.db
         .prepare('SELECT draft_json FROM content_editor_drafts WHERE source_id = ? AND editor_id = ?')
         .get(input.id, input.editorId) as { draft_json: string } | undefined;
@@ -509,7 +464,9 @@ export class ContentLibraryRepository {
           draft.title === input.title &&
           draft.format === input.format &&
           JSON.stringify(draft.document) === JSON.stringify(input.document) &&
-          JSON.stringify(draft.referenceAssetIds) === JSON.stringify(input.referenceAssetIds)
+          JSON.stringify(draft.referenceAssetIds) === JSON.stringify(input.referenceAssetIds) &&
+          JSON.stringify(draft.elements) === JSON.stringify(input.elements) &&
+          JSON.stringify(draft.commentAnchors) === JSON.stringify(input.commentAnchors)
         )
           this.db
             .prepare('DELETE FROM content_editor_drafts WHERE source_id = ? AND editor_id = ?')
@@ -517,6 +474,19 @@ export class ContentLibraryRepository {
       }
       return this.note(input.id);
     })();
+  }
+  noteCommentMutate(input: NoteCommentMutationInput) {
+    return this.noteComments.mutate(input);
+  }
+  inheritNoteProjection(
+    noteId: string,
+    sourceRevisionId: string | null,
+    elements: readonly ContentElementPlacementInput[],
+  ) {
+    const target = this.note(noteId);
+    if (!target.revisionId || target.revisionId === sourceRevisionId || target.elements.length) return target;
+    this.noteComments.saveProjection(noteId, target.revisionId, elements);
+    return this.note(noteId);
   }
   private media(ids: readonly string[]): ContentDocument['media'] {
     if (!ids.length) return [];

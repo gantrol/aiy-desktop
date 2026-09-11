@@ -1,10 +1,15 @@
 import {
   CircleAlertIcon,
+  CheckIcon,
+  Columns2Icon,
   CopyIcon,
   DownloadIcon,
   FileTextIcon,
   ImagePlusIcon,
+  LayoutPanelTopIcon,
   LoaderCircleIcon,
+  Maximize2Icon,
+  Minimize2Icon,
   PlusIcon,
   TextCursorInputIcon,
   XIcon,
@@ -46,31 +51,55 @@ export function ArticleHeaderIconButton({
   );
 }
 
-export function ArticleHeaderAiActions({
-  checkAction,
-  hasBody,
-  suggesting,
-  onSuggestTitle,
-}: {
-  checkAction: ReactNode;
-  hasBody: boolean;
-  suggesting: boolean;
-  onSuggestTitle(): Promise<void>;
-}) {
-  const titleLabel = useI18n().messages.creator.manuscriptEditor.aiTitle;
+export function ArticleHeaderAiActions({ checkAction }: { checkAction: ReactNode }) {
   return (
     <>
       {checkAction}
-      <ArticleHeaderIconButton
-        variant="ghost"
-        disabled={!hasBody || suggesting}
-        label={titleLabel}
-        onClick={() => void onSuggestTitle()}
-      >
-        {suggesting ? <LoaderCircleIcon className="size-4 animate-spin" /> : <TextCursorInputIcon className="size-4" />}
-      </ArticleHeaderIconButton>
       <Separator orientation="vertical" className="mx-1 h-4" />
     </>
+  );
+}
+
+export function ArticleHeaderViewMenu({
+  splitOpen,
+  wide,
+  onSplitToggle,
+  onWidthToggle,
+}: {
+  splitOpen: boolean;
+  wide: boolean;
+  onSplitToggle(): void;
+  onWidthToggle(): void;
+}) {
+  const contentCopy = useI18n().messages.contentEditor;
+  const editorCopy = useI18n().messages.creator.manuscriptEditor;
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon-sm"
+          aria-label={editorCopy.viewOptions}
+          title={editorCopy.viewOptions}
+        >
+          <LayoutPanelTopIcon className="size-4" />
+        </Button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end" className="w-48">
+        <DropdownMenuItem onSelect={onSplitToggle}>
+          <DropdownMenuIcon>
+            <Columns2Icon />
+          </DropdownMenuIcon>
+          {editorCopy.splitEditor}
+          {splitOpen && <CheckIcon className="ml-auto size-4" />}
+        </DropdownMenuItem>
+        <DropdownMenuItem onSelect={onWidthToggle}>
+          <DropdownMenuIcon>{wide ? <Minimize2Icon /> : <Maximize2Icon />}</DropdownMenuIcon>
+          {wide ? contentCopy.standardWidth : contentCopy.wideWidth}
+        </DropdownMenuItem>
+      </DropdownMenuContent>
+    </DropdownMenu>
   );
 }
 
@@ -127,6 +156,7 @@ export function ArticleHeaderActions({
 
   return (
     <>
+      <Separator orientation="vertical" className="mx-1 h-4" />
       <CreationWorkNavigation relationsAction={{ count: relationCount, onOpen: onOpenRelations }} />
       <DropdownMenu>
         <Tooltip>

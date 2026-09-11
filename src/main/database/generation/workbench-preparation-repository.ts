@@ -210,10 +210,15 @@ export class WorkbenchPreparationRepository extends WorkbenchReader {
       return;
     }
     if (input.inspirationStashId) {
-      const item = creationItems.findForEntity({ kind: 'INSPIRATION_STASH', id: input.inspirationStashId });
-      if (!item) throw new Error('The source inspiration item is unavailable');
+      const item = creationItems.findForEntity({ kind: 'ARTICLE', id: input.inspirationStashId });
+      if (!item) throw new Error('The source article item is unavailable');
+      const sourceForm = item.forms.find(
+        (form) => form.entity.kind === 'ARTICLE' && form.entity.id === input.inspirationStashId,
+      );
+      if (!sourceForm) throw new Error('The source article form is unavailable');
       creationItems.addOrGetForm({
         creationItemId: item.id,
+        sourceFormId: sourceForm.id,
         role: 'IMAGE_CREATION',
         entity: { kind: 'PROMPT_SERIES', id: seriesId },
         anchorKey: null,

@@ -1,12 +1,11 @@
 import { Button } from '@/renderer/components/ui/button';
 import { registerWorkspaceDrain } from '@/renderer/components/workspace/workspace-drain';
 import { ContentAlbumSelect } from '@/renderer/features/content-editor/ContentAlbumSelect';
-import { NoteAttachmentStrip } from '@/renderer/features/content-editor/NoteAttachmentStrip';
-import { NoteDocumentInput } from '@/renderer/features/content-editor/NoteDocumentInput';
-import { NoteTitleInput } from '@/renderer/features/content-editor/NoteTitleInput';
+import { NoteDocumentWorkspace } from '@/renderer/features/content-editor/NoteDocumentWorkspace';
+import { ContentDocumentToolbar } from '@/renderer/features/content-editor/ContentDocumentWorkspace';
+import { useNoteComments } from '@/renderer/features/content-editor/useNoteComments';
+import { useNoteMediaIntake } from '@/renderer/features/content-editor/useNoteMediaIntake';
 import { usePetalFiles } from '@/renderer/features/desktop-petals/use-petal-files';
-import { PetalFileAttachments } from '@/renderer/features/desktop-petals/PetalFileAttachments';
-import { NoteFileInput } from '@/renderer/features/desktop-petals/NoteFileInput';
 import { noteFileCapture } from '@/renderer/features/desktop-petals/note-file-capture';
 import { petalErrorText } from '@/shared/petal-errors';
 import { NoteEditSession } from '@/renderer/features/desktop-petals/note-edit-session';
@@ -38,7 +37,8 @@ function NoteEditorSession({
   notify,
   onEditMaterials,
 }: Props & { initial: DesktopNote; draft: DesktopPetalSnapshot['draft'] }) {
-  const copy = useI18n().messages.desktopPetals;
+  const { locale, messages } = useI18n();
+  const copy = messages.desktopPetals;
   const onSaved = useStableCallback(() => {
     void refresh().catch((reason) => notify(String(reason)));
   });
@@ -55,13 +55,37 @@ function NoteEditorSession({
   );
   const state = useSyncExternalStore(session.subscribe, session.getSnapshot);
   const editorHandle = useRef<VideoDocumentWysiwygEditorHandle | null>(null);
+  const scrollRoot = useRef<HTMLDivElement>(null);
   const fileInput = useRef<HTMLInputElement>(null);
+  const [activePanel, setActivePanel] = useState('MEDIA');
+  const [panelsOpen, setPanelsOpen] = useState(true);
   const files = usePetalFiles(
     session,
     async () => !editorHandle.current || editorHandle.current.whenSettled(),
     (reason) => notify(petalErrorText(reason, copy.errors)),
   );
   const settleFiles = files.settle;
+  const mediaIntake = useNoteMediaIntake({ editorHandle, locale, notify, session });
+  const settleMedia = mediaIntake.settle;
+  const comments = useNoteComments({
+    session,
+    state,
+    editorHandle,
+    scrollRoot,
+    panelOpen: panelsOpen && activePanel === 'COMMENTS',
+    onPanelOpen: () => {
+      setActivePanel('COMMENTS');
+      setPanelsOpen(true);
+    },
+    onPanelToggle: () => {
+      if (panelsOpen && activePanel === 'COMMENTS') setPanelsOpen(false);
+      else {
+        setActivePanel('COMMENTS');
+        setPanelsOpen(true);
+      }
+    },
+    notify: (reason) => notify(String(reason)),
+  });
   const lastSourceHash = useRef(`${stash.contentHash}:${stash.albumId}`);
   useEffect(() => {
     const identity = `${stash.contentHash}:${stash.albumId}`;
@@ -85,10 +109,11 @@ function NoteEditorSession({
     () =>
       registerWorkspaceDrain(async () => {
         if (!(await settleFiles())) throw new Error(copy.note.unsaved);
+        await settleMedia();
         if (editorHandle.current && !(await editorHandle.current.whenRecoverable())) throw new Error(copy.note.unsaved);
         if (!(await session.checkpointForExit())) throw new Error(copy.note.unsaved);
       }),
-    [session, copy.note.unsaved, settleFiles],
+    [session, copy.note.unsaved, settleFiles, settleMedia],
   );
   useEffect(() => () => session.dispose(), [session]);
   const error = useStableCallback((reason: unknown) => notify(String(reason)));
@@ -101,7 +126,7 @@ function NoteEditorSession({
       }}
       {...noteFileCapture((selected) => files.importFiles(selected).then(onSaved))}
     >
-      <header className="flex shrink-0 items-center gap-1 border-b px-3 py-1">
+      <ContentDocumentToolbar>
         <ContentAlbumSelect
           albumId={state.note.albumId}
           albums={albums.filter((album) => !album.archivedAt)}
@@ -168,71 +193,25 @@ function NoteEditorSession({
         >
           {state.status === 'saving' ? <LoaderCircle className="size-4 animate-spin" /> : <Save className="size-4" />}
         </Button>
-      </header>
-      <div className="mx-auto flex min-h-0 w-full max-w-4xl flex-1 flex-col overflow-y-auto px-4 py-4">
-        <NoteTitleInput session={session} state={state} readOnly={state.frozen} />
-        <NoteDocumentInput
-          session={session}
-          state={state}
-          readOnly={state.frozen}
-          onHandleChange={(handle) => {
-            editorHandle.current = handle;
-          }}
-          onError={() => error(copy.document.failure)}
-        />
-        <NoteAttachmentStrip
-          note={{
-            ...state.note,
-            references: state.referenceAssetIds.map((id) => ({
-              assetId: id,
-              mediaUrl: 'aiy-media://asset/' + encodeURIComponent(id),
-            })),
-          }}
-          markdown={state.text}
-          format={state.format}
-          disabled={state.frozen}
-          onRemove={async (id) => {
-            const current = session.getSnapshot();
-            session.edit(current.text, {
-              referenceAssetIds: current.referenceAssetIds.filter((assetId) => assetId !== id),
-            });
-            return session.flush();
-          }}
-        />
-        <PetalFileAttachments
-          files={state.note.files ?? []}
-          libraryId={libraryId}
-          stashId={stash.id}
-          disabled={state.frozen}
-          onOpen={files.open}
-          onRemove={async (id) => {
-            const result = await files.remove(id);
-            onSaved();
-            return result;
-          }}
-        />
-        <NoteFileInput
-          inputRef={fileInput}
-          onFiles={async (selected) => {
-            const result = await files.importFiles(selected);
-            onSaved();
-            return result;
-          }}
-          progress={files.progress}
-          onCancel={files.cancel}
-        />
-        {state.status === 'error' && (
-          <div role="alert" className="flex flex-wrap items-center gap-2 px-3 py-2 text-xs">
-            <span className="text-destructive">{state.error}</span>
-            <Button size="xs" variant="ghost" onClick={() => void session.keepMine()}>
-              {copy.note.keepMine}
-            </Button>
-            <Button size="xs" variant="ghost" onClick={() => void session.useSaved()}>
-              {copy.note.useSaved}
-            </Button>
-          </div>
-        )}
-      </div>
+      </ContentDocumentToolbar>
+      <NoteDocumentWorkspace
+        activePanel={activePanel}
+        comments={comments}
+        editorHandle={editorHandle}
+        fileInput={fileInput}
+        files={files}
+        libraryId={libraryId}
+        panelsOpen={panelsOpen}
+        mediaIntake={mediaIntake}
+        scrollRoot={scrollRoot}
+        session={session}
+        stashId={stash.id}
+        state={state}
+        onActivePanelChange={setActivePanel}
+        onError={error}
+        onPanelsOpenChange={setPanelsOpen}
+        onSaved={onSaved}
+      />
     </div>
   );
 }

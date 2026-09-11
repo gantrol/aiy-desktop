@@ -1,9 +1,10 @@
-import { useCallback, useEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react';
+import { useCallback, useRef, useState } from 'react';
 import type { ArticleEditorOutlineDepthLimit } from '@/renderer/components/creator/article-editor/articleEditorOutlineModel';
 import {
   clampArticleEditorOutlineWidth,
   loadArticleEditorOutlinePreferences,
   maximumArticleEditorOutlineWidth,
+  maximumArticleEditorMediaWidth,
   minimumArticleEditorOutlineWidth,
   saveArticleEditorOutlinePreferences,
   type ArticleEditorOutlinePreferences,
@@ -14,13 +15,16 @@ import {
 import type { ArticleDocumentWidth } from '@/renderer/lib/articleTypography';
 
 function panelWidth(preferences: ArticleEditorOutlinePreferences, panel: ArticleEditorSidebarPanel) {
-  return panel === 'OUTLINE' ? preferences.outlineWidth : preferences.commentsWidth;
+  return panel === 'MEDIA' || panel === 'FILES'
+    ? preferences.mediaWidth
+    : panel === 'OUTLINE'
+      ? preferences.outlineWidth
+      : preferences.commentsWidth;
 }
 
 export function useArticleEditorOutlinePane(scope: ArticleEditorPanePreferenceScope = 'PRIMARY') {
   const [preferences, setPreferences] = useState(() => loadArticleEditorOutlinePreferences(scope));
   const preferencesRef = useRef(preferences);
-  const resizeCleanupRef = useRef<(() => void) | null>(null);
 
   const updatePreferences = useCallback(
     (update: Partial<ArticleEditorOutlinePreferences>) => {
@@ -63,16 +67,27 @@ export function useArticleEditorOutlinePane(scope: ArticleEditorPanePreferenceSc
   );
   const setPanelExpanded = useCallback(
     (panel: ArticleEditorSidebarPanel, expanded: boolean) =>
-      updatePreferences(panel === 'OUTLINE' ? { outlineExpanded: expanded } : { commentsExpanded: expanded }),
+      updatePreferences(
+        panel === 'OUTLINE'
+          ? { outlineExpanded: expanded }
+          : panel === 'COMMENTS'
+            ? { commentsExpanded: expanded }
+            : { expanded },
+      ),
     [updatePreferences],
   );
   const setPanelWidth = useCallback(
     (panel: ArticleEditorSidebarPanel, width: number) => {
-      const nextWidth = clampArticleEditorOutlineWidth(width);
+      const nextWidth =
+        panel === 'MEDIA' || panel === 'FILES'
+          ? Math.min(maximumArticleEditorMediaWidth, Math.max(minimumArticleEditorOutlineWidth, Math.round(width)))
+          : clampArticleEditorOutlineWidth(width);
       updatePreferences(
-        panel === 'OUTLINE'
-          ? { outlineWidth: nextWidth, width: nextWidth }
-          : { commentsWidth: nextWidth, width: nextWidth },
+        panel === 'MEDIA' || panel === 'FILES'
+          ? { mediaWidth: nextWidth }
+          : panel === 'OUTLINE'
+            ? { outlineWidth: nextWidth, width: nextWidth }
+            : { commentsWidth: nextWidth, width: nextWidth },
       );
     },
     [updatePreferences],
@@ -82,60 +97,13 @@ export function useArticleEditorOutlinePane(scope: ArticleEditorPanePreferenceSc
     [],
   );
 
-  const beginResize = useCallback(
-    (panel: ArticleEditorSidebarPanel, edge: ArticleEditorSidebarSide, event: ReactPointerEvent<HTMLDivElement>) => {
-      event.preventDefault();
-      resizeCleanupRef.current?.();
-      const startX = event.clientX;
-      const startWidth = panelWidth(preferencesRef.current, panel);
-      const previousCursor = document.body.style.cursor;
-      const previousSelection = document.body.style.userSelect;
-      let active = true;
-      let currentWidth = startWidth;
-      document.body.style.cursor = 'col-resize';
-      document.body.style.userSelect = 'none';
-
-      const move = (pointer: PointerEvent) => {
-        const delta = pointer.clientX - startX;
-        currentWidth = clampArticleEditorOutlineWidth(edge === 'LEFT' ? startWidth - delta : startWidth + delta);
-        setPreferences((current) => {
-          const next = {
-            ...current,
-            width: currentWidth,
-            ...(panel === 'OUTLINE' ? { outlineWidth: currentWidth } : { commentsWidth: currentWidth }),
-          };
-          preferencesRef.current = next;
-          return next;
-        });
-      };
-      const finish = () => {
-        if (!active) return;
-        active = false;
-        document.body.style.cursor = previousCursor;
-        document.body.style.userSelect = previousSelection;
-        window.removeEventListener('pointermove', move);
-        window.removeEventListener('pointerup', finish);
-        window.removeEventListener('pointercancel', finish);
-        window.removeEventListener('blur', finish);
-        saveArticleEditorOutlinePreferences(preferencesRef.current, scope);
-        if (resizeCleanupRef.current === finish) resizeCleanupRef.current = null;
-      };
-
-      resizeCleanupRef.current = finish;
-      window.addEventListener('pointermove', move);
-      window.addEventListener('pointerup', finish);
-      window.addEventListener('pointercancel', finish);
-      window.addEventListener('blur', finish);
-    },
-    [scope],
-  );
-
-  useEffect(() => () => resizeCleanupRef.current?.(), []);
-
   return {
     preferences,
     minimumWidth: minimumArticleEditorOutlineWidth,
-    maximumWidth: maximumArticleEditorOutlineWidth,
+    maximumWidth:
+      preferences.activePanel === 'MEDIA' || preferences.activePanel === 'FILES'
+        ? maximumArticleEditorMediaWidth
+        : maximumArticleEditorOutlineWidth,
     setExpanded,
     setDepthLimit,
     setFollowCursor,
@@ -145,7 +113,6 @@ export function useArticleEditorOutlinePane(scope: ArticleEditorPanePreferenceSc
     setPanelExpanded,
     setPanelWidth,
     getPanelWidth,
-    beginResize,
     replacePreferences,
   };
 }

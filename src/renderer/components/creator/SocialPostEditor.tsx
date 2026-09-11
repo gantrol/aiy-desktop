@@ -258,6 +258,7 @@ function SocialPostEditorBody({
                 sessionIdentity={`${post.id}:${session.editorEpoch}`}
                 assets={mediaAssets}
                 compact
+                mediaIntake="EXTERNAL"
                 readOnly={!session.ready}
                 onHandleChange={(handle) => {
                   inputSubscription.current?.();
@@ -290,6 +291,7 @@ function SocialPostEditorBody({
             </div>
           </ScrollArea>
           <ContentWorkspacePanels
+            preferenceKey="social-post"
             tabs={[
               {
                 id: 'MEDIA',

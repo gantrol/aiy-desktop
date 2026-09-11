@@ -180,6 +180,36 @@ export class ArticleEditorSessionModel {
     });
   }
 
+  setCover(assetId: string | null) {
+    const state = this.#state;
+    if (state.lifecycle === 'disposed' || state.draft.metadata.coverAssetId === assetId) return;
+    if (assetId && !state.draft.metadata.mediaBindings.some((binding) => binding.assetId === assetId)) return;
+    this.#commit({ ...state, draft: { ...state.draft, metadata: { ...state.draft.metadata, coverAssetId: assetId } } });
+  }
+
+  removeImage(assetId: string) {
+    const state = this.#state;
+    if (state.lifecycle === 'disposed') return false;
+    const mediaBindings = state.draft.metadata.mediaBindings.filter((binding) => binding.assetId !== assetId);
+    if (mediaBindings.length === state.draft.metadata.mediaBindings.length) return false;
+    const retainedAssetIds = new Set(mediaBindings.map((binding) => binding.assetId));
+    const currentCover = state.draft.metadata.coverAssetId;
+    this.#commit({
+      ...state,
+      draft: {
+        ...state.draft,
+        metadata: {
+          ...state.draft.metadata,
+          mediaBindings,
+          coverAssetId:
+            currentCover && retainedAssetIds.has(currentCover) ? currentCover : (mediaBindings[0]?.assetId ?? null),
+        },
+        media: state.draft.media.filter((item) => retainedAssetIds.has(item.assetId)),
+      },
+    });
+    return true;
+  }
+
   beginDraft(hasBody: boolean) {
     const state = this.#state;
     if (state.lifecycle === 'disposed') return state.draft.sequence;

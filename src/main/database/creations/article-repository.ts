@@ -75,7 +75,8 @@ export class ArticleRepository {
     return this.storage.db;
   }
 
-  list(): ArticleDto[] {
+  list(ids?: readonly string[]): ArticleDto[] {
+    if (ids?.length === 0) return [];
     const rows = this.db
       .prepare(
         `SELECT article.*, revision.id AS revision_id, revision.revision_no,
@@ -84,9 +85,10 @@ export class ArticleRepository {
         FROM articles article
         JOIN article_revisions revision ON revision.id = article.current_revision_id
         WHERE article.status = 'ACTIVE' AND article.deleted_at IS NULL
+        ${ids ? 'AND article.id IN (SELECT value FROM json_each(?))' : ''}
         ORDER BY article.updated_at DESC, article.id DESC`,
       )
-      .all() as JsonMap[];
+      .all(...(ids ? [JSON.stringify(ids)] : [])) as JsonMap[];
     const locators = rows.map((row) => this.contentLocator(row));
     const contentsByRevision = this.revisionPacks.readContents(locators);
     const revisions = rows.map((row) => ({ articleId: text(row.id), revisionId: text(row.revision_id) }));
@@ -181,9 +183,23 @@ export class ArticleRepository {
     };
   }
 
-  save(input: ArticleSaveInput): ArticleDto {
+  save(input: ArticleSaveInput, identity?: { requestId: string; creationItemId?: string }): ArticleDto {
     return this.db.transaction(() => {
       const content = normalizeArticleContent(input.content);
+      const requestedId =
+        identity?.requestId ??
+        (input.consumeCreationDraftId
+          ? 'draft:' + createHash('sha256').update(input.consumeCreationDraftId).digest('hex')
+          : null);
+      if (requestedId && this.db.prepare('SELECT 1 FROM articles WHERE id=?').get(requestedId)) {
+        const existing = this.get(requestedId);
+        if (
+          canonicalArticleContentJson(existing.content) !== canonicalArticleContentJson(content) ||
+          existing.status !== 'ACTIVE'
+        )
+          throw new Error('Creation request identity was already used for different content');
+        return existing;
+      }
       assertBlockDocumentReady(content.document);
       const assetIds = content.mediaBindings.map((binding) => binding.assetId);
       this.assertMediaAvailable(assetIds);
@@ -193,7 +209,7 @@ export class ArticleRepository {
       this.assertAlbumAvailable(input.albumId);
       this.assertSourceAvailable(input.sourceInspirationStashId);
       this.assertCreationDraftAvailable(input.consumeCreationDraftId);
-      const id = ulid();
+      const id = requestedId ?? ulid();
       this.db
         .prepare(
           `INSERT INTO articles
@@ -204,10 +220,10 @@ export class ArticleRepository {
         .run(id, input.albumId, input.sourceInspirationStashId, timestamp, timestamp);
       const revisionId = this.insertRevision(id, 1, content, hash, timestamp);
       this.db.prepare('UPDATE articles SET current_revision_id = ? WHERE id = ?').run(revisionId, id);
-      const registration = this.creationItems.createWithForm({
-        albumId: input.albumId,
-        form: { role: 'ARTICLE', entity: { kind: 'ARTICLE', id }, anchorKey: null },
-      });
+      const form = { role: 'ARTICLE' as const, entity: { kind: 'ARTICLE' as const, id }, anchorKey: null };
+      const registration = identity?.creationItemId
+        ? this.creationItems.addForm({ ...form, creationItemId: identity.creationItemId })
+        : this.creationItems.createWithForm({ albumId: input.albumId, form });
       this.consumeCreationDraft(input.consumeCreationDraftId, timestamp, id);
       this.storage.recordChange(
         'ARTICLE',
@@ -376,7 +392,7 @@ export class ArticleRepository {
         this.db.prepare('UPDATE articles SET current_revision_id = ? WHERE id = ?').run(revisionId, id);
         const sourceFormId = input.sourceInspirationStashId
           ? (item.forms.find(
-              (form) => form.entity.kind === 'INSPIRATION_STASH' && form.entity.id === input.sourceInspirationStashId,
+              (form) => form.entity.kind === 'ARTICLE' && form.entity.id === input.sourceInspirationStashId,
             )?.id ?? null)
           : null;
         this.creationItems.addOrGetForm({
@@ -604,7 +620,7 @@ export class ArticleRepository {
   private assertSourceAvailable(sourceId: string | null, creationItemId?: string) {
     if (!sourceId) return;
     const source = this.db
-      .prepare("SELECT 1 FROM inspiration_stashes WHERE id = ? AND status = 'ACTIVE' AND deleted_at IS NULL")
+      .prepare("SELECT 1 FROM articles WHERE id = ? AND status = 'ACTIVE' AND deleted_at IS NULL")
       .get(sourceId);
     if (!source) throw new Error('The source inspiration is no longer available');
     if (
@@ -612,7 +628,7 @@ export class ArticleRepository {
       !this.db
         .prepare(
           `SELECT 1 FROM creation_forms
-          WHERE creation_item_id = ? AND entity_type = 'INSPIRATION_STASH'
+          WHERE creation_item_id = ? AND entity_type = 'ARTICLE'
             AND entity_id = ? AND deleted_at IS NULL`,
         )
         .get(creationItemId, sourceId)

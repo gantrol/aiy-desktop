@@ -67,6 +67,7 @@ export function useArticleEditorSidebar(
 
   return {
     ...pane,
+    preferenceKey: preferenceScope === 'PRIMARY' ? 'article' : 'article-secondary',
     compact: mode === 'OVERLAY',
     mode,
     open: panelOpen(preferences.activePanel),

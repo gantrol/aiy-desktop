@@ -265,7 +265,7 @@ export class SocialPostRepository {
         this.db.prepare('UPDATE social_post_drafts SET current_revision_id = ? WHERE id = ?').run(revisionId, id);
         const sourceFormId = input.sourceInspirationStashId
           ? (item.forms.find(
-              (form) => form.entity.kind === 'INSPIRATION_STASH' && form.entity.id === input.sourceInspirationStashId,
+              (form) => form.entity.kind === 'ARTICLE' && form.entity.id === input.sourceInspirationStashId,
             )?.id ?? null)
           : null;
         this.creationItems.addOrGetForm({
@@ -491,7 +491,7 @@ export class SocialPostRepository {
     if (!sourceId) return;
     const source = this.db
       .prepare(
-        `SELECT 1 FROM inspiration_stashes
+        `SELECT 1 FROM articles
         WHERE id = ? AND status = 'ACTIVE' AND deleted_at IS NULL`,
       )
       .get(sourceId);
@@ -501,7 +501,7 @@ export class SocialPostRepository {
       !this.db
         .prepare(
           `SELECT 1 FROM creation_forms
-          WHERE creation_item_id = ? AND entity_type = 'INSPIRATION_STASH'
+          WHERE creation_item_id = ? AND entity_type = 'ARTICLE'
             AND entity_id = ? AND deleted_at IS NULL`,
         )
         .get(creationItemId, sourceId)

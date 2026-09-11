@@ -93,6 +93,7 @@ export function useCreatorContentWorkflows(options: Options) {
     },
   });
   const article = useCreatorArticleWorkflow({
+    spaceId: options.data.spaceId,
     creationItems: options.data.creationItems,
     getCreationDraftCommitIdentity: options.captureDraftCommitIdentity,
     inspirationStashes: options.data.inspirationStashes ?? [],

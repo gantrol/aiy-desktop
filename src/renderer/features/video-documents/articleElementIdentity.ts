@@ -7,12 +7,13 @@ import type {
   ArticleCheckBlockInput,
   ArticleCommentAnchorInput,
   ArticleCommentAnchorUpdateInput,
-  ArticleCommentDto,
+  ContentCommentDto,
   ArticleEditorLocationDto,
   ArticleElementNodeType,
   ArticleElementPlacementInput,
 } from '@/shared/contracts';
 import { articleElementTextFingerprint } from '@/shared/contracts/article';
+import { matchingContentCommentQuote } from '@/renderer/features/content-editor/contentCommentAnchors';
 import {
   ARTICLE_ELEMENT_ATTRIBUTE,
   articleElementImageText,
@@ -169,37 +170,7 @@ function nearestLocatedElement(elements: readonly LocatedArticleElement[], block
   return elements[Math.max(0, Math.min(Math.round(blockIndex), elements.length - 1))] ?? null;
 }
 
-function matchingQuoteRange(element: LocatedArticleElement, comment: ArticleCommentDto) {
-  const quote = comment.anchor.exactQuote;
-  if (!quote) return null;
-  const text = element.node.textContent;
-  const originalOffset = comment.anchor.startOffset;
-  if (text.slice(originalOffset, originalOffset + quote.length) === quote) {
-    return { startOffset: originalOffset, endOffset: originalOffset + quote.length };
-  }
-  let occurrenceCount = 0;
-  let onlyOccurrence = -1;
-  let contextualCount = 0;
-  let onlyContextualOccurrence = -1;
-  for (let offset = text.indexOf(quote); offset >= 0; offset = text.indexOf(quote, offset + 1)) {
-    occurrenceCount += 1;
-    if (occurrenceCount > 256) return null;
-    onlyOccurrence = offset;
-    const prefix = comment.anchor.prefix;
-    const suffix = comment.anchor.suffix;
-    const before = prefix ? text.slice(Math.max(0, offset - prefix.length), offset) : '';
-    const afterOffset = offset + quote.length;
-    const after = suffix ? text.slice(afterOffset, afterOffset + suffix.length) : '';
-    if ((!prefix || prefix.endsWith(before)) && (!suffix || suffix.startsWith(after))) {
-      contextualCount += 1;
-      onlyContextualOccurrence = offset;
-    }
-  }
-  const offset = contextualCount === 1 ? onlyContextualOccurrence : occurrenceCount === 1 ? onlyOccurrence : -1;
-  return offset < 0 ? null : { startOffset: offset, endOffset: offset + quote.length };
-}
-
-function commentDecorationAttributes(comment: ArticleCommentDto, relocated: boolean) {
+function commentDecorationAttributes(comment: ContentCommentDto, relocated: boolean) {
   return {
     class: `box-decoration-clone bg-[var(--article-comment-background)] underline decoration-[var(--article-comment-decoration)] underline-offset-4 [text-decoration-thickness:var(--article-comment-thickness)] transition-[background-color,text-decoration-color,text-decoration-thickness] duration-fast ${relocated ? 'decoration-dashed' : 'decoration-solid'}`,
     'data-article-comment-id': comment.id,
@@ -211,7 +182,7 @@ function commentDecorationAttributes(comment: ArticleCommentDto, relocated: bool
 function commentDecorations(
   document: ProseMirrorNode,
   index: LocatedArticleElementIndex,
-  comment: ArticleCommentDto,
+  comment: ContentCommentDto,
   forceRelocated = false,
 ) {
   const { elements } = index;
@@ -227,7 +198,7 @@ function commentDecorations(
   let startOffset = comment.anchor.startOffset;
   let endOffset = comment.anchor.endOffset;
   if (!relocated && start === end && comment.anchor.kind === 'TEXT_RANGE' && comment.anchor.exactQuote) {
-    const range = matchingQuoteRange(start, comment);
+    const range = matchingContentCommentQuote(start.node.textContent, comment);
     if (range) ({ startOffset, endOffset } = range);
     else relocated = true;
   }
@@ -252,19 +223,19 @@ interface ArticleElementPluginState {
   index: LocatedArticleElementIndex;
   decorations: DecorationSet;
   decorationByCommentId: ReadonlyMap<string, Decoration>;
-  resolutionByCommentId: ReadonlyMap<string, ArticleCommentDto['targetResolution']>;
+  resolutionByCommentId: ReadonlyMap<string, ContentCommentDto['targetResolution']>;
   hasElements: boolean;
 }
 
 function articleElementPluginState(
   document: ProseMirrorNode,
-  comments: readonly ArticleCommentDto[],
+  comments: readonly ContentCommentDto[],
   previous?: ArticleElementPluginState,
 ): ArticleElementPluginState {
   const index = locatedArticleElementIndex(document);
   const decorations: Decoration[] = [];
   const decorationByCommentId = new Map<string, Decoration>();
-  const resolutionByCommentId = new Map<string, ArticleCommentDto['targetResolution']>();
+  const resolutionByCommentId = new Map<string, ContentCommentDto['targetResolution']>();
   for (const comment of comments) {
     // Existing ranges belong to the live document, even if a save response
     // carries anchor coordinates from an earlier document revision.
@@ -295,7 +266,7 @@ function articleElementPluginState(
 function mapArticleElementPluginState(
   transaction: Transaction,
   current: ArticleElementPluginState,
-  comments: readonly ArticleCommentDto[],
+  comments: readonly ContentCommentDto[],
   composing = false,
 ): ArticleElementPluginState {
   const index = locatedArticleElementIndex(transaction.doc);
@@ -307,13 +278,26 @@ function mapArticleElementPluginState(
   const additions: Decoration[] = [];
   for (const comment of comments) {
     if (composing) break;
+    // Image nodes retain their block identity when moved or restored by undo.
+    // Positional decoration mapping alone treats a move as a deletion.
+    const image = index.byId.get(comment.anchor.startElementId);
+    if (comment.anchor.kind === 'BLOCK' && image?.nodeType === 'image') {
+      const previous = decorationByCommentId.get(comment.id);
+      if (previous) decorations.splice(decorations.indexOf(previous), 1);
+      const decoration = commentDecorations(transaction.doc, index, comment)[0];
+      if (decoration) {
+        additions.push(decoration);
+        decorationByCommentId.set(comment.id, decoration);
+      }
+      continue;
+    }
     if (decorationByCommentId.has(comment.id)) continue;
     const decoration = commentDecorations(transaction.doc, index, comment, true)[0];
     if (!decoration) continue;
     additions.push(decoration);
     decorationByCommentId.set(comment.id, decoration);
   }
-  const resolutionByCommentId = new Map<string, ArticleCommentDto['targetResolution']>();
+  const resolutionByCommentId = new Map<string, ContentCommentDto['targetResolution']>();
   for (const comment of comments) {
     const decoration = decorationByCommentId.get(comment.id);
     resolutionByCommentId.set(
@@ -342,7 +326,7 @@ function articleElementIndexForEditor(editor: Editor) {
 }
 
 export function createArticleElementIdentityExtension(
-  comments: () => readonly ArticleCommentDto[],
+  comments: () => readonly ContentCommentDto[],
   inputPending = () => false,
 ) {
   return Extension.create({
@@ -782,7 +766,7 @@ export function articleCommentTargetResolution(editor: Editor, commentId: string
 
 export function mappedArticleCommentAnchors(
   editor: Editor,
-  comments: readonly ArticleCommentDto[],
+  comments: readonly ContentCommentDto[],
 ): ArticleCommentAnchorUpdateInput[] {
   if (editor.isDestroyed) return [];
   const state = articleElementPluginKey.getState(editor.state) as ArticleElementPluginState | undefined;

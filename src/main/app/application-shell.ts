@@ -5,7 +5,13 @@ import path from 'node:path';
 import type { CodexService } from '@/main/assistant/codex-service';
 import { TrayMenuWindow } from '@/main/app/tray-menu-window';
 import { appShellMessages } from '@/shared/i18n/app-shell';
-import { trayTaskStatus, type AppShellLanguage, type TrayMenuState } from '@/shared/contracts/tray-menu';
+import {
+  trayPetalActions,
+  trayTaskStatus,
+  type TrayPetalAction,
+  type AppShellLanguage,
+  type TrayMenuState,
+} from '@/shared/contracts/tray-menu';
 import { AppUpdateService } from '@/main/app/app-update-service';
 import { RendererEventDispatcher } from '@/main/app/renderer-event-dispatcher';
 import { PACKAGED_RENDERER_URL } from '@/main/app/renderer-protocol';
@@ -59,6 +65,7 @@ interface DesktopApplicationShellOptions {
   stopBackgroundFileOperations?(): Promise<void>;
   drainDesktopPetals?(): Promise<boolean>;
   resumeDesktopPetals?(): void;
+  desktopPetals?(): { readonly ready: boolean; run(action: TrayPetalAction): Promise<void> } | null;
 }
 
 export class DesktopApplicationShell {
@@ -82,6 +89,7 @@ export class DesktopApplicationShell {
 
   private readonly trayState = (): TrayMenuState => ({
     language: this.language,
+    petalsReady: this.options.desktopPetals?.()?.ready ?? false,
     windowReady: Boolean(this.mainWindow && !this.mainWindow.isDestroyed()),
     taskCount: this.pendingModelTaskCount(),
     quittingSoon: this.quitAfterBackgroundTasks && this.backgroundCompletionNotified,
@@ -427,11 +435,29 @@ export class DesktopApplicationShell {
     this.appTray?.popUpContextMenu(this.nativeTrayMenu());
   };
 
+  private readonly runTrayPetalAction = async (action: TrayPetalAction) => {
+    if (!this.options.desktopPetals?.()?.ready) return;
+    try {
+      await this.options.desktopPetals?.()?.run(action);
+    } catch (error) {
+      console.error('[tray-menu] Petals action failed', error);
+      if (this.options.allowWindowPresentation) dialog.showErrorBox(this.language.messages[action], String(error));
+    }
+  };
+
   private readonly nativeTrayMenu = () => {
     const state = this.trayState();
     const copy = this.language.messages;
     return Menu.buildFromTemplate([
       { label: copy.open, enabled: state.windowReady, click: this.showMainWindow },
+      { type: 'separator' },
+      ...trayPetalActions.map((action) => ({
+        label: copy[action],
+        enabled: state.petalsReady,
+        click: () => {
+          void this.runTrayPetalAction(action);
+        },
+      })),
       { type: 'separator' },
       { label: trayTaskStatus(state, copy), enabled: false },
       { type: 'separator' },
@@ -518,6 +544,8 @@ export class DesktopApplicationShell {
       () => this.developmentRendererUrl() ?? new URL(PACKAGED_RENDERER_URL),
       this.trayState,
       async (action) => {
+        if (trayPetalActions.some((petalAction) => petalAction === action))
+          await this.runTrayPetalAction(action as TrayPetalAction);
         if (action === 'open') this.showMainWindow();
         if (action === 'quit') await this.requestAppQuit();
         if (action === 'force-quit') await this.confirmForceQuit();

@@ -2,10 +2,29 @@ import { browserCompanionWatermarkSelectionSchema } from '@/shared/contracts/bro
 import { blockDocumentMarkdown } from '@/shared/block-document-codecs';
 import { blockDocumentAssetIds, blockDocumentSchema } from '@/shared/contracts/block-document';
 import { z } from 'zod';
+import { articleCreationInputSchema } from '@/shared/contracts/inspiration-stash';
+import { noteFileSchema, NOTE_FILE_LIMITS } from '@/shared/contracts/note-files';
+import {
+  contentCommentAnchorSchema as articleCommentAnchorSchema,
+  contentCommentAnchorUpdateSchema as articleCommentAnchorUpdateSchema,
+  contentCommentModelAuthorSchema as articleCommentModelAuthorSchema,
+  contentCommentReplySchema as articleCommentReplySchema,
+  contentCommentSchema,
+  contentElementNodeTypeSchema as articleElementNodeTypeSchema,
+  contentElementPlacementSchema as articleElementPlacementSchema,
+} from '@/shared/contracts/content-comments';
+export {
+  contentCommentAnchorSchema as articleCommentAnchorSchema,
+  contentCommentAnchorUpdateSchema as articleCommentAnchorUpdateSchema,
+  contentCommentModelAuthorSchema as articleCommentModelAuthorSchema,
+  contentCommentReplySchema as articleCommentReplySchema,
+  contentElementNodeTypeSchema as articleElementNodeTypeSchema,
+  contentElementPlacementSchema as articleElementPlacementSchema,
+} from '@/shared/contracts/content-comments';
+export type { ContentCommentDto, ContentCommentStatus } from '@/shared/contracts/content-comments';
 
 const idSchema = z.string().min(1).max(200);
 const sha256Schema = z.string().regex(/^[a-f0-9]{64}$/u);
-const articleElementFingerprintSchema = z.string().regex(/^[a-f0-9]{16}$/u);
 const articleMediaPathSchema = z
   .string()
   .min(1)
@@ -19,88 +38,7 @@ export const articleMediaBindingSchema = z
   })
   .strict();
 
-export const articleElementNodeTypeSchema = z.enum([
-  'paragraph',
-  'heading',
-  'listItem',
-  'taskItem',
-  'blockquote',
-  'codeBlock',
-  'image',
-  'table',
-  'tableRow',
-  'tableHeader',
-  'tableCell',
-]);
-
-export const articleElementPlacementSchema = z
-  .object({
-    elementId: idSchema,
-    blockIndex: z.number().int().nonnegative().max(100_000),
-    nodeType: articleElementNodeTypeSchema,
-    textFingerprint: articleElementFingerprintSchema,
-    preview: z.string().max(280),
-  })
-  .strict();
-
-export const articleCommentAnchorSchema = z
-  .object({
-    kind: z.enum(['TEXT_RANGE', 'BLOCK', 'TABLE', 'TABLE_ROW', 'TABLE_CELL']),
-    startElementId: idSchema,
-    startOffset: z.number().int().nonnegative().max(1_000_000),
-    endElementId: idSchema,
-    endOffset: z.number().int().nonnegative().max(1_000_000),
-    startBlockIndex: z.number().int().nonnegative().max(100_000),
-    endBlockIndex: z.number().int().nonnegative().max(100_000),
-    exactQuote: z.string().max(2_000),
-    prefix: z.string().max(200),
-    suffix: z.string().max(200),
-  })
-  .strict();
-
-export const articleCommentAnchorUpdateSchema = z
-  .object({
-    commentId: idSchema,
-    anchor: articleCommentAnchorSchema,
-  })
-  .strict();
-
-export const articleCommentReplySchema = z
-  .object({
-    id: idSchema,
-    commentId: idSchema,
-    body: z.string().max(10_000),
-    authorId: idSchema.nullable(),
-    createdAt: z.string().min(1),
-    updatedAt: z.string().min(1),
-  })
-  .strict();
-
-export const articleCommentModelAuthorSchema = z
-  .object({
-    providerKey: idSchema,
-    modelId: idSchema,
-  })
-  .strict();
-
-export const articleCommentSchema = z
-  .object({
-    id: idSchema,
-    articleId: idSchema,
-    createdRevisionId: idSchema,
-    status: z.enum(['OPEN', 'RESOLVED', 'REJECTED']),
-    targetResolution: z.enum(['AVAILABLE', 'RELOCATED', 'MISSING']),
-    anchor: articleCommentAnchorSchema,
-    preview: z.string().max(280),
-    body: z.string().max(10_000),
-    authorId: idSchema.nullable(),
-    modelAuthor: articleCommentModelAuthorSchema.nullable(),
-    replies: z.array(articleCommentReplySchema).max(2_000),
-    createdAt: z.string().min(1),
-    updatedAt: z.string().min(1),
-    resolvedAt: z.string().min(1).nullable(),
-  })
-  .strict();
+export const articleCommentSchema = contentCommentSchema.extend({ articleId: idSchema }).strict();
 
 function fingerprintPart(input: string, seed: number) {
   let hash = seed >>> 0;
@@ -124,6 +62,8 @@ export const articleContentSchema = z
     markdown: z.string().max(1_000_000).optional(),
     mediaBindings: z.array(articleMediaBindingSchema).max(100),
     coverAssetId: idSchema.nullable(),
+    creationInput: articleCreationInputSchema.optional(),
+    files: z.array(noteFileSchema).max(NOTE_FILE_LIMITS.count).optional(),
   })
   .strict()
   .superRefine((value, context) => {
@@ -161,6 +101,8 @@ export function canonicalArticleContentJson(input: z.input<typeof articleContent
     ...(content.document ? { document: content.document } : { markdown: content.markdown }),
     mediaBindings: content.mediaBindings,
     coverAssetId: content.coverAssetId,
+    ...(content.creationInput ? { creationInput: content.creationInput } : {}),
+    ...(content.files ? { files: content.files } : {}),
   });
 }
 
@@ -187,6 +129,8 @@ const articleContentDtoSchema = z
     mediaBindings: z.array(articleMediaBindingSchema).max(100),
     coverAssetId: idSchema.nullable(),
     mediaAssets: z.array(articleAssetSchema).max(100),
+    creationInput: articleCreationInputSchema.optional(),
+    files: z.array(noteFileSchema).max(NOTE_FILE_LIMITS.count).optional(),
   })
   .strict()
   .superRefine((value, context) => {
@@ -198,13 +142,19 @@ const articleContentDtoSchema = z
     if (value.coverAssetId && !assetIds.includes(value.coverAssetId)) {
       context.addIssue({ code: 'custom', path: ['coverAssetId'], message: 'The cover must be article media' });
     }
+    // Bindings are the durable revision record. A soft-deleted or otherwise
+    // unavailable asset may be absent from hydration so the editor can expose a
+    // repair action instead of rejecting the entire article.
     const hydratedAssetIds = value.mediaAssets.map((asset) => asset.id);
     if (
-      new Set(assetIds).size !== hydratedAssetIds.length ||
       new Set(hydratedAssetIds).size !== hydratedAssetIds.length ||
-      assetIds.some((assetId) => !hydratedAssetIds.includes(assetId))
+      hydratedAssetIds.some((assetId) => !assetIds.includes(assetId))
     ) {
-      context.addIssue({ code: 'custom', path: ['mediaAssets'], message: 'Article media hydration is invalid' });
+      context.addIssue({
+        code: 'custom',
+        path: ['mediaAssets'],
+        message: 'Article media hydration contains unknown assets',
+      });
     }
   });
 

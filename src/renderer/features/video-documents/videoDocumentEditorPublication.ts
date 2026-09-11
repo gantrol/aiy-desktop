@@ -7,12 +7,13 @@ import { normalizeMarkdownForWysiwyg } from '@/renderer/features/video-documents
 import { blockDocumentMarkdown } from '@/shared/block-document-codecs';
 import type {
   ArticleCommentAnchorUpdateInput,
-  ArticleCommentDto,
+  ContentCommentDto,
   ArticleEditorLocationDto,
   ArticleElementPlacementInput,
 } from '@/shared/contracts';
 import { captureBlockDocument, type BlockDocument } from '@/shared/contracts/block-document';
 import type { Editor } from '@tiptap/core';
+import { sameArticleElementPlacements } from '@/shared/contracts/article';
 
 export interface VideoDocumentWysiwygPersistenceSnapshot {
   markdown: string;
@@ -24,7 +25,7 @@ export interface VideoDocumentWysiwygPersistenceSnapshot {
 export type VideoDocumentArticleElementsChangeReason = 'hydrate' | 'document' | 'identity';
 
 interface PublicationRefs {
-  comments: { current: readonly ArticleCommentDto[] };
+  comments: { current: readonly ContentCommentDto[] };
   persistence: { current: VideoDocumentWysiwygPersistenceSnapshot };
   lastMarkdown: { current: string };
   onChange: { current(markdown: string): void };
@@ -44,7 +45,7 @@ interface PublicationRefs {
 export function captureVideoDocumentEditor(
   editor: Editor,
   articleElementsEnabled: boolean,
-  comments: readonly ArticleCommentDto[],
+  comments: readonly ContentCommentDto[],
 ): VideoDocumentWysiwygPersistenceSnapshot {
   let markdown: string | undefined;
   const document = captureBlockDocument(editor.getJSON());
@@ -70,6 +71,8 @@ export function publishVideoDocumentEditor(
   if (editor.isDestroyed) return;
   const snapshot = captureVideoDocumentEditor(editor, articleElementsEnabled, refs.comments.current);
   const { articleElements: elements } = snapshot;
+  const placementsChanged =
+    articleElementsEnabled && !sameArticleElementPlacements(refs.persistence.current.articleElements, elements);
   refs.persistence.current = snapshot;
   const structured = refs.onDocumentChange?.current;
   const markdownChanged = structured ? true : snapshot.markdown !== refs.lastMarkdown.current;
@@ -78,7 +81,7 @@ export function publishVideoDocumentEditor(
     refs.lastMarkdown.current = snapshot.markdown;
     refs.onChange.current(snapshot.markdown);
   }
-  if (articleElementsEnabled && (markdownChanged || identityChanged)) {
+  if (articleElementsEnabled && (markdownChanged || identityChanged || placementsChanged)) {
     refs.callbacks.current.onArticleElementsChange?.(elements, markdownChanged ? 'document' : 'identity');
   }
   const location = articleElementsEnabled ? captureArticleEditorLocation(editor) : null;

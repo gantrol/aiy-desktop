@@ -1,5 +1,9 @@
 import { GaugeIcon } from 'lucide-react';
-import type { CodexUsageTurnSpeedAnalysis, CodexUsageTurnSpeedComparison } from '@/shared/contracts/codex-usage';
+import type {
+  CodexUsageOfficialSpeed,
+  CodexUsageTurnSpeedAnalysis,
+  CodexUsageTurnSpeedComparison,
+} from '@/shared/contracts/codex-usage';
 import { Badge } from '@/renderer/components/ui/badge';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/renderer/components/ui/table';
 import type { useI18n } from '@/renderer/i18n/useI18n';
@@ -25,6 +29,23 @@ function formatDuration(durationMs: number | null, numbers: Intl.NumberFormat, u
 
 function formatMultiplier(value: number | null, numbers: Intl.NumberFormat) {
   return value === null ? '—' : `${numbers.format(value)}×`;
+}
+
+function OfficialSpeedValue({
+  speed,
+  labels,
+  numbers,
+}: {
+  speed: CodexUsageOfficialSpeed | undefined;
+  labels: TurnSpeedLabels;
+  numbers: Intl.NumberFormat;
+}) {
+  const source = labels.officialSources[speed?.source ?? 'UNKNOWN'];
+  return (
+    <span title={speed?.asOf ? `${source} · ${speed.asOf}` : source}>
+      {speed?.multiplier == null ? labels.unknownOfficialSpeed : formatMultiplier(speed.multiplier, numbers)}
+    </span>
+  );
 }
 
 function CohortMedian({
@@ -59,9 +80,6 @@ export function CodexUsageTurnSpeedResults({ analysis, labels, numbers }: Props)
       <div className="flex flex-wrap items-center gap-2 text-sm font-semibold">
         <GaugeIcon className="size-4" />
         {labels.title}
-        <Badge variant="outline" className="hidden @md/codex-usage:inline-flex">
-          {labels.official} {analysis.officialSpeedMultiplier}×
-        </Badge>
         {primary && (
           <>
             <Badge variant="secondary">{primary.model}</Badge>
@@ -82,7 +100,7 @@ export function CodexUsageTurnSpeedResults({ analysis, labels, numbers }: Props)
         <div className="grid gap-1 px-4 py-3">
           <dt className="text-xs text-muted-foreground">{labels.officialSpeed}</dt>
           <dd className="text-lg font-semibold tabular-nums @xl/codex-usage:text-xl">
-            {analysis.officialSpeedMultiplier}×
+            <OfficialSpeedValue speed={primary?.officialSpeed} labels={labels} numbers={numbers} />
           </dd>
         </div>
         <div className="grid gap-1 px-4 py-3">
@@ -118,6 +136,7 @@ export function CodexUsageTurnSpeedResults({ analysis, labels, numbers }: Props)
                 <TableHead numeric>{labels.standardMedian}</TableHead>
                 <TableHead numeric>{labels.fastMedian}</TableHead>
                 <TableHead numeric>{labels.actualSpeed}</TableHead>
+                <TableHead numeric>{labels.officialSpeed}</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -137,6 +156,9 @@ export function CodexUsageTurnSpeedResults({ analysis, labels, numbers }: Props)
                   </TableCell>
                   <TableCell numeric className="font-medium tabular-nums">
                     {formatMultiplier(comparison.actualSpeedMultiplier, numbers)}
+                  </TableCell>
+                  <TableCell numeric className="tabular-nums">
+                    <OfficialSpeedValue speed={comparison.officialSpeed} labels={labels} numbers={numbers} />
                   </TableCell>
                 </TableRow>
               ))}

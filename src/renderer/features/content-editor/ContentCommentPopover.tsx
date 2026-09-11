@@ -10,27 +10,27 @@ import {
   XIcon,
 } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState } from 'react';
-import type { ArticleCommentDto, ArticleCommentStatus } from '@/shared/contracts';
+import type { ContentCommentDto, ContentCommentStatus } from '@/shared/contracts';
 import { CodexThreadLinkText } from '@/renderer/components/content/CodexThreadLinkText';
-import { ArticleCommentModelIdentity } from '@/renderer/components/creator/article-editor/ArticleCommentModelIdentity';
+import { ContentCommentModelIdentity } from '@/renderer/features/content-editor/ContentCommentModelIdentity';
 import { Button } from '@/renderer/components/ui/button';
 import { Popover, PopoverAnchor, PopoverContent } from '@/renderer/components/ui/popover';
 import { Textarea } from '@/renderer/components/ui/textarea';
 import type { ArticleCommentAnchorRect } from '@/renderer/features/video-documents/articleElementIdentity';
+import { useI18n } from '@/renderer/i18n/useI18n';
 
-export interface ArticleCommentDraftPopover {
+export interface ContentCommentDraftPopover {
   preview: string;
   rect: ArticleCommentAnchorRect;
 }
 
 interface Props {
   busy: boolean;
-  draft: ArticleCommentDraftPopover | null;
-  hovered: ArticleCommentDto | null;
+  draft: ContentCommentDraftPopover | null;
+  hovered: ContentCommentDto | null;
   hoveredRect: ArticleCommentAnchorRect | null;
-  selected: ArticleCommentDto | null;
+  selected: ContentCommentDto | null;
   selectedRect: ArticleCommentAnchorRect | null;
-  zh: boolean;
   onDelete(commentId: string): void;
   onDraftCancel(): void;
   onDraftSubmit(body: string): void;
@@ -38,26 +38,25 @@ interface Props {
   onHoverEngage(commentId: string): void;
   onReply(commentId: string, body: string): void;
   onSelectedClose(): void;
-  onStatusChange(commentId: string, status: ArticleCommentStatus): void;
+  onStatusChange(commentId: string, status: ContentCommentStatus): void;
   onUpdateBody(commentId: string, body: string): void;
 }
 
-function targetResolutionLabel(comment: ArticleCommentDto, zh: boolean) {
-  if (comment.targetResolution === 'RELOCATED') {
-    return zh ? '原文已删除，已附到相邻位置' : 'Original content deleted; attached nearby';
-  }
-  return zh ? '原文已删除，附近没有可附着的位置' : 'Original content deleted; no nearby target remains';
-}
-
-function CommentTarget({ comment, preview, zh }: { comment?: ArticleCommentDto; preview: string; zh: boolean }) {
-  const targetWarning = comment && comment.targetResolution !== 'AVAILABLE' ? targetResolutionLabel(comment, zh) : null;
+function CommentTarget({ comment, preview }: { comment?: ContentCommentDto; preview: string }) {
+  const copy = useI18n().messages.contentEditor.comment;
+  const targetWarning =
+    comment && comment.targetResolution !== 'AVAILABLE'
+      ? comment.targetResolution === 'RELOCATED'
+        ? copy.relocated
+        : copy.missing
+      : null;
   return (
     <div className="flex items-start gap-2">
       {targetWarning && (
         <AlertTriangleIcon className="mt-0.5 size-3.5 shrink-0 text-warning" aria-label={targetWarning} role="img" />
       )}
       <div className="line-clamp-3 min-w-0 flex-1 border-l-2 border-warning pl-2 text-xs leading-5 text-muted-foreground">
-        {preview || (zh ? '空内容块' : 'Empty block')}
+        {preview || copy.emptyBlock}
       </div>
     </div>
   );
@@ -66,16 +65,15 @@ function CommentTarget({ comment, preview, zh }: { comment?: ArticleCommentDto; 
 function CommentComposer({
   busy,
   preview,
-  zh,
   onCancel,
   onSubmit,
 }: {
   busy: boolean;
   preview: string;
-  zh: boolean;
   onCancel(): void;
   onSubmit(body: string): void;
 }) {
+  const copy = useI18n().messages.contentEditor.comment;
   const [body, setBody] = useState('');
 
   function submit() {
@@ -87,7 +85,7 @@ function CommentComposer({
   return (
     <div>
       <div className="border-b px-3 py-3">
-        <CommentTarget preview={preview} zh={zh} />
+        <CommentTarget preview={preview} />
       </div>
       <div className="p-3">
         <Textarea
@@ -97,8 +95,8 @@ function CommentComposer({
           maxLength={10_000}
           disabled={busy}
           className="min-h-24 resize-none"
-          aria-label={zh ? '新评论' : 'New comment'}
-          placeholder={zh ? '添加评论' : 'Add comment'}
+          aria-label={copy.new}
+          placeholder={copy.add}
           onChange={(event) => setBody(event.target.value)}
           onKeyDown={(event) => {
             if (event.key !== 'Enter' || (!event.ctrlKey && !event.metaKey)) return;
@@ -108,11 +106,11 @@ function CommentComposer({
         />
         <div className="mt-2 flex justify-end gap-1">
           <Button type="button" variant="ghost" size="sm" disabled={busy} onClick={onCancel}>
-            {zh ? '取消' : 'Cancel'}
+            {copy.cancel}
           </Button>
           <Button type="button" size="sm" disabled={busy || !body.trim()} onClick={submit}>
             <SendIcon className="size-3.5" />
-            {zh ? '评论' : 'Comment'}
+            {copy.submit}
           </Button>
         </div>
       </div>
@@ -124,24 +122,23 @@ function CommentThreadActions({
   busy,
   comment,
   editing,
-  zh,
   onClose,
   onDelete,
   onEdit,
   onStatusChange,
 }: {
   busy: boolean;
-  comment: ArticleCommentDto;
+  comment: ContentCommentDto;
   editing: boolean;
-  zh: boolean;
   onClose(): void;
   onDelete(): void;
   onEdit(): void;
-  onStatusChange(status: ArticleCommentStatus): void;
+  onStatusChange(status: ContentCommentStatus): void;
 }) {
-  const resolveLabel = zh ? '解决评论' : 'Resolve comment';
-  const rejectLabel = zh ? '拒绝意见' : 'Reject suggestion';
-  const reopenLabel = zh ? '重新打开评论' : 'Reopen comment';
+  const copy = useI18n().messages.contentEditor.comment;
+  const resolveLabel = copy.resolve;
+  const rejectLabel = copy.reject;
+  const reopenLabel = copy.reopen;
   return (
     <div className="flex items-center gap-0.5">
       <Button
@@ -149,8 +146,8 @@ function CommentThreadActions({
         variant="ghost"
         size="icon-sm"
         disabled={busy || editing}
-        aria-label={zh ? '编辑评论' : 'Edit comment'}
-        title={zh ? '编辑评论' : 'Edit comment'}
+        aria-label={copy.edit}
+        title={copy.edit}
         onClick={onEdit}
       >
         <PencilIcon className="size-3.5" />
@@ -199,20 +196,13 @@ function CommentThreadActions({
         variant="ghost"
         size="icon-sm"
         disabled={busy}
-        aria-label={zh ? '删除评论' : 'Delete comment'}
-        title={zh ? '删除评论' : 'Delete comment'}
+        aria-label={copy.delete}
+        title={copy.delete}
         onClick={onDelete}
       >
         <Trash2Icon className="size-3.5" />
       </Button>
-      <Button
-        type="button"
-        variant="ghost"
-        size="icon-sm"
-        aria-label={zh ? '关闭评论' : 'Close comment'}
-        title={zh ? '关闭评论' : 'Close comment'}
-        onClick={onClose}
-      >
+      <Button type="button" variant="ghost" size="icon-sm" aria-label={copy.close} title={copy.close} onClick={onClose}>
         <XIcon className="size-3.5" />
       </Button>
     </div>
@@ -222,7 +212,6 @@ function CommentThreadActions({
 function CommentThread({
   busy,
   comment,
-  zh,
   onClose,
   onDelete,
   onReply,
@@ -230,14 +219,14 @@ function CommentThread({
   onUpdateBody,
 }: {
   busy: boolean;
-  comment: ArticleCommentDto;
-  zh: boolean;
+  comment: ContentCommentDto;
   onClose(): void;
   onDelete(): void;
   onReply(body: string): void;
-  onStatusChange(status: ArticleCommentStatus): void;
+  onStatusChange(status: ContentCommentStatus): void;
   onUpdateBody(body: string): void;
 }) {
+  const copy = useI18n().messages.contentEditor.comment;
   const [editing, setEditing] = useState(false);
   const [body, setBody] = useState(comment.body);
   const [reply, setReply] = useState('');
@@ -259,13 +248,12 @@ function CommentThread({
     <div>
       <div className="flex items-start gap-2 border-b px-3 py-2">
         <div className="min-w-0 flex-1 pt-1">
-          <CommentTarget comment={comment} preview={comment.preview} zh={zh} />
+          <CommentTarget comment={comment} preview={comment.preview} />
         </div>
         <CommentThreadActions
           busy={busy}
           comment={comment}
           editing={editing}
-          zh={zh}
           onClose={onClose}
           onDelete={onDelete}
           onEdit={() => setEditing(true)}
@@ -274,7 +262,7 @@ function CommentThread({
       </div>
       <div className="p-3">
         {comment.modelAuthor && (
-          <ArticleCommentModelIdentity author={comment.modelAuthor} className="mb-2 flex max-w-full" />
+          <ContentCommentModelIdentity author={comment.modelAuthor} className="mb-2 flex max-w-full" />
         )}
         {editing ? (
           <div>
@@ -285,7 +273,7 @@ function CommentThread({
               maxLength={10_000}
               disabled={busy}
               className="min-h-20 resize-none"
-              aria-label={zh ? '评论正文' : 'Comment body'}
+              aria-label={copy.body}
               onChange={(event) => setBody(event.target.value)}
             />
             <div className="mt-2 flex justify-end gap-1">
@@ -299,7 +287,7 @@ function CommentThread({
                   setEditing(false);
                 }}
               >
-                {zh ? '取消' : 'Cancel'}
+                {copy.cancel}
               </Button>
               <Button
                 type="button"
@@ -311,13 +299,13 @@ function CommentThread({
                 }}
               >
                 <SaveIcon className="size-3.5" />
-                {zh ? '保存' : 'Save'}
+                {copy.save}
               </Button>
             </div>
           </div>
         ) : (
           <div className="whitespace-pre-wrap text-sm leading-6">
-            <CodexThreadLinkText value={comment.body || (zh ? '空评论' : 'Empty comment')} />
+            <CodexThreadLinkText value={comment.body || copy.empty} />
           </div>
         )}
         {comment.replies.length > 0 && (
@@ -336,8 +324,8 @@ function CommentThread({
             maxLength={10_000}
             disabled={busy}
             className="min-h-16 resize-none"
-            aria-label={zh ? '回复' : 'Reply'}
-            placeholder={zh ? '回复' : 'Reply'}
+            aria-label={copy.reply}
+            placeholder={copy.reply}
             onChange={(event) => setReply(event.target.value)}
             onKeyDown={(event) => {
               if (event.key !== 'Enter' || (!event.ctrlKey && !event.metaKey)) return;
@@ -349,7 +337,7 @@ function CommentThread({
             type="button"
             size="icon-sm"
             disabled={busy || !reply.trim()}
-            aria-label={zh ? '发送回复' : 'Send reply'}
+            aria-label={copy.sendReply}
             onClick={submitReply}
           >
             <SendIcon className="size-3.5" />
@@ -360,24 +348,23 @@ function CommentThread({
   );
 }
 
-function CommentHoverPreview({ comment, zh }: { comment: ArticleCommentDto; zh: boolean }) {
+function CommentHoverPreview({ comment }: { comment: ContentCommentDto }) {
+  const copy = useI18n().messages.contentEditor.comment;
   return (
     <div className="space-y-2">
-      {comment.modelAuthor && <ArticleCommentModelIdentity author={comment.modelAuthor} className="flex max-w-full" />}
-      <CommentTarget comment={comment} preview={comment.preview} zh={zh} />
-      <div className="line-clamp-4 whitespace-pre-wrap text-sm leading-5">
-        {comment.body || (zh ? '空评论' : 'Empty comment')}
-      </div>
+      {comment.modelAuthor && <ContentCommentModelIdentity author={comment.modelAuthor} className="flex max-w-full" />}
+      <CommentTarget comment={comment} preview={comment.preview} />
+      <div className="line-clamp-4 whitespace-pre-wrap text-sm leading-5">{comment.body || copy.empty}</div>
       {comment.replies.length > 0 && (
         <div className="text-2xs tabular-nums text-muted-foreground">
-          {zh ? `${comment.replies.length} 条回复` : `${comment.replies.length} replies`}
+          {copy.replies.replace('{count}', String(comment.replies.length))}
         </div>
       )}
     </div>
   );
 }
 
-export function ArticleCommentPopover(props: Props) {
+export function ContentCommentPopover(props: Props) {
   const mode = props.draft ? 'DRAFT' : props.selected ? 'THREAD' : props.hovered ? 'HOVER' : null;
   const rect = props.draft?.rect ?? props.selectedRect ?? props.hoveredRect;
   const virtualAnchor = useMemo(
@@ -422,7 +409,6 @@ export function ArticleCommentPopover(props: Props) {
           <CommentComposer
             busy={props.busy}
             preview={props.draft!.preview}
-            zh={props.zh}
             onCancel={props.onDraftCancel}
             onSubmit={props.onDraftSubmit}
           />
@@ -430,7 +416,6 @@ export function ArticleCommentPopover(props: Props) {
           <CommentThread
             busy={props.busy}
             comment={props.selected!}
-            zh={props.zh}
             onClose={props.onSelectedClose}
             onDelete={() => props.onDelete(props.selected!.id)}
             onReply={(body) => props.onReply(props.selected!.id, body)}
@@ -438,7 +423,7 @@ export function ArticleCommentPopover(props: Props) {
             onUpdateBody={(body) => props.onUpdateBody(props.selected!.id, body)}
           />
         ) : (
-          <CommentHoverPreview comment={props.hovered!} zh={props.zh} />
+          <CommentHoverPreview comment={props.hovered!} />
         )}
       </PopoverContent>
     </Popover>

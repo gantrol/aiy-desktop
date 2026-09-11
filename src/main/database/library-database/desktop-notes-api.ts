@@ -12,14 +12,16 @@ export function createDesktopNotesApi({
   storage,
   inspirationStashes,
   creationItems,
-}: Pick<LibraryDatabaseRepositories, 'storage' | 'inspirationStashes' | 'creationItems'>) {
-  const notes = new DesktopNotesRepository(storage);
+  articles,
+}: Pick<LibraryDatabaseRepositories, 'storage' | 'inspirationStashes' | 'creationItems' | 'articles'>) {
+  const notes = new DesktopNotesRepository(storage, articles);
   return {
     listDesktopNotes: () => notes.list(),
     listDesktopNoteSummaries: () => notes.summaries(),
-    listDesktopNoteIds: () => notes.activeIds(),
+    listDesktopNoteIds: (color?: PetalColor) => notes.activeIds(color),
     getDesktopNote: (id: string) => notes.get(id),
     removeDesktopNote: (id: string) => notes.remove(id),
+    removeDesktopNotesByColor: (color: PetalColor) => notes.removeByColor(color),
     createDesktopNote: (requestId: string, stashId?: string, initial?: DesktopNoteInitial) =>
       notes.create(requestId, stashId, initial),
     reconcileDesktopNoteSources: (stashIds?: readonly string[]) => notes.reconcileSources(stashIds),
@@ -32,7 +34,8 @@ export function createDesktopNotesApi({
       const note = notes.get(id);
       return {
         stash: inspirationStashes.get(note.stashId),
-        item: creationItems.findForEntity({ kind: 'INSPIRATION_STASH', id: note.stashId }),
+        article: articles.get(note.stashId),
+        item: creationItems.findForEntity({ kind: 'ARTICLE', id: note.stashId }),
       };
     },
   };

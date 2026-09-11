@@ -2,11 +2,12 @@ import { blockDocumentMarkdown } from '@/shared/block-document-codecs';
 import { blockDocumentAssetIds, blockDocumentSchema } from '@/shared/contracts/block-document';
 import { z } from 'zod';
 import { noteFileSchema, NOTE_FILE_LIMITS } from '@/shared/contracts/note-files';
+import { creationDraftDtoSchema } from '@/shared/contracts/creation-draft';
 
 const idSchema = z.string().min(1).max(200);
 const localeSchema = z.enum(['zh', 'en']);
 const promptNodeSchema = z.discriminatedUnion('kind', [
-  z.object({ kind: z.literal('TEXT'), text: z.string().max(30_000) }).strict(),
+  z.object({ kind: z.literal('TEXT'), text: z.string().max(1_000_000) }).strict(),
   z.object({ kind: z.literal('TERM'), termId: idSchema, promptLocale: localeSchema.optional() }).strict(),
   z.object({ kind: z.literal('RECIPE'), paletteId: idSchema }).strict(),
 ]);
@@ -22,6 +23,28 @@ const draftConsumptionSchema = {
   consumeCreationDraftId: idSchema.nullable().default(null),
 };
 
+/** Generation context is revisioned with an article, separately from its prose. */
+export const articleCreationInputSchema = z
+  .object({
+    promptNodes: z.array(promptNodeSchema).max(2_000),
+    termPromptLocale: localeSchema,
+    termIds: z.array(idSchema).max(100),
+    wordPaletteReferences: z.array(paletteReferenceSchema).max(50),
+    referenceAssetIds: z.array(idSchema).max(100),
+    settings: creationDraftDtoSchema
+      .pick({
+        dictionaryScope: true,
+        canvasPresetKey: true,
+        quality: true,
+        selectedModelKeys: true,
+        repeatCount: true,
+        modelTargets: true,
+      })
+      .strip()
+      .optional(),
+  })
+  .strict();
+
 export const inspirationStashContentSchema = z
   .object({
     schemaVersion: z.union([z.literal(1), z.literal(2)]),
@@ -29,13 +52,14 @@ export const inspirationStashContentSchema = z
     // Optional keys stay absent in old revisions so their canonical hashes remain valid.
     title: z.string().max(200).optional(),
     format: z.literal('markdown').optional(),
-    manualPrompt: z.string().max(30_000).optional(),
+    manualPrompt: z.string().max(1_000_000).optional(),
     promptNodes: z.array(promptNodeSchema).max(2_000),
     referenceAssetIds: z.array(idSchema).max(100),
     files: z.array(noteFileSchema).max(NOTE_FILE_LIMITS.count).optional(),
     termPromptLocale: localeSchema,
     termIds: z.array(idSchema).max(100),
     wordPaletteReferences: z.array(paletteReferenceSchema).max(50),
+    settings: articleCreationInputSchema.shape.settings,
   })
   .strict()
   .superRefine((value, context) => {
@@ -58,6 +82,7 @@ export const inspirationStashSaveInputSchema = z.discriminatedUnion('mode', [
       mode: z.literal('UPDATE'),
       id: idSchema,
       expectedContentHash: z.string().min(1),
+      expectedRevisionId: idSchema.optional(),
       content: inspirationStashContentSchema,
       ...draftConsumptionSchema,
     })

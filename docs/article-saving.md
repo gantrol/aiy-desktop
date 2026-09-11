@@ -5,6 +5,30 @@ One session model owns metadata, comments, the draft sequence, and the acknowled
 article. A save response advances that baseline without loading content back into
 the editor. React components subscribe to projections of this model.
 
+## Article drafts and desktop notes
+
+New desktop notes and saved creation inputs own an ARTICLE form in a DRAFT creation
+item. The draft phase describes creative progress; it is independent of autosave,
+archive state, and desktop placement. A blank desktop note is provisional until
+it contains text, a title, an image or an attachment. Pinning an existing article
+does not change its phase.
+
+Articles own prose, revision history, comment anchors and attachments. Optional
+`creationInput` metadata keeps prompt nodes, term identities, recipe revisions and
+parameters, reference images, and generation settings in the same revision.
+Continuing a saved input updates that article; explicitly creating another form
+still creates another article. The inspiration API is a compatibility adapter.
+
+Main and desktop editors commit through the article revision writer. Desktop
+checkpoints retain the expected revision as well as the hash. Article snapshots
+retain creation inputs and attachments when editing prose.
+
+Revision 6 migrates legacy inspiration records, revisions, comments, lifecycle
+records, file projections and desktop instances in one transaction. Legacy
+revision IDs and hashes remain mapped for recovery; old source rows are retired.
+Legacy main-editor checkpoints are copied to durable article recovery before
+their exact source checkpoint is acknowledged.
+
 ## Stable document handoff
 
 The editor publishes Markdown, element placements, and comment anchors together.

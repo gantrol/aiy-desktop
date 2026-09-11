@@ -1,16 +1,13 @@
-import { ArticleCommentsPanel } from '@/renderer/components/creator/article-editor/ArticleCommentsPanel';
+import { ContentCommentsPanel } from '@/renderer/features/content-editor/ContentCommentsPanel';
 import { ArticleEditorOutline } from '@/renderer/components/creator/article-editor/ArticleEditorOutline';
 import { ArticleEditorPane } from '@/renderer/components/creator/article-editor/ArticleEditorPane';
-import {
-  ArticleEditorLayoutToolbar,
-  ArticleEditorSidebar,
-} from '@/renderer/components/creator/article-editor/ArticleEditorSidebar';
+import { ArticleEditorSidebar } from '@/renderer/components/creator/article-editor/ArticleEditorSidebar';
 import { ArticleEditorSplit } from '@/renderer/components/creator/article-editor/ArticleEditorSplit';
 import type { ArticleSaveMode } from '@/renderer/components/creator/article-editor/articleEditorSession';
 import type { ArticleEditorOutlineCursorRequest } from '@/renderer/components/creator/article-editor/useArticleEditorOutlineNavigation';
 import type { ArticleEditorSidebarController } from '@/renderer/components/creator/article-editor/useArticleEditorSidebar';
-import { Button } from '@/renderer/components/ui/button';
-import { AssetFileContextMenu } from '@/renderer/components/media/AssetFileContextMenu';
+import { ArticleMediaPanel } from '@/renderer/components/creator/article-editor/ArticleMediaPanel';
+import type { ArticleImagePlacement } from '@/renderer/features/video-documents/articleImageOperations';
 import {
   VideoDocumentWysiwygEditor,
   type VideoDocumentArticleElementControls,
@@ -30,6 +27,8 @@ import type {
 } from '@/shared/contracts';
 import type { BlockDocument } from '@/shared/contracts/block-document';
 import type { ComponentProps, ReactNode, RefObject } from 'react';
+import { Button } from '@/renderer/components/ui/button';
+import { XIcon } from 'lucide-react';
 
 function firstArticleLocation(elements: readonly ArticleElementPlacementInput[]) {
   const first = elements[0];
@@ -40,6 +39,8 @@ function ArticleDocumentSidebar({
   comments,
   commentMutationBusy,
   controller,
+  filesPanel,
+  fileCount,
   mediaPanel,
   mediaCount,
   cursorRequest,
@@ -57,6 +58,8 @@ function ArticleDocumentSidebar({
   comments: readonly ArticleCommentDto[];
   commentMutationBusy: boolean;
   controller: ArticleEditorSidebarController;
+  filesPanel: ReactNode;
+  fileCount: number;
   mediaPanel: ReactNode;
   mediaCount: number;
   cursorRequest: ArticleEditorOutlineCursorRequest;
@@ -75,17 +78,18 @@ function ArticleDocumentSidebar({
     <ArticleEditorSidebar
       commentCount={comments.filter((comment) => comment.status === 'OPEN').length}
       controller={controller}
+      files={filesPanel}
+      fileCount={fileCount}
       media={mediaPanel}
       mediaCount={mediaCount}
       outlineAvailable={outlineItems.length > 0}
       zh={zh}
       comments={
-        <ArticleCommentsPanel
+        <ContentCommentsPanel
           busy={commentMutationBusy}
           comments={comments}
           hoveredId={hoveredCommentId}
           selectedId={selectedCommentId}
-          zh={zh}
           onHover={onCommentHover}
           onSelect={onCommentSelect}
           onStatusChange={onCommentStatusChange}
@@ -114,6 +118,8 @@ interface ArticleEditorDocumentPaneProps {
   comments: readonly ArticleCommentDto[];
   commentMutationBusy: boolean;
   controller: ArticleEditorSidebarController;
+  filesPanel: ReactNode;
+  fileCount: number;
   mediaPanel: ReactNode;
   mediaCount: number;
   cursorRequest: ArticleEditorOutlineCursorRequest;
@@ -140,6 +146,8 @@ function ArticleEditorDocumentPane({
   comments,
   commentMutationBusy,
   controller,
+  filesPanel,
+  fileCount,
   mediaPanel,
   mediaCount,
   cursorRequest,
@@ -160,23 +168,26 @@ function ArticleEditorDocumentPane({
   onPersist,
   onTitleChange,
 }: ArticleEditorDocumentPaneProps) {
+  const copy = useI18n().messages.contentEditor;
   return (
     <ArticleEditorPane
       documentWidth={controller.preferences.documentWidth}
       scrollRootRef={scrollRootRef}
       title={title}
-      titleAccessory={titleAccessory}
-      toolbar={
-        <ArticleEditorLayoutToolbar
-          commentCount={comments.filter((comment) => comment.status === 'OPEN').length}
-          controller={controller}
-          outlineAvailable={outlineItems.length > 0}
-          zh={zh}
-          onClose={onClose}
-        />
+      titleAccessory={
+        <div className="flex shrink-0 items-center gap-1">
+          {titleAccessory}
+          {onClose && (
+            <Button variant="ghost" size="icon-sm" aria-label={copy.closePane} title={copy.closePane} onClick={onClose}>
+              <XIcon className="size-4" />
+            </Button>
+          )}
+        </div>
       }
       sidePanel={
         <ArticleDocumentSidebar
+          filesPanel={filesPanel}
+          fileCount={fileCount}
           mediaPanel={mediaPanel}
           mediaCount={mediaCount}
           comments={comments}
@@ -208,6 +219,8 @@ function ArticleEditorDocumentPane({
 }
 
 interface Props {
+  attachmentsPanel: ReactNode;
+  attachmentCount: number;
   articleElementControls: VideoDocumentArticleElementControls;
   comments: readonly ArticleCommentDto[];
   commentMutationBusy: boolean;
@@ -223,6 +236,7 @@ interface Props {
   leftPaneRootRef: RefObject<HTMLDivElement | null>;
   leftSidebar: ArticleEditorSidebarController;
   media: readonly VideoDocumentRevisionMediaDto[];
+  images: readonly ArticleImagePlacement[];
   openCommentHoverId: string | null;
   outlineItems: readonly VideoDocumentArticleHeading[];
   rightPaneRootRef: RefObject<HTMLDivElement | null>;
@@ -255,6 +269,11 @@ interface Props {
   ): void;
   onImageImportError(): void;
   onImageImported(result: VideoDocumentEditorImageImport): void;
+  onImageRemove(elementId: string): boolean;
+  onImageMove(elementId: string, targetId: string): boolean;
+  onImageLocate(elementId: string): void;
+  onImageUndo(): boolean;
+  onImageRedo(): boolean;
   onIllustrationRequest?(selectedText: string | null): void;
   onMarkdownChange(markdown: string): void;
   onPersist(mode: ArticleSaveMode): void;
@@ -264,6 +283,8 @@ interface Props {
 }
 
 export function ArticleEditorDocumentPanes({
+  attachmentsPanel,
+  attachmentCount,
   articleElementControls,
   comments,
   commentMutationBusy,
@@ -279,6 +300,7 @@ export function ArticleEditorDocumentPanes({
   leftPaneRootRef,
   leftSidebar,
   media,
+  images,
   openCommentHoverId,
   outlineItems,
   rightPaneRootRef,
@@ -305,6 +327,11 @@ export function ArticleEditorDocumentPanes({
   onEditorHandleChange,
   onImageImportError,
   onImageImported,
+  onImageRemove,
+  onImageMove,
+  onImageLocate,
+  onImageUndo,
+  onImageRedo,
   onIllustrationRequest,
   onMarkdownChange,
   onPersist,
@@ -314,39 +341,24 @@ export function ArticleEditorDocumentPanes({
 }: Props) {
   const copy = useI18n().messages.contentEditor;
   const mediaPanel = (
-    <div className="flex flex-col gap-3">
-      {onIllustrationRequest && (
-        <Button
-          variant="outline"
-          size="sm"
-          disabled={generatingIllustration}
-          onClick={() => onIllustrationRequest(null)}
-        >
-          {generatingIllustration ? copy.openingMedia : copy.generate}
-        </Button>
-      )}
-      <div className="grid grid-cols-2 gap-2">
-        {media
-          .filter((asset) => asset.mimeType.startsWith('image/'))
-          .map((asset) => (
-            <AssetFileContextMenu key={asset.assetId} assetId={asset.assetId}>
-              <img
-                src={asset.mediaUrl}
-                alt=""
-                loading="lazy"
-                className="aspect-square w-full object-contain bg-muted"
-              />
-            </AssetFileContextMenu>
-          ))}
-      </div>
-    </div>
+    <ArticleMediaPanel
+      images={images}
+      media={media}
+      onMove={onImageMove}
+      onRemove={onImageRemove}
+      onLocate={onImageLocate}
+      onUndo={onImageUndo}
+      onRedo={onImageRedo}
+    />
   );
   return (
     <ArticleEditorSplit
       left={
         <ArticleEditorDocumentPane
+          filesPanel={attachmentsPanel}
+          fileCount={attachmentCount}
           mediaPanel={mediaPanel}
-          mediaCount={media.length}
+          mediaCount={images.length}
           comments={comments}
           commentMutationBusy={commentMutationBusy}
           controller={leftSidebar}
@@ -402,8 +414,10 @@ export function ArticleEditorDocumentPanes({
       open={splitOpen}
       right={
         <ArticleEditorDocumentPane
+          filesPanel={attachmentsPanel}
+          fileCount={attachmentCount}
           mediaPanel={mediaPanel}
-          mediaCount={media.length}
+          mediaCount={images.length}
           comments={comments}
           commentMutationBusy={commentMutationBusy}
           controller={rightSidebar}
@@ -414,7 +428,6 @@ export function ArticleEditorDocumentPanes({
           scrollRootRef={secondaryScrollRootRef}
           selectedCommentId={selectedCommentId}
           title={title}
-          titleAccessory={titleAccessory}
           zh={zh}
           onArticleNavigationLocation={onArticleNavigationLocation}
           onClose={() => onClose('RIGHT')}

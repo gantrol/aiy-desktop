@@ -17,8 +17,7 @@ function activeWork(model: CreatorScreenViewModel): CreationFormEntityRef | null
   if (selected.selectedSocialPostId) return { kind: 'SOCIAL_POST', id: selected.selectedSocialPostId };
   if (selected.selectedEvaluationSuiteId) return { kind: 'EVALUATION_SUITE', id: selected.selectedEvaluationSuiteId };
   if (selected.selectedImageBreakdownId) return { kind: 'IMAGE_BREAKDOWN', id: selected.selectedImageBreakdownId };
-  if (selected.selectedInspirationStashId)
-    return { kind: 'INSPIRATION_STASH', id: selected.selectedInspirationStashId };
+  if (selected.selectedInspirationStashId) return { kind: 'ARTICLE', id: selected.selectedInspirationStashId };
   if (selection.creationMode === 'existing' && workbench.sessionHostSeries)
     return { kind: 'PROMPT_SERIES', id: workbench.sessionHostSeries.id };
   return null;

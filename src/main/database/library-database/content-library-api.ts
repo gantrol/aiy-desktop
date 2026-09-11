@@ -29,6 +29,8 @@ export function createContentLibraryApi(repositories: LibraryDatabaseRepositorie
           return content.noteSave(command.input);
         case 'note-checkpoint':
           return content.noteCheckpoint(command.input);
+        case 'note-comment-mutate':
+          return content.noteCommentMutate(command.input);
       }
     },
   };

@@ -1,3 +1,4 @@
+import { replaceContentPromptText } from '@/shared/content-document';
 import type { ArticleEditorSessionMetadata } from '@/renderer/components/creator/article-editor/articleEditorSession';
 import type {
   ArticleContentDto,
@@ -7,7 +8,7 @@ import type {
   VideoDocumentRevisionMediaDto,
 } from '@/shared/contracts';
 import { articleContentSchema } from '@/shared/contracts/article';
-import type { BlockDocument } from '@/shared/contracts/block-document';
+import { blockDocumentAssetIds, type BlockDocument } from '@/shared/contracts/block-document';
 
 export function editableArticleContentDto(content: ArticleContentDto): ArticleContentInput {
   const { mediaAssets: _mediaAssets, ...editable } = content;
@@ -29,6 +30,8 @@ export function articleEditorMetadataFromContent(input: ArticleContentInput): Ar
     title: content.title,
     mediaBindings: content.mediaBindings.map((binding) => ({ ...binding })),
     coverAssetId: content.coverAssetId,
+    ...(content.creationInput ? { creationInput: content.creationInput } : {}),
+    ...(content.files ? { files: content.files } : {}),
   };
 }
 
@@ -57,11 +60,27 @@ export function articleEditorSnapshot(
   markdown: string,
   document: BlockDocument | undefined = metadata.document,
 ): ArticleContentInput {
+  const referenced = document ? new Set(blockDocumentAssetIds(document)) : null;
+  if (metadata.coverAssetId) referenced?.add(metadata.coverAssetId);
+  for (const id of metadata.creationInput?.referenceAssetIds ?? []) referenced?.add(id);
+  // Retain imported media in the live session for undo, while saving only the
+  // body and cover references. Removed occurrences must not fill the binding limit.
+  const bindings = referenced
+    ? metadata.mediaBindings.filter((binding) => referenced.has(binding.assetId))
+    : metadata.mediaBindings;
   return articleContentSchema.parse({
     ...metadata,
     ...(document ? { schemaVersion: 2, document } : {}),
     markdown,
-    mediaBindings: metadata.mediaBindings.map(({ path, assetId }) => ({ path, assetId })),
+    ...(metadata.creationInput
+      ? {
+          creationInput: {
+            ...metadata.creationInput,
+            promptNodes: replaceContentPromptText(metadata.creationInput.promptNodes, markdown),
+          },
+        }
+      : {}),
+    mediaBindings: bindings.map(({ path, assetId }) => ({ path, assetId })),
   });
 }
 

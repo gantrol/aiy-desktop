@@ -150,6 +150,7 @@ export function createDesktopPetalsApi(): DesktopPetalsApi {
     showAll: () => command('show-all'),
     hideAll: () => command('hide-all'),
     hidePetals: () => command('hide-petals'),
+    cleanup: (color) => command('cleanup', color),
     reload: () => command('reload'),
     hubView: (view) => command('hub-view', view),
     configureHub: (settings) => command('configure-hub', settings),

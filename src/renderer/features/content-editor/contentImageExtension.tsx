@@ -152,7 +152,23 @@ function DocumentImageNodeView({ node, extension, deleteNode, editor }: NodeView
       }
     >
       {assetId && window.desktopApi ? (
-        <AssetFileContextMenu assetId={assetId} draggable={false}>
+        <AssetFileContextMenu
+          assetId={assetId}
+          draggable={false}
+          actions={
+            editor.isEditable
+              ? [
+                  {
+                    id: 'content-image-remove',
+                    label: copy.removeImage,
+                    icon: X,
+                    destructive: true,
+                    onSelect: deleteNode,
+                  },
+                ]
+              : []
+          }
+        >
           {image}
         </AssetFileContextMenu>
       ) : (

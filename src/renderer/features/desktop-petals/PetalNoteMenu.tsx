@@ -28,6 +28,7 @@ export interface PetalNoteMenuActions {
 }
 
 interface Props extends PetalNoteMenuActions {
+  showAppearance?: boolean;
   open: boolean;
   onOpenChange: (open: boolean) => void;
   close: () => Promise<void>;
@@ -48,6 +49,7 @@ export function PetalNoteMenu({
   onOpenTask,
   onExpand,
   onAppearance,
+  showAppearance = true,
   onError,
   open,
   onOpenChange,
@@ -121,13 +123,15 @@ export function PetalNoteMenu({
           {alwaysOnTop ? <PinOff /> : <Pin />}
           {alwaysOnTop ? copy.actions.pauseAlwaysOnTop : copy.actions.resumeAlwaysOnTop}
         </DropdownMenuItem>
-        <PetalMenuSection icon={Palette} label={copy.actions.appearance} disabled={blocked}>
-          <NoteAppearancePicker
-            note={note}
-            disabled={blocked}
-            onChange={(patch) => void run(() => onAppearance(patch), { dismiss: false, prepare: false })}
-          />
-        </PetalMenuSection>
+        {showAppearance && (
+          <PetalMenuSection icon={Palette} label={copy.actions.appearance} disabled={blocked}>
+            <NoteAppearancePicker
+              note={note}
+              disabled={blocked}
+              onChange={(patch) => void run(() => onAppearance(patch), { dismiss: false, prepare: false })}
+            />
+          </PetalMenuSection>
+        )}
         {persisted && board.layers.length > 1 && (
           <PetalMenuSection icon={Layers} label={copy.actions.moveLayer} disabled={blocked}>
             {board.layers.map((layer) => {

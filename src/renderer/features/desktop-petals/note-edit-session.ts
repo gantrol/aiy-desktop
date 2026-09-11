@@ -2,6 +2,11 @@ import type { BlockDocument } from '@/shared/contracts/block-document';
 import { ContentCheckpointTimer } from '@/renderer/features/content-editor/ContentCheckpointTimer';
 import { blockDocumentImportIds } from '@/shared/contracts/block-document';
 import type { DesktopNote, DesktopPetalSnapshot, DesktopPetalsApi } from '@/shared/contracts/desktop-petals';
+import type {
+  ContentCommentAnchorUpdateInput,
+  ContentElementPlacementInput,
+} from '@/shared/contracts/content-comments';
+import type { NoteCommentDto } from '@/shared/contracts/desktop-petals';
 
 interface State {
   note: DesktopNote;
@@ -11,6 +16,8 @@ interface State {
   document?: BlockDocument;
   editorEpoch: number;
   referenceAssetIds: string[];
+  elements: ContentElementPlacementInput[];
+  commentAnchors: ContentCommentAnchorUpdateInput[];
   status: 'saved' | 'dirty' | 'saving' | 'error';
   error: string;
   frozen: boolean;
@@ -20,6 +27,7 @@ export class NoteEditSession {
   private state: State;
   private listeners = new Set<() => void>();
   private baseHash: string;
+  private baseRevisionId: string | null | undefined;
   private readonly editorId: string;
   private sequence: number;
   private generation = 0;
@@ -34,6 +42,7 @@ export class NoteEditSession {
     private readonly api: Pick<DesktopPetalsApi, 'checkpoint' | 'save'>,
   ) {
     this.baseHash = draft?.expectedContentHash ?? note.contentHash;
+    this.baseRevisionId = draft ? draft.expectedRevisionId : note.revisionId;
     this.editorId = draft?.editorId ?? crypto.randomUUID();
     this.sequence = draft?.sequence ?? 0;
     this.generation = draft ? 1 : 0;
@@ -45,6 +54,8 @@ export class NoteEditSession {
       document: draft?.document ?? note.document,
       editorEpoch: 0,
       referenceAssetIds: draft?.referenceAssetIds ?? note.references.map((reference) => reference.assetId),
+      elements: draft?.elements ?? note.elements,
+      commentAnchors: draft?.commentAnchors ?? [],
       status: draft ? 'dirty' : 'saved',
       error: '',
       frozen: false,
@@ -61,7 +72,14 @@ export class NoteEditSession {
   }
   edit(
     text: string,
-    metadata: { title?: string; format?: 'markdown'; document?: BlockDocument; referenceAssetIds?: string[] } = {},
+    metadata: {
+      title?: string;
+      format?: 'markdown';
+      document?: BlockDocument;
+      referenceAssetIds?: string[];
+      elements?: ContentElementPlacementInput[];
+      commentAnchors?: ContentCommentAnchorUpdateInput[];
+    } = {},
   ) {
     if (this.state.frozen) return;
     this.generation++;
@@ -85,9 +103,12 @@ export class NoteEditSession {
     if (this.generation === this.savedGeneration && !this.saving) {
       const documentChanged = note.document !== undefined && note.contentHash !== this.baseHash;
       this.baseHash = note.contentHash;
+      this.baseRevisionId = note.revisionId;
       this.publish({
         note,
         referenceAssetIds: note.references.map((reference) => reference.assetId),
+        elements: note.elements,
+        commentAnchors: [],
         text: note.text,
         title: note.title,
         format: note.format,
@@ -106,7 +127,10 @@ export class NoteEditSession {
       referenceAssetIds: this.state.referenceAssetIds,
       format: this.state.format,
       document: this.state.document,
+      elements: this.state.elements,
+      commentAnchors: this.state.commentAnchors,
       expectedContentHash: this.baseHash,
+      expectedRevisionId: this.baseRevisionId,
       editorId: this.editorId,
     };
   }
@@ -133,6 +157,7 @@ export class NoteEditSession {
         await this.api.checkpoint({ ...input, sequence: ++this.sequence });
         const note = await this.api.save(input);
         this.baseHash = note.contentHash;
+        this.baseRevisionId = note.revisionId;
         this.savedGeneration = generation;
         this.publish({ note, status: this.generation === generation ? 'saved' : 'dirty' });
       }
@@ -144,16 +169,20 @@ export class NoteEditSession {
   }
   keepMine = () => {
     this.baseHash = this.state.note.contentHash;
+    this.baseRevisionId = this.state.note.revisionId;
     return this.flush();
   };
   useSaved = () => {
     this.baseHash = this.state.note.contentHash;
+    this.baseRevisionId = this.state.note.revisionId;
     this.publish({ editorEpoch: this.state.editorEpoch + 1 });
     this.edit(this.state.note.text, {
       title: this.state.note.title,
       format: this.state.note.format,
       document: this.state.note.document,
       referenceAssetIds: this.state.note.references.map((reference) => reference.assetId),
+      elements: this.state.note.elements,
+      commentAnchors: [],
     });
     return this.flush();
   };
@@ -187,6 +216,18 @@ export class NoteEditSession {
     if (frozen && this.composing) return false;
     this.publish({ frozen });
     return true;
+  }
+  replaceComments(comments: readonly NoteCommentDto[]) {
+    this.publish({ note: { ...this.state.note, comments: [...comments] } });
+  }
+  updateProjection(
+    elements: readonly ContentElementPlacementInput[],
+    commentAnchors: readonly ContentCommentAnchorUpdateInput[],
+    dirty = false,
+  ) {
+    const metadata = { elements: [...elements], commentAnchors: [...commentAnchors] };
+    if (dirty) this.edit(this.state.text, metadata);
+    else this.publish(metadata);
   }
   setComposing(composing: boolean) {
     this.composing = composing;

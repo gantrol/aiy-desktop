@@ -15,6 +15,8 @@ export interface ArticleEditorSessionMetadata {
   readonly title: string;
   readonly mediaBindings: ArticleRevisionSaveInput['content']['mediaBindings'];
   readonly coverAssetId: string | null;
+  readonly creationInput?: ArticleRevisionSaveInput['content']['creationInput'];
+  readonly files?: ArticleRevisionSaveInput['content']['files'];
 }
 
 export interface ArticleEditorSaveIdentity {

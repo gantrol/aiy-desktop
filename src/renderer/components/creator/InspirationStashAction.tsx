@@ -1,3 +1,4 @@
+import { useI18n } from '@/renderer/i18n/useI18n';
 import { BookmarkIcon, CheckIcon, LoaderCircleIcon } from 'lucide-react';
 import type { Locale } from '@/shared/contracts';
 import { Button } from '@/renderer/components/ui/button';
@@ -11,8 +12,8 @@ interface Props {
   onClick(): void;
 }
 
-export function InspirationStashAction({ locale, ready, busy, saved, blocked = false, onClick }: Props) {
-  const zh = locale === 'zh';
+export function InspirationStashAction({ ready, busy, saved, blocked = false, onClick }: Props) {
+  const copy = useI18n().messages.desktopPetals.document;
   return (
     <Button
       data-action="stash-inspiration"
@@ -21,17 +22,7 @@ export function InspirationStashAction({ locale, ready, busy, saved, blocked = f
       size="lg"
       className="shrink-0"
       disabled={!ready || busy || saved || blocked}
-      title={
-        !ready
-          ? zh
-            ? '输入内容后可暂存'
-            : 'Enter something to stash'
-          : saved
-            ? zh
-              ? '当前灵感已暂存'
-              : 'Current inspiration is stashed'
-            : undefined
-      }
+      title={!ready ? copy.stashEmpty : saved ? copy.draftSaved : undefined}
       aria-busy={busy}
       onClick={onClick}
     >
@@ -42,7 +33,7 @@ export function InspirationStashAction({ locale, ready, busy, saved, blocked = f
       ) : (
         <BookmarkIcon className="size-4" />
       )}
-      {busy ? (zh ? '暂存中' : 'Stashing') : saved ? (zh ? '已暂存' : 'Stashed') : zh ? '暂存灵感' : 'Stash idea'}
+      {busy ? copy.stashing : saved ? copy.stashed : copy.stash}
     </Button>
   );
 }

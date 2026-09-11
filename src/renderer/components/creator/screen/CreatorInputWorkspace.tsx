@@ -15,17 +15,15 @@ import { AssetBreakdownSourceFormProvider } from '@/renderer/components/media/As
 import { Button } from '@/renderer/components/ui/button';
 import { Input } from '@/renderer/components/ui/input';
 import { Popover, PopoverContent, PopoverTrigger } from '@/renderer/components/ui/popover';
-import { NoteContentEditor } from '@/renderer/features/content-editor/NoteContentEditor';
 import { PinNoteButton } from '@/renderer/features/desktop-petals/PinNoteButton';
 import { VideoDocumentCreationStarter } from '@/renderer/features/video-documents/VideoDocumentCreationStarter';
 import { VideoFileInput } from '@/renderer/features/video-documents/VideoDocumentFileInputs';
 import { useI18n } from '@/renderer/i18n/useI18n';
 import { DictionaryIcon, ImageIcon } from '@/renderer/icons';
 import { cn } from '@/renderer/lib/utils';
-import { replaceContentPromptText } from '@/shared/content-document';
 import type { AssetDto } from '@/shared/contracts';
 import { FileTextIcon, VideoIcon } from 'lucide-react';
-import { useEffect, useRef, useState, type ComponentProps, type ReactNode } from 'react';
+import { useEffect, useRef, type ComponentProps, type ReactNode } from 'react';
 
 interface Props {
   model: CreatorScreenViewModel;
@@ -534,64 +532,23 @@ function hasPromptNodes(nodes: CreatorScreenViewModel['generation']['promptDocum
 }
 
 function useCreatorNoteWorkspace(model: CreatorScreenViewModel, hidden: boolean) {
-  const { app, selection, workflow } = model;
   const { messages } = useI18n();
-  const selected = selection.contentSelection;
-  const [materialEditorId, setMaterialEditorId] = useState<string | null>(null);
-  let editor: ReactNode = null;
-  if (selected.selectedInspirationStash && !hidden && materialEditorId !== selected.selectedInspirationStash.id)
-    editor = (
-      <NoteContentEditor
-        libraryId={app.data.spaceId}
-        key={selected.selectedInspirationStash.id}
-        stash={selected.selectedInspirationStash}
-        albums={app.data.albums}
-        refresh={app.refresh}
-        notify={app.notify}
-        onEditMaterials={async (note) => {
-          const stash = selected.selectedInspirationStash!;
-          const assets = await window.desktopApi.materialImageAssetsResolve({
-            targets: note.references.map((reference) => ({ kind: 'IMAGE_ASSET', imageAssetId: reference.assetId })),
-          });
-          workflow.inspiration.restore({
-            ...stash,
-            contentHash: note.contentHash,
-            title: note.title,
-            displayTitle: note.displayTitle,
-            albumId: note.albumId,
-            content: {
-              ...stash.content,
-              schemaVersion: note.document ? 2 : 1,
-              document: note.document,
-              title: note.title,
-              format: note.format,
-              manualPrompt: note.text,
-              promptNodes: replaceContentPromptText(stash.content.promptNodes, note.text),
-              referenceAssets: assets,
-              referenceAssetIds: assets.map((asset) => asset.id),
-            },
-          });
-          setMaterialEditorId(note.stashId);
-        }}
-      />
-    );
-
+  const articleId = model.selection.contentSelection.selectedInspirationStashId;
   return {
-    editor,
-    back: selected.selectedInspirationStash && (
+    editor: null,
+    back: articleId && !hidden && (
       <Button
         variant="ghost"
         size="sm"
         className="self-start"
-        disabled={workflow.inspiration.savedContentKey !== workflow.inspiration.currentContentKey}
-        onClick={() => setMaterialEditorId(null)}
+        disabled={model.workflow.inspiration.busy}
+        onClick={() => void model.navigation.content.chooseArticle(articleId, 'replace')}
       >
         {messages.desktopPetals.document.body}
       </Button>
     ),
   };
 }
-
 function creatorInputHidden({ app, selection, workbench }: CreatorScreenViewModel) {
   const selected = selection.contentSelection;
   return (

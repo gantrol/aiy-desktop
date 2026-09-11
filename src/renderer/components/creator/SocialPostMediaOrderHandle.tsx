@@ -1,21 +1,20 @@
 import { GripVerticalIcon } from 'lucide-react';
 import { Button } from '@/renderer/components/ui/button';
+import { useI18n } from '@/renderer/i18n/useI18n';
 import { startSocialPostMediaReorderDrag } from '@/renderer/components/creator/socialPostMediaDrag';
 
 export function SocialPostMediaOrderHandle({
   assetId,
   index,
-  zh,
   onDragEnd,
   onMove,
 }: {
   assetId: string;
   index: number;
-  zh: boolean;
   onDragEnd(): void;
   onMove(offset: -1 | 1): void;
 }) {
-  const label = zh ? `拖动第 ${index + 1} 张图片调整顺序` : `Drag image ${index + 1} to reorder`;
+  const label = useI18n().messages.creator.socialPostEditor.reorderImage.replace('{index}', String(index + 1));
   return (
     <Button
       type="button"

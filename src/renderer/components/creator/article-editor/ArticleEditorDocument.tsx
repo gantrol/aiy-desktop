@@ -1,9 +1,11 @@
+import { useArticleEditorMedia } from '@/renderer/components/creator/article-editor/useArticleEditorMedia';
 import { commandShortcutText } from '@/renderer/commands/app-shortcuts';
 import {
-  ArticleCommentPopover,
-  type ArticleCommentDraftPopover,
-} from '@/renderer/components/creator/article-editor/ArticleCommentPopover';
+  ContentCommentPopover,
+  type ContentCommentDraftPopover,
+} from '@/renderer/features/content-editor/ContentCommentPopover';
 import { ArticleEditorDocumentPanes } from '@/renderer/components/creator/article-editor/ArticleEditorDocumentPanes';
+import { ArticleHeaderViewMenu } from '@/renderer/components/creator/article-editor/ArticleEditorHeader';
 import type { ArticleSaveMode } from '@/renderer/components/creator/article-editor/articleEditorSession';
 import { useArticleEditorSession } from '@/renderer/components/creator/article-editor/ArticleEditorSessionProvider';
 import {
@@ -11,7 +13,10 @@ import {
   useArticleEditorNavigation,
 } from '@/renderer/components/creator/article-editor/useArticleEditorNavigation';
 import type { ArticleEditorOutlineCursorRequest } from '@/renderer/components/creator/article-editor/useArticleEditorOutlineNavigation';
-import { useArticleEditorSidebar } from '@/renderer/components/creator/article-editor/useArticleEditorSidebar';
+import {
+  useArticleEditorSidebar,
+  type ArticleEditorSidebarController,
+} from '@/renderer/components/creator/article-editor/useArticleEditorSidebar';
 import {
   videoDocumentArticleHeadings,
   type VideoDocumentArticleHeading,
@@ -35,8 +40,12 @@ import type {
 import { sameArticleElementPlacements } from '@/shared/contracts/article';
 import type { BlockDocument } from '@/shared/contracts/block-document';
 import { useMemo, useRef, useState, type ComponentProps, type ReactNode } from 'react';
+import { useI18n } from '@/renderer/i18n/useI18n';
+import { createPortal } from 'react-dom';
 
 interface Props {
+  attachmentsPanel: ReactNode;
+  attachmentCount: number;
   articleId: string;
   editorSessionIdentity: string;
   comments: readonly ArticleCommentDto[];
@@ -48,6 +57,7 @@ interface Props {
   labels: ComponentProps<typeof VideoDocumentWysiwygEditor>['labels'];
   media: readonly VideoDocumentRevisionMediaDto[];
   mediaBindings: ArticleContentInput['mediaBindings'];
+  layoutToolbarRoot: HTMLElement | null;
   splitOpen: boolean;
   title: string;
   titleAccessory?: ReactNode;
@@ -67,13 +77,14 @@ interface Props {
   onMarkdownChange(markdown: string): number;
   onPersist(mode: ArticleSaveMode): void;
   onSplitClose(): void;
+  onSplitToggle(): void;
   onTitleChange(title: string): void;
 }
 
 interface ArticleCommentDraft {
   anchor: ArticleCommentAnchorInput;
   preview: string;
-  rect: ArticleCommentDraftPopover['rect'];
+  rect: ContentCommentDraftPopover['rect'];
 }
 
 function editorBindings(mediaBindings: ArticleContentInput['mediaBindings']): VideoDocumentMediaBinding[] {
@@ -102,26 +113,34 @@ function hoveredOpenCommentId(comments: readonly ArticleCommentDto[], hoveredCom
     : null;
 }
 
-function articleElementControlLabels(zh: boolean) {
+function toggleCommentSidebar(
+  splitOpen: boolean,
+  rightPane: HTMLDivElement | null,
+  left: ArticleEditorSidebarController,
+  right: ArticleEditorSidebarController,
+) {
+  const activeElement = document.activeElement;
+  (splitOpen && activeElement && rightPane?.contains(activeElement) ? right : left).togglePanel('COMMENTS');
+}
+
+function articleElementControlLabels(copy: {
+  quickAdd: string;
+  list: string;
+  history: string;
+  previousEdit: string;
+  nextEdit: string;
+}) {
   const platform = window.desktopApi.appPlatform;
   const quickComment = commandShortcutText('comment.quick-add', platform);
   const previousEdit = commandShortcutText('edit.previous-location', platform);
   const nextEdit = commandShortcutText('edit.next-location', platform);
-  return zh
-    ? {
-        commentLabel: `添加评论 · ${quickComment}`,
-        commentsLabel: '评论列表',
-        historyLabel: '编辑历史',
-        previousEditLabel: `上一处编辑 · ${previousEdit}`,
-        nextEditLabel: `下一处编辑 · ${nextEdit}`,
-      }
-    : {
-        commentLabel: `Add comment · ${quickComment}`,
-        commentsLabel: 'Comment list',
-        historyLabel: 'Edit history',
-        previousEditLabel: `Previous edit · ${previousEdit}`,
-        nextEditLabel: `Next edit · ${nextEdit}`,
-      };
+  return {
+    commentLabel: `${copy.quickAdd} · ${quickComment}`,
+    commentsLabel: copy.list,
+    historyLabel: copy.history,
+    previousEditLabel: `${copy.previousEdit} · ${previousEdit}`,
+    nextEditLabel: `${copy.nextEdit} · ${nextEdit}`,
+  };
 }
 
 function liveArticleComments(
@@ -171,7 +190,6 @@ function ArticleDocumentCommentPopover({
   hoveredRect,
   selectedCommentId,
   selectedRect,
-  zh,
   onDelete,
   onDraftCancel,
   onDraftSubmit,
@@ -186,10 +204,9 @@ function ArticleDocumentCommentPopover({
   comments: readonly ArticleCommentDto[];
   draft: ArticleCommentDraft | null;
   hoveredCommentId: string | null;
-  hoveredRect: ArticleCommentDraftPopover['rect'] | null;
+  hoveredRect: ContentCommentDraftPopover['rect'] | null;
   selectedCommentId: string | null;
-  selectedRect: ArticleCommentDraftPopover['rect'] | null;
-  zh: boolean;
+  selectedRect: ContentCommentDraftPopover['rect'] | null;
   onDelete(commentId: string): void;
   onDraftCancel(): void;
   onDraftSubmit(body: string): void;
@@ -201,7 +218,7 @@ function ArticleDocumentCommentPopover({
   onUpdateBody(commentId: string, body: string): void;
 }) {
   return (
-    <ArticleCommentPopover
+    <ContentCommentPopover
       busy={busy}
       draft={draft}
       hovered={
@@ -210,7 +227,6 @@ function ArticleDocumentCommentPopover({
       hoveredRect={hoveredRect}
       selected={comments.find((comment) => comment.id === selectedCommentId) ?? null}
       selectedRect={selectedRect}
-      zh={zh}
       onDelete={onDelete}
       onDraftCancel={onDraftCancel}
       onDraftSubmit={onDraftSubmit}
@@ -232,7 +248,6 @@ function ArticleEditorDocumentCommentLayer({
   hoveredRect,
   selectedCommentId,
   selectedRect,
-  zh,
   onDelete,
   onDraftCancel,
   onDraftSubmit,
@@ -247,10 +262,9 @@ function ArticleEditorDocumentCommentLayer({
   comments: readonly ArticleCommentDto[];
   draft: ArticleCommentDraft | null;
   hoveredCommentId: string | null;
-  hoveredRect: ArticleCommentDraftPopover['rect'] | null;
+  hoveredRect: ContentCommentDraftPopover['rect'] | null;
   selectedCommentId: string | null;
-  selectedRect: ArticleCommentDraftPopover['rect'] | null;
-  zh: boolean;
+  selectedRect: ContentCommentDraftPopover['rect'] | null;
   onDelete(commentId: string): void;
   onDraftCancel(): void;
   onDraftSubmit(body: string): void;
@@ -270,7 +284,6 @@ function ArticleEditorDocumentCommentLayer({
       hoveredRect={hoveredRect}
       selectedCommentId={selectedCommentId}
       selectedRect={selectedRect}
-      zh={zh}
       onDelete={onDelete}
       onDraftCancel={onDraftCancel}
       onDraftSubmit={onDraftSubmit}
@@ -284,21 +297,65 @@ function ArticleEditorDocumentCommentLayer({
   );
 }
 
+function useArticleElementProjection(initial: readonly ArticleElementPlacementInput[], onIdentityChange: () => void) {
+  const [elements, setElements] = useState(initial);
+  const elementsRef = useRef(elements);
+  function handleElementsChange(
+    next: readonly ArticleElementPlacementInput[],
+    reason: VideoDocumentArticleElementsChangeReason,
+  ) {
+    if (reason !== 'hydrate' && sameArticleElementPlacements(elementsRef.current, next)) return;
+    const snapshot = next.map((element) => ({ ...element }));
+    elementsRef.current = snapshot;
+    setElements(snapshot);
+    if (reason === 'identity') onIdentityChange();
+  }
+  return { elements, handleElementsChange };
+}
+
+function articleEditorLayoutAction(
+  left: ArticleEditorSidebarController,
+  right: ArticleEditorSidebarController,
+  root: HTMLElement | null,
+  splitOpen: boolean,
+  onSplitToggle: () => void,
+) {
+  if (!root) return null;
+  return createPortal(
+    <ArticleHeaderViewMenu
+      splitOpen={splitOpen}
+      wide={left.preferences.documentWidth === 'WIDE'}
+      onSplitToggle={onSplitToggle}
+      onWidthToggle={() => {
+        const width = left.preferences.documentWidth === 'WIDE' ? 'STANDARD' : 'WIDE';
+        left.setDocumentWidth(width);
+        if (splitOpen) right.setDocumentWidth(width);
+      }}
+    />,
+    root,
+  );
+}
+
 export function ArticleEditorDocument(props: Props) {
-  const { articleId, editorSessionIdentity, comments, commentMutationBusy, initialElements } = props;
+  const commentCopy = useI18n().messages.contentEditor.comment;
+  const { attachmentsPanel, attachmentCount, articleId, editorSessionIdentity, comments, commentMutationBusy } = props;
+  const { initialElements, layoutToolbarRoot } = props;
   const { generatingIllustration = false, initialMarkdown, labels, media, mediaBindings, splitOpen } = props;
   const { title, titleAccessory, zh, onEditorHandleChange, onCommentCreate, onCommentDelete } = props;
   const { onCommentReply, onCommentStatusChange, onCommentUpdateBody, onIllustrationRequest } = props;
-  const { onImageImportError, onImageImported, onMarkdownChange, onPersist, onSplitClose, onTitleChange } = props;
+  const { onImageImportError, onImageImported, onMarkdownChange, onPersist, onSplitClose, onSplitToggle } = props;
+  const { onTitleChange } = props;
   const editorMediaBindings = useMemo(() => editorBindings(mediaBindings), [mediaBindings]);
   const editorSession = useArticleEditorSession();
   const initialOutlineItems = useMemo(() => videoDocumentArticleHeadings(initialMarkdown), [initialMarkdown]);
   const [outlineItems, setOutlineItems] = useState(initialOutlineItems);
-  const [elements, setElements] = useState<readonly ArticleElementPlacementInput[]>(initialElements);
+  const { elements, handleElementsChange } = useArticleElementProjection(initialElements, () =>
+    recordDraftSequence(editorSession.articleElementsChanged()),
+  );
   const [hoveredCommentId, setHoveredCommentId] = useState<string | null>(null);
-  const [hoveredCommentRect, setHoveredCommentRect] = useState<ArticleCommentDraftPopover['rect'] | null>(null);
+  const [hoveredCommentRect, setHoveredCommentRect] = useState<ContentCommentDraftPopover['rect'] | null>(null);
   const [selectedCommentId, setSelectedCommentId] = useState<string | null>(null);
-  const [selectedCommentRect, setSelectedCommentRect] = useState<ArticleCommentDraftPopover['rect'] | null>(null);
+  const [selectedCommentRect, setSelectedCommentRect] = useState<ContentCommentDraftPopover['rect'] | null>(null);
   const [commentDraft, setCommentDraft] = useState<ArticleCommentDraft | null>(null);
   const [secondaryEditorRoot, setSecondaryEditorRoot] = useState<HTMLDivElement | null>(null);
   const [secondaryChromeRoot, setSecondaryChromeRoot] = useState<HTMLDivElement | null>(null);
@@ -307,7 +364,6 @@ export function ArticleEditorDocument(props: Props) {
     revision: 0,
   });
   const outlineItemsRef = useRef(outlineItems);
-  const elementsRef = useRef(elements);
   const documentRootRef = useRef<HTMLDivElement>(null);
   const leftPaneRootRef = useRef<HTMLDivElement>(null);
   const rightPaneRootRef = useRef<HTMLDivElement>(null);
@@ -324,12 +380,17 @@ export function ArticleEditorDocument(props: Props) {
     goToNextEdit,
     recordDraftSequence,
   } = useArticleEditorNavigation({ articleId, editorSession, onEditorHandleChange });
+  const mediaControls = useArticleEditorMedia({
+    bindings: editorMediaBindings,
+    elements,
+    onEditorHandleChange: handleEditorChange,
+    onNavigate: jumpToLocation,
+  });
   const leftSidebar = useArticleEditorSidebar(leftPaneRootRef, comments);
   const rightSidebar = useArticleEditorSidebar(rightPaneRootRef, comments, {
     enabled: splitOpen,
     preferenceScope: 'SECONDARY',
   });
-
   function handleMarkdownChange(markdown: string) {
     const nextOutlineItems = videoDocumentArticleHeadings(markdown);
     if (!sameOutlineItems(outlineItemsRef.current, nextOutlineItems)) {
@@ -338,18 +399,6 @@ export function ArticleEditorDocument(props: Props) {
     }
     recordDraftSequence(onMarkdownChange(markdown));
   }
-
-  function handleElementsChange(
-    next: readonly ArticleElementPlacementInput[],
-    reason: VideoDocumentArticleElementsChangeReason,
-  ) {
-    if (sameArticleElementPlacements(elementsRef.current, next)) return;
-    const snapshot = next.map((element) => ({ ...element }));
-    elementsRef.current = snapshot;
-    setElements(snapshot);
-    if (reason === 'identity') recordDraftSequence(editorSession.articleElementsChanged());
-  }
-
   function beginComment() {
     const target = editorHandleRef.current?.captureArticleCommentTarget();
     if (!target || commentMutationBusy) return;
@@ -450,16 +499,11 @@ export function ArticleEditorDocument(props: Props) {
     editTrail: liveEditTrail,
     elementPreviews,
     busy: commentMutationBusy,
-    ...articleElementControlLabels(zh),
+    ...articleElementControlLabels(commentCopy),
     onAddComment: beginComment,
     onCommentHover: hoverComment,
     onCommentSelect: selectComment,
-    onCommentsToggle: () => {
-      const activeElement = document.activeElement;
-      const sidebar =
-        splitOpen && activeElement && rightPaneRootRef.current?.contains(activeElement) ? rightSidebar : leftSidebar;
-      sidebar.togglePanel('COMMENTS');
-    },
+    onCommentsToggle: () => toggleCommentSidebar(splitOpen, rightPaneRootRef.current, leftSidebar, rightSidebar),
     onEditTrailSelect: jumpToLocation,
     onPreviousEdit: goToPreviousEdit,
     onNextEdit: goToNextEdit,
@@ -471,7 +515,10 @@ export function ArticleEditorDocument(props: Props) {
       data-content-source={JSON.stringify({ kind: 'ARTICLE', id: articleId })}
       className="relative flex min-h-0 min-w-0 flex-1 flex-col"
     >
+      {articleEditorLayoutAction(leftSidebar, rightSidebar, layoutToolbarRoot, splitOpen, onSplitToggle)}
       <ArticleEditorDocumentPanes
+        attachmentsPanel={attachmentsPanel}
+        attachmentCount={attachmentCount}
         articleElementControls={articleElementControls}
         comments={visibleComments}
         commentMutationBusy={commentMutationBusy}
@@ -487,6 +534,7 @@ export function ArticleEditorDocument(props: Props) {
         leftPaneRootRef={leftPaneRootRef}
         leftSidebar={leftSidebar}
         media={media}
+        {...mediaControls}
         openCommentHoverId={openCommentHoverId}
         outlineItems={outlineItems}
         rightPaneRootRef={rightPaneRootRef}
@@ -513,7 +561,6 @@ export function ArticleEditorDocument(props: Props) {
           const location = editorHandleRef.current?.resolveArticleOutlineHeadingLocation(sourceIndex);
           if (location) navigateArticleLocation(location);
         }}
-        onEditorHandleChange={handleEditorChange}
         onImageImportError={onImageImportError}
         onImageImported={onImageImported}
         onIllustrationRequest={onIllustrationRequest}
@@ -531,7 +578,6 @@ export function ArticleEditorDocument(props: Props) {
         hoveredRect={hoveredCommentRect}
         selectedCommentId={selectedCommentId}
         selectedRect={selectedCommentRect}
-        zh={zh}
         onDelete={deleteComment}
         onDraftCancel={() => setCommentDraft(null)}
         onDraftSubmit={(body) => void submitComment(body)}

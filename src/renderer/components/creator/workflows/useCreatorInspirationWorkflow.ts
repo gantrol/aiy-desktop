@@ -1,3 +1,4 @@
+import { useI18n } from '@/renderer/i18n/useI18n';
 import { useEffect, useRef, useState } from 'react';
 import type {
   CreationItemDto,
@@ -51,10 +52,12 @@ export function inspirationSaveIdentity(input: InspirationSaveIdentityInput) {
 }
 
 export function useCreatorInspirationWorkflow(options: Options) {
+  const copy = useI18n().messages.desktopPetals.document;
   const [busy, setBusy] = useState(false);
   const [savedContentKey, setSavedContentKey] = useState<string | null>(null);
   const busyRef = useRef(false);
   const savedHashRef = useRef<string | null>(null);
+  const savedRevisionRef = useRef<string | undefined>(undefined);
   const generationRef = useRef(0);
   const mountedRef = useRef(true);
   const captureSaveIdentity = useStableCallback(options.captureSaveIdentity);
@@ -74,14 +77,18 @@ export function useCreatorInspirationWorkflow(options: Options) {
   const clearSavedContent = useStableCallback(() => {
     generationRef.current += 1;
     savedHashRef.current = null;
+    savedRevisionRef.current = undefined;
     setSavedContentKey(null);
   });
 
-  const rememberSavedContent = useStableCallback((content: InspirationStashContentInput, hash?: string) => {
-    savedHashRef.current = hash ?? null;
-    generationRef.current += 1;
-    setSavedContentKey(JSON.stringify(contentSnapshot(content)));
-  });
+  const rememberSavedContent = useStableCallback(
+    (content: InspirationStashContentInput, hash?: string, revisionId?: string) => {
+      savedHashRef.current = hash ?? null;
+      savedRevisionRef.current = revisionId;
+      generationRef.current += 1;
+      setSavedContentKey(JSON.stringify(contentSnapshot(content)));
+    },
+  );
 
   const saveInspiration = useStableCallback(async (input: SaveInspirationInput) => {
     if (busyRef.current) return;
@@ -94,20 +101,14 @@ export function useCreatorInspirationWorkflow(options: Options) {
       ? creationItemByFormEntity(options.creationItems, 'PROMPT_SERIES', input.currentSeriesId)
       : null;
     try {
-      if (input.selectedStashId && !savedHashRef.current)
-        throw new Error(
-          options.locale === 'zh'
-            ? '请重新打开随记以确认保存基线，当前输入仍保留'
-            : 'Reopen the note to establish its saved version. Your input is retained.',
-        );
-      if (input.currentSeriesId && !currentItem) {
-        throw new Error(options.locale === 'zh' ? '所属创作项不可用' : 'The containing creation item is unavailable');
-      }
+      if (input.selectedStashId && !savedHashRef.current) throw new Error(copy.reopenDraft);
+      if (input.currentSeriesId && !currentItem) throw new Error(copy.itemUnavailable);
       const saveInput: InspirationStashSaveInput = input.selectedStashId
         ? {
             mode: 'UPDATE',
             id: input.selectedStashId,
             expectedContentHash: savedHashRef.current!,
+            expectedRevisionId: savedRevisionRef.current,
             content,
             consumeCreationDraftId: input.restartNewCreation ? input.creationDraftId : null,
           }
@@ -120,14 +121,17 @@ export function useCreatorInspirationWorkflow(options: Options) {
               consumeCreationDraftId: input.restartNewCreation ? input.creationDraftId : null,
             };
       const stash = await window.desktopApi.inspirationStashSave(saveInput);
-      if (generationRef.current === operationGeneration) savedHashRef.current = stash.contentHash;
+      if (generationRef.current === operationGeneration) {
+        savedHashRef.current = stash.contentHash;
+        savedRevisionRef.current = stash.revisionId;
+      }
       const operationIsCurrent = () =>
         mountedRef.current && generationRef.current === operationGeneration && captureSaveIdentity() === saveIdentity;
       if (input.restartNewCreation && operationIsCurrent()) {
         const started = await restartNewCreation(input.targetAlbumId);
         await refresh();
         if (started) {
-          if (mountedRef.current) notify(options.locale === 'zh' ? '已暂存灵感' : 'Inspiration stashed');
+          if (mountedRef.current) notify(copy.draftSaved);
           return;
         }
       } else {
@@ -136,7 +140,7 @@ export function useCreatorInspirationWorkflow(options: Options) {
       if (!operationIsCurrent()) return;
       setSavedContentKey(JSON.stringify(content));
       onOpenStash(stash);
-      notify(options.locale === 'zh' ? '已暂存灵感' : 'Inspiration stashed');
+      notify(copy.draftSaved);
     } catch (reason) {
       if (mountedRef.current) notify(reason instanceof Error ? reason.message : String(reason));
     } finally {

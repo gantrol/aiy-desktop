@@ -1,18 +1,15 @@
 import type { ActiveLibraryContext } from '@/main/libraries/active-library-context';
-import type { PetalWindow, PetalWindows } from '@/main/desktop-petals/petal-windows';
+import type { PetalWindow } from '@/main/desktop-petals/petal-windows';
 import type { PetalBoardService } from '@/main/desktop-petals/petal-board-service';
-import type { PetalDrawerService } from '@/main/desktop-petals/petal-drawer-service';
 import type { PetalHubService } from '@/main/desktop-petals/petal-hub-service';
 import { petalHubViewSchema } from '@/shared/contracts/petal-hub';
 import { petalError } from '@/shared/petal-errors';
-interface Dependencies {
-  windows: PetalWindows;
+import { DEFAULT_PETAL_COLOR, petalColorSchema } from '@/shared/contracts/petal-appearance';
+import { cleanupPetalNotes, type PetalNoteCleanupDependencies } from '@/main/desktop-petals/petal-note-removal';
+interface Dependencies extends PetalNoteCleanupDependencies {
   board: PetalBoardService;
-  drawer: PetalDrawerService;
   hub: PetalHubService;
-  changed(): void;
   drain(): Promise<boolean>;
-  resume(): void;
   activate(context: ActiveLibraryContext): Promise<void>;
 }
 export async function executePetalHubCommand(
@@ -24,6 +21,8 @@ export async function executePetalHubCommand(
 ) {
   if (entry?.instanceId) throw petalError('hubOnly');
   switch (command) {
+    case 'cleanup':
+      return cleanupPetalNotes(deps, context, petalColorSchema.default(DEFAULT_PETAL_COLOR).parse(input));
     case 'show-all': {
       if (!entry) deps.windows.showHubView(await deps.windows.show(context.library.id, null), 'flower');
       const board = deps.board.snapshot();
@@ -83,3 +82,15 @@ export async function executePetalHubCommand(
       throw new Error('Unknown flower center command');
   }
 }
+
+export const hubCommands = new Set([
+  'hub-view',
+  'configure-hub',
+  'timer-action',
+  'hub-quota',
+  'show-all',
+  'hide-all',
+  'hide-petals',
+  'cleanup',
+  'reload',
+]);

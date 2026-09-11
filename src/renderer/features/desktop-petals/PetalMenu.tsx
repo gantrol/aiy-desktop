@@ -2,6 +2,7 @@ import { useRef, useState, type ComponentProps, type ReactNode } from 'react';
 import { ChevronDown, type LucideIcon } from 'lucide-react';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/renderer/components/ui/collapsible';
 import { DropdownMenuContent, DropdownMenuItem } from '@/renderer/components/ui/dropdown-menu';
+import { useHoverIntent } from '@/renderer/components/ui/use-hover-intent';
 import { cn } from '@/renderer/lib/utils';
 
 /** Portals cannot escape a native window. Keep petal menus within one bounded surface. */
@@ -23,21 +24,34 @@ export function PetalMenuSection({
   icon: Icon,
   label,
   disabled = false,
+  hoverOpen = false,
   children,
 }: {
   icon: LucideIcon;
   label: string;
   disabled?: boolean;
+  hoverOpen?: boolean;
   children: ReactNode;
 }) {
   const [open, setOpen] = useState(false);
   const trigger = useRef<HTMLButtonElement>(null);
+  const hover = useHoverIntent();
   return (
     <Collapsible
       open={open}
-      onOpenChange={setOpen}
+      onOpenChange={(value) => {
+        hover.cancel();
+        setOpen(value);
+      }}
       disabled={disabled}
+      onPointerEnter={(event) => {
+        if (event.pointerType === 'mouse' && !event.buttons)
+          hover.schedule(() => setOpen(true), hoverOpen && !disabled);
+      }}
+      onPointerLeave={hover.cancel}
+      onPointerDownCapture={hover.cancel}
       onKeyDown={(event) => {
+        hover.cancel();
         if (event.key !== 'ArrowLeft' || !open) return;
         event.preventDefault();
         setOpen(false);

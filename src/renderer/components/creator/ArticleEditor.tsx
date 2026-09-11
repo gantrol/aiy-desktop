@@ -1,4 +1,5 @@
-import { Columns2Icon, PencilIcon } from 'lucide-react';
+import { ArticleAttachments } from '@/renderer/components/creator/article-editor/ArticleAttachments';
+import { LoaderCircleIcon, PencilIcon, TextCursorInputIcon } from 'lucide-react';
 import { useState } from 'react';
 import type {
   ArticleContentInput,
@@ -40,7 +41,6 @@ import { PinContentButton } from '@/renderer/features/desktop-petals/PinContentA
 import {
   ArticleHeaderAiActions,
   ArticleHeaderActions,
-  ArticleHeaderIconButton,
   ArticleSaveStatus,
   SuggestedArticleTitle,
 } from '@/renderer/components/creator/article-editor/ArticleEditorHeader';
@@ -75,6 +75,7 @@ interface Props {
     preset: CanvasPresetDto,
   ): Promise<void>;
   onConfigureArticleCheck(): void;
+  onEditCreationInput(articleId: string): Promise<unknown>;
   onOpenRelation(item: CreationRelationItem): void;
   notify(message: string): void;
 }
@@ -188,6 +189,57 @@ function ReadOnlyArticleEditor({
   );
 }
 
+function ArticleCreationInputAction({
+  articleId,
+  open,
+  notify,
+}: {
+  articleId: string;
+  open(id: string): Promise<unknown>;
+  notify(message: string): void;
+}) {
+  const session = useArticleEditorSession();
+  const copy = useI18n().messages.desktopPetals.document;
+  return (
+    <Button
+      size="sm"
+      variant="ghost"
+      onClick={() =>
+        void (async () => {
+          if (await session.flush('manual')) await open(articleId);
+        })().catch((reason) => notify(String(reason)))
+      }
+    >
+      {copy.creationInput}
+    </Button>
+  );
+}
+
+function ArticleTitleSuggestionAction({
+  disabled,
+  suggesting,
+  onSuggest,
+}: {
+  disabled: boolean;
+  suggesting: boolean;
+  onSuggest(): void;
+}) {
+  const label = useI18n().messages.creator.manuscriptEditor.aiTitle;
+  return (
+    <Button
+      type="button"
+      variant="ghost"
+      size="icon-sm"
+      disabled={disabled}
+      aria-label={label}
+      title={label}
+      onClick={onSuggest}
+    >
+      {suggesting ? <LoaderCircleIcon className="size-4 animate-spin" /> : <TextCursorInputIcon className="size-4" />}
+    </Button>
+  );
+}
+
 function ArticleEditorWorkspace({
   article,
   spaceId,
@@ -201,6 +253,8 @@ function ArticleEditorWorkspace({
   onGenerateHeader,
   onGenerateIllustration,
   onConfigureArticleCheck,
+  onEditCreationInput,
+  onSaved,
   onOpenRelation,
   notify,
 }: Props) {
@@ -211,6 +265,7 @@ function ArticleEditorWorkspace({
   const title = useArticleEditorSessionSelector(selectArticleEditorTitle);
   const mediaBindings = useArticleEditorSessionSelector(selectArticleEditorMediaBindings);
   const media = useArticleEditorSessionSelector(selectArticleEditorMedia);
+  const fileCount = useArticleEditorSessionSelector((state) => state.persisted.article.content.files?.length ?? 0);
   useArticleEditorSessionSelector(selectArticleEditorDocumentVersion);
   const hasBody = useArticleEditorSessionSelector(selectArticleEditorHasBody);
   const conflict = useArticleEditorSessionSelector(articleEditorSessionConflicted);
@@ -223,6 +278,7 @@ function ArticleEditorWorkspace({
   const [creatingForm, setCreatingForm] = useState(false);
   const [relationsOpen, setRelationsOpen] = useState(false);
   const [splitOpen, setSplitOpen] = useState(false);
+  const [layoutToolbarRoot, setLayoutToolbarRoot] = useState<HTMLDivElement | null>(null);
   const articleComments = useArticleComments({ article, session, notify });
   const articleCheck = useArticleCheck({
     locale,
@@ -320,6 +376,9 @@ function ArticleEditorWorkspace({
             />
           </div>
           <div className="flex shrink-0 items-center gap-1">
+            {article.content.creationInput && (
+              <ArticleCreationInputAction articleId={article.id} open={onEditCreationInput} notify={notify} />
+            )}
             <PinContentButton
               iconOnly
               source={{ kind: 'ARTICLE', id: article.id }}
@@ -334,9 +393,6 @@ function ArticleEditorWorkspace({
                   onClick={() => void articleCheck.run()}
                 />
               }
-              hasBody={hasBody}
-              suggesting={suggesting}
-              onSuggestTitle={suggestTitle}
             />
             <ArticleRevisionHistoryAction article={article} notify={notify} zh={zh} />
             <ArticleDeliveryAction
@@ -346,14 +402,7 @@ function ArticleEditorWorkspace({
               notify={notify}
               spaceId={spaceId}
             />
-            <ArticleHeaderIconButton
-              variant={splitOpen ? 'secondary' : 'ghost'}
-              aria-pressed={splitOpen}
-              label={messages.creator.manuscriptEditor.splitEditor}
-              onClick={() => setSplitOpen((current) => !current)}
-            >
-              <Columns2Icon className="size-4" />
-            </ArticleHeaderIconButton>
+            <div ref={setLayoutToolbarRoot} className="contents" />
             <ArticleHeaderActions
               copyForWechatAction={<ArticleWechatCopyAction locale={locale} notify={notify} onCopy={onCopyForWechat} />}
               creatingForm={creatingForm}
@@ -369,7 +418,6 @@ function ArticleEditorWorkspace({
           </div>
         </header>
       </TooltipProvider>
-
       {conflict && (
         <div role="status" className="flex items-center justify-between gap-3 border-b bg-muted px-4 py-2 text-sm">
           <span>{messages.creator.manuscriptEditor.newerRevision}</span>
@@ -392,6 +440,8 @@ function ArticleEditorWorkspace({
 
       <ArticleEditorDocument
         key={session.getEditorSessionIdentity()}
+        attachmentsPanel={<ArticleAttachments spaceId={spaceId} onSaved={onSaved} notify={notify} />}
+        attachmentCount={fileCount}
         articleId={article.id}
         editorSessionIdentity={session.getEditorSessionIdentity()}
         comments={articleComments.comments}
@@ -403,8 +453,16 @@ function ArticleEditorWorkspace({
         labels={messages.videoDocuments.editor.richText}
         media={media}
         mediaBindings={mediaBindings}
+        layoutToolbarRoot={layoutToolbarRoot}
         splitOpen={splitOpen}
         title={title}
+        titleAccessory={
+          <ArticleTitleSuggestionAction
+            disabled={!hasBody || suggesting}
+            suggesting={suggesting}
+            onSuggest={() => void suggestTitle()}
+          />
+        }
         zh={zh}
         onEditorHandleChange={session.registerEditor}
         onCommentCreate={articleComments.create}
@@ -420,6 +478,7 @@ function ArticleEditorWorkspace({
         onMarkdownChange={session.documentChanged}
         onPersist={(mode) => void session.flush(mode)}
         onSplitClose={() => setSplitOpen(false)}
+        onSplitToggle={() => setSplitOpen((current) => !current)}
         onTitleChange={(nextTitle) => {
           setSuggestedTitle(null);
           session.titleChanged(nextTitle);

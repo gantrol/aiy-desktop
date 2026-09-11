@@ -149,6 +149,21 @@ export class PetalLayoutStore {
       if (drawer.anchorId === instanceId) drawer.anchorId = null;
     }
   }
+  migrateArticlePins(libraryId: string, activeIds: readonly string[]) {
+    const library = this.state.libraries[libraryId];
+    if (!library) return;
+    const drawer = this.state.drawers[libraryId];
+    for (const id of activeIds) {
+      if (!id.startsWith('article:')) continue;
+      const previous = 'pin:' + id.slice('article:'.length);
+      if (library[previous] && !library[id]) library[id] = library[previous];
+      delete library[previous];
+      if (drawer) {
+        drawer.order = drawer.order.map((value) => (value === previous ? id : value));
+        if (drawer.anchorId === previous) drawer.anchorId = id;
+      }
+    }
+  }
   prune(libraryId: string, activeIds: readonly string[]) {
     const active = new Set(['hub', ...activeIds]);
     for (const id of Object.keys(this.state.libraries[libraryId] ?? {}))

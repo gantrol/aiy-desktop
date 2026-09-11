@@ -11,12 +11,15 @@ export const trayMenuStateSchema = z
   .object({
     language: appShellLanguageSchema,
     windowReady: z.boolean(),
+    petalsReady: z.boolean(),
     taskCount: z.number().int().nonnegative(),
     quittingSoon: z.boolean(),
   })
   .strict();
 export type TrayMenuState = z.infer<typeof trayMenuStateSchema>;
-export const trayMenuActionSchema = z.enum(['open', 'quit', 'force-quit', 'dismiss']);
+export const trayPetalActions = ['petals-open', 'petals-show-all', 'petals-hide-all', 'petals-settings'] as const;
+export type TrayPetalAction = (typeof trayPetalActions)[number];
+export const trayMenuActionSchema = z.enum(['open', 'quit', 'force-quit', 'dismiss', ...trayPetalActions]);
 export type TrayMenuAction = z.infer<typeof trayMenuActionSchema>;
 
 export interface TrayMenuApi {

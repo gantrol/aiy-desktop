@@ -188,6 +188,7 @@ export function readCodexTurnSpeedAnalysis(
           medianDurationMs: fastTurnCount > 0 ? row.fastMedianDurationMs : null,
         },
         actualSpeedMultiplier: actualSpeedMultiplier(row.standardMedianDurationMs, row.fastMedianDurationMs),
+        officialSpeed: { multiplier: null, source: 'UNKNOWN', asOf: null },
       },
     ];
   });
@@ -196,7 +197,6 @@ export function readCodexTurnSpeedAnalysis(
     algorithmVersion: 1,
     comparisonScope: 'SINGLE_NORMALIZED_MODEL_AND_REASONING_EFFORT',
     rangeAssignment: 'COMPLETION_TIMESTAMP',
-    officialSpeedMultiplier: 1.5,
     completedTurnCount: coverage?.completedTurnCount ?? 0,
     validTurnCount: coverage?.validTurnCount ?? 0,
     comparableTurnCount: coverage?.comparableTurnCount ?? 0,

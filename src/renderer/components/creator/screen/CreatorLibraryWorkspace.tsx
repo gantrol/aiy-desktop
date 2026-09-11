@@ -139,6 +139,7 @@ export function CreatorSpecializedWorkspace({ imageBreakdownSourceFormId, model 
         generateHeader: workflow.content.derivedVisual.openArticleHeaderWorkspace,
         generateIllustration: workflow.content.derivedVisual.openArticleIllustrationWorkspace,
         onSaved: app.onArticleSaved,
+        editCreationInput: navigation.content.chooseInspirationStash,
         save: workflow.content.article.saveArticleRevision,
       }}
       articleRelations={selected.articleRelations}

@@ -25,7 +25,6 @@ function turnSpeedRows(investigation: CodexUsageInvestigation): CsvRecord[] {
       analysis_definition: analysis.definition,
       comparison_scope: analysis.comparisonScope,
       range_assignment: analysis.rangeAssignment,
-      official_speed_multiplier: analysis.officialSpeedMultiplier,
       completed_turn_count: analysis.completedTurnCount,
       valid_turn_count: analysis.validTurnCount,
       comparable_turn_count: analysis.comparableTurnCount,
@@ -50,7 +49,9 @@ function turnSpeedRows(investigation: CodexUsageInvestigation): CsvRecord[] {
       fast_turn_count: comparison.fast.completedTurnCount,
       standard_median_duration_ms: comparison.standard.medianDurationMs,
       fast_median_duration_ms: comparison.fast.medianDurationMs,
-      official_speed_multiplier: analysis.officialSpeedMultiplier,
+      official_speed_multiplier: comparison.officialSpeed.multiplier,
+      official_speed_source: comparison.officialSpeed.source,
+      official_speed_as_of: comparison.officialSpeed.asOf,
       actual_speed_multiplier: comparison.actualSpeedMultiplier,
       completed_turn_count: analysis.completedTurnCount,
       valid_turn_count: analysis.validTurnCount,
@@ -242,6 +243,8 @@ const CSV_HEADERS = [
   'range_assignment',
   'reasoning_effort',
   'official_speed_multiplier',
+  'official_speed_source',
+  'official_speed_as_of',
   'actual_speed_multiplier',
   'standard_turn_count',
   'fast_turn_count',
@@ -550,7 +553,7 @@ function csvExport(investigation: CodexUsageInvestigation, rows: readonly CodexU
 function jsonExport(investigation: CodexUsageInvestigation, rows: readonly CodexUsageInternalRow[]) {
   return `${JSON.stringify(
     {
-      schemaVersion: 12,
+      schemaVersion: 13,
       valuationKind: 'public_rate_equivalent_not_billed_spend',
       turnSpeedKind: 'completed_turn_median_duration_ratio',
       quotaYieldKind: 'weekly_quota_observation_segment_tokens_per_observed_quota_percent',

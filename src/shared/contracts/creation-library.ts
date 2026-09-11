@@ -303,24 +303,13 @@ export const creationItemSchema = z
       }
     }
 
-    if (item.phase === 'DRAFT') {
-      for (const [index, form] of item.forms.entries()) {
-        if (form.role === 'INSPIRATION') continue;
-        context.addIssue({
-          code: 'custom',
-          path: ['forms', index, 'role'],
-          message: 'A draft creation item can contain only its inspiration form',
-        });
-      }
-      if (item.primaryFormId !== null) {
-        context.addIssue({
-          code: 'custom',
-          path: ['primaryFormId'],
-          message: 'A draft creation item cannot have a primary form',
-        });
-      }
+    // Legacy inspiration-only drafts may have no primary form. Articles may be drafts too.
+    if (
+      item.phase === 'DRAFT' &&
+      item.primaryFormId === null &&
+      item.forms.every((form) => form.role === 'INSPIRATION')
+    )
       return;
-    }
 
     if (item.primaryFormId === null) {
       context.addIssue({

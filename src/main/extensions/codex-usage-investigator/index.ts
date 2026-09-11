@@ -19,6 +19,7 @@ import {
 import { codexUsageDateRangeEpochs } from '@/shared/codex-usage-time';
 import { CodexUsageCacheDatabase } from '@/main/extensions/codex-usage-investigator/cache-database';
 import { serializeCodexUsageExport } from '@/main/extensions/codex-usage-investigator/export';
+import { refreshCodexOfficialSpeeds } from '@/main/extensions/codex-usage-investigator/official-speed';
 import { codexUsageRangeStart, scanCodexUsage } from '@/main/extensions/codex-usage-investigator/scanner';
 
 interface RunOptions {
@@ -93,7 +94,7 @@ export class CodexUsageInvestigator {
   async investigation(investigationId: string) {
     const investigation = (await this.getCache()).investigation(investigationId);
     if (!investigation) throw new Error('Codex usage investigation was not found');
-    return investigation;
+    return refreshCodexOfficialSpeeds(investigation);
   }
 
   async start(input: CodexUsageScanInput, options: RunOptions) {
@@ -169,7 +170,7 @@ export class CodexUsageInvestigator {
     const investigation = cache.investigation(investigationId);
     const rows = cache.exportRows(investigationId);
     if (!investigation || !rows) throw new Error('Codex usage investigation was not found');
-    const contents = serializeCodexUsageExport(investigation, rows, format);
+    const contents = serializeCodexUsageExport(await refreshCodexOfficialSpeeds(investigation), rows, format);
     await writeFile(destinationPath, contents, { encoding: 'utf8' });
   }
 

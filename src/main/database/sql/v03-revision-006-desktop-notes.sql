@@ -10,7 +10,7 @@ CREATE UNIQUE INDEX IF NOT EXISTS inspiration_stash_revisions_source ON inspirat
 CREATE TABLE IF NOT EXISTS desktop_note_instances (
   id TEXT PRIMARY KEY,
   stash_id TEXT NOT NULL REFERENCES inspiration_stashes(id) ON DELETE CASCADE,
-  color TEXT NOT NULL DEFAULT 'rose' CHECK(color IN ('rose','cream','sage','sky','lilac')),
+  color TEXT NOT NULL DEFAULT 'white' CHECK(color IN ('white','rose','cream','sage','sky','lilac')),
   icon TEXT NOT NULL DEFAULT 'feather' CHECK(icon IN ('feather','lightbulb','heart','star','bookmark','check','flag','flower')),
   created_at TEXT NOT NULL,
   updated_at TEXT NOT NULL

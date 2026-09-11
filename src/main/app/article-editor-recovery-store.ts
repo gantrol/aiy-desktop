@@ -38,6 +38,10 @@ async function removeFileBestEffort(filePath: string) {
 
 export class ArticleEditorRecoveryStore {
   private readonly directory: string;
+  private migrateLegacyDrafts: ((scope: ArticleEditorRecoveryScope) => Promise<void>) | null = null;
+  setLegacyDraftMigration(migrate: (scope: ArticleEditorRecoveryScope) => Promise<void>) {
+    this.migrateLegacyDrafts = migrate;
+  }
 
   constructor(userDataRoot: string) {
     this.directory = path.join(userDataRoot, 'ui-state', 'article-editor-recovery');
@@ -45,6 +49,7 @@ export class ArticleEditorRecoveryStore {
 
   async list(rawScope: ArticleEditorRecoveryScope): Promise<ArticleEditorRecoveryCheckpoint[]> {
     const scope = articleEditorRecoveryScopeSchema.parse(rawScope);
+    await this.migrateLegacyDrafts?.(scope);
     const directory = this.scopeDirectory(scope);
     let storedFileNames: string[];
     try {

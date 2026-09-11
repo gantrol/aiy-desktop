@@ -34,6 +34,11 @@ export function useContentLifecycleActions({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
 
+  function failureMessage(reason: unknown) {
+    const detail = reason instanceof Error ? reason.message : String(reason);
+    return detail.includes('IMAGE_ASSET_USED_BY_ACTIVE_CONTENT') ? l.notices.assetInUse : detail;
+  }
+
   async function apply(request: ContentLifecycleActionRequest, plan: ContentLifecyclePlanDto) {
     await window.desktopApi.contentLifecycleApply({
       action: request.action,
@@ -57,7 +62,7 @@ export function useContentLifecycleActions({
       }
       await apply(input, plan);
     } catch (reason) {
-      notify(reason instanceof Error ? reason.message : String(reason));
+      notify(failureMessage(reason));
     } finally {
       setBusy(false);
     }
@@ -71,7 +76,7 @@ export function useContentLifecycleActions({
       await apply(pending.request, pending.plan);
       setPending(null);
     } catch (reason) {
-      setError(reason instanceof Error ? reason.message : String(reason));
+      setError(failureMessage(reason));
     } finally {
       setBusy(false);
     }

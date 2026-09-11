@@ -35,6 +35,10 @@ import { CodexQuotaYieldAccumulator } from '@/main/extensions/codex-usage-invest
 import { CodexSessionLengthAccumulator } from '@/main/extensions/codex-usage-investigator/session-length';
 import { resolveCodexUsageServiceTierFallback } from '@/main/extensions/codex-usage-investigator/service-tier-fallback';
 import {
+  applyCodexOfficialSpeeds,
+  readCodexOfficialSpeedCatalog,
+} from '@/main/extensions/codex-usage-investigator/official-speed';
+import {
   codexUsageInternalRowSchema,
   readCodexUsageSession,
   type CodexUsageInternalEvent,
@@ -606,9 +610,10 @@ export async function scanCodexUsage(options: ScanOptions): Promise<CodexUsageSc
     elapsedMs: 0,
   });
   const codexHome = codexHomePath();
-  const [discovery, serviceTierFallback] = await Promise.all([
+  const [discovery, serviceTierFallback, officialSpeeds] = await Promise.all([
     discoverCodexSessions(codexHome, fromEpoch, signal),
     codexHome ? resolveCodexUsageServiceTierFallback(codexHome) : Promise.resolve(null),
+    readCodexOfficialSpeedCatalog(codexHome),
   ]);
   const files = discovery.files;
   let filesProcessed = 0;
@@ -778,7 +783,8 @@ export async function scanCodexUsage(options: ScanOptions): Promise<CodexUsageSc
     totals: processed.totals,
     models: processed.models,
     days: processed.days,
-    turnSpeed: processed.turnSpeed,
+    // Resolve outside the event cache: model metadata can change without new rollout events.
+    turnSpeed: applyCodexOfficialSpeeds(processed.turnSpeed, officialSpeeds),
     modelComparison: processed.modelComparison,
     sessionLength: processed.sessionLength,
     quotaYield: processed.quotaYield,

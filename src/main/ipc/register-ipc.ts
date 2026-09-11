@@ -1,3 +1,5 @@
+import { bindArticleNoteRecovery } from '@/main/app/article-note-recovery';
+import { articleDraftDto } from '@/shared/article-draft';
 import { articleWechatMessages } from '@/shared/i18n/article-wechat';
 import type { NaturalWatermarkRuntime } from '@/main/extensions/natural-watermark/selection';
 import { app, clipboard, dialog, nativeImage, shell, type BrowserWindow } from 'electron';
@@ -142,13 +144,14 @@ const compactExecutionWorkbenchOptions = {
 } as const;
 
 function creativeLibraryContainers(database: LibraryDatabase) {
+  const articles = database.listArticles();
   return {
-    articles: database.listArticles(),
+    articles,
     creations: database.listCreations(),
     creationItems: database.listCreationItems(),
     animations: database.listAnimationWorks(),
     evaluationSuites: database.listEvaluationSuites(),
-    inspirationStashes: database.listInspirationStashes(),
+    inspirationStashes: articles.filter((article) => article.content.creationInput).map(articleDraftDto),
     imageBreakdowns: database.listImageBreakdowns(),
     socialPosts: database.listSocialPosts(),
     derivedVisuals: database.listDerivedVisuals(),
@@ -443,6 +446,7 @@ export function registerIpc(
   runtime: RegisterIpcRuntimeOptions = {},
 ) {
   if (!runtime.applicationIpcRegistered) registerApplicationIpc(getWindow, workspaceLayouts, articleEditorRecovery);
+  bindArticleNoteRecovery(database, articleEditorRecovery, runtime.runInLibraryContext);
   const ipcMain = runtime.ipcMain ?? createTrustedIpcHandlerRegistrar(getWindow, runtime.runInLibraryContext);
   const contentServices = registerPublishingIpc(
     ipcMain,
