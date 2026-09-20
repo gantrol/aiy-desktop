@@ -29,6 +29,8 @@ import { Button } from '@/renderer/components/ui/button';
 import { useI18n } from '@/renderer/i18n/useI18n';
 import { cn } from '@/renderer/lib/utils';
 import type { AssetDto, Locale, SocialPostContentInput } from '@/shared/contracts';
+import { socialPostMediaLimit } from '@/shared/contracts/social-post';
+import { figureReferenceMessages } from '@/shared/i18n/figure-reference';
 import {
   ArrowLeftIcon,
   ArrowRightIcon,
@@ -47,8 +49,79 @@ import {
   type DragEvent,
   type SetStateAction,
 } from 'react';
-const socialPostMediaLimit = 100;
 const importBatchLimit = 8;
+
+interface FigurePreviewRequest {
+  assetId: string;
+  revision: number;
+}
+
+function useFigurePreviewRequest({
+  request,
+  assetIds,
+  assetsById,
+  unavailable,
+  notify,
+  onPreview,
+  onHandled,
+}: {
+  request?: FigurePreviewRequest | null;
+  assetIds: readonly string[];
+  assetsById: ReadonlyMap<string, AssetDto>;
+  unavailable: string;
+  notify(message: string): void;
+  onPreview(assetId: string): void;
+  onHandled?(): void;
+}) {
+  const handled = useRef<FigurePreviewRequest | null>(null);
+  useEffect(() => {
+    if (!request || handled.current === request) return;
+    handled.current = request;
+    if (assetIds.includes(request.assetId) && assetsById.has(request.assetId)) onPreview(request.assetId);
+    else notify(unavailable);
+    onHandled?.();
+  }, [assetIds, assetsById, notify, onHandled, onPreview, request, unavailable]);
+}
+
+function figureReferenceActions(
+  assetId: string,
+  available: boolean,
+  label: string,
+  onReferenceImage: ((assetId: string) => void) | undefined,
+): ActionMenuAction[] {
+  return onReferenceImage
+    ? [
+        {
+          id: 'social-post-media-reference',
+          label,
+          icon: Link2Icon,
+          disabled: !available,
+          onSelect: () => onReferenceImage(assetId),
+        },
+      ]
+    : [];
+}
+
+function useImageClipboard(
+  notify: (message: string) => void,
+  copy: { copying: string; copied: string; failed: string },
+) {
+  const [copyingAssetId, setCopyingAssetId] = useState<string | null>(null);
+  async function copyImage(assetId: string) {
+    if (copyingAssetId) return;
+    setCopyingAssetId(assetId);
+    notify(copy.copying);
+    try {
+      await window.desktopApi.assetFileCopy(assetId);
+      notify(copy.copied);
+    } catch (reason) {
+      notify(`${copy.failed}: ${reason instanceof Error ? reason.message : String(reason)}`);
+    } finally {
+      setCopyingAssetId(null);
+    }
+  }
+  return { copyingAssetId, copyImage };
+}
 
 export function useSocialPostMediaIntake({
   content,
@@ -256,8 +329,11 @@ export function SocialPostMediaSection({
   onChangeIds,
   onGenerateCover,
   onOpenRelations,
+  onPreviewRequestHandled,
+  onReferenceImage,
   onSelectRelation,
   onSetCover,
+  previewRequest,
   relations,
 }: {
   adding: boolean;
@@ -267,43 +343,42 @@ export function SocialPostMediaSection({
   locale: Locale;
   notify(message: string): void;
   onAdd(): void;
-  onChangeIds(ids: string[]): void;
+  onChangeIds(ids: string[]): boolean;
   onGenerateCover(): void;
   onOpenRelations(assetId: string | null): void;
+  onPreviewRequestHandled?(): void;
+  onReferenceImage?(assetId: string): void;
   onSelectRelation(item: CreationRelationItem): void;
   onSetCover(assetId: string): void;
+  previewRequest?: FigurePreviewRequest | null;
   relations: readonly CreationRelationItem[];
 }) {
   const { messages } = useI18n();
   const socialCopy = messages.creator.socialPostEditor;
   const fileLabels = messages.assetFile;
   const moreActionsLabel = messages.creator.album.moreActions;
+  const figureCopy = figureReferenceMessages(locale);
   const [dragTargetId, setDragTargetId] = useState<string | null>(null);
   const [previewAssetId, setPreviewAssetId] = useState<string | null>(null);
-  const [copyingAssetId, setCopyingAssetId] = useState<string | null>(null);
+  const { copyingAssetId, copyImage } = useImageClipboard(notify, fileLabels);
+  useFigurePreviewRequest({
+    request: previewRequest,
+    assetIds: content.mediaAssetIds,
+    assetsById,
+    unavailable: figureCopy.unavailable,
+    notify,
+    onPreview: setPreviewAssetId,
+    onHandled: onPreviewRequestHandled,
+  });
 
   useEffect(() => {
     if (previewAssetId && !content.mediaAssetIds.includes(previewAssetId)) setPreviewAssetId(null);
   }, [content.mediaAssetIds, previewAssetId]);
 
-  async function copyImage(assetId: string) {
-    if (copyingAssetId) return;
-    setCopyingAssetId(assetId);
-    notify(fileLabels.copying);
-    try {
-      await window.desktopApi.assetFileCopy(assetId);
-      notify(fileLabels.copied);
-    } catch (reason) {
-      notify(`${fileLabels.failed}: ${reason instanceof Error ? reason.message : String(reason)}`);
-    } finally {
-      setCopyingAssetId(null);
-    }
-  }
-
   function removeImage(assetId: string) {
     const index = content.mediaAssetIds.indexOf(assetId);
     const nextPreviewId = content.mediaAssetIds[index + 1] ?? content.mediaAssetIds[index - 1] ?? null;
-    onChangeIds(content.mediaAssetIds.filter((id) => id !== assetId));
+    if (!onChangeIds(content.mediaAssetIds.filter((id) => id !== assetId))) return;
     if (previewAssetId === assetId) setPreviewAssetId(nextPreviewId);
   }
 
@@ -313,19 +388,19 @@ export function SocialPostMediaSection({
       aria-label={messages.contentEditor.media}
       className="grid min-h-full content-start gap-3 outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
     >
-      <div className="sticky -top-3 z-30 -mx-3 -mt-3 flex min-h-11 flex-wrap items-center justify-end gap-2 border-b bg-background px-3 py-2">
-        <SocialPostMediaActions
-          adding={adding}
-          generatingCover={generatingCover}
-          onAdd={onAdd}
-          onGenerateCover={onGenerateCover}
-        />
-      </div>
+      <SocialPostMediaActions
+        imageCount={content.mediaAssetIds.length}
+        adding={adding}
+        generatingCover={generatingCover}
+        onAdd={onAdd}
+        onGenerateCover={onGenerateCover}
+      />
       <div className="grid grid-cols-[repeat(auto-fill,minmax(7rem,1fr))] gap-3">
         {content.mediaAssetIds.map((assetId, index) => {
           const asset = assetsById.get(assetId);
           const cover = content.coverAssetId === assetId;
           const actions: ActionMenuAction[] = [
+            ...figureReferenceActions(assetId, Boolean(asset), figureCopy.insert, onReferenceImage),
             ...(!cover
               ? [
                   {

@@ -103,7 +103,7 @@ export function useNoteComments({
   function select(commentId: string, reveal = false) {
     const comment = comments.find((candidate) => candidate.id === commentId);
     if (!comment) return;
-    if (reveal) {
+    if (reveal && comment.targetResolution !== 'MISSING') {
       const location = editorHandle.current?.resolveArticleCommentLocation(commentId) ?? {
         elementId: comment.anchor.startElementId,
         relativeOffset: comment.anchor.startOffset,
@@ -179,7 +179,9 @@ export function useNoteComments({
         onDraftSubmit={(body) => void submitComment(body)}
         onHoverDismiss={() => hover(null)}
         onHoverEngage={select}
-        onReply={(commentId, body) => void mutate({ operation: 'ADD_REPLY', noteId: state.note.id, commentId, body })}
+        onReply={async (commentId, body) =>
+          (await mutate({ operation: 'ADD_REPLY', noteId: state.note.id, commentId, body })) !== null
+        }
         onSelectedClose={() => {
           setSelectedId(null);
           setSelectedRect(null);

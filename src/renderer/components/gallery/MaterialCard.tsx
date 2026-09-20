@@ -1,13 +1,11 @@
 import {
   ArchiveIcon,
-  BookOpenIcon,
   CheckIcon,
   CopyIcon,
   EyeIcon,
   FileTextIcon,
   HeartIcon,
   ImageIcon,
-  SquarePenIcon,
   VideoIcon,
   Trash2Icon,
 } from 'lucide-react';
@@ -17,7 +15,12 @@ import type { AssetFileRevealContext, Locale } from '@/shared/contracts';
 import { useI18n } from '@/renderer/i18n/useI18n';
 import { formatDateTime } from '@/renderer/lib/dateFormat';
 import { cn } from '@/renderer/lib/utils';
-import './MaterialCard.css';
+import {
+  MIN_MATERIAL_FRAME_RATIO,
+  MAX_MATERIAL_FRAME_RATIO,
+} from '@/renderer/components/gallery/materialMasonryLayout';
+import { materialPinSource } from '@/renderer/components/gallery/MaterialPinAction';
+import { usePinContentAction } from '@/renderer/features/desktop-petals/PinContentAction';
 import { AssetFileContextMenu } from '@/renderer/components/media/AssetFileContextMenu';
 import { useAssetMenuActions } from '@/renderer/components/media/AssetMenuActionsProvider';
 import { AssetMedia, isVideoAsset } from '@/renderer/components/media/AssetMedia';
@@ -35,7 +38,6 @@ import {
   type MaterialLibraryItem,
   type SelectionModifiers,
 } from '@/renderer/components/gallery/materialLibraryTypes';
-import { sampleMaterialCardOverlay, type MaterialOverlayTone } from '@/renderer/components/gallery/materialOverlayTone';
 import { useLongPressSelection } from '@/renderer/components/gallery/useLongPressSelection';
 
 interface Props {
@@ -45,6 +47,8 @@ interface Props {
   selectionMode?: boolean;
   selectionAvailable?: boolean;
   viewMode: GalleryViewMode;
+  frameAspectRatio?: number;
+  showName?: boolean;
   onSelect(item: MaterialLibraryItem, modifiers?: SelectionModifiers): void;
   onEnterSelection(item: MaterialLibraryItem): void;
   onToggleSelection(item: MaterialLibraryItem): void;
@@ -201,6 +205,8 @@ function MaterialCardImpl({
   selectionMode = false,
   selectionAvailable = true,
   viewMode,
+  frameAspectRatio,
+  showName = false,
   onSelect,
   onEnterSelection,
   onToggleSelection,
@@ -214,12 +220,9 @@ function MaterialCardImpl({
 }: Props) {
   const { locale, messages } = useI18n();
   const actions = useAssetMenuActions();
+  const pinMaterial = usePinContentAction(notify);
   const l = messages.gallery.card;
   const [imageFailed, setImageFailed] = useState(false);
-  const [overlayTone, setOverlayTone] = useState<MaterialOverlayTone>('light');
-  const [overlayNeedsContrastSupport, setOverlayNeedsContrastSupport] = useState(true);
-  const [dateOverlayTone, setDateOverlayTone] = useState<MaterialOverlayTone>('light');
-  const [dateNeedsContrastSupport, setDateNeedsContrastSupport] = useState(true);
   const fallbackTitle =
     item.kind === 'TEXT' ? l.textMaterial : item.image.asset.kind === 'GENERATED' ? l.generated : l.reference;
   const title = materialTitle(item, fallbackTitle);
@@ -230,16 +233,10 @@ function MaterialCardImpl({
   const creationRoles = image?.creation?.roles
     .map((role) =>
       role === 'OUTPUT'
-        ? locale === 'zh'
-          ? '产出'
-          : 'Output'
+        ? messages.gallery.inspector.roleOutput
         : role === 'SOURCE'
-          ? locale === 'zh'
-            ? '源图'
-            : 'Source'
-          : locale === 'zh'
-            ? '输入'
-            : 'Input',
+          ? messages.gallery.inspector.roleSource
+          : messages.gallery.inspector.roleInput,
     )
     .join(' / ');
   const creationRelationship = image?.creation ? (creationRoles ? `${l.creation} · ${creationRoles}` : l.creation) : '';
@@ -315,6 +312,7 @@ function MaterialCardImpl({
     item.kind === 'TEXT'
       ? [
           ...commonActions,
+          pinMaterial(materialPinSource(item)),
           { id: 'copy', label: l.copyText, icon: CopyIcon, onSelect: () => onCopyText(item.text.text) },
           ...lifecycleActions.map((action, index) => ({
             ...action,
@@ -390,6 +388,7 @@ function MaterialCardImpl({
     );
     return image ? (
       <AssetFileContextMenu
+        pinSource={materialPinSource(item)}
         assetId={image.asset.id}
         notify={notify}
         actions={commonActions}
@@ -492,9 +491,16 @@ function MaterialCardImpl({
   const previewUrl = video
     ? imageItem.asset.mediaUrl
     : mediaThumbnailUrl(imageItem.asset, MATERIAL_GRID_THUMBNAIL_SIZE);
+  const shapeLabel =
+    cardAspectRatio < MIN_MATERIAL_FRAME_RATIO
+      ? l.longImage
+      : cardAspectRatio > MAX_MATERIAL_FRAME_RATIO
+        ? l.wideImage
+        : null;
 
   return (
     <AssetFileContextMenu
+      pinSource={materialPinSource(item)}
       assetId={imageItem.asset.id}
       notify={notify}
       actions={commonActions}
@@ -510,123 +516,78 @@ function MaterialCardImpl({
         draggable={Boolean(onDragStart)}
         onDragStart={(event) => onDragStart?.(event, item)}
         data-material-aspect-ratio={cardAspectRatio.toFixed(3)}
-        className={cn(
-          'corner-continuous group relative isolate w-full self-start overflow-hidden rounded-xl border transition-colors duration-fast hover:border-border-strong focus-within:border-border-strong',
-          video ? 'bg-media-surround-dark' : 'bg-surface-sunken',
-          selected && 'border-border-strong ring-1 ring-border',
-          checked && 'border-border-strong ring-1 ring-border',
-        )}
-        style={{ aspectRatio: cardAspectRatio }}
+        className="group relative isolate w-full min-w-0 self-start"
       >
-        <button
-          type="button"
-          data-action="material-open-inspector"
-          data-material-key={item.key}
-          data-material-id={materialId ?? undefined}
-          aria-label={l.select(title)}
-          aria-pressed={selected || checked}
-          onClick={activate}
-          {...longPress}
-          className="group/card-button absolute inset-0 block size-full text-left outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
+        <div
+          className={cn(
+            'relative w-full overflow-hidden rounded-sm',
+            video ? 'bg-media-surround-dark' : 'bg-surface-sunken',
+          )}
+          style={{ aspectRatio: frameAspectRatio ?? cardAspectRatio }}
         >
-          {imageFailed ? (
-            <span className="absolute inset-0 grid place-items-center bg-surface-sunken text-muted-foreground">
-              {video ? <VideoIcon className="size-8 opacity-50" /> : <ImageIcon className="size-8 opacity-50" />}
-              <span className="sr-only">{l.previewUnavailable}</span>
-            </span>
-          ) : (
-            <AssetMedia
-              asset={item.image.asset}
-              src={previewUrl}
-              className="absolute inset-0 size-full object-contain transition-transform duration-base ease-enter motion-reduce:transform-none motion-reduce:transition-none group-hover/card-button:scale-[1.015]"
-              crossOrigin="anonymous"
-              alt=""
-              loading="lazy"
-              decoding="async"
-              draggable={false}
-              muted
-              onLoad={(event) => {
-                setImageFailed(false);
-                const analysis = sampleMaterialCardOverlay(event.currentTarget);
-                setOverlayTone(analysis.primary.tone);
-                setOverlayNeedsContrastSupport(analysis.primary.needsContrastSupport);
-                setDateOverlayTone(analysis.date.tone);
-                setDateNeedsContrastSupport(analysis.date.needsContrastSupport);
-              }}
-              onError={() => {
-                setImageFailed(true);
-                setOverlayTone('dark');
-                setOverlayNeedsContrastSupport(false);
-                setDateOverlayTone('dark');
-                setDateNeedsContrastSupport(false);
-              }}
-            />
-          )}
-          {(imageItem.favorite || selected) && !checked && !selectionMode && (
-            <span className="absolute right-2 top-2 z-10 flex items-center gap-1.5 opacity-100 transition-opacity duration-base ease-enter motion-reduce:transition-none group-hover/card-button:duration-fast group-hover/card-button:ease-exit group-hover/card-button:opacity-0 group-focus-visible/card-button:opacity-100">
-              {imageItem.favorite && (
-                <span
-                  className="grid size-6 place-items-center rounded-full border bg-overlay/90 text-relation-favorited backdrop-blur-sm"
-                  aria-label={l.favorite}
-                >
-                  <HeartIcon className="size-3.5 fill-current" />
-                </span>
-              )}
-              {selected && (
-                <span
-                  className="grid size-6 place-items-center rounded-sm border border-selected-border bg-selected text-selected-foreground"
-                  aria-hidden="true"
-                >
-                  <CheckIcon className="size-3.5" />
-                </span>
-              )}
-            </span>
-          )}
-          <span
-            data-material-overlay
-            data-material-overlay-tone={overlayTone}
-            className={cn(
-              'pointer-events-none absolute inset-x-0 bottom-0 z-10 flex min-w-0 flex-col gap-1.5 px-3 py-3 opacity-100 transition-[color,opacity] duration-base ease-enter motion-reduce:transition-none group-hover/card-button:duration-fast group-hover/card-button:ease-exit group-hover/card-button:opacity-0 group-focus-visible/card-button:opacity-100',
-              overlayTone === 'dark' ? 'text-media-surround-dark' : 'text-media-checker-a',
-            )}
+          <button
+            type="button"
+            data-action="material-open-inspector"
+            data-material-key={item.key}
+            data-material-id={materialId ?? undefined}
+            aria-label={l.select(title)}
+            aria-pressed={selected || checked}
+            onClick={activate}
+            {...longPress}
+            className={cn('group/card absolute inset-0 block size-full text-left outline-none')}
           >
-            <strong
-              data-material-overlay-primary-copy
-              data-image-overlay-tone={overlayTone}
-              data-image-overlay-contrast-support={overlayNeedsContrastSupport}
-              className="line-clamp-2 min-w-0 max-w-full self-start text-sm font-semibold leading-5"
-            >
-              {title}
-            </strong>
-            <span className="flex min-w-0 items-center justify-between gap-2 text-[11px] text-current">
-              <span
-                data-material-overlay-primary-copy
-                data-image-overlay-tone={overlayTone}
-                data-image-overlay-contrast-support={overlayNeedsContrastSupport}
-                className="flex min-w-0 items-center gap-1 truncate"
-              >
-                {imageItem.creation ? (
-                  <SquarePenIcon className="size-3 shrink-0 text-relation-referenced" />
-                ) : imageItem.dictionary ? (
-                  <BookOpenIcon className="size-3 shrink-0 text-relation-referenced" />
-                ) : null}
-                <span className="truncate">{relationship}</span>
+            {imageFailed ? (
+              <span className="absolute inset-0 grid place-items-center text-muted-foreground">
+                {video ? <VideoIcon className="size-8 opacity-50" /> : <ImageIcon className="size-8 opacity-50" />}
+                <span className="sr-only">{l.previewUnavailable}</span>
               </span>
-              <time
-                data-material-overlay-date
-                data-image-overlay-tone={dateOverlayTone}
-                data-image-overlay-contrast-support={dateNeedsContrastSupport}
-                className={cn(
-                  'shrink-0',
-                  dateOverlayTone === 'dark' ? 'text-media-surround-dark' : 'text-media-checker-a',
+            ) : (
+              <AssetMedia
+                asset={imageItem.asset}
+                src={previewUrl}
+                className="absolute inset-0 size-full object-contain"
+                alt=""
+                loading="lazy"
+                decoding="async"
+                draggable={false}
+                muted
+                onError={() => setImageFailed(true)}
+              />
+            )}
+            {(imageItem.favorite || selected) && !checked && !selectionMode && (
+              <span className="pointer-events-none absolute left-2 top-2 flex items-center gap-1 bg-overlay/90 p-1 text-foreground">
+                {imageItem.favorite && (
+                  <HeartIcon className="size-3.5 fill-current text-relation-favorited" aria-label={l.favorite} />
                 )}
-                dateTime={item.createdAt}
+                {selected && <CheckIcon className="size-3.5" aria-hidden="true" />}
+              </span>
+            )}
+            {shapeLabel && (
+              <span className="absolute bottom-2 right-2 bg-overlay/90 px-1.5 py-0.5 text-[10px] text-foreground group-hover:opacity-0 group-focus-within:opacity-0">
+                {shapeLabel}
+              </span>
+            )}
+            {!showName && (
+              <span
+                data-material-overlay
+                className="pointer-events-none absolute inset-x-0 bottom-0 truncate bg-overlay/95 px-2 py-1.5 text-xs font-medium text-foreground opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100 [@media(hover:none)]:opacity-100"
               >
-                {date}
-              </time>
-            </span>
-          </span>
-        </button>
+                {title}
+              </span>
+            )}
+            <span
+              className={cn(
+                'pointer-events-none absolute inset-0 group-focus-visible/card:ring-2 group-focus-visible/card:ring-inset group-focus-visible/card:ring-ring',
+                (selected || checked) && 'ring-2 ring-inset ring-selected-border',
+              )}
+            />
+          </button>
+        </div>
+        {showName && (
+          <div className="h-7 truncate px-1 text-xs leading-7" title={title}>
+            {title}
+          </div>
+        )}
         {selectionAvailable && (
           <SelectionCheckbox
             visible={selectionMode || checked}

@@ -85,6 +85,7 @@ export class PackInstallationRepository extends PackCatalogRepository {
         packId: input.packId,
         targetReleaseId: input.releaseId,
         operation: 'VERIFY',
+        transactionId: input.transactionId,
         source: input.source,
       });
       try {
@@ -104,6 +105,7 @@ export class PackInstallationRepository extends PackCatalogRepository {
       packId: input.packId,
       targetReleaseId: input.releaseId,
       operation: current?.selectedReleaseId && !current.deletedAt ? 'UPGRADE' : 'INSTALL',
+      transactionId: input.transactionId,
       source: input.source,
       dependencies: input.dependencies,
     });

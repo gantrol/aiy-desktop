@@ -155,8 +155,8 @@ export function useCreatorPromptDocument(options: Options) {
     },
   );
 
-  const capture = useStableCallback((): CreationDraftPromptSnapshot => {
-    const nodes = normalizeCreatorPromptNodes(promptComposerRef.current?.getNodes() ?? promptNodesRef.current);
+  const captureFrom = useStableCallback((composer: CreatorPromptComposerHandle | null): CreationDraftPromptSnapshot => {
+    const nodes = normalizeCreatorPromptNodes(composer?.getNodes() ?? promptNodesRef.current);
     const termIds = nodes.flatMap((node) => (node.kind === 'TERM' ? [node.termId] : []));
     const paletteIds = nodes.flatMap((node) => (node.kind === 'RECIPE' ? [node.paletteId] : []));
     const terms = termIds.flatMap((termId) => getTerms().find((term) => term.id === termId) ?? []);
@@ -177,13 +177,17 @@ export function useCreatorPromptDocument(options: Options) {
       throw new Error(copy.unavailableRecipe.replace('{name}', label));
     }
     return {
-      document: promptComposerRef.current?.getDocument() ?? documentRef.current,
+      document: composer?.getDocument() ?? documentRef.current,
       nodes,
       manualPrompt: creatorPromptText(nodes),
       selectedTerms: terms,
       appliedPalettes: palettes,
     };
   });
+  const capture = useStableCallback(() => captureFrom(promptComposerRef.current));
+  // Cleanup can run after the view releases its read guard. Keep the last
+  // published document and prompt projection together, excluding raw IME text.
+  const captureCommitted = useStableCallback(() => captureFrom(null));
 
   const synchronize = useStableCallback((captured: CreationDraftPromptSnapshot) => {
     for (const reference of captured.appliedPalettes)
@@ -273,6 +277,7 @@ export function useCreatorPromptDocument(options: Options) {
     appliedPaletteCacheRef,
     appliedPalettes,
     capture,
+    captureCommitted,
     manualPrompt,
     materialsRef,
     promptComposerRef,

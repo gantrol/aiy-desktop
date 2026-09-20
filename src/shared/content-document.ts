@@ -1,5 +1,6 @@
 import type { CreatorPromptNodeInput } from '@/shared/contracts';
 import { contentMarkdownText } from '@/shared/content-markdown';
+export { contentAssetPath } from '@/shared/content-asset-path';
 
 /** Shared presentation rules; titles never become identifiers or saved excerpts. */
 export function contentDisplayTitle(title: string | undefined, body: string, fallback = '') {
@@ -15,10 +16,6 @@ export function contentDisplayTitle(title: string | undefined, body: string, fal
 /** Legacy text is escaped once on entry into the Markdown editor. */
 export function plainTextMarkdown(text: string) {
   return text.replace(/([\\`*_{}\[\]()#+.!>|~-])/gu, '\\$1').replace(/\n/gu, '  \n');
-}
-
-export function contentAssetPath(assetId: string) {
-  return `assets/${assetId.toLowerCase()}`;
 }
 
 /** Linked terms and recipes remain structured when editing the note's prose. */

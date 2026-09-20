@@ -12,6 +12,7 @@ import type {
 import { Badge } from '@/renderer/components/ui/badge';
 import { Button } from '@/renderer/components/ui/button';
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/renderer/components/ui/dialog';
+import { ScrollArea } from '@/renderer/components/ui/scroll-area';
 import { Skeleton } from '@/renderer/components/ui/skeleton';
 import { StateTag } from '@/renderer/components/ui/state-tag';
 import { useI18n } from '@/renderer/i18n/useI18n';
@@ -185,41 +186,43 @@ export function AiAssistantRoutingPanel({ active, extensions, notify, onConfigur
           if (!busy) setOpen(next);
         }}
       >
-        <DialogContent className="max-w-xl">
-          <DialogHeader>
+        <DialogContent className="h-[min(760px,calc(100dvh-2rem))] max-w-xl grid-rows-[auto_minmax(0,1fr)_auto] gap-0 overflow-hidden p-0">
+          <DialogHeader className="border-b px-6 py-4 pr-14">
             <DialogTitle>{l.dialogTitle}</DialogTitle>
           </DialogHeader>
-          <div className="grid gap-4">
-            {operations.map((operation) => (
-              <AssistantRoutingConfigurationField
-                key={operation}
-                operation={operation}
-                operationLabel={operationLabel(operation)}
-                selection={draft?.[operation] ?? null}
-                routes={routing?.models ?? []}
-                busy={busy}
-                modelLabel={l.model}
-                codexModelLabel={l.codexModel}
-                reasoningEffortLabel={l.reasoningEffort}
-                configureConnectionLabel={l.configureConnection}
-                kindLabel={kindLabel}
-                effortLabel={effortLabel}
-                onChange={(selection) =>
-                  setDraft((current) => (current ? { ...current, [operation]: selection } : current))
-                }
-                onConfigureProvider={(extensionId) => {
-                  setOpen(false);
-                  onConfigureProvider(extensionId);
-                }}
-              />
-            ))}
-            {error && (
-              <p role="alert" className="text-xs text-destructive">
-                {error}
-              </p>
-            )}
-          </div>
-          <DialogFooter>
+          <ScrollArea className="min-h-0">
+            <div className="grid gap-4 px-6 py-4">
+              {operations.map((operation) => (
+                <AssistantRoutingConfigurationField
+                  key={operation}
+                  operation={operation}
+                  operationLabel={operationLabel(operation)}
+                  selection={draft?.[operation] ?? null}
+                  routes={routing?.models ?? []}
+                  busy={busy}
+                  modelLabel={l.model}
+                  codexModelLabel={l.codexModel}
+                  reasoningEffortLabel={l.reasoningEffort}
+                  configureConnectionLabel={l.configureConnection}
+                  kindLabel={kindLabel}
+                  effortLabel={effortLabel}
+                  onChange={(selection) =>
+                    setDraft((current) => (current ? { ...current, [operation]: selection } : current))
+                  }
+                  onConfigureProvider={(extensionId) => {
+                    setOpen(false);
+                    onConfigureProvider(extensionId);
+                  }}
+                />
+              ))}
+              {error && (
+                <p role="alert" className="text-xs text-destructive">
+                  {error}
+                </p>
+              )}
+            </div>
+          </ScrollArea>
+          <DialogFooter className="border-t px-6 py-4">
             <Button type="button" variant="outline" disabled={busy} onClick={() => setOpen(false)}>
               {messages.common.cancel}
             </Button>

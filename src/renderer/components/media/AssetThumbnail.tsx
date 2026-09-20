@@ -11,6 +11,8 @@ type Props = Omit<ComponentPropsWithoutRef<'img'>, 'src' | 'srcSet'> & {
   size: number;
   /** The owning frame supplies relative positioning, isolation and clipping. */
   ambient?: boolean;
+  /** Optional bounded failure glyph; the owning frame keeps its measured size. */
+  errorClassName?: string;
 };
 
 function AssetThumbnailFrame({
@@ -21,6 +23,7 @@ function AssetThumbnailFrame({
   decoding = 'async',
   draggable = false,
   className,
+  errorClassName,
   crossOrigin,
   onError,
   ...imageProps
@@ -32,7 +35,7 @@ function AssetThumbnailFrame({
       <ImageOffIcon
         role="img"
         aria-label={alt || messages.contentEditor.imageUnavailable}
-        className={cn('text-muted-foreground', ambient && 'relative z-10', className)}
+        className={cn('text-muted-foreground', ambient && 'relative z-10', errorClassName ?? className)}
         style={imageProps.style}
       />
     );

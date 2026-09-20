@@ -3,6 +3,13 @@ import { browserCompanionWatermarkSelectionSchema } from '@/shared/contracts/bro
 import { z } from 'zod';
 
 const identifierSchema = z.string().trim().min(1).max(200);
+export const articleDeliveryModeSchema = z.enum(['PUBLISH', 'DRAFT']);
+export type ArticleDeliveryMode = z.infer<typeof articleDeliveryModeSchema>;
+
+/** Older channel manifests retain their existing draft behavior. */
+export function articleDeliveryMode(configuration: { deliveryMode?: ArticleDeliveryMode }): ArticleDeliveryMode {
+  return configuration.deliveryMode ?? 'DRAFT';
+}
 const extensionIdSchema = z
   .string()
   .trim()
@@ -45,6 +52,7 @@ export const articleDeliveryConnectionDtoSchema = articleDeliveryExtensionTarget
     siteUrl: z.string().url().nullable(),
     tokenHint: z.string().max(20).nullable(),
     message: z.string().max(500),
+    errorCode: z.string().max(160).nullable().optional(),
     lastVerifiedAt: z.string().datetime({ offset: true }).nullable(),
   })
   .strict();
@@ -86,10 +94,20 @@ export const articleDeliveryStatusSchema = z
   })
   .strict();
 
+export const articleDeliveryImagePreparationSchema = z
+  .object({ version: z.literal(1), mode: z.enum(['BALANCED', 'ORIGINAL']) })
+  .strict();
+
 export const articleDeliveryUploadInputSchema = articleDeliveryArticleTargetSchema
   .extend({
     expectedRevisionId: identifierSchema,
+    expectedDeliveryMode: articleDeliveryModeSchema.optional(),
+    expectedProfile: z
+      .object({ slug: slugSchema, description: z.string().max(500) })
+      .strict()
+      .optional(),
     watermark: browserCompanionWatermarkSelectionSchema.optional(),
+    imagePreparation: articleDeliveryImagePreparationSchema.optional(),
   })
   .strict();
 
@@ -105,6 +123,16 @@ export const articleDeliveryUploadResultSchema = z
     replayed: z.boolean(),
     uploadedMedia: z.number().int().min(0).max(100),
     reusedMedia: z.number().int().min(0).max(100),
+    deliveryMode: articleDeliveryModeSchema.optional(),
+    imageSummary: z
+      .object({
+        sourceBytes: z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER),
+        uploadBytes: z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER),
+        processedMedia: z.number().int().min(0).max(100),
+        preservedMedia: z.number().int().min(0).max(100),
+      })
+      .strict()
+      .optional(),
   })
   .strict();
 
@@ -117,7 +145,9 @@ export const articleDeliveryJobSchema = articleDeliveryArticleTargetSchema
     articleContentHash: z.string().regex(/^[0-9a-f]{64}$/u),
     targetSlug: slugSchema,
     targetDescription: z.string().max(500),
+    deliveryMode: articleDeliveryModeSchema.optional(),
     watermarkProfile: naturalWatermarkProfileSchema.nullable().optional(),
+    imagePreparation: articleDeliveryImagePreparationSchema.optional(),
     status: articleDeliveryJobStatusSchema,
     attemptCount: z.number().int().nonnegative(),
     result: articleDeliveryUploadResultSchema.nullable(),
@@ -131,6 +161,12 @@ export const articleDeliveryJobSchema = articleDeliveryArticleTargetSchema
     updatedAt: z.string().datetime({ offset: true }),
   })
   .strict();
+
+// Admission failures are distinct from losing the reply after a job was queued.
+export const articleDeliveryJobEnqueueInvocationSchema = z.union([
+  articleDeliveryJobSchema,
+  z.object({ admissionRejected: z.literal(true), errorCode: z.string().min(1).max(160) }).strict(),
+]);
 
 export const articleDeliveryJobListInputSchema = z
   .object({
@@ -163,6 +199,7 @@ export type ArticleDeliveryArticleProfile = z.infer<typeof articleDeliveryArticl
 export type ArticleDeliveryArticleProfileSaveInput = z.infer<typeof articleDeliveryArticleProfileSaveInputSchema>;
 export type ArticleDeliveryStatus = z.infer<typeof articleDeliveryStatusSchema>;
 export type ArticleDeliveryUploadInput = z.infer<typeof articleDeliveryUploadInputSchema>;
+export type ArticleDeliveryImagePreparation = z.infer<typeof articleDeliveryImagePreparationSchema>;
 export type ArticleDeliveryUploadResult = z.infer<typeof articleDeliveryUploadResultSchema>;
 export type ArticleDeliveryJobStatus = z.infer<typeof articleDeliveryJobStatusSchema>;
 export type ArticleDeliveryJob = z.infer<typeof articleDeliveryJobSchema>;

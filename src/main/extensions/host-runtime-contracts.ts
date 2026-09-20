@@ -11,12 +11,14 @@ import {
   WEIBO_CHANNEL_EXTENSION_ID,
 } from '@/shared/extension-ids';
 import { EXTENSION_PERMISSION } from '@/shared/extension-permissions';
+import { articleDeliveryMode } from '@/shared/contracts/article-delivery';
 
 export const CODEX_IMAGE_DISCOVERY_HOST_RUNTIME_ID = 'codex-image-discovery';
 export const CODEX_HISTORY_SEARCH_HOST_RUNTIME_ID = 'codex-history-search';
 export const CODEX_VISUALIZATION_DISCOVERY_HOST_RUNTIME_ID = 'codex-visualization-discovery';
 export const CODEX_USAGE_INVESTIGATOR_HOST_RUNTIME_ID = 'codex-usage-investigator';
 export const FEATURE_DEMO_HOST_RUNTIME_ID = 'feature-demo';
+// Keep the installed runtime identifier; the channel configuration selects the action.
 export const ARTICLE_DELIVERY_HOST_RUNTIME_ID = 'article-draft-delivery';
 export const WEIBO_BROWSER_HANDOFF_HOST_RUNTIME_ID = 'weibo-browser-handoff';
 export const NATURAL_WATERMARK_HOST_RUNTIME_ID = 'natural-watermark';
@@ -154,7 +156,9 @@ function validateArticleDeliveryRuntime(manifest: ExtensionManifestDto) {
   if (
     channels.length !== 1 ||
     !sameContributions(manifest.contributes, {
-      workflows: ['articleDelivery.uploadDraft'],
+      workflows: [
+        articleDeliveryMode(configuration) === 'PUBLISH' ? 'articleDelivery.publish' : 'articleDelivery.uploadDraft',
+      ],
       deliveryChannels: channels,
     })
   ) {

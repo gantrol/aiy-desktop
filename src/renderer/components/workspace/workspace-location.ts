@@ -62,6 +62,10 @@ export function appLocationToWorkspaceTarget(location: AppLocation): WorkspaceTa
       return persistedDictionaryLocation(location.dictionary);
     case 'gallery':
       return { kind: 'gallery', location: location.gallery };
+    case 'search':
+      return { kind: 'search', location: location.search };
+    case 'calendar':
+      return { kind: 'calendar' };
     case 'companion':
       return { kind: 'companion' };
     case 'codexImages':
@@ -103,6 +107,10 @@ export function workspaceTargetToAppLocation(target: WorkspaceTarget): AppLocati
     }
     case 'gallery':
       return { ...initialAppLocation, view: 'gallery', gallery: target.location };
+    case 'search':
+      return { ...initialAppLocation, view: 'search', search: target.location };
+    case 'calendar':
+      return { ...initialAppLocation, view: 'calendar' };
     case 'companion':
       return { ...initialAppLocation, view: 'companion' };
     case 'extensions':

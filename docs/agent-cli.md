@@ -2,12 +2,17 @@
 
 `aiy-agent` is the first local integration boundary for coding agents. It connects to the current AIY library's authenticated background worker; it does not open SQLite, access the renderer, or bypass AIY's generation services.
 
-The first contract version exposes:
+Offline `handoff prepare` and `handoff verify` compile and check explicitly supplied development context without opening a library or contacting a worker. See [Development handoffs](development-handoffs.md) for usage, limits and the distinction between consistency, evidence and permission.
+
+The first worker contract version exposes:
 
 - `capabilities`
+- `content read`
 - `asset import`
 - `intake import`
 - `intake get`
+- `pack preview`
+- `pack apply`
 - `draft prepare`
 - `generation start`
 - `job get`
@@ -21,13 +26,17 @@ npm run build
 node out/main/agent-cli.js capabilities
 ```
 
-AIY Desktop must be open, or its detached background worker must still be alive. The CLI reads the current library registry and worker descriptor, authenticates over the existing local socket, and exits after one command.
+For worker commands, AIY Desktop must be open, or its detached background worker must still be alive. The CLI reads the current library registry and worker descriptor, verifies both the wire version and the matching bundled worker fingerprint, authenticates over the existing local socket, and exits after one command. A running older build is rejected before advertising capabilities or sending newer commands; save your work and restart AIY with the matching build.
 
 ## JSON and retries
 
-For collecting standalone Markdown articles and PNG gallery materials, see [Collect local outputs](agent-intake.md).
+For standalone Markdown articles/outlines and PNG materials, see [Collect local outputs](agent-intake.md). Grouped creations use [Content packs](content-packs.md); both the CLI and the UI call the same preview and installation service.
 
-Every operational request contains `protocolVersion: 1`. Mutating requests also contain an opaque `requestId`. AIY binds that ID to the command and normalized input hash. An exact retry returns the stored result; reuse with different input fails with `AIY_AGENT_REQUEST_CONFLICT`.
+For reading existing AIY articles, outlines and saved materials, use [Copy a link for an Agent](agent-content.md). The copied instructions include the local CLI path, data root and JSON request; no Skill is required.
+
+Every operational request contains `protocolVersion: 1`. Generation and standalone-intake mutations also contain an opaque `requestId`. AIY binds that ID to the command and normalized input hash. An exact retry returns the stored result; reuse with different input fails with `AIY_AGENT_REQUEST_CONFLICT`.
+
+`pack apply` instead uses the existing content pack identity, immutable release and the two hashes returned by `pack preview`. An exact repeat converges on the same installation; it does not use a parallel intake receipt.
 
 Standard output contains one JSON envelope. Diagnostics use standard error. Generation start returns a persistent `jobId` without waiting for provider completion.
 

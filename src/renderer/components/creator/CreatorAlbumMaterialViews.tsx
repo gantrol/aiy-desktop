@@ -1,4 +1,5 @@
 import type { GalleryViewMode } from '@/renderer/components/gallery/galleryPreferences';
+import type { RefObject } from 'react';
 import type { MaterialLibraryItem } from '@/renderer/components/gallery/materialLibraryTypes';
 import type { MaterialStack } from '@/renderer/components/gallery/materialStacking';
 import { MaterialMasonry } from '@/renderer/components/gallery/MaterialMasonry';
@@ -9,6 +10,7 @@ interface Props {
   viewMode: GalleryViewMode;
   materials: readonly MaterialLibraryItem[];
   materialStacks: readonly MaterialStack[];
+  viewportRef: RefObject<HTMLDivElement | null>;
   busy: boolean;
   onOpen(item: MaterialLibraryItem): void;
   onOpenStack(stack: MaterialStack): void;
@@ -22,6 +24,7 @@ export function CreatorAlbumMaterialViews({
   viewMode,
   materials,
   materialStacks,
+  viewportRef,
   busy,
   onOpen,
   onOpenStack,
@@ -33,6 +36,7 @@ export function CreatorAlbumMaterialViews({
     return (
       <div data-material-view="GRID" className="w-full min-w-0 p-4 sm:p-6">
         <MaterialMasonry
+          viewportRef={viewportRef}
           items={materials}
           selectedKey={null}
           checkedKeys={new Set()}

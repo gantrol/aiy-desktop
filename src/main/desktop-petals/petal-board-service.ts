@@ -2,10 +2,12 @@ import type { ActiveLibraryContext } from '@/main/libraries/active-library-conte
 import type { PetalWindows } from '@/main/desktop-petals/petal-windows';
 import { isContentPinId, type PetalBoardCommand, type PetalBoard } from '@/shared/contracts/petal-board';
 import { petalError } from '@/shared/petal-errors';
+import { initialPetalMediaSize } from '@/shared/petal-media-size';
 type LayerCommand = Extract<
   PetalBoardCommand,
   { kind: 'create-layer' | 'rename-layer' | 'remove-layer' | 'select-layer' | 'toggle-layer' }
 >;
+
 /** Organizes views only. Source repositories never depend on layers or native windows. */
 export class PetalBoardService {
   private queue: Promise<void> = Promise.resolve();
@@ -60,9 +62,18 @@ export class PetalBoardService {
         const layerId = this.repository.memberships()[id] ?? 'default';
         await this.windows.layouts.saveBoard(this.libraryId, {
           activeLayerId: layerId,
-          hiddenLayerIds: board.hiddenLayerIds.filter((id) => id !== layerId),
+          hiddenLayerIds: board.hiddenLayerIds.filter((value) => value !== layerId),
         });
+        // Re-pinning is explicit: consume collection/temporary hiding, but reuse the source and existing pin.
+        const placement = this.windows.layouts.get(this.libraryId, id);
+        if (placement)
+          await this.windows.layouts.commit(this.libraryId, { [id]: { ...placement, home: 'desktop', visible: true } });
         await this.windows.pin(this.libraryId, id, undefined, false);
+        const saved = this.windows.layouts.get(this.libraryId, id);
+        const media = this.repository.list().find((pin) => pin.id === id)?.media;
+        const noteSize = media ? initialPetalMediaSize(media) : null;
+        if (saved && !saved.noteSize && noteSize)
+          await this.windows.layouts.commit(this.libraryId, { [id]: { ...saved, noteSize } });
         break;
       }
       case 'pin-appearance':
@@ -154,7 +165,7 @@ export class PetalBoardService {
     for (const id of ids)
       if ((board.memberships[id] ?? 'default') === recall) {
         const placement = this.windows.layouts.get(this.libraryId, id);
-        if (placement?.visible !== false && placement?.home !== 'drawer') await this.windows.show(this.libraryId, id);
+        if (placement?.visible === true && placement.home !== 'drawer') await this.windows.show(this.libraryId, id);
       }
   }
   reconcile() {

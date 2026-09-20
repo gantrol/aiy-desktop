@@ -28,7 +28,9 @@ import type {
 import type { BlockDocument } from '@/shared/contracts/block-document';
 import type { ComponentProps, ReactNode, RefObject } from 'react';
 import { Button } from '@/renderer/components/ui/button';
-import { XIcon } from 'lucide-react';
+import { MessageSquareIcon, XIcon } from 'lucide-react';
+import { useArticleEditorSession } from '@/renderer/components/creator/article-editor/ArticleEditorSessionProvider';
+import { ContentWorkspace, ContentWorkspacePanels } from '@/renderer/features/content-editor/ContentWorkspacePanels';
 
 function firstArticleLocation(elements: readonly ArticleElementPlacementInput[]) {
   const first = elements[0];
@@ -48,7 +50,6 @@ function ArticleDocumentSidebar({
   outlineItems,
   scrollRootRef,
   selectedCommentId,
-  zh,
   onCommentHover,
   onCommentSelect,
   onCommentStatusChange,
@@ -67,7 +68,6 @@ function ArticleDocumentSidebar({
   outlineItems: readonly VideoDocumentArticleHeading[];
   scrollRootRef: RefObject<HTMLDivElement | null>;
   selectedCommentId: string | null;
-  zh: boolean;
   onCommentHover(commentId: string | null): void;
   onCommentSelect(commentId: string): void;
   onCommentStatusChange(commentId: string, status: ArticleCommentStatus): void;
@@ -83,7 +83,6 @@ function ArticleDocumentSidebar({
       media={mediaPanel}
       mediaCount={mediaCount}
       outlineAvailable={outlineItems.length > 0}
-      zh={zh}
       comments={
         <ContentCommentsPanel
           busy={commentMutationBusy}
@@ -102,7 +101,6 @@ function ArticleDocumentSidebar({
           followCursor={controller.preferences.followCursor}
           items={outlineItems}
           scrollRootRef={scrollRootRef}
-          zh={zh}
           onDepthLimitChange={controller.setDepthLimit}
           onFollowCursorChange={controller.setFollowCursor}
           onHeadingNavigate={onHeadingNavigate}
@@ -198,7 +196,6 @@ function ArticleEditorDocumentPane({
           outlineItems={outlineItems}
           scrollRootRef={scrollRootRef}
           selectedCommentId={selectedCommentId}
-          zh={zh}
           onCommentHover={onCommentHover}
           onCommentSelect={onCommentSelect}
           onCommentStatusChange={onCommentStatusChange}
@@ -219,6 +216,7 @@ function ArticleEditorDocumentPane({
 }
 
 interface Props {
+  outlineMode?: boolean;
   attachmentsPanel: ReactNode;
   attachmentCount: number;
   articleElementControls: VideoDocumentArticleElementControls;
@@ -283,6 +281,7 @@ interface Props {
 }
 
 export function ArticleEditorDocumentPanes({
+  outlineMode,
   attachmentsPanel,
   attachmentCount,
   articleElementControls,
@@ -339,7 +338,83 @@ export function ArticleEditorDocumentPanes({
   onSecondaryEditorRootChange,
   onTitleChange,
 }: Props) {
+  const session = useArticleEditorSession();
   const copy = useI18n().messages.contentEditor;
+  const primaryEditor = (
+    <VideoDocumentWysiwygEditor
+      outlineMode={outlineMode}
+      embedded={outlineMode}
+      contentSource={{ kind: 'ARTICLE', id: session.capturePersistedArticle().id }}
+      beforeReferenceCapture={async () => {
+        if (!(await session.flush('manual'))) return null;
+        const saved = session.capturePersistedArticle();
+        return { kind: 'ARTICLE', id: saved.id, revisionId: saved.revisionId };
+      }}
+      markdown={initialMarkdown}
+      document={document}
+      sessionIdentity={editorSessionIdentity}
+      articleElements={initialElements}
+      articleElementControls={articleElementControls}
+      mediaBindings={editorMediaBindings}
+      media={media}
+      secondaryEditorRoot={secondaryEditorRoot}
+      secondaryChromeRoot={secondaryChromeRoot}
+      secondaryAriaLabel={copy.bodyRight}
+      ariaLabel={splitOpen ? copy.bodyLeft : copy.body}
+      labels={labels}
+      onActiveHeadingChange={onActiveHeadingChange}
+      onArticleElementsChange={onArticleElementsChange}
+      onArticleLocationChange={onArticleLocationChange}
+      onArticleEditLocation={onArticleEditLocation}
+      onArticleNavigationLocation={onArticleNavigationLocation}
+      onEditorHandleChange={onEditorHandleChange}
+      onChange={onMarkdownChange}
+      onImageImported={onImageImported}
+      onImageImportError={onImageImportError}
+      illustrationLabel={
+        onIllustrationRequest ? (generatingIllustration ? copy.openingMedia : copy.generate) : undefined
+      }
+      onIllustrationRequest={onIllustrationRequest}
+      onSave={() => onPersist('manual')}
+    />
+  );
+  if (outlineMode) {
+    return (
+      <div ref={leftPaneRootRef} className="flex min-h-0 min-w-0 flex-1 flex-col">
+        <ContentWorkspace>
+          <div ref={scrollRootRef} className="min-h-0 min-w-0 flex-1 overflow-y-auto px-3 py-3 sm:px-6">
+            {primaryEditor}
+          </div>
+          <ContentWorkspacePanels
+            preferenceKey="outline-comments"
+            active="COMMENTS"
+            open={leftSidebar.panelOpen('COMMENTS')}
+            onActiveChange={() => leftSidebar.showPanel('COMMENTS')}
+            onOpenChange={(open) => leftSidebar.setPanelOpen('COMMENTS', open)}
+            tabs={[
+              {
+                id: 'COMMENTS',
+                icon: MessageSquareIcon,
+                label: copy.comments,
+                count: comments.filter((comment) => comment.status === 'OPEN').length,
+                content: (
+                  <ContentCommentsPanel
+                    busy={commentMutationBusy}
+                    comments={comments}
+                    hoveredId={openCommentHoverId}
+                    selectedId={selectedCommentId}
+                    onHover={onCommentHover}
+                    onSelect={onCommentSelect}
+                    onStatusChange={onCommentStatusChange}
+                  />
+                ),
+              },
+            ]}
+          />
+        </ContentWorkspace>
+      </div>
+    );
+  }
   const mediaPanel = (
     <ArticleMediaPanel
       images={images}
@@ -380,34 +455,7 @@ export function ArticleEditorDocumentPanes({
           onTitleChange={onTitleChange}
           {...(splitOpen ? { onClose: () => onClose('LEFT') } : {})}
         >
-          <VideoDocumentWysiwygEditor
-            markdown={initialMarkdown}
-            document={document}
-            sessionIdentity={editorSessionIdentity}
-            articleElements={initialElements}
-            articleElementControls={articleElementControls}
-            mediaBindings={editorMediaBindings}
-            media={media}
-            secondaryEditorRoot={secondaryEditorRoot}
-            secondaryChromeRoot={secondaryChromeRoot}
-            secondaryAriaLabel={copy.bodyRight}
-            ariaLabel={splitOpen ? copy.bodyLeft : copy.body}
-            labels={labels}
-            onActiveHeadingChange={onActiveHeadingChange}
-            onArticleElementsChange={onArticleElementsChange}
-            onArticleLocationChange={onArticleLocationChange}
-            onArticleEditLocation={onArticleEditLocation}
-            onArticleNavigationLocation={onArticleNavigationLocation}
-            onEditorHandleChange={onEditorHandleChange}
-            onChange={onMarkdownChange}
-            onImageImported={onImageImported}
-            onImageImportError={onImageImportError}
-            illustrationLabel={
-              onIllustrationRequest ? (generatingIllustration ? copy.openingMedia : copy.generate) : undefined
-            }
-            onIllustrationRequest={onIllustrationRequest}
-            onSave={() => onPersist('manual')}
-          />
+          {primaryEditor}
         </ArticleEditorDocumentPane>
       }
       leftRef={leftPaneRootRef}

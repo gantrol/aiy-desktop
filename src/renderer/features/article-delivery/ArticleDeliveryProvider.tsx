@@ -1,7 +1,12 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import type { ArticleDeliveryJob, ArticleDeliveryProgress } from '@/shared/contracts/article-delivery';
 import { useI18n } from '@/renderer/i18n/useI18n';
-import { articleDeliveryActive, articleDeliveryErrorMessage } from '@/renderer/features/article-delivery/presentation';
+import {
+  articleDeliveryActive,
+  articleDeliveryErrorMessage,
+  articleDeliveryRequestErrorMessage,
+  articleDeliveryStatusLabel,
+} from '@/renderer/features/article-delivery/presentation';
 
 export interface ArticleDeliveryEntry {
   job: ArticleDeliveryJob;
@@ -58,14 +63,14 @@ export function ArticleDeliveryProvider({
   spaceId: string | null;
   notify(message: string): void;
 }) {
-  const { locale } = useI18n();
+  const copy = useI18n().messages.articleDelivery;
   const [entries, setEntries] = useState<ArticleDeliveryEntry[]>([]);
   const [retryingId, setRetryingId] = useState<string | null>(null);
   const retryLock = useRef(false);
-  const notification = useRef({ notify, locale });
+  const notification = useRef({ notify, copy });
   useEffect(() => {
-    notification.current = { notify, locale };
-  }, [notify, locale]);
+    notification.current = { notify, copy };
+  }, [notify, copy]);
 
   useEffect(() => {
     if (!spaceId) return;
@@ -78,14 +83,13 @@ export function ArticleDeliveryProvider({
       const notificationKey = `${job.id}:${job.status}`;
       if (job.status === 'RUNNING' || notified.has(notificationKey)) return;
       notified.add(notificationKey);
-      const { notify: show, locale: language } = notification.current;
-      const zh = language === 'zh';
+      const { notify: show, copy: labels } = notification.current;
       show(
         job.status === 'QUEUED'
-          ? `${zh ? '已加入后台投递队列' : 'Queued for background delivery'} · ${job.targetSlug}`
+          ? `${labels.queuedNotice} · ${job.targetSlug}`
           : job.status === 'FAILED'
-            ? `${zh ? '投递失败' : 'Delivery failed'} · ${job.targetSlug}：${articleDeliveryErrorMessage(job, zh)}`
-            : `${zh ? '已发布' : 'Published'} · ${job.targetSlug}`,
+            ? `${labels.status.failed} · ${job.targetSlug} · ${articleDeliveryErrorMessage(job, labels)}`
+            : `${articleDeliveryStatusLabel(job, labels)} · ${job.targetSlug}`,
       );
     });
     void window.desktopApi
@@ -100,7 +104,10 @@ export function ArticleDeliveryProvider({
           );
       })
       .catch((reason) => {
-        if (!disposed) notification.current.notify(reason instanceof Error ? reason.message : String(reason));
+        if (!disposed) {
+          const { notify: show, copy: labels } = notification.current;
+          show(articleDeliveryRequestErrorMessage(reason, labels, labels.historyFailed));
+        }
       });
     return () => {
       disposed = true;
@@ -116,7 +123,8 @@ export function ArticleDeliveryProvider({
       const job = await window.desktopApi.articleDeliveryJobRetry({ jobId });
       setEntries((current) => mergeEntries(current, [{ job }]));
     } catch (reason) {
-      notification.current.notify(reason instanceof Error ? reason.message : String(reason));
+      const { notify: show, copy: labels } = notification.current;
+      show(articleDeliveryRequestErrorMessage(reason, labels));
     } finally {
       retryLock.current = false;
       setRetryingId(null);

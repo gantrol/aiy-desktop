@@ -1,8 +1,9 @@
-import { BlocksIcon, RefreshCwIcon, ShieldCheckIcon } from 'lucide-react';
+import { BlocksIcon } from 'lucide-react';
 import type { ExtensionContributionPoint, ExtensionDto } from '@/shared/contracts';
 import {
   ANTIGRAVITY_CLI_EXTENSION_ID,
   CODEX_EXTENSION_ID,
+  CPA_IMAGE_API_EXTENSION_ID,
   DEEPSEEK_API_EXTENSION_ID,
   EXTERNAL_IMAGE_API_EXTENSION_IDS,
   NATURAL_WATERMARK_EXTENSION_ID,
@@ -19,6 +20,8 @@ import type { CodexImagesNavigationState } from '@/renderer/features/extensions/
 import { DeepSeekApiConfiguration } from '@/renderer/features/extensions/DeepSeekApiConfiguration';
 import { ExternalImageApiConfiguration } from '@/renderer/features/extensions/ExternalImageApiConfiguration';
 import { OpenAiImageApiConfiguration } from '@/renderer/features/extensions/OpenAiImageApiConfiguration';
+import { OpenAiCostsConfiguration } from '@/renderer/features/extensions/OpenAiCostsConfiguration';
+import { CpaImageApiConfiguration } from '@/renderer/features/extensions/CpaImageApiConfiguration';
 import { NaturalWatermarkConfigurationPanel } from '@/renderer/features/extensions/NaturalWatermarkConfiguration';
 import type { TransitionShowcaseNavigationState } from '@/renderer/features/extensions/transitionShowcaseNavigation';
 import { useI18n } from '@/renderer/i18n/useI18n';
@@ -28,6 +31,7 @@ const contributionOrder: ExtensionContributionPoint[] = [
   'contentApplications',
   'deliveryChannels',
   'modelProviders',
+  'metricProviders',
   'tools',
   'workflows',
   'commands',
@@ -40,13 +44,11 @@ const contributionOrder: ExtensionContributionPoint[] = [
 interface Props {
   active: boolean;
   busyKey: string;
-  pendingPermissionKeys: ReadonlySet<string>;
   extension: ExtensionDto;
   codexImagesNavigation: CodexImagesNavigationState;
   transitionShowcaseNavigation: TransitionShowcaseNavigationState;
   notify(message: string): void;
   onConnectionChanged(): void | Promise<void>;
-  onPermissionChange(permission: string, granted: boolean): void | Promise<void>;
 }
 
 function ExtensionNavigationPreference({
@@ -86,13 +88,11 @@ function ExtensionNavigationPreference({
 export function ExtensionPluginSettingsPage({
   active,
   busyKey,
-  pendingPermissionKeys,
   extension,
   codexImagesNavigation,
   transitionShowcaseNavigation,
   notify,
   onConnectionChanged,
-  onPermissionChange,
 }: Props) {
   const messages = useI18n().messages;
   const l = messages.extensions;
@@ -131,7 +131,22 @@ export function ExtensionPluginSettingsPage({
         transitionShowcaseNavigation={transitionShowcaseNavigation}
       />
       {extension.manifest.id === OPENAI_IMAGE_API_EXTENSION_ID && (
-        <OpenAiImageApiConfiguration active={active} notify={notify} onConnectionChanged={onConnectionChanged} />
+        <>
+          <OpenAiImageApiConfiguration active={active} notify={notify} onConnectionChanged={onConnectionChanged} />
+          <OpenAiCostsConfiguration
+            active={
+              active &&
+              extension.enabled &&
+              extension.compatible &&
+              extension.permissions.some(
+                (permission) => permission.key === EXTENSION_PERMISSION.accountReadOpenAiCosts && permission.granted,
+              )
+            }
+          />
+        </>
+      )}
+      {extension.manifest.id === CPA_IMAGE_API_EXTENSION_ID && (
+        <CpaImageApiConfiguration active={active} notify={notify} onConnectionChanged={onConnectionChanged} />
       )}
       {extension.manifest.id === DEEPSEEK_API_EXTENSION_ID && (
         <DeepSeekApiConfiguration active={active} notify={notify} onConnectionChanged={onConnectionChanged} />
@@ -155,7 +170,7 @@ export function ExtensionPluginSettingsPage({
           onConnectionChanged={onConnectionChanged}
         />
       )}
-      <div className="grid gap-5 lg:grid-cols-2">
+      <div className="grid gap-5">
         <section className="rounded-lg border">
           <h3 className="flex items-center gap-2 border-b px-4 py-3 text-sm font-semibold">
             <BlocksIcon className="size-4" />
@@ -170,37 +185,6 @@ export function ExtensionPluginSettingsPage({
                 </div>
               )),
             )}
-          </div>
-        </section>
-
-        <section className="rounded-lg border">
-          <h3 className="flex items-center gap-2 border-b px-4 py-3 text-sm font-semibold">
-            <ShieldCheckIcon className="size-4" />
-            {l.sections.permissions}
-          </h3>
-          <div className="divide-y">
-            {extension.permissions.map((permission) => {
-              const key = `permission:${extension.manifest.id}:${permission.key}`;
-              const permissionBusy = pendingPermissionKeys.has(key);
-              return (
-                <label key={permission.key} className="flex cursor-pointer items-center gap-3 px-4 py-2.5 text-sm">
-                  <Checkbox
-                    checked={permission.granted}
-                    disabled={Boolean(busyKey) || permissionBusy || (permission.runtimeScoped && !permission.granted)}
-                    onCheckedChange={(checked) => void onPermissionChange(permission.key, checked === true)}
-                  />
-                  <span className="min-w-0 flex-1 break-words text-xs" title={permission.key}>
-                    {permission.key === EXTENSION_PERMISSION.libraryReadSelectedContent
-                      ? messages.desktopPetals.externalApplications.readSelectedContent
-                      : permission.key}
-                  </span>
-                  <Badge variant={permission.required ? 'secondary' : 'outline'}>
-                    {permission.runtimeScoped ? l.runtimeScoped : permission.required ? l.required : l.optional}
-                  </Badge>
-                  {permissionBusy && <RefreshCwIcon className="size-3.5 animate-spin text-muted-foreground" />}
-                </label>
-              );
-            })}
           </div>
         </section>
       </div>

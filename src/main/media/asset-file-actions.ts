@@ -23,6 +23,7 @@ export class AssetFileActions {
       asset: ResolvedAssetFile,
       context: AssetFileRevealContext,
     ) => string | Promise<string>,
+    private readonly beginExport?: (assetId: string) => () => Promise<void>,
   ) {}
 
   async availability(assetId: string): Promise<AssetFileAvailabilityDto> {
@@ -40,6 +41,14 @@ export class AssetFileActions {
   }
 
   async saveAs(assetId: string): Promise<AssetFileSaveResult> {
+    // Main-window IPC pins resolve and capture to one AsyncLocalStorage context;
+    // petals hold their explicit context lease throughout the dialog and copy.
+    let completed: (() => Promise<void>) | undefined;
+    try {
+      completed = this.beginExport?.(assetId);
+    } catch {
+      console.warn('[calendar] Export calendar capture is unavailable');
+    }
     const source = await this.require(assetId);
     const extensions = acceptedAssetExportExtensions(source.mimeType).map((extension) => extension.slice(1));
     let result: SaveDialogResult;
@@ -68,6 +77,8 @@ export class AssetFileActions {
       } catch {
         throw new Error('Unable to save the image');
       }
+      // Calendar delivery is separate from the successful user-owned file copy.
+      await completed?.().catch(() => console.warn('[calendar] Export succeeded; calendar capture is pending'));
     }
     return { status: 'saved' };
   }

@@ -1,121 +1,97 @@
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
-import { ChevronUpIcon, ExternalLinkIcon, LoaderCircleIcon, UserIcon } from 'lucide-react';
-import type { CodexHistoryMessage, CodexHistorySearchResult, CodexHistoryThreadMessagesPage } from '@/shared/contracts';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { ArrowLeftIcon, ExternalLinkIcon, SearchIcon, XIcon } from 'lucide-react';
+import type { CodexHistoryRoleFilter, CodexHistorySearchResult } from '@/shared/contracts';
 import { Badge } from '@/renderer/components/ui/badge';
 import { Button } from '@/renderer/components/ui/button';
-import { modelDisplayName, ModelIdentity, ModelMark } from '@/renderer/components/model/ModelIdentity';
-import { CodexHistoryMessageMarkdown } from '@/renderer/features/extensions/CodexHistoryMessageMarkdown';
-import { useI18n } from '@/renderer/i18n/useI18n';
+import { Input } from '@/renderer/components/ui/input';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/renderer/components/ui/select';
+import { ModelIdentity } from '@/renderer/components/model/ModelIdentity';
+import { CodexHistoryMessageList } from '@/renderer/features/extensions/CodexHistoryMessageList';
+import { CodexHistoryHighlightedText } from '@/renderer/features/extensions/CodexHistoryHighlightedText';
 import { CodexHistoryThreadUsage } from '@/renderer/features/extensions/CodexHistoryThreadUsage';
-
-const MESSAGE_PAGE_SIZE = 20;
+import { useCodexHistoryMessages } from '@/renderer/features/extensions/useCodexHistoryMessages';
+import { useI18n } from '@/renderer/i18n/useI18n';
 
 interface Props {
   item: CodexHistorySearchResult | null;
   locale: string;
+  initialQuery: string;
+  initialRole: CodexHistoryRoleFilter;
   onOpen(threadId: string): void;
   onClose(): void;
 }
 
-function mergedMessages(older: readonly CodexHistoryMessage[], current: readonly CodexHistoryMessage[]) {
-  const known = new Set(older.map(({ messageId }) => messageId));
-  return [...older, ...current.filter(({ messageId }) => !known.has(messageId))];
-}
-
-export function CodexHistoryThreadDetail({ item, locale, onOpen, onClose }: Props) {
+function HistoryThreadPane({
+  item,
+  locale,
+  initialQuery,
+  initialRole,
+  onOpen,
+  onClose,
+}: Props & { item: CodexHistorySearchResult }) {
   const l = useI18n().messages.extensions.codexHistorySearch;
-  const [page, setPage] = useState<CodexHistoryThreadMessagesPage | null>(null);
-  const [loading, setLoading] = useState(false);
-  const [loadingOlder, setLoadingOlder] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const requestRevision = useRef(0);
-  const scrollContainer = useRef<HTMLDivElement | null>(null);
-  const scrollAdjustment = useRef<{ height: number; top: number } | 'BOTTOM' | null>(null);
-  const threadId = item?.threadId ?? null;
+  const [draftQuery, setDraftQuery] = useState(initialQuery);
+  const [query, setQuery] = useState(initialQuery);
+  const [role, setRole] = useState(initialRole);
+  const [composing, setComposing] = useState(false);
+  const inputRef = useRef<HTMLInputElement | null>(null);
+  const state = useCodexHistoryMessages(item.threadId, query, role);
+  const { page } = state;
+  const pendingQuery = draftQuery.trim() !== query;
   const dateFormatter = useMemo(
     () => new Intl.DateTimeFormat(locale, { dateStyle: 'medium', timeStyle: 'short' }),
     [locale],
   );
 
   useEffect(() => {
-    const revision = ++requestRevision.current;
-    setPage(null);
-    setError(null);
-    setLoadingOlder(false);
-    if (!threadId) {
-      setLoading(false);
-      return;
-    }
-    setLoading(true);
-    void window.desktopApi
-      .codexHistoryThreadMessages({ threadId, cursor: null, pageSize: MESSAGE_PAGE_SIZE })
-      .then((next) => {
-        if (requestRevision.current !== revision) return;
-        scrollAdjustment.current = 'BOTTOM';
-        setPage(next);
-      })
-      .catch((reason) => {
-        if (requestRevision.current !== revision) return;
-        setError(reason instanceof Error ? reason.message : String(reason));
-      })
-      .finally(() => {
-        if (requestRevision.current === revision) setLoading(false);
-      });
-    return () => {
-      requestRevision.current += 1;
+    setDraftQuery(initialQuery);
+    setQuery(initialQuery);
+    setRole(initialRole);
+  }, [initialQuery, initialRole]);
+  useEffect(() => {
+    if (composing) return;
+    const timer = window.setTimeout(() => setQuery(draftQuery.trim()), 140);
+    return () => window.clearTimeout(timer);
+  }, [draftQuery, composing]);
+  useEffect(() => {
+    const find = (event: KeyboardEvent) => {
+      if (event.defaultPrevented || event.isComposing || event.altKey || event.shiftKey) return;
+      if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'f') {
+        event.preventDefault();
+        inputRef.current?.focus();
+        inputRef.current?.select();
+      }
     };
-  }, [threadId]);
+    window.addEventListener('keydown', find);
+    return () => window.removeEventListener('keydown', find);
+  }, []);
 
-  useLayoutEffect(() => {
-    const container = scrollContainer.current;
-    const adjustment = scrollAdjustment.current;
-    if (!container || !adjustment) return;
-    if (adjustment === 'BOTTOM') container.scrollTop = container.scrollHeight;
-    else container.scrollTop = container.scrollHeight - adjustment.height + adjustment.top;
-    scrollAdjustment.current = null;
-  }, [page]);
+  const clear = () => {
+    setDraftQuery('');
+    setQuery('');
+    setRole('ALL');
+    inputRef.current?.focus();
+  };
 
-  const loadOlder = useCallback(async () => {
-    if (!threadId || !page || page.nextCursor === null || loadingOlder) return;
-    const revision = ++requestRevision.current;
-    const container = scrollContainer.current;
-    if (container) scrollAdjustment.current = { height: container.scrollHeight, top: container.scrollTop };
-    setLoadingOlder(true);
-    setError(null);
-    try {
-      const older = await window.desktopApi.codexHistoryThreadMessages({
-        threadId,
-        cursor: page.nextCursor,
-        pageSize: MESSAGE_PAGE_SIZE,
-      });
-      if (requestRevision.current !== revision) return;
-      setPage((current) =>
-        current && current.threadId === older.threadId
-          ? {
-              ...older,
-              messages: mergedMessages(older.messages, current.messages),
-              scanLimited: older.scanLimited || current.scanLimited,
-            }
-          : older,
-      );
-    } catch (reason) {
-      if (requestRevision.current !== revision) return;
-      scrollAdjustment.current = null;
-      setError(reason instanceof Error ? reason.message : String(reason));
-    } finally {
-      if (requestRevision.current === revision) setLoadingOlder(false);
-    }
-  }, [loadingOlder, page, threadId]);
-
-  if (!item) return null;
   return (
-    <aside className="flex min-w-0 flex-1 flex-col border-l">
+    <aside
+      className="flex min-w-0 flex-1 flex-col border-l"
+      aria-label={l.preview.conversation}
+      onKeyDown={(event) => {
+        if (event.key !== 'Escape' || event.nativeEvent.isComposing) return;
+        event.preventDefault();
+        if (state.anchor) state.backToResults();
+        else clear();
+      }}
+    >
       <header className="flex min-h-14 items-start gap-3 border-b px-4 py-3">
         <Button type="button" variant="ghost" size="sm" className="xl:hidden" onClick={onClose}>
           {l.usage.back}
         </Button>
         <div className="min-w-0 flex-1">
-          <h3 className="line-clamp-2 text-sm font-semibold leading-5">{item.title}</h3>
+          <h3 className="line-clamp-2 text-sm font-semibold leading-5">
+            <CodexHistoryHighlightedText text={item.title} query={initialQuery} />
+          </h3>
           <div className="mt-1 flex flex-wrap items-center gap-1.5 text-2xs text-muted-foreground">
             <span>{dateFormatter.format(new Date(item.updatedAt))}</span>
             {page?.model && (
@@ -133,67 +109,86 @@ export function CodexHistoryThreadDetail({ item, locale, onOpen, onClose }: Prop
           {l.preview.open}
         </Button>
       </header>
-      <CodexHistoryThreadUsage key={item.threadId} threadId={item.threadId} updatedAt={item.updatedAt} />
-      <div ref={scrollContainer} className="min-h-0 flex-1 overflow-y-auto">
-        {page?.nextCursor != null && (
-          <div className="flex justify-center border-b p-2">
-            <Button type="button" variant="ghost" size="sm" disabled={loadingOlder} onClick={() => void loadOlder()}>
-              {loadingOlder ? (
-                <LoaderCircleIcon className="size-3.5 animate-spin" />
-              ) : (
-                <ChevronUpIcon className="size-3.5" />
-              )}
-              {l.preview.loadOlder}
+      <CodexHistoryThreadUsage threadId={item.threadId} updatedAt={item.updatedAt} />
+      <div
+        role="search"
+        aria-label={l.preview.searchLabel}
+        className="flex flex-wrap items-center gap-2 border-b px-3 py-2"
+      >
+        <div className="relative min-w-36 flex-1">
+          <SearchIcon className="pointer-events-none absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground" />
+          <Input
+            ref={inputRef}
+            value={draftQuery}
+            maxLength={500}
+            className="h-8 pl-8 pr-8 text-xs"
+            aria-label={l.preview.searchLabel}
+            placeholder={l.preview.searchPlaceholder}
+            onChange={(event) => setDraftQuery(event.target.value)}
+            onCompositionStart={() => setComposing(true)}
+            onCompositionEnd={() => setComposing(false)}
+          />
+          {draftQuery && (
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon-sm"
+              className="absolute right-0 top-0"
+              aria-label={l.actions.clearSearch}
+              title={l.actions.clearSearch}
+              onClick={() => {
+                setDraftQuery('');
+                setQuery('');
+                inputRef.current?.focus();
+              }}
+            >
+              <XIcon className="size-3.5" />
             </Button>
-          </div>
-        )}
-        {loading ? (
-          <div className="grid min-h-40 place-items-center">
-            <LoaderCircleIcon className="size-5 animate-spin text-muted-foreground" />
-          </div>
-        ) : page?.messages.length ? (
-          <div className="divide-y">
-            {page.messages.map((message) => (
-              <article key={message.messageId} className="grid grid-cols-[1.75rem_minmax(0,1fr)] gap-2.5 px-4 py-3">
-                {message.role === 'USER' ? (
-                  <span className="mt-0.5 grid size-7 place-items-center rounded-md bg-surface-sunken text-muted-foreground">
-                    <UserIcon className="size-3.5" />
-                  </span>
-                ) : (
-                  <ModelMark providerKey="openai" modelId={page.model ?? 'codex'} className="mt-0.5 size-7" />
-                )}
-                <div className="min-w-0">
-                  <div className="mb-1 flex items-center gap-2 text-2xs text-muted-foreground">
-                    <span
-                      className="font-medium text-foreground"
-                      title={
-                        message.role === 'ASSISTANT' && page.model
-                          ? `${page.modelProvider ?? 'openai'} · ${page.model}`
-                          : undefined
-                      }
-                    >
-                      {message.role === 'USER'
-                        ? l.preview.user
-                        : page.model
-                          ? modelDisplayName(page.model)
-                          : l.preview.assistant}
-                    </span>
-                    <time dateTime={message.createdAt}>{dateFormatter.format(new Date(message.createdAt))}</time>
-                  </div>
-                  <CodexHistoryMessageMarkdown text={message.text} />
-                </div>
-              </article>
+          )}
+        </div>
+        <Select value={role} onValueChange={(value) => setRole(value as CodexHistoryRoleFilter)}>
+          <SelectTrigger className="h-8 w-28 text-xs" aria-label={l.filters.role}>
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            {(['ALL', 'USER', 'ASSISTANT'] as const).map((value) => (
+              <SelectItem key={value} value={value}>
+                {l.roles[value]}
+              </SelectItem>
             ))}
-          </div>
-        ) : (
-          <div className="grid min-h-40 place-items-center text-sm text-muted-foreground">{l.preview.noMessages}</div>
-        )}
-        {error && (
-          <div role="alert" className="border-t px-4 py-3 text-xs text-destructive">
-            {error}
-          </div>
-        )}
+          </SelectContent>
+        </Select>
       </div>
+      {(state.filtered || state.anchor) && (
+        <div className="flex min-h-9 items-center gap-2 border-b px-3 text-xs text-muted-foreground">
+          {state.anchor ? (
+            <Button type="button" variant="ghost" size="xs" onClick={state.backToResults}>
+              <ArrowLeftIcon className="size-3.5" />
+              {l.preview.backToResults}
+            </Button>
+          ) : (
+            <span role="status">
+              {state.loading || pendingQuery
+                ? l.preview.searching
+                : l.preview.messageMatches(page?.messages.length ?? 0) + (page?.nextCursor != null ? '+' : '')}
+            </span>
+          )}
+          <Button type="button" variant="ghost" size="xs" className="ml-auto" onClick={clear}>
+            {l.preview.allMessages}
+          </Button>
+        </div>
+      )}
+      <CodexHistoryMessageList
+        state={state}
+        query={query}
+        pendingQuery={pendingQuery}
+        dateFormatter={dateFormatter}
+        onOpenThread={onOpen}
+      />
     </aside>
   );
+}
+
+export function CodexHistoryThreadDetail(props: Props) {
+  return props.item ? <HistoryThreadPane key={props.item.threadId} {...props} item={props.item} /> : null;
 }

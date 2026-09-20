@@ -1,16 +1,8 @@
 import { useMemo } from 'react';
 import type { MaterialAlbumDto, MaterialSelectionTargetInput } from '@/shared/contracts';
-import {
-  COLLECTION_GAP,
-  COLLECTION_CARD_HEIGHT,
-  COLLECTION_MIN_COLUMN_WIDTH,
-  CollectionAlbumCard,
-  collectionAspectRatio,
-  collectionContainerAspectRatio,
-  previewSpreadForPlacement,
-} from '@/renderer/components/gallery/CreationAlbumGrid';
+import { CollectionAlbumCard } from '@/renderer/components/gallery/CreationAlbumGrid';
 import type { MaterialAlbumBrowseSummary } from '@/renderer/components/gallery/materialAlbumBrowse';
-import { ShortestColumnMasonry } from '@/renderer/components/ui/shortest-column-masonry';
+import { CollectionMasonry, collectionCoverRatio } from '@/renderer/components/gallery/CollectionMasonry';
 import { useI18n } from '@/renderer/i18n/useI18n';
 
 interface Props {
@@ -52,8 +44,7 @@ export function MaterialAlbumGrid({
     () =>
       cardAlbums.map((album) => ({
         id: album.id,
-        aspectRatio: collectionAspectRatio(),
-        height: COLLECTION_CARD_HEIGHT,
+        aspectRatio: collectionCoverRatio(album.previewAssets[0]),
       })),
     [cardAlbums],
   );
@@ -65,11 +56,9 @@ export function MaterialAlbumGrid({
         <h2 className="text-sm font-semibold">{title}</h2>
         <span className="text-xs tabular-nums text-muted-foreground">{albums.length}</span>
       </div>
-      <ShortestColumnMasonry
+      <CollectionMasonry
         items={layoutItems}
-        minColumnWidth={COLLECTION_MIN_COLUMN_WIDTH}
-        gap={COLLECTION_GAP}
-        renderItem={(_item, index, placement, layout) => {
+        renderItem={(_item, index) => {
           const summary = albums[index];
           const album = cardAlbums[index];
           const detail = [
@@ -79,8 +68,6 @@ export function MaterialAlbumGrid({
           return (
             <CollectionAlbumCard
               album={album}
-              containerAspectRatio={collectionContainerAspectRatio(placement)}
-              spread={previewSpreadForPlacement(album.previewAssets.length, placement, layout)}
               detail={detail}
               childAlbumCount={summary.childAlbumCount}
               busy={busy}

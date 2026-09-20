@@ -30,6 +30,7 @@ import type {
   CreationDraftStartInput,
   FavoriteAddResult,
   FavoriteTextMaterialDto,
+  GenerationQuality,
   GenerationTargetInput,
   ImportedCreationOutputDto,
   ImportedImageMetadataInput,
@@ -39,6 +40,7 @@ import type {
   WordPaletteReferenceInput,
 } from '@/shared/contracts';
 import { readCreationPromptStorage } from '@/shared/creation-prompt-storage';
+import { generationQualityValues } from '@/shared/generation-quality';
 import { createHash } from 'node:crypto';
 import { ulid } from 'ulid';
 
@@ -662,7 +664,7 @@ export class IntakeRepository {
         )
         .all(draftId) as JsonMap[]
     ).map((row) => this.assetDto(row));
-    const quality = ['low', 'medium', 'high'].includes(text(draft.quality))
+    const quality = generationQualityValues.includes(text(draft.quality) as GenerationQuality)
       ? (text(draft.quality) as CreationDraftDto['quality'])
       : 'low';
     const selectedModelKeys = this.stringArray(draft.selected_model_keys_json);
@@ -735,7 +737,7 @@ export class IntakeRepository {
         if (!item || typeof item !== 'object') return [];
         const candidate = item as Record<string, unknown>;
         if (typeof candidate.modelKey !== 'string' || seen.has(candidate.modelKey)) return [];
-        if (!['low', 'medium', 'high'].includes(String(candidate.quality))) return [];
+        if (!generationQualityValues.includes(String(candidate.quality) as GenerationQuality)) return [];
         const count = Math.min(100, Math.max(1, Math.trunc(Number(candidate.count) || 1)));
         seen.add(candidate.modelKey);
         return [

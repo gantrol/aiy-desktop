@@ -1,5 +1,5 @@
 import path from 'node:path';
-import { existsSync } from 'node:fs';
+import { access } from 'node:fs/promises';
 import { AgentWeiboActionReceiptStore } from '@/main/agent-cli/weibo-action-receipts';
 import type { AgentCliWorkspace } from '@/main/agent-cli/workspace';
 import type { AgentCliWorkerClient } from '@/main/agent-cli/worker-client';
@@ -39,28 +39,34 @@ function actionError(code: string, message: string) {
   return Object.assign(new Error(message), { code });
 }
 
-function weiboChannelPackagePath(options: AgentWeiboActionRuntimeOptions) {
+async function weiboChannelPackagePath(options: AgentWeiboActionRuntimeOptions) {
   const candidates = [
     path.join(path.resolve(options.resourcesPath), 'extensions', WEIBO_CHANNEL_EXTENSION_ID),
     path.join(path.resolve(options.appPath), 'extensions', WEIBO_CHANNEL_EXTENSION_ID),
   ];
-  return (
-    candidates.find((candidate, index) => candidates.indexOf(candidate) === index && existsSync(candidate)) ?? null
-  );
+  for (const candidate of new Set(candidates)) {
+    try {
+      await access(candidate);
+      return candidate;
+    } catch {
+      continue;
+    }
+  }
+  return null;
 }
 
-export function agentWeiboActionAvailable(options: AgentWeiboActionRuntimeOptions) {
-  const packagePath = weiboChannelPackagePath(options);
+export async function agentWeiboActionAvailable(options: AgentWeiboActionRuntimeOptions) {
+  const packagePath = await weiboChannelPackagePath(options);
   if (!packagePath) return false;
   try {
-    return loadExtensionPackage(packagePath, 'BUILT_IN').manifest.id === WEIBO_CHANNEL_EXTENSION_ID;
+    return (await loadExtensionPackage(packagePath, 'BUILT_IN')).manifest.id === WEIBO_CHANNEL_EXTENSION_ID;
   } catch {
     return false;
   }
 }
 
-function assertAgentWeiboActionAvailable(options: AgentWeiboActionRuntimeOptions) {
-  if (!agentWeiboActionAvailable(options)) {
+async function assertAgentWeiboActionAvailable(options: AgentWeiboActionRuntimeOptions) {
+  if (!(await agentWeiboActionAvailable(options))) {
     throw actionError('AIY_AGENT_ACTION_UNAVAILABLE', 'The Weibo channel extension is unavailable or invalid');
   }
 }
@@ -91,6 +97,8 @@ async function createRuntime(workspace: AgentCliWorkspace, outputs: readonly Job
     new BrowserCompanionHandoffStore(dataPath),
     browser,
     (assetId) => assets.get(assetId) ?? null,
+    undefined,
+    () => workspace.library.id,
   );
 }
 
@@ -124,7 +132,7 @@ export async function runAgentWeiboAction({
   const reused = await receipts.load(request);
   if (reused) return reused;
 
-  assertAgentWeiboActionAvailable(runtimeOptions);
+  await assertAgentWeiboActionAvailable(runtimeOptions);
 
   const job = agentJobResultSchema.parse(
     await client.request('agent.job.get', [{ protocolVersion: AIY_AGENT_PROTOCOL_VERSION, jobId: request.jobId }]),

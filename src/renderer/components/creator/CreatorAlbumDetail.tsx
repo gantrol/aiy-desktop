@@ -12,6 +12,7 @@ import { cn } from '@/renderer/lib/utils';
 import { buildAlbumTreeIndex } from '@/renderer/components/albums/albumTree';
 import { AlbumDetailHeader } from '@/renderer/components/gallery/AlbumDetailHeader';
 import { MaterialLibraryToolbar } from '@/renderer/components/gallery/MaterialLibraryToolbar';
+import { MaterialLayoutControl } from '@/renderer/components/gallery/MaterialLayoutControl';
 import type {
   GalleryRelationship,
   GalleryScope,
@@ -119,6 +120,7 @@ export function CreatorAlbumDetail({
     notify,
   });
   const requestId = useRef(0);
+  const materialViewportRef = useRef<HTMLDivElement>(null);
   const [query, setQuery] = useState('');
   const [debouncedQuery, setDebouncedQuery] = useState('');
   const [scope, setScope] = useState<GalleryScope>('ALL');
@@ -462,16 +464,19 @@ export function CreatorAlbumDetail({
               </TabsTrigger>
               {filter.images && <TabsTrigger value="images">{messages.creator.album.browseImages}</TabsTrigger>}
             </TabsList>
-            <Button
-              variant="ghost"
-              size="icon-sm"
-              disabled={effectivelyArchived}
-              title={messages.creator.outline.title}
-              aria-label={messages.creator.outline.title}
-              onClick={() => onOpenOutline(album.id)}
-            >
-              <ListChecksIcon className="size-4" />
-            </Button>
+            <div className="flex items-center gap-2">
+              {activeTab === 'contents' && <MaterialLayoutControl showNamesControl={false} />}
+              <Button
+                variant="ghost"
+                size="icon-sm"
+                disabled={effectivelyArchived}
+                title={messages.creator.outline.title}
+                aria-label={messages.creator.outline.title}
+                onClick={() => onOpenOutline(album.id)}
+              >
+                <ListChecksIcon className="size-4" />
+              </Button>
+            </div>
           </div>
           <TabsContent value="contents" className="flex min-h-0 flex-1 flex-col data-[state=inactive]:hidden">
             <AlbumContents {...contentsProps} layout="grid" />
@@ -522,9 +527,11 @@ export function CreatorAlbumDetail({
               ) : (
                 <ScrollArea
                   type="always"
+                  viewportRef={materialViewportRef}
                   className="min-h-0 min-w-0 flex-1 [&_[data-slot=scroll-area-viewport]>div]:!block [&_[data-slot=scroll-area-viewport]>div]:!w-full"
                 >
                   <CreatorAlbumMaterialViews
+                    viewportRef={materialViewportRef}
                     albumId={album.id}
                     viewMode={viewMode}
                     materials={materials}

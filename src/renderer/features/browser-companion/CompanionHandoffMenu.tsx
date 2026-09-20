@@ -25,6 +25,8 @@ interface HandoffOptions {
   busy: boolean;
   disabled: boolean;
   onHandoff(target: BrowserCompanionTarget, watermark: BrowserCompanionWatermarkSelection): void;
+  onPrepareBatch?(watermark: BrowserCompanionWatermarkSelection): void;
+  onWechatArticle?(watermark: BrowserCompanionWatermarkSelection): void;
   targets: readonly BrowserCompanionTarget[];
   watermarkAvailable: boolean;
   zh?: boolean;
@@ -45,10 +47,38 @@ function CompanionHandoffItems({
   targets,
   watermarkAvailable,
   watermark,
+  onPrepareBatch,
+  onWechatArticle,
 }: Omit<HandoffOptions, 'disabled'> & { watermark: ReturnType<typeof useWatermarkSelection> }) {
-  const copy = useI18n().messages.browserCompanion;
+  const { messages } = useI18n();
+  const copy = messages.browserCompanion;
   return (
     <>
+      {onPrepareBatch && (
+        <DropdownMenuItem
+          data-action="prepare-publication-batch"
+          disabled={busy}
+          onSelect={() => onPrepareBatch(watermarkAvailable ? watermark.selection : { kind: 'NONE' })}
+        >
+          <DropdownMenuIcon>
+            <ImagesIcon />
+          </DropdownMenuIcon>
+          {messages.publishing.prepareBatch}
+        </DropdownMenuItem>
+      )}
+      {onWechatArticle && targets.includes('wechat') && (
+        <DropdownMenuItem
+          data-action="prepare-wechat-article"
+          disabled={busy}
+          onSelect={() => onWechatArticle(watermarkAvailable ? watermark.selection : { kind: 'NONE' })}
+        >
+          <DropdownMenuIcon>
+            <CloudUploadIcon />
+          </DropdownMenuIcon>
+          {messages.publishing.wechatArticle}
+        </DropdownMenuItem>
+      )}
+      {(onPrepareBatch || onWechatArticle) && <DropdownMenuSeparator />}
       {targets.map((target) => (
         <DropdownMenuItem
           key={target}
@@ -110,6 +140,8 @@ export function CompanionHandoffMenu({
   targets,
   variant = 'default',
   watermarkAvailable,
+  onPrepareBatch,
+  onWechatArticle,
 }: HandoffOptions & {
   variant?: ComponentProps<typeof Button>['variant'];
 }) {
@@ -141,6 +173,8 @@ export function CompanionHandoffMenu({
         <CompanionHandoffItems
           busy={busy}
           onHandoff={onHandoff}
+          onPrepareBatch={onPrepareBatch}
+          onWechatArticle={onWechatArticle}
           targets={targets}
           watermarkAvailable={watermarkAvailable}
           watermark={watermark}

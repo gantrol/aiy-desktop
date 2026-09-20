@@ -1,0 +1,38 @@
+import type { SVGProps } from 'react';
+
+type Props = SVGProps<SVGSVGElement> & { monochrome?: boolean };
+
+const silhouette =
+  'M32 6C40 1 49 7 49 15C60 18 63 29 57 37C61 47 53 57 43 56C36 64 24 61 19 54C8 53 2 42 7 33C2 23 8 13 18 12C21 6 26 4 32 6Z';
+const folds = [
+  'M18.7 19.3C24 9.8 41 12 45.4 23.4Q46 25 44.5 25.5Q43.5 25.7 42.7 24.6C39 16 26 13 21.3 20.7Q20.5 22 19.3 21.3Q18.2 20.7 18.7 19.3Z',
+  'M43.9 26.8C54.1 35.1 47.4 48.5 36.1 48.5Q34.5 48.5 34.5 47Q34.5 45.5 36 45.5C45 45.5 50.2 35.2 42.1 29.2Q40.9 28.2 41.8 27Q42.7 25.8 43.9 26.8Z',
+  'M28 46.5C14.5 47.5 9.5 35 16.8 27.1Q17.8 26 18.9 26.9Q20 27.9 19 29C13 35.4 18 44.4 28 43.5Q29.5 43.4 29.5 45Q29.5 46.4 28 46.5Z',
+  'M25.5 29C25.5 20.5 38 19.5 40.5 27.6C44 38.5 31 42 26.9 36Q26.2 34.8 27.4 33.9Q28.6 33.1 29.3 34.1C32.5 38.1 40 35.5 37.6 28.4C36.1 23 28.5 24 28.5 29Q28.5 30.5 27 30.5Q25.5 30.5 25.5 29Z',
+];
+const outline = silhouette + folds.join('');
+const rim = 'M17 18C19 11 26 8 31 10C35 7 43 8 44 13C37 10 23 9 17 18Z';
+
+/** Broad rose lobes and rounded transparent folds stay legible in small menus.
+ * Compound paths keep the monochrome silhouette independent of its background.
+ */
+export function AIYFlowerMark({ monochrome = false, className, ...props }: Props) {
+  const labelled = props['aria-label'] !== undefined || props['aria-labelledby'] !== undefined;
+  return (
+    <svg
+      xmlns="http://www.w3.org/2000/svg"
+      width="24"
+      height="24"
+      viewBox="0 0 64 64"
+      fill="none"
+      className={className}
+      aria-hidden={labelled ? undefined : true}
+      role={labelled ? 'img' : undefined}
+      focusable="false"
+      {...props}
+    >
+      <path d={outline} fill={monochrome ? 'currentColor' : '#ac4054'} fillRule="evenodd" />
+      {!monochrome && <path d={rim} fill="#d57b86" />}
+    </svg>
+  );
+}

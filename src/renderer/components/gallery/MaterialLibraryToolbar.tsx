@@ -7,7 +7,8 @@ import {
   SlidersHorizontalIcon,
   XIcon,
 } from 'lucide-react';
-import type { CreationRelationFilter, ImageRatingDimension, Locale } from '@/shared/contracts';
+import type { CreationRelationFilter, ImageRatingDimension } from '@/shared/contracts';
+import { MaterialLayoutControl } from '@/renderer/components/gallery/MaterialLayoutControl';
 import { useI18n } from '@/renderer/i18n/useI18n';
 import { Badge } from '@/renderer/components/ui/badge';
 import { Button } from '@/renderer/components/ui/button';
@@ -31,6 +32,7 @@ interface Props {
   contentTypes: GalleryContentType[];
   unratedDimensions: ImageRatingDimension[];
   viewMode?: GalleryViewMode;
+  imageNamesAvailable?: boolean;
   selectionMode: boolean;
   selectionAvailable?: boolean;
   availableContentTypes?: GalleryContentType[];
@@ -104,29 +106,29 @@ function MaterialViewToggle({
 
 function CreationRelationFilterControl({
   value,
-  locale,
   onChange,
 }: {
   value?: CreationRelationFilter;
-  locale: Locale;
   onChange?(value: CreationRelationFilter): void;
 }) {
+  const { messages } = useI18n();
+  const l = messages.gallery.library;
   if (!value || !onChange) return null;
   return (
     <Segmented
       type="single"
       value={value}
       onValueChange={(next) => next && onChange(next as CreationRelationFilter)}
-      aria-label={locale === 'zh' ? '创作图片关系' : 'Creation image relationship'}
+      aria-label={l.creationImageRelationship}
     >
       <SegmentedItem value="ALL" data-action="material-creation-relation-all">
-        {locale === 'zh' ? '全部关联' : 'All related'}
+        {l.allRelated}
       </SegmentedItem>
       <SegmentedItem value="INPUT" data-action="material-creation-relation-input">
-        {locale === 'zh' ? '输入' : 'Inputs'}
+        {l.creationInputs}
       </SegmentedItem>
       <SegmentedItem value="OUTPUT" data-action="material-creation-relation-output">
-        {locale === 'zh' ? '产出' : 'Outputs'}
+        {l.creationOutputs}
       </SegmentedItem>
     </Segmented>
   );
@@ -134,29 +136,29 @@ function CreationRelationFilterControl({
 
 function MaterialSourceFilterControl({
   value,
-  locale,
   onChange,
 }: {
   value?: MaterialSourceFilter;
-  locale: Locale;
   onChange?(value: MaterialSourceFilter): void;
 }) {
+  const { messages } = useI18n();
+  const l = messages.gallery.library;
   if (!value || !onChange) return null;
   return (
     <Segmented
       type="single"
       value={value}
       onValueChange={(next) => next && onChange(next as MaterialSourceFilter)}
-      aria-label={locale === 'zh' ? '与创作的关系' : 'Creation relationship'}
+      aria-label={l.creationRelationship}
     >
       <SegmentedItem value="ALL" data-action="material-source-all">
-        {locale === 'zh' ? '全部' : 'All'}
+        {l.scopeAll}
       </SegmentedItem>
       <SegmentedItem value="CREATION" data-action="material-source-creation">
-        {locale === 'zh' ? '创作产出' : 'Creation outputs'}
+        {l.creationSource}
       </SegmentedItem>
       <SegmentedItem value="IMPORT" data-action="material-source-import">
-        {locale === 'zh' ? '其他素材' : 'Other materials'}
+        {l.otherMaterials}
       </SegmentedItem>
     </Segmented>
   );
@@ -186,6 +188,7 @@ export function MaterialLibraryToolbar({
   contentTypes,
   unratedDimensions,
   viewMode,
+  imageNamesAvailable = true,
   selectionMode,
   selectionAvailable = true,
   availableContentTypes = allContentTypeOptions,
@@ -202,7 +205,7 @@ export function MaterialLibraryToolbar({
   onSourceFilterChange,
   onCreationRelationFilterChange,
 }: Props) {
-  const { locale, messages } = useI18n();
+  const { messages } = useI18n();
   const l = messages.gallery.library;
   const contentTypeOptions = availableContentTypes;
   const activeFilterCount =
@@ -219,13 +222,9 @@ export function MaterialLibraryToolbar({
   return (
     <div className="shrink-0 border-b bg-background px-4 py-3 sm:px-6">
       <div className="flex flex-wrap items-center gap-2">
-        <CreationRelationFilterControl
-          value={creationRelationFilter}
-          locale={locale}
-          onChange={onCreationRelationFilterChange}
-        />
+        <CreationRelationFilterControl value={creationRelationFilter} onChange={onCreationRelationFilterChange} />
 
-        <MaterialSourceFilterControl value={sourceFilter} locale={locale} onChange={onSourceFilterChange} />
+        <MaterialSourceFilterControl value={sourceFilter} onChange={onSourceFilterChange} />
 
         <FavoriteScopeButton
           active={scope === 'FAVORITE'}
@@ -370,6 +369,8 @@ export function MaterialLibraryToolbar({
             </fieldset>
           </PopoverContent>
         </Popover>
+
+        {viewMode !== 'LIST' && <MaterialLayoutControl showNamesControl={imageNamesAvailable} />}
 
         {viewMode && onViewModeChange && (
           <MaterialViewToggle

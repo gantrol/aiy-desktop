@@ -37,7 +37,7 @@ function nextNodeKey(prefix: string) {
 }
 
 export interface ComposerCallbacks {
-  nodesChanged(nodes: CreatorPromptNodeInput[], document?: BlockDocument): void;
+  nodesChanged(nodes: CreatorPromptNodeInput[], document: BlockDocument): void;
   openTerm(term: TermListItem): void;
   openRecipe(paletteId: string): void;
   configureRecipe(palette: WordPaletteDto): void;
@@ -375,6 +375,7 @@ export const CreatorRecipeNode = Node.create({
   },
 });
 
+/** Import legacy prompt inputs. This cannot reconstruct the formatting of a saved BlockDocument. */
 export function editorJsonFromNodes(
   nodes: readonly CreatorPromptNodeInput[],
   bridge: Pick<
@@ -437,6 +438,7 @@ function documentFromProseMirror(doc: ProseMirrorNode): CreatorPromptNodeInput[]
   return normalizeCreatorPromptNodes(nodes);
 }
 
+/** A lossy prompt projection for generation. Editor updates must also publish their BlockDocument. */
 export function documentFromEditor(editor: Editor) {
   return documentFromProseMirror(editor.state.doc);
 }

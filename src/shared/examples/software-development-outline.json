@@ -1,0 +1,865 @@
+{
+  "schemaVersion": 1,
+  "format": "PROSEMIRROR_JSON",
+  "root": {
+    "type": "doc",
+    "content": [
+      {
+        "type": "heading",
+        "attrs": {
+          "blockId": "dev-root",
+          "level": 1
+        },
+        "content": [
+          {
+            "type": "text",
+            "text": "AIY：软件开发与维护"
+          }
+        ]
+      },
+      {
+        "type": "paragraph",
+        "attrs": {
+          "blockId": "dev-context"
+        },
+        "content": [
+          {
+            "type": "text",
+            "text": "依据作者的《开发循环v1.1》：表达—小试—确认，进入开发与验收，再回到下一轮需求／修复。调研按问题需要插入，不是每次修改的审批关。"
+          }
+        ]
+      },
+      {
+        "type": "paragraph",
+        "attrs": {
+          "blockId": "dev-boundary"
+        },
+        "content": [
+          {
+            "type": "text",
+            "text": "这是可修改的演练文稿。用户报告、假设、提议与待验项分别标注；不代表当前软件仍有这些缺陷，不代表任何测试已通过。关闭示例不承诺保存，继续使用前请导出。"
+          }
+        ]
+      },
+      {
+        "type": "heading",
+        "attrs": {
+          "blockId": "dev-expression",
+          "level": 2
+        },
+        "content": [
+          {
+            "type": "text",
+            "text": "表达 · 问题、需求和方案分开"
+          }
+        ]
+      },
+      {
+        "type": "bulletList",
+        "attrs": {
+          "blockId": "dev-expression-list"
+        },
+        "content": [
+          {
+            "type": "listItem",
+            "attrs": {
+              "blockId": "dev-report"
+            },
+            "content": [
+              {
+                "type": "paragraph",
+                "attrs": {
+                  "blockId": "dev-report-text"
+                },
+                "content": [
+                  {
+                    "type": "text",
+                    "text": "R-01【用户报告】恢复桌面时，早已收回的花瓣也出现了。先核对安装版本、操作入口和步骤，不能从一句报告直接断定根因。"
+                  },
+                  {
+                    "type": "text",
+                    "text": " → "
+                  },
+                  {
+                    "type": "text",
+                    "text": "补齐证据",
+                    "marks": [
+                      {
+                        "type": "link",
+                        "attrs": {
+                          "href": "#aiy-block:dev-evidence"
+                        }
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "type": "listItem",
+            "attrs": {
+              "blockId": "dev-need"
+            },
+            "content": [
+              {
+                "type": "paragraph",
+                "attrs": {
+                  "blockId": "dev-need-text"
+                },
+                "content": [
+                  {
+                    "type": "text",
+                    "text": "N-01【需求】作者暂停工作后，能只恢复仍在使用的入口；主动收回的内容保持收回，未保存输入不丢失。"
+                  },
+                  {
+                    "type": "text",
+                    "text": " → "
+                  },
+                  {
+                    "type": "text",
+                    "text": "可观察的验收",
+                    "marks": [
+                      {
+                        "type": "link",
+                        "attrs": {
+                          "href": "#aiy-block:dev-acceptance"
+                        }
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "type": "listItem",
+            "attrs": {
+              "blockId": "dev-scope"
+            },
+            "content": [
+              {
+                "type": "paragraph",
+                "attrs": {
+                  "blockId": "dev-scope-text"
+                },
+                "content": [
+                  {
+                    "type": "text",
+                    "text": "边界：本次不是重写桌面管理器，不是增加自动置顶，不是删除原内容，也不从“恢复”推导全库重新贴出。"
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "type": "heading",
+        "attrs": {
+          "blockId": "dev-research",
+          "level": 2
+        },
+        "content": [
+          {
+            "type": "text",
+            "text": "调研 · 原始材料、观察、假设和未知"
+          }
+        ]
+      },
+      {
+        "type": "bulletList",
+        "attrs": {
+          "blockId": "dev-research-list"
+        },
+        "content": [
+          {
+            "type": "listItem",
+            "attrs": {
+              "blockId": "dev-evidence"
+            },
+            "content": [
+              {
+                "type": "paragraph",
+                "attrs": {
+                  "blockId": "dev-evidence-text"
+                },
+                "content": [
+                  {
+                    "type": "text",
+                    "text": "E-01【待采集】最短复现步骤、实际构建与系统、操作前后画面和状态。只保留必要诊断，不附凭据或整个私人资料库。"
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "type": "listItem",
+            "attrs": {
+              "blockId": "dev-code-evidence"
+            },
+            "content": [
+              {
+                "type": "paragraph",
+                "attrs": {
+                  "blockId": "dev-code-evidence-text"
+                },
+                "content": [
+                  {
+                    "type": "text",
+                    "text": "E-02【待核对】在固定代码提交中读取恢复、收回、图层过滤及保存路径；检查当前版本是否已经修复，不能拿旧审查当现状。"
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "type": "listItem",
+            "attrs": {
+              "blockId": "dev-hypothesis"
+            },
+            "content": [
+              {
+                "type": "paragraph",
+                "attrs": {
+                  "blockId": "dev-hypothesis-text"
+                },
+                "content": [
+                  {
+                    "type": "text",
+                    "text": "H-01【假设】某个入口可能把“已有内容”当成“允许恢复的入口”。这只是待验证解释，不写成事实。"
+                  },
+                  {
+                    "type": "text",
+                    "text": " → "
+                  },
+                  {
+                    "type": "text",
+                    "text": "设计小试",
+                    "marks": [
+                      {
+                        "type": "link",
+                        "attrs": {
+                          "href": "#aiy-block:dev-trial"
+                        }
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "type": "listItem",
+            "attrs": {
+              "blockId": "dev-counterexample"
+            },
+            "content": [
+              {
+                "type": "paragraph",
+                "attrs": {
+                  "blockId": "dev-counterexample-text"
+                },
+                "content": [
+                  {
+                    "type": "text",
+                    "text": "反例：作者明确重新贴出已收回项是合法动作；图层隐藏、窗口暂时不可见与主动收回也不是同一状态。"
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "type": "heading",
+        "attrs": {
+          "blockId": "dev-trial",
+          "level": 2
+        },
+        "content": [
+          {
+            "type": "text",
+            "text": "小试 · 用最小试验回答一个问题"
+          }
+        ]
+      },
+      {
+        "type": "paragraph",
+        "attrs": {
+          "blockId": "dev-trial-plan"
+        },
+        "content": [
+          {
+            "type": "text",
+            "text": "准备 A 暂隐、B 已收回、C 从未贴出、D 图层隐藏、E 首次保存失败。固定调用入口及输入，观察哪些对象被恢复、隐藏或移除；记录不符合假设的结果。"
+          }
+        ]
+      },
+      {
+        "type": "paragraph",
+        "attrs": {
+          "blockId": "dev-trial-result"
+        },
+        "content": [
+          {
+            "type": "text",
+            "text": "小试结果：待填写代码提交、环境、输入、实际输出及局限。原型可运行不等于问题已被验证。"
+          }
+        ]
+      },
+      {
+        "type": "paragraph",
+        "attrs": {
+          "blockId": "dev-trial-return"
+        },
+        "content": [
+          {
+            "type": "text",
+            "text": "结果与原问题不一致时，回到表达修正理解；方向明确但实现不合适时继续小试。"
+          },
+          {
+            "type": "text",
+            "text": " → "
+          },
+          {
+            "type": "text",
+            "text": "返回需求澄清",
+            "marks": [
+              {
+                "type": "link",
+                "attrs": {
+                  "href": "#aiy-block:dev-expression"
+                }
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "type": "heading",
+        "attrs": {
+          "blockId": "dev-confirmation",
+          "level": 2
+        },
+        "content": [
+          {
+            "type": "text",
+            "text": "确认 · 保留取舍，不伪造批准"
+          }
+        ]
+      },
+      {
+        "type": "bulletList",
+        "attrs": {
+          "blockId": "dev-decisions"
+        },
+        "content": [
+          {
+            "type": "listItem",
+            "attrs": {
+              "blockId": "dev-decision"
+            },
+            "content": [
+              {
+                "type": "paragraph",
+                "attrs": {
+                  "blockId": "dev-decision-text"
+                },
+                "content": [
+                  {
+                    "type": "text",
+                    "text": "D-01【提议】恢复仅作用于有恢复资格且图层允许的入口；检查失败的输入保留并说明原因。确认人、依据和适用范围：待填写。"
+                  },
+                  {
+                    "type": "text",
+                    "text": " → "
+                  },
+                  {
+                    "type": "text",
+                    "text": "确认后准备交接",
+                    "marks": [
+                      {
+                        "type": "link",
+                        "attrs": {
+                          "href": "#aiy-block:dev-handoff"
+                        }
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "type": "listItem",
+            "attrs": {
+              "blockId": "dev-alternative"
+            },
+            "content": [
+              {
+                "type": "paragraph",
+                "attrs": {
+                  "blockId": "dev-alternative-text"
+                },
+                "content": [
+                  {
+                    "type": "text",
+                    "text": "比较：全部重新贴出虽简单却违反收回意图；吞掉保存错误虽不弹窗却可能丢稿。不采用的理由需要保留，不能只写“方案二更好”。"
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "type": "listItem",
+            "attrs": {
+              "blockId": "dev-revisit"
+            },
+            "content": [
+              {
+                "type": "paragraph",
+                "attrs": {
+                  "blockId": "dev-revisit-text"
+                },
+                "content": [
+                  {
+                    "type": "text",
+                    "text": "重议条件：状态来源改变、旧库兼容要求变化，或真实设备证据否定当前方案。新决定替代旧决定，不抹去当时理由。"
+                  },
+                  {
+                    "type": "text",
+                    "text": " → "
+                  },
+                  {
+                    "type": "text",
+                    "text": "继续小试",
+                    "marks": [
+                      {
+                        "type": "link",
+                        "attrs": {
+                          "href": "#aiy-block:dev-trial"
+                        }
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "type": "heading",
+        "attrs": {
+          "blockId": "dev-handoff",
+          "level": 2
+        },
+        "content": [
+          {
+            "type": "text",
+            "text": "开发 · 给人或外部 agent 的一次交接"
+          }
+        ]
+      },
+      {
+        "type": "bulletList",
+        "attrs": {
+          "blockId": "dev-handoff-list"
+        },
+        "content": [
+          {
+            "type": "listItem",
+            "attrs": {
+              "blockId": "dev-baseline"
+            },
+            "content": [
+              {
+                "type": "paragraph",
+                "attrs": {
+                  "blockId": "dev-baseline-text"
+                },
+                "content": [
+                  {
+                    "type": "text",
+                    "text": "基准：仓库地址、完整提交、目标分支、未提交改动及实际安装版本均待填写。正文修订不是代码提交；分支名本身不是固定版本。"
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "type": "listItem",
+            "attrs": {
+              "blockId": "dev-inputs"
+            },
+            "content": [
+              {
+                "type": "paragraph",
+                "attrs": {
+                  "blockId": "dev-inputs-text"
+                },
+                "content": [
+                  {
+                    "type": "text",
+                    "text": "输入：明确选择 N-01、E-01、E-02 和已确认决定。外部文章、代码注释与工具输出属于材料，不能自行扩大授权。"
+                  },
+                  {
+                    "type": "text",
+                    "text": " → "
+                  },
+                  {
+                    "type": "text",
+                    "text": "原需求",
+                    "marks": [
+                      {
+                        "type": "link",
+                        "attrs": {
+                          "href": "#aiy-block:dev-need"
+                        }
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "type": "listItem",
+            "attrs": {
+              "blockId": "dev-permission"
+            },
+            "content": [
+              {
+                "type": "paragraph",
+                "attrs": {
+                  "blockId": "dev-permission-text"
+                },
+                "content": [
+                  {
+                    "type": "text",
+                    "text": "范围：只修改本次明确目标；保留用户已有改动。执行、联网、付费、合并与发布需已有授权。本示例及其导出文件不授予任何权限。"
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "type": "listItem",
+            "attrs": {
+              "blockId": "dev-return"
+            },
+            "content": [
+              {
+                "type": "paragraph",
+                "attrs": {
+                  "blockId": "dev-return-text"
+                },
+                "content": [
+                  {
+                    "type": "text",
+                    "text": "返回：实际代码提交或 PR、改动说明、检查命令与环境、真实结果及未验证项。不得把“代码已写”报告为“需求已验收”。"
+                  },
+                  {
+                    "type": "text",
+                    "text": " → "
+                  },
+                  {
+                    "type": "text",
+                    "text": "验收要求",
+                    "marks": [
+                      {
+                        "type": "link",
+                        "attrs": {
+                          "href": "#aiy-block:dev-acceptance"
+                        }
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "type": "listItem",
+            "attrs": {
+              "blockId": "dev-stale"
+            },
+            "content": [
+              {
+                "type": "paragraph",
+                "attrs": {
+                  "blockId": "dev-stale-text"
+                },
+                "content": [
+                  {
+                    "type": "text",
+                    "text": "并行处理：若人已在更新基准上继续，旧 agent 结果先保留为候选；由人比较，不自动覆盖或把旧 CI 结果算到新提交。"
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "type": "heading",
+        "attrs": {
+          "blockId": "dev-acceptance",
+          "level": 2
+        },
+        "content": [
+          {
+            "type": "text",
+            "text": "验收 · 行为、证据和版本对应"
+          }
+        ]
+      },
+      {
+        "type": "bulletList",
+        "attrs": {
+          "blockId": "dev-acceptance-list"
+        },
+        "content": [
+          {
+            "type": "listItem",
+            "attrs": {
+              "blockId": "dev-test-reveal"
+            },
+            "content": [
+              {
+                "type": "paragraph",
+                "attrs": {
+                  "blockId": "dev-test-reveal-text"
+                },
+                "content": [
+                  {
+                    "type": "text",
+                    "text": "T-01【待验】恢复只重新显示符合条件的 A；B、C、D 不出现。连续暂隐与恢复、暂隐后收回也保持此规则。"
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "type": "listItem",
+            "attrs": {
+              "blockId": "dev-test-input"
+            },
+            "content": [
+              {
+                "type": "paragraph",
+                "attrs": {
+                  "blockId": "dev-test-input-text"
+                },
+                "content": [
+                  {
+                    "type": "text",
+                    "text": "T-02【待验】E 的首次保存失败时不销毁唯一输入；逐项暂隐和退出程序使用各自的保存门槛。"
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "type": "listItem",
+            "attrs": {
+              "blockId": "dev-test-platform"
+            },
+            "content": [
+              {
+                "type": "paragraph",
+                "attrs": {
+                  "blockId": "dev-test-platform-text"
+                },
+                "content": [
+                  {
+                    "type": "text",
+                    "text": "T-03【待验】明确哪些是真实窗口、输入法、重启和旧库检查，哪些只是隔离测试；未执行的项目保持未验。"
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "type": "listItem",
+            "attrs": {
+              "blockId": "dev-test-release"
+            },
+            "content": [
+              {
+                "type": "paragraph",
+                "attrs": {
+                  "blockId": "dev-test-release-text"
+                },
+                "content": [
+                  {
+                    "type": "text",
+                    "text": "T-04【待验】实现提交、检查通过、人工验收、合并、已发布和用户已安装分别确认，不从 PR 关闭自动推导。"
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "type": "paragraph",
+        "attrs": {
+          "blockId": "dev-fix-loop"
+        },
+        "content": [
+          {
+            "type": "text",
+            "text": "验收发现实现偏差，带着证据返回开发；发现需求理解有误，则返回表达。"
+          },
+          {
+            "type": "text",
+            "text": " → "
+          },
+          {
+            "type": "text",
+            "text": "返回开发",
+            "marks": [
+              {
+                "type": "link",
+                "attrs": {
+                  "href": "#aiy-block:dev-handoff"
+                }
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "type": "heading",
+        "attrs": {
+          "blockId": "dev-maintenance",
+          "level": 2
+        },
+        "content": [
+          {
+            "type": "text",
+            "text": "主循环 · 下一轮需求／修复"
+          }
+        ]
+      },
+      {
+        "type": "bulletList",
+        "attrs": {
+          "blockId": "dev-maintenance-list"
+        },
+        "content": [
+          {
+            "type": "listItem",
+            "attrs": {
+              "blockId": "dev-next"
+            },
+            "content": [
+              {
+                "type": "paragraph",
+                "attrs": {
+                  "blockId": "dev-next-text"
+                },
+                "content": [
+                  {
+                    "type": "text",
+                    "text": "新反馈先关联受影响版本、原需求和上次决定，再形成下一轮问题；不是把每条评论都自动建成开发任务。"
+                  },
+                  {
+                    "type": "text",
+                    "text": " → "
+                  },
+                  {
+                    "type": "text",
+                    "text": "返回表达",
+                    "marks": [
+                      {
+                        "type": "link",
+                        "attrs": {
+                          "href": "#aiy-block:dev-expression"
+                        }
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "type": "listItem",
+            "attrs": {
+              "blockId": "dev-upgrade"
+            },
+            "content": [
+              {
+                "type": "paragraph",
+                "attrs": {
+                  "blockId": "dev-upgrade-text"
+                },
+                "content": [
+                  {
+                    "type": "text",
+                    "text": "依赖或数据格式升级：核对适用版本、变更原因、兼容范围和回退办法，再决定是否小试；不因有新版本就自动更新全部依赖。"
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "type": "listItem",
+            "attrs": {
+              "blockId": "dev-incident"
+            },
+            "content": [
+              {
+                "type": "paragraph",
+                "attrs": {
+                  "blockId": "dev-incident-text"
+                },
+                "content": [
+                  {
+                    "type": "text",
+                    "text": "严重故障：先恢复和保全必要证据，再记录影响、时间线、促成因素、后续动作与验证方式。不以追责替代分析，不把敏感诊断公开。"
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "type": "listItem",
+            "attrs": {
+              "blockId": "dev-maintainer"
+            },
+            "content": [
+              {
+                "type": "paragraph",
+                "attrs": {
+                  "blockId": "dev-maintainer-text"
+                },
+                "content": [
+                  {
+                    "type": "text",
+                    "text": "交给下一位维护者：能找到当前有效规则、反例、基准、未解决问题和继续入口；不要求读完所有历史聊天。"
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "type": "paragraph",
+        "attrs": {
+          "blockId": "dev-authority"
+        },
+        "content": [
+          {
+            "type": "text",
+            "text": "AIY 保留问题、证据、取舍与交接材料。代码和分支以 Git 为准，PR 与 CI 以平台记录为准，发布以实际交付为准。这里的链接是本文定位，不是已创建的 Issue、固定引用或执行任务。"
+          }
+        ]
+      }
+    ]
+  }
+}

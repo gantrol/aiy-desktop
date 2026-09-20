@@ -1,17 +1,7 @@
-import {
-  ActivityIcon,
-  BlocksIcon,
-  CheckIcon,
-  ChevronDownIcon,
-  ImagesIcon,
-  LogOutIcon,
-  ScanSearchIcon,
-  SettingsIcon,
-  SlidersHorizontalIcon,
-  SquarePenIcon,
-} from 'lucide-react';
+import { CheckIcon, ChevronDownIcon, LogOutIcon, SettingsIcon, SquarePenIcon } from 'lucide-react';
 import { useState } from 'react';
-import { DictionaryIcon } from '@/renderer/icons';
+import { navigationItems } from '@/renderer/components/app/app-navigation-items';
+import { getExtensionNavigationItems } from '@/renderer/features/extensions/extension-navigation-items';
 import { useI18n } from '@/renderer/i18n/useI18n';
 import { cn } from '@/renderer/lib/utils';
 import { Button } from '@/renderer/components/ui/button';
@@ -23,7 +13,7 @@ import {
   DropdownMenuItem,
   DropdownMenuSeparator,
 } from '@/renderer/components/ui/dropdown-menu';
-import type { AppView } from '@/renderer/components/app/AppSidebar';
+import type { AppView } from '@/renderer/components/app/app-navigation';
 import { DesktopPetalsMenuAction } from '@/renderer/features/desktop-petals/DesktopPetalsMenuAction';
 
 interface Props {
@@ -36,16 +26,6 @@ interface Props {
   onSettingsOpen(): void;
   onQuit(): void;
 }
-
-const viewItems = [
-  { id: 'creator', icon: SquarePenIcon },
-  { id: 'dictionary', icon: DictionaryIcon },
-  { id: 'gallery', icon: ImagesIcon },
-  { id: 'codexImages', icon: ScanSearchIcon },
-  { id: 'transitionShowcase', icon: SlidersHorizontalIcon },
-  { id: 'packs', icon: BlocksIcon },
-  { id: 'aiCenter', icon: ActivityIcon },
-] as const;
 
 export function AppIconMenu({
   view,
@@ -61,10 +41,10 @@ export function AppIconMenu({
   const { messages } = useI18n();
   const labels = messages.app.menu;
   const navigation = messages.app.navigation;
-  const visibleViewItems = viewItems.filter(
-    ({ id }) =>
-      (id !== 'codexImages' || codexImagesVisible) && (id !== 'transitionShowcase' || transitionShowcaseVisible),
-  );
+  const visibleViewItems = [
+    ...navigationItems,
+    ...getExtensionNavigationItems({ codexImagesVisible, transitionShowcaseVisible }),
+  ];
 
   function select(action: () => void) {
     setOpen(false);
@@ -114,8 +94,8 @@ export function AppIconMenu({
         <DropdownMenuSeparator />
 
         <div role="group" aria-label={navigation.label}>
-          {visibleViewItems.map(({ id, icon: Icon }) => {
-            const current = id === 'creator' ? view === 'creator' || view === 'documents' : view === id;
+          {visibleViewItems.map(({ id, icon: Icon, activeViews }) => {
+            const current = activeViews.includes(view);
             return (
               <DropdownMenuItem
                 key={id}

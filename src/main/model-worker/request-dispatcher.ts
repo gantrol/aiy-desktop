@@ -5,7 +5,9 @@ import { ImageBreakdownModelAdapter } from '@/main/assistant-models/image-breakd
 import { DEEPSEEK_DEFAULT_MODEL_ID, DEEPSEEK_PROVIDER_KEY } from '@/main/assistant-models/deepseek-provider';
 import { CodexAdapter } from '@/main/assistant/codex';
 import type { AgentGenerationService } from '@/main/agent/agent-generation-service';
+import { readAgentContent } from '@/main/agent/content-read';
 import { LibraryDatabase } from '@/main/database';
+import { applyContentPackCommand, previewContentPackCommand } from '@/main/content-packs/commands';
 import { readDictionaryImport } from '@/main/dictionary/dictionary-import';
 import { DeepSeekApiRuntime } from '@/main/extensions/deepseek-api/runtime';
 import {
@@ -215,6 +217,18 @@ async function dispatchStorageAndGeneration(
       const [input] = parseModelWorkerMethodParams(method, params);
       return database.getAgentIntake(input);
     }
+    case 'agent.content.read': {
+      const [input] = parseModelWorkerMethodParams(method, params);
+      return readAgentContent(database, input, signal);
+    }
+    case 'content-pack.preview': {
+      const [input] = parseModelWorkerMethodParams(method, params);
+      return previewContentPackCommand(database, input);
+    }
+    case 'content-pack.apply': {
+      const [input] = parseModelWorkerMethodParams(method, params);
+      return applyContentPackCommand(database, input, signal);
+    }
     case 'agent.draft.prepare': {
       const [input] = parseModelWorkerMethodParams(method, params);
       return options.agent.prepareDraft(input);
@@ -317,6 +331,9 @@ async function dispatchAssistantAndCodex(
     case 'codex.list-models':
       parseModelWorkerMethodParams(method, params);
       return codex.listModels(signal);
+    case 'codex.read-usage-quota':
+      parseModelWorkerMethodParams(method, params);
+      return codex.readUsageQuota(signal);
     case 'codex.plan-gif': {
       const [input, execution] = parseModelWorkerMethodParams(method, params);
       return codex.planGif(input, execution, signal);

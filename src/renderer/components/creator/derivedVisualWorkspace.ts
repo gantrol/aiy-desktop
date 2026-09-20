@@ -48,11 +48,7 @@ export function derivedVisualWorkspaceVersion(series: PromptSeriesDto, requested
   return series.versions.find((version) => version.id === series.currentVersionId) ?? series.versions[0];
 }
 
-export const derivedVisualCanvasPresetKeys: Record<DerivedVisualDto['role'], readonly string[]> = {
-  ARTICLE_HEADER: ['wechat_article_cover_2_35_1'],
-  ARTICLE_INLINE: ['landscape_4_3', 'square_1_1', 'xiaohongshu_portrait_3_4', 'video_landscape_16_9'],
-  SOCIAL_POST_COVER: ['xiaohongshu_portrait_3_4'],
-};
+export { derivedVisualCanvasPresetKeys } from '@/shared/derived-visual-presets';
 
 export function derivedVisualWorkspaceAvailable(visual: DerivedVisualDto, seriesIds: ReadonlySet<string>) {
   return visual.promptSeriesId ? seriesIds.has(visual.promptSeriesId) : Boolean(visual.creationDraftId);

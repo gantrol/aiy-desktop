@@ -33,8 +33,9 @@ export class InspirationStashRepository {
     return this.storage.db.transaction(() => {
       if (input.mode === 'UPDATE') {
         const article = this.articles.get(input.id);
-        const content = articleDraftContent(input.content, article.content);
-        const same = canonicalArticleContentJson(content) === canonicalArticleContentJson(article.content);
+        const { mediaAssets: _mediaAssets, ...previous } = article.content;
+        const content = articleDraftContent(input.content, previous);
+        const same = canonicalArticleContentJson(content) === canonicalArticleContentJson(previous);
         if (
           !same &&
           (input.expectedContentHash !== article.contentHash ||

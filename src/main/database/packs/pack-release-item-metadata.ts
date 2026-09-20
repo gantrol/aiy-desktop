@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import type { JsonMap } from '@/main/database/core/values';
+import { contentPackCreationLayoutSchema, contentPackWorkMetadataSchema } from '@/main/content-packs/creation-state';
 
 const stableKeySchema = z.string().trim().min(1).max(120);
 const identifierSchema = z.string().trim().min(1).max(240);
@@ -69,6 +70,9 @@ export function parsePackExampleMetadata(value: unknown, context: PackReleaseIte
 }
 
 export function parsePackReleaseItemMetadata(value: unknown, context: PackReleaseItemMetadataContext): JsonMap {
+  if (context.objectType === 'ARTICLE_REVISION') return parseWithSchema(value, context, contentPackWorkMetadataSchema);
+  if (context.objectType === 'CREATION_COLLECTION')
+    return parseWithSchema(value, context, contentPackCreationLayoutSchema);
   if (context.objectType === 'TERM_REVISION' || context.objectType === 'RECIPE_REVISION') {
     return parsePackRevisionMetadata(value, context);
   }

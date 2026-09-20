@@ -3,9 +3,11 @@ import { useEffect, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { companionMessage, type CompanionMessageKey } from '@/lib/i18n';
+import { handoffForTab } from '@/lib/batch-tabs';
 import {
   consumeHandoffResponseSchema,
   fillDraftResponseSchema,
+  handoffIdFromUrl,
   resolveSiteFromUrl,
   type CompanionSite,
   type ConsumeHandoffErrorCode,
@@ -79,6 +81,7 @@ export function Popup() {
   const [draft, setDraft] = useState('');
   const [pageState, setPageState] = useState<PageState>('loading');
   const [workingAction, setWorkingAction] = useState<WorkingAction>(null);
+  const [tabGroupsAllowed, setTabGroupsAllowed] = useState(false);
   const [notice, setNotice] = useState<Notice>({
     tone: 'idle',
     text: companionMessage('popupWaitingForContent'),
@@ -86,6 +89,12 @@ export function Popup() {
 
   useEffect(() => {
     let live = true;
+    void browser.permissions
+      .contains({ permissions: ['tabGroups'] })
+      .then((allowed) => {
+        if (live) setTabGroupsAllowed(allowed);
+      })
+      .catch(() => undefined);
     void activeTab()
       .then((tab) => {
         if (live) setPageState(pageStateFromUrl(tab?.url));
@@ -142,10 +151,15 @@ export function Popup() {
       };
     }
 
+    const handoffId = (tab.url ? handoffIdFromUrl(tab.url) : null) ?? (await handoffForTab(tab.id, currentSite));
+    if (!handoffId) {
+      return { ok: false, requestId: null, site: currentSite, code: 'HANDOFF_NOT_FOUND' };
+    }
     const request: ConsumeHandoffRequest = {
       protocolVersion: 1,
       kind: 'consume-handoff',
       requestId: crypto.randomUUID(),
+      handoffId,
     };
     const rawResponse: unknown = await browser.tabs.sendMessage(tab.id, request);
     return consumeHandoffResponseSchema.parse(rawResponse);
@@ -289,6 +303,20 @@ export function Popup() {
           </Button>
         </div>
       </div>
+      <label className="flex items-start gap-2 text-xs text-muted-foreground">
+        <input
+          type="checkbox"
+          checked={tabGroupsAllowed}
+          onChange={(event) => {
+            const enable = event.target.checked;
+            const request = enable
+              ? browser.permissions.request({ permissions: ['tabGroups'] })
+              : browser.permissions.remove({ permissions: ['tabGroups'] }).then(() => false);
+            void request.then(setTabGroupsAllowed).catch(() => setTabGroupsAllowed(false));
+          }}
+        />
+        {companionMessage('popupGroupBatchTabs')}
+      </label>
     </main>
   );
 }

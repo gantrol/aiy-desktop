@@ -30,7 +30,7 @@ import {
 } from '@/main/extensions/codex-usage-investigator/session-reader';
 import {
   eventFromStoredRow,
-  storedEventRowSchema,
+  type StoredEventRow,
   type CodexUsageEventCoverage,
   type CodexUsageFileFingerprint,
   type CodexUsageSessionSourceRecord,
@@ -47,6 +47,7 @@ import type { CodexUsageServiceTierFallback } from '@/main/extensions/codex-usag
 import { readCodexTurnSpeedAnalysis } from '@/main/extensions/codex-usage-investigator/turn-speed';
 import { readCodexModelComparison } from '@/main/extensions/codex-usage-investigator/model-comparison';
 import { sqlitePages } from '@/main/extensions/codex-usage-investigator/sqlite-pages';
+import { cachedUsageEventPages } from '@/main/extensions/codex-usage-investigator/cache-events';
 
 export { codexUsageSourceCacheKey } from '@/main/extensions/codex-usage-investigator/source-cache-key';
 
@@ -129,8 +130,17 @@ export class CodexUsageCacheDatabase {
     return new CodexUsageCacheDatabase(root);
   }
 
-  private constructor(root: string) {
-    this.database = new Database(path.join(root, 'usage-cache.sqlite'), { timeout: 5_000 });
+  /** Calendar reads never create, migrate or recover the investigator's private cache. */
+  static openExistingReadOnly(directory: string) {
+    return new CodexUsageCacheDatabase(path.resolve(directory), true);
+  }
+
+  private constructor(root: string, readOnly = false) {
+    this.database = new Database(path.join(root, 'usage-cache.sqlite'), {
+      timeout: 5_000,
+      ...(readOnly ? { readonly: true, fileMustExist: true } : {}),
+    });
+    if (readOnly) return;
     const journalMode = z
       .string()
       .parse(this.database.pragma('journal_mode', { simple: true }))
@@ -140,6 +150,14 @@ export class CodexUsageCacheDatabase {
     this.database.pragma('foreign_keys = ON');
     this.migrate();
     this.recoverInterruptedTasks();
+  }
+
+  close() {
+    this.database.close();
+  }
+
+  readMetricSnapshot<T>(read: (revision: number) => T): T {
+    return this.database.transaction(() => read(this.currentDataRevision()))();
   }
 
   state(): CodexUsageState {
@@ -403,57 +421,12 @@ export class CodexUsageCacheDatabase {
   }
 
   *eventPages(fromEpoch: number | null, toEpoch: number): Iterable<ReadonlyArray<CodexUsageInternalEvent>> {
-    const statement = this.database.prepare(
-      `SELECT
-          current.source_session_id AS sessionId,
-          current.event_order AS eventOrder,
-          current.event_fingerprint AS eventFingerprint,
-          current.turn_id AS turnId,
-          current.timestamp_ms AS timestampMs,
-          current.timestamp,
-          current.model,
-          current.service_tier AS serviceTier,
-          current.service_tier_inferred AS serviceTierInferred,
-          current.quota_kind AS quotaKind,
-          current.limit_id AS limitId,
-          current.plan_type AS planType,
-          current.used_percent AS usedPercent,
-          current.window_duration_mins AS windowDurationMins,
-          current.resets_at AS resetsAt,
-          current.secondary_used_percent AS secondaryUsedPercent,
-          current.secondary_window_duration_mins AS secondaryWindowDurationMins,
-          current.secondary_resets_at AS secondaryResetsAt,
-          current.input_tokens AS inputTokens,
-          current.cached_input_tokens AS cachedInputTokens,
-          current.cache_write_input_tokens AS cacheWriteInputTokens,
-          current.output_tokens AS outputTokens,
-          current.reasoning_output_tokens AS reasoningOutputTokens,
-          current.total_tokens AS totalTokens
-         FROM usage_events AS current
-         WHERE current.timestamp_ms >= COALESCE(?, 0) AND current.timestamp_ms <= ?
-           AND (
-             current.total_tokens = 0
-             OR NOT EXISTS (
-               SELECT 1
-               FROM usage_events AS previous
-               WHERE previous.event_fingerprint = current.event_fingerprint
-                 AND previous.total_tokens > 0
-                 AND previous.source_session_id <> current.source_session_id
-                 AND (
-                   previous.service_tier_inferred < current.service_tier_inferred
-                   OR (
-                     previous.service_tier_inferred = current.service_tier_inferred
-                     AND (previous.timestamp_ms, previous.source_session_id)
-                       < (current.timestamp_ms, current.source_session_id)
-                   )
-                 )
-             )
-           )
-         ORDER BY current.timestamp_ms ASC, current.source_session_id ASC, current.event_order ASC`,
-    );
-    for (const rows of sqlitePages(statement.iterate(fromEpoch, toEpoch), storedEventRowSchema)) {
-      yield rows.map(eventFromStoredRow);
-    }
+    for (const rows of this.metricEventPages(fromEpoch, toEpoch)) yield rows.map(eventFromStoredRow);
+  }
+
+  /** Exact cache row identities are needed for stable metric pagination and original-record references. */
+  *metricEventPages(fromEpoch: number | null, toEpoch: number): Iterable<ReadonlyArray<StoredEventRow>> {
+    yield* cachedUsageEventPages(this.database, fromEpoch, toEpoch);
   }
 
   *sessionSourcePages(): Iterable<ReadonlyArray<CodexUsageSessionSourceRecord>> {
@@ -553,6 +526,17 @@ export class CodexUsageCacheDatabase {
           parsedTask.taskId,
         );
     })();
+  }
+
+  saveInvestigationPurity(investigation: CodexUsageInvestigation) {
+    const parsed = codexUsageInvestigationSchema.parse(investigation);
+    const payload = JSON.stringify(parsed);
+    if (Buffer.byteLength(payload, 'utf8') > MAX_INVESTIGATION_JSON_BYTES) {
+      throw new Error('Codex usage investigation is too large');
+    }
+    this.database
+      .prepare(`UPDATE scan_tasks SET investigation_json = ? WHERE task_id = ? AND status = 'COMPLETED'`)
+      .run(payload, parsed.investigationId);
   }
 
   investigation(investigationId: string) {

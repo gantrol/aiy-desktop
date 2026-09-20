@@ -82,7 +82,9 @@ export const browserCompanionStageInputSchema = z
   .refine(
     (input) =>
       input.contentKind === 'article-body'
-        ? input.target === 'wechat' && input.source.kind === 'article' && Boolean(input.title && input.articleHtml)
+        ? input.target === 'wechat' &&
+          (input.source.kind === 'article' || input.source.kind === 'social-post') &&
+          Boolean(input.title && input.articleHtml)
         : input.articleHtml === undefined,
     { path: ['articleHtml'] },
   );
@@ -90,6 +92,7 @@ export const browserCompanionStageInputSchema = z
 export const browserCompanionHistoryItemSchema = z
   .object({
     handoffId: handoffIdSchema,
+    batchId: z.string().uuid().optional(),
     target: browserCompanionTargetSchema,
     source: browserCompanionSourceSchema,
     contentKind: browserCompanionContentKindSchema,
@@ -132,6 +135,92 @@ export const browserCompanionStageErrorCodeSchema = z.enum([
 export const browserCompanionStageInvocationSchema = z.union([
   browserCompanionStageResultSchema,
   z.object({ errorCode: browserCompanionStageErrorCodeSchema }).strict(),
+]);
+
+export const browserCompanionBatchInputSchema = z
+  .object({
+    expectedSpaceId: idSchema.optional(),
+    title: z.string().trim().min(1).max(80).optional(),
+    items: z.array(browserCompanionStageInputSchema).min(1).max(4),
+  })
+  .strict()
+  .superRefine((input, context) => {
+    const source = input.items[0]?.source;
+    const targets = new Set<BrowserCompanionTarget>();
+    for (const [index, item] of input.items.entries()) {
+      if (item.target === 'chatgpt' || item.contentKind === 'prompt') {
+        context.addIssue({
+          code: 'custom',
+          path: ['items', index, 'target'],
+          message: 'Publishing targets only',
+        });
+      }
+      if (targets.has(item.target)) {
+        context.addIssue({
+          code: 'custom',
+          path: ['items', index, 'target'],
+          message: 'Duplicate publishing target',
+        });
+      }
+      targets.add(item.target);
+      if (!source || JSON.stringify(item.source) !== JSON.stringify(source)) {
+        context.addIssue({
+          code: 'custom',
+          path: ['items', index, 'source'],
+          message: 'Batch sources must match',
+        });
+      }
+    }
+  });
+
+export const browserCompanionBatchItemResultSchema = z
+  .object({
+    target: browserCompanionTargetSchema.exclude(['chatgpt']),
+    result: browserCompanionStageResultSchema.nullable(),
+    errorCode: z
+      .union([
+        browserCompanionStageErrorCodeSchema,
+        z.enum(['HANDOFF_NOT_ALLOWED', 'STAGE_FAILED', 'NOT_ATTEMPTED', 'OPEN_NOT_CONFIRMED']),
+      ])
+      .nullable(),
+  })
+  .strict()
+  .refine(
+    (item) =>
+      item.result
+        ? item.result.handoff.target === item.target &&
+          (item.errorCode === null ||
+            item.errorCode === 'HANDOFF_NOT_ALLOWED' ||
+            item.errorCode === 'OPEN_NOT_CONFIRMED')
+        : item.errorCode !== null && item.errorCode !== 'OPEN_NOT_CONFIRMED',
+    {
+      message: 'A batch item must describe a handoff or why it has not been prepared',
+    },
+  );
+
+export const browserCompanionBatchResultSchema = z
+  .object({
+    batchId: z.string().uuid(),
+    createdAt: z.string().datetime({ offset: true }),
+    source: browserCompanionSourceSchema,
+    items: z.array(browserCompanionBatchItemResultSchema).min(1).max(4),
+  })
+  .strict();
+
+export const browserCompanionBatchHistoryResultSchema = z.array(browserCompanionBatchResultSchema).max(1_000);
+export const browserCompanionReopenInputSchema = z
+  .object({ handoffId: handoffIdSchema, expectedSpaceId: idSchema.optional() })
+  .strict();
+const browserCompanionScopeRejectedSchema = z
+  .object({ errorCode: z.literal('BROWSER_COMPANION_LIBRARY_CHANGED') })
+  .strict();
+export const browserCompanionBatchInvocationSchema = z.union([
+  browserCompanionBatchResultSchema,
+  browserCompanionScopeRejectedSchema,
+]);
+export const browserCompanionReopenInvocationSchema = z.union([
+  browserCompanionStageResultSchema,
+  browserCompanionScopeRejectedSchema,
 ]);
 
 export const browserCompanionOpenInputSchema = z
@@ -193,11 +282,20 @@ export const browserCompanionDestinationSelectInputSchema = browserCompanionDest
 
 export const browserCompanionHistoryResultSchema = z.array(browserCompanionHistoryItemSchema).max(10_000);
 
-export const browserCompanionDeleteInputSchema = z
+export const browserCompanionBatchDeleteInputSchema = z
   .object({
-    handoffIds: z.array(handoffIdSchema).min(1).max(500),
+    batchId: z.string().uuid(),
+    targets: z
+      .array(browserCompanionTargetSchema.exclude(['chatgpt']))
+      .min(1)
+      .max(4),
   })
   .strict();
+
+export const browserCompanionDeleteInputSchema = z.union([
+  z.object({ handoffIds: z.array(handoffIdSchema).min(1).max(500) }).strict(),
+  browserCompanionBatchDeleteInputSchema,
+]);
 
 export const browserCompanionDeleteResultSchema = z
   .object({
@@ -214,6 +312,10 @@ export type BrowserCompanionWatermarkSelection = z.infer<typeof browserCompanion
 export type BrowserCompanionStageInput = z.infer<typeof browserCompanionStageInputSchema>;
 export type BrowserCompanionHistoryItem = z.infer<typeof browserCompanionHistoryItemSchema>;
 export type BrowserCompanionStageResult = z.infer<typeof browserCompanionStageResultSchema>;
+export type BrowserCompanionBatchInput = z.infer<typeof browserCompanionBatchInputSchema>;
+export type BrowserCompanionBatchItemResult = z.infer<typeof browserCompanionBatchItemResultSchema>;
+export type BrowserCompanionBatchResult = z.infer<typeof browserCompanionBatchResultSchema>;
+export type BrowserCompanionReopenInput = z.infer<typeof browserCompanionReopenInputSchema>;
 export type BrowserCompanionOpenInput = z.infer<typeof browserCompanionOpenInputSchema>;
 export type BrowserCompanionOpenResult = z.infer<typeof browserCompanionOpenResultSchema>;
 export type BrowserCompanionProfile = z.infer<typeof browserCompanionProfileSchema>;

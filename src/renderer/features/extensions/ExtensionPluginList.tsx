@@ -2,6 +2,12 @@ import { useEffect, useMemo, useState } from 'react';
 import type { ExtensionDto } from '@/shared/contracts';
 import { BlocksIcon, ChevronDownIcon, CpuIcon, LanguagesIcon, PaletteIcon, SearchIcon, XIcon } from 'lucide-react';
 import { localizeExtensionManifest } from '@/shared/extension-localization';
+import {
+  extensionMatchesFilter,
+  extensionPermissionRows,
+  type ExtensionListFilter,
+} from '@/shared/extension-permission-info';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/renderer/components/ui/select';
 import { Badge } from '@/renderer/components/ui/badge';
 import { Button } from '@/renderer/components/ui/button';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/renderer/components/ui/collapsible';
@@ -31,6 +37,8 @@ export function ExtensionPluginList({ extensions, selectedId, onSelect }: Props)
   const { locale, messages } = useI18n();
   const l = messages.extensions;
   const [query, setQuery] = useState('');
+  const [filter, setFilter] = useState<ExtensionListFilter>('all');
+  const permissionCopy = messages.extensionManager;
   const [openGroups, setOpenGroups] = useState<Record<ExtensionPluginGroup, boolean>>({
     models: true,
     frontendDesign: true,
@@ -39,8 +47,8 @@ export function ExtensionPluginList({ extensions, selectedId, onSelect }: Props)
   });
   const normalizedQuery = query.trim().toLocaleLowerCase();
   const filteredExtensions = useMemo(() => {
-    if (!normalizedQuery) return extensions;
     return extensions.filter((extension) => {
+      if (!extensionMatchesFilter(extension, filter)) return false;
       const copy = localizeExtensionManifest(extension.manifest, locale);
       const group = extensionPluginGroup(extension);
       const contributions = Object.values(extension.manifest.contributes).flatMap((items) => items ?? []);
@@ -53,23 +61,25 @@ export function ExtensionPluginList({ extensions, selectedId, onSelect }: Props)
         l.source[extension.source],
         l.connectionStates[extension.connectionState],
         ...contributions,
+        ...extensionPermissionRows(extension).flatMap((row) => [row.key, permissionCopy.names[row.name]]),
       ]
         .join(' ')
         .toLocaleLowerCase()
         .includes(normalizedQuery);
     });
-  }, [extensions, l, locale, normalizedQuery]);
+  }, [extensions, l, locale, normalizedQuery, filter, permissionCopy.names]);
 
+  const selectedGroup = extensions.find((extension) => extension.manifest.id === selectedId);
+  const groupToReveal = selectedGroup ? extensionPluginGroup(selectedGroup) : null;
   useEffect(() => {
-    const selected = extensions.find((extension) => extension.manifest.id === selectedId);
-    if (!selected) return;
-    const group = extensionPluginGroup(selected);
-    setOpenGroups((current) => (current[group] ? current : { ...current, [group]: true }));
-  }, [extensions, selectedId]);
+    if (!groupToReveal) return;
+    setOpenGroups((current) => (current[groupToReveal] ? current : { ...current, [groupToReveal]: true }));
+  }, [selectedId, groupToReveal]);
+  const selectedHidden = Boolean(selectedGroup && !filteredExtensions.some((item) => item.manifest.id === selectedId));
 
   return (
     <div>
-      <div role="search" className="sticky top-0 z-10 border-b bg-background p-3">
+      <div role="search" className="sticky top-0 z-10 border-b border-border bg-background p-3">
         <div className="relative">
           <SearchIcon
             aria-hidden="true"
@@ -96,25 +106,55 @@ export function ExtensionPluginList({ extensions, selectedId, onSelect }: Props)
             </Button>
           )}
         </div>
+        <Select value={filter} onValueChange={(value) => setFilter(value as ExtensionListFilter)}>
+          <SelectTrigger className="mt-2" aria-label={permissionCopy.listFilter}>
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            {(['all', 'enabled', 'attention', 'local'] as const).map((value) => (
+              <SelectItem key={value} value={value}>
+                {permissionCopy.listFilters[value]}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+        {selectedHidden && (
+          <div className="mt-2 grid gap-1 text-xs text-muted-foreground">
+            <p>{permissionCopy.currentFiltered}</p>
+            <Button
+              type="button"
+              size="sm"
+              variant="ghost"
+              onClick={() => {
+                setQuery('');
+                setFilter('all');
+                if (groupToReveal) setOpenGroups((current) => ({ ...current, [groupToReveal]: true }));
+              }}
+            >
+              {permissionCopy.showCurrent}
+            </Button>
+          </div>
+        )}
       </div>
       <div className="grid gap-2 p-3">
         {extensionPluginGroupOrder.map((group) => {
           const items = filteredExtensions.filter((extension) => extensionPluginGroup(extension) === group);
           if (!items.length) return null;
           const headingId = `extension-group-${group}`;
-          const isOpen = normalizedQuery ? true : openGroups[group];
+          const filtering = Boolean(normalizedQuery) || filter !== 'all';
+          const isOpen = filtering ? true : openGroups[group];
           return (
             <Collapsible
               key={group}
               open={isOpen}
               onOpenChange={(open) => {
-                if (!normalizedQuery) setOpenGroups((current) => ({ ...current, [group]: open }));
+                if (!filtering) setOpenGroups((current) => ({ ...current, [group]: open }));
               }}
               data-extension-group={group}
               className="grid gap-2"
             >
               <h2 id={headingId}>
-                <CollapsibleTrigger asChild disabled={Boolean(normalizedQuery)}>
+                <CollapsibleTrigger asChild disabled={filtering}>
                   <Button
                     type="button"
                     variant="ghost"
@@ -140,7 +180,7 @@ export function ExtensionPluginList({ extensions, selectedId, onSelect }: Props)
                       data-extension-id={extension.manifest.id}
                       aria-current={selectedId === extension.manifest.id ? 'true' : undefined}
                       className={cn(
-                        'grid gap-2 rounded-lg border p-3 text-left outline-none transition-colors hover:bg-hover focus-visible:ring-2 focus-visible:ring-ring',
+                        'grid gap-2 rounded-lg border border-border p-3 text-left outline-none transition-colors hover:bg-hover focus-visible:ring-2 focus-visible:ring-ring',
                         selectedId === extension.manifest.id && 'border-selected-border bg-selected',
                       )}
                       onClick={() => onSelect(extension.manifest.id)}
@@ -151,12 +191,20 @@ export function ExtensionPluginList({ extensions, selectedId, onSelect }: Props)
                           {l.connectionStates[extension.connectionState]}
                         </Badge>
                       </span>
-                      <span className="flex items-center gap-2 text-xs text-muted-foreground">
+                      <span className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
                         <span>{extension.manifest.version}</span>
                         <span>{l.kinds[extension.manifest.kind]}</span>
                         <span>{l.source[extension.source]}</span>
                         <span className="ml-auto">{extension.enabled ? l.enabled : l.disabled}</span>
                       </span>
+                      {extension.permissions.some((permission) => permission.required && !permission.granted) && (
+                        <span className="text-xs text-muted-foreground">
+                          {permissionCopy.missingCount(
+                            extension.permissions.filter((permission) => permission.required && !permission.granted)
+                              .length,
+                          )}
+                        </span>
+                      )}
                     </button>
                   );
                 })}

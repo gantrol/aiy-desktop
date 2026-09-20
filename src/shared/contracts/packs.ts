@@ -115,6 +115,7 @@ export interface PackUpdateSummaryDto {
 }
 
 export interface PackImportPreviewDto {
+  blockingConflicts?: number;
   requestId: string;
   packId: string;
   displayName: string;

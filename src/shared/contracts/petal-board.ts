@@ -1,15 +1,25 @@
 import { z } from 'zod';
 import { petalColorSchema, petalIconSchema } from '@/shared/contracts/petal-appearance';
+import { PIN_SOURCE_KINDS } from '@/shared/petal-source-kinds';
+
 const id = z.string().min(1).max(200);
-export const pinSourceSchema = z
-  .object({ kind: z.enum(['ARTICLE', 'SOCIAL_POST', 'IMAGE', 'ALBUM', 'MATERIAL_ALBUM']), id })
-  .strict();
+export const pinSourceSchema = z.object({ kind: z.enum(PIN_SOURCE_KINDS), id }).strict();
 export type PinSource = z.infer<typeof pinSourceSchema>;
+export const pinMediaSchema = z.object({
+  id,
+  mediaUrl: z.string(),
+  mimeType: z.string(),
+  width: z.number().nonnegative(),
+  height: z.number().nonnegative(),
+  byteSize: z.number().nonnegative(),
+});
 export const pinSummarySchema = z.object({
   source: pinSourceSchema,
   title: z.string(),
   preview: z.string(),
   mediaUrl: z.string().nullable(),
+  // Optional during rolling updates and for legacy fixtures. Never infer MIME from the source kind.
+  media: pinMediaSchema.nullable().optional(),
 });
 export const desktopPinSchema = pinSummarySchema.extend({
   id,
@@ -64,7 +74,7 @@ export const pinSearchSchema = z
   .strict();
 export type PinSearch = z.infer<typeof pinSearchSchema>;
 export type PinSummary = z.infer<typeof pinSummarySchema>;
-/** Namespaced window identity keeps read-only content pins separate from editable note instances. */
+/** Namespaced window identity keeps content references separate from editable note instances. */
 export function isContentPinId(id: string | null | undefined): id is `pin:${string}` {
   return !!id?.startsWith('pin:');
 }

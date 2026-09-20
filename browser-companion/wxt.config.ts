@@ -61,9 +61,10 @@ export default defineConfig({
     name: '__MSG_extensionName__',
     description: '__MSG_extensionDescription__',
     default_locale: 'en',
-    version: '0.0.5',
+    version: '0.0.6',
     key: 'MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAr+eynucctrHD6gDJvWZCSyzvIvCuJkt+U7xZZqrs380WNovxaShRZ/CvVlRwKliW7I8Z2KfvABpmAvAc7Mvb8+eC+SntwpF/4TiEyoK5KM2Q0JF9KUoVt3PVPlaSi9G/PqkWHzAjqYWO+zB6zO0f2sC2I56hCN0kcrgDT/iVjbSdl8SKwWbdMl9+niD56Mb4a8zI8WHUmwU6KWmq/SmCEk9xtL5dGw4RDpVz20g+rvr6Cs+wJfrkxaIadQDvoR825lByJ/EYR/N3j3ePFQdxfSy7ubux/yGsGCcAV/JSKxt9jts53+PwW5zwym7FckQqGjysSeKOz7n1xevBWd0JSwIDAQAB',
     permissions: [...companionPermissions],
+    optional_permissions: ['tabGroups'],
     host_permissions: [...companionHostPermissions],
     externally_connectable: {
       matches: ['http://127.0.0.1/*'],

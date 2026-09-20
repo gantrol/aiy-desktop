@@ -7,6 +7,7 @@ import { trimTrailingCharacters } from '@/shared/string-boundaries';
 import { createHash } from 'node:crypto';
 import { chmod, copyFile } from 'node:fs/promises';
 import path from 'node:path';
+import { registerCalendarIpc } from '@/main/ipc/calendar-handlers';
 import { registerContentLibraryIpc } from '@/main/ipc/content-library-handlers';
 import { z } from 'zod';
 import type {
@@ -22,6 +23,7 @@ import type { CodexService } from '@/main/assistant/codex-service';
 import type { AssistantService } from '@/main/assistant/assistant-service';
 import { listImageBreakdownRoutes } from '@/main/assistant-models/image-breakdown-routes';
 import { AssetFileActions } from '@/main/media/asset-file-actions';
+import { beginAssetExportCalendar } from '@/main/media/asset-export-calendar';
 import { ArticleExportService } from '@/main/creations/article-export-service';
 import { ArticleWechatCopyService } from '@/main/creations/article-wechat-copy-service';
 import { readCanvasPresets } from '@/main/media/canvas-presets';
@@ -44,6 +46,7 @@ import type { VideoDocumentTranscriptBackgroundTaskRegistry } from '@/main/video
 import type { AssistantRoutingConfiguration } from '@/main/assistant/assistant-routing';
 import type { GenerationConcurrencyConfiguration } from '@/main/generation/concurrency-configuration';
 import type { ExternalImageApiConnections } from '@/main/extensions/external-image-api';
+import type { CpaImageConnection } from '@/main/extensions/cpa-image/connection';
 import type { NaturalWatermarkConfigurationStore } from '@/main/extensions/natural-watermark/configuration';
 import type { NaturalWatermarkService } from '@/main/extensions/natural-watermark/service';
 import { registerStorageIpc, type LocalSpaceActions } from '@/main/ipc/storage-handlers';
@@ -76,6 +79,7 @@ import { registerArticleDeliveryIpc } from '@/main/ipc/article-delivery-handlers
 import type { ArticleEditorRecoveryStore } from '@/main/app/article-editor-recovery-store';
 import { registerBrowserCompanionIpc } from '@/main/ipc/browser-companion-handlers';
 import { BrowserCompanionRuntime } from '@/main/browser-companion/runtime';
+import { calendarHandoffLibrary } from '@/main/database/calendar/calendar-handoff-capture';
 import { BrowserCompanionBrowserController } from '@/main/browser-companion/browser-controller';
 import type { BrowserCompanionLoopbackServer } from '@/main/browser-companion/loopback-server';
 import { VideoKeyChangeService } from '@/main/video-documents/key-change-service';
@@ -255,11 +259,20 @@ function createBrowserCompanionRuntime(
     platform: process.platform,
     prepareLaunchUrl: (target, destinationUrl) => service.prepareLaunchUrl(target, destinationUrl),
   });
-  return new BrowserCompanionRuntime(service.handoffs, browser, (assetId) => database.resolveAssetFile(assetId), {
-    configuration: naturalWatermarkConfiguration,
-    service: naturalWatermarkService,
-    isActivated: () => extensions.isActivated(NATURAL_WATERMARK_EXTENSION_ID),
-  });
+  void service.handoffs
+    .replayCalendarEvents()
+    .catch((error) => console.error('[browser-companion] calendar replay pending', error));
+  return new BrowserCompanionRuntime(
+    service.handoffs,
+    browser,
+    (assetId) => database.resolveAssetFile(assetId),
+    {
+      configuration: naturalWatermarkConfiguration,
+      service: naturalWatermarkService,
+      isActivated: () => extensions.isActivated(NATURAL_WATERMARK_EXTENSION_ID),
+    },
+    (source) => calendarHandoffLibrary(database.db, source),
+  );
 }
 
 function showOpenDialog(getWindow: () => BrowserWindow | null, options: Electron.OpenDialogOptions) {
@@ -431,6 +444,7 @@ export function registerIpc(
   transcriptBackgroundTasks: VideoDocumentTranscriptBackgroundTaskRegistry,
   assistantRouting: AssistantRoutingConfiguration,
   externalImageApis: ExternalImageApiConnections,
+  cpaImageApi: CpaImageConnection,
   generationConcurrency: GenerationConcurrencyConfiguration,
   naturalWatermarkConfiguration: NaturalWatermarkConfigurationStore,
   naturalWatermarkService: NaturalWatermarkService,
@@ -553,15 +567,7 @@ export function registerIpc(
   const assetFiles = new AssetFileActions(
     (assetId) => database.resolveAssetFile(assetId),
     {
-      showSaveDialog: (options) => {
-        const parent = getWindow();
-        const defaultPath =
-          typeof options.defaultPath === 'string'
-            ? path.join(app.getPath('downloads'), path.basename(options.defaultPath))
-            : undefined;
-        const localizedOptions = { ...options, defaultPath };
-        return parent ? dialog.showSaveDialog(parent, localizedOptions) : dialog.showSaveDialog(localizedOptions);
-      },
+      showSaveDialog: (options) => showDownloadsSaveDialog(getWindow, options),
       copyFile: async (sourcePath, destinationPath) => {
         await copyFile(sourcePath, destinationPath);
         // Managed hard links make the immutable source read-only. An explicit
@@ -577,11 +583,10 @@ export function registerIpc(
       if (!revealPath) throw new Error('Asset file is unavailable');
       return revealPath;
     },
+    (assetId) => beginAssetExportCalendar(database, assetId),
   );
   const imageTransforms = new ImageTransformService(database);
-  if (!runtime.startupChannelsRegistered) {
-    ipcMain.handle('app:loading-previews', () => localSpaces.currentPreviews());
-  }
+  if (!runtime.startupChannelsRegistered) ipcMain.handle('app:loading-previews', () => localSpaces.currentPreviews());
   const loadBootstrap = createBootstrapLoader({
     canvasPresetPaths,
     codex,
@@ -616,6 +621,7 @@ export function registerIpc(
     deepSeekApi,
     assistantRouting,
     externalImageApis,
+    cpaImageApi,
     generation,
     generationConcurrency,
     naturalWatermarkConfiguration,
@@ -651,6 +657,7 @@ export function registerIpc(
   });
   registerLibraryIpc(ipcMain, database);
   registerContentLibraryIpc(ipcMain, database);
+  registerCalendarIpc(ipcMain, database);
   registerImageBreakdownIpc({
     ipcMain,
     database,

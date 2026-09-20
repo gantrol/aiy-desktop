@@ -8,8 +8,9 @@ import {
 } from '@/renderer/components/ui/dropdown-menu';
 import { contentRootBlock } from '@/renderer/features/content-editor/contentRootBlock';
 import { ContentLinkBlockActions } from '@/renderer/features/content-editor/ContentLinkBlockActions';
+import { ContentBlockReferenceAction } from '@/renderer/features/content-editor/ContentBlockReferenceAction';
 import { useI18n } from '@/renderer/i18n/useI18n';
-import { captureBlockDocument } from '@/shared/contracts/block-document';
+import { copyLinkedBlockDocument } from '@/shared/block-anchor-copy';
 import type { Editor } from '@tiptap/core';
 import { NodeSelection, TextSelection } from '@tiptap/pm/state';
 import { useEditorState } from '@tiptap/react';
@@ -50,7 +51,7 @@ export function ContentBlockActions({
     const transaction = editor.state.tr;
     let target = position;
     if (action === 'duplicate') {
-      const copied = captureBlockDocument({ type: 'doc', content: [node.toJSON()] }, [], true).root.content![0]!;
+      const copied = copyLinkedBlockDocument({ type: 'doc', content: [node.toJSON()] }).root.content![0]!;
       target = position + node.nodeSize;
       transaction.insert(target, editor.schema.nodeFromJSON(copied));
     } else if (action === 'delete') {
@@ -125,6 +126,7 @@ export function ContentBlockActions({
           </>
         )}
         <ContentLinkBlockActions editor={editor} blockId={blockId} source={source} />
+        <ContentBlockReferenceAction editor={editor} blockId={blockId} />
       </DropdownMenuContent>
     </DropdownMenu>
   );

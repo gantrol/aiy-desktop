@@ -40,6 +40,10 @@ electronFuses:
   loadBrowserProcessSpecificV8Snapshot: false
   grantFileProtocolExtraPrivileges: false
 asarUnpack:
+  # Agents use Node.js to run the CLI and its shared chunks outside the Electron archive.
+  - out/main/agent-cli.js
+  - out/main/model-worker.js
+  - out/main/chunks/**
   - node_modules/better-sqlite3/prebuilds/win32-x64.node
 npmRebuild: false
 extraResources:

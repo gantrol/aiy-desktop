@@ -3,6 +3,7 @@ import type { LibraryRegistry } from '@/main/libraries/library-registry';
 import type { TransitionPreviewCache } from '@/main/app/transition-preview-cache';
 import { resolveVideoKeyChangeMediaPath } from '@/main/video-documents/key-change-service';
 import { CODEX_EXTENSION_ID } from '@/shared/extension-ids';
+import { resolveCodexHistoryMediaPath } from '@/main/extensions/codex-history-search/media-access';
 
 interface Options {
   url: URL;
@@ -12,7 +13,13 @@ interface Options {
   libraryRegistry: LibraryRegistry | null;
 }
 
-export function resolveMediaRequestPaths({ url, identifier, context, transitionPreviews, libraryRegistry }: Options) {
+export async function resolveMediaRequestPaths({
+  url,
+  identifier,
+  context,
+  transitionPreviews,
+  libraryRegistry,
+}: Options) {
   const assetPath =
     url.hostname === 'asset' || url.hostname === 'asset-thumbnail' ? context?.database.getAssetPath(identifier) : null;
   const codexGeneratedPath =
@@ -21,18 +28,20 @@ export function resolveMediaRequestPaths({ url, identifier, context, transitionP
       ? context.imageDiscovery.resolveMediaPath(identifier)
       : null;
   const filePath =
-    url.hostname === 'space-preview'
-      ? transitionPreviews.resolveFile(identifier)
-      : url.hostname === 'space-cover'
-        ? libraryRegistry?.resolveCoverPath(identifier, url.searchParams.get('revision'))
-        : url.hostname === 'asset'
-          ? assetPath
-          : url.hostname === 'video-evidence' && context
-            ? resolveVideoKeyChangeMediaPath(context.database.libraryRoot, identifier)
-            : url.hostname === 'codex-generated'
-              ? codexGeneratedPath
-              : url.hostname === 'codex-visualization' && context?.extensions.isActivated(CODEX_EXTENSION_ID)
-                ? context.visualizationDiscovery.resolveMediaPath(identifier)
-                : null;
+    url.hostname === 'codex-history'
+      ? await resolveCodexHistoryMediaPath(identifier, url.searchParams.get('token'))
+      : url.hostname === 'space-preview'
+        ? transitionPreviews.resolveFile(identifier)
+        : url.hostname === 'space-cover'
+          ? libraryRegistry?.resolveCoverPath(identifier, url.searchParams.get('revision'))
+          : url.hostname === 'asset'
+            ? assetPath
+            : url.hostname === 'video-evidence' && context
+              ? resolveVideoKeyChangeMediaPath(context.database.libraryRoot, identifier)
+              : url.hostname === 'codex-generated'
+                ? codexGeneratedPath
+                : url.hostname === 'codex-visualization' && context?.extensions.isActivated(CODEX_EXTENSION_ID)
+                  ? context.visualizationDiscovery.resolveMediaPath(identifier)
+                  : null;
   return { assetPath, codexGeneratedPath, filePath };
 }

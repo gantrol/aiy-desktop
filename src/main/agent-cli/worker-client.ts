@@ -1,4 +1,5 @@
-import { randomUUID } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
+import { createReadStream } from 'node:fs';
 import net from 'node:net';
 import {
   MODEL_WORKER_PROTOCOL_VERSION,
@@ -31,11 +32,25 @@ export class AgentCliWorkerClient {
 
   private constructor(private readonly descriptor: ModelWorkerDescriptor) {}
 
-  static async connect(descriptor: ModelWorkerDescriptor) {
+  static async connect(descriptor: ModelWorkerDescriptor, workerBundlePath: string) {
     if (descriptor.protocolVersion !== MODEL_WORKER_PROTOCOL_VERSION) {
       throw clientError(
         'AIY_AGENT_PROTOCOL_MISMATCH',
         'AIY background service uses an incompatible protocol; restart AIY after updating it',
+      );
+    }
+    // A development worker can have the same wire version but older commands.
+    // Check the bundled implementation before advertising or invoking them.
+    const hash = createHash('sha256');
+    try {
+      for await (const chunk of createReadStream(workerBundlePath)) hash.update(chunk);
+    } catch {
+      throw clientError('AIY_AGENT_WORKER_UNAVAILABLE', 'The matching AIY background service bundle is unavailable');
+    }
+    if (hash.digest('hex') !== descriptor.runtimeFingerprint) {
+      throw clientError(
+        'AIY_AGENT_PROTOCOL_MISMATCH',
+        'AIY background service runs a different build; save your work and restart AIY with the CLI matching that build',
       );
     }
     const client = new AgentCliWorkerClient(descriptor);

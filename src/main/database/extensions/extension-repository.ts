@@ -3,6 +3,10 @@ import type { ExtensionManifestDto, ExtensionSource } from '@/shared/contracts';
 import type { LibraryStorage } from '@/main/database/core/storage';
 import { now, type JsonMap } from '@/main/database/core/values';
 import { extensionPermissionLegacyAliases } from '@/shared/extension-permissions';
+import {
+  compactExtensionPermissionHistory,
+  compactExtensionStateHistory,
+} from '@/main/database/extensions/extension-permission-retention';
 
 interface InstallationRow {
   extension_id: string;
@@ -70,6 +74,8 @@ function manifestHash(manifest: ExtensionManifestDto) {
 }
 
 export class ExtensionRepository {
+  private declaredPermissionKeys = new Map<string, readonly string[]>();
+
   constructor(private readonly storage: LibraryStorage) {}
 
   reconcileBuiltIns(manifests: readonly ExtensionManifestDto[]) {
@@ -84,6 +90,10 @@ export class ExtensionRepository {
   }
 
   reconcile(entries: readonly ExtensionReconcileEntry[]) {
+    const declared = new Map(this.declaredPermissionKeys);
+    for (const { manifest } of entries) {
+      declared.set(manifest.id, [...manifest.permissions, ...manifest.optionalPermissions]);
+    }
     this.storage.db.transaction(() => {
       for (const entry of entries) {
         this.reconcileExtension(
@@ -94,7 +104,14 @@ export class ExtensionRepository {
           entry.legacyExtensionIds ?? [],
         );
       }
+      // Compact old installations before the registry builds its bootstrap DTOs.
+      // Unknown manifests are not guessed: their explicit denials remain intact.
+      for (const { manifest } of entries) {
+        compactExtensionPermissionHistory(this.storage, manifest.id, declared.get(manifest.id)!);
+        compactExtensionStateHistory(this.storage, manifest.id);
+      }
     })();
+    this.declaredPermissionKeys = declared;
   }
 
   listInstallations(): ExtensionInstallationState[] {
@@ -170,6 +187,25 @@ export class ExtensionRepository {
         { permission, granted },
         updatedAt,
       );
+      const declared = this.declaredPermissionKeys.get(extensionId);
+      if (declared) compactExtensionPermissionHistory(this.storage, extensionId, declared);
+    })();
+  }
+
+  /** A selected revocation is all-or-nothing; the registry validates every key first. */
+  revokePermissions(extensionId: string, permissions: readonly string[]) {
+    this.storage.db.transaction(() => {
+      for (const permission of permissions) this.setPermission(extensionId, permission, false);
+    })();
+  }
+
+  resetAccess(extensionId: string) {
+    return this.storage.db.transaction(() => {
+      this.setEnabled(extensionId, false);
+      const grants = this.storage.db
+        .prepare('SELECT permission_key FROM extension_permission_grants WHERE extension_id = ? AND granted = 1')
+        .all(extensionId) as Array<{ permission_key: string }>;
+      for (const grant of grants) this.setPermission(extensionId, grant.permission_key, false);
     })();
   }
 
@@ -366,6 +402,7 @@ export class ExtensionRepository {
     ) VALUES (?, ?, ?, ?, ?)`,
       )
       .run(randomUUID(), extensionId, eventKind, JSON.stringify(payload), createdAt);
+    compactExtensionStateHistory(this.storage, extensionId);
   }
 
   private mapThreadBinding(row: ThreadBindingRow): ExtensionThreadBinding {

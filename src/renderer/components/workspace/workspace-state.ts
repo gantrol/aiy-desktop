@@ -12,7 +12,7 @@ import {
   type AppLocation,
   type NavigationMode,
 } from '@/renderer/components/app/app-navigation';
-import type { AppView } from '@/renderer/components/app/AppSidebar';
+import type { AppView } from '@/renderer/components/app/app-navigation';
 import type { WorkspaceVisualResumeDto } from '@/shared/contracts/workspace-layout';
 import { rememberVisualWorkspace } from '@/renderer/components/workspace/workspace-visual-resume';
 import {
@@ -351,6 +351,17 @@ function articleIdAtLocation(location: AppLocation) {
   return location.view === 'creator' && location.creator.surface === 'article' ? location.creator.articleId : null;
 }
 
+function findArticleEditor(state: WorkspaceRuntimeState, articleId: string) {
+  const owner = state.articleEditOwners.find((entry) => entry.articleId === articleId);
+  const owned = owner ? findWorkspaceTab(state, owner.tabId) : null;
+  if (owned && articleIdAtLocation(activeLocation(owned.tab)) === articleId) return owned;
+  for (const group of state.groups) {
+    const tab = group.tabs.find((entry) => articleIdAtLocation(activeLocation(entry)) === articleId);
+    if (tab) return { group, tab };
+  }
+  return null;
+}
+
 export function normalizeWorkspaceArticleEditOwners(state: WorkspaceRuntimeState) {
   const tabsByArticle = new Map<string, string[]>();
   for (const group of state.groups) {
@@ -407,6 +418,8 @@ export function updateWorkspaceArticleLocation(
     if (articleIdAtLocation(current.location) !== articleId) return tab;
     if (
       current.articleLocation?.elementId === location.elementId &&
+      current.articleLocation.blockId === location.blockId &&
+      current.articleLocation.referenceId === location.referenceId &&
       current.articleLocation.relativeOffset === location.relativeOffset &&
       current.articleLocation.viewportOffset === location.viewportOffset
     ) {
@@ -440,10 +453,87 @@ export function navigateWorkspaceHistory(state: WorkspaceRuntimeState, tabId: st
   if (!found) return state;
   const index = Math.min(Math.max(found.tab.history.index + delta, 0), found.tab.history.entries.length - 1);
   if (index === found.tab.history.index) return state;
-  const nextLocation = found.tab.history.entries[index].location;
-  const duplicate = findWorkspaceTabAtLocation(state, nextLocation, found.group.id, tabId);
-  if (duplicate) return activateWorkspaceTab(state, duplicate.group.id, duplicate.tab.id);
+  const nextEntry = found.tab.history.entries[index];
+  const nextLocation = nextEntry.location;
+  const articleId = articleIdAtLocation(nextLocation);
+  const articleEditor =
+    articleId && articleId !== articleIdAtLocation(activeLocation(found.tab))
+      ? findArticleEditor(state, articleId)
+      : null;
+  const duplicate =
+    articleEditor && articleEditor.tab.id !== tabId
+      ? articleEditor
+      : findWorkspaceTabAtLocation(state, nextLocation, found.group.id, tabId);
+  if (duplicate) {
+    const activated = activateWorkspaceTab(state, duplicate.group.id, duplicate.tab.id);
+    return nextEntry.articleLocation
+      ? withTab(activated, duplicate.tab.id, (tab) => {
+          // Carry the journey to the reused tab so Forward still returns to the source.
+          const entries = [...found.tab.history.entries];
+          entries[index] = navigationEntry(nextLocation, nextEntry.articleLocation);
+          return { ...tab, history: { entries, index } };
+        })
+      : activated;
+  }
   return withTab(state, tabId, (tab) => ({ ...tab, history: { ...tab.history, index } }));
+}
+
+/** Reference navigation keeps the caller's exact location, including when reusing another tab. */
+export function navigateWorkspaceReference(
+  state: WorkspaceRuntimeState,
+  sourceTabId: string,
+  articleId: string,
+  blockId: string | null,
+  options: { beside: boolean; originArticleId?: string; originBlockId?: string; referenceId?: string },
+) {
+  const source = findWorkspaceTab(state, sourceTabId);
+  if (!source) return state;
+  const origin = activeNavigationEntry(source.tab);
+  const originLocation =
+    options.originArticleId === articleIdAtLocation(origin.location) && options.originBlockId
+      ? { elementId: options.originBlockId, blockId: options.originBlockId, relativeOffset: 0 }
+      : origin.articleLocation;
+  const location: AppLocation = { ...initialAppLocation, view: 'creator', creator: { surface: 'article', articleId } };
+  const active = activateWorkspaceTab(state, source.group.id, sourceTabId);
+  const existing = findArticleEditor(active, articleId);
+  const adjacent = options.beside
+    ? active.groups
+        .filter((group) => group.id !== source.group.id)
+        .flatMap((group) => group.tabs.map((tab) => ({ group, tab })))
+        .find(({ tab }) => articleIdAtLocation(activeLocation(tab)) === articleId)
+    : null;
+  const sameArticle = articleIdAtLocation(origin.location) === articleId;
+  const destinationEditor = sameArticle ? existing : (adjacent ?? existing);
+  let navigated = active;
+  if (destinationEditor) {
+    navigated =
+      options.beside && !sameArticle && destinationEditor.group.id === source.group.id
+        ? moveExistingTabBesideSource(active, source.group, sourceTabId, destinationEditor.tab)
+        : activateWorkspaceTab(active, destinationEditor.group.id, destinationEditor.tab.id);
+  } else if (options.beside) {
+    navigated = openWorkspaceTabBeside(active, sourceTabId, location);
+  }
+  const destination = activeWorkspaceTab(navigated);
+  if (options.beside && !sameArticle && destination.id === sourceTabId) throw new Error('REFERENCE_WORKSPACE_FULL');
+  const targetLocation = blockId
+    ? { elementId: blockId, blockId, relativeOffset: 0, referenceId: options.referenceId }
+    : null;
+  const positioned = withTab(navigated, destination.id, (tab) => {
+    const prior =
+      destinationEditor && destination.id !== sourceTabId ? tab.history.entries.slice(0, tab.history.index + 1) : [];
+    const entries = [
+      ...prior,
+      ...source.tab.history.entries.slice(0, source.tab.history.index),
+      navigationEntry(origin.location, originLocation),
+      navigationEntry(location, targetLocation),
+    ].slice(-MAX_HISTORY_ENTRIES);
+    return {
+      ...tab,
+      visitedViews: [...new Set([...tab.visitedViews, location.view])],
+      history: { entries, index: entries.length - 1 },
+    };
+  });
+  return claimWorkspaceArticleEditOwnership(positioned, articleId, destination.id);
 }
 
 export function activateWorkspaceTab(state: WorkspaceRuntimeState, groupId: string, tabId: string) {
@@ -511,7 +601,7 @@ export function openWorkspaceTabBeside(
     const existing = sourceGroup.tabs.find(
       (tab) => workspaceLocationKey(activeLocation(tab)) === workspaceLocationKey(location),
     );
-    if (existing) return moveExistingTabBesideOutline(state, sourceGroup, sourceTabId, existing);
+    if (existing) return moveExistingTabBesideSource(state, sourceGroup, sourceTabId, existing);
   }
   if (state.groups.length === 2) {
     const targetGroup = state.groups.find((group) => group.id !== sourceGroup.id);
@@ -538,10 +628,10 @@ export function openWorkspaceTabBeside(
   };
 }
 
-function moveExistingTabBesideOutline(
+function moveExistingTabBesideSource(
   state: WorkspaceRuntimeState,
   sourceGroup: WorkspaceRuntimeGroup,
-  outlineTabId: string,
+  sourceTabId: string,
   tab: WorkspaceRuntimeTab,
 ): WorkspaceRuntimeState {
   if (state.groups.length === 2)
@@ -549,7 +639,7 @@ function moveExistingTabBesideOutline(
       {
         ...state,
         groups: state.groups.map((group) =>
-          group.id === sourceGroup.id ? { ...group, activeTabId: outlineTabId } : group,
+          group.id === sourceGroup.id ? { ...group, activeTabId: sourceTabId } : group,
         ),
       },
       tab.id,
@@ -562,7 +652,7 @@ function moveExistingTabBesideOutline(
     groups: [
       {
         ...sourceGroup,
-        activeTabId: outlineTabId,
+        activeTabId: sourceTabId,
         tabs: sourceGroup.tabs.filter((candidate) => candidate.id !== tab.id),
       },
       { id: targetGroupId, activeTabId: tab.id, tabs: [tab] },

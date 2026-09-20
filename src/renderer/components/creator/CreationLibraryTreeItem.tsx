@@ -58,7 +58,7 @@ export function CreationTreeNodeFrame({
 }
 
 export function getCreationTreeMediaNodeMetrics(items: readonly MediaStackItem[], maxItems = 3) {
-  const paintedBounds = getMediaStackHorizontalBounds('tree', items, 'settled', maxItems);
+  const paintedBounds = getMediaStackHorizontalBounds('tree', items, 'expanded', maxItems);
   return {
     bounds: getMediaStackPrimaryFrameBounds('tree', items, maxItems),
     width: Math.ceil(Math.max(getMediaStackLayout('tree').containerWidth, paintedBounds.right)),
@@ -159,12 +159,12 @@ export const CreationLibraryTreeItem = forwardRef<HTMLDivElement, CreationLibrar
           branchTopology={branchTopology}
           className={cn(
             '-ml-1 flex h-[4.25rem] w-16 items-center',
-            childBranch ? 'pointer-events-auto' : 'pointer-events-none',
+            childBranch || canSpreadPreview ? 'pointer-events-auto' : 'pointer-events-none',
             previewClassName,
           )}
           style={previewStyle}
-          {...(childBranch ? previewGesture.bindings : {})}
-          onClick={childBranch ? onOpen : undefined}
+          {...(childBranch || canSpreadPreview ? previewGesture.bindings : {})}
+          onClick={childBranch || canSpreadPreview ? onOpen : undefined}
         >
           {typeof preview === 'function' ? preview(previewGesture.previewExpanded) : preview}
         </CreationTreeNodeFrame>

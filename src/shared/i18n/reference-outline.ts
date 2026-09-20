@@ -1,0 +1,110 @@
+import { contentSearchMessages } from '@/shared/i18n/content-search';
+
+export const referenceOutlineMessages = {
+  lookup: contentSearchMessages,
+  refresh: 'Reload source preview',
+  retry: 'Retry',
+  exportJson: 'Download document JSON',
+  locationMissing: 'The target block no longer exists in this document.',
+  useLocation: 'Open this use site',
+  findUses: 'Find use sites',
+  openSource: 'Open current source',
+  editSourceBeside: 'Edit source side by side',
+  navigationUnsupported:
+    'Editing-location navigation is currently available for articles and outlines in the main workspace.',
+  useChanged: 'This reference was removed or replaced at its use site.',
+  workspaceFull: 'The other pane has reached its tab limit. Close a tab or open the source here.',
+  outline: 'Outline',
+  contents: 'Contents',
+  newOutline: 'New outline',
+  outlineCreated: 'Outline created',
+  untitledOutline: 'Untitled outline',
+  copyReference: 'Copy reference',
+  copied: 'Copied',
+  self: 'This item',
+  subtree: 'Include child items',
+  convert: 'Convert to editable content',
+  copyText: 'Copy text',
+  resize: 'Resize reference height',
+  viewImage: 'View image',
+  addItem: 'Add item',
+  addNote: 'Add note',
+  addNoteList: 'Add note list',
+  moveTo: 'Move to',
+  selectItem: 'Select item',
+  findMoveTarget: 'Find a target item',
+  beforeItem: 'Before',
+  insideItem: 'Inside',
+  afterItem: 'After',
+  useAsNoteList: 'Use as note list',
+  useAsChildItems: 'Use as child items',
+  indent: 'Indent',
+  outdent: 'Outdent',
+  deleteBranch: 'Delete item and children',
+  whole: 'Whole document',
+  collapse: 'Collapse',
+  expand: 'Expand',
+  collapseChildBranches: 'Collapse child branches',
+  expandChildBranches: 'Expand child branches',
+  collapseAllParents: 'Collapse all parent nodes',
+  expandAllParents: 'Expand all parent nodes',
+  zoom: 'Focus this branch',
+  search: 'Find in contents',
+  empty: 'No matching blocks',
+  unnamed: 'Untitled block',
+  back: 'Back',
+  insert: 'Insert fixed reference',
+  selected: 'Reference this saved block',
+  savedOnly: 'References use saved revisions, not unsaved input.',
+  sources: 'Works',
+  items: 'Creation items',
+  albums: 'Albums',
+  searchSources: 'Find a source',
+  more: 'Load more',
+  choose: 'Choose a source',
+  members: 'Fixed member list',
+  memberNote: 'Keeps direct members and order, not full contents or descendants. Later changes do not sync.',
+  block: 'Block',
+  section: 'Include this heading’s section',
+  captured: 'Captured version',
+  current: 'Inspect current source',
+  unavailable: 'The source or block is unavailable. The captured content remains below.',
+  changed: 'The source changed. Inspect it again before capturing.',
+  failure: 'This action failed. Please retry.',
+  saveFailed: 'Could not save the source. Save it before copying the reference.',
+  captureFailed: 'Could not capture the reference. Please retry.',
+  clipboardFailed: 'Could not write to the clipboard. Please retry.',
+  missingBlock: 'This block has no saved identity yet. Save the work first.',
+  blockUnavailable: 'This saved revision has no unique matching block. Check the source and revision.',
+  unsupportedScope: 'This block cannot be referenced separately. Select a supported block or the whole document.',
+  sourceUnavailable: 'This source is unavailable. Check whether it was archived or deleted.',
+  limited: 'This collection is too large. Reference a smaller group.',
+  usesLimited: 'There are too many use sites for this query. Choose a specific source block.',
+  uses: 'Use sites in current active articles',
+  noUses: 'No use sites in this page of results.',
+  noUsesFinal: 'No current article use sites found.',
+  range: 'Legacy text-range reference',
+  readonly: 'Read-only snapshot',
+  example: 'AIY requirements → concepts → design → acceptance',
+  softwareExample: 'AIY: software development and maintenance',
+  exampleNote: 'An editable example, separate from your library. No automatic writes to existing works.',
+  reset: 'Reset example',
+  export: 'Download Markdown',
+  resetConfirm: 'Reset this example and discard its local edits?',
+};
+export function referenceFailure(reason: unknown, copy: typeof referenceOutlineMessages, fallback = copy.failure) {
+  const text = String(reason);
+  if (text.includes('REFERENCE_NAVIGATION_UNSUPPORTED')) return copy.navigationUnsupported;
+  if (text.includes('REFERENCE_USE_CHANGED')) return copy.useChanged;
+  if (text.includes('REFERENCE_LOCATION_MISSING')) return copy.locationMissing;
+  if (text.includes('REFERENCE_WORKSPACE_FULL')) return copy.workspaceFull;
+  if (text.includes('REFERENCE_SAVE_FAILED')) return copy.saveFailed;
+  if (text.includes('REFERENCE_COPY_FAILED')) return copy.clipboardFailed;
+  if (text.includes('REFERENCE_TARGET_CHANGED')) return copy.changed;
+  if (/BLOCK_ID_UNAVAILABLE|BLOCK_ID_AMBIGUOUS/u.test(text)) return copy.blockUnavailable;
+  if (text.includes('BLOCK_SCOPE_UNSUPPORTED')) return copy.unsupportedScope;
+  if (text.includes('REFERENCE_SOURCE_UNAVAILABLE')) return copy.sourceUnavailable;
+  if (text.includes('REFERENCE_USES_LIMIT')) return copy.usesLimited;
+  if (text.includes('REFERENCE_MEMBERS_LIMIT')) return copy.limited;
+  return fallback;
+}

@@ -30,10 +30,7 @@ import { useCreatorOutputNavigation } from '@/renderer/components/creator/workfl
 import { useCreatorPromptVersionCreation } from '@/renderer/components/creator/workflows/useCreatorPromptVersionCreation';
 import { useDerivedVisualWorkspaceNavigation } from '@/renderer/components/creator/workflows/useDerivedVisualWorkspaceNavigation';
 import type { DerivedVisualWorkspaceViewState } from '@/renderer/components/creator/derivedVisualWorkspace';
-import type {
-  CreationDraftPromptSnapshot,
-  CreationDraftSaveSnapshot,
-} from '@/renderer/components/creator/workflows/creationDraftSnapshot';
+import type { CreationDraftPromptSnapshot } from '@/renderer/components/creator/workflows/creationDraftSnapshot';
 import type { useCreatorAssistantRequest } from '@/renderer/components/creator/workflows/useCreatorAssistantRequest';
 import type { useCreatorInputHydration } from '@/renderer/components/creator/workflows/useCreatorInputHydration';
 import type { useCreatorLocationSelection } from '@/renderer/components/creator/screen/useCreatorLocationSelection';
@@ -53,7 +50,6 @@ interface Options {
   locationApplicationRef: MutableRefObject<CreatorLocationApplication>;
   appendPromptText(value: string): void;
   automaticChangeSummary: string;
-  captureDraft(): CreationDraftSaveSnapshot;
   capturePrompt(): CreationDraftPromptSnapshot;
   chooseDerivedVisual(visualId: string, view?: DerivedVisualWorkspaceViewState): Promise<void>;
   clearAssistantError(): void;
@@ -72,6 +68,9 @@ interface Options {
   initialDraft: CreationDraftDto | null;
   initialSeriesId: string | null;
   invalidateAutosaves(): void;
+  hasPendingInput(): boolean;
+  getSavedDraft(): CreationDraftDto | null;
+  isDraftInputSaved(): boolean;
   locale: Locale;
   location: CreatorLocation;
   manualPrompt: string;
@@ -86,7 +85,6 @@ interface Options {
   outputSeriesAvailable: boolean;
   panes: Panes;
   preserveParentSelection: boolean;
-  preserveCapturedDraft(snapshot: CreationDraftSaveSnapshot): Promise<unknown>;
   preserveWorkingInput(): Promise<boolean>;
   promptNodesRef: MutableRefObject<CreatorPromptNodeInput[]>;
   promptProfileId: string;
@@ -162,8 +160,8 @@ interface Options {
 
 function usePrimaryNavigation(options: Options) {
   const creation = useCreatorCreationNavigation({
+    active: options.active,
     albumTree: options.albumTree,
-    captureDraft: options.captureDraft,
     clearSavedInspiration: options.clearSavedInspiration,
     clearSelection: options.clearSelection,
     commit: options.commit,
@@ -172,6 +170,9 @@ function usePrimaryNavigation(options: Options) {
     creationSessions: options.creationSessions,
     defaultPromptLocale: options.defaultPromptLocale,
     detachDraftIdentity: options.detachDraftIdentity,
+    hasPendingInput: options.hasPendingInput,
+    getSavedDraft: options.getSavedDraft,
+    isDraftInputSaved: options.isDraftInputSaved,
     invalidateAutosaves: options.invalidateAutosaves,
     locale: options.locale,
     location: options.location,
@@ -180,7 +181,6 @@ function usePrimaryNavigation(options: Options) {
     newTitle: options.newTitle,
     notify: options.notify,
     onComparisonFullWindowChange: options.onComparisonFullWindowChange,
-    preserveCapturedDraft: options.preserveCapturedDraft,
     preserveWorkingInput: options.preserveWorkingInput,
     referenceAssetCount: options.referenceAssetCount,
     resetInputs: options.resetInputs,

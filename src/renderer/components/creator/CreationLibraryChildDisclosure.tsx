@@ -21,6 +21,7 @@ interface Props {
   onCollapse(): void;
   onReveal(): void;
   onReset?(): void;
+  onAssetSelect?(asset: AssetDto): void;
 }
 
 /** A covered continuation row for the next hidden batch in an expanded directory. */
@@ -34,6 +35,7 @@ export function CreationLibraryChildDisclosure({
   onCollapse,
   onReveal,
   onReset,
+  onAssetSelect,
 }: Props) {
   const previewItems = previewAssets.slice(0, 3).map((asset) => ({ asset }));
   const previewMetrics = getCreationTreeMediaNodeMetrics(previewItems);
@@ -49,16 +51,18 @@ export function CreationLibraryChildDisclosure({
       titleClassName="text-sm font-normal text-muted-foreground"
       previewBounds={previewMetrics.bounds}
       previewStyle={{ width: previewMetrics.width }}
-      preview={
+      canSpreadPreview={previewItems.length > 1}
+      preview={(expanded) => (
         <MediaStackPreview
           className="pointer-events-none"
           items={previewItems}
           maxItems={3}
           singleItemAlign="center"
           size="tree"
-          spread="settled"
+          spread={expanded ? 'expanded' : 'settled'}
+          onAssetSelect={onAssetSelect}
         />
-      }
+      )}
       controls={
         loading ? (
           <LoaderCircleIcon className="pointer-events-none relative z-10 mr-3 size-3.5 animate-spin text-muted-foreground" />
@@ -106,6 +110,7 @@ export function CreationLibraryChildList({
   onCollapse,
   onReveal,
   onReset,
+  onAssetSelect,
   showDisclosure,
 }: ChildListProps) {
   if (!hasVisibleChildren && !showDisclosure) return null;
@@ -124,6 +129,7 @@ export function CreationLibraryChildList({
             onCollapse={onCollapse}
             onReveal={onReveal}
             onReset={onReset}
+            onAssetSelect={onAssetSelect}
           />
         )}
       </TreeBranchCollapseProvider>

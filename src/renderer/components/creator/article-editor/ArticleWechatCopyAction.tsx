@@ -9,8 +9,12 @@ import type {
   VideoDocumentRevisionMediaDto,
 } from '@/shared/contracts';
 import {
+  articleWechatInteractionProjection,
+  type ArticleWechatInteractionProjection,
+} from '@/shared/article-wechat-interactions';
+import {
   normalizeArticleWechatMediaPath,
-  renderArticleForWechat,
+  renderArticleForWechatDocument,
   type ArticleWechatRenderResult,
 } from '@/shared/article-wechat-renderer';
 import {
@@ -32,6 +36,8 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/renderer/components/
 interface PreviewSnapshot {
   content: ArticleContentInput;
   media: VideoDocumentRevisionMediaDto[];
+  projection: ArticleWechatInteractionProjection | null;
+  expandedProjectionMarkdown: string | null;
 }
 
 interface PreviewRenderState {
@@ -63,10 +69,14 @@ function previewImageSources(snapshot: PreviewSnapshot) {
 function renderPreview(snapshot: PreviewSnapshot, linksAsEndReferences: boolean, zh: boolean): PreviewRenderState {
   try {
     return {
-      value: renderArticleForWechat(snapshot.content.markdown, previewImageSources(snapshot), {
-        linksAsEndReferences,
-        referenceTitle: zh ? '引用链接' : 'References',
-      }),
+      value: renderArticleForWechatDocument(
+        snapshot.content.markdown,
+        snapshot.projection,
+        snapshot.expandedProjectionMarkdown,
+        snapshot.content.mediaBindings,
+        previewImageSources(snapshot),
+        { linksAsEndReferences, referenceTitle: zh ? '引用链接' : 'References' },
+      ),
       error: null,
     };
   } catch (reason) {
@@ -104,6 +114,8 @@ function WechatCopyDebug({ rendered }: { rendered: ArticleWechatRenderResult }) 
     [labels.endReferences, diagnostics.endReferenceCount],
     [labels.ignoredLinks, diagnostics.unsupportedLinkCount],
     [labels.missingImages, diagnostics.unavailableImageCount],
+    [labels.svgBlocks, diagnostics.interactiveSvgCount],
+    [labels.staticInteractions, diagnostics.interactionCount - diagnostics.interactiveSvgCount],
   ] as const;
   return (
     <div className="flex min-h-0 flex-1 flex-col">
@@ -269,19 +281,26 @@ export function ArticleWechatCopyAction({ locale, notify, onCopy }: Props) {
       setCopyError(null);
       const content = session.captureSnapshot();
       const expanded = await window.desktopApi.contentLibrary.render(content.markdown);
+      const expandedContent = {
+        ...content,
+        markdown: expanded.markdown,
+        mediaBindings: [
+          ...new Map(
+            [
+              ...content.mediaBindings,
+              ...expanded.media.map((asset) => ({ path: asset.path, assetId: asset.assetId })),
+            ].map((binding) => [binding.path, binding]),
+          ).values(),
+        ],
+      };
+      const projection = articleWechatInteractionProjection(expandedContent.document, expandedContent.mediaBindings);
+      const expandedProjectionMarkdown = projection
+        ? (await window.desktopApi.contentLibrary.render(projection.markdown)).markdown
+        : null;
       setSnapshot({
-        content: {
-          ...content,
-          markdown: expanded.markdown,
-          mediaBindings: [
-            ...new Map(
-              [
-                ...content.mediaBindings,
-                ...expanded.media.map((asset) => ({ path: asset.path, assetId: asset.assetId })),
-              ].map((binding) => [binding.path, binding]),
-            ).values(),
-          ],
-        },
+        content: expandedContent,
+        projection,
+        expandedProjectionMarkdown,
         media: [
           ...new Map(
             [

@@ -1,0 +1,2 @@
+/* Component chunks may load before the renderer entry. Register the complete order in both. */
+@layer theme, base, components, utilities;

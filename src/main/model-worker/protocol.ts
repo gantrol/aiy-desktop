@@ -9,10 +9,11 @@ import type {
   GenerationTaskDto,
 } from '@/shared/contracts';
 import { imageGenerationPromptProfileId } from '@/shared/image-generation-prompt-profile';
+import { generationQualitySchema } from '@/shared/generation-quality';
 
 // The wire version tracks message compatibility. The runtime fingerprint
 // separately prevents a host from reusing worker code from another build.
-export const MODEL_WORKER_PROTOCOL_VERSION = 6;
+export const MODEL_WORKER_PROTOCOL_VERSION = 8;
 export const MODEL_WORKER_MAX_MESSAGE_BYTES = 16 * 1024 * 1024;
 
 export const modelWorkerMethods = [
@@ -24,6 +25,9 @@ export const modelWorkerMethods = [
   'agent.asset.import',
   'agent.intake.import',
   'agent.intake.get',
+  'agent.content.read',
+  'content-pack.preview',
+  'content-pack.apply',
   'agent.draft.prepare',
   'agent.generation.start',
   'agent.job.get',
@@ -43,6 +47,7 @@ export const modelWorkerMethods = [
   'generation.configure-concurrency',
   'codex.refresh-health',
   'codex.list-models',
+  'codex.read-usage-quota',
   'codex.check-article',
   'codex.plan-gif',
   'antigravity.refresh-status',
@@ -248,7 +253,7 @@ const imageGenerationRouteSchema: z.ZodType<ImageGenerationRouteDto> = z
       )
       .max(20),
     qualityMode: z.enum(['SELECTABLE', 'PROVIDER_MANAGED']),
-    supportedQualities: z.array(z.enum(['low', 'medium', 'high'])).max(3),
+    supportedQualities: z.array(generationQualitySchema).max(5),
   })
   .strict()
   .transform((route): ImageGenerationRouteDto => {

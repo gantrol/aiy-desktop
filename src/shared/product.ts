@@ -11,7 +11,7 @@ export function productNameForLocale(locale: string) {
 
 // This versions the extension-host API, not the desktop package. Keep it stable
 // across app releases unless extension compatibility actually changes.
-export const EXTENSION_HOST_VERSION = '0.3.9';
+export const EXTENSION_HOST_VERSION = '0.3.10';
 export const EXTENSION_HOST_ENGINE_KEY = 'aiy' as const;
 export type ExtensionHostEngineKey = typeof EXTENSION_HOST_ENGINE_KEY;
 

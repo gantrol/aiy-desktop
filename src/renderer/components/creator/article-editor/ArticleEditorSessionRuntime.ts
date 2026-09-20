@@ -39,6 +39,8 @@ import { articleCommentAnchorUpdates } from '@/shared/contracts/article';
 import type { BlockDocument } from '@/shared/contracts/block-document';
 import { blockDocumentImportIds } from '@/shared/contracts/block-document';
 import type { RendererDiagnosticInput } from '@/shared/contracts/renderer-diagnostics';
+import { articleCoverAssetIds, type ArticleCoverRatio, type ArticleCoverVariant } from '@/shared/article-covers';
+import { articleReferenceAssetIds } from '@/shared/article-reference-assets';
 
 type RecoveryStatus = ArticleEditorRecoveryResult['kind'] | 'loading';
 type RevisionConflict = Extract<ArticleRevisionSaveResult, { status: 'CONFLICT' }>;
@@ -75,6 +77,19 @@ export interface ArticleEditorSessionRuntime {
   articleElementsChanged(): number;
   titleChanged(title: string): number;
   coverChanged(assetId: string | null): number;
+  coverVariantChanged(
+    ratio: ArticleCoverRatio,
+    variant: ArticleCoverVariant | null,
+    imported?: readonly VideoDocumentEditorImageImport[],
+  ): boolean;
+  sharedCoverVariantChanged(
+    variant: ArticleCoverVariant,
+    imported?: readonly VideoDocumentEditorImageImport[],
+  ): boolean;
+  canUndoCover(): boolean;
+  canRedoCover(): boolean;
+  undoCover(): boolean;
+  redoCover(): boolean;
   imageImported(result: VideoDocumentEditorImageImport): number;
   imageRemoved(assetId: string): number;
   registerEditor(
@@ -97,6 +112,12 @@ interface RuntimeOptions {
   onSave(input: ArticleRevisionSaveInput): Promise<ArticleRevisionSaveResult>;
   onSaved(article: ArticleDto): void;
   spaceId: string;
+}
+
+interface CoverHistoryEntry {
+  coverAssetId: string | null;
+  coverVariants: readonly ArticleCoverVariant[];
+  imported: readonly VideoDocumentEditorImageImport[];
 }
 
 class ArticleSession implements ArticleEditorSessionRuntime {
@@ -125,6 +146,8 @@ class ArticleSession implements ArticleEditorSessionRuntime {
   #receivedArticle: ArticleDto;
   #capturedKey: string;
   #document?: BlockDocument;
+  readonly #coverUndo: CoverHistoryEntry[] = [];
+  readonly #coverRedo: CoverHistoryEntry[] = [];
 
   updateHandlers(handlers: Pick<RuntimeOptions, 'onSave' | 'onSaved' | 'onConflict' | 'onError' | 'onRecoveryError'>) {
     Object.assign(this.#options, handlers);
@@ -286,9 +309,14 @@ class ArticleSession implements ArticleEditorSessionRuntime {
 
   #loadArticle(next: ArticleDto, draft: ArticleEditorRecoveredDraft | null = null) {
     if (!this.#coordinator.reset()) return false;
+    this.#coverUndo.length = 0;
+    this.#coverRedo.length = 0;
     this.#document = draft?.content.document ?? next.content.document;
     this.#detachEditor();
-    this.#elements = (draft?.elements ?? next.elements).map((element) => ({ ...element }));
+    // Recovery element placements are part of the untrusted draft. The editor
+    // rehydrates them against the current article's persisted placements so a
+    // failed cross-article paste cannot reintroduce foreign identities.
+    this.#elements = next.elements.map((element) => ({ ...element }));
     this.#anchors = [...(draft?.commentAnchors ?? articleCommentAnchorUpdates(next.comments))];
     this.#markdown = draft?.content.markdown ?? next.content.markdown;
     this.model.loadArticle(
@@ -457,10 +485,85 @@ class ArticleSession implements ArticleEditorSessionRuntime {
     this.model.addImportedImage(result.binding, result.media);
     return this.#recordChange();
   };
-  coverChanged = (assetId: string | null) => {
-    this.model.setCover(assetId);
+  #captureCovers = (): CoverHistoryEntry => {
+    const { metadata, media } = this.model.getSnapshot().draft;
+    const ids = new Set(articleCoverAssetIds(metadata));
+    return {
+      coverAssetId: metadata.coverAssetId,
+      coverVariants: (metadata.coverVariants ?? []).map((variant) => ({ ...variant, crop: { ...variant.crop } })),
+      imported: metadata.mediaBindings
+        .filter((binding) => ids.has(binding.assetId))
+        .flatMap((binding) => {
+          const asset = media.find((item) => item.assetId === binding.assetId);
+          return asset
+            ? [
+                {
+                  binding: {
+                    ...binding,
+                    kind: 'IMAGE' as const,
+                    timestampMs: null,
+                    endTimestampMs: null,
+                    posterAssetId: null,
+                  },
+                  media: { ...asset },
+                },
+              ]
+            : [];
+        }),
+    };
+  };
+  #recordCoverChange = (previous: CoverHistoryEntry) => {
+    const current = this.#captureCovers();
+    if (
+      JSON.stringify([previous.coverAssetId, previous.coverVariants]) !==
+      JSON.stringify([current.coverAssetId, current.coverVariants])
+    ) {
+      this.#coverUndo.push(previous);
+      if (this.#coverUndo.length > 20) this.#coverUndo.shift();
+      this.#coverRedo.length = 0;
+    }
     return this.#recordChange();
   };
+  #bodyAssetIds = () => articleReferenceAssetIds({ ...this.captureSnapshot(), coverAssetId: null, coverVariants: [] });
+  coverChanged = (assetId: string | null) => {
+    const previous = this.#captureCovers();
+    this.model.setCovers(assetId, assetId ? previous.coverVariants : [], [], this.#bodyAssetIds());
+    return this.#recordCoverChange(previous);
+  };
+  coverVariantChanged = (
+    ratio: ArticleCoverRatio,
+    variant: ArticleCoverVariant | null,
+    imported: readonly VideoDocumentEditorImageImport[] = [],
+  ) => {
+    const previous = this.#captureCovers();
+    if (!this.model.setCoverVariant(ratio, variant, imported, this.#bodyAssetIds())) return false;
+    this.#recordCoverChange(previous);
+    return true;
+  };
+  sharedCoverVariantChanged = (
+    variant: ArticleCoverVariant,
+    imported: readonly VideoDocumentEditorImageImport[] = [],
+  ) => {
+    const previous = this.#captureCovers();
+    if (!this.model.setCovers(variant.sourceAssetId, [variant], imported, this.#bodyAssetIds())) return false;
+    this.#recordCoverChange(previous);
+    return true;
+  };
+  canUndoCover = () => this.#coverUndo.length > 0;
+  canRedoCover = () => this.#coverRedo.length > 0;
+  #restoreCoverHistory = (from: CoverHistoryEntry[], to: CoverHistoryEntry[]) => {
+    const entry = from.at(-1);
+    if (!entry || this.#disposed) return false;
+    const previous = this.#captureCovers();
+    if (!this.model.setCovers(entry.coverAssetId, entry.coverVariants, entry.imported, this.#bodyAssetIds()))
+      return false;
+    from.pop();
+    to.push(previous);
+    this.#recordChange();
+    return true;
+  };
+  undoCover = () => this.#restoreCoverHistory(this.#coverUndo, this.#coverRedo);
+  redoCover = () => this.#restoreCoverHistory(this.#coverRedo, this.#coverUndo);
   imageRemoved = (assetId: string) => {
     if (!this.#editorHandle || !this.model.removeImage(assetId)) return this.model.getSnapshot().draft.sequence;
     this.#editorHandle.removeImageAssets([assetId]);
@@ -505,6 +608,8 @@ class ArticleSession implements ArticleEditorSessionRuntime {
     if (!revision.content.document) hydrateArticleElementJsonIdentities(document.root, revision.elements);
     const content = editableArticleContentDto({ ...revision.content, schemaVersion: 2, document });
     if (!this.model.replaceDraft(content, articleEditorMediaFromContent(revision.content))) return false;
+    this.#coverUndo.length = 0;
+    this.#coverRedo.length = 0;
     this.#detachEditor();
     this.#document = content.document;
     this.#markdown = content.markdown;

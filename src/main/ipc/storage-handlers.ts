@@ -9,12 +9,12 @@ import type {
   LocalSpaceMigrationResult,
   LocalSpaceRegistryDto,
   LocalSpaceSwitchResult,
-  PackApplyImportResult,
   PackImportPreviewDto,
   PackImportLocalResult,
   TransitionPreviewDto,
 } from '@/shared/contracts';
 import type { LibraryDatabase } from '@/main/database';
+import { applyContentPackCommand, previewContentPackCommand } from '@/main/content-packs/commands';
 import type { IpcHandlerRegistrar } from '@/main/ipc/trusted-handlers';
 
 export interface LocalSpaceActions {
@@ -170,7 +170,11 @@ export function registerStorageIpc(
     }
     prunePendingPackImports();
     const requestId = randomUUID();
-    const { packageFingerprint, ...plannedPreview } = await database.previewContentPack(result.filePaths[0]);
+    const { packageFingerprint, ...plannedPreview } = await previewContentPackCommand(database, {
+      protocolVersion: 1,
+      spaceId: database.getLocalSpace().id,
+      path: result.filePaths[0],
+    });
     const preview = { ...plannedPreview, requestId };
     pendingPackImports.set(requestId, {
       packagePath: result.filePaths[0],
@@ -194,15 +198,13 @@ export function registerStorageIpc(
     if (database.getLocalSpace().id !== pending.spaceId) {
       throw new Error('The active local space changed after the content pack preview');
     }
-    const packId = await database.importPreviewedContentPack(
-      pending.packagePath,
-      pending.preview.targetContentHash,
-      pending.packageFingerprint,
-    );
-    const installation = database.listPackInstallations().find((item) => item.packId === packId);
-    if (!installation?.selectedReleaseId) throw new Error('Content pack update did not select a release');
-    const release = database.getPackRelease(installation.selectedReleaseId);
-    return { packId, releaseId: release.id, version: release.version } satisfies PackApplyImportResult;
+    return applyContentPackCommand(database, {
+      protocolVersion: 1,
+      spaceId: pending.spaceId,
+      path: pending.packagePath,
+      expectedContentHash: pending.preview.targetContentHash,
+      expectedPackageFingerprint: pending.packageFingerprint,
+    });
   });
   ipcMain.handle('content-pack:discard-local', (_event, rawRequestId) => {
     pendingPackImports.delete(pendingPackImportId.parse(rawRequestId));

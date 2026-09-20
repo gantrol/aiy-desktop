@@ -5,6 +5,7 @@ import { creationCoverFirstAssets } from '@/renderer/components/creator/creation
 import {
   creationFormPreviewAssetIds,
   creationFormTitle,
+  creationFormKindLabel,
   type CreationFormProjection,
   type CreationItemProjection,
 } from '@/renderer/components/creator/creationLibraryProjection';
@@ -82,7 +83,7 @@ export function createOutlineTree(
       const formNode: OutlineNode = {
         key: formKey,
         title: creationFormTitle(form, labels),
-        label: labels.formKinds[form.role],
+        label: creationFormKindLabel(form, labels),
         kind: 'form',
         previewAssetId: formPreviewAssetId(form),
         parent: itemKey,

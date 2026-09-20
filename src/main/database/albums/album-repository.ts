@@ -102,13 +102,13 @@ export class AlbumRepository {
       );
   }
 
-  create(input: AlbumCreateInput): AlbumDto {
+  create(input: AlbumCreateInput, identity?: { id: string }): AlbumDto {
     return this.db.transaction(() => {
       const titleLocale = input.titleLocale ?? 'zh';
       if (input.intent?.trim() === MATERIAL_LIBRARY_ALBUM_INTENT)
         throw new Error('Material library albums must use the material album API');
       if (input.parentAlbumId) this.assertAlbumAcceptsContent(input.parentAlbumId);
-      const id = ulid();
+      const id = identity?.id ?? ulid();
       const timestamp = now();
       this.db
         .prepare(
@@ -132,7 +132,7 @@ export class AlbumRepository {
     return this.getAlbumDto(albumId);
   }
 
-  private assertAlbumAcceptsContent(albumId: string) {
+  assertAlbumAcceptsContent(albumId: string) {
     this.assertAlbumExists(albumId);
     const archived = this.db
       .prepare(

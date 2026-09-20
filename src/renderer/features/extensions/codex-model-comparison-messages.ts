@@ -21,7 +21,7 @@ export const codexModelComparisonMessages = {
   distribution: 'Turn distribution',
   noMetricSamples: 'No usable samples for this metric',
   distributionNote:
-    'Each line shows P0–P100 in 1-percentile steps with linear interpolation, on the same scale. P90 is the value at the 90th percentile. Each group uses its own usable samples; missing measurements are excluded, not zero. Small samples and different task difficulty limit comparisons.',
+    'Each line shows P0–P100 in 1-percentile steps with linear interpolation, on the same scale. Dot colors identify model and reasoning effort; A is filled and B is hollow. P90 is the value at the 90th percentile. Each group uses its own usable samples; missing measurements are excluded, not zero. Small samples and different task difficulty limit comparisons.',
   creditQuota:
     'AIY estimates Credits from tokens and public model/mode rates; this is not a bill. Plus and Pro included limits are separate from purchased credits, which extend usage after included limits are reached. No fixed Credits-to-percentage conversion is published. Estimate Credits per percentage point only from the same account, plan and quota window; five-hour and weekly limits must be calibrated separately.',
   metrics: {
@@ -55,4 +55,17 @@ export const codexModelComparisonMessages = {
   pricing:
     'API equivalents use each response’s date and Standard rate, including long-context pricing. Credits use the recorded service mode. Only fully priced turns enter each cost distribution; missing prices remain unavailable.',
   coverage: 'Usable samples',
+  overall: {
+    title: 'Normalized overall comparison',
+    note: 'Each side is normalized per 1M total tokens using its observed cached-input and output mix. API is an equivalent price; Credits are an estimate, not account quota consumption.',
+    metric: 'Metric',
+    comparison: 'B vs A',
+    inputCacheShare: 'Cached input share',
+    outputShare: 'Output share',
+    apiPerMillion: 'API equivalent / 1M total tokens (USD)',
+    creditsPerMillion: 'Credits / 1M total tokens',
+    apiCoverage: 'API-priced token coverage',
+    creditsCoverage: 'Credits-priced token coverage',
+    percentagePoint: ' pp',
+  },
 } as const;

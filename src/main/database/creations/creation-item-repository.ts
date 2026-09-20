@@ -25,6 +25,7 @@ import {
   type CreationItemSetPrimaryInput,
 } from '@/shared/contracts/creation-library';
 import { creationItemIncludesSeries } from '@/main/database/creations/creation-output-presentation-sql';
+import { creationImageSourceFormsSql } from '@/main/database/creations/creation-image-source-sql';
 
 const primaryRoles = new Set<CreationFormRole>([
   'ANIMATION',
@@ -109,61 +110,8 @@ export class CreationItemRepository {
 
   findSourceFormForImageAsset(assetId: string, preferredFormId: string | null = null): CreationFormDto | null {
     const row = this.db
-      .prepare(
-        `WITH asset_series(series_id, relation_priority, relation_at, relation_key) AS (
-          SELECT version.series_id, 0, run.created_at, run.id
-          FROM generation_runs run
-          JOIN prompt_versions version ON version.id = run.prompt_version_id
-          WHERE run.result_asset_id = ? AND run.status = 'SUCCEEDED'
-          UNION ALL
-          SELECT imported.series_id, 0, imported.created_at, imported.id
-          FROM creation_output_imports imported
-          WHERE imported.image_asset_id = ? AND imported.deleted_at IS NULL
-          UNION ALL
-          SELECT transform.series_id, 0, transform.created_at, transform.id
-          FROM image_transform_runs transform
-          WHERE transform.output_asset_id = ? AND transform.deleted_at IS NULL
-          UNION ALL
-          SELECT version.series_id, 1, version.created_at, binding.id
-          FROM reference_bindings binding
-          JOIN prompt_versions version ON version.id = binding.prompt_version_id
-          WHERE binding.image_asset_id = ?
-          UNION ALL
-          SELECT version.series_id, 1, version.created_at, 'source:' || version.id
-          FROM prompt_versions version
-          WHERE version.source_image_id = ?
-        ), owner_forms(form_id, owner_series_id) AS (
-          SELECT form.id, form.entity_id
-          FROM creation_forms form
-          WHERE form.role = 'IMAGE_CREATION' AND form.entity_type = 'PROMPT_SERIES'
-            AND form.deleted_at IS NULL
-          UNION ALL
-          SELECT form.id, visual.prompt_series_id
-          FROM creation_forms form
-          JOIN derived_visuals visual ON visual.id = form.entity_id
-          WHERE form.entity_type = 'DERIVED_VISUAL' AND form.deleted_at IS NULL
-            AND visual.prompt_series_id IS NOT NULL
-        ), candidate_forms AS (
-          SELECT form.*, asset.relation_priority AS match_relation_priority,
-            asset.relation_at AS match_relation_at, asset.relation_key AS match_relation_key,
-            asset.series_id AS match_series_id, owner.owner_series_id AS match_owner_series_id
-          FROM asset_series asset
-          JOIN owner_forms owner ON ${creationItemIncludesSeries('owner.owner_series_id', 'asset.series_id')}
-          JOIN creation_forms form ON form.id = owner.form_id AND form.deleted_at IS NULL
-          JOIN creation_items item ON item.id = form.creation_item_id
-            AND item.archived_at IS NULL AND item.deleted_at IS NULL
-          WHERE (? IS NOT NULL OR asset.relation_priority = 0)
-            AND (? IS NULL OR form.id = ?)
-        )
-        SELECT * FROM candidate_forms
-        WHERE (SELECT COUNT(DISTINCT creation_item_id) FROM candidate_forms) = 1
-        ORDER BY match_relation_priority,
-          CASE WHEN match_owner_series_id = match_series_id THEN 0 ELSE 1 END,
-          match_relation_at DESC, match_relation_key DESC, sort_order, created_at, id
-        LIMIT 1`,
-      )
-      .get(assetId, assetId, assetId, assetId, assetId, preferredFormId, preferredFormId, preferredFormId) as
-      JsonMap | undefined;
+      .prepare(creationImageSourceFormsSql('SELECT @assetId', '@preferredFormId'))
+      .get({ assetId, preferredFormId }) as JsonMap | undefined;
     return row ? formDto(row) : null;
   }
 
@@ -277,11 +225,11 @@ export class CreationItemRepository {
     return row ? formDto(row) : null;
   }
 
-  createWithForm(input: CreationItemCreateWithFormInput): CreationFormAddOrGetResult {
+  createWithForm(input: CreationItemCreateWithFormInput, identity?: { id: string }): CreationFormAddOrGetResult {
     const parsedInput = creationItemCreateWithFormInputSchema.parse(input);
     return this.db
       .transaction(() => {
-        const creationItemId = ulid();
+        const creationItemId = identity?.id ?? ulid();
         const registration = creationFormAddOrGetInputSchema.parse({ ...parsedInput.form, creationItemId });
         if (!primaryRoles.has(registration.role) && registration.role !== 'INSPIRATION') {
           throw new Error('A creation item cannot begin with an auxiliary visual form');

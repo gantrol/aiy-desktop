@@ -5,8 +5,14 @@ import type { NaturalWatermarkPreviewImageStore } from '@/main/extensions/natura
 import { readBoundedImageFile } from '@/main/media/bounded-image-file';
 import { imageDimensions } from '@/main/media/image-dimensions';
 import { validateCanvasPngAsync } from '@/main/media/png-validation';
-import { withDecodedImageFileInSandbox } from '@/main/media/sandboxed-image-decoder';
+import { withDecodedImageBytesInSandbox, withDecodedImageFileInSandbox } from '@/main/media/sandboxed-image-decoder';
 import type { ResolvedAssetFile } from '@/main/database/assets/asset-file-repository';
+import {
+  imageDecoderSourceMimeTypeSchema,
+  type ImageDecoderFileRequestInput,
+  type ImageDecoderSourceMimeType,
+  type ImageDecoderSuccessResponse,
+} from '@/shared/image-decoder-protocol';
 import type {
   NaturalWatermarkBrand,
   NaturalWatermarkLogo,
@@ -34,6 +40,10 @@ export interface NaturalWatermarkOutput {
   mimeType: keyof typeof outputExtensionByMimeType;
   suggestedName: string;
 }
+
+type WatermarkSource =
+  | { kind: 'file'; absolutePath: string }
+  | { kind: 'bytes'; bytes: Uint8Array<ArrayBufferLike>; mimeType: ImageDecoderSourceMimeType };
 
 function bufferView(bytes: Uint8Array<ArrayBufferLike>) {
   return Buffer.from(bytes.buffer, bytes.byteOffset, bytes.byteLength);
@@ -121,36 +131,62 @@ export class NaturalWatermarkService {
     if (!expectedExtensions?.includes(sourceExtension)) {
       throw new Error(`Natural watermark does not support ${file.mimeType}`);
     }
-    const logo = await this.logo(profile.logo);
-    return withDecodedImageFileInSandbox(
-      file.absolutePath,
-      {
-        operation: 'watermark',
-        style: logo.style,
-        text: profile.text,
-        sizeRatio: profile.sizeRatio,
-        position: resolvedPosition(profile),
-        opacity: profile.opacity,
-        logoBytes: Uint8Array.from(logo.bytes),
-        logoMimeType: logo.mimeType,
-      },
-      async (result) => {
-        if (result.operation !== 'watermark') throw new Error('Image decoder returned the wrong operation');
-        const bytes = bufferView(result.outputBytes);
-        const extension = outputExtensionByMimeType[result.outputMimeType];
-        const dimensions =
-          result.outputMimeType === 'image/png'
-            ? await validateCanvasPngAsync(bytes)
-            : imageDimensions(bytes, extension);
-        if (!dimensions || dimensions.width !== result.width || dimensions.height !== result.height) {
-          throw new Error('Watermarked image output does not match its reported dimensions');
-        }
-        return {
-          bytes,
-          mimeType: result.outputMimeType,
-          suggestedName: watermarkedName(file.suggestedName, extension),
-        };
-      },
+    return this.applySource({ kind: 'file', absolutePath: file.absolutePath }, file.suggestedName, profile);
+  }
+
+  applyBytes(
+    bytes: Uint8Array<ArrayBufferLike>,
+    mimeType: string,
+    suggestedName: string,
+    profile: NaturalWatermarkProfile,
+    signal?: AbortSignal,
+  ): Promise<NaturalWatermarkOutput> {
+    return this.applySource(
+      { kind: 'bytes', bytes, mimeType: imageDecoderSourceMimeTypeSchema.parse(mimeType) },
+      suggestedName,
+      profile,
+      signal,
     );
+  }
+
+  private async applySource(
+    source: WatermarkSource,
+    suggestedName: string,
+    profile: NaturalWatermarkProfile,
+    signal?: AbortSignal,
+  ): Promise<NaturalWatermarkOutput> {
+    signal?.throwIfAborted();
+    const logo = await this.logo(profile.logo);
+    signal?.throwIfAborted();
+    const input: ImageDecoderFileRequestInput = {
+      operation: 'watermark',
+      style: logo.style,
+      text: profile.text,
+      sizeRatio: profile.sizeRatio,
+      position: resolvedPosition(profile),
+      opacity: profile.opacity,
+      logoBytes: Uint8Array.from(logo.bytes),
+      logoMimeType: logo.mimeType,
+    };
+    const consume = async (result: ImageDecoderSuccessResponse): Promise<NaturalWatermarkOutput> => {
+      signal?.throwIfAborted();
+      if (result.operation !== 'watermark') throw new Error('Image decoder returned the wrong operation');
+      const bytes = bufferView(result.outputBytes);
+      const extension = outputExtensionByMimeType[result.outputMimeType];
+      const dimensions =
+        result.outputMimeType === 'image/png' ? await validateCanvasPngAsync(bytes) : imageDimensions(bytes, extension);
+      if (!dimensions || dimensions.width !== result.width || dimensions.height !== result.height) {
+        throw new Error('Watermarked image output does not match its reported dimensions');
+      }
+      signal?.throwIfAborted();
+      return {
+        bytes,
+        mimeType: result.outputMimeType,
+        suggestedName: watermarkedName(suggestedName, extension),
+      };
+    };
+    return source.kind === 'bytes'
+      ? withDecodedImageBytesInSandbox(source.bytes, source.mimeType, input, consume, 120_000, signal)
+      : withDecodedImageFileInSandbox(source.absolutePath, input, consume, 120_000, signal);
   }
 }

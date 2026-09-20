@@ -28,6 +28,7 @@ import type { MessageCatalog } from '@/renderer/i18n/types';
 import { useI18n } from '@/renderer/i18n/useI18n';
 import type { DerivedVisualOperationRequest } from '@/shared/contracts/derived-visual-operations';
 import { articleIllustrationInsertionOffset } from '@/shared/article-wechat-renderer';
+import { ARTICLE_COVER_PRESET_KEYS, type ArticleCoverRatio } from '@/shared/article-covers';
 import { useWorkspaceVisualResume } from '@/renderer/components/workspace/WorkspaceVisualResumeProvider';
 
 interface Options {
@@ -161,28 +162,34 @@ export function useDerivedVisualWorkflow(options: Options) {
     },
   );
 
-  const openArticleHeaderWorkspace = useStableCallback(async (article: ArticleDto, content: ArticleContentInput) => {
-    const operationGeneration = ++operationGenerationRef.current;
-    const selectionIdentity = captureSelectionIdentity();
-    const source = creationFormByEntity(options.creationItems, 'ARTICLE', article.id);
-    if (!source) throw new Error(labels.heroSourceUnavailable);
-    const preset = canvasPresets.find((item) => item.stableKey === 'wechat_article_cover_2_35_1');
-    if (!preset) throw new Error(labels.heroCanvasUnavailable);
-    const snapshot = articleContentSnapshot(content);
-    const prompt = buildArticleHeaderPrompt(promptTemplates(), snapshot.title, snapshot.markdown);
-    const result = await window.desktopApi.derivedVisualWorkspaceOpen({
-      mode: 'CREATE',
-      role: 'ARTICLE_HEADER',
-      workspaceTitle: `${snapshot.title || labels.untitled} · ${labels.targetRoles.ARTICLE_HEADER}`.slice(0, 300),
-      sourceFormId: source.form.id,
-      articleId: article.id,
-      articleRevisionId: article.revisionId,
-      prompt,
-      canvasPresetKey: preset.stableKey,
-      locale: options.locale,
-    });
-    await finishOpen(result, operationGeneration, selectionIdentity, labels.heroOpened);
-  });
+  const openArticleHeaderWorkspace = useStableCallback(
+    async (article: ArticleDto, content: ArticleContentInput, coverRatio?: ArticleCoverRatio) => {
+      const operationGeneration = ++operationGenerationRef.current;
+      const selectionIdentity = captureSelectionIdentity();
+      const source = creationFormByEntity(options.creationItems, 'ARTICLE', article.id);
+      if (!source) throw new Error(labels.heroSourceUnavailable);
+      const preset = canvasPresets.find(
+        (item) => item.stableKey === (coverRatio ? ARTICLE_COVER_PRESET_KEYS[coverRatio] : 'xiaohongshu_portrait_3_4'),
+      );
+      if (!preset) throw new Error(labels.heroCanvasUnavailable);
+      const snapshot = articleContentSnapshot(content);
+      const prompt = buildArticleHeaderPrompt(promptTemplates(), snapshot.title, snapshot.markdown, preset);
+      const roleLabel = labels.targetRoles.ARTICLE_HEADER + (coverRatio ? ` ${coverRatio}` : '');
+      const result = await window.desktopApi.derivedVisualWorkspaceOpen({
+        mode: 'CREATE',
+        role: 'ARTICLE_HEADER',
+        ...(coverRatio ? { coverRatio } : {}),
+        workspaceTitle: `${snapshot.title || labels.untitled} · ${roleLabel}`.slice(0, 300),
+        sourceFormId: source.form.id,
+        articleId: article.id,
+        articleRevisionId: article.revisionId,
+        prompt,
+        canvasPresetKey: preset.stableKey,
+        locale: options.locale,
+      });
+      await finishOpen(result, operationGeneration, selectionIdentity, labels.heroOpened);
+    },
+  );
 
   const openArticleIllustrationWorkspace = useStableCallback(
     async (
@@ -277,7 +284,7 @@ export function useDerivedVisualWorkflow(options: Options) {
       if (visual.role === 'ARTICLE_HEADER') {
         const article = options.articles.find((item) => item.id === visual.articleId);
         if (!article) throw new Error(labels.sourceArticleUnavailable);
-        await openArticleHeaderWorkspace(article, article.content);
+        await openArticleHeaderWorkspace(article, article.content, visual.coverRatio);
         return;
       }
       const post = options.socialPosts.find((item) => item.id === visual.socialPostId);

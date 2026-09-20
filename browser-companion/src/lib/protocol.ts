@@ -459,6 +459,8 @@ export function removeHandoffIdFromUrl(value: string): string {
   const fragment = new URLSearchParams(url.hash.slice(1));
   fragment.delete('aiy-handoff');
   fragment.delete('aiy-content');
+  fragment.delete('aiy-batch');
+  fragment.delete('aiy-batch-title');
   url.hash = fragment.toString();
   return url.toString();
 }

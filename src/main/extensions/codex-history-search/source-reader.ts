@@ -4,9 +4,15 @@ import path from 'node:path';
 import Database from 'better-sqlite3';
 import { z } from 'zod';
 import {
+  CODEX_HISTORY_PROJECTED_ITEM_TYPES,
   codexUserRequestText,
   parseProjectedCodexHistoryItem,
 } from '@/main/extensions/codex-history-search/message-content';
+import {
+  codexHistoryProjectedItemBytesSql,
+  codexHistoryProjectedItemJsonSql,
+  codexHistoryProjectedItemTypePredicate,
+} from '@/main/extensions/codex-history-search/projected-item-sql';
 import {
   readCodexSidebarState,
   type CodexSidebarState,
@@ -16,7 +22,7 @@ import type { CodexHistoryThreadSource } from '@/shared/contracts/codex-history-
 const STATE_DATABASE_PATTERN = /^state_(\d+)\.sqlite$/;
 const THREAD_HISTORY_DATABASE_PATTERN = /^thread_history_(\d+)\.sqlite$/;
 const GLOBAL_STATE_FILE = '.codex-global-state.json';
-const SOURCE_SEMANTICS_REVISION = 'codex-history-source-v4';
+const SOURCE_SEMANTICS_REVISION = 'codex-history-source-v5';
 const MAX_THREADS = 100_000;
 const THREAD_LOOKUP_BATCH_SIZE = 500;
 const MESSAGE_PAGE_SIZE = 500;
@@ -88,7 +94,7 @@ const indexedMessageRowSchema = z
     threadId: z.string().min(1).max(512),
     itemId: z.string().min(1).max(512),
     createdAtMs: z.number().int().nonnegative().safe(),
-    itemType: z.enum(['userMessage', 'agentMessage']),
+    itemType: z.enum(CODEX_HISTORY_PROJECTED_ITEM_TYPES),
     itemJson: z.string().min(2).max(MAX_ITEM_JSON_BYTES),
   })
   .strict();
@@ -669,7 +675,7 @@ function parsedMessage(row: z.infer<typeof indexedMessageRowSchema>): CodexHisto
         threadId: row.threadId.toLowerCase(),
         role: parsed.role,
         createdAtMs: row.createdAtMs,
-        text: parsed.text,
+        text: parsed.searchText,
       }
     : null;
 }
@@ -693,15 +699,17 @@ async function readMessages(
       .parse(database.prepare('SELECT COALESCE(MAX(rowid), 0) AS rowId FROM thread_items').get()).rowId;
     const sourceReset = afterRowId > scannedThroughRowId;
     const firstRowId = sourceReset ? 0 : afterRowId;
+    const projectedJson = codexHistoryProjectedItemJsonSql('item');
+    const projectedBytes = codexHistoryProjectedItemBytesSql('item');
     const statement = database.prepare(
       `WITH candidates AS MATERIALIZED (
-         SELECT rowid AS source_row_id, length(CAST(item_json AS BLOB)) AS item_bytes
-         FROM thread_items
-         WHERE item_type IN ('userMessage', 'agentMessage')
-           AND rowid > ?
-           AND rowid <= ?
-           AND length(CAST(item_json AS BLOB)) BETWEEN 2 AND ?
-         ORDER BY rowid ASC
+         SELECT item.rowid AS source_row_id, ${projectedBytes} AS item_bytes
+         FROM thread_items AS item
+         WHERE ${codexHistoryProjectedItemTypePredicate('item')}
+           AND item.rowid > ?
+           AND item.rowid <= ?
+           AND ${projectedBytes} BETWEEN 2 AND ?
+         ORDER BY item.rowid ASC
          LIMIT ?
        ), bounded AS (
          SELECT
@@ -715,7 +723,7 @@ async function readMessages(
          item.item_id AS itemId,
          item.created_at_ms AS createdAtMs,
          item.item_type AS itemType,
-         item.item_json AS itemJson
+         ${projectedJson} AS itemJson
        FROM bounded
        JOIN thread_items AS item ON item.rowid = bounded.source_row_id
        WHERE bounded.cumulative_bytes <= ?

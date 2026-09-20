@@ -7,11 +7,11 @@ import {
   APP_DEEP_LINK_AVAILABLE_CHANNEL,
   MAX_PENDING_APP_DEEP_LINKS,
   appDeepLinkCommandListSchema,
-  appDeepLinkCommandSchema,
+  parseAiyDeepLink,
   type AppDeepLinkCommand,
 } from '@/shared/contracts/app-deep-link';
 
-const rawDeepLinkSchema = z.string().trim().min(1).max(2_048);
+export { parseAiyDeepLink } from '@/shared/contracts/app-deep-link';
 const commandLineSchema = z.array(z.string().max(32_768)).max(256);
 
 function unwrapCommandLineArgument(value: string) {
@@ -22,46 +22,6 @@ function unwrapCommandLineArgument(value: string) {
     return trimmed.slice(1, -1);
   }
   return trimmed;
-}
-
-export function parseAiyDeepLink(rawValue: unknown): AppDeepLinkCommand | null {
-  const parsedValue = rawDeepLinkSchema.safeParse(rawValue);
-  if (!parsedValue.success) return null;
-  const value = unwrapCommandLineArgument(parsedValue.data);
-  if (value.includes('?') || value.includes('#')) return null;
-
-  let url: URL;
-  try {
-    url = new URL(value);
-  } catch {
-    return null;
-  }
-
-  if (
-    url.protocol !== `${AIY_DEEP_LINK_SCHEME}:` ||
-    url.hostname !== 'open' ||
-    url.username !== '' ||
-    url.password !== '' ||
-    url.port !== '' ||
-    url.search !== '' ||
-    url.hash !== ''
-  ) {
-    return null;
-  }
-
-  if (url.pathname === '/gallery') {
-    return appDeepLinkCommandSchema.parse({ schemaVersion: 1, action: 'open', target: 'gallery' });
-  }
-  const route = /^\/space\/([A-Za-z0-9._:-]+)\/(article|material)\/([A-Za-z0-9._:-]+)$/.exec(url.pathname);
-  if (!route) return null;
-  const command = appDeepLinkCommandSchema.safeParse({
-    schemaVersion: 1,
-    action: 'open',
-    target: route[2],
-    spaceId: route[1],
-    entityId: route[3],
-  });
-  return command.success ? command.data : null;
 }
 
 export class AppDeepLinkController {

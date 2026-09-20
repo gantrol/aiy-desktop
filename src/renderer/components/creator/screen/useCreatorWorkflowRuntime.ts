@@ -9,7 +9,10 @@ import type { useCreatorScreenProjection } from '@/renderer/components/creator/s
 import type { useCreatorSelectionSession } from '@/renderer/components/creator/screen/useCreatorSelectionSession';
 import type { useCreatorWorkbenchProjection } from '@/renderer/components/creator/screen/useCreatorWorkbenchProjection';
 import { creationDraftSnapshotHasMeaningfulInput } from '@/renderer/components/creator/workflows/creationDraftSnapshot';
-import { useCreationDraftAutosave } from '@/renderer/components/creator/workflows/useCreationDraftSession';
+import {
+  isCreationDraftSessionSupersededError,
+  useCreationDraftAutosave,
+} from '@/renderer/components/creator/workflows/useCreationDraftSession';
 import { useCreatorContentWorkflows } from '@/renderer/components/creator/workflows/useCreatorContentWorkflows';
 import { useCreatorInspirationSession } from '@/renderer/components/creator/workflows/useCreatorInspirationSession';
 import { articleCreationInputSchema } from '@/shared/contracts/inspiration-stash';
@@ -218,14 +221,30 @@ export function useCreatorWorkflowRuntime({
     Boolean(workbench.editorDerivedVisual),
   );
   const preserveActiveDraft = useStableCallback(() => {
-    if (!draftPersistenceAllowed || (!hasDraftContent && !draftSession.getDraftId())) return;
+    if (!draftPersistenceAllowed) return;
+    const pendingInput = document.promptComposerRef.current?.hasPendingInput() ?? false;
+    draftSession.invalidateAutosaves();
+    const reportFailure = (reason: unknown) => {
+      if (!isCreationDraftSessionSupersededError(reason))
+        notify(reason instanceof Error ? reason.message : String(reason));
+    };
     try {
-      const snapshot = draftInput.draftProjection.captureDraft();
-      void draftSession
-        .preserveCapturedSnapshot(snapshot)
-        .catch((reason) => notify(reason instanceof Error ? reason.message : String(reason)));
+      const snapshot = draftInput.draftProjection.snapshotForPrompt(document.captureCommitted());
+      const hasCommittedDraft =
+        Boolean(draftSession.getDraftId()) ||
+        creationDraftSnapshotHasMeaningfulInput(
+          snapshot,
+          selection.targetAlbum?.creationDefaults ?? null,
+          initialGenerationTargets({ creationDraft: null, imageGenerationRoutes: data.imageGenerationRoutes }),
+        );
+      if (hasCommittedDraft) {
+        void draftSession.preserveCapturedSnapshot(snapshot).catch(reportFailure);
+      }
+      // Switching to documents keeps this composer mounted but hidden. Its
+      // final publication must follow the fallback snapshot, never precede it.
+      if (pendingInput) void draftSession.saveDraftNow().catch(reportFailure);
     } catch (reason) {
-      notify(reason instanceof Error ? reason.message : String(reason));
+      reportFailure(reason);
     }
   });
   useEffect(() => {

@@ -13,6 +13,11 @@ export const linkCardMessages = {
 /** Editor labels also supplied to the isolated desktop-note renderer. */
 export const contentEditorMessages = {
   ...linkCardMessages,
+  more: 'More editor actions',
+  formatting: 'Formatting',
+  insert: 'Insert',
+  articleTools: 'Article interactions',
+  review: 'Review',
   headingMenu: 'Paragraph style',
   paragraph: 'Paragraph',
   heading2: 'Heading 2',

@@ -5,49 +5,30 @@ import type {
   CodexUsageCleanupResult,
   CodexUsageExportFormat,
   CodexUsageInvestigation,
-  CodexUsageQuotaSnapshot,
   CodexUsageScanInput,
   CodexUsageScanProgress,
   CodexUsageState,
   CodexUsageTask,
 } from '@/shared/contracts/codex-usage';
 import {
+  CODEX_USAGE_DEFAULT_QUOTA_SAMPLE_PERCENT,
   codexUsageCleanupResultSchema,
   codexUsageInvestigationSchema,
   codexUsageTaskSchema,
 } from '@/shared/contracts/codex-usage';
+import {
+  CODEX_QUOTA_PURITY_VERSION,
+  readCodexQuotaPurity,
+} from '@/main/extensions/codex-usage-investigator/quota-purity';
 import { codexUsageDateRangeEpochs } from '@/shared/codex-usage-time';
 import { CodexUsageCacheDatabase } from '@/main/extensions/codex-usage-investigator/cache-database';
 import { serializeCodexUsageExport } from '@/main/extensions/codex-usage-investigator/export';
 import { refreshCodexOfficialSpeeds } from '@/main/extensions/codex-usage-investigator/official-speed';
 import { codexUsageRangeStart, scanCodexUsage } from '@/main/extensions/codex-usage-investigator/scanner';
 
-interface RunOptions {
-  quotaPermissionGranted: boolean;
-  readQuota?: (signal: AbortSignal) => Promise<CodexUsageQuotaSnapshot>;
-}
-
 interface InvestigatorOptions {
   dataDirectory: string;
   onTaskChanged(task: CodexUsageTask): void;
-}
-
-type QuotaResult =
-  | { state: 'LIVE'; quota: CodexUsageQuotaSnapshot; message: null }
-  | { state: 'PERMISSION_REQUIRED' | 'CODEX_UNAVAILABLE' | 'UNAVAILABLE'; quota: null; message: string };
-
-async function resolveQuota(options: RunOptions, signal: AbortSignal): Promise<QuotaResult> {
-  if (!options.quotaPermissionGranted) {
-    return { state: 'PERMISSION_REQUIRED', quota: null, message: 'Optional Codex quota permission is not granted' };
-  }
-  if (!options.readQuota) {
-    return { state: 'CODEX_UNAVAILABLE', quota: null, message: 'Codex quota service is unavailable' };
-  }
-  try {
-    return { state: 'LIVE', quota: await options.readQuota(signal), message: null };
-  } catch {
-    return { state: 'UNAVAILABLE', quota: null, message: 'Codex quota could not be read' };
-  }
 }
 
 function initialProgress(): CodexUsageScanProgress {
@@ -72,6 +53,7 @@ export class CodexUsageInvestigator {
   private readonly onTaskChanged: InvestigatorOptions['onTaskChanged'];
   private controller: AbortController | null = null;
   private currentTask: CodexUsageTask | null = null;
+  private readonly purityReads = new Map<string, Promise<CodexUsageInvestigation>>();
 
   constructor(options: InvestigatorOptions) {
     this.dataDirectory = options.dataDirectory;
@@ -91,13 +73,59 @@ export class CodexUsageInvestigator {
     return this.currentTask ? { ...persisted, task: this.currentTask } : persisted;
   }
 
-  async investigation(investigationId: string) {
-    const investigation = (await this.getCache()).investigation(investigationId);
-    if (!investigation) throw new Error('Codex usage investigation was not found');
-    return refreshCodexOfficialSpeeds(investigation);
+  async investigation(investigationId: string, minimumQuotaPercent?: number): Promise<CodexUsageInvestigation> {
+    const pending = this.purityReads.get(investigationId);
+    if (pending) {
+      const result = await pending;
+      if (minimumQuotaPercent === undefined || result.quotaPurity?.minimumQuotaPercent === minimumQuotaPercent) {
+        return result;
+      }
+      // Serialize changes to a report so an earlier calculation cannot overwrite a later selection.
+      return this.investigation(investigationId, minimumQuotaPercent);
+    }
+    const result = this.readInvestigation(investigationId, minimumQuotaPercent).finally(() =>
+      this.purityReads.delete(investigationId),
+    );
+    this.purityReads.set(investigationId, result);
+    return result;
   }
 
-  async start(input: CodexUsageScanInput, options: RunOptions) {
+  private async readInvestigation(investigationId: string, requestedQuotaPercent?: number) {
+    const cache = await this.getCache();
+    const investigation = cache.investigation(investigationId);
+    if (!investigation) throw new Error('Codex usage investigation was not found');
+    const current = investigation.quotaPurity;
+    const minimumQuotaPercent =
+      requestedQuotaPercent ??
+      (current?.algorithmVersion === CODEX_QUOTA_PURITY_VERSION
+        ? current.minimumQuotaPercent
+        : CODEX_USAGE_DEFAULT_QUOTA_SAMPLE_PERCENT);
+    if (
+      current?.algorithmVersion === CODEX_QUOTA_PURITY_VERSION &&
+      current.minimumQuotaPercent === minimumQuotaPercent
+    ) {
+      return refreshCodexOfficialSpeeds(investigation);
+    }
+    const [quotaPurity, refreshed] = await Promise.all([
+      readCodexQuotaPurity(cache, investigation.from, investigation.to, minimumQuotaPercent).catch(() => null),
+      refreshCodexOfficialSpeeds(investigation),
+    ]);
+    const result = codexUsageInvestigationSchema.parse({
+      ...refreshed,
+      quotaPurity,
+      quotaPurityIssue: quotaPurity ? null : 'READ_FAILED',
+    });
+    if (quotaPurity) {
+      try {
+        cache.saveInvestigationPurity(result);
+      } catch {
+        result.quotaPurityIssue = 'CACHE_WRITE_FAILED';
+      }
+    }
+    return result;
+  }
+
+  async start(input: CodexUsageScanInput) {
     const cache = await this.getCache();
     if (this.controller) throw new Error('A Codex usage investigation is already running');
     const now = Date.now();
@@ -125,10 +153,10 @@ export class CodexUsageInvestigator {
       errorMessage: null,
     });
     cache.createTask(task);
-    return this.launch(task, options, cache);
+    return this.launch(task, cache);
   }
 
-  async resume(taskId: string, options: RunOptions) {
+  async resume(taskId: string) {
     const cache = await this.getCache();
     if (this.controller) throw new Error('A Codex usage investigation is already running');
     const persisted = cache.task(taskId);
@@ -142,14 +170,13 @@ export class CodexUsageInvestigator {
         updatedAt: new Date().toISOString(),
         errorMessage: null,
       }),
-      options,
       cache,
     );
   }
 
-  async resumeLatest(options: RunOptions) {
+  async resumeLatest() {
     const task = (await this.getCache()).latestResumableTask();
-    return task ? this.resume(task.taskId, options) : null;
+    return task ? this.resume(task.taskId) : null;
   }
 
   pause() {
@@ -165,32 +192,31 @@ export class CodexUsageInvestigator {
     return codexUsageCleanupResultSchema.parse({ level, removed, state });
   }
 
-  async export(investigationId: string, format: CodexUsageExportFormat, destinationPath: string) {
+  async export(
+    investigationId: string,
+    format: CodexUsageExportFormat,
+    destinationPath: string,
+    minimumQuotaPercent?: number,
+  ) {
     const cache = await this.getCache();
-    const investigation = cache.investigation(investigationId);
+    const investigation = await this.investigation(investigationId, minimumQuotaPercent);
     const rows = cache.exportRows(investigationId);
     if (!investigation || !rows) throw new Error('Codex usage investigation was not found');
     const contents = serializeCodexUsageExport(await refreshCodexOfficialSpeeds(investigation), rows, format);
     await writeFile(destinationPath, contents, { encoding: 'utf8' });
   }
 
-  private launch(task: CodexUsageTask, options: RunOptions, cache: CodexUsageCacheDatabase) {
+  private launch(task: CodexUsageTask, cache: CodexUsageCacheDatabase) {
     const controller = new AbortController();
     this.controller = controller;
     this.currentTask = task;
     cache.saveTask(task);
     this.emit(task);
-    void this.execute(task, options, controller, cache);
+    void this.execute(task, controller, cache);
     return task;
   }
 
-  private async execute(
-    task: CodexUsageTask,
-    options: RunOptions,
-    controller: AbortController,
-    cache: CodexUsageCacheDatabase,
-  ) {
-    const quotaPromise = resolveQuota(options, controller.signal);
+  private async execute(task: CodexUsageTask, controller: AbortController, cache: CodexUsageCacheDatabase) {
     try {
       const scanned = await scanCodexUsage({
         investigationId: task.taskId,
@@ -206,16 +232,8 @@ export class CodexUsageInvestigator {
         onProgress: (progress) => this.updateProgress(task.taskId, progress, false, cache),
         onCheckpoint: (progress) => this.updateProgress(task.taskId, progress, true, cache),
       });
-      const quota = await quotaPromise;
-      const warnings = new Set(scanned.investigation.warnings);
-      if (quota.state !== 'LIVE') warnings.add('QUOTA_UNAVAILABLE');
-      const investigation: CodexUsageInvestigation = codexUsageInvestigationSchema.parse({
-        ...scanned.investigation,
-        quotaState: quota.state,
-        quotaMessage: quota.message,
-        quota: quota.quota,
-        warnings: [...warnings],
-      });
+      controller.signal.throwIfAborted();
+      const investigation = codexUsageInvestigationSchema.parse(scanned.investigation);
       const completed = codexUsageTaskSchema.parse({
         ...(this.currentTask?.taskId === task.taskId ? this.currentTask : task),
         status: 'COMPLETED',

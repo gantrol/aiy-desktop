@@ -1,4 +1,5 @@
 import { normalizeCreatorPromptNodes } from '@/renderer/components/creator/creatorPromptDocument';
+import { createImagePromptPlan, ImagePromptPlanExtension } from '@/renderer/components/creator/imagePromptPlan';
 import { CreatorPromptEditorSurface } from '@/renderer/components/creator/CreatorPromptEditorSurface';
 import { imageFiles, imageMimeType } from '@/renderer/components/creator/imageImport';
 import { type AppliedWordPalette } from '@/renderer/components/creator/utils';
@@ -23,7 +24,7 @@ import {
 import { useExternalEditorDocument } from '@/renderer/hooks/useExternalEditorDocument';
 import { plainTextBlockDocument } from '@/shared/block-document-codecs';
 import type { CreatorPromptNodeInput, Locale, TermListItem, WordPaletteDto } from '@/shared/contracts';
-import { captureBlockDocument, type BlockDocument } from '@/shared/contracts/block-document';
+import { blockDocumentIsEmpty, captureBlockDocument, type BlockDocument } from '@/shared/contracts/block-document';
 import { type Editor } from '@tiptap/core';
 import type { Node as ProseMirrorNode } from '@tiptap/pm/model';
 import { forwardRef, useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState } from 'react';
@@ -102,8 +103,10 @@ function moveOrInsertAtom(
 export interface CreatorPromptComposerHandle {
   getNodes(): CreatorPromptNodeInput[];
   getDocument(): BlockDocument;
+  hasPendingInput(): boolean;
   whenSettled(): Promise<void>;
   appendText(value: string): void;
+  setImagePromptPlan(prompts: readonly string[], copy: Parameters<typeof createImagePromptPlan>[1]): void;
   reconcileReferences(termIds: readonly string[], paletteIds: readonly string[]): void;
   insertTerm(termId: string, position?: number): void;
   insertRecipe(paletteId: string, position?: number): void;
@@ -128,7 +131,7 @@ interface Props {
   placeholder: string;
   ariaLabel: string;
   fullWindow?: boolean;
-  onNodesChange(nodes: CreatorPromptNodeInput[], document?: BlockDocument): void;
+  onNodesChange(nodes: CreatorPromptNodeInput[], document: BlockDocument): void;
   onOpenTerm(term: TermListItem): void;
   onOpenRecipe(paletteId: string): void;
   onConfigureRecipe(palette: WordPaletteDto): void;
@@ -185,7 +188,9 @@ export const CreatorPromptComposer = forwardRef<CreatorPromptComposerHandle, Pro
     changeRecipeLocale: onRecipePromptLocaleChange,
     requestRecipeInsert: onRequestRecipeInsert,
   });
-  const [editorIsEmpty, setEditorIsEmpty] = useState(() => normalizeCreatorPromptNodes(nodes).length === 0);
+  const [editorIsEmpty, setEditorIsEmpty] = useState(() =>
+    document ? blockDocumentIsEmpty(document) : normalizeCreatorPromptNodes(nodes).length === 0,
+  );
   callbacksRef.current = {
     nodesChanged: onNodesChange,
     openTerm: onOpenTerm,
@@ -203,8 +208,9 @@ export const CreatorPromptComposer = forwardRef<CreatorPromptComposerHandle, Pro
   const importCallbacks = useRef({ onImageImported, onImageImportError });
   importCallbacks.current = { onImageImported, onImageImportError };
   const publish = useRef((current: Editor) => {
-    setEditorIsEmpty(current.isEmpty);
-    callbacksRef.current.nodesChanged(documentFromEditor(current), captureBlockDocument(current.getJSON()));
+    const document = captureBlockDocument(current.getJSON());
+    setEditorIsEmpty(blockDocumentIsEmpty(document));
+    callbacksRef.current.nodesChanged(documentFromEditor(current), document);
   });
   const composition = useVideoDocumentEditorComposition({ editor: editorRef, publish });
   composition.finish.current = (view) => {
@@ -236,16 +242,18 @@ export const CreatorPromptComposer = forwardRef<CreatorPromptComposerHandle, Pro
         ),
       );
   };
-  const extensions = useMemo(() => [CreatorTermNode, CreatorRecipeNode], []);
+  const extensions = useMemo(() => [CreatorTermNode, CreatorRecipeNode, ImagePromptPlanExtension], []);
   const editor = useContentEditor({
+    presentation: {
+      typography: 'compact',
+      ariaLabel,
+      className: 'min-h-48 px-5 pt-2 pb-5',
+    },
     extensions,
     content: initialContent,
     editorProps: {
       attributes: {
-        class:
-          'min-h-48 whitespace-pre-wrap break-words px-5 pt-2 pb-5 text-md leading-8 text-foreground outline-none [&_p]:min-h-8 [&_p+p]:mt-1',
         'data-generation-prompt': 'true',
-        'aria-label': ariaLabel,
       },
       handleDOMEvents: {
         compositionstart: composition.start,
@@ -325,7 +333,7 @@ export const CreatorPromptComposer = forwardRef<CreatorPromptComposerHandle, Pro
         return true;
       },
     },
-    onCreate: ({ editor: current }) => setEditorIsEmpty(current.isEmpty),
+    onCreate: ({ editor: current }) => setEditorIsEmpty(blockDocumentIsEmpty({ root: current.getJSON() })),
     onUpdate: ({ editor: current, transaction }) => {
       if (!composition.defers(current, transaction)) publish.current(current);
     },
@@ -368,7 +376,7 @@ export const CreatorPromptComposer = forwardRef<CreatorPromptComposerHandle, Pro
       document ? JSON.stringify(captureBlockDocument(current.getJSON())) : JSON.stringify(documentFromEditor(current)),
     content: ([value], bridge) =>
       value.document?.root ?? captureBlockDocument(editorJsonFromNodes(value.nodes, bridge)).root,
-    onEmptyChange: setEditorIsEmpty,
+    onContentChange: (current) => setEditorIsEmpty(blockDocumentIsEmpty({ root: current.getJSON() })),
   });
 
   const focusAt = useCallback(
@@ -399,9 +407,15 @@ export const CreatorPromptComposer = forwardRef<CreatorPromptComposerHandle, Pro
   useImperativeHandle(
     ref,
     () => ({
+      hasPendingInput: () => composition.isInputPending() || inputs.isPending(),
       whenSettled: async () => {
-        if (!(await composition.whenSettled())) throw new Error('EDITOR_INPUT_UNSETTLED');
-        await inputs.settle();
+        do {
+          if (!(await composition.whenSettled())) throw new Error('EDITOR_INPUT_UNSETTLED');
+          await inputs.settle();
+          // Another composition can start while a pasted image is importing.
+          // Capture only when both input sources have finished in the same turn.
+        } while (composition.isInputPending() || inputs.isPending());
+        if (!composition.canReadSnapshot()) throw new Error('EDITOR_INPUT_UNSETTLED');
       },
       appendText(value) {
         if (!editor || !value) return;
@@ -409,6 +423,22 @@ export const CreatorPromptComposer = forwardRef<CreatorPromptComposerHandle, Pro
           editor.state.doc.content.size,
           plainTextBlockDocument(value).root.content ?? [],
         );
+      },
+      setImagePromptPlan(prompts, copy) {
+        if (!editor) return;
+        const transaction = editor.state.tr;
+        const ranges: { from: number; to: number }[] = [];
+        editor.state.doc.forEach((node, from) => {
+          if (node.type.name === 'blockquote' && node.attrs.imagePromptPlan === true)
+            ranges.push({ from, to: from + node.nodeSize });
+        });
+        for (const range of [...ranges].reverse()) transaction.delete(range.from, range.to);
+        if (prompts.length)
+          transaction.insert(
+            ranges[0]?.from ?? transaction.doc.content.size,
+            editor.schema.nodeFromJSON(createImagePromptPlan(prompts, copy)),
+          );
+        if (transaction.docChanged) editor.view.dispatch(transaction);
       },
       reconcileReferences(termIds, paletteIds) {
         if (!editor) return;

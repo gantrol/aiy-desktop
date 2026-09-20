@@ -138,7 +138,13 @@ export class DesktopNotesRepository {
         )
         .all(...(stashIds ?? [])) as { id: string; deleted_at: string | null; source_id: string | null }[];
       const remove = this.db.prepare('DELETE FROM desktop_note_instances WHERE id = ?');
-      for (const row of unavailable) if (!row.source_id || row.deleted_at) remove.run(row.id);
+      const removeMembership = this.db.prepare('DELETE FROM desktop_petal_memberships WHERE instance_id = ?');
+      for (const row of unavailable) {
+        if (!row.source_id || row.deleted_at) {
+          removeMembership.run(row.id);
+          remove.run(row.id);
+        }
+      }
       return unavailable.map((row) => row.id);
     })();
   }

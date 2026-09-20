@@ -3,6 +3,7 @@ import { LibraryFileViewProjectionRepository } from '@/main/database/assets/libr
 import {
   type FileViewIndex,
   albumsDirectoryName,
+  creationProjectionChangeTypeValues,
   directProjectionChangeTypeValues,
   directoryKey,
   projectionCacheAlgorithmVersion,
@@ -158,31 +159,70 @@ export class LibraryFileViewCacheRepository extends LibraryFileViewProjectionRep
   }
 
   protected hasRelevantProjectionChangesAfter(changeRowId: number) {
-    const placeholders = directProjectionChangeTypeValues.map(() => '?').join(', ');
+    const directPlaceholders = directProjectionChangeTypeValues.map(() => '?').join(', ');
+    const creationPlaceholders = creationProjectionChangeTypeValues.map(() => '?').join(', ');
+    // A newly imported or generated output has no projection link yet. Resolve
+    // its owning series first so the cache cannot advance past the event that
+    // is supposed to create that link.
     return Boolean(
       this.db
         .prepare(
-          `SELECT 1 FROM change_events
-        WHERE rowid > ? AND (
-          entity_type IN (${placeholders})
+          `WITH candidate_changes AS (
+          SELECT change.rowid, change.entity_type, change.entity_id,
+            CASE change.entity_type
+              WHEN 'PROMPT_SERIES' THEN change.entity_id
+              WHEN 'PROMPT_VERSION' THEN (
+                SELECT version.series_id FROM prompt_versions version
+                WHERE version.id = change.entity_id
+              )
+              WHEN 'GENERATION_RUN' THEN (
+                SELECT version.series_id FROM generation_runs run
+                JOIN prompt_versions version ON version.id = run.prompt_version_id
+                WHERE run.id = change.entity_id
+              )
+              WHEN 'CREATION_OUTPUT_IMPORT' THEN (
+                SELECT imported.series_id FROM creation_output_imports imported
+                WHERE imported.id = change.entity_id
+              )
+              ELSE NULL
+            END AS creation_series_id
+          FROM change_events change
+          WHERE change.rowid > ?
+        )
+        SELECT 1 FROM candidate_changes change
+        WHERE
+          change.entity_type IN (${directPlaceholders})
           OR (
-            entity_type = 'IMAGE_ASSET'
+            change.entity_type IN (${creationPlaceholders})
             AND EXISTS (
-              SELECT 1 FROM file_projection_links link
-              WHERE link.image_asset_id = change_events.entity_id
+              SELECT 1 FROM creation_forms form
+              JOIN creation_items item ON item.id = form.creation_item_id
+                AND item.deleted_at IS NULL AND item.archived_at IS NULL
+              JOIN album_members member ON member.target_type = 'CREATION_ITEM'
+                AND member.target_id = item.id AND member.deleted_at IS NULL
+              JOIN albums album ON album.id = member.album_id AND album.deleted_at IS NULL
+              WHERE form.role = 'IMAGE_CREATION' AND form.entity_type = 'PROMPT_SERIES'
+                AND form.entity_id = change.creation_series_id AND form.deleted_at IS NULL
             )
           )
           OR (
-            entity_type IN ('MATERIAL', 'EXTERNAL_MATERIAL_METADATA')
+            change.entity_type = 'IMAGE_ASSET'
+            AND EXISTS (
+              SELECT 1 FROM file_projection_links link
+              WHERE link.image_asset_id = change.entity_id
+            )
+          )
+          OR (
+            change.entity_type IN ('MATERIAL', 'EXTERNAL_MATERIAL_METADATA')
             AND EXISTS (
               SELECT 1 FROM materials material
               JOIN file_projection_links link ON link.image_asset_id = material.image_asset_id
-              WHERE material.id = change_events.entity_id
+              WHERE material.id = change.entity_id
             )
           )
-        ) LIMIT 1`,
+        LIMIT 1`,
         )
-        .get(changeRowId, ...directProjectionChangeTypeValues),
+        .get(changeRowId, ...directProjectionChangeTypeValues, ...creationProjectionChangeTypeValues),
     );
   }
 

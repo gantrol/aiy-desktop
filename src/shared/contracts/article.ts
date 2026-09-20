@@ -2,6 +2,7 @@ import { browserCompanionWatermarkSelectionSchema } from '@/shared/contracts/bro
 import { blockDocumentMarkdown } from '@/shared/block-document-codecs';
 import { blockDocumentAssetIds, blockDocumentSchema } from '@/shared/contracts/block-document';
 import { z } from 'zod';
+import { ARTICLE_COVER_RATIOS, articleCoverAssetIds, articleCoverVariantsSchema } from '@/shared/article-covers';
 import { articleCreationInputSchema } from '@/shared/contracts/inspiration-stash';
 import { noteFileSchema, NOTE_FILE_LIMITS } from '@/shared/contracts/note-files';
 import {
@@ -58,15 +59,19 @@ export const articleContentSchema = z
   .object({
     schemaVersion: z.union([z.literal(1), z.literal(2)]),
     document: blockDocumentSchema.optional(),
+    editorMode: z.literal('OUTLINE').optional(),
     title: z.string().max(200),
     markdown: z.string().max(1_000_000).optional(),
     mediaBindings: z.array(articleMediaBindingSchema).max(100),
     coverAssetId: idSchema.nullable(),
+    coverVariants: articleCoverVariantsSchema.optional(),
     creationInput: articleCreationInputSchema.optional(),
     files: z.array(noteFileSchema).max(NOTE_FILE_LIMITS.count).optional(),
   })
   .strict()
   .superRefine((value, context) => {
+    if (value.editorMode === 'OUTLINE' && !value.document)
+      context.addIssue({ code: 'custom', path: ['document'], message: 'BLOCK_DOCUMENT_REQUIRED' });
     if (value.schemaVersion === 2 && !value.document)
       context.addIssue({ code: 'custom', path: ['document'], message: 'BLOCK_DOCUMENT_REQUIRED' });
     if (value.schemaVersion === 1 && (value.document || value.markdown === undefined))
@@ -84,6 +89,8 @@ export const articleContentSchema = z
     if (value.coverAssetId && !assetIds.includes(value.coverAssetId)) {
       context.addIssue({ code: 'custom', path: ['coverAssetId'], message: 'The cover must be article media' });
     }
+    if (articleCoverAssetIds(value).some((id) => !assetIds.includes(id)))
+      context.addIssue({ code: 'custom', path: ['coverVariants'], message: 'Cover variants must be article media' });
   })
   .transform((value) => ({
     ...value,
@@ -98,9 +105,17 @@ export function canonicalArticleContentJson(input: z.input<typeof articleContent
   return JSON.stringify({
     schemaVersion: content.schemaVersion,
     title: content.title,
+    ...(content.editorMode ? { editorMode: content.editorMode } : {}),
     ...(content.document ? { document: content.document } : { markdown: content.markdown }),
     mediaBindings: content.mediaBindings,
     coverAssetId: content.coverAssetId,
+    ...(content.coverVariants?.length
+      ? {
+          coverVariants: [...content.coverVariants].sort(
+            (left, right) => ARTICLE_COVER_RATIOS.indexOf(left.ratio) - ARTICLE_COVER_RATIOS.indexOf(right.ratio),
+          ),
+        }
+      : {}),
     ...(content.creationInput ? { creationInput: content.creationInput } : {}),
     ...(content.files ? { files: content.files } : {}),
   });
@@ -124,10 +139,12 @@ const articleContentDtoSchema = z
   .object({
     schemaVersion: z.union([z.literal(1), z.literal(2)]),
     document: blockDocumentSchema.optional(),
+    editorMode: z.literal('OUTLINE').optional(),
     title: z.string().max(200),
     markdown: z.string().max(1_000_000),
     mediaBindings: z.array(articleMediaBindingSchema).max(100),
     coverAssetId: idSchema.nullable(),
+    coverVariants: articleCoverVariantsSchema.optional(),
     mediaAssets: z.array(articleAssetSchema).max(100),
     creationInput: articleCreationInputSchema.optional(),
     files: z.array(noteFileSchema).max(NOTE_FILE_LIMITS.count).optional(),
@@ -142,6 +159,8 @@ const articleContentDtoSchema = z
     if (value.coverAssetId && !assetIds.includes(value.coverAssetId)) {
       context.addIssue({ code: 'custom', path: ['coverAssetId'], message: 'The cover must be article media' });
     }
+    if (articleCoverAssetIds(value).some((id) => !assetIds.includes(id)))
+      context.addIssue({ code: 'custom', path: ['coverVariants'], message: 'Cover variants must be article media' });
     // Bindings are the durable revision record. A soft-deleted or otherwise
     // unavailable asset may be absent from hydration so the editor can expose a
     // repair action instead of rejecting the entire article.

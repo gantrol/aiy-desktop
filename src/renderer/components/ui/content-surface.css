@@ -1,0 +1,40 @@
+.content-surface__chrome {
+  -webkit-app-region: drag;
+}
+.content-surface__tools,
+.content-surface button,
+.content-surface a,
+.content-surface video,
+.content-surface audio {
+  -webkit-app-region: no-drag;
+}
+/* Hidden media chrome must not intercept native dragging. */
+.content-surface[data-surface-kind='media'] .content-surface__chrome {
+  -webkit-app-region: no-drag;
+}
+.content-surface[data-surface-kind='media']:is(:hover, :focus-within, :has([data-state='open']))
+  .content-surface__chrome {
+  -webkit-app-region: drag;
+}
+/* Keep nested controls legible across ghost-button interaction states. */
+.content-surface[data-surface-kind='media'] .content-surface__tools button {
+  color: var(--media-checker-a);
+}
+.content-surface[data-surface-kind='media']
+  .content-surface__tools
+  button:is(:hover, :focus-visible, [data-state='open']) {
+  color: var(--media-checker-a);
+  background: var(--media-surround-dark);
+}
+.content-surface[data-surface-kind='media'] .content-surface__tools button:focus-visible {
+  outline: 2px solid var(--media-checker-a);
+  outline-offset: -2px;
+}
+.content-surface:has(video[controls], audio[controls]) .content-surface__caption {
+  display: none;
+}
+@media (hover: none) {
+  .content-surface[data-surface-kind='media'] .content-surface__chrome {
+    -webkit-app-region: drag;
+  }
+}

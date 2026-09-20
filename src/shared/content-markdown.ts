@@ -2,6 +2,8 @@ import { unified } from 'unified';
 import remarkParse from 'remark-parse';
 import remarkGfm from 'remark-gfm';
 import type { RootContent, PhrasingContent } from 'mdast';
+import { contentAssetPath } from '@/shared/content-asset-path';
+import { contentFigureReferenceAssetId } from '@/shared/content-figure-reference';
 
 const parser = unified().use(remarkParse).use(remarkGfm);
 export function contentMarkdownTree(markdown: string) {
@@ -56,7 +58,15 @@ export function contentMarkdownReferences(markdown: string) {
 export function contentMarkdownMediaPaths(markdown: string) {
   const paths = new Set<string>();
   const walk = (node: RootContent | PhrasingContent) => {
-    if (node.type === 'image' || node.type === 'link' || node.type === 'definition') paths.add(node.url);
+    if (node.type === 'image' || node.type === 'link' || node.type === 'definition') {
+      paths.add(node.url);
+      // A captured paragraph may mention a figure whose image block lies outside
+      // the selection. Retain that explicitly cited asset with the excerpt.
+      if (node.type === 'link' || node.type === 'definition') {
+        const figureId = contentFigureReferenceAssetId(node.url);
+        if (figureId) paths.add(contentAssetPath(figureId));
+      }
+    }
     if ('children' in node) node.children.forEach((child) => walk(child as RootContent));
   };
   contentMarkdownTree(markdown).children.forEach(walk);

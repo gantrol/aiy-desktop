@@ -22,10 +22,13 @@ interface Props {
   compact?: boolean;
   embedded?: boolean;
   toolbarVisible?: boolean;
+  toolbarPreset?: 'full' | 'compact';
   toolbarRoot?: HTMLDivElement | null;
   contentSource?: import('@/shared/contracts/content-library').ContentSource;
   readOnly?: boolean;
   mediaIntake?: 'INLINE' | 'EXTERNAL';
+  figureAssetIds?: readonly string[];
+  onFigureReferenceClick?(assetId: string): void;
   onChange(markdown: string): void;
   onSave(): void;
   onError(): void;

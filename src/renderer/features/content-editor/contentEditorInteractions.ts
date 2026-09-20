@@ -1,20 +1,17 @@
 import { commandMatchesShortcut } from '@/renderer/commands/app-shortcuts';
 import { imageFiles, imageMimeType } from '@/renderer/components/creator/imageImport';
-import { compactContentTypography } from '@/renderer/features/content-editor/contentEditorTypography';
 import { pasteContentImages } from '@/renderer/features/content-editor/contentImagePaste';
 import type { ContentInputOperations } from '@/renderer/features/content-editor/contentInputOperations';
 import type { useVideoDocumentEditorComposition } from '@/renderer/features/video-documents/videoDocumentEditorComposition';
 import { followInternalArticleHeadingLink } from '@/renderer/features/video-documents/videoDocumentEditorNavigation';
 import type { VideoDocumentWysiwygEditorProps as Props } from '@/renderer/features/video-documents/videoDocumentEditorTypes';
-import { synchronizeVideoDocumentEditorSelectionFromDom } from '@/renderer/features/video-documents/videoDocumentListIndent';
 import type { materialImageDropHandler } from '@/renderer/features/video-documents/videoDocumentMaterialImageDrop';
-import { articleRichTextClassName } from '@/renderer/lib/articleTypography';
 import type { CreatorImageImportSource } from '@/shared/contracts';
 import type { Editor, EditorOptions } from '@tiptap/core';
 
 type Ref<T> = { current: T };
 interface Options {
-  props: Pick<Props, 'ariaLabel' | 'compact' | 'mediaIntake' | 'onInputPendingChange'>;
+  props: Pick<Props, 'mediaIntake' | 'onInputPendingChange'>;
   composition: ReturnType<typeof useVideoDocumentEditorComposition>;
   editorRef: Ref<Editor | null>;
   editorRootRef: Ref<HTMLDivElement | null>;
@@ -41,10 +38,8 @@ export function contentEditorInteractions({
 }: Options): EditorOptions['editorProps'] {
   return {
     attributes: {
-      'aria-label': props.ariaLabel,
-      'aria-multiline': 'true',
-      role: 'textbox',
-      class: `${props.compact ? compactContentTypography : articleRichTextClassName} ${props.compact ? 'min-h-24 pl-6 pr-3 py-2' : 'min-h-[60vh] px-6 py-7'} outline-none [&>p:has(>br.ProseMirror-trailingBreak:only-child)]:my-0 [&_a[data-video-binding]]:flex [&_a[data-video-binding]]:aspect-video [&_a[data-video-binding]]:items-end [&_a[data-video-binding]]:rounded-md [&_a[data-video-binding]]:border [&_a[data-video-binding]]:bg-media-surround-dark [&_a[data-video-binding]]:bg-cover [&_a[data-video-binding]]:bg-center [&_a[data-video-binding]]:p-4 [&_a[data-video-binding]]:font-medium [&_a[data-video-binding]]:text-media-checker-a [&_a[data-video-binding]]:no-underline`,
+      class:
+        '[&_a[data-video-binding]]:flex [&_a[data-video-binding]]:aspect-video [&_a[data-video-binding]]:items-end [&_a[data-video-binding]]:rounded-md [&_a[data-video-binding]]:border [&_a[data-video-binding]]:bg-media-surround-dark [&_a[data-video-binding]]:bg-cover [&_a[data-video-binding]]:bg-center [&_a[data-video-binding]]:p-4 [&_a[data-video-binding]]:font-medium [&_a[data-video-binding]]:text-media-checker-a [&_a[data-video-binding]]:no-underline',
     },
     handleDOMEvents: {
       compositionstart: (view) => {
@@ -88,28 +83,10 @@ export function contentEditorInteractions({
       enqueueImages(files, 'DROP');
       return true;
     },
-    handleKeyDown: (view, event) => {
-      if (event.key === 'Enter' && event.repeat) {
-        event.preventDefault();
-        return true;
-      }
-      const current = editorRef.current;
-      if (current && !current.isDestroyed && !event.isComposing && (event.key === 'Enter' || event.key === 'Tab')) {
-        synchronizeVideoDocumentEditorSelectionFromDom(current, view);
-      }
+    handleKeyDown: (_view, event) => {
       if (commandMatchesShortcut(event, window.desktopApi?.appPlatform ?? 'win32', 'document.save')) {
         event.preventDefault();
         onSaveRef.current(persistenceSnapshotRef.current.markdown);
-        return true;
-      }
-      for (let level = 2; level <= 6; level += 1) {
-        if (!commandMatchesShortcut(event, window.desktopApi?.appPlatform ?? 'win32', `format.heading.${level}`))
-          continue;
-        event.preventDefault();
-        editorRef.current
-          ?.chain()
-          .setHeading({ level: level as 2 | 3 | 4 | 5 | 6 })
-          .run();
         return true;
       }
       return false;

@@ -1,6 +1,6 @@
 import { ImageAmbientBackdrop } from '@/renderer/components/media/AmbientImage';
 import { AssetImageCopyButton } from '@/renderer/components/media/AssetImageCopyButton';
-import { AssetFileContextMenu } from '@/renderer/components/media/AssetFileContextMenu';
+import { ContentImageContextMenu } from '@/renderer/features/content-editor/ContentImageContextMenu';
 import { Button } from '@/renderer/components/ui/button';
 import { retryContentImage } from '@/renderer/features/content-editor/contentImageRecovery';
 import { useI18n } from '@/renderer/i18n/useI18n';
@@ -151,29 +151,9 @@ function DocumentImageNodeView({ node, extension, deleteNode, editor }: NodeView
           : 'group/article-image relative isolate my-7 block max-h-[34rem] w-full overflow-hidden rounded-md bg-surface-sunken'
       }
     >
-      {assetId && window.desktopApi ? (
-        <AssetFileContextMenu
-          assetId={assetId}
-          draggable={false}
-          actions={
-            editor.isEditable
-              ? [
-                  {
-                    id: 'content-image-remove',
-                    label: copy.removeImage,
-                    icon: X,
-                    destructive: true,
-                    onSelect: deleteNode,
-                  },
-                ]
-              : []
-          }
-        >
-          {image}
-        </AssetFileContextMenu>
-      ) : (
-        image
-      )}
+      <ContentImageContextMenu assetId={assetId} remove={editor.isEditable ? deleteNode : undefined}>
+        {image}
+      </ContentImageContextMenu>
     </NodeViewWrapper>
   );
 }

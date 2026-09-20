@@ -76,7 +76,9 @@
     "tools": ["example.image.generate"],
     "searchProviders": ["example.assets"],
     "modelProviders": ["example-image-api"],
-    "deliveryChannels": ["example-social"]
+    "deliveryChannels": ["example-social"],
+    "contentApplications": ["example.content"],
+    "metricProviders": ["example.accountMetrics"]
   }
 }
 ```

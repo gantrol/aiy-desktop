@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { generationQualitySchema } from '@/shared/generation-quality';
 import { albumCreationDefaultsSchema, id, localeSchema } from '@/main/ipc/schemas/creation-generation-schemas';
 import { EXTERNAL_IMAGE_API_EXTENSION_IDS } from '@/shared/extension-ids';
 import {
@@ -99,7 +100,7 @@ export const imageReframeStartSchema = imageCropSchema
   .extend({
     modelKey: id,
     locale: localeSchema,
-    quality: z.enum(['low', 'medium', 'high']),
+    quality: generationQualitySchema,
   })
   .strict();
 
@@ -401,6 +402,17 @@ export const extensionSetPermissionSchema = z.object({
   permission: z.string().trim().min(1).max(240),
   granted: z.boolean(),
 });
+
+export const extensionRevokePermissionsSchema = z
+  .object({
+    extensionId: id,
+    permissions: z.array(z.string().trim().min(1).max(240)).min(1).max(160),
+  })
+  .strict()
+  .refine((value) => new Set(value.permissions).size === value.permissions.length, {
+    message: 'Permission selection must be unique',
+    path: ['permissions'],
+  });
 
 export const codexGeneratedImageImportSchema = z
   .object({

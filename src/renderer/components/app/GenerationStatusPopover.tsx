@@ -242,7 +242,7 @@ export function GenerationStatusPopover({
             <div className="px-3 py-3 text-xs text-muted-foreground">{l.idle}</div>
           )}
           {[...activeDeliveries, ...failedDeliveries, ...completedDeliveries].map((entry) => (
-            <ArticleDeliveryTaskItem key={entry.job.id} entry={entry} zh={locale === 'zh'} />
+            <ArticleDeliveryTaskItem key={entry.job.id} entry={entry} />
           ))}
           {transcriptTasks.map((task) => (
             <VideoDocumentTranscriptTaskCenterItem

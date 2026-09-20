@@ -14,7 +14,7 @@ export const agentIntakeImportRequestSchema = z
     protocolVersion: z.literal(1),
     requestId: identifier,
     spaceId: identifier,
-    kind: z.enum(['ARTICLE', 'IMAGE_MATERIAL']),
+    kind: z.enum(['ARTICLE', 'OUTLINE', 'IMAGE_MATERIAL']),
     path: z.string().min(1).max(32_768),
     expectedSha256: sha256,
     title: z.string().trim().max(200).default(''),
@@ -30,7 +30,7 @@ export const agentIntakeResultSchema = z
   .object({
     requestId: identifier,
     spaceId: identifier,
-    kind: z.enum(['ARTICLE', 'IMAGE_MATERIAL']),
+    kind: z.enum(['ARTICLE', 'OUTLINE', 'IMAGE_MATERIAL']),
     entityId: identifier,
     revisionId: identifier.nullable(),
     title: z.string().min(1).max(200),
@@ -47,7 +47,7 @@ export const agentIntakeResultSchema = z
 export const agentIntakeCapabilities = {
   command: 'intake import',
   getCommand: 'intake get',
-  kinds: ['ARTICLE', 'IMAGE_MATERIAL'],
+  kinds: ['ARTICLE', 'OUTLINE', 'IMAGE_MATERIAL'],
   articleExtensions: ['.md', '.markdown'],
   imageMimeTypes: ['image/png'],
   maximumArticleBytes: AGENT_INTAKE_MARKDOWN_BYTES,

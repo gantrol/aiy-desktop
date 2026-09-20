@@ -1,0 +1,41 @@
+{
+  "protocolVersion": 1,
+  "taskId": "example-petal-restoration",
+  "phase": "trial",
+  "objective": "澄清恢复桌面与主动收回的区别；先核对实际构建和状态，再决定是否需要修复。",
+  "repository": {
+    "url": "https://github.com/gantrol/aiy-desktop",
+    "baseCommit": "e1a1b92321b91895cfac6345c6a5aa8b311948d7"
+  },
+  "constraints": ["不删除原内容，不覆盖未保存输入。", "这是一份示例交接；其中的基准和材料需要接手者按实际环境确认。"],
+  "outOfScope": ["自动合并或发布", "重写整个花瓣系统"],
+  "questions": ["报告发生在哪个构建、窗口入口和具体操作序列？"],
+  "sources": [
+    {
+      "id": "R-01",
+      "kind": "observation",
+      "title": "待复核的原报告",
+      "status": "unreviewed",
+      "content": "用户曾报告：展示全部花瓣会把主动丢弃的入口重新恢复。此处保留报告，不认定当前提交仍存在这个问题。"
+    },
+    {
+      "id": "D-01",
+      "kind": "decision",
+      "title": "本次讨论的操作边界",
+      "status": "selected",
+      "content": "暂隐是查看状态；收回结束这次桌面使用；删除内容是另一项明确操作。不能靠全部重新贴出来抹掉收回意图。"
+    }
+  ],
+  "acceptance": [
+    {
+      "id": "T-01",
+      "expectation": "A 暂隐、B 收回、C 从未贴出、D 图层隐藏时，恢复桌面只重新显示允许显示的 A。记录受测提交、环境、步骤及结果。",
+      "sourceIds": ["R-01", "D-01"]
+    },
+    {
+      "id": "T-02",
+      "expectation": "保存失败的输入仍可找回；截图、代码已写或一次旧 CI 通过，均不作为本次验收通过。",
+      "sourceIds": ["D-01"]
+    }
+  ]
+}

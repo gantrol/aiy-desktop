@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { generationQualitySchema } from '@/shared/generation-quality';
 
 const idSchema = z.string().min(1).max(200);
 const localeSchema = z.enum(['zh', 'en']);
@@ -15,7 +16,7 @@ export const termIllustrationGenerationStatusSchema = z.enum([
   'CANCELLED',
   'INTERRUPTED',
 ]);
-export const termIllustrationQualitySchema = z.enum(['low', 'medium', 'high']);
+export const termIllustrationQualitySchema = generationQualitySchema;
 
 export const termIllustrationAssetSchema = z
   .object({

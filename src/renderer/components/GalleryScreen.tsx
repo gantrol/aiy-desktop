@@ -84,6 +84,7 @@ const MaterialDetailPage = lazy(() =>
 );
 
 interface Props {
+  spaceId: string;
   libraryKey: string;
   dataRevision: number;
   active: boolean;
@@ -150,6 +151,7 @@ function rememberGallerySnapshot(cache: Map<string, GallerySnapshot>, key: strin
 }
 
 export function GalleryScreen({
+  spaceId,
   libraryKey,
   dataRevision,
   active,
@@ -193,6 +195,12 @@ export function GalleryScreen({
   const [busyAssets, setBusyAssets] = useState<Set<string>>(() => new Set());
   const [busyFavoriteMaterialId, setBusyFavoriteMaterialId] = useState<string | null>(null);
   const [selectedKey, setSelectedKey] = useState<string | null>(location.selectedMaterialKey);
+  const [requestedRevision, setRequestedRevision] = useState(0);
+  const [requestedMaterial, setRequestedMaterial] = useState<{
+    libraryKey: string;
+    materialId: string;
+    item: MaterialLibraryItem;
+  } | null>(null);
   const [checkedKeys, setCheckedKeys] = useState<ReadonlySet<string>>(() => new Set());
   const [selectionMode, setSelectionMode] = useState(false);
   const [collectBusy, setCollectBusy] = useState(false);
@@ -830,16 +838,22 @@ export function GalleryScreen({
   }, [materials]);
 
   const selectedItem = useMemo(
-    () => materials.find((item) => item.key === selectedKey) ?? null,
-    [materials, selectedKey],
+    () =>
+      location.requestedMaterialId
+        ? requestedMaterial?.libraryKey === libraryKey && requestedMaterial.materialId === location.requestedMaterialId
+          ? requestedMaterial.item
+          : null
+        : (materials.find((item) => item.key === selectedKey) ?? null),
+    [libraryKey, location.requestedMaterialId, materials, requestedMaterial, selectedKey],
   );
-  const selectedIndex = selectedItem ? materials.findIndex((item) => item.key === selectedItem.key) : -1;
+  const selectedIndex =
+    selectedItem && !location.requestedMaterialId ? materials.findIndex((item) => item.key === selectedItem.key) : -1;
   const previousItem = selectedIndex > 0 ? materials[selectedIndex - 1] : null;
   const nextItem = selectedIndex >= 0 ? (materials[selectedIndex + 1] ?? null) : null;
   const selectedFavoriteMaterialId =
     selectedItem && selectedItem.kind !== 'TEXT'
       ? (selectedItem.image.favorite?.materialId ?? null)
-      : selectedItem && !activeAlbumId
+      : selectedItem && !activeAlbumId && selectedItem.text.favoritedAt
         ? selectedItem.text.id
         : null;
   const selectedFavoriteBusy =
@@ -856,7 +870,14 @@ export function GalleryScreen({
   const showingPreviousResults = Boolean(materials.length) && displayedQueryKey !== galleryQueryKey;
 
   useEffect(() => {
-    if (loading || displayedQueryKey !== galleryQueryKey || !selectedKey || selectedItem) return;
+    if (
+      loading ||
+      location.requestedMaterialId ||
+      displayedQueryKey !== galleryQueryKey ||
+      !selectedKey ||
+      selectedItem
+    )
+      return;
     setSelectedKey(null);
     if (location.selectedMaterialKey === selectedKey) {
       commitGalleryLocation(
@@ -868,25 +889,49 @@ export function GalleryScreen({
         'replace',
       );
     }
-  }, [displayedQueryKey, galleryQueryKey, loading, selectedItem, selectedKey]);
+  }, [displayedQueryKey, galleryQueryKey, loading, location.requestedMaterialId, selectedItem, selectedKey]);
+
+  const requestedMaterialFailed = useStableCallback((reason?: unknown) => {
+    closeMaterialInspector();
+    notify(
+      reason === undefined
+        ? messages.desktopPetals.errors.sourceUnavailable
+        : `${l.failed}: ${reason instanceof Error ? reason.message : String(reason)}`,
+    );
+  });
 
   useEffect(() => {
     const requestedMaterialId = location.requestedMaterialId;
-    if (!active || !requestedMaterialId || activeAlbumId || dictionaryActive) return;
-    const imported = materials.find((item) =>
-      item.kind !== 'TEXT' ? item.image.materialId === requestedMaterialId : item.text.id === requestedMaterialId,
-    );
-    if (!imported) return;
-    setSelectedKey(imported.key);
-    commitGalleryLocation(
-      {
-        collection: { kind: 'all' },
-        selectedMaterialKey: imported.key,
-        requestedMaterialId: null,
-      },
-      'replace',
-    );
-  }, [active, activeAlbumId, dictionaryActive, location.requestedMaterialId, materials]);
+    if (!active || !requestedMaterialId) return;
+    let current = true;
+    void window.desktopApi
+      .galleryMaterialGet(requestedMaterialId, locale)
+      .then((result) => {
+        if (!current) return;
+        if (!result) {
+          setRequestedMaterial(null);
+          requestedMaterialFailed();
+          return;
+        }
+        const item = result.kind === 'MEDIA' ? mediaMaterial(result.media) : textMaterial(result.text);
+        setRequestedMaterial({ libraryKey, materialId: requestedMaterialId, item });
+        setSelectedKey(item.key);
+      })
+      .catch((reason: unknown) => {
+        if (current) requestedMaterialFailed(reason);
+      });
+    return () => {
+      current = false;
+    };
+  }, [
+    active,
+    dataRevision,
+    libraryKey,
+    locale,
+    location.requestedMaterialId,
+    requestedRevision,
+    requestedMaterialFailed,
+  ]);
 
   useEffect(() => {
     if (!selectionMode) return undefined;
@@ -903,6 +948,7 @@ export function GalleryScreen({
       current.map((item) => (item.materialId === metadata.materialId ? { ...item, metadata } : item)),
     );
     galleryCacheRef.current.clear();
+    setRequestedRevision((value) => value + 1);
   }
 
   const loadMore = useCallback(async () => {
@@ -1035,6 +1081,7 @@ export function GalleryScreen({
       notify(`${l.failed}: ${reason instanceof Error ? reason.message : String(reason)}`);
     } finally {
       galleryCacheRef.current.clear();
+      setRequestedRevision((value) => value + 1);
       setBusyAssets((current) => {
         const next = new Set(current);
         next.delete(assetId);
@@ -1078,6 +1125,7 @@ export function GalleryScreen({
     } catch (reason) {
       notify(`${l.unfavoriteFailed}: ${reason instanceof Error ? reason.message : String(reason)}`);
     } finally {
+      setRequestedRevision((value) => value + 1);
       setBusyFavoriteMaterialId(null);
     }
   }
@@ -1112,6 +1160,7 @@ export function GalleryScreen({
     } catch (reason) {
       notify(`${l.failed}: ${reason instanceof Error ? reason.message : String(reason)}`);
     } finally {
+      setRequestedRevision((value) => value + 1);
       setBusyFavoriteMaterialId(null);
     }
   }
@@ -1506,6 +1555,7 @@ export function GalleryScreen({
                 </div>
               )}
               <MaterialLibraryToolbar
+                imageNamesAvailable={!creationBrowseActive}
                 query={query}
                 scope={dictionarySelection?.scope ?? scope}
                 relationship="ANY"
@@ -1624,9 +1674,10 @@ export function GalleryScreen({
         {active && selectedItem && (
           <WorkspaceDetailLoadingBoundary>
             <MaterialDetailPage
+              spaceId={spaceId}
               item={selectedItem}
-              position={selectedIndex + 1}
-              total={Math.max(resultTotal, materials.length)}
+              position={Math.max(0, selectedIndex) + 1}
+              total={location.requestedMaterialId ? 1 : Math.max(resultTotal, materials.length)}
               albums={writableAlbums}
               ratingBusy={selectedItem.kind === 'IMAGE' && busyAssets.has(selectedItem.image.asset.id)}
               albumMembershipBusy={busyAlbumIds.size > 0}
@@ -1657,7 +1708,7 @@ export function GalleryScreen({
               }}
               notify={notify}
               onMetadataUpdated={updateMaterialMetadata}
-              closeAfterRemoveFavorite={favoriteOnly}
+              closeAfterRemoveFavorite={favoriteOnly && !location.requestedMaterialId}
               onHistoryNavigationGuardChange={onHistoryNavigationGuardChange}
               revealContext={revealContextForMaterial(selectedItem)}
             />

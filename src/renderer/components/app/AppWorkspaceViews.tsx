@@ -1,6 +1,5 @@
-import type { AppView } from '@/renderer/components/app/AppSidebar';
 import { ReturnToMaterialsBar } from '@/renderer/components/app/ReturnToMaterialsBar';
-import type { AppLocation, MaterialsReturnContext } from '@/renderer/components/app/app-navigation';
+import type { AppLocation, AppView, MaterialsReturnContext } from '@/renderer/components/app/app-navigation';
 import { CreatorScreen } from '@/renderer/features/creator/lazyCreatorScreen';
 import { useI18n } from '@/renderer/i18n/useI18n';
 import type {
@@ -19,6 +18,8 @@ const GalleryScreen = lazy(() =>
   import('@/renderer/components/GalleryScreen').then((module) => ({ default: module.GalleryScreen })),
 );
 const ExtensionCenterScreen = lazy(() => import('@/renderer/features/extensions/ExtensionCenterScreen'));
+const ContentSearchScreen = lazy(() => import('@/renderer/features/content-search/ContentSearchScreen'));
+const CalendarScreen = lazy(() => import('@/renderer/features/calendar/CalendarScreen'));
 const TransitionShowcaseScreen = lazy(() => import('@/renderer/features/extensions/TransitionShowcaseScreen'));
 const AiCenterScreen = lazy(() =>
   import('@/renderer/features/ai-center/AiCenterScreen').then((module) => ({ default: module.AiCenterScreen })),
@@ -39,6 +40,8 @@ export interface AppWorkspaceLoadingBoundaries {
   documents(children: ReactNode): ReactNode;
   dictionary(children: ReactNode): ReactNode;
   gallery(children: ReactNode): ReactNode;
+  search(children: ReactNode): ReactNode;
+  calendar(children: ReactNode): ReactNode;
   companion(children: ReactNode): ReactNode;
   extensions(children: ReactNode): ReactNode;
   aiCenter(children: ReactNode): ReactNode;
@@ -83,6 +86,9 @@ interface Props {
   onHistoryNavigationGuardChange: ComponentProps<typeof DictionaryScreen>['onHistoryNavigationGuardChange'];
   onOpenDictionaryCreation: ComponentProps<typeof DictionaryScreen>['onOpenCreation'];
   onGalleryNavigate: ComponentProps<typeof GalleryScreen>['onNavigate'];
+  onSearchNavigate(search: AppLocation['search']): void;
+  onCalendarOpenLocation(location: AppLocation): void;
+  onSearchResultOpen: ComponentProps<typeof ContentSearchScreen>['onOpen'];
   onOpenGalleryResult: ComponentProps<typeof GalleryScreen>['onOpenResult'];
   onOpenGalleryTerm: ComponentProps<typeof GalleryScreen>['onOpenTerm'];
   onGalleryIntakeCommitted(result: IntakeCommitResult): void | Promise<void>;
@@ -166,57 +172,141 @@ function useCreatorDocumentUpdate({
   return [update, handleChange] as const;
 }
 
-export function AppWorkspaceViews({
+function SearchWorkspaceView({
   groupActive,
   view,
   visitedViews,
-  data,
-  dataRevision,
-  locale,
-  defaultPromptLocale,
   location,
-  comparisonFullWindow,
-  creationPromptFullWindow,
-  materialsReturnContext,
-  returnSummary,
-  codexImagesNavigation,
-  transitionShowcaseNavigation,
   loadingBoundaries,
-  documentNavigationRevision,
-  onReturnToMaterials,
-  onVideoDocumentsChange,
-  onCreatorNavigate,
-  onCreatorOpenInNewTab,
-  onComparisonFullWindowChange,
-  onCreationPromptFullWindowChange,
-  onOpenCreatorMaterial,
-  onConfigureExtension,
-  onCreatorActiveAlbumChange,
-  refresh,
-  refreshAlbums,
-  onTermDetailsRequest,
-  onImportedOutputSaved,
+  onSearchNavigate,
+  onSearchResultOpen,
+}: Pick<
+  Props,
+  'groupActive' | 'view' | 'visitedViews' | 'location' | 'loadingBoundaries' | 'onSearchNavigate' | 'onSearchResultOpen'
+>) {
+  if (!visitedViews.has('search')) return null;
+  return (
+    <Activity mode={view === 'search' ? 'visible' : 'hidden'}>
+      {loadingBoundaries.search(
+        <ContentSearchScreen
+          active={groupActive && view === 'search'}
+          location={location.search}
+          onNavigate={onSearchNavigate}
+          onOpen={onSearchResultOpen}
+        />,
+      )}
+    </Activity>
+  );
+}
+
+function CompanionWorkspaceView({
+  groupActive,
+  view,
+  visitedViews,
+  loadingBoundaries,
+  locale,
   notify,
-  onVideoDocumentsNavigate,
-  onDictionaryNavigate,
-  onNavigateBack,
-  onHistoryNavigationGuardChange,
-  onOpenDictionaryCreation,
-  onGalleryNavigate,
-  onOpenGalleryResult,
-  onOpenGalleryTerm,
-  onGalleryIntakeCommitted,
-  onGalleryActiveAlbumChange,
-  onExtensionsNavigate,
-  onOpenImportedCreation,
-  onAiCenterNavigate,
-  onLocateAiActivity,
-  onReEditGeneration,
-  onRetryGeneration,
-  ...contentSaveHandlers
-}: Props) {
+}: Pick<Props, 'groupActive' | 'view' | 'visitedViews' | 'loadingBoundaries' | 'locale' | 'notify'>) {
+  if (!visitedViews.has('companion')) return null;
+  return (
+    <Activity mode={view === 'companion' ? 'visible' : 'hidden'}>
+      <div className="size-full">
+        {loadingBoundaries.companion(
+          <CompanionHistoryScreen
+            active={groupOwnsView(groupActive, view, companionViews)}
+            locale={locale}
+            notify={notify}
+          />,
+        )}
+      </div>
+    </Activity>
+  );
+}
+
+function CalendarWorkspaceView(
+  props: Pick<
+    Props,
+    | 'groupActive'
+    | 'view'
+    | 'visitedViews'
+    | 'data'
+    | 'dataRevision'
+    | 'loadingBoundaries'
+    | 'onCalendarOpenLocation'
+    | 'notify'
+  >,
+) {
+  const { groupActive, view, visitedViews, data, dataRevision, loadingBoundaries, notify } = props;
+  return (
+    <>
+      {visitedViews.has('calendar') && (
+        <Activity mode={view === 'calendar' ? 'visible' : 'hidden'}>
+          {loadingBoundaries.calendar(
+            <CalendarScreen
+              spaceId={data.spaceId}
+              data={data}
+              dataRevision={dataRevision}
+              active={groupActive && view === 'calendar'}
+              onOpenLocation={props.onCalendarOpenLocation}
+              notify={notify}
+            />,
+          )}
+        </Activity>
+      )}
+    </>
+  );
+}
+
+export function AppWorkspaceViews(props: Props) {
+  const {
+    groupActive,
+    view,
+    visitedViews,
+    data,
+    dataRevision,
+    locale,
+    defaultPromptLocale,
+    location,
+    comparisonFullWindow,
+    creationPromptFullWindow,
+    materialsReturnContext,
+    returnSummary,
+    codexImagesNavigation,
+    transitionShowcaseNavigation,
+    loadingBoundaries,
+    documentNavigationRevision,
+    onReturnToMaterials,
+    onVideoDocumentsChange,
+    onCreatorNavigate,
+    onCreatorOpenInNewTab,
+    onComparisonFullWindowChange,
+    onCreationPromptFullWindowChange,
+    onOpenCreatorMaterial,
+    onConfigureExtension,
+    onCreatorActiveAlbumChange,
+    refresh,
+    refreshAlbums,
+    onTermDetailsRequest,
+    onImportedOutputSaved,
+    notify,
+    onVideoDocumentsNavigate,
+    onDictionaryNavigate,
+    onNavigateBack,
+    onHistoryNavigationGuardChange,
+    onOpenDictionaryCreation,
+    onGalleryNavigate,
+    onOpenGalleryResult,
+    onOpenGalleryTerm,
+    onGalleryIntakeCommitted,
+    onGalleryActiveAlbumChange,
+    onExtensionsNavigate,
+    onOpenImportedCreation,
+    onAiCenterNavigate,
+    onLocateAiActivity,
+    onReEditGeneration,
+    onRetryGeneration,
+  } = props;
   const { messages } = useI18n();
-  const companionActive = groupOwnsView(groupActive, view, companionViews);
   const [creatorDocumentUpdate, handleCreatorDocumentsChange] = useCreatorDocumentUpdate({
     location,
     onVideoDocumentsChange,
@@ -283,7 +373,8 @@ export function AppWorkspaceViews({
                   refreshAlbums={refreshAlbums}
                   onTermDetailsRequest={onTermDetailsRequest}
                   onImportedOutputSaved={onImportedOutputSaved}
-                  {...contentSaveHandlers}
+                  onArticleSaved={props.onArticleSaved}
+                  onSocialPostSaved={props.onSocialPostSaved}
                   notify={notify}
                 />,
               )}
@@ -324,6 +415,7 @@ export function AppWorkspaceViews({
           <div className="size-full">
             {loadingBoundaries.gallery(
               <GalleryScreen
+                spaceId={data.spaceId}
                 libraryKey={data.spaceName}
                 dataRevision={dataRevision}
                 active={groupOwnsView(groupActive, view, galleryViews)}
@@ -345,15 +437,9 @@ export function AppWorkspaceViews({
           </div>
         </Activity>
       )}
-      {visitedViews.has('companion') && (
-        <Activity mode={view === 'companion' ? 'visible' : 'hidden'}>
-          <div className="size-full">
-            {loadingBoundaries.companion(
-              <CompanionHistoryScreen active={companionActive} locale={locale} notify={notify} />,
-            )}
-          </div>
-        </Activity>
-      )}
+      <SearchWorkspaceView {...props} />
+      <CalendarWorkspaceView {...props} />
+      <CompanionWorkspaceView {...props} />
       {(visitedViews.has('packs') || visitedViews.has('codexImages')) && (
         <Activity mode={view === 'packs' || view === 'codexImages' ? 'visible' : 'hidden'}>
           <div className="size-full">

@@ -13,6 +13,13 @@ import { PetalInputMonitor } from '@/main/desktop-petals/petal-input-monitor';
 import type { PetalLanguage } from '@/shared/contracts/petal-language';
 import { PetalCollectionHistory } from '@/main/desktop-petals/petal-collection-history';
 import { PetalPluckMonitor } from '@/main/desktop-petals/petal-pluck-monitor';
+import { loadPetalWindow, type PetalWindowLoad } from '@/main/desktop-petals/petal-window-loading';
+
+function applyPetalAlwaysOnTop(window: BrowserWindow, alwaysOnTop: boolean) {
+  // On Windows, Electron's default floating level follows the taskbar's Z-order on activation.
+  // The normal level keeps HWND_TOPMOST from the flag without following a temporarily lowered taskbar.
+  window.setAlwaysOnTop(alwaysOnTop, process.platform === 'win32' ? 'normal' : 'floating');
+}
 
 export interface PetalWindow {
   previewToken?: string;
@@ -53,13 +60,13 @@ export class PetalWindows {
             entry.drawer ||
             window.isDestroyed() ||
             !this.wantsAlwaysOnTop(entry.libraryId, entry.instanceId) ||
-            this.pendingPaints.has(window.webContents.id) ||
+            this.opening.has(window.webContents.id) ||
             !this.canRestoreVisibility?.(entry) ||
             this.layouts.get(entry.libraryId, entry.instanceId ?? 'hub')?.visible !== true
           )
             continue;
           window.showInactive();
-          window.setAlwaysOnTop(true);
+          applyPetalAlwaysOnTop(window, true);
           window.moveTop();
         }
       }, delay),
@@ -102,7 +109,8 @@ export class PetalWindows {
   readonly entries = new Map<number, PetalWindow>();
   private readonly unpinned = new Map<string, Set<string>>();
   allowClose = false;
-  private readonly pendingPaints = new Map<number, (painted: boolean) => void>();
+  private readonly opening = new Map<number, PetalWindowLoad>();
+  private readonly deferredRestores = new Set<PetalWindow>();
   private saveTimer: ReturnType<typeof setTimeout> | null = null;
   constructor(
     readonly layouts: PetalLayoutStore,
@@ -161,7 +169,8 @@ export class PetalWindows {
       hubView: 'flower',
       drawer: true,
     };
-    this.entries.set(window.webContents.id, entry);
+    const senderId = window.webContents.id;
+    this.entries.set(senderId, entry);
     installWindowNavigationPolicy(window, url);
     window.on('blur', onBlur);
     window.on('close', (event) => {
@@ -170,45 +179,65 @@ export class PetalWindows {
         onHide();
       }
     });
-    window.on('closed', () => this.entries.delete(window.webContents.id));
-    try {
-      await window.loadURL(url.href);
-    } catch (error) {
-      if (!window.isDestroyed()) window.destroy();
-      throw error;
-    }
-    if (this.allowPresentation && !window.isDestroyed()) window.showInactive();
-    return entry;
+    window.on('closed', () => this.entries.delete(senderId));
+    return this.finishOpening(
+      entry,
+      url,
+      () => {
+        if (this.allowPresentation && !this.allowClose) window.showInactive();
+      },
+      false,
+    );
   }
-  async show(libraryId: string, instanceId: string | null, point?: Point, expanded?: boolean, waitForPaint = false) {
-    return this.open(libraryId, instanceId, point, expanded, waitForPaint, false);
+  async show(libraryId: string, instanceId: string | null, point?: Point, expanded?: boolean, handoff = false) {
+    return this.open(libraryId, instanceId, point, expanded, handoff, false);
   }
-  async pin(libraryId: string, instanceId: string, point?: Point, expanded?: boolean, waitForPaint = false) {
+  async pin(libraryId: string, instanceId: string, point?: Point, expanded?: boolean, handoff = false) {
     this.unpinned.get(libraryId)?.delete(instanceId);
-    return this.show(libraryId, instanceId, point, expanded, waitForPaint);
+    return this.show(libraryId, instanceId, point, expanded, handoff);
   }
   async restore(libraryId: string, instanceId: string | null) {
-    return this.open(libraryId, instanceId, undefined, undefined, false, true);
+    if (!this.hasVisiblePlacement(libraryId, instanceId)) return null;
+    try {
+      return await this.open(libraryId, instanceId, undefined, undefined, false, true);
+    } catch (error) {
+      // A failed view keeps its saved placement and must not stop the remaining batch.
+      console.error('[desktop-petals] window restore failed', { libraryId, instanceId }, error);
+      return null;
+    }
+  }
+  async resumeRestores() {
+    for (const entry of [...this.deferredRestores]) {
+      if (entry.window.isDestroyed() || !this.hasVisiblePlacement(entry.libraryId, entry.instanceId)) {
+        this.deferredRestores.delete(entry);
+        continue;
+      }
+      await this.restore(entry.libraryId, entry.instanceId);
+    }
+  }
+  private async reopen(entry: PetalWindow, expanded: boolean | undefined, restoring: boolean, handoff: boolean) {
+    await this.opening.get(entry.window.webContents.id)?.ready;
+    if (entry.window.isDestroyed()) throw petalError('sourceUnavailable');
+    if (restoring && !this.prepareRestore(entry)) return entry;
+    this.collectionHistory.clear(entry);
+    entry.editEpoch++;
+    entry.window.setIgnoreMouseEvents(false);
+    if (expanded !== undefined) this.expand(entry, expanded);
+    this.present(entry, restoring, handoff);
+    this.remember(entry, true);
+    entry.window.webContents.send('desktop-petals:changed');
+    return entry;
   }
   private async open(
     libraryId: string,
     instanceId: string | null,
     point: Point | undefined,
     expanded: boolean | undefined,
-    waitForPaint: boolean,
+    handoff: boolean,
     restoring: boolean,
   ) {
     const existing = this.find(libraryId, instanceId);
-    if (existing) {
-      this.collectionHistory.clear(existing);
-      existing.editEpoch++;
-      existing.window.setIgnoreMouseEvents(false);
-      if (expanded !== undefined) this.expand(existing, expanded);
-      this.present(existing, restoring);
-      this.remember(existing, true);
-      existing.window.webContents.send('desktop-petals:changed');
-      return existing;
-    }
+    if (existing) return this.reopen(existing, expanded, restoring, handoff);
     const previous = this.layouts.get(libraryId, instanceId ?? 'hub');
     const isExpanded = instanceId ? (expanded ?? previous?.expanded ?? false) : false;
     let size =
@@ -256,6 +285,7 @@ export class PetalWindows {
     });
     const entry: PetalWindow = { window, libraryId, instanceId, expanded: isExpanded, editEpoch: 0, hubView: 'flower' };
     window.setIgnoreMouseEvents(false);
+    applyPetalAlwaysOnTop(window, this.wantsAlwaysOnTop(libraryId, instanceId));
     const senderId = window.webContents.id;
     this.entries.set(senderId, entry);
     installWindowNavigationPolicy(window, url);
@@ -294,33 +324,60 @@ export class PetalWindows {
     });
     window.on('closed', () => {
       this.entries.delete(senderId);
-      this.pendingPaints.get(senderId)?.(false);
-      this.pendingPaints.delete(senderId);
+      this.deferredRestores.delete(entry);
     });
-    const paint = this.initialPaint(entry, waitForPaint);
-    try {
-      await window.loadURL(url.href);
-      if (!(await paint.ready)) throw petalError('sourceUnavailable');
-      if (window.isDestroyed()) throw petalError('sourceUnavailable');
+    return this.finishOpening(entry, url, () => {
+      if (restoring && !this.prepareRestore(entry)) return;
       if (!instanceId && previous?.dockEdge) this.presentation.restoreDock(entry, previous.dockEdge);
-      this.present(entry, restoring, waitForPaint);
+      this.present(entry, restoring, handoff);
       this.remember(entry, true);
+    });
+  }
+  private async finishOpening(
+    entry: PetalWindow,
+    url: URL,
+    present: () => void,
+    waitForPaint = this.allowPresentation,
+  ) {
+    const { window } = entry;
+    const senderId = window.webContents.id;
+    const loading = loadPetalWindow(window, url.href, waitForPaint);
+    this.opening.set(senderId, loading);
+    try {
+      await loading.ready;
+      if (window.isDestroyed()) throw petalError('sourceUnavailable');
+      present();
       return entry;
     } catch (error) {
       this.entries.delete(senderId);
       if (!window.isDestroyed()) window.destroy();
       throw error;
     } finally {
-      paint.dispose();
+      this.opening.delete(senderId);
+      loading.dispose();
     }
   }
   rendered(entry: PetalWindow) {
-    this.pendingPaints.get(entry.window.webContents.id)?.(true);
+    this.opening.get(entry.window.webContents.id)?.rendered();
+  }
+  private hasVisiblePlacement(libraryId: string, instanceId: string | null) {
+    const placement = this.layouts.get(libraryId, instanceId ?? 'hub');
+    return !this.allowClose && placement?.visible === true && placement.home !== 'drawer';
+  }
+  private shouldRestore(entry: PetalWindow) {
+    return this.hasVisiblePlacement(entry.libraryId, entry.instanceId) && (this.canRestoreVisibility?.(entry) ?? true);
+  }
+  private prepareRestore(entry: PetalWindow) {
+    if (this.shouldRestore(entry)) return true;
+    // A canceled library drain can resume this already-loaded window without recreating its editor.
+    if (this.hasVisiblePlacement(entry.libraryId, entry.instanceId)) this.deferredRestores.add(entry);
+    return false;
   }
   private wantsAlwaysOnTop(libraryId: string, instanceId: string | null) {
     return !instanceId || !this.unpinned.get(libraryId)?.has(instanceId);
   }
   private present(entry: PetalWindow, restoring = false, handoff = false) {
+    this.deferredRestores.delete(entry);
     if (!this.allowPresentation) return;
     // An explicit open of an editor must activate it even when another app is
     // foreground. A paint handoff stays inactive only for collapsed petals.
@@ -328,42 +385,8 @@ export class PetalWindows {
     else entry.window.show();
     // Reapply the user's choice after showing; the native flag alone is not the preference.
     const alwaysOnTop = this.wantsAlwaysOnTop(entry.libraryId, entry.instanceId);
-    entry.window.setAlwaysOnTop(alwaysOnTop);
+    applyPetalAlwaysOnTop(entry.window, alwaysOnTop);
     if (alwaysOnTop) entry.window.moveTop();
-  }
-  private initialPaint(entry: PetalWindow, requested: boolean) {
-    if (!requested || !this.allowPresentation) return { ready: Promise.resolve(true), dispose: () => undefined };
-    const contents = entry.window.webContents;
-    const senderId = contents.id;
-    const backgroundThrottling = contents.getBackgroundThrottling();
-    // This hidden window must paint before it can be presented. Keep it rendering
-    // while another app is foreground, then restore throttling after presentation.
-    contents.setBackgroundThrottling(false);
-    let timer: ReturnType<typeof setTimeout>;
-    let onPaint: () => void;
-    const ready = new Promise<boolean>((resolve) => {
-      let painted = false;
-      let contentReady = false;
-      onPaint = () => {
-        painted = true;
-        if (contentReady) resolve(true);
-      };
-      entry.window.once('ready-to-show', onPaint);
-      this.pendingPaints.set(senderId, (rendered) => {
-        contentReady = rendered;
-        if (!rendered || painted) resolve(rendered);
-      });
-      timer = setTimeout(() => resolve(false), 10_000);
-    });
-    return {
-      ready,
-      dispose: () => {
-        clearTimeout(timer);
-        entry.window.removeListener('ready-to-show', onPaint);
-        this.pendingPaints.delete(senderId);
-        if (!contents.isDestroyed()) contents.setBackgroundThrottling(backgroundThrottling);
-      },
-    };
   }
   expand(entry: PetalWindow, expanded: boolean) {
     if (expanded) this.collectionHistory.clear(entry);
@@ -392,7 +415,7 @@ export class PetalWindows {
   setAlwaysOnTop(entry: PetalWindow, alwaysOnTop: boolean) {
     if (!entry.instanceId || entry.window.isDestroyed()) throw petalError('sourceUnavailable');
     // Keep the choice through window recreation and library switches, but never persist it across app restarts.
-    entry.window.setAlwaysOnTop(alwaysOnTop);
+    applyPetalAlwaysOnTop(entry.window, alwaysOnTop);
     if (alwaysOnTop && this.allowPresentation && entry.window.isVisible()) entry.window.moveTop();
     if (alwaysOnTop) this.unpinned.get(entry.libraryId)?.delete(entry.instanceId);
     else {
@@ -474,6 +497,7 @@ export class PetalWindows {
       x,
       y,
       visible: visible ?? previous?.visible ?? entry.window.isVisible(),
+      hiddenByHub: visible !== undefined ? false : previous?.hiddenByHub,
       home: previous?.home ?? 'desktop',
       expanded: entry.expanded,
       noteSize,

@@ -6,9 +6,14 @@ import {
   resolveArticleDeliveryDefinition,
 } from '@/main/extensions/article-delivery/definition';
 import { ArticleDeliveryService } from '@/main/extensions/article-delivery/service';
+import {
+  ArticleDeliveryUploadLifecycle,
+  waitForUploadPreparation,
+} from '@/main/extensions/article-delivery/upload-lifecycle';
 import type { ExtensionRegistry } from '@/main/extensions/registry';
 import {
   articleDeliveryJobChangedEventSchema,
+  articleDeliveryMode,
   articleDeliveryJobListInputSchema,
   articleDeliveryJobRetryInputSchema,
   articleDeliveryUploadInputSchema,
@@ -49,7 +54,7 @@ function deliveryFailure(reason: unknown) {
   const status = Number(detail.status);
   const retryable =
     (Number.isSafeInteger(status) && status >= 500) ||
-    ['INTERNAL_ERROR', 'NETWORK_ERROR', 'TIMEOUT'].includes(code) ||
+    ['DELIVERY_INTERRUPTED', 'INTERNAL_ERROR', 'NETWORK_ERROR', 'TIMEOUT'].includes(code) ||
     /aborted|fetch failed|network|temporar|timed?\s*out|timeout/i.test(message);
   return { code, message, retryable };
 }
@@ -57,6 +62,7 @@ function deliveryFailure(reason: unknown) {
 export class ArticleDeliveryJobCoordinator {
   private started = false;
   private active: Promise<void> | null = null;
+  private readonly uploads = new ArticleDeliveryUploadLifecycle();
 
   constructor(
     private readonly database: ArticleDeliveryJobDatabase,
@@ -69,10 +75,29 @@ export class ArticleDeliveryJobCoordinator {
 
   async enqueue(rawInput: ArticleDeliveryUploadInput) {
     const input = articleDeliveryUploadInputSchema.parse(rawInput);
+    const prepared = await this.prepareEnqueue(input).catch((reason: unknown) => {
+      const code = (reason as ArticleDeliveryFailureDetail | null)?.code;
+      throw Object.assign(new Error(reason instanceof Error ? reason.message : String(reason), { cause: reason }), {
+        code: typeof code === 'string' && code.trim() ? code.trim() : 'DELIVERY_ADMISSION_REJECTED',
+        admissionRejected: true,
+      });
+    });
+    // Errors from this point may follow a durable insert; their admission result is unknown.
+    const job = this.database.enqueueArticleDeliveryJob(prepared);
+    this.emit(job);
+    this.kick();
+    return job;
+  }
+
+  private async prepareEnqueue(input: ArticleDeliveryUploadInput) {
     const article = this.database.getArticle(input.articleId);
     if (article.revisionId !== input.expectedRevisionId) throw new Error('Article revision changed before delivery');
     assertArticleDeliveryExtensionActivated(this.extensions, input.extensionId);
     const definition = resolveArticleDeliveryDefinition(this.extensions, input);
+    const deliveryMode = articleDeliveryMode(definition.configuration);
+    if (input.expectedDeliveryMode && input.expectedDeliveryMode !== deliveryMode) {
+      throw Object.assign(new Error('DELIVERY_MODE_CHANGED'), { code: 'DELIVERY_MODE_CHANGED' });
+    }
     const connection = await this.connections.get(input.extensionId);
     const delivery = new ArticleDeliveryService(
       this.database,
@@ -90,7 +115,14 @@ export class ArticleDeliveryJobCoordinator {
     });
     if (status.connection.state !== 'READY') throw new Error(status.connection.message);
     if (!status.profile) throw new Error('Article delivery target is not configured');
-    const job = this.database.enqueueArticleDeliveryJob({
+    if (
+      input.expectedProfile &&
+      (input.expectedProfile.slug !== status.profile.slug ||
+        input.expectedProfile.description !== status.profile.description)
+    ) {
+      throw Object.assign(new Error('DELIVERY_PROFILE_CHANGED'), { code: 'DELIVERY_PROFILE_CHANGED' });
+    }
+    return {
       extensionId: input.extensionId,
       channelId: input.channelId,
       spaceId: input.spaceId,
@@ -99,11 +131,10 @@ export class ArticleDeliveryJobCoordinator {
       articleContentHash: article.contentHash,
       targetSlug: status.profile.slug,
       targetDescription: status.profile.description,
+      deliveryMode,
       watermarkProfile: await selectedWatermarkProfile(input.watermark, this.naturalWatermark),
-    });
-    this.emit(job);
-    this.kick();
-    return job;
+      imagePreparation: input.imagePreparation ?? ({ version: 1, mode: 'BALANCED' } as const),
+    };
   }
 
   list(rawInput: ArticleDeliveryJobListInput) {
@@ -120,13 +151,27 @@ export class ArticleDeliveryJobCoordinator {
 
   start() {
     if (this.started) return;
+    this.resumeUploads();
     this.started = true;
     this.kick();
   }
 
+  get isStarted() {
+    return this.started;
+  }
+
+  acquireUpload() {
+    return this.uploads.acquire();
+  }
+
+  resumeUploads() {
+    this.uploads.resume();
+  }
+
   async stopAndDrain() {
     this.started = false;
-    await this.active;
+    const uploadsStopped = this.uploads.stopAndDrain();
+    await Promise.all([uploadsStopped, this.active]);
   }
 
   private kick() {
@@ -154,12 +199,16 @@ export class ArticleDeliveryJobCoordinator {
       try {
         const running = this.database.markArticleDeliveryJobRunning(queued.id);
         if (!running) continue;
-        this.emit(running);
+        const upload = this.acquireUpload();
         try {
-          const result = await this.execute(running);
+          this.emit(running);
+          const result = await this.execute(running, upload.signal);
+          // A valid receipt remains successful even if stopping raced with its completion.
           this.emit(this.database.completeArticleDeliveryJob(running.id, result));
         } catch (reason) {
           this.emit(this.database.failArticleDeliveryJob(running.id, deliveryFailure(reason)));
+        } finally {
+          upload.release();
         }
       } finally {
         release();
@@ -167,9 +216,11 @@ export class ArticleDeliveryJobCoordinator {
     }
   }
 
-  private async execute(job: ArticleDeliveryJob) {
+  private async execute(job: ArticleDeliveryJob, signal: AbortSignal) {
+    signal.throwIfAborted();
     const definition = resolveArticleDeliveryDefinition(this.extensions, job);
-    const connection = await this.connections.get(job.extensionId);
+    const connection = await waitForUploadPreparation(this.connections.get(job.extensionId), signal);
+    signal.throwIfAborted();
     const delivery = new ArticleDeliveryService(
       this.database,
       this.extensions,
@@ -185,11 +236,14 @@ export class ArticleDeliveryJobCoordinator {
         spaceId: job.spaceId,
         articleId: job.articleId,
         expectedRevisionId: job.articleRevisionId,
+        expectedDeliveryMode: job.deliveryMode,
+        imagePreparation: job.imagePreparation ?? { version: 1, mode: 'ORIGINAL' },
       },
       { slug: job.targetSlug, description: job.targetDescription },
       job.articleContentHash,
       (progress) => this.emit(job, progress),
       job.watermarkProfile ?? null,
+      signal,
     );
   }
 

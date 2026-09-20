@@ -1,22 +1,25 @@
 import { appGridRows } from '@/renderer/appPresentation';
 import { useAppWorkspaceShortcuts } from '@/renderer/commands/useAppWorkspaceShortcuts';
+import { useContentSearchShortcut } from '@/renderer/features/content-search/useContentSearchShortcut';
 import {
   AppLoadingState,
   APP_LOADING_VARIANTS as loadingVariants,
   useAppLoadingPreviews,
 } from '@/renderer/components/app/AppLoadingState';
 import { AppRuntimeProviders } from '@/renderer/components/app/AppRuntimeProviders';
-import { AppSidebar, type AppView } from '@/renderer/components/app/AppSidebar';
+import { AppSidebar } from '@/renderer/components/app/AppSidebar';
 import { AppTitleBar } from '@/renderer/components/app/AppTitleBar';
 import { SettingsDialog } from '@/renderer/components/app/SettingsDialog';
 import {
   initialAppLocation,
   type AiCenterLocation,
   type AppLocation,
+  type AppView,
   type HistoryNavigationGuard,
   type NavigationMode,
 } from '@/renderer/components/app/app-navigation';
 import { useAppDeepLinkNavigation as useDeepLinks } from '@/renderer/components/app/useAppDeepLinkNavigation';
+import { useReferenceLocationNavigation } from '@/renderer/components/app/useReferenceLocationNavigation';
 import { useTermDetails } from '@/renderer/components/app/useTermDetails';
 import { ArticleEditorSessionRegistryProvider } from '@/renderer/components/creator/article-editor/ArticleEditorSessionProvider';
 import { useAppAssetMenuActions } from '@/renderer/components/media/useAppAssetMenuActions';
@@ -57,10 +60,6 @@ import type {
 } from '@/shared/contracts';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
-function newWorkspaceTabLocation(destination: AppLocation['view'] | AppLocation) {
-  return typeof destination === 'string' ? { ...initialAppLocation, view: destination } : destination;
-}
-
 export function App() {
   const { locale, messages } = useI18n();
   const [data, setData] = useState<BootstrapDto | null>(null);
@@ -95,11 +94,8 @@ export function App() {
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [comparisonFullWindow, setComparisonFullWindow] = useState(false);
   const [creationPromptFullWindow, setCreationPromptFullWindow] = useState(false);
-  useDeepLinks(data, workspace.openTab, setData, [
-    setSettingsOpen,
-    setComparisonFullWindow,
-    setCreationPromptFullWindow,
-  ]);
+  const overlaySetters = [setSettingsOpen, setComparisonFullWindow, setCreationPromptFullWindow] as const;
+  useDeepLinks(data, workspace.openTab, setData, overlaySetters);
   const appFullWindow = comparisonFullWindow || creationPromptFullWindow;
   const [defaultPromptLocale, setDefaultPromptLocale] = useState<Locale | null>(() => {
     const stored = localStorage.getItem('aiy.prompt-locale.v1');
@@ -129,6 +125,7 @@ export function App() {
     if (flush) articleLocationFlushersRef.current.set(tabId, flush);
     else articleLocationFlushersRef.current.delete(tabId);
   }, []);
+  useReferenceLocationNavigation(data, workspace, setData, articleLocationFlushersRef, overlaySetters);
   useEffect(
     () =>
       registerWorkspaceDrain(async () => {
@@ -544,6 +541,8 @@ export function App() {
     if (activeTabId) changeViewInTab(activeTabId, nextView);
   }
 
+  useContentSearchShortcut({ active: workspaceReady && !spaceTransition, onOpen: () => changeView('search') });
+
   function navigateAiCenter(aiCenter: AiCenterLocation, mode: NavigationMode = 'push') {
     if (!activeTabId) return;
     requestTabExit(activeTabId, () =>
@@ -657,6 +656,19 @@ export function App() {
     requestTabExits(otherGroup ? [otherGroup.activeTabId] : [], apply);
   }
 
+  function openWorkspaceLocation(
+    sourceTabId: string,
+    destination: AppLocation['view'] | AppLocation,
+    placement: 'tab' | 'beside',
+  ) {
+    requestTabExit(sourceTabId, () => {
+      articleLocationFlushersRef.current.get(sourceTabId)?.();
+      void workspace
+        .openLocation(sourceTabId, destination, placement, defaultPromptLocale ?? locale)
+        .catch((reason) => notify(reason instanceof Error ? reason.message : String(reason)));
+    });
+  }
+
   function renderWorkspaceGroup(group: WorkspaceRuntimeGroup) {
     if (!data) return null;
     return (
@@ -687,14 +699,8 @@ export function App() {
         onCloseTab={closeTab}
         onCloseOtherTabs={(tabId) => closeOtherTabs(group, tabId)}
         onReorderTab={(tabId, delta) => workspace.reorderTab(group.id, tabId, delta)}
-        onNewTab={(sourceTabId, destination) => {
-          articleLocationFlushersRef.current.get(sourceTabId)?.();
-          workspace.openTab(newWorkspaceTabLocation(destination), group.id);
-        }}
-        onOpenBeside={(sourceTabId, destination) => {
-          articleLocationFlushersRef.current.get(sourceTabId)?.();
-          workspace.openBeside(sourceTabId, newWorkspaceTabLocation(destination));
-        }}
+        onNewTab={(sourceTabId, destination) => openWorkspaceLocation(sourceTabId, destination, 'tab')}
+        onOpenBeside={(sourceTabId, destination) => openWorkspaceLocation(sourceTabId, destination, 'beside')}
         splitAxis={workspace.state?.arrangement.kind === 'split' ? workspace.state.arrangement.axis : null}
         onMergeGroups={() => mergeWorkspaceGroupsFrom(group)}
         onMoveTabToOtherGroup={moveTabToOtherGroup}

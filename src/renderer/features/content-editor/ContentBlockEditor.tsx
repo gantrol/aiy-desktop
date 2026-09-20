@@ -1,5 +1,8 @@
+import { emptyToolbarState, selectToolbarState } from '@/renderer/features/content-editor/contentEditorToolbarState';
+import { removeContentImageAssets } from '@/renderer/features/content-editor/contentImageRemoval';
 import { imageMimeType } from '@/renderer/components/creator/imageImport';
 import { contentEditorInteractions } from '@/renderer/features/content-editor/contentEditorInteractions';
+import { ContentHeadingAnchors } from '@/renderer/features/content-editor/contentHeadingAnchors';
 import {
   createDocumentImageExtension,
   DocumentImageMediaStore,
@@ -15,8 +18,16 @@ import { ContentInputOperations } from '@/renderer/features/content-editor/conte
 import { contentReferenceExtension } from '@/renderer/features/content-editor/ContentReferenceExtension';
 import { ContentReferencePicker } from '@/renderer/features/content-editor/ContentReferencePicker';
 import { useContentEditor } from '@/renderer/features/content-editor/useContentEditor';
+import { useContentFigureReferences } from '@/renderer/features/content-editor/useContentFigureReferences';
+import { useContentBlockNavigation } from '@/renderer/features/content-editor/useContentBlockNavigation';
+import { OutlineListItem } from '@/renderer/features/content-editor/OutlineListItem';
+import { OutlineEditing } from '@/renderer/features/content-editor/outlineEditing';
 import {
-  activeArticleElementId,
+  OutlineBulletList,
+  OutlineOrderedList,
+  OutlineTaskList,
+} from '@/renderer/features/content-editor/OutlineListRoles';
+import {
   activeArticleOutlineHeadingIndex,
   articleCheckBlocks,
   articleCommentAnchorRect,
@@ -44,6 +55,7 @@ import {
   videoDocumentFrameImageAttributes,
 } from '@/renderer/features/video-documents/videoDocumentEditorMedia';
 import {
+  captureVideoDocumentEditor,
   publishVideoDocumentEditor,
   type VideoDocumentWysiwygPersistenceSnapshot,
 } from '@/renderer/features/video-documents/videoDocumentEditorPublication';
@@ -65,7 +77,6 @@ import {
   importVideoDocumentEditorImage,
   type VideoDocumentArticleElementControls,
   type VideoDocumentEditorImageImport,
-  type VideoDocumentWysiwygToolbarState,
 } from '@/renderer/features/video-documents/VideoDocumentWysiwygToolbar';
 import { useStableCallback } from '@/renderer/lib/useStableCallback';
 import type {
@@ -77,7 +88,6 @@ import { blockDocumentImportIds, captureBlockDocument } from '@/shared/contracts
 import type { ContentReference } from '@/shared/contracts/content-library';
 import { videoDocumentRevisionMediaSchema } from '@/shared/contracts/video-document';
 import type { Editor } from '@tiptap/core';
-import { redoDepth, undoDepth } from '@tiptap/pm/history';
 import { useEditorState } from '@tiptap/react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
@@ -91,63 +101,6 @@ export type {
   VideoDocumentEditorImageImport,
   VideoDocumentWysiwygEditorLabels,
 } from '@/renderer/features/video-documents/VideoDocumentWysiwygToolbar';
-
-function activeHeadingLevel(editor: Editor): 0 | 2 | 3 | 4 | 5 | 6 {
-  if (editor.isActive('heading', { level: 2 })) return 2;
-  if (editor.isActive('heading', { level: 3 })) return 3;
-  if (editor.isActive('heading', { level: 4 })) return 4;
-  if (editor.isActive('heading', { level: 5 })) return 5;
-  if (editor.isActive('heading', { level: 6 })) return 6;
-  return 0;
-}
-
-const emptyToolbarState: VideoDocumentWysiwygToolbarState = {
-  headingLevel: 0,
-  bold: false,
-  italic: false,
-  strike: false,
-  bulletList: false,
-  orderedList: false,
-  taskList: false,
-  link: false,
-  codeBlock: false,
-  blockquote: false,
-  table: false,
-  canUndo: false,
-  canRedo: false,
-  image: false,
-  imageSourcePath: null,
-  imageAltText: '',
-  selectedText: '',
-  articleElementId: null,
-};
-
-function selectToolbarState(editor: Editor | null): VideoDocumentWysiwygToolbarState {
-  if (!editor || editor.isDestroyed) return emptyToolbarState;
-  const image = editor.isActive('image');
-  const imageAttributes = image ? editor.getAttributes('image') : null;
-  const { from, to } = editor.state.selection;
-  return {
-    headingLevel: activeHeadingLevel(editor),
-    bold: editor.isActive('bold'),
-    italic: editor.isActive('italic'),
-    strike: editor.isActive('strike'),
-    bulletList: editor.isActive('bulletList'),
-    orderedList: editor.isActive('orderedList'),
-    taskList: editor.isActive('taskList'),
-    link: editor.isActive('link'),
-    codeBlock: editor.isActive('codeBlock'),
-    blockquote: editor.isActive('blockquote'),
-    table: editor.isActive('table'),
-    canUndo: undoDepth(editor.state) > 0,
-    canRedo: redoDepth(editor.state) > 0,
-    image,
-    imageSourcePath: typeof imageAttributes?.sourcePath === 'string' ? imageAttributes.sourcePath : null,
-    imageAltText: typeof imageAttributes?.alt === 'string' ? imageAttributes.alt : '',
-    selectedText: from === to ? '' : editor.state.doc.textBetween(from, to, '\n').trim(),
-    articleElementId: activeArticleElementId(editor),
-  };
-}
 
 function useQuickInsertNote({
   editor,
@@ -209,10 +162,13 @@ function useEditorRegistration(
     persistence: { current: VideoDocumentWysiwygPersistenceSnapshot };
     composition: ReturnType<typeof useVideoDocumentEditorComposition>;
     inputs: ContentInputOperations;
+    insertFigureReference(assetId: string, label: string): boolean;
     articleElementsEnabled: boolean;
+    articleElementHydrationReady: { current: boolean };
     onHandleChange: { current: Props['onEditorHandleChange'] };
   },
 ) {
+  const insertFigureReference = refs.insertFigureReference;
   useEffect(() => {
     refs.editor.current = editor;
     return () => {
@@ -228,6 +184,8 @@ function useEditorRegistration(
     let capturedComments = refs.comments.current;
     let publishedSnapshot = refs.persistence.current;
     const handle: VideoDocumentWysiwygEditorHandle = {
+      insertFigureReference: (assetId, label) =>
+        !refs.inputs.isPending() && !refs.composition.isInputPending() && insertFigureReference(assetId, label),
       getImagePlacements: () => articleImagePlacements(editor),
       undo: () =>
         !editor.isDestroyed &&
@@ -245,18 +203,9 @@ function useEditorRegistration(
         !refs.inputs.isPending() && !refs.composition.isInputPending() && moveArticleImage(editor, elementId, targetId),
       removeImage: (elementId) =>
         !refs.inputs.isPending() && !refs.composition.isInputPending() && removeArticleImage(editor, elementId),
-      removeImageAssets: (assetIds) => {
-        if (editor.isDestroyed || !editor.isEditable || !assetIds.length) return;
-        const targets = new Set(assetIds);
-        const positions: { from: number; to: number }[] = [];
-        editor.state.doc.descendants((node, position) => {
-          if (node.type.name === 'image' && targets.has(String(node.attrs.assetId ?? '')))
-            positions.push({ from: position, to: position + node.nodeSize });
-        });
-        const transaction = editor.state.tr;
-        for (const position of positions.reverse()) transaction.delete(position.from, position.to);
-        if (transaction.docChanged) editor.view.dispatch(transaction);
-      },
+      removeImageAssets: (assetIds, removeReferences) =>
+        (!removeReferences || (!refs.inputs.isPending() && !refs.composition.isInputPending())) &&
+        removeContentImageAssets(editor, assetIds, removeReferences),
       getArticleCheckBlocks: () => articleCheckBlocks(editor),
       getPersistenceSnapshot: () => {
         if (refs.persistence.current !== publishedSnapshot) {
@@ -272,6 +221,18 @@ function useEditorRegistration(
               ? mappedArticleCommentAnchors(editor, refs.comments.current ?? [])
               : [],
           };
+          capturedComments = refs.comments.current;
+          publishedSnapshot = refs.persistence.current;
+        }
+        if (
+          refs.articleElementsEnabled &&
+          refs.articleElementHydrationReady.current &&
+          refs.persistence.current.document &&
+          refs.composition.canReadSnapshot()
+        ) {
+          // Hydration repairs are intentionally not regular editor updates, but
+          // the next save must still use the repaired document and placements.
+          refs.persistence.current = captureVideoDocumentEditor(editor, true, refs.comments.current ?? []);
           capturedComments = refs.comments.current;
           publishedSnapshot = refs.persistence.current;
         }
@@ -314,10 +275,12 @@ function useEditorRegistration(
     return () => refs.onHandleChange.current?.(null, handle);
   }, [
     editor,
+    refs.articleElementHydrationReady,
     refs.articleElementsEnabled,
     refs.comments,
     refs.composition,
     refs.inputs,
+    insertFigureReference,
     refs.onHandleChange,
     refs.persistence,
   ]);
@@ -473,7 +436,7 @@ function useVideoDocumentEditorRuntimeRefs(
   };
 }
 
-function useEditorDomProjection({
+function useVideoBindingDomProjection({
   editor,
   root,
   mediaById,
@@ -488,28 +451,52 @@ function useEditorDomProjection({
     if (!editor) return undefined;
     const frame = window.requestAnimationFrame(() => {
       if (editor.isDestroyed) return;
-      const headings = root.current?.querySelectorAll<HTMLElement>('h2, h3, h4, h5, h6') ?? [];
-      headings.forEach((heading, index) => {
-        heading.dataset.articleHeadingId = `article-heading-${index + 1}`;
-      });
       const links = root.current?.querySelectorAll<HTMLAnchorElement>('a[href]') ?? [];
       links.forEach((link) => {
         const path = normalizedMediaPath(link.getAttribute('href') ?? '');
         const binding = videoBindingByPath.get(path);
         if (!binding) {
-          delete link.dataset.videoBinding;
-          link.style.removeProperty('background-image');
+          if (link.dataset.videoBinding !== undefined) delete link.dataset.videoBinding;
+          if (link.style.backgroundImage) link.style.removeProperty('background-image');
           return;
         }
-        link.dataset.videoBinding = 'true';
+        if (link.dataset.videoBinding !== 'true') link.dataset.videoBinding = 'true';
         const poster = binding.posterAssetId ? mediaById.get(binding.posterAssetId) : null;
-        link.style.backgroundImage = poster
+        const backgroundImage = poster
           ? `var(--image-overlay-copy-scrim), url(${JSON.stringify(poster.mediaUrl)})`
           : 'var(--image-overlay-copy-scrim)';
+        if (link.style.backgroundImage !== backgroundImage) link.style.backgroundImage = backgroundImage;
       });
     });
     return () => window.cancelAnimationFrame(frame);
   }, [editor, mediaById, root, videoBindingByPath]);
+}
+
+function useReferenceMediaAdoption(onImageImported: Props['onImageImported']) {
+  return useStableCallback((reference: ContentReference) => {
+    for (const image of reference.media) {
+      const media = videoDocumentRevisionMediaSchema.parse({
+        assetId: image.assetId,
+        mediaUrl: image.mediaUrl,
+        mimeType: image.mimeType,
+        width: Math.max(1, image.width),
+        height: Math.max(1, image.height),
+        byteSize: Math.max(1, image.byteSize),
+        durationMs: null,
+      });
+      onImageImported({
+        binding: {
+          path: image.path,
+          assetId: image.assetId,
+          kind: image.mimeType.startsWith('video/') ? 'VIDEO' : 'IMAGE',
+          timestampMs: null,
+          endTimestampMs: null,
+          posterAssetId: null,
+        },
+        media,
+      });
+    }
+  });
 }
 
 function ContentBlockEditorSession(props: Props) {
@@ -574,44 +561,36 @@ function ContentBlockEditorSession(props: Props) {
     [props.mediaBindings],
   );
   const mediaById = useMemo(() => new Map(props.media.map((item) => [item.assetId, item])), [props.media]);
-  const adoptReference = useStableCallback((reference: ContentReference) => {
-    for (const image of reference.media) {
-      const media = videoDocumentRevisionMediaSchema.parse({
-        assetId: image.assetId,
-        mediaUrl: image.mediaUrl,
-        mimeType: image.mimeType,
-        width: Math.max(1, image.width),
-        height: Math.max(1, image.height),
-        byteSize: Math.max(1, image.byteSize),
-        durationMs: null,
-      });
-      props.onImageImported({
-        binding: {
-          path: image.path,
-          assetId: image.assetId,
-          kind: image.mimeType.startsWith('video/') ? 'VIDEO' : 'IMAGE',
-          timestampMs: null,
-          endTimestampMs: null,
-          posterAssetId: null,
-        },
-        media,
-      });
-    }
-  });
+  const adoptReference = useReferenceMediaAdoption(props.onImageImported);
   const referencesExtension = useMemo(() => contentReferenceExtension(adoptReference), [adoptReference]);
   const extensions = useMemo(
-    () => [imageExtension, referencesExtension, ...(articleElementExtension ? [articleElementExtension] : [])],
-    [articleElementExtension, imageExtension, referencesExtension],
+    () => [
+      ContentHeadingAnchors,
+      imageExtension,
+      referencesExtension,
+      ...(articleElementExtension ? [articleElementExtension] : []),
+      ...(props.outlineMode
+        ? [OutlineEditing, OutlineListItem, OutlineBulletList, OutlineOrderedList, OutlineTaskList]
+        : []),
+    ],
+    [articleElementExtension, imageExtension, referencesExtension, props.outlineMode],
   );
   const materialDrop = materialImageDropHandler(editorRef, imageImportQueueRef, imageImportCallbacksRef);
   const editor = useContentEditor(
     {
+      presentation: {
+        typography: props.compact || props.outlineMode ? 'compact' : 'article',
+        ariaLabel: props.ariaLabel,
+        className: props.outlineMode
+          ? 'aiy-outline-editor px-2 pt-4'
+          : props.compact
+            ? 'min-h-24 pl-6 pr-3 py-2'
+            : 'min-h-[60vh] px-6 py-7',
+      },
       extensions,
       editable: !props.readOnly,
       content: initialDocument?.root ?? initialMarkdown,
       ...(initialDocument ? {} : { contentType: 'markdown' as const }),
-      enableContentCheck: true,
-      immediatelyRender: true,
       onBeforeCreate: ({ editor: initializingEditor }) => {
         const content = initializingEditor.options.content;
         if (!content || typeof content !== 'object' || Array.isArray(content)) return;
@@ -682,18 +661,22 @@ function ContentBlockEditorSession(props: Props) {
     return finishComposition(view);
   };
 
+  const insertFigureReference = useContentFigureReferences(editor, props.figureAssetIds, composition);
   useEditorRegistration(editor, {
     editor: editorRef,
     comments: articleCommentsRef,
     persistence: persistenceSnapshotRef,
     composition,
     inputs,
+    insertFigureReference,
     articleElementsEnabled,
+    articleElementHydrationReady: articleElementHydrationReadyRef,
     onHandleChange: onEditorHandleChangeRef,
   });
 
-  useEditorDomProjection({ editor, root: editorRootRef, mediaById, videoBindingByPath });
-  useEditorDomProjection({ editor, root: secondaryEditorRootRef, mediaById, videoBindingByPath });
+  useVideoBindingDomProjection({ editor, root: editorRootRef, mediaById, videoBindingByPath });
+  const missingNavigationTarget = useContentBlockNavigation(editor, props.contentSource);
+  useVideoBindingDomProjection({ editor, root: secondaryEditorRootRef, mediaById, videoBindingByPath });
   useArticleCommentDomInteractions(editorRootRef, props.articleElementControls, Boolean(editor));
   useArticleCommentDomInteractions(
     secondaryEditorRootRef,
@@ -732,6 +715,11 @@ function ContentBlockEditorSession(props: Props) {
 
   return (
     <VideoDocumentEditorSurfaces
+      onFigureReferenceClick={props.onFigureReferenceClick}
+      missingNavigationTarget={missingNavigationTarget}
+      outlineMode={props.outlineMode}
+      beforeReferenceCapture={props.beforeReferenceCapture}
+      onAddComment={props.readOnly ? undefined : props.articleElementControls?.onAddComment}
       toolbarRoot={props.toolbarRoot}
       contentSource={
         props.contentSource ?? (props.documentId ? { kind: 'VIDEO_DOCUMENT', id: props.documentId } : undefined)
@@ -744,8 +732,10 @@ function ContentBlockEditorSession(props: Props) {
             referenceAction={
               !props.readOnly && (
                 <ContentReferencePicker
+                  menuItem={props.toolbarPreset === 'compact'}
                   onInsert={(reference) => {
-                    adoptReference(reference);
+                    if (editor.isDestroyed || !editor.isEditable || editor.view.composing)
+                      throw new Error('REFERENCE_TARGET_CHANGED');
                     editor
                       .chain()
                       .focus()

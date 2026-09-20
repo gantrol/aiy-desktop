@@ -1,12 +1,12 @@
-import type { ExternalImageApiExtensionId } from '@/shared/extension-ids';
 import type {
   ExternalImageApiRuntimeConfiguration,
   ExternalImageApiRuntimeStatus,
+  ImageRuntimeExtensionId,
 } from '@/main/extensions/external-image-api/types';
 
 /** Credentials are held only inside the detached model worker. */
 export class ExternalImageApiRuntime {
-  private readonly configurations = new Map<ExternalImageApiExtensionId, ExternalImageApiRuntimeConfiguration>();
+  private readonly configurations = new Map<ImageRuntimeExtensionId, ExternalImageApiRuntimeConfiguration>();
 
   configure(configurations: readonly ExternalImageApiRuntimeConfiguration[]) {
     this.configurations.clear();
@@ -18,7 +18,7 @@ export class ExternalImageApiRuntime {
     }
   }
 
-  status(extensionId: ExternalImageApiExtensionId): ExternalImageApiRuntimeStatus {
+  status(extensionId: ImageRuntimeExtensionId): ExternalImageApiRuntimeStatus {
     const configuration = this.configurations.get(extensionId);
     if (!configuration) {
       return {
@@ -36,7 +36,7 @@ export class ExternalImageApiRuntime {
     };
   }
 
-  credentials(extensionId: ExternalImageApiExtensionId) {
+  credentials(extensionId: ImageRuntimeExtensionId) {
     const configuration = this.configurations.get(extensionId);
     if (!configuration?.usable) {
       throw new Error(configuration?.connectionMessage || 'Image API connection is not ready');

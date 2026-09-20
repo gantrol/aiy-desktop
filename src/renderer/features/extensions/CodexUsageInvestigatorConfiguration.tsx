@@ -201,7 +201,11 @@ function CodexUsageToolbar({
             onPause={onPause}
             onResume={onResume}
           />
-          <CodexUsageExportButtons available={Boolean(investigationId)} exporting={exporting} onExport={onExport} />
+          <CodexUsageExportButtons
+            available={Boolean(investigationId) && !controlsLocked}
+            exporting={exporting}
+            onExport={onExport}
+          />
           <CodexUsageCleanupControl
             disabled={controlsLocked}
             labels={labels.cleanup}
@@ -245,15 +249,17 @@ export function CodexUsageInvestigatorConfiguration({
     [numberLocale],
   );
 
-  const { clearInvestigation, loadInvestigation, selectHistory, selectRange } = useCodexUsageInvestigationSelection({
-    history,
-    setRange,
-    setDateRange,
-    setGranularity,
-    setDisplayTimeZone,
-    setInvestigation,
-    setError,
-  });
+  const { clearInvestigation, loadInvestigation, selectHistory, selectRange, loading } =
+    useCodexUsageInvestigationSelection({
+      history,
+      setRange,
+      setDateRange,
+      setGranularity,
+      setDisplayTimeZone,
+      setInvestigation,
+      setError,
+      quotaReadFailed: l.purity.issues.READ_FAILED,
+    });
 
   const refreshState = useCallback(
     async (preferredInvestigationId?: string) => {
@@ -301,7 +307,17 @@ export function CodexUsageInvestigatorConfiguration({
   const running = task?.status === 'RUNNING';
   const resumable = Boolean(task && ['PAUSED', 'INTERRUPTED'].includes(task.status));
   const progress = running || resumable ? task?.progress : null;
-  const controlsLocked = running || taskAction !== null;
+  const controlsLocked = running || taskAction !== null || loading;
+  const changeQuotaSampling = useCallback(
+    (minimumQuotaPercent: number) => {
+      if (!investigation || controlsLocked || !authorized || exporting) return;
+      setError('');
+      void loadInvestigation(investigation.investigationId, minimumQuotaPercent).catch((reason: unknown) => {
+        setError(reason instanceof Error ? reason.message : String(reason));
+      });
+    },
+    [authorized, controlsLocked, exporting, investigation, loadInvestigation],
+  );
 
   async function scan() {
     if (!authorized || controlsLocked) return;
@@ -350,13 +366,14 @@ export function CodexUsageInvestigatorConfiguration({
   }
 
   async function exportReport(format: CodexUsageExportFormat) {
-    if (!investigation || exporting) return;
+    if (!investigation || exporting || loading) return;
     setExporting(format);
     setError('');
     try {
       const result = await window.desktopApi.codexUsageExport({
         investigationId: investigation.investigationId,
         format,
+        minimumQuotaPercent: investigation.quotaPurity?.minimumQuotaPercent,
       });
       if (result.status === 'exported') notify(`${l.notices.exported}: ${result.fileName}`);
     } catch (reason) {
@@ -400,7 +417,7 @@ export function CodexUsageInvestigatorConfiguration({
             running={running}
             resumable={resumable}
             taskAction={taskAction}
-            authorized={authorized}
+            authorized={authorized && !loading}
             exporting={exporting}
             labels={l}
             locale={locale}
@@ -446,6 +463,9 @@ export function CodexUsageInvestigatorConfiguration({
               labels={l}
               numberLocale={numberLocale}
               displayTimeZone={displayTimeZone}
+              quotaSamplingBusy={loading}
+              quotaSamplingDisabled={controlsLocked || !authorized || Boolean(exporting)}
+              onQuotaSamplingChange={changeQuotaSampling}
             />
           )}
           {error && (

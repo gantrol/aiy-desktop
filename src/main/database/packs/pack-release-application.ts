@@ -1,6 +1,9 @@
 import type { LibraryStorage } from '@/main/database/core/storage';
 import { now, text, type JsonMap } from '@/main/database/core/values';
 import { parsePackExampleMetadata } from '@/main/database/packs/pack-release-item-metadata';
+import { parsePackReleaseItemMetadata } from '@/main/database/packs/pack-release-item-metadata';
+import { contentPackCreationStates } from '@/main/content-packs/creation-state';
+import { CreationItemRepository } from '@/main/database/creations/creation-item-repository';
 
 interface ReleaseItemRow extends JsonMap {
   id: string;
@@ -82,6 +85,47 @@ function applyRevisionItem(storage: LibraryStorage, spaceId: string, packId: str
       .prepare('UPDATE word_palettes SET current_revision_id = ?, archived_at = NULL, updated_at = ? WHERE id = ?')
       .run(targetRevisionId, now(), localObjectId);
   }
+  return true;
+}
+
+function applyArticleRevisionItem(storage: LibraryStorage, spaceId: string, packId: string, item: ReleaseItemRow) {
+  const mapping = localMapping(storage, spaceId, text(item.id));
+  if (!mapping) throw new Error('Content pack work has no local mapping');
+  const articleId = text(mapping.local_object_id);
+  const revisionId = text(mapping.local_revision_id);
+  const current = storage.db
+    .prepare(
+      `SELECT article.current_revision_id, article.status, article.deleted_at,
+    owner.id AS owner_id, owner.archived_at AS owner_archived_at, owner.deleted_at AS owner_deleted_at,
+    EXISTS(SELECT 1 FROM article_comments comment WHERE comment.article_id = article.id) AS has_comments
+    FROM articles article
+    LEFT JOIN creation_forms form ON form.entity_type = 'ARTICLE' AND form.entity_id = article.id AND form.deleted_at IS NULL
+    LEFT JOIN creation_items owner ON owner.id = form.creation_item_id WHERE article.id = ?`,
+    )
+    .get(articleId) as JsonMap | undefined;
+  if (!current || current.deleted_at || !current.owner_id || current.owner_deleted_at)
+    throw new Error('Content pack work is no longer available');
+  if (
+    text(current.status) !== 'ACTIVE' ||
+    current.owner_archived_at ||
+    Number(current.has_comments) > 0 ||
+    !revisionBelongsToPackItem(storage, spaceId, packId, text(item.item_key), text(current.current_revision_id))
+  )
+    return false;
+  if (!storage.db.prepare('SELECT 1 FROM article_revisions WHERE id = ? AND article_id = ?').get(revisionId, articleId))
+    throw new Error('Content pack work revision is missing');
+  if (text(current.current_revision_id) === revisionId) return true;
+  storage.db
+    .prepare('UPDATE articles SET current_revision_id = ?, updated_at = ? WHERE id = ?')
+    .run(revisionId, now(), articleId);
+  new CreationItemRepository(storage).touchForEntity({ kind: 'ARTICLE', id: articleId });
+  storage.recordChange(
+    'ARTICLE',
+    articleId,
+    'UPDATE',
+    { revisionId, source: 'CONTENT_PACKAGE', packId },
+    { affectsFileView: false },
+  );
   return true;
 }
 
@@ -242,6 +286,26 @@ export function applyPackReleaseSelection(
   const targetItems = releaseItems(storage, targetReleaseId);
   const previousItems = previousReleaseId ? releaseItems(storage, previousReleaseId) : [];
   const targetKeys = new Set(targetItems.map((item) => text(item.item_key)));
+  const creationStates = contentPackCreationStates(
+    storage.db,
+    packId,
+    targetItems.map((item) => ({
+      itemKey: text(item.item_key),
+      objectType: text(item.object_type),
+      contentHash: text(item.content_hash),
+      metadata: parsePackReleaseItemMetadata(item.metadata_json, {
+        itemKey: text(item.item_key),
+        objectType: text(item.object_type),
+      }),
+    })),
+  );
+  if (
+    [...creationStates.values()].includes('CONFLICT') ||
+    previousItems.some(
+      (item) => text(item.object_type) === 'CREATION_COLLECTION' && !targetKeys.has(text(item.item_key)),
+    )
+  )
+    throw new Error('CONTENT_PACK_CREATION_CONFLICT');
   const packMediaIds = managedMediaIds(storage, packId);
   let followedItems = 0;
   let localForks = 0;
@@ -259,6 +323,10 @@ export function applyPackReleaseSelection(
   }
 
   for (const item of targetItems) {
+    if (text(item.object_type) === 'ARTICLE_REVISION') {
+      if (applyArticleRevisionItem(storage, spaceId, packId, item)) followedItems += 1;
+      else localForks += 1;
+    }
     if (['TERM_REVISION', 'RECIPE_REVISION'].includes(text(item.object_type))) {
       if (applyRevisionItem(storage, spaceId, packId, item)) followedItems += 1;
       else localForks += 1;

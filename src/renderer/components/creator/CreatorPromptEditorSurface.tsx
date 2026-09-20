@@ -26,7 +26,7 @@ export function CreatorPromptEditorSurface({ editor, empty, fullWindow, placehol
       <div ref={rootRef} className="relative min-h-full pl-7">
         {editor && <ContentBlockHandle editor={editor} rootRef={rootRef} />}
         {editor && empty && (
-          <div className="pointer-events-none absolute left-12 top-2 text-md leading-8 text-muted-foreground">
+          <div className="pointer-events-none absolute left-12 right-5 top-2 text-[15px] leading-[1.65] text-muted-foreground">
             {placeholder}
           </div>
         )}

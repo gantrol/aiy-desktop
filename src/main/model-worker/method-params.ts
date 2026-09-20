@@ -1,4 +1,5 @@
 import type { AssistantTitleExecution } from '@/main/assistant/assistant-service';
+import { generationQualitySchema } from '@/shared/generation-quality';
 import { gifPlanRequestSchema, type GifPlanRequest } from '@/shared/contracts/gif-motion-plan';
 import type {
   CodexArticleCheckExecutionOptions,
@@ -10,6 +11,7 @@ import type { DeepSeekApiRuntimeConfiguration } from '@/main/extensions/deepseek
 import type { ExternalImageApiRuntimeConfiguration } from '@/main/extensions/external-image-api/types';
 import type { OpenAiImageApiRuntimeConfiguration } from '@/main/extensions/openai-image-api/types';
 import type { ModelWorkerMethod } from '@/main/model-worker/protocol';
+import { agentContentReadRequestSchema, type AgentContentReadRequest } from '@/shared/contracts/agent-content';
 import type {
   ArticleCheckInput,
   CodexImageRefinementInput,
@@ -46,11 +48,18 @@ import {
   type AgentIntakeImportRequest,
 } from '@/shared/contracts/agent-intake';
 import { articleCheckInputSchema } from '@/shared/contracts/article';
+import {
+  contentPackPreviewCommandSchema,
+  contentPackApplyCommandSchema,
+  type ContentPackPreviewCommand,
+  type ContentPackApplyCommand,
+} from '@/shared/contracts/content-pack-command';
 import { blockDocumentSchema } from '@/shared/contracts/block-document';
 import { imageBreakdownWorkerInputSchema } from '@/shared/contracts/image-breakdown';
 import { videoDocumentArticleGenerateInputSchema } from '@/shared/contracts/video-document';
 import { videoDocumentTranscriptTranslationWorkerInputSchema } from '@/shared/contracts/video-document-translation';
 import { EXTERNAL_IMAGE_API_EXTENSION_IDS } from '@/shared/extension-ids';
+import { CPA_IMAGE_API_EXTENSION_ID } from '@/shared/extension-ids';
 import {
   MAX_IMAGE_GENERATION_MAX_CONCURRENT,
   MIN_IMAGE_GENERATION_MAX_CONCURRENT,
@@ -61,7 +70,7 @@ import { z } from 'zod';
 const identifier = z.string().min(1).max(200);
 const boundedPath = z.string().min(1).max(32_768);
 const locale = z.enum(['zh', 'en']);
-const quality = z.enum(['low', 'medium', 'high']);
+const quality = generationQualitySchema;
 const reasoningEffort = z.enum(['minimal', 'low', 'medium', 'high', 'xhigh', 'max', 'ultra']);
 const stringList = z.array(z.string().max(500)).max(100);
 const scope = z.object({ kind: z.enum(['DRAFT', 'SERIES']), id: identifier }).strict();
@@ -548,7 +557,7 @@ const deepSeekConfiguration = z
   .strict();
 const externalImageConfiguration = z
   .object({
-    extensionId: z.enum(EXTERNAL_IMAGE_API_EXTENSION_IDS),
+    extensionId: z.enum([...EXTERNAL_IMAGE_API_EXTENSION_IDS, CPA_IMAGE_API_EXTENSION_ID]),
     apiKey: z.string().min(1).max(500),
     settings: z.record(z.string().max(100), z.string().max(2_048)),
     usable: z.boolean(),
@@ -588,6 +597,9 @@ export interface ModelWorkerMethodParams {
   'agent.asset.import': [input: AgentAssetImportRequest];
   'agent.intake.import': [input: AgentIntakeImportRequest];
   'agent.intake.get': [input: AgentIntakeGetRequest];
+  'agent.content.read': [input: AgentContentReadRequest];
+  'content-pack.preview': [input: ContentPackPreviewCommand];
+  'content-pack.apply': [input: ContentPackApplyCommand];
   'agent.draft.prepare': [input: AgentDraftPrepareRequest];
   'agent.generation.start': [input: AgentGenerationStartRequest];
   'agent.job.get': [input: AgentJobGetRequest];
@@ -607,6 +619,7 @@ export interface ModelWorkerMethodParams {
   'generation.configure-concurrency': [configuration: ImageGenerationConcurrencyDto];
   'codex.refresh-health': [];
   'codex.list-models': [];
+  'codex.read-usage-quota': [];
   'codex.check-article': [input: ArticleCheckInput, options: CodexArticleCheckExecutionOptions];
   'codex.plan-gif': [input: GifPlanRequest, options: CodexGifPlanningExecutionOptions];
   'antigravity.refresh-status': [];
@@ -639,6 +652,9 @@ const schemas = {
   'agent.asset.import': z.tuple([agentAssetImportRequestSchema]),
   'agent.intake.import': z.tuple([agentIntakeImportRequestSchema]),
   'agent.intake.get': z.tuple([agentIntakeGetRequestSchema]),
+  'agent.content.read': z.tuple([agentContentReadRequestSchema]),
+  'content-pack.preview': z.tuple([contentPackPreviewCommandSchema]),
+  'content-pack.apply': z.tuple([contentPackApplyCommandSchema]),
   'agent.draft.prepare': z.tuple([agentDraftPrepareRequestSchema]),
   'agent.generation.start': z.tuple([agentGenerationStartRequestSchema]),
   'agent.job.get': z.tuple([agentJobGetRequestSchema]),
@@ -670,6 +686,7 @@ const schemas = {
   'generation.configure-concurrency': z.tuple([generationConcurrencyConfiguration]),
   'codex.refresh-health': empty,
   'codex.list-models': empty,
+  'codex.read-usage-quota': empty,
   'codex.check-article': z.tuple([articleCheckInputSchema, codexArticleCheckOptions]),
   'codex.plan-gif': z.tuple([gifPlanRequestSchema, codexGifPlanningOptions]),
   'antigravity.refresh-status': empty,

@@ -111,7 +111,12 @@ export function createContentLinkPasteExtension(providers: () => readonly Conten
               if (!editor.isEditable || view.composing || !event.clipboardData || event.clipboardData.files.length)
                 return false;
               // Copied card nodes already carry an explicit presentation and any application relationship.
-              if (slice.content.content.some((node) => node.type.name === 'linkCard')) return false;
+              if (
+                slice.content.content.some(
+                  (node) => node.type.name === 'linkCard' || node.type.name === 'contentReference',
+                )
+              )
+                return false;
               const { selection } = view.state;
               const { $from, $to } = selection;
               const afterCard =

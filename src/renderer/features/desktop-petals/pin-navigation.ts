@@ -1,6 +1,7 @@
 import type { PinSource } from '@/shared/contracts/petal-board';
 import { initialAppLocation, type AppLocation } from '@/renderer/components/app/app-navigation';
-/** Keep source kinds paired with their normal editor; pins do not invent a second editor. */
+
+/** Every source returns to its existing work surface, without inventing a second editor. */
 export function pinLocation(source: PinSource): AppLocation | null {
   switch (source.kind) {
     case 'ALBUM':
@@ -15,12 +16,39 @@ export function pinLocation(source: PinSource): AppLocation | null {
           requestedMaterialId: null,
         },
       };
+    case 'MATERIAL':
+      return {
+        ...initialAppLocation,
+        view: 'gallery',
+        gallery: { collection: { kind: 'all' }, selectedMaterialKey: null, requestedMaterialId: source.id },
+      };
     case 'ARTICLE':
+    case 'INSPIRATION_STASH':
       return { ...initialAppLocation, view: 'creator', creator: { surface: 'article', articleId: source.id } };
     case 'SOCIAL_POST':
       return { ...initialAppLocation, view: 'creator', creator: { surface: 'social-post', postId: source.id } };
+    case 'PROMPT_SERIES':
+      return {
+        ...initialAppLocation,
+        view: 'creator',
+        creator: { surface: 'existing-creation', seriesId: source.id, assetId: null },
+      };
+    case 'CREATION_DRAFT':
+      return { ...initialAppLocation, view: 'creator', creator: { surface: 'creation-draft', draftId: source.id } };
+    case 'VIDEO_DOCUMENT':
+      return {
+        ...initialAppLocation,
+        view: 'documents',
+        documents: { collection: { kind: 'all' }, documentId: source.id },
+      };
+    case 'GIF_DOCUMENT':
+      return {
+        ...initialAppLocation,
+        view: 'creator',
+        creator: { surface: 'animation', documentId: source.id, seriesId: null, step: 'edit', title: '' },
+      };
     case 'IMAGE':
-      // The main process opens the immutable asset in the system image viewer.
+      // Released key for immutable media assets; the main process opens a validated local file.
       return null;
   }
 }

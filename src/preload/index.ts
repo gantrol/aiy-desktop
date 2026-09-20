@@ -1,4 +1,7 @@
+import { createBrowserCompanionPreloadApi } from '@/preload/browser-companion-api';
 import { createAppShellPreloadApi } from '@/preload/app-shell-api';
+import { createCalendarPreloadApi } from '@/preload/calendar-api';
+import { createExtensionMetricsApi, createOpenAiCostsConnectionApi } from '@/preload/extension-metrics-api';
 import { imageMakingApi } from '@/preload/image-making-api';
 import { createAppWindowApi } from '@/preload/app-window-api';
 import { createArticlePreloadApi } from '@/preload/article-api';
@@ -35,17 +38,7 @@ import {
   assetFilesDragFinishedChannel,
   assetFilesStartDragChannel,
 } from '@/shared/contracts/asset-file-drag';
-import {
-  browserCompanionDeleteInputSchema,
-  browserCompanionDeleteResultSchema,
-  browserCompanionDestinationSelectInputSchema,
-  browserCompanionDestinationsResultSchema,
-  browserCompanionHistoryResultSchema,
-  browserCompanionOpenInputSchema,
-  browserCompanionOpenResultSchema,
-  browserCompanionStageInputSchema,
-  browserCompanionStageInvocationSchema,
-} from '@/shared/contracts/browser-companion';
+
 import {
   codexUsageCleanupInputSchema,
   codexUsageCleanupResultSchema,
@@ -183,6 +176,9 @@ import { workspaceLayoutSaveInputSchema, workspaceLayoutSaveResultSchema } from 
 import { contextBridge, ipcRenderer } from 'electron';
 
 const api: DesktopApi = {
+  extensionMetrics: createExtensionMetricsApi(ipcRenderer),
+  openAiCostsConnection: createOpenAiCostsConnectionApi(ipcRenderer),
+  calendar: createCalendarPreloadApi(ipcRenderer),
   contentLibrary: createContentLibraryBridge((input) => ipcRenderer.invoke('content-library:command', input)),
   maintenanceGuide: createMaintenanceGuideApi(),
   ...creatorInputRecoveryApi,
@@ -237,11 +233,14 @@ const api: DesktopApi = {
   appUpdateDownload: async () => appUpdateStateSchema.parse(await ipcRenderer.invoke('app-update:download')),
   appUpdateInstall: async () => appUpdateStateSchema.parse(await ipcRenderer.invoke('app-update:install')),
   extensionsList: () => ipcRenderer.invoke('extensions:list'),
+  extensionsReload: () => ipcRenderer.invoke('extensions:reload'),
   extensionLanguagePacksList: () => ipcRenderer.invoke('extension-language-packs:list'),
   extensionInstallLocal: () => ipcRenderer.invoke('extension:install-local'),
+  extensionUpdateLocal: (extensionId) => ipcRenderer.invoke('extension:update-local', extensionId),
   extensionUninstallLocal: (extensionId) => ipcRenderer.invoke('extension:uninstall-local', extensionId),
   extensionSetEnabled: (input) => ipcRenderer.invoke('extension:set-enabled', input),
   extensionSetPermission: (input) => ipcRenderer.invoke('extension:set-permission', input),
+  extensionRevokePermissions: (input) => ipcRenderer.invoke('extension:revoke-permissions', input),
   naturalWatermarkConfigurationGet: async () =>
     naturalWatermarkConfigurationSchema.parse(await ipcRenderer.invoke('natural-watermark:configuration-get')),
   naturalWatermarkConfigurationSave: async (input) =>
@@ -569,32 +568,7 @@ const api: DesktopApi = {
   socialPostMove: (input) => ipcRenderer.invoke('social-post:move', socialPostMoveInputSchema.parse(input)),
   socialPostSetArchived: (input) =>
     ipcRenderer.invoke('social-post:set-archived', socialPostSetArchivedInputSchema.parse(input)),
-  browserCompanionStage: async (input) => {
-    const result = browserCompanionStageInvocationSchema.parse(
-      await ipcRenderer.invoke('browser-companion:stage', browserCompanionStageInputSchema.parse(input)),
-    );
-    if ('errorCode' in result) throw new Error(result.errorCode);
-    return result;
-  },
-  browserCompanionDestinations: async () =>
-    browserCompanionDestinationsResultSchema.parse(await ipcRenderer.invoke('browser-companion:destinations')),
-  browserCompanionOpen: async (input) =>
-    browserCompanionOpenResultSchema.parse(
-      await ipcRenderer.invoke('browser-companion:open', browserCompanionOpenInputSchema.parse(input)),
-    ),
-  browserCompanionSelectDestination: async (input) =>
-    browserCompanionDestinationsResultSchema.parse(
-      await ipcRenderer.invoke(
-        'browser-companion:select-destination',
-        browserCompanionDestinationSelectInputSchema.parse(input),
-      ),
-    ),
-  browserCompanionHistory: async () =>
-    browserCompanionHistoryResultSchema.parse(await ipcRenderer.invoke('browser-companion:history')),
-  browserCompanionDelete: async (input) =>
-    browserCompanionDeleteResultSchema.parse(
-      await ipcRenderer.invoke('browser-companion:delete', browserCompanionDeleteInputSchema.parse(input)),
-    ),
+  ...createBrowserCompanionPreloadApi(ipcRenderer),
   ...createArticlePreloadApi(ipcRenderer),
   creationsDelete: (creationId) => ipcRenderer.invoke('creations:delete', creationId),
   dictionarySearch: (input) => ipcRenderer.invoke('dictionary:search', input),
@@ -677,6 +651,7 @@ const api: DesktopApi = {
   materialAlbumsAddMany: (input) => ipcRenderer.invoke('material-albums:add-many', input),
   materialAlbumsRemove: (input) => ipcRenderer.invoke('material-albums:remove', input),
   albumsList: (locale) => ipcRenderer.invoke('albums:list', locale),
+  albumOpen: (input) => ipcRenderer.invoke('album:open', input),
   albumsListTextMaterials: (albumId) => ipcRenderer.invoke('albums:list-text-materials', albumId),
   albumsCreate: (input) => ipcRenderer.invoke('albums:create', input),
   albumsCreateFromMaterials: (input) => ipcRenderer.invoke('albums:create-from-materials', input),
@@ -736,6 +711,7 @@ const api: DesktopApi = {
   annotationsReuseHistory: (input) => ipcRenderer.invoke('annotations:reuse-history', input),
   annotationsSetStatus: (input) => ipcRenderer.invoke('annotations:set-status', input),
   galleryList: (input) => ipcRenderer.invoke('gallery:list', input),
+  galleryMaterialGet: (materialId, locale) => ipcRenderer.invoke('gallery:material-get', materialId, locale),
   assetRelationshipGet: (assetId, locale) => ipcRenderer.invoke('asset-relationship:get', assetId, locale),
   assetFileAvailability: (assetId) => ipcRenderer.invoke('asset-file:availability', assetId),
   assetFileCopy: (assetId) => ipcRenderer.invoke('asset-file:copy', assetId),

@@ -34,9 +34,11 @@ import {
 } from '@/renderer/components/media/AssetMenuActionsProvider';
 import { ImageBreakdownContextMenuItem } from '@/renderer/components/media/ImageBreakdownContextMenuItem';
 import { PinContentMenuItem } from '@/renderer/features/desktop-petals/PinContentAction';
+import type { PinSource } from '@/shared/contracts/petal-board';
 import { GifContextMenuItem } from '@/renderer/features/gif-making/GifContextMenuItem';
 
 interface Props {
+  pinSource?: PinSource;
   assetId: string;
   children: ReactNode;
   notify?(message: string): void;
@@ -109,6 +111,7 @@ function ContextualImageBreakdownMenuItem({
 }
 
 export function AssetFileContextMenu({
+  pinSource,
   assetId,
   children,
   notify: notifyProp,
@@ -266,7 +269,7 @@ export function AssetFileContextMenu({
           />
           {labels.copy}
         </ContextMenuItem>
-        <PinContentMenuItem source={{ kind: 'IMAGE', id: assetId }} notify={notify} />
+        <PinContentMenuItem source={pinSource ?? { kind: 'IMAGE', id: assetId }} notify={notify} />
         <ContextMenuSub>
           <ContextMenuSubTrigger>
             <AssetMenuIcon icon={FolderPlusIcon} />

@@ -1,9 +1,7 @@
+import { assertStandaloneMarkdown, importMarkdownContent } from '@/main/creations/import-markdown';
 import { constants } from 'node:fs';
 import { lstat, open, realpath } from 'node:fs/promises';
 import path from 'node:path';
-import { unified } from 'unified';
-import remarkParse from 'remark-parse';
-import { z } from 'zod';
 import { sha256HexAsync } from '@/main/database/core/storage';
 import { imageDimensions } from '@/main/media/image-dimensions';
 import { validateDecodablePngAsync } from '@/main/media/png-validation';
@@ -66,24 +64,19 @@ async function readIntakeBytes(filePath: string, limit: number, signal: AbortSig
   }
 }
 
-const markdownNodeSchema = z.object({ type: z.string(), children: z.array(z.unknown()).optional() }).passthrough();
-
-function assertStandaloneMarkdown(markdown: string) {
-  const stack: unknown[] = [unified().use(remarkParse).parse(markdown)];
-  while (stack.length) {
-    const node = markdownNodeSchema.parse(stack.pop());
-    if (node.type === 'image' || node.type === 'imageReference' || node.type === 'html') {
-      throw intakeError('UNSUPPORTED_ATTACHMENTS', 'This trial accepts standalone Markdown; import images separately');
-    }
-    if (node.children) stack.push(...node.children);
+function decodeText(bytes: Buffer) {
+  try {
+    return new TextDecoder('utf-8', { fatal: true }).decode(bytes);
+  } catch {
+    throw intakeError('INVALID_ENCODING', 'Content must use valid UTF-8');
   }
 }
 
 export async function readIntakeSource(request: AgentIntakeImportRequest, signal: AbortSignal) {
   const extension = path.extname(request.path).toLowerCase();
-  const article = request.kind === 'ARTICLE';
+  const article = request.kind === 'ARTICLE' || request.kind === 'OUTLINE';
   if (article ? !['.md', '.markdown'].includes(extension) : extension !== '.png') {
-    throw intakeError('UNSUPPORTED_FORMAT', 'This trial accepts Markdown articles and PNG materials');
+    throw intakeError('UNSUPPORTED_FORMAT', 'Use Markdown for works or PNG for images');
   }
   const bytes = await readIntakeBytes(
     request.path,
@@ -95,14 +88,9 @@ export async function readIntakeSource(request: AgentIntakeImportRequest, signal
   }
   const title = request.title || path.basename(request.path, extension).slice(0, 200) || 'Untitled';
   if (article) {
-    let markdown: string;
-    try {
-      markdown = new TextDecoder('utf-8', { fatal: true }).decode(bytes);
-    } catch {
-      throw intakeError('INVALID_ENCODING', 'Markdown must use valid UTF-8');
-    }
-    if (!markdown.trim() || markdown.includes('\0'))
-      throw intakeError('INVALID_MARKDOWN', 'Markdown is empty or binary');
+    const markdown = decodeText(bytes);
+    if (request.kind === 'OUTLINE')
+      return { kind: 'OUTLINE', title, content: importMarkdownContent(title, markdown, 'OUTLINE') } as const;
     assertStandaloneMarkdown(markdown);
     const parsed = articleContentSchema.safeParse({
       schemaVersion: 1,

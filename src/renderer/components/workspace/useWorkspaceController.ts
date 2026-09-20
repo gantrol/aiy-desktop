@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { ArticleEditorLocationDto, BootstrapDto, WorkspaceArticleEditorStateDto } from '@/shared/contracts';
 import type { AppLocation, NavigationMode } from '@/renderer/components/app/app-navigation';
+import { useWorkspaceTabOpening } from '@/renderer/components/workspace/useWorkspaceTabOpening';
 import {
   activateWorkspaceGroup,
   activateWorkspaceGroupByIndex,
@@ -16,10 +17,9 @@ import {
   findWorkspaceTab,
   navigateWorkspaceHistory,
   navigateWorkspaceArticleLocation,
+  navigateWorkspaceReference,
   navigateWorkspaceTab,
   normalizeWorkspaceArticleEditOwners,
-  openWorkspaceTab,
-  openWorkspaceTabBeside,
   mergeWorkspaceGroups,
   moveWorkspaceTabToOtherGroup,
   persistedWorkspaceState,
@@ -154,15 +154,7 @@ export function useWorkspaceController(data: BootstrapDto | null) {
     (tabId: string) => update((current) => navigateWorkspaceHistory(current, tabId, 1)),
     [update],
   );
-  const openTab = useCallback(
-    (location: AppLocation, groupId?: string) => update((current) => openWorkspaceTab(current, location, groupId)),
-    [update],
-  );
-  const openBeside = useCallback(
-    (sourceTabId: string, location: AppLocation) =>
-      update((current) => openWorkspaceTabBeside(current, sourceTabId, location)),
-    [update],
-  );
+  const tabOpening = useWorkspaceTabOpening(stateRef, persistenceRef, update);
   const activateGroup = useCallback(
     (groupId: string) => update((current) => activateWorkspaceGroup(current, groupId)),
     [update],
@@ -253,6 +245,15 @@ export function useWorkspaceController(data: BootstrapDto | null) {
       update((current) => claimWorkspaceArticleEditOwnership(current, articleId, tabId)),
     [update],
   );
+  const navigateReference = useCallback(
+    (
+      sourceTabId: string,
+      articleId: string,
+      blockId: string | null,
+      options: Parameters<typeof navigateWorkspaceReference>[4],
+    ) => update((current) => navigateWorkspaceReference(current, sourceTabId, articleId, blockId, options)),
+    [update],
+  );
 
   return {
     state,
@@ -264,8 +265,7 @@ export function useWorkspaceController(data: BootstrapDto | null) {
     navigate,
     goBack,
     goForward,
-    openTab,
-    openBeside,
+    ...tabOpening,
     activateGroup,
     activateTab,
     activateGroupByIndex,
@@ -281,6 +281,7 @@ export function useWorkspaceController(data: BootstrapDto | null) {
     updateArticleEditorState,
     updateArticleViewLocation,
     navigateArticleViewLocation,
+    navigateReference,
     claimArticleEditOwnership,
     findTab(tabId: string) {
       return state ? findWorkspaceTab(state, tabId) : null;

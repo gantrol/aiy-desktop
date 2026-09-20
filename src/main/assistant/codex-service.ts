@@ -56,7 +56,7 @@ export interface CodexService {
   onPendingChanged(listener: (activeCount: number) => void): () => void;
   refreshHealth(signal?: AbortSignal): Promise<CodexHealth>;
   listModels(signal?: AbortSignal): Promise<CodexTextModelDto[]>;
-  readUsageQuota?(signal?: AbortSignal): Promise<CodexUsageQuotaSnapshot>;
+  readUsageQuota(signal?: AbortSignal): Promise<CodexUsageQuotaSnapshot>;
   chat(job: CodexChatJob, signal?: AbortSignal): Promise<CreatorAgentTurnDto>;
   suggestTitles(
     input: CodexTitleInput,

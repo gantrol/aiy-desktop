@@ -32,6 +32,8 @@ const secureMermaidConfigKeys = [
 const svgByCacheKey = new Map<string, Promise<string>>();
 let renderQueue = Promise.resolve();
 
+type MermaidSource = Pick<CodexVisualizationMermaidPreviewDto, 'artifactId' | 'sourceText'>;
+
 function sanitizeStaticSvg(source: string) {
   if (source.length > MAX_MERMAID_SVG_CHARACTERS) throw new Error('Mermaid preview SVG exceeds its safety limit');
   const document = new DOMParser().parseFromString(source, 'image/svg+xml');
@@ -120,7 +122,7 @@ function mermaidThemeVariables() {
   };
 }
 
-async function renderMermaidNow(access: CodexVisualizationMermaidPreviewDto) {
+async function renderMermaidNow(access: MermaidSource) {
   const mermaid = (await import('mermaid')).default;
   mermaid.initialize({
     startOnLoad: false,
@@ -141,7 +143,7 @@ async function renderMermaidNow(access: CodexVisualizationMermaidPreviewDto) {
   return sanitizeStaticSvg(svg);
 }
 
-function enqueueMermaidRender(access: CodexVisualizationMermaidPreviewDto) {
+function enqueueMermaidRender(access: MermaidSource) {
   const result = renderQueue.then(() => renderMermaidNow(access));
   renderQueue = result.then(
     () => undefined,
@@ -155,7 +157,7 @@ export function codexMermaidPreviewCacheKey(artifact: CodexVisualizationArtifact
   return `${artifact.id}:${artifact.byteSize}:${artifact.modifiedAt}:${theme}`;
 }
 
-export function renderCodexMermaidSvg(cacheKey: string, access: CodexVisualizationMermaidPreviewDto): Promise<string> {
+export function renderCodexMermaidSvg(cacheKey: string, access: MermaidSource): Promise<string> {
   const cached = svgByCacheKey.get(cacheKey);
   if (cached) {
     svgByCacheKey.delete(cacheKey);

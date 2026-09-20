@@ -1,9 +1,9 @@
-import { useState } from 'react';
 import { ChevronDownIcon } from 'lucide-react';
 import type { ImageGenerationRouteDto } from '@/shared/contracts';
 import { useI18n } from '@/renderer/i18n/useI18n';
 import { Button } from '@/renderer/components/ui/button';
 import { Popover, PopoverContent, PopoverTrigger } from '@/renderer/components/ui/popover';
+import { useNavigationPopoverState } from '@/renderer/components/ui/popover-navigation-scope';
 import { ModelSelectionCommand, type ModelCapabilityTag } from '@/renderer/components/creator/ModelSelectionCommand';
 
 interface Props {
@@ -24,7 +24,7 @@ export function ModelTargetSelector({
   onConfigureExtension,
 }: Props) {
   const labels = useI18n().messages.creator.generationTargets;
-  const [open, setOpen] = useState(false);
+  const [open, setOpen] = useNavigationPopoverState();
   const selected = selectedModelKeys.flatMap((key) => routes.find((model) => model.key === key) ?? []);
   const summary = selected.length
     ? selected

@@ -5,6 +5,7 @@ import {
   browserCompanionConnectionSchema,
   resolveSiteFromUrl,
 } from '@/lib/protocol';
+import { registerHandoffTab } from '@/lib/batch-tabs';
 
 function fragmentParameters(): Record<string, string> {
   return Object.fromEntries(new URLSearchParams(window.location.hash.slice(1)));
@@ -25,6 +26,10 @@ async function connect(): Promise<void> {
   await browser.storage.local.set({
     [BROWSER_COMPANION_CONNECTION_STORAGE_KEY]: connection,
   });
+  const tab = await browser.tabs.getCurrent();
+  if (tab?.id !== undefined && tab.windowId !== undefined) {
+    await registerHandoffTab(tab.id, tab.windowId, parsed.destination).catch(() => undefined);
+  }
   window.location.replace(parsed.destination);
 }
 

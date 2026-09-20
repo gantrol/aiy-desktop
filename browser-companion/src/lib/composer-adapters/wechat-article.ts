@@ -148,6 +148,134 @@ function prepareArticle(html: string, fileCount: number, coverMediaIndex?: numbe
   return { html: template.innerHTML, uploads, expectedWithPlaceholders };
 }
 
+const svgTags = new Set(['SVG', 'G', 'RECT', 'TEXT', 'IMAGE', 'ANIMATE']);
+const svgAttributes = new Set([
+  'xmlns',
+  'xmlns:xlink',
+  'id',
+  'width',
+  'height',
+  'viewbox',
+  'preserveaspectratio',
+  'style',
+  'data-aiy-interaction',
+  'opacity',
+  'fill',
+  'x',
+  'y',
+  'font-size',
+  'font-family',
+  'href',
+  'xlink:href',
+  'attributename',
+  'from',
+  'to',
+  'begin',
+  'dur',
+  'restart',
+]);
+
+function handoffMediaIndex(value: string | null, fileCount: number) {
+  const match = /^aiy-handoff-media:(\d+)$/u.exec(value ?? '');
+  if (!match) return null;
+  const index = Number(match[1]);
+  return Number.isInteger(index) && index >= 0 && index < fileCount ? index : null;
+}
+
+function extractInteractiveArticle(html: string) {
+  const input = document.createElement('template');
+  input.innerHTML = html;
+  const fallbacks = input.content.querySelectorAll('template[data-aiy-static]');
+  if (!fallbacks.length) return { staticHtml: html, interactiveHtml: null };
+  if (fallbacks.length !== 1 || input.content.lastElementChild !== fallbacks[0]) return null;
+  const staticHtml = fallbacks[0]!.innerHTML;
+  fallbacks[0]!.remove();
+  return { staticHtml, interactiveHtml: input.innerHTML };
+}
+
+function prepareInteractiveArticle(html: string, fileCount: number) {
+  const template = document.createElement('template');
+  template.innerHTML = html;
+  const svgRoots = template.content.querySelectorAll('svg[data-aiy-interaction]');
+  if (!svgRoots.length || svgRoots.length > 30) return null;
+  for (const element of template.content.querySelectorAll('*')) {
+    const tag = element.tagName.toUpperCase();
+    const svg = element.namespaceURI === 'http://www.w3.org/2000/svg';
+    if (svg ? !svgTags.has(tag) : !allowedTags.has(tag)) return null;
+    for (const attribute of [...element.attributes]) {
+      const name = attribute.name.toLowerCase();
+      if (svg ? !svgAttributes.has(name) : !allowedAttributes.has(name)) return null;
+      if (name === 'style' && /url\s*\(|@import|expression\s*\(/iu.test(attribute.value)) return null;
+      if (name === 'href' && tag === 'A' && !/^https:\/\//iu.test(attribute.value)) return null;
+    }
+    if (tag === 'IMG' && handoffMediaIndex(element.getAttribute('src'), fileCount) === null) return null;
+    if (tag === 'IMAGE') {
+      const href = element.getAttribute('href');
+      if (handoffMediaIndex(href, fileCount) === null || href !== element.getAttribute('xlink:href')) return null;
+    }
+    if (tag === 'SVG' && !['details', 'reveal'].includes(element.getAttribute('data-aiy-interaction') ?? ''))
+      return null;
+    if (tag === 'ANIMATE') {
+      const svgId = element.closest('svg')?.getAttribute('id');
+      if (
+        !svgId ||
+        !/^aiy_interaction_[a-z0-9_]+$/u.test(svgId) ||
+        !['opacity', 'height', 'viewBox'].includes(element.getAttribute('attributeName') ?? '') ||
+        element.getAttribute('begin') !== `${svgId}.click` ||
+        element.getAttribute('restart') !== 'never' ||
+        element.getAttribute('fill') !== 'freeze' ||
+        !/^(?:0\.2|0\.25)s$/u.test(element.getAttribute('dur') ?? '') ||
+        !/^[\d. ]+$/u.test(element.getAttribute('from') ?? '') ||
+        !/^[\d. ]+$/u.test(element.getAttribute('to') ?? '')
+      )
+        return null;
+    }
+  }
+  return { template, svgCount: svgRoots.length };
+}
+
+function substituteUploadedImages(
+  prepared: NonNullable<ReturnType<typeof prepareInteractiveArticle>>,
+  uploadedByIndex: ReadonlyMap<number, HTMLImageElement>,
+  fileCount: number,
+) {
+  const { template } = prepared;
+  for (const image of template.content.querySelectorAll('img')) {
+    const index = handoffMediaIndex(image.getAttribute('src'), fileCount);
+    const uploaded = index === null ? null : uploadedByIndex.get(index);
+    if (!uploaded) return null;
+    image.setAttribute('src', uploaded.src);
+    const fileId = uploaded.getAttribute('data-imgfileid');
+    if (fileId) image.setAttribute('data-imgfileid', fileId);
+  }
+  for (const image of template.content.querySelectorAll('svg image')) {
+    const index = handoffMediaIndex(image.getAttribute('href'), fileCount);
+    const uploaded = index === null ? null : uploadedByIndex.get(index);
+    if (!uploaded) return null;
+    image.setAttribute('href', uploaded.src);
+    image.setAttribute('xlink:href', uploaded.src);
+  }
+  return { html: template.innerHTML, expectedText: textOf(template.content), svgCount: prepared.svgCount };
+}
+
+async function pasteArticleHtml(editor: HTMLElement, html: string, expectedText: string) {
+  editor.focus({ preventScroll: true });
+  const range = document.createRange();
+  range.selectNodeContents(editor);
+  const selection = window.getSelection();
+  selection?.removeAllRanges();
+  selection?.addRange(range);
+  const transfer = new DataTransfer();
+  transfer.setData('text/html', html);
+  transfer.setData('text/plain', expectedText);
+  const unhandled = editor.dispatchEvent(
+    new ClipboardEvent('paste', { clipboardData: transfer, bubbles: true, cancelable: true }),
+  );
+  if (unhandled && !document.execCommand('insertHTML', false, html)) return false;
+  await new Promise((resolve) => window.setTimeout(resolve, 0));
+  return textOf(editor) === expectedText;
+}
+
 export const wechatArticleComposerAdapter: ComposerAdapter = {
   findEditors,
   readText(editor) {
@@ -159,7 +287,7 @@ export const wechatArticleComposerAdapter: ComposerAdapter = {
   },
   hasExistingMedia(editor) {
     return (
-      hasWechatArticleCover() || editor.querySelector('img:not(.ProseMirror-separator),video,audio,iframe') !== null
+      hasWechatArticleCover() || editor.querySelector('img:not(.ProseMirror-separator),svg,video,audio,iframe') !== null
     );
   },
   acceptsMedia(files) {
@@ -171,33 +299,19 @@ export const wechatArticleComposerAdapter: ComposerAdapter = {
     return openWechatComposer(handoffId, 'article-body');
   },
   async fillArticle(editor, html, files, coverMediaIndex) {
-    const article = prepareArticle(html, files.length, coverMediaIndex);
+    const source = extractInteractiveArticle(html);
+    if (!source) return 'INVALID_REQUEST';
+    const interactive = source.interactiveHtml ? prepareInteractiveArticle(source.interactiveHtml, files.length) : null;
+    if (source.interactiveHtml && !interactive) return 'INVALID_REQUEST';
+    const article = prepareArticle(source.staticHtml, files.length, coverMediaIndex);
     if (!article) return 'INVALID_REQUEST';
     if (files.length && !findMediaInput()) return 'MEDIA_INPUT_NOT_FOUND';
-    editor.focus({ preventScroll: true });
-    const range = document.createRange();
-    range.selectNodeContents(editor);
-    const selection = window.getSelection();
-    selection?.removeAllRanges();
-    selection?.addRange(range);
-    // Use the editor's paste transaction; execCommand is the native fallback.
-    // Replacing innerHTML directly would leave ProseMirror's document stale.
-    const transfer = new DataTransfer();
-    transfer.setData('text/html', article.html);
-    transfer.setData('text/plain', article.expectedWithPlaceholders);
-    const unhandled = editor.dispatchEvent(
-      new ClipboardEvent('paste', {
-        clipboardData: transfer,
-        bubbles: true,
-        cancelable: true,
-      }),
-    );
-    if (unhandled && !document.execCommand('insertHTML', false, article.html)) return 'FILL_FAILED';
-    await new Promise((resolve) => window.setTimeout(resolve, 0));
-    if (textOf(editor) !== article.expectedWithPlaceholders) return 'FILL_FAILED';
+    // Use paste transactions so the host editor and its document stay aligned.
+    if (!(await pasteArticleHtml(editor, article.html, article.expectedWithPlaceholders))) return 'FILL_FAILED';
 
     const deadline = Date.now() + 8 * 60_000;
     let uploadedCount = 0;
+    const uploadedByIndex = new Map<number, HTMLImageElement>();
     for (const upload of article.uploads) {
       if (!editor.isConnected || !selectPlaceholder(editor, upload.placeholder)) return 'FILL_FAILED';
       // The uploader reads ProseMirror's selection. Let its selection observer
@@ -242,6 +356,7 @@ export const wechatArticleComposerAdapter: ComposerAdapter = {
         await new Promise((resolve) => window.setTimeout(resolve, 250));
       }
       if (!uploaded) return 'MEDIA_FILL_FAILED';
+      uploadedByIndex.set(upload.fileIndex, uploaded);
       uploadedCount += 1;
     }
     const images = articleImages(editor);
@@ -251,6 +366,42 @@ export const wechatArticleComposerAdapter: ComposerAdapter = {
       image.replaceWith(document.createTextNode(article.uploads[index]!.placeholder)),
     );
     if (textOf(positioned) !== article.expectedWithPlaceholders) return 'FILL_FAILED';
+    if (interactive) {
+      const final = substituteUploadedImages(interactive, uploadedByIndex, files.length);
+      if (!final) return 'INVALID_REQUEST';
+      const staticHtml = article.uploads.reduce(
+        (current, upload) => current.replace(upload.placeholder, uploadedByIndex.get(upload.fileIndex)!.outerHTML),
+        article.html,
+      );
+      const staticTemplate = document.createElement('template');
+      staticTemplate.innerHTML = staticHtml;
+      const restore = async () => {
+        await pasteArticleHtml(editor, staticHtml, textOf(staticTemplate.content));
+      };
+      const pasted = await pasteArticleHtml(editor, final.html, final.expectedText);
+      const svgRoots = editor.querySelectorAll('svg[id^="aiy_interaction_"]');
+      const survived =
+        pasted &&
+        svgRoots.length === final.svgCount &&
+        [...svgRoots].every(
+          (svg) =>
+            [...svg.querySelectorAll('animate')].length >= 2 &&
+            [...svg.querySelectorAll('animate')].every(
+              (animation) => animation.getAttribute('begin') === `${svg.getAttribute('id')}.click`,
+            ),
+        ) &&
+        [...editor.querySelectorAll('svg image')].every((image) =>
+          /^https:\/\/(?:[^/]+\.)?qpic\.cn\//u.test(
+            image.getAttribute('href') || image.getAttribute('xlink:href') || '',
+          ),
+        ) &&
+        articleImages(editor).every(loadedImage) &&
+        !editor.innerHTML.includes('aiy-handoff-media:');
+      if (!survived) {
+        await restore();
+        return 'FILL_FAILED';
+      }
+    }
     if (coverMediaIndex !== undefined && !(await fillWechatArticleCover(files[coverMediaIndex]!)))
       return 'MEDIA_FILL_FAILED';
     return null;

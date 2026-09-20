@@ -29,9 +29,16 @@ async function validatedRaster(result: ImageDecoderSuccessResponse): Promise<Ras
   return { bytes, width: structure.width, height: structure.height };
 }
 
-export async function rasterizeSvgBytesInSandbox(bytes: Uint8Array<ArrayBufferLike>) {
+export async function rasterizeSvgBytesInSandbox(bytes: Uint8Array<ArrayBufferLike>, signal?: AbortSignal) {
   if (!bytes.byteLength || bytes.byteLength > maximumSvgBytes) throw new Error('SVG must be 25 MB or smaller');
-  return withDecodedImageBytesInSandbox(bytes, 'image/svg+xml', { operation: 'normalize' }, validatedRaster);
+  return withDecodedImageBytesInSandbox(
+    bytes,
+    'image/svg+xml',
+    { operation: 'normalize' },
+    validatedRaster,
+    undefined,
+    signal,
+  );
 }
 
 export async function rasterizeSvgFileInSandbox(filePath: string) {

@@ -7,10 +7,12 @@ import type {
   ExternalMaterialMetadataDto,
   GalleryItemDto,
   GalleryListInput,
+  GalleryMaterialDto,
   GalleryPageDto,
   GallerySourceFilter,
   ImageRatingDimension,
   ImageRatingDto,
+  Locale,
 } from '@/shared/contracts';
 import type { LibraryStorage } from '@/main/database/core/storage';
 import { isSystemMaterialAlbumId, materialAlbumAssetFilter } from '@/main/database/albums/material-album-repository';
@@ -370,7 +372,39 @@ export class GalleryRepository {
     });
   }
 
+  getMaterial(materialId: string, locale: Locale): GalleryMaterialDto | null {
+    const material = this.db
+      .prepare(
+        `SELECT material.id, material.kind, material.text_content, material.created_at,
+          (SELECT favorite.created_at FROM material_favorites favorite
+            WHERE favorite.material_id = material.id AND favorite.deleted_at IS NULL
+            ORDER BY favorite.created_at DESC, favorite.id DESC LIMIT 1) AS favorited_at
+        FROM materials material
+        WHERE material.id = ? AND material.deleted_at IS NULL AND material.archived_at IS NULL`,
+      )
+      .get(materialId) as JsonMap | undefined;
+    if (!material) return null;
+    if (material.kind === 'TEXT') {
+      return {
+        kind: 'TEXT',
+        text: {
+          id: text(material.id),
+          text: text(material.text_content),
+          createdAt: text(material.created_at),
+          favoritedAt: typeof material.favorited_at === 'string' ? material.favorited_at : null,
+        },
+      };
+    }
+    const media = this.readPage({ locale, source: 'ALL', unratedDimensions: [], cursor: null, limit: 1 }, materialId)
+      .items[0];
+    return media ? { kind: 'MEDIA', media } : null;
+  }
+
   list(input: GalleryListInput): GalleryPageDto {
+    return this.readPage(input);
+  }
+
+  private readPage(input: GalleryListInput, materialId?: string): GalleryPageDto {
     const limit = Math.max(1, Math.min(60, Math.trunc(input.limit)));
     const cursor = decodeCursor(input.cursor);
     const albumId = input.albumId;
@@ -497,6 +531,7 @@ export class GalleryRepository {
         AND ${galleryFailedOutputVisibilityPredicate}
         ${favoriteOnlyClause} ${assetKindClause} ${materialAlbumClause} ${placementClause}
         ${scopedDictionary.predicate} ${searchClause} ${unratedClause} ${cursorClause}
+        ${materialId ? 'AND gallery_material.id = ?' : ''}
       ORDER BY ${creationSortExpression} DESC, asset.id DESC
       LIMIT ?
     `,
@@ -509,6 +544,7 @@ export class GalleryRepository {
         ...scopedDictionary.parameters,
         ...searchParameters,
         ...(cursor ? [cursor.createdAt, cursor.createdAt, cursor.id] : []),
+        ...(materialId ? [materialId] : []),
         limit + 1,
       ) as JsonMap[];
 
@@ -543,7 +579,7 @@ export class GalleryRepository {
       )
     )`;
     const total =
-      (input.cursor === null ? undefined : input.knownTotal) ??
+      (materialId ? rows.length : input.cursor === null ? undefined : input.knownTotal) ??
       Number(
         (
           this.db

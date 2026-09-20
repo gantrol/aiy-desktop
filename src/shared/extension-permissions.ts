@@ -1,11 +1,14 @@
 export const EXTENSION_PERMISSION = {
   accountReadCodexRateLimits: 'account.read:codex-rate-limits',
+  accountReadOpenAiCosts: 'account.read:openai-costs',
   browserHandoffWeibo: 'browser.handoff:weibo',
   codexManageExtensionThreads: 'codex.manage:extension-owned-threads',
   credentialsUseAlibabaModelStudioApiKey: 'credentials.use:alibaba-model-studio-api-key',
   credentialsUseDeepSeekApiKey: 'credentials.use:deepseek-api-key',
   credentialsUseGoogleGeminiApiKey: 'credentials.use:google-gemini-api-key',
   credentialsUseOpenAiApiKey: 'credentials.use:openai-api-key',
+  credentialsUseOpenAiAdminKey: 'credentials.use:openai-admin-key',
+  credentialsUseCpaImageKey: 'credentials.use:cpa-image-key',
   credentialsUseVolcengineArkApiKey: 'credentials.use:volcengine-ark-api-key',
   filesystemReadCodexGeneratedImages: 'filesystem.read:codex-generated-images',
   filesystemReadCodexSessionMetadata: 'filesystem.read:codex-session-metadata',
@@ -23,6 +26,7 @@ export const EXTENSION_PERMISSION = {
 export const EXTENSION_PERMISSION_TEMPLATE = {
   userConfiguredDeepSeekVisionEndpoint: 'network:user-configured-deepseek-vision-endpoint',
   userConfiguredHttpsEndpoint: 'network:user-configured-https-endpoint',
+  userConfiguredCpaEndpoint: 'network:user-configured-cpa-endpoint',
 } as const;
 
 const declaredFixedPermissions = new Set<string>(Object.values(EXTENSION_PERMISSION));
@@ -78,6 +82,9 @@ export function extensionRuntimePermissionMatchesTemplate(template: string, perm
     return parsed.protocol === 'https:';
   }
   if (template === EXTENSION_PERMISSION_TEMPLATE.userConfiguredDeepSeekVisionEndpoint) {
+    return parsed.protocol === 'https:' || (parsed.protocol === 'http:' && isLoopbackHost(parsed.hostname));
+  }
+  if (template === EXTENSION_PERMISSION_TEMPLATE.userConfiguredCpaEndpoint) {
     return parsed.protocol === 'https:' || (parsed.protocol === 'http:' && isLoopbackHost(parsed.hostname));
   }
   return false;

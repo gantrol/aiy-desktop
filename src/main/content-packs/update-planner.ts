@@ -8,6 +8,7 @@ import type {
 } from '@/shared/contracts';
 import type { FixturePackSource } from '@/main/database/packs/fixture-pack-source';
 import { text, type JsonMap } from '@/main/database/core/values';
+import { contentPackCreationStates } from '@/main/content-packs/creation-state';
 import {
   PackMetadataInvalidError,
   parsePackExampleMetadata,
@@ -306,11 +307,28 @@ export function planContentPackUpdate(
     source.profile.id,
     pendingChanges.map(({ item }) => item),
   );
+  const creationStates = contentPackCreationStates(db, source.profile.id, [
+    ...new Map([...currentItems.values(), ...nextItems].map((item) => [item.itemKey, item])).values(),
+  ]);
+  // Even an unchanged source can have missing/deleted local creations. Surface
+  // those conflicts instead of treating an exact retry as a repair/recreation.
+  for (const item of nextItems) {
+    if (
+      creationStates.get(item.itemKey) !== 'CONFLICT' ||
+      pendingChanges.some((change) => change.item.itemKey === item.itemKey)
+    )
+      continue;
+    unchanged--;
+    pendingChanges.push({ item, changeKind: 'UPDATED' });
+  }
   const changes: PackUpdateChangeDto[] = pendingChanges.map(({ item, changeKind }) => ({
     itemKey: item.itemKey,
     objectType: item.objectType,
     changeKind,
-    localState: localState(localStateIndex, item),
+    localState:
+      item.objectType === 'CREATION_COLLECTION' && changeKind === 'REMOVED'
+        ? 'CONFLICT'
+        : (creationStates.get(item.itemKey) ?? localState(localStateIndex, item)),
   }));
   const summary = {
     added: changes.filter((item) => item.changeKind === 'ADDED').length,
@@ -322,6 +340,10 @@ export function planContentPackUpdate(
   };
   return {
     packId: source.profile.id,
+    blockingConflicts: changes.filter(
+      (change) =>
+        ['ARTICLE_REVISION', 'CREATION_COLLECTION'].includes(change.objectType) && change.localState === 'CONFLICT',
+    ).length,
     displayName: source.profile.displayName,
     operation: operationFor(currentVersion, source.releaseVersion),
     currentReleaseId,

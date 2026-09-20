@@ -10,6 +10,12 @@
 - [`templates/image-api/manifest.json`](templates/image-api/manifest.json)：带声明式连接配置的图像 API 能力。
 - [内容应用接口](content-applications.md)：便签中的外部应用贡献、宿主适配器与内容访问权限。
 
+## 本地安装与更新
+
+在拓展中心选择“安装本地拓展…”并选中含 `manifest.json` 的解压目录。已安装的本地拓展详情提供“更新…”，选择同一插件的新版本目录后，宿主校验插件 ID 和宿主兼容性，暂存文件并替换已安装包，随后立即重新加载。更新保留既有启用状态、授权和独立保存的连接凭据；新增权限仍需授权。
+
+刷新按钮重新读取已安装包的清单和语言资源，并更新界面与宿主注册信息。因此，手动覆盖 AIY 实际安装目录后可点击刷新生效。它不会下载新版、部署远端服务或发起连接测试。源码目录中的文件修改仍需安装到 AIY；宿主程序更新仍需完整退出并重新启动。
+
 ## 声明与实现是两层
 
 manifest 负责让扩展中心知道“这个扩展是什么、贡献什么、需要什么权限”。它不会加载插件 JavaScript，也不会自动创建 IPC、网络请求、命令处理器或 Provider。
@@ -29,7 +35,7 @@ manifest 负责让扩展中心知道“这个扩展是什么、贡献什么、�
 {
   "runtime": {
     "kind": "HOST",
-    "id": "codex-image-discovery"
+    "id": "maintenance-guide"
   }
 }
 ```
@@ -43,14 +49,18 @@ manifest 负责让扩展中心知道“这个扩展是什么、贡献什么、�
 
 包可以独立更新版本、名称、描述、本地化和兼容范围，但不能放宽权限或把运行时绑定到另一个扩展 ID。当前开放的参考运行时包括：
 
+> `codex-history-search`、`codex-image-discovery`、`codex-usage-investigator` 和 `codex-visualization-discovery` 是旧分包留下的宿主子能力契约，只用于迁移和内部实现定位。面向用户的当前身份是内置的统一 [`com.aiy.codex-app-server`](codex-app-server.md)；包扫描不会再把四个旧 ID 注册成独立插件。
+
 - `codex-image-discovery`：发现并导入 Codex 生成图片，清单位于 [`extensions/com.aiy.codex-image-discovery/`](../../extensions/com.aiy.codex-image-discovery/)。
 - `codex-history-search`：从 Codex 只读任务元数据与聊天投影建立扩展私有 FTS5 索引，搜索标题、用户消息和最终回答；支持归档状态、角色、子代理、工作区、分支和日期筛选。搜索查询不读取 rollout；选中单个任务后，详情区按页读取该任务的聊天投影，旧版任务则在严格路径校验后按固定字节上限倒序读取对应 rollout。索引不进入资料库、不上传，并在任一必需权限撤销时清空。清单位于 [`extensions/com.aiy.codex-history-search/`](../../extensions/com.aiy.codex-history-search/)。
 - `codex-visualization-discovery`：按 Codex 任务发现 HTML 交互可视化、静态可视化、SVG、PDF、线框图、UML 与图表源文件；HTML 仅按需进入关闭脚本、网络、表单和下载的短期沙箱静态预览，并受文件、请求数和总资源体积限制。能力包不改动来源文件，同时提供外部打开、定位和导出。清单位于 [`extensions/com.aiy.codex-visualization-discovery/`](../../extensions/com.aiy.codex-visualization-discovery/)。
 - `codex-usage-investigator`（Codex今天努力了吗？）：以 Codex `state_*.sqlite` 为任务索引，将逐次 token、Chat turn 终态与完成耗时、会话来源、上下文压缩次数、订阅套餐、模型、Standard/Fast 及 primary/secondary 额度窗口增量导入拓展专用 SQLite；每完成一个 rollout 即提交检查点，中断后从未完成文件继续。界面默认按本地日历“今天”调查，以左侧报告历史轨和右侧总览、速度、会话、额度、模型分区组织结果。Fast 实测按完成时刻归属所选范围，只比较同一规范化模型与同一推理强度中已解析为单一模式的完成轮次，分别计算 Standard/Fast `task_complete.duration_ms` 中位数，并以两者之比对照各模型当前的官方速度标称；优先读取 Codex 本地模型目录，缺失时使用该模型已有记录或内置参考，不能识别的标称显示未知，具体来源与刷新规则见[模型速度参考](codex-usage-speed.md)；Fork 继承轮次只保留最早自有记录。导入时以会话累计计数器还原真实增量，为每个用量事件生成不含内容的稳定指纹，并在读取时只保留跨会话历史重放中的全局最早事件。可选详细统计以完整会话为一级单位，按末个自有终态 Chat turn 归属时间范围；Fork 继承的 Chat turn 与上下文压缩均不重复计数，用户直聊、Fork 与子代理分开比较，仅按单一规范化模型控制样本，Standard、Fast、混合及未知服务模式合并进入 Token 分桶。会话按轮数排序后采用动态近似等频分桶：组数随样本量对数增长，并限制为每约 5 个完整会话至多增加一组；同轮数会话不拆分，超大同轮数组后重新均衡剩余组。低于 5 个样本的组继续展示，但不参与成本最低点及趋势信号。API 等值统一折算为同模型在事件日期的 Standard 公开费率，因此模式未知的会话仍可进入 API 中位数。界面同时展示总体覆盖、跨比较组轮数信号、上下文压缩次数平均值、轮均 Token/API 中位数与会话峰值上下文范围。Credits 等值仍按事件的 Standard/Fast 模式应用公开倍率；会话缺少模式事件时，仅对 Codex 配置文件修改时间之后的事件使用其中的模式兜底，显式会话标记始终优先。API 等值仅作为公开费率对照而非账单。额度换算只统计 `resetsAt` 之前且落在 10080 分钟周窗口内的事件；`resetsAt` 仅作为下一次重置预测，按 5 分钟容差推进同一额度流，旧预测快照会被丢弃，预测前移时结束当前连续观测段。每个观测段以去重后的 Token 总数除以该段观测到的额度消耗百分点，并列出 Sol、Luna、Terra 及其他模型与 Standard/Fast 组合的 Token 占比、非缓存输入加输出 Token 与缓存输入占比。扫描与计算阶段分别报告可访问的后台进度，加工结果按原始数据修订号和算法版本缓存。拓展不会保存或导出 Prompt、回复、工作目录或本机绝对路径。清单位于 [`extensions/com.aiy.codex-usage-investigator/`](../../extensions/com.aiy.codex-usage-investigator/)。
 - `weibo-browser-handoff`：把当前内容和已验证的资产交给浏览器伴侣填入微博草稿。它只接受 `com.aiy.channel.weibo`，并要求 `browser.handoff:weibo`；最终发布仍由用户在微博页面完成。清单位于 [`extensions/com.aiy.channel.weibo/`](../../extensions/com.aiy.channel.weibo/)。
-- `article-draft-delivery`：由外部扩展声明唯一渠道、站点 origin、URL 前缀和凭据权限；宿主只代管密钥、捕获不可变文章修订、上传已绑定图片并调用固定的 AIY 文章导入协议。扩展包不执行 JavaScript，渠道包可在站点仓库独立维护和安装。
+- `article-draft-delivery`：保留兼容的运行时标识；外部扩展通过 `configuration.deliveryMode` 选择 `PUBLISH`（直接发布）或 `DRAFT`（默认），并声明唯一渠道、站点 origin、URL 前缀和凭据权限。宿主管理密钥、捕获不可变文章修订、上传已绑定图片并调用 AIY 文章导入协议，详见[文章投递](../article-delivery.md)。扩展包不执行 JavaScript，渠道包可在站点仓库独立维护和安装。
 
-## Codex 的非 Fast 周额度等效 Token
+## Codex 旧版非 Fast 周额度换算
+
+> 以下算法只说明旧报告和缓存字段的兼容来源。当前用量工作面不会把观察到的额度变化外推成套餐满额容量，也不会把缓存折算差额称为实测节省；现行展示口径见[统一 Codex 插件](codex-app-server.md#用量调查)。
 
 总览的“100% 额度等效非 Fast Token 总量”按调查范围内同一套餐、同一周额度池的可用观测段，展示完整周额度在非 Fast（Standard）模式下的 Token 总量。公式为 `(Standard Token + Σ(各模型 Fast Token × 对应额度倍率)) ÷ 累计观测消耗百分点 × 100`。总量包含缓存输入与输出，不依赖 API 金额或费率覆盖；它沿用观测到的模型与缓存比例，不是固定套餐承诺。Fast 使用[官方额度消耗倍率](https://learn.chatgpt.com/docs/agent-configuration/speed)，不使用模型速度提升倍率。模式未记录时，用该部分 Token 的 1× 与对应模型的 Fast 倍率形成上下界；倍率无公开依据或模型份额缺失时仅给出下限。已保存报告直接从模型份额与额度观测转换，不因某个模式缺失就丢弃整段。
 
@@ -203,7 +213,7 @@ manifest 负责让扩展中心知道“这个扩展是什么、贡献什么、�
 - 对远端响应和用户配置做运行时校验，不能只依赖 manifest 校验。
 - 为用户可见的扩展名称和配置标签补齐 `manifest.i18n`。
 
-宿主硬编码参考位于 [`src/main/extensions/builtin-manifests.ts`](../../src/main/extensions/builtin-manifests.ts)，独立 capability 包参考位于 [`extensions/com.aiy.codex-image-discovery/`](../../extensions/com.aiy.codex-image-discovery/)。图像 API 的配置与端点解析可参考 [`src/main/extensions/external-image-api/`](../../src/main/extensions/external-image-api/)。
+宿主硬编码参考位于 [`src/main/extensions/builtin-manifests.ts`](../../src/main/extensions/builtin-manifests.ts)，统一 Codex 能力见[插件说明](codex-app-server.md)，独立 capability 包可参考 [`extensions/com.aiy.maintenance-guide/`](../../extensions/com.aiy.maintenance-guide/)。图像 API 的配置与端点解析可参考 [`src/main/extensions/external-image-api/`](../../src/main/extensions/external-image-api/)。
 
 ## 外部分发尚缺的运行时
 

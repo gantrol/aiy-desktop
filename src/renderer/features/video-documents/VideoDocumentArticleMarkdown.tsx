@@ -323,7 +323,7 @@ function createComponents({
       mediaOnlyParagraph(node, bindingByPath) ? (
         <div className="my-7 grid gap-5">{children}</div>
       ) : (
-        <p className="my-5 text-inherit">{children}</p>
+        <p className="text-inherit">{children}</p>
       ),
     blockquote: ({ children }) => {
       const matchingCueSourceIndexes = cueSourceIndexesByText.get(normalizedText(visibleText(children))) ?? [];
@@ -335,16 +335,6 @@ function createComponents({
       if (content?.generation && !preserveQuote) return null;
       return <blockquote>{children}</blockquote>;
     },
-    ul: ({ children }) => <ul>{children}</ul>,
-    ol: ({ children }) => <ol>{children}</ol>,
-    table: ({ children }) => (
-      <div className="tableWrapper">
-        <table>{children}</table>
-      </div>
-    ),
-    thead: ({ children }) => <thead>{children}</thead>,
-    th: ({ children }) => <th>{children}</th>,
-    td: ({ children }) => <td>{children}</td>,
     img: ({ src, alt }) => {
       const binding = bindingByPath.get(normalizedMediaPath(src));
       const media = binding ? mediaById.get(binding.assetId) : null;

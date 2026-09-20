@@ -13,12 +13,14 @@ import {
   SquarePenIcon,
   Trash2Icon,
 } from 'lucide-react';
-import { useState } from 'react';
+import { useState, type ReactNode } from 'react';
 import type { AssetFileRevealContext } from '@/shared/contracts';
 import { AssetFileContextMenu } from '@/renderer/components/media/AssetFileContextMenu';
 import { useAssetMenuActions } from '@/renderer/components/media/AssetMenuActionsProvider';
 import { AssetMedia } from '@/renderer/components/media/AssetMedia';
 import { ImageAmbientBackdrop } from '@/renderer/components/media/AmbientImage';
+import { mediaThumbnailUrl } from '@/renderer/components/media/mediaThumbnailUrl';
+import { MaterialPinAction, materialPinSource } from '@/renderer/components/gallery/MaterialPinAction';
 import { Button } from '@/renderer/components/ui/button';
 import type { ActionMenuAction } from '@/renderer/components/ui/action-menu';
 import { MetaText } from '@/renderer/components/ui/meta-text';
@@ -31,6 +33,7 @@ import {
 } from '@/renderer/components/gallery/materialLibraryTypes';
 
 interface MaterialDetailHeaderProps {
+  agentLinkAction: ReactNode;
   title: string;
   position: number;
   total: number;
@@ -45,6 +48,7 @@ interface MaterialDetailHeaderProps {
 }
 
 export function MaterialDetailHeader({
+  agentLinkAction,
   title,
   position,
   total,
@@ -125,6 +129,7 @@ export function MaterialDetailHeader({
             {copyBusy ? <LoaderCircleIcon className="size-4 animate-spin" /> : <CopyIcon className="size-4" />}
           </Button>
         )}
+        {agentLinkAction}
       </div>
     </header>
   );
@@ -176,6 +181,7 @@ export function MaterialDetailPreview({
     <section className="min-h-0 min-w-0 bg-surface-sunken p-4 sm:p-6" aria-label={l.preview}>
       {item.kind !== 'TEXT' ? (
         <AssetFileContextMenu
+          pinSource={materialPinSource(item)}
           assetId={item.image.asset.id}
           notify={notify}
           revealContext={revealContext}
@@ -185,13 +191,14 @@ export function MaterialDetailPreview({
         >
           <div
             className={cn(
-              'relative isolate grid size-full min-h-0 place-items-center overflow-hidden rounded-xl border',
+              'relative isolate grid size-full min-h-0 place-items-center overflow-hidden rounded-xl',
               video ? 'bg-media-surround-dark' : 'bg-surface-sunken',
             )}
           >
-            {!video && <ImageAmbientBackdrop src={item.image.asset.mediaUrl} />}
+            {!video && <ImageAmbientBackdrop src={mediaThumbnailUrl(item.image.asset, 192)} />}
             <AssetMedia
               asset={item.image.asset}
+              previewSize={item.image.asset.mimeType === 'image/svg+xml' ? 512 : undefined}
               className="relative z-10 max-h-full size-full object-contain"
               alt={title}
               draggable={false}
@@ -201,7 +208,7 @@ export function MaterialDetailPreview({
           </div>
         </AssetFileContextMenu>
       ) : (
-        <ScrollArea className="size-full rounded-xl border bg-background">
+        <ScrollArea className="size-full rounded-xl bg-background">
           <p className="mx-auto max-w-3xl whitespace-pre-wrap break-words p-8 text-base leading-7">{item.text.text}</p>
         </ScrollArea>
       )}
@@ -286,9 +293,10 @@ export function MaterialDetailActions({
     </Button>
   );
 
-  if (item.kind === 'TEXT') {
+  if (item.kind === 'TEXT')
     return (
       <div className="grid gap-2">
+        <MaterialPinAction item={item} disabled={lifecycleBusy} notify={notify} />
         <Button type="button" className="w-full" onClick={() => onCopyText(item.text.text)}>
           <CopyIcon className="size-4" />
           {l.copyText}
@@ -314,11 +322,11 @@ export function MaterialDetailActions({
         </Button>
       </div>
     );
-  }
   if (!image) return null;
 
   return (
     <div className="grid gap-2">
+      <MaterialPinAction item={item} disabled={lifecycleBusy} notify={notify} />
       {!video && assetActions && (
         <Button
           type="button"

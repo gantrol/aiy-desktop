@@ -27,7 +27,9 @@ export function decisionLabel(decision: TermIllustrationDecision, copy: Illustra
 export function qualityLabel(quality: GenerationQuality, copy: IllustrationCopy) {
   if (quality === 'low') return copy.qualityLow;
   if (quality === 'medium') return copy.qualityMedium;
-  return copy.qualityHigh;
+  if (quality === 'high') return copy.qualityHigh;
+  if (quality === 'xhigh') return copy.qualityXhigh;
+  return copy.qualityMax;
 }
 
 export function batchStatusLabel(batch: TermIllustrationBatchDto, copy: IllustrationCopy) {

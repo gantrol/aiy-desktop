@@ -10,7 +10,7 @@ import type {
   Locale,
   TermListItem,
 } from '@/shared/contracts';
-import { blockDocumentAssetIds, blockDocumentImportIds, type BlockDocument } from '@/shared/contracts/block-document';
+import { blockDocumentAssetIds, blockDocumentIsEmpty, type BlockDocument } from '@/shared/contracts/block-document';
 
 export interface CreationDraftPromptSnapshot {
   document?: BlockDocument;
@@ -95,6 +95,18 @@ function generationTargetsKey(targets: readonly GenerationTargetInput[]) {
   return JSON.stringify(targets.map((target) => [target.modelKey, target.count, target.quality]));
 }
 
+function documentHasDraftEdits(document: BlockDocument) {
+  const blocks = document.root.content ?? [];
+  // Recipe-only defaults are compared through wordPaletteReferences below.
+  if (
+    blocks.length === 1 &&
+    blocks[0].type === 'paragraph' &&
+    blocks[0].content?.every((node) => node.type === 'creatorRecipe')
+  )
+    return false;
+  return !blockDocumentIsEmpty(document);
+}
+
 export function creationDraftSnapshotHasMeaningfulInput(
   snapshot: CreationDraftSaveSnapshot,
   defaults: AlbumCreationDefaultsDto | null,
@@ -105,7 +117,7 @@ export function creationDraftSnapshotHasMeaningfulInput(
     snapshot.title.trim() ||
     snapshot.text.trim() ||
     snapshot.referenceAssetIds.length ||
-    (snapshot.document && blockDocumentImportIds(snapshot.document).length > 0) ||
+    (snapshot.document && documentHasDraftEdits(snapshot.document)) ||
     snapshot.videoMaterialIds?.length ||
     snapshot.termIds.length ||
     (snapshot.promptNodes ?? []).some(

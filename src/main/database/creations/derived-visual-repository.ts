@@ -11,7 +11,11 @@ import type {
   SocialPostContentInput,
   SocialPostDto,
 } from '@/shared/contracts';
-import { articleInlineVisualAnchorSchema, derivedVisualRoleSchema } from '@/shared/contracts/derived-visual';
+import {
+  articleCoverVisualAnchorSchema,
+  articleInlineVisualAnchorSchema,
+  derivedVisualRoleSchema,
+} from '@/shared/contracts/derived-visual';
 import { emptyCreationDictionaryScope } from '@/shared/album-creation-defaults';
 import { derivedVisualImageExtension, isDerivedVisualMediaPath } from '@/shared/derived-visual-media';
 import { articleIllustrationInsertionOffset } from '@/shared/article-wechat-renderer';
@@ -24,12 +28,9 @@ import type { SocialPostRepository } from '@/main/database/creations/social-post
 import type { CreationItemRepository } from '@/main/database/creations/creation-item-repository';
 import { DerivedVisualOperationRepository } from '@/main/database/creations/derived-visual-operation-repository';
 import { gifOutputExists } from '@/main/database/creations/creation-output-presentation-sql';
-
-const allowedCanvasPresets = {
-  ARTICLE_HEADER: new Set(['wechat_article_cover_2_35_1']),
-  ARTICLE_INLINE: new Set(['landscape_4_3', 'square_1_1', 'xiaohongshu_portrait_3_4', 'video_landscape_16_9']),
-  SOCIAL_POST_COVER: new Set(['xiaohongshu_portrait_3_4']),
-} as const;
+import { derivedVisualCanvasPresetKeys } from '@/shared/derived-visual-presets';
+import { ARTICLE_COVER_PRESET_KEYS, articleCoverAspectRatio } from '@/shared/article-covers';
+import { articleReferenceAssetIds } from '@/shared/article-reference-assets';
 
 const maxDraftReferenceAssets = 8;
 
@@ -95,7 +96,13 @@ export class DerivedVisualRepository {
 
   openWorkspace(input: DerivedVisualWorkspaceOpenInput): DerivedVisualWorkspaceOpenResult {
     if (input.mode === 'RESUME') return this.resumeWorkspace(input.visualId);
-    if (!allowedCanvasPresets[input.role].has(input.canvasPresetKey)) {
+    if (
+      input.role === 'ARTICLE_HEADER' &&
+      input.coverRatio &&
+      ARTICLE_COVER_PRESET_KEYS[input.coverRatio] !== input.canvasPresetKey
+    )
+      throw new Error('ARTICLE_COVER_CANVAS_MISMATCH');
+    if (!derivedVisualCanvasPresetKeys[input.role].includes(input.canvasPresetKey)) {
       throw new Error('This canvas is unavailable for the requested visual');
     }
     return this.db
@@ -197,7 +204,11 @@ export class DerivedVisualRepository {
     target: DerivedVisualWorkspaceTarget,
     id: string | null,
   ) {
-    const referenceAssetIds = target.socialPost ? socialPostReferenceAssetIds(target.socialPost) : [];
+    const referenceAssetIds = target.socialPost
+      ? socialPostReferenceAssetIds(target.socialPost)
+      : target.article
+        ? articleReferenceAssetIds(target.article.content).slice(0, maxDraftReferenceAssets)
+        : [];
     return this.intake.saveDraft({
       id,
       targetAlbumId: target.article?.albumId ?? target.socialPost?.albumId ?? null,
@@ -240,7 +251,13 @@ export class DerivedVisualRepository {
         target.article?.revisionId ?? null,
         target.socialPost?.id ?? null,
         target.socialPost?.revisionId ?? null,
-        JSON.stringify(input.role === 'ARTICLE_INLINE' ? input.anchor : null),
+        JSON.stringify(
+          input.role === 'ARTICLE_INLINE'
+            ? input.anchor
+            : input.role === 'ARTICLE_HEADER' && input.coverRatio
+              ? { coverRatio: input.coverRatio }
+              : null,
+        ),
         draft.id,
         timestamp,
         timestamp,
@@ -358,11 +375,41 @@ export class DerivedVisualRepository {
     let mediaBindings = content.mediaBindings.map((binding) => ({ ...binding }));
     if (!existingBinding) mediaBindings.push({ path: nextPath, assetId: imageAssetId });
 
+    const cropSource = visual.coverRatio
+      ? (this.db
+          .prepare(
+            `SELECT transform.source_asset_id, source.mime_type FROM image_transform_runs transform
+      JOIN image_assets source ON source.id = transform.source_asset_id AND source.deleted_at IS NULL
+      WHERE transform.output_asset_id = ? AND transform.series_id = ? AND transform.kind = 'CROP'
+        AND transform.deleted_at IS NULL AND ABS(1.0 * transform.ratio_width / transform.ratio_height - ?) < 0.000001`,
+          )
+          .get(imageAssetId, visual.promptSeriesId, articleCoverAspectRatio(visual.coverRatio)) as JsonMap | undefined)
+      : undefined;
+    const sourceAssetId = cropSource ? text(cropSource.source_asset_id) : imageAssetId;
+    if (cropSource && !mediaBindings.some((binding) => binding.assetId === sourceAssetId))
+      mediaBindings.push({
+        path: derivedPath(visual.id, sourceAssetId, text(cropSource.mime_type)),
+        assetId: sourceAssetId,
+      });
     const markdown = content.markdown;
+    const coverVariants = visual.coverRatio
+      ? [
+          ...(content.coverVariants ?? []).filter((cover) => cover.ratio !== visual.coverRatio),
+          {
+            ratio: visual.coverRatio,
+            assetId: imageAssetId,
+            sourceAssetId,
+            crop: { x: 0.5, y: 0.5, zoom: 1 },
+          },
+        ]
+      : content.coverVariants;
+    const coverAssetId = visual.coverRatio ? (content.coverAssetId ?? sourceAssetId) : imageAssetId;
+    const retained = new Set(articleReferenceAssetIds({ ...content, coverAssetId, coverVariants }));
     if (visual.selectedImageAssetId && visual.selectedImageAssetId !== imageAssetId) {
       const previousBinding = mediaBindings.find((binding) => binding.assetId === visual.selectedImageAssetId);
       if (
         previousBinding &&
+        !retained.has(previousBinding.assetId) &&
         isDerivedVisualMediaPath(previousBinding.path, visual.id) &&
         !markdown.includes(previousBinding.path)
       ) {
@@ -378,7 +425,8 @@ export class DerivedVisualRepository {
         ...content,
         markdown,
         mediaBindings,
-        coverAssetId: imageAssetId,
+        coverAssetId,
+        ...(coverVariants?.length ? { coverVariants } : {}),
       },
     });
   }
@@ -430,6 +478,10 @@ export class DerivedVisualRepository {
     } catch {
       throw new Error('Stored derived visual anchor is invalid');
     }
+    const coverRatio =
+      role === 'ARTICLE_HEADER' && parsedAnchor !== null
+        ? articleCoverVisualAnchorSchema.parse(parsedAnchor).coverRatio
+        : undefined;
     const anchor = role === 'ARTICLE_INLINE' ? articleInlineVisualAnchorSchema.parse(parsedAnchor) : null;
     if (role === 'ARTICLE_INLINE' && (row.position_id == null || row.position_anchor_json == null))
       throw new Error('ARTICLE_VISUAL_POSITION_UNAVAILABLE');
@@ -438,6 +490,7 @@ export class DerivedVisualRepository {
       positionId: row.position_id == null ? null : text(row.position_id),
       positionWasUsed: Boolean(row.ever_adopted),
       role,
+      ...(coverRatio ? { coverRatio } : {}),
       articleId: row.article_id == null ? null : text(row.article_id),
       articleRevisionId: row.article_revision_id == null ? null : text(row.article_revision_id),
       socialPostId: row.social_post_id == null ? null : text(row.social_post_id),

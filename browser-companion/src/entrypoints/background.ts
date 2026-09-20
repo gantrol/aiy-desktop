@@ -1,4 +1,5 @@
 import { companionMessage } from '@/lib/i18n';
+import { forgetHandoffTab, registerHandoffTab } from '@/lib/batch-tabs';
 import { openWechatSocialPost, wechatNavigationRequestSchema } from '@/lib/composer-adapters/wechat-navigation';
 import {
   BROWSER_COMPANION_BOOTSTRAP_PATH_PREFIX,
@@ -94,6 +95,9 @@ const rejected = {
 
 export default defineBackground(() => {
   void browser.action.setTitle({ title: companionMessage('extensionName') }).catch(() => undefined);
+  browser.tabs.onRemoved.addListener((tabId) => {
+    void forgetHandoffTab(tabId).catch(() => undefined);
+  });
 
   browser.runtime.onMessage.addListener(async (rawMessage: unknown, sender) => {
     const navigation = wechatNavigationRequestSchema.safeParse(rawMessage);
@@ -186,6 +190,9 @@ export default defineBackground(() => {
       await browser.storage.local.set({
         [BROWSER_COMPANION_CONNECTION_STORAGE_KEY]: parsed.data.connection,
       });
+      if (sender.tab?.id !== undefined && sender.tab.windowId !== undefined && sender.frameId === 0) {
+        await registerHandoffTab(sender.tab.id, sender.tab.windowId, parsed.data.destination).catch(() => undefined);
+      }
       return {
         protocolVersion: 1,
         ok: true,

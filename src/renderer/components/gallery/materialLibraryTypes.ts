@@ -1,8 +1,8 @@
-import type { FavoriteTextMaterialDto, GalleryItemDto } from '@/shared/contracts';
+import type { TextMaterialDto, GalleryItemDto } from '@/shared/contracts';
 
 export type MaterialLibraryItem =
   | { key: string; kind: 'IMAGE' | 'VIDEO'; createdAt: string; image: GalleryItemDto }
-  | { key: string; kind: 'TEXT'; createdAt: string; text: FavoriteTextMaterialDto };
+  | { key: string; kind: 'TEXT'; createdAt: string; text: TextMaterialDto };
 
 /** Which multi-select gesture a click carried: shift extends, ctrl/cmd toggles. */
 export interface SelectionModifiers {
@@ -22,7 +22,7 @@ export function selectionModifiers(event: {
 // the wrapper by source row keeps every untouched card referentially equal and
 // lets memoized cards skip the re-render.
 const mediaMaterials = new WeakMap<GalleryItemDto, MaterialLibraryItem>();
-const textMaterials = new WeakMap<FavoriteTextMaterialDto, MaterialLibraryItem>();
+const textMaterials = new WeakMap<TextMaterialDto, MaterialLibraryItem>();
 
 export function mediaMaterial(item: GalleryItemDto): MaterialLibraryItem {
   const cached = mediaMaterials.get(item);
@@ -38,7 +38,7 @@ export function mediaMaterial(item: GalleryItemDto): MaterialLibraryItem {
   return created;
 }
 
-export function textMaterial(item: FavoriteTextMaterialDto): MaterialLibraryItem {
+export function textMaterial(item: TextMaterialDto): MaterialLibraryItem {
   const cached = textMaterials.get(item);
   if (cached) return cached;
   const created: MaterialLibraryItem = {

@@ -239,6 +239,7 @@ export function buildCodexUsageTimeSlices(
   samples: readonly CodexUsageQuotaYieldSample[],
   granularity: CodexUsageResolvedGranularity,
   timeZone: string,
+  maximumSlices = MAX_TIME_SLICES,
 ): CodexUsageQuotaYieldTimeSlice[] {
   const groups = new Map<string, MutableSlice>();
   for (const sample of samples) {
@@ -346,5 +347,5 @@ export function buildCodexUsageTimeSlices(
       (left, right) =>
         left.observedFrom.localeCompare(right.observedFrom) || left.bucketKey.localeCompare(right.bucketKey),
     )
-    .slice(-MAX_TIME_SLICES);
+    .slice(-maximumSlices);
 }

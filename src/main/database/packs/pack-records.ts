@@ -67,6 +67,7 @@ export interface PackCatalogRecord {
 export interface InstallExactPackReleaseInput {
   packId: string;
   releaseId: string;
+  transactionId?: string;
   source?: JsonMap;
   dependencies?: PackInstallDependencyResolutionInput[];
   verification?: JsonMap;

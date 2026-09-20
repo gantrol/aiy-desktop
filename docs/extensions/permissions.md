@@ -17,7 +17,7 @@
 1. 是否绑定某个外部平台、模型或易变化的协议；如果是，优先作为扩展贡献。
 2. 禁用后是否仍能安全打开、编辑和保存本地内容；如果不能，它属于主干。
 3. 是否可以用精确资源、精确 origin 和一次操作范围表达；如果不能，暂不开放。
-4. 是否包含发布、删除、付费或覆盖等高影响动作；如果包含，持久权限之外还必须逐次确认。
+4. 是否包含发布、删除、付费或覆盖等高影响动作；如果包含，持久权限不能替代本次任务授权。已有明确授权且范围不变时不重复确认，扩大目标、费用或风险时重新询问。
 
 当前 `CAPABILITY` 包只绑定宿主白名单中的 `HOST` runtime，不执行包内 JavaScript。这让功能可以独立声明、版本化、启停和授权，同时把可执行代码继续置于应用维护的安全域内。
 
@@ -49,21 +49,21 @@
 
 ## 当前场景所需权限
 
-| 扩展场景                   | 必需权限                                                                                                                         | 可选或运行时权限                                                             |
-| -------------------------- | -------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------- |
-| 语言包、过场预览、功能演示 | 无                                                                                                                               | 无                                                                           |
-| Codex App Server           | `integration.connect:codex-app-server`、`codex.manage:extension-owned-threads`、`library.read:selected-references`               | 无；线程权限只覆盖扩展自己绑定的线程                                         |
-| Antigravity CLI            | `process.execute:antigravity-cli`、`library.read:selected-references`                                                            | 无；可执行文件和参数由宿主固定                                               |
-| OpenAI 图像 API            | `network:https://api.openai.com`、`credentials.use:openai-api-key`、`library.read:selected-references`                           | 无                                                                           |
-| DeepSeek API               | `network:https://api.deepseek.com`、`credentials.use:deepseek-api-key`                                                           | `library.read:selected-references`；自定义视觉端点由模板产生精确 origin      |
-| Google Gemini API          | `network:https://generativelanguage.googleapis.com`、`credentials.use:google-gemini-api-key`、`library.read:selected-references` | 自定义 HTTPS 端点模板                                                        |
-| 阿里云百炼图像 API         | `credentials.use:alibaba-model-studio-api-key`、`library.read:selected-references`                                               | 根据 workspace 与地域生成精确 HTTPS origin，不使用宽泛的 `aliyuncs.com` 权限 |
-| 火山引擎方舟 / BytePlus    | `network:https://ark.cn-beijing.volces.com`、`credentials.use:volcengine-ark-api-key`、`library.read:selected-references`        | 两个声明的 BytePlus 地域 origin，或自定义 HTTPS 端点模板                     |
-| Codex 图片发现             | `filesystem.read:codex-generated-images`、`library.create:creations`                                                             | 无                                                                           |
-| Codex 聊天记录搜索         | `filesystem.read:codex-session-metadata`、`filesystem.read:codex-thread-content`                                                 | 无；索引仅写入扩展私有存储，撤销任一必需权限时清空                           |
-| Codex 可视化发现           | `filesystem.read:codex-visualizations`、`filesystem.read:codex-session-metadata`                                                 | `filesystem.read:codex-thread-content`；打开和用户选择的导出位置属于操作范围 |
-| Codex 用量分析             | `filesystem.read:codex-session-usage`                                                                                            | `account.read:codex-rate-limits`；用户选择的导出位置属于操作范围             |
-| 微博浏览器交接             | `browser.handoff:weibo`                                                                                                          | 一次性交接包；没有资料库枚举、Cookie、Session 或最终发布权限                 |
+| 扩展场景                   | 必需权限                                                                                                                         | 可选或运行时权限                                                                                                |
+| -------------------------- | -------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------- |
+| 语言包、过场预览、功能演示 | 无                                                                                                                               | 无                                                                                                              |
+| Codex App Server           | `integration.connect:codex-app-server`、`codex.manage:extension-owned-threads`、`library.read:selected-references`               | 无；线程权限只覆盖扩展自己绑定的线程                                                                            |
+| Antigravity CLI            | `process.execute:antigravity-cli`、`library.read:selected-references`                                                            | 无；可执行文件和参数由宿主固定                                                                                  |
+| OpenAI 图像 API            | `network:https://api.openai.com`、`credentials.use:openai-api-key`、`library.read:selected-references`                           | `account.read:openai-costs`、`credentials.use:openai-admin-key`；组织费用使用独立管理员连接，仅显式刷新调用账户 |
+| DeepSeek API               | `network:https://api.deepseek.com`、`credentials.use:deepseek-api-key`                                                           | `library.read:selected-references`；自定义视觉端点由模板产生精确 origin                                         |
+| Google Gemini API          | `network:https://generativelanguage.googleapis.com`、`credentials.use:google-gemini-api-key`、`library.read:selected-references` | 自定义 HTTPS 端点模板                                                                                           |
+| 阿里云百炼图像 API         | `credentials.use:alibaba-model-studio-api-key`、`library.read:selected-references`                                               | 根据 workspace 与地域生成精确 HTTPS origin，不使用宽泛的 `aliyuncs.com` 权限                                    |
+| 火山引擎方舟 / BytePlus    | `network:https://ark.cn-beijing.volces.com`、`credentials.use:volcengine-ark-api-key`、`library.read:selected-references`        | 两个声明的 BytePlus 地域 origin，或自定义 HTTPS 端点模板                                                        |
+| Codex 图片发现             | `filesystem.read:codex-generated-images`、`library.create:creations`                                                             | 无                                                                                                              |
+| Codex 聊天记录搜索         | `filesystem.read:codex-session-metadata`、`filesystem.read:codex-thread-content`                                                 | 无；索引仅写入扩展私有存储，撤销任一必需权限时清空                                                              |
+| Codex 可视化发现           | `filesystem.read:codex-visualizations`、`filesystem.read:codex-session-metadata`                                                 | `filesystem.read:codex-thread-content`；打开和用户选择的导出位置属于操作范围                                    |
+| Codex 用量分析             | `filesystem.read:codex-session-usage`                                                                                            | `account.read:codex-rate-limits`；用户选择的导出位置属于操作范围                                                |
+| 微博浏览器交接             | `browser.handoff:weibo`                                                                                                          | 一次性交接包；没有资料库枚举、Cookie、Session 或最终发布权限                                                    |
 
 ## 声明规则
 
@@ -116,9 +116,11 @@
 - 任意 SQLite、主进程 IPC、Electron 或 Node API；
 - 任意文件系统根目录、任意命令或 Shell 参数；
 - 原始密钥读取、浏览器 Cookie 或登录 Session 导出；
-- `<all_urls>`、除固定 `127.0.0.1:47831` 伴侣服务外的任意 HTTP 网络，或未规范化的自定义端点；
+- `<all_urls>`、未经具体 origin 授权的网络访问、非回环 HTTP 地址，或未规范化的自定义端点；
 - 由持久授权触发的静默发布、删除或覆盖；
 - 从远端下载并执行扩展代码。
+
+回环网络仍需具体 origin 授权。浏览器伴侣限定自己的固定服务端口；宿主文章交付可单独配置和授权本机接收器，例如示例的 `http://127.0.0.1:47839`，不因此取得其他本机端口或局域网权限。
 
 ## 安全检查
 
@@ -137,3 +139,13 @@
 ## 执行门禁
 
 敏感路径必须在实际执行位置重新检查授权，不能只依赖设置页状态。网络、文件读取、资料库写入、浏览器交接和账号数据读取分别由对应宿主 broker 执行。输入与响应在进程边界按运行时 schema 校验，并应用字节数、数量、超时和并发上限。
+
+## 权限检查界面
+
+扩展详情的“权限”页按内容、本地文件、网络、凭据及工具分组，显示名称、准确技术标识和影响范围。支持按必要缺项、已授权、可选、连接范围筛选；搜索也可使用目标 origin。
+
+勾选只用于选择待撤销项，不修改授权。批量撤销须核对明确清单；筛选或查询变化清除隐藏选择，模板声明不可被勾选或直接授权。必要权限撤销会使能力不可用，但不删除已取得成果。已撤销的运行时目标仍可检查，再授权须回到所属连接流程。
+
+宿主一次验证完整撤销清单，再在当前空间事务中写入。非法权限、重复项或通配模板不会造成半批授权变更。卸载先撤销当前空间的授权并停用，文件删除失败时仍保留安全停用状态；其他空间的安装身份与授权迁移尚未统一，不将此行为表述为跨设备撤权。
+
+刷新列表只读取状态，不顺带调用模型或测试连接。图片生成等在途任务的既有等待限制仍保留；本轮不宣称已统一所有能力的运行中取消。文章交付在每次发送前重新检查权限和连接，并拒绝 HTTP 重定向，不把已发出的数据描述成可撤回。

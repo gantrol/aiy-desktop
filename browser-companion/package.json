@@ -1,6 +1,6 @@
 {
   "name": "@aiy/browser-companion",
-  "version": "0.0.5",
+  "version": "0.0.6",
   "private": true,
   "description": "A local browser companion that automatically fills AIY handoffs without sending or publishing them.",
   "type": "module",

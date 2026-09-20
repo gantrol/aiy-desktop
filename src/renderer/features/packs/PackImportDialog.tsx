@@ -125,7 +125,12 @@ export function PackImportDialog({ open, onOpenChange, onApplied, notify }: Prop
             {l.cancel}
           </Button>
           {preview && (
-            <Button type="button" disabled={pending} onClick={() => void applyPack()}>
+            <Button
+              type="button"
+              disabled={pending || Boolean(preview.blockingConflicts)}
+              title={preview.blockingConflicts ? l.creationConflict : undefined}
+              onClick={() => void applyPack()}
+            >
               {l.apply[preview.operation]}
             </Button>
           )}

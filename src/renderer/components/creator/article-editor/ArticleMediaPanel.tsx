@@ -17,17 +17,16 @@ import { Button } from '@/renderer/components/ui/button';
 import { Dialog, DialogContent, DialogTitle } from '@/renderer/components/ui/dialog';
 import { Input } from '@/renderer/components/ui/input';
 import { ContentMediaThumbnail } from '@/renderer/features/content-editor/ContentMediaThumbnail';
-import {
-  useContentWorkspacePanelToolbar,
-  useRestoreContentWorkspace,
-} from '@/renderer/features/content-editor/ContentWorkspacePanels';
-import { ArticleMediaCover } from '@/renderer/components/creator/article-editor/ArticleMediaCover';
+import { useRestoreContentWorkspace } from '@/renderer/features/content-editor/ContentWorkspacePanels';
 import { useArticleEditorSession } from '@/renderer/components/creator/article-editor/ArticleEditorSessionProvider';
 import type { ArticleImagePlacement } from '@/renderer/features/video-documents/articleImageOperations';
 import type { VideoDocumentRevisionMediaDto } from '@/shared/contracts';
 import { useI18n } from '@/renderer/i18n/useI18n';
 import { cn } from '@/renderer/lib/utils';
-import { createPortal } from 'react-dom';
+import {
+  ArticleMediaCover,
+  articleCoverSourceDragType,
+} from '@/renderer/components/creator/article-editor/ArticleMediaCover';
 
 const reorderType = 'application/x-aiy-article-image-order';
 
@@ -84,7 +83,6 @@ export function ArticleMediaPanel({
   const copy = useI18n().messages.contentEditor;
   const session = useArticleEditorSession();
   const restoreWorkspace = useRestoreContentWorkspace();
-  const toolbarRoot = useContentWorkspacePanelToolbar();
   const [large, setLarge] = useState(false);
   const [dropId, setDropId] = useState<string | null>(null);
   const [moveId, setMoveId] = useState<string | null>(null);
@@ -117,28 +115,24 @@ export function ArticleMediaPanel({
       className="flex min-h-full min-w-0 flex-col gap-2"
       onKeyDown={(event) => handleMediaHistoryShortcut(event, onUndo, onRedo)}
     >
-      {toolbarRoot &&
-        createPortal(
-          <>
-            <ArticleMediaCover media={media} />
-            {images.length > 0 && (
-              <Button
-                variant="ghost"
-                size="icon-sm"
-                aria-label={large ? copy.smallThumbnails : copy.largeThumbnails}
-                title={large ? copy.smallThumbnails : copy.largeThumbnails}
-                aria-pressed={large}
-                onClick={() => setLarge((value) => !value)}
-              >
-                <LayoutGridIcon className="size-4" />
-              </Button>
-            )}
-          </>,
-          toolbarRoot,
-        )}
+      {images.length > 0 && (
+        <div className="sticky -top-3 z-20 -mx-3 -mt-3 flex min-h-10 shrink-0 items-center justify-end border-b bg-background px-3">
+          <Button
+            variant="ghost"
+            size="icon-sm"
+            aria-label={large ? copy.smallThumbnails : copy.largeThumbnails}
+            title={large ? copy.smallThumbnails : copy.largeThumbnails}
+            aria-pressed={large}
+            onClick={() => setLarge((value) => !value)}
+          >
+            <LayoutGridIcon className="size-4" />
+          </Button>
+        </div>
+      )}
       <div className={notice === copy.imageMoveFailed ? 'text-xs text-destructive' : 'sr-only'} role="status">
         {notice}
       </div>
+      <ArticleMediaCover media={media} />
       {!images.length && (
         <div className="grid min-h-24 flex-1 place-items-center text-muted-foreground">
           <ImagesIcon className="size-5" aria-label={copy.media} />
@@ -178,6 +172,13 @@ export function ArticleMediaPanel({
           return (
             <div
               key={image.elementId}
+              draggable={Boolean(asset)}
+              onDragStart={(event) => {
+                if (!asset) return;
+                event.stopPropagation();
+                event.dataTransfer.setData(articleCoverSourceDragType, image.assetId);
+                event.dataTransfer.effectAllowed = 'copy';
+              }}
               className={cn('min-w-0 rounded-sm', dropId === image.elementId && 'ring-2 ring-ring')}
               onDragOver={(event) => {
                 if (!sourceRef.current || !event.dataTransfer.types.includes(reorderType)) return;
@@ -221,7 +222,8 @@ export function ArticleMediaPanel({
                         event.stopPropagation();
                         sourceRef.current = image.elementId;
                         event.dataTransfer.setData(reorderType, image.elementId);
-                        event.dataTransfer.effectAllowed = 'move';
+                        event.dataTransfer.setData(articleCoverSourceDragType, image.assetId);
+                        event.dataTransfer.effectAllowed = 'copyMove';
                       }}
                       onDragEnd={() => {
                         sourceRef.current = null;

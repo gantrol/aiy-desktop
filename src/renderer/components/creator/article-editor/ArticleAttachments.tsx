@@ -1,9 +1,9 @@
 import { Paperclip } from 'lucide-react';
-import { useRef, useState, useEffect } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Button } from '@/renderer/components/ui/button';
+import { Input } from '@/renderer/components/ui/input';
 import { PetalFileAttachments } from '@/renderer/features/desktop-petals/PetalFileAttachments';
 import { registerWorkspaceDrain } from '@/renderer/components/workspace/workspace-drain';
-import { useContentWorkspacePanelToolbar } from '@/renderer/features/content-editor/ContentWorkspacePanels';
 import {
   useArticleEditorSession,
   useArticleEditorSessionSelector,
@@ -11,9 +11,8 @@ import {
 import { useI18n } from '@/renderer/i18n/useI18n';
 import { NOTE_FILE_LIMITS } from '@/shared/contracts/note-files';
 import type { ArticleDto } from '@/shared/contracts';
-import { createPortal } from 'react-dom';
 
-export function ArticleAttachments({
+export function useArticleAttachments({
   spaceId,
   onSaved,
   notify,
@@ -28,7 +27,7 @@ export function ArticleAttachments({
   const pending = useRef<Promise<boolean> | null>(null);
   const [busy, setBusy] = useState(false);
   const copy = useI18n().messages.desktopPetals;
-  const toolbarRoot = useContentWorkspacePanelToolbar();
+
   useEffect(
     () =>
       registerWorkspaceDrain(async () => {
@@ -36,6 +35,7 @@ export function ArticleAttachments({
       }),
     [copy.note.unsaved],
   );
+
   const run = (action: (article: ArticleDto) => Promise<void>) => {
     if (pending.current) return pending.current;
     setBusy(true);
@@ -64,6 +64,7 @@ export function ArticleAttachments({
     pending.current = operation;
     return operation;
   };
+
   const importFiles = (selected: File[]) =>
     run(async (article) => {
       if (
@@ -84,55 +85,81 @@ export function ArticleAttachments({
         hash = result.contentHash;
       }
     });
+
+  return {
+    files: files ?? [],
+    busy,
+    input,
+    openPicker: () => input.current?.click(),
+    importFiles,
+    openFile: (fileId: string) =>
+      void window.desktopPetals
+        .files({ kind: 'open', id: session.capturePersistedArticle().id, fileId })
+        .catch((reason) => notify(String(reason))),
+    removeFile: (fileId: string) =>
+      run(async (article) => {
+        await window.desktopPetals.files({
+          kind: 'remove',
+          id: article.id,
+          expectedHash: article.contentHash,
+          fileId,
+        });
+      }),
+  };
+}
+
+export type ArticleAttachmentsController = ReturnType<typeof useArticleAttachments>;
+
+export function ArticleAttachmentsInput({ attachments }: { attachments: ArticleAttachmentsController }) {
+  const copy = useI18n().messages.desktopPetals;
+  return (
+    <Input
+      ref={attachments.input}
+      type="file"
+      multiple
+      className="hidden"
+      aria-label={copy.files.choose}
+      onChange={(event) => {
+        const selected = Array.from(event.currentTarget.files ?? []);
+        event.currentTarget.value = '';
+        if (selected.length) void attachments.importFiles(selected);
+      }}
+    />
+  );
+}
+
+export function ArticleAttachments({
+  spaceId,
+  attachments,
+}: {
+  spaceId: string;
+  attachments: ArticleAttachmentsController;
+}) {
+  const session = useArticleEditorSession();
+  const copy = useI18n().messages.desktopPetals;
   return (
     <div className="flex min-h-full min-w-0 flex-col">
-      {toolbarRoot &&
-        createPortal(
-          <Button
-            size="icon-sm"
-            variant="ghost"
-            disabled={busy}
-            aria-label={copy.files.add}
-            title={copy.files.add}
-            onClick={() => input.current?.click()}
-          >
-            <Paperclip className="size-3.5" />
-          </Button>,
-          toolbarRoot,
-        )}
-      <input
-        ref={input}
-        type="file"
-        multiple
-        className="hidden"
-        onChange={(event) => {
-          const selected = Array.from(event.currentTarget.files ?? []);
-          event.currentTarget.value = '';
-          if (selected.length) void importFiles(selected);
-        }}
-      />
+      <div className="sticky -top-3 z-20 -mx-3 -mt-3 flex min-h-10 shrink-0 items-center justify-end border-b bg-background px-3">
+        <Button
+          size="icon-sm"
+          variant="ghost"
+          disabled={attachments.busy}
+          aria-label={copy.files.add}
+          title={copy.files.add}
+          onClick={attachments.openPicker}
+        >
+          <Paperclip className="size-3.5" />
+        </Button>
+      </div>
       <PetalFileAttachments
-        files={files ?? []}
+        files={attachments.files}
         libraryId={spaceId}
         stashId={session.capturePersistedArticle().id}
-        disabled={busy}
-        onOpen={(fileId) =>
-          void window.desktopPetals
-            .files({ kind: 'open', id: session.capturePersistedArticle().id, fileId })
-            .catch((reason) => notify(String(reason)))
-        }
-        onRemove={(fileId) =>
-          run(async (article) => {
-            await window.desktopPetals.files({
-              kind: 'remove',
-              id: article.id,
-              expectedHash: article.contentHash,
-              fileId,
-            });
-          })
-        }
+        disabled={attachments.busy}
+        onOpen={attachments.openFile}
+        onRemove={attachments.removeFile}
       />
-      {!files?.length && (
+      {!attachments.files.length && (
         <div className="grid min-h-24 flex-1 place-items-center text-muted-foreground">
           <Paperclip className="size-5" aria-label={copy.files.title} />
         </div>

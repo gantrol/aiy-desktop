@@ -22,7 +22,7 @@ function fill(template: string, values: Record<string, string>) {
 
 function compositionConstraint(
   templates: DerivedVisualPromptTemplatesDto,
-  role: Extract<DerivedVisualRole, 'ARTICLE_INLINE' | 'SOCIAL_POST_COVER'>,
+  role: DerivedVisualRole,
   preset: CanvasPresetDto,
 ) {
   const constraint = templates.compositionConstraints[`${role}:${preset.stableKey}`];
@@ -30,10 +30,19 @@ function compositionConstraint(
   return constraint;
 }
 
-export function buildArticleHeaderPrompt(templates: DerivedVisualPromptTemplatesDto, title: string, markdown: string) {
+export function buildArticleHeaderPrompt(
+  templates: DerivedVisualPromptTemplatesDto,
+  title: string,
+  markdown: string,
+  preset: CanvasPresetDto,
+) {
   return fill(templates.articleHeader, {
-    题目: title.trim() || '未命名图文',
-    正文: clipped(markdown, 24_000),
+    题目: title.trim(),
+    正文: clipped(markdown, 6_000),
+    比例: preset.ratio,
+    宽度: String(preset.width),
+    高度: String(preset.height),
+    对应画幅的构图约束: templates.compositionConstraints[`ARTICLE_HEADER:${preset.stableKey}`] ?? '',
   });
 }
 

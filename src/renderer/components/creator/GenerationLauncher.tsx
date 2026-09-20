@@ -92,14 +92,22 @@ export function GenerationLauncher(props: Props) {
     const defaultCount = batchPlan.uniformRepeatCount ?? generationTargets[0]?.count ?? 1;
     const defaultQuality = generationTargets[0]?.quality ?? 'low';
     onGenerationTargetsChange(
-      modelKeys.map(
-        (modelKey) =>
+      modelKeys.map((modelKey) => {
+        const route = routes.find((model) => model.key === modelKey);
+        const supported = route?.supportedQualities ?? [];
+        return (
           generationTargets.find((target) => target.modelKey === modelKey) ?? {
             modelKey,
             count: defaultCount,
-            quality: defaultQuality,
-          },
-      ),
+            quality:
+              route?.qualityMode === 'SELECTABLE' && supported.length && !supported.includes(defaultQuality)
+                ? supported.includes('medium')
+                  ? 'medium'
+                  : supported[0]
+                : defaultQuality,
+          }
+        );
+      }),
     );
   }
 

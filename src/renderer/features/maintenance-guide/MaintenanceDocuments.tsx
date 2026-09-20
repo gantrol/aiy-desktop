@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
-import ReactMarkdown, { type Components } from 'react-markdown';
-import remarkGfm from 'remark-gfm';
+import type { Components } from 'react-markdown';
+import { ContentMarkdown } from '@/renderer/features/content-editor/ContentMarkdown';
 import { Button } from '@/renderer/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/renderer/components/ui/select';
 import { useI18n } from '@/renderer/i18n/useI18n';
@@ -18,13 +18,6 @@ const components: Components = {
     </span>
   ),
   img: ({ alt }) => <span>{alt}</span>,
-  pre: ({ children }) => <pre className="my-3 overflow-x-auto bg-surface-sunken p-3 font-mono text-xs">{children}</pre>,
-  table: ({ children }) => (
-    <div className="my-3 overflow-x-auto">
-      <table className="w-full text-sm">{children}</table>
-    </div>
-  ),
-  input: ({ checked }) => <span>{checked ? '[x]' : '[ ]'}</span>,
 };
 
 interface Props {
@@ -124,10 +117,10 @@ export function MaintenanceDocuments({ project, busy, onAttach, onRemove }: Prop
           <time dateTime={document.modifiedAt} className="text-xs text-muted-foreground">
             {document.modifiedAt}
           </time>
-          <article className="min-w-0 break-words text-sm leading-7 [&_h1]:my-4 [&_h1]:text-lg [&_h1]:font-semibold [&_h2]:my-3 [&_h2]:font-semibold [&_h3]:my-2 [&_h3]:font-medium [&_p]:my-2 [&_ul]:list-disc [&_ul]:pl-6 [&_ol]:list-decimal [&_ol]:pl-6 [&_td]:border-b [&_td]:p-2 [&_th]:border-b [&_th]:p-2 [&_th]:text-left [&_blockquote]:border-l-2 [&_blockquote]:pl-3">
-            <ReactMarkdown remarkPlugins={[remarkGfm]} components={components} skipHtml>
+          <article>
+            <ContentMarkdown typography="compact" className="text-sm leading-7" components={components}>
               {document.text}
-            </ReactMarkdown>
+            </ContentMarkdown>
           </article>
         </>
       )}

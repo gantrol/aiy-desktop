@@ -4,11 +4,13 @@ import type {
   ExtensionConnectionState,
   ExtensionDto,
   ExtensionLanguagePackDto,
+  ExtensionInstallLocalResult,
   ExtensionManifestDto,
 } from '@/shared/contracts';
 import {
   ANTIGRAVITY_CLI_EXTENSION_ID,
   CODEX_APP_SERVER_EXTENSION_ID,
+  CPA_IMAGE_API_EXTENSION_ID,
   DEEPSEEK_API_EXTENSION_ID,
   EXTERNAL_IMAGE_API_EXTENSION_IDS,
   LEGACY_CODEX_EXTENSION_IDS,
@@ -38,6 +40,7 @@ interface ExtensionRegistryOptions {
   codexImageDiscoveryStatus?(): { available: boolean; message: string };
   codexVisualizationDiscoveryStatus?(): { available: boolean; message: string };
   openAiImageApiStatus?(): { configured: boolean; usable: boolean; message: string };
+  cpaImageApiStatus?(): { configured: boolean; usable: boolean; message: string; permissionRequired?: string | null };
   deepSeekApiStatus?(): { configured: boolean; ready: boolean; message: string };
   articleDeliveryStatus?(extensionId: string): { configured: boolean; ready: boolean; message: string };
   externalImageApiStatus?(extensionId: ExternalImageApiExtensionId): {
@@ -53,6 +56,7 @@ const externalImageApiExtensionIds = new Set<string>(EXTERNAL_IMAGE_API_EXTENSIO
 const legacyCodexExtensionIds = new Set<string>(LEGACY_CODEX_EXTENSION_IDS);
 const disabledByDefaultExtensionIds = new Set<string>([
   ...EXTERNAL_IMAGE_API_EXTENSION_IDS,
+  CPA_IMAGE_API_EXTENSION_ID,
   NATURAL_WATERMARK_EXTENSION_ID,
 ]);
 
@@ -81,8 +85,9 @@ export class ExtensionRegistry {
   private installationById = new Map<string, ExtensionInstallationState>();
   private readonly protectedManifestIds: ReadonlySet<string>;
   private readonly localPackages: LocalExtensionPackageManager | null;
+  private packageOperation: Promise<void> = Promise.resolve();
 
-  constructor(
+  private constructor(
     private readonly database: LibraryDatabase,
     private readonly options: ExtensionRegistryOptions,
     private readonly hostManifests: readonly ExtensionManifestDto[] = BUILTIN_EXTENSION_MANIFESTS,
@@ -90,11 +95,37 @@ export class ExtensionRegistry {
     this.protectedManifestIds = new Set(hostManifests.map((manifest) => manifest.id));
     const localRoot = options.extensionRoots?.find((root) => root.source === 'LOCAL');
     this.localPackages = localRoot ? new LocalExtensionPackageManager(localRoot.rootPath) : null;
-    this.reload();
+  }
+
+  static async create(
+    database: LibraryDatabase,
+    options: ExtensionRegistryOptions,
+    hostManifests: readonly ExtensionManifestDto[] = BUILTIN_EXTENSION_MANIFESTS,
+  ) {
+    const registry = new ExtensionRegistry(database, options, hostManifests);
+    await registry.reloadPackages();
+    return registry;
+  }
+
+  private mutatePackages<T>(operation: () => Promise<T>): Promise<T> {
+    const result = this.packageOperation.then(operation);
+    this.packageOperation = result.then(
+      () => undefined,
+      () => undefined,
+    );
+    return result;
   }
 
   reload() {
-    const loadedPackages = loadExtensionPackages(this.options.extensionRoots ?? []);
+    return this.mutatePackages(async () => {
+      await this.reloadPackages();
+      this.notifyChanged();
+      return this.list();
+    });
+  }
+
+  private async reloadPackages() {
+    const loadedPackages = await loadExtensionPackages(this.options.extensionRoots ?? []);
     const definitions: Array<{
       manifest: ExtensionManifestDto;
       source: 'BUILT_IN' | 'LOCAL' | 'MARKETPLACE';
@@ -136,21 +167,10 @@ export class ExtensionRegistry {
       }
       definitions.push({ ...loaded, packagePath: loaded.packagePath });
     }
-    this.manifests = definitions.map((definition) => definition.manifest);
-    this.byId = new Map(this.manifests.map((manifest) => [manifest.id, manifest]));
-    this.packagePathById = new Map(
-      definitions.flatMap((definition) =>
-        definition.packagePath ? [[definition.manifest.id, definition.packagePath] as const] : [],
-      ),
-    );
-    this.sourceById = new Map(definitions.map((definition) => [definition.manifest.id, definition.source]));
-    this.languageMessagesById = new Map(
-      definitions.flatMap((definition) =>
-        definition.languageMessages ? [[definition.manifest.id, definition.languageMessages] as const] : [],
-      ),
-    );
-    if (this.byId.size !== this.manifests.length) throw new Error('Duplicate extension manifest id');
-    const languageManifests = this.manifests.filter((manifest) => manifest.kind === 'LANGUAGE');
+    const manifests = definitions.map((definition) => definition.manifest);
+    const byId = new Map(manifests.map((manifest) => [manifest.id, manifest]));
+    if (byId.size !== manifests.length) throw new Error('Duplicate extension manifest id');
+    const languageManifests = manifests.filter((manifest) => manifest.kind === 'LANGUAGE');
     if (!languageManifests.length) throw new Error('At least one language extension must be installed');
     const languageLocales = new Set(languageManifests.map((manifest) => manifest.language!.locale));
     if (languageLocales.size !== languageManifests.length) throw new Error('Duplicate language extension locale');
@@ -164,6 +184,19 @@ export class ExtensionRegistry {
         grantRequiredPermissionsByDefault: source === 'BUILT_IN',
       })),
     );
+    this.manifests = manifests;
+    this.byId = byId;
+    this.packagePathById = new Map(
+      definitions.flatMap((definition) =>
+        definition.packagePath ? [[definition.manifest.id, definition.packagePath] as const] : [],
+      ),
+    );
+    this.sourceById = new Map(definitions.map((definition) => [definition.manifest.id, definition.source]));
+    this.languageMessagesById = new Map(
+      definitions.flatMap((definition) =>
+        definition.languageMessages ? [[definition.manifest.id, definition.languageMessages] as const] : [],
+      ),
+    );
     const installationById = this.refreshInstallations();
     if (!languageManifests.some((manifest) => installationById.get(manifest.id)?.enabled)) {
       this.database.setExtensionEnabled(languageManifests[0].id, true);
@@ -171,39 +204,62 @@ export class ExtensionRegistry {
     }
   }
 
-  installLocal(sourcePath: string) {
-    if (!this.localPackages) throw new Error('Local extension directory is unavailable');
-    const candidate = this.localPackages.inspect(sourcePath);
-    if (this.protectedManifestIds.has(candidate.manifest.id)) {
-      throw new Error(`Built-in extension cannot be replaced: ${candidate.manifest.id}`);
-    }
-    const conflictingLocale = this.manifests.find(
-      (manifest) =>
-        manifest.kind === 'LANGUAGE' &&
-        candidate.manifest.kind === 'LANGUAGE' &&
-        manifest.language?.locale === candidate.manifest.language?.locale &&
-        manifest.id !== candidate.manifest.id,
-    );
-    if (conflictingLocale) {
-      const replaceable =
-        this.sourceById.get(conflictingLocale.id) === 'BUILT_IN' &&
-        this.packagePathById.has(conflictingLocale.id) &&
-        !this.protectedManifestIds.has(conflictingLocale.id);
-      if (!replaceable) throw new Error(`Language locale is already provided by ${conflictingLocale.id}`);
-    }
-    const installed = this.localPackages.install(sourcePath);
-    this.reload();
-    return { extensionId: installed.manifest.id, extensions: this.list() };
+  installLocal(sourcePath: string, expectedExtensionId?: string): Promise<ExtensionInstallLocalResult> {
+    return this.mutatePackages(async () => {
+      if (!this.localPackages) throw new Error('Local extension directory is unavailable');
+      if (expectedExtensionId && this.sourceById.get(expectedExtensionId) !== 'LOCAL') {
+        return { extensionId: null, extensions: this.list(), errorCode: 'UPDATE_UNAVAILABLE' };
+      }
+      const candidate = await this.localPackages.inspect(sourcePath);
+      if (expectedExtensionId && candidate.manifest.id !== expectedExtensionId) {
+        return { extensionId: null, extensions: this.list(), errorCode: 'UPDATE_ID_MISMATCH' };
+      }
+      if (
+        expectedExtensionId &&
+        !extensionSupportsHost(candidate.manifest.engines[EXTENSION_HOST_ENGINE_KEY], EXTENSION_HOST_VERSION)
+      ) {
+        return { extensionId: null, extensions: this.list(), errorCode: 'UPDATE_INCOMPATIBLE' };
+      }
+      if (this.protectedManifestIds.has(candidate.manifest.id)) {
+        throw new Error(`Built-in extension cannot be replaced: ${candidate.manifest.id}`);
+      }
+      const conflictingLocale = this.manifests.find(
+        (manifest) =>
+          manifest.kind === 'LANGUAGE' &&
+          candidate.manifest.kind === 'LANGUAGE' &&
+          manifest.language?.locale === candidate.manifest.language?.locale &&
+          manifest.id !== candidate.manifest.id,
+      );
+      if (conflictingLocale) {
+        const replaceable =
+          this.sourceById.get(conflictingLocale.id) === 'BUILT_IN' &&
+          this.packagePathById.has(conflictingLocale.id) &&
+          !this.protectedManifestIds.has(conflictingLocale.id);
+        if (!replaceable) throw new Error(`Language locale is already provided by ${conflictingLocale.id}`);
+      }
+      const installed = await this.localPackages.install(candidate);
+      await this.reloadPackages();
+      this.notifyChanged();
+      return { extensionId: installed.manifest.id, extensions: this.list() };
+    });
   }
 
   uninstallLocal(extensionId: string) {
-    if (!this.localPackages) throw new Error('Local extension directory is unavailable');
-    if (this.sourceById.get(extensionId) !== 'LOCAL') throw new Error('Only local extensions can be uninstalled');
-    const packagePath = this.packagePathById.get(extensionId);
-    if (!packagePath) throw new Error(`Local extension package was not found: ${extensionId}`);
-    this.localPackages.uninstall(packagePath);
-    this.reload();
-    return this.list();
+    return this.mutatePackages(async () => {
+      if (!this.localPackages) throw new Error('Local extension directory is unavailable');
+      if (this.sourceById.get(extensionId) !== 'LOCAL') throw new Error('Only local extensions can be uninstalled');
+      const packagePath = this.packagePathById.get(extensionId);
+      if (!packagePath) throw new Error(`Local extension package was not found: ${extensionId}`);
+      // Revoke before touching the files. If removal fails, leave the package
+      // safely disabled rather than resuming its previous access silently.
+      this.database.resetExtensionAccess(extensionId);
+      this.refreshInstallations();
+      this.notifyChanged();
+      await this.localPackages.uninstall(packagePath);
+      await this.reloadPackages();
+      this.notifyChanged();
+      return this.list();
+    });
   }
 
   list(): ExtensionDto[] {
@@ -233,7 +289,7 @@ export class ExtensionRegistry {
             runtimeScoped: false,
           })),
         ...[...installation.permissions.entries()].flatMap(([key, granted]) =>
-          granted && !declaredPermissionKeys.has(key) && this.isRuntimePermission(manifest, key)
+          !declaredPermissionKeys.has(key) && this.isRuntimePermission(manifest, key)
             ? [{ key, required: false, granted, runtimeScoped: true }]
             : [],
         ),
@@ -257,7 +313,6 @@ export class ExtensionRegistry {
   }
 
   listLanguagePacks(): ExtensionLanguagePackDto[] {
-    if (import.meta.env.DEV) this.refreshDevelopmentLanguageMessages();
     return this.manifests.flatMap((manifest) => {
       const messages = this.languageMessagesById.get(manifest.id);
       if (manifest.kind !== 'LANGUAGE' || !manifest.language || !messages) return [];
@@ -272,7 +327,14 @@ export class ExtensionRegistry {
     });
   }
 
-  private refreshDevelopmentLanguageMessages() {
+  loadLanguagePacks() {
+    return this.mutatePackages(async () => {
+      if (import.meta.env.DEV) await this.refreshDevelopmentLanguageMessages();
+      return this.listLanguagePacks();
+    });
+  }
+
+  private async refreshDevelopmentLanguageMessages() {
     const refreshed = new Map(this.languageMessagesById);
     for (const manifest of this.manifests) {
       if (manifest.kind !== 'LANGUAGE') continue;
@@ -280,7 +342,7 @@ export class ExtensionRegistry {
       const source = this.sourceById.get(manifest.id);
       if (!packagePath || !source) continue;
       try {
-        const loaded = loadExtensionPackage(packagePath, source);
+        const loaded = await loadExtensionPackage(packagePath, source);
         if (loaded.manifest.id !== manifest.id || !loaded.languageMessages) continue;
         refreshed.set(manifest.id, loaded.languageMessages);
       } catch (error) {
@@ -333,6 +395,7 @@ export class ExtensionRegistry {
     if (!alreadyGranted) {
       this.database.setExtensionPermission(extensionId, permission, true);
       this.refreshInstallations();
+      this.notifyChanged();
     }
     return !alreadyGranted;
   }
@@ -356,6 +419,25 @@ export class ExtensionRegistry {
       }
     }
     this.refreshInstallations();
+    this.notifyChanged();
+  }
+
+  /** Validate the entire explicit selection before a single transactional revoke. */
+  revokePermissions(extensionId: string, permissions: readonly string[]) {
+    const manifest = this.requireManifest(extensionId);
+    if (!permissions.length || permissions.length > 160 || new Set(permissions).size !== permissions.length) {
+      throw new Error('Invalid permission selection');
+    }
+    for (const permission of permissions) {
+      const declared = [...manifest.permissions, ...manifest.optionalPermissions].includes(permission);
+      if (isExtensionPermissionTemplate(permission) || (!declared && !this.isRuntimePermission(manifest, permission))) {
+        throw new Error(`Extension does not declare permission: ${permission}`);
+      }
+    }
+    this.database.revokeExtensionPermissions(extensionId, permissions);
+    const result = this.toDtos(this.refreshInstallations());
+    this.notifyChanged();
+    return result;
   }
 
   setEnabled(extensionId: string, enabled: boolean) {
@@ -444,6 +526,16 @@ export class ExtensionRegistry {
           state: 'NEEDS_CONFIGURATION',
           message: status?.message || 'OpenAI API connection is not configured',
         };
+      return status.usable
+        ? { state: 'READY', message: status.message }
+        : { state: 'UNAVAILABLE', message: status.message };
+    }
+    if (manifest.id === CPA_IMAGE_API_EXTENSION_ID) {
+      const status = this.options.cpaImageApiStatus?.();
+      if (!status?.configured)
+        return { state: 'NEEDS_CONFIGURATION', message: status?.message || 'CPA image connection is not configured' };
+      if (status.permissionRequired)
+        return { state: 'PERMISSION_REQUIRED', message: `Endpoint requires permission ${status.permissionRequired}` };
       return status.usable
         ? { state: 'READY', message: status.message }
         : { state: 'UNAVAILABLE', message: status.message };

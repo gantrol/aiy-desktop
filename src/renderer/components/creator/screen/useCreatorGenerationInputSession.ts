@@ -35,6 +35,8 @@ import {
   resolveCreatorPrompt,
 } from '@/renderer/components/creator/utils';
 import { useStableCallback } from '@/renderer/lib/useStableCallback';
+import type { CreationDraftPromptSnapshot } from '@/renderer/components/creator/workflows/creationDraftSnapshot';
+import { useI18n } from '@/renderer/i18n/useI18n';
 
 type SelectionSession = ReturnType<typeof useCreatorSelectionSession>;
 type PromptSession = ReturnType<typeof useCreatorPromptSession>;
@@ -92,6 +94,42 @@ function matchingImportVersionId(
     : null;
 }
 
+interface BrowserPromptSnapshot {
+  draft: CreationDraftDto;
+  captured: CreationDraftPromptSnapshot;
+  referenceAssetIds: string[];
+  text: string;
+}
+
+function commitBrowserPromptSnapshot(
+  input: BrowserPromptSnapshot,
+  target: {
+    seriesId: string | null;
+    baseVersionId: string | null;
+    title: string;
+  },
+) {
+  const { draft, captured, referenceAssetIds, text } = input;
+  return window.desktopApi.creationDraftCommit({
+    ...target,
+    creationDraftId: draft.id,
+    manualPrompt: captured.manualPrompt,
+    document: captured.document,
+    promptNodes: captured.nodes,
+    prompt: text,
+    changeSummary: 'MANUAL_PROMPT',
+    referenceAssetIds,
+    termPromptLocale: draft.termPromptLocale,
+    termIds: captured.selectedTerms.map((term) => term.id),
+    wordPaletteReferences: captured.appliedPalettes.map((reference) => ({
+      paletteId: reference.palette.id,
+      paletteRevisionId: reference.revision.id,
+      parameterValues: { ...reference.parameterValues },
+      promptLocale: reference.promptLocale,
+    })),
+  });
+}
+
 export function useCreatorGenerationInputSession({
   applyImportedOutputs,
   data,
@@ -108,6 +146,7 @@ export function useCreatorGenerationInputSession({
   selection,
   series,
 }: Options) {
+  const visualCopy = useI18n().messages.creator.derivedVisual;
   const { creationDraftSession, creationMode, inputSessionRevision, seriesId, setTargetAlbumId } = selection;
   const { dictionaryCatalog, initialVersion, initialVersionId, newTitle, promptDocument, setNewTitle } = prompt;
   const initialGenerationTargetHint = initialTargetHint(initialAssistantRun, initialVersion, series);
@@ -223,11 +262,24 @@ export function useCreatorGenerationInputSession({
       tooManyImages: messages.importDraftLimit,
     },
   });
-  async function prepareBrowserCompanionOutputTarget() {
-    const prepared = await prepareOutputImportContext(creatorImportContext('UPLOAD'), true);
-    const { seriesId, versionId } = prepared.context;
-    if (!seriesId || !versionId) return null;
-    return { seriesId, promptVersionId: versionId };
+  async function prepareBrowserCompanionOutputTarget(input: BrowserPromptSnapshot) {
+    const { draft } = input;
+    if (creationDraftSession.getDraftId() !== draft.id) throw new Error(visualCopy.importContextChanged);
+    const existingSeriesId = creationMode === 'existing' ? seriesId : importTarget.seriesId;
+    const result = await commitBrowserPromptSnapshot(input, {
+      seriesId: existingSeriesId,
+      baseVersionId: existingSeriesId ? (hydration.version?.id ?? importTarget.versionId) : null,
+      title: series?.title ?? (newTitle.trim() || visualCopy.untitled),
+    });
+    if (creationDraftSession.getDraftId() === draft.id) {
+      creationDraftSession.replaceDraftSession(null);
+      selection.setCreationMode('existing');
+      selection.setSeriesId(result.seriesId);
+      hydration.setVersionId(result.versionId);
+      onCreationCommitted({ ...result, keepEditorOpen: Boolean(selection.workbenchProjection.editorDerivedVisual) });
+    }
+    void refresh().catch((reason) => notify(reason instanceof Error ? reason.message : String(reason)));
+    return { seriesId: result.seriesId, promptVersionId: result.versionId };
   }
   const quality = generationTargets[0]?.quality ?? 'low';
   const repeatCount = generationTargets[0]?.count ?? 1;

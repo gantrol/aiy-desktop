@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { generationQualitySchema } from '@/shared/generation-quality';
 import { browserCompanionStageResultSchema } from '@/shared/contracts/browser-companion';
 
 export const AIY_AGENT_PROTOCOL_VERSION = 1 as const;
@@ -62,7 +63,7 @@ export const agentDraftPrepareRequestSchema = z
     titleLocale: z.enum(['zh', 'en']).default('zh'),
     prompt: z.string().trim().min(1).max(30_000),
     modelKey: identifierSchema,
-    quality: z.enum(['low', 'medium', 'high']),
+    quality: generationQualitySchema,
     count: z.number().int().min(1).max(8).default(1),
     canvasPresetKey: z.string().trim().min(1).max(100).nullable().default(null),
     width: nullableCanvasDimensionSchema.default(null),
@@ -102,7 +103,7 @@ export const agentGenerationDraftSchema = z
     prompt: z.string().min(1).max(30_000),
     effectivePrompt: z.string().min(1).max(30_000),
     modelKey: identifierSchema,
-    quality: z.enum(['low', 'medium', 'high']),
+    quality: generationQualitySchema,
     count: z.number().int().min(1).max(8),
     canvasPresetKey: z.string().min(1).max(100).nullable(),
     width: nullableCanvasDimensionSchema,

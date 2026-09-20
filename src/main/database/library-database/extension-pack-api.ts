@@ -38,6 +38,14 @@ export function createExtensionPackApi(repositories: Pick<LibraryDatabaseReposit
       return repositories.extensions.setPermission(extensionId, permission, granted);
     },
 
+    revokeExtensionPermissions(extensionId: string, permissions: readonly string[]) {
+      return repositories.extensions.revokePermissions(extensionId, permissions);
+    },
+
+    resetExtensionAccess(extensionId: string) {
+      return repositories.extensions.resetAccess(extensionId);
+    },
+
     getExtensionThreadBinding(extensionId: string, scopeKind: ExtensionThreadScopeKind, scopeId: string) {
       return repositories.extensions.getThreadBinding(extensionId, scopeKind, scopeId);
     },

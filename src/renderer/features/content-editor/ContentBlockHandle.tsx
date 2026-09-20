@@ -9,10 +9,12 @@ export function ContentBlockHandle({
   editor,
   rootRef,
   source,
+  outlineMode,
 }: {
   editor: Editor;
   rootRef: RefObject<HTMLDivElement | null>;
   source?: ContentSource;
+  outlineMode?: boolean;
 }) {
   const [target, setTarget] = useState<{ id: string; top: number } | null>(null);
   const menuOpen = useRef(false);
@@ -25,7 +27,12 @@ export function ContentBlockHandle({
       if (editor.isDestroyed || !editor.isEditable || editor.view.composing) return;
       const block = contentRootBlock(editor, id);
       const dom = block && editor.view.nodeDOM(block.position);
-      if (!block || !(dom instanceof HTMLElement) || !block.node.attrs.blockId) {
+      if (
+        !block ||
+        !(dom instanceof HTMLElement) ||
+        !block.node.attrs.blockId ||
+        (outlineMode && ['bulletList', 'orderedList', 'taskList'].includes(block.node.type.name))
+      ) {
         menuOpen.current = false;
         targetId.current = null;
         setTarget(null);
@@ -74,7 +81,7 @@ export function ContentBlockHandle({
       editor.off('selectionUpdate', selected);
       editor.off('transaction', changed);
     };
-  }, [editor, rootRef]);
+  }, [editor, rootRef, outlineMode]);
   if (!target || !editor.isEditable) return null;
   return (
     <div className="absolute left-0 z-20" style={{ top: target.top }}>

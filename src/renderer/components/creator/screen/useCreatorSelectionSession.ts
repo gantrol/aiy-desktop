@@ -52,8 +52,12 @@ export function useCreatorSelectionSession({ data, documentWorkspaceActive, loca
   >(() => {
     throw new Error('Creation draft projection is not ready');
   });
+  const settleCreationDraftInputRef = useRef<() => Promise<void>>(async () => {
+    throw new Error('Creation draft projection is not ready');
+  });
   const creationDraftSession = useCreationDraftSession({
     initialDraft: initial.initialDraft,
+    whenInputSettled: () => settleCreationDraftInputRef.current(),
     captureSnapshot: (targetAlbumOverride, prompt) => captureCreationDraftRef.current(targetAlbumOverride, prompt),
   });
   const [inputSessionRevision, setInputSessionRevision] = useState(0);
@@ -91,6 +95,7 @@ export function useCreatorSelectionSession({ data, documentWorkspaceActive, loca
     creationStartMode,
     initial,
     inputSessionRevision,
+    settleCreationDraftInputRef,
     setCreationLibraryFilter,
     setCreationMode,
     setCreationStartMode,

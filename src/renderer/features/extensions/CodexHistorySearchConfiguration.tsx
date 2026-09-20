@@ -11,13 +11,19 @@ import {
   SearchIcon,
   UserIcon,
 } from 'lucide-react';
-import type { CodexHistoryIndexState, CodexHistorySearchResult, ExtensionDto } from '@/shared/contracts';
+import type {
+  CodexHistoryIndexState,
+  CodexHistorySearchInput,
+  CodexHistorySearchResult,
+  ExtensionDto,
+} from '@/shared/contracts';
 import { Badge } from '@/renderer/components/ui/badge';
 import { Button } from '@/renderer/components/ui/button';
 import { CodexHistoryAutoPager } from '@/renderer/features/extensions/CodexHistoryAutoPager';
 import { CodexHistoryNavigation } from '@/renderer/features/extensions/CodexHistoryNavigation';
 import { CodexHistorySearchFilters } from '@/renderer/features/extensions/CodexHistorySearchFilters';
 import { CodexHistoryThreadDetail } from '@/renderer/features/extensions/CodexHistoryThreadDetail';
+import { CodexHistoryHighlightedText as HighlightedText } from '@/renderer/features/extensions/CodexHistoryHighlightedText';
 import { useCodexHistorySearch } from '@/renderer/features/extensions/useCodexHistorySearch';
 import { useI18n } from '@/renderer/i18n/useI18n';
 import { cn } from '@/renderer/lib/utils';
@@ -28,21 +34,6 @@ interface Props {
   standalone?: boolean;
   workspaceNavigation?: ReactNode;
   notify(message: string): void;
-}
-
-function HighlightedText({ text, query }: { text: string; query: string }) {
-  const normalizedQuery = query.trim().toLocaleLowerCase();
-  const index = normalizedQuery ? text.toLocaleLowerCase().indexOf(normalizedQuery) : -1;
-  if (index < 0) return text;
-  return (
-    <>
-      {text.slice(0, index)}
-      <mark className="rounded-sm bg-warning-surface px-0.5 text-foreground">
-        {text.slice(index, index + query.length)}
-      </mark>
-      {text.slice(index + query.length)}
-    </>
-  );
 }
 
 function HistoryIndexNotice({ error, index }: { error: string | null; index: CodexHistoryIndexState }) {
@@ -70,6 +61,13 @@ function ResultIcon({ role }: Pick<CodexHistorySearchResult, 'role'>) {
 function repeatsTitle(item: CodexHistorySearchResult) {
   const normalized = (value: string) => value.normalize('NFKC').replace(/\s+/g, ' ').trim().toLocaleLowerCase();
   return normalized(item.snippet) === normalized(item.title);
+}
+
+function messageSearchCriteria(criteria: Omit<CodexHistorySearchInput, 'page'> | null) {
+  return {
+    initialQuery: criteria?.scope === 'THREADS' ? '' : (criteria?.query ?? ''),
+    initialRole: criteria?.role ?? 'ALL',
+  };
 }
 
 export function CodexHistorySearchConfiguration({
@@ -185,9 +183,11 @@ export function CodexHistorySearchConfiguration({
                           data-current={selected || undefined}
                           className="group flex data-[current]:bg-selected/70 hover:bg-hover"
                         >
-                          <button
+                          <Button
                             type="button"
-                            className="flex min-w-0 flex-1 items-start gap-3 px-3 py-3 text-left outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
+                            variant="ghost"
+                            className="h-auto min-w-0 flex-1 items-start justify-start gap-3 whitespace-normal rounded-none px-3 py-3 text-left font-normal focus-visible:ring-inset"
+                            aria-pressed={selected}
                             onClick={() => {
                               setSelectedThreadId(item.threadId);
                               setDetailOpen(true);
@@ -235,7 +235,7 @@ export function CodexHistorySearchConfiguration({
                                 </span>
                               </span>
                             </span>
-                          </button>
+                          </Button>
                           <Button
                             type="button"
                             variant="ghost"
@@ -268,6 +268,7 @@ export function CodexHistorySearchConfiguration({
             </main>
             {active && (wide || detailOpen) && (
               <CodexHistoryThreadDetail
+                {...messageSearchCriteria(state.snapshotCriteria)}
                 onClose={() => setDetailOpen(false)}
                 item={selectedItem}
                 locale={locale}

@@ -1,8 +1,13 @@
-import { ArticleAttachments } from '@/renderer/components/creator/article-editor/ArticleAttachments';
-import { LoaderCircleIcon, PencilIcon, TextCursorInputIcon } from 'lucide-react';
-import { useState } from 'react';
+import {
+  ArticleAttachments,
+  ArticleAttachmentsInput,
+  useArticleAttachments,
+} from '@/renderer/components/creator/article-editor/ArticleAttachments';
+import { LoaderCircleIcon, PencilIcon, SlidersHorizontalIcon, TextCursorInputIcon } from 'lucide-react';
+import { useRef, useState } from 'react';
 import type {
   ArticleContentInput,
+  AssetDto,
   ArticleDto,
   ArticleRevisionSaveInput,
   ArticleRevisionSaveResult,
@@ -41,6 +46,7 @@ import { PinContentButton } from '@/renderer/features/desktop-petals/PinContentA
 import {
   ArticleHeaderAiActions,
   ArticleHeaderActions,
+  ArticleHeaderIconButton,
   ArticleSaveStatus,
   SuggestedArticleTitle,
 } from '@/renderer/components/creator/article-editor/ArticleEditorHeader';
@@ -54,9 +60,15 @@ import { Button } from '@/renderer/components/ui/button';
 import { useArticleComments } from '@/renderer/components/creator/article-editor/useArticleComments';
 import { useArticleCheck } from '@/renderer/components/creator/article-editor/useArticleCheck';
 import { CreationWorkNavigation } from '@/renderer/components/creator/CreationWorkNavigation';
+import { OutlineArticleEditor } from '@/renderer/components/creator/article-editor/OutlineArticleEditor';
+import { CopyAgentLinkButton } from '@/renderer/features/content-editor/CopyAgentLinkButton';
+import { type ArticleCoverRatio } from '@/shared/article-covers';
+import { ArticleCoverWorkspaceProvider } from '@/renderer/components/creator/article-editor/ArticleCoverWorkspace';
+import { noteFileCapture } from '@/renderer/features/desktop-petals/note-file-capture';
 
 interface Props {
   article: ArticleDto;
+  projectCoverAssets?: readonly AssetDto[];
   spaceId: string;
   locale: Locale;
   canvasPresets: CanvasPresetDto[];
@@ -67,7 +79,7 @@ interface Props {
   onCopyForWechat(options: ArticleWechatCopyOptions): Promise<void>;
   onExport(): Promise<void>;
   onCreateArticle(content: ArticleContentInput, copySourceContent: boolean): Promise<void>;
-  onGenerateHeader(article: ArticleDto, content: ArticleContentInput): Promise<void>;
+  onGenerateHeader(article: ArticleDto, content: ArticleContentInput, ratio?: ArticleCoverRatio): Promise<void>;
   onGenerateIllustration(
     article: ArticleDto,
     content: ArticleContentInput,
@@ -89,7 +101,7 @@ function useArticleVisualGeneration({
 }: {
   canvasPresets: CanvasPresetDto[];
   notify(message: string): void;
-  onGenerateHeader(article: ArticleDto, content: ArticleContentInput): Promise<void>;
+  onGenerateHeader(article: ArticleDto, content: ArticleContentInput, ratio?: ArticleCoverRatio): Promise<void>;
   onGenerateIllustration(
     article: ArticleDto,
     content: ArticleContentInput,
@@ -100,20 +112,24 @@ function useArticleVisualGeneration({
 }) {
   const labels = useI18n().messages.creator.derivedVisual;
   const [generatingHeader, setGeneratingHeader] = useState(false);
+  const headerRequest = useRef(false);
   const [generatingIllustration, setGeneratingIllustration] = useState(false);
   const defaultIllustrationPreset = canvasPresets.find((preset) => preset.stableKey === 'landscape_4_3');
 
-  async function generateHeader() {
-    if (generatingHeader) return;
-    if (!(await session.flush('manual'))) return;
-    const article = session.capturePersistedArticle();
-    const content = session.captureSnapshot();
+  async function generateHeader(ratio?: ArticleCoverRatio) {
+    if (headerRequest.current) return;
+    headerRequest.current = true;
     setGeneratingHeader(true);
+    const identity = session.getEditorSessionIdentity();
     try {
-      await onGenerateHeader(article, content);
+      if (!(await session.flush('manual')) || identity !== session.getEditorSessionIdentity()) return;
+      const article = session.capturePersistedArticle();
+      const content = article.content;
+      await onGenerateHeader(article, content, ratio);
     } catch (reason) {
       notify(reason instanceof Error ? reason.message : String(reason));
     } finally {
+      headerRequest.current = false;
       setGeneratingHeader(false);
     }
   }
@@ -148,6 +164,8 @@ function useArticleVisualGeneration({
 
 function ReadOnlyArticleEditor({
   article,
+  spaceId,
+  notify,
   media,
   mediaBindings,
   requestEditOwnership,
@@ -156,6 +174,8 @@ function ReadOnlyArticleEditor({
   zh,
 }: {
   article: ArticleDto;
+  spaceId: string;
+  notify(message: string): void;
   media: ReturnType<typeof selectArticleEditorMedia>;
   mediaBindings: ArticleContentInput['mediaBindings'];
   requestEditOwnership(): void;
@@ -170,6 +190,7 @@ function ReadOnlyArticleEditor({
         <header className="flex min-h-14 shrink-0 items-center gap-2 border-b px-4 py-2">
           <span className="min-w-0 flex-1 truncate font-semibold">{title || labels.untitled}</span>
           <CreationWorkNavigation />
+          <CopyAgentLinkButton target={{ spaceId, target: 'article', entityId: article.id }} notify={notify} />
           <ArticleRevisionHistoryDialog articleId={article.id} currentRevisionId={article.revisionId} zh={zh} />
           <Button type="button" variant="outline" size="sm" onClick={requestEditOwnership}>
             <PencilIcon className="size-3.5" />
@@ -199,10 +220,10 @@ function ArticleCreationInputAction({
   notify(message: string): void;
 }) {
   const session = useArticleEditorSession();
-  const copy = useI18n().messages.desktopPetals.document;
+  const copy = useI18n().messages.creator.manuscriptEditor;
   return (
-    <Button
-      size="sm"
+    <ArticleHeaderIconButton
+      label={copy.editCreationInput}
       variant="ghost"
       onClick={() =>
         void (async () => {
@@ -210,8 +231,8 @@ function ArticleCreationInputAction({
         })().catch((reason) => notify(String(reason)))
       }
     >
-      {copy.creationInput}
-    </Button>
+      <SlidersHorizontalIcon className="size-4" />
+    </ArticleHeaderIconButton>
   );
 }
 
@@ -240,8 +261,62 @@ function ArticleTitleSuggestionAction({
   );
 }
 
+function useArticleExport(
+  session: ReturnType<typeof useArticleEditorSession>,
+  onExport: Props['onExport'],
+  notify: Props['notify'],
+) {
+  const [exporting, setExporting] = useState(false);
+  async function exportMarkdown() {
+    if (exporting || !(await session.flush('manual'))) return;
+    setExporting(true);
+    try {
+      await onExport();
+    } catch (reason) {
+      notify(reason instanceof Error ? reason.message : String(reason));
+    } finally {
+      setExporting(false);
+    }
+  }
+  return { exporting, exportMarkdown };
+}
+
+function ArticleAgentLinkAction({ article, spaceId, notify }: Pick<Props, 'article' | 'spaceId' | 'notify'>) {
+  const session = useArticleEditorSession();
+  return (
+    <CopyAgentLinkButton
+      target={{ spaceId, target: 'article', entityId: article.id }}
+      beforeCopy={() => session.flush('manual')}
+      notify={notify}
+    />
+  );
+}
+
+function useArticleCreation(
+  session: ReturnType<typeof useArticleEditorSession>,
+  onCreateArticle: Props['onCreateArticle'],
+  notify: Props['notify'],
+) {
+  const [creatingForm, setCreatingForm] = useState(false);
+  async function createArticle(copySourceContent: boolean) {
+    if (creatingForm) return;
+    if (!(await session.flush('manual'))) return;
+    const content = session.captureSnapshot();
+    setCreatingForm(true);
+    try {
+      await onCreateArticle(content, copySourceContent);
+    } catch (reason) {
+      notify(reason instanceof Error ? reason.message : String(reason));
+    } finally {
+      setCreatingForm(false);
+    }
+  }
+  return { creatingForm, createArticle };
+}
+
 function ArticleEditorWorkspace({
   article,
+  projectCoverAssets = [],
   spaceId,
   locale,
   canvasPresets,
@@ -274,8 +349,9 @@ function ArticleEditorWorkspace({
   const saving = useArticleEditorSessionSelector(articleEditorSessionSaving);
   const [suggesting, setSuggesting] = useState(false);
   const [suggestedTitle, setSuggestedTitle] = useState<string | null>(null);
-  const [exporting, setExporting] = useState(false);
-  const [creatingForm, setCreatingForm] = useState(false);
+  const { exporting, exportMarkdown } = useArticleExport(session, onExport, notify);
+  const { creatingForm, createArticle } = useArticleCreation(session, onCreateArticle, notify);
+  const attachments = useArticleAttachments({ spaceId, onSaved, notify });
   const [relationsOpen, setRelationsOpen] = useState(false);
   const [splitOpen, setSplitOpen] = useState(false);
   const [layoutToolbarRoot, setLayoutToolbarRoot] = useState<HTMLDivElement | null>(null);
@@ -297,10 +373,27 @@ function ArticleEditorWorkspace({
     },
   );
 
+  if (article.content.editorMode === 'OUTLINE') {
+    return (
+      <OutlineArticleEditor
+        article={article}
+        spaceId={spaceId}
+        articleComments={articleComments}
+        editable={editable}
+        requestEditOwnership={requestEditOwnership}
+        onExport={exportMarkdown}
+        notify={notify}
+        zh={zh}
+      />
+    );
+  }
+
   if (!editable) {
     return (
       <ReadOnlyArticleEditor
         article={article}
+        spaceId={spaceId}
+        notify={notify}
         media={media}
         mediaBindings={mediaBindings}
         requestEditOwnership={requestEditOwnership}
@@ -330,38 +423,12 @@ function ArticleEditorWorkspace({
     }
   }
 
-  async function exportMarkdown() {
-    if (exporting) return;
-    if (!(await session.flush('manual'))) return;
-    setExporting(true);
-    try {
-      await onExport();
-    } catch (reason) {
-      notify(reason instanceof Error ? reason.message : String(reason));
-    } finally {
-      setExporting(false);
-    }
-  }
-
-  async function runCreateAction(action: (content: ArticleContentInput) => Promise<void>) {
-    if (creatingForm) return;
-    if (!(await session.flush('manual'))) return;
-    const content = session.captureSnapshot();
-    setCreatingForm(true);
-    try {
-      await action(content);
-    } catch (reason) {
-      notify(reason instanceof Error ? reason.message : String(reason));
-    } finally {
-      setCreatingForm(false);
-    }
-  }
-
-  const createArticle = (copySourceContent: boolean) =>
-    runCreateAction((content) => onCreateArticle(content, copySourceContent));
-
   return (
-    <div data-article-editor className="flex min-h-0 min-w-0 flex-1 flex-col bg-background">
+    <div
+      data-article-editor
+      className="flex min-h-0 min-w-0 flex-1 flex-col bg-background"
+      {...noteFileCapture(attachments.importFiles)}
+    >
       <TooltipProvider delayDuration={300}>
         <header className="flex min-h-14 shrink-0 items-center gap-2 border-b px-4 py-2">
           <div className="flex min-w-0 flex-1 items-center gap-2 overflow-hidden">
@@ -404,6 +471,7 @@ function ArticleEditorWorkspace({
             />
             <div ref={setLayoutToolbarRoot} className="contents" />
             <ArticleHeaderActions
+              copyForAgentAction={<ArticleAgentLinkAction article={article} spaceId={spaceId} notify={notify} />}
               copyForWechatAction={<ArticleWechatCopyAction locale={locale} notify={notify} onCopy={onCopyForWechat} />}
               creatingForm={creatingForm}
               exporting={exporting}
@@ -438,52 +506,61 @@ function ArticleEditorWorkspace({
         />
       )}
 
-      <ArticleEditorDocument
-        key={session.getEditorSessionIdentity()}
-        attachmentsPanel={<ArticleAttachments spaceId={spaceId} onSaved={onSaved} notify={notify} />}
-        attachmentCount={fileCount}
-        articleId={article.id}
-        editorSessionIdentity={session.getEditorSessionIdentity()}
-        comments={articleComments.comments}
-        commentMutationBusy={articleComments.busy || articleCheck.checking}
-        initialElements={session.getArticleElementsProjection()}
-        generatingIllustration={generatingIllustration}
-        initialMarkdown={session.getMarkdownProjection()}
-        document={session.getDocumentProjection()}
-        labels={messages.videoDocuments.editor.richText}
-        media={media}
-        mediaBindings={mediaBindings}
-        layoutToolbarRoot={layoutToolbarRoot}
-        splitOpen={splitOpen}
-        title={title}
-        titleAccessory={
-          <ArticleTitleSuggestionAction
-            disabled={!hasBody || suggesting}
-            suggesting={suggesting}
-            onSuggest={() => void suggestTitle()}
-          />
-        }
-        zh={zh}
-        onEditorHandleChange={session.registerEditor}
-        onCommentCreate={articleComments.create}
-        onCommentDelete={(commentId) => articleComments.mutateExisting('DELETE', commentId)}
-        onCommentReply={(commentId, body) => articleComments.mutateExisting('ADD_REPLY', commentId, { body })}
-        onCommentStatusChange={(commentId, status) =>
-          articleComments.mutateExisting('SET_STATUS', commentId, { status })
-        }
-        onCommentUpdateBody={(commentId, body) => articleComments.mutateExisting('UPDATE_BODY', commentId, { body })}
-        onIllustrationRequest={(selectedText) => void generateIllustration(selectedText)}
-        onImageImportError={() => notify(messages.contentEditor.imageImportFailed)}
-        onImageImported={session.imageImported}
-        onMarkdownChange={session.documentChanged}
-        onPersist={(mode) => void session.flush(mode)}
-        onSplitClose={() => setSplitOpen(false)}
-        onSplitToggle={() => setSplitOpen((current) => !current)}
-        onTitleChange={(nextTitle) => {
-          setSuggestedTitle(null);
-          session.titleChanged(nextTitle);
-        }}
-      />
+      <ArticleAttachmentsInput attachments={attachments} />
+
+      <ArticleCoverWorkspaceProvider
+        projectAssets={projectCoverAssets}
+        generating={generatingHeader}
+        canGenerate={hasBody}
+        onGenerate={generateHeader}
+      >
+        <ArticleEditorDocument
+          key={session.getEditorSessionIdentity()}
+          attachmentsPanel={<ArticleAttachments spaceId={spaceId} attachments={attachments} />}
+          attachmentCount={fileCount}
+          articleId={article.id}
+          editorSessionIdentity={session.getEditorSessionIdentity()}
+          comments={articleComments.comments}
+          commentMutationBusy={articleComments.busy || articleCheck.checking}
+          initialElements={session.getArticleElementsProjection()}
+          generatingIllustration={generatingIllustration}
+          initialMarkdown={session.getMarkdownProjection()}
+          document={session.getDocumentProjection()}
+          labels={messages.videoDocuments.editor.richText}
+          media={media}
+          mediaBindings={mediaBindings}
+          layoutToolbarRoot={layoutToolbarRoot}
+          splitOpen={splitOpen}
+          title={title}
+          titleAccessory={
+            <ArticleTitleSuggestionAction
+              disabled={!hasBody || suggesting}
+              suggesting={suggesting}
+              onSuggest={() => void suggestTitle()}
+            />
+          }
+          zh={zh}
+          onEditorHandleChange={session.registerEditor}
+          onCommentCreate={articleComments.create}
+          onCommentDelete={(commentId) => articleComments.mutateExisting('DELETE', commentId)}
+          onCommentReply={(commentId, body) => articleComments.mutateExisting('ADD_REPLY', commentId, { body })}
+          onCommentStatusChange={(commentId, status) =>
+            articleComments.mutateExisting('SET_STATUS', commentId, { status })
+          }
+          onCommentUpdateBody={(commentId, body) => articleComments.mutateExisting('UPDATE_BODY', commentId, { body })}
+          onIllustrationRequest={(selectedText) => void generateIllustration(selectedText)}
+          onImageImportError={() => notify(messages.contentEditor.imageImportFailed)}
+          onImageImported={session.imageImported}
+          onMarkdownChange={session.documentChanged}
+          onPersist={(mode) => void session.flush(mode)}
+          onSplitClose={() => setSplitOpen(false)}
+          onSplitToggle={() => setSplitOpen((current) => !current)}
+          onTitleChange={(nextTitle) => {
+            setSuggestedTitle(null);
+            session.titleChanged(nextTitle);
+          }}
+        />
+      </ArticleCoverWorkspaceProvider>
       <CreationRelationsSheet
         items={relations}
         open={relationsOpen}

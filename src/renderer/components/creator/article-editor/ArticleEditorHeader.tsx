@@ -128,6 +128,7 @@ export function SuggestedArticleTitle({
 }
 
 export function ArticleHeaderActions({
+  copyForAgentAction,
   copyForWechatAction,
   creatingForm,
   exporting,
@@ -139,6 +140,7 @@ export function ArticleHeaderActions({
   onGenerateHeader,
   onOpenRelations,
 }: {
+  copyForAgentAction: ReactNode;
   copyForWechatAction: ReactNode;
   creatingForm: boolean;
   exporting: boolean;
@@ -205,6 +207,7 @@ export function ArticleHeaderActions({
         </DropdownMenuContent>
       </DropdownMenu>
       {copyForWechatAction}
+      {copyForAgentAction}
       <ArticleHeaderIconButton variant="ghost" disabled={exporting} label={exportLabel} onClick={() => void onExport()}>
         {exporting ? <LoaderCircleIcon className="size-4 animate-spin" /> : <DownloadIcon className="size-4" />}
       </ArticleHeaderIconButton>

@@ -81,7 +81,6 @@ export function createBrowserCompanionOutputImporter({
         imported.assetIds[0] ??
         context.database.findImportedCreatorOutputAssetByHash(target.seriesId, input.image.sha256);
       if (!imageAssetId) throw new Error('The ChatGPT image could not be resolved after import');
-      context.database.setPromptSeriesCover({ seriesId: target.seriesId, imageAssetIds: [imageAssetId] });
 
       const adopted = target.derivedVisualId === null;
       onImported(context);

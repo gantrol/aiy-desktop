@@ -66,7 +66,7 @@ export const PETAL_WINDOW_SIZES = {
   collapsed: { width: 112, height: 112 },
   note: { width: 328, height: 362 },
   flower: { width: 224, height: 224 },
-  notes: { width: 288, height: 306 },
+  notes: { width: 520, height: 580 },
   settings: { width: 328, height: 470 },
   layers: { width: 300, height: 360 },
   sources: { width: 328, height: 410 },

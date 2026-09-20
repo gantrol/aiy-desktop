@@ -196,10 +196,18 @@ export class OpenAiImageAdapter implements GenerationAdapter {
   }
 
   validateRequest(request: NormalizedGenerationRequest) {
-    if (!OPENAI_IMAGE_MODELS.some((model) => model.modelId === request.modelId)) {
+    const model = OPENAI_IMAGE_MODELS.find((candidate) => candidate.modelId === request.modelId);
+    if (!model) {
       throw new GenerationAdapterError({
         code: 'INVALID_REQUEST',
         message: `Unsupported OpenAI image model: ${request.modelId}`,
+      });
+    }
+    const supportedQualities: readonly string[] = model.supportedQualities;
+    if (!supportedQualities.includes(request.output.quality)) {
+      throw new GenerationAdapterError({
+        code: 'INVALID_REQUEST',
+        message: `${request.modelId} does not support ${request.output.quality} quality`,
       });
     }
     if (request.prompt.length > 32_000) {

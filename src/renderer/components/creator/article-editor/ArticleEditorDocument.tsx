@@ -39,11 +39,12 @@ import type {
 } from '@/shared/contracts';
 import { sameArticleElementPlacements } from '@/shared/contracts/article';
 import type { BlockDocument } from '@/shared/contracts/block-document';
-import { useMemo, useRef, useState, type ComponentProps, type ReactNode } from 'react';
+import { useEffect, useMemo, useRef, useState, type ComponentProps, type ReactNode } from 'react';
 import { useI18n } from '@/renderer/i18n/useI18n';
 import { createPortal } from 'react-dom';
 
 interface Props {
+  outlineMode?: boolean;
   attachmentsPanel: ReactNode;
   attachmentCount: number;
   articleId: string;
@@ -68,7 +69,7 @@ interface Props {
   ): void;
   onCommentCreate(anchor: ArticleCommentAnchorInput, preview: string, body: string): Promise<string | null>;
   onCommentDelete(commentId: string): void;
-  onCommentReply(commentId: string, body: string): void;
+  onCommentReply(commentId: string, body: string): Promise<boolean>;
   onCommentStatusChange(commentId: string, status: ArticleCommentStatus): void;
   onCommentUpdateBody(commentId: string, body: string): void;
   onIllustrationRequest?(selectedText: string | null): void;
@@ -85,6 +86,31 @@ interface ArticleCommentDraft {
   anchor: ArticleCommentAnchorInput;
   preview: string;
   rect: ContentCommentDraftPopover['rect'];
+}
+
+function useDeferredCommentReveal(
+  editor: { current: VideoDocumentWysiwygEditorHandle | null },
+  scrollRoot: { current: HTMLDivElement | null },
+  onRect: (rect: ContentCommentDraftPopover['rect'] | null) => void,
+) {
+  const frame = useRef<number | null>(null);
+  useEffect(
+    () => () => {
+      if (frame.current !== null) window.cancelAnimationFrame(frame.current);
+    },
+    [],
+  );
+  return (commentId: string, reveal: boolean) => {
+    if (frame.current !== null) window.cancelAnimationFrame(frame.current);
+    frame.current = null;
+    if (!reveal) return;
+    frame.current = window.requestAnimationFrame(() => {
+      frame.current = null;
+      const location = editor.current?.resolveArticleCommentLocation(commentId);
+      if (location && scrollRoot.current) editor.current?.revealArticleLocation(location, scrollRoot.current);
+      onRect(editor.current?.getArticleCommentAnchorRect(commentId) ?? null);
+    });
+  };
 }
 
 function editorBindings(mediaBindings: ArticleContentInput['mediaBindings']): VideoDocumentMediaBinding[] {
@@ -212,7 +238,7 @@ function ArticleDocumentCommentPopover({
   onDraftSubmit(body: string): void;
   onHoverDismiss(): void;
   onHoverEngage(commentId: string): void;
-  onReply(commentId: string, body: string): void;
+  onReply(commentId: string, body: string): Promise<boolean>;
   onSelectedClose(): void;
   onStatusChange(commentId: string, status: ArticleCommentStatus): void;
   onUpdateBody(commentId: string, body: string): void;
@@ -270,7 +296,7 @@ function ArticleEditorDocumentCommentLayer({
   onDraftSubmit(body: string): void;
   onHoverDismiss(): void;
   onHoverEngage(commentId: string): void;
-  onReply(commentId: string, body: string): void;
+  onReply(commentId: string, body: string): Promise<boolean>;
   onSelectedClose(): void;
   onStatusChange(commentId: string, status: ArticleCommentStatus): void;
   onUpdateBody(commentId: string, body: string): void;
@@ -380,6 +406,7 @@ export function ArticleEditorDocument(props: Props) {
     goToNextEdit,
     recordDraftSequence,
   } = useArticleEditorNavigation({ articleId, editorSession, onEditorHandleChange });
+  const revealAfterUnfold = useDeferredCommentReveal(editorHandleRef, scrollRootRef, setSelectedCommentRect);
   const mediaControls = useArticleEditorMedia({
     bindings: editorMediaBindings,
     elements,
@@ -443,6 +470,8 @@ export function ArticleEditorDocument(props: Props) {
       blockIndex: comment.anchor.startBlockIndex,
     };
     const scrollRoot = scrollRootRef.current;
+    // A selection reveals folded outline ancestors before measuring the target.
+    if (props.outlineMode) jumpToLocation(location);
     const revealed = scrollRoot
       ? (editorHandleRef.current?.revealArticleLocation(location, scrollRoot) ?? false)
       : false;
@@ -460,6 +489,7 @@ export function ArticleEditorDocument(props: Props) {
     setHoveredCommentRect(null);
     setSelectedCommentId(commentId);
     setSelectedCommentRect(rect);
+    revealAfterUnfold(commentId, Boolean(props.outlineMode && reveal));
   }
 
   const selectComment = (commentId: string) => openComment(commentId, false);
@@ -517,6 +547,7 @@ export function ArticleEditorDocument(props: Props) {
     >
       {articleEditorLayoutAction(leftSidebar, rightSidebar, layoutToolbarRoot, splitOpen, onSplitToggle)}
       <ArticleEditorDocumentPanes
+        outlineMode={props.outlineMode}
         attachmentsPanel={attachmentsPanel}
         attachmentCount={attachmentCount}
         articleElementControls={articleElementControls}

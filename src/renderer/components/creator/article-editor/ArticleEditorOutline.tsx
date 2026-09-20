@@ -31,6 +31,7 @@ import {
 } from '@/renderer/components/ui/dropdown-menu';
 import { Input } from '@/renderer/components/ui/input';
 import { ScrollArea } from '@/renderer/components/ui/scroll-area';
+import { useI18n } from '@/renderer/i18n/useI18n';
 import type { VideoDocumentArticleHeading } from '@/renderer/features/video-documents/useVideoDocumentArticleOutline';
 
 interface Props {
@@ -40,7 +41,6 @@ interface Props {
   depthLimit: ArticleEditorOutlineDepthLimit;
   followCursor: boolean;
   followCursorAvailable?: boolean;
-  zh: boolean;
   onDepthLimitChange(limit: ArticleEditorOutlineDepthLimit): void;
   onFollowCursorChange(value: boolean): void;
   onHeadingNavigate?(sourceIndex: number): void;
@@ -59,36 +59,6 @@ interface OutlineLabels {
   mainHeadings: string;
   mainAndChildren: string;
   allLevels: string;
-}
-
-function outlineLabels(zh: boolean): OutlineLabels {
-  return zh
-    ? {
-        label: '目录',
-        search: '搜索标题',
-        clearSearch: '清除搜索',
-        returnTop: '返回文章顶部',
-        options: '目录选项',
-        followCursor: '跟随光标',
-        expandAll: '全部展开',
-        collapseAll: '全部收起',
-        mainHeadings: '仅主标题',
-        mainAndChildren: '主标题和子标题',
-        allLevels: '全部层级',
-      }
-    : {
-        label: 'Outline',
-        search: 'Search headings',
-        clearSearch: 'Clear search',
-        returnTop: 'Return to article top',
-        options: 'Outline options',
-        followCursor: 'Follow cursor',
-        expandAll: 'Expand all',
-        collapseAll: 'Collapse all',
-        mainHeadings: 'Main headings only',
-        mainAndChildren: 'Main headings and children',
-        allLevels: 'All levels',
-      };
 }
 
 function SelectionMark({ selected }: { selected: boolean }) {
@@ -274,13 +244,12 @@ export function ArticleEditorOutline({
   depthLimit,
   followCursor,
   followCursorAvailable = true,
-  zh,
   onDepthLimitChange,
   onFollowCursorChange,
   onHeadingNavigate,
   onTopNavigate,
 }: Props) {
-  const labels = useMemo(() => outlineLabels(zh), [zh]);
+  const labels = useI18n().messages.contentEditor.contentsNavigation;
   const [query, setQuery] = useState('');
   const [collapsedIds, setCollapsedIds] = useState<ReadonlySet<string>>(() => new Set());
   const nodes = useMemo(() => buildArticleEditorOutlineNodes(items), [items]);

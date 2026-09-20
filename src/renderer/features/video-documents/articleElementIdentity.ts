@@ -13,7 +13,17 @@ import type {
   ArticleElementPlacementInput,
 } from '@/shared/contracts';
 import { articleElementTextFingerprint } from '@/shared/contracts/article';
-import { matchingContentCommentQuote } from '@/renderer/features/content-editor/contentCommentAnchors';
+import {
+  liveContentCommentAnchor,
+  mapContentCommentTextRange,
+  matchingContentCommentNodeRange,
+} from '@/renderer/features/content-editor/contentCommentAnchors';
+import {
+  contentCommentSelfBlocks,
+  contentCommentSelfText,
+} from '@/renderer/features/content-editor/contentCommentScope';
+import { remapOutlineStructureComments } from '@/renderer/features/video-documents/outlineCommentRemap';
+import { activeOutlineView } from '@/renderer/features/content-editor/outlineActiveView';
 import {
   ARTICLE_ELEMENT_ATTRIBUTE,
   articleElementImageText,
@@ -39,7 +49,7 @@ const articleCheckNodeTypeSet = new Set<ArticleElementNodeType>([
   'tableCell',
 ]);
 
-interface LocatedArticleElement {
+export interface LocatedArticleElement {
   node: ProseMirrorNode;
   position: number;
   elementId: string;
@@ -48,7 +58,7 @@ interface LocatedArticleElement {
   outlineHeadingIndex: number | null;
 }
 
-interface LocatedArticleElementIndex {
+export interface LocatedArticleElementIndex {
   elements: readonly LocatedArticleElement[];
   byId: ReadonlyMap<string, LocatedArticleElement>;
 }
@@ -165,11 +175,6 @@ function identityTransaction(
   return transaction;
 }
 
-function nearestLocatedElement(elements: readonly LocatedArticleElement[], blockIndex: number) {
-  if (!elements.length) return null;
-  return elements[Math.max(0, Math.min(Math.round(blockIndex), elements.length - 1))] ?? null;
-}
-
 function commentDecorationAttributes(comment: ContentCommentDto, relocated: boolean) {
   return {
     class: `box-decoration-clone bg-[var(--article-comment-background)] underline decoration-[var(--article-comment-decoration)] underline-offset-4 [text-decoration-thickness:var(--article-comment-thickness)] transition-[background-color,text-decoration-color,text-decoration-thickness] duration-fast ${relocated ? 'decoration-dashed' : 'decoration-solid'}`,
@@ -185,20 +190,15 @@ function commentDecorations(
   comment: ContentCommentDto,
   forceRelocated = false,
 ) {
-  const { elements } = index;
-  const start =
-    index.byId.get(comment.anchor.startElementId) ?? nearestLocatedElement(elements, comment.anchor.startBlockIndex);
-  const end =
-    index.byId.get(comment.anchor.endElementId) ?? nearestLocatedElement(elements, comment.anchor.endBlockIndex);
+  const start = index.byId.get(comment.anchor.startElementId);
+  const end = index.byId.get(comment.anchor.endElementId);
+  // A deleted identity is missing; the old index must never attach its comment to a neighbour.
   if (!start || !end) return [];
-  let relocated =
-    forceRelocated ||
-    start.elementId !== comment.anchor.startElementId ||
-    end.elementId !== comment.anchor.endElementId;
+  let relocated = forceRelocated;
   let startOffset = comment.anchor.startOffset;
   let endOffset = comment.anchor.endOffset;
   if (!relocated && start === end && comment.anchor.kind === 'TEXT_RANGE' && comment.anchor.exactQuote) {
-    const range = matchingContentCommentQuote(start.node.textContent, comment);
+    const range = matchingContentCommentNodeRange(start.node, comment);
     if (range) ({ startOffset, endOffset } = range);
     else relocated = true;
   }
@@ -207,19 +207,27 @@ function commentDecorations(
   if (!relocated && comment.anchor.kind === 'TEXT_RANGE' && comment.anchor.exactQuote && from < to) {
     const anchoredText = document.textBetween(from, to, ' ').replace(/\s+/gu, ' ').trim();
     const quote = comment.anchor.exactQuote.replace(/\s+/gu, ' ').trim();
-    if (quote && anchoredText !== quote) relocated = true;
+    if (
+      quote &&
+      anchoredText !== quote &&
+      !(comment.anchor.exactQuote.length === 2_000 && anchoredText.startsWith(quote))
+    )
+      relocated = true;
   }
-  const specification = { commentId: comment.id, relocated };
+  const specification = {
+    commentId: comment.id,
+    relocated,
+    ...(comment.anchor.kind === 'TEXT_RANGE' ? {} : { targetElementId: start.elementId }),
+  };
   const attributes = commentDecorationAttributes(comment, relocated);
-  if (relocated) {
-    return [Decoration.node(start.position, start.position + start.node.nodeSize, attributes, specification)];
-  }
-  return comment.anchor.kind === 'TEXT_RANGE' && from < to
+  return !relocated && comment.anchor.kind === 'TEXT_RANGE' && from < to
     ? [Decoration.inline(from, to, attributes, specification)]
-    : [Decoration.node(start.position, start.position + start.node.nodeSize, attributes, specification)];
+    : contentCommentSelfBlocks(start.node, start.position).map(({ node, position }) =>
+        Decoration.node(position, position + node.nodeSize, attributes, specification),
+      );
 }
 
-interface ArticleElementPluginState {
+export interface ArticleElementPluginState {
   index: LocatedArticleElementIndex;
   decorations: DecorationSet;
   decorationByCommentId: ReadonlyMap<string, Decoration>;
@@ -240,17 +248,16 @@ function articleElementPluginState(
     // Existing ranges belong to the live document, even if a save response
     // carries anchor coordinates from an earlier document revision.
     const mapped = previous?.decorationByCommentId.get(comment.id);
-    const decoration =
-      mapped && !mapped.spec.relocated
-        ? comment.anchor.kind === 'TEXT_RANGE'
-          ? Decoration.inline(mapped.from, mapped.to, commentDecorationAttributes(comment, false), mapped.spec)
-          : Decoration.node(mapped.from, mapped.to, commentDecorationAttributes(comment, false), mapped.spec)
-        : commentDecorations(document, index, comment)[0];
+    const resolved =
+      mapped && !mapped.spec.relocated && comment.anchor.kind === 'TEXT_RANGE'
+        ? [Decoration.inline(mapped.from, mapped.to, commentDecorationAttributes(comment, false), mapped.spec)]
+        : commentDecorations(document, index, comment);
+    const decoration = resolved[0];
     if (!decoration) {
-      resolutionByCommentId.set(comment.id, index.elements.length ? 'RELOCATED' : 'MISSING');
+      resolutionByCommentId.set(comment.id, 'MISSING');
       continue;
     }
-    decorations.push(decoration);
+    decorations.push(...resolved);
     decorationByCommentId.set(comment.id, decoration);
     resolutionByCommentId.set(comment.id, decoration.spec.relocated ? 'RELOCATED' : 'AVAILABLE');
   }
@@ -263,7 +270,35 @@ function articleElementPluginState(
   };
 }
 
+function recoverMappedComment(
+  before: ProseMirrorNode,
+  after: ProseMirrorNode,
+  current: ArticleElementPluginState,
+  index: LocatedArticleElementIndex,
+  comment: ContentCommentDto,
+) {
+  // Undo of a structural move has no custom transaction meta. Recover its live
+  // range by identity and current text, not the last asynchronously saved quote.
+  const live = liveContentCommentAnchor(before, comment, current.decorationByCommentId.get(comment.id), (position) =>
+    articleEditorLocationAtPositionInIndex(before, current.index, position),
+  );
+  const range = mapContentCommentTextRange(before, after, comment, current.decorationByCommentId.get(comment.id));
+  if (range)
+    return [
+      Decoration.inline(range.from, range.to, commentDecorationAttributes(comment, false), {
+        commentId: comment.id,
+        relocated: false,
+      }),
+    ];
+  if (range === null) return commentDecorations(after, index, live ?? comment, true);
+  const restored = live ? commentDecorations(after, index, live) : [];
+  if (restored[0] && !restored[0].spec.relocated) return restored;
+  const saved = commentDecorations(after, index, comment);
+  return saved[0] && !saved[0].spec.relocated ? saved : restored.length ? restored : saved;
+}
+
 function mapArticleElementPluginState(
+  before: ProseMirrorNode,
   transaction: Transaction,
   current: ArticleElementPluginState,
   comments: readonly ContentCommentDto[],
@@ -271,49 +306,41 @@ function mapArticleElementPluginState(
 ): ArticleElementPluginState {
   const index = locatedArticleElementIndex(transaction.doc);
   const mapped = current.decorations.map(transaction.mapping, transaction.doc);
-  const decorations = mapped.find();
-  const decorationByCommentId = new Map(
-    decorations.map((decoration) => [decoration.spec.commentId as string, decoration]),
+  const mappedDecorations = mapped.find();
+  const mappedByCommentId = new Map(
+    mappedDecorations.map((decoration) => [decoration.spec.commentId as string, decoration]),
   );
-  const additions: Decoration[] = [];
+  const decorations: Decoration[] = [];
+  const decorationByCommentId = new Map<string, Decoration>();
   for (const comment of comments) {
-    if (composing) break;
-    // Image nodes retain their block identity when moved or restored by undo.
-    // Positional decoration mapping alone treats a move as a deletion.
-    const image = index.byId.get(comment.anchor.startElementId);
-    if (comment.anchor.kind === 'BLOCK' && image?.nodeType === 'image') {
-      const previous = decorationByCommentId.get(comment.id);
-      if (previous) decorations.splice(decorations.indexOf(previous), 1);
-      const decoration = commentDecorations(transaction.doc, index, comment)[0];
-      if (decoration) {
-        additions.push(decoration);
-        decorationByCommentId.set(comment.id, decoration);
-      }
-      continue;
-    }
-    if (decorationByCommentId.has(comment.id)) continue;
-    const decoration = commentDecorations(transaction.doc, index, comment, true)[0];
-    if (!decoration) continue;
-    additions.push(decoration);
-    decorationByCommentId.set(comment.id, decoration);
+    const live = mappedByCommentId.get(comment.id);
+    // Whole blocks follow identity, including moves and undo. An outline item's
+    // several body decorations still belong to one item, never to its children.
+    const resolved =
+      comment.anchor.kind !== 'TEXT_RANGE'
+        ? composing
+          ? mappedDecorations.filter((decoration) => decoration.spec.commentId === comment.id)
+          : commentDecorations(transaction.doc, index, comment)
+        : live && !live.spec.relocated
+          ? [live]
+          : composing
+            ? []
+            : recoverMappedComment(before, transaction.doc, current, index, comment);
+    if (!resolved.length) continue;
+    decorations.push(...resolved);
+    decorationByCommentId.set(comment.id, resolved[0]!);
   }
   const resolutionByCommentId = new Map<string, ContentCommentDto['targetResolution']>();
   for (const comment of comments) {
     const decoration = decorationByCommentId.get(comment.id);
     resolutionByCommentId.set(
       comment.id,
-      decoration
-        ? decoration.spec.relocated
-          ? 'RELOCATED'
-          : 'AVAILABLE'
-        : index.elements.length
-          ? 'RELOCATED'
-          : 'MISSING',
+      decoration ? (decoration.spec.relocated ? 'RELOCATED' : 'AVAILABLE') : 'MISSING',
     );
   }
   return {
     index,
-    decorations: additions.length ? DecorationSet.create(transaction.doc, [...decorations, ...additions]) : mapped,
+    decorations: DecorationSet.create(transaction.doc, decorations),
     decorationByCommentId,
     resolutionByCommentId,
     hasElements: index.elements.length > 0,
@@ -350,12 +377,20 @@ export function createArticleElementIdentityExtension(
           key: articleElementPluginKey,
           state: {
             init: (_configuration, state) => articleElementPluginState(state.doc, comments()),
-            apply(transaction, state) {
+            apply(transaction, state, oldState) {
               if (transaction.getMeta(articleElementPluginKey)) {
                 return articleElementPluginState(transaction.doc, comments(), state);
               }
+              if (transaction.docChanged && transaction.getMeta('aiy:outline-structure-move')) {
+                return remapOutlineStructureComments(oldState.doc, transaction.doc, state, comments(), {
+                  indexOf: locatedArticleElementIndex,
+                  locationAt: articleEditorLocationAtPositionInIndex,
+                  attributes: commentDecorationAttributes,
+                  fallback: commentDecorations,
+                });
+              }
               return transaction.docChanged
-                ? mapArticleElementPluginState(transaction, state, comments(), inputPending())
+                ? mapArticleElementPluginState(oldState.doc, transaction, state, comments(), inputPending())
                 : state;
             },
           },
@@ -397,14 +432,16 @@ export function hydrateArticleElements(
   if (editor.isDestroyed || view.composing) return false;
   const located = articleElementIndexForEditor(editor).elements;
   const unused = new Map(saved.map((placement) => [placement.elementId, placement]));
-  // The document owns existing identities; fingerprints only recover missing ones.
-  const reserved = new Set(located.map((item) => item.elementId).filter(Boolean));
+  // Only identities already saved for this article can be trusted on hydration.
+  // Recovered or copied documents may carry IDs owned by another article.
+  const savedIds = new Set(saved.map((placement) => placement.elementId));
+  const reserved = new Set(located.map((item) => item.elementId).filter((id) => savedIds.has(id)));
   for (const elementId of reserved) unused.delete(elementId);
   const seen = new Set<string>();
   const transaction = editor.state.tr;
   let changed = false;
   for (const item of located) {
-    if (item.elementId && !seen.has(item.elementId)) {
+    if (item.elementId && savedIds.has(item.elementId) && !seen.has(item.elementId)) {
       seen.add(item.elementId);
       continue;
     }
@@ -490,6 +527,9 @@ export function resolveArticleOutlineHeadingLocation(editor: Editor, sourceIndex
 
 function locatedElementAtPosition(document: ProseMirrorNode, index: LocatedArticleElementIndex, position: number) {
   const bounded = Math.max(0, Math.min(position, document.content.size));
+  // resolve(nodeStart) sees the parent, so check the node's own boundary first.
+  const exact = index.elements.find((candidate) => candidate.position === bounded);
+  if (exact) return exact;
   const probes = [bounded, Math.min(document.content.size, bounded + 1), Math.max(0, bounded - 1)];
   for (const probe of probes) {
     const resolved = document.resolve(probe);
@@ -551,7 +591,7 @@ function articleCommentRectSnapshot(rect: Pick<DOMRect, 'bottom' | 'height' | 'l
 
 function articleCommentPositionRect(editor: Editor, position: number) {
   const bounded = Math.max(0, Math.min(position, editor.state.doc.content.size));
-  const coordinates = editor.view.coordsAtPos(bounded);
+  const coordinates = activeOutlineView(editor).coordsAtPos(bounded);
   return articleCommentRectSnapshot({
     bottom: coordinates.bottom,
     height: Math.max(1, coordinates.bottom - coordinates.top),
@@ -563,14 +603,15 @@ function articleCommentPositionRect(editor: Editor, position: number) {
 }
 
 function articleCommentElementRect(editor: Editor, target: LocatedArticleElement) {
-  const dom = editor.view.nodeDOM(target.position);
+  const position = contentCommentSelfBlocks(target.node, target.position)[0]?.position ?? target.position;
+  const dom = activeOutlineView(editor).nodeDOM(position);
   return dom instanceof Element
     ? articleCommentRectSnapshot(dom.getBoundingClientRect())
-    : articleCommentPositionRect(editor, target.position + 1);
+    : articleCommentPositionRect(editor, position + 1);
 }
 
 function capturedWholeElementTarget(editor: Editor, target: LocatedArticleElement): CapturedArticleCommentTarget {
-  const exactQuote = target.node.textContent.slice(0, 2_000);
+  const exactQuote = contentCommentSelfText(target.node).slice(0, 2_000);
   const from = target.position;
   const to = target.position + target.node.nodeSize;
   return {
@@ -592,7 +633,7 @@ function capturedWholeElementTarget(editor: Editor, target: LocatedArticleElemen
 }
 
 export function captureArticleCommentTarget(editor: Editor): CapturedArticleCommentTarget | null {
-  if (editor.isDestroyed || editor.view.composing) return null;
+  if (editor.isDestroyed || activeOutlineView(editor).composing) return null;
   const elements = articleElementIndexForEditor(editor).elements;
   const selection = editor.state.selection;
   const { from, to, empty } = selection;
@@ -645,7 +686,9 @@ export function captureArticleCommentTarget(editor: Editor): CapturedArticleComm
 
 export function articleCommentAnchorRect(editor: Editor, commentId: string): ArticleCommentAnchorRect | null {
   if (editor.isDestroyed) return null;
-  const element = editor.view.dom.querySelector<HTMLElement>(`[data-article-comment-id="${CSS.escape(commentId)}"]`);
+  const element = activeOutlineView(editor).dom.querySelector<HTMLElement>(
+    `[data-article-comment-id="${CSS.escape(commentId)}"]`,
+  );
   return element ? articleCommentRectSnapshot(element.getBoundingClientRect()) : null;
 }
 
@@ -755,6 +798,8 @@ export function resolveArticleCommentLocation(editor: Editor, commentId: string)
   if (!state) return null;
   const decoration = state.decorationByCommentId.get(commentId);
   if (!decoration) return null;
+  const target = state.index.byId.get(decoration.spec.targetElementId);
+  if (target) return { elementId: target.elementId, relativeOffset: 0, blockIndex: target.blockIndex };
   return articleEditorLocationAtPositionInIndex(editor.state.doc, state.index, decoration.from);
 }
 
@@ -775,19 +820,17 @@ export function mappedArticleCommentAnchors(
   return comments.flatMap((comment) => {
     const decoration = state.decorationByCommentId.get(comment.id);
     if (!decoration || decoration.spec.relocated) return [];
-    const start = articleEditorLocationAtPositionInIndex(editor.state.doc, index, decoration.from);
-    if (!start) return [];
     if (comment.anchor.kind !== 'TEXT_RANGE') {
-      const located = index.byId.get(start.elementId);
+      const located = index.byId.get(decoration.spec.targetElementId ?? comment.anchor.startElementId);
       if (!located) return [];
-      const exactQuote = located.node.textContent.slice(0, 2_000);
+      const exactQuote = contentCommentSelfText(located.node).slice(0, 2_000);
       return [
         {
           commentId: comment.id,
           anchor: {
             ...comment.anchor,
-            startElementId: start.elementId,
-            endElementId: start.elementId,
+            startElementId: located.elementId,
+            endElementId: located.elementId,
             startOffset: 0,
             endOffset: located.node.content.size,
             startBlockIndex: located.blockIndex,
@@ -797,29 +840,10 @@ export function mappedArticleCommentAnchors(
         },
       ];
     }
-    const endPosition = Math.max(decoration.from, decoration.to - 1);
-    const end = articleEditorLocationAtPositionInIndex(editor.state.doc, index, endPosition);
-    if (!end) return [];
-    const exactQuote = editor.state.doc.textBetween(decoration.from, decoration.to, ' ').slice(0, 2_000);
-    return [
-      {
-        commentId: comment.id,
-        anchor: {
-          ...comment.anchor,
-          startElementId: start.elementId,
-          endElementId: end.elementId,
-          startOffset: start.relativeOffset,
-          endOffset: end.relativeOffset + 1,
-          startBlockIndex: start.blockIndex ?? comment.anchor.startBlockIndex,
-          endBlockIndex: end.blockIndex ?? comment.anchor.endBlockIndex,
-          exactQuote,
-          prefix: editor.state.doc.textBetween(Math.max(0, decoration.from - 200), decoration.from, ' ').slice(-200),
-          suffix: editor.state.doc
-            .textBetween(decoration.to, Math.min(editor.state.doc.content.size, decoration.to + 200), ' ')
-            .slice(0, 200),
-        },
-      },
-    ];
+    const live = liveContentCommentAnchor(editor.state.doc, comment, decoration, (position) =>
+      articleEditorLocationAtPositionInIndex(editor.state.doc, index, position),
+    );
+    return live ? [{ commentId: comment.id, anchor: live.anchor }] : [];
   });
 }
 

@@ -160,7 +160,7 @@ export class FixturePackRepository {
     return linkedItemCount === expectedItemCount;
   }
 
-  ensure(source: FixturePackSource) {
+  ensure(source: FixturePackSource, syncRunId?: string) {
     const { profile } = source;
     const registered = this.storage.db.transaction(() => {
       const mappings: FixtureLocalMapping[] = [];
@@ -303,6 +303,7 @@ export class FixturePackRepository {
     const installation = this.packs.repairExactPackRelease({
       packId: registered.pack.id,
       releaseId: registered.release.id,
+      transactionId: syncRunId,
       source: { source: 'CONTENT_PACKAGE', packageKey: profile.key },
       verification: { contentHash: registered.release.contentHash, itemCount: registered.release.items.length },
     });

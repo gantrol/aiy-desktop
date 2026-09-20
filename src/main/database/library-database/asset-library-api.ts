@@ -75,6 +75,10 @@ export function createAssetLibraryApi(
       return repositories.gallery.list(input);
     },
 
+    getGalleryMaterial(materialId: string, locale: Locale) {
+      return repositories.gallery.getMaterial(materialId, locale);
+    },
+
     listTransitionPreviewSources(limit?: number) {
       return repositories.gallery.listTransitionPreviewSources(limit);
     },
@@ -242,6 +246,10 @@ export function createAssetLibraryApi(
 
     listAlbums(locale: Locale = 'zh') {
       return repositories.albums.list(locale);
+    },
+
+    getActiveAlbum(albumId: string) {
+      return repositories.albums.getActive(albumId);
     },
 
     listAlbumTextMaterials(albumId: string) {

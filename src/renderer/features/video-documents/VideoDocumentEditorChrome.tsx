@@ -31,7 +31,11 @@ export function VideoDocumentEditorChrome({
   return (
     <>
       <VideoDocumentWysiwygToolbar
+        toolbarPreset={props.toolbarPreset}
+        figureAssetIds={props.figureAssetIds}
         embedded={props.embedded}
+        outlineMode={props.outlineMode}
+        interactionsEnabled={props.contentSource?.kind === 'ARTICLE'}
         referenceAction={referenceAction}
         onImageOperation={onImageOperation}
         importImage={props.importImage}

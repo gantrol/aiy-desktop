@@ -1,4 +1,5 @@
 import { articleIllustrationInsertionOffset } from '@/shared/article-wechat-renderer';
+import { articleCoverAssetIds } from '@/shared/article-covers';
 import { blockDocumentMarkdown } from '@/shared/block-document-codecs';
 import type {
   ArticleContentInput,
@@ -41,8 +42,8 @@ function insertIllustrationAfterPassage(markdown: string, passage: string, path:
 function independentCoverBinding(
   content: ArticleDto['content'],
   mediaBindings: readonly ArticleMediaBindingInput[],
+  coverAssetId: string,
 ): ArticleMediaBindingInput | null {
-  const coverAssetId = content.coverAssetId;
   if (!coverAssetId || mediaBindings.some((binding) => binding.assetId === coverAssetId)) return null;
   const cover = content.mediaAssets.find((asset) => asset.id === coverAssetId);
   const extension = derivedVisualImageExtension(cover?.mimeType ?? '');
@@ -80,13 +81,15 @@ export function adoptArticleInlineVisual(
     (binding) =>
       binding.path !== placementPath &&
       (!isArticleVisualPositionPath(binding.path, positionId) ||
-        content.coverAssetId === binding.assetId ||
+        articleCoverAssetIds(content).includes(binding.assetId) ||
         markdown.includes(binding.path)),
   );
   mediaBindings.push({ path: placementPath, assetId: input.imageAssetId });
   // A cover that shared the replaced binding needs its own binding to keep the original image.
-  const coverBinding = independentCoverBinding(article.content, mediaBindings);
-  if (coverBinding) mediaBindings.push(coverBinding);
+  for (const coverId of articleCoverAssetIds(content)) {
+    const coverBinding = independentCoverBinding(article.content, mediaBindings, coverId);
+    if (coverBinding) mediaBindings.push(coverBinding);
+  }
   if (content.document) {
     let root = content.document.root;
     if (position.status === 'PLACED') {

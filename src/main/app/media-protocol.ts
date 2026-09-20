@@ -52,7 +52,7 @@ export function installMediaProtocol(targetProtocol: Protocol, options: Options)
         headers.set('access-control-allow-origin', rendererOrigin);
         return new Response(response.body, { status: response.status, statusText: response.statusText, headers });
       }
-      const resolvedMedia = resolveMediaRequestPaths({
+      const resolvedMedia = await resolveMediaRequestPaths({
         url,
         identifier,
         context,

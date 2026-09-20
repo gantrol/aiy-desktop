@@ -1,0 +1,32 @@
+name: Codex transport probe (static)
+
+on:
+  pull_request:
+    paths:
+      - 'scripts/benchmark-codex-transports.mjs'
+      - 'scripts/codex-bench/**'
+      - '.github/workflows/codex-transport-probe.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  static-checks:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: '22'
+      - name: Check probe module syntax
+        shell: bash
+        run: |
+          node --check scripts/benchmark-codex-transports.mjs
+          for file in scripts/codex-bench/*.mjs; do node --check "$file"; done
+      - name: Check dry-run entry
+        run: node scripts/benchmark-codex-transports.mjs --model diagnostic --effort high --routes app-server

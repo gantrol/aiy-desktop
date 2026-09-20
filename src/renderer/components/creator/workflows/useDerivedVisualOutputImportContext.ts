@@ -4,6 +4,7 @@ import type { useCreatorPromptDocument } from '@/renderer/components/creator/wor
 import { useI18n } from '@/renderer/i18n/useI18n';
 import { useStableCallback } from '@/renderer/lib/useStableCallback';
 import type { BootstrapDto, CreatorImageImportContext, Locale } from '@/shared/contracts';
+import { blockDocumentAssetIds } from '@/shared/contracts/block-document';
 
 type CreationDraftSession = Pick<ReturnType<typeof useCreationDraftSession>, 'getDraftId' | 'saveDraftNow'>;
 type PromptDocument = Pick<
@@ -90,7 +91,12 @@ export function useDerivedVisualOutputImportContext(options: Options) {
       });
       const finalPrompt = promptResolution.livePrompt.trim();
       if (!finalPrompt) throw new Error(labels.promptRequired);
-      const referenceAssetIds = options.promptDocument.referenceAssets.map((asset) => asset.id);
+      const referenceAssetIds = [
+        ...new Set([
+          ...options.promptDocument.referenceAssets.map((asset) => asset.id),
+          ...(captured.document ? blockDocumentAssetIds(captured.document) : []),
+        ]),
+      ];
       const draft = await options.creationDraftSession.saveDraftNow(undefined, captured);
       if ((visual && draft.id !== visual.creationDraftId) || options.creationDraftSession.getDraftId() !== draftId) {
         throw new Error(labels.importContextChanged);

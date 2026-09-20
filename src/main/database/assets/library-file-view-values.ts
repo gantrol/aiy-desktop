@@ -7,7 +7,7 @@ export const albumsDirectoryName = '图集';
 export const termsDirectoryName = '词典';
 export const maximumConflictAttempts = 10_000;
 export const synchronizationBatchDelayMs = 180;
-export const projectionCacheAlgorithmVersion = '1';
+export const projectionCacheAlgorithmVersion = '2';
 export const projectionCacheVersionKey = 'library_file_view_cache_algorithm_version';
 export const projectionCacheStateKey = 'library_file_view_cache_state';
 export const projectionCacheChangeRowIdKey = 'library_file_view_cache_change_rowid';
@@ -27,12 +27,13 @@ export const projectionCacheMetadataKeys = [
 
 export const directProjectionChangeTypeValues: readonly string[] = ['ALBUM', 'ALBUM_MEMBER', 'TERM', 'TERM_MEDIA_LINK'];
 export const directProjectionChangeTypes = new Set(directProjectionChangeTypeValues);
-export const creationProjectionChangeTypes = new Set([
+export const creationProjectionChangeTypeValues: readonly string[] = [
   'CREATION_OUTPUT_IMPORT',
   'GENERATION_RUN',
   'PROMPT_SERIES',
   'PROMPT_VERSION',
-]);
+];
+export const creationProjectionChangeTypes = new Set(creationProjectionChangeTypeValues);
 export const assetProjectionChangeTypes = new Set(['IMAGE_ASSET']);
 export const materialProjectionChangeTypes = new Set(['MATERIAL', 'EXTERNAL_MATERIAL_METADATA']);
 

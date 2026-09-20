@@ -1,6 +1,6 @@
 import { ArrowLeftIcon, ArrowRightIcon, EllipsisIcon, LoaderCircleIcon, PlusIcon, XIcon } from 'lucide-react';
 import type { BootstrapDto } from '@/shared/contracts';
-import type { AppView } from '@/renderer/components/app/AppSidebar';
+import type { AppView } from '@/renderer/components/app/app-navigation';
 import { Button } from '@/renderer/components/ui/button';
 import {
   ContextMenu,
@@ -70,6 +70,8 @@ export function WorkspaceTabStrip({
     documents: navigation.documents,
     dictionary: navigation.dictionary,
     gallery: navigation.gallery,
+    search: navigation.search,
+    calendar: navigation.calendar,
     companion: navigation.companion,
     codexImages: navigation.codexImages,
     transitionShowcase: navigation.transitionShowcase,
@@ -85,7 +87,16 @@ export function WorkspaceTabStrip({
     newCreation: messages.creator.results.newCreation,
     creationKinds: messages.contentManagement.subtypes,
   };
-  const availableViews = ['creator', 'dictionary', 'gallery', 'companion', 'packs', 'aiCenter'] as const;
+  const availableViews = [
+    'creator',
+    'dictionary',
+    'gallery',
+    'search',
+    'calendar',
+    'companion',
+    'packs',
+    'aiCenter',
+  ] as const;
   const activeTab = group.tabs.find((tab) => tab.id === group.activeTabId) ?? group.tabs[0];
   const canSplit = workspaceLocationCanSplit(activeLocation(activeTab));
 

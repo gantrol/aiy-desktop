@@ -86,6 +86,11 @@ export class DesktopApplicationShell {
     this.language = language;
     this.updateAppTray();
   };
+  readonly getLanguage = () => this.language;
+  readonly presentMainWindow = () => {
+    if (!this.mainWindow || this.mainWindow.isDestroyed()) this.createWindow();
+    this.showMainWindow();
+  };
 
   private readonly trayState = (): TrayMenuState => ({
     language: this.language,

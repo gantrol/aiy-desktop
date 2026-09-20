@@ -6,6 +6,7 @@ import {
   MessageSquareIcon,
   SearchIcon,
   SlidersHorizontalIcon,
+  XIcon,
 } from 'lucide-react';
 import type { CodexHistoryThreadOption } from '@/shared/contracts';
 import { Badge } from '@/renderer/components/ui/badge';
@@ -175,7 +176,11 @@ function AdvancedFilters({ state }: { state: HistorySearchState }) {
           </div>
           <label className="grid gap-1.5 text-xs font-medium">
             {l.filters.role}
-            <Select value={state.role} onValueChange={(value) => state.setRole(value as typeof state.role)}>
+            <Select
+              disabled={state.scope === 'THREADS'}
+              value={state.role}
+              onValueChange={(value) => state.setRole(value as typeof state.role)}
+            >
               <SelectTrigger className="w-full font-normal" aria-label={l.filters.role}>
                 <SelectValue />
               </SelectTrigger>
@@ -237,12 +242,45 @@ export function CodexHistorySearchFilters({ authorized, state }: { authorized: b
         <SearchIcon className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
         <Input
           value={state.draftQuery}
-          className="pl-9"
+          role="searchbox"
+          maxLength={500}
+          className="pl-9 pr-9"
           placeholder={l.searchPlaceholder}
           aria-label={l.searchLabel}
           onChange={(event) => state.setDraftQuery(event.target.value)}
+          onCompositionStart={() => state.setQueryComposing(true)}
+          onCompositionEnd={() => state.setQueryComposing(false)}
+          onKeyDown={(event) => {
+            if (event.key === 'Escape' && !event.nativeEvent.isComposing) {
+              event.preventDefault();
+              state.setDraftQuery('');
+            }
+          }}
         />
+        {state.draftQuery && (
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon-sm"
+            className="absolute right-0.5 top-0.5"
+            aria-label={l.actions.clearSearch}
+            title={l.actions.clearSearch}
+            onClick={() => state.setDraftQuery('')}
+          >
+            <XIcon className="size-3.5" />
+          </Button>
+        )}
       </div>
+      <Select value={state.scope} onValueChange={(value) => state.setScope(value as typeof state.scope)}>
+        <SelectTrigger className="w-32" aria-label={l.filters.scope}>
+          <SelectValue />
+        </SelectTrigger>
+        <SelectContent>
+          <SelectItem value="ALL">{l.scopes.ALL}</SelectItem>
+          <SelectItem value="THREADS">{l.scopes.THREADS}</SelectItem>
+          <SelectItem value="MESSAGES">{l.scopes.MESSAGES}</SelectItem>
+        </SelectContent>
+      </Select>
       <SessionFilter
         disabled={!authorized}
         loading={state.filtersLoading}

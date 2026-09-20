@@ -18,6 +18,7 @@ import {
 import { readV03FixtureDocument, V03_FIXTURE_SCHEMA_VERSION } from '@/main/database/packs/fixture-contract';
 import { ensureImageMaterials } from '@/main/database/albums/image-material-batch';
 import { replaceTitleLocalizations } from '@/main/database/core/title-localization';
+import { GenerationJobRepository } from '@/main/database/generation/generation-job-repository';
 import {
   ensureCreationEntityComposition,
   ensureCreationItemLocations,
@@ -364,6 +365,7 @@ function reconcileFixtureTerms(db: LibraryStorage['db'], list: FixtureRows, revi
 
 function reconcileFixtureRows(storage: LibraryStorage, fixture: JsonMap, demoAssetsRoot?: string) {
   const { db } = storage;
+  const generationJobs = new GenerationJobRepository(storage);
   const list = (key: string) => (Array.isArray(fixture[key]) ? (fixture[key] as JsonMap[]) : []);
   const revisionTermIds = new Map(list('termRevisions').map((row) => [text(row.id), text(row.termId)]));
   if (list('terms').length && text(fixture.termSchemaVersion) !== '0.3.0') {
@@ -423,6 +425,8 @@ function reconcileFixtureRows(storage: LibraryStorage, fixture: JsonMap, demoAss
         row.finishedAt ?? null,
         row.startedAt ?? now(),
       );
+      // Imports run after startup recovery; attach the lifecycle before readers join it.
+      generationJobs.createForRun(text(row.id));
     }
     reconcileFixtureAnnotations(db, list('annotations'));
     reconcileFixtureTerms(db, list, revisionTermIds);

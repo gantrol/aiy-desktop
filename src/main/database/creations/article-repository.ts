@@ -183,7 +183,10 @@ export class ArticleRepository {
     };
   }
 
-  save(input: ArticleSaveInput, identity?: { requestId: string; creationItemId?: string }): ArticleDto {
+  save(
+    input: ArticleSaveInput,
+    identity?: { requestId: string; creationItemId?: string; newCreationItemId?: string },
+  ): ArticleDto {
     return this.db.transaction(() => {
       const content = normalizeArticleContent(input.content);
       const requestedId =
@@ -223,7 +226,10 @@ export class ArticleRepository {
       const form = { role: 'ARTICLE' as const, entity: { kind: 'ARTICLE' as const, id }, anchorKey: null };
       const registration = identity?.creationItemId
         ? this.creationItems.addForm({ ...form, creationItemId: identity.creationItemId })
-        : this.creationItems.createWithForm({ albumId: input.albumId, form });
+        : this.creationItems.createWithForm(
+            { albumId: input.albumId, form },
+            identity?.newCreationItemId ? { id: identity.newCreationItemId } : undefined,
+          );
       this.consumeCreationDraft(input.consumeCreationDraftId, timestamp, id);
       this.storage.recordChange(
         'ARTICLE',
@@ -239,6 +245,29 @@ export class ArticleRepository {
       );
       return this.dto(this.row(id));
     })();
+  }
+
+  /** Stage an immutable package revision without replacing the user's current revision. */
+  stageContentPackRevision(articleId: string, input: ArticleContentInput) {
+    const content = normalizeArticleContent(input);
+    assertBlockDocumentReady(content.document);
+    this.row(articleId);
+    this.assertMediaAvailable(content.mediaBindings.map((binding) => binding.assetId));
+    const hash = contentHash(content);
+    const existing = this.db
+      .prepare(
+        'SELECT id FROM article_revisions WHERE article_id = ? AND content_hash = ? ORDER BY revision_no LIMIT 1',
+      )
+      .pluck()
+      .get(articleId, hash) as string | undefined;
+    if (existing) return existing;
+    const revisionNo = Number(
+      this.db
+        .prepare('SELECT COALESCE(MAX(revision_no), 0) + 1 FROM article_revisions WHERE article_id = ?')
+        .pluck()
+        .get(articleId),
+    );
+    return this.insertRevision(articleId, revisionNo, content, hash, now());
   }
 
   saveRevision(input: ArticleRevisionSaveInput): ArticleRevisionSaveResult {
@@ -279,7 +308,12 @@ export class ArticleRepository {
       const timestamp = now();
       const revisionId = this.insertRevision(
         input.articleId,
-        Number(existing.revision_no) + 1,
+        Number(
+          this.db
+            .prepare('SELECT COALESCE(MAX(revision_no), 0) + 1 FROM article_revisions WHERE article_id = ?')
+            .pluck()
+            .get(input.articleId),
+        ),
         content,
         hash,
         timestamp,

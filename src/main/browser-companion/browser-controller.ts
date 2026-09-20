@@ -12,6 +12,7 @@ import {
   type BrowserCompanionBrowserId,
   type BrowserCompanionBrowserOpenError,
   type BrowserCompanionDestinationsResult,
+  type BrowserCompanionDestination,
   type BrowserCompanionTarget,
 } from '@/shared/contracts/browser-companion';
 
@@ -420,9 +421,13 @@ export class BrowserCompanionBrowserController {
     return mutation;
   }
 
-  async open(target: BrowserCompanionTarget, url: string): Promise<void> {
+  async open(
+    target: BrowserCompanionTarget,
+    url: string,
+    frozenDestination?: BrowserCompanionDestination | null,
+  ): Promise<void> {
     const state = await this.destinations();
-    const destination = state.routes[target];
+    const destination = frozenDestination === undefined ? state.routes[target] : frozenDestination;
     if (!destination) {
       throw new BrowserCompanionLaunchError('DESTINATION_NOT_SELECTED', 'No browser destination is selected');
     }

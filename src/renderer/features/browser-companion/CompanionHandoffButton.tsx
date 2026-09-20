@@ -1,5 +1,5 @@
 import { useI18n } from '@/renderer/i18n/useI18n';
-import { CloudUploadIcon, LoaderCircleIcon } from 'lucide-react';
+import { CloudUploadIcon, LoaderCircleIcon, MessageCircleIcon } from 'lucide-react';
 import type { ComponentProps } from 'react';
 import { Button } from '@/renderer/components/ui/button';
 import {
@@ -26,8 +26,9 @@ export function CompanionHandoffButton({
   zh?: boolean;
 }) {
   const copy = useI18n().messages.browserCompanion;
-  const label = busy ? copy.uploading : copy.upload;
   const onlyTarget = targets.length === 1 ? targets[0] : null;
+  const chatgpt = onlyTarget === 'chatgpt';
+  const label = busy ? copy.uploading : chatgpt ? copy.askChatgpt : copy.upload;
   const primaryButton = (
     <Button
       type="button"
@@ -39,7 +40,13 @@ export function CompanionHandoffButton({
       aria-busy={busy || undefined}
       onClick={onlyTarget ? () => onHandoff(onlyTarget) : undefined}
     >
-      {busy ? <LoaderCircleIcon className="size-4 animate-spin" /> : <CloudUploadIcon className="size-4" />}
+      {busy ? (
+        <LoaderCircleIcon className="size-4 animate-spin" />
+      ) : chatgpt ? (
+        <MessageCircleIcon className="size-4" />
+      ) : (
+        <CloudUploadIcon className="size-4" />
+      )}
       {label}
     </Button>
   );

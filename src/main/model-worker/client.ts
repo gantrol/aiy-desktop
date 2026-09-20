@@ -17,6 +17,7 @@ import type {
   CodexTitleInput,
   CodexTitleResult,
   CodexTextModelDto,
+  CodexUsageQuotaSnapshot,
   CreatorAgentTurnDto,
   GenerationBatchInput,
   GenerationChangedEvent,
@@ -108,7 +109,7 @@ const DEFAULT_IDLE_EXIT_MS = 10 * 60_000;
 // Development builds briefly emitted these versions. They all support the
 // authenticated idle-shutdown handshake and can be replaced without losing
 // in-flight work.
-const REPLACEABLE_DEVELOPMENT_PROTOCOL_VERSIONS = new Set([1, 2, 3, MODEL_WORKER_PROTOCOL_VERSION]);
+const REPLACEABLE_DEVELOPMENT_PROTOCOL_VERSIONS = new Set([1, 2, 3, 6, 7, MODEL_WORKER_PROTOCOL_VERSION]);
 const ROLLING_UPGRADE_SETTLE_MS = 1_000;
 const WORKER_RETIRE_TIMEOUT_MS = 5_000;
 const STARTUP_FALLBACK_MIN_MS = 250;
@@ -1369,6 +1370,10 @@ class BackgroundCodexService implements CodexService {
 
   listModels(signal?: AbortSignal) {
     return this.owner.callWorker<CodexTextModelDto[]>('codex.list-models', [], REQUEST_TIMEOUT_MS, signal);
+  }
+
+  readUsageQuota(signal?: AbortSignal) {
+    return this.owner.callWorker<CodexUsageQuotaSnapshot>('codex.read-usage-quota', [], REQUEST_TIMEOUT_MS, signal);
   }
 
   chat(job: CodexChatJob, signal?: AbortSignal) {

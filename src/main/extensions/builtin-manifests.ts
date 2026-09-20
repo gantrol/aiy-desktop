@@ -1,5 +1,10 @@
 import type { ExtensionManifestDto } from '@/shared/contracts';
 import { CODEX_CONTENT_APPLICATION_ID } from '@/shared/contracts/content-applications';
+import {
+  CODEX_LOCAL_METRIC_PROVIDER_ID,
+  CODEX_QUOTA_METRIC_PROVIDER_ID,
+  OPENAI_COSTS_METRIC_PROVIDER_ID,
+} from '@/shared/extension-metrics';
 import { EXTENSION_HOST_ENGINE_KEY, EXTENSION_HOST_VERSION } from '@/shared/product';
 import { DEEPSEEK_PROVIDER } from '@/main/assistant-models/deepseek-provider';
 import {
@@ -14,6 +19,8 @@ import {
   ANTIGRAVITY_CLI_PROVIDER_KEY,
   CODEX_APP_SERVER_EXTENSION_ID,
   CODEX_PROVIDER_ID,
+  CPA_IMAGE_API_EXTENSION_ID,
+  CPA_IMAGE_PROVIDER_KEY,
   DEEPSEEK_API_EXTENSION_ID,
   ENGLISH_LANGUAGE_EXTENSION_ID,
   GOOGLE_IMAGE_PROVIDER_ID,
@@ -122,7 +129,7 @@ export const BUILTIN_EXTENSION_MANIFESTS: readonly ExtensionManifestDto[] = [
     manifestVersion: 1,
     kind: 'LANGUAGE',
     id: ENGLISH_LANGUAGE_EXTENSION_ID,
-    version: '0.5.1',
+    version: '0.5.4',
     displayName: 'English',
     description: "Provides the app's English interface.",
     engines: BUILTIN_EXTENSION_ENGINES,
@@ -177,7 +184,7 @@ export const BUILTIN_EXTENSION_MANIFESTS: readonly ExtensionManifestDto[] = [
     manifestVersion: 1,
     kind: 'CAPABILITY',
     id: CODEX_APP_SERVER_EXTENSION_ID,
-    version: '0.3.5',
+    version: '0.3.6',
     displayName: 'Did Codex Work Hard Today?',
     description: 'Connect Codex and manage local task history, usage, images, and visualizations in one workspace.',
     engines: BUILTIN_EXTENSION_ENGINES,
@@ -206,6 +213,7 @@ export const BUILTIN_EXTENSION_MANIFESTS: readonly ExtensionManifestDto[] = [
       ],
       modelProviders: [CODEX_PROVIDER_ID],
       contentApplications: [CODEX_CONTENT_APPLICATION_ID],
+      metricProviders: [CODEX_LOCAL_METRIC_PROVIDER_ID, CODEX_QUOTA_METRIC_PROVIDER_ID],
     },
     permissions: [
       ...new Set([
@@ -239,15 +247,19 @@ export const BUILTIN_EXTENSION_MANIFESTS: readonly ExtensionManifestDto[] = [
     manifestVersion: 1,
     kind: 'CAPABILITY',
     id: OPENAI_IMAGE_API_EXTENSION_ID,
-    version: '0.3.2',
+    version: '0.3.3',
     displayName: 'OpenAI Image API',
     description: 'Call GPT Image models with independent OpenAI API credentials.',
     engines: BUILTIN_EXTENSION_ENGINES,
     contributes: {
       modelProviders: [OPENAI_IMAGE_PROVIDER_KEY],
+      metricProviders: [OPENAI_COSTS_METRIC_PROVIDER_ID],
     },
     permissions: [...OPENAI_IMAGE_API_PERMISSIONS],
-    optionalPermissions: [],
+    optionalPermissions: [
+      EXTENSION_PERMISSION.accountReadOpenAiCosts,
+      EXTENSION_PERMISSION.credentialsUseOpenAiAdminKey,
+    ],
     i18n: {
       defaultLocale: 'en',
       locales: {
@@ -258,6 +270,35 @@ export const BUILTIN_EXTENSION_MANIFESTS: readonly ExtensionManifestDto[] = [
         zh: {
           displayName: 'OpenAI 图像 API',
           description: '使用独立 OpenAI API 凭据调用 GPT Image 模型。',
+        },
+      },
+    },
+  },
+  {
+    manifestVersion: 1,
+    kind: 'CAPABILITY',
+    id: CPA_IMAGE_API_EXTENSION_ID,
+    version: '0.1.0',
+    displayName: 'Codex backend images · CPA',
+    description: 'Generate and edit images through a separately configured CLIProxyAPI service.',
+    engines: BUILTIN_EXTENSION_ENGINES,
+    contributes: { modelProviders: [CPA_IMAGE_PROVIDER_KEY] },
+    permissions: [
+      'network:http://127.0.0.1:8317',
+      EXTENSION_PERMISSION.credentialsUseCpaImageKey,
+      EXTENSION_PERMISSION.libraryReadSelectedReferences,
+    ],
+    optionalPermissions: [EXTENSION_PERMISSION_TEMPLATE.userConfiguredCpaEndpoint],
+    i18n: {
+      defaultLocale: 'en',
+      locales: {
+        en: {
+          displayName: 'Codex backend images · CPA',
+          description: 'Generate and edit images through a separately configured CLIProxyAPI service.',
+        },
+        zh: {
+          displayName: 'Codex 后台图片 · CPA',
+          description: '通过独立配置的 CLIProxyAPI 服务生成和编辑图片。',
         },
       },
     },

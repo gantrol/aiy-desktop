@@ -2,6 +2,12 @@ import { createHash, randomUUID } from 'node:crypto';
 import { constants } from 'node:fs';
 import { copyFile, link, mkdir, open, readdir, rename, rm, writeFile } from 'node:fs/promises';
 import path from 'node:path';
+import { z } from 'zod';
+import { BrowserCompanionBatchStore } from '@/main/browser-companion/batch-store';
+import {
+  HandoffCalendarCapture,
+  type BrowserCompanionCalendarRecorder,
+} from '@/main/browser-companion/handoff-calendar-capture';
 import {
   XIAOHONGSHU_IMAGE_MAX_BYTES,
   XIAOHONGSHU_IMAGE_TYPES,
@@ -16,6 +22,7 @@ import {
   browserCompanionMediaMimeTypeSchema,
   browserCompanionPersistedRecordSchema,
   browserCompanionRecordBaseSchema,
+  browserCompanionCalendarCaptureSchema,
   normalizeBrowserCompanionRecord,
   type BrowserCompanionClaimedRecord,
   type BrowserCompanionDeliveredRecord,
@@ -39,6 +46,17 @@ const CLAIM_LEASE_MS = 2 * 60 * 1000;
 const ARTICLE_CLAIM_LEASE_MS = 10 * 60 * 1000;
 const MAX_HISTORY_ITEMS = 10_000;
 const STATE_DIRECTORIES = ['ready', 'claimed', 'delivered'] as const;
+const deletionReceiptSchema = z
+  .object({
+    schemaVersion: z.literal(1),
+    handoffId: browserCompanionRecordBaseSchema.shape.handoffId,
+    deletedAt: z.string().datetime({ offset: true }),
+    batchId: browserCompanionRecordBaseSchema.shape.batchId,
+    target: browserCompanionRecordBaseSchema.shape.target.optional(),
+    calendarCapture: browserCompanionCalendarCaptureSchema.optional(),
+  })
+  .strict()
+  .refine((receipt) => !receipt.batchId || Boolean(receipt.target));
 
 const MEDIA_EXTENSIONS: Record<BrowserCompanionMediaMimeType, string> = {
   'image/png': '.png',
@@ -106,6 +124,7 @@ function baseRecord(record: BrowserCompanionRecord): BrowserCompanionRecordBase 
   return browserCompanionRecordBaseSchema.parse({
     schemaVersion: 4,
     handoffId: record.handoffId,
+    ...(record.batchId ? { batchId: record.batchId } : {}),
     target: record.target,
     source: record.source,
     contentKind: record.contentKind,
@@ -115,12 +134,14 @@ function baseRecord(record: BrowserCompanionRecord): BrowserCompanionRecordBase 
     text: record.text,
     media: record.media,
     createdAt: record.createdAt,
+    ...(record.calendarCapture ? { calendarCapture: record.calendarCapture } : {}),
   });
 }
 
 function historyItem(record: BrowserCompanionRecord, state: HandoffStateDirectory): BrowserCompanionHistoryItem {
   return browserCompanionHistoryItemSchema.parse({
     handoffId: record.handoffId,
+    ...(record.batchId ? { batchId: record.batchId } : {}),
     target: record.target,
     source: record.source,
     contentKind: record.contentKind,
@@ -133,12 +154,12 @@ function historyItem(record: BrowserCompanionRecord, state: HandoffStateDirector
   });
 }
 
-async function readBoundedRecord(filePath: string): Promise<BrowserCompanionRecord | null> {
+async function readBoundedJson(filePath: string): Promise<unknown> {
   let handle: Awaited<ReturnType<typeof open>>;
   try {
     handle = await open(filePath, 'r');
   } catch (reason) {
-    if (hasErrorCode(reason, 'ENOENT')) return null;
+    if (hasErrorCode(reason, 'ENOENT')) return undefined;
     throw reason;
   }
 
@@ -170,14 +191,20 @@ async function readBoundedRecord(filePath: string): Promise<BrowserCompanionReco
     } catch {
       throw new BrowserCompanionStateError('Browser companion handoff file is not valid JSON');
     }
-    const validated = browserCompanionPersistedRecordSchema.safeParse(parsed);
-    if (!validated.success) {
-      throw new BrowserCompanionStateError('Browser companion handoff file does not match its schema');
-    }
-    return normalizeBrowserCompanionRecord(validated.data);
+    return parsed;
   } finally {
     await handle.close();
   }
+}
+
+async function readBoundedRecord(filePath: string): Promise<BrowserCompanionRecord | null> {
+  const parsed = await readBoundedJson(filePath);
+  if (parsed === undefined) return null;
+  const validated = browserCompanionPersistedRecordSchema.safeParse(parsed);
+  if (!validated.success) {
+    throw new BrowserCompanionStateError('Browser companion handoff file does not match its schema');
+  }
+  return normalizeBrowserCompanionRecord(validated.data);
 }
 
 async function writeBoundedJson(filePath: string, value: unknown, flag: 'w' | 'wx'): Promise<void> {
@@ -220,8 +247,32 @@ async function hashFile(filePath: string, expectedBytes: number): Promise<string
 
 export class BrowserCompanionHandoffStore {
   private pendingStateOperation: Promise<unknown> = Promise.resolve();
+  private readonly calendar = new HandoffCalendarCapture();
 
-  constructor(private readonly directoryPath: string) {}
+  setCalendarRecorder(recorder: BrowserCompanionCalendarRecorder) {
+    this.calendar.setRecorder(recorder);
+  }
+
+  /** Only durable, host-bound receipts are replayed; inspecting legacy history creates no events. */
+  async replayCalendarEvents() {
+    return this.withStateLock(async () => {
+      await this.ensureDirectories();
+      await this.recoverInterruptedClaims();
+      for (const state of STATE_DIRECTORIES) {
+        for (const record of await this.recordsForState(state)) this.calendar.capture(record);
+      }
+      for (const handoffId of await this.listIds('deleted')) {
+        const stored = await readBoundedJson(this.statePath('deleted', handoffId));
+        const receipt = deletionReceiptSchema.safeParse(stored);
+        if (receipt.success) this.calendar.capture(receipt.data);
+      }
+    });
+  }
+  readonly batches: BrowserCompanionBatchStore;
+
+  constructor(private readonly directoryPath: string) {
+    this.batches = new BrowserCompanionBatchStore(path.join(directoryPath, 'batches'));
+  }
 
   // Recovery and history must not observe the intermediate files of a live transition.
   private withStateLock<T>(operation: () => Promise<T>): Promise<T> {
@@ -255,8 +306,10 @@ export class BrowserCompanionHandoffStore {
     ]);
   }
 
-  private async listIds(state: HandoffStateDirectory): Promise<string[]> {
-    const entries = await readdir(this.stateDirectory(state), { withFileTypes: true });
+  private async listIds(state: HandoffStateDirectory | 'deleted'): Promise<string[]> {
+    const entries = await readdir(this.stateDirectory(state), {
+      withFileTypes: true,
+    });
     return entries.flatMap((entry) => {
       if (!entry.isFile() || path.extname(entry.name) !== '.json') return [];
       const handoffId = path.basename(entry.name, '.json');
@@ -322,7 +375,11 @@ export class BrowserCompanionHandoffStore {
         const fileName = path.basename(source.suggestedName);
         const destination = path.join(directory, `${mediaId}${MEDIA_EXTENSIONS[mimeType]}`);
         if (source.kind === 'file') await copyFile(source.absolutePath, destination, constants.COPYFILE_EXCL);
-        else await writeFile(destination, source.bytes, { flag: 'wx', mode: 0o600 });
+        else
+          await writeFile(destination, source.bytes, {
+            flag: 'wx',
+            mode: 0o600,
+          });
         staged.push({
           mediaId,
           fileName,
@@ -355,19 +412,22 @@ export class BrowserCompanionHandoffStore {
         } catch (reason) {
           if (!hasErrorCode(reason, 'ENOENT')) throw reason;
         }
+        this.calendar.capture(delivered.data);
         continue;
       }
 
       const claimed = browserCompanionClaimedRecordSchema.safeParse(record);
       if (claimed.success && Date.parse(claimed.data.leaseExpiresAt) > now) continue;
 
-      await writeBoundedJson(claimedPath, baseRecord(record), 'w');
+      const released = claimed.success ? this.calendar.append(baseRecord(record), 'INTERRUPTED') : baseRecord(record);
+      await writeBoundedJson(claimedPath, released, 'w');
       try {
         await rename(claimedPath, this.statePath('ready', handoffId));
       } catch (reason) {
         if (hasErrorCode(reason, 'ENOENT')) continue;
         throw new BrowserCompanionStateError('Browser companion could not recover an interrupted claim');
       }
+      this.calendar.capture(released);
     }
   }
 
@@ -396,17 +456,24 @@ export class BrowserCompanionHandoffStore {
   async stage(
     input: BrowserCompanionStageInput,
     mediaSources: readonly BrowserCompanionMediaSource[] = [],
+    batchId?: string,
+    calendarLibraryId?: string,
   ): Promise<BrowserCompanionHistoryItem> {
     if (input.target === 'xiaohongshu') {
-      const error = xiaohongshuHandoffError({ ...input, mediaCount: mediaSources.length });
+      const error = xiaohongshuHandoffError({
+        ...input,
+        mediaCount: mediaSources.length,
+      });
       if (error) throw new Error(error);
     }
     await this.ensureDirectories();
     const handoffId = randomUUID();
     const media = await this.stageMedia(handoffId, mediaSources, input.target);
+    const createdAt = new Date().toISOString();
     const record = browserCompanionRecordBaseSchema.parse({
       schemaVersion: 4,
       handoffId,
+      ...(batchId ? { batchId } : {}),
       target: input.target,
       source: input.source,
       contentKind: input.contentKind,
@@ -415,14 +482,33 @@ export class BrowserCompanionHandoffStore {
       ...(input.articleCoverMediaIndex !== undefined ? { articleCoverMediaIndex: input.articleCoverMediaIndex } : {}),
       text: input.text,
       media,
-      createdAt: new Date().toISOString(),
+      createdAt,
+      ...(calendarLibraryId
+        ? {
+            calendarCapture: {
+              libraryId: calendarLibraryId,
+              sourceType:
+                input.source.kind === 'article'
+                  ? 'ARTICLE'
+                  : input.source.kind === 'social-post'
+                    ? 'SOCIAL_POST_DRAFT'
+                    : 'CREATION_DRAFT',
+              sourceId: input.source.id,
+              events: [{ id: randomUUID(), operation: 'HANDOFF', observedAt: createdAt }],
+            },
+          }
+        : {}),
     });
     try {
       await writeBoundedJson(this.statePath('ready', record.handoffId), record, 'wx');
     } catch (reason) {
-      await rm(this.mediaDirectory(handoffId), { recursive: true, force: true });
+      await rm(this.mediaDirectory(handoffId), {
+        recursive: true,
+        force: true,
+      });
       throw reason;
     }
+    this.calendar.capture(record);
     return historyItem(record, 'ready');
   }
 
@@ -451,14 +537,18 @@ export class BrowserCompanionHandoffStore {
     }
 
     const claimedAt = new Date();
-    const claimed = browserCompanionClaimedRecordSchema.parse({
-      ...parsed.data,
-      completionToken: randomUUID(),
-      claimedAt: claimedAt.toISOString(),
-      leaseExpiresAt: new Date(
-        claimedAt.getTime() + (parsed.data.contentKind === 'article-body' ? ARTICLE_CLAIM_LEASE_MS : CLAIM_LEASE_MS),
-      ).toISOString(),
-    });
+    const claimed = this.calendar.append(
+      browserCompanionClaimedRecordSchema.parse({
+        ...parsed.data,
+        completionToken: randomUUID(),
+        claimedAt: claimedAt.toISOString(),
+        leaseExpiresAt: new Date(
+          claimedAt.getTime() + (parsed.data.contentKind === 'article-body' ? ARTICLE_CLAIM_LEASE_MS : CLAIM_LEASE_MS),
+        ).toISOString(),
+      }),
+      'CLAIM',
+      claimedAt.toISOString(),
+    );
     try {
       await writeBoundedJson(claimedPath, claimed, 'w');
     } catch (reason) {
@@ -466,6 +556,8 @@ export class BrowserCompanionHandoffStore {
       await rename(claimedPath, readyPath).catch(() => undefined);
       throw reason;
     }
+
+    this.calendar.capture(claimed);
 
     return {
       protocolVersion: BROWSER_COMPANION_PROTOCOL_VERSION,
@@ -501,13 +593,18 @@ export class BrowserCompanionHandoffStore {
       }
 
       const candidates = (await this.recordsForState('ready'))
-        .filter((record) => record.target === target)
+        // Batch tasks can only be claimed by their explicit handoff ID, including by older companions.
+        .filter((record) => record.target === target && !record.batchId)
         .sort((left, right) => Date.parse(right.createdAt) - Date.parse(left.createdAt));
       for (const candidate of candidates) {
         const response = await this.claimRecord(candidate.handoffId, target);
         if (response) return response;
       }
-      return { protocolVersion: BROWSER_COMPANION_PROTOCOL_VERSION, ok: true, kind: 'empty' };
+      return {
+        protocolVersion: BROWSER_COMPANION_PROTOCOL_VERSION,
+        ok: true,
+        kind: 'empty',
+      };
     });
   }
 
@@ -567,11 +664,16 @@ export class BrowserCompanionHandoffStore {
       const record = await this.claimedRecord(handoffId, completionToken, target);
       if ('kind' in record) return record;
 
-      const delivered = browserCompanionDeliveredRecordSchema.parse({
-        ...baseRecord(record),
-        claimedAt: record.claimedAt,
-        deliveredAt: new Date().toISOString(),
-      });
+      const deliveredAt = new Date().toISOString();
+      const delivered = this.calendar.append(
+        browserCompanionDeliveredRecordSchema.parse({
+          ...baseRecord(record),
+          claimedAt: record.claimedAt,
+          deliveredAt,
+        }),
+        'DELIVER',
+        deliveredAt,
+      );
       const claimedPath = this.statePath('claimed', handoffId);
       await writeBoundedJson(claimedPath, delivered, 'w');
       try {
@@ -580,7 +682,13 @@ export class BrowserCompanionHandoffStore {
         if (!hasErrorCode(reason, 'ENOENT')) throw reason;
         return companionError('HANDOFF_NOT_FOUND');
       }
-      return { protocolVersion: BROWSER_COMPANION_PROTOCOL_VERSION, ok: true, kind: 'completed', handoffId };
+      this.calendar.capture(delivered);
+      return {
+        protocolVersion: BROWSER_COMPANION_PROTOCOL_VERSION,
+        ok: true,
+        kind: 'completed',
+        handoffId,
+      };
     });
   }
 
@@ -607,30 +715,71 @@ export class BrowserCompanionHandoffStore {
       if ('kind' in record) return record;
 
       const claimedPath = this.statePath('claimed', handoffId);
-      await writeBoundedJson(claimedPath, baseRecord(record), 'w');
+      const released = this.calendar.append(baseRecord(record), 'RELEASE');
+      await writeBoundedJson(claimedPath, released, 'w');
       try {
         await rename(claimedPath, this.statePath('ready', handoffId));
       } catch (reason) {
         if (hasErrorCode(reason, 'ENOENT')) return companionError('HANDOFF_NOT_FOUND');
         throw reason;
       }
-      return { protocolVersion: BROWSER_COMPANION_PROTOCOL_VERSION, ok: true, kind: 'released', handoffId };
+      this.calendar.capture(released);
+      return {
+        protocolVersion: BROWSER_COMPANION_PROTOCOL_VERSION,
+        ok: true,
+        kind: 'released',
+        handoffId,
+      };
     });
   }
 
-  async listHistory(): Promise<BrowserCompanionHistoryItem[]> {
+  async listHistory(batch?: {
+    batchId: string;
+    targets: readonly BrowserCompanionTarget[];
+  }): Promise<BrowserCompanionHistoryItem[]> {
     return this.withStateLock(async () => {
       await this.ensureDirectories();
       await this.recoverInterruptedClaims();
       const records = await Promise.all(
         STATE_DIRECTORIES.map(async (state) =>
-          (await this.recordsForState(state)).map((record) => historyItem(record, state)),
+          (await this.recordsForState(state)).map((record) => {
+            this.calendar.capture(record);
+            return historyItem(record, state);
+          }),
         ),
       );
       return records
         .flat()
+        .filter((item) => !batch || (item.batchId === batch.batchId && batch.targets.includes(item.target)))
         .sort((left, right) => Date.parse(right.createdAt) - Date.parse(left.createdAt))
         .slice(0, MAX_HISTORY_ITEMS);
+    });
+  }
+
+  async deletedBatchHandoffIds(batch: {
+    batchId: string;
+    targets: readonly BrowserCompanionTarget[];
+  }): Promise<string[]> {
+    return this.withStateLock(async () => {
+      await this.ensureDirectories();
+      const ids: string[] = [];
+      // These receipts stay outside visible history but remain available for exact cleanup retries.
+      for (const handoffId of await this.listIds('deleted')) {
+        const stored = await readBoundedJson(this.statePath('deleted', handoffId));
+        if (stored === undefined) continue;
+        const receipt = deletionReceiptSchema.safeParse(stored);
+        const record = receipt.success
+          ? receipt.data
+          : normalizeBrowserCompanionRecord(browserCompanionPersistedRecordSchema.parse(stored));
+        if (
+          record.handoffId === handoffId &&
+          record.batchId === batch.batchId &&
+          record.target &&
+          batch.targets.includes(record.target)
+        )
+          ids.push(handoffId);
+      }
+      return ids;
     });
   }
 
@@ -652,10 +801,36 @@ export class BrowserCompanionHandoffStore {
             if (!hasErrorCode(reason, 'ENOENT')) throw reason;
           }
         }
-        if (!moved) continue;
-
-        await writeBoundedJson(deletedPath, { schemaVersion: 1, handoffId, deletedAt: new Date().toISOString() }, 'w');
+        const stored = await readBoundedJson(deletedPath);
+        if (stored === undefined) continue;
+        const previousReceipt = deletionReceiptSchema.safeParse(stored);
+        let receipt: z.infer<typeof deletionReceiptSchema>;
+        if (previousReceipt.success) {
+          receipt = previousReceipt.data;
+        } else {
+          // A crash after rename can leave the old full record here. Recover its exact identity first.
+          const record = normalizeBrowserCompanionRecord(browserCompanionPersistedRecordSchema.parse(stored));
+          receipt = this.calendar.append(
+            deletionReceiptSchema.parse({
+              schemaVersion: 1,
+              handoffId: record.handoffId,
+              deletedAt: new Date().toISOString(),
+              target: record.target,
+              ...(record.batchId ? { batchId: record.batchId } : {}),
+              ...(record.calendarCapture ? { calendarCapture: record.calendarCapture } : {}),
+            }),
+            'DELETE',
+          );
+        }
+        if (receipt.handoffId !== handoffId) throw new BrowserCompanionStateError('Deleted handoff identity mismatch');
+        // Keep only the identity needed to retry cleanup, before touching other durable records.
+        if (moved || !previousReceipt.success) await writeBoundedJson(deletedPath, receipt, 'w');
+        this.calendar.capture(receipt);
+        if (receipt.batchId && receipt.target) {
+          await this.batches.deleteItems(receipt.batchId, [receipt.target], handoffId);
+        }
         await rm(this.mediaDirectory(handoffId), { recursive: true, force: true });
+        // A prior deletion receipt also confirms success, so a UI retry can remove its stale row.
         deletedHandoffIds.push(handoffId);
       }
 

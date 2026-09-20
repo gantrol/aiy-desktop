@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { ARTICLE_COVER_RATIOS } from '@/shared/article-covers';
 
 const idSchema = z.string().min(1).max(200);
 const promptSchema = z.string().trim().min(1).max(30_000);
@@ -14,11 +15,14 @@ export const articleInlineVisualAnchorSchema = z
   })
   .strict();
 
+export const articleCoverVisualAnchorSchema = z.object({ coverRatio: z.enum(ARTICLE_COVER_RATIOS) }).strict();
+
 const derivedVisualWorkspaceCreateInputSchema = z.discriminatedUnion('role', [
   z
     .object({
       mode: z.literal('CREATE'),
       role: z.literal('ARTICLE_HEADER'),
+      coverRatio: z.enum(ARTICLE_COVER_RATIOS).optional(),
       workspaceTitle: workspaceTitleSchema,
       sourceFormId: idSchema,
       articleId: idSchema,

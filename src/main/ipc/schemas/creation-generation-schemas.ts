@@ -5,6 +5,7 @@ import { contentSourceSchema } from '@/shared/contracts/content-library';
 import { creationDraftLoadInputSchema } from '@/shared/contracts/creation-draft';
 import { creatorImageImportMimeTypeSchema } from '@/shared/contracts/creator-import';
 import { z } from 'zod';
+import { generationQualitySchema } from '@/shared/generation-quality';
 
 export const localeSchema = z.enum(['zh', 'en']);
 
@@ -138,7 +139,7 @@ export const assistSchema = z.object({
       z.object({
         modelKey: id,
         count: z.number().int().min(1).max(100),
-        quality: z.enum(['low', 'medium', 'high']),
+        quality: generationQualitySchema,
       }),
     )
     .max(20)
@@ -318,7 +319,7 @@ export const generationBaseSchema = z.object({
   canvasPresetKey: z.string().min(1).max(100).nullable(),
   width: z.number().int().min(256).max(4096).nullable(),
   height: z.number().int().min(256).max(4096).nullable(),
-  quality: z.enum(['low', 'medium', 'high']),
+  quality: generationQualitySchema,
 });
 
 export const validateGenerationCanvas = (
@@ -368,7 +369,7 @@ export const generationBatchSchema = z.object({
       z.object({
         modelKey: id,
         count: z.number().int().min(1).max(100),
-        quality: z.enum(['low', 'medium', 'high']),
+        quality: generationQualitySchema,
       }),
     )
     .min(1)
@@ -485,7 +486,7 @@ export const generationVersionSchema = z
     canvasPresetKey: z.string().min(1).max(100).nullable(),
     width: z.number().int().min(256).max(4096).nullable(),
     height: z.number().int().min(256).max(4096).nullable(),
-    quality: z.enum(['low', 'medium', 'high']),
+    quality: generationQualitySchema,
   })
   .strict()
   .superRefine(validateGenerationCanvas);
@@ -496,7 +497,7 @@ export const codexImageRefinementSchema = z
     sourceAssetId: id,
     annotationIds: z.array(id).min(1).max(100),
     locale: localeSchema,
-    quality: z.enum(['low', 'medium', 'high']),
+    quality: generationQualitySchema,
   })
   .strict()
   .refine((value) => new Set(value.annotationIds).size === value.annotationIds.length, {
@@ -512,7 +513,7 @@ export const imageEditStartSchema = z
     modelKey: id,
     mode: z.enum(['AUTO', 'SEMANTIC', 'MASK']),
     locale: localeSchema,
-    quality: z.enum(['low', 'medium', 'high']),
+    quality: generationQualitySchema,
   })
   .strict()
   .refine((value) => new Set(value.annotationIds).size === value.annotationIds.length, {
@@ -531,7 +532,7 @@ export const imageEditBatchStartSchema = z
           .object({
             modelKey: id,
             count: z.number().int().min(1).max(100),
-            quality: z.enum(['low', 'medium', 'high']),
+            quality: generationQualitySchema,
           })
           .strict(),
       )
@@ -651,7 +652,7 @@ export const creationDraftSaveSchema = z.object({
   wordPaletteReferences: z.array(wordPaletteReferenceSchema).max(50),
   dictionaryScope: creationDictionaryScopeSchema,
   canvasPresetKey: z.string().max(100).nullable(),
-  quality: z.enum(['low', 'medium', 'high']),
+  quality: generationQualitySchema,
   selectedModelKeys: z.array(id).max(20),
   repeatCount: z.number().int().min(1).max(100),
   modelTargets: z
@@ -659,7 +660,7 @@ export const creationDraftSaveSchema = z.object({
       z.object({
         modelKey: id,
         count: z.number().int().min(1).max(100),
-        quality: z.enum(['low', 'medium', 'high']),
+        quality: generationQualitySchema,
       }),
     )
     .max(20)
@@ -686,6 +687,8 @@ export const creationDraftStartSchema = z
   .strict();
 
 export const creationDraftCommitSchema = z.object({
+  seriesId: z.string().min(1).max(200).nullable().optional(),
+  baseVersionId: z.string().min(1).max(200).nullable().optional(),
   creationDraftId: id,
   inspirationStashId: id.nullable().optional().default(null),
   imageBreakdownId: id.nullable().optional().default(null),
@@ -720,7 +723,7 @@ export const creationInputSnapshotSchema = z.object({
       z.object({
         modelKey: id,
         count: z.number().int().min(1).max(100),
-        quality: z.enum(['low', 'medium', 'high']),
+        quality: generationQualitySchema,
       }),
     )
     .min(1)

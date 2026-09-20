@@ -103,6 +103,7 @@ export function ModelGenerationSettingsTable(props: Props) {
                     <QualityPicker
                       locale={locale}
                       value={target.quality}
+                      supportedQualities={model?.supportedQualities}
                       toolbar
                       ariaLabel={labels.modelQuality(name)}
                       onChange={(quality) => updateTarget(target.modelKey, { quality })}

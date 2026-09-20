@@ -3,30 +3,20 @@ import { imageImportItems } from '@/renderer/components/creator/imageImport';
 import { Button } from '@/renderer/components/ui/button';
 import { Input } from '@/renderer/components/ui/input';
 import { Popover, PopoverContent, PopoverTrigger } from '@/renderer/components/ui/popover';
-import { Separator } from '@/renderer/components/ui/separator';
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/renderer/components/ui/tooltip';
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/renderer/components/ui/tooltip';
 import {
   editorImageFromAsset,
   type ImportedEditorImage,
   type VideoDocumentEditorImageImport,
 } from '@/renderer/features/content-editor/contentImageAsset';
-import { beginContentImageInsertion } from '@/renderer/features/content-editor/contentImageInsertion';
+import { insertRevealBlock } from '@/renderer/features/content-editor/contentRevealExtension';
+import { useContentMenuAction } from '@/renderer/features/content-editor/useContentMenuAction';
 import { contentImageApi, stageContentImage } from '@/renderer/features/content-editor/contentImageRecovery';
-import { VideoDocumentFramePicker } from '@/renderer/features/video-documents/VideoDocumentFramePicker';
-import {
-  VideoDocumentImageOperations,
-  type VideoDocumentImageControlsLabels,
-} from '@/renderer/features/video-documents/VideoDocumentImageOperations';
-import {
-  VideoDocumentTableMenu,
-  VideoDocumentTableOperations,
-  type VideoDocumentTableControlsLabels,
-} from '@/renderer/features/video-documents/VideoDocumentTableControls';
-import {
-  insertVideoDocumentImage,
-  videoDocumentFrameImageAttributes,
-} from '@/renderer/features/video-documents/videoDocumentEditorMedia';
+import { type VideoDocumentImageControlsLabels } from '@/renderer/features/video-documents/VideoDocumentImageOperations';
+import type { VideoDocumentTableControlsLabels } from '@/renderer/features/video-documents/VideoDocumentTableControls';
 import { cn } from '@/renderer/lib/utils';
+import { useI18n } from '@/renderer/i18n/useI18n';
+import { VideoDocumentWysiwygToolbarView } from '@/renderer/features/video-documents/VideoDocumentWysiwygToolbarView';
 import type {
   ContentCommentDto,
   ArticleEditTrailEntryDto,
@@ -38,33 +28,19 @@ import type {
 } from '@/shared/contracts';
 import type { Editor } from '@tiptap/core';
 import {
-  BoldIcon,
   CheckIcon,
   ChevronDownIcon,
   ChevronLeftIcon,
   ChevronRightIcon,
-  Code2Icon,
   ImagePlusIcon,
-  ItalicIcon,
   LinkIcon,
-  ListChecksIcon,
-  ListIcon,
-  ListOrderedIcon,
   MapPinIcon,
-  MessageSquareIcon,
   MessageSquarePlusIcon,
-  MinusIcon,
-  QuoteIcon,
-  Redo2Icon,
   RouteIcon,
-  SearchIcon,
-  StrikethroughIcon,
-  Undo2Icon,
   UnlinkIcon,
-  UploadIcon,
 } from 'lucide-react';
 import type { ReactNode } from 'react';
-import { useRef, useState } from 'react';
+import { useState } from 'react';
 export { videoDocumentEditorImageFromAsset } from '@/renderer/features/content-editor/contentImageAsset';
 export type {
   ImportedEditorImage,
@@ -101,6 +77,11 @@ export async function importVideoDocumentEditorImage(
 
 export interface VideoDocumentWysiwygEditorLabels
   extends VideoDocumentTableControlsLabels, VideoDocumentImageControlsLabels {
+  more: string;
+  formatting: string;
+  insert: string;
+  articleTools: string;
+  review: string;
   headingMenu: string;
   paragraph: string;
   heading2: string;
@@ -161,6 +142,8 @@ export interface VideoDocumentWysiwygToolbarState {
   link: boolean;
   codeBlock: boolean;
   blockquote: boolean;
+  details: boolean;
+  reveal: boolean;
   table: boolean;
   canUndo: boolean;
   canRedo: boolean;
@@ -202,7 +185,14 @@ interface FormatButtonProps {
   children: ReactNode;
 }
 
-function FormatButton({ label, active = false, disabled = false, expanded, onClick, children }: FormatButtonProps) {
+export function FormatButton({
+  label,
+  active = false,
+  disabled = false,
+  expanded,
+  onClick,
+  children,
+}: FormatButtonProps) {
   return (
     <Tooltip>
       <TooltipTrigger asChild>
@@ -227,16 +217,19 @@ function FormatButton({ label, active = false, disabled = false, expanded, onCli
   );
 }
 
-function HeadingMenu({
+export function HeadingMenu({
   editor,
   state,
   labels,
+  textLabel = false,
 }: {
   editor: Editor;
   state: VideoDocumentWysiwygToolbarState;
   labels: VideoDocumentWysiwygEditorLabels;
+  textLabel?: boolean;
 }) {
   const [open, setOpen] = useState(false);
+  const menu = useContentMenuAction();
   const options = [
     { level: 0 as const, label: labels.paragraph, shortcut: '' },
     ...([2, 3, 4, 5, 6] as const).map((level) => ({
@@ -256,11 +249,17 @@ function HeadingMenu({
           aria-label={labels.headingMenu}
           title={labels.headingMenu}
         >
-          {state.headingLevel ? `H${state.headingLevel}` : '¶'}
+          {textLabel
+            ? state.headingLevel
+              ? labels[`heading${state.headingLevel}`]
+              : labels.paragraph
+            : state.headingLevel
+              ? `H${state.headingLevel}`
+              : '¶'}
           <ChevronDownIcon className="size-3 opacity-60" />
         </Button>
       </PopoverTrigger>
-      <PopoverContent align="start" className="w-52 p-1">
+      <PopoverContent align="start" className="w-52 p-1" onCloseAutoFocus={menu.onCloseAutoFocus}>
         {options.map((option) => (
           <Button
             key={option.level}
@@ -270,7 +269,7 @@ function HeadingMenu({
             onClick={() => {
               if (option.level === 0) editor.chain().focus().setParagraph().run();
               else editor.chain().focus().setHeading({ level: option.level }).run();
-              setOpen(false);
+              menu.run(() => setOpen(false));
             }}
           >
             <span className="w-5 font-mono text-muted-foreground">{option.level ? `H${option.level}` : '¶'}</span>
@@ -286,7 +285,7 @@ function HeadingMenu({
   );
 }
 
-function LinkMenu({
+export function LinkMenu({
   editor,
   active,
   labels,
@@ -297,12 +296,13 @@ function LinkMenu({
 }) {
   const [open, setOpen] = useState(false);
   const [href, setHref] = useState('');
+  const menu = useContentMenuAction();
 
   function apply() {
     const value = href.trim();
     if (!value) return;
     editor.chain().focus().extendMarkRange('link').setLink({ href: value }).run();
-    setOpen(false);
+    menu.run(() => setOpen(false));
   }
 
   return (
@@ -320,7 +320,7 @@ function LinkMenu({
           </FormatButton>
         </span>
       </PopoverTrigger>
-      <PopoverContent align="start" className="w-72 p-2">
+      <PopoverContent align="start" className="w-72 p-2" onCloseAutoFocus={menu.onCloseAutoFocus}>
         <div className="flex items-center gap-1.5">
           <Input
             value={href}
@@ -344,7 +344,7 @@ function LinkMenu({
               aria-label={labels.removeLink}
               onClick={() => {
                 editor.chain().focus().extendMarkRange('link').unsetLink().run();
-                setOpen(false);
+                menu.run(() => setOpen(false));
               }}
             >
               <UnlinkIcon className="size-3.5" />
@@ -412,8 +412,33 @@ function ArticleEditTrailMenu({ controls }: { controls: VideoDocumentArticleElem
   );
 }
 
-interface Props {
+export function ArticleElementReviewButtons({
+  articleElementId,
+  controls,
+}: {
+  articleElementId: string | null;
+  controls: VideoDocumentArticleElementControls;
+}) {
+  return (
+    <>
+      <FormatButton
+        label={controls.commentLabel}
+        disabled={!articleElementId || controls.busy}
+        onClick={controls.onAddComment}
+      >
+        <MessageSquarePlusIcon className="size-3.5" />
+      </FormatButton>
+      <ArticleEditTrailMenu controls={controls} />
+    </>
+  );
+}
+
+export interface Props {
+  toolbarPreset?: 'full' | 'compact';
+  figureAssetIds?: readonly string[];
   embedded?: boolean;
+  outlineMode?: boolean;
+  interactionsEnabled?: boolean;
   referenceAction?: ReactNode;
   onImageOperation?(operation: Promise<void>): void;
   importImage?: typeof importVideoDocumentEditorImage;
@@ -436,231 +461,57 @@ interface Props {
   articleElementControls?: VideoDocumentArticleElementControls;
 }
 
-export function VideoDocumentWysiwygToolbar({
-  embedded,
-  referenceAction,
-  importImage = importVideoDocumentEditorImage,
-  onImageOperation,
+export function ArticleInteractionButtons({
   editor,
   state,
-  labels,
-  documentId,
-  sourceVideoUrl,
-  currentTimeMs = 0,
-  durationMs = 0,
-  timelineSegments = [],
-  mediaBindings,
-  onFrameCaptured,
-  onImageImported,
-  onImageImportError,
-  searchOpen,
-  onSearchToggle,
-  illustrationLabel,
-  onIllustrationRequest,
-  articleElementControls,
-}: Props) {
-  const imageInputRef = useRef<HTMLInputElement>(null);
-  const [uploadingImage, setUploadingImage] = useState(false);
-  const selectedImageTimestampMs = state.imageSourcePath
-    ? (mediaBindings.find((binding) => binding.path === state.imageSourcePath)?.timestampMs ?? null)
-    : null;
-
-  async function uploadImage(file: File) {
-    setUploadingImage(true);
-    try {
-      await beginContentImageInsertion(editor, file, 'UPLOAD', importImage, onImageImported, onImageImportError);
-    } catch {
-      if (!editor.isDestroyed) onImageImportError();
-    } finally {
-      setUploadingImage(false);
-    }
-  }
-
+}: {
+  editor: Editor;
+  state: VideoDocumentWysiwygToolbarState;
+}) {
+  const copy = useI18n().messages.videoDocuments.editor.richText;
   return (
-    <TooltipProvider delayDuration={450}>
-      <div
-        className={cn(
-          'z-30 flex min-h-8 items-center gap-0.5 overflow-x-auto px-1.5 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden',
-          embedded
-            ? 'relative bg-transparent text-inherit'
-            : 'sticky top-0 min-h-9 border-b bg-background/96 backdrop-blur-sm',
-        )}
+    <>
+      <FormatButton
+        label={state.details ? copy.removeDetails : copy.details}
+        active={state.details}
+        disabled={state.reveal}
+        onClick={() => {
+          if (state.details) editor.chain().focus().unsetDetails().run();
+          else editor.chain().focus().setDetails().insertContent(copy.detailsSummary).run();
+        }}
       >
-        <HeadingMenu editor={editor} state={state} labels={labels} />
-        <Separator orientation="vertical" className="mx-1 h-4" />
-        <FormatButton label={labels.bold} active={state.bold} onClick={() => editor.chain().focus().toggleBold().run()}>
-          <BoldIcon className="size-3.5" />
-        </FormatButton>
-        <FormatButton
-          label={labels.italic}
-          active={state.italic}
-          onClick={() => editor.chain().focus().toggleItalic().run()}
-        >
-          <ItalicIcon className="size-3.5" />
-        </FormatButton>
-        <FormatButton
-          label={labels.strike}
-          active={state.strike}
-          onClick={() => editor.chain().focus().toggleStrike().run()}
-        >
-          <StrikethroughIcon className="size-3.5" />
-        </FormatButton>
-        <Separator orientation="vertical" className="mx-1 h-4" />
-        <FormatButton
-          label={labels.bulletList}
-          active={state.bulletList}
-          onClick={() => editor.chain().focus().toggleBulletList().run()}
-        >
-          <ListIcon className="size-3.5" />
-        </FormatButton>
-        <FormatButton
-          label={labels.orderedList}
-          active={state.orderedList}
-          onClick={() => editor.chain().focus().toggleOrderedList().run()}
-        >
-          <ListOrderedIcon className="size-3.5" />
-        </FormatButton>
-        <FormatButton
-          label={labels.taskList}
-          active={state.taskList}
-          onClick={() => editor.chain().focus().toggleTaskList().run()}
-        >
-          <ListChecksIcon className="size-3.5" />
-        </FormatButton>
-        <Separator orientation="vertical" className="mx-1 h-4" />
-        <LinkMenu editor={editor} active={state.link} labels={labels} />
-        {referenceAction}
-        <FormatButton
-          label={labels.blockquote}
-          active={state.blockquote}
-          onClick={() => editor.chain().focus().toggleBlockquote().run()}
-        >
-          <QuoteIcon className="size-3.5" />
-        </FormatButton>
-        <FormatButton
-          label={labels.codeBlock}
-          active={state.codeBlock}
-          onClick={() => editor.chain().focus().toggleCodeBlock().run()}
-        >
-          <Code2Icon className="size-3.5" />
-        </FormatButton>
-        <VideoDocumentTableMenu editor={editor} active={state.table} labels={labels} />
-        <FormatButton label={labels.horizontalRule} onClick={() => editor.chain().focus().setHorizontalRule().run()}>
-          <MinusIcon className="size-3.5" />
-        </FormatButton>
-        <Separator orientation="vertical" className="mx-1 h-4" />
-        {!state.image && (
-          <FormatButton
-            label={labels.uploadImage}
-            disabled={uploadingImage}
-            onClick={() => imageInputRef.current?.click()}
-          >
-            <UploadIcon className={uploadingImage ? 'size-3.5 animate-pulse' : 'size-3.5'} />
-          </FormatButton>
-        )}
-        {illustrationLabel && onIllustrationRequest && (
-          <FormatButton
-            label={illustrationLabel}
-            disabled={!state.selectedText}
-            onClick={() => onIllustrationRequest(state.selectedText)}
-          >
-            <ImagePlusIcon className="size-3.5" />
-          </FormatButton>
-        )}
-        {documentId && durationMs > 0 && (
-          <VideoDocumentFramePicker
-            documentId={documentId}
-            sourceVideoUrl={sourceVideoUrl}
-            currentTimeMs={currentTimeMs}
-            selectedImageTimestampMs={selectedImageTimestampMs}
-            durationMs={durationMs}
-            timelineSegments={timelineSegments}
-            replacing={state.image}
-            labels={{
-              insert: labels.insertFrame,
-              replace: labels.replaceFrame,
-              time: labels.frameTime,
-              preview: labels.framePreview,
-              stepBack: labels.frameStepBack,
-              stepForward: labels.frameStepForward,
-              capture: labels.captureFrame,
-              invalidTime: labels.invalidFrameTime,
-              failed: labels.captureFrameFailed,
-            }}
-            onCapture={(result) => {
-              if (!insertVideoDocumentImage(editor, videoDocumentFrameImageAttributes(result), state.image)) return;
-              onFrameCaptured?.(result);
-            }}
-          />
-        )}
-        <input
-          ref={imageInputRef}
-          type="file"
-          accept="image/png,image/jpeg,image/webp,image/svg+xml,.svg"
-          className="sr-only"
-          tabIndex={-1}
-          onChange={(event) => {
-            const file = event.currentTarget.files?.[0];
-            event.currentTarget.value = '';
-            if (file) {
-              const operation = uploadImage(file);
-              onImageOperation?.(operation);
-            }
-          }}
-        />
-        <span className="ml-auto flex items-center gap-0.5 pl-2">
-          {articleElementControls && (
-            <>
-              <FormatButton
-                label={articleElementControls.commentLabel}
-                disabled={!state.articleElementId || articleElementControls.busy}
-                onClick={articleElementControls.onAddComment}
-              >
-                <MessageSquarePlusIcon className="size-3.5" />
-              </FormatButton>
-              <FormatButton
-                label={`${articleElementControls.commentsLabel} (${articleElementControls.comments.filter((comment) => comment.status === 'OPEN').length})`}
-                active={articleElementControls.commentsOpen}
-                expanded={articleElementControls.commentsOpen}
-                onClick={articleElementControls.onCommentsToggle}
-              >
-                <MessageSquareIcon className="size-3.5" />
-              </FormatButton>
-              <ArticleEditTrailMenu controls={articleElementControls} />
-              <Separator orientation="vertical" className="mx-1 h-4" />
-            </>
-          )}
-          <FormatButton label={labels.search} active={searchOpen} expanded={searchOpen} onClick={onSearchToggle}>
-            <SearchIcon className="size-3.5" />
-          </FormatButton>
-          <FormatButton
-            label={labels.undo}
-            disabled={!state.canUndo}
-            onClick={() => editor.chain().focus().undo().run()}
-          >
-            <Undo2Icon className="size-3.5" />
-          </FormatButton>
-          <FormatButton
-            label={labels.redo}
-            disabled={!state.canRedo}
-            onClick={() => editor.chain().focus().redo().run()}
-          >
-            <Redo2Icon className="size-3.5" />
-          </FormatButton>
-        </span>
-      </div>
-      {state.table && <VideoDocumentTableOperations editor={editor} labels={labels} />}
-      {state.image && (
-        <VideoDocumentImageOperations
-          altText={state.imageAltText}
-          editor={editor}
-          labels={labels}
-          mediaBindings={mediaBindings}
-          replacing={uploadingImage}
-          sourcePath={state.imageSourcePath}
-          onReplace={() => imageInputRef.current?.click()}
-        />
-      )}
-    </TooltipProvider>
+        {state.details ? <ChevronDownIcon className="size-3.5" /> : <ChevronRightIcon className="size-3.5" />}
+      </FormatButton>
+      <FormatButton
+        label={copy.clickReveal}
+        disabled={state.reveal || state.details}
+        onClick={() =>
+          insertRevealBlock(editor, 'REVEAL', {
+            initial: copy.questionText,
+            answer: copy.answerText,
+          })
+        }
+      >
+        <ChevronRightIcon className="size-3.5" />
+      </FormatButton>
+      <FormatButton
+        label={copy.imageSwap}
+        disabled={state.reveal || state.details}
+        onClick={() =>
+          insertRevealBlock(editor, 'IMAGE_SWAP', {
+            initial: copy.beforeImageText,
+            answer: copy.afterImageText,
+          })
+        }
+      >
+        <ImagePlusIcon className="size-3.5" />
+      </FormatButton>
+    </>
+  );
+}
+
+export function VideoDocumentWysiwygToolbar(props: Props) {
+  return (
+    <VideoDocumentWysiwygToolbarView {...props} importImage={props.importImage ?? importVideoDocumentEditorImage} />
   );
 }

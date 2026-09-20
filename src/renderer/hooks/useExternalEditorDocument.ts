@@ -9,7 +9,7 @@ interface ExternalEditorDocumentOptions<TNode, TBridge> {
   bridge: TBridge;
   currentSignature(editor: Editor): string;
   content(nodes: readonly TNode[], bridge: TBridge): JSONContent;
-  onEmptyChange(empty: boolean): void;
+  onContentChange(editor: Editor): void;
 }
 
 export function useExternalEditorDocument<TNode, TBridge>(options: ExternalEditorDocumentOptions<TNode, TBridge>) {
@@ -25,6 +25,6 @@ export function useExternalEditorDocument<TNode, TBridge>(options: ExternalEdito
     const desired = desiredRef.current;
     if (desired.currentSignature(editor) === desired.signature) return;
     editor.commands.setContent(desired.content(desired.nodes, desired.bridge), { emitUpdate: false });
-    if (!editor.isDestroyed) desired.onEmptyChange(editor.isEmpty);
+    if (!editor.isDestroyed) desired.onContentChange(editor);
   });
 }

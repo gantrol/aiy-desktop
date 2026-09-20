@@ -8,6 +8,12 @@ const positiveNumberSchema = z.number().finite().positive();
 const percentageSchema = z.number().finite().min(0);
 const nullableMoneySchema = nonNegativeNumberSchema.nullable();
 
+export const CODEX_USAGE_QUOTA_SAMPLE_PERCENTS = [1, 3, 5, 10] as const;
+export const CODEX_USAGE_DEFAULT_QUOTA_SAMPLE_PERCENT = 3;
+export const codexUsageQuotaSamplePercentSchema = z
+  .number()
+  .refine((value) => CODEX_USAGE_QUOTA_SAMPLE_PERCENTS.some((option) => option === value));
+
 export const codexUsageRangeSchema = z.enum([
   'TODAY',
   'LAST_24_HOURS',
@@ -496,6 +502,31 @@ export const codexUsageQuotaSnapshotSchema = z
 
 export const codexUsageQuotaStateSchema = z.enum(['LIVE', 'PERMISSION_REQUIRED', 'CODEX_UNAVAILABLE', 'UNAVAILABLE']);
 
+// Accept legacy Credit estimates in saved reports, but keep quota observations token-only.
+export const codexUsageQuotaPuritySampleSchema = codexUsageQuotaYieldSampleSchema.transform(
+  ({ codexCredits: _legacyCredits, codexCreditsPerOnePercent: _legacyCreditsPerOnePercent, ...sample }) => sample,
+);
+
+export const codexUsageQuotaPuritySchema = z
+  .object({
+    algorithmVersion: positiveIntegerSchema,
+    minimumQuotaPercent: positiveNumberSchema.default(1),
+    scope: z.literal('LOCAL_RECORDS_ACCOUNT_QUOTA').default('LOCAL_RECORDS_ACCOUNT_QUOTA'),
+    samples: z.array(codexUsageQuotaPuritySampleSchema).max(20_000),
+    eligibleSampleCount: nonNegativeIntegerSchema,
+    mixedSampleCount: nonNegativeIntegerSchema,
+    nonConsecutiveSampleCount: nonNegativeIntegerSchema.default(0),
+    unknownSampleCount: nonNegativeIntegerSchema,
+    unpricedSampleCount: nonNegativeIntegerSchema.optional(),
+    boundaryCount: nonNegativeIntegerSchema,
+    missingQuotaEventCount: nonNegativeIntegerSchema,
+    staleSnapshotCount: nonNegativeIntegerSchema,
+    inferredSampleCount: nonNegativeIntegerSchema,
+    samplesTruncated: z.boolean(),
+  })
+  .strict()
+  .transform(({ unpricedSampleCount: _legacyUnpricedSampleCount, ...analysis }) => analysis);
+
 export const codexUsageWarningCodeSchema = z.enum([
   'SOURCE_UNAVAILABLE',
   'FILES_SKIPPED',
@@ -553,6 +584,8 @@ export const codexUsageInvestigationSchema = z
     quotaYield: codexUsageQuotaYieldAnalysisSchema.nullable().default(null),
     quotaState: codexUsageQuotaStateSchema,
     quotaMessage: z.string().max(2_000).nullable(),
+    quotaPurity: codexUsageQuotaPuritySchema.nullable().default(null),
+    quotaPurityIssue: z.enum(['READ_FAILED', 'CACHE_WRITE_FAILED']).nullable().default(null),
     quota: codexUsageQuotaSnapshotSchema.nullable(),
     pricing: codexUsagePricingBasisSchema,
     warnings: z.array(codexUsageWarningCodeSchema).max(20),
@@ -674,6 +707,7 @@ export const codexUsageResumeInputSchema = z
 export const codexUsageInvestigationGetInputSchema = z
   .object({
     investigationId: z.string().uuid(),
+    minimumQuotaPercent: codexUsageQuotaSamplePercentSchema.optional(),
   })
   .strict();
 
@@ -683,6 +717,7 @@ export const codexUsageExportInputSchema = z
   .object({
     investigationId: z.string().uuid(),
     format: codexUsageExportFormatSchema,
+    minimumQuotaPercent: codexUsageQuotaSamplePercentSchema.optional(),
   })
   .strict();
 
@@ -732,6 +767,8 @@ export type CodexUsageQuotaWindow = z.infer<typeof codexUsageQuotaWindowSchema>;
 export type CodexUsageQuotaLimit = z.infer<typeof codexUsageQuotaLimitSchema>;
 export type CodexUsageQuotaSnapshot = z.infer<typeof codexUsageQuotaSnapshotSchema>;
 export type CodexUsageQuotaState = z.infer<typeof codexUsageQuotaStateSchema>;
+export type CodexUsageQuotaPuritySample = z.infer<typeof codexUsageQuotaPuritySampleSchema>;
+export type CodexUsageQuotaPurity = z.infer<typeof codexUsageQuotaPuritySchema>;
 export type CodexUsageWarningCode = z.infer<typeof codexUsageWarningCodeSchema>;
 export type CodexUsagePricingBasis = z.infer<typeof codexUsagePricingBasisSchema>;
 export type CodexUsageInvestigation = z.infer<typeof codexUsageInvestigationSchema>;

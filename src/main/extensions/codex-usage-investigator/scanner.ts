@@ -8,6 +8,7 @@ import {
   codexUsageDailyBreakdownSchema,
   codexUsageModelBreakdownSchema,
   codexUsageQuotaYieldAnalysisSchema,
+  codexUsageQuotaPuritySchema,
   codexUsageSessionLengthAnalysisSchema,
   codexUsageTokenTotalsSchema,
   codexUsageTurnSpeedAnalysisSchema,
@@ -32,6 +33,7 @@ import {
   estimateCodexUsage,
 } from '@/main/extensions/codex-usage-investigator/pricing';
 import { CodexQuotaYieldAccumulator } from '@/main/extensions/codex-usage-investigator/quota-yield';
+import { CodexQuotaPurityAccumulator } from '@/main/extensions/codex-usage-investigator/quota-purity';
 import { CodexSessionLengthAccumulator } from '@/main/extensions/codex-usage-investigator/session-length';
 import { resolveCodexUsageServiceTierFallback } from '@/main/extensions/codex-usage-investigator/service-tier-fallback';
 import {
@@ -57,7 +59,7 @@ import {
 const MAX_FILES = 100_000;
 const MAX_EXPORT_ROWS = 100_000;
 const DISCOVERY_STAT_CONCURRENCY = 12;
-const PROCESSED_ANALYSIS_VERSION = 17;
+const PROCESSED_ANALYSIS_VERSION = 19;
 const DETAILED_STATISTICS_VERSION = 4;
 const FILE_YIELD_INTERVAL = 32;
 const safeIntegerSchema = z.number().int().nonnegative().safe();
@@ -73,6 +75,7 @@ const processedSnapshotSchema = z
     modelComparison: codexModelComparisonAnalysisSchema,
     sessionLength: codexUsageSessionLengthAnalysisSchema.nullable().default(null),
     quotaYield: codexUsageQuotaYieldAnalysisSchema,
+    quotaPurity: codexUsageQuotaPuritySchema,
     exportRows: z.array(codexUsageInternalRowSchema).max(MAX_EXPORT_ROWS),
     exportRowsTruncated: z.boolean(),
     hasUnknownServiceTier: z.boolean(),
@@ -505,6 +508,7 @@ async function processStoredEvents(
     range: options.range,
     timeZone: options.timeZone,
   });
+  const quotaPurity = new CodexQuotaPurityAccumulator();
   const reportStage = (start: number, share: number, completed: number, total: number) => {
     const fraction = total > 0 ? Math.min(1, completed / total) : 0;
     onProgress?.((start + share * fraction) * 100);
@@ -515,6 +519,7 @@ async function processStoredEvents(
     for (const event of page) {
       throwIfAborted(options.signal);
       quotaYield.add(event);
+      quotaPurity.add(event);
       if (!event.usage.totalTokens) continue;
       hasUnknownServiceTier ||= event.serviceTier === 'UNKNOWN';
       const row = rowFromEvent(event, options.timeZone);
@@ -585,6 +590,7 @@ async function processStoredEvents(
     modelComparison: await options.cache.modelComparisonAnalysis(options.fromEpoch, queryToEpoch, options.signal),
     sessionLength: sessionLength?.result() ?? null,
     quotaYield: quotaYield.result(),
+    quotaPurity: quotaPurity.result(),
     exportRows: allExportRows.slice(0, MAX_EXPORT_ROWS),
     exportRowsTruncated: allExportRows.length > MAX_EXPORT_ROWS,
     hasUnknownServiceTier,
@@ -790,6 +796,8 @@ export async function scanCodexUsage(options: ScanOptions): Promise<CodexUsageSc
     quotaYield: processed.quotaYield,
     quotaState: 'UNAVAILABLE',
     quotaMessage: null,
+    quotaPurity: processed.quotaPurity,
+    quotaPurityIssue: null,
     quota: null,
     pricing: CODEX_USAGE_PRICING_BASIS,
     warnings: warningList(

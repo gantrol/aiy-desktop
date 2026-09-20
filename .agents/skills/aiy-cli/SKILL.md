@@ -1,11 +1,17 @@
 ---
 name: aiy-cli
-description: Use AIY's local agent CLI to import explicit local reference images, prepare an immutable image-generation draft, start or inspect a persistent generation job, cancel it, or hand completed generated images and post text to Weibo through AIY's browser companion. Use when a user asks Codex to create a sticker or raster image through AIY, send that generated result to Weibo, or trigger AIY command actions. This skill is for the AIY CLI workflow, not direct image generation, MCP, desktop control, or ChatGPT attachment forwarding.
+description: Use AIY's local agent CLI to prepare or verify an offline software-development handoff from explicitly supplied text, or to import explicit local reference images, prepare an immutable image-generation draft, start or inspect a persistent generation job, cancel it, or hand completed generated images and post text to Weibo through AIY's browser companion. Use when a user asks Codex to create a sticker or raster image through AIY, send that generated result to Weibo, or trigger AIY command actions. This skill is for the AIY CLI workflow, not direct image generation, MCP, desktop control, or ChatGPT attachment forwarding.
 ---
 
 # AIY CLI
 
 Use the AIY CLI as a strict orchestration boundary. AIY owns media validation, immutable asset storage, route availability, generation persistence, and output paths.
+
+## Offline development context
+
+For an explicitly requested software handoff, use `handoff prepare` with selected inline text snapshots and `handoff verify` with the returned packet. These commands do not require a worker or an open AIY library; do not call `capabilities` merely to prepare one. Read [Development handoffs](../../../docs/development-handoffs.md) for the example request, extraction of `data`, bounds and failure handling.
+
+Preserve the supplied objective, uncertainty, rejected decisions and acceptance requirements. A supplied repository commit is not independently checked. A consistent digest is not a signature, an approved requirement, a passed test, a job reservation or permission to execute. Do not gather additional library files or credentials to fill missing context. Review the selected text for secrets before sending it to another tool.
 
 ## Attachment boundary
 
@@ -16,7 +22,7 @@ Use the AIY CLI as a strict orchestration boundary. AIY owns media validation, i
 - Map every image to its path or `assetId` and a short role such as `subject`, `style`, `composition`, or `edit source`. Do not guess this mapping from attachment order.
 - Preserve image order. Never join multiple paths with commas; import each path separately.
 
-## Workflow
+## Image-generation workflow
 
 1. Run `aiy-agent capabilities` before selecting a route. When working from this repository without a linked command, use `node out/main/agent-cli.js capabilities` after the project has been built.
 2. Select only a `READY` route whose live capabilities and limits satisfy the request. Do not hardcode model availability, price, quality modes, or reference limits.

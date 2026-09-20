@@ -36,11 +36,9 @@ export function ExtensionPluginHeader({ extension, actions }: { extension: Exten
             {copy.connectionStates[extension.connectionState]}
           </Badge>
         </div>
-        <p className="mt-2 hidden text-sm text-muted-foreground @xl/extension-detail:block">{manifest.description}</p>
+        <p className="mt-2 text-sm text-muted-foreground">{manifest.description}</p>
         {showConnectionDetail && (
-          <p className="mt-1 hidden text-xs text-muted-foreground @2xl/extension-detail:block">
-            {extension.connectionMessage}
-          </p>
+          <p className="mt-1 break-words text-xs text-muted-foreground">{extension.connectionMessage}</p>
         )}
       </div>
       {actions && (

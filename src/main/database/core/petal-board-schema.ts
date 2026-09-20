@@ -1,11 +1,14 @@
 import type Database from 'better-sqlite3';
-import sql from '@/main/database/sql/v03-revision-006-petal-board.sql?raw';
+import sql from '@/main/database/sql/v03-revision-007-petal-board.sql?raw';
 import { columnNames, tableNames } from '@/main/database/core/schema-inspection';
+import { PIN_SOURCE_KINDS } from '@/shared/petal-source-kinds';
+
 const columns = {
   desktop_petal_layers: ['id', 'name', 'color'],
   desktop_content_pins: ['id', 'source_kind', 'source_id', 'color', 'icon'],
   desktop_petal_memberships: ['instance_id', 'layer_id'],
 };
+
 export function petalBoardShape(db: Database.Database) {
   const tables = tableNames(db);
   const present = Object.keys(columns).filter((table) => tables.has(table));
@@ -28,10 +31,22 @@ export function petalBoardShape(db: Database.Database) {
     .split(',')
     .sort()
     .join(',');
-  if (kinds === "'ALBUM','ARTICLE','IMAGE','MATERIAL_ALBUM','SOCIAL_POST'") return 'COMPLETE';
-  if (kinds === "'ARTICLE','IMAGE','SOCIAL_POST'") return 'LEGACY';
+  if (
+    kinds ===
+    PIN_SOURCE_KINDS.map((kind) => `'${kind}'`)
+      .sort()
+      .join(',')
+  )
+    return 'COMPLETE';
+  if (
+    kinds === "'ALBUM','ARTICLE','IMAGE','MATERIAL_ALBUM','SOCIAL_POST'" ||
+    kinds === "'ARTICLE','IMAGE','SOCIAL_POST'"
+  )
+    return 'LEGACY';
   return 'PARTIAL';
 }
+
+/** Widen only known released schemas; retain identities, appearance and layer memberships transactionally. */
 export function ensurePetalBoardSchema(db: Database.Database) {
   const shape = petalBoardShape(db);
   if (shape === 'COMPLETE') return;

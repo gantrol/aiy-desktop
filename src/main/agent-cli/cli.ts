@@ -1,7 +1,13 @@
 import { lstat, readFile } from 'node:fs/promises';
+import path from 'node:path';
 import process from 'node:process';
 import type { ZodType } from 'zod';
 import { z } from 'zod';
+import {
+  agentContentCapabilities,
+  agentContentReadRequestSchema,
+  agentContentReadResultSchema,
+} from '@/shared/contracts/agent-content';
 import {
   agentIntakeCapabilities,
   agentIntakeImportRequestSchema,
@@ -15,7 +21,15 @@ import {
 } from '@/main/agent-cli/weibo-action';
 import { resolveAgentCliWorkspace } from '@/main/agent-cli/workspace';
 import { AgentCliWorkerClient } from '@/main/agent-cli/worker-client';
+import { isHandoffCommand, runHandoffCommand } from '@/main/agent-cli/handoff-command';
 import { MODEL_WORKER_PROTOCOL_VERSION, type ModelWorkerMethod } from '@/main/model-worker/protocol';
+import {
+  contentPackPreviewCommandSchema,
+  contentPackApplyCommandSchema,
+  contentPackPreviewCommandResultSchema,
+  contentPackApplyCommandResultSchema,
+  contentPackCommandCapabilities,
+} from '@/shared/contracts/content-pack-command';
 import {
   AIY_AGENT_PROTOCOL_VERSION,
   agentAssetImportRequestSchema,
@@ -49,9 +63,14 @@ function usage() {
 
 Usage:
   aiy-agent capabilities [--user-data-dir PATH]
+  aiy-agent content read --input REQUEST.json [--user-data-dir PATH]
+  aiy-agent handoff prepare --input REQUEST.json
+  aiy-agent handoff verify --input PACKET.json
   aiy-agent asset import --input REQUEST.json [--user-data-dir PATH]
   aiy-agent intake import --input REQUEST.json [--user-data-dir PATH]
   aiy-agent intake get --input REQUEST.json [--user-data-dir PATH]
+  aiy-agent pack preview --input REQUEST.json [--user-data-dir PATH]
+  aiy-agent pack apply --input REQUEST.json [--user-data-dir PATH]
   aiy-agent draft prepare --input REQUEST.json [--user-data-dir PATH]
   aiy-agent generation start --input REQUEST.json [--user-data-dir PATH]
   aiy-agent job get --input REQUEST.json [--user-data-dir PATH]
@@ -86,9 +105,14 @@ function parseArguments(argv: readonly string[]): ParsedArguments {
   const command = positionals.join(' ');
   const supported = [
     'capabilities',
+    'content read',
+    'handoff prepare',
+    'handoff verify',
     'asset import',
     'intake import',
     'intake get',
+    'pack preview',
+    'pack apply',
     'draft prepare',
     'generation start',
     'job get',
@@ -99,6 +123,8 @@ function parseArguments(argv: readonly string[]): ParsedArguments {
   if (command !== 'capabilities' && !inputPath) {
     throw cliError('AIY_AGENT_INVALID_ARGUMENTS', `${command} requires --input REQUEST.json or --input -`);
   }
+  if (isHandoffCommand(command) && userDataPath)
+    throw cliError('AIY_AGENT_INVALID_ARGUMENTS', 'Offline handoffs do not accept --user-data-dir');
   return { command, inputPath, userDataPath };
 }
 
@@ -147,6 +173,21 @@ function parseInput<T>(schema: ZodType<T>, value: unknown): T {
 }
 
 const commandDefinitions = {
+  'content read': {
+    method: 'agent.content.read',
+    input: agentContentReadRequestSchema,
+    output: agentContentReadResultSchema,
+  },
+  'pack preview': {
+    method: 'content-pack.preview',
+    input: contentPackPreviewCommandSchema,
+    output: contentPackPreviewCommandResultSchema,
+  },
+  'pack apply': {
+    method: 'content-pack.apply',
+    input: contentPackApplyCommandSchema,
+    output: contentPackApplyCommandResultSchema,
+  },
   'intake import': {
     method: 'agent.intake.import',
     input: agentIntakeImportRequestSchema,
@@ -220,6 +261,13 @@ export async function runAgentCli(
       process.stdout.write(`${usage()}\n`);
       return 0;
     }
+    if (isHandoffCommand(command)) {
+      const data = runHandoffCommand(command, await readRequest(argumentsValue.inputPath!));
+      process.stdout.write(
+        `${JSON.stringify({ protocolVersion: AIY_AGENT_PROTOCOL_VERSION, ok: true, command, data })}\n`,
+      );
+      return 0;
+    }
 
     let operation:
       | {
@@ -244,7 +292,10 @@ export async function runAgentCli(
     }
 
     const workspace = await resolveAgentCliWorkspace(argumentsValue.userDataPath);
-    client = await AgentCliWorkerClient.connect(workspace.descriptor);
+    client = await AgentCliWorkerClient.connect(
+      workspace.descriptor,
+      path.join(runtimeOptions.appPath, 'out', 'main', 'model-worker.js'),
+    );
     const library = {
       id: workspace.library.id,
       name: workspace.library.name,
@@ -256,7 +307,15 @@ export async function runAgentCli(
         cliProtocolVersion: AIY_AGENT_PROTOCOL_VERSION,
         workerProtocolVersion: MODEL_WORKER_PROTOCOL_VERSION,
         library,
+        content: agentContentCapabilities,
         intake: agentIntakeCapabilities,
+        contentPacks: contentPackCommandCapabilities,
+        offlineHandoffs: {
+          commands: ['handoff prepare', 'handoff verify'],
+          opensLibrary: false,
+          executesAgent: false,
+          verifiesRemoteState: false,
+        },
         attachmentContract: {
           pathIngressCommand: 'asset import',
           acceptedPathKinds: ['absolute-local-file'],
@@ -266,7 +325,7 @@ export async function runAgentCli(
           chatOnlyAttachmentsAccepted: false,
           remoteUrlsAccepted: false,
         },
-        commandActions: agentWeiboActionAvailable(runtimeOptions)
+        commandActions: (await agentWeiboActionAvailable(runtimeOptions))
           ? [
               {
                 key: 'send-weibo',

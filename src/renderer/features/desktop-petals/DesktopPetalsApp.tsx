@@ -9,6 +9,7 @@ import { isContentPinId } from '@/shared/contracts/petal-board';
 import { petalErrorCode } from '@/shared/petal-errors';
 import { tracePetalGeometry } from '@/renderer/features/desktop-petals/petal-geometry-diagnostics';
 import { ExtensionContentLinks } from '@/renderer/features/extensions/ExtensionContentLinks';
+import { createCoalescedRefresh } from '@/shared/coalesced-refresh';
 
 export function DesktopPetalsApp() {
   const { messages } = useI18n();
@@ -38,32 +39,36 @@ export function DesktopPetalsApp() {
       generation = 0;
     let retryTimer: ReturnType<typeof setTimeout> | undefined;
     let titlesVisible: boolean | undefined;
+    const updates = createCoalescedRefresh(
+      async () => {
+        clearTimeout(retryTimer);
+        const request = ++generation;
+        tracePetalGeometry('snapshot-request', { request });
+        const value = await window.desktopPetals.snapshot();
+        tracePetalGeometry('snapshot-received', {
+          request,
+          accepted: live,
+          snapshot: { point: value.point, anchor: value.flowerAnchor, preview: value.flowerPreview },
+        });
+        if (!live) return;
+        // Requests are serialized. Accept this result even when another refresh
+        // is queued, so a steady stream of changes cannot starve the first paint.
+        setSnapshot(titlesVisible === undefined ? value : { ...value, titlesVisible });
+        setError('');
+      },
+      (reason) => {
+        if (!live) return;
+        if (petalErrorCode(reason) === 'libraryUnavailable') {
+          // Keep the editor mounted while its library drains or resumes.
+          setSnapshot((current) => (current ? { ...current, suspended: true } : current));
+          setError('');
+          retryTimer = setTimeout(updates.request, 1_000);
+        } else setError(String(reason));
+      },
+    );
     const refresh = () => {
       clearTimeout(retryTimer);
-      const request = ++generation;
-      tracePetalGeometry('snapshot-request', { request });
-      void window.desktopPetals
-        .snapshot()
-        .then((value) => {
-          tracePetalGeometry('snapshot-received', {
-            request,
-            accepted: live && generation === request,
-            snapshot: { point: value.point, anchor: value.flowerAnchor, preview: value.flowerPreview },
-          });
-          if (live && generation === request) {
-            setSnapshot(titlesVisible === undefined ? value : { ...value, titlesVisible });
-            setError('');
-          }
-        })
-        .catch((reason) => {
-          if (!live || generation !== request) return;
-          if (petalErrorCode(reason) === 'libraryUnavailable') {
-            // Keep the editor mounted while its library drains or resumes.
-            setSnapshot((current) => (current ? { ...current, suspended: true } : current));
-            setError('');
-            retryTimer = setTimeout(refresh, 1_000);
-          } else setError(String(reason));
-        });
+      updates.request();
     };
     const unsubscribe = window.desktopPetals.onChanged(refresh);
     const unsubscribeTitles = window.desktopPetals.onTitlesChanged((visible) => {
@@ -74,6 +79,7 @@ export function DesktopPetalsApp() {
     refresh();
     return () => {
       live = false;
+      updates.dispose();
       clearTimeout(retryTimer);
       unsubscribe();
       unsubscribeTitles();

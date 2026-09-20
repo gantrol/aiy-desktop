@@ -1,7 +1,9 @@
 import { useEffect, useRef, useState, type SyntheticEvent } from 'react';
 import type { AssetDto } from '@/shared/contracts';
+import { imagePreviewSource, mayAnimateImage, mediaPosterUrl, type PreviewAsset } from '@/shared/media-preview-policy';
+import { useMediaActivity, useMediaReducedMotion } from '@/renderer/components/media/useMediaActivity';
 
-type MediaAsset = Pick<AssetDto, 'mediaUrl' | 'mimeType'>;
+type MediaAsset = PreviewAsset & { id?: string };
 type MediaElement = HTMLImageElement | HTMLVideoElement;
 
 export function isVideoAsset(asset: Pick<AssetDto, 'mimeType'> | null | undefined) {
@@ -11,6 +13,9 @@ export function isVideoAsset(asset: Pick<AssetDto, 'mimeType'> | null | undefine
 interface Props {
   asset: MediaAsset;
   src?: string;
+  /** A representation choice, independent of content identity. Omit for an explicit original/inspection surface. */
+  previewSize?: number;
+  motion?: 'auto' | 'play' | 'still';
   className?: string;
   alt?: string;
   loading?: 'eager' | 'lazy';
@@ -24,13 +29,12 @@ interface Props {
   onError?(): void;
 }
 
-/**
- * Images keep native lazy loading. Videos attach their source only near the
- * viewport so a masonry page does not open every media file on first render.
- */
+/** Original animations are used only while visible and within budget. Still thumbnail URLs keep their original contract. */
 export function AssetMedia({
   asset,
-  src = asset.mediaUrl,
+  src,
+  previewSize,
+  motion = 'auto',
   className,
   alt = '',
   loading = 'eager',
@@ -44,37 +48,31 @@ export function AssetMedia({
   onError,
 }: Props) {
   const video = isVideoAsset(asset);
-  const videoRef = useRef<HTMLVideoElement | null>(null);
-  const [shouldLoadVideo, setShouldLoadVideo] = useState(loading !== 'lazy');
+  const mediaRef = useRef<MediaElement | null>(null);
+  const visible = useMediaActivity(mediaRef, src ?? asset.mediaUrl);
+  const reducedMotion = useMediaReducedMotion();
+  const [loadedVideoSource, setLoadedVideoSource] = useState<string | null>(null);
+  const requested = src ?? (previewSize && asset.id ? mediaPosterUrl(asset.id, previewSize) : asset.mediaUrl);
+  const preview = previewSize !== undefined;
+  const imageSrc = preview ? imagePreviewSource(asset, requested, { visible, reducedMotion, motion }) : requested;
+  const videoSource = src ?? asset.mediaUrl;
+  // Once metadata exists, pause instead of removing src: removing it resets the playhead.
+  // A different asset does not inherit that loaded state and still waits for visibility.
+  const shouldLoadVideo = loading !== 'lazy' || visible || loadedVideoSource === videoSource;
 
   useEffect(() => {
-    if (!video || loading !== 'lazy') {
-      setShouldLoadVideo(true);
-      return undefined;
-    }
-    const element = videoRef.current;
-    if (!element || typeof IntersectionObserver === 'undefined') {
-      setShouldLoadVideo(true);
-      return undefined;
-    }
-    setShouldLoadVideo(false);
-    const observer = new IntersectionObserver(
-      (entries) => {
-        if (!entries.some((entry) => entry.isIntersecting)) return;
-        setShouldLoadVideo(true);
-        observer.disconnect();
-      },
-      { rootMargin: '320px' },
-    );
-    observer.observe(element);
-    return () => observer.disconnect();
-  }, [loading, src, video]);
+    if (video && !visible) (mediaRef.current as HTMLVideoElement | null)?.pause();
+  }, [video, visible]);
 
-  if (!video) {
+  if (!video)
     return (
       <img
+        ref={(element) => {
+          mediaRef.current = element;
+        }}
         className={className}
-        src={src}
+        src={imageSrc}
+        data-media-animated={preview && mayAnimateImage(asset) ? 'true' : undefined}
         alt={alt}
         loading={loading}
         decoding={decoding}
@@ -84,13 +82,14 @@ export function AssetMedia({
         onError={onError}
       />
     );
-  }
 
   return (
     <video
-      ref={videoRef}
+      ref={(element) => {
+        mediaRef.current = element;
+      }}
       className={className}
-      src={shouldLoadVideo ? src : undefined}
+      src={shouldLoadVideo ? videoSource : undefined}
       aria-label={alt || undefined}
       aria-hidden={alt || controls ? undefined : true}
       crossOrigin={crossOrigin}
@@ -101,6 +100,7 @@ export function AssetMedia({
       preload={shouldLoadVideo ? preload : 'none'}
       onLoadedMetadata={(event) => {
         const element = event.currentTarget;
+        setLoadedVideoSource(videoSource);
         if (!controls && Number.isFinite(element.duration) && element.duration > 0 && element.currentTime === 0) {
           element.currentTime = Math.min(0.05, element.duration / 2);
         }

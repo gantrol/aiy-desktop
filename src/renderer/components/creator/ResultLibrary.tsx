@@ -84,6 +84,7 @@ import {
   buildCreationLibraryProjection,
   creationFormPreviewAssetIds,
   creationFormTitle,
+  creationFormKindLabel,
   type CreationFormProjection,
   type CreationItemProjection,
 } from '@/renderer/components/creator/creationLibraryProjection';
@@ -102,6 +103,9 @@ import { useVideoDocumentList } from '@/renderer/features/video-documents/useVid
 import { useVideoDocumentNavigation } from '@/renderer/features/video-documents/useVideoDocumentNavigation';
 import type { CreatorOpenTabTarget } from '@/renderer/components/app/app-navigation';
 import { CreationOutlineSidebar } from '@/renderer/features/creation-outline/CreationOutlineSidebar';
+import { CreationLibraryAssetPreview } from '@/renderer/components/creator/CreationLibraryAssetPreview';
+import { creationSessionCoverFirstAssets } from '@/renderer/components/creator/creationCoverFirstAssets';
+import type { DerivedVisualWorkspaceViewState } from '@/renderer/components/creator/derivedVisualWorkspace';
 
 export type ResultLibraryMode = 'full' | 'images' | 'outline';
 export type ResultLibrarySurface =
@@ -156,7 +160,7 @@ interface Props {
   onRenameArticle(article: ArticleDto): void;
   onContentLifecycleAction(request: ContentLifecycleActionRequest): void;
   onSelect(seriesId: string, assetId?: string): void;
-  onOpenDerivedVisual(visualId: string): void;
+  onOpenDerivedVisual(visualId: string, view?: DerivedVisualWorkspaceViewState): void;
   onSelectDocument(documentId: string, albumId: string | null): void;
   onOpenInNewTab(target: CreatorOpenTabTarget): void;
   onRenameDocument(document: VideoDocumentSummaryDto): void;
@@ -352,7 +356,7 @@ export function ResultLibrary({
 }: Props) {
   const { messages } = useI18n();
   const pinContentAction = usePinContentAction(notify);
-  const formKindLabel = (form: CreationFormProjection) => messages.creator.album.formKinds[form.role];
+  const formKindLabel = (form: CreationFormProjection) => creationFormKindLabel(form, messages.creator.album);
   const itemLifecycleTitle = (item: CreationItemProjection) =>
     item.title || messages.creator.album.formKinds.IMAGE_CREATION;
   const libraryLabels = messages.creator.results;
@@ -360,6 +364,7 @@ export function ResultLibrary({
   const albumLabels = messages.gallery.albums;
   const [query, setQuery] = useState('');
   const [searchOpen, setSearchOpen] = useState(false);
+  const [previewAsset, setPreviewAsset] = useState<AssetDto | null>(null);
   const [moveTarget, setMoveTarget] = useState<AlbumMoveTarget | null>(null);
   const [draggedCreationItemId, setDraggedCreationItemId] = useState<string | null>(null);
   const [draggedAlbumId, setDraggedAlbumId] = useState<string | null>(null);
@@ -746,6 +751,42 @@ export function ResultLibrary({
     }
   }
 
+  function openPreviewAsset(asset: AssetDto, forms: readonly CreationFormProjection[]) {
+    const document = forms.find((form) => form.role === 'VIDEO_DOCUMENT' && form.entity?.source.asset.id === asset.id);
+    if (document) {
+      openForm(document);
+      return;
+    }
+    // Prefer an image workspace over the article or manuscript that also embeds it.
+    for (const form of forms) {
+      if (
+        form.role !== 'IMAGE_CREATION' &&
+        form.role !== 'SOCIAL_POST_COVER' &&
+        form.role !== 'ARTICLE_HEADER' &&
+        form.role !== 'ARTICLE_INLINE'
+      )
+        continue;
+      const record = form.session
+        ? creationSessionCoverFirstAssets(form.session).find((entry) => entry.asset.id === asset.id)
+        : undefined;
+      if (!record && !creationFormPreviewAssetIds(form).includes(asset.id)) continue;
+      if (form.role === 'IMAGE_CREATION') {
+        onSelect(record?.seriesId ?? form.entityRef.id, asset.id);
+      } else {
+        onOpenDerivedVisual(form.entityRef.id, { assetId: asset.id, outputSeriesId: record?.seriesId });
+      }
+      return;
+    }
+    setPreviewAsset(asset);
+  }
+
+  function openAlbumPreviewAsset(albumId: string, asset: AssetDto) {
+    const forms = projection.items
+      .filter((item) => item.item.albumId && albumIsInside(item.item.albumId, albumId))
+      .flatMap((item) => item.orderedForms);
+    openPreviewAsset(asset, forms);
+  }
+
   function formPreview(form: CreationFormProjection, spread: MediaStackSpread) {
     const assets = formAssets(form);
     const Icon = formIcon(form);
@@ -767,6 +808,10 @@ export function ResultLibrary({
           items={assets.map((asset) => ({ asset }))}
           maxItems={3}
           spread={spread}
+          onAssetSelect={(asset) => {
+            const item = projection.itemById.get(form.form.creationItemId);
+            openPreviewAsset(asset, [...socialCoverGroup(form), ...(item?.orderedForms ?? [])]);
+          }}
         />
         <span
           title={kindLabel}
@@ -779,7 +824,7 @@ export function ResultLibrary({
     );
   }
 
-  function creationItemPreview(assets: readonly AssetDto[], spread: MediaStackSpread) {
+  function creationItemPreview(item: CreationItemProjection, assets: readonly AssetDto[], spread: MediaStackSpread) {
     if (assets.length === 0) {
       return (
         <span className="relative grid size-12 place-items-center rounded-md border bg-background text-foreground-secondary">
@@ -795,6 +840,7 @@ export function ResultLibrary({
         items={assets.map((asset) => ({ asset }))}
         maxItems={3}
         spread={spread}
+        onAssetSelect={(asset) => openPreviewAsset(asset, item.orderedForms)}
       />
     );
   }
@@ -876,7 +922,8 @@ export function ResultLibrary({
         metadata={<span className="mt-0.5 block truncate text-xs text-muted-foreground">{kindLabel}</span>}
         previewBounds={metrics.bounds}
         previewStyle={{ width: metrics.width }}
-        preview={formPreview(form, 'settled')}
+        canSpreadPreview={assets.length > 1}
+        preview={(previewExpanded) => formPreview(form, previewExpanded ? 'expanded' : 'settled')}
         controls={
           <div data-result-library-row-control className={rowControlsClassName}>
             <ActionMenuButton
@@ -1123,7 +1170,7 @@ export function ResultLibrary({
         previewBounds={metrics.bounds}
         previewStyle={{ width: metrics.width }}
         preview={(previewExpanded) =>
-          creationItemPreview(assets, previewExpanded ? 'expanded' : expanded ? 'settled' : 'collapsed')
+          creationItemPreview(item, assets, previewExpanded ? 'expanded' : expanded ? 'settled' : 'collapsed')
         }
         controls={
           <div data-result-library-row-control className={rowControlsClassName}>
@@ -1383,6 +1430,7 @@ export function ResultLibrary({
           onGestureExpand={() => albumExpansion.expandFromGesture(branchId)}
           onPointerTrackStart={(clientY) => albumExpansion.beginPointerTrack(branchId, clientY)}
           onPointerTrack={(clientY) => albumExpansion.trackPointer(branchId, clientY)}
+          onAssetSelect={(asset) => openAlbumPreviewAsset(album.id, asset)}
           onClick={click}
           onDoubleClick={doubleClick}
         />
@@ -1439,6 +1487,7 @@ export function ResultLibrary({
           }
           loading={false}
           previewAssets={childVisibility.disclosure === 'more' ? albumChildDisclosureAssets(hiddenChildren) : []}
+          onAssetSelect={(asset) => openAlbumPreviewAsset(album.id, asset)}
           resetLabel={childVisibility.canReset ? libraryLabels.restoreDefaultVisibleItems : undefined}
           showDisclosure={showChildDisclosure}
           onCollapse={() => albumExpansion.collapse(branchId)}
@@ -1701,6 +1750,7 @@ export function ResultLibrary({
         </Button>
       )}
       {moveDialog}
+      <CreationLibraryAssetPreview asset={previewAsset} onClose={() => setPreviewAsset(null)} />
       <span
         data-result-library-drag-state
         data-creation-item-id={draggedCreationItemId ?? undefined}

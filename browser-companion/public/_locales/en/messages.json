@@ -1,4 +1,5 @@
 {
+  "popupGroupBatchTabs": { "message": "Group pages prepared in the same batch" },
   "extensionName": { "message": "AIY Companion" },
   "extensionDescription": {
     "message": "Automatically receive AIY handoffs on supported sites. You decide whether to send or publish."

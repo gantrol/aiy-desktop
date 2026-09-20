@@ -39,6 +39,15 @@ export function articleDraftContent(
     title: content.title ?? previous?.title ?? '',
     markdown: content.format === 'markdown' ? content.manualPrompt : plainTextMarkdown(content.manualPrompt),
     mediaBindings,
+    ...(previous?.coverVariants
+      ? {
+          coverVariants: previous.coverVariants.filter(
+            (variant) =>
+              content.referenceAssetIds.includes(variant.assetId) &&
+              content.referenceAssetIds.includes(variant.sourceAssetId),
+          ),
+        }
+      : {}),
     coverAssetId:
       previous?.coverAssetId && content.referenceAssetIds.includes(previous.coverAssetId)
         ? previous.coverAssetId

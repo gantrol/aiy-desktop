@@ -1,0 +1,64 @@
+.aiy-outline-editor > :is(ul, ol):not([data-outline-role='NOTE']):not([data-type='taskList']),
+.aiy-outline-item
+  > [data-node-view-content]
+  > [data-node-view-content-react]
+  > :is(ul, ol):not([data-outline-role='NOTE']):not([data-type='taskList']) {
+  margin-block: 0;
+  padding-inline-start: 0;
+  list-style: none;
+}
+
+.aiy-outline-item[data-outline-visibility='outside'] {
+  display: none;
+}
+
+.aiy-outline-range-selecting,
+.aiy-outline-range-selecting * {
+  user-select: none;
+}
+
+.aiy-outline-item[data-outline-selected='true'] {
+  box-shadow: inset 2px 0 0 var(--color-ring);
+}
+
+.aiy-outline-item[data-outline-drop='before']::before,
+.aiy-outline-item[data-outline-drop='after']::after {
+  position: absolute;
+  right: 0;
+  left: 0;
+  height: 2px;
+  background: var(--color-ring);
+  content: '';
+}
+
+.aiy-outline-item[data-outline-drop='before']::before {
+  top: 0;
+}
+
+.aiy-outline-item[data-outline-drop='after']::after {
+  bottom: 0;
+}
+
+.aiy-outline-item[data-outline-drop='inside']::after {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  left: 24px;
+  height: 2px;
+  background: var(--color-ring);
+  content: '';
+}
+
+.aiy-outline-item[data-outline-visibility='path']
+  > [data-node-view-content]
+  > [data-node-view-content-react]
+  > :is(:not(ul, ol), [data-outline-role='NOTE'], [data-type='taskList']) {
+  display: none;
+}
+
+.aiy-outline-item[data-outline-folded='true']
+  > [data-node-view-content]
+  > [data-node-view-content-react]
+  > :is(ul, ol):not([data-outline-role='NOTE']):not([data-type='taskList']) {
+  display: none;
+}

@@ -1,11 +1,21 @@
-import { CheckCircle2Icon, Clock3Icon, LoaderCircleIcon, RefreshCwIcon, XCircleIcon } from 'lucide-react';
+import {
+  CheckCircle2Icon,
+  Clock3Icon,
+  ExternalLinkIcon,
+  LoaderCircleIcon,
+  RefreshCwIcon,
+  XCircleIcon,
+} from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 import type { ArticleDeliveryJob } from '@/shared/contracts';
 import { Button } from '@/renderer/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/renderer/components/ui/dialog';
+import { useI18n } from '@/renderer/i18n/useI18n';
 import { useArticleDeliveries } from '@/renderer/features/article-delivery/ArticleDeliveryProvider';
 import {
   articleDeliveryErrorMessage,
+  articleDeliveryImageSummary,
+  articleDeliveryRequestErrorMessage,
   articleDeliveryStatusLabel,
 } from '@/renderer/features/article-delivery/presentation';
 
@@ -40,7 +50,6 @@ export function ArticleDeliveryHistoryDialog({
   open,
   spaceId,
   targets,
-  zh,
 }: {
   articleId: string;
   notify(message: string): void;
@@ -48,8 +57,9 @@ export function ArticleDeliveryHistoryDialog({
   open: boolean;
   spaceId: string;
   targets: readonly DeliveryTargetLabel[];
-  zh: boolean;
 }) {
+  const { locale, messages } = useI18n();
+  const copy = messages.articleDelivery;
   const [jobs, setJobs] = useState<ArticleDeliveryJob[]>([]);
   const [loading, setLoading] = useState(false);
   const [retryingId, setRetryingId] = useState<string | null>(null);
@@ -76,7 +86,7 @@ export function ArticleDeliveryHistoryDialog({
         if (!disposed) setJobs(mergeJobs(loaded, [...changed.values()]));
       })
       .catch((reason) => {
-        if (!disposed) notify(reason instanceof Error ? reason.message : String(reason));
+        if (!disposed) notify(articleDeliveryRequestErrorMessage(reason, copy, copy.historyFailed));
       })
       .finally(() => {
         if (!disposed) setLoading(false);
@@ -85,7 +95,7 @@ export function ArticleDeliveryHistoryDialog({
       disposed = true;
       unsubscribe();
     };
-  }, [articleId, notify, open, spaceId]);
+  }, [articleId, copy, notify, open, spaceId]);
 
   async function retry(jobId: string) {
     if (retryingId) return;
@@ -94,9 +104,17 @@ export function ArticleDeliveryHistoryDialog({
       const job = await window.desktopApi.articleDeliveryJobRetry({ jobId });
       setJobs((current) => mergeJobs(current, [job]));
     } catch (reason) {
-      notify(reason instanceof Error ? reason.message : String(reason));
+      notify(articleDeliveryRequestErrorMessage(reason, copy));
     } finally {
       setRetryingId(null);
+    }
+  }
+
+  async function openResult(url: string) {
+    try {
+      await window.desktopApi.contentLibrary.linkOpen(url);
+    } catch (reason) {
+      notify(articleDeliveryRequestErrorMessage(reason, copy, copy.openFailed));
     }
   }
 
@@ -104,25 +122,19 @@ export function ArticleDeliveryHistoryDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent aria-describedby={undefined}>
         <DialogHeader>
-          <DialogTitle>{zh ? '投递记录' : 'Delivery history'}</DialogTitle>
+          <DialogTitle>{copy.history}</DialogTitle>
         </DialogHeader>
-        {jobs.some((job) => job.status === 'FAILED') && (
-          <p className="text-xs text-muted-foreground">
-            {zh
-              ? '重试会使用当时的文章版本；修改图片或正文后，请重新投递。'
-              : 'Retry uses the original article version. After editing images or text, deliver the article again.'}
-          </p>
-        )}
         <div className="max-h-96 divide-y divide-border overflow-y-auto">
           {loading && jobs.length === 0 ? (
             <div className="flex h-16 items-center justify-center">
               <LoaderCircleIcon className="size-4 animate-spin" />
             </div>
           ) : jobs.length === 0 ? (
-            <div className="py-6 text-center text-sm text-muted-foreground">{zh ? '暂无记录' : 'No deliveries'}</div>
+            <div className="py-6 text-center text-sm text-muted-foreground">{copy.emptyHistory}</div>
           ) : (
             jobs.map((job) => {
               const targetName = targetNames.get(`${job.extensionId}:${job.channelId}`) ?? job.targetSlug;
+              const imageSummary = articleDeliveryImageSummary(job.result?.imageSummary, locale, copy);
               return (
                 <div key={job.id} className="flex items-start gap-3 py-3">
                   <div className="mt-0.5">{jobIcon(job)}</div>
@@ -132,19 +144,24 @@ export function ArticleDeliveryHistoryDialog({
                       {job.result && <span className="text-muted-foreground">v{job.result.version}</span>}
                     </div>
                     <div className="mt-0.5 text-xs text-muted-foreground">
-                      {articleDeliveryStatusLabel(job, zh, entries.find((entry) => entry.job.id === job.id)?.progress)}{' '}
-                      · {new Date(job.createdAt).toLocaleString(zh ? 'zh-CN' : 'en-US')}
+                      {articleDeliveryStatusLabel(
+                        job,
+                        copy,
+                        entries.find((entry) => entry.job.id === job.id)?.progress,
+                      )}{' '}
+                      · {new Date(job.createdAt).toLocaleString(locale)}
                     </div>
                     {job.result && (
                       <div className="mt-1 text-xs text-muted-foreground">
-                        {zh
-                          ? `图片：新增 ${job.result.uploadedMedia} · 复用 ${job.result.reusedMedia}`
-                          : `Images: ${job.result.uploadedMedia} new · ${job.result.reusedMedia} reused`}
+                        {copy.imageCounts
+                          .replace('{uploaded}', String(job.result.uploadedMedia))
+                          .replace('{reused}', String(job.result.reusedMedia))}
                       </div>
                     )}
+                    {imageSummary && <div className="mt-1 text-xs text-muted-foreground">{imageSummary}</div>}
                     {job.status === 'FAILED' && (
                       <div className="mt-1 break-words text-xs text-destructive">
-                        {articleDeliveryErrorMessage(job, zh)}
+                        {articleDeliveryErrorMessage(job, copy)}
                       </div>
                     )}
                   </div>
@@ -154,7 +171,9 @@ export function ArticleDeliveryHistoryDialog({
                       variant="ghost"
                       size="sm"
                       disabled={retryingId !== null}
-                      aria-label={zh ? '重试' : 'Retry'}
+                      className="shrink-0"
+                      title={copy.retryHint}
+                      aria-label={copy.retry}
                       onClick={() => void retry(job.id)}
                     >
                       {retryingId === job.id ? (
@@ -162,7 +181,27 @@ export function ArticleDeliveryHistoryDialog({
                       ) : (
                         <RefreshCwIcon className="size-4" />
                       )}
-                      {zh ? '重试' : 'Retry'}
+                      {copy.retry}
+                    </Button>
+                  )}
+                  {job.status === 'SUCCEEDED' && job.result && (
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      className="shrink-0"
+                      onClick={() =>
+                        void openResult(
+                          job.result!.deliveryMode === 'PUBLISH' ? job.result!.publicUrl : job.result!.adminUrl,
+                        )
+                      }
+                    >
+                      <ExternalLinkIcon className="size-4" />
+                      {job.result.deliveryMode === 'PUBLISH'
+                        ? copy.viewPublished
+                        : job.result.deliveryMode === 'DRAFT'
+                          ? copy.viewDraft
+                          : copy.viewUpload}
                     </Button>
                   )}
                 </div>

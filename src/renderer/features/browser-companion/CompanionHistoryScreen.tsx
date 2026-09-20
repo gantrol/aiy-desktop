@@ -15,6 +15,7 @@ import {
 import { ScrollArea } from '@/renderer/components/ui/scroll-area';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/renderer/components/ui/table';
 import { useStableCallback } from '@/renderer/lib/useStableCallback';
+import { CompanionBatchHistory } from '@/renderer/features/browser-companion/CompanionBatchHistory';
 
 function displayTime(value: string, locale: Locale): string {
   return new Intl.DateTimeFormat(locale === 'zh' ? 'zh-CN' : 'en', {
@@ -73,7 +74,9 @@ export function CompanionHistoryScreen({
     if (deleting || selectedCount === 0) return;
     setDeleting(true);
     try {
-      const result = await window.desktopApi.browserCompanionDelete({ handoffIds: [...selectedIds] });
+      const result = await window.desktopApi.browserCompanionDelete({
+        handoffIds: [...selectedIds],
+      });
       const deleted = new Set(result.deletedHandoffIds);
       setItems((current) => current.filter((item) => !deleted.has(item.handoffId)));
       setSelectedIds(new Set());
@@ -120,6 +123,15 @@ export function CompanionHistoryScreen({
 
       <ScrollArea type="always" className="min-h-0 flex-1">
         <div className="p-5">
+          <CompanionBatchHistory
+            active={active}
+            refreshKey={items}
+            onDeleted={(handoffIds) => {
+              const deleted = new Set(handoffIds);
+              setItems((current) => current.filter((item) => !deleted.has(item.handoffId)));
+              setSelectedIds((current) => new Set([...current].filter((id) => !deleted.has(id))));
+            }}
+          />
           <Table>
             <TableHeader>
               <TableRow>

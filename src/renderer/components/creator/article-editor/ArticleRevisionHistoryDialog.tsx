@@ -27,6 +27,7 @@ import {
   DropdownMenuTrigger,
 } from '@/renderer/components/ui/dropdown-menu';
 import { Segmented, SegmentedItem } from '@/renderer/components/ui/segmented';
+import { useI18n } from '@/renderer/i18n/useI18n';
 
 const REVISION_PAGE_SIZE = 50;
 
@@ -442,12 +443,12 @@ function mediaPathForAsset(revision: ArticleRevisionDto | null, assetId: string 
 function RevisionMediaDiff({
   older,
   selected,
-  zh,
 }: {
   older: ArticleRevisionDto | null;
   selected: ArticleRevisionDto;
   zh: boolean;
 }) {
+  const copy = useI18n().messages.contentEditor;
   const olderBindings = new Map(
     (older?.content.mediaBindings ?? []).map((binding) => [mediaBindingKey(binding), binding]),
   );
@@ -459,11 +460,16 @@ function RevisionMediaDiff({
   const olderCover = mediaPathForAsset(older, older?.content.coverAssetId ?? null);
   const selectedCover = mediaPathForAsset(selected, selected.content.coverAssetId);
   const coverChanged = olderCover !== selectedCover;
+  const olderVariants = coverVariantSummaries(older);
+  const selectedVariants = coverVariantSummaries(selected);
+  const removedVariants = olderVariants.filter((value) => !selectedVariants.includes(value));
+  const addedVariants = selectedVariants.filter((value) => !olderVariants.includes(value));
 
-  if (!removed.length && !added.length && !coverChanged) return null;
+  if (!removed.length && !added.length && !coverChanged && !removedVariants.length && !addedVariants.length)
+    return null;
   return (
     <section>
-      <h3 className="mb-2 text-xs font-semibold text-muted-foreground">{zh ? '媒体' : 'Media'}</h3>
+      <h3 className="mb-2 text-xs font-semibold text-muted-foreground">{copy.media}</h3>
       <div className="space-y-1 font-mono text-sm leading-6">
         {removed.map((path) => (
           <div key={`removed:${path}`} className="text-destructive line-through decoration-destructive/60">
@@ -477,15 +483,36 @@ function RevisionMediaDiff({
         ))}
         {coverChanged ? (
           <div className="flex flex-wrap items-baseline gap-2 pt-1">
-            <span className="font-sans text-xs text-muted-foreground">{zh ? '题图' : 'Cover'}</span>
+            <span className="font-sans text-xs text-muted-foreground">{copy.articleCover}</span>
             {olderCover ? <span className="text-destructive line-through">{olderCover}</span> : null}
             <span aria-hidden="true">→</span>
-            <span className="text-state-changed-fg">{selectedCover ?? (zh ? '无' : 'None')}</span>
+            <span className="text-state-changed-fg">{selectedCover ?? copy.coverEditor.none}</span>
           </div>
         ) : null}
+        {(removedVariants.length > 0 || addedVariants.length > 0) && (
+          <div className="pt-1">
+            <span className="font-sans text-xs text-muted-foreground">{copy.coverEditor.variants}</span>
+            {removedVariants.map((value) => (
+              <div key={value} className="text-destructive line-through">
+                − {value}
+              </div>
+            ))}
+            {addedVariants.map((value) => (
+              <div key={value} className="text-state-changed-fg">
+                + {value}
+              </div>
+            ))}
+          </div>
+        )}
       </div>
     </section>
   );
+}
+
+function coverVariantSummaries(revision: ArticleRevisionDto | null) {
+  return (revision?.content.coverVariants ?? [])
+    .map((cover) => `${cover.ratio}: ${mediaPathForAsset(revision, cover.assetId)}`)
+    .sort();
 }
 
 function ArticleRevisionTextDiff({
@@ -509,6 +536,7 @@ function ArticleRevisionTextDiff({
   const bodyChanged = diffChanged(bodyParts);
   const mediaChanged =
     older?.content.coverAssetId !== selected.content.coverAssetId ||
+    JSON.stringify(coverVariantSummaries(older)) !== JSON.stringify(coverVariantSummaries(selected)) ||
     (older?.content.mediaBindings ?? []).some(
       (binding) =>
         !selected.content.mediaBindings.some((candidate) => mediaBindingKey(candidate) === mediaBindingKey(binding)),

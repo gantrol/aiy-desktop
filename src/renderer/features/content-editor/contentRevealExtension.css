@@ -1,0 +1,13 @@
+@import '../../styles/layers.css';
+
+@layer components {
+  .aiy-reveal[data-preview-state='initial'] > [data-node-view-content] > [data-aiy-reveal-stage='answer'],
+  .aiy-reveal[data-preview-state='answer'] > [data-node-view-content] > [data-aiy-reveal-stage='initial'] {
+    display: none;
+  }
+
+  .aiy-reveal[data-preview-state='initial'] > [data-node-view-content],
+  .aiy-reveal[data-preview-state='answer'] > [data-node-view-content] {
+    pointer-events: none;
+  }
+}

@@ -1,7 +1,10 @@
 import { bindNaturalWatermarkRuntime } from '@/main/extensions/natural-watermark/selection';
+import { replayAssetExportCalendar } from '@/main/media/asset-export-calendar';
+import { createApplicationMetrics } from '@/main/extensions/metrics/setup';
+import { registerExtensionMetricsIpc } from '@/main/ipc/extension-metrics-handlers';
 import { app, dialog, safeStorage } from 'electron';
 import { CodexContentService } from '@/main/extensions/codex-content/service';
-import { codexContentLifecycle } from '@/main/extensions/codex-content/library-lifecycle';
+import { libraryTaskLifecycle } from '@/main/libraries/library-task-lifecycle';
 import { AsyncLocalStorage } from 'node:async_hooks';
 import path from 'node:path';
 import { LibraryDatabase } from '@/main/database';
@@ -12,6 +15,9 @@ import { CodexHistorySearch } from '@/main/extensions/codex-history-search';
 import { ArticleDeliveryConnections } from '@/main/extensions/article-delivery/connection';
 import { ArticleDeliveryJobCoordinator } from '@/main/extensions/article-delivery/job-coordinator';
 import { OpenAiImageApiConnection } from '@/main/extensions/openai-image-api/connection';
+import { CpaImageConnection } from '@/main/extensions/cpa-image/connection';
+import { appendCpaImageRuntimeConfiguration, cpaImageExtensionStatus } from '@/main/extensions/cpa-image/integration';
+import { recordImageApiGenerationOutcome } from '@/main/generation/image-api-generation-outcome';
 import { DeepSeekApiConnection } from '@/main/extensions/deepseek-api/connection';
 import { LocalQwenAsrSidecarManager } from '@/main/extensions/local-qwen-asr/sidecar-manager';
 import { AssistantRoutingConfiguration } from '@/main/assistant/assistant-routing';
@@ -64,20 +70,7 @@ import type {
   TransitionPreviewDto,
 } from '@/shared/contracts';
 import { DEFAULT_PRODUCT_NAME, productNameForLocale } from '@/shared/product';
-import {
-  ALIBABA_MODEL_STUDIO_IMAGE_API_EXTENSION_ID,
-  CODEX_EXTENSION_ID,
-  GOOGLE_GEMINI_IMAGE_API_EXTENSION_ID,
-  OPENAI_IMAGE_PROVIDER_KEY,
-  VOLCENGINE_ARK_IMAGE_API_EXTENSION_ID,
-  type ExternalImageApiExtensionId,
-} from '@/shared/extension-ids';
-
-const imageApiExtensionByProvider: Partial<Record<string, ExternalImageApiExtensionId>> = {
-  google: GOOGLE_GEMINI_IMAGE_API_EXTENSION_ID,
-  'alibaba-cloud': ALIBABA_MODEL_STUDIO_IMAGE_API_EXTENSION_ID,
-  volcengine: VOLCENGINE_ARK_IMAGE_API_EXTENSION_ID,
-};
+import { CODEX_EXTENSION_ID } from '@/shared/extension-ids';
 
 function refreshOpenAiImageApiWorker(generation: BackgroundGenerationClient, connection: OpenAiImageApiConnection) {
   void generation.configureOpenAiImageApi(connection.runtimeConfiguration()).catch((error) => {
@@ -257,6 +250,8 @@ if (ownsSingleInstanceLock)
         path.join(app.getPath('userData'), 'configuration', 'image-generation-concurrency.json'),
       );
       const externalImageApis = new ExternalImageApiConnections(connectionDirectory, secretProtector);
+      const cpaImageApi = new CpaImageConnection(path.join(connectionDirectory, 'cpa-image-api.json'), secretProtector);
+      await cpaImageApi.load();
       const configuredWorkerIdleExitMs = Number(process.env.AIY_MODEL_WORKER_IDLE_EXIT_MS);
       const bundledResourcesPath = isPackagedApplication(app) ? process.resourcesPath : app.getAppPath();
       const bundledExtensionsPath = path.join(bundledResourcesPath, 'extensions');
@@ -306,7 +301,7 @@ if (ownsSingleInstanceLock)
           const { codex: targetCodex, assistant: targetAssistant } = targetGeneration;
           finishStage('connectServices');
           reportProgress?.('LOADING_EXTENSIONS', 72);
-          const targetExtensions: ExtensionRegistry = new ExtensionRegistry(targetDatabase, {
+          const targetExtensions: ExtensionRegistry = await ExtensionRegistry.create(targetDatabase, {
             extensionRoots,
             codexHealth: () => targetCodex.cachedHealth,
             antigravityCliStatus: () => targetGeneration!.antigravityCliStatus,
@@ -319,6 +314,9 @@ if (ownsSingleInstanceLock)
                 usable: status.status === 'READY' || status.status === 'UNVERIFIED',
                 message: status.message,
               };
+            },
+            cpaImageApiStatus: () => {
+              return cpaImageExtensionStatus(cpaImageApi, targetExtensions);
             },
             deepSeekApiStatus: () => {
               const status = deepSeekApi.status();
@@ -340,10 +338,13 @@ if (ownsSingleInstanceLock)
               };
             },
           });
-          const externalImageApiRuntimeConfigurations = () =>
-            externalImageApis.runtimeConfigurations((extensionId, permission) =>
-              targetExtensions.isPermissionGranted(extensionId, permission),
+          const externalImageApiRuntimeConfigurations = () => {
+            const configured = externalImageApis.runtimeConfigurations(
+              (extensionId, permission) => targetExtensions.isPermissionGranted(extensionId, permission),
+              (extensionId) => targetExtensions.isActivated(extensionId),
             );
+            return appendCpaImageRuntimeConfiguration(configured, cpaImageApi, targetExtensions);
+          };
           const refreshOpenAiImageApiRuntimeConfiguration = () =>
             refreshOpenAiImageApiWorker(targetGeneration!, openAiImageApi);
           finishStage('loadExtensions');
@@ -355,6 +356,7 @@ if (ownsSingleInstanceLock)
           finishStage('applySettings');
 
           let activated = false;
+          let backgroundServicesRequested = false;
           let backgroundServicesStarted = false;
           let backgroundStartTimer: ReturnType<typeof setTimeout> | null = null;
           let discoveryStartTimer: ReturnType<typeof setTimeout> | null = null;
@@ -363,38 +365,15 @@ if (ownsSingleInstanceLock)
           const onGenerationChanged = (event: GenerationChangedEvent) => {
             if (event.terminal || !event.runId) targetDatabase.scheduleLibraryFileViewSynchronization();
             if (event.terminal && event.runId) {
-              try {
-                const job = targetDatabase.getGenerationJob(event.runId);
-                const modelProviderKey = targetDatabase.getGenerationRunModelKey(event.runId)?.split('/')[0];
-                const providerKey = job?.providerKey || modelProviderKey;
-                const extensionId = providerKey ? imageApiExtensionByProvider[providerKey] : undefined;
-                if (providerKey === OPENAI_IMAGE_PROVIDER_KEY && job?.status === 'SUCCEEDED') {
-                  openAiImageApi.markVerified(job.providerRequestId);
-                  refreshOpenAiImageApiRuntimeConfiguration();
-                } else if (providerKey === OPENAI_IMAGE_PROVIDER_KEY && job?.errorCode === 'AUTH') {
-                  openAiImageApi.markConnectionError(job.errorMessage || 'OpenAI rejected the API credentials');
-                  refreshOpenAiImageApiRuntimeConfiguration();
-                } else if (job?.status === 'SUCCEEDED' && extensionId) {
-                  externalImageApis.markVerified(extensionId, job.providerRequestId);
-                  void targetGeneration!
-                    .configureExternalImageApis(externalImageApiRuntimeConfigurations())
-                    .catch((error) => {
-                      console.error('[external-image-api] failed to refresh worker verification', error);
-                    });
-                } else if (job?.errorCode === 'AUTH' && extensionId) {
-                  externalImageApis.markConnectionError(
-                    extensionId,
-                    job.errorMessage || 'Provider rejected the API credentials',
-                  );
-                  void targetGeneration!
-                    .configureExternalImageApis(externalImageApiRuntimeConfigurations())
-                    .catch((error) => {
-                      console.error('[external-image-api] failed to refresh worker verification', error);
-                    });
-                }
-              } catch (error) {
-                console.error('[image-api] failed to persist connection state', error);
-              }
+              recordImageApiGenerationOutcome(event.runId, {
+                database: targetDatabase,
+                openAiImageApi,
+                cpaImageApi,
+                externalImageApis,
+                refreshOpenAi: refreshOpenAiImageApiRuntimeConfiguration,
+                refreshExternal: () =>
+                  targetGeneration!.configureExternalImageApis(externalImageApiRuntimeConfigurations()),
+              });
             }
             if (!activated) return;
             rendererEvents.send('generation:changed', event);
@@ -411,6 +390,9 @@ if (ownsSingleInstanceLock)
             contextRendererEvents.articleDeliveryJobChanged,
             bindNaturalWatermarkRuntime(naturalWatermarkRuntime, targetExtensions),
           );
+          const taskLifecycle = libraryTaskLifecycle(targetCodexContent, targetArticleDeliveryJobs, lifecycle, () => {
+            if (backgroundServicesRequested) context.startBackgroundServices();
+          });
           const context: ActiveLibraryContext = {
             epoch: ++nextLibraryContextEpoch,
             get state() {
@@ -420,7 +402,7 @@ if (ownsSingleInstanceLock)
             database: targetDatabase,
             generation: targetGeneration,
             codex: targetCodex,
-            ...codexContentLifecycle(targetCodexContent, lifecycle),
+            ...taskLifecycle,
             assistant: targetAssistant,
             imageDiscovery: targetImageDiscovery,
             visualizationDiscovery: targetVisualizationDiscovery,
@@ -444,10 +426,12 @@ if (ownsSingleInstanceLock)
               });
             },
             startBackgroundServices() {
-              if (!activated || backgroundServicesStarted || backgroundStartTimer) return;
+              backgroundServicesRequested = true;
+              if (!activated || lifecycle.state !== 'ACTIVE' || backgroundServicesStarted || backgroundStartTimer)
+                return;
               backgroundStartTimer = setTimeout(() => {
                 backgroundStartTimer = null;
-                if (!activated || backgroundServicesStarted) return;
+                if (!activated || lifecycle.state !== 'ACTIVE' || backgroundServicesStarted) return;
                 backgroundServicesStarted = true;
                 try {
                   targetDatabase.startBackgroundStorage();
@@ -485,12 +469,12 @@ if (ownsSingleInstanceLock)
               }, 750);
             },
             dispose() {
-              return lifecycle.dispose(async () => {
-                activated = false;
-                if (backgroundStartTimer) clearTimeout(backgroundStartTimer);
-                backgroundStartTimer = null;
-                if (discoveryStartTimer) clearTimeout(discoveryStartTimer);
-                discoveryStartTimer = null;
+              activated = false;
+              if (backgroundStartTimer) clearTimeout(backgroundStartTimer);
+              backgroundStartTimer = null;
+              if (discoveryStartTimer) clearTimeout(discoveryStartTimer);
+              discoveryStartTimer = null;
+              return taskLifecycle.dispose(async () => {
                 unsubscribeCodexPending?.();
                 unsubscribeAssistantProgress?.();
                 unsubscribeCodexPending = null;
@@ -498,7 +482,6 @@ if (ownsSingleInstanceLock)
                 targetGeneration!.off('worker-status-changed', contextRendererEvents.modelWorkerChanged);
                 targetImageDiscovery!.off('changed', contextRendererEvents.codexImagesChanged);
                 targetVisualizationDiscovery!.off('changed', contextRendererEvents.codexVisualizationsChanged);
-                await targetArticleDeliveryJobs.stopAndDrain();
                 await targetCodexContent.dispose();
                 await targetDatabase.drainBackgroundStorage();
                 await targetThumbnails.dispose();
@@ -526,6 +509,7 @@ if (ownsSingleInstanceLock)
         appShell.setActiveLibraryContext(context);
         activeLibrary = context.library;
         context.activate();
+        await replayAssetExportCalendar(context.database);
         await desktopPetals
           ?.activate(context, restorePetalsAfter)
           .catch((error) => console.error('[desktop-petals] restore failed', error));
@@ -661,6 +645,14 @@ if (ownsSingleInstanceLock)
         if (!context) throw new Error('Library services are unavailable');
         return context;
       };
+      const metricExtensions = liveServiceProxy((context) => context.extensions);
+      const applicationMetrics = createApplicationMetrics({
+        userDataPath,
+        secretProtector,
+        extensions: metricExtensions,
+        getContext: () => appShell.activeLibraryContext,
+      });
+      registerExtensionMetricsIpc(appIpc, applicationMetrics.metrics, applicationMetrics.connection, metricExtensions);
       const scheduleRatingPreviewRefresh = createTransitionPreviewRatingRefreshScheduler({
         cache: transitionPreviews,
         getContext: requireActiveContext,
@@ -711,6 +703,7 @@ if (ownsSingleInstanceLock)
         transcriptBackgroundTasks,
         assistantRouting,
         externalImageApis,
+        cpaImageApi,
         generationConcurrency,
         ...naturalWatermarkRuntime,
         () => {

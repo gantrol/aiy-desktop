@@ -12,7 +12,7 @@ import { ChevronLeftIcon, ChevronRightIcon } from 'lucide-react';
 import { useI18n } from '@/renderer/i18n/useI18n';
 import { Button } from '@/renderer/components/ui/button';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/renderer/components/ui/tooltip';
-import type { AppView } from '@/renderer/components/app/AppSidebar';
+import type { AppView } from '@/renderer/components/app/app-navigation';
 import { AppIconMenu } from '@/renderer/components/app/AppIconMenu';
 import { GenerationStatusPopover } from '@/renderer/components/app/GenerationStatusPopover';
 import { AppWindowControls } from '@/renderer/components/app/AppWindowControls';

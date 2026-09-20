@@ -1,4 +1,5 @@
 {
+  "popupGroupBatchTabs": { "message": "将同批准备的页面放入标签组" },
   "extensionName": { "message": "AIY 伴侣" },
   "extensionDescription": {
     "message": "在支持的网站自动接收 AIY 交接内容，由用户决定是否发送或发布。"

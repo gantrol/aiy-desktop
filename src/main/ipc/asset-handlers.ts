@@ -28,6 +28,9 @@ export function registerAssetIpc(
   onTransitionPreviewSelectionChanged: () => void = () => undefined,
 ) {
   ipcMain.handle('gallery:list', (_event, raw) => database.listGallery(galleryListSchema.parse(raw)));
+  ipcMain.handle('gallery:material-get', (_event, rawId, rawLocale) =>
+    database.getGalleryMaterial(id.parse(rawId), localeSchema.parse(rawLocale)),
+  );
   ipcMain.handle('asset-relationship:get', (_event, rawId, rawLocale) =>
     database.getAssetRelationship(id.parse(rawId), localeSchema.parse(rawLocale)),
   );

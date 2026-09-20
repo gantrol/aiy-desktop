@@ -1,0 +1,36 @@
+@import 'tailwindcss';
+@import '../src/renderer/styles/tokens.css';
+@source './outline.tsx';
+@source './albums.tsx';
+@source './calendar.tsx';
+@source '../src/renderer/components/albums';
+@source '../src/renderer/components/gallery';
+@source '../src/renderer/components/creator';
+@source '../src/renderer/components/media';
+@source './extensions.tsx';
+@source '../src/renderer/features/extensions';
+@source '../src/renderer/components/ui';
+@source '../src/renderer/components/outline';
+@source '../src/renderer/features/content-editor';
+@source '../src/renderer/features/video-documents';
+@source '../src/renderer/features/calendar';
+
+html,
+body,
+#root {
+  min-height: 100%;
+  margin: 0;
+}
+body {
+  background: var(--background);
+  color: var(--foreground);
+  font: 14px/1.6 var(--font-ui);
+}
+
+@layer base {
+  *,
+  ::before,
+  ::after {
+    border-color: var(--border);
+  }
+}

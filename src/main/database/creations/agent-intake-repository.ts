@@ -44,7 +44,7 @@ export class AgentIntakeRepository {
     }
     const result = agentIntakeResultSchema.parse(JSON.parse(receipt.result_json) as unknown);
     const entity =
-      result.kind === 'ARTICLE'
+      result.kind === 'ARTICLE' || result.kind === 'OUTLINE'
         ? this.storage.db.prepare('SELECT 1 FROM articles WHERE id = ? AND deleted_at IS NULL').get(result.entityId)
         : this.storage.db.prepare('SELECT 1 FROM materials WHERE id = ? AND deleted_at IS NULL').get(result.entityId);
     if (!entity) throw intakeError('RESULT_UNAVAILABLE', 'Previously imported content is no longer available');
@@ -76,7 +76,7 @@ export class AgentIntakeRepository {
         if (raced) return raced;
         let entityId: string;
         let revisionId: string | null = null;
-        if (source.kind === 'ARTICLE') {
+        if (source.kind === 'ARTICLE' || source.kind === 'OUTLINE') {
           const article = this.articles.save({
             id: null,
             albumId: null,
@@ -108,7 +108,7 @@ export class AgentIntakeRepository {
           );
           entityId = result.materialIds[0];
         }
-        const target = source.kind === 'ARTICLE' ? 'article' : 'material';
+        const target = source.kind === 'IMAGE_MATERIAL' ? 'material' : 'article';
         const result = agentIntakeResultSchema.parse({
           requestId: request.requestId,
           spaceId: request.spaceId,

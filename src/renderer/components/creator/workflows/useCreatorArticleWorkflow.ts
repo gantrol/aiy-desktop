@@ -43,6 +43,7 @@ function articleContentSnapshot(content: ArticleContentInput): ArticleContentInp
 
 export function useCreatorArticleWorkflow(options: Options) {
   const socialCopy = useI18n().messages.creator.socialPostEditor;
+  const outlineCopy = useI18n().messages.referenceOutline;
   const saveArticleRevision = useStableCallback((input: ArticleRevisionSaveInput) =>
     window.desktopApi.articleRevisionSave(input),
   );
@@ -143,7 +144,7 @@ export function useCreatorArticleWorkflow(options: Options) {
     await refresh();
     if (getCreationDraftCommitIdentity() !== snapshot.creationDraftCommitIdentity) return;
     onDraftArticleCreated(article);
-    notify(socialCopy.articleCreated);
+    notify(article.content.editorMode === 'OUTLINE' ? outlineCopy.outlineCreated : socialCopy.articleCreated);
   });
 
   const renameArticle = useStableCallback(async (article: ArticleDto, title: string) => {

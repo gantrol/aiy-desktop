@@ -1,4 +1,8 @@
-import { ensureArticleDeliveryWatermark } from '@/main/database/extensions/article-delivery-job-schema';
+import {
+  ensureArticleDeliveryWatermark,
+  ensureArticleDeliveryImagePreparation,
+  ensureArticleDeliveryMode,
+} from '@/main/database/extensions/article-delivery-job-schema';
 import type Database from 'better-sqlite3';
 import { ensureAgentIntakeSchema } from '@/main/database/core/agent-intake-schema';
 import type { ArticleStorageShape } from '@/main/database/creations/article-storage-schema';
@@ -108,6 +112,8 @@ export function ensureRevision5Schema(db: Database.Database, shape: Revision5Sou
   else if (shape.articleStorage !== 'COMPLETE') db.exec(articleCommentsSql);
   if (!shape.articleDeliveryJobsComplete) db.exec(articleDeliveryJobsSql);
   ensureArticleDeliveryWatermark(db);
+  ensureArticleDeliveryImagePreparation(db);
+  ensureArticleDeliveryMode(db);
   if (!shape.agentCliComplete) db.exec(agentCliSql);
   ensureAgentIntakeSchema(db);
   if (!shape.backgroundIssueAcknowledgementsComplete) db.exec(backgroundIssueAcknowledgementsSql);

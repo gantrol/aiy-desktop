@@ -100,6 +100,7 @@ function CreationCollectionBrowser({
       viewportRef={viewportRef}
     >
       <CreationAlbumGrid
+        viewportRef={viewportRef}
         albums={albums}
         busy={busy}
         onOpen={onOpen}
@@ -215,6 +216,7 @@ function MaterialResults({
     <>
       {creationSectionTitle && (
         <CreationAlbumGrid
+          viewportRef={viewportRef}
           albums={overviewCreationCollections}
           title={creationSectionTitle}
           busy={albumMutationBusy}

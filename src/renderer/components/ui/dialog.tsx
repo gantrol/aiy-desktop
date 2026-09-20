@@ -50,7 +50,7 @@ function DialogContent({
           data-overlay-layer="modal"
           data-overlay-surface=""
           className={cn(
-            'corner-continuous pointer-events-auto fixed top-1/2 left-1/2 z-modal grid w-[calc(100%-2rem)] max-w-lg -translate-x-1/2 -translate-y-1/2 gap-4 rounded-xl border border-border bg-overlay p-6 text-foreground shadow-dialog outline-none',
+            'corner-continuous pointer-events-auto fixed top-1/2 left-1/2 z-modal grid max-h-[calc(100dvh-2rem)] w-[calc(100%-2rem)] max-w-lg -translate-x-1/2 -translate-y-1/2 gap-4 overflow-y-auto overscroll-contain rounded-xl border border-border bg-overlay p-6 text-foreground shadow-dialog outline-none',
             className,
           )}
           onInteractOutside={(event) => {

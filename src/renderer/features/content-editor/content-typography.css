@@ -1,0 +1,322 @@
+@import '../../styles/layers.css';
+@reference '../../styles/index.css';
+
+/* Rich-text descendants stop at embedded views and nested typography hosts. */
+@layer components {
+  @scope (.aiy-compact-typography) to (.aiy-compact-typography, .aiy-article-typography, [data-content-reference], [data-node-view-wrapper][contenteditable="false"]) {
+    :scope > p {
+      @apply my-2;
+    }
+
+    :scope > :first-child {
+      @apply mt-0;
+    }
+
+    :scope > :last-child {
+      @apply mb-0;
+    }
+
+    :scope h1 {
+      @apply my-3 text-base font-semibold;
+    }
+
+    :scope h2 {
+      @apply my-3 text-base font-semibold;
+    }
+
+    :scope h3 {
+      @apply my-2 text-[15px] font-semibold;
+    }
+
+    :scope h4 {
+      @apply my-2 font-semibold;
+    }
+
+    :scope h5 {
+      @apply my-2 font-semibold;
+    }
+
+    :scope h6 {
+      @apply my-2 font-semibold;
+    }
+
+    :scope a {
+      @apply underline underline-offset-2;
+    }
+
+    :scope strong {
+      @apply font-semibold;
+    }
+
+    :scope ul {
+      @apply my-2 list-disc pl-4;
+    }
+
+    :scope ol {
+      @apply my-2 list-decimal pl-4;
+    }
+
+    :scope li {
+      @apply my-0.5;
+    }
+
+    :scope li > p {
+      @apply my-0;
+    }
+
+    :scope li > ul {
+      @apply my-1;
+    }
+
+    :scope li > ol {
+      @apply my-1;
+    }
+
+    :scope blockquote {
+      @apply my-2 border-l-2 border-current/20 pl-2;
+    }
+
+    :scope pre {
+      @apply my-2 overflow-x-auto bg-foreground/5 p-2 text-sm;
+    }
+
+    :scope code {
+      @apply rounded-sm bg-surface-sunken px-1 py-0.5 font-mono text-[0.9em];
+    }
+
+    :scope pre code {
+      @apply rounded-none bg-transparent p-0 text-inherit;
+    }
+
+    :scope blockquote > p + p {
+      @apply mt-2;
+    }
+
+    :scope hr {
+      @apply my-3 border-current/15;
+    }
+
+    :scope .tableWrapper {
+      @apply my-2 overflow-x-auto;
+    }
+
+    :scope table {
+      @apply w-full border-collapse;
+    }
+
+    :scope th {
+      @apply border border-current/15 px-2 py-1 text-left;
+    }
+
+    :scope td {
+      @apply border border-current/15 px-2 py-1;
+    }
+
+    :scope .ProseMirror-selectednode {
+      @apply outline outline-1 outline-current/30;
+    }
+  }
+
+  @scope (.aiy-article-typography) to (.aiy-compact-typography, .aiy-article-typography, [data-content-reference], [data-node-view-wrapper][contenteditable="false"]) {
+    :scope h1 {
+      @apply mb-6 mt-10 text-2xl leading-tight font-semibold text-foreground;
+    }
+
+    :scope > :is(h1, h2, h3, h4, h5, h6):first-child {
+      @apply mt-0;
+    }
+
+    :scope h2 {
+      @apply mb-5 mt-12 border-b border-selected-border pb-2.5 text-[1.375rem] leading-[1.45] font-semibold tracking-[0.01em] text-[var(--button-primary)];
+    }
+
+    :scope h3 {
+      @apply mb-4 mt-10 border-l-[3px] border-[var(--button-primary)] pl-3 text-[1.1875rem] leading-[1.5] font-semibold text-[var(--button-primary)];
+    }
+
+    :scope h4 {
+      @apply mb-3 mt-8 text-[1.0625rem] leading-[1.55] font-semibold text-[var(--button-primary)];
+    }
+
+    :scope h5 {
+      @apply mb-2.5 mt-7 text-[15px] leading-[1.6] font-semibold text-[var(--button-primary)];
+    }
+
+    :scope h6 {
+      @apply mb-2 mt-6 text-sm leading-[1.6] font-semibold tracking-[0.04em] text-[var(--button-primary)];
+    }
+
+    :scope > p {
+      @apply my-5;
+    }
+
+    :scope strong {
+      @apply font-semibold text-foreground;
+    }
+
+    :scope a {
+      @apply font-medium text-[var(--button-primary)] underline decoration-selected-border underline-offset-4;
+    }
+
+    :scope blockquote {
+      @apply my-7 border-l-[3px] border-[var(--button-primary)] bg-selected/35 px-5 py-4 text-[15px] leading-[1.8] text-muted-foreground;
+    }
+
+    :scope blockquote p {
+      @apply my-0 text-inherit;
+    }
+
+    :scope blockquote p + p {
+      @apply mt-3;
+    }
+
+    :scope > ul {
+      @apply my-5;
+    }
+
+    :scope ul {
+      @apply list-disc space-y-2.5 pl-6;
+    }
+
+    :scope > ol {
+      @apply my-5;
+    }
+
+    :scope ol {
+      @apply list-decimal space-y-2.5 pl-6;
+    }
+
+    :scope li {
+      @apply pl-0.5;
+    }
+
+    :scope li > p {
+      @apply my-0;
+    }
+
+    :scope li > div > p {
+      @apply my-0;
+    }
+
+    :scope li > ul {
+      @apply mt-2.5;
+    }
+
+    :scope li > ol {
+      @apply mt-2.5;
+    }
+
+    :scope code {
+      @apply rounded-sm bg-surface-sunken px-1.5 py-0.5 font-mono text-[0.9em] tracking-normal text-foreground;
+    }
+
+    :scope pre {
+      @apply my-7 overflow-x-auto rounded-md border bg-surface-sunken px-5 py-4 font-mono text-sm leading-6 tracking-normal;
+    }
+
+    :scope pre code {
+      @apply rounded-none bg-transparent p-0 text-[inherit];
+    }
+
+    :scope hr {
+      @apply mx-auto my-10 w-16 border-0 border-t-2 border-selected-border;
+    }
+
+    :scope .tableWrapper {
+      @apply my-7 overflow-x-auto rounded-md border;
+    }
+
+    :scope table {
+      @apply my-7 w-full border-collapse text-sm leading-6 tracking-normal;
+    }
+
+    :scope .tableWrapper table {
+      @apply my-0;
+    }
+
+    :scope th {
+      @apply border-r border-b border-border bg-selected/35 px-4 py-3 text-left font-semibold text-selected-foreground;
+    }
+
+    :scope td {
+      @apply border-r border-b border-border px-4 py-3 align-top;
+    }
+
+    :scope tr > *:last-child {
+      @apply border-r-0;
+    }
+
+    :scope tbody tr:last-child > td {
+      @apply border-b-0;
+    }
+
+    :scope .ProseMirror-selectednode {
+      @apply ring-2 ring-selected-border;
+    }
+  }
+
+  @scope (.aiy-compact-typography, .aiy-article-typography) to (.aiy-compact-typography, .aiy-article-typography, [data-content-reference], [data-node-view-wrapper][contenteditable="false"]) {
+    :scope.ProseMirror > p:has(> br.ProseMirror-trailingBreak:only-child) {
+      @apply my-0;
+    }
+
+    /* Tiptap wraps task content in a div; GFM puts its checkbox inline in the first paragraph. */
+    :scope ul[data-type='taskList'] {
+      @apply list-none pl-0;
+    }
+
+    :scope li[data-type='taskItem'] {
+      @apply flex items-start gap-2 pl-0;
+    }
+
+    :scope li[data-type='taskItem'] > label {
+      @apply flex h-[1lh] shrink-0 items-center;
+    }
+
+    :scope li[data-type='taskItem'] > label > input[type='checkbox'] {
+      @apply m-0 size-4 shrink-0 accent-selected-foreground;
+    }
+
+    :scope li[data-type='taskItem'] > div {
+      @apply min-w-0 flex-1;
+    }
+
+    :scope li[data-type='taskItem'] > div > p {
+      @apply my-0;
+    }
+
+    :scope li[data-type='taskItem'] > div > p + p {
+      @apply mt-1;
+    }
+
+    :scope li[data-type='taskItem'] > div > :is(ul, ol) {
+      @apply my-1;
+    }
+
+    :scope :is(ul, ol).contains-task-list {
+      @apply pl-0;
+    }
+
+    :scope :is(ul, ol).contains-task-list > li:not(.task-list-item) {
+      @apply ml-6;
+    }
+
+    :scope li.task-list-item {
+      @apply relative list-none pl-6;
+    }
+
+    :scope li.task-list-item > :is(input[type='checkbox'], [data-slot='checkbox']),
+    :scope li.task-list-item > p:first-child > :is(input[type='checkbox'], [data-slot='checkbox']) {
+      @apply absolute left-0 top-[calc((1lh-1rem)/2)] m-0 size-4;
+    }
+
+    :scope pre {
+      /* Tiptap injects an unlayered pre-wrap rule. Preserve code lines in editors and previews alike. */
+      @apply max-w-full whitespace-pre! [overflow-wrap:normal];
+    }
+
+    :scope .tableWrapper {
+      @apply max-w-full;
+    }
+  }
+}

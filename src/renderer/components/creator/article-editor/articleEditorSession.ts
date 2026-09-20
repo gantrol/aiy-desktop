@@ -12,9 +12,11 @@ export type ArticleSaveMode = 'auto' | 'manual';
 export interface ArticleEditorSessionMetadata {
   readonly schemaVersion: 1 | 2;
   readonly document?: BlockDocument;
+  readonly editorMode?: 'OUTLINE';
   readonly title: string;
   readonly mediaBindings: ArticleRevisionSaveInput['content']['mediaBindings'];
   readonly coverAssetId: string | null;
+  readonly coverVariants?: ArticleRevisionSaveInput['content']['coverVariants'];
   readonly creationInput?: ArticleRevisionSaveInput['content']['creationInput'];
   readonly files?: ArticleRevisionSaveInput['content']['files'];
 }

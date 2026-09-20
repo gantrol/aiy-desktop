@@ -54,7 +54,7 @@ export const defaultArticleEditorOutlinePreferences: ArticleEditorOutlinePrefere
   width: 320,
   depthLimit: 6,
   followCursor: true,
-  activePanel: 'MEDIA',
+  activePanel: 'OUTLINE',
   side: 'RIGHT',
   documentWidth: 'STANDARD',
   outlineExpanded: true,

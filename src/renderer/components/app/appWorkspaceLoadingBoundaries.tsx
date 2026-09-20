@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react';
 import type { TransitionPreviewDto } from '@/shared/contracts';
-import type { AppView } from '@/renderer/components/app/AppSidebar';
+import type { AppView } from '@/renderer/components/app/app-navigation';
 import type { AppWorkspaceLoadingBoundaries } from '@/renderer/components/app/AppWorkspaceViews';
 import { APP_LOADING_VARIANTS as loadingVariants } from '@/renderer/components/app/AppLoadingState';
 import {
@@ -28,6 +28,8 @@ export function createWorkspaceLoadingBoundaries(
     ),
     dictionary: screen('dictionary'),
     gallery: screen('gallery'),
+    search: screen('search'),
+    calendar: screen('calendar'),
     companion: screen('companion'),
     extensions: screen(view),
     aiCenter: screen('aiCenter'),

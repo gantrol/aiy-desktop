@@ -1,6 +1,6 @@
 {
   "name": "@aiy/desktop",
-  "version": "0.5.1",
+  "version": "0.5.4",
   "private": true,
   "description": "AI × DIY: a local-first creative workspace where you create and AI helps",
   "author": "AIY",
@@ -51,7 +51,9 @@
     "test:smoke": "vitest run --config vitest.smoke.config.ts",
     "verify:test-boundary": "node scripts/verify-public-smoke-boundary.mjs",
     "verify:store": "npm run format:check && npm run lint && npm run typecheck && npm run verify:test-boundary && npm run test:smoke && npm run build",
-    "verify": "npm run format:check && npm run lint && npm run typecheck && npm run verify:test-boundary && npm run test:smoke && npm run build"
+    "verify": "npm run format:check && npm run lint && npm run typecheck && npm run verify:test-boundary && npm run test:smoke && npm run build",
+    "design:dev": "node scripts/design-lab.mjs dev",
+    "design:build": "node scripts/design-lab.mjs build"
   },
   "dependencies": {
     "@annotorious/react": "3.8.8",
@@ -72,8 +74,10 @@
     "@radix-ui/react-toggle-group": "^1.1.19",
     "@radix-ui/react-tooltip": "^1.2.16",
     "@tiptap/core": "3.30.5",
+    "@tiptap/extension-details": "3.30.5",
     "@tiptap/extension-find-and-replace": "3.30.5",
     "@tiptap/extension-image": "3.30.5",
+    "@tiptap/extension-list": "3.30.5",
     "@tiptap/extension-table": "3.30.5",
     "@tiptap/extension-task-item": "3.30.5",
     "@tiptap/extension-task-list": "3.30.5",
@@ -88,6 +92,7 @@
     "docx": "^9.7.1",
     "gifenc": "1.0.3",
     "html-to-image": "1.11.13",
+    "katex": "0.16.47",
     "lucide-react": "1.26.0",
     "mediabunny": "^1.53.0",
     "mermaid": "11.17.2",

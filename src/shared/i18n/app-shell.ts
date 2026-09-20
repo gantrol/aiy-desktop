@@ -2,8 +2,8 @@
 export const appShellMessages = {
   open: 'Open AIY',
   'petals-open': 'Open AIY Petals',
-  'petals-show-all': 'Show All Petals',
-  'petals-hide-all': 'Hide All Petals',
+  'petals-show-all': 'Restore Desktop',
+  'petals-hide-all': 'Temporarily Hide Desktop',
   'petals-settings': 'Petals Settings',
   starting: 'Starting…',
   tasksRunning: 'Background tasks: {count} running',

@@ -2,6 +2,7 @@ import { z } from 'zod';
 import type { ExtensionManifestDto } from '@/shared/contracts';
 import { isExtensionPermissionTemplate, validateDeclaredExtensionPermission } from '@/shared/extension-permissions';
 import { EXTENSION_HOST_ENGINE_KEY } from '@/shared/product';
+import { articleDeliveryModeSchema } from '@/shared/contracts/article-delivery';
 
 const identifier = z
   .string()
@@ -101,6 +102,7 @@ const imageApiConfigurationSchema = z
 const articleDeliveryConfigurationSchema = z
   .object({
     kind: z.literal('ARTICLE_DELIVERY'),
+    deliveryMode: articleDeliveryModeSchema.optional(),
     defaultEndpointId: identifier,
     endpoints: z
       .array(
@@ -153,6 +155,7 @@ const manifestSchema = z
         modelProviders: contributionIds.optional(),
         deliveryChannels: contributionIds.optional(),
         contentApplications: contributionIds.optional(),
+        metricProviders: contributionIds.optional(),
       })
       .strict(),
     permissions: z.array(permissionKey).max(80),

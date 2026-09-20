@@ -1,5 +1,6 @@
 import { blockDocumentSchema } from '@/shared/contracts/block-document';
 import { z } from 'zod';
+import { generationQualitySchema } from '@/shared/generation-quality';
 
 const idSchema = z.string().min(1).max(200);
 const localeSchema = z.enum(['zh', 'en']);
@@ -27,7 +28,7 @@ const generationTargetSchema = z
   .object({
     modelKey: idSchema,
     count: z.number().int().min(1).max(100),
-    quality: z.enum(['low', 'medium', 'high']),
+    quality: generationQualitySchema,
   })
   .strict();
 const assetSchema = z
@@ -71,7 +72,7 @@ export const creationDraftDtoSchema = z
     wordPaletteReferences: z.array(paletteReferenceSchema).max(50),
     dictionaryScope: dictionaryScopeSchema,
     canvasPresetKey: z.string().max(100).nullable(),
-    quality: z.enum(['low', 'medium', 'high']),
+    quality: generationQualitySchema,
     selectedModelKeys: z.array(idSchema).max(20),
     repeatCount: z.number().int().min(1).max(100),
     modelTargets: z.array(generationTargetSchema).max(20),

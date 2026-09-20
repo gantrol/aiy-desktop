@@ -1,6 +1,7 @@
 import { appMaterialsReturnSummary } from '@/renderer/appPresentation';
 import { GifWorkspaceScope } from '@/renderer/features/gif-making/GifMakerProvider';
 import { AppWorkspaceViews } from '@/renderer/components/app/AppWorkspaceViews';
+import { PopoverNavigationScope } from '@/renderer/components/ui/popover-navigation-scope';
 import type {
   AppLocation,
   CreatorOpenTabTarget,
@@ -15,6 +16,7 @@ import type { AiActivityRecord } from '@/renderer/features/ai-center/AiCenterScr
 import { aiActivityNavigationTarget } from '@/renderer/features/ai-center/aiActivityNavigation';
 import { generationReEditLocation } from '@/renderer/features/ai-center/generationReEditNavigation';
 import { ContentManagementScreen } from '@/renderer/features/content-management/ContentManagementScreen';
+import { contentSearchLocation } from '@/renderer/features/content-search/content-search-navigation';
 import { CreationOutlineWorkspace } from '@/renderer/features/creation-outline/CreationOutlineWorkspace';
 import type { CodexImagesNavigationState } from '@/renderer/features/extensions/codexImageNavigation';
 import type { TransitionShowcaseNavigationState } from '@/renderer/features/extensions/transitionShowcaseNavigation';
@@ -180,6 +182,18 @@ function WorkspaceOutlineSurface({ location, ...props }: WorkspaceTabSurfaceProp
 }
 
 export function WorkspaceTabSurface(props: WorkspaceTabSurfaceProps) {
+  const entry = activeNavigationEntry(props.tab);
+  return (
+    <PopoverNavigationScope
+      active={props.active && (props.visible ?? true)}
+      navigationKey={`${entry.id}:${JSON.stringify(appLocationToWorkspaceTarget(entry.location))}`}
+    >
+      <WorkspaceTabContent {...props} />
+    </PopoverNavigationScope>
+  );
+}
+
+function WorkspaceTabContent(props: WorkspaceTabSurfaceProps) {
   const {
     tab,
     active,
@@ -416,6 +430,9 @@ export function WorkspaceTabSurface(props: WorkspaceTabSurfaceProps) {
               })
             }
             onGalleryNavigate={navigateGallery}
+            onSearchNavigate={(search) => commit((current) => ({ ...current, search }), 'replace')}
+            onSearchResultOpen={(source) => onNewTab(tab.id, contentSearchLocation(source))}
+            onCalendarOpenLocation={(location) => onNewTab(tab.id, location)}
             onOpenGalleryResult={openGalleryResult}
             onOpenGalleryTerm={openGalleryTerm}
             onGalleryIntakeCommitted={finishIntake}

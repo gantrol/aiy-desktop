@@ -1,3 +1,5 @@
+import { canLeavePetal, type PetalFlushReport } from '@/shared/petal-flush';
+import { isBlankPetalInput } from '@/shared/petal-input-preservation';
 import type { BlockDocument } from '@/shared/contracts/block-document';
 import { ContentCheckpointTimer } from '@/renderer/features/content-editor/ContentCheckpointTimer';
 import { blockDocumentImportIds } from '@/shared/contracts/block-document';
@@ -186,22 +188,35 @@ export class NoteEditSession {
     });
     return this.flush();
   };
-  checkpointForExit = async () => {
+  /** Callers that only need leave-safety keep the Boolean facade. */
+  checkpointForExit = async () => canLeavePetal(await this.prepareToLeave());
+
+  prepareToLeave = async (requireRevision = false): Promise<PetalFlushReport> => {
     this.clearTimers();
-    if (
-      this.state.note.persisted === false &&
-      this.state.document &&
-      blockDocumentImportIds(this.state.document).length
-    )
-      return false;
+    if (this.composing) return { status: 'blocked', reason: 'composing' };
+    const hadChanges = this.generation !== this.savedGeneration;
+    const hasImports = Boolean(this.state.document && blockDocumentImportIds(this.state.document).length);
+    if (hasImports && (requireRevision || !this.state.note.persisted))
+      return { status: 'blocked', reason: 'pendingWork' };
     try {
-      if (this.composing) return false;
-      if (!this.state.document || !blockDocumentImportIds(this.state.document).length) await this.flush();
+      const saved = !hasImports && (await this.flush());
+      if (this.composing) return { status: 'blocked', reason: 'composing' };
+      if (!this.state.note.persisted) {
+        // Provisional checkpoints live in memory, not in the library. They cannot authorize disposal.
+        return isBlankPetalInput(this.state) && !this.state.note.files?.length
+          ? { status: 'unchanged' }
+          : { status: 'blocked', reason: 'persistence' };
+      }
+      if (saved && this.generation === this.savedGeneration) return { status: hadChanges ? 'saved' : 'unchanged' };
+      if (requireRevision) return { status: 'blocked', reason: 'unconfirmed' };
+      const generation = this.generation;
       await this.checkpoint();
-      return true;
+      if (generation !== this.generation || this.composing) return { status: 'blocked', reason: 'pendingWork' };
+      // A failed commit can still leave a durable recovery draft. Do not relabel it as saved.
+      return { status: 'recoverable', reason: hasImports ? 'pendingWork' : 'unconfirmed' };
     } catch (error) {
       this.publish({ status: 'error', error: String(error), frozen: false });
-      return false;
+      return { status: 'blocked', reason: 'persistence' };
     }
   };
   private clearTimers() {

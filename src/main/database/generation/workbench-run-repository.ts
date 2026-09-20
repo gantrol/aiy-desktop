@@ -9,6 +9,7 @@ import type {
   GenerationVersionInput,
   RenamePromptSeriesInput,
 } from '@/shared/contracts';
+import { generationQualityValues } from '@/shared/generation-quality';
 import { ensureImageMaterials } from '@/main/database/albums/image-material-batch';
 import { isGifExecution } from '@/main/database/creations/gif-execution-ownership';
 import type { StoredObject } from '@/main/database/core/storage';
@@ -200,7 +201,7 @@ export class WorkbenchRunRepository extends WorkbenchPreparationRepository {
       const height = settings ? settings.height : nullableDimension(source.height);
       const quality = settings
         ? settings.quality
-        : ['low', 'medium', 'high'].includes(text(source.quality))
+        : generationQualityValues.includes(text(source.quality) as GenerationQuality)
           ? (text(source.quality) as GenerationQuality)
           : 'low';
       this.db

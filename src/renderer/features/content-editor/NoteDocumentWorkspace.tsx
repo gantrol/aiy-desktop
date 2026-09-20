@@ -14,6 +14,7 @@ import type { useNoteMediaIntake } from '@/renderer/features/content-editor/useN
 import type { VideoDocumentWysiwygEditorHandle } from '@/renderer/features/video-documents/videoDocumentEditorTypes';
 import { useI18n } from '@/renderer/i18n/useI18n';
 import { sameArticleElementPlacements } from '@/shared/contracts/article';
+import { ImagesIcon, MessageSquareIcon, PaperclipIcon } from 'lucide-react';
 
 export function NoteDocumentWorkspace({
   activePanel,
@@ -69,6 +70,7 @@ export function NoteDocumentWorkspace({
             tabs={[
               {
                 id: 'MEDIA',
+                icon: ImagesIcon,
                 label: editorCopy.media,
                 count: state.referenceAssetIds.length,
                 content: (
@@ -87,12 +89,14 @@ export function NoteDocumentWorkspace({
               },
               {
                 id: 'COMMENTS',
+                icon: MessageSquareIcon,
                 label: editorCopy.comments,
                 count: comments.comments.filter((comment) => comment.status === 'OPEN').length,
                 content: comments.panel,
               },
               {
                 id: 'FILES',
+                icon: PaperclipIcon,
                 label: editorCopy.files,
                 count: state.note.files?.length ?? 0,
                 content: (

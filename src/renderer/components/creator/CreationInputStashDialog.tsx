@@ -198,7 +198,7 @@ export function CreationInputStashDialog({
   };
   const targetName = (target: GenerationTargetInput) => {
     const model = imageGenerationRoutes.find((item) => item.key === target.modelKey);
-    const quality = zh ? ({ low: '低', medium: '中', high: '高' } as const)[target.quality] : target.quality;
+    const quality = messages.creator.quality[target.quality];
     return `${model?.name ?? target.modelKey} × ${target.count} · ${quality}`;
   };
   const scopeName = (scope: CreationDictionaryScopeDto | null) =>

@@ -46,6 +46,11 @@ export const OPENAI_IMAGE_SUNBURST_MODEL_KEY = 'openai/gpt-image-2.5-sunburst';
 export const OPENAI_IMAGE_FLARE_MODEL_KEY = 'openai/gpt-image-2.5-flare';
 export const OPENAI_IMAGE_PROVIDER_KEY = 'openai';
 export const OPENAI_IMAGE_CONNECTION_ID = `${OPENAI_IMAGE_API_EXTENSION_ID}:default`;
+export const CPA_IMAGE_API_EXTENSION_ID = 'com.aiy.cpa-image-api';
+export const CPA_IMAGE_PROVIDER_KEY = 'codex-backend-cpa';
+export const CPA_IMAGE_CONNECTION_ID = `${CPA_IMAGE_API_EXTENSION_ID}:default`;
+export const CPA_IMAGE_FLARE_MODEL_KEY = `${CPA_IMAGE_PROVIDER_KEY}/gpt-image-2.5-flare`;
+export const CPA_IMAGE_SUNBURST_MODEL_KEY = `${CPA_IMAGE_PROVIDER_KEY}/gpt-image-2.5-sunburst`;
 export const DEEPSEEK_API_EXTENSION_ID = 'com.aiy.deepseek-api';
 /** Historical runtime identity retained by persisted assistant runs. */
 export const DEEPSEEK_API_CONNECTION_ID = 'deepseek-api-default';
@@ -74,6 +79,7 @@ const GENERATION_PROVIDER_EXTENSION_IDS: Readonly<Record<string, string>> = {
   [CODEX_CLI_PROVIDER_KEY]: CODEX_APP_SERVER_EXTENSION_ID,
   [ANTIGRAVITY_CLI_PROVIDER_KEY]: ANTIGRAVITY_CLI_EXTENSION_ID,
   [OPENAI_IMAGE_PROVIDER_KEY]: OPENAI_IMAGE_API_EXTENSION_ID,
+  [CPA_IMAGE_PROVIDER_KEY]: CPA_IMAGE_API_EXTENSION_ID,
   [GOOGLE_IMAGE_PROVIDER_ID]: GOOGLE_GEMINI_IMAGE_API_EXTENSION_ID,
   [ALIBABA_IMAGE_PROVIDER_ID]: ALIBABA_MODEL_STUDIO_IMAGE_API_EXTENSION_ID,
   [VOLCENGINE_IMAGE_PROVIDER_ID]: VOLCENGINE_ARK_IMAGE_API_EXTENSION_ID,

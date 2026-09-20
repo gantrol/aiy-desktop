@@ -1,7 +1,7 @@
 import { ImageOffIcon } from 'lucide-react';
 import { memo, useCallback, useDeferredValue, useEffect, useMemo, useRef, type RefObject } from 'react';
-import ReactMarkdown, { type Components } from 'react-markdown';
-import remarkGfm from 'remark-gfm';
+import type { Components } from 'react-markdown';
+import { ContentMarkdown } from '@/renderer/features/content-editor/ContentMarkdown';
 import type {
   ArticleContentInput,
   ArticleElementPlacementInput,
@@ -14,11 +14,7 @@ import { AssetFileContextMenu } from '@/renderer/components/media/AssetFileConte
 import { useArticleEditorMarkdownProjection } from '@/renderer/components/creator/article-editor/ArticleEditorSessionProvider';
 import { useWorkspaceArticleEditorState } from '@/renderer/components/workspace/WorkspaceArticleEditorStateProvider';
 import { useI18n } from '@/renderer/i18n/useI18n';
-import {
-  articleDocumentWidthClassName,
-  articleReferenceTitleClassName,
-  articleRichTextClassName,
-} from '@/renderer/lib/articleTypography';
+import { articleDocumentWidthClassName, articleReferenceTitleClassName } from '@/renderer/lib/articleTypography';
 import { codexMarkdownUrlTransform } from '@/renderer/lib/codexThreadLinks';
 
 export interface ArticleReferenceMedia {
@@ -92,28 +88,19 @@ const ArticleComparisonMarkdown = memo(function ArticleComparisonMarkdown({
           </AssetFileContextMenu>
         );
       },
-      table: ({ children }) => (
-        <div className="tableWrapper">
-          <table>{children}</table>
-        </div>
-      ),
     };
   }, [media, mediaBindings, unavailableLabel]);
 
   return (
-    <div
-      data-article-reference-body
-      className={`${articleRichTextClassName} [content-visibility:auto] [contain-intrinsic-size:auto_800px]`}
+    <ContentMarkdown
+      containerProps={{ 'data-article-reference-body': true }}
+      typography="article"
+      className="[content-visibility:auto] [contain-intrinsic-size:auto_800px]"
+      components={components}
+      urlTransform={codexMarkdownUrlTransform}
     >
-      <ReactMarkdown
-        remarkPlugins={[remarkGfm]}
-        components={components}
-        skipHtml
-        urlTransform={codexMarkdownUrlTransform}
-      >
-        {markdown}
-      </ReactMarkdown>
-    </div>
+      {markdown}
+    </ContentMarkdown>
   );
 });
 

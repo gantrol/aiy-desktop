@@ -1,3 +1,12 @@
+import {
+  petalAssetFileCommandSchema,
+  petalAssetFileResultSchema,
+  petalFlushReportSchema,
+  petalWorkspaceCommandSchema,
+  petalWorkspaceResultSchema,
+  petalWorkspaceSnapshotSchema,
+} from '@/shared/contracts/petal-workspace';
+import { canLeavePetal, normalizePetalFlush, type PetalFlushReport } from '@/shared/petal-flush';
 import { createContentLibraryBridge } from '@/preload/content-library-api';
 import { codexContentStateSchema, codexProjectTargetSchema } from '@/shared/contracts/codex-content';
 import { CODEX_CONTENT_APPLICATION_ID, contentApplicationSchema } from '@/shared/contracts/content-applications';
@@ -30,15 +39,24 @@ export function createDesktopPetalsApi(): DesktopPetalsApi {
     });
   // A window that failed before mounting an editor owns no unsaved input.
   // Register in preload so even a renderer boot/validation failure can acknowledge shutdown.
-  let flushEditor: ((save?: boolean) => Promise<boolean>) | null = null;
-  ipcRenderer.on('desktop-petals:flush', (_event, token: string, save?: boolean) => {
+  let flushEditor: Parameters<DesktopPetalsApi['onFlush']>[0] | null = null;
+  ipcRenderer.on('desktop-petals:flush', (_event, token: string, save?: boolean, deadline?: number) => {
     void Promise.resolve()
-      .then(() => (flushEditor ? flushEditor(save) : true))
-      .catch(() => false)
-      .then((saved) => command('flushed', { token, saved }))
+      .then(async (): Promise<PetalFlushReport> => {
+        if (!flushEditor) return { status: 'unchanged' };
+        const result = await flushEditor(save, deadline);
+        return typeof result === 'boolean' ? normalizePetalFlush(result) : petalFlushReportSchema.parse(result);
+      })
+      .catch((): PetalFlushReport => ({ status: 'blocked', reason: 'unknown' }))
+      .then((report) => command('flushed', { token, saved: canLeavePetal(report), report }))
       .catch(() => undefined);
   });
   return {
+    workspace: async () => petalWorkspaceSnapshotSchema.parse(await command('workspace', { kind: 'list' })),
+    workspaceAction: async (input) =>
+      petalWorkspaceResultSchema.parse(await command('workspace', petalWorkspaceCommandSchema.parse(input))),
+    assetFile: async (input) =>
+      petalAssetFileResultSchema.parse(await command('asset-file', petalAssetFileCommandSchema.parse(input))),
     files: async (input) => desktopNoteSchema.parse(await command('files', input)),
     preview: async (input) => petalPreviewSchema.nullable().parse(await command('preview', input)),
     drawer: (input) => command('drawer', input),

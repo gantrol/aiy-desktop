@@ -83,6 +83,8 @@ function readAppLoadingVariants() {
     documents: DEFAULT_APP_LOADING_VARIANT,
     dictionary: variantAt(1),
     gallery: variantAt(2),
+    search: DEFAULT_APP_LOADING_VARIANT,
+    calendar: DEFAULT_APP_LOADING_VARIANT,
     companion: DEFAULT_APP_LOADING_VARIANT,
     codexImages: variantAt(3),
     transitionShowcase: DEFAULT_APP_LOADING_VARIANT,

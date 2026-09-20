@@ -1,4 +1,5 @@
 import type { AppDeepLinkCommand } from '@/shared/contracts/app-deep-link';
+import type { GenerationQuality } from '@/shared/generation-quality';
 import type { CreationOutlineCommand, CreationOutlineResult } from '@/shared/contracts/creation-outline';
 import type { GifMakingApi } from '@/shared/contracts/gif-making';
 import type { AppSupportDestination } from '@/shared/contracts/app-support';
@@ -42,6 +43,7 @@ import type {
   ArticleDeliveryConnectionSaveInput,
   ArticleDeliveryExtensionTarget,
   ArticleDeliveryJob,
+  ArticleDeliveryMode,
   ArticleDeliveryJobChangedEvent,
   ArticleDeliveryJobListInput,
   ArticleDeliveryJobRetryInput,
@@ -65,6 +67,9 @@ import type {
 import type { BlockDocument } from '@/shared/contracts/block-document';
 import type {
   BrowserCompanionDeleteInput,
+  BrowserCompanionBatchInput,
+  BrowserCompanionBatchResult,
+  BrowserCompanionReopenInput,
   BrowserCompanionDeleteResult,
   BrowserCompanionDestinationSelectInput,
   BrowserCompanionDestinationsResult,
@@ -357,6 +362,10 @@ export type {
   BrowserCompanionBrowser,
   BrowserCompanionBrowserId,
   BrowserCompanionBrowserOpenError,
+  BrowserCompanionBatchInput,
+  BrowserCompanionBatchItemResult,
+  BrowserCompanionBatchResult,
+  BrowserCompanionReopenInput,
   BrowserCompanionContentKind,
   BrowserCompanionDeleteInput,
   BrowserCompanionDeleteResult,
@@ -526,14 +535,18 @@ export type {
   CodexHistoryFilterOptionsInput,
   CodexHistoryIndexState,
   CodexHistoryIndexStatus,
+  CodexHistoryContextKind,
   CodexHistoryMatchRole,
   CodexHistoryMessage,
+  CodexHistoryMessageBlock,
+  CodexHistoryMessagePhase,
   CodexHistoryProjectOption,
   CodexHistoryRefreshInput,
   CodexHistoryRoleFilter,
   CodexHistorySearchInput,
   CodexHistorySearchPage,
   CodexHistorySearchResult,
+  CodexHistorySearchScope,
   CodexHistoryThreadMessagesInput,
   CodexHistoryThreadMessagesPage,
   CodexHistoryThreadMessagesSource,
@@ -785,7 +798,7 @@ export type ContentLocale = string;
 export const DEFAULT_TERM_CONTEXT_KEY = 'general.default';
 export type EditorialState = 'DRAFT' | 'APPROVED' | 'ARCHIVED';
 export type GenerationStatus = 'QUEUED' | 'RUNNING' | 'SUCCEEDED' | 'FAILED' | 'CANCELLED' | 'INTERRUPTED';
-export type GenerationQuality = 'low' | 'medium' | 'high';
+export type { GenerationQuality } from '@/shared/generation-quality';
 /** Operational phases shown only when the application has a real state to report. */
 export type GenerationTaskPhase =
   | 'QUEUED'
@@ -877,7 +890,8 @@ export type ExtensionContributionPoint =
   | 'searchProviders'
   | 'modelProviders'
   | 'deliveryChannels'
-  | 'contentApplications';
+  | 'contentApplications'
+  | 'metricProviders';
 
 export type ExtensionKind = 'CAPABILITY' | 'LANGUAGE';
 export type ExtensionCategory = 'FRONTEND_DESIGN';
@@ -919,6 +933,7 @@ export interface ExtensionArticleDeliveryEndpointDto {
 /** Declarative article delivery channel executed by the trusted host broker. */
 export interface ExtensionArticleDeliveryConfigurationDto {
   kind: 'ARTICLE_DELIVERY';
+  deliveryMode?: ArticleDeliveryMode;
   defaultEndpointId: string;
   endpoints: ExtensionArticleDeliveryEndpointDto[];
   pathPrefix: string;
@@ -1026,9 +1041,15 @@ export interface ExtensionSetPermissionInput {
   granted: boolean;
 }
 
+export interface ExtensionRevokePermissionsInput {
+  extensionId: string;
+  permissions: string[];
+}
+
 export interface ExtensionInstallLocalResult {
   extensionId: string | null;
   extensions: ExtensionDto[];
+  errorCode?: 'UPDATE_UNAVAILABLE' | 'UPDATE_ID_MISMATCH' | 'UPDATE_INCOMPATIBLE';
 }
 
 export interface CodexGeneratedImageDto {
@@ -1875,12 +1896,18 @@ export interface AssetRelationshipDto {
   directPackSources: AssetDirectPackSourceDto[];
 }
 
-export interface FavoriteTextMaterialDto {
+export interface TextMaterialDto {
   id: string;
   text: string;
   createdAt: string;
+  favoritedAt: string | null;
+}
+
+export interface FavoriteTextMaterialDto extends TextMaterialDto {
   favoritedAt: string;
 }
+
+export type GalleryMaterialDto = { kind: 'MEDIA'; media: GalleryItemDto } | { kind: 'TEXT'; text: TextMaterialDto };
 
 export interface FavoriteAddResult {
   materialId: string;
@@ -2997,6 +3024,8 @@ export interface DerivedVisualPromptTemplatesDto {
 }
 
 export interface DerivedVisualDto {
+  /** Absent on legacy shared-cover workspaces. */
+  coverRatio?: import('@/shared/article-covers').ArticleCoverRatio;
   id: string;
   positionId: string | null;
   positionWasUsed: boolean;
@@ -3762,6 +3791,9 @@ export interface PromptVersionCreateResult {
 
 export interface CreationDraftCommitInput {
   creationDraftId: string;
+  /** Attach a saved working draft to this existing creation, preserving an immutable prompt version. */
+  seriesId?: string | null;
+  baseVersionId?: string | null;
   inspirationStashId?: string | null;
   imageBreakdownId?: string | null;
   title: string;
@@ -4190,6 +4222,9 @@ export interface DesktopApi
     DerivedVisualOperationsApi,
     GifMakingApi {
   contentLibrary: import('@/shared/contracts/content-library').ContentLibraryApi;
+  calendar: import('@/shared/contracts/calendar').CalendarApi;
+  extensionMetrics: import('@/shared/extension-metrics').ExtensionMetricsApi;
+  openAiCostsConnection: import('@/shared/openai-costs').OpenAiCostsConnectionApi;
   maintenanceGuide: MaintenanceGuideApi;
   onArticleEditorDrain(listener: (draining: boolean) => Promise<boolean>): () => void;
   rendererDiagnosticRecord(input: RendererDiagnosticInput): void;
@@ -4223,11 +4258,14 @@ export interface DesktopApi
   appUpdateDownload(): Promise<AppUpdateStateDto>;
   appUpdateInstall(): Promise<AppUpdateStateDto>;
   extensionsList(): Promise<ExtensionDto[]>;
+  extensionsReload(): Promise<ExtensionDto[]>;
   extensionLanguagePacksList(): Promise<ExtensionLanguagePackDto[]>;
   extensionInstallLocal(): Promise<ExtensionInstallLocalResult>;
+  extensionUpdateLocal(extensionId: string): Promise<ExtensionInstallLocalResult>;
   extensionUninstallLocal(extensionId: string): Promise<ExtensionDto[]>;
   extensionSetEnabled(input: ExtensionSetEnabledInput): Promise<ExtensionDto[]>;
   extensionSetPermission(input: ExtensionSetPermissionInput): Promise<ExtensionDto[]>;
+  extensionRevokePermissions(input: ExtensionRevokePermissionsInput): Promise<ExtensionDto[]>;
   naturalWatermarkConfigurationGet(): Promise<NaturalWatermarkConfiguration>;
   naturalWatermarkConfigurationSave(input: NaturalWatermarkConfiguration): Promise<NaturalWatermarkConfiguration>;
   naturalWatermarkCustomLogoGet(id: string): Promise<NaturalWatermarkCustomLogo>;
@@ -4403,6 +4441,9 @@ export interface DesktopApi
   socialPostMove(input: SocialPostMoveInput): Promise<SocialPostDto>;
   socialPostSetArchived(input: SocialPostSetArchivedInput): Promise<SocialPostDto>;
   browserCompanionStage(input: BrowserCompanionStageInput): Promise<BrowserCompanionStageResult>;
+  browserCompanionStageBatch(input: BrowserCompanionBatchInput): Promise<BrowserCompanionBatchResult>;
+  browserCompanionBatchHistory(): Promise<BrowserCompanionBatchResult[]>;
+  browserCompanionReopen(input: BrowserCompanionReopenInput): Promise<BrowserCompanionStageResult>;
   browserCompanionDestinations(): Promise<BrowserCompanionDestinationsResult>;
   browserCompanionOpen(input: BrowserCompanionOpenInput): Promise<BrowserCompanionOpenResult>;
   browserCompanionSelectDestination(
@@ -4500,6 +4541,9 @@ export interface DesktopApi
   materialAlbumsAddMany(input: MaterialAlbumAddManyInput): Promise<MaterialAlbumDto>;
   materialAlbumsRemove(input: MaterialAlbumRemoveInput): Promise<MaterialAlbumDto>;
   albumsList(locale: Locale): Promise<AlbumDto[]>;
+  albumOpen(
+    input: import('@/shared/contracts/app-deep-link').AlbumOpenInput,
+  ): Promise<import('@/shared/contracts/app-deep-link').AlbumOpenResult>;
   albumsListTextMaterials(albumId: string): Promise<FavoriteTextMaterialDto[]>;
   albumsCreate(input: AlbumCreateInput): Promise<AlbumDto>;
   albumsCreateFromMaterials(input: AlbumCreateFromMaterialsInput): Promise<AlbumCreateFromMaterialsResult>;
@@ -4569,6 +4613,7 @@ export interface DesktopApi
   annotationsReuseHistory(input: AnnotationHistoryReuseInput): Promise<AnnotationHistoryReuseResult | null>;
   annotationsSetStatus(input: AnnotationStatusInput): Promise<AnnotationDto>;
   galleryList(input: GalleryListInput): Promise<GalleryPageDto>;
+  galleryMaterialGet(materialId: string, locale: Locale): Promise<GalleryMaterialDto | null>;
   assetRelationshipGet(assetId: string, locale: Locale): Promise<AssetRelationshipDto>;
   assetFileAvailability(assetId: string): Promise<AssetFileAvailabilityDto>;
   assetFileCopy(assetId: string): Promise<void>;

@@ -1,5 +1,5 @@
 export const TREE_BRANCH_INTERACTION = {
-  previewSpreadStepPx: 24,
+  previewSpreadStepPx: 14,
   pullDownArmDelayMs: 220,
   verticalGestureDistancePx: 27,
 } as const;

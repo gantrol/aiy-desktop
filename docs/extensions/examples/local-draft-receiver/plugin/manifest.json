@@ -1,0 +1,29 @@
+{
+  "manifestVersion": 1,
+  "kind": "CAPABILITY",
+  "id": "com.example.aiy.local-drafts",
+  "version": "1.0.0",
+  "displayName": "Local draft receiver",
+  "description": "Text-only local integration example. No AI calls or publication.",
+  "engines": { "aiy": "^0.3.10" },
+  "contributes": { "workflows": ["articleDelivery.uploadDraft"], "deliveryChannels": ["example.local-drafts"] },
+  "permissions": ["network:http://127.0.0.1:47839", "credentials.use:example-local-draft-token"],
+  "optionalPermissions": [],
+  "runtime": { "kind": "HOST", "id": "article-draft-delivery" },
+  "configuration": {
+    "kind": "ARTICLE_DELIVERY",
+    "defaultEndpointId": "local",
+    "endpoints": [{ "id": "local", "siteUrl": "http://127.0.0.1:47839" }],
+    "pathPrefix": "/drafts/"
+  },
+  "i18n": {
+    "defaultLocale": "en",
+    "locales": {
+      "en": {
+        "displayName": "Local draft receiver",
+        "description": "Text-only local integration example. No AI calls or publication."
+      },
+      "zh": { "displayName": "本地草稿接收器", "description": "仅接收纯文字草稿的本机示例，不调用 AI、不发布内容。" }
+    }
+  }
+}

@@ -43,6 +43,14 @@ export class ContentLibraryRepository {
     return this.repositories.storage.db;
   }
 
+  readCurrent(source: ContentSource): ContentDocument {
+    const current = { ...source, revisionId: undefined };
+    return this.db.transaction(() => {
+      this.assertCurrentSourceAvailable(current);
+      return this.read(current);
+    })();
+  }
+
   read(source: ContentSource): ContentDocument {
     let body: ContentBody;
     if (source.kind === 'ARTICLE') {
@@ -159,6 +167,43 @@ export class ContentLibraryRepository {
       contentHash: hash(body.markdown),
       blocks: contentMarkdownBlocks(body.markdown),
     });
+  }
+
+  private assertCurrentSourceAvailable(source: ContentSource) {
+    let available: unknown;
+    if (source.kind === 'ARTICLE') {
+      available = this.db
+        .prepare(
+          `SELECT 1 FROM articles article
+          JOIN article_revisions revision
+            ON revision.id = article.current_revision_id AND revision.article_id = article.id
+          WHERE article.id = ? AND article.status = 'ACTIVE' AND article.deleted_at IS NULL`,
+        )
+        .get(source.id);
+    } else if (source.kind === 'SOCIAL_POST') {
+      available = this.db
+        .prepare(
+          `SELECT 1 FROM social_post_drafts draft
+          JOIN social_post_revisions revision
+            ON revision.id = draft.current_revision_id AND revision.draft_id = draft.id
+          WHERE draft.id = ? AND draft.status = 'ACTIVE' AND draft.deleted_at IS NULL`,
+        )
+        .get(source.id);
+    } else if (source.kind === 'VIDEO_DOCUMENT' && source.branchId) {
+      available = this.db
+        .prepare(
+          `SELECT 1 FROM documents document
+          JOIN document_branches branch
+            ON branch.document_id = document.id AND branch.id = ? AND branch.deleted_at IS NULL
+          JOIN document_drafts draft ON draft.branch_id = branch.id AND draft.deleted_at IS NULL
+          WHERE document.id = ? AND document.status = 'ACTIVE' AND document.deleted_at IS NULL
+            AND EXISTS (
+              SELECT 1 FROM document_draft_revisions revision WHERE revision.draft_id = draft.id
+            )`,
+        )
+        .get(source.branchId, source.id);
+    }
+    if (!available) throw new Error('CONTENT_SOURCE_NO_LONGER_ACTIVE');
   }
 
   search(query: string, offset: number) {

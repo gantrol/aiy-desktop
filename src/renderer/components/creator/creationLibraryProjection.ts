@@ -1,5 +1,6 @@
 import type {
   ArticleDto,
+  AssetDto,
   CreationFormDto,
   CreationFormEntityRef,
   CreationItemDto,
@@ -235,6 +236,11 @@ export type CreationFormProjection =
   | ArticleHeaderCreationFormProjection
   | ArticleInlineCreationFormProjection;
 
+export function creationFormKindLabel(form: CreationFormProjection, labels: CreationFormLabels) {
+  const kind = form.role === 'ARTICLE' && form.entity?.content.editorMode === 'OUTLINE' ? 'OUTLINE' : form.role;
+  return labels.formKinds[kind];
+}
+
 function derivedVisualSeries(visual: DerivedVisualDto | null, index: CreationFormEntityIndex) {
   return visual?.promptSeriesId ? (index.promptSeriesById.get(visual.promptSeriesId) ?? null) : null;
 }
@@ -408,7 +414,7 @@ export function creationFormTitle(projection: CreationFormProjection, labels: Cr
     case 'SOCIAL_POST':
       return projection.entity?.content.title || roleFallbackTitle(projection.role, labels);
     case 'ARTICLE':
-      return projection.entity?.content.title || roleFallbackTitle(projection.role, labels);
+      return projection.entity?.content.title || creationFormKindLabel(projection, labels);
     case 'SOCIAL_POST_COVER':
     case 'ARTICLE_HEADER':
     case 'ARTICLE_INLINE':
@@ -416,52 +422,56 @@ export function creationFormTitle(projection: CreationFormProjection, labels: Cr
   }
 }
 
-function coverFirstAssetIds(assetIds: readonly string[], coverAssetId: string | null) {
-  const ordered = coverAssetId ? [coverAssetId, ...assetIds.filter((assetId) => assetId !== coverAssetId)] : assetIds;
-  return [...new Set(ordered)];
+export type CreationPreviewAsset = Pick<AssetDto, 'id'> & { width: number | null; height: number | null };
+
+function coverFirstAssets(assets: readonly CreationPreviewAsset[], coverAssetId: string | null) {
+  const ordered = coverAssetId
+    ? [assets.find((asset) => asset.id === coverAssetId) ?? { id: coverAssetId, width: null, height: null }, ...assets]
+    : assets;
+  const seen = new Set<string>();
+  return ordered.filter((asset) => {
+    if (seen.has(asset.id)) return false;
+    seen.add(asset.id);
+    return true;
+  });
 }
 
-export function creationFormPreviewAssetIds(projection: CreationFormProjection): string[] {
+/** Carries the existing preview dimensions without reading originals or fetching details. */
+export function creationFormPreviewAssets(projection: CreationFormProjection): CreationPreviewAsset[] {
   switch (projection.role) {
     case 'ANIMATION':
-      return projection.entity?.preview ? [projection.entity.preview.id] : [];
+      return projection.entity?.preview ? [projection.entity.preview] : [];
     case 'INSPIRATION':
-      return projection.entity?.content.referenceAssets.map((asset) => asset.id) ?? [];
+      return projection.entity?.content.referenceAssets ?? [];
     case 'IMAGE_BREAKDOWN':
-      return projection.entity ? [projection.entity.sourceAsset.id] : [];
+      return projection.entity ? [projection.entity.sourceAsset] : [];
     case 'EVALUATION_SUITE':
       return [];
     case 'IMAGE_CREATION':
-      if (projection.session) return creationSessionCoverFirstAssets(projection.session).map(({ asset }) => asset.id);
-      return (
-        projection.entity?.covers?.map((asset) => asset.id) ??
-        (projection.entity?.cover ? [projection.entity.cover.id] : [])
-      );
+      if (projection.session) return creationSessionCoverFirstAssets(projection.session).map(({ asset }) => asset);
+      return projection.entity?.covers ?? (projection.entity?.cover ? [projection.entity.cover] : []);
     case 'SOCIAL_POST':
-      return projection.entity
-        ? coverFirstAssetIds(
-            projection.entity.content.mediaAssets.map((asset) => asset.id),
-            projection.entity.content.coverAssetId,
-          )
-        : [];
     case 'ARTICLE':
       return projection.entity
-        ? coverFirstAssetIds(
-            projection.entity.content.mediaAssets.map((asset) => asset.id),
-            projection.entity.content.coverAssetId,
-          )
+        ? coverFirstAssets(projection.entity.content.mediaAssets, projection.entity.content.coverAssetId)
         : [];
-    case 'VIDEO_DOCUMENT':
-      return projection.entity?.thumbnail ? [projection.entity.thumbnail.assetId] : [];
+    case 'VIDEO_DOCUMENT': {
+      const thumbnail = projection.entity?.thumbnail;
+      return thumbnail ? [{ id: thumbnail.assetId, width: thumbnail.width, height: thumbnail.height }] : [];
+    }
     case 'SOCIAL_POST_COVER':
     case 'ARTICLE_HEADER':
     case 'ARTICLE_INLINE': {
-      const generatedAssetIds = projection.session
-        ? creationSessionCoverFirstAssets(projection.session).map(({ asset }) => asset.id)
+      const assets = projection.session
+        ? creationSessionCoverFirstAssets(projection.session).map(({ asset }) => asset)
         : [];
-      return coverFirstAssetIds(generatedAssetIds, projection.entity?.selectedImageAssetId ?? null);
+      return coverFirstAssets(assets, projection.entity?.selectedImageAssetId ?? null);
     }
   }
+}
+
+export function creationFormPreviewAssetIds(projection: CreationFormProjection): string[] {
+  return creationFormPreviewAssets(projection).map((asset) => asset.id);
 }
 
 export function creationFormActivityAt(projection: CreationFormProjection) {

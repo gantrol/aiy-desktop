@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useLayoutEffect, useRef } from 'react';
 import type {
   CreationDraftDto,
   CreatorAgentScope,
@@ -8,16 +8,20 @@ import type {
 } from '@/shared/contracts';
 import { emptyCreationDictionaryScope } from '@/shared/album-creation-defaults';
 import type { AlbumTreeIndex } from '@/renderer/components/albums/albumTree';
-import type { CreatorLocation, NavigationMode } from '@/renderer/components/app/app-navigation';
+import {
+  navigationLocationKey,
+  type CreatorLocation,
+  type NavigationMode,
+} from '@/renderer/components/app/app-navigation';
 import type { CreationSessionProjection } from '@/renderer/components/creator/creationSessionProjection';
-import type { CreationDraftSaveSnapshot } from '@/renderer/components/creator/workflows/creationDraftSnapshot';
+import { isCreationDraftSessionSupersededError } from '@/renderer/components/creator/workflows/useCreationDraftSession';
 import { useStableCallback } from '@/renderer/lib/useStableCallback';
 
 type CreationMode = 'existing' | 'new';
 
 interface Options {
+  active: boolean;
   albumTree: AlbumTreeIndex;
-  captureDraft(): CreationDraftSaveSnapshot;
   clearSavedInspiration(): void;
   clearSelection(): void;
   commit(location: CreatorLocation, mode?: NavigationMode): void;
@@ -26,6 +30,9 @@ interface Options {
   creationSessions: readonly CreationSessionProjection[];
   defaultPromptLocale: Locale | null;
   detachDraftIdentity(): void;
+  hasPendingInput(): boolean;
+  getSavedDraft(): CreationDraftDto | null;
+  isDraftInputSaved(): boolean;
   invalidateAutosaves(): void;
   locale: Locale;
   location: CreatorLocation;
@@ -34,7 +41,6 @@ interface Options {
   newTitle: string;
   notify(message: string): void;
   onComparisonFullWindowChange(open: boolean): void;
-  preserveCapturedDraft(snapshot: CreationDraftSaveSnapshot): Promise<unknown>;
   preserveWorkingInput(): Promise<boolean>;
   referenceAssetCount: number;
   resetInputs(): void;
@@ -65,10 +71,43 @@ interface Options {
   targetAlbumUnavailable: boolean;
 }
 
+interface CreationNavigationContext {
+  active: boolean;
+  location: CreatorLocation;
+  draftId: string | null;
+}
+
+function creationNavigationContextChanged(previous: CreationNavigationContext, current: CreationNavigationContext) {
+  const assignedDraftLocation =
+    previous.location.surface === 'new-creation' &&
+    current.location.surface === 'creation-draft' &&
+    current.location.draftId === current.draftId &&
+    (!previous.draftId || previous.draftId === current.draftId);
+  return (
+    previous.active !== current.active ||
+    Boolean(previous.draftId && previous.draftId !== current.draftId) ||
+    (!assignedDraftLocation && navigationLocationKey(previous.location) !== navigationLocationKey(current.location))
+  );
+}
+
 export function useCreatorCreationNavigation(options: Options) {
   const commandRevisionRef = useRef(0);
-  const locationRef = useRef(options.location);
-  locationRef.current = options.location;
+  const contextRef = useRef({
+    active: options.active,
+    location: options.location,
+    draftId: options.creationDraftId,
+  });
+  useLayoutEffect(() => {
+    const current = { active: options.active, location: options.location, draftId: options.creationDraftId };
+    if (creationNavigationContextChanged(contextRef.current, current)) commandRevisionRef.current += 1;
+    contextRef.current = current;
+  }, [options.active, options.creationDraftId, options.location]);
+  useLayoutEffect(
+    () => () => {
+      commandRevisionRef.current += 1;
+    },
+    [],
+  );
   const {
     commit,
     creationMode,
@@ -80,18 +119,34 @@ export function useCreatorCreationNavigation(options: Options) {
     targetAlbumId,
     targetAlbumUnavailable,
   } = options;
-  const hasDraftState = useStableCallback(() => Boolean(options.creationDraftId || options.meaningfulDraftInput));
+  const hasDraftState = useStableCallback(() =>
+    Boolean(options.creationDraftId || options.meaningfulDraftInput || options.hasPendingInput()),
+  );
 
-  const preserveBeforeNavigation = useStableCallback(async () => {
-    if (!(await options.preserveWorkingInput())) return false;
-    if (options.selectedContent || options.creationMode !== 'new' || !hasDraftState()) return true;
+  const saveCurrentDraft = useStableCallback(async () => {
+    const commandRevision = commandRevisionRef.current;
     try {
-      await options.saveDraft();
+      while (options.hasPendingInput() || !options.isDraftInputSaved()) {
+        await options.saveDraft();
+        if (commandRevisionRef.current !== commandRevision) return false;
+      }
       return true;
     } catch (reason) {
-      options.notify(reason instanceof Error ? reason.message : String(reason));
+      if (!isCreationDraftSessionSupersededError(reason))
+        options.notify(reason instanceof Error ? reason.message : String(reason));
       return false;
     }
+  });
+  const preserveWorkingDraft = useStableCallback(async () => {
+    const commandRevision = commandRevisionRef.current;
+    if (!(await options.preserveWorkingInput())) return false;
+    if (commandRevisionRef.current !== commandRevision) return false;
+    if (options.selectedContent || options.creationMode !== 'new' || !hasDraftState()) return true;
+    return saveCurrentDraft();
+  });
+  const preserveBeforeNavigation = useStableCallback(async () => {
+    commandRevisionRef.current += 1;
+    return preserveWorkingDraft();
   });
 
   function replaceWithBlankSession(albumId: string | null) {
@@ -114,19 +169,16 @@ export function useCreatorCreationNavigation(options: Options) {
   }
 
   async function preserveCurrentDraft() {
-    if (options.startNewSaveBlocked || options.creationMode !== 'new' || !hasDraftState()) return;
-    try {
-      await options.preserveCapturedDraft(options.captureDraft());
-    } catch (reason) {
-      options.notify(reason instanceof Error ? reason.message : String(reason));
-    }
+    if (options.startNewSaveBlocked || options.creationMode !== 'new' || !hasDraftState()) return true;
+    return saveCurrentDraft();
   }
 
   const startNewCreation = useStableCallback(
     async (albumId: string | null = null, mode: NavigationMode | null = 'push', preserveCurrent = true) => {
       const commandRevision = ++commandRevisionRef.current;
       if (!(await options.preserveWorkingInput())) return false;
-      if (preserveCurrent) await preserveCurrentDraft();
+      if (commandRevisionRef.current !== commandRevision) return false;
+      if (preserveCurrent && !(await preserveCurrentDraft())) return false;
       if (commandRevisionRef.current !== commandRevision) return false;
       let draft: CreationDraftDto;
       try {
@@ -139,11 +191,16 @@ export function useCreatorCreationNavigation(options: Options) {
         return false;
       }
       if (commandRevisionRef.current !== commandRevision) return false;
+      // The current editor stays usable while the next draft is being created.
+      // Preserve any input made during that request before replacing it.
+      if (!(await options.preserveWorkingInput())) return false;
+      if (commandRevisionRef.current !== commandRevision) return false;
+      if (preserveCurrent && !(await preserveCurrentDraft())) return false;
+      if (commandRevisionRef.current !== commandRevision) return false;
       replaceWithBlankSession(albumId);
       options.restoreDraft(draft);
       if (mode) {
         const nextLocation = { surface: 'new-creation' as const, albumId };
-        locationRef.current = nextLocation;
         options.commit(nextLocation, mode);
       }
       return true;
@@ -153,37 +210,29 @@ export function useCreatorCreationNavigation(options: Options) {
   const resumeCreationDraft = useStableCallback(async (draftId: string, mode: NavigationMode | null = 'push') => {
     const commandRevision = ++commandRevisionRef.current;
     if (!(await options.preserveWorkingInput())) return false;
-    if (options.creationDraftId !== draftId) void preserveCurrentDraft();
-    replaceWithBlankSession(null);
-    if (mode) {
-      const nextLocation = { surface: 'creation-draft' as const, draftId };
-      locationRef.current = nextLocation;
-      options.commit(nextLocation, mode);
-    }
+    if (commandRevisionRef.current !== commandRevision) return false;
+    if (!(await preserveCurrentDraft())) return false;
+    if (commandRevisionRef.current !== commandRevision) return false;
     try {
-      const draft = await window.desktopApi.creationDraftLoad({ draftId });
-      const currentLocation = locationRef.current;
-      if (
-        commandRevisionRef.current !== commandRevision ||
-        currentLocation.surface !== 'creation-draft' ||
-        currentLocation.draftId !== draftId
-      ) {
-        return false;
+      let draft = await window.desktopApi.creationDraftLoad({ draftId });
+      if (commandRevisionRef.current !== commandRevision) return false;
+      if (!(await options.preserveWorkingInput())) return false;
+      if (commandRevisionRef.current !== commandRevision) return false;
+      if (!(await preserveCurrentDraft())) return false;
+      if (commandRevisionRef.current !== commandRevision) return false;
+      const savedDraft = options.getSavedDraft();
+      if (options.creationDraftId === draftId && savedDraft?.id === draftId) draft = savedDraft;
+      replaceWithBlankSession(null);
+      if (mode) {
+        const nextLocation = { surface: 'creation-draft' as const, draftId };
+        options.commit(nextLocation, mode);
       }
       options.restoreDraft(draft);
       options.restoreAssistant({ kind: 'DRAFT', id: draft.id });
       return true;
     } catch (reason) {
-      const currentLocation = locationRef.current;
-      if (
-        commandRevisionRef.current === commandRevision &&
-        currentLocation.surface === 'creation-draft' &&
-        currentLocation.draftId === draftId
-      ) {
+      if (commandRevisionRef.current === commandRevision) {
         options.notify(reason instanceof Error ? reason.message : String(reason));
-        const fallbackLocation = { surface: 'new-creation' as const, albumId: null };
-        locationRef.current = fallbackLocation;
-        options.commit(fallbackLocation, 'replace');
       }
       return false;
     }
@@ -250,8 +299,9 @@ export function useCreatorCreationNavigation(options: Options) {
 
   const chooseSeries = useStableCallback(
     async (id: string, assetId?: string, mode: NavigationMode | null = 'push', requestedVersionId?: string) => {
-      commandRevisionRef.current += 1;
-      if (!(await preserveBeforeNavigation())) return false;
+      const commandRevision = ++commandRevisionRef.current;
+      if (!(await preserveWorkingDraft())) return false;
+      if (commandRevisionRef.current !== commandRevision) return false;
       const targetSeries = options.series.find((item) => item.id === id);
       if (!targetSeries) return false;
       const targetVersion =

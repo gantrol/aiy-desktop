@@ -1,4 +1,5 @@
 import type { LibraryDatabase } from '@/main/database';
+import { albumOpenInputSchema } from '@/shared/contracts/app-deep-link';
 import { creationOutlineCommandSchema } from '@/shared/contracts/creation-outline';
 import type { IpcHandlerRegistrar } from '@/main/ipc/trusted-handlers';
 import {
@@ -106,6 +107,11 @@ export function registerLibraryIpc(ipcMain: IpcHandlerRegistrar, database: Libra
     database.resolveMaterialImageAssets(materialImageAssetsResolveSchema.parse(raw)),
   );
   ipcMain.handle('albums:list', (_event, rawLocale) => database.listAlbums(localeSchema.parse(rawLocale)));
+  ipcMain.handle('album:open', (_event, raw) => {
+    const input = albumOpenInputSchema.parse(raw);
+    if (database.getLocalSpace().id !== input.spaceId) throw new Error('SPACE_CONFLICT');
+    return { spaceId: input.spaceId, album: database.getActiveAlbum(input.albumId) };
+  });
   ipcMain.handle('albums:list-text-materials', (_event, rawId) => database.listAlbumTextMaterials(id.parse(rawId)));
   ipcMain.handle('albums:create', (_event, raw) => database.createAlbum(albumCreateSchema.parse(raw)));
   ipcMain.handle('albums:create-from-materials', (_event, raw) =>

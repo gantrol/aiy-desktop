@@ -8,6 +8,7 @@ import {
   type CreatorPromptComposerHandle,
 } from '@/renderer/components/creator/CreatorPromptComposer';
 import { GenerationLauncher } from '@/renderer/components/creator/GenerationLauncher';
+import { ImagePromptPlanButton } from '@/renderer/components/creator/ImagePromptPlanButton';
 import type { GenerationReadiness } from '@/renderer/components/creator/generationReadiness';
 import { InspirationStashAction } from '@/renderer/components/creator/InspirationStashAction';
 import type { AppliedWordPalette } from '@/renderer/components/creator/utils';
@@ -28,7 +29,7 @@ import type {
 } from '@/shared/contracts';
 import type { BlockDocument } from '@/shared/contracts/block-document';
 import { LightbulbIcon, LoaderCircleIcon, Maximize2Icon, Minimize2Icon } from 'lucide-react';
-import { useEffect, useRef, type ReactNode, type Ref } from 'react';
+import { useEffect, useRef, type ReactNode, type RefObject } from 'react';
 
 interface Props {
   locale: Locale;
@@ -42,7 +43,7 @@ interface Props {
   terms: TermListItem[];
   palettes: WordPaletteDto[];
   appliedPalettes: AppliedWordPalette[];
-  composerRef: Ref<CreatorPromptComposerHandle>;
+  composerRef: RefObject<CreatorPromptComposerHandle | null> | null;
   assistantBusy: boolean;
   assistantMode: CreationAssistantMode | null;
   companionHandoffBusy: boolean;
@@ -71,7 +72,7 @@ interface Props {
   titleInput?: ReactNode;
   experiments?: ReactNode;
   showStashAction?: boolean;
-  onPromptNodesChange(nodes: CreatorPromptNodeInput[], document?: BlockDocument): void;
+  onPromptNodesChange(nodes: CreatorPromptNodeInput[], document: BlockDocument): void;
   onOpenTerm(term: TermListItem): void;
   onOpenRecipe(paletteId: string): void;
   onConfigureRecipe(palette: WordPaletteDto): void;
@@ -88,6 +89,27 @@ interface Props {
   onOpenExternalImport(): void;
   onChooseVideoDocument(): void;
   onFullWindowChange(open: boolean): void;
+}
+
+function useComposerRef(composerRef: Props['composerRef']) {
+  const localRef = useRef<CreatorPromptComposerHandle>(null);
+  return composerRef ?? localRef;
+}
+
+function usePromptFullWindowEscape(fullWindow: boolean, onFullWindowChange: Props['onFullWindowChange']) {
+  const buttonRef = useRef<HTMLButtonElement>(null);
+  useEffect(() => {
+    if (!fullWindow) return undefined;
+    function onKeyDown(event: KeyboardEvent) {
+      if (event.key !== 'Escape' || event.defaultPrevented) return;
+      event.preventDefault();
+      onFullWindowChange(false);
+      requestAnimationFrame(() => buttonRef.current?.focus());
+    }
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [fullWindow, onFullWindowChange]);
+  return buttonRef;
 }
 
 export function MinimalCreationStarter({
@@ -152,19 +174,8 @@ export function MinimalCreationStarter({
   const labels = useI18n().messages.creator.starter;
   const inputLabel = useI18n().messages.contentEditor.input;
   const characterCount = Array.from(prompt).length;
-  const fullWindowButtonRef = useRef<HTMLButtonElement>(null);
-
-  useEffect(() => {
-    if (!fullWindow) return undefined;
-    function onKeyDown(event: KeyboardEvent) {
-      if (event.key !== 'Escape' || event.defaultPrevented) return;
-      event.preventDefault();
-      onFullWindowChange(false);
-      requestAnimationFrame(() => fullWindowButtonRef.current?.focus());
-    }
-    window.addEventListener('keydown', onKeyDown);
-    return () => window.removeEventListener('keydown', onKeyDown);
-  }, [fullWindow, onFullWindowChange]);
+  const fullWindowButtonRef = usePromptFullWindowEscape(fullWindow, onFullWindowChange);
+  const activeComposerRef = useComposerRef(composerRef);
 
   return (
     <ScrollArea
@@ -215,7 +226,7 @@ export function MinimalCreationStarter({
             </div>
             {titleInput}
             <CreatorPromptComposer
-              ref={composerRef}
+              ref={activeComposerRef}
               locale={locale}
               termPromptLocale={termPromptLocale}
               promptProfileId={promptProfileId}
@@ -251,6 +262,10 @@ export function MinimalCreationStarter({
                 {planning && videoPicker}
                 {!fullWindow && dictionaryPicker}
                 {canvasPicker}
+                <ImagePromptPlanButton
+                  composerRef={activeComposerRef}
+                  disabled={assistantBusy || companionHandoffBusy || starting}
+                />
               </div>
               <div data-prompt-assistant-actions className="ml-auto flex items-center gap-1">
                 <CompanionHandoffButton

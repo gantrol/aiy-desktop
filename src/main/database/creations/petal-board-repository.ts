@@ -15,24 +15,40 @@ import type { PetalColor, PetalIcon } from '@/shared/contracts/desktop-petals';
 import { blockDocumentMarkdown } from '@/shared/block-document-codecs';
 import { blockDocumentSchema } from '@/shared/contracts/block-document';
 import { petalError } from '@/shared/petal-errors';
+
 const colors: PetalColor[] = ['rose', 'cream', 'sage', 'sky', 'lilac'];
+
 function summary(row: JsonMap) {
+  const assetId = typeof row.asset_id === 'string' ? row.asset_id : null;
   return pinSummarySchema.parse({
-    source: { kind: row.kind, id: row.id },
+    source: { kind: row.kind === 'INSPIRATION_STASH' ? 'ARTICLE' : row.kind, id: row.id },
     title: row.title,
     preview:
       typeof row.document_json === 'string'
         ? blockDocumentMarkdown(blockDocumentSchema.parse(JSON.parse(row.document_json))).slice(0, 4000)
         : row.preview,
-    mediaUrl: typeof row.asset_id === 'string' ? mediaUrl(row.asset_id) : null,
+    mediaUrl: assetId ? mediaUrl(assetId) : null,
+    media:
+      assetId && typeof row.mime_type === 'string'
+        ? {
+            id: assetId,
+            mediaUrl: mediaUrl(assetId),
+            mimeType: row.mime_type,
+            width: row.width,
+            height: row.height,
+            byteSize: row.byte_size,
+          }
+        : null,
   });
 }
+
 export class PetalBoardRepository {
   private albumCovers = new Map<string, string | null>();
   constructor(private readonly storage: LibraryStorage) {}
   private get db() {
     return this.storage.db;
   }
+
   search(input: PinSearch) {
     const rows = this.db
       .prepare(
@@ -41,8 +57,9 @@ export class PetalBoardRepository {
       ORDER BY updated DESC, id LIMIT 30 OFFSET ?`,
       )
       .all(input.kind, '%' + input.query + '%', '%' + input.query + '%', input.offset) as JsonMap[];
-    return rows.map(summary);
+    return this.withMediaMetadata(rows).map(summary);
   }
+
   list() {
     const rows = this.db
       .prepare(
@@ -53,7 +70,7 @@ export class PetalBoardRepository {
       WHERE s.deleted_at IS NULL AND s.status='ACTIVE' ORDER BY p.id`,
       )
       .all() as JsonMap[];
-    return this.withAlbumPreviews(rows).map((row) =>
+    return this.withMediaMetadata(this.withAlbumPreviews(rows)).map((row) =>
       desktopPinSchema.parse({
         ...summary(row),
         id: row.pin_id,
@@ -63,6 +80,31 @@ export class PetalBoardRepository {
       }),
     );
   }
+
+  /** One bounded metadata read; never read or decode media bytes to build the board snapshot. */
+  private withMediaMetadata(rows: JsonMap[]): JsonMap[] {
+    const ids = [...new Set(rows.flatMap((row) => (typeof row.asset_id === 'string' ? [row.asset_id] : [])))];
+    if (!ids.length) return rows;
+    const assets = this.db
+      .prepare(
+        `SELECT id,mime_type,width,height,byte_size FROM image_assets WHERE deleted_at IS NULL AND id IN (${ids.map(() => '?').join(',')})`,
+      )
+      .all(...ids) as JsonMap[];
+    const byId = new Map(assets.map((asset) => [asset.id, asset]));
+    return rows.map((row) => {
+      const asset = byId.get(row.asset_id);
+      if (!asset) return { ...row, asset_id: null };
+      // Do not overwrite the source id with the underlying asset id.
+      return {
+        ...row,
+        mime_type: asset.mime_type,
+        width: asset.width,
+        height: asset.height,
+        byte_size: asset.byte_size,
+      };
+    });
+  }
+
   private withAlbumPreviews(rows: JsonMap[]) {
     const albumIds = rows
       .filter((row) => row.kind === 'ALBUM' || row.kind === 'MATERIAL_ALBUM')
@@ -70,7 +112,6 @@ export class PetalBoardRepository {
     const active = new Set(albumIds);
     for (const id of this.albumCovers.keys()) if (!active.has(id)) this.albumCovers.delete(id);
     if (!albumIds.length) return rows;
-    // Reuse album cover ordering in one bounded query, without reading members or media files per pin.
     const missing = albumIds.filter((id) => !this.albumCovers.has(id));
     if (missing.length) {
       const previews = new AlbumProjectionRepository(this.storage).listPreviewAssets(missing);
@@ -82,11 +123,13 @@ export class PetalBoardRepository {
         this.albumCovers.set(id, cover?.id ?? null);
       }
     }
-    return rows.map((row) => {
-      if (row.kind !== 'ALBUM' && row.kind !== 'MATERIAL_ALBUM') return row;
-      return { ...row, asset_id: this.albumCovers.get(String(row.id)) ?? null };
-    });
+    return rows.map((row) =>
+      row.kind !== 'ALBUM' && row.kind !== 'MATERIAL_ALBUM'
+        ? row
+        : { ...row, asset_id: this.albumCovers.get(String(row.id)) ?? null },
+    );
   }
+
   pin(source: PinSource, layerId: string) {
     return this.db.transaction(() => {
       this.requireLayer(layerId);
@@ -96,7 +139,7 @@ export class PetalBoardRepository {
         )
         .get(source.id);
       if (!row) throw petalError('sourceUnavailable');
-      if (source.kind === 'ARTICLE') {
+      if (source.kind === 'ARTICLE' || source.kind === 'INSPIRATION_STASH') {
         const existing = this.db
           .prepare('SELECT id FROM desktop_note_instances WHERE stash_id=? ORDER BY created_at,id LIMIT 1')
           .get(source.id) as { id: string } | undefined;

@@ -1,5 +1,5 @@
-import { useLayoutEffect, useMemo, useRef, useState, type ReactNode, type RefObject } from 'react';
-import { cn } from '@/renderer/lib/utils';
+import { useCallback, type ReactNode, type RefObject } from 'react';
+import { MasonrySurface } from '@/renderer/components/ui/masonry-surface';
 
 const DEFAULT_MIN_COLUMN_WIDTH = 240;
 const DEFAULT_GAP = 12;
@@ -50,11 +50,6 @@ export interface ShortestColumnMasonryProps {
   virtualize?: boolean;
   viewportRef?: RefObject<HTMLElement | null>;
   virtualOverscan?: number;
-}
-
-interface MasonryRenderWindow {
-  start: number;
-  end: number;
 }
 
 function validPositiveNumber(value: number, fallback: number) {
@@ -122,123 +117,25 @@ export function computeShortestColumnMasonry(
 
 export function ShortestColumnMasonry({
   items,
-  renderItem,
   minColumnWidth = DEFAULT_MIN_COLUMN_WIDTH,
   gap = DEFAULT_GAP,
-  className,
   sectionBreak,
-  onLayoutChange,
-  virtualize = false,
-  viewportRef,
-  virtualOverscan = 800,
+  ...props
 }: ShortestColumnMasonryProps) {
-  const rootRef = useRef<HTMLDivElement>(null);
-  const viewportFrameRef = useRef<number | null>(null);
-  const [containerWidth, setContainerWidth] = useState(0);
-  const [renderWindow, setRenderWindow] = useState<MasonryRenderWindow | null>(null);
-
-  useLayoutEffect(() => {
-    const root = rootRef.current;
-    if (!root) return undefined;
-
-    const measure = () => setContainerWidth(root.getBoundingClientRect().width);
-    measure();
-
-    if (typeof ResizeObserver === 'undefined') {
-      window.addEventListener('resize', measure);
-      return () => window.removeEventListener('resize', measure);
-    }
-
-    const observer = new ResizeObserver(([entry]) => setContainerWidth(entry.contentRect.width));
-    observer.observe(root);
-    return () => observer.disconnect();
-  }, []);
-
   const sectionBreakIndex = sectionBreak?.index;
   const sectionBreakGap = sectionBreak?.gap;
-  const layout = useMemo(
-    () =>
+  const computeLayout = useCallback(
+    (width: number) =>
       computeShortestColumnMasonry(
         items,
-        containerWidth,
+        width,
         minColumnWidth,
         gap,
         sectionBreakIndex === undefined || sectionBreakGap === undefined
           ? undefined
           : { index: sectionBreakIndex, gap: sectionBreakGap },
       ),
-    [containerWidth, gap, items, minColumnWidth, sectionBreakGap, sectionBreakIndex],
+    [items, minColumnWidth, gap, sectionBreakIndex, sectionBreakGap],
   );
-
-  useLayoutEffect(() => onLayoutChange?.(layout), [layout, onLayoutChange]);
-
-  useLayoutEffect(() => {
-    if (!virtualize) return undefined;
-    const root = rootRef.current;
-    const viewport = viewportRef?.current;
-    if (!root || !viewport) return undefined;
-    const overscan = Math.max(0, virtualOverscan);
-    const bucketSize = Math.max(200, overscan / 2);
-    const update = () => {
-      viewportFrameRef.current = null;
-      const rootRect = root.getBoundingClientRect();
-      const viewportRect = viewport.getBoundingClientRect();
-      const visibleStart = viewportRect.top - rootRect.top;
-      const visibleEnd = viewportRect.bottom - rootRect.top;
-      const start = Math.max(0, Math.floor((visibleStart - overscan) / bucketSize) * bucketSize);
-      const end = Math.max(start, Math.ceil((visibleEnd + overscan) / bucketSize) * bucketSize);
-      setRenderWindow((current) => (current?.start === start && current.end === end ? current : { start, end }));
-    };
-    const schedule = () => {
-      if (viewportFrameRef.current === null) viewportFrameRef.current = window.requestAnimationFrame(update);
-    };
-    schedule();
-    viewport.addEventListener('scroll', schedule, { passive: true });
-    window.addEventListener('resize', schedule);
-    const observer = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(schedule);
-    observer?.observe(viewport);
-    return () => {
-      viewport.removeEventListener('scroll', schedule);
-      window.removeEventListener('resize', schedule);
-      observer?.disconnect();
-      if (viewportFrameRef.current !== null) window.cancelAnimationFrame(viewportFrameRef.current);
-      viewportFrameRef.current = null;
-    };
-  }, [layout.height, viewportRef, virtualize, virtualOverscan]);
-
-  const renderedPlacements = useMemo(() => {
-    if (!virtualize) return layout.placements;
-    const window = renderWindow ?? { start: 0, end: Math.max(2_000, virtualOverscan * 2) };
-    return layout.placements.filter(
-      (placement) => placement.y + placement.height >= window.start && placement.y <= window.end,
-    );
-  }, [layout.placements, renderWindow, virtualOverscan, virtualize]);
-
-  // These cards do not animate between columns. Real offsets keep the browser's
-  // image visibility and raster bounds aligned with where each card is painted.
-  return (
-    <div
-      ref={rootRef}
-      data-shortest-column-masonry
-      data-masonry-columns={layout.columnCount}
-      className={cn('relative w-full', !containerWidth && 'invisible', className)}
-      style={{ height: layout.height }}
-    >
-      {renderedPlacements.map((placement) => (
-        <div
-          key={placement.id}
-          data-masonry-item={placement.id}
-          className="absolute"
-          style={{
-            left: placement.x,
-            top: placement.y,
-            width: placement.width,
-            height: placement.height,
-          }}
-        >
-          {renderItem(items[placement.index], placement.index, placement, layout)}
-        </div>
-      ))}
-    </div>
-  );
+  return <MasonrySurface items={items} computeLayout={computeLayout} {...props} />;
 }

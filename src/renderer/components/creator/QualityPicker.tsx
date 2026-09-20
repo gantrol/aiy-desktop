@@ -9,17 +9,27 @@ interface Props {
   compact?: boolean;
   toolbar?: boolean;
   ariaLabel?: string;
+  supportedQualities?: readonly GenerationQuality[];
   onChange(value: GenerationQuality): void;
 }
 
-export function QualityPicker({ value, compact = false, toolbar = false, ariaLabel, onChange }: Props) {
+export function QualityPicker({
+  value,
+  compact = false,
+  toolbar = false,
+  ariaLabel,
+  supportedQualities,
+  onChange,
+}: Props) {
   const { messages } = useI18n();
   const c = messages.creator.quality;
   const options = [
     { value: 'low' as const, label: c.low, hint: c.lowHint },
     { value: 'medium' as const, label: c.medium, hint: c.mediumHint },
     { value: 'high' as const, label: c.high, hint: c.highHint },
-  ];
+    { value: 'xhigh' as const, label: c.xhigh, hint: '' },
+    { value: 'max' as const, label: c.max, hint: '' },
+  ].filter((option) => !supportedQualities || supportedQualities.includes(option.value) || option.value === value);
   if (toolbar)
     return (
       <Select value={value} onValueChange={(next) => onChange(next as GenerationQuality)}>
@@ -54,7 +64,9 @@ export function QualityPicker({ value, compact = false, toolbar = false, ariaLab
             onClick={() => onChange(option.value)}
           >
             <span>{option.label}</span>
-            {!compact && <span className="text-[10px] font-normal text-muted-foreground">{option.hint}</span>}
+            {!compact && option.hint && (
+              <span className="text-[10px] font-normal text-muted-foreground">{option.hint}</span>
+            )}
           </Button>
         ))}
       </div>

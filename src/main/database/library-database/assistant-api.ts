@@ -46,13 +46,15 @@ export function createAssistantApi(
 
     commitCreationDraft(input: CreationDraftCommitInput) {
       const generationInput: GenerationInput = {
-        seriesId: null,
+        seriesId: input.seriesId ?? null,
+        baseVersionId: input.baseVersionId ?? null,
         creationDraftId: input.creationDraftId,
         inspirationStashId: input.inspirationStashId,
         imageBreakdownId: input.imageBreakdownId,
         title: input.title,
         titleLocale: input.termPromptLocale,
         manualPrompt: input.manualPrompt,
+        document: input.document,
         promptNodes: input.promptNodes,
         prompt: input.prompt,
         resolvedPrompt: input.resolvedPrompt,

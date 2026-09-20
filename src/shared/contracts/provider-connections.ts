@@ -31,7 +31,7 @@ export const providerConnectionSchema = z
     connectionId: identifierSchema,
     providerId: identifierSchema,
     extensionId: identifierSchema,
-    kind: z.literal('REMOTE_API'),
+    kind: z.enum(['REMOTE_API', 'AGENT_BACKEND']),
     configured: z.boolean(),
     connectionState: providerConnectionStateSchema,
     message: z.string().max(2_000),

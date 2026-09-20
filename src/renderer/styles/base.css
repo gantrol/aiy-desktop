@@ -31,34 +31,17 @@
   }
 }
 
-@media (hover: hover) {
-  :where([class~='overflow-auto'], [class~='overflow-x-auto'], [class~='overflow-y-auto']) {
-    scrollbar-color: transparent transparent;
-  }
+:where([class~='overflow-auto'], [class~='overflow-x-auto'], [class~='overflow-y-auto']) {
+  scrollbar-color: var(--border) transparent;
+}
 
-  :where([class~='overflow-auto'], [class~='overflow-x-auto'], [class~='overflow-y-auto']):hover,
-  :where([class~='overflow-auto'], [class~='overflow-x-auto'], [class~='overflow-y-auto']):focus-within {
-    scrollbar-color: var(--border) transparent;
-  }
+:where([class~='overflow-auto'], [class~='overflow-x-auto'], [class~='overflow-y-auto'])::-webkit-scrollbar-track {
+  background: transparent;
+}
 
-  :where([class~='overflow-auto'], [class~='overflow-x-auto'], [class~='overflow-y-auto'])::-webkit-scrollbar-track,
-  :where([class~='overflow-auto'], [class~='overflow-x-auto'], [class~='overflow-y-auto'])::-webkit-scrollbar-thumb {
-    background: transparent;
-  }
-
-  :where(
-      [class~='overflow-auto'],
-      [class~='overflow-x-auto'],
-      [class~='overflow-y-auto']
-    ):hover::-webkit-scrollbar-thumb,
-  :where(
-      [class~='overflow-auto'],
-      [class~='overflow-x-auto'],
-      [class~='overflow-y-auto']
-    ):focus-within::-webkit-scrollbar-thumb {
-    border-radius: 999px;
-    background: var(--border);
-  }
+:where([class~='overflow-auto'], [class~='overflow-x-auto'], [class~='overflow-y-auto'])::-webkit-scrollbar-thumb {
+  border-radius: 999px;
+  background: var(--border);
 }
 
 @media (prefers-reduced-motion: reduce) {

@@ -10,6 +10,8 @@ import {
   articleDeliveryConnectionDtoSchema,
   articleDeliveryConnectionSaveInputSchema,
   articleDeliveryExtensionTargetSchema,
+  articleDeliveryMode,
+  type ArticleDeliveryMode,
   type ArticleDeliveryArticleProfile,
   type ArticleDeliveryArticleProfileSaveInput,
   type ArticleDeliveryArticleTarget,
@@ -36,6 +38,7 @@ const persistedConnectionSchema = z
     tokenHint: z.string().min(1).max(20),
     connectionState: z.enum(['UNVERIFIED', 'READY', 'ERROR']),
     connectionMessage: z.string().max(500),
+    connectionErrorCode: z.string().max(160).nullable().optional(),
     lastVerifiedAt: z.string().datetime({ offset: true }).nullable(),
     updatedAt: z.string().datetime({ offset: true }),
     profiles: z.record(z.string().max(500), persistedProfileSchema),
@@ -49,8 +52,12 @@ const statusEnvelopeSchema = z.union([
         .object({
           protocol: z.literal('aiy-article-import'),
           version: z.literal(1),
+          capabilities: z
+            .object({ documentModes: z.array(z.string().max(80)).max(20) })
+            .passthrough()
+            .optional(),
         })
-        .strict(),
+        .passthrough(),
       meta: z.object({ version: z.string(), updatedAt: z.string() }).passthrough(),
     })
     .strict(),
@@ -190,6 +197,7 @@ export class ArticleDeliveryConnection {
       siteUrl: this.record.siteUrl,
       tokenHint: this.record.tokenHint,
       message: definitionMatches ? this.record.connectionMessage : 'Delivery extension configuration changed',
+      errorCode: this.record.connectionErrorCode ?? null,
       lastVerifiedAt: this.record.lastVerifiedAt,
     });
   }
@@ -243,7 +251,12 @@ export class ArticleDeliveryConnection {
     return profile;
   }
 
-  async saveAndTest(definition: ArticleDeliveryDefinition, rawInput: ArticleDeliveryConnectionSaveInput) {
+  async saveAndTest(
+    definition: ArticleDeliveryDefinition,
+    rawInput: ArticleDeliveryConnectionSaveInput,
+    assertAccess?: () => void,
+  ) {
+    assertAccess?.();
     if (!this.protector.isAvailable()) throw new Error('Secure credential storage is unavailable on this device');
     const input = articleDeliveryConnectionSaveInputSchema.parse(rawInput);
     const endpoint = endpointFor(definition, input.endpointId);
@@ -264,6 +277,7 @@ export class ArticleDeliveryConnection {
       tokenHint: `••••••••${token.slice(-4)}`,
       connectionState: 'UNVERIFIED',
       connectionMessage: 'Delivery connection has not been verified',
+      connectionErrorCode: null,
       lastVerifiedAt: this.record?.lastVerifiedAt ?? null,
       updatedAt,
       profiles: this.record?.profiles ?? {},
@@ -272,13 +286,20 @@ export class ArticleDeliveryConnection {
     await this.persist(next);
     this.record = next;
     this.loadError = null;
-    return this.verifyRecord(definition, next, token, revision);
+    return this.verifyRecord(definition, next, token, revision, assertAccess);
   }
 
-  async test(definition: ArticleDeliveryDefinition) {
+  async test(definition: ArticleDeliveryDefinition, assertAccess?: () => void) {
+    assertAccess?.();
     if (!this.record) return this.status(definition);
     this.configuration(definition);
-    return this.verifyRecord(definition, this.record, this.decryptToken(this.record), ++this.mutationRevision);
+    return this.verifyRecord(
+      definition,
+      this.record,
+      this.decryptToken(this.record),
+      ++this.mutationRevision,
+      assertAccess,
+    );
   }
 
   async clear(definition: ArticleDeliveryDefinition) {
@@ -289,33 +310,57 @@ export class ArticleDeliveryConnection {
     return this.status(definition);
   }
 
+  async verifySupport(
+    configuration: Readonly<{ siteUrl: string; token: string }>,
+    mode: ArticleDeliveryMode,
+    assertAccess?: () => void,
+    signal?: AbortSignal,
+  ) {
+    signal?.throwIfAborted();
+    assertAccess?.();
+    const response = await this.fetchImpl(`${configuration.siteUrl}/api/integrations/aiy/status`, {
+      method: 'GET',
+      redirect: 'error',
+      headers: { accept: 'application/json', authorization: `Bearer ${configuration.token}` },
+      signal: signal ? AbortSignal.any([signal, AbortSignal.timeout(15_000)]) : AbortSignal.timeout(15_000),
+    });
+    const parsed = statusEnvelopeSchema.safeParse(await readArticleDeliveryJsonResponse(response));
+    if (!parsed.success) {
+      throw Object.assign(new Error('DELIVERY_STATUS_INVALID'), { code: 'DELIVERY_STATUS_INVALID' });
+    }
+    const envelope = parsed.data;
+    if ('error' in envelope) {
+      throw Object.assign(new Error(envelope.error.message), { code: envelope.error.code, status: response.status });
+    }
+    if (!response.ok) {
+      throw Object.assign(new Error(`Delivery connection failed (${response.status})`), { status: response.status });
+    }
+    if (mode === 'DRAFT' && !envelope.data.capabilities?.documentModes.includes('draft')) {
+      throw Object.assign(new Error('DELIVERY_DRAFT_UNSUPPORTED'), { code: 'DELIVERY_DRAFT_UNSUPPORTED' });
+    }
+    signal?.throwIfAborted();
+    assertAccess?.();
+  }
+
   private async verifyRecord(
     definition: ArticleDeliveryDefinition,
     record: PersistedConnection,
     token: string,
     revision: number,
+    assertAccess?: () => void,
   ) {
     let next: PersistedConnection;
     try {
-      const response = await this.fetchImpl(`${record.siteUrl}/api/integrations/aiy/status`, {
-        method: 'GET',
-        headers: { accept: 'application/json', authorization: `Bearer ${token}` },
-        signal: AbortSignal.timeout(15_000),
-      });
-      const parsedEnvelope = statusEnvelopeSchema.safeParse(await readArticleDeliveryJsonResponse(response));
-      if (!parsedEnvelope.success) {
-        throw new Error(
-          `Delivery status endpoint returned an incompatible response (${response.status}); ` +
-            'the integration API may not be deployed',
-        );
-      }
-      const envelope = parsedEnvelope.data;
-      if ('error' in envelope) throw new Error(envelope.error.message);
-      if (!response.ok) throw new Error(`Delivery connection failed (${response.status})`);
+      await this.verifySupport(
+        { siteUrl: record.siteUrl, token },
+        articleDeliveryMode(definition.configuration),
+        assertAccess,
+      );
       next = {
         ...record,
         connectionState: 'READY',
         connectionMessage: 'Delivery connection is ready',
+        connectionErrorCode: null,
         lastVerifiedAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
       };
@@ -324,6 +369,10 @@ export class ArticleDeliveryConnection {
         ...record,
         connectionState: 'ERROR',
         connectionMessage: reason instanceof Error ? reason.message.slice(0, 500) : 'Delivery connection failed',
+        connectionErrorCode:
+          reason && typeof reason === 'object' && 'code' in reason && typeof reason.code === 'string'
+            ? reason.code.slice(0, 160)
+            : null,
         updatedAt: new Date().toISOString(),
       };
     }

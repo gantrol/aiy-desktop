@@ -1,7 +1,21 @@
 import type { DictionaryBrowseContext } from '@/renderer/components/dictionary/dictionary-navigation';
 import type { CreationRelationFilter } from '@/shared/contracts';
 import type { GifWorkspaceState } from '@/shared/contracts/gif-making';
-import type { AppView } from '@/renderer/components/app/AppSidebar';
+import type { ContentLookupInput } from '@/shared/contracts/content-search';
+
+export type AppView =
+  | 'creator'
+  | 'documents'
+  | 'dictionary'
+  | 'gallery'
+  | 'search'
+  | 'calendar'
+  | 'companion'
+  | 'codexImages'
+  | 'transitionShowcase'
+  | 'packs'
+  | 'aiCenter'
+  | 'contentManagement';
 
 export type NavigationMode = 'push' | 'replace';
 export type HistoryNavigationDirection = 'back' | 'forward';
@@ -101,6 +115,7 @@ export interface AppLocation {
   creator: CreatorLocation;
   dictionary: DictionaryLocation;
   gallery: GalleryLocation;
+  search: Pick<ContentLookupInput, 'query' | 'type'>;
   extensions: ExtensionsLocation;
   aiCenter: AiCenterLocation;
   documents: VideoDocumentsLocation;
@@ -121,6 +136,7 @@ export const initialAppLocation: AppLocation = {
     pluginId: null,
     packId: null,
   },
+  search: { query: '', type: 'ALL' },
   aiCenter: {
     tab: 'activity',
     recordId: null,

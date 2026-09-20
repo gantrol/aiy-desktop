@@ -6,6 +6,7 @@ import type {
   CodexHistoryRoleFilter,
   CodexHistorySearchInput,
   CodexHistorySearchPage,
+  CodexHistorySearchScope,
   CodexHistoryThreadOption,
   CodexUsageDateRange,
   CodexUsageRange,
@@ -137,6 +138,8 @@ function useSearchResults(
 export function useCodexHistorySearch({ active, authorized, notify }: Options) {
   const [draftQuery, setDraftQuery] = useState('');
   const [query, setQuery] = useState('');
+  const [queryComposing, setQueryComposing] = useState(false);
+  const [scope, setScope] = useState<CodexHistorySearchScope>('ALL');
   const [archive, setArchive] = useState<CodexHistoryArchiveFilter>('ALL');
   const [role, setRole] = useState<CodexHistoryRoleFilter>('ALL');
   const [includeSubagents, setIncludeSubagents] = useState(false);
@@ -162,6 +165,7 @@ export function useCodexHistorySearch({ active, authorized, notify }: Options) {
       query,
       archive,
       role,
+      scope,
       includeSubagents,
       projectId,
       sectionId,
@@ -180,6 +184,7 @@ export function useCodexHistorySearch({ active, authorized, notify }: Options) {
       projectId,
       query,
       role,
+      scope,
       sectionId,
       selectedThread?.threadId,
       workspace,
@@ -203,9 +208,10 @@ export function useCodexHistorySearch({ active, authorized, notify }: Options) {
   );
 
   useEffect(() => {
+    if (queryComposing) return;
     const timer = window.setTimeout(() => setQuery(draftQuery.trim()), QUERY_DEBOUNCE_MS);
     return () => window.clearTimeout(timer);
-  }, [draftQuery]);
+  }, [draftQuery, queryComposing]);
 
   useEffect(() => {
     if (!active || !authorized) {
@@ -335,6 +341,13 @@ export function useCodexHistorySearch({ active, authorized, notify }: Options) {
   return {
     draftQuery,
     setDraftQuery,
+    setQueryComposing,
+    scope,
+    setScope: (nextScope: CodexHistorySearchScope) => {
+      setScope(nextScope);
+      if (nextScope === 'THREADS') setRole('ALL');
+    },
+    snapshotCriteria,
     archive,
     setArchive,
     role,

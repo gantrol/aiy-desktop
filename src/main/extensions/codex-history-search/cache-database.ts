@@ -22,13 +22,16 @@ import type {
   CodexHistorySourceThread,
 } from '@/main/extensions/codex-history-search/source-reader';
 import { readCodexHistoryFilterOptions } from '@/main/extensions/codex-history-search/cache-navigation';
+import {
+  codexHistorySnippet,
+  normalizeCodexHistoryQuery as normalizeSearchText,
+} from '@/shared/codex-history-search-query';
 
 const DATABASE_SCHEMA_VERSION = 4;
 const MAX_CACHED_THREADS = 100_000;
 const CACHED_THREAD_LOOKUP_BATCH_SIZE = 500;
 const MAX_SEARCH_CANDIDATES = 5_000;
 const MAX_INDEXED_MESSAGE_TEXT_CHARACTERS = 1024 * 1024;
-const SNIPPET_CONTEXT_CHARACTERS = 120;
 
 const indexMetaRowSchema = z
   .object({
@@ -119,10 +122,6 @@ interface SearchCandidate {
   matchCount: number;
 }
 
-function normalizeSearchText(value: string) {
-  return value.normalize('NFKC').toLocaleLowerCase().replace(/\s+/g, ' ').trim();
-}
-
 function ftsPhrase(value: string) {
   return `"${value.replaceAll('"', '""')}"`;
 }
@@ -188,18 +187,6 @@ function isoTimestamp(epochMs: number) {
   return new Date(epochMs).toISOString();
 }
 
-function compactSnippet(text: string, query: string) {
-  const compact = text.replace(/\s+/g, ' ').trim();
-  if (!compact) return '';
-  if (!query) return compact.slice(0, SNIPPET_CONTEXT_CHARACTERS * 2);
-  const normalized = normalizeSearchText(compact);
-  const matchIndex = normalized.indexOf(query);
-  if (matchIndex < 0) return compact.slice(0, SNIPPET_CONTEXT_CHARACTERS * 2);
-  const start = Math.max(0, matchIndex - SNIPPET_CONTEXT_CHARACTERS);
-  const end = Math.min(compact.length, matchIndex + query.length + SNIPPET_CONTEXT_CHARACTERS);
-  return `${start > 0 ? '…' : ''}${compact.slice(start, end)}${end < compact.length ? '…' : ''}`;
-}
-
 function searchResult(candidate: SearchCandidate, query: string): CodexHistorySearchResult {
   return {
     threadId: candidate.threadId,
@@ -218,7 +205,7 @@ function searchResult(candidate: SearchCandidate, query: string): CodexHistorySe
     createdAt: isoTimestamp(candidate.createdAtMs),
     updatedAt: isoTimestamp(candidate.updatedAtMs),
     role: candidate.role,
-    snippet: compactSnippet(candidate.text, query).slice(0, 1_200),
+    snippet: codexHistorySnippet(candidate.text, query).slice(0, 1_200),
     matchCount: candidate.matchCount,
   };
 }
@@ -544,7 +531,7 @@ export class CodexHistorySearchCacheDatabase {
          ORDER BY t.updated_at_ms DESC
          LIMIT ?`;
     const threadRows =
-      input.role === 'ALL'
+      input.role === 'ALL' && input.scope !== 'MESSAGES'
         ? z
             .array(candidateThreadRowSchema)
             .max(MAX_SEARCH_CANDIDATES + 1)
@@ -592,10 +579,13 @@ export class CodexHistorySearchCacheDatabase {
          WHERE ${messageWhere.join(' AND ')}
          ORDER BY t.updated_at_ms DESC, m.created_at_ms DESC
          LIMIT ?`;
-    const messageRows = z
-      .array(candidateMessageRowSchema)
-      .max(MAX_SEARCH_CANDIDATES + 1)
-      .parse(this.database.prepare(messageSql).all(...messageParameters));
+    const messageRows =
+      input.scope === 'THREADS'
+        ? []
+        : z
+            .array(candidateMessageRowSchema)
+            .max(MAX_SEARCH_CANDIDATES + 1)
+            .parse(this.database.prepare(messageSql).all(...messageParameters));
     const truncated = threadRows.length > MAX_SEARCH_CANDIDATES || messageRows.length > MAX_SEARCH_CANDIDATES;
     const candidates = new Map<string, SearchCandidate>();
     for (const row of threadRows.slice(0, MAX_SEARCH_CANDIDATES)) {
@@ -663,6 +653,12 @@ export class CodexHistorySearchCacheDatabase {
 
   private recent(input: CodexHistorySearchInput, index: CodexHistoryIndexState): CodexHistorySearchPage {
     const filters = threadFilters(input);
+    if (input.scope === 'MESSAGES' || input.role !== 'ALL') {
+      filters.clauses.push(
+        `EXISTS (SELECT 1 FROM codex_history_messages AS m WHERE m.thread_id = t.thread_id${input.role === 'ALL' ? '' : ' AND m.role = ?'})`,
+      );
+      if (input.role !== 'ALL') filters.parameters.push(input.role);
+    }
     const orderBy = input.sectionId
       ? 't.section_position IS NULL, t.section_position, t.updated_at_ms DESC, t.thread_id'
       : 't.updated_at_ms DESC, t.thread_id';

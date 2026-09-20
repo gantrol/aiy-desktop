@@ -1,3 +1,4 @@
+import { leavePetalEditor } from '@/renderer/features/desktop-petals/petal-editor-leave';
 import { Button } from '@/renderer/components/ui/button';
 import { ModalOverlayScope } from '@/renderer/components/ui/overlay-layer';
 import { ContentAlbumSelect } from '@/renderer/features/content-editor/ContentAlbumSelect';
@@ -56,6 +57,7 @@ function StickyNoteSession({ initialNote, snapshot }: { initialNote: DesktopNote
   const [toolbarRoot, setToolbarRoot] = useState<HTMLDivElement | null>(null);
   const [closing, setClosing] = useState(false);
   const finishingCollapse = useRef(false);
+  const leaveRequest = useRef(0);
   const editorHandle = useRef<VideoDocumentWysiwygEditorHandle | null>(null);
   const onError = useCallback((reason: unknown) => setAppearanceError(String(reason)), []);
   const references = usePetalReferences(session, onError);
@@ -88,26 +90,31 @@ function StickyNoteSession({ initialNote, snapshot }: { initialNote: DesktopNote
       setFormatting(false);
     }
   }, [session, snapshot.suspended, snapshot.expanded, snapshot.editEpoch]);
-  useEffect(
-    () =>
-      window.desktopPetals.onFlush(async (save) => {
-        if (!(await settleFiles())) return false;
-        if (
-          editorHandle.current &&
-          !(await (save ? editorHandle.current.whenSettled() : editorHandle.current.whenRecoverable()))
-        )
-          return false;
-        if (!(await settle())) return false;
-        if (save) {
-          if (!session.setFrozen(true)) return false;
-          const saved = await session.flush();
-          if (!saved) session.setFrozen(false);
-          return saved;
-        }
-        return session.checkpointForExit();
-      }),
-    [session, settle, settleFiles],
-  );
+  useEffect(() => {
+    let active = true;
+    const unsubscribe = window.desktopPetals.onFlush((save, deadline) => {
+      const request = ++leaveRequest.current;
+      return leavePetalEditor(
+        {
+          settleFiles,
+          settleEditor: async (requireRevision) => {
+            const handle = editorHandle.current;
+            return !handle || (await (requireRevision ? handle.whenSettled() : handle.whenRecoverable()));
+          },
+          settleReferences: settle,
+          freeze: (value) => session.setFrozen(value),
+          preserve: session.prepareToLeave,
+          current: () => active && request === leaveRequest.current,
+          deadline,
+        },
+        Boolean(save),
+      );
+    });
+    return () => {
+      active = false;
+      unsubscribe();
+    };
+  }, [session, settle, settleFiles]);
   useEffect(() => () => session.dispose(), [session]);
   const appearance = async (patch: { color?: PetalColor; icon?: PetalIcon }) => {
     try {

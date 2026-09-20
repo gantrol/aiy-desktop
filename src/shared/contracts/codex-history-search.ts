@@ -32,6 +32,7 @@ const sectionIdSchema = z.string().trim().max(512);
 
 export const codexHistoryArchiveFilterSchema = z.enum(['ALL', 'ACTIVE', 'ARCHIVED']);
 export const codexHistoryRoleFilterSchema = z.enum(['ALL', 'USER', 'ASSISTANT']);
+export const codexHistorySearchScopeSchema = z.enum(['ALL', 'THREADS', 'MESSAGES']);
 export const codexHistoryMatchRoleSchema = z.enum(['THREAD', 'USER', 'ASSISTANT']);
 export const codexHistoryThreadSourceSchema = z.enum(['USER', 'SUBAGENT', 'OTHER']);
 export const codexHistoryIndexStatusSchema = z.enum(['EMPTY', 'INDEXING', 'READY', 'UNAVAILABLE', 'ERROR']);
@@ -42,6 +43,7 @@ export const codexHistorySearchInputSchema = z
     query: z.string().trim().max(500),
     archive: codexHistoryArchiveFilterSchema.default('ALL'),
     role: codexHistoryRoleFilterSchema.default('ALL'),
+    scope: codexHistorySearchScopeSchema.optional(),
     includeSubagents: z.boolean().default(false),
     projectId: projectIdSchema.default(''),
     sectionId: sectionIdSchema.default(''),
@@ -72,25 +74,109 @@ export const codexHistoryRefreshInputSchema = z
   })
   .strict();
 
+const messagePositionSchema = z
+  .object({
+    before: z.number().int().nonnegative().safe(),
+    after: z.number().int().positive().safe(),
+  })
+  .strict()
+  .refine(({ before, after }) => before < after);
+
 export const codexHistoryThreadMessagesInputSchema = z
   .object({
     threadId: threadIdSchema,
     cursor: z.number().int().nonnegative().safe().nullable().default(null),
     pageSize: z.number().int().min(10).max(50),
+    query: z.string().trim().max(500).optional(),
+    role: codexHistoryRoleFilterSchema.optional(),
+    direction: z.enum(['OLDER', 'NEWER']).optional(),
+    anchor: messagePositionSchema.optional(),
   })
   .strict();
+
+export const codexHistoryMessagePhaseSchema = z.enum(['COMMENTARY', 'FINAL', 'PLAN', 'RESULT']);
+export const codexHistoryContextKindSchema = z.enum([
+  'ATTACHMENTS',
+  'BROWSER',
+  'CHATGPT_REFERENCE',
+  'ANNOTATIONS',
+  'QUESTION_REPLY',
+  'DELEGATION',
+  'REALTIME',
+  'AUTOMATION',
+  'IDE',
+  'SELECTION',
+  'COMMAND',
+  'SKILL',
+  'MENTION',
+  'WRITING',
+  'OTHER',
+]);
+const codexHistoryContextItemSchema = z
+  .object({
+    label: z.string().max(500),
+    text: z.string().max(1024 * 1024),
+    role: z.enum(['USER', 'ASSISTANT']).nullable(),
+    reference: z.string().max(32_768).nullable(),
+  })
+  .strict();
+export const codexHistoryMessageBlockSchema = z.discriminatedUnion('type', [
+  z
+    .object({
+      type: z.literal('MARKDOWN'),
+      text: z
+        .string()
+        .min(1)
+        .max(1024 * 1024),
+    })
+    .strict(),
+  z
+    .object({
+      type: z.literal('CONTEXT'),
+      kind: codexHistoryContextKindSchema,
+      title: z.string().max(500),
+      text: z.string().max(1024 * 1024),
+      reference: z.string().max(32_768).nullable(),
+      items: z.array(codexHistoryContextItemSchema).max(256),
+    })
+    .strict(),
+  z
+    .object({
+      type: z.literal('MEDIA'),
+      kind: z.enum(['LOCAL_IMAGE', 'EMBEDDED_IMAGE', 'REMOTE_IMAGE', 'GENERATED_IMAGE']),
+      source: z.string().max(32_768).nullable(),
+      mediaUrl: z.string().max(65_536).nullable(),
+      alt: z.string().max(2_000),
+      status: z.enum(['GENERATING', 'COMPLETED', 'FAILED']).nullable(),
+      prompt: z.string().max(1024 * 1024),
+      error: z
+        .string()
+        .max(1024 * 1024)
+        .nullable(),
+    })
+    .strict(),
+  z
+    .object({
+      type: z.literal('DIRECTIVE'),
+      name: z.string().min(1).max(200),
+      attributes: z.record(z.string().max(200), z.string().max(32_768)),
+    })
+    .strict(),
+]);
 
 export const codexHistoryMessageSchema = z
   .object({
     messageId: z.string().trim().min(1).max(512),
     role: z.enum(['USER', 'ASSISTANT']),
+    turnId: z.string().trim().min(1).max(512).nullable(),
+    phase: codexHistoryMessagePhaseSchema.nullable(),
     createdAt: isoTimestampSchema,
-    text: z
-      .string()
-      .min(1)
-      .max(1024 * 1024),
+    position: messagePositionSchema.optional(),
+    text: z.string().max(1024 * 1024),
+    blocks: z.array(codexHistoryMessageBlockSchema).max(256),
   })
-  .strict();
+  .strict()
+  .refine(({ text, blocks }) => Boolean(text.trim() || blocks.length), { message: 'History message is empty' });
 
 export const codexHistoryThreadMessagesPageSchema = z
   .object({
@@ -100,6 +186,7 @@ export const codexHistoryThreadMessagesPageSchema = z
     model: z.string().trim().min(1).max(200).nullable(),
     messages: z.array(codexHistoryMessageSchema).max(50),
     nextCursor: z.number().int().nonnegative().safe().nullable(),
+    newerCursor: z.number().int().nonnegative().safe().nullable().optional(),
     scanLimited: z.boolean(),
   })
   .strict();
@@ -202,6 +289,7 @@ export const codexHistorySearchPageSchema = z
 
 export type CodexHistoryArchiveFilter = z.infer<typeof codexHistoryArchiveFilterSchema>;
 export type CodexHistoryRoleFilter = z.infer<typeof codexHistoryRoleFilterSchema>;
+export type CodexHistorySearchScope = z.infer<typeof codexHistorySearchScopeSchema>;
 export type CodexHistoryMatchRole = z.infer<typeof codexHistoryMatchRoleSchema>;
 export type CodexHistoryThreadSource = z.infer<typeof codexHistoryThreadSourceSchema>;
 export type CodexHistoryThreadMessagesSource = z.infer<typeof codexHistoryThreadMessagesSourceSchema>;
@@ -216,6 +304,9 @@ export type CodexHistoryThreadOption = z.infer<typeof codexHistoryThreadOptionSc
 export type CodexHistoryRefreshInput = z.infer<typeof codexHistoryRefreshInputSchema>;
 export type CodexHistorySearchResult = z.infer<typeof codexHistorySearchResultSchema>;
 export type CodexHistorySearchPage = z.infer<typeof codexHistorySearchPageSchema>;
+export type CodexHistoryMessagePhase = z.infer<typeof codexHistoryMessagePhaseSchema>;
+export type CodexHistoryContextKind = z.infer<typeof codexHistoryContextKindSchema>;
+export type CodexHistoryMessageBlock = z.infer<typeof codexHistoryMessageBlockSchema>;
 export type CodexHistoryMessage = z.infer<typeof codexHistoryMessageSchema>;
 export type CodexHistoryThreadMessagesInput = z.infer<typeof codexHistoryThreadMessagesInputSchema>;
 export type CodexHistoryThreadMessagesPage = z.infer<typeof codexHistoryThreadMessagesPageSchema>;

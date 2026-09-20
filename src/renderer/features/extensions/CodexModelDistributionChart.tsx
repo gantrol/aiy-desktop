@@ -1,6 +1,10 @@
-import { useId } from 'react';
+import { useId, useMemo } from 'react';
 import type { CodexModelComparisonDistribution } from '@/shared/contracts/codex-model-comparison';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/renderer/components/ui/table';
+import {
+  displayCodexModelChartSamples,
+  type CodexModelChartGroup,
+} from '@/renderer/features/extensions/codexModelComparisonChart';
 import type { useI18n } from '@/renderer/i18n/useI18n';
 
 type Labels = ReturnType<typeof useI18n>['messages']['extensions']['codexUsageInvestigator']['modelComparison'];
@@ -9,6 +13,7 @@ interface Series {
   label: string;
   distribution: CodexModelComparisonDistribution | null;
   total: number;
+  groups: readonly CodexModelChartGroup[];
 }
 
 const QUANTILES = [0, 10, 25, 50, 75, 90, 100] as const;
@@ -44,6 +49,15 @@ export function CodexModelDistributionChart({
   format(value: number): string;
 }) {
   const titleId = useId();
+  const descriptionId = useId();
+  const samples = useMemo(
+    () =>
+      series.map((item) => displayCodexModelChartSamples(item.groups)) as [
+        ReturnType<typeof displayCodexModelChartSamples>,
+        ReturnType<typeof displayCodexModelChartSamples>,
+      ],
+    [series],
+  );
   const maximum = Math.max(...series.map((item) => item.distribution?.percentiles[100] ?? 0)) || 1;
   const hasSamples = series.some((item) => item.distribution !== null);
   const y = (value: number) => PLOT.top + PLOT.height * (1 - value / maximum);
@@ -64,12 +78,13 @@ export function CodexModelDistributionChart({
           <svg
             viewBox="0 0 624 254"
             role="img"
-            aria-labelledby={titleId}
+            aria-labelledby={`${titleId} ${descriptionId}`}
             className="mx-auto block h-auto w-full max-w-2xl text-foreground"
           >
             <title id={titleId}>
               {labels.distribution} · {metricLabel} · {series.map((item) => item.label).join(' / ')}
             </title>
+            <desc id={descriptionId}>{labels.distributionNote}</desc>
             {[0, 0.25, 0.5, 0.75, 1].map((fraction) => (
               <g key={fraction}>
                 <line
@@ -116,6 +131,25 @@ export function CodexModelDistributionChart({
                     strokeLinejoin="round"
                   />
                 ),
+            )}
+            {samples.map((side, index) =>
+              side.map((sample) => (
+                <circle
+                  key={`${index}:${sample.key}`}
+                  cx={PLOT.left + (PLOT.width * sample.percentile) / 100}
+                  cy={y(sample.value)}
+                  r="2.25"
+                  fill={index ? 'none' : 'currentColor'}
+                  stroke="currentColor"
+                  strokeWidth="1.25"
+                  opacity="0.75"
+                  style={{ color: sample.configuration.color }}
+                >
+                  <title>
+                    {index ? labels.compareB : labels.compareA} · {sample.configuration.label} · {format(sample.value)}
+                  </title>
+                </circle>
+              )),
             )}
           </svg>
         ) : (

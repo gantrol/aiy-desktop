@@ -2,6 +2,12 @@ import { unified, type Plugin } from 'unified';
 import * as remarkGfmModule from 'remark-gfm';
 import * as remarkParseModule from 'remark-parse';
 import { matchAdjacentCjkStrongMarkdown } from '@/shared/cjk-strong-markdown';
+import {
+  renderArticleWechatInteractionSvg,
+  type ArticleWechatInteractionProjection,
+} from '@/shared/article-wechat-interactions';
+import { normalizeContentMediaPath } from '@/shared/content-asset-path';
+import { contentFigureReferenceAssetId } from '@/shared/content-figure-reference';
 
 interface MarkdownNode {
   type: string;
@@ -26,11 +32,13 @@ export interface ArticleWechatImageSource {
   src: string;
   width: number;
   height: number;
+  caption?: string;
 }
 
 export interface ArticleWechatRenderOptions {
   linksAsEndReferences: boolean;
   referenceTitle: string;
+  figureReferenceLabels?: ReadonlyMap<string, string>;
 }
 
 export interface ArticleWechatRenderDiagnostics {
@@ -42,6 +50,8 @@ export interface ArticleWechatRenderDiagnostics {
   localImageCount: number;
   remoteImageCount: number;
   unavailableImageCount: number;
+  interactionCount: number;
+  interactiveSvgCount: number;
 }
 
 export interface ArticleWechatRenderResult {
@@ -96,7 +106,10 @@ function recoverAdjacentCjkStrongText(node: MarkdownNode) {
     }
 
     if (markerIndex > cursor) recovered.push({ type: 'text', value: value.slice(cursor, markerIndex) });
-    recovered.push({ type: 'strong', children: [{ type: 'text', value: match.text }] });
+    recovered.push({
+      type: 'strong',
+      children: [{ type: 'text', value: match.text }],
+    });
     if (match.trailingWhitespace) recovered.push({ type: 'text', value: match.trailingWhitespace });
     cursor = markerIndex + match.raw.length;
     searchFrom = cursor;
@@ -151,14 +164,7 @@ function resolveMarkdownReferences(root: MarkdownNode) {
   return resolve(root);
 }
 
-export function normalizeArticleWechatMediaPath(value: string) {
-  const path = value.split(/[?#]/, 1)[0]!.replace(/^\.\//, '');
-  try {
-    return decodeURIComponent(path);
-  } catch {
-    return path;
-  }
-}
+export const normalizeArticleWechatMediaPath = normalizeContentMediaPath;
 
 function safeHttpsUrl(value: string) {
   try {
@@ -235,6 +241,7 @@ const styles = {
     `border:1px solid ${publicationPalette.neutralBorder};border-radius:6px;background-color:${publicationPalette.surface};` +
     `color:${publicationPalette.codeText};font-family:Consolas,Monaco,monospace;font-size:13px;line-height:1.7;`,
   image: 'display:block;max-width:100%;height:auto;margin:1.65em auto;border-radius:6px;',
+  imageCaption: `display:block;margin:-0.9em 0 1.65em;text-align:center;font-size:13px;line-height:1.7;color:${publicationPalette.textMuted};`,
   link: `color:${publicationPalette.accent};text-decoration:underline;text-underline-offset:0.18em;`,
   referenceMarker: 'margin-left:0.16em;font-size:0.72em;line-height:0;vertical-align:super;',
   referenceList: `margin:0 0 1.25em;font-size:14px;line-height:1.85;color:${publicationPalette.textMuted};`,
@@ -294,7 +301,10 @@ function renderImage(node: MarkdownNode, context: RenderContext) {
       ? ` width="${prepared.width}" height="${prepared.height}"`
       : '';
   const title = node.title ? ` title="${escapeHtml(node.title)}"` : '';
-  return `<img src="${escapeHtml(imageSource)}" alt="${escapeHtml(alt)}"${title}${dimensions} style="${styles.image}">`;
+  const caption = prepared?.caption
+    ? `<span style="${styles.imageCaption}">${escapeHtml(prepared.caption)}</span>`
+    : '';
+  return `<img src="${escapeHtml(imageSource)}" alt="${escapeHtml(alt)}"${title}${dimensions} style="${styles.image}">${caption}`;
 }
 
 function renderTable(node: MarkdownNode, context: RenderContext) {
@@ -387,6 +397,9 @@ function renderInlineNode(node: MarkdownNode, context: RenderContext): string | 
     case 'inlineCode':
       return `<code style="${styles.inlineCode}">${escapeHtml(node.value ?? '')}</code>`;
     case 'link': {
+      const figureId = contentFigureReferenceAssetId(node.url ?? '');
+      if (figureId && context.options.figureReferenceLabels?.has(figureId))
+        return escapeHtml(context.options.figureReferenceLabels.get(figureId)!);
       context.linkCount += 1;
       const href = safeHttpsUrl(node.url ?? '');
       const label = renderChildren(node, context);
@@ -451,9 +464,15 @@ function renderPlainInline(node: MarkdownNode, context: RenderContext): string {
     case 'text':
     case 'inlineCode':
       return node.value ?? '';
-    case 'image':
-      return node.alt?.trim() ? `【${node.alt.trim()}】` : '【图片】';
+    case 'image': {
+      const caption = context.imagesByPath.get(normalizeArticleWechatMediaPath(node.url ?? ''))?.caption;
+      const label = [caption, node.alt?.trim()].filter(Boolean).join('：');
+      return label ? `【${label}】` : '【图片】';
+    }
     case 'link': {
+      const figureId = contentFigureReferenceAssetId(node.url ?? '');
+      if (figureId && context.options.figureReferenceLabels?.has(figureId))
+        return context.options.figureReferenceLabels.get(figureId)!;
       const label = (node.children ?? []).map((child) => renderPlainInline(child, context)).join('');
       const href = safeHttpsUrl(node.url ?? '');
       if (!href) return label;
@@ -564,11 +583,23 @@ function imageReferences(root: MarkdownNode) {
     if (remoteUrl) remoteImageUrls.add(remoteUrl);
     else localImagePaths.add(normalizeArticleWechatMediaPath(node.url));
   });
-  return { localImagePaths: [...localImagePaths], remoteImageUrls: [...remoteImageUrls] };
+  return {
+    localImagePaths: [...localImagePaths],
+    remoteImageUrls: [...remoteImageUrls],
+  };
 }
 
 export function articleWechatImageReferences(markdown: string) {
   return imageReferences(articleRoot(markdown));
+}
+
+/** Keep local and remote placements interleaved in the order the reader sees them. */
+export function articleWechatImageOccurrences(markdown: string) {
+  const paths: string[] = [];
+  visitMarkdown(articleRoot(markdown), (node) => {
+    if (node.type === 'image' && node.url) paths.push(node.url);
+  });
+  return paths;
 }
 
 export function articleMarkdownImageReferences(markdown: string) {
@@ -711,6 +742,49 @@ export function renderArticleForWechat(
       localImageCount: references.localImagePaths.length,
       remoteImageCount: references.remoteImageUrls.length,
       unavailableImageCount: context.unavailableImagePaths.size,
+      interactionCount: 0,
+      interactiveSvgCount: 0,
+    },
+  };
+}
+
+/** The plain-text clipboard and ordinary Markdown remain complete even when SVG is used for HTML. */
+export function renderArticleForWechatDocument(
+  markdown: string,
+  projection: ArticleWechatInteractionProjection | null,
+  expandedProjectionMarkdown: string | null,
+  media: readonly { path: string; assetId: string }[],
+  imagesByPath: ReadonlyMap<string, ArticleWechatImageSource>,
+  options: ArticleWechatRenderOptions,
+): ArticleWechatRenderResult {
+  const staticResult = renderArticleForWechat(markdown, imagesByPath, options);
+  if (!projection?.interactions.length) return staticResult;
+  const fallback = {
+    ...staticResult,
+    diagnostics: {
+      ...staticResult.diagnostics,
+      interactionCount: projection.interactions.length,
+    },
+  };
+  if (!expandedProjectionMarkdown) return fallback;
+  const replacements = projection.interactions.map((interaction) => ({
+    marker: interaction.marker,
+    svg: renderArticleWechatInteractionSvg(interaction, media, imagesByPath),
+  }));
+  if (replacements.some((replacement) => !replacement.svg)) return fallback;
+  let html = renderArticleForWechat(expandedProjectionMarkdown, imagesByPath, options).html;
+  for (const { marker, svg } of replacements) {
+    const paragraph = `<p style="${styles.paragraph}">${marker}</p>`;
+    if (html.split(paragraph).length !== 2) return fallback;
+    html = html.replace(paragraph, svg!);
+  }
+  return {
+    ...fallback,
+    html,
+    diagnostics: {
+      ...fallback.diagnostics,
+      htmlByteSize: utf8ByteSize(html),
+      interactiveSvgCount: replacements.length,
     },
   };
 }

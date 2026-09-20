@@ -25,11 +25,12 @@ interface Props {
   watermarkAvailable: boolean;
   onCreateArticle(copySourceContent: boolean): void;
   onHandoff(target: BrowserCompanionTarget, watermark: BrowserCompanionWatermarkSelection): void;
+  onPrepareBatch(watermark: BrowserCompanionWatermarkSelection): void;
+  onWechatArticle(watermark: BrowserCompanionWatermarkSelection): void;
   onRetrySave(): void;
   saveFailed: boolean;
   saving: boolean;
   title: string;
-  zh: boolean;
 }
 
 function SocialPostSaveStatus({
@@ -88,15 +89,16 @@ export function SocialPostHeader({
   watermarkAvailable,
   onCreateArticle,
   onHandoff,
+  onPrepareBatch,
+  onWechatArticle,
   onRetrySave,
   saveFailed,
   saving,
   title,
-  zh,
 }: Props) {
   const socialCopy = useI18n().messages.creator.socialPostEditor;
   return (
-    <header className="flex h-14 shrink-0 items-center justify-between gap-3 border-b px-4">
+    <header className="flex min-h-12 shrink-0 flex-wrap items-center justify-between gap-x-3 gap-y-1 border-b px-4 py-2">
       <div className="flex min-w-0 items-center gap-2">
         <span className="truncate font-semibold">{title || socialCopy.untitledPost}</span>
         <span className="text-xs text-muted-foreground">{socialCopy.socialPost}</span>
@@ -150,9 +152,10 @@ export function SocialPostHeader({
           disabled={handingOff || creatingForm || generatingCover}
           busy={handingOff}
           onHandoff={onHandoff}
+          onPrepareBatch={onPrepareBatch}
+          onWechatArticle={onWechatArticle}
           targets={handoffTargets}
           watermarkAvailable={watermarkAvailable}
-          zh={zh}
         />
       </div>
     </header>

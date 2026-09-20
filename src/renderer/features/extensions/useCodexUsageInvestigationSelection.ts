@@ -1,4 +1,4 @@
-import { type Dispatch, type SetStateAction, useCallback, useRef } from 'react';
+import { type Dispatch, type SetStateAction, useCallback, useRef, useState } from 'react';
 import type {
   CodexUsageDateRange,
   CodexUsageGranularity,
@@ -15,6 +15,7 @@ interface Options {
   setDisplayTimeZone: Dispatch<SetStateAction<string>>;
   setInvestigation: Dispatch<SetStateAction<CodexUsageInvestigation | null>>;
   setError: Dispatch<SetStateAction<string>>;
+  quotaReadFailed: string;
 }
 
 function sameDateRange(left: CodexUsageDateRange | null, right: CodexUsageDateRange | null) {
@@ -29,30 +30,39 @@ export function useCodexUsageInvestigationSelection({
   setDisplayTimeZone,
   setInvestigation,
   setError,
+  quotaReadFailed,
 }: Options) {
   const requestSequence = useRef(0);
+  const [loading, setLoading] = useState(false);
   const clearInvestigation = useCallback(() => {
     requestSequence.current += 1;
+    setLoading(false);
     setInvestigation(null);
   }, [setInvestigation]);
   const loadInvestigation = useCallback(
-    async (investigationId: string) => {
+    async (investigationId: string, minimumQuotaPercent?: number) => {
       const request = ++requestSequence.current;
-      let value: CodexUsageInvestigation;
+      setLoading(true);
       try {
-        value = await window.desktopApi.codexUsageInvestigation({ investigationId });
+        const value = await window.desktopApi.codexUsageInvestigation({ investigationId, minimumQuotaPercent });
+        if (request !== requestSequence.current) return;
+        if (minimumQuotaPercent !== undefined && value.quotaPurityIssue === 'READ_FAILED') {
+          setError(quotaReadFailed);
+          return;
+        }
+        setInvestigation(value);
+        setRange(value.range);
+        setDateRange(value.dateRange);
+        setGranularity(value.granularity);
+        setDisplayTimeZone(value.timeZone);
       } catch (reason) {
         if (request !== requestSequence.current) return;
         throw reason;
+      } finally {
+        if (request === requestSequence.current) setLoading(false);
       }
-      if (request !== requestSequence.current) return;
-      setInvestigation(value);
-      setRange(value.range);
-      setDateRange(value.dateRange);
-      setGranularity(value.granularity);
-      setDisplayTimeZone(value.timeZone);
     },
-    [setDateRange, setDisplayTimeZone, setGranularity, setInvestigation, setRange],
+    [quotaReadFailed, setDateRange, setDisplayTimeZone, setError, setGranularity, setInvestigation, setRange],
   );
   const selectRange = useCallback(
     (nextRange: CodexUsageRange, nextDateRange: CodexUsageDateRange | null) => {
@@ -91,5 +101,5 @@ export function useCodexUsageInvestigationSelection({
     },
     [loadInvestigation, setError],
   );
-  return { clearInvestigation, loadInvestigation, selectHistory, selectRange };
+  return { clearInvestigation, loadInvestigation, selectHistory, selectRange, loading };
 }

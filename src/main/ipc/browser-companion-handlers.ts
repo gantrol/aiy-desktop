@@ -12,6 +12,13 @@ import {
   browserCompanionStageInputSchema,
   browserCompanionStageErrorCodeSchema,
   browserCompanionStageResultSchema,
+  browserCompanionBatchInputSchema,
+  browserCompanionBatchResultSchema,
+  browserCompanionBatchHistoryResultSchema,
+  browserCompanionBatchInvocationSchema,
+  browserCompanionReopenInvocationSchema,
+  browserCompanionReopenInputSchema,
+  type BrowserCompanionTarget,
 } from '@/shared/contracts/browser-companion';
 import { WEIBO_CHANNEL_EXTENSION_ID } from '@/shared/extension-ids';
 import { EXTENSION_PERMISSION } from '@/shared/extension-permissions';
@@ -21,17 +28,45 @@ export function registerBrowserCompanionIpc(
   runtime: BrowserCompanionRuntime,
   extensions: ExtensionRegistry,
 ): void {
+  const canStage = (target: BrowserCompanionTarget): boolean =>
+    target !== 'weibo' ||
+    (extensions.isActivated(WEIBO_CHANNEL_EXTENSION_ID) &&
+      extensions.isPermissionGranted(WEIBO_CHANNEL_EXTENSION_ID, EXTENSION_PERMISSION.browserHandoffWeibo));
+  ipcMain.handle('browser-companion:stage-batch', async (_event, rawInput) => {
+    try {
+      return browserCompanionBatchResultSchema.parse(
+        await runtime.stageBatch(browserCompanionBatchInputSchema.parse(rawInput), canStage),
+      );
+    } catch (reason) {
+      if (reason instanceof Error && reason.message === 'BROWSER_COMPANION_LIBRARY_CHANGED') {
+        return browserCompanionBatchInvocationSchema.parse({ errorCode: reason.message });
+      }
+      throw reason;
+    }
+  });
+  ipcMain.handle('browser-companion:batch-history', async () =>
+    browserCompanionBatchHistoryResultSchema.parse(await runtime.batchHistory()),
+  );
+  ipcMain.handle('browser-companion:reopen', async (_event, rawInput) => {
+    const input = browserCompanionReopenInputSchema.parse(rawInput);
+    try {
+      return browserCompanionStageResultSchema.parse(
+        await runtime.reopen(input.handoffId, canStage, input.expectedSpaceId),
+      );
+    } catch (reason) {
+      if (reason instanceof Error && reason.message === 'BROWSER_COMPANION_LIBRARY_CHANGED') {
+        return browserCompanionReopenInvocationSchema.parse({ errorCode: reason.message });
+      }
+      throw reason;
+    }
+  });
   ipcMain.handle('browser-companion:stage', async (_event, rawInput) => {
     const input = browserCompanionStageInputSchema.parse(rawInput);
-    if (
-      input.target === 'weibo' &&
-      (!extensions.isActivated(WEIBO_CHANNEL_EXTENSION_ID) ||
-        !extensions.isPermissionGranted(WEIBO_CHANNEL_EXTENSION_ID, EXTENSION_PERMISSION.browserHandoffWeibo))
-    ) {
+    if (!canStage(input.target)) {
       throw new Error('Weibo browser handoff is disabled or missing permission');
     }
     try {
-      return browserCompanionStageResultSchema.parse(await runtime.stage(input));
+      return browserCompanionStageResultSchema.parse(await runtime.stage(input, canStage));
     } catch (reason) {
       const code = browserCompanionStageErrorCodeSchema.safeParse(reason instanceof Error ? reason.message : reason);
       if (code.success) return { errorCode: code.data };

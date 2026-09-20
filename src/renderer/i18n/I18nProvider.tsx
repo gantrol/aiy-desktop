@@ -23,11 +23,12 @@ interface RuntimeLanguagePack {
   messages: MessageCatalog;
 }
 
+const defaultMessages: MessageCatalog = enMessages;
 const hostLanguagePacks: Partial<Record<Locale, RuntimeLanguagePack>> = {
   en: {
     extensionId: ENGLISH_LANGUAGE_EXTENSION_ID,
     htmlLanguage: htmlLanguages.en,
-    messages: enMessages,
+    messages: defaultMessages,
   },
 };
 
@@ -37,7 +38,7 @@ function hydrateLanguagePacks(packs: readonly ExtensionLanguagePackDto[]) {
     hydrated[pack.locale] = {
       extensionId: pack.extensionId,
       htmlLanguage: pack.htmlLanguage,
-      messages: hydrateLanguageCatalog(pack.messages, enMessages),
+      messages: hydrateLanguageCatalog(pack.messages, defaultMessages),
     };
   }
   return hydrated;
@@ -74,7 +75,7 @@ export function I18nProvider({ children }: { children: ReactNode }) {
   const [extensions, setExtensions] = useState<readonly ExtensionDto[]>([]);
   const [languagePacks, setLanguagePacks] = useState(hostLanguagePacks);
   const [catalogReady, setCatalogReady] = useState(false);
-  const messages = languagePacks[locale]?.messages ?? enMessages;
+  const messages = languagePacks[locale]?.messages ?? defaultMessages;
   const availableLocales = useMemo<readonly Locale[]>(() => {
     if (!catalogReady) return languagePluginOrder;
     const catalogExtensionIds = new Set(

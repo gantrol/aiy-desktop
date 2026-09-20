@@ -366,6 +366,7 @@ const CSV_HEADERS = [
   'unknown_service_tier_sessions',
   'model_token_shares',
   'valuation_kind',
+  'minimum_quota_percent',
 ] as const;
 
 function csvExport(investigation: CodexUsageInvestigation, rows: readonly CodexUsageInternalRow[]) {
@@ -374,6 +375,36 @@ function csvExport(investigation: CodexUsageInvestigation, rows: readonly CodexU
     ...turnSpeedRows(investigation),
     ...sessionLengthRows(investigation),
     ...quotaCycleRows(investigation),
+    ...(investigation.quotaPurity?.samples ?? []).map((sample): CsvRecord => ({
+      record_kind: 'MODEL_PURITY_SAMPLE',
+      analysis_scope: 'LOCAL_RECORDS_ACCOUNT_QUOTA',
+      generated_at: investigation.generatedAt,
+      range: investigation.range,
+      time_zone: investigation.timeZone,
+      algorithm_version: investigation.quotaPurity!.algorithmVersion,
+      minimum_quota_percent: investigation.quotaPurity!.minimumQuotaPercent,
+      attribution: sample.attribution,
+      model: sample.model,
+      service_tier: sample.serviceTier,
+      plan_type: sample.planType,
+      limit_id: sample.limitId,
+      quota_kind: sample.quotaKind,
+      window_kind: sample.windowKind,
+      window_duration_minutes: sample.windowDurationMins,
+      sample_from: sample.from,
+      sample_to: sample.to,
+      resets_at: sample.resetsAt,
+      quota_percent_observed: sample.quotaPercentConsumed,
+      tokens_per_subscription_quota_1_percent: sample.tokensPerOnePercent,
+      input_tokens: sample.inputTokens,
+      cached_input_tokens: sample.cachedInputTokens,
+      cache_write_input_tokens: sample.cacheWriteInputTokens,
+      output_tokens: sample.outputTokens,
+      reasoning_output_tokens: sample.reasoningOutputTokens,
+      total_tokens: sample.totalTokens,
+      requests: sample.requestCount,
+      valuation_kind: 'historical_single_model_mode_tokens_per_observed_quota_percent',
+    })),
   ];
   for (const estimate of investigation.quotaYield?.estimates ?? []) {
     lines.push({
@@ -553,10 +584,11 @@ function csvExport(investigation: CodexUsageInvestigation, rows: readonly CodexU
 function jsonExport(investigation: CodexUsageInvestigation, rows: readonly CodexUsageInternalRow[]) {
   return `${JSON.stringify(
     {
-      schemaVersion: 13,
+      schemaVersion: 15,
       valuationKind: 'public_rate_equivalent_not_billed_spend',
       turnSpeedKind: 'completed_turn_median_duration_ratio',
       quotaYieldKind: 'weekly_quota_observation_segment_tokens_per_observed_quota_percent',
+      quotaPurityKind: 'historical_single_model_mode_tokens_per_observed_quota_percent',
       quotaSpeedNormalizationKind: 'fast_credit_multiplier_to_standard_equivalent_tokens',
       sessionLengthCostKind: 'complete_session_event_date_standard_api_equivalent_per_owned_chat_turn',
       investigation,

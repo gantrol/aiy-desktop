@@ -8,7 +8,7 @@ import type {
   VideoDocumentRevisionMediaDto,
 } from '@/shared/contracts';
 import { articleContentSchema } from '@/shared/contracts/article';
-import { blockDocumentAssetIds, type BlockDocument } from '@/shared/contracts/block-document';
+import type { BlockDocument } from '@/shared/contracts/block-document';
 
 export function editableArticleContentDto(content: ArticleContentDto): ArticleContentInput {
   const { mediaAssets: _mediaAssets, ...editable } = content;
@@ -27,9 +27,11 @@ export function articleEditorMetadataFromContent(input: ArticleContentInput): Ar
   return {
     schemaVersion: content.schemaVersion,
     document: content.document,
+    ...(content.editorMode ? { editorMode: content.editorMode } : {}),
     title: content.title,
     mediaBindings: content.mediaBindings.map((binding) => ({ ...binding })),
     coverAssetId: content.coverAssetId,
+    ...(content.coverVariants?.length ? { coverVariants: content.coverVariants } : {}),
     ...(content.creationInput ? { creationInput: content.creationInput } : {}),
     ...(content.files ? { files: content.files } : {}),
   };
@@ -60,14 +62,6 @@ export function articleEditorSnapshot(
   markdown: string,
   document: BlockDocument | undefined = metadata.document,
 ): ArticleContentInput {
-  const referenced = document ? new Set(blockDocumentAssetIds(document)) : null;
-  if (metadata.coverAssetId) referenced?.add(metadata.coverAssetId);
-  for (const id of metadata.creationInput?.referenceAssetIds ?? []) referenced?.add(id);
-  // Retain imported media in the live session for undo, while saving only the
-  // body and cover references. Removed occurrences must not fill the binding limit.
-  const bindings = referenced
-    ? metadata.mediaBindings.filter((binding) => referenced.has(binding.assetId))
-    : metadata.mediaBindings;
   return articleContentSchema.parse({
     ...metadata,
     ...(document ? { schemaVersion: 2, document } : {}),
@@ -80,7 +74,7 @@ export function articleEditorSnapshot(
           },
         }
       : {}),
-    mediaBindings: bindings.map(({ path, assetId }) => ({ path, assetId })),
+    mediaBindings: metadata.mediaBindings.map(({ path, assetId }) => ({ path, assetId })),
   });
 }
 

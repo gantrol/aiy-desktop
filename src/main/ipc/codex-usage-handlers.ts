@@ -1,6 +1,5 @@
 import path from 'node:path';
 import type { SaveDialogOptions, SaveDialogReturnValue } from 'electron';
-import type { CodexService } from '@/main/assistant/codex-service';
 import { CodexUsageInvestigator } from '@/main/extensions/codex-usage-investigator';
 import type { ExtensionRegistry } from '@/main/extensions/registry';
 import type { IpcHandlerRegistrar } from '@/main/ipc/trusted-handlers';
@@ -17,14 +16,10 @@ import {
   codexUsageTaskSchema,
 } from '@/shared/contracts/codex-usage';
 import { CODEX_EXTENSION_ID } from '@/shared/extension-ids';
-import { EXTENSION_PERMISSION } from '@/shared/extension-permissions';
-
-const QUOTA_PERMISSION = EXTENSION_PERMISSION.accountReadCodexRateLimits;
 
 interface Options {
   ipcMain: IpcHandlerRegistrar;
   extensions: ExtensionRegistry;
-  codex: CodexService;
   dataDirectory: string;
   chooseSaveFile(options: SaveDialogOptions): Promise<SaveDialogReturnValue>;
   sendRendererEvent(channel: string, ...args: unknown[]): boolean;
@@ -43,7 +38,6 @@ function defaultExportName(format: 'CSV' | 'JSON') {
 export function registerCodexUsageIpc({
   ipcMain,
   extensions,
-  codex,
   dataDirectory,
   chooseSaveFile,
   sendRendererEvent,
@@ -57,10 +51,6 @@ export function registerCodexUsageIpc({
       throw new Error('Did Codex Work Hard Today? is disabled or missing permissions');
     }
   };
-  const runOptions = () => ({
-    quotaPermissionGranted: extensions.isPermissionGranted(CODEX_EXTENSION_ID, QUOTA_PERMISSION),
-    readQuota: codex.readUsageQuota ? (signal: AbortSignal) => codex.readUsageQuota!(signal) : undefined,
-  });
   ipcMain.handle('codex-usage:state', async () => {
     active();
     return codexUsageStateSchema.parse(await investigator.state());
@@ -68,16 +58,18 @@ export function registerCodexUsageIpc({
   ipcMain.handle('codex-usage:investigation', async (_event, raw) => {
     active();
     const input = codexUsageInvestigationGetInputSchema.parse(raw);
-    return codexUsageInvestigationSchema.parse(await investigator.investigation(input.investigationId));
+    return codexUsageInvestigationSchema.parse(
+      await investigator.investigation(input.investigationId, input.minimumQuotaPercent),
+    );
   });
   ipcMain.handle('codex-usage:scan', async (_event, raw) => {
     active();
-    return codexUsageTaskSchema.parse(await investigator.start(codexUsageScanInputSchema.parse(raw), runOptions()));
+    return codexUsageTaskSchema.parse(await investigator.start(codexUsageScanInputSchema.parse(raw)));
   });
   ipcMain.handle('codex-usage:resume', async (_event, raw) => {
     active();
     const input = codexUsageResumeInputSchema.parse(raw);
-    return codexUsageTaskSchema.parse(await investigator.resume(input.taskId, runOptions()));
+    return codexUsageTaskSchema.parse(await investigator.resume(input.taskId));
   });
   ipcMain.handle('codex-usage:pause', () => {
     investigator.pause();
@@ -99,14 +91,14 @@ export function registerCodexUsageIpc({
       return codexUsageExportResultSchema.parse({ status: 'cancelled' });
     }
     const destination = path.extname(selection.filePath) ? selection.filePath : `${selection.filePath}.${extension}`;
-    await investigator.export(input.investigationId, input.format, destination);
+    await investigator.export(input.investigationId, input.format, destination, input.minimumQuotaPercent);
     return codexUsageExportResultSchema.parse({ status: 'exported', fileName: path.basename(destination) });
   });
   queueMicrotask(() => {
     void (async () => {
       try {
         active();
-        await investigator.resumeLatest(runOptions());
+        await investigator.resumeLatest();
       } catch {
         // A disabled extension keeps its checkpoint paused until the user enables it again.
       }

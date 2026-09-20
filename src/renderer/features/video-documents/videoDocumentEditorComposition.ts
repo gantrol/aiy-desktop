@@ -1,4 +1,4 @@
-import { useEffect, useMemo } from 'react';
+import { useLayoutEffect, useMemo } from 'react';
 import type { Editor } from '@tiptap/core';
 import type { EditorView } from '@tiptap/pm/view';
 
@@ -139,7 +139,9 @@ export function useVideoDocumentEditorComposition({
     };
   }, [editor, publish]);
 
-  useEffect(() => {
+  // Hand off committed composition text before a parent's passive cleanup
+  // captures its final draft, and before the editor view is destroyed.
+  useLayoutEffect(() => {
     controller.activate();
     return () => controller.cancel();
   }, [controller]);

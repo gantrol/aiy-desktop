@@ -84,7 +84,7 @@ export class OpenAiImageProvider implements GenerationProvider {
         maxReferenceImages: adapter.maxReferenceImages,
         capabilities: [...adapter.capabilities],
         qualityMode: 'SELECTABLE',
-        supportedQualities: ['low', 'medium', 'high'],
+        supportedQualities: [...model.supportedQualities],
       };
     };
     this.entries = OPENAI_IMAGE_MODELS.map(

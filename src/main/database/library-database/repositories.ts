@@ -109,7 +109,7 @@ export function createLibraryDatabaseRepositories(storage: LibraryStorage) {
   const materialMemberships = new MaterialMembershipRepository(storage, albums, materialAlbums, dictionary);
   const packs = new PackRepository(storage);
   const fixturePacks = new FixturePackRepository(storage, packs);
-  const contentPacks = new ContentPackRepository(storage, fixturePacks);
+  const contentPacks = new ContentPackRepository(storage, fixturePacks, albums, articles, creationItems);
   const agentIntake = new AgentIntakeRepository(storage, articles, intake, packs);
 
   return {

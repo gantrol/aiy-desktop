@@ -11,6 +11,7 @@ import {
   articleDeliveryJobListInputSchema,
   articleDeliveryJobRetryInputSchema,
   articleDeliveryJobSchema,
+  articleDeliveryJobEnqueueInvocationSchema,
   articleDeliveryStatusSchema,
   articleDeliveryUploadInputSchema,
   articleDeliveryUploadResultSchema,
@@ -70,10 +71,15 @@ export function createArticleDeliveryPreloadApi(ipcRenderer: IpcRenderer): Artic
       articleDeliveryUploadResultSchema.parse(
         await ipcRenderer.invoke('article-delivery:upload', articleDeliveryUploadInputSchema.parse(input)),
       ),
-    articleDeliveryJobEnqueue: async (input) =>
-      articleDeliveryJobSchema.parse(
+    articleDeliveryJobEnqueue: async (input) => {
+      const result = articleDeliveryJobEnqueueInvocationSchema.parse(
         await ipcRenderer.invoke('article-delivery:job-enqueue', articleDeliveryUploadInputSchema.parse(input)),
-      ),
+      );
+      if ('admissionRejected' in result) {
+        throw Object.assign(new Error(result.errorCode), { code: result.errorCode, admissionRejected: true });
+      }
+      return result;
+    },
     articleDeliveryJobsList: async (input) =>
       articleDeliveryJobSchema
         .array()

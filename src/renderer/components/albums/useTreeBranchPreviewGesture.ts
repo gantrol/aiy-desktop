@@ -16,13 +16,7 @@ interface TreeBranchPreviewGestureOptions {
 
 type TreeBranchPreviewGestureBindings = Pick<
   ComponentProps<'span'>,
-  | 'onPointerEnter'
-  | 'onPointerMove'
-  | 'onPointerLeave'
-  | 'onMouseEnter'
-  | 'onMouseLeave'
-  | 'onFocusCapture'
-  | 'onBlurCapture'
+  'onPointerEnter' | 'onPointerMove' | 'onPointerLeave' | 'onPointerCancel' | 'onFocusCapture' | 'onBlurCapture'
 >;
 
 /**
@@ -42,6 +36,8 @@ export function useTreeBranchPreviewGesture({
   bindings: TreeBranchPreviewGestureBindings;
 } {
   const [previewExpanded, setPreviewExpanded] = useState(false);
+  const focusWithin = useRef(false);
+  const pointerInside = useRef(false);
   const pointerStartY = useRef<number | null>(null);
   const pointerCurrentY = useRef<number | null>(null);
   const pullDownArmed = useRef(false);
@@ -82,10 +78,24 @@ export function useTreeBranchPreviewGesture({
     tryGestureExpand();
   }
 
+  function clearPointer() {
+    pullDownIntent.cancel();
+    pointerInside.current = false;
+    pointerStartY.current = null;
+    pointerCurrentY.current = null;
+    pullDownArmed.current = false;
+    pullDownTriggered.current = false;
+    setPreviewExpanded(focusWithin.current && canSpreadPreview);
+  }
+
   return {
     previewExpanded,
     bindings: {
       onPointerEnter(event) {
+        // Touch scrolling is not hover or a pull-to-open tree gesture.
+        if (event.pointerType === 'touch') return;
+        pointerInside.current = true;
+        setPreviewExpanded(canSpreadPreview);
         pointerStartY.current = event.clientY;
         pointerCurrentY.current = event.clientY;
         pullDownArmed.current = false;
@@ -100,29 +110,25 @@ export function useTreeBranchPreviewGesture({
         );
       },
       onPointerMove(event) {
-        trackPreviewPointer(event.clientY);
+        if (event.pointerType !== 'touch' && pointerInside.current) trackPreviewPointer(event.clientY);
       },
       onPointerLeave(event) {
-        trackPreviewPointer(event.clientY);
-        pullDownIntent.cancel();
-        pullDownArmed.current = false;
+        if (event.pointerType === 'touch') return;
+        if (pointerInside.current) trackPreviewPointer(event.clientY);
+        clearPointer();
       },
-      onMouseEnter() {
-        setPreviewExpanded(canSpreadPreview);
-      },
-      onMouseLeave() {
-        pullDownIntent.cancel();
-        pointerStartY.current = null;
-        pointerCurrentY.current = null;
-        pullDownArmed.current = false;
-        pullDownTriggered.current = false;
-        setPreviewExpanded(false);
+      onPointerCancel() {
+        clearPointer();
       },
       onFocusCapture() {
+        focusWithin.current = true;
         setPreviewExpanded(canSpreadPreview);
       },
       onBlurCapture(event) {
-        if (!event.currentTarget.contains(event.relatedTarget)) setPreviewExpanded(false);
+        if (!event.currentTarget.contains(event.relatedTarget)) {
+          focusWithin.current = false;
+          setPreviewExpanded(pointerInside.current && canSpreadPreview);
+        }
       },
     },
   };

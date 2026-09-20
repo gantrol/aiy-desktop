@@ -31,12 +31,13 @@ export interface VideoDocumentQuickInsertNoteRequest {
 }
 
 export interface VideoDocumentWysiwygEditorHandle {
+  insertFigureReference(assetId: string, label: string): boolean;
   getImagePlacements(): import('@/renderer/features/video-documents/articleImageOperations').ArticleImagePlacement[];
   moveImage(elementId: string, targetId: string): boolean;
   removeImage(elementId: string): boolean;
   undo(): boolean;
   redo(): boolean;
-  removeImageAssets(assetIds: readonly string[]): void;
+  removeImageAssets(assetIds: readonly string[], removeReferences?: boolean): boolean;
   getArticleCheckBlocks(): ReturnType<typeof articleCheckBlocks>;
   getPersistenceSnapshot(): VideoDocumentWysiwygPersistenceSnapshot;
   whenSettled(): Promise<boolean>;
@@ -60,10 +61,15 @@ export interface VideoDocumentWysiwygEditorProps {
   compact?: boolean;
   embedded?: boolean;
   toolbarVisible?: boolean;
+  toolbarPreset?: 'full' | 'compact';
   toolbarRoot?: HTMLDivElement | null;
   contentSource?: import('@/shared/contracts/content-library').ContentSource;
+  outlineMode?: boolean;
+  beforeReferenceCapture?(): Promise<import('@/shared/contracts/content-source').ContentSource | null>;
   readOnly?: boolean;
   mediaIntake?: 'INLINE' | 'EXTERNAL';
+  figureAssetIds?: readonly string[];
+  onFigureReferenceClick?(assetId: string): void;
   importImage?(
     file: File,
     source: import('@/shared/contracts').CreatorImageImportSource,

@@ -1,0 +1,78 @@
+{
+  "schemaVersion": 1,
+  "components": [
+    "src/renderer/components/ui/content-surface.tsx",
+    "src/renderer/components/media/AssetMedia.tsx",
+    "src/renderer/components/media/ImagePlaybackButton.tsx",
+    "src/shared/media-preview-policy.ts",
+    "src/shared/petal-visibility.ts"
+  ],
+  "cases": [
+    {
+      "id": "paper",
+      "fixture": "paper",
+      "ratio": 0.85,
+      "rules": ["reading-space", "keyboard-tools", "source-is-not-copied"]
+    },
+    {
+      "id": "portrait",
+      "fixture": "portrait",
+      "ratio": 0.667,
+      "rules": ["zero-media-padding", "contain-original", "quiet-chrome"]
+    },
+    {
+      "id": "landscape",
+      "fixture": "landscape",
+      "ratio": 1.5,
+      "rules": ["contain-original", "caption-contrast"]
+    },
+    {
+      "id": "animation",
+      "fixture": "animation",
+      "ratio": 0.667,
+      "rules": ["visible-motion", "offscreen-still", "reduced-motion-opt-in"]
+    },
+    {
+      "id": "animation-apng",
+      "fixture": "apng",
+      "ratio": 0.667,
+      "rules": ["visible-motion", "pause-control", "reduced-motion-opt-in"]
+    },
+    {
+      "id": "animation-webp",
+      "fixture": "webp",
+      "ratio": 0.667,
+      "rules": ["visible-motion", "pause-control", "offscreen-still"]
+    },
+    {
+      "id": "svg-small",
+      "fixture": "svg-small",
+      "ratio": 1,
+      "rules": ["external-image-only", "no-inline-untrusted-svg"]
+    },
+    {
+      "id": "svg-large",
+      "fixture": "svg-large",
+      "ratio": 1,
+      "rules": ["poster-before-original", "no-expensive-fallback"]
+    },
+    {
+      "id": "missing",
+      "fixture": "missing",
+      "ratio": 0.85,
+      "rules": ["visible-error", "retry", "open-source-remains"]
+    },
+    {
+      "id": "long-title",
+      "fixture": "portrait",
+      "ratio": 0.667,
+      "rules": ["truncate-title", "accessible-full-title"]
+    },
+    {
+      "id": "visibility",
+      "fixture": "visibility",
+      "ratio": 0.85,
+      "rules": ["collected-stays-collected", "temporary-hide-is-reversible"]
+    }
+  ]
+}

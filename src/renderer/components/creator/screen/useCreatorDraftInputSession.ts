@@ -6,10 +6,17 @@ import { useCreatorNavigationCore } from '@/renderer/components/creator/screen/u
 import type { useCreatorPromptSession } from '@/renderer/components/creator/screen/useCreatorPromptSession';
 import type { useCreatorSelectionSession } from '@/renderer/components/creator/screen/useCreatorSelectionSession';
 import { resolveCreatorPrompt } from '@/renderer/components/creator/utils';
+import {
+  imagePromptPlanNode,
+  MAX_IMAGE_PROMPTS,
+  readImagePromptPlan,
+} from '@/renderer/components/creator/imagePromptPlan';
 import { useCreationInputStashes } from '@/renderer/components/creator/workflows/useCreationInputStashes';
 import { useCreatorDraftProjection } from '@/renderer/components/creator/workflows/useCreatorDraftProjection';
 import { useCreatorInputRecovery } from '@/renderer/components/creator/workflows/useCreatorInputRecovery';
 import { useBrowserCompanionHandoff } from '@/renderer/features/browser-companion/useBrowserCompanionHandoff';
+import { useI18n } from '@/renderer/i18n/useI18n';
+import { assertBlockDocumentReady, blockDocumentAssetIds } from '@/shared/contracts/block-document';
 import type { Locale, PromptSeriesDto } from '@/shared/contracts';
 import { useEffect } from 'react';
 
@@ -51,6 +58,7 @@ export function useCreatorDraftInputSession({
   setRequestedAssetId,
 }: Options) {
   const { contentSelection, creationDraftSession, creationMode } = selection;
+  const handoffCopy = useI18n().messages.browserCompanion;
   const document = prompt.promptDocument;
   const catalog = prompt.dictionaryCatalog;
   const draftProjection = useCreatorDraftProjection({
@@ -87,6 +95,9 @@ export function useCreatorDraftInputSession({
     title: prompt.newTitle,
   });
   selection.captureCreationDraftRef.current = draftProjection.captureDraft;
+  selection.settleCreationDraftInputRef.current = async () => {
+    await document.promptComposerRef.current?.whenSettled();
+  };
   const visibleInput =
     Boolean(selection.workbenchProjection.editorDerivedVisual) ||
     !(
@@ -176,10 +187,30 @@ export function useCreatorDraftInputSession({
   ]);
   const promptHandoff = useBrowserCompanionHandoff({
     notify,
-    zh: locale === 'zh',
     prepare: async () => {
+      await document.promptComposerRef.current?.whenSettled();
       const captured = document.capture();
-      const mediaAssetIds = document.referenceAssets.map((asset) => asset.id);
+      assertBlockDocumentReady(captured.document);
+      const imagePrompts = readImagePromptPlan(captured.document);
+      if (
+        imagePromptPlanNode(captured.document) &&
+        (!imagePrompts.length ||
+          imagePrompts.length > MAX_IMAGE_PROMPTS ||
+          imagePrompts.some((prompt) => !prompt.trim()))
+      ) {
+        notify(handoffCopy.imagePlanInvalid);
+        return null;
+      }
+      const mediaAssetIds = [
+        ...new Set([
+          ...document.materialsRef.current.referenceAssets.map((asset) => asset.id),
+          ...(captured.document ? blockDocumentAssetIds(captured.document) : []),
+        ]),
+      ];
+      if (mediaAssetIds.length > 20) {
+        notify(handoffCopy.promptMediaLimit);
+        return null;
+      }
       const resolved = resolveCreatorPrompt({
         manualPrompt: captured.manualPrompt,
         promptNodes: captured.nodes,
@@ -189,17 +220,33 @@ export function useCreatorDraftInputSession({
         promptProfileId: generation.configuration.promptProfileId,
       }).livePrompt.trim();
       if (!resolved) {
-        notify(locale === 'zh' ? '请先填写 Prompt' : 'Write a prompt first');
+        notify(handoffCopy.promptRequired);
         return null;
       }
-      if (Array.from(resolved).length > 10_000) {
-        notify(
-          locale === 'zh' ? '浏览器交接 Prompt 不能超过 10000 字' : 'Browser handoff is limited to 10,000 characters',
-        );
+      const canvas = generation.canvasPreset;
+      const text = [
+        resolved,
+        ...(canvas
+          ? [
+              handoffCopy.canvasPrompt
+                .replace('{ratio}', canvas.ratio)
+                .replace('{width}', String(canvas.width))
+                .replace('{height}', String(canvas.height)),
+              ...(canvas.stableKey === 'wechat_article_cover_2_35_1' ? [handoffCopy.wechatCropPrompt] : []),
+            ]
+          : []),
+      ].join('\n\n');
+      if (text.length > 10_000) {
+        notify(handoffCopy.promptLimit);
         return null;
       }
       const draft = await creationDraftSession.saveDraftNow(undefined, captured);
-      const outputTarget = await generation.prepareBrowserCompanionOutputTarget();
+      const outputTarget = await generation.prepareBrowserCompanionOutputTarget({
+        draft,
+        captured,
+        referenceAssetIds: mediaAssetIds,
+        text,
+      });
       return {
         source: {
           kind: 'creation-draft' as const,
@@ -207,7 +254,7 @@ export function useCreatorDraftInputSession({
           ...(outputTarget ? { outputTarget } : {}),
         },
         contentKind: 'prompt' as const,
-        text: resolved,
+        text,
         mediaAssetIds,
       };
     },

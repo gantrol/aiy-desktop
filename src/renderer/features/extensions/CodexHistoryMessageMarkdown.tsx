@@ -1,71 +1,175 @@
-import { memo } from 'react';
-import ReactMarkdown, { type Components } from 'react-markdown';
-import remarkGfm from 'remark-gfm';
+import { isValidElement, memo, useMemo, type ReactNode } from 'react';
+import type { Components } from 'react-markdown';
+import { ContentMarkdown } from '@/renderer/features/content-editor/ContentMarkdown';
+import { contentLibraryApi } from '@/renderer/features/content-editor/contentLibraryClient';
+import { CodexHistoryMath } from '@/renderer/features/extensions/CodexHistoryMath';
+import { CodexHistoryMermaid } from '@/renderer/features/extensions/CodexHistoryMermaid';
+import { historyHighlightClassName } from '@/renderer/features/extensions/CodexHistoryHighlightedText';
+import { codexHistoryMarkdownHighlights } from '@/renderer/features/extensions/codexHistoryMarkdownHighlights';
+import { codexHistoryMarkdownMath } from '@/renderer/features/extensions/codexHistoryMarkdownMath';
+import { useI18n } from '@/renderer/i18n/useI18n';
 import { codexMarkdownUrlTransform } from '@/renderer/lib/codexThreadLinks';
+import { parseCodexThreadHref } from '@/shared/contracts/codex-thread';
 
-const markdownComponents: Components = {
-  h1: ({ children }) => <h1 className="mb-2 mt-4 text-base font-semibold first:mt-0">{children}</h1>,
-  h2: ({ children }) => <h2 className="mb-2 mt-4 text-sm font-semibold first:mt-0">{children}</h2>,
-  h3: ({ children }) => <h3 className="mb-1.5 mt-3 text-sm font-medium first:mt-0">{children}</h3>,
-  h4: ({ children }) => <h4 className="mb-1.5 mt-3 text-xs font-semibold first:mt-0">{children}</h4>,
-  p: ({ children }) => <p className="my-2 whitespace-pre-wrap first:mt-0 last:mb-0">{children}</p>,
-  ul: ({ children }) => <ul className="my-2 list-disc space-y-1 pl-5">{children}</ul>,
-  ol: ({ children, start }) => (
-    <ol className="my-2 list-decimal space-y-1 pl-5" start={start}>
-      {children}
-    </ol>
-  ),
-  li: ({ children }) => <li className="pl-0.5">{children}</li>,
-  blockquote: ({ children }) => (
-    <blockquote className="my-3 border-l-2 border-border pl-3 text-muted-foreground">{children}</blockquote>
-  ),
-  pre: ({ children }) => (
-    <pre className="my-3 overflow-x-auto rounded-md border bg-surface-sunken px-3 py-2 font-mono text-xs leading-5 [&_code]:bg-transparent [&_code]:p-0">
-      {children}
-    </pre>
-  ),
-  code: ({ children, className }) => (
-    <code className={`rounded-sm bg-surface-sunken px-1 py-0.5 font-mono text-[0.875em] ${className ?? ''}`}>
-      {children}
-    </code>
-  ),
-  table: ({ children }) => (
-    <div className="my-3 overflow-x-auto border-y">
-      <table className="w-full border-collapse text-xs">{children}</table>
-    </div>
-  ),
-  th: ({ children }) => <th className="border-b bg-surface-sunken px-2 py-1.5 text-left font-medium">{children}</th>,
-  td: ({ children }) => <td className="border-b px-2 py-1.5 align-top last:border-b-0">{children}</td>,
-  a: ({ children, href }) => (
-    <span className="text-[var(--button-primary)] underline underline-offset-2" title={href}>
-      {children}
-    </span>
-  ),
-  img: ({ alt, src }) => (
-    <span className="font-mono text-xs text-muted-foreground" title={src}>
-      {alt || src}
-    </span>
-  ),
-  hr: () => <hr className="my-4 border-border" />,
-  input: ({ checked, type }) =>
-    type === 'checkbox' ? (
-      <span aria-hidden="true" className="mr-1 font-mono text-muted-foreground">
-        {checked ? '[x]' : '[ ]'}
-      </span>
-    ) : null,
-};
+function historyMarkdownUrlTransform(value: string) {
+  return value.startsWith('aiy-media://codex-history/') ? value : codexMarkdownUrlTransform(value);
+}
 
-export const CodexHistoryMessageMarkdown = memo(function CodexHistoryMessageMarkdown({ text }: { text: string }) {
+function replaceRichSyntaxText(value: string) {
+  return value
+    .replace(
+      /<details\b[^>]*>\s*<summary\b[^>]*>([\s\S]*?)<\/summary>([\s\S]*?)<\/details>/giu,
+      (_whole, summary: string, body: string) =>
+        `> **${summary.replace(/<[^>]+>/gu, '').trim()}**\n>\n${body
+          .trim()
+          .split(/\r?\n/u)
+          .map((line) => `> ${line}`)
+          .join('\n')}`,
+    )
+    .replace(/\\\[([\s\S]*?)\\\]/gu, (_whole, formula: string) => `$$${formula}$$`)
+    .replace(/\\\(([^\n]*?)\\\)/gu, (_whole, formula: string) => `$${formula}$`);
+}
+
+function replaceRichSyntax(value: string) {
+  let result = '';
+  let offset = 0;
+  while (offset < value.length) {
+    const opening = /`+/u.exec(value.slice(offset));
+    if (!opening || opening.index === undefined) return result + replaceRichSyntaxText(value.slice(offset));
+    const start = offset + opening.index;
+    const ticks = opening[0];
+    const end = value.indexOf(ticks, start + ticks.length);
+    if (end < 0) return result + replaceRichSyntaxText(value.slice(offset));
+    result += replaceRichSyntaxText(value.slice(offset, start));
+    result += value.slice(start, end + ticks.length);
+    offset = end + ticks.length;
+  }
+  return result;
+}
+
+function normalizedRichMarkdown(value: string) {
+  const result: string[] = [];
+  const outside: string[] = [];
+  let fence = '';
+  const flush = () => {
+    if (outside.length) result.push(replaceRichSyntax(outside.join('\n')));
+    outside.length = 0;
+  };
+  for (const line of value.split(/\r?\n/u)) {
+    const marker = /^\s*(`{3,}|~{3,})/u.exec(line)?.[1]?.[0] ?? '';
+    if (!fence && marker) {
+      flush();
+      fence = marker;
+      result.push(line);
+    } else if (fence) {
+      result.push(line);
+      if (marker === fence) fence = '';
+    } else outside.push(line);
+  }
+  flush();
+  return result.join('\n');
+}
+
+function textContent(children: ReactNode): string {
+  if (children == null || typeof children === 'boolean') return '';
+  if (typeof children === 'string' || typeof children === 'number') return String(children);
+  if (Array.isArray(children)) return children.map(textContent).join('');
+  return isValidElement<{ children?: ReactNode }>(children) ? textContent(children.props.children) : '';
+}
+
+export const CodexHistoryMessageMarkdown = memo(function CodexHistoryMessageMarkdown({
+  text,
+  query = '',
+  onOpenThread,
+}: {
+  text: string;
+  query?: string;
+  onOpenThread?(threadId: string): void;
+}) {
+  const l = useI18n().messages.extensions.codexHistorySearch;
+  const rehypePlugins = useMemo(
+    () =>
+      query
+        ? [[codexHistoryMarkdownHighlights, { query }] as [typeof codexHistoryMarkdownHighlights, { query: string }]]
+        : [],
+    [query],
+  );
+  const components = useMemo<Components>(
+    () => ({
+      mark: ({ children }) => <mark className={historyHighlightClassName}>{children}</mark>,
+      p: ({ node: _node, ...props }) => <p {...props} className="whitespace-pre-wrap" />,
+      a: ({ children, href }) => {
+        const threadId = href ? parseCodexThreadHref(href) : null;
+        const external = Boolean(href && /^https?:\/\//iu.test(href));
+        if ((!threadId || !onOpenThread) && !external)
+          return (
+            <span className="font-mono text-[0.92em] text-muted-foreground" title={href}>
+              {children}
+            </span>
+          );
+        return (
+          <a
+            href={href}
+            className="text-[var(--button-primary)] underline underline-offset-2"
+            onClick={(event) => {
+              event.preventDefault();
+              if (threadId && onOpenThread) onOpenThread(threadId);
+              else if (href)
+                void contentLibraryApi()
+                  .linkOpen(href)
+                  .catch(() => undefined);
+            }}
+          >
+            {children}
+          </a>
+        );
+      },
+      img: ({ alt, src }) =>
+        src?.startsWith('aiy-media://codex-history/') ? (
+          <span className="my-2 block max-w-full overflow-hidden border-y bg-surface-sunken/30 py-2">
+            <img src={src} alt={alt ?? ''} loading="lazy" className="max-h-[36rem] max-w-full object-contain" />
+          </span>
+        ) : (
+          <span
+            className="font-mono text-xs text-muted-foreground"
+            title={src && src.length <= 2_048 && !src.startsWith('data:') ? src : undefined}
+          >
+            {alt || (src?.startsWith('data:') ? l.media.EMBEDDED_IMAGE : src?.slice(0, 500))}
+          </span>
+        ),
+      code: ({ className, children, node: _node, ...props }) => {
+        const source = textContent(children).replace(/\n$/u, '');
+        if (className?.split(/\s+/u).includes('language-mermaid'))
+          return <CodexHistoryMermaid source={source} label={l.formats.diagram} />;
+        if (className?.split(/\s+/u).includes('language-math')) return <CodexHistoryMath source={source} display />;
+        if (className?.split(/\s+/u).includes('codex-math-inline'))
+          return <CodexHistoryMath source={source} display={false} />;
+        return (
+          <code {...props} className={className}>
+            {children}
+          </code>
+        );
+      },
+      pre: ({ children, node: _node, ...props }) =>
+        isValidElement(children) && (children.type === CodexHistoryMermaid || children.type === CodexHistoryMath) ? (
+          children
+        ) : (
+          <pre {...props}>{children}</pre>
+        ),
+    }),
+    [l.formats.diagram, l.media.EMBEDDED_IMAGE, onOpenThread],
+  );
   return (
-    <div className="min-w-0 break-words text-sm leading-6 [content-visibility:auto] [contain-intrinsic-size:auto_160px]">
-      <ReactMarkdown
-        remarkPlugins={[remarkGfm]}
-        components={markdownComponents}
-        skipHtml
-        urlTransform={codexMarkdownUrlTransform}
-      >
-        {text}
-      </ReactMarkdown>
-    </div>
+    <ContentMarkdown
+      typography="compact"
+      className="text-sm leading-6 [content-visibility:auto] [contain-intrinsic-size:auto_160px]"
+      components={components}
+      remarkPlugins={[codexHistoryMarkdownMath]}
+      rehypePlugins={rehypePlugins}
+      skipHtml={false}
+      urlTransform={historyMarkdownUrlTransform}
+    >
+      {normalizedRichMarkdown(text)}
+    </ContentMarkdown>
   );
 });

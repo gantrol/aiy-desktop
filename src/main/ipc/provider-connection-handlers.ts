@@ -1,6 +1,13 @@
 import type { CodexService } from '@/main/assistant/codex-service';
 import { DEEPSEEK_PROVIDER_KEY } from '@/main/assistant-models/deepseek-provider';
 import type { DeepSeekApiConnection } from '@/main/extensions/deepseek-api/connection';
+import type { CpaImageConnection } from '@/main/extensions/cpa-image/connection';
+import { appendCpaImageRuntimeConfiguration } from '@/main/extensions/cpa-image/integration';
+import {
+  CPA_IMAGE_DEFAULT_BASE_URL,
+  cpaImageEndpointPermission,
+  validatedCpaImageBaseUrl,
+} from '@/main/extensions/cpa-image/endpoint';
 import {
   DEEPSEEK_VISION_ENDPOINT_PERMISSION,
   deepSeekVisionEndpointPermission,
@@ -31,12 +38,15 @@ import {
 import {
   DEEPSEEK_API_CONNECTION_ID,
   DEEPSEEK_API_EXTENSION_ID,
+  CPA_IMAGE_API_EXTENSION_ID,
+  CPA_IMAGE_CONNECTION_ID,
   EXTERNAL_IMAGE_API_EXTENSION_IDS,
   OPENAI_IMAGE_API_EXTENSION_ID,
   OPENAI_IMAGE_CONNECTION_ID,
   externalImageConnectionId,
 } from '@/shared/extension-ids';
 import { resolveImageGenerationRouteExecutionIdentity } from '@/shared/image-generation-route-identity';
+import { EXTENSION_PERMISSION_TEMPLATE } from '@/shared/extension-permissions';
 
 interface ProviderConnectionIpcOptions {
   ipcMain: IpcHandlerRegistrar;
@@ -44,6 +54,7 @@ interface ProviderConnectionIpcOptions {
   openAiImageApi: OpenAiImageApiConnection;
   deepSeekApi: DeepSeekApiConnection;
   externalImageApis: ExternalImageApiConnections;
+  cpaImageApi: CpaImageConnection;
   generation: GenerationService;
   codex: CodexService;
 }
@@ -152,6 +163,7 @@ export function registerProviderConnectionIpc({
   openAiImageApi,
   deepSeekApi,
   externalImageApis,
+  cpaImageApi,
   generation,
   codex,
 }: ProviderConnectionIpcOptions) {
@@ -166,11 +178,12 @@ export function registerProviderConnectionIpc({
     );
   };
   const syncExternalImageApiRuntime = async () => {
+    const configured = externalImageApis.runtimeConfigurations(
+      (extensionId, permission) => extensions.isPermissionGranted(extensionId, permission),
+      (extensionId) => extensions.isActivated(extensionId),
+    );
     await generation.configureExternalImageApis?.(
-      externalImageApis.runtimeConfigurations(
-        (extensionId, permission) => extensions.isPermissionGranted(extensionId, permission),
-        (extensionId) => extensions.isActivated(extensionId),
-      ),
+      appendCpaImageRuntimeConfiguration(configured, cpaImageApi, extensions),
     );
   };
   const hasPendingImageConnection = (connectionId: string) => {
@@ -319,6 +332,59 @@ export function registerProviderConnectionIpc({
         return externalProviderConnection(result);
       },
     })),
+    {
+      connectionId: CPA_IMAGE_CONNECTION_ID,
+      snapshot: () => cpaImageApi.status(),
+      save: async (input: ProviderConnectionSaveInput) => {
+        if (hasPendingImageConnection(CPA_IMAGE_CONNECTION_ID)) {
+          throw new Error('Wait for active CPA image tasks before changing its configuration');
+        }
+        assertExtensionActivated(extensions, CPA_IMAGE_API_EXTENSION_ID);
+        const baseUrl = validatedCpaImageBaseUrl(input.settings.baseUrl ?? CPA_IMAGE_DEFAULT_BASE_URL);
+        const authorization = authorizeEndpointPermission(
+          extensions,
+          CPA_IMAGE_API_EXTENSION_ID,
+          EXTENSION_PERMISSION_TEMPLATE.userConfiguredCpaEndpoint,
+          cpaImageEndpointPermission(baseUrl),
+        );
+        let result;
+        try {
+          result = await cpaImageApi.save({ ...input, settings: { baseUrl } });
+        } catch (reason) {
+          if (authorization.permission && authorization.newlyGranted) {
+            extensions.setPermission(CPA_IMAGE_API_EXTENSION_ID, authorization.permission, false);
+          }
+          throw reason;
+        }
+        extensions.revokeRuntimePermissionsExcept(
+          CPA_IMAGE_API_EXTENSION_ID,
+          EXTENSION_PERMISSION_TEMPLATE.userConfiguredCpaEndpoint,
+          authorization.permission,
+        );
+        await syncExternalImageApiRuntime();
+        return result;
+      },
+      verify: async () => {
+        assertExtensionActivated(extensions, CPA_IMAGE_API_EXTENSION_ID);
+        assertEndpointPermissionGranted(extensions, CPA_IMAGE_API_EXTENSION_ID, cpaImageApi.endpointPermission());
+        const result = await cpaImageApi.verify();
+        await syncExternalImageApiRuntime();
+        return result;
+      },
+      remove: async () => {
+        if (hasPendingImageConnection(CPA_IMAGE_CONNECTION_ID)) {
+          throw new Error('Wait for active CPA image tasks before clearing its configuration');
+        }
+        const result = await cpaImageApi.remove();
+        extensions.revokeRuntimePermissionsExcept(
+          CPA_IMAGE_API_EXTENSION_ID,
+          EXTENSION_PERMISSION_TEMPLATE.userConfiguredCpaEndpoint,
+          null,
+        );
+        await syncExternalImageApiRuntime();
+        return result;
+      },
+    },
   ]);
 
   ipcMain.handle('provider-connections:list', () => providerConnections.list());

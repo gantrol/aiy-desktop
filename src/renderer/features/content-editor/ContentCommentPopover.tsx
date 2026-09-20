@@ -36,7 +36,7 @@ interface Props {
   onDraftSubmit(body: string): void;
   onHoverDismiss(): void;
   onHoverEngage(commentId: string): void;
-  onReply(commentId: string, body: string): void;
+  onReply(commentId: string, body: string): Promise<boolean>;
   onSelectedClose(): void;
   onStatusChange(commentId: string, status: ContentCommentStatus): void;
   onUpdateBody(commentId: string, body: string): void;
@@ -222,7 +222,7 @@ function CommentThread({
   comment: ContentCommentDto;
   onClose(): void;
   onDelete(): void;
-  onReply(body: string): void;
+  onReply(body: string): Promise<boolean>;
   onStatusChange(status: ContentCommentStatus): void;
   onUpdateBody(body: string): void;
 }) {
@@ -234,14 +234,12 @@ function CommentThread({
   useEffect(() => {
     setEditing(false);
     setBody(comment.body);
-    setReply('');
   }, [comment.body, comment.id]);
 
-  function submitReply() {
+  async function submitReply() {
     const next = reply.trim();
     if (!next || busy) return;
-    onReply(next);
-    setReply('');
+    if (await onReply(next)) setReply((current) => (current.trim() === next ? '' : current));
   }
 
   return (
@@ -330,7 +328,7 @@ function CommentThread({
             onKeyDown={(event) => {
               if (event.key !== 'Enter' || (!event.ctrlKey && !event.metaKey)) return;
               event.preventDefault();
-              submitReply();
+              void submitReply();
             }}
           />
           <Button
@@ -414,6 +412,7 @@ export function ContentCommentPopover(props: Props) {
           />
         ) : mode === 'THREAD' ? (
           <CommentThread
+            key={props.selected!.id}
             busy={props.busy}
             comment={props.selected!}
             onClose={props.onSelectedClose}

@@ -1250,6 +1250,7 @@ export function OutputInspector({
                       currentAsset={appliedDerivedVisualAsset}
                       currentAssetId={currentDerivedVisualAssetId}
                       candidateAssetId={asset.id}
+                      candidateAsset={asset}
                       runOperation={onRunDerivedVisualOperation}
                       refresh={onImportedOutputUpdated}
                     />

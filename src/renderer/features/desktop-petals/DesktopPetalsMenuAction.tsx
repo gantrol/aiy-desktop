@@ -1,5 +1,6 @@
-import { EyeOff, Flower2, List, Settings2 } from 'lucide-react';
+import { EyeOff, List, Settings2 } from 'lucide-react';
 import { Fragment, useState } from 'react';
+import { AIYFlowerMark } from '@/renderer/components/brand/AIYFlowerMark';
 import {
   DropdownMenuItem,
   DropdownMenuPortal,
@@ -14,7 +15,7 @@ import { useI18n } from '@/renderer/i18n/useI18n';
 const actions = [
   {
     id: 'show',
-    icon: Flower2,
+    icon: AIYFlowerMark,
     run: () => window.desktopPetals.show(),
   },
   {
@@ -42,7 +43,7 @@ export function DesktopPetalsMenuAction({ onOpened }: { onOpened(): void }) {
   return (
     <DropdownMenuSub>
       <DropdownMenuSubTrigger data-action="desktop-petals-menu">
-        <Flower2 className="size-4" />
+        <AIYFlowerMark className="size-4" />
         <span>{copy.menu.title}</span>
       </DropdownMenuSubTrigger>
       <DropdownMenuPortal>

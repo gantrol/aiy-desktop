@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { generationQualitySchema } from '@/shared/generation-quality';
 import {
   gifMotionPlanSchema,
   gifMotionRegionSchema,
@@ -15,7 +16,7 @@ export const gifMotionDraftSchema = z
     feather: z.number().min(0).max(0.4),
     durationMs: z.number().int().min(400).max(10000).multipleOf(10),
     modelKey: z.string().max(200),
-    quality: z.enum(['low', 'medium', 'high']),
+    quality: generationQualitySchema,
     generationMode: gifFrameGenerationModeSchema.default('SHEET'),
     returnMode: gifReturnModeSchema.default('CONTINUE'),
     plan: z

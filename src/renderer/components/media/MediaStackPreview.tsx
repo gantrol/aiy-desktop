@@ -3,10 +3,11 @@ import type { AssetDto, AssetFileRevealContext } from '@/shared/contracts';
 import { ImageIcon } from '@/renderer/icons';
 import { cn } from '@/renderer/lib/utils';
 import { getSourceMediaAspectRatio } from '@/renderer/components/media/mediaAspectRatio';
-import { mediaThumbnailUrl } from '@/renderer/components/media/mediaThumbnailUrl';
+import { AssetThumbnail } from '@/renderer/components/media/AssetThumbnail';
 import { AssetFileContextMenu } from '@/renderer/components/media/AssetFileContextMenu';
-import { AssetMedia, isVideoAsset } from '@/renderer/components/media/AssetMedia';
 import type { ActionMenuAction } from '@/renderer/components/ui/action-menu';
+import { Button } from '@/renderer/components/ui/button';
+import { useI18n } from '@/renderer/i18n/useI18n';
 import {
   stackedMediaFrameLayerClassName,
   stackedMediaFrameLiftClassName,
@@ -81,10 +82,10 @@ const dimensions: Record<NonNullable<Props['size']>, MediaStackLayout> = {
     containerWidth: 64,
     containerHeight: 60,
     itemWidth: 45,
-    itemHeight: 60,
-    collapsedStep: 7,
-    settledStep: 11,
-    expandedStep: 20,
+    itemHeight: 56,
+    collapsedStep: 4,
+    settledStep: 6,
+    expandedStep: 14,
   },
   sm: {
     containerWidth: 62,
@@ -192,7 +193,8 @@ export function getMediaStackHorizontalBounds(
       const firstCenter = layout.containerWidth / 2 - ((visible.length - 1) / 2) * layout.collapsedStep;
       const centerX = visible.length === 1 ? layout.containerWidth - frame.width / 2 - 2 : firstCenter + index * step;
       const offset = index - (visible.length - 1) / 2;
-      const rotation = spreadState === 'collapsed' && visible.length > 1 ? offset * 3 : 0;
+      const rotation =
+        spreadState === 'collapsed' && visible.length > 1 ? (size === 'tree' ? index * 1.2 : offset * 3) : 0;
       const radians = (Math.abs(rotation) * Math.PI) / 180;
       const rotatedWidth = Math.abs(frame.width * Math.cos(radians)) + Math.abs(frame.height * Math.sin(radians));
       return {
@@ -263,6 +265,7 @@ export function MediaStackPreview({
   deferOffscreenMedia = false,
   onMediaAdmitted,
 }: Props) {
+  const labels = useI18n().messages.gallery.albums;
   const [internalExpanded, setInternalExpanded] = useState(false);
   const { containerRef, mediaAdmitted } = useMediaStackAdmission(deferOffscreenMedia, onMediaAdmitted);
   const expanded = controlledExpanded ?? internalExpanded;
@@ -329,7 +332,8 @@ export function MediaStackPreview({
             ? singleX
             : firstCenter + index * (expandedStep ?? layout.expandedStep) - frame.width / 2;
         const x = spread === 'expanded' ? expandedX : spread === 'settled' ? settledX : collapsedX;
-        const rotation = spread === 'collapsed' && visible.length > 1 ? offset * 3 : 0;
+        const rotation =
+          spread === 'collapsed' && visible.length > 1 ? (size === 'tree' ? index * 1.2 : offset * 3) : 0;
         const frameStyle = stackedMediaFrameStyle(visible.length - index, {
           top: (layout.containerHeight - frame.height) / 2,
           width: frame.width,
@@ -338,34 +342,26 @@ export function MediaStackPreview({
           ...(!animate && { transition: 'none' }),
         });
         const mediaStyle = { objectPosition: `${(item.focalX ?? 0.5) * 100}% ${(item.focalY ?? 0.5) * 100}%` };
-        const image = !mediaAdmitted ? null : isVideoAsset(item.asset) ? (
-          <AssetMedia
+        const image = !mediaAdmitted ? null : (
+          <AssetThumbnail
             asset={item.asset}
+            errorClassName="absolute left-1/2 top-1/2 size-4 -translate-x-1/2 -translate-y-1/2"
+            size={thumbnailSize}
             className="size-full object-contain"
-            loading="lazy"
-            muted
-            preload="metadata"
-            draggable={false}
-          />
-        ) : (
-          <img
-            className="size-full object-contain"
-            src={mediaThumbnailUrl(item.asset, thumbnailSize)}
             alt=""
             loading="lazy"
-            decoding="async"
             fetchPriority={index === 0 ? 'auto' : 'low'}
-            draggable={false}
             style={mediaStyle}
           />
         );
         const preview = onAssetSelect ? (
-          <button
+          <Button
             key={item.asset.id}
             type="button"
-            aria-label={assetLabel?.(item.asset, index) ?? `Image ${index + 1}`}
+            variant="ghost"
+            aria-label={assetLabel?.(item.asset, index) ?? labels.coverPreviewNumber(index + 1)}
             className={cn(
-              'pointer-events-auto absolute left-0 overflow-hidden rounded-md bg-surface-sunken ring-1 ring-inset ring-foreground/10 outline-none transition-transform duration-fast ease-out motion-reduce:transition-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring',
+              'pointer-events-auto absolute left-0 overflow-hidden rounded-md bg-surface-sunken p-0 ring-1 ring-inset ring-foreground/10 outline-none transition-transform duration-fast ease-out hover:bg-surface-sunken motion-reduce:transition-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring focus-visible:ring-offset-0',
               stackedMediaFrameLayerClassName,
               stackedMediaFrameLiftClassName,
               size === 'tree' && 'corner-continuous',
@@ -379,7 +375,7 @@ export function MediaStackPreview({
             }}
           >
             {image}
-          </button>
+          </Button>
         ) : (
           <span
             key={item.asset.id}

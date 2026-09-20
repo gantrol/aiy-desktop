@@ -1,4 +1,4 @@
-import { ArchiveIcon, FileTextIcon, FolderInputIcon, PencilIcon, Trash2Icon } from 'lucide-react';
+import { ArchiveIcon, FileTextIcon, FolderInputIcon, PencilIcon, Trash2Icon, ListTreeIcon } from 'lucide-react';
 import type { ArticleDto } from '@/shared/contracts';
 import { TreeDragHandle } from '@/renderer/components/albums/TreeDragHandle';
 import {
@@ -100,15 +100,16 @@ function actions(
   ];
 }
 
-function ArticleTypeBadge() {
-  const label = useI18n().messages.creator.manuscriptEditor.kind;
+function ArticleTypeBadge({ outline }: { outline: boolean }) {
+  const { messages } = useI18n();
+  const label = outline ? messages.referenceOutline.outline : messages.creator.manuscriptEditor.kind;
   return (
     <span
       title={label}
       aria-label={label}
       className="pointer-events-none absolute bottom-0 left-0 z-20 grid size-5 place-items-center rounded-md border bg-overlay/95 text-foreground-secondary shadow-overlay"
     >
-      <FileTextIcon className="size-3" />
+      {outline ? <ListTreeIcon className="size-3" /> : <FileTextIcon className="size-3" />}
     </span>
   );
 }
@@ -132,7 +133,10 @@ export function ArticleLibraryRow(props: Props) {
     archive: messages.creator.album.archive,
     delete: messages.creator.album.delete,
     drag: messages.creator.manuscriptEditor.drag,
-    kind: messages.creator.manuscriptEditor.kind,
+    kind:
+      article.content.editorMode === 'OUTLINE'
+        ? messages.referenceOutline.outline
+        : messages.creator.manuscriptEditor.kind,
     moreActions: messages.creator.album.moreActions,
     move: messages.creator.album.move,
     open: messages.creator.album.open,
@@ -163,7 +167,7 @@ export function ArticleLibraryRow(props: Props) {
             items={previewItems}
             maxItems={3}
           />
-          <ArticleTypeBadge />
+          <ArticleTypeBadge outline={article.content.editorMode === 'OUTLINE'} />
         </span>
       }
       controls={
@@ -201,7 +205,10 @@ export function ArticleCompactItem(props: Props) {
     archive: messages.creator.album.archive,
     delete: messages.creator.album.delete,
     drag: messages.creator.manuscriptEditor.drag,
-    kind: messages.creator.manuscriptEditor.kind,
+    kind:
+      article.content.editorMode === 'OUTLINE'
+        ? messages.referenceOutline.outline
+        : messages.creator.manuscriptEditor.kind,
     moreActions: messages.creator.album.moreActions,
     move: messages.creator.album.move,
     open: messages.creator.album.open,
@@ -235,7 +242,7 @@ export function ArticleCompactItem(props: Props) {
         items={previewItems}
         maxItems={3}
       />
-      <ArticleTypeBadge />
+      <ArticleTypeBadge outline={article.content.editorMode === 'OUTLINE'} />
     </button>
   );
   return (

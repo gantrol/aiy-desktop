@@ -1,7 +1,7 @@
 import type { MouseEventHandler } from 'react';
 import type { AssetDto } from '@/shared/contracts';
 import { AlbumGlyphIcon } from '@/renderer/icons';
-import { AiyIdentity } from '@/renderer/components/brand/AiyIdentity';
+import { albumCoverAssets, ALBUM_COVER_LAYERS } from '@/renderer/components/albums/albumCoverAssets';
 import { cn } from '@/renderer/lib/utils';
 import {
   getMediaStackHorizontalBounds,
@@ -117,7 +117,7 @@ export function AlbumTreePreview({
   onMediaAdmitted,
   className,
 }: Props) {
-  const stackItems: MediaStackItem[] = assets.map((asset) => ({ asset }));
+  const stackItems: MediaStackItem[] = albumCoverAssets(assets, ALBUM_COVER_LAYERS).map((asset) => ({ asset }));
   const canSpreadCover = stackItems.length > 1;
   const previewGesture = useTreeBranchPreviewGesture({
     open,
@@ -129,22 +129,16 @@ export function AlbumTreePreview({
   });
   const previewExpanded = controlledPreviewExpanded ?? previewGesture.previewExpanded;
   const spread = previewExpanded ? 'expanded' : open ? 'settled' : 'collapsed';
-  const nodeAnchor = getTreeNodeAnchor(getMediaStackPrimaryFrameBounds('tree', stackItems, 5));
+  const nodeAnchor = getTreeNodeAnchor(getMediaStackPrimaryFrameBounds('tree', stackItems, ALBUM_COVER_LAYERS));
   const expandedBounds = getMediaStackHorizontalBounds(
     'tree',
     stackItems,
     'expanded',
-    5,
+    ALBUM_COVER_LAYERS,
     TREE_BRANCH_INTERACTION.previewSpreadStepPx,
   );
-  const paintedBounds = getMediaStackHorizontalBounds(
-    'tree',
-    stackItems,
-    spread,
-    5,
-    TREE_BRANCH_INTERACTION.previewSpreadStepPx,
-  );
-  const previewWidth = Math.ceil(Math.max(getMediaStackLayout('tree').containerWidth, paintedBounds.right));
+  // Reserve the expanded footprint once: hovering must not push the title sideways.
+  const previewWidth = Math.ceil(Math.max(getMediaStackLayout('tree').containerWidth, expandedBounds.right));
   const gestureSurfaceLeft = Math.min(0, expandedBounds.left);
   const gestureSurfaceRight = Math.max(getMediaStackLayout('tree').containerWidth, expandedBounds.right);
 
@@ -153,9 +147,9 @@ export function AlbumTreePreview({
       className={onAssetSelect ? 'pointer-events-none relative z-10' : undefined}
       size="tree"
       items={stackItems}
-      emptyContent={<AiyIdentity className="size-full" />}
+      emptyContent={<AlbumGlyphIcon className="size-5" />}
       spread={spread}
-      maxItems={5}
+      maxItems={ALBUM_COVER_LAYERS}
       expandedStep={TREE_BRANCH_INTERACTION.previewSpreadStepPx}
       animate={animate}
       onAssetSelect={onAssetSelect}

@@ -57,7 +57,6 @@ export function PetalDrawerGrid({
   const markerIndex = insertAtEnd ? insertIndex - 1 : insertIndex;
   const title = (item: PetalDrawerItem) =>
     item.title || (item.sourceKind === 'NOTE' ? copy.note.newTitle : copy.board[item.sourceKind]);
-
   return (
     <div
       ref={viewport}
@@ -78,8 +77,8 @@ export function PetalDrawerGrid({
         }}
       >
         {visibleRows.map((row) => {
-          const top = PETAL_DRAWER.gridTop + row * DRAWER_ROW,
-            complete = top - scroll.top >= 0 && top + PETAL_DRAWER.cellHeight - scroll.top <= frame.bodyHeight - 2;
+          const top = PETAL_DRAWER.gridTop + row * DRAWER_ROW;
+          const complete = top - scroll.top >= 0 && top + PETAL_DRAWER.cellHeight - scroll.top <= frame.bodyHeight - 2;
           return (
             <div
               key={row}

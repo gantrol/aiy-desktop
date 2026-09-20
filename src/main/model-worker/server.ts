@@ -16,6 +16,7 @@ import { OpenAiImageApiRuntime } from '@/main/extensions/openai-image-api/runtim
 import { ExtensionRegistry } from '@/main/extensions/registry';
 import { GenerationCoordinator } from '@/main/generation/coordinator';
 import { AntigravityImageProvider } from '@/main/generation-models/antigravity-cli/antigravity-image-provider';
+import { CpaImageProvider } from '@/main/generation-models/cpa-image/cpa-image-provider';
 import {
   CodexImageModel,
   createExternalImageProviders,
@@ -42,6 +43,7 @@ import {
   ANTIGRAVITY_CLI_EXTENSION_ID,
   CODEX_APP_SERVER_EXTENSION_ID,
   CODEX_PROVIDER_ID,
+  CPA_IMAGE_API_EXTENSION_ID,
   OPENAI_IMAGE_API_EXTENSION_ID,
   type ExternalImageApiExtensionId,
 } from '@/shared/extension-ids';
@@ -304,6 +306,9 @@ function createImageGenerationRoutes(options: {
     new OpenAiImageProvider(database, libraryRoot, openAiImageApi, () =>
       extensions.isActivated(OPENAI_IMAGE_API_EXTENSION_ID),
     ),
+    new CpaImageProvider(database, libraryRoot, externalImageApis, () =>
+      extensions.isActivated(CPA_IMAGE_API_EXTENSION_ID),
+    ),
     new AntigravityImageProvider(database, antigravity, libraryRoot, () =>
       extensions.isActivated(ANTIGRAVITY_CLI_EXTENSION_ID),
     ),
@@ -404,7 +409,7 @@ export async function runModelWorker() {
     database = new LibraryDatabase(config.databasePath, config.libraryRoot, { openMode: 'must-exist' });
     database.initializeModelWorker();
     database.interruptVideoDocumentGenerations();
-    extensions = new ExtensionRegistry(database, {
+    extensions = await ExtensionRegistry.create(database, {
       codexHealth: () =>
         codex?.cachedHealth ?? {
           state: 'checking',

@@ -8,7 +8,7 @@ interface HttpByteRange {
   end: number;
 }
 
-export const CONTEXT_INDEPENDENT_MEDIA_HOSTS = new Set(['space-preview', 'space-cover']);
+export const CONTEXT_INDEPENDENT_MEDIA_HOSTS = new Set(['space-preview', 'space-cover', 'codex-history']);
 const immutableMediaHosts = new Set(['asset', 'asset-thumbnail', 'space-preview', 'space-cover', 'video-evidence']);
 const spaceCoverMimeTypeByExtension: Readonly<Record<string, string>> = {
   '.jpg': 'image/jpeg',
@@ -18,6 +18,7 @@ const spaceCoverMimeTypeByExtension: Readonly<Record<string, string>> = {
 };
 const codexVisualizationMimeTypeByExtension: Readonly<Record<string, string>> = {
   '.avif': 'image/avif',
+  '.bmp': 'image/bmp',
   '.gif': 'image/gif',
   '.jpg': 'image/jpeg',
   '.jpeg': 'image/jpeg',
@@ -88,7 +89,7 @@ export function applyMediaResponseHeaders(headers: Headers, hostname: string, fi
       spaceCoverMimeTypeByExtension[urlPathExtension(filePath)] ?? 'application/octet-stream',
     );
   }
-  if (hostname === 'codex-visualization') {
+  if (hostname === 'codex-visualization' || hostname === 'codex-history') {
     headers.set(
       'content-type',
       codexVisualizationMimeTypeByExtension[urlPathExtension(filePath)] ?? 'application/octet-stream',

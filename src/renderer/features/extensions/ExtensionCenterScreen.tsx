@@ -94,6 +94,7 @@ export function ExtensionCenterScreen({
       </header>
       <TabsContent value="plugins" className="min-h-0 flex-1">
         <ExtensionPluginScreen
+          key={data.spaceId}
           active={active && tab === 'plugins'}
           data={data}
           dataRevision={dataRevision}

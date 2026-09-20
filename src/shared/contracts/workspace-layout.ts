@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { gifAdoptionTargetSchema, gifWorkspaceStateSchema } from '@/shared/contracts/gif-making';
+import { contentLookupInputSchema } from '@/shared/contracts/content-search';
 
 const workspaceIdSchema = z.string().min(1).max(200);
 const optionalWorkspaceIdSchema = workspaceIdSchema.nullable();
@@ -9,6 +10,7 @@ export const workspaceAppViewSchema = z.enum([
   'documents',
   'dictionary',
   'gallery',
+  'search',
   'companion',
   'codexImages',
   'transitionShowcase',
@@ -113,7 +115,11 @@ export const workspaceTargetSchema = z.discriminatedUnion('kind', [
     .strict(),
   z.object({ kind: z.literal('dictionary'), location: dictionaryLocationSchema }).strict(),
   z.object({ kind: z.literal('gallery'), location: galleryLocationSchema }).strict(),
+  z
+    .object({ kind: z.literal('search'), location: contentLookupInputSchema.pick({ query: true, type: true }) })
+    .strict(),
   z.object({ kind: z.literal('companion') }).strict(),
+  z.object({ kind: z.literal('calendar') }).strict(),
   z
     .object({
       kind: z.literal('extensions'),
@@ -137,6 +143,8 @@ export const workspaceTargetSchema = z.discriminatedUnion('kind', [
 export const articleEditorLocationSchema = z
   .object({
     elementId: workspaceIdSchema,
+    blockId: workspaceIdSchema.optional(),
+    referenceId: workspaceIdSchema.optional(),
     relativeOffset: z.number().int().nonnegative().max(1_000_000),
     blockIndex: z.number().int().nonnegative().max(100_000).optional(),
     viewportOffset: z.number().int().nonnegative().max(1_000_000).optional(),

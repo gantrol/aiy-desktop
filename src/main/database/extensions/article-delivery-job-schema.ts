@@ -1,4 +1,6 @@
 import watermarkSql from '@/main/database/sql/v03-revision-006-article-delivery-watermark.sql?raw';
+import imagePreparationSql from '@/main/database/sql/v03-revision-007-article-delivery-image-preparation.sql?raw';
+import deliveryModeSql from '@/main/database/sql/v03-revision-007-article-delivery-mode.sql?raw';
 import type Database from 'better-sqlite3';
 
 function unsupportedSchema(): never {
@@ -59,7 +61,28 @@ export function ensureArticleDeliveryWatermark(db: Database.Database) {
   if (!articleDeliveryWatermarkComplete(db)) db.exec(watermarkSql);
 }
 
+export function articleDeliveryImagePreparationComplete(db: Database.Database) {
+  const columns = db.prepare('PRAGMA table_info(article_delivery_jobs)').all() as Array<{ name: string }>;
+  return columns.some((column) => column.name === 'image_preparation_json');
+}
+
+export function ensureArticleDeliveryImagePreparation(db: Database.Database) {
+  if (!articleDeliveryImagePreparationComplete(db)) db.exec(imagePreparationSql);
+}
+
 export function currentArticleDeliveryJobShape(db: Database.Database) {
   const shape = articleDeliveryJobShape(db);
-  return shape === 'COMPLETE' && !articleDeliveryWatermarkComplete(db) ? 'MISSING_WATERMARK' : shape;
+  if (shape !== 'COMPLETE') return shape;
+  if (!articleDeliveryWatermarkComplete(db)) return 'MISSING_WATERMARK';
+  if (!articleDeliveryImagePreparationComplete(db)) return 'MISSING_IMAGE_PREPARATION';
+  return articleDeliveryModeComplete(db) ? shape : 'MISSING_DELIVERY_MODE';
+}
+
+function articleDeliveryModeComplete(db: Database.Database) {
+  const columns = db.prepare('PRAGMA table_info(article_delivery_jobs)').all() as Array<{ name: string }>;
+  return columns.some((column) => column.name === 'delivery_mode');
+}
+
+export function ensureArticleDeliveryMode(db: Database.Database) {
+  if (!articleDeliveryModeComplete(db)) db.exec(deliveryModeSql);
 }

@@ -2,12 +2,18 @@ import { lstat, open, realpath } from 'node:fs/promises';
 import path from 'node:path';
 import Database from 'better-sqlite3';
 import { z } from 'zod';
+import { normalizeCodexHistoryQuery } from '@/shared/codex-history-search-query';
+import { forwardJsonLines, type ForwardScanState } from '@/main/extensions/codex-history-search/forward-json-lines';
 import {
-  codexUserRequestText,
-  MAX_CODEX_HISTORY_MESSAGE_TEXT_CHARACTERS,
+  CODEX_HISTORY_PROJECTED_ITEM_TYPES,
   parseProjectedCodexHistoryItem,
   parseProjectedCodexHistoryValue,
 } from '@/main/extensions/codex-history-search/message-content';
+import {
+  codexHistoryProjectedItemBytesSql,
+  codexHistoryProjectedItemJsonSql,
+  codexHistoryProjectedItemTypePredicate,
+} from '@/main/extensions/codex-history-search/projected-item-sql';
 import type { CodexHistorySourcePaths } from '@/main/extensions/codex-history-search/source-reader';
 import type {
   CodexHistoryMessage,
@@ -39,8 +45,9 @@ const projectedItemRowSchema = z
   .object({
     rolloutOrdinal: z.number().int().nonnegative().safe(),
     itemId: z.string().min(1).max(512),
+    turnId: z.string().min(1).max(512).nullable(),
     createdAtMs: z.number().int().nonnegative().safe(),
-    itemType: z.enum(['userMessage', 'agentMessage']),
+    itemType: z.enum(CODEX_HISTORY_PROJECTED_ITEM_TYPES),
     itemJson: z.string().min(2).max(MAX_PROJECTED_ITEM_BYTES),
     itemBytes: z.number().int().min(2).max(MAX_PROJECTED_ITEM_BYTES),
     candidateCount: z.number().int().positive().max(PROJECTED_BATCH_SIZE),
@@ -63,7 +70,7 @@ const legacyUserMessageSchema = z
 const completedItemSchema = z
   .object({
     type: z.literal('item_completed'),
-    item: z.object({ type: z.enum(['userMessage', 'agentMessage']) }).passthrough(),
+    item: z.object({ type: z.enum(CODEX_HISTORY_PROJECTED_ITEM_TYPES) }).passthrough(),
   })
   .passthrough();
 const outputTextPartSchema = z
@@ -84,11 +91,23 @@ const assistantResponseSchema = z
 
 interface LocatedMessage {
   message: CodexHistoryMessage;
+  searchText: string;
   cursor: number;
   resumeCursor?: number;
 }
 
 type ThreadMessagesBody = Omit<CodexHistoryThreadMessagesPage, 'model' | 'modelProvider'>;
+
+function messageMatches(
+  message: Pick<CodexHistoryMessage, 'role'>,
+  searchText: string,
+  input: CodexHistoryThreadMessagesInput,
+) {
+  return (
+    (!input.role || input.role === 'ALL' || input.role === message.role) &&
+    (!input.query || normalizeCodexHistoryQuery(searchText).includes(input.query))
+  );
+}
 
 interface ReverseScanState {
   bytesRead: number;
@@ -154,6 +173,27 @@ function parsedTimestamp(value: string) {
   return Number.isFinite(epochMs) && epochMs >= 0 ? new Date(epochMs).toISOString() : null;
 }
 
+function locatedParsedMessage(
+  parsed: NonNullable<ReturnType<typeof parseProjectedCodexHistoryValue>>,
+  messageId: string,
+  createdAt: string,
+  cursor: number,
+): LocatedMessage {
+  return {
+    cursor,
+    searchText: parsed.searchText,
+    message: {
+      messageId,
+      role: parsed.role,
+      turnId: null,
+      phase: parsed.phase,
+      createdAt,
+      text: parsed.text,
+      blocks: parsed.blocks,
+    },
+  };
+}
+
 function isWithin(root: string, candidate: string) {
   const relative = path.relative(path.toNamespacedPath(root), path.toNamespacedPath(candidate));
   return relative === '' || (relative !== '..' && !relative.startsWith(`..${path.sep}`) && !path.isAbsolute(relative));
@@ -204,36 +244,42 @@ async function readProjectedMessages(
       signal.throwIfAborted();
       throw new Error('Codex task history database has an unsupported schema');
     }
+    const newer = input.direction === 'NEWER';
+    const order = newer ? 'ASC' : 'DESC';
+    const projectedJson = codexHistoryProjectedItemJsonSql('item');
+    const projectedBytes = codexHistoryProjectedItemBytesSql('item');
+    const turnId = columns.has('turn_id') ? 'item.turn_id' : 'NULL';
     const statement = database.prepare(
       `WITH candidates AS MATERIALIZED (
          SELECT
-           rollout_ordinal AS rolloutOrdinal,
-           item_id AS itemId,
-           created_at_ms AS createdAtMs,
-           item_type AS itemType,
-           item_json AS itemJson,
-           length(CAST(item_json AS BLOB)) AS itemBytes
-         FROM thread_items
-         WHERE thread_id = ?
-           AND item_type IN ('userMessage', 'agentMessage')
-           AND rollout_ordinal < ?
-           AND length(CAST(item_json AS BLOB)) BETWEEN 2 AND ?
-         ORDER BY rollout_ordinal DESC, created_at_ms DESC, item_id DESC
+           item.rollout_ordinal AS rolloutOrdinal,
+           item.item_id AS itemId,
+           ${turnId} AS turnId,
+           item.created_at_ms AS createdAtMs,
+           item.item_type AS itemType,
+           ${projectedJson} AS itemJson,
+           ${projectedBytes} AS itemBytes
+         FROM thread_items AS item
+         WHERE item.thread_id = ?
+           AND ${codexHistoryProjectedItemTypePredicate('item')}
+           AND item.rollout_ordinal ${newer ? '>=' : '<'} ?
+           AND ${projectedBytes} BETWEEN 2 AND ?
+         ORDER BY item.rollout_ordinal ${order}, item.created_at_ms ${order}, item.item_id ${order}
          LIMIT ?
        ), bounded AS (
          SELECT
            *,
-           SUM(itemBytes) OVER (ORDER BY rolloutOrdinal DESC, createdAtMs DESC, itemId DESC) AS cumulativeBytes,
+           SUM(itemBytes) OVER (ORDER BY rolloutOrdinal ${order}, createdAtMs ${order}, itemId ${order}) AS cumulativeBytes,
            COUNT(*) OVER () AS candidateCount
          FROM candidates
        )
-       SELECT rolloutOrdinal, itemId, createdAtMs, itemType, itemJson, itemBytes, candidateCount
+       SELECT rolloutOrdinal, itemId, turnId, createdAtMs, itemType, itemJson, itemBytes, candidateCount
        FROM bounded
        WHERE cumulativeBytes <= ?
-       ORDER BY rolloutOrdinal DESC, createdAtMs DESC, itemId DESC`,
+       ORDER BY rolloutOrdinal ${order}, createdAtMs ${order}, itemId ${order}`,
     );
     const located: LocatedMessage[] = [];
-    let cursor = input.cursor ?? Number.MAX_SAFE_INTEGER;
+    let cursor = input.cursor ?? (newer ? 0 : Number.MAX_SAFE_INTEGER);
     let inspected = 0;
     let inspectedBytes = 0;
     let exhausted = false;
@@ -241,30 +287,44 @@ async function readProjectedMessages(
       located.length <= input.pageSize &&
       !exhausted &&
       inspected < MAX_PROJECTED_CANDIDATES &&
-      inspectedBytes < MAX_PROJECTED_PAGE_BYTES
+      inspectedBytes <= MAX_PROJECTED_PAGE_BYTES - MAX_PROJECTED_ITEM_BYTES
     ) {
+      signal.throwIfAborted();
       const batchSize = Math.min(PROJECTED_BATCH_SIZE, MAX_PROJECTED_CANDIDATES - inspected);
       const rows = z
         .array(projectedItemRowSchema)
         .max(batchSize)
-        .parse(statement.all(input.threadId, cursor, MAX_PROJECTED_ITEM_BYTES, batchSize, MAX_PROJECTED_BATCH_BYTES));
+        .parse(
+          statement.all(
+            input.threadId,
+            cursor,
+            MAX_PROJECTED_ITEM_BYTES,
+            batchSize,
+            Math.min(MAX_PROJECTED_BATCH_BYTES, MAX_PROJECTED_PAGE_BYTES - inspectedBytes),
+          ),
+        );
       if (!rows.length) {
         exhausted = true;
         break;
       }
       inspected += rows.length;
       inspectedBytes += rows.reduce((total, row) => total + row.itemBytes, 0);
-      cursor = rows.at(-1)!.rolloutOrdinal;
+      cursor = rows.at(-1)!.rolloutOrdinal + (newer ? 1 : 0);
       for (const row of rows) {
         const parsed = parseProjectedCodexHistoryItem(row.itemType, row.itemJson, true);
-        if (!parsed) continue;
+        if (!parsed || !messageMatches(parsed, parsed.searchText, input)) continue;
         located.push({
-          cursor: row.rolloutOrdinal,
+          cursor: row.rolloutOrdinal + (newer ? 1 : 0),
+          searchText: parsed.searchText,
           message: {
             messageId: row.itemId,
             role: parsed.role,
+            turnId: row.turnId,
+            phase: parsed.phase,
             createdAt: isoTimestamp(row.createdAtMs),
             text: parsed.text,
+            blocks: parsed.blocks,
+            position: { before: row.rolloutOrdinal, after: row.rolloutOrdinal + 1 },
           },
         });
         if (located.length > input.pageSize) break;
@@ -275,14 +335,14 @@ async function readProjectedMessages(
     }
     const page = located.slice(0, input.pageSize);
     const scanLimited =
-      (inspected >= MAX_PROJECTED_CANDIDATES || inspectedBytes >= MAX_PROJECTED_PAGE_BYTES) &&
+      (inspected >= MAX_PROJECTED_CANDIDATES || inspectedBytes > MAX_PROJECTED_PAGE_BYTES - MAX_PROJECTED_ITEM_BYTES) &&
       located.length <= input.pageSize &&
       !exhausted;
     const nextCursor = located.length > input.pageSize ? page.at(-1)!.cursor : exhausted ? null : cursor;
     return {
       threadId: input.threadId,
       source: 'PAGINATED',
-      messages: page.map(({ message }) => message).reverse(),
+      messages: (newer ? page : page.reverse()).map(({ message }) => message),
       nextCursor,
       scanLimited,
     };
@@ -369,55 +429,41 @@ function parseLegacyMessage(line: Buffer, lineStart: number): LocatedMessage | n
   if (envelope.data.type === 'event_msg') {
     const legacyUser = legacyUserMessageSchema.safeParse(envelope.data.payload);
     if (legacyUser.success) {
-      const text = codexUserRequestText(legacyUser.data.message).slice(0, MAX_CODEX_HISTORY_MESSAGE_TEXT_CHARACTERS);
-      return text
-        ? {
-            cursor: lineStart,
-            message: {
-              messageId: legacyUser.data.client_id ?? `legacy-user-${lineStart}`,
-              role: 'USER',
-              createdAt,
-              text,
-            },
-          }
+      const parsed = parseProjectedCodexHistoryValue(
+        'userMessage',
+        {
+          type: 'userMessage',
+          id: legacyUser.data.client_id ?? undefined,
+          content: [{ type: 'text', text: legacyUser.data.message }],
+        },
+        true,
+      );
+      return parsed
+        ? locatedParsedMessage(parsed, parsed.messageId ?? `legacy-user-${lineStart}`, createdAt, lineStart)
         : null;
     }
     const completed = completedItemSchema.safeParse(envelope.data.payload);
     if (!completed.success) return null;
     const parsed = parseProjectedCodexHistoryValue(completed.data.item.type, completed.data.item, true);
     if (!parsed) return null;
-    return {
-      cursor: lineStart,
-      message: {
-        messageId: parsed.messageId ?? `completed-${lineStart}`,
-        role: parsed.role,
-        createdAt,
-        text: parsed.text,
-      },
-    };
+    return locatedParsedMessage(parsed, parsed.messageId ?? `completed-${lineStart}`, createdAt, lineStart);
   }
   if (envelope.data.type !== 'response_item') return null;
   const response = assistantResponseSchema.safeParse(envelope.data.payload);
-  if (!response.success || (response.data.phase && !['final_answer', 'commentary'].includes(response.data.phase)))
-    return null;
+  if (!response.success) return null;
   const text = response.data.content
     .flatMap((part) => {
       const parsed = outputTextPartSchema.safeParse(part);
       return parsed.success ? [parsed.data.text] : [];
     })
-    .join('\n')
-    .trim()
-    .slice(0, MAX_CODEX_HISTORY_MESSAGE_TEXT_CHARACTERS);
-  return text
-    ? {
-        cursor: lineStart,
-        message: {
-          messageId: response.data.id ?? `assistant-${lineStart}`,
-          role: 'ASSISTANT',
-          createdAt,
-          text,
-        },
-      }
+    .join('\n');
+  const parsed = parseProjectedCodexHistoryValue(
+    'agentMessage',
+    { type: 'agentMessage', id: response.data.id, phase: response.data.phase, text },
+    true,
+  );
+  return parsed
+    ? locatedParsedMessage(parsed, parsed.messageId ?? `assistant-${lineStart}`, createdAt, lineStart)
     : null;
 }
 
@@ -437,26 +483,41 @@ async function readLegacyMessages(
   };
   const located: LocatedMessage[] = [];
   const seenMessageIds = new Set<string>();
-  for await (const candidate of reverseJsonLines(filePath, input.cursor, state, signal)) {
+  const newer = input.direction === 'NEWER';
+  const forwardState: ForwardScanState = {
+    exhausted: false,
+    scanLimited: false,
+    continuationCursor: input.cursor ?? 0,
+  };
+  const lines = newer
+    ? forwardJsonLines(filePath, input.cursor ?? 0, forwardState, signal)
+    : reverseJsonLines(filePath, input.cursor, state, signal);
+  for await (const candidate of lines) {
     const parsed = parseLegacyMessage(candidate.line, candidate.start);
     if (!parsed || seenMessageIds.has(parsed.message.messageId)) continue;
     seenMessageIds.add(parsed.message.messageId);
+    if (!messageMatches(parsed.message, parsed.searchText, input)) continue;
+    parsed.message.position = { before: candidate.start, after: candidate.start + candidate.line.length };
     located.push({ ...parsed, resumeCursor: candidate.start + candidate.line.length });
     if (located.length > input.pageSize) break;
   }
   const page = located.slice(0, input.pageSize);
   const nextCursor =
     located.length > input.pageSize
-      ? located[input.pageSize]!.resumeCursor!
-      : state.exhausted
+      ? newer
+        ? page.at(-1)!.resumeCursor!
+        : located[input.pageSize]!.resumeCursor!
+      : (newer ? forwardState.exhausted : state.exhausted)
         ? null
-        : (state.earliestLineStart ?? state.continuationCursor);
+        : newer
+          ? forwardState.continuationCursor
+          : (state.earliestLineStart ?? state.continuationCursor);
   return {
     threadId: input.threadId,
     source: 'LEGACY',
-    messages: page.map(({ message }) => message).reverse(),
+    messages: (newer ? page : page.reverse()).map(({ message }) => message),
     nextCursor,
-    scanLimited: state.scanLimited,
+    scanLimited: newer ? forwardState.scanLimited : state.scanLimited,
   };
 }
 
@@ -468,9 +529,32 @@ export async function readCodexHistoryThreadMessages(
 ) {
   signal.throwIfAborted();
   const descriptor = readThreadDescriptor(paths.stateDatabasePath, input.threadId);
-  const page =
+  const read = (request: CodexHistoryThreadMessagesInput) =>
     descriptor.historyMode.toLocaleLowerCase() === 'paginated'
-      ? await readProjectedMessages(paths.threadHistoryDatabasePath, input, signal)
-      : await readLegacyMessages(codexHome, descriptor.rolloutPath, input, signal);
+      ? readProjectedMessages(paths.threadHistoryDatabasePath, request, signal)
+      : readLegacyMessages(codexHome, descriptor.rolloutPath, request, signal);
+  let page: ThreadMessagesBody;
+  if (input.anchor) {
+    const context = {
+      ...input,
+      anchor: undefined,
+      query: '',
+      role: 'ALL' as const,
+      pageSize: Math.floor(input.pageSize / 2),
+    };
+    const older = await read({ ...context, cursor: input.anchor.after, direction: 'OLDER' });
+    signal.throwIfAborted();
+    const newer = await read({ ...context, cursor: input.anchor.after, direction: 'NEWER' });
+    const known = new Set(older.messages.map(({ messageId }) => messageId));
+    page = {
+      ...older,
+      messages: [...older.messages, ...newer.messages.filter(({ messageId }) => !known.has(messageId))],
+      newerCursor: newer.nextCursor,
+      scanLimited: older.scanLimited || newer.scanLimited,
+    };
+  } else {
+    page = await read({ ...input, query: normalizeCodexHistoryQuery(input.query ?? '') });
+  }
+  signal.throwIfAborted();
   return { ...page, modelProvider: descriptor.modelProvider, model: descriptor.model };
 }

@@ -172,7 +172,7 @@ export class CreationImportRepository {
         JOIN prompt_versions version
           ON version.id = ? AND version.series_id = series.id
         LEFT JOIN derived_visuals visual
-          ON visual.creation_draft_id = draft.id
+          ON visual.prompt_series_id = series.id
         WHERE draft.id = ? AND draft.deleted_at IS NULL AND series.id = ?
           AND (visual.id IS NULL OR visual.prompt_series_id = series.id)`,
       )

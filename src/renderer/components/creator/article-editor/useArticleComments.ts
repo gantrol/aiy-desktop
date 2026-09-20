@@ -68,7 +68,7 @@ export function useArticleComments({
           : operation === 'SET_STATUS'
             ? ({ operation, articleId: article.id, commentId, status: detail.status ?? 'OPEN' } as const)
             : ({ operation, articleId: article.id, commentId } as const);
-    void mutate(() => input);
+    return mutate(() => input).then((result) => result !== null);
   }
 
   return { comments, busy, create, mutateExisting };

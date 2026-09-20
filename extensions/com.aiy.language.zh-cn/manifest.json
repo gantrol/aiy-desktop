@@ -2,7 +2,7 @@
   "manifestVersion": 1,
   "kind": "LANGUAGE",
   "id": "com.aiy.language.zh-cn",
-  "version": "0.5.1",
+  "version": "0.5.4",
   "displayName": "Simplified Chinese",
   "description": "Provides the app's Simplified Chinese interface.",
   "engines": {

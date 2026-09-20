@@ -7,6 +7,7 @@ import {
   resolveArticleDeliveryDefinition,
 } from '@/main/extensions/article-delivery/definition';
 import { ArticleDeliveryService } from '@/main/extensions/article-delivery/service';
+import { waitForUploadPreparation } from '@/main/extensions/article-delivery/upload-lifecycle';
 import type { LibraryDatabase } from '@/main/database';
 import type { ExtensionRegistry } from '@/main/extensions/registry';
 import type { IpcHandlerRegistrar } from '@/main/ipc/trusted-handlers';
@@ -20,6 +21,7 @@ import {
   articleDeliveryJobListInputSchema,
   articleDeliveryJobRetryInputSchema,
   articleDeliveryJobSchema,
+  articleDeliveryJobEnqueueInvocationSchema,
   articleDeliveryStatusSchema,
   articleDeliveryUploadInputSchema,
   articleDeliveryUploadResultSchema,
@@ -51,17 +53,19 @@ export function registerArticleDeliveryIpc(
   jobs: ArticleDeliveryJobCoordinator,
   naturalWatermark?: NaturalWatermarkRuntime,
 ) {
+  // Capture callable methods, not authorization results: later checks must still
+  // observe revocation, while class methods retain their original receiver.
   const captureExtensions = () => ({
-    get: extensions.get,
-    isActivated: extensions.isActivated,
-    isPermissionGranted: extensions.isPermissionGranted,
+    get: extensions.get.bind(extensions),
+    isActivated: extensions.isActivated.bind(extensions),
+    isPermissionGranted: extensions.isPermissionGranted.bind(extensions),
   });
   const captureDatabase = () => ({
     libraryRoot: database.libraryRoot,
-    getArticle: database.getArticle,
-    getArticleRevision: database.getArticleRevision,
+    getArticle: database.getArticle.bind(database),
+    getArticleRevision: database.getArticleRevision.bind(database),
     contentLibrary: database.contentLibrary,
-    resolveAssetFilesAsync: database.resolveAssetFilesAsync,
+    resolveAssetFilesAsync: database.resolveAssetFilesAsync.bind(database),
   });
   const context = async (
     target: ArticleDeliveryExtensionTarget,
@@ -74,6 +78,14 @@ export function registerArticleDeliveryIpc(
   const active = (target: ArticleDeliveryExtensionTarget, capturedExtensions: ReturnType<typeof captureExtensions>) => {
     assertArticleDeliveryExtensionActivated(capturedExtensions, target.extensionId);
   };
+  const assertSpace = (spaceId: string) => {
+    if (database.getLocalSpace().id !== spaceId) {
+      throw Object.assign(new Error('DELIVERY_SPACE_CHANGED'), {
+        code: 'DELIVERY_SPACE_CHANGED',
+        admissionRejected: true,
+      });
+    }
+  };
 
   ipcMain.handle('article-delivery:connection-get', async (_event, rawInput) => {
     const target = articleDeliveryExtensionTargetSchema.parse(rawInput);
@@ -85,14 +97,18 @@ export function registerArticleDeliveryIpc(
     const capturedExtensions = captureExtensions();
     active(input, capturedExtensions);
     const { definition, connection } = await context(input, capturedExtensions);
-    return articleDeliveryConnectionDtoSchema.parse(await connection.saveAndTest(definition, input));
+    return articleDeliveryConnectionDtoSchema.parse(
+      await connection.saveAndTest(definition, input, () => active(input, capturedExtensions)),
+    );
   });
   ipcMain.handle('article-delivery:connection-test', async (_event, rawInput) => {
     const target = articleDeliveryExtensionTargetSchema.parse(rawInput);
     const capturedExtensions = captureExtensions();
     active(target, capturedExtensions);
-    const { definition, connection } = await context(target, capturedExtensions);
-    return articleDeliveryConnectionDtoSchema.parse(await connection.test(definition));
+    const { definition, connection } = await context(target, captureExtensions());
+    return articleDeliveryConnectionDtoSchema.parse(
+      await connection.test(definition, () => active(target, capturedExtensions)),
+    );
   });
   ipcMain.handle('article-delivery:connection-clear', async (_event, rawInput) => {
     const target = articleDeliveryExtensionTargetSchema.parse(rawInput);
@@ -101,6 +117,7 @@ export function registerArticleDeliveryIpc(
   });
   ipcMain.handle('article-delivery:status', async (_event, rawInput) => {
     const input = articleDeliveryArticleTargetSchema.parse(rawInput);
+    assertSpace(input.spaceId);
     const capturedExtensions = captureExtensions();
     const capturedDatabase = captureDatabase();
     const { definition, connection } = await context(input, capturedExtensions);
@@ -116,6 +133,7 @@ export function registerArticleDeliveryIpc(
   });
   ipcMain.handle('article-delivery:profile-save', async (_event, rawInput) => {
     const input = articleDeliveryArticleProfileSaveInputSchema.parse(rawInput);
+    assertSpace(input.spaceId);
     const capturedExtensions = captureExtensions();
     const capturedDatabase = captureDatabase();
     active(input, capturedExtensions);
@@ -132,22 +150,43 @@ export function registerArticleDeliveryIpc(
   });
   ipcMain.handle('article-delivery:upload', async (_event, rawInput) => {
     const input = parseArticleDeliveryUploadInput(rawInput);
-    const capturedExtensions = captureExtensions();
-    const capturedDatabase = captureDatabase();
-    const { definition, connection } = await context(input, capturedExtensions);
-    const delivery = new ArticleDeliveryService(
-      capturedDatabase,
-      capturedExtensions,
-      connection,
-      definition,
-      undefined,
-      naturalWatermark,
-    );
-    return articleDeliveryUploadResultSchema.parse(await delivery.upload(input));
+    assertSpace(input.spaceId);
+    // Capture this context before connection loading yields to a possible library switch.
+    const upload = jobs.acquireUpload();
+    try {
+      const capturedExtensions = captureExtensions();
+      const capturedDatabase = captureDatabase();
+      const { definition, connection } = await waitForUploadPreparation(
+        context(input, capturedExtensions),
+        upload.signal,
+      );
+      const delivery = new ArticleDeliveryService(
+        capturedDatabase,
+        capturedExtensions,
+        connection,
+        definition,
+        undefined,
+        naturalWatermark,
+      );
+      return articleDeliveryUploadResultSchema.parse(await delivery.upload(input, upload.signal));
+    } finally {
+      upload.release();
+    }
   });
   ipcMain.handle('article-delivery:job-enqueue', async (_event, rawInput) => {
     const input = parseArticleDeliveryUploadInput(rawInput);
-    return articleDeliveryJobSchema.parse(await jobs.enqueue(input));
+    try {
+      assertSpace(input.spaceId);
+      return articleDeliveryJobSchema.parse(await jobs.enqueue(input));
+    } catch (reason) {
+      if (reason && typeof reason === 'object' && 'admissionRejected' in reason && reason.admissionRejected === true) {
+        return articleDeliveryJobEnqueueInvocationSchema.parse({
+          admissionRejected: true,
+          errorCode: 'code' in reason && typeof reason.code === 'string' ? reason.code : 'DELIVERY_ADMISSION_REJECTED',
+        });
+      }
+      throw reason;
+    }
   });
   ipcMain.handle('article-delivery:jobs-list', (_event, rawInput) => {
     const input = articleDeliveryJobListInputSchema.parse(rawInput);

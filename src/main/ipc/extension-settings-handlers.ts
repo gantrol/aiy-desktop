@@ -27,10 +27,13 @@ import {
   codexGeneratedImageRecoverSchema,
   extensionSetEnabledSchema,
   extensionSetPermissionSchema,
+  extensionRevokePermissionsSchema,
   generationConcurrencySaveSchema,
   id,
 } from '@/main/ipc/schemas';
 import { registerProviderConnectionIpc } from '@/main/ipc/provider-connection-handlers';
+import type { CpaImageConnection } from '@/main/extensions/cpa-image/connection';
+import { appendCpaImageRuntimeConfiguration } from '@/main/extensions/cpa-image/integration';
 import type { IpcHandlerRegistrar } from '@/main/ipc/trusted-handlers';
 import { registerCodexUsageIpc } from '@/main/ipc/codex-usage-handlers';
 import { registerMaintenanceGuideIpc } from '@/main/ipc/maintenance-guide-handlers';
@@ -48,6 +51,7 @@ import {
   CODEX_APP_SERVER_EXTENSION_ID,
   CODEX_EXTENSION_ID,
   CODEX_USAGE_INVESTIGATOR_EXTENSION_ID,
+  CPA_IMAGE_API_EXTENSION_ID,
   DEEPSEEK_API_EXTENSION_ID,
   EXTERNAL_IMAGE_API_EXTENSION_IDS,
   NATURAL_WATERMARK_EXTENSION_ID,
@@ -67,6 +71,7 @@ interface ExtensionSettingsIpcOptions {
   deepSeekApi: DeepSeekApiConnection;
   assistantRouting: AssistantRoutingConfiguration;
   externalImageApis: ExternalImageApiConnections;
+  cpaImageApi: CpaImageConnection;
   generation: GenerationService;
   generationConcurrency: GenerationConcurrencyConfiguration;
   naturalWatermarkConfiguration: NaturalWatermarkConfigurationStore;
@@ -102,6 +107,92 @@ function registerCodexImageDiscoveryIpc(
   );
 }
 
+function registerExtensionAccessIpc({
+  ipcMain,
+  extensions,
+  hasPendingWork,
+  syncRuntime,
+  purgeHistory,
+}: {
+  ipcMain: IpcHandlerRegistrar;
+  extensions: ExtensionRegistry;
+  hasPendingWork(extensionId: string): boolean;
+  syncRuntime(extensionId: string): Promise<void>;
+  purgeHistory(): Promise<void>;
+}) {
+  ipcMain.handle('extension:set-enabled', async (_event, raw) => {
+    const input = extensionSetEnabledSchema.parse(raw);
+    if (!input.enabled && hasPendingWork(input.extensionId)) {
+      throw new Error('Wait for active model tasks to finish before disabling an extension');
+    }
+    extensions.setEnabled(input.extensionId, input.enabled);
+    await syncRuntime(input.extensionId);
+    return extensions.list();
+  });
+  ipcMain.handle('extension:set-permission', async (_event, raw) => {
+    const input = extensionSetPermissionSchema.parse(raw);
+    if (!input.granted && hasPendingWork(input.extensionId)) {
+      throw new Error('Wait for active model tasks to finish before revoking a permission');
+    }
+    extensions.setPermission(input.extensionId, input.permission, input.granted);
+    await syncRuntime(input.extensionId);
+    if (
+      input.extensionId === CODEX_EXTENSION_ID &&
+      !input.granted &&
+      CODEX_HISTORY_SEARCH_PERMISSIONS.some((permission) => permission === input.permission)
+    ) {
+      await purgeHistory();
+    }
+    return extensions.list();
+  });
+  ipcMain.handle('extension:revoke-permissions', async (_event, raw) => {
+    const input = extensionRevokePermissionsSchema.parse(raw);
+    if (hasPendingWork(input.extensionId)) {
+      throw new Error('Wait for active model tasks to finish before revoking permissions');
+    }
+    extensions.revokePermissions(input.extensionId, input.permissions);
+    await syncRuntime(input.extensionId);
+    if (
+      input.extensionId === CODEX_EXTENSION_ID &&
+      CODEX_HISTORY_SEARCH_PERMISSIONS.some((permission) => input.permissions.includes(permission))
+    ) {
+      await purgeHistory();
+    }
+    return extensions.list();
+  });
+}
+
+function registerLocalExtensionPackagesIpc({
+  ipcMain,
+  extensions,
+  chooseFile,
+}: Pick<ExtensionSettingsIpcOptions, 'ipcMain' | 'extensions' | 'chooseFile'>) {
+  ipcMain.handle('extensions:list', () => extensions.list());
+  ipcMain.handle('extensions:reload', () => extensions.reload());
+  ipcMain.handle('extension-language-packs:list', () => extensions.loadLanguagePacks());
+  ipcMain.handle('extension:install-local', async () => {
+    const selection = await chooseFile({ properties: ['openDirectory'] });
+    if (selection.canceled || !selection.filePaths[0]) {
+      return { extensionId: null, extensions: extensions.list() };
+    }
+    return extensions.installLocal(selection.filePaths[0]);
+  });
+  ipcMain.handle('extension:update-local', async (_event, rawExtensionId) => {
+    const extensionId = id.parse(rawExtensionId);
+    if (extensions.get(extensionId)?.source !== 'LOCAL') {
+      return { extensionId: null, extensions: extensions.list(), errorCode: 'UPDATE_UNAVAILABLE' };
+    }
+    const selection = await chooseFile({ properties: ['openDirectory'] });
+    if (selection.canceled || !selection.filePaths[0]) {
+      return { extensionId: null, extensions: extensions.list() };
+    }
+    return extensions.installLocal(selection.filePaths[0], extensionId);
+  });
+  ipcMain.handle('extension:uninstall-local', (_event, rawExtensionId) =>
+    extensions.uninstallLocal(id.parse(rawExtensionId)),
+  );
+}
+
 function unavailableAntigravityStatus(): AntigravityCliStatusDto {
   return {
     state: 'unavailable',
@@ -124,6 +215,7 @@ export function registerExtensionSettingsIpc({
   deepSeekApi,
   assistantRouting,
   externalImageApis,
+  cpaImageApi,
   generation,
   generationConcurrency,
   naturalWatermarkConfiguration,
@@ -141,11 +233,12 @@ export function registerExtensionSettingsIpc({
     dataDirectory: path.join(app.getPath('userData'), 'extension-data', MAINTENANCE_GUIDE_EXTENSION_ID),
   });
   const syncExternalImageApiRuntime = async () => {
+    const configured = externalImageApis.runtimeConfigurations(
+      (extensionId, permission) => extensions.isPermissionGranted(extensionId, permission),
+      (extensionId) => extensions.isActivated(extensionId),
+    );
     await generation.configureExternalImageApis?.(
-      externalImageApis.runtimeConfigurations(
-        (extensionId, permission) => extensions.isPermissionGranted(extensionId, permission),
-        (extensionId) => extensions.isActivated(extensionId),
-      ),
+      appendCpaImageRuntimeConfiguration(configured, cpaImageApi, extensions),
     );
   };
   const syncOpenAiImageApiRuntime = async () => {
@@ -158,7 +251,7 @@ export function registerExtensionSettingsIpc({
       extensions.isActivated(DEEPSEEK_API_EXTENSION_ID) ? deepSeekApi.runtimeConfiguration() : null,
     );
   };
-  ipcMain.handle('extensions:list', () => extensions.list());
+  registerLocalExtensionPackagesIpc({ ipcMain, extensions, chooseFile });
   ipcMain.handle('natural-watermark:configuration-get', () => naturalWatermarkConfiguration.get());
   ipcMain.handle('natural-watermark:configuration-save', async (_event, raw) => {
     const configuration = naturalWatermarkConfigurationSchema.parse(raw);
@@ -201,26 +294,24 @@ export function registerExtensionSettingsIpc({
   const codexUsage = registerCodexUsageIpc({
     ipcMain,
     extensions,
-    codex,
     dataDirectory: path.join(app.getPath('userData'), 'extension-data', CODEX_USAGE_INVESTIGATOR_EXTENSION_ID),
     chooseSaveFile,
     sendRendererEvent,
   });
-  const hasPendingExtensionWork = (extensionId: string) =>
-    generation.hasPending ||
-    codex.hasPending ||
-    (extensionId === CODEX_EXTENSION_ID && (codexUsage.hasPending || codexVisualizationDiscovery.hasPending));
-  ipcMain.handle('extension-language-packs:list', () => extensions.listLanguagePacks());
-  ipcMain.handle('extension:install-local', async () => {
-    const selection = await chooseFile({ properties: ['openDirectory'] });
-    if (selection.canceled || !selection.filePaths[0]) {
-      return { extensionId: null, extensions: extensions.list() };
-    }
-    return extensions.installLocal(selection.filePaths[0]);
-  });
-  ipcMain.handle('extension:uninstall-local', (_event, rawExtensionId) =>
-    extensions.uninstallLocal(id.parse(rawExtensionId)),
-  );
+  const hasPendingExtensionWork = (extensionId: string) => {
+    // Unrelated model activity must not prevent revoking a local delivery connection.
+    const modelExtension =
+      extensionId === CODEX_EXTENSION_ID ||
+      extensionId === ANTIGRAVITY_CLI_EXTENSION_ID ||
+      extensionId === OPENAI_IMAGE_API_EXTENSION_ID ||
+      extensionId === CPA_IMAGE_API_EXTENSION_ID ||
+      extensionId === DEEPSEEK_API_EXTENSION_ID ||
+      externalImageApiExtensionIds.has(extensionId);
+    return (
+      (modelExtension && (generation.hasPending || codex.hasPending)) ||
+      (extensionId === CODEX_EXTENSION_ID && (codexUsage.hasPending || codexVisualizationDiscovery.hasPending))
+    );
+  };
   const syncCodexImageDiscovery = () => codexImageDiscovery.setActive(extensions.isActivated(CODEX_EXTENSION_ID));
   const syncCodexHistorySearch = () => codexHistorySearch.setActive(extensions.isActivated(CODEX_EXTENSION_ID));
   const syncCodexVisualizationDiscovery = () =>
@@ -245,34 +336,16 @@ export function registerExtensionSettingsIpc({
       await syncDeepSeekApiRuntime();
       return;
     }
-    if (externalImageApiExtensionIds.has(extensionId)) {
+    if (externalImageApiExtensionIds.has(extensionId) || extensionId === CPA_IMAGE_API_EXTENSION_ID) {
       await syncExternalImageApiRuntime();
     }
   };
-  ipcMain.handle('extension:set-enabled', async (_event, raw) => {
-    const input = extensionSetEnabledSchema.parse(raw);
-    if (!input.enabled && hasPendingExtensionWork(input.extensionId)) {
-      throw new Error('Wait for active model tasks to finish before disabling an extension');
-    }
-    extensions.setEnabled(input.extensionId, input.enabled);
-    await syncExtensionRuntime(input.extensionId);
-    return extensions.list();
-  });
-  ipcMain.handle('extension:set-permission', async (_event, raw) => {
-    const input = extensionSetPermissionSchema.parse(raw);
-    if (!input.granted && hasPendingExtensionWork(input.extensionId)) {
-      throw new Error('Wait for active model tasks to finish before revoking a permission');
-    }
-    extensions.setPermission(input.extensionId, input.permission, input.granted);
-    await syncExtensionRuntime(input.extensionId);
-    if (
-      input.extensionId === CODEX_EXTENSION_ID &&
-      !input.granted &&
-      CODEX_HISTORY_SEARCH_PERMISSIONS.some((permission) => permission === input.permission)
-    ) {
-      await codexHistorySearch.purge();
-    }
-    return extensions.list();
+  registerExtensionAccessIpc({
+    ipcMain,
+    extensions,
+    hasPendingWork: hasPendingExtensionWork,
+    syncRuntime: syncExtensionRuntime,
+    purgeHistory: () => codexHistorySearch.purge(),
   });
   registerCodexImageDiscoveryIpc(ipcMain, extensions, codexImageDiscovery);
   registerCodexHistorySearchIpc(ipcMain, extensions, codexHistorySearch);
@@ -283,6 +356,7 @@ export function registerExtensionSettingsIpc({
     openAiImageApi,
     deepSeekApi,
     externalImageApis,
+    cpaImageApi,
     generation,
     codex,
   });

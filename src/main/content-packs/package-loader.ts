@@ -11,6 +11,11 @@ import {
   type ContentPackExamplesDocument,
 } from '@/main/content-packs/example-manifest';
 import { prepareContentPackExamples, type PreparedContentPackExample } from '@/main/content-packs/example-importer';
+import {
+  CONTENT_PACK_CREATION_BYTES,
+  contentPackCreationsSchema,
+  type ContentPackCreations,
+} from '@/shared/contracts/content-pack-creations';
 
 const MAX_MANIFEST_BYTES = 256 * 1024;
 const MAX_FIXTURE_BYTES = 64 * 1024 * 1024;
@@ -54,7 +59,7 @@ const contentPackManifestSchema = z
     contentKinds: z.array(token).min(1),
     defaultRoles: z.array(token),
     includeInlineTerms: z.boolean().optional().default(true),
-    fixtureLibraryId: stableKey,
+    fixtureLibraryId: stableKey.optional(),
     seedLibrary: z.boolean().optional().default(false),
     facetRoles: z
       .object({
@@ -65,8 +70,9 @@ const contentPackManifestSchema = z
       .optional(),
     source: z
       .object({
-        fixture: z.string().trim().min(1).max(240),
-        dictionary: z.string().trim().min(1).max(240),
+        fixture: z.string().trim().min(1).max(240).optional(),
+        dictionary: z.string().trim().min(1).max(240).optional(),
+        creations: z.string().trim().min(1).max(240).optional(),
         palettes: z.string().trim().min(1).max(240).optional(),
         assets: z.string().trim().min(1).max(240).optional(),
         examples: z.string().trim().min(1).max(240).optional(),
@@ -79,6 +85,7 @@ const contentPackManifestSchema = z
 export type ContentPackManifest = z.infer<typeof contentPackManifestSchema>;
 
 export interface LoadedContentPackPackage {
+  creationsDocument?: ContentPackCreations;
   manifest: ContentPackManifest;
   packagePath: string;
   fixturePath: string;
@@ -249,38 +256,77 @@ async function packageDirectory(packagePath: string, relativePath: string, label
   return realDirectory;
 }
 
+async function resolvePackageSources(resolvedPackage: string, manifest: ContentPackManifest) {
+  const hasDictionary = Boolean(manifest.source.dictionary);
+  if (!manifest.source.creations && !hasDictionary)
+    throw new Error('Content pack must declare dictionary or creations');
+  if (hasDictionary && (!manifest.source.fixture || !manifest.fixtureLibraryId))
+    throw new Error('Dictionary packages require a fixture identity');
+  if (
+    !hasDictionary &&
+    (manifest.seedLibrary ||
+      manifest.source.fixture ||
+      manifest.source.palettes ||
+      manifest.source.examples ||
+      manifest.source.assets ||
+      manifest.facetRoles)
+  )
+    throw new Error('Creation-only packages cannot declare dictionary or seed-library sources');
+  if (manifest.source.creations && manifest.seedLibrary)
+    throw new Error('Creation packages cannot seed or replace a library');
+  if (Boolean(manifest.source.examples) !== Boolean(manifest.source.exampleAssets)) {
+    throw new Error('Content pack examples and exampleAssets must be declared together');
+  }
+  const [fixtureFile, dictionaryFile, paletteFile, assetsRoot, examplesFile, exampleAssetsRoot, creationsFile] =
+    await Promise.all([
+      manifest.source.fixture
+        ? packageFile(resolvedPackage, manifest.source.fixture, 'Content pack fixture')
+        : undefined,
+      manifest.source.dictionary
+        ? packageFile(resolvedPackage, manifest.source.dictionary, 'Content pack dictionary')
+        : undefined,
+      manifest.source.palettes
+        ? packageFile(resolvedPackage, manifest.source.palettes, 'Content pack palette catalog')
+        : undefined,
+      manifest.source.assets
+        ? packageDirectory(resolvedPackage, manifest.source.assets, 'Content pack assets')
+        : undefined,
+      manifest.source.examples
+        ? packageFile(resolvedPackage, manifest.source.examples, 'Content pack examples')
+        : undefined,
+      manifest.source.exampleAssets
+        ? packageDirectory(resolvedPackage, manifest.source.exampleAssets, 'Content pack example assets')
+        : undefined,
+      manifest.source.creations
+        ? packageFile(resolvedPackage, manifest.source.creations, 'Content pack creations')
+        : undefined,
+    ]);
+  return { fixtureFile, dictionaryFile, paletteFile, assetsRoot, examplesFile, exampleAssetsRoot, creationsFile };
+}
+
 export async function loadContentPackPackage(packagePath: string): Promise<LoadedContentPackPackage> {
   const resolvedPackage = await realpath(packagePath);
   if (!(await lstat(resolvedPackage)).isDirectory()) throw new Error('Content pack path must be a directory');
   const manifest = await readManifest(await packageFile(resolvedPackage, 'manifest.json', 'Content pack manifest'));
-  if (Boolean(manifest.source.examples) !== Boolean(manifest.source.exampleAssets)) {
-    throw new Error('Content pack examples and exampleAssets must be declared together');
-  }
-  const [fixtureFile, dictionaryFile, paletteFile, assetsRoot, examplesFile, exampleAssetsRoot] = await Promise.all([
-    packageFile(resolvedPackage, manifest.source.fixture, 'Content pack fixture'),
-    packageFile(resolvedPackage, manifest.source.dictionary, 'Content pack dictionary'),
-    manifest.source.palettes
-      ? packageFile(resolvedPackage, manifest.source.palettes, 'Content pack palette catalog')
-      : undefined,
-    manifest.source.assets
-      ? packageDirectory(resolvedPackage, manifest.source.assets, 'Content pack assets')
-      : undefined,
-    manifest.source.examples
-      ? packageFile(resolvedPackage, manifest.source.examples, 'Content pack examples')
-      : undefined,
-    manifest.source.exampleAssets
-      ? packageDirectory(resolvedPackage, manifest.source.exampleAssets, 'Content pack example assets')
-      : undefined,
-  ]);
-  const fixturePath = fixtureFile.path;
-  const dictionaryPath = dictionaryFile.path;
+  const { fixtureFile, dictionaryFile, paletteFile, assetsRoot, examplesFile, exampleAssetsRoot, creationsFile } =
+    await resolvePackageSources(resolvedPackage, manifest);
+  // Creation-only packages provide in-memory empty dictionary snapshots; these
+  // logical fallback paths are never read by the installer.
+  const fixturePath = fixtureFile?.path ?? path.join(resolvedPackage, 'manifest.json');
+  const dictionaryPath = dictionaryFile?.path ?? path.join(resolvedPackage, 'manifest.json');
   const palettePath = paletteFile?.path;
   const examplesPath = examplesFile?.path;
-  const [fixtureValue, dictionaryValue, paletteValue, examplesValue] = await Promise.all([
-    readBoundedJson(fixtureFile, MAX_FIXTURE_BYTES, 'Content pack fixture'),
-    readBoundedJson(dictionaryFile, MAX_DICTIONARY_BYTES, 'Content pack dictionary'),
+  const fixtureLibraryId = manifest.fixtureLibraryId ?? `${manifest.key}.creations`;
+  const [fixtureValue, dictionaryValue, paletteValue, examplesValue, creationsValue] = await Promise.all([
+    fixtureFile
+      ? readBoundedJson(fixtureFile, MAX_FIXTURE_BYTES, 'Content pack fixture')
+      : { schemaVersion: '0.3.0', library: { id: fixtureLibraryId } },
+    dictionaryFile
+      ? readBoundedJson(dictionaryFile, MAX_DICTIONARY_BYTES, 'Content pack dictionary')
+      : { schemaVersion: '0.3.0', structureRevision: 'creation-only', terms: [] },
     paletteFile ? readBoundedJson(paletteFile, MAX_PALETTE_BYTES, 'Content pack palette catalog') : undefined,
     examplesFile ? readBoundedJson(examplesFile, MAX_EXAMPLES_BYTES, 'Content pack examples') : undefined,
+    creationsFile ? readBoundedJson(creationsFile, CONTENT_PACK_CREATION_BYTES, 'Content pack creations') : undefined,
   ]);
   const fixtureDocument = parseV03FixtureDocument(fixtureValue);
   const dictionary = contentPackDictionaryIndexSchema.parse(dictionaryValue);
@@ -292,6 +338,7 @@ export async function loadContentPackPackage(packagePath: string): Promise<Loade
   const paletteDocument = paletteValue === undefined ? undefined : contentPackPaletteSchema.parse(paletteValue);
   const examplesDocument =
     examplesValue === undefined ? undefined : contentPackExamplesDocumentSchema.parse(examplesValue);
+  const creationsDocument = creationsValue === undefined ? undefined : contentPackCreationsSchema.parse(creationsValue);
   const [dictionaryCatalogRows, preparedExamples] = await Promise.all([
     readDictionaryImportsAsync(dictionaryTermPaths, { rootPath: dictionaryRoot }),
     prepareContentPackExamples(manifest.id, examplesDocument, exampleAssetsRoot),
@@ -304,6 +351,7 @@ export async function loadContentPackPackage(packagePath: string): Promise<Loade
     dictionaryCatalogRows,
     palette: paletteDocument ?? {},
     examples: examplesDocument ?? null,
+    ...(creationsDocument ? { creations: creationsDocument } : {}),
     exampleObjects: preparedExamples.map((example) => ({
       itemKey: example.itemKey,
       objectHash: example.objectHash,
@@ -324,6 +372,7 @@ export async function loadContentPackPackage(packagePath: string): Promise<Loade
     },
   };
   return {
+    creationsDocument,
     manifest,
     packagePath: resolvedPackage,
     fixturePath,
@@ -346,7 +395,7 @@ export async function loadContentPackPackage(packagePath: string): Promise<Loade
     },
     profile: {
       key: manifest.key,
-      fixtureLibraryId: manifest.fixtureLibraryId,
+      fixtureLibraryId,
       id: manifest.id,
       releaseVersion: manifest.version,
       displayName: manifest.displayName,

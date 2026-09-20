@@ -20,11 +20,7 @@ import { useVideoDocumentArticleOutline } from '@/renderer/features/video-docume
 import { useVideoDocumentRichNotes } from '@/renderer/features/video-documents/useVideoDocumentRichNotes';
 import { videoDocumentArticleHasVisibleContent } from '@/renderer/features/video-documents/videoDocumentArticleContent';
 import { useI18n } from '@/renderer/i18n/useI18n';
-import {
-  articleDocumentWidthClassName,
-  articleRichTextClassName,
-  articleTextMeasureClassName,
-} from '@/renderer/lib/articleTypography';
+import { articleDocumentWidthClassName, articleTextMeasureClassName } from '@/renderer/lib/articleTypography';
 import { codexMarkdownUrlTransform } from '@/renderer/lib/codexThreadLinks';
 import { cn } from '@/renderer/lib/utils';
 import type {
@@ -38,8 +34,8 @@ import type {
 import type { BlockDocument } from '@/shared/contracts/block-document';
 import { LoaderCircleIcon, PencilIcon, PlusIcon, RefreshCwIcon, SaveIcon, XIcon } from 'lucide-react';
 import { memo, type ReactNode } from 'react';
-import ReactMarkdown, { type Components } from 'react-markdown';
-import remarkGfm from 'remark-gfm';
+import type { Components } from 'react-markdown';
+import { ContentMarkdown } from '@/renderer/features/content-editor/ContentMarkdown';
 
 interface Props {
   documentId?: string;
@@ -220,16 +216,14 @@ const ArticleMarkdown = memo(function ArticleMarkdown({
   components: Components;
 }) {
   return (
-    <div className={`mx-auto w-full ${articleTextMeasureClassName} ${articleRichTextClassName}`}>
-      <ReactMarkdown
-        remarkPlugins={[remarkGfm]}
-        components={components}
-        skipHtml
-        urlTransform={codexMarkdownUrlTransform}
-      >
-        {markdown}
-      </ReactMarkdown>
-    </div>
+    <ContentMarkdown
+      typography="article"
+      className={`mx-auto w-full ${articleTextMeasureClassName}`}
+      components={components}
+      urlTransform={codexMarkdownUrlTransform}
+    >
+      {markdown}
+    </ContentMarkdown>
   );
 });
 

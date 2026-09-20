@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { generationQualitySchema } from '@/shared/generation-quality';
 import type { AssetDto, ImageGenerationRouteDto } from '@/shared/contracts';
 import { gifIdSchema, gifManifestSchema, type GifDocumentDetail } from '@/shared/contracts/gif-making';
 import {
@@ -21,7 +22,7 @@ export const gifGenerationSettingsSchema = z
     feather: z.number().min(0).max(0.4),
     keyframes: z.number().int().min(2).max(8),
     durationMs: z.number().int().min(400).max(10000).multipleOf(10),
-    quality: z.enum(['low', 'medium', 'high']),
+    quality: generationQualitySchema,
     // Previously saved generations used a single sheet.
     generationMode: gifFrameGenerationModeSchema.default('SHEET'),
     plan: gifMotionPlanSchema.optional(),

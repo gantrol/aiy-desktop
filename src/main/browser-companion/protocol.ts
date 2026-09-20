@@ -93,9 +93,29 @@ const chatGptConversationUrlSchema = z
     }
   });
 
+/** Host-only receipt headers. Never included in browser payloads or accepted from a stage request. */
+export const browserCompanionCalendarCaptureSchema = z
+  .object({
+    libraryId: z.string().min(1).max(512),
+    sourceType: z.enum(['ARTICLE', 'SOCIAL_POST_DRAFT', 'CREATION_DRAFT']),
+    sourceId: z.string().min(1).max(200),
+    events: z.array(
+      z
+        .object({
+          id: z.string().uuid(),
+          operation: z.enum(['HANDOFF', 'CLAIM', 'DELIVER', 'RELEASE', 'INTERRUPTED', 'DELETE']),
+          observedAt: z.string().datetime({ offset: true }),
+        })
+        .strict(),
+    ),
+  })
+  .strict();
+export type BrowserCompanionCalendarCapture = z.infer<typeof browserCompanionCalendarCaptureSchema>;
+
 const currentRecordFields = {
   schemaVersion: z.literal(4),
   handoffId: z.string().uuid(),
+  batchId: z.string().uuid().optional(),
   target: browserCompanionTargetSchema,
   source: browserCompanionSourceSchema,
   contentKind: browserCompanionContentKindSchema,
@@ -105,6 +125,7 @@ const currentRecordFields = {
   text: z.string().min(1).max(10_000),
   media: z.array(browserCompanionMediaSchema).max(20),
   createdAt: z.string().datetime({ offset: true }),
+  calendarCapture: browserCompanionCalendarCaptureSchema.optional(),
 } as const;
 
 export const browserCompanionRecordBaseSchema = z.object(currentRecordFields).strict();
@@ -278,7 +299,9 @@ export const browserCompanionBridgeCredentialsSchema = z
   })
   .strict();
 
-const handoffSchema = browserCompanionClaimedRecordSchema.omit({ schemaVersion: true, leaseExpiresAt: true }).strict();
+const handoffSchema = browserCompanionClaimedRecordSchema
+  .omit({ schemaVersion: true, leaseExpiresAt: true, batchId: true })
+  .strict();
 
 export const browserCompanionResponseSchema = z.discriminatedUnion('kind', [
   z

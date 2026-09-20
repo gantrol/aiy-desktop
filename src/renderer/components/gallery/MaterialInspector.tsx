@@ -40,8 +40,10 @@ import {
   MaterialDetailPreview,
 } from '@/renderer/components/gallery/MaterialDetailOverview';
 import { materialTitle, type MaterialLibraryItem } from '@/renderer/components/gallery/materialLibraryTypes';
+import { CopyAgentLinkButton } from '@/renderer/features/content-editor/CopyAgentLinkButton';
 
 interface Props {
+  spaceId: string;
   item: MaterialLibraryItem;
   position: number;
   total: number;
@@ -96,6 +98,7 @@ function formatBytes(value: number | undefined) {
 }
 
 export function MaterialDetailPage({
+  spaceId,
   item,
   position,
   total,
@@ -198,6 +201,7 @@ export function MaterialDetailPage({
 
   const body = (
     <MaterialDetailBody
+      spaceId={spaceId}
       key={item.key}
       item={item}
       position={position}
@@ -273,6 +277,7 @@ interface MaterialDetailBodyProps extends Omit<
 }
 
 function MaterialDetailBody({
+  spaceId,
   item,
   position,
   total,
@@ -356,6 +361,19 @@ function MaterialDetailBody({
   return (
     <article className="flex size-full min-h-0 flex-col bg-background" data-slot="material-detail-page">
       <MaterialDetailHeader
+        agentLinkAction={
+          (item.kind === 'TEXT' || item.image.materialId) && (
+            <CopyAgentLinkButton
+              target={{
+                spaceId,
+                target: 'material',
+                entityId: item.kind === 'TEXT' ? item.text.id : item.image.materialId!,
+              }}
+              disabled={metadataState.dirty || metadataState.saving || lifecycleBusy}
+              notify={notify}
+            />
+          )
+        }
         title={title}
         position={position}
         total={total}

@@ -1,13 +1,20 @@
-import { useMemo } from 'react';
+import { useCallback, useMemo } from 'react';
 import type { DragEvent as ReactDragEvent, RefObject } from 'react';
 import type { AssetFileRevealContext } from '@/shared/contracts';
 import {
   computeShortestColumnMasonry,
-  ShortestColumnMasonry,
   type MasonryLayout,
   type MasonryLayoutItem,
   type MasonryPlacement,
 } from '@/renderer/components/ui/shortest-column-masonry';
+import { MasonrySurface } from '@/renderer/components/ui/masonry-surface';
+import { useMaterialLayoutPreferences } from '@/renderer/components/gallery/materialLayoutPreferences';
+import {
+  computeMaterialLayout,
+  materialFrameRatio,
+  MATERIAL_NAME_HEIGHT,
+  MATERIAL_ROW_GAP,
+} from '@/renderer/components/gallery/materialMasonryLayout';
 import { getMaterialCardAspectRatio, MaterialCard } from '@/renderer/components/gallery/MaterialCard';
 import type { MaterialLibraryItem, SelectionModifiers } from '@/renderer/components/gallery/materialLibraryTypes';
 
@@ -65,28 +72,42 @@ export function MaterialMasonry({
   onDelete,
   lifecycleBusy,
   notify,
-  minColumnWidth = DEFAULT_MIN_COLUMN_WIDTH,
-  gap = DEFAULT_GAP,
+  minColumnWidth,
+  gap = MATERIAL_ROW_GAP,
   className,
   onDragStart,
   revealContext,
   revealContextForItem,
   viewportRef,
 }: MaterialMasonryProps) {
+  const { preferences } = useMaterialLayoutPreferences();
   const layoutItems = useMemo(
-    () => items.map((item) => ({ id: item.key, aspectRatio: getMaterialCardAspectRatio(item) })),
+    () =>
+      items.map((item) => ({
+        id: item.key,
+        text: item.kind === 'TEXT',
+        aspectRatio:
+          item.kind === 'TEXT'
+            ? getMaterialCardAspectRatio(item)
+            : materialFrameRatio(getMaterialCardAspectRatio(item)),
+      })),
     [items],
+  );
+  const computeLayout = useCallback(
+    (width: number) => computeMaterialLayout(layoutItems, width, preferences, minColumnWidth, gap),
+    [gap, layoutItems, minColumnWidth, preferences],
   );
 
   return (
-    <ShortestColumnMasonry
+    <MasonrySurface
       items={layoutItems}
-      minColumnWidth={minColumnWidth}
-      gap={gap}
+      computeLayout={computeLayout}
+      layoutKind={preferences.arrangement}
       className={className}
       virtualize={Boolean(viewportRef)}
       viewportRef={viewportRef}
-      renderItem={(_layoutItem, index) => (
+      preserveScrollAnchor
+      renderItem={(_layoutItem, index, placement) => (
         <MaterialCard
           item={items[index]}
           selected={items[index].key === selectedKey}
@@ -94,6 +115,11 @@ export function MaterialMasonry({
           selectionMode={selectionMode}
           selectionAvailable={selectionAvailable}
           viewMode="GRID"
+          frameAspectRatio={
+            placement.width /
+            (placement.height - (preferences.showNames && items[index].kind !== 'TEXT' ? MATERIAL_NAME_HEIGHT : 0))
+          }
+          showName={preferences.showNames}
           onSelect={onSelect}
           onEnterSelection={onEnterSelection}
           onToggleSelection={onToggleSelection}

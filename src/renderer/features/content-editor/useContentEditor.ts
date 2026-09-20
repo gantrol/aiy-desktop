@@ -3,17 +3,32 @@ import { ContentLinkCardExtension } from '@/renderer/features/content-editor/con
 import { createContentLinkPasteExtension } from '@/renderer/features/content-editor/contentLinkPasteExtension';
 import { useContentLinkProviders } from '@/renderer/features/content-editor/ContentLinkProviders';
 import { useStableCallback } from '@/renderer/lib/useStableCallback';
+import { useI18n } from '@/renderer/i18n/useI18n';
+import { cn } from '@/renderer/lib/utils';
+import {
+  contentTypographyClassName,
+  type ContentTypography,
+} from '@/renderer/features/content-editor/contentEditorTypography';
+import { ContentEditorKeyboard } from '@/renderer/features/content-editor/contentEditorKeyboard';
+import { OutlinePointerSelection } from '@/renderer/features/content-editor/outlinePointerSelection';
 import {
   DocumentImageMediaStore,
   createDocumentImageExtension,
 } from '@/renderer/features/content-editor/contentImageExtension';
 import { contentReferenceExtension } from '@/renderer/features/content-editor/ContentReferenceExtension';
+import {
+  ContentReveal,
+  ContentRevealAnswer,
+  ContentRevealInitial,
+} from '@/renderer/features/content-editor/contentRevealExtension';
 import { CjkStrongMarkdown } from '@/renderer/features/video-documents/cjkStrongMarkdown';
-import { VideoDocumentListIndent } from '@/renderer/features/video-documents/videoDocumentListIndent';
 import { VideoDocumentTableView } from '@/renderer/features/video-documents/videoDocumentTableView';
 import { parseCodexThreadHref } from '@/shared/contracts/codex-thread';
+import { parseAiyDeepLink } from '@/shared/contracts/app-deep-link';
+import { contentFigureReferenceAssetId } from '@/shared/content-figure-reference';
 import { Node, type Extensions } from '@tiptap/core';
 import FindAndReplace from '@tiptap/extension-find-and-replace';
+import { Details, DetailsContent, DetailsSummary } from '@tiptap/extension-details';
 import { TableKit } from '@tiptap/extension-table';
 import TaskItem from '@tiptap/extension-task-item';
 import TaskList from '@tiptap/extension-task-list';
@@ -50,26 +65,54 @@ function promptAtom(name: string) {
 }
 
 /** Every host uses the same schema. Hosts override views and supply business commands. */
-export function createContentEditorExtensions(overrides: Extensions = []): Extensions {
+export function createContentEditorExtensions(
+  overrides: Extensions,
+  detailsLabels: { expand: string; collapse: string },
+): Extensions {
   const base: Extensions = [
     BlockIdentity,
     ContentLinkCardExtension,
-    VideoDocumentListIndent,
+    Details.configure({
+      persist: false,
+      HTMLAttributes: { class: 'my-4 border-l-2 border-border pl-3' },
+      renderToggleButton: ({ element, isOpen }) => {
+        element.className =
+          'mr-1 inline-flex size-6 items-center justify-center rounded-sm text-muted-foreground hover:bg-muted';
+        element.textContent = isOpen ? '▾' : '▸';
+        element.setAttribute('aria-label', isOpen ? detailsLabels.collapse : detailsLabels.expand);
+      },
+    }),
+    DetailsSummary.configure({ HTMLAttributes: { class: 'inline min-h-6 font-medium' } }),
+    DetailsContent.configure({ HTMLAttributes: { class: 'mt-2' } }),
+    ContentReveal,
+    ContentRevealInitial,
+    ContentRevealAnswer,
+    ContentEditorKeyboard,
+    ...(overrides.some((extension) => extension.name === 'outlineEditing') ? [OutlinePointerSelection] : []),
     StarterKit.configure({
+      trailingNode: overrides.some((extension) => extension.name === 'outlineEditing') ? false : undefined,
+      listItem: overrides.some((extension) => extension.name === 'listItem') ? false : undefined,
+      bulletList: overrides.some((extension) => extension.name === 'bulletList') ? false : undefined,
+      orderedList: overrides.some((extension) => extension.name === 'orderedList') ? false : undefined,
       heading: { levels: [1, 2, 3, 4, 5, 6] },
       link: {
         openOnClick: false,
         defaultProtocol: 'https',
         markdownLinks: true,
-        protocols: ['codex'],
+        protocols: ['codex', 'aiy', 'aiy-figure'],
         isAllowedUri: (url, { defaultValidate }) =>
-          url.trimStart().toLowerCase().startsWith('codex:')
-            ? parseCodexThreadHref(url) !== null
-            : defaultValidate(url),
+          url.trimStart().toLowerCase().startsWith('aiy-figure:')
+            ? contentFigureReferenceAssetId(url) !== null
+            : url.trimStart().toLowerCase().startsWith('codex:')
+              ? parseCodexThreadHref(url) !== null
+              : url.trimStart().toLowerCase().startsWith('aiy:')
+                ? parseAiyDeepLink(url) !== null
+                : defaultValidate(url),
       },
     }),
-    TaskList,
-    TaskItem.configure({ nested: true }),
+    ...(overrides.some((extension) => extension.name === 'taskList') ? [] : [TaskList]),
+    // The live node view does not use renderHTML, which normally supplies data-type.
+    TaskItem.configure({ nested: true, HTMLAttributes: { 'data-type': 'taskItem' } }),
     createDocumentImageExtension(new DocumentImageMediaStore({ media: [], mediaBindings: [] })),
     contentReferenceExtension(() => undefined),
     TableKit.configure({ table: { resizable: false, renderWrapper: true, View: VideoDocumentTableView } }),
@@ -83,13 +126,53 @@ export function createContentEditorExtensions(overrides: Extensions = []): Exten
   return [...base.filter((extension) => !replaced.has(extension.name)), ...overrides];
 }
 
-export function useContentEditor(options: UseEditorOptions, dependencies?: DependencyList) {
+interface ContentEditorOptions extends UseEditorOptions {
+  presentation: {
+    typography: ContentTypography;
+    ariaLabel: string;
+    className?: string;
+  };
+}
+
+/** Hosts choose density and layout; schema, semantic formatting and basic input behavior stay shared. */
+export function useContentEditor({ presentation, ...options }: ContentEditorOptions, dependencies?: DependencyList) {
   const providers = useContentLinkProviders();
+  const detailsCopy = useI18n().messages.videoDocuments.editor.richText;
   const currentProviders = useStableCallback(() => providers);
   const extensions = useMemo(
     () =>
-      createContentEditorExtensions([...(options.extensions ?? []), createContentLinkPasteExtension(currentProviders)]),
-    [options.extensions, currentProviders],
+      createContentEditorExtensions(
+        [...(options.extensions ?? []), createContentLinkPasteExtension(currentProviders)],
+        { expand: detailsCopy.expandDetails, collapse: detailsCopy.collapseDetails },
+      ),
+    [options.extensions, currentProviders, detailsCopy.expandDetails, detailsCopy.collapseDetails],
   );
-  return useEditor({ ...options, extensions }, dependencies);
+  const hostAttributes = options.editorProps?.attributes;
+  return useEditor(
+    {
+      enableContentCheck: true,
+      immediatelyRender: true,
+      ...options,
+      extensions,
+      editorProps: {
+        ...options.editorProps,
+        attributes: (state) => {
+          const attributes = typeof hostAttributes === 'function' ? hostAttributes(state) : hostAttributes;
+          return {
+            ...attributes,
+            role: 'textbox',
+            'aria-label': presentation.ariaLabel,
+            'aria-multiline': 'true',
+            class: cn(
+              contentTypographyClassName(presentation.typography),
+              'outline-none',
+              presentation.className,
+              attributes?.class,
+            ),
+          };
+        },
+      },
+    },
+    dependencies,
+  );
 }

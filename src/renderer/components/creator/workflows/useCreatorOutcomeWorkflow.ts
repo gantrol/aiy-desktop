@@ -1,4 +1,6 @@
 import { articleCreationInputSchema } from '@/shared/contracts/inspiration-stash';
+import { createOutlineDocument } from '@/shared/outline-document';
+import { copyLinkedBlockDocument } from '@/shared/block-anchor-copy';
 import { articleMediaBindings } from '@/renderer/components/creator/article-editor/articleContentTransforms';
 import type { CreationStartPlan } from '@/renderer/components/creator/CreationStartActions';
 import type { CreationDraftPromptSnapshot } from '@/renderer/components/creator/workflows/creationDraftSnapshot';
@@ -123,6 +125,7 @@ export function useCreatorOutcomeWorkflow(options: Options) {
       }
       const draftSnapshot = captureDraftSaveSnapshot(snapshot.prompt);
       const draft = await saveCapturedDraft(draftSnapshot);
+      if (!requestIsCurrent()) return;
       const common = {
         creationDraftId: draft.id,
         creationDraftCommitIdentity: creationDraftCommitIdentity(draft.id, draftSnapshot),
@@ -130,10 +133,13 @@ export function useCreatorOutcomeWorkflow(options: Options) {
         targetAlbumId: snapshot.targetAlbumId,
       };
       const sourceDocument = snapshot.prompt.document ?? plainTextBlockDocument(snapshot.prompt.manualPrompt);
-      const document = captureBlockDocument(sourceDocument.root, [], !snapshot.sourceInspirationStashId);
+      const document =
+        plan.kind === 'outline'
+          ? copyLinkedBlockDocument(sourceDocument.root)
+          : captureBlockDocument(sourceDocument.root, [], !snapshot.sourceInspirationStashId);
       const mediaBindings = articleMediaBindings(snapshot.referenceAssets, 'reference');
       const inlineIds = new Set(blockDocumentAssetIds(document));
-      const articleDocument = captureBlockDocument({
+      const contentDocument = captureBlockDocument({
         ...document.root,
         content: [
           ...(document.root.content ?? []),
@@ -142,12 +148,20 @@ export function useCreatorOutcomeWorkflow(options: Options) {
             .map((binding) => ({ type: 'image', attrs: { assetId: binding.assetId, alt: '' } })),
         ],
       });
+      const articleDocument = plan.kind === 'outline' ? createOutlineDocument(contentDocument) : contentDocument;
       await createArticleFromDraft({
         ...common,
+        ...(plan.kind === 'outline' ? { sourceInspirationStashId: null } : {}),
         content: {
           schemaVersion: 2,
+          ...(plan.kind === 'outline' ? { editorMode: 'OUTLINE' as const } : {}),
           document: articleDocument,
-          title: outcomeTitle(snapshot, messages.contentEditor.untitledArticle),
+          title: outcomeTitle(
+            snapshot,
+            plan.kind === 'outline'
+              ? messages.referenceOutline.untitledOutline
+              : messages.contentEditor.untitledArticle,
+          ),
           markdown: blockDocumentMarkdown(articleDocument, mediaBindings),
           mediaBindings,
           coverAssetId: snapshot.referenceAssets[0]?.id ?? null,

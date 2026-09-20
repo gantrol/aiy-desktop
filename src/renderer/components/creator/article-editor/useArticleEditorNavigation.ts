@@ -196,7 +196,7 @@ export function useArticleEditorNavigation({
       restoreFrameRef.current = null;
       const location = articleLocation ?? navigationStateRef.current.resumeLocation;
       const scrollRoot = scrollRootRef.current;
-      if (location && scrollRoot) handle.revealArticleLocation(location, scrollRoot);
+      if (location && !location.blockId && scrollRoot) handle.revealArticleLocation(location, scrollRoot);
       restoredEntryRef.current = navigationEntryId;
     });
   }
@@ -207,7 +207,7 @@ export function useArticleEditorNavigation({
     const scrollRoot = scrollRootRef.current;
     if (!handle || !scrollRoot) return;
     const location = articleLocation ?? navigationStateRef.current.resumeLocation;
-    if (location) handle.revealArticleLocation(location, scrollRoot);
+    if (location && !location.blockId) handle.revealArticleLocation(location, scrollRoot);
     restoredEntryRef.current = navigationEntryId;
   }, [articleLocation, navigationEntryId]);
 

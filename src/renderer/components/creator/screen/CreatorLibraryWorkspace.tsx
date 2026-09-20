@@ -7,6 +7,7 @@ import { useStableCallback } from '@/renderer/lib/useStableCallback';
 import { useI18n } from '@/renderer/i18n/useI18n';
 import { useGifMakerLauncher } from '@/renderer/features/gif-making/GifMakerProvider';
 import { CreatorWorkspaceRouter } from '@/renderer/components/creator/screen/CreatorWorkspaceRouter';
+import type { DerivedVisualWorkspaceViewState } from '@/renderer/components/creator/derivedVisualWorkspace';
 
 const MemoizedResultLibrary = memo(ResultLibrary);
 
@@ -25,7 +26,8 @@ export function CreatorLibraryWorkspace({ model }: Pick<Props, 'model'>) {
     (request: Parameters<typeof library.lifecycle.request>[0]) => void library.lifecycle.request(request),
   );
   const openDerivedVisual = useStableCallback(
-    (visualId: string) => void model.workflow.content.derivedVisual.resumeDerivedVisual(visualId),
+    (visualId: string, view?: DerivedVisualWorkspaceViewState) =>
+      void model.workflow.content.derivedVisual.resumeDerivedVisual(visualId, view),
   );
   const selectDocument = useStableCallback(app.onSelectDocument);
   const selectAnimation = useStableCallback((documentId: string) => {

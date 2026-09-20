@@ -31,6 +31,12 @@ const supportedNodes = new Set<string>([
   'taskList',
   'creatorTerm',
   'creatorRecipe',
+  'details',
+  'detailsSummary',
+  'detailsContent',
+  'reveal',
+  'revealInitial',
+  'revealAnswer',
   ...blockIdentityNodeTypes,
 ]);
 const supportedMarks = new Set(['bold', 'italic', 'strike', 'code', 'link', 'underline']);
@@ -48,13 +54,42 @@ const blockTypes = new Set([
   'horizontalRule',
   'contentReference',
   'linkCard',
+  'details',
+  'reveal',
 ]);
+
+function validDetailsChildren(children: readonly { type?: string }[]) {
+  return children.length === 2 && children[0].type === 'detailsSummary' && children[1].type === 'detailsContent';
+}
+
+function validRevealChildren(children: readonly { type?: string }[]) {
+  return children.length === 2 && children[0].type === 'revealInitial' && children[1].type === 'revealAnswer';
+}
+
+function validInteractiveChildren(type: string, children: readonly { type?: string }[]) {
+  switch (type) {
+    case 'details':
+      return validDetailsChildren(children);
+    case 'detailsSummary':
+      return children.every((child) => child.type === 'text');
+    case 'detailsContent':
+    case 'revealInitial':
+    case 'revealAnswer':
+      return children.length > 0 && children.every((child) => blockTypes.has(child.type!));
+    case 'reveal':
+      return validRevealChildren(children);
+    default:
+      return false;
+  }
+}
 
 /** Reject invalid nesting before an editor could silently discard or rearrange it. */
 function validChildren(type: string, content: unknown) {
   if (content !== undefined && !Array.isArray(content)) return false;
   const children = (content ?? []) as { type?: string }[];
   if (children.some((child) => !child || typeof child.type !== 'string')) return false;
+  if (['details', 'detailsSummary', 'detailsContent', 'reveal', 'revealInitial', 'revealAnswer'].includes(type))
+    return validInteractiveChildren(type, children);
   const every = (allowed: ReadonlySet<string>) => children.every((child) => allowed.has(child.type!));
   switch (type) {
     case 'doc':
@@ -145,6 +180,13 @@ function validRoot(value: unknown): value is BlockNode {
 
 function validAttributes(type: string, attrs: unknown) {
   if (type === 'linkCard' && !linkCardAttributesSchema.safeParse(attrs).success) return false;
+  if (
+    type === 'reveal' &&
+    (!attrs ||
+      typeof attrs !== 'object' ||
+      !['REVEAL', 'IMAGE_SWAP'].includes(String((attrs as Record<string, unknown>).kind)))
+  )
+    return false;
   return (
     attrs === undefined || Boolean(attrs && typeof attrs === 'object' && !Array.isArray(attrs) && validJson(attrs))
   );
@@ -158,6 +200,12 @@ export const blockDocumentSchema = z
   })
   .strict();
 export type BlockDocument = z.infer<typeof blockDocumentSchema>;
+
+/** Only the initial empty paragraph is blank. Lists, headings and intentional blank lines are document content. */
+export function blockDocumentIsEmpty(document: Pick<BlockDocument, 'root'>): boolean {
+  const blocks = document.root.content ?? [];
+  return !blocks.length || (blocks.length === 1 && blocks[0].type === 'paragraph' && !blocks[0].content?.length);
+}
 
 /** Stable attributes only; display URLs and editor-local keys never change a revision. */
 export function captureBlockDocument(

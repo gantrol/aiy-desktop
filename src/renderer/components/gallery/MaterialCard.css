@@ -9,3 +9,14 @@
 [data-image-overlay-contrast-support='true'] > svg {
   color: currentColor;
 }
+
+/* A first-frame sample cannot guarantee contrast for a changing image. */
+[data-material-kind]:has([data-media-animated='true']) [data-material-overlay] {
+  background: var(--image-overlay-copy-scrim);
+  color: var(--media-checker-a);
+}
+
+[data-material-kind]:has([data-media-animated='true']) [data-image-overlay-tone] {
+  color: var(--media-checker-a);
+  text-shadow: var(--image-overlay-contrast-shadow-light);
+}

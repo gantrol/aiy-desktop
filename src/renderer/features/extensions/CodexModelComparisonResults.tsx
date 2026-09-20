@@ -157,6 +157,7 @@ export function CodexModelComparisonResults({
               tokens={tokens}
               money={money}
               date={date}
+              samplesTruncated={analysis.samplesTruncated}
             />
             <Collapsible defaultOpen={false} className="min-w-0">
               <CollapsibleTrigger asChild>

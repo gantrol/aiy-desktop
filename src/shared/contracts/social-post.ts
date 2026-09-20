@@ -4,6 +4,7 @@ import { blockDocumentAssetIds, blockDocumentSchema } from '@/shared/contracts/b
 import { z } from 'zod';
 
 const idSchema = z.string().min(1).max(200);
+export const socialPostMediaLimit = 100;
 
 export const socialPostContentSchema = z
   .object({
@@ -12,7 +13,7 @@ export const socialPostContentSchema = z
     body: z.string().max(100_000).optional(),
     format: z.literal('markdown').optional(),
     document: blockDocumentSchema.optional(),
-    mediaAssetIds: z.array(idSchema).max(100),
+    mediaAssetIds: z.array(idSchema).max(socialPostMediaLimit),
     coverAssetId: idSchema.nullable(),
   })
   .strict()
@@ -43,7 +44,7 @@ const legacySocialPostContentSchema = z
     body: z.string().max(100_000),
     intent: z.enum(['SHARE', 'NOTE', 'PROMOTION']),
     platforms: z.array(z.enum(['WEIBO', 'WECHAT', 'XIAOHONGSHU'])).max(20),
-    mediaAssetIds: z.array(idSchema).max(100),
+    mediaAssetIds: z.array(idSchema).max(socialPostMediaLimit),
     coverAssetId: idSchema.nullable(),
   })
   .strict();

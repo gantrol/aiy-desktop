@@ -3,10 +3,11 @@ import { selectedWatermarkProfile, type NaturalWatermarkRuntime } from '@/main/e
 import type { ResolvedAssetFile } from '@/main/database/assets/asset-file-repository';
 import { readBoundedImageFile } from '@/main/media/bounded-image-file';
 import type { ArticleCopyForWechatInput, ArticleCopyForWechatResult, ArticleDto } from '@/shared/contracts';
+import { articleWechatInteractionProjection } from '@/shared/article-wechat-interactions';
 import {
   articleWechatImageReferences,
   normalizeArticleWechatMediaPath,
-  renderArticleForWechat,
+  renderArticleForWechatDocument,
   type ArticleWechatImageSource,
 } from '@/shared/article-wechat-renderer';
 
@@ -18,7 +19,7 @@ interface ArticleWechatCopyDatabase {
   resolveAssetFilesAsync(assetIds: readonly string[]): Promise<ReadonlyMap<string, ResolvedAssetFile>>;
   contentLibrary: Pick<
     import('@/main/database/creations/content-library-repository').ContentLibraryRepository,
-    'expandArticle'
+    'expandArticle' | 'render'
   >;
 }
 
@@ -99,10 +100,19 @@ export class ArticleWechatCopyService {
       });
     }
 
-    const rendered = renderArticleForWechat(article.content.markdown, imagesByPath, {
-      linksAsEndReferences: input.linksAsEndReferences,
-      referenceTitle: this.ports.referenceTitle?.(input.locale) ?? articleWechatMessages.referenceTitle,
-    });
+    const projection = articleWechatInteractionProjection(article.content.document, article.content.mediaBindings);
+    const expandedProjection = projection ? this.database.contentLibrary.render(projection.markdown).markdown : null;
+    const rendered = renderArticleForWechatDocument(
+      article.content.markdown,
+      projection,
+      expandedProjection,
+      article.content.mediaBindings,
+      imagesByPath,
+      {
+        linksAsEndReferences: input.linksAsEndReferences,
+        referenceTitle: this.ports.referenceTitle?.(input.locale) ?? articleWechatMessages.referenceTitle,
+      },
+    );
     if (Buffer.byteLength(rendered.html, 'utf8') > MAX_WECHAT_CLIPBOARD_HTML_BYTES) {
       throw new Error('The formatted article is too large to copy to WeChat at once');
     }

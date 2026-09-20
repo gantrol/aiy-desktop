@@ -3,6 +3,8 @@ import { blockDocumentSchema, type BlockDocument } from '@/shared/contracts/bloc
 import type { CodexContentApi } from '@/shared/contracts/codex-content';
 import { contentApplicationSchema, type ContentApplicationsApi } from '@/shared/contracts/content-applications';
 import type { ContentImageImportsApi } from '@/shared/contracts/content-image-import';
+import type { PetalWorkspaceApi } from '@/shared/contracts/petal-workspace';
+import type { PetalFlushReport } from '@/shared/petal-flush';
 import type { ContentLibraryApi } from '@/shared/contracts/content-library';
 import {
   petalColorSchema,
@@ -235,7 +237,7 @@ export interface DesktopPetalSourceEvent {
   item: CreationItemDto | null;
   open: boolean;
 }
-export interface DesktopPetalsApi extends ContentImageImportsApi {
+export interface DesktopPetalsApi extends ContentImageImportsApi, PetalWorkspaceApi {
   files(command: NoteFileCommand): Promise<DesktopNote>;
   preview(input: PetalPreviewRequest): Promise<PetalPreviewContent | null>;
   drawer(command: PetalDrawerCommand): Promise<void>;
@@ -300,7 +302,7 @@ export interface DesktopPetalsApi extends ContentImageImportsApi {
   openMain(): Promise<void>;
   onChanged(callback: () => void): () => void;
   onSourceChanged(callback: (event: DesktopPetalSourceEvent) => void): () => void;
-  onFlush(callback: (save?: boolean) => Promise<boolean>): () => void;
+  onFlush(callback: (save?: boolean, deadline?: number) => Promise<boolean | PetalFlushReport>): () => void;
 }
 
 export const petalReferenceFileSchema = z

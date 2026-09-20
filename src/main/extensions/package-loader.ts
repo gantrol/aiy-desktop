@@ -1,4 +1,4 @@
-import { readFileSync, readdirSync, statSync } from 'node:fs';
+import { open, readdir } from 'node:fs/promises';
 import path from 'node:path';
 import type { ExtensionManifestDto, ExtensionSource } from '@/shared/contracts';
 import { parseExtensionManifest } from '@/main/extensions/manifest';
@@ -19,10 +19,23 @@ export interface LoadedExtensionPackage {
   languageMessages: Record<string, unknown> | null;
 }
 
-function readJsonFile(filePath: string, maximumBytes: number): unknown {
-  const size = statSync(filePath).size;
-  if (size > maximumBytes) throw new Error(`Extension file is too large: ${filePath}`);
-  return JSON.parse(readFileSync(filePath, 'utf8')) as unknown;
+async function readJsonFile(filePath: string, maximumBytes: number): Promise<unknown> {
+  const file = await open(filePath, 'r');
+  try {
+    const metadata = await file.stat();
+    if (!metadata.isFile() || metadata.size > maximumBytes) throw new Error(`Invalid extension file: ${filePath}`);
+    const buffer = Buffer.alloc(maximumBytes + 1);
+    let length = 0;
+    while (length < buffer.length) {
+      const { bytesRead } = await file.read(buffer, length, buffer.length - length, null);
+      if (!bytesRead) break;
+      length += bytesRead;
+    }
+    if (length > maximumBytes) throw new Error(`Extension file is too large: ${filePath}`);
+    return JSON.parse(buffer.toString('utf8', 0, length)) as unknown;
+  } finally {
+    await file.close();
+  }
 }
 
 function asCatalog(value: unknown, extensionId: string): Record<string, unknown> {
@@ -32,8 +45,13 @@ function asCatalog(value: unknown, extensionId: string): Record<string, unknown>
   return value as Record<string, unknown>;
 }
 
-export function loadExtensionPackage(packagePath: string, source: ExtensionSource): LoadedExtensionPackage {
-  const manifest = parseExtensionManifest(readJsonFile(path.join(packagePath, 'manifest.json'), MAX_MANIFEST_BYTES));
+export async function loadExtensionPackage(
+  packagePath: string,
+  source: ExtensionSource,
+): Promise<LoadedExtensionPackage> {
+  const manifest = parseExtensionManifest(
+    await readJsonFile(path.join(packagePath, 'manifest.json'), MAX_MANIFEST_BYTES),
+  );
   if (manifest.kind === 'CAPABILITY') {
     validatePackagedCapabilityRuntime(manifest);
     return { manifest, source, packagePath, languageMessages: null };
@@ -41,28 +59,36 @@ export function loadExtensionPackage(packagePath: string, source: ExtensionSourc
   if (!manifest.language?.catalog)
     throw new Error(`External language extension ${manifest.id} is missing language.catalog`);
   const catalogPath = path.join(packagePath, manifest.language.catalog);
-  const languageMessages = asCatalog(readJsonFile(catalogPath, MAX_LANGUAGE_CATALOG_BYTES), manifest.id);
+  const languageMessages = asCatalog(await readJsonFile(catalogPath, MAX_LANGUAGE_CATALOG_BYTES), manifest.id);
   return { manifest, source, packagePath, languageMessages };
 }
 
 /** Discover one extension package per direct child directory. Invalid packages are isolated. */
-export function loadExtensionPackages(roots: readonly ExtensionPackageRoot[]): LoadedExtensionPackage[] {
+export async function loadExtensionPackages(roots: readonly ExtensionPackageRoot[]): Promise<LoadedExtensionPackage[]> {
   const packages: LoadedExtensionPackage[] = [];
   for (const root of roots) {
     let entries;
     try {
-      entries = readdirSync(root.rootPath, { withFileTypes: true });
+      entries = await readdir(root.rootPath, { withFileTypes: true });
     } catch {
       continue;
     }
-    for (const entry of entries.sort((left, right) => left.name.localeCompare(right.name))) {
-      if (!entry.isDirectory()) continue;
-      const packagePath = path.join(root.rootPath, entry.name);
-      try {
-        packages.push(loadExtensionPackage(packagePath, root.source));
-      } catch (error) {
-        console.warn('[extensions] skipped invalid package', packagePath, error);
-      }
+    const directories = entries
+      .filter((entry) => entry.isDirectory())
+      .sort((left, right) => left.name.localeCompare(right.name));
+    for (let index = 0; index < directories.length; index += 4) {
+      const loaded = await Promise.all(
+        directories.slice(index, index + 4).map(async (entry) => {
+          const packagePath = path.join(root.rootPath, entry.name);
+          try {
+            return await loadExtensionPackage(packagePath, root.source);
+          } catch (error) {
+            console.warn('[extensions] skipped invalid package', packagePath, error);
+            return null;
+          }
+        }),
+      );
+      for (const candidate of loaded) if (candidate) packages.push(candidate);
     }
   }
   return packages;

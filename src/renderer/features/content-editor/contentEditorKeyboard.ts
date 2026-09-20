@@ -1,7 +1,9 @@
 import { Extension, type Editor } from '@tiptap/core';
 import { Fragment } from '@tiptap/pm/model';
-import { TextSelection } from '@tiptap/pm/state';
+import { Plugin, TextSelection } from '@tiptap/pm/state';
 import type { EditorView } from '@tiptap/pm/view';
+import { deleteEmptyListLeaf } from '@/renderer/features/content-editor/contentListDeletion';
+import { commandMatchesShortcut } from '@/renderer/commands/app-shortcuts';
 
 function indentRootParagraphIntoPreviousListItem(editor: Editor) {
   const { state, view } = editor;
@@ -33,8 +35,10 @@ function indentRootParagraphIntoPreviousListItem(editor: Editor) {
   return true;
 }
 
-export function synchronizeVideoDocumentEditorSelectionFromDom(editor: Editor, editorView?: EditorView) {
+export function synchronizeContentEditorSelectionFromDom(editor: Editor, editorView?: EditorView) {
   const state = editor.state;
+  // A DOM caret cannot represent the editor's gap cursor or node selection semantics.
+  if (!(state.selection instanceof TextSelection)) return;
   const view = editorView ?? editor.view;
   const domSelection = view.dom.ownerDocument.getSelection();
   const anchorNode = domSelection?.anchorNode;
@@ -46,23 +50,56 @@ export function synchronizeVideoDocumentEditorSelectionFromDom(editor: Editor, e
     return;
   }
   if (position < 0 || position > state.doc.content.size) return;
-  const selection = TextSelection.near(state.doc.resolve(position), 1);
+  const $position = state.doc.resolve(position);
+  // Searching near a block boundary can select the next image instead of the gap before it.
+  if (!$position.parent.inlineContent) return;
+  const selection = TextSelection.create(state.doc, position);
   if (selection.eq(state.selection)) return;
   view.dispatch(state.tr.setSelection(selection));
 }
 
-export const VideoDocumentListIndent = Extension.create({
-  name: 'videoDocumentListIndent',
+export const ContentEditorKeyboard = Extension.create({
+  name: 'contentEditorKeyboard',
   priority: 1_000,
+  addProseMirrorPlugins() {
+    return [
+      new Plugin({
+        props: {
+          handleKeyDown: (view, event) => {
+            if (event.isComposing || view.composing) return false;
+            if (event.key === 'Enter' && event.repeat) {
+              event.preventDefault();
+              return true;
+            }
+            if (event.key === 'Enter' || event.key === 'Tab') {
+              synchronizeContentEditorSelectionFromDom(this.editor, view);
+            }
+            if (event.key === 'Tab' && !event.shiftKey && !event.altKey && !event.ctrlKey && !event.metaKey) {
+              return (
+                indentRootParagraphIntoPreviousListItem(this.editor) ||
+                this.editor.commands.sinkListItem(this.editor.isActive('taskItem') ? 'taskItem' : 'listItem')
+              );
+            }
+            for (let level = 2; level <= 6; level += 1) {
+              if (!commandMatchesShortcut(event, window.desktopApi?.appPlatform ?? 'win32', `format.heading.${level}`))
+                continue;
+              event.preventDefault();
+              this.editor
+                .chain()
+                .setHeading({ level: level as 2 | 3 | 4 | 5 | 6 })
+                .run();
+              return true;
+            }
+            return false;
+          },
+        },
+      }),
+    ];
+  },
   addKeyboardShortcuts() {
     return {
-      Tab: () => {
-        synchronizeVideoDocumentEditorSelectionFromDom(this.editor);
-        return (
-          indentRootParagraphIntoPreviousListItem(this.editor) ||
-          this.editor.commands.sinkListItem(this.editor.isActive('taskItem') ? 'taskItem' : 'listItem')
-        );
-      },
+      Backspace: () => deleteEmptyListLeaf(this.editor, -1),
+      Delete: () => deleteEmptyListLeaf(this.editor, 1),
     };
   },
 });

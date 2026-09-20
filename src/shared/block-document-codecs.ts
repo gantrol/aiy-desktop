@@ -8,7 +8,7 @@ import TaskList from '@tiptap/extension-task-list';
 import { MarkdownManager } from '@tiptap/markdown';
 import StarterKit from '@tiptap/starter-kit';
 import { linkCardMarkdown } from '@/shared/link-card-document';
-import type { PhrasingContent, RootContent } from 'mdast';
+import type { List, PhrasingContent, RootContent } from 'mdast';
 
 const image = Node.create({
   name: 'image',
@@ -62,27 +62,52 @@ export function blockDocumentMarkdown(
   const signature = JSON.stringify(media.map((binding) => [binding.path, binding.assetId]));
   const previous = projections.get(document.root);
   if (previous?.signature === signature) return previous.markdown;
-  if (!media.length) {
+  const hasInteraction = (node: BlockNode): boolean =>
+    node.type === 'details' || node.type === 'reveal' || Boolean(node.content?.some(hasInteraction));
+  if (!media.length && !hasInteraction(document.root)) {
     const result = markdown.serialize(document.root);
     projections.set(document.root, { signature, markdown: result });
     return result;
   }
   const paths = new Map(media.map((binding) => [binding.assetId, binding.path]));
-  const project = (node: BlockNode): BlockNode => ({
-    ...node,
-    ...(node.type === 'image' && paths.has(node.attrs?.assetId)
-      ? {
-          attrs: {
-            ...node.attrs,
-            sourcePath:
-              media.find((binding) => binding.assetId === node.attrs?.assetId && binding.path === node.attrs?.mediaPath)
-                ?.path ?? paths.get(node.attrs?.assetId),
-          },
-        }
-      : {}),
-    ...(node.content ? { content: node.content.map(project) } : {}),
-  });
-  const result = markdown.serialize(project(document.root));
+  const project = (node: BlockNode): BlockNode[] => {
+    if (node.type === 'details') {
+      const [summary, body] = node.content ?? [];
+      const heading: BlockNode[] = summary?.content?.length
+        ? [
+            {
+              type: 'paragraph',
+              content: summary.content.map((child) => ({
+                ...child,
+                marks: child.marks?.some((mark) => mark.type === 'bold')
+                  ? child.marks
+                  : [...(child.marks ?? []), { type: 'bold' }],
+              })),
+            },
+          ]
+        : [];
+      return [...heading, ...(body?.content ?? []).flatMap(project)];
+    }
+    if (node.type === 'reveal') return (node.content ?? []).flatMap((stage) => (stage.content ?? []).flatMap(project));
+    return [
+      {
+        ...node,
+        ...(node.type === 'image' && paths.has(node.attrs?.assetId)
+          ? {
+              attrs: {
+                ...node.attrs,
+                sourcePath:
+                  media.find(
+                    (binding) => binding.assetId === node.attrs?.assetId && binding.path === node.attrs?.mediaPath,
+                  )?.path ?? paths.get(node.attrs?.assetId),
+              },
+            }
+          : {}),
+        ...(node.content ? { content: node.content.flatMap(project) } : {}),
+      },
+    ];
+  };
+  const result = markdown.serialize(project(document.root)[0]!);
   projections.set(document.root, { signature, markdown: result });
   return result;
 }
@@ -103,6 +128,30 @@ export function plainTextBlockDocument(text: string): BlockDocument {
           ]),
       })),
   });
+}
+
+function markdownListBlocks(node: List, visit: (node: RootContent) => BlockNode[]): BlockNode[] {
+  const lists: BlockNode[] = [];
+  for (const [index, item] of node.children.entries()) {
+    // GFM permits mixed items; the document schema requires homogeneous list containers.
+    const task = item.checked != null;
+    const type = task ? 'taskList' : node.ordered ? 'orderedList' : 'bulletList';
+    let list = lists.at(-1);
+    if (!list || list.type !== type) {
+      list = {
+        type,
+        ...(type === 'orderedList' ? { attrs: { start: (node.start ?? 1) + index } } : {}),
+        content: [],
+      };
+      lists.push(list);
+    }
+    list.content!.push({
+      type: task ? 'taskItem' : 'listItem',
+      ...(task ? { attrs: { checked: item.checked === true } } : {}),
+      content: item.children.flatMap(visit),
+    });
+  }
+  return lists;
 }
 
 /** Legacy Markdown is imported once, without a browser DOM or execution of embedded HTML. */
@@ -194,20 +243,8 @@ export function markdownBlockDocument(
       }
       case 'blockquote':
         return [{ type: 'blockquote', content: children() }];
-      case 'list': {
-        const task = node.children.some((item) => item.checked != null);
-        return [
-          {
-            type: task ? 'taskList' : node.ordered ? 'orderedList' : 'bulletList',
-            ...(node.ordered && !task ? { attrs: { start: node.start ?? 1 } } : {}),
-            content: node.children.map((item) => ({
-              type: task ? 'taskItem' : 'listItem',
-              ...(task ? { attrs: { checked: item.checked === true } } : {}),
-              content: item.children.flatMap(visit),
-            })),
-          },
-        ];
-      }
+      case 'list':
+        return markdownListBlocks(node, visit);
       case 'table':
         return [
           {
@@ -228,6 +265,14 @@ export function markdownBlockDocument(
   // Markdown allows images and HTML among paragraph text. The editor's image nodes are blocks.
   const normalize = (node: BlockNode): BlockNode[] => {
     const content = node.content?.flatMap(normalize);
+    if (node.type === 'listItem' || node.type === 'taskItem') {
+      return [
+        {
+          ...node,
+          content: content?.[0]?.type === 'paragraph' ? content : [{ type: 'paragraph' }, ...(content ?? [])],
+        },
+      ];
+    }
     if (node.type !== 'paragraph' || !content?.some((child) => child.type === 'image'))
       return [{ ...node, ...(content ? { content } : {}) }];
     const result: BlockNode[] = [];
@@ -271,6 +316,11 @@ export function blockDocumentText(document: BlockDocument): string {
           'tableRow',
           'tableCell',
           'tableHeader',
+          'details',
+          'detailsContent',
+          'reveal',
+          'revealInitial',
+          'revealAnswer',
         ].includes(node.type ?? '')
           ? '\n\n'
           : '',

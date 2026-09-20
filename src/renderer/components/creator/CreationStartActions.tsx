@@ -6,6 +6,7 @@ import {
   ImageIcon,
   ImportIcon,
   LoaderCircleIcon,
+  ListTreeIcon,
   VideoIcon,
 } from 'lucide-react';
 import type { GenerationTargetInput, ImageGenerationRouteDto, Locale } from '@/shared/contracts';
@@ -16,7 +17,7 @@ import { Button } from '@/renderer/components/ui/button';
 import { useI18n } from '@/renderer/i18n/useI18n';
 import { cn } from '@/renderer/lib/utils';
 
-export type CreationStartPlan = { kind: 'manuscript' } | { kind: 'animation' };
+export type CreationStartPlan = { kind: 'manuscript' } | { kind: 'animation' } | { kind: 'outline' };
 
 interface Props {
   locale: Locale;
@@ -60,6 +61,7 @@ export function CreationStartActions({
   onGenerate,
 }: Props) {
   const labels = useI18n().messages.creator.startActions;
+  const outlineCopy = useI18n().messages.referenceOutline;
   const [localImageToolsOpen, setImageToolsOpen] = useState(false);
   const imageToolsOpen = controlledImageToolsOpen ?? localImageToolsOpen;
   const blocked = starting || stashing;
@@ -67,6 +69,17 @@ export function CreationStartActions({
   return (
     <section data-creation-start-actions className="mt-4 border-t pt-3">
       <div className="flex flex-wrap items-center gap-1.5">
+        <Button
+          type="button"
+          variant="ghost"
+          size="sm"
+          disabled={blocked}
+          onClick={() => onStartCreation({ kind: 'outline' })}
+          data-action="create-outline"
+        >
+          <ListTreeIcon className="size-4" />
+          {outlineCopy.newOutline}
+        </Button>
         <Button
           type="button"
           variant={imageToolsOpen ? 'secondary' : 'ghost'}

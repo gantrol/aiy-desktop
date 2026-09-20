@@ -11,6 +11,12 @@
 
 Codex App Server 使用已有的 Codex 登录态。OpenAI、DeepSeek 和其他图像 API 扩展需要各自的连接配置；切换模型不会替换或清除另一家服务的凭据。
 
+如需通过 CLIProxyAPI（CPA）反代图像请求，启用“Codex 后台图片 · CPA”扩展，在其设置中填写 CPA 的 API 基础地址和 **CPA 自己的 API Key**。本机默认地址为 `http://127.0.0.1:8317/v1`；远端地址须使用 HTTPS。保存后点击“验证连接”，再在创作台选择带 `· CPA` 标识的 Flare 或 Sunburst 路由。此连接与官方 OpenAI Image API 连接分开保存。
+
+CPA 路由向所填地址请求 `/v1/images/generations` 或 `/v1/images/edits`，具体走哪条路径取决于是否含参考图、编辑原图或蒙版。`/models` 验证只检查连接及模型列表；它不能证明部署中的 CPA 版本已支持图像端点。实际生图若返回路由或模型错误，应核对 CPA 版本、上游账号和服务端配置。
+
+OpenAI Image API 的 Flare、Sunburst 路由可选择 `low`、`medium`、`high`、`xhigh`、`max` 五档质量；GPT Image 2 路由仍只提供前三档。质量档位随所选模型显示，不能将某一模型的档位直接套用到另一模型。模型能力以 [OpenAI 图片生成指南](https://developers.openai.com/api/docs/guides/image-generation) 为依据，实际可用性仍取决于连接和账号。
+
 ## 2. 创建输入
 
 在创作台新建创作，填写目标描述，按需要添加参考图、词典词条或词盘 Prompt。先用一张参考图和一次生成验证连接，确认可用后再扩大批量。

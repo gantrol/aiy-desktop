@@ -4,6 +4,7 @@ import path from 'node:path';
 import { readBoundedImageFile } from '@/main/media/bounded-image-file';
 import { imageDimensions } from '@/main/media/image-dimensions';
 import { gifMetadata } from '@/shared/gif-metadata';
+import { inspectUploadImage, orientedUploadImageDimensions, uploadImageDimensions } from '@/shared/upload-image-policy';
 import {
   IMAGE_DECODER_REQUEST_CHANNEL,
   IMAGE_DECODER_RESPONSE_CHANNEL,
@@ -261,6 +262,32 @@ function validateWatermarkAnimation(
   }
 }
 
+function validateCompressedResponse(
+  request: Extract<ImageDecoderRequest, { operation: 'compress' }>,
+  response: ImageDecoderSuccessResponse,
+) {
+  if (response.operation !== 'compress' || response.outputMimeType !== request.sourceMimeType) {
+    throw new Error('UPLOAD_IMAGE_ENCODING_FAILED');
+  }
+  const source = inspectUploadImage(request.sourceBytes, request.sourceMimeType);
+  const sourceDimensions = orientedUploadImageDimensions(source);
+  const expected = uploadImageDimensions(sourceDimensions.width, sourceDimensions.height);
+  const output = inspectUploadImage(response.outputBytes, response.outputMimeType);
+  if (
+    source.animated ||
+    output.animated ||
+    output.orientation !== 1 ||
+    response.sourceWidth !== sourceDimensions.width ||
+    response.sourceHeight !== sourceDimensions.height ||
+    response.width !== expected.width ||
+    response.height !== expected.height ||
+    output.width !== response.width ||
+    output.height !== response.height
+  ) {
+    throw new Error('UPLOAD_IMAGE_ENCODING_FAILED');
+  }
+}
+
 function validateResponseSemantics(
   request: ImageDecoderRequest,
   response: ImageDecoderSuccessResponse,
@@ -268,6 +295,10 @@ function validateResponseSemantics(
 ) {
   if (!matchesSourceDimensions(response, header, request.sourceMimeType)) {
     throw new Error('Image decoder source dimensions do not match the image header');
+  }
+
+  if (request.operation === 'compress') {
+    return validateCompressedResponse(request, response);
   }
 
   if (request.operation === 'thumbnail') {

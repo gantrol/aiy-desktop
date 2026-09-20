@@ -1,6 +1,5 @@
-import { contentAssetPath } from '@/shared/content-document';
 import { contentImageNumber } from '@/shared/content-image-number';
-import { contentMarkdownText } from '@/shared/content-markdown';
+import { projectNumberedGallery } from '@/shared/content-publishing-mask';
 import type { BrowserCompanionSource, BrowserCompanionStageInput, BrowserCompanionTarget } from '@/shared/contracts';
 import type { DesktopPetalMessages } from '@/shared/i18n/desktop-petals';
 import { xiaohongshuHandoffError } from '@/shared/xiaohongshu-publishing';
@@ -8,6 +7,7 @@ import { xiaohongshuHandoffError } from '@/shared/xiaohongshu-publishing';
 export function prepareImagePostHandoff({
   body,
   format,
+  leadingMediaAssetIds = [],
   mediaAssetIds,
   mediaBindings,
   source,
@@ -18,6 +18,7 @@ export function prepareImagePostHandoff({
 }: {
   body: string;
   format: 'markdown' | 'plain';
+  leadingMediaAssetIds?: readonly string[];
   mediaAssetIds: readonly string[];
   mediaBindings: readonly { path: string; assetId: string }[];
   source: BrowserCompanionSource;
@@ -26,32 +27,23 @@ export function prepareImagePostHandoff({
   copy: DesktopPetalMessages['document'];
   notify(message: string): void;
 }): Omit<BrowserCompanionStageInput, 'target' | 'watermark'> | null {
-  const orderedIds = [...new Set(mediaAssetIds)];
-  const imagePositions = new Map(orderedIds.map((id, index) => [id, index + 1]));
-  const assetsByPath = new Map(mediaBindings.map((binding) => [binding.path, binding.assetId]));
-  for (const id of new Set([...orderedIds, ...mediaBindings.map((binding) => binding.assetId)])) {
-    assetsByPath.set(contentAssetPath(id), id);
-    assetsByPath.set('aiy-media://asset/' + encodeURIComponent(id), id);
-  }
-  let missingImage = false;
-  const text =
+  const projected =
     format === 'markdown'
-      ? contentMarkdownText(body, (url) => {
-          const id = assetsByPath.get(url);
-          if (!id) {
-            missingImage = true;
-            return '';
-          }
-          let position = imagePositions.get(id);
-          if (!position) {
-            orderedIds.push(id);
-            position = orderedIds.length;
-            imagePositions.set(id, position);
-          }
-          return copy.imageNumber.replace('{number}', contentImageNumber(position, copy.numbering));
+      ? projectNumberedGallery({
+          markdown: body,
+          leadingMediaAssetIds,
+          mediaAssetIds,
+          mediaBindings,
+          numbering: copy.numbering,
+          imageLabel: (position) => copy.imageNumber.replace('{number}', contentImageNumber(position, copy.numbering)),
         })
-      : body.trim();
-  if (missingImage) {
+      : {
+          text: body.trim(),
+          mediaAssetIds: [...new Set([...leadingMediaAssetIds, ...mediaAssetIds])],
+          missingImages: [],
+        };
+  const { text, mediaAssetIds: orderedIds } = projected;
+  if (projected.missingImages.length) {
     notify(copy.missingImage);
     return null;
   }

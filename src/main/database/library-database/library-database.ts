@@ -13,6 +13,8 @@ import {
 import markInterruptedRunsSql from '@/main/database/sql/mark-interrupted-runs.sql?raw';
 import { LibraryStorage } from '@/main/database/core/storage';
 import type { FacetSystemRole } from '@/shared/contracts';
+import { PackSyncRepository } from '@/main/database/packs/pack-sync-repository';
+import type { PackSyncSummary } from '@/shared/pack-sync';
 
 export interface LibraryDatabaseInitializeOptions {
   /** The detached generation worker owns this recovery boundary in desktop runtime. */
@@ -75,6 +77,7 @@ class LibraryDatabaseCore {
     }
     if (localSpaceIdentity) packs.synchronizeLocalSpaceIdentity(localSpaceIdentity);
     packs.reconcileInterruptedPackInstallAttempts();
+    new PackSyncRepository(this.storage).interruptRunning();
     if (options.recoverGenerationRuns !== false) {
       db.transaction(() => db.exec(markInterruptedRunsSql))();
     }
@@ -95,6 +98,20 @@ class LibraryDatabaseCore {
    * outside initialize() so external content can never become a boot dependency.
    */
   importFixture(fixturePath: string, options: FixtureImportOptions = {}) {
+    return this.importFixtures([{ fixturePath, options }]);
+  }
+
+  importFixtures(
+    fixtures: readonly { fixturePath: string; options?: FixtureImportOptions }[],
+    kind: PackSyncSummary['kind'] = 'CONTENT_PACK',
+  ) {
+    if (!fixtures.length || fixtures.length > 100) throw new Error('Pack sync requires 1 to 100 fixtures');
+    return new PackSyncRepository(this.storage).run(kind, (syncRunId) => {
+      for (const fixture of fixtures) this.importFixtureInSync(fixture.fixturePath, fixture.options ?? {}, syncRunId);
+    });
+  }
+
+  private importFixtureInSync(fixturePath: string, options: FixtureImportOptions, syncRunId: string) {
     const { db, fixturePacks, storage } = this.repositories;
     if (options.profile && !options.dictionaryPath) {
       throw new Error('A content package import requires an explicit dictionary path');
@@ -107,6 +124,17 @@ class LibraryDatabaseCore {
         }
       : null;
     const fixturePackSource = options.profile ? fixturePacks.prepare(options.profile, sourcePaths!) : null;
+    const syncs = new PackSyncRepository(storage);
+    const syncItem = fixturePackSource
+      ? {
+          packId: fixturePackSource.profile.id,
+          title: fixturePackSource.profile.displayName.slice(0, 300),
+          version: fixturePackSource.releaseVersion,
+        }
+      : null;
+    if (fixturePackSource && syncItem && !fixturePacks.isCurrent(fixturePackSource)) {
+      syncs.recordItem(syncRunId, { ...syncItem, status: 'RUNNING' });
+    }
     reconcileFixture(storage, fixturePath, {
       assetsRoot: options.assetsRoot,
       dictionaryPath: options.dictionaryPath,
@@ -114,10 +142,12 @@ class LibraryDatabaseCore {
     });
     if (options.facetRoles) assignFacetSystemRoles(db, options.facetRoles);
     if (fixturePackSource && !fixturePacks.isCurrent(fixturePackSource)) {
-      fixturePacks.ensure(fixturePackSource);
-    }
-    if (fixturePackSource && !fixturePacks.isCurrent(fixturePackSource)) {
-      throw new Error(`Content package did not converge: ${fixturePackSource.profile.id}`);
+      if (syncItem) syncs.recordItem(syncRunId, { ...syncItem, status: 'RUNNING' });
+      fixturePacks.ensure(fixturePackSource, syncRunId);
+      if (!fixturePacks.isCurrent(fixturePackSource)) {
+        throw new Error(`Content package did not converge: ${fixturePackSource.profile.id}`);
+      }
+      if (syncItem) syncs.recordItem(syncRunId, { ...syncItem, status: 'SUCCEEDED' });
     }
   }
 
@@ -125,15 +155,25 @@ class LibraryDatabaseCore {
     return this.repositories.contentPacks.importPackage(packagePath);
   }
 
+  importBuiltinContentPacks(packagePaths: readonly string[]) {
+    return this.repositories.contentPacks.importPackages(packagePaths, 'BUILTIN');
+  }
+
   previewContentPack(packagePath: string) {
     return this.repositories.contentPacks.previewPackage(packagePath);
   }
 
-  importPreviewedContentPack(packagePath: string, expectedContentHash: string, expectedPackageFingerprint: string) {
+  importPreviewedContentPack(
+    packagePath: string,
+    expectedContentHash: string,
+    expectedPackageFingerprint: string,
+    signal?: AbortSignal,
+  ) {
     return this.repositories.contentPacks.importPreviewedPackage(
       packagePath,
       expectedContentHash,
       expectedPackageFingerprint,
+      signal,
     );
   }
 

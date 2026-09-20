@@ -1,5 +1,5 @@
 import { CheckIcon, LoaderCircleIcon } from 'lucide-react';
-import { useMemo } from 'react';
+import { useLayoutEffect, useMemo, useRef, useState } from 'react';
 import type { ArticleDto, AssetDto, DerivedVisualAdoptInput, DerivedVisualDto } from '@/shared/contracts';
 import { articleVisualPositionState } from '@/shared/derived-visual-media';
 import { DerivedVisualPositionRelocation } from '@/renderer/components/creator/DerivedVisualPositionRelocation';
@@ -10,6 +10,7 @@ import {
   useDerivedVisualOperations,
   type DerivedVisualOperationRunner,
 } from '@/renderer/components/creator/useDerivedVisualOperations';
+import { prepareArticleCoverAdoption } from '@/renderer/components/creator/article-editor/prepareArticleCoverAdoption';
 import { DerivedVisualOperationHistory } from '@/renderer/components/creator/DerivedVisualOperationHistory';
 
 interface Props {
@@ -21,8 +22,79 @@ interface Props {
   currentAsset?: AssetDto | null;
   currentAssetId: string | null;
   candidateAssetId: string;
+  candidateAsset?: AssetDto;
   runOperation: DerivedVisualOperationRunner;
   refresh(): Promise<void>;
+}
+
+function isAppliedCandidate({
+  visual,
+  currentAssetId,
+  candidateAssetId,
+  targetArticle,
+}: Pick<Props, 'visual' | 'currentAssetId' | 'candidateAssetId' | 'targetArticle'>) {
+  return (
+    currentAssetId === candidateAssetId ||
+    Boolean(
+      visual.coverRatio &&
+      targetArticle?.content.coverVariants?.some(
+        (cover) => cover.ratio === visual.coverRatio && cover.sourceAssetId === candidateAssetId,
+      ),
+    )
+  );
+}
+
+function usePreparedVisualAdoption({
+  visual,
+  candidateAssetId,
+  candidateAsset,
+  targetRevisionId,
+  controller,
+}: Pick<Props, 'visual' | 'candidateAssetId' | 'candidateAsset' | 'targetRevisionId'> & {
+  controller: ReturnType<typeof useDerivedVisualOperations>;
+}) {
+  const imageAlt = useI18n().messages.creator.derivedVisual.targetRoles.ARTICLE_INLINE;
+  const [preparing, setPreparing] = useState(false);
+  const [prepareError, setPrepareError] = useState(false);
+  const preparingRef = useRef(false);
+  const active = useRef<string | null>(null);
+  const candidateIdentity = `${visual.id}:${candidateAssetId}`;
+  useLayoutEffect(() => {
+    active.current = candidateIdentity;
+    return () => {
+      active.current = null;
+    };
+  }, [candidateIdentity]);
+  async function onAdopt(intent: DerivedVisualAdoptInput['intent']) {
+    if (controller.blocked || preparingRef.current || !targetRevisionId) return;
+    preparingRef.current = true;
+    setPreparing(true);
+    setPrepareError(false);
+    const expectedRevisionId =
+      visual.coverRatio && !visual.adoptedAt && visual.articleRevisionId ? visual.articleRevisionId : targetRevisionId;
+    try {
+      let imageAssetId = candidateAssetId;
+      if (visual.coverRatio) {
+        const asset =
+          candidateAsset ??
+          (
+            await window.desktopApi.materialImageAssetsResolve({
+              targets: [{ kind: 'IMAGE_ASSET', imageAssetId: candidateAssetId }],
+            })
+          )[0];
+        if (!asset || asset.id !== candidateAssetId) throw new Error('COVER_SOURCE_UNAVAILABLE');
+        imageAssetId = await prepareArticleCoverAdoption(visual, asset);
+      }
+      if (active.current !== candidateIdentity) return;
+      controller.adopt(imageAssetId, intent, { imageAlt, expectedRevisionId });
+    } catch {
+      if (active.current === candidateIdentity) setPrepareError(true);
+    } finally {
+      preparingRef.current = false;
+      if (active.current) setPreparing(false);
+    }
+  }
+  return { preparing, prepareError, onAdopt };
 }
 
 export function DerivedVisualAdoptionBar({
@@ -34,6 +106,7 @@ export function DerivedVisualAdoptionBar({
   currentAsset,
   currentAssetId,
   candidateAssetId,
+  candidateAsset,
   runOperation,
   refresh,
 }: Props) {
@@ -44,17 +117,23 @@ export function DerivedVisualAdoptionBar({
     run: runOperation,
     refresh,
   });
-  const busy = controller.busy;
-  const onAdopt = (intent: DerivedVisualAdoptInput['intent']) =>
-    controller.adopt(candidateAssetId, intent, { imageAlt: labels.targetRoles.ARTICLE_INLINE });
-  const labels = useI18n().messages.creator.derivedVisual;
+  const { preparing, prepareError, onAdopt } = usePreparedVisualAdoption({
+    visual,
+    candidateAssetId,
+    candidateAsset,
+    targetRevisionId,
+    controller,
+  });
+  const busy = controller.busy || preparing;
+  const { messages } = useI18n();
+  const labels = messages.creator.derivedVisual;
   const inline = visual.role === 'ARTICLE_INLINE';
   const position = useMemo(
     () => (inline && targetArticle ? articleVisualPositionState(visual, targetArticle) : null),
     [inline, targetArticle, visual],
   );
   const positionBlocked = inline && (!position || position.status === 'MISSING' || position.status === 'AMBIGUOUS');
-  const role = labels.targetRoles[visual.role];
+  const role = labels.targetRoles[visual.role] + (visual.coverRatio ? ` ${visual.coverRatio}` : '');
   const action = inline
     ? currentAssetId
       ? labels.replaceIllustration
@@ -62,7 +141,7 @@ export function DerivedVisualAdoptionBar({
     : visual.role === 'ARTICLE_HEADER'
       ? labels.setHero
       : labels.setCover;
-  const applied = currentAssetId === candidateAssetId;
+  const applied = isAppliedCandidate({ visual, currentAssetId, candidateAssetId, targetArticle });
 
   return (
     <div className="shrink-0 border-t border-border/60 bg-background p-2">
@@ -82,11 +161,11 @@ export function DerivedVisualAdoptionBar({
       <Button
         type="button"
         className="w-full"
-        disabled={controller.blocked || applied || !targetRevisionId || positionBlocked}
+        disabled={controller.blocked || preparing || applied || !targetRevisionId || positionBlocked}
         onClick={() => onAdopt(inline ? 'REPLACE_INLINE' : 'SET_COVER')}
       >
         {busy ? <LoaderCircleIcon className="size-4 animate-spin" /> : <CheckIcon className="size-4" />}
-        {applied ? labels.currentlyUsed : action}
+        {applied ? labels.currentlyUsed : action + (visual.coverRatio ? ` ${visual.coverRatio}` : '')}
       </Button>
       {inline && position?.status === 'AMBIGUOUS' && (
         <p role="alert" className="mt-2 text-xs text-destructive">
@@ -111,11 +190,16 @@ export function DerivedVisualAdoptionBar({
           type="button"
           variant="ghost"
           className="mt-1 w-full"
-          disabled={controller.blocked || !targetRevisionId}
+          disabled={controller.blocked || preparing || !targetRevisionId}
           onClick={() => onAdopt('SET_COVER_AND_FIRST')}
         >
           {labels.setCoverAndFirst}
         </Button>
+      )}
+      {prepareError && (
+        <div role="alert" className="mt-2 text-xs text-destructive">
+          {messages.contentEditor.coverEditor.failed}
+        </div>
       )}
       <DerivedVisualOperationHistory controller={controller} />
     </div>

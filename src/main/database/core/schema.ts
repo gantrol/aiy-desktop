@@ -1,4 +1,6 @@
 import { articleDraftShape, ensureArticleDrafts } from '@/main/database/creations/article-draft-schema';
+import { calendarSchemaShape, ensureCalendarSchema } from '@/main/database/calendar/calendar-schema';
+import { packSyncSchemaComplete, ensurePackSyncSchema } from '@/main/database/packs/pack-sync-schema';
 import type Database from 'better-sqlite3';
 import { ensureGifMakingSchema, gifMakingShape } from '@/main/database/core/gif-making-schema';
 import {
@@ -66,8 +68,8 @@ import * as articleDeliverySchema from '@/main/database/extensions/article-deliv
 import * as assistantRunSchema from '@/main/database/assistant/assistant-run-schema';
 
 export const DATABASE_PRODUCT_BASELINE = '0.3.0';
-// v0.3.11 consolidates desktop notes and content-save protection in one forward revision.
-export const DATABASE_SCHEMA_REVISION = 6;
+// v0.5.4 consolidates calendar, pack-sync and delivery changes in one forward revision.
+export const DATABASE_SCHEMA_REVISION = 7;
 
 const releasedRevision1RequiredTables = [
   'albums',
@@ -538,17 +540,15 @@ function ensureVideoDocumentBranchesSupportNotes(db: Database.Database) {
   if (!videoDocumentBranchesSupportNotes(db)) db.exec(revision2VideoDocumentNotesSql);
 }
 
-function videoDocumentTranscriptionRunsAvailable(db: Database.Database) {
-  return tableNames(db).has('video_document_transcription_runs');
-}
+const videoDocumentTranscriptionRunsAvailable = (db: Database.Database) =>
+  tableNames(db).has('video_document_transcription_runs');
 
 function ensureVideoDocumentTranscriptionRuns(db: Database.Database) {
   if (!videoDocumentTranscriptionRunsAvailable(db)) db.exec(revision2VideoDocumentAiActivitiesSql);
 }
 
-function videoDocumentTranslationRunsAvailable(db: Database.Database) {
-  return tableNames(db).has('video_document_translation_runs');
-}
+const videoDocumentTranslationRunsAvailable = (db: Database.Database) =>
+  tableNames(db).has('video_document_translation_runs');
 
 function ensureVideoDocumentTranslationRuns(db: Database.Database) {
   if (!videoDocumentTranslationRunsAvailable(db)) db.exec(revision2VideoDocumentTranslationsSql);
@@ -722,15 +722,15 @@ const currentFeatureShapeChecks = [
   socialPostSaveShape,
   derivedVisualStorageComplete,
   articleDraftShape,
+  calendarSchemaShape,
+  packSyncSchemaComplete,
 ] as const;
 
-function currentFeatureShapesComplete(db: Database.Database) {
-  return currentFeatureShapeChecks.every((check) => [true, 'COMPLETE'].includes(check(db)));
-}
+const currentFeatureShapesComplete = (db: Database.Database) =>
+  currentFeatureShapeChecks.every((check) => [true, 'COMPLETE'].includes(check(db)));
 
-function isCurrentSchemaShape(db: Database.Database) {
-  return isRevision3SchemaShape(db) && currentFeatureShapesComplete(db) && creationCompositionComplete(db);
-}
+const isCurrentSchemaShape = (db: Database.Database) =>
+  isRevision3SchemaShape(db) && currentFeatureShapesComplete(db) && creationCompositionComplete(db);
 
 function retireLegacyTitles(db: Database.Database) {
   assertRequiredTables(db, localizedRequiredTables);
@@ -831,6 +831,8 @@ function migrateReleasedDatabase(db: Database.Database) {
       ensureSocialPostSaves(db);
       ensureDerivedVisualStorage(db);
       ensureArticleDrafts(db);
+      ensureCalendarSchema(db);
+      ensurePackSyncSchema(db);
       if (!isCurrentSchemaShape(db)) unsupportedSchema();
 
       if (storedRevision !== DATABASE_SCHEMA_REVISION) {
@@ -881,9 +883,7 @@ export function initializeDatabaseSchema(db: Database.Database) {
     } finally {
       db.pragma('foreign_keys = ON');
     }
-  } else {
-    db.pragma('foreign_keys = ON');
-  }
+  } else db.pragma('foreign_keys = ON');
   // Keep the shipped baseline immutable: empty and existing libraries advance
   // through the same atomic forward-only revision.
   const migrated = migrateReleasedDatabase(db);

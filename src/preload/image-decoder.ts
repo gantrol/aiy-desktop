@@ -1,6 +1,15 @@
 import { ipcRenderer } from 'electron';
 import { watermarkGif } from '@/preload/gif-watermark';
 import {
+  BALANCED_UPLOAD_IMAGE_QUALITY,
+  MAX_UPLOAD_IMAGE_BYTES,
+  inspectUploadImage,
+  orientedUploadImageDimensions,
+  stripUploadImageExif,
+  uploadImageDimensions,
+  uploadImageOrientationTransform,
+} from '@/shared/upload-image-policy';
+import {
   IMAGE_DECODER_REQUEST_CHANNEL,
   IMAGE_DECODER_RESPONSE_CHANNEL,
   MAX_IMAGE_DECODER_PIXELS,
@@ -60,10 +69,14 @@ async function canvasPngBytes(canvas: OffscreenCanvas, maximumBytes = MAX_IMAGE_
   return bytes;
 }
 
-async function bitmapFromBytes(bytes: Uint8Array<ArrayBufferLike>, mimeType: string) {
+async function bitmapFromBytes(
+  bytes: Uint8Array<ArrayBufferLike>,
+  mimeType: string,
+  imageOrientation: ImageOrientation = 'from-image',
+) {
   const blob = new Blob([Uint8Array.from(bytes)], { type: mimeType });
   try {
-    return await createImageBitmap(blob);
+    return await createImageBitmap(blob, { imageOrientation });
   } catch (error) {
     if (mimeType !== 'image/svg+xml') throw error;
     const sourceUrl = URL.createObjectURL(blob);
@@ -311,6 +324,11 @@ async function watermarkOutput(canvas: OffscreenCanvas, sourceMimeType: Watermar
 }
 
 async function decodeRequest(request: ImageDecoderRequest): Promise<ImageDecoderSuccessResponse> {
+  const uploadMetadata =
+    request.operation === 'compress' ? inspectUploadImage(request.sourceBytes, request.sourceMimeType) : null;
+  if (uploadMetadata?.animated) {
+    throw new Error('UPLOAD_IMAGE_ANIMATION_REQUIRES_ORIGINAL');
+  }
   if (request.operation === 'watermark' && request.sourceMimeType === 'image/gif') {
     const logo = await bitmapFromBytes(request.logoBytes, request.logoMimeType);
     try {
@@ -333,11 +351,61 @@ async function decodeRequest(request: ImageDecoderRequest): Promise<ImageDecoder
       logo.close();
     }
   }
-  let bitmap: ImageBitmap | null = await sourceBitmap(request);
+  let bitmap: ImageBitmap | null =
+    request.operation === 'compress'
+      ? await bitmapFromBytes(
+          stripUploadImageExif(request.sourceBytes, request.sourceMimeType),
+          request.sourceMimeType,
+          'none',
+        )
+      : await sourceBitmap(request);
   try {
     assertSafeDimensions(bitmap.width, bitmap.height);
-    const sourceWidth = bitmap.width;
-    const sourceHeight = bitmap.height;
+    const { width: sourceWidth, height: sourceHeight } = uploadMetadata
+      ? orientedUploadImageDimensions(uploadMetadata)
+      : bitmap;
+
+    if (request.operation === 'compress') {
+      if (!uploadMetadata || bitmap.width !== uploadMetadata.width || bitmap.height !== uploadMetadata.height) {
+        throw new Error('UPLOAD_IMAGE_ENCODING_FAILED');
+      }
+      const { width, height } = uploadImageDimensions(sourceWidth, sourceHeight);
+      const canvas = new OffscreenCanvas(width, height);
+      try {
+        const context = canvas.getContext('2d', { alpha: true, colorSpace: 'srgb' });
+        if (!context) throw new Error('Chromium canvas is unavailable');
+        context.imageSmoothingEnabled = true;
+        context.imageSmoothingQuality = 'high';
+        context.scale(width / sourceWidth, height / sourceHeight);
+        context.transform(...uploadImageOrientationTransform(uploadMetadata));
+        context.drawImage(bitmap, 0, 0);
+        bitmap.close();
+        bitmap = null;
+        const blob = await canvas.convertToBlob({
+          type: request.sourceMimeType,
+          ...(request.sourceMimeType === 'image/png' ? {} : { quality: BALANCED_UPLOAD_IMAGE_QUALITY }),
+        });
+        if (blob.type !== request.sourceMimeType || !blob.size || blob.size > MAX_UPLOAD_IMAGE_BYTES) {
+          throw new Error('UPLOAD_IMAGE_ENCODING_FAILED');
+        }
+        const outputBytes = new Uint8Array(await blob.arrayBuffer());
+        if (outputBytes.byteLength !== blob.size) throw new Error('UPLOAD_IMAGE_ENCODING_FAILED');
+        return {
+          requestId: request.requestId,
+          operation: request.operation,
+          ok: true,
+          outputBytes,
+          outputMimeType: request.sourceMimeType,
+          width,
+          height,
+          sourceWidth,
+          sourceHeight,
+        };
+      } finally {
+        canvas.width = 1;
+        canvas.height = 1;
+      }
+    }
 
     if (request.operation === 'thumbnail') {
       const scale = Math.min(1, request.size / Math.max(bitmap.width, bitmap.height));

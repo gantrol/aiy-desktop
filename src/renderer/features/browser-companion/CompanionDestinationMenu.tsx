@@ -292,3 +292,57 @@ export function CompanionDestinationMenu({
     </DropdownMenu>
   );
 }
+
+/** A dialog-owned inventory avoids another browser scan when this picker mounts. */
+export function CompanionDestinationPicker({
+  busy,
+  state,
+  targets,
+  onChange,
+}: {
+  busy: boolean;
+  state: BrowserCompanionDestinationsResult | null;
+  targets: readonly BrowserCompanionTarget[];
+  onChange(state: BrowserCompanionDestinationsResult): void;
+}) {
+  const copy = useI18n().messages.browserCompanion;
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  async function selectDestination(
+    target: BrowserCompanionTarget,
+    browserId: BrowserCompanionBrowserId,
+    profileDirectory: string,
+  ) {
+    setLoading(true);
+    setError(null);
+    try {
+      onChange(await window.desktopApi.browserCompanionSelectDestination({ target, browserId, profileDirectory }));
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : String(reason));
+    } finally {
+      setLoading(false);
+    }
+  }
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <Button type="button" variant="outline" size="sm" disabled={busy || !targets.length}>
+          <Settings2Icon className="size-4" />
+          {copy.destinationSettings}
+        </Button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="start" className="w-64">
+        <CompanionDestinationOptions
+          busy={busy}
+          error={error}
+          loading={loading}
+          onSelect={(target, browserId, profileDirectory) =>
+            void selectDestination(target, browserId, profileDirectory)
+          }
+          state={state}
+          targets={targets}
+        />
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+}

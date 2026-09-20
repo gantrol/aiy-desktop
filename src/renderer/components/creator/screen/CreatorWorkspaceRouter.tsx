@@ -1,4 +1,4 @@
-import { lazy, type ComponentProps, type ReactNode } from 'react';
+import { lazy, useMemo, type ComponentProps, type ReactNode } from 'react';
 import type { ArticleDto, BootstrapDto, EvaluationSuiteDto, Locale, SocialPostDto } from '@/shared/contracts';
 import type { NavigationMode } from '@/renderer/components/app/app-navigation';
 import type { ContentLifecycleActionRequest } from '@/renderer/components/albums/useContentLifecycleActions';
@@ -11,6 +11,7 @@ import {
   naturalWatermarkBrowserCompanionAvailable,
   socialPostBrowserCompanionTargets,
 } from '@/renderer/features/browser-companion/browserCompanionTargets';
+import { articleProjectCoverAssets } from '@/renderer/components/creator/article-editor/articleProjectCoverAssets';
 import { CODEX_APP_SERVER_EXTENSION_ID } from '@/shared/extension-ids';
 
 const ArticleEditor = lazy(() =>
@@ -119,6 +120,10 @@ interface Props {
 }
 
 export function CreatorWorkspaceRouter(props: Props) {
+  const projectCoverAssets = useMemo(
+    () => (props.article ? articleProjectCoverAssets(props.data, props.article) : []),
+    [props.article, props.data],
+  );
   const visible =
     !props.documentWorkspaceActive &&
     !props.comparisonFullWindow &&
@@ -167,6 +172,7 @@ export function CreatorWorkspaceRouter(props: Props) {
             <ArticleEditor
               key={`${props.data.spaceId}:${props.article.id}`}
               article={props.article}
+              projectCoverAssets={projectCoverAssets}
               spaceId={props.data.spaceId}
               locale={props.locale}
               canvasPresets={props.data.canvasPresets}

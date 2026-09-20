@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { MAX_UPLOAD_IMAGE_BYTES } from '@/shared/upload-image-policy';
 import {
   NATURAL_WATERMARK_CUSTOM_LOGO_MAX_BYTES,
   NATURAL_WATERMARK_MAX_SIZE_RATIO,
@@ -20,7 +21,7 @@ export const MAX_IMAGE_DECODER_GIF_FRAMES = 1_000;
 export const MAX_IMAGE_DECODER_GIF_TOTAL_PIXELS = 256 * 1024 * 1024;
 
 const requestIdSchema = z.string().uuid();
-const operationSchema = z.enum(['thumbnail', 'crop', 'normalize', 'watermark']);
+const operationSchema = z.enum(['thumbnail', 'crop', 'normalize', 'watermark', 'compress']);
 export const imageDecoderSourceMimeTypeSchema = z.enum([
   'image/png',
   'image/jpeg',
@@ -44,9 +45,21 @@ const watermarkOutputBytesSchema = z
   .instanceof(Uint8Array)
   .refine((bytes) => bytes.byteLength > 0 && bytes.byteLength <= MAX_IMAGE_DECODER_WATERMARK_OUTPUT_BYTES);
 const watermarkOutputMimeTypeSchema = z.enum(['image/png', 'image/jpeg', 'image/webp', 'image/gif']);
+const compressedMimeTypeSchema = z.enum(['image/png', 'image/jpeg', 'image/webp']);
+const compressedBytesSchema = z
+  .instanceof(Uint8Array)
+  .refine((bytes) => bytes.byteLength > 0 && bytes.byteLength <= MAX_UPLOAD_IMAGE_BYTES);
 const dimensionSchema = z.number().int().positive().max(MAX_IMAGE_DECODER_DIMENSION);
 
 export const imageDecoderRequestSchema = z.discriminatedUnion('operation', [
+  z
+    .object({
+      requestId: requestIdSchema,
+      operation: z.literal('compress'),
+      sourceMimeType: compressedMimeTypeSchema,
+      sourceBytes: compressedBytesSchema,
+    })
+    .strict(),
   z
     .object({
       requestId: requestIdSchema,
@@ -102,6 +115,14 @@ const responseBase = {
 
 export const imageDecoderResponseSchema = z
   .union([
+    z
+      .object({
+        ...responseBase,
+        operation: z.literal('compress'),
+        outputBytes: compressedBytesSchema,
+        outputMimeType: compressedMimeTypeSchema,
+      })
+      .strict(),
     z.object({ ...responseBase, operation: z.literal('thumbnail'), pngBytes: thumbnailPngBytesSchema }).strict(),
     z
       .object({

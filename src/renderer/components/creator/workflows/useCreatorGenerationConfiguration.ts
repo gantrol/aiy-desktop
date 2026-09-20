@@ -53,8 +53,18 @@ export function useCreatorGenerationConfiguration(options: Options) {
   useEffect(() => {
     if (!routes.length) return;
     setGenerationTargets((current) => {
-      const available = current.filter((target) => routes.some((model) => model.key === target.modelKey));
-      if (available.length === current.length && available.length) return current;
+      const available = current.flatMap((target) => {
+        const route = routes.find((model) => model.key === target.modelKey);
+        if (!route) return [];
+        if (route.qualityMode !== 'SELECTABLE' || route.supportedQualities.includes(target.quality)) return [target];
+        const quality = route.supportedQualities.includes('medium')
+          ? 'medium'
+          : (route.supportedQualities[0] ?? target.quality);
+        return [{ ...target, quality }];
+      });
+      if (available.length === current.length && available.every((target, index) => target === current[index])) {
+        return current;
+      }
       if (available.length) return available;
       const defaults = initialGenerationTargets({ creationDraft: null, imageGenerationRoutes: routes });
       return defaults.length ? defaults : current;

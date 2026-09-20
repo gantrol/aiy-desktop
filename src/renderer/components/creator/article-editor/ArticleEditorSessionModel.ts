@@ -8,6 +8,8 @@ import type {
   ArticleRevisionSaveResult,
   VideoDocumentRevisionMediaDto,
 } from '@/shared/contracts';
+import { articleCoverAssetIds, type ArticleCoverRatio, type ArticleCoverVariant } from '@/shared/article-covers';
+import type { VideoDocumentEditorImageImport } from '@/renderer/features/content-editor/contentImageAsset';
 import {
   articleEditorSaveIdentity,
   articleEditorSaveIdentityMatches,
@@ -182,9 +184,90 @@ export class ArticleEditorSessionModel {
 
   setCover(assetId: string | null) {
     const state = this.#state;
-    if (state.lifecycle === 'disposed' || state.draft.metadata.coverAssetId === assetId) return;
+    if (state.lifecycle === 'disposed') return;
+    if (state.draft.metadata.coverAssetId === assetId && (assetId || !state.draft.metadata.coverVariants?.length))
+      return;
     if (assetId && !state.draft.metadata.mediaBindings.some((binding) => binding.assetId === assetId)) return;
-    this.#commit({ ...state, draft: { ...state.draft, metadata: { ...state.draft.metadata, coverAssetId: assetId } } });
+    this.#commit({
+      ...state,
+      draft: {
+        ...state.draft,
+        metadata: {
+          ...state.draft.metadata,
+          coverAssetId: assetId,
+          ...(assetId ? {} : { coverVariants: undefined }),
+        },
+      },
+    });
+  }
+
+  setCoverVariant(
+    ratio: ArticleCoverRatio,
+    variant: ArticleCoverVariant | null,
+    imported: readonly VideoDocumentEditorImageImport[],
+    bodyAssetIds: readonly string[],
+  ) {
+    const metadata = this.#state.draft.metadata;
+    const coverVariants = (metadata.coverVariants ?? []).filter((cover) => cover.ratio !== ratio);
+    if (variant) coverVariants.push({ ...variant, ratio });
+    return this.setCovers(
+      metadata.coverAssetId ?? variant?.sourceAssetId ?? null,
+      coverVariants,
+      imported,
+      bodyAssetIds,
+    );
+  }
+
+  setCovers(
+    coverAssetId: string | null,
+    coverVariants: readonly ArticleCoverVariant[],
+    imported: readonly VideoDocumentEditorImageImport[],
+    bodyAssetIds: readonly string[],
+  ) {
+    const state = this.#state;
+    if (state.lifecycle === 'disposed') return false;
+    const metadata = state.draft.metadata;
+    const retained = new Set([
+      ...bodyAssetIds,
+      ...(metadata.creationInput?.referenceAssetIds ?? []),
+      ...articleCoverAssetIds({ coverAssetId, coverVariants }),
+    ]);
+    const retired = new Set(
+      (metadata.coverVariants ?? []).flatMap((previous) =>
+        previous.assetId !== previous.sourceAssetId && !retained.has(previous.assetId) ? [previous.assetId] : [],
+      ),
+    );
+    const mediaBindings = metadata.mediaBindings.filter((binding) => !retired.has(binding.assetId));
+    for (const image of imported) {
+      if (!mediaBindings.some((binding) => binding.assetId === image.binding.assetId))
+        mediaBindings.push({ path: image.binding.path, assetId: image.binding.assetId });
+    }
+    if (
+      mediaBindings.length > 100 ||
+      articleCoverAssetIds({ coverAssetId, coverVariants }).some(
+        (id) => !mediaBindings.some((binding) => binding.assetId === id),
+      )
+    )
+      return false;
+    this.#commit({
+      ...state,
+      draft: {
+        ...state.draft,
+        metadata: {
+          ...metadata,
+          mediaBindings,
+          coverAssetId,
+          coverVariants: coverVariants.length
+            ? coverVariants.map((variant) => ({ ...variant, crop: { ...variant.crop } }))
+            : undefined,
+        },
+        media: mergeArticleEditorMedia(
+          state.draft.media.filter((asset) => !retired.has(asset.assetId)),
+          imported.map((image) => image.media),
+        ),
+      },
+    });
+    return true;
   }
 
   removeImage(assetId: string) {
@@ -201,6 +284,9 @@ export class ArticleEditorSessionModel {
         metadata: {
           ...state.draft.metadata,
           mediaBindings,
+          coverVariants: state.draft.metadata.coverVariants?.filter(
+            (cover) => cover.assetId !== assetId && cover.sourceAssetId !== assetId,
+          ),
           coverAssetId:
             currentCover && retainedAssetIds.has(currentCover) ? currentCover : (mediaBindings[0]?.assetId ?? null),
         },

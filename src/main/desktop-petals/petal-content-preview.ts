@@ -4,6 +4,7 @@ import type { PetalNoteService } from '@/main/desktop-petals/petal-note-service'
 import type { PetalBoard, DesktopPin } from '@/shared/contracts/petal-board';
 import type { DesktopNote } from '@/shared/contracts/desktop-petals';
 import { isContentPinId } from '@/shared/contracts/petal-board';
+import { mediaPosterUrl } from '@/shared/media-preview-policy';
 import { petalError } from '@/shared/petal-errors';
 import { petalLabel, petalPreviewRequestSchema, petalPreviewText } from '@/shared/petal-preview';
 
@@ -14,7 +15,9 @@ function describePetal(source: DesktopNote | DesktopPin, draft?: { text: string;
     text: Array.from(petalPreviewText(body)).slice(0, 400).join(''),
     mediaUrl:
       'mediaUrl' in source
-        ? source.mediaUrl
+        ? source.media?.mimeType.startsWith('image/')
+          ? mediaPosterUrl(source.media.id, 320)
+          : null
         : (source.references[0]?.mediaUrl ?? source.importedImages?.[0]?.mediaUrl ?? null),
   };
 }

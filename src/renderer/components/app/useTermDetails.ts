@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, type Dispatch, type SetStateAction } from 'react';
 import type { BootstrapDto, Locale } from '@/shared/contracts';
-import type { AppView } from '@/renderer/components/app/AppSidebar';
+import type { AppView } from '@/renderer/components/app/app-navigation';
 
 interface Options {
   data: BootstrapDto | null;

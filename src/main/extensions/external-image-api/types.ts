@@ -1,7 +1,10 @@
 import type { ExternalImageApiExtensionId } from '@/shared/extension-ids';
+import type { CPA_IMAGE_API_EXTENSION_ID } from '@/shared/extension-ids';
+
+export type ImageRuntimeExtensionId = ExternalImageApiExtensionId | typeof CPA_IMAGE_API_EXTENSION_ID;
 
 export interface ExternalImageApiRuntimeConfiguration {
-  extensionId: ExternalImageApiExtensionId;
+  extensionId: ImageRuntimeExtensionId;
   apiKey: string;
   settings: Record<string, string>;
   usable: boolean;

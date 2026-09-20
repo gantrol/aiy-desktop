@@ -51,6 +51,11 @@ export function derivedVisualAppliedAssetId(
     return post?.id === visual.socialPostId ? post.content.coverAssetId : null;
   }
   if (!article || article.id !== visual.articleId) return null;
-  if (visual.role === 'ARTICLE_HEADER') return article.content.coverAssetId;
+  if (visual.role === 'ARTICLE_HEADER')
+    return (
+      (visual.coverRatio
+        ? article.content.coverVariants?.find((cover) => cover.ratio === visual.coverRatio)?.assetId
+        : null) ?? article.content.coverAssetId
+    );
   return articleVisualPositionState(visual, article).binding?.assetId ?? null;
 }

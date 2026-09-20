@@ -1,33 +1,49 @@
-import { execFileSync } from 'node:child_process';
-import { existsSync } from 'node:fs';
+import { execFile } from 'node:child_process';
+import { access } from 'node:fs/promises';
+import { promisify } from 'node:util';
 
-const repositoryFiles = execFileSync('git', ['ls-files', '-z', '--cached', '--others', '--exclude-standard'], {
+const { stdout } = await promisify(execFile)('git', ['ls-files', '-z', '--cached', '--others', '--exclude-standard'], {
   encoding: 'utf8',
-})
-  .split('\0')
-  .filter((file) => file && existsSync(file));
+});
+const repositoryFiles = stdout.split('\0').filter(Boolean);
 
 const allowedTestAssets = [
-  /^tests\/smoke\//,
-  /^e2e\/smoke\//,
+  /^tests\/smoke\/startup-storage\.smoke\.test\.ts$/,
   /^vitest\.smoke\.config\.ts$/,
   /^playwright\.smoke\.config\.ts$/,
   /^scripts\/verify-public-smoke-boundary\.mjs$/,
 ];
 const testAssetCandidates = [
+  /(?:^|\/)[^/]+\.(?:test|spec)\.[cm]?[jt]sx?$/,
+  /(?:^|\/)(?:vitest|playwright)(?:\.[^/]*)?\.config\.[cm]?[jt]s$/,
+  /^design-lab\/cross-entry\//,
   /^tests\//,
   /^e2e\//,
   /^bench\//,
   /^vitest.*\.ts$/,
   /^playwright(?:\..*)?\.config\.ts$/,
   /^scripts\/(?:generate-image-fixtures|manual-openai-image-acceptance)\.mjs$/,
+  /^scripts\/verify-design-lab\.mjs$/,
 ];
 
-const disallowed = repositoryFiles.filter(
+const candidates = repositoryFiles.filter(
   (file) =>
     testAssetCandidates.some((pattern) => pattern.test(file)) &&
     !allowedTestAssets.some((pattern) => pattern.test(file)),
 );
+const disallowed = [];
+for (const file of candidates) {
+  if (file.toLowerCase().includes('trash')) {
+    disallowed.push(file);
+    continue;
+  }
+  try {
+    await access(file);
+    disallowed.push(file);
+  } catch (error) {
+    if (error.code !== 'ENOENT') throw error;
+  }
+}
 
 if (disallowed.length > 0) {
   console.error('Public smoke boundary check failed.');

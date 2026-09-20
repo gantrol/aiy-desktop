@@ -1,114 +1,140 @@
 <div align="center">
   <img src="build/icon.png" alt="AIY" width="104" />
-  <h1>AIY</h1>
-  <p><strong>AI × DIY</strong></p>
-  <p>You create. AI helps.</p>
-  <p>Collect and compare AI results, refine prompts, and build on what works</p>
+  <h1>AIY：AI 帮你 DIY</h1>
+  <p><strong>以人为主，AI辅助，从灵感到发布</strong></p>
   <p>
-    <a href="README.md"><img src="https://img.shields.io/badge/English-README-2563eb?style=flat-square" alt="English README" /></a>
-    <a href="README.zh-CN.md"><img src="https://img.shields.io/badge/%E7%AE%80%E4%BD%93%E4%B8%AD%E6%96%87-README-9f1239?style=flat-square" alt="简体中文 README" /></a>
+    <a href="https://apps.microsoft.com/detail/9nwd1hg6tczh"><strong>下载 Windows 版</strong></a> ·
+    <a href="README.en.md">English</a>
   </p>
-
   <p>
-    <a href="https://github.com/gantrol/aiy-desktop/releases/latest"><img src="https://img.shields.io/github/v/release/gantrol/aiy-desktop?display_name=tag&amp;style=flat-square&amp;label=release" alt="Latest release" /></a>
-    <a href="https://apps.microsoft.com/detail/9nwd1hg6tczh"><img src="https://img.shields.io/badge/platform-Windows%2010%2F11%20x64%20Store-4b5563?style=flat-square" alt="Windows 10/11 x64 Microsoft Store" /></a>
-    <a href="LICENSE"><img src="https://img.shields.io/badge/license-PolyForm%20Noncommercial%201.0.0-7c3aed?style=flat-square" alt="PolyForm Noncommercial 1.0.0" /></a>
-  </p>
-
-  <p>
-    <img src="https://img.shields.io/badge/SonarQube-4b5563?style=flat-square" alt="SonarQube" />&nbsp;
-    <img src="https://img.shields.io/badge/Reliability-A-2ea043?style=flat-square" alt="Reliability rating: A" />
-    <img src="https://img.shields.io/badge/Security-A-2ea043?style=flat-square" alt="Security rating: A" />
-    <img src="https://img.shields.io/badge/Maintainability-A-2ea043?style=flat-square" alt="Maintainability rating: A" />
-    <img src="https://img.shields.io/badge/Security%20Review-A-2ea043?style=flat-square" alt="Security review rating: A" />
-  </p>
-
-  <p>
-    <a href="https://github.com/gantrol/aiy-desktop/releases/latest"><strong>Release history</strong></a> ·
-    <a href="#what-you-can-do-today">Features</a> ·
-    <a href="#next-video--illustrated-article">What's next</a> ·
-    <a href="https://github.com/gantrol/aiy-desktop/issues">Feedback</a>
+    <a href="https://github.com/gantrol/aiy-desktop/releases"><img src="https://img.shields.io/github/v/release/gantrol/aiy-desktop?display_name=tag&amp;style=flat-square&amp;label=release" alt="GitHub 已发布版本" /></a>
+    <a href="https://apps.microsoft.com/detail/9nwd1hg6tczh"><img src="https://img.shields.io/badge/Windows-10%2F11%20x64-4b5563?style=flat-square" alt="Windows 10/11 x64" /></a>
+    <a href="LICENSE"><img src="https://img.shields.io/badge/license-PolyForm%20Noncommercial-4b5563?style=flat-square" alt="PolyForm Noncommercial 1.0.0" /></a>
   </p>
 </div>
 
-The four A badges above are code-analysis ratings from **SonarQube**: Reliability, Security, Maintainability, and Security Review.
 
-I often ran into the same problem after generating images with AI: the images kept piling up, while the prompts and original conversations were scattered across different places. A few days later, I could not find them either.
 
-So I built AIY.
 
-You can give it images and videos. It can even scan Codex's local image-generation records and import each image together with its original conversation. Then you can compare multiple results side by side, annotate specific regions, and keep editing.
+我用AI生图以后，经常遇到一个问题：图片越来越多，Prompt 和原会话却散落在不同地方，过几天自己都找不到。
 
-Prompts worth keeping can be organized into a dictionary or a “recipe”—a reusable prompt template with parameters.
+由此做了 AIY。有了初版图片管理功能。
 
-Generation can go through Codex, or you can configure your own API.
+在不断迭代中，发现了“从灵感到发布”这条需求线。由于最近AI功能都主要推荐用Codex跟ChatGPT，开发出拓展「Codex今天努力了吗」跟交接给ChatGPT等功能。
+
+
+## 从灵感到发布
 
 <table>
   <tr>
     <td width="50%" valign="top">
-      <a href="docs/assets/readme-creator.png"><img src="docs/assets/readme-creator.png" alt="AIY creation workbench with prompt versions, a model route, and generated results" /></a>
+      <a href="docs/assets/readme-inspiration.zh-CN.png"><img src="docs/assets/readme-inspiration.zh-CN.png" alt="AIY 桌面上的花瓣便签、计时器与参考图" /></a>
       <br />
-      <strong>Manage AI generation by result</strong><br />
+      <strong>灵感</strong>
+      <p>把便签和参考图贴到桌面，随时记下想法。</p>
     </td>
     <td width="50%" valign="top">
-      <a href="docs/assets/diff.png"><img src="docs/assets/diff.png" alt="AIY multi-dimensional comparison mode" /></a>
+      <a href="docs/assets/readme-comments.zh-CN.png"><img src="docs/assets/readme-comments.zh-CN.png" alt="AIY 正文中的评论锚点、回复浮窗和按处理状态分类的评论列表" /></a>
       <br />
-      <strong>Compare from multiple angles</strong>
+      <strong>评论与 AI 评论</strong>
+      <p>围绕正文添加评论，也可让 AI 检查并添加评论；逐条处理、解决或拒绝建议。</p>
     </td>
   </tr>
   <tr>
     <td width="50%" valign="top">
-      <a href="docs/assets/readme-dictionary.png"><img src="docs/assets/readme-dictionary.png" alt="AIY visual dictionary showing lighting terms and examples" /></a>
+      <a href="docs/assets/readme-article.zh-CN.png"><img src="docs/assets/readme-article.zh-CN.png" alt="AIY 图文编辑工作区，左侧为创作目录，中间为正文，右侧为配图" /></a>
       <br />
-      <strong>Build your own visual dictionary</strong><br />
+      <strong>文章</strong>
+      <p>编辑图文，把正文、引用和图片整理在同一份作品中。</p>
     </td>
     <td width="50%" valign="top">
-      <a href="docs/assets/readme-gallery.png"><img src="docs/assets/readme-gallery.png" alt="AIY material library organized by dictionary term" /></a>
+      <a href="docs/assets/readme-outline.png"><img src="docs/assets/readme-outline.png" alt="AIY 大纲编辑器中的多级条目与可折叠分支" /></a>
       <br />
-      <strong>Keep a traceable creative memory</strong>
+      <strong>大纲</strong>
+      <p>用层级条目整理思路、折叠分支，再逐步展开成正文。</p>
+    </td>
+  </tr>
+  <tr>
+    <td width="50%" valign="top">
+      <a href="docs/assets/readme-illustrations.png"><img src="docs/assets/readme-illustrations.png" alt="AIY 并排显示文章正文、封面和正文配图" /></a>
+      <br />
+      <strong>配图</strong>
+      <p>集中管理正文配图与封面，为不同用途准备多种封面比例。</p>
+    </td>
+    <td width="50%" valign="top">
+		<a href="docs/assets/readme-cover-ratios.zh-CN.png"><img src="docs/assets/readme-cover-ratios.zh-CN.png" alt="AIY 封面面板中的 1:1、3:4、4:3、16:9 和 2.35:1 比例" /></a>
+		<br />
+      <strong>发布</strong>
+      <p>复用已有正文与图片，通过 <a href="browser-companion/README.md">AIY 浏览器伴侣</a>填入微信公众号、小红书、微博等平台的编辑页面。由你检查内容并点击发布，软件本体不做自动发布。</p>
     </td>
   </tr>
 </table>
 
-### From Codex back to your library
+
+
+## Codex今天努力了吗？
 
 <p align="center">
-  <a href="docs/assets/readme-codex-import.png">
-    <img src="docs/assets/readme-codex-import.png" alt="AIY discovering locally generated Codex images grouped by source task" width="100%" />
+  <a href="docs/assets/readme-codex-import.zh-CN.png">
+    <img src="docs/assets/readme-codex-import.zh-CN.png" alt="AIY 按来源任务发现本机 Codex 生成图片" width="100%" />
   </a>
 </p>
+AIY 可以扫描本机 Codex 的生成图片目录，按任务分组、避免重复导入，把来源任务关联到导入结果，并在需要时重新打开原任务。它只读取本地 Codex 记录，不扫描网页端聊天记录。
 
-AIY can scan the local Codex generated-images directory, group results by task, avoid duplicate imports, link each imported result to its source task, and reopen the original task when needed. It only reads local Codex records; it does not scan web-chat history.
+可惜，网页端批量自动下载可能违反服务条款并带来账号风险，因此这部分刻意不做。
 
-Bulk automated downloads from the web could violate service terms and put accounts at risk, so that part is intentionally out of scope.
+## 初版图片管理
 
-## Local-first, bring your own remote models
+<table>
+  <tr>
+    <td width="50%" valign="top">
+      <a href="docs/assets/readme-creator.zh-CN.png"><img src="docs/assets/readme-creator.zh-CN.png" alt="AIY 创作工作台中的 Prompt 版本、模型通道与生成结果" /></a>
+      <br />
+      <strong>以成果维度，管理AI生成</strong><br />
+    </td>
+    <td width="50%" valign="top">
+      <a href="docs/assets/diff.zh-CN.png"><img src="docs/assets/diff.zh-CN.png" alt="按词典分类组织的 AIY 素材库" /></a>
+      <br />
+      <strong>多维对比模式</strong>
+    </td>
+  </tr>
+  <tr>
+    <td width="50%" valign="top">
+      <a href="docs/assets/readme-dictionary.zh-CN.png"><img src="docs/assets/readme-dictionary.zh-CN.png" alt="AIY 视觉词典中的光线词条与示例" /></a>
+      <br />
+      <strong>自己的视觉词典</strong><br />
+    </td>
+    <td width="50%" valign="top">
+      <a href="docs/assets/readme-gallery.zh-CN.png"><img src="docs/assets/readme-gallery.zh-CN.png" alt="按词典分类组织的 AIY 素材库" /></a>
+      <br />
+      <strong>可回溯创作记忆</strong>
+    </td>
+  </tr>
+</table>
 
-Library metadata and managed media are stored in local spaces backed by SQLite. AIY does not require a hosted account, and it does not upload your entire library to an AIY server.
+## 本地优先，自接远程模型
 
-When you use AI features, the app still connects to the provider you choose. The prompt, reference images, and related data selected for that request are sent to the corresponding service and handled under its terms, privacy policy, and billing rules. Current routes include Codex App Server/CLI, the OpenAI Image API, and DeepSeek prompt assistance; Gemini, Qwen Image, and Seedream extensions are still awaiting acceptance testing.
+资料库元数据和受管媒体保存在由 SQLite 支撑的本地空间中。AIY 不要求注册托管账号，也不会把整个资料库上传到 AIY 服务器。
 
-## Distribution
+使用 AI 能力时，应用仍会连接你选择的服务。该次请求选中的 Prompt、参考图和相关数据会交给对应服务，并受其条款、隐私政策和计费规则约束。当前通道包括 Codex App Server/CLI、OpenAI Image API 和 DeepSeek Prompt 辅助；Gemini、Qwen Image 与 Seedream 扩展仍处于待验收阶段。
 
-The maintained distribution target from `v0.3.7` onward is:
+## 分发
 
-- Windows 10/11 x64 — Microsoft Store MSIX.
+从 `v0.3.7` 起，维护中的分发目标只有：
 
-Normal build scripts no longer produce NSIS installers, portable ZIPs, macOS DMGs, macOS ZIPs, or standalone unpacked releases. Historical packages remain in [GitHub Releases](https://github.com/gantrol/aiy-desktop/releases), but they are outside the maintained release matrix. Current packages are distributed through Microsoft Store after certification.
+- Windows 10/11 x64：Microsoft Store MSIX。
 
-Download the Windows app from [Microsoft Store](https://apps.microsoft.com/detail/9nwd1hg6tczh). Other platforms currently require building from source; see the [development guide](docs/development.md).
+普通构建脚本不再生成 NSIS、便携 ZIP、macOS DMG、macOS ZIP 或独立 unpacked 版本。历史安装包仍保留在 [GitHub Releases](https://github.com/gantrol/aiy-desktop/releases)，但不属于当前维护矩阵；当前版本通过 Microsoft Store 认证后由 Store 分发。
 
-## ❕Early stage
+Windows 请从 [Microsoft Store 下载](https://apps.microsoft.com/detail/9nwd1hg6tczh)。其他平台暂时需要自行从源码编译，参见[开发文档](docs/development.md)。
 
-AIY is still very early. As of `v0.3.10`, image creation and the library are usable, but extensions and content packs may still change.
+## ❕早期阶段
 
-The basic framework is in place. Real user feedback is what will determine where this project goes next.
+AIY 目前仍处于早期开发阶段。到 v0.3.10，图像创作与素材库已可用，扩展与内容包后续仍可能变化。
 
-If you have also watched the image count rise while your prompts became harder to find, [try AIY](https://github.com/gantrol/aiy-desktop/releases/latest). If you think this direction is useful, a ⭐ [Star](https://github.com/gantrol/aiy-desktop) can help more creators discover it.
+## 从源码运行
 
-## Run from source
-
-You need Node.js 22 or newer. The normal npm workflow supports source evaluation on Windows, macOS, and Ubuntu x64; Linux packages are not currently distributed. For the corresponding AI features, you will also need model credentials or an authenticated Codex CLI.
+需要 Node.js 22 或更高版本。Windows、macOS 和 Ubuntu x64 均可使用标准 npm 流程从源码试用；Linux 当前不提供安装包。使用对应 AI 功能时，还需要模型凭据或已登录的 Codex CLI。
 
 ```bash
 git clone https://github.com/gantrol/aiy-desktop.git
@@ -117,12 +143,12 @@ npm ci
 npm run dev
 ```
 
-AIY is built with Electron, React, TypeScript, Tailwind CSS, and SQLite. See the [development guide](docs/development.md) for runtime data locations, validation commands, extension development, and release workflows.
+AIY 基于 Electron、React、TypeScript、Tailwind CSS 和 SQLite 构建。运行时数据位置、验证命令、扩展开发和发布流程见[开发文档](docs/development.md)。
 
-The [browser companion](browser-companion/README.md) lives in this repository with its own dependencies and version. Run `npm run install:browser`, then `npm run build:browser`; load `browser-companion/.output/chrome-mv3` as an unpacked Chrome or Edge extension. Use `npm run dev:browser` for extension development.
+[浏览器伴侣](browser-companion/README.md) 在本仓库内管理，保留独立依赖和版本。先运行 `npm run install:browser`，再运行 `npm run build:browser`，在 Chrome 或 Edge 中加载 `browser-companion/.output/chrome-mv3`。开发插件使用 `npm run dev:browser`。
 
-## License and security
+## 许可与安全
 
-AIY is provided under the [PolyForm Noncommercial License 1.0.0](LICENSE), which permits use, modification, and distribution for noncommercial purposes. Commercial use requires separate authorization.
+AIY 依据 [PolyForm Noncommercial License 1.0.0](LICENSE) 提供源码，允许非商业目的的使用、修改和分发；商业用途需要另行授权。
 
-Please report vulnerabilities through the private process described in [SECURITY.md](SECURITY.md). Do not submit credentials, personal data, or vulnerability details in a public issue.
+请按照 [SECURITY.md](SECURITY.md) 中的私密流程报告漏洞，不要在公开 Issue 中提交凭据、个人数据或漏洞细节。
