@@ -3,6 +3,10 @@ import { useI18n } from '@/renderer/i18n/useI18n';
 import { SocialPostPublishingDialog } from '@/renderer/features/browser-companion/SocialPostPublishingDialog';
 import { prepareSocialPostHandoff } from '@/renderer/features/browser-companion/prepareSocialPostHandoff';
 import { useBrowserCompanionHandoff } from '@/renderer/features/browser-companion/useBrowserCompanionHandoff';
+import {
+  isPublishingMaskError,
+  publishingMaskErrorMessage,
+} from '@/renderer/features/browser-companion/publishingMask';
 import type {
   AssetDto,
   BrowserCompanionTarget,
@@ -11,6 +15,7 @@ import type {
 } from '@/shared/contracts';
 
 export function useSocialPostPublication({
+  spaceId,
   content,
   dirty,
   notify,
@@ -19,7 +24,9 @@ export function useSocialPostPublication({
   targets,
   assets,
   readSavedContent,
+  readSavedRevisionId,
 }: {
+  spaceId: string;
   content: SocialPostContentInput;
   dirty: boolean;
   notify(message: string): void;
@@ -28,16 +35,31 @@ export function useSocialPostPublication({
   targets: readonly BrowserCompanionTarget[];
   assets: readonly AssetDto[];
   readSavedContent(): SocialPostContentInput;
+  readSavedRevisionId(): string;
 }) {
-  const copy = useI18n().messages.desktopPetals.document;
+  const { messages } = useI18n();
+  const copy = messages.desktopPetals.document;
+  const report = (message: string) =>
+    notify(isPublishingMaskError(message) ? publishingMaskErrorMessage(message, messages) : message);
   const [publishing, setPublishing] = useState<{
     targets: readonly BrowserCompanionTarget[];
     watermark: BrowserCompanionWatermarkSelection;
   } | null>(null);
   const { busy, handoff } = useBrowserCompanionHandoff({
-    notify,
+    notify: report,
     prepare: (target) =>
-      prepareSocialPostHandoff({ content, dirty, notify, persist, postId, target, copy, readSavedContent }),
+      prepareSocialPostHandoff({
+        spaceId,
+        content,
+        dirty,
+        notify: report,
+        persist,
+        postId,
+        target,
+        copy,
+        readSavedContent,
+        readSavedRevisionId,
+      }),
   });
   return {
     busy,
@@ -47,11 +69,13 @@ export function useSocialPostPublication({
       setPublishing({ targets: ['wechat'], watermark }),
     dialog: publishing ? (
       <SocialPostPublishingDialog
+        spaceId={spaceId}
         content={content}
         dirty={dirty}
         postId={postId}
         persist={persist}
         readSavedContent={readSavedContent}
+        readSavedRevisionId={readSavedRevisionId}
         assets={assets}
         targets={targets}
         initialTargets={publishing.targets}

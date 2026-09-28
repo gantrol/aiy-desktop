@@ -3,6 +3,7 @@ import { articleDeliveryMode, type ArticleDeliveryMode } from '@/shared/contract
 import { localizeExtensionManifest } from '@/shared/extension-localization';
 import type { ArticleUploadTarget } from '@/renderer/features/article-delivery/articleDeliveryPreferences';
 import { trimSurroundingCharacters } from '@/shared/string-boundaries';
+import { EXTENSION_HOST_ENGINE_KEY } from '@/shared/product';
 
 export function normalizeArticleDeliverySlug(value: string) {
   return trimSurroundingCharacters(
@@ -22,6 +23,8 @@ export interface ArticleDeliveryTarget {
   pathPrefix: string;
   deliveryMode: ArticleDeliveryMode;
   activated: boolean;
+  unavailableReason: 'DISABLED' | 'INCOMPATIBLE' | 'PERMISSION_REQUIRED' | null;
+  requiredHostVersion: string;
 }
 
 export function articleDeliveryTargets(extensions: readonly ExtensionDto[], locale: Locale): ArticleDeliveryTarget[] {
@@ -31,17 +34,22 @@ export function articleDeliveryTargets(extensions: readonly ExtensionDto[], loca
     const localized = localizeExtensionManifest(extension.manifest, locale);
     const channels = extension.manifest.contributes.deliveryChannels ?? [];
     // Connections load when the dialog opens, so bootstrap readiness cannot gate that read.
-    const activated =
-      extension.enabled &&
-      extension.compatible &&
-      extension.permissions.every((permission) => !permission.required || permission.granted);
+    const unavailableReason: ArticleDeliveryTarget['unavailableReason'] = !extension.enabled
+      ? 'DISABLED'
+      : !extension.compatible
+        ? 'INCOMPATIBLE'
+        : extension.permissions.some((permission) => permission.required && !permission.granted)
+          ? 'PERMISSION_REQUIRED'
+          : null;
     return channels.map((channelId) => ({
       extensionId: extension.manifest.id,
       channelId,
       displayName: channels.length > 1 ? `${localized.displayName} · ${channelId}` : localized.displayName,
       pathPrefix: configuration.pathPrefix,
       deliveryMode: articleDeliveryMode(configuration),
-      activated,
+      activated: unavailableReason === null,
+      unavailableReason,
+      requiredHostVersion: extension.manifest.engines[EXTENSION_HOST_ENGINE_KEY],
     }));
   });
 }

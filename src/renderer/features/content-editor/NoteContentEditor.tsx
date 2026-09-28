@@ -14,9 +14,10 @@ import type { VideoDocumentWysiwygEditorHandle } from '@/renderer/features/video
 import { useI18n } from '@/renderer/i18n/useI18n';
 import { useStableCallback } from '@/renderer/lib/useStableCallback';
 import type { AlbumDto, InspirationStashDto } from '@/shared/contracts';
+import { contentAlbumOptions } from '@/shared/content-album-options';
 import type { DesktopNote, DesktopPetalSnapshot } from '@/shared/contracts/desktop-petals';
 import { FolderOpen, LoaderCircle, Save, Paperclip } from 'lucide-react';
-import { useEffect, useRef, useState, useSyncExternalStore } from 'react';
+import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 
 interface Props {
   libraryId: string;
@@ -39,6 +40,7 @@ function NoteEditorSession({
 }: Props & { initial: DesktopNote; draft: DesktopPetalSnapshot['draft'] }) {
   const { locale, messages } = useI18n();
   const copy = messages.desktopPetals;
+  const albumOptions = useMemo(() => contentAlbumOptions(albums), [albums]);
   const onSaved = useStableCallback(() => {
     void refresh().catch((reason) => notify(String(reason)));
   });
@@ -129,7 +131,7 @@ function NoteEditorSession({
       <ContentDocumentToolbar>
         <ContentAlbumSelect
           albumId={state.note.albumId}
-          albums={albums.filter((album) => !album.archivedAt)}
+          albums={albumOptions}
           onError={error}
           onChange={async (albumId) => {
             if (!(await settleFiles())) throw new Error(copy.note.unsaved);

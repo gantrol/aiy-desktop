@@ -370,7 +370,9 @@ export function MaterialLibraryToolbar({
           </PopoverContent>
         </Popover>
 
-        {viewMode !== 'LIST' && <MaterialLayoutControl showNamesControl={imageNamesAvailable} />}
+        {viewMode !== 'LIST' && (
+          <MaterialLayoutControl showNamesControl={imageNamesAvailable} showArrangementControl={imageNamesAvailable} />
+        )}
 
         {viewMode && onViewModeChange && (
           <MaterialViewToggle

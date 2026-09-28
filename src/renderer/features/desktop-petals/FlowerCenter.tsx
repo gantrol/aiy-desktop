@@ -1,7 +1,12 @@
 import { useI18n } from '@/renderer/i18n/useI18n';
 import { petalQuotaText } from '@/renderer/features/desktop-petals/petal-copy';
-import type { PetalHubSettings, PetalQuota, PetalTimer } from '@/shared/contracts/petal-hub';
-import { petalTimerRemaining, formatPetalDuration } from '@/shared/petal-timer';
+import {
+  isPetalCenterMetricProvider,
+  type PetalHubSettings,
+  type PetalQuota,
+  type PetalTimer,
+} from '@/shared/contracts/petal-hub';
+import { petalTimerDuration, petalTimerRemaining, formatPetalDuration } from '@/shared/petal-timer';
 
 export function flowerCenterProgress(
   settings: PetalHubSettings,
@@ -9,19 +14,16 @@ export function flowerCenterProgress(
   quota: PetalQuota | null,
   now: number,
 ) {
-  if (settings.mode === 'codex')
+  if (isPetalCenterMetricProvider(settings.mode))
     return { inner: quota?.primary?.remaining ?? null, outer: quota?.secondary?.remaining ?? null };
   if (settings.mode === 'pomodoro')
     return {
-      inner: Math.min(
-        100,
-        petalTimerRemaining(timer, now) /
-          ((timer.phase === 'focus' ? settings.focusMinutes : settings.breakMinutes) * 600),
-      ),
+      inner: Math.min(100, (petalTimerRemaining(timer, now) / petalTimerDuration(timer, settings)) * 100),
       outer: null,
     };
   return { inner: null, outer: null };
 }
+
 export function FlowerCenter({
   settings,
   timer,
@@ -64,13 +66,11 @@ export function FlowerCenter({
   const primary = quota?.primary?.remaining ?? quota?.secondary?.remaining;
   return (
     <span
-      className="pointer-events-none flex size-full flex-col items-center justify-center text-sm tabular-nums"
+      className="pointer-events-none flex size-full items-center justify-center text-sm tabular-nums"
       title={petalQuotaText(quota, copy)}
+      data-center-provider={settings.mode}
     >
       {primary === undefined ? '—' : `${Math.round(primary)}%`}
-      {quota?.primary && quota.secondary && (
-        <small className="text-[9px] opacity-75">{Math.round(quota.secondary.remaining)}%</small>
-      )}
     </span>
   );
 }

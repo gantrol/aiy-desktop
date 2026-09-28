@@ -114,7 +114,7 @@ export class PetalDrawerService {
       drawer: entry?.drawer ? this.state() : null,
       placements: Object.fromEntries(
         Object.entries(this.windows.layouts.placements(this.libraryId))
-          .filter(([id]) => id !== 'hub')
+          .filter(([id]) => id !== 'hub' && (!entry?.instanceId || id === entry.instanceId))
           .map(([id, place]) => [id, { visible: place.visible, home: place.home }]),
       ),
     };
@@ -398,9 +398,9 @@ export class PetalDrawerService {
     } catch (error) {
       if (!original) entry.window.destroy();
       else {
-        this.windows.expand(entry, wasExpanded);
-        if (oldBounds) entry.window.setBounds(oldBounds);
-        if (!wasVisible) entry.window.hide();
+        const restored = await this.windows.expand(entry, wasExpanded);
+        if (oldBounds) restored.window.setBounds(oldBounds);
+        if (!wasVisible) restored.window.hide();
       }
       this.windows.layouts.set(this.libraryId, id, previous);
       throw error;

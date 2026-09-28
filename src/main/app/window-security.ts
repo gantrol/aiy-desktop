@@ -1,4 +1,4 @@
-import type { BrowserWindow, Session } from 'electron';
+import type { BrowserWindow, Session, WebContents } from 'electron';
 import { featureDemoFrameUrl, isFeatureDemoFrameUrl, PACKAGED_RENDERER_URL } from '@/main/app/renderer-location';
 import {
   CODEX_VISUALIZATION_PREVIEW_SCHEME,
@@ -8,7 +8,39 @@ import {
 /** Allows only the fixed, pre-paint loading-variant selector embedded in renderer/index.html. */
 export const APP_LOADING_VARIANT_SCRIPT_HASH = "'sha256-Mo44jsGpct1oYLi0onfsfLHNUJfT/14wvc2A+Z2U4AI='";
 
+const rendererLocations = new WeakMap<WebContents, string>();
+
+function withoutHash(value: string) {
+  const url = new URL(value);
+  url.hash = '';
+  return url.href;
+}
+
+function canUseRendererLocalPermission(
+  contents: WebContents | null,
+  permission: string,
+  details?: { isMainFrame: boolean; requestingUrl?: string },
+) {
+  if (
+    (permission !== 'clipboard-read' && permission !== 'local-fonts') ||
+    !contents ||
+    contents.isDestroyed() ||
+    !contents.isFocused() ||
+    !details?.isMainFrame ||
+    !details.requestingUrl
+  )
+    return false;
+  const expected = rendererLocations.get(contents);
+  if (!expected) return false;
+  try {
+    return withoutHash(contents.getURL()) === expected && withoutHash(details.requestingUrl) === expected;
+  } catch {
+    return false;
+  }
+}
+
 export function installWindowNavigationPolicy(window: BrowserWindow, expectedRendererUrl: URL) {
+  rendererLocations.set(window.webContents, withoutHash(expectedRendererUrl.href));
   window.webContents.on('will-navigate', (event, targetUrl) => {
     let target: URL;
     try {
@@ -93,6 +125,12 @@ export function installSessionSecurityPolicy(targetSession: Session, development
       },
     });
   });
-  targetSession.setPermissionCheckHandler(() => false);
-  targetSession.setPermissionRequestHandler((_webContents, _permission, callback) => callback(false));
+  // Paste and the system font picker need local access. Embedded previews and
+  // background windows must not inherit the focused application renderer's access.
+  targetSession.setPermissionCheckHandler((contents, permission, _origin, details) =>
+    canUseRendererLocalPermission(contents, permission, details),
+  );
+  targetSession.setPermissionRequestHandler((contents, permission, callback, details) =>
+    callback(canUseRendererLocalPermission(contents, permission, details)),
+  );
 }

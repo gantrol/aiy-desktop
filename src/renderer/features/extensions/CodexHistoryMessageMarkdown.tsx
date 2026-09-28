@@ -2,11 +2,9 @@ import { isValidElement, memo, useMemo, type ReactNode } from 'react';
 import type { Components } from 'react-markdown';
 import { ContentMarkdown } from '@/renderer/features/content-editor/ContentMarkdown';
 import { contentLibraryApi } from '@/renderer/features/content-editor/contentLibraryClient';
-import { CodexHistoryMath } from '@/renderer/features/extensions/CodexHistoryMath';
 import { CodexHistoryMermaid } from '@/renderer/features/extensions/CodexHistoryMermaid';
 import { historyHighlightClassName } from '@/renderer/features/extensions/CodexHistoryHighlightedText';
 import { codexHistoryMarkdownHighlights } from '@/renderer/features/extensions/codexHistoryMarkdownHighlights';
-import { codexHistoryMarkdownMath } from '@/renderer/features/extensions/codexHistoryMarkdownMath';
 import { useI18n } from '@/renderer/i18n/useI18n';
 import { codexMarkdownUrlTransform } from '@/renderer/lib/codexThreadLinks';
 import { parseCodexThreadHref } from '@/shared/contracts/codex-thread';
@@ -26,7 +24,7 @@ function replaceRichSyntaxText(value: string) {
           .map((line) => `> ${line}`)
           .join('\n')}`,
     )
-    .replace(/\\\[([\s\S]*?)\\\]/gu, (_whole, formula: string) => `$$${formula}$$`)
+    .replace(/\\\[([\s\S]*?)\\\]/gu, (_whole, formula: string) => `\n\n$$\n${formula.trim()}\n$$\n\n`)
     .replace(/\\\(([^\n]*?)\\\)/gu, (_whole, formula: string) => `$${formula}$`);
 }
 
@@ -141,9 +139,6 @@ export const CodexHistoryMessageMarkdown = memo(function CodexHistoryMessageMark
         const source = textContent(children).replace(/\n$/u, '');
         if (className?.split(/\s+/u).includes('language-mermaid'))
           return <CodexHistoryMermaid source={source} label={l.formats.diagram} />;
-        if (className?.split(/\s+/u).includes('language-math')) return <CodexHistoryMath source={source} display />;
-        if (className?.split(/\s+/u).includes('codex-math-inline'))
-          return <CodexHistoryMath source={source} display={false} />;
         return (
           <code {...props} className={className}>
             {children}
@@ -151,11 +146,7 @@ export const CodexHistoryMessageMarkdown = memo(function CodexHistoryMessageMark
         );
       },
       pre: ({ children, node: _node, ...props }) =>
-        isValidElement(children) && (children.type === CodexHistoryMermaid || children.type === CodexHistoryMath) ? (
-          children
-        ) : (
-          <pre {...props}>{children}</pre>
-        ),
+        isValidElement(children) && children.type === CodexHistoryMermaid ? children : <pre {...props}>{children}</pre>,
     }),
     [l.formats.diagram, l.media.EMBEDDED_IMAGE, onOpenThread],
   );
@@ -164,7 +155,6 @@ export const CodexHistoryMessageMarkdown = memo(function CodexHistoryMessageMark
       typography="compact"
       className="text-sm leading-6 [content-visibility:auto] [contain-intrinsic-size:auto_160px]"
       components={components}
-      remarkPlugins={[codexHistoryMarkdownMath]}
       rehypePlugins={rehypePlugins}
       skipHtml={false}
       urlTransform={historyMarkdownUrlTransform}

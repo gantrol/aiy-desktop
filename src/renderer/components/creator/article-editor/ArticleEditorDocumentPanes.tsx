@@ -7,6 +7,7 @@ import type { ArticleSaveMode } from '@/renderer/components/creator/article-edit
 import type { ArticleEditorOutlineCursorRequest } from '@/renderer/components/creator/article-editor/useArticleEditorOutlineNavigation';
 import type { ArticleEditorSidebarController } from '@/renderer/components/creator/article-editor/useArticleEditorSidebar';
 import { ArticleMediaPanel } from '@/renderer/components/creator/article-editor/ArticleMediaPanel';
+import type { ArticleUnplacedImage } from '@/renderer/components/creator/article-editor/useArticleEditorMedia';
 import type { ArticleImagePlacement } from '@/renderer/features/video-documents/articleImageOperations';
 import {
   VideoDocumentWysiwygEditor,
@@ -31,6 +32,7 @@ import { Button } from '@/renderer/components/ui/button';
 import { MessageSquareIcon, XIcon } from 'lucide-react';
 import { useArticleEditorSession } from '@/renderer/components/creator/article-editor/ArticleEditorSessionProvider';
 import { ContentWorkspace, ContentWorkspacePanels } from '@/renderer/features/content-editor/ContentWorkspacePanels';
+import { useArticleReferenceHeadings } from '@/renderer/components/creator/article-editor/useArticleReferenceHeadings';
 
 function firstArticleLocation(elements: readonly ArticleElementPlacementInput[]) {
   const first = elements[0];
@@ -74,6 +76,9 @@ function ArticleDocumentSidebar({
   onHeadingNavigate(sourceIndex: number): void;
   onTopNavigate(): void;
 }) {
+  const displayedHeadings = useArticleReferenceHeadings(outlineItems, scrollRootRef);
+  const cursorId = cursorRequest.index === null ? undefined : outlineItems[cursorRequest.index]?.id;
+  const displayedCursor = cursorId ? displayedHeadings.findIndex((item) => item.id === cursorId) : -1;
   return (
     <ArticleEditorSidebar
       commentCount={comments.filter((comment) => comment.status === 'OPEN').length}
@@ -82,7 +87,7 @@ function ArticleDocumentSidebar({
       fileCount={fileCount}
       media={mediaPanel}
       mediaCount={mediaCount}
-      outlineAvailable={outlineItems.length > 0}
+      outlineAvailable={displayedHeadings.length > 0}
       comments={
         <ContentCommentsPanel
           busy={commentMutationBusy}
@@ -96,14 +101,17 @@ function ArticleDocumentSidebar({
       }
       outline={
         <ArticleEditorOutline
-          cursorRequest={cursorRequest}
+          cursorRequest={{ ...cursorRequest, index: displayedCursor < 0 ? null : displayedCursor }}
           depthLimit={controller.preferences.depthLimit}
           followCursor={controller.preferences.followCursor}
-          items={outlineItems}
+          items={displayedHeadings}
           scrollRootRef={scrollRootRef}
           onDepthLimitChange={controller.setDepthLimit}
           onFollowCursorChange={controller.setFollowCursor}
-          onHeadingNavigate={onHeadingNavigate}
+          onHeadingNavigate={(index) => {
+            const localIndex = outlineItems.findIndex((item) => item.id === displayedHeadings[index]?.id);
+            if (localIndex >= 0) onHeadingNavigate(localIndex);
+          }}
           onTopNavigate={onTopNavigate}
         />
       }
@@ -217,6 +225,7 @@ function ArticleEditorDocumentPane({
 
 interface Props {
   outlineMode?: boolean;
+  outlinePreferenceKey?: string;
   attachmentsPanel: ReactNode;
   attachmentCount: number;
   articleElementControls: VideoDocumentArticleElementControls;
@@ -235,6 +244,7 @@ interface Props {
   leftSidebar: ArticleEditorSidebarController;
   media: readonly VideoDocumentRevisionMediaDto[];
   images: readonly ArticleImagePlacement[];
+  unplaced: readonly ArticleUnplacedImage[];
   openCommentHoverId: string | null;
   outlineItems: readonly VideoDocumentArticleHeading[];
   rightPaneRootRef: RefObject<HTMLDivElement | null>;
@@ -282,6 +292,7 @@ interface Props {
 
 export function ArticleEditorDocumentPanes({
   outlineMode,
+  outlinePreferenceKey,
   attachmentsPanel,
   attachmentCount,
   articleElementControls,
@@ -300,6 +311,7 @@ export function ArticleEditorDocumentPanes({
   leftSidebar,
   media,
   images,
+  unplaced,
   openCommentHoverId,
   outlineItems,
   rightPaneRootRef,
@@ -343,8 +355,10 @@ export function ArticleEditorDocumentPanes({
   const primaryEditor = (
     <VideoDocumentWysiwygEditor
       outlineMode={outlineMode}
+      outlinePreferenceKey={outlinePreferenceKey}
       embedded={outlineMode}
       contentSource={{ kind: 'ARTICLE', id: session.capturePersistedArticle().id }}
+      onTransferSaved={session.receiveTransferredArticle}
       beforeReferenceCapture={async () => {
         if (!(await session.flush('manual'))) return null;
         const saved = session.capturePersistedArticle();
@@ -418,6 +432,7 @@ export function ArticleEditorDocumentPanes({
   const mediaPanel = (
     <ArticleMediaPanel
       images={images}
+      unplaced={unplaced}
       media={media}
       onMove={onImageMove}
       onRemove={onImageRemove}
@@ -426,6 +441,7 @@ export function ArticleEditorDocumentPanes({
       onRedo={onImageRedo}
     />
   );
+  const mediaCount = images.length + unplaced.length;
   return (
     <ArticleEditorSplit
       left={
@@ -433,7 +449,7 @@ export function ArticleEditorDocumentPanes({
           filesPanel={attachmentsPanel}
           fileCount={attachmentCount}
           mediaPanel={mediaPanel}
-          mediaCount={images.length}
+          mediaCount={mediaCount}
           comments={comments}
           commentMutationBusy={commentMutationBusy}
           controller={leftSidebar}
@@ -465,7 +481,7 @@ export function ArticleEditorDocumentPanes({
           filesPanel={attachmentsPanel}
           fileCount={attachmentCount}
           mediaPanel={mediaPanel}
-          mediaCount={images.length}
+          mediaCount={mediaCount}
           comments={comments}
           commentMutationBusy={commentMutationBusy}
           controller={rightSidebar}

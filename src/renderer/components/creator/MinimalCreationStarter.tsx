@@ -337,12 +337,9 @@ export function MinimalCreationStarter({
               generationTargets={generationTargets}
               generationCount={generationCount}
               readiness={readiness}
-              stashReady={stashReady}
-              stashing={stashing}
-              stashed={stashed}
+              interactionBlocked={stashing}
               startReady={startReady}
               starting={starting}
-              onStashInspiration={onStashInspiration}
               onStartCreation={onStartCreation}
               onOpenExternalImport={onOpenExternalImport}
               onChooseVideoDocument={onChooseVideoDocument}

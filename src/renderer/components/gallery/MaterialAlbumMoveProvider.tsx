@@ -32,7 +32,7 @@ export function MaterialAlbumMoveProvider({ albums, busy, onMove, children }: Pr
       target
         ? flattenMaterialAlbumTree(tree)
             .filter(({ album }) => album.id === target.parentId || canMoveMaterialAlbumTo(tree, target.id, album.id))
-            .map(({ album, depth }) => ({ id: album.id, title: album.title, depth }))
+            .map(({ album }) => ({ id: album.id, title: album.title, parentId: album.parentId }))
         : [],
     [target, tree],
   );

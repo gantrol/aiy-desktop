@@ -1,6 +1,6 @@
 import { ArchiveIcon, BookmarkIcon, FolderInputIcon, Trash2Icon } from 'lucide-react';
 import type { InspirationStashDto } from '@/shared/contracts';
-import { TreeDragHandle } from '@/renderer/components/albums/TreeDragHandle';
+import { itemDragStart } from '@/renderer/components/albums/itemDrag';
 import {
   CreationLibraryTreeItem,
   type CreationLibraryTreeDataAttributes,
@@ -138,15 +138,7 @@ export function InspirationStashLibraryRow(props: ItemProps) {
     </span>
   );
   const controls = (
-    <div data-result-library-row-control className={rowControlsClassName}>
-      {onDragStart && (
-        <TreeDragHandle
-          label={`${labels.move}: ${stash.displayTitle || labels.category}`}
-          className={rowControlClassName}
-          onDragStart={onDragStart}
-          onDragEnd={() => onDragEnd?.()}
-        />
-      )}
+    <div data-result-library-row-control data-item-drag-ignore className={rowControlsClassName}>
       <ActionMenuButton
         actions={actions}
         label={`${labels.moreActions}: ${stash.displayTitle || labels.category}`}
@@ -157,6 +149,9 @@ export function InspirationStashLibraryRow(props: ItemProps) {
   const row =
     !contained || branchTopology ? (
       <CreationLibraryTreeItem
+        draggable={!props.busy && Boolean(onDragStart)}
+        onDragStart={onDragStart}
+        onDragEnd={onDragEnd}
         dataAttributes={{ 'data-inspiration-stash-id': stash.id, ...dataAttributes }}
         selected={selected}
         branchTopology={branchTopology}
@@ -177,6 +172,9 @@ export function InspirationStashLibraryRow(props: ItemProps) {
     ) : (
       <div
         {...dataAttributes}
+        draggable={!props.busy && Boolean(onDragStart)}
+        onDragStart={onDragStart && itemDragStart(onDragStart)}
+        onDragEnd={onDragEnd}
         data-inspiration-stash-id={stash.id}
         data-result-library-selected={selected ? 'true' : undefined}
         role="group"

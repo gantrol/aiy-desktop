@@ -20,6 +20,7 @@ export interface TermDetailViewProps {
   onRetry?(): void;
   onBack(): void;
   showBack?: boolean;
+  navigationAction?: ReactNode;
   onSelectedChange(selected: boolean, term: TermListItem): void;
   onEdit?(term: TermListItem): void;
   headerAction?: ReactNode;
@@ -49,6 +50,7 @@ export function TermDetailView({
   onRetry,
   onBack,
   showBack = true,
+  navigationAction,
   onSelectedChange,
   onEdit,
   headerAction,
@@ -64,6 +66,7 @@ export function TermDetailView({
     return (
       <section className={cn('flex min-h-0 flex-col bg-background', className)} data-term-detail>
         <header className="flex min-h-16 shrink-0 items-center border-b px-4 sm:px-6">
+          {navigationAction}
           {showBack && (
             <Button data-action="term-detail-back" type="button" variant="ghost" size="sm" onClick={onBack}>
               <ArrowLeftIcon className="size-4" />
@@ -99,7 +102,7 @@ export function TermDetailView({
 
   return (
     <section
-      className={cn('flex min-h-0 flex-col overflow-hidden bg-background', className)}
+      className={cn('@container/term-detail flex min-h-0 flex-col overflow-hidden bg-background', className)}
       data-term-detail
       data-term-id={term.id}
     >
@@ -110,7 +113,7 @@ export function TermDetailView({
             {copy.back}
           </Button>
         ) : (
-          <span />
+          (navigationAction ?? <span />)
         )}
         <div className="flex flex-wrap items-center justify-end gap-2">
           {onEdit && (
@@ -141,7 +144,7 @@ export function TermDetailView({
       </header>
 
       <ScrollArea type="always" className="min-h-0 flex-1 [&_[data-slot=scroll-area-scrollbar]]:opacity-100">
-        <div className="mx-auto grid w-full max-w-6xl gap-8 px-5 py-6 lg:grid-cols-[minmax(280px,0.9fr)_minmax(340px,1.1fr)] lg:px-8 lg:py-8">
+        <div className="mx-auto grid w-full max-w-6xl gap-8 px-5 py-6 @min-[800px]/term-detail:grid-cols-[minmax(280px,0.9fr)_minmax(340px,1.1fr)] @min-[800px]/term-detail:px-8 @min-[800px]/term-detail:py-8">
           <div className="min-w-0">
             {activeMedia ? (
               <AssetFileContextMenu

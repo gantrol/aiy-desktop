@@ -2,7 +2,8 @@ import type { AlbumDto, AssetDto } from '@/shared/contracts';
 import type { CreationLibraryFilter } from '@/renderer/components/creator/creationLibraryFilter';
 
 export function creationAlbumPreviewAssets(album: AlbumDto, filter: CreationLibraryFilter): AssetDto[] {
-  const includeCreativeMedia = filter.images || filter.inspirations || filter.socialPosts || filter.articles;
+  const includeCreativeMedia =
+    filter.images || filter.inspirations || filter.socialPosts || filter.articles || filter.outlines;
   const assets = [
     ...(includeCreativeMedia ? album.previewAssets : []),
     ...(filter.documents ? (album.documentPreviewAssets ?? []) : []),

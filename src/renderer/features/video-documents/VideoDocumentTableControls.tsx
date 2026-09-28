@@ -17,6 +17,7 @@ import { Button } from '@/renderer/components/ui/button';
 import { Popover, PopoverContent, PopoverTrigger } from '@/renderer/components/ui/popover';
 import { Separator } from '@/renderer/components/ui/separator';
 import { cn } from '@/renderer/lib/utils';
+import { useContentMenuAction } from '@/renderer/features/content-editor/useContentMenuAction';
 
 export interface VideoDocumentTableControlsLabels {
   table: string;
@@ -178,6 +179,7 @@ export function VideoDocumentTableMenu({
   labels: VideoDocumentTableControlsLabels;
 }) {
   const [open, setOpen] = useState(false);
+  const menu = useContentMenuAction();
   const can = useTableCapabilities(editor);
   const operations = tableOperations(editor, labels, can);
   const insertOperation: TableOperation = {
@@ -189,7 +191,7 @@ export function VideoDocumentTableMenu({
   };
 
   function run(operation: TableOperation) {
-    if (operation.run()) setOpen(false);
+    if (operation.run()) menu.run(() => setOpen(false));
   }
 
   return (
@@ -201,7 +203,8 @@ export function VideoDocumentTableMenu({
           size="xs"
           className={cn(
             'h-7 gap-1 px-2 font-normal',
-            active && 'bg-selected text-selected-foreground hover:bg-selected/80',
+            active &&
+              'bg-selected text-selected-foreground ring-1 ring-inset ring-selected-foreground hover:bg-selected active:bg-selected',
           )}
           aria-label={labels.table}
         >
@@ -210,7 +213,7 @@ export function VideoDocumentTableMenu({
           <ChevronDownIcon className="size-3 opacity-60" />
         </Button>
       </PopoverTrigger>
-      <PopoverContent align="start" className="w-56 p-1" onCloseAutoFocus={(event) => event.preventDefault()}>
+      <PopoverContent align="start" className="w-56 p-1" onCloseAutoFocus={menu.onCloseAutoFocus}>
         {!active ? (
           <MenuOperationButton operation={insertOperation} onRun={() => run(insertOperation)} />
         ) : (

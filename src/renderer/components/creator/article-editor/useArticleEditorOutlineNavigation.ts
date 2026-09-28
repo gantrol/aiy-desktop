@@ -13,9 +13,18 @@ interface Options {
   scrollRootRef: RefObject<HTMLDivElement | null>;
 }
 
-function editorHeadingElements(scrollRoot: HTMLElement) {
+function editorHeadingElements(scrollRoot: HTMLElement, items: readonly VideoDocumentArticleHeading[]) {
   const editor = scrollRoot.querySelector<HTMLElement>('[data-slot="video-document-wysiwyg-editor"]');
-  return editor ? Array.from(editor.querySelectorAll<HTMLElement>('h2, h3, h4, h5, h6')) : [];
+  if (!editor) return [];
+  const all = Array.from(editor.querySelectorAll<HTMLElement>('h1, h2, h3, h4, h5, h6'));
+  const local = all.filter((element) => element.tagName !== 'H1' && !element.closest('[data-content-reference]'));
+  const byId = new Map(
+    all
+      .filter((element) => element.dataset.articleHeadingId)
+      .map((element) => [element.dataset.articleHeadingId!, element]),
+  );
+  let localIndex = 0;
+  return items.map((item) => (item.id.startsWith('reference-') ? byId.get(item.id) : local[localIndex++]));
 }
 
 export function useArticleEditorOutlineNavigation({ cursorRequest, followCursor, items, scrollRootRef }: Options) {
@@ -34,7 +43,7 @@ export function useArticleEditorOutlineNavigation({ cursorRequest, followCursor,
       frame = window.requestAnimationFrame(() => {
         const rootRect = scrollRoot.getBoundingClientRect();
         const threshold = rootRect.top + rootRect.height / 2;
-        const elements = editorHeadingElements(scrollRoot);
+        const elements = editorHeadingElements(scrollRoot, items);
         let active = items[0]?.id ?? null;
         for (const [index, item] of items.entries()) {
           const element = elements[index];
@@ -66,19 +75,27 @@ export function useArticleEditorOutlineNavigation({ cursorRequest, followCursor,
       setActiveId(item.id);
       const scrollRoot = scrollRootRef.current;
       if (!scrollRoot) return;
-      const element = editorHeadingElements(scrollRoot)[sourceIndex];
+      const element = editorHeadingElements(scrollRoot, items)[sourceIndex];
       if (!element) return;
-      const rootRect = scrollRoot.getBoundingClientRect();
-      const elementRect = element.getBoundingClientRect();
-      scrollRoot.scrollTo({
-        top: Math.max(
-          0,
-          scrollRoot.scrollTop + elementRect.top - rootRect.top - (rootRect.height - elementRect.height) / 2,
-        ),
-        behavior: 'auto',
-      });
+      const collapsed = element.closest('[data-reference-collapsed="true"]');
+      const reveal = () => {
+        if (!scrollRoot.isConnected || !scrollRoot.contains(element)) return;
+        const rootRect = scrollRoot.getBoundingClientRect();
+        const elementRect = element.getBoundingClientRect();
+        scrollRoot.scrollTo({
+          top: Math.max(
+            0,
+            scrollRoot.scrollTop + elementRect.top - rootRect.top - (rootRect.height - elementRect.height) / 2,
+          ),
+          behavior: 'auto',
+        });
+      };
+      if (collapsed) {
+        collapsed.querySelector<HTMLButtonElement>('button[data-reference-expand]')?.click();
+        window.requestAnimationFrame(reveal);
+      } else reveal();
     },
-    [scrollRootRef],
+    [scrollRootRef, items],
   );
 
   const selectTop = useCallback(() => {

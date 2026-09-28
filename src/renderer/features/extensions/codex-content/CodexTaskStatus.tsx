@@ -5,7 +5,7 @@ import { useI18n } from '@/renderer/i18n/useI18n';
 import { cn } from '@/renderer/lib/utils';
 import type { CodexContentTask } from '@/shared/contracts/codex-content';
 
-export type CodexTaskAction = 'open-task' | 'stop-and-open-task' | 'collect' | 'open-album';
+export type CodexTaskAction = 'open-task' | 'collect' | 'open-album';
 
 export function CodexTaskStatus({
   task,
@@ -20,8 +20,7 @@ export function CodexTaskStatus({
 }) {
   const messages = useI18n().messages.desktopPetals;
   const copy = messages.codex;
-  const running = task.status === 'STARTING' || task.status === 'RUNNING';
-  const label = running ? copy.stopAndOpenTask : copy.status[task.status];
+  const label = copy.status[task.status];
   return (
     <div
       className={cn(
@@ -36,9 +35,9 @@ export function CodexTaskStatus({
           size="xs"
           className={cn('min-w-0 text-inherit', compact && 'shrink gap-1 rounded-sm px-1 text-2xs')}
           disabled={busy}
-          title={running ? copy.stopAndOpenTask : copy.openTask}
-          aria-label={`${copy.status[task.status]} · ${running ? copy.stopAndOpenTask : copy.openTask}`}
-          onClick={() => onAction(running ? 'stop-and-open-task' : 'open-task')}
+          title={copy.openTask}
+          aria-label={`${copy.status[task.status]} · ${copy.openTask}`}
+          onClick={() => onAction('open-task')}
         >
           <span className="truncate">{label}</span>
           <ExternalLink className="size-3 shrink-0 opacity-60" />

@@ -1,4 +1,13 @@
-import { formMatchesFilter } from '@/renderer/components/creator/creationLibraryFilter';
+import {
+  CreationLibraryViewMenu,
+  CreationLibraryPaneToggle,
+} from '@/renderer/components/creator/CreationLibraryViewControls';
+import {
+  allCreationLibraryFilters,
+  creationFormFilterKey,
+  formMatchesFilter,
+  isAllCreationLibraryFilter,
+} from '@/renderer/components/creator/creationLibraryFilter';
 import {
   ArchiveIcon,
   BookmarkIcon,
@@ -9,9 +18,8 @@ import {
   ImagesIcon,
   Layers3Icon,
   ListChecksIcon,
+  ListTreeIcon,
   NotebookTextIcon,
-  PanelLeftCloseIcon,
-  PanelLeftOpenIcon,
   PanelsTopLeftIcon,
   PencilIcon,
   PinIcon,
@@ -45,24 +53,32 @@ import { cn } from '@/renderer/lib/utils';
 import { useI18n } from '@/renderer/i18n/useI18n';
 import { usePinContentAction } from '@/renderer/features/desktop-petals/PinContentAction';
 import {
-  ALBUM_DRAG_TYPE,
-  CREATION_ITEM_DRAG_TYPE,
-  readCreationItemDrag,
+  readCreationTreeDrag,
+  endCreationTreeDrag,
   writeAlbumDrag,
   writeCreationItemDrag,
 } from '@/renderer/components/albums/albumDrag';
 import { AlbumMoveDialog, type AlbumMoveTarget } from '@/renderer/components/albums/AlbumMoveDialog';
 import { AlbumTreePreview } from '@/renderer/components/albums/AlbumTreePreview';
 import { buildAlbumTreeIndex } from '@/renderer/components/albums/albumTree';
-import { TreeDragHandle } from '@/renderer/components/albums/TreeDragHandle';
+import {
+  itemDragStart,
+  itemDragScopeProps,
+  acceptsItemTransfer,
+  itemDragIntent,
+} from '@/renderer/components/albums/itemDrag';
 import {
   TreeBranchCollapseProvider,
   TreeBranchCollapseRail,
   TreeBranchContent,
   TreeBranchTransitRail,
+  TreeDisclosureRail,
 } from '@/renderer/components/albums/TreeDisclosureRail';
 import {
+  COMPACT_TREE_NODE_METRICS,
   getTreeBranchItemTopology,
+  getTreeNodeAnchor,
+  TREE_CONNECTION_GEOMETRY,
   type TreeBranchItemTopology,
 } from '@/renderer/components/albums/treeConnectionGeometry';
 import { useTreeBranchExpansion } from '@/renderer/components/albums/useTreeBranchExpansion';
@@ -70,7 +86,7 @@ import { createTreeBranchExpansionAction } from '@/renderer/components/albums/tr
 import type { ContentLifecycleActionRequest } from '@/renderer/components/albums/useContentLifecycleActions';
 import { ActionContextMenuItems, ActionMenuButton, type ActionMenuAction } from '@/renderer/components/ui/action-menu';
 import { Button } from '@/renderer/components/ui/button';
-import { Collapsible } from '@/renderer/components/ui/collapsible';
+import { Collapsible, CollapsibleTrigger } from '@/renderer/components/ui/collapsible';
 import { ContextMenu, ContextMenuContent, ContextMenuTrigger } from '@/renderer/components/ui/context-menu';
 import { QuietEmpty } from '@/renderer/components/ui/quiet-empty';
 import { ScrollArea } from '@/renderer/components/ui/scroll-area';
@@ -80,6 +96,8 @@ import { CreationLibraryToolbar } from '@/renderer/components/creator/CreationLi
 import type { CreationLibraryFilter } from '@/renderer/components/creator/creationLibraryFilter';
 import { creationAlbumPreviewAssets } from '@/renderer/components/creator/creationAlbumPreviewAssets';
 import { creationFormTabTarget } from '@/renderer/components/creator/creationFormTabTarget';
+import { CreationAnimationGroup } from '@/renderer/components/creator/CreationAnimationGroup';
+import { groupCreationAnimationForms } from '@/renderer/components/creator/creationAnimationGroups';
 import {
   buildCreationLibraryProjection,
   creationFormPreviewAssetIds,
@@ -89,6 +107,7 @@ import {
   type CreationItemProjection,
 } from '@/renderer/components/creator/creationLibraryProjection';
 import { buildCreationSessionProjection } from '@/renderer/components/creator/creationSessionProjection';
+import { compareCreationLibraryOrder } from '@/renderer/components/creator/creationLibraryOrder';
 import {
   useCreationAlbumChildVisibility,
   type CreationAlbumChildVisibilityEntry,
@@ -99,13 +118,22 @@ import {
 } from '@/renderer/components/creator/CreationLibraryTreeItem';
 import { allAssets } from '@/renderer/components/creator/utils';
 import { MediaStackPreview, type MediaStackSpread } from '@/renderer/components/media/MediaStackPreview';
+import { AssetThumbnail } from '@/renderer/components/media/AssetThumbnail';
 import { useVideoDocumentList } from '@/renderer/features/video-documents/useVideoDocumentList';
 import { useVideoDocumentNavigation } from '@/renderer/features/video-documents/useVideoDocumentNavigation';
 import type { CreatorOpenTabTarget } from '@/renderer/components/app/app-navigation';
 import { CreationOutlineSidebar } from '@/renderer/features/creation-outline/CreationOutlineSidebar';
+import { useCreationOutlineView } from '@/renderer/features/creation-outline/useCreationOutlineView';
+import { outlineCurrentNodeKey } from '@/renderer/features/creation-outline/outline-tree';
+import {
+  creationTreeNavigationKey,
+  useCreationTreeScroll,
+  useCreationTreeScrollMemory,
+} from '@/renderer/components/creator/useCreationTreeScroll';
 import { CreationLibraryAssetPreview } from '@/renderer/components/creator/CreationLibraryAssetPreview';
 import { creationSessionCoverFirstAssets } from '@/renderer/components/creator/creationCoverFirstAssets';
 import type { DerivedVisualWorkspaceViewState } from '@/renderer/components/creator/derivedVisualWorkspace';
+import { useCreationDraftSidebar } from '@/renderer/components/creator/useCreationDraftSidebar';
 
 export type ResultLibraryMode = 'full' | 'images' | 'outline';
 export type ResultLibrarySurface =
@@ -127,6 +155,10 @@ interface Props {
   activeContent: 'images' | 'documents';
   filter: CreationLibraryFilter;
   selectedSeriesId: string | null;
+  selectedDraftId: string | null;
+  onSelectDraft(id: string): void;
+  onBeforeDeleteDraft(draftId: string | null): Promise<void>;
+  onDraftsDeleted(draftIds: string[]): void;
   selectedDerivedVisualId?: string | null;
   selectedAnimationId?: string | null;
   selectedCreationId: string | null;
@@ -141,6 +173,7 @@ interface Props {
   documentNavigationRevision: number;
   surface: ResultLibrarySurface;
   mode: ResultLibraryMode;
+  expandedMode?: 'full' | 'outline';
   canExpand: boolean;
   resizeValue: number;
   resizeMin: number;
@@ -172,8 +205,8 @@ interface Props {
   onRenameAlbum(album: AlbumDto): void;
   onToggleAlbumPin(album: AlbumDto): void;
   onCreateAlbum(parent: AlbumDto | null): void;
-  onMoveAlbum(albumId: string, parentAlbumId: string | null): Promise<void>;
-  onMoveCreationItem(creationItemId: string, albumId: string | null): Promise<void>;
+  onMoveAlbum(albumId: string, parentAlbumId: string | null, copy?: boolean): Promise<void>;
+  onMoveCreationItem(creationItemId: string, albumId: string | null, copy?: boolean): Promise<void>;
   onToggleCreationItemPin(creationItemId: string, pinned: boolean): void;
   onImportExternalFiles?(albumId: string, files: File[], sourceUrl: string): void;
   refresh(): Promise<void>;
@@ -208,20 +241,7 @@ function creationSidebarEntryVisibility(entry: RootEntry): CreationAlbumChildVis
 }
 
 function compareCreationSidebarEntries(left: RootEntry, right: RootEntry) {
-  const leftPinned = left.kind === 'ALBUM' ? left.album.pinned : left.item.item.pinned;
-  const rightPinned = right.kind === 'ALBUM' ? right.album.pinned : right.item.item.pinned;
-  const pinned = Number(rightPinned) - Number(leftPinned);
-  if (pinned) return pinned;
-  const leftActivityAt = left.kind === 'ALBUM' ? left.album.activityAt : left.item.activityAt;
-  const rightActivityAt = right.kind === 'ALBUM' ? right.album.activityAt : right.item.activityAt;
-  const activity = rightActivityAt.localeCompare(leftActivityAt);
-  if (activity) return activity;
-  const leftCreatedAt = left.kind === 'ALBUM' ? left.album.createdAt : left.item.item.createdAt;
-  const rightCreatedAt = right.kind === 'ALBUM' ? right.album.createdAt : right.item.item.createdAt;
-  return (
-    rightCreatedAt.localeCompare(leftCreatedAt) ||
-    creationSidebarEntryKey(left).localeCompare(creationSidebarEntryKey(right))
-  );
+  return compareCreationLibraryOrder(creationSidebarEntryVisibility(left), creationSidebarEntryVisibility(right));
 }
 
 function normalized(value: string, locale: Locale) {
@@ -241,7 +261,7 @@ function formIcon(form: CreationFormProjection) {
     case 'SOCIAL_POST':
       return PanelsTopLeftIcon;
     case 'ARTICLE':
-      return FileTextIcon;
+      return form.entity?.content.editorMode === 'OUTLINE' ? ListTreeIcon : FileTextIcon;
     case 'VIDEO_DOCUMENT':
       return NotebookTextIcon;
     case 'IMAGE_CREATION':
@@ -265,6 +285,49 @@ function creationAlbumContext(
   selectedDocumentAlbumId: string | null,
 ) {
   return selectedAlbumId ?? selectedItem?.item.albumId ?? selectedDocumentAlbumId ?? null;
+}
+
+function albumCreationParent(
+  surface: ResultLibrarySurface,
+  selectedAlbumId: string | null,
+  albumsById: ReadonlyMap<string, AlbumDto>,
+) {
+  if (surface !== 'album-detail' || !selectedAlbumId) return null;
+  return albumsById.get(selectedAlbumId) ?? null;
+}
+
+function CreationLibraryEmptyState({
+  rootCount,
+  hasDraftContent,
+  query,
+  filter,
+  surface,
+  busy,
+  onCreateAlbum,
+  onNew,
+}: {
+  rootCount: number;
+  hasDraftContent: boolean;
+  query: string;
+  filter: CreationLibraryFilter;
+  surface: ResultLibrarySurface;
+  busy: boolean;
+  onCreateAlbum(parent: AlbumDto | null): void;
+  onNew(): void;
+}) {
+  const { creator } = useI18n().messages;
+  if (rootCount || hasDraftContent) return null;
+  return (
+    <QuietEmpty
+      title={query || !isAllCreationLibraryFilter(filter) ? creator.results.emptyFiltered : creator.results.empty}
+      actionLabel={surface === 'new-creation' ? creator.album.newAlbum : creator.results.newCreation}
+      actionDisabled={busy}
+      onAction={() => {
+        if (surface === 'new-creation') onCreateAlbum(null);
+        else onNew();
+      }}
+    />
+  );
 }
 
 function ResultLibraryResizeHandle({
@@ -299,9 +362,12 @@ export function ResultLibrary({
   active,
   data,
   locale,
-  activeContent,
   filter,
   selectedSeriesId,
+  selectedDraftId,
+  onSelectDraft,
+  onBeforeDeleteDraft,
+  onDraftsDeleted,
   selectedDerivedVisualId = null,
   selectedAnimationId,
   selectedCreationId,
@@ -316,6 +382,7 @@ export function ResultLibrary({
   documentNavigationRevision,
   surface,
   mode,
+  expandedMode = 'full',
   canExpand,
   resizeValue,
   resizeMin,
@@ -370,6 +437,20 @@ export function ResultLibrary({
   const [draggedAlbumId, setDraggedAlbumId] = useState<string | null>(null);
   const [dropAlbumId, setDropAlbumId] = useState<string | null>(null);
   const viewportRef = useRef<HTMLDivElement>(null);
+  const outlineView = useCreationOutlineView();
+  const draftSidebar = useCreationDraftSidebar({
+    active,
+    data,
+    mode,
+    selectedId: selectedDraftId,
+    busy: lifecycleBusy,
+    onSelect: onSelectDraft,
+    onBeforeDelete: onBeforeDeleteDraft,
+    onDeleted: onDraftsDeleted,
+    notify,
+  });
+  const libraryScroll = useCreationTreeScrollMemory();
+  const outlineOrigin = useRef<string | null>(null);
   const albumExpansion = useTreeBranchExpansion(viewportRef);
   const itemExpansion = useTreeBranchExpansion(viewportRef);
   const albumChildVisibility = useCreationAlbumChildVisibility();
@@ -377,7 +458,7 @@ export function ResultLibrary({
   const setAlbumPersistent = albumExpansion.setPersistent;
   const setItemPersistent = itemExpansion.setPersistent;
   const queryKey = normalized(query, locale);
-  const includeDocuments = filter.documents || activeContent === 'documents' || selectedDocumentId !== null;
+  const includeDocuments = filter.documents;
   const documentNavigation = useVideoDocumentNavigation({
     active: active && mode === 'full' && includeDocuments,
     refreshKey: documentNavigationRevision,
@@ -440,6 +521,8 @@ export function ResultLibrary({
     ],
   );
   const tree = useMemo(() => buildAlbumTreeIndex(data.albums), [data.albums]);
+  const newAlbumParent = albumCreationParent(surface, selectedAlbumId, tree.byId);
+  const newAlbumLabel = newAlbumParent ? creatorAlbumLabels.newSubAlbum : creatorAlbumLabels.newAlbum;
   const assetsById = useMemo(() => {
     const result = new Map<string, AssetDto>();
     const add = (asset: AssetDto | null | undefined) => {
@@ -525,6 +608,7 @@ export function ResultLibrary({
   const selectedItem = selectedForm ? (projection.itemById.get(selectedForm.form.creationItemId) ?? null) : null;
   const selectedItemId = selectedItem?.key ?? null;
   const selectedFormId = selectedForm?.form.id ?? null;
+  const outlineCurrentKey = outlineCurrentNodeKey(selectedAlbumId, selectedForm, selectedSeriesId);
   const selectedAlbumPath = useMemo(() => {
     const targetAlbumId = selectedAlbumId ?? selectedItem?.item.albumId ?? selectedDocumentAlbumId;
     if (!targetAlbumId) return [];
@@ -540,6 +624,13 @@ export function ResultLibrary({
   }, [selectedAlbumId, selectedDocumentAlbumId, selectedItem?.item.albumId, tree.parentById]);
   const selectedAlbumPathSet = useMemo(() => new Set(selectedAlbumPath), [selectedAlbumPath]);
   const newCreationAlbumId = creationAlbumContext(selectedAlbumId, selectedItem, selectedDocumentAlbumId);
+  useCreationTreeScroll({
+    active: active && mode === 'full',
+    viewportRef,
+    memory: libraryScroll,
+    navigationKey: creationTreeNavigationKey(outlineCurrentKey, selectedAlbumPath),
+    currentSelector: '[data-result-library-selected="true"]',
+  });
 
   function startNewCreationInContext() {
     if (newCreationAlbumId) onNewInAlbum(newCreationAlbumId);
@@ -588,7 +679,7 @@ export function ResultLibrary({
 
   useEffect(() => {
     if (!selectedItem || !selectedForm || selectedItem.defaultForm?.form.id === selectedForm.form.id) return;
-    setItemPersistent('item:' + selectedItem.key, true);
+    setItemPersistent('item:' + selectedItem.key, true, false);
   }, [selectedForm, selectedItem, setItemPersistent]);
 
   useEffect(() => {
@@ -606,7 +697,7 @@ export function ResultLibrary({
     ]);
     if (lastAutoRevealedAlbumSelectionRef.current === selectionKey) return;
     lastAutoRevealedAlbumSelectionRef.current = selectionKey;
-    for (const currentAlbumId of selectedAlbumPath) setAlbumPersistent('album:' + currentAlbumId, true);
+    for (const currentAlbumId of selectedAlbumPath) setAlbumPersistent('album:' + currentAlbumId, true, false);
   }, [selectedAlbumId, selectedAlbumPath, selectedDocumentId, selectedFormId, selectedItemId, setAlbumPersistent]);
 
   useEffect(() => {
@@ -619,13 +710,13 @@ export function ResultLibrary({
   const visibleItems = useMemo(() => {
     return projection.items.filter((item) => {
       const categoryForms = item.orderedForms.filter((form) => formMatchesFilter(form, filter));
-      if (categoryForms.length === 0 && item.key !== selectedItemId) return false;
-      if (!queryKey || item.key === selectedItemId) return true;
+      if (categoryForms.length === 0) return false;
+      if (!queryKey) return true;
       return categoryForms.some((form) =>
         normalized(creationFormTitle(form, messages.creator.album), locale).includes(queryKey),
       );
     });
-  }, [filter, locale, messages.creator.album, projection.items, queryKey, selectedItemId]);
+  }, [filter, locale, messages.creator.album, projection.items, queryKey]);
   const itemsByAlbumId = useMemo(() => {
     const result = new Map<string | null, CreationItemProjection[]>();
     for (const item of visibleItems) {
@@ -646,7 +737,11 @@ export function ResultLibrary({
       const nextVisiting = new Set(visiting);
       nextVisiting.add(albumId);
       const album = tree.byId.get(albumId);
-      const ownMatch = Boolean(album && (!queryKey || normalized(album.title, locale).includes(queryKey)));
+      const ownMatch = Boolean(
+        album &&
+        isAllCreationLibraryFilter(filter) &&
+        (!queryKey || normalized(album.title, locale).includes(queryKey)),
+      );
       const containsItems = (itemsByAlbumId.get(albumId)?.length ?? 0) > 0;
       const containsAlbums = (tree.childrenByParentId.get(albumId) ?? []).some((child) =>
         visit(child.id, nextVisiting),
@@ -657,15 +752,14 @@ export function ResultLibrary({
     };
     for (const album of data.albums) visit(album.id);
     return cache;
-  }, [data.albums, itemsByAlbumId, locale, queryKey, tree]);
+  }, [data.albums, filter, itemsByAlbumId, locale, queryKey, tree]);
 
   function visibleItemForms(item: CreationItemProjection) {
     const visible: CreationFormProjection[] = [];
     const seenGroups = new Set<string>();
     for (const form of item.orderedForms) {
       if (form.role !== 'SOCIAL_POST_COVER') {
-        if (form.form.id === selectedFormId) visible.push(form);
-        else if (
+        if (
           formMatchesFilter(form, filter) &&
           (!queryKey || normalized(creationFormTitle(form, messages.creator.album), locale).includes(queryKey))
         )
@@ -684,7 +778,7 @@ export function ResultLibrary({
         group.some((candidate) =>
           normalized(creationFormTitle(candidate, messages.creator.album), locale).includes(queryKey),
         );
-      if (selected || (formMatchesFilter(representative, filter) && queryMatches)) visible.push(representative);
+      if (formMatchesFilter(representative, filter) && queryMatches) visible.push(representative);
     }
     return visible;
   }
@@ -791,14 +885,6 @@ export function ResultLibrary({
     const assets = formAssets(form);
     const Icon = formIcon(form);
     const kindLabel = formKindLabel(form);
-    if (assets.length === 0) {
-      return (
-        <span className="relative grid size-12 place-items-center rounded-md border bg-background text-foreground-secondary">
-          <Icon className="size-4" aria-hidden="true" />
-          <span className="sr-only">{kindLabel}</span>
-        </span>
-      );
-    }
     return (
       <span className="relative grid h-[3.75rem] w-full place-items-center overflow-visible">
         <MediaStackPreview
@@ -826,9 +912,10 @@ export function ResultLibrary({
 
   function creationItemPreview(item: CreationItemProjection, assets: readonly AssetDto[], spread: MediaStackSpread) {
     if (assets.length === 0) {
+      const Icon = item.orderedForms.length === 1 ? formIcon(item.orderedForms[0]) : Layers3Icon;
       return (
-        <span className="relative grid size-12 place-items-center rounded-md border bg-background text-foreground-secondary">
-          <Layers3Icon className="size-4" aria-hidden="true" />
+        <span className="mx-1 grid size-7 place-items-center text-muted-foreground">
+          <Icon className="size-4" aria-hidden="true" />
         </span>
       );
     }
@@ -846,17 +933,18 @@ export function ResultLibrary({
   }
 
   function creationItemFormIndicators(item: CreationItemProjection) {
-    const forms = [...new Map(item.orderedForms.map((form) => [form.role, form] as const)).values()];
-    const formLabel = forms.map((form) => formKindLabel(form)).join(locale === 'zh' ? '、' : ', ');
-    const label = item.item.pinned
-      ? `${locale === 'zh' ? '已置顶' : 'Pinned'}${locale === 'zh' ? '、' : ', '}${formLabel}`
-      : formLabel;
+    const kind = (form: CreationFormProjection) =>
+      form.role === 'ARTICLE' && form.entity?.content.editorMode === 'OUTLINE' ? 'OUTLINE' : form.role;
+    const forms = [...new Map(item.orderedForms.map((form) => [kind(form), form] as const)).values()];
+    const label = new Intl.ListFormat(locale === 'zh' ? 'zh-CN' : 'en', { style: 'short', type: 'conjunction' }).format(
+      [...(item.item.pinned ? [libraryLabels.pinnedLabel] : []), ...forms.map(formKindLabel)],
+    );
     return (
       <span className="mt-1 flex items-center gap-1 text-muted-foreground" aria-label={label}>
         {item.item.pinned && <PinIcon className="size-3" aria-hidden="true" />}
         {forms.map((form) => {
           const Icon = formIcon(form);
-          return <Icon key={form.role} className="size-3" aria-hidden="true" />;
+          return <Icon key={kind(form)} className="size-3" aria-hidden="true" />;
         })}
       </span>
     );
@@ -900,11 +988,15 @@ export function ResultLibrary({
     return actions.map((action) => ({ ...action, label: action.label || title }));
   }
 
-  function renderChildForm(form: CreationFormProjection, topology: TreeBranchItemTopology) {
+  function renderChildForm(form: CreationFormProjection, topology: TreeBranchItemTopology, compactMedia = false) {
     const title = formDisplayTitle(form);
     const kindLabel = formDisplayKind(form);
     const assets = formAssets(form);
-    const metrics = getCreationTreeMediaNodeMetrics(assets.map((asset) => ({ asset })));
+    const compact = compactMedia || assets.length === 0;
+    const Icon = formIcon(form);
+    const metrics = compact
+      ? COMPACT_TREE_NODE_METRICS
+      : getCreationTreeMediaNodeMetrics(assets.map((asset) => ({ asset })));
     const actions = childFormActions(form);
     const row = (
       <CreationLibraryTreeItem
@@ -915,15 +1007,28 @@ export function ResultLibrary({
           'data-tree-node-id': formTreeKey(form),
         }}
         selected={formGroupSelected(form)}
+        compact={compact}
         branchTopology={topology}
         ariaLabel={kindLabel + ': ' + title}
         openLabel={`${creatorAlbumLabels.open}: ${title}`}
         title={title}
-        metadata={<span className="mt-0.5 block truncate text-xs text-muted-foreground">{kindLabel}</span>}
+        metadata={!compact && <span className="mt-0.5 block truncate text-xs text-muted-foreground">{kindLabel}</span>}
         previewBounds={metrics.bounds}
         previewStyle={{ width: metrics.width }}
-        canSpreadPreview={assets.length > 1}
-        preview={(previewExpanded) => formPreview(form, previewExpanded ? 'expanded' : 'settled')}
+        canSpreadPreview={!compact && assets.length > 1}
+        preview={
+          compact ? (
+            <span className="mx-1 grid size-7 place-items-center overflow-hidden rounded-sm">
+              {assets[0] ? (
+                <AssetThumbnail asset={assets[0]} size={64} alt="" className="size-full object-contain" />
+              ) : (
+                <Icon className="size-4 text-muted-foreground" aria-hidden="true" />
+              )}
+            </span>
+          ) : (
+            (previewExpanded) => formPreview(form, previewExpanded ? 'expanded' : 'settled')
+          )
+        }
         controls={
           <div data-result-library-row-control className={rowControlsClassName}>
             <ActionMenuButton
@@ -1018,8 +1123,8 @@ export function ResultLibrary({
       actions.push(
         createTreeBranchExpansionAction({
           expanded,
-          expandLabel: locale === 'zh' ? '展开创作形式' : 'Expand creation forms',
-          collapseLabel: locale === 'zh' ? '收起创作形式' : 'Collapse creation forms',
+          expandLabel: libraryLabels.expandForms,
+          collapseLabel: libraryLabels.collapseForms,
           onExpandedChange: (open) => itemExpansion.setPersistent('item:' + item.key, open),
         }),
       );
@@ -1079,6 +1184,7 @@ export function ResultLibrary({
   }
 
   function clearDrag() {
+    endCreationTreeDrag();
     setDraggedCreationItemId(null);
     setDraggedAlbumId(null);
     setDropAlbumId(null);
@@ -1096,9 +1202,8 @@ export function ResultLibrary({
   }
 
   function hasTreeDrag(event: DragEvent) {
-    return (
-      event.dataTransfer.types.includes(CREATION_ITEM_DRAG_TYPE) || event.dataTransfer.types.includes(ALBUM_DRAG_TYPE)
-    );
+    if (!acceptsItemTransfer(event)) return false;
+    return Boolean(readCreationTreeDrag(event.dataTransfer));
   }
 
   async function dropIntoAlbum(event: DragEvent, albumId: string) {
@@ -1110,15 +1215,18 @@ export function ResultLibrary({
         if (files.length) onImportExternalFiles(albumId, files, 'file-drop');
         return;
       }
-      const creationItemId = readCreationItemDrag(event.dataTransfer);
+      if (lifecycleBusy || !acceptsItemTransfer(event)) return;
+      const source = readCreationTreeDrag(event.dataTransfer);
+      const creationItemId = source?.kind === 'CREATION_ITEM' ? source.id : null;
       if (creationItemId) {
         const item = projection.itemById.get(creationItemId);
-        if (item && item.item.albumId !== albumId) await onMoveCreationItem(creationItemId, albumId);
+        if (item && (item.item.albumId !== albumId || itemDragIntent(event) === 'COPY'))
+          await onMoveCreationItem(creationItemId, albumId, itemDragIntent(event) === 'COPY');
         return;
       }
-      const albumIdValue = event.dataTransfer.getData(ALBUM_DRAG_TYPE).trim();
+      const albumIdValue = source?.kind === 'ALBUM' ? source.id : null;
       if (albumIdValue && albumIdValue !== albumId && !albumIsInside(albumId, albumIdValue)) {
-        await onMoveAlbum(albumIdValue, albumId);
+        await onMoveAlbum(albumIdValue, albumId, itemDragIntent(event) === 'COPY');
       }
     } finally {
       clearDrag();
@@ -1127,31 +1235,40 @@ export function ResultLibrary({
 
   async function dropAtRoot(event: DragEvent) {
     event.preventDefault();
+    if (lifecycleBusy || !acceptsItemTransfer(event)) return;
     try {
-      const creationItemId = readCreationItemDrag(event.dataTransfer);
+      const source = readCreationTreeDrag(event.dataTransfer);
+      const creationItemId = source?.kind === 'CREATION_ITEM' ? source.id : null;
       if (creationItemId) {
         const item = projection.itemById.get(creationItemId);
-        if (item?.item.albumId) await onMoveCreationItem(creationItemId, null);
+        if (item && (item.item.albumId || itemDragIntent(event) === 'COPY'))
+          await onMoveCreationItem(creationItemId, null, itemDragIntent(event) === 'COPY');
         return;
       }
-      const albumIdValue = event.dataTransfer.getData(ALBUM_DRAG_TYPE).trim();
-      if (albumIdValue && tree.parentById.has(albumIdValue)) await onMoveAlbum(albumIdValue, null);
+      const albumIdValue = source?.kind === 'ALBUM' ? source.id : null;
+      if (albumIdValue && (tree.parentById.has(albumIdValue) || itemDragIntent(event) === 'COPY'))
+        await onMoveAlbum(albumIdValue, null, itemDragIntent(event) === 'COPY');
     } finally {
       clearDrag();
     }
   }
 
   function renderCreationItem(item: CreationItemProjection, topology?: TreeBranchItemTopology): ReactNode {
-    const defaultForm = item.defaultForm;
-    if (!defaultForm) return null;
     const branchId = 'item:' + item.key;
     const forms = visibleItemForms(item);
-    const openTarget = defaultForm;
+    const formGroups = groupCreationAnimationForms(forms);
+    const openTarget = forms.find((form) => form.form.id === item.defaultForm?.form.id) ?? forms[0];
+    if (!openTarget) return null;
+    const visibleItem = { ...item, orderedForms: forms, defaultForm: openTarget };
     const expandable = forms.length > 1;
     const expanded = itemExpansion.isOpen(branchId);
-    const title = itemLifecycleTitle(item);
-    const assets = creationItemAssets(item);
-    const metrics = getCreationTreeMediaNodeMetrics(assets.map((asset) => ({ asset })));
+    const title = forms.length === 1 ? formDisplayTitle(openTarget) : itemLifecycleTitle(item);
+    const assets = creationItemAssets(visibleItem);
+    const compact = assets.length === 0;
+    const metrics = compact
+      ? COMPACT_TREE_NODE_METRICS
+      : getCreationTreeMediaNodeMetrics(assets.map((asset) => ({ asset })));
+    const rowHeight = compact ? TREE_CONNECTION_GEOMETRY.compactRowHeight : TREE_CONNECTION_GEOMETRY.rowHeight;
     const actions = itemActions(item, openTarget, expanded, forms.length);
     const row = (
       <CreationLibraryTreeItem
@@ -1159,36 +1276,55 @@ export function ResultLibrary({
           'data-creation-item-id': item.key,
           'data-tree-node-id': branchId,
         }}
-        selected={selectedItemId === item.key && !expanded}
+        selected={selectedItemId === item.key && forms.some(formGroupSelected) && !expanded}
+        compact={compact}
         branchTopology={topology}
-        ariaLabel={(locale === 'zh' ? '创作项：' : 'Creation item: ') + title}
-        openLabel={(locale === 'zh' ? '打开：' : 'Open: ') + title}
+        ariaLabel={libraryLabels.creationItemLabel(title)}
+        openLabel={libraryLabels.openItemLabel(title)}
         title={title}
-        metadata={creationItemFormIndicators(item)}
+        metadata={!compact && creationItemFormIndicators(visibleItem)}
         childBranch={expandable ? { open: expanded } : undefined}
         canSpreadPreview={assets.length > 1}
         previewBounds={metrics.bounds}
         previewStyle={{ width: metrics.width }}
-        preview={(previewExpanded) =>
-          creationItemPreview(item, assets, previewExpanded ? 'expanded' : expanded ? 'settled' : 'collapsed')
-        }
-        controls={
-          <div data-result-library-row-control className={rowControlsClassName}>
-            {!lifecycleBusy && (
-              <TreeDragHandle
-                label={(locale === 'zh' ? '拖动创作项：' : 'Drag creation item: ') + title}
-                className={rowControlClassName}
-                onDragStart={(event) => startCreationItemDrag(event, item.key)}
-                onDragEnd={clearDrag}
-              />
+        preview={(previewExpanded) => (
+          <>
+            {creationItemPreview(
+              visibleItem,
+              assets,
+              previewExpanded ? 'expanded' : expanded ? 'settled' : 'collapsed',
             )}
-            <ActionMenuButton
-              actions={actions}
-              label={(locale === 'zh' ? '更多操作：' : 'More actions: ') + title}
-              className={cn(rowControlClassName, 'size-6')}
-            />
-          </div>
+            {compact && expandable && (
+              <CollapsibleTrigger asChild>
+                <TreeDisclosureRail
+                  attached
+                  open={expanded}
+                  label={expanded ? libraryLabels.collapseForms : libraryLabels.expandForms}
+                  anchor={getTreeNodeAnchor(metrics.bounds, compact ? 0 : undefined)}
+                  rowHeight={rowHeight}
+                  onClick={(event) => event.stopPropagation()}
+                />
+              </CollapsibleTrigger>
+            )}
+          </>
+        )}
+        controls={
+          <>
+            {compact && item.item.pinned && (
+              <PinIcon className="pointer-events-none relative z-10 size-3 text-muted-foreground" />
+            )}
+            <div data-result-library-row-control data-item-drag-ignore className={rowControlsClassName}>
+              <ActionMenuButton
+                actions={actions}
+                label={libraryLabels.itemActionsLabel(title)}
+                className={cn(rowControlClassName, 'size-6')}
+              />
+            </div>
+          </>
         }
+        draggable={!lifecycleBusy}
+        onDragStart={(event) => startCreationItemDrag(event, item.key)}
+        onDragEnd={clearDrag}
         onGestureExpand={() => itemExpansion.expandFromGesture(branchId)}
         onPointerTrackStart={(clientY) => itemExpansion.beginPointerTrack(branchId, clientY)}
         onPointerTrack={(clientY) => itemExpansion.trackPointer(branchId, clientY)}
@@ -1213,14 +1349,31 @@ export function ResultLibrary({
         </ContextMenu>
         {expanded && expandable && (
           <TreeBranchCollapseRail
-            label={locale === 'zh' ? '收起创作形式' : 'Collapse creation forms'}
+            label={libraryLabels.collapseForms}
+            rowHeight={rowHeight}
             onCollapse={() => itemExpansion.collapse(branchId)}
           />
         )}
         {expandable && (
           <TreeBranchContent>
             <TreeBranchCollapseProvider onCollapse={() => itemExpansion.collapse(branchId)}>
-              {forms.map((form, index) => renderChildForm(form, getTreeBranchItemTopology(index, forms.length)))}
+              {formGroups.map((group, index) => {
+                const topology = getTreeBranchItemTopology(index, formGroups.length);
+                return group.forms.length === 1 ? (
+                  renderChildForm(group.forms[0], topology)
+                ) : (
+                  <CreationAnimationGroup
+                    key={group.key}
+                    group={group}
+                    topology={topology}
+                    selectedFormId={selectedFormId}
+                    expansion={itemExpansion}
+                    formAssets={formAssets}
+                    onOpen={openForm}
+                    renderForm={renderChildForm}
+                  />
+                );
+              })}
             </TreeBranchCollapseProvider>
           </TreeBranchContent>
         )}
@@ -1361,6 +1514,7 @@ export function ResultLibrary({
     const selected = selectedAlbumId === album.id;
     const actions = albumActions(album, expanded, expandable);
     const previewAssets = creationAlbumPreviewAssets(album, filter);
+    const compact = previewAssets.length === 0;
     const click: MouseEventHandler<HTMLButtonElement> = (event) => {
       if (event.detail <= 1) onSelectAlbum(album.id);
     };
@@ -1375,44 +1529,49 @@ export function ResultLibrary({
         role="group"
         aria-label={album.title}
         className={cn(
-          'group relative flex h-[4.25rem] min-w-0 cursor-pointer items-center gap-1 rounded-lg px-1 transition-colors hover:bg-hover',
+          'group relative flex h-[4.25rem] min-w-0 cursor-pointer items-center gap-1 rounded-sm px-1 transition-colors hover:bg-hover',
+          compact && 'h-9',
           selected &&
-            'text-selected-foreground before:pointer-events-none before:absolute before:inset-y-0.5 before:left-3 before:right-0 before:rounded-xl before:bg-selected hover:bg-transparent',
+            'text-selected-foreground before:pointer-events-none before:absolute before:inset-y-0.5 before:left-0 before:right-0 before:rounded-sm before:bg-selected hover:bg-transparent',
           dropAlbumId === album.id && 'bg-accent ring-1 ring-inset ring-ring',
         )}
         onDragEnter={(event) => {
-          if (
-            event.dataTransfer.types.includes('Files') ||
-            event.dataTransfer.types.includes(CREATION_ITEM_DRAG_TYPE) ||
-            event.dataTransfer.types.includes(ALBUM_DRAG_TYPE)
-          ) {
+          if (event.dataTransfer.types.includes('Files') || hasTreeDrag(event)) {
             event.preventDefault();
             event.stopPropagation();
             setDropAlbumId(album.id);
           }
         }}
         onDragOver={(event) => {
-          if (
-            event.dataTransfer.types.includes('Files') ||
-            event.dataTransfer.types.includes(CREATION_ITEM_DRAG_TYPE) ||
-            event.dataTransfer.types.includes(ALBUM_DRAG_TYPE)
-          ) {
+          if (event.dataTransfer.types.includes('Files') || hasTreeDrag(event)) {
             event.preventDefault();
             event.stopPropagation();
-            event.dataTransfer.dropEffect = event.dataTransfer.types.includes('Files') ? 'copy' : 'move';
+            setDropAlbumId(album.id);
+            event.dataTransfer.dropEffect =
+              event.dataTransfer.types.includes('Files') || itemDragIntent(event) === 'COPY' ? 'copy' : 'move';
           }
         }}
         onDragLeave={(event) => {
-          if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setDropAlbumId(null);
+          if (!event.currentTarget.contains(event.relatedTarget as Node | null)) {
+            setDropAlbumId(null);
+          }
         }}
-        onDrop={(event) => void dropIntoAlbum(event, album.id)}
+        onDrop={(event) => {
+          void dropIntoAlbum(event, album.id);
+        }}
+        draggable={!lifecycleBusy}
+        onDragStart={itemDragStart((event) => startAlbumDrag(event, album.id))}
+        onDragEnd={clearDrag}
       >
         <Button
           type="button"
           variant="ghost"
-          aria-label={(locale === 'zh' ? '打开：' : 'Open: ') + album.title}
+          aria-label={`${albumLabels.open}: ${album.title}`}
           aria-current={selected ? 'page' : undefined}
-          className="absolute inset-0 z-0 size-auto rounded-lg p-0 hover:bg-transparent focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
+          className={cn(
+            'absolute inset-0 z-0 size-auto rounded-sm p-0 hover:bg-transparent focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring',
+            selected && 'active:bg-transparent',
+          )}
           onClick={click}
           onDoubleClick={doubleClick}
         />
@@ -1421,11 +1580,9 @@ export function ResultLibrary({
           title={album.title}
           open={expanded}
           expandable={expandable}
-          expandLabel={
-            expanded ? (locale === 'zh' ? '收起图集' : 'Collapse album') : locale === 'zh' ? '展开图集' : 'Expand album'
-          }
+          compact={compact}
+          expandLabel={expanded ? messages.gallery.albums.collapse : messages.gallery.albums.expand}
           overlayStyle="solid"
-          disclosureInteractive={false}
           branchTopology={topology}
           onGestureExpand={() => albumExpansion.expandFromGesture(branchId)}
           onPointerTrackStart={(clientY) => albumExpansion.beginPointerTrack(branchId, clientY)}
@@ -1435,23 +1592,21 @@ export function ResultLibrary({
           onDoubleClick={doubleClick}
         />
         <span className="pointer-events-none relative z-10 min-w-0 flex-1 px-1 text-left">
-          <strong className="line-clamp-2 break-words text-base font-medium leading-5" title={album.title}>
+          <strong
+            className={cn(
+              'line-clamp-2 break-words text-base font-medium leading-5',
+              compact && 'line-clamp-1 truncate text-sm',
+            )}
+            title={album.title}
+          >
             {album.title}
           </strong>
         </span>
         {album.pinned && <PinIcon className="pointer-events-none relative z-10 size-3.5 text-muted-foreground" />}
-        <div data-result-library-row-control className={rowControlsClassName}>
-          {!lifecycleBusy && (
-            <TreeDragHandle
-              label={(locale === 'zh' ? '拖动图集：' : 'Drag album: ') + album.title}
-              className={rowControlClassName}
-              onDragStart={(event) => startAlbumDrag(event, album.id)}
-              onDragEnd={clearDrag}
-            />
-          )}
+        <div data-result-library-row-control data-item-drag-ignore className={rowControlsClassName}>
           <ActionMenuButton
             actions={actions}
-            label={(locale === 'zh' ? '更多操作：' : 'More actions: ') + album.title}
+            label={`${albumLabels.moreActions}: ${album.title}`}
             className={cn(rowControlClassName, 'size-6')}
           />
         </div>
@@ -1474,13 +1629,14 @@ export function ResultLibrary({
         </ContextMenu>
         {expanded && children.length > 0 && (
           <TreeBranchCollapseRail
-            label={locale === 'zh' ? '收起图集' : 'Collapse album'}
+            label={messages.gallery.albums.collapse}
+            rowHeight={compact ? TREE_CONNECTION_GEOMETRY.compactRowHeight : undefined}
             onCollapse={() => albumExpansion.collapse(branchId)}
           />
         )}
         <CreationLibraryChildList
           branchTopology={childDisclosureTopology}
-          collapseLabel={locale === 'zh' ? '收起图集' : 'Collapse album'}
+          collapseLabel={messages.gallery.albums.collapse}
           hasVisibleChildren={visibleChildren.length > 0}
           label={
             childVisibility.disclosure === 'fewer' ? libraryLabels.showFewerChildren : libraryLabels.showMoreChildren
@@ -1553,31 +1709,67 @@ export function ResultLibrary({
     />
   );
 
-  const openOutline = () => onModeChange('outline');
-  const outlineButton = (
-    <Button
-      type="button"
-      variant="ghost"
-      size="icon-sm"
-      title={messages.creator.outline.title}
-      aria-label={messages.creator.outline.title}
-      onClick={openOutline}
-    >
-      <ListChecksIcon className="size-4" />
-    </Button>
+  function openOutline() {
+    outlineOrigin.current = outlineCurrentKey;
+    onModeChange('outline');
+  }
+  function closeOutline(nextMode: 'full' | 'images') {
+    if (outlineCurrentKey && outlineOrigin.current !== outlineCurrentKey) {
+      // Returning from another view must not leave newly opened work behind an old filter.
+      if (selectedForm) {
+        if (!formMatchesFilter(selectedForm, filter))
+          onFilterChange({ ...filter, [creationFormFilterKey(selectedForm)]: true });
+        if (!normalized(creationFormTitle(selectedForm, messages.creator.album), locale).includes(queryKey))
+          setQuery('');
+      } else if (selectedAlbumId) {
+        onFilterChange({ ...allCreationLibraryFilters });
+        if (!normalized(tree.byId.get(selectedAlbumId)?.title ?? '', locale).includes(queryKey)) setQuery('');
+      }
+    }
+    onModeChange(nextMode);
+  }
+  const viewMenu = (
+    <CreationLibraryViewMenu
+      mode={mode}
+      expandedMode={expandedMode}
+      onOutline={openOutline}
+      onList={() => closeOutline('full')}
+    />
+  );
+  const collapseButton = (
+    <CreationLibraryPaneToggle
+      mode={mode}
+      expandedMode={expandedMode}
+      visible={showModeToggle}
+      canExpand={canExpand}
+      onModeChange={onModeChange}
+    />
   );
 
   if (mode === 'outline') {
     return (
       <CreationOutlineSidebar
+        footer={
+          <>
+            {draftSidebar.content}
+            {draftSidebar.feedback}
+          </>
+        }
+        spaceId={data.spaceId}
+        refresh={refresh}
+        notify={notify}
+        onNew={(albumId) => (albumId ? onNewInAlbum(albumId) : onNew())}
+        view={outlineView}
+        currentKey={outlineCurrentKey}
         albums={data.albums}
         creations={projection.items}
         active={active}
         busy={lifecycleBusy}
         documentNavigationRevision={documentNavigationRevision}
         resizeHandle={resizeHandle}
+        viewMenu={viewMenu}
         collapsible={showModeToggle}
-        onClose={() => onModeChange('full')}
+        onClose={() => closeOutline('full')}
         onCollapse={() => onModeChange('images')}
         onOpenAlbum={onSelectAlbum}
         onOpenSeries={onSelect}
@@ -1594,20 +1786,22 @@ export function ResultLibrary({
   if (mode === 'images') {
     return (
       <aside
+        {...itemDragScopeProps}
         aria-label={libraryLabels.library}
         className="relative isolate flex size-full min-h-0 flex-col border-r bg-surface-sunken"
       >
         {resizeHandle}
         <header className="grid shrink-0 place-items-center gap-2 py-2">
-          {outlineButton}
+          {viewMenu}
+          {collapseButton}
           <Button
             type="button"
             variant="ghost"
             size="icon-sm"
             disabled={lifecycleBusy}
-            title={creatorAlbumLabels.newAlbum}
-            aria-label={creatorAlbumLabels.newAlbum}
-            onClick={() => onCreateAlbum(null)}
+            title={newAlbumLabel}
+            aria-label={newAlbumLabel}
+            onClick={() => onCreateAlbum(newAlbumParent)}
           >
             <GalleryVerticalEndIcon className="size-4" />
           </Button>
@@ -1640,21 +1834,7 @@ export function ResultLibrary({
           </Button>
         </header>
         <div className="min-h-0 flex-1" />
-        {showModeToggle && (
-          <Button
-            type="button"
-            variant="secondary"
-            size="icon-sm"
-            className="absolute bottom-2 left-1/2 z-chrome -translate-x-1/2 shadow-overlay"
-            data-action="expand-creation-library"
-            title={libraryLabels.full}
-            aria-label={libraryLabels.full}
-            disabled={!canExpand}
-            onClick={() => onModeChange('full')}
-          >
-            <PanelLeftOpenIcon className="size-4" />
-          </Button>
-        )}
+        {draftSidebar.feedback}
         {moveDialog}
       </aside>
     );
@@ -1663,21 +1843,21 @@ export function ResultLibrary({
   return (
     <aside
       aria-label={libraryLabels.library}
+      {...itemDragScopeProps}
       className="relative isolate flex min-h-0 min-w-0 flex-col border-r bg-surface-sunken"
     >
       {resizeHandle}
       <header className="relative flex h-14 shrink-0 items-center justify-between gap-1 border-b border-border/60 px-3">
-        <h1 className="truncate text-lg font-semibold tracking-tight">{libraryLabels.library}</h1>
+        {viewMenu}
         <div className="flex items-center gap-1">
-          {outlineButton}
           <Button
             type="button"
             variant="ghost"
             size="icon-sm"
             disabled={lifecycleBusy}
-            title={creatorAlbumLabels.newAlbum}
-            aria-label={creatorAlbumLabels.newAlbum}
-            onClick={() => onCreateAlbum(null)}
+            title={newAlbumLabel}
+            aria-label={newAlbumLabel}
+            onClick={() => onCreateAlbum(newAlbumParent)}
           >
             <GalleryVerticalEndIcon className="size-4" />
           </Button>
@@ -1701,6 +1881,7 @@ export function ResultLibrary({
             onQueryChange={setQuery}
             onFilterChange={onFilterChange}
           />
+          {collapseButton}
         </div>
       </header>
       <ScrollArea
@@ -1711,11 +1892,11 @@ export function ResultLibrary({
         <div
           data-result-library-root
           data-rendered-root-count={roots.length}
-          className="min-h-full space-y-0.5 px-2 py-2 pb-14"
+          className="min-h-full space-y-0.5 px-2 py-2"
           onDragOver={(event) => {
             if (!lifecycleBusy && hasTreeDrag(event)) {
               event.preventDefault();
-              event.dataTransfer.dropEffect = 'move';
+              event.dataTransfer.dropEffect = itemDragIntent(event) === 'COPY' ? 'copy' : 'move';
             }
           }}
           onDrop={(event) => {
@@ -1723,32 +1904,20 @@ export function ResultLibrary({
           }}
         >
           {roots.map((entry) => (entry.kind === 'ALBUM' ? renderAlbum(entry.album) : renderCreationItem(entry.item)))}
-          {roots.length === 0 && (
-            <QuietEmpty
-              title={queryKey ? libraryLabels.emptyFiltered : libraryLabels.empty}
-              actionLabel={surface === 'new-creation' ? creatorAlbumLabels.newAlbum : libraryLabels.newCreation}
-              actionDisabled={lifecycleBusy}
-              onAction={() => {
-                if (surface === 'new-creation') onCreateAlbum(null);
-                else startNewCreationInContext();
-              }}
-            />
-          )}
+          <CreationLibraryEmptyState
+            rootCount={roots.length}
+            hasDraftContent={draftSidebar.hasContent}
+            query={queryKey}
+            filter={filter}
+            surface={surface}
+            busy={lifecycleBusy}
+            onCreateAlbum={onCreateAlbum}
+            onNew={startNewCreationInContext}
+          />
         </div>
       </ScrollArea>
-      {showModeToggle && (
-        <Button
-          type="button"
-          variant="secondary"
-          size="icon-sm"
-          className="absolute bottom-2 left-2 z-chrome shadow-overlay"
-          title={libraryLabels.collapse}
-          aria-label={libraryLabels.collapse}
-          onClick={() => onModeChange('images')}
-        >
-          <PanelLeftCloseIcon className="size-4" />
-        </Button>
-      )}
+      {draftSidebar.content}
+      {draftSidebar.feedback}
       {moveDialog}
       <CreationLibraryAssetPreview asset={previewAsset} onClose={() => setPreviewAsset(null)} />
       <span

@@ -1,4 +1,5 @@
-import { app, type BrowserWindow } from 'electron';
+import { app, dialog, shell, type BrowserWindow } from 'electron';
+import type { AppShellMessages } from '@/shared/i18n/app-shell';
 import path from 'node:path';
 import { RendererDiagnosticLog } from '@/main/app/renderer-diagnostic-log';
 import { isPackagedApplication } from '@/main/app/runtime-mode';
@@ -29,12 +30,21 @@ export async function flushRendererDiagnostics() {
   await log?.flush();
 }
 
-export function attachRendererDiagnostics(window: BrowserWindow) {
+export function attachRendererDiagnostics(window: BrowserWindow, getMessages?: () => AppShellMessages) {
   const createdAt = performance.now();
   const contents = window.webContents;
   const webContentsId = contents.id;
+  let recoveryPending = false;
   const write = (event: string, details: object = {}) =>
     diagnosticLog().write({ source: 'main', event, webContentsId, details });
+  const recordMemory = () => {
+    if (contents.isDestroyed()) return;
+    const rendererPid = contents.getOSProcessId();
+    const metrics = app.getAppMetrics().find((process) => process.pid === rendererPid);
+    if (metrics) write('renderer-memory', { rendererPid, memory: metrics.memory, cpu: metrics.cpu.percentCPUUsage });
+  };
+  const memoryTimer = setInterval(recordMemory, 15_000);
+  memoryTimer.unref();
   write('window-created', { version: app.getVersion(), packaged: isPackagedApplication(app) });
   window.once('ready-to-show', () => {
     const details = {
@@ -61,13 +71,49 @@ export function attachRendererDiagnostics(window: BrowserWindow) {
       sourceFile: details.sourceId.split(/[?#]/, 1)[0].replaceAll('\\', '/').split('/').pop()?.slice(0, 200),
     });
   });
-  contents.on('render-process-gone', (_event, details) =>
+  contents.on('render-process-gone', (_event, details) => {
+    console.error('[runtime] main renderer exited', details);
     write('render-process-gone', {
       reason: details.reason,
       exitCode: details.exitCode,
-    }),
-  );
+    });
+    if (
+      details.reason === 'clean-exit' ||
+      details.reason === 'killed' ||
+      recoveryPending ||
+      window.isDestroyed() ||
+      !getMessages
+    )
+      return;
+    recoveryPending = true;
+    const copy = getMessages();
+    void dialog
+      .showMessageBox(window, {
+        type: 'error',
+        title: window.getTitle(),
+        message: details.reason === 'oom' ? copy.rendererOutOfMemory : copy.rendererStopped,
+        buttons: [copy.reloadWindow, copy.openDiagnosticFolder],
+        defaultId: 0,
+        cancelId: 1,
+        noLink: true,
+      })
+      .then(async ({ response }) => {
+        if (window.isDestroyed()) return;
+        if (response === 0) contents.reload();
+        else {
+          await diagnosticLog().flush();
+          await shell.openPath(path.join(app.getPath('userData'), 'diagnostics', 'renderer'));
+        }
+      })
+      .catch((error: unknown) => console.error('[runtime] Renderer recovery failed', error))
+      .finally(() => {
+        recoveryPending = false;
+      });
+  });
   window.on('unresponsive', () => write('window-unresponsive'));
   window.on('responsive', () => write('window-responsive'));
-  window.on('closed', () => write('window-closed'));
+  window.on('closed', () => {
+    clearInterval(memoryTimer);
+    write('window-closed');
+  });
 }

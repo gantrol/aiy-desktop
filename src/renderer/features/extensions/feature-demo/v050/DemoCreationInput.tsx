@@ -49,7 +49,6 @@ export function DemoCreationInput({ time, onError }: { time: number; onError(): 
           version: c.version,
           videoStartTitle: messages.videoDocuments.start.title,
         }}
-        locale={locale}
         newCreationSurface={false}
         promptFullWindow={false}
         series={undefined}

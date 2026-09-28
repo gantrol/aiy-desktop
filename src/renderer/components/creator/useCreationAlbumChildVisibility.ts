@@ -92,35 +92,39 @@ export function useCreationAlbumChildVisibility() {
     [],
   );
 
-  function project(
-    albumId: string,
-    entries: readonly CreationAlbumChildVisibilityEntry[],
-    requiredEntryKeys: ReadonlySet<string>,
-    queryActive: boolean,
-  ): CreationAlbumChildVisibilityProjection {
-    if (queryActive) {
-      return { visibleCount: entries.length, hiddenCount: 0, canReset: false, disclosure: null };
-    }
+  const project = useCallback(
+    function project(
+      albumId: string,
+      entries: readonly CreationAlbumChildVisibilityEntry[],
+      requiredEntryKeys: ReadonlySet<string>,
+      queryActive: boolean,
+    ): CreationAlbumChildVisibilityProjection {
+      if (queryActive) {
+        return { visibleCount: entries.length, hiddenCount: 0, canReset: false, disclosure: null };
+      }
 
-    const defaultCount = defaultVisibleCount(entries, now);
-    const requiredIndex = entries.reduce(
-      (largestIndex, entry, index) => (requiredEntryKeys.has(entry.key) ? Math.max(largestIndex, index) : largestIndex),
-      -1,
-    );
-    const resetCount = Math.max(defaultCount, requiredIndex + 1);
-    const visibleThroughKey = visibleThroughKeyByAlbumId.get(albumId);
-    const manualIndex = visibleThroughKey ? entries.findIndex((entry) => entry.key === visibleThroughKey) : -1;
-    const visibleCount = Math.min(entries.length, Math.max(resetCount, manualIndex + 1));
-    const hiddenCount = entries.length - visibleCount;
-    const canReset = manualIndex + 1 > resetCount;
+      const defaultCount = defaultVisibleCount(entries, now);
+      const requiredIndex = entries.reduce(
+        (largestIndex, entry, index) =>
+          requiredEntryKeys.has(entry.key) ? Math.max(largestIndex, index) : largestIndex,
+        -1,
+      );
+      const resetCount = Math.max(defaultCount, requiredIndex + 1);
+      const visibleThroughKey = visibleThroughKeyByAlbumId.get(albumId);
+      const manualIndex = visibleThroughKey ? entries.findIndex((entry) => entry.key === visibleThroughKey) : -1;
+      const visibleCount = Math.min(entries.length, Math.max(resetCount, manualIndex + 1));
+      const hiddenCount = entries.length - visibleCount;
+      const canReset = manualIndex + 1 > resetCount;
 
-    return {
-      visibleCount,
-      hiddenCount,
-      canReset,
-      disclosure: hiddenCount > 0 ? 'more' : canReset ? 'fewer' : null,
-    };
-  }
+      return {
+        visibleCount,
+        hiddenCount,
+        canReset,
+        disclosure: hiddenCount > 0 ? 'more' : canReset ? 'fewer' : null,
+      };
+    },
+    [now, visibleThroughKeyByAlbumId],
+  );
 
   return { project, reset, revealMore };
 }

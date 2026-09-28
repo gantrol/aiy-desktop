@@ -56,6 +56,17 @@ export function CreationOutlineWorkspace({
   return (
     <div className="flex size-full min-h-0 min-w-0 flex-col overflow-hidden">
       <CreationOutline
+        spaceId={data.spaceId}
+        refresh={refresh}
+        notify={notify}
+        onNew={async (targetAlbumId, isCurrent) => {
+          const draft = await window.desktopApi.creationDraftStart({
+            albumId: targetAlbumId,
+            termPromptLocale: locale,
+          });
+          if (isCurrent())
+            onOpenBeside({ view: 'creator', location: { surface: 'creation-draft', draftId: draft.id } });
+        }}
         key={albumId ?? 'root'}
         albums={data.albums}
         creations={projection.items}

@@ -18,6 +18,7 @@ interface Props {
   disabled?: boolean;
   overlay?: ReactNode;
   respectEditableImagePaste?: boolean;
+  workbenchPane?: boolean;
   onImages(files: File[], source: RendererImageImportSource, sourceUrl: string): void;
   onClipboardImage?(sourceUrl: string): void;
   onVideos?(files: File[], source: 'DROP', sourceUrl: string): void;
@@ -30,6 +31,7 @@ export function PasteDropSurface({
   disabled,
   overlay,
   respectEditableImagePaste,
+  workbenchPane = false,
   onImages,
   onClipboardImage,
   onVideos,
@@ -102,6 +104,7 @@ export function PasteDropSurface({
 
   return (
     <section
+      data-workbench-pane={workbenchPane || undefined}
       className={cn('relative', className)}
       onPasteCapture={paste}
       onDragEnter={(event) => drag(event, true)}

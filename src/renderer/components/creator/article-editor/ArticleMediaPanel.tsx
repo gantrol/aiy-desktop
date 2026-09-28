@@ -4,7 +4,6 @@ import {
   ArrowDownToLineIcon,
   ArrowUpIcon,
   ArrowUpToLineIcon,
-  GripVerticalIcon,
   HashIcon,
   ImagesIcon,
   LayoutGridIcon,
@@ -14,11 +13,13 @@ import {
 } from 'lucide-react';
 import { ActionMenuButton, type ActionMenuAction } from '@/renderer/components/ui/action-menu';
 import { Button } from '@/renderer/components/ui/button';
+import { itemDragStart, itemDragScopeProps, acceptsItemMove } from '@/renderer/components/albums/itemDrag';
 import { Dialog, DialogContent, DialogTitle } from '@/renderer/components/ui/dialog';
 import { Input } from '@/renderer/components/ui/input';
 import { ContentMediaThumbnail } from '@/renderer/features/content-editor/ContentMediaThumbnail';
 import { useRestoreContentWorkspace } from '@/renderer/features/content-editor/ContentWorkspacePanels';
 import { useArticleEditorSession } from '@/renderer/components/creator/article-editor/ArticleEditorSessionProvider';
+import type { ArticleUnplacedImage } from '@/renderer/components/creator/article-editor/useArticleEditorMedia';
 import type { ArticleImagePlacement } from '@/renderer/features/video-documents/articleImageOperations';
 import type { VideoDocumentRevisionMediaDto } from '@/shared/contracts';
 import { useI18n } from '@/renderer/i18n/useI18n';
@@ -31,9 +32,9 @@ import {
 const reorderType = 'application/x-aiy-article-image-order';
 
 function useImageHandleFocus(
-  images: readonly ArticleImagePlacement[],
+  images: readonly { elementId: string }[],
   focusRef: RefObject<string | null>,
-  handles: RefObject<Map<string, HTMLButtonElement>>,
+  handles: RefObject<Map<string, HTMLDivElement>>,
 ) {
   useLayoutEffect(() => {
     if (!focusRef.current) return;
@@ -63,8 +64,28 @@ function handleMediaHistoryShortcut(
   else onUndo();
 }
 
+function unplacedImageActions(
+  copy: ReturnType<typeof useI18n>['messages']['contentEditor'],
+  canSetCover: boolean,
+  onCover: () => void,
+  onRemove: () => void,
+): ActionMenuAction[] {
+  return [
+    { id: 'cover', label: copy.useAsArticleCover, icon: StarIcon, disabled: !canSetCover, onSelect: onCover },
+    {
+      id: 'remove',
+      label: copy.removeImage,
+      icon: Trash2Icon,
+      destructive: true,
+      separatorBefore: true,
+      onSelect: onRemove,
+    },
+  ];
+}
+
 export function ArticleMediaPanel({
   images,
+  unplaced,
   media,
   onMove,
   onRemove,
@@ -73,6 +94,7 @@ export function ArticleMediaPanel({
   onRedo,
 }: {
   images: readonly ArticleImagePlacement[];
+  unplaced: readonly ArticleUnplacedImage[];
   media: readonly VideoDocumentRevisionMediaDto[];
   onMove(elementId: string, targetId: string): boolean;
   onRemove(elementId: string): boolean;
@@ -89,10 +111,14 @@ export function ArticleMediaPanel({
   const [notice, setNotice] = useState('');
   const sourceRef = useRef<string | null>(null);
   const focusRef = useRef<string | null>(null);
-  const handles = useRef(new Map<string, HTMLButtonElement>());
+  const handles = useRef(new Map<string, HTMLDivElement>());
   const sectionRef = useRef<HTMLElement>(null);
   const assets = new Map(media.map((asset) => [asset.assetId, asset]));
-  useImageHandleFocus(images, focusRef, handles);
+  const entries = [
+    ...images.map((image) => ({ ...image, placementId: image.elementId })),
+    ...unplaced.map((image) => ({ ...image, elementId: `unplaced:${image.assetId}`, placementId: null })),
+  ];
+  useImageHandleFocus(entries, focusRef, handles);
 
   function move(elementId: string, targetIndex: number) {
     const target = images[targetIndex];
@@ -109,13 +135,14 @@ export function ArticleMediaPanel({
 
   return (
     <section
+      {...itemDragScopeProps}
       ref={sectionRef}
       tabIndex={-1}
       aria-label={copy.media}
       className="flex min-h-full min-w-0 flex-col gap-2"
       onKeyDown={(event) => handleMediaHistoryShortcut(event, onUndo, onRedo)}
     >
-      {images.length > 0 && (
+      {entries.length > 0 && (
         <div className="sticky -top-3 z-20 -mx-3 -mt-3 flex min-h-10 shrink-0 items-center justify-end border-b bg-background px-3">
           <Button
             variant="ghost"
@@ -133,7 +160,7 @@ export function ArticleMediaPanel({
         {notice}
       </div>
       <ArticleMediaCover media={media} />
-      {!images.length && (
+      {!entries.length && (
         <div className="grid min-h-24 flex-1 place-items-center text-muted-foreground">
           <ImagesIcon className="size-5" aria-label={copy.media} />
         </div>
@@ -146,42 +173,102 @@ export function ArticleMediaPanel({
             : 'grid-cols-[repeat(auto-fill,minmax(min(100%,7rem),1fr))]',
         )}
       >
-        {images.map((image, index) => {
+        {entries.map((image, index) => {
           const asset = assets.get(image.assetId);
-          const label = copy.reorderImage.replace('{index}', String(index + 1));
-          const actions = imageActions({
-            index,
-            count: images.length,
-            copy,
-            canSetCover: Boolean(asset),
-            onCover: () => session.coverChanged(image.assetId),
-            onLocate: () => {
-              restoreWorkspace();
-              window.requestAnimationFrame(() => onLocate(image.elementId));
-            },
-            onMove: (to) => move(image.elementId, to),
-            onPosition: () => setMoveId(image.elementId),
-            onRemove: () => {
-              focusRef.current = images[index + 1]?.elementId ?? images[index - 1]?.elementId ?? null;
-              if (!onRemove(image.elementId)) {
-                focusRef.current = null;
-                setNotice(copy.imageMoveFailed);
-              } else if (images.length === 1) sectionRef.current?.focus({ preventScroll: true });
-            },
-          });
+          const label = (image.placementId ? copy.reorderImage : copy.previewImage).replace(
+            '{index}',
+            String(index + 1),
+          );
+          const actions: ActionMenuAction[] = image.placementId
+            ? imageActions({
+                index,
+                count: images.length,
+                copy,
+                canSetCover: Boolean(asset),
+                onCover: () => session.coverChanged(image.assetId),
+                onLocate: () => {
+                  restoreWorkspace();
+                  window.requestAnimationFrame(() => onLocate(image.elementId));
+                },
+                onMove: (to) => move(image.elementId, to),
+                onPosition: () => setMoveId(image.elementId),
+                onRemove: () => {
+                  const stillPlaced = images.some(
+                    (candidate) => candidate.assetId === image.assetId && candidate.elementId !== image.elementId,
+                  );
+                  focusRef.current = stillPlaced
+                    ? (entries[index + 1]?.elementId ?? entries[index - 1]?.elementId ?? null)
+                    : `unplaced:${image.assetId}`;
+                  if (!onRemove(image.elementId)) {
+                    focusRef.current = null;
+                    setNotice(copy.imageMoveFailed);
+                  }
+                },
+              })
+            : unplacedImageActions(
+                copy,
+                Boolean(asset),
+                () => session.coverChanged(image.assetId),
+                () => {
+                  focusRef.current = entries[index + 1]?.elementId ?? entries[index - 1]?.elementId ?? null;
+                  session.imageRemoved(image.assetId);
+                  if (entries.length === 1) sectionRef.current?.focus({ preventScroll: true });
+                },
+              );
           return (
             <div
               key={image.elementId}
-              draggable={Boolean(asset)}
-              onDragStart={(event) => {
-                if (!asset) return;
-                event.stopPropagation();
-                event.dataTransfer.setData(articleCoverSourceDragType, image.assetId);
-                event.dataTransfer.effectAllowed = 'copy';
+              ref={(node) => {
+                if (node) handles.current.set(image.elementId, node);
+                else handles.current.delete(image.elementId);
               }}
-              className={cn('min-w-0 rounded-sm', dropId === image.elementId && 'ring-2 ring-ring')}
+              tabIndex={0}
+              role="group"
+              aria-label={label}
+              draggable={Boolean(asset)}
+              onDragStart={itemDragStart((event) => {
+                if (!asset) return;
+                if (image.placementId) {
+                  sourceRef.current = image.elementId;
+                  event.dataTransfer.setData(reorderType, image.elementId);
+                }
+                event.dataTransfer.setData(articleCoverSourceDragType, image.assetId);
+                event.dataTransfer.effectAllowed = 'copyMove';
+              })}
+              onDragEnd={() => {
+                sourceRef.current = null;
+                setDropId(null);
+              }}
+              onKeyDown={(event) => {
+                if (!image.placementId) return;
+                if (event.target !== event.currentTarget) return;
+                const destination =
+                  event.key === 'ArrowLeft' || event.key === 'ArrowUp'
+                    ? index - 1
+                    : event.key === 'ArrowRight' || event.key === 'ArrowDown'
+                      ? index + 1
+                      : event.key === 'Home'
+                        ? 0
+                        : event.key === 'End'
+                          ? images.length - 1
+                          : null;
+                if (destination === null) return;
+                event.preventDefault();
+                event.stopPropagation();
+                move(image.elementId, destination);
+              }}
+              className={cn(
+                'min-w-0 cursor-grab rounded-sm outline-none active:cursor-grabbing focus-visible:ring-2 focus-visible:ring-ring',
+                dropId === image.elementId && 'ring-2 ring-ring',
+              )}
               onDragOver={(event) => {
-                if (!sourceRef.current || !event.dataTransfer.types.includes(reorderType)) return;
+                if (
+                  !image.placementId ||
+                  !acceptsItemMove(event) ||
+                  !sourceRef.current ||
+                  !event.dataTransfer.types.includes(reorderType)
+                )
+                  return;
                 event.preventDefault();
                 event.stopPropagation();
                 event.dataTransfer.dropEffect = 'move';
@@ -192,7 +279,13 @@ export function ArticleMediaPanel({
                   setDropId(null);
               }}
               onDrop={(event) => {
-                if (!sourceRef.current || !event.dataTransfer.types.includes(reorderType)) return;
+                if (
+                  !image.placementId ||
+                  !acceptsItemMove(event) ||
+                  !sourceRef.current ||
+                  !event.dataTransfer.types.includes(reorderType)
+                )
+                  return;
                 event.preventDefault();
                 event.stopPropagation();
                 move(sourceRef.current, index);
@@ -201,54 +294,16 @@ export function ArticleMediaPanel({
               }}
             >
               <ContentMediaThumbnail
+                draggable={false}
                 assetId={image.assetId || undefined}
                 mediaUrl={asset?.mediaUrl}
                 index={index}
                 actions={actions}
                 controls={
                   <div className="absolute inset-x-1 top-1 flex items-center justify-between gap-1">
-                    <Button
-                      ref={(node) => {
-                        if (node) handles.current.set(image.elementId, node);
-                        else handles.current.delete(image.elementId);
-                      }}
-                      variant="secondary"
-                      size="icon-sm"
-                      className="h-7 w-auto min-w-7 cursor-grab gap-0.5 rounded-sm bg-background/95 px-1 text-2xs tabular-nums active:cursor-grabbing"
-                      draggable={images.length > 1}
-                      aria-label={label}
-                      title={label}
-                      onDragStart={(event) => {
-                        event.stopPropagation();
-                        sourceRef.current = image.elementId;
-                        event.dataTransfer.setData(reorderType, image.elementId);
-                        event.dataTransfer.setData(articleCoverSourceDragType, image.assetId);
-                        event.dataTransfer.effectAllowed = 'copyMove';
-                      }}
-                      onDragEnd={() => {
-                        sourceRef.current = null;
-                        setDropId(null);
-                      }}
-                      onKeyDown={(event) => {
-                        const destination =
-                          event.key === 'ArrowLeft' || event.key === 'ArrowUp'
-                            ? index - 1
-                            : event.key === 'ArrowRight' || event.key === 'ArrowDown'
-                              ? index + 1
-                              : event.key === 'Home'
-                                ? 0
-                                : event.key === 'End'
-                                  ? images.length - 1
-                                  : null;
-                        if (destination === null) return;
-                        event.preventDefault();
-                        event.stopPropagation();
-                        move(image.elementId, destination);
-                      }}
-                    >
-                      <GripVerticalIcon className="size-3" />
+                    <span className="pointer-events-none rounded-sm bg-background/95 px-1.5 py-1 text-2xs tabular-nums">
                       {index + 1}
-                    </Button>
+                    </span>
                     <ActionMenuButton
                       actions={actions}
                       label={copy.imageMenu.replace('{index}', String(index + 1))}

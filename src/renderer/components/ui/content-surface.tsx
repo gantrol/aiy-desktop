@@ -5,8 +5,10 @@ import './content-surface.css';
 interface Props {
   kind: 'paper' | 'media';
   title: string;
+  contextLabel?: string;
   titlesVisible?: boolean;
   tools: ReactNode;
+  leading?: ReactNode;
   children: ReactNode;
   status?: ReactNode;
   resize?: ReactNode;
@@ -18,8 +20,10 @@ interface Props {
 export function ContentSurface({
   kind,
   title,
+  contextLabel,
   titlesVisible = true,
   tools,
+  leading,
   children,
   status,
   resize,
@@ -46,8 +50,14 @@ export function ContentSurface({
             'pointer-events-none absolute inset-x-0 top-0 z-30 bg-linear-to-b from-[color-mix(in_srgb,var(--media-surround-dark)_85%,transparent)] to-transparent opacity-0 transition-opacity duration-fast group-hover/content-surface:pointer-events-auto group-hover/content-surface:opacity-100 group-focus-within/content-surface:pointer-events-auto group-focus-within/content-surface:opacity-100 group-has-[[data-state=open]]/content-surface:pointer-events-auto group-has-[[data-state=open]]/content-surface:opacity-100 motion-reduce:transition-none [@media(hover:none)]:pointer-events-auto [@media(hover:none)]:opacity-100',
         )}
       >
-        <span className="content-surface__drag-title min-w-8 flex-1 truncate text-[13px] font-medium" title={title}>
-          {kind === 'paper' ? title : ''}
+        {leading && <div className="content-surface__tools flex shrink-0 items-center">{leading}</div>}
+        <span className="content-surface__drag-title min-w-4 flex-1 truncate text-[13px] font-medium" title={title}>
+          {kind === 'paper' && <span className="block truncate">{title}</span>}
+          {contextLabel && (
+            <span className="block truncate text-[10px] font-normal opacity-65" title={contextLabel}>
+              {contextLabel}
+            </span>
+          )}
         </span>
         <div className="content-surface__tools flex items-center gap-0.5 [@media(hover:none)]:[&_button]:min-h-9 [@media(hover:none)]:[&_button]:min-w-9">
           {tools}
@@ -70,7 +80,10 @@ export function ContentSurface({
       )}
       {status && (
         <div
-          className="content-surface__status relative z-40 bg-surface px-3 py-2 text-xs text-destructive"
+          className={cn(
+            'content-surface__status relative z-40 bg-surface pl-3 py-2 text-xs text-destructive',
+            resize ? 'pr-8' : 'pr-3',
+          )}
           role="alert"
         >
           {status}

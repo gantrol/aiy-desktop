@@ -466,6 +466,7 @@ export function WordPaletteEditor({
         fullWindow
           ? 'fixed inset-0 z-40 grid-cols-[minmax(500px,44vw)_minmax(0,1fr)] rounded-none border-0'
           : 'grid-cols-[340px_minmax(0,1fr)] rounded-lg border',
+        fullWindow && window.desktopApi.appPlatform === 'darwin' && 'pt-9',
       )}
     >
       <aside className={cn('grid min-h-0 grid-rows-[auto_minmax(0,1fr)_auto] border-r', fullWindow && 'hidden')}>

@@ -12,6 +12,7 @@ const empty = (state: PetalQuota['state'], messageCode: NonNullable<PetalQuota['
   primary: null,
   secondary: null,
   limits: [],
+  providers: [],
 });
 /** The Codex plugin contributes quota data; the flower only renders the selected contribution. */
 export class CodexPetalQuota {
@@ -65,6 +66,7 @@ export class CodexPetalQuota {
         limits,
         primary: project(limit.primary),
         secondary: project(limit.secondary),
+        providers: [],
       };
     } catch {
       return empty('unavailable', 'unavailable');

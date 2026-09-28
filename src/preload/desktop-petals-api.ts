@@ -22,9 +22,11 @@ import { petalLanguageSchema } from '@/shared/contracts/petal-language';
 import { petalError, type PetalCommandResult } from '@/shared/petal-errors';
 import { ipcRenderer } from 'electron';
 import { z } from 'zod';
+import { petalContentScaleSchema } from '@/shared/petal-display';
 import { petalDrawerFrameSchema, petalDrawerPointerSchema } from '@/shared/contracts/petal-drawer';
 import { petalPreviewSchema } from '@/shared/petal-preview';
 import { petalPluckPointerSchema } from '@/shared/contracts/petal-pluck';
+import { contentAlbumOptionSchema } from '@/shared/content-album-options';
 
 export function createDesktopPetalsApi(): DesktopPetalsApi {
   const command = async <T = unknown>(name: string, value?: unknown): Promise<T> => {
@@ -91,7 +93,7 @@ export function createDesktopPetalsApi(): DesktopPetalsApi {
       command: (input) => command('content-application', input),
     },
     contentLibrary: createContentLibraryBridge((input) => command('content-library', input)),
-    albums: async () => z.array(z.object({ id: z.string(), title: z.string() })).parse(await command('note-albums')),
+    albums: async () => z.array(contentAlbumOptionSchema).parse(await command('note-albums')),
     setAlbum: async (input) => desktopNoteSchema.parse(await command('note-album', input)),
     references: async (input) =>
       input.kind === 'search'
@@ -127,6 +129,15 @@ export function createDesktopPetalsApi(): DesktopPetalsApi {
     boardCommand: (input) => command('board', input),
     searchPinSources: async (input) => z.array(pinSummarySchema).parse(await command('pin-search', input)),
     pluckPreview: (active) => command('pluck-preview', active),
+    overlayReady: (input) => command('overlay-ready', input),
+    onOverlayClosed(callback) {
+      const listener = (_event: Electron.IpcRendererEvent, value: unknown) => {
+        const token = z.string().uuid().safeParse(value);
+        if (token.success) callback(token.data);
+      };
+      ipcRenderer.on('desktop-petals:overlay-closed', listener);
+      return () => ipcRenderer.removeListener('desktop-petals:overlay-closed', listener);
+    },
     pluckWatch: (token, active) => command('pluck-watch', { token, active }),
     onPluckPointer(callback) {
       const listener = (_event: Electron.IpcRendererEvent, value: unknown) => {
@@ -155,11 +166,12 @@ export function createDesktopPetalsApi(): DesktopPetalsApi {
       return () => ipcRenderer.removeListener('desktop-petals:open-pin', listener);
     },
     language: async () => petalLanguageSchema.parse(await command('language')),
-    setLanguage: (language) => command('set-language', petalLanguageSchema.parse(language)),
+    setLanguage: async (language) => command('set-language', petalLanguageSchema.parse(language)),
     onLanguageChanged(callback) {
       const listener = (_event: Electron.IpcRendererEvent, value: unknown) => {
         const result = petalLanguageSchema.safeParse(value);
         if (result.success) callback(result.data);
+        else console.error('[desktop-petals] invalid language update', result.error);
       };
       ipcRenderer.on('desktop-petals:language-changed', listener);
       return () => ipcRenderer.removeListener('desktop-petals:language-changed', listener);
@@ -185,6 +197,14 @@ export function createDesktopPetalsApi(): DesktopPetalsApi {
     setAlwaysOnTop: (alwaysOnTop) => command('always-on-top', alwaysOnTop),
     undoCollection: (token) => command('undo-collection', token),
     resize: (size) => command('resize', size),
+    setContentScale: (scale) => command('content-scale', petalContentScaleSchema.parse(scale)),
+    setApplicationPanelHeight: async (height) =>
+      z
+        .number()
+        .int()
+        .min(0)
+        .max(400)
+        .parse(await command('application-panel', z.number().int().min(0).max(400).parse(height))),
     hide: () => command('hide'),
     remove: () => command('remove'),
     move: (point) => command('move', point),

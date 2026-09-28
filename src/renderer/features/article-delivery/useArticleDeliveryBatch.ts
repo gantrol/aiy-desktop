@@ -162,19 +162,27 @@ export function useArticleDeliveryBatch({
       // Only captured scope and acknowledged revision enter these bounded writes.
       // Failure in one destination does not resubmit successful destinations.
       for (const plan of apiInputs) await enqueue(plan);
-      if (browserInputs.length) {
+      // Companion batches allow one handoff per platform. Keep the second WeChat format
+      // in its own batch so history, receipt matching and retries remain unambiguous.
+      const browserBatches: (typeof browserInputs)[] = [];
+      for (const plan of browserInputs) {
+        const group = browserBatches.find((items) => !items.some(({ input }) => input.target === plan.input.target));
+        if (group) group.push(plan);
+        else browserBatches.push([plan]);
+      }
+      for (const browserBatch of browserBatches) {
         try {
           const batch = await window.desktopApi.browserCompanionStageBatch({
             expectedSpaceId: spaceId,
-            items: browserInputs.map(({ input }) => input),
+            items: browserBatch.map(({ input }) => input),
             ...(article.content.title.trim() ? { title: article.content.title.trim().slice(0, 80) } : {}),
           });
-          for (const { key, input } of browserInputs) {
+          for (const { key, input } of browserBatch) {
             const receipt = batch.items.find((item) => item.target === input.target);
             outcome(key, receipt ? { kind: 'BROWSER', receipt } : { kind: 'UNKNOWN' });
           }
         } catch (reason) {
-          for (const { key } of browserInputs) outcome(key, submissionFailure(reason, messages));
+          for (const { key } of browserBatch) outcome(key, submissionFailure(reason, messages));
         }
       }
     } catch (reason) {

@@ -45,14 +45,14 @@ export function AlbumPreviewPopover({
           <Button
             type="button"
             variant="ghost"
-            size="xs"
-            className="h-7 shrink-0 gap-1 rounded-sm px-1.5 text-muted-foreground"
-            aria-label={`${labels.expandCovers}: ${title}`}
+            size="icon-sm"
+            className="size-7 shrink-0 rounded-sm bg-overlay/95 text-muted-foreground"
+            aria-label={labels.previewTitle(title)}
             title={labels.previewTitle(title)}
             data-action="album-preview"
+            data-item-drag-ignore
           >
             <LayoutGridIcon className="size-3.5" />
-            {labels.expandCovers}
           </Button>
         )}
       </PopoverTrigger>

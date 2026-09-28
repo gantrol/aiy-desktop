@@ -12,7 +12,6 @@ import {
 import type { GenerationTargetInput, ImageGenerationRouteDto, Locale } from '@/shared/contracts';
 import { GenerationLauncher } from '@/renderer/components/creator/GenerationLauncher';
 import type { GenerationReadiness } from '@/renderer/components/creator/generationReadiness';
-import { InspirationStashAction } from '@/renderer/components/creator/InspirationStashAction';
 import { Button } from '@/renderer/components/ui/button';
 import { useI18n } from '@/renderer/i18n/useI18n';
 import { cn } from '@/renderer/lib/utils';
@@ -25,13 +24,10 @@ interface Props {
   generationTargets: GenerationTargetInput[];
   generationCount: number;
   readiness: GenerationReadiness;
-  stashReady: boolean;
-  stashing: boolean;
-  stashed: boolean;
+  interactionBlocked: boolean;
   startReady: boolean;
   starting: boolean;
   imageToolsOpen?: boolean;
-  onStashInspiration(): void;
   onStartCreation(plan: CreationStartPlan): void;
   onOpenExternalImport(): void;
   onChooseVideoDocument(): void;
@@ -46,13 +42,10 @@ export function CreationStartActions({
   generationTargets,
   generationCount,
   readiness,
-  stashReady,
-  stashing,
-  stashed,
+  interactionBlocked,
   startReady,
   starting,
   imageToolsOpen: controlledImageToolsOpen,
-  onStashInspiration,
   onStartCreation,
   onOpenExternalImport,
   onChooseVideoDocument,
@@ -64,7 +57,7 @@ export function CreationStartActions({
   const outlineCopy = useI18n().messages.referenceOutline;
   const [localImageToolsOpen, setImageToolsOpen] = useState(false);
   const imageToolsOpen = controlledImageToolsOpen ?? localImageToolsOpen;
-  const blocked = starting || stashing;
+  const blocked = starting || interactionBlocked;
 
   return (
     <section data-creation-start-actions className="mt-4 border-t pt-3">
@@ -110,14 +103,6 @@ export function CreationStartActions({
           {labels.videoToManuscript}
         </Button>
         <div className="ml-auto flex items-center gap-2">
-          <InspirationStashAction
-            locale={locale}
-            ready={stashReady}
-            busy={stashing}
-            saved={stashed}
-            blocked={starting}
-            onClick={onStashInspiration}
-          />
           <Button
             data-action="create-manuscript"
             type="button"
@@ -141,7 +126,7 @@ export function CreationStartActions({
             generationCount={generationCount}
             readiness={readiness}
             starting={starting}
-            interactionBlocked={stashing}
+            interactionBlocked={interactionBlocked}
             secondaryAction={
               <Button
                 data-action="import-external-creation"

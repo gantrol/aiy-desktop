@@ -8,12 +8,14 @@ import {
   Trash2Icon,
   VideoIcon,
 } from 'lucide-react';
-import { useState, type DragEvent as ReactDragEvent } from 'react';
+import { useState, type DragEvent as ReactDragEvent, type ReactNode } from 'react';
 import type { AssetFileRevealContext } from '@/shared/contracts';
 import { useI18n } from '@/renderer/i18n/useI18n';
 import { cn } from '@/renderer/lib/utils';
 import { AssetFileContextMenu } from '@/renderer/components/media/AssetFileContextMenu';
 import { mediaThumbnailUrl } from '@/renderer/components/media/mediaThumbnailUrl';
+import { MediaCardCaption } from '@/renderer/components/media/MediaCardCaption';
+import { Button } from '@/renderer/components/ui/button';
 import { Checkbox } from '@/renderer/components/ui/checkbox';
 import { ActionContextMenuItems, type ActionMenuAction } from '@/renderer/components/ui/action-menu';
 import {
@@ -24,11 +26,7 @@ import {
   ContextMenuSeparator,
   ContextMenuTrigger,
 } from '@/renderer/components/ui/context-menu';
-import {
-  stackedMediaFrameLayerClassName,
-  stackedMediaFrameLiftClassName,
-  stackedMediaFrameStyle,
-} from '@/renderer/components/ui/stacked-media-frame';
+import { stackedMediaFrameLayerClassName, stackedMediaFrameStyle } from '@/renderer/components/ui/stacked-media-frame';
 import { getMaterialCardAspectRatio } from '@/renderer/components/gallery/MaterialCard';
 import {
   hasMaterialLifecycleEntity,
@@ -131,6 +129,7 @@ function MaterialFrame({
   lifecycleBusy,
   notify,
   revealContext,
+  caption,
 }: {
   item: MaterialLibraryItem;
   index: number;
@@ -144,6 +143,7 @@ function MaterialFrame({
   onCopyText(text: string): void;
   notify(message: string): void;
   revealContext?: AssetFileRevealContext;
+  caption?: ReactNode;
   onArchive?(item: MaterialLibraryItem): void;
   onDelete?(item: MaterialLibraryItem): void;
   lifecycleBusy?: boolean;
@@ -188,28 +188,32 @@ function MaterialFrame({
     transform: `translate(calc(-50% + ${offset * step}px), -50%) rotate(${rotation}deg)`,
   });
   const button = (
-    <button
-      type="button"
-      data-action="material-open-inspector"
-      data-material-key={item.key}
-      data-material-id={materialId ?? undefined}
-      aria-label={label}
-      aria-pressed={selected || checked}
+    <span
       className={cn(
-        'absolute overflow-hidden rounded-lg border border-border/80 bg-surface-sunken text-left outline-none transition-[transform,border-color] duration-fast ease-out focus-visible:ring-2 focus-visible:ring-ring',
+        'absolute overflow-hidden rounded-md border border-border/80 bg-surface-sunken text-left transition-[transform,border-color] duration-fast ease-out hover:z-20 focus-within:z-20',
         stackedMediaFrameLayerClassName,
-        stackedMediaFrameLiftClassName,
         selected && 'border-selected-border ring-2 ring-ring',
         checked && 'border-selected-border ring-2 ring-ring',
       )}
       style={style}
-      onClick={(event) => {
-        event.stopPropagation();
-        onSelect(item, selectionModifiers(event));
-      }}
     >
-      {item.kind === 'TEXT' ? <StackText item={item} /> : <StackMedia item={item} />}
-    </button>
+      <Button
+        variant="ghost"
+        data-action="material-open-inspector"
+        data-material-key={item.key}
+        data-material-id={materialId ?? undefined}
+        aria-label={label}
+        aria-pressed={selected || checked}
+        className="block size-full overflow-hidden rounded-[inherit] p-0 hover:bg-transparent focus-visible:ring-inset focus-visible:ring-offset-0"
+        onClick={(event) => {
+          event.stopPropagation();
+          onSelect(item, selectionModifiers(event));
+        }}
+      >
+        {item.kind === 'TEXT' ? <StackText item={item} /> : <StackMedia item={item} />}
+      </Button>
+      {caption}
+    </span>
   );
 
   if (item.kind !== 'TEXT') {
@@ -293,15 +297,32 @@ function MaterialStackTile({
     else onSelect(first);
   }
 
+  const caption = (
+    <Button
+      variant="ghost"
+      className="absolute inset-x-0 bottom-0 z-20 block h-auto rounded-none p-0 hover:bg-transparent focus-visible:ring-inset focus-visible:ring-offset-0"
+      aria-label={openLabel}
+      onClick={activateStack}
+    >
+      <MediaCardCaption className="relative px-2 py-2">
+        <strong className="block truncate text-xs font-semibold">{title}</strong>
+        <span className="block truncate text-[11px] font-normal opacity-85">
+          {messages.gallery.albums.materials(stack.items.length)}
+        </span>
+      </MediaCardCaption>
+    </Button>
+  );
+
   return (
     <article
+      data-media-card
       data-material-stack={stack.key}
       data-material-stack-count={stack.items.length}
       data-material-stack-target={stack.target?.kind ?? 'MATERIAL'}
       draggable={Boolean(onDragStart)}
       onDragStart={(event) => onDragStart?.(event, stack.items)}
       className={cn(
-        'group/stack relative flex min-w-0 flex-col overflow-hidden rounded-xl border bg-surface transition-colors hover:border-border-strong focus-within:border-border-strong',
+        'group/stack relative flex min-w-0 flex-col rounded-md',
         selected && 'border-selected-border ring-1 ring-ring',
         checkedCount > 0 && 'border-selected-border ring-1 ring-ring',
       )}
@@ -312,7 +333,7 @@ function MaterialStackTile({
         if (!event.currentTarget.contains(event.relatedTarget)) setExpanded(false);
       }}
     >
-      <div className="relative h-44 min-w-0 overflow-hidden bg-surface-sunken/35">
+      <div className="relative h-44 min-w-0 overflow-hidden">
         {visible.map((item, index) => (
           <MaterialFrame
             key={item.key}
@@ -331,27 +352,30 @@ function MaterialStackTile({
             lifecycleBusy={lifecycleBusy}
             notify={notify}
             revealContext={revealContextForItem?.(item)}
+            caption={index === 0 && item.kind !== 'TEXT' ? caption : undefined}
           />
         ))}
         {stack.items.length > visible.length && (
-          <span className="absolute bottom-2 right-2 z-30 rounded-full border bg-overlay/95 px-2 py-0.5 text-[11px] font-medium tabular-nums backdrop-blur-sm">
+          <span className="absolute top-2 left-2 z-30 rounded-sm bg-overlay/95 px-2 py-0.5 text-[11px] font-medium tabular-nums">
             +{stack.items.length - visible.length}
           </span>
         )}
       </div>
 
-      <button
-        type="button"
-        className="flex min-h-12 min-w-0 items-center gap-2 border-t px-3 text-left outline-none hover:bg-hover focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
-        aria-label={openLabel}
-        onClick={activateStack}
-      >
-        <span className="shrink-0 text-muted-foreground">
-          <StackIcon stack={stack} first={first} />
-        </span>
-        <span className="min-w-0 flex-1 truncate text-sm font-medium">{title}</span>
-        <span className="shrink-0 text-xs tabular-nums text-muted-foreground">{stack.items.length}</span>
-      </button>
+      {first.kind === 'TEXT' && (
+        <Button
+          variant="ghost"
+          className="h-auto min-h-12 min-w-0 justify-start gap-2 px-3 text-left"
+          aria-label={openLabel}
+          onClick={activateStack}
+        >
+          <span className="shrink-0 text-muted-foreground">
+            <StackIcon stack={stack} first={first} />
+          </span>
+          <span className="min-w-0 flex-1 truncate text-sm font-medium">{title}</span>
+          <span className="shrink-0 text-xs tabular-nums text-muted-foreground">{stack.items.length}</span>
+        </Button>
+      )}
 
       {selectionAvailable && (
         <span

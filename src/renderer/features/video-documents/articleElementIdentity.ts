@@ -1,6 +1,7 @@
 import { Extension, type Editor } from '@tiptap/core';
 import type { Node as ProseMirrorNode } from '@tiptap/pm/model';
-import { NodeSelection, Plugin, PluginKey, TextSelection, Transaction } from '@tiptap/pm/state';
+import { EditorState, NodeSelection, Plugin, PluginKey, TextSelection, Transaction } from '@tiptap/pm/state';
+import { sharedDocumentTransaction } from '@/renderer/features/content-editor/sharedDocumentEdit';
 import { Decoration, DecorationSet } from '@tiptap/pm/view';
 import type { EditorView } from '@tiptap/pm/view';
 import type {
@@ -24,8 +25,11 @@ import {
 } from '@/renderer/features/content-editor/contentCommentScope';
 import { remapOutlineStructureComments } from '@/renderer/features/video-documents/outlineCommentRemap';
 import { activeOutlineView } from '@/renderer/features/content-editor/outlineActiveView';
+import { outlineNavigationFocus } from '@/renderer/features/content-editor/outlineViewState';
+import { restoreOutlineNavigationFocus } from '@/renderer/features/content-editor/outlineFocusRestoration';
 import {
   ARTICLE_ELEMENT_ATTRIBUTE,
+  articleElementContainsCodeBlock,
   articleElementImageText,
   articleElementNodeTypes,
   isArticleElementNodeType,
@@ -36,7 +40,6 @@ import {
 
 const ARTICLE_ELEMENT_IDENTITY_META = 'articleElementIdentity';
 type ArticleElementIdentityOrigin = 'hydrate' | 'identity';
-const ARTICLE_VIEWPORT_INSET_PX = 24;
 const articleElementPluginKey = new PluginKey('articleElementIdentity');
 const articleCheckNodeTypeSet = new Set<ArticleElementNodeType>([
   'paragraph',
@@ -44,7 +47,6 @@ const articleCheckNodeTypeSet = new Set<ArticleElementNodeType>([
   'listItem',
   'taskItem',
   'blockquote',
-  'codeBlock',
   'tableHeader',
   'tableCell',
 ]);
@@ -347,7 +349,7 @@ function mapArticleElementPluginState(
   };
 }
 
-function articleElementIndexForEditor(editor: Editor) {
+export function articleElementIndexForEditor(editor: Editor) {
   const state = articleElementPluginKey.getState(editor.state) as ArticleElementPluginState | undefined;
   return state?.index ?? locatedArticleElementIndex(editor.state.doc);
 }
@@ -471,7 +473,7 @@ export function articleElementPlacements(editor: Editor) {
 export function articleCheckBlocks(editor: Editor): ArticleCheckBlockInput[] {
   if (editor.isDestroyed) return [];
   return articleElementIndexForEditor(editor).elements.flatMap(({ node, elementId, blockIndex, nodeType }) => {
-    if (!articleCheckNodeTypeSet.has(nodeType)) return [];
+    if (!articleCheckNodeTypeSet.has(nodeType) || articleElementContainsCodeBlock(node)) return [];
     const text = elementText(node);
     if (!text.trim()) return [];
     return [
@@ -560,7 +562,12 @@ function articleEditorLocationAtPositionInIndex(
 
 export function articleEditorLocationAtPosition(editor: Editor, position: number): ArticleEditorLocationDto | null {
   if (editor.isDestroyed) return null;
-  return articleEditorLocationAtPositionInIndex(editor.state.doc, articleElementIndexForEditor(editor), position);
+  const location = articleEditorLocationAtPositionInIndex(
+    editor.state.doc,
+    articleElementIndexForEditor(editor),
+    position,
+  );
+  return location ? { ...location, outlineFocusId: outlineNavigationFocus(editor.state) } : null;
 }
 
 export interface CapturedArticleCommentTarget {
@@ -692,7 +699,7 @@ export function articleCommentAnchorRect(editor: Editor, commentId: string): Art
   return element ? articleCommentRectSnapshot(element.getBoundingClientRect()) : null;
 }
 
-function locatedForLocation(editor: Editor, location: ArticleEditorLocationDto) {
+export function articleElementForLocation(editor: Editor, location: ArticleEditorLocationDto) {
   const elements = articleElementIndexForEditor(editor).elements;
   return (
     elements.find((candidate) => candidate.elementId === location.elementId) ??
@@ -708,71 +715,10 @@ function locatedForLocation(editor: Editor, location: ArticleEditorLocationDto) 
   );
 }
 
-export function captureArticleViewportLocation(editor: Editor, scrollRoot: HTMLElement) {
-  if (editor.isDestroyed) return null;
-  const rootRect = scrollRoot.getBoundingClientRect();
-  const editorRect = editor.view.dom.getBoundingClientRect();
-  const position = editor.view.posAtCoords({
-    left: Math.min(editorRect.right - 1, editorRect.left + ARTICLE_VIEWPORT_INSET_PX),
-    top: rootRect.top + ARTICLE_VIEWPORT_INSET_PX,
-  })?.pos;
-  const elements = articleElementIndexForEditor(editor).elements;
-  const located =
-    (position === undefined
-      ? null
-      : elements
-          .filter(
-            (candidate) => candidate.position <= position && position <= candidate.position + candidate.node.nodeSize,
-          )
-          .at(-1)) ??
-    elements.find((candidate) => {
-      const dom = editor.view.nodeDOM(candidate.position);
-      return dom instanceof Element && dom.getBoundingClientRect().bottom >= rootRect.top;
-    });
-  if (!located) return null;
-  const elementDom = editor.view.nodeDOM(located.position);
-  const viewportOffset =
-    elementDom instanceof Element
-      ? Math.max(0, Math.round(rootRect.top + ARTICLE_VIEWPORT_INSET_PX - elementDom.getBoundingClientRect().top))
-      : undefined;
-  return {
-    elementId: located.elementId,
-    relativeOffset:
-      position === undefined ? 0 : Math.max(0, Math.min(position - located.position - 1, located.node.content.size)),
-    blockIndex: located.blockIndex,
-    ...(viewportOffset === undefined ? {} : { viewportOffset }),
-  } satisfies ArticleEditorLocationDto;
-}
-
-export function revealArticleEditorLocation(
-  editor: Editor,
-  location: ArticleEditorLocationDto,
-  scrollRoot: HTMLElement,
-) {
-  if (editor.isDestroyed) return false;
-  const located = locatedForLocation(editor, location);
-  if (!located) return false;
-  const rootRect = scrollRoot.getBoundingClientRect();
-  const elementDom = editor.view.nodeDOM(located.position);
-  if (location.viewportOffset !== undefined && elementDom instanceof Element) {
-    const elementRect = elementDom.getBoundingClientRect();
-    const offset = Math.min(location.viewportOffset, Math.max(0, Math.round(elementRect.height)));
-    scrollRoot.scrollTop +=
-      elementRect.top + offset - rootRect.top - Math.min(ARTICLE_VIEWPORT_INSET_PX, rootRect.height / 4);
-    return true;
-  }
-  const position = Math.min(
-    located.position + 1 + location.relativeOffset,
-    located.position + Math.max(located.node.nodeSize - 1, 1),
-  );
-  const coords = editor.view.coordsAtPos(position);
-  scrollRoot.scrollTop += coords.top - rootRect.top - rootRect.height / 2;
-  return true;
-}
-
 export function restoreArticleEditorLocation(editor: Editor, location: ArticleEditorLocationDto) {
   if (editor.isDestroyed) return false;
-  const located = locatedForLocation(editor, location);
+  restoreOutlineNavigationFocus(editor, location.outlineFocusId);
+  const located = articleElementForLocation(editor, location);
   if (!located) return false;
   const selection =
     located.node.type.name === 'image'
@@ -816,6 +762,33 @@ export function mappedArticleCommentAnchors(
   if (editor.isDestroyed) return [];
   const state = articleElementPluginKey.getState(editor.state) as ArticleElementPluginState | undefined;
   if (!state) return [];
+  return mappedCommentAnchors(editor.state.doc, state, comments);
+}
+
+/** Closed sources use exactly the same comment mapping as a mounted article editor. */
+export function sharedDocumentCommentAnchors(
+  before: ProseMirrorNode,
+  after: ProseMirrorNode,
+  comments: readonly ContentCommentDto[],
+) {
+  const transaction = sharedDocumentTransaction(
+    EditorState.create({ doc: before, schema: before.type.schema }).tr,
+    after,
+  );
+  const state = mapArticleElementPluginState(
+    before,
+    transaction,
+    articleElementPluginState(before, comments),
+    comments,
+  );
+  return mappedCommentAnchors(transaction.doc, state, comments);
+}
+
+function mappedCommentAnchors(
+  document: ProseMirrorNode,
+  state: ArticleElementPluginState,
+  comments: readonly ContentCommentDto[],
+) {
   const index = state.index;
   return comments.flatMap((comment) => {
     const decoration = state.decorationByCommentId.get(comment.id);
@@ -840,8 +813,8 @@ export function mappedArticleCommentAnchors(
         },
       ];
     }
-    const live = liveContentCommentAnchor(editor.state.doc, comment, decoration, (position) =>
-      articleEditorLocationAtPositionInIndex(editor.state.doc, index, position),
+    const live = liveContentCommentAnchor(document, comment, decoration, (position) =>
+      articleEditorLocationAtPositionInIndex(document, index, position),
     );
     return live ? [{ commentId: comment.id, anchor: live.anchor }] : [];
   });

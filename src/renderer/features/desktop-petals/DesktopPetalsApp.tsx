@@ -1,34 +1,36 @@
-import { useEffect, useRef, useState } from 'react';
+import { lazy, Suspense, useEffect, useRef, useState, type ReactNode } from 'react';
 import type { DesktopPetalSnapshot } from '@/shared/contracts/desktop-petals';
-import { PetalHub } from '@/renderer/features/desktop-petals/PetalHub';
-import { StickyNote } from '@/renderer/features/desktop-petals/StickyNote';
+import { CollapsedNote } from '@/renderer/features/desktop-petals/CollapsedNote';
 import { PetalLoadError } from '@/renderer/features/desktop-petals/PetalLoadError';
 import { useI18n } from '@/renderer/i18n/useI18n';
-import { ContentPin } from '@/renderer/features/desktop-petals/ContentPin';
 import { isContentPinId } from '@/shared/contracts/petal-board';
 import { petalErrorCode } from '@/shared/petal-errors';
 import { tracePetalGeometry } from '@/renderer/features/desktop-petals/petal-geometry-diagnostics';
 import { ExtensionContentLinks } from '@/renderer/features/extensions/ExtensionContentLinks';
 import { createCoalescedRefresh } from '@/shared/coalesced-refresh';
 
+const StickyNote = lazy(() => import('./StickyNote').then((module) => ({ default: module.StickyNote })));
+const PetalHub = lazy(() => import('./PetalHub').then((module) => ({ default: module.PetalHub })));
+const ContentPin = lazy(() => import('./ContentPin').then((module) => ({ default: module.ContentPin })));
+
+function ReadySurface({ children }: { children: ReactNode }) {
+  const rendered = useRef(false);
+  useEffect(() => {
+    if (rendered.current) return;
+    rendered.current = true;
+    tracePetalGeometry('content-committed');
+    void window.desktopPetals.rendered().catch(() => {
+      rendered.current = false;
+    });
+  }, []);
+  return children;
+}
+
 export function DesktopPetalsApp() {
   const { messages } = useI18n();
   const [snapshot, setSnapshot] = useState<DesktopPetalSnapshot | null>(null);
   const [error, setError] = useState('');
   const [retry, setRetry] = useState(0);
-  const rendered = useRef(false);
-  useEffect(() => {
-    if (!snapshot || error || rendered.current) return;
-    if (snapshot.instanceId && !snapshot.notes[0] && !snapshot.board.pins.some((pin) => pin.id === snapshot.instanceId))
-      return;
-    // The native window stays hidden until this acknowledgement. Animation
-    // frames can be suspended there, so report the committed content directly.
-    rendered.current = true;
-    tracePetalGeometry('content-committed', { note: Boolean(snapshot.instanceId), expanded: snapshot.expanded });
-    void window.desktopPetals.rendered().catch(() => {
-      rendered.current = false;
-    });
-  }, [snapshot, error]);
   useEffect(() => {
     document.title = snapshot?.instanceId
       ? messages.desktopPetals.note.windowTitle
@@ -89,24 +91,36 @@ export function DesktopPetalsApp() {
   const pin = snapshot?.board.pins.find((pin) => pin.id === snapshot.instanceId);
   return (
     <ExtensionContentLinks applications={snapshot?.contentApplications}>
-      {snapshot &&
-        (isContentPinId(snapshot.instanceId) && pin ? (
-          <ContentPin key={`${snapshot.libraryId}:${pin.id}`} pin={pin} snapshot={snapshot} />
-        ) : snapshot.instanceId && snapshot.notes[0] ? (
-          <StickyNote
-            key={`${snapshot.libraryId}:${snapshot.instanceId}`}
-            initialNote={snapshot.notes[0]}
-            snapshot={snapshot}
-          />
-        ) : !snapshot.instanceId ? (
-          <PetalHub snapshot={snapshot} />
-        ) : (
-          <PetalLoadError
-            error="[aiy-petal:sourceUnavailable]"
-            initial
-            onRetry={() => setRetry((value) => value + 1)}
-          />
-        ))}
+      <Suspense fallback={null}>
+        {snapshot &&
+          (isContentPinId(snapshot.instanceId) && pin ? (
+            <ReadySurface>
+              <ContentPin key={`${snapshot.libraryId}:${pin.id}`} pin={pin} snapshot={snapshot} />
+            </ReadySurface>
+          ) : snapshot.instanceId && !snapshot.expanded && snapshot.summary ? (
+            <ReadySurface>
+              <CollapsedNote note={snapshot.summary} snapshot={snapshot} />
+            </ReadySurface>
+          ) : snapshot.instanceId && snapshot.expanded && snapshot.notes[0] ? (
+            <ReadySurface>
+              <StickyNote
+                key={`${snapshot.libraryId}:${snapshot.instanceId}`}
+                initialNote={snapshot.notes[0]}
+                snapshot={snapshot}
+              />
+            </ReadySurface>
+          ) : !snapshot.instanceId ? (
+            <ReadySurface>
+              <PetalHub snapshot={snapshot} />
+            </ReadySurface>
+          ) : (
+            <PetalLoadError
+              error="[aiy-petal:sourceUnavailable]"
+              initial
+              onRetry={() => setRetry((value) => value + 1)}
+            />
+          ))}
+      </Suspense>
       {error && <PetalLoadError error={error} initial={!snapshot} onRetry={() => setRetry((value) => value + 1)} />}
     </ExtensionContentLinks>
   );

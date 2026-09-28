@@ -34,8 +34,10 @@ export function CodexArtifactsScreen({ active, extension, notify, onOpenCreation
     l = messages.extensions.codexArtifacts;
   const [tab, setTab] = useState<WorkspaceTab>(initialTab);
   const [materialTab, setMaterialTab] = useState('images');
+  const [visited, setVisited] = useState(() => new Set<WorkspaceTab>([tab]));
   const change = (next: string) => {
     setTab(next as WorkspaceTab);
+    setVisited((current) => new Set([...current, next as WorkspaceTab]));
     try {
       localStorage.setItem(TAB_STORAGE_KEY, next);
     } catch {
@@ -68,7 +70,7 @@ export function CodexArtifactsScreen({ active, extension, notify, onOpenCreation
   }
   return (
     <Tabs value={tab} onValueChange={change} className="size-full bg-background">
-      <TabsList className="shrink-0 px-3" aria-label={copy.codex.title}>
+      <TabsList className="max-w-full shrink-0 overflow-x-auto px-3" aria-label={copy.codex.title}>
         {(
           [
             ['history', History, l.tabs.history],
@@ -77,39 +79,38 @@ export function CodexArtifactsScreen({ active, extension, notify, onOpenCreation
             ['settings', Settings, copy.codex.settings],
           ] as const
         ).map(([value, Icon, label]) => (
-          <TabsTrigger key={value} value={value} className="h-12 gap-2">
+          <TabsTrigger key={value} value={value} className="h-12 shrink-0 gap-2">
             <Icon className="size-4" />
             <span>{label}</span>
           </TabsTrigger>
         ))}
       </TabsList>
-      <TabsContent value="history" className="min-h-0 flex-1">
-        <ExtensionFeatureErrorBoundary scope={extension.manifest.id + ':history'}>
-          <CodexHistorySearchConfiguration
-            active={active && tab === 'history'}
-            extension={extension}
-            standalone
-            notify={notify}
-          />
-        </ExtensionFeatureErrorBoundary>
-      </TabsContent>
+      {visited.has('history') && (
+        <TabsContent
+          forceMount
+          value="history"
+          hidden={tab !== 'history'}
+          className="min-h-0 flex-1 data-[state=inactive]:hidden"
+        >
+          <ExtensionFeatureErrorBoundary scope={extension.manifest.id + ':history'}>
+            <CodexHistorySearchConfiguration
+              active={active && tab === 'history'}
+              extension={extension}
+              standalone
+              notify={notify}
+            />
+          </ExtensionFeatureErrorBoundary>
+        </TabsContent>
+      )}
       <TabsContent value="materials" className="min-h-0 flex-1">
         <Tabs value={materialTab} onValueChange={setMaterialTab} className="size-full">
-          <TabsList className="shrink-0 px-3">
-            <TabsTrigger value="images">{l.tabs.images}</TabsTrigger>
-            <TabsTrigger value="visualizations">{l.tabs.visualizations}</TabsTrigger>
-            <Button
-              variant="ghost"
-              size="xs"
-              className="mb-1 ml-auto"
-              onClick={() =>
-                void window.desktopPetals.codex
-                  .command({ kind: 'open-album' })
-                  .catch(() => notify(copy.codex.errors.collection))
-              }
-            >
-              {copy.actions.gallery}
-            </Button>
+          <TabsList className="max-w-full shrink-0 overflow-x-auto px-3">
+            <TabsTrigger value="images" className="shrink-0">
+              {l.tabs.images}
+            </TabsTrigger>
+            <TabsTrigger value="visualizations" className="shrink-0">
+              {l.tabs.visualizations}
+            </TabsTrigger>
           </TabsList>
           <TabsContent value="images" className="min-h-0 flex-1">
             <ExtensionFeatureErrorBoundary scope={extension.manifest.id + ':images'}>
@@ -135,16 +136,23 @@ export function CodexArtifactsScreen({ active, extension, notify, onOpenCreation
           </TabsContent>
         </Tabs>
       </TabsContent>
-      <TabsContent value="usage" className="min-h-0 flex-1">
-        <ExtensionFeatureErrorBoundary scope={extension.manifest.id + ':usage'}>
-          <CodexUsageInvestigatorConfiguration
-            active={active && tab === 'usage'}
-            extension={extension}
-            standalone
-            notify={notify}
-          />
-        </ExtensionFeatureErrorBoundary>
-      </TabsContent>
+      {visited.has('usage') && (
+        <TabsContent
+          forceMount
+          value="usage"
+          hidden={tab !== 'usage'}
+          className="min-h-0 flex-1 data-[state=inactive]:hidden"
+        >
+          <ExtensionFeatureErrorBoundary scope={extension.manifest.id + ':usage'}>
+            <CodexUsageInvestigatorConfiguration
+              active={active && tab === 'usage'}
+              extension={extension}
+              standalone
+              notify={notify}
+            />
+          </ExtensionFeatureErrorBoundary>
+        </TabsContent>
+      )}
       <TabsContent value="settings" className="min-h-0 flex-1 overflow-y-auto">
         <CodexFlowerSettings active={active && tab === 'settings'} />
       </TabsContent>

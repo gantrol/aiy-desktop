@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, type DragEvent } from 'react';
+import { acceptsItemTransfer, itemDragIntent } from '@/renderer/components/albums/itemDrag';
 import type { CreationItemDto } from '@/shared/contracts';
 import { endCreationTreeDrag, readCreationTreeDrag } from '@/renderer/components/albums/albumDrag';
 import type { AlbumTreeIndex } from '@/renderer/components/albums/albumTree';
@@ -8,8 +9,8 @@ interface Options {
   tree: AlbumTreeIndex;
   creationItems: readonly CreationItemDto[];
   busy: boolean;
-  onMoveAlbum(albumId: string, parentAlbumId: string | null): Promise<void>;
-  onMoveCreationItem(creationItemId: string, albumId: string | null): Promise<void>;
+  onMoveAlbum(albumId: string, parentAlbumId: string | null, copy?: boolean): Promise<void>;
+  onMoveCreationItem(creationItemId: string, albumId: string | null, copy?: boolean): Promise<void>;
 }
 
 export function useCreationAlbumDrop(options: Options) {
@@ -27,13 +28,14 @@ export function useCreationAlbumDrop(options: Options) {
   }, []);
 
   function allowedTarget(event: DragEvent) {
+    if (!acceptsItemTransfer(event)) return null;
     const target = readCreationTreeDrag(event.dataTransfer);
     const { albumId, tree } = options;
     if (!target || options.busy || movingRef.current || tree.effectivelyArchived.has(albumId)) return null;
     if (target.kind === 'CREATION_ITEM') {
       const item = options.creationItems.find((candidate) => candidate.id === target.id);
       return item &&
-        item.albumId !== albumId &&
+        (item.albumId !== albumId || itemDragIntent(event) === 'COPY') &&
         item.lifecycle === 'ACTIVE' &&
         !(item.albumId && tree.effectivelyArchived.has(item.albumId))
         ? target
@@ -42,7 +44,7 @@ export function useCreationAlbumDrop(options: Options) {
     if (
       !tree.byId.has(target.id) ||
       tree.effectivelyArchived.has(target.id) ||
-      tree.parentById.get(target.id) === albumId
+      (tree.parentById.get(target.id) === albumId && itemDragIntent(event) !== 'COPY')
     )
       return null;
     let ancestor: string | undefined = albumId;
@@ -60,7 +62,7 @@ export function useCreationAlbumDrop(options: Options) {
     event.preventDefault();
     event.stopPropagation();
     const accepted = Boolean(allowedTarget(event));
-    event.dataTransfer.dropEffect = accepted ? 'move' : 'none';
+    event.dataTransfer.dropEffect = accepted ? (itemDragIntent(event) === 'COPY' ? 'copy' : 'move') : 'none';
     setActive(accepted);
   }
 
@@ -75,8 +77,9 @@ export function useCreationAlbumDrop(options: Options) {
     movingRef.current = true;
     setMoving(true);
     try {
-      if (target.kind === 'ALBUM') await options.onMoveAlbum(target.id, options.albumId);
-      else await options.onMoveCreationItem(target.id, options.albumId);
+      if (target.kind === 'ALBUM')
+        await options.onMoveAlbum(target.id, options.albumId, itemDragIntent(event) === 'COPY');
+      else await options.onMoveCreationItem(target.id, options.albumId, itemDragIntent(event) === 'COPY');
     } catch {
       // Shared library actions report failures and refresh authoritative state.
     } finally {

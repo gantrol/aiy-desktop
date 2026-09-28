@@ -22,7 +22,7 @@ function describePetal(source: DesktopNote | DesktopPin, draft?: { text: string;
   };
 }
 
-/** Read only the hovered instance; reserve transient space without opening an editor or saving layout. */
+/** Read only the hovered instance. Presentation never resizes its source window. */
 export function executePetalPreview(
   input: unknown,
   entry: PetalWindow | undefined,
@@ -36,7 +36,6 @@ export function executePetalPreview(
   const request = petalPreviewRequestSchema.parse(input);
   const reserve = (open: boolean) => {
     if (entry.drawer) drawer.view.setPreview(open);
-    else windows.presentation.preview(entry, open, 'peek');
   };
   if (!request.open) {
     // A late close from the previous grid cell must not dismiss its neighbour.

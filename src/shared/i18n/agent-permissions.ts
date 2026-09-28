@@ -1,0 +1,15 @@
+export const agentPermissionsMessages = {
+  tab: 'CLI',
+  space: 'Current space',
+  readContent: 'Read and search content',
+  writeContent: 'Import and edit content',
+  manageWork: 'Manage work items and delegation',
+  generate: 'Create and cancel generation jobs',
+  externalActions: 'Stage external actions',
+  revokeAll: 'Turn all off',
+  save: 'Save',
+  saved: 'Saved',
+  reload: 'Reload',
+  loading: 'Loading',
+  failed: 'Could not load or save CLI permissions. Reload and try again.',
+};

@@ -1,3 +1,4 @@
+import { WorkbenchPaneToggle } from '@/renderer/components/workbench/WorkbenchPane';
 import {
   useCallback,
   useEffect,
@@ -14,7 +15,6 @@ import {
   LoaderCircleIcon,
   MessageSquareIcon,
   PackageOpenIcon,
-  PanelRightCloseIcon,
   RotateCcwIcon,
   SearchIcon,
   SquareIcon,
@@ -983,6 +983,7 @@ export function OutputInspector({
 
   const inspector = (
     <PasteDropSurface
+      workbenchPane
       className="relative flex min-h-0 min-w-0 flex-col bg-muted"
       disabled={importing}
       onImages={onImportFiles}
@@ -1009,6 +1010,15 @@ export function OutputInspector({
         <div className="flex min-w-fit flex-1 flex-col gap-0.5">
           <div className="flex min-w-0 items-center gap-2">
             {headerNavigation}
+            {!comparisonFullWindow && (
+              <WorkbenchPaneToggle
+                expanded
+                side="right"
+                label={messages.workbench.results}
+                className="ml-auto hidden @min-[840px]/creator:inline-flex"
+                onClick={() => onCollapsedChange(true)}
+              />
+            )}
             {asset && (
               <small className="hidden truncate text-xs text-muted-foreground @min-[520px]/output:inline">
                 {asset.width} × {asset.height}
@@ -1355,20 +1365,7 @@ export function OutputInspector({
             {hasVersionStripContent && versionStrip}
           </>
         ))}
-      <Button
-        type="button"
-        variant="secondary"
-        size="icon-sm"
-        className={cn(
-          'absolute bottom-2 left-2 z-chrome hidden shadow-overlay @min-[840px]/creator:inline-flex',
-          comparisonFullWindow && '@min-[840px]/creator:hidden',
-        )}
-        title={gallery.collapse}
-        aria-label={gallery.collapse}
-        onClick={() => onCollapsedChange(true)}
-      >
-        <PanelRightCloseIcon className="size-4" />
-      </Button>
+
       <ImageEditConfirmDialog
         open={refinementDialogOpen}
         locale={locale}

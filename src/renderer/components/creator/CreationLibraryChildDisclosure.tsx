@@ -2,7 +2,10 @@ import { FoldVerticalIcon, ListCollapseIcon, LoaderCircleIcon } from 'lucide-rea
 import type { ReactNode } from 'react';
 import type { AssetDto } from '@/shared/contracts';
 import { TreeBranchCollapseProvider, TreeBranchContent } from '@/renderer/components/albums/TreeDisclosureRail';
-import type { TreeBranchItemTopology } from '@/renderer/components/albums/treeConnectionGeometry';
+import {
+  COMPACT_TREE_NODE_METRICS,
+  type TreeBranchItemTopology,
+} from '@/renderer/components/albums/treeConnectionGeometry';
 import { MediaStackPreview } from '@/renderer/components/media/MediaStackPreview';
 import {
   CreationLibraryTreeItem,
@@ -38,12 +41,14 @@ export function CreationLibraryChildDisclosure({
   onAssetSelect,
 }: Props) {
   const previewItems = previewAssets.slice(0, 3).map((asset) => ({ asset }));
-  const previewMetrics = getCreationTreeMediaNodeMetrics(previewItems);
+  const compact = previewItems.length === 0;
+  const previewMetrics = compact ? COMPACT_TREE_NODE_METRICS : getCreationTreeMediaNodeMetrics(previewItems);
   const row = (
     <CreationLibraryTreeItem
       dataAttributes={{ 'data-creation-library-child-disclosure': true }}
       branchTopology={branchTopology}
       selected={false}
+      compact={compact}
       ariaLabel={label}
       aria-busy={loading}
       openLabel={label}
@@ -52,17 +57,25 @@ export function CreationLibraryChildDisclosure({
       previewBounds={previewMetrics.bounds}
       previewStyle={{ width: previewMetrics.width }}
       canSpreadPreview={previewItems.length > 1}
-      preview={(expanded) => (
-        <MediaStackPreview
-          className="pointer-events-none"
-          items={previewItems}
-          maxItems={3}
-          singleItemAlign="center"
-          size="tree"
-          spread={expanded ? 'expanded' : 'settled'}
-          onAssetSelect={onAssetSelect}
-        />
-      )}
+      preview={
+        compact ? (
+          <span className="mx-1 grid size-7 place-items-center text-muted-foreground">
+            <ListCollapseIcon className="size-4" aria-hidden="true" />
+          </span>
+        ) : (
+          (expanded) => (
+            <MediaStackPreview
+              className="pointer-events-none"
+              items={previewItems}
+              maxItems={3}
+              singleItemAlign="center"
+              size="tree"
+              spread={expanded ? 'expanded' : 'settled'}
+              onAssetSelect={onAssetSelect}
+            />
+          )
+        )
+      }
       controls={
         loading ? (
           <LoaderCircleIcon className="pointer-events-none relative z-10 mr-3 size-3.5 animate-spin text-muted-foreground" />

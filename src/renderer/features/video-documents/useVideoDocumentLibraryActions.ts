@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { copyCreationTarget } from '@/renderer/components/albums/copyCreationTarget';
 import type { AlbumDto, Locale, VideoDocumentDto, VideoDocumentGenerationRunDto } from '@/shared/contracts';
 import type { NavigationMode, VideoDocumentsLocation } from '@/renderer/components/app/app-navigation';
 import { createVideoDocument } from '@/renderer/features/video-documents/createVideoDocument';
@@ -65,7 +66,19 @@ export function useVideoDocumentLibraryActions({
     }
   }
 
-  async function moveDocument(documentId: string, albumId: string | null) {
+  async function moveDocument(documentId: string, albumId: string | null, copy = false) {
+    if (copy) {
+      const result = await window.desktopApi.creationOutlineCommand({
+        kind: 'copy-form-owner',
+        entity: { kind: 'VIDEO_DOCUMENT', id: documentId },
+        albumId,
+      });
+      if (result.kind === 'error') throw new Error(result.code);
+      await Promise.resolve(onAlbumsChange());
+      refreshDocumentList();
+      refreshNavigation();
+      return;
+    }
     const updated = await window.desktopApi.videoDocumentMove({ documentId, albumId });
     if (document?.id === documentId) {
       setDocument(updated);
@@ -87,8 +100,37 @@ export function useVideoDocumentLibraryActions({
     }
   }
 
-  async function moveAlbum(albumId: string, parentAlbumId: string | null) {
-    await window.desktopApi.albumsMove({ albumId, parentAlbumId });
+  async function moveCreationItem(creationItemId: string, albumId: string | null, copy = false) {
+    if (copy) await copyCreationTarget('CREATION_ITEM', creationItemId, albumId);
+    else {
+      const item = await window.desktopApi.creationItemMove({ creationItemId, albumId });
+      const selectedId = selectedDocumentIdRef.current;
+      if (
+        selectedId &&
+        item.forms.some((form) => form.entity.kind === 'VIDEO_DOCUMENT' && form.entity.id === selectedId)
+      ) {
+        const updated = await window.desktopApi.videoDocumentGet(selectedId);
+        if (selectedDocumentIdRef.current === selectedId) {
+          setDocument(updated);
+          onNavigate(
+            {
+              collection: albumId ? { kind: 'album', albumId } : { kind: 'unfiled' },
+              documentId: selectedId,
+            },
+            'replace',
+          );
+        }
+        updateSummary(updated);
+      }
+    }
+    await Promise.resolve(onAlbumsChange());
+    refreshDocumentList();
+    refreshNavigation();
+  }
+
+  async function moveAlbum(albumId: string, parentAlbumId: string | null, copy = false) {
+    if (copy) await copyCreationTarget('ALBUM', albumId, parentAlbumId);
+    else await window.desktopApi.albumsMove({ albumId, parentAlbumId });
     await Promise.resolve(onAlbumsChange());
     refreshNavigation();
   }
@@ -137,6 +179,7 @@ export function useVideoDocumentLibraryActions({
     savingTitle,
     saveTitle,
     moveDocument,
+    moveCreationItem,
     moveAlbum,
     createAlbum,
     renameAlbum,

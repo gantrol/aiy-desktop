@@ -1,4 +1,4 @@
-import { useRef, useState, type KeyboardEvent } from 'react';
+import { useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react';
 import type { OutlineRow } from '@/renderer/features/creation-outline/outline-tree';
 
 export function useOutlineSelection(
@@ -7,15 +7,27 @@ export function useOutlineSelection(
   toggle: (key: string) => void,
   expanded: ReadonlySet<string>,
   collapsible: boolean,
+  currentKey: string | null = null,
 ) {
   const [selected, setSelected] = useState<string[]>([]);
   const [focused, setFocused] = useState<string | null>(null);
   const anchor = useRef<string | null>(null);
   const elements = useRef(new Map<string, HTMLDivElement>());
-  const visibleKeys = rows.map((row) => row.node.key);
-  const visibleSet = new Set(visibleKeys);
+  const visibleKeys = useMemo(() => rows.map((row) => row.node.key), [rows]);
+  const visibleSet = useMemo(() => new Set(visibleKeys), [visibleKeys]);
   const selection = selected.filter((key) => visibleSet.has(key));
-  const focusKey = focused && visibleSet.has(focused) ? focused : (visibleKeys[0] ?? null);
+  useLayoutEffect(() => {
+    setSelected((current) =>
+      current.every((key) => visibleSet.has(key)) ? current : current.filter((key) => visibleSet.has(key)),
+    );
+    if (anchor.current && !visibleSet.has(anchor.current)) anchor.current = null;
+  }, [visibleSet]);
+  const focusKey =
+    focused && visibleSet.has(focused)
+      ? focused
+      : currentKey && visibleSet.has(currentKey)
+        ? currentKey
+        : (visibleKeys[0] ?? null);
 
   function focus(key: string) {
     setFocused(key);

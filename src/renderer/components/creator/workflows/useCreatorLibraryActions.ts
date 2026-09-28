@@ -1,4 +1,6 @@
 import { useRef, useState } from 'react';
+import { copyCreationTarget } from '@/renderer/components/albums/copyCreationTarget';
+import { useI18n } from '@/renderer/i18n/useI18n';
 import type { AlbumDto, Locale, VideoDocumentDto } from '@/shared/contracts';
 import { createSerialTaskQueue } from '@/renderer/lib/serialTaskQueue';
 import { useStableCallback } from '@/renderer/lib/useStableCallback';
@@ -25,6 +27,7 @@ function messageFor(reason: unknown) {
 }
 
 export function useCreatorLibraryActions(options: Options) {
+  const { messages } = useI18n();
   const [busy, setBusy] = useState(false);
   const [moveQueue] = useState(createSerialTaskQueue);
   const busyRef = useRef(false);
@@ -86,13 +89,15 @@ export function useCreatorLibraryActions(options: Options) {
     }),
   );
 
-  const moveAlbum = useStableCallback(async (albumId: string, parentAlbumId: string | null) => {
+  const moveAlbum = useStableCallback(async (albumId: string, parentAlbumId: string | null, copy = false) => {
     if (busyRef.current || blocked()) return;
     return moveQueue.enqueue(async () => {
       try {
-        await window.desktopApi.albumsMove({ albumId, parentAlbumId });
-        await refreshAlbums();
-        notify(options.albumMovedMessage);
+        if (copy) await copyCreationTarget('ALBUM', albumId, parentAlbumId);
+        else await window.desktopApi.albumsMove({ albumId, parentAlbumId });
+        if (copy) await refresh();
+        else await refreshAlbums();
+        notify(copy ? messages.creator.outline.copied(1) : options.albumMovedMessage);
       } catch (reason) {
         notify(`${options.operationFailedMessage}: ${messageFor(reason)}`);
         throw reason;
@@ -100,13 +105,20 @@ export function useCreatorLibraryActions(options: Options) {
     });
   });
 
-  const moveCreationItem = useStableCallback(async (creationItemId: string, albumId: string | null) => {
+  const moveCreationItem = useStableCallback(async (creationItemId: string, albumId: string | null, copy = false) => {
     if (busyRef.current || blocked()) return;
     return moveQueue.enqueue(async () => {
       try {
-        await window.desktopApi.creationItemMove({ creationItemId, albumId });
+        if (copy) await copyCreationTarget('CREATION_ITEM', creationItemId, albumId);
+        else await window.desktopApi.creationItemMove({ creationItemId, albumId });
         await refresh();
-        notify(albumId ? options.albumMemberAddedMessage : options.albumMemberRemovedMessage);
+        notify(
+          copy
+            ? messages.creator.outline.copied(1)
+            : albumId
+              ? options.albumMemberAddedMessage
+              : options.albumMemberRemovedMessage,
+        );
       } catch (reason) {
         await refresh().catch(() => undefined);
         notify(`${options.operationFailedMessage}: ${messageFor(reason)}`);

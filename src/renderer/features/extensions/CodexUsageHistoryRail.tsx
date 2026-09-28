@@ -17,6 +17,7 @@ interface Props {
   selectedId: string | null;
   task: CodexUsageTask | null;
   workspaceNavigation?: ReactNode;
+  headerControl?: ReactNode;
   onSelect(investigationId: string): void;
 }
 
@@ -60,23 +61,22 @@ export function CodexUsageHistoryRail({
   selectedId,
   task,
   workspaceNavigation,
+  headerControl,
   onSelect,
 }: Props) {
   const numberLocale = locale === 'zh' ? 'zh-CN' : 'en-US';
   const date = new Intl.DateTimeFormat(numberLocale, { dateStyle: 'medium', timeStyle: 'short' });
   const tokens = new Intl.NumberFormat(numberLocale, { notation: 'compact', maximumFractionDigits: 1 });
   return (
-    <aside
-      className="hidden h-full w-60 shrink-0 flex-col border-r bg-surface-sunken/20 md:flex"
-      aria-label={labels.history}
-    >
+    <aside className="flex size-full min-h-0 min-w-0 flex-col bg-surface-sunken" aria-label={labels.history}>
       {workspaceNavigation && <div className="border-b p-2">{workspaceNavigation}</div>}
-      <header className="flex h-12 shrink-0 items-center gap-2 border-b px-3">
+      <header className="flex h-14 shrink-0 items-center gap-2 border-b px-3">
         <HistoryIcon className="size-4 text-muted-foreground" />
         <h3 className="text-xs font-semibold">{labels.history}</h3>
         <Badge variant="secondary" className="ml-auto tabular-nums">
           {history.length}
         </Badge>
+        {headerControl}
       </header>
       {task && <CurrentTask task={task} labels={labels} locale={locale} />}
       <ScrollArea className="min-h-0 flex-1">

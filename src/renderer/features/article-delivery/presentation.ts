@@ -5,8 +5,22 @@ import type {
   ArticleDeliveryUploadResult,
 } from '@/shared/contracts/article-delivery';
 import type { MessageCatalog } from '@/renderer/i18n/types';
+import type { ArticleDeliveryTarget } from '@/renderer/features/article-delivery/articleDeliveryTargets';
+import { EXTENSION_HOST_VERSION } from '@/shared/product';
 
 export type ArticleDeliveryMessages = MessageCatalog['articleDelivery'];
+
+export function articleDeliveryTargetUnavailableMessage(target: ArticleDeliveryTarget, messages: MessageCatalog) {
+  if (target.unavailableReason === 'DISABLED') return messages.extensions.disabled;
+  if (target.unavailableReason === 'INCOMPATIBLE') {
+    return messages.articleDelivery.batch.incompatibleHost
+      .replace('{required}', target.requiredHostVersion)
+      .replace('{current}', EXTENSION_HOST_VERSION);
+  }
+  if (target.unavailableReason === 'PERMISSION_REQUIRED')
+    return messages.extensions.connectionStates.PERMISSION_REQUIRED;
+  return messages.articleDelivery.batch.unavailable;
+}
 
 export function articleDeliveryActive(job: ArticleDeliveryJob) {
   return job.status === 'QUEUED' || job.status === 'RUNNING';

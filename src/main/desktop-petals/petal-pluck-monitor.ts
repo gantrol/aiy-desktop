@@ -1,7 +1,7 @@
 import type { PetalWindow } from '@/main/desktop-petals/petal-windows';
 import type { PetalInputMonitor } from '@/main/desktop-petals/petal-input-monitor';
 
-/** Native release fallback for capture lost while the transparent flower changes bounds. */
+/** Optional native release fallback for pointer capture interrupted outside the application. */
 export class PetalPluckMonitor {
   private active?: { entry: PetalWindow; token: string; stop(): void };
   constructor(private readonly input: PetalInputMonitor) {}

@@ -1,11 +1,11 @@
 import { hasExternalFilesDrag, hasMaterialsDrag, readMaterialsDrag } from '@/renderer/components/albums/albumDrag';
+import { acceptsItemMove } from '@/renderer/components/albums/itemDrag';
 import {
   CreationRelationsPreview,
   type CreationRelationItem,
 } from '@/renderer/components/creator/CreationRelationsSheet';
 import { SocialPostMediaActions } from '@/renderer/components/creator/SocialPostMediaActions';
-import { SocialPostMediaOrderHandle } from '@/renderer/components/creator/SocialPostMediaOrderHandle';
-import { SocialPostMediaPreviewDialog } from '@/renderer/components/creator/SocialPostMediaPreviewDialog';
+import { SocialPostMediaPreview } from '@/renderer/components/creator/SocialPostMediaPreview';
 import {
   clipboardHasUserText,
   clipboardImageFiles,
@@ -318,6 +318,20 @@ export function useSocialPostMediaIntake({
   return { adding, chooseMedia: () => trackInput(chooseMedia()), dragActive, dragMedia, dropMedia, pasteImages };
 }
 
+function useMediaPreviewSelection(ids: readonly string[], onChangeIds: (ids: string[]) => boolean) {
+  const [previewAssetId, setPreviewAssetId] = useState<string | null>(null);
+  useEffect(() => {
+    if (previewAssetId && !ids.includes(previewAssetId)) setPreviewAssetId(null);
+  }, [ids, previewAssetId]);
+  function removeImage(assetId: string) {
+    const index = ids.indexOf(assetId);
+    const nextPreviewId = ids[index + 1] ?? ids[index - 1] ?? null;
+    if (!onChangeIds(ids.filter((id) => id !== assetId))) return;
+    if (previewAssetId === assetId) setPreviewAssetId(nextPreviewId);
+  }
+  return { previewAssetId, setPreviewAssetId, removeImage };
+}
+
 export function SocialPostMediaSection({
   adding,
   assetsById,
@@ -328,6 +342,8 @@ export function SocialPostMediaSection({
   onAdd,
   onChangeIds,
   onGenerateCover,
+  onGenerateTextCover,
+  textCoverDisabled,
   onOpenRelations,
   onPreviewRequestHandled,
   onReferenceImage,
@@ -345,6 +361,8 @@ export function SocialPostMediaSection({
   onAdd(): void;
   onChangeIds(ids: string[]): boolean;
   onGenerateCover(): void;
+  onGenerateTextCover(): void;
+  textCoverDisabled: boolean;
   onOpenRelations(assetId: string | null): void;
   onPreviewRequestHandled?(): void;
   onReferenceImage?(assetId: string): void;
@@ -359,7 +377,10 @@ export function SocialPostMediaSection({
   const moreActionsLabel = messages.creator.album.moreActions;
   const figureCopy = figureReferenceMessages(locale);
   const [dragTargetId, setDragTargetId] = useState<string | null>(null);
-  const [previewAssetId, setPreviewAssetId] = useState<string | null>(null);
+  const { previewAssetId, setPreviewAssetId, removeImage } = useMediaPreviewSelection(
+    content.mediaAssetIds,
+    onChangeIds,
+  );
   const { copyingAssetId, copyImage } = useImageClipboard(notify, fileLabels);
   useFigurePreviewRequest({
     request: previewRequest,
@@ -370,17 +391,6 @@ export function SocialPostMediaSection({
     onPreview: setPreviewAssetId,
     onHandled: onPreviewRequestHandled,
   });
-
-  useEffect(() => {
-    if (previewAssetId && !content.mediaAssetIds.includes(previewAssetId)) setPreviewAssetId(null);
-  }, [content.mediaAssetIds, previewAssetId]);
-
-  function removeImage(assetId: string) {
-    const index = content.mediaAssetIds.indexOf(assetId);
-    const nextPreviewId = content.mediaAssetIds[index + 1] ?? content.mediaAssetIds[index - 1] ?? null;
-    if (!onChangeIds(content.mediaAssetIds.filter((id) => id !== assetId))) return;
-    if (previewAssetId === assetId) setPreviewAssetId(nextPreviewId);
-  }
 
   return (
     <section
@@ -394,6 +404,20 @@ export function SocialPostMediaSection({
         generatingCover={generatingCover}
         onAdd={onAdd}
         onGenerateCover={onGenerateCover}
+        onGenerateTextCover={onGenerateTextCover}
+        textCoverDisabled={textCoverDisabled}
+      />
+      <SocialPostMediaPreview
+        assetIds={content.mediaAssetIds}
+        assetsById={assetsById}
+        coverAssetId={content.coverAssetId}
+        copyingAssetId={copyingAssetId}
+        openAssetId={previewAssetId}
+        notify={notify}
+        onCopy={(assetId) => void copyImage(assetId)}
+        onOpenAssetIdChange={setPreviewAssetId}
+        onRemove={removeImage}
+        onSetCover={onSetCover}
       />
       <div className="grid grid-cols-[repeat(auto-fill,minmax(7rem,1fr))] gap-3">
         {content.mediaAssetIds.map((assetId, index) => {
@@ -450,12 +474,17 @@ export function SocialPostMediaSection({
               data-social-post-media-id={assetId}
               className={cn('group min-w-0', dragTargetId === assetId && 'ring-2 ring-selected-border')}
               onDragEnter={(event) => {
+                if (!acceptsItemMove(event)) return;
                 if (!hasSocialPostMediaReorderDrag(event.dataTransfer, content.mediaAssetIds)) return;
                 event.preventDefault();
                 event.stopPropagation();
                 setDragTargetId(assetId);
               }}
               onDragOver={(event) => {
+                if (!acceptsItemMove(event)) {
+                  event.dataTransfer.dropEffect = 'none';
+                  return;
+                }
                 if (!hasSocialPostMediaReorderDrag(event.dataTransfer, content.mediaAssetIds)) return;
                 event.preventDefault();
                 event.stopPropagation();
@@ -466,6 +495,7 @@ export function SocialPostMediaSection({
                 if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setDragTargetId(null);
               }}
               onDrop={(event) => {
+                if (!acceptsItemMove(event)) return;
                 const sourceId = socialPostMediaReorderSourceId(event.dataTransfer, content.mediaAssetIds);
                 if (!sourceId) return;
                 event.preventDefault();
@@ -514,12 +544,9 @@ export function SocialPostMediaSection({
                     {socialCopy.unavailable}
                   </div>
                 )}
-                <SocialPostMediaOrderHandle
-                  assetId={assetId}
-                  index={index}
-                  onDragEnd={() => setDragTargetId(null)}
-                  onMove={(offset) => onChangeIds(move(content.mediaAssetIds, index, offset))}
-                />
+                <span className="pointer-events-none absolute left-1.5 top-1.5 z-10 rounded-sm bg-overlay/90 px-1.5 py-0.5 text-2xs tabular-nums">
+                  {index + 1}
+                </span>
                 {cover && (
                   <span className="pointer-events-none absolute top-1.5 right-1.5 z-10 flex items-center gap-1 rounded bg-overlay/90 px-1.5 py-0.5 text-2xs">
                     <StarIcon className="size-3 fill-current" />
@@ -551,20 +578,6 @@ export function SocialPostMediaSection({
         })}
       </div>
       <CreationRelationsPreview items={relations} onSelect={onSelectRelation} />
-      <SocialPostMediaPreviewDialog
-        assetIds={content.mediaAssetIds}
-        assetsById={assetsById}
-        coverAssetId={content.coverAssetId}
-        copyingAssetId={copyingAssetId}
-        copyLabel={fileLabels.copy}
-        locale={locale}
-        openAssetId={previewAssetId}
-        notify={notify}
-        onCopy={(assetId) => void copyImage(assetId)}
-        onOpenAssetIdChange={setPreviewAssetId}
-        onRemove={removeImage}
-        onSetCover={onSetCover}
-      />
     </section>
   );
 }

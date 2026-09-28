@@ -9,10 +9,12 @@ import {
   type AppDeepLinkCommand,
 } from '@/shared/contracts/app-deep-link';
 import { APP_CONTENT_LINK_EVENT } from '@/renderer/components/app/app-content-link';
+import type { useWorkspaceController } from '@/renderer/components/workspace/useWorkspaceController';
 
 type CloseOverlay = Dispatch<SetStateAction<boolean>>;
 
 function contentLocation(command: AppDeepLinkCommand): AppLocation {
+  if (command.target === 'companion') return { ...initialAppLocation, view: 'companion' };
   if (command.target === 'calendar') return { ...initialAppLocation, view: 'calendar' };
   if (command.target === 'article') {
     return { ...initialAppLocation, view: 'creator', creator: { surface: 'article', articleId: command.entityId } };
@@ -33,10 +35,12 @@ function contentLocation(command: AppDeepLinkCommand): AppLocation {
 
 export function useAppDeepLinkNavigation(
   space: Pick<BootstrapDto, 'spaceId'> | null,
-  openTab: (location: AppLocation) => void,
+  workspace: Pick<ReturnType<typeof useWorkspaceController>, 'activeTab' | 'openTab' | 'navigateReference'>,
   setData: Dispatch<SetStateAction<BootstrapDto | null>>,
   closeOverlays: readonly [CloseOverlay, CloseOverlay, CloseOverlay],
 ) {
+  const { openTab, navigateReference } = workspace;
+  const activeTabId = workspace.activeTab?.id;
   const spaceId = space?.spaceId;
   const [closeSettings, closeComparison, closePrompt] = closeOverlays;
   const pending = useRef<AppDeepLinkCommand[]>([]);
@@ -53,7 +57,7 @@ export function useAppDeepLinkNavigation(
           if (disposed) return;
           while (pending.current.length && !disposed) {
             const index = pending.current.findIndex(
-              (command) => command.target === 'gallery' || command.spaceId === spaceId,
+              (command) => !('spaceId' in command) || command.spaceId === spaceId,
             );
             if (index < 0) return;
             const command = pending.current[index];
@@ -102,7 +106,9 @@ export function useAppDeepLinkNavigation(
             closeComparison(false);
             closePrompt(false);
             // Use a new tab so the current editor retains its document and undo history.
-            openTab(contentLocation(command));
+            if (command.target === 'article' && command.blockId && activeTabId)
+              navigateReference(activeTabId, command.entityId, command.blockId, { placement: 'current' });
+            else openTab(contentLocation(command));
           }
         })
         .catch((error: unknown) => console.error('[deep-link] Failed to open content', error));
@@ -123,5 +129,5 @@ export function useAppDeepLinkNavigation(
       unsubscribe();
       window.removeEventListener(APP_CONTENT_LINK_EVENT, onContentLink);
     };
-  }, [spaceId, openTab, setData, closeSettings, closeComparison, closePrompt]);
+  }, [spaceId, openTab, navigateReference, activeTabId, setData, closeSettings, closeComparison, closePrompt]);
 }

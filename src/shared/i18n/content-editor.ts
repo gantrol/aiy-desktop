@@ -1,3 +1,5 @@
+import { contentMathMessages } from '@/shared/i18n/content-math';
+
 export const linkCardMessages = {
   pastedLinkActions: 'Pasted link',
   keepLink: 'Keep link',
@@ -7,11 +9,25 @@ export const linkCardMessages = {
   convertToLinkCard: 'Turn into link card',
   linkCardToText: 'Turn into link',
   linkPreviewLoading: 'Loading link preview',
+  linkPreviewRetry: 'Retry preview',
+  linkPreviewPageFailed: 'Preview unavailable',
+  linkPreviewImageFailed: 'Image unavailable',
+  linkPreviewErrors: {
+    ADDRESS_BLOCKED: 'Address blocked',
+    PROXY: 'System proxy unavailable',
+    TIMEOUT: 'Request timed out',
+    HTTP: 'Website response unavailable',
+    TOO_LARGE: 'Response exceeds preview limits',
+    UNSUPPORTED: 'No supported preview content',
+    BUSY: 'Too many pending previews',
+    NETWORK: 'Network request failed',
+  },
   linkOpenFailed: 'Could not open this link',
 };
 
-/** Editor labels also supplied to the isolated desktop-note renderer. */
+/** Data-only editor labels for the isolated note renderer; parameterized copy uses string placeholders. */
 export const contentEditorMessages = {
+  math: contentMathMessages,
   ...linkCardMessages,
   more: 'More editor actions',
   formatting: 'Formatting',

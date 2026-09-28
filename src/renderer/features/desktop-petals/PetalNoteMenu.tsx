@@ -3,13 +3,14 @@ import { Check, Copy, ExternalLink, EyeOff, Layers, Maximize2, Palette, Pin, Pin
 import {
   DropdownMenu,
   DropdownMenuItem,
+  DropdownMenuLabel,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/renderer/components/ui/dropdown-menu';
 import { NoteAppearancePicker } from '@/renderer/features/desktop-petals/NoteAppearancePicker';
 import { PetalMenuContent, PetalMenuSection } from '@/renderer/features/desktop-petals/PetalMenu';
-import { noteAppearanceStyle } from '@/renderer/features/desktop-petals/petal-appearance';
 import { useI18n } from '@/renderer/i18n/useI18n';
+import { usePetalMenuApi, usePetalMenuExecutor } from '@/renderer/features/desktop-petals/petal-menu-api';
 import type { DesktopNote, DesktopPetalSnapshot, PetalColor, PetalIcon } from '@/shared/contracts/desktop-petals';
 
 export interface PetalNoteMenuActions {
@@ -28,6 +29,7 @@ export interface PetalNoteMenuActions {
 }
 
 interface Props extends PetalNoteMenuActions {
+  showWindowControls?: boolean;
   showAppearance?: boolean;
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -50,6 +52,7 @@ export function PetalNoteMenu({
   onExpand,
   onAppearance,
   showAppearance = true,
+  showWindowControls = true,
   onError,
   open,
   onOpenChange,
@@ -59,23 +62,26 @@ export function PetalNoteMenu({
   onCloseAutoFocus,
 }: Props) {
   const { messages } = useI18n();
+  const api = usePetalMenuApi();
+  const execute = usePetalMenuExecutor();
   const copy = messages.desktopPetals;
   const running = useRef(false);
   const [busy, setBusy] = useState(false);
   const blocked = disabled || busy;
-  const style = noteAppearanceStyle(note.color);
-  const run = async (
-    action: () => Promise<unknown>,
+  const run = async <Args extends unknown[]>(
+    action: (...args: Args) => Promise<unknown>,
+    args: Args,
     { dismiss = true, prepare = true }: { dismiss?: boolean; prepare?: boolean } = {},
   ) => {
     if (disabled || running.current) return;
     running.current = true;
     setBusy(true);
     try {
+      if (execute) return await execute(action, args, { dismiss, prepare });
       if (prepare && beforeAction && !(await beforeAction())) return;
-      // Restore the small native window before expanding, hiding or changing its placement.
+      // Dismiss the command surface before expanding, hiding or changing placement.
       if (dismiss) await close();
-      await action();
+      await action(...args);
     } catch (error) {
       onError(error);
     } finally {
@@ -84,82 +90,87 @@ export function PetalNoteMenu({
     }
   };
   const item =
-    (action: () => Promise<unknown>, prepare = true) =>
+    <Args extends unknown[]>(action: (...args: Args) => Promise<unknown>, args: Args, prepare = true) =>
     (event: Event) => {
       event.preventDefault();
-      void run(action, { prepare });
+      void run(action, args, { prepare });
     };
+  const layerItems = board.layers.map((layer) => {
+    const selected = (board.memberships[note.id] ?? 'default') === layer.id;
+    return (
+      <DropdownMenuItem
+        key={layer.id}
+        role="menuitemradio"
+        aria-checked={selected}
+        disabled={blocked}
+        onSelect={item(api.boardCommand, [{ kind: 'assign-layer', id: note.id, layerId: layer.id }])}
+      >
+        <Check className={selected ? '' : 'invisible'} />
+        <span className="truncate">{layer.name || copy.board.defaultLayer}</span>
+      </DropdownMenuItem>
+    );
+  });
   return (
     <DropdownMenu open={open} onOpenChange={onOpenChange} modal={false}>
       <DropdownMenuTrigger asChild>{trigger}</DropdownMenuTrigger>
-      <PetalMenuContent align={align} style={style} onCloseAutoFocus={onCloseAutoFocus}>
+      <PetalMenuContent align={align} onCloseAutoFocus={onCloseAutoFocus}>
         {onExpand && (
-          <DropdownMenuItem disabled={blocked} onSelect={item(onExpand, false)}>
+          <DropdownMenuItem disabled={blocked} onSelect={item(onExpand, [], false)}>
             <Maximize2 />
             {copy.actions.expand}
           </DropdownMenuItem>
         )}
-        <DropdownMenuItem disabled={blocked || !persisted} onSelect={item(() => window.desktopPetals.openMain())}>
+        <DropdownMenuItem disabled={blocked || !persisted} onSelect={item(api.openMain, [])}>
           <ExternalLink />
           {copy.actions.openSource}
         </DropdownMenuItem>
         {onDuplicate && (
-          <DropdownMenuItem disabled={blocked || !persisted} onSelect={item(onDuplicate)}>
+          <DropdownMenuItem disabled={blocked || !persisted} onSelect={item(onDuplicate, [])}>
             <Copy />
             {copy.actions.duplicate}
           </DropdownMenuItem>
         )}
         {onOpenTask && (
-          <DropdownMenuItem disabled={blocked} onSelect={item(onOpenTask)}>
+          <DropdownMenuItem disabled={blocked} onSelect={item(onOpenTask, [])}>
             <ExternalLink />
             {copy.codex.openTask}
           </DropdownMenuItem>
         )}
-        <DropdownMenuSeparator />
-        <DropdownMenuItem
-          disabled={blocked}
-          onSelect={item(() => window.desktopPetals.setAlwaysOnTop(!alwaysOnTop), false)}
-        >
-          {alwaysOnTop ? <PinOff /> : <Pin />}
-          {alwaysOnTop ? copy.actions.pauseAlwaysOnTop : copy.actions.resumeAlwaysOnTop}
-        </DropdownMenuItem>
+        {(showWindowControls || showAppearance || (persisted && board.layers.length > 1)) && <DropdownMenuSeparator />}
+        {showWindowControls && (
+          <DropdownMenuItem disabled={blocked} onSelect={item(api.setAlwaysOnTop, [!alwaysOnTop], false)}>
+            {alwaysOnTop ? <PinOff /> : <Pin />}
+            {alwaysOnTop ? copy.actions.pauseAlwaysOnTop : copy.actions.resumeAlwaysOnTop}
+          </DropdownMenuItem>
+        )}
         {showAppearance && (
           <PetalMenuSection icon={Palette} label={copy.actions.appearance} disabled={blocked}>
             <NoteAppearancePicker
               note={note}
               disabled={blocked}
-              onChange={(patch) => void run(() => onAppearance(patch), { dismiss: false, prepare: false })}
+              onChange={(patch) => void run(onAppearance, [patch], { dismiss: false, prepare: false })}
             />
           </PetalMenuSection>
         )}
-        {persisted && board.layers.length > 1 && (
-          <PetalMenuSection icon={Layers} label={copy.actions.moveLayer} disabled={blocked}>
-            {board.layers.map((layer) => {
-              const selected = (board.memberships[note.id] ?? 'default') === layer.id;
-              return (
-                <DropdownMenuItem
-                  key={layer.id}
-                  role="menuitemradio"
-                  aria-checked={selected}
-                  disabled={blocked}
-                  onSelect={item(() =>
-                    window.desktopPetals.boardCommand({ kind: 'assign-layer', id: note.id, layerId: layer.id }),
-                  )}
-                >
-                  <Check className={selected ? '' : 'invisible'} />
-                  <span className="truncate">{layer.name || copy.board.defaultLayer}</span>
-                </DropdownMenuItem>
-              );
-            })}
-          </PetalMenuSection>
-        )}
+        {persisted &&
+          board.layers.length > 1 &&
+          (showWindowControls ? (
+            <PetalMenuSection icon={Layers} label={copy.actions.moveLayer} disabled={blocked}>
+              {layerItems}
+            </PetalMenuSection>
+          ) : (
+            <>
+              <DropdownMenuLabel>{copy.actions.moveLayer}</DropdownMenuLabel>
+              {layerItems}
+            </>
+          ))}
         <DropdownMenuSeparator />
-        <DropdownMenuItem disabled={blocked} onSelect={item(() => window.desktopPetals.hide())}>
+        <DropdownMenuItem disabled={blocked} onSelect={item(api.hide, [])}>
           <EyeOff />
           {copy.actions.hide}
         </DropdownMenuItem>
         {persisted && (
-          <DropdownMenuItem disabled={blocked} onSelect={item(() => window.desktopPetals.remove())}>
+          <DropdownMenuItem disabled={blocked} onSelect={item(api.remove, [])}>
             <PinOff />
             {copy.actions.remove}
           </DropdownMenuItem>

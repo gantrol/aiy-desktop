@@ -14,6 +14,7 @@ import {
 import { RectIcon } from '@/renderer/icons';
 import { Button } from '@/renderer/components/ui/button';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/renderer/components/ui/tooltip';
+import { cn } from '@/renderer/lib/utils';
 import type { AnnotationLabels, AnnotationMode, BrushMode } from '@/renderer/components/creator/annotations/types';
 
 interface Props {
@@ -39,11 +40,18 @@ interface Props {
   doneDisabled?: boolean;
 }
 
-function ToolButton({ label, children, ...props }: React.ComponentProps<typeof Button> & { label: string }) {
+function ToolButton({ label, children, className, ...props }: React.ComponentProps<typeof Button> & { label: string }) {
   return (
     <Tooltip>
       <TooltipTrigger asChild>
-        <Button aria-label={label} {...props}>
+        <Button
+          aria-label={label}
+          {...props}
+          className={cn(
+            'aria-pressed:bg-selected aria-pressed:text-selected-foreground aria-pressed:ring-1 aria-pressed:ring-inset aria-pressed:ring-selected-foreground aria-pressed:hover:bg-selected aria-pressed:active:bg-selected',
+            className,
+          )}
+        >
           {children}
         </Button>
       </TooltipTrigger>

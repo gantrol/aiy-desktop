@@ -7,6 +7,7 @@ import { Button } from '@/renderer/components/ui/button';
 import { useI18n } from '@/renderer/i18n/useI18n';
 import { cn } from '@/renderer/lib/utils';
 import { ImageAmbientBackdrop } from '@/renderer/components/media/AmbientImage';
+import { MediaCardCaption } from '@/renderer/components/media/MediaCardCaption';
 import { codexGeneratedThumbnailUrl } from '@/renderer/components/media/mediaThumbnailUrl';
 
 export interface CodexImageTaskGroupData {
@@ -145,6 +146,7 @@ export function CodexImageTaskGroup({
               key={image.id}
               type="button"
               data-codex-discovery-id={image.id}
+              data-media-card
               data-codex-thread-id={canOpenCodex ? group.threadId : undefined}
               aria-pressed={selectable ? selected : undefined}
               aria-label={
@@ -154,7 +156,7 @@ export function CodexImageTaskGroup({
               }
               disabled={disabled || busy}
               className={cn(
-                'group overflow-hidden rounded-lg border bg-background text-left outline-none transition-colors focus-visible:ring-2 focus-visible:ring-ring',
+                'group overflow-hidden rounded-md border bg-background text-left outline-none transition-colors focus-visible:ring-2 focus-visible:ring-ring',
                 selected && 'border-selected-border bg-selected ring-1 ring-selected-border',
                 disabled && 'opacity-65',
               )}
@@ -191,18 +193,21 @@ export function CodexImageTaskGroup({
                   </span>
                 )}
                 {image.imported && (
-                  <Badge className="absolute bottom-2 left-2" variant="secondary">
+                  <Badge className="absolute top-2 left-2 z-20" variant="secondary">
                     {l.imported}
                   </Badge>
                 )}
-              </span>
-              <span className="flex min-w-0 items-center gap-2 p-3 text-xs text-muted-foreground">
-                <span className="min-w-0 flex-1 truncate" title={`${image.fileName} · SHA-256 ${image.sha256}`}>
-                  {image.fileName}
-                </span>
-                <time className="shrink-0" dateTime={image.modifiedAt}>
-                  {dateFormatter.format(new Date(image.modifiedAt))}
-                </time>
+                <MediaCardCaption>
+                  <strong
+                    className="block truncate text-sm font-semibold"
+                    title={`${image.fileName} · SHA-256 ${image.sha256}`}
+                  >
+                    {image.fileName}
+                  </strong>
+                  <time className="block truncate text-xs font-normal opacity-85" dateTime={image.modifiedAt}>
+                    {dateFormatter.format(new Date(image.modifiedAt))}
+                  </time>
+                </MediaCardCaption>
               </span>
             </button>
           );

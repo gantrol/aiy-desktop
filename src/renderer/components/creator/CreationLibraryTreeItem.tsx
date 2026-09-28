@@ -1,6 +1,10 @@
 import { forwardRef, type ComponentProps, type DragEvent, type ReactNode } from 'react';
 import { TreeBranchNodeConnector, TreeBranchTransitRail } from '@/renderer/components/albums/TreeDisclosureRail';
-import { getTreeNodeAnchor, type TreeBranchItemTopology } from '@/renderer/components/albums/treeConnectionGeometry';
+import {
+  getTreeNodeAnchor,
+  TREE_CONNECTION_GEOMETRY,
+  type TreeBranchItemTopology,
+} from '@/renderer/components/albums/treeConnectionGeometry';
 import {
   getMediaStackHorizontalBounds,
   getMediaStackLayout,
@@ -11,6 +15,7 @@ import {
 import { Button } from '@/renderer/components/ui/button';
 import { cn } from '@/renderer/lib/utils';
 import { useTreeBranchPreviewGesture } from '@/renderer/components/albums/useTreeBranchPreviewGesture';
+import { itemDragStart } from '@/renderer/components/albums/itemDrag';
 
 export interface CreationLibraryTreePlacementProps {
   branchTopology?: TreeBranchItemTopology;
@@ -29,6 +34,7 @@ export interface CreationTreeNodeFrameProps
   extends CreationLibraryTreePlacementProps, Omit<ComponentProps<'span'>, 'children'> {
   bounds: MediaStackPrimaryFrameBounds;
   rowInsetY?: number;
+  rowHeight?: number;
   children: ReactNode;
 }
 
@@ -36,6 +42,7 @@ export interface CreationTreeNodeFrameProps
 export function CreationTreeNodeFrame({
   bounds,
   rowInsetY,
+  rowHeight,
   branchTopology,
   className,
   style,
@@ -51,7 +58,7 @@ export function CreationTreeNodeFrame({
       style={style}
     >
       {branchTopology && <TreeBranchTransitRail topology={branchTopology} />}
-      {branchTopology && <TreeBranchNodeConnector topology={branchTopology} anchor={anchor} />}
+      {branchTopology && <TreeBranchNodeConnector topology={branchTopology} anchor={anchor} rowHeight={rowHeight} />}
       {children}
     </span>
   );
@@ -72,6 +79,7 @@ export type CreationLibraryTreeDataAttributes = Partial<
 export interface CreationLibraryTreeItemProps
   extends CreationLibraryTreePlacementProps, Omit<ComponentProps<'div'>, 'children' | 'title' | 'onSelect'> {
   selected: boolean;
+  compact?: boolean;
   ariaLabel: string;
   openLabel: string;
   title: string;
@@ -92,11 +100,12 @@ export interface CreationLibraryTreeItemProps
   onOpen(): void;
 }
 
-/** Common 68px directory row; content types supply only preview, metadata and actions. */
+/** Icon-only entries and animation group members use the compact 36px presentation. */
 export const CreationLibraryTreeItem = forwardRef<HTMLDivElement, CreationLibraryTreeItemProps>(
   function CreationLibraryTreeItem(
     {
       selected,
+      compact = false,
       ariaLabel,
       openLabel,
       title,
@@ -117,6 +126,7 @@ export const CreationLibraryTreeItem = forwardRef<HTMLDivElement, CreationLibrar
       onPointerTrackStart,
       onPointerTrack,
       onOpen,
+      onDragStart,
       ...props
     },
     ref,
@@ -133,15 +143,18 @@ export const CreationLibraryTreeItem = forwardRef<HTMLDivElement, CreationLibrar
     return (
       <div
         {...props}
+        draggable={props.draggable ?? Boolean(onDragStart)}
+        onDragStart={onDragStart && itemDragStart(onDragStart)}
         ref={ref}
         {...dataAttributes}
         data-result-library-selected={selected ? 'true' : undefined}
         role="group"
         aria-label={ariaLabel}
         className={cn(
-          'group relative flex h-[4.25rem] min-w-0 cursor-pointer items-center gap-1 rounded-lg px-1 transition-colors hover:bg-hover',
+          'group relative flex h-[4.25rem] min-w-0 cursor-pointer items-center gap-1 rounded-sm px-1 transition-colors hover:bg-hover',
           selected &&
-            'text-selected-foreground before:pointer-events-none before:absolute before:inset-y-0.5 before:left-3 before:right-0 before:rounded-xl before:bg-selected hover:bg-transparent',
+            'text-selected-foreground before:pointer-events-none before:absolute before:inset-y-0.5 before:left-0 before:right-0 before:rounded-sm before:bg-selected hover:bg-transparent',
+          compact && 'h-9',
           className,
         )}
       >
@@ -151,14 +164,20 @@ export const CreationLibraryTreeItem = forwardRef<HTMLDivElement, CreationLibrar
           data-action="open-creation-tree-item"
           aria-label={openLabel}
           aria-current={selected ? 'page' : undefined}
-          className="absolute inset-0 z-0 size-auto rounded-lg p-0 hover:bg-transparent focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
+          className={cn(
+            'absolute inset-0 z-0 size-auto rounded-sm p-0 hover:bg-transparent focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring',
+            selected && 'active:bg-transparent',
+          )}
           onClick={onOpen}
         />
         <CreationTreeNodeFrame
           bounds={previewBounds}
+          rowInsetY={compact ? 0 : undefined}
+          rowHeight={compact ? TREE_CONNECTION_GEOMETRY.compactRowHeight : undefined}
           branchTopology={branchTopology}
           className={cn(
             '-ml-1 flex h-[4.25rem] w-16 items-center',
+            compact && 'h-9 w-9',
             childBranch || canSpreadPreview ? 'pointer-events-auto' : 'pointer-events-none',
             previewClassName,
           )}
@@ -171,7 +190,12 @@ export const CreationLibraryTreeItem = forwardRef<HTMLDivElement, CreationLibrar
         {leadingContent}
         <span className="pointer-events-none relative z-10 min-w-0 flex-1 px-1 text-left">
           <strong
-            className={cn('line-clamp-2 break-words text-base font-medium leading-5', titleClassName)}
+            className={cn(
+              'line-clamp-2 break-words text-base font-medium leading-5',
+              selected && 'font-semibold',
+              compact && 'line-clamp-1 truncate text-sm',
+              titleClassName,
+            )}
             title={title}
           >
             {title}

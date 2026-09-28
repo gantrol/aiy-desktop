@@ -4,11 +4,10 @@ import { Button } from '@/renderer/components/ui/button';
 import { usePetalPluck } from '@/renderer/features/desktop-petals/use-petal-pluck';
 import { usePetalDrag } from '@/renderer/features/desktop-petals/use-petal-drag';
 import { RosePetal, RosePaint } from '@/renderer/features/desktop-petals/RosePetal';
-import { PetalShape } from '@/renderer/features/desktop-petals/PetalShape';
-import { PetalCaption } from '@/renderer/features/desktop-petals/PetalCaption';
-import { PETAL_SHAPE_LAYOUT, PETAL_SHAPE_ANCHOR } from '@/renderer/features/desktop-petals/petal-shape-layout';
-import { appearanceStyle } from '@/renderer/features/desktop-petals/petal-appearance';
-import { PETAL_WINDOW_SIZES } from '@/shared/contracts/petal-hub';
+import { PETAL_SHAPE_ANCHOR } from '@/renderer/features/desktop-petals/petal-shape-layout';
+import { DetachedPetal } from '@/renderer/features/desktop-petals/DetachedPetal';
+import { PetalOverlay } from '@/renderer/features/desktop-petals/PetalOverlay';
+import { usePetalOverlay } from '@/renderer/features/desktop-petals/use-petal-overlay';
 import {
   FLOWER_PETAL_COUNT,
   FLOWER_CENTER_LAYER,
@@ -39,9 +38,45 @@ type PluckGesture = ReturnType<typeof usePetalPluck>;
 
 /** Native gestures stay with the desktop host; the view also supports timeline-driven presentation. */
 export function RoseFlower({ onPluck, onPreview, onError, ...props }: RoseFlowerProps) {
-  const { flower, ...gesture } = usePetalPluck(onPluck, props.size, onPreview, onError);
+  const overlay = usePetalOverlay('pluck', () => gesture.cancel());
+  const { flower, ...gesture } = usePetalPluck(
+    onPluck,
+    props.size,
+    async (active) => {
+      if (!active) overlay.close();
+      await onPreview(active);
+      if (active) await overlay.open();
+    },
+    onError,
+  );
   const { handlers: drag } = usePetalDrag(props.onCenterClick, onError);
-  return <RoseFlowerView {...props} {...gesture} flowerRef={flower} drag={drag} />;
+  const pull = gesture.pull;
+  const bounds = pull ? flower.current?.getBoundingClientRect() : undefined;
+  return (
+    <>
+      <RoseFlowerView {...props} {...gesture} flowerRef={flower} drag={drag} showDetachedPetal={false} />
+      <PetalOverlay
+        surface={pull ? overlay.surface : null}
+        point={
+          pull && bounds
+            ? {
+                x: window.screenX + bounds.left + pull.pointerX - PETAL_SHAPE_ANCHOR.x,
+                y: window.screenY + bounds.top + pull.pointerY - PETAL_SHAPE_ANCHOR.y,
+              }
+            : undefined
+        }
+      >
+        {pull && (
+          <DetachedPetal
+            x={PETAL_SHAPE_ANCHOR.x}
+            y={PETAL_SHAPE_ANCHOR.y}
+            opacity={pull.detached}
+            moving={pull.phase === 'pulling'}
+          />
+        )}
+      </PetalOverlay>
+    </>
+  );
 }
 
 /** The overhead rose exposes only its outer petals to plucking. Inner paint blocks clicks behind it. */
@@ -173,26 +208,7 @@ export function RoseFlowerView({
         {center}
       </Button>
       {showDetachedPetal && pull && (
-        <div
-          className={`pointer-events-none absolute flex flex-col items-center justify-center ease-out motion-reduce:duration-0 ${pull.phase === 'pulling' ? '' : 'transition-[left,top,opacity] duration-180'}`}
-          aria-hidden="true"
-          style={{
-            ...appearanceStyle('rose'),
-            left: pull.pointerX - PETAL_SHAPE_ANCHOR.x,
-            top: pull.pointerY - PETAL_SHAPE_ANCHOR.y,
-            width: PETAL_WINDOW_SIZES.collapsed.width,
-            height: PETAL_WINDOW_SIZES.collapsed.height,
-            opacity: pull.detached,
-          }}
-        >
-          <span
-            className="block shrink-0"
-            style={{ width: PETAL_SHAPE_LAYOUT.width, height: PETAL_SHAPE_LAYOUT.height }}
-          >
-            <PetalShape icon="feather" />
-          </span>
-          <PetalCaption title="" visible={false} />
-        </div>
+        <DetachedPetal x={pull.pointerX} y={pull.pointerY} opacity={pull.detached} moving={pull.phase === 'pulling'} />
       )}
     </div>
   );

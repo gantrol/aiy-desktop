@@ -1,4 +1,7 @@
 export const calendarMessages = {
+  writer: 'Activity writer',
+  allWriters: 'All writers',
+  aiWriters: 'Recorded AI writes',
   heatmap: 'Activity by day',
   heatmapLess: 'Fewer entries',
   heatmapMore: 'More entries',

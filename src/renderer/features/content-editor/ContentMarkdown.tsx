@@ -1,6 +1,8 @@
 import ReactMarkdown, { type Components, type Options } from 'react-markdown';
 import remarkGfm from 'remark-gfm';
-import type { ComponentPropsWithoutRef } from 'react';
+import remarkMath from 'remark-math';
+import { contentMarkdownMath } from '@/renderer/features/content-editor/contentMarkdownMath';
+import { useMemo, type ComponentPropsWithoutRef } from 'react';
 import { ContentMarkdownCheckbox } from '@/renderer/features/content-editor/ContentMarkdownCheckbox';
 import {
   contentTypographyClassName,
@@ -35,13 +37,14 @@ export function ContentMarkdown({
   skipHtml = true,
   ...props
 }: Props) {
+  const renderers = useMemo(() => contentMarkdownMath({ ...contentMarkdownComponents, ...components }), [components]);
   return (
     <div {...containerProps} className={cn(contentTypographyClassName(typography), 'whitespace-normal', className)}>
       <ReactMarkdown
         {...props}
-        remarkPlugins={[remarkGfm, ...(remarkPlugins ?? [])]}
+        remarkPlugins={[remarkGfm, remarkMath, ...(remarkPlugins ?? [])]}
         skipHtml={skipHtml}
-        components={{ ...contentMarkdownComponents, ...components }}
+        components={renderers}
       />
     </div>
   );

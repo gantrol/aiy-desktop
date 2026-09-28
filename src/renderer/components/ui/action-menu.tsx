@@ -100,6 +100,7 @@ export function ActionMenuButton({
         <Button
           type="button"
           data-slot="action-menu-trigger"
+          data-item-drag-ignore
           variant={variant}
           size="icon-sm"
           className={cn('size-7 shrink-0', className)}

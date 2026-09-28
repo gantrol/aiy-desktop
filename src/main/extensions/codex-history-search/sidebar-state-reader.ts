@@ -1,5 +1,6 @@
 import { createHash } from 'node:crypto';
 import { lstat, readFile } from 'node:fs/promises';
+import path from 'node:path';
 import { z } from 'zod';
 
 const MAX_GLOBAL_STATE_BYTES = 32 * 1024 * 1024;
@@ -79,6 +80,7 @@ export interface CodexSidebarState {
   projects: CodexSidebarProject[];
   sections: CodexSidebarSection[];
   projectIdByLegacyProjectId: Map<string, string>;
+  localAppServerProjectIdByProjectId?: Map<string, string>;
   projectIdByThreadId: Map<string, string>;
   placementByThreadId: Map<string, SidebarPlacement>;
   sectionIdByLegacySectionId: Map<string, string>;
@@ -293,6 +295,16 @@ export async function readCodexSidebarState(
   applyPinnedNavigation(state, atomState, projectCatalog.ids, navigation);
   const projectIdByThreadId = readProjectAssignments(state, projectCatalog.ids);
   const projectIdByLegacyProjectId = readLegacyProjectMappings(state, projectCatalog.ids);
+  const canonicalPath = (value: string) =>
+    process.platform === 'win32' ? path.resolve(value).toLowerCase() : path.resolve(value);
+  const localHome = canonicalPath(path.dirname(globalStatePath));
+  const localAppServerProjectIdByProjectId = new Map<string, string>();
+  for (const [host, mappings] of Object.entries(state['app-server-project-id-by-legacy-project-id-by-host'] ?? {})) {
+    if (!host.startsWith('local:') || canonicalPath(host.slice(6)) !== localHome) continue;
+    for (const [projectId, serverId] of Object.entries(mappings)) {
+      if (projectCatalog.ids.has(projectId)) localAppServerProjectIdByProjectId.set(projectId, serverId);
+    }
+  }
   const projects = projectCatalog.entries
     .map(([projectId, project]): CodexSidebarProject => {
       const placement = navigation.placementByProjectId.get(projectId);
@@ -320,6 +332,7 @@ export async function readCodexSidebarState(
     projects,
     sections: navigation.sections,
     projectIdByLegacyProjectId,
+    localAppServerProjectIdByProjectId,
     projectIdByThreadId,
     placementByThreadId: navigation.placementByThreadId,
     sectionIdByLegacySectionId: navigation.sectionIdByLegacySectionId,

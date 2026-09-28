@@ -4,6 +4,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { updateDevDeepLinkProtocol } from './dev-deep-link-protocol.mjs';
 import { resolveDevelopmentElectronExecutable } from './windows-development-executable.mjs';
+import { createLaunchOutputLog } from './launch-output-log.mjs';
 
 const applicationRoot = fileURLToPath(new URL('..', import.meta.url));
 const electronVite = path.join(applicationRoot, 'node_modules', 'electron-vite', 'bin', 'electron-vite.js');
@@ -88,14 +89,16 @@ if (process.platform === 'linux') {
 }
 
 console.info('[dev] Browser companion disabled; starting Electron only.');
+const outputLog = await createLaunchOutputLog(applicationRoot, 'desktop-dev');
 electronProcess = spawn(process.execPath, arguments_, {
   env: {
     ...process.env,
     AIY_RENDERER_DEV_PORT: String(rendererPort),
     ELECTRON_EXEC_PATH: electronExecutable,
   },
-  stdio: 'inherit',
+  stdio: ['inherit', 'pipe', 'pipe'],
 });
+outputLog.attach(electronProcess);
 
 electronProcess.on('error', (error) => {
   console.error('[dev] Failed to start electron-vite.', error);

@@ -3,6 +3,7 @@ import {
   DOMParser as ProseMirrorDOMParser,
   DOMSerializer,
   Fragment,
+  Slice,
   type Node as ProseMirrorNode,
 } from '@tiptap/pm/model';
 import { closeHistory } from '@tiptap/pm/history';
@@ -19,6 +20,7 @@ import {
 } from '@/renderer/features/content-editor/outlineViewState';
 import { deleteOutlineSelection } from '@/renderer/features/content-editor/outlineEditing';
 import { activeOutlineView } from '@/renderer/features/content-editor/outlineActiveView';
+import { plainTextInlineContent } from '@/renderer/features/content-editor/contentPlainText';
 
 const outlineClipboardType = 'application/x-aiy-outline+json';
 type OutlineClipboardEvent = Pick<ClipboardEvent, 'clipboardData' | 'preventDefault'>;
@@ -170,7 +172,11 @@ function pastePosition(editor: Editor) {
   }
   for (let depth = resolved.depth; depth >= 1; depth -= 1) {
     const node = resolved.node(depth);
-    if (node.type.name === 'listItem') return { node, position: resolved.before(depth) };
+    if (node.type.name === 'listItem') {
+      // Plain note paragraphs use the shared rich-text paste behavior at the caret.
+      if (resolved.parent !== node.firstChild) return null;
+      return { node, position: resolved.before(depth) };
+    }
   }
   return null;
 }
@@ -258,13 +264,36 @@ export function pasteOutlineSelection(editor: Editor, event: OutlineClipboardEve
 }
 
 function textParagraph(editor: Editor, text: string) {
-  const lines = text.split(/\r?\n/u);
-  const inline: ProseMirrorNode[] = [];
-  lines.forEach((line, index) => {
-    if (index) inline.push(editor.schema.nodes.hardBreak.create());
-    if (line) inline.push(editor.schema.text(line));
+  return editor.schema.nodes.paragraph.create(
+    { blockId: crypto.randomUUID() },
+    plainTextInlineContent(editor.schema, text),
+  );
+}
+
+/** A table is item content; replacing an empty title can lift it out of its list item. */
+export function pasteOutlineTable(editor: Editor, event: OutlineClipboardEvent, slice: Slice): boolean {
+  if (editor.isDestroyed || !editor.isEditable || activeOutlineView(editor).composing) return false;
+  const target = pastePosition(editor);
+  const title = target?.node.firstChild;
+  if (!target || title?.type.name !== 'paragraph' || title.content.size) return false;
+  const previous = outlineViewState(editor.state);
+  const { $from, $to } = editor.state.selection;
+  if (!previous.selected.length && ($from.parent !== title || $to.parent !== title)) return false;
+  let hasTable = false;
+  slice.content.forEach((node) => {
+    if (node.type.name === 'table') hasTable = true;
   });
-  return editor.schema.nodes.paragraph.create({ blockId: crypto.randomUUID() }, Fragment.fromArray(inline));
+  if (!hasTable || !target.node.canReplace(1, 1, slice.content)) return false;
+  // Insert closed blocks after the mandatory title, retaining this item's identity and descendants.
+  const position = target.position + 1 + title.nodeSize;
+  const transaction = editor.state.tr.insert(position, slice.content);
+  transaction.setSelection(TextSelection.near(transaction.doc.resolve(position + slice.content.size), -1));
+  const folded = new Set(previous.folded);
+  folded.delete(target.node.attrs.blockId);
+  attachOutlineView(transaction, { ...previous, folded, selected: [], anchor: null, active: null }, previous);
+  activeOutlineView(editor).dispatch(transaction.setMeta('paste', true).setMeta('uiEvent', 'paste').scrollIntoView());
+  event.preventDefault();
+  return true;
 }
 
 /** Plain text edits the active item; structured lists create items through the separate path. */
@@ -289,7 +318,8 @@ function pasteOutlineTextContent(editor: Editor, event: OutlineClipboardEvent, t
       context: transaction.selection.$from,
     });
     if (!slice.content.size) return false;
-    transaction.replaceSelection(slice);
+    if (pasteOutlineTable(editor, event, slice)) return true;
+    transaction.replaceSelection(Slice.maxOpen(slice.content, false));
   } else
     transaction.replaceWith(transaction.selection.from, transaction.selection.to, textParagraph(editor, text).content);
   if (transaction.doc.eq(editor.state.doc)) return false;
@@ -414,14 +444,13 @@ export function pasteExternalOutlineText(editor: Editor, event: OutlineClipboard
   const clipboard = event.clipboardData;
   if (!clipboard || clipboard.files.length || !editor.isEditable || activeOutlineView(editor).composing) return false;
   const text = clipboard.getData('text/markdown') || clipboard.getData('text/plain');
-  if (!text || text.length > 2_000_000) return false;
+  const html = clipboard.getData('text/html');
+  if ((!text && !html) || text.length > 2_000_000 || html.length > 8_000_000) return false;
   const markdownList = /^\s*(?:[-+*]|\d+[.)])\s+/mu.test(text);
   const markdownHeading = /^\s*#{1,6}\s+/mu.test(text);
   const paragraphs = /\r?\n\s*\r?\n/u.test(text);
-  if (clipboard.getData('text/html') && !clipboard.getData('text/markdown') && !markdownList && !markdownHeading)
-    return outlineViewState(editor.state).selected.length
-      ? pasteOutlineTextContent(editor, event, text, clipboard.getData('text/html'))
-      : false;
+  if (html && !clipboard.getData('text/markdown') && !markdownList && !markdownHeading)
+    return outlineViewState(editor.state).selected.length ? pasteOutlineTextContent(editor, event, text, html) : false;
   try {
     const indented = !markdownList && !markdownHeading && !paragraphs ? indentedOutlineItems(editor, text) : null;
     if (markdownList || markdownHeading || paragraphs || indented) {

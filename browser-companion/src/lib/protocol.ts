@@ -162,6 +162,15 @@ export const browserCompanionRequestSchema = z.discriminatedUnion('kind', [
   z
     .object({
       protocolVersion: z.literal(BROWSER_COMPANION_PROTOCOL_VERSION),
+      kind: z.literal('inspect-handoff'),
+      handoffId: z.string().uuid().optional(),
+      target: companionSiteSchema,
+    })
+    .strict(),
+  z.object({ ...authenticatedRequestFields, kind: z.literal('begin-fill') }).strict(),
+  z
+    .object({
+      protocolVersion: z.literal(BROWSER_COMPANION_PROTOCOL_VERSION),
       kind: z.literal('claim-handoff'),
       handoffId: z.string().uuid(),
       target: companionSiteSchema,
@@ -271,7 +280,40 @@ export const browserCompanionHandoffSchema = z
   })
   .strict();
 
+/** Read-only, exact-task preview. No claim/release, completion token, paths or library identity. */
+export const browserCompanionInspectionSchema = z
+  .object({
+    handoffId: z.string().uuid(),
+    target: companionSiteSchema,
+    state: z.enum(['ready', 'claimed', 'delivered']),
+    contentKind: z.enum(['social-post-body', 'prompt', 'article-body']),
+    title: z.string().trim().min(1).max(200).nullable(),
+    text: z.string().min(1).max(10_000),
+    media: z.array(mediaSchema).max(20),
+    createdAt: z.string().datetime({ offset: true }),
+    fillStarted: z.boolean(),
+    claimExpiresAt: z.string().datetime({ offset: true }).optional(),
+  })
+  .strict();
+export type BrowserCompanionInspection = z.infer<typeof browserCompanionInspectionSchema>;
+
 export const browserCompanionResponseSchema = z.discriminatedUnion('kind', [
+  z
+    .object({
+      protocolVersion: z.literal(BROWSER_COMPANION_PROTOCOL_VERSION),
+      ok: z.literal(true),
+      kind: z.literal('inspection'),
+      handoff: browserCompanionInspectionSchema.nullable(),
+    })
+    .strict(),
+  z
+    .object({
+      protocolVersion: z.literal(BROWSER_COMPANION_PROTOCOL_VERSION),
+      ok: z.literal(true),
+      kind: z.literal('fill-started'),
+      handoffId: z.string().uuid(),
+    })
+    .strict(),
   z
     .object({
       protocolVersion: z.literal(BROWSER_COMPANION_PROTOCOL_VERSION),

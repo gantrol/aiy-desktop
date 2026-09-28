@@ -1,8 +1,9 @@
 import { ArrowRightIcon, CaptionsIcon, FileTextIcon, LoaderCircleIcon, VideoIcon } from 'lucide-react';
-import { useState, type FormEvent } from 'react';
+import { useMemo, useState, type FormEvent } from 'react';
 import type { AlbumDto } from '@/shared/contracts';
 import { CreateAlbumDialog } from '@/renderer/components/albums/CreateAlbumDialog';
-import { SearchableAlbumSelect } from '@/renderer/components/albums/SearchableAlbumSelect';
+import { AlbumSelect } from '@/renderer/components/albums/AlbumSelect';
+import { creationAlbumOptions } from '@/renderer/components/albums/albumSelectOptions';
 import { Button } from '@/renderer/components/ui/button';
 import { Checkbox } from '@/renderer/components/ui/checkbox';
 import { Input } from '@/renderer/components/ui/input';
@@ -42,6 +43,7 @@ export function VideoDocumentCreationSettings({
 }: Props) {
   const { messages } = useI18n();
   const labels = messages.videoDocuments.start;
+  const albumOptions = useMemo(() => creationAlbumOptions(albums), [albums]);
   const [createAlbumParent, setCreateAlbumParent] = useState<AlbumDto | null | undefined>(undefined);
 
   function submit(event: FormEvent<HTMLFormElement>) {
@@ -66,20 +68,15 @@ export function VideoDocumentCreationSettings({
         </div>
         <div className="grid gap-2">
           <Label>{labels.destinationAlbum}</Label>
-          <SearchableAlbumSelect
-            albums={albums}
+          <AlbumSelect
+            options={albumOptions}
             value={albumId}
             disabled={submitting}
-            labels={{
-              ariaLabel: labels.destinationAlbum,
-              unfiled: labels.unfiled,
-              searchPlaceholder: labels.searchAlbums,
-              empty: labels.noMatchingAlbums,
-              create: messages.gallery.albums.create,
-              createChild: messages.gallery.albums.createChild,
-            }}
+            className="h-11"
+            ariaLabel={labels.destinationAlbum}
+            nullOption={{ kind: 'unassigned', label: labels.unfiled }}
             onValueChange={onAlbumChange}
-            onRequestCreate={setCreateAlbumParent}
+            onRequestCreate={(parentId) => setCreateAlbumParent(albums.find((album) => album.id === parentId) ?? null)}
           />
         </div>
         <label className="flex cursor-pointer items-center gap-3 rounded-md py-1 text-sm">

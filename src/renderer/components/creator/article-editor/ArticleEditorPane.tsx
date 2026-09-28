@@ -35,7 +35,7 @@ export function ArticleEditorPane({
         <Input
           value={title}
           maxLength={200}
-          className={`${articleTitleClassName} h-auto min-w-0 flex-1 border-0 px-0 shadow-none placeholder:text-muted-foreground/70 focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring`}
+          className={`${articleTitleClassName} h-auto min-w-0 flex-1 border-0 px-0 shadow-none placeholder:text-muted-foreground focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring`}
           aria-label={copy.title}
           placeholder={copy.untitledArticle}
           onChange={(event) => onTitleChange(event.target.value)}

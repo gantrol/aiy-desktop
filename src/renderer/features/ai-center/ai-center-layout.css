@@ -1,0 +1,10 @@
+/* A global xl breakpoint says nothing about the width of a split tab's detail pane. */
+.ai-activity-detail dl {
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 9rem), 1fr));
+}
+.ai-activity-detail dd {
+  overflow-wrap: anywhere;
+}
+.ai-activity-detail header > div {
+  max-width: 100%;
+}

@@ -51,7 +51,7 @@
       "count": 1
     },
     "react-hooks/exhaustive-deps": {
-      "count": 3
+      "count": 2
     }
   },
   "src/renderer/components/GalleryScreen.tsx": {

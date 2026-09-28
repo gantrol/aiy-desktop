@@ -11,7 +11,11 @@ export interface ComposerAdapter {
   validateDraft?(draft: string, title?: string): FillDraftErrorCode | null;
   prepareMedia?(
     files: readonly File[],
-    options: { replaceExisting?: boolean; title?: string },
+    options: {
+      replaceExisting?: boolean;
+      title?: string;
+      beforeMutation?: () => Promise<void>;
+    },
   ): Promise<{ ok: true; editor: ComposerElement } | { ok: false; code: FillDraftErrorCode }>;
   writeTitle?(editor: TextControl, title: string, replaceExisting: boolean): Promise<boolean>;
   fillArticle?(

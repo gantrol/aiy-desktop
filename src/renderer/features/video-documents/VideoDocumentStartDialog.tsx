@@ -1,7 +1,8 @@
 import { FileVideoIcon, LoaderCircleIcon } from 'lucide-react';
 import { useEffect, useMemo, useState, type FormEvent } from 'react';
 import type { AlbumDto, IntakeCommitSource, IntakeVideoMimeType } from '@/shared/contracts';
-import { flattenAlbumTree, buildAlbumTreeIndex } from '@/renderer/components/albums/albumTree';
+import { creationAlbumOptions } from '@/renderer/components/albums/albumSelectOptions';
+import { AlbumSelect } from '@/renderer/components/albums/AlbumSelect';
 import { Button } from '@/renderer/components/ui/button';
 import { Checkbox } from '@/renderer/components/ui/checkbox';
 import {
@@ -14,7 +15,6 @@ import {
 } from '@/renderer/components/ui/dialog';
 import { Input } from '@/renderer/components/ui/input';
 import { Label } from '@/renderer/components/ui/label';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/renderer/components/ui/select';
 import {
   formatVideoDocumentDuration,
   formatVideoDocumentFileSize,
@@ -23,8 +23,6 @@ import {
 import { useI18n } from '@/renderer/i18n/useI18n';
 import { ImageAmbientBackdrop } from '@/renderer/components/media/AmbientImage';
 import { cn } from '@/renderer/lib/utils';
-
-const UNFILED_VALUE = '__UNFILED__';
 
 export interface VideoDocumentStartConfiguration {
   file: File;
@@ -59,7 +57,7 @@ export function VideoDocumentStartDialog({
 }: Props) {
   const { messages } = useI18n();
   const labels = messages.videoDocuments.start;
-  const albumRows = useMemo(() => flattenAlbumTree(buildAlbumTreeIndex(albums)), [albums]);
+  const albumOptions = useMemo(() => creationAlbumOptions(albums), [albums]);
   const { previewUrl, mediaInfo, reading, error: mediaError } = useVideoDocumentLocalFile(file, open, labels);
   const [title, setTitle] = useState('');
   const [albumId, setAlbumId] = useState<string | null>(null);
@@ -144,24 +142,14 @@ export function VideoDocumentStartDialog({
           </div>
           <div className="grid gap-2">
             <Label>{labels.album}</Label>
-            <Select
-              value={albumId ?? UNFILED_VALUE}
+            <AlbumSelect
+              options={albumOptions}
+              value={albumId}
+              ariaLabel={labels.album}
+              nullOption={{ kind: 'unassigned', label: labels.unfiled }}
               disabled={submitting}
-              onValueChange={(value) => setAlbumId(value === UNFILED_VALUE ? null : value)}
-            >
-              <SelectTrigger>
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value={UNFILED_VALUE}>{labels.unfiled}</SelectItem>
-                {albumRows.map(({ album, depth }) => (
-                  <SelectItem key={album.id} value={album.id}>
-                    {'　'.repeat(depth)}
-                    {album.title}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+              onValueChange={setAlbumId}
+            />
           </div>
           <label className="flex items-start gap-3 rounded-lg border p-3 text-sm">
             <Checkbox

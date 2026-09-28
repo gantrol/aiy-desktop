@@ -1,3 +1,4 @@
+import { itemReorderHandler } from '@/renderer/components/albums/itemDrag';
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { XIcon } from 'lucide-react';
 import type { AssetDto, FacetDefinitionDto, TermListItem } from '@/shared/contracts';
@@ -83,13 +84,13 @@ function MaterialImagePickerSelectionStrip<T extends MaterialImagePickerImage>({
               event.dataTransfer.setData('text/plain', image.id);
             }}
             onDragEnd={() => setDraggingId(null)}
-            onDragOver={(event) => {
+            onDragOver={itemReorderHandler((event) => {
               const sourceId = draggingId ?? event.dataTransfer.getData('text/plain');
               if (!sourceId || sourceId === image.id) return;
               event.preventDefault();
               event.dataTransfer.dropEffect = 'move';
-            }}
-            onDrop={(event) => {
+            })}
+            onDrop={itemReorderHandler((event) => {
               event.preventDefault();
               const sourceId = draggingId ?? event.dataTransfer.getData('text/plain');
               const bounds = event.currentTarget.getBoundingClientRect();
@@ -104,7 +105,7 @@ function MaterialImagePickerSelectionStrip<T extends MaterialImagePickerImage>({
                 );
               }
               setDraggingId(null);
-            }}
+            })}
           >
             <AssetThumbnail
               asset={image}

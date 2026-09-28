@@ -1,12 +1,21 @@
+import type {
+  MaterialAlbumMembershipApplyInput,
+  MaterialAlbumMembershipApplyResult,
+} from '@/shared/contracts/material-album-membership';
+import type { MembershipEditorState } from '@/renderer/components/gallery/MaterialAlbumMembershipDialog';
+import { Collapsible, CollapsibleTrigger, CollapsibleContent } from '@/renderer/components/ui/collapsible';
+import { CollectionDetailLayout } from '@/renderer/components/workbench/CollectionDetailLayout';
+import { WorkbenchPaneToggle } from '@/renderer/components/workbench/WorkbenchPane';
+import { MaterialBrowseList } from '@/renderer/components/gallery/MaterialBrowseList';
+import { cn } from '@/renderer/lib/utils';
 import { HeartIcon, LoaderCircleIcon } from 'lucide-react';
-import { useEffect, useId, useRef, useState } from 'react';
+import { useEffect, useId, useRef, useState, type ReactNode } from 'react';
 import type {
   AssetRelationshipDto,
   ImageRatingDimension,
   ExternalMaterialMetadataDto,
   Locale,
   MaterialAlbumDto,
-  MaterialAlbumMemberDto,
   AssetFileRevealContext,
 } from '@/shared/contracts';
 import type { HistoryNavigationGuard } from '@/renderer/components/app/app-navigation';
@@ -43,6 +52,8 @@ import { materialTitle, type MaterialLibraryItem } from '@/renderer/components/g
 import { CopyAgentLinkButton } from '@/renderer/features/content-editor/CopyAgentLinkButton';
 
 interface Props {
+  browseItems?: readonly MaterialLibraryItem[];
+  onBrowseSelect?(item: MaterialLibraryItem): void;
   spaceId: string;
   item: MaterialLibraryItem;
   position: number;
@@ -65,11 +76,11 @@ interface Props {
   onDelete(item: MaterialLibraryItem): void;
   onAddFavorite(): void;
   onRemoveFavorite(): void;
-  onToggleAlbumMembership(
-    album: MaterialAlbumDto,
-    member: MaterialAlbumMemberDto | null,
-    checked: boolean,
-  ): Promise<void>;
+  onApplyAlbumMembership(input: MaterialAlbumMembershipApplyInput): Promise<MaterialAlbumMembershipApplyResult>;
+  albumsLoading: boolean;
+  albumsFailed: boolean;
+  onRetryAlbums(): Promise<unknown>;
+  onOpenAlbum(albumId: string): void;
   onScore(dimension: ImageRatingDimension, score: number | null): void;
   notify(message: string): void;
   onMetadataUpdated(metadata: ExternalMaterialMetadataDto): void;
@@ -98,6 +109,8 @@ function formatBytes(value: number | undefined) {
 }
 
 export function MaterialDetailPage({
+  browseItems = [],
+  onBrowseSelect,
   spaceId,
   item,
   position,
@@ -120,7 +133,11 @@ export function MaterialDetailPage({
   onDelete,
   onAddFavorite,
   onRemoveFavorite,
-  onToggleAlbumMembership,
+  onApplyAlbumMembership,
+  albumsLoading,
+  albumsFailed,
+  onRetryAlbums,
+  onOpenAlbum,
   onScore,
   notify,
   onMetadataUpdated,
@@ -139,35 +156,39 @@ export function MaterialDetailPage({
     saving: false,
     valid: true,
   });
+  const [membershipState, setMembershipState] = useState<MembershipEditorState>({ dirty: false, saving: false });
+  const dirty = metadataState.dirty || membershipState.dirty;
+  const saving = metadataState.saving || membershipState.saving;
   const [discardOpen, setDiscardOpen] = useState(false);
   const [copyBusy, setCopyBusy] = useState(false);
   const pendingExitRef = useRef<() => void>(onClose);
 
   useEffect(() => {
     setMetadataState({ dirty: false, saving: false, valid: true });
+    setMembershipState({ dirty: false, saving: false });
     setDiscardOpen(false);
     setCopyBusy(false);
     pendingExitRef.current = onClose;
   }, [item.key]);
 
   useEffect(() => {
-    if (!metadataState.dirty && !metadataState.saving) {
+    if (!dirty && !saving) {
       onHistoryNavigationGuardChange(null);
       return;
     }
     const guard: HistoryNavigationGuard = (_direction, continueNavigation) => {
-      if (metadataState.saving) return true;
+      if (saving) return true;
       pendingExitRef.current = continueNavigation;
       setDiscardOpen(true);
       return true;
     };
     onHistoryNavigationGuardChange(guard);
     return () => onHistoryNavigationGuardChange(null);
-  }, [metadataState.dirty, metadataState.saving, onHistoryNavigationGuardChange]);
+  }, [dirty, saving, onHistoryNavigationGuardChange]);
 
   function requestExit(action: () => void) {
-    if (metadataState.saving) return;
-    if (metadataState.dirty) {
+    if (saving) return;
+    if (dirty) {
       pendingExitRef.current = action;
       setDiscardOpen(true);
       return;
@@ -199,8 +220,10 @@ export function MaterialDetailPage({
     pendingExitRef.current();
   }
 
-  const body = (
+  const body = (navigationAction: ReactNode = null, visible = true) => (
     <MaterialDetailBody
+      navigationAction={navigationAction}
+      visible={visible}
       spaceId={spaceId}
       key={item.key}
       item={item}
@@ -226,7 +249,12 @@ export function MaterialDetailPage({
       onDelete={onDelete}
       onAddFavorite={onAddFavorite}
       onRemoveFavorite={() => (closeAfterRemoveFavorite ? requestExit(onRemoveFavorite) : onRemoveFavorite())}
-      onToggleAlbumMembership={onToggleAlbumMembership}
+      onApplyAlbumMembership={onApplyAlbumMembership}
+      albumsLoading={albumsLoading}
+      albumsFailed={albumsFailed}
+      onRetryAlbums={onRetryAlbums}
+      onOpenAlbum={(albumId) => requestExit(() => onOpenAlbum(albumId))}
+      onMembershipStateChange={setMembershipState}
       onScore={onScore}
       notify={notify}
       onMetadataUpdated={onMetadataUpdated}
@@ -241,7 +269,36 @@ export function MaterialDetailPage({
 
   return (
     <>
-      {body}
+      {browseItems.length && onBrowseSelect ? (
+        <CollectionDetailLayout
+          layoutKey="gallery-detail"
+          collectionLabel={messages.workbench.browseResults}
+          collectionWidth={240}
+          minimumDetailWidth={540}
+          selectionKey={item.key}
+          collection={({ toggle, revealDetail }) => (
+            <MaterialBrowseList
+              items={browseItems}
+              selectedKey={item.key}
+              toggle={toggle}
+              onSelect={(next) => {
+                if (next.key === item.key) {
+                  revealDetail();
+                  return;
+                }
+                requestExit(() => {
+                  onBrowseSelect(next);
+                  revealDetail();
+                });
+              }}
+            />
+          )}
+        >
+          {({ toggle, visible }) => body(toggle, visible)}
+        </CollectionDetailLayout>
+      ) : (
+        body()
+      )}
       <Dialog open={discardOpen} onOpenChange={(open) => (open ? setDiscardOpen(true) : continueEditing())}>
         <DialogContent>
           <DialogHeader>
@@ -269,6 +326,9 @@ interface MaterialDetailBodyProps extends Omit<
   item: MaterialLibraryItem;
   title: string;
   locale: Locale;
+  navigationAction: ReactNode;
+  visible: boolean;
+  onMembershipStateChange(state: MembershipEditorState): void;
   metadataState: MaterialMetadataEditorState;
   onMetadataStateChange(state: MaterialMetadataEditorState): void;
   copyBusy: boolean;
@@ -277,6 +337,8 @@ interface MaterialDetailBodyProps extends Omit<
 }
 
 function MaterialDetailBody({
+  navigationAction,
+  visible,
   spaceId,
   item,
   position,
@@ -301,13 +363,18 @@ function MaterialDetailBody({
   onDelete,
   onAddFavorite,
   onRemoveFavorite,
-  onToggleAlbumMembership,
+  onApplyAlbumMembership,
+  albumsLoading,
+  albumsFailed,
+  onRetryAlbums,
+  onOpenAlbum,
   onScore,
   notify,
   onMetadataUpdated,
   revealContext,
   metadataState,
   onMetadataStateChange,
+  onMembershipStateChange,
   copyBusy,
   onCopyImage,
   onRequestExit,
@@ -316,9 +383,8 @@ function MaterialDetailBody({
   const l = messages.gallery.inspector;
   const image = item.kind !== 'TEXT' ? item.image : null;
   const video = isVideoAsset(image?.asset);
-  const [activeTab, setActiveTab] = useState(
-    image?.metadata?.provenanceConfidence === 'UNKNOWN' ? 'details' : 'relationships',
-  );
+  const [propertiesOpen, setPropertiesOpen] = useState(true);
+  const [activeTab, setActiveTab] = useState('details');
   const [relationships, setRelationships] = useState<AssetRelationshipDto | null>(null);
   const [relationshipLoading, setRelationshipLoading] = useState(Boolean(image));
   const [relationshipFailed, setRelationshipFailed] = useState(false);
@@ -331,6 +397,7 @@ function MaterialDetailBody({
   }, [item.key]);
 
   useEffect(() => {
+    if (!visible || !propertiesOpen || activeTab !== 'relationships') return;
     if (!image) {
       setRelationships(null);
       setRelationshipLoading(false);
@@ -356,11 +423,23 @@ function MaterialDetailBody({
     return () => {
       current = false;
     };
-  }, [image?.asset.id, locale, relationshipRefresh]);
+  }, [visible, propertiesOpen, activeTab, image?.asset.id, locale, relationshipRefresh]);
 
   return (
-    <article className="flex size-full min-h-0 flex-col bg-background" data-slot="material-detail-page">
+    <article
+      className="@container/material-detail flex size-full min-h-0 min-w-0 flex-col bg-background"
+      data-slot="material-detail-page"
+    >
       <MaterialDetailHeader
+        navigationAction={navigationAction}
+        propertiesAction={
+          <WorkbenchPaneToggle
+            side="right"
+            expanded={propertiesOpen}
+            label={messages.workbench.properties}
+            onClick={() => setPropertiesOpen((open) => !open)}
+          />
+        }
         agentLinkAction={
           (item.kind === 'TEXT' || item.image.materialId) && (
             <CopyAgentLinkButton
@@ -387,7 +466,14 @@ function MaterialDetailBody({
         onCopyImage={onCopyImage}
       />
 
-      <div className="grid min-h-0 min-w-0 flex-1 grid-cols-1 grid-rows-[minmax(16rem,1fr)_minmax(0,1fr)] overflow-hidden lg:grid-cols-[minmax(0,1fr)_minmax(22rem,36%)] lg:grid-rows-1">
+      <div
+        className={cn(
+          'grid min-h-0 min-w-0 flex-1 grid-cols-1 overflow-hidden',
+          propertiesOpen
+            ? 'grid-rows-[minmax(12rem,1fr)_minmax(0,1fr)] @min-[900px]/material-detail:grid-cols-[minmax(0,1fr)_minmax(20rem,36%)] @min-[900px]/material-detail:grid-rows-1'
+            : 'grid-rows-1',
+        )}
+      >
         <MaterialDetailPreview
           item={item}
           title={title}
@@ -399,7 +485,14 @@ function MaterialDetailBody({
           onDelete={() => onRequestExit(() => onDelete(item))}
         />
 
-        <aside className="flex min-h-0 min-w-0 flex-col border-t bg-background lg:border-t-0 lg:border-l">
+        <aside
+          hidden={!propertiesOpen}
+          inert={!propertiesOpen}
+          className={cn(
+            'min-h-0 min-w-0 flex-col border-t bg-background @min-[900px]/material-detail:border-t-0 @min-[900px]/material-detail:border-l',
+            propertiesOpen ? 'flex' : 'hidden',
+          )}
+        >
           <ScrollArea
             viewportRef={viewportRef}
             className="min-h-0 min-w-0 flex-1 [&_[data-slot=scroll-area-viewport]>div]:!block [&_[data-slot=scroll-area-viewport]>div]:!w-full"
@@ -445,18 +538,43 @@ function MaterialDetailBody({
                 revealContext={revealContext}
               />
 
+              <MaterialAlbumMembership
+                albums={albums}
+                target={
+                  item.kind === 'TEXT'
+                    ? { kind: 'MATERIAL', materialId: item.text.id }
+                    : item.image.materialId
+                      ? { kind: 'MATERIAL', materialId: item.image.materialId }
+                      : { kind: 'IMAGE_ASSET', imageAssetId: item.image.asset.id }
+                }
+                loading={albumsLoading}
+                failed={albumsFailed}
+                disabled={albumMembershipBusy || metadataState.saving}
+                onOpenAlbum={onOpenAlbum}
+                onRetry={onRetryAlbums}
+                onStateChange={onMembershipStateChange}
+                onApply={(edit) =>
+                  onApplyAlbumMembership({
+                    ...edit,
+                    spaceId,
+                    locale,
+                    target:
+                      item.kind === 'TEXT'
+                        ? { kind: 'MATERIAL', materialId: item.text.id }
+                        : item.image.materialId
+                          ? { kind: 'MATERIAL', materialId: item.image.materialId }
+                          : { kind: 'IMAGE_ASSET', imageAssetId: item.image.asset.id },
+                  })
+                }
+              />
+
               <Tabs value={activeTab} onValueChange={setActiveTab} className="min-w-0 gap-4">
-                <TabsList className={image ? 'grid grid-cols-3' : 'grid grid-cols-2'}>
-                  <TabsTrigger value="relationships" data-action="material-inspector-relationships">
-                    {l.relationships}
-                  </TabsTrigger>
-                  {image && (
-                    <TabsTrigger value="rating" data-action="material-inspector-rating">
-                      {l.ratingTitle}
-                    </TabsTrigger>
-                  )}
+                <TabsList className="grid grid-cols-2">
                   <TabsTrigger value="details" data-action="material-inspector-details">
                     {l.details}
+                  </TabsTrigger>
+                  <TabsTrigger value="relationships" data-action="material-inspector-relationships">
+                    {l.relationships}
                   </TabsTrigger>
                 </TabsList>
 
@@ -485,32 +603,7 @@ function MaterialDetailBody({
                       onOpenTerm={onOpenTerm}
                     />
                   )}
-                  <MaterialAlbumMembership
-                    albums={albums}
-                    target={
-                      item.kind === 'TEXT'
-                        ? { materialId: item.text.id }
-                        : { materialId: item.image.materialId, imageAssetId: item.image.asset.id }
-                    }
-                    labels={{
-                      title: messages.gallery.albums.membershipTitle,
-                      operationFailed: messages.gallery.albums.operationFailed,
-                    }}
-                    disabled={albumMembershipBusy}
-                    onToggle={onToggleAlbumMembership}
-                  />
                 </TabsContent>
-
-                {image && (
-                  <TabsContent value="rating">
-                    <ImageEvaluationControls
-                      ratings={image.ratings}
-                      visibleDimensions={['AESTHETIC', 'REALISM']}
-                      disabled={ratingBusy}
-                      onChange={onScore}
-                    />
-                  </TabsContent>
-                )}
 
                 {/*
               Radix passes `hidden={!present}`, and `present` is always true under
@@ -528,6 +621,23 @@ function MaterialDetailBody({
                         onUpdated={onMetadataUpdated}
                       />
                     </div>
+                  )}
+                  {image && !video && (
+                    <Collapsible className="mb-4">
+                      <CollapsibleTrigger asChild>
+                        <Button variant="ghost" size="sm">
+                          {l.ratingTitle}
+                        </Button>
+                      </CollapsibleTrigger>
+                      <CollapsibleContent>
+                        <ImageEvaluationControls
+                          ratings={image.ratings}
+                          visibleDimensions={['AESTHETIC', 'REALISM']}
+                          disabled={ratingBusy}
+                          onChange={onScore}
+                        />
+                      </CollapsibleContent>
+                    </Collapsible>
                   )}
                   <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-2">
                     {image?.metadata?.originalName && (
@@ -589,7 +699,7 @@ function MaterialDetailBody({
                 disabled={metadataState.saving || !metadataState.dirty || !metadataState.valid}
               >
                 {metadataState.saving && <LoaderCircleIcon className="size-4 animate-spin" />}
-                {messages.creator.generationRecord.save}
+                {messages.gallery.membership.saveMetadata}
               </Button>
             </div>
           )}

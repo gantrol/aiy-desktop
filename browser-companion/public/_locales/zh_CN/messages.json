@@ -1,14 +1,28 @@
 {
-  "popupGroupBatchTabs": { "message": "将同批准备的页面放入标签组" },
-  "extensionName": { "message": "AIY 伴侣" },
+  "popupGroupBatchTabs": {
+    "message": "将同批准备的页面放入标签组"
+  },
+  "extensionName": {
+    "message": "AIY 伴侣"
+  },
   "extensionDescription": {
     "message": "在支持的网站自动接收 AIY 交接内容，由用户决定是否发送或发布。"
   },
-  "siteChatgpt": { "message": "ChatGPT" },
-  "siteWechat": { "message": "微信公众号" },
-  "siteWeibo": { "message": "微博" },
-  "siteX": { "message": "X（推特）" },
-  "siteXiaohongshu": { "message": "小红书" },
+  "siteChatgpt": {
+    "message": "ChatGPT"
+  },
+  "siteWechat": {
+    "message": "微信公众号"
+  },
+  "siteWeibo": {
+    "message": "微博"
+  },
+  "siteX": {
+    "message": "X（推特）"
+  },
+  "siteXiaohongshu": {
+    "message": "小红书"
+  },
   "errorXiaohongshuLoginRequired": {
     "message": "请在当前浏览器 Profile 登录小红书创作服务平台，再从 AIY 重新上传。"
   },
@@ -27,55 +41,115 @@
   "errorComposerHasMedia": {
     "message": "编辑器已有媒体，请先移除后再从 AIY 填入。"
   },
-  "popupBadgeNoPublish": { "message": "不代点发布" },
-  "popupSingleContent": { "message": "单条内容" },
-  "popupPasteText": { "message": "粘贴文本" },
-  "popupIdentifyingSite": { "message": "识别中" },
-  "popupUnsupportedSite": { "message": "不支持" },
-  "popupWaitingForContent": { "message": "等待内容" },
-  "popupWaitingToFill": { "message": "等待填入" },
-  "popupFilling": { "message": "正在填入" },
-  "popupConnectingAiy": { "message": "正在连接 AIY" },
-  "popupFillFromHistory": { "message": "从历史填入" },
-  "popupFillCurrentPage": { "message": "填入当前页" },
+  "popupBadgeNoPublish": {
+    "message": "不代点发布"
+  },
+  "popupSingleContent": {
+    "message": "单条内容"
+  },
+  "popupPasteText": {
+    "message": "粘贴文本"
+  },
+  "popupIdentifyingSite": {
+    "message": "识别中"
+  },
+  "popupUnsupportedSite": {
+    "message": "不支持"
+  },
+  "popupWaitingForContent": {
+    "message": "等待内容"
+  },
+  "popupWaitingToFill": {
+    "message": "等待填入"
+  },
+  "popupFilling": {
+    "message": "正在填入"
+  },
+  "popupConnectingAiy": {
+    "message": "正在连接 AIY"
+  },
+  "popupFillFromHistory": {
+    "message": "从历史填入"
+  },
+  "popupFillCurrentPage": {
+    "message": "填入当前页"
+  },
   "popupManualFillSuccess": {
     "message": "已填入 $COUNT$ 字，请在网页确认。",
-    "placeholders": { "count": { "content": "$1" } }
+    "placeholders": {
+      "count": {
+        "content": "$1"
+      }
+    }
   },
   "popupDesktopFillSuccess": {
     "message": "已从 AIY 填入 $CHARACTERS$ 字、$IMAGES$ 张图，请在网页确认。",
     "placeholders": {
-      "characters": { "content": "$1" },
-      "images": { "content": "$2" }
+      "characters": {
+        "content": "$1"
+      },
+      "images": {
+        "content": "$2"
+      }
     }
   },
-  "popupReceiptFailed": { "message": "内容已填入，但 AIY 未能确认结果。" },
-  "popupRefreshAndRetry": { "message": "请刷新当前网页后再试。" },
-  "errorInvalidRequest": { "message": "这条内容无法识别，请重试。" },
-  "errorUnsupportedSite": { "message": "当前网页暂不支持自动填入。" },
-  "errorBusy": { "message": "正在处理上一条内容，请稍候。" },
+  "popupReceiptFailed": {
+    "message": "内容已填入，但 AIY 未能确认结果。"
+  },
+  "popupRefreshAndRetry": {
+    "message": "请刷新当前网页后再试。"
+  },
+  "errorInvalidRequest": {
+    "message": "这条内容无法识别，请重试。"
+  },
+  "errorUnsupportedSite": {
+    "message": "当前网页暂不支持自动填入。"
+  },
+  "errorBusy": {
+    "message": "正在处理上一条内容，请稍候。"
+  },
   "errorComposerNotFound": {
     "message": "未找到可安全填入的编辑器，请打开编辑区后重试。"
   },
   "errorComposerAmbiguous": {
     "message": "页面有多个编辑器，无法安全判断填入位置。"
   },
-  "errorComposerNotEmpty": { "message": "编辑器已有内容，为避免覆盖已停止。" },
-  "errorMediaInputNotFound": { "message": "未找到当前页面的图片入口。" },
-  "errorMediaFillFailed": { "message": "图片未能确认填入，请重试。" },
-  "errorFillFailed": { "message": "内容未能确认填入，请刷新网页后重试。" },
-  "errorDesktopInvalidRequest": { "message": "AIY 无法读取这次连接请求。" },
+  "errorComposerNotEmpty": {
+    "message": "编辑器已有内容，为避免覆盖已停止。"
+  },
+  "errorMediaInputNotFound": {
+    "message": "未找到当前页面的图片入口。"
+  },
+  "errorMediaFillFailed": {
+    "message": "图片上传未确认，请先核对网页附件，避免重复上传。"
+  },
+  "errorFillFailed": {
+    "message": "填入结果未确认，请先核对网页，避免重复填入。"
+  },
+  "errorDesktopInvalidRequest": {
+    "message": "请配套更新 AIY 桌面端与伴侣，再重新检测连接。"
+  },
   "errorUnauthorized": {
     "message": "AIY 桌面端未授权此伴侣，请重新打开 AIY 后重试。"
   },
-  "errorTargetMismatch": { "message": "当前网页与待填入内容不匹配。" },
-  "errorDraftAlreadyClaimed": { "message": "这条内容已在其他窗口处理中。" },
+  "errorTargetMismatch": {
+    "message": "当前网页与待填入内容不匹配。"
+  },
+  "errorDraftAlreadyClaimed": {
+    "message": "这条内容已在其他窗口处理中。"
+  },
   "errorHandoffNotFound": {
     "message": "没有找到待填入内容，请回到 AIY 重新上传。"
   },
-  "errorHandoffTokenMismatch": { "message": "交接已失效，请从 AIY 重新上传。" },
-  "errorMediaNotFound": { "message": "交接图片已不可用，请从 AIY 重新上传。" },
-  "errorMediaChanged": { "message": "交接图片已变化，请从 AIY 重新上传。" },
+  "errorHandoffTokenMismatch": {
+    "message": "交接已失效，请从 AIY 重新上传。"
+  },
+  "errorMediaNotFound": {
+    "message": "交接图片已不可用，请从 AIY 重新上传。"
+  },
+  "errorMediaChanged": {
+    "message": "交接图片已变化，请从 AIY 重新上传。"
+  },
   "errorOutputImportNotAllowed": {
     "message": "这次 ChatGPT 交接未关联到 AIY 图片创作。"
   },
@@ -85,47 +159,253 @@
   "errorOutputUploadChanged": {
     "message": "所选图片在 AIY 导入前发生了变化。"
   },
-  "errorStateConflict": { "message": "AIY 中的交接状态已变化，请重新上传。" },
-  "errorCorruptState": { "message": "交接记录损坏，请从 AIY 重新上传。" },
-  "errorInternal": { "message": "AIY 未能处理这次交接，请稍后重试。" },
+  "errorStateConflict": {
+    "message": "请先在 AIY 核对当前交接与网页内容，不要直接重复上传。"
+  },
+  "errorCorruptState": {
+    "message": "交接记录损坏，请从 AIY 重新上传。"
+  },
+  "errorInternal": {
+    "message": "AIY 未能处理这次交接，请稍后重试。"
+  },
   "errorDesktopConnection": {
     "message": "无法连接 AIY 桌面端。请确认 AIY 正在运行；内容仍保留在历史中。"
   },
-  "errorMediaDownload": { "message": "交接图片读取失败，请从历史记录重试。" },
-  "automaticHandoffFailedTitle": { "message": "自动填入未完成" },
+  "errorMediaDownload": {
+    "message": "交接图片读取失败，请在 AIY 伴侣核对当前交接。"
+  },
+  "automaticHandoffFailedTitle": {
+    "message": "自动填入未完成"
+  },
   "automaticHandoffDesktopDetail": {
-    "message": "无法连接 AIY 桌面端。请确认 AIY 正在运行，打开 AIY 伴侣，选择“从历史填入”重试。内容仍保留在伴侣历史中。"
+    "message": "请保持 AIY 桌面端运行，再打开 AIY 伴侣核对当前交接。"
   },
   "automaticHandoffMediaDetail": {
-    "message": "交接图片未能从 AIY 桌面端读取。请打开 AIY 伴侣，从历史记录重试；原内容仍会保留。"
+    "message": "交接图片读取失败，请打开 AIY 伴侣核对当前交接；原内容仍保留在 AIY。"
   },
   "automaticHandoffGenericDetail": {
-    "message": "页面未能安全填入。请打开 AIY 伴侣，从历史记录重试；原内容仍会保留。"
+    "message": "请打开 AIY 伴侣并先核对网页，再决定后续操作；网页可能已包含部分交接内容。"
   },
-  "automaticHandoffLogSummary": { "message": "自动交接未完成" },
+  "automaticHandoffLogSummary": {
+    "message": "自动交接未完成"
+  },
   "automaticHandoffRetryAction": {
-    "message": "打开 AIY 伴侣并选择“从历史填入”重试"
+    "message": "打开 AIY 伴侣核对当前交接"
   },
-  "chatgptOutputReturnAction": { "message": "回填 AIY" },
-  "chatgptOutputReturning": { "message": "回填中…" },
-  "chatgptOutputReturned": { "message": "已回填" },
-  "chatgptOutputReturnSuccessTitle": { "message": "已回填 AIY" },
+  "chatgptOutputReturnAction": {
+    "message": "回填 AIY"
+  },
+  "chatgptOutputReturning": {
+    "message": "回填中…"
+  },
+  "chatgptOutputReturned": {
+    "message": "已回填"
+  },
+  "chatgptOutputReturnSuccessTitle": {
+    "message": "已回填 AIY"
+  },
   "chatgptOutputReturnAdoptedDetail": {
     "message": "所选图片已成为对应创作的封面。"
   },
   "chatgptOutputReturnImportedDetail": {
     "message": "图片已保存到对应 AIY 创作，请在 AIY 中确认封面。"
   },
-  "chatgptOutputReturnFailedTitle": { "message": "图片回填失败" },
+  "chatgptOutputReturnFailedTitle": {
+    "message": "图片回填失败"
+  },
   "chatgptOutputReturnFailedDetail": {
     "message": "请保持 AIY 打开，然后重新选择这张图。"
   },
   "conflictSiteHasContent": {
     "message": "$SITE$已有内容",
-    "placeholders": { "site": { "content": "$1" } }
+    "placeholders": {
+      "site": {
+        "content": "$1"
+      }
+    }
   },
-  "conflictCurrentInputHasContent": { "message": "当前输入框已有内容" },
-  "conflictQuestion": { "message": "是否清空现有内容并填入 AIY 交接？" },
-  "conflictKeepExisting": { "message": "保留现有内容" },
-  "conflictReplaceExisting": { "message": "清空并填入" }
+  "conflictCurrentInputHasContent": {
+    "message": "当前输入框已有内容"
+  },
+  "conflictQuestion": {
+    "message": "是否清空现有内容并填入 AIY 交接？"
+  },
+  "conflictKeepExisting": {
+    "message": "保留现有内容"
+  },
+  "conflictReplaceExisting": {
+    "message": "清空并填入"
+  },
+  "handoffReady": {
+    "message": "等待填入"
+  },
+  "handoffDelivered": {
+    "message": "已填入网页"
+  },
+  "handoffReceipt": {
+    "message": "已填入，回执未确认"
+  },
+  "handoffMediaUnknown": {
+    "message": "图片上传未确认"
+  },
+  "handoffFailed": {
+    "message": "交接需要处理"
+  },
+  "handoffEmpty": {
+    "message": "当前页没有交接"
+  },
+  "handoffOffline": {
+    "message": "AIY 未连接"
+  },
+  "handoffUnsupported": {
+    "message": "此页不支持交接"
+  },
+  "handoffUnknown": {
+    "message": "填入结果未知"
+  },
+  "handoffNoComposer": {
+    "message": "未找到输入框"
+  },
+  "handoffInspectBeforeRetry": {
+    "message": "先核对网页中的文字和附件，避免重复填入或上传。"
+  },
+  "handoffReceiptDetail": {
+    "message": "仅核对回执，不重复填入内容。"
+  },
+  "handoffDeliveredDetail": {
+    "message": "请在网页核对内容；这不代表已发送或发布。"
+  },
+  "handoffConnected": {
+    "message": "AIY 已连接"
+  },
+  "handoffConnectionUnknown": {
+    "message": "连接未核实"
+  },
+  "handoffTitle": {
+    "message": "当前交接"
+  },
+  "handoffMetadata": {
+    "message": "$arg1$ 字 · $arg2$ 张图",
+    "placeholders": {
+      "arg1": {
+        "content": "$1"
+      },
+      "arg2": {
+        "content": "$2"
+      }
+    }
+  },
+  "handoffExpand": {
+    "message": "展开文字"
+  },
+  "handoffCollapse": {
+    "message": "收起文字"
+  },
+  "handoffAttachments": {
+    "message": "交接附件"
+  },
+  "handoffMoreImages": {
+    "message": "另有 $arg1$ 张图",
+    "placeholders": {
+      "arg1": {
+        "content": "$1"
+      }
+    }
+  },
+  "handoffPreviewPending": {
+    "message": "尚未下载预览"
+  },
+  "handoffSettings": {
+    "message": "设置"
+  },
+  "handoffBack": {
+    "message": "返回当前交接"
+  },
+  "handoffDiagnostics": {
+    "message": "连接诊断"
+  },
+  "handoffDetails": {
+    "message": "查看详情"
+  },
+  "handoffRecheck": {
+    "message": "重新检测"
+  },
+  "handoffVerifyReceipt": {
+    "message": "核对回执"
+  },
+  "handoffViewPage": {
+    "message": "查看网页"
+  },
+  "handoffOpenAiy": {
+    "message": "打开 AIY"
+  },
+  "handoffReturnAiy": {
+    "message": "返回 AIY"
+  },
+  "handoffMore": {
+    "message": "更多"
+  },
+  "handoffHistory": {
+    "message": "AIY 交接记录"
+  },
+  "handoffCurrentSite": {
+    "message": "当前网站"
+  },
+  "handoffConnection": {
+    "message": "AIY 连接"
+  },
+  "handoffStage": {
+    "message": "任务阶段"
+  },
+  "handoffErrorCode": {
+    "message": "错误标识"
+  },
+  "handoffStageIdle": {
+    "message": "未在执行"
+  },
+  "handoffStageConnecting": {
+    "message": "正在领取交接"
+  },
+  "handoffStageDownloading": {
+    "message": "正在读取交接图片"
+  },
+  "handoffStageWaitingEditor": {
+    "message": "等待编辑区"
+  },
+  "handoffStageWriting": {
+    "message": "正在填入并核对网页"
+  },
+  "handoffStageReceipt": {
+    "message": "正在确认回执"
+  },
+  "handoffContextChanged": {
+    "message": "当前网页已变化，请重新核对交接后再操作。"
+  },
+  "handoffPageUnavailable": {
+    "message": "无法与网页通信。更新扩展后请刷新网页，再重新检测。"
+  },
+  "handoffPermissionFailed": {
+    "message": "标签组设置未能变更；不影响普通标签页交接。"
+  },
+  "handoffManualText": {
+    "message": "文字"
+  },
+  "handoffManualPaste": {
+    "message": "粘贴文字"
+  },
+  "handoffMetadataOneImage": {
+    "message": "$1 字 · $2 张图"
+  },
+  "handoffChecking": {
+    "message": "正在检测…"
+  },
+  "handoffRetryFill": {
+    "message": "重新填入"
+  },
+  "handoffStageWaitingConfirmation": {
+    "message": "等待在网页确认"
+  },
+  "handoffStageUploading": {
+    "message": "等待图片上传"
+  }
 }

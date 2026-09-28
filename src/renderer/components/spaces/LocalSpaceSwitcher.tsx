@@ -253,7 +253,7 @@ export function LocalSpaceSwitcher({ spaceName, spaceCoverUrl, busy, transitioni
             data-action="local-space-switcher"
             disabled={transitionPending}
             aria-busy={transitionPending}
-            className="flex h-16 w-14 flex-col items-center justify-center gap-1 rounded-xl text-muted-foreground outline-none transition-colors duration-fast hover:bg-hover hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+            className="grid size-10 place-items-center rounded-xl text-muted-foreground outline-none transition-colors duration-fast hover:bg-hover hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
             aria-label={l.switchSpace}
             title={spaceName}
           >
@@ -264,7 +264,6 @@ export function LocalSpaceSwitcher({ spaceName, spaceCoverUrl, busy, transitioni
             ) : (
               <SpaceCover coverUrl={currentCoverUrl} className="size-10 rounded-xl border" />
             )}
-            <span className="w-full truncate px-1 text-[10px] leading-none">{spaceName}</span>
           </button>
         </PopoverTrigger>
         <PopoverContent side="right" align="start" className="w-72 p-1.5">

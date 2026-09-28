@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useRef, useState, type ReactElement } from 'react';
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/renderer/components/ui/tooltip';
+import { Slot } from '@radix-ui/react-slot';
+import { PetalOverlay } from '@/renderer/features/desktop-petals/PetalOverlay';
+import { usePetalOverlay } from '@/renderer/features/desktop-petals/use-petal-overlay';
 import type { PetalPreviewContent } from '@/shared/petal-preview';
 
 export function PetalPreview({
@@ -18,66 +20,41 @@ export function PetalPreview({
   const [content, setContent] = useState<PetalPreviewContent | null>(null);
   const active = useRef<string | null>(null);
   const trigger = useRef<HTMLButtonElement | null>(null);
-  const pendingBounds = useRef<{ left: number; top: number; right: number; bottom: number } | null>(null);
-  const frame = useRef<number | null>(null);
+  const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  const leaveTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const pressed = useRef(false);
   const callbacks = useRef({ disabled, onError });
   callbacks.current = { disabled, onError };
+  const overlay = usePetalOverlay('hover', () => dismiss());
+  const { open: openOverlay, close: closeOverlay } = overlay;
   const dismiss = useCallback(() => {
+    clearTimeout(timer.current);
+    clearTimeout(leaveTimer.current);
     const token = active.current;
     active.current = null;
-    pendingBounds.current = null;
-    if (frame.current !== null) cancelAnimationFrame(frame.current);
-    frame.current = null;
     setContent(null);
+    closeOverlay();
     if (token) void window.desktopPetals.preview({ id, token, open: false }).catch(() => undefined);
-  }, [id]);
-  const leavePending = useCallback(
-    (event: { screenX: number; screenY: number }) => {
-      const bounds = pendingBounds.current;
-      if (
-        bounds &&
-        (event.screenX < bounds.left ||
-          event.screenX > bounds.right ||
-          event.screenY < bounds.top ||
-          event.screenY > bounds.bottom)
-      )
-        dismiss();
-    },
-    [dismiss],
-  );
-  const change = (open: boolean) => {
-    if (!open) return dismiss();
-    if (callbacks.current.disabled || pressed.current || active.current) return;
+  }, [closeOverlay, id]);
+  const show = () => {
+    clearTimeout(leaveTimer.current);
+    if (callbacks.current.disabled || pressed.current || active.current || !trigger.current) return;
     const token = crypto.randomUUID();
     active.current = token;
-    const bounds = trigger.current?.getBoundingClientRect();
-    pendingBounds.current = bounds
-      ? {
-          left: window.screenX + bounds.left,
-          right: window.screenX + bounds.right,
-          top: window.screenY + bounds.top,
-          bottom: window.screenY + bounds.bottom,
-        }
-      : null;
-    void window.desktopPetals
-      .preview({ id, token, open: true })
-      .then((result) => {
+    const bounds = trigger.current.getBoundingClientRect();
+    const point = {
+      x: window.screenX + bounds.left + bounds.width / 2,
+      y: window.screenY + bounds.bottom,
+      top: window.screenY + bounds.top,
+    };
+    void Promise.all([window.desktopPetals.preview({ id, token, open: true }), openOverlay(point)])
+      .then(([result, surface]) => {
         if (active.current !== token) {
           void window.desktopPetals.preview({ id, token, open: false }).catch(() => undefined);
           return;
         }
-        if (!result) return dismiss();
-        // Allow the native frame and the trigger's preserved screen anchor to arrive before positioning the tooltip.
-        frame.current = requestAnimationFrame(() => {
-          frame.current = requestAnimationFrame(() => {
-            frame.current = null;
-            if (active.current === token && !callbacks.current.disabled) {
-              pendingBounds.current = null;
-              setContent(result);
-            }
-          });
-        });
+        if (!result || !surface) return dismiss();
+        setContent(result);
       })
       .catch((error) => {
         if (active.current !== token) return;
@@ -85,19 +62,15 @@ export function PetalPreview({
         callbacks.current.onError(error);
       });
   };
+  const leave = () => {
+    clearTimeout(timer.current);
+    clearTimeout(leaveTimer.current);
+    leaveTimer.current = setTimeout(dismiss, 180);
+  };
   useEffect(() => {
     if (disabled) dismiss();
   }, [disabled, dismiss]);
   useEffect(() => {
-    const blur = () => {
-      pressed.current = false;
-      dismiss();
-    };
-    const wheel = (event: WheelEvent) => {
-      if (!(event.target instanceof Element && event.target.closest('[data-petal-preview]'))) dismiss();
-    };
-    window.addEventListener('blur', blur);
-    window.addEventListener('wheel', wheel, true);
     const down = () => {
       pressed.current = true;
       dismiss();
@@ -105,48 +78,58 @@ export function PetalPreview({
     const up = () => {
       pressed.current = false;
     };
-    window.addEventListener('pointerdown', down, true);
-    window.addEventListener('pointerup', up, true);
-    window.addEventListener('pointercancel', up, true);
-    window.addEventListener('pointermove', leavePending, true);
-    const escape = (event: KeyboardEvent) => {
+    const blur = () => {
+      pressed.current = false;
+      dismiss();
+    };
+    const key = (event: KeyboardEvent) => {
       if (event.key === 'Escape' && active.current) {
         event.preventDefault();
         event.stopImmediatePropagation();
         dismiss();
       }
     };
-    window.addEventListener('keydown', escape, true);
+    window.addEventListener('blur', blur);
+    window.addEventListener('wheel', dismiss, true);
+    window.addEventListener('pointerdown', down, true);
+    window.addEventListener('pointerup', up, true);
+    window.addEventListener('pointercancel', up, true);
+    window.addEventListener('keydown', key, true);
     return () => {
       window.removeEventListener('blur', blur);
-      window.removeEventListener('wheel', wheel, true);
+      window.removeEventListener('wheel', dismiss, true);
       window.removeEventListener('pointerdown', down, true);
       window.removeEventListener('pointerup', up, true);
       window.removeEventListener('pointercancel', up, true);
-      window.removeEventListener('pointermove', leavePending, true);
-      window.removeEventListener('keydown', escape, true);
+      window.removeEventListener('keydown', key, true);
       dismiss();
     };
-  }, [dismiss, leavePending]);
+  }, [dismiss]);
   return (
-    <TooltipProvider delayDuration={400} skipDelayDuration={0}>
-      <Tooltip open={Boolean(content) && !disabled} onOpenChange={change}>
-        <TooltipTrigger
-          ref={trigger}
-          asChild
-          onPointerLeave={leavePending}
-          onPointerDownCapture={dismiss}
-          onContextMenuCapture={dismiss}
-        >
-          {children}
-        </TooltipTrigger>
+    <>
+      <Slot
+        ref={trigger}
+        onPointerEnter={() => {
+          clearTimeout(leaveTimer.current);
+          clearTimeout(timer.current);
+          timer.current = setTimeout(show, 400);
+        }}
+        onPointerLeave={leave}
+        onFocus={show}
+        onBlur={dismiss}
+        onContextMenuCapture={dismiss}
+      >
+        {children}
+      </Slot>
+      <PetalOverlay surface={content ? overlay.surface : null} fitHeight>
         {content && (
-          <TooltipContent
+          <div
             data-petal-preview=""
-            side="bottom"
-            sideOffset={8}
-            collisionPadding={8}
-            className="max-h-[var(--radix-tooltip-content-available-height)] w-60 max-w-[calc(100vw-16px)] overflow-y-auto overscroll-contain rounded-sm border-border bg-background p-2 text-foreground shadow-none"
+            role="tooltip"
+            onPointerEnter={() => clearTimeout(leaveTimer.current)}
+            onPointerLeave={leave}
+            onPointerDown={dismiss}
+            className="max-h-full w-full overflow-y-auto overscroll-contain rounded-sm border border-border bg-background p-2 text-foreground shadow-none"
           >
             <div className="whitespace-normal break-words text-xs font-medium">{content.title || title}</div>
             {content.mediaUrl ? (
@@ -156,9 +139,9 @@ export function PetalPreview({
                 {content.text}
               </div>
             ) : null}
-          </TooltipContent>
+          </div>
         )}
-      </Tooltip>
-    </TooltipProvider>
+      </PetalOverlay>
+    </>
   );
 }

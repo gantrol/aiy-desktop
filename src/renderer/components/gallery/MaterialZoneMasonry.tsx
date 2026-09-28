@@ -1,3 +1,4 @@
+import type { CreationTreeDrag } from '@/renderer/components/albums/albumDrag';
 import { useMemo, type DragEvent as ReactDragEvent, type RefObject } from 'react';
 import type { AssetFileRevealContext, MaterialAlbumDto, MaterialSelectionTargetInput } from '@/shared/contracts';
 import { CollectionAlbumCard, CreationAlbumGrid } from '@/renderer/components/gallery/CreationAlbumGrid';
@@ -21,11 +22,11 @@ interface Props {
   loading: boolean;
   albumMutationBusy: boolean;
   onOpenAlbum(albumId: string): void;
-  canMoveCreationAlbum(albumId: string, parentAlbumId: string | null): boolean;
-  onMoveCreationAlbum(albumId: string, parentAlbumId: string | null): Promise<void>;
-  canMoveAlbum(albumId: string, parentAlbumId: string | null): boolean;
-  onMoveAlbum(albumId: string, parentAlbumId: string | null): Promise<void>;
-  onCollectMaterials(albumId: string, targets: MaterialSelectionTargetInput[]): Promise<void>;
+  canMoveCreationAlbum(source: CreationTreeDrag, parentAlbumId: string | null, copy?: boolean): boolean;
+  onMoveCreationAlbum(source: CreationTreeDrag, parentAlbumId: string | null, copy?: boolean): Promise<void>;
+  canMoveAlbum(albumId: string, parentAlbumId: string | null, copy?: boolean): boolean;
+  onMoveAlbum(albumId: string, parentAlbumId: string | null, copy?: boolean): Promise<void>;
+  onCollectMaterials(albumId: string, targets: MaterialSelectionTargetInput[], sourceAlbumId?: string): Promise<void>;
   onImportFiles?(album: MaterialAlbumDto, files: File[]): void;
   onArchiveAlbum(album: MaterialAlbumDto): void;
   onDeleteAlbum(album: MaterialAlbumDto): void;
@@ -88,6 +89,7 @@ export function MaterialZoneMasonry({
       albumCards.map((album) => ({
         id: album.id,
         aspectRatio: collectionCoverRatio(album.previewAssets[0]),
+        textOnly: album.previewAssets.length === 0,
       })),
     [albumCards],
   );

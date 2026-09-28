@@ -6,6 +6,7 @@ import {
   type NavigationMode,
 } from '@/renderer/components/app/app-navigation';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/renderer/components/ui/tabs';
+import { CollectionDetailLayout } from '@/renderer/components/workbench/CollectionDetailLayout';
 import { useI18n } from '@/renderer/i18n/useI18n';
 import { AiActivityDetail } from '@/renderer/features/ai-center/AiActivityDetail';
 import { AiActivityList, type AiActivityViewMode } from '@/renderer/features/ai-center/AiActivityList';
@@ -21,6 +22,7 @@ import {
   type AiActivityRecord,
   type AiActivityStatusFilter,
 } from '@/renderer/features/ai-center/activityProjection';
+import './ai-center-layout.css';
 
 interface Props {
   active: boolean;
@@ -157,14 +159,14 @@ export function AiCenterScreen({
         setTab(nextTab);
         commit({ ...location, tab: nextTab });
       }}
-      className="flex size-full min-h-0 flex-col bg-background"
+      className="flex size-full min-h-0 min-w-0 flex-col bg-background"
     >
-      <header className="shrink-0 border-b bg-surface px-5 pt-3">
+      <header className="min-w-0 shrink-0 border-b bg-surface px-5 pt-3">
         <div className="flex h-9 items-center gap-2">
           <h1 className="text-lg font-semibold tracking-tight">{l.title}</h1>
           <span className="text-2xs tabular-nums text-muted-foreground">{l.stats.recordCount(records.length)}</span>
         </div>
-        <TabsList className="h-10 gap-1 border-0">
+        <TabsList className="h-10 max-w-full gap-1 overflow-x-auto border-0">
           <TabsTrigger value="activity" className="h-10 px-4">
             {l.tabs.activity}
           </TabsTrigger>
@@ -176,40 +178,56 @@ export function AiCenterScreen({
           </TabsTrigger>
         </TabsList>
       </header>
-      <TabsContent value="activity" className="min-h-0 flex-1">
-        <div className="grid size-full min-h-0 grid-cols-[minmax(310px,390px)_minmax(0,1fr)] max-[760px]:grid-cols-1">
-          <AiActivityList
-            active={active}
-            records={records}
-            categoryFilter={categoryFilter}
-            statusFilter={statusFilter}
-            viewMode={activityViewMode}
-            selectedId={selected?.id ?? null}
-            currentDraftId={data.creationDraft?.id ?? null}
-            locale={locale}
-            routes={data.imageGenerationRoutes}
-            outlineContext={data}
-            onCategoryFilterChange={changeCategoryFilter}
-            onStatusFilterChange={changeStatusFilter}
-            onViewModeChange={(mode) => {
-              setActivityViewMode(mode);
-              storeActivityViewMode(mode);
-            }}
-            onSelect={(recordId) => commit({ ...location, recordId })}
-          />
-          <AiActivityDetail
-            record={selected}
-            data={data}
-            locale={locale}
-            canLocate={selected ? canLocate(selected, data) : false}
-            onLocate={onLocate}
-            onReEditGeneration={onReEditGeneration}
-            onRetryGeneration={onRetryGeneration}
-            onRetrySlot={retrySlot}
-            onApplyArticleCheck={applyArticleCheck}
-            notify={notify}
-          />
-        </div>
+      <TabsContent value="activity" className="min-h-0 min-w-0 flex-1">
+        <CollectionDetailLayout
+          layoutKey="ai-center-activity"
+          collectionLabel={l.tabs.activity}
+          collectionWidth={360}
+          minimumDetailWidth={480}
+          selectionKey={location.recordId}
+          revealDetailOnSelection={false}
+          collection={({ revealDetail }) => (
+            <AiActivityList
+              active={active}
+              records={records}
+              categoryFilter={categoryFilter}
+              statusFilter={statusFilter}
+              viewMode={activityViewMode}
+              selectedId={selected?.id ?? null}
+              currentDraftId={data.creationDraft?.id ?? null}
+              locale={locale}
+              routes={data.imageGenerationRoutes}
+              outlineContext={data}
+              onCategoryFilterChange={changeCategoryFilter}
+              onStatusFilterChange={changeStatusFilter}
+              onViewModeChange={(mode) => {
+                setActivityViewMode(mode);
+                storeActivityViewMode(mode);
+              }}
+              onSelect={(recordId) => {
+                commit({ ...location, recordId });
+                revealDetail();
+              }}
+            />
+          )}
+        >
+          {() => (
+            <div className="ai-activity-detail size-full min-h-0 min-w-0 [&>*]:size-full">
+              <AiActivityDetail
+                record={selected}
+                data={data}
+                locale={locale}
+                canLocate={selected ? canLocate(selected, data) : false}
+                onLocate={onLocate}
+                onReEditGeneration={onReEditGeneration}
+                onRetryGeneration={onRetryGeneration}
+                onRetrySlot={retrySlot}
+                onApplyArticleCheck={applyArticleCheck}
+                notify={notify}
+              />
+            </div>
+          )}
+        </CollectionDetailLayout>
       </TabsContent>
       <TabsContent value="statistics" className="min-h-0 flex-1">
         <AiStatisticsView

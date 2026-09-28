@@ -1,17 +1,48 @@
 import type { Editor } from '@tiptap/core';
+import { useEditorState } from '@tiptap/react';
 import type { Node as ProseMirrorNode } from '@tiptap/pm/model';
 import { NodeSelection, TextSelection, type Selection } from '@tiptap/pm/state';
-import { ArrowDown, ArrowUp, Copy, MessageSquarePlus, MoreHorizontal, Plus } from 'lucide-react';
+import {
+  ArrowDown,
+  ArrowUp,
+  ClipboardPaste,
+  Copy,
+  CornerDownRight,
+  Focus,
+  IndentDecrease,
+  IndentIncrease,
+  Link,
+  List,
+  ListTree,
+  MessageSquarePlus,
+  MoreHorizontal,
+  MousePointer2,
+  MoveVertical,
+  Plus,
+  Text,
+  Trash2,
+} from 'lucide-react';
 import { useRef, useState } from 'react';
 import { Button } from '@/renderer/components/ui/button';
+import { Kbd } from '@/renderer/components/ui/kbd';
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuPortal,
   DropdownMenuSeparator,
+  DropdownMenuSub,
+  DropdownMenuSubContent,
+  DropdownMenuSubTrigger,
   DropdownMenuTrigger,
 } from '@/renderer/components/ui/dropdown-menu';
 import { useI18n } from '@/renderer/i18n/useI18n';
+import { shortcutTokens } from '@/renderer/commands/app-shortcuts';
+import {
+  canPasteOutlinePlainText,
+  outlinePlainTextPasteBinding,
+  pasteOutlinePlainTextFromClipboard,
+} from '@/renderer/features/content-editor/outlinePlainTextPaste';
 import { copyLinkedBlockDocument } from '@/shared/block-anchor-copy';
 import { ContentBlockReferenceAction } from '@/renderer/features/content-editor/ContentBlockReferenceAction';
 import { contentCommentSelectionBelongsToItem } from '@/renderer/features/content-editor/contentCommentScope';
@@ -25,7 +56,11 @@ import {
   outdentOutlineItem,
   shiftSelectedOutlineItems,
 } from '@/renderer/features/content-editor/outlineEditing';
+import { addOutlineItem, addOutlineParagraph } from '@/renderer/features/content-editor/outlineAppend';
 import { OutlineMoveDialog } from '@/renderer/features/content-editor/OutlineMoveDialog';
+import { OutlineContentLinkDialog } from '@/renderer/features/content-editor/OutlineContentLinkDialog';
+import { useOutlineContentLinkHost } from '@/renderer/features/content-editor/OutlineContentLinkHost';
+import { openContentAssociation } from '@/renderer/features/content-editor/contentAssociation';
 import {
   focusOutlineItem,
   outlineViewState,
@@ -34,6 +69,96 @@ import {
 } from '@/renderer/features/content-editor/outlineViewState';
 
 type Action = 'add' | 'note' | 'noteList' | 'indent' | 'outdent' | 'up' | 'down' | 'duplicate' | 'delete';
+
+function OutlinePlainTextPasteItem({ editor, id, onSelect }: { editor: Editor; id: string; onSelect(): void }) {
+  const copy = useI18n().messages.contentEditor;
+  const platform = window.desktopApi?.appPlatform ?? 'win32';
+  const available = useEditorState({
+    editor,
+    selector: ({ editor: current }) => canPasteOutlinePlainText(current, id),
+  });
+  return (
+    <DropdownMenuItem disabled={!available} onSelect={onSelect}>
+      <ClipboardPaste />
+      {copy.pasteAsPlainText}
+      <Kbd className="ml-auto">{shortcutTokens(outlinePlainTextPasteBinding(platform), platform).join('+')}</Kbd>
+    </DropdownMenuItem>
+  );
+}
+
+function useOutlinePlainTextPasteMenu(editor: Editor, id: string) {
+  const requested = useRef<{ state: Editor['state']; view: ReturnType<typeof activeOutlineView> } | null>(null);
+  return {
+    request: () => {
+      requested.current = { state: editor.state, view: activeOutlineView(editor) };
+    },
+    onCloseAutoFocus: (event: Event) => {
+      event.preventDefault();
+      const pending = requested.current;
+      requested.current = null;
+      if (
+        !pending ||
+        editor.isDestroyed ||
+        pending.view.isDestroyed ||
+        activeOutlineView(editor) !== pending.view ||
+        editor.state.doc !== pending.state.doc ||
+        !editor.state.selection.eq(pending.state.selection) ||
+        outlineViewState(editor.state) !== outlineViewState(pending.state)
+      )
+        return;
+      // Read only after the menu's focus trap has closed, in its original editor pane.
+      focusOutlineView(editor, pending.view);
+      void pasteOutlinePlainTextFromClipboard(editor, id);
+    },
+  };
+}
+
+function OutlinePositionMenu({
+  disabled,
+  onAction,
+  onMoveTo,
+}: {
+  disabled: boolean;
+  onAction: (action: 'up' | 'down' | 'indent' | 'outdent') => void;
+  onMoveTo: () => void;
+}) {
+  const { messages } = useI18n();
+  const copy = messages.referenceOutline;
+  return (
+    <DropdownMenuSub>
+      <DropdownMenuSubTrigger disabled={disabled}>
+        <MoveVertical className="size-4 shrink-0" />
+        {copy.moveAndIndent}
+      </DropdownMenuSubTrigger>
+      <DropdownMenuPortal>
+        <DropdownMenuSubContent>
+          <DropdownMenuItem onSelect={() => onAction('up')}>
+            <ArrowUp />
+            {messages.contentEditor.moveBlockUp}
+          </DropdownMenuItem>
+          <DropdownMenuItem onSelect={() => onAction('down')}>
+            <ArrowDown />
+            {messages.contentEditor.moveBlockDown}
+          </DropdownMenuItem>
+          <DropdownMenuSeparator />
+          <DropdownMenuItem onSelect={() => onAction('indent')}>
+            <IndentIncrease />
+            {copy.indent}
+          </DropdownMenuItem>
+          <DropdownMenuItem onSelect={() => onAction('outdent')}>
+            <IndentDecrease />
+            {copy.outdent}
+          </DropdownMenuItem>
+          <DropdownMenuSeparator />
+          <DropdownMenuItem onSelect={onMoveTo}>
+            <CornerDownRight />
+            {copy.moveTo}
+          </DropdownMenuItem>
+        </DropdownMenuSubContent>
+      </DropdownMenuPortal>
+    </DropdownMenuSub>
+  );
+}
 
 function editOutlineItem(
   editor: Editor,
@@ -46,37 +171,35 @@ function editOutlineItem(
   const parent = resolved.parent;
   const transaction = editor.state.tr;
   let target = position;
-  if (action === 'note' || action === 'noteList') {
+  if (action === 'noteList') {
     target = position + 1 + (current.firstChild?.nodeSize ?? 0);
-    if (action === 'note') {
-      transaction.insert(target, editor.schema.nodes.paragraph.create({ blockId: crypto.randomUUID() }));
-      target += 1;
-    } else {
-      transaction.insert(
-        target,
-        editor.schema.nodes.bulletList.create(
-          { blockId: crypto.randomUUID(), outlineRole: 'NOTE' },
-          editor.schema.nodes.listItem.create(
-            { blockId: crypto.randomUUID() },
-            editor.schema.nodes.paragraph.create({ blockId: crypto.randomUUID() }),
-          ),
+    const caret = editor.state.selection.from;
+    let found = false;
+    current.forEach((child, offset, index) => {
+      if (index > 0 && ['bulletList', 'orderedList'].includes(child.type.name) && child.attrs.outlineRole !== 'NOTE')
+        return;
+      const start = position + 1 + offset;
+      if (!found) target = start + child.nodeSize;
+      if (caret > start && caret < start + child.nodeSize) found = true;
+    });
+    transaction.insert(
+      target,
+      editor.schema.nodes.bulletList.create(
+        { blockId: crypto.randomUUID(), outlineRole: 'NOTE' },
+        editor.schema.nodes.listItem.create(
+          { blockId: crypto.randomUUID() },
+          editor.schema.nodes.paragraph.create({ blockId: crypto.randomUUID() }),
         ),
-      );
-      target += 3;
-    }
-  } else if (action === 'add' || action === 'duplicate') {
-    const next =
-      action === 'add'
-        ? editor.schema.nodes.listItem.create(
-            { blockId: crypto.randomUUID() },
-            editor.schema.nodes.paragraph.create({ blockId: crypto.randomUUID() }),
-          )
-        : editor.schema.nodeFromJSON(
-            copyLinkedBlockDocument({
-              type: 'doc',
-              content: [{ type: parent.type.name, attrs: parent.attrs, content: [current.toJSON()] }],
-            }).root.content![0]!.content![0]!,
-          );
+      ),
+    );
+    target += 3;
+  } else if (action === 'duplicate') {
+    const next = editor.schema.nodeFromJSON(
+      copyLinkedBlockDocument({
+        type: 'doc',
+        content: [{ type: parent.type.name, attrs: parent.attrs, content: [current.toJSON()] }],
+      }).root.content![0]!.content![0]!,
+    );
     if (focusedRoot) {
       let groupPosition: number | null = null;
       current.forEach((child, offset) => {
@@ -120,20 +243,14 @@ function editOutlineItem(
   }
   transaction.setSelection(TextSelection.near(transaction.doc.resolve(Math.min(target, transaction.doc.content.size))));
   const previous = outlineViewState(editor.state);
-  attachOutlineView(transaction, { ...previous, selected: [], anchor: null, active: null }, previous);
+  const folded = new Set(previous.folded);
+  if (action === 'noteList') folded.delete(current.attrs.blockId);
+  attachOutlineView(transaction, { ...previous, folded, selected: [], anchor: null, active: null }, previous);
   editor.view.dispatch(transaction.scrollIntoView());
   focusOutlineView(editor);
 }
 
-export function OutlineItemMenu({
-  editor,
-  node,
-  getPos,
-  editable,
-  selected,
-  selectedIds,
-  id,
-}: {
+interface OutlineItemMenuProps {
   editor: Editor;
   node: ProseMirrorNode;
   getPos: () => number | undefined;
@@ -141,16 +258,21 @@ export function OutlineItemMenu({
   selected: boolean;
   selectedIds: readonly string[];
   id: string;
-}) {
+}
+
+export function OutlineItemMenu({ editor, node, getPos, editable, selected, selectedIds, id }: OutlineItemMenuProps) {
   const { messages } = useI18n();
   const copy = messages.referenceOutline;
   const host = useContentReferenceHost();
+  const linkHost = useOutlineContentLinkHost();
+  const [linkMode, setLinkMode] = useState<'EXISTING' | 'NEW' | null>(null);
   const [moveOpen, setMoveOpen] = useState(false);
   const [moveIds, setMoveIds] = useState<readonly string[]>([]);
   const focusId = outlineViewState(editor.state).focus;
   const focusedRoot = focusId === id;
   const deleteBlocked = focusedRoot || Boolean(selected && focusId && selectedIds.includes(focusId));
   const menuSelection = useRef<Selection | null>(null);
+  const plainTextPaste = useOutlinePlainTextPasteMenu(editor, id);
   const groups: { offset: number; id: string; role: string | undefined; preview: string }[] = [];
   node.forEach((child, offset) => {
     if (!['bulletList', 'orderedList'].includes(child.type.name)) return;
@@ -169,6 +291,12 @@ export function OutlineItemMenu({
     if (!current || current.attrs.blockId !== node.attrs.blockId) return;
     const focusedRoot = outlineViewState(editor.state).focus === id;
     if (focusedRoot && (action === 'duplicate' || action === 'delete')) return;
+    if (action === 'add' || action === 'note') {
+      if (action === 'add') addOutlineItem(editor, id);
+      else addOutlineParagraph(editor, id);
+      focusOutlineView(editor);
+      return;
+    }
     if (action === 'indent' || action === 'outdent') {
       if (selected) shiftSelectedOutlineItems(editor, action === 'outdent');
       else if (action === 'indent') indentOutlineItem(editor, id);
@@ -218,13 +346,55 @@ export function OutlineItemMenu({
             <MoreHorizontal className="size-3.5" />
           </Button>
         </DropdownMenuTrigger>
-        <DropdownMenuContent align="end" onCloseAutoFocus={(event) => event.preventDefault()}>
+        <DropdownMenuContent
+          align="end"
+          className="max-h-[var(--radix-dropdown-menu-content-available-height)] overflow-y-auto"
+          onCloseAutoFocus={plainTextPaste.onCloseAutoFocus}
+        >
           <DropdownMenuItem onSelect={() => focusOutlineItem(editor, focusedRoot ? null : id)}>
+            <Focus />
             {focusedRoot ? copy.whole : copy.zoom}
           </DropdownMenuItem>
-          <DropdownMenuItem onSelect={() => selectOutlineItem(editor, id)}>{copy.selectItem}</DropdownMenuItem>
-          <DropdownMenuSeparator />
-          <ContentBlockReferenceAction editor={editor} blockId={id} />
+          <DropdownMenuItem onSelect={() => selectOutlineItem(editor, id)}>
+            <MousePointer2 />
+            {copy.selectItem}
+          </DropdownMenuItem>
+          {editable && (
+            <>
+              <DropdownMenuSeparator />
+              <OutlinePlainTextPasteItem editor={editor} id={id} onSelect={plainTextPaste.request} />
+              <DropdownMenuItem onSelect={() => run('add')}>
+                <Plus />
+                {focusedRoot ? copy.addChildItem : copy.addItem}
+                <Kbd className="ml-auto">
+                  {window.desktopApi?.appPlatform === 'darwin' ? '⌘⇧↵' : 'Ctrl+Shift+Enter'}
+                </Kbd>
+              </DropdownMenuItem>
+              <DropdownMenuSub>
+                <DropdownMenuSubTrigger>
+                  <Text className="size-4 shrink-0" />
+                  {copy.addContent}
+                </DropdownMenuSubTrigger>
+                <DropdownMenuPortal>
+                  <DropdownMenuSubContent>
+                    <DropdownMenuItem onSelect={() => run('note')}>
+                      <Text />
+                      {copy.addNote}
+                      <Kbd className="ml-auto">Shift+Enter</Kbd>
+                    </DropdownMenuItem>
+                    <DropdownMenuItem onSelect={() => run('noteList')}>
+                      <List />
+                      {copy.addNoteList}
+                    </DropdownMenuItem>
+                  </DropdownMenuSubContent>
+                </DropdownMenuPortal>
+              </DropdownMenuSub>
+              <DropdownMenuItem disabled={focusedRoot} onSelect={() => run('duplicate')}>
+                <Copy />
+                {copy.duplicateItem}
+              </DropdownMenuItem>
+            </>
+          )}
           {editable && host.onAddComment && (
             <DropdownMenuItem
               onSelect={() => {
@@ -254,50 +424,78 @@ export function OutlineItemMenu({
           {editable && (
             <>
               <DropdownMenuSeparator />
-              <DropdownMenuItem onSelect={() => run('add')}>
-                <Plus />
-                {copy.addItem}
-              </DropdownMenuItem>
-              <DropdownMenuItem onSelect={() => run('note')}>{copy.addNote}</DropdownMenuItem>
-              <DropdownMenuItem onSelect={() => run('noteList')}>{copy.addNoteList}</DropdownMenuItem>
-              {groups.length > 0 && <DropdownMenuSeparator />}
-              {groups.map((group) => (
-                <DropdownMenuItem
-                  key={group.id || group.offset}
-                  onSelect={() => classify(group.offset, group.id, group.role === 'NOTE' ? 'CHILDREN' : 'NOTE')}
-                >
-                  {group.role === 'NOTE' ? copy.useAsChildItems : copy.useAsNoteList} · {group.preview}
-                </DropdownMenuItem>
-              ))}
-              <DropdownMenuItem disabled={focusedRoot} onSelect={() => run('indent')}>
-                {copy.indent}
-              </DropdownMenuItem>
-              <DropdownMenuItem disabled={focusedRoot} onSelect={() => run('outdent')}>
-                {copy.outdent}
-              </DropdownMenuItem>
-              <DropdownMenuItem
+              <OutlinePositionMenu
                 disabled={focusedRoot}
-                onSelect={() => {
+                onAction={run}
+                onMoveTo={() => {
                   setMoveIds(selected ? selectedIds : [id]);
                   setMoveOpen(true);
                 }}
-              >
-                {copy.moveTo}
-              </DropdownMenuItem>
-              <DropdownMenuItem disabled={focusedRoot} onSelect={() => run('up')}>
-                <ArrowUp />
-                {messages.contentEditor.moveBlockUp}
-              </DropdownMenuItem>
-              <DropdownMenuItem disabled={focusedRoot} onSelect={() => run('down')}>
-                <ArrowDown />
-                {messages.contentEditor.moveBlockDown}
-              </DropdownMenuItem>
-              <DropdownMenuItem disabled={focusedRoot} onSelect={() => run('duplicate')}>
-                <Copy />
-                {messages.contentEditor.duplicateBlock}
-              </DropdownMenuItem>
+              />
+              {groups.length > 0 && (
+                <DropdownMenuSub>
+                  <DropdownMenuSubTrigger>
+                    <ListTree className="size-4 shrink-0" />
+                    {copy.convertList}
+                  </DropdownMenuSubTrigger>
+                  <DropdownMenuPortal>
+                    <DropdownMenuSubContent className="max-h-[var(--radix-dropdown-menu-content-available-height)] max-w-80 overflow-y-auto">
+                      {groups.map((group) => (
+                        <DropdownMenuItem
+                          key={group.id || group.offset}
+                          onSelect={() => classify(group.offset, group.id, group.role === 'NOTE' ? 'CHILDREN' : 'NOTE')}
+                        >
+                          {group.role === 'NOTE' ? <ListTree /> : <List />}
+                          <span className="shrink-0">
+                            {group.role === 'NOTE' ? copy.useAsChildItems : copy.useAsNoteList}
+                          </span>
+                          <span className="truncate text-muted-foreground" title={group.preview}>
+                            {group.preview}
+                          </span>
+                        </DropdownMenuItem>
+                      ))}
+                    </DropdownMenuSubContent>
+                  </DropdownMenuPortal>
+                </DropdownMenuSub>
+              )}
+            </>
+          )}
+          {(host.source || (editable && linkHost)) && <DropdownMenuSeparator />}
+          <ContentBlockReferenceAction editor={editor} blockId={id} />
+          {editable && linkHost && (
+            <DropdownMenuSub>
+              <DropdownMenuSubTrigger>
+                <Link className="size-4 shrink-0" />
+                {copy.linkContent}
+              </DropdownMenuSubTrigger>
+              <DropdownMenuPortal>
+                <DropdownMenuSubContent>
+                  <DropdownMenuItem
+                    onSelect={() => {
+                      const selection = menuSelection.current ?? editor.state.selection;
+                      const document = editor.state.doc;
+                      setTimeout(() => {
+                        if (!editor.isDestroyed && editor.state.doc === document)
+                          openContentAssociation(editor, { blockId: id, selection });
+                      }, 0);
+                    }}
+                  >
+                    <Link />
+                    {copy.linkExisting}
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onSelect={() => setLinkMode('NEW')}>
+                    <Plus />
+                    {copy.linkCreate}
+                  </DropdownMenuItem>
+                </DropdownMenuSubContent>
+              </DropdownMenuPortal>
+            </DropdownMenuSub>
+          )}
+          {editable && (
+            <>
               <DropdownMenuSeparator />
-              <DropdownMenuItem disabled={deleteBlocked} onSelect={() => run('delete')}>
+              <DropdownMenuItem variant="destructive" disabled={deleteBlocked} onSelect={() => run('delete')}>
+                <Trash2 />
                 {copy.deleteBranch}
               </DropdownMenuItem>
             </>
@@ -305,6 +503,9 @@ export function OutlineItemMenu({
         </DropdownMenuContent>
       </DropdownMenu>
       {moveOpen && <OutlineMoveDialog editor={editor} open={moveOpen} onOpenChange={setMoveOpen} sourceIds={moveIds} />}
+      {linkMode && (
+        <OutlineContentLinkDialog editor={editor} blockId={id} mode={linkMode} onClose={() => setLinkMode(null)} />
+      )}
     </>
   );
 }

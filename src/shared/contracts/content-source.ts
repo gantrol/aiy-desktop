@@ -45,6 +45,7 @@ export const referenceMemberSchema = z
   })
   .strict();
 export const referenceSelectorSchema = z.discriminatedUnion('kind', [
+  z.object({ kind: z.literal('DOCUMENT_BODY') }).strict(),
   z
     .object({ kind: z.literal('BLOCK'), blockId: id, section: z.boolean(), scope: referenceScopeSchema.optional() })
     .strict(),

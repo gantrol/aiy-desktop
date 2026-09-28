@@ -17,7 +17,7 @@ export const videoDocumentSelect = `SELECT document.id, document.title, document
   metadata.source_url AS source_url,
   thumbnail_asset.id AS thumbnail_asset_id, thumbnail_asset.width AS thumbnail_width,
   thumbnail_asset.height AS thumbnail_height,
-  placement.album_id, album.title AS album_title
+  placement.album_id, album.title AS album_title, placement_item.id AS creation_item_id
 FROM documents document
 JOIN document_source_relations source ON source.document_id = document.id AND source.role = 'PRIMARY_VIDEO'
 JOIN materials material ON material.id = source.material_id AND material.kind = 'VIDEO'

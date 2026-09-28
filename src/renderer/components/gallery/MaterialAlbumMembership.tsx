@@ -1,120 +1,145 @@
-import { CornerDownRightIcon, LoaderCircleIcon } from 'lucide-react';
-import { useMemo, useState } from 'react';
-import type { MaterialAlbumDto, MaterialAlbumMemberDto } from '@/shared/contracts';
-import { Checkbox } from '@/renderer/components/ui/checkbox';
-import { ScrollArea } from '@/renderer/components/ui/scroll-area';
-import { buildMaterialAlbumTree, flattenMaterialAlbumTree } from '@/renderer/components/gallery/materialAlbumTree';
-import { MaterialAlbumPreview } from '@/renderer/components/gallery/MaterialAlbumPreview';
+import { useCallback, useId, useState } from 'react';
+import { ChevronRightIcon } from 'lucide-react';
+import type { MaterialAlbumDto, MaterialSelectionTargetInput } from '@/shared/contracts';
+import type {
+  MaterialAlbumMembershipApplyResult,
+  MaterialAlbumMembershipEdit,
+} from '@/shared/contracts/material-album-membership';
+import { useI18n } from '@/renderer/i18n/useI18n';
+import { Button } from '@/renderer/components/ui/button';
+import { Dialog } from '@/renderer/components/ui/dialog';
+import {
+  MaterialAlbumMembershipDialog,
+  type MembershipEditorState,
+} from '@/renderer/components/gallery/MaterialAlbumMembershipDialog';
+import { albumMembershipRows } from '@/renderer/components/gallery/materialAlbumMembershipModel';
 
-export interface MaterialAlbumMembershipTarget {
-  materialId?: string | null;
-  imageAssetId?: string | null;
-  memberIds?: readonly string[];
-}
-
-export interface MaterialAlbumMembershipLabels {
-  title: string;
-  operationFailed: string;
-}
-
-export interface MaterialAlbumMembershipProps {
+interface Props {
   albums: MaterialAlbumDto[];
-  target: MaterialAlbumMembershipTarget;
-  labels: MaterialAlbumMembershipLabels;
+  target: MaterialSelectionTargetInput;
+  loading: boolean;
+  failed: boolean;
   disabled?: boolean;
-  onToggle(album: MaterialAlbumDto, member: MaterialAlbumMemberDto | null, checked: boolean): Promise<void>;
-}
-
-function findMembership(album: MaterialAlbumDto, target: MaterialAlbumMembershipTarget) {
-  const memberIds = new Set(target.memberIds ?? []);
-  return (
-    album.members.find(
-      (member) =>
-        memberIds.has(member.id) ||
-        Boolean(target.materialId && member.materialId === target.materialId) ||
-        Boolean(target.imageAssetId && member.imageAsset?.id === target.imageAssetId),
-    ) ?? null
-  );
+  onOpenAlbum(albumId: string): void;
+  onApply(edit: MaterialAlbumMembershipEdit): Promise<MaterialAlbumMembershipApplyResult>;
+  onRetry(): Promise<unknown>;
+  onStateChange(state: MembershipEditorState): void;
 }
 
 export function MaterialAlbumMembership({
   albums,
   target,
-  labels,
-  disabled = false,
-  onToggle,
-}: MaterialAlbumMembershipProps) {
-  const [pendingAlbumIds, setPendingAlbumIds] = useState<Set<string>>(() => new Set());
-  const [error, setError] = useState('');
-  const albumRows = useMemo(() => flattenMaterialAlbumTree(buildMaterialAlbumTree(albums)), [albums]);
-
-  if (albumRows.length === 0) return null;
-
-  async function toggle(album: MaterialAlbumDto, member: MaterialAlbumMemberDto | null, checked: boolean) {
-    if (disabled || pendingAlbumIds.has(album.id)) return;
-    setError('');
-    setPendingAlbumIds((current) => new Set(current).add(album.id));
-    try {
-      await onToggle(album, member, checked);
-    } catch (reason) {
-      setError(reason instanceof Error && reason.message ? reason.message : labels.operationFailed);
-    } finally {
-      setPendingAlbumIds((current) => {
-        const next = new Set(current);
-        next.delete(album.id);
-        return next;
-      });
-    }
-  }
-
+  loading,
+  failed,
+  disabled,
+  onOpenAlbum,
+  onApply,
+  onRetry,
+  onStateChange,
+}: Props) {
+  const l = useI18n().messages.gallery.membership;
+  const heading = useId();
+  const [open, setOpen] = useState(false);
+  const [session, setSession] = useState(0);
+  const [expanded, setExpanded] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const stateChanged = useCallback(
+    (state: MembershipEditorState) => {
+      setSaving(state.saving);
+      onStateChange(state);
+    },
+    [onStateChange],
+  );
+  const rows = albumMembershipRows(albums, target);
+  const joined = rows.filter((row) => row.member);
   return (
-    <section className="space-y-3" aria-labelledby="material-album-membership-heading">
-      <h3
-        id="material-album-membership-heading"
-        className="text-xs font-semibold uppercase tracking-wide text-muted-foreground"
-      >
-        {labels.title}
-      </h3>
-      <ScrollArea
-        type="always"
-        className="max-h-52 rounded-lg border bg-background [&_[data-slot=scroll-area-viewport]>div]:!block"
-      >
-        <div className="divide-y">
-          {albumRows.map(({ album, depth }) => {
-            const member = findMembership(album, target);
-            const pending = pendingAlbumIds.has(album.id);
-            const checked = Boolean(member);
-            const preview = album.previewAssets[0];
-            return (
-              <label
-                key={album.id}
-                data-album-id={album.id}
-                className="flex min-w-0 cursor-pointer items-center gap-2.5 py-2.5 pr-3 text-sm hover:bg-muted/60 focus-within:bg-muted/60"
-                style={{ paddingLeft: 12 + depth * 20 }}
-              >
-                <Checkbox
-                  data-action="material-album-membership"
-                  checked={checked}
-                  disabled={disabled || pending}
-                  aria-label={album.title}
-                  onCheckedChange={(value) => void toggle(album, member, value === true)}
-                />
-                {depth > 0 && <CornerDownRightIcon className="size-3.5 shrink-0 text-muted-foreground" />}
-                <MaterialAlbumPreview asset={preview} className="size-6 rounded-md" />
-                <span className="min-w-0 flex-1 truncate" title={album.title}>
-                  {album.title}
-                </span>
-                {pending && <LoaderCircleIcon className="size-3.5 shrink-0 animate-spin text-muted-foreground" />}
-              </label>
-            );
-          })}
+    <section className="space-y-2 border-b pb-4" aria-labelledby={heading}>
+      <div className="flex items-center justify-between gap-2">
+        <h3 id={heading} className="text-sm font-medium">
+          {l.title}
+        </h3>
+        <Button
+          variant="ghost"
+          size="sm"
+          disabled={disabled || loading || failed}
+          onClick={() => {
+            setSession((value) => value + 1);
+            setOpen(true);
+          }}
+        >
+          {l.manage}
+        </Button>
+      </div>
+      {failed ? (
+        <Button variant="outline" onClick={() => void onRetry().catch(() => undefined)}>
+          {l.retry}
+        </Button>
+      ) : loading ? (
+        <div role="status" className="text-xs text-muted-foreground">
+          {l.loading}
         </div>
-      </ScrollArea>
-      {error && (
-        <p role="alert" className="text-xs text-destructive">
-          {error}
-        </p>
+      ) : joined.length ? (
+        <div>
+          {(expanded ? joined : joined.slice(0, 3)).map(({ album, parentPath, path }) => (
+            <Button
+              key={album.id}
+              variant="ghost"
+              className="h-auto w-full justify-start gap-2 px-0 py-2 text-left font-normal"
+              disabled={disabled}
+              onClick={() => onOpenAlbum(album.id)}
+            >
+              <span className="min-w-0 flex-1">
+                <span className="block truncate">{album.title}</span>
+                {parentPath && (
+                  <span className="block truncate text-xs text-muted-foreground" title={path}>
+                    {parentPath}
+                  </span>
+                )}
+              </span>
+              <ChevronRightIcon className="size-3.5" />
+            </Button>
+          ))}
+          {joined.length > 3 && (
+            <Button variant="ghost" size="sm" onClick={() => setExpanded((value) => !value)}>
+              {expanded ? l.collapse : l.all}
+            </Button>
+          )}
+        </div>
+      ) : (
+        <Button
+          variant="outline"
+          size="sm"
+          disabled={disabled}
+          onClick={() => {
+            setSession((value) => value + 1);
+            setOpen(true);
+          }}
+        >
+          {rows.length ? l.join : l.createAndJoin}
+        </Button>
       )}
+      <Dialog
+        open={open}
+        onOpenChange={(next) => {
+          if (!saving) setOpen(next);
+        }}
+      >
+        {open && (
+          <MaterialAlbumMembershipDialog
+            key={session}
+            initialCreating={rows.length === 0}
+            albums={albums}
+            target={target}
+            onApply={onApply}
+            onStateChange={stateChanged}
+            onClose={() => setOpen(false)}
+            onReload={async () => {
+              await onRetry();
+              setSession((value) => value + 1);
+            }}
+          />
+        )}
+      </Dialog>
     </section>
   );
 }

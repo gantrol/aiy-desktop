@@ -12,6 +12,7 @@ import {
 
 interface FillComposerOptions {
   replaceExisting?: boolean;
+  beforeMutation?: () => Promise<void>;
   title?: string;
   contentKind?: string;
   articleHtml?: string;
@@ -72,8 +73,11 @@ export async function fillComposer(
   const editor = candidates[0];
   if (!editor) return failure(requestId, site, 'COMPOSER_NOT_FOUND');
   if (!prepared && adapter.hasExistingMedia?.(editor)) return failure(requestId, site, 'COMPOSER_HAS_MEDIA');
-  const title = options.title?.trim();
-  const titleControl = title ? (adapter.findTitle?.(editor) ?? null) : null;
+  const title = options.title?.trim() ?? '';
+  const titleControl = adapter.findTitle?.(editor) ?? null;
+  const replaceTitleWithEmpty = Boolean(
+    titleControl && !title && options.replaceExisting && normalizeDraft(readText(titleControl)).length > 0,
+  );
   if (title && adapter.findTitle && !titleControl) return failure(requestId, site, 'COMPOSER_NOT_FOUND');
   if (
     (normalizeDraft(readText(editor)).length > 0 ||
@@ -82,8 +86,27 @@ export async function fillComposer(
   ) {
     return failure(requestId, site, 'COMPOSER_NOT_EMPTY');
   }
+  const beforeText = readText(editor);
+  const beforeTitle = titleControl ? readText(titleControl) : null;
+  const beginWrite = async (): Promise<FillDraftErrorCode | null> => {
+    if (!options.beforeMutation) return null;
+    await options.beforeMutation();
+    // Persisting the write intent is asynchronous. Do not overwrite input made while it was pending.
+    const currentEditors = adapter.findEditors();
+    if (!editor.isConnected || currentEditors.length === 0) return 'COMPOSER_NOT_FOUND';
+    if (currentEditors.length !== 1 || currentEditors[0] !== editor) return 'COMPOSER_AMBIGUOUS';
+    if (
+      readText(editor) !== beforeText ||
+      (titleControl && (adapter.findTitle?.(editor) !== titleControl || readText(titleControl) !== beforeTitle))
+    )
+      return 'COMPOSER_NOT_EMPTY';
+    if (!prepared && adapter.hasExistingMedia?.(editor)) return 'COMPOSER_HAS_MEDIA';
+    return null;
+  };
   if (options.articleHtml && adapter.fillArticle) {
     if (mediaFiles.length && !adapter.findMediaInput(editor)) return failure(requestId, site, 'MEDIA_INPUT_NOT_FOUND');
+    const blocked = await beginWrite();
+    if (blocked) return failure(requestId, site, blocked);
     if (titleControl && title) {
       if (options.replaceExisting && !clearComposer(titleControl)) return failure(requestId, site, 'FILL_FAILED');
       setTextControlValue(titleControl, title);
@@ -106,6 +129,8 @@ export async function fillComposer(
     return failure(requestId, site, 'MEDIA_INPUT_NOT_FOUND');
   }
 
+  const blocked = await beginWrite();
+  if (blocked) return failure(requestId, site, blocked);
   if (
     options.replaceExisting &&
     ((!adapter.writeText && normalizeDraft(readText(editor)).length > 0 && !clearComposer(editor)) ||
@@ -117,7 +142,7 @@ export async function fillComposer(
     return failure(requestId, site, 'FILL_FAILED');
   }
 
-  if (titleControl && title) {
+  if (titleControl && (title || replaceTitleWithEmpty)) {
     if (adapter.writeTitle) {
       if (!(await adapter.writeTitle(titleControl, title, Boolean(options.replaceExisting))))
         return failure(requestId, site, 'FILL_FAILED');
@@ -132,7 +157,9 @@ export async function fillComposer(
 
   if (
     normalizeDraft(readText(editor)) !== normalizeDraft(firstDraft) ||
-    (titleControl && title && normalizeDraft(readText(titleControl)) !== normalizeDraft(title))
+    (titleControl &&
+      (title || replaceTitleWithEmpty) &&
+      normalizeDraft(readText(titleControl)) !== normalizeDraft(title))
   ) {
     return failure(requestId, site, 'FILL_FAILED');
   }

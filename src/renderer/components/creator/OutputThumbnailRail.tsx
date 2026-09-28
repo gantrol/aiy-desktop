@@ -1,4 +1,5 @@
-import { LoaderCircleIcon, PanelRightOpenIcon, UploadIcon } from 'lucide-react';
+import { WorkbenchPaneToggle } from '@/renderer/components/workbench/WorkbenchPane';
+import { LoaderCircleIcon, UploadIcon } from 'lucide-react';
 import type { PointerEvent as ReactPointerEvent } from 'react';
 import type { AssetDto, AssetFileRevealContext } from '@/shared/contracts';
 import { cn } from '@/renderer/lib/utils';
@@ -68,7 +69,8 @@ export function OutputThumbnailRail({
         onValueChange={onResizeValueChange}
         onPointerDown={onResizeStart}
       />
-      <div className="grid h-14 shrink-0 place-items-center border-b border-border/60">
+      <div className="grid shrink-0 place-items-center gap-1 border-b border-border/60 py-3">
+        <WorkbenchPaneToggle expanded={false} side="right" label={label ?? expandLabel} onClick={onExpand} />
         <Button
           type="button"
           variant="ghost"
@@ -82,7 +84,7 @@ export function OutputThumbnailRail({
         </Button>
       </div>
       <ScrollArea type="always" className="min-h-0 flex-1">
-        <div className="flex flex-col items-center gap-2 px-2 pt-3 pb-14">
+        <div className="flex flex-col items-center gap-2 px-2 py-3">
           {assets.map((asset, index) => {
             const accessibleLabel = thumbnailLabel?.(asset, index) ?? `${expandLabel} ${index + 1}`;
             const thumbnailUrl = mediaThumbnailUrl(asset, 192);
@@ -101,7 +103,7 @@ export function OutputThumbnailRail({
                     aria-pressed={asset.id === selectedAssetId}
                     title={accessibleLabel}
                     className={cn(
-                      'relative isolate h-14 w-11 overflow-hidden rounded-md bg-surface-sunken ring-1 ring-inset ring-foreground/10 outline-none transition-shadow duration-fast hover:ring-2 hover:ring-border-strong focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring',
+                      'relative isolate h-11 w-9 shrink-0 overflow-hidden rounded-md bg-surface-sunken ring-1 ring-inset ring-foreground/10 outline-none transition-shadow duration-fast hover:ring-2 hover:ring-border-strong focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring',
                       asset.id === selectedAssetId && 'ring-2 ring-ring',
                     )}
                     onClick={() => {
@@ -126,17 +128,6 @@ export function OutputThumbnailRail({
           })}
         </div>
       </ScrollArea>
-      <Button
-        type="button"
-        variant="secondary"
-        size="icon-sm"
-        className="absolute bottom-2 left-1/2 z-20 -translate-x-1/2 shadow-overlay"
-        title={expandLabel}
-        aria-label={expandLabel}
-        onClick={onExpand}
-      >
-        <PanelRightOpenIcon className="size-4" />
-      </Button>
     </aside>
   );
 }

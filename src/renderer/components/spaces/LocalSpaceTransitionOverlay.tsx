@@ -1,3 +1,4 @@
+import { itemReorderHandler } from '@/renderer/components/albums/itemDrag';
 import {
   BlocksIcon,
   CheckIcon,
@@ -252,16 +253,16 @@ export function LocalSpaceTransitionOverlay({
                     setDraggingPreviewIndex(null);
                     setDropPreviewIndex(null);
                   }}
-                  onDragOver={(event) => {
+                  onDragOver={itemReorderHandler((event) => {
                     if (!previewSortable || draggingPreviewIndex === index) return;
                     event.preventDefault();
                     event.dataTransfer.dropEffect = 'move';
                     setDropPreviewIndex(index);
-                  }}
+                  })}
                   onDragLeave={(event) => {
                     if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setDropPreviewIndex(null);
                   }}
-                  onDrop={(event) => {
+                  onDrop={itemReorderHandler((event) => {
                     if (!previewSortable) return;
                     event.preventDefault();
                     const serializedSourceIndex =
@@ -274,7 +275,7 @@ export function LocalSpaceTransitionOverlay({
                     }
                     setDraggingPreviewIndex(null);
                     setDropPreviewIndex(null);
-                  }}
+                  })}
                   onKeyDown={(event) => {
                     if (!previewSortable || (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight')) {
                       return;

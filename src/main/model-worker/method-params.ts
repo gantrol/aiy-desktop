@@ -11,7 +11,24 @@ import type { DeepSeekApiRuntimeConfiguration } from '@/main/extensions/deepseek
 import type { ExternalImageApiRuntimeConfiguration } from '@/main/extensions/external-image-api/types';
 import type { OpenAiImageApiRuntimeConfiguration } from '@/main/extensions/openai-image-api/types';
 import type { ModelWorkerMethod } from '@/main/model-worker/protocol';
-import { agentContentReadRequestSchema, type AgentContentReadRequest } from '@/shared/contracts/agent-content';
+import {
+  agentAlbumListRequestSchema,
+  agentAlbumEnsureRequestSchema,
+  agentAlbumAddRequestSchema,
+  agentAlbumRemoveRequestSchema,
+  type AgentAlbumListRequest,
+  type AgentAlbumEnsureRequest,
+  type AgentAlbumAddRequest,
+  type AgentAlbumRemoveRequest,
+} from '@/shared/contracts/agent-album';
+import {
+  agentContentReadRequestSchema,
+  agentContentSearchRequestSchema,
+  agentContentUpdateRequestSchema,
+  type AgentContentReadRequest,
+  type AgentContentSearchRequest,
+  type AgentContentUpdateRequest,
+} from '@/shared/contracts/agent-content';
 import type {
   ArticleCheckInput,
   CodexImageRefinementInput,
@@ -66,6 +83,13 @@ import {
 } from '@/shared/image-generation-concurrency';
 import { isDeepStrictEqual } from 'node:util';
 import { z } from 'zod';
+import { agentWorkListSchema, agentWorkMutateSchema, agentWorkReadSchema } from '@/shared/contracts/agent-work';
+import {
+  agentCreationAlbumsSchema,
+  agentCreationEnsureAlbumSchema,
+  agentCreationMoveSchema,
+} from '@/shared/contracts/agent-creation';
+import { workScopeSchema, workMutationSchema, workHandoffInputSchema } from '@/shared/contracts/work-tracking';
 
 const identifier = z.string().min(1).max(200);
 const boundedPath = z.string().min(1).max(32_768);
@@ -589,6 +613,20 @@ const generationConcurrencyConfiguration: z.ZodType<ImageGenerationConcurrencyDt
   });
 
 export interface ModelWorkerMethodParams {
+  'agent.permissions.read': [];
+  'agent.file-view.refresh': [];
+  'agent.action.authorize': [];
+  'agent.work.list': [input: z.infer<typeof agentWorkListSchema>];
+  'agent.work.read': [input: z.infer<typeof agentWorkReadSchema>];
+  'agent.creation.albums': [input: z.infer<typeof agentCreationAlbumsSchema>];
+  'agent.creation.ensure-album': [input: z.infer<typeof agentCreationEnsureAlbumSchema>];
+  'agent.creation.move': [input: z.infer<typeof agentCreationMoveSchema>];
+  'agent.work.mutate': [input: z.infer<typeof agentWorkMutateSchema>];
+  'agent.pack.preview': [input: ContentPackPreviewCommand];
+  'agent.pack.apply': [input: ContentPackApplyCommand];
+  'work-tracking.read': [input: z.infer<typeof workScopeSchema>];
+  'work-tracking.mutate': [input: z.infer<typeof workMutationSchema>];
+  'work-tracking.handoff': [input: z.infer<typeof workHandoffInputSchema>];
   snapshot: [];
   'library-file-view.refresh': [];
   'dictionary.stage-import': [fileName: string, filePath: string];
@@ -597,7 +635,13 @@ export interface ModelWorkerMethodParams {
   'agent.asset.import': [input: AgentAssetImportRequest];
   'agent.intake.import': [input: AgentIntakeImportRequest];
   'agent.intake.get': [input: AgentIntakeGetRequest];
+  'agent.album.list': [input: AgentAlbumListRequest];
+  'agent.album.ensure': [input: AgentAlbumEnsureRequest];
+  'agent.album.add': [input: AgentAlbumAddRequest];
+  'agent.album.remove': [input: AgentAlbumRemoveRequest];
   'agent.content.read': [input: AgentContentReadRequest];
+  'agent.content.search': [input: AgentContentSearchRequest];
+  'agent.content.update': [input: AgentContentUpdateRequest];
   'content-pack.preview': [input: ContentPackPreviewCommand];
   'content-pack.apply': [input: ContentPackApplyCommand];
   'agent.draft.prepare': [input: AgentDraftPrepareRequest];
@@ -644,6 +688,20 @@ type ParamSchemaMap = { [Method in ModelWorkerMethod]: z.ZodType<ModelWorkerMeth
 
 const empty = z.tuple([]);
 const schemas = {
+  'agent.permissions.read': empty,
+  'agent.file-view.refresh': empty,
+  'agent.action.authorize': empty,
+  'agent.work.list': z.tuple([agentWorkListSchema]),
+  'agent.work.read': z.tuple([agentWorkReadSchema]),
+  'agent.creation.albums': z.tuple([agentCreationAlbumsSchema]),
+  'agent.creation.ensure-album': z.tuple([agentCreationEnsureAlbumSchema]),
+  'agent.creation.move': z.tuple([agentCreationMoveSchema]),
+  'agent.work.mutate': z.tuple([agentWorkMutateSchema]),
+  'agent.pack.preview': z.tuple([contentPackPreviewCommandSchema]),
+  'agent.pack.apply': z.tuple([contentPackApplyCommandSchema]),
+  'work-tracking.read': z.tuple([workScopeSchema]),
+  'work-tracking.mutate': z.tuple([workMutationSchema]),
+  'work-tracking.handoff': z.tuple([workHandoffInputSchema]),
   snapshot: empty,
   'library-file-view.refresh': empty,
   'dictionary.stage-import': z.tuple([z.string().min(1).max(500), boundedPath]),
@@ -652,7 +710,13 @@ const schemas = {
   'agent.asset.import': z.tuple([agentAssetImportRequestSchema]),
   'agent.intake.import': z.tuple([agentIntakeImportRequestSchema]),
   'agent.intake.get': z.tuple([agentIntakeGetRequestSchema]),
+  'agent.album.list': z.tuple([agentAlbumListRequestSchema]),
+  'agent.album.ensure': z.tuple([agentAlbumEnsureRequestSchema]),
+  'agent.album.add': z.tuple([agentAlbumAddRequestSchema]),
+  'agent.album.remove': z.tuple([agentAlbumRemoveRequestSchema]),
   'agent.content.read': z.tuple([agentContentReadRequestSchema]),
+  'agent.content.search': z.tuple([agentContentSearchRequestSchema]),
+  'agent.content.update': z.tuple([agentContentUpdateRequestSchema]),
   'content-pack.preview': z.tuple([contentPackPreviewCommandSchema]),
   'content-pack.apply': z.tuple([contentPackApplyCommandSchema]),
   'agent.draft.prepare': z.tuple([agentDraftPrepareRequestSchema]),

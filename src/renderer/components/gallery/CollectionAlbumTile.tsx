@@ -7,7 +7,11 @@ import {
   endCollectionCardDrag,
 } from '@/renderer/components/gallery/collectionAlbumDragHandlers';
 import { Button } from '@/renderer/components/ui/button';
+import { itemDragStart, itemDragScopeProps } from '@/renderer/components/albums/itemDrag';
 import { cn } from '@/renderer/lib/utils';
+import { CollectionTextItem, collectionTextItemClassName } from '@/renderer/components/gallery/CollectionTextItem';
+import { CollectionPreview } from '@/renderer/components/gallery/CollectionPreview';
+import { MediaCardCaption } from '@/renderer/components/media/MediaCardCaption';
 
 export function CollectionAlbumTile({
   album,
@@ -22,51 +26,75 @@ export function CollectionAlbumTile({
   dragKind: 'MATERIAL' | 'CREATION' | null;
   onOpen(albumId: string): void;
 }) {
+  const caption = (
+    <MediaCardCaption>
+      <strong className="block truncate text-sm font-semibold">{album.title}</strong>
+      <span className="block truncate text-xs font-normal opacity-85" title={detailLabel}>
+        {detailLabel}
+      </span>
+    </MediaCardCaption>
+  );
   return (
-    <div className="flex size-full min-w-0 flex-col">
-      <Button
-        variant="ghost"
-        data-action={album.kind === 'USER' ? 'material-open-album' : 'material-open-creation-collection'}
-        className="min-h-0 w-full min-w-0 flex-1 items-stretch justify-start rounded-md p-0 hover:bg-transparent"
-        aria-label={`${openLabel}: ${album.title}`}
-        onClick={() => onOpen(album.id)}
-      >
-        <AlbumCoverStack
-          assets={album.previewAssets}
-          title={album.title}
-          icon={album.systemKey === 'CREATION_SERIES' ? SquarePenIcon : FolderIcon}
-        />
-      </Button>
-      <div className="flex h-13 min-w-0 shrink-0 items-center gap-1 pl-1 pr-8">
-        <button
-          type="button"
-          data-material-album-drag-handle={dragKind === 'MATERIAL' ? album.id : undefined}
-          data-creation-collection-drag-handle={dragKind === 'CREATION' ? album.id : undefined}
-          draggable={dragKind !== null}
-          className={cn(
-            'min-w-0 flex-1 rounded-sm py-1 text-left outline-none focus-visible:ring-2 focus-visible:ring-ring',
-            dragKind && 'cursor-grab active:cursor-grabbing',
-          )}
-          onClick={() => onOpen(album.id)}
-          onDragStart={(event) => startCollectionCardDrag(event, dragKind, album.id)}
-          onDragEnd={endCollectionCardDrag}
+    <div
+      {...itemDragScopeProps}
+      data-media-card
+      className={cn('group relative flex w-full min-w-0 flex-col', album.previewAssets.length > 0 && 'h-full')}
+      draggable={dragKind !== null}
+      onDragStart={itemDragStart((event) => {
+        startCollectionCardDrag(event, dragKind, album);
+      })}
+      onDragEnd={endCollectionCardDrag}
+    >
+      {album.previewAssets.length === 0 ? (
+        <Button
+          variant="ghost"
+          data-action={album.kind === 'USER' ? 'material-open-album' : 'material-open-creation-collection'}
+          className={collectionTextItemClassName()}
           aria-label={`${openLabel}: ${album.title}`}
-          title={album.title}
+          onClick={() => onOpen(album.id)}
         >
-          <span className="block truncate text-sm font-medium">{album.title}</span>
-          <span className="mt-0.5 block truncate text-xs text-muted-foreground" title={detailLabel}>
-            {detailLabel}
-          </span>
-        </button>
-        <AlbumPreviewPopover
-          key={album.id}
-          assets={album.previewAssets}
-          title={album.title}
-          detail={detailLabel}
-          openLabel={openLabel}
-          onOpen={() => onOpen(album.id)}
-        />
-      </div>
+          <CollectionTextItem
+            title={album.title}
+            detail={detailLabel}
+            updatedAt={album.updatedAt ?? undefined}
+            icon={album.systemKey === 'CREATION_SERIES' ? SquarePenIcon : FolderIcon}
+          />
+        </Button>
+      ) : (
+        <>
+          <Button
+            variant="ghost"
+            data-action={album.kind === 'USER' ? 'material-open-album' : 'material-open-creation-collection'}
+            className={cn(
+              'min-h-0 w-full min-w-0 flex-1 items-stretch justify-start rounded-sm p-0 hover:bg-transparent',
+              dragKind && 'cursor-grab active:cursor-grabbing',
+            )}
+            aria-label={`${openLabel}: ${album.title}`}
+            onClick={() => onOpen(album.id)}
+          >
+            {album.previewAssets.length === 1 ? (
+              <CollectionPreview asset={album.previewAssets[0]} title={album.title} caption={caption} />
+            ) : (
+              <AlbumCoverStack
+                assets={album.previewAssets}
+                title={album.title}
+                caption={caption}
+                icon={album.systemKey === 'CREATION_SERIES' ? SquarePenIcon : FolderIcon}
+              />
+            )}
+          </Button>
+          <div data-item-drag-ignore className="absolute right-9 top-1 z-20">
+            <AlbumPreviewPopover
+              key={album.id}
+              assets={album.previewAssets}
+              title={album.title}
+              detail={detailLabel}
+              openLabel={openLabel}
+              onOpen={() => onOpen(album.id)}
+            />
+          </div>
+        </>
+      )}
     </div>
   );
 }

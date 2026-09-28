@@ -1,6 +1,7 @@
 import { appGridRows } from '@/renderer/appPresentation';
 import { useAppWorkspaceShortcuts } from '@/renderer/commands/useAppWorkspaceShortcuts';
-import { useContentSearchShortcut } from '@/renderer/features/content-search/useContentSearchShortcut';
+import { useWorkspaceActions } from '@/renderer/components/workspace/useWorkspaceActions';
+import { workspaceShortcutLayerOpen } from '@/renderer/commands/shortcut-context';
 import {
   AppLoadingState,
   APP_LOADING_VARIANTS as loadingVariants,
@@ -32,7 +33,6 @@ import { WorkspaceVisualResumeProvider } from '@/renderer/components/workspace/W
 import { useWorkspaceAlbumContext } from '@/renderer/components/workspace/useWorkspaceAlbumContext';
 import { useWorkspaceController } from '@/renderer/components/workspace/useWorkspaceController';
 import { registerWorkspaceDrain } from '@/renderer/components/workspace/workspace-drain';
-import { workspaceLocationCanSplit, workspaceLocationKey } from '@/renderer/components/workspace/workspace-location';
 import {
   findWorkspaceTab,
   activeLocation as workspaceTabLocation,
@@ -95,8 +95,10 @@ export function App() {
   const [comparisonFullWindow, setComparisonFullWindow] = useState(false);
   const [creationPromptFullWindow, setCreationPromptFullWindow] = useState(false);
   const overlaySetters = [setSettingsOpen, setComparisonFullWindow, setCreationPromptFullWindow] as const;
-  useDeepLinks(data, workspace.openTab, setData, overlaySetters);
+  useDeepLinks(data, workspace, setData, overlaySetters);
   const appFullWindow = comparisonFullWindow || creationPromptFullWindow;
+  const nativeTitleBarOnly = appFullWindow && window.desktopApi.appPlatform === 'darwin';
+  const gridRows = appGridRows(appFullWindow && !nativeTitleBarOnly);
   const [defaultPromptLocale, setDefaultPromptLocale] = useState<Locale | null>(() => {
     const stored = localStorage.getItem('aiy.prompt-locale.v1');
     if (stored === 'none') return null;
@@ -300,17 +302,8 @@ export function App() {
       const found = findWorkspaceTab(state, tabId);
       if (!found) return;
       const next = typeof destination === 'function' ? destination(workspaceTabLocation(found.tab)) : destination;
-      const nextKey = workspaceLocationKey(next);
-      const candidateGroups = workspaceLocationCanSplit(next) ? [found.group] : state.groups;
-      const duplicate = candidateGroups.some((group) =>
-        group.tabs.some((tab) => tab.id !== tabId && workspaceLocationKey(workspaceTabLocation(tab)) === nextKey),
-      );
-      const apply = () => {
-        articleLocationFlushersRef.current.get(tabId)?.();
-        navigateWorkspace(tabId, next, mode);
-      };
-      if (duplicate && historyNavigationGuardsRef.current.get(tabId)?.('forward', apply)) return;
-      apply();
+      articleLocationFlushersRef.current.get(tabId)?.();
+      navigateWorkspace(tabId, next, mode);
     },
     [navigateWorkspace, workspaceState],
   );
@@ -361,7 +354,7 @@ export function App() {
 
   const invokeHistoryNavigation = useCallback(
     (command: NavigationCommand) => {
-      if (document.querySelector('[role="dialog"]')) return;
+      if (!workspaceReady || spaceTransition || workspaceShortcutLayerOpen()) return;
       const timestamp = performance.now();
       const previous = lastHistoryCommandRef.current;
       if (previous?.command === command && timestamp - previous.timestamp < 120) return;
@@ -369,7 +362,7 @@ export function App() {
       if (command === 'back') goBack();
       else goForward();
     },
-    [goBack, goForward],
+    [goBack, goForward, spaceTransition, workspaceReady],
   );
 
   useEffect(() => window.desktopApi.onNavigationCommand(invokeHistoryNavigation), [invokeHistoryNavigation]);
@@ -508,25 +501,42 @@ export function App() {
     startCreation(albumId);
   }, [startCreation, view, workspaceAlbums.creatorAlbumId, workspaceAlbums.galleryAlbumId]);
 
-  useAppWorkspaceShortcuts({
-    state: workspaceState,
-    activateGroupByIndex: workspace.activateGroupByIndex,
-    activateTabByIndex: workspace.activateTabByIndex,
-    navigateHistory: invokeHistoryNavigation,
-    startNew: startNewCreationFromContext,
+  const {
+    requestTabExit,
+    requestTabExits,
+    activateGroup,
+    activateTab,
+    setGroupTabsCollapsed,
+    closeTab,
+    closeOtherTabs,
+    resetLayout,
+    mergeWorkspaceGroupsFrom,
+    moveTabToOtherGroup,
+  } = useWorkspaceActions({
+    workspace,
+    guards: historyNavigationGuardsRef,
+    flushers: articleLocationFlushersRef,
+    fullWindow: appFullWindow,
+    clearFullWindow: () => {
+      setComparisonFullWindow(false);
+      setCreationPromptFullWindow(false);
+    },
   });
 
-  function requestTabExit(tabId: string, action: () => void) {
-    const guard = historyNavigationGuardsRef.current.get(tabId);
-    if (guard?.('forward', action)) return;
-    action();
-  }
-
-  function requestTabExits(tabIds: readonly string[], action: () => void, index = 0) {
-    const tabId = tabIds[index];
-    if (!tabId) return action();
-    requestTabExit(tabId, () => requestTabExits(tabIds, action, index + 1));
-  }
+  useAppWorkspaceShortcuts({
+    state: workspaceState,
+    enabled: workspaceReady && !spaceTransition && !settingsOpen,
+    activateGroup,
+    activateTab: (groupId, tabId, committed) => {
+      const group = workspaceState?.groups.find((candidate) => candidate.id === groupId);
+      if (group) activateTab(group, tabId, committed);
+    },
+    closeTab,
+    newTab: (sourceTabId) => openWorkspaceLocation(sourceTabId, 'creator', 'tab'),
+    navigateHistory: invokeHistoryNavigation,
+    startNew: startNewCreationFromContext,
+    openSearch: () => changeView('search'),
+  });
 
   function changeViewInTab(tabId: string, nextView: AppView) {
     const found = workspace.state ? findWorkspaceTab(workspace.state, tabId) : null;
@@ -540,8 +550,6 @@ export function App() {
   function changeView(nextView: AppView) {
     if (activeTabId) changeViewInTab(activeTabId, nextView);
   }
-
-  useContentSearchShortcut({ active: workspaceReady && !spaceTransition, onOpen: () => changeView('search') });
 
   function navigateAiCenter(aiCenter: AiCenterLocation, mode: NavigationMode = 'push') {
     if (!activeTabId) return;
@@ -585,59 +593,6 @@ export function App() {
 
   function reEditGeneration(runId: string) {
     if (activeTabId) requestTabExit(activeTabId, () => reEditGenerationInTab(activeTabId, runId));
-  }
-
-  function activateTab(group: WorkspaceRuntimeGroup, tabId: string) {
-    if (tabId === group.activeTabId) {
-      workspace.activateGroup(group.id);
-      return;
-    }
-    requestTabExit(group.activeTabId, () => {
-      articleLocationFlushersRef.current.get(group.activeTabId)?.();
-      setComparisonFullWindow(false);
-      setCreationPromptFullWindow(false);
-      workspace.activateTab(group.id, tabId);
-    });
-  }
-
-  function closeTab(tabId: string) {
-    requestTabExit(tabId, () => {
-      articleLocationFlushersRef.current.get(tabId)?.();
-      workspace.closeTab(tabId);
-    });
-  }
-
-  function closeOtherTabs(group: WorkspaceRuntimeGroup, tabId: string) {
-    const closingTabIds = group.tabs.filter((tab) => tab.id !== tabId).map((tab) => tab.id);
-    requestTabExits(closingTabIds, () => {
-      closingTabIds.forEach((closingTabId) => articleLocationFlushersRef.current.get(closingTabId)?.());
-      workspace.closeOtherTabs(group.id, tabId);
-    });
-  }
-
-  function resetLayout() {
-    if (!workspace.state) return;
-    const tabIds = workspace.state.groups.flatMap((group) => group.tabs.map((tab) => tab.id));
-    requestTabExits(tabIds, () => {
-      tabIds.forEach((tabId) => articleLocationFlushersRef.current.get(tabId)?.());
-      workspace.reset();
-    });
-  }
-
-  function mergeWorkspaceGroupsFrom(sourceGroup: WorkspaceRuntimeGroup) {
-    const otherGroup = workspace.state?.groups.find((group) => group.id !== sourceGroup.id);
-    const remountingTabIds = otherGroup?.tabs.map((tab) => tab.id) ?? [];
-    requestTabExits(remountingTabIds, () => {
-      remountingTabIds.forEach((tabId) => articleLocationFlushersRef.current.get(tabId)?.());
-      workspace.mergeGroups(sourceGroup.id);
-    });
-  }
-
-  function moveTabToOtherGroup(tabId: string) {
-    requestTabExit(tabId, () => {
-      articleLocationFlushersRef.current.get(tabId)?.();
-      workspace.moveTabToOtherGroup(tabId);
-    });
   }
 
   function changeGroupFullWindow(groupId: string, surface: 'comparison' | 'creation', open: boolean) {
@@ -694,7 +649,8 @@ export function App() {
         onArticleLocationNavigate={workspace.navigateArticleViewLocation}
         onRequestEditOwnership={workspace.claimArticleEditOwnership}
         onLocationFlushChange={setArticleLocationFlusher}
-        onActivateGroup={() => workspace.activateGroup(group.id)}
+        onTabsCollapsedChange={(collapsed) => setGroupTabsCollapsed(group.id, collapsed)}
+        onActivateGroup={() => activateGroup(group.id)}
         onActivateTab={(tabId) => activateTab(group, tabId)}
         onCloseTab={closeTab}
         onCloseOtherTabs={(tabId) => closeOtherTabs(group, tabId)}
@@ -742,7 +698,7 @@ export function App() {
           terms={data?.terms ?? []}
           refresh={refresh}
         >
-          <main className={`grid h-full min-h-0 overflow-hidden bg-background ${appGridRows(appFullWindow)}`}>
+          <main className={`grid h-full min-h-0 overflow-hidden bg-background ${gridRows}`}>
             {!appFullWindow && (
               <AppTitleBar
                 workerStatus={data?.modelWorker ?? null}
@@ -775,6 +731,7 @@ export function App() {
                 onGenerationReEdit={reEditGeneration}
               />
             )}
+            {nativeTitleBarOnly && <div className="app-title-bar h-9 border-b bg-muted" aria-hidden="true" />}
             <div className="flex min-h-0 overflow-hidden">
               <div className={appFullWindow ? 'hidden' : 'contents'}>
                 <AppSidebar
@@ -810,6 +767,7 @@ export function App() {
                   ) : (
                     <WorkspaceSplitLayout
                       arrangement={workspaceState.arrangement}
+                      collapsedGroupId={workspaceState.groups.find((group) => group.tabsCollapsed)?.id}
                       childrenByGroupId={
                         new Map(workspaceState.groups.map((group) => [group.id, renderWorkspaceGroup(group)]))
                       }
@@ -819,6 +777,7 @@ export function App() {
               </section>
             </div>
             <SettingsDialog
+              key={data?.spaceId ?? 'no-space'}
               promptLocale={defaultPromptLocale}
               open={settingsOpen}
               onOpenChange={setSettingsOpen}

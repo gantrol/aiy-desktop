@@ -11,7 +11,7 @@ export function registerContentLibraryIpc(ipc: IpcHandlerRegistrar, database: Li
     const command = contentLibraryCommandSchema.parse(raw);
     if (command.kind === 'agent-link') return createAgentContentLink(database, command.target);
     if (command.kind === 'reference-copy') return copyLibraryReference(database, command);
-    if (command.kind === 'link-preview') return linkPreviews.get(command.url);
+    if (command.kind === 'link-preview') return linkPreviews.get(command.url, command.refresh);
     if (command.kind === 'link-open') return openLinkCard(command.url);
     if (command.kind === 'reveal') {
       const directory = await database.ensureContentDirectory(command.source);

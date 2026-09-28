@@ -1,6 +1,11 @@
+import type {
+  MaterialAlbumMembershipApplyInput,
+  MaterialAlbumMembershipApplyResult,
+} from '@/shared/contracts/material-album-membership';
 import type { AppDeepLinkCommand } from '@/shared/contracts/app-deep-link';
 import type { GenerationQuality } from '@/shared/generation-quality';
 import type { CreationOutlineCommand, CreationOutlineResult } from '@/shared/contracts/creation-outline';
+import type { CreationOrganizationCommand, CreationOrganizationResult } from '@/shared/contracts/creation-organization';
 import type { GifMakingApi } from '@/shared/contracts/gif-making';
 import type { AppSupportDestination } from '@/shared/contracts/app-support';
 import type { AppUpdateStateDto } from '@/shared/contracts/app-update';
@@ -209,6 +214,8 @@ import type {
   TransitionPreviewRefreshEvent,
 } from '@/shared/contracts/local-space';
 import type { MaintenanceGuideApi } from '@/shared/contracts/maintenance-guide';
+import type { WorkTrackingApi } from '@/shared/contracts/work-tracking';
+import type { AgentPermissionsApi } from '@/shared/contracts/agent-permissions';
 import type {
   NaturalWatermarkConfiguration,
   NaturalWatermarkCustomLogo,
@@ -2713,6 +2720,7 @@ export interface MaterialAlbumDto {
   systemKey: MaterialAlbumSystemKey | null;
   sourceAlbumId: string | null;
   sourceSeriesId: string | null;
+  sourceCreationItemId?: string;
   title: string;
   materialCount: number;
   previewAssets: AssetDto[];
@@ -2816,6 +2824,8 @@ export interface AddMaterialsToDestinationsInput {
   targets: MaterialSelectionTargetInput[];
   albumIds: string[];
   termIds: string[];
+  /** Move only these explicit memberships; omitted for collection/search sources and copies. */
+  sourceAlbumId?: string;
 }
 
 export interface AddMaterialsToDestinationsResult {
@@ -3002,6 +3012,7 @@ export interface ArticleContentDto extends ArticleContentInput {
 }
 
 export interface ArticleDto {
+  provenance?: import('@/shared/contracts/content-provenance').ContentProvenance;
   id: string;
   albumId: string | null;
   sourceInspirationStashId: string | null;
@@ -4222,10 +4233,13 @@ export interface DesktopApi
     DerivedVisualOperationsApi,
     GifMakingApi {
   contentLibrary: import('@/shared/contracts/content-library').ContentLibraryApi;
+  publishingMasks: import('@/shared/contracts/publishing-mask').PublishingMasksApi;
   calendar: import('@/shared/contracts/calendar').CalendarApi;
   extensionMetrics: import('@/shared/extension-metrics').ExtensionMetricsApi;
   openAiCostsConnection: import('@/shared/openai-costs').OpenAiCostsConnectionApi;
   maintenanceGuide: MaintenanceGuideApi;
+  workTracking: WorkTrackingApi;
+  agentPermissions: AgentPermissionsApi;
   onArticleEditorDrain(listener: (draining: boolean) => Promise<boolean>): () => void;
   rendererDiagnosticRecord(input: RendererDiagnosticInput): void;
   readonly appPlatform: DesktopPlatform;
@@ -4341,6 +4355,9 @@ export interface DesktopApi
   localSpacesChooseCover(spaceId: string): Promise<LocalSpaceCoverUpdateResult>;
   localSpacesRemoveCover(spaceId: string): Promise<LocalSpaceDescriptorDto>;
   onLocalSpaceTransition(callback: (event: LocalSpaceTransitionEvent) => void): () => void;
+  onContentReferencesChanged?(
+    callback: (event: import('@/shared/contracts/content-reference-changes').ContentReferenceChanges) => void,
+  ): () => void;
   onLocalSpaceMigrationProgress(callback: (event: LocalSpaceMigrationProgressEvent) => void): () => void;
   onLocalSpaceTransferProgress(callback: (event: LocalSpaceTransferProgressEvent) => void): () => void;
   packsList(): Promise<PackCatalogItemDto[]>;
@@ -4406,6 +4423,18 @@ export interface DesktopApi
   promptSeriesCoverSet(input: PromptSeriesCoverSetInput): Promise<PromptSeriesOutputPresentationResult>;
   promptVersionCreate(input: PromptVersionCreateInput): Promise<PromptVersionCreateResult>;
   creationDraftStart(input: CreationDraftStartInput): Promise<CreationDraftDto>;
+  creationDraftDelete(
+    input: import('@/shared/contracts/creation-draft-deletion').CreationDraftDeleteInput,
+  ): Promise<import('@/shared/contracts/creation-draft-deletion').CreationDraftDeletion>;
+  creationDraftRestore(
+    input: import('@/shared/contracts/creation-draft-deletion').CreationDraftDeletion,
+  ): Promise<void>;
+  creationDraftList(
+    input: import('@/shared/contracts/creation-draft-list').CreationDraftListInput,
+  ): Promise<import('@/shared/contracts/creation-draft-list').CreationDraftListResult>;
+  onCreationDraftsChanged(
+    callback: (event: import('@/shared/contracts/creation-draft-list').CreationDraftsChanged) => void,
+  ): () => void;
   creationDraftLoad(input: CreationDraftLoadInput): Promise<CreationDraftDto>;
   creationDraftSave(input: CreationDraftSaveInput): Promise<CreationDraftDto>;
   creationDraftCommit(input: CreationDraftCommitInput): Promise<CreationDraftCommitResult>;
@@ -4414,6 +4443,7 @@ export interface DesktopApi
   creationItemCreateWithForm(input: CreationItemCreateWithFormInput): Promise<CreationItemCreateWithFormResult>;
   creationFormAddOrGet(input: CreationFormAddOrGetInput): Promise<CreationFormAddOrGetResult>;
   creationItemMove(input: CreationItemMoveInput): Promise<CreationItemMoveResult>;
+  creationOrganizationCommand(input: CreationOrganizationCommand): Promise<CreationOrganizationResult>;
   creationOutlineCommand(input: CreationOutlineCommand): Promise<CreationOutlineResult>;
   creationItemSetPinned(input: CreationItemSetPinnedInput): Promise<CreationItemSetPinnedResult>;
   creationItemSetPrimary(input: CreationItemSetPrimaryInput): Promise<CreationItemSetPrimaryResult>;
@@ -4533,6 +4563,7 @@ export interface DesktopApi
   materialCollectionsCreateFromSource(
     input: CreateMaterialCollectionFromSourceInput,
   ): Promise<CreateMaterialCollectionFromSourceResult>;
+  materialAlbumMembershipApply(input: MaterialAlbumMembershipApplyInput): Promise<MaterialAlbumMembershipApplyResult>;
   materialAlbumsList(input: MaterialAlbumListInput): Promise<MaterialAlbumDto[]>;
   materialAlbumsCreate(input: MaterialAlbumCreateInput): Promise<MaterialAlbumDto>;
   materialAlbumsRename(input: MaterialAlbumRenameInput): Promise<MaterialAlbumDto>;

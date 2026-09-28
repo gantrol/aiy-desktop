@@ -151,7 +151,7 @@ export function TermList({
                       </button>
                       <button
                         type="button"
-                        className="truncate text-left text-xs text-muted-foreground/90 hover:text-foreground"
+                        className="truncate text-left text-xs text-muted-foreground hover:text-foreground"
                         onClick={() => onSelect(term.id)}
                       >
                         {term.localizations[0]?.title || term.definition || c.untested}

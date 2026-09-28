@@ -12,7 +12,6 @@ import { useMaterialLayoutPreferences } from '@/renderer/components/gallery/mate
 import {
   computeMaterialLayout,
   materialFrameRatio,
-  MATERIAL_NAME_HEIGHT,
   MATERIAL_ROW_GAP,
 } from '@/renderer/components/gallery/materialMasonryLayout';
 import { getMaterialCardAspectRatio, MaterialCard } from '@/renderer/components/gallery/MaterialCard';
@@ -115,10 +114,7 @@ export function MaterialMasonry({
           selectionMode={selectionMode}
           selectionAvailable={selectionAvailable}
           viewMode="GRID"
-          frameAspectRatio={
-            placement.width /
-            (placement.height - (preferences.showNames && items[index].kind !== 'TEXT' ? MATERIAL_NAME_HEIGHT : 0))
-          }
+          frameAspectRatio={placement.width / placement.height}
           showName={preferences.showNames}
           onSelect={onSelect}
           onEnterSelection={onEnterSelection}

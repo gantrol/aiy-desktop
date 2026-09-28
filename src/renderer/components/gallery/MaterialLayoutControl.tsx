@@ -9,13 +9,19 @@ import { Segmented, SegmentedItem } from '@/renderer/components/ui/segmented';
 import { Slider } from '@/renderer/components/ui/slider';
 import { useI18n } from '@/renderer/i18n/useI18n';
 
-export function MaterialLayoutControl({ showNamesControl = true }: { showNamesControl?: boolean }) {
+export function MaterialLayoutControl({
+  showNamesControl = true,
+  showArrangementControl = true,
+}: {
+  showNamesControl?: boolean;
+  showArrangementControl?: boolean;
+}) {
   const { messages } = useI18n();
   const l = messages.gallery.library;
   const { preferences, updatePreferences } = useMaterialLayoutPreferences();
   const nameId = useId();
   const sizeId = useId();
-  const Icon = preferences.arrangement === 'ROWS' ? Rows3Icon : Columns3Icon;
+  const Icon = showArrangementControl && preferences.arrangement === 'ROWS' ? Rows3Icon : Columns3Icon;
   return (
     <Popover>
       <PopoverTrigger asChild>
@@ -25,27 +31,29 @@ export function MaterialLayoutControl({ showNamesControl = true }: { showNamesCo
         </Button>
       </PopoverTrigger>
       <PopoverContent align="end" className="w-64 space-y-4">
-        <Segmented
-          type="single"
-          className="w-full"
-          value={preferences.arrangement}
-          aria-label={l.viewLabel}
-          onValueChange={(value) => {
-            if (value === 'ROWS' || value === 'COLUMNS') updatePreferences({ arrangement: value });
-          }}
-        >
-          <SegmentedItem value="ROWS" className="flex-1">
-            <Rows3Icon className="size-4" />
-            {l.rowView}
-          </SegmentedItem>
-          <SegmentedItem value="COLUMNS" className="flex-1">
-            <Columns3Icon className="size-4" />
-            {l.columnView}
-          </SegmentedItem>
-        </Segmented>
+        {showArrangementControl && (
+          <Segmented
+            type="single"
+            className="w-full"
+            value={preferences.arrangement}
+            aria-label={l.viewLabel}
+            onValueChange={(value) => {
+              if (value === 'ROWS' || value === 'COLUMNS') updatePreferences({ arrangement: value });
+            }}
+          >
+            <SegmentedItem value="ROWS" className="flex-1">
+              <Rows3Icon className="size-4" />
+              {l.rowView}
+            </SegmentedItem>
+            <SegmentedItem value="COLUMNS" className="flex-1">
+              <Columns3Icon className="size-4" />
+              {l.columnView}
+            </SegmentedItem>
+          </Segmented>
+        )}
         <div className="space-y-3">
           <div className="flex items-center justify-between gap-2">
-            <Label id={sizeId}>{l.thumbnailSize}</Label>
+            <Label id={sizeId}>{showArrangementControl ? l.thumbnailSize : l.itemSize}</Label>
             <span className="text-xs tabular-nums text-muted-foreground">{preferences.size}</span>
           </div>
           <Slider

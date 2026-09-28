@@ -122,7 +122,9 @@ export default defineBackground(() => {
         if (
           (mediaRequest && message.path !== BROWSER_COMPANION_MEDIA_PATH) ||
           (!mediaRequest && message.path !== BROWSER_COMPANION_REQUEST_PATH) ||
-          ((message.request.kind === 'claim-handoff' || message.request.kind === 'claim-latest') &&
+          ((message.request.kind === 'claim-handoff' ||
+            message.request.kind === 'claim-latest' ||
+            message.request.kind === 'inspect-handoff') &&
             message.request.target !== message.site)
         ) {
           return rejected;

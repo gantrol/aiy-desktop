@@ -2,12 +2,9 @@ import { useEffect, useLayoutEffect, useMemo, useState } from 'react';
 import { Button } from '@/renderer/components/ui/button';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuTrigger } from '@/renderer/components/ui/dropdown-menu';
 import { TrayMenuItems } from '@/renderer/features/app-shell/TrayMenuItems';
-import { appearanceStyle } from '@/renderer/features/desktop-petals/petal-appearance';
-import { petalMenuSurfaceClass } from '@/renderer/features/desktop-petals/petal-menu-style';
 import { I18nContext } from '@/renderer/i18n/I18nContext';
 import { htmlLanguages } from '@/renderer/i18n/catalog';
 import { enMessages } from '@/renderer/i18n/locales/en';
-import { cn } from '@/renderer/lib/utils';
 import type { TrayMenuApi, TrayMenuState } from '@/shared/contracts/tray-menu';
 
 declare global {
@@ -80,8 +77,7 @@ export function TrayMenuApp() {
         <DropdownMenuContent
           sideOffset={0}
           avoidCollisions={false}
-          className={cn(petalMenuSurfaceClass, 'w-[calc(100vw-16px)]')}
-          style={appearanceStyle('rose')}
+          className="max-h-[calc(100vh-16px)] w-[calc(100vw-16px)] overflow-y-auto overscroll-contain shadow-none"
           onCloseAutoFocus={(event) => event.preventDefault()}
         >
           <TrayMenuItems

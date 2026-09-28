@@ -17,7 +17,7 @@ export type PetalPreviewRequest = z.infer<typeof petalPreviewRequestSchema>;
 export type PetalPreviewContent = z.infer<typeof petalPreviewSchema>;
 
 export function petalPreviewText(body: string) {
-  return contentMarkdownText(body.replace(/^:::aiy-block [A-Za-z0-9_-]+\r?\n:::[ \t]*$/gmu, ''), () => '').trim();
+  return contentMarkdownText(body, () => '', { omitReferences: true }).trim();
 }
 
 /** Content-derived labels are presentation only; never write them back as titles. */

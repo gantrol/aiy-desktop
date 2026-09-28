@@ -25,6 +25,7 @@ function contextKey(locale: Locale, context: DictionaryBrowseContext | null) {
 export function useDictionarySiblingPage(
   locale: Locale,
   context: DictionaryBrowseContext | null,
+  active = true,
 ): DictionarySiblingPageState {
   const [terms, setTerms] = useState<TermListItem[]>([]);
   const [total, setTotal] = useState(0);
@@ -34,6 +35,9 @@ export function useDictionarySiblingPage(
   const [error, setError] = useState('');
   const [retryKey, setRetryKey] = useState(0);
   const requestIdRef = useRef(0);
+  const invalidateRequest = useCallback(() => {
+    requestIdRef.current++;
+  }, []);
   const termsRef = useRef<TermListItem[]>([]);
   const hasMoreRef = useRef(false);
   const loadingMoreRef = useRef(false);
@@ -63,6 +67,13 @@ export function useDictionarySiblingPage(
   );
 
   useEffect(() => {
+    if (!active) {
+      requestIdRef.current++;
+      loadingMoreRef.current = false;
+      setLoadingMore(false);
+      setInitialLoading(false);
+      return;
+    }
     const input = pageInput(0);
     const requestId = ++requestIdRef.current;
     loadingMoreRef.current = false;
@@ -95,11 +106,12 @@ export function useDictionarySiblingPage(
       });
     return () => {
       alive = false;
+      invalidateRequest();
     };
-  }, [key, pageInput, retryKey]);
+  }, [active, key, pageInput, retryKey, invalidateRequest]);
 
   const loadMore = useCallback(() => {
-    if (!context || initialLoading || loadingMoreRef.current) return;
+    if (!active || !context || initialLoading || loadingMoreRef.current) return;
     if (error && termsRef.current.length === 0) {
       setRetryKey((current) => current + 1);
       return;
@@ -133,7 +145,7 @@ export function useDictionarySiblingPage(
           setLoadingMore(false);
         }
       });
-  }, [context, error, initialLoading, pageInput]);
+  }, [active, context, error, initialLoading, pageInput]);
 
   const updateTerm = useCallback((term: TermListItem) => {
     setTerms((current) => current.map((item) => (item.id === term.id ? term : item)));

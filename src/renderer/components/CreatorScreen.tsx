@@ -21,7 +21,6 @@ export function CreatorScreen(props: CreatorScreenProps) {
   const c = messages.creator.workbench;
   const selection = useCreatorSelectionSession({
     data: props.data,
-    documentWorkspaceActive: props.documentWorkspaceActive,
     locale: props.locale,
     location: props.location,
   });

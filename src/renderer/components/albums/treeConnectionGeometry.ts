@@ -5,6 +5,7 @@ const parentOutletX = 4;
 
 export const TREE_CONNECTION_GEOMETRY = {
   rowHeight: 68,
+  compactRowHeight: 36,
   mediaStackHeight: 60,
   contentIndentX,
   parentOutletX,
@@ -17,6 +18,12 @@ export const TREE_CONNECTION_GEOMETRY = {
   /** Reach the child boundary on a straight tangent so both SVGs rasterize the seam as the same line. */
   disclosureConnectorStraightLength: 4,
 } as const;
+
+/** The 28px icon target and its inset share the compact row's connection ports. */
+export const COMPACT_TREE_NODE_METRICS = {
+  width: 36,
+  bounds: { left: 4, top: 4, right: 32, bottom: 32 },
+};
 
 export type TreeBranchItemPosition = 'first' | 'middle' | 'last' | 'only';
 
@@ -69,7 +76,11 @@ export function getTreeNodeAnchor(
  * same path bends all the way to the next level's outlet with vertical
  * tangents at both ends, avoiding a stitched dark/light elbow.
  */
-export function getTreeDisclosurePath(anchor: TreeNodeAnchor, open: boolean) {
+export function getTreeDisclosurePath(
+  anchor: TreeNodeAnchor,
+  open: boolean,
+  rowHeight: number = TREE_CONNECTION_GEOMETRY.rowHeight,
+) {
   const { edgeX, topY, bottomY, contactY, capEndX } = anchor;
   const cornerRadius = Math.min(TREE_CONNECTION_GEOMETRY.disclosureCornerRadius, (bottomY - topY) / 3);
   const cornerX = coordinate(edgeX + cornerRadius);
@@ -85,7 +96,7 @@ export function getTreeDisclosurePath(anchor: TreeNodeAnchor, open: boolean) {
   }
 
   const outletX = TREE_CONNECTION_GEOMETRY.parentOutletX;
-  const outletBoundaryY = TREE_CONNECTION_GEOMETRY.disclosureConnectorEndY;
+  const outletBoundaryY = rowHeight;
   const straightStartY = outletBoundaryY - TREE_CONNECTION_GEOMETRY.disclosureConnectorStraightLength;
 
   // When the fixed child rail sits inside the cover's leading edge, keep the

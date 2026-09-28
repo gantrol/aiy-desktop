@@ -1,45 +1,41 @@
-import { leavePetalEditor } from '@/renderer/features/desktop-petals/petal-editor-leave';
-import { Button } from '@/renderer/components/ui/button';
+import { StickyNoteFooter } from '@/renderer/features/desktop-petals/StickyNoteFooter';
+import { useNoteEditorFlush } from '@/renderer/features/desktop-petals/use-note-editor-flush';
 import { ModalOverlayScope } from '@/renderer/components/ui/overlay-layer';
-import { ContentAlbumSelect } from '@/renderer/features/content-editor/ContentAlbumSelect';
 import { NoteAttachmentStrip } from '@/renderer/features/content-editor/NoteAttachmentStrip';
 import { NoteDocumentInput } from '@/renderer/features/content-editor/NoteDocumentInput';
 import { NoteTitleInput } from '@/renderer/features/content-editor/NoteTitleInput';
-import { CollapsedPetal } from '@/renderer/features/desktop-petals/CollapsedPetal';
 import { NoteEditSession } from '@/renderer/features/desktop-petals/note-edit-session';
 import { NoteResizeHandle } from '@/renderer/features/desktop-petals/NoteResizeHandle';
-import { NoteAppearanceMenu } from '@/renderer/features/desktop-petals/NoteAppearanceMenu';
-import { noteAppearanceStyle } from '@/renderer/features/desktop-petals/petal-appearance';
 import { PetalExternalApplications } from '@/renderer/features/desktop-petals/PetalExternalApplications';
-import { PetalNoteActions } from '@/renderer/features/desktop-petals/PetalNoteActions';
+import { StickyNoteWindowActions } from '@/renderer/features/desktop-petals/StickyNoteWindowActions';
+import { PetalNoteOperations } from '@/renderer/features/desktop-petals/PetalNoteOperations';
+import { useNoteViewPreference } from '@/renderer/features/desktop-petals/use-note-view-preference';
 import type { PetalNoteMenuActions } from '@/renderer/features/desktop-petals/PetalNoteMenu';
 import { PetalNoteRecovery } from '@/renderer/features/desktop-petals/PetalNoteRecovery';
-import { PetalReferenceAdd } from '@/renderer/features/desktop-petals/PetalReferences';
 import { StickyNoteSurface } from '@/renderer/features/desktop-petals/StickyNoteSurface';
 import { usePetalReferences } from '@/renderer/features/desktop-petals/use-petal-references';
 import { usePetalFiles } from '@/renderer/features/desktop-petals/use-petal-files';
 import { PetalFileAttachments } from '@/renderer/features/desktop-petals/PetalFileAttachments';
 import { NoteFileInput } from '@/renderer/features/desktop-petals/NoteFileInput';
 import { noteFileCapture } from '@/renderer/features/desktop-petals/note-file-capture';
-import { useCodexAgentSignal } from '@/renderer/features/extensions/codex-content/CodexAgentLight';
 import { CodexNoteProvider } from '@/renderer/features/extensions/codex-content/CodexNoteContext';
 import { CODEX_CONTENT_APPLICATION_ID } from '@/shared/contracts/content-applications';
 import { sameArticleElementPlacements } from '@/shared/contracts/article';
 import type { VideoDocumentWysiwygEditorHandle } from '@/renderer/features/video-documents/videoDocumentEditorTypes';
 import { useI18n } from '@/renderer/i18n/useI18n';
-import { petalLabel } from '@/shared/petal-preview';
 import type { DesktopNote, DesktopPetalSnapshot, PetalColor, PetalIcon } from '@/shared/contracts/desktop-petals';
-import { ALargeSmall } from 'lucide-react';
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from 'react';
 
 export function StickyNote({ initialNote, snapshot }: { initialNote: DesktopNote; snapshot: DesktopPetalSnapshot }) {
+  const [applicationsVisible] = useNoteViewPreference('applications', true);
   return (
     <CodexNoteProvider
       stashId={initialNote.stashId}
       persisted={initialNote.persisted}
-      available={snapshot.contentApplications.some(
-        (item) => item.id === CODEX_CONTENT_APPLICATION_ID && item.available,
-      )}
+      available={
+        applicationsVisible &&
+        snapshot.contentApplications.some((item) => item.id === CODEX_CONTENT_APPLICATION_ID && item.available)
+      }
     >
       <StickyNoteSession initialNote={initialNote} snapshot={snapshot} />
     </CodexNoteProvider>
@@ -47,9 +43,10 @@ export function StickyNote({ initialNote, snapshot }: { initialNote: DesktopNote
 }
 
 function StickyNoteSession({ initialNote, snapshot }: { initialNote: DesktopNote; snapshot: DesktopPetalSnapshot }) {
-  const signal = useCodexAgentSignal();
   const { messages } = useI18n();
   const copy = messages.desktopPetals;
+  const [fullWindow, setFullWindow] = useNoteViewPreference('full-window', false);
+  const [applicationsVisible, setApplicationsVisible] = useNoteViewPreference('applications', true);
   const [session] = useState(() => new NoteEditSession(initialNote, snapshot.draft, window.desktopPetals));
   const state = useSyncExternalStore(session.subscribe, session.getSnapshot);
   const [appearanceError, setAppearanceError] = useState('');
@@ -57,7 +54,6 @@ function StickyNoteSession({ initialNote, snapshot }: { initialNote: DesktopNote
   const [toolbarRoot, setToolbarRoot] = useState<HTMLDivElement | null>(null);
   const [closing, setClosing] = useState(false);
   const finishingCollapse = useRef(false);
-  const leaveRequest = useRef(0);
   const editorHandle = useRef<VideoDocumentWysiwygEditorHandle | null>(null);
   const onError = useCallback((reason: unknown) => setAppearanceError(String(reason)), []);
   const references = usePetalReferences(session, onError);
@@ -90,31 +86,7 @@ function StickyNoteSession({ initialNote, snapshot }: { initialNote: DesktopNote
       setFormatting(false);
     }
   }, [session, snapshot.suspended, snapshot.expanded, snapshot.editEpoch]);
-  useEffect(() => {
-    let active = true;
-    const unsubscribe = window.desktopPetals.onFlush((save, deadline) => {
-      const request = ++leaveRequest.current;
-      return leavePetalEditor(
-        {
-          settleFiles,
-          settleEditor: async (requireRevision) => {
-            const handle = editorHandle.current;
-            return !handle || (await (requireRevision ? handle.whenSettled() : handle.whenRecoverable()));
-          },
-          settleReferences: settle,
-          freeze: (value) => session.setFrozen(value),
-          preserve: session.prepareToLeave,
-          current: () => active && request === leaveRequest.current,
-          deadline,
-        },
-        Boolean(save),
-      );
-    });
-    return () => {
-      active = false;
-      unsubscribe();
-    };
-  }, [session, settle, settleFiles]);
+  useNoteEditorFlush(session, editorHandle, settleFiles, settle);
   useEffect(() => () => session.dispose(), [session]);
   const appearance = async (patch: { color?: PetalColor; icon?: PetalIcon }) => {
     try {
@@ -169,36 +141,29 @@ function StickyNoteSession({ initialNote, snapshot }: { initialNote: DesktopNote
     onAppearance: appearance,
     onError,
   };
-  if (!snapshot.expanded) {
-    const petalTitle =
-      petalLabel(state.title, state.text) ||
-      state.note.files?.[0]?.name ||
-      (state.referenceAssetIds.length || state.note.importedImages?.length ? copy.board.IMAGE : copy.note.newTitle);
-    return (
-      <CollapsedPetal
-        titlesVisible={snapshot.titlesVisible}
-        color={state.note.color}
-        icon={state.note.icon}
-        label={copy.note.open.replace('{title}', petalTitle)}
-        title={petalTitle}
-        signal={signal}
-        onOpen={() => void window.desktopPetals.expand(true).catch(onError)}
-        onError={onError}
-        menuActions={{ ...noteActions, onExpand: () => window.desktopPetals.expand(true) }}
-        anchor={snapshot.flowerAnchor}
-        menuPreview={snapshot.flowerPreview}
-      />
-    );
-  }
+  const windowActions = (
+    <StickyNoteWindowActions
+      actions={noteActions}
+      scale={snapshot.contentScale ?? 1}
+      fullWindow={fullWindow}
+      applicationsVisible={applicationsVisible}
+      hasApplications={snapshot.contentApplications.length > 0}
+      onFullWindowChange={setFullWindow}
+      onApplicationsChange={setApplicationsVisible}
+      onCollapse={collapse}
+    />
+  );
   return (
-    <ModalOverlayScope style={noteAppearanceStyle(state.note.color)}>
+    <ModalOverlayScope>
       <StickyNoteSurface
+        libraryName={snapshot.libraryName}
         color={state.note.color}
         icon={state.note.icon}
         editable={state.note.editable}
         closing={closing}
-        appearance={<NoteAppearanceMenu {...noteActions} />}
-        actions={<PetalNoteActions {...noteActions} onCollapse={collapse} />}
+        fullWindow={fullWindow}
+        appearance={<PetalNoteOperations {...noteActions} />}
+        actions={fullWindow ? null : windowActions}
         onDragOver={references.onDragOver}
         {...noteFileCapture(files.importFiles)}
         onAnimationEnd={(event) => {
@@ -211,7 +176,7 @@ function StickyNoteSession({ initialNote, snapshot }: { initialNote: DesktopNote
           compact
           readOnly={state.frozen || closing || !state.note.editable}
         />
-        <div className="min-h-0 flex-1 overflow-y-auto">
+        <div className="min-h-0 flex-1 overflow-y-auto" style={{ zoom: snapshot.contentScale ?? 1 }}>
           <NoteDocumentInput
             session={session}
             state={state}
@@ -254,45 +219,36 @@ function StickyNoteSession({ initialNote, snapshot }: { initialNote: DesktopNote
           progress={files.progress}
           onCancel={files.cancel}
         />
-        <footer className="flex shrink-0 items-center gap-0.5 px-3 py-1.5">
-          <ContentAlbumSelect
-            defaultWhenUnassigned={!state.note.persisted}
-            albumId={state.note.albumId}
-            disabled={state.frozen || closing}
-            onError={onError}
-            onChange={async (albumId) => {
-              if (!(await session.flush())) throw new Error(copy.note.unsaved);
-              session.receive(await window.desktopPetals.setAlbum({ id: state.note.id, albumId }));
-            }}
-          />
-          <Button
-            variant="ghost"
-            size="icon-sm"
-            className="text-inherit"
-            aria-label={copy.document.format}
-            title={copy.document.format}
-            aria-pressed={formatting}
-            onClick={() => setFormatting((open) => !open)}
-          >
-            <ALargeSmall className="size-4" />
-          </Button>
-          <PetalReferenceAdd
-            note={state.note}
-            disabled={state.frozen || !state.note.editable || closing}
-            onChange={references.change}
-            onError={onError}
-            onAddFiles={() => fileInput.current?.click()}
-          />
-        </footer>
         <PetalExternalApplications
           applications={snapshot.contentApplications}
           note={state.note}
           prepare={prepare}
           disabled={state.frozen || closing}
           onError={onError}
+          visible={applicationsVisible}
+          panelHeight={snapshot.applicationPanelHeight ?? 0}
+          toolbar={(trigger) => (
+            <StickyNoteFooter
+              session={session}
+              state={state}
+              closing={closing}
+              formatting={formatting}
+              onToggleFormatting={() => setFormatting((open) => !open)}
+              onReferences={references.change}
+              onAddFiles={() => fileInput.current?.click()}
+              onError={onError}
+              applications={trigger}
+              fullWindow={fullWindow}
+              actions={fullWindow ? windowActions : undefined}
+            />
+          )}
         />
         <PetalNoteRecovery session={session} state={state} appearanceError={appearanceError} />
-        <NoteResizeHandle disabled={state.frozen || closing} onError={onError} />
+        <NoteResizeHandle
+          extraHeight={snapshot.applicationPanelHeight ?? 0}
+          disabled={snapshot.suspended || state.frozen || closing}
+          onError={onError}
+        />
       </StickyNoteSurface>
     </ModalOverlayScope>
   );

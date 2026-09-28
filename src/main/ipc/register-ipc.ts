@@ -9,6 +9,9 @@ import { chmod, copyFile } from 'node:fs/promises';
 import path from 'node:path';
 import { registerCalendarIpc } from '@/main/ipc/calendar-handlers';
 import { registerContentLibraryIpc } from '@/main/ipc/content-library-handlers';
+import { registerPublishingMaskIpc } from '@/main/ipc/publishing-mask-handlers';
+import { registerWorkTrackingIpc } from '@/main/ipc/work-tracking-handlers';
+import { readAgentPermissions, saveAgentPermissions } from '@/main/agent-cli/permissions';
 import { z } from 'zod';
 import type {
   ArticleCheckInput,
@@ -632,6 +635,9 @@ export function registerIpc(
     sendRendererEvent,
   });
   registerIntakeIpc(ipcMain, database);
+  registerWorkTrackingIpc(ipcMain, database, extensions, generation);
+  ipcMain.handle('agent-permissions:read', () => readAgentPermissions(database));
+  ipcMain.handle('agent-permissions:save', (_event, input) => saveAgentPermissions(database, input));
   registerVideoDocumentIpc({
     ipcMain,
     database,
@@ -657,6 +663,7 @@ export function registerIpc(
   });
   registerLibraryIpc(ipcMain, database);
   registerContentLibraryIpc(ipcMain, database);
+  registerPublishingMaskIpc(ipcMain, database);
   registerCalendarIpc(ipcMain, database);
   registerImageBreakdownIpc({
     ipcMain,

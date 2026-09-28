@@ -4,6 +4,7 @@ import { DropdownMenuItem } from '@/renderer/components/ui/dropdown-menu';
 import { PetalColorPicker } from '@/renderer/features/desktop-petals/PetalColorPicker';
 import { PetalMenuSection } from '@/renderer/features/desktop-petals/PetalMenu';
 import { useI18n } from '@/renderer/i18n/useI18n';
+import { usePetalMenuApi, usePetalMenuExecutor } from '@/renderer/features/desktop-petals/petal-menu-api';
 import { DEFAULT_PETAL_COLOR, type PetalColor } from '@/shared/contracts/petal-appearance';
 
 /** Selecting a color only changes the filter; cleanup remains an explicit menu action. */
@@ -17,6 +18,8 @@ export function PetalCleanupMenu({
   onError: (error: unknown) => void;
 }) {
   const copy = useI18n().messages.desktopPetals;
+  const api = usePetalMenuApi();
+  const execute = usePetalMenuExecutor();
   const [color, setColor] = useState<PetalColor>(DEFAULT_PETAL_COLOR);
   const running = useRef(false);
   const [busy, setBusy] = useState(false);
@@ -26,8 +29,9 @@ export function PetalCleanupMenu({
     running.current = true;
     setBusy(true);
     try {
+      if (execute) return await execute(api.cleanup, [color], { prepare: false });
       await close?.();
-      await window.desktopPetals.cleanup(color);
+      await api.cleanup(color);
     } catch (error) {
       onError(error);
     } finally {

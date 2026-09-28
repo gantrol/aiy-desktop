@@ -1,3 +1,5 @@
+import type { MaterialAlbumMembershipApplyInput } from '@/shared/contracts/material-album-membership';
+import { copyCreationTarget } from '@/renderer/components/albums/copyCreationTarget';
 import { BookOpenIcon, LoaderCircleIcon } from 'lucide-react';
 import {
   lazy,
@@ -22,7 +24,6 @@ import type {
   ImageRatingDimension,
   IntakeCommitResult,
   MaterialAlbumDto,
-  MaterialAlbumMemberDto,
   MaterialSelectionTargetInput,
   ContentLifecycleTarget,
   NewExternalCreationImportResult,
@@ -45,7 +46,11 @@ import {
   type MaterialSourceFilter,
 } from '@/renderer/components/gallery/MaterialLibraryToolbar';
 import { MaterialBatchToolbar } from '@/renderer/components/gallery/MaterialBatchToolbar';
-import { loadGalleryPreferences, saveGalleryPreferences } from '@/renderer/components/gallery/galleryPreferences';
+import {
+  loadGalleryPreferences,
+  saveGalleryPreferences,
+  type GalleryPreferences,
+} from '@/renderer/components/gallery/galleryPreferences';
 import {
   mediaMaterial,
   materialTitle,
@@ -61,8 +66,14 @@ import { materialLibraryNavigationLabels } from '@/renderer/components/gallery/m
 import { buildMaterialAlbumTree, canMoveMaterialAlbumTo } from '@/renderer/components/gallery/materialAlbumTree';
 import { useCreationCollectionBrowse } from '@/renderer/components/gallery/useCreationCollectionBrowse';
 import { useMaterialAlbumDirectory } from '@/renderer/components/gallery/useMaterialAlbumDirectory';
+import { useGalleryViewport } from '@/renderer/components/gallery/useGalleryViewport';
+import type { GalleryBrowseState } from '@/shared/contracts/workspace-layout';
 import { nextGallerySelection } from '@/renderer/components/gallery/gallerySelection';
-import { startNativeAssetFilesDrag, writeMaterialsDrag } from '@/renderer/components/albums/albumDrag';
+import {
+  startNativeAssetFilesDrag,
+  writeMaterialsDrag,
+  type CreationTreeDrag,
+} from '@/renderer/components/albums/albumDrag';
 import {
   useContentLifecycleActions,
   type ContentLifecycleActionRequest,
@@ -173,6 +184,7 @@ export function GalleryScreen({
   const l = messages.gallery.screen;
   const locationKey = navigationLocationKey(location);
   const appliedLocationKeyRef = useRef(locationKey);
+  const navigationPending = appliedLocationKeyRef.current !== locationKey;
   const requestId = useRef(0);
   const loadingRef = useRef(false);
   const pendingGalleryQueryKey = useRef<string | null>(null);
@@ -181,10 +193,15 @@ export function GalleryScreen({
   const displayedLibraryKeyRef = useRef(libraryKey);
   const viewportRef = useRef<HTMLDivElement | null>(null);
   const pageEndRef = useRef<HTMLDivElement | null>(null);
-  const [preferences, setPreferences] = useState(loadGalleryPreferences);
+  const [preferences, setPreferences] = useState<GalleryPreferences>(() => ({
+    ...loadGalleryPreferences(),
+    ...location.browse,
+  }));
   const { scope, contentTypes, unratedDimensions } = preferences;
-  const [query, setQuery] = useState('');
-  const [debouncedQuery, setDebouncedQuery] = useState('');
+  const [query, setQuery] = useState(location.browse?.query ?? '');
+  const [debouncedQuery, setDebouncedQuery] = useState(() => location.browse?.query.trim() ?? '');
+  const viewportSnapshotRef = useRef(location.browse?.viewport);
+  const [viewportRestoreRevision, setViewportRestoreRevision] = useState(0);
   const [items, setItems] = useState<GalleryItemDto[]>([]);
   const [favoriteTexts, setFavoriteTexts] = useState<FavoriteTextMaterialDto[]>([]);
   const [total, setTotal] = useState(0);
@@ -207,7 +224,9 @@ export function GalleryScreen({
   const rangeAnchorKey = useRef<string | null>(null);
   const [category, setCategory] = useState<MaterialLibraryCategory>(() => categoryForCollection(location.collection));
   const [sourceFilter, setSourceFilter] = useState<MaterialSourceFilter>(() =>
-    sourceForCollection(location.collection),
+    location.collection.kind === 'album'
+      ? (location.browse?.source ?? 'ALL')
+      : sourceForCollection(location.collection),
   );
   const [activeAlbumId, setActiveAlbumId] = useState<string | null>(
     location.collection.kind === 'album' ? location.collection.albumId : null,
@@ -227,9 +246,10 @@ export function GalleryScreen({
     error: albumError,
     read: readAlbumDirectory,
     reload: reloadAlbums,
+    applyMembership: applyMembershipPatch,
   } = useMaterialAlbumDirectory({ active, libraryKey, dataRevision, locale, retryKey: albumRetryKey });
   const [albumMutationBusy, setAlbumMutationBusy] = useState(false);
-  const [busyAlbumIds, setBusyAlbumIds] = useState<Set<string>>(() => new Set());
+
   const [displayedQueryKey, setDisplayedQueryKey] = useState('');
 
   useEffect(
@@ -303,9 +323,29 @@ export function GalleryScreen({
     return labels;
   }, [dictionarySelection, facets, messages.gallery.library.relationshipDictionary, terms, uncategorizedLabel]);
 
+  function currentBrowseState(): GalleryBrowseState {
+    return {
+      query,
+      scope,
+      contentTypes,
+      unratedDimensions,
+      source: sourceFilter,
+      viewport: {
+        top: viewportSnapshotRef.current?.top ?? viewportRef.current?.scrollTop ?? 0,
+        imageCount: items.length,
+      },
+    };
+  }
+
+  function resetBrowseViewport() {
+    viewportSnapshotRef.current = undefined;
+    setViewportRestoreRevision((current) => current + 1);
+  }
+
   function commitGalleryLocation(nextLocation: GalleryLocation, mode: NavigationMode = 'push') {
-    appliedLocationKeyRef.current = navigationLocationKey(nextLocation);
-    onNavigate(nextLocation, mode);
+    const next = { ...nextLocation, browse: nextLocation.browse ?? currentBrowseState() };
+    appliedLocationKeyRef.current = navigationLocationKey(next);
+    onNavigate(next, mode);
   }
 
   function currentCollection(): GalleryCollection {
@@ -335,6 +375,7 @@ export function GalleryScreen({
   }
 
   function navigateCollection(collection: GalleryCollection, mode: NavigationMode = 'push') {
+    resetBrowseViewport();
     changeSelectionMode(false);
     setSelectedKey(null);
     setActiveAlbumId(collection.kind === 'album' ? collection.albumId : null);
@@ -342,7 +383,15 @@ export function GalleryScreen({
     setDictionarySelection(collection.kind === 'dictionary' ? collection : null);
     setSourceFilter(sourceForCollection(collection));
     setCategory(categoryForCollection(collection));
-    commitGalleryLocation({ collection, selectedMaterialKey: null, requestedMaterialId: null }, mode);
+    commitGalleryLocation(
+      {
+        collection,
+        selectedMaterialKey: null,
+        requestedMaterialId: null,
+        browse: { ...currentBrowseState(), source: sourceForCollection(collection), viewport: undefined },
+      },
+      mode,
+    );
   }
 
   useEffect(() => {
@@ -357,10 +406,19 @@ export function GalleryScreen({
     setSelectionMode(false);
     setCheckedKeys(new Set());
     rangeAnchorKey.current = null;
+    setPreferences({ ...loadGalleryPreferences(), ...location.browse });
+    setQuery(location.browse?.query ?? '');
+    setDebouncedQuery(location.browse?.query.trim() ?? '');
+    viewportSnapshotRef.current = location.browse?.viewport;
+    setViewportRestoreRevision((current) => current + 1);
     setActiveAlbumId(location.collection.kind === 'album' ? location.collection.albumId : null);
     setCreationRelation(location.collection.kind === 'album' ? (location.collection.creationRelation ?? 'ALL') : 'ALL');
     setDictionarySelection(location.collection.kind === 'dictionary' ? location.collection : null);
-    setSourceFilter(sourceForCollection(location.collection));
+    setSourceFilter(
+      location.collection.kind === 'album'
+        ? (location.browse?.source ?? 'ALL')
+        : sourceForCollection(location.collection),
+    );
     setCategory(categoryForCollection(location.collection));
     setSelectedKey(location.selectedMaterialKey);
   }, [active, locationKey]);
@@ -567,24 +625,31 @@ export function GalleryScreen({
   }
 
   function startMaterialDrag(event: ReactDragEvent<HTMLElement>, item: MaterialLibraryItem) {
-    if (!event.shiftKey && item.kind === 'IMAGE') {
-      const source =
-        checkedKeys.has(item.key) && checkedKeys.size > 0
-          ? materials.filter((candidate) => checkedKeys.has(candidate.key))
-          : [item];
+    event.stopPropagation();
+    const source =
+      checkedKeys.has(item.key) && checkedKeys.size > 0
+        ? materials.filter((candidate) => checkedKeys.has(candidate.key))
+        : [item];
+    const targets = targetsForMaterials(source);
+    const sourceAlbumId =
+      activeAlbum?.kind === 'USER' &&
+      targets.every((target) => target.kind === 'MATERIAL' && activeDirectMaterialIds.has(target.materialId))
+        ? activeAlbum.id
+        : undefined;
+    // Native file exports permit copy/link only; owned items need a move-capable internal drag.
+    if (!sourceAlbumId && !event.shiftKey && source.every((candidate) => candidate.kind === 'IMAGE')) {
       const images = source.flatMap((candidate) => (candidate.kind === 'IMAGE' ? [candidate] : []));
       const assetIds = [...new Set(images.map((candidate) => candidate.image.asset.id))];
       if (assetIds.length > 0) {
         try {
-          startNativeAssetFilesDrag(event, assetIds, targetsForMaterials(images));
+          startNativeAssetFilesDrag(event, assetIds, targetsForMaterials(images), sourceAlbumId);
         } catch (reason) {
           notify(`${messages.assetFile.failed}: ${reason instanceof Error ? reason.message : String(reason)}`);
         }
         return;
       }
     }
-    const targets = checkedKeys.has(item.key) && checkedKeys.size > 0 ? checkedTargets() : [targetForMaterial(item)];
-    writeMaterialsDrag(event.dataTransfer, targets);
+    writeMaterialsDrag(event.dataTransfer, targets, sourceAlbumId);
   }
 
   // Card rows are memoized, so the handlers they receive must keep a stable
@@ -647,6 +712,38 @@ export function GalleryScreen({
   function updatePreferences(next: typeof preferences) {
     saveGalleryPreferences(next);
     setPreferences(next);
+    changeSelectionMode(false);
+    resetBrowseViewport();
+    commitGalleryLocation(
+      {
+        collection: currentCollection(),
+        selectedMaterialKey: null,
+        requestedMaterialId: null,
+        browse: {
+          ...currentBrowseState(),
+          scope: next.scope,
+          contentTypes: next.contentTypes,
+          unratedDimensions: next.unratedDimensions,
+          viewport: undefined,
+        },
+      },
+      'replace',
+    );
+  }
+
+  function changeQuery(next: string) {
+    setQuery(next);
+    changeSelectionMode(false);
+    resetBrowseViewport();
+    commitGalleryLocation(
+      {
+        collection: currentCollection(),
+        selectedMaterialKey: null,
+        requestedMaterialId: null,
+        browse: { ...currentBrowseState(), query: next, viewport: undefined },
+      },
+      'replace',
+    );
   }
 
   useEffect(() => {
@@ -658,6 +755,7 @@ export function GalleryScreen({
     if (!active || !albumsLoaded || location.collection.kind !== 'album') return;
     const albumId = location.collection.albumId;
     if (albums.some((album) => album.id === albumId)) return;
+    notify(messages.gallery.albums.unavailable);
     navigateCollection({ kind: 'all' }, 'replace');
   }, [active, albums, albumsLoaded, locationKey]);
 
@@ -692,7 +790,6 @@ export function GalleryScreen({
       setTotal(cached.total);
       setNextCursor(cached.nextCursor);
       setDisplayedQueryKey(galleryQueryKey);
-      viewportRef.current?.scrollTo({ top: 0 });
       pendingGalleryQueryKey.current = null;
       loadingRef.current = false;
       setLoading(false);
@@ -752,7 +849,6 @@ export function GalleryScreen({
           total: page.total,
           nextCursor: page.nextCursor,
         });
-        viewportRef.current?.scrollTo({ top: 0 });
       })
       .catch((reason) => {
         if (requestId.current !== activeRequest) return;
@@ -871,7 +967,12 @@ export function GalleryScreen({
 
   useEffect(() => {
     if (
+      !active ||
       loading ||
+      navigationPending ||
+      error ||
+      albumError ||
+      (nextCursor && items.length < (viewportSnapshotRef.current?.imageCount ?? 0)) ||
       location.requestedMaterialId ||
       displayedQueryKey !== galleryQueryKey ||
       !selectedKey ||
@@ -889,7 +990,20 @@ export function GalleryScreen({
         'replace',
       );
     }
-  }, [displayedQueryKey, galleryQueryKey, loading, location.requestedMaterialId, selectedItem, selectedKey]);
+  }, [
+    active,
+    displayedQueryKey,
+    galleryQueryKey,
+    loading,
+    navigationPending,
+    error,
+    albumError,
+    nextCursor,
+    items.length,
+    location.requestedMaterialId,
+    selectedItem,
+    selectedKey,
+  ]);
 
   const requestedMaterialFailed = useStableCallback((reason?: unknown) => {
     closeMaterialInspector();
@@ -1012,6 +1126,36 @@ export function GalleryScreen({
     total,
     unratedDimensions,
   ]);
+
+  useGalleryViewport({
+    restoreKey: `${viewportRestoreRevision}:${galleryQueryKey}`,
+    resume: viewportSnapshotRef.current,
+    snapshotRef: viewportSnapshotRef,
+    viewportRef,
+    active: active && !navigationPending,
+    visible: !selectedItem,
+    ready:
+      displayedQueryKey === galleryQueryKey &&
+      !searchPending &&
+      !loading &&
+      !error &&
+      !albumError &&
+      (!activeAlbumId || albumsLoaded),
+    imageCount: items.length,
+    hasMore: Boolean(nextCursor),
+    loadMore,
+    onChange: (viewport) => {
+      commitGalleryLocation(
+        {
+          collection: currentCollection(),
+          selectedMaterialKey: selectedKey,
+          requestedMaterialId: location.requestedMaterialId,
+          browse: { ...currentBrowseState(), viewport },
+        },
+        'replace',
+      );
+    },
+  });
 
   useEffect(() => {
     if (!active) return;
@@ -1208,26 +1352,26 @@ export function GalleryScreen({
     });
   }
 
-  function canMoveMaterialAlbum(albumId: string, parentAlbumId: string | null) {
-    return canMoveMaterialAlbumTo(materialAlbumBrowse.tree, albumId, parentAlbumId);
+  function canMoveMaterialAlbum(albumId: string, parentAlbumId: string | null, copy = false) {
+    return canMoveMaterialAlbumTo(materialAlbumBrowse.tree, albumId, parentAlbumId, copy);
   }
 
-  function canMoveCreationAlbum(albumId: string, parentAlbumId: string | null) {
-    const source = creationAlbumTree.byId.get(albumId);
-    const movableAlbum = source?.systemKey === 'CREATION_GROUP' && Boolean(source.sourceAlbumId);
-    const movableSeries = source?.systemKey === 'CREATION_SERIES' && Boolean(source.sourceSeriesId);
-    if (!source || (!movableAlbum && !movableSeries)) return false;
+  function canMoveCreationAlbum(source: CreationTreeDrag, parentAlbumId: string | null, copy = false) {
     const target = parentAlbumId ? creationAlbumTree.byId.get(parentAlbumId) : null;
     if (parentAlbumId && (target?.systemKey !== 'CREATION_GROUP' || !target.sourceAlbumId)) return false;
-    const currentParent = source.parentId ? creationAlbumTree.byId.get(source.parentId) : null;
-    const currentParentAlbumId = currentParent?.systemKey === 'CREATION_GROUP' ? currentParent.id : null;
-    if (currentParentAlbumId === parentAlbumId) return false;
-    if (!movableAlbum || parentAlbumId === null) return true;
+    const destination = target?.sourceAlbumId ?? null;
+    if (source.kind === 'CREATION_ITEM') {
+      const item = creationItems.find((entry) => entry.id === source.id);
+      return Boolean(item && item.lifecycle === 'ACTIVE' && (copy || item.albumId !== destination));
+    }
+    const projectedSource = creationAlbumViews.find((entry) => entry.sourceAlbumId === source.id);
+    const currentParent = projectedSource?.parentId ? creationAlbumTree.byId.get(projectedSource.parentId) : null;
+    if (projectedSource && !copy && (currentParent?.sourceAlbumId ?? null) === destination) return false;
 
     const visited = new Set<string>();
-    let currentId: string | undefined = parentAlbumId;
+    let currentId: string | undefined = parentAlbumId ?? undefined;
     while (currentId) {
-      if (currentId === albumId || visited.has(currentId)) return false;
+      if (creationAlbumTree.byId.get(currentId)?.sourceAlbumId === source.id || visited.has(currentId)) return false;
       visited.add(currentId);
       currentId = creationAlbumTree.parentById.get(currentId);
     }
@@ -1270,15 +1414,16 @@ export function GalleryScreen({
     }
   }
 
-  async function moveAlbum(albumId: string, parentAlbumId: string | null) {
-    if (contentLifecycleBusy || !canMoveMaterialAlbum(albumId, parentAlbumId)) return;
+  async function moveAlbum(albumId: string, parentAlbumId: string | null, copy = false) {
+    if (contentLifecycleBusy || !canMoveMaterialAlbum(albumId, parentAlbumId, copy)) return;
     setAlbumMutationBusy(true);
     try {
-      await window.desktopApi.materialAlbumsMove({ albumId, parentAlbumId, locale });
+      if (copy) await copyCreationTarget('ALBUM', albumId, parentAlbumId);
+      else await window.desktopApi.materialAlbumsMove({ albumId, parentAlbumId, locale });
       galleryCacheRef.current.clear();
       await reloadAlbums();
       setRetryKey((value) => value + 1);
-      notify(messages.gallery.albums.moved);
+      notify(copy ? messages.creator.outline.copied(1) : messages.gallery.albums.moved);
     } catch (reason) {
       notify(
         `${messages.gallery.albums.operationFailed}: ${reason instanceof Error ? reason.message : String(reason)}`,
@@ -1289,31 +1434,22 @@ export function GalleryScreen({
     }
   }
 
-  async function moveCreationAlbum(albumId: string, parentAlbumId: string | null) {
-    if (contentLifecycleBusy || !canMoveCreationAlbum(albumId, parentAlbumId)) return;
-    const source = creationAlbumTree.byId.get(albumId);
+  async function moveCreationAlbum(source: CreationTreeDrag, parentAlbumId: string | null, copy = false) {
+    if (contentLifecycleBusy || !canMoveCreationAlbum(source, parentAlbumId, copy)) return;
     const target = parentAlbumId ? creationAlbumTree.byId.get(parentAlbumId) : null;
-    if (!source) return;
     setAlbumMutationBusy(true);
     try {
       const targetSourceAlbumId = target?.sourceAlbumId ?? null;
-      if (source.systemKey === 'CREATION_GROUP' && source.sourceAlbumId) {
-        await window.desktopApi.albumsMove({ albumId: source.sourceAlbumId, parentAlbumId: targetSourceAlbumId });
-      } else if (source.systemKey === 'CREATION_SERIES' && source.sourceSeriesId) {
-        const item = creationItems.find((candidate) =>
-          candidate.forms.some(
-            (form) => form.entity.kind === 'PROMPT_SERIES' && form.entity.id === source.sourceSeriesId,
-          ),
-        );
-        if (!item) throw new Error('The containing creation item is unavailable');
-        await window.desktopApi.creationItemMove({ creationItemId: item.id, albumId: targetSourceAlbumId });
+      if (copy) await copyCreationTarget(source.kind, source.id, targetSourceAlbumId);
+      else if (source.kind === 'ALBUM') {
+        await window.desktopApi.albumsMove({ albumId: source.id, parentAlbumId: targetSourceAlbumId });
       } else {
-        return;
+        await window.desktopApi.creationItemMove({ creationItemId: source.id, albumId: targetSourceAlbumId });
       }
       galleryCacheRef.current.clear();
       await reloadAlbums();
       setRetryKey((value) => value + 1);
-      notify(messages.gallery.albums.moved);
+      notify(copy ? messages.creator.outline.copied(1) : messages.gallery.albums.moved);
     } catch (reason) {
       notify(
         `${messages.gallery.albums.operationFailed}: ${reason instanceof Error ? reason.message : String(reason)}`,
@@ -1324,11 +1460,15 @@ export function GalleryScreen({
     }
   }
 
-  async function collectDroppedMaterials(albumId: string, targets: MaterialSelectionTargetInput[]) {
+  async function collectDroppedMaterials(
+    albumId: string,
+    targets: MaterialSelectionTargetInput[],
+    sourceAlbumId?: string,
+  ) {
     if (!targets.length || collectBusy) return;
     setCollectBusy(true);
     try {
-      await window.desktopApi.materialAlbumsAddMany({ albumId, targets, locale });
+      await window.desktopApi.materialsAddToDestinations({ albumIds: [albumId], termIds: [], targets, sourceAlbumId });
       galleryCacheRef.current.clear();
       await reloadAlbums();
       setRetryKey((value) => value + 1);
@@ -1343,49 +1483,21 @@ export function GalleryScreen({
     }
   }
 
-  async function toggleAlbumMembership(
-    album: MaterialAlbumDto,
-    member: MaterialAlbumMemberDto | null,
-    checked: boolean,
-  ) {
-    if (!selectedItem || busyAlbumIds.has(album.id)) return;
-    setBusyAlbumIds((current) => new Set(current).add(album.id));
-    try {
-      if (checked) {
-        await window.desktopApi.materialAlbumsAddMany({
-          albumId: album.id,
-          locale,
-          targets: [
-            selectedItem.kind === 'TEXT'
-              ? { kind: 'MATERIAL', materialId: selectedItem.text.id }
-              : selectedItem.image.materialId
-                ? { kind: 'MATERIAL', materialId: selectedItem.image.materialId }
-                : { kind: 'IMAGE_ASSET', imageAssetId: selectedItem.image.asset.id },
-          ],
-        });
-      } else if (member) {
-        await window.desktopApi.materialAlbumsRemove({
-          albumId: album.id,
-          materialIds: [member.materialId],
-          locale,
-        });
+  async function applyAlbumMembership(input: MaterialAlbumMembershipApplyInput) {
+    const result = await window.desktopApi.materialAlbumMembershipApply(input);
+    if (result.status === 'APPLIED') {
+      applyMembershipPatch(result);
+      // Only album-filtered cached results can change when membership changes.
+      // The visible user-album contents are derived from the patched directory.
+      for (const key of galleryCacheRef.current.keys()) {
+        if (result.patches.some((patch) => key.includes(patch.albumId))) galleryCacheRef.current.delete(key);
       }
-      galleryCacheRef.current.clear();
-      await reloadAlbums();
-      setRetryKey((value) => value + 1);
-      notify(checked ? messages.gallery.albums.added : messages.gallery.albums.removed);
-    } catch (reason) {
-      notify(
-        `${messages.gallery.albums.operationFailed}: ${reason instanceof Error ? reason.message : String(reason)}`,
-      );
-      throw reason;
-    } finally {
-      setBusyAlbumIds((current) => {
-        const next = new Set(current);
-        next.delete(album.id);
-        return next;
-      });
+      // The overview is an "unfiled" projection. Whether this edit moves the
+      // material depends on its memberships across every album, so refresh the
+      // current query from storage.
+      if (overviewBrowseActive) setRetryKey((value) => value + 1);
     }
+    return result;
   }
 
   async function finishExternalCreation(_result: NewExternalCreationImportResult) {
@@ -1567,7 +1679,7 @@ export function GalleryScreen({
                 relationshipLocked
                 sourceFilter={dictionaryActive || creationScopeActive ? undefined : sourceFilter}
                 creationRelationFilter={creationScopeActive ? creationRelation : undefined}
-                onQueryChange={setQuery}
+                onQueryChange={changeQuery}
                 onScopeChange={(nextScope) => {
                   if (!dictionarySelection) {
                     changeScope(nextScope);
@@ -1584,6 +1696,16 @@ export function GalleryScreen({
                     changeSelectionMode(false);
                     setSelectedKey(null);
                     setSourceFilter(nextSource);
+                    resetBrowseViewport();
+                    commitGalleryLocation(
+                      {
+                        collection: currentCollection(),
+                        selectedMaterialKey: null,
+                        requestedMaterialId: null,
+                        browse: { ...currentBrowseState(), source: nextSource, viewport: undefined },
+                      },
+                      'replace',
+                    );
                     return;
                   }
                   if (nextSource === 'CREATION') navigateCollection({ kind: 'creation' });
@@ -1664,7 +1786,7 @@ export function GalleryScreen({
                 notify={stableNotify}
                 onDragStart={stableStartMaterialDrag}
                 revealContextForItem={revealContextForMaterial}
-                onClearSearch={() => setQuery('')}
+                onClearSearch={() => changeQuery('')}
                 onClearUnrated={() => updatePreferences({ ...preferences, unratedDimensions: [] })}
                 onRetry={() => setRetryKey((value) => value + 1)}
               />
@@ -1674,13 +1796,19 @@ export function GalleryScreen({
         {active && selectedItem && (
           <WorkspaceDetailLoadingBoundary>
             <MaterialDetailPage
+              browseItems={location.requestedMaterialId ? [] : materials}
+              onBrowseSelect={(item) => selectMaterial(item, undefined, 'replace')}
               spaceId={spaceId}
               item={selectedItem}
               position={Math.max(0, selectedIndex) + 1}
               total={location.requestedMaterialId ? 1 : Math.max(resultTotal, materials.length)}
               albums={writableAlbums}
               ratingBusy={selectedItem.kind === 'IMAGE' && busyAssets.has(selectedItem.image.asset.id)}
-              albumMembershipBusy={busyAlbumIds.size > 0}
+              albumMembershipBusy={albumMutationBusy}
+              albumsLoading={albumsLoading}
+              albumsFailed={Boolean(albumError)}
+              onRetryAlbums={reloadAlbums}
+              onOpenAlbum={(albumId) => navigateCollection({ kind: 'album', albumId })}
               favorited={Boolean(selectedFavoriteMaterialId)}
               favoriteBusy={selectedFavoriteBusy}
               hasPrevious={Boolean(previousItem)}
@@ -1702,7 +1830,7 @@ export function GalleryScreen({
               onRemoveFavorite={() => {
                 if (selectedFavoriteMaterialId) void removeFavorite(selectedFavoriteMaterialId);
               }}
-              onToggleAlbumMembership={toggleAlbumMembership}
+              onApplyAlbumMembership={applyAlbumMembership}
               onScore={(dimension, score) => {
                 if (selectedItem.kind === 'IMAGE') void scoreItem(selectedItem.image, dimension, score);
               }}

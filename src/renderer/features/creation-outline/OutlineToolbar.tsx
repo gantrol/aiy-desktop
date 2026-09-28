@@ -1,4 +1,4 @@
-import type { DragEvent } from 'react';
+import type { DragEvent, ReactNode } from 'react';
 import { ChevronRightIcon, FolderInputIcon, InfoIcon, SearchIcon, Undo2Icon, XIcon } from 'lucide-react';
 import { Button } from '@/renderer/components/ui/button';
 import { Input } from '@/renderer/components/ui/input';
@@ -7,6 +7,7 @@ import { useI18n } from '@/renderer/i18n/useI18n';
 import type { OutlineNode } from '@/renderer/features/creation-outline/outline-tree';
 
 interface Props {
+  scopeActions: ReactNode;
   breadcrumbs: readonly OutlineNode[];
   busy: boolean;
   query: string;
@@ -29,6 +30,7 @@ interface Props {
 }
 
 export function OutlineToolbar({
+  scopeActions,
   breadcrumbs,
   busy,
   query,
@@ -80,6 +82,7 @@ export function OutlineToolbar({
           </span>
         ))}
         <div className="ml-auto flex items-center gap-1">
+          {scopeActions}
           {canUndo && (
             <Button
               variant="ghost"

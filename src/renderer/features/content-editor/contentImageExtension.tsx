@@ -7,9 +7,11 @@ import { useI18n } from '@/renderer/i18n/useI18n';
 import type { VideoDocumentMediaBinding, VideoDocumentRevisionMediaDto } from '@/shared/contracts';
 import type { JSONContent, MarkdownParseHelpers, MarkdownToken } from '@tiptap/core';
 import Image from '@tiptap/extension-image';
-import { NodeViewWrapper, ReactNodeViewRenderer, type NodeViewProps } from '@tiptap/react';
-import { LoaderCircle, X } from 'lucide-react';
+import { NodeViewWrapper, ReactNodeViewRenderer, useEditorState, type NodeViewProps } from '@tiptap/react';
+import { LoaderCircle, Minimize2, X } from 'lucide-react';
 import { useState, useSyncExternalStore } from 'react';
+import { outlineViewState, toggleOutlineImage } from '@/renderer/features/content-editor/outlineViewState';
+import { cn } from '@/renderer/lib/utils';
 
 export function normalizedMediaPath(value: string) {
   const path = value.split(/[?#]/, 1)[0]!.replace(/^\.\//, '');
@@ -71,10 +73,7 @@ export class DocumentImageMediaStore {
   }
 }
 
-function DocumentImageNodeView({ node, extension, deleteNode, editor }: NodeViewProps) {
-  const copy = useI18n().messages.contentEditor;
-  const store = extension.options.mediaStore as DocumentImageMediaStore;
-  const snapshot = useSyncExternalStore(store.subscribe, store.getSnapshot, store.getSnapshot);
+function resolveDocumentImage(node: NodeViewProps['node'], snapshot: DocumentImageMediaSnapshot) {
   const storedSrc = typeof node.attrs.src === 'string' ? node.attrs.src : '';
   const sourcePath = typeof node.attrs.sourcePath === 'string' ? node.attrs.sourcePath : storedSrc;
   const binding = snapshot.mediaBindings.find(
@@ -87,6 +86,22 @@ function DocumentImageNodeView({ node, extension, deleteNode, editor }: NodeView
   const src =
     snapshot.media.find((item) => item.assetId === assetId)?.mediaUrl ??
     (assetId ? `aiy-media://asset/${encodeURIComponent(assetId)}` : storedSrc);
+  return { assetId, src };
+}
+
+function DocumentImageNodeView({ node, extension, deleteNode, editor }: NodeViewProps) {
+  const { messages } = useI18n();
+  const copy = messages.contentEditor;
+  const outline = Boolean(extension.options.outline);
+  const blockId = String(node.attrs.blockId ?? '');
+  const expanded = useEditorState({
+    editor,
+    selector: ({ editor: current }) => outlineViewState(current.state).expandedImages.has(blockId),
+  });
+  const thumbnail = outline && !expanded;
+  const store = extension.options.mediaStore as DocumentImageMediaStore;
+  const snapshot = useSyncExternalStore(store.subscribe, store.getSnapshot, store.getSnapshot);
+  const { assetId, src } = resolveDocumentImage(node, snapshot);
   const [load, setLoad] = useState({ src: '', failed: false, attempt: 0 });
   const failed = load.src === src && load.failed;
   const alt = typeof node.attrs.alt === 'string' ? node.attrs.alt : '';
@@ -114,20 +129,51 @@ function DocumentImageNodeView({ node, extension, deleteNode, editor }: NodeView
         </Button>
       </NodeViewWrapper>
     );
+  const bitmap = (
+    <img
+      key={`${src}:${load.attempt}`}
+      onError={() => setLoad((previous) => ({ ...previous, src, failed: true }))}
+      onLoad={() => setLoad((previous) => (previous.failed ? { ...previous, src, failed: false } : previous))}
+      src={src}
+      alt={alt}
+      title={title}
+      className={cn('relative z-10 object-contain', thumbnail ? 'max-h-20 max-w-24' : 'max-h-[34rem] w-full')}
+      loading="lazy"
+      draggable={false}
+    />
+  );
   const image = (
     <>
       {src && !extension.options.compact && <ImageAmbientBackdrop src={src} loading="lazy" />}
-      <img
-        key={`${src}:${load.attempt}`}
-        onError={() => setLoad((previous) => ({ ...previous, src, failed: true }))}
-        onLoad={() => setLoad((previous) => (previous.failed ? { ...previous, src, failed: false } : previous))}
-        src={src}
-        alt={alt}
-        title={title}
-        className="relative z-10 max-h-[34rem] w-full object-contain"
-        loading="lazy"
-        draggable={false}
-      />
+      {thumbnail ? (
+        <Button
+          type="button"
+          variant="ghost"
+          className="h-auto max-w-full rounded-sm p-0"
+          aria-label={messages.referenceOutline.expandImage}
+          title={messages.referenceOutline.expandImage}
+          onMouseDown={(event) => event.preventDefault()}
+          onClick={() => toggleOutlineImage(editor, blockId)}
+        >
+          {bitmap}
+        </Button>
+      ) : (
+        bitmap
+      )}
+      {outline && expanded && (
+        <Button
+          type="button"
+          size="icon-sm"
+          variant="secondary"
+          className="absolute right-1 bottom-1 z-20"
+          aria-label={messages.referenceOutline.thumbnailImage}
+          title={messages.referenceOutline.thumbnailImage}
+          onMouseDown={(event) => event.preventDefault()}
+          onClick={() => toggleOutlineImage(editor, blockId)}
+        >
+          <Minimize2 className="size-3.5" />
+        </Button>
+      )}
       {failed && (
         <div className="relative z-10 flex items-center justify-center gap-2 p-3">
           <span className="text-xs text-muted-foreground">{copy.imageUnavailable}</span>
@@ -140,15 +186,19 @@ function DocumentImageNodeView({ node, extension, deleteNode, editor }: NodeView
           </Button>
         </div>
       )}
-      {assetId && window.desktopApi && <AssetImageCopyButton assetId={assetId} />}
+      {!thumbnail && assetId && window.desktopApi && <AssetImageCopyButton assetId={assetId} />}
     </>
   );
   return (
     <NodeViewWrapper
+      contentEditable={false}
+      data-outline-image={outline ? (thumbnail ? 'thumbnail' : 'expanded') : undefined}
       className={
-        extension.options.compact
-          ? 'group/article-image relative my-2 block w-full overflow-hidden'
-          : 'group/article-image relative isolate my-7 block max-h-[34rem] w-full overflow-hidden rounded-md bg-surface-sunken'
+        thumbnail
+          ? 'group/article-image relative my-1 w-fit max-w-full self-start'
+          : extension.options.compact
+            ? 'group/article-image relative my-2 block w-full overflow-hidden'
+            : 'group/article-image relative isolate my-7 block max-h-[34rem] w-full overflow-hidden rounded-md bg-surface-sunken'
       }
     >
       <ContentImageContextMenu assetId={assetId} remove={editor.isEditable ? deleteNode : undefined}>
@@ -158,7 +208,7 @@ function DocumentImageNodeView({ node, extension, deleteNode, editor }: NodeView
   );
 }
 
-export function createDocumentImageExtension(mediaStore: DocumentImageMediaStore, compact = false) {
+export function createDocumentImageExtension(mediaStore: DocumentImageMediaStore, compact = false, outline = false) {
   const resolveMedia = mediaStore.getSnapshot;
   return Image.extend({
     addOptions() {
@@ -169,6 +219,7 @@ export function createDocumentImageExtension(mediaStore: DocumentImageMediaStore
         resize: false,
         ...this.parent?.(),
         compact,
+        outline,
         mediaStore,
       };
     },

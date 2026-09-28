@@ -4,9 +4,43 @@ import process from 'node:process';
 import type { ZodType } from 'zod';
 import { z } from 'zod';
 import {
+  agentWorkCapabilities,
+  agentWorkReadSchema,
+  agentWorkReadResultSchema,
+  agentWorkListSchema,
+  agentWorkListResultSchema,
+  agentWorkMutateSchema,
+  agentWorkMutateResultSchema,
+} from '@/shared/contracts/agent-work';
+import { agentPermissionsSchema } from '@/shared/contracts/agent-permissions';
+import {
+  agentCreationCapabilities,
+  agentCreationAlbumsSchema,
+  agentCreationAlbumsResultSchema,
+  agentCreationEnsureAlbumSchema,
+  agentCreationEnsureAlbumResultSchema,
+  agentCreationMoveSchema,
+  agentCreationMoveResultSchema,
+} from '@/shared/contracts/agent-creation';
+import {
+  agentAlbumCapabilities,
+  agentAlbumListRequestSchema,
+  agentAlbumListResultSchema,
+  agentAlbumEnsureRequestSchema,
+  agentAlbumEnsureResultSchema,
+  agentAlbumAddRequestSchema,
+  agentAlbumAddResultSchema,
+  agentAlbumRemoveRequestSchema,
+  agentAlbumRemoveResultSchema,
+} from '@/shared/contracts/agent-album';
+import {
   agentContentCapabilities,
   agentContentReadRequestSchema,
   agentContentReadResultSchema,
+  agentContentSearchRequestSchema,
+  agentContentSearchResultSchema,
+  agentContentUpdateRequestSchema,
+  agentContentUpdateResultSchema,
 } from '@/shared/contracts/agent-content';
 import {
   agentIntakeCapabilities,
@@ -63,12 +97,24 @@ function usage() {
 
 Usage:
   aiy-agent capabilities [--user-data-dir PATH]
+  aiy-agent work list --input REQUEST.json [--user-data-dir PATH]
+  aiy-agent work read --input REQUEST.json [--user-data-dir PATH]
+  aiy-agent work mutate --input REQUEST.json [--user-data-dir PATH]
+  aiy-agent creation albums --input REQUEST.json [--user-data-dir PATH]
+  aiy-agent creation ensure-album --input REQUEST.json [--user-data-dir PATH]
+  aiy-agent creation move --input REQUEST.json [--user-data-dir PATH]
   aiy-agent content read --input REQUEST.json [--user-data-dir PATH]
+  aiy-agent content search --input REQUEST.json [--user-data-dir PATH]
+  aiy-agent content update --input REQUEST.json [--user-data-dir PATH]
   aiy-agent handoff prepare --input REQUEST.json
   aiy-agent handoff verify --input PACKET.json
   aiy-agent asset import --input REQUEST.json [--user-data-dir PATH]
   aiy-agent intake import --input REQUEST.json [--user-data-dir PATH]
   aiy-agent intake get --input REQUEST.json [--user-data-dir PATH]
+  aiy-agent album list --input REQUEST.json [--user-data-dir PATH]
+  aiy-agent album ensure --input REQUEST.json [--user-data-dir PATH]
+  aiy-agent album add --input REQUEST.json [--user-data-dir PATH]
+  aiy-agent album remove --input REQUEST.json [--user-data-dir PATH]
   aiy-agent pack preview --input REQUEST.json [--user-data-dir PATH]
   aiy-agent pack apply --input REQUEST.json [--user-data-dir PATH]
   aiy-agent draft prepare --input REQUEST.json [--user-data-dir PATH]
@@ -104,13 +150,25 @@ function parseArguments(argv: readonly string[]): ParsedArguments {
   }
   const command = positionals.join(' ');
   const supported = [
+    'work list',
+    'work read',
+    'work mutate',
+    'creation albums',
+    'creation ensure-album',
+    'creation move',
     'capabilities',
     'content read',
+    'content search',
+    'content update',
     'handoff prepare',
     'handoff verify',
     'asset import',
     'intake import',
     'intake get',
+    'album list',
+    'album ensure',
+    'album add',
+    'album remove',
     'pack preview',
     'pack apply',
     'draft prepare',
@@ -173,18 +231,71 @@ function parseInput<T>(schema: ZodType<T>, value: unknown): T {
 }
 
 const commandDefinitions = {
+  'creation albums': {
+    method: 'agent.creation.albums',
+    input: agentCreationAlbumsSchema,
+    output: agentCreationAlbumsResultSchema,
+  },
+  'creation ensure-album': {
+    method: 'agent.creation.ensure-album',
+    input: agentCreationEnsureAlbumSchema,
+    output: agentCreationEnsureAlbumResultSchema,
+    refreshFileView: true,
+  },
+  'creation move': {
+    method: 'agent.creation.move',
+    input: agentCreationMoveSchema,
+    output: agentCreationMoveResultSchema,
+    refreshFileView: true,
+  },
+  'work list': { method: 'agent.work.list', input: agentWorkListSchema, output: agentWorkListResultSchema },
+  'work read': { method: 'agent.work.read', input: agentWorkReadSchema, output: agentWorkReadResultSchema },
+  'work mutate': { method: 'agent.work.mutate', input: agentWorkMutateSchema, output: agentWorkMutateResultSchema },
+  'album list': {
+    method: 'agent.album.list',
+    input: agentAlbumListRequestSchema,
+    output: agentAlbumListResultSchema,
+  },
+  'album ensure': {
+    method: 'agent.album.ensure',
+    input: agentAlbumEnsureRequestSchema,
+    output: agentAlbumEnsureResultSchema,
+    refreshFileView: true,
+  },
+  'album add': {
+    method: 'agent.album.add',
+    input: agentAlbumAddRequestSchema,
+    output: agentAlbumAddResultSchema,
+    refreshFileView: true,
+  },
+  'album remove': {
+    method: 'agent.album.remove',
+    input: agentAlbumRemoveRequestSchema,
+    output: agentAlbumRemoveResultSchema,
+    refreshFileView: true,
+  },
+  'content search': {
+    method: 'agent.content.search',
+    input: agentContentSearchRequestSchema,
+    output: agentContentSearchResultSchema,
+  },
+  'content update': {
+    method: 'agent.content.update',
+    input: agentContentUpdateRequestSchema,
+    output: agentContentUpdateResultSchema,
+  },
   'content read': {
     method: 'agent.content.read',
     input: agentContentReadRequestSchema,
     output: agentContentReadResultSchema,
   },
   'pack preview': {
-    method: 'content-pack.preview',
+    method: 'agent.pack.preview',
     input: contentPackPreviewCommandSchema,
     output: contentPackPreviewCommandResultSchema,
   },
   'pack apply': {
-    method: 'content-pack.apply',
+    method: 'agent.pack.apply',
     input: contentPackApplyCommandSchema,
     output: contentPackApplyCommandResultSchema,
   },
@@ -192,6 +303,7 @@ const commandDefinitions = {
     method: 'agent.intake.import',
     input: agentIntakeImportRequestSchema,
     output: agentIntakeResultSchema,
+    refreshFileView: true,
   },
   'intake get': {
     method: 'agent.intake.get',
@@ -307,8 +419,12 @@ export async function runAgentCli(
         cliProtocolVersion: AIY_AGENT_PROTOCOL_VERSION,
         workerProtocolVersion: MODEL_WORKER_PROTOCOL_VERSION,
         library,
+        permissions: agentPermissionsSchema.parse(await client.request('agent.permissions.read', [])),
+        workTracking: agentWorkCapabilities,
+        creations: agentCreationCapabilities,
         content: agentContentCapabilities,
         intake: agentIntakeCapabilities,
+        albums: agentAlbumCapabilities,
         contentPacks: contentPackCommandCapabilities,
         offlineHandoffs: {
           commands: ['handoff prepare', 'handoff verify'],
@@ -351,6 +467,16 @@ export async function runAgentCli(
       data = operation!.definition.output.parse(
         await client.request(operation!.definition.method as ModelWorkerMethod, [operation!.input]),
       );
+      if ('refreshFileView' in operation!.definition) {
+        try {
+          await client.request('agent.file-view.refresh', []);
+        } catch (error) {
+          // The mutation is already committed; a derived-view failure must not invite another import.
+          process.stderr.write(
+            `AIY_AGENT_FILE_VIEW_REFRESH_PENDING: Content committed; ${errorDetails(error).message}\n`,
+          );
+        }
+      }
     }
     process.stdout.write(
       `${JSON.stringify({ protocolVersion: AIY_AGENT_PROTOCOL_VERSION, ok: true, command, data })}\n`,

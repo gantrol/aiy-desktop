@@ -10,6 +10,7 @@ export type MaterialAlbumEditorState =
 interface Labels {
   create: string;
   createTitle: string;
+  createChild: string;
   renameTitle: string;
   deleteTitle: string;
   deleteDescription(title: string): string;
@@ -34,6 +35,9 @@ export function MaterialAlbumDialogs({ editor, labels, busy, onEditorChange, onC
   const [title, setTitle] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
+  const creatingChild = editor?.mode === 'create' && Boolean(editor.parent);
+  const createLabel = creatingChild ? labels.createChild : labels.create;
+  const createTitle = creatingChild ? labels.createChild : labels.createTitle;
 
   useEffect(() => {
     setTitle(editor?.mode === 'rename' ? editor.album.title : '');
@@ -67,7 +71,7 @@ export function MaterialAlbumDialogs({ editor, labels, busy, onEditorChange, onC
       >
         <form className="grid gap-4" onSubmit={(event) => void submitEditor(event)}>
           <DialogHeader>
-            <DialogTitle>{editor?.mode === 'rename' ? labels.renameTitle : labels.createTitle}</DialogTitle>
+            <DialogTitle>{editor?.mode === 'rename' ? labels.renameTitle : createTitle}</DialogTitle>
           </DialogHeader>
           <label className="grid gap-2 text-sm font-medium">
             {labels.name}
@@ -96,7 +100,7 @@ export function MaterialAlbumDialogs({ editor, labels, busy, onEditorChange, onC
               aria-busy={submitting}
               disabled={busy || submitting || !title.trim()}
             >
-              {editor?.mode === 'rename' ? labels.save : labels.create}
+              {editor?.mode === 'rename' ? labels.save : createLabel}
             </Button>
           </DialogFooter>
         </form>

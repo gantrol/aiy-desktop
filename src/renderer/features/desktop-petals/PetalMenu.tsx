@@ -7,16 +7,7 @@ import { cn } from '@/renderer/lib/utils';
 
 /** Portals cannot escape a native window. Keep petal menus within one bounded surface. */
 export function PetalMenuContent({ className, ...props }: ComponentProps<typeof DropdownMenuContent>) {
-  return (
-    <DropdownMenuContent
-      collisionPadding={8}
-      className={cn(
-        'max-h-[var(--radix-dropdown-menu-content-available-height)] w-50 min-w-0 max-w-[calc(100vw-16px)] overflow-y-auto overscroll-contain bg-popover text-popover-foreground shadow-none [&_[role^=menuitem]]:text-xs',
-        className,
-      )}
-      {...props}
-    />
-  );
+  return <DropdownMenuContent className={cn('w-50 min-w-0 shadow-none', className)} {...props} />;
 }
 
 /** Inline choices need no extra horizontal space and share the menu's scrolling and keyboard order. */

@@ -1,4 +1,4 @@
-import { useState, type CSSProperties } from 'react';
+import { useState, type CSSProperties, type ReactNode } from 'react';
 import { FolderIcon, type LucideIcon } from 'lucide-react';
 import {
   albumCoverAssets,
@@ -8,7 +8,6 @@ import {
 import { AssetThumbnail } from '@/renderer/components/media/AssetThumbnail';
 import { getSourceMediaAspectRatio } from '@/renderer/components/media/mediaAspectRatio';
 import { stackedMediaFrameLayerClassName, stackedMediaFrameStyle } from '@/renderer/components/ui/stacked-media-frame';
-import { useI18n } from '@/renderer/i18n/useI18n';
 import { cn } from '@/renderer/lib/utils';
 
 /** Hover previews stay local; the host owns opening, disclosure and dragging. */
@@ -17,15 +16,16 @@ export function AlbumCoverStack({
   title,
   icon: Icon = FolderIcon,
   compact = false,
+  caption,
   className,
 }: {
   assets: readonly AlbumCoverAsset[];
   title: string;
   icon?: LucideIcon;
   compact?: boolean;
+  caption?: ReactNode;
   className?: string;
 }) {
-  const labels = useI18n().messages.gallery.albums;
   const layers = albumCoverAssets(assets, ALBUM_COVER_LAYERS);
   const [hovered, setHovered] = useState(false);
   const [activeIndex, setActiveIndex] = useState(0);
@@ -42,7 +42,7 @@ export function AlbumCoverStack({
       data-layer-count={layers.length}
       data-cover-spread={spread ? 'expanded' : 'collapsed'}
       data-active-cover={spread ? activeIndex : 0}
-      aria-hidden="true"
+      aria-hidden={caption ? undefined : true}
       title={title}
       className={cn('group/cover relative isolate block min-h-0 min-w-0 flex-1 overflow-hidden rounded-md', className)}
       onPointerEnter={(event) => {
@@ -89,6 +89,7 @@ export function AlbumCoverStack({
                   alt=""
                   className="absolute inset-0 size-full object-contain"
                 />
+                {index === 0 && caption}
               </span>
             );
           })}
@@ -109,9 +110,8 @@ export function AlbumCoverStack({
           )}
         </span>
       ) : (
-        <span className="absolute inset-px flex flex-col items-start justify-end gap-3 overflow-hidden rounded-md bg-surface-sunken p-4 text-muted-foreground">
-          <Icon className={cn('shrink-0', compact ? 'size-5' : 'size-6')} />
-          {!compact && <span className="text-xs leading-relaxed">{labels.noCover}</span>}
+        <span className="absolute inset-0 grid place-items-center text-muted-foreground">
+          <Icon className="size-5" />
         </span>
       )}
     </span>

@@ -95,8 +95,30 @@ const galleryLocationSchema = z
     collection: galleryCollectionSchema,
     selectedMaterialKey: z.string().min(1).max(500).nullable(),
     requestedMaterialId: optionalWorkspaceIdSchema,
+    browse: z
+      .object({
+        query: z.string(),
+        scope: z.enum(['ALL', 'FAVORITE']),
+        contentTypes: z
+          .array(z.enum(['IMAGE', 'TEXT']))
+          .min(1)
+          .max(2),
+        unratedDimensions: z.array(z.enum(['AESTHETIC', 'REALISM'])).max(2),
+        source: z.enum(['ALL', 'CREATION', 'IMPORT']),
+        viewport: z
+          .object({
+            top: z.number().finite().nonnegative(),
+            imageCount: z.number().int().nonnegative(),
+          })
+          .strict()
+          .optional(),
+      })
+      .strict()
+      .optional(),
   })
   .strict();
+
+export type GalleryBrowseState = NonNullable<z.infer<typeof galleryLocationSchema>['browse']>;
 
 const videoDocumentCollectionSchema = z.discriminatedUnion('kind', [
   z.object({ kind: z.literal('all') }).strict(),
@@ -145,6 +167,7 @@ export const articleEditorLocationSchema = z
     elementId: workspaceIdSchema,
     blockId: workspaceIdSchema.optional(),
     referenceId: workspaceIdSchema.optional(),
+    outlineFocusId: workspaceIdSchema.nullable().optional(),
     relativeOffset: z.number().int().nonnegative().max(1_000_000),
     blockIndex: z.number().int().nonnegative().max(100_000).optional(),
     viewportOffset: z.number().int().nonnegative().max(1_000_000).optional(),
@@ -172,6 +195,8 @@ export const workspaceGroupSchema = z
   .object({
     id: workspaceIdSchema,
     activeTabId: workspaceIdSchema,
+    // Presentation only: omitted in older snapshots; never closes or merges tabs.
+    tabsCollapsed: z.boolean().optional(),
     tabs: z.array(workspaceTabSchema).min(1).max(24),
   })
   .strict();

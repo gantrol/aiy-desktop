@@ -17,12 +17,15 @@ import {
   type ContentDocument,
   type ContentLibraryCommand,
   type ContentReference,
+  type ResolvedContentReference,
+  type ContentResolution,
   type ContentSource,
 } from '@/shared/contracts/content-library';
 import { desktopNoteDraftSchema, type DesktopNoteDraft, type DesktopNoteSave } from '@/shared/contracts/desktop-petals';
 import { videoDocumentRevisionMediaSchema } from '@/shared/contracts/video-document';
 import { createHash } from 'node:crypto';
 import { ulid } from 'ulid';
+import { presentReferenceMarkdown, referenceHeadings } from '@/shared/content-reference-presentation';
 import { NoteCommentRepository } from '@/main/database/creations/note-comment-repository';
 import type { NoteCommentMutationInput } from '@/shared/contracts/desktop-petals';
 import type { ContentElementPlacementInput } from '@/shared/contracts/content-comments';
@@ -36,6 +39,10 @@ type ContentBody = { title: string; revisionId: string; markdown: string; media:
 
 export class ContentLibraryRepository {
   private readonly noteComments: NoteCommentRepository;
+  private followingResolver?: (ids: string[]) => ResolvedContentReference[];
+  attachFollowingResolver(resolve: (ids: string[]) => ResolvedContentReference[]) {
+    this.followingResolver = resolve;
+  }
   constructor(private readonly repositories: Repositories) {
     this.noteComments = new NoteCommentRepository(repositories.storage);
   }
@@ -381,17 +388,160 @@ export class ContentLibraryRepository {
     return unique.flatMap((id) => byId.get(id) ?? []);
   }
 
+  storeReference(reference: ContentReference, resolutionKey?: string) {
+    this.db
+      .prepare(
+        'INSERT INTO content_block_references(id,source_kind,source_id,revision_id,snapshot_json,created_at,resolution_key) VALUES (?,?,?,?,?,?,?)',
+      )
+      .run(
+        reference.id,
+        reference.source.kind,
+        reference.source.id,
+        reference.revisionId,
+        JSON.stringify(reference),
+        reference.createdAt,
+        resolutionKey ?? null,
+      );
+    const retain = this.db.prepare('INSERT INTO content_block_assets(reference_id,asset_id) VALUES (?,?)');
+    for (const { assetId } of reference.media) retain.run(reference.id, assetId);
+  }
+
+  resolveReferences(ids: string[]): ResolvedContentReference[] {
+    if (this.followingResolver) return this.followingResolver(ids);
+    // Repositories used in isolated tooling cannot silently misread a following binding as fixed.
+    if (ids.some((id) => this.db.prepare('SELECT 1 FROM content_following_references WHERE reference_id=?').get(id)))
+      throw new Error('REFERENCE_RESOLVER_UNAVAILABLE');
+    return this.references(ids).map((reference) => ({ reference, mode: 'FIXED', state: 'CURRENT' }));
+  }
+
+  private readableReferences(ids: string[]) {
+    const resolved = this.resolveReferences(ids);
+    if (resolved.some(({ state }) => state === 'UNAVAILABLE')) throw new Error('REFERENCE_FOLLOW_UNAVAILABLE');
+    return resolved;
+  }
+
+  freeze(markdown: string): ContentResolution {
+    return this.db.transaction(() => {
+      const ids = [...new Set(contentMarkdownReferences(markdown).map(({ id }) => id))];
+      if (ids.length > 100) throw new Error('Too many block references');
+      const resolved = this.readableReferences(ids);
+      if (resolved.length !== ids.length) throw new Error('Block reference unavailable');
+      const bindings: Record<string, string> = {};
+      for (const { reference, mode } of resolved) {
+        const resolutionKey = hash(
+          JSON.stringify({
+            source: reference.source,
+            selector: reference.selector,
+            title: reference.title,
+            revisionId: reference.revisionId,
+            markdown: reference.markdown,
+            media: reference.media,
+          }),
+        );
+        const existing =
+          mode === 'FOLLOW'
+            ? this.db
+                .prepare('SELECT snapshot_json FROM content_block_references WHERE resolution_key=?')
+                .pluck()
+                .get(resolutionKey)
+            : null;
+        const fixed =
+          mode === 'FIXED'
+            ? reference
+            : existing
+              ? contentReferenceSchema.parse(JSON.parse(String(existing)))
+              : { ...reference, id: ulid(), createdAt: now() };
+        if (mode === 'FOLLOW' && !existing) this.storeReference(fixed, resolutionKey);
+        bindings[reference.id] = fixed.id;
+      }
+      const expanded = this.renderReferences(
+        markdown,
+        new Map(resolved.map(({ reference }) => [reference.id, reference])),
+      );
+      const spaceId = this.db.prepare('SELECT id FROM local_spaces WHERE singleton_key=1').pluck().get();
+      const bindingsJson = JSON.stringify(
+        Object.fromEntries(Object.entries(bindings).sort(([a], [b]) => a.localeCompare(b))),
+      );
+      const resolutionId = String(
+        this.db
+          .prepare('SELECT id FROM content_reference_resolutions WHERE space_id=? AND bindings_json=?')
+          .pluck()
+          .get(spaceId, bindingsJson) ?? ulid(),
+      );
+      this.db
+        .prepare(
+          'INSERT OR IGNORE INTO content_reference_resolutions(id,space_id,bindings_json,created_at) VALUES (?,?,?,?)',
+        )
+        .run(resolutionId, spaceId, bindingsJson, now());
+      return { resolutionId, ...expanded, contentHash: this.resolvedContentHash(expanded) };
+    })();
+  }
+
+  resolvedContentHash(expanded: { markdown: string; media: ContentDocument['media'] }) {
+    return hash(
+      JSON.stringify({
+        markdown: expanded.markdown,
+        media: expanded.media
+          .map(({ assetId, path }) => ({ assetId, path }))
+          .sort((a, b) => a.path.localeCompare(b.path) || a.assetId.localeCompare(b.assetId)),
+      }),
+    );
+  }
+
+  renderFrozen(markdown: string, resolutionId: string) {
+    return this.db.transaction(() => {
+      const row = this.db
+        .prepare('SELECT space_id,bindings_json FROM content_reference_resolutions WHERE id=?')
+        .get(resolutionId) as { space_id: string; bindings_json: string } | undefined;
+      if (!row || row.space_id !== this.db.prepare('SELECT id FROM local_spaces WHERE singleton_key=1').pluck().get())
+        throw new Error('REFERENCE_RESOLUTION_UNAVAILABLE');
+      const bindings = JSON.parse(row.bindings_json) as Record<string, string>;
+      const ids = [...new Set(contentMarkdownReferences(markdown).map(({ id }) => id))];
+      if (ids.some((id) => typeof bindings[id] !== 'string')) throw new Error('REFERENCE_RESOLUTION_MISMATCH');
+      const fixed = new Map(
+        this.references(ids.map((id) => bindings[id])).map((reference) => [reference.id, reference]),
+      );
+      return this.renderReferences(
+        markdown,
+        new Map(
+          ids.flatMap((id) => {
+            const reference = fixed.get(bindings[id]);
+            return reference ? [[id, reference] as const] : [];
+          }),
+        ),
+      );
+    })();
+  }
+
   render(markdown: string) {
+    return this.db.transaction(() => {
+      const ids = contentMarkdownReferences(markdown).map(({ id }) => id);
+      if (ids.length > 100) throw new Error('Too many block references');
+      return this.renderReferences(
+        markdown,
+        new Map(this.readableReferences(ids).map(({ reference }) => [reference.id, reference])),
+      );
+    })();
+  }
+
+  private renderReferences(markdown: string, refs: Map<string, ContentReference>) {
     const matches = contentMarkdownReferences(markdown);
     if (matches.length > 100) throw new Error('Too many block references');
-    const refs = new Map(this.references(matches.map((match) => match.id)).map((ref) => [ref.id, ref]));
     const media = new Map<string, ContentDocument['media'][number]>();
     let rendered = markdown;
+    const spaceId = matches.some((match) => match.spaceId)
+      ? this.db.prepare('SELECT id FROM local_spaces WHERE singleton_key=1').pluck().get()
+      : null;
+    const headings = matches.some((match) => match.presentation?.headings === 'NEST')
+      ? referenceHeadings(markdown).reverse()
+      : [];
     for (const match of [...matches].reverse()) {
+      if (match.spaceId && match.spaceId !== spaceId) throw new Error('REFERENCE_FOLLOW_SPACE_CHANGED');
       const ref = refs.get(match.id);
       if (!ref) throw new Error('Block reference unavailable');
-      ref.media.forEach((asset) => media.set(asset.assetId, asset));
-      const text = ref.markdown.replace(/\n/gu, '\n' + match.indent);
+      if (match.presentation?.display !== 'LINK') ref.media.forEach((asset) => media.set(asset.assetId, asset));
+      const parent = headings.find((heading) => heading.start < match.start)?.level ?? 0;
+      const text = presentReferenceMarkdown(ref, match.presentation, parent).replace(/\n/gu, '\n' + match.indent);
       if (rendered.length - (match.end - match.start) + text.length > 1_000_000)
         throw new Error('Expanded content is too large');
       rendered = rendered.slice(0, match.start) + text + rendered.slice(match.end);
@@ -400,8 +550,8 @@ export class ContentLibraryRepository {
     return { markdown: rendered, media: [...media.values()] };
   }
 
-  expandArticle<T extends ArticleContentInput>(content: T): T {
-    const expanded = this.render(content.markdown);
+  expandArticle<T extends ArticleContentInput>(content: T, resolutionId?: string): T {
+    const expanded = resolutionId ? this.renderFrozen(content.markdown, resolutionId) : this.freeze(content.markdown);
     return {
       ...content,
       markdown: expanded.markdown,
@@ -419,7 +569,7 @@ export class ContentLibraryRepository {
   expandVideoRevision(revision: VideoDocumentRevisionDto): VideoDocumentRevisionDto {
     const additions = new Map<string, ContentDocument['media'][number]>();
     const expand = <T extends { markdown: string; mediaBindings: VideoDocumentMediaBinding[] }>(content: T): T => {
-      const result = this.render(content.markdown);
+      const result = this.freeze(content.markdown);
       const bindings = result.media.map((media): VideoDocumentMediaBinding => {
         additions.set(media.assetId, media);
         return {

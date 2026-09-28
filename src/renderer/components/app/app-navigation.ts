@@ -82,6 +82,7 @@ export interface GalleryLocation {
   collection: GalleryCollection;
   selectedMaterialKey: string | null;
   requestedMaterialId: string | null;
+  browse?: import('@/shared/contracts/workspace-layout').GalleryBrowseState;
 }
 
 export interface ExtensionsLocation {

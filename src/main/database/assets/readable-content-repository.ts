@@ -12,7 +12,7 @@ import { now } from '@/main/database/core/values';
 import type { ContentLibraryRepository } from '@/main/database/creations/content-library-repository';
 import type { LibraryDatabaseRepositories } from '@/main/database/library-database/repositories';
 import { contentAssetPath } from '@/shared/content-document';
-import { replaceMarkdownMedia } from '@/shared/content-markdown';
+import { replaceMarkdownMedia, contentMarkdownReferences } from '@/shared/content-markdown';
 import { ContentReadError } from '@/shared/content-read-error';
 import type { AssetFileRevealTargetDto } from '@/shared/contracts';
 import type { ContentSource } from '@/shared/contracts/content-library';
@@ -220,12 +220,43 @@ export class ReadableContentRepository {
   }
   private async project(source: ContentSource): Promise<string> {
     if (!this.active(source)) throw new Error('Content unavailable');
-    const documents = this.content.readableDocuments(source);
-    const version = digest(
-      JSON.stringify(
-        documents.map(({ name, document }) => [name, document.revisionId, document.title, document.contentHash]),
-      ),
-    );
+    const capture = (retainMedia: boolean) => {
+      const saved = this.content.readableDocuments(source);
+      // Retain dependency identities even when the first expansion fails. A source
+      // restoration must be able to wake a failed projection that has no files yet.
+      this.db.transaction(() => {
+        this.db.prepare('DELETE FROM readable_content_reference_dependencies WHERE source_key=?').run(this.key(source));
+        const dependency = this.db.prepare(
+          'INSERT INTO readable_content_reference_dependencies(source_key,source_kind,source_id,reference_id) VALUES (?,?,?,?)',
+        );
+        for (const id of new Set(
+          saved.flatMap(({ document }) => contentMarkdownReferences(document.markdown).map(({ id }) => id)),
+        ))
+          dependency.run(this.key(source), source.kind, source.id, id);
+      })();
+      return this.db.transaction(() =>
+        saved.map((entry) => ({
+          ...entry,
+          expanded: retainMedia
+            ? this.content.freeze(entry.document.markdown)
+            : this.content.render(entry.document.markdown),
+        })),
+      )();
+    };
+    const documents = capture(true);
+    const fingerprint = (entries: typeof documents) =>
+      digest(
+        JSON.stringify(
+          entries.map(({ name, document, expanded }) => [
+            name,
+            document.revisionId,
+            document.title,
+            document.contentHash,
+            this.content.resolvedContentHash(expanded),
+          ]),
+        ),
+      );
+    const version = fingerprint(documents);
     const document = documents[0]!.document,
       key = this.key(source),
       albumId = this.albumId(source);
@@ -242,13 +273,13 @@ export class ReadableContentRepository {
       }
     } else relativeDirectory = undefined;
     relativeDirectory ??= await allocateReadableDirectory(
-      this.root,
+      this.repositories.storage,
       parent,
       document.displayTitle || path.parse(fileNames[source.kind]).name,
+      { sourceKey: key },
     );
     const directory = await readablePath(this.root, relativeDirectory);
-    const parts = documents.map(({ name, document }) => {
-      const expanded = this.content.render(document.markdown);
+    const parts = documents.map(({ name, document, expanded }) => {
       const media = [...document.media, ...expanded.media];
       return {
         name,
@@ -354,13 +385,7 @@ export class ReadableContentRepository {
       await this.removeEmptyDirectory(previous.relative_directory);
     }
     if (!this.active(source)) throw new ReadableContentChangedError();
-    const latestVersion = digest(
-      JSON.stringify(
-        this.content
-          .readableDocuments(source)
-          .map(({ name, document }) => [name, document.revisionId, document.title, document.contentHash]),
-      ),
-    );
+    const latestVersion = fingerprint(capture(false));
     if (latestVersion !== version || this.albumId(source) !== albumId) throw new ReadableContentChangedError();
     this.db.transaction(() => {
       this.db
@@ -387,6 +412,7 @@ export class ReadableContentRepository {
   }
   private async retire(source: ContentSource) {
     const key = this.key(source);
+    this.db.prepare('DELETE FROM readable_content_reference_dependencies WHERE source_key=?').run(key);
     const previous = this.db.prepare('SELECT * FROM readable_content_files WHERE source_key = ?').get(key) as
       Row | undefined;
     if (!previous) return;

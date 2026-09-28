@@ -1,6 +1,7 @@
 import type { JSONContent } from '@tiptap/core';
 import { z } from 'zod';
 import { linkCardAttributesSchema } from '@/shared/contracts/link-card';
+import { isMathNode, mathSourceLimit } from '@/shared/content-math';
 
 export type BlockNode = JSONContent;
 export const blockIdentityNodeTypes = [
@@ -21,11 +22,13 @@ export const blockIdentityNodeTypes = [
   'horizontalRule',
   'contentReference',
   'linkCard',
+  'blockMath',
 ] as const;
 const supportedNodes = new Set<string>([
   'doc',
   'text',
   'hardBreak',
+  'inlineMath',
   'bulletList',
   'orderedList',
   'taskList',
@@ -40,7 +43,7 @@ const supportedNodes = new Set<string>([
   ...blockIdentityNodeTypes,
 ]);
 const supportedMarks = new Set(['bold', 'italic', 'strike', 'code', 'link', 'underline']);
-const inlineTypes = new Set(['text', 'hardBreak', 'creatorTerm', 'creatorRecipe']);
+const inlineTypes = new Set(['text', 'hardBreak', 'creatorTerm', 'creatorRecipe', 'inlineMath']);
 const blockTypes = new Set([
   'paragraph',
   'heading',
@@ -56,6 +59,7 @@ const blockTypes = new Set([
   'linkCard',
   'details',
   'reveal',
+  'blockMath',
 ]);
 
 function validDetailsChildren(children: readonly { type?: string }[]) {
@@ -179,6 +183,10 @@ function validRoot(value: unknown): value is BlockNode {
 }
 
 function validAttributes(type: string, attrs: unknown) {
+  if (isMathNode(type)) {
+    const latex = attrs && typeof attrs === 'object' ? (attrs as Record<string, unknown>).latex : undefined;
+    if (typeof latex !== 'string' || !latex.trim() || latex.length > mathSourceLimit) return false;
+  }
   if (type === 'linkCard' && !linkCardAttributesSchema.safeParse(attrs).success) return false;
   if (
     type === 'reveal' &&

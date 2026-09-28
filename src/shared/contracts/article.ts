@@ -2,6 +2,7 @@ import { browserCompanionWatermarkSelectionSchema } from '@/shared/contracts/bro
 import { blockDocumentMarkdown } from '@/shared/block-document-codecs';
 import { blockDocumentAssetIds, blockDocumentSchema } from '@/shared/contracts/block-document';
 import { z } from 'zod';
+import { contentProvenanceSchema } from '@/shared/contracts/content-provenance';
 import { ARTICLE_COVER_RATIOS, articleCoverAssetIds, articleCoverVariantsSchema } from '@/shared/article-covers';
 import { articleCreationInputSchema } from '@/shared/contracts/inspiration-stash';
 import { noteFileSchema, NOTE_FILE_LIMITS } from '@/shared/contracts/note-files';
@@ -179,6 +180,7 @@ const articleContentDtoSchema = z
 
 const articleDtoSchema = z
   .object({
+    provenance: contentProvenanceSchema.optional(),
     id: idSchema,
     albumId: idSchema.nullable(),
     sourceInspirationStashId: idSchema.nullable(),
@@ -201,6 +203,7 @@ export type ArticleOpenResult = z.infer<typeof articleOpenResultSchema>;
 
 export const articleRevisionSummarySchema = z
   .object({
+    provenance: contentProvenanceSchema.optional(),
     articleId: idSchema,
     revisionId: idSchema,
     revisionNo: z.number().int().positive(),
@@ -235,6 +238,7 @@ export const articleRevisionGetInputSchema = z
 
 export const articleRevisionSchema = z
   .object({
+    provenance: contentProvenanceSchema.optional(),
     articleId: idSchema,
     revisionId: idSchema,
     revisionNo: z.number().int().positive(),
@@ -580,11 +584,19 @@ export const articleFormCreateInputSchema = z
   .strict();
 
 export const articleMoveInputSchema = z.object({ id: idSchema, albumId: idSchema.nullable() }).strict();
-export const articleRenameInputSchema = z.object({ id: idSchema, title: z.string().trim().min(1).max(200) }).strict();
+export const articleRenameInputSchema = z
+  .object({
+    id: idSchema,
+    title: z.string().trim().min(1).max(200),
+    expectedRevisionId: idSchema.optional(),
+    expectedSpaceId: idSchema.optional(),
+  })
+  .strict();
 export const articleSetArchivedInputSchema = z.object({ id: idSchema, archived: z.boolean() }).strict();
 export const articleWechatCopyOptionsSchema = z
   .object({
     linksAsEndReferences: z.boolean(),
+    preparation: z.object({ expectedRevisionId: idSchema, referenceResolutionId: idSchema }).strict().optional(),
     watermark: browserCompanionWatermarkSelectionSchema.optional(),
     locale: z.enum(['zh', 'en']),
   })

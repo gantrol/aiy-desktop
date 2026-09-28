@@ -1,4 +1,5 @@
 import { articleWechatMessages } from '@/shared/i18n/article-wechat';
+import { assertPublicContentLinks } from '@/shared/content-public-links';
 import { selectedWatermarkProfile, type NaturalWatermarkRuntime } from '@/main/extensions/natural-watermark/selection';
 import type { ResolvedAssetFile } from '@/main/database/assets/asset-file-repository';
 import { readBoundedImageFile } from '@/main/media/bounded-image-file';
@@ -19,7 +20,7 @@ interface ArticleWechatCopyDatabase {
   resolveAssetFilesAsync(assetIds: readonly string[]): Promise<ReadonlyMap<string, ResolvedAssetFile>>;
   contentLibrary: Pick<
     import('@/main/database/creations/content-library-repository').ContentLibraryRepository,
-    'expandArticle' | 'render'
+    'expandArticle' | 'freeze' | 'renderFrozen'
   >;
 }
 
@@ -67,7 +68,13 @@ export class ArticleWechatCopyService {
 
   async copy(input: ArticleCopyForWechatInput): Promise<ArticleCopyForWechatResult> {
     const saved = this.database.getArticle(input.id);
-    const article = { ...saved, content: this.database.contentLibrary.expandArticle(saved.content) };
+    if (input.preparation && saved.revisionId !== input.preparation.expectedRevisionId)
+      throw new Error('The article changed after preview. Reopen the preview before copying.');
+    const resolutionId =
+      input.preparation?.referenceResolutionId ??
+      this.database.contentLibrary.freeze(saved.content.markdown).resolutionId;
+    const article = { ...saved, content: this.database.contentLibrary.expandArticle(saved.content, resolutionId) };
+    assertPublicContentLinks(article.content.markdown);
     const { localImages, remoteImageCount } = referencedArticleImages(article);
     const files = await this.database.resolveAssetFilesAsync(localImages.map(({ binding }) => binding.assetId));
     const resolvedImages = localImages.map(({ referencedPath, binding }) => {
@@ -101,7 +108,9 @@ export class ArticleWechatCopyService {
     }
 
     const projection = articleWechatInteractionProjection(article.content.document, article.content.mediaBindings);
-    const expandedProjection = projection ? this.database.contentLibrary.render(projection.markdown).markdown : null;
+    const expandedProjection = projection
+      ? this.database.contentLibrary.renderFrozen(projection.markdown, resolutionId).markdown
+      : null;
     const rendered = renderArticleForWechatDocument(
       article.content.markdown,
       projection,

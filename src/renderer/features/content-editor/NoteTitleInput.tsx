@@ -49,7 +49,7 @@ export function NoteTitleField({
         compact
           ? 'h-8 shrink-0 rounded-none border-0 bg-transparent pl-6 pr-3 text-[15px] font-medium text-inherit shadow-none placeholder:text-current/35 focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-offset-0'
           : document
-            ? `${articleTitleClassName} h-auto min-w-0 flex-1 border-0 px-0 shadow-none placeholder:text-muted-foreground/70 focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring`
+            ? `${articleTitleClassName} h-auto min-w-0 flex-1 border-0 px-0 shadow-none placeholder:text-muted-foreground focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring`
             : 'mb-3 border-0 px-3 text-lg font-medium shadow-none'
       }
       {...props}

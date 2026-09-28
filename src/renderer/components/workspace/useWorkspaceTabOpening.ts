@@ -36,7 +36,7 @@ export function useWorkspaceTabOpening(
       if (!state || !context || !findWorkspaceTab(state, sourceTabId)) return;
       let location: AppLocation;
       if (destination === 'creator') {
-        // Allocate the new editor's identity before deduplication can resume an existing draft.
+        // A new creation tab owns a new draft, even while other drafts remain open.
         const draft = await window.desktopApi.creationDraftStart({ albumId: null, termPromptLocale });
         if (contextRef.current !== context) return;
         location = { ...initialAppLocation, creator: { surface: 'creation-draft', draftId: draft.id } };

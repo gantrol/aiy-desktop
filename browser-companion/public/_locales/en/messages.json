@@ -1,14 +1,28 @@
 {
-  "popupGroupBatchTabs": { "message": "Group pages prepared in the same batch" },
-  "extensionName": { "message": "AIY Companion" },
+  "popupGroupBatchTabs": {
+    "message": "Group pages prepared in the same batch"
+  },
+  "extensionName": {
+    "message": "AIY Companion"
+  },
   "extensionDescription": {
     "message": "Automatically receive AIY handoffs on supported sites. You decide whether to send or publish."
   },
-  "siteChatgpt": { "message": "ChatGPT" },
-  "siteWechat": { "message": "WeChat Official Account" },
-  "siteWeibo": { "message": "Weibo" },
-  "siteX": { "message": "X (Twitter)" },
-  "siteXiaohongshu": { "message": "Xiaohongshu" },
+  "siteChatgpt": {
+    "message": "ChatGPT"
+  },
+  "siteWechat": {
+    "message": "WeChat Official Account"
+  },
+  "siteWeibo": {
+    "message": "Weibo"
+  },
+  "siteX": {
+    "message": "X (Twitter)"
+  },
+  "siteXiaohongshu": {
+    "message": "Xiaohongshu"
+  },
   "errorXiaohongshuLoginRequired": {
     "message": "Log in to Xiaohongshu Creator Center in this browser Profile, then upload again from AIY."
   },
@@ -27,39 +41,73 @@
   "errorComposerHasMedia": {
     "message": "The editor already has media. Remove it before filling from AIY."
   },
-  "popupBadgeNoPublish": { "message": "Never publishes" },
-  "popupSingleContent": { "message": "Single item" },
-  "popupPasteText": { "message": "Paste text" },
-  "popupIdentifyingSite": { "message": "Identifying" },
-  "popupUnsupportedSite": { "message": "Unsupported" },
-  "popupWaitingForContent": { "message": "Waiting for content" },
-  "popupWaitingToFill": { "message": "Ready to fill" },
-  "popupFilling": { "message": "Filling" },
-  "popupConnectingAiy": { "message": "Connecting to AIY" },
-  "popupFillFromHistory": { "message": "Fill from history" },
-  "popupFillCurrentPage": { "message": "Fill current page" },
+  "popupBadgeNoPublish": {
+    "message": "Never publishes"
+  },
+  "popupSingleContent": {
+    "message": "Single item"
+  },
+  "popupPasteText": {
+    "message": "Paste text"
+  },
+  "popupIdentifyingSite": {
+    "message": "Identifying"
+  },
+  "popupUnsupportedSite": {
+    "message": "Unsupported"
+  },
+  "popupWaitingForContent": {
+    "message": "Waiting for content"
+  },
+  "popupWaitingToFill": {
+    "message": "Ready to fill"
+  },
+  "popupFilling": {
+    "message": "Filling"
+  },
+  "popupConnectingAiy": {
+    "message": "Connecting to AIY"
+  },
+  "popupFillFromHistory": {
+    "message": "Fill from history"
+  },
+  "popupFillCurrentPage": {
+    "message": "Fill current page"
+  },
   "popupManualFillSuccess": {
     "message": "Filled $COUNT$ characters. Check the page before continuing.",
-    "placeholders": { "count": { "content": "$1" } }
+    "placeholders": {
+      "count": {
+        "content": "$1"
+      }
+    }
   },
   "popupDesktopFillSuccess": {
     "message": "Filled $CHARACTERS$ characters and $IMAGES$ images from AIY. Check the page before continuing.",
     "placeholders": {
-      "characters": { "content": "$1" },
-      "images": { "content": "$2" }
+      "characters": {
+        "content": "$1"
+      },
+      "images": {
+        "content": "$2"
+      }
     }
   },
   "popupReceiptFailed": {
     "message": "Content was filled, but AIY could not confirm the result."
   },
-  "popupRefreshAndRetry": { "message": "Refresh this page and try again." },
+  "popupRefreshAndRetry": {
+    "message": "Refresh this page and try again."
+  },
   "errorInvalidRequest": {
     "message": "This content could not be read. Try again."
   },
   "errorUnsupportedSite": {
     "message": "Automatic fill is not available on this page."
   },
-  "errorBusy": { "message": "Another item is being filled. Wait a moment." },
+  "errorBusy": {
+    "message": "Another item is being filled. Wait a moment."
+  },
   "errorComposerNotFound": {
     "message": "Open the editor on this page, then try again."
   },
@@ -73,13 +121,13 @@
     "message": "The image input could not be found on this page."
   },
   "errorMediaFillFailed": {
-    "message": "The images could not be confirmed as filled. Try again."
+    "message": "Image upload was not confirmed. Check the attachments on the page before trying again."
   },
   "errorFillFailed": {
-    "message": "The content could not be confirmed as filled. Refresh the page and try again."
+    "message": "The fill result was not confirmed. Check the page before trying again."
   },
   "errorDesktopInvalidRequest": {
-    "message": "AIY could not read this connection request."
+    "message": "Update AIY Desktop and Companion together, then check the connection again."
   },
   "errorUnauthorized": {
     "message": "AIY has not authorized this Companion. Reopen AIY and try again."
@@ -112,7 +160,7 @@
     "message": "The selected image changed before AIY could import it."
   },
   "errorStateConflict": {
-    "message": "The handoff changed in AIY. Upload it again."
+    "message": "Check the current handoff and page in AIY before starting another attempt."
   },
   "errorCorruptState": {
     "message": "The handoff record is damaged. Upload it again from AIY."
@@ -124,28 +172,38 @@
     "message": "AIY Desktop could not be reached. Make sure AIY is running; the content is still available in history."
   },
   "errorMediaDownload": {
-    "message": "A handoff image could not be read. Try again from history."
+    "message": "A handoff image could not be read. Check the current handoff in AIY Companion."
   },
-  "automaticHandoffFailedTitle": { "message": "Automatic fill did not finish" },
+  "automaticHandoffFailedTitle": {
+    "message": "Automatic fill did not finish"
+  },
   "automaticHandoffDesktopDetail": {
-    "message": "AIY Desktop could not be reached. Make sure AIY is running, open AIY Companion, then choose “Fill from history.” Your content is still available in Companion history."
+    "message": "Keep AIY Desktop running, then open AIY Companion and check the current handoff."
   },
   "automaticHandoffMediaDetail": {
-    "message": "A handoff image could not be read from AIY Desktop. Open AIY Companion and try again from history; your original content is still available."
+    "message": "An image could not be read. Open AIY Companion to check the current handoff; the original content is kept in AIY."
   },
   "automaticHandoffGenericDetail": {
-    "message": "This page could not be filled safely. Open AIY Companion and try again from history; your original content is still available."
+    "message": "Open AIY Companion and inspect the page before retrying. The page may already contain some of this handoff."
   },
   "automaticHandoffLogSummary": {
     "message": "Automatic handoff did not finish"
   },
   "automaticHandoffRetryAction": {
-    "message": "Open AIY Companion and choose “Fill from history” to retry"
+    "message": "Open AIY Companion to check the current handoff"
   },
-  "chatgptOutputReturnAction": { "message": "Return to AIY" },
-  "chatgptOutputReturning": { "message": "Returning…" },
-  "chatgptOutputReturned": { "message": "Returned" },
-  "chatgptOutputReturnSuccessTitle": { "message": "Returned to AIY" },
+  "chatgptOutputReturnAction": {
+    "message": "Return to AIY"
+  },
+  "chatgptOutputReturning": {
+    "message": "Returning…"
+  },
+  "chatgptOutputReturned": {
+    "message": "Returned"
+  },
+  "chatgptOutputReturnSuccessTitle": {
+    "message": "Returned to AIY"
+  },
   "chatgptOutputReturnAdoptedDetail": {
     "message": "The selected image is now the linked cover in AIY."
   },
@@ -160,7 +218,11 @@
   },
   "conflictSiteHasContent": {
     "message": "$SITE$ already has content",
-    "placeholders": { "site": { "content": "$1" } }
+    "placeholders": {
+      "site": {
+        "content": "$1"
+      }
+    }
   },
   "conflictCurrentInputHasContent": {
     "message": "The current editor already has content"
@@ -168,6 +230,182 @@
   "conflictQuestion": {
     "message": "Clear the existing content and fill this AIY handoff?"
   },
-  "conflictKeepExisting": { "message": "Keep existing content" },
-  "conflictReplaceExisting": { "message": "Clear and fill" }
+  "conflictKeepExisting": {
+    "message": "Keep existing content"
+  },
+  "conflictReplaceExisting": {
+    "message": "Clear and fill"
+  },
+  "handoffReady": {
+    "message": "Ready to fill"
+  },
+  "handoffDelivered": {
+    "message": "Filled into the page"
+  },
+  "handoffReceipt": {
+    "message": "Filled; receipt not confirmed"
+  },
+  "handoffMediaUnknown": {
+    "message": "Image upload not confirmed"
+  },
+  "handoffFailed": {
+    "message": "Handoff needs attention"
+  },
+  "handoffEmpty": {
+    "message": "No handoff on this page"
+  },
+  "handoffOffline": {
+    "message": "AIY is not connected"
+  },
+  "handoffUnsupported": {
+    "message": "Handoffs are not supported on this page"
+  },
+  "handoffUnknown": {
+    "message": "Fill result is unknown"
+  },
+  "handoffNoComposer": {
+    "message": "Editor not found"
+  },
+  "handoffInspectBeforeRetry": {
+    "message": "Check the page first. Do not upload again until you know what was filled."
+  },
+  "handoffReceiptDetail": {
+    "message": "Only the receipt will be checked. The content will not be filled again."
+  },
+  "handoffDeliveredDetail": {
+    "message": "Check the content on the page. This does not mean it was sent or published."
+  },
+  "handoffConnected": {
+    "message": "AIY connected"
+  },
+  "handoffConnectionUnknown": {
+    "message": "Connection not verified"
+  },
+  "handoffTitle": {
+    "message": "Current handoff"
+  },
+  "handoffMetadata": {
+    "message": "$arg1$ characters · $arg2$ images",
+    "placeholders": {
+      "arg1": {
+        "content": "$1"
+      },
+      "arg2": {
+        "content": "$2"
+      }
+    }
+  },
+  "handoffExpand": {
+    "message": "Expand text"
+  },
+  "handoffCollapse": {
+    "message": "Collapse text"
+  },
+  "handoffAttachments": {
+    "message": "Handoff attachments"
+  },
+  "handoffMoreImages": {
+    "message": "$arg1$ more images",
+    "placeholders": {
+      "arg1": {
+        "content": "$1"
+      }
+    }
+  },
+  "handoffPreviewPending": {
+    "message": "Preview not downloaded"
+  },
+  "handoffSettings": {
+    "message": "Settings"
+  },
+  "handoffBack": {
+    "message": "Back to current handoff"
+  },
+  "handoffDiagnostics": {
+    "message": "Connection diagnostics"
+  },
+  "handoffDetails": {
+    "message": "View details"
+  },
+  "handoffRecheck": {
+    "message": "Check again"
+  },
+  "handoffVerifyReceipt": {
+    "message": "Check receipt"
+  },
+  "handoffViewPage": {
+    "message": "View page"
+  },
+  "handoffOpenAiy": {
+    "message": "Open AIY"
+  },
+  "handoffReturnAiy": {
+    "message": "Return to AIY"
+  },
+  "handoffMore": {
+    "message": "More"
+  },
+  "handoffHistory": {
+    "message": "AIY handoff history"
+  },
+  "handoffCurrentSite": {
+    "message": "Current site"
+  },
+  "handoffConnection": {
+    "message": "AIY connection"
+  },
+  "handoffStage": {
+    "message": "Task stage"
+  },
+  "handoffErrorCode": {
+    "message": "Error identifier"
+  },
+  "handoffStageIdle": {
+    "message": "Not running"
+  },
+  "handoffStageConnecting": {
+    "message": "Claiming handoff"
+  },
+  "handoffStageDownloading": {
+    "message": "Reading handoff images"
+  },
+  "handoffStageWaitingEditor": {
+    "message": "Waiting for editor"
+  },
+  "handoffStageWriting": {
+    "message": "Filling and verifying the page"
+  },
+  "handoffStageReceipt": {
+    "message": "Confirming receipt"
+  },
+  "handoffContextChanged": {
+    "message": "The current page changed. Check the handoff again before continuing."
+  },
+  "handoffPageUnavailable": {
+    "message": "The page could not be reached. Reload it after updating the extension, then check again."
+  },
+  "handoffPermissionFailed": {
+    "message": "The tab group setting could not be changed. Handoffs still work without it."
+  },
+  "handoffManualText": {
+    "message": "Text"
+  },
+  "handoffManualPaste": {
+    "message": "Paste text"
+  },
+  "handoffMetadataOneImage": {
+    "message": "$1 characters · $2 image"
+  },
+  "handoffChecking": {
+    "message": "Checking…"
+  },
+  "handoffRetryFill": {
+    "message": "Retry fill"
+  },
+  "handoffStageWaitingConfirmation": {
+    "message": "Waiting for your choice on the page"
+  },
+  "handoffStageUploading": {
+    "message": "Waiting for image upload"
+  }
 }

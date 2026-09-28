@@ -1,0 +1,34 @@
+/* The tab strip stays mounted and interactive while its content folds.
+   Fade the departing page before moving the tracks; reveal content near the destination. */
+.workspace-split-layout [data-workspace-group-collapsed] > [data-workspace-group-body] {
+  opacity: 1;
+  visibility: visible;
+  transition:
+    opacity 120ms ease-out 180ms,
+    visibility 0s;
+}
+.workspace-split-layout [data-workspace-group-collapsed='true'] > [data-workspace-group-body] {
+  opacity: 0;
+  visibility: hidden;
+  transition:
+    opacity 60ms ease-out,
+    visibility 0s 60ms;
+}
+/* The return target stays on the same outer edge for both groups and split axes. */
+.workspace-split-layout[data-split-axis='columns'] > :first-child [data-workspace-group-rail] {
+  left: 0;
+}
+.workspace-split-layout[data-split-axis='columns'] > :last-child [data-workspace-group-rail] {
+  right: 0;
+}
+.workspace-split-layout[data-split-axis='rows'] > :first-child [data-workspace-group-rail] {
+  top: 0;
+}
+.workspace-split-layout[data-split-axis='rows'] > :last-child [data-workspace-group-rail] {
+  bottom: 0;
+}
+@media (prefers-reduced-motion: reduce) {
+  .workspace-split-layout [data-workspace-group-collapsed] > [data-workspace-group-body] {
+    transition: none;
+  }
+}

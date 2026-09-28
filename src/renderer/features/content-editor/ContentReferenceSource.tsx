@@ -14,9 +14,11 @@ import { useReferenceNavigation } from '@/renderer/features/content-editor/conte
 export function ContentReferenceSource({
   reference,
   originBlockId,
+  menuItem = false,
 }: {
   reference: ContentReference;
   originBlockId?: string;
+  menuItem?: boolean;
 }) {
   const { messages } = useI18n();
   const copy = messages.referenceOutline,
@@ -63,17 +65,21 @@ export function ContentReferenceSource({
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
-        <Button size="icon-sm" variant="ghost" title={labels.source} aria-label={labels.source}>
+        <Button
+          size={menuItem ? 'sm' : 'icon-sm'}
+          variant="ghost"
+          className={menuItem ? 'w-full justify-start font-normal' : undefined}
+          title={labels.source}
+          aria-label={labels.source}
+        >
           <FileText className="size-3.5" />
+          {menuItem && copy.sourceDetails}
         </Button>
       </DialogTrigger>
       <DialogContent className="flex max-h-[80vh] max-w-3xl flex-col" aria-describedby={undefined}>
         <DialogHeader>
           <DialogTitle>{reference.title || labels.source}</DialogTitle>
         </DialogHeader>
-        <p className="text-xs text-muted-foreground">
-          {current ? copy.current : copy.captured} · {current?.revisionId ?? reference.revisionId}
-        </p>
         <div className="flex flex-wrap items-center gap-2">
           {canOpenEditor && (
             <Button
@@ -82,12 +88,12 @@ export function ContentReferenceSource({
               disabled={busy}
               onClick={() =>
                 void run(async () => {
-                  await navigate(target);
+                  await navigate(target, { placement: 'tab' });
                   setOpen(false);
                 })
               }
             >
-              {copy.openSource}
+              {copy.openSourceInTab}
             </Button>
           )}
           {canOpenEditor && (
@@ -97,17 +103,17 @@ export function ContentReferenceSource({
               disabled={busy}
               onClick={() =>
                 void run(async () => {
-                  await navigate(target, { beside: true });
+                  await navigate(target, { placement: 'beside' });
                   setOpen(false);
                 })
               }
             >
-              {copy.editSourceBeside}
+              {copy.openSourceBeside}
             </Button>
           )}
           <Button
             size="sm"
-            variant="ghost"
+            variant={current ? 'ghost' : 'secondary'}
             disabled={busy}
             onClick={() => {
               setCurrent(null);
@@ -118,7 +124,7 @@ export function ContentReferenceSource({
           </Button>
           <Button
             size="sm"
-            variant="ghost"
+            variant={current ? 'secondary' : 'ghost'}
             disabled={busy}
             onClick={() =>
               void run(async () => {

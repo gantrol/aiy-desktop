@@ -1,5 +1,5 @@
-import { app, BrowserWindow, ipcMain, type IpcMainEvent } from 'electron';
-import path from 'node:path';
+import { BrowserWindow, ipcMain, type IpcMainEvent } from 'electron';
+import { rendererRuntimePath } from '@/main/app/renderer-runtime-paths';
 
 const documentUrl =
   'data:text/html;charset=utf-8,' +
@@ -25,7 +25,7 @@ export async function runGifSandbox<T>(
       width: 1,
       height: 1,
       webPreferences: {
-        preload: path.join(app.getAppPath(), 'out', 'preload', 'gif-renderer.js'),
+        preload: rendererRuntimePath('preload', 'gif-renderer.js'),
         partition: 'aiy-gif-renderer',
         backgroundThrottling: false,
         contextIsolation: true,

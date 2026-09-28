@@ -19,7 +19,7 @@ export function canRestorePetalVisibility(
   if (!board || board.hiddenLayerIds.includes(board.memberships[entry.instanceId] ?? 'default')) return false;
   if (isContentPinId(entry.instanceId)) return board.pins.some((pin) => pin.id === entry.instanceId);
   try {
-    return !!notes?.get(entry.instanceId);
+    return !!notes?.summary(entry.instanceId);
   } catch {
     return false;
   }
@@ -57,7 +57,7 @@ export async function expandPetalNote(
 ) {
   if (!entry.instanceId) return;
   if (expanded || deps.drawer.placement(entry.instanceId).home !== 'drawer') {
-    deps.windows.expand(entry, expanded);
+    await deps.windows.expand(entry, expanded);
     return;
   }
   try {

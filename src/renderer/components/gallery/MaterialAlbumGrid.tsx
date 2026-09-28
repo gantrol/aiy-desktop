@@ -10,9 +10,9 @@ interface Props {
   albums: readonly MaterialAlbumBrowseSummary[];
   busy?: boolean;
   onOpen(albumId: string): void;
-  canMoveAlbum(albumId: string, parentAlbumId: string | null): boolean;
-  onMoveAlbum(albumId: string, parentAlbumId: string | null): Promise<void>;
-  onCollectMaterials(albumId: string, targets: MaterialSelectionTargetInput[]): Promise<void>;
+  canMoveAlbum(albumId: string, parentAlbumId: string | null, copy?: boolean): boolean;
+  onMoveAlbum(albumId: string, parentAlbumId: string | null, copy?: boolean): Promise<void>;
+  onCollectMaterials(albumId: string, targets: MaterialSelectionTargetInput[], sourceAlbumId?: string): Promise<void>;
   onImportFiles?(album: MaterialAlbumDto, files: File[]): void;
   onArchive(album: MaterialAlbumDto): void;
   onDelete(album: MaterialAlbumDto): void;
@@ -45,6 +45,7 @@ export function MaterialAlbumGrid({
       cardAlbums.map((album) => ({
         id: album.id,
         aspectRatio: collectionCoverRatio(album.previewAssets[0]),
+        textOnly: album.previewAssets.length === 0,
       })),
     [cardAlbums],
   );

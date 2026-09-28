@@ -62,17 +62,26 @@ export function installMediaProtocol(targetProtocol: Protocol, options: Options)
       const thumbnailRequest = context
         ? await resolveMediaThumbnailRequest({ ...resolvedMedia, url, identifier, cache: context.thumbnails })
         : null;
+      const svgBytes = thumbnailRequest?.svgBytes;
       if (thumbnailRequest) {
-        if (!thumbnailRequest.filePath) {
+        if (!thumbnailRequest.filePath && !svgBytes) {
           return new Response('Thumbnail unavailable', { status: 404, headers: { 'cache-control': 'no-store' } });
         }
         resolvedMedia.filePath = thumbnailRequest.filePath;
       }
-      if (!resolvedMedia.filePath) return new Response('Not found', { status: 404 });
+      if (!resolvedMedia.filePath && !svgBytes) return new Response('Not found', { status: 404 });
 
-      const response = await fetchLocalFile(resolvedMedia.filePath, request.headers.get('range'));
+      const response = svgBytes
+        ? new Response(Uint8Array.from(svgBytes))
+        : await fetchLocalFile(resolvedMedia.filePath!, request.headers.get('range'));
       const headers = new Headers(response.headers);
-      applyMediaResponseHeaders(headers, url.hostname, resolvedMedia.filePath, thumbnailRequest?.thumbnail ?? false);
+      applyMediaResponseHeaders(
+        headers,
+        url.hostname,
+        resolvedMedia.filePath ?? '',
+        thumbnailRequest?.thumbnail ?? false,
+      );
+      if (svgBytes) headers.set('content-type', 'image/svg+xml');
       // Permit canvas sampling from the application renderer without exposing media to other origins.
       headers.set('access-control-allow-origin', rendererOrigin);
       return new Response(response.body, {

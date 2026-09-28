@@ -1,4 +1,4 @@
-import { type Dispatch, type SetStateAction, useCallback, useRef, useState } from 'react';
+import { type Dispatch, type SetStateAction, useCallback, useEffect, useRef, useState } from 'react';
 import type {
   CodexUsageDateRange,
   CodexUsageGranularity,
@@ -33,14 +33,32 @@ export function useCodexUsageInvestigationSelection({
   quotaReadFailed,
 }: Options) {
   const requestSequence = useRef(0);
+  const selectionClaimed = useRef(false);
+  const followingCompletion = useRef(false);
+  useEffect(
+    () => () => {
+      requestSequence.current++;
+    },
+    [],
+  );
+  const expectCompletedInvestigation = useCallback(() => {
+    followingCompletion.current = true;
+  }, []);
+  const cancelExpectedInvestigation = useCallback(() => {
+    followingCompletion.current = false;
+  }, []);
   const [loading, setLoading] = useState(false);
   const clearInvestigation = useCallback(() => {
+    selectionClaimed.current = true;
+    followingCompletion.current = false;
     requestSequence.current += 1;
     setLoading(false);
     setInvestigation(null);
   }, [setInvestigation]);
   const loadInvestigation = useCallback(
     async (investigationId: string, minimumQuotaPercent?: number) => {
+      selectionClaimed.current = true;
+      followingCompletion.current = false;
       const request = ++requestSequence.current;
       setLoading(true);
       try {
@@ -63,6 +81,19 @@ export function useCodexUsageInvestigationSelection({
       }
     },
     [quotaReadFailed, setDateRange, setDisplayTimeZone, setError, setGranularity, setInvestigation, setRange],
+  );
+  const loadInitialInvestigation = useCallback(
+    async (id: string) => {
+      if (!selectionClaimed.current) await loadInvestigation(id);
+    },
+    [loadInvestigation],
+  );
+  const loadCompletedInvestigation = useCallback(
+    async (id: string) => {
+      if (followingCompletion.current) await loadInvestigation(id);
+      else await loadInitialInvestigation(id);
+    },
+    [loadInvestigation, loadInitialInvestigation],
   );
   const selectRange = useCallback(
     (nextRange: CodexUsageRange, nextDateRange: CodexUsageDateRange | null) => {
@@ -101,5 +132,15 @@ export function useCodexUsageInvestigationSelection({
     },
     [loadInvestigation, setError],
   );
-  return { clearInvestigation, loadInvestigation, selectHistory, selectRange, loading };
+  return {
+    clearInvestigation,
+    loadInvestigation,
+    loadInitialInvestigation,
+    loadCompletedInvestigation,
+    expectCompletedInvestigation,
+    cancelExpectedInvestigation,
+    selectHistory,
+    selectRange,
+    loading,
+  };
 }

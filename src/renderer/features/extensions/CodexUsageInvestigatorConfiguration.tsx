@@ -1,3 +1,5 @@
+import { CollectionDetailLayout } from '@/renderer/components/workbench/CollectionDetailLayout';
+import { useCodexUsageTaskState } from '@/renderer/features/extensions/useCodexUsageTaskState';
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
 import { DownloadIcon, HistoryIcon, LoaderCircleIcon, ScanLineIcon } from 'lucide-react';
 import type {
@@ -89,6 +91,7 @@ function CodexUsageExportButtons({
 }
 
 function CodexUsageToolbar({
+  navigationAction,
   standalone,
   controlsLocked,
   range,
@@ -115,6 +118,7 @@ function CodexUsageToolbar({
   onError,
   onCleared,
 }: {
+  navigationAction?: ReactNode;
   standalone: boolean;
   controlsLocked: boolean;
   range: CodexUsageRange;
@@ -146,6 +150,7 @@ function CodexUsageToolbar({
     <div className={cn('grid min-w-0 gap-3', standalone && 'border-b pb-4')}>
       {standalone && (
         <div className="flex min-w-0 items-center gap-2">
+          {navigationAction}
           <ScanLineIcon className="size-4 shrink-0" />
           <Heading className="truncate text-base font-semibold">{labels.title}</Heading>
         </div>
@@ -165,7 +170,7 @@ function CodexUsageToolbar({
           label={labels.detailedStatistics.option}
           onCheckedChange={onDetailedStatisticsChange}
         />
-        {history.length > 0 && (
+        {!standalone && history.length > 0 && (
           <Select value={investigationId ?? undefined} onValueChange={onHistorySelect}>
             <SelectTrigger
               className={cn(
@@ -219,6 +224,28 @@ function CodexUsageToolbar({
   );
 }
 
+function useSystemTimeZone(active: boolean) {
+  const [systemTimeZone, setSystemTimeZone] = useState(currentSystemTimeZone);
+  useEffect(() => {
+    if (!active) return;
+    const refreshTimeZone = () => setSystemTimeZone(currentSystemTimeZone());
+    window.addEventListener('focus', refreshTimeZone);
+    return () => window.removeEventListener('focus', refreshTimeZone);
+  }, [active]);
+  return systemTimeZone;
+}
+
+function useCodexUsageFormats(locale: 'en' | 'zh') {
+  const numberLocale = locale === 'zh' ? 'zh-CN' : 'en-US';
+  const numbers = useMemo(() => new Intl.NumberFormat(numberLocale, { maximumFractionDigits: 2 }), [numberLocale]);
+  const historyDate = useMemo(
+    () => new Intl.DateTimeFormat(numberLocale, { dateStyle: 'short', timeStyle: 'short' }),
+    [numberLocale],
+  );
+
+  return { numberLocale, numbers, historyDate };
+}
+
 export function CodexUsageInvestigatorConfiguration({
   active,
   extension,
@@ -233,7 +260,7 @@ export function CodexUsageInvestigatorConfiguration({
   const [granularity, setGranularity] = useState<CodexUsageGranularity>('AUTO');
   const { enabled: detailedStatistics, setEnabled: setDetailedStatistics } =
     useCodexUsageDetailedStatisticsPreference();
-  const [systemTimeZone, setSystemTimeZone] = useState(currentSystemTimeZone);
+  const systemTimeZone = useSystemTimeZone(active);
   const [displayTimeZone, setDisplayTimeZone] = useState(currentSystemTimeZone);
   const [investigation, setInvestigation] = useState<CodexUsageInvestigation | null>(null);
   const [history, setHistory] = useState<CodexUsageHistoryItem[]>([]);
@@ -242,67 +269,44 @@ export function CodexUsageInvestigatorConfiguration({
   const [exporting, setExporting] = useState<CodexUsageExportFormat | null>(null);
   const [error, setError] = useState('');
   const authorized = extensionAuthorized(extension);
-  const numberLocale = locale === 'zh' ? 'zh-CN' : 'en-US';
-  const numbers = useMemo(() => new Intl.NumberFormat(numberLocale, { maximumFractionDigits: 2 }), [numberLocale]);
-  const historyDate = useMemo(
-    () => new Intl.DateTimeFormat(numberLocale, { dateStyle: 'short', timeStyle: 'short' }),
-    [numberLocale],
-  );
+  const { numberLocale, numbers, historyDate } = useCodexUsageFormats(locale);
 
-  const { clearInvestigation, loadInvestigation, selectHistory, selectRange, loading } =
-    useCodexUsageInvestigationSelection({
-      history,
-      setRange,
-      setDateRange,
-      setGranularity,
-      setDisplayTimeZone,
-      setInvestigation,
-      setError,
-      quotaReadFailed: l.purity.issues.READ_FAILED,
-    });
-
-  const refreshState = useCallback(
-    async (preferredInvestigationId?: string) => {
-      const state = await window.desktopApi.codexUsageState();
-      setTask(state.task);
-      setHistory(state.history);
-      const investigationId = preferredInvestigationId ?? state.history[0]?.investigationId;
-      if (investigationId) await loadInvestigation(investigationId);
-      else setInvestigation(null);
-    },
-    [loadInvestigation],
-  );
+  const {
+    clearInvestigation,
+    loadInvestigation,
+    loadInitialInvestigation,
+    loadCompletedInvestigation,
+    expectCompletedInvestigation,
+    cancelExpectedInvestigation,
+    selectHistory,
+    selectRange,
+    loading,
+  } = useCodexUsageInvestigationSelection({
+    history,
+    setRange,
+    setDateRange,
+    setGranularity,
+    setDisplayTimeZone,
+    setInvestigation,
+    setError,
+    quotaReadFailed: l.purity.issues.READ_FAILED,
+  });
 
   useEffect(() => {
-    if (!active || !authorized) return;
-    let disposed = false;
-    const applyTask = (nextTask: CodexUsageTask) => {
-      if (disposed) return;
-      setTask(nextTask);
-      setTaskAction((current) => (current === 'PAUSE' && nextTask.status === 'RUNNING' ? current : null));
-      if (nextTask.status === 'COMPLETED' && nextTask.investigationId) {
-        void refreshState(nextTask.investigationId).catch((reason: unknown) => {
-          if (!disposed) setError(reason instanceof Error ? reason.message : String(reason));
-        });
-      }
-      if (nextTask.status === 'FAILED') setError(nextTask.errorMessage ?? l.taskFailed);
-    };
-    const unsubscribe = window.desktopApi.onCodexUsageTaskChanged(applyTask);
-    void refreshState().catch((reason: unknown) => {
-      if (!disposed) setError(reason instanceof Error ? reason.message : String(reason));
-    });
-    return () => {
-      disposed = true;
-      unsubscribe();
-    };
-  }, [active, authorized, l.taskFailed, refreshState]);
+    if (investigation && history.length === 0) clearInvestigation();
+  }, [clearInvestigation, history, investigation]);
 
-  useEffect(() => {
-    if (!active) return;
-    const refreshTimeZone = () => setSystemTimeZone(currentSystemTimeZone());
-    window.addEventListener('focus', refreshTimeZone);
-    return () => window.removeEventListener('focus', refreshTimeZone);
-  }, [active]);
+  useCodexUsageTaskState({
+    active,
+    authorized,
+    taskFailed: l.taskFailed,
+    loadInitialInvestigation,
+    loadCompletedInvestigation,
+    setTask,
+    setHistory,
+    setTaskAction,
+    setError,
+  });
 
   const running = task?.status === 'RUNNING';
   const resumable = Boolean(task && ['PAUSED', 'INTERRUPTED'].includes(task.status));
@@ -321,6 +325,7 @@ export function CodexUsageInvestigatorConfiguration({
 
   async function scan() {
     if (!authorized || controlsLocked) return;
+    expectCompletedInvestigation();
     setTaskAction('SCAN');
     setError('');
     try {
@@ -334,6 +339,7 @@ export function CodexUsageInvestigatorConfiguration({
         }),
       );
     } catch (reason) {
+      cancelExpectedInvestigation();
       setError(reason instanceof Error ? reason.message : String(reason));
     } finally {
       setTaskAction(null);
@@ -383,97 +389,118 @@ export function CodexUsageInvestigatorConfiguration({
     }
   }
 
+  const report = (navigationAction: ReactNode = null) => (
+    <div
+      className={cn(
+        '@container/codex-usage grid min-w-0 content-start gap-4',
+        standalone && 'min-h-0 flex-1 overflow-y-auto p-5',
+      )}
+    >
+      <CodexUsageToolbar
+        navigationAction={navigationAction}
+        standalone={standalone}
+        controlsLocked={controlsLocked}
+        range={range}
+        dateRange={dateRange}
+        detailedStatistics={detailedStatistics}
+        history={history}
+        investigationId={investigation?.investigationId ?? null}
+        running={running}
+        resumable={resumable}
+        taskAction={taskAction}
+        authorized={authorized && !loading}
+        exporting={exporting}
+        labels={l}
+        locale={locale}
+        historyDate={historyDate}
+        notify={notify}
+        onRangeChange={selectRange}
+        onDetailedStatisticsChange={setDetailedStatistics}
+        onHistorySelect={selectHistory}
+        onScan={() => void scan()}
+        onPause={() => void pause()}
+        onResume={() => void resume()}
+        onExport={(format) => void exportReport(format)}
+        onError={setError}
+        onCleared={(result) => {
+          setTask(result.state.task);
+          setHistory(result.state.history);
+          clearInvestigation();
+        }}
+      />
+
+      {progress && (
+        <CodexUsageScanProgress
+          progress={progress}
+          active={running}
+          phaseLabel={running ? l.phases[progress.phase] : l.paused}
+          backgroundLabel={l.background}
+          etaLabel={l.eta}
+          elapsedLabel={l.elapsed}
+          scannedFilesLabel={l.metrics.scannedFiles}
+          cachedFilesLabel={l.metrics.cachedFiles}
+          numbers={numbers}
+        />
+      )}
+
+      {!investigation && !progress && (
+        <div className="grid min-h-24 place-items-center text-sm text-muted-foreground">
+          {task && ['PAUSED', 'INTERRUPTED'].includes(task.status) ? l.paused : l.empty}
+        </div>
+      )}
+      {investigation && (
+        <CodexUsageInvestigationResults
+          key={investigation.investigationId}
+          investigation={investigation}
+          labels={l}
+          numberLocale={numberLocale}
+          displayTimeZone={displayTimeZone}
+          quotaSamplingBusy={loading}
+          quotaSamplingDisabled={controlsLocked || !authorized || Boolean(exporting)}
+          onQuotaSamplingChange={changeQuotaSampling}
+        />
+      )}
+      {error && (
+        <div role="alert" className="border-l-2 border-destructive/30 py-1 pl-3 text-sm text-destructive">
+          {error}
+        </div>
+      )}
+    </div>
+  );
   return (
     <TooltipProvider>
       <section
         data-codex-usage-investigator-configuration
-        className={cn('bg-background', standalone ? 'flex size-full min-h-0' : 'grid gap-4')}
+        className={cn('bg-background', standalone ? 'size-full min-h-0 min-w-0' : 'grid gap-4')}
       >
-        {standalone && (
-          <CodexUsageHistoryRail
-            history={history}
-            locale={locale}
-            labels={l}
-            selectedId={investigation?.investigationId ?? null}
-            task={task}
-            workspaceNavigation={workspaceNavigation}
-            onSelect={selectHistory}
-          />
+        {standalone ? (
+          <CollectionDetailLayout
+            layoutKey="codex-usage"
+            collectionLabel={l.history}
+            collectionWidth={240}
+            minimumDetailWidth={600}
+            selectionKey={investigation?.investigationId ?? 'new-report'}
+            collection={({ toggle, revealDetail }) => (
+              <CodexUsageHistoryRail
+                history={history}
+                locale={locale}
+                labels={l}
+                selectedId={investigation?.investigationId ?? null}
+                task={task}
+                workspaceNavigation={workspaceNavigation}
+                headerControl={toggle}
+                onSelect={(id) => {
+                  if (id === investigation?.investigationId) revealDetail();
+                  else selectHistory(id);
+                }}
+              />
+            )}
+          >
+            {({ toggle }) => report(toggle)}
+          </CollectionDetailLayout>
+        ) : (
+          report()
         )}
-        <div
-          className={cn(
-            '@container/codex-usage grid min-w-0 content-start gap-4',
-            standalone && 'min-h-0 flex-1 overflow-y-auto p-5',
-          )}
-        >
-          <CodexUsageToolbar
-            standalone={standalone}
-            controlsLocked={controlsLocked}
-            range={range}
-            dateRange={dateRange}
-            detailedStatistics={detailedStatistics}
-            history={history}
-            investigationId={investigation?.investigationId ?? null}
-            running={running}
-            resumable={resumable}
-            taskAction={taskAction}
-            authorized={authorized && !loading}
-            exporting={exporting}
-            labels={l}
-            locale={locale}
-            historyDate={historyDate}
-            notify={notify}
-            onRangeChange={selectRange}
-            onDetailedStatisticsChange={setDetailedStatistics}
-            onHistorySelect={selectHistory}
-            onScan={() => void scan()}
-            onPause={() => void pause()}
-            onResume={() => void resume()}
-            onExport={(format) => void exportReport(format)}
-            onError={setError}
-            onCleared={(result) => {
-              setTask(result.state.task);
-              setHistory(result.state.history);
-              clearInvestigation();
-            }}
-          />
-
-          {progress && (
-            <CodexUsageScanProgress
-              progress={progress}
-              active={running}
-              phaseLabel={running ? l.phases[progress.phase] : l.paused}
-              backgroundLabel={l.background}
-              etaLabel={l.eta}
-              elapsedLabel={l.elapsed}
-              scannedFilesLabel={l.metrics.scannedFiles}
-              cachedFilesLabel={l.metrics.cachedFiles}
-              numbers={numbers}
-            />
-          )}
-
-          {!investigation && !progress && (
-            <div className="grid min-h-24 place-items-center text-sm text-muted-foreground">
-              {task && ['PAUSED', 'INTERRUPTED'].includes(task.status) ? l.paused : l.empty}
-            </div>
-          )}
-          {investigation && (
-            <CodexUsageInvestigationResults
-              investigation={investigation}
-              labels={l}
-              numberLocale={numberLocale}
-              displayTimeZone={displayTimeZone}
-              quotaSamplingBusy={loading}
-              quotaSamplingDisabled={controlsLocked || !authorized || Boolean(exporting)}
-              onQuotaSamplingChange={changeQuotaSampling}
-            />
-          )}
-          {error && (
-            <div role="alert" className="border-l-2 border-destructive/30 py-1 pl-3 text-sm text-destructive">
-              {error}
-            </div>
-          )}
-        </div>
       </section>
     </TooltipProvider>
   );

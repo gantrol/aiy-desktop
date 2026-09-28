@@ -1,12 +1,10 @@
-import { CheckIcon, CornerDownRightIcon, GalleryVerticalEndIcon, LoaderCircleIcon } from 'lucide-react';
-import { useEffect, useState } from 'react';
-import { cn } from '@/renderer/lib/utils';
-import { Button } from '@/renderer/components/ui/button';
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/renderer/components/ui/dialog';
-import { ScrollArea } from '@/renderer/components/ui/scroll-area';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/renderer/components/ui/dialog';
+import { AlbumPickerPanel } from '@/renderer/components/albums/AlbumPickerPanel';
+import { buildAlbumPickerIndex, type AlbumPickerOption } from '@/renderer/components/albums/albumPickerModel';
 
 interface Props {
-  rows: readonly { id: string; title: string; depth: number }[];
+  rows: readonly AlbumPickerOption[];
   target: { id: string; title: string; currentAlbumId: string | null } | null;
   labels: { title: string; topLevel: string; operationFailed: string };
   busy?: boolean;
@@ -15,18 +13,38 @@ interface Props {
 }
 
 export function AlbumMoveDestinationDialog({ rows, target, labels, busy = false, onOpenChange, onMove }: Props) {
-  const [pendingDestination, setPendingDestination] = useState<string | null | undefined>(undefined);
+  const [submitting, setSubmitting] = useState(false);
+  const running = useRef(false);
   const [error, setError] = useState('');
-  const submitting = pendingDestination !== undefined;
+  const [query, setQuery] = useState('');
+  const [parentId, setParentId] = useState<string | null>(null);
+  const currentAlbumId = target?.currentAlbumId;
+  const index = useMemo(
+    () =>
+      buildAlbumPickerIndex(
+        rows.map((row) => ({
+          ...row,
+          disabled: row.disabled || row.id === currentAlbumId,
+        })),
+      ),
+    [rows, currentAlbumId],
+  );
 
   useEffect(() => {
-    setPendingDestination(undefined);
+    setQuery('');
+    setParentId(null);
     setError('');
   }, [target?.id]);
 
   async function choose(destinationAlbumId: string | null) {
-    if (!target || busy || submitting || target.currentAlbumId === destinationAlbumId) return;
-    setPendingDestination(destinationAlbumId);
+    if (!target || busy || running.current || target.currentAlbumId === destinationAlbumId) return;
+    if (
+      destinationAlbumId !== null &&
+      (!index.byId.has(destinationAlbumId) || index.byId.get(destinationAlbumId)?.disabled)
+    )
+      return;
+    running.current = true;
+    setSubmitting(true);
     setError('');
     try {
       await onMove(destinationAlbumId);
@@ -34,61 +52,45 @@ export function AlbumMoveDestinationDialog({ rows, target, labels, busy = false,
     } catch (reason) {
       setError(reason instanceof Error && reason.message ? reason.message : labels.operationFailed);
     } finally {
-      setPendingDestination(undefined);
+      running.current = false;
+      setSubmitting(false);
     }
   }
 
-  function destinationRow(id: string | null, title: string, depth: number) {
-    const current = target?.currentAlbumId === id;
-    const pending = submitting && pendingDestination === id;
-    return (
-      <Button
-        key={id ?? 'top-level'}
-        type="button"
-        variant={current ? 'secondary' : 'ghost'}
-        disabled={busy || submitting || current}
-        aria-current={current ? 'location' : undefined}
-        className="h-10 w-full justify-start gap-2 rounded-none px-3 font-normal"
-        style={{ paddingLeft: 12 + depth * 20 }}
-        onClick={() => void choose(id)}
-      >
-        {depth > 0 && <CornerDownRightIcon className="size-3.5 shrink-0 text-muted-foreground" />}
-        <GalleryVerticalEndIcon className="size-4 shrink-0 text-muted-foreground" />
-        <span className="min-w-0 flex-1 truncate text-left" title={title}>
-          {title}
-        </span>
-        {pending ? (
-          <LoaderCircleIcon className="size-3.5 shrink-0 animate-spin text-muted-foreground" />
-        ) : (
-          current && <CheckIcon className="size-3.5 shrink-0" />
-        )}
-      </Button>
-    );
-  }
-
   return (
-    <Dialog open={Boolean(target)} onOpenChange={(open) => !submitting && onOpenChange(open)}>
-      <DialogContent className="max-w-sm gap-3">
-        <DialogHeader>
+    <Dialog open={Boolean(target)} onOpenChange={(open) => !running.current && onOpenChange(open)}>
+      <DialogContent
+        className="max-w-sm gap-0 overflow-hidden rounded-md p-0"
+        aria-describedby={undefined}
+        onEscapeKeyDown={(event) => {
+          if (running.current) event.preventDefault();
+        }}
+        onInteractOutside={(event) => {
+          if (running.current) event.preventDefault();
+        }}
+      >
+        <DialogHeader className="px-3 py-4 pr-12">
           <DialogTitle>{labels.title}</DialogTitle>
-          <DialogDescription className="sr-only">{target?.title ?? labels.title}</DialogDescription>
         </DialogHeader>
-        <ScrollArea
-          type="always"
-          className={cn(
-            'max-h-80 rounded-lg border bg-background [&_[data-slot=scroll-area-viewport]>div]:!block',
-            error && 'border-destructive/50',
-          )}
-        >
-          <div className="divide-y">
-            {destinationRow(null, labels.topLevel, 0)}
-            {rows.map(({ id, title, depth }) => destinationRow(id, title, depth))}
-          </div>
-        </ScrollArea>
+        <div className="flex min-h-0 max-h-[min(24rem,calc(100dvh-9rem))] flex-col">
+          <AlbumPickerPanel
+            index={index}
+            value={target?.currentAlbumId ?? null}
+            label={labels.title}
+            nullOption={{ kind: 'root', label: labels.topLevel, disabled: currentAlbumId === null }}
+            parentId={parentId}
+            query={query}
+            busy={busy || submitting}
+            error={false}
+            onQueryChange={setQuery}
+            onNavigate={setParentId}
+            onSelect={(id) => void choose(id)}
+          />
+        </div>
         {error && (
-          <p role="alert" className="text-sm text-destructive">
+          <div role="alert" className="px-3 py-2 text-sm text-destructive">
             {error}
-          </p>
+          </div>
         )}
       </DialogContent>
     </Dialog>

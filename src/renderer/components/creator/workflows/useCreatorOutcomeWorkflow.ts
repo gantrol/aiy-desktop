@@ -36,12 +36,12 @@ interface Options {
   captureDraftSaveSnapshot(prompt: CreationDraftPromptSnapshot): DraftSaveSnapshot;
   captureSnapshot(): OutcomeSnapshot;
   createArticleFromDraft(input: DraftContentInput<ArticleContentInput>): Promise<void>;
+  onDraftAnimationCreated(commitIdentity: string): void;
   invalidateAutosaves(): void;
   notify(message: string): void;
   onPromptCaptured(prompt: CreationDraftPromptSnapshot): void;
   requestIdentity: string;
   saveCapturedDraft(snapshot: DraftSaveSnapshot): Promise<CreationDraftDto>;
-  saveDraft(prompt: CreationDraftPromptSnapshot): Promise<CreationDraftDto>;
 }
 
 function messageFor(reason: unknown) {
@@ -84,7 +84,7 @@ export function useCreatorOutcomeWorkflow(options: Options) {
   const notify = useStableCallback(options.notify);
   const onPromptCaptured = useStableCallback(options.onPromptCaptured);
   const saveCapturedDraft = useStableCallback(options.saveCapturedDraft);
-  const saveDraft = useStableCallback(options.saveDraft);
+  const onDraftAnimationCreated = useStableCallback(options.onDraftAnimationCreated);
 
   useEffect(() => {
     revisionRef.current += 1;
@@ -94,6 +94,7 @@ export function useCreatorOutcomeWorkflow(options: Options) {
 
   const start = useStableCallback(async (plan: CreationStartPlan) => {
     if (busyRef.current) return;
+    if (plan.kind === 'animation' && !animation) return;
     let snapshot: OutcomeSnapshot;
     try {
       snapshot = captureSnapshot();
@@ -111,18 +112,6 @@ export function useCreatorOutcomeWorkflow(options: Options) {
     onPromptCaptured(snapshot.prompt);
     invalidateAutosaves();
     try {
-      if (plan.kind === 'animation') {
-        if (hasContent || snapshot.referenceAssets.length) await saveDraft(snapshot.prompt);
-        if (!requestIsCurrent()) return;
-        await animation?.open({
-          forceNew: true,
-          title: snapshot.typedTitle || snapshot.savedDraftTitle,
-          initialPrompt: snapshot.prompt.manualPrompt,
-          assetIds: snapshot.referenceAssets.map((asset) => asset.id),
-          targetAlbumId: snapshot.targetAlbumId,
-        });
-        return;
-      }
       const draftSnapshot = captureDraftSaveSnapshot(snapshot.prompt);
       const draft = await saveCapturedDraft(draftSnapshot);
       if (!requestIsCurrent()) return;
@@ -132,6 +121,18 @@ export function useCreatorOutcomeWorkflow(options: Options) {
         sourceInspirationStashId: snapshot.sourceInspirationStashId,
         targetAlbumId: snapshot.targetAlbumId,
       };
+      if (plan.kind === 'animation') {
+        await animation?.open({
+          forceNew: true,
+          title: snapshot.typedTitle || snapshot.savedDraftTitle,
+          initialPrompt: snapshot.prompt.manualPrompt,
+          assetIds: snapshot.referenceAssets.map((asset) => asset.id),
+          targetAlbumId: snapshot.targetAlbumId,
+          consumeCreationDraft: { id: draft.id, updatedAt: draft.updatedAt },
+          onCreated: () => onDraftAnimationCreated(common.creationDraftCommitIdentity),
+        });
+        return;
+      }
       const sourceDocument = snapshot.prompt.document ?? plainTextBlockDocument(snapshot.prompt.manualPrompt);
       const document =
         plan.kind === 'outline'

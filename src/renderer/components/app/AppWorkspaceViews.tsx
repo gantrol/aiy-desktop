@@ -9,7 +9,7 @@ import type {
   Locale,
   VideoDocumentDto,
 } from '@/shared/contracts';
-import { Activity, lazy, useState, type ComponentProps, type ReactNode } from 'react';
+import { Activity, lazy, useEffect, useRef, useState, type ComponentProps, type ReactNode } from 'react';
 
 const DictionaryScreen = lazy(() =>
   import('@/renderer/components/DictionaryScreen').then((module) => ({ default: module.DictionaryScreen })),
@@ -48,9 +48,8 @@ export interface AppWorkspaceLoadingBoundaries {
 }
 
 interface Props {
-  groupActive: boolean;
+  surfaceVisible: boolean;
   view: AppView;
-  visitedViews: ReadonlySet<AppView>;
   data: BootstrapDto;
   dataRevision: number;
   locale: Locale;
@@ -122,32 +121,48 @@ const creationLibraryViews: readonly AppView[] = ['creator', 'documents'];
 const documentViews: readonly AppView[] = ['documents'];
 const dictionaryViews: readonly AppView[] = ['dictionary'];
 const galleryViews: readonly AppView[] = ['gallery'];
+const searchViews: readonly AppView[] = ['search'];
+const calendarViews: readonly AppView[] = ['calendar'];
 const companionViews: readonly AppView[] = ['companion'];
+const extensionViews: readonly AppView[] = ['packs', 'codexImages'];
 const transitionShowcaseViews: readonly AppView[] = ['transitionShowcase'];
 const aiCenterViews: readonly AppView[] = ['aiCenter'];
 
-function groupOwnsView(groupActive: boolean, view: AppView, expected: readonly AppView[]) {
-  return groupActive && expected.includes(view);
+function surfaceOwnsView(surfaceVisible: boolean, view: AppView, expected: readonly AppView[]) {
+  return surfaceVisible && expected.includes(view);
 }
 
-function activeExtensionSurface(groupActive: boolean, view: AppView) {
-  if (!groupActive) return null;
+function workspaceActivityMode(surfaceVisible: boolean, view: AppView, expected: readonly AppView[]) {
+  return surfaceVisible && expected.includes(view) ? ('visible' as const) : ('hidden' as const);
+}
+
+function activeExtensionSurface(view: AppView) {
   if (view === 'codexImages') return 'discovery' as const;
   return view === 'packs' ? ('center' as const) : null;
 }
 
 function shouldMountCreationWorkspace(
-  data: BootstrapDto,
-  view: AppView,
-  visitedViews: ReadonlySet<AppView>,
-  location: AppLocation,
+  { data, surfaceVisible, view, location }: Pick<Props, 'data' | 'surfaceVisible' | 'view' | 'location'>,
+  retainedViews: ReadonlySet<AppView>,
 ) {
   const libraryStartVisible = data.libraryEmpty && view === 'creator' && location.creator.surface === 'default';
-  return (
-    !libraryStartVisible &&
-    (view === 'creator' || view === 'documents' || !data.libraryEmpty) &&
-    (visitedViews.has('creator') || visitedViews.has('documents'))
-  );
+  const currentViewIsCreationWorkspace = surfaceVisible && creationLibraryViews.includes(view);
+  const retainEditorInVisibleTab =
+    surfaceVisible && !data.libraryEmpty && (retainedViews.has('creator') || retainedViews.has('documents'));
+  return !libraryStartVisible && (currentViewIsCreationWorkspace || retainEditorInVisibleTab);
+}
+
+function useRetainedCreationViews(surfaceVisible: boolean, view: AppView) {
+  // Navigation history must not recreate every previously visited workspace after a renderer restart.
+  const retainedViews = useRef(new Set<AppView>());
+  useEffect(() => {
+    if (!surfaceVisible) {
+      retainedViews.current.clear();
+      return;
+    }
+    if (creationLibraryViews.includes(view)) retainedViews.current.add(view);
+  }, [surfaceVisible, view]);
+  return retainedViews.current;
 }
 
 function useCreatorDocumentUpdate({
@@ -173,23 +188,22 @@ function useCreatorDocumentUpdate({
 }
 
 function SearchWorkspaceView({
-  groupActive,
+  surfaceVisible,
   view,
-  visitedViews,
   location,
   loadingBoundaries,
   onSearchNavigate,
   onSearchResultOpen,
 }: Pick<
   Props,
-  'groupActive' | 'view' | 'visitedViews' | 'location' | 'loadingBoundaries' | 'onSearchNavigate' | 'onSearchResultOpen'
+  'surfaceVisible' | 'view' | 'location' | 'loadingBoundaries' | 'onSearchNavigate' | 'onSearchResultOpen'
 >) {
-  if (!visitedViews.has('search')) return null;
+  if (!surfaceVisible || view !== 'search') return null;
   return (
-    <Activity mode={view === 'search' ? 'visible' : 'hidden'}>
+    <Activity mode={workspaceActivityMode(surfaceVisible, view, searchViews)}>
       {loadingBoundaries.search(
         <ContentSearchScreen
-          active={groupActive && view === 'search'}
+          active={surfaceOwnsView(surfaceVisible, view, searchViews)}
           location={location.search}
           onNavigate={onSearchNavigate}
           onOpen={onSearchResultOpen}
@@ -200,20 +214,19 @@ function SearchWorkspaceView({
 }
 
 function CompanionWorkspaceView({
-  groupActive,
+  surfaceVisible,
   view,
-  visitedViews,
   loadingBoundaries,
   locale,
   notify,
-}: Pick<Props, 'groupActive' | 'view' | 'visitedViews' | 'loadingBoundaries' | 'locale' | 'notify'>) {
-  if (!visitedViews.has('companion')) return null;
+}: Pick<Props, 'surfaceVisible' | 'view' | 'loadingBoundaries' | 'locale' | 'notify'>) {
+  if (!surfaceVisible || view !== 'companion') return null;
   return (
-    <Activity mode={view === 'companion' ? 'visible' : 'hidden'}>
+    <Activity mode={workspaceActivityMode(surfaceVisible, view, companionViews)}>
       <div className="size-full">
         {loadingBoundaries.companion(
           <CompanionHistoryScreen
-            active={groupOwnsView(groupActive, view, companionViews)}
+            active={surfaceOwnsView(surfaceVisible, view, companionViews)}
             locale={locale}
             notify={notify}
           />,
@@ -226,42 +239,31 @@ function CompanionWorkspaceView({
 function CalendarWorkspaceView(
   props: Pick<
     Props,
-    | 'groupActive'
-    | 'view'
-    | 'visitedViews'
-    | 'data'
-    | 'dataRevision'
-    | 'loadingBoundaries'
-    | 'onCalendarOpenLocation'
-    | 'notify'
+    'surfaceVisible' | 'view' | 'data' | 'dataRevision' | 'loadingBoundaries' | 'onCalendarOpenLocation' | 'notify'
   >,
 ) {
-  const { groupActive, view, visitedViews, data, dataRevision, loadingBoundaries, notify } = props;
+  const { surfaceVisible, view, data, dataRevision, loadingBoundaries, notify } = props;
+  if (!surfaceVisible || view !== 'calendar') return null;
   return (
-    <>
-      {visitedViews.has('calendar') && (
-        <Activity mode={view === 'calendar' ? 'visible' : 'hidden'}>
-          {loadingBoundaries.calendar(
-            <CalendarScreen
-              spaceId={data.spaceId}
-              data={data}
-              dataRevision={dataRevision}
-              active={groupActive && view === 'calendar'}
-              onOpenLocation={props.onCalendarOpenLocation}
-              notify={notify}
-            />,
-          )}
-        </Activity>
+    <Activity mode={workspaceActivityMode(surfaceVisible, view, calendarViews)}>
+      {loadingBoundaries.calendar(
+        <CalendarScreen
+          spaceId={data.spaceId}
+          data={data}
+          dataRevision={dataRevision}
+          active={surfaceOwnsView(surfaceVisible, view, calendarViews)}
+          onOpenLocation={props.onCalendarOpenLocation}
+          notify={notify}
+        />,
       )}
-    </>
+    </Activity>
   );
 }
 
 export function AppWorkspaceViews(props: Props) {
   const {
-    groupActive,
+    surfaceVisible,
     view,
-    visitedViews,
     data,
     dataRevision,
     locale,
@@ -307,6 +309,7 @@ export function AppWorkspaceViews(props: Props) {
     onRetryGeneration,
   } = props;
   const { messages } = useI18n();
+  const retainedCreationViews = useRetainedCreationViews(surfaceVisible, view);
   const [creatorDocumentUpdate, handleCreatorDocumentsChange] = useCreatorDocumentUpdate({
     location,
     onVideoDocumentsChange,
@@ -314,8 +317,8 @@ export function AppWorkspaceViews(props: Props) {
   });
   return (
     <>
-      {shouldMountCreationWorkspace(data, view, visitedViews, location) && (
-        <Activity mode={view === 'creator' || view === 'documents' ? 'visible' : 'hidden'}>
+      {shouldMountCreationWorkspace(props, retainedCreationViews) && (
+        <Activity mode={workspaceActivityMode(surfaceVisible, view, creationLibraryViews)}>
           <div className="flex size-full min-h-0 flex-col">
             {materialsReturnContext?.destination === view && !comparisonFullWindow && !creationPromptFullWindow && (
               <ReturnToMaterialsBar
@@ -331,8 +334,8 @@ export function AppWorkspaceViews(props: Props) {
                   dataRevision={dataRevision}
                   locale={locale}
                   defaultPromptLocale={defaultPromptLocale}
-                  active={groupOwnsView(groupActive, view, creatorViews)}
-                  creationLibraryActive={creationLibraryViews.includes(view)}
+                  active={surfaceOwnsView(surfaceVisible, view, creatorViews)}
+                  creationLibraryActive={surfaceVisible && creationLibraryViews.includes(view)}
                   location={location.creator}
                   comparisonFullWindow={comparisonFullWindow}
                   promptFullWindow={creationPromptFullWindow}
@@ -341,10 +344,11 @@ export function AppWorkspaceViews(props: Props) {
                   selectedDocumentId={location.documents.documentId}
                   selectedDocumentAlbumId={selectedDocumentAlbumId(location.documents)}
                   documentWorkspace={
-                    visitedViews.has('documents')
+                    view === 'documents' ||
+                    (surfaceVisible && view === 'creator' && retainedCreationViews.has('documents'))
                       ? loadingBoundaries.documents(
                           <VideoDocumentsScreen
-                            active={groupOwnsView(groupActive, view, documentViews)}
+                            active={surfaceOwnsView(surfaceVisible, view, documentViews)}
                             libraryVisible={false}
                             externalDocumentUpdate={creatorDocumentUpdate}
                             albums={data.albums}
@@ -382,8 +386,8 @@ export function AppWorkspaceViews(props: Props) {
           </div>
         </Activity>
       )}
-      {visitedViews.has('dictionary') && (
-        <Activity mode={view === 'dictionary' ? 'visible' : 'hidden'}>
+      {surfaceVisible && view === 'dictionary' && (
+        <Activity mode={workspaceActivityMode(surfaceVisible, view, dictionaryViews)}>
           <div className="flex size-full min-h-0 flex-col">
             {materialsReturnContext?.destination === 'dictionary' && (
               <ReturnToMaterialsBar
@@ -396,7 +400,7 @@ export function AppWorkspaceViews(props: Props) {
               {loadingBoundaries.dictionary(
                 <DictionaryScreen
                   data={data}
-                  active={groupOwnsView(groupActive, view, dictionaryViews)}
+                  active={surfaceOwnsView(surfaceVisible, view, dictionaryViews)}
                   location={location.dictionary}
                   onNavigate={onDictionaryNavigate}
                   onNavigateBack={onNavigateBack}
@@ -410,15 +414,15 @@ export function AppWorkspaceViews(props: Props) {
           </div>
         </Activity>
       )}
-      {visitedViews.has('gallery') && (
-        <Activity mode={view === 'gallery' ? 'visible' : 'hidden'}>
+      {surfaceVisible && view === 'gallery' && (
+        <Activity mode={workspaceActivityMode(surfaceVisible, view, galleryViews)}>
           <div className="size-full">
             {loadingBoundaries.gallery(
               <GalleryScreen
                 spaceId={data.spaceId}
                 libraryKey={data.spaceName}
                 dataRevision={dataRevision}
-                active={groupOwnsView(groupActive, view, galleryViews)}
+                active={surfaceOwnsView(surfaceVisible, view, galleryViews)}
                 location={location.gallery}
                 onNavigate={onGalleryNavigate}
                 onHistoryNavigationGuardChange={onHistoryNavigationGuardChange}
@@ -440,12 +444,13 @@ export function AppWorkspaceViews(props: Props) {
       <SearchWorkspaceView {...props} />
       <CalendarWorkspaceView {...props} />
       <CompanionWorkspaceView {...props} />
-      {(visitedViews.has('packs') || visitedViews.has('codexImages')) && (
-        <Activity mode={view === 'packs' || view === 'codexImages' ? 'visible' : 'hidden'}>
+      {surfaceVisible && extensionViews.includes(view) && (
+        <Activity mode={workspaceActivityMode(surfaceVisible, view, extensionViews)}>
           <div className="size-full">
             {loadingBoundaries.extensions(
               <ExtensionCenterScreen
-                activeSurface={activeExtensionSurface(groupActive, view)}
+                onArticleSaved={props.onArticleSaved}
+                activeSurface={activeExtensionSurface(view)}
                 data={data}
                 dataRevision={dataRevision}
                 extensions={data.extensions ?? []}
@@ -461,12 +466,12 @@ export function AppWorkspaceViews(props: Props) {
           </div>
         </Activity>
       )}
-      {visitedViews.has('transitionShowcase') && (
-        <Activity mode={view === 'transitionShowcase' ? 'visible' : 'hidden'}>
+      {surfaceVisible && view === 'transitionShowcase' && (
+        <Activity mode={workspaceActivityMode(surfaceVisible, view, transitionShowcaseViews)}>
           <div className="size-full">
             {loadingBoundaries.extensions(
               <TransitionShowcaseScreen
-                active={groupOwnsView(groupActive, view, transitionShowcaseViews)}
+                active={surfaceOwnsView(surfaceVisible, view, transitionShowcaseViews)}
                 libraryKey={data.spaceName}
                 dataRevision={dataRevision}
                 terms={data.terms}
@@ -477,12 +482,12 @@ export function AppWorkspaceViews(props: Props) {
           </div>
         </Activity>
       )}
-      {visitedViews.has('aiCenter') && (
-        <Activity mode={view === 'aiCenter' ? 'visible' : 'hidden'}>
+      {surfaceVisible && view === 'aiCenter' && (
+        <Activity mode={workspaceActivityMode(surfaceVisible, view, aiCenterViews)}>
           <div className="size-full">
             {loadingBoundaries.aiCenter(
               <AiCenterScreen
-                active={groupOwnsView(groupActive, view, aiCenterViews)}
+                active={surfaceOwnsView(surfaceVisible, view, aiCenterViews)}
                 data={data}
                 locale={locale}
                 location={location.aiCenter}

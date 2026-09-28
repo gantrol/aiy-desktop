@@ -1,4 +1,5 @@
 import type { MouseEventHandler } from 'react';
+import { FolderIcon } from 'lucide-react';
 import type { AssetDto } from '@/shared/contracts';
 import { AlbumGlyphIcon } from '@/renderer/icons';
 import { albumCoverAssets, ALBUM_COVER_LAYERS } from '@/renderer/components/albums/albumCoverAssets';
@@ -11,9 +12,15 @@ import {
   type MediaStackItem,
 } from '@/renderer/components/media/MediaStackPreview';
 import { CollapsibleTrigger } from '@/renderer/components/ui/collapsible';
+import { Button } from '@/renderer/components/ui/button';
 import { TREE_BRANCH_INTERACTION } from '@/renderer/components/albums/treeBranchInteraction';
 import { TreeBranchNodeConnector, TreeDisclosureRail } from '@/renderer/components/albums/TreeDisclosureRail';
-import { getTreeNodeAnchor, type TreeBranchItemTopology } from '@/renderer/components/albums/treeConnectionGeometry';
+import {
+  COMPACT_TREE_NODE_METRICS,
+  getTreeNodeAnchor,
+  TREE_CONNECTION_GEOMETRY,
+  type TreeBranchItemTopology,
+} from '@/renderer/components/albums/treeConnectionGeometry';
 import { useTreeBranchPreviewGesture } from '@/renderer/components/albums/useTreeBranchPreviewGesture';
 
 export type AlbumTreeOverlayStyle = 'blurred' | 'solid';
@@ -25,6 +32,7 @@ interface Props {
   previewExpanded?: boolean;
   animate?: boolean;
   expandable: boolean;
+  compact?: boolean;
   expandLabel: string;
   overlayStyle?: AlbumTreeOverlayStyle;
   onClick: MouseEventHandler<HTMLButtonElement>;
@@ -103,6 +111,7 @@ export function AlbumTreePreview({
   previewExpanded: controlledPreviewExpanded,
   animate = true,
   expandable,
+  compact = false,
   expandLabel,
   overlayStyle = 'blurred',
   onClick,
@@ -118,6 +127,8 @@ export function AlbumTreePreview({
   className,
 }: Props) {
   const stackItems: MediaStackItem[] = albumCoverAssets(assets, ALBUM_COVER_LAYERS).map((asset) => ({ asset }));
+  const compactIcon = compact && stackItems.length === 0;
+  const rowHeight = compactIcon ? TREE_CONNECTION_GEOMETRY.compactRowHeight : TREE_CONNECTION_GEOMETRY.rowHeight;
   const canSpreadCover = stackItems.length > 1;
   const previewGesture = useTreeBranchPreviewGesture({
     open,
@@ -129,7 +140,9 @@ export function AlbumTreePreview({
   });
   const previewExpanded = controlledPreviewExpanded ?? previewGesture.previewExpanded;
   const spread = previewExpanded ? 'expanded' : open ? 'settled' : 'collapsed';
-  const nodeAnchor = getTreeNodeAnchor(getMediaStackPrimaryFrameBounds('tree', stackItems, ALBUM_COVER_LAYERS));
+  const nodeAnchor = compactIcon
+    ? getTreeNodeAnchor(COMPACT_TREE_NODE_METRICS.bounds, 0)
+    : getTreeNodeAnchor(getMediaStackPrimaryFrameBounds('tree', stackItems, ALBUM_COVER_LAYERS));
   const expandedBounds = getMediaStackHorizontalBounds(
     'tree',
     stackItems,
@@ -138,11 +151,17 @@ export function AlbumTreePreview({
     TREE_BRANCH_INTERACTION.previewSpreadStepPx,
   );
   // Reserve the expanded footprint once: hovering must not push the title sideways.
-  const previewWidth = Math.ceil(Math.max(getMediaStackLayout('tree').containerWidth, expandedBounds.right));
+  const previewWidth = compactIcon
+    ? COMPACT_TREE_NODE_METRICS.width
+    : Math.ceil(Math.max(getMediaStackLayout('tree').containerWidth, expandedBounds.right));
   const gestureSurfaceLeft = Math.min(0, expandedBounds.left);
   const gestureSurfaceRight = Math.max(getMediaStackLayout('tree').containerWidth, expandedBounds.right);
 
-  const mediaStack = (
+  const mediaStack = compactIcon ? (
+    <span className="mx-1 grid size-7 place-items-center text-muted-foreground">
+      <FolderIcon className="size-4" aria-hidden="true" />
+    </span>
+  ) : (
     <MediaStackPreview
       className={onAssetSelect ? 'pointer-events-none relative z-10' : undefined}
       size="tree"
@@ -166,14 +185,16 @@ export function AlbumTreePreview({
       role="group"
       aria-label={title}
       className={cn(
-        'relative z-10 -ml-1 flex h-[68px] shrink-0 items-center overflow-visible',
+        'relative z-10 -ml-1 flex shrink-0 items-center overflow-visible',
         previewExpanded && 'z-30',
         className,
       )}
-      style={{ width: previewWidth }}
+      style={{ width: previewWidth, height: rowHeight }}
       {...previewGesture.bindings}
     >
-      {branchTopology && <TreeBranchNodeConnector topology={branchTopology} anchor={nodeAnchor} />}
+      {branchTopology && (
+        <TreeBranchNodeConnector topology={branchTopology} anchor={nodeAnchor} rowHeight={rowHeight} />
+      )}
       {(open || previewExpanded) && canSpreadCover && (
         <span
           data-album-cover-gesture-surface
@@ -185,7 +206,7 @@ export function AlbumTreePreview({
       {expandable &&
         (disclosureInteractive ? (
           <CollapsibleTrigger asChild>
-            <TreeDisclosureRail attached open={open} label={expandLabel} anchor={nodeAnchor} />
+            <TreeDisclosureRail attached open={open} label={expandLabel} anchor={nodeAnchor} rowHeight={rowHeight} />
           </CollapsibleTrigger>
         ) : (
           <TreeDisclosureRail
@@ -193,12 +214,13 @@ export function AlbumTreePreview({
             open={open}
             label={expandLabel}
             anchor={nodeAnchor}
+            rowHeight={rowHeight}
             className="pointer-events-none"
             tabIndex={-1}
             aria-hidden="true"
           />
         ))}
-      {onAssetSelect ? (
+      {onAssetSelect && !compactIcon ? (
         <span className="relative z-10 grid shrink-0 place-items-center rounded-lg">
           <button
             type="button"
@@ -211,16 +233,17 @@ export function AlbumTreePreview({
           <AlbumCoverBadge label={title} overlayStyle={overlayStyle} onClick={onClick} onDoubleClick={onDoubleClick} />
         </span>
       ) : (
-        <button
+        <Button
           type="button"
-          className="relative z-10 grid shrink-0 place-items-center rounded-lg outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 focus-visible:ring-offset-background"
+          variant="ghost"
+          className="relative z-10 grid size-auto shrink-0 place-items-center rounded-sm p-0 outline-none hover:bg-transparent focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 focus-visible:ring-offset-background"
           aria-label={title}
           onClick={onClick}
           onDoubleClick={onDoubleClick}
         >
           {mediaStack}
-          <AlbumCoverBadge overlayStyle={overlayStyle} />
-        </button>
+          {!compactIcon && <AlbumCoverBadge overlayStyle={overlayStyle} />}
+        </Button>
       )}
     </span>
   );

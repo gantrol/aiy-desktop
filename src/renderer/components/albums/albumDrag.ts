@@ -1,13 +1,16 @@
 import type { DragEvent as ReactDragEvent } from 'react';
 import type { AssetFileDragIntent, MaterialSelectionTargetInput } from '@/shared/contracts';
+import { writeReferenceDrag } from '@/renderer/lib/itemReferenceDrag';
+import { itemDragIntent } from '@/renderer/components/albums/itemDrag';
 
 export const ALBUM_DRAG_TYPE = 'application/x-aiy-album';
 export const CREATION_ITEM_DRAG_TYPE = 'application/x-aiy-creation-item';
-export const CREATION_COLLECTION_DRAG_TYPE = 'application/x-aiy-creation-collection';
 export const MATERIAL_ALBUM_DRAG_TYPE = 'application/x-aiy-material-album';
 export const MATERIALS_DRAG_TYPE = 'application/x-aiy-materials';
+const materialOriginType = 'application/x-aiy-material-origin';
+let materialOrigin: string | undefined;
 
-type CreationTreeDrag = { kind: 'ALBUM' | 'CREATION_ITEM'; id: string };
+export type CreationTreeDrag = { kind: 'ALBUM' | 'CREATION_ITEM'; id: string };
 let activeCreationTreeDrag: (CreationTreeDrag & { finish(): void }) | null = null;
 
 export function endCreationTreeDrag() {
@@ -35,12 +38,6 @@ export function readCreationTreeDrag(dataTransfer: DataTransfer): CreationTreeDr
   return transferredId && transferredId !== session.id ? null : { kind: session.kind, id: session.id };
 }
 
-interface CreationCollectionDragSession {
-  id: number;
-  albumId: string;
-  finish(): void;
-}
-
 interface MaterialAlbumDragSession {
   id: number;
   albumId: string;
@@ -51,12 +48,11 @@ interface NativeMaterialsDragSession {
   requestId: string;
   intent: AssetFileDragIntent;
   targets: MaterialSelectionTargetInput[];
+  sourceAlbumId?: string;
   finish(): void;
 }
 
 let activeNativeMaterialsDrag: NativeMaterialsDragSession | null = null;
-let nextCreationCollectionDragId = 0;
-let activeCreationCollectionDrag: CreationCollectionDragSession | null = null;
 let nextMaterialAlbumDragId = 0;
 let activeMaterialAlbumDrag: MaterialAlbumDragSession | null = null;
 
@@ -75,7 +71,7 @@ function uniqueMaterialTargets(targets: readonly MaterialSelectionTargetInput[])
  * material identities alongside the OS drag so a drop back inside this
  * renderer can file existing materials instead of importing their files.
  */
-export function beginNativeMaterialsDrag(targets: readonly MaterialSelectionTargetInput[]) {
+export function beginNativeMaterialsDrag(targets: readonly MaterialSelectionTargetInput[], sourceAlbumId?: string) {
   activeNativeMaterialsDrag?.finish();
   const requestId = window.crypto.randomUUID();
   const intent: AssetFileDragIntent = 'EXPORT_FILES';
@@ -83,7 +79,7 @@ export function beginNativeMaterialsDrag(targets: readonly MaterialSelectionTarg
     window.removeEventListener('dragend', finish, true);
     if (activeNativeMaterialsDrag?.requestId === requestId) activeNativeMaterialsDrag = null;
   };
-  activeNativeMaterialsDrag = { requestId, intent, targets: uniqueMaterialTargets(targets), finish };
+  activeNativeMaterialsDrag = { requestId, intent, targets: uniqueMaterialTargets(targets), sourceAlbumId, finish };
   window.addEventListener('dragend', finish, { capture: true, once: true });
   return { requestId, intent, finish };
 }
@@ -96,12 +92,13 @@ export function startNativeAssetFilesDrag(
   event: ReactDragEvent<HTMLElement>,
   assetIds: readonly string[],
   targets: readonly MaterialSelectionTargetInput[],
+  sourceAlbumId?: string,
 ) {
   const uniqueAssetIds = [...new Set(assetIds.filter(Boolean))];
   if (!uniqueAssetIds.length) return null;
   event.preventDefault();
   event.stopPropagation();
-  const session = beginNativeMaterialsDrag(targets);
+  const session = beginNativeMaterialsDrag(targets, sourceAlbumId);
   try {
     window.desktopApi.assetFilesStartDrag({
       requestId: session.requestId,
@@ -155,40 +152,10 @@ export function hasExternalFilesDrag(dataTransfer: DataTransfer) {
   return dataTransfer.types.includes('Files') && !hasMaterialsDrag(dataTransfer);
 }
 
-export function beginCreationCollectionDrag(dataTransfer: DataTransfer, albumId: string) {
-  activeCreationCollectionDrag?.finish();
-  const id = ++nextCreationCollectionDragId;
-  dataTransfer.effectAllowed = 'move';
-  dataTransfer.setData(CREATION_COLLECTION_DRAG_TYPE, albumId);
-  dataTransfer.setData('text/plain', albumId);
-  const finish = () => {
-    window.removeEventListener('dragend', finish, true);
-    if (activeCreationCollectionDrag?.id === id) activeCreationCollectionDrag = null;
-  };
-  activeCreationCollectionDrag = { id, albumId, finish };
-  window.addEventListener('dragend', finish, { capture: true, once: true });
-  return finish;
-}
-
-export function endCreationCollectionDrag() {
-  activeCreationCollectionDrag?.finish();
-}
-
-export function hasCreationCollectionDrag(dataTransfer: DataTransfer) {
-  return dataTransfer.types.includes(CREATION_COLLECTION_DRAG_TYPE) && Boolean(activeCreationCollectionDrag);
-}
-
-export function readCreationCollectionDrag(dataTransfer: DataTransfer) {
-  const session = activeCreationCollectionDrag;
-  if (!session || !dataTransfer.types.includes(CREATION_COLLECTION_DRAG_TYPE)) return null;
-  const transferredAlbumId = dataTransfer.getData(CREATION_COLLECTION_DRAG_TYPE).trim();
-  return transferredAlbumId && transferredAlbumId !== session.albumId ? null : session.albumId;
-}
-
 export function beginMaterialAlbumDrag(dataTransfer: DataTransfer, albumId: string) {
   activeMaterialAlbumDrag?.finish();
   const id = ++nextMaterialAlbumDragId;
-  dataTransfer.effectAllowed = 'move';
+  dataTransfer.effectAllowed = 'copyMove';
   dataTransfer.setData(MATERIAL_ALBUM_DRAG_TYPE, albumId);
   dataTransfer.setData('text/plain', albumId);
   const finish = () => {
@@ -216,7 +183,8 @@ export function readMaterialAlbumDrag(dataTransfer: DataTransfer) {
 }
 
 export function writeAlbumDrag(dataTransfer: DataTransfer, albumId: string) {
-  dataTransfer.effectAllowed = 'move';
+  dataTransfer.effectAllowed = 'all';
+  writeReferenceDrag(dataTransfer, [{ source: { kind: 'ALBUM', id: albumId } }]);
   dataTransfer.setData(ALBUM_DRAG_TYPE, albumId);
   dataTransfer.setData('text/plain', albumId);
   beginCreationTreeDrag({ kind: 'ALBUM', id: albumId });
@@ -225,7 +193,8 @@ export function writeAlbumDrag(dataTransfer: DataTransfer, albumId: string) {
 export function writeCreationItemDrag(dataTransfer: DataTransfer, creationItemId: string) {
   const id = creationItemId.trim();
   if (!id) throw new Error('A creation-item drag requires an ID');
-  dataTransfer.effectAllowed = 'move';
+  dataTransfer.effectAllowed = 'all';
+  writeReferenceDrag(dataTransfer, [{ source: { kind: 'CREATION_ITEM', id } }]);
   dataTransfer.setData(CREATION_ITEM_DRAG_TYPE, id);
   dataTransfer.setData('text/plain', id);
   beginCreationTreeDrag({ kind: 'CREATION_ITEM', id });
@@ -235,10 +204,36 @@ export function readCreationItemDrag(dataTransfer: DataTransfer): string | null 
   return dataTransfer.getData(CREATION_ITEM_DRAG_TYPE).trim() || null;
 }
 
-export function writeMaterialsDrag(dataTransfer: DataTransfer, targets: readonly MaterialSelectionTargetInput[]) {
-  dataTransfer.effectAllowed = 'copy';
+export function writeMaterialsDrag(
+  dataTransfer: DataTransfer,
+  targets: readonly MaterialSelectionTargetInput[],
+  sourceAlbumId?: string,
+) {
+  dataTransfer.effectAllowed = 'copyMove';
   dataTransfer.setData(MATERIALS_DRAG_TYPE, JSON.stringify(targets));
+  materialOrigin = sourceAlbumId;
+  if (sourceAlbumId) dataTransfer.setData(materialOriginType, sourceAlbumId);
+  window.addEventListener(
+    'dragend',
+    () => {
+      materialOrigin = undefined;
+    },
+    { once: true },
+  );
   dataTransfer.setData('text/plain', `${targets.length}`);
+}
+
+export function materialDropSource(event: ReactDragEvent): string | undefined {
+  if (itemDragIntent(event) !== 'MOVE') return undefined;
+  if (event.dataTransfer.types.includes(MATERIALS_DRAG_TYPE))
+    return event.dataTransfer.getData(materialOriginType) || materialOrigin;
+  return activeNativeMaterialsDrag?.sourceAlbumId;
+}
+
+export function materialDropEffect(event: ReactDragEvent): 'move' | 'copy' | 'none' {
+  const intent = itemDragIntent(event);
+  if (intent !== 'MOVE' && intent !== 'COPY') return 'none';
+  return materialDropSource(event) ? 'move' : 'copy';
 }
 
 export function readMaterialsDrag(dataTransfer: DataTransfer): MaterialSelectionTargetInput[] {

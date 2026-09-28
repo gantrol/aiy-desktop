@@ -54,6 +54,11 @@ export const linkCardAttributesSchema = z.object({
   application: linkCardApplicationSchema.nullable().optional(),
 });
 export type LinkCardAttributes = z.infer<typeof linkCardAttributesSchema>;
+export const linkPreviewFailureSchema = z.object({
+  stage: z.enum(['page', 'image']),
+  code: z.enum(['ADDRESS_BLOCKED', 'PROXY', 'TIMEOUT', 'HTTP', 'TOO_LARGE', 'UNSUPPORTED', 'BUSY', 'NETWORK']),
+});
+export type LinkPreviewFailure = z.infer<typeof linkPreviewFailureSchema>;
 export const linkPreviewSchema = z.object({
   url: linkCardUrlSchema,
   kind: z.enum(['CODEX', 'X', 'WEB']),
@@ -67,6 +72,7 @@ export const linkPreviewSchema = z.object({
   quote: z.string().max(20_000).nullable(),
   author: z.string().max(200).nullable(),
   available: z.boolean(),
+  failure: linkPreviewFailureSchema.nullable(),
 });
 export type LinkPreview = z.infer<typeof linkPreviewSchema>;
 
@@ -81,5 +87,6 @@ export function fallbackLinkPreview(url: string): LinkPreview {
     quote: null,
     author: null,
     available: target?.kind === 'CODEX',
+    failure: null,
   };
 }

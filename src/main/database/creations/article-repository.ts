@@ -37,6 +37,8 @@ import {
 import { assertBlockDocumentReady } from '@/shared/contracts/block-document';
 import { createHash } from 'node:crypto';
 import { ulid } from 'ulid';
+import { articleProvenance, type ArticleWriteContext } from '@/main/database/creations/article-provenance';
+import { parseContentProvenance, type ContentProvenance } from '@/shared/contracts/content-provenance';
 
 function assetDto(row: JsonMap): AssetDto {
   const id = text(row.id);
@@ -58,6 +60,10 @@ function contentHash(content: ArticleContentInput) {
 }
 
 export class ArticleRepository {
+  private captureReferenceHistory?: (articleId: string, revisionId: string, content: ArticleContentInput) => void;
+  attachReferenceHistory(capture: (articleId: string, revisionId: string, content: ArticleContentInput) => void) {
+    this.captureReferenceHistory = capture;
+  }
   private readonly creationItems: CreationItemRepository;
   private readonly elements: ArticleElementRepository;
   private readonly comments: ArticleCommentRepository;
@@ -80,7 +86,7 @@ export class ArticleRepository {
     const rows = this.db
       .prepare(
         `SELECT article.*, revision.id AS revision_id, revision.revision_no,
-          revision.article_id AS revision_article_id, revision.content_json, revision.content_hash,
+          revision.article_id AS revision_article_id, revision.content_json, revision.content_hash, revision.provenance_json,
           revision.content_pack_id, revision.content_pack_entry_index
         FROM articles article
         JOIN article_revisions revision ON revision.id = article.current_revision_id
@@ -131,7 +137,7 @@ export class ArticleRepository {
     const rows = this.db
       .prepare(
         `SELECT revision.id AS revision_id, revision.article_id, revision.revision_no,
-          revision.content_hash, revision.created_at
+          revision.content_hash, revision.provenance_json, revision.created_at
         FROM article_revisions revision
         WHERE revision.article_id = ?
           AND (? IS NULL OR revision.revision_no < ?)
@@ -146,6 +152,7 @@ export class ArticleRepository {
       revisionNo: Number(row.revision_no),
       contentHash: text(row.content_hash),
       createdAt: text(row.created_at),
+      provenance: parseContentProvenance(row.provenance_json),
     }));
 
     return {
@@ -160,7 +167,7 @@ export class ArticleRepository {
     const row = this.db
       .prepare(
         `SELECT article.id, revision.id AS revision_id, revision.revision_no,
-          revision.article_id AS revision_article_id, revision.content_json, revision.content_hash,
+          revision.article_id AS revision_article_id, revision.content_json, revision.content_hash, revision.provenance_json,
           revision.content_pack_id, revision.content_pack_entry_index,
           revision.created_at AS revision_created_at
         FROM articles article
@@ -180,12 +187,14 @@ export class ArticleRepository {
       contentHash: text(row.content_hash),
       elements: this.elements.listPlacements(text(row.revision_id)),
       createdAt: text(row.revision_created_at),
+      provenance: parseContentProvenance(row.provenance_json),
     };
   }
 
   save(
     input: ArticleSaveInput,
     identity?: { requestId: string; creationItemId?: string; newCreationItemId?: string },
+    context?: ArticleWriteContext,
   ): ArticleDto {
     return this.db.transaction(() => {
       const content = normalizeArticleContent(input.content);
@@ -221,7 +230,8 @@ export class ArticleRepository {
           VALUES (?, ?, ?, NULL, 'ACTIVE', ?, ?, NULL, NULL)`,
         )
         .run(id, input.albumId, input.sourceInspirationStashId, timestamp, timestamp);
-      const revisionId = this.insertRevision(id, 1, content, hash, timestamp);
+      const provenance = articleProvenance(context);
+      const revisionId = this.insertRevision(id, 1, content, hash, timestamp, provenance);
       this.db.prepare('UPDATE articles SET current_revision_id = ? WHERE id = ?').run(revisionId, id);
       const form = { role: 'ARTICLE' as const, entity: { kind: 'ARTICLE' as const, id }, anchorKey: null };
       const registration = identity?.creationItemId
@@ -240,6 +250,7 @@ export class ArticleRepository {
           creationItemId: registration.item.id,
           sourceInspirationStashId: input.sourceInspirationStashId,
           revisionId,
+          ...(provenance ? { provenance } : {}),
         },
         { affectsFileView: false },
       );
@@ -270,7 +281,7 @@ export class ArticleRepository {
     return this.insertRevision(articleId, revisionNo, content, hash, now());
   }
 
-  saveRevision(input: ArticleRevisionSaveInput): ArticleRevisionSaveResult {
+  saveRevision(input: ArticleRevisionSaveInput, context?: ArticleWriteContext): ArticleRevisionSaveResult {
     const save = (): ArticleRevisionSaveResult => {
       const content = normalizeArticleContent(input.content);
       assertBlockDocumentReady(content.document);
@@ -306,6 +317,7 @@ export class ArticleRepository {
       }
 
       const timestamp = now();
+      const provenance = articleProvenance(context, currentArticle.provenance, currentArticle.revisionId);
       const revisionId = this.insertRevision(
         input.articleId,
         Number(
@@ -317,6 +329,7 @@ export class ArticleRepository {
         content,
         hash,
         timestamp,
+        provenance,
       );
       if (input.elements) {
         this.elements.savePlacements(input.articleId, revisionId, input.elements, timestamp);
@@ -345,6 +358,7 @@ export class ArticleRepository {
           requestId: input.requestId,
           revisionId,
           sessionEpoch: input.sessionEpoch,
+          ...(provenance ? { provenance } : {}),
         },
         { affectsFileView: false },
       );
@@ -507,7 +521,16 @@ export class ArticleRepository {
   rename(input: ArticleRenameInput): ArticleDto {
     return this.db
       .transaction(() => {
+        if (
+          input.expectedSpaceId &&
+          this.db.prepare('SELECT id FROM local_spaces WHERE singleton_key = 1').pluck().get() !== input.expectedSpaceId
+        )
+          throw new Error('ARTICLE_RENAME_SPACE_CHANGED');
         const existing = this.activeRow(input.id);
+        if (input.expectedRevisionId && text(existing.revision_id) !== input.expectedRevisionId) {
+          if (this.storedContent(existing).title === input.title) return this.dto(existing);
+          throw new Error('ARTICLE_RENAME_CONFLICT');
+        }
         return this.saveSystemRevision({
           articleId: input.id,
           expectedRevisionId: text(existing.revision_id),
@@ -580,20 +603,30 @@ export class ArticleRepository {
     content: ArticleContentInput,
     hash: string,
     createdAt: string,
+    provenance?: ContentProvenance,
   ) {
     const id = ulid();
     this.db
       .prepare(
         `INSERT INTO article_revisions
-        (id, article_id, revision_no, content_json, content_hash, created_at)
-        VALUES (?, ?, ?, ?, ?, ?)`,
+        (id, article_id, revision_no, content_json, content_hash, created_at, provenance_json)
+        VALUES (?, ?, ?, ?, ?, ?, ?)`,
       )
-      .run(id, articleId, revisionNo, canonicalArticleContentJson(content), hash, createdAt);
+      .run(
+        id,
+        articleId,
+        revisionNo,
+        canonicalArticleContentJson(content),
+        hash,
+        createdAt,
+        provenance ? JSON.stringify(provenance) : null,
+      );
+    this.captureReferenceHistory?.(articleId, id, content);
     this.storage.recordChange(
       'ARTICLE_REVISION',
       id,
       'CREATE',
-      { articleId, revisionNo, contentHash: hash },
+      { articleId, revisionNo, contentHash: hash, ...(provenance ? { provenance } : {}) },
       { affectsFileView: false },
     );
     this.revisionPacks.schedule(articleId, revisionNo);
@@ -604,7 +637,7 @@ export class ArticleRepository {
     const row = this.db
       .prepare(
         `SELECT article.*, revision.id AS revision_id, revision.revision_no,
-          revision.article_id AS revision_article_id, revision.content_json, revision.content_hash,
+          revision.article_id AS revision_article_id, revision.content_json, revision.content_hash, revision.provenance_json,
           revision.content_pack_id, revision.content_pack_entry_index
         FROM articles article
         JOIN article_revisions revision ON revision.id = article.current_revision_id
@@ -619,7 +652,7 @@ export class ArticleRepository {
     const row = this.db
       .prepare(
         `SELECT article.*, revision.id AS revision_id, revision.revision_no,
-          revision.article_id AS revision_article_id, revision.content_json, revision.content_hash,
+          revision.article_id AS revision_article_id, revision.content_json, revision.content_hash, revision.provenance_json,
           revision.content_pack_id, revision.content_pack_entry_index
         FROM articles article
         JOIN article_revisions revision ON revision.id = article.current_revision_id
@@ -717,6 +750,7 @@ export class ArticleRepository {
       revisionId: text(row.revision_id),
       revisionNo: Number(row.revision_no),
       elements,
+      provenance: parseContentProvenance(row.provenance_json),
       comments,
       status: text(row.status) as ArticleDto['status'],
       createdAt: text(row.created_at),

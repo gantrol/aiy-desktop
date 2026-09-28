@@ -10,11 +10,13 @@ import { contentRootBlock } from '@/renderer/features/content-editor/contentRoot
 import { ContentLinkBlockActions } from '@/renderer/features/content-editor/ContentLinkBlockActions';
 import { ContentBlockReferenceAction } from '@/renderer/features/content-editor/ContentBlockReferenceAction';
 import { useI18n } from '@/renderer/i18n/useI18n';
+import { openContentAssociation } from '@/renderer/features/content-editor/contentAssociation';
+import { useOutlineContentLinkHost } from '@/renderer/features/content-editor/OutlineContentLinkHost';
 import { copyLinkedBlockDocument } from '@/shared/block-anchor-copy';
 import type { Editor } from '@tiptap/core';
 import { NodeSelection, TextSelection } from '@tiptap/pm/state';
 import { useEditorState } from '@tiptap/react';
-import { ArrowDown, ArrowUp, Copy, GripVertical, X } from 'lucide-react';
+import { ArrowDown, ArrowUp, Copy, Ellipsis, Link, X } from 'lucide-react';
 import type { ContentSource } from '@/shared/contracts/content-library';
 
 /** Lists and tables move with their children, preserving their internal structure and identities. */
@@ -30,6 +32,7 @@ export function ContentBlockActions({
   onOpenChange?(open: boolean): void;
 }) {
   const copy = useI18n().messages.contentEditor;
+  const associationHost = useOutlineContentLinkHost();
   const current = useEditorState({
     editor,
     selector: ({ editor }) => {
@@ -93,7 +96,7 @@ export function ContentBlockActions({
           disabled={!current.editable}
           onMouseDown={(event) => event.preventDefault()}
         >
-          <GripVertical className="size-4" />
+          <Ellipsis className="size-4" />
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent
@@ -102,6 +105,28 @@ export function ContentBlockActions({
           if (!editor.isDestroyed) editor.view.focus();
         }}
       >
+        {associationHost && (
+          <DropdownMenuItem
+            onSelect={() => {
+              const block = contentRootBlock(editor, blockId);
+              if (!block) return;
+              const selection = editor.state.selection;
+              const document = editor.state.doc;
+              const belongs = selection.from > block.position && selection.to < block.position + block.node.nodeSize;
+              setTimeout(() => {
+                if (editor.isDestroyed || editor.state.doc !== document) return;
+                if (!belongs)
+                  editor.view.dispatch(
+                    editor.state.tr.setSelection(TextSelection.near(document.resolve(block.position + 1))),
+                  );
+                openContentAssociation(editor, { selection: belongs ? selection : undefined });
+              }, 0);
+            }}
+          >
+            <Link />
+            {copy.association.find}
+          </DropdownMenuItem>
+        )}
         <DropdownMenuItem disabled={current.index === 0} onSelect={() => run('up')}>
           <ArrowUp />
           {copy.moveBlockUp}

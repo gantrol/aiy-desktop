@@ -1,8 +1,7 @@
 import { CheckIcon, PlusIcon } from 'lucide-react';
-import type { CSSProperties, SyntheticEvent } from 'react';
+import type { SyntheticEvent } from 'react';
 import type { TermListItem } from '@/shared/contracts';
 import { cn } from '@/renderer/lib/utils';
-import './TermOverviewCard.css';
 import { DEFAULT_MEDIA_ASPECT_RATIO, getSourceMediaAspectRatio } from '@/renderer/components/media/mediaAspectRatio';
 import {
   chooseImageOverlayTone,
@@ -11,6 +10,7 @@ import {
 } from '@/renderer/components/media/imageOverlayTone';
 import { ImageAmbientBackdrop } from '@/renderer/components/media/AmbientImage';
 import { MediaOverlayActionButton } from '@/renderer/components/media/MediaOverlayActionButton';
+import { MediaCardCaption } from '@/renderer/components/media/MediaCardCaption';
 import { mediaThumbnailUrl } from '@/renderer/components/media/mediaThumbnailUrl';
 
 export type TermCardOverlayTone = ImageOverlayTone;
@@ -33,10 +33,6 @@ export interface TermOverviewCardProps {
 const DEFAULT_CARD_ASPECT_RATIO = DEFAULT_MEDIA_ASPECT_RATIO;
 const TERM_CARD_THUMBNAIL_SIZE = 512;
 const TERM_CARD_BACKDROP_THUMBNAIL_SIZE = 192;
-const TERM_CARD_OVERLAY_MOTION_STYLE = {
-  transitionDuration: 'var(--motion-overlay)',
-  transitionTimingFunction: 'var(--ease-enter)',
-} satisfies CSSProperties;
 
 /** Matches gallery cards by preserving the uncropped source image ratio. */
 export function getTermCardAspectRatio(width: number, height: number) {
@@ -78,6 +74,7 @@ export function TermOverviewCard({
 
   return (
     <article
+      data-media-card
       data-term-overview-card
       data-term-id={term.id}
       data-selected={selected}
@@ -135,27 +132,15 @@ export function TermOverviewCard({
           >
             {placeholder}
           </span>
-          <span
-            data-term-overlay
-            className="pointer-events-none absolute inset-x-0 bottom-0 z-20 flex min-w-0 flex-col px-3 py-3 text-media-checker-a"
-          >
-            <span
-              data-image-overlay-copy-scrim
-              aria-hidden="true"
-              className="absolute inset-x-0 -top-20 bottom-0 z-0 [background:var(--image-overlay-copy-scrim)]"
-            />
-            <span
-              data-term-copy
-              className="relative z-10 flex min-w-0 flex-col gap-1 opacity-100 transition-[color,opacity] duration-base ease-enter motion-reduce:transition-none group-hover:duration-fast group-hover:ease-exit group-hover:opacity-0 group-has-[:focus-visible]:opacity-100"
-              style={TERM_CARD_OVERLAY_MOTION_STYLE}
-            >
+          <MediaCardCaption data-term-overlay>
+            <span data-term-copy className="relative z-10 flex min-w-0 flex-col gap-1">
               <span className="flex min-w-0 items-baseline gap-2">
                 <strong className="min-w-0 truncate text-sm font-semibold">{term.title}</strong>
                 {secondaryName && <span className="min-w-0 truncate text-xs opacity-75">{secondaryName}</span>}
               </span>
               {term.definition && <span className="line-clamp-2 text-xs leading-5 opacity-85">{term.definition}</span>}
             </span>
-          </span>
+          </MediaCardCaption>
         </span>
       </button>
       <MediaOverlayActionButton

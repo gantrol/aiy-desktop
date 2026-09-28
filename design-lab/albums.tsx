@@ -177,8 +177,8 @@ function AlbumLab() {
               title={copy.creation}
               busy={busy}
               onOpen={onOpen}
-              canMoveCreationAlbum={(id, parent) => id !== parent}
-              onMoveCreationAlbum={move}
+              canMoveCreationAlbum={(source, parent) => source.id !== parent}
+              onMoveCreationAlbum={(source, parent) => move(source.id, parent)}
             />
           ) : (
             <section className="max-w-80 rounded-md border border-border bg-surface p-3">

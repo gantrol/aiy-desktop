@@ -57,7 +57,7 @@ export function PetalNoteIcon({ icon, className }: { icon: PetalIcon; className?
   return <Icon className={className} aria-hidden="true" />;
 }
 
-/** A note is one paper surface, including shared inputs, toolbars and their popup menus. */
+/** Paper and editor ink stay local; popup surfaces and interaction states use the application theme. */
 export function noteAppearanceStyle(color: PetalColor): CSSProperties {
   const paper = 'var(--petal-surface)',
     ink = 'var(--petal-ink)';
@@ -67,20 +67,11 @@ export function noteAppearanceStyle(color: PetalColor): CSSProperties {
     '--surface': paper,
     '--surface-sunken': paper,
     '--card': paper,
-    '--popover': paper,
-    '--secondary': paper,
-    '--muted': paper,
     '--foreground': ink,
     '--card-foreground': ink,
-    '--popover-foreground': ink,
-    '--secondary-foreground': ink,
     '--foreground-secondary': `color-mix(in srgb, ${ink} 75%, transparent)`,
     '--muted-foreground': `color-mix(in srgb, ${ink} 60%, transparent)`,
     '--disabled-foreground': `color-mix(in srgb, ${ink} 40%, transparent)`,
-    '--hover': `color-mix(in srgb, ${ink} 5%, ${paper})`,
-    '--pressed': `color-mix(in srgb, ${ink} 9%, ${paper})`,
-    '--selected': `color-mix(in srgb, ${ink} 12%, ${paper})`,
-    '--selected-foreground': ink,
     '--border': `color-mix(in srgb, ${ink} 15%, transparent)`,
     '--input': `color-mix(in srgb, ${ink} 15%, transparent)`,
   } as CSSProperties;

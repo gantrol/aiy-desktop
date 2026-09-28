@@ -1,4 +1,7 @@
+import { petalContentScaleSchema } from '@/shared/petal-display';
+import { executePetalNoteAlbum } from '@/main/desktop-petals/petal-note-albums';
 import { desktopPetalSnapshot } from '@/main/desktop-petals/petal-snapshot';
+import { PetalRendererHost } from '@/main/desktop-petals/petal-renderer-host';
 import { observePetalFlush } from '@/main/desktop-petals/petal-flush-observations';
 import type { PendingPetalFlush } from '@/main/desktop-petals/petal-flush-request';
 import { petalFlushReportSchema } from '@/shared/contracts/petal-workspace';
@@ -10,9 +13,10 @@ import { executePetalHubCommand, hubCommands } from '@/main/desktop-petals/petal
 import { removePetalPlacement } from '@/main/desktop-petals/petal-note-removal';
 import { executePetalPreview } from '@/main/desktop-petals/petal-content-preview';
 import { contentImageImports } from '@/main/creations/content-image-imports';
-import { linkPreviews, openLinkCard } from '@/main/links/link-preview-service';
+import { executePetalContentLibrary } from '@/main/desktop-petals/petal-content-library';
 import { PetalBoardService } from '@/main/desktop-petals/petal-board-service';
 import { PetalHubService } from '@/main/desktop-petals/petal-hub-service';
+import { showPetalTimerNotification } from '@/main/desktop-petals/petal-timer-notification';
 import { openPetalSourceWindow } from '@/main/desktop-petals/petal-source-window';
 import { PetalLayoutStore } from '@/main/desktop-petals/petal-layout-store';
 import { createPetalCalendarCapture } from '@/main/desktop-petals/petal-calendar-capture';
@@ -29,11 +33,13 @@ import { executePetalDrag, type PetalDrag } from '@/main/desktop-petals/petal-wi
 import { PetalWindows, type PetalWindow } from '@/main/desktop-petals/petal-windows';
 import { ContentApplicationRegistry } from '@/main/extensions/content-application-registry';
 import type { ActiveLibraryContext } from '@/main/libraries/active-library-context';
-import { codexContentCommandSchema, type CodexContentCommand } from '@/shared/contracts/codex-content';
+import {
+  codexContentCommandSchema,
+  codexContentConfigurationCommands,
+  type CodexContentCommand,
+} from '@/shared/contracts/codex-content';
 import { CODEX_CONTENT_APPLICATION_ID } from '@/shared/contracts/content-applications';
 import { contentImageImportIdSchema, contentImageStageSchema } from '@/shared/contracts/content-image-import';
-import { contentLibraryCommandSchema } from '@/shared/contracts/content-library';
-import { copyLibraryReference } from '@/main/creations/content-reference-clipboard';
 import {
   desktopNoteAppearanceSchema,
   desktopNoteDraftSchema,
@@ -49,10 +55,11 @@ import { CODEX_EXTENSION_ID } from '@/shared/extension-ids';
 import { EXTENSION_PERMISSION } from '@/shared/extension-permissions';
 import { desktopPetalMessages } from '@/shared/i18n/desktop-petals';
 import { PetalError, petalError, type PetalCommandResult } from '@/shared/petal-errors';
-import { app, ipcMain, Notification, screen, shell, type BrowserWindow, type IpcMainInvokeEvent } from 'electron';
+import { app, ipcMain, screen, type BrowserWindow, type IpcMainInvokeEvent } from 'electron';
 import { PetalDrawerService } from '@/main/desktop-petals/petal-drawer-service';
 import { petalDrawerCommandSchema } from '@/shared/contracts/petal-drawer';
 import { z } from 'zod';
+import { petalOverlayReadySchema } from '@/shared/contracts/petal-overlay';
 
 import { createPetalTrayBridge } from '@/main/desktop-petals/petal-tray-bridge';
 
@@ -85,24 +92,19 @@ export class DesktopPetalsController {
     const layouts = new PetalLayoutStore(options.userDataRoot, createPetalCalendarCapture(options.getContext));
     this.ready = layouts.load();
     void this.ready.catch((error) => console.error('[desktop-petals] settings unavailable', error));
-    this.hub = new PetalHubService(layouts, (phase) => {
-      this.changed();
-      if (options.allowPresentation && layouts.hubSettings.timerNotification && Notification.isSupported()) {
-        const notification = new Notification({
-          title: this.language.messages.timer[phase],
-          body: this.language.messages.timer.done,
-        });
-        notification.on('click', () => {
-          const context = options.getContext();
-          if (context?.state === 'ACTIVE')
-            void this.windows
-              .show(context.library.id, null)
-              .then((entry) => this.windows.showHubView(entry, 'flower'))
-              .catch((error) => console.error('[desktop-petals] timer reveal failed', error));
-        });
-        notification.show();
-      }
-    });
+    this.hub = new PetalHubService(
+      layouts,
+      (phase) => {
+        this.changed();
+        if (options.allowPresentation && layouts.hubSettings.timerNotification)
+          showPetalTimerNotification(this.language, phase, async () => {
+            const context = options.getContext();
+            if (context?.state === 'ACTIVE')
+              this.windows.showHubView(await this.windows.show(context.library.id, null), 'flower');
+          });
+      },
+      () => this.language.locale,
+    );
     void this.ready.then(() => this.hub.scheduler.refresh()).catch(() => undefined);
     app.once('will-quit', () => this.hub.scheduler.dispose());
     this.windows = new PetalWindows(
@@ -121,7 +123,9 @@ export class DesktopPetalsController {
         if (entry.hubView === 'flower') entry.window.webContents.send('desktop-petals:menu-requested');
       },
       (isNote) => (isNote ? this.language.messages.note.windowTitle : this.language.messages.flower.title),
+      new PetalRendererHost(),
     );
+    this.windows.beforeReplace = (entry) => this.flushEntry(entry, true);
     this.windows.canRestoreVisibility = (entry) =>
       canRestorePetalVisibility(entry, this.options.getContext(), this.suspended, this.notes, this.board);
     this.drawer = new PetalDrawerService(this.windows, {
@@ -209,6 +213,7 @@ export class DesktopPetalsController {
       return;
     }
     // Releasing temporary menu bounds must also work while the library is draining.
+    if (command === 'application-panel' && input === 0) return entry ? this.windows.notePanel.set(entry, 0) : 0;
     if (command === 'pluck-watch' && input && typeof input === 'object' && 'active' in input && input.active === false)
       return this.executePresentation(command, input, entry);
     if (command === 'menu-open' && input && typeof input === 'object' && 'open' in input && input.open === false)
@@ -253,6 +258,10 @@ export class DesktopPetalsController {
   ) {
     if (command === 'drawer') return this.drawer.run(petalDrawerCommandSchema.parse(input), entry);
     if (command === 'preview') return this.preview(input, entry);
+    if (command === 'overlay-ready') {
+      if (!entry) throw petalError('hubOnly');
+      return this.windows.overlays.present(entry, petalOverlayReadySchema.parse(input));
+    }
     if (
       entry?.drawer &&
       !['snapshot', 'open', 'create', 'hub-view', 'show', 'main', 'board', 'appearance'].includes(command)
@@ -262,7 +271,10 @@ export class DesktopPetalsController {
     if (command === 'board') return this.place(context, async () => this.executeBoard(command, input, context, entry));
     if (command === 'pin-search') return this.executeBoard(command, input, context, entry);
     if (command === 'note-albums' || command === 'note-album')
-      return this.executeNoteAlbum(command, input, context, entry);
+      return executePetalNoteAlbum(command, input, context, entry, this.notes!, this.language.locale, (note) => {
+        if (note.persisted) this.publishSource(context, note.id);
+        this.changed(note.id);
+      });
     if (command === 'content-action') return this.executeContentAction(input, context, entry);
     if (command === 'content-applications') return this.contentApplications(context, entry).list();
     if (command === 'content-application') return this.contentApplications(context, entry).execute(input);
@@ -271,9 +283,9 @@ export class DesktopPetalsController {
       return executeNoteFiles(context.database, this.notes, entry, input, (note) => {
         this.board!.registerNote(note.id, true);
         this.publishSource(context, note.id);
-        this.changed();
+        this.changed(note.id);
       });
-    if (command === 'content-library') return this.executeContentLibrary(input, context);
+    if (command === 'content-library') return executePetalContentLibrary(input, context);
     if (
       command === 'pluck-preview' ||
       command === 'pluck-watch' ||
@@ -290,7 +302,7 @@ export class DesktopPetalsController {
       ['content-image-stage', 'content-image-resolve', 'content-image-accepted'].includes(command)
     )
       return this.executeNote(command, input, context, entry);
-    if (['open', 'create', 'hide', 'remove'].includes(command))
+    if (['open', 'create', 'hide', 'remove', 'expand'].includes(command))
       return this.place(context, () => this.executeWindow(command, input, context, entry));
     return this.executeWindow(command, input, context, entry);
   }
@@ -336,6 +348,11 @@ export class DesktopPetalsController {
         await this.windows.undoCollection(context.library.id, z.string().uuid().parse(input));
         this.changed();
         return;
+      case 'content-scale':
+        return this.windows.setContentScale(entry, petalContentScaleSchema.parse(input));
+      case 'application-panel':
+        if (!entry?.instanceId) throw petalError('sourceUnavailable');
+        return this.windows.notePanel.set(entry, z.number().int().min(0).max(400).parse(input));
       case 'resize':
         if (!entry?.instanceId) throw petalError('sourceUnavailable');
         this.windows.resizeNote(entry, petalNoteSizeSchema.parse(input));
@@ -360,38 +377,6 @@ export class DesktopPetalsController {
       default:
         throw new Error('Unknown desktop petal command');
     }
-  }
-  private executeNoteAlbum(command: string, input: unknown, context: ActiveLibraryContext, entry?: PetalWindow) {
-    if (command === 'note-albums')
-      return context.database
-        .listAlbums(this.language.locale)
-        .filter((album) => !album.archivedAt)
-        .map(({ id, title }) => ({ id, title }));
-    if (command === 'note-album') {
-      const request = z
-        .object({ id: z.string().min(1).max(200), albumId: z.string().min(1).max(200).nullable() })
-        .strict()
-        .parse(input);
-      if (entry?.instanceId && entry.instanceId !== request.id) throw petalError('sourceUnavailable');
-      const note = this.notes!.setAlbum(request.id, request.albumId);
-      if (note.persisted) this.publishSource(context, note.id);
-      this.changed();
-      return note;
-    }
-  }
-  private async executeContentLibrary(input: unknown, context: ActiveLibraryContext) {
-    const request = contentLibraryCommandSchema.parse(input);
-    if (request.kind === 'agent-link') throw new Error('AIY_AGENT_CONTENT_UNSUPPORTED_HOST');
-    if (request.kind === 'reference-copy') return copyLibraryReference(context.database, request);
-    if (request.kind === 'link-preview') return linkPreviews.get(request.url);
-    if (request.kind === 'link-open') return openLinkCard(request.url);
-    if (request.kind.startsWith('note-')) throw petalError('sourceUnavailable');
-    if (request.kind === 'reveal') {
-      const error = await shell.openPath(await context.database.ensureContentDirectory(request.source));
-      if (error) throw new Error(error);
-      return;
-    }
-    return context.database.executeContentLibrary(request);
   }
   private executeBoard(command: string, input: unknown, context: ActiveLibraryContext, entry?: PetalWindow) {
     if (command === 'board') {
@@ -425,7 +410,7 @@ export class DesktopPetalsController {
     if (!Array.isArray(result) && result.persisted) {
       this.board!.registerNote(result.id, true);
       this.publishSource(context, result.id);
-      this.changed();
+      this.changed(result.id);
     }
     return result;
   }
@@ -436,7 +421,7 @@ export class DesktopPetalsController {
         throw petalError('sourceUnavailable');
     }
     const service = context.codexContent;
-    if (['models', 'select-execution', 'open-task', 'stop-and-open-task'].includes(request.kind))
+    if (['models', 'select-execution', 'open-task'].includes(request.kind))
       return this.executeContentExecution(request, context);
     if (['settings', 'select-album', 'configure-quota', 'quota'].includes(request.kind))
       return this.executeContentSettings(request, context, entry);
@@ -494,15 +479,14 @@ export class DesktopPetalsController {
     if (request.kind === 'models') return context.codexContent.models();
     if (request.kind === 'select-execution')
       return context.codexContent.selectExecution(request.stashId, request.execution);
-    if (request.kind === 'open-task' || request.kind === 'stop-and-open-task')
-      return context.codexContent.openTask(request.stashId, request.taskId, request.kind === 'stop-and-open-task');
+    if (request.kind === 'open-task') return context.codexContent.openTask(request.stashId, request.taskId);
   }
   private contentApplications(context: ActiveLibraryContext, entry?: PetalWindow) {
     return new ContentApplicationRegistry(context.extensions).register({
       id: CODEX_CONTENT_APPLICATION_ID,
       extensionId: CODEX_EXTENSION_ID,
       name: this.language.messages.codex.title,
-      configurationCommands: ['open-plugin', 'settings', 'select-album', 'configure-quota', 'quota'],
+      configurationCommands: codexContentConfigurationCommands,
       requiredPermissions: [
         EXTENSION_PERMISSION.integrationConnectCodexAppServer,
         EXTENSION_PERMISSION.codexManageExtensionThreads,
@@ -520,15 +504,9 @@ export class DesktopPetalsController {
       const request = z.object({ open: z.boolean(), point: petalPointSchema.optional() }).strict().parse(input);
       if (request.open && (entry.expanded || this.dragOrigins.has(entry.window.webContents.id)))
         throw petalError('invalidSettings');
-      if (request.open && this.windows.presentation.dock(entry)?.collapsed)
-        this.windows.presentation.reveal(entry, true);
       this.windows.presentation.preview(entry, request.open, 'menu');
       const cursor = request.point ?? screen.getCursorScreenPoint();
-      const bounds = entry.window.getBounds();
-      return {
-        x: Math.round(Math.max(8, Math.min(bounds.width - 8, cursor.x - bounds.x))),
-        y: Math.round(Math.max(8, Math.min(bounds.height - 8, cursor.y - bounds.y))),
-      };
+      return cursor;
     }
     if (entry.instanceId) throw petalError('hubOnly');
     if (command === 'pluck-watch') {
@@ -591,7 +569,7 @@ export class DesktopPetalsController {
       requireNote(request.id);
       if (isContentPinId(request.id)) throw petalError('invalidSettings');
       const note = this.notes!.appearance(request.id, request);
-      this.changed();
+      this.changed(note.id);
       return note;
     }
     const request = desktopNoteSaveSchema.parse(input);
@@ -600,7 +578,7 @@ export class DesktopPetalsController {
     if (entry) observePetalFlush(entry, { status: note.persisted ? 'saved' : 'unchanged' });
     if (note.persisted) this.board!.registerNote(note.id, true);
     if (note.persisted) this.publishSource(context, note.id);
-    this.changed();
+    this.changed(note.id);
     return note;
   }
   private executeHub(command: string, input: unknown, context: ActiveLibraryContext, entry?: PetalWindow) {
@@ -647,11 +625,20 @@ export class DesktopPetalsController {
       open,
     });
   }
-  changed() {
+  changed(instanceIds?: string | readonly string[]) {
+    this.notes?.invalidate();
+    this.board?.invalidate();
     this.tray.update();
     this.drawer?.invalidate();
-    for (const { window } of this.windows.entries.values())
-      if (!window.isDestroyed() && window.isVisible()) window.webContents.send('desktop-petals:changed');
+    const affected =
+      instanceIds === undefined ? null : new Set(typeof instanceIds === 'string' ? [instanceIds] : instanceIds);
+    for (const entry of this.windows.entries.values())
+      if (
+        !entry.window.isDestroyed() &&
+        entry.window.isVisible() &&
+        (!affected || !entry.instanceId || affected.has(entry.instanceId))
+      )
+        entry.window.webContents.send('desktop-petals:changed');
   }
   private flushEntry(entry: PetalWindow, save = false): Promise<boolean> {
     return flushPetalInput(entry, this.pendingFlushes, this.notes, save);
@@ -664,6 +651,7 @@ export class DesktopPetalsController {
       // Finish the one in-flight renderer before requesting editor saves;
       // suspension prevents the remaining saved windows from being opened.
       await this.restorePromise?.catch(() => undefined);
+      await this.windows.settle();
       const results = await Promise.all([...this.windows.entries.values()].map((entry) => this.flushEntry(entry)));
       await this.windows.flush();
       if (results.some((saved) => !saved)) {
@@ -723,7 +711,7 @@ export class DesktopPetalsController {
           }
         }
       },
-      () => this.changed(),
+      (ids) => this.changed(ids),
       (id) => {
         try {
           this.notes!.get(id);
@@ -745,8 +733,17 @@ export class DesktopPetalsController {
             : [],
         ),
       (id) => this.removeNoteWindow(context.library.id, id),
-      (removed) => {
-        this.changed();
+      (removed, sources) => {
+        this.notes!.invalidate();
+        const sourceIds = sources && new Set(sources);
+        const ids =
+          sourceIds &&
+          [...this.windows.entries.values()].flatMap((entry) => {
+            const note =
+              entry.instanceId && !isContentPinId(entry.instanceId) ? this.notes!.summary(entry.instanceId) : null;
+            return note && sourceIds.has(note.stashId) ? [note.id] : [];
+          });
+        this.changed(ids);
         if (removed)
           void this.windows.flush().catch((error) => console.error('[desktop-petals] layout save failed', error));
       },
@@ -764,8 +761,8 @@ export class DesktopPetalsController {
       const canRestore = () => current() && context.state === 'ACTIVE' && !this.suspended;
       if (!canRestore()) return;
       await this.drawer.activate();
-      if (this.windows.layouts.get(context.library.id, 'hub')?.visible)
-        await this.windows.restore(context.library.id, null);
+      if (!canRestore()) return;
+      await this.windows.restore(context.library.id, null);
       for (const id of ids) {
         if (!canRestore()) return;
         if (

@@ -5,7 +5,15 @@ import { useI18n } from '@/renderer/i18n/useI18n';
 import { petalNoteSizeSchema } from '@/shared/contracts/desktop-petals';
 
 type Size = { width: number; height: number };
-export function NoteResizeHandle({ disabled, onError }: { disabled?: boolean; onError(reason: unknown): void }) {
+export function NoteResizeHandle({
+  disabled,
+  onError,
+  extraHeight = 0,
+}: {
+  disabled?: boolean;
+  extraHeight?: number;
+  onError(reason: unknown): void;
+}) {
   const copy = useI18n().messages.desktopPetals;
   const gesture = useRef<{ pointerId: number; x: number; y: number; size: Size; target: HTMLButtonElement } | null>(
     null,
@@ -54,8 +62,8 @@ export function NoteResizeHandle({ disabled, onError }: { disabled?: boolean; on
       size="icon-sm"
       disabled={disabled}
       aria-label={copy.actions.resize}
-      title={copy.actions.resize}
-      className="absolute bottom-0 right-0 z-10 size-3 cursor-se-resize rounded-none p-0 text-inherit opacity-40 hover:opacity-100 touch-none"
+      title={copy.display.resizeHint}
+      className="absolute bottom-0 right-0 z-10 size-6 cursor-se-resize rounded-none p-0 text-inherit opacity-40 hover:opacity-100 touch-none"
       onPointerDown={(event) => {
         if (event.button !== 0 || !event.isPrimary || gesture.current || moving.current) return;
         event.preventDefault();
@@ -63,7 +71,7 @@ export function NoteResizeHandle({ disabled, onError }: { disabled?: boolean; on
           pointerId: event.pointerId,
           x: event.screenX,
           y: event.screenY,
-          size: { width: window.innerWidth, height: window.innerHeight },
+          size: { width: window.innerWidth, height: window.innerHeight - extraHeight },
           target: event.currentTarget,
         };
         try {
@@ -94,6 +102,7 @@ export function NoteResizeHandle({ disabled, onError }: { disabled?: boolean; on
       onPointerCancel={finish}
       onLostPointerCapture={finish}
       onKeyDown={(event) => {
+        if (event.nativeEvent.isComposing) return;
         if (event.key === 'Escape' && gesture.current) {
           resize(gesture.current.size);
           finish();
@@ -101,9 +110,11 @@ export function NoteResizeHandle({ disabled, onError }: { disabled?: boolean; on
         }
         if (!['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown'].includes(event.key)) return;
         event.preventDefault();
+        event.stopPropagation();
         resize({
           width: window.innerWidth + (event.key === 'ArrowLeft' ? -16 : event.key === 'ArrowRight' ? 16 : 0),
-          height: window.innerHeight + (event.key === 'ArrowUp' ? -16 : event.key === 'ArrowDown' ? 16 : 0),
+          height:
+            window.innerHeight - extraHeight + (event.key === 'ArrowUp' ? -16 : event.key === 'ArrowDown' ? 16 : 0),
         });
       }}
     >

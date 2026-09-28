@@ -6,7 +6,6 @@ import {
 } from '@/renderer/components/ui/shortest-column-masonry';
 import type { MaterialLayoutPreferences } from '@/renderer/components/gallery/materialLayoutPreferences';
 
-export const MATERIAL_NAME_HEIGHT = 28;
 export const MATERIAL_ROW_GAP = 8;
 export const MIN_MATERIAL_FRAME_RATIO = 1 / 3;
 export const MAX_MATERIAL_FRAME_RATIO = 3;
@@ -27,13 +26,12 @@ export function computeMaterialLayout(
   minColumnWidth = preferences.size,
   gap = MATERIAL_ROW_GAP,
 ): MasonryLayout {
-  const captionHeight = preferences.showNames ? MATERIAL_NAME_HEIGHT : 0;
   if (preferences.arrangement === 'COLUMNS') {
     const base = computeShortestColumnMasonry([], width, minColumnWidth, gap);
     return computeShortestColumnMasonry(
       items.map((item) => ({
         ...item,
-        height: base.columnWidth / item.aspectRatio + (item.text ? 0 : captionHeight),
+        height: base.columnWidth / item.aspectRatio,
       })),
       width,
       minColumnWidth,
@@ -50,7 +48,7 @@ export function computeMaterialLayout(
     const run = items.slice(start, end);
     const section = text
       ? computeShortestColumnMasonry(run, width, minColumnWidth, gap)
-      : computeJustifiedRows(run, width, preferences.size, gap, captionHeight);
+      : computeJustifiedRows(run, width, preferences.size, gap);
     const offset = layout.placements.length ? layout.height + gap : 0;
     for (const placement of section.placements) {
       layout.placements.push({ ...placement, index: placement.index + start, y: placement.y + offset });

@@ -3,6 +3,7 @@ import { get as httpGet } from 'node:http';
 import { get as httpsGet } from 'node:https';
 import { BlockList, isIP, type LookupFunction } from 'node:net';
 import { linkCardTarget } from '@/shared/contracts/link-card';
+import { fetchThroughProxy, resolveLinkProxy } from '@/main/links/link-preview-proxy';
 
 const blocked = new BlockList();
 const globalV6 = new BlockList();
@@ -67,6 +68,7 @@ function publicUrl(value: string) {
   const host = url.hostname.replace(/^\[|\]$/gu, '');
   if (
     (url.port && !['80', '443'].includes(url.port)) ||
+    (!isIP(host) && !host.replace(/\.$/u, '').includes('.')) ||
     /(?:^|\.)(?:localhost|local|internal|home|lan)\.?$/u.test(host) ||
     (isIP(host) && !publicAddress(host))
   )
@@ -80,6 +82,8 @@ interface PreviewResponse {
   bytes: Buffer;
 }
 
+export type LinkResourceResult = PreviewResponse | { location: string };
+
 export async function fetchLinkResource(
   value: string,
   signal: AbortSignal,
@@ -90,53 +94,61 @@ export async function fetchLinkResource(
   let url = publicUrl(value);
   for (let redirects = 0; redirects <= 3; redirects++) {
     signal.throwIfAborted();
-    const result = await new Promise<PreviewResponse | { location: string }>((resolve, reject) => {
-      const request = (url.protocol === 'https:' ? httpsGet : httpGet)(
-        url,
-        {
-          agent: false,
-          lookup: publicLookup,
-          signal,
-          headers: { accept, 'accept-encoding': 'identity', 'user-agent': 'AIY-LinkPreview/1.0' },
-        },
-        (response) => {
-          const status = response.statusCode ?? 0;
-          if ([301, 302, 303, 307, 308].includes(status) && response.headers.location) {
-            resolve({ location: response.headers.location });
-            response.destroy();
-            return;
-          }
-          if (status < 200 || status >= 300 || (!prefixOnly && Number(response.headers['content-length']) > maxBytes)) {
-            reject(new Error('LINK_PREVIEW_RESPONSE_UNAVAILABLE'));
-            response.destroy();
-            return;
-          }
-          const chunks: Buffer[] = [];
-          let size = 0;
-          const finish = () =>
-            resolve({
-              url: url.href,
-              contentType: response.headers['content-type'] ?? '',
-              bytes: Buffer.concat(chunks, size),
-            });
-          response.on('data', (chunk: Buffer) => {
-            if (prefixOnly && size + chunk.length >= maxBytes) {
-              chunks.push(chunk.subarray(0, maxBytes - size));
-              size = maxBytes;
-              finish();
-              response.destroy();
-              return;
-            }
-            size += chunk.length;
-            if (size > maxBytes) response.destroy(new Error('LINK_PREVIEW_RESPONSE_TOO_LARGE'));
-            else chunks.push(chunk);
-          });
-          response.on('error', reject);
-          response.on('end', finish);
-        },
-      );
-      request.on('error', reject);
-    });
+    const proxy = await resolveLinkProxy(url, signal);
+    const result = proxy
+      ? await fetchThroughProxy(url, proxy, signal, maxBytes, accept, prefixOnly)
+      : await new Promise<LinkResourceResult>((resolve, reject) => {
+          const request = (url.protocol === 'https:' ? httpsGet : httpGet)(
+            url,
+            {
+              agent: false,
+              lookup: publicLookup,
+              signal,
+              headers: { accept, 'accept-encoding': 'identity', 'user-agent': 'AIY-LinkPreview/1.0' },
+            },
+            (response) => {
+              const status = response.statusCode ?? 0;
+              if ([301, 302, 303, 307, 308].includes(status) && response.headers.location) {
+                resolve({ location: response.headers.location });
+                response.destroy();
+                return;
+              }
+              if (status < 200 || status >= 300) {
+                reject(new Error('LINK_PREVIEW_RESPONSE_UNAVAILABLE'));
+                response.destroy();
+                return;
+              }
+              if (!prefixOnly && Number(response.headers['content-length']) > maxBytes) {
+                reject(new Error('LINK_PREVIEW_RESPONSE_TOO_LARGE'));
+                response.destroy();
+                return;
+              }
+              const chunks: Buffer[] = [];
+              let size = 0;
+              const finish = () =>
+                resolve({
+                  url: url.href,
+                  contentType: response.headers['content-type'] ?? '',
+                  bytes: Buffer.concat(chunks, size),
+                });
+              response.on('data', (chunk: Buffer) => {
+                if (prefixOnly && size + chunk.length >= maxBytes) {
+                  chunks.push(chunk.subarray(0, maxBytes - size));
+                  size = maxBytes;
+                  finish();
+                  response.destroy();
+                  return;
+                }
+                size += chunk.length;
+                if (size > maxBytes) response.destroy(new Error('LINK_PREVIEW_RESPONSE_TOO_LARGE'));
+                else chunks.push(chunk);
+              });
+              response.on('error', reject);
+              response.on('end', finish);
+            },
+          );
+          request.on('error', reject);
+        });
     if ('bytes' in result) return result;
     url = publicUrl(new URL(result.location, url).href);
   }

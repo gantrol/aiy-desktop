@@ -128,6 +128,7 @@ export async function runAgentWeiboAction({
   request: AgentWeiboHandoffRequest;
   runtimeOptions: AgentWeiboActionRuntimeOptions;
 }): Promise<AgentWeiboHandoffResult> {
+  await client.request('agent.action.authorize', []);
   const receipts = new AgentWeiboActionReceiptStore(path.join(workspace.browserCompanionDataPath, 'agent-actions'));
   const reused = await receipts.load(request);
   if (reused) return reused;
@@ -140,6 +141,7 @@ export async function runAgentWeiboAction({
   const outputs = completedOutputs(job);
   let staged;
   try {
+    await client.request('agent.action.authorize', []);
     staged = await (
       await createRuntime(workspace, outputs)
     ).stage({

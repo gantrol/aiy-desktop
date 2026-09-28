@@ -12,6 +12,7 @@ import {
   socialPostBrowserCompanionTargets,
 } from '@/renderer/features/browser-companion/browserCompanionTargets';
 import { articleProjectCoverAssets } from '@/renderer/components/creator/article-editor/articleProjectCoverAssets';
+import { articleCoverGenerations } from '@/renderer/components/creator/article-editor/articleCoverGeneration';
 import { CODEX_APP_SERVER_EXTENSION_ID } from '@/shared/extension-ids';
 
 const ArticleEditor = lazy(() =>
@@ -52,6 +53,7 @@ interface Props {
     ): ReturnType<ArticleProps['onCreateArticle']>;
     export(articleId: string): ReturnType<NonNullable<ArticleProps['onExport']>>;
     generateHeader: ArticleProps['onGenerateHeader'];
+    openCoverGeneration: ArticleProps['onOpenCoverGeneration'];
     generateIllustration: ArticleProps['onGenerateIllustration'];
     onSaved: ArticleProps['onSaved'];
     editCreationInput: ArticleProps['onEditCreationInput'];
@@ -63,7 +65,6 @@ interface Props {
     openCreationForm: AlbumProps['onOpenCreationForm'];
     moveAlbum: AlbumProps['onMoveAlbum'];
     moveCreationItem: AlbumProps['onMoveCreationItem'];
-    openOutline: AlbumProps['onOpenOutline'];
     archive: AlbumProps['onArchive'];
     createCreation(albumId: string): void;
     delete: AlbumProps['onDelete'];
@@ -124,6 +125,10 @@ export function CreatorWorkspaceRouter(props: Props) {
     () => (props.article ? articleProjectCoverAssets(props.data, props.article) : []),
     [props.article, props.data],
   );
+  const coverGenerations = useMemo(
+    () => (props.article ? articleCoverGenerations(props.data, props.article.id) : {}),
+    [props.article, props.data],
+  );
   const visible =
     !props.documentWorkspaceActive &&
     !props.comparisonFullWindow &&
@@ -173,6 +178,8 @@ export function CreatorWorkspaceRouter(props: Props) {
               key={`${props.data.spaceId}:${props.article.id}`}
               article={props.article}
               projectCoverAssets={projectCoverAssets}
+              coverGenerations={coverGenerations}
+              onOpenCoverGeneration={props.articleActions.openCoverGeneration}
               spaceId={props.data.spaceId}
               locale={props.locale}
               canvasPresets={props.data.canvasPresets}
@@ -196,6 +203,8 @@ export function CreatorWorkspaceRouter(props: Props) {
       {visible && props.album && (
         <WorkspaceDetailLoadingBoundary className="min-h-0 min-w-0 overflow-hidden">
           <CreatorAlbumDetail
+            onArticleSaved={props.articleActions.onSaved}
+            refresh={props.refresh}
             key={props.album.id}
             album={props.album}
             data={props.data}
@@ -203,7 +212,6 @@ export function CreatorWorkspaceRouter(props: Props) {
             onOpenCreationForm={props.albumActions.openCreationForm}
             onMoveAlbum={props.albumActions.moveAlbum}
             onMoveCreationItem={props.albumActions.moveCreationItem}
-            onOpenOutline={props.albumActions.openOutline}
             filter={props.creationLibraryFilter}
             documentNavigationRevision={props.documentNavigationRevision}
             busy={props.lifecycleBusy}

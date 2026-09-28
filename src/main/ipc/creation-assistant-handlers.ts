@@ -1,5 +1,10 @@
 import { shell, type OpenDialogOptions, type OpenDialogReturnValue } from 'electron';
 import { z } from 'zod';
+import { creationDraftListInputSchema } from '@/shared/contracts/creation-draft-list';
+import {
+  creationDraftDeleteInputSchema,
+  creationDraftDeletionSchema,
+} from '@/shared/contracts/creation-draft-deletion';
 import type { CodexService } from '@/main/assistant/codex-service';
 import type { ArticleCheckInput } from '@/shared/contracts';
 import type { ArticleCheckExecutionResult } from '@/shared/contracts/article';
@@ -111,6 +116,21 @@ export function registerCreationAssistantIpc({
   articleWechatCopy,
 }: CreationAssistantIpcOptions) {
   const referenceStages = new CreatorImageStagingService(() => database);
+  ipcMain.handle('creation-draft:delete', (_event, raw) => {
+    const input = creationDraftDeleteInputSchema.parse(raw);
+    if (database.getLocalSpace().id !== input.spaceId) throw new Error('CREATION_DRAFT_SPACE_MISMATCH');
+    return database.deleteCreationDrafts(input);
+  });
+  ipcMain.handle('creation-draft:restore', (_event, raw) => {
+    const input = creationDraftDeletionSchema.parse(raw);
+    if (database.getLocalSpace().id !== input.spaceId) throw new Error('CREATION_DRAFT_SPACE_MISMATCH');
+    return database.restoreCreationDrafts(input);
+  });
+  ipcMain.handle('creation-draft:list', (_event, raw) => {
+    const input = creationDraftListInputSchema.parse(raw);
+    if (database.getLocalSpace().id !== input.spaceId) throw new Error('CREATION_DRAFT_SPACE_MISMATCH');
+    return database.listCreationDrafts(input);
+  });
   ipcMain.handle('creation-draft:start', (_event, raw) =>
     database.startCreationDraft(creationDraftStartSchema.parse(raw)),
   );

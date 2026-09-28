@@ -165,7 +165,7 @@ export function useTreeBranchExpansion(
   );
 
   const setPersistent = useCallback(
-    (branchId: string, open: boolean) => {
+    (branchId: string, open: boolean, reveal = true) => {
       if (!open) {
         collapse(branchId);
         return;
@@ -191,7 +191,7 @@ export function useTreeBranchExpansion(
         next.add(branchId);
         return next;
       });
-      revealBranch(viewportRef.current, branchId, diagnostics);
+      if (reveal) revealBranch(viewportRef.current, branchId, diagnostics);
     },
     [clearGestureMany, collapse, diagnostics, updatePersistent, viewportRef],
   );

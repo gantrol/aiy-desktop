@@ -5,11 +5,18 @@ import { useI18n } from '@/renderer/i18n/useI18n';
 import { Button } from '@/renderer/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/renderer/components/ui/dialog';
 import { Label } from '@/renderer/components/ui/label';
+import { Checkbox } from '@/renderer/components/ui/checkbox';
+import {
+  setBracketAssociationsEnabled,
+  useBracketAssociations,
+} from '@/renderer/features/content-editor/contentAssociationPreferences';
 import { Segmented, SegmentedItem } from '@/renderer/components/ui/segmented';
 import { AppUpdateSection } from '@/renderer/features/app-update/AppUpdateSection';
 import { KeyboardShortcutsSettings } from '@/renderer/components/app/KeyboardShortcutsSettings';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/renderer/components/ui/tabs';
 import { PetalMaintenance } from '@/renderer/features/desktop-petals/PetalMaintenance';
+import { AgentPermissionsSettings } from '@/renderer/features/agent-permissions/AgentPermissionsSettings';
+import { FontSettings } from '@/renderer/features/font-settings/FontSettings';
 
 interface Props {
   promptLocale: Locale | null;
@@ -32,6 +39,7 @@ export function SettingsDialog({
   const l = messages.app.settings;
   const [supportError, setSupportError] = useState('');
   const [page, setPage] = useState('general');
+  const bracketAssociations = useBracketAssociations();
 
   async function openSupportDestination(destination: AppSupportDestination) {
     setSupportError('');
@@ -44,17 +52,29 @@ export function SettingsDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className={page === 'shortcuts' ? 'max-w-4xl' : 'max-w-sm'}>
+      <DialogContent className={page === 'shortcuts' ? 'max-w-4xl' : 'max-w-lg'}>
         <DialogHeader>
           <DialogTitle>{l.title}</DialogTitle>
         </DialogHeader>
         <Tabs value={page} onValueChange={setPage} className="gap-4">
           <TabsList>
             <TabsTrigger value="general">{l.generalTab}</TabsTrigger>
+            <TabsTrigger value="fonts">{l.fonts.tab}</TabsTrigger>
             <TabsTrigger value="shortcuts">{l.shortcutsTab}</TabsTrigger>
             <TabsTrigger value="maintenance">{l.maintenanceTab}</TabsTrigger>
+            <TabsTrigger value="cli">{messages.agentPermissions.tab}</TabsTrigger>
           </TabsList>
           <TabsContent value="general" className="grid gap-4">
+            <div className="grid gap-2">
+              <Label>{messages.contentEditor.association.editing}</Label>
+              <Label className="flex items-center gap-2 font-normal">
+                <Checkbox
+                  checked={bracketAssociations}
+                  onCheckedChange={(checked) => setBracketAssociationsEnabled(checked === true)}
+                />
+                {messages.contentEditor.association.automatic}
+              </Label>
+            </div>
             <div className="grid gap-2">
               <Label>{l.interfaceLanguage}</Label>
               <Segmented
@@ -134,11 +154,13 @@ export function SettingsDialog({
             </div>
           </TabsContent>
           <TabsContent value="shortcuts">
-            <KeyboardShortcutsSettings locale={locale} />
+            <KeyboardShortcutsSettings />
           </TabsContent>
+          <TabsContent value="fonts">{open && page === 'fonts' && <FontSettings />}</TabsContent>
           <TabsContent value="maintenance">
             <PetalMaintenance />
           </TabsContent>
+          <TabsContent value="cli">{open && page === 'cli' && <AgentPermissionsSettings />}</TabsContent>
         </Tabs>
       </DialogContent>
     </Dialog>

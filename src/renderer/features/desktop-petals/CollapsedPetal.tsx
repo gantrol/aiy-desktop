@@ -20,7 +20,6 @@ export function CollapsedPetal({
   onOpen,
   onError,
   menuActions,
-  anchor,
   menuPreview,
 }: {
   color: PetalColor;
@@ -32,7 +31,6 @@ export function CollapsedPetal({
   onOpen(): void;
   onError(reason: unknown): void;
   menuActions: PetalNoteMenuActions;
-  anchor: { x: number; y: number };
   menuPreview: boolean;
 }) {
   const { dragging, handlers } = usePetalDrag(menuPreview ? undefined : onOpen, onError);
@@ -49,11 +47,9 @@ export function CollapsedPetal({
           data-petal-id={menuActions.note.id}
           variant="ghost"
           type="button"
-          className={`absolute flex-col gap-0 touch-none rounded-none bg-transparent p-0 shadow-none hover:bg-transparent active:bg-transparent focus-visible:ring-inset focus-visible:ring-offset-0 ${dragging ? 'cursor-grabbing' : 'cursor-grab'}`}
+          className={`absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 flex-col gap-0 touch-none rounded-none bg-transparent p-0 shadow-none hover:bg-transparent active:bg-transparent focus-visible:ring-inset focus-visible:ring-offset-0 ${dragging ? 'cursor-grabbing' : 'cursor-grab'}`}
           style={{
             ...appearanceStyle(color),
-            left: anchor.x - PETAL_WINDOW_SIZES.collapsed.width / 2 + 5,
-            top: anchor.y - PETAL_WINDOW_SIZES.collapsed.height / 2 + 5,
             width: PETAL_WINDOW_SIZES.collapsed.width - 10,
             height: PETAL_WINDOW_SIZES.collapsed.height - 10,
           }}

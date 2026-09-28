@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { Button } from '@/renderer/components/ui/button';
 import { Label } from '@/renderer/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/renderer/components/ui/select';
+import { AlbumSelect } from '@/renderer/components/albums/AlbumSelect';
 import { useI18n } from '@/renderer/i18n/useI18n';
 import { petalQuotaSchema, type PetalQuota } from '@/shared/contracts/petal-hub';
 import { codexContentError } from '@/renderer/features/extensions/codex-content/use-codex-content';
@@ -64,22 +65,18 @@ export function CodexFlowerSettings({ active }: { active: boolean }) {
     <div className="max-w-lg space-y-5 p-5">
       <div className="grid gap-2">
         <Label htmlFor="codex-result-album">{copy.codex.defaultAlbum}</Label>
-        <Select
-          value={settings?.albumId ?? ''}
+        <AlbumSelect
+          id="codex-result-album"
+          options={settings?.albums ?? []}
+          value={settings?.albumId ?? null}
+          ariaLabel={copy.codex.defaultAlbum}
+          placeholder={copy.actions.gallery}
           disabled={busy || !settings}
-          onValueChange={(albumId) => void saveDefaults({ kind: 'select-album', albumId }).catch(setError)}
-        >
-          <SelectTrigger id="codex-result-album">
-            <SelectValue placeholder={copy.actions.gallery} />
-          </SelectTrigger>
-          <SelectContent>
-            {settings?.albums.map((album) => (
-              <SelectItem key={album.id} value={album.id}>
-                {album.title}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
+          onValueChange={(albumId) => {
+            if (albumId) return saveDefaults({ kind: 'select-album', albumId });
+          }}
+          onError={setError}
+        />
       </div>
       <fieldset className="grid min-w-0 gap-2 border-t pt-3">
         <legend className="pr-2 text-xs text-muted-foreground">{copy.settings.title}</legend>

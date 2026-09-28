@@ -17,6 +17,7 @@ interface TreeDisclosureRailProps extends Omit<ComponentProps<typeof Button>, 'c
   label: string;
   attached?: boolean;
   anchor?: TreeNodeAnchor;
+  rowHeight?: number;
   children?: ReactNode;
 }
 
@@ -31,6 +32,7 @@ export const TreeDisclosureRail = forwardRef<HTMLButtonElement, TreeDisclosureRa
     label,
     attached = false,
     anchor = { edgeX: 5, topY: 6, bottomY: 60, contactY: 36, capEndX: 34 },
+    rowHeight = TREE_CONNECTION_GEOMETRY.rowHeight,
     className,
     style,
     children,
@@ -42,6 +44,7 @@ export const TreeDisclosureRail = forwardRef<HTMLButtonElement, TreeDisclosureRa
   if (!attached)
     return (
       <Button
+        data-item-drag-ignore
         ref={ref}
         type="button"
         variant="ghost"
@@ -57,20 +60,21 @@ export const TreeDisclosureRail = forwardRef<HTMLButtonElement, TreeDisclosureRa
       </Button>
     );
 
-  const disclosurePath = getTreeDisclosurePath(anchor, open);
+  const disclosurePath = getTreeDisclosurePath(anchor, open, rowHeight);
 
   return (
     <Button
+      data-item-drag-ignore
       ref={ref}
       type="button"
       variant="ghost"
       size="icon-sm"
       className={cn(
-        'pointer-events-none absolute left-0 top-1/2 z-20 h-[68px] w-5 -translate-y-1/2 overflow-visible rounded-full p-0',
+        'pointer-events-none absolute left-0 top-1/2 z-20 w-5 -translate-y-1/2 overflow-visible rounded-full p-0',
         'hover:bg-transparent active:bg-transparent focus-visible:ring-2 focus-visible:ring-selected-foreground focus-visible:ring-offset-0',
         className,
       )}
-      style={style}
+      style={{ ...style, height: rowHeight }}
       aria-label={label}
       data-tree-disclosure
       data-tree-disclosure-attached
@@ -78,20 +82,13 @@ export const TreeDisclosureRail = forwardRef<HTMLButtonElement, TreeDisclosureRa
       {...props}
     >
       <svg
-        className="tree-disclosure-mark h-[68px] w-5 overflow-visible"
-        viewBox="0 0 20 68"
+        className="tree-disclosure-mark h-full w-5 overflow-visible"
+        viewBox={`0 0 20 ${rowHeight}`}
         fill="none"
         aria-hidden="true"
       >
         <defs>
-          <linearGradient
-            id={gradientId}
-            x1="0"
-            y1={anchor.topY}
-            x2="0"
-            y2={TREE_CONNECTION_GEOMETRY.disclosureConnectorEndY}
-            gradientUnits="userSpaceOnUse"
-          >
+          <linearGradient id={gradientId} x1="0" y1={anchor.topY} x2="0" y2={rowHeight} gradientUnits="userSpaceOnUse">
             <stop offset="0" stopColor="var(--selected-foreground)" />
             <stop offset="0.52" stopColor="var(--selected-foreground)" />
             <stop offset="0.82" stopColor="var(--tree-branch-color, var(--hierarchy-accent))" />
@@ -155,6 +152,7 @@ export function TreeBranchTransitRail({ topology }: TreeBranchTransitRailProps) 
 interface TreeBranchNodeConnectorProps {
   topology: TreeBranchItemTopology;
   anchor: TreeNodeAnchor;
+  rowHeight?: number;
 }
 
 const TreeBranchCollapseContext = createContext<(() => void) | null>(null);
@@ -170,15 +168,21 @@ export function TreeBranchCollapseProvider({ children, onCollapse }: TreeBranchC
 }
 
 /** A node-local junction: either a spur from the transit rail or its terminal bend. */
-export function TreeBranchNodeConnector({ topology, anchor }: TreeBranchNodeConnectorProps) {
+export function TreeBranchNodeConnector({
+  topology,
+  anchor,
+  rowHeight = TREE_CONNECTION_GEOMETRY.rowHeight,
+}: TreeBranchNodeConnectorProps) {
   const onCollapse = useContext(TreeBranchCollapseContext);
   const connectorPath = getTreeBranchNodeConnectorPath(topology, anchor);
   return (
     <svg
+      data-item-drag-ignore
       data-tree-branch-node-connector
       data-position={topology.position}
-      className="tree-branch-line tree-branch-node-connector pointer-events-none absolute left-0 top-0 z-0 h-[68px] w-5 overflow-visible"
-      viewBox="0 0 20 68"
+      className="tree-branch-line tree-branch-node-connector pointer-events-none absolute left-0 top-0 z-0 w-5 overflow-visible"
+      style={{ height: rowHeight }}
+      viewBox={`0 0 20 ${rowHeight}`}
       fill="none"
       aria-hidden="true"
     >
@@ -210,18 +214,25 @@ export function TreeBranchNodeConnector({ topology, anchor }: TreeBranchNodeConn
 
 interface TreeBranchCollapseRailProps {
   label: string;
+  rowHeight?: number;
   onCollapse(): void;
 }
 
 /** The visible child rail doubles as a generous, but visually quiet, fold target. */
-export function TreeBranchCollapseRail({ label, onCollapse }: TreeBranchCollapseRailProps) {
+export function TreeBranchCollapseRail({
+  label,
+  rowHeight = TREE_CONNECTION_GEOMETRY.rowHeight,
+  onCollapse,
+}: TreeBranchCollapseRailProps) {
   return (
     <Button
+      data-item-drag-ignore
       type="button"
       variant="ghost"
       size="icon-sm"
       data-tree-branch-collapse-rail
-      className="tree-branch-collapse-rail absolute bottom-0 left-[-2px] top-[4.25rem] z-30 h-auto w-4 cursor-pointer rounded-full p-0 hover:bg-transparent active:bg-transparent"
+      className="tree-branch-collapse-rail absolute bottom-0 left-[-2px] z-30 h-auto w-4 cursor-pointer rounded-full p-0 hover:bg-transparent active:bg-transparent"
+      style={{ top: rowHeight }}
       aria-label={label}
       title={label}
       onClick={(event) => {

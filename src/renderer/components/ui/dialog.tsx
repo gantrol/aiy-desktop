@@ -9,16 +9,31 @@ import {
   useOverlayPortalContainer,
 } from '@/renderer/components/ui/overlay-layer';
 
-const Dialog = DialogPrimitive.Root;
+const DialogContainerContext = React.createContext<HTMLElement | null>(null);
+
+function Dialog({
+  container,
+  modal,
+  ...props
+}: React.ComponentProps<typeof DialogPrimitive.Root> & { container?: HTMLElement | null }) {
+  const inheritedContainer = React.useContext(DialogContainerContext);
+  const boundary = container ?? inheritedContainer;
+  return (
+    <DialogContainerContext.Provider value={boundary}>
+      <DialogPrimitive.Root modal={modal ?? !boundary} {...props} />
+    </DialogContainerContext.Provider>
+  );
+}
 const DialogTrigger = DialogPrimitive.Trigger;
 const DialogClose = DialogPrimitive.Close;
 
 function DialogPortal({ container, ...props }: React.ComponentProps<typeof DialogPrimitive.Portal>) {
   const inheritedContainer = useOverlayPortalContainer();
+  const boundary = React.useContext(DialogContainerContext);
   return (
     <DialogPrimitive.Portal
       data-slot="dialog-portal"
-      container={container ?? inheritedContainer ?? undefined}
+      container={container ?? inheritedContainer ?? boundary ?? undefined}
       {...props}
     />
   );
@@ -38,12 +53,18 @@ function DialogContent({
   children,
   showCloseButton = true,
   onInteractOutside,
+  onEscapeKeyDown,
   ...props
 }: React.ComponentProps<typeof DialogPrimitive.Content> & { showCloseButton?: boolean }) {
   const { messages } = useI18n();
+  const boundary = React.useContext(DialogContainerContext);
   return (
     <DialogPortal>
-      <DialogOverlay />
+      {boundary ? (
+        <div aria-hidden="true" className="pointer-events-auto absolute inset-0 z-modal-scrim bg-dialog-scrim" />
+      ) : (
+        <DialogOverlay />
+      )}
       <ModalOverlayScope>
         <DialogPrimitive.Content
           data-slot="dialog-content"
@@ -51,10 +72,13 @@ function DialogContent({
           data-overlay-surface=""
           className={cn(
             'corner-continuous pointer-events-auto fixed top-1/2 left-1/2 z-modal grid max-h-[calc(100dvh-2rem)] w-[calc(100%-2rem)] max-w-lg -translate-x-1/2 -translate-y-1/2 gap-4 overflow-y-auto overscroll-contain rounded-xl border border-border bg-overlay p-6 text-foreground shadow-dialog outline-none',
+            boundary && 'absolute max-h-[calc(100%-2rem)]',
             className,
           )}
           onInteractOutside={(event) => {
             onInteractOutside?.(event);
+            // Switching to the other pane must keep this pane's upload choices alive.
+            if (boundary) event.preventDefault();
             if (
               !event.defaultPrevented &&
               event.target instanceof Element &&
@@ -62,6 +86,10 @@ function DialogContent({
             ) {
               event.preventDefault();
             }
+          }}
+          onEscapeKeyDown={(event) => {
+            onEscapeKeyDown?.(event);
+            if (boundary && !boundary.contains(document.activeElement)) event.preventDefault();
           }}
           {...props}
         >

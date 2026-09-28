@@ -1,4 +1,8 @@
-import { markdownBlockDocument } from '@/shared/block-document-codecs';
+import { blockDocumentMarkdown, markdownBlockDocument } from '@/shared/block-document-codecs';
+import type { Schema } from '@tiptap/pm/model';
+import { blockDocumentPlacements } from '@/shared/block-document-placements';
+import { sameSharedDocument } from '@/renderer/features/content-editor/sharedDocumentEdit';
+import { sharedDocumentCommentAnchors } from '@/renderer/features/video-documents/articleElementIdentity';
 import { hydrateArticleElementJsonIdentities } from '@/renderer/features/video-documents/articleElementJsonIdentity';
 import { ArticleEditorSessionModel } from '@/renderer/components/creator/article-editor/ArticleEditorSessionModel';
 import {
@@ -66,6 +70,7 @@ export interface ArticleEditorSessionRuntime {
   subscribeRecovery(listener: () => void): () => void;
   subscribeAcknowledged(listener: (article: ArticleDto, request: ArticleRevisionSaveInput) => void): () => void;
   receiveArticle(article: ArticleDto): void;
+  receiveTransferredArticle(article: ArticleDto): void;
   acceptExternalArticle(): Promise<boolean>;
   mutateComments<T extends { comments: ArticleCommentDto[] }>(
     operation: (article: ArticleDto) => Promise<T>,
@@ -74,6 +79,8 @@ export interface ArticleEditorSessionRuntime {
   discardRecovery(): Promise<boolean>;
   keepRecovery(): void;
   documentChanged(markdown: string): number;
+  editSharedDocument(before: BlockDocument, next: BlockDocument, schema: Schema): boolean;
+  registerSharedInput(whenSettled: () => Promise<boolean>): () => void;
   articleElementsChanged(): number;
   titleChanged(title: string): number;
   coverChanged(assetId: string | null): number;
@@ -126,6 +133,7 @@ class ArticleSession implements ArticleEditorSessionRuntime {
   readonly #recoveryStore: ArticleEditorRecoveryStore;
   readonly #initialization: Promise<void>;
   readonly #markdownListeners = new Set<() => void>();
+  readonly #sharedInputs = new Set<() => Promise<boolean>>();
   readonly #recoveryListeners = new Set<() => void>();
   readonly #acknowledgedListeners = new Set<(article: ArticleDto, request: ArticleRevisionSaveInput) => void>();
   readonly #options: RuntimeOptions;
@@ -258,8 +266,8 @@ class ArticleSession implements ArticleEditorSessionRuntime {
     this.start();
   }
 
-  #publishMarkdown(value: string) {
-    if (this.#markdown === value) return;
+  #publishMarkdown(value: string, documentChanged = false) {
+    if (this.#markdown === value && !documentChanged) return;
     this.#markdown = value;
     this.#markdownListeners.forEach((listener) => listener());
   }
@@ -286,13 +294,14 @@ class ArticleSession implements ArticleEditorSessionRuntime {
     const snapshot = this.#captureDocument();
     const key = JSON.stringify(snapshot);
     if (key === this.#capturedKey) return this.model.getSnapshot().draft.sequence;
-    this.#publishMarkdown(snapshot.markdown);
+    this.#publishMarkdown(snapshot.markdown, true);
     const sequence = this.#coordinator.noteChange(snapshot, cause);
     this.#capturedKey = key;
     return sequence;
   }
 
   #whenSettled = async () => {
+    if (!(await Promise.all([...this.#sharedInputs].map((settle) => settle()))).every(Boolean)) return false;
     const handle = this.#editorHandle;
     if (handle && !(await handle.whenSettled())) return false;
     if (this.#disposed) return false;
@@ -392,6 +401,11 @@ class ArticleSession implements ArticleEditorSessionRuntime {
     this.#receiveQueuedArticle();
   };
 
+  receiveTransferredArticle = (next: ArticleDto) => {
+    this.receiveArticle(next);
+    this.#options.onSaved(next);
+  };
+
   acceptExternalArticle = async () => {
     if (this.#coordinator.busy || !(await this.#whenSettled())) return false;
     const next = this.model.getSnapshot().externalArticle;
@@ -473,8 +487,43 @@ class ArticleSession implements ArticleEditorSessionRuntime {
     this.start();
   };
   documentChanged = (value: string) => {
-    this.#publishMarkdown(value);
+    this.#markdown = value;
     return this.#recordChange();
+  };
+  registerSharedInput = (whenSettled: () => Promise<boolean>) => {
+    this.#sharedInputs.add(whenSettled);
+    return () => {
+      this.#sharedInputs.delete(whenSettled);
+    };
+  };
+  editSharedDocument = (before: BlockDocument, next: BlockDocument, schema: Schema) => {
+    if (this.#disposed || this.#recoveryPending || this.model.getSnapshot().editorPending) return false;
+    const snapshot = this.captureSnapshot();
+    const current = snapshot.document ?? markdownBlockDocument(snapshot.markdown, snapshot.mediaBindings);
+    if (!sameSharedDocument(schema, current, before)) return false;
+    if (this.#editorHandle) return this.#editorHandle.applySharedDocument?.(before, next) ?? false;
+    const document = schema.nodeFromJSON(next.root);
+    document.check();
+    const anchors = new Map(this.#anchors.map((item) => [item.commentId, item.anchor]));
+    const comments = this.model.getSnapshot().draft.comments.map((comment) => ({
+      ...comment,
+      anchor: anchors.get(comment.id) ?? comment.anchor,
+    }));
+    const mapped = new Map(
+      sharedDocumentCommentAnchors(schema.nodeFromJSON(before.root), document, comments).map((item) => [
+        item.commentId,
+        item.anchor,
+      ]),
+    );
+    this.#anchors = comments.map((comment) => ({
+      commentId: comment.id,
+      anchor: mapped.get(comment.id) ?? comment.anchor,
+    }));
+    this.#document = next;
+    this.#elements = blockDocumentPlacements(next);
+    this.#markdown = blockDocumentMarkdown(next, snapshot.mediaBindings);
+    this.#recordChange();
+    return true;
   };
   articleElementsChanged = () => this.#recordChange();
   titleChanged = (value: string) => {
@@ -650,6 +699,7 @@ class ArticleSession implements ArticleEditorSessionRuntime {
     this.#recoveryStore.dispose();
     this.#acknowledgedListeners.clear();
     this.#markdownListeners.clear();
+    this.#sharedInputs.clear();
     this.#recoveryListeners.clear();
   };
 }

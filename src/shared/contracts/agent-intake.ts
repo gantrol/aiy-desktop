@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { agentProvenanceSchema } from '@/shared/contracts/content-provenance';
 
 export const AGENT_INTAKE_MARKDOWN_BYTES = 1024 * 1024;
 export const AGENT_INTAKE_IMAGE_BYTES = 25 * 1024 * 1024;
@@ -18,7 +19,7 @@ export const agentIntakeImportRequestSchema = z
     path: z.string().min(1).max(32_768),
     expectedSha256: sha256,
     title: z.string().trim().max(200).default(''),
-    provenance: z.object({ application: z.literal('codex'), threadId: identifier.optional() }).strict(),
+    provenance: agentProvenanceSchema,
   })
   .strict();
 
@@ -49,7 +50,7 @@ export const agentIntakeCapabilities = {
   getCommand: 'intake get',
   kinds: ['ARTICLE', 'OUTLINE', 'IMAGE_MATERIAL'],
   articleExtensions: ['.md', '.markdown'],
-  imageMimeTypes: ['image/png'],
+  imageMimeTypes: ['image/png', 'image/svg+xml'],
   maximumArticleBytes: AGENT_INTAKE_MARKDOWN_BYTES,
   maximumImageBytes: AGENT_INTAKE_IMAGE_BYTES,
   maximumImageDimension: 4_096,
@@ -58,6 +59,7 @@ export const agentIntakeCapabilities = {
   attachmentsAccepted: false,
   remoteUrlsAccepted: false,
   directoriesAccepted: false,
+  articleProvenance: true,
 } as const;
 
 export type AgentIntakeImportRequest = z.infer<typeof agentIntakeImportRequestSchema>;

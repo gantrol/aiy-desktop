@@ -201,21 +201,22 @@ export function normalizeWorkspaceTarget(target: WorkspaceTarget, data: Bootstra
       return { ...location, dictionary: { surface: 'overview' } };
     }
   }
-  if (location.view === 'gallery') {
-    const collection = location.gallery.collection;
-    if (collection.kind === 'album' && !data.albums.some((album) => album.id === collection.albumId)) {
-      return {
-        ...location,
-        gallery: { collection: { kind: 'all' }, selectedMaterialKey: null, requestedMaterialId: null },
-      };
-    }
-  }
+  // Gallery resolves its own directory after mount. Bootstrap albums exclude
+  // material collections and do not contain the virtual creation-source IDs.
+  // Treating either as missing here also collapses distinct restored tabs.
   return location;
 }
 
 export function workspaceLocationKey(location: AppLocation) {
   if (location.view === 'creator' && location.creator.surface === 'animation')
     return JSON.stringify({ kind: 'animation', documentId: location.creator.documentId });
+  if (location.view === 'gallery' && location.gallery.browse) {
+    // Scroll position is a presentation checkpoint, not a different tab target.
+    return JSON.stringify({
+      kind: 'gallery',
+      location: { ...location.gallery, browse: { ...location.gallery.browse, viewport: undefined } },
+    });
+  }
   return JSON.stringify(appLocationToWorkspaceTarget(location));
 }
 

@@ -193,6 +193,7 @@ export const xiaohongshuComposerAdapter: ComposerAdapter = {
     const deadline = Date.now() + UPLOAD_WAIT_MS;
     // The first upload mounts the editor and replaces the file input. Upload in
     // order, reacquiring that input each time, so the first image remains the cover.
+    await options.beforeMutation?.();
     for (let index = 0; index < files.length; index += 1) {
       input = findMediaInput();
       if (!input || !setMediaFiles(input, [files[index]!])) return failure('MEDIA_FILL_FAILED');

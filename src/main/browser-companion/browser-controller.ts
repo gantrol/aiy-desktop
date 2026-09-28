@@ -1,6 +1,8 @@
 import { spawn } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
-import { mkdir, open, rename, rm, stat, writeFile } from 'node:fs/promises';
+import { constants } from 'node:fs';
+import { access, mkdir, open, rename, rm, stat, writeFile } from 'node:fs/promises';
+import { homedir } from 'node:os';
 import path from 'node:path';
 import { z } from 'zod';
 import {
@@ -26,6 +28,7 @@ interface BrowserDefinition {
   name: string;
   executableOverride: string;
   userDataOverride: string;
+  macUserDataSubdirectory: readonly string[];
   executableCandidates(environment: NodeJS.ProcessEnv): Array<string | undefined>;
   defaultUserDataRoot(environment: NodeJS.ProcessEnv): string | null;
 }
@@ -36,6 +39,7 @@ const BROWSER_DEFINITIONS: readonly BrowserDefinition[] = [
     name: 'Google Chrome',
     executableOverride: 'AIY_BROWSER_COMPANION_CHROME_EXECUTABLE',
     userDataOverride: 'AIY_BROWSER_COMPANION_CHROME_USER_DATA_DIR',
+    macUserDataSubdirectory: ['Google', 'Chrome'],
     executableCandidates: (environment) => [
       environment.LOCALAPPDATA
         ? path.join(environment.LOCALAPPDATA, 'Google', 'Chrome', 'Application', 'chrome.exe')
@@ -57,6 +61,7 @@ const BROWSER_DEFINITIONS: readonly BrowserDefinition[] = [
     name: 'Microsoft Edge',
     executableOverride: 'AIY_BROWSER_COMPANION_EDGE_EXECUTABLE',
     userDataOverride: 'AIY_BROWSER_COMPANION_EDGE_USER_DATA_DIR',
+    macUserDataSubdirectory: ['Microsoft Edge'],
     executableCandidates: (environment) => [
       environment.LOCALAPPDATA
         ? path.join(environment.LOCALAPPDATA, 'Microsoft', 'Edge', 'Application', 'msedge.exe')
@@ -186,12 +191,14 @@ async function readBoundedJson(filePath: string, maxBytes: number): Promise<unkn
   }
 }
 
-async function existingFile(candidate: string | undefined): Promise<string | null> {
+async function existingExecutable(candidate: string | undefined, platform: NodeJS.Platform): Promise<string | null> {
   const value = candidate?.trim();
   if (!value) return null;
   const resolved = path.resolve(value);
   try {
-    return (await stat(resolved)).isFile() ? resolved : null;
+    if (!(await stat(resolved)).isFile()) return null;
+    if (platform === 'darwin') await access(resolved, constants.X_OK);
+    return resolved;
   } catch {
     return null;
   }
@@ -248,17 +255,33 @@ export class BrowserCompanionBrowserController {
 
   private userDataRoot(definition: BrowserDefinition): string | null {
     const override = this.options.environment[definition.userDataOverride]?.trim();
-    return override ? path.resolve(override) : definition.defaultUserDataRoot(this.options.environment);
+    if (override) return path.resolve(override);
+    if (this.options.platform === 'darwin') {
+      return path.join(
+        this.macHomeDirectory(),
+        'Library',
+        'Application Support',
+        ...definition.macUserDataSubdirectory,
+      );
+    }
+    return definition.defaultUserDataRoot(this.options.environment);
+  }
+
+  private macHomeDirectory(): string {
+    return path.resolve(this.options.environment.HOME?.trim() || homedir());
   }
 
   private async executable(definition: BrowserDefinition): Promise<string | null> {
-    if (this.options.platform !== 'win32') return null;
-    const candidates = [
-      this.options.environment[definition.executableOverride],
-      ...definition.executableCandidates(this.options.environment),
-    ];
+    if (this.options.platform !== 'win32' && this.options.platform !== 'darwin') return null;
+    const installedCandidates =
+      this.options.platform === 'darwin'
+        ? ['/Applications', path.join(this.macHomeDirectory(), 'Applications')].map((directory) =>
+            path.join(directory, `${definition.name}.app`, 'Contents', 'MacOS', definition.name),
+          )
+        : definition.executableCandidates(this.options.environment);
+    const candidates = [this.options.environment[definition.executableOverride], ...installedCandidates];
     for (const candidate of candidates) {
-      const executable = await existingFile(candidate);
+      const executable = await existingExecutable(candidate, this.options.platform);
       if (executable) return executable;
     }
     return null;
@@ -458,7 +481,9 @@ export class BrowserCompanionBrowserController {
     if (overrideRoot) args.unshift(`--user-data-dir=${path.resolve(overrideRoot)}`);
     args.push(launchUrl);
     await new Promise<void>((resolve, reject) => {
-      const child = spawn(executable, args, { detached: true, stdio: 'ignore', windowsHide: false });
+      // Invoke the browser binary directly: Chromium forwards the command line to
+      // an existing instance for this user-data directory, including on macOS.
+      const child = spawn(executable, args, { detached: true, stdio: 'ignore', windowsHide: false, shell: false });
       child.once('error', (reason) => reject(new BrowserCompanionLaunchError('LAUNCH_FAILED', reason.message)));
       child.once('spawn', () => {
         child.unref();

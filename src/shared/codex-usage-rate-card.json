@@ -1,0 +1,437 @@
+{
+  "schemaVersion": 1,
+  "updatedAt": "2026-09-23",
+  "apiSourceUrl": "https://developers.openai.com/api/docs/pricing",
+  "creditSourceUrl": "https://learn.chatgpt.com/docs/pricing",
+  "longContextThresholdTokens": 272000,
+  "models": {
+    "gpt-6-sol": {
+      "aliases": [],
+      "verifiedAt": "2026-09-23",
+      "sourceUrls": [
+        "https://developers.openai.com/api/docs/models/gpt-6-sol",
+        "https://developers.openai.com/api/docs/changelog",
+        "https://learn.chatgpt.com/docs/pricing"
+      ],
+      "api": [
+        {
+          "effectiveFrom": "2026-09-22",
+          "inputPerMillionUsd": 2,
+          "cachedInputPerMillionUsd": 0.2,
+          "cacheWriteInputPerMillionUsd": 2.5,
+          "outputPerMillionUsd": 10,
+          "longContext": true
+        }
+      ],
+      "credits": [
+        {
+          "effectiveFrom": "2026-09-22",
+          "inputPerMillion": 50,
+          "cachedInputPerMillion": 5,
+          "outputPerMillion": 250
+        }
+      ],
+      "fastCreditMultiplier": 2.5
+    },
+    "gpt-6-luna": {
+      "aliases": [],
+      "verifiedAt": "2026-09-23",
+      "sourceUrls": [
+        "https://developers.openai.com/api/docs/models/gpt-6-luna",
+        "https://developers.openai.com/api/docs/changelog",
+        "https://learn.chatgpt.com/docs/pricing"
+      ],
+      "api": [
+        {
+          "effectiveFrom": "2026-09-22",
+          "inputPerMillionUsd": 0.1,
+          "cachedInputPerMillionUsd": 0.01,
+          "cacheWriteInputPerMillionUsd": 0.125,
+          "outputPerMillionUsd": 0.5,
+          "longContext": true
+        }
+      ],
+      "credits": [
+        {
+          "effectiveFrom": "2026-09-22",
+          "inputPerMillion": 2.5,
+          "cachedInputPerMillion": 0.25,
+          "outputPerMillion": 12.5
+        }
+      ],
+      "fastCreditMultiplier": 2.5
+    },
+    "gpt-6-astra": {
+      "aliases": [],
+      "verifiedAt": "2026-09-04",
+      "sourceUrls": ["https://developers.openai.com/api/docs/pricing", "https://learn.chatgpt.com/docs/pricing"],
+      "api": [
+        {
+          "effectiveFrom": "2026-09-04",
+          "inputPerMillionUsd": 10,
+          "cachedInputPerMillionUsd": 1,
+          "cacheWriteInputPerMillionUsd": 12.5,
+          "outputPerMillionUsd": 50,
+          "longContext": true
+        }
+      ],
+      "credits": [
+        {
+          "effectiveFrom": null,
+          "inputPerMillion": 250,
+          "cachedInputPerMillion": 25,
+          "outputPerMillion": 1250
+        }
+      ],
+      "fastCreditMultiplier": 2.5
+    },
+    "gpt-5.6-sol": {
+      "aliases": [],
+      "verifiedAt": "2026-09-04",
+      "sourceUrls": ["https://developers.openai.com/api/docs/pricing", "https://learn.chatgpt.com/docs/pricing"],
+      "api": [
+        {
+          "effectiveFrom": "2026-07-09",
+          "inputPerMillionUsd": 5,
+          "cachedInputPerMillionUsd": 0.5,
+          "cacheWriteInputPerMillionUsd": 6.25,
+          "outputPerMillionUsd": 30,
+          "longContext": true
+        },
+        {
+          "effectiveFrom": "2026-08-21",
+          "inputPerMillionUsd": 4,
+          "cachedInputPerMillionUsd": 0.4,
+          "cacheWriteInputPerMillionUsd": 5,
+          "outputPerMillionUsd": 20,
+          "longContext": true
+        }
+      ],
+      "credits": [
+        {
+          "effectiveFrom": null,
+          "inputPerMillion": 100,
+          "cachedInputPerMillion": 10,
+          "outputPerMillion": 500
+        }
+      ],
+      "fastCreditMultiplier": 2.5
+    },
+    "daybreak-blue": {
+      "aliases": [],
+      "verifiedAt": "2026-09-04",
+      "sourceUrls": ["https://developers.openai.com/api/docs/pricing", "https://learn.chatgpt.com/docs/pricing"],
+      "api": [
+        {
+          "effectiveFrom": "2026-08-07",
+          "inputPerMillionUsd": 5,
+          "cachedInputPerMillionUsd": 0.5,
+          "cacheWriteInputPerMillionUsd": 6.25,
+          "outputPerMillionUsd": 30,
+          "longContext": true
+        },
+        {
+          "effectiveFrom": "2026-08-21",
+          "inputPerMillionUsd": 4,
+          "cachedInputPerMillionUsd": 0.4,
+          "cacheWriteInputPerMillionUsd": 5,
+          "outputPerMillionUsd": 20,
+          "longContext": true
+        }
+      ],
+      "credits": [
+        {
+          "effectiveFrom": null,
+          "inputPerMillion": 100,
+          "cachedInputPerMillion": 10,
+          "outputPerMillion": 500
+        }
+      ],
+      "fastCreditMultiplier": null
+    },
+    "gpt-5.6-terra": {
+      "aliases": [],
+      "verifiedAt": "2026-09-04",
+      "sourceUrls": ["https://developers.openai.com/api/docs/pricing", "https://learn.chatgpt.com/docs/pricing"],
+      "api": [
+        {
+          "effectiveFrom": "2026-07-09",
+          "inputPerMillionUsd": 2.5,
+          "cachedInputPerMillionUsd": 0.25,
+          "cacheWriteInputPerMillionUsd": 3.125,
+          "outputPerMillionUsd": 15,
+          "longContext": true
+        },
+        {
+          "effectiveFrom": "2026-07-30",
+          "inputPerMillionUsd": 2,
+          "cachedInputPerMillionUsd": 0.2,
+          "cacheWriteInputPerMillionUsd": 2.5,
+          "outputPerMillionUsd": 12,
+          "longContext": true
+        }
+      ],
+      "credits": [
+        {
+          "effectiveFrom": null,
+          "inputPerMillion": 50,
+          "cachedInputPerMillion": 5,
+          "outputPerMillion": 300
+        }
+      ],
+      "fastCreditMultiplier": 2.5
+    },
+    "gpt-5.6-luna": {
+      "aliases": [],
+      "verifiedAt": "2026-09-04",
+      "sourceUrls": ["https://developers.openai.com/api/docs/pricing", "https://learn.chatgpt.com/docs/pricing"],
+      "api": [
+        {
+          "effectiveFrom": "2026-07-09",
+          "inputPerMillionUsd": 1,
+          "cachedInputPerMillionUsd": 0.1,
+          "cacheWriteInputPerMillionUsd": 1.25,
+          "outputPerMillionUsd": 6,
+          "longContext": true
+        },
+        {
+          "effectiveFrom": "2026-07-30",
+          "inputPerMillionUsd": 0.2,
+          "cachedInputPerMillionUsd": 0.02,
+          "cacheWriteInputPerMillionUsd": 0.25,
+          "outputPerMillionUsd": 1.2,
+          "longContext": true
+        }
+      ],
+      "credits": [
+        {
+          "effectiveFrom": null,
+          "inputPerMillion": 5,
+          "cachedInputPerMillion": 0.5,
+          "outputPerMillion": 30
+        }
+      ],
+      "fastCreditMultiplier": 2.5
+    },
+    "gpt-5.5": {
+      "aliases": [],
+      "verifiedAt": "2026-09-04",
+      "sourceUrls": ["https://developers.openai.com/api/docs/pricing", "https://learn.chatgpt.com/docs/pricing"],
+      "api": [
+        {
+          "effectiveFrom": null,
+          "inputPerMillionUsd": 5,
+          "cachedInputPerMillionUsd": 0.5,
+          "cacheWriteInputPerMillionUsd": null,
+          "outputPerMillionUsd": 30,
+          "longContext": true
+        }
+      ],
+      "credits": [
+        {
+          "effectiveFrom": null,
+          "inputPerMillion": 125,
+          "cachedInputPerMillion": 12.5,
+          "outputPerMillion": 750
+        }
+      ],
+      "fastCreditMultiplier": 2.5
+    },
+    "gpt-5.5-pro": {
+      "aliases": [],
+      "verifiedAt": "2026-09-04",
+      "sourceUrls": ["https://developers.openai.com/api/docs/pricing", "https://learn.chatgpt.com/docs/pricing"],
+      "api": [
+        {
+          "effectiveFrom": null,
+          "inputPerMillionUsd": 30,
+          "cachedInputPerMillionUsd": null,
+          "cacheWriteInputPerMillionUsd": null,
+          "outputPerMillionUsd": 180,
+          "longContext": true
+        }
+      ],
+      "credits": [],
+      "fastCreditMultiplier": null
+    },
+    "gpt-5.4": {
+      "aliases": [],
+      "verifiedAt": "2026-09-04",
+      "sourceUrls": ["https://developers.openai.com/api/docs/pricing", "https://learn.chatgpt.com/docs/pricing"],
+      "api": [
+        {
+          "effectiveFrom": null,
+          "inputPerMillionUsd": 2.5,
+          "cachedInputPerMillionUsd": 0.25,
+          "cacheWriteInputPerMillionUsd": null,
+          "outputPerMillionUsd": 15,
+          "longContext": true
+        }
+      ],
+      "credits": [
+        {
+          "effectiveFrom": null,
+          "inputPerMillion": 62.5,
+          "cachedInputPerMillion": 6.25,
+          "outputPerMillion": 375
+        }
+      ],
+      "fastCreditMultiplier": 2
+    },
+    "gpt-5.4-pro": {
+      "aliases": [],
+      "verifiedAt": "2026-09-04",
+      "sourceUrls": ["https://developers.openai.com/api/docs/pricing", "https://learn.chatgpt.com/docs/pricing"],
+      "api": [
+        {
+          "effectiveFrom": null,
+          "inputPerMillionUsd": 30,
+          "cachedInputPerMillionUsd": null,
+          "cacheWriteInputPerMillionUsd": null,
+          "outputPerMillionUsd": 180,
+          "longContext": true
+        }
+      ],
+      "credits": [],
+      "fastCreditMultiplier": null
+    },
+    "gpt-5.4-mini": {
+      "aliases": [],
+      "verifiedAt": "2026-09-04",
+      "sourceUrls": ["https://developers.openai.com/api/docs/pricing", "https://learn.chatgpt.com/docs/pricing"],
+      "api": [
+        {
+          "effectiveFrom": null,
+          "inputPerMillionUsd": 0.75,
+          "cachedInputPerMillionUsd": 0.075,
+          "cacheWriteInputPerMillionUsd": null,
+          "outputPerMillionUsd": 4.5,
+          "longContext": false
+        }
+      ],
+      "credits": [
+        {
+          "effectiveFrom": null,
+          "inputPerMillion": 18.75,
+          "cachedInputPerMillion": 1.875,
+          "outputPerMillion": 113
+        }
+      ],
+      "fastCreditMultiplier": null
+    },
+    "gpt-5.4-nano": {
+      "aliases": [],
+      "verifiedAt": "2026-09-04",
+      "sourceUrls": ["https://developers.openai.com/api/docs/pricing", "https://learn.chatgpt.com/docs/pricing"],
+      "api": [
+        {
+          "effectiveFrom": null,
+          "inputPerMillionUsd": 0.2,
+          "cachedInputPerMillionUsd": 0.02,
+          "cacheWriteInputPerMillionUsd": null,
+          "outputPerMillionUsd": 1.25,
+          "longContext": false
+        }
+      ],
+      "credits": [],
+      "fastCreditMultiplier": null
+    },
+    "gpt-5.3-codex": {
+      "aliases": [],
+      "verifiedAt": "2026-09-04",
+      "sourceUrls": ["https://developers.openai.com/api/docs/pricing", "https://learn.chatgpt.com/docs/pricing"],
+      "api": [
+        {
+          "effectiveFrom": null,
+          "inputPerMillionUsd": 1.75,
+          "cachedInputPerMillionUsd": 0.175,
+          "cacheWriteInputPerMillionUsd": null,
+          "outputPerMillionUsd": 14,
+          "longContext": false
+        }
+      ],
+      "credits": [
+        {
+          "effectiveFrom": null,
+          "inputPerMillion": 43.75,
+          "cachedInputPerMillion": 4.375,
+          "outputPerMillion": 350
+        }
+      ],
+      "fastCreditMultiplier": null
+    },
+    "gpt-5.2": {
+      "aliases": [],
+      "verifiedAt": "2026-09-04",
+      "sourceUrls": ["https://developers.openai.com/api/docs/pricing", "https://learn.chatgpt.com/docs/pricing"],
+      "api": [
+        {
+          "effectiveFrom": null,
+          "inputPerMillionUsd": 1.75,
+          "cachedInputPerMillionUsd": 0.175,
+          "cacheWriteInputPerMillionUsd": null,
+          "outputPerMillionUsd": 14,
+          "longContext": false
+        }
+      ],
+      "credits": [
+        {
+          "effectiveFrom": null,
+          "inputPerMillion": 43.75,
+          "cachedInputPerMillion": 4.375,
+          "outputPerMillion": 350
+        }
+      ],
+      "fastCreditMultiplier": null
+    },
+    "gpt-5.2-pro": {
+      "aliases": [],
+      "verifiedAt": "2026-09-04",
+      "sourceUrls": ["https://developers.openai.com/api/docs/pricing", "https://learn.chatgpt.com/docs/pricing"],
+      "api": [
+        {
+          "effectiveFrom": null,
+          "inputPerMillionUsd": 21,
+          "cachedInputPerMillionUsd": null,
+          "cacheWriteInputPerMillionUsd": null,
+          "outputPerMillionUsd": 168,
+          "longContext": false
+        }
+      ],
+      "credits": [],
+      "fastCreditMultiplier": null
+    },
+    "gpt-5-codex": {
+      "aliases": [],
+      "verifiedAt": "2026-09-04",
+      "sourceUrls": ["https://developers.openai.com/api/docs/pricing", "https://learn.chatgpt.com/docs/pricing"],
+      "api": [
+        {
+          "effectiveFrom": null,
+          "inputPerMillionUsd": 1.25,
+          "cachedInputPerMillionUsd": 0.125,
+          "cacheWriteInputPerMillionUsd": null,
+          "outputPerMillionUsd": 10,
+          "longContext": false
+        }
+      ],
+      "credits": [],
+      "fastCreditMultiplier": null
+    },
+    "daybreak-red": {
+      "aliases": [],
+      "verifiedAt": "2026-09-04",
+      "sourceUrls": ["https://developers.openai.com/api/docs/pricing", "https://learn.chatgpt.com/docs/pricing"],
+      "api": [],
+      "credits": [
+        {
+          "effectiveFrom": null,
+          "inputPerMillion": 312.5,
+          "cachedInputPerMillion": 31.25,
+          "outputPerMillion": 1875
+        }
+      ],
+      "fastCreditMultiplier": null
+    }
+  }
+}

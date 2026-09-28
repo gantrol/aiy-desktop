@@ -4,6 +4,7 @@ import { cn } from '@/renderer/lib/utils';
 import { Badge } from '@/renderer/components/ui/badge';
 import { ImageEvaluationControls } from '@/renderer/components/gallery/ImageEvaluationControls';
 import { ImageAmbientBackdrop } from '@/renderer/components/media/AmbientImage';
+import { MediaCardCaption } from '@/renderer/components/media/MediaCardCaption';
 
 interface Props {
   item: GalleryItemDto;
@@ -37,9 +38,10 @@ export function GalleryTile({ item, filter, visibleDimensions, ratingBusy, onOpe
 
   return (
     <article
+      data-media-card
       data-gallery-item={item.id}
       data-gallery-source={item.source}
-      className="corner-continuous group overflow-hidden rounded-xl border bg-surface transition-colors duration-fast hover:border-border-strong"
+      className="group overflow-hidden rounded-md bg-surface"
     >
       <button
         type="button"
@@ -69,10 +71,10 @@ export function GalleryTile({ item, filter, visibleDimensions, ratingBusy, onOpe
             {labels.both}
           </Badge>
         )}
-        <div className="absolute inset-x-0 bottom-0 z-20 flex items-end justify-between gap-3 border-t bg-overlay/95 px-3 py-3 text-foreground opacity-0 backdrop-blur-sm transition-opacity duration-fast group-hover:opacity-100 group-focus-within:opacity-100">
-          <span className="min-w-0 truncate text-sm font-medium">{title}</span>
-          <span className="shrink-0 text-[11px] text-muted-foreground">{detail}</span>
-        </div>
+        <MediaCardCaption>
+          <strong className="block truncate text-sm font-semibold">{title}</strong>
+          <span className="block truncate text-xs font-normal opacity-85">{detail}</span>
+        </MediaCardCaption>
       </button>
       {visibleDimensions.length > 0 && (
         <div

@@ -1,93 +1,104 @@
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 import type { NavigationCommand } from '@/shared/contracts';
 import { DEFAULT_MOUSE_NAVIGATION_BINDINGS } from '@/renderer/appPresentation';
-import { commandMatchesShortcut } from '@/renderer/commands/app-shortcuts';
-import { activeWorkspaceGroup, type WorkspaceRuntimeState } from '@/renderer/components/workspace/workspace-state';
+import {
+  appShortcutCommands,
+  commandMatchesShortcut,
+  isWorkspaceShortcut,
+  shortcutEventAvailable,
+} from '@/renderer/commands/app-shortcuts';
+import { focusWorkspaceTab, workspaceShortcutLayerOpen } from '@/renderer/commands/shortcut-context';
+import { workspaceShortcutTarget } from '@/renderer/commands/workspace-shortcut-target';
+import type { WorkspaceRuntimeState } from '@/renderer/components/workspace/workspace-state';
+import { useStableCallback } from '@/renderer/lib/useStableCallback';
 
-function focusWorkspaceGroup(groupId: string) {
-  const root = [...document.querySelectorAll<HTMLElement>('[data-workspace-group-id]')].find(
-    (candidate) => candidate.dataset.workspaceGroupId === groupId,
-  );
-  if (!root) return;
-  const target =
-    root.querySelector<HTMLElement>('[data-workspace-last-focus]') ??
-    root.querySelector<HTMLElement>('[data-slot="video-document-wysiwyg-editor"] [contenteditable="true"]') ??
-    root.querySelector<HTMLElement>('input:not(:disabled), textarea:not(:disabled), [tabindex="0"]');
-  target?.focus({ preventScroll: true });
-}
-
-export function useAppWorkspaceShortcuts({
-  state,
-  activateGroupByIndex,
-  activateTabByIndex,
-  navigateHistory,
-  startNew,
-}: {
+interface Props {
   state: WorkspaceRuntimeState | null;
-  activateGroupByIndex(index: number): void;
-  activateTabByIndex(index: number): void;
+  enabled: boolean;
+  activateTab(groupId: string, tabId: string, committed: () => void): void;
+  activateGroup(groupId: string, committed: () => void): void;
+  closeTab(tabId: string, committed: () => void): void;
+  newTab(sourceTabId: string): void;
   navigateHistory(command: NavigationCommand): void;
   startNew(): void;
-}) {
-  useEffect(() => {
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.repeat || document.querySelector('[role="dialog"]')) return;
-      const command: NavigationCommand | null =
-        event.key === 'BrowserBack' || event.code === 'BrowserBack' || event.keyCode === 166
-          ? 'back'
-          : event.key === 'BrowserForward' || event.code === 'BrowserForward' || event.keyCode === 167
-            ? 'forward'
-            : commandMatchesShortcut(event, window.desktopApi.appPlatform, 'navigation.back')
-              ? 'back'
-              : commandMatchesShortcut(event, window.desktopApi.appPlatform, 'navigation.forward')
-                ? 'forward'
-                : null;
-      if (command) {
-        event.preventDefault();
-        navigateHistory(command);
-        return;
-      }
-      if (commandMatchesShortcut(event, window.desktopApi.appPlatform, 'app.new')) {
-        event.preventDefault();
-        startNew();
-        return;
-      }
-      for (let index = 1; index <= 9; index += 1) {
-        if (!commandMatchesShortcut(event, window.desktopApi.appPlatform, `workspace.tab.${index}`)) continue;
-        const group = state ? activeWorkspaceGroup(state) : null;
-        if (!group?.tabs[index - 1]) return;
-        event.preventDefault();
-        activateTabByIndex(index - 1);
-        window.requestAnimationFrame(() => focusWorkspaceGroup(group.id));
-        return;
-      }
-      for (let index = 1; index <= 2; index += 1) {
-        if (!commandMatchesShortcut(event, window.desktopApi.appPlatform, `workspace.group.${index}`)) continue;
-        const groupId =
-          state?.arrangement.kind === 'split'
-            ? state.arrangement.groupIds[index - 1]
-            : index === 1
-              ? state?.arrangement.groupId
-              : undefined;
-        if (!groupId) return;
-        event.preventDefault();
-        activateGroupByIndex(index - 1);
-        window.requestAnimationFrame(() => focusWorkspaceGroup(groupId));
-        return;
-      }
-    };
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [activateGroupByIndex, activateTabByIndex, navigateHistory, startNew, state]);
+  openSearch(): void;
+}
 
-  useEffect(() => {
-    const handleMouseNavigation = (event: MouseEvent) => {
-      const command = DEFAULT_MOUSE_NAVIGATION_BINDINGS.get(event.button);
-      if (!command) return;
+function browserNavigation(event: KeyboardEvent): NavigationCommand | null {
+  if (event.ctrlKey || event.metaKey || event.altKey || event.shiftKey) return null;
+  if (event.key === 'BrowserBack' || event.code === 'BrowserBack' || event.keyCode === 166) return 'back';
+  if (event.key === 'BrowserForward' || event.code === 'BrowserForward' || event.keyCode === 167) return 'forward';
+  return null;
+}
+
+export function useAppWorkspaceShortcuts(props: Props) {
+  const frames = useRef(new Set<number>());
+  const mounted = useRef(false);
+  const restoreFocus = useStableCallback((spaceId: string, groupId?: string, tabId?: string) => {
+    const state = props.state;
+    if (!mounted.current || !props.enabled || state?.spaceId !== spaceId) return;
+    const group = state.groups.find((candidate) => candidate.id === state.activeGroupId);
+    if (!group || (groupId && group.id !== groupId) || (tabId && group.activeTabId !== tabId)) return;
+    // A close should recover lost focus, never steal it from a surviving control.
+    if (!tabId && document.activeElement !== document.body && document.activeElement?.isConnected) return;
+    focusWorkspaceTab(group.id, group.activeTabId);
+  });
+  const handleKeyDown = useStableCallback((event: KeyboardEvent) => {
+    const { state } = props;
+    if (!props.enabled || !state || event.repeat || !shortcutEventAvailable(event) || workspaceShortcutLayerOpen())
+      return;
+    const navigation = browserNavigation(event);
+    if (navigation) {
       event.preventDefault();
-      navigateHistory(command);
+      props.navigateHistory(navigation);
+      return;
+    }
+    const command = appShortcutCommands.find(
+      (candidate) =>
+        isWorkspaceShortcut(candidate) && commandMatchesShortcut(event, window.desktopApi.appPlatform, candidate.id),
+    );
+    if (!command) return;
+    const target = workspaceShortcutTarget(state, command.id);
+    if (!target && command.group === 'workspace') return;
+    event.preventDefault();
+    if (command.id === 'app.new') return props.startNew();
+    if (command.id === 'app.search') return props.openSearch();
+    if (command.id === 'navigation.back') return props.navigateHistory('back');
+    if (command.id === 'navigation.forward') return props.navigateHistory('forward');
+    if (!target) return;
+    if (target.kind === 'new') return props.newTab(target.tabId);
+    const committed = () => {
+      if (!mounted.current) return;
+      const frame = requestAnimationFrame(() => {
+        frames.current.delete(frame);
+        if (target.kind === 'close') restoreFocus(state.spaceId);
+        else restoreFocus(state.spaceId, target.groupId, target.tabId);
+      });
+      frames.current.add(frame);
     };
-    window.addEventListener('mouseup', handleMouseNavigation, true);
-    return () => window.removeEventListener('mouseup', handleMouseNavigation, true);
-  }, [navigateHistory]);
+    if (target.kind === 'close') props.closeTab(target.tabId, committed);
+    else if (target.kind === 'group') props.activateGroup(target.groupId, committed);
+    else props.activateTab(target.groupId, target.tabId, committed);
+  });
+  const handleMouseNavigation = useStableCallback((event: MouseEvent) => {
+    if (!props.enabled || !props.state || event.defaultPrevented || workspaceShortcutLayerOpen()) return;
+    const command = DEFAULT_MOUSE_NAVIGATION_BINDINGS.get(event.button);
+    if (!command) return;
+    event.preventDefault();
+    props.navigateHistory(command);
+  });
+  useEffect(() => {
+    mounted.current = true;
+    const scheduled = frames.current;
+    window.addEventListener('keydown', handleKeyDown);
+    // Bubble phase gives the focused surface the first chance to consume the event.
+    window.addEventListener('mouseup', handleMouseNavigation);
+    return () => {
+      mounted.current = false;
+      window.removeEventListener('keydown', handleKeyDown);
+      window.removeEventListener('mouseup', handleMouseNavigation);
+      scheduled.forEach(cancelAnimationFrame);
+      scheduled.clear();
+    };
+  }, [handleKeyDown, handleMouseNavigation]);
 }

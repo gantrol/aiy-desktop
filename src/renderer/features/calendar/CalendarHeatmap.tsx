@@ -5,12 +5,13 @@ import { cn } from '@/renderer/lib/utils';
 import { formatCivilDate } from '@/renderer/features/calendar/calendarDates';
 import type { CalendarDaySummary, CalendarPreferences } from '@/shared/contracts/calendar';
 
+// Quantity stays encoded in the fill while interaction is indicated by the ring.
 const levels = [
-  'bg-muted',
-  'bg-selected-foreground/20',
-  'bg-selected-foreground/40',
-  'bg-selected-foreground/65',
-  'bg-selected-foreground',
+  'bg-muted hover:bg-muted active:bg-muted',
+  'bg-selected-foreground/20 hover:bg-selected-foreground/20 active:bg-selected-foreground/20',
+  'bg-selected-foreground/40 hover:bg-selected-foreground/40 active:bg-selected-foreground/40',
+  'bg-selected-foreground/65 hover:bg-selected-foreground/65 active:bg-selected-foreground/65',
+  'bg-selected-foreground hover:bg-selected-foreground active:bg-selected-foreground',
 ];
 
 const cellWidth = 32;
@@ -211,11 +212,13 @@ export function CalendarHeatmap({
                     onClick={() => onSelect(date)}
                     onKeyDown={(event) => navigate(event, index)}
                     className={cn(
-                      'h-full min-h-0 w-full min-w-0 rounded-[2px] p-0 hover:ring-1 hover:ring-inset hover:ring-foreground/50',
-                      known ? levels[level] : 'bg-muted/40',
-                      date > today && !count && 'border border-dashed border-border bg-transparent',
+                      'h-full min-h-0 w-full min-w-0 rounded-[2px] p-0 hover:ring-1 hover:ring-foreground hover:ring-offset-1 hover:ring-offset-background focus-visible:ring-offset-1',
+                      known ? levels[level] : 'bg-muted/40 hover:bg-muted/40 active:bg-muted/40',
+                      date > today &&
+                        !count &&
+                        'border border-dashed border-border bg-transparent hover:bg-transparent active:bg-transparent',
                       date === today && 'outline outline-1 outline-offset-1 outline-muted-foreground',
-                      date === focusDate && 'ring-2 ring-inset ring-foreground',
+                      date === focusDate && 'ring-2 ring-foreground ring-offset-1 ring-offset-background hover:ring-2',
                     )}
                   />
                 );

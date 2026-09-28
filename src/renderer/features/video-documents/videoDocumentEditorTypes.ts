@@ -31,6 +31,7 @@ export interface VideoDocumentQuickInsertNoteRequest {
 }
 
 export interface VideoDocumentWysiwygEditorHandle {
+  applySharedDocument?(before: BlockDocument, next: BlockDocument): boolean;
   insertFigureReference(assetId: string, label: string): boolean;
   getImagePlacements(): import('@/renderer/features/video-documents/articleImageOperations').ArticleImagePlacement[];
   moveImage(elementId: string, targetId: string): boolean;
@@ -65,7 +66,9 @@ export interface VideoDocumentWysiwygEditorProps {
   toolbarRoot?: HTMLDivElement | null;
   contentSource?: import('@/shared/contracts/content-library').ContentSource;
   outlineMode?: boolean;
+  outlinePreferenceKey?: string;
   beforeReferenceCapture?(): Promise<import('@/shared/contracts/content-source').ContentSource | null>;
+  onTransferSaved?(article: import('@/shared/contracts').ArticleDto): void;
   readOnly?: boolean;
   mediaIntake?: 'INLINE' | 'EXTERNAL';
   figureAssetIds?: readonly string[];

@@ -5,20 +5,32 @@ import { useI18n } from '@/renderer/i18n/useI18n';
 import type { ReferencePreview } from '@/shared/contracts/content-library';
 import { isDocumentSource, type ReferenceTarget } from '@/shared/contracts/content-source';
 import { ContentReferenceBody } from '@/renderer/features/content-editor/ContentReferenceBody';
-import { useContentReferenceHost } from '@/renderer/features/content-editor/ContentReferenceHost';
+import type { ReferencePresentation } from '@/shared/content-reference-token';
+import { presentReferenceMarkdown } from '@/shared/content-reference-presentation';
+import { referenceFailure } from '@/shared/i18n/reference-outline';
 
 export function ContentReferenceSelection({
   preview,
   busy,
   onInspect,
+  presentation,
+  parentLevel,
 }: {
   preview: ReferencePreview;
   busy: boolean;
   onInspect(target: ReferenceTarget): Promise<void>;
+  presentation?: ReferencePresentation;
+  parentLevel?: number;
 }) {
   const copy = useI18n().messages.referenceOutline;
-  const host = useContentReferenceHost();
   const sectionId = useId();
+  let markdown = preview.markdown;
+  let error = '';
+  try {
+    markdown = presentReferenceMarkdown(preview, presentation, parentLevel);
+  } catch (reason) {
+    error = referenceFailure(reason, copy);
+  }
   return (
     <>
       <div className="text-sm font-medium">{preview.title}</div>
@@ -70,8 +82,7 @@ export function ContentReferenceSelection({
             {copy.section}
           </label>
         )}
-      {host.outline &&
-        preview.target.blockId &&
+      {preview.target.blockId &&
         ['listItem', 'taskItem'].includes(
           preview.blocks.find((block) => block.id === preview.target.blockId)?.kind ?? '',
         ) && (
@@ -91,14 +102,20 @@ export function ContentReferenceSelection({
           </label>
         )}
       <div className="my-2 max-h-56 overflow-y-auto break-words text-sm">
-        <ContentReferenceBody
-          markdown={preview.markdown}
-          media={preview.media}
-          source={{
-            ...preview.target.source,
-            ...(isDocumentSource(preview.target.source) ? { revisionId: preview.revisionId } : {}),
-          }}
-        />
+        {error ? (
+          <span role="alert">{error}</span>
+        ) : !markdown ? (
+          <span role="status">{copy.emptyBody}</span>
+        ) : (
+          <ContentReferenceBody
+            markdown={markdown}
+            media={preview.media}
+            source={{
+              ...preview.target.source,
+              ...(isDocumentSource(preview.target.source) ? { revisionId: preview.revisionId } : {}),
+            }}
+          />
+        )}
       </div>
     </>
   );

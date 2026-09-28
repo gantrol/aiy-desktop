@@ -1,20 +1,17 @@
 import {
   CircleAlertIcon,
-  CheckIcon,
-  Columns2Icon,
   CopyIcon,
   DownloadIcon,
   FileTextIcon,
   ImagePlusIcon,
-  LayoutPanelTopIcon,
   LoaderCircleIcon,
-  Maximize2Icon,
-  Minimize2Icon,
   PlusIcon,
   TextCursorInputIcon,
+  TypeIcon,
   XIcon,
 } from 'lucide-react';
-import type { ComponentProps, ReactNode } from 'react';
+import { useState, type ComponentProps, type ReactNode } from 'react';
+import { ArticleTextCoverDialog } from '@/renderer/components/creator/article-editor/ArticleTextCoverDialog';
 import { Button } from '@/renderer/components/ui/button';
 import {
   DropdownMenu,
@@ -28,6 +25,7 @@ import { Separator } from '@/renderer/components/ui/separator';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/renderer/components/ui/tooltip';
 import { useI18n } from '@/renderer/i18n/useI18n';
 import { CreationWorkNavigation } from '@/renderer/components/creator/CreationWorkNavigation';
+import { ContentViewMenu } from '@/renderer/features/content-editor/ContentViewMenu';
 
 export function ArticleHeaderIconButton({
   children,
@@ -71,35 +69,15 @@ export function ArticleHeaderViewMenu({
   onSplitToggle(): void;
   onWidthToggle(): void;
 }) {
-  const contentCopy = useI18n().messages.contentEditor;
-  const editorCopy = useI18n().messages.creator.manuscriptEditor;
   return (
-    <DropdownMenu>
-      <DropdownMenuTrigger asChild>
-        <Button
-          type="button"
-          variant="ghost"
-          size="icon-sm"
-          aria-label={editorCopy.viewOptions}
-          title={editorCopy.viewOptions}
-        >
-          <LayoutPanelTopIcon className="size-4" />
-        </Button>
-      </DropdownMenuTrigger>
-      <DropdownMenuContent align="end" className="w-48">
-        <DropdownMenuItem onSelect={onSplitToggle}>
-          <DropdownMenuIcon>
-            <Columns2Icon />
-          </DropdownMenuIcon>
-          {editorCopy.splitEditor}
-          {splitOpen && <CheckIcon className="ml-auto size-4" />}
-        </DropdownMenuItem>
-        <DropdownMenuItem onSelect={onWidthToggle}>
-          <DropdownMenuIcon>{wide ? <Minimize2Icon /> : <Maximize2Icon />}</DropdownMenuIcon>
-          {wide ? contentCopy.standardWidth : contentCopy.wideWidth}
-        </DropdownMenuItem>
-      </DropdownMenuContent>
-    </DropdownMenu>
+    <ContentViewMenu
+      width={wide ? 'WIDE' : 'STANDARD'}
+      onWidthChange={(width) => {
+        if ((width === 'WIDE') !== wide) onWidthToggle();
+      }}
+      splitOpen={splitOpen}
+      onSplitToggle={onSplitToggle}
+    />
   );
 }
 
@@ -154,6 +132,8 @@ export function ArticleHeaderActions({
 }) {
   const labels = useI18n().messages.creator.manuscriptEditor;
   const derivativeLabel = labels.newDerivative;
+  const textCoverLabel = useI18n().messages.contentEditor.textCover.generate;
+  const [textCoverOpen, setTextCoverOpen] = useState(false);
   const exportLabel = labels.exportMarkdown;
 
   return (
@@ -191,6 +171,12 @@ export function ArticleHeaderActions({
             </DropdownMenuIcon>
             {labels.newHeroImage}
           </DropdownMenuItem>
+          <DropdownMenuItem disabled={creatingForm} onSelect={() => setTextCoverOpen(true)}>
+            <DropdownMenuIcon>
+              <TypeIcon />
+            </DropdownMenuIcon>
+            {textCoverLabel}
+          </DropdownMenuItem>
           <DropdownMenuSeparator />
           <DropdownMenuItem disabled={creatingForm || generatingHeader} onSelect={() => void onCreateArticle(false)}>
             <DropdownMenuIcon>
@@ -207,6 +193,7 @@ export function ArticleHeaderActions({
         </DropdownMenuContent>
       </DropdownMenu>
       {copyForWechatAction}
+      {textCoverOpen && <ArticleTextCoverDialog onClose={() => setTextCoverOpen(false)} />}
       {copyForAgentAction}
       <ArticleHeaderIconButton variant="ghost" disabled={exporting} label={exportLabel} onClick={() => void onExport()}>
         {exporting ? <LoaderCircleIcon className="size-4 animate-spin" /> : <DownloadIcon className="size-4" />}

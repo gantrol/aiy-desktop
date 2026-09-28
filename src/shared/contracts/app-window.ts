@@ -5,6 +5,7 @@ export const desktopPlatformSchema = z.enum(['darwin', 'linux', 'win32']);
 export const appWindowStateSchema = z
   .object({
     maximized: z.boolean(),
+    fullScreen: z.boolean(),
   })
   .strict();
 

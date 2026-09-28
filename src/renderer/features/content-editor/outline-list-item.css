@@ -8,6 +8,14 @@
   list-style: none;
 }
 
+/* Preserve the child-level indent while keeping titles close to their markers. */
+.aiy-outline-item[data-outline-visibility='inside']
+  > [data-node-view-content]
+  > [data-node-view-content-react]
+  > :is(ul, ol):not([data-outline-role='NOTE']):not([data-type='taskList']) {
+  padding-inline-start: 0.5rem;
+}
+
 .aiy-outline-item[data-outline-visibility='outside'] {
   display: none;
 }
@@ -43,7 +51,7 @@
   position: absolute;
   right: 0;
   bottom: 0;
-  left: 24px;
+  left: 2rem;
   height: 2px;
   background: var(--color-ring);
   content: '';
@@ -59,6 +67,40 @@
 .aiy-outline-item[data-outline-folded='true']
   > [data-node-view-content]
   > [data-node-view-content-react]
-  > :is(ul, ol):not([data-outline-role='NOTE']):not([data-type='taskList']) {
+  > :not(:first-child) {
   display: none;
+}
+
+/* Keep an adjacent thumbnail beside the title without changing the document's block order. */
+.aiy-outline-item:not([data-outline-folded='true'])
+  > [data-node-view-content]
+  > [data-node-view-content-react]:has(> p:first-child + .node-image > [data-outline-image='thumbnail']) {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  column-gap: 0.5rem;
+}
+
+.aiy-outline-item
+  > [data-node-view-content]
+  > [data-node-view-content-react]:has(> p:first-child + .node-image > [data-outline-image='thumbnail'])
+  > * {
+  grid-column: 1 / -1;
+}
+
+.aiy-outline-item
+  > [data-node-view-content]
+  > [data-node-view-content-react]:has(> p:first-child + .node-image > [data-outline-image='thumbnail'])
+  > p:first-child {
+  grid-column: 1;
+  grid-row: 1;
+}
+
+.aiy-outline-item
+  > [data-node-view-content]
+  > [data-node-view-content-react]
+  > p:first-child
+  + .node-image:has(> [data-outline-image='thumbnail']) {
+  grid-column: 2;
+  grid-row: 1;
+  margin-inline-end: 1.75rem;
 }

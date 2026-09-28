@@ -1,7 +1,8 @@
 import { ImagePlusIcon, LoaderCircleIcon } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
 import type { AlbumDto, CreatorImageImportSource, ImportedImageMetadataInput } from '@/shared/contracts';
-import { buildAlbumTreeIndex, flattenAlbumTree } from '@/renderer/components/albums/albumTree';
+import { creationAlbumOptions } from '@/renderer/components/albums/albumSelectOptions';
+import { AlbumSelect } from '@/renderer/components/albums/AlbumSelect';
 import { imageMimeType, type RendererImageImportSource } from '@/renderer/components/creator/imageImport';
 import { PasteDropSurface } from '@/renderer/components/creator/intake/PasteDropSurface';
 import { Button } from '@/renderer/components/ui/button';
@@ -15,7 +16,6 @@ import {
 } from '@/renderer/components/ui/dialog';
 import { Input } from '@/renderer/components/ui/input';
 import { Segmented, SegmentedItem } from '@/renderer/components/ui/segmented';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/renderer/components/ui/select';
 import { Textarea } from '@/renderer/components/ui/textarea';
 import { ImportBatchTable } from '@/renderer/features/intake/ImportBatchTable';
 import { ImportMetadataDetailsDialog } from '@/renderer/features/intake/ImportMetadataDetailsDialog';
@@ -61,7 +61,7 @@ function externalOutputMetadata(draft: IntakeImageMetadataDraft, exactPrompt: st
 }
 
 type ExternalCreationImportLabels = ReturnType<typeof useI18n>['messages']['creator']['externalCreationImport'];
-type AlbumRow = ReturnType<typeof flattenAlbumTree>[number];
+type AlbumRow = ReturnType<typeof creationAlbumOptions>[number];
 
 function ExternalCreationFields({
   labels,
@@ -143,17 +143,14 @@ function ExternalCreationFields({
       </label>
       <label className="grid gap-1.5 text-sm font-medium">
         {labels.album}
-        <Select value={albumId || '__none__'} disabled={disabled} onValueChange={onAlbumChange}>
-          <SelectTrigger>
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="__none__">{labels.noAlbum}</SelectItem>
-            {albumRows.map(({ album, depth }) => (
-              <SelectItem key={album.id} value={album.id}>{`${'　'.repeat(depth)}${album.title}`}</SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
+        <AlbumSelect
+          options={albumRows}
+          value={albumId || null}
+          ariaLabel={labels.album}
+          nullOption={{ kind: 'unassigned', label: labels.noAlbum }}
+          disabled={disabled}
+          onValueChange={(value) => onAlbumChange(value ?? '')}
+        />
       </label>
     </div>
   );
@@ -234,7 +231,7 @@ export function NewExternalCreationDialog({
   const seededOpenRef = useRef(false);
   const organizer = useImportMetadataOrganizer(images);
   imagesRef.current = images;
-  const albumRows = useMemo(() => flattenAlbumTree(buildAlbumTreeIndex(albums)), [albums]);
+  const albumRows = useMemo(() => creationAlbumOptions(albums), [albums]);
 
   useEffect(
     () => () => {
@@ -245,7 +242,7 @@ export function NewExternalCreationDialog({
 
   useEffect(() => {
     if (!open) return;
-    const selectableAlbumIds = new Set(albumRows.map((row) => row.album.id));
+    const selectableAlbumIds = new Set(albumRows.map((row) => row.id));
     setAlbumId(defaultAlbumId && selectableAlbumIds.has(defaultAlbumId) ? defaultAlbumId : '');
   }, [albumRows, defaultAlbumId, open]);
 
@@ -411,7 +408,7 @@ export function NewExternalCreationDialog({
               onPromptKnowledgeChange={setPromptKnowledge}
               onPromptChange={setPrompt}
               onSourceUrlChange={setSourceUrl}
-              onAlbumChange={(value) => setAlbumId(value === '__none__' ? '' : value)}
+              onAlbumChange={setAlbumId}
             />
 
             <input

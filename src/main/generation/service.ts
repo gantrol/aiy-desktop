@@ -19,6 +19,7 @@ import type {
   StyleExplorationStartInput,
 } from '@/shared/contracts';
 import type { OpenAiImageApiRuntimeConfiguration } from '@/main/extensions/openai-image-api/types';
+import type { WorkTrackingApi } from '@/shared/contracts/work-tracking';
 import type { DeepSeekApiRuntimeConfiguration } from '@/main/extensions/deepseek-api/types';
 import type { ExternalImageApiRuntimeConfiguration } from '@/main/extensions/external-image-api';
 
@@ -29,6 +30,7 @@ type MaybePromise<T> = T | Promise<T>;
  * The in-process coordinator and the detached worker client both implement it.
  */
 export interface GenerationService {
+  readonly workTracking?: WorkTrackingApi;
   readonly hasPending: boolean;
   readonly antigravityCliStatus?: AntigravityCliStatusDto;
   readonly imageGenerationRoutes: ImageGenerationRouteDto[];

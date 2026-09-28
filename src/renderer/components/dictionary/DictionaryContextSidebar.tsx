@@ -1,5 +1,5 @@
 import { ArrowLeftIcon, ChevronRightIcon, ImageIcon, PanelLeftCloseIcon, PanelLeftOpenIcon } from 'lucide-react';
-import { useEffect, useRef, type RefObject } from 'react';
+import { useEffect, useRef, type RefObject, type ReactNode } from 'react';
 import type { TermListItem } from '@/shared/contracts';
 import { cn } from '@/renderer/lib/utils';
 import { MediaStackPreview } from '@/renderer/components/media/MediaStackPreview';
@@ -45,6 +45,7 @@ export interface DictionaryContextSidebarProps {
   hasMore: boolean;
   loadError: string;
   className?: string;
+  headerControl?: ReactNode;
   onModeChange(mode: DictionaryContextSidebarMode): void;
   onBack(): void;
   onSelect(termId: string): void;
@@ -314,6 +315,7 @@ export function DictionaryContextSidebar({
   hasMore,
   loadError,
   className,
+  headerControl,
   onModeChange,
   onBack,
   onSelect,
@@ -395,16 +397,20 @@ export function DictionaryContextSidebar({
                   <span className="shrink-0 text-xs tabular-nums text-muted-foreground">{total}</span>
                 </div>
               </div>
-              <Button
-                type="button"
-                variant="ghost"
-                size="icon-sm"
-                title={copy.collapse}
-                aria-label={copy.collapse}
-                onClick={() => onModeChange('compact')}
-              >
-                <PanelLeftCloseIcon className="size-4" />
-              </Button>
+              {headerControl !== undefined ? (
+                headerControl
+              ) : (
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon-sm"
+                  title={copy.collapse}
+                  aria-label={copy.collapse}
+                  onClick={() => onModeChange('compact')}
+                >
+                  <PanelLeftCloseIcon className="size-4" />
+                </Button>
+              )}
             </div>
           </header>
         )}

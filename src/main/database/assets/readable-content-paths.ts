@@ -6,6 +6,7 @@ import {
   isPathInsideOrEqual,
   directoryKey,
   collisionKey,
+  numberedDirectoryName,
 } from '@/main/database/assets/library-file-view-values';
 import { now } from '@/main/database/core/values';
 
@@ -28,10 +29,31 @@ export async function readablePath(root: string, relative: string, create = fals
   return current;
 }
 
-export async function allocateReadableDirectory(root: string, parent: string, label: string) {
+type DirectoryOwner = { sourceKey: string } | { projectionKey: string };
+
+export async function allocateReadableDirectory(
+  storage: LibraryStorage,
+  parent: string,
+  label: string,
+  owner: DirectoryOwner,
+) {
+  const root = storage.libraryRoot;
   await readablePath(root, parent, true);
+  // Content reservations survive retirement; an absent directory is not an unclaimed name.
+  const contentReservation = storage.db.prepare(
+    'SELECT 1 FROM readable_content_files WHERE relative_directory = ? AND source_key <> ?',
+  );
+  const albumReservation = storage.db.prepare(
+    "SELECT 1 FROM file_projection_directories WHERE relative_path_key = ? AND state <> 'RETIRED' AND projection_key <> ?",
+  );
+  const preferred = safeDirectoryLabel(label, '内容');
   for (let index = 1; index <= 10000; index++) {
-    const relative = path.join(parent, `${safeDirectoryLabel(label, '内容')}${index === 1 ? '' : ` (${index})`}`);
+    const relative = path.join(parent, numberedDirectoryName(preferred, index));
+    if (
+      contentReservation.get(relative, 'sourceKey' in owner ? owner.sourceKey : '') ||
+      albumReservation.get(collisionKey(relative), 'projectionKey' in owner ? owner.projectionKey : '')
+    )
+      continue;
     try {
       await mkdir(path.join(root, relative));
       return relative;
@@ -80,7 +102,7 @@ export async function readableAlbumDirectory(
       /* Allocate beside replaced paths. */
     }
   }
-  const relative = await allocateReadableDirectory(storage.libraryRoot, parent, label),
+  const relative = await allocateReadableDirectory(storage, parent, label, { projectionKey: key }),
     allocated = path.basename(relative),
     timestamp = now();
   storage.db

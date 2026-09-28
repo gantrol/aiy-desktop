@@ -1,7 +1,8 @@
-import { ImageIcon, ListChecksIcon, LoaderCircleIcon } from 'lucide-react';
+import { ImageIcon, LoaderCircleIcon } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type {
   AlbumDto,
+  ArticleDto,
   BootstrapDto,
   GalleryItemDto,
   GallerySourceFilter,
@@ -42,6 +43,8 @@ import {
 } from '@/renderer/components/creator/creationLibraryProjection';
 import { useCreationAlbumDrop } from '@/renderer/components/creator/useCreationAlbumDrop';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/renderer/components/ui/tabs';
+import { CreationOrganizationAction } from '@/renderer/features/creation-outline/CreationOrganizationAction';
+import { AlbumWorkTracking } from '@/renderer/features/work-tracking/AlbumWorkTracking';
 
 interface Props {
   album: AlbumDto;
@@ -50,10 +53,10 @@ interface Props {
   filter: CreationLibraryFilter;
   documentNavigationRevision: number;
   busy: boolean;
+  refresh(): Promise<void>;
   onOpenCreationForm(form: CreationFormProjection): void;
-  onMoveAlbum(albumId: string, parentAlbumId: string | null): Promise<void>;
-  onMoveCreationItem(creationItemId: string, albumId: string | null): Promise<void>;
-  onOpenOutline(albumId: string): void;
+  onMoveAlbum(albumId: string, parentAlbumId: string | null, copy?: boolean): Promise<void>;
+  onMoveCreationItem(creationItemId: string, albumId: string | null, copy?: boolean): Promise<void>;
   onSelectAlbum(albumId: string): void;
   onSelectSeries(seriesId: string, assetId?: string): void;
   onSelectDocument(documentId: string, albumId: string | null): void;
@@ -67,6 +70,7 @@ interface Props {
   onCreateCreation(): void;
   onSettings(): void;
   notify(message: string): void;
+  onArticleSaved(article: ArticleDto): void;
 }
 
 const pageSize = 48;
@@ -78,10 +82,10 @@ export function CreatorAlbumDetail({
   filter,
   documentNavigationRevision,
   busy,
+  refresh,
   onOpenCreationForm,
   onMoveAlbum,
   onMoveCreationItem,
-  onOpenOutline,
   onSelectAlbum,
   onSelectSeries,
   onSelectDocument,
@@ -95,6 +99,7 @@ export function CreatorAlbumDetail({
   onCreateCreation,
   onSettings,
   notify,
+  onArticleSaved,
 }: Props) {
   const { locale, messages } = useI18n();
   const { albums, creationItems } = data;
@@ -111,7 +116,7 @@ export function CreatorAlbumDetail({
     [album.id, creationItems],
   );
   const documentList = useVideoDocumentList({
-    active: filter.documents,
+    active: filter.documents && tab !== 'work',
     refreshKey: `${documentNavigationRevision}:${documentMembershipKey}`,
     query: '',
     albumId: album.id,
@@ -463,23 +468,37 @@ export function CreatorAlbumDetail({
                 <span className="ml-2 tabular-nums text-muted-foreground">{contentCount}</span>
               </TabsTrigger>
               {filter.images && <TabsTrigger value="images">{messages.creator.album.browseImages}</TabsTrigger>}
+              <TabsTrigger value="work">{messages.workTracking.albumTable}</TabsTrigger>
             </TabsList>
             <div className="flex items-center gap-2">
-              {activeTab === 'contents' && <MaterialLayoutControl showNamesControl={false} />}
-              <Button
-                variant="ghost"
-                size="icon-sm"
-                disabled={effectivelyArchived}
-                title={messages.creator.outline.title}
-                aria-label={messages.creator.outline.title}
-                onClick={() => onOpenOutline(album.id)}
-              >
-                <ListChecksIcon className="size-4" />
-              </Button>
+              <CreationOrganizationAction
+                spaceId={data.spaceId}
+                target={{ kind: 'album', id: album.id, title: album.title }}
+                busy={busy || effectivelyArchived}
+                refresh={refresh}
+                onError={notify}
+              />
+              {activeTab === 'contents' && (
+                <MaterialLayoutControl showNamesControl={false} showArrangementControl={false} />
+              )}
             </div>
           </div>
           <TabsContent value="contents" className="flex min-h-0 flex-1 flex-col data-[state=inactive]:hidden">
             <AlbumContents {...contentsProps} layout="grid" />
+          </TabsContent>
+          <TabsContent
+            value="work"
+            className="flex min-h-0 flex-1 flex-col overflow-hidden data-[state=inactive]:hidden"
+          >
+            {activeTab === 'work' && (
+              <AlbumWorkTracking
+                albumId={album.id}
+                data={data}
+                archived={effectivelyArchived}
+                notify={notify}
+                onArticleSaved={onArticleSaved}
+              />
+            )}
           </TabsContent>
           <TabsContent
             value="images"

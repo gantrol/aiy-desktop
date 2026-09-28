@@ -1,11 +1,15 @@
 import { nativeImage } from 'electron';
-import { createHash, randomUUID } from 'node:crypto';
-import { mkdir, rename, rm, stat, writeFile } from 'node:fs/promises';
+import { createHash } from 'node:crypto';
+import { stat } from 'node:fs/promises';
 import path from 'node:path';
 import { createThumbnailInSandbox } from '@/main/media/image-thumbnail-worker-client';
+import { writeThumbnailPng } from '@/main/media/write-thumbnail-png';
+import { readSimpleSvgThumbnail } from '@/main/media/simple-svg-thumbnail';
 
 const thumbnailVersion = 1;
 const thumbnailSizes = [96, 192, 320, 512] as const;
+// At most 4 MiB of validated SVG bytes per library; failures also occupy an entry.
+const maximumSvgEntries = 128;
 
 export function normalizeMediaThumbnailSize(value: string | null) {
   const requested = Number(value);
@@ -15,9 +19,11 @@ export function normalizeMediaThumbnailSize(value: string | null) {
 
 async function usableCachedFile(filePath: string) {
   try {
-    return (await stat(filePath)).size > 0;
-  } catch {
-    return false;
+    const entry = await stat(filePath);
+    return entry.isFile() && entry.size > 0;
+  } catch (error) {
+    if (error && typeof error === 'object' && 'code' in error && error.code === 'ENOENT') return false;
+    throw error;
   }
 }
 
@@ -25,17 +31,19 @@ export class MediaThumbnailCache {
   private activeTasks = 0;
   private readonly waitingTasks: Array<{ start(): void; reject(reason: Error): void }> = [];
   private readonly pending = new Map<string, Promise<string>>();
+  private readonly svgPending = new Map<string, Promise<Buffer | null>>();
+  private readonly svgSources = new Map<string, Buffer | null>();
   private readonly abortController = new AbortController();
-  private readonly concurrency: number;
   private disposed = false;
   private disposal: Promise<void> | null = null;
 
   constructor(
     private readonly libraryRoot: string,
-    legacyWorkerPathOrConcurrency?: string | number,
-    concurrency = 3,
+    private readonly concurrency = 3,
   ) {
-    this.concurrency = typeof legacyWorkerPathOrConcurrency === 'number' ? legacyWorkerPathOrConcurrency : concurrency;
+    if (!Number.isSafeInteger(concurrency) || concurrency < 1) {
+      throw new RangeError('Media thumbnail concurrency must be a positive safe integer');
+    }
   }
 
   get(assetId: string, sourcePath: string, size: number) {
@@ -46,8 +54,13 @@ export class MediaThumbnailCache {
 
     const outputPath = this.outputPath(assetId, size);
     const request = (async () => {
-      if (await usableCachedFile(outputPath)) return outputPath;
-      return this.runLimited(() => this.create(sourcePath, outputPath, size));
+      // Warm-cache reads must not wait behind slow image decoding.
+      const cached = await usableCachedFile(outputPath);
+      this.abortController.signal.throwIfAborted();
+      if (cached) return outputPath;
+      const result = await this.runLimited(() => this.create(sourcePath, outputPath, size));
+      this.abortController.signal.throwIfAborted();
+      return result;
     })().finally(() => {
       this.pending.delete(key);
     });
@@ -55,12 +68,39 @@ export class MediaThumbnailCache {
     return request;
   }
 
+  getSimpleSvg(assetId: string, sourcePath: string): Promise<Buffer | null> {
+    if (this.disposed) return Promise.reject(this.closedError());
+    if (path.extname(sourcePath).toLowerCase() !== '.svg') return Promise.resolve(null);
+    const cached = this.svgSources.get(assetId);
+    if (cached !== undefined) {
+      this.svgSources.delete(assetId);
+      this.svgSources.set(assetId, cached);
+      return Promise.resolve(cached);
+    }
+    const existing = this.svgPending.get(assetId);
+    if (existing) return existing;
+    const request = this.runLimited(() => readSimpleSvgThumbnail(sourcePath, this.abortController.signal))
+      .then((bytes) => {
+        this.abortController.signal.throwIfAborted();
+        if (this.svgSources.size >= maximumSvgEntries) this.svgSources.delete(this.svgSources.keys().next().value!);
+        // Serve these exact validated bytes, never reopen a mutable discovery source after classification.
+        this.svgSources.set(assetId, bytes);
+        return bytes;
+      })
+      .finally(() => {
+        this.svgPending.delete(assetId);
+      });
+    this.svgPending.set(assetId, request);
+    return request;
+  }
+
   dispose() {
     if (this.disposal) return this.disposal;
     this.disposed = true;
     this.abortController.abort(this.closedError());
+    this.svgSources.clear();
     for (const task of this.waitingTasks.splice(0)) task.reject(this.closedError());
-    this.disposal = Promise.allSettled([...this.pending.values()]).then(() => undefined);
+    this.disposal = Promise.allSettled([...this.pending.values(), ...this.svgPending.values()]).then(() => undefined);
     return this.disposal;
   }
 
@@ -84,12 +124,13 @@ export class MediaThumbnailCache {
           return;
         }
         this.activeTasks += 1;
-        void operation()
-          .then(resolve, reject)
+        void Promise.resolve()
+          .then(operation)
           .finally(() => {
             this.activeTasks -= 1;
             this.waitingTasks.shift()?.start();
-          });
+          })
+          .then(resolve, reject);
       };
       if (this.activeTasks < this.concurrency) start();
       else this.waitingTasks.push({ start, reject });
@@ -98,13 +139,16 @@ export class MediaThumbnailCache {
 
   private async create(sourcePath: string, outputPath: string, size: number) {
     this.abortController.signal.throwIfAborted();
-    if (await usableCachedFile(outputPath)) {
-      this.abortController.signal.throwIfAborted();
-      return outputPath;
-    }
-    await mkdir(path.dirname(outputPath), { recursive: true });
+    // Recheck after queueing before starting another decode.
+    const cached = await usableCachedFile(outputPath);
+    this.abortController.signal.throwIfAborted();
+    if (cached) return outputPath;
 
-    if (process.platform !== 'darwin' && process.platform !== 'win32') {
+    // SVG decoding is already supported internally; avoid slow system-provider probing.
+    if (
+      path.extname(sourcePath).toLowerCase() === '.svg' ||
+      (process.platform !== 'darwin' && process.platform !== 'win32')
+    ) {
       return createThumbnailInSandbox(sourcePath, outputPath, size, this.abortController.signal);
     }
 
@@ -128,16 +172,7 @@ export class MediaThumbnailCache {
     }
     if (thumbnail.isEmpty()) throw new Error(`Image thumbnail resize failed: ${sourcePath}`);
 
-    const temporaryPath = `${outputPath}.${process.pid}.${randomUUID()}.tmp`;
-    try {
-      await writeFile(temporaryPath, thumbnail.toPNG());
-      this.abortController.signal.throwIfAborted();
-      await rename(temporaryPath, outputPath);
-    } catch (error) {
-      await rm(temporaryPath, { force: true });
-      throw error;
-    }
-    return outputPath;
+    return writeThumbnailPng(outputPath, thumbnail.toPNG(), this.abortController.signal);
   }
 
   private closedError() {

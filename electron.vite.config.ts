@@ -90,9 +90,10 @@ function enforceMainRuntimeDependencyBoundary(): Plugin {
   };
 }
 
+// Rolldown recursively captures a manual group's dependencies. Keep workspace
+// modules in automatic chunking so editor dependencies do not fill one chunk.
 function rendererManualChunk(id: string) {
   const normalizedId = id.replaceAll('\\', '/');
-  if (normalizedId.includes('/src/renderer/components/workspace/')) return 'workspace-runtime';
   if (
     normalizedId.includes('/node_modules/react/') ||
     normalizedId.includes('/node_modules/react-dom/') ||
@@ -102,7 +103,7 @@ function rendererManualChunk(id: string) {
     return 'react-runtime';
   }
   if (normalizedId.endsWith('/src/renderer/i18n/locales/en.ts')) return 'english-catalog';
-  // Shared icons must not pull the workspace chunk into lightweight petal windows.
+  // Keep shared icons separate from application chunks used by petal windows.
   if (normalizedId.includes('/node_modules/lucide-react/')) return 'icons';
   if (normalizedId.includes('/node_modules/tailwind-merge/')) return 'tailwind-merge';
   if (normalizedId.includes('/node_modules/zod/')) return 'schema-runtime';
@@ -271,6 +272,8 @@ export default defineConfig(({ command }) => {
           input: {
             index: path.resolve(__dirname, 'src/renderer/index.html'),
             petals: path.resolve(__dirname, 'src/renderer/petals.html'),
+            'petal-host': path.resolve(__dirname, 'src/renderer/petal-host.html'),
+            'petal-overlay': path.resolve(__dirname, 'src/renderer/petal-overlay.html'),
             'demo-petals': path.resolve(__dirname, 'src/renderer/demo-petals.html'),
             'tray-menu': path.resolve(__dirname, 'src/renderer/tray-menu.html'),
           },

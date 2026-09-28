@@ -1,3 +1,4 @@
+import { assertPublicContentLinks } from '@/shared/content-public-links';
 import { selectedWatermarkProfile, type NaturalWatermarkRuntime } from '@/main/extensions/natural-watermark/selection';
 import { naturalWatermarkProfileSchema, type NaturalWatermarkProfile } from '@/shared/contracts/natural-watermark';
 import { createHash } from 'node:crypto';
@@ -220,7 +221,16 @@ export class ArticleDeliveryService {
     const input = articleDeliveryUploadInputSchema.parse(rawInput);
     const current = this.database.getArticle(input.articleId);
     if (current.revisionId !== input.expectedRevisionId) throw new Error('Article revision changed before delivery');
-    return this.uploadRevision(input, undefined, current.contentHash, undefined, undefined, signal);
+    const referenceResolutionId =
+      input.referenceResolutionId ?? this.database.contentLibrary.freeze(current.content.markdown).resolutionId;
+    return this.uploadRevision(
+      { ...input, referenceResolutionId },
+      undefined,
+      current.contentHash,
+      undefined,
+      undefined,
+      signal,
+    );
   }
 
   async uploadRevision(
@@ -259,7 +269,8 @@ export class ArticleDeliveryService {
     if (expectedContentHash && article.contentHash !== expectedContentHash) {
       throw new Error('Article revision content changed before delivery');
     }
-    article.content = this.database.contentLibrary.expandArticle(article.content);
+    article.content = this.database.contentLibrary.expandArticle(article.content, input.referenceResolutionId);
+    assertPublicContentLinks(article.content.markdown);
     if (article.content.title.trim().length > 120) throw new Error('Article title exceeds 120 characters');
     if (Buffer.byteLength(article.content.markdown, 'utf8') > MAX_ARTICLE_MARKDOWN_BYTES) {
       throw new Error('Article Markdown exceeds 512 KB');

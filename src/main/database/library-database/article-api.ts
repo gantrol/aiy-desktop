@@ -17,6 +17,7 @@ import type {
   ArticleRevisionSaveInput,
 } from '@/shared/contracts/article';
 import type { LibraryDatabaseRepositories } from '@/main/database/library-database/repositories';
+import type { ArticleWriteContext } from '@/main/database/creations/article-provenance';
 
 export function createArticleApi(repositories: Pick<LibraryDatabaseRepositories, 'articleChecks' | 'articles'>) {
   return {
@@ -36,12 +37,12 @@ export function createArticleApi(repositories: Pick<LibraryDatabaseRepositories,
       return repositories.articles.revisionHistory(input);
     },
 
-    saveArticle(input: ArticleSaveInput) {
-      return repositories.articles.save(input);
+    saveArticle(input: ArticleSaveInput, context?: ArticleWriteContext) {
+      return repositories.articles.save(input, undefined, context);
     },
 
-    saveArticleRevision(input: ArticleRevisionSaveInput) {
-      return repositories.articles.saveRevision(input);
+    saveArticleRevision(input: ArticleRevisionSaveInput, context?: ArticleWriteContext) {
+      return repositories.articles.saveRevision(input, context);
     },
 
     mutateArticleComment(input: ArticleCommentMutationInput) {

@@ -1,6 +1,7 @@
 import { useEffect, useRef } from 'react';
 import { useContentReferenceHost } from '@/renderer/features/content-editor/ContentReferenceHost';
 import { useWorkspaceArticleEditorState } from '@/renderer/components/workspace/WorkspaceArticleEditorStateProvider';
+import type { WorkspaceReferencePlacement } from '@/renderer/components/workspace/workspace-state';
 import type { ReferenceTarget } from '@/shared/contracts/content-source';
 
 export const REFERENCE_NAVIGATION_EVENT = 'aiy:reference-navigation';
@@ -10,7 +11,7 @@ export interface ReferenceNavigationRequest {
   sourceTabId: string;
   originArticleId?: string;
   originBlockId?: string;
-  beside: boolean;
+  placement: WorkspaceReferencePlacement;
   isCurrent(): boolean;
   accept(operation: Promise<void>): void;
 }
@@ -27,7 +28,10 @@ export function useReferenceNavigation(originBlockId?: string, enabled = true) {
     },
     [enabled, originBlockId, host.source?.kind, host.source?.id],
   );
-  return async (target: ReferenceTarget, options: { beside?: boolean; referenceId?: string } = {}) => {
+  return async (
+    target: ReferenceTarget,
+    options: { placement?: WorkspaceReferencePlacement; referenceId?: string } = {},
+  ) => {
     if (!tabId) throw new Error('REFERENCE_NAVIGATION_UNSUPPORTED');
     const generation = epoch.current;
     const isCurrent = () => available.current && generation === epoch.current;
@@ -40,7 +44,7 @@ export function useReferenceNavigation(originBlockId?: string, enabled = true) {
         sourceTabId: tabId,
         originArticleId: host.source?.kind === 'ARTICLE' ? host.source.id : undefined,
         originBlockId,
-        beside: options.beside ?? false,
+        placement: options.placement ?? 'current',
         isCurrent,
         accept: (operation) => {
           void operation.then(resolve, reject);

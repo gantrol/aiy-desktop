@@ -44,6 +44,8 @@ interface SessionRegistryEntry {
 }
 
 interface ArticleEditorSessionRegistry {
+  find(spaceId: string, articleId: string): ArticleEditorSessionRuntime | undefined;
+  subscribe(listener: () => void): () => void;
   getOrCreate(key: string, create: () => ArticleEditorSessionRuntime): ArticleEditorSessionRuntime;
   retain(key: string, runtime: ArticleEditorSessionRuntime): void;
   release(key: string, runtime: ArticleEditorSessionRuntime): void;
@@ -53,16 +55,30 @@ interface ArticleEditorSessionRegistry {
 const ArticleEditorSessionRegistryContext = createContext<ArticleEditorSessionRegistry | null>(null);
 const ArticleEditorSessionFlushContext = createContext<() => Promise<boolean>>(async () => true);
 
+/** Read access never creates an editor or takes ownership of its save queue. */
+export function useArticleEditorSessions() {
+  return useContext(ArticleEditorSessionRegistryContext);
+}
+
 export function ArticleEditorSessionRegistryProvider({ children }: { children: ReactNode }) {
   const [draining, setDraining] = useState(false);
   const entriesRef = useRef(new Map<string, SessionRegistryEntry>());
+  const listeners = useRef(new Set<() => void>());
   const registry = useMemo<ArticleEditorSessionRegistry>(
     () => ({
+      find: (spaceId, articleId) => entriesRef.current.get(`${spaceId}:${articleId}`)?.runtime,
+      subscribe(listener) {
+        listeners.current.add(listener);
+        return () => {
+          listeners.current.delete(listener);
+        };
+      },
       getOrCreate(key, create) {
         const existing = entriesRef.current.get(key);
         if (existing) return existing.runtime;
         const runtime = create();
         entriesRef.current.set(key, { leases: 0, runtime });
+        queueMicrotask(() => listeners.current.forEach((listener) => listener()));
         return runtime;
       },
       retain(key, runtime) {
@@ -80,6 +96,7 @@ export function ArticleEditorSessionRegistryProvider({ children }: { children: R
             const current = entriesRef.current.get(key);
             if (!saved || current !== latest || current.leases > 0) return;
             entriesRef.current.delete(key);
+            listeners.current.forEach((listener) => listener());
             runtime.dispose();
           });
         });

@@ -13,6 +13,7 @@ export function ContentMediaThumbnail({
   actions,
   controls,
   label: customLabel,
+  draggable = true,
 }: {
   assetId?: string;
   mediaUrl?: string;
@@ -20,6 +21,7 @@ export function ContentMediaThumbnail({
   actions: readonly ActionMenuAction[];
   controls?: ReactNode;
   label?: string;
+  draggable?: boolean;
 }) {
   const copy = useI18n().messages.contentEditor;
   const label = customLabel ?? copy.previewImage.replace('{index}', String(index + 1));
@@ -58,7 +60,7 @@ export function ContentMediaThumbnail({
     <Dialog>
       <div className="relative min-w-0">
         {assetId ? (
-          <AssetFileContextMenu assetId={assetId} actions={actions}>
+          <AssetFileContextMenu assetId={assetId} actions={actions} draggable={draggable}>
             {preview}
           </AssetFileContextMenu>
         ) : (

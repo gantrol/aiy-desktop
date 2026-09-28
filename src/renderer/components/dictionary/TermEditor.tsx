@@ -7,7 +7,7 @@ import {
   PlusIcon,
   Trash2Icon,
 } from 'lucide-react';
-import { useEffect, useRef, type ReactElement } from 'react';
+import { useEffect, useRef, type ReactNode, type ReactElement } from 'react';
 import {
   DEFAULT_TERM_CONTEXT_KEY,
   type AssetDto,
@@ -30,6 +30,7 @@ import { TermMediaEditor } from '@/renderer/components/dictionary/TermMediaEdito
 import { TermStateActions } from '@/renderer/components/dictionary/TermStateActions';
 
 interface Props {
+  navigationAction?: ReactNode;
   copy: DictionaryMessages;
   locale: Locale;
   categories: TermCategoryDto[];
@@ -79,6 +80,7 @@ function localeName(contentLocale: string, uiLocale: Locale) {
 }
 
 export function TermEditor({
+  navigationAction,
   copy: c,
   locale,
   categories,
@@ -164,6 +166,7 @@ export function TermEditor({
       className="flex size-full min-h-0 flex-col overflow-hidden bg-background"
     >
       <header className="flex min-h-16 shrink-0 items-center justify-between gap-4 border-b bg-background/95 px-5 py-2.5 backdrop-blur-sm">
+        {navigationAction}
         <div className="flex min-w-0 items-center gap-3">
           {onBack && (
             <Button type="button" variant="ghost" size="icon-sm" aria-label={c.backToDetails} onClick={onBack}>

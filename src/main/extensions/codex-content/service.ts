@@ -1,4 +1,6 @@
 import { EventEmitter } from 'node:events';
+import { codexTaskTitle } from '@/shared/codex-task-title';
+import { codexAppServerProjectId } from '@/main/extensions/codex-content/project-identity';
 import { sha256HexAsync } from '@/main/database/core/storage';
 import { homedir } from 'node:os';
 import { lstat, mkdir, readFile, realpath, writeFile } from 'node:fs/promises';
@@ -44,6 +46,7 @@ interface ActiveTask {
   workingItems: Set<string>;
 }
 interface TaskInput {
+  title: string;
   text: string;
   referenceAssetIds: string[];
   attachments: NoteFile[];
@@ -116,7 +119,7 @@ export class CodexContentService extends EventEmitter {
     };
   }
   private selectedProject(stashId: string, latest = this.repository.latest(stashId)) {
-    return this.repository.project(stashId) ?? latest?.project ?? this.repository.lastProject();
+    return this.repository.project(stashId) ?? latest?.project ?? null;
   }
   async models() {
     this.require(EXTENSION_PERMISSION.integrationConnectCodexAppServer);
@@ -165,6 +168,7 @@ export class CodexContentService extends EventEmitter {
           // Identity belongs to the project. Directories are its execution scope.
           targets.set(project.projectId, {
             projectId: project.projectId,
+            appServerProjectId: codexAppServerProjectId(state, project.projectId),
             name: project.name,
             workspace: rootPaths[0] ?? '',
             rootPaths,
@@ -198,8 +202,14 @@ export class CodexContentService extends EventEmitter {
       if (/trash/i.test(resolved)) throw error('project');
       roots.push(resolved);
     }
+    const selectedRoot = (project.rootPaths ?? []).findIndex((root) =>
+      process.platform === 'win32'
+        ? root.toLowerCase() === selected.workspace.toLowerCase()
+        : root === selected.workspace,
+    );
+    if (roots.length && selectedRoot < 0) throw error('project');
     const workspace =
-      roots[0] ??
+      roots[selectedRoot] ??
       path.join(
         this.database.libraryRoot,
         'codex-workspace',
@@ -218,7 +228,6 @@ export class CodexContentService extends EventEmitter {
     if (this.repository.hasActive(stashId)) throw error('busy');
     this.database.db.transaction(() => {
       this.repository.selectProject(stashId, project);
-      this.repository.rememberProject(project);
     })();
     this.emit('changed');
     return this.state(stashId);
@@ -226,7 +235,9 @@ export class CodexContentService extends EventEmitter {
   settings(locale: 'en' | 'zh') {
     return {
       albumId: this.repository.albumId(),
-      albums: this.database.listMaterialAlbums({ locale }).map((album) => ({ id: album.id, title: album.title })),
+      albums: this.database
+        .listMaterialAlbums({ locale })
+        .map((album) => ({ id: album.id, title: album.title, parentId: album.parentId })),
     };
   }
   selectAlbum(id: string, locale: 'en' | 'zh') {
@@ -255,7 +266,8 @@ export class CodexContentService extends EventEmitter {
         ...new Set([...source.content.referenceAssetIds, ...expanded.media.map((media) => media.assetId)]),
       ];
     }
-    if (!source.content.manualPrompt.trim()) throw error('empty');
+    const title = source.content.title?.trim() ?? '';
+    if (!title && !source.content.manualPrompt.trim()) throw error('empty');
     if (
       source.content.manualPrompt.length > 30000 ||
       source.content.referenceAssetIds.length > 8 ||
@@ -306,11 +318,12 @@ export class CodexContentService extends EventEmitter {
     const active: ActiveTask = {
       controller,
       completion: Promise.resolve(),
-      client: new CodexAppServerClient(process.env.CODEX_BINARY || 'codex', project.workspace),
+      client: new CodexAppServerClient(process.env.CODEX_BINARY || 'codex', project.workspace, true),
       workingItems: new Set(),
     };
     this.active.set(task.id, active);
     const taskInput: TaskInput = {
+      title,
       text: source.content.manualPrompt,
       referenceAssetIds: source.content.referenceAssetIds,
       attachments: source.content.files ?? [],
@@ -376,6 +389,7 @@ export class CodexContentService extends EventEmitter {
         attachmentPaths.push({ name: file.name, path: await resolveNoteFile(this.database.libraryRoot, file) });
       }
       const prompt =
+        (input.title ? `# ${input.title}\n\n` : '') +
         replaceMarkdownMedia(input.text, imagePaths) +
         (attachmentPaths.length
           ? '\n\nAttached files selected with this note (names and local paths, JSON):\n' +
@@ -385,6 +399,7 @@ export class CodexContentService extends EventEmitter {
       active.controller.signal.throwIfAborted();
       const started = await active.client.startThread({
         cwd: task.project.workspace,
+        projectId: task.project.appServerProjectId ?? task.project.projectId,
         ephemeral: false,
         userTask: true,
         developerInstructions:
@@ -392,7 +407,14 @@ export class CodexContentService extends EventEmitter {
       });
       task.threadId = started.thread.id;
       this.repository.update(task);
-      await active.client.setThreadName(task.threadId, input.text.trim().slice(0, 80));
+      const sameDirectory =
+        typeof started.thread.cwd === 'string' &&
+        (process.platform === 'win32'
+          ? path.resolve(started.thread.cwd).toLowerCase() === path.resolve(task.project.workspace).toLowerCase()
+          : path.resolve(started.thread.cwd) === path.resolve(task.project.workspace));
+      if (started.thread.projectId !== (task.project.appServerProjectId ?? task.project.projectId) || !sameDirectory)
+        throw error('project');
+      await active.client.setThreadName(task.threadId, codexTaskTitle(input.title, input.text));
       active.controller.signal.throwIfAborted();
       this.require(...executionPermissions);
       const result = await active.client.runTurn({
@@ -564,11 +586,9 @@ export class CodexContentService extends EventEmitter {
     await active.client.dispose();
     await active.completion;
   }
-  async openTask(stashId: string, taskId: string, stopFirst = false) {
+  async openTask(stashId: string, taskId: string) {
     const task = this.repository.get(taskId)?.task;
     if (!task?.threadId || task.stashId !== stashId) throw error('source');
-    if (stopFirst) await this.stop(stashId, taskId);
-    else if (task.status !== 'STARTING' && task.status !== 'RUNNING') await this.active.get(taskId)?.client.dispose();
     await shell.openExternal(codexThreadHref(task.threadId));
   }
   async drain() {

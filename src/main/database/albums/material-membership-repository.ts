@@ -47,6 +47,15 @@ export class MaterialMembershipRepository {
         }
 
         const materialIds = resolved.map((material) => material.materialId);
+        const sourceAlbumId = input.sourceAlbumId;
+        if (sourceAlbumId) {
+          if (albumIds.length !== 1 || termIds.length) throw new Error('Invalid membership move');
+          if (this.materialLibraryAlbumIds([sourceAlbumId]).has(sourceAlbumId))
+            this.materialAlbums.assertWritable(sourceAlbumId);
+          else this.albums.assertAlbumAcceptsContent(sourceAlbumId);
+          if (this.countAlbumMemberships([sourceAlbumId], materialIds) !== materialIds.length)
+            throw new Error('Material membership changed');
+        }
         const imageAssetIds = resolved.flatMap((material) => (material.imageAssetId ? [material.imageAssetId] : []));
         const albumCountBefore = this.countAlbumMemberships(albumIds, materialIds);
         const termCountBefore = this.countTermMedia(termIds, imageAssetIds);
@@ -74,6 +83,16 @@ export class MaterialMembershipRepository {
         for (const termId of termIds) {
           this.dictionary.addTermMedia({ termId, assetIds: imageAssetIds }, { returnItems: false });
         }
+        if (sourceAlbumId && !albumIds.includes(sourceAlbumId)) {
+          const members = this.db
+            .prepare(
+              "SELECT id FROM album_members WHERE album_id = ? AND target_type = 'MATERIAL' AND deleted_at IS NULL AND target_id IN (SELECT value FROM json_each(?))",
+            )
+            .all(sourceAlbumId, JSON.stringify(materialIds)) as { id: string }[];
+          if (this.materialLibraryAlbumIds([sourceAlbumId]).has(sourceAlbumId))
+            this.materialAlbums.remove({ albumId: sourceAlbumId, materialIds });
+          else this.albums.removeMembers({ albumId: sourceAlbumId, memberIds: members.map((member) => member.id) });
+        }
 
         return {
           materialIds,
@@ -81,7 +100,9 @@ export class MaterialMembershipRepository {
           termIds,
           addedAlbumMembershipCount: this.countAlbumMemberships(albumIds, materialIds) - albumCountBefore,
           addedTermMediaCount: this.countTermMedia(termIds, imageAssetIds) - termCountBefore,
-          albumMaterialCounts: this.readAlbumMaterialCounts(albumIds),
+          albumMaterialCounts: this.readAlbumMaterialCounts([
+            ...new Set([...albumIds, ...(sourceAlbumId ? [sourceAlbumId] : [])]),
+          ]),
         };
       })
       .immediate();

@@ -17,14 +17,14 @@ export function OutlineAppendButton({ editor }: { editor: Editor }) {
   });
   if (!editable) return null;
   return (
-    <div className={`group/outline-append pb-4 ${focused ? 'px-8' : 'px-2'}`}>
+    <div className={`group/outline-append pb-4 pr-2 ${focused ? 'pl-12' : 'pl-4'}`}>
       <Button
         type="button"
         variant="ghost"
         size="icon-sm"
-        aria-label={messages.referenceOutline.addItem}
-        title={messages.referenceOutline.addItem}
-        className="h-7 w-full justify-start rounded-sm px-1 text-muted-foreground opacity-0 hover:bg-transparent hover:text-foreground group-hover/outline-append:opacity-100 focus-visible:opacity-100"
+        aria-label={focused ? messages.referenceOutline.addChildItem : messages.referenceOutline.addItem}
+        title={focused ? messages.referenceOutline.addChildItem : messages.referenceOutline.addItem}
+        className="h-7 w-full justify-start rounded-sm px-1 text-muted-foreground hover:bg-transparent hover:text-foreground"
         onMouseDown={(event) => event.preventDefault()}
         onClick={() => appendOutlineItem(editor)}
       >

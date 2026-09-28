@@ -13,13 +13,18 @@ type CoreNavigationItem = AppNavigationItem & {
   id: Exclude<AppNavigationItem['id'], 'codexImages' | 'transitionShowcase'>;
 };
 
-/** Shared by the navigation rail and app menu; labels resolve through app.navigation. */
-export const navigationItems: readonly CoreNavigationItem[] = [
+export const primaryNavigationItems: readonly CoreNavigationItem[] = [
   { id: 'creator', icon: SquarePenIcon, activeViews: ['creator', 'documents'] },
   { id: 'dictionary', icon: DictionaryIcon, activeViews: ['dictionary'] },
   { id: 'gallery', icon: ImagesIcon, activeViews: ['gallery'] },
   { id: 'search', icon: SearchIcon, activeViews: ['search'] },
   { id: 'calendar', icon: CalendarDaysIcon, activeViews: ['calendar'] },
-  { id: 'packs', icon: BlocksIcon, activeViews: ['packs'] },
-  { id: 'aiCenter', icon: ActivityIcon, activeViews: ['aiCenter'] },
 ];
+
+export const utilityNavigationItems: readonly CoreNavigationItem[] = [
+  { id: 'aiCenter', icon: ActivityIcon, activeViews: ['aiCenter'] },
+  { id: 'packs', icon: BlocksIcon, activeViews: ['packs'] },
+];
+
+/** Shared by the navigation rail and app menu; labels resolve through app.navigation. */
+export const navigationItems: readonly CoreNavigationItem[] = [...primaryNavigationItems, ...utilityNavigationItems];

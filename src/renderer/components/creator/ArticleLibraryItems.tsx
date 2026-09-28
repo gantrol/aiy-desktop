@@ -1,6 +1,5 @@
 import { ArchiveIcon, FileTextIcon, FolderInputIcon, PencilIcon, Trash2Icon, ListTreeIcon } from 'lucide-react';
 import type { ArticleDto } from '@/shared/contracts';
-import { TreeDragHandle } from '@/renderer/components/albums/TreeDragHandle';
 import {
   CreationLibraryTreeItem,
   type CreationLibraryTreeDataAttributes,
@@ -149,6 +148,9 @@ export function ArticleLibraryRow(props: Props) {
   const previewMetrics = getCreationTreeMediaNodeMetrics(previewItems);
   const row = (
     <CreationLibraryTreeItem
+      draggable={!props.busy && Boolean(onDragStart)}
+      onDragStart={onDragStart}
+      onDragEnd={onDragEnd}
       dataAttributes={{ 'data-article-id': article.id, ...dataAttributes }}
       selected={selected}
       branchTopology={branchTopology}
@@ -171,10 +173,10 @@ export function ArticleLibraryRow(props: Props) {
         </span>
       }
       controls={
-        <div className="pointer-events-none absolute inset-y-0 right-1 z-30 flex items-center opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100">
-          {onDragStart && (
-            <TreeDragHandle label={labels.drag} onDragStart={onDragStart} onDragEnd={() => onDragEnd?.()} />
-          )}
+        <div
+          data-item-drag-ignore
+          className="pointer-events-none absolute inset-y-0 right-1 z-30 flex items-center opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100"
+        >
           <ActionMenuButton
             actions={menuActions}
             label={`${labels.moreActions}: ${title}`}

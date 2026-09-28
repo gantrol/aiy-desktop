@@ -168,7 +168,6 @@ export function useCreatorWorkflowRuntime({
     resetInputs,
     restoreDraft: generation.hydration.restoreDraft,
     saveCapturedDraft: draftSession.saveCapturedSnapshot,
-    saveDraft: (prompt) => draftSession.saveDraftNow(undefined, prompt),
     selectedInspirationStashId: selection.contentSelection.selectedInspirationStashId,
     setCompactPanel: projection.panes.setCompactPanel,
     setOutputMode,

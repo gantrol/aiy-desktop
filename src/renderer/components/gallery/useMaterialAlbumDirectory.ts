@@ -1,3 +1,5 @@
+import { patchAlbumMemberships } from '@/renderer/components/gallery/materialAlbumMembershipModel';
+import type { MaterialAlbumMembershipApplyResult } from '@/shared/contracts/material-album-membership';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { Locale, MaterialAlbumDto } from '@/shared/contracts';
 
@@ -15,6 +17,12 @@ export function useMaterialAlbumDirectory({ active, libraryKey, dataRevision, lo
   const key = JSON.stringify([libraryKey, dataRevision, locale, retryKey]);
   const requestRef = useRef<{ key: string; promise: Promise<MaterialAlbumDto[]>; failed: boolean } | null>(null);
   const [snapshot, setSnapshot] = useState({ key: '', libraryKey: '', albums: emptyAlbums });
+  const snapshotRef = useRef(snapshot);
+  snapshotRef.current = snapshot;
+  const libraryRef = useRef(libraryKey);
+  libraryRef.current = libraryKey;
+  const keyRef = useRef(key);
+  keyRef.current = key;
   const [failure, setFailure] = useState({ key: '', message: '' });
 
   // Keep one revision-bound result, shared by navigation and the current overview request.
@@ -62,6 +70,31 @@ export function useMaterialAlbumDirectory({ active, libraryKey, dataRevision, lo
     }
     return albums;
   }, [key, libraryKey, read]);
+  const reloadRef = useRef(reload);
+  reloadRef.current = reload;
+
+  const applyMembership = useCallback(
+    (result: Extract<MaterialAlbumMembershipApplyResult, { status: 'APPLIED' }>) => {
+      if (libraryRef.current !== libraryKey) return;
+      const current = snapshotRef.current;
+      const next = { ...current, albums: patchAlbumMemberships(current.albums, result) };
+      snapshotRef.current = next;
+      // Invalidate any read started before the mutation, without reloading the whole directory.
+      requestRef.current = { key: next.key, promise: Promise.resolve(next.albums), failed: false };
+      setSnapshot(next);
+      if (next.key !== keyRef.current) {
+        // A separate revision/locale change still needs its directory read. Do not
+        // leave that consumer loading after invalidating its pre-mutation result.
+        const requestedKey = keyRef.current;
+        void reloadRef.current().catch((reason: unknown) => {
+          if (keyRef.current === requestedKey) {
+            setFailure({ key: requestedKey, message: reason instanceof Error ? reason.message : String(reason) });
+          }
+        });
+      }
+    },
+    [libraryKey],
+  );
 
   const loaded = snapshot.key === key;
   const error = failure.key === key ? failure.message : '';
@@ -72,5 +105,6 @@ export function useMaterialAlbumDirectory({ active, libraryKey, dataRevision, lo
     error,
     read,
     reload,
+    applyMembership,
   };
 }

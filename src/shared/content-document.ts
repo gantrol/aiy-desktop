@@ -6,7 +6,7 @@ export { contentAssetPath } from '@/shared/content-asset-path';
 export function contentDisplayTitle(title: string | undefined, body: string, fallback = '') {
   const explicit = title?.trim();
   if (explicit) return explicit;
-  const excerpt = contentMarkdownText(body.replace(/^:::aiy-block [A-Za-z0-9_-]+\r?\n:::[ \t]*$/gmu, ''), () => '')
+  const excerpt = contentMarkdownText(body, () => '', { omitReferences: true })
     .replace(/^[\s#>*`~-]+/gmu, '')
     .replace(/\s+/gu, ' ')
     .trim();
@@ -15,7 +15,7 @@ export function contentDisplayTitle(title: string | undefined, body: string, fal
 
 /** Legacy text is escaped once on entry into the Markdown editor. */
 export function plainTextMarkdown(text: string) {
-  return text.replace(/([\\`*_{}\[\]()#+.!>|~-])/gu, '\\$1').replace(/\n/gu, '  \n');
+  return text.replace(/([\\$`*_{}\[\]()#+.!>|~-])/gu, '\\$1').replace(/\n/gu, '  \n');
 }
 
 /** Linked terms and recipes remain structured when editing the note's prose. */

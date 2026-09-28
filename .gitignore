@@ -94,10 +94,16 @@ logs/
 # Application identity assets are part of the program
 !build/icon-large-source.png
 !build/icon.png
+!build/icon-mac.png
 !build/micro-icon-source.png
 !src/renderer/public/icon-24.png
 !src/renderer/public/icon.png
 !src/renderer/assets/aiy-reading.png
+!src/renderer/assets/brands/wechat.png
+!src/renderer/assets/brands/xiaohongshu.png
+!src/renderer/assets/brands/weibo.png
+!src/renderer/assets/brands/x.png
+!src/renderer/assets/brands/aicando.png
 
 # Fixed first-party demo inputs referenced by the production renderer.
 !/extensions/com.aiy.feature-demo/assets/features/portrait-1.png

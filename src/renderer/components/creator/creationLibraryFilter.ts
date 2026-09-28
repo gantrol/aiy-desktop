@@ -1,22 +1,31 @@
-import type { CreationFormDto } from '@/shared/contracts';
+import { useEffect, useState } from 'react';
+import type { CreationFormProjection } from '@/renderer/components/creator/creationLibraryProjection';
 
-export function formMatchesFilter(form: Pick<CreationFormDto, 'role'>, filter: CreationLibraryFilter) {
+export function creationFormFilterKey(form: CreationFormProjection): keyof CreationLibraryFilter {
   switch (form.role) {
     case 'ANIMATION':
-      return filter.animations;
+      return 'animations';
     case 'INSPIRATION':
-      return filter.inspirations;
+      return 'inspirations';
     case 'EVALUATION_SUITE':
-      return filter.evaluations;
+      return 'evaluations';
     case 'SOCIAL_POST':
-      return filter.socialPosts;
+      return 'socialPosts';
     case 'ARTICLE':
-      return filter.articles;
+      return form.entity?.content.editorMode === 'OUTLINE' ? 'outlines' : 'articles';
     case 'VIDEO_DOCUMENT':
-      return filter.documents;
+      return 'documents';
     default:
-      return filter.images;
+      return 'images';
   }
+}
+
+export function formMatchesFilter(form: CreationFormProjection, filter: CreationLibraryFilter) {
+  // Saved creation inputs now own article forms; keep them reachable through the inspiration filter too.
+  return (
+    filter[creationFormFilterKey(form)] ||
+    (filter.inspirations && form.role === 'ARTICLE' && Boolean(form.entity?.content.creationInput))
+  );
 }
 
 export interface CreationLibraryFilter {
@@ -24,6 +33,7 @@ export interface CreationLibraryFilter {
   images: boolean;
   documents: boolean;
   articles: boolean;
+  outlines: boolean;
   socialPosts: boolean;
   inspirations: boolean;
   evaluations: boolean;
@@ -34,9 +44,21 @@ export const allCreationLibraryFilters: CreationLibraryFilter = {
   images: true,
   documents: true,
   articles: true,
+  outlines: true,
   socialPosts: true,
   inspirations: true,
   evaluations: true,
+};
+
+export const emptyCreationLibraryFilters: CreationLibraryFilter = {
+  animations: false,
+  images: false,
+  documents: false,
+  articles: false,
+  outlines: false,
+  socialPosts: false,
+  inspirations: false,
+  evaluations: false,
 };
 
 const storageKey = 'aiy.creation-library-filter.v5';
@@ -47,6 +69,7 @@ export function isAllCreationLibraryFilter(filter: CreationLibraryFilter) {
     filter.images &&
     filter.documents &&
     filter.articles &&
+    filter.outlines &&
     filter.socialPosts &&
     filter.inspirations &&
     filter.evaluations
@@ -60,6 +83,7 @@ export function isOnlyInspirationLibraryFilter(filter: CreationLibraryFilter) {
     !filter.images &&
     !filter.documents &&
     !filter.articles &&
+    !filter.outlines &&
     !filter.socialPosts &&
     !filter.evaluations
   );
@@ -86,6 +110,7 @@ export function readCreationLibraryFilter(): CreationLibraryFilter {
       images: record.images,
       documents: record.documents,
       articles: record.articles,
+      outlines: typeof record.outlines === 'boolean' ? record.outlines : record.articles,
       socialPosts: record.socialPosts,
       inspirations: record.inspirations,
       evaluations: record.evaluations,
@@ -103,17 +128,10 @@ export function writeCreationLibraryFilter(filter: CreationLibraryFilter) {
   }
 }
 
-export function useCreationLibraryFilter(documentWorkspaceActive: boolean) {
+export function useCreationLibraryFilter() {
   const [filter, setFilter] = useState<CreationLibraryFilter>(readCreationLibraryFilter);
 
   useEffect(() => writeCreationLibraryFilter(filter), [filter]);
 
-  useEffect(() => {
-    if (documentWorkspaceActive && !filter.documents) {
-      setFilter((current) => ({ ...current, documents: true }));
-    }
-  }, [documentWorkspaceActive, filter.documents]);
-
   return [filter, setFilter] as const;
 }
-import { useEffect, useState } from 'react';

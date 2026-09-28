@@ -10,6 +10,7 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/renderer/components/u
 import { Separator } from '@/renderer/components/ui/separator';
 import { ContentFigureReferencePicker } from '@/renderer/features/content-editor/ContentFigureReferencePicker';
 import { ContentToolbar } from '@/renderer/features/content-editor/ContentToolbar';
+import { ContentMathAction } from '@/renderer/features/content-editor/ContentMathAction';
 import { useContentMenuAction } from '@/renderer/features/content-editor/useContentMenuAction';
 import { cn } from '@/renderer/lib/utils';
 import {
@@ -78,7 +79,11 @@ function ActionMenu({
           type="button"
           variant="ghost"
           size="icon-sm"
-          className={cn('size-7', active && 'bg-selected text-selected-foreground hover:bg-selected/80')}
+          className={cn(
+            'size-7',
+            active &&
+              'bg-selected text-selected-foreground ring-1 ring-inset ring-selected-foreground hover:bg-selected active:bg-selected',
+          )}
           aria-label={label}
           title={label}
           aria-pressed={active}
@@ -167,6 +172,7 @@ function InsertMenu({
           onInserted={close}
         />
         {referenceAction}
+        <ContentMathAction editor={editor} menuItem />
         <Separator className="my-1" />
         <Button
           type="button"

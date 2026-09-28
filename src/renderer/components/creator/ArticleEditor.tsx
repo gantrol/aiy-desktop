@@ -1,3 +1,5 @@
+import { OutlineContentLinkHost } from '@/renderer/features/content-editor/OutlineContentLinkHost';
+import { ContentProvenanceCell } from '@/renderer/features/content-provenance/ContentProvenance';
 import {
   ArticleAttachments,
   ArticleAttachmentsInput,
@@ -62,13 +64,20 @@ import { useArticleCheck } from '@/renderer/components/creator/article-editor/us
 import { CreationWorkNavigation } from '@/renderer/components/creator/CreationWorkNavigation';
 import { OutlineArticleEditor } from '@/renderer/components/creator/article-editor/OutlineArticleEditor';
 import { CopyAgentLinkButton } from '@/renderer/features/content-editor/CopyAgentLinkButton';
+import { ContentBacklinksButton } from '@/renderer/features/content-editor/ContentBacklinksButton';
 import { type ArticleCoverRatio } from '@/shared/article-covers';
 import { ArticleCoverWorkspaceProvider } from '@/renderer/components/creator/article-editor/ArticleCoverWorkspace';
+import type {
+  ArticleCoverGeneration,
+  ArticleCoverGenerations,
+} from '@/renderer/components/creator/article-editor/articleCoverGeneration';
 import { noteFileCapture } from '@/renderer/features/desktop-petals/note-file-capture';
 
 interface Props {
   article: ArticleDto;
   projectCoverAssets?: readonly AssetDto[];
+  coverGenerations: ArticleCoverGenerations;
+  onOpenCoverGeneration(generation: ArticleCoverGeneration): void;
   spaceId: string;
   locale: Locale;
   canvasPresets: CanvasPresetDto[];
@@ -111,7 +120,7 @@ function useArticleVisualGeneration({
   session: ReturnType<typeof useArticleEditorSession>;
 }) {
   const labels = useI18n().messages.creator.derivedVisual;
-  const [generatingHeader, setGeneratingHeader] = useState(false);
+  const [openingCoverRatio, setOpeningCoverRatio] = useState<ArticleCoverRatio | 'shared' | null>(null);
   const headerRequest = useRef(false);
   const [generatingIllustration, setGeneratingIllustration] = useState(false);
   const defaultIllustrationPreset = canvasPresets.find((preset) => preset.stableKey === 'landscape_4_3');
@@ -119,7 +128,7 @@ function useArticleVisualGeneration({
   async function generateHeader(ratio?: ArticleCoverRatio) {
     if (headerRequest.current) return;
     headerRequest.current = true;
-    setGeneratingHeader(true);
+    setOpeningCoverRatio(ratio ?? 'shared');
     const identity = session.getEditorSessionIdentity();
     try {
       if (!(await session.flush('manual')) || identity !== session.getEditorSessionIdentity()) return;
@@ -130,7 +139,7 @@ function useArticleVisualGeneration({
       notify(reason instanceof Error ? reason.message : String(reason));
     } finally {
       headerRequest.current = false;
-      setGeneratingHeader(false);
+      setOpeningCoverRatio(null);
     }
   }
 
@@ -157,7 +166,8 @@ function useArticleVisualGeneration({
   return {
     generateHeader,
     generateIllustration,
-    generatingHeader,
+    generatingHeader: openingCoverRatio !== null,
+    openingCoverRatio,
     generatingIllustration,
   };
 }
@@ -187,11 +197,17 @@ function ReadOnlyArticleEditor({
   return (
     <div data-article-editor className="flex min-h-0 min-w-0 flex-1 flex-col bg-background">
       <TooltipProvider delayDuration={300}>
-        <header className="flex min-h-14 shrink-0 items-center gap-2 border-b px-4 py-2">
+        <header className="flex min-h-14 shrink-0 flex-wrap items-center gap-2 border-b px-4 py-2">
           <span className="min-w-0 flex-1 truncate font-semibold">{title || labels.untitled}</span>
           <CreationWorkNavigation />
+          <ContentBacklinksButton spaceId={spaceId} articleId={article.id} />
           <CopyAgentLinkButton target={{ spaceId, target: 'article', entityId: article.id }} notify={notify} />
-          <ArticleRevisionHistoryDialog articleId={article.id} currentRevisionId={article.revisionId} zh={zh} />
+          <ArticleRevisionHistoryDialog
+            spaceId={spaceId}
+            articleId={article.id}
+            currentRevisionId={article.revisionId}
+            zh={zh}
+          />
           <Button type="button" variant="outline" size="sm" onClick={requestEditOwnership}>
             <PencilIcon className="size-3.5" />
             {labels.editThisView}
@@ -284,11 +300,14 @@ function useArticleExport(
 function ArticleAgentLinkAction({ article, spaceId, notify }: Pick<Props, 'article' | 'spaceId' | 'notify'>) {
   const session = useArticleEditorSession();
   return (
-    <CopyAgentLinkButton
-      target={{ spaceId, target: 'article', entityId: article.id }}
-      beforeCopy={() => session.flush('manual')}
-      notify={notify}
-    />
+    <>
+      <ContentBacklinksButton spaceId={spaceId} articleId={article.id} beforeOpen={() => session.flush('manual')} />
+      <CopyAgentLinkButton
+        target={{ spaceId, target: 'article', entityId: article.id }}
+        beforeCopy={() => session.flush('manual')}
+        notify={notify}
+      />
+    </>
   );
 }
 
@@ -314,9 +333,37 @@ function useArticleCreation(
   return { creatingForm, createArticle };
 }
 
+function useArticleTitleSuggestion(session: ReturnType<typeof useArticleEditorSession>, notify: Props['notify']) {
+  const [suggesting, setSuggesting] = useState(false);
+  const [suggestedTitle, setSuggestedTitle] = useState<string | null>(null);
+
+  async function suggestTitle() {
+    const content = session.captureSnapshot();
+    const prompt = content.markdown.trim();
+    if (!prompt || suggesting) return;
+    setSuggesting(true);
+    try {
+      const result = await window.desktopApi.codexSuggestTitles({
+        prompt: prompt.slice(0, 30_000),
+        title: content.title,
+        mode: content.title.trim() ? 'regenerate' : 'fill',
+      });
+      setSuggestedTitle(result.title.trim() || null);
+    } catch (reason) {
+      notify(reason instanceof Error ? reason.message : String(reason));
+    } finally {
+      setSuggesting(false);
+    }
+  }
+
+  return { suggestTitle, suggesting, suggestedTitle, setSuggestedTitle };
+}
+
 function ArticleEditorWorkspace({
   article,
   projectCoverAssets = [],
+  coverGenerations,
+  onOpenCoverGeneration,
   spaceId,
   locale,
   canvasPresets,
@@ -347,8 +394,7 @@ function ArticleEditorWorkspace({
   const dirty = useArticleEditorSessionSelector(articleEditorSessionDirty);
   const saveFailed = useArticleEditorSessionSelector(articleEditorSessionFailed);
   const saving = useArticleEditorSessionSelector(articleEditorSessionSaving);
-  const [suggesting, setSuggesting] = useState(false);
-  const [suggestedTitle, setSuggestedTitle] = useState<string | null>(null);
+  const { suggestTitle, suggesting, suggestedTitle, setSuggestedTitle } = useArticleTitleSuggestion(session, notify);
   const { exporting, exportMarkdown } = useArticleExport(session, onExport, notify);
   const { creatingForm, createArticle } = useArticleCreation(session, onCreateArticle, notify);
   const attachments = useArticleAttachments({ spaceId, onSaved, notify });
@@ -363,15 +409,14 @@ function ArticleEditorWorkspace({
     notify,
     onConfigureProvider: onConfigureArticleCheck,
   });
-  const { generateHeader, generateIllustration, generatingHeader, generatingIllustration } = useArticleVisualGeneration(
-    {
+  const { generateHeader, generateIllustration, generatingHeader, generatingIllustration, openingCoverRatio } =
+    useArticleVisualGeneration({
       canvasPresets,
       notify,
       onGenerateHeader,
       onGenerateIllustration,
       session,
-    },
-  );
+    });
 
   if (article.content.editorMode === 'OUTLINE') {
     return (
@@ -404,25 +449,6 @@ function ArticleEditorWorkspace({
     );
   }
 
-  async function suggestTitle() {
-    const content = session.captureSnapshot();
-    const prompt = content.markdown.trim();
-    if (!prompt || suggesting) return;
-    setSuggesting(true);
-    try {
-      const result = await window.desktopApi.codexSuggestTitles({
-        prompt: prompt.slice(0, 30_000),
-        title: content.title,
-        mode: content.title.trim() ? 'regenerate' : 'fill',
-      });
-      setSuggestedTitle(result.title.trim() || null);
-    } catch (reason) {
-      notify(reason instanceof Error ? reason.message : String(reason));
-    } finally {
-      setSuggesting(false);
-    }
-  }
-
   return (
     <div
       data-article-editor
@@ -430,7 +456,7 @@ function ArticleEditorWorkspace({
       {...noteFileCapture(attachments.importFiles)}
     >
       <TooltipProvider delayDuration={300}>
-        <header className="flex min-h-14 shrink-0 items-center gap-2 border-b px-4 py-2">
+        <header className="flex min-h-14 shrink-0 flex-wrap items-center gap-2 border-b px-4 py-2">
           <div className="flex min-w-0 flex-1 items-center gap-2 overflow-hidden">
             <span className="truncate font-semibold">{title || messages.creator.manuscriptEditor.untitled}</span>
             <span className="shrink-0 text-xs text-muted-foreground">{messages.creator.manuscriptEditor.kind}</span>
@@ -442,7 +468,7 @@ function ArticleEditorWorkspace({
               onRetry={() => void session.retry()}
             />
           </div>
-          <div className="flex shrink-0 items-center gap-1">
+          <div className="flex min-w-0 flex-wrap items-center gap-1">
             {article.content.creationInput && (
               <ArticleCreationInputAction articleId={article.id} open={onEditCreationInput} notify={notify} />
             )}
@@ -461,7 +487,8 @@ function ArticleEditorWorkspace({
                 />
               }
             />
-            <ArticleRevisionHistoryAction article={article} notify={notify} zh={zh} />
+            <ArticleRevisionHistoryAction spaceId={spaceId} article={article} notify={notify} zh={zh} />
+            <ContentProvenanceCell value={article.provenance} />
             <ArticleDeliveryAction
               articleId={article.id}
               extensions={extensions}
@@ -510,9 +537,11 @@ function ArticleEditorWorkspace({
 
       <ArticleCoverWorkspaceProvider
         projectAssets={projectCoverAssets}
-        generating={generatingHeader}
+        openingRatio={openingCoverRatio}
+        generations={coverGenerations}
         canGenerate={hasBody}
         onGenerate={generateHeader}
+        onOpenGeneration={onOpenCoverGeneration}
       >
         <ArticleEditorDocument
           key={session.getEditorSessionIdentity()}
@@ -584,7 +613,9 @@ export function ArticleEditor(props: Props) {
       spaceId={spaceId}
       zh={locale === 'zh'}
     >
-      <ArticleEditorWorkspace {...props} />
+      <OutlineContentLinkHost.Provider value={{ spaceId, articleId: article.id, albumId: article.albumId }}>
+        <ArticleEditorWorkspace {...props} />
+      </OutlineContentLinkHost.Provider>
     </ArticleEditorSessionProvider>
   );
 }

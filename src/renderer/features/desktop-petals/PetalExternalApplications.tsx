@@ -1,4 +1,4 @@
-import { useState, type ComponentType } from 'react';
+import { useState, type ComponentType, type ReactNode } from 'react';
 import { ChevronRight, KeyRound } from 'lucide-react';
 import { Button } from '@/renderer/components/ui/button';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/renderer/components/ui/collapsible';
@@ -8,6 +8,7 @@ import { CODEX_CONTENT_APPLICATION_ID, type ContentApplication } from '@/shared/
 import type { DesktopNote } from '@/shared/contracts/desktop-petals';
 import { CodexPetalAction } from '@/renderer/features/extensions/codex-content/CodexPetalAction';
 import { CodexAgentLight } from '@/renderer/features/extensions/codex-content/CodexAgentLight';
+import { useNoteApplicationPanel } from '@/renderer/features/desktop-petals/use-note-application-panel';
 interface ApplicationControlProps {
   note: DesktopNote;
   prepare(): Promise<DesktopNote | null>;
@@ -23,36 +24,55 @@ export function PetalExternalApplications({
   prepare,
   disabled,
   onError,
+  visible,
+  toolbar,
+  panelHeight,
 }: {
   applications: readonly ContentApplication[];
   note: DesktopNote;
   prepare(): Promise<DesktopNote | null>;
   disabled: boolean;
   onError(reason: unknown): void;
+  visible: boolean;
+  toolbar(trigger: ReactNode): ReactNode;
+  panelHeight: number;
 }) {
   const copy = useI18n().messages.desktopPetals.externalApplications;
   const [selected, setSelected] = useState<string | null>(null);
-  const [open, setOpen] = useState(false);
   const application = applications.find((item) => item.id === selected) ?? applications[0];
-  if (!application) return null;
+  const panel = useNoteApplicationPanel(panelHeight, visible && !disabled && !!application, onError);
+  const open = panel.height > 0;
+  if (!application || !visible) return toolbar(null);
   const Control = applicationControls[application.id];
+  // Reserve one action row, plus a selector row only when there are multiple applications.
+  const expandedHeight = applications.length > 1 ? 96 : 64;
   return (
     <Collapsible
       open={open}
-      onOpenChange={setOpen}
-      className="mx-3 flex shrink-0 flex-wrap items-center gap-x-2 gap-y-1 border-t border-current/10 py-2 text-xs"
+      onOpenChange={(next) => panel.change(next ? expandedHeight : 0)}
+      className="shrink-0 text-xs"
       aria-label={copy.title}
     >
-      <div className="flex min-w-0 items-center gap-1">
+      {toolbar(
         <CollapsibleTrigger asChild>
-          <Button variant="ghost" size="xs" className="min-w-0 gap-1.5 rounded-sm px-1.5 text-inherit">
+          <Button
+            variant="ghost"
+            size="xs"
+            disabled={disabled || panel.busy}
+            className="min-w-0 max-w-24 shrink-0 gap-1 rounded-sm px-1 text-inherit"
+          >
             <ChevronRight
               className={`size-3 shrink-0 text-muted-foreground transition-transform motion-reduce:transition-none${open ? ' rotate-90' : ''}`}
             />
             <span className="truncate">{application.name}</span>
             {application.id === CODEX_CONTENT_APPLICATION_ID && <CodexAgentLight />}
           </Button>
-        </CollapsibleTrigger>
+        </CollapsibleTrigger>,
+      )}
+      <CollapsibleContent
+        style={{ height: panel.height }}
+        className="mx-3 min-w-0 overflow-y-auto border-t border-current/10 py-2"
+      >
         {open && applications.length > 1 && (
           <Select value={application.id} onValueChange={setSelected} disabled={disabled}>
             <SelectTrigger
@@ -73,8 +93,6 @@ export function PetalExternalApplications({
             </SelectContent>
           </Select>
         )}
-      </div>
-      <CollapsibleContent className="min-w-0 flex-[1_1_12rem]">
         {open &&
           (!application.available || !Control ? (
             <Button

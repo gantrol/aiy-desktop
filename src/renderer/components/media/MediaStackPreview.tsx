@@ -390,10 +390,12 @@ export function MediaStackPreview({
             {image}
           </span>
         );
-        return notify ? (
+        // Interactive covers keep their own file drag even inside a draggable library row.
+        return notify || onAssetSelect ? (
           <AssetFileContextMenu
             key={item.asset.id}
             assetId={item.asset.id}
+            inline
             notify={notify}
             actions={contextActions}
             revealContext={item.revealContext ?? revealContext}

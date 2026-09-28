@@ -1,0 +1,23 @@
+export const contentProvenanceMessages = {
+  title: 'Content source',
+  all: 'All sources',
+  authors: 'Written by',
+  writer: 'Written into AIY by',
+  operation: 'Contribution',
+  sources: 'Source records',
+  thread: 'Conversation',
+  agent: 'Agent',
+  model: 'Model',
+  batch: 'Import batch',
+  declared: 'Declared source',
+  openFailed: 'Could not open this source.',
+  kinds: { AI: 'AI', HUMAN: 'Human', THIRD_PARTY: 'Third party', UNKNOWN: 'Unknown' },
+  applications: { codex: 'Codex', chatgpt: 'ChatGPT', claude: 'Claude', aiy: 'AIY' },
+  operations: {
+    GENERATED: 'Generated',
+    SYNTHESIZED: 'Synthesized',
+    EDITED: 'Edited',
+    IMPORTED: 'Imported',
+    UNKNOWN: 'Unknown',
+  },
+};

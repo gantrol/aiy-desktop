@@ -2,6 +2,8 @@ import type { ActiveLibraryContext } from '@/main/libraries/active-library-conte
 import { petalError } from '@/shared/petal-errors';
 import type { NoteFile } from '@/shared/contracts/note-files';
 import { DEFAULT_PETAL_COLOR } from '@/shared/contracts/petal-appearance';
+import { petalLabel } from '@/shared/petal-preview';
+import type { PetalNoteSummary } from '@/shared/contracts/petal-note-summary';
 import type {
   DesktopNote,
   DesktopNoteDraft,
@@ -12,6 +14,29 @@ import type {
 
 /** A plucked blank is provisional until text or a reference image creates its source and first revision. */
 export class PetalNoteService {
+  private summaries?: Map<string, PetalNoteSummary>;
+  invalidate() {
+    this.summaries = undefined;
+  }
+  summary(id: string): PetalNoteSummary | null {
+    const pending = this.pending.get(id);
+    if (pending) {
+      const { note, draft } = pending;
+      return {
+        id,
+        stashId: note.stashId,
+        title: petalLabel(draft?.title ?? note.title, draft?.text ?? note.text),
+        color: note.color,
+        icon: note.icon,
+        persisted: false,
+        hasImages: Boolean(note.references.length),
+      };
+    }
+    this.summaries ??= new Map(
+      this.database.listDesktopNoteSummaries().map((note) => [note.id, { ...note, persisted: true }]),
+    );
+    return this.summaries.get(id) ?? null;
+  }
   private pending = new Map<string, { note: DesktopNote; draft: DesktopNoteDraft | null }>();
   constructor(private readonly database: ActiveLibraryContext['database']) {}
   isPending(id: string) {
@@ -30,8 +55,7 @@ export class PetalNoteService {
     if (stashId) return this.database.createDesktopNote(id, stashId);
     const existing = this.pending.get(id);
     if (existing) return existing.note;
-    const saved = this.database.listDesktopNotes().find((note) => note.id === id);
-    if (saved) return saved;
+    if (this.database.listDesktopNoteIds().includes(id)) return this.database.getDesktopNote(id);
     const note: DesktopNote = {
       id,
       stashId: id,

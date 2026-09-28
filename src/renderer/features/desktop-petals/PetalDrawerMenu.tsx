@@ -20,7 +20,6 @@ import {
   Layers,
   Pencil,
 } from 'lucide-react';
-import { noteAppearanceStyle } from '@/renderer/features/desktop-petals/petal-appearance';
 import { NoteAppearancePicker } from '@/renderer/features/desktop-petals/NoteAppearancePicker';
 import { PetalMenuContent, PetalMenuSection } from '@/renderer/features/desktop-petals/PetalMenu';
 export type DrawerMenuPosition = { x: number; y: number; id?: string } | null;
@@ -61,7 +60,6 @@ export function PetalDrawerMenu({ state, snapshot, frame, menu, run, onRestoreFo
       </DropdownMenuTrigger>
       <PetalMenuContent
         className="w-52"
-        style={noteAppearanceStyle(menuItem?.color ?? 'rose')}
         onCloseAutoFocus={(event) => {
           event.preventDefault();
           onRestoreFocus();

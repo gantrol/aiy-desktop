@@ -1,9 +1,10 @@
-import { useEffect, useRef, useState, type ReactNode } from 'react';
-import type { BootstrapDto, ExtensionDto } from '@/shared/contracts';
-import { ArrowLeftIcon, PackagePlusIcon, PowerIcon, RefreshCwIcon, Trash2Icon } from 'lucide-react';
+import { useState, type ReactNode } from 'react';
+import type { ArticleDto, BootstrapDto, ExtensionDto } from '@/shared/contracts';
+import { PackagePlusIcon, PowerIcon, RefreshCwIcon, Trash2Icon } from 'lucide-react';
 import { Button } from '@/renderer/components/ui/button';
 import { ScrollArea } from '@/renderer/components/ui/scroll-area';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/renderer/components/ui/tabs';
+import { CollectionDetailLayout } from '@/renderer/components/workbench/CollectionDetailLayout';
 import { cn } from '@/renderer/lib/utils';
 import { useI18n } from '@/renderer/i18n/useI18n';
 import type { NavigationMode } from '@/renderer/components/app/app-navigation';
@@ -32,6 +33,7 @@ interface Props {
   transitionShowcaseNavigation: TransitionShowcaseNavigationState;
   notify(message: string): void;
   onOpenCreation(seriesId: string, assetId: string | null): Promise<void>;
+  onArticleSaved(article: ArticleDto): void;
 }
 const emptyExtensions: readonly ExtensionDto[] = [];
 type Manager = ReturnType<typeof useExtensionManager>;
@@ -138,6 +140,7 @@ function ExtensionDetail({
                 extensions={manager.extensions}
                 notify={props.notify}
                 onOpenCreation={props.onOpenCreation}
+                onArticleSaved={props.onArticleSaved}
               />
             </ExtensionFeatureErrorBoundary>
           </TabsContent>
@@ -196,41 +199,14 @@ export function ExtensionPluginScreen(props: Props) {
   const l = messages.extensions;
   const manager = useExtensionManager({ ...props, initial: props.data.extensions ?? emptyExtensions });
   const [uninstallTarget, setUninstallTarget] = useState<ExtensionDto | null>(null);
-  const [mobileDetail, setMobileDetail] = useState(Boolean(props.requestedId));
-  const listPane = useRef<HTMLDivElement>(null);
-  const backButton = useRef<HTMLButtonElement>(null);
-  const focusNavigation = useRef(Boolean(props.requestedId));
-  const requestedDetail = useRef(props.requestedId);
-  useEffect(() => {
-    if (requestedDetail.current === props.requestedId) return;
-    requestedDetail.current = props.requestedId;
-    if (props.requestedId) {
-      focusNavigation.current = true;
-      setMobileDetail(true);
-    }
-  }, [props.requestedId]);
   const selected = manager.extensions.find((extension) => extension.manifest.id === manager.selectedId) ?? null;
   const lastLanguage =
     selected?.manifest.kind === 'LANGUAGE' &&
     selected.enabled &&
     manager.extensions.filter((extension) => extension.manifest.kind === 'LANGUAGE' && extension.enabled).length === 1;
   const busy = Boolean(manager.busyKey);
-  useEffect(() => {
-    if (!focusNavigation.current) return;
-    focusNavigation.current = false;
-    const list = listPane.current;
-    if (!list) return;
-    const target = mobileDetail
-      ? backButton.current
-      : (Array.from(list.querySelectorAll<HTMLButtonElement>('button[data-extension-id]')).find(
-          (button) => button.dataset.extensionId === manager.selectedId,
-        ) ?? list.querySelector<HTMLInputElement>('input[type="search"]'));
-    // Container queries decide which pane is shown; do not focus a hidden control
-    // or move keyboard users away from the desktop list during a refresh.
-    if (target?.getClientRects().length) target.focus({ preventScroll: true });
-  }, [mobileDetail, manager.selectedId]);
   return (
-    <div data-extension-plugin-screen className="@container/extension-screen flex size-full min-h-0 flex-col">
+    <div data-extension-plugin-screen className="@container/extension-screen flex size-full min-h-0 min-w-0 flex-col">
       {manager.error && !uninstallTarget && (
         <p
           role="alert"
@@ -239,89 +215,71 @@ export function ExtensionPluginScreen(props: Props) {
           {manager.error}
         </p>
       )}
-      <div className="grid min-h-0 w-full flex-1 grid-cols-1 @3xl/extension-screen:grid-cols-[minmax(240px,320px)_minmax(0,1fr)]">
-        <div
-          ref={listPane}
-          className={cn(
-            'min-h-0 flex-col border-r border-border @3xl/extension-screen:flex',
-            mobileDetail && selected ? 'hidden' : 'flex',
-          )}
-        >
-          <div className="border-b border-border p-3">
-            <Button
-              type="button"
-              variant="outline"
-              className="w-full"
-              disabled={busy}
-              onClick={() =>
-                void manager.install(l.notices.installed).then((installed) => {
-                  if (installed) {
-                    focusNavigation.current = true;
-                    setMobileDetail(true);
+      <div className="min-h-0 min-w-0 flex-1">
+        <CollectionDetailLayout
+          layoutKey="extensions"
+          collectionLabel={l.tabs.plugins}
+          collectionWidth={280}
+          selectionKey={props.requestedId}
+          collection={({ revealDetail }) => (
+            <>
+              <div className="border-b border-border p-3">
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="w-full"
+                  disabled={busy}
+                  onClick={() =>
+                    void manager.install(l.notices.installed).then((installed) => {
+                      if (installed) revealDetail();
+                    })
                   }
-                })
-              }
-            >
-              <PackagePlusIcon className="size-4" />
-              {l.actions.installLocal}
-            </Button>
-          </div>
-          <ScrollArea className="min-h-0 flex-1">
-            <ExtensionPluginList
-              extensions={manager.extensions}
-              selectedId={manager.selectedId}
-              onSelect={(id) => {
-                focusNavigation.current = true;
-                manager.select(id);
-                setMobileDetail(true);
-              }}
-            />
-          </ScrollArea>
-        </div>
-        <div
-          className={cn(
-            '@container/extension-detail min-h-0 min-w-0 flex-col @3xl/extension-screen:flex',
-            mobileDetail || !selected ? 'flex' : 'hidden',
+                >
+                  <PackagePlusIcon className="size-4" />
+                  {l.actions.installLocal}
+                </Button>
+              </div>
+              <ScrollArea className="min-h-0 flex-1">
+                <ExtensionPluginList
+                  extensions={manager.extensions}
+                  selectedId={manager.selectedId}
+                  onSelect={(id) => {
+                    manager.select(id);
+                    revealDetail();
+                  }}
+                />
+              </ScrollArea>
+            </>
           )}
         >
-          <div className="shrink-0 px-3 pt-2 @3xl/extension-screen:hidden">
-            <Button
-              ref={backButton}
-              type="button"
-              variant="ghost"
-              onClick={() => {
-                focusNavigation.current = true;
-                setMobileDetail(false);
-              }}
-            >
-              <ArrowLeftIcon className="size-4" />
-              {messages.extensionManager.backToList}
-            </Button>
-          </div>
-          <ScrollArea className="min-h-0 min-w-0 flex-1">
-            {selected ? (
-              <ExtensionDetail
-                key={selected.manifest.id}
-                extension={selected}
-                manager={manager}
-                props={props}
-                actions={
-                  <ExtensionActions
+          {() => (
+            <div className="@container/extension-detail flex min-h-0 min-w-0 flex-1 flex-col">
+              <ScrollArea className="min-h-0 min-w-0 flex-1">
+                {selected ? (
+                  <ExtensionDetail
+                    key={selected.manifest.id}
                     extension={selected}
                     manager={manager}
-                    lastLanguage={Boolean(lastLanguage)}
-                    onUninstall={() => {
-                      manager.clearError();
-                      setUninstallTarget(selected);
-                    }}
+                    props={props}
+                    actions={
+                      <ExtensionActions
+                        extension={selected}
+                        manager={manager}
+                        lastLanguage={Boolean(lastLanguage)}
+                        onUninstall={() => {
+                          manager.clearError();
+                          setUninstallTarget(selected);
+                        }}
+                      />
+                    }
                   />
-                }
-              />
-            ) : (
-              <p className="p-5 text-sm text-muted-foreground">{messages.extensionManager.noSelection}</p>
-            )}
-          </ScrollArea>
-        </div>
+                ) : (
+                  <p className="p-5 text-sm text-muted-foreground">{messages.extensionManager.noSelection}</p>
+                )}
+              </ScrollArea>
+            </div>
+          )}
+        </CollectionDetailLayout>
       </div>
       <DeleteEntityDialog
         open={Boolean(uninstallTarget)}

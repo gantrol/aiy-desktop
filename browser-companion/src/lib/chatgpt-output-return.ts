@@ -185,7 +185,9 @@ export function mountChatGptOutputReturnButtons({
   }
 
   const observer = new MutationObserver(refresh);
-  observer.observe(document.documentElement, {
+  // document_start can run before <html> exists. Observe the document so output
+  // controls cannot abort handoff initialization while the page is being parsed.
+  observer.observe(document, {
     childList: true,
     subtree: true,
     attributes: true,

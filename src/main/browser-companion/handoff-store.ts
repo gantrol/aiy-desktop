@@ -1,3 +1,4 @@
+import { historyItem, inspectHandoffRecords } from '@/main/browser-companion/handoff-inspection';
 import { createHash, randomUUID } from 'node:crypto';
 import { constants } from 'node:fs';
 import { copyFile, link, mkdir, open, readdir, rename, rm, writeFile } from 'node:fs/promises';
@@ -33,7 +34,6 @@ import {
   type BrowserCompanionRecordBase,
 } from '@/main/browser-companion/protocol';
 import {
-  browserCompanionHistoryItemSchema,
   browserCompanionStageErrorCodeSchema,
   type BrowserCompanionDeleteResult,
   type BrowserCompanionHistoryItem,
@@ -135,22 +135,6 @@ function baseRecord(record: BrowserCompanionRecord): BrowserCompanionRecordBase 
     media: record.media,
     createdAt: record.createdAt,
     ...(record.calendarCapture ? { calendarCapture: record.calendarCapture } : {}),
-  });
-}
-
-function historyItem(record: BrowserCompanionRecord, state: HandoffStateDirectory): BrowserCompanionHistoryItem {
-  return browserCompanionHistoryItemSchema.parse({
-    handoffId: record.handoffId,
-    ...(record.batchId ? { batchId: record.batchId } : {}),
-    target: record.target,
-    source: record.source,
-    contentKind: record.contentKind,
-    text: record.text,
-    mediaCount: record.media.length,
-    state,
-    createdAt: record.createdAt,
-    claimedAt: 'claimedAt' in record ? record.claimedAt : null,
-    deliveredAt: 'deliveredAt' in record ? record.deliveredAt : null,
   });
 }
 
@@ -417,7 +401,9 @@ export class BrowserCompanionHandoffStore {
       }
 
       const claimed = browserCompanionClaimedRecordSchema.safeParse(record);
-      if (claimed.success && Date.parse(claimed.data.leaseExpiresAt) > now) continue;
+      // A browser may have written content before it disappeared. Lease expiry is not proof
+      // of a safe retry; only an authenticated completion or explicit deletion resolves this.
+      if (claimed.success && (claimed.data.fillStartedAt || Date.parse(claimed.data.leaseExpiresAt) > now)) continue;
 
       const released = claimed.success ? this.calendar.append(baseRecord(record), 'INTERRUPTED') : baseRecord(record);
       await writeBoundedJson(claimedPath, released, 'w');
@@ -582,6 +568,40 @@ export class BrowserCompanionHandoffStore {
     };
   }
 
+  async inspect(target: BrowserCompanionTarget, handoffId?: string): Promise<BrowserCompanionResponse> {
+    return this.withStateLock(async () => {
+      if (!handoffId) return inspectHandoffRecords(target);
+      browserCompanionRecordBaseSchema.shape.handoffId.parse(handoffId);
+      // Do not create directories, recover leases, enumerate history or claim a task here.
+      const records = await Promise.all(
+        STATE_DIRECTORIES.map(async (state) => ({
+          state,
+          record: await readBoundedRecord(this.statePath(state, handoffId)),
+        })),
+      );
+      return inspectHandoffRecords(target, handoffId, records);
+    });
+  }
+
+  async beginFill(
+    handoffId: string,
+    completionToken: string,
+    target: BrowserCompanionTarget,
+  ): Promise<BrowserCompanionResponse> {
+    return this.withStateLock(async () => {
+      const record = await this.claimedRecord(handoffId, completionToken, target);
+      if ('kind' in record) return record;
+      if (!record.fillStartedAt) {
+        const started = browserCompanionClaimedRecordSchema.parse({
+          ...record,
+          fillStartedAt: new Date().toISOString(),
+        });
+        await writeBoundedJson(this.statePath('claimed', handoffId), started, 'w');
+      }
+      return { protocolVersion: BROWSER_COMPANION_PROTOCOL_VERSION, ok: true, kind: 'fill-started', handoffId };
+    });
+  }
+
   async claim(target: BrowserCompanionTarget, handoffId?: string): Promise<BrowserCompanionResponse> {
     return this.withStateLock(async () => {
       await this.ensureDirectories();
@@ -713,6 +733,7 @@ export class BrowserCompanionHandoffStore {
       await this.ensureDirectories();
       const record = await this.claimedRecord(handoffId, completionToken, target);
       if ('kind' in record) return record;
+      if (record.fillStartedAt) return companionError('STATE_CONFLICT');
 
       const claimedPath = this.statePath('claimed', handoffId);
       const released = this.calendar.append(baseRecord(record), 'RELEASE');

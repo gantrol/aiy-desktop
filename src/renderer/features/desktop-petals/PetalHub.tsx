@@ -21,9 +21,9 @@ import { PetalHubSettingsPanel } from '@/renderer/features/desktop-petals/PetalH
 import { FlowerCenter, flowerCenterProgress } from '@/renderer/features/desktop-petals/FlowerCenter';
 import { usePetalHubData } from '@/renderer/features/desktop-petals/use-petal-hub-data';
 import { usePetalDock } from '@/renderer/features/desktop-petals/use-petal-dock';
+import { PetalSpaceLabel } from '@/renderer/features/desktop-petals/PetalSpaceLabel';
 import { useI18n } from '@/renderer/i18n/useI18n';
 import { petalErrorText } from '@/shared/petal-errors';
-import { petalTimerRemaining } from '@/shared/petal-timer';
 import type { DesktopPetalSnapshot } from '@/shared/contracts/desktop-petals';
 import type { PetalBoardCommand } from '@/shared/contracts/petal-board';
 import type { PetalHubView } from '@/shared/contracts/petal-hub';
@@ -63,19 +63,7 @@ export function PetalHub({ snapshot }: { snapshot: DesktopPetalSnapshot }) {
     }
   };
   const runBoard = (command: PetalBoardCommand) => void boardCommand(command).catch(() => undefined);
-  const centerClick =
-    snapshot.hubSettings.mode === 'pomodoro'
-      ? () =>
-          void window.desktopPetals
-            .timerAction(
-              petalTimerRemaining(snapshot.timer, Date.now()) === 0
-                ? 'next'
-                : snapshot.timer.endsAt === null
-                  ? 'start'
-                  : 'pause',
-            )
-            .catch(onError)
-      : undefined;
+  const centerClick = () => view('settings');
   const board = snapshot.board;
   const undo = snapshot.collectionUndo;
   return (
@@ -113,7 +101,7 @@ export function PetalHub({ snapshot }: { snapshot: DesktopPetalSnapshot }) {
             />
           </div>
         ) : snapshot.hubView === 'settings' ? (
-          <PetalHubSettingsPanel snapshot={snapshot} now={now} />
+          <PetalHubSettingsPanel snapshot={snapshot} now={now} quota={quota} />
         ) : snapshot.hubView === 'layers' ? (
           <PetalLayers board={board} onBack={() => view('notes')} onCommand={boardCommand} />
         ) : snapshot.hubView === 'sources' ? (
@@ -163,14 +151,15 @@ export function PetalHub({ snapshot }: { snapshot: DesktopPetalSnapshot }) {
               </>
             }
           >
+            <PetalSpaceLabel name={snapshot.libraryName} />
             <PetalList snapshot={snapshot} onError={onError} />
           </PetalPanel>
         ) : (
           <div
-            className="fixed"
+            className="fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2"
             style={{
-              left: dock.anchor.x - snapshot.hubSettings.flowerSize / 2,
-              top: dock.anchor.y - snapshot.hubSettings.flowerSize / 2,
+              width: snapshot.hubSettings.flowerSize,
+              height: snapshot.hubSettings.flowerSize,
             }}
           >
             <RoseFlower
@@ -178,28 +167,31 @@ export function PetalHub({ snapshot }: { snapshot: DesktopPetalSnapshot }) {
               dock={
                 snapshot.dock && petalBounds
                   ? {
-                      x: petalBounds.x + petalBounds.width / 2 - dock.anchor.x,
-                      y: petalBounds.y + petalBounds.height / 2 - dock.anchor.y,
+                      x: petalBounds.x + petalBounds.width / 2 - window.innerWidth / 2,
+                      y: petalBounds.y + petalBounds.height / 2 - window.innerHeight / 2,
                     }
                   : undefined
               }
               size={snapshot.hubSettings.flowerSize}
               onPluck={create}
               onPreview={dock.setPluckPreview}
-              onCenterClick={
-                undo ? () => void window.desktopPetals.undoCollection(undo.token).catch(onError) : centerClick
-              }
-              centerLabel={undo ? copy.actions.undoCollection : undefined}
+              onCenterClick={centerClick}
+              centerLabel={copy.settings.title}
               onError={onError}
-              center={
-                undo ? (
-                  <Undo2 className="size-5" />
-                ) : (
-                  <FlowerCenter settings={snapshot.hubSettings} timer={snapshot.timer} quota={quota} now={now} />
-                )
-              }
+              center={<FlowerCenter settings={snapshot.hubSettings} timer={snapshot.timer} quota={quota} now={now} />}
               progress={flowerCenterProgress(snapshot.hubSettings, snapshot.timer, quota, now)}
             />
+            {undo && (
+              <PetalIconButton
+                label={copy.actions.undoCollection}
+                className="absolute -top-1 -right-1 rounded-full bg-background/90"
+                disabled={dock.fold > 0}
+                style={{ opacity: Math.max(0, 1 - dock.fold * 5) }}
+                onClick={() => void window.desktopPetals.undoCollection(undo.token).catch(onError)}
+              >
+                <Undo2 />
+              </PetalIconButton>
+            )}
             {snapshot.hubSettings.title && (
               <span
                 className="pointer-events-none absolute inset-x-0 -bottom-5 truncate text-center text-xs"

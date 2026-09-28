@@ -668,6 +668,7 @@ export const videoDocumentNavigationEntrySchema = z.discriminatedUnion('kind', [
       nodeId: z.string().min(1).max(500),
       kind: z.literal('DOCUMENT'),
       documentId: z.string().min(1).max(200),
+      creationItemId: z.string().min(1).max(200),
       parentAlbumId: z.string().min(1).max(200).nullable(),
       sortOrder: z.number().int().nonnegative().nullable(),
       document: videoDocumentSummarySchema,

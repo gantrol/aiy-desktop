@@ -45,6 +45,7 @@ import { createPortal } from 'react-dom';
 
 interface Props {
   outlineMode?: boolean;
+  outlinePreferenceKey?: string;
   attachmentsPanel: ReactNode;
   attachmentCount: number;
   articleId: string;
@@ -365,12 +366,11 @@ function articleEditorLayoutAction(
 export function ArticleEditorDocument(props: Props) {
   const commentCopy = useI18n().messages.contentEditor.comment;
   const { attachmentsPanel, attachmentCount, articleId, editorSessionIdentity, comments, commentMutationBusy } = props;
-  const { initialElements, layoutToolbarRoot } = props;
+  const { initialElements, layoutToolbarRoot, onTitleChange } = props;
   const { generatingIllustration = false, initialMarkdown, labels, media, mediaBindings, splitOpen } = props;
   const { title, titleAccessory, zh, onEditorHandleChange, onCommentCreate, onCommentDelete } = props;
   const { onCommentReply, onCommentStatusChange, onCommentUpdateBody, onIllustrationRequest } = props;
   const { onImageImportError, onImageImported, onMarkdownChange, onPersist, onSplitClose, onSplitToggle } = props;
-  const { onTitleChange } = props;
   const editorMediaBindings = useMemo(() => editorBindings(mediaBindings), [mediaBindings]);
   const editorSession = useArticleEditorSession();
   const initialOutlineItems = useMemo(() => videoDocumentArticleHeadings(initialMarkdown), [initialMarkdown]);
@@ -548,6 +548,7 @@ export function ArticleEditorDocument(props: Props) {
       {articleEditorLayoutAction(leftSidebar, rightSidebar, layoutToolbarRoot, splitOpen, onSplitToggle)}
       <ArticleEditorDocumentPanes
         outlineMode={props.outlineMode}
+        outlinePreferenceKey={props.outlinePreferenceKey}
         attachmentsPanel={attachmentsPanel}
         attachmentCount={attachmentCount}
         articleElementControls={articleElementControls}

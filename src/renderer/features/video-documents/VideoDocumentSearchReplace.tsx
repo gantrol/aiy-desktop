@@ -125,7 +125,11 @@ function SearchIconButton({
           type="button"
           variant="ghost"
           size="icon-sm"
-          className={cn('size-8', active && 'bg-selected text-selected-foreground hover:bg-selected/80')}
+          className={cn(
+            'size-8',
+            active &&
+              'bg-selected text-selected-foreground ring-1 ring-inset ring-selected-foreground hover:bg-selected active:bg-selected',
+          )}
           aria-label={label}
           aria-pressed={active}
           disabled={disabled}

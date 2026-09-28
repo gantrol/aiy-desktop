@@ -51,9 +51,10 @@ export default defineConfig({
   dev: {
     server: {
       host: '127.0.0.1',
-      origin: 'http://127.0.0.1:3017',
+      // WXT appends the selected port, including when the preferred port is unavailable.
+      origin: 'http://127.0.0.1',
       port: 3017,
-      strictPort: true,
+      strictPort: false,
     },
   },
   webExt: { disabled: true },

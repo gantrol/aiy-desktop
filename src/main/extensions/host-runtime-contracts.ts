@@ -7,6 +7,7 @@ import {
   CODEX_USAGE_INVESTIGATOR_EXTENSION_ID,
   FEATURE_DEMO_EXTENSION_ID,
   MAINTENANCE_GUIDE_EXTENSION_ID,
+  WORK_TRACKING_EXTENSION_ID,
   NATURAL_WATERMARK_EXTENSION_ID,
   WEIBO_CHANNEL_EXTENSION_ID,
 } from '@/shared/extension-ids';
@@ -97,6 +98,12 @@ interface HostRuntimeContract {
 }
 
 const hostRuntimeContracts: Readonly<Record<string, HostRuntimeContract>> = {
+  'work-tracking': {
+    extensionId: WORK_TRACKING_EXTENSION_ID,
+    permissions: [EXTENSION_PERMISSION.libraryReadSelectedContent],
+    optionalPermissions: [],
+    contributes: { commands: ['workTracking.open'], workflows: ['workTracking.prepareHandoff'] },
+  },
   'maintenance-guide': {
     extensionId: MAINTENANCE_GUIDE_EXTENSION_ID,
     permissions: [EXTENSION_PERMISSION.filesystemReadMaintenanceGuides],

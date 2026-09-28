@@ -20,6 +20,7 @@ export type CodexContentModel = z.infer<typeof codexContentModelSchema>;
 export const codexProjectTargetSchema = z
   .object({
     projectId: z.string().min(1).max(512).nullable(),
+    appServerProjectId: z.string().min(1).max(512).optional(),
     workspace: z.string().max(32768),
     rootPaths: z.array(z.string().max(32768)).max(100).optional(),
     name: z.string().max(500),
@@ -82,7 +83,7 @@ export type CodexContentState = z.infer<typeof codexContentStateSchema>;
 export const codexContentSettingsSchema = z
   .object({
     albumId: id.nullable(),
-    albums: z.array(z.object({ id, title: z.string() })),
+    albums: z.array(z.object({ id, title: z.string(), parentId: id.nullable() })),
   })
   .strict();
 export const codexContentCommandSchema = z.discriminatedUnion('kind', [
@@ -102,7 +103,6 @@ export const codexContentCommandSchema = z.discriminatedUnion('kind', [
   z.object({ kind: z.literal('stop'), stashId: id, taskId: id }).strict(),
   z.object({ kind: z.literal('collect'), stashId: id, taskId: id }).strict(),
   z.object({ kind: z.literal('open-task'), stashId: id, taskId: id }).strict(),
-  z.object({ kind: z.literal('stop-and-open-task'), stashId: id, taskId: id }).strict(),
   z.object({ kind: z.literal('open-task-album'), stashId: id, taskId: id }).strict(),
   z.object({ kind: z.literal('open-source'), stashId: id }).strict(),
   z.object({ kind: z.literal('open-result'), stashId: id, taskId: id, materialId: id }).strict(),
@@ -115,6 +115,13 @@ export const codexContentCommandSchema = z.discriminatedUnion('kind', [
   z.object({ kind: z.literal('open-album') }).strict(),
 ]);
 export type CodexContentCommand = z.infer<typeof codexContentCommandSchema>;
+export const codexContentConfigurationCommands = [
+  'open-plugin',
+  'settings',
+  'select-album',
+  'configure-quota',
+  'quota',
+] as const;
 export interface CodexContentApi {
   onChanged(callback: (event?: { stashId: string }) => void): () => void;
   command(input: CodexContentCommand): Promise<unknown>;

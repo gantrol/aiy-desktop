@@ -8,6 +8,7 @@ import {
 import type { CodexImagesNavigationState } from '@/renderer/features/extensions/codexImageNavigation';
 import type { TransitionShowcaseNavigationState } from '@/renderer/features/extensions/transitionShowcaseNavigation';
 import { useStableCallback } from '@/renderer/lib/useStableCallback';
+import { useWorkspaceGroupPresentation } from '@/renderer/components/workspace/useWorkspaceGroupPresentation';
 import type {
   BootstrapDto,
   ImportedCreationOutputDto,
@@ -44,9 +45,10 @@ interface Props {
   onArticleLocationNavigate: WorkspaceTabSurfaceProps['onArticleLocationNavigate'];
   onRequestEditOwnership: WorkspaceTabSurfaceProps['onRequestEditOwnership'];
   onLocationFlushChange: WorkspaceTabSurfaceProps['onLocationFlushChange'];
+  onTabsCollapsedChange(collapsed: boolean): void;
   onActivateGroup(): void;
   onActivateTab(tabId: string): void;
-  onCloseTab(tabId: string): void;
+  onCloseTab(tabId: string, committed?: () => void): void;
   onCloseOtherTabs(tabId: string): void;
   onReorderTab(tabId: string, delta: -1 | 1): void;
   onNewTab(sourceTabId: string, destination: AppLocation['view'] | AppLocation): void;
@@ -83,17 +85,18 @@ function activateFocusedWorkspaceGroup(event: FocusEvent<HTMLDivElement>, onActi
   onActivateGroup();
   const target = event.target;
   if (!(target instanceof HTMLElement)) return;
-  event.currentTarget
-    .querySelector<HTMLElement>('[data-workspace-last-focus]')
-    ?.removeAttribute('data-workspace-last-focus');
+  const pane = target.closest('[data-workspace-tab-id]');
+  if (!pane || !event.currentTarget.contains(pane)) return;
+  pane.querySelector<HTMLElement>('[data-workspace-last-focus]')?.removeAttribute('data-workspace-last-focus');
   target.setAttribute('data-workspace-last-focus', 'true');
 }
 
 function WorkspaceTabSession({
   tab,
   visible,
+  tabsVisible,
   ...props
-}: Omit<WorkspaceTabSurfaceProps, 'tab'> & { tab: WorkspaceRuntimeTab; visible: boolean }) {
+}: Omit<WorkspaceTabSurfaceProps, 'tab'> & { tab: WorkspaceRuntimeTab; visible: boolean; tabsVisible: boolean }) {
   const onArticleEditorStateChange = useStableCallback(props.onArticleEditorStateChange);
   const onArticleLocationChange = useStableCallback(props.onArticleLocationChange);
   const onArticleLocationNavigate = useStableCallback(props.onArticleLocationNavigate);
@@ -121,12 +124,11 @@ function WorkspaceTabSession({
 
   return (
     <div
+      id={`workspace-panel-${tab.id}`}
+      role="tabpanel"
+      aria-labelledby={tabsVisible ? `workspace-tab-${tab.id}` : undefined}
       data-workspace-tab-id={tab.id}
-      className={
-        visible
-          ? 'absolute inset-0 z-10 min-h-0 min-w-0 overflow-hidden opacity-100'
-          : 'pointer-events-none absolute inset-0 z-0 min-h-0 min-w-0 overflow-hidden opacity-0'
-      }
+      className={visible ? 'absolute inset-0 z-10 min-h-0 min-w-0 overflow-hidden opacity-100' : 'hidden'}
       aria-hidden={!visible}
       inert={!visible}
     >
@@ -167,6 +169,7 @@ export function AppWorkspaceGroup({
   group,
   active,
   tabsVisible,
+  onTabsCollapsedChange,
   onActivateGroup,
   onActivateTab,
   onCloseTab,
@@ -181,6 +184,8 @@ export function AppWorkspaceGroup({
   onReset,
   ...surfaceProps
 }: Props) {
+  const collapsed = tabsVisible && Boolean(splitAxis && group.tabsCollapsed);
+  const contentVisible = useWorkspaceGroupPresentation(collapsed);
   const mountedTabIdsRef = useRef<string[]>([]);
   const availableTabIds = new Set(group.tabs.map((tab) => tab.id));
   mountedTabIdsRef.current = [
@@ -193,15 +198,20 @@ export function AppWorkspaceGroup({
   return (
     <div
       data-workspace-group-id={group.id}
-      className="flex size-full min-h-0 min-w-0 flex-col overflow-hidden bg-background"
-      onPointerDownCapture={onActivateGroup}
-      onFocusCapture={(event) => activateFocusedWorkspaceGroup(event, onActivateGroup)}
+      data-workspace-group-collapsed={collapsed}
+      className="relative flex size-full min-h-0 min-w-0 flex-col overflow-hidden bg-background"
+      onPointerDownCapture={collapsed ? undefined : onActivateGroup}
+      onFocusCapture={(event) => {
+        if (!collapsed) activateFocusedWorkspaceGroup(event, onActivateGroup);
+      }}
     >
       {tabsVisible && (
         <WorkspaceTabStrip
           data={surfaceProps.data}
           group={group}
           active={active}
+          collapsed={collapsed}
+          onTabsCollapsedChange={onTabsCollapsedChange}
           onActivate={onActivateTab}
           onClose={onCloseTab}
           onCloseOthers={onCloseOtherTabs}
@@ -215,22 +225,35 @@ export function AppWorkspaceGroup({
           onReset={onReset}
         />
       )}
-      <div className="relative min-h-0 min-w-0 flex-1 overflow-hidden">
-        <div>
-          {mountedTabs.map((tab) => {
-            const visible = tab.id === group.activeTabId;
-            return (
-              <WorkspaceTabSession
-                key={tab.id}
-                {...surfaceProps}
-                tab={tab}
-                active={active && visible}
-                visible={visible}
-                onNewTab={onNewTab}
-                onOpenBeside={onOpenBeside}
-              />
-            );
-          })}
+      <div
+        data-workspace-group-body
+        className="flex min-h-0 min-w-0 flex-1 flex-col"
+        aria-hidden={collapsed}
+        inert={collapsed}
+      >
+        <div
+          id={`workspace-group-content-${group.id}`}
+          className="relative min-h-0 min-w-0 flex-1 overflow-hidden"
+          aria-hidden={collapsed}
+          inert={collapsed}
+        >
+          <div>
+            {mountedTabs.map((tab) => {
+              const visible = contentVisible && tab.id === group.activeTabId;
+              return (
+                <WorkspaceTabSession
+                  key={tab.id}
+                  {...surfaceProps}
+                  tab={tab}
+                  active={active && !collapsed && visible}
+                  visible={visible}
+                  tabsVisible={tabsVisible}
+                  onNewTab={onNewTab}
+                  onOpenBeside={onOpenBeside}
+                />
+              );
+            })}
+          </div>
         </div>
       </div>
     </div>

@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { contentAuthorLabel } from '@/renderer/features/content-provenance/ContentProvenance';
 import './CalendarDayPanel.css';
 import { ArrowUpRightIcon, ChartNoAxesCombinedIcon, LoaderCircleIcon } from 'lucide-react';
 import { Button } from '@/renderer/components/ui/button';
@@ -82,6 +83,8 @@ function DayItem({
             {calendarActivityTime(item, locale, timeZone, m, 'latest')}
             {item.corrected ? ` · ${m.corrected}` : ''}
             {item.invalidated ? ` · ${m.invalidated}` : ''}
+            {item.writers?.some((writer) => writer.kind === 'AI') &&
+              ` · ${[...new Set(item.writers.map((writer) => contentAuthorLabel(writer, messages.contentProvenance)))].join(' / ')}`}
           </span>
           {item.activityCount > 1 && item.changes.length > 0 && (
             <span className="line-clamp-2 text-xs text-muted-foreground">{calendarChangePreview(item, m)}</span>

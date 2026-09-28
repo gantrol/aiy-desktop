@@ -1,3 +1,9 @@
+import { commandMatchesShortcut, shortcutEventAvailable } from '@/renderer/commands/app-shortcuts';
+import { CollectionDetailLayout } from '@/renderer/components/workbench/CollectionDetailLayout';
+import { WorkbenchPaneHeader } from '@/renderer/components/workbench/WorkbenchPane';
+import { ContentSearchPreview } from '@/renderer/features/content-search/ContentSearchPreview';
+import { contentSearchSourceKey } from '@/renderer/features/content-search/contentSearchSelection';
+import type { ContentLookupResult } from '@/shared/contracts/content-search';
 import { useEffect, useRef, useState } from 'react';
 import { SearchIcon, XIcon } from 'lucide-react';
 import type { AppLocation } from '@/renderer/components/app/app-navigation';
@@ -31,7 +37,13 @@ export default function ContentSearchScreen({
   const search = useContentLookup(contentLibraryApi(), query, type, enabled);
   const items = search.result?.items;
   const firstResult = items?.[0];
-  const opening = useContentSearchOpen(active, context, copy.notAvailable, onOpen);
+  const [selection, setSelection] = useState<{ context: string; item: ContentLookupResult['items'][number] } | null>(
+    null,
+  );
+  const selected = selection?.context === context ? selection.item : null;
+  const selectedKey = selected ? contentSearchSourceKey(selected.source) : undefined;
+  const select = (item: ContentLookupResult['items'][number]) => setSelection({ context, item });
+  const opening = useContentSearchOpen(active, `${context}:${selectedKey ?? ''}`, copy.notAvailable, onOpen);
   const searchRoot = useRef<HTMLDivElement>(null);
   const input = useRef<HTMLInputElement>(null);
   useEffect(() => {
@@ -49,31 +61,35 @@ export default function ContentSearchScreen({
       className="flex size-full min-h-0 min-w-0 bg-background"
       aria-label={copy.title}
       onKeyDown={(event) => {
-        if (event.defaultPrevented || !active || composing || event.nativeEvent.isComposing || event.altKey) return;
+        if (!active || composing || event.repeat || !shortcutEventAvailable(event.nativeEvent)) return;
         if (!event.currentTarget.contains(event.target as Node)) return;
-        if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'f') {
+        if (
+          commandMatchesShortcut(event.nativeEvent, window.desktopApi.appPlatform, 'document.find') ||
+          commandMatchesShortcut(event.nativeEvent, window.desktopApi.appPlatform, 'app.search')
+        ) {
           event.preventDefault();
           event.stopPropagation();
           focusSearch();
-        } else if (event.key === 'Escape') {
+        } else if (event.key === 'Escape' && !event.altKey && !event.ctrlKey && !event.metaKey && !event.shiftKey) {
           event.preventDefault();
           if (event.target === input.current && query) onNavigate({ ...location, query: '' });
           else focusSearch();
         }
       }}
     >
-      <div ref={searchRoot} className="mx-auto flex min-h-0 w-full max-w-5xl flex-1 flex-col">
+      <div ref={searchRoot} className="flex min-h-0 min-w-0 w-full flex-1 flex-col">
         <header className="flex min-h-14 shrink-0 items-center gap-2 px-4 py-2">
           <h1 className="text-sm font-semibold">{messages.app.navigation.search}</h1>
         </header>
         <div className="shrink-0 space-y-3 border-b px-3 pb-3">
-          <div className="flex items-center gap-2 rounded-md bg-surface-sunken px-3 focus-within:ring-1 focus-within:ring-border-strong">
+          <div className="flex items-center gap-2 rounded-md bg-surface-sunken px-3 focus-within:ring-2 focus-within:ring-inset focus-within:ring-ring">
             <SearchIcon aria-hidden="true" className="size-4 shrink-0 text-muted-foreground" />
             <ContentSearchInput
               ref={input}
               aria-label={copy.title}
               placeholder={copy.placeholder}
-              className="h-10 min-w-0 rounded-none border-0 bg-transparent px-0 focus-visible:ring-0 focus-visible:ring-offset-0"
+              focusIndicator="container"
+              className="h-10 min-w-0 rounded-none border-0 bg-transparent px-0"
               query={query}
               onQuery={(query) => onNavigate({ ...location, query })}
               onComposing={setComposing}
@@ -102,7 +118,7 @@ export default function ContentSearchScreen({
                 size="icon-sm"
                 aria-label={copy.clear}
                 disabled={composing}
-                className="-mr-1 text-muted-foreground"
+                className="-mr-1 text-muted-foreground hover:bg-hover-strong hover:text-foreground"
                 onClick={() => {
                   onNavigate({ ...location, query: '' });
                   input.current?.focus();
@@ -119,14 +135,58 @@ export default function ContentSearchScreen({
             {opening.error}
           </p>
         )}
-        <ContentSearchResultList
-          query={query}
-          type={type}
-          enabled={enabled}
-          disabled={composing || opening.busy}
-          search={search}
-          onSelect={(item) => void opening.open(item.source)}
-        />
+        <div className="min-h-0 flex-1">
+          <CollectionDetailLayout
+            layoutKey="content-search"
+            collectionLabel={copy.results}
+            collectionWidth={360}
+            selectionKey={selectedKey ?? null}
+            collection={({ toggle, wide, revealDetail }) => (
+              <>
+                <WorkbenchPaneHeader>
+                  <h2 className="min-w-0 flex-1 truncate text-sm font-semibold">{copy.results}</h2>
+                  {toggle}
+                </WorkbenchPaneHeader>
+                <ContentSearchResultList
+                  query={query}
+                  type={type}
+                  enabled={enabled}
+                  disabled={composing || opening.busy}
+                  search={search}
+                  selectedKey={selectedKey}
+                  onSelect={(item) => {
+                    select(item);
+                    revealDetail();
+                  }}
+                  onPreview={wide ? select : undefined}
+                  onOpen={(item) => void opening.open(item.source)}
+                />
+              </>
+            )}
+          >
+            {({ toggle, visible }) => (
+              <>
+                <WorkbenchPaneHeader>
+                  {toggle}
+                  <h2 className="min-w-0 flex-1 truncate text-sm font-semibold">
+                    {selected?.title || messages.workbench.preview}
+                  </h2>
+                  {selected && (
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      disabled={opening.busy || composing}
+                      onClick={() => void opening.open(selected.source)}
+                    >
+                      {messages.workbench.openSource}
+                    </Button>
+                  )}
+                </WorkbenchPaneHeader>
+                <ContentSearchPreview item={selected} active={enabled && visible} query={query} />
+              </>
+            )}
+          </CollectionDetailLayout>
+        </div>
       </div>
     </section>
   );

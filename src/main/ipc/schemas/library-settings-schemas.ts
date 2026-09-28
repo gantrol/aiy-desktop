@@ -283,6 +283,10 @@ export const materialDestinationsAddSchema = z
     targets: z.array(materialAlbumTargetSchema).min(1).max(200),
     albumIds: z.array(id).max(50),
     termIds: z.array(id).max(50),
+    sourceAlbumId: id.optional(),
+  })
+  .refine((value) => !value.sourceAlbumId || (value.albumIds.length === 1 && value.termIds.length === 0), {
+    message: 'A membership move requires one album destination',
   })
   .refine((value) => value.albumIds.length + value.termIds.length > 0, {
     message: 'Choose at least one destination',

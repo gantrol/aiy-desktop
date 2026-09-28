@@ -121,7 +121,7 @@ export function I18nTextInput({
       onOpenChange={setOpen}
       data-i18n-text-input
       className={cn(
-        'overflow-hidden rounded-md border border-input bg-background transition-colors duration-fast hover:border-border-strong focus-within:border-ring',
+        'overflow-hidden rounded-md border border-input bg-background transition-colors duration-fast hover:border-muted-foreground focus-within:border-ring focus-within:hover:border-ring',
         className,
       )}
     >

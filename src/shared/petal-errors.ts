@@ -14,7 +14,8 @@ type ErrorCode =
   | 'invalidSettings'
   | 'pinLimit'
   | 'layerLimit'
-  | 'fileLimit';
+  | 'fileLimit'
+  | 'panelSpaceUnavailable';
 
 export type PetalCommandResult = { ok: true; value: unknown } | { ok: false; code: ErrorCode };
 

@@ -615,6 +615,9 @@ export class RecycleBinRepository {
   }
 
   private async purgeImageAsset(row: EntryRow) {
+    if (this.db.prepare('SELECT 1 FROM content_block_assets WHERE asset_id=? LIMIT 1').get(row.entity_id)) {
+      throw new Error('IMAGE_ASSET_PURGE_BLOCKED_BY_REFERENCES');
+    }
     // GIF revisions are editable source documents, including older saved revisions.
     // Retain their source files before any filesystem unlink is attempted.
     if (

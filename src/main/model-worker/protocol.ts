@@ -7,6 +7,7 @@ import type {
   GenerationChangedEvent,
   ImageGenerationRouteDto,
   GenerationTaskDto,
+  ExtensionSource,
 } from '@/shared/contracts';
 import { imageGenerationPromptProfileId } from '@/shared/image-generation-prompt-profile';
 import { generationQualitySchema } from '@/shared/generation-quality';
@@ -17,6 +18,20 @@ export const MODEL_WORKER_PROTOCOL_VERSION = 8;
 export const MODEL_WORKER_MAX_MESSAGE_BYTES = 16 * 1024 * 1024;
 
 export const modelWorkerMethods = [
+  'agent.permissions.read',
+  'agent.file-view.refresh',
+  'agent.action.authorize',
+  'agent.work.list',
+  'agent.work.read',
+  'agent.creation.albums',
+  'agent.creation.ensure-album',
+  'agent.creation.move',
+  'agent.work.mutate',
+  'agent.pack.preview',
+  'agent.pack.apply',
+  'work-tracking.read',
+  'work-tracking.mutate',
+  'work-tracking.handoff',
   'snapshot',
   'library-file-view.refresh',
   'dictionary.stage-import',
@@ -25,7 +40,13 @@ export const modelWorkerMethods = [
   'agent.asset.import',
   'agent.intake.import',
   'agent.intake.get',
+  'agent.album.list',
+  'agent.album.ensure',
+  'agent.album.add',
+  'agent.album.remove',
   'agent.content.read',
+  'agent.content.search',
+  'agent.content.update',
   'content-pack.preview',
   'content-pack.apply',
   'agent.draft.prepare',
@@ -82,6 +103,7 @@ export interface ModelWorkerSnapshot {
 }
 
 export interface ModelWorkerLaunchConfig {
+  extensionRoots?: { rootPath: string; source: ExtensionSource }[];
   protocolVersion: number;
   runtimeFingerprint: string;
   workerId: string;
@@ -120,6 +142,7 @@ export type ModelWorkerClientMessage =
       protocolVersion: number;
       token: string;
       clientId: string;
+      clientKind?: 'agent';
     }
   | {
       type: 'request';
@@ -347,6 +370,12 @@ const modelWorkerSnapshotSchema: z.ZodType<ModelWorkerSnapshot> = z
 
 const modelWorkerLaunchConfigSchema: z.ZodType<ModelWorkerLaunchConfig> = z
   .object({
+    extensionRoots: z
+      .array(
+        z.object({ rootPath: pathOrEndpointSchema, source: z.enum(['BUILT_IN', 'LOCAL', 'MARKETPLACE']) }).strict(),
+      )
+      .max(8)
+      .optional(),
     protocolVersion: z.literal(MODEL_WORKER_PROTOCOL_VERSION),
     runtimeFingerprint: runtimeFingerprintSchema,
     workerId: boundedIdentifier,
@@ -402,6 +431,7 @@ const modelWorkerClientMessageSchema: z.ZodType<ModelWorkerClientMessage> = z.di
       protocolVersion: protocolVersionSchema,
       token: tokenSchema,
       clientId: boundedIdentifier,
+      clientKind: z.literal('agent').optional(),
     })
     .strict(),
   z

@@ -1,3 +1,4 @@
+import { assertPublicContentLinks } from '@/shared/content-public-links';
 import { prepareImagePostHandoff } from '@/renderer/features/browser-companion/prepareImagePostHandoff';
 import type { ArticleDto, BrowserCompanionSource, BrowserCompanionTarget } from '@/shared/contracts';
 import type { DesktopPetalMessages } from '@/shared/i18n/desktop-petals';
@@ -16,36 +17,57 @@ import { contentAssetPath } from '@/shared/content-document';
 import { contentImageNumber } from '@/shared/content-image-number';
 import { contentFigureReferences, contentPublishingMediaBindings } from '@/shared/content-publishing-mask';
 import type { BrowserCompanionStageInput } from '@/shared/contracts';
+import { applyPublishingMaskFields, loadPublishingMask } from '@/renderer/features/browser-companion/publishingMask';
 
 type ExpandedArticleContent = Awaited<ReturnType<typeof window.desktopApi.contentLibrary.render>>;
 
 export async function prepareArticleHandoff({
   article,
+  spaceId,
   target,
   copy,
   notify,
   expandedContent,
 }: {
   article: ArticleDto;
+  spaceId: string;
   target: BrowserCompanionTarget;
   copy: DesktopPetalMessages['document'];
   notify(message: string): void;
   expandedContent?: ExpandedArticleContent;
 }) {
   const content = article.content;
-  const expanded = expandedContent ?? (await window.desktopApi.contentLibrary.render(content.markdown));
+  const expanded = expandedContent ?? (await window.desktopApi.contentLibrary.freeze(content.markdown, spaceId));
+  assertPublicContentLinks(expanded.markdown);
+  const overrides = await loadPublishingMask({
+    spaceId,
+    source: { kind: 'ARTICLE', id: article.id },
+    revisionId: article.revisionId,
+    target,
+    mode: 'images',
+  });
+  const fields = applyPublishingMaskFields(
+    content,
+    [
+      ...content.mediaBindings.map((media) => media.assetId),
+      ...expanded.media.map((media) => media.assetId),
+      ...(content.coverAssetId ? [content.coverAssetId] : []),
+    ],
+    overrides,
+  );
   return prepareImagePostHandoff({
     source: { kind: 'article', id: article.id },
-    title: content.title,
+    title: fields.title,
     body: expanded.markdown,
     format: 'markdown',
     // Use the cover, then images in document order. Removed editor assets are not attachments.
-    leadingMediaAssetIds: content.coverAssetId ? [content.coverAssetId] : [],
+    leadingMediaAssetIds: fields.coverAssetId ? [fields.coverAssetId] : [],
     mediaAssetIds: [],
     mediaBindings: [...content.mediaBindings, ...expanded.media],
     target,
     copy,
     notify,
+    preferredMediaAssetIds: overrides?.mediaOrder,
   });
 }
 
@@ -157,6 +179,7 @@ export function prepareWechatContentHandoff({
   copy,
   notify,
 }: WechatContentHandoffInput): Omit<BrowserCompanionStageInput, 'target' | 'watermark'> | null {
+  assertPublicContentLinks(markdown);
   const title = requestedTitle.trim();
   if (!title || title.length > 64) {
     notify(title ? copy.titleLimit : copy.titleRequired);
@@ -211,21 +234,48 @@ export function prepareWechatContentHandoff({
 
 export async function prepareWechatArticleHandoff({
   article,
+  spaceId,
   referenceTitle,
   copy,
   notify,
   expandedContent,
+  referenceResolutionId,
 }: {
   article: ArticleDto;
+  spaceId: string;
   referenceTitle: string;
   copy: WechatArticleHandoffCopy;
   notify(message: string): void;
   expandedContent?: ExpandedArticleContent;
+  referenceResolutionId?: string;
 }): Promise<Omit<BrowserCompanionStageInput, 'target' | 'watermark'> | null> {
-  const expanded = expandedContent ?? (await window.desktopApi.contentLibrary.render(article.content.markdown));
+  const frozen = referenceResolutionId
+    ? null
+    : await window.desktopApi.contentLibrary.freeze(article.content.markdown, spaceId);
+  const resolutionId = referenceResolutionId ?? frozen!.resolutionId;
+  const expanded = referenceResolutionId
+    ? (expandedContent ??
+      (await window.desktopApi.contentLibrary.renderFrozen(article.content.markdown, resolutionId, spaceId)))
+    : frozen!;
+  const overrides = await loadPublishingMask({
+    spaceId,
+    source: { kind: 'ARTICLE', id: article.id },
+    revisionId: article.revisionId,
+    target: 'wechat',
+    mode: 'article',
+  });
+  const fields = applyPublishingMaskFields(
+    article.content,
+    [
+      ...article.content.mediaBindings.map((media) => media.assetId),
+      ...expanded.media.map((media) => media.assetId),
+      ...(article.content.coverAssetId ? [article.content.coverAssetId] : []),
+    ],
+    overrides,
+  );
   const projection = articleWechatInteractionProjection(article.content.document, article.content.mediaBindings);
   const expandedMarkdown = projection
-    ? (await window.desktopApi.contentLibrary.render(projection.markdown)).markdown
+    ? (await window.desktopApi.contentLibrary.renderFrozen(projection.markdown, resolutionId, spaceId)).markdown
     : null;
   return prepareWechatContentHandoff({
     document: {
@@ -235,10 +285,10 @@ export async function prepareWechatArticleHandoff({
       mediaAssets: article.content.mediaAssets,
     },
     source: { kind: 'article', id: article.id },
-    title: article.content.title,
+    title: fields.title,
     markdown: expanded.markdown,
     mediaBindings: [...article.content.mediaBindings, ...expanded.media],
-    coverAssetId: article.content.coverAssetId,
+    coverAssetId: fields.coverAssetId,
     referenceTitle,
     copy,
     notify,

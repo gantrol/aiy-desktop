@@ -7,10 +7,16 @@ import { Step, StepResult } from '@tiptap/pm/transform';
 import { isOutlineChildList } from '@/shared/outline-structure';
 import type { OutlineDropPlacement } from '@/renderer/features/content-editor/outlineMove';
 import { outlineMoveTargets } from '@/renderer/features/content-editor/outlineMove';
+import {
+  loadOutlineViewPreferences,
+  saveOutlineViewPreferences,
+  serializeOutlineViewPreferences,
+} from '@/renderer/features/content-editor/outlineViewPreferences';
 
 export interface OutlineViewState {
   folded: ReadonlySet<string>;
   foldedByFocus: ReadonlyMap<string | null, ReadonlySet<string>>;
+  expandedImages: ReadonlySet<string>;
   selected: readonly string[];
   anchor: string | null;
   active: string | null;
@@ -22,6 +28,7 @@ export interface OutlineViewState {
 const initialState: OutlineViewState = {
   folded: new Set(),
   foldedByFocus: new Map(),
+  expandedImages: new Set(),
   selected: [],
   anchor: null,
   active: null,
@@ -31,6 +38,7 @@ const initialState: OutlineViewState = {
 };
 
 const outlineViewKey = new PluginKey<OutlineViewState>('aiy-outline-view');
+export const outlineFocusNavigationMeta = 'aiy:outline-focus-navigation';
 const outlineHistoryBoundary = 'aiy:outline-history-boundary';
 
 type ViewSnapshot = {
@@ -53,11 +61,12 @@ function viewSnapshot(view: OutlineViewState): ViewSnapshot {
   };
 }
 
-function restoreView(snapshot: ViewSnapshot): OutlineViewState {
+function restoreView(snapshot: ViewSnapshot, expandedImages: ReadonlySet<string>): OutlineViewState {
   return {
     ...snapshot,
     folded: new Set(snapshot.folded),
     foldedByFocus: new Map(snapshot.foldedByFocus.map(([scope, folded]) => [scope, new Set(folded)])),
+    expandedImages,
     drag: null,
     drop: null,
   };
@@ -113,6 +122,11 @@ export function outlineViewState(state: EditorState): OutlineViewState {
   return outlineViewKey.getState(state) ?? initialState;
 }
 
+/** Undefined distinguishes ordinary rich text from an outline's whole-document scope. */
+export function outlineNavigationFocus(state: EditorState) {
+  return outlineViewKey.getState(state)?.focus;
+}
+
 function itemId(item: ProseMirrorNode): string | null {
   return typeof item.attrs.blockId === 'string' && item.attrs.blockId ? item.attrs.blockId : null;
 }
@@ -135,7 +149,7 @@ function outlineItemSummaries(doc: ProseMirrorNode): OutlineItemSummary[] {
         if (isOutlineChildList({ type: child.type.name, attrs: child.attrs }) && child.childCount > 0)
           childLists.push(child);
       });
-      summaries.push({ id, ancestors, hasChildren: childLists.length > 0 });
+      summaries.push({ id, ancestors, hasChildren: item.childCount > 1 });
       childLists.forEach((childList) => visit(childList, [...ancestors, id]));
     });
   };
@@ -159,12 +173,7 @@ export function outlineChildBranchIds(item: ProseMirrorNode): string[] {
     group.forEach((child) => {
       const id = itemId(child);
       if (child.type.name !== 'listItem' || !id) return;
-      let hasChildren = false;
-      child.forEach((content) => {
-        if (isOutlineChildList({ type: content.type.name, attrs: content.attrs }) && content.childCount > 0)
-          hasChildren = true;
-      });
-      if (hasChildren) ids.push(id);
+      if (child.childCount > 1) ids.push(id);
     });
   });
   return ids;
@@ -253,7 +262,7 @@ export function outlineItemVisibility(doc: ProseMirrorNode, view: OutlineViewSta
   return visibility.get(id) ?? 'inside';
 }
 
-function scrollContainer(editor: Editor): HTMLElement | null {
+export function outlineScrollContainer(editor: Editor): HTMLElement | null {
   let current = editor.view.dom.parentElement;
   while (current) {
     const overflow = window.getComputedStyle(current).overflowY;
@@ -370,8 +379,8 @@ function setOutlineItemsFolded(editor: Editor, ids: ReadonlySet<string>, collaps
     if (item.type.name !== 'listItem' || !id || !ids.has(id)) return;
     if (current.folded.has(id) === collapse) return;
     let hasChildren = false;
-    item.forEach((child, offset) => {
-      if (!isOutlineChildList({ type: child.type.name, attrs: child.attrs }) || !child.childCount) return;
+    item.forEach((child, offset, index) => {
+      if (index === 0) return;
       hasChildren = true;
       const from = position + 1 + offset;
       const selection = editor.state.selection;
@@ -464,11 +473,11 @@ export function selectOutlineItem(editor: Editor, id: string, shift = false, add
   } else setOutlineView(editor, { ...current, selected: [id], anchor: id, active: id });
 }
 
-export function focusOutlineItem(editor: Editor, id: string | null) {
+export function focusOutlineItem(editor: Editor, id: string | null, navigation = true) {
   if (editor.isDestroyed || activeOutlineView(editor).composing) return;
   if (id && !outlineFocusPath(editor.state.doc, id).length) return;
   const current = outlineViewState(editor.state);
-  const root = current.focus !== id ? scrollContainer(editor) : null;
+  const root = current.focus !== id ? outlineScrollContainer(editor) : null;
   if (root) captureScopeScroll(editor, root);
   const next = changeOutlineFocus(editor.state.doc, current, id);
   const visible = new Set(outlineVisibleItems(editor.state.doc, next).map((item) => item.id));
@@ -479,7 +488,7 @@ export function focusOutlineItem(editor: Editor, id: string | null) {
       const nodeId = itemId(resolved.node(depth));
       if (resolved.node(depth).type.name !== 'listItem' || !nodeId || !visible.has(nodeId)) continue;
       const child = depth < resolved.depth ? resolved.node(depth + 1) : null;
-      if (next.folded.has(nodeId) && child && isOutlineChildList({ type: child.type.name, attrs: child.attrs }))
+      if (next.folded.has(nodeId) && child && child !== resolved.node(depth).firstChild)
         target = resolved.before(depth) + 2;
     }
   }
@@ -497,6 +506,7 @@ export function focusOutlineItem(editor: Editor, id: string | null) {
   }
   const transaction = editor.state.tr;
   if (target !== null) transaction.setSelection(TextSelection.create(transaction.doc, target));
+  if (navigation && current.focus !== id) transaction.setMeta(outlineFocusNavigationMeta, true);
   editor.view.dispatch(transaction.setMeta(outlineViewKey, next).setMeta('addToHistory', false));
   if (root) restoreScopeScroll(editor, root, id);
 }
@@ -523,52 +533,101 @@ export function endOutlineDrag(editor: Editor) {
   if (current.drag || current.drop) setOutlineView(editor, { ...current, drag: null, drop: null });
 }
 
-export const OutlineView = new Plugin<OutlineViewState>({
-  key: outlineViewKey,
-  appendTransaction: (transactions, _oldState, state) => {
-    if (!transactions.some((transaction) => transaction.getMeta(outlineHistoryBoundary))) return null;
-    return closeHistory(state.tr).setMeta('addToHistory', false);
-  },
-  state: {
-    init: () => initialState,
-    apply: (transaction, previous, _oldState, nextState) => {
-      const historyStep = [...transaction.steps].reverse().find((step) => step instanceof OutlineViewStep);
-      const next =
-        historyStep instanceof OutlineViewStep
-          ? restoreView(historyStep.after)
-          : (transaction.getMeta(outlineViewKey) as OutlineViewState | undefined);
-      const value = next ?? previous;
-      if (!transaction.docChanged) {
-        if (value.focus && transaction.selectionSet) {
-          const resolved = nextState.doc.resolve(nextState.selection.from);
-          const path: string[] = [];
-          for (let depth = 1; depth <= resolved.depth; depth += 1) {
-            if (resolved.node(depth).type.name === 'listItem' && itemId(resolved.node(depth)))
-              path.push(itemId(resolved.node(depth))!);
-          }
-          if (path.length && !path.includes(value.focus)) return changeOutlineFocus(nextState.doc, value, null);
-        }
-        return value;
-      }
-      const ids = new Set(
-        outlineVisibleItems(nextState.doc, { ...value, focus: null, folded: new Set() }).map((item) => item.id),
-      );
-      const scoped = value.focus && !ids.has(value.focus) ? changeOutlineFocus(nextState.doc, value, null) : value;
-      const visible = new Set(outlineVisibleItems(nextState.doc, scoped).map((item) => item.id));
+export function toggleOutlineImage(editor: Editor, id: string) {
+  if (!id || editor.isDestroyed || activeOutlineView(editor).composing) return;
+  const current = outlineViewState(editor.state);
+  const expandedImages = new Set(current.expandedImages);
+  if (expandedImages.has(id)) expandedImages.delete(id);
+  else expandedImages.add(id);
+  setOutlineView(editor, { ...current, expandedImages });
+}
+
+function pruneOutlineView(doc: ProseMirrorNode, value: OutlineViewState): OutlineViewState {
+  const ids = new Set(outlineItemSummaries(doc).map((item) => item.id));
+  const images = new Set<string>();
+  doc.descendants((node) => {
+    if (node.type.name === 'image' && itemId(node)) images.add(itemId(node)!);
+  });
+  const scoped = value.focus && !ids.has(value.focus) ? changeOutlineFocus(doc, value, null) : value;
+  const visible = new Set(outlineVisibleItems(doc, scoped).map((item) => item.id));
+  return {
+    ...scoped,
+    folded: new Set([...scoped.folded].filter((id) => ids.has(id))),
+    foldedByFocus: new Map(
+      [...scoped.foldedByFocus]
+        .filter(([scope]) => scope === null || ids.has(scope))
+        .map(([scope, folded]) => [scope, new Set([...folded].filter((id) => ids.has(id)))]),
+    ),
+    expandedImages: new Set([...scoped.expandedImages].filter((id) => images.has(id))),
+    selected: scoped.selected.filter((id) => visible.has(id)),
+    anchor: scoped.anchor && visible.has(scoped.anchor) ? scoped.anchor : null,
+    active: scoped.active && visible.has(scoped.active) ? scoped.active : null,
+    drop: value.drop && ids.has(value.drop.id) ? value.drop : null,
+    drag: null,
+  };
+}
+
+export function createOutlineViewPlugin(preferenceKey: string | null = null) {
+  return new Plugin<OutlineViewState>({
+    key: outlineViewKey,
+    view: (view) => {
+      let serialized = serializeOutlineViewPreferences(outlineViewState(view.state));
+      let pending: ReturnType<typeof setTimeout> | null = null;
+      const flush = () => {
+        if (pending === null || !preferenceKey) return;
+        clearTimeout(pending);
+        pending = null;
+        saveOutlineViewPreferences(preferenceKey, serialized);
+      };
       return {
-        folded: new Set([...scoped.folded].filter((id) => ids.has(id))),
-        foldedByFocus: new Map(
-          [...scoped.foldedByFocus]
-            .filter(([scope]) => scope === null || ids.has(scope))
-            .map(([scope, folded]) => [scope, new Set([...folded].filter((id) => ids.has(id)))]),
-        ),
-        selected: scoped.selected.filter((id) => visible.has(id)),
-        anchor: scoped.anchor && visible.has(scoped.anchor) ? scoped.anchor : null,
-        active: scoped.active && visible.has(scoped.active) ? scoped.active : null,
-        focus: scoped.focus,
-        drop: value.drop && ids.has(value.drop.id) ? value.drop : null,
-        drag: null,
+        update: (current, previousState) => {
+          if (!preferenceKey) return;
+          const previous = outlineViewState(previousState);
+          const value = outlineViewState(current.state);
+          if (
+            previous.folded === value.folded &&
+            previous.foldedByFocus === value.foldedByFocus &&
+            previous.focus === value.focus &&
+            previous.expandedImages === value.expandedImages
+          )
+            return;
+          const next = serializeOutlineViewPreferences(value);
+          if (next === serialized) return;
+          serialized = next;
+          if (pending !== null) clearTimeout(pending);
+          pending = setTimeout(flush, 150);
+        },
+        destroy: flush,
       };
     },
-  },
-});
+    appendTransaction: (transactions, _oldState, state) => {
+      if (!transactions.some((transaction) => transaction.getMeta(outlineHistoryBoundary))) return null;
+      return closeHistory(state.tr).setMeta('addToHistory', false);
+    },
+    state: {
+      init: (_config, state) =>
+        pruneOutlineView(state.doc, { ...initialState, ...loadOutlineViewPreferences(preferenceKey) }),
+      apply: (transaction, previous, _oldState, nextState) => {
+        const historyStep = [...transaction.steps].reverse().find((step) => step instanceof OutlineViewStep);
+        const next =
+          historyStep instanceof OutlineViewStep
+            ? restoreView(historyStep.after, previous.expandedImages)
+            : (transaction.getMeta(outlineViewKey) as OutlineViewState | undefined);
+        const value = next ?? previous;
+        if (!transaction.docChanged) {
+          if (value.focus && transaction.selectionSet) {
+            const resolved = nextState.doc.resolve(nextState.selection.from);
+            const path: string[] = [];
+            for (let depth = 1; depth <= resolved.depth; depth += 1) {
+              if (resolved.node(depth).type.name === 'listItem' && itemId(resolved.node(depth)))
+                path.push(itemId(resolved.node(depth))!);
+            }
+            if (path.length && !path.includes(value.focus)) return changeOutlineFocus(nextState.doc, value, null);
+          }
+          return value;
+        }
+        return pruneOutlineView(nextState.doc, value);
+      },
+    },
+  });
+}

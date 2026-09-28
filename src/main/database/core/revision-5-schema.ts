@@ -2,7 +2,9 @@ import {
   ensureArticleDeliveryWatermark,
   ensureArticleDeliveryImagePreparation,
   ensureArticleDeliveryMode,
+  ensureArticleDeliveryRetryIndex,
 } from '@/main/database/extensions/article-delivery-job-schema';
+import { ensureBackgroundIssueAcknowledgements } from '@/main/database/background-issues/background-issue-schema';
 import type Database from 'better-sqlite3';
 import { ensureAgentIntakeSchema } from '@/main/database/core/agent-intake-schema';
 import type { ArticleStorageShape } from '@/main/database/creations/article-storage-schema';
@@ -12,7 +14,6 @@ import articleCommentsSql from '@/main/database/sql/v03-revision-005-article-com
 import articleDeliveryJobsSql from '@/main/database/sql/v03-revision-005-article-delivery-jobs.sql?raw';
 import articleRevisionPacksSql from '@/main/database/sql/v03-revision-005-article-revision-packs.sql?raw';
 import agentCliSql from '@/main/database/sql/v03-revision-005-agent-cli.sql?raw';
-import backgroundIssueAcknowledgementsSql from '@/main/database/sql/v03-revision-005-background-issue-acknowledgements.sql?raw';
 import revision5Sql from '@/main/database/sql/v03-revision-005.sql?raw';
 export { agentCliShape } from '@/main/database/core/agent-cli-schema';
 
@@ -27,7 +28,6 @@ interface Revision5SourceShape {
   articleStorage: ArticleStorageShape;
   articleDeliveryJobsComplete: boolean;
   agentCliComplete: boolean;
-  backgroundIssueAcknowledgementsComplete: boolean;
   contentLifecycleComplete: boolean;
 }
 
@@ -114,7 +114,8 @@ export function ensureRevision5Schema(db: Database.Database, shape: Revision5Sou
   ensureArticleDeliveryWatermark(db);
   ensureArticleDeliveryImagePreparation(db);
   ensureArticleDeliveryMode(db);
+  ensureArticleDeliveryRetryIndex(db);
   if (!shape.agentCliComplete) db.exec(agentCliSql);
   ensureAgentIntakeSchema(db);
-  if (!shape.backgroundIssueAcknowledgementsComplete) db.exec(backgroundIssueAcknowledgementsSql);
+  ensureBackgroundIssueAcknowledgements(db);
 }

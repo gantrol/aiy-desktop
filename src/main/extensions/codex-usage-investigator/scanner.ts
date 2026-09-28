@@ -29,6 +29,7 @@ import type {
 import { codexUsageLocalDateKey, codexUsageRangeStartEpoch } from '@/shared/codex-usage-time';
 import {
   CODEX_USAGE_PRICING_BASIS,
+  CODEX_USAGE_PRICING_CACHE_KEY,
   type CodexUsageBreakdown,
   estimateCodexUsage,
 } from '@/main/extensions/codex-usage-investigator/pricing';
@@ -485,7 +486,7 @@ function processedCacheKey(
   detailedStatistics: boolean,
 ) {
   const detailVersion = detailedStatistics ? DETAILED_STATISTICS_VERSION : 0;
-  return `v${PROCESSED_ANALYSIS_VERSION}:${range}:${fromEpoch ?? 'ALL'}:${toEpoch}:${timeZone}:${granularity}:detailed=${detailVersion}`;
+  return `v${PROCESSED_ANALYSIS_VERSION}:${range}:${fromEpoch ?? 'ALL'}:${toEpoch}:${timeZone}:${granularity}:detailed=${detailVersion}:pricing=${CODEX_USAGE_PRICING_CACHE_KEY}`;
 }
 
 async function processStoredEvents(

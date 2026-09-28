@@ -1,8 +1,11 @@
 import * as React from 'react';
 import * as DropdownMenuPrimitive from '@radix-ui/react-dropdown-menu';
-import { ChevronRightIcon } from 'lucide-react';
+import { CheckIcon, ChevronRightIcon } from 'lucide-react';
 import { cn } from '@/renderer/lib/utils';
 import { useOverlayPortalContainer } from '@/renderer/components/ui/overlay-layer';
+
+const menuSurfaceClass =
+  'pointer-events-auto z-popup min-w-40 max-w-[calc(100vw-16px)] max-h-[var(--radix-dropdown-menu-content-available-height)] overflow-x-hidden overflow-y-auto overscroll-contain rounded-md border border-border bg-overlay p-1 text-foreground shadow-overlay outline-none';
 
 function DropdownMenuIcon({ className, ...props }: React.ComponentProps<'span'>) {
   return (
@@ -20,6 +23,7 @@ function DropdownMenu({ modal = false, ...props }: React.ComponentProps<typeof D
 
 const DropdownMenuTrigger = DropdownMenuPrimitive.Trigger;
 const DropdownMenuSub = DropdownMenuPrimitive.Sub;
+const DropdownMenuRadioGroup = DropdownMenuPrimitive.RadioGroup;
 
 function DropdownMenuPortal({ container, ...props }: React.ComponentProps<typeof DropdownMenuPrimitive.Portal>) {
   const inheritedContainer = useOverlayPortalContainer();
@@ -41,10 +45,8 @@ function DropdownMenuContent({
         data-overlay-surface=""
         align={align}
         sideOffset={sideOffset}
-        className={cn(
-          'pointer-events-auto z-popup min-w-40 overflow-hidden rounded-md border border-border bg-overlay p-1 text-foreground shadow-overlay outline-none',
-          className,
-        )}
+        collisionPadding={8}
+        className={cn(menuSurfaceClass, className)}
         style={{ ...style, pointerEvents: 'auto' }}
         {...props}
       />
@@ -80,6 +82,30 @@ function DropdownMenuLabel({ className, ...props }: React.ComponentProps<typeof 
   );
 }
 
+function DropdownMenuCheckboxItem({
+  className,
+  children,
+  ...props
+}: React.ComponentProps<typeof DropdownMenuPrimitive.CheckboxItem>) {
+  return (
+    <DropdownMenuPrimitive.CheckboxItem
+      data-slot="dropdown-menu-checkbox-item"
+      className={cn(
+        'relative flex min-h-8 cursor-default select-none items-center gap-2 rounded-sm py-1.5 pl-8 pr-2 text-sm outline-none data-[highlighted]:bg-hover focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring data-[disabled]:pointer-events-none data-[disabled]:text-disabled-foreground',
+        className,
+      )}
+      {...props}
+    >
+      <span className="absolute left-2 flex size-4 items-center justify-center">
+        <DropdownMenuPrimitive.ItemIndicator>
+          <CheckIcon className="size-4" />
+        </DropdownMenuPrimitive.ItemIndicator>
+      </span>
+      {children}
+    </DropdownMenuPrimitive.CheckboxItem>
+  );
+}
+
 function DropdownMenuSeparator({ className, ...props }: React.ComponentProps<typeof DropdownMenuPrimitive.Separator>) {
   return (
     <DropdownMenuPrimitive.Separator
@@ -87,6 +113,30 @@ function DropdownMenuSeparator({ className, ...props }: React.ComponentProps<typ
       className={cn('-mx-1 my-1 h-px bg-border', className)}
       {...props}
     />
+  );
+}
+
+function DropdownMenuRadioItem({
+  className,
+  children,
+  ...props
+}: React.ComponentProps<typeof DropdownMenuPrimitive.RadioItem>) {
+  return (
+    <DropdownMenuPrimitive.RadioItem
+      data-slot="dropdown-menu-radio-item"
+      className={cn(
+        'relative flex min-h-8 cursor-default select-none items-center gap-2 rounded-sm py-1.5 pl-8 pr-2 text-sm outline-none data-[highlighted]:bg-hover focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring data-[disabled]:pointer-events-none data-[disabled]:text-disabled-foreground',
+        className,
+      )}
+      {...props}
+    >
+      <span className="absolute left-2 flex size-4 items-center justify-center">
+        <DropdownMenuPrimitive.ItemIndicator>
+          <CheckIcon className="size-4" />
+        </DropdownMenuPrimitive.ItemIndicator>
+      </span>
+      {children}
+    </DropdownMenuPrimitive.RadioItem>
   );
 }
 
@@ -117,12 +167,10 @@ function DropdownMenuSubContent({
   return (
     <DropdownMenuPrimitive.SubContent
       data-slot="dropdown-menu-sub-content"
+      collisionPadding={8}
       data-overlay-layer="popup"
       data-overlay-surface=""
-      className={cn(
-        'pointer-events-auto z-popup min-w-40 overflow-hidden rounded-md border border-border bg-overlay p-1 text-foreground shadow-overlay outline-none',
-        className,
-      )}
+      className={cn(menuSurfaceClass, className)}
       {...props}
     />
   );
@@ -130,10 +178,13 @@ function DropdownMenuSubContent({
 
 export {
   DropdownMenu,
+  DropdownMenuCheckboxItem,
   DropdownMenuContent,
   DropdownMenuIcon,
   DropdownMenuItem,
   DropdownMenuLabel,
+  DropdownMenuRadioGroup,
+  DropdownMenuRadioItem,
   DropdownMenuPortal,
   DropdownMenuSeparator,
   DropdownMenuSub,

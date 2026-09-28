@@ -184,22 +184,23 @@ export function ComboboxInput({ value, suggestions, openLabel, onValueChange, cl
                     </li>
                   )}
                   <li>
-                    <button
+                    <Button
                       id={`${listboxId}-option-${index}`}
                       type="button"
+                      variant="ghost"
                       role="option"
                       aria-selected={selected}
                       className={cn(
-                        'flex min-h-8 w-full items-center gap-2 rounded-sm px-2 py-1.5 text-left text-sm outline-none hover:bg-hover focus-visible:bg-hover',
-                        index === activeIndex && 'bg-hover',
-                        selected && 'bg-selected text-selected-foreground',
+                        'h-auto min-h-8 w-full justify-start gap-2 rounded-sm px-2 py-1.5 text-left text-sm font-normal hover:bg-hover-strong focus-visible:ring-inset focus-visible:ring-offset-0',
+                        index === activeIndex && 'bg-hover-strong ring-1 ring-inset ring-ring',
+                        selected && 'bg-selected text-selected-foreground hover:bg-selected active:bg-selected',
                       )}
                       onPointerMove={() => setActiveIndex(index)}
                       onClick={() => choose(entry)}
                     >
                       <CheckIcon className={cn('size-3.5 shrink-0', !selected && 'invisible')} />
                       <span className="min-w-0 flex-1 truncate">{entry.value}</span>
-                    </button>
+                    </Button>
                   </li>
                 </React.Fragment>
               );

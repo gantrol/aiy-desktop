@@ -12,12 +12,16 @@ import { createCodexPreloadApi } from '@/preload/codex-api';
 import { createCodexArtifactsPreloadApi } from '@/preload/codex-artifacts-api';
 import { contentImageImportsApi } from '@/preload/content-image-imports-api';
 import { createContentLibraryBridge } from '@/preload/content-library-api';
+import { contentReferenceChangesSchema } from '@/shared/contracts/content-reference-changes';
+import { createPublishingMasksApi } from '@/preload/publishing-mask-api';
 import { creatorInputRecoveryApi } from '@/preload/creator-input-recovery-api';
 import { creationOutlineApi } from '@/preload/creation-outline-api';
 import { derivedVisualOperationsApi } from '@/preload/derived-visual-operations-api';
 import { createDesktopPetalsApi } from '@/preload/desktop-petals-api';
 import { createEvaluationSuitePreloadApi } from '@/preload/evaluation-suite-api';
 import { createMaintenanceGuideApi } from '@/preload/maintenance-guide-api';
+import { createWorkTrackingApi } from '@/preload/work-tracking-api';
+import { createAgentPermissionsApi } from '@/preload/agent-permissions-api';
 import { createProviderConnectionPreloadApi } from '@/preload/provider-connection-api';
 import { recordRendererDiagnostic, traceRendererRequest } from '@/preload/renderer-diagnostics';
 import { socialPostRecoveryApi } from '@/preload/social-post-recovery-api';
@@ -52,6 +56,8 @@ import {
   codexUsageTaskSchema,
 } from '@/shared/contracts/codex-usage';
 import { creationDraftDtoSchema } from '@/shared/contracts/creation-draft';
+import { creationDraftListResultSchema, creationDraftsChangedSchema } from '@/shared/contracts/creation-draft-list';
+import { creationDraftDeletionSchema } from '@/shared/contracts/creation-draft-deletion';
 import {
   creationFormAddOrGetInputSchema,
   creationFormAddOrGetResultSchema,
@@ -180,7 +186,16 @@ const api: DesktopApi = {
   openAiCostsConnection: createOpenAiCostsConnectionApi(ipcRenderer),
   calendar: createCalendarPreloadApi(ipcRenderer),
   contentLibrary: createContentLibraryBridge((input) => ipcRenderer.invoke('content-library:command', input)),
+  onContentReferencesChanged: (callback) => {
+    const listener = (_event: Electron.IpcRendererEvent, value: unknown) =>
+      callback(contentReferenceChangesSchema.parse(value));
+    ipcRenderer.on('content-references:changed', listener);
+    return () => ipcRenderer.removeListener('content-references:changed', listener);
+  },
+  publishingMasks: createPublishingMasksApi(ipcRenderer),
   maintenanceGuide: createMaintenanceGuideApi(),
+  workTracking: createWorkTrackingApi(),
+  agentPermissions: createAgentPermissionsApi(),
   ...creatorInputRecoveryApi,
   ...socialPostRecoveryApi,
   ...derivedVisualOperationsApi,
@@ -494,6 +509,17 @@ const api: DesktopApi = {
   promptVersionCreate: async (input) =>
     promptVersionCreateResultSchema.parse(await ipcRenderer.invoke('prompt-version:create', input)),
   creationDraftStart: (input) => ipcRenderer.invoke('creation-draft:start', input),
+  creationDraftDelete: async (input) =>
+    creationDraftDeletionSchema.parse(await ipcRenderer.invoke('creation-draft:delete', input)),
+  creationDraftRestore: (input) => ipcRenderer.invoke('creation-draft:restore', input),
+  creationDraftList: async (input) =>
+    creationDraftListResultSchema.parse(await ipcRenderer.invoke('creation-draft:list', input)),
+  onCreationDraftsChanged: (callback) => {
+    const listener = (_event: Electron.IpcRendererEvent, value: unknown) =>
+      callback(creationDraftsChangedSchema.parse(value));
+    ipcRenderer.on('creation-drafts:changed', listener);
+    return () => ipcRenderer.removeListener('creation-drafts:changed', listener);
+  },
   creationDraftLoad: async (input) =>
     creationDraftDtoSchema.parse(await ipcRenderer.invoke('creation-draft:load', input)),
   creationDraftSave: (input) => ipcRenderer.invoke('creation-draft:save', input),
@@ -643,6 +669,7 @@ const api: DesktopApi = {
   promptSeriesDelete: (input) => ipcRenderer.invoke('prompt-series:delete', input),
   creationAlbumsRename: (input) => ipcRenderer.invoke('creation-albums:rename', input),
   materialCollectionsCreateFromSource: (input) => ipcRenderer.invoke('material-collections:create-from-source', input),
+  materialAlbumMembershipApply: (input) => ipcRenderer.invoke('material-albums:apply-membership', input),
   materialAlbumsList: (input) => ipcRenderer.invoke('material-albums:list', input),
   materialAlbumsCreate: (input) => ipcRenderer.invoke('material-albums:create', input),
   materialAlbumsRename: (input) => ipcRenderer.invoke('material-albums:rename', input),

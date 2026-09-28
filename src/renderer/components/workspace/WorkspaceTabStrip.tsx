@@ -1,268 +1,176 @@
-import { ArrowLeftIcon, ArrowRightIcon, EllipsisIcon, LoaderCircleIcon, PlusIcon, XIcon } from 'lucide-react';
-import type { BootstrapDto } from '@/shared/contracts';
-import type { AppView } from '@/renderer/components/app/app-navigation';
+import { useEffect, useId, useRef, useState, type KeyboardEvent } from 'react';
+import { PanelLeftOpenIcon, PanelTopOpenIcon } from 'lucide-react';
 import { Button } from '@/renderer/components/ui/button';
-import {
-  ContextMenu,
-  ContextMenuContent,
-  ContextMenuItem,
-  ContextMenuSeparator,
-  ContextMenuTrigger,
-} from '@/renderer/components/ui/context-menu';
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuSub,
-  DropdownMenuSubContent,
-  DropdownMenuSubTrigger,
-  DropdownMenuTrigger,
-} from '@/renderer/components/ui/dropdown-menu';
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/renderer/components/ui/tooltip';
-import { useI18n } from '@/renderer/i18n/useI18n';
-import { cn } from '@/renderer/lib/utils';
-import { activeLocation, type WorkspaceRuntimeGroup } from '@/renderer/components/workspace/workspace-state';
-import { workspaceLocationCanSplit, workspaceTabTitle } from '@/renderer/components/workspace/workspace-location';
+import { TooltipProvider } from '@/renderer/components/ui/tooltip';
+import { WorkspaceTabActions } from '@/renderer/components/workspace/WorkspaceTabActions';
+import { WorkspaceTabItem } from '@/renderer/components/workspace/WorkspaceTabItem';
+import { useWorkspaceTabLabels } from '@/renderer/components/workspace/useWorkspaceTabLabels';
+import { activeLocation } from '@/renderer/components/workspace/workspace-state';
+import { workspaceTabTitle } from '@/renderer/components/workspace/workspace-location';
 import { useWorkspaceTabActivationTransition } from '@/renderer/components/workspace/useWorkspaceTabActivationTransition';
+import {
+  visibleWorkspaceTabs,
+  workspaceTabFocusTarget,
+  type WorkspaceTabStripProps,
+} from '@/renderer/components/workspace/workspace-tab-strip';
+import { shortcutEventAvailable } from '@/renderer/commands/app-shortcuts';
+import { workspaceShortcutLayerOpen } from '@/renderer/commands/shortcut-context';
+import { cn } from '@/renderer/lib/utils';
 
-interface Props {
-  data: BootstrapDto;
-  group: WorkspaceRuntimeGroup;
-  active: boolean;
-  onActivate(tabId: string): void;
-  onClose(tabId: string): void;
-  onCloseOthers(tabId: string): void;
-  onReorder(tabId: string, delta: -1 | 1): void;
-  onNewTab(view: AppView): void;
-  onOpenBeside(view: AppView): void;
-  splitAxis: 'columns' | 'rows' | null;
-  onMerge(): void;
-  onMoveToOtherGroup(tabId: string): void;
-  onSplit(axis: 'columns' | 'rows'): void;
-  onReset(): void;
-}
-
-export function WorkspaceTabStrip({
-  data,
-  group,
-  active,
-  onActivate,
-  onClose,
-  onCloseOthers,
-  onReorder,
-  onNewTab,
-  onOpenBeside,
-  splitAxis,
-  onMerge,
-  onMoveToOtherGroup,
-  onSplit,
-  onReset,
-}: Props) {
-  const { messages } = useI18n();
+export function WorkspaceTabStrip(props: WorkspaceTabStripProps) {
+  const { data, group, active, collapsed = false, onActivate, onClose } = props;
+  const vertical = collapsed && props.splitAxis === 'columns';
+  const { labels, titleLabels } = useWorkspaceTabLabels();
+  const tabListId = useId();
+  const tabButtons = useRef(new Map<string, HTMLButtonElement>());
+  const closeFrames = useRef(new Set<number>());
+  const mounted = useRef(false);
+  const [focusedTabId, setFocusedTabId] = useState(group.activeTabId);
+  const visibleTabs = visibleWorkspaceTabs(group);
+  const activeTab = group.tabs.find((tab) => tab.id === group.activeTabId) ?? group.tabs[0];
+  const focusableId = visibleTabs.some((tab) => tab.id === focusedTabId) ? focusedTabId : activeTab.id;
   const { pendingTabId, requestActivation, clearPendingActivation } = useWorkspaceTabActivationTransition(
     group.activeTabId,
     onActivate,
   );
-  const labels = messages.app.workspace;
-  const navigation = messages.app.navigation;
-  const viewLabels = {
-    creator: navigation.creator,
-    documents: navigation.documents,
-    dictionary: navigation.dictionary,
-    gallery: navigation.gallery,
-    search: navigation.search,
-    calendar: navigation.calendar,
-    companion: navigation.companion,
-    codexImages: navigation.codexImages,
-    transitionShowcase: navigation.transitionShowcase,
-    packs: navigation.packs,
-    aiCenter: navigation.aiCenter,
-    contentManagement: navigation.settings,
-    settings: navigation.settings,
-  };
-  const titleLabels = {
-    animation: messages.creator.gifMaker.workspaceTitle,
-    outline: messages.creator.outline.title,
-    views: viewLabels,
-    newCreation: messages.creator.results.newCreation,
-    creationKinds: messages.contentManagement.subtypes,
-  };
-  const availableViews = [
-    'creator',
-    'dictionary',
-    'gallery',
-    'search',
-    'calendar',
-    'companion',
-    'packs',
-    'aiCenter',
-  ] as const;
-  const activeTab = group.tabs.find((tab) => tab.id === group.activeTabId) ?? group.tabs[0];
-  const canSplit = workspaceLocationCanSplit(activeLocation(activeTab));
+  const indexes = new Map(group.tabs.map((tab, index) => [tab.id, index]));
 
-  function closeTab(tabId: string) {
+  useEffect(() => {
+    setFocusedTabId(activeTab.id);
+  }, [activeTab.id]);
+  useEffect(() => {
+    tabButtons.current.get(activeTab.id)?.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+  }, [activeTab.id, group.tabs, collapsed, vertical]);
+
+  useEffect(() => {
+    mounted.current = true;
+    const frames = closeFrames.current;
+    return () => {
+      mounted.current = false;
+      frames.forEach(cancelAnimationFrame);
+      frames.clear();
+    };
+  }, []);
+  function closeTab(tabId: string, focusNext = false) {
     clearPendingActivation(tabId);
-    onClose(tabId);
+    const index = visibleTabs.findIndex((tab) => tab.id === tabId);
+    const nextId = visibleTabs[index + 1]?.id ?? visibleTabs[index - 1]?.id;
+    onClose(
+      tabId,
+      focusNext
+        ? () => {
+            if (!mounted.current) return;
+            const frame = requestAnimationFrame(() => {
+              closeFrames.current.delete(frame);
+              if (!mounted.current || workspaceShortcutLayerOpen()) return;
+              if (document.activeElement !== document.body && document.activeElement?.isConnected) return;
+              const next = (nextId && tabButtons.current.get(nextId)) || [...tabButtons.current.values()][0];
+              next?.focus({ preventScroll: true });
+            });
+            closeFrames.current.add(frame);
+          }
+        : undefined,
+    );
   }
-
+  function focusTab(event: KeyboardEvent<HTMLButtonElement>, tabId: string) {
+    if (
+      event.repeat ||
+      !shortcutEventAvailable(event.nativeEvent) ||
+      event.altKey ||
+      event.ctrlKey ||
+      event.metaKey ||
+      event.shiftKey
+    )
+      return;
+    if (event.key === 'Delete') {
+      event.preventDefault();
+      event.stopPropagation();
+      closeTab(tabId, true);
+      return;
+    }
+    const targetId = workspaceTabFocusTarget(visibleTabs, tabId, event.key, vertical ? 'vertical' : 'horizontal');
+    if (!targetId) return;
+    event.preventDefault();
+    event.stopPropagation();
+    tabButtons.current.get(targetId)?.focus();
+  }
   return (
     <TooltipProvider>
       <div
-        className={cn('flex h-9 min-w-0 shrink-0 items-center border-b bg-muted/70', active && 'bg-muted')}
-        role="tablist"
+        data-workspace-group-rail={collapsed ? '' : undefined}
+        className={cn(
+          'flex min-h-0 min-w-0 shrink-0 items-center bg-muted/70',
+          !collapsed && 'h-9 border-b',
+          collapsed &&
+            (vertical ? 'absolute inset-y-0 h-full w-8 flex-col border-x' : 'absolute inset-x-0 h-9 w-full border-y'),
+          active && 'bg-muted',
+        )}
+        role="group"
         aria-label={labels.tabs}
       >
-        <div className="flex h-full min-w-0 flex-1 items-center gap-0.5 overflow-x-auto px-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-          {group.tabs.map((tab, index) => {
-            const current = tab.id === group.activeTabId;
-            const pending = tab.id === pendingTabId && !current;
-            const title = workspaceTabTitle(activeLocation(tab), data, titleLabels);
-            return (
-              <ContextMenu key={tab.id}>
-                <ContextMenuTrigger asChild>
-                  <div
-                    className={cn(
-                      'group/tab flex h-7 min-w-28 max-w-56 shrink items-center rounded-sm text-muted-foreground transition-colors duration-fast',
-                      current && active && 'bg-surface text-foreground ring-1 ring-inset ring-border',
-                      current && !active && 'bg-surface/60 text-foreground-secondary',
-                      pending && 'bg-hover text-foreground-secondary',
-                      !current && 'hover:bg-hover hover:text-foreground-secondary',
-                    )}
-                    role="presentation"
-                  >
-                    <button
-                      type="button"
-                      role="tab"
-                      aria-selected={current}
-                      aria-busy={pending}
-                      title={title}
-                      className="h-full min-w-0 flex-1 truncate rounded-sm px-3 text-left text-xs font-medium outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
-                      onClick={() => requestActivation(tab.id)}
-                    >
-                      {title}
-                    </button>
-                    {pending ? (
-                      <span className="mr-0.5 flex size-6 shrink-0 items-center justify-center text-muted-foreground">
-                        <LoaderCircleIcon
-                          className="size-3.5 animate-spin motion-reduce:animate-none"
-                          aria-hidden="true"
-                        />
-                      </span>
-                    ) : (
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="icon-sm"
-                        className={cn(
-                          'mr-0.5 size-6 shrink-0 rounded-sm text-muted-foreground transition-opacity duration-fast hover:text-foreground',
-                          current ? 'opacity-100' : 'opacity-0 group-hover/tab:opacity-100 focus:opacity-100',
-                        )}
-                        aria-label={labels.closeTab}
-                        onClick={() => closeTab(tab.id)}
-                      >
-                        <XIcon className="size-3.5" />
-                      </Button>
-                    )}
-                  </div>
-                </ContextMenuTrigger>
-                <ContextMenuContent>
-                  <ContextMenuItem onSelect={() => closeTab(tab.id)}>{labels.closeTab}</ContextMenuItem>
-                  <ContextMenuItem disabled={group.tabs.length === 1} onSelect={() => onCloseOthers(tab.id)}>
-                    {labels.closeOthers}
-                  </ContextMenuItem>
-                  <ContextMenuSeparator />
-                  <ContextMenuItem disabled={index === 0} onSelect={() => onReorder(tab.id, -1)}>
-                    <ArrowLeftIcon />
-                    {labels.moveLeft}
-                  </ContextMenuItem>
-                  <ContextMenuItem disabled={index === group.tabs.length - 1} onSelect={() => onReorder(tab.id, 1)}>
-                    <ArrowRightIcon />
-                    {labels.moveRight}
-                  </ContextMenuItem>
-                  {splitAxis && (
-                    <>
-                      <ContextMenuSeparator />
-                      <ContextMenuItem onSelect={() => onMoveToOtherGroup(tab.id)}>
-                        {labels.moveToOtherGroup}
-                      </ContextMenuItem>
-                    </>
-                  )}
-                </ContextMenuContent>
-              </ContextMenu>
-            );
-          })}
+        {collapsed && (
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon-sm"
+            className="size-7 shrink-0 rounded-sm text-muted-foreground focus-visible:ring-inset focus-visible:ring-offset-0"
+            aria-label={labels.expandTabs}
+            title={labels.expandTabs}
+            aria-expanded={false}
+            aria-controls={`workspace-group-content-${group.id}`}
+            onClick={() => {
+              tabButtons.current.get(activeTab.id)?.focus({ preventScroll: true });
+              requestActivation(activeTab.id);
+            }}
+          >
+            {vertical ? <PanelLeftOpenIcon className="size-4" /> : <PanelTopOpenIcon className="size-4" />}
+          </Button>
+        )}
+        <div
+          onBlur={(event) => {
+            if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setFocusedTabId(activeTab.id);
+          }}
+          id={tabListId}
+          role="tablist"
+          aria-label={labels.tabs}
+          aria-orientation={vertical ? 'vertical' : 'horizontal'}
+          className={cn(
+            'flex min-h-0 min-w-0 flex-1 items-center gap-0.5 overscroll-contain [scrollbar-width:none] [&::-webkit-scrollbar]:hidden',
+            vertical
+              ? 'w-full flex-col overflow-x-hidden overflow-y-auto py-1'
+              : 'h-full overflow-x-auto overflow-y-hidden px-1',
+          )}
+        >
+          {visibleTabs.map((tab) => (
+            <WorkspaceTabItem
+              key={tab.id}
+              id={tab.id}
+              title={workspaceTabTitle(activeLocation(tab), data, titleLabels)}
+              index={indexes.get(tab.id) ?? 0}
+              count={group.tabs.length}
+              selected={tab.id === activeTab.id}
+              active={active}
+              pending={tab.id === pendingTabId && tab.id !== activeTab.id}
+              focusable={tab.id === focusableId}
+              split={Boolean(props.splitAxis)}
+              compact={collapsed ? (vertical ? 'vertical' : 'horizontal') : undefined}
+              register={(node) => {
+                if (node) tabButtons.current.set(tab.id, node);
+                else tabButtons.current.delete(tab.id);
+              }}
+              onFocus={() => setFocusedTabId(tab.id)}
+              onKeyDown={(event) => focusTab(event, tab.id)}
+              onActivate={() => requestActivation(tab.id)}
+              onClose={() => closeTab(tab.id)}
+              onCloseOthers={() => props.onCloseOthers(tab.id)}
+              onReorder={(delta) => props.onReorder(tab.id, delta)}
+              onMove={() => props.onMoveToOtherGroup(tab.id)}
+            />
+          ))}
         </div>
-        <div className="flex shrink-0 items-center gap-0.5 border-l border-border/60 px-1">
-          <DropdownMenu>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <DropdownMenuTrigger asChild>
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="icon-sm"
-                    className="size-7 shrink-0 rounded-sm text-muted-foreground"
-                    aria-label={labels.newTab}
-                  >
-                    <PlusIcon className="size-4" />
-                  </Button>
-                </DropdownMenuTrigger>
-              </TooltipTrigger>
-              <TooltipContent>{labels.newTab}</TooltipContent>
-            </Tooltip>
-            <DropdownMenuContent align="end">
-              {availableViews.map((view) => (
-                <DropdownMenuItem key={view} onSelect={() => onNewTab(view)}>
-                  {navigation[view]}
-                </DropdownMenuItem>
-              ))}
-            </DropdownMenuContent>
-          </DropdownMenu>
-          <DropdownMenu>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <DropdownMenuTrigger asChild>
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="icon-sm"
-                    className="size-7 shrink-0 rounded-sm text-muted-foreground"
-                    aria-label={labels.layout}
-                  >
-                    <EllipsisIcon className="size-4" />
-                  </Button>
-                </DropdownMenuTrigger>
-              </TooltipTrigger>
-              <TooltipContent>{labels.layout}</TooltipContent>
-            </Tooltip>
-            <DropdownMenuContent align="end">
-              <DropdownMenuSub>
-                <DropdownMenuSubTrigger>{labels.openToSide}</DropdownMenuSubTrigger>
-                <DropdownMenuSubContent>
-                  {availableViews.map((view) => (
-                    <DropdownMenuItem key={view} onSelect={() => onOpenBeside(view)}>
-                      {navigation[view]}
-                    </DropdownMenuItem>
-                  ))}
-                </DropdownMenuSubContent>
-              </DropdownMenuSub>
-              <DropdownMenuItem
-                disabled={splitAxis === 'columns' || (!splitAxis && !canSplit)}
-                onSelect={() => onSplit('columns')}
-              >
-                {splitAxis ? labels.arrangeColumns : labels.splitColumns}
-              </DropdownMenuItem>
-              <DropdownMenuItem
-                disabled={splitAxis === 'rows' || (!splitAxis && !canSplit)}
-                onSelect={() => onSplit('rows')}
-              >
-                {splitAxis ? labels.arrangeRows : labels.splitRows}
-              </DropdownMenuItem>
-              {splitAxis && <DropdownMenuItem onSelect={onMerge}>{labels.mergeGroups}</DropdownMenuItem>}
-              <DropdownMenuItem onSelect={onReset}>{labels.resetLayout}</DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
-        </div>
+        {!collapsed && (
+          <WorkspaceTabActions {...props} pendingTabId={pendingTabId} requestActivation={requestActivation} />
+        )}
       </div>
     </TooltipProvider>
   );

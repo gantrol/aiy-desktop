@@ -17,6 +17,7 @@ import type { GifFrameAudit } from '@/shared/contracts/gif-motion-plan';
 import type { GifDocumentPurpose } from '@/shared/contracts/gif-motion-draft';
 import { gifExecutionSeries } from '@/main/database/creations/gif-execution-ownership';
 import { ensureImageMaterials } from '@/main/database/albums/image-material-batch';
+import { now } from '@/main/database/core/values';
 
 export function createGifMakingApi({
   storage,
@@ -76,7 +77,7 @@ export function createGifMakingApi({
             manifest: input.motionManifest,
             motionDraft: input.motionDraft,
           });
-          return documents.save(
+          const editor = documents.save(
             {
               id: input.id,
               seriesId: input.seriesId,
@@ -88,6 +89,26 @@ export function createGifMakingApi({
             },
             { sourceDocumentId: input.sourceDocumentId, targetAlbumId: input.targetAlbumId },
           );
+          if (input.consumeCreationDraft) {
+            const draft = input.consumeCreationDraft;
+            const time = now();
+            const consumed = storage.db
+              .prepare(
+                `UPDATE creation_drafts SET consumed_at = ?, updated_at = ?
+              WHERE id = ? AND updated_at = ? AND consumed_at IS NULL AND deleted_at IS NULL
+                AND NOT EXISTS (SELECT 1 FROM derived_visuals WHERE creation_draft_id = creation_drafts.id)`,
+              )
+              .run(time, time, draft.id, draft.updatedAt);
+            if (consumed.changes !== 1) throw new Error('GIF_CONFLICT');
+            storage.recordChange(
+              'CREATION_DRAFT',
+              draft.id,
+              'CONSUME_ANIMATION',
+              { documentId: editor.id },
+              { affectsFileView: false },
+            );
+          }
+          return editor;
         })
         .immediate(),
     gifFramesAsGroup: (documentId: string, candidateId: string): string =>

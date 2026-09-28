@@ -7,6 +7,7 @@ import { calendarActivityObjects } from '@/main/database/calendar/calendar-objec
 import { calendarVisibleActivitySql } from '@/main/database/calendar/calendar-activity-visibility';
 
 export interface CalendarReadFilter {
+  writer?: string;
   startDate: string;
   endDate: string;
   timeZone: string;
@@ -17,6 +18,8 @@ export interface CalendarReadFilter {
 }
 
 export interface CalendarReadRow {
+  writer_json?: string | null;
+  activity_writers?: string;
   id: string;
   source: 'activity' | 'activity_correction';
   category: string;
@@ -57,11 +60,13 @@ function activityDetailsSql(
     displayDate?: string;
     updatedAt?: string;
     currentRevision?: string;
+    correction?: boolean;
   } = {},
 ) {
+  const writer = options.correction ? 'NULL' : "json_extract(e.payload_json,'$.provenance.writer')";
   if (!includeDetails)
-    return `,e.entity_type entity_type,e.entity_id entity_id,e.operation operation,${options.displayDate ?? 'NULL'} display_date`;
-  return `,e.entity_type entity_type,e.entity_id entity_id,e.operation operation,e.occurred_at occurred_at,
+    return `,${writer} writer_json,e.entity_type entity_type,e.entity_id entity_id,e.operation operation,${options.displayDate ?? 'NULL'} display_date`;
+  return `,${writer} writer_json,e.entity_type entity_type,e.entity_id entity_id,e.operation operation,e.occurred_at occurred_at,
     ${options.fileRecordedAt ?? 'NULL'} file_recorded_at,${options.note ?? 'NULL'} note,
     ${options.displayDate ?? 'NULL'} display_date,${options.updatedAt ?? 'NULL'} updated_at,
     ${options.currentRevision ?? '0'} current_revision`;
@@ -108,6 +113,7 @@ function rowsSql(input: CalendarReadFilter, includeDetails: boolean) {
           displayDate: 'r.display_date',
           updatedAt: 'r.recorded_at',
           currentRevision: 'COALESCE(current_override.revision,0)',
+          correction: true,
         })}
       FROM calendar_activity_override_revisions r JOIN ${events} e ON e.id=r.event_id
         ${eventFileJoin} ${includeDetails ? `LEFT JOIN ${overrides} current_override ON current_override.event_id=e.id` : ''}
@@ -148,12 +154,16 @@ function filteredRows(input: CalendarReadFilter, snapshot: number, includeDetail
     sql: `WITH ${input.knownAt ? `${calendarAsOfCtes},` : ''} rows AS (${rowsSql(input, includeDetails)}), filtered AS (
       SELECT * FROM rows WHERE category IN (${categoryList})
       AND ${calendarVisibleActivitySql}
+      AND (@writer='ALL' OR (@writer='AI' AND json_extract(writer_json,'$.kind')='AI')
+        OR (@writer='UNKNOWN' AND COALESCE(json_extract(writer_json,'$.kind'),'UNKNOWN')='UNKNOWN')
+        OR (json_extract(writer_json,'$.kind')='AI' AND @writer='AI:' || json_extract(writer_json,'$.application')))
       ${input.timeAxis === 'effective' && !input.includeInvalidated ? 'AND invalidated=0' : ''}
     )`,
     params: {
       fromAt: new Date(fromEpoch).toISOString(),
       toAt: new Date(toEpoch).toISOString(),
       snapshot,
+      writer: input.writer ?? 'ALL',
       startDate: input.startDate,
       endDate: input.endDate,
       timeZone: input.timeZone,
@@ -197,7 +207,7 @@ function objectRows(db: Database.Database, input: CalendarReadFilter, snapshot: 
 }
 
 const readFields =
-  'id,source,category,item_revision,sort_at,occurrence_id,invalidated,entity_type,entity_id,operation,occurred_at,file_recorded_at,note,display_date,updated_at,current_revision';
+  'id,source,category,item_revision,sort_at,occurrence_id,invalidated,entity_type,entity_id,operation,occurred_at,file_recorded_at,note,display_date,updated_at,current_revision,writer_json';
 
 function groupedActivityRowsSql() {
   const identity = 'activity_date,object_type,object_id';
@@ -207,7 +217,8 @@ function groupedActivityRowsSql() {
   ), activity_groups AS (
     SELECT ${identity},COUNT(*) activity_count,MIN(occurred_at) first_at,MAX(occurred_at) last_at,
       MIN(invalidated) group_invalidated,MAX(item_revision>0) group_corrected,
-      json_group_array(DISTINCT category) activity_categories
+      json_group_array(DISTINCT category) activity_categories,
+      json_group_array(DISTINCT COALESCE(writer_json,'{"kind":"UNKNOWN"}')) activity_writers
     FROM object_activity GROUP BY ${identity}
   ), change_counts AS (
     SELECT ${identity},entity_type,operation,COUNT(*) change_count
@@ -227,7 +238,7 @@ function groupedActivityRowsSql() {
             : `r.${field}`,
       )
       .join(',')},
-      g.activity_count,g.object_type,g.object_id,g.first_at,g.last_at,g.activity_categories,g.group_corrected,c.activity_changes
+      g.activity_count,g.object_type,g.object_id,g.first_at,g.last_at,g.activity_categories,g.activity_writers,g.group_corrected,c.activity_changes
     FROM ranked_activity r JOIN activity_groups g USING (${identity})
       JOIN change_groups c USING (${identity}) WHERE r.position=1
   )`;
@@ -246,7 +257,7 @@ export function readCalendarRows(
   return db
     .prepare(
       `${sql}${grouped ? groupedActivityRowsSql() : ''} SELECT ${readFields}
-      ${grouped ? ',activity_count,object_type,object_id,first_at,last_at,activity_categories,group_corrected,activity_changes' : ''}
+      ${grouped ? ',activity_count,object_type,object_id,first_at,last_at,activity_categories,activity_writers,group_corrected,activity_changes' : ''}
       FROM ${grouped ? 'visible_rows' : 'object_activity'}
     ${
       cursor

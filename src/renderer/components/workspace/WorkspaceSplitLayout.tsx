@@ -1,29 +1,45 @@
-import { useEffect, useRef, useState, type KeyboardEvent, type PointerEvent, type ReactNode } from 'react';
+import {
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+  type KeyboardEvent,
+  type PointerEvent,
+  type ReactNode,
+} from 'react';
 import type { WorkspaceArrangementDto } from '@/shared/contracts';
 import { useI18n } from '@/renderer/i18n/useI18n';
 import { cn } from '@/renderer/lib/utils';
+import { clampWorkspaceRatio, workspaceSplitTracks } from '@/renderer/components/workspace/workspaceSplitGeometry';
+import './workspace-split.css';
 
 interface Props {
   arrangement: WorkspaceArrangementDto;
   childrenByGroupId: ReadonlyMap<string, ReactNode>;
+  collapsedGroupId?: string;
   onRatioCommit(ratio: number): void;
 }
 
-function clampRatio(ratio: number) {
-  return Math.min(Math.max(Math.round(ratio), 2_500), 7_500);
-}
-
-export function WorkspaceSplitLayout({ arrangement, childrenByGroupId, onRatioCommit }: Props) {
+export function WorkspaceSplitLayout({ arrangement, childrenByGroupId, collapsedGroupId, onRatioCommit }: Props) {
   const { messages } = useI18n();
   const containerRef = useRef<HTMLDivElement>(null);
   const resizeCleanupRef = useRef<(() => void) | null>(null);
   const [liveRatio, setLiveRatio] = useState(arrangement.kind === 'split' ? arrangement.ratio : 5_000);
-  const ratioRef = useRef(liveRatio);
-  ratioRef.current = liveRatio;
+  const [resizing, setResizing] = useState(false);
+  const axis = arrangement.kind === 'split' ? arrangement.axis : null;
 
-  useEffect(() => {
-    if (arrangement.kind === 'split') setLiveRatio(arrangement.ratio);
-  }, [arrangement]);
+  const savedRatio = arrangement.kind === 'split' ? arrangement.ratio : 5_000;
+  const firstGroupId = arrangement.kind === 'split' ? arrangement.groupIds[0] : arrangement.groupId;
+  const secondGroupId = arrangement.kind === 'split' ? arrangement.groupIds[1] : null;
+
+  useLayoutEffect(() => {
+    resizeCleanupRef.current?.();
+    setLiveRatio(savedRatio);
+  }, [savedRatio, axis, firstGroupId, secondGroupId]);
+
+  useLayoutEffect(() => {
+    resizeCleanupRef.current?.();
+  }, [collapsedGroupId]);
 
   useEffect(() => () => resizeCleanupRef.current?.(), []);
 
@@ -32,76 +48,117 @@ export function WorkspaceSplitLayout({ arrangement, childrenByGroupId, onRatioCo
   }
 
   const columns = arrangement.axis === 'columns';
-  const first = childrenByGroupId.get(arrangement.groupIds[0]);
-  const second = childrenByGroupId.get(arrangement.groupIds[1]);
+  const firstCollapsed = collapsedGroupId === arrangement.groupIds[0];
+  const secondCollapsed = collapsedGroupId === arrangement.groupIds[1];
+  const folded = firstCollapsed || secondCollapsed;
+  const tracks = workspaceSplitTracks(liveRatio, firstCollapsed, secondCollapsed, columns);
 
   function beginResize(event: PointerEvent<HTMLDivElement>) {
-    if (event.button !== 0) return;
+    if (event.button !== 0 || event.isPrimary === false || folded) return;
     event.preventDefault();
     const container = containerRef.current;
     if (!container) return;
     resizeCleanupRef.current?.();
+    const pointerId = event.pointerId;
+    const originalRatio = liveRatio;
+    let nextRatio = liveRatio;
+    let active = true;
     const previousCursor = document.body.style.cursor;
     const previousSelect = document.body.style.userSelect;
     document.body.style.cursor = columns ? 'col-resize' : 'row-resize';
     document.body.style.userSelect = 'none';
-    const move = (moveEvent: globalThis.PointerEvent) => {
+    setResizing(true);
+    const move = (pointer: globalThis.PointerEvent) => {
+      if (!active || pointer.pointerId !== pointerId) return;
       const bounds = container.getBoundingClientRect();
-      const position = columns ? moveEvent.clientX - bounds.left : moveEvent.clientY - bounds.top;
-      const length = columns ? bounds.width : bounds.height;
-      if (length > 0) setLiveRatio(clampRatio((position / length) * 10_000));
+      const position = columns ? pointer.clientX - bounds.left : pointer.clientY - bounds.top;
+      const length = (columns ? bounds.width : bounds.height) - 1;
+      if (length > 0) {
+        nextRatio = clampWorkspaceRatio((position / length) * 10_000);
+        setLiveRatio(nextRatio);
+      }
     };
     const cleanup = () => {
       window.removeEventListener('pointermove', move);
-      window.removeEventListener('pointerup', finish);
-      window.removeEventListener('pointercancel', finish);
+      window.removeEventListener('pointerup', up);
+      window.removeEventListener('pointercancel', cancel);
+      window.removeEventListener('blur', blur);
+      window.removeEventListener('keydown', key, true);
       document.body.style.cursor = previousCursor;
       document.body.style.userSelect = previousSelect;
       resizeCleanupRef.current = null;
     };
-    const finish = () => {
+    const finish = (cancelled: boolean) => {
+      if (!active) return;
+      active = false;
       cleanup();
-      onRatioCommit(ratioRef.current);
+      setResizing(false);
+      if (cancelled) setLiveRatio(originalRatio);
+      else onRatioCommit(nextRatio);
     };
-    resizeCleanupRef.current = cleanup;
+    const up = (pointer: globalThis.PointerEvent) => {
+      if (pointer.pointerId === pointerId) finish(false);
+    };
+    const cancel = (pointer: globalThis.PointerEvent) => {
+      if (pointer.pointerId === pointerId) finish(true);
+    };
+    const blur = () => finish(true);
+    const key = (keyboard: globalThis.KeyboardEvent) => {
+      if (keyboard.key !== 'Escape' || keyboard.isComposing) return;
+      keyboard.preventDefault();
+      keyboard.stopPropagation();
+      finish(true);
+    };
+    resizeCleanupRef.current = () => finish(true);
     window.addEventListener('pointermove', move);
-    window.addEventListener('pointerup', finish, { once: true });
-    window.addEventListener('pointercancel', finish, { once: true });
+    window.addEventListener('pointerup', up);
+    window.addEventListener('pointercancel', cancel);
+    window.addEventListener('blur', blur);
+    window.addEventListener('keydown', key, true);
   }
 
   function handleKeyDown(event: KeyboardEvent<HTMLDivElement>) {
+    if (folded || resizing || event.nativeEvent.isComposing || event.altKey || event.ctrlKey || event.metaKey) return;
     const delta =
       (columns && event.key === 'ArrowLeft') || (!columns && event.key === 'ArrowUp')
         ? -250
         : (columns && event.key === 'ArrowRight') || (!columns && event.key === 'ArrowDown')
           ? 250
           : 0;
-    if (!delta) return;
+    const next = event.key === 'Home' ? 2_500 : event.key === 'End' ? 7_500 : clampWorkspaceRatio(liveRatio + delta);
+    if (!delta && event.key !== 'Home' && event.key !== 'End') return;
     event.preventDefault();
-    const next = clampRatio(liveRatio + delta);
+    event.stopPropagation();
     setLiveRatio(next);
     onRatioCommit(next);
   }
 
   return (
-    <div ref={containerRef} className={cn('flex size-full min-h-0 min-w-0', columns ? 'flex-row' : 'flex-col')}>
-      <div
-        className="min-h-0 min-w-0 overflow-hidden"
-        style={{ flexBasis: `${liveRatio / 100}%`, flexGrow: 0, flexShrink: 0 }}
-      >
-        {first}
-      </div>
+    <div
+      ref={containerRef}
+      data-resizing={resizing}
+      data-split-axis={arrangement.axis}
+      className="workspace-split-layout grid size-full min-h-0 min-w-0 overflow-hidden transition-[grid-template-columns,grid-template-rows] delay-[60ms] duration-200 ease-[cubic-bezier(0.2,0.8,0.2,1)] data-[resizing=true]:transition-none motion-reduce:transition-none"
+      style={
+        columns
+          ? { gridTemplateColumns: tracks, gridTemplateRows: 'minmax(0, 1fr)' }
+          : { gridTemplateRows: tracks, gridTemplateColumns: 'minmax(0, 1fr)' }
+      }
+    >
+      <div className="min-h-0 min-w-0 overflow-hidden">{childrenByGroupId.get(arrangement.groupIds[0])}</div>
       <div
         role="separator"
-        tabIndex={0}
+        tabIndex={folded ? -1 : 0}
+        aria-hidden={folded}
         aria-orientation={columns ? 'vertical' : 'horizontal'}
         aria-label={columns ? messages.app.workspace.resizeColumns : messages.app.workspace.resizeRows}
         aria-valuemin={25}
         aria-valuemax={75}
         aria-valuenow={Math.round(liveRatio / 100)}
         className={cn(
-          'group relative z-20 shrink-0 touch-none bg-border-strong outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring',
-          columns ? 'h-full w-px cursor-col-resize' : 'h-px w-full cursor-row-resize',
+          'group relative z-20 touch-none bg-border-strong outline-none transition-opacity delay-200 duration-100 focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring motion-reduce:transition-none',
+          columns ? 'cursor-col-resize' : 'cursor-row-resize',
+          folded && 'pointer-events-none opacity-0 delay-0 duration-[60ms]',
         )}
         onPointerDown={beginResize}
         onKeyDown={handleKeyDown}
@@ -113,7 +170,7 @@ export function WorkspaceSplitLayout({ arrangement, childrenByGroupId, onRatioCo
           )}
         />
       </div>
-      <div className="min-h-0 min-w-0 flex-1 overflow-hidden">{second}</div>
+      <div className="min-h-0 min-w-0 overflow-hidden">{childrenByGroupId.get(arrangement.groupIds[1])}</div>
     </div>
   );
 }

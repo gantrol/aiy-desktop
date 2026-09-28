@@ -1,6 +1,8 @@
 import { Component, useEffect, useLayoutEffect, useMemo, useState, useSyncExternalStore, type ReactNode } from 'react';
 import { Undo2 } from 'lucide-react';
 import { StickyNote } from '@/renderer/features/desktop-petals/StickyNote';
+import { CollapsedNote } from '@/renderer/features/desktop-petals/CollapsedNote';
+import { petalLabel } from '@/shared/petal-preview';
 import { RoseFlower } from '@/renderer/features/desktop-petals/RoseFlower';
 import { I18nContext } from '@/renderer/i18n/I18nContext';
 import { hydrateLanguageCatalog } from '@/renderer/i18n/languageCatalog';
@@ -239,6 +241,7 @@ function DemoContent({ session: current }: { session: NonNullable<typeof session
       <DemoWorkspaceWindow time={time} snapshot={snapshot} requestMenu={current.requestMenu} notify={current.notify} />
     );
   const fold = demoFlowerFoldAt(time);
+  const note = snapshot.notes[0]!;
   return role === 'flower' ? (
     <div className="absolute inset-2 origin-center" style={{ transform: `scale(${1 + fold * 0.5})` }}>
       <RoseFlower
@@ -251,8 +254,21 @@ function DemoContent({ session: current }: { session: NonNullable<typeof session
         center={snapshot.collectionUndo ? <Undo2 className="size-6" /> : undefined}
       />
     </div>
+  ) : snapshot.expanded ? (
+    <StickyNote initialNote={note} snapshot={snapshot} />
   ) : (
-    <StickyNote initialNote={snapshot.notes[0]!} snapshot={snapshot} />
+    <CollapsedNote
+      snapshot={snapshot}
+      note={{
+        id: note.id,
+        stashId: note.stashId,
+        title: petalLabel(note.title, note.text),
+        color: note.color,
+        icon: note.icon,
+        persisted: note.persisted,
+        hasImages: Boolean(note.references.length),
+      }}
+    />
   );
 }
 

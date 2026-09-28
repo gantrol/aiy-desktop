@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useState } from 'react';
-import { ActivityIcon, CircleAlertIcon, CircleCheckIcon, LoaderCircleIcon, XIcon } from 'lucide-react';
+import { useEffect, useId, useMemo, useRef, useState } from 'react';
+import { ActivityIcon, ChevronDownIcon, CircleAlertIcon, CircleCheckIcon, LoaderCircleIcon, XIcon } from 'lucide-react';
 import type {
   AssistantRunDto,
   BackgroundIssueDto,
@@ -13,9 +13,14 @@ import type {
 } from '@/shared/contracts';
 import { useI18n } from '@/renderer/i18n/useI18n';
 import { Button } from '@/renderer/components/ui/button';
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/renderer/components/ui/collapsible';
 import { Popover, PopoverContent, PopoverTrigger } from '@/renderer/components/ui/popover';
 import { generationElapsed, generationPhaseLabel } from '@/renderer/components/generation/task-presentation';
-import { groupGenerationTasks, leadGenerationTask } from '@/renderer/components/generation/generationTaskGroups';
+import {
+  groupGenerationTasks,
+  leadGenerationTask,
+  type GenerationTaskGroup,
+} from '@/renderer/components/generation/generationTaskGroups';
 import { GenerationErrorNotice } from '@/renderer/components/generation/GenerationErrorNotice';
 import { DirectionExperimentTaskCenterItem } from '@/renderer/components/app/DirectionExperimentTaskCenterItem';
 import { GenerationIssueActions } from '@/renderer/components/app/GenerationIssueActions';
@@ -90,6 +95,152 @@ function backgroundTaskIconClassName(reconnecting: boolean, activeCount: number,
   return attentionCount > 0 ? 'size-3.5 text-destructive' : 'size-3.5 text-success';
 }
 
+function GenerationTaskRows({
+  groups,
+  titleBySeriesId,
+  modelNameByKey,
+  nowMs,
+  busy,
+  onCancel,
+}: {
+  groups: GenerationTaskGroup[];
+  titleBySeriesId: ReadonlyMap<string, string>;
+  modelNameByKey: ReadonlyMap<string, string>;
+  nowMs: number;
+  busy: boolean;
+  onCancel(key: string, runIds: string[]): Promise<void>;
+}) {
+  const { messages } = useI18n();
+  const l = messages.app.generationStatus;
+  const taskLabels = messages.creator.generationTasks;
+  return groups.map((group) => {
+    const task = leadGenerationTask(group);
+    const isBatch = Boolean(group.batchId);
+    const title = titleBySeriesId.get(task.seriesId) ?? task.runId.slice(-6);
+    const modelSummary = group.modelKeys.map((key) => modelNameByKey.get(key) ?? key).join(' + ');
+    return (
+      <div
+        key={group.key}
+        data-generation-batch={group.batchId ?? undefined}
+        className="flex min-h-10 items-center gap-2 border-b px-3 py-1.5 text-xs last:border-b-0"
+      >
+        <span className="min-w-0 flex-1 truncate" title={modelSummary ? `${title} · ${modelSummary}` : title}>
+          {title}
+        </span>
+        <span className="max-w-[65%] text-right text-muted-foreground">
+          {generationPhaseLabel(task, l)}
+          {isBatch
+            ? ` · ${taskLabels.batchModels(group.modelKeys.length)} · ${taskLabels.batchProgress(group.completedCount, group.totalCount)}`
+            : ''}
+          {generationElapsed(task, nowMs) ? ` · ${generationElapsed(task, nowMs)}` : ''}
+        </span>
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon-sm"
+          className="size-7"
+          disabled={busy || group.tasks.every((item) => item.phase === 'CANCELLING')}
+          title={isBatch ? taskLabels.cancelBatch : l.cancel}
+          aria-label={isBatch ? taskLabels.cancelBatch : l.cancel}
+          onClick={() =>
+            void onCancel(
+              group.key,
+              group.tasks.map((item) => item.runId),
+            )
+          }
+        >
+          <XIcon className="size-3.5" />
+        </Button>
+      </div>
+    );
+  });
+}
+
+function BackgroundServiceStatus({
+  reconnecting,
+  codexHealth,
+}: {
+  reconnecting: boolean;
+  codexHealth: CodexHealth | null;
+}) {
+  const l = useI18n().messages.app.generationStatus;
+  return (
+    <Collapsible className="border-t">
+      <CollapsibleTrigger asChild>
+        <Button
+          type="button"
+          variant="ghost"
+          size="sm"
+          className="group h-auto w-full justify-start gap-2 rounded-none px-3 py-2 text-xs font-normal whitespace-normal"
+        >
+          <ActivityIcon className="size-3.5 shrink-0 text-muted-foreground" aria-hidden="true" />
+          <span className="min-w-0 flex-1 text-left">{l.serviceStatus}</span>
+          {reconnecting && <span className="text-muted-foreground">{l.reconnecting}</span>}
+          {codexHealth?.state === 'unavailable' && <span className="text-destructive">Codex · {l.unavailable}</span>}
+          <ChevronDownIcon
+            className="size-3.5 shrink-0 text-muted-foreground transition-transform group-data-[state=open]:rotate-180"
+            aria-hidden="true"
+          />
+        </Button>
+      </CollapsibleTrigger>
+      <CollapsibleContent>
+        <div className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 px-3 pb-2 text-xs">
+          <span className="text-muted-foreground">{l.service}</span>
+          <span>{reconnecting ? l.reconnecting : l.connected}</span>
+          <span className="text-muted-foreground">Codex</span>
+          <span className={codexHealth?.state === 'unavailable' ? 'text-destructive' : ''}>
+            {codexHealth?.state === 'ready'
+              ? l.available
+              : codexHealth?.state === 'unavailable'
+                ? l.unavailable
+                : l.checking}
+          </span>
+        </div>
+      </CollapsibleContent>
+    </Collapsible>
+  );
+}
+
+function GenerationIssueRows({
+  issues,
+  busy,
+  onReEdit,
+  onRetry,
+}: {
+  issues: ReturnType<typeof generationIssues>;
+  busy: boolean;
+  onReEdit(runId: string): void;
+  onRetry(runId: string): Promise<void>;
+}) {
+  const { messages } = useI18n();
+  const l = messages.app.generationStatus;
+  const backgroundIssues = useBackgroundIssues();
+  return issues.map(({ run, title }) => (
+    <div key={run.id} className="flex min-h-10 items-center gap-2 border-b px-3 py-1.5 text-xs last:border-b-0">
+      <span className="min-w-0 flex-1">
+        <span className="block truncate">{title}</span>
+        <GenerationErrorNotice
+          run={run}
+          showIcon={false}
+          className="flex max-w-full"
+          summaryClassName="block truncate"
+        />
+      </span>
+      <GenerationIssueActions
+        status={run.status}
+        busy={busy || backgroundIssues.isPending(run.backgroundIssue)}
+        reEditLabel={l.reEdit}
+        retryLabel={l.retry}
+        regenerateLabel={l.regenerate}
+        dismissLabel={messages.creator.generationTasks.dismiss}
+        onReEdit={() => onReEdit(run.id)}
+        onRetry={() => void onRetry(run.id)}
+        onDismiss={() => void backgroundIssues.acknowledge(run.backgroundIssue)}
+      />
+    </div>
+  ));
+}
+
 export function GenerationStatusPopover({
   workerStatus,
   codexHealth,
@@ -112,7 +263,8 @@ export function GenerationStatusPopover({
   const failedDeliveries = deliveries.filter(({ job }) => job.status === 'FAILED');
   const completedDeliveries = deliveries.filter(({ job }) => job.status === 'SUCCEEDED').slice(0, 3);
   const l = messages.app.generationStatus;
-  const taskLabels = messages.creator.generationTasks;
+  const headingId = useId();
+  const headingRef = useRef<HTMLHeadingElement>(null);
   const [open, setOpen] = useState(false);
   const [busyRunId, setBusyRunId] = useState<string | null>(null);
   const [nowMs, setNowMs] = useState(() => Date.now());
@@ -148,6 +300,7 @@ export function GenerationStatusPopover({
   const otherCodexTaskCount = Math.max(0, codexTaskCount - visibleAssistantRuns.length);
   const reconnecting = !workerStatus || workerStatus.state === 'RECONNECTING';
   const attentionCount = standaloneIssues.length + directorIssues.length + failedDeliveries.length;
+  const hasActiveTasks = activeCount > 0 || visibleGenerationTaskGroups.length > 0;
 
   useEffect(() => {
     if (!open || (!tasks.some((task) => task.status === 'RUNNING') && transcriptTasks.length === 0)) return undefined;
@@ -220,127 +373,121 @@ export function GenerationStatusPopover({
           )}
         </Button>
       </PopoverTrigger>
-      <PopoverContent side="bottom" align="end" sideOffset={4} className="w-96 p-0">
-        <div className="border-b px-3 py-2 text-xs font-medium">{l.backgroundTasks}</div>
-        <div className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 border-b px-3 py-2 text-xs">
-          <span className="text-muted-foreground">{l.service}</span>
-          <span className="flex items-center gap-1.5">
-            <ActivityIcon className="size-3.5" />
-            {reconnecting ? l.reconnecting : l.connected}
-          </span>
-          <span className="text-muted-foreground">Codex</span>
-          <span className={codexHealth?.state === 'unavailable' ? 'text-destructive' : ''}>
-            {codexHealth?.state === 'ready'
-              ? l.available
-              : codexHealth?.state === 'unavailable'
-                ? l.unavailable
-                : l.checking}
-          </span>
-        </div>
+      <PopoverContent
+        side="bottom"
+        align="end"
+        sideOffset={4}
+        collisionPadding={8}
+        aria-labelledby={headingId}
+        className="max-h-[var(--radix-popover-content-available-height)] w-96 max-w-[calc(100vw-1rem)] overflow-y-auto p-0"
+      >
+        <h2 ref={headingRef} id={headingId} tabIndex={-1} className="border-b px-3 py-2 text-xs font-medium">
+          {l.backgroundTasks}
+        </h2>
         <div className="max-h-64 overflow-y-auto">
-          {!activeCount && !attentionCount && !completedDeliveries.length && (
+          {!hasActiveTasks && !attentionCount && !completedDeliveries.length && (
             <div className="px-3 py-3 text-xs text-muted-foreground">{l.idle}</div>
           )}
-          {[...activeDeliveries, ...failedDeliveries, ...completedDeliveries].map((entry) => (
-            <ArticleDeliveryTaskItem key={entry.job.id} entry={entry} />
-          ))}
-          {transcriptTasks.map((task) => (
-            <VideoDocumentTranscriptTaskCenterItem
-              key={task.operationId}
-              task={task}
-              nowMs={nowMs}
-              busy={Boolean(busyRunId)}
-              onCancel={() => void cancelTranscriptTask(task.operationId)}
-            />
-          ))}
-          {[...activeDirectorTasks, ...directorIssues].map((task) => (
-            <DirectionExperimentTaskCenterItem
-              key={task.id}
-              locale={locale}
-              task={task}
-              generationTasks={tasks.filter((run) => task.runIds.includes(run.runId))}
-            />
-          ))}
-          {visibleGenerationTaskGroups.map((group) => {
-            const task = leadGenerationTask(group);
-            const isBatch = Boolean(group.batchId);
-            const title = titleBySeriesId.get(task.seriesId) ?? task.runId.slice(-6);
-            const modelSummary = group.modelKeys.map((key) => modelNameByKey.get(key) ?? key).join(' + ');
-            return (
-              <div
-                key={group.key}
-                data-generation-batch={group.batchId ?? undefined}
-                className="flex h-10 items-center gap-2 border-b px-3 text-xs last:border-b-0"
-              >
-                <span className="min-w-0 flex-1 truncate" title={modelSummary ? `${title} · ${modelSummary}` : title}>
-                  {title}
-                </span>
-                <span className="shrink-0 text-muted-foreground">
-                  {generationPhaseLabel(task, l)}
-                  {isBatch
-                    ? ` · ${taskLabels.batchModels(group.modelKeys.length)} · ${taskLabels.batchProgress(group.completedCount, group.totalCount)}`
-                    : ''}
-                  {generationElapsed(task, nowMs) ? ` · ${generationElapsed(task, nowMs)}` : ''}
-                </span>
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="icon-sm"
-                  className="size-7"
-                  disabled={Boolean(busyRunId) || group.tasks.every((item) => item.phase === 'CANCELLING')}
-                  title={isBatch ? taskLabels.cancelBatch : l.cancel}
-                  aria-label={isBatch ? taskLabels.cancelBatch : l.cancel}
-                  onClick={() =>
-                    void cancelTasks(
-                      group.key,
-                      group.tasks.map((item) => item.runId),
-                    )
-                  }
-                >
-                  <XIcon className="size-3.5" />
-                </Button>
-              </div>
-            );
-          })}
-          {visibleAssistantRuns.map((run) => (
-            <div key={run.id} className="flex h-10 items-center gap-2 border-b px-3 text-xs last:border-b-0">
-              <span className="min-w-0 flex-1 truncate">
-                {run.mode === 'directions' ? l.directionsTask : l.optimizeTask}
-              </span>
-              <span className="shrink-0 text-muted-foreground">{l.generating}</span>
-            </div>
-          ))}
-          {otherCodexTaskCount > 0 && (
-            <div className="flex h-10 items-center gap-2 border-b px-3 text-xs last:border-b-0">
-              <span className="min-w-0 flex-1 truncate">{l.codexTasks(otherCodexTaskCount)}</span>
-              <span className="shrink-0 text-muted-foreground">{l.generating}</span>
-            </div>
-          )}
-          {standaloneIssues.map(({ run, title }) => (
-            <div key={run.id} className="flex min-h-10 items-center gap-2 border-b px-3 py-1.5 text-xs last:border-b-0">
-              <span className="min-w-0 flex-1">
-                <span className="block truncate">{title}</span>
-                <GenerationErrorNotice
-                  run={run}
-                  showIcon={false}
-                  className="flex max-w-full"
-                  summaryClassName="block truncate"
+          {hasActiveTasks && (
+            <section aria-labelledby={`${headingId}-active`} className="border-b last:border-b-0">
+              <h3 id={`${headingId}-active`} className="px-3 pt-2 pb-1 text-2xs font-medium text-muted-foreground">
+                {l.activeTasks}
+              </h3>
+              {activeDeliveries.map((entry) => (
+                <ArticleDeliveryTaskItem
+                  key={entry.job.id}
+                  entry={entry}
+                  onNavigate={() => setOpen(false)}
+                  onDismiss={() => headingRef.current?.focus()}
                 />
-              </span>
-              <GenerationIssueActions
-                status={run.status}
-                busy={Boolean(busyRunId) || backgroundIssues.isPending(run.backgroundIssue)}
-                reEditLabel={l.reEdit}
-                retryLabel={l.retry}
-                regenerateLabel={l.regenerate}
-                dismissLabel={taskLabels.dismiss}
-                onReEdit={() => reEdit(run.id)}
-                onRetry={() => void retry(run.id)}
-                onDismiss={() => void backgroundIssues.acknowledge(run.backgroundIssue)}
+              ))}
+              {transcriptTasks.map((task) => (
+                <VideoDocumentTranscriptTaskCenterItem
+                  key={task.operationId}
+                  task={task}
+                  nowMs={nowMs}
+                  busy={Boolean(busyRunId)}
+                  onCancel={() => void cancelTranscriptTask(task.operationId)}
+                />
+              ))}
+              {activeDirectorTasks.map((task) => (
+                <DirectionExperimentTaskCenterItem
+                  key={task.id}
+                  locale={locale}
+                  task={task}
+                  generationTasks={tasks.filter((run) => task.runIds.includes(run.runId))}
+                />
+              ))}
+              <GenerationTaskRows
+                groups={visibleGenerationTaskGroups}
+                titleBySeriesId={titleBySeriesId}
+                modelNameByKey={modelNameByKey}
+                nowMs={nowMs}
+                busy={Boolean(busyRunId)}
+                onCancel={cancelTasks}
               />
-            </div>
-          ))}
+              {visibleAssistantRuns.map((run) => (
+                <div key={run.id} className="flex h-10 items-center gap-2 border-b px-3 text-xs last:border-b-0">
+                  <span className="min-w-0 flex-1 truncate">
+                    {run.mode === 'directions' ? l.directionsTask : l.optimizeTask}
+                  </span>
+                  <span className="shrink-0 text-muted-foreground">{l.generating}</span>
+                </div>
+              ))}
+              {otherCodexTaskCount > 0 && (
+                <div className="flex h-10 items-center gap-2 border-b px-3 text-xs last:border-b-0">
+                  <span className="min-w-0 flex-1 truncate">{l.codexTasks(otherCodexTaskCount)}</span>
+                  <span className="shrink-0 text-muted-foreground">{l.generating}</span>
+                </div>
+              )}
+            </section>
+          )}
+          {attentionCount > 0 && (
+            <section aria-labelledby={`${headingId}-attention`} className="border-b last:border-b-0">
+              <h3 id={`${headingId}-attention`} className="px-3 pt-2 pb-1 text-2xs font-medium text-muted-foreground">
+                {l.needsAttention}
+              </h3>
+              {failedDeliveries.map((entry) => (
+                <ArticleDeliveryTaskItem
+                  key={entry.job.id}
+                  entry={entry}
+                  onNavigate={() => setOpen(false)}
+                  onDismiss={() => headingRef.current?.focus()}
+                />
+              ))}
+              {directorIssues.map((task) => (
+                <DirectionExperimentTaskCenterItem
+                  key={task.id}
+                  locale={locale}
+                  task={task}
+                  generationTasks={tasks.filter((run) => task.runIds.includes(run.runId))}
+                />
+              ))}
+              <GenerationIssueRows
+                issues={standaloneIssues}
+                busy={Boolean(busyRunId)}
+                onReEdit={reEdit}
+                onRetry={retry}
+              />
+            </section>
+          )}
+          {completedDeliveries.length > 0 && (
+            <section aria-labelledby={`${headingId}-uploads`} className="border-b last:border-b-0">
+              <h3 id={`${headingId}-uploads`} className="px-3 pt-2 pb-1 text-2xs font-medium text-muted-foreground">
+                {l.recentUploads}
+              </h3>
+              {completedDeliveries.map((entry) => (
+                <ArticleDeliveryTaskItem
+                  key={entry.job.id}
+                  entry={entry}
+                  onNavigate={() => setOpen(false)}
+                  onDismiss={() => headingRef.current?.focus()}
+                />
+              ))}
+            </section>
+          )}
         </div>
+        <BackgroundServiceStatus reconnecting={reconnecting} codexHealth={codexHealth} />
       </PopoverContent>
     </Popover>
   );

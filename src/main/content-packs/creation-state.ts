@@ -93,8 +93,10 @@ export function contentPackCreationStates(db: Database.Database, packId: string,
     }
     const groups = db
       .prepare(
-        `SELECT item.id, item.deleted_at, item.archived_at, form.entity_id AS primary_work_id
+        `SELECT item.id, item.deleted_at, item.archived_at, form.entity_id AS primary_work_id,
+          edge.parent_creation_item_id
       FROM creation_items item LEFT JOIN creation_forms form ON form.id = item.primary_form_id AND form.deleted_at IS NULL
+      LEFT JOIN creation_item_parents edge ON edge.creation_item_id = item.id
       JOIN json_each(?) selected ON selected.value = item.id`,
       )
       .all(JSON.stringify(layout.groups.map((group) => group.id))) as JsonMap[];
@@ -115,7 +117,11 @@ export function contentPackCreationStates(db: Database.Database, packId: string,
         JSON.stringify(layout.groups.map((group) => group.id)) &&
       layout.groups.every((group) =>
         groups.some(
-          (row) => text(row.id) === group.id && !row.archived_at && text(row.primary_work_id) === group.primaryWorkId,
+          (row) =>
+            text(row.id) === group.id &&
+            !row.archived_at &&
+            !row.parent_creation_item_id &&
+            text(row.primary_work_id) === group.primaryWorkId,
         ),
       );
     states.set(item.itemKey, unchanged ? 'FOLLOW_PACK' : 'LOCAL_FORK');

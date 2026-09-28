@@ -12,5 +12,6 @@ export function codexGeneratedThumbnailUrl(image: { id: string; modifiedAt: stri
 function thumbnailUrl(host: 'asset-thumbnail' | 'codex-generated-thumbnail', id: string, size: number) {
   // Separate these requests from legacy URLs that may have cached an animated
   // original for a year after a thumbnail generation failure.
-  return `aiy-media://${host}/${encodeURIComponent(id)}?size=${size}&representation=still`;
+  // The vector policy also bypasses browser-cached PNGs; existing disk PNGs remain reusable.
+  return `aiy-media://${host}/${encodeURIComponent(id)}?size=${size}&representation=still&vector=1`;
 }

@@ -42,6 +42,7 @@ export function ContentReferenceUses({
           setUses((previous) => ({
             ...result,
             items: offset ? [...(previous?.items ?? []), ...result.items] : result.items,
+            partial: result.partial || (offset > 0 && Boolean(previous?.partial)),
           }));
       } catch (reason) {
         if (request === epoch.current) setError(referenceFailure(reason, copy));
@@ -56,6 +57,16 @@ export function ContentReferenceUses({
     void load(0);
     return cancelPending;
   }, [load, cancelPending]);
+  useEffect(
+    () =>
+      window.desktopApi?.onLocalSpaceTransition?.(() => {
+        cancelPending();
+        setUses(null);
+        setBusy(false);
+        setError(copy.followUnavailable);
+      }),
+    [cancelPending, copy.followUnavailable],
+  );
   const follow = async (use: z.infer<typeof referenceUsesSchema>['items'][number]) => {
     const request = ++epoch.current;
     setBusy(true);
@@ -80,20 +91,42 @@ export function ContentReferenceUses({
         </p>
       )}
       {uses?.items.map((use, index) => (
-        <Button
-          key={`${use.source.id}:${use.blockId ?? use.referenceId}:${index}`}
-          variant="ghost"
-          size="sm"
-          disabled={busy}
-          className="my-1 h-auto w-full justify-start whitespace-normal text-left text-xs"
-          aria-label={`${copy.useLocation} · ${use.title || use.source.id}`}
-          onClick={() => void follow(use)}
-        >
-          {use.title || use.source.id} · {use.blockId || copy.range}
-        </Button>
+        <div key={`${use.source.id}:${use.blockId ?? use.referenceId}:${index}`} className="my-1">
+          <Button
+            variant="ghost"
+            size="sm"
+            disabled={busy}
+            className="my-1 h-auto w-full justify-start whitespace-normal text-left text-xs"
+            aria-label={`${copy.useLocation} · ${use.title || use.source.id}`}
+            onClick={() => void follow(use)}
+          >
+            {use.title || use.source.id} · {use.relation === 'CONTAINED' ? copy.containedUse : copy.directUse}
+            {' · '}
+            {use.mode === 'FOLLOW' ? copy.following : copy.fixedReference}
+          </Button>
+          {use.relation === 'CONTAINED' && (
+            <details className="px-3 text-xs text-muted-foreground">
+              <summary className="cursor-pointer">{copy.viaScope}</summary>
+              <p className="break-words">
+                {!use.via.blockId
+                  ? copy.whole
+                  : `${use.via.scope === 'SUBTREE' ? copy.subtree : use.via.scope === 'SECTION' || use.via.section ? copy.section : copy.self} · ${use.via.blockId}`}
+                {' → '}
+                {use.path.map((entry) => entry.title || entry.blockId).join(' → ')}
+              </p>
+            </details>
+          )}
+        </div>
       ))}
+      {uses?.partial && (
+        <p role="status" className="text-xs text-muted-foreground">
+          {copy.usesPartial}
+        </p>
+      )}
       {uses && !uses.items.length && (
-        <p className="text-xs text-muted-foreground">{uses.nextOffset === null ? copy.noUsesFinal : copy.noUses}</p>
+        <p className="text-xs text-muted-foreground">
+          {uses.nextOffset === null && !uses.partial ? copy.noUsesFinal : copy.noUses}
+        </p>
       )}
       {uses?.nextOffset !== null && uses && (
         <Button size="sm" variant="ghost" disabled={busy} onClick={() => void load(uses.nextOffset!)}>

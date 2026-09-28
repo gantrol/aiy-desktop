@@ -2,6 +2,7 @@ import { useId } from 'react';
 import { ArrowUpRight, Folder, Settings2 } from 'lucide-react';
 import { Button } from '@/renderer/components/ui/button';
 import { Label } from '@/renderer/components/ui/label';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/renderer/components/ui/select';
 import { Popover, PopoverContent, PopoverTrigger } from '@/renderer/components/ui/popover';
 import { useI18n } from '@/renderer/i18n/useI18n';
 import { CodexProjectPicker } from '@/renderer/features/extensions/codex-content/CodexProjectPicker';
@@ -69,6 +70,29 @@ export function CodexTaskSettings({
               onSelect={(project) => onConfigure({ project })}
             />
           </div>
+          {project && project.workspace && (
+            <div className="grid min-w-0 gap-1.5">
+              <Label htmlFor={`${projectId}-workspace`} className="text-2xs text-muted-foreground">
+                {copy.workspace}
+              </Label>
+              <Select
+                value={project.workspace}
+                disabled={disabled || !project.rootPaths?.length}
+                onValueChange={(workspace) => void onConfigure({ project: { ...project, workspace } }).catch(onError)}
+              >
+                <SelectTrigger id={`${projectId}-workspace`} title={project.workspace} className="min-w-0 text-xs">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {(project.rootPaths?.length ? project.rootPaths : [project.workspace]).map((root) => (
+                    <SelectItem key={root} value={root}>
+                      {root}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          )}
           {open && (
             <CodexExecutionPicker
               value={state?.execution ?? { model: null, effort: null }}

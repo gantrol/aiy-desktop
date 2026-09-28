@@ -4,6 +4,7 @@ import type { ImageGenerationRouteDto, GenerationTargetInput, Locale } from '@/s
 import { useI18n } from '@/renderer/i18n/useI18n';
 import { cn } from '@/renderer/lib/utils';
 import { Button } from '@/renderer/components/ui/button';
+import { shortcutTokens } from '@/renderer/commands/app-shortcuts';
 import { GenerationBatchControl } from '@/renderer/components/creator/GenerationBatchControl';
 import { generationBatchPlan } from '@/renderer/components/creator/generationBatchPlan';
 import { GenerationQualitySelector } from '@/renderer/components/creator/GenerationQualitySelector';
@@ -70,6 +71,11 @@ export function GenerationLauncher(props: Props) {
   } = props;
   const routes = props.routes ?? props.models ?? [];
   const labels = useI18n().messages.creator.generationTargets;
+  const platform = window.desktopApi.appPlatform;
+  const generationShortcut = shortcutTokens(
+    { key: 'Enter', meta: platform === 'darwin', ctrl: platform !== 'darwin' },
+    platform,
+  ).join('+');
   const [settingsOpen, setSettingsOpen] = useState(false);
   const settingsId = useId();
   const blockedMessageId = useId();
@@ -121,7 +127,7 @@ export function GenerationLauncher(props: Props) {
         'min-w-24',
       )}
       disabled={!canGenerate}
-      title={blockMessage || labels.shortcut}
+      title={blockMessage || generationShortcut}
       aria-busy={starting}
       aria-keyshortcuts="Control+Enter Meta+Enter"
       aria-describedby={blockMessage ? blockedMessageId : undefined}

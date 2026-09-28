@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { contentAuthorSchema } from '@/shared/contracts/content-provenance';
 import { packSyncSummarySchema } from '@/shared/pack-sync';
 
 export const calendarDateSchema = z
@@ -34,6 +35,10 @@ const instant = z
   }, 'Unsupported calendar year')
   .transform((value) => new Date(value).toISOString());
 const id = z.string().min(1).max(200);
+const writerFilter = z
+  .string()
+  .regex(/^(ALL|AI|UNKNOWN|AI:[a-z][a-z0-9._-]{0,79})$/)
+  .optional();
 export const calendarCategorySchema = z.enum([
   'content',
   'organization',
@@ -73,6 +78,7 @@ export const calendarRangeSchema = z
   );
 export const calendarQuerySchema = z
   .object({
+    writer: writerFilter,
     startDate: calendarDateSchema,
     endDate: calendarDateSchema,
     timeZone: calendarTimeZoneSchema,
@@ -105,6 +111,7 @@ export const calendarActivityCorrectionSchema = z
   .strict();
 export const calendarItemSchema = z
   .object({
+    writers: z.array(contentAuthorSchema).optional(),
     id,
     occurrenceId: z.string().min(1).max(500),
     displayWhen: calendarTimeSchema,
@@ -177,6 +184,7 @@ export const calendarQueryResultSchema = z
   .strict();
 export const calendarSummaryQuerySchema = z
   .object({
+    writer: writerFilter,
     startDate: calendarDateSchema,
     endDate: calendarDateSchema,
     timeZone: calendarTimeZoneSchema,
@@ -240,6 +248,7 @@ export const calendarHistoryResultSchema = z
   .strict();
 export const calendarPreferencesSchema = z
   .object({
+    writer: writerFilter,
     timeZone: calendarTimeZoneSchema,
     categories: z.array(calendarCategorySchema).max(7),
     kinds: z.array(z.string().max(20)).max(3).optional(),

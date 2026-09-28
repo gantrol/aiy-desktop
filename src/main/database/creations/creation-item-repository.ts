@@ -26,6 +26,11 @@ import {
 } from '@/shared/contracts/creation-library';
 import { creationItemIncludesSeries } from '@/main/database/creations/creation-output-presentation-sql';
 import { creationImageSourceFormsSql } from '@/main/database/creations/creation-image-source-sql';
+import {
+  assertCreationParent,
+  creationBranchIds,
+  moveCreationBranchAlbums,
+} from '@/main/database/creations/creation-hierarchy';
 
 const primaryRoles = new Set<CreationFormRole>([
   'ANIMATION',
@@ -433,16 +438,41 @@ export class CreationItemRepository {
     const parsed = creationItemMoveInputSchema.parse(input);
     return this.db
       .transaction(() => {
-        this.mutableItemRow(parsed.creationItemId);
+        const current = this.mutableItemRow(parsed.creationItemId);
         this.assertAlbumAvailable(parsed.albumId);
+        const previousParent = current.parent_creation_item_id == null ? null : text(current.parent_creation_item_id);
+        if (parsed.expectedParentCreationItemId !== undefined && previousParent !== parsed.expectedParentCreationItemId)
+          throw new Error('CREATION_PARENT_CHANGED');
+        const parentId = parsed.parentCreationItemId ?? null;
+        const ids = creationBranchIds(this.storage, parsed.creationItemId);
+        if (parentId) {
+          assertCreationParent(this.storage, parsed.creationItemId, parentId);
+          const parent = this.mutableItemRow(parentId);
+          const parentAlbumId = parent.owner_album_id == null ? null : text(parent.owner_album_id);
+          if (parentAlbumId !== parsed.albumId) throw new Error('CREATION_PARENT_CHANGED');
+        }
         const timestamp = now();
-        const changed = this.syncAlbumMembership(parsed.creationItemId, parsed.albumId, timestamp);
-        if (changed) {
-          this.syncFormEntityAlbums(parsed.creationItemId, parsed.albumId, timestamp);
+        const changed = moveCreationBranchAlbums(this.storage, ids, parsed.albumId, timestamp);
+        if (parentId !== previousParent) {
+          this.db.prepare('DELETE FROM creation_item_parents WHERE creation_item_id = ?').run(parsed.creationItemId);
+          if (parentId)
+            this.db
+              .prepare(
+                `INSERT INTO creation_item_parents
+            (creation_item_id, parent_creation_item_id, sort_order, updated_at)
+            SELECT ?, ?, COALESCE(MAX(sort_order), -1) + 1, ? FROM creation_item_parents WHERE parent_creation_item_id = ?`,
+              )
+              .run(parsed.creationItemId, parentId, timestamp, parentId);
+        }
+        if (changed || parentId !== previousParent) {
           this.db
             .prepare('UPDATE creation_items SET updated_at = ? WHERE id = ?')
             .run(timestamp, parsed.creationItemId);
-          this.storage.recordChange('CREATION_ITEM', parsed.creationItemId, 'MOVE', { albumId: parsed.albumId });
+          this.storage.recordChange('CREATION_ITEM', parsed.creationItemId, 'MOVE', {
+            albumId: parsed.albumId,
+            parentCreationItemId: parentId,
+            previousParentCreationItemId: previousParent,
+          });
         }
         return this.get(parsed.creationItemId);
       })
@@ -452,9 +482,10 @@ export class CreationItemRepository {
   private itemRows(): CreationItemRow[] {
     return this.db
       .prepare(
-        `SELECT item.*, membership.album_id AS owner_album_id,
+        `SELECT item.*, edge.parent_creation_item_id, edge.sort_order AS child_sort_order, membership.album_id AS owner_album_id,
           root_order.sort_order AS creator_root_sort_order
         FROM creation_items item
+        LEFT JOIN creation_item_parents edge ON edge.creation_item_id = item.id
         LEFT JOIN album_members membership
           ON membership.target_type = 'CREATION_ITEM'
           AND membership.target_id = item.id AND membership.deleted_at IS NULL
@@ -470,9 +501,10 @@ export class CreationItemRepository {
   private itemRow(id: string): CreationItemRow | null {
     const row = this.db
       .prepare(
-        `SELECT item.*, membership.album_id AS owner_album_id,
+        `SELECT item.*, edge.parent_creation_item_id, edge.sort_order AS child_sort_order, membership.album_id AS owner_album_id,
           root_order.sort_order AS creator_root_sort_order
         FROM creation_items item
+        LEFT JOIN creation_item_parents edge ON edge.creation_item_id = item.id
         LEFT JOIN album_members membership
           ON membership.target_type = 'CREATION_ITEM'
           AND membership.target_id = item.id AND membership.deleted_at IS NULL
@@ -519,6 +551,8 @@ export class CreationItemRepository {
       return creationItemSchema.parse({
         id,
         albumId: row.owner_album_id == null ? null : row.owner_album_id,
+        parentCreationItemId: row.parent_creation_item_id ?? null,
+        childSortOrder: row.child_sort_order == null ? null : Number(row.child_sort_order),
         phase: row.phase,
         lifecycle: row.archived_at == null ? 'ACTIVE' : 'ARCHIVED',
         pinned: Boolean(row.pinned),
@@ -695,43 +729,6 @@ export class CreationItemRepository {
     }
     this.touchAlbum(albumId, timestamp);
     return true;
-  }
-
-  private syncFormEntityAlbums(creationItemId: string, albumId: string | null, timestamp: string) {
-    const forms = this.db
-      .prepare(
-        `SELECT entity_type, entity_id FROM creation_forms
-        WHERE creation_item_id = ? AND deleted_at IS NULL
-          AND entity_type IN ('INSPIRATION_STASH', 'SOCIAL_POST', 'ARTICLE', 'EVALUATION_SUITE')`,
-      )
-      .all(creationItemId) as JsonMap[];
-    const locations = {
-      INSPIRATION_STASH: { table: 'inspiration_stashes', changeType: 'INSPIRATION_STASH', affectsFileView: true },
-      SOCIAL_POST: { table: 'social_post_drafts', changeType: 'SOCIAL_POST_DRAFT', affectsFileView: false },
-      ARTICLE: { table: 'articles', changeType: 'ARTICLE', affectsFileView: false },
-      EVALUATION_SUITE: { table: 'evaluation_suites', changeType: 'EVALUATION_SUITE', affectsFileView: false },
-    } as const;
-
-    for (const form of forms) {
-      const entityType = text(form.entity_type) as keyof typeof locations;
-      const entityId = text(form.entity_id);
-      const location = locations[entityType];
-      const row = this.db.prepare(`SELECT album_id FROM ${location.table} WHERE id = ?`).get(entityId) as
-        JsonMap | undefined;
-      if (!row) throw new Error('Creation form entity not found while moving its item');
-      const currentAlbumId = row.album_id == null ? null : text(row.album_id);
-      if (currentAlbumId === albumId) continue;
-      this.db
-        .prepare(`UPDATE ${location.table} SET album_id = ?, updated_at = ? WHERE id = ?`)
-        .run(albumId, timestamp, entityId);
-      this.storage.recordChange(
-        location.changeType,
-        entityId,
-        'MOVE',
-        { albumId, creationItemId },
-        { affectsFileView: location.affectsFileView },
-      );
-    }
   }
 
   private touchAlbum(albumId: string, timestamp: string) {

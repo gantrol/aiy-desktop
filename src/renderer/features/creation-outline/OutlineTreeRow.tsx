@@ -4,20 +4,23 @@ import {
   FolderIcon,
   ImageIcon,
   LayersIcon,
-  Maximize2Icon,
   ArrowUpRightIcon,
+  LinkIcon,
 } from 'lucide-react';
 import type { DragEvent, MouseEvent, KeyboardEvent, Ref } from 'react';
 import { Button } from '@/renderer/components/ui/button';
-import { TreeDragHandle } from '@/renderer/components/albums/TreeDragHandle';
+import { itemDragStart } from '@/renderer/components/albums/itemDrag';
 import { useI18n } from '@/renderer/i18n/useI18n';
 import { cn } from '@/renderer/lib/utils';
 import type { OutlineRow } from '@/renderer/features/creation-outline/outline-tree';
 import { OutlineNodePreview } from '@/renderer/features/creation-outline/OutlineNodePreview';
+import { OutlineNodeMenu } from '@/renderer/features/creation-outline/OutlineNodeMenu';
+import type { OutlineNodeActions } from '@/renderer/features/creation-outline/useOutlineNodeActions';
 
 interface Props {
   row: OutlineRow;
   active: boolean;
+  current: boolean;
   path: string;
   expanded: boolean;
   collapsible: boolean;
@@ -25,12 +28,16 @@ interface Props {
   focused: boolean;
   drop: boolean;
   busy: boolean;
+  organization: { spaceId: string; refresh(): Promise<void>; onError(message: string): void };
+  nodeActions: OutlineNodeActions;
   elementRef: Ref<HTMLDivElement>;
   onChoose(event: MouseEvent<HTMLDivElement>): void;
   onKeyDown(event: KeyboardEvent<HTMLDivElement>): void;
   onToggle(wholeBranch: boolean): void;
   onFocus(): void;
   onOpen(): void;
+  onOpenSource?(): void;
+  onMove(): void;
   onDragStart(event: DragEvent<HTMLElement>): void;
   onDragEnd(): void;
   onDragOver(event: DragEvent<HTMLDivElement>): void;
@@ -39,6 +46,7 @@ interface Props {
 export function OutlineTreeRow({
   row,
   active,
+  current,
   path,
   expanded,
   collapsible,
@@ -46,6 +54,8 @@ export function OutlineTreeRow({
   focused,
   drop,
   busy,
+  organization,
+  nodeActions,
   elementRef,
   ...actions
 }: Props) {
@@ -58,7 +68,11 @@ export function OutlineTreeRow({
         ? LayersIcon
         : node.kind === 'series'
           ? ImageIcon
-          : FileTextIcon;
+          : node.content?.kind === 'image'
+            ? ImageIcon
+            : node.content?.kind === 'reference'
+              ? LinkIcon
+              : FileTextIcon;
   const preview = (
     <OutlineNodePreview
       key={node.previewAssetId ?? node.kind}
@@ -74,9 +88,14 @@ export function OutlineTreeRow({
       aria-level={depth + 1}
       aria-label={node.title + ' · ' + node.label}
       aria-selected={selected}
+      aria-current={current ? 'page' : undefined}
       aria-expanded={node.children.length ? expanded : undefined}
       tabIndex={focused ? 0 : -1}
       data-outline-key={node.key}
+      data-outline-current={current ? 'true' : undefined}
+      draggable={!busy && Boolean(node.target || node.form || node.articleId || node.content)}
+      onDragStart={itemDragStart(actions.onDragStart)}
+      onDragEnd={actions.onDragEnd}
       onClick={(event) => {
         if (!busy) actions.onChoose(event);
       }}
@@ -85,13 +104,14 @@ export function OutlineTreeRow({
         if (!busy) actions.onOpen();
       }}
       onKeyDown={(event) => {
-        if (!busy) actions.onKeyDown(event);
+        if (!busy && event.target === event.currentTarget) actions.onKeyDown(event);
       }}
       onDragOver={actions.onDragOver}
       onDrop={actions.onDrop}
       className={cn(
-        'group flex h-10 min-w-0 items-center gap-1 pr-2 text-sm outline-none hover:bg-hover focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-ring',
-        selected && 'bg-selected text-selected-foreground',
+        'group flex h-10 min-w-0 items-center gap-1 pr-2 text-sm outline-none hover:bg-hover focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring',
+        selected && 'bg-selected text-selected-foreground hover:bg-selected',
+        current && 'font-semibold text-selected-foreground ring-1 ring-inset ring-selected-foreground',
         drop && 'ring-2 ring-inset ring-ring',
       )}
       style={{ paddingLeft: 4 + Math.min(depth, 12) * 18 }}
@@ -99,6 +119,7 @@ export function OutlineTreeRow({
     >
       {node.children.length ? (
         <Button
+          data-item-drag-ignore
           variant="ghost"
           size="icon-sm"
           className="h-9 w-14 shrink-0 gap-1.5"
@@ -119,43 +140,31 @@ export function OutlineTreeRow({
       )}
       <span className="min-w-0 flex-1 truncate">{node.title}</span>
       <div
+        data-item-drag-ignore
         className="flex shrink-0 items-center opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 [@media(hover:none)]:opacity-100"
         onClick={(event) => event.stopPropagation()}
         onDoubleClick={(event) => event.stopPropagation()}
       >
-        {node.children.length > 0 && (
-          <Button
-            variant="ghost"
-            size="icon-sm"
-            disabled={busy}
-            aria-label={labels.focus}
-            title={labels.focus}
-            onClick={actions.onFocus}
-          >
-            <Maximize2Icon className="size-3.5" />
-          </Button>
-        )}
         <Button
           variant="ghost"
           size="icon-sm"
           disabled={busy}
-          aria-label={labels.open}
+          aria-label={node.contentAction ? node.title : node.content ? labels.editContent : labels.open}
           title={node.label}
           onClick={actions.onOpen}
         >
           <ArrowUpRightIcon className="size-3.5" />
         </Button>
-        {node.target &&
-          (busy ? (
-            <span className="size-6" />
-          ) : (
-            <TreeDragHandle
-              label={labels.move}
-              className="bg-transparent shadow-none"
-              onDragStart={actions.onDragStart}
-              onDragEnd={actions.onDragEnd}
-            />
-          ))}
+        <OutlineNodeMenu
+          node={node}
+          busy={busy}
+          actions={nodeActions}
+          organization={organization}
+          onOpen={actions.onOpen}
+          onFocus={actions.onFocus}
+          onMove={actions.onMove}
+          onOpenSource={actions.onOpenSource}
+        />
       </div>
     </div>
   );

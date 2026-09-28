@@ -10,11 +10,23 @@ import {
   PencilIcon,
   VideoIcon,
 } from 'lucide-react';
-import { useMemo, useState, type DragEvent as ReactDragEvent } from 'react';
+import { useMemo, useRef, useState, type DragEvent as ReactDragEvent } from 'react';
 import type { VideoDocumentNavigationEntry } from '@/shared/contracts';
 import type { AlbumMoveTarget } from '@/renderer/components/albums/AlbumMoveDialog';
 import { AlbumTreePreview } from '@/renderer/components/albums/AlbumTreePreview';
-import { TreeDragHandle } from '@/renderer/components/albums/TreeDragHandle';
+import {
+  itemDragStart,
+  itemDragScopeProps,
+  acceptsItemTransfer,
+  itemDragIntent,
+} from '@/renderer/components/albums/itemDrag';
+import { writeReferenceDrag } from '@/renderer/lib/itemReferenceDrag';
+import {
+  readCreationTreeDrag,
+  writeAlbumDrag,
+  writeCreationItemDrag,
+  endCreationTreeDrag,
+} from '@/renderer/components/albums/albumDrag';
 import { TreeBranchTransitRail } from '@/renderer/components/albums/TreeDisclosureRail';
 import {
   getTreeBranchItemTopology,
@@ -53,6 +65,14 @@ interface DragState {
   parentAlbumId: string | null;
 }
 
+function writeNavigationDrag(dataTransfer: DataTransfer, entry: VideoDocumentNavigationEntry) {
+  if (entry.kind === 'ALBUM') writeAlbumDrag(dataTransfer, entry.albumId);
+  else {
+    writeCreationItemDrag(dataTransfer, entry.creationItemId);
+    writeReferenceDrag(dataTransfer, [{ source: { kind: 'VIDEO_DOCUMENT', id: entry.documentId } }]);
+  }
+}
+
 interface RowProps {
   row: VideoDocumentVisibleEntry;
   branchTopology?: TreeBranchItemTopology;
@@ -69,6 +89,7 @@ interface RowProps {
   onOpenDocument(): void;
   onDragStart(): void;
   onDragEnd(): void;
+  onDragOver(event: ReactDragEvent<HTMLDivElement>): void;
   onDrop(event: ReactDragEvent<HTMLDivElement>): void;
   onLoadMore(): void;
 }
@@ -89,6 +110,7 @@ function NavigationEntryRow({
   onOpenDocument,
   onDragStart,
   onDragEnd,
+  onDragOver,
   onDrop,
   onLoadMore,
 }: RowProps) {
@@ -143,10 +165,14 @@ function NavigationEntryRow({
               )}
               data-album-id={entry.kind === 'ALBUM' ? entry.albumId : undefined}
               data-tree-node-id={entry.kind === 'ALBUM' ? entry.albumId : undefined}
-              onDragOver={(event) => {
-                event.preventDefault();
-                event.dataTransfer.dropEffect = 'move';
-              }}
+              {...itemDragScopeProps}
+              draggable
+              onDragStart={itemDragStart((event) => {
+                writeNavigationDrag(event.dataTransfer, entry);
+                onDragStart();
+              })}
+              onDragEnd={onDragEnd}
+              onDragOver={onDragOver}
               onDrop={onDrop}
             >
               {entry.kind === 'ALBUM' ? (
@@ -213,16 +239,10 @@ function NavigationEntryRow({
                   </span>
                 </button>
               )}
-              <div className="pointer-events-none absolute inset-y-0 right-1 z-30 flex items-center gap-0.5 opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100">
-                <TreeDragHandle
-                  label={labels.sidebar.move}
-                  className="rounded-md bg-overlay/95 shadow-overlay"
-                  onDragStart={(event) => {
-                    event.dataTransfer.effectAllowed = 'move';
-                    onDragStart();
-                  }}
-                  onDragEnd={onDragEnd}
-                />
+              <div
+                data-item-drag-ignore
+                className="pointer-events-none absolute inset-y-0 right-1 z-30 flex items-center gap-0.5 opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100"
+              >
                 <ActionMenuButton
                   actions={actions}
                   label={labels.sidebar.moreActions(title)}
@@ -259,6 +279,7 @@ function CompactNavigationEntryRow({
   onOpenDocument,
   onDragStart,
   onDragEnd,
+  onDragOver,
   onDrop,
   onLoadMore,
 }: RowProps) {
@@ -271,16 +292,14 @@ function CompactNavigationEntryRow({
       <ContextMenuTrigger asChild>
         <div
           className={cn('relative grid w-full justify-items-center transition-opacity', dragging && 'opacity-45')}
+          {...itemDragScopeProps}
           draggable
-          onDragStart={(event) => {
-            event.dataTransfer.effectAllowed = 'move';
+          onDragStart={itemDragStart((event) => {
+            writeNavigationDrag(event.dataTransfer, entry);
             onDragStart();
-          }}
+          })}
           onDragEnd={onDragEnd}
-          onDragOver={(event) => {
-            event.preventDefault();
-            event.dataTransfer.dropEffect = 'move';
-          }}
+          onDragOver={onDragOver}
           onDrop={onDrop}
         >
           <button
@@ -308,6 +327,7 @@ function CompactNavigationEntryRow({
               type="button"
               variant="ghost"
               size="sm"
+              data-item-drag-ignore
               className="h-6 max-w-[4.5rem] px-1 text-[10px]"
               disabled={childPage.loadingMore}
               onClick={onLoadMore}
@@ -335,6 +355,21 @@ function moveBefore(entries: VideoDocumentNavigationEntry[], draggedId: string, 
   return withoutDragged;
 }
 
+function albumTargetContainsSource(
+  sourceAlbumId: string,
+  targetAlbumId: string | null,
+  parentByAlbumId: ReadonlyMap<string, string | null>,
+) {
+  let current = targetAlbumId;
+  const visited = new Set<string>();
+  while (current) {
+    if (current === sourceAlbumId || visited.has(current)) return true;
+    visited.add(current);
+    current = parentByAlbumId.get(current) ?? null;
+  }
+  return false;
+}
+
 interface Props {
   root: VideoDocumentNavigationPageState;
   children: Record<string, VideoDocumentNavigationPageState>;
@@ -348,8 +383,10 @@ interface Props {
   onSelectDocument(documentId: string, parentAlbumId: string | null): void;
   onLoadRootMore(): void;
   onLoadChildrenMore(albumId: string): void;
-  onMoveDocument(documentId: string, albumId: string | null): void | Promise<void>;
-  onMoveAlbum(albumId: string, parentAlbumId: string | null): void | Promise<void>;
+  onMoveDocument(documentId: string, albumId: string | null, copy?: boolean): void | Promise<void>;
+  onMoveCreationItem(creationItemId: string, albumId: string | null, copy?: boolean): void | Promise<void>;
+  onMoveAlbum(albumId: string, parentAlbumId: string | null, copy?: boolean): void | Promise<void>;
+  onOperationError(reason: unknown): void;
   onCreateAlbum(parentAlbumId: string | null): void;
   onRenameAlbum(albumId: string): void;
   onRenameDocument(documentId: string, title: string): void;
@@ -375,7 +412,9 @@ export function VideoDocumentNavigationTree({
   onLoadRootMore,
   onLoadChildrenMore,
   onMoveDocument,
+  onMoveCreationItem,
   onMoveAlbum,
+  onOperationError,
   onCreateAlbum,
   onRenameAlbum,
   onRenameDocument,
@@ -383,9 +422,18 @@ export function VideoDocumentNavigationTree({
   onReorder,
   compact = false,
 }: Props) {
-  const { messages } = useI18n();
-  const labels = messages.videoDocuments;
+  const labels = useI18n().messages.videoDocuments;
   const [drag, setDrag] = useState<DragState | null>(null);
+  const dropPending = useRef(false);
+  const parentByAlbumId = useMemo(
+    () =>
+      new Map(
+        visibleEntries.flatMap((row) =>
+          row.entry.kind === 'ALBUM' ? ([[row.entry.albumId, row.parentAlbumId]] as const) : [],
+        ),
+      ),
+    [visibleEntries],
+  );
   const placedEntries = useMemo(() => {
     const siblings = new Map<string | null, VideoDocumentVisibleEntry[]>();
     for (const row of visibleEntries) {
@@ -423,22 +471,60 @@ export function VideoDocumentNavigationTree({
     );
   }
 
-  async function dropOnRow(row: VideoDocumentVisibleEntry, event: ReactDragEvent<HTMLDivElement>, preferAlbum = false) {
-    event.preventDefault();
-    if (!drag) return;
+  function dropTargetForRow(
+    row: VideoDocumentVisibleEntry,
+    event: ReactDragEvent<HTMLDivElement>,
+    preferAlbum = false,
+  ) {
+    const source = readCreationTreeDrag(event.dataTransfer);
+    if (!source || dropPending.current || !acceptsItemTransfer(event)) return null;
+    const intent = itemDragIntent(event);
     const dropInside =
       row.entry.kind === 'ALBUM' &&
       (preferAlbum || event.clientX > event.currentTarget.getBoundingClientRect().left + 86);
-    if (dropInside && row.entry.kind === 'ALBUM') {
-      if (drag.entry.kind === 'ALBUM') await onMoveAlbum(drag.entry.albumId, row.entry.albumId);
-      else await onMoveDocument(drag.entry.documentId, row.entry.albumId);
-    } else if (drag.parentAlbumId === row.parentAlbumId) {
-      await submitOrder(
-        row.parentAlbumId,
-        moveBefore(siblingsFor(row.parentAlbumId), drag.entry.nodeId, row.entry.nodeId),
-      );
+    const parentAlbumId = dropInside && row.entry.kind === 'ALBUM' ? row.entry.albumId : row.parentAlbumId;
+    if (source.kind === 'ALBUM' && albumTargetContainsSource(source.id, parentAlbumId, parentByAlbumId)) return null;
+    if (dropInside || intent === 'COPY' || !drag || drag.parentAlbumId !== parentAlbumId)
+      return { kind: 'TRANSFER' as const, source, parentAlbumId, copy: intent === 'COPY' };
+    if (drag.entry.nodeId === row.entry.nodeId) return null;
+    return { kind: 'REORDER' as const, parentAlbumId };
+  }
+
+  function dragOverRow(row: VideoDocumentVisibleEntry, event: ReactDragEvent<HTMLDivElement>, preferAlbum = false) {
+    const target = dropTargetForRow(row, event, preferAlbum);
+    event.stopPropagation();
+    if (!target) {
+      event.dataTransfer.dropEffect = 'none';
+      return;
     }
-    setDrag(null);
+    event.preventDefault();
+    event.dataTransfer.dropEffect = target.kind === 'TRANSFER' && target.copy ? 'copy' : 'move';
+  }
+
+  async function dropOnRow(row: VideoDocumentVisibleEntry, event: ReactDragEvent<HTMLDivElement>, preferAlbum = false) {
+    event.preventDefault();
+    event.stopPropagation();
+    const target = dropTargetForRow(row, event, preferAlbum);
+    if (!target) return;
+    dropPending.current = true;
+    try {
+      if (target.kind === 'TRANSFER') {
+        if (target.source.kind === 'ALBUM') await onMoveAlbum(target.source.id, target.parentAlbumId, target.copy);
+        else if (drag?.entry.kind === 'DOCUMENT' && drag.entry.creationItemId === target.source.id)
+          await onMoveDocument(drag.entry.documentId, target.parentAlbumId, target.copy);
+        else await onMoveCreationItem(target.source.id, target.parentAlbumId, target.copy);
+      } else if (drag) {
+        await submitOrder(
+          target.parentAlbumId,
+          moveBefore(siblingsFor(target.parentAlbumId), drag.entry.nodeId, row.entry.nodeId),
+        );
+      }
+    } catch (reason) {
+      onOperationError(reason);
+    } finally {
+      dropPending.current = false;
+      setDrag(null);
+    }
   }
 
   function reorderByStep(row: VideoDocumentVisibleEntry, delta: -1 | 1) {
@@ -543,7 +629,11 @@ export function VideoDocumentNavigationTree({
             onPointerTrack={(clientY) => (entry.kind === 'ALBUM' ? onPointerTrack(entry.albumId, clientY) : false)}
             onOpenDocument={() => entry.kind === 'DOCUMENT' && onSelectDocument(entry.documentId, row.parentAlbumId)}
             onDragStart={() => setDrag({ entry, parentAlbumId: row.parentAlbumId })}
-            onDragEnd={() => setDrag(null)}
+            onDragEnd={() => {
+              endCreationTreeDrag();
+              setDrag(null);
+            }}
+            onDragOver={(event) => dragOverRow(row, event, compact)}
             onDrop={(event) => void dropOnRow(row, event, compact)}
             onLoadMore={() => entry.kind === 'ALBUM' && onLoadChildrenMore(entry.albumId)}
           />

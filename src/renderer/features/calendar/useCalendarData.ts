@@ -41,9 +41,17 @@ export function useCalendarData(
       categories: preferences.categories,
       includeInvalidated: preferences.showInvalidated,
       timeAxis: preferences.timeAxis,
+      writer: preferences.writer,
       knownAt,
     }),
-    [preferences.timeZone, preferences.categories, preferences.showInvalidated, preferences.timeAxis, knownAt],
+    [
+      preferences.timeZone,
+      preferences.categories,
+      preferences.showInvalidated,
+      preferences.timeAxis,
+      preferences.writer,
+      knownAt,
+    ],
   );
   const summaryScope = useMemo(
     () => ({ filters, spaceId, dataRevision, refreshRevision, active }),

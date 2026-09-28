@@ -1,4 +1,30 @@
 export const publishingMessages = {
+  mask: {
+    edit: 'Edit channel draft',
+    title: 'Title',
+    cover: 'Cover',
+    inherit: 'Follow manuscript',
+    custom: 'Customize',
+    clear: 'Clear',
+    loading: 'Loading channel draft…',
+    save: 'Save',
+    image: 'Image {number}',
+    missingImage: 'Image unavailable',
+    moveUp: 'Move image earlier',
+    moveDown: 'Move image later',
+    removeMissing: 'Remove unavailable image from this order',
+    sourceChanged:
+      'The manuscript has changed. Your channel edits are kept; saving uses the current manuscript as their basis.',
+    errors: {
+      PUBLISHING_MASK_SPACE_CHANGED: 'The local space changed. Reopen this channel draft in its original space.',
+      PUBLISHING_MASK_SOURCE_CHANGED: 'The manuscript changed during preparation. Prepare it again.',
+      PUBLISHING_MASK_CONFLICT:
+        'This channel draft changed in another window. Your input is still here; reopen the draft to inspect the saved changes.',
+      PUBLISHING_MASK_MEDIA_CHANGED:
+        'An image is no longer in the manuscript. Choose it again or restore the manuscript selection.',
+      PUBLISHING_MASK_UNAVAILABLE: 'The channel draft could not be read or saved. Your input is still here.',
+    },
+  },
   prepareBatch: 'Prepare for multiple channels…',
   title: 'Prepare publication',
   description: 'Save one manuscript, check each channel’s text and image order, then open its editor.',

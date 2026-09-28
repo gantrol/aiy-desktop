@@ -22,14 +22,13 @@ export function outlineTextSelectionItem(target: EventTarget | null, canvas: HTM
   return title?.contains(target) ? item : null;
 }
 
-export function editingItemId(editor: Editor): string | null {
-  const { $from } = editor.state.selection;
-  for (let depth = $from.depth; depth > 0; depth -= 1) {
-    const node = $from.node(depth);
+export function editingItemId(editor: Editor, $position = editor.state.selection.$from): string | null {
+  for (let depth = $position.depth; depth > 0; depth -= 1) {
+    const node = $position.node(depth);
     if (node.attrs.outlineRole === 'NOTE' || node.type.name === 'taskList') return null;
   }
-  for (let depth = $from.depth; depth > 0; depth -= 1) {
-    const node = $from.node(depth);
+  for (let depth = $position.depth; depth > 0; depth -= 1) {
+    const node = $position.node(depth);
     if (node.type.name === 'listItem') return String(node.attrs.blockId ?? '') || null;
   }
   return null;
@@ -93,10 +92,20 @@ export const OutlinePointerSelection = Extension.create({
               const startId = item?.dataset.outlineId;
               if (!startId) return false;
               if (event.shiftKey || event.ctrlKey || event.metaKey) {
-                if (event.shiftKey && !outlineViewState(editor.state).anchor) {
-                  const anchor = editingItemId(editor);
-                  if (anchor) setOutlineView(editor, { ...outlineViewState(editor.state), anchor });
-                }
+                const current = outlineViewState(editor.state);
+                const selection = view.state.selection;
+                const anchor = editingItemId(editor, selection.$anchor);
+                // Within the edited item, Shift-click extends the native text selection.
+                if (
+                  event.shiftKey &&
+                  !event.ctrlKey &&
+                  !event.metaKey &&
+                  !current.selected.length &&
+                  selection instanceof TextSelection &&
+                  anchor === startId
+                )
+                  return false;
+                if (event.shiftKey && !current.anchor && anchor) setOutlineView(editor, { ...current, anchor });
                 event.preventDefault();
                 selectOutlineItem(editor, startId, event.shiftKey, event.ctrlKey || event.metaKey);
                 view.focus();

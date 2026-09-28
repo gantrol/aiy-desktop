@@ -1,37 +1,59 @@
 @import 'tailwindcss';
 
 @theme inline {
-  --color-background: #f8f8f5;
-  --color-foreground: #20231f;
-  --color-primary: #285644;
-  --color-primary-foreground: #ffffff;
-  --color-muted: #e9ece7;
-  --color-muted-foreground: #646b63;
-  --color-border: #d5dad3;
-  --color-ring: #4b765f;
+  --color-background: light-dark(#fffefb, #262320);
+  --color-foreground: light-dark(#262320, #fffefb);
+  --color-primary: light-dark(#80566a, #e3d2da);
+  --color-primary-foreground: light-dark(#ffffff, #57303f);
+  --color-muted: light-dark(#f1efea, #302b29);
+  --color-muted-foreground: light-dark(#6c665e, #c8c2b8);
+  --color-border: light-dark(#dedad2, #6c665e);
+  --color-ring: light-dark(#6e4052, #e3d2da);
 }
 
 @layer base {
   * {
     box-sizing: border-box;
   }
-
   html {
-    color-scheme: light;
+    width: 360px;
+    min-width: 360px;
+    overflow: hidden;
+    color-scheme: light dark;
   }
-
   body {
     margin: 0;
+    width: 360px;
     min-width: 360px;
+    overflow: hidden;
     background: var(--color-background);
     color: var(--color-foreground);
-    font-family:
-      Inter,
-      ui-sans-serif,
-      system-ui,
-      -apple-system,
-      BlinkMacSystemFont,
+    font:
+      14px/1.6 Inter,
+      'Segoe UI Variable Text',
       'Segoe UI',
+      'Microsoft YaHei UI',
+      'PingFang SC',
+      system-ui,
       sans-serif;
+  }
+  button,
+  textarea,
+  input {
+    font: inherit;
+  }
+  button,
+  a,
+  summary,
+  input {
+    -webkit-tap-highlight-color: transparent;
+  }
+  button:focus-visible,
+  a:focus-visible,
+  summary:focus-visible,
+  input:focus-visible,
+  textarea:focus-visible {
+    outline: 2px solid var(--color-ring);
+    outline-offset: 2px;
   }
 }

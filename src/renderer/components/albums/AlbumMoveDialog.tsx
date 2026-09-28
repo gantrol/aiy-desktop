@@ -46,7 +46,7 @@ export function AlbumMoveDialog({ albums, target, labels, busy = false, onOpenCh
     () =>
       flattenAlbumTree(tree)
         .filter(({ album }) => !blocked.has(album.id))
-        .map(({ album, depth }) => ({ id: album.id, title: album.title, depth })),
+        .map(({ album }) => ({ id: album.id, title: album.title, parentId: tree.parentById.get(album.id) ?? null })),
     [blocked, tree],
   );
   return (

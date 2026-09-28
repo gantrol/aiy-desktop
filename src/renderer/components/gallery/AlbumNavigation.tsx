@@ -20,12 +20,19 @@ import {
   hasExternalFilesDrag,
   hasMaterialsDrag,
   readMaterialsDrag,
+  materialDropSource,
+  materialDropEffect,
   writeAlbumDrag,
 } from '@/renderer/components/albums/albumDrag';
 import { AlbumTreePreview } from '@/renderer/components/albums/AlbumTreePreview';
 import { buildAlbumTreeIndex } from '@/renderer/components/albums/albumTree';
 import { createAlbumExpansionAction } from '@/renderer/components/albums/albumTreeMenuActions';
-import { TreeDragHandle } from '@/renderer/components/albums/TreeDragHandle';
+import {
+  itemDragStart,
+  itemDragScopeProps,
+  acceptsItemTransfer,
+  itemDragIntent,
+} from '@/renderer/components/albums/itemDrag';
 import {
   TreeBranchCollapseRail,
   TreeBranchCollapseProvider,
@@ -102,10 +109,10 @@ interface Props {
   onDelete(album: AlbumDto): Promise<void>;
   onTogglePin(album: AlbumDto): Promise<void>;
   onSetArchived(album: AlbumDto, archived: boolean): Promise<void>;
-  onMove(albumId: string, parentAlbumId: string | null): Promise<void>;
+  onMove(albumId: string, parentAlbumId: string | null, copy?: boolean): Promise<void>;
   onReorder(albumId: string, memberIds: string[]): Promise<void>;
   onReorderRoot(targets: SidebarRootOrderTargetInput[]): Promise<void>;
-  onCollectMaterials?(albumId: string, targets: MaterialSelectionTargetInput[]): Promise<void>;
+  onCollectMaterials?(albumId: string, targets: MaterialSelectionTargetInput[], sourceAlbumId?: string): Promise<void>;
   onImportFiles?(album: AlbumDto, files: File[]): void;
 }
 
@@ -193,6 +200,7 @@ export function AlbumNavigation({
   }
 
   function eventAlbumId(event: DragEvent) {
+    if (!acceptsItemTransfer(event)) return null;
     return draggedAlbumId || event.dataTransfer.getData(ALBUM_DRAG_TYPE) || null;
   }
 
@@ -208,14 +216,18 @@ export function AlbumNavigation({
   }
 
   function supportsDrop(event: DragEvent, allowMaterials: boolean, targetAlbumId?: string) {
-    if (allowMaterials && hasMaterialsDrag(event.dataTransfer)) return true;
+    if (allowMaterials && hasMaterialsDrag(event.dataTransfer)) return materialDropEffect(event) !== 'none';
     if (allowMaterials && onImportFiles && hasExternalFilesDrag(event.dataTransfer)) return true;
     const albumId = eventAlbumId(event);
     if (!albumId || !event.dataTransfer.types.includes(ALBUM_DRAG_TYPE)) return false;
     return !targetAlbumId || (albumId !== targetAlbumId && !wouldCreateCycle(albumId, targetAlbumId));
   }
 
-  async function requestAlbumMove(albumId: string, parentAlbumId: string | null) {
+  async function requestAlbumMove(albumId: string, parentAlbumId: string | null, copy = false) {
+    if (copy) {
+      await onMove(albumId, parentAlbumId, true);
+      return;
+    }
     const currentParentId = tree.parentById.get(albumId) ?? null;
     if (currentParentId === parentAlbumId || (parentAlbumId && wouldCreateCycle(albumId, parentAlbumId))) return;
     setPendingAlbumParents((current) => {
@@ -294,7 +306,7 @@ export function AlbumNavigation({
 
   function canDropAtRoot(event: DragEvent) {
     const albumId = eventAlbumId(event);
-    return Boolean(albumId && tree.parentById.has(albumId));
+    return Boolean(albumId && (tree.parentById.has(albumId) || itemDragIntent(event) === 'COPY'));
   }
 
   function orderedMemberIds(album: AlbumDto) {
@@ -367,7 +379,7 @@ export function AlbumNavigation({
   }
 
   function reorderEdge(event: DragEvent, album: AlbumDto, parent: AlbumDto | null, archivedBranch: boolean) {
-    if (archivedBranch) return null;
+    if (archivedBranch || itemDragIntent(event) !== 'MOVE') return null;
     const movingAlbumId = eventAlbumId(event);
     if (!movingAlbumId || movingAlbumId === album.id) return null;
     if (parent) {
@@ -422,13 +434,14 @@ export function AlbumNavigation({
     setDropAlbumId(null);
     setDropPlacement(null);
     if (draggedAlbumId) {
-      if (supportsDrop(event, false, album.id)) await requestAlbumMove(draggedAlbumId, album.id);
+      if (supportsDrop(event, false, album.id))
+        await requestAlbumMove(draggedAlbumId, album.id, itemDragIntent(event) === 'COPY');
       clearDragState();
       return;
     }
-    const targets = readMaterialsDrag(event.dataTransfer);
+    const targets = materialDropEffect(event) === 'none' ? [] : readMaterialsDrag(event.dataTransfer);
     if (targets.length) {
-      await onCollectMaterials?.(album.id, targets);
+      await onCollectMaterials?.(album.id, targets, materialDropSource(event));
       return;
     }
     if (onImportFiles && hasExternalFilesDrag(event.dataTransfer)) {
@@ -572,8 +585,13 @@ export function AlbumNavigation({
             if (event.dataTransfer.types.includes(ALBUM_DRAG_TYPE)) event.dataTransfer.dropEffect = 'none';
             return;
           }
-          event.dataTransfer.dropEffect =
-            hasMaterialsDrag(event.dataTransfer) || hasExternalFilesDrag(event.dataTransfer) ? 'copy' : 'move';
+          event.dataTransfer.dropEffect = hasExternalFilesDrag(event.dataTransfer)
+            ? 'copy'
+            : hasMaterialsDrag(event.dataTransfer)
+              ? materialDropEffect(event)
+              : itemDragIntent(event) === 'COPY'
+                ? 'copy'
+                : 'move';
         }}
         onDragLeave={(event) => {
           if (!event.currentTarget.contains(event.relatedTarget as Node | null)) {
@@ -582,6 +600,9 @@ export function AlbumNavigation({
           }
         }}
         onDrop={(event) => void dropOnAlbum(event, album, parent, archivedBranch).catch(() => undefined)}
+        draggable={!busy && !archivedBranch}
+        onDragStart={itemDragStart((event) => startAlbumDrag(event, album.id))}
+        onDragEnd={clearDragState}
         className={cn(
           'group relative flex h-[4.25rem] min-w-0 items-center gap-1 rounded-lg px-1 transition-colors hover:bg-hover',
           activeAlbumId === album.id &&
@@ -618,8 +639,9 @@ export function AlbumNavigation({
           type="button"
           variant="ghost"
           className={cn(
-            'z-10 h-14 min-w-0 flex-1 justify-start border-transparent px-1 font-normal focus-visible:border-transparent focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-border-strong',
-            activeAlbumId === album.id && 'bg-transparent hover:bg-transparent focus-visible:bg-transparent',
+            'z-10 h-14 min-w-0 flex-1 justify-start border-transparent px-1 font-normal focus-visible:border-transparent focus-visible:ring-inset focus-visible:ring-offset-0',
+            activeAlbumId === album.id &&
+              'bg-transparent text-selected-foreground hover:bg-transparent active:bg-transparent focus-visible:bg-transparent after:pointer-events-none after:absolute after:inset-y-4 after:left-0 after:w-0.5 after:bg-current [&>span]:font-semibold',
           )}
           {...clickHandlers}
           onKeyDown={(event) => {
@@ -643,14 +665,10 @@ export function AlbumNavigation({
         {album.pinned && (
           <PinIcon className="relative z-10 size-3.5 shrink-0 text-muted-foreground" aria-label={labels.pin} />
         )}
-        <div className="pointer-events-none absolute inset-y-0 right-1 z-30 flex items-center gap-0.5 opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100">
-          {!busy && !archivedBranch && (
-            <TreeDragHandle
-              label={`${labels.move}: ${album.title}`}
-              onDragStart={(event) => startAlbumDrag(event, album.id)}
-              onDragEnd={clearDragState}
-            />
-          )}
+        <div
+          data-item-drag-ignore
+          className="pointer-events-none absolute inset-y-0 right-1 z-30 flex items-center gap-0.5 opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100"
+        >
           <ActionMenuButton
             actions={actions}
             label={labels.moreActions(album.title)}
@@ -693,7 +711,11 @@ export function AlbumNavigation({
   }
 
   return (
-    <aside data-slot="material-library-navigation" className="flex w-64 shrink-0 flex-col border-r bg-muted/25">
+    <aside
+      {...itemDragScopeProps}
+      data-slot="material-library-navigation"
+      className="flex w-64 shrink-0 flex-col border-r bg-muted/25"
+    >
       <AlbumNavigationSurfaceTabs value={surface} labels={labels} onChange={onSelectSurface} />
 
       {surface === 'MATERIAL' ? (
@@ -703,7 +725,8 @@ export function AlbumNavigation({
               type="button"
               data-action="material-all"
               variant={activeAlbumId === null ? 'secondary' : 'ghost'}
-              className="h-10 w-full justify-start gap-2 px-2 font-normal focus-visible:bg-hover-strong focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-border-strong"
+              aria-current={activeAlbumId === null ? 'page' : undefined}
+              className="h-10 w-full justify-start gap-2 px-2 font-normal focus-visible:ring-inset focus-visible:ring-offset-0 aria-[current=page]:font-semibold"
               onClick={() => onSelect(null)}
             >
               <ImagesIcon className="size-4" />
@@ -729,7 +752,7 @@ export function AlbumNavigation({
               if (!event.dataTransfer.types.includes(ALBUM_DRAG_TYPE)) return;
               if (canDropAtRoot(event)) {
                 event.preventDefault();
-                event.dataTransfer.dropEffect = 'move';
+                event.dataTransfer.dropEffect = itemDragIntent(event) === 'COPY' ? 'copy' : 'move';
               } else {
                 event.dataTransfer.dropEffect = 'none';
               }
@@ -742,7 +765,8 @@ export function AlbumNavigation({
               const albumId = eventAlbumId(event);
               const eligible = canDropAtRoot(event);
               clearDragState();
-              if (albumId && eligible) void requestAlbumMove(albumId, null).catch(() => undefined);
+              if (albumId && eligible)
+                void requestAlbumMove(albumId, null, itemDragIntent(event) === 'COPY').catch(() => undefined);
             }}
           >
             <strong className="min-w-0 flex-1 truncate text-xs font-semibold text-muted-foreground">

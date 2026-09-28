@@ -1,6 +1,7 @@
 import watermarkSql from '@/main/database/sql/v03-revision-006-article-delivery-watermark.sql?raw';
 import imagePreparationSql from '@/main/database/sql/v03-revision-007-article-delivery-image-preparation.sql?raw';
 import deliveryModeSql from '@/main/database/sql/v03-revision-007-article-delivery-mode.sql?raw';
+import retryIndexSql from '@/main/database/sql/v03-revision-008-article-delivery-retry-index.sql?raw';
 import type Database from 'better-sqlite3';
 
 function unsupportedSchema(): never {
@@ -75,7 +76,8 @@ export function currentArticleDeliveryJobShape(db: Database.Database) {
   if (shape !== 'COMPLETE') return shape;
   if (!articleDeliveryWatermarkComplete(db)) return 'MISSING_WATERMARK';
   if (!articleDeliveryImagePreparationComplete(db)) return 'MISSING_IMAGE_PREPARATION';
-  return articleDeliveryModeComplete(db) ? shape : 'MISSING_DELIVERY_MODE';
+  if (!articleDeliveryModeComplete(db)) return 'MISSING_DELIVERY_MODE';
+  return articleDeliveryRetryIndexComplete(db) ? shape : 'MISSING_RETRY_INDEX';
 }
 
 function articleDeliveryModeComplete(db: Database.Database) {
@@ -85,4 +87,15 @@ function articleDeliveryModeComplete(db: Database.Database) {
 
 export function ensureArticleDeliveryMode(db: Database.Database) {
   if (!articleDeliveryModeComplete(db)) db.exec(deliveryModeSql);
+}
+
+function articleDeliveryRetryIndexComplete(db: Database.Database) {
+  const columns = db.prepare('PRAGMA index_info(idx_article_delivery_jobs_retry_source)').all() as Array<{
+    name: string;
+  }>;
+  return columns.length === 1 && columns[0].name === 'retry_of_job_id';
+}
+
+export function ensureArticleDeliveryRetryIndex(db: Database.Database) {
+  if (!articleDeliveryRetryIndexComplete(db)) db.exec(retryIndexSql);
 }

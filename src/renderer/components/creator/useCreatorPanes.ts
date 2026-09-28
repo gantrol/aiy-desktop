@@ -1,3 +1,4 @@
+import { useWorkbenchScopeKey } from '@/renderer/components/workbench/WorkbenchScope';
 import {
   useEffect,
   useLayoutEffect,
@@ -19,6 +20,7 @@ import {
   resultThumbnailWidth,
   saveCreatorPreferences,
 } from '@/renderer/components/creator/creatorPreferences';
+import { beginPanePointerDrag } from '@/renderer/components/workbench/paneResize';
 
 interface Input {
   showResultLibrary: boolean;
@@ -32,6 +34,7 @@ export interface CreatorPanes {
   compactPanel: 'library' | 'creator' | 'output';
   setCompactPanel(panel: 'library' | 'creator' | 'output'): void;
   resultLibraryMode: ResultLibraryMode;
+  resultLibraryView: 'full' | 'outline';
   canExpandResultLibrary: boolean;
   setResultLibraryMode(mode: ResultLibraryMode): void;
   resultWidth: number;
@@ -118,60 +121,63 @@ export function creatorPaneGeometry({
   };
 }
 
-function dragPane(event: ReactPointerEvent<HTMLDivElement>, onMove: (delta: number) => void): () => void {
-  event.preventDefault();
-  const startX = event.clientX;
-  const previousCursor = document.body.style.cursor;
-  const previousSelection = document.body.style.userSelect;
-  let active = true;
-  document.body.style.cursor = 'col-resize';
-  document.body.style.userSelect = 'none';
-
-  const move = (pointer: PointerEvent) => onMove(pointer.clientX - startX);
-  const finish = () => {
-    if (!active) return;
-    active = false;
-    document.body.style.cursor = previousCursor;
-    document.body.style.userSelect = previousSelection;
-    window.removeEventListener('pointermove', move);
-    window.removeEventListener('pointerup', finish);
-    window.removeEventListener('pointercancel', finish);
-    window.removeEventListener('blur', finish);
-  };
-  window.addEventListener('pointermove', move);
-  window.addEventListener('pointerup', finish);
-  window.addEventListener('pointercancel', finish);
-  window.addEventListener('blur', finish);
-  return finish;
-}
-
 /**
  * Owns creator pane geometry: responsive thresholds, drag-to-resize, and the persisted layout.
  * The screen only says which panes exist; every width decision lives here.
  */
 export function useCreatorPanes({ showResultLibrary, showOutputInspector, comparisonFullWindow }: Input): CreatorPanes {
-  const stored = useRef(loadCreatorPreferences()).current;
+  const scope = useWorkbenchScopeKey('creator');
+  const [stored] = useState(() => loadCreatorPreferences(scope));
   const workspaceRef = useRef<HTMLDivElement | null>(null);
   const [workspaceWidth, setWorkspaceWidth] = useState(window.innerWidth);
   const multiPane = workspaceWidth >= 840;
   const [compactPanel, setCompactPanel] = useState<'library' | 'creator' | 'output'>('creator');
-  const [resultLibraryMode, setResultLibraryMode] = useState<ResultLibraryMode>(stored.resultLibraryMode);
+  const [resultLibraryView, setResultLibraryView] = useState<'full' | 'outline'>(stored.resultLibraryView);
+  const [resultCollapsed, setResultCollapsed] = useState(stored.resultLibraryMode === 'images');
+  const [panePriority, setPanePriority] = useState<'library' | 'output'>('output');
+  const resultLibraryMode = resultCollapsed ? 'images' : resultLibraryView;
+  function setResultLibraryMode(mode: ResultLibraryMode) {
+    setResultCollapsed(mode === 'images');
+    if (mode !== 'images') {
+      setResultLibraryView(mode);
+      setPanePriority('library');
+    }
+  }
   const [resultPanelWidth, setResultPanelWidth] = useState(stored.resultPanelWidth);
   const [outputPanelRatio, setOutputPanelRatio] = useState(stored.outputPanelRatio);
-  const [outputCollapsed, setOutputCollapsed] = useState(stored.outputCollapsed);
+  const [outputCollapsed, saveOutputCollapsed] = useState(stored.outputCollapsed);
+  function setOutputCollapsed(collapsed: boolean) {
+    saveOutputCollapsed(collapsed);
+    if (!collapsed) setPanePriority('output');
+  }
   const activeDragCleanupRef = useRef<(() => void) | null>(null);
 
+  const competing =
+    showResultLibrary &&
+    showOutputInspector &&
+    !resultCollapsed &&
+    !outputCollapsed &&
+    workspaceWidth < minimumResultListWidth + minimumCenterWidth + minimumOutputWidth;
+  const effectiveOutputCollapsed = outputCollapsed || (competing && panePriority === 'library');
+  const effectiveLibraryMode = competing && panePriority === 'output' ? 'images' : resultLibraryMode;
+  const canExpandResultLibrary =
+    showResultLibrary &&
+    workspaceWidth >= minimumResultListWidth + minimumCenterWidth + (showOutputInspector ? outputThumbnailWidth : 0);
   const geometry = creatorPaneGeometry({
     workspaceWidth,
     showResultLibrary,
     showOutputInspector,
-    resultLibraryMode,
+    resultLibraryMode: effectiveLibraryMode,
     resultPanelWidth,
     outputPanelRatio,
-    outputCollapsed,
+    outputCollapsed: effectiveOutputCollapsed,
   });
   const { resultWidth, outputWidth } = geometry;
-  const minimumReservedOutput = showOutputInspector ? (outputCollapsed ? outputThumbnailWidth : minimumOutputWidth) : 0;
+  const minimumReservedOutput = showOutputInspector
+    ? effectiveOutputCollapsed
+      ? outputThumbnailWidth
+      : minimumOutputWidth
+    : 0;
   const resultResizeMax = Math.max(resultThumbnailWidth, workspaceWidth - minimumReservedOutput - minimumCenterWidth);
   const outputSplitWidth = Math.max(1, workspaceWidth - resultWidth);
   const outputResizeMax = Math.max(outputThumbnailWidth, outputSplitWidth - minimumCenterWidth);
@@ -190,8 +196,11 @@ export function useCreatorPanes({ showResultLibrary, showOutputInspector, compar
       : undefined;
 
   useEffect(() => {
-    saveCreatorPreferences({ resultLibraryMode, resultPanelWidth, outputPanelRatio, outputCollapsed });
-  }, [resultLibraryMode, resultPanelWidth, outputPanelRatio, outputCollapsed]);
+    saveCreatorPreferences(
+      { resultLibraryMode, resultLibraryView, resultPanelWidth, outputPanelRatio, outputCollapsed },
+      scope,
+    );
+  }, [resultLibraryMode, resultLibraryView, resultPanelWidth, outputPanelRatio, outputCollapsed, scope]);
 
   useEffect(
     () => () => {
@@ -200,6 +209,10 @@ export function useCreatorPanes({ showResultLibrary, showOutputInspector, compar
     },
     [],
   );
+
+  useLayoutEffect(() => {
+    activeDragCleanupRef.current?.();
+  }, [comparisonFullWindow, scope, showOutputInspector, showResultLibrary, workspaceWidth]);
 
   useEffect(() => {
     if (!showOutputInspector && compactPanel === 'output') setCompactPanel('creator');
@@ -218,35 +231,66 @@ export function useCreatorPanes({ showResultLibrary, showOutputInspector, compar
   }, []);
 
   function beginResultResize(event: ReactPointerEvent<HTMLDivElement>) {
-    if (!geometry.canExpandResultLibrary && geometry.resultLibraryMode === 'images') return;
+    if (
+      event.button !== 0 ||
+      event.isPrimary === false ||
+      (!canExpandResultLibrary && geometry.resultLibraryMode === 'images')
+    )
+      return;
     activeDragCleanupRef.current?.();
     const startWidth = resultWidth;
-    activeDragCleanupRef.current = dragPane(event, (delta) => {
-      setResultWidth(startWidth + delta);
-    });
+    const initial = { panePriority, resultCollapsed, resultLibraryView, resultPanelWidth };
+    let active = true;
+    let removeListeners: (() => void) | null = null;
+    const finish = (cancelled: boolean) => {
+      if (!active) return;
+      active = false;
+      removeListeners?.();
+      activeDragCleanupRef.current = null;
+      if (!cancelled) return;
+      setPanePriority(initial.panePriority);
+      setResultCollapsed(initial.resultCollapsed);
+      setResultLibraryView(initial.resultLibraryView);
+      setResultPanelWidth(initial.resultPanelWidth);
+    };
+    removeListeners = beginPanePointerDrag(event, (delta) => setResultWidth(startWidth + delta), finish);
+    activeDragCleanupRef.current = () => finish(true);
   }
 
   function setResultWidth(requestedWidth: number) {
     let next = clamp(requestedWidth, resultThumbnailWidth, resultResizeMax);
-    if (geometry.resultLibraryMode === 'images' && next > resultWidth && geometry.canExpandResultLibrary) {
+    if (geometry.resultLibraryMode === 'images' && next > resultWidth && canExpandResultLibrary) {
       next = Math.max(minimumResultListWidth, next);
     }
-    if (!geometry.canExpandResultLibrary) return;
+    if (!canExpandResultLibrary) return;
     if (next < minimumResultListWidth) {
       setResultLibraryMode('images');
       return;
     }
     setResultPanelWidth(Math.max(minimumResultListWidth, next));
-    setResultLibraryMode((current) => (current === 'outline' ? 'outline' : 'full'));
+    setResultCollapsed(false);
+    setPanePriority('library');
   }
 
   function beginOutputResize(event: ReactPointerEvent<HTMLDivElement>) {
-    if (outputResizeMax < minimumOutputWidth) return;
+    if (event.button !== 0 || event.isPrimary === false || outputResizeMax < minimumOutputWidth) return;
     activeDragCleanupRef.current?.();
     const startWidth = outputWidth;
-    activeDragCleanupRef.current = dragPane(event, (delta) => {
-      setOutputWidth(startWidth - delta);
-    });
+    const initial = { outputCollapsed, outputPanelRatio, panePriority };
+    let active = true;
+    let removeListeners: (() => void) | null = null;
+    const finish = (cancelled: boolean) => {
+      if (!active) return;
+      active = false;
+      removeListeners?.();
+      activeDragCleanupRef.current = null;
+      if (!cancelled) return;
+      setPanePriority(initial.panePriority);
+      saveOutputCollapsed(initial.outputCollapsed);
+      setOutputPanelRatio(initial.outputPanelRatio);
+    };
+    removeListeners = beginPanePointerDrag(event, (delta) => setOutputWidth(startWidth - delta), finish);
+    activeDragCleanupRef.current = () => finish(true);
   }
 
   function setOutputWidth(requestedWidth: number) {
@@ -269,8 +313,9 @@ export function useCreatorPanes({ showResultLibrary, showOutputInspector, compar
     multiPane,
     compactPanel,
     setCompactPanel,
-    resultLibraryMode: multiPane ? geometry.resultLibraryMode : resultLibraryMode,
-    canExpandResultLibrary: geometry.canExpandResultLibrary,
+    resultLibraryMode: multiPane ? geometry.resultLibraryMode : resultLibraryView,
+    resultLibraryView,
+    canExpandResultLibrary,
     setResultLibraryMode,
     resultWidth,
     resultResizeMin: resultThumbnailWidth,
@@ -280,7 +325,7 @@ export function useCreatorPanes({ showResultLibrary, showOutputInspector, compar
     outputResizeMin: outputThumbnailWidth,
     outputResizeMax,
     setOutputWidth,
-    outputCollapsed,
+    outputCollapsed: multiPane && effectiveOutputCollapsed,
     setOutputCollapsed,
     beginResultResize,
     beginOutputResize,

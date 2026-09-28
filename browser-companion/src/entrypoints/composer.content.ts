@@ -19,16 +19,20 @@ import {
   rememberChatGptOutputHandoff,
 } from '@/lib/chatgpt-output-return';
 import { companionMessage } from '@/lib/i18n';
-import { downloadCompanionMedia, sendCompanionRequest, uploadCompanionOutput } from '@/lib/loopback-client';
+import { uploadCompanionOutput } from '@/lib/loopback-client';
+import { CurrentHandoffSession } from '@/lib/current-handoff';
 import {
-  BROWSER_COMPANION_PROTOCOL_VERSION,
+  COMPOSER_WAIT_MS,
+  currentHandoffRequestSchema,
+  type CurrentHandoffSnapshot,
+  type HandoffFillStage,
+} from '@/lib/current-handoff-protocol';
+import {
   consumeHandoffRequestSchema,
   fillDraftRequestSchema,
   handoffIdFromUrl,
   removeHandoffIdFromUrl,
   resolveSiteFromUrl,
-  type BrowserCompanionHandoff,
-  type BrowserCompanionResponse,
   type CompanionSite,
   type ConsumeHandoffErrorCode,
   type ConsumeHandoffRequest,
@@ -36,12 +40,12 @@ import {
   type FillDraftResponse,
 } from '@/lib/protocol';
 
-const COMPOSER_WAIT_MS = 20_000;
 const COMPOSER_RETRY_MS = 300;
 const MEDIA_CONFIRM_WAIT_MS = 90_000;
 const DESKTOP_CONNECTION_RETRY_BASE_MS = 250;
 const DESKTOP_CONNECTION_RETRY_MAX_MS = 2_000;
 const DESKTOP_CONNECTION_RETRY_WINDOW_MS = 20_000;
+const CLAIM_RECOVERY_GRACE_MS = 250;
 const WECHAT_PENDING_HANDOFF_KEY = 'aiy-wechat-handoff-id';
 const WECHAT_PENDING_CONTENT_KEY = 'aiy-wechat-handoff-content';
 const AUTOMATIC_HANDOFF_NOTICE_TIMEOUT_MS = 12_000;
@@ -92,15 +96,6 @@ function requestIdFromUnknown(message: unknown): string | null {
   return parsed.success ? parsed.data : null;
 }
 
-function releaseHandoff(site: CompanionSite, handoff: BrowserCompanionHandoff): Promise<BrowserCompanionResponse> {
-  return sendCompanionRequest(site, {
-    protocolVersion: BROWSER_COMPANION_PROTOCOL_VERSION,
-    kind: 'release-handoff',
-    handoffId: handoff.handoffId,
-    completionToken: handoff.completionToken,
-  });
-}
-
 async function fillWhenReady(
   ctx: ContentScriptContext,
   site: CompanionSite,
@@ -111,6 +106,8 @@ async function fillWhenReady(
   contentKind?: string,
   articleHtml?: string,
   articleCoverMediaIndex?: number,
+  beforeMutation?: () => Promise<void>,
+  onStage?: (stage: HandoffFillStage) => void,
 ): Promise<FillDraftResponse> {
   if (document.readyState === 'loading') {
     await new Promise<void>((resolve) =>
@@ -122,7 +119,9 @@ async function fillWhenReady(
   const deadline = Date.now() + COMPOSER_WAIT_MS;
   let replaceExisting = false;
   let composerConflictHandled = false;
+  let mutationAttempted = false;
   while (true) {
+    if (ctx.isInvalid) return { ok: false, requestId, site, code: 'FILL_FAILED' };
     const mediaSnapshot = mediaFiles.length > 0 ? captureComposerMediaSnapshot(site, contentKind) : null;
     const result = await fillComposer(site, requestId, text, mediaFiles, {
       replaceExisting,
@@ -130,14 +129,24 @@ async function fillWhenReady(
       contentKind,
       articleHtml,
       articleCoverMediaIndex,
+      beforeMutation: async () => {
+        if (ctx.isInvalid) throw new Error('Content context expired');
+        mutationAttempted = true;
+        await beforeMutation?.();
+        if (ctx.isInvalid) throw new Error('Content context expired');
+      },
     });
+    // An adapter may upload before it finds a text editor. Never repeat that attempt.
+    if (!result.ok && mutationAttempted) return result;
     if (!result.ok && result.code === 'COMPOSER_NOT_EMPTY' && !composerConflictHandled) {
       composerConflictHandled = true;
+      onStage?.('waiting-confirmation');
       replaceExisting = await requestComposerReplacementConfirmation(ctx, site);
       if (replaceExisting) continue;
       return result;
     }
     if (result.ok) {
+      if (mediaFiles.length > 0) onStage?.('uploading');
       const confirmed = await confirmComposerMedia(site, mediaFiles, mediaSnapshot, MEDIA_CONFIRM_WAIT_MS, contentKind);
       return confirmed ? result : { ok: false, requestId, site, code: 'MEDIA_FILL_FAILED' };
     }
@@ -149,12 +158,6 @@ async function fillWhenReady(
     if (Date.now() >= deadline) return result;
     await new Promise((resolve) => window.setTimeout(resolve, COMPOSER_RETRY_MS));
   }
-}
-
-async function downloadMediaFiles(site: CompanionSite, handoff: BrowserCompanionHandoff): Promise<File[]> {
-  const files: File[] = [];
-  for (const media of handoff.media) files.push(await downloadCompanionMedia(site, handoff, media));
-  return files;
 }
 
 export default defineContentScript({
@@ -179,6 +182,7 @@ export default defineContentScript({
       attempt: number;
       timer: number | null;
     } | null = null;
+    let claimRecoveryRetry: { handoffId: string; timer: number | null } | null = null;
     let automaticHandoffNoticeTimer: number | null = null;
 
     function dismissAutomaticHandoffNotice(): void {
@@ -254,9 +258,11 @@ export default defineContentScript({
         : null;
     ctx.onInvalidated(() => outputReturnButtons?.dispose());
 
-    function clearAutomaticRetry(): void {
+    function clearScheduledRetries(): void {
       if (automaticRetry?.timer != null) window.clearTimeout(automaticRetry.timer);
       automaticRetry = null;
+      if (claimRecoveryRetry?.timer != null) window.clearTimeout(claimRecoveryRetry.timer);
+      claimRecoveryRetry = null;
     }
 
     function scheduleAutomaticRetry(handoffId: string): boolean {
@@ -285,145 +291,70 @@ export default defineContentScript({
       return true;
     }
 
-    async function performHandoff(
-      request: ConsumeHandoffRequest,
-      site: CompanionSite,
-    ): Promise<ConsumeHandoffResponse> {
-      let claimed: BrowserCompanionHandoff | null = null;
-      let filled: Extract<FillDraftResponse, { ok: true }> | null = null;
-      let phase: 'claim' | 'media' | 'fill' = 'claim';
-      try {
-        const claim = await sendCompanionRequest(
-          site,
-          request.handoffId
-            ? {
-                protocolVersion: BROWSER_COMPANION_PROTOCOL_VERSION,
-                kind: 'claim-handoff',
-                handoffId: request.handoffId,
-                target: site,
-              }
-            : {
-                protocolVersion: BROWSER_COMPANION_PROTOCOL_VERSION,
-                kind: 'claim-latest',
-                target: site,
-              },
-        );
-        if (claim.kind === 'empty') {
-          return {
-            ok: false,
-            requestId: request.requestId,
-            site,
-            code: 'HANDOFF_NOT_FOUND',
-          };
-        }
-        if (claim.kind === 'error') {
-          return {
-            ok: false,
-            requestId: request.requestId,
-            site,
-            code: claim.code,
-          };
-        }
-        if (claim.kind !== 'handoff') {
-          return {
-            ok: false,
-            requestId: request.requestId,
-            site,
-            code: 'INTERNAL_ERROR',
-          };
-        }
-        claimed = claim.handoff;
+    function scheduleClaimRecovery(handoffId: string, claimExpiresAt: string): boolean {
+      const expiresAt = Date.parse(claimExpiresAt);
+      if (!Number.isFinite(expiresAt)) return false;
+      clearScheduledRetries();
+      const retry = { handoffId, timer: null as number | null };
+      claimRecoveryRetry = retry;
+      retry.timer = window.setTimeout(
+        () => {
+          if (ctx.isInvalid || claimRecoveryRetry?.handoffId !== handoffId) return;
+          claimRecoveryRetry = null;
+          void consumeHandoffFromUrl();
+        },
+        Math.max(0, expiresAt - Date.now()) + CLAIM_RECOVERY_GRACE_MS,
+      );
+      return true;
+    }
 
-        phase = 'media';
-        const mediaFiles = await downloadMediaFiles(site, claimed);
-        phase = 'fill';
-        const fill = await fillWhenReady(
+    const currentHandoff = new CurrentHandoffSession({
+      ready: composerReady,
+      waitReady: async (site, contentKind) => {
+        if (site !== 'chatgpt') return true;
+        const deadline = Date.now() + COMPOSER_WAIT_MS;
+        let readyChecks = 0;
+        while (Date.now() < deadline && !ctx.isInvalid) {
+          readyChecks = composerReady(site, contentKind) ? readyChecks + 1 : 0;
+          if (readyChecks >= 2) return true;
+          await new Promise((resolve) => window.setTimeout(resolve, COMPOSER_RETRY_MS));
+        }
+        return false;
+      },
+      fill: (site, requestId, handoff, files, beforeMutation, onStage) =>
+        fillWhenReady(
           ctx,
           site,
-          request.requestId,
-          claimed.text,
-          mediaFiles,
-          claimed.title ?? undefined,
-          claimed.contentKind,
-          claimed.articleHtml,
-          claimed.articleCoverMediaIndex,
-        );
-        if (!fill.ok) {
-          await releaseHandoff(site, claimed).catch(() => undefined);
-          return fill;
-        }
-        filled = fill;
-        if (handoffIdFromUrl(window.location.href) === claimed.handoffId) {
+          requestId,
+          handoff.text,
+          files,
+          handoff.title ?? undefined,
+          handoff.contentKind,
+          handoff.articleHtml,
+          handoff.articleCoverMediaIndex,
+          beforeMutation,
+          onStage,
+        ),
+      delivered: (handoff) => {
+        if (handoffIdFromUrl(window.location.href) === handoff.handoffId) {
           try {
             window.history.replaceState(window.history.state, '', removeHandoffIdFromUrl(window.location.href));
           } catch {
-            // Filling succeeded. URL cleanup is best-effort and must not undo it.
+            /* Delivery does not depend on URL cleanup. */
           }
         }
-      } catch (reason) {
-        console.warn(
-          '[AIY Companion] Handoff failed',
-          phase,
-          reason instanceof Error ? reason.message : 'Unknown error',
-        );
-        if (claimed && !filled) await releaseHandoff(site, claimed).catch(() => undefined);
-        return {
-          ok: false,
-          requestId: request.requestId,
-          site,
-          code:
-            phase === 'claim'
-              ? 'DESKTOP_CONNECTION_FAILED'
-              : phase === 'media'
-                ? 'MEDIA_DOWNLOAD_FAILED'
-                : 'FILL_FAILED',
-        };
-      }
-
-      let completion: 'completed' | 'failed' = 'failed';
-      try {
-        const response = await sendCompanionRequest(site, {
-          protocolVersion: BROWSER_COMPANION_PROTOCOL_VERSION,
-          kind: 'complete-handoff',
-          handoffId: claimed.handoffId,
-          completionToken: claimed.completionToken,
-        });
-        if (response.kind === 'completed') {
-          completion = 'completed';
-          if (rememberChatGptOutputHandoff(claimed)) {
-            outputReturnButtons?.refresh();
-          }
-        }
-      } catch {
-        // The page has already been filled. A receipt failure must not retry it.
-      }
-
-      return {
-        ok: true,
-        requestId: request.requestId,
-        site,
-        characterCount: filled.characterCount,
-        mediaCount: claimed.media.length,
-        completion,
-      };
-    }
+        if (rememberChatGptOutputHandoff(handoff)) outputReturnButtons?.refresh();
+      },
+    });
 
     async function consumeHandoff(
       request: ConsumeHandoffRequest,
       site: CompanionSite,
     ): Promise<ConsumeHandoffResponse> {
-      if (active) {
-        return {
-          ok: false,
-          requestId: request.requestId,
-          site,
-          code: 'BUSY',
-        };
-      }
-
+      if (active) return { ok: false, requestId: request.requestId, site, code: 'BUSY' };
       active = true;
       try {
-        return await performHandoff(request, site);
+        return await currentHandoff.consume(request, site);
       } finally {
         active = false;
       }
@@ -431,7 +362,7 @@ export default defineContentScript({
 
     async function consumeHandoffFromUrl(): Promise<void> {
       const site = resolveSiteFromUrl(window.location.href);
-      if (site === 'wechat' && window.top !== window) return;
+      if (window.top !== window) return;
       const urlHandoffId = handoffIdFromUrl(window.location.href);
       let contentKind =
         new URLSearchParams(window.location.hash.slice(1)).get('aiy-content') === 'article-body'
@@ -462,7 +393,7 @@ export default defineContentScript({
       }
       const handoffId = urlHandoffId ?? storedHandoffId;
       if (!handoffId || !site) {
-        clearAutomaticRetry();
+        clearScheduledRetries();
         return;
       }
       if (handledHandoffId === handoffId) return;
@@ -470,6 +401,8 @@ export default defineContentScript({
         window.clearTimeout(automaticRetry.timer);
         automaticRetry.timer = null;
       }
+      if (claimRecoveryRetry?.timer != null) window.clearTimeout(claimRecoveryRetry.timer);
+      claimRecoveryRetry = null;
 
       if (site === 'wechat') {
         const deadline = Date.now() + COMPOSER_WAIT_MS;
@@ -483,7 +416,6 @@ export default defineContentScript({
           return;
         }
       }
-
       if (active || handledHandoffId === handoffId) return;
       handledHandoffId = handoffId;
       const response = await consumeHandoff(
@@ -500,15 +432,24 @@ export default defineContentScript({
           handledHandoffId = null;
           if (scheduleAutomaticRetry(handoffId)) return;
         }
-        clearAutomaticRetry();
+        const currentTask = currentHandoff.snapshot().task;
+        if (
+          response.code === 'DRAFT_ALREADY_CLAIMED' &&
+          currentTask?.handoffId === handoffId &&
+          currentTask.state === 'claimed' &&
+          !currentTask.fillStarted &&
+          currentTask.claimExpiresAt
+        ) {
+          handledHandoffId = null;
+          if (scheduleClaimRecovery(handoffId, currentTask.claimExpiresAt)) return;
+        }
+        clearScheduledRetries();
         showAutomaticHandoffNotice(response.code);
-        console.warn(`[${companionMessage('extensionName')}] ${companionMessage('automaticHandoffLogSummary')}`, {
-          code: response.code,
-          handoffId,
-          action: companionMessage('automaticHandoffRetryAction'),
-        });
+        console.warn(
+          `[${companionMessage('extensionName')}] ${companionMessage('automaticHandoffLogSummary')}: code=${response.code}; handoffId=${handoffId}; action=${companionMessage('automaticHandoffRetryAction')}`,
+        );
       } else {
-        clearAutomaticRetry();
+        clearScheduledRetries();
         dismissAutomaticHandoffNotice();
       }
       if (response.ok && site === 'wechat') {
@@ -522,7 +463,19 @@ export default defineContentScript({
     }
 
     browser.runtime.onMessage.addListener(
-      async (message: unknown): Promise<FillDraftResponse | ConsumeHandoffResponse> => {
+      async (
+        message: unknown,
+        sender,
+      ): Promise<FillDraftResponse | ConsumeHandoffResponse | CurrentHandoffSnapshot | undefined> => {
+        if (window.top !== window || sender.id !== browser.runtime.id || sender.tab) return undefined;
+        const panelRequest = currentHandoffRequestSchema.safeParse(message);
+        if (panelRequest.success) {
+          const site = resolveSiteFromUrl(window.location.href);
+          if (panelRequest.data.kind === 'retry-handoff-receipt' && site) {
+            return currentHandoff.retryReceipt(site, panelRequest.data.handoffId);
+          }
+          return currentHandoff.inspect(site, panelRequest.data.handoffId);
+        }
         const consumeRequest = consumeHandoffRequestSchema.safeParse(message);
         const site = resolveSiteFromUrl(window.location.href);
         if (consumeRequest.success) {

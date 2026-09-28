@@ -1,13 +1,16 @@
 import { createHash } from 'node:crypto';
+import { parseContentProvenance } from '@/shared/contracts/content-provenance';
 import { pathToFileURL } from 'node:url';
 import type { LibraryDatabase } from '@/main/database';
 import {
+  agentContentEditSnapshotSchema,
   agentContentReadResultSchema,
   agentContentTarget,
   agentContentUrl,
   type AgentContentReadRequest,
   type AgentContentTarget,
 } from '@/shared/contracts/agent-content';
+import { articleCommentAnchorUpdates } from '@/shared/contracts/article';
 import { plainTextMarkdown } from '@/shared/content-document';
 import {
   normalizedArticleMediaPath,
@@ -15,7 +18,7 @@ import {
   rewriteArticleImageReferences,
 } from '@/main/creations/article-media-references';
 
-function contentError(code: string) {
+export function contentError(code: string) {
   return Object.assign(new Error(`AIY_AGENT_CONTENT_${code}`), { code: `AIY_AGENT_CONTENT_${code}` });
 }
 
@@ -43,7 +46,30 @@ export async function readAgentContent(
       const document = database.contentLibrary.readCurrent({ kind: 'ARTICLE', id: target.entityId });
       const expanded = database.contentLibrary.render(document.markdown);
       const bindings = referencedArticleMediaBindings(expanded.markdown, [...document.media, ...expanded.media], null);
-      return { title: document.displayTitle, revisionId: document.revisionId, markdown: expanded.markdown, bindings };
+      const article = request.includeEditSnapshot ? database.getArticle(target.entityId) : null;
+      const editSnapshot = article
+        ? (() => {
+            const { mediaAssets: _mediaAssets, ...content } = article.content;
+            return agentContentEditSnapshotSchema.parse({
+              content,
+              elements: article.elements,
+              commentAnchors: articleCommentAnchorUpdates(article.comments),
+            });
+          })()
+        : undefined;
+      return {
+        title: document.displayTitle,
+        revisionId: document.revisionId,
+        markdown: expanded.markdown,
+        bindings,
+        provenance: parseContentProvenance(
+          database.db
+            .prepare('SELECT provenance_json FROM article_revisions WHERE id=?')
+            .pluck()
+            .get(document.revisionId),
+        ),
+        ...(editSnapshot ? { editSnapshot } : {}),
+      };
     }
     const material = database.getGalleryMaterial(target.entityId, 'en');
     if (!material) throw contentError('NOT_FOUND');
@@ -96,6 +122,8 @@ export async function readAgentContent(
     revisionId: snapshot.revisionId,
     contentHash: createHash('sha256').update(snapshot.markdown).digest('hex'),
     markdown,
+    ...('provenance' in snapshot ? { provenance: snapshot.provenance } : {}),
+    ...('editSnapshot' in snapshot ? { editSnapshot: snapshot.editSnapshot } : {}),
     media,
   });
 }

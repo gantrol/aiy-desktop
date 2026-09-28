@@ -2,6 +2,7 @@ import { FileTextIcon, FolderIcon, ImageIcon, LayersIcon, LoaderCircleIcon, type
 import { useMemo, useRef } from 'react';
 import {
   creationFormPreviewAssets,
+  creationFormKindLabel,
   creationFormTitle,
   type CreationFormProjection,
   type CreationPreviewAsset,
@@ -11,10 +12,18 @@ import { writeAlbumDrag, writeCreationItemDrag, endCreationTreeDrag } from '@/re
 import { AlbumCoverStack } from '@/renderer/components/albums/AlbumCoverStack';
 import { AlbumPreviewPopover } from '@/renderer/components/albums/AlbumPreviewPopover';
 import { albumCoverAssets, type AlbumCoverAsset } from '@/renderer/components/albums/albumCoverAssets';
-import { TreeDragHandle } from '@/renderer/components/albums/TreeDragHandle';
+import { itemDragStart, itemDragScopeProps } from '@/renderer/components/albums/itemDrag';
 import { CollectionMasonry, collectionCoverRatio } from '@/renderer/components/gallery/CollectionMasonry';
 import { CollectionPreview } from '@/renderer/components/gallery/CollectionPreview';
+import {
+  CollectionTextItem,
+  collectionTextItemClassName,
+  type CollectionTextTone,
+} from '@/renderer/components/gallery/CollectionTextItem';
+import { collectionTextItemHeight } from '@/renderer/components/gallery/collectionLayout';
+import { creationTextPreview } from '@/renderer/components/creator/creationTextExcerpt';
 import { AssetThumbnail } from '@/renderer/components/media/AssetThumbnail';
+import { MediaCardCaption } from '@/renderer/components/media/MediaCardCaption';
 import { ActionMenuButton } from '@/renderer/components/ui/action-menu';
 import { Button } from '@/renderer/components/ui/button';
 import { ScrollArea } from '@/renderer/components/ui/scroll-area';
@@ -39,6 +48,10 @@ interface AlbumContentRow {
   entry: AlbumContentEntry;
   title: string;
   kindLabel: string;
+  excerpt?: string;
+  outlineLines?: string[];
+  tone?: CollectionTextTone;
+  updatedAt?: string;
   preview?: CreationPreviewAsset | null;
   covers?: readonly AlbumCoverAsset[];
   forms: readonly CreationFormProjection[];
@@ -53,6 +66,15 @@ function AlbumContentCard({ row, layout, ...props }: Omit<AlbumContentsProps, 'e
   const canDrag = !props.busy && (entry.kind === 'ALBUM' || entry.kind === 'CREATION');
   const hasMenu = forms.length > 1;
   const hasPreview = covers.length > 0;
+  const textOnly = !hasPreview && !preview;
+  const caption = (
+    <MediaCardCaption>
+      <strong className="block truncate text-sm font-semibold">{title}</strong>
+      <span className="block truncate text-xs font-normal opacity-85" title={kindLabel}>
+        {kindLabel}
+      </span>
+    </MediaCardCaption>
+  );
   function open() {
     switch (entry.kind) {
       case 'ALBUM':
@@ -71,10 +93,18 @@ function AlbumContentCard({ row, layout, ...props }: Omit<AlbumContentsProps, 'e
   }
   return (
     <article
+      {...itemDragScopeProps}
+      data-media-card
       data-album-content-id={albumContentKey(entry)}
+      draggable={canDrag}
+      onDragStart={itemDragStart((event) => {
+        if (entry.kind === 'ALBUM') writeAlbumDrag(event.dataTransfer, entry.album.id);
+        else if (entry.kind === 'CREATION') writeCreationItemDrag(event.dataTransfer, entry.creation.key);
+      })}
+      onDragEnd={endCreationTreeDrag}
       className={cn(
         'group relative min-w-0',
-        grid ? 'flex h-full flex-col' : 'flex items-center gap-1 rounded-sm hover:bg-hover',
+        grid ? cn('flex flex-col', !textOnly && 'h-full') : 'flex items-center gap-1 rounded-sm hover:bg-hover',
       )}
     >
       <Button
@@ -84,16 +114,28 @@ function AlbumContentCard({ row, layout, ...props }: Omit<AlbumContentsProps, 'e
           grid
             ? 'min-h-0 w-full flex-1 flex-col items-stretch gap-0 p-0 hover:bg-transparent'
             : 'h-auto flex-1 gap-2 p-2',
+          textOnly && collectionTextItemClassName(layout, row.tone),
         )}
         onClick={open}
         title={title}
         aria-label={title}
       >
-        {grid ? (
-          covers.length || entry.kind === 'ALBUM' ? (
-            <AlbumCoverStack assets={covers} title={title} icon={Icon} />
+        {textOnly ? (
+          <CollectionTextItem
+            title={title}
+            excerpt={row.excerpt}
+            outlineLines={row.outlineLines}
+            detail={kindLabel}
+            updatedAt={row.updatedAt}
+            icon={Icon}
+            layout={layout}
+            tone={row.tone}
+          />
+        ) : grid ? (
+          covers.length > 1 ? (
+            <AlbumCoverStack assets={covers} title={title} icon={Icon} caption={caption} />
           ) : (
-            <CollectionPreview asset={preview} title={title} icon={Icon} />
+            <CollectionPreview asset={preview ?? covers[0]} title={title} caption={caption} />
           )
         ) : covers.length ? (
           <AlbumCoverStack assets={covers} title={title} icon={Icon} compact className="size-12 flex-none" />
@@ -106,35 +148,26 @@ function AlbumContentCard({ row, layout, ...props }: Omit<AlbumContentsProps, 'e
             )}
           </span>
         )}
-        <span className={cn('min-w-0', grid ? 'flex h-13 shrink-0 flex-col justify-center px-1' : 'flex-1')}>
-          <span className={cn('text-sm font-medium', grid ? 'block truncate' : 'line-clamp-2 break-words')}>
-            {title}
+        {!textOnly && !grid && (
+          <span className="min-w-0 flex-1">
+            <span className="line-clamp-2 break-words text-sm font-semibold">{title}</span>
+            <span className="mt-0.5 block truncate text-xs font-normal text-muted-foreground" title={kindLabel}>
+              {kindLabel}
+            </span>
           </span>
-          <span className="mt-0.5 block truncate text-xs font-normal text-muted-foreground" title={kindLabel}>
-            {kindLabel}
-          </span>
-        </span>
+        )}
       </Button>
-      {(canDrag || hasMenu || hasPreview) && (
-        <div className={cn('flex shrink-0 items-center gap-1', grid && 'flex-wrap justify-end')}>
+      {(hasMenu || hasPreview) && (
+        <div
+          data-item-drag-ignore
+          className={cn('flex shrink-0 items-center gap-1', grid && 'absolute right-1 top-1 z-20')}
+        >
           {hasPreview && (
             <AlbumPreviewPopover
               assets={covers}
               title={title}
               openLabel={entry.kind === 'CREATION' ? labels.open : messages.gallery.albums.open}
               onOpen={open}
-            />
-          )}
-          {canDrag && (
-            <TreeDragHandle
-              className="rounded-sm bg-transparent shadow-none opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 [@media(hover:none)]:opacity-100"
-              label={labels.dragContent(title)}
-              onDragStart={(event) => {
-                event.stopPropagation();
-                if (entry.kind === 'ALBUM') writeAlbumDrag(event.dataTransfer, entry.album.id);
-                else if (entry.kind === 'CREATION') writeCreationItemDrag(event.dataTransfer, entry.creation.key);
-              }}
-              onDragEnd={endCreationTreeDrag}
             />
           )}
           {hasMenu && (
@@ -170,6 +203,8 @@ export function AlbumContents({ entries, layout, ...props }: AlbumContentsProps)
             return {
               entry,
               title: entry.album.title,
+              tone: entry.album.pinned ? 'pinned' : undefined,
+              updatedAt: entry.album.activityAt,
               kindLabel: labels.albumLabel,
               preview: entry.album.previewAssets[0] ?? entry.album.documentPreviewAssets?.[0],
               covers: albumCoverAssets([...entry.album.previewAssets, ...(entry.album.documentPreviewAssets ?? [])]),
@@ -180,13 +215,21 @@ export function AlbumContents({ entries, layout, ...props }: AlbumContentsProps)
             return {
               entry,
               title: entry.creation.title,
+              ...creationTextPreview(entry.creation.defaultForm, entry.creation.title),
+              tone: entry.creation.item.pinned
+                ? 'pinned'
+                : entry.creation.defaultForm?.role === 'ARTICLE' &&
+                    entry.creation.defaultForm.entity?.content.editorMode === 'OUTLINE'
+                  ? 'outline'
+                  : undefined,
+              updatedAt: entry.creation.activityAt,
               kindLabel: entry.creation.defaultForm
-                ? labels.formKinds[entry.creation.defaultForm.role]
+                ? creationFormKindLabel(entry.creation.defaultForm, labels)
                 : labels.creations,
               preview: entry.creation.orderedForms.flatMap(creationFormPreviewAssets)[0],
               covers: albumCoverAssets(entry.creation.orderedForms.flatMap(creationFormPreviewAssets)),
               forms: entry.creation.orderedForms,
-              Icon: LayersIcon,
+              Icon: entry.creation.defaultForm?.role === 'ARTICLE' ? FileTextIcon : LayersIcon,
             };
           case 'MATERIAL':
             return {
@@ -201,6 +244,7 @@ export function AlbumContents({ entries, layout, ...props }: AlbumContentsProps)
             return {
               entry,
               title: entry.document.title,
+              updatedAt: entry.document.updatedAt,
               kindLabel: labels.formKinds.VIDEO_DOCUMENT,
               preview: entry.document.thumbnail
                 ? {
@@ -217,7 +261,13 @@ export function AlbumContents({ entries, layout, ...props }: AlbumContentsProps)
     [entries, labels, referenceLabel],
   );
   const layoutItems = useMemo(
-    () => rows.map((row) => ({ id: albumContentKey(row.entry), aspectRatio: collectionCoverRatio(row.preview) })),
+    () =>
+      rows.map((row) => ({
+        id: albumContentKey(row.entry),
+        aspectRatio: collectionCoverRatio(row.preview),
+        textOnly: !row.preview && !row.covers?.length,
+        height: collectionTextItemHeight(row.excerpt, Boolean(row.tone)),
+      })),
     [rows],
   );
 
@@ -227,7 +277,7 @@ export function AlbumContents({ entries, layout, ...props }: AlbumContentsProps)
       className="min-h-0 min-w-0 flex-1 [&_[data-slot=scroll-area-viewport]>div]:!block [&_[data-slot=scroll-area-viewport]>div]:!w-full"
     >
       {layout === 'grid' ? (
-        <div data-slot="album-contents-masonry" className="p-4">
+        <div data-slot="album-contents-masonry" className="p-4 sm:p-6">
           <CollectionMasonry
             items={layoutItems}
             viewportRef={viewportRef}

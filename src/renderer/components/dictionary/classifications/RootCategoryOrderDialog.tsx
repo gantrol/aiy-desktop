@@ -1,5 +1,6 @@
 import type { DictionaryClassificationNodeDto, Locale } from '@/shared/contracts';
-import { ArrowDownIcon, ArrowUpIcon, GripVerticalIcon, LoaderCircleIcon } from 'lucide-react';
+import { ArrowDownIcon, ArrowUpIcon, LoaderCircleIcon } from 'lucide-react';
+import { acceptsItemMove } from '@/renderer/components/albums/itemDrag';
 import { useEffect, useMemo, useState } from 'react';
 import { useI18n } from '@/renderer/i18n/useI18n';
 import { Button } from '@/renderer/components/ui/button';
@@ -71,16 +72,16 @@ export function RootCategoryOrderDialog({ locale, open, roots, busy, onClose, on
                 onDragOver={(event) => {
                   if (!draggingId || draggingId === id) return;
                   event.preventDefault();
-                  event.dataTransfer.dropEffect = 'move';
+                  event.dataTransfer.dropEffect = acceptsItemMove(event) ? 'move' : 'none';
                 }}
                 onDrop={(event) => {
                   event.preventDefault();
-                  const sourceId = draggingId ?? event.dataTransfer.getData('text/plain');
+                  if (!acceptsItemMove(event)) return;
+                  const sourceId = draggingId;
                   if (sourceId && sourceId !== id) setOrderedIds((current) => moveId(current, sourceId, index));
                   setDraggingId(null);
                 }}
               >
-                <GripVerticalIcon className="size-4 shrink-0 cursor-grab text-muted-foreground" aria-hidden="true" />
                 <span className="w-6 shrink-0 text-center text-xs tabular-nums text-muted-foreground">{index + 1}</span>
                 <span className="min-w-0 flex-1 truncate text-sm font-medium">{root.name}</span>
                 <span className="shrink-0 text-xs tabular-nums text-muted-foreground">

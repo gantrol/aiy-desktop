@@ -4,12 +4,15 @@ import {
 } from '@/renderer/components/creator/CreationRelationsSheet';
 import { SocialPostHeader } from '@/renderer/components/creator/SocialPostHeader';
 import { SocialPostDocumentPane } from '@/renderer/components/creator/SocialPostDocumentPane';
+import { useSocialPostDocumentWidth } from '@/renderer/components/creator/useSocialPostDocumentWidth';
+import { ContentViewMenu } from '@/renderer/features/content-editor/ContentViewMenu';
 import { SocialPostRecoveryStatus } from '@/renderer/components/creator/SocialPostRecoveryStatus';
 import { SocialPostSaveConflict } from '@/renderer/components/creator/SocialPostSaveConflict';
 import { appendEditorImage } from '@/renderer/components/creator/socialPostEditorImage';
 import { editableContent } from '@/renderer/components/creator/socialPostEditorTransforms';
 import { useSocialPostDiagnostics } from '@/renderer/components/creator/useSocialPostDiagnostics';
 import { useSocialPostSaveSession } from '@/renderer/components/creator/useSocialPostSaveSession';
+import { useSocialPostTextCover } from '@/renderer/components/creator/useSocialPostTextCover';
 import { AssetFileRevealContextProvider } from '@/renderer/components/media/AssetFileRevealContext';
 import { useSocialPostPublication } from '@/renderer/features/browser-companion/useSocialPostPublication';
 import { ContentInput } from '@/renderer/features/content-editor/ContentInput';
@@ -114,8 +117,13 @@ function referenceSocialPostImage(
   if (!handle?.insertFigureReference(assetId, label)) notify(figureReferenceMessages(locale).insertionFailed);
 }
 
-function useSocialPostEditorControls(session: ReturnType<typeof useSocialPostSaveSession>, notify: Props['notify']) {
+function useSocialPostEditorControls(
+  session: ReturnType<typeof useSocialPostSaveSession>,
+  notify: Props['notify'],
+  locale: Locale,
+) {
   const copy = useI18n().messages.creator.socialPostEditor;
+  const contentCopy = useI18n().messages.desktopPetals.document;
   const editorHandle = useRef<VideoDocumentWysiwygEditorHandle | null>(null);
   const inputSubscription = useRef<(() => void) | null>(null);
   useEffect(() => () => inputSubscription.current?.(), []);
@@ -154,6 +162,15 @@ function useSocialPostEditorControls(session: ReturnType<typeof useSocialPostSav
     editorHandle,
     bindInput,
     updateMediaIds,
+    referenceImage: (assetId: string) =>
+      referenceSocialPostImage(
+        assetId,
+        session.content.mediaAssetIds,
+        editorHandle.current,
+        contentCopy,
+        locale,
+        notify,
+      ),
     figure: { previewRequest, mediaOpen, setMediaOpen, showReference, handled: () => setPreviewRequest(undefined) },
   };
 }
@@ -176,12 +193,14 @@ function SocialPostEditorBody({
   const socialCopy = useI18n().messages.creator.socialPostEditor;
   const contentCopy = useI18n().messages.desktopPetals.document;
   const session = useSocialPostSaveSession({ spaceId, post, onSave: saveWithDiagnostics, notify });
-  const { editorHandle, bindInput, figure, updateMediaIds } = useSocialPostEditorControls(session, notify);
+  const textCover = useSocialPostTextCover(session, `${spaceId}:${post.id}`);
+  const { bindInput, figure, updateMediaIds, referenceImage } = useSocialPostEditorControls(session, notify, locale);
   const { content, setContent, mediaAssets, setMediaAssets, savedPostRef, saving, dirty, saveFailed, persist } =
     session;
   const [creatingForm, setCreatingForm] = useState(false);
   const [generatingCover, setGeneratingCover] = useState(false);
   const [relationsOpen, setRelationsOpen] = useState(false);
+  const documentView = useSocialPostDocumentWidth();
   const [relationAssetId, setRelationAssetId] = useState<string | null>(null);
   const defaultCoverPreset = canvasPresets.find((preset) => preset.stableKey === 'xiaohongshu_portrait_3_4');
   const diagnostics = useSocialPostDiagnostics({ post, content, dirty, saving, saveFailed });
@@ -199,6 +218,7 @@ function SocialPostEditorBody({
   });
 
   const publication = useSocialPostPublication({
+    spaceId,
     content,
     dirty,
     notify,
@@ -207,6 +227,7 @@ function SocialPostEditorBody({
     targets: handoffTargets,
     assets: mediaAssets,
     readSavedContent: () => editableContent(savedPostRef.current),
+    readSavedRevisionId: () => savedPostRef.current.revisionId,
   });
 
   useSocialPostSaveShortcut(() => void persist(content));
@@ -270,6 +291,7 @@ function SocialPostEditorBody({
       <SocialPostRecoveryStatus session={session} />
       <div className="contents" inert={!session.ready}>
         <SocialPostHeader
+          viewAction={<ContentViewMenu width={documentView.width} onWidthChange={documentView.changeWidth} />}
           pinAction={
             <PinContentButton
               iconOnly
@@ -299,6 +321,7 @@ function SocialPostEditorBody({
         <ContentWorkspace>
           <SocialPostDocumentPane
             title={content.title}
+            documentWidth={documentView.width}
             onTitleChange={(title) => {
               diagnostics.noteChange();
               setContent((current) => ({ ...current, title }));
@@ -365,16 +388,7 @@ function SocialPostEditorBody({
                     assetsById={assetsById}
                     previewRequest={figure.previewRequest}
                     onPreviewRequestHandled={figure.handled}
-                    onReferenceImage={(assetId) =>
-                      referenceSocialPostImage(
-                        assetId,
-                        content.mediaAssetIds,
-                        editorHandle.current,
-                        contentCopy,
-                        locale,
-                        notify,
-                      )
-                    }
+                    onReferenceImage={referenceImage}
                     content={content}
                     generatingCover={generatingCover}
                     locale={locale}
@@ -382,6 +396,8 @@ function SocialPostEditorBody({
                     onAdd={() => void mediaIntake.chooseMedia()}
                     onChangeIds={updateMediaIds}
                     onGenerateCover={() => void generateCover()}
+                    onGenerateTextCover={textCover.open}
+                    textCoverDisabled={textCover.disabled}
                     onOpenRelations={(assetId) => {
                       setRelationAssetId(assetId);
                       setRelationsOpen(true);
@@ -396,6 +412,7 @@ function SocialPostEditorBody({
           />
         </ContentWorkspace>
         {publication.dialog}
+        {textCover.dialog}
         <CreationRelationsSheet
           items={relations}
           open={relationsOpen}

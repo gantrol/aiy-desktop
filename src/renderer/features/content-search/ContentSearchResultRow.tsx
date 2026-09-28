@@ -1,3 +1,5 @@
+import { cn } from '@/renderer/lib/utils';
+import { contentSearchSourceKey } from '@/renderer/features/content-search/contentSearchSelection';
 import { ChevronRightIcon, FileTextIcon, MessageSquareTextIcon, VideoIcon } from 'lucide-react';
 import { Button } from '@/renderer/components/ui/button';
 import { useI18n } from '@/renderer/i18n/useI18n';
@@ -11,9 +13,15 @@ export function ContentSearchResultRow({
   disabled,
   terms,
   onSelect,
+  selected = false,
+  onPreview,
+  onOpen,
 }: {
   item: ContentLookupResult['items'][number];
   disabled?: boolean;
+  selected?: boolean;
+  onPreview?(item: ContentLookupResult['items'][number]): void;
+  onOpen?(item: ContentLookupResult['items'][number]): void;
   terms: readonly string[];
   onSelect(item: ContentLookupResult['items'][number]): void;
 }) {
@@ -32,9 +40,30 @@ export function ContentSearchResultRow({
         type="button"
         variant="ghost"
         disabled={disabled}
-        data-search-result={JSON.stringify([item.source.kind, item.source.id, item.source.branchId])}
-        className="group h-auto w-full items-start justify-start gap-3 rounded-md px-3 py-3 text-left font-normal whitespace-normal focus-visible:bg-selected focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-border-strong focus-visible:ring-offset-0"
+        data-search-result={contentSearchSourceKey(item.source)}
+        aria-current={selected ? 'true' : undefined}
+        className={cn(
+          'group h-auto w-full items-start justify-start gap-3 rounded-md border-l-2 border-l-transparent px-3 py-3 text-left font-normal whitespace-normal focus-visible:ring-inset focus-visible:ring-offset-0',
+          selected &&
+            'border-l-selected-foreground bg-selected text-selected-foreground hover:bg-selected active:bg-selected',
+        )}
         onClick={() => onSelect(item)}
+        onFocus={() => onPreview?.(item)}
+        onDoubleClick={() => onOpen?.(item)}
+        onKeyDown={(event) => {
+          if (
+            onOpen &&
+            event.key === 'Enter' &&
+            !event.nativeEvent.isComposing &&
+            !event.altKey &&
+            !event.ctrlKey &&
+            !event.metaKey &&
+            !event.shiftKey
+          ) {
+            event.preventDefault();
+            onOpen(item);
+          }
+        }}
       >
         <Icon aria-hidden="true" className="mt-0.5 size-4 text-muted-foreground" />
         <span className="flex min-w-0 flex-1 flex-col gap-1.5">

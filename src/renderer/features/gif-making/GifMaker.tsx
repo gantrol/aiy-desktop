@@ -142,6 +142,7 @@ export default function GifMaker(
       editor.setResult(null);
       editor.setShowEncoded(false);
       editor.setPlaying(false);
+      await props.onRefresh();
     }
     setPage('edit');
   };

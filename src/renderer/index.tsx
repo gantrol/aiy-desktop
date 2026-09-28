@@ -4,6 +4,7 @@ import { App } from '@/renderer/App';
 import { I18nProvider } from '@/renderer/i18n/I18nProvider';
 import { installRendererDiagnostics, reportRendererError } from '@/renderer/lib/rendererDiagnostics';
 import './styles/index.css';
+import '@/renderer/features/font-settings/installFontPreferences';
 
 const disposeDiagnostics = installRendererDiagnostics();
 if (import.meta.hot) import.meta.hot.dispose(disposeDiagnostics);

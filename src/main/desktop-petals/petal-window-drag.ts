@@ -6,6 +6,7 @@ import { petalPointSchema } from '@/shared/contracts/desktop-petals';
 export interface PetalDrag {
   point: Point;
   origin: Rectangle;
+  ending?: boolean;
 }
 const endSchema = z.object({ cancel: z.boolean(), released: z.boolean(), point: petalPointSchema.optional() }).strict();
 
@@ -17,17 +18,19 @@ export async function executePetalDrag(
   senderId: number,
   entry?: PetalWindow,
 ) {
-  if (!entry) return;
+  if (!entry || entry.window.isDestroyed()) {
+    origins.delete(senderId);
+    return;
+  }
   if (command === 'begin-drag') {
     const point = petalPointSchema.parse(input);
-    windows.presentation.preview(entry, false, 'peek');
     entry.previewToken = undefined;
     windows.presentation.clearDock(entry);
     origins.set(senderId, { point, origin: entry.window.getBounds() });
     return;
   }
   const drag = origins.get(senderId);
-  if (!drag) return;
+  if (!drag || drag.ending) return;
   const move = (point: Point) =>
     windows.move(
       entry,
@@ -43,18 +46,30 @@ export async function executePetalDrag(
     return;
   }
   const { cancel, released, point } = endSchema.parse(input);
-  if (cancel) windows.move(entry, drag.origin, undefined, drag.origin);
-  else if (point) move(point);
-  const bounds = entry.window.getBounds();
-  origins.delete(senderId);
-  if (cancel) {
-    windows.onDragCancel?.();
-    return;
+  // Reject late moves, but retain identity until asynchronous drop handling settles.
+  drag.ending = true;
+  try {
+    if (cancel) {
+      try {
+        windows.move(entry, drag.origin, undefined, drag.origin);
+      } finally {
+        if (origins.get(senderId) === drag) windows.onDragCancel?.();
+      }
+      return;
+    }
+    // Capture the fallback once; a pending drop must not resample a later cursor position.
+    const releasePoint = released ? (point ?? screen.getCursorScreenPoint()) : undefined;
+    if (point) move(point);
+    const bounds = entry.window.getBounds();
+    if (!released) windows.onDragCancel?.();
+    if (releasePoint && (await windows.onDragEnd?.(entry, releasePoint))) return;
+    if (entry.window.isDestroyed() || origins.get(senderId) !== drag) return;
+    const hub = released && entry.instanceId && !entry.expanded ? windows.find(entry.libraryId, null) : undefined;
+    if (hub && releasePoint && windows.presentation.containsFlower(hub, releasePoint))
+      return await windows.collect(entry, drag.origin);
+    if (bounds.x === drag.origin.x && bounds.y === drag.origin.y) return;
+    windows.presentation.snap(entry);
+  } finally {
+    if (origins.get(senderId) === drag) origins.delete(senderId);
   }
-  if (released && (await windows.onDragEnd?.(entry, point ?? screen.getCursorScreenPoint()))) return;
-  const hub = released && entry.instanceId && !entry.expanded ? windows.find(entry.libraryId, null) : undefined;
-  if (hub && windows.presentation.containsFlower(hub, point ?? screen.getCursorScreenPoint()))
-    return windows.collect(entry, drag.origin);
-  if (bounds.x === drag.origin.x && bounds.y === drag.origin.y) return;
-  windows.presentation.snap(entry);
 }

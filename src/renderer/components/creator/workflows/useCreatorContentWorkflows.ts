@@ -42,7 +42,6 @@ interface Options {
   resetInputs(): void;
   restoreDraft(draft: CreationDraftDto | null): void;
   saveCapturedDraft(snapshot: CreationDraftSaveSnapshot): Promise<CreationDraftDto>;
-  saveDraft(prompt: CreationDraftPromptSnapshot): Promise<CreationDraftDto>;
   selectedInspirationStashId: string | null;
   setCompactPanel(panel: 'creator' | 'output'): void;
   setOutputMode(mode: 'results'): void;
@@ -126,12 +125,17 @@ export function useCreatorContentWorkflows(options: Options) {
       };
     },
     createArticleFromDraft: article.createArticleFromDraft,
+    onDraftAnimationCreated(commitIdentity) {
+      if (options.captureDraftCommitIdentity() !== commitIdentity) return;
+      options.resetInputs();
+      options.restoreDraft(null);
+      options.clearSavedInspiration();
+    },
     invalidateAutosaves: options.invalidateAutosaves,
     notify: options.notify,
     onPromptCaptured: options.synchronizePrompt,
     requestIdentity: options.generationRequestIdentity,
     saveCapturedDraft: options.saveCapturedDraft,
-    saveDraft: options.saveDraft,
   });
   const seriesIds = useMemo(() => new Set(options.data.series.map((item) => item.id)), [options.data.series]);
   const derivedVisual = useDerivedVisualWorkflow({

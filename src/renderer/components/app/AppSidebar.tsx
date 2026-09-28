@@ -1,6 +1,10 @@
 import { SettingsIcon } from 'lucide-react';
 import type { AppView } from '@/renderer/components/app/app-navigation';
-import { navigationItems } from '@/renderer/components/app/app-navigation-items';
+import {
+  type AppNavigationItem,
+  primaryNavigationItems,
+  utilityNavigationItems,
+} from '@/renderer/components/app/app-navigation-items';
 import { getExtensionNavigationItems } from '@/renderer/features/extensions/extension-navigation-items';
 import { AppSidebarButton } from '@/renderer/components/app/AppSidebarButton';
 import { useI18n } from '@/renderer/i18n/useI18n';
@@ -35,13 +39,30 @@ export function AppSidebar({
   const { messages } = useI18n();
   const labels = messages.app.navigation;
   const visibleItems = [
-    ...navigationItems,
+    ...primaryNavigationItems,
     ...getExtensionNavigationItems({ codexImagesVisible, transitionShowcaseVisible }),
   ];
+
+  function renderNavigationItem({ id, icon, activeViews }: AppNavigationItem) {
+    const current = activeViews.includes(view);
+    return (
+      <AppSidebarButton
+        key={id}
+        data-view={id}
+        icon={icon}
+        label={labels[id]}
+        selected={current}
+        disabled={spaceTransitioning}
+        onClick={() => onViewChange(id)}
+        aria-current={current ? 'page' : undefined}
+      />
+    );
+  }
+
   return (
     <TooltipProvider>
       <aside
-        className="flex h-full w-[72px] shrink-0 flex-col items-center gap-2 overflow-hidden border-r bg-muted py-3"
+        className="flex h-full w-14 shrink-0 flex-col items-center gap-2 overflow-hidden border-r bg-muted py-3"
         aria-label={labels.label}
       >
         <div className="mb-2 shrink-0">
@@ -53,33 +74,23 @@ export function AppSidebar({
             notify={notify}
           />
         </div>
-        <nav className="flex min-h-0 w-full flex-1 flex-col items-center gap-2 overflow-x-hidden overflow-y-auto">
-          {visibleItems.map(({ id, icon, activeViews }) => {
-            const current = activeViews.includes(view);
-            return (
-              <AppSidebarButton
-                key={id}
-                data-view={id}
-                icon={icon}
-                label={labels[id]}
-                selected={current}
-                disabled={spaceTransitioning}
-                onClick={() => onViewChange(id)}
-                aria-current={current ? 'page' : undefined}
-              />
-            );
-          })}
+        <nav className="flex min-h-0 w-full flex-1 flex-col items-center gap-2">
+          <div className="flex min-h-0 w-full flex-1 flex-col items-center gap-2 overflow-x-hidden overflow-y-auto">
+            {visibleItems.map(renderNavigationItem)}
+          </div>
+          <div className="flex w-full shrink-0 flex-col items-center gap-2 pt-2">
+            {utilityNavigationItems.map(renderNavigationItem)}
+            <AppSidebarButton
+              data-action="settings"
+              icon={SettingsIcon}
+              label={labels.settings}
+              selected={view === 'contentManagement'}
+              disabled={spaceTransitioning}
+              aria-current={view === 'contentManagement' ? 'page' : undefined}
+              onClick={onSettingsOpen}
+            />
+          </div>
         </nav>
-        <AppSidebarButton
-          data-action="settings"
-          icon={SettingsIcon}
-          label={labels.settings}
-          compact
-          selected={view === 'contentManagement'}
-          disabled={spaceTransitioning}
-          aria-current={view === 'contentManagement' ? 'page' : undefined}
-          onClick={onSettingsOpen}
-        />
       </aside>
     </TooltipProvider>
   );

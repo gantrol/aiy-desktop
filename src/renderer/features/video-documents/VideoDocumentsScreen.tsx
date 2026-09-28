@@ -5,6 +5,7 @@ import {
   useState,
   type Dispatch,
   type DragEvent as ReactDragEvent,
+  type ReactNode,
   type SetStateAction,
 } from 'react';
 import type {
@@ -33,6 +34,7 @@ import { useVideoDocumentNavigation } from '@/renderer/features/video-documents/
 import { useVideoDocumentSession } from '@/renderer/features/video-documents/useVideoDocumentSession';
 import { useVideoDocumentTranscriptRecognition } from '@/renderer/features/video-documents/useVideoDocumentTranscriptRecognition';
 import { useVideoDocumentTranscriptTranslation } from '@/renderer/features/video-documents/useVideoDocumentTranscriptTranslation';
+import { WorkbenchNavigationPane } from '@/renderer/components/workbench/WorkbenchNavigationPane';
 import { useI18n } from '@/renderer/i18n/useI18n';
 
 interface ExternalDocumentUpdate {
@@ -54,6 +56,37 @@ interface Props {
 }
 
 type VideoDocumentLabels = ReturnType<typeof useI18n>['messages']['videoDocuments'];
+
+function VideoDocumentLibraryFrame({
+  label,
+  location,
+  children,
+}: {
+  label: string;
+  location: VideoDocumentsLocation;
+  children: ReactNode;
+}) {
+  return (
+    <WorkbenchNavigationPane
+      layoutKey="video-documents-library"
+      label={label}
+      selectionKey={JSON.stringify(location)}
+      initialWidth={300}
+      minimumContentWidth={520}
+    >
+      {children}
+    </WorkbenchNavigationPane>
+  );
+}
+
+function VideoDocumentExternalDropOverlay({ visible, label }: { visible: boolean; label: string }) {
+  if (!visible) return null;
+  return (
+    <div className="pointer-events-none absolute inset-3 z-40 grid place-items-center rounded-xl border-2 border-dashed border-selected-foreground/60 bg-background/95 text-sm font-medium text-selected-foreground shadow-overlay backdrop-blur-sm">
+      {label}
+    </div>
+  );
+}
 
 function generationErrorLabel(run: VideoDocumentGenerationRunDto, labels: VideoDocumentLabels) {
   switch (run.errorCode) {
@@ -311,9 +344,7 @@ export function VideoDocumentsScreen({
     }
   }, [active, libraryVisible, location.documentId, navigation.root.items, onNavigate]);
 
-  function chooseVideoFile() {
-    videoFileInputRef.current?.click();
-  }
+  const chooseVideoFile = () => videoFileInputRef.current?.click();
 
   function handleExternalDrag(event: ReactDragEvent<HTMLDivElement>) {
     if (!event.dataTransfer.types.includes('Files')) return;
@@ -347,42 +378,42 @@ export function VideoDocumentsScreen({
         onCreate={(file) => setStartRequest({ file, source: 'UPLOAD' })}
         onReplace={(file) => void contentActions.replaceVideo(file)}
       />
-      {externalDragActive && (
-        <div className="pointer-events-none absolute inset-3 z-40 grid place-items-center rounded-xl border-2 border-dashed border-selected-foreground/60 bg-background/95 text-sm font-medium text-selected-foreground shadow-overlay backdrop-blur-sm">
-          {labels.start.dropOverlay}
-        </div>
-      )}
+      <VideoDocumentExternalDropOverlay visible={externalDragActive} label={labels.start.dropOverlay} />
       {libraryVisible && (
-        <VideoDocumentLibraryPane
-          albums={albums}
-          location={location}
-          query={query}
-          root={navigation.root}
-          children={navigation.children}
-          searchItems={documentList.items}
-          searchLoading={documentList.loading}
-          searchLoadingMore={documentList.loadingMore}
-          searchHasMore={documentList.hasMore}
-          onQueryChange={setQuery}
-          onExpandAlbum={navigation.ensureChildren}
-          onSelectDocument={(documentId, parentAlbumId) =>
-            onNavigate({
-              collection: parentAlbumId ? { kind: 'album', albumId: parentAlbumId } : { kind: 'unfiled' },
-              documentId,
-            })
-          }
-          onLoadRootMore={navigation.loadRootMore}
-          onLoadChildrenMore={navigation.loadChildrenMore}
-          onLoadSearchMore={() => void documentList.loadMore()}
-          onMoveDocument={libraryActions.moveDocument}
-          onMoveAlbum={libraryActions.moveAlbum}
-          onStartVideoDocument={chooseVideoFile}
-          onCreateAlbum={setCreateAlbumParentId}
-          onRenameAlbum={setRenameAlbumId}
-          onRenameDocument={(documentId, title) => setRenameDocument({ id: documentId, title })}
-          onRequestMove={setMoveTarget}
-          onReorder={(parentAlbumId, targets) => navigation.reorder({ parentAlbumId, targets })}
-        />
+        <VideoDocumentLibraryFrame label={labels.title} location={location}>
+          <VideoDocumentLibraryPane
+            albums={albums}
+            location={location}
+            query={query}
+            root={navigation.root}
+            children={navigation.children}
+            searchItems={documentList.items}
+            searchLoading={documentList.loading}
+            searchLoadingMore={documentList.loadingMore}
+            searchHasMore={documentList.hasMore}
+            onQueryChange={setQuery}
+            onExpandAlbum={navigation.ensureChildren}
+            onSelectDocument={(documentId, parentAlbumId) =>
+              onNavigate({
+                collection: parentAlbumId ? { kind: 'album', albumId: parentAlbumId } : { kind: 'unfiled' },
+                documentId,
+              })
+            }
+            onLoadRootMore={navigation.loadRootMore}
+            onLoadChildrenMore={navigation.loadChildrenMore}
+            onLoadSearchMore={() => void documentList.loadMore()}
+            onMoveDocument={libraryActions.moveDocument}
+            onMoveCreationItem={libraryActions.moveCreationItem}
+            onMoveAlbum={libraryActions.moveAlbum}
+            onOperationError={(reason) => notify(reason instanceof Error ? reason.message : String(reason))}
+            onStartVideoDocument={chooseVideoFile}
+            onCreateAlbum={setCreateAlbumParentId}
+            onRenameAlbum={setRenameAlbumId}
+            onRenameDocument={(documentId, title) => setRenameDocument({ id: documentId, title })}
+            onRequestMove={setMoveTarget}
+            onReorder={(parentAlbumId, targets) => navigation.reorder({ parentAlbumId, targets })}
+          />
+        </VideoDocumentLibraryFrame>
       )}
       <section className="flex min-w-0 flex-1">
         <VideoDocumentWorkspacePane

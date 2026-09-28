@@ -84,6 +84,7 @@ export class CalendarRepository {
             endDate: input.endDate,
             timeZone: input.timeZone,
             timeAxis: input.timeAxis,
+            writer: input.writer ?? 'ALL',
             knownAt: input.knownAt ?? null,
             categories,
             includeInvalidated: input.includeInvalidated,
@@ -310,7 +311,7 @@ export class CalendarRepository {
     const row = this.db
       .prepare(
         `SELECT e.id,e.entity_type,e.entity_id,e.operation,e.occurred_at,${calendarCategorySql} category,
-        f.recorded_at file_recorded_at,
+        f.recorded_at file_recorded_at,json_extract(e.payload_json,'$.provenance.writer') writer_json,
         o.revision,o.note,o.display_date,o.invalidated,o.updated_at FROM change_events e
         LEFT JOIN calendar_activity_overrides o ON o.event_id=e.id
         LEFT JOIN calendar_file_event_times f ON f.event_id=e.id WHERE e.id=?`,
@@ -327,6 +328,7 @@ export class CalendarRepository {
     return calendarItemSchema.parse({
       id,
       category: activity.category,
+      writers: [activity.writer_json ? JSON.parse(str(activity.writer_json)) : { kind: 'UNKNOWN' }],
       title: source.title,
       sourceType: source.type,
       changes: [{ entityType: ref.type, operation: str(activity.operation), count: 1 }],

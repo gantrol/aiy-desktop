@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { NodeViewWrapper, type NodeViewProps } from '@tiptap/react';
-import { ArrowUpRight, Globe, LoaderCircle } from 'lucide-react';
+import { ArrowUpRight, Globe, LoaderCircle, RotateCw } from 'lucide-react';
 import { Button } from '@/renderer/components/ui/button';
 import { useI18n } from '@/renderer/i18n/useI18n';
 import { cn } from '@/renderer/lib/utils';
@@ -14,6 +14,7 @@ function LinkCardBody({ url, title }: { url: string; title?: string }) {
   const [preview, setPreview] = useState<LinkPreview>(() => fallbackLinkPreview(url));
   const [loading, setLoading] = useState(false);
   const [openFailed, setOpenFailed] = useState(false);
+  const [attempt, setAttempt] = useState(0);
   useEffect(() => {
     if (!/^https?:\/\//iu.test(url)) return;
     let live = true;
@@ -22,12 +23,14 @@ function LinkCardBody({ url, title }: { url: string; title?: string }) {
         if (!entries.some((entry) => entry.isIntersecting)) return;
         observer.disconnect();
         setLoading(true);
-        void contentLibraryApi()
-          .linkPreview(url)
+        void Promise.resolve()
+          .then(() => contentLibraryApi().linkPreview(url, attempt > 0))
           .then((result) => {
             if (live) setPreview(result);
           })
-          .catch(() => undefined)
+          .catch(() => {
+            if (live) setPreview((value) => ({ ...value, failure: { stage: 'page', code: 'NETWORK' } }));
+          })
           .finally(() => {
             if (live) setLoading(false);
           });
@@ -39,14 +42,17 @@ function LinkCardBody({ url, title }: { url: string; title?: string }) {
       live = false;
       observer.disconnect();
     };
-  }, [url, preview.kind]);
+  }, [url, attempt]);
   const heading = title || preview.title || (preview.kind === 'X' ? copy.xLinkCard : url);
+  const failureLabel = preview.failure
+    ? `${preview.failure.stage === 'image' ? copy.linkPreviewImageFailed : copy.linkPreviewPageFailed}: ${copy.linkPreviewErrors[preview.failure.code]}`
+    : '';
   return (
-    <div ref={root}>
+    <div ref={root} className="flex items-start">
       <Button
         asChild
         variant="ghost"
-        className="h-auto w-full justify-start gap-3 rounded-sm p-3 text-left font-normal whitespace-normal"
+        className="h-auto min-w-0 flex-1 justify-start gap-3 rounded-sm p-3 text-left font-normal whitespace-normal"
       >
         <a
           href={url}
@@ -89,11 +95,32 @@ function LinkCardBody({ url, title }: { url: string; title?: string }) {
               alt=""
               draggable={false}
               className="!m-0 !h-20 !w-28 shrink-0 rounded-sm object-contain"
-              onError={() => setPreview((value) => ({ ...value, image: null }))}
+              onError={() =>
+                setPreview((value) => ({ ...value, image: null, failure: { stage: 'image', code: 'UNSUPPORTED' } }))
+              }
             />
           )}
         </a>
       </Button>
+      {preview.failure && (
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon-sm"
+          className="mt-2 mr-1 shrink-0 text-muted-foreground"
+          title={`${failureLabel} · ${copy.linkPreviewRetry}`}
+          aria-label={`${copy.linkPreviewRetry}: ${failureLabel}`}
+          disabled={loading}
+          onClick={(event) => {
+            event.preventDefault();
+            event.stopPropagation();
+            setLoading(true);
+            setAttempt((value) => value + 1);
+          }}
+        >
+          <RotateCw className="size-3.5" />
+        </Button>
+      )}
     </div>
   );
 }

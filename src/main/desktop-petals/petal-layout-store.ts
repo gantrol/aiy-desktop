@@ -1,6 +1,8 @@
 import path from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { z } from 'zod';
+import { petalContentScaleSchema } from '@/shared/petal-display';
+import { petalError } from '@/shared/petal-errors';
 import type { CalendarCapturedEvent } from '@/main/database/calendar/calendar-file-capture';
 import { readPetalLayoutFile, writePetalLayoutFile } from '@/main/desktop-petals/petal-layout-file';
 import { PETAL_DRAWER_ENABLED, petalDrawerLayoutSchema, type PetalDrawerLayout } from '@/shared/contracts/petal-drawer';
@@ -26,6 +28,7 @@ const placementSchema = petalPointSchema.extend({
   expanded: z.boolean(),
   home: z.enum(['desktop', 'drawer']).default('desktop'),
   noteSize: petalNoteSizeSchema.optional(),
+  contentScale: petalContentScaleSchema.optional(),
   dockEdge: z.enum(['left', 'right', 'top', 'bottom']).optional(),
 });
 const calendarEventSchema = z.object({
@@ -99,6 +102,24 @@ export class PetalLayoutStore {
   }
   placements(libraryId: string) {
     return this.state.libraries[libraryId] ?? {};
+  }
+
+  /** Serialize display writes, preserving visibility, source identity and independent moves. */
+  saveContentScale(libraryId: string, instanceId: string, input: number) {
+    const scale = petalContentScaleSchema.parse(input);
+    return this.enqueue(async () => {
+      const previous = this.get(libraryId, instanceId);
+      if (!previous) throw petalError('sourceUnavailable');
+      this.set(libraryId, instanceId, { ...previous, contentScale: scale });
+      try {
+        await this.write();
+      } catch (error) {
+        const current = this.get(libraryId, instanceId);
+        if (current?.contentScale === scale)
+          this.set(libraryId, instanceId, { ...current, contentScale: previous.contentScale });
+        throw error;
+      }
+    });
   }
 
   async commit(

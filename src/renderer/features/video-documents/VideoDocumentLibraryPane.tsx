@@ -3,13 +3,11 @@ import {
   ChevronRightIcon,
   FolderPlusIcon,
   LoaderCircleIcon,
-  PanelLeftCloseIcon,
-  PanelLeftOpenIcon,
   PlusIcon,
   SearchIcon,
   XIcon,
 } from 'lucide-react';
-import { useEffect, useState, type PointerEvent as ReactPointerEvent } from 'react';
+import { useState } from 'react';
 import type { AlbumDto, VideoDocumentSummaryDto } from '@/shared/contracts';
 import type { VideoDocumentsLocation } from '@/renderer/components/app/app-navigation';
 import type { AlbumMoveTarget } from '@/renderer/components/albums/AlbumMoveDialog';
@@ -44,8 +42,10 @@ interface Props {
   onLoadRootMore(): void;
   onLoadChildrenMore(albumId: string): void;
   onLoadSearchMore(): void;
-  onMoveDocument(documentId: string, albumId: string | null): void | Promise<void>;
-  onMoveAlbum(albumId: string, parentAlbumId: string | null): void | Promise<void>;
+  onMoveDocument(documentId: string, albumId: string | null, copy?: boolean): void | Promise<void>;
+  onMoveCreationItem(creationItemId: string, albumId: string | null, copy?: boolean): void | Promise<void>;
+  onMoveAlbum(albumId: string, parentAlbumId: string | null, copy?: boolean): void | Promise<void>;
+  onOperationError(reason: unknown): void;
   onStartVideoDocument(): void;
   onCreateAlbum(parentAlbumId: string | null): void;
   onRenameAlbum(albumId: string): void;
@@ -55,68 +55,6 @@ interface Props {
     parentAlbumId: string | null,
     entries: Array<{ kind: 'ALBUM' | 'DOCUMENT'; targetId: string }>,
   ): void | Promise<void>;
-}
-
-const SIDEBAR_WIDTH_KEY = 'aiy.videoDocuments.sidebarWidth';
-const SIDEBAR_COLLAPSED_KEY = 'aiy.videoDocuments.sidebarCollapsed';
-const MINIMUM_WIDTH = 240;
-const MAXIMUM_WIDTH = 420;
-const DEFAULT_WIDTH = 300;
-const COLLAPSED_WIDTH = 84;
-
-function clampWidth(width: number) {
-  return Math.min(MAXIMUM_WIDTH, Math.max(MINIMUM_WIDTH, Math.round(width)));
-}
-
-function initialWidth() {
-  const stored = Number(globalThis.localStorage?.getItem(SIDEBAR_WIDTH_KEY));
-  return Number.isFinite(stored) ? clampWidth(stored) : DEFAULT_WIDTH;
-}
-
-function initialCollapsed() {
-  return globalThis.localStorage?.getItem(SIDEBAR_COLLAPSED_KEY) === 'true';
-}
-
-function SidebarResizeHandle({
-  width,
-  label,
-  onChange,
-}: {
-  width: number;
-  label: string;
-  onChange(width: number): void;
-}) {
-  function beginResize(event: ReactPointerEvent<HTMLDivElement>) {
-    event.preventDefault();
-    const startX = event.clientX;
-    const startWidth = width;
-    const move = (moveEvent: PointerEvent) => onChange(startWidth + moveEvent.clientX - startX);
-    const stop = () => {
-      document.removeEventListener('pointermove', move);
-      document.removeEventListener('pointerup', stop);
-      document.removeEventListener('pointercancel', stop);
-    };
-    document.addEventListener('pointermove', move);
-    document.addEventListener('pointerup', stop);
-    document.addEventListener('pointercancel', stop);
-  }
-  return (
-    <div
-      role="separator"
-      tabIndex={0}
-      aria-label={label}
-      aria-orientation="vertical"
-      aria-valuemin={MINIMUM_WIDTH}
-      aria-valuemax={MAXIMUM_WIDTH}
-      aria-valuenow={width}
-      className="absolute inset-y-0 -right-1 z-30 w-2 cursor-col-resize outline-none after:absolute after:inset-y-0 after:left-1/2 after:w-px after:-translate-x-1/2 hover:after:bg-selected-foreground/35 focus-visible:after:bg-selected-foreground"
-      onPointerDown={beginResize}
-      onKeyDown={(event) => {
-        if (event.key === 'ArrowLeft') onChange(width - 16);
-        if (event.key === 'ArrowRight') onChange(width + 16);
-      }}
-    />
-  );
 }
 
 interface SearchResultsProps {
@@ -183,40 +121,6 @@ function VideoDocumentSearchResults({
   );
 }
 
-function VideoDocumentCompactHeader({
-  onCreateAlbum,
-  onStartVideoDocument,
-}: {
-  onCreateAlbum(): void;
-  onStartVideoDocument(): void;
-}) {
-  const labels = useI18n().messages.videoDocuments.sidebar;
-  return (
-    <header className="flex h-14 shrink-0 items-center justify-center gap-1 border-b border-border/60">
-      <Button
-        type="button"
-        variant="ghost"
-        size="icon-sm"
-        title={labels.newAlbum}
-        aria-label={labels.newAlbum}
-        onClick={onCreateAlbum}
-      >
-        <FolderPlusIcon className="size-4" />
-      </Button>
-      <Button
-        type="button"
-        variant="ghost"
-        size="icon-sm"
-        title={labels.newDocument}
-        aria-label={labels.newDocument}
-        onClick={onStartVideoDocument}
-      >
-        <PlusIcon className="size-4" />
-      </Button>
-    </header>
-  );
-}
-
 export function VideoDocumentLibraryPane({
   albums,
   location,
@@ -234,7 +138,9 @@ export function VideoDocumentLibraryPane({
   onLoadChildrenMore,
   onLoadSearchMore,
   onMoveDocument,
+  onMoveCreationItem,
   onMoveAlbum,
+  onOperationError,
   onStartVideoDocument,
   onCreateAlbum,
   onRenameAlbum,
@@ -244,8 +150,6 @@ export function VideoDocumentLibraryPane({
 }: Props) {
   const { messages } = useI18n();
   const labels = messages.videoDocuments;
-  const [width, setWidth] = useState(initialWidth);
-  const [collapsed, setCollapsed] = useState(initialCollapsed);
   const [showEmptyAlbums, setShowEmptyAlbums] = useState(false);
   const [searchOpen, setSearchOpen] = useState(() => Boolean(query.trim()));
   const searchMode = Boolean(query.trim());
@@ -257,25 +161,6 @@ export function VideoDocumentLibraryPane({
     showEmptyAlbums,
     onExpandAlbum,
   });
-
-  function updateWidth(nextWidth: number) {
-    const normalized = clampWidth(nextWidth);
-    setWidth(normalized);
-    globalThis.localStorage?.setItem(SIDEBAR_WIDTH_KEY, String(normalized));
-  }
-
-  function updateCollapsed(nextCollapsed: boolean) {
-    setCollapsed(nextCollapsed);
-    globalThis.localStorage?.setItem(SIDEBAR_COLLAPSED_KEY, String(nextCollapsed));
-    if (nextCollapsed) {
-      setSearchOpen(false);
-      if (query) onQueryChange('');
-    }
-  }
-
-  useEffect(() => {
-    if (query.trim()) setSearchOpen(true);
-  }, [query]);
 
   function requestCreateAlbum(parentAlbumId: string | null) {
     setShowEmptyAlbums(true);
@@ -299,7 +184,9 @@ export function VideoDocumentLibraryPane({
         onLoadRootMore={onLoadRootMore}
         onLoadChildrenMore={onLoadChildrenMore}
         onMoveDocument={onMoveDocument}
+        onMoveCreationItem={onMoveCreationItem}
         onMoveAlbum={onMoveAlbum}
+        onOperationError={onOperationError}
         onCreateAlbum={requestCreateAlbum}
         onRenameAlbum={onRenameAlbum}
         onRenameDocument={onRenameDocument}
@@ -309,44 +196,8 @@ export function VideoDocumentLibraryPane({
     );
   }
 
-  if (collapsed) {
-    return (
-      <aside
-        className="relative flex shrink-0 flex-col border-r bg-surface-sunken"
-        style={{ width: COLLAPSED_WIDTH }}
-        data-sidebar-mode="thumbnails"
-      >
-        <VideoDocumentCompactHeader
-          onCreateAlbum={() => requestCreateAlbum(null)}
-          onStartVideoDocument={onStartVideoDocument}
-        />
-        <ScrollArea type="always" className="min-h-0 flex-1" viewportRef={treeState.navigationViewportRef}>
-          {root.loading && root.items.length === 0 ? (
-            <div className="grid h-24 place-items-center text-selected-foreground">
-              <LoaderCircleIcon className="size-4 animate-spin" />
-            </div>
-          ) : (
-            navigationTree(true)
-          )}
-        </ScrollArea>
-        <Button
-          type="button"
-          variant="secondary"
-          size="icon-sm"
-          className="absolute bottom-2 left-1/2 z-20 -translate-x-1/2 shadow-overlay"
-          aria-label={labels.sidebar.expand}
-          title={labels.sidebar.expand}
-          onClick={() => updateCollapsed(false)}
-        >
-          <PanelLeftOpenIcon className="size-4" />
-        </Button>
-      </aside>
-    );
-  }
-
   return (
-    <aside className="relative flex shrink-0 flex-col border-r bg-surface-sunken" style={{ width }}>
-      <SidebarResizeHandle width={width} label={labels.sidebar.resize} onChange={updateWidth} />
+    <div className="relative flex size-full min-h-0 min-w-0 flex-col bg-surface-sunken">
       <header className="flex h-14 shrink-0 items-center border-b border-border/60 px-3">
         <h1 className="truncate text-lg font-semibold tracking-tight">{labels.title}</h1>
         <div className="ml-auto flex items-center gap-1">
@@ -454,17 +305,6 @@ export function VideoDocumentLibraryPane({
         )}
         <div className="h-14" aria-hidden="true" />
       </ScrollArea>
-      <Button
-        type="button"
-        variant="secondary"
-        size="icon-sm"
-        className="absolute bottom-2 left-2 z-chrome shadow-overlay"
-        aria-label={labels.sidebar.collapse}
-        title={labels.sidebar.collapse}
-        onClick={() => updateCollapsed(true)}
-      >
-        <PanelLeftCloseIcon className="size-4" />
-      </Button>
-    </aside>
+    </div>
   );
 }

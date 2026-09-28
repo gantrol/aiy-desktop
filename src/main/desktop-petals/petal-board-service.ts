@@ -12,11 +12,15 @@ type LayerCommand = Extract<
 export class PetalBoardService {
   private queue: Promise<void> = Promise.resolve();
   private provisionalLayers = new Map<string, string>();
+  private projection?: Pick<PetalBoard, 'pins' | 'layers' | 'memberships'>;
+  invalidate() {
+    this.projection = undefined;
+  }
   constructor(
     private readonly context: ActiveLibraryContext,
     private readonly windows: PetalWindows,
     private readonly beforeHide: (id: string) => Promise<boolean>,
-    private readonly changed: () => void,
+    private readonly changed: (instanceIds?: readonly string[]) => void,
     private readonly noteExists: (id: string) => boolean,
   ) {}
   private get repository() {
@@ -29,23 +33,31 @@ export class PetalBoardService {
     const existing = this.provisionalLayers.get(id);
     if (!persisted) {
       if (!existing) this.provisionalLayers.set(id, this.snapshot().activeLayerId);
+      this.invalidate();
       return;
     }
     const layerId = existing ?? this.snapshot().activeLayerId;
-    if (!this.repository.memberships()[id]) this.repository.assign(id, layerId);
+    if (existing || !this.snapshot().memberships[id]) this.repository.assign(id, layerId);
     this.provisionalLayers.delete(id);
+    this.invalidate();
   }
   forgetNote(id: string) {
     this.provisionalLayers.delete(id);
     this.repository.forget(id);
+    this.invalidate();
   }
   snapshot(): PetalBoard {
-    const layers = this.repository.layers(),
+    const data = (this.projection ??= {
+      layers: this.repository.layers(),
+      pins: this.repository.list(),
+      memberships: { ...this.repository.memberships(), ...Object.fromEntries(this.provisionalLayers) },
+    });
+    const { layers } = data,
       state = this.windows.layouts.board(this.libraryId);
     return {
-      pins: this.repository.list(),
+      pins: data.pins,
       layers,
-      memberships: { ...this.repository.memberships(), ...Object.fromEntries(this.provisionalLayers) },
+      memberships: data.memberships,
       activeLayerId: layers.some((layer) => layer.id === state.activeLayerId) ? state.activeLayerId : 'default',
       hiddenLayerIds: state.hiddenLayerIds.filter((id) => layers.some((layer) => layer.id === id)),
     };
@@ -59,6 +71,7 @@ export class PetalBoardService {
     switch (command.kind) {
       case 'pin': {
         const id = this.repository.pin(command.source, board.activeLayerId);
+        this.invalidate();
         const layerId = this.repository.memberships()[id] ?? 'default';
         await this.windows.layouts.saveBoard(this.libraryId, {
           activeLayerId: layerId,
@@ -91,8 +104,9 @@ export class PetalBoardService {
       default:
         await this.updateLayers(command, board);
     }
+    this.invalidate();
     await this.windows.flush();
-    this.changed();
+    this.changed(command.kind === 'pin-appearance' ? [command.id] : undefined);
   }
   private async assign(command: Extract<PetalBoardCommand, { kind: 'assign-layer' }>, board: PetalBoard) {
     if (!board.layers.some((layer) => layer.id === command.layerId)) throw petalError('invalidSettings');
@@ -102,6 +116,7 @@ export class PetalBoardService {
     if (hide && !(await this.beforeHide(command.id))) throw petalError('unsaved');
     if (this.provisionalLayers.has(command.id)) this.provisionalLayers.set(command.id, command.layerId);
     else this.repository.assign(command.id, command.layerId);
+    this.invalidate();
     if (hide) this.windows.find(this.libraryId, command.id)?.window.hide();
   }
   private async flushLayer(id: string, board: PetalBoard) {
@@ -148,6 +163,7 @@ export class PetalBoardService {
         break;
       }
     }
+    this.invalidate();
     await this.windows.layouts.saveBoard(this.libraryId, next);
     await this.applyVisibility(this.snapshot(), recall);
   }
@@ -169,13 +185,14 @@ export class PetalBoardService {
       }
   }
   reconcile() {
+    this.invalidate();
     for (const id of this.repository.reconcile()) this.windows.remove(this.libraryId, id);
     const active = new Set(this.repository.list().map((pin) => pin.id));
     for (const entry of this.windows.entries.values()) {
       if (entry.libraryId === this.libraryId && isContentPinId(entry.instanceId) && !active.has(entry.instanceId))
         entry.window.hide();
     }
-    this.changed();
+    this.changed([...active]);
     void this.windows.flush().catch((error) => console.error('[desktop-petals] board layout save failed', error));
   }
 }

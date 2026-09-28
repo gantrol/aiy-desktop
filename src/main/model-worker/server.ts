@@ -127,6 +127,7 @@ interface WorkerServerOptions {
   token: string;
   e2eReadyDelayMs: number;
   clients: Set<net.Socket>;
+  agentClients: Set<net.Socket>;
   connections: Set<net.Socket>;
   activeRequests: Map<string, AbortController>;
   canAcceptConnection(): boolean;
@@ -145,6 +146,8 @@ function createWorkerServer(options: WorkerServerOptions) {
       return;
     }
     let authenticated = false;
+    let agentClient = false;
+    const requestIds = new Set<string>();
     let readyTimer: ReturnType<typeof setTimeout> | null = null;
     const authenticationTimer = setTimeout(() => socket.destroy(), 5_000);
     const send = (message: ModelWorkerServerMessage) => {
@@ -162,13 +165,19 @@ function createWorkerServer(options: WorkerServerOptions) {
           return;
         }
         authenticated = true;
+        agentClient = message.clientKind === 'agent';
+        if (agentClient) options.agentClients.add(socket);
         clearTimeout(authenticationTimer);
         options.clients.add(socket);
         options.scheduleIdleExit();
         const sendReady = () => {
           readyTimer = null;
           if (!socket.destroyed && options.canAcceptConnection()) {
-            send({ type: 'ready', snapshot: options.snapshot() });
+            const snapshot = options.snapshot();
+            send({
+              type: 'ready',
+              snapshot: agentClient ? { ...snapshot, generationTasks: [], codexPendingCount: 0 } : snapshot,
+            });
           }
         };
         if (options.e2eReadyDelayMs > 0) readyTimer = setTimeout(sendReady, options.e2eReadyDelayMs);
@@ -176,10 +185,19 @@ function createWorkerServer(options: WorkerServerOptions) {
         return;
       }
       if (message.type === 'cancel') {
-        options.activeRequests.get(message.id)?.abort();
+        if (requestIds.has(message.id)) options.activeRequests.get(message.id)?.abort();
         return;
       }
       if (message.type !== 'request') return;
+      if (agentClient && !message.method.startsWith('agent.')) {
+        send(
+          responseError(
+            message.id,
+            Object.assign(new Error('CLI cannot call desktop-only methods'), { code: 'AIY_AGENT_PERMISSION_DENIED' }),
+          ),
+        );
+        return;
+      }
       if (options.shutdownScheduled()) {
         send(
           responseError(
@@ -197,12 +215,14 @@ function createWorkerServer(options: WorkerServerOptions) {
       }
       const controller = new AbortController();
       options.activeRequests.set(message.id, controller);
+      requestIds.add(message.id);
       void options
         .dispatch(message.method, message.params, controller.signal)
         .then((result) => send({ type: 'response', id: message.id, result: result ?? null }))
         .catch((error) => send(responseError(message.id, error)))
         .finally(() => {
           options.activeRequests.delete(message.id);
+          requestIds.delete(message.id);
           options.scheduleIdleExit();
         });
     });
@@ -218,6 +238,7 @@ function createWorkerServer(options: WorkerServerOptions) {
       clearTimeout(authenticationTimer);
       if (readyTimer) clearTimeout(readyTimer);
       options.clients.delete(socket);
+      options.agentClients.delete(socket);
       options.scheduleIdleExit();
     });
   });
@@ -373,6 +394,7 @@ export async function runModelWorker() {
   let activeAssistantJobs = 0;
   let idleTimer: ReturnType<typeof setTimeout> | null = null;
   const clients = new Set<net.Socket>();
+  const agentClients = new Set<net.Socket>();
   const connections = new Set<net.Socket>();
   const activeRequests = new Map<string, AbortController>();
   const snapshot = () =>
@@ -384,12 +406,14 @@ export async function runModelWorker() {
       runtimes.antigravity,
       activeAssistantJobs,
     );
-  const broadcast = (message: ModelWorkerServerMessage) => broadcastWorkerMessage(clients, message);
+  const broadcast = (message: ModelWorkerServerMessage) =>
+    broadcastWorkerMessage(new Set([...clients].filter((client) => !agentClients.has(client))), message);
 
   const server = createWorkerServer({
     token: config.token,
     e2eReadyDelayMs,
     clients,
+    agentClients,
     connections,
     activeRequests,
     canAcceptConnection: () => Boolean(generation && dispatchRequest && !closing),
@@ -410,6 +434,7 @@ export async function runModelWorker() {
     database.initializeModelWorker();
     database.interruptVideoDocumentGenerations();
     extensions = await ExtensionRegistry.create(database, {
+      extensionRoots: config.extensionRoots,
       codexHealth: () =>
         codex?.cachedHealth ?? {
           state: 'checking',

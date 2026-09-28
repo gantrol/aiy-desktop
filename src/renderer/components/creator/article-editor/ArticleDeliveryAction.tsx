@@ -84,6 +84,10 @@ function ArticleDeliveryScopedAction({ articleId, extensions, locale, notify, sp
         notify={notify}
         open={historyScope === scope}
         onOpenChange={(open) => setHistoryScope(open ? scope : null)}
+        onOpenArticle={() => {
+          setHistoryScope(null);
+          setDialogScope(null);
+        }}
       />
     </>
   );

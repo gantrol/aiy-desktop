@@ -18,6 +18,7 @@ import {
   newGifManifest,
   type GifDocumentDetail,
   type GifAdoptionTarget,
+  type GifWorkspaceCreateInput,
 } from '@/shared/contracts/gif-making';
 import type { CreatorLocation, CreatorOpenTabTarget, NavigationMode } from '@/renderer/components/app/app-navigation';
 import { useI18n } from '@/renderer/i18n/useI18n';
@@ -31,6 +32,8 @@ export interface GifLaunchInput {
   initialPrompt?: string;
   sourceDocumentId?: string;
   targetAlbumId?: string | null;
+  consumeCreationDraft?: GifWorkspaceCreateInput['consumeCreationDraft'];
+  onCreated?(): void;
   adoptionTarget?: GifAdoptionTarget;
   documentId?: string;
   assetId?: string;
@@ -156,6 +159,7 @@ export function GifMakerProvider({
           title: input.title ?? '',
           sourceDocumentId: input.sourceDocumentId,
           targetAlbumId: input.targetAlbumId,
+          consumeCreationDraft: input.consumeCreationDraft,
           motionDraft: input.initialPrompt
             ? {
                 prompt: input.initialPrompt,
@@ -174,6 +178,7 @@ export function GifMakerProvider({
           manifest,
         });
         id = editor.id;
+        input.onCreated?.();
         await refreshSavedWork();
       }
       const session = await ensure(id);

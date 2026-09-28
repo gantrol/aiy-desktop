@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { Play, Pause, RotateCcw, SkipForward } from 'lucide-react';
 import { Input } from '@/renderer/components/ui/input';
 import { Button } from '@/renderer/components/ui/button';
@@ -7,11 +7,27 @@ import { Label } from '@/renderer/components/ui/label';
 import { PetalPanel, PetalSelect, PetalIconButton } from '@/renderer/features/desktop-petals/PetalControls';
 import { useI18n } from '@/renderer/i18n/useI18n';
 import { petalErrorText } from '@/shared/petal-errors';
-import { petalHubSettingsSchema, type PetalHubSettings, type PetalTimerAction } from '@/shared/contracts/petal-hub';
+import {
+  CODEX_PETAL_CENTER_PROVIDER_ID,
+  petalHubSettingsSchema,
+  type PetalHubSettings,
+  type PetalQuota,
+  type PetalTimerAction,
+} from '@/shared/contracts/petal-hub';
 import type { DesktopPetalSnapshot } from '@/shared/contracts/desktop-petals';
-import { petalTimerRemaining, formatPetalDuration } from '@/shared/petal-timer';
+import { formatPetalDuration, hasPetalTimerSession, petalTimerRemaining } from '@/shared/petal-timer';
 const zones = Intl.supportedValuesOf('timeZone');
-export function PetalHubSettingsPanel({ snapshot, now }: { snapshot: DesktopPetalSnapshot; now: number }) {
+const automaticQuotaValue = '__automatic__';
+
+export function PetalHubSettingsPanel({
+  snapshot,
+  now,
+  quota,
+}: {
+  snapshot: DesktopPetalSnapshot;
+  now: number;
+  quota: PetalQuota | null;
+}) {
   const { messages } = useI18n(),
     copy = messages.desktopPetals;
   const [settings, setSettings] = useState(snapshot.hubSettings),
@@ -31,6 +47,26 @@ export function PetalHubSettingsPanel({ snapshot, now }: { snapshot: DesktopPeta
     }
   };
   const timer = (action: PetalTimerAction) => void run(() => window.desktopPetals.timerAction(action));
+  const showTimerControls =
+    settings.mode === 'pomodoro' || hasPetalTimerSession(snapshot.timer, snapshot.hubSettings, now);
+  const modeOptions = useMemo(() => {
+    const builtIn = [
+      { value: 'none', label: copy.settings.modes.none },
+      { value: 'clock', label: copy.settings.modes.clock },
+      { value: 'pomodoro', label: copy.settings.modes.pomodoro },
+    ];
+    const contributed = (quota?.providers ?? []).map((provider) => ({
+      value: provider.id,
+      label: provider.id === CODEX_PETAL_CENTER_PROVIDER_ID ? copy.settings.modes.codex : provider.name,
+    }));
+    const options = [...builtIn, ...contributed];
+    if (!options.some((option) => option.value === settings.mode))
+      options.push({
+        value: settings.mode,
+        label: settings.mode === CODEX_PETAL_CENTER_PROVIDER_ID ? copy.settings.modes.codex : settings.mode,
+      });
+    return options;
+  }, [copy.settings.modes, quota?.providers, settings.mode]);
   return (
     <PetalPanel title={copy.settings.title} onBack={() => void run(() => window.desktopPetals.hubView('flower'))}>
       <div className="min-h-0 flex-1 space-y-4 overflow-y-auto">
@@ -46,11 +82,8 @@ export function PetalHubSettingsPanel({ snapshot, now }: { snapshot: DesktopPeta
           <PetalSelect
             label={copy.settings.content}
             value={settings.mode}
-            options={(Object.keys(copy.settings.modes) as PetalHubSettings['mode'][]).map((value) => ({
-              value,
-              label: copy.settings.modes[value],
-            }))}
-            onChange={(value) => patch({ mode: value as PetalHubSettings['mode'] })}
+            options={modeOptions}
+            onChange={(value) => patch({ mode: value })}
           />
         </div>
         <div className="space-y-1">
@@ -92,7 +125,6 @@ export function PetalHubSettingsPanel({ snapshot, now }: { snapshot: DesktopPeta
                     type="number"
                     min={1}
                     max={key === 'focusMinutes' ? 180 : 60}
-                    disabled={snapshot.timer.endsAt !== null}
                     value={settings[key]}
                     onChange={(event) => patch({ [key]: Number(event.target.value) })}
                   />
@@ -107,28 +139,45 @@ export function PetalHubSettingsPanel({ snapshot, now }: { snapshot: DesktopPeta
               />
               <Label htmlFor="timer-notify">{copy.controls.notify}</Label>
             </div>
-            <div className="flex items-center gap-2">
-              <span className="mr-auto text-sm tabular-nums">
-                {copy.timer[snapshot.timer.phase]} · {formatPetalDuration(petalTimerRemaining(snapshot.timer, now))}
-              </span>
-              <PetalIconButton
-                label={snapshot.timer.endsAt === null ? copy.settings.start : copy.settings.pause}
-                disabled={busy || dirty || petalTimerRemaining(snapshot.timer, now) === 0}
-                onClick={() => timer(snapshot.timer.endsAt === null ? 'start' : 'pause')}
-              >
-                {snapshot.timer.endsAt === null ? <Play /> : <Pause />}
-              </PetalIconButton>
-              <PetalIconButton label={copy.controls.reset} disabled={busy || dirty} onClick={() => timer('reset')}>
-                <RotateCcw />
-              </PetalIconButton>
-              <PetalIconButton label={copy.controls.next} disabled={busy || dirty} onClick={() => timer('next')}>
-                <SkipForward />
-              </PetalIconButton>
-            </div>
           </>
         )}
-        {settings.mode === 'codex' && (
+        {showTimerControls && (
+          <div className="flex items-center gap-2">
+            <span className="mr-auto text-sm tabular-nums">
+              {copy.timer[snapshot.timer.phase]} · {formatPetalDuration(petalTimerRemaining(snapshot.timer, now))}
+            </span>
+            <PetalIconButton
+              label={snapshot.timer.endsAt === null ? copy.settings.start : copy.settings.pause}
+              disabled={busy || dirty || petalTimerRemaining(snapshot.timer, now) === 0}
+              onClick={() => timer(snapshot.timer.endsAt === null ? 'start' : 'pause')}
+            >
+              {snapshot.timer.endsAt === null ? <Play /> : <Pause />}
+            </PetalIconButton>
+            <PetalIconButton label={copy.controls.reset} disabled={busy || dirty} onClick={() => timer('reset')}>
+              <RotateCcw />
+            </PetalIconButton>
+            <PetalIconButton label={copy.controls.next} disabled={busy || dirty} onClick={() => timer('next')}>
+              <SkipForward />
+            </PetalIconButton>
+          </div>
+        )}
+        {settings.mode === CODEX_PETAL_CENTER_PROVIDER_ID && (
           <>
+            <div className="space-y-1">
+              <Label>{copy.settings.quotaWindow}</Label>
+              <PetalSelect
+                label={copy.settings.quotaWindow}
+                value={settings.codexLimitId ?? automaticQuotaValue}
+                options={[
+                  { value: automaticQuotaValue, label: copy.settings.automatic },
+                  ...(quota?.limits ?? []).map((limit) => ({
+                    value: limit.id,
+                    label: limit.name || copy.quota.defaultLimit,
+                  })),
+                ]}
+                onChange={(value) => patch({ codexLimitId: value === automaticQuotaValue ? null : value })}
+              />
+            </div>
             <Button
               variant="ghost"
               size="sm"

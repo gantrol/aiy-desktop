@@ -66,7 +66,8 @@ export class AgentIntakeRepository {
     const existing = this.receipt(request.requestId, requestHash);
     if (existing) return existing;
     const source = await readIntakeSource(request, signal);
-    const stored = source.kind === 'IMAGE_MATERIAL' ? await this.storage.storeBufferAsync(source.bytes, '.png') : null;
+    const stored =
+      source.kind === 'IMAGE_MATERIAL' ? await this.storage.storeBufferAsync(source.bytes, source.extension) : null;
     assertIntakeActive(signal);
 
     return this.storage.db
@@ -77,13 +78,17 @@ export class AgentIntakeRepository {
         let entityId: string;
         let revisionId: string | null = null;
         if (source.kind === 'ARTICLE' || source.kind === 'OUTLINE') {
-          const article = this.articles.save({
-            id: null,
-            albumId: null,
-            sourceInspirationStashId: null,
-            consumeCreationDraftId: null,
-            content: source.content,
-          });
+          const article = this.articles.save(
+            {
+              id: null,
+              albumId: null,
+              sourceInspirationStashId: null,
+              consumeCreationDraftId: null,
+              content: source.content,
+            },
+            undefined,
+            { entry: 'CLI', requestId: request.requestId, provenance: request.provenance },
+          );
           entityId = article.id;
           revisionId = article.revisionId;
         } else {
@@ -97,14 +102,14 @@ export class AgentIntakeRepository {
                   id: 'image',
                   kind: 'IMAGE',
                   name: source.title,
-                  mimeType: 'image/png',
+                  mimeType: source.mimeType,
                   bytes: source.bytes,
                   width: source.dimensions.width,
                   height: source.dimensions.height,
                 },
               ],
             },
-            new Map([['image', { stored: stored!, mimeType: 'image/png' }]]),
+            new Map([['image', { stored: stored!, mimeType: source.mimeType }]]),
           );
           entityId = result.materialIds[0];
         }

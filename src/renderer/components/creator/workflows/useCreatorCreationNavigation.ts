@@ -90,6 +90,25 @@ function creationNavigationContextChanged(previous: CreationNavigationContext, c
   );
 }
 
+function replaceWithBlankSession(options: Options, albumId: string | null) {
+  options.invalidateAutosaves();
+  options.onComparisonFullWindowChange(false);
+  options.clearSelection();
+  options.clearSavedInspiration();
+  options.setOutputMode('results');
+  options.setVideoCreationRequest(null);
+  options.setCreationMode('new');
+  options.setSeriesId(null);
+  options.setOutputSeriesId(null);
+  options.setVersionId('');
+  options.setRequestedAssetId(null);
+  options.setOutputGalleryOpen(false);
+  options.setCompactPanel('creator');
+  options.resetInputs();
+  options.startNewSession(albumId);
+  options.restoreAssistant(null);
+}
+
 export function useCreatorCreationNavigation(options: Options) {
   const commandRevisionRef = useRef(0);
   const contextRef = useRef({
@@ -149,25 +168,6 @@ export function useCreatorCreationNavigation(options: Options) {
     return preserveWorkingDraft();
   });
 
-  function replaceWithBlankSession(albumId: string | null) {
-    options.invalidateAutosaves();
-    options.onComparisonFullWindowChange(false);
-    options.clearSelection();
-    options.clearSavedInspiration();
-    options.setOutputMode('results');
-    options.setVideoCreationRequest(null);
-    options.setCreationMode('new');
-    options.setSeriesId(null);
-    options.setOutputSeriesId(null);
-    options.setVersionId('');
-    options.setRequestedAssetId(null);
-    options.setOutputGalleryOpen(false);
-    options.setCompactPanel('creator');
-    options.resetInputs();
-    options.startNewSession(albumId);
-    options.restoreAssistant(null);
-  }
-
   async function preserveCurrentDraft() {
     if (options.startNewSaveBlocked || options.creationMode !== 'new' || !hasDraftState()) return true;
     return saveCurrentDraft();
@@ -197,7 +197,7 @@ export function useCreatorCreationNavigation(options: Options) {
       if (commandRevisionRef.current !== commandRevision) return false;
       if (preserveCurrent && !(await preserveCurrentDraft())) return false;
       if (commandRevisionRef.current !== commandRevision) return false;
-      replaceWithBlankSession(albumId);
+      replaceWithBlankSession(options, albumId);
       options.restoreDraft(draft);
       if (mode) {
         const nextLocation = { surface: 'new-creation' as const, albumId };
@@ -222,7 +222,7 @@ export function useCreatorCreationNavigation(options: Options) {
       if (commandRevisionRef.current !== commandRevision) return false;
       const savedDraft = options.getSavedDraft();
       if (options.creationDraftId === draftId && savedDraft?.id === draftId) draft = savedDraft;
-      replaceWithBlankSession(null);
+      replaceWithBlankSession(options, null);
       if (mode) {
         const nextLocation = { surface: 'creation-draft' as const, draftId };
         options.commit(nextLocation, mode);
@@ -236,6 +236,17 @@ export function useCreatorCreationNavigation(options: Options) {
       }
       return false;
     }
+  });
+
+  const discardDeletedDraft = useStableCallback((draftIds: string[]) => {
+    if (!options.creationDraftId || !draftIds.includes(options.creationDraftId)) return;
+    if (options.creationMode !== 'new' || options.selectedContent) {
+      options.detachDraftIdentity();
+      return;
+    }
+    commandRevisionRef.current += 1;
+    replaceWithBlankSession(options, options.targetAlbumId);
+    options.commit({ surface: 'new-creation', albumId: options.targetAlbumId }, 'replace');
   });
 
   const detachDraftFromUnavailableAlbum = useStableCallback(async (albumId: string, includeDescendants: boolean) => {
@@ -339,6 +350,7 @@ export function useCreatorCreationNavigation(options: Options) {
   return {
     chooseSeries,
     detachDraftFromUnavailableAlbum,
+    discardDeletedDraft,
     hasDraftState,
     preserveBeforeNavigation,
     resumeCreationDraft,

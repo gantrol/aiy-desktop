@@ -6,6 +6,10 @@ import type {
 } from '@/shared/contracts';
 import type { VideoDocumentWysiwygEditorHandle } from '@/renderer/features/video-documents/videoDocumentEditorTypes';
 
+export interface ArticleUnplacedImage {
+  assetId: string;
+}
+
 export function useArticleEditorMedia({
   bindings,
   elements,
@@ -22,11 +26,22 @@ export function useArticleEditorMedia({
 }) {
   const [editor, setEditor] = useState<VideoDocumentWysiwygEditorHandle | null>(null);
   const assetByPath = new Map(bindings.map((binding) => [binding.path, binding.assetId]));
+  const images = (editor?.getImagePlacements() ?? []).map((image) => ({
+    ...image,
+    assetId: image.assetId || assetByPath.get(image.path) || '',
+  }));
+  const placedAssetIds = new Set(images.map((image) => image.assetId));
+  const unplacedAssetIds = new Set<string>();
+  const unplaced: ArticleUnplacedImage[] = editor
+    ? bindings.flatMap((binding) => {
+        if (placedAssetIds.has(binding.assetId) || unplacedAssetIds.has(binding.assetId)) return [];
+        unplacedAssetIds.add(binding.assetId);
+        return [{ assetId: binding.assetId }];
+      })
+    : [];
   return {
-    images: (editor?.getImagePlacements() ?? []).map((image) => ({
-      ...image,
-      assetId: image.assetId || assetByPath.get(image.path) || '',
-    })),
+    images,
+    unplaced,
     onEditorHandleChange(
       handle: VideoDocumentWysiwygEditorHandle | null,
       previous: VideoDocumentWysiwygEditorHandle | null,

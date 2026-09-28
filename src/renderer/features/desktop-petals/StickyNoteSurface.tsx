@@ -11,9 +11,11 @@ export function StickyNoteSurface({
   color,
   icon,
   editable = true,
+  libraryName,
   closing = false,
   animate = true,
   nativeDrag = true,
+  fullWindow = false,
   appearance,
   actions,
   className,
@@ -24,9 +26,11 @@ export function StickyNoteSurface({
   color: PetalColor;
   icon: PetalIcon;
   editable?: boolean;
+  libraryName?: string;
   closing?: boolean;
   animate?: boolean;
   nativeDrag?: boolean;
+  fullWindow?: boolean;
   appearance?: ReactNode;
   actions: ReactNode;
 }) {
@@ -39,18 +43,23 @@ export function StickyNoteSurface({
         className,
       )}
       style={{ ...noteAppearanceStyle(color), ...(animate ? undefined : { animation: 'none' }), ...style }}
-      aria-label={copy.note.title}
+      aria-label={libraryName ? `${copy.note.title} · ${libraryName}` : copy.note.title}
       {...props}
     >
       <header
+        hidden={fullWindow}
         className={cn(
           'flex shrink-0 cursor-move items-center gap-0.5 px-3 py-1.5 select-none [&_svg]:size-3.5',
+          fullWindow && 'hidden',
           nativeDrag ? '[-webkit-app-region:drag]' : '[-webkit-app-region:no-drag]',
         )}
       >
         {appearance ?? <PetalNoteIcon icon={icon} className="shrink-0 opacity-60" />}
         <span className="flex min-w-0 flex-1 items-center gap-1.5 truncate text-[11px] opacity-60">
-          <span>{copy.note.title}</span>
+          <span className="truncate" title={libraryName ? `${copy.scope.current} · ${libraryName}` : undefined}>
+            {libraryName ? copy.scope.note : copy.note.title}
+            {libraryName ? ` · ${libraryName}` : ''}
+          </span>
           {!editable && (
             <span title={copy.note.structured} role="img" aria-label={copy.note.structured}>
               <LockKeyhole />
@@ -59,6 +68,7 @@ export function StickyNoteSurface({
         </span>
         {actions}
       </header>
+      {fullWindow && <div className="h-3 shrink-0 cursor-move [-webkit-app-region:drag]" title={copy.controls.drag} />}
       {children}
     </section>
   );

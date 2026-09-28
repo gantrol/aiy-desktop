@@ -1,0 +1,24 @@
+import { nativeImage } from 'electron';
+
+// Transparent monochrome rasterizations of AIYFlowerMark's even-odd rose path.
+// Keep both 20px and 40px representations for standard and Retina menu bars.
+// Embedded PNGs travel with the main bundle in source and packaged runs.
+const representations = [
+  {
+    scaleFactor: 1,
+    data: 'iVBORw0KGgoAAAANSUhEUgAAABQAAAAUCAYAAACNiR0NAAAABmJLR0QA/wD/AP+gvaeTAAABsklEQVQ4ja3Uz4vOURTH8dcMZWWjaAqZYjR2alAWNmqGbKZIFlaTkp0fJSnRRFmwsNEsLCzMxkY2dsrGwviR/wARMcJoUqPxzGNxz+M5853vPGbi1O17v91z3/d8zjn38p+t6y/r67EDH9CH/ZjFOB4t97ATmEGzZszh9FJBqzAckdTBWmMGazuBunAWU7FhFjcxhAEcVKQ2EvR4J+BocvyFAziKZ3iLB0oOd+NL8n2O/ipsHX4mp4+4oOSqFe23mF/Cvor898H4Y8OL5KmJu9ikVHsvJiPSVxW/UegOYHebrYEzIRtO4XFIH8JlbLSwILsy6EXIg1uRo5Vx8hVsSEqeYjNGKsAf+WdFSGlGfiaSlIdJ3m0cjvlOvE5+IyIKSuVaEuaUIrTse6z3xP+9+PbjHXrxCXdyhEfSSWMYNP+WTCutk5u6D5+122x1Bg4k5waOYSsuKjmdTuuTOIRz5le5R8UmKg4vcV3px68hb3tsvKrdo03l8Vjw0GzBmwo0j4bSwI2atUUfijXKTXjSAVw95FpddHV2viIrQ27gJLYtBZRtD+4rbTGlPKqDy4X8k/0G2QqxQcfZQvwAAAAASUVORK5CYII=',
+  },
+  {
+    scaleFactor: 2,
+    data: 'iVBORw0KGgoAAAANSUhEUgAAACgAAAAoCAYAAACM/rhtAAAABmJLR0QA/wD/AP+gvaeTAAADzUlEQVRYhe3YW4hWVRQH8N84alBYGIZRNFkRPUSRVJIKIl57CrOwfKiMHnqIHuxikBVd38Kyi10gCgpCxMoEo6IwHxTKiiYxiqhgpAxNGivUaS49rH2YM9+cy/fNfNOTf1gczt5rrf3fl7XWPoeTGB86J8jvKZiNhZiFQRwZi6OOcZCYgdWYg9NxEHtwDu7G2Q36u7EeO8cxZtO4BX9iqEXpxz0TTe7OMRDLyyCunyhyl6FvnASH0IMp7STWhVX4vA3kMlnRzMCTa/oX4xEsKOnvwQ7sw+84TUTtHCwS0VyGK/BeMySL0Ilnlc/+NxHBkyp8nIF1Ir0U+fgG19b4KMVbFeS+xcykNwsPi5XYiw/wnFi9LMfOxIcV/n7BDa2QW1PhrBfnJ727cKxCdz+WJt3JeLtCdwivqT9ypuDXCidbkt6tNYPl5dFkMxVf1Oi+VEdwZY2DE2L7j5f0H0J3wSQzkpdjoGaMVVUEN7SwMnn5CnONLJ3z8VHqH0j9sL3GV7eKEvzOGMjtNpxOlojIvUls6SRsTnp7cSHeb8Ln7DKC2yqMDiiOxixHPtPQvlOc6ek4ijcSyWYmfUcZwedLDA6JlNJp5CXh39R2pqixjXa3Jb+bEtlTDW97lTyYEWpMkt0lxO8X+WqNSMAZOnCuSLhF52ZJeu7Di6KO34gfSsbJcLSsY7rREdojVqkLfxk92/6Ctkw+SX5vTu+vpPflFTZDWFbFvnELXk7tD9Q4LZINyfa+XNvC1La/xKZXBFghZuCfBoO1qa8swn8Ut+eHjDyH3xsuiXty7W+mto0l/jbmCTWWlhXiIOcxmJ59JZPKZv2kyALLxWViG/4WJfGanP4l6dlT4Ouw4aReiKJZvZD6qm7Sn4rLbB5n4VWjo3tH6l9f4GdnFTmKt/FnEe3T8FMFySFxrj7G18pL2ro01uaCvv40TimKjIZwe+q/VCTsVoMlkwPiC3CaOBZFOnOqCD5VYtQrCj2RB58WebEVcn9gXvLxRIXe4iqCSysMjxj9HdGFi3GVqMlFdgPi6GTBsUhUoLJxrqwi2CHSQ9VKfCbug+fl7KYaWacPiry5WpTIDCsVJ/v8TtV+7V2nuK4WyTGxso258/WGSc/Hu03421pHLkPjzaRVOSFSzy5x9pqxGVCzvXl04DHNr2Q7ZFOz5PJYpvzwt1O2auKDqQrzRCnbrr2relyUttLLwVhw7zhJ9YlK8zguaiexPNaKQGiWVL+oRh3G90+yJVwtorSO3HdqqkMV2jGbuSIBL8AF4rAfxpfil8gWw1e2k/jf8R9bD9kd3BpfAAAAAABJRU5ErkJggg==',
+  },
+];
+
+export function createMacTrayIcon() {
+  const image = nativeImage.createEmpty();
+  for (const { scaleFactor, data } of representations) {
+    image.addRepresentation({ scaleFactor, dataURL: `data:image/png;base64,${data}` });
+  }
+  image.setTemplateImage(true);
+  return image;
+}

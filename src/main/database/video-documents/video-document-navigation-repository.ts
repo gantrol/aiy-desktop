@@ -162,11 +162,15 @@ export class VideoDocumentNavigationRepository {
     const albumIds = rows.filter((row) => text(row.target_type) === 'ALBUM').map((row) => text(row.target_id));
     const documentIds = rows.filter((row) => text(row.target_type) === 'DOCUMENT').map((row) => text(row.target_id));
     const documentsById = new Map<string, ReturnType<typeof videoDocumentSummaryDto>>();
+    const ownersByDocumentId = new Map<string, string>();
     if (documentIds.length) {
       const documents = this.db
         .prepare(`${videoDocumentSelect} WHERE document.id IN (${documentIds.map(() => '?').join(',')})`)
         .all(...documentIds) as JsonMap[];
-      for (const row of documents) documentsById.set(text(row.id), videoDocumentSummaryDto(row));
+      for (const row of documents) {
+        documentsById.set(text(row.id), videoDocumentSummaryDto(row));
+        if (row.creation_item_id) ownersByDocumentId.set(text(row.id), text(row.creation_item_id));
+      }
     }
     const albumsById = this.albumDetails(albumIds);
     return rows.flatMap((row): VideoDocumentNavigationEntry[] => {
@@ -192,12 +196,14 @@ export class VideoDocumentNavigationRepository {
           : [];
       }
       const document = documentsById.get(targetId);
-      return document
+      const creationItemId = ownersByDocumentId.get(targetId);
+      return document && creationItemId
         ? [
             {
               nodeId: `DOCUMENT:${targetId}`,
               kind: 'DOCUMENT',
               documentId: targetId,
+              creationItemId,
               parentAlbumId,
               sortOrder: explicitOrder ?? membershipOrder,
               document,

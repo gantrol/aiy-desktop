@@ -17,12 +17,11 @@ import type { VideoDocumentCreationRequest } from '@/renderer/features/video-doc
 
 interface Options {
   data: BootstrapDto;
-  documentWorkspaceActive: boolean;
   locale: Locale;
   location: CreatorLocation;
 }
 
-export function useCreatorSelectionSession({ data, documentWorkspaceActive, locale, location }: Options) {
+export function useCreatorSelectionSession({ data, locale, location }: Options) {
   const creationSessions = useMemo(
     () => buildCreationSessionProjection(data.series, data.styleExplorationBatches),
     [data.series, data.styleExplorationBatches],
@@ -32,7 +31,7 @@ export function useCreatorSelectionSession({ data, documentWorkspaceActive, loca
   const [creationMode, setCreationMode] = useState(initial.initialCreationMode);
   const [creationStartMode, setCreationStartMode] = useState(readCreationStartMode);
   const [videoCreationRequest, setVideoCreationRequest] = useState<VideoDocumentCreationRequest | null>(null);
-  const [creationLibraryFilter, setCreationLibraryFilter] = useCreationLibraryFilter(documentWorkspaceActive);
+  const [creationLibraryFilter, setCreationLibraryFilter] = useCreationLibraryFilter();
   const [seriesId, setSeriesId] = useState<string | null>(initial.initialSeriesId);
   const [targetAlbumId, setTargetAlbumId] = useState<string | null>(
     location.surface === 'new-creation'

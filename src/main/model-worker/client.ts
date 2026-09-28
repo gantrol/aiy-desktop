@@ -1,4 +1,6 @@
 import { utilityProcess } from 'electron';
+import type { WorkTrackingApi } from '@/shared/contracts/work-tracking';
+import type { ExtensionPackageRoot } from '@/main/extensions/package-loader';
 import { createHash, randomBytes, randomUUID } from 'node:crypto';
 import { EventEmitter } from 'node:events';
 import { readFileSync, unlinkSync, watch, type FSWatcher, type Stats } from 'node:fs';
@@ -72,6 +74,7 @@ import {
 } from '@/main/model-worker/protocol';
 
 interface BackgroundGenerationClientOptions {
+  extensionRoots?: readonly ExtensionPackageRoot[];
   databasePath: string;
   libraryRoot: string;
   workerBundlePath: string;
@@ -358,6 +361,11 @@ function workerError(message: ModelWorkerServerMessage & { type: 'response' }) {
  * utility process owned by the Electron host.
  */
 export class BackgroundGenerationClient extends EventEmitter implements GenerationService {
+  readonly workTracking: WorkTrackingApi = {
+    read: (input) => this.callWorker('work-tracking.read', [input]),
+    mutate: (input) => this.callWorker('work-tracking.mutate', [input]),
+    handoff: (input) => this.callWorker('work-tracking.handoff', [input]),
+  };
   private readonly clientId = randomUUID();
   private socket: net.Socket | null = null;
   private connectPromise: Promise<void> | null = null;
@@ -970,6 +978,7 @@ export class BackgroundGenerationClient extends EventEmitter implements Generati
 
   private launchWorker(filePath: string, errorPath: string) {
     const config: ModelWorkerLaunchConfig = {
+      extensionRoots: this.options.extensionRoots ? [...this.options.extensionRoots] : [],
       protocolVersion: MODEL_WORKER_PROTOCOL_VERSION,
       runtimeFingerprint: this.options.workerRuntimeFingerprint,
       workerId: randomUUID(),

@@ -1,4 +1,17 @@
 import { trimTrailingCharacters } from '@/shared/string-boundaries';
+import { contentMarkdownTree } from '@/shared/content-markdown';
+import type { RootContent } from 'mdast';
+
+function mathLineNumbers(value: string) {
+  const lines = new Set<number>();
+  const visit = (node: RootContent) => {
+    if ((node.type === 'math' || node.type === 'inlineMath') && node.position) {
+      for (let line = node.position.start.line; line <= node.position.end.line; line += 1) lines.add(line - 1);
+    } else if ('children' in node) node.children.forEach((child) => visit(child as RootContent));
+  };
+  if (value.includes('$')) contentMarkdownTree(value).children.forEach(visit);
+  return lines;
+}
 
 interface MarkdownFence {
   marker: '`' | '~';
@@ -95,12 +108,20 @@ function isStandaloneMarkdownImage(line: string) {
  */
 export function normalizeMarkdownForWysiwyg(value: string) {
   const lines = trimDocumentEdgeEmptyParagraphs(value.replace(/\r\n?/gu, '\n').split('\n'));
+  const mathLines = mathLineNumbers(lines.join('\n'));
   const normalized: string[] = [];
   let fence: MarkdownFence | null = null;
   let pendingBlankLine = false;
 
   for (let index = 0; index < lines.length; index += 1) {
     const line = lines[index]!;
+
+    if (mathLines.has(index)) {
+      if (pendingBlankLine && normalized.length) normalized.push('');
+      pendingBlankLine = false;
+      normalized.push(line);
+      continue;
+    }
 
     if (fence) {
       normalized.push(line);

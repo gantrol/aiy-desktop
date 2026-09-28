@@ -56,7 +56,8 @@ export function requestPetalFlush(
   const request = (previous ?? Promise.resolve(true))
     .catch(() => false)
     .then(() => {
-      if (!entry.instanceId || isContentPinId(entry.instanceId) || entry.window.isDestroyed()) {
+      // Collapsed surfaces are read-only projections; only an expanded window owns an editor.
+      if (!entry.instanceId || !entry.expanded || isContentPinId(entry.instanceId) || entry.window.isDestroyed()) {
         observe({ status: 'unchanged' });
         return true;
       }

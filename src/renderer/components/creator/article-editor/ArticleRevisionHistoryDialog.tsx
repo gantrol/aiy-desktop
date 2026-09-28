@@ -1,3 +1,4 @@
+import { ContentProvenanceCell } from '@/renderer/features/content-provenance/ContentProvenance';
 import {
   CheckIcon,
   ChevronLeftIcon,
@@ -28,6 +29,10 @@ import {
 } from '@/renderer/components/ui/dropdown-menu';
 import { Segmented, SegmentedItem } from '@/renderer/components/ui/segmented';
 import { useI18n } from '@/renderer/i18n/useI18n';
+import { useReferenceHistory, historicalDisplayRevision } from '@/renderer/features/content-editor/useReferenceHistory';
+import { fixedHistoryRevision } from '@/shared/reference-history-restore';
+import type { ReferenceHistoryResult } from '@/shared/contracts/content-library';
+import { referenceHistoryMessages } from '@/shared/i18n/reference-history';
 
 const REVISION_PAGE_SIZE = 50;
 
@@ -39,8 +44,8 @@ const DIFF_CONTEXT_CHARACTERS = 160;
 const DIFF_CONTEXT_LINE_BREAKS = 2;
 const MINIMUM_OMITTED_CHARACTERS = 48;
 
-function versionLabel(revisionNo: number, zh: boolean) {
-  return zh ? `版本 ${revisionNo}` : `Version ${revisionNo}`;
+function versionLabel(revisionNo: number, copy: typeof referenceHistoryMessages) {
+  return copy.version.replace('{number}', String(revisionNo));
 }
 
 function revisionTimestamp(createdAt: string, zh: boolean) {
@@ -218,10 +223,12 @@ function useRevisionSnapshot(articleId: string, revisionId: string | null, open:
 type RevisionIndex = ReturnType<typeof useRevisionIndex>;
 type RevisionSnapshot = ReturnType<typeof useRevisionSnapshot>;
 
-function RevisionPicker({ disabled, index, zh }: { disabled: boolean; index: RevisionIndex; zh: boolean }) {
+function RevisionPicker({ disabled, index }: { disabled: boolean; index: RevisionIndex; zh: boolean }) {
+  const historyCopy = useI18n().messages.referenceOutline.history;
+
   const selected = index.selectedRevision;
-  const previousLabel = zh ? '上一版本' : 'Previous version';
-  const nextLabel = zh ? '下一版本' : 'Next version';
+  const previousLabel = historyCopy.previous;
+  const nextLabel = historyCopy.next;
   return (
     <div className="flex min-w-0 flex-1 items-center justify-center gap-1">
       <Button
@@ -242,9 +249,9 @@ function RevisionPicker({ disabled, index, zh }: { disabled: boolean; index: Rev
             variant="ghost"
             className="min-w-32 px-3 text-base font-semibold"
             disabled={disabled || !selected}
-            aria-label={zh ? '选择历史版本' : 'Select version'}
+            aria-label={historyCopy.select}
           >
-            {selected ? versionLabel(selected.revisionNo, zh) : zh ? '历史版本' : 'Version history'}
+            {selected ? versionLabel(selected.revisionNo, historyCopy) : historyCopy.title}
           </Button>
         </DropdownMenuTrigger>
         <DropdownMenuContent align="center" className="max-h-80 w-52 overflow-y-auto">
@@ -253,9 +260,9 @@ function RevisionPicker({ disabled, index, zh }: { disabled: boolean; index: Rev
               <DropdownMenuIcon>
                 {revision.revisionId === index.selectedRevisionId ? <CheckIcon /> : null}
               </DropdownMenuIcon>
-              <span>{versionLabel(revision.revisionNo, zh)}</span>
+              <span>{versionLabel(revision.revisionNo, historyCopy)}</span>
               {revision.revisionId === index.resolvedCurrentRevisionId ? (
-                <span className="ml-auto text-xs text-muted-foreground">{zh ? '当前' : 'Current'}</span>
+                <span className="ml-auto text-xs text-muted-foreground">{historyCopy.current}</span>
               ) : null}
             </DropdownMenuItem>
           ))}
@@ -266,7 +273,7 @@ function RevisionPicker({ disabled, index, zh }: { disabled: boolean; index: Rev
                 <DropdownMenuIcon>
                   {index.loading ? <LoaderCircleIcon className="animate-spin" /> : <ChevronLeftIcon />}
                 </DropdownMenuIcon>
-                {index.failed ? (zh ? '重试' : 'Retry') : zh ? '更早版本' : 'Earlier versions'}
+                {index.failed ? historyCopy.retry : historyCopy.earlier}
               </DropdownMenuItem>
             </>
           ) : null}
@@ -289,27 +296,27 @@ function RevisionPicker({ disabled, index, zh }: { disabled: boolean; index: Rev
 
 function RevisionViewControl({
   value,
-  zh,
   onChange,
 }: {
   value: RevisionView;
   zh: boolean;
   onChange(view: RevisionView): void;
 }) {
+  const historyCopy = useI18n().messages.referenceOutline.history;
   return (
     <Segmented
       type="single"
       value={value}
-      aria-label={zh ? '版本显示方式' : 'Version display'}
+      aria-label={historyCopy.display}
       onValueChange={(next) => next && onChange(next as RevisionView)}
     >
       <SegmentedItem value="diff">
         <FileDiffIcon className="mr-1.5 size-3.5" />
-        {zh ? '差异' : 'Changes'}
+        {historyCopy.changes}
       </SegmentedItem>
       <SegmentedItem value="preview">
         <EyeIcon className="mr-1.5 size-3.5" />
-        {zh ? '预览' : 'Preview'}
+        {historyCopy.preview}
       </SegmentedItem>
     </Segmented>
   );
@@ -390,7 +397,8 @@ function compressUnchangedDiffParts(parts: readonly TextDiffPart[]): DisplayDiff
   });
 }
 
-function RevisionDiffSection({ label, parts, zh }: { label: string; parts: readonly TextDiffPart[]; zh: boolean }) {
+function RevisionDiffSection({ label, parts }: { label: string; parts: readonly TextDiffPart[]; zh: boolean }) {
+  const historyCopy = useI18n().messages.referenceOutline.history;
   const displayParts = compressUnchangedDiffParts(parts);
   return (
     <section>
@@ -401,7 +409,7 @@ function RevisionDiffSection({ label, parts, zh }: { label: string; parts: reado
             <span
               key={index}
               role="separator"
-              aria-label={zh ? '已折叠未变化内容' : 'Unchanged content collapsed'}
+              aria-label={historyCopy.unchangedCollapsed}
               className="my-2 flex items-center gap-2 text-muted-foreground/60"
             >
               <span className="h-px flex-1 bg-border" />
@@ -419,9 +427,7 @@ function RevisionDiffSection({ label, parts, zh }: { label: string; parts: reado
                   : 'rounded-sm bg-destructive/10 text-destructive line-through decoration-destructive/60'
               }
             >
-              <span className="sr-only">
-                {part.type === 'added' ? (zh ? '新增：' : 'Added: ') : zh ? '删除：' : 'Removed: '}
-              </span>
+              <span className="sr-only">{part.type === 'added' ? historyCopy.added : historyCopy.removed}</span>
               {part.value}
             </span>
           ),
@@ -524,6 +530,7 @@ function ArticleRevisionTextDiff({
   selected: ArticleRevisionDto;
   zh: boolean;
 }) {
+  const historyCopy = useI18n().messages.referenceOutline.history;
   const titleParts = useMemo(
     () => diffPromptText(older?.content.title ?? '', selected.content.title),
     [older?.content.title, selected.content.title],
@@ -548,29 +555,25 @@ function ArticleRevisionTextDiff({
         ),
     );
   const comparisonLabel = older
-    ? `${versionLabel(older.revisionNo, zh)} → ${versionLabel(selected.revisionNo, zh)}`
-    : zh
-      ? '初始版本'
-      : 'Initial version';
+    ? `${versionLabel(older.revisionNo, historyCopy)} → ${versionLabel(selected.revisionNo, historyCopy)}`
+    : historyCopy.initial;
 
   return (
     <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain">
       <div className="sticky top-0 z-10 flex min-h-10 items-center justify-between gap-4 border-b bg-background/95 px-5 text-xs backdrop-blur-sm">
         <span className="font-medium tabular-nums">{comparisonLabel}</span>
         <span className="flex items-center gap-3 text-muted-foreground">
-          <span className="text-state-changed-fg">+ {zh ? '新增' : 'Added'}</span>
-          <span className="text-destructive">− {zh ? '删除' : 'Removed'}</span>
+          <span className="text-state-changed-fg">+ {historyCopy.added}</span>
+          <span className="text-destructive">− {historyCopy.removed}</span>
         </span>
       </div>
       <div className="mx-auto flex w-full max-w-4xl flex-col gap-7 px-6 py-7 lg:px-8">
         {!titleChanged && !bodyChanged && !mediaChanged ? (
-          <div className="grid min-h-60 place-items-center text-sm text-muted-foreground">
-            {zh ? '无可见内容变化' : 'No visible content changes'}
-          </div>
+          <div className="grid min-h-60 place-items-center text-sm text-muted-foreground">{historyCopy.noChanges}</div>
         ) : (
           <>
-            {titleChanged ? <RevisionDiffSection label={zh ? '标题' : 'Title'} parts={titleParts} zh={zh} /> : null}
-            {bodyChanged ? <RevisionDiffSection label={zh ? '正文' : 'Body'} parts={bodyParts} zh={zh} /> : null}
+            {titleChanged ? <RevisionDiffSection label={historyCopy.workTitle} parts={titleParts} zh={zh} /> : null}
+            {bodyChanged ? <RevisionDiffSection label={historyCopy.body} parts={bodyParts} zh={zh} /> : null}
             {mediaChanged ? <RevisionMediaDiff older={older} selected={selected} zh={zh} /> : null}
           </>
         )}
@@ -579,13 +582,16 @@ function ArticleRevisionTextDiff({
   );
 }
 
-function RevisionPreview({ snapshot }: { snapshot: ArticleRevisionDto }) {
+function RevisionPreview({ snapshot, history }: { snapshot: ArticleRevisionDto; history?: ReferenceHistoryResult }) {
   return (
     <ArticleReferenceDocument
       articleId={snapshot.articleId}
-      markdown={snapshot.content.markdown}
-      media={snapshot.content.mediaAssets.map((asset) => ({ assetId: asset.id, mediaUrl: asset.mediaUrl }))}
-      mediaBindings={snapshot.content.mediaBindings}
+      markdown={history?.markdown ?? snapshot.content.markdown}
+      media={[
+        ...snapshot.content.mediaAssets.map((asset) => ({ assetId: asset.id, mediaUrl: asset.mediaUrl })),
+        ...(history?.media ?? []),
+      ]}
+      mediaBindings={historicalDisplayRevision(snapshot, history).content.mediaBindings}
       title={snapshot.content.title}
     />
   );
@@ -597,21 +603,38 @@ function RevisionContent({
   selected,
   view,
   zh,
+  selectedDependencies,
+  olderDependencies,
 }: {
+  selectedDependencies: ReturnType<typeof useReferenceHistory>;
+  olderDependencies: ReturnType<typeof useReferenceHistory>;
   index: RevisionIndex;
   older: RevisionSnapshot;
   selected: RevisionSnapshot;
   view: RevisionView;
   zh: boolean;
 }) {
-  const retryLabel = zh ? '重试' : 'Retry';
+  const historyCopy = useI18n().messages.referenceOutline.history;
+  const retryLabel = historyCopy.retry;
   if (index.failed && !index.revisions.length) {
     return <RetryButton label={retryLabel} onRetry={() => void index.reload()} />;
   }
   if (selected.failed) return <RetryButton label={retryLabel} onRetry={selected.retry} />;
   if (index.loading && !index.selectedRevisionId) return <LoadingRevision />;
   if (selected.loading || !selected.snapshot || !index.selectedRevision) return <LoadingRevision />;
-  if (view === 'preview') return <RevisionPreview snapshot={selected.snapshot} />;
+  const dependencies = view === 'preview' ? [selectedDependencies] : [selectedDependencies, olderDependencies];
+  if (dependencies.some((value) => value.loading)) return <LoadingRevision />;
+  const unavailable = dependencies.find(
+    (value) => value.failed || (value.needed && value.history?.state !== 'COMPLETE'),
+  );
+  if (unavailable)
+    return (
+      <span role="status" className="m-auto p-4 text-sm text-muted-foreground">
+        {unavailable.history?.state === 'LEGACY' ? historyCopy.legacy : historyCopy.unavailable}
+      </span>
+    );
+  if (view === 'preview')
+    return <RevisionPreview snapshot={selected.snapshot} history={selectedDependencies.history} />;
 
   const olderMissing = index.selectedRevision.revisionNo > 1 && !index.olderRevision;
   if (olderMissing && index.failed) {
@@ -619,20 +642,29 @@ function RevisionContent({
   }
   if (older.failed) return <RetryButton label={retryLabel} onRetry={older.retry} />;
   if (olderMissing || older.loading || (index.olderRevision !== null && !older.snapshot)) return <LoadingRevision />;
-  return <ArticleRevisionTextDiff older={older.snapshot} selected={selected.snapshot} zh={zh} />;
+  return (
+    <ArticleRevisionTextDiff
+      older={older.snapshot ? historicalDisplayRevision(older.snapshot, olderDependencies.history) : null}
+      selected={historicalDisplayRevision(selected.snapshot, selectedDependencies.history)}
+      zh={zh}
+    />
+  );
 }
 
 export function ArticleRevisionHistoryDialog({
+  spaceId,
   articleId,
   currentRevisionId,
   zh,
   onRestore,
 }: {
+  spaceId: string;
   articleId: string;
   currentRevisionId: string;
   zh: boolean;
   onRestore?(revision: ArticleRevisionDto): Promise<boolean>;
 }) {
+  const historyCopy = useI18n().messages.referenceOutline.history;
   const [open, setOpen] = useState(false);
   const [view, setView] = useState<RevisionView>('diff');
   const [restoring, setRestoring] = useState(false);
@@ -640,7 +672,9 @@ export function ArticleRevisionHistoryDialog({
   const index = useRevisionIndex(articleId, currentRevisionId, open);
   const selected = useRevisionSnapshot(articleId, index.selectedRevisionId, open);
   const older = useRevisionSnapshot(articleId, index.olderRevision?.revisionId ?? null, open && view === 'diff');
-  const label = zh ? '历史版本' : 'Version history';
+  const selectedDependencies = useReferenceHistory(open ? selected.snapshot : null, spaceId);
+  const olderDependencies = useReferenceHistory(open && view === 'diff' ? older.snapshot : null, spaceId);
+  const label = historyCopy.title;
   const selectedIsCurrent = index.selectedRevisionId === index.resolvedCurrentRevisionId;
 
   useEffect(() => setRestoreFailed(false), [index.selectedRevisionId]);
@@ -660,12 +694,14 @@ export function ArticleRevisionHistoryDialog({
     void index.loadOlder(false);
   }, [index, open, view]);
 
-  async function restoreSelectedRevision() {
-    if (!onRestore || !selected.snapshot || restoring || selectedIsCurrent) return;
-    const revision = selected.snapshot;
+  async function restoreSelectedRevision(fixed = false) {
+    if (!onRestore || !selected.snapshot || restoring || (!fixed && selectedIsCurrent)) return;
+    const history = selectedDependencies.history;
+    if (fixed && (!history || history.state !== 'COMPLETE')) return;
     setRestoring(true);
     setRestoreFailed(false);
     try {
+      const revision = fixed && history ? fixedHistoryRevision(selected.snapshot, history) : selected.snapshot;
       const restored = await onRestore(revision);
       if (restored) setOpen(false);
       else setRestoreFailed(true);
@@ -691,14 +727,32 @@ export function ArticleRevisionHistoryDialog({
             </div>
           </DialogHeader>
           <div className="flex min-h-0 min-w-0 overflow-hidden bg-background">
-            <RevisionContent index={index} older={older} selected={selected} view={view} zh={zh} />
+            <RevisionContent
+              index={index}
+              older={older}
+              selected={selected}
+              view={view}
+              zh={zh}
+              selectedDependencies={selectedDependencies}
+              olderDependencies={olderDependencies}
+            />
           </div>
           <DialogFooter className="min-h-14 flex-row items-center border-t px-4 py-3 sm:justify-between">
+            {selected.snapshot && <ContentProvenanceCell value={selected.snapshot.provenance} />}
             <span className="min-w-0 truncate text-xs text-muted-foreground">
               {index.selectedRevision
-                ? `${versionLabel(index.selectedRevision.revisionNo, zh)} · ${revisionTimestamp(index.selectedRevision.createdAt, zh)}`
+                ? `${versionLabel(index.selectedRevision.revisionNo, historyCopy)} · ${revisionTimestamp(index.selectedRevision.createdAt, zh)}`
                 : label}
             </span>
+            {onRestore && selectedDependencies.needed && (
+              <Button
+                variant="outline"
+                disabled={restoring || selectedDependencies.history?.state !== 'COMPLETE'}
+                onClick={() => void restoreSelectedRevision(true)}
+              >
+                {historyCopy.restoreFixed}
+              </Button>
+            )}
             {onRestore ? (
               <Button
                 type="button"
@@ -712,16 +766,12 @@ export function ArticleRevisionHistoryDialog({
                   <RotateCcwIcon className="size-4" />
                 )}
                 {restoreFailed
-                  ? zh
-                    ? '重试恢复'
-                    : 'Retry restore'
+                  ? historyCopy.retryRestore
                   : selectedIsCurrent
-                    ? zh
-                      ? '当前版本'
-                      : 'Current version'
-                    : zh
-                      ? '恢复为新版本'
-                      : 'Restore as new version'}
+                    ? historyCopy.currentVersion
+                    : selectedDependencies.needed
+                      ? historyCopy.restoreBindings
+                      : historyCopy.restore}
               </Button>
             ) : null}
           </DialogFooter>
@@ -733,13 +783,16 @@ export function ArticleRevisionHistoryDialog({
 
 export function ArticleRevisionHistoryAction({
   article,
+  spaceId,
   notify,
   zh,
 }: {
   article: Pick<ArticleDto, 'id' | 'revisionId'>;
+  spaceId: string;
   notify(message: string): void;
   zh: boolean;
 }) {
+  const historyCopy = useI18n().messages.referenceOutline.history;
   const session = useArticleEditorSession();
 
   async function restoreRevision(revision: ArticleRevisionDto) {
@@ -748,9 +801,7 @@ export function ArticleRevisionHistoryAction({
       if (!restored) return false;
       const saved = session.capturePersistedArticle();
       notify(
-        zh
-          ? `已恢复版本 ${revision.revisionNo}，并保存为版本 ${saved.revisionNo}`
-          : `Restored version ${revision.revisionNo} as version ${saved.revisionNo}`,
+        historyCopy.restored.replace('{from}', String(revision.revisionNo)).replace('{to}', String(saved.revisionNo)),
       );
       return true;
     } catch (reason) {
@@ -761,6 +812,7 @@ export function ArticleRevisionHistoryAction({
 
   return (
     <ArticleRevisionHistoryDialog
+      spaceId={spaceId}
       articleId={article.id}
       currentRevisionId={article.revisionId}
       zh={zh}

@@ -4,8 +4,19 @@ import { GoogleGeminiAssistantAdapter } from '@/main/assistant-models/google-gem
 import { ImageBreakdownModelAdapter } from '@/main/assistant-models/image-breakdown';
 import { DEEPSEEK_DEFAULT_MODEL_ID, DEEPSEEK_PROVIDER_KEY } from '@/main/assistant-models/deepseek-provider';
 import { CodexAdapter } from '@/main/assistant/codex';
+import { readAgentPermissions, requireAgentPermission } from '@/main/agent-cli/permissions';
+import { WorkTrackingService } from '@/main/extensions/work-tracking/service';
+import type { WorkResult } from '@/shared/contracts/work-tracking';
 import type { AgentGenerationService } from '@/main/agent/agent-generation-service';
 import { readAgentContent } from '@/main/agent/content-read';
+import { listAgentCreationAlbums, ensureAgentCreationAlbum, moveAgentCreations } from '@/main/agent/creation-commands';
+import { searchAgentContent, updateAgentContent } from '@/main/agent/content-commands';
+import {
+  listAgentAlbums,
+  ensureAgentAlbum,
+  addAgentAlbumMaterials,
+  removeAgentAlbumMaterials,
+} from '@/main/agent/album-commands';
 import { LibraryDatabase } from '@/main/database';
 import { applyContentPackCommand, previewContentPackCommand } from '@/main/content-packs/commands';
 import { readDictionaryImport } from '@/main/dictionary/dictionary-import';
@@ -193,6 +204,34 @@ async function runPersistedAssistant(options: ModelWorkerRequestDispatcherOption
   }
 }
 
+function dispatchAlbums(
+  options: ModelWorkerRequestDispatcherOptions,
+  method: ModelWorkerMethod,
+  params: unknown[],
+  signal: AbortSignal,
+) {
+  switch (method) {
+    case 'agent.album.list': {
+      const [input] = parseModelWorkerMethodParams(method, params);
+      return listAgentAlbums(options.database, input, signal);
+    }
+    case 'agent.album.ensure': {
+      const [input] = parseModelWorkerMethodParams(method, params);
+      return ensureAgentAlbum(options.database, input, signal);
+    }
+    case 'agent.album.add': {
+      const [input] = parseModelWorkerMethodParams(method, params);
+      return addAgentAlbumMaterials(options.database, input, signal);
+    }
+    case 'agent.album.remove': {
+      const [input] = parseModelWorkerMethodParams(method, params);
+      return removeAgentAlbumMaterials(options.database, input, signal);
+    }
+    default:
+      return unhandled;
+  }
+}
+
 async function dispatchStorageAndGeneration(
   options: ModelWorkerRequestDispatcherOptions,
   method: ModelWorkerMethod,
@@ -220,6 +259,14 @@ async function dispatchStorageAndGeneration(
     case 'agent.content.read': {
       const [input] = parseModelWorkerMethodParams(method, params);
       return readAgentContent(database, input, signal);
+    }
+    case 'agent.content.search': {
+      const [input] = parseModelWorkerMethodParams(method, params);
+      return searchAgentContent(database, input, signal);
+    }
+    case 'agent.content.update': {
+      const [input] = parseModelWorkerMethodParams(method, params);
+      return updateAgentContent(database, input, signal);
     }
     case 'content-pack.preview': {
       const [input] = parseModelWorkerMethodParams(method, params);
@@ -646,11 +693,62 @@ async function dispatchExtensionsAndLifecycle(
 }
 
 export function createModelWorkerRequestDispatcher(options: ModelWorkerRequestDispatcherOptions) {
+  const work = new WorkTrackingService(options.database, options.extensions);
+  function unwrap<T>(result: WorkResult<T>): T {
+    if (result.ok) return result.value;
+    throw Object.assign(new Error(`Work tracking: ${result.code}`), {
+      code: `AIY_AGENT_WORK_${result.code.replace(/[A-Z]/g, (letter) => `_${letter}`).toUpperCase()}`,
+    });
+  }
   return async (method: ModelWorkerMethod, params: unknown[], signal: AbortSignal) => {
+    const guard = () => {
+      if (signal.aborted) throw Object.assign(new Error('CLI operation cancelled'), { code: 'AIY_AGENT_CANCELLED' });
+      requireAgentPermission(options.database, method);
+    };
+    if (method.startsWith('agent.')) guard();
+    switch (method) {
+      case 'agent.file-view.refresh':
+        parseModelWorkerMethodParams(method, params);
+        return dispatchStorageAndGeneration(options, 'library-file-view.refresh', params, signal);
+      case 'agent.permissions.read':
+        parseModelWorkerMethodParams(method, params);
+        return readAgentPermissions(options.database);
+      case 'agent.action.authorize':
+        parseModelWorkerMethodParams(method, params);
+        return { allowed: true };
+      case 'agent.work.list':
+        return unwrap(await work.list(parseModelWorkerMethodParams(method, params)[0], guard));
+      case 'agent.work.read': {
+        const { spaceId } = parseModelWorkerMethodParams(method, params)[0];
+        return unwrap(await work.read({ spaceId }, guard));
+      }
+      case 'agent.creation.albums':
+        return listAgentCreationAlbums(options.database, parseModelWorkerMethodParams(method, params)[0], signal);
+      case 'agent.creation.ensure-album':
+        return ensureAgentCreationAlbum(options.database, parseModelWorkerMethodParams(method, params)[0], signal);
+      case 'agent.creation.move':
+        return moveAgentCreations(options.database, parseModelWorkerMethodParams(method, params)[0], signal);
+      case 'agent.work.mutate':
+        return unwrap(await work.mutate(parseModelWorkerMethodParams(method, params)[0].mutation, guard));
+      case 'work-tracking.read':
+        return work.read(parseModelWorkerMethodParams(method, params)[0]);
+      case 'work-tracking.mutate':
+        return work.mutate(parseModelWorkerMethodParams(method, params)[0]);
+      case 'work-tracking.handoff':
+        return work.handoff(parseModelWorkerMethodParams(method, params)[0]);
+      case 'agent.pack.preview':
+        parseModelWorkerMethodParams(method, params);
+        return dispatchStorageAndGeneration(options, 'content-pack.preview', params, signal);
+      case 'agent.pack.apply':
+        parseModelWorkerMethodParams(method, params);
+        return dispatchStorageAndGeneration(options, 'content-pack.apply', params, signal);
+    }
     if (method === 'snapshot') {
       parseModelWorkerMethodParams(method, params);
       return options.snapshot();
     }
+    const albumResult = dispatchAlbums(options, method, params, signal);
+    if (albumResult !== unhandled) return albumResult;
     const storageResult = await dispatchStorageAndGeneration(options, method, params, signal);
     if (storageResult !== unhandled) return storageResult;
     const assistantResult = await dispatchAssistantAndCodex(options, method, params, signal);

@@ -1,6 +1,7 @@
 import type { Editor } from '@tiptap/core';
+import type { Selection } from '@tiptap/pm/state';
 import { useState, type ReactNode } from 'react';
-import { Copy, ExternalLink, Pencil, Unlink } from 'lucide-react';
+import { Copy, ExternalLink, Pencil, Search, Unlink } from 'lucide-react';
 import { Button } from '@/renderer/components/ui/button';
 import { Input } from '@/renderer/components/ui/input';
 import {
@@ -28,12 +29,16 @@ import { openAppContentLink } from '@/renderer/components/app/app-content-link';
 import { revealContentFigureReference } from '@/renderer/features/content-editor/contentFigureReference';
 import { contentFigureReferenceAssetId } from '@/shared/content-figure-reference';
 import { figureReferenceMessages } from '@/shared/i18n/figure-reference';
+import { canAssociateSelection, openContentAssociation } from '@/renderer/features/content-editor/contentAssociation';
+import { useOutlineContentLinkHost } from '@/renderer/features/content-editor/OutlineContentLinkHost';
+import { useReferenceNavigation } from '@/renderer/features/content-editor/contentReferenceNavigation';
+import { referenceFailure } from '@/shared/i18n/reference-outline';
 
 function supportedLink(href: string) {
   return Boolean(contentFigureReferenceAssetId(href) || linkCardTarget(href) || parseAiyDeepLink(href));
 }
 
-type Menu = { blockId?: string; link?: InlineLinkTarget; x: number; y: number };
+type Menu = { blockId?: string; link?: InlineLinkTarget; selection?: Selection; x: number; y: number };
 
 function openFigureReference(editor: Editor, assetId: string, onOpen?: (assetId: string) => void) {
   if (!onOpen) return revealContentFigureReference(editor, assetId);
@@ -41,17 +46,14 @@ function openFigureReference(editor: Editor, assetId: string, onOpen?: (assetId:
   return true;
 }
 
-export function ContentLinkContextMenu({
-  editor,
-  source,
-  onFigureReferenceClick,
-  children,
-}: {
+interface ContentLinkContextMenuProps {
   editor: Editor;
   source?: ContentSource;
   onFigureReferenceClick?(assetId: string): void;
   children: ReactNode;
-}) {
+}
+
+function useContentLinkMenu({ editor, source, onFigureReferenceClick }: ContentLinkContextMenuProps) {
   const [menu, setMenu] = useState<Menu | null>(null);
   const [editing, setEditing] = useState(false);
   const [address, setAddress] = useState('');
@@ -60,13 +62,25 @@ export function ContentLinkContextMenu({
   const { locale, messages } = useI18n();
   const copy = messages.desktopPetals.contentEntry;
   const figureCopy = figureReferenceMessages(locale);
+  const associationHost = useOutlineContentLinkHost();
+  const navigateReference = useReferenceNavigation();
   const openLink = async (href: string) => {
     const assetId = contentFigureReferenceAssetId(href);
     if (assetId) {
       setStatus(openFigureReference(editor, assetId, onFigureReferenceClick) ? '' : figureCopy.unavailable);
       return;
     }
-    if (parseAiyDeepLink(href)) {
+    const command = parseAiyDeepLink(href);
+    if (command?.target === 'article' && command.blockId && command.spaceId === associationHost?.spaceId) {
+      setStatus('');
+      try {
+        await navigateReference({ source: { kind: 'ARTICLE', id: command.entityId }, blockId: command.blockId });
+      } catch (reason) {
+        setStatus(referenceFailure(reason, messages.referenceOutline));
+      }
+      return;
+    }
+    if (command) {
       setStatus(openAppContentLink(href) ? '' : copy.actionFailed);
       return;
     }
@@ -117,6 +131,46 @@ export function ContentLinkContextMenu({
     setStatus('');
     setMenu(null);
   };
+  return {
+    menu,
+    setMenu,
+    editing,
+    setEditing,
+    address,
+    setAddress,
+    status,
+    setStatus,
+    messages,
+    copy,
+    figureCopy,
+    associationHost,
+    openLink,
+    blockAtElement,
+    show,
+    change,
+  };
+}
+
+export function ContentLinkContextMenu(props: ContentLinkContextMenuProps) {
+  const { editor, source, children } = props;
+  const {
+    menu,
+    setMenu,
+    editing,
+    setEditing,
+    address,
+    setAddress,
+    status,
+    setStatus,
+    messages,
+    copy,
+    figureCopy,
+    associationHost,
+    openLink,
+    blockAtElement,
+    show,
+    change,
+  } = useContentLinkMenu(props);
   return (
     <DropdownMenu open={Boolean(menu)} onOpenChange={(open) => !open && setMenu(null)} modal={false}>
       <DropdownMenuTrigger
@@ -129,14 +183,23 @@ export function ContentLinkContextMenu({
         className="min-w-0 overflow-hidden"
         onContextMenu={(event) => {
           if (event.defaultPrevented || editor.isDestroyed || editor.view.composing) return;
+          const selection = editor.state.selection;
+          const canAssociate = Boolean(
+            associationHost &&
+            editor.isEditable &&
+            !selection.empty &&
+            canAssociateSelection(selection) &&
+            event.target instanceof Node &&
+            editor.view.dom.contains(event.target),
+          );
           const target = event.target instanceof Element ? event.target.closest('a[href], [data-aiy-link-card]') : null;
-          if (!target || !editor.view.dom.contains(target)) return;
+          if (target && !editor.view.dom.contains(target)) return;
           const link = inlineLinkFromElement(editor, target) ?? undefined;
-          const blockId = blockAtElement(target);
-          if (!link && !blockId) return;
+          const blockId = target ? blockAtElement(target) : undefined;
+          if (!link && !blockId && !canAssociate) return;
           event.preventDefault();
           event.stopPropagation();
-          show({ link, blockId, x: event.clientX, y: event.clientY });
+          show({ link, blockId, selection: canAssociate ? selection : undefined, x: event.clientX, y: event.clientY });
         }}
         onClick={(event) => {
           if (event.defaultPrevented || editor.isDestroyed || editor.view.composing) return;
@@ -164,14 +227,23 @@ export function ContentLinkContextMenu({
             editor.isDestroyed ||
             editor.view.composing ||
             event.nativeEvent.isComposing ||
-            event.repeat ||
-            !editor.state.selection.empty
+            event.repeat
           )
             return;
           const open = (event.ctrlKey || event.metaKey) && event.key === 'Enter';
           const edit = (event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'k';
           const context = event.key === 'ContextMenu' || (event.shiftKey && event.key === 'F10');
           if (!open && !edit && !context) return;
+          if (!editor.state.selection.empty) {
+            if (context && associationHost && editor.isEditable && canAssociateSelection(editor.state.selection)) {
+              const selection = editor.state.selection;
+              const point = editor.view.coordsAtPos(selection.from);
+              event.preventDefault();
+              event.stopPropagation();
+              show({ selection, x: point.left, y: point.bottom });
+            }
+            return;
+          }
           const link = inlineLinkAt(editor, editor.state.selection.from);
           if (!link) return;
           event.preventDefault();
@@ -203,6 +275,34 @@ export function ContentLinkContextMenu({
             if (!editor.isDestroyed) editor.view.focus();
           }}
         >
+          {menu.selection && (
+            <>
+              <DropdownMenuItem
+                onSelect={() => {
+                  const selection = menu.selection!;
+                  void navigator.clipboard
+                    .writeText(selection.$from.doc.textBetween(selection.from, selection.to, '\n'))
+                    .catch(() => setStatus(copy.actionFailed));
+                }}
+              >
+                <Copy />
+                {messages.referenceOutline.copyText}
+              </DropdownMenuItem>
+              <DropdownMenuItem
+                onSelect={() => {
+                  const selection = menu.selection;
+                  const document = editor.state.doc;
+                  setTimeout(() => {
+                    if (!editor.isDestroyed && editor.state.doc === document)
+                      openContentAssociation(editor, { selection });
+                  }, 0);
+                }}
+              >
+                <Search />
+                {messages.contentEditor.association.find}
+              </DropdownMenuItem>
+            </>
+          )}
           {menu.link && (
             <>
               {editing ? (

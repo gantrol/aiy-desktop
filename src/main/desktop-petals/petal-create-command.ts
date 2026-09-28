@@ -28,12 +28,12 @@ export async function createPetalNote(
   )
     throw new Error('This window can only place another view of its own note');
   if (request.stashId && !request.duplicate) {
-    const existing = database.listDesktopNotes().find((note) => note.stashId === request.stashId);
+    const existing = database.listDesktopNoteSummaries().find((note) => note.stashId === request.stashId);
     if (existing) {
       await deps.windows.pin(context.library.id, existing.id, request.point, true);
       await applyHome(deps.windows, context.library.id, existing.id, request.home ?? 'desktop');
       deps.changed();
-      return existing;
+      return deps.notes.get(existing.id);
     }
   }
   const note = deps.notes.create(request.requestId, request.stashId);

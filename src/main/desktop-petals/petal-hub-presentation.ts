@@ -1,7 +1,7 @@
 import { screen, type Point, type Rectangle } from 'electron';
 import type { PetalWindow } from '@/main/desktop-petals/petal-windows';
 import { containsDockedPetalPoint, containsFlowerPoint } from '@/shared/flower-geometry';
-import { PETAL_WINDOW_SIZES } from '@/shared/contracts/petal-hub';
+import { PETAL_WINDOW_SIZES, type PetalHubView } from '@/shared/contracts/petal-hub';
 import {
   clampPetalBounds,
   clampFlowerBounds,
@@ -12,27 +12,27 @@ import {
 } from '@/main/desktop-petals/petal-window-geometry';
 
 export function setPetalBounds(entry: PetalWindow, bounds: Rectangle) {
+  const current = entry.window.getBounds();
+  if (
+    current.x === bounds.x &&
+    current.y === bounds.y &&
+    current.width === bounds.width &&
+    current.height === bounds.height
+  )
+    return;
   entry.window.setMinimumSize(0, 0);
   entry.window.setMaximumSize(0, 0);
   entry.window.setBounds(bounds);
-  entry.window.setMinimumSize(bounds.width, bounds.height);
-  entry.window.setMaximumSize(bounds.width, bounds.height);
+  // resizable:false already owns the native size constraints. Reapplying them
+  // after setBounds introduces another native layout pass at fractional DPI.
 }
-function pluckPreviewBounds(): Rectangle {
-  const areas = screen.getAllDisplays().map((display) => display.workArea);
-  const x = Math.min(...areas.map((area) => area.x));
-  const y = Math.min(...areas.map((area) => area.y));
-  return {
-    x,
-    y,
-    width: Math.max(...areas.map((area) => area.x + area.width)) - x,
-    height: Math.max(...areas.map((area) => area.y + area.height)) - y,
-  };
-}
-/** Temporary gesture geometry is never persisted as the user's preferred placement. */
+type DockState = { edge: DockEdge; collapsed: boolean; bounds: Rectangle };
+type HubViewOrigin = { bounds: Rectangle; dock?: DockState };
+/** Temporary gesture and panel geometry never replaces the user's flower placement. */
 export class PetalHubPresentation {
-  private previews = new WeakMap<PetalWindow, { bounds: Rectangle; owners: Set<'pluck' | 'menu' | 'peek'> }>();
-  private docks = new WeakMap<PetalWindow, { edge: DockEdge; collapsed: boolean; bounds: Rectangle }>();
+  private previews = new WeakMap<PetalWindow, Set<'pluck' | 'menu'>>();
+  private docks = new WeakMap<PetalWindow, DockState>();
+  private views = new WeakMap<PetalWindow, HubViewOrigin>();
   constructor(
     private readonly remember: (entry: PetalWindow) => void,
     private readonly flowerSize: () => number,
@@ -48,6 +48,9 @@ export class PetalHubPresentation {
       petalBounds: { ...bounds, x: bounds.x - current.x, y: bounds.y - current.y },
     };
   }
+  dockEdge(entry: PetalWindow) {
+    return this.docks.get(entry)?.edge ?? this.views.get(entry)?.dock?.edge;
+  }
   clearDock(entry: PetalWindow) {
     if (!this.docks.has(entry)) return;
     this.docks.delete(entry);
@@ -59,15 +62,14 @@ export class PetalHubPresentation {
     this.reveal(entry, false, true);
   }
   placement(entry: PetalWindow) {
-    return this.previews.get(entry)?.bounds ?? this.docks.get(entry)?.bounds ?? entry.window.getBounds();
+    return this.views.get(entry)?.bounds ?? this.docks.get(entry)?.bounds ?? entry.window.getBounds();
   }
   previewing(entry: PetalWindow) {
-    const owners = this.previews.get(entry)?.owners;
-    return Boolean(owners?.has('pluck') || owners?.has('menu'));
+    return Boolean(this.previews.get(entry)?.size);
   }
   anchor(entry: PetalWindow) {
     const bounds = entry.window.getBounds(),
-      origin = this.previews.get(entry)?.bounds ?? bounds;
+      origin = this.views.get(entry)?.bounds ?? bounds;
     return {
       x: Math.round(origin.x + origin.width / 2 - bounds.x),
       y: Math.round(origin.y + origin.height / 2 - bounds.y),
@@ -94,34 +96,16 @@ export class PetalHubPresentation {
     ).workArea;
     return clampPetalBounds(point, size, area);
   }
-  preview(entry: PetalWindow, active: boolean, owner: 'pluck' | 'menu' | 'peek' = 'pluck') {
+  preview(entry: PetalWindow, active: boolean, owner: 'pluck' | 'menu' = 'pluck') {
     if (entry.window.isDestroyed()) return;
     if (entry.instanceId ? owner === 'pluck' || entry.expanded : entry.hubView !== 'flower') return;
-    const preview = this.previews.get(entry) ?? {
-      bounds: entry.window.getBounds(),
-      owners: new Set<'pluck' | 'menu' | 'peek'>(),
-    };
-    if (active) preview.owners.add(owner);
-    else if (!preview.owners.delete(owner)) return;
-    if (!preview.owners.size) {
-      this.previews.delete(entry);
-      setPetalBounds(entry, preview.bounds);
-    } else {
-      this.previews.set(entry, preview);
-      const bounds = preview.bounds;
-      if (preview.owners.has('pluck')) {
-        // Keep the flower anchored while the captured pointer crosses displays.
-        setPetalBounds(entry, pluckPreviewBounds());
-      } else {
-        const area = screen.getDisplayMatching(bounds).workArea;
-        const size = { width: Math.min(480, area.width), height: Math.min(640, area.height) };
-        const point = {
-          x: bounds.x + (bounds.width - size.width) / 2,
-          y: bounds.y + (bounds.height - size.height) / 2,
-        };
-        setPetalBounds(entry, { ...clampPetalBounds(point, size, area), ...size });
-      }
-    }
+    const owners = this.previews.get(entry) ?? new Set<'pluck' | 'menu'>();
+    if (active) {
+      if (owners.has(owner)) return;
+      owners.add(owner);
+    } else if (!owners.delete(owner)) return;
+    if (owners.size) this.previews.set(entry, owners);
+    else this.previews.delete(entry);
     entry.window.webContents.send('desktop-petals:changed');
   }
   snap(entry: PetalWindow) {
@@ -167,15 +151,44 @@ export class PetalHubPresentation {
     entry.window.webContents.send('desktop-petals:changed');
   }
   endPreview(entry: PetalWindow) {
-    const preview = this.previews.get(entry);
-    if (preview) {
-      this.previews.delete(entry);
-      setPetalBounds(entry, preview.bounds);
-    }
+    this.previews.delete(entry);
   }
-  leaveFlower(entry: PetalWindow) {
-    this.endPreview(entry);
-    if (this.dock(entry)?.collapsed) this.reveal(entry, true);
-    this.docks.delete(entry);
+  showView(entry: PetalWindow, view: PetalHubView) {
+    if (entry.hubView === view) return;
+    const leavingFlower = entry.hubView === 'flower';
+    if (leavingFlower) {
+      const dock = this.docks.get(entry);
+      this.views.set(entry, {
+        bounds: { ...(dock?.bounds ?? this.placement(entry)) },
+        dock: dock ? { ...dock, collapsed: false, bounds: { ...dock.bounds } } : undefined,
+      });
+      this.previews.delete(entry);
+      this.docks.delete(entry);
+    }
+    const origin = this.views.get(entry);
+    const returning = view === 'flower';
+    const placement =
+      returning || leavingFlower ? (origin?.bounds ?? entry.window.getBounds()) : entry.window.getBounds();
+    const area = screen.getDisplayMatching(placement).workArea;
+    const size = PETAL_WINDOW_SIZES[view];
+    const target = {
+      ...placement,
+      width: Math.min(size.width, area.width),
+      height: Math.min(size.height, area.height),
+    };
+    const bounds = {
+      ...target,
+      ...(returning ? clampFlowerBounds(target, this.flowerSize(), area) : clampPetalBounds(target, target, area)),
+    };
+    // View, target size and restoration point form one transition. Never publish
+    // a flower at the panel's origin and repair it in a later microtask.
+    entry.hubView = view;
+    setPetalBounds(entry, bounds);
+    if (returning) {
+      if (origin?.dock) this.docks.set(entry, { ...origin.dock, bounds: { ...bounds } });
+      this.views.delete(entry);
+    }
+    this.remember(entry);
+    entry.window.webContents.send('desktop-petals:changed');
   }
 }

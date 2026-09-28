@@ -1,3 +1,7 @@
+import {
+  captureArticleViewportLocation,
+  revealArticleEditorLocation,
+} from '@/renderer/features/video-documents/articleEditorViewport';
 import { emptyToolbarState, selectToolbarState } from '@/renderer/features/content-editor/contentEditorToolbarState';
 import { removeContentImageAssets } from '@/renderer/features/content-editor/contentImageRemoval';
 import { imageMimeType } from '@/renderer/components/creator/imageImport';
@@ -16,12 +20,14 @@ import {
 } from '@/renderer/features/content-editor/contentImageRecovery';
 import { ContentInputOperations } from '@/renderer/features/content-editor/contentInputOperations';
 import { contentReferenceExtension } from '@/renderer/features/content-editor/ContentReferenceExtension';
-import { ContentReferencePicker } from '@/renderer/features/content-editor/ContentReferencePicker';
+import { ContentReferenceInsertAction } from '@/renderer/features/content-editor/ContentReferenceInsertAction';
+import { applySharedDocument } from '@/renderer/features/content-editor/sharedDocumentEdit';
 import { useContentEditor } from '@/renderer/features/content-editor/useContentEditor';
 import { useContentFigureReferences } from '@/renderer/features/content-editor/useContentFigureReferences';
 import { useContentBlockNavigation } from '@/renderer/features/content-editor/useContentBlockNavigation';
 import { OutlineListItem } from '@/renderer/features/content-editor/OutlineListItem';
 import { OutlineEditing } from '@/renderer/features/content-editor/outlineEditing';
+import { useOutlineFocusNavigation } from '@/renderer/features/content-editor/useOutlineFocusNavigation';
 import {
   OutlineBulletList,
   OutlineOrderedList,
@@ -35,14 +41,12 @@ import {
   articleElementIdentityTransaction,
   captureArticleCommentTarget,
   captureArticleEditorLocation,
-  captureArticleViewportLocation,
   createArticleElementIdentityExtension,
   focusArticleElement,
   mappedArticleCommentAnchors,
   resolveArticleCommentLocation,
   resolveArticleOutlineHeadingLocation,
   restoreArticleEditorLocation,
-  revealArticleEditorLocation,
 } from '@/renderer/features/video-documents/articleElementIdentity';
 import { hydrateArticleElementJsonIdentities } from '@/renderer/features/video-documents/articleElementJsonIdentity';
 import { normalizeMarkdownForWysiwyg } from '@/renderer/features/video-documents/markdownForWysiwyg';
@@ -184,6 +188,8 @@ function useEditorRegistration(
     let capturedComments = refs.comments.current;
     let publishedSnapshot = refs.persistence.current;
     const handle: VideoDocumentWysiwygEditorHandle = {
+      applySharedDocument: (before, next) =>
+        !refs.inputs.isPending() && !refs.composition.isInputPending() && applySharedDocument(editor, before, next),
       insertFigureReference: (assetId, label) =>
         !refs.inputs.isPending() && !refs.composition.isInputPending() && insertFigureReference(assetId, label),
       getImagePlacements: () => articleImagePlacements(editor),
@@ -499,6 +505,16 @@ function useReferenceMediaAdoption(onImageImported: Props['onImageImported']) {
   });
 }
 
+function outlineExtensions(preferenceKey: string | undefined) {
+  return [
+    OutlineEditing.configure({ preferenceKey: preferenceKey ?? null }),
+    OutlineListItem,
+    OutlineBulletList,
+    OutlineOrderedList,
+    OutlineTaskList,
+  ];
+}
+
 function ContentBlockEditorSession(props: Props) {
   const runtimeRefs = useVideoDocumentEditorRuntimeRefs(props);
   const {
@@ -528,8 +544,8 @@ function ContentBlockEditorSession(props: Props) {
   const enqueueImages = useImageEnqueue(editorRef, imageImportQueueRef, inputs, imageImportCallbacksRef);
 
   const imageExtension = useMemo(
-    () => createDocumentImageExtension(imageMediaStore, props.compact),
-    [imageMediaStore, props.compact],
+    () => createDocumentImageExtension(imageMediaStore, props.compact || props.outlineMode, props.outlineMode),
+    [imageMediaStore, props.compact, props.outlineMode],
   );
   const articleElementsEnabled = props.articleElements !== undefined;
   const articleElementHydrationReadyRef = useRef(!articleElementsEnabled);
@@ -569,11 +585,9 @@ function ContentBlockEditorSession(props: Props) {
       imageExtension,
       referencesExtension,
       ...(articleElementExtension ? [articleElementExtension] : []),
-      ...(props.outlineMode
-        ? [OutlineEditing, OutlineListItem, OutlineBulletList, OutlineOrderedList, OutlineTaskList]
-        : []),
+      ...(props.outlineMode ? outlineExtensions(props.outlinePreferenceKey) : []),
     ],
-    [articleElementExtension, imageExtension, referencesExtension, props.outlineMode],
+    [articleElementExtension, imageExtension, referencesExtension, props.outlineMode, props.outlinePreferenceKey],
   );
   const materialDrop = materialImageDropHandler(editorRef, imageImportQueueRef, imageImportCallbacksRef);
   const editor = useContentEditor(
@@ -582,7 +596,7 @@ function ContentBlockEditorSession(props: Props) {
         typography: props.compact || props.outlineMode ? 'compact' : 'article',
         ariaLabel: props.ariaLabel,
         className: props.outlineMode
-          ? 'aiy-outline-editor px-2 pt-4'
+          ? 'aiy-outline-editor pl-4 pr-2 pt-4'
           : props.compact
             ? 'min-h-24 pl-6 pr-3 py-2'
             : 'min-h-[60vh] px-6 py-7',
@@ -675,6 +689,7 @@ function ContentBlockEditorSession(props: Props) {
   });
 
   useVideoBindingDomProjection({ editor, root: editorRootRef, mediaById, videoBindingByPath });
+  useOutlineFocusNavigation(editor, articleCallbacksRef);
   const missingNavigationTarget = useContentBlockNavigation(editor, props.contentSource);
   useVideoBindingDomProjection({ editor, root: secondaryEditorRootRef, mediaById, videoBindingByPath });
   useArticleCommentDomInteractions(editorRootRef, props.articleElementControls, Boolean(editor));
@@ -719,6 +734,7 @@ function ContentBlockEditorSession(props: Props) {
       missingNavigationTarget={missingNavigationTarget}
       outlineMode={props.outlineMode}
       beforeReferenceCapture={props.beforeReferenceCapture}
+      onTransferSaved={props.onTransferSaved}
       onAddComment={props.readOnly ? undefined : props.articleElementControls?.onAddComment}
       toolbarRoot={props.toolbarRoot}
       contentSource={
@@ -731,17 +747,11 @@ function ContentBlockEditorSession(props: Props) {
           <VideoDocumentEditorChrome
             referenceAction={
               !props.readOnly && (
-                <ContentReferencePicker
+                <ContentReferenceInsertAction
+                  key={props.sessionIdentity}
+                  editor={editor}
+                  adopt={adoptReference}
                   menuItem={props.toolbarPreset === 'compact'}
-                  onInsert={(reference) => {
-                    if (editor.isDestroyed || !editor.isEditable || editor.view.composing)
-                      throw new Error('REFERENCE_TARGET_CHANGED');
-                    editor
-                      .chain()
-                      .focus()
-                      .insertContent({ type: 'contentReference', attrs: { referenceId: reference.id } })
-                      .run();
-                  }}
                 />
               )
             }

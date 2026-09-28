@@ -33,6 +33,16 @@ interface Options {
   workbenchLocation(): CreatorLocation;
 }
 
+function availableAlbum(tree: AlbumTreeIndex, albumId: string | null) {
+  const visited = new Set<string>();
+  while (albumId && !visited.has(albumId)) {
+    visited.add(albumId);
+    if (tree.byId.has(albumId) && !tree.effectivelyArchived.has(albumId)) return albumId;
+    albumId = tree.parentById.get(albumId) ?? null;
+  }
+  return null;
+}
+
 export function useCreatorContentLifecycleCompletion(options: Options) {
   return useStableCallback(async ({ target }: ContentLifecycleActionRequest) => {
     if (target.entityType === 'ALBUM') {
@@ -41,8 +51,15 @@ export function useCreatorContentLifecycleCompletion(options: Options) {
         let currentAlbumId: string | undefined = options.selected.albumId;
         while (currentAlbumId) {
           if (currentAlbumId === target.entityId) {
+            const parentAlbumId = availableAlbum(
+              options.albumTree,
+              options.albumTree.parentById.get(target.entityId) ?? null,
+            );
             options.clearSelection();
-            options.commit(options.workbenchLocation(), 'replace');
+            options.commit(
+              parentAlbumId ? { surface: 'album-detail', albumId: parentAlbumId } : options.workbenchLocation(),
+              'replace',
+            );
             break;
           }
           currentAlbumId = options.albumTree.parentById.get(currentAlbumId);
@@ -71,6 +88,10 @@ export function useCreatorContentLifecycleCompletion(options: Options) {
       ARTICLE: options.selected.articleId,
       VIDEO_DOCUMENT: options.selected.documentId,
     });
+    const parentAlbumId = availableAlbum(
+      options.albumTree,
+      options.data.creationItems.find((item) => item.id === currentCreationItemId)?.albumId ?? null,
+    );
     if (selectedTarget) options.clearSelection();
     if (target.entityType === 'INSPIRATION_STASH' && target.entityId === options.selected.inspirationStashId)
       options.clearSavedInspiration();
@@ -78,6 +99,9 @@ export function useCreatorContentLifecycleCompletion(options: Options) {
       options.setOutputModeToResults();
     }
     await options.refresh();
-    if (selectedTarget) await options.startNewCreation(null, 'replace');
+    if (selectedTarget) {
+      if (parentAlbumId) options.commit({ surface: 'album-detail', albumId: parentAlbumId }, 'replace');
+      else await options.startNewCreation(null, 'replace');
+    }
   });
 }

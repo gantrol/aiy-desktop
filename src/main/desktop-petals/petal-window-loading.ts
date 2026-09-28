@@ -8,7 +8,12 @@ export interface PetalWindowLoad {
 }
 
 /** One deadline covers navigation and both first-frame acknowledgements, in any order. */
-export function loadPetalWindow(window: BrowserWindow, url: string, waitForPaint: boolean): PetalWindowLoad {
+export function loadPetalWindow(
+  window: BrowserWindow,
+  url: string,
+  waitForPaint: boolean,
+  navigating = false,
+): PetalWindowLoad {
   const contents = window.webContents;
   const backgroundThrottling = waitForPaint ? contents.getBackgroundThrottling() : undefined;
   let loaded = false;
@@ -42,15 +47,25 @@ export function loadPetalWindow(window: BrowserWindow, url: string, waitForPaint
     window.once('ready-to-show', paint);
   }
   const timer = setTimeout(() => fail(petalError('sourceUnavailable')), 10_000);
+  const navigated = () => {
+    loaded = true;
+    complete();
+  };
+  const navigationFailed = (_event: unknown, code: number, _description: string, _url: string, mainFrame: boolean) => {
+    if (mainFrame && code !== -3) fail(petalError('sourceUnavailable'));
+  };
+  if (navigating) {
+    contents.once('did-finish-load', navigated);
+    contents.on('did-fail-load', navigationFailed);
+  }
   // Start after the caller registers this load, including when loadURL throws synchronously.
   void Promise.resolve()
     .then(() => {
       if (window.isDestroyed()) throw petalError('sourceUnavailable');
-      return window.loadURL(url);
+      if (!navigating) return window.loadURL(url);
     })
     .then(() => {
-      loaded = true;
-      complete();
+      if (!navigating) navigated();
     }, fail);
   return {
     ready,
@@ -62,6 +77,10 @@ export function loadPetalWindow(window: BrowserWindow, url: string, waitForPaint
       clearTimeout(timer);
       window.removeListener('closed', closed);
       window.removeListener('ready-to-show', paint);
+      if (navigating) {
+        contents.removeListener('did-finish-load', navigated);
+        contents.removeListener('did-fail-load', navigationFailed);
+      }
       if (backgroundThrottling !== undefined && !contents.isDestroyed())
         contents.setBackgroundThrottling(backgroundThrottling);
     },

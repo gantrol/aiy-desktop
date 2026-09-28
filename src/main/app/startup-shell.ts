@@ -1,11 +1,10 @@
-import { app, protocol, session } from 'electron';
-import path from 'node:path';
+import { protocol, session } from 'electron';
 import type { ArticleEditorRecoveryStore } from '@/main/app/article-editor-recovery-store';
 import type { DesktopApplicationShell } from '@/main/app/application-shell';
 import { installCodexVisualizationPreviewProtocol } from '@/main/app/codex-visualization-preview-protocol';
 import { installMediaProtocol } from '@/main/app/media-protocol';
 import { installRendererProtocol } from '@/main/app/renderer-protocol';
-import { isPackagedApplication } from '@/main/app/runtime-mode';
+import { rendererRuntimePath } from '@/main/app/renderer-runtime-paths';
 import type { TransitionPreviewCache } from '@/main/app/transition-preview-cache';
 import { installSessionSecurityPolicy } from '@/main/app/window-security';
 import type { WorkspaceLayoutStore } from '@/main/app/workspace-layout-store';
@@ -88,11 +87,7 @@ export function prepareStartupShell(options: StartupShellOptions) {
     return bootstrapHandler ? invoke(bootstrapHandler) : bootstrapHandlerReady.then(invoke);
   });
 
-  const rendererRoot =
-    !isPackagedApplication(app) && process.env.AIY_PREVIEW_RENDERER_ROOT
-      ? path.resolve(process.env.AIY_PREVIEW_RENDERER_ROOT)
-      : path.join(app.getAppPath(), 'out', 'renderer');
-  installRendererProtocol(protocol, rendererRoot);
+  installRendererProtocol(protocol, rendererRuntimePath('renderer'));
   installCodexVisualizationPreviewProtocol(protocol, () => options.shell.activeLibraryContext);
   installMediaProtocol(protocol, {
     activeLibraryContext: () => options.shell.activeLibraryContext,

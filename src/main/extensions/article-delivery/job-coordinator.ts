@@ -1,3 +1,4 @@
+import { assertPublicContentLinks } from '@/shared/content-public-links';
 import { selectedWatermarkProfile, type NaturalWatermarkRuntime } from '@/main/extensions/natural-watermark/selection';
 import type { LibraryDatabase } from '@/main/database';
 import { ArticleDeliveryConnections } from '@/main/extensions/article-delivery/connection';
@@ -92,6 +93,13 @@ export class ArticleDeliveryJobCoordinator {
   private async prepareEnqueue(input: ArticleDeliveryUploadInput) {
     const article = this.database.getArticle(input.articleId);
     if (article.revisionId !== input.expectedRevisionId) throw new Error('Article revision changed before delivery');
+    const resolution = input.referenceResolutionId
+      ? {
+          resolutionId: input.referenceResolutionId,
+          ...this.database.contentLibrary.renderFrozen(article.content.markdown, input.referenceResolutionId),
+        }
+      : this.database.contentLibrary.freeze(article.content.markdown);
+    assertPublicContentLinks(resolution.markdown);
     assertArticleDeliveryExtensionActivated(this.extensions, input.extensionId);
     const definition = resolveArticleDeliveryDefinition(this.extensions, input);
     const deliveryMode = articleDeliveryMode(definition.configuration);
@@ -129,6 +137,8 @@ export class ArticleDeliveryJobCoordinator {
       articleId: input.articleId,
       articleRevisionId: article.revisionId,
       articleContentHash: article.contentHash,
+      referenceResolutionId: resolution.resolutionId,
+      resolvedContentHash: this.database.contentLibrary.resolvedContentHash(resolution),
       targetSlug: status.profile.slug,
       targetDescription: status.profile.description,
       deliveryMode,
@@ -236,6 +246,7 @@ export class ArticleDeliveryJobCoordinator {
         spaceId: job.spaceId,
         articleId: job.articleId,
         expectedRevisionId: job.articleRevisionId,
+        referenceResolutionId: job.referenceResolutionId ?? undefined,
         expectedDeliveryMode: job.deliveryMode,
         imagePreparation: job.imagePreparation ?? { version: 1, mode: 'ORIGINAL' },
       },

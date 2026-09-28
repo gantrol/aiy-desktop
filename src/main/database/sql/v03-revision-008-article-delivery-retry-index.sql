@@ -1,0 +1,2 @@
+CREATE INDEX idx_article_delivery_jobs_retry_source
+ON article_delivery_jobs(retry_of_job_id);

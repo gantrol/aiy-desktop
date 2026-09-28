@@ -1,3 +1,5 @@
+import { useI18n } from '@/renderer/i18n/useI18n';
+import { Button } from '@/renderer/components/ui/button';
 import { BookOpenIcon, ExternalLinkIcon, ImageIcon, PackageIcon, SquarePenIcon } from 'lucide-react';
 import type {
   AssetCreationInputPackUseDto,
@@ -19,37 +21,6 @@ interface Props {
   onOpenResult(seriesId: string, assetId: string): void;
   onOpenTerm(termId: string): void;
 }
-
-const labels = {
-  zh: {
-    creation: '创作来源',
-    generated: '生成运行',
-    imported: '导入产出',
-    version: (version: number) => `V${String(version).padStart(2, '0')}`,
-    unlinkedVersion: '未关联 Prompt 版本',
-    deletedSeries: '创作已删除',
-    creationPacks: '创作使用的资料包',
-    directPacks: '来自资料包',
-    termRelationships: '词条证据／示例',
-    evidence: '证据',
-    media: '示例',
-    recipe: '配方',
-  },
-  en: {
-    creation: 'Creation source',
-    generated: 'Generation run',
-    imported: 'Imported output',
-    version: (version: number) => `V${String(version).padStart(2, '0')}`,
-    unlinkedVersion: 'No linked Prompt version',
-    deletedSeries: 'Creation deleted',
-    creationPacks: 'Packs used by creation',
-    directPacks: 'Provided by packs',
-    termRelationships: 'Term evidence / examples',
-    evidence: 'Evidence',
-    media: 'Example',
-    recipe: 'Recipe',
-  },
-} satisfies Record<Locale, Record<string, unknown>>;
 
 function localizedTermTitle(
   item: { title: string; titleLocale: string; localizations: Array<{ locale: string; title: string }> },
@@ -125,11 +96,11 @@ function CreationCard({
   locale: Locale;
   onOpenResult(seriesId: string, assetId: string): void;
 }) {
-  const copy = labels[locale];
+  const copy = useI18n().messages.gallery.sourceRelationships;
   const title = relationship.series.title;
   const relationshipType = relationship.kind === 'GENERATION_RUN' ? copy.generated : copy.imported;
   const version = relationship.promptVersion
-    ? copy.version(relationship.promptVersion.versionNo)
+    ? `V${String(relationship.promptVersion.versionNo).padStart(2, '0')}`
     : copy.unlinkedVersion;
   const canOpen = !relationship.series.deletedAt;
   const header = (
@@ -149,13 +120,14 @@ function CreationCard({
   return (
     <article className="min-w-0 rounded-md border bg-background p-3" data-creation-relationship={relationship.kind}>
       {canOpen ? (
-        <button
+        <Button
+          variant="ghost"
           type="button"
-          className="flex w-full min-w-0 items-center gap-3 text-left outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          className="h-auto w-full min-w-0 justify-start gap-3 whitespace-normal p-0 text-left outline-none focus-visible:ring-2 focus-visible:ring-ring"
           onClick={() => onOpenResult(relationship.series.id, assetId)}
         >
           {header}
-        </button>
+        </Button>
       ) : (
         <div className="flex items-center gap-3">{header}</div>
       )}
@@ -188,7 +160,7 @@ function CreationCard({
 }
 
 export function MaterialRelationships({ relationships, assetId, locale, onOpenResult, onOpenTerm }: Props) {
-  const copy = labels[locale];
+  const copy = useI18n().messages.gallery.sourceRelationships;
   return (
     <div className="grid min-w-0 gap-4" data-asset-relationships={relationships.assetId}>
       {relationships.creations.length > 0 && (
@@ -210,10 +182,11 @@ export function MaterialRelationships({ relationships, assetId, locale, onOpenRe
         <section className="grid min-w-0 gap-2">
           <MetaText className="font-medium">{copy.termRelationships}</MetaText>
           {relationships.termRelationships.map((relationship) => (
-            <button
+            <Button
+              variant="ghost"
               key={`${relationship.kind}:${relationship.id}`}
               type="button"
-              className="flex w-full items-center gap-3 rounded-md border bg-background p-3 text-left text-sm outline-none hover:bg-hover focus-visible:ring-2 focus-visible:ring-ring"
+              className="h-auto w-full justify-start gap-3 whitespace-normal rounded-md border bg-background p-3 text-left text-sm outline-none hover:bg-hover focus-visible:ring-2 focus-visible:ring-ring"
               onClick={() => onOpenTerm(relationship.termId)}
               data-term-relationship={relationship.kind}
             >
@@ -228,7 +201,7 @@ export function MaterialRelationships({ relationships, assetId, locale, onOpenRe
                 {relationship.note && <span className="mt-1 block line-clamp-2 text-xs">{relationship.note}</span>}
               </span>
               <ExternalLinkIcon className="size-3.5 shrink-0 text-muted-foreground" />
-            </button>
+            </Button>
           ))}
         </section>
       )}

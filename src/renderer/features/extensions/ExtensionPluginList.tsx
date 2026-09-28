@@ -174,14 +174,16 @@ export function ExtensionPluginList({ extensions, selectedId, onSelect }: Props)
                 {items.map((extension) => {
                   const copy = localizeExtensionManifest(extension.manifest, locale);
                   return (
-                    <button
+                    <Button
                       key={extension.manifest.id}
                       type="button"
+                      variant="ghost"
                       data-extension-id={extension.manifest.id}
                       aria-current={selectedId === extension.manifest.id ? 'true' : undefined}
                       className={cn(
-                        'grid gap-2 rounded-lg border border-border p-3 text-left outline-none transition-colors hover:bg-hover focus-visible:ring-2 focus-visible:ring-ring',
-                        selectedId === extension.manifest.id && 'border-selected-border bg-selected',
+                        'grid h-auto w-full justify-stretch gap-2 whitespace-normal rounded-sm border border-border p-3 text-left font-normal focus-visible:ring-inset focus-visible:ring-offset-0',
+                        selectedId === extension.manifest.id &&
+                          'border-selected-foreground bg-selected hover:bg-selected active:bg-selected',
                       )}
                       onClick={() => onSelect(extension.manifest.id)}
                     >
@@ -205,7 +207,7 @@ export function ExtensionPluginList({ extensions, selectedId, onSelect }: Props)
                           )}
                         </span>
                       )}
-                    </button>
+                    </Button>
                   );
                 })}
               </CollapsibleContent>

@@ -1,3 +1,4 @@
+import type { Node as ProseMirrorNode } from '@tiptap/pm/model';
 import type { ArticleElementNodeType, ArticleElementPlacementInput } from '@/shared/contracts';
 
 export const ARTICLE_ELEMENT_ATTRIBUTE = 'blockId';
@@ -30,6 +31,15 @@ export function articleElementImageText(attrs: Record<string, unknown> | undefin
   return [attrs?.alt, attrs?.title, attrs?.mediaPath || attrs?.sourcePath || attrs?.src || attrs?.assetId]
     .filter((value): value is string => typeof value === 'string' && Boolean(value.trim()))
     .join(' ');
+}
+
+export function articleElementContainsCodeBlock(node: ProseMirrorNode) {
+  let found = false;
+  node.descendants((descendant) => {
+    if (descendant.type.name === 'codeBlock') found = true;
+    return !found;
+  });
+  return found;
 }
 
 export function takeSavedArticleElement(

@@ -1,9 +1,11 @@
-import { app, BrowserWindow, dialog, Menu, nativeImage, screen, Tray, type Rectangle } from 'electron';
+import { app, BrowserWindow, dialog, Menu, nativeImage, screen, Tray } from 'electron';
 import { existsSync } from 'node:fs';
 import { mkdir, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import type { CodexService } from '@/main/assistant/codex-service';
 import { TrayMenuWindow } from '@/main/app/tray-menu-window';
+import { createMacTrayIcon } from '@/main/app/mac-tray-icon';
+import { BackgroundTaskNotification } from '@/main/app/background-task-notification';
 import { appShellMessages } from '@/shared/i18n/app-shell';
 import {
   trayPetalActions,
@@ -16,39 +18,27 @@ import { AppUpdateService } from '@/main/app/app-update-service';
 import { RendererEventDispatcher } from '@/main/app/renderer-event-dispatcher';
 import { PACKAGED_RENDERER_URL } from '@/main/app/renderer-protocol';
 import { isPackagedApplication } from '@/main/app/runtime-mode';
+import { rendererRuntimePath } from '@/main/app/renderer-runtime-paths';
+import { installWorkspaceMenuShortcuts } from '@/main/app/workspace-menu-shortcuts';
 import { installWindowNavigationPolicy } from '@/main/app/window-security';
 import { runDevelopmentCapture } from '@/main/development/capture';
 import type { ActiveLibraryContext } from '@/main/libraries/active-library-context';
 import { closeSandboxedImageDecoder } from '@/main/media/sandboxed-image-decoder';
 import type { BackgroundGenerationClient } from '@/main/model-worker/client';
 import { productNameForLocale } from '@/shared/product';
-import { appWindowStateSchema } from '@/shared/contracts/app-window';
+import { bindAppWindowState } from '@/main/ipc/app-window-handlers';
 import { WindowStateStore } from '@/main/app/window-state-store';
+import {
+  DEFAULT_WINDOW_WIDTH,
+  DEFAULT_WINDOW_HEIGHT,
+  MINIMUM_WINDOW_WIDTH,
+  MINIMUM_WINDOW_HEIGHT,
+  restoreWindowBounds,
+} from '@/main/app/window-placement';
 import { cancelArticleEditorDrain, drainArticleEditors } from '@/main/app/article-editor-drain';
 import { attachRendererDiagnostics, flushRendererDiagnostics } from '@/main/app/renderer-diagnostics';
 
-const DEFAULT_WINDOW_WIDTH = 1_500;
-const DEFAULT_WINDOW_HEIGHT = 920;
-const MINIMUM_WINDOW_WIDTH = 1_100;
-const MINIMUM_WINDOW_HEIGHT = 720;
 const DEVELOPMENT_APP_USER_MODEL_ID = 'com.catai.aiy.dev';
-
-function clamp(value: number, minimum: number, maximum: number) {
-  return Math.min(Math.max(value, minimum), maximum);
-}
-
-function restoreWindowBounds(bounds: Rectangle): Rectangle {
-  const display = screen.getDisplayMatching(bounds);
-  const workArea = display.workArea;
-  const width = Math.min(Math.max(bounds.width, MINIMUM_WINDOW_WIDTH), workArea.width);
-  const height = Math.min(Math.max(bounds.height, MINIMUM_WINDOW_HEIGHT), workArea.height);
-  return {
-    x: clamp(bounds.x, workArea.x, Math.max(workArea.x, workArea.x + workArea.width - width)),
-    y: clamp(bounds.y, workArea.y, Math.max(workArea.y, workArea.y + workArea.height - height)),
-    width,
-    height,
-  };
-}
 
 interface DesktopApplicationShellOptions {
   backgroundColor: string;
@@ -95,16 +85,19 @@ export class DesktopApplicationShell {
   private readonly trayState = (): TrayMenuState => ({
     language: this.language,
     petalsReady: this.options.desktopPetals?.()?.ready ?? false,
-    windowReady: Boolean(this.mainWindow && !this.mainWindow.isDestroyed()),
+    windowReady:
+      Boolean(this.mainWindow && !this.mainWindow.isDestroyed()) || this.activeLibraryContext?.state === 'ACTIVE',
     taskCount: this.pendingModelTaskCount(),
     quittingSoon: this.quitAfterBackgroundTasks && this.backgroundCompletionNotified,
   });
 
   private appQuitRequested = false;
+  private quitRequestPending = false;
   private rendererDrainComplete = false;
   private rendererDrainPending = false;
 
   private backgroundCompletionNotified = false;
+  private readonly completionNotification = new BackgroundTaskNotification(() => this.presentMainWindow());
 
   private backgroundCompletionTimer: ReturnType<typeof setTimeout> | null = null;
 
@@ -138,6 +131,7 @@ export class DesktopApplicationShell {
 
   private readonly showMainWindow = () => {
     if (!this.options.allowWindowPresentation) return;
+    this.completionNotification.clear();
     this.trayMenu?.hide();
     this.quitAfterBackgroundTasks = false;
     if (this.backgroundAutoExitTimer) clearTimeout(this.backgroundAutoExitTimer);
@@ -152,7 +146,7 @@ export class DesktopApplicationShell {
     if (this.mainWindow.isMinimized()) this.mainWindow.restore();
     this.mainWindow.show();
     this.mainWindow.focus();
-    if (process.platform !== 'win32') {
+    if (process.platform === 'linux') {
       this.appTray?.destroy();
       this.appTray = null;
     }
@@ -323,6 +317,7 @@ export class DesktopApplicationShell {
     this.quitAfterBackgroundTasks = false;
     this.appQuitRequested = true;
     this.forceQuitRequested = true;
+    this.completionNotification.dispose();
     if (this.backgroundCompletionTimer) clearTimeout(this.backgroundCompletionTimer);
     this.backgroundCompletionTimer = null;
     if (this.backgroundAutoExitTimer) clearTimeout(this.backgroundAutoExitTimer);
@@ -417,20 +412,20 @@ export class DesktopApplicationShell {
   };
 
   readonly requestAppQuit = async () => {
-    if (this.appUpdateInstallPreparing) return;
+    if (this.appUpdateInstallPreparing || this.quitRequestPending) return;
     if (this.appQuitRequested) {
       app.quit();
       return;
     }
-    if (this.pendingModelTaskCount() > 0) {
-      await this.guardPendingClose();
-      return;
-    }
+    this.quitRequestPending = true;
     try {
-      await this.finishUserQuit(false);
+      if (this.pendingModelTaskCount() > 0) await this.guardPendingClose();
+      else await this.finishUserQuit(false);
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       await this.confirmForceQuit(this.language.messages.shutdownFailed.replace('{reason}', message));
+    } finally {
+      this.quitRequestPending = false;
     }
   };
 
@@ -454,7 +449,7 @@ export class DesktopApplicationShell {
     const state = this.trayState();
     const copy = this.language.messages;
     return Menu.buildFromTemplate([
-      { label: copy.open, enabled: state.windowReady, click: this.showMainWindow },
+      { label: copy.open, enabled: state.windowReady, click: this.presentMainWindow },
       { type: 'separator' },
       ...trayPetalActions.map((action) => ({
         label: copy[action],
@@ -495,6 +490,7 @@ export class DesktopApplicationShell {
     if (process.platform === 'linux') this.appTray.setContextMenu(this.nativeTrayMenu());
     this.trayMenu?.update();
     if (count > 0) {
+      this.completionNotification.clear();
       if (this.backgroundCompletionTimer) clearTimeout(this.backgroundCompletionTimer);
       this.backgroundCompletionTimer = null;
       if (this.backgroundAutoExitTimer) clearTimeout(this.backgroundAutoExitTimer);
@@ -503,6 +499,7 @@ export class DesktopApplicationShell {
       return;
     }
     if (!this.quitAfterBackgroundTasks || this.mainWindow?.isVisible()) {
+      this.completionNotification.clear();
       if (this.backgroundCompletionTimer) clearTimeout(this.backgroundCompletionTimer);
       this.backgroundCompletionTimer = null;
       if (this.backgroundAutoExitTimer) clearTimeout(this.backgroundAutoExitTimer);
@@ -512,7 +509,7 @@ export class DesktopApplicationShell {
     }
     if (this.backgroundCompletionNotified || this.backgroundCompletionTimer) return;
     // A generation completion can synchronously trigger a follow-up title task
-    // in the renderer. Defer the balloon briefly so that task joins the count.
+    // in the renderer. Defer the notification briefly so that task joins the count.
     this.backgroundCompletionTimer = setTimeout(() => {
       this.backgroundCompletionTimer = null;
       if (!this.appTray) return;
@@ -529,6 +526,8 @@ export class DesktopApplicationShell {
           title: productName,
           content: this.language.messages.completionNotification,
         });
+      if (process.platform === 'darwin')
+        this.completionNotification.show(productName, this.language.messages.completionNotification);
       if (!this.quitAfterBackgroundTasks || this.backgroundAutoExitTimer) return;
       this.backgroundAutoExitTimer = setTimeout(() => {
         this.backgroundAutoExitTimer = null;
@@ -543,8 +542,17 @@ export class DesktopApplicationShell {
   };
 
   readonly ensureAppTray = () => {
-    if (this.appTray) return;
-    this.appTray = new Tray(this.appIcon());
+    if (this.appTray || !this.options.allowWindowPresentation) return;
+    this.appTray = new Tray(process.platform === 'darwin' ? createMacTrayIcon() : this.appIcon());
+    if (process.platform === 'darwin') {
+      // The macOS status item uses the native menu so it opens below the menu bar.
+      const showMenu = () => this.appTray?.popUpContextMenu(this.nativeTrayMenu());
+      this.appTray.setIgnoreDoubleClickEvents(true);
+      this.appTray.on('click', showMenu);
+      this.appTray.on('right-click', showMenu);
+      this.updateAppTray();
+      return;
+    }
     this.trayMenu ??= new TrayMenuWindow(
       () => this.developmentRendererUrl() ?? new URL(PACKAGED_RENDERER_URL),
       this.trayState,
@@ -571,7 +579,8 @@ export class DesktopApplicationShell {
   };
 
   private readonly appIcon = () => {
-    const iconName = process.platform === 'win32' ? 'icon.ico' : 'icon.png';
+    let iconName = process.platform === 'win32' ? 'icon.ico' : 'icon.png';
+    if (process.platform === 'darwin') iconName = 'icon-mac.png';
     const candidates = isPackagedApplication(app)
       ? [path.join(process.resourcesPath, iconName)]
       : [path.resolve(__dirname, '../../build', iconName), path.join(app.getAppPath(), 'build', iconName)];
@@ -590,6 +599,7 @@ export class DesktopApplicationShell {
   readonly createWindow = () => {
     const expectedRendererUrl = this.developmentRendererUrl() ?? new URL(PACKAGED_RENDERER_URL);
     const icon = this.appIcon();
+    if (process.platform === 'darwin') app.dock?.setIcon(icon);
     const windowStateStore = new WindowStateStore(app.getPath('userData'));
     const restoredWindowState = windowStateStore.load();
     const restoredBounds = restoredWindowState ? restoreWindowBounds(restoredWindowState.normalBounds) : null;
@@ -601,10 +611,12 @@ export class DesktopApplicationShell {
       title: this.options.title,
       icon,
       titleBarStyle: 'hidden',
+      // Center native macOS controls in the renderer's 36px title bar.
+      ...(process.platform === 'darwin' ? { trafficLightPosition: { x: 12, y: 11 } } : {}),
       roundedCorners: true,
       show: false,
       webPreferences: {
-        preload: path.join(app.getAppPath(), 'out', 'preload', 'index.js'),
+        preload: rendererRuntimePath('preload', 'index.js'),
         contextIsolation: true,
         nodeIntegration: false,
         sandbox: true,
@@ -635,8 +647,9 @@ export class DesktopApplicationShell {
     }
     this.mainWindow = window;
     this.mainWindowReady = false;
-    attachRendererDiagnostics(window);
+    attachRendererDiagnostics(window, () => this.language.messages);
     this.rendererEvents.attach(window);
+    installWorkspaceMenuShortcuts(window.webContents, process.platform as 'win32' | 'darwin' | 'linux');
     let windowStateSaveTimer: ReturnType<typeof setTimeout> | null = null;
     const saveWindowState = () => {
       if (windowStateSaveTimer) clearTimeout(windowStateSaveTimer);
@@ -656,19 +669,10 @@ export class DesktopApplicationShell {
       if (windowStateSaveTimer) clearTimeout(windowStateSaveTimer);
       windowStateSaveTimer = setTimeout(saveWindowState, 250);
     };
-    const sendWindowState = () =>
-      this.rendererEvents.send(
-        'app-window:state-changed',
-        appWindowStateSchema.parse({ maximized: window.isMaximized() }),
-      );
     window.on('move', scheduleWindowStateSave);
     window.on('resize', scheduleWindowStateSave);
-    window.on('maximize', () => {
-      sendWindowState();
-      scheduleWindowStateSave();
-    });
-    window.on('unmaximize', () => {
-      sendWindowState();
+    bindAppWindowState(window, (state) => {
+      this.rendererEvents.send('app-window:state-changed', state);
       scheduleWindowStateSave();
     });
     window.on('close', (event) => {
@@ -678,7 +682,7 @@ export class DesktopApplicationShell {
         event.preventDefault();
         return;
       }
-      if (process.platform === 'win32') {
+      if (process.platform === 'win32' || process.platform === 'darwin') {
         event.preventDefault();
         window.hide();
         this.ensureAppTray();
@@ -709,6 +713,7 @@ export class DesktopApplicationShell {
       if (this.mainWindow === window) {
         this.mainWindow = null;
         this.mainWindowReady = false;
+        this.updateAppTray();
       }
     });
     if (!isPackagedApplication(app) && process.env.ELECTRON_RENDERER_URL) {
@@ -761,6 +766,12 @@ export class DesktopApplicationShell {
     });
 
     app.on('before-quit', (event) => {
+      // Native Quit/Cmd+Q and Dock Quit must use the same task guard as the tray.
+      if (!this.appQuitRequested && !this.forceQuitRequested) {
+        event.preventDefault();
+        void this.requestAppQuit();
+        return;
+      }
       if (!this.forceQuitRequested && !this.rendererDrainComplete) {
         event.preventDefault();
         if (!this.rendererDrainPending) {
@@ -792,6 +803,7 @@ export class DesktopApplicationShell {
       this.backgroundCompletionTimer = null;
       if (this.backgroundAutoExitTimer) clearTimeout(this.backgroundAutoExitTimer);
       this.backgroundAutoExitTimer = null;
+      this.completionNotification.dispose();
       this.trayMenu?.dispose();
       this.appTray?.destroy();
       this.appTray = null;

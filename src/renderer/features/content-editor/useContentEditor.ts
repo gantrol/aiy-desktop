@@ -1,8 +1,12 @@
 import { BlockIdentity } from '@/renderer/features/content-editor/blockIdentityExtension';
+import { ContentInlineMath, ContentBlockMath } from '@/renderer/features/content-editor/contentMathExtensions';
+import { referenceDragType } from '@/renderer/lib/itemReferenceDrag';
 import { ContentLinkCardExtension } from '@/renderer/features/content-editor/contentLinkCardExtension';
 import { createContentLinkPasteExtension } from '@/renderer/features/content-editor/contentLinkPasteExtension';
 import { useContentLinkProviders } from '@/renderer/features/content-editor/ContentLinkProviders';
 import { useStableCallback } from '@/renderer/lib/useStableCallback';
+import { createContentAssociationExtension } from '@/renderer/features/content-editor/contentAssociation';
+import { useOutlineContentLinkHost } from '@/renderer/features/content-editor/OutlineContentLinkHost';
 import { useI18n } from '@/renderer/i18n/useI18n';
 import { cn } from '@/renderer/lib/utils';
 import {
@@ -32,7 +36,7 @@ import { Details, DetailsContent, DetailsSummary } from '@tiptap/extension-detai
 import { TableKit } from '@tiptap/extension-table';
 import TaskItem from '@tiptap/extension-task-item';
 import TaskList from '@tiptap/extension-task-list';
-import { Markdown } from '@tiptap/markdown';
+import { ContentMarkdownExtension } from '@/renderer/features/content-editor/contentMarkdownExtension';
 import { useEditor, type UseEditorOptions } from '@tiptap/react';
 import StarterKit from '@tiptap/starter-kit';
 import { useMemo, type DependencyList } from 'react';
@@ -71,6 +75,8 @@ export function createContentEditorExtensions(
 ): Extensions {
   const base: Extensions = [
     BlockIdentity,
+    ContentInlineMath,
+    ContentBlockMath,
     ContentLinkCardExtension,
     Details.configure({
       persist: false,
@@ -90,7 +96,9 @@ export function createContentEditorExtensions(
     ContentEditorKeyboard,
     ...(overrides.some((extension) => extension.name === 'outlineEditing') ? [OutlinePointerSelection] : []),
     StarterKit.configure({
-      trailingNode: overrides.some((extension) => extension.name === 'outlineEditing') ? false : undefined,
+      trailingNode: overrides.some((extension) => ['outlineEditing', 'referenceEditGuard'].includes(extension.name))
+        ? false
+        : undefined,
       listItem: overrides.some((extension) => extension.name === 'listItem') ? false : undefined,
       bulletList: overrides.some((extension) => extension.name === 'bulletList') ? false : undefined,
       orderedList: overrides.some((extension) => extension.name === 'orderedList') ? false : undefined,
@@ -120,7 +128,7 @@ export function createContentEditorExtensions(
     CjkStrongMarkdown,
     promptAtom('creatorTerm'),
     promptAtom('creatorRecipe'),
-    Markdown,
+    ContentMarkdownExtension,
   ];
   const replaced = new Set(overrides.map((extension) => extension.name));
   return [...base.filter((extension) => !replaced.has(extension.name)), ...overrides];
@@ -137,15 +145,27 @@ interface ContentEditorOptions extends UseEditorOptions {
 /** Hosts choose density and layout; schema, semantic formatting and basic input behavior stay shared. */
 export function useContentEditor({ presentation, ...options }: ContentEditorOptions, dependencies?: DependencyList) {
   const providers = useContentLinkProviders();
+  const associationHost = useOutlineContentLinkHost();
+  const associationsAvailable = useStableCallback(() => Boolean(associationHost));
   const detailsCopy = useI18n().messages.videoDocuments.editor.richText;
   const currentProviders = useStableCallback(() => providers);
   const extensions = useMemo(
     () =>
       createContentEditorExtensions(
-        [...(options.extensions ?? []), createContentLinkPasteExtension(currentProviders)],
+        [
+          ...(options.extensions ?? []),
+          createContentLinkPasteExtension(currentProviders),
+          createContentAssociationExtension(associationsAvailable),
+        ],
         { expand: detailsCopy.expandDetails, collapse: detailsCopy.collapseDetails },
       ),
-    [options.extensions, currentProviders, detailsCopy.expandDetails, detailsCopy.collapseDetails],
+    [
+      options.extensions,
+      currentProviders,
+      associationsAvailable,
+      detailsCopy.expandDetails,
+      detailsCopy.collapseDetails,
+    ],
   );
   const hostAttributes = options.editorProps?.attributes;
   return useEditor(
@@ -156,9 +176,22 @@ export function useContentEditor({ presentation, ...options }: ContentEditorOpti
       extensions,
       editorProps: {
         ...options.editorProps,
+        handleDrop(view, event, slice, moved) {
+          // Object transfers are consumed by explicit outline destinations, never pasted as raw IDs.
+          if (
+            event.dataTransfer?.types.includes(referenceDragType) ||
+            event.dataTransfer?.types.includes('application/x-aiy-outline')
+          ) {
+            event.preventDefault();
+            return true;
+          }
+          return options.editorProps?.handleDrop?.call(this, view, event, slice, moved) ?? false;
+        },
         attributes: (state) => {
           const attributes = typeof hostAttributes === 'function' ? hostAttributes(state) : hostAttributes;
           return {
+            // Chromium's native spelling underline has no AIY action and is noisy for CJK and technical text.
+            spellcheck: 'false',
             ...attributes,
             role: 'textbox',
             'aria-label': presentation.ariaLabel,

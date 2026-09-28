@@ -1,17 +1,20 @@
-import type { BootstrapDto, ExtensionDto } from '@/shared/contracts';
+import type { ArticleDto, BootstrapDto, ExtensionDto } from '@/shared/contracts';
 import {
   CODEX_EXTENSION_ID,
   FEATURE_DEMO_EXTENSION_ID,
   MAINTENANCE_GUIDE_EXTENSION_ID,
+  WORK_TRACKING_EXTENSION_ID,
   TRANSITION_SHOWCASE_EXTENSION_ID,
 } from '@/shared/extension-ids';
 import { CodexArtifactsScreen } from '@/renderer/features/extensions/CodexArtifactsScreen';
 import { FeatureDemoShowcase } from '@/renderer/features/extensions/FeatureDemoShowcase';
 import { TransitionShowcase } from '@/renderer/features/extensions/TransitionShowcase';
 import { MaintenanceGuideScreen } from '@/renderer/features/maintenance-guide/MaintenanceGuideScreen';
+import { WorkTrackingScreen } from '@/renderer/features/work-tracking/WorkTrackingScreen';
 
 const featureExtensionIds = new Set<string>([
   MAINTENANCE_GUIDE_EXTENSION_ID,
+  WORK_TRACKING_EXTENSION_ID,
   CODEX_EXTENSION_ID,
   FEATURE_DEMO_EXTENSION_ID,
   TRANSITION_SHOWCASE_EXTENSION_ID,
@@ -29,6 +32,7 @@ interface Props {
   extensions: readonly ExtensionDto[];
   notify(message: string): void;
   onOpenCreation(seriesId: string, assetId: string | null): Promise<void>;
+  onArticleSaved(article: ArticleDto): void;
 }
 
 export function ExtensionPluginFeaturePage({
@@ -39,9 +43,20 @@ export function ExtensionPluginFeaturePage({
   extensions,
   notify,
   onOpenCreation,
+  onArticleSaved,
 }: Props) {
   return (
     <div data-extension-plugin-feature className="grid gap-6">
+      {extension.manifest.id === WORK_TRACKING_EXTENSION_ID && (
+        <WorkTrackingScreen
+          key={data.spaceId}
+          active={active}
+          data={data}
+          extension={extension}
+          notify={notify}
+          onArticleSaved={onArticleSaved}
+        />
+      )}
       {extension.manifest.id === MAINTENANCE_GUIDE_EXTENSION_ID && (
         <MaintenanceGuideScreen active={active} extension={extension} />
       )}

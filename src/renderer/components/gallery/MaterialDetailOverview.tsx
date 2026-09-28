@@ -22,7 +22,7 @@ import { ImageAmbientBackdrop } from '@/renderer/components/media/AmbientImage';
 import { mediaThumbnailUrl } from '@/renderer/components/media/mediaThumbnailUrl';
 import { MaterialPinAction, materialPinSource } from '@/renderer/components/gallery/MaterialPinAction';
 import { Button } from '@/renderer/components/ui/button';
-import type { ActionMenuAction } from '@/renderer/components/ui/action-menu';
+import { ActionMenuButton, type ActionMenuAction } from '@/renderer/components/ui/action-menu';
 import { MetaText } from '@/renderer/components/ui/meta-text';
 import { ScrollArea } from '@/renderer/components/ui/scroll-area';
 import { useI18n } from '@/renderer/i18n/useI18n';
@@ -33,6 +33,8 @@ import {
 } from '@/renderer/components/gallery/materialLibraryTypes';
 
 interface MaterialDetailHeaderProps {
+  navigationAction?: ReactNode;
+  propertiesAction?: ReactNode;
   agentLinkAction: ReactNode;
   title: string;
   position: number;
@@ -48,6 +50,8 @@ interface MaterialDetailHeaderProps {
 }
 
 export function MaterialDetailHeader({
+  navigationAction,
+  propertiesAction,
   agentLinkAction,
   title,
   position,
@@ -64,7 +68,8 @@ export function MaterialDetailHeader({
   const { messages } = useI18n();
   const l = messages.gallery.inspector;
   return (
-    <header className="flex min-h-16 shrink-0 items-center gap-3 border-b px-4 sm:px-6">
+    <header className="flex min-h-14 shrink-0 flex-wrap items-center gap-2 border-b px-3 py-2">
+      {navigationAction}
       <Button
         type="button"
         variant="ghost"
@@ -130,6 +135,7 @@ export function MaterialDetailHeader({
           </Button>
         )}
         {agentLinkAction}
+        {propertiesAction}
       </div>
     </header>
   );
@@ -267,6 +273,7 @@ export function MaterialDetailActions({
       notify(fileLabels.addedToCreation);
     } catch (reason) {
       notify(`${fileLabels.failed}: ${reason instanceof Error ? reason.message : String(reason)}`);
+    } finally {
       setCreationBusy(false);
     }
   }
@@ -276,7 +283,7 @@ export function MaterialDetailActions({
       type="button"
       data-action="material-favorite-toggle"
       variant="outline"
-      className="w-full"
+      size="sm"
       disabled={favoriteBusy}
       aria-busy={favoriteBusy}
       aria-pressed={favorited}
@@ -293,44 +300,51 @@ export function MaterialDetailActions({
     </Button>
   );
 
+  const lifecycleMenu = lifecycleAvailable && (
+    <ActionMenuButton
+      label={messages.gallery.albums.moreActions}
+      side="bottom"
+      actions={[
+        {
+          id: 'archive-material',
+          label: messages.contentManagement.actions.archive,
+          icon: ArchiveIcon,
+          disabled: lifecycleBusy,
+          onSelect: () => onRequestExit(() => onArchive(item)),
+        },
+        {
+          id: 'delete-material',
+          label: messages.contentManagement.actions.delete,
+          icon: Trash2Icon,
+          destructive: true,
+          disabled: lifecycleBusy,
+          onSelect: () => onRequestExit(() => onDelete(item)),
+        },
+      ]}
+    />
+  );
+
   if (item.kind === 'TEXT')
     return (
-      <div className="grid gap-2">
+      <div className="flex flex-wrap items-center gap-2">
         <MaterialPinAction item={item} disabled={lifecycleBusy} notify={notify} />
-        <Button type="button" className="w-full" onClick={() => onCopyText(item.text.text)}>
+        <Button type="button" size="sm" onClick={() => onCopyText(item.text.text)}>
           <CopyIcon className="size-4" />
           {l.copyText}
         </Button>
         {favoriteButton}
-        <Button
-          type="button"
-          variant="outline"
-          disabled={lifecycleBusy}
-          onClick={() => onRequestExit(() => onArchive(item))}
-        >
-          <ArchiveIcon className="size-4" />
-          {messages.contentManagement.actions.archive}
-        </Button>
-        <Button
-          type="button"
-          variant="destructive"
-          disabled={lifecycleBusy}
-          onClick={() => onRequestExit(() => onDelete(item))}
-        >
-          <Trash2Icon className="size-4" />
-          {messages.contentManagement.actions.delete}
-        </Button>
+        {lifecycleMenu}
       </div>
     );
   if (!image) return null;
 
   return (
-    <div className="grid gap-2">
+    <div className="flex flex-wrap items-center gap-2">
       <MaterialPinAction item={item} disabled={lifecycleBusy} notify={notify} />
       {!video && assetActions && (
         <Button
           type="button"
-          className="w-full"
+          size="sm"
           disabled={creationBusy}
           aria-busy={creationBusy}
           onClick={() => onRequestExit(() => void sendToCreation())}
@@ -342,7 +356,7 @@ export function MaterialDetailActions({
       {video && image.materialId && assetActions && (
         <Button
           type="button"
-          className="w-full"
+          size="sm"
           onClick={() =>
             onRequestExit(
               () =>
@@ -358,42 +372,21 @@ export function MaterialDetailActions({
         </Button>
       )}
       {image.creation && (
-        <Button type="button" className="w-full" onClick={() => onOpenResult(image.creation!.seriesId, image.asset.id)}>
+        <Button type="button" size="sm" onClick={() => onOpenResult(image.creation!.seriesId, image.asset.id)}>
           <SquarePenIcon className="size-4" />
           {l.openCreation}
           <ExternalLinkIcon className="ml-auto size-3.5 opacity-60" />
         </Button>
       )}
       {!image.creation && image.dictionary && (
-        <Button type="button" className="w-full" onClick={() => onOpenTerm(image.dictionary!.termId)}>
+        <Button type="button" size="sm" onClick={() => onOpenTerm(image.dictionary!.termId)}>
           <BookOpenIcon className="size-4" />
           {l.openDictionary}
           <ExternalLinkIcon className="ml-auto size-3.5 opacity-60" />
         </Button>
       )}
       {favoriteButton}
-      {lifecycleAvailable && (
-        <>
-          <Button
-            type="button"
-            variant="outline"
-            disabled={lifecycleBusy}
-            onClick={() => onRequestExit(() => onArchive(item))}
-          >
-            <ArchiveIcon className="size-4" />
-            {messages.contentManagement.actions.archive}
-          </Button>
-          <Button
-            type="button"
-            variant="destructive"
-            disabled={lifecycleBusy}
-            onClick={() => onRequestExit(() => onDelete(item))}
-          >
-            <Trash2Icon className="size-4" />
-            {messages.contentManagement.actions.delete}
-          </Button>
-        </>
-      )}
+      {lifecycleMenu}
     </div>
   );
 }

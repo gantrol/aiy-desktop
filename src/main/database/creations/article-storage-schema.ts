@@ -1,4 +1,6 @@
 import type Database from 'better-sqlite3';
+import { articleProvenanceShape } from '@/main/database/creations/article-provenance-schema';
+export { ensureArticleProvenance } from '@/main/database/creations/article-provenance-schema';
 import revision4ArticlesSql from '@/main/database/sql/v03-revision-004-articles.sql?raw';
 
 export type ArticleStorageShape =
@@ -208,4 +210,8 @@ export function articleStorageShape(db: Database.Database): ArticleStorageShape 
 
 export function ensureArticles(db: Database.Database) {
   if (articleStorageShape(db) === 'ABSENT') db.exec(revision4ArticlesSql);
+}
+
+export function articleStorageComplete(db: Database.Database) {
+  return articleStorageShape(db) === 'COMPLETE' && articleProvenanceShape(db);
 }

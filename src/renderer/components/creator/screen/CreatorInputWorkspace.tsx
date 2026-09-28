@@ -354,7 +354,6 @@ export function CreatorInputWorkspace({ model, sourceFormId }: Props) {
             version: c.version,
             videoStartTitle: messages.videoDocuments.start.title,
           }}
-          locale={app.locale}
           newCreationSurface={projection.newCreationSurface}
           promptFullWindow={app.promptFullWindow}
           series={workbench.series}

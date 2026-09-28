@@ -1,5 +1,7 @@
 import { beginContentImageInsertion } from '@/renderer/features/content-editor/contentImageInsertion';
 import { CompactContentToolbar } from '@/renderer/features/content-editor/CompactContentToolbar';
+import { FullContentToolbar } from '@/renderer/features/content-editor/FullContentToolbar';
+import { ContentMathAction } from '@/renderer/features/content-editor/ContentMathAction';
 import { useI18n } from '@/renderer/i18n/useI18n';
 import { VideoDocumentFramePicker } from '@/renderer/features/video-documents/VideoDocumentFramePicker';
 import { VideoDocumentImageOperations } from '@/renderer/features/video-documents/VideoDocumentImageOperations';
@@ -11,8 +13,6 @@ import {
   insertVideoDocumentImage,
   videoDocumentFrameImageAttributes,
 } from '@/renderer/features/video-documents/videoDocumentEditorMedia';
-import { cn } from '@/renderer/lib/utils';
-import { Separator } from '@/renderer/components/ui/separator';
 import { TooltipProvider } from '@/renderer/components/ui/tooltip';
 import {
   ArticleElementReviewButtons,
@@ -38,7 +38,7 @@ import {
   Undo2Icon,
   UploadIcon,
 } from 'lucide-react';
-import type { ChangeEvent, ReactNode, RefObject } from 'react';
+import type { ChangeEvent, ReactNode } from 'react';
 import { useRef, useState } from 'react';
 
 type ViewProps = Omit<Props, 'importImage'> & {
@@ -79,10 +79,6 @@ function useImageUpload({
 
 function ToolbarGroup({ children }: { children: ReactNode }) {
   return <span className="flex shrink-0 items-center gap-0.5">{children}</span>;
-}
-
-function ToolbarSeparator() {
-  return <Separator orientation="vertical" className="mx-1 h-4 shrink-0" />;
 }
 
 interface FormattingActions {
@@ -187,24 +183,6 @@ function createFrameAction({
   );
 }
 
-function ToolbarCoreGroup({ actions }: { actions: FormattingActions }) {
-  return (
-    <ToolbarGroup>
-      {actions.heading && (
-        <>
-          {actions.heading}
-          <ToolbarSeparator />
-        </>
-      )}
-      {actions.bold}
-      {actions.italic}
-      {actions.strike}
-      <ToolbarSeparator />
-      {actions.link}
-    </ToolbarGroup>
-  );
-}
-
 function ToolbarListGroup({ editor, state, labels }: Pick<ViewProps, 'editor' | 'state' | 'labels'>) {
   return (
     <ToolbarGroup>
@@ -295,42 +273,6 @@ function ToolbarHistoryGroup({ editor, labels, state }: Pick<ViewProps, 'editor'
   );
 }
 
-function ToolbarLayout({
-  embedded,
-  imageInputRef,
-  onImageInputChange,
-  toolbarGroups,
-}: {
-  embedded?: boolean;
-  imageInputRef: RefObject<HTMLInputElement | null>;
-  onImageInputChange(event: ChangeEvent<HTMLInputElement>): void;
-  toolbarGroups: ReactNode;
-}) {
-  return (
-    <div
-      data-slot="video-document-wysiwyg-toolbar"
-      className={cn(
-        'z-30 flex min-h-8 min-w-0 items-center overflow-hidden px-1.5',
-        embedded
-          ? 'relative bg-transparent text-inherit'
-          : 'sticky top-0 min-h-9 border-b bg-background/96 backdrop-blur-sm',
-      )}
-    >
-      <div className="min-w-0 flex-1 overflow-x-auto overflow-y-hidden [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-        <div className="flex min-w-max items-center gap-0.5">{toolbarGroups}</div>
-      </div>
-      <input
-        ref={imageInputRef}
-        type="file"
-        accept="image/png,image/jpeg,image/webp,image/svg+xml,.svg"
-        className="sr-only"
-        tabIndex={-1}
-        onChange={onImageInputChange}
-      />
-    </div>
-  );
-}
-
 export function VideoDocumentWysiwygToolbarView({
   toolbarPreset = 'full',
   figureAssetIds,
@@ -399,7 +341,14 @@ export function VideoDocumentWysiwygToolbarView({
     mediaBindings,
     onFrameCaptured,
   });
-  const insertGroup = <ToolbarInsertGroup actions={[referenceAction, uploadAction, illustrationAction, frameAction]} />;
+  const insertActions = [
+    referenceAction,
+    <ContentMathAction key="math" editor={editor} />,
+    uploadAction,
+    illustrationAction,
+    frameAction,
+  ].filter(Boolean);
+  const insertGroup = insertActions.length ? <ToolbarInsertGroup actions={insertActions} /> : null;
   const structureGroup = !outlineMode ? <ToolbarStructureGroup editor={editor} state={state} labels={labels} /> : null;
   const articleToolsGroup =
     !outlineMode && interactionsEnabled ? (
@@ -417,40 +366,6 @@ export function VideoDocumentWysiwygToolbarView({
     />
   );
   const historyGroup = <ToolbarHistoryGroup editor={editor} labels={labels} state={state} />;
-  const toolbarGroups = (
-    <>
-      <ToolbarCoreGroup actions={formattingActions} />
-      {listGroup && (
-        <>
-          <ToolbarSeparator />
-          {listGroup}
-        </>
-      )}
-      {insertGroup && (
-        <>
-          <ToolbarSeparator />
-          {insertGroup}
-        </>
-      )}
-      {structureGroup && (
-        <>
-          <ToolbarSeparator />
-          {structureGroup}
-        </>
-      )}
-      {articleToolsGroup && (
-        <>
-          <ToolbarSeparator />
-          {articleToolsGroup}
-        </>
-      )}
-      <ToolbarSeparator />
-      {reviewGroup}
-      <ToolbarSeparator />
-      {historyGroup}
-    </>
-  );
-
   return (
     <TooltipProvider delayDuration={450}>
       {toolbarPreset === 'compact' ? (
@@ -482,12 +397,28 @@ export function VideoDocumentWysiwygToolbarView({
           />
         </>
       ) : (
-        <ToolbarLayout
-          embedded={embedded}
-          imageInputRef={imageUpload.imageInputRef}
-          onImageInputChange={imageUpload.handleImageInputChange}
-          toolbarGroups={toolbarGroups}
-        />
+        <div data-slot="video-document-wysiwyg-toolbar" className={embedded ? 'relative' : 'sticky top-0 z-30'}>
+          <FullContentToolbar
+            editor={editor}
+            embedded={embedded}
+            labels={labels}
+            formatting={formattingActions}
+            list={listGroup}
+            insert={insertGroup}
+            structure={structureGroup}
+            articleTools={articleToolsGroup}
+            review={reviewGroup}
+            history={historyGroup}
+          />
+          <input
+            ref={imageUpload.imageInputRef}
+            type="file"
+            accept="image/png,image/jpeg,image/webp,image/svg+xml,.svg"
+            className="sr-only"
+            tabIndex={-1}
+            onChange={imageUpload.handleImageInputChange}
+          />
+        </div>
       )}
       {state.table && <VideoDocumentTableOperations editor={editor} labels={labels} />}
       {state.image && (

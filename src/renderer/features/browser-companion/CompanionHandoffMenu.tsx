@@ -89,7 +89,7 @@ function CompanionHandoffItems({
           <DropdownMenuIcon>
             <CloudUploadIcon />
           </DropdownMenuIcon>
-          {copy.targets[target]}
+          {target === 'wechat' ? `${copy.targets[target]} · ${copy.imagePostUpload}` : copy.targets[target]}
         </DropdownMenuItem>
       ))}
       <DropdownMenuSeparator />

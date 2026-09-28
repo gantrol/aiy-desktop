@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import type { BootstrapDto, ExtensionDto } from '@/shared/contracts';
+import type { ArticleDto, BootstrapDto, ExtensionDto } from '@/shared/contracts';
 import { CODEX_EXTENSION_ID } from '@/shared/extension-ids';
 import { Badge } from '@/renderer/components/ui/badge';
 import {
@@ -27,6 +27,7 @@ interface Props {
   transitionShowcaseNavigation: TransitionShowcaseNavigationState;
   notify(message: string): void;
   onOpenCreation(seriesId: string, assetId: string | null): Promise<void>;
+  onArticleSaved(article: ArticleDto): void;
 }
 
 export function ExtensionCenterScreen({
@@ -41,6 +42,7 @@ export function ExtensionCenterScreen({
   transitionShowcaseNavigation,
   notify,
   onOpenCreation,
+  onArticleSaved,
 }: Props) {
   const l = useI18n().messages.extensions;
   const active = activeSurface !== null;
@@ -98,6 +100,7 @@ export function ExtensionCenterScreen({
           active={active && tab === 'plugins'}
           data={data}
           dataRevision={dataRevision}
+          onArticleSaved={onArticleSaved}
           requestedId={location.pluginId}
           onSelectedIdChange={(pluginId, mode) =>
             commitExtensionsLocation({ ...location, tab: 'plugins', pluginId }, mode)

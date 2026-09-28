@@ -1,5 +1,6 @@
 import { naturalWatermarkProfileSchema } from '@/shared/contracts/natural-watermark';
 import { browserCompanionWatermarkSelectionSchema } from '@/shared/contracts/browser-companion';
+import { backgroundIssueSchema } from '@/shared/contracts/background-issue';
 import { z } from 'zod';
 
 const identifierSchema = z.string().trim().min(1).max(200);
@@ -101,6 +102,7 @@ export const articleDeliveryImagePreparationSchema = z
 export const articleDeliveryUploadInputSchema = articleDeliveryArticleTargetSchema
   .extend({
     expectedRevisionId: identifierSchema,
+    referenceResolutionId: identifierSchema.optional(),
     expectedDeliveryMode: articleDeliveryModeSchema.optional(),
     expectedProfile: z
       .object({ slug: slugSchema, description: z.string().max(500) })
@@ -143,6 +145,12 @@ export const articleDeliveryJobSchema = articleDeliveryArticleTargetSchema
     id: identifierSchema,
     articleRevisionId: identifierSchema,
     articleContentHash: z.string().regex(/^[0-9a-f]{64}$/u),
+    referenceResolutionId: identifierSchema.nullable().optional(),
+    resolvedContentHash: z
+      .string()
+      .regex(/^[0-9a-f]{64}$/u)
+      .nullable()
+      .optional(),
     targetSlug: slugSchema,
     targetDescription: z.string().max(500),
     deliveryMode: articleDeliveryModeSchema.optional(),
@@ -155,6 +163,7 @@ export const articleDeliveryJobSchema = articleDeliveryArticleTargetSchema
     errorMessage: z.string().max(1_000).nullable(),
     retryable: z.boolean(),
     retryOfJobId: identifierSchema.nullable(),
+    backgroundIssue: backgroundIssueSchema.nullable().optional(),
     createdAt: z.string().datetime({ offset: true }),
     startedAt: z.string().datetime({ offset: true }).nullable(),
     completedAt: z.string().datetime({ offset: true }).nullable(),

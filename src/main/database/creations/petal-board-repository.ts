@@ -1,3 +1,4 @@
+import { searchPetalAlbums } from '@/main/database/creations/petal-album-search';
 import { ulid } from 'ulid';
 import type { LibraryStorage } from '@/main/database/core/storage';
 import { mediaUrl, type JsonMap } from '@/main/database/core/values';
@@ -50,6 +51,7 @@ export class PetalBoardRepository {
   }
 
   search(input: PinSearch) {
+    if (input.kind === 'ALBUM' || input.kind === 'MATERIAL_ALBUM') return searchPetalAlbums(this.storage, input);
     const rows = this.db
       .prepare(
         `SELECT ? AS kind, source.* FROM (${pinSourceQueries[input.kind]}) source

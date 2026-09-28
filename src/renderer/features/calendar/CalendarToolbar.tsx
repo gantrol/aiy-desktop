@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { CalendarDaysIcon, ChevronLeftIcon, ChevronRightIcon, EllipsisIcon, RefreshCwIcon } from 'lucide-react';
 import { enUS, zhCN } from 'react-day-picker/locale';
 import { Button } from '@/renderer/components/ui/button';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/renderer/components/ui/select';
 import { Calendar } from '@/renderer/components/ui/calendar';
 import { formatCivilDate } from '@/renderer/features/calendar/calendarDates';
 import { Popover, PopoverContent, PopoverTrigger } from '@/renderer/components/ui/popover';
@@ -103,6 +104,25 @@ export function CalendarToolbar({
               </Button>
             </PopoverTrigger>
             <PopoverContent align="end" className="grid w-80 gap-3">
+              <Select
+                value={preferences.writer ?? 'ALL'}
+                onValueChange={(writer) => onChange({ writer })}
+                disabled={!ready}
+              >
+                <SelectTrigger aria-label={m.writer}>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="ALL">{m.allWriters}</SelectItem>
+                  <SelectItem value="AI">{m.aiWriters}</SelectItem>
+                  {Object.entries(messages.contentProvenance.applications).map(([key, label]) => (
+                    <SelectItem key={key} value={`AI:${key}`}>
+                      {label}
+                    </SelectItem>
+                  ))}
+                  <SelectItem value="UNKNOWN">{messages.contentProvenance.kinds.UNKNOWN}</SelectItem>
+                </SelectContent>
+              </Select>
               <Segmented
                 type="single"
                 value={preferences.timeAxis}

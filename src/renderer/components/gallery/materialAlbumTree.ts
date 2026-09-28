@@ -12,11 +12,16 @@ export interface MaterialAlbumTreeRow {
   depth: number;
 }
 
-export function canMoveMaterialAlbumTo(tree: MaterialAlbumTreeIndex, albumId: string, parentAlbumId: string | null) {
+export function canMoveMaterialAlbumTo(
+  tree: MaterialAlbumTreeIndex,
+  albumId: string,
+  parentAlbumId: string | null,
+  copy = false,
+) {
   const source = tree.byId.get(albumId);
   if (source?.kind !== 'USER') return false;
-  if (parentAlbumId === null) return source.parentId !== null;
-  if (source.parentId === parentAlbumId || tree.byId.get(parentAlbumId)?.kind !== 'USER') return false;
+  if (parentAlbumId === null) return copy || source.parentId !== null;
+  if ((!copy && source.parentId === parentAlbumId) || tree.byId.get(parentAlbumId)?.kind !== 'USER') return false;
   const visited = new Set<string>();
   let currentId: string | undefined = parentAlbumId;
   while (currentId) {

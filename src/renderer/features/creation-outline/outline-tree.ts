@@ -1,6 +1,7 @@
 import type { AlbumDto } from '@/shared/contracts';
 import type { MessageCatalog } from '@/renderer/i18n/types';
-import { buildAlbumTreeIndex, compareSidebarRootSortOrder } from '@/renderer/components/albums/albumTree';
+import { buildAlbumTreeIndex } from '@/renderer/components/albums/albumTree';
+import { compareCreationLibraryOrder } from '@/renderer/components/creator/creationLibraryOrder';
 import { creationCoverFirstAssets } from '@/renderer/components/creator/creationCoverFirstAssets';
 import {
   creationFormPreviewAssetIds,
@@ -10,6 +11,7 @@ import {
   type CreationItemProjection,
 } from '@/renderer/components/creator/creationLibraryProjection';
 import type { CreationOutlineTarget } from '@/shared/contracts/creation-outline';
+import type { CreationAlbumChildVisibilityEntry } from '@/renderer/components/creator/useCreationAlbumChildVisibility';
 
 export interface OutlineNode {
   key: string;
@@ -17,11 +19,21 @@ export interface OutlineNode {
   label: string;
   parent: string | null;
   children: string[];
-  kind: 'album' | 'creation' | 'form' | 'series';
+  kind: 'album' | 'creation' | 'form' | 'series' | 'block' | 'content-action';
+  articleId?: string;
+  content?: {
+    articleId: string;
+    blockId: string;
+    referenceId?: string;
+    kind: import('@/shared/contracts/article-structure').ArticleStructureNode['kind'];
+  };
+  contentAction?: { articleId: string; action: 'LOAD' | 'MORE' | 'OPEN' };
   previewAssetId?: string;
   target?: CreationOutlineTarget;
   form?: CreationFormProjection;
+  primary?: boolean;
   seriesId?: string;
+  libraryEntry?: CreationAlbumChildVisibilityEntry;
 }
 export interface OutlineTree {
   nodes: Map<string, OutlineNode>;
@@ -34,6 +46,60 @@ export interface OutlineRow {
 
 function formPreviewAssetId(form: CreationFormProjection | null) {
   return form ? creationFormPreviewAssetIds(form)[0] : undefined;
+}
+
+export function outlineCurrentNodeKey(
+  albumId: string | null,
+  form: CreationFormProjection | null,
+  seriesId: string | null,
+) {
+  if (albumId) return 'album:' + albumId;
+  if (!form) return null;
+  const key = 'form:' + form.form.id;
+  return form.role === 'IMAGE_CREATION' &&
+    seriesId !== form.entityRef.id &&
+    form.session?.memberSeries.some((series) => series.id === seriesId)
+    ? key + ':series:' + seriesId
+    : key;
+}
+
+function creationNode(
+  creation: CreationItemProjection,
+  activeCreations: ReadonlyMap<string, CreationItemProjection>,
+  nodes: ReadonlyMap<string, OutlineNode>,
+  label: string,
+): OutlineNode {
+  const parentCreation = activeCreations.get(creation.item.parentCreationItemId ?? '');
+  const albumKey = creation.item.albumId ? 'album:' + creation.item.albumId : null;
+  const parent =
+    parentCreation && parentCreation.item.albumId === creation.item.albumId
+      ? 'creation:' + parentCreation.key
+      : albumKey && nodes.has(albumKey)
+        ? albumKey
+        : null;
+  const key = 'creation:' + creation.key;
+  return {
+    key,
+    title: creation.title,
+    label,
+    kind: 'creation',
+    parent,
+    children: [],
+    previewAssetId: formPreviewAssetId(creation.defaultForm),
+    target: {
+      kind: 'CREATION_ITEM',
+      id: creation.key,
+      expectedAlbumId: creation.item.albumId,
+      expectedParentCreationItemId: creation.item.parentCreationItemId ?? null,
+    },
+    form: creation.defaultForm ?? undefined,
+    libraryEntry: {
+      key,
+      pinned: creation.item.pinned,
+      activityAt: creation.activityAt,
+      createdAt: creation.item.createdAt,
+    },
+  };
 }
 
 export function createOutlineTree(
@@ -56,28 +122,25 @@ export function createOutlineTree(
       parent: parentId ? albumKey(parentId) : null,
       children: [],
       target: { kind: 'ALBUM', id: album.id, expectedAlbumId: parentId },
+      libraryEntry: {
+        key: albumKey(album.id),
+        pinned: album.pinned,
+        activityAt: album.activityAt,
+        createdAt: album.createdAt,
+      },
     });
   }
+  const activeCreations = new Map(
+    creations.filter(({ item }) => item.lifecycle === 'ACTIVE').map((creation) => [creation.key, creation]),
+  );
   for (const creation of creations) {
     if (
       creation.item.lifecycle !== 'ACTIVE' ||
       (creation.item.albumId && tree.effectivelyArchived.has(creation.item.albumId))
     )
       continue;
-    const parent =
-      creation.item.albumId && nodes.has(albumKey(creation.item.albumId)) ? albumKey(creation.item.albumId) : null;
     const itemKey = 'creation:' + creation.key;
-    nodes.set(itemKey, {
-      key: itemKey,
-      title: creation.title,
-      label: labels.creations,
-      kind: 'creation',
-      previewAssetId: formPreviewAssetId(creation.defaultForm),
-      parent,
-      children: [],
-      target: { kind: 'CREATION_ITEM', id: creation.key, expectedAlbumId: creation.item.albumId },
-      form: creation.defaultForm ?? undefined,
-    });
+    nodes.set(itemKey, creationNode(creation, activeCreations, nodes, labels.creations));
     for (const form of creation.orderedForms) {
       const formKey = 'form:' + form.form.id;
       const formNode: OutlineNode = {
@@ -89,6 +152,7 @@ export function createOutlineTree(
         parent: itemKey,
         children: [],
         form,
+        primary: creation.item.primaryFormId === form.form.id,
       };
       nodes.set(formKey, formNode);
       nodes.get(itemKey)!.children.push(formKey);
@@ -117,44 +181,22 @@ export function createOutlineTree(
     if (node.parent && nodes.has(node.parent)) nodes.get(node.parent)!.children.push(node.key);
     else roots.push(node.key);
   }
-  const creationsById = new Map(creations.map((creation) => [creation.key, creation]));
-  const memberOrder = new Map(
-    albums.map((album) => [
-      albumKey(album.id),
-      new Map(album.members.map((member) => [member.targetType + ':' + member.targetId, member.sortOrder])),
-    ]),
-  );
   const compare = (leftKey: string, rightKey: string) => {
     const left = nodes.get(leftKey)!;
     const right = nodes.get(rightKey)!;
-    const leftAlbum = left.kind === 'album' ? tree.byId.get(left.target!.id) : undefined;
-    const rightAlbum = right.kind === 'album' ? tree.byId.get(right.target!.id) : undefined;
-    const leftCreation = left.kind === 'creation' ? creationsById.get(left.target!.id) : undefined;
-    const rightCreation = right.kind === 'creation' ? creationsById.get(right.target!.id) : undefined;
-    const pinned =
-      Number(rightAlbum?.pinned ?? rightCreation?.item.pinned) - Number(leftAlbum?.pinned ?? leftCreation?.item.pinned);
-    if (pinned) return pinned;
-    if (left.parent) {
-      const members = memberOrder.get(left.parent);
-      const order = (node: OutlineNode) =>
-        members?.get(node.target!.kind + ':' + node.target!.id) ?? Number.MAX_SAFE_INTEGER;
-      const difference = order(left) - order(right);
-      if (difference) return difference;
-    } else {
-      const difference = compareSidebarRootSortOrder(
-        leftAlbum?.creatorRootSortOrder ?? leftCreation?.item.creatorRootSortOrder,
-        rightAlbum?.creatorRootSortOrder ?? rightCreation?.item.creatorRootSortOrder,
-      );
-      if (difference) return difference;
-    }
-    return (
-      (rightAlbum?.activityAt ?? rightCreation?.activityAt ?? '').localeCompare(
-        leftAlbum?.activityAt ?? leftCreation?.activityAt ?? '',
-      ) || left.key.localeCompare(right.key)
-    );
+    return compareCreationLibraryOrder(left.libraryEntry!, right.libraryEntry!);
   };
   roots.sort(compare);
-  for (const node of nodes.values()) if (node.kind === 'album') node.children.sort(compare);
+  for (const node of nodes.values()) {
+    if (node.kind === 'album') node.children.sort(compare);
+    if (node.kind === 'creation')
+      node.children.sort((leftKey, rightKey) => {
+        const left = nodes.get(leftKey)!;
+        const right = nodes.get(rightKey)!;
+        if (left.kind !== right.kind) return left.kind === 'form' ? -1 : 1;
+        return left.kind === 'creation' ? compare(leftKey, rightKey) : 0;
+      });
+  }
   return { nodes, roots };
 }
 
@@ -224,15 +266,39 @@ export function outermostSelection(tree: OutlineTree, keys: readonly string[]) {
   });
 }
 
-export function canMoveOutlineTo(tree: OutlineTree, selection: readonly OutlineNode[], albumId: string | null) {
+export function canMoveOutlineTo(
+  tree: OutlineTree,
+  selection: readonly OutlineNode[],
+  albumId: string | null,
+  copy = false,
+  parentCreationItemId: string | null = null,
+) {
   if (!selection.length || selection.some((node) => !node.target)) return false;
-  const destinationKey = albumId ? 'album:' + albumId : null;
+  if (parentCreationItemId && (copy || selection.some((node) => node.kind !== 'creation'))) return false;
+  const destinationKey = parentCreationItemId
+    ? 'creation:' + parentCreationItemId
+    : albumId
+      ? 'album:' + albumId
+      : null;
   if (destinationKey && !tree.nodes.has(destinationKey)) return false;
+  if (parentCreationItemId && tree.nodes.get(destinationKey!)?.target?.expectedAlbumId !== albumId) return false;
   const ancestors = destinationKey
     ? [destinationKey, ...outlineAncestors(tree, destinationKey).map((node) => node.key)]
     : [];
   return (
     !selection.some((node) => ancestors.includes(node.key)) &&
-    selection.some((node) => node.target?.expectedAlbumId !== albumId)
+    (copy ||
+      selection.some(
+        (node) =>
+          node.target?.expectedAlbumId !== albumId ||
+          (node.kind === 'creation' && (node.target?.expectedParentCreationItemId ?? null) !== parentCreationItemId),
+      ))
   );
+}
+
+export function outlineDestination(node: OutlineNode | undefined) {
+  return {
+    albumId: node?.kind === 'album' ? node.target!.id : (node?.target?.expectedAlbumId ?? null),
+    parentCreationItemId: node?.kind === 'creation' ? node.target!.id : null,
+  };
 }

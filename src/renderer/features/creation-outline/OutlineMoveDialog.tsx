@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { FolderIcon, LoaderCircleIcon } from 'lucide-react';
+import { FolderIcon, LayersIcon, LoaderCircleIcon } from 'lucide-react';
 import { Button } from '@/renderer/components/ui/button';
 import { Input } from '@/renderer/components/ui/input';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/renderer/components/ui/dialog';
@@ -9,6 +9,7 @@ import {
   canMoveOutlineTo,
   outlineAncestors,
   outlineRows,
+  outlineDestination,
   type OutlineNode,
   type OutlineTree,
 } from '@/renderer/features/creation-outline/outline-tree';
@@ -19,7 +20,7 @@ interface Props {
   busy: boolean;
   error: string;
   onClose(): void;
-  onMove(albumId: string | null): Promise<void>;
+  onMove(albumId: string | null, parentCreationItemId: string | null): Promise<void>;
 }
 export function OutlineMoveDialog({ tree, selection, busy, error, onClose, onMove }: Props) {
   const { messages } = useI18n();
@@ -28,13 +29,17 @@ export function OutlineMoveDialog({ tree, selection, busy, error, onClose, onMov
   const [destination, setDestination] = useState<string | null | undefined>();
   const allRows = useMemo(() => outlineRows(tree, null, new Set(tree.nodes.keys()), ''), [tree]);
   const destinations = allRows
-    .filter(({ node }) => node.kind === 'album')
+    .filter(
+      ({ node }) =>
+        node.kind === 'album' || (node.kind === 'creation' && selection.every((item) => item.kind === 'creation')),
+    )
     .map(({ node, depth }) => ({
       node,
       depth,
       path: [...outlineAncestors(tree, node.key), node].map((ancestor) => ancestor.title).join(' / '),
     }))
     .filter(({ path }) => path.toLocaleLowerCase().includes(query.trim().toLocaleLowerCase()));
+  const selectedDestination = outlineDestination(destination ? tree.nodes.get(destination) : undefined);
   return (
     <Dialog
       open
@@ -55,8 +60,8 @@ export function OutlineMoveDialog({ tree, selection, busy, error, onClose, onMov
         <Input
           value={query}
           onChange={(event) => setQuery(event.target.value)}
-          placeholder={labels.findAlbum}
-          aria-label={labels.findAlbum}
+          placeholder={labels.findDestination}
+          aria-label={labels.findDestination}
         />
         <ScrollArea className="h-72 [&_[data-slot=scroll-area-viewport]>div]:!block">
           <Button
@@ -71,14 +76,27 @@ export function OutlineMoveDialog({ tree, selection, busy, error, onClose, onMov
           {destinations.map(({ node, depth, path }) => (
             <Button
               key={node.key}
-              variant={destination === node.target!.id ? 'secondary' : 'ghost'}
+              variant={destination === node.key ? 'secondary' : 'ghost'}
               className="w-full justify-start rounded-none"
               style={{ paddingLeft: 12 + Math.min(depth, 8) * 16 }}
               title={path}
-              disabled={busy || !canMoveOutlineTo(tree, selection, node.target!.id)}
-              onClick={() => setDestination(node.target!.id)}
+              disabled={
+                busy ||
+                !canMoveOutlineTo(
+                  tree,
+                  selection,
+                  outlineDestination(node).albumId,
+                  false,
+                  outlineDestination(node).parentCreationItemId,
+                )
+              }
+              onClick={() => setDestination(node.key)}
             >
-              <FolderIcon className="size-4 shrink-0" />
+              {node.kind === 'album' ? (
+                <FolderIcon className="size-4 shrink-0" />
+              ) : (
+                <LayersIcon className="size-4 shrink-0" />
+              )}
               <span className="truncate">{node.title}</span>
             </Button>
           ))}
@@ -93,9 +111,20 @@ export function OutlineMoveDialog({ tree, selection, busy, error, onClose, onMov
             {messages.common.cancel}
           </Button>
           <Button
-            disabled={busy || destination === undefined || !canMoveOutlineTo(tree, selection, destination)}
+            disabled={
+              busy ||
+              destination === undefined ||
+              !canMoveOutlineTo(
+                tree,
+                selection,
+                selectedDestination.albumId,
+                false,
+                selectedDestination.parentCreationItemId,
+              )
+            }
             onClick={() => {
-              if (destination !== undefined) void onMove(destination);
+              if (destination !== undefined)
+                void onMove(selectedDestination.albumId, selectedDestination.parentCreationItemId);
             }}
           >
             {busy && <LoaderCircleIcon className="size-4 animate-spin" />}

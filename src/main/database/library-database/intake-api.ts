@@ -1,9 +1,13 @@
 import type { LibraryDatabaseRepositories } from '@/main/database/library-database/repositories';
+import { listCreationDrafts } from '@/main/database/creations/creation-draft-list';
+import { deleteCreationDrafts, restoreCreationDrafts } from '@/main/database/creations/creation-draft-deletion';
+import type { CreationDraftDeleteInput, CreationDraftDeletion } from '@/shared/contracts/creation-draft-deletion';
+import type { CreationDraftListInput } from '@/shared/contracts/creation-draft-list';
 import { emptyAlbumCreationDefaults } from '@/shared/album-creation-defaults';
 import type { CreationDraftLoadInput, CreationDraftStartInput, IntakeCommitInput, Locale } from '@/shared/contracts';
 
 export function createIntakeApi(
-  repositories: Pick<LibraryDatabaseRepositories, 'albums' | 'intake' | 'packs' | 'workbench'>,
+  repositories: Pick<LibraryDatabaseRepositories, 'albums' | 'intake' | 'packs' | 'workbench' | 'db' | 'storage'>,
 ) {
   return {
     getWorkbench(
@@ -19,6 +23,18 @@ export function createIntakeApi(
 
     getCreationDraft() {
       return repositories.intake.latestDraft();
+    },
+
+    listCreationDrafts(input: CreationDraftListInput) {
+      return listCreationDrafts(repositories.db, input);
+    },
+
+    deleteCreationDrafts(input: CreationDraftDeleteInput) {
+      return deleteCreationDrafts(repositories.storage, input);
+    },
+
+    restoreCreationDrafts(input: CreationDraftDeletion) {
+      return restoreCreationDrafts(repositories.storage, input);
     },
 
     loadCreationDraft(input: CreationDraftLoadInput) {

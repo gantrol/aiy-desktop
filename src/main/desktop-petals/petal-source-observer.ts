@@ -37,7 +37,7 @@ export function observePetalSources(
   current: () => boolean,
   openInstances: () => readonly string[],
   remove: (instanceId: string) => void,
-  changed: (removed: boolean) => void,
+  changed: (removed: boolean, sourceIds?: readonly string[]) => void,
 ) {
   return context.database.subscribeContentChanges((changes) => {
     if (!current() || context.state !== 'ACTIVE') return;
@@ -53,6 +53,6 @@ export function observePetalSources(
     const active = new Set(context.database.listDesktopNoteIds());
     for (const id of openInstances()) if (!active.has(id)) unavailable.add(id);
     for (const id of unavailable) remove(id);
-    changed(unavailable.size > 0);
+    changed(unavailable.size > 0, sources);
   });
 }

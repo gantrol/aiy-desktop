@@ -150,6 +150,7 @@ export const gifWorkspaceCreateSchema = z
     motionDraft: gifMotionDraftSchema.nullable(),
     sourceDocumentId: z.string().uuid().optional(),
     targetAlbumId: gifIdSchema.nullable().optional(),
+    consumeCreationDraft: z.object({ id: gifIdSchema, updatedAt: z.string().datetime() }).strict().optional(),
   })
   .strict()
   .refine((input) => input.id !== input.motionId);
@@ -177,6 +178,8 @@ export interface GifWorkspaceDetail {
 export interface GifDocumentSummary {
   workspace?: GifWorkspaceState;
   seriesId: string | null;
+  /** The adopted generation, shared by copies made from the same generated frames. */
+  generationId: string | null;
   preview: AssetDto | null;
   purpose: GifDocumentPurpose;
   id: string;

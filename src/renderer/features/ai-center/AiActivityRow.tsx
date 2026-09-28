@@ -9,6 +9,7 @@ import {
   PaintbrushIcon,
 } from 'lucide-react';
 import { cn } from '@/renderer/lib/utils';
+import { Button } from '@/renderer/components/ui/button';
 import { useI18n } from '@/renderer/i18n/useI18n';
 import { AiActivityStatusTag } from '@/renderer/features/ai-center/AiActivityStatusTag';
 import { activityDuration, type AiActivityRecord } from '@/renderer/features/ai-center/activityProjection';
@@ -138,14 +139,15 @@ export function AiActivityRow({
   const duration = activityDuration(record, now);
 
   return (
-    <button
+    <Button
       type="button"
+      variant="ghost"
       data-ai-activity-id={record.id}
       aria-current={selected ? 'true' : undefined}
       className={cn(
-        'grid w-full grid-cols-[34px_minmax(0,1fr)_auto] gap-3 border-l-2 border-l-transparent px-3 py-3 text-left outline-none transition-colors duration-fast hover:bg-hover focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring',
+        'grid h-auto w-full grid-cols-[34px_minmax(0,1fr)_auto] items-start gap-3 whitespace-normal rounded-none border-l-2 border-l-transparent px-3 py-3 text-left font-normal focus-visible:ring-inset focus-visible:ring-offset-0',
         variant === 'OUTLINE' && 'grid-cols-[30px_minmax(0,1fr)_auto] gap-2.5 px-2.5 py-2.5',
-        selected && 'border-l-selected-foreground bg-selected',
+        selected && 'border-l-selected-foreground bg-selected hover:bg-selected active:bg-selected',
       )}
       onClick={() => onSelect(record.id)}
     >
@@ -174,6 +176,6 @@ export function AiActivityRow({
         </span>
       </span>
       <AiActivityStatusTag record={record} />
-    </button>
+    </Button>
   );
 }

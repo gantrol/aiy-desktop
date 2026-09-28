@@ -6,7 +6,10 @@ import { Input } from '@/renderer/components/ui/input';
 import { TooltipProvider } from '@/renderer/components/ui/tooltip';
 import { CreationWorkNavigation } from '@/renderer/components/creator/CreationWorkNavigation';
 import { ContentBlockEditor } from '@/renderer/features/content-editor/ContentBlockEditor';
+import { outlineViewPreferenceKey } from '@/renderer/features/content-editor/outlineViewPreferences';
 import { CopyAgentLinkButton } from '@/renderer/features/content-editor/CopyAgentLinkButton';
+import { ContentBacklinksButton } from '@/renderer/features/content-editor/ContentBacklinksButton';
+import { OutlineContentLinkHost } from '@/renderer/features/content-editor/OutlineContentLinkHost';
 import { useI18n } from '@/renderer/i18n/useI18n';
 import {
   useArticleEditorSession,
@@ -32,7 +35,7 @@ import {
 } from '@/renderer/components/creator/article-editor/articleEditorSession';
 
 /** Other views read the saved revision and never replace the active session's persistence handle. */
-function OutlineSavedDocument({ article }: { article: ArticleDto }) {
+function OutlineSavedDocument({ article, spaceId }: { article: ArticleDto; spaceId: string }) {
   const { messages } = useI18n();
   const bindings = useMemo(
     () =>
@@ -49,10 +52,15 @@ function OutlineSavedDocument({ article }: { article: ArticleDto }) {
   return (
     <ContentBlockEditor
       outlineMode
+      outlinePreferenceKey={outlineViewPreferenceKey(spaceId, article.id)}
       embedded
       readOnly
       sessionIdentity={`${article.id}:${article.revisionId}:saved`}
-      contentSource={{ kind: 'ARTICLE', id: article.id, revisionId: article.revisionId }}
+      contentSource={{
+        kind: 'ARTICLE',
+        id: article.id,
+        revisionId: article.revisionId,
+      }}
       document={article.content.document}
       markdown={article.content.markdown}
       media={media}
@@ -67,7 +75,17 @@ function OutlineSavedDocument({ article }: { article: ArticleDto }) {
   );
 }
 
-export function OutlineArticleEditor({
+export function OutlineArticleEditor(props: Parameters<typeof OutlineArticleWorkspace>[0]) {
+  return (
+    <OutlineContentLinkHost.Provider
+      value={{ spaceId: props.spaceId, articleId: props.article.id, albumId: props.article.albumId }}
+    >
+      <OutlineArticleWorkspace {...props} />
+    </OutlineContentLinkHost.Provider>
+  );
+}
+
+function OutlineArticleWorkspace({
   article,
   spaceId,
   articleComments,
@@ -124,10 +142,20 @@ export function OutlineArticleEditor({
             onRetry={() => void session.retry()}
           />
           <CreationWorkNavigation />
+          <ContentBacklinksButton
+            spaceId={spaceId}
+            articleId={article.id}
+            beforeOpen={editable ? () => session.flush('manual') : undefined}
+          />
           {editable ? (
-            <ArticleRevisionHistoryAction article={article} notify={notify} zh={zh} />
+            <ArticleRevisionHistoryAction spaceId={spaceId} article={article} notify={notify} zh={zh} />
           ) : (
-            <ArticleRevisionHistoryDialog articleId={article.id} currentRevisionId={article.revisionId} zh={zh} />
+            <ArticleRevisionHistoryDialog
+              spaceId={spaceId}
+              articleId={article.id}
+              currentRevisionId={article.revisionId}
+              zh={zh}
+            />
           )}
           <Button
             size="icon-sm"
@@ -160,6 +188,7 @@ export function OutlineArticleEditor({
         {editable ? (
           <ArticleEditorDocument
             outlineMode
+            outlinePreferenceKey={outlineViewPreferenceKey(spaceId, article.id)}
             articleId={article.id}
             editorSessionIdentity={session.getEditorSessionIdentity()}
             document={session.getDocumentProjection()}
@@ -192,7 +221,7 @@ export function OutlineArticleEditor({
           />
         ) : (
           <div className="min-h-0 flex-1 overflow-y-auto px-3 py-3 sm:px-6">
-            <OutlineSavedDocument article={article} />
+            <OutlineSavedDocument article={article} spaceId={spaceId} />
           </div>
         )}
       </TooltipProvider>

@@ -3,6 +3,11 @@ import { ulid } from 'ulid';
 import type { LibraryStorage } from '@/main/database/core/storage';
 import { type JsonMap, now, text } from '@/main/database/core/values';
 import {
+  articleDeliveryJobIssueSnapshot,
+  BackgroundIssueRepository,
+} from '@/main/database/background-issues/background-issue-repository';
+import type { BackgroundIssueDto } from '@/shared/contracts/background-issue';
+import {
   articleDeliveryJobListInputSchema,
   articleDeliveryImagePreparationSchema,
   articleDeliveryModeSchema,
@@ -22,6 +27,8 @@ export type ArticleDeliveryJobCreateInput = {
   articleId: string;
   articleRevisionId: string;
   articleContentHash: string;
+  referenceResolutionId?: string | null;
+  resolvedContentHash?: string | null;
   targetSlug: string;
   targetDescription: string;
   deliveryMode?: ArticleDeliveryMode;
@@ -51,7 +58,7 @@ function storedResult(value: unknown): ArticleDeliveryUploadResult | null {
   return articleDeliveryUploadResultSchema.parse(parsed);
 }
 
-function jobDto(row: JsonMap): ArticleDeliveryJob {
+function jobDto(row: JsonMap, backgroundIssue: BackgroundIssueDto | null = null): ArticleDeliveryJob {
   return articleDeliveryJobSchema.parse({
     id: text(row.id),
     extensionId: text(row.extension_id),
@@ -60,6 +67,8 @@ function jobDto(row: JsonMap): ArticleDeliveryJob {
     articleId: text(row.article_id),
     articleRevisionId: text(row.article_revision_id),
     articleContentHash: text(row.article_content_hash),
+    referenceResolutionId: nullableText(row.reference_resolution_id),
+    resolvedContentHash: nullableText(row.resolved_content_hash),
     targetSlug: text(row.target_slug),
     targetDescription: text(row.target_description),
     deliveryMode: row.delivery_mode == null ? undefined : text(row.delivery_mode),
@@ -78,6 +87,7 @@ function jobDto(row: JsonMap): ArticleDeliveryJob {
     errorMessage: nullableText(row.error_message),
     retryable: Number(row.retryable) === 1,
     retryOfJobId: nullableText(row.retry_of_job_id),
+    backgroundIssue,
     createdAt: text(row.created_at),
     startedAt: nullableText(row.started_at),
     completedAt: nullableText(row.completed_at),
@@ -86,7 +96,33 @@ function jobDto(row: JsonMap): ArticleDeliveryJob {
 }
 
 export class ArticleDeliveryJobRepository {
-  constructor(private readonly storage: LibraryStorage) {}
+  constructor(
+    private readonly storage: LibraryStorage,
+    private readonly backgroundIssues = new BackgroundIssueRepository(storage),
+  ) {
+    // The current-task query must remove acknowledged occurrences before its limit.
+    // Keep its identity calculation shared with acknowledgement conflict checks.
+    storage.db.function(
+      'aiy_article_delivery_issue_occurrence',
+      { deterministic: true },
+      (
+        id: unknown,
+        status: unknown,
+        attemptCount: unknown,
+        completedAt: unknown,
+        errorCode: unknown,
+        errorMessage: unknown,
+      ) =>
+        articleDeliveryJobIssueSnapshot({
+          id,
+          status,
+          attempt_count: attemptCount,
+          completed_at: completedAt,
+          error_code: errorCode,
+          error_message: errorMessage,
+        })?.occurrenceId ?? null,
+    );
+  }
 
   private get db() {
     return this.storage.db;
@@ -98,6 +134,7 @@ export class ArticleDeliveryJobRepository {
         `SELECT * FROM article_delivery_jobs
         WHERE extension_id = ? AND channel_id = ? AND space_id = ? AND article_id = ?
           AND article_revision_id = ? AND watermark_profile_json IS ?
+          AND resolved_content_hash IS ?
           AND delivery_mode IS ?
           AND COALESCE(image_preparation_json, '{"version":1,"mode":"ORIGINAL"}') = ?
           AND target_slug = ? AND target_description = ? AND status IN ('QUEUED', 'RUNNING')
@@ -110,6 +147,7 @@ export class ArticleDeliveryJobRepository {
         input.articleId,
         input.articleRevisionId,
         input.watermarkProfile ? JSON.stringify(naturalWatermarkProfileSchema.parse(input.watermarkProfile)) : null,
+        input.resolvedContentHash ?? null,
         input.deliveryMode ? articleDeliveryModeSchema.parse(input.deliveryMode) : null,
         JSON.stringify(
           articleDeliveryImagePreparationSchema.parse(input.imagePreparation ?? { version: 1, mode: 'ORIGINAL' }),
@@ -124,23 +162,30 @@ export class ArticleDeliveryJobRepository {
   list(rawInput: ArticleDeliveryJobListInput): ArticleDeliveryJob[] {
     const input = articleDeliveryJobListInputSchema.parse(rawInput);
     if (!input.articleId) {
+      // Only an explicit retry supersedes its source; another upload of the same
+      // article may target a different revision, slug, mode, or prepared content.
       const rows = this.db
         .prepare(
           `SELECT job.* FROM article_delivery_jobs job
           JOIN articles article ON article.id = job.article_id AND article.deleted_at IS NULL
-          WHERE job.space_id = ? AND (
-            job.status IN ('QUEUED', 'RUNNING') OR NOT EXISTS (
-              SELECT 1 FROM article_delivery_jobs newer
-              WHERE newer.space_id = job.space_id AND newer.article_id = job.article_id
-                AND newer.extension_id = job.extension_id AND newer.channel_id = job.channel_id
-                AND (newer.created_at > job.created_at OR (newer.created_at = job.created_at AND newer.id > job.id))
+          WHERE job.space_id = ?
+            AND NOT EXISTS (
+              SELECT 1 FROM background_issue_acknowledgements acknowledgement
+              WHERE acknowledgement.issue_kind = 'ARTICLE_DELIVERY_JOB'
+                AND acknowledgement.subject_id = job.id
+                AND acknowledgement.occurrence_id = aiy_article_delivery_issue_occurrence(
+                  job.id, job.status, job.attempt_count, job.completed_at, job.error_code, job.error_message
+                )
             )
-          )
+            AND (job.status IN ('QUEUED', 'RUNNING') OR NOT EXISTS (
+              SELECT 1 FROM article_delivery_jobs retry
+              WHERE retry.retry_of_job_id = job.id
+            ))
           ORDER BY CASE WHEN job.status IN ('QUEUED', 'RUNNING') THEN 0 WHEN job.status = 'FAILED' THEN 1 ELSE 2 END,
             job.created_at DESC, job.id DESC LIMIT ?`,
         )
         .all(input.spaceId, input.limit) as JsonMap[];
-      return rows.map(jobDto);
+      return this.hydrate(rows);
     }
     const rows = this.db
       .prepare(
@@ -149,7 +194,7 @@ export class ArticleDeliveryJobRepository {
         ORDER BY created_at DESC, id DESC LIMIT ?`,
       )
       .all(input.spaceId, input.articleId, input.limit) as JsonMap[];
-    return rows.map(jobDto);
+    return this.hydrate(rows);
   }
 
   nextQueued(): ArticleDeliveryJob | null {
@@ -222,6 +267,7 @@ export class ArticleDeliveryJobRepository {
         JsonMap | undefined;
       if (!source) throw new Error('Article delivery job not found');
       if (text(source.status) !== 'FAILED') throw new Error('Only failed article deliveries can be retried');
+      const previous = jobDto(source);
       return this.enqueue({
         extensionId: text(source.extension_id),
         channelId: text(source.channel_id),
@@ -229,11 +275,13 @@ export class ArticleDeliveryJobRepository {
         articleId: text(source.article_id),
         articleRevisionId: text(source.article_revision_id),
         articleContentHash: text(source.article_content_hash),
+        referenceResolutionId: previous.referenceResolutionId,
+        resolvedContentHash: previous.resolvedContentHash,
         targetSlug: text(source.target_slug),
         targetDescription: text(source.target_description),
-        deliveryMode: jobDto(source).deliveryMode,
-        watermarkProfile: jobDto(source).watermarkProfile,
-        imagePreparation: jobDto(source).imagePreparation,
+        deliveryMode: previous.deliveryMode,
+        watermarkProfile: previous.watermarkProfile,
+        imagePreparation: previous.imagePreparation,
         retryOfJobId: text(source.id),
       });
     })();
@@ -258,10 +306,10 @@ export class ArticleDeliveryJobRepository {
     this.db
       .prepare(
         `INSERT INTO article_delivery_jobs
-        (id,extension_id,channel_id,space_id,article_id,article_revision_id,article_content_hash,
+        (id,extension_id,channel_id,space_id,article_id,article_revision_id,article_content_hash,reference_resolution_id,resolved_content_hash,
           target_slug,target_description,delivery_mode,watermark_profile_json,image_preparation_json,status,attempt_count,result_json,error_code,error_message,retryable,
           retry_of_job_id,created_at,started_at,completed_at,updated_at)
-        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,'QUEUED',0,NULL,NULL,NULL,0,?,?,NULL,NULL,?)`,
+        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,'QUEUED',0,NULL,NULL,NULL,0,?,?,NULL,NULL,?)`,
       )
       .run(
         id,
@@ -271,6 +319,8 @@ export class ArticleDeliveryJobRepository {
         input.articleId,
         input.articleRevisionId,
         input.articleContentHash,
+        input.referenceResolutionId ?? null,
+        input.resolvedContentHash ?? null,
         input.targetSlug,
         input.targetDescription,
         input.deliveryMode ? articleDeliveryModeSchema.parse(input.deliveryMode) : null,
@@ -290,7 +340,12 @@ export class ArticleDeliveryJobRepository {
   private require(jobId: string) {
     const row = this.db.prepare('SELECT * FROM article_delivery_jobs WHERE id = ?').get(jobId) as JsonMap | undefined;
     if (!row) throw new Error('Article delivery job not found');
-    return jobDto(row);
+    return this.hydrate([row])[0];
+  }
+
+  private hydrate(rows: readonly JsonMap[]) {
+    const issuesByJobId = this.backgroundIssues.articleDeliveryIssuesForRows(rows);
+    return rows.map((row) => jobDto(row, issuesByJobId.get(text(row.id)) ?? null));
   }
 
   private record(job: ArticleDeliveryJob, operation: string) {

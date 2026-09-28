@@ -12,6 +12,9 @@ export function libraryTaskLifecycle(
   let restartUploads = false;
   return {
     codexContent,
+    startBackgroundTasks() {
+      uploads.start();
+    },
     async drain() {
       restartUploads ||= uploads.isStarted;
       // Stop requests before the library barrier waits for their operation leases.

@@ -104,7 +104,7 @@ export class MaterialAlbumReader {
     );
     const seriesRows = this.db
       .prepare(
-        `SELECT series.id, series.title, series.title_locale, series.created_at,
+        `SELECT series.id, series.title, series.title_locale, series.created_at, item.id AS source_creation_item_id,
             member.album_id AS source_album_id, member.sort_order,
             root_order.sort_order AS root_sort_order
           FROM creation_items item
@@ -160,6 +160,7 @@ export class MaterialAlbumReader {
         text(row.created_at),
         creationTreeSummaries.bySeries.get(seriesId) ?? { materialCount: 0, previewAssets: [] },
         seriesId,
+        text(row.source_creation_item_id),
       );
     });
     const dictionary = this.systemAlbum(
@@ -478,6 +479,7 @@ export class MaterialAlbumReader {
     createdAt: string | null = null,
     summary?: SystemAlbumSummary,
     sourceSeriesId: string | null = null,
+    sourceCreationItemId?: string,
   ): MaterialAlbumDto {
     let materialCount: number;
     let previewAssets: AssetDto[];
@@ -520,6 +522,7 @@ export class MaterialAlbumReader {
       systemKey,
       sourceAlbumId,
       sourceSeriesId,
+      ...(sourceCreationItemId ? { sourceCreationItemId } : {}),
       title,
       materialCount,
       previewAssets,

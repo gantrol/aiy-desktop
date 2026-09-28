@@ -180,8 +180,9 @@ export function DictionaryAlbumTree({
           variant="ghost"
           aria-pressed={active}
           className={cn(
-            'z-10 h-10 min-w-0 flex-1 justify-start border-transparent px-1 font-normal focus-visible:border-transparent focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-border-strong',
-            active && 'bg-transparent hover:bg-transparent focus-visible:bg-transparent',
+            'z-10 h-10 min-w-0 flex-1 justify-start border-transparent px-1 font-normal focus-visible:border-transparent focus-visible:ring-inset focus-visible:ring-offset-0',
+            active &&
+              'bg-transparent text-selected-foreground hover:bg-transparent active:bg-transparent focus-visible:bg-transparent after:pointer-events-none after:absolute after:inset-y-3 after:left-0 after:w-0.5 after:bg-current [&>span]:font-semibold',
           )}
           {...handlers}
           onKeyDown={(event) => {

@@ -1,6 +1,8 @@
 import type { BrowserWindow } from 'electron';
-import { appWindowStateSchema } from '@/shared/contracts/app-window';
+import { appWindowStateSchema, type AppWindowStateDto } from '@/shared/contracts/app-window';
 import type { IpcHandlerRegistrar } from '@/main/ipc/trusted-handlers';
+
+const completedFullScreenStates = new WeakMap<BrowserWindow, boolean>();
 
 function requireWindow(getWindow: () => BrowserWindow | null) {
   const window = getWindow();
@@ -9,7 +11,23 @@ function requireWindow(getWindow: () => BrowserWindow | null) {
 }
 
 function windowState(window: BrowserWindow) {
-  return appWindowStateSchema.parse({ maximized: window.isMaximized() });
+  return appWindowStateSchema.parse({
+    maximized: window.isMaximized(),
+    fullScreen: completedFullScreenStates.get(window) ?? window.isFullScreen(),
+  });
+}
+
+export function bindAppWindowState(window: BrowserWindow, changed: (state: AppWindowStateDto) => void) {
+  const sendState = () => changed(windowState(window));
+  const fullScreenChanged = (fullScreen: boolean) => {
+    // Native transition events are authoritative even while Cocoa's getter still lags.
+    completedFullScreenStates.set(window, fullScreen);
+    sendState();
+  };
+  window.on('maximize', sendState);
+  window.on('unmaximize', sendState);
+  window.on('enter-full-screen', () => fullScreenChanged(true));
+  window.on('leave-full-screen', () => fullScreenChanged(false));
 }
 
 export function registerAppWindowIpc(ipcMain: IpcHandlerRegistrar, getWindow: () => BrowserWindow | null) {

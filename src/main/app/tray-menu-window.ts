@@ -1,5 +1,5 @@
-import { app, BrowserWindow, screen, type Point } from 'electron';
-import path from 'node:path';
+import { BrowserWindow, screen, type Point } from 'electron';
+import { rendererRuntimePath } from '@/main/app/renderer-runtime-paths';
 import { createTrustedIpcHandlerRegistrar } from '@/main/ipc/trusted-handlers';
 import { installWindowNavigationPolicy } from '@/main/app/window-security';
 import { trayMenuActionSchema, type TrayMenuAction, type TrayMenuState } from '@/shared/contracts/tray-menu';
@@ -72,7 +72,7 @@ export class TrayMenuWindow {
   private position(window: BrowserWindow, point: Point) {
     const area = screen.getDisplayNearestPoint(point).workArea;
     const width = Math.min(300, area.width);
-    const height = Math.min(this.state().taskCount > 0 ? 316 : 282, area.height);
+    const height = Math.min(this.state().taskCount > 0 ? 350 : 316, area.height);
     window.setBounds({
       x: Math.round(Math.max(area.x, Math.min(point.x - width, area.x + area.width - width))),
       y: Math.round(Math.max(area.y, Math.min(point.y - height, area.y + area.height - height))),
@@ -104,7 +104,7 @@ export class TrayMenuWindow {
       alwaysOnTop: true,
       hasShadow: false,
       webPreferences: {
-        preload: path.join(app.getAppPath(), 'out/preload/tray-menu.js'),
+        preload: rendererRuntimePath('preload', 'tray-menu.js'),
         contextIsolation: true,
         nodeIntegration: false,
         sandbox: true,

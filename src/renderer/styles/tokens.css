@@ -197,7 +197,7 @@
   --disabled-foreground: var(--sand-600);
   --hover: var(--sand-200);
   --hover-strong: var(--sand-300);
-  --pressed: var(--sand-300);
+  --pressed: var(--sand-400);
   --selected: var(--plum-100);
   --selected-foreground: var(--plum-600);
   --selected-border: var(--plum-200);
@@ -279,8 +279,11 @@
   --relation-referenced: var(--info);
 
   /* Base metrics. */
-  --font-ui: Inter, 'Segoe UI Variable Text', 'Segoe UI', 'Microsoft YaHei UI', 'PingFang SC', system-ui, sans-serif;
-  --font-mono-family: 'Cascadia Mono', Consolas, 'SFMono-Regular', ui-monospace, monospace;
+  --font-ui-default: system-ui, 'Segoe UI Variable Text', 'Segoe UI', 'PingFang SC', 'Microsoft YaHei UI', sans-serif;
+  --font-mono-default: ui-monospace, 'Cascadia Mono', Consolas, 'SFMono-Regular', monospace;
+  --font-ui: var(--font-ui-default);
+  --font-content: var(--font-ui);
+  --font-mono-family: var(--font-mono-default);
   --line-height-2xs: 1rem;
   --line-height-xs: 1.125rem;
   --line-height-sm: 1.25rem;
@@ -320,7 +323,7 @@
   --disabled-foreground: var(--sand-600);
   --hover: var(--sand-900);
   --hover-strong: var(--sand-800);
-  --pressed: var(--sand-800);
+  --pressed: var(--sand-700);
   --selected: var(--plum-700);
   --selected-foreground: var(--plum-100);
   --selected-border: var(--plum-200);

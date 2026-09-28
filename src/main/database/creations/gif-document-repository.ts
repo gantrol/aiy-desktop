@@ -61,7 +61,8 @@ export class GifDocumentRepository {
   list(seriesId: string | null | undefined, purpose: GifDocumentPurpose = 'GIF'): GifDocumentSummary[] {
     const rows = this.db
       .prepare(
-        `SELECT d.*, COALESCE(workspace.state_json,
+        `SELECT d.*, json_extract(r.manifest_json,'$.generationId') AS generation_id,
+          COALESCE(workspace.state_json,
           json_object('step',CASE WHEN json_array_length(r.manifest_json,'$.frames')>0 THEN 'edit' ELSE 'generate' END)) AS workspace_json,
           COALESCE(
             (SELECT output_asset_id FROM gif_export_runs WHERE document_id=d.id AND state='SUCCEEDED' ORDER BY created_at DESC LIMIT 1),
@@ -84,6 +85,7 @@ export class GifDocumentRepository {
     return rows.map((row) => ({
       workspace: gifWorkspaceStateSchema.parse(JSON.parse(text(row.workspace_json))),
       seriesId: row.series_id ? text(row.series_id) : null,
+      generationId: row.generation_id ? text(row.generation_id) : null,
       preview: assets.get(text(row.preview_asset_id)) ?? null,
       id: text(row.id),
       purpose,

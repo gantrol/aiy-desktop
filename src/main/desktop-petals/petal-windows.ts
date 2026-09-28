@@ -1,7 +1,7 @@
-import { app, BrowserWindow, screen, type Point, type Rectangle } from 'electron';
-import path from 'node:path';
+import { app, BrowserWindow, powerMonitor, screen, type Point, type Rectangle } from 'electron';
 import { PACKAGED_RENDERER_URL } from '@/main/app/renderer-protocol';
 import { isPackagedApplication } from '@/main/app/runtime-mode';
+import { rendererRuntimePath } from '@/main/app/renderer-runtime-paths';
 import { installWindowNavigationPolicy } from '@/main/app/window-security';
 import { PetalLayoutStore } from '@/main/desktop-petals/petal-layout-store';
 import { PETAL_WINDOW_SIZES, type PetalHubView } from '@/shared/contracts/petal-hub';
@@ -14,6 +14,16 @@ import type { PetalLanguage } from '@/shared/contracts/petal-language';
 import { PetalCollectionHistory } from '@/main/desktop-petals/petal-collection-history';
 import { PetalPluckMonitor } from '@/main/desktop-petals/petal-pluck-monitor';
 import { loadPetalWindow, type PetalWindowLoad } from '@/main/desktop-petals/petal-window-loading';
+import { PetalOverlayWindows } from '@/main/desktop-petals/petal-overlay-windows';
+import { nativePetalWindows, type PetalWindowFactory } from '@/main/desktop-petals/petal-window-factory';
+import { PetalWindowResidency } from '@/main/desktop-petals/petal-window-residency';
+import { PetalRuntimeDiagnostics } from '@/main/desktop-petals/petal-runtime-diagnostics';
+import { PetalDesktopRecovery } from '@/main/desktop-petals/petal-desktop-recovery';
+import { PetalNotePanel } from '@/main/desktop-petals/petal-note-panel';
+
+// WS_EX_TOOLWINDOW keeps desktop widgets out of Explorer's taskbar previews even
+// when the shell rebuilds its task list; skipTaskbar alone is not persistent.
+const windowsPetalWindowType = process.platform === 'win32' ? ('toolbar' as const) : undefined;
 
 function applyPetalAlwaysOnTop(window: BrowserWindow, alwaysOnTop: boolean) {
   // On Windows, Electron's default floating level follows the taskbar's Z-order on activation.
@@ -32,6 +42,8 @@ export interface PetalWindow {
   hubView: PetalHubView;
 }
 export class PetalWindows {
+  readonly notePanel = new PetalNotePanel();
+  readonly overlays = new PetalOverlayWindows();
   readonly collectionHistory = new PetalCollectionHistory(
     () => {
       for (const entry of this.entries.values())
@@ -42,40 +54,44 @@ export class PetalWindows {
   );
   readonly input = new PetalInputMonitor(
     () => this.toggleTitles(),
-    () => this.restorePinnedAfterDesktop(),
+    () => this.desktopRecovery.request('show-desktop'),
   );
   readonly pluck = new PetalPluckMonitor(this.input);
   canRestoreVisibility?: (entry: PetalWindow) => boolean;
-  private desktopTimers: ReturnType<typeof setTimeout>[] = [];
-  private restorePinnedAfterDesktop() {
-    for (const timer of this.desktopTimers) clearTimeout(timer);
-    // Shell Show Desktop changes visibility independently of the topmost flag.
-    // Wait for its transition, then restore only windows still intended to be shown.
-    this.desktopTimers = [80, 350].map((delay) =>
-      setTimeout(() => {
-        if (!this.allowPresentation || this.allowClose) return;
-        for (const entry of this.entries.values()) {
-          const window = entry.window;
-          if (
-            entry.drawer ||
-            window.isDestroyed() ||
-            !this.wantsAlwaysOnTop(entry.libraryId, entry.instanceId) ||
-            this.opening.has(window.webContents.id) ||
-            !this.canRestoreVisibility?.(entry) ||
-            this.layouts.get(entry.libraryId, entry.instanceId ?? 'hub')?.visible !== true
-          )
-            continue;
-          window.showInactive();
-          applyPetalAlwaysOnTop(window, true);
-          window.moveTop();
-        }
-      }, delay),
-    );
-  }
+  private readonly desktopRecovery = new PetalDesktopRecovery(
+    () =>
+      !this.allowPresentation || this.allowClose
+        ? []
+        : [...this.entries.values()].filter(
+            (entry) =>
+              !entry.drawer &&
+              !entry.window.isDestroyed() &&
+              !this.opening.has(entry.window.webContents.id) &&
+              this.wantsAlwaysOnTop(entry.libraryId, entry.instanceId) &&
+              this.shouldRestore(entry),
+          ),
+    (handles) => this.input.sampleVisibility(handles),
+    (details) => this.diagnostics?.record('desktop-recovery', details),
+  );
   startInput() {
+    this.diagnostics ??= new PetalRuntimeDiagnostics(() => this.entries.values());
     if (this.allowPresentation) this.input.start();
+    const resume = () => this.desktopRecovery.request('resume');
+    const displays = () => this.desktopRecovery.request('displays');
+    if (process.platform === 'win32') {
+      powerMonitor.on('resume', resume);
+      screen.on('display-added', displays);
+      screen.on('display-removed', displays);
+      screen.on('display-metrics-changed', displays);
+    }
     app.once('will-quit', () => {
-      for (const timer of this.desktopTimers) clearTimeout(timer);
+      this.diagnostics?.dispose();
+      this.residency.dispose();
+      this.desktopRecovery.dispose();
+      powerMonitor.removeListener('resume', resume);
+      screen.removeListener('display-added', displays);
+      screen.removeListener('display-removed', displays);
+      screen.removeListener('display-metrics-changed', displays);
       this.pluck.clear();
       this.input.dispose();
     });
@@ -111,6 +127,26 @@ export class PetalWindows {
   allowClose = false;
   private readonly opening = new Map<number, PetalWindowLoad>();
   private readonly deferredRestores = new Set<PetalWindow>();
+  private readonly creating = new Map<string, Promise<PetalWindow>>();
+  private readonly transitions = new Map<PetalWindow, Promise<PetalWindow>>();
+  private diagnostics?: PetalRuntimeDiagnostics;
+  private generation = 0;
+  private rendererRecovery = 0;
+  private lastRendererFailure = -Infinity;
+  beforeReplace?: (entry: PetalWindow) => Promise<boolean>;
+  private readonly residency = new PetalWindowResidency(
+    (entry) => !entry.drawer && !this.opening.has(entry.window.webContents.id) && !this.shouldRestore(entry),
+    async (entry) => {
+      try {
+        return await (this.beforeReplace?.(entry) ?? this.beforeHide(entry));
+      } finally {
+        if (!entry.window.isDestroyed()) {
+          entry.editEpoch++;
+          entry.window.webContents.send('desktop-petals:changed');
+        }
+      }
+    },
+  );
   private saveTimer: ReturnType<typeof setTimeout> | null = null;
   constructor(
     readonly layouts: PetalLayoutStore,
@@ -119,7 +155,38 @@ export class PetalWindows {
     private readonly onContextMenu?: (entry: PetalWindow) => void,
     private readonly title = (isNote: boolean) =>
       isNote ? desktopPetalMessages.note.windowTitle : desktopPetalMessages.flower.title,
-  ) {}
+    private readonly factory: PetalWindowFactory = nativePetalWindows,
+  ) {
+    factory.onRendererGone = (windows) => {
+      const generation = this.generation;
+      const recovery = ++this.rendererRecovery;
+      const entries = windows.flatMap((window) => {
+        if (window.isDestroyed()) return [];
+        const entry = this.entries.get(window.webContents.id);
+        return entry && !entry.expanded && !this.opening.has(window.webContents.id) && this.shouldRestore(entry)
+          ? [entry]
+          : [];
+      });
+      const now = performance.now();
+      const retry = now - this.lastRendererFailure >= 60_000;
+      this.lastRendererFailure = now;
+      this.diagnostics?.record('shared-renderer-lost', {
+        windows: windows.length,
+        restoring: retry ? entries.length : 0,
+      });
+      if (!retry) return;
+      // Run after the failed host has closed its children. A second failure
+      // cancels this batch rather than starting an automatic crash loop.
+      void Promise.resolve()
+        .then(async () => {
+          for (const entry of entries) {
+            if (generation !== this.generation || recovery !== this.rendererRecovery) return;
+            if (this.shouldRestore(entry)) await this.restore(entry.libraryId, entry.instanceId);
+          }
+        })
+        .catch((error) => console.error('[desktop-petals] shared renderer recovery failed', error));
+    };
+  }
 
   find(libraryId: string, instanceId: string | null) {
     return [...this.entries.values()].find(
@@ -150,11 +217,13 @@ export class PetalWindows {
       maximizable: false,
       minimizable: false,
       skipTaskbar: true,
+      ...(windowsPetalWindowType ? { type: windowsPetalWindowType } : {}),
       alwaysOnTop: true,
+      acceptFirstMouse: process.platform === 'darwin',
       hasShadow: false,
       title,
       webPreferences: {
-        preload: path.join(app.getAppPath(), 'out/preload/desktop-petals.js'),
+        preload: rendererRuntimePath('preload', 'desktop-petals.js'),
         contextIsolation: true,
         sandbox: true,
         nodeIntegration: false,
@@ -172,7 +241,10 @@ export class PetalWindows {
     const senderId = window.webContents.id;
     this.entries.set(senderId, entry);
     installWindowNavigationPolicy(window, url);
-    window.on('blur', onBlur);
+    this.overlays.install(entry, url);
+    window.on('blur', () => {
+      if (!this.overlays.hasMenu(entry)) onBlur();
+    });
     window.on('close', (event) => {
       if (!this.allowClose) {
         event.preventDefault();
@@ -222,7 +294,12 @@ export class PetalWindows {
     this.collectionHistory.clear(entry);
     entry.editEpoch++;
     entry.window.setIgnoreMouseEvents(false);
-    if (expanded !== undefined) this.expand(entry, expanded);
+    if (expanded !== undefined && expanded !== entry.expanded) {
+      // An explicit open may originate in the drawer or a hidden placement.
+      // Record that intent before the asynchronous renderer handoff begins.
+      if (!restoring) this.remember(entry, true);
+      return this.expand(entry, expanded);
+    }
     this.present(entry, restoring, handoff);
     this.remember(entry, true);
     entry.window.webContents.send('desktop-petals:changed');
@@ -236,8 +313,32 @@ export class PetalWindows {
     handoff: boolean,
     restoring: boolean,
   ) {
+    const key = `${libraryId}:${instanceId ?? 'hub'}`;
+    const pending = this.creating.get(key);
+    if (pending) {
+      const entry = await pending;
+      return this.reopen(entry, expanded, restoring, handoff);
+    }
+    const request = this.openInstance(libraryId, instanceId, point, expanded, handoff, restoring);
+    this.creating.set(key, request);
+    try {
+      return await request;
+    } finally {
+      if (this.creating.get(key) === request) this.creating.delete(key);
+    }
+  }
+  private async openInstance(
+    libraryId: string,
+    instanceId: string | null,
+    point: Point | undefined,
+    expanded: boolean | undefined,
+    handoff: boolean,
+    restoring: boolean,
+    replacing?: PetalWindow,
+  ) {
     const existing = this.find(libraryId, instanceId);
-    if (existing) return this.reopen(existing, expanded, restoring, handoff);
+    if (existing && !replacing) return this.reopen(existing, expanded, restoring, handoff);
+    const generation = this.generation;
     const previous = this.layouts.get(libraryId, instanceId ?? 'hub');
     const isExpanded = instanceId ? (expanded ?? previous?.expanded ?? false) : false;
     let size =
@@ -259,94 +360,138 @@ export class PetalWindows {
         : PACKAGED_RENDERER_URL,
     );
     url.pathname = '/petals.html';
-    const window = new BrowserWindow({
-      ...size,
-      ...(instanceId
-        ? this.clamp(position, size)
-        : clampFlowerBounds({ ...position, ...size }, this.layouts.hubSettings.flowerSize, targetArea)),
-      frame: false,
-      transparent: true,
-      backgroundColor: '#00000000',
-      show: false,
-      resizable: false,
-      movable: true,
-      maximizable: false,
-      minimizable: false,
-      skipTaskbar: true,
-      alwaysOnTop: this.wantsAlwaysOnTop(libraryId, instanceId),
-      hasShadow: false,
-      title: this.title(Boolean(instanceId)),
-      webPreferences: {
-        preload: path.join(app.getAppPath(), 'out/preload/desktop-petals.js'),
-        contextIsolation: true,
-        sandbox: true,
-        nodeIntegration: false,
+    return this.factory.create(
+      {
+        ...size,
+        ...(instanceId
+          ? this.clamp(position, size)
+          : clampFlowerBounds({ ...position, ...size }, this.layouts.hubSettings.flowerSize, targetArea)),
+        frame: false,
+        transparent: true,
+        backgroundColor: '#00000000',
+        show: false,
+        resizable: false,
+        movable: true,
+        maximizable: false,
+        minimizable: false,
+        skipTaskbar: true,
+        ...(windowsPetalWindowType ? { type: windowsPetalWindowType } : {}),
+        alwaysOnTop: this.wantsAlwaysOnTop(libraryId, instanceId),
+        acceptFirstMouse: process.platform === 'darwin',
+        hasShadow: false,
+        title: this.title(Boolean(instanceId)),
+        webPreferences: {
+          preload: rendererRuntimePath('preload', 'desktop-petals.js'),
+          contextIsolation: true,
+          sandbox: true,
+          nodeIntegration: false,
+        },
       },
-    });
-    const entry: PetalWindow = { window, libraryId, instanceId, expanded: isExpanded, editEpoch: 0, hubView: 'flower' };
-    window.setIgnoreMouseEvents(false);
-    applyPetalAlwaysOnTop(window, this.wantsAlwaysOnTop(libraryId, instanceId));
-    const senderId = window.webContents.id;
-    this.entries.set(senderId, entry);
-    installWindowNavigationPolicy(window, url);
-    if (this.onContextMenu) {
-      window.on('system-context-menu', (event) => {
-        if (entry.instanceId && entry.expanded) return;
-        event.preventDefault();
-        this.onContextMenu?.(entry);
-      });
-    }
-    window.on('blur', () => this.presentation.preview(entry, false, 'menu'));
-    window.on('move', () => {
-      this.remember(entry);
-      if (nativeMove) this.onDragMove?.(entry, screen.getCursorScreenPoint());
-    });
-    // Programmatic bounds changes also emit move events. Only an OS gesture
-    // emits will-move; renderer gestures explicitly snap when released.
-    let nativeMove = false;
-    window.on('will-move', () => {
-      this.presentation.clearDock(entry);
-      nativeMove = true;
-    });
-    window.on('moved', () => {
-      if (!nativeMove) return;
-      nativeMove = false;
-      void Promise.resolve(this.onDragEnd?.(entry, screen.getCursorScreenPoint()))
-        .then((handled) => {
-          if (!handled && !window.isDestroyed()) this.presentation.snap(entry);
-        })
-        .catch((error) => console.error('[desktop-petals] drop failed', error));
-    });
-    window.on('close', (event) => {
-      if (this.allowClose) return;
-      event.preventDefault();
-      void this.hide(entry).catch((error) => console.error('[desktop-petals] close failed', error));
-    });
-    window.on('closed', () => {
-      this.entries.delete(senderId);
-      this.deferredRestores.delete(entry);
-    });
-    return this.finishOpening(entry, url, () => {
-      if (restoring && !this.prepareRestore(entry)) return;
-      if (!instanceId && previous?.dockEdge) this.presentation.restoreDock(entry, previous.dockEdge);
-      this.present(entry, restoring, handoff);
-      this.remember(entry, true);
-    });
+      url,
+      Boolean(instanceId && !isExpanded),
+      (window, navigating) => {
+        if (generation !== this.generation || (replacing && replacing.window.isDestroyed())) {
+          window.destroy();
+          return Promise.reject(petalError('sourceUnavailable'));
+        }
+        const entry: PetalWindow = {
+          window,
+          libraryId,
+          instanceId,
+          expanded: isExpanded,
+          editEpoch: 0,
+          hubView: 'flower',
+        };
+        window.setIgnoreMouseEvents(false);
+        applyPetalAlwaysOnTop(window, this.wantsAlwaysOnTop(libraryId, instanceId));
+        const senderId = window.webContents.id;
+        this.entries.set(senderId, entry);
+        this.residency.track(entry);
+        this.diagnostics?.attach(entry);
+        installWindowNavigationPolicy(window, url);
+        this.overlays.install(entry, url);
+        if (this.onContextMenu) {
+          window.on('system-context-menu', (event) => {
+            if (entry.instanceId && entry.expanded) return;
+            event.preventDefault();
+            this.onContextMenu?.(entry);
+          });
+        }
+        window.on('move', () => {
+          this.remember(entry);
+          if (nativeMove) this.onDragMove?.(entry, screen.getCursorScreenPoint());
+        });
+        // Programmatic bounds changes also emit move events. Only an OS gesture
+        // emits will-move; renderer gestures explicitly snap when released.
+        let nativeMove = false;
+        window.on('will-move', () => {
+          this.notePanel.moved(entry);
+          this.presentation.clearDock(entry);
+          nativeMove = true;
+        });
+        window.on('moved', () => {
+          if (!nativeMove) return;
+          nativeMove = false;
+          void Promise.resolve(this.onDragEnd?.(entry, screen.getCursorScreenPoint()))
+            .then((handled) => {
+              if (!handled && !window.isDestroyed()) this.presentation.snap(entry);
+            })
+            .catch((error) => console.error('[desktop-petals] drop failed', error));
+        });
+        window.on('close', (event) => {
+          if (this.allowClose) return;
+          event.preventDefault();
+          void this.hide(entry).catch((error) => console.error('[desktop-petals] close failed', error));
+        });
+        window.on('closed', () => {
+          this.entries.delete(senderId);
+          this.deferredRestores.delete(entry);
+        });
+        return this.finishOpening(
+          entry,
+          url,
+          () => {
+            if (
+              replacing &&
+              (replacing.window.isDestroyed() ||
+                this.allowClose ||
+                !(this.canRestoreVisibility?.(entry) ?? true) ||
+                !this.layouts.get(libraryId, instanceId ?? 'hub')?.visible)
+            )
+              throw petalError('saving');
+            if (restoring && !this.prepareRestore(entry)) return;
+            if (!instanceId && previous?.dockEdge) this.presentation.restoreDock(entry, previous.dockEdge);
+            this.present(entry, restoring, handoff);
+            this.remember(entry, true);
+            if (replacing && !replacing.window.isDestroyed()) replacing.window.destroy();
+          },
+          this.allowPresentation,
+          navigating,
+        );
+      },
+    );
   }
   private async finishOpening(
     entry: PetalWindow,
     url: URL,
     present: () => void,
     waitForPaint = this.allowPresentation,
+    navigating = false,
   ) {
     const { window } = entry;
+    const startedAt = performance.now();
     const senderId = window.webContents.id;
-    const loading = loadPetalWindow(window, url.href, waitForPaint);
+    const loading = loadPetalWindow(window, url.href, waitForPaint, navigating);
     this.opening.set(senderId, loading);
     try {
       await loading.ready;
       if (window.isDestroyed()) throw petalError('sourceUnavailable');
       present();
+      this.diagnostics?.record('window-ready', {
+        webContentsId: senderId,
+        durationMs: Math.round(performance.now() - startedAt),
+        expanded: entry.expanded,
+      });
       return entry;
     } catch (error) {
       this.entries.delete(senderId);
@@ -362,7 +507,9 @@ export class PetalWindows {
   }
   private hasVisiblePlacement(libraryId: string, instanceId: string | null) {
     const placement = this.layouts.get(libraryId, instanceId ?? 'hub');
-    return !this.allowClose && placement?.visible === true && placement.home !== 'drawer';
+    // A library's first activation shows its flower; an explicit hide remains a saved preference.
+    const visible = placement ? placement.visible && placement.home !== 'drawer' : instanceId === null;
+    return !this.allowClose && visible;
   }
   private shouldRestore(entry: PetalWindow) {
     return this.hasVisiblePlacement(entry.libraryId, entry.instanceId) && (this.canRestoreVisibility?.(entry) ?? true);
@@ -388,17 +535,36 @@ export class PetalWindows {
     applyPetalAlwaysOnTop(entry.window, alwaysOnTop);
     if (alwaysOnTop) entry.window.moveTop();
   }
-  expand(entry: PetalWindow, expanded: boolean) {
+  async expand(entry: PetalWindow, expanded: boolean): Promise<PetalWindow> {
+    const pending = this.transitions.get(entry);
+    if (pending) return this.expand(await pending, expanded);
+    const request = this.replace(entry, expanded);
+    this.transitions.set(entry, request);
+    try {
+      return await request;
+    } finally {
+      if (this.transitions.get(entry) === request) this.transitions.delete(entry);
+    }
+  }
+  async settle() {
+    await Promise.allSettled([...this.creating.values(), ...this.transitions.values()]);
+  }
+  private async replace(entry: PetalWindow, expanded: boolean): Promise<PetalWindow> {
+    if (entry.expanded === expanded) return entry;
+    if (entry.expanded && this.beforeReplace && !(await this.beforeReplace(entry))) throw petalError('unsaved');
+    if (entry.window.isDestroyed()) throw petalError('sourceUnavailable');
+    this.notePanel.set(entry, 0);
     if (expanded) this.collectionHistory.clear(entry);
     this.presentation.endPreview(entry);
-    const size =
-      entry.instanceId && expanded
-        ? (this.layouts.get(entry.libraryId, entry.instanceId)?.noteSize ?? PETAL_WINDOW_SIZES.note)
-        : this.size(entry.instanceId, expanded);
-    entry.expanded = expanded;
-    this.resize(entry, size);
     this.remember(entry);
-    entry.window.webContents.send('desktop-petals:changed');
+    try {
+      return await this.openInstance(entry.libraryId, entry.instanceId, undefined, expanded, true, false, entry);
+    } finally {
+      if (!entry.window.isDestroyed()) {
+        entry.editEpoch++;
+        entry.window.webContents.send('desktop-petals:changed');
+      }
+    }
   }
   async collect(entry: PetalWindow, origin: Rectangle) {
     if (!entry.instanceId || entry.expanded || entry.window.isDestroyed() || !entry.window.isVisible()) return;
@@ -425,18 +591,22 @@ export class PetalWindows {
     }
     entry.window.webContents.send('desktop-petals:changed');
   }
+  async setContentScale(entry: PetalWindow | undefined, scale: number) {
+    if (!entry?.instanceId || !entry.expanded || entry.window.isDestroyed()) throw petalError('sourceUnavailable');
+    this.remember(entry);
+    await this.layouts.saveContentScale(entry.libraryId, entry.instanceId, scale);
+    if (!entry.window.isDestroyed()) entry.window.webContents.send('desktop-petals:changed');
+  }
+
   resizeNote(entry: PetalWindow, size: { width: number; height: number }) {
     if (!entry.instanceId || !entry.expanded) throw petalError('sourceUnavailable');
-    this.resize(entry, size);
+    this.notePanel.moved(entry);
+    this.resize(entry, { ...size, height: size.height + this.notePanel.height(entry) });
     this.remember(entry);
   }
   showHubView(entry: PetalWindow, view: PetalHubView) {
     if (entry.instanceId) throw petalError('hubOnly');
-    this.presentation.leaveFlower(entry);
-    this.resize(entry, PETAL_WINDOW_SIZES[view]);
-    entry.hubView = view;
-    this.remember(entry);
-    entry.window.webContents.send('desktop-petals:changed');
+    this.presentation.showView(entry, view);
   }
   private resize(entry: PetalWindow, size: { width: number; height: number }) {
     const area = screen.getDisplayMatching(entry.window.getBounds()).workArea;
@@ -458,6 +628,7 @@ export class PetalWindows {
   }
   async hide(entry: PetalWindow) {
     if (!(await this.beforeHide(entry)) || entry.window.isDestroyed()) return false;
+    this.notePanel.set(entry, 0);
     this.presentation.endPreview(entry);
     const previous = this.layouts.get(entry.libraryId, entry.instanceId ?? 'hub');
     this.remember(entry, false);
@@ -485,9 +656,11 @@ export class PetalWindows {
   remember(entry: PetalWindow, visible?: boolean) {
     if (entry.drawer || entry.window.isDestroyed()) return;
     const previous = this.layouts.get(entry.libraryId, entry.instanceId ?? 'hub');
-    const { x, y } = this.presentation.placement(entry);
+    const { x, y } = this.notePanel.height(entry)
+      ? this.notePanel.placement(entry)
+      : this.presentation.placement(entry);
     const previousSize = this.layouts.get(entry.libraryId, entry.instanceId ?? 'hub')?.noteSize;
-    const bounds = entry.window.getBounds();
+    const bounds = this.notePanel.placement(entry);
     const noteSize =
       entry.instanceId && entry.expanded
         ? { width: Math.max(280, Math.min(640, bounds.width)), height: Math.max(300, Math.min(800, bounds.height)) }
@@ -501,7 +674,7 @@ export class PetalWindows {
       home: previous?.home ?? 'desktop',
       expanded: entry.expanded,
       noteSize,
-      dockEdge: this.presentation.dock(entry)?.edge,
+      dockEdge: this.presentation.dockEdge(entry),
     });
     if (this.saveTimer) clearTimeout(this.saveTimer);
     this.saveTimer = setTimeout(() => {
@@ -515,12 +688,16 @@ export class PetalWindows {
     await this.layouts.flush();
   }
   destroyAll() {
+    this.generation++;
+    this.desktopRecovery.dispose();
+    this.residency.dispose();
     this.pluck.clear();
     this.collectionHistory.clear();
     for (const entry of [...this.entries.values()]) {
       this.entries.delete(entry.window.webContents.id);
       entry.window.destroy();
     }
+    this.factory.dispose();
   }
   remove(libraryId: string, instanceId: string) {
     this.unpinned.get(libraryId)?.delete(instanceId);

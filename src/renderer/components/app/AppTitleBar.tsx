@@ -9,6 +9,7 @@ import type {
   VideoDocumentTranscriptBackgroundTask,
 } from '@/shared/contracts';
 import { ChevronLeftIcon, ChevronRightIcon } from 'lucide-react';
+import { useEffect, useState } from 'react';
 import { useI18n } from '@/renderer/i18n/useI18n';
 import { Button } from '@/renderer/components/ui/button';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/renderer/components/ui/tooltip';
@@ -18,6 +19,7 @@ import { GenerationStatusPopover } from '@/renderer/components/app/GenerationSta
 import { AppWindowControls } from '@/renderer/components/app/AppWindowControls';
 import { commandAriaShortcut } from '@/renderer/commands/app-shortcuts';
 import { useArticleEditorSessionFlush } from '@/renderer/components/creator/article-editor/ArticleEditorSessionProvider';
+import { cn } from '@/renderer/lib/utils';
 
 interface Props {
   workerStatus: ModelWorkerStatusDto | null;
@@ -77,12 +79,39 @@ export function AppTitleBar({
   const { messages } = useI18n();
   const flushArticleEditors = useArticleEditorSessionFlush();
   const labels = messages.app.navigation;
+  const isMac = window.desktopApi.appPlatform === 'darwin';
+  const [fullScreen, setFullScreen] = useState(false);
+
+  useEffect(() => {
+    if (!isMac) return undefined;
+    let active = true;
+    let receivedEvent = false;
+    const unsubscribe = window.desktopApi.onAppWindowStateChanged((state) => {
+      receivedEvent = true;
+      if (active) setFullScreen(state.fullScreen);
+    });
+    void window.desktopApi
+      .appWindowGetState()
+      .then((state) => {
+        if (active && !receivedEvent) setFullScreen(state.fullScreen);
+      })
+      .catch((error) => console.warn('[app-window] Failed to read native fullscreen state', error));
+    return () => {
+      active = false;
+      unsubscribe();
+    };
+  }, [isMac]);
+
   return (
     <TooltipProvider>
       <header
         data-app-title-bar
         data-overlay-layer="chrome"
-        className="app-title-bar relative z-chrome flex h-9 items-center border-b bg-muted pl-3 pr-36 text-xs text-muted-foreground"
+        className={cn(
+          'app-title-bar relative z-chrome flex h-9 items-center border-b bg-muted text-xs text-muted-foreground',
+          isMac ? 'pr-3 transition-[padding-left] duration-200 ease-out' : 'pl-3 pr-36',
+          isMac && (fullScreen ? 'pl-3' : 'pl-24'),
+        )}
       >
         <div className="app-title-bar-actions flex min-w-0 items-center">
           <AppIconMenu

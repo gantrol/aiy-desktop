@@ -6,29 +6,42 @@ const apiTargetSchema = articleDeliveryExtensionTargetSchema.extend({
   kind: z.literal('API'),
   imageMode: z.enum(['BALANCED', 'ORIGINAL']),
 });
-const browserTargetSchema = z
+const legacyBrowserTargetSchema = z
   .object({
     kind: z.literal('BROWSER'),
     target: browserCompanionTargetSchema.exclude(['chatgpt']),
   })
   .strict();
-const targetSchema = z.discriminatedUnion('kind', [apiTargetSchema, browserTargetSchema]);
+const legacyTargetSchema = z.discriminatedUnion('kind', [apiTargetSchema, legacyBrowserTargetSchema]);
+const browserTargetSchema = z.discriminatedUnion('target', [
+  legacyBrowserTargetSchema.extend({ target: z.literal('wechat'), mode: z.enum(['article', 'images']) }),
+  legacyBrowserTargetSchema.extend({ target: browserCompanionTargetSchema.exclude(['chatgpt', 'wechat']) }),
+]);
+const targetSchema = z.union([apiTargetSchema, browserTargetSchema]);
 
 export type ArticleUploadTarget = z.infer<typeof targetSchema>;
 
 export function articleUploadTargetKey(target: ArticleUploadTarget): string {
   return target.kind === 'API'
     ? JSON.stringify([target.kind, target.extensionId, target.channelId])
-    : JSON.stringify([target.kind, target.target]);
+    : JSON.stringify([target.kind, target.target, ...(target.target === 'wechat' ? [target.mode] : [])]);
 }
 
 export const articleDeliveryPreferencesSchema = z
   .object({
-    version: z.literal(1),
+    version: z.literal(2),
     targets: z
       .array(targetSchema)
       .max(32)
       .refine((targets) => new Set(targets.map(articleUploadTargetKey)).size === targets.length),
+  })
+  .strict();
+
+// Existing saved choices retain their format when moving from one global mode to per-target modes.
+const legacyPreferencesSchema = z
+  .object({
+    version: z.literal(1),
+    targets: z.array(legacyTargetSchema).max(32),
     wechatMode: z.enum(['article', 'images']),
   })
   .strict();
@@ -44,7 +57,20 @@ function read(key: string): ArticleDeliveryPreferences | null {
   try {
     const raw = globalThis.localStorage?.getItem(key);
     if (!raw || raw.length > 32_000) return null;
-    const parsed = articleDeliveryPreferencesSchema.safeParse(JSON.parse(raw));
+    const value: unknown = JSON.parse(raw);
+    const legacy = legacyPreferencesSchema.safeParse(value);
+    const parsed = articleDeliveryPreferencesSchema.safeParse(
+      legacy.success
+        ? {
+            version: 2,
+            targets: legacy.data.targets.map((target) =>
+              target.kind === 'BROWSER' && target.target === 'wechat'
+                ? { ...target, mode: legacy.data.wechatMode }
+                : target,
+            ),
+          }
+        : value,
+    );
     return parsed.success ? parsed.data : null;
   } catch {
     return null;
@@ -63,7 +89,7 @@ function write(key: string, preferences: ArticleDeliveryPreferences): boolean {
 }
 
 export function readDefaultArticleDeliveryPreferences(): ArticleDeliveryPreferences {
-  return read(DEFAULT_KEY) ?? { version: 1, targets: [], wechatMode: 'article' };
+  return read(DEFAULT_KEY) ?? { version: 2, targets: [] };
 }
 
 export function readArticleDeliveryPreferences(
@@ -78,7 +104,7 @@ export function readArticleDeliveryPreferences(
   const defaults = read(DEFAULT_KEY);
   return defaults
     ? { preferences: defaults, source: 'DEFAULT' }
-    : { preferences: { version: 1, targets: [], wechatMode: 'article' }, source: 'NONE' };
+    : { preferences: { version: 2, targets: [] }, source: 'NONE' };
 }
 
 export function rememberArticleDeliveryPreferences(

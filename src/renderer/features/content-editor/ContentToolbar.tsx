@@ -1,10 +1,20 @@
 import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
+import { cn } from '@/renderer/lib/utils';
 
 /** One tab stop; menus retain their own keyboard navigation, including when portalled. */
-export function ContentToolbar({ label, children }: { label: string; children(narrow: boolean): ReactNode }) {
+export function ContentToolbar({
+  label,
+  className,
+  children,
+}: {
+  label: string;
+  className?: string;
+  children(narrow: boolean, width: number): ReactNode;
+}) {
   const root = useRef<HTMLDivElement>(null);
   const active = useRef<HTMLButtonElement | null>(null);
-  const [narrow, setNarrow] = useState(true);
+  const restoreFocus = useRef(false);
+  const [width, setWidth] = useState(0);
   const buttons = () => Array.from(root.current?.querySelectorAll<HTMLButtonElement>('button:not(:disabled)') ?? []);
   const select = (button: HTMLButtonElement | null) => {
     active.current = button;
@@ -14,13 +24,22 @@ export function ContentToolbar({ label, children }: { label: string; children(na
   useEffect(() => {
     const element = root.current;
     if (!element) return;
-    const observer = new ResizeObserver(([entry]) => setNarrow(entry.contentRect.width < 440));
+    const observer = new ResizeObserver(([entry]) => {
+      restoreFocus.current = element.contains(document.activeElement);
+      setWidth(entry.contentRect.width);
+    });
     observer.observe(element);
     return () => observer.disconnect();
   }, []);
   useLayoutEffect(() => {
     const candidates = buttons();
-    select(active.current && candidates.includes(active.current) ? active.current : (candidates[0] ?? null));
+    const previous = active.current;
+    const next = previous && candidates.includes(previous) ? previous : (candidates[0] ?? null);
+    select(next);
+    if (restoreFocus.current && previous !== next) {
+      (root.current?.querySelector<HTMLButtonElement>('[data-content-toolbar-more]') ?? next)?.focus();
+    }
+    restoreFocus.current = false;
   });
 
   return (
@@ -29,7 +48,10 @@ export function ContentToolbar({ label, children }: { label: string; children(na
       role="toolbar"
       aria-label={label}
       aria-orientation="horizontal"
-      className="flex min-h-9 min-w-0 flex-wrap items-center gap-0.5 border-b bg-background px-1.5 py-0.5"
+      className={cn(
+        'flex min-h-9 min-w-0 flex-wrap items-center gap-0.5 border-b bg-background px-1.5 py-0.5',
+        className,
+      )}
       onFocusCapture={(event) => {
         if (event.target instanceof HTMLButtonElement && root.current?.contains(event.target)) select(event.target);
       }}
@@ -51,7 +73,7 @@ export function ContentToolbar({ label, children }: { label: string; children(na
         candidates[next]?.focus();
       }}
     >
-      {children(narrow)}
+      {children(width < 440, width)}
     </div>
   );
 }

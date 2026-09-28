@@ -1,6 +1,8 @@
+import { publishingMaskTarget } from '@/shared/contracts/publishing-mask';
 import { useState } from 'react';
 import { LoaderCircleIcon } from 'lucide-react';
 import { Button } from '@/renderer/components/ui/button';
+import { Checkbox } from '@/renderer/components/ui/checkbox';
 import {
   Dialog,
   DialogContent,
@@ -11,6 +13,7 @@ import {
 } from '@/renderer/components/ui/dialog';
 import { CompanionDestinationMenu } from '@/renderer/features/browser-companion/CompanionDestinationMenu';
 import { PublicationPreview } from '@/renderer/features/browser-companion/PublicationPreview';
+import { WechatPublicationMode } from '@/renderer/features/browser-companion/WechatPublicationMode';
 import { prepareSocialPostHandoffs } from '@/renderer/features/browser-companion/prepareSocialPostHandoff';
 import {
   usePublicationBatch,
@@ -25,24 +28,33 @@ import type {
 } from '@/shared/contracts';
 import { canonicalSocialPostContentJson } from '@/shared/contracts/social-post';
 import { browserCompanionStageErrorCodeSchema } from '@/shared/contracts/browser-companion';
+import { PublishingMaskActions } from '@/renderer/features/browser-companion/PublishingMaskActions';
+import {
+  isPublishingMaskError,
+  publishingMaskErrorMessage,
+} from '@/renderer/features/browser-companion/publishingMask';
 
 export function SocialPostPublishingDialog({
+  spaceId,
   content,
   dirty,
   postId,
   persist,
   readSavedContent,
+  readSavedRevisionId,
   assets,
   targets,
   initialTargets = targets,
   watermark,
   onClose,
 }: {
+  spaceId: string;
   content: SocialPostContentInput;
   dirty: boolean;
   postId: string;
   persist(snapshot: SocialPostContentInput): Promise<boolean>;
   readSavedContent(): SocialPostContentInput;
+  readSavedRevisionId(): string;
   assets: readonly AssetDto[];
   targets: readonly BrowserCompanionTarget[];
   initialTargets?: readonly BrowserCompanionTarget[];
@@ -60,11 +72,13 @@ export function SocialPostPublishingDialog({
     watermark,
     prepare: (channels, wechatMode) =>
       prepareSocialPostHandoffs({
+        spaceId,
         content,
         dirty,
         postId,
         persist,
         readSavedContent,
+        readSavedRevisionId,
         targets: channels,
         wechatMode,
         notify: () => undefined,
@@ -80,6 +94,7 @@ export function SocialPostPublishingDialog({
   const readyCount = batch.rows.filter((row) => row.prepared && !row.error).length;
 
   function errorMessage(error: string) {
+    if (isPublishingMaskError(error)) return publishingMaskErrorMessage(error, messages);
     const parsed = browserCompanionStageErrorCodeSchema.safeParse(error);
     return parsed.success ? companionCopy.stageErrors[parsed.data] : error;
   }
@@ -123,14 +138,15 @@ export function SocialPostPublishingDialog({
               .filter((target) => target !== 'chatgpt')
               .map((target) => (
                 <label key={target} className="flex items-center gap-2 text-sm">
-                  <input
-                    type="checkbox"
+                  <Checkbox
                     data-publication-target={target}
+                    aria-label={companionCopy.targets[target]}
                     checked={selected.includes(target)}
-                    onChange={(event) => {
+                    disabled={locked}
+                    onCheckedChange={(checked) => {
                       batch.reset();
                       setSelected((current) =>
-                        event.target.checked ? [...current, target] : current.filter((item) => item !== target),
+                        checked === true ? [...current, target] : current.filter((item) => item !== target),
                       );
                     }}
                   />
@@ -138,24 +154,27 @@ export function SocialPostPublishingDialog({
                 </label>
               ))}
           </div>
-          {selected.includes('wechat') && (
-            <label className="flex flex-wrap items-center gap-3 text-sm">
-              {copy.wechatMode}
-              <select
-                data-publication-wechat-mode
-                value={mode}
-                className="rounded-md border bg-background px-3 py-2"
-                onChange={(event) => {
-                  batch.reset();
-                  setMode(event.target.value as 'article' | 'images');
-                }}
-              >
-                <option value="article">{copy.article}</option>
-                <option value="images">{copy.images}</option>
-              </select>
-            </label>
+          {targets.includes('wechat') && (
+            <WechatPublicationMode
+              value={mode}
+              disabled={locked}
+              onValueChange={(next) => {
+                batch.reset();
+                setMode(next);
+              }}
+            />
           )}
         </fieldset>
+        {!batch.submitted && (
+          <PublishingMaskActions
+            spaceId={spaceId}
+            source={{ kind: 'SOCIAL_POST', id: postId }}
+            targets={selected.map((target) => publishingMaskTarget(target, mode))}
+            disabled={locked}
+            beforeOpen={() => persist(content)}
+            onSaved={batch.reset}
+          />
+        )}
         <div className="flex items-center gap-2">
           <span className="text-xs text-muted-foreground">{companionCopy.destinationSettings}</span>
           <CompanionDestinationMenu busy={batch.busy || batch.submitted} targets={selected} variant="outline" />

@@ -1,8 +1,8 @@
+import { WorkbenchPaneToggle } from '@/renderer/components/workbench/WorkbenchPane';
 import { useEffect, useMemo, useState, type PointerEvent as ReactPointerEvent, type ReactNode } from 'react';
-import { FileTextIcon, ImageIcon, PanelRightCloseIcon } from 'lucide-react';
+import { FileTextIcon, ImageIcon } from 'lucide-react';
 import type { AssetDto, AssetFileRevealContext, Locale } from '@/shared/contracts';
 import { useI18n } from '@/renderer/i18n/useI18n';
-import { Button } from '@/renderer/components/ui/button';
 import { ScrollArea } from '@/renderer/components/ui/scroll-area';
 import { CreatorPaneResizeHandle } from '@/renderer/components/creator/CreatorPaneResizeHandle';
 import { CreatorReferenceImageCard } from '@/renderer/components/creator/CreatorReferenceImageCard';
@@ -42,9 +42,9 @@ export function CreatorInputPanel({
   onResizeValueChange,
 }: Props) {
   const { messages } = useI18n();
-  const textLabel = locale === 'zh' ? '文字' : 'Text';
-  const imageLabel = locale === 'zh' ? '图片' : 'Images';
-  const resizeLabel = locale === 'zh' ? '调整输入区宽度' : 'Resize inputs';
+  const textLabel = messages.workbench.text;
+  const imageLabel = messages.workbench.images;
+  const resizeLabel = messages.workbench.resizePane(messages.workbench.inputs);
   const fileLabels = messages.assetFile;
   const [dragTargetId, setDragTargetId] = useState<string | null>(null);
   const [previewAssetId, setPreviewAssetId] = useState<string | null>(null);
@@ -78,7 +78,10 @@ export function CreatorInputPanel({
 
   if (collapsed) {
     return (
-      <section className="relative hidden size-full min-h-0 flex-col items-center bg-secondary pt-3 @min-[840px]/creator:flex">
+      <section
+        data-workbench-pane
+        className="relative hidden size-full min-h-0 flex-col bg-secondary @min-[840px]/creator:flex"
+      >
         <CreatorPaneResizeHandle
           edge="left"
           label={resizeLabel}
@@ -88,22 +91,18 @@ export function CreatorInputPanel({
           onValueChange={onResizeValueChange}
           onPointerDown={onResizeStart}
         />
-        <Button
-          type="button"
-          variant="ghost"
-          size="icon-sm"
-          title={locale === 'zh' ? '展开输入' : 'Expand inputs'}
-          aria-label={locale === 'zh' ? '展开输入' : 'Expand inputs'}
+        <WorkbenchPaneToggle
+          expanded={false}
+          side="right"
+          label={messages.workbench.inputs}
           onClick={() => onCollapsedChange(false)}
-        >
-          <FileTextIcon className="size-4" />
-        </Button>
+        />
       </section>
     );
   }
 
   return (
-    <section className="relative flex min-h-0 min-w-0 flex-col bg-background">
+    <section data-workbench-pane className="relative flex min-h-0 min-w-0 flex-col bg-background">
       <CreatorPaneResizeHandle
         edge="left"
         label={resizeLabel}
@@ -115,6 +114,13 @@ export function CreatorInputPanel({
       />
       <header className="flex h-14 shrink-0 items-center border-b border-border/60 bg-secondary px-3">
         {headerNavigation}
+        <WorkbenchPaneToggle
+          expanded
+          side="right"
+          label={messages.workbench.inputs}
+          className="ml-auto hidden @min-[840px]/creator:inline-flex"
+          onClick={() => onCollapsedChange(true)}
+        />
       </header>
       <ScrollArea type="always" className="min-h-0 flex-1">
         <div className="mx-auto flex w-full max-w-3xl flex-col gap-5 px-4 py-5">
@@ -174,17 +180,6 @@ export function CreatorInputPanel({
           )}
         </div>
       </ScrollArea>
-      <Button
-        type="button"
-        variant="secondary"
-        size="icon-sm"
-        className="absolute bottom-2 left-2 z-30 hidden shadow-overlay @min-[840px]/creator:inline-flex"
-        title={locale === 'zh' ? '收起输入区' : 'Collapse inputs'}
-        aria-label={locale === 'zh' ? '收起输入区' : 'Collapse inputs'}
-        onClick={() => onCollapsedChange(true)}
-      >
-        <PanelRightCloseIcon className="size-4" />
-      </Button>
     </section>
   );
 }

@@ -1,13 +1,16 @@
 import { useCallback, useEffect, useRef, useState, type KeyboardEvent, type MouseEvent } from 'react';
+import { usePetalOverlay } from '@/renderer/features/desktop-petals/use-petal-overlay';
 
 type Point = { x: number; y: number };
 
-/** Reserve native menu space before opening; release it before invoking a menu action. */
+/** Menu DOM lives in its own window; actions retain the originating widget's context. */
 export function usePetalMenu(enabled: boolean, onError: (error: unknown) => void) {
   const [anchor, setAnchor] = useState<Point | null>(null);
   const generation = useRef(0);
   const previousFocus = useRef<HTMLElement | null>(null);
   const pending = useRef<Promise<unknown>>(Promise.resolve());
+  const overlay = usePetalOverlay('menu', () => void close().catch(onError));
+  const { open: openOverlay, close: closeOverlay } = overlay;
   // A close must finish after an in-flight open, including blur and unmount cleanup.
   const setNativeMenu = useCallback((open: boolean, point?: Point) => {
     const operation = pending.current.catch(() => undefined).then(() => window.desktopPetals.setMenuOpen(open, point));
@@ -18,20 +21,27 @@ export function usePetalMenu(enabled: boolean, onError: (error: unknown) => void
   const close = useCallback(async () => {
     invalidatePendingOpen();
     setAnchor(null);
+    closeOverlay();
     await setNativeMenu(false);
-  }, [invalidatePendingOpen, setNativeMenu]);
+  }, [closeOverlay, invalidatePendingOpen, setNativeMenu]);
   const openAt = useCallback(
     (point?: Point) => {
       if (!enabled) return;
       const request = invalidatePendingOpen();
       previousFocus.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
       void setNativeMenu(true, point)
-        .then((position) => {
-          if (request === generation.current) setAnchor(position);
+        .then(async (position) => {
+          if (request !== generation.current) return;
+          const surface = await openOverlay(position);
+          if (surface && request === generation.current)
+            setAnchor({ x: position.x - surface.window.screenX, y: position.y - surface.window.screenY });
         })
-        .catch(onError);
+        .catch((error) => {
+          void close().catch(onError);
+          onError(error);
+        });
     },
-    [enabled, invalidatePendingOpen, onError, setNativeMenu],
+    [close, enabled, invalidatePendingOpen, onError, openOverlay, setNativeMenu],
   );
 
   useEffect(() => window.desktopPetals.onMenuRequested?.(() => openAt()), [openAt]);
@@ -39,19 +49,15 @@ export function usePetalMenu(enabled: boolean, onError: (error: unknown) => void
     if (!enabled) void close().catch(onError);
   }, [enabled, close, onError]);
   useEffect(() => {
-    const blur = () => {
-      void close().catch(onError);
-    };
-    window.addEventListener('blur', blur);
     return () => {
-      window.removeEventListener('blur', blur);
       invalidatePendingOpen();
       void setNativeMenu(false).catch(() => undefined);
     };
-  }, [close, invalidatePendingOpen, onError, setNativeMenu]);
+  }, [invalidatePendingOpen, setNativeMenu]);
 
   return {
     anchor,
+    surface: overlay.surface,
     openAt,
     close,
     contextHandlers: {
@@ -74,10 +80,16 @@ export function usePetalMenu(enabled: boolean, onError: (error: unknown) => void
       },
     },
     dismiss: () => {
-      void close().catch(onError);
+      void close()
+        .then(() => {
+          if (previousFocus.current?.isConnected) previousFocus.current.focus({ preventScroll: true });
+        })
+        .catch(onError);
     },
-    select: (action: () => Promise<unknown>) => {
-      void close().then(action).catch(onError);
+    select: <Args extends unknown[]>(action: (...args: Args) => Promise<unknown>, ...args: Args) => {
+      void close()
+        .then(() => action(...args))
+        .catch(onError);
     },
     restoreFocus: () => {
       if (previousFocus.current?.isConnected) previousFocus.current.focus({ preventScroll: true });

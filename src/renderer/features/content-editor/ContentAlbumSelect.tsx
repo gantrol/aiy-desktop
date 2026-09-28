@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/renderer/components/ui/select';
+import { AlbumSelect } from '@/renderer/components/albums/AlbumSelect';
+import type { ContentAlbumOption } from '@/shared/content-album-options';
 import { useI18n } from '@/renderer/i18n/useI18n';
 
 export function ContentAlbumSelect({
@@ -13,69 +14,48 @@ export function ContentAlbumSelect({
   albumId: string | null;
   defaultWhenUnassigned?: boolean;
   disabled?: boolean;
-  albums?: readonly { id: string; title: string }[];
+  albums?: readonly ContentAlbumOption[];
   onChange(id: string | null): Promise<void>;
   onError(reason: unknown): void;
 }) {
   const copy = useI18n().messages.desktopPetals.document;
-  const [loaded, setLoaded] = useState<readonly { id: string; title: string }[]>([]);
+  const [loaded, setLoaded] = useState<readonly ContentAlbumOption[]>([]);
   const [open, setOpen] = useState(false);
-  const [busy, setBusy] = useState(false);
+  const [loading, setLoading] = useState(false);
   useEffect(() => {
     if (supplied || (!open && !albumId)) return;
     let live = true;
+    setLoading(true);
     void window.desktopPetals
       .albums()
       .then((rows) => {
         if (live) setLoaded(rows);
       })
-      .catch(onError);
+      .catch((reason) => {
+        if (live) onError(reason);
+      })
+      .finally(() => {
+        if (live) setLoading(false);
+      });
     return () => {
       live = false;
     };
   }, [open, supplied, onError, albumId]);
   const albums = supplied ?? loaded;
+  const unassigned = defaultWhenUnassigned ? copy.defaultAlbum : copy.noAlbum;
   return (
-    <Select
-      open={open}
+    <AlbumSelect
+      options={albums}
+      value={albumId}
+      ariaLabel={copy.album}
+      nullOption={{ kind: defaultWhenUnassigned ? 'default' : 'unassigned', label: unassigned }}
+      variant="ghost"
+      className="h-7 w-auto min-w-0 max-w-48 shrink gap-1 rounded-sm px-1 text-xs font-normal text-inherit"
+      disabled={disabled}
+      loading={!supplied && loading}
       onOpenChange={setOpen}
-      value={albumId ?? (defaultWhenUnassigned ? '_default' : '_none')}
-      disabled={disabled || busy}
-      onValueChange={(value) => {
-        setBusy(true);
-        void onChange(value === '_none' || value === '_default' ? null : value)
-          .catch(onError)
-          .finally(() => setBusy(false));
-      }}
-    >
-      <SelectTrigger
-        className="h-7 w-auto max-w-48 gap-2 rounded-sm border-0 bg-transparent px-1 text-xs text-inherit shadow-none hover:bg-foreground/5 active:bg-foreground/10 focus-visible:ring-1 disabled:bg-transparent disabled:text-inherit disabled:opacity-40 [&_svg]:opacity-50"
-        aria-label={copy.album}
-      >
-        <SelectValue placeholder={copy.album} />
-      </SelectTrigger>
-      <SelectContent
-        side="top"
-        align="start"
-        collisionPadding={12}
-        className="max-h-[min(16rem,var(--radix-select-content-available-height))] max-w-[calc(100vw-24px)]"
-      >
-        {defaultWhenUnassigned ? (
-          <SelectItem value="_default">{copy.defaultAlbum}</SelectItem>
-        ) : (
-          <SelectItem value="_none">{copy.noAlbum}</SelectItem>
-        )}
-        {albumId && !albums.some((album) => album.id === albumId) && (
-          <SelectItem value={albumId}>{copy.album}</SelectItem>
-        )}
-        {albums.map((album) => (
-          <SelectItem key={album.id} value={album.id}>
-            <span className="block truncate" title={album.title}>
-              {album.title}
-            </span>
-          </SelectItem>
-        ))}
-      </SelectContent>
-    </Select>
+      onValueChange={onChange}
+      onError={onError}
+    />
   );
 }

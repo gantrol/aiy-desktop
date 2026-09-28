@@ -1,5 +1,6 @@
 import { bindNaturalWatermarkRuntime } from '@/main/extensions/natural-watermark/selection';
 import { replayAssetExportCalendar } from '@/main/media/asset-export-calendar';
+import { subscribeCreatorChanges } from '@/main/creations/creator-content-changes';
 import { createApplicationMetrics } from '@/main/extensions/metrics/setup';
 import { registerExtensionMetricsIpc } from '@/main/ipc/extension-metrics-handlers';
 import { app, dialog, safeStorage } from 'electron';
@@ -180,10 +181,10 @@ if (ownsSingleInstanceLock)
       });
       startupShell.createWindow();
       app.on('activate', () => {
-        if (!appShell.mainWindow || appShell.mainWindow.isDestroyed()) appShell.createWindow();
+        appShell.presentMainWindow();
       });
 
-      if (process.platform === 'win32') appShell.ensureAppTray();
+      if (process.platform === 'win32' || process.platform === 'darwin') appShell.ensureAppTray();
       await browserCompanionService.startSafely();
       const updates = await new AppUpdateService((state) => {
         rendererEvents.send('app-update:changed', state);
@@ -286,6 +287,7 @@ if (ownsSingleInstanceLock)
           finishStage('initializeDatabase');
           reportProgress?.('CONNECTING_SERVICES', 55);
           targetGeneration = await BackgroundGenerationClient.create({
+            extensionRoots,
             databasePath: libraryDatabasePath(library),
             libraryRoot: library.rootPath,
             workerBundlePath: path.join(app.getAppPath(), 'out', 'main', 'model-worker.js'),
@@ -362,6 +364,7 @@ if (ownsSingleInstanceLock)
           let discoveryStartTimer: ReturnType<typeof setTimeout> | null = null;
           let unsubscribeCodexPending: (() => void) | null = null;
           let unsubscribeAssistantProgress: (() => void) | null = null;
+          let unsubscribeContent: (() => void) | null = null;
           const onGenerationChanged = (event: GenerationChangedEvent) => {
             if (event.terminal || !event.runId) targetDatabase.scheduleLibraryFileViewSynchronization();
             if (event.terminal && event.runId) {
@@ -421,6 +424,7 @@ if (ownsSingleInstanceLock)
               targetImageDiscovery!.on('changed', contextRendererEvents.codexImagesChanged);
               targetVisualizationDiscovery!.on('changed', contextRendererEvents.codexVisualizationsChanged);
               unsubscribeCodexPending = targetCodex.onPendingChanged(appShell.updateAppTray);
+              unsubscribeContent = subscribeCreatorChanges(targetDatabase, library.id, contextRendererEvents);
               unsubscribeAssistantProgress = targetAssistant.onProgress((event) => {
                 rendererEvents.send('assistant-run:progress', event);
               });
@@ -435,7 +439,7 @@ if (ownsSingleInstanceLock)
                 backgroundServicesStarted = true;
                 try {
                   targetDatabase.startBackgroundStorage();
-                  targetArticleDeliveryJobs.start();
+                  taskLifecycle.startBackgroundTasks();
                 } catch (error) {
                   console.error('[library-file-view] initial synchronization failed', error);
                 }
@@ -477,6 +481,8 @@ if (ownsSingleInstanceLock)
               return taskLifecycle.dispose(async () => {
                 unsubscribeCodexPending?.();
                 unsubscribeAssistantProgress?.();
+                unsubscribeContent?.();
+                unsubscribeContent = null;
                 unsubscribeCodexPending = null;
                 targetGeneration!.off('changed', onGenerationChanged);
                 targetGeneration!.off('worker-status-changed', contextRendererEvents.modelWorkerChanged);

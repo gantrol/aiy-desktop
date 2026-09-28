@@ -1,6 +1,8 @@
+import { materialAlbumMembershipApplySchema } from '@/shared/contracts/material-album-membership';
 import type { LibraryDatabase } from '@/main/database';
 import { albumOpenInputSchema } from '@/shared/contracts/app-deep-link';
 import { creationOutlineCommandSchema } from '@/shared/contracts/creation-outline';
+import { creationOrganizationCommandSchema } from '@/shared/contracts/creation-organization';
 import type { IpcHandlerRegistrar } from '@/main/ipc/trusted-handlers';
 import {
   creationFormAddOrGetInputSchema,
@@ -67,6 +69,9 @@ export function registerLibraryIpc(ipcMain: IpcHandlerRegistrar, database: Libra
   ipcMain.handle('creation-item:move', (_event, raw) =>
     database.moveCreationItem(creationItemMoveInputSchema.parse(raw)),
   );
+  ipcMain.handle('creation-organization:command', (_event, raw) =>
+    database.creationOrganizationCommand(creationOrganizationCommandSchema.parse(raw)),
+  );
   ipcMain.handle('creation-item:set-pinned', (_event, raw) =>
     database.setCreationItemPinned(creationItemSetPinnedInputSchema.parse(raw)),
   );
@@ -83,6 +88,9 @@ export function registerLibraryIpc(ipcMain: IpcHandlerRegistrar, database: Libra
   );
   ipcMain.handle('evaluation-suite:save', (_event, raw) =>
     database.saveEvaluationSuite(evaluationSuiteSaveInputSchema.parse(raw)),
+  );
+  ipcMain.handle('material-albums:apply-membership', (_event, raw) =>
+    database.applyMaterialAlbumMembership(materialAlbumMembershipApplySchema.parse(raw)),
   );
   ipcMain.handle('material-albums:list', (_event, raw) =>
     database.listMaterialAlbums(materialAlbumListSchema.parse(raw)),

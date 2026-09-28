@@ -34,6 +34,7 @@ import { Segmented, SegmentedItem } from '@/renderer/components/ui/segmented';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/renderer/components/ui/tabs';
 
 interface PreviewSnapshot {
+  preparation: NonNullable<ArticleWechatCopyOptions['preparation']>;
   content: ArticleContentInput;
   media: VideoDocumentRevisionMediaDto[];
   projection: ArticleWechatInteractionProjection | null;
@@ -279,8 +280,13 @@ export function ArticleWechatCopyAction({ locale, notify, onCopy }: Props) {
   async function openPreview() {
     try {
       setCopyError(null);
-      const content = session.captureSnapshot();
-      const expanded = await window.desktopApi.contentLibrary.render(content.markdown);
+      if (!(await session.flush('manual')))
+        throw new Error(
+          zh ? '请先保存文章并处理版本冲突。' : 'Save the article and resolve any revision conflict first.',
+        );
+      const article = session.capturePersistedArticle();
+      const content = article.content;
+      const expanded = await window.desktopApi.contentLibrary.freeze(content.markdown);
       const expandedContent = {
         ...content,
         markdown: expanded.markdown,
@@ -295,9 +301,10 @@ export function ArticleWechatCopyAction({ locale, notify, onCopy }: Props) {
       };
       const projection = articleWechatInteractionProjection(expandedContent.document, expandedContent.mediaBindings);
       const expandedProjectionMarkdown = projection
-        ? (await window.desktopApi.contentLibrary.render(projection.markdown)).markdown
+        ? (await window.desktopApi.contentLibrary.renderFrozen(projection.markdown, expanded.resolutionId)).markdown
         : null;
       setSnapshot({
+        preparation: { expectedRevisionId: article.revisionId, referenceResolutionId: expanded.resolutionId },
         content: expandedContent,
         projection,
         expandedProjectionMarkdown,
@@ -326,7 +333,7 @@ export function ArticleWechatCopyAction({ locale, notify, onCopy }: Props) {
   }
 
   async function copy() {
-    if (copying || !preview.value || preview.value.diagnostics.unavailableImageCount) return;
+    if (copying || !snapshot || !preview.value || preview.value.diagnostics.unavailableImageCount) return;
     setCopyError(null);
     setCopying(true);
     try {
@@ -347,7 +354,7 @@ export function ArticleWechatCopyAction({ locale, notify, onCopy }: Props) {
         );
         return;
       }
-      await onCopy({ linksAsEndReferences, locale });
+      await onCopy({ linksAsEndReferences, locale, preparation: snapshot.preparation });
       setOpen(false);
       setSnapshot(null);
     } catch (reason) {

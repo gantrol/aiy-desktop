@@ -1,3 +1,5 @@
+import { assertPublicContentLinks } from '@/shared/content-public-links';
+import { referenceFailure } from '@/shared/i18n/reference-outline';
 import type { ArticleDto, BrowserCompanionStageInput, BrowserCompanionWatermarkSelection } from '@/shared/contracts';
 import type { ArticleDeliveryUploadInput } from '@/shared/contracts/article-delivery';
 import { browserCompanionStageErrorCodeSchema } from '@/shared/contracts/browser-companion';
@@ -6,13 +8,20 @@ import {
   prepareArticleHandoff,
   prepareWechatArticleHandoff,
 } from '@/renderer/features/browser-companion/prepareArticleHandoff';
-import { articleDeliveryRequestErrorMessage } from '@/renderer/features/article-delivery/presentation';
+import {
+  articleDeliveryRequestErrorMessage,
+  articleDeliveryTargetUnavailableMessage,
+} from '@/renderer/features/article-delivery/presentation';
 import {
   articleUploadTargetKey,
   type ArticleDeliveryPreferences,
 } from '@/renderer/features/article-delivery/articleDeliveryPreferences';
 import type { ArticleDeliveryTarget } from '@/renderer/features/article-delivery/articleDeliveryTargets';
 import type { ArticleDeliveryProfileDraft } from '@/renderer/features/article-delivery/useArticleDeliverySetup';
+import {
+  isPublishingMaskError,
+  publishingMaskErrorMessage,
+} from '@/renderer/features/browser-companion/publishingMask';
 
 export interface PreparedArticleApiDelivery {
   key: string;
@@ -45,26 +54,44 @@ export async function prepareArticleDeliveryBatch({
   const apiInputs: PreparedArticleApiDelivery[] = [];
   const browserInputs: { key: string; input: BrowserCompanionStageInput }[] = [];
   const failures: Record<string, string> = {};
-  let expanded: Awaited<ReturnType<typeof window.desktopApi.contentLibrary.render>> | null = null;
+  let expanded: Awaited<ReturnType<typeof window.desktopApi.contentLibrary.freeze>> | null = null;
   let expansionError: string | null = null;
-  if (preferences.targets.some((target) => target.kind === 'BROWSER')) {
+  if (preferences.targets.length) {
     try {
-      // Expand the same saved content once for every selected browser destination.
-      expanded = await window.desktopApi.contentLibrary.render(article.content.markdown, spaceId);
+      // The entire mixed API/browser batch shares one durable source-resolution snapshot.
+      expanded = await window.desktopApi.contentLibrary.freeze(article.content.markdown, spaceId);
+      assertPublicContentLinks(expanded.markdown);
     } catch (reason) {
+      expanded = null;
       expansionError =
         reason && typeof reason === 'object' && 'code' in reason && reason.code === 'CONTENT_LIBRARY_SPACE_CHANGED'
           ? messages.articleDelivery.errors.DELIVERY_SPACE_CHANGED
-          : articleDeliveryRequestErrorMessage(reason, messages.articleDelivery);
+          : referenceFailure(
+              reason,
+              messages.referenceOutline,
+              articleDeliveryRequestErrorMessage(reason, messages.articleDelivery),
+            );
     }
   }
   for (const target of preferences.targets) {
     const key = articleUploadTargetKey(target);
     try {
+      if (!expanded) {
+        failures[key] = expansionError ?? messages.publishing.failed;
+        continue;
+      }
       if (target.kind === 'API') {
         const definition = definitions.get(key);
         const profile = profiles[key];
-        if (!definition?.activated || !profile?.slug) {
+        if (!definition) {
+          failures[key] = messages.articleDelivery.batch.missingExtension;
+          continue;
+        }
+        if (!definition.activated) {
+          failures[key] = articleDeliveryTargetUnavailableMessage(definition, messages);
+          continue;
+        }
+        if (!profile?.slug) {
           failures[key] = messages.articleDelivery.batch.unavailable;
           continue;
         }
@@ -78,6 +105,7 @@ export async function prepareArticleDeliveryBatch({
             spaceId,
             articleId: article.id,
             expectedRevisionId: article.revisionId,
+            referenceResolutionId: expanded.resolutionId,
             expectedDeliveryMode: definition.deliveryMode,
             expectedProfile: { slug: profile.slug, description: profile.description },
             watermark,
@@ -86,25 +114,24 @@ export async function prepareArticleDeliveryBatch({
         });
         continue;
       }
-      if (!expanded) {
-        failures[key] = expansionError ?? messages.publishing.failed;
-        continue;
-      }
       let preparationError = messages.publishing.failed;
       const notify = (message: string) => {
         preparationError = message;
       };
       const prepared =
-        target.target === 'wechat' && preferences.wechatMode === 'article'
+        target.target === 'wechat' && target.mode === 'article'
           ? await prepareWechatArticleHandoff({
               article,
+              spaceId,
               expandedContent: expanded,
+              referenceResolutionId: expanded.resolutionId,
               referenceTitle: messages.articleWechat.referenceTitle,
               copy: { ...messages.desktopPetals.document, ...messages.browserCompanion.wechatArticle },
               notify,
             })
           : await prepareArticleHandoff({
               article,
+              spaceId,
               expandedContent: expanded,
               target: target.target,
               copy: messages.desktopPetals.document,
@@ -116,6 +143,10 @@ export async function prepareArticleDeliveryBatch({
       }
       browserInputs.push({ key, input: { ...prepared, target: target.target, watermark } });
     } catch (reason) {
+      if (isPublishingMaskError(reason)) {
+        failures[key] = publishingMaskErrorMessage(reason, messages);
+        continue;
+      }
       const code = browserCompanionStageErrorCodeSchema.safeParse(reason instanceof Error ? reason.message : reason);
       failures[key] = code.success
         ? messages.browserCompanion.stageErrors[code.data]

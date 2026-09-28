@@ -1,3 +1,10 @@
+import {
+  itemAt,
+  itemById,
+  freshOutlineItem as freshItem,
+  type ItemLocation,
+} from '@/renderer/features/content-editor/outlineItemLocation';
+import { addOutlineItem, addOutlineParagraph } from '@/renderer/features/content-editor/outlineAppend';
 import { Extension, type Editor } from '@tiptap/core';
 import { Fragment, type Node as ProseMirrorNode } from '@tiptap/pm/model';
 import { Plugin, TextSelection, type EditorState, type Selection } from '@tiptap/pm/state';
@@ -8,11 +15,13 @@ import {
   copyOutlineSelection,
   pasteExternalOutlineText,
   pasteOutlineSelection,
+  pasteOutlineTable,
 } from '@/renderer/features/content-editor/outlineClipboard';
 import { continueOutlineLists } from '@/renderer/features/content-editor/outlineListContinuation';
 import { synchronizeContentEditorSelectionFromDom } from '@/renderer/features/content-editor/contentEditorKeyboard';
 import { handleOutlineArrow } from '@/renderer/features/content-editor/outlineKeyboardNavigation';
 import { commandMatchesShortcut } from '@/renderer/commands/app-shortcuts';
+import { handleOutlinePlainTextPaste } from '@/renderer/features/content-editor/outlinePlainTextPaste';
 import {
   focusOutlineItem,
   attachOutlineView,
@@ -21,7 +30,7 @@ import {
   outlinePlacementWithinFocus,
   outlineViewState,
   outlineVisibleItems,
-  OutlineView,
+  createOutlineViewPlugin,
   type OutlineViewState,
   selectOutlineItem,
   setOutlineView,
@@ -37,45 +46,6 @@ import {
   type OutlineDropPlacement,
 } from '@/renderer/features/content-editor/outlineMove';
 import { planOutlineBatchMove, type OutlineBatchMoveAction } from '@/renderer/features/content-editor/outlineBatch';
-
-interface ItemLocation {
-  item: ProseMirrorNode;
-  itemPos: number;
-  list: ProseMirrorNode;
-  listPos: number;
-  listDepth: number;
-  index: number;
-}
-
-function itemAt(state: EditorState, position: number): ItemLocation | null {
-  const resolved = state.doc.resolve(position);
-  for (let depth = resolved.depth; depth >= 2; depth -= 1) {
-    if (resolved.node(depth).type.name !== 'listItem') continue;
-    const listDepth = depth - 1;
-    if (!['bulletList', 'orderedList', 'taskList'].includes(resolved.node(listDepth).type.name)) return null;
-    for (let ancestor = 1; ancestor <= listDepth; ancestor += 1) {
-      if (resolved.node(ancestor).attrs.outlineRole === 'NOTE' || resolved.node(ancestor).type.name === 'taskList')
-        return null;
-    }
-    return {
-      item: resolved.node(depth),
-      itemPos: resolved.before(depth),
-      list: resolved.node(listDepth),
-      listPos: resolved.before(listDepth),
-      listDepth,
-      index: resolved.index(listDepth),
-    };
-  }
-  return null;
-}
-
-function itemById(state: EditorState, blockId: string): ItemLocation | null {
-  let position: number | null = null;
-  state.doc.descendants((node, pos) => {
-    if (position === null && node.type.name === 'listItem' && node.attrs.blockId === blockId) position = pos;
-  });
-  return position === null ? null : itemAt(state, position + 2);
-}
 
 function firstParagraphRange(location: ItemLocation) {
   if (location.item.firstChild?.type.name !== 'paragraph') return null;
@@ -121,11 +91,6 @@ function mainSelectionOffsets(location: ItemLocation, selection: Selection): [nu
   const range = firstParagraphRange(location);
   if (!range || selection.from < range.from || selection.to > range.to) return [0, 0];
   return [selection.from - range.from, selection.to - range.from];
-}
-
-function freshItem(editor: Editor, content: Fragment = Fragment.empty) {
-  const paragraph = editor.schema.nodes.paragraph.create({ blockId: crypto.randomUUID() }, content);
-  return editor.schema.nodes.listItem.create({ blockId: crypto.randomUUID() }, paragraph);
 }
 
 function siblings(location: ItemLocation) {
@@ -208,6 +173,13 @@ export function splitOutlineNote(editor: Editor): boolean {
   const main = location && firstParagraphRange(location);
   if (!main || editor.state.selection.from <= main.to) return false;
   if (editor.state.selection.$from.parent.type.name !== 'paragraph') return false;
+  const { $from, empty } = editor.state.selection;
+  let lastContent = location.item.firstChild;
+  location.item.forEach((child) => {
+    if (!isOutlineChildList({ type: child.type.name, attrs: child.attrs })) lastContent = child;
+  });
+  if (empty && !$from.parent.content.size && lastContent === $from.parent)
+    return addOutlineItem(editor, location.item.attrs.blockId, true);
   return editor.commands.splitBlock();
 }
 
@@ -270,14 +242,21 @@ export function moveOutlineSelection(
   selectedIds: readonly string[],
   targetId: string,
   placement: OutlineDropPlacement,
-  options: { expandTarget?: boolean } = {},
+  options: { expandTarget?: boolean; copy?: boolean } = {},
 ): boolean {
   if (!editor.isEditable || activeOutlineView(editor).composing) return false;
   const view = outlineViewState(editor.state);
-  const roots = outlineSelectionRoots(editor.state.doc.toJSON(), selectedIds);
+  let roots = outlineSelectionRoots(editor.state.doc.toJSON(), selectedIds);
   if (!roots.length || !outlinePlacementWithinFocus(editor.state.doc, view, roots, targetId, placement)) return false;
-  const next = moveOutlineStructure(editor.state.doc.toJSON(), roots, targetId, placement);
+  const next = moveOutlineStructure(editor.state.doc.toJSON(), roots, targetId, placement, options.copy);
   if (!next) return false;
+  if (options.copy) {
+    const existing = outlineItemRecords(editor.state.doc.toJSON());
+    roots = outlineSelectionRoots(
+      next,
+      [...outlineItemRecords(next).keys()].filter((id) => !existing.has(id)),
+    );
+  }
   const document = editor.schema.nodeFromJSON(next);
   if (document.eq(editor.state.doc)) return false;
   const source = roots.length === 1 ? itemById(editor.state, roots[0]) : null;
@@ -554,6 +533,11 @@ function handleOutlineStructureShortcut(editor: Editor, event: KeyboardEvent) {
     view.selected.at(-1) ??
     itemAt(editor.state, editor.state.selection.from)?.item.attrs.blockId ??
     null;
+  if (primary && !event.altKey && event.shiftKey && event.key === 'Enter') {
+    event.preventDefault();
+    addOutlineItem(editor);
+    return true;
+  }
   if (primary && !event.altKey && !event.shiftKey && event.key === 'Enter') {
     event.preventDefault();
     toggleOutlineTaskState(editor);
@@ -572,19 +556,7 @@ function handleOutlineSelectionKey(editor: Editor, event: KeyboardEvent) {
   if (event.key === 'Enter') {
     if (event.altKey || event.ctrlKey || event.metaKey) return false;
     if (!event.shiftKey) editOutlineSelection(editor);
-    else {
-      const active = outline.active ?? outline.selected.at(-1)!;
-      const location = itemById(editor.state, active);
-      const hardBreak = editor.schema.nodes.hardBreak;
-      if (location && hardBreak) {
-        const position = location.itemPos + 2 + (location.item.firstChild?.content.size ?? 0);
-        const transaction = closeHistory(editor.state.tr)
-          .setSelection(TextSelection.create(editor.state.doc, position))
-          .replaceSelectionWith(hardBreak.create());
-        attachOutlineView(transaction, { ...outline, selected: [], anchor: null, active: null }, outline);
-        editor.view.dispatch(transaction.scrollIntoView());
-      }
-    }
+    else addOutlineParagraph(editor);
   } else if (event.key === 'Delete' || event.key === 'Backspace') deleteOutlineSelection(editor);
   else if (event.key === 'Tab') shiftSelectedOutlineItems(editor, event.shiftKey);
   else if (event.key === 'ArrowUp' || event.key === 'ArrowDown') {
@@ -663,6 +635,10 @@ function handleOutlineEnter(editor: Editor, event: Event) {
   event.preventDefault();
   if (!state.selection.$from.sameParent(state.selection.$to)) {
     const ending = itemAt(state, state.selection.to);
+    if (ending?.itemPos === location.itemPos) {
+      editor.chain().deleteSelection().splitBlock().run();
+      return true;
+    }
     const first = firstParagraphRange(location);
     const last = ending && firstParagraphRange(ending);
     if (
@@ -691,6 +667,11 @@ function handleOutlineEnter(editor: Editor, event: Event) {
 
 function handleOutlineWritingKey(editor: Editor, event: KeyboardEvent) {
   if (handleOutlineBoundaryDelete(editor, event)) return true;
+  if (event.key === 'Enter' && event.shiftKey && !event.altKey && !event.ctrlKey && !event.metaKey) {
+    if (!addOutlineParagraph(editor, undefined, true)) return false;
+    event.preventDefault();
+    return true;
+  }
   if (event.key === 'Enter' && !event.shiftKey && !event.altKey && !event.ctrlKey && !event.metaKey)
     return handleOutlineEnter(editor, event);
   if (event.key !== 'Tab' || event.altKey || event.ctrlKey || event.metaKey) return false;
@@ -698,7 +679,6 @@ function handleOutlineWritingKey(editor: Editor, event: KeyboardEvent) {
   // Consume it before trying the command so the browser cannot focus a neighboring control.
   event.preventDefault();
   const location = itemAt(editor.state, editor.state.selection.from);
-  const range = location && firstParagraphRange(location);
   if (!location) {
     const { $from } = editor.state.selection;
     for (let depth = $from.depth; depth > 0; depth -= 1) {
@@ -710,15 +690,19 @@ function handleOutlineWritingKey(editor: Editor, event: KeyboardEvent) {
     }
     return true;
   }
-  if (!range || editor.state.selection.from < range.from || editor.state.selection.to > range.to) return true;
   if (event.shiftKey) outdentOutlineItem(editor, location.item.attrs.blockId);
   else indentOutlineItem(editor, location.item.attrs.blockId);
   return true;
 }
 
-export const OutlineEditing = Extension.create({
+export const OutlineEditing = Extension.create<{ preferenceKey: string | null }>({
   name: 'outlineEditing',
   priority: 1_100,
+  addOptions: () => ({ preferenceKey: null }),
+  onCreate() {
+    const focus = outlineViewState(this.editor.state).focus;
+    if (focus) focusOutlineItem(this.editor, focus);
+  },
   addKeyboardShortcuts() {
     // These format commands can lift the mandatory first paragraph out of its list item.
     return Object.fromEntries(
@@ -734,7 +718,7 @@ export const OutlineEditing = Extension.create({
   },
   addProseMirrorPlugins() {
     return [
-      OutlineView,
+      createOutlineViewPlugin(this.options.preferenceKey),
       new Plugin({
         appendTransaction: (transactions, oldState, state) => {
           if (
@@ -746,6 +730,10 @@ export const OutlineEditing = Extension.create({
           return continueOutlineLists(oldState, state);
         },
         props: {
+          handlePaste: (view, event, slice) => {
+            rememberOutlineView(this.editor, view);
+            return pasteOutlineTable(this.editor, event, slice);
+          },
           handleDOMEvents: {
             compositionstart: (view) => {
               rememberOutlineView(this.editor, view);
@@ -804,6 +792,7 @@ export const OutlineEditing = Extension.create({
             if (!this.editor.isEditable) return false;
             // Stop lower-priority editor keymaps without cancelling the IME's native confirmation.
             if (event.isComposing || event.keyCode === 229 || view.composing) return true;
+            if (handleOutlinePlainTextPaste(this.editor, view, event)) return true;
             if (event.key === 'Enter' && event.repeat) {
               event.preventDefault();
               return true;

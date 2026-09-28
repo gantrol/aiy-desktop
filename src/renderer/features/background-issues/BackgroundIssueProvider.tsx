@@ -1,6 +1,7 @@
 import { createContext, type ReactNode, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import type { BackgroundIssueDto } from '@/shared/contracts/background-issue';
 import { backgroundIssueIdentityKey } from '@/shared/contracts/background-issue';
+import { useI18n } from '@/renderer/i18n/useI18n';
 import {
   loadLegacyDismissedGenerationRunIds,
   removeLegacyDismissedGenerationRunIds,
@@ -9,7 +10,7 @@ import {
 interface BackgroundIssueContextValue {
   isAcknowledged(issue: BackgroundIssueDto | null | undefined): boolean;
   isPending(issue: BackgroundIssueDto | null | undefined): boolean;
-  acknowledge(issue: BackgroundIssueDto | null | undefined): Promise<void>;
+  acknowledge(issue: BackgroundIssueDto | null | undefined, refreshIssue?: () => Promise<unknown>): Promise<void>;
 }
 
 interface Props {
@@ -26,6 +27,7 @@ function scopedIssueKey(spaceId: string | null, issue: BackgroundIssueDto) {
 }
 
 export function BackgroundIssueProvider({ children, spaceId, refresh, notify }: Props) {
+  const copy = useI18n().messages.app.generationStatus;
   const [optimisticKeys, setOptimisticKeys] = useState<ReadonlySet<string>>(() => new Set());
   const [pendingKeys, setPendingKeys] = useState<ReadonlySet<string>>(() => new Set());
   const [legacyRunIds, setLegacyRunIds] = useState<ReadonlySet<string>>(loadLegacyDismissedGenerationRunIds);
@@ -49,19 +51,21 @@ export function BackgroundIssueProvider({ children, spaceId, refresh, notify }: 
   );
 
   const acknowledge = useCallback(
-    async (issue: BackgroundIssueDto | null | undefined) => {
+    async (issue: BackgroundIssueDto | null | undefined, refreshIssue = refresh) => {
       if (!issue || issue.acknowledgedAt || !spaceId) return;
       const key = scopedIssueKey(spaceId, issue);
       if (pendingKeysRef.current.has(key)) return;
       pendingKeysRef.current.add(key);
       setPendingKeys(new Set(pendingKeysRef.current));
       setOptimisticKeys((current) => new Set(current).add(key));
+      let refreshNeeded = false;
       try {
         const result = await window.desktopApi.backgroundIssueAcknowledge({
           kind: issue.kind,
           subjectId: issue.subjectId,
           occurrenceId: issue.occurrenceId,
         });
+        refreshNeeded = true;
         if (result.status === 'CONFLICT' || result.status === 'NOT_ACTIONABLE') {
           setOptimisticKeys((current) => {
             const next = new Set(current);
@@ -69,20 +73,27 @@ export function BackgroundIssueProvider({ children, spaceId, refresh, notify }: 
             return next;
           });
         }
-        await refresh();
-      } catch (reason) {
+      } catch {
         setOptimisticKeys((current) => {
           const next = new Set(current);
           next.delete(key);
           return next;
         });
-        notify(reason instanceof Error ? reason.message : String(reason));
+        notify(copy.dismissFailed);
       } finally {
         pendingKeysRef.current.delete(key);
         setPendingKeys(new Set(pendingKeysRef.current));
       }
+      if (refreshNeeded) {
+        // A refresh failure cannot undo a dismissal already committed to the library.
+        try {
+          await refreshIssue();
+        } catch {
+          notify(copy.refreshFailed);
+        }
+      }
     },
-    [notify, refresh, spaceId],
+    [copy.dismissFailed, copy.refreshFailed, notify, refresh, spaceId],
   );
 
   useEffect(() => {

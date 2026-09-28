@@ -1,14 +1,18 @@
+import type { CreationTreeDrag } from '@/renderer/components/albums/albumDrag';
 import { ArchiveIcon, ImagesIcon, PencilIcon, PlusIcon, Trash2Icon } from 'lucide-react';
 import type { Dispatch, DragEvent, SetStateAction } from 'react';
 import type { MaterialAlbumDto, MaterialSelectionTargetInput } from '@/shared/contracts';
 import {
-  hasCreationCollectionDrag,
+  beginMaterialAlbumDrag,
+  endMaterialAlbumDrag,
   hasExternalFilesDrag,
   hasMaterialAlbumDrag,
   hasMaterialsDrag,
-  readCreationCollectionDrag,
+  readCreationTreeDrag,
   readMaterialAlbumDrag,
   readMaterialsDrag,
+  materialDropSource,
+  materialDropEffect,
 } from '@/renderer/components/albums/albumDrag';
 import { AlbumTreePreview } from '@/renderer/components/albums/AlbumTreePreview';
 import { createAlbumExpansionAction } from '@/renderer/components/albums/albumTreeMenuActions';
@@ -34,7 +38,16 @@ import { ContextMenu, ContextMenuContent, ContextMenuTrigger } from '@/renderer/
 import { cn } from '@/renderer/lib/utils';
 import type { MaterialAlbumEditorState } from '@/renderer/components/gallery/MaterialAlbumDialogs';
 import { canMoveMaterialAlbumTo, type MaterialAlbumTreeIndex } from '@/renderer/components/gallery/materialAlbumTree';
-import { MaterialAlbumDragHandle } from '@/renderer/components/gallery/MaterialAlbumDragHandle';
+import {
+  itemDragStart,
+  itemDragScopeProps,
+  acceptsItemTransfer,
+  itemDragIntent,
+} from '@/renderer/components/albums/itemDrag';
+import {
+  startCollectionCardDrag,
+  endCollectionCardDrag,
+} from '@/renderer/components/gallery/collectionAlbumDragHandlers';
 import { useMaterialAlbumMoveActions } from '@/renderer/components/gallery/MaterialAlbumMoveProvider';
 
 export interface MaterialAlbumBranchLabels {
@@ -85,8 +98,8 @@ interface MaterialAlbumBranchProps extends SharedBranchProps {
   onEditorChange(state: MaterialAlbumEditorState): void;
   onArchive(album: MaterialAlbumDto): Promise<void>;
   onDelete(album: MaterialAlbumDto): Promise<void>;
-  onMove?(albumId: string, parentAlbumId: string | null): Promise<void>;
-  onCollectMaterials(albumId: string, targets: MaterialSelectionTargetInput[]): Promise<void>;
+  onMove?(albumId: string, parentAlbumId: string | null, copy?: boolean): Promise<void>;
+  onCollectMaterials(albumId: string, targets: MaterialSelectionTargetInput[], sourceAlbumId?: string): Promise<void>;
   onImportFiles?(album: MaterialAlbumDto, files: File[]): void;
 }
 
@@ -94,8 +107,8 @@ interface CreationAlbumBranchProps extends SharedBranchProps {
   busy: boolean;
   dropAlbumId: string | null;
   onDropAlbumChange: Dispatch<SetStateAction<string | null>>;
-  canMoveCreationAlbum?(albumId: string, parentAlbumId: string | null): boolean;
-  onMoveCreationAlbum?(albumId: string, parentAlbumId: string | null): Promise<void>;
+  canMoveCreationAlbum?(source: CreationTreeDrag, parentAlbumId: string | null, copy?: boolean): boolean;
+  onMoveCreationAlbum?(source: CreationTreeDrag, parentAlbumId: string | null, copy?: boolean): Promise<void>;
 }
 
 function materialAlbumLifecycleActions(
@@ -159,9 +172,12 @@ export function MaterialAlbumBranch(props: MaterialAlbumBranchProps) {
       )
     : immediateOpenHandlers<HTMLButtonElement>(() => onSelectAlbum(album.id));
   const acceptedAlbumMove = (event: DragEvent<HTMLElement>) => {
+    if (!acceptsItemTransfer(event)) return null;
     if (browseOnly || busy || !onMove || !hasMaterialAlbumDrag(event.dataTransfer)) return null;
     const sourceAlbumId = readMaterialAlbumDrag(event.dataTransfer);
-    return sourceAlbumId && canMoveMaterialAlbumTo(tree, sourceAlbumId, album.id) ? sourceAlbumId : null;
+    return sourceAlbumId && canMoveMaterialAlbumTo(tree, sourceAlbumId, album.id, itemDragIntent(event) === 'COPY')
+      ? sourceAlbumId
+      : null;
   };
   const actions: ActionMenuAction[] = [
     { id: 'open', label: labels.open, icon: ImagesIcon, onSelect: () => onSelectAlbum(album.id) },
@@ -198,6 +214,9 @@ export function MaterialAlbumBranch(props: MaterialAlbumBranchProps) {
 
   const row = (
     <div
+      draggable={!browseOnly && !busy && Boolean(onMove) && album.kind === 'USER'}
+      onDragStart={itemDragStart((event) => beginMaterialAlbumDrag(event.dataTransfer, album.id))}
+      onDragEnd={endMaterialAlbumDrag}
       data-album-id={album.id}
       data-tree-node-id={album.id}
       data-parent-album-id={album.parentId ?? ''}
@@ -210,7 +229,7 @@ export function MaterialAlbumBranch(props: MaterialAlbumBranchProps) {
         dropAlbumId === album.id && 'bg-accent ring-1 ring-inset ring-ring',
       )}
       onDragEnter={(event) => {
-        if (browseOnly) return;
+        if (browseOnly || (hasMaterialsDrag(event.dataTransfer) && materialDropEffect(event) === 'none')) return;
         if (hasMaterialAlbumDrag(event.dataTransfer)) {
           if (!acceptedAlbumMove(event)) return;
           event.preventDefault();
@@ -225,7 +244,7 @@ export function MaterialAlbumBranch(props: MaterialAlbumBranchProps) {
         onDropAlbumChange(album.id);
       }}
       onDragOver={(event) => {
-        if (browseOnly) return;
+        if (browseOnly || (hasMaterialsDrag(event.dataTransfer) && materialDropEffect(event) === 'none')) return;
         if (hasMaterialAlbumDrag(event.dataTransfer)) {
           if (!acceptedAlbumMove(event)) {
             event.dataTransfer.dropEffect = 'none';
@@ -233,31 +252,31 @@ export function MaterialAlbumBranch(props: MaterialAlbumBranchProps) {
           }
           event.preventDefault();
           event.stopPropagation();
-          event.dataTransfer.dropEffect = 'move';
+          event.dataTransfer.dropEffect = itemDragIntent(event) === 'COPY' ? 'copy' : 'move';
           return;
         }
         if (!hasMaterialsDrag(event.dataTransfer) && !(onImportFiles && hasExternalFilesDrag(event.dataTransfer)))
           return;
         event.preventDefault();
         event.stopPropagation();
-        event.dataTransfer.dropEffect = 'copy';
+        event.dataTransfer.dropEffect = hasMaterialsDrag(event.dataTransfer) ? materialDropEffect(event) : 'copy';
       }}
       onDragLeave={(event) => {
-        if (browseOnly) return;
+        if (browseOnly || (hasMaterialsDrag(event.dataTransfer) && materialDropEffect(event) === 'none')) return;
         if (!event.currentTarget.contains(event.relatedTarget as Node | null)) onDropAlbumChange(null);
       }}
       onDrop={(event: DragEvent<HTMLDivElement>) => {
-        if (browseOnly) return;
+        if (browseOnly || (hasMaterialsDrag(event.dataTransfer) && materialDropEffect(event) === 'none')) return;
         if (hasMaterialAlbumDrag(event.dataTransfer)) {
           const sourceAlbumId = acceptedAlbumMove(event);
           if (!sourceAlbumId) return;
           event.preventDefault();
           event.stopPropagation();
           onDropAlbumChange(null);
-          void onMove?.(sourceAlbumId, album.id).catch(() => undefined);
+          void onMove?.(sourceAlbumId, album.id, itemDragIntent(event) === 'COPY').catch(() => undefined);
           return;
         }
-        const targets = readMaterialsDrag(event.dataTransfer);
+        const targets = materialDropEffect(event) === 'none' ? [] : readMaterialsDrag(event.dataTransfer);
         const hasMaterials = targets.length > 0;
         const hasFiles = Boolean(onImportFiles && hasExternalFilesDrag(event.dataTransfer));
         if (!hasMaterials && !hasFiles) return;
@@ -265,7 +284,7 @@ export function MaterialAlbumBranch(props: MaterialAlbumBranchProps) {
         event.stopPropagation();
         onDropAlbumChange(null);
         if (hasMaterials) {
-          void onCollectMaterials(album.id, targets).catch(() => undefined);
+          void onCollectMaterials(album.id, targets, materialDropSource(event)).catch(() => undefined);
           return;
         }
         const files = [...event.dataTransfer.files];
@@ -292,8 +311,9 @@ export function MaterialAlbumBranch(props: MaterialAlbumBranchProps) {
         data-action="material-open-album"
         variant="ghost"
         className={cn(
-          'z-10 h-14 min-w-0 flex-1 justify-start border-transparent px-1 font-normal focus-visible:border-transparent focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-border-strong',
-          activeAlbumId === album.id && 'bg-transparent hover:bg-transparent focus-visible:bg-transparent',
+          'z-10 h-14 min-w-0 flex-1 justify-start border-transparent px-1 font-normal focus-visible:border-transparent focus-visible:ring-inset focus-visible:ring-offset-0',
+          activeAlbumId === album.id &&
+            'bg-transparent text-selected-foreground hover:bg-transparent active:bg-transparent focus-visible:bg-transparent after:pointer-events-none after:absolute after:inset-y-4 after:left-0 after:w-0.5 after:bg-current [&>span]:font-semibold',
         )}
         {...clickHandlers}
         onKeyDown={(event) => {
@@ -314,7 +334,6 @@ export function MaterialAlbumBranch(props: MaterialAlbumBranchProps) {
           {album.title}
         </span>
       </Button>
-      <MaterialAlbumDragHandle album={album} disabled={browseOnly || busy || !onMove} />
       <ActionMenuButton
         actions={actions}
         label={labels.moreActions(album.title)}
@@ -378,18 +397,18 @@ export function CreationAlbumBranch(props: CreationAlbumBranchProps) {
   const expanded = expansion.isOpen(album.id);
   const targetParentAlbumId =
     album.systemKey === 'CREATION_ROOT' ? null : album.systemKey === 'CREATION_GROUP' ? album.id : undefined;
+  const draggable = Boolean(
+    !busy && canMoveCreationAlbum && onMoveCreationAlbum && (album.sourceAlbumId || album.sourceSeriesId),
+  );
   const acceptedCreationMove = (event: DragEvent<HTMLElement>) => {
-    if (
-      busy ||
-      targetParentAlbumId === undefined ||
-      !canMoveCreationAlbum ||
-      !onMoveCreationAlbum ||
-      !hasCreationCollectionDrag(event.dataTransfer)
-    ) {
+    if (!acceptsItemTransfer(event)) return null;
+    if (busy || targetParentAlbumId === undefined || !canMoveCreationAlbum || !onMoveCreationAlbum) {
       return null;
     }
-    const sourceAlbumId = readCreationCollectionDrag(event.dataTransfer);
-    return sourceAlbumId && canMoveCreationAlbum(sourceAlbumId, targetParentAlbumId) ? sourceAlbumId : null;
+    const source = readCreationTreeDrag(event.dataTransfer);
+    return source && canMoveCreationAlbum(source, targetParentAlbumId, itemDragIntent(event) === 'COPY')
+      ? source
+      : null;
   };
   const clickHandlers = immediateOpenHandlers<HTMLButtonElement>(() => {
     if (children.length && !expanded) expansion.setPersistent(album.id, true);
@@ -411,6 +430,10 @@ export function CreationAlbumBranch(props: CreationAlbumBranchProps) {
   const row = (
     <div
       data-album-id={album.id}
+      {...itemDragScopeProps}
+      draggable={draggable}
+      onDragStart={itemDragStart((event) => startCollectionCardDrag(event, draggable ? 'CREATION' : null, album))}
+      onDragEnd={endCollectionCardDrag}
       data-tree-node-id={album.id}
       data-parent-album-id={album.parentId ?? ''}
       data-material-count={album.materialCount}
@@ -428,25 +451,28 @@ export function CreationAlbumBranch(props: CreationAlbumBranchProps) {
         onDropAlbumChange(album.id);
       }}
       onDragOver={(event) => {
-        if (!hasCreationCollectionDrag(event.dataTransfer)) return;
+        if (!readCreationTreeDrag(event.dataTransfer)) return;
+        event.preventDefault();
+        event.stopPropagation();
         if (!acceptedCreationMove(event)) {
           event.dataTransfer.dropEffect = 'none';
           return;
         }
-        event.preventDefault();
-        event.stopPropagation();
-        event.dataTransfer.dropEffect = 'move';
+        event.dataTransfer.dropEffect = itemDragIntent(event) === 'COPY' ? 'copy' : 'move';
       }}
       onDragLeave={(event) => {
         if (!event.currentTarget.contains(event.relatedTarget as Node | null)) onDropAlbumChange(null);
       }}
       onDrop={(event) => {
-        const sourceAlbumId = acceptedCreationMove(event);
-        if (!sourceAlbumId || targetParentAlbumId === undefined) return;
+        if (!readCreationTreeDrag(event.dataTransfer)) return;
         event.preventDefault();
         event.stopPropagation();
         onDropAlbumChange(null);
-        void onMoveCreationAlbum?.(sourceAlbumId, targetParentAlbumId).catch(() => undefined);
+        const source = acceptedCreationMove(event);
+        if (!source || targetParentAlbumId === undefined) return;
+        void onMoveCreationAlbum?.(source, targetParentAlbumId, itemDragIntent(event) === 'COPY').catch(
+          () => undefined,
+        );
       }}
     >
       <AlbumTreePreview
@@ -469,8 +495,9 @@ export function CreationAlbumBranch(props: CreationAlbumBranchProps) {
         data-action="material-open-album"
         variant="ghost"
         className={cn(
-          'z-10 h-14 min-w-0 flex-1 justify-start border-transparent px-1 font-normal focus-visible:border-transparent focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-border-strong',
-          activeAlbumId === album.id && 'bg-transparent hover:bg-transparent focus-visible:bg-transparent',
+          'z-10 h-14 min-w-0 flex-1 justify-start border-transparent px-1 font-normal focus-visible:border-transparent focus-visible:ring-inset focus-visible:ring-offset-0',
+          activeAlbumId === album.id &&
+            'bg-transparent text-selected-foreground hover:bg-transparent active:bg-transparent focus-visible:bg-transparent after:pointer-events-none after:absolute after:inset-y-4 after:left-0 after:w-0.5 after:bg-current [&>span]:font-semibold',
         )}
         {...clickHandlers}
         onKeyDown={(event) => {

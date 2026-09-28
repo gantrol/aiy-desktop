@@ -1,3 +1,4 @@
+import type { MaterialAlbumMembershipApplyInput } from '@/shared/contracts/material-album-membership';
 import type { LibraryDatabaseRepositories } from '@/main/database/library-database/repositories';
 import type {
   AddMaterialsToDestinationsInput,
@@ -214,6 +215,10 @@ export function createAssetLibraryApi(
 
     renameCreationAlbum(input: RenameCreationAlbumInput) {
       return repositories.materialAlbums.renameCreationAlbum(input);
+    },
+
+    applyMaterialAlbumMembership(input: MaterialAlbumMembershipApplyInput) {
+      return repositories.materialAlbums.applyMembership(input);
     },
 
     listMaterialAlbums(input: MaterialAlbumListInput = { locale: 'zh' }) {

@@ -1,5 +1,7 @@
 import { Button } from '@/renderer/components/ui/button';
 import { CreatorPaneResizeHandle } from '@/renderer/components/creator/CreatorPaneResizeHandle';
+import { WorkbenchPaneToggle } from '@/renderer/components/workbench/WorkbenchPane';
+import { beginPanePointerDrag, createPaneResizeGesture } from '@/renderer/components/workbench/paneResize';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/renderer/components/ui/collapsible';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/renderer/components/ui/tabs';
 import { Popover, PopoverContent, PopoverTrigger } from '@/renderer/components/ui/popover';
@@ -7,19 +9,12 @@ import { Slider } from '@/renderer/components/ui/slider';
 import { useContentWorkspacePanelSize } from '@/renderer/features/content-editor/useContentWorkspacePanelSize';
 import { useI18n } from '@/renderer/i18n/useI18n';
 import { cn } from '@/renderer/lib/utils';
-import {
-  ChevronDown,
-  ChevronUp,
-  Maximize2Icon,
-  Minimize2Icon,
-  PanelRightCloseIcon,
-  PanelRightOpenIcon,
-  Settings2Icon,
-} from 'lucide-react';
+import { ChevronDown, ChevronUp, Maximize2Icon, Minimize2Icon, Settings2Icon } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import {
   createContext,
   useContext,
+  useEffect,
   useRef,
   useState,
   type CSSProperties,
@@ -232,7 +227,7 @@ function contentWorkspacePanelClassName(focused: boolean, expanded: boolean) {
     !focused &&
       (expanded
         ? 'h-[var(--content-workspace-panel-height)] @[960px]/content-workspace:h-auto @[960px]/content-workspace:w-[var(--content-workspace-panel-width)]'
-        : '@[960px]/content-workspace:w-16'),
+        : '@[960px]/content-workspace:w-[52px]'),
   );
 }
 
@@ -292,7 +287,10 @@ export function ContentWorkspacePanels({
   const [localActive, setActive] = useState(tabs[0]?.id);
   const [localOpen, setOpen] = useState(true);
   const [maximized, setMaximized] = useState(false);
+  const [desktopDragWidth, setDesktopDragWidth] = useState<number | null>(null);
+  const desktopResizeCleanup = useRef<(() => void) | null>(null);
   const collapseRef = useRef<HTMLButtonElement>(null);
+  useEffect(() => () => desktopResizeCleanup.current?.(), []);
   const selected = tabs.find((tab) => tab.id === (active ?? localActive))?.id ?? tabs[0]?.id;
   const expanded = open ?? localOpen;
   const focused = expanded && maximized;
@@ -313,6 +311,51 @@ export function ContentWorkspacePanels({
     if (!value) setMaximized(false);
     onOpenChange?.(value);
   };
+  const activePanelLabel = tabs.find((tab) => tab.id === selected)?.label ?? copy.view;
+  const desktopCollapsedWidth = 52;
+  function beginDesktopResize(event: React.PointerEvent<HTMLDivElement>) {
+    if (size.compact || focused || event.button !== 0 || event.isPrimary === false) return;
+    desktopResizeCleanup.current?.();
+    const initialExpanded = expanded;
+    const initialWidth = size.width;
+    let currentOpen = expanded;
+    let currentWidth = initialWidth;
+    const gesture = createPaneResizeGesture(
+      { collapsed: !expanded, width: initialWidth },
+      { minimum: minimumWidth, maximum: size.maximumWidth, collapsedWidth: desktopCollapsedWidth },
+    );
+    desktopResizeCleanup.current = beginPanePointerDrag(
+      event,
+      (delta) => {
+        const next = gesture(-delta);
+        currentWidth = next.width;
+        const nextOpen = !next.collapsed;
+        if (nextOpen !== currentOpen) {
+          currentOpen = nextOpen;
+          changeOpen(nextOpen);
+        }
+        setDesktopDragWidth(nextOpen ? next.width : null);
+      },
+      (cancelled) => {
+        if (cancelled && currentOpen !== initialExpanded) changeOpen(initialExpanded);
+        if (!cancelled && currentOpen) size.change('width', currentWidth);
+        setDesktopDragWidth(null);
+        desktopResizeCleanup.current = null;
+      },
+    );
+  }
+  function changeDesktopWidth(value: number) {
+    if (!Number.isFinite(value)) return;
+    if (!expanded) {
+      if (value > desktopCollapsedWidth) changeOpen(true);
+      return;
+    }
+    if (value < minimumWidth - 48) {
+      changeOpen(false);
+      return;
+    }
+    size.change('width', Math.max(minimumWidth, value));
+  }
   if (!tabs.length) return null;
   return (
     <Collapsible asChild open={expanded} onOpenChange={changeOpen}>
@@ -321,7 +364,7 @@ export function ContentWorkspacePanels({
         data-panel-maximized={focused}
         style={
           {
-            '--content-workspace-panel-width': size.width + 'px',
+            '--content-workspace-panel-width': (desktopDragWidth ?? size.width) + 'px',
             '--content-workspace-panel-height': size.height + 'px',
           } as CSSProperties
         }
@@ -330,29 +373,29 @@ export function ContentWorkspacePanels({
         }
         className={contentWorkspacePanelClassName(focused, expanded)}
       >
-        {expanded && !focused && (
-          <>
-            <CreatorPaneResizeHandle
-              edge="left"
-              label={copy.resizePanelWidth}
-              value={size.width}
-              min={minimumWidth}
-              max={size.maximumWidth}
-              onPointerDown={(event) => size.beginResize('width', event)}
-              onValueChange={(value) => size.change('width', value)}
-              visibility="content-workspace"
-            />
-            <CreatorPaneResizeHandle
-              edge="top"
-              label={copy.resizePanelHeight}
-              value={size.height}
-              min={size.minimumHeight}
-              max={size.maximumHeight}
-              onPointerDown={(event) => size.beginResize('height', event)}
-              onValueChange={(value) => size.change('height', value)}
-              visibility="content-workspace"
-            />
-          </>
+        {!focused && !size.compact && (
+          <CreatorPaneResizeHandle
+            edge="left"
+            label={copy.resizePanelWidth}
+            value={expanded ? (desktopDragWidth ?? size.width) : desktopCollapsedWidth}
+            min={desktopCollapsedWidth}
+            max={size.maximumWidth}
+            onPointerDown={beginDesktopResize}
+            onValueChange={changeDesktopWidth}
+            visibility="always"
+          />
+        )}
+        {expanded && !focused && size.compact && (
+          <CreatorPaneResizeHandle
+            edge="top"
+            label={copy.resizePanelHeight}
+            value={size.height}
+            min={size.minimumHeight}
+            max={size.maximumHeight}
+            onPointerDown={(event) => size.beginResize('height', event)}
+            onValueChange={(value) => size.change('height', value)}
+            visibility="always"
+          />
         )}
         <ContentWorkspacePanelTabs
           tabs={tabs}
@@ -372,19 +415,13 @@ export function ContentWorkspacePanels({
           setMaximized={setMaximized}
         />
         {!size.compact && (
-          <CollapsibleTrigger asChild>
-            <Button
-              ref={collapseRef}
-              type="button"
-              variant="secondary"
-              size="icon-sm"
-              className="absolute bottom-2 right-2 z-chrome shadow-overlay"
-              aria-label={expanded ? copy.collapse : copy.expand}
-              title={expanded ? copy.collapse : copy.expand}
-            >
-              {expanded ? <PanelRightCloseIcon className="size-4" /> : <PanelRightOpenIcon className="size-4" />}
-            </Button>
-          </CollapsibleTrigger>
+          <WorkbenchPaneToggle
+            ref={collapseRef}
+            expanded={expanded}
+            side="right"
+            label={activePanelLabel}
+            onClick={() => changeOpen(!expanded)}
+          />
         )}
       </aside>
     </Collapsible>

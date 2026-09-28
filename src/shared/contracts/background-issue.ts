@@ -1,6 +1,10 @@
 import { z } from 'zod';
 
-export const backgroundIssueKindSchema = z.enum(['GENERATION_RUN', 'DIRECTION_EXPERIMENT_DIRECTOR']);
+export const backgroundIssueKindSchema = z.enum([
+  'GENERATION_RUN',
+  'DIRECTION_EXPERIMENT_DIRECTOR',
+  'ARTICLE_DELIVERY_JOB',
+]);
 export type BackgroundIssueKind = z.infer<typeof backgroundIssueKindSchema>;
 
 export const backgroundIssueOccurrenceIdSchema = z.string().regex(/^[0-9a-f]{64}$/);

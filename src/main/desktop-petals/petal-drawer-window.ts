@@ -125,25 +125,24 @@ export class PetalDrawerWindow {
       x: edge === 'left' ? content.x + content.width - Math.round(content.width * this.progress) : content.x,
     };
     const visible = this.progress === 0 ? handle : unionDrawer(handle, revealed);
-    const reservedHeight = this.menu ? 480 : 560;
-    let bounds =
-      this.menu || this.preview
-        ? {
-            x: Math.round(
-              clamp(visible.x + visible.width / 2 - 240, area.x, area.x + area.width - Math.min(480, area.width)),
+    const reservedHeight = 480;
+    let bounds = this.menu
+      ? {
+          x: Math.round(
+            clamp(visible.x + visible.width / 2 - 240, area.x, area.x + area.width - Math.min(480, area.width)),
+          ),
+          y: Math.round(
+            clamp(
+              visible.y + visible.height / 2 - reservedHeight / 2,
+              area.y,
+              area.y + area.height - Math.min(reservedHeight, area.height),
             ),
-            y: Math.round(
-              clamp(
-                visible.y + visible.height / 2 - reservedHeight / 2,
-                area.y,
-                area.y + area.height - Math.min(reservedHeight, area.height),
-              ),
-            ),
-            width: Math.min(480, area.width),
-            height: Math.min(reservedHeight, area.height),
-          }
-        : visible;
-    if (this.menu || this.preview) bounds = unionDrawer(bounds, visible);
+          ),
+          width: Math.min(480, area.width),
+          height: Math.min(reservedHeight, area.height),
+        }
+      : visible;
+    if (this.menu) bounds = unionDrawer(bounds, visible);
     if (this.localDrag) {
       const areas = screen.getAllDisplays().map((display) => display.workArea);
       const x = Math.min(...areas.map((a) => a.x)),

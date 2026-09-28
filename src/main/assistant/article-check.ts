@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { articleCheckBlockIsEligible, articleCheckRangeIsProtected } from '@/main/assistant/article-check-protected';
 import type { ArticleCheckInput, ArticleCheckResult } from '@/shared/contracts';
 import { articleCheckResultSchema } from '@/shared/contracts/article';
 
@@ -70,10 +71,16 @@ export function decodeArticleCheckResult(input: ArticleCheckInput, message: stri
   const findings = raw.issues.map((issue) => {
     const block = blocks.get(issue.blockIndex);
     if (!block) throw invalidOutput(`Codex targeted an unknown article block index: ${issue.blockIndex}`);
+    if (!articleCheckBlockIsEligible(block.nodeType)) {
+      throw invalidOutput(`Codex targeted an excluded article block index: ${issue.blockIndex}`);
+    }
     const startOffset = issue.startOffset;
     const endOffset = startOffset + issue.exactQuote.length;
     if (block.text.slice(startOffset, endOffset) !== issue.exactQuote) {
       throw invalidOutput(`Codex returned a quote that does not match block ${issue.blockIndex} at its startOffset`);
+    }
+    if (articleCheckRangeIsProtected(block.text, startOffset, endOffset)) {
+      throw invalidOutput(`Codex targeted protected technical text in block ${issue.blockIndex}`);
     }
     const body = issue.comment.trim();
     const key = `${block.elementId}\u0000${startOffset}\u0000${issue.exactQuote}\u0000${body}`;

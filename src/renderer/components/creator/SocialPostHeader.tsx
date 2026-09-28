@@ -16,6 +16,7 @@ import type { BrowserCompanionTarget, BrowserCompanionWatermarkSelection } from 
 
 interface Props {
   pinAction?: ReactNode;
+  viewAction?: ReactNode;
   conflicted?: boolean;
   creatingForm: boolean;
   generatingCover: boolean;
@@ -80,6 +81,7 @@ function SocialPostSaveStatus({
 
 export function SocialPostHeader({
   pinAction,
+  viewAction,
   conflicted,
   creatingForm,
   generatingCover,
@@ -110,8 +112,9 @@ export function SocialPostHeader({
           saving={saving}
         />
       </div>
-      <div className="flex shrink-0 items-center gap-1">
+      <div className="flex min-w-0 flex-wrap items-center gap-1">
         {pinAction}
+        {viewAction}
         <CreationWorkNavigation />
         <DropdownMenu>
           <DropdownMenuTrigger asChild>

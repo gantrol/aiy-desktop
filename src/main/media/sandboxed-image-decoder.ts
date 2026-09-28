@@ -1,6 +1,7 @@
-import { app, BrowserWindow, ipcMain, type IpcMainEvent } from 'electron';
+import { BrowserWindow, ipcMain, type IpcMainEvent } from 'electron';
 import { randomUUID } from 'node:crypto';
 import path from 'node:path';
+import { rendererRuntimePath } from '@/main/app/renderer-runtime-paths';
 import { readBoundedImageFile } from '@/main/media/bounded-image-file';
 import { imageDimensions } from '@/main/media/image-dimensions';
 import { gifMetadata } from '@/shared/gif-metadata';
@@ -161,7 +162,7 @@ async function createDecoderWindow() {
     width: 1,
     height: 1,
     webPreferences: {
-      preload: path.join(app.getAppPath(), 'out', 'preload', 'image-decoder.js'),
+      preload: rendererRuntimePath('preload', 'image-decoder.js'),
       partition: decoderPartition,
       backgroundThrottling: false,
       contextIsolation: true,

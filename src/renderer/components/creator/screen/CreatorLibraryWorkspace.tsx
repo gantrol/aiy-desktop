@@ -35,6 +35,16 @@ export function CreatorLibraryWorkspace({ model }: Pick<Props, 'model'>) {
     void animation?.open({ documentId });
   });
   const openInNewTab = useStableCallback(app.onOpenInNewTab);
+  const selectDraft = useStableCallback((id: string) => void navigation.creation.resumeCreationDraft(id));
+  const beforeDeleteDraft = useStableCallback(async (draftId: string | null) => {
+    const session = selection.creationDraftSession;
+    const currentId = session.getDraftId();
+    if (projection.creatorSurface !== 'new-creation' || !currentId || (draftId && currentId !== draftId)) return;
+    // Include the editor's most recent input in the undoable draft before deleting it.
+    await session.saveDraftNow();
+    session.invalidateAutosaves();
+  });
+  const draftsDeleted = useStableCallback(navigation.creation.discardDeletedDraft);
   const startNewCreation = useStableCallback(() => void navigation.creation.startNewCreation(null, 'push'));
   const startNewCreationInAlbum = useStableCallback(
     (albumId: string) => void navigation.creation.startNewCreation(albumId, 'push'),
@@ -43,8 +53,6 @@ export function CreatorLibraryWorkspace({ model }: Pick<Props, 'model'>) {
     library.setCreateAlbumRequest({ parent, destination: 'LIBRARY' }),
   );
   const setLibraryMode = useStableCallback((mode: Parameters<typeof projection.panes.setResultLibraryMode>[0]) => {
-    if (mode === 'outline' && projection.panes.multiPane && !projection.panes.canExpandResultLibrary)
-      projection.panes.setOutputCollapsed(true);
     projection.panes.setResultLibraryMode(mode);
   });
   return (
@@ -65,6 +73,10 @@ export function CreatorLibraryWorkspace({ model }: Pick<Props, 'model'>) {
         activeContent={app.documentWorkspaceActive ? 'documents' : 'images'}
         filter={selection.creationLibraryFilter}
         selectedSeriesId={selection.seriesId}
+        selectedDraftId={projection.creatorSurface === 'new-creation' ? selection.creationDraftSession.draftId : null}
+        onSelectDraft={selectDraft}
+        onBeforeDeleteDraft={beforeDeleteDraft}
+        onDraftsDeleted={draftsDeleted}
         selectedDerivedVisualId={workbench.editorDerivedVisual?.id ?? null}
         selectedAnimationId={
           animationWorkspace && app.location.surface === 'animation' ? app.location.documentId : null
@@ -85,6 +97,7 @@ export function CreatorLibraryWorkspace({ model }: Pick<Props, 'model'>) {
             ? 'full'
             : projection.panes.resultLibraryMode
         }
+        expandedMode={projection.panes.resultLibraryView}
         canExpand={projection.panes.canExpandResultLibrary}
         resizeValue={projection.panes.resultWidth}
         resizeMin={projection.panes.resultResizeMin}
@@ -139,6 +152,11 @@ export function CreatorSpecializedWorkspace({ imageBreakdownSourceFormId, model 
         createArticle: workflow.content.article.createArticleFromArticle,
         export: workflow.content.article.exportMarkdown,
         generateHeader: workflow.content.derivedVisual.openArticleHeaderWorkspace,
+        openCoverGeneration: ({ visualId, task }) =>
+          void workflow.content.derivedVisual.resumeDerivedVisual(visualId, {
+            versionId: task.versionId,
+            assetId: null,
+          }),
         generateIllustration: workflow.content.derivedVisual.openArticleIllustrationWorkspace,
         onSaved: app.onArticleSaved,
         editCreationInput: navigation.content.chooseInspirationStash,
@@ -149,7 +167,6 @@ export function CreatorSpecializedWorkspace({ imageBreakdownSourceFormId, model 
       albumActions={{
         moveAlbum: library.actions.moveAlbum,
         moveCreationItem: library.actions.moveCreationItem,
-        openOutline: (albumId) => app.onOpenInNewTab({ view: 'creator', location: { surface: 'outline', albumId } }),
         openCreationForm: (form) => {
           switch (form.role) {
             case 'ANIMATION':

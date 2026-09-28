@@ -82,7 +82,7 @@ export function createLibraryDatabaseRepositories(storage: LibraryStorage) {
   const directionExperimentTasks = new DirectionExperimentTaskRepository(storage, backgroundIssues);
   const styleExplorations = new StyleExplorationRepository(storage, directionExperimentTasks);
   const extensions = new ExtensionRepository(storage);
-  const articleDeliveryJobs = new ArticleDeliveryJobRepository(storage);
+  const articleDeliveryJobs = new ArticleDeliveryJobRepository(storage, backgroundIssues);
   const providerDescriptions = new ProviderDescriptionRepository(storage);
   const imageEdits = new ImageEditRepository(storage);
   const imageTransforms = new ImageTransformRepository(storage);

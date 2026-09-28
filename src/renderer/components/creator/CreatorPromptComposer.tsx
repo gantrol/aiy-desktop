@@ -333,7 +333,7 @@ export const CreatorPromptComposer = forwardRef<CreatorPromptComposerHandle, Pro
         return true;
       },
     },
-    onCreate: ({ editor: current }) => setEditorIsEmpty(blockDocumentIsEmpty({ root: current.getJSON() })),
+    onCreate: ({ editor: current }) => publish.current(current),
     onUpdate: ({ editor: current, transaction }) => {
       if (!composition.defers(current, transaction)) publish.current(current);
     },
@@ -372,11 +372,12 @@ export const CreatorPromptComposer = forwardRef<CreatorPromptComposerHandle, Pro
     nodes: [desired],
     signature: document ? JSON.stringify(document) : JSON.stringify(normalizeCreatorPromptNodes(nodes)),
     bridge: bridgeSnapshot,
-    currentSignature: (current) =>
-      document ? JSON.stringify(captureBlockDocument(current.getJSON())) : JSON.stringify(documentFromEditor(current)),
+    // Legacy inputs must publish their hydrated block document even when their
+    // prompt projection matches, so departing saves retain the same document.
+    currentSignature: (current) => JSON.stringify(captureBlockDocument(current.getJSON())),
     content: ([value], bridge) =>
       value.document?.root ?? captureBlockDocument(editorJsonFromNodes(value.nodes, bridge)).root,
-    onContentChange: (current) => setEditorIsEmpty(blockDocumentIsEmpty({ root: current.getJSON() })),
+    onContentChange: (current) => publish.current(current),
   });
 
   const focusAt = useCallback(

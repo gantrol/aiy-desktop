@@ -1,5 +1,30 @@
 import { contentLookupInputSchema, type ContentLookupApi } from '@/shared/contracts/content-search';
 import { z } from 'zod';
+import { blockDocumentSchema } from '@/shared/contracts/block-document';
+import {
+  referencePresentationSchema,
+  referenceEditingSchema,
+  type ReferenceEditing,
+  type ReferencePresentation,
+} from '@/shared/content-reference-token';
+import {
+  articleStructureInputSchema,
+  type ArticleStructureInput,
+  type ArticleStructurePage,
+} from '@/shared/contracts/article-structure';
+import {
+  outlineTransferInputSchema,
+  type OutlineTransferInput,
+  type OutlineTransferResult,
+} from '@/shared/contracts/outline-transfer';
+import {
+  contentLinkInputSchema,
+  outlineLinkedCreateInputSchema,
+  type ContentLinkInput,
+  type ContentLinkResult,
+  type ContentLinkUses,
+  type OutlineLinkedCreateInput,
+} from '@/shared/contracts/content-links';
 import {
   agentContentTargetSchema,
   type AgentContentTarget,
@@ -56,7 +81,9 @@ export type ContentDocument = z.infer<typeof contentDocumentSchema>;
 export const contentReferenceSchema = z
   .object({
     id,
+    spaceId: id.optional(),
     source: referenceSourceSchema,
+    document: blockDocumentSchema.optional(),
     title: z.string(),
     revisionId: id,
     contentHash: z.string(),
@@ -69,9 +96,40 @@ export const contentReferenceSchema = z
   })
   .strict();
 export type ContentReference = z.infer<typeof contentReferenceSchema>;
+export const resolvedContentReferenceSchema = z.object({
+  reference: contentReferenceSchema,
+  captured: contentReferenceSchema.optional(),
+  mode: z.enum(['FIXED', 'FOLLOW']),
+  state: z.enum(['CURRENT', 'UNAVAILABLE']),
+  reason: z.string().optional(),
+});
+export type ResolvedContentReference = z.infer<typeof resolvedContentReferenceSchema>;
+export const contentResolutionSchema = z.object({
+  resolutionId: id,
+  markdown: z.string().max(1_000_000),
+  media: z.array(contentMediaSchema).max(400),
+  contentHash: z.string(),
+});
+export type ContentResolution = z.infer<typeof contentResolutionSchema>;
+export const referenceHistoryResultSchema = z
+  .object({
+    spaceId: id,
+    articleId: id,
+    revisionId: id,
+    state: z.enum(['COMPLETE', 'UNAVAILABLE', 'LEGACY']),
+    resolutionId: id.optional(),
+    markdown: z.string().max(1_000_000),
+    media: z.array(contentMediaSchema).max(400),
+    bindings: z.record(id, id),
+  })
+  .strict();
+export type ReferenceHistoryResult = z.infer<typeof referenceHistoryResultSchema>;
 export const referencePreviewSchema = z
   .object({
+    spaceId: z.string().min(1).max(200).optional(),
     target: referenceTargetSchema,
+    document: blockDocumentSchema.optional(),
+    resolutionId: id.optional(),
     title: z.string(),
     version: id,
     revisionId: id,
@@ -97,11 +155,45 @@ export const referenceSearchResultSchema = z.object({
 export const referenceUsesSchema = z.object({
   scope: z.literal('CURRENT_ARTICLES'),
   items: z
-    .array(z.object({ source: contentSourceSchema, title: z.string(), blockId: id.nullable(), referenceId: id }))
+    .array(
+      z.object({
+        source: contentSourceSchema,
+        title: z.string(),
+        blockId: id.nullable(),
+        referenceId: id,
+        relation: z.enum(['DIRECT', 'CONTAINED']),
+        mode: z.enum(['FIXED', 'FOLLOW']),
+        via: referenceTargetSchema,
+        path: z.array(z.object({ blockId: id, title: z.string() })).max(200),
+      }),
+    )
     .max(1000),
+  partial: z.boolean(),
   nextOffset: z.number().nullable(),
 });
+export type ReferenceUse = z.infer<typeof referenceUsesSchema>['items'][number];
 export const contentLibraryCommandSchema = z.discriminatedUnion('kind', [
+  z.object({ kind: z.literal('reference-history'), articleId: id, revisionId: id, spaceId: id }).strict(),
+  z.object({ kind: z.literal('article-structure'), input: articleStructureInputSchema }).strict(),
+  z
+    .object({
+      kind: z.literal('content-link-resolve'),
+      input: contentLinkInputSchema,
+    })
+    .strict(),
+  z
+    .object({
+      kind: z.literal('outline-linked-create'),
+      input: outlineLinkedCreateInputSchema,
+    })
+    .strict(),
+  z
+    .object({
+      kind: z.literal('content-link-uses'),
+      input: contentLinkInputSchema,
+      offset: z.number().int().min(0).max(1_000_000).default(0),
+    })
+    .strict(),
   z.object({ kind: z.literal('agent-link'), target: agentContentTargetSchema }).strict(),
   z.object({ kind: z.literal('lookup'), input: contentLookupInputSchema }).strict(),
   z
@@ -114,8 +206,31 @@ export const contentLibraryCommandSchema = z.discriminatedUnion('kind', [
     .strict(),
   z.object({ kind: z.literal('reference-inspect'), target: referenceTargetSchema }).strict(),
   z.object({ kind: z.literal('reference-open'), target: referenceTargetSchema, referenceId: id.optional() }).strict(),
-  z.object({ kind: z.literal('reference-capture'), target: referenceTargetSchema, expectedVersion: id }).strict(),
-  z.object({ kind: z.literal('reference-copy'), id, format: z.enum(['REFERENCE', 'TEXT']) }).strict(),
+  z
+    .object({
+      kind: z.literal('reference-capture'),
+      target: referenceTargetSchema,
+      expectedVersion: id,
+      resolutionId: id.optional(),
+    })
+    .strict(),
+  z.object({ kind: z.literal('reference-follow'), target: referenceTargetSchema, expectedVersion: id }).strict(),
+  z.object({ kind: z.literal('reference-resolve'), ids: z.array(id).max(100) }).strict(),
+  z
+    .object({ kind: z.literal('reference-freeze'), id, expectedRevisionId: id, expectedContentHash: z.string() })
+    .strict(),
+  z
+    .object({
+      kind: z.literal('reference-copy'),
+      id,
+      format: z.enum(['REFERENCE', 'TEXT']),
+      presentation: referencePresentationSchema.optional(),
+      editing: referenceEditingSchema.optional(),
+      parentLevel: z.number().int().min(0).max(6).optional(),
+      expectedRevisionId: id.optional(),
+      expectedContentHash: z.string().optional(),
+    })
+    .strict(),
   z
     .object({
       kind: z.literal('reference-uses'),
@@ -123,7 +238,7 @@ export const contentLibraryCommandSchema = z.discriminatedUnion('kind', [
       offset: z.number().int().min(0).max(1_000_000).default(0),
     })
     .strict(),
-  z.object({ kind: z.literal('link-preview'), url: linkCardUrlSchema }).strict(),
+  z.object({ kind: z.literal('link-preview'), url: linkCardUrlSchema, refresh: z.boolean().optional() }).strict(),
   z.object({ kind: z.literal('link-open'), url: linkCardUrlSchema }).strict(),
   z
     .object({
@@ -146,8 +261,18 @@ export const contentLibraryCommandSchema = z.discriminatedUnion('kind', [
     .strict(),
   z.object({ kind: z.literal('references'), ids: z.array(id).max(100) }).strict(),
   z.object({ kind: z.literal('render'), markdown: z.string().max(1_000_000), expectedSpaceId: id.optional() }).strict(),
+  z.object({ kind: z.literal('freeze'), markdown: z.string().max(1_000_000), expectedSpaceId: id.optional() }).strict(),
+  z
+    .object({
+      kind: z.literal('render-frozen'),
+      markdown: z.string().max(1_000_000),
+      resolutionId: id,
+      expectedSpaceId: id.optional(),
+    })
+    .strict(),
   z.object({ kind: z.literal('note-open'), id }).strict(),
   z.object({ kind: z.literal('note-save'), input: desktopNoteSaveSchema }).strict(),
+  z.object({ kind: z.literal('outline-transfer'), input: outlineTransferInputSchema }).strict(),
   z.object({ kind: z.literal('note-checkpoint'), input: desktopNoteDraftSchema }).strict(),
   z.object({ kind: z.literal('note-comment-mutate'), input: noteCommentMutationInputSchema }).strict(),
   z.object({ kind: z.literal('reveal'), source: contentSourceSchema }).strict(),
@@ -159,6 +284,12 @@ export const contentSearchResultSchema = z.object({
 });
 export const contentNoteOpenSchema = z.object({ note: desktopNoteSchema, draft: desktopNoteDraftDtoSchema.nullable() });
 export interface ContentLibraryApi extends ContentLookupApi {
+  referenceHistory(articleId: string, revisionId: string, spaceId: string): Promise<ReferenceHistoryResult>;
+  articleStructure(input: ArticleStructureInput): Promise<ArticleStructurePage>;
+  outlineTransfer(input: OutlineTransferInput): Promise<OutlineTransferResult>;
+  linkResolve(input: ContentLinkInput): Promise<ContentLinkResult>;
+  outlineLinkedCreate(input: OutlineLinkedCreateInput): Promise<ContentLinkResult>;
+  linkUses(input: ContentLinkInput, offset?: number): Promise<ContentLinkUses>;
   agentLink(target: AgentContentTarget): Promise<AgentContentLinkResult>;
   referenceSearch(
     category: 'CONTENT' | 'CREATION_ITEM' | 'ALBUM',
@@ -167,10 +298,23 @@ export interface ContentLibraryApi extends ContentLookupApi {
   ): Promise<z.infer<typeof referenceSearchResultSchema>>;
   referenceInspect(target: ReferenceTarget): Promise<ReferencePreview>;
   referenceOpen(target: ReferenceTarget, referenceId?: string): Promise<ReferenceOpenResult>;
-  referenceCapture(target: ReferenceTarget, expectedVersion: string): Promise<ContentReference>;
-  referenceCopy(id: string, format: 'REFERENCE' | 'TEXT'): Promise<void>;
+  referenceCapture(target: ReferenceTarget, expectedVersion: string, resolutionId?: string): Promise<ContentReference>;
+  referenceFollow(target: ReferenceTarget, expectedVersion: string): Promise<ContentReference>;
+  referenceResolve(ids: string[]): Promise<ResolvedContentReference[]>;
+  referenceFreeze(id: string, expectedRevisionId: string, expectedContentHash: string): Promise<ContentReference>;
+  referenceCopy(
+    id: string,
+    format: 'REFERENCE' | 'TEXT',
+    options?: {
+      presentation?: ReferencePresentation;
+      editing?: ReferenceEditing;
+      parentLevel?: number;
+      expectedRevisionId?: string;
+      expectedContentHash?: string;
+    },
+  ): Promise<void>;
   referenceUses(target: ReferenceTarget, offset?: number): Promise<z.infer<typeof referenceUsesSchema>>;
-  linkPreview(url: string): Promise<LinkPreview>;
+  linkPreview(url: string, refresh?: boolean): Promise<LinkPreview>;
   linkOpen(url: string): Promise<void>;
   search(query: string, offset?: number): Promise<z.infer<typeof contentSearchResultSchema>>;
   read(source: ContentSource): Promise<ContentDocument>;
@@ -178,6 +322,12 @@ export interface ContentLibraryApi extends ContentLookupApi {
   capture(input: Omit<Extract<ContentLibraryCommand, { kind: 'capture' }>, 'kind'>): Promise<ContentReference>;
   references(ids: string[]): Promise<ContentReference[]>;
   render(markdown: string, expectedSpaceId?: string): Promise<{ markdown: string; media: ContentDocument['media'] }>;
+  freeze(markdown: string, expectedSpaceId?: string): Promise<ContentResolution>;
+  renderFrozen(
+    markdown: string,
+    resolutionId: string,
+    expectedSpaceId?: string,
+  ): Promise<{ markdown: string; media: ContentDocument['media'] }>;
   noteOpen(id: string): Promise<z.infer<typeof contentNoteOpenSchema>>;
   noteSave(input: z.infer<typeof desktopNoteSaveSchema>): Promise<z.infer<typeof desktopNoteSchema>>;
   noteCheckpoint(input: z.infer<typeof desktopNoteDraftSchema>): Promise<void>;
@@ -186,7 +336,5 @@ export interface ContentLibraryApi extends ContentLookupApi {
   ): Promise<z.infer<typeof noteCommentMutationResultSchema>>;
   reveal(source: ContentSource): Promise<void>;
 }
-export function contentReferenceToken(id: string) {
-  return `:::aiy-block ${id}\n:::`;
-}
+export { contentReferenceToken } from '@/shared/content-reference-token';
 export const contentReferencePattern = /^:::aiy-block ([A-Za-z0-9_-]{1,200})\r?\n:::[ \t]*$/gmu;

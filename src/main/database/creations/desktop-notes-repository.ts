@@ -33,26 +33,43 @@ const hasInitialContent = (initial?: DesktopNoteInitial) =>
 const noteQuery = `SELECT n.* FROM desktop_note_instances n JOIN articles s ON s.id = n.stash_id WHERE s.status = 'ACTIVE' AND s.deleted_at IS NULL`;
 
 export class DesktopNotesRepository {
-  summaries(): { id: string; title: string; color: PetalColor; icon: PetalIcon; hasImages: boolean }[] {
+  summaries(): {
+    id: string;
+    stashId: string;
+    title: string;
+    color: PetalColor;
+    icon: PetalIcon;
+    hasImages: boolean;
+  }[] {
     const rows = this.db
       .prepare(
-        `SELECT n.id,n.color,n.icon,
+        `SELECT n.id,n.stash_id AS stashId,n.color,n.icon,
       COALESCE(json_extract(r.content_json,'$.title'),'') AS title,
       substr(COALESCE(json_extract(r.content_json,'$.markdown'),
         (SELECT group_concat(part,' ') FROM (
           SELECT substr(atom,1,480) AS part FROM json_tree(r.content_json,'$.document.root')
           WHERE key='text' AND type='text' LIMIT 8
         )),''),1,480) AS excerpt,
-      COALESCE(json_array_length(r.content_json,'$.mediaBindings'),0)>0 AS hasImages
+      COALESCE(json_array_length(r.content_json,'$.mediaBindings'),0)>0 AS hasImages,
+      COALESCE(json_extract(r.content_json,'$.files[0].name'),'') AS fileName
       FROM desktop_note_instances n JOIN articles s ON s.id=n.stash_id
       JOIN article_revisions r ON r.id=s.current_revision_id
       WHERE s.status='ACTIVE' AND s.deleted_at IS NULL ORDER BY n.created_at,n.id`,
       )
-      .all() as { id: string; title: string; excerpt: string; color: PetalColor; icon: PetalIcon; hasImages: number }[];
-    return rows.map(({ excerpt, hasImages, ...row }) => ({
+      .all() as {
+      id: string;
+      stashId: string;
+      title: string;
+      excerpt: string;
+      color: PetalColor;
+      icon: PetalIcon;
+      hasImages: number;
+      fileName: string;
+    }[];
+    return rows.map(({ excerpt, hasImages, fileName, ...row }) => ({
       ...row,
       hasImages: Boolean(hasImages),
-      title: petalLabel(row.title, excerpt),
+      title: petalLabel(row.title, excerpt) || petalLabel(fileName, ''),
     }));
   }
   private readonly inspirations: InspirationStashRepository;

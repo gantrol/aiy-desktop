@@ -1,4 +1,6 @@
 import type { CreationItemDto, InspirationStashDto } from '@/shared/contracts';
+import { petalNoteSummarySchema } from '@/shared/contracts/petal-note-summary';
+import type { ContentAlbumOption } from '@/shared/content-album-options';
 import { blockDocumentSchema, type BlockDocument } from '@/shared/contracts/block-document';
 import type { CodexContentApi } from '@/shared/contracts/codex-content';
 import { contentApplicationSchema, type ContentApplicationsApi } from '@/shared/contracts/content-applications';
@@ -30,6 +32,7 @@ import {
 } from '@/shared/contracts/petal-hub';
 import type { PetalLanguage } from '@/shared/contracts/petal-language';
 import { z } from 'zod';
+import { petalContentScaleSchema } from '@/shared/petal-display';
 import { noteFileSchema, type NoteFile, type NoteFileCommand } from '@/shared/contracts/note-files';
 import {
   contentCommentAnchorSchema,
@@ -186,10 +189,13 @@ export const desktopPetalSnapshotSchema = z
       .default({}),
     expanded: z.boolean(),
     alwaysOnTop: z.boolean().default(true),
+    contentScale: petalContentScaleSchema.optional(),
+    applicationPanelHeight: z.number().int().min(0).max(400).optional(),
     collectionUndo: z.object({ token: z.string().uuid(), expiresAt: z.number() }).nullable().default(null),
     editEpoch: z.number().int().nonnegative().default(0),
     point: petalPointSchema,
     notes: z.array(desktopNoteSchema),
+    summary: petalNoteSummarySchema.nullable().default(null),
     draft: desktopNoteDraftDtoSchema.nullable(),
     suspended: z.boolean(),
     contentActions: z.array(z.string()).default([]),
@@ -246,7 +252,7 @@ export interface DesktopPetalsApi extends ContentImageImportsApi, PetalWorkspace
   onTitlesChanged(callback: (visible: boolean) => void): () => void;
   externalApplications: ContentApplicationsApi;
   contentLibrary: ContentLibraryApi;
-  albums(): Promise<{ id: string; title: string }[]>;
+  albums(): Promise<ContentAlbumOption[]>;
   setAlbum(input: { id: string; albumId: string | null }): Promise<DesktopNote>;
   references(input: PetalReferenceCommand): Promise<DesktopNote | PinSummary[]>;
   codex: CodexContentApi;
@@ -261,6 +267,8 @@ export interface DesktopPetalsApi extends ContentImageImportsApi, PetalWorkspace
   searchPinSources(input: PinSearch): Promise<PinSummary[]>;
   onOpenPin(callback: (event: { libraryId: string; source: PinSource }) => void): () => void;
   pluckPreview(active: boolean): Promise<void>;
+  overlayReady(input: import('./petal-overlay').PetalOverlayReady): Promise<void>;
+  onOverlayClosed(callback: (token: string) => void): () => void;
   pluckWatch(token: string, active: boolean): Promise<boolean>;
   onPluckPointer(callback: (event: import('./petal-pluck').PetalPluckPointer) => void): () => void;
   pluckPosition(
@@ -292,6 +300,8 @@ export interface DesktopPetalsApi extends ContentImageImportsApi, PetalWorkspace
   appearance(input: z.infer<typeof desktopNoteAppearanceSchema>): Promise<DesktopNote>;
   expand(expanded: boolean): Promise<void>;
   setAlwaysOnTop(alwaysOnTop: boolean): Promise<void>;
+  setContentScale(scale: number): Promise<void>;
+  setApplicationPanelHeight(height: number): Promise<number>;
   undoCollection(token: string): Promise<void>;
   resize(size: z.infer<typeof petalNoteSizeSchema>): Promise<void>;
   hide(): Promise<void>;

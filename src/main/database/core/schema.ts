@@ -1,5 +1,10 @@
 import { articleDraftShape, ensureArticleDrafts } from '@/main/database/creations/article-draft-schema';
+import * as creationOrganization from '@/main/database/creations/creation-organization-schema';
 import { calendarSchemaShape, ensureCalendarSchema } from '@/main/database/calendar/calendar-schema';
+import {
+  ensurePublishingMaskSchema,
+  publishingMaskSchemaComplete,
+} from '@/main/database/creations/publishing-mask-schema';
 import { packSyncSchemaComplete, ensurePackSyncSchema } from '@/main/database/packs/pack-sync-schema';
 import type Database from 'better-sqlite3';
 import { ensureGifMakingSchema, gifMakingShape } from '@/main/database/core/gif-making-schema';
@@ -13,6 +18,10 @@ import {
 import { agentIntakeShape } from '@/main/database/core/agent-intake-schema';
 import { desktopNotesShape, ensureDesktopNotesSchema } from '@/main/database/core/desktop-notes-schema';
 import { unifiedContentShape, ensureUnifiedContentSchema } from '@/main/database/core/unified-content-schema';
+import {
+  followingReferenceShape,
+  ensureFollowingReferenceSchema,
+} from '@/main/database/core/following-reference-schema';
 import { codexContentShape, ensureCodexContentSchema } from '@/main/database/core/codex-content-schema';
 import { petalBoardShape, ensurePetalBoardSchema } from '@/main/database/core/petal-board-schema';
 import { beginDatabaseSession } from '@/main/database/core/database-shutdown-state';
@@ -51,7 +60,7 @@ import {
   ensureCreationItemLocations,
 } from '@/main/database/creations/creation-composition-schema';
 import { evaluationSuiteShape } from '@/main/database/creations/evaluation-suite-schema';
-import { articleStorageShape, ensureArticles } from '@/main/database/creations/article-storage-schema';
+import * as articleStorage from '@/main/database/creations/article-storage-schema';
 import {
   articleCheckRunStorageShape,
   ensureArticleCheckRuns,
@@ -66,10 +75,12 @@ import {
 } from '@/main/database/recovery/content-lifecycle-schema';
 import * as articleDeliverySchema from '@/main/database/extensions/article-delivery-job-schema';
 import * as assistantRunSchema from '@/main/database/assistant/assistant-run-schema';
+import { backgroundIssueAcknowledgementShape } from '@/main/database/background-issues/background-issue-schema';
+import { ensureWorkTracking, workTrackingShape } from '@/main/database/creations/work-tracking-schema';
 
 export const DATABASE_PRODUCT_BASELINE = '0.3.0';
-// v0.5.4 consolidates calendar, pack-sync and delivery changes in one forward revision.
-export const DATABASE_SCHEMA_REVISION = 7;
+// AIY 0.5.5 consolidates all changes after the released revision 7 into revision 8.
+export const DATABASE_SCHEMA_REVISION = 8;
 
 const releasedRevision1RequiredTables = [
   'albums',
@@ -167,27 +178,6 @@ const retiredTitleColumns = [
   { table: 'creation_drafts', columns: ['title_zh', 'title_en'] },
   { table: 'prompt_series', columns: ['title_zh', 'title_en'] },
 ] as const;
-
-function backgroundIssueAcknowledgementShape(db: Database.Database) {
-  if (!tableNames(db).has('background_issue_acknowledgements')) return 'ABSENT' as const;
-  const columns = columnNames(db, 'background_issue_acknowledgements');
-  const required = ['id', 'issue_kind', 'subject_id', 'occurrence_id', 'acknowledged_at'];
-  if (!required.every((column) => columns.has(column))) unsupportedSchema();
-  const definition = db
-    .prepare("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'background_issue_acknowledgements'")
-    .pluck()
-    .get();
-  if (typeof definition !== 'string') unsupportedSchema();
-  const normalizedDefinition = definition.replace(/\s+/g, ' ');
-  if (
-    !normalizedDefinition.includes("'GENERATION_RUN'") ||
-    !normalizedDefinition.includes("'DIRECTION_EXPERIMENT_DIRECTOR'") ||
-    !normalizedDefinition.includes('UNIQUE(issue_kind, subject_id, occurrence_id)')
-  ) {
-    unsupportedSchema();
-  }
-  return 'COMPLETE' as const;
-}
 
 function assertCanonicalTitleColumns(db: Database.Database) {
   for (const requirement of canonicalTitleColumns) {
@@ -368,10 +358,9 @@ function ensureCurrentRevision5Schema(db: Database.Database) {
     creationLibrary: creationShape,
     imageBreakdown: breakdownShape,
     evaluationSuite: suiteShape,
-    articleStorage: articleStorageShape(db),
+    articleStorage: articleStorage.articleStorageShape(db),
     articleDeliveryJobsComplete: articleDeliverySchema.articleDeliveryJobShape(db) === 'COMPLETE',
     agentCliComplete: agentCliShape(db) === 'COMPLETE',
-    backgroundIssueAcknowledgementsComplete: backgroundIssueAcknowledgementShape(db) === 'COMPLETE',
     contentLifecycleComplete: contentLifecycleShape(db) === 'COMPLETE',
   });
 }
@@ -660,11 +649,10 @@ const preVideoWorkspaceRequiredTables = revision2RequiredTables.filter(
 const preVideoDocumentAiActivityRequiredTables = revision2RequiredTables.filter(
   (table) => table !== 'video_document_transcription_runs' && table !== 'video_document_translation_runs',
 );
-// Accepted historical revisions plus recovery-only markers emitted by pre-release
-// builds before a public revision was consolidated. Historical marker 7 is
-// accepted for recovery; the current writer emits only DATABASE_SCHEMA_REVISION.
-const unreleasedDevelopmentStages = [2, 3, 4, 5, 6, 7] as const;
-type UnreleasedDevelopmentStage = (typeof unreleasedDevelopmentStages)[number];
+// Released revisions and the current release candidate only. Discarded development
+// revisions are not migration sources.
+const supportedSchemaRevisions = [2, 3, 4, 5, 6, 7, DATABASE_SCHEMA_REVISION] as const;
+type SupportedSchemaRevision = (typeof supportedSchemaRevisions)[number];
 
 function isCurrentSchemaShapeBeforePromptSourceImport(db: Database.Database) {
   try {
@@ -704,7 +692,7 @@ const currentFeatureShapeChecks = [
   evaluationSuiteShape,
   inspirationStashShape,
   socialPostDraftShape,
-  articleStorageShape,
+  articleStorage.articleStorageComplete,
   articleCheckRunStorageShape,
   articleDeliverySchema.currentArticleDeliveryJobShape,
   agentCliShape,
@@ -724,6 +712,10 @@ const currentFeatureShapeChecks = [
   articleDraftShape,
   calendarSchemaShape,
   packSyncSchemaComplete,
+  workTrackingShape,
+  publishingMaskSchemaComplete,
+  followingReferenceShape,
+  creationOrganization.creationOrganizationSchemaComplete,
 ] as const;
 
 const currentFeatureShapesComplete = (db: Database.Database) =>
@@ -746,11 +738,9 @@ function retireLegacyTitles(db: Database.Database) {
 /**
  * Finish the single public revision-2 schema from a known intermediate shape.
  *
- * Shape checks make historical public revisions and unreleased development
- * markers safe migration sources. Accepting development markers 6 and 7 preserves
- * local developer libraries while advancing them to DATABASE_SCHEMA_REVISION.
+ * Shape checks avoid replaying completed steps from supported historical revisions.
  */
-function finishRevision2FromDevelopmentStage(db: Database.Database, stage: UnreleasedDevelopmentStage) {
+function finishRevision2(db: Database.Database, stage: SupportedSchemaRevision) {
   if (isRevision2SchemaShape(db)) return;
   // Some pre-release revision-2 builds already produced the complete table shape.
   // Complete the newly consolidated nullable column without replaying the
@@ -790,7 +780,7 @@ function migrateReleasedDatabase(db: Database.Database) {
   if (metadata(db, 'product_data_baseline') !== DATABASE_PRODUCT_BASELINE) unsupportedSchema();
 
   const storedRevision = Number(metadata(db, 'database_schema_revision'));
-  const isAcceptedStoredRevision = [1, ...unreleasedDevelopmentStages].includes(storedRevision);
+  const isAcceptedStoredRevision = [1, ...supportedSchemaRevisions].includes(storedRevision);
   if (!Number.isSafeInteger(storedRevision) || !isAcceptedStoredRevision) unsupportedSchema();
   if (storedRevision === DATABASE_SCHEMA_REVISION && isCurrentSchemaShape(db)) return false;
 
@@ -802,9 +792,9 @@ function migrateReleasedDatabase(db: Database.Database) {
         const titleShape = revision1TitleShape(db);
         if (titleShape === 'RELEASED_LEGACY') db.exec(revision2LegacyTitleSql);
         db.exec(revision2AiProcessSql);
-        finishRevision2FromDevelopmentStage(db, 2);
+        finishRevision2(db, 2);
       } else {
-        finishRevision2FromDevelopmentStage(db, storedRevision as UnreleasedDevelopmentStage);
+        finishRevision2(db, storedRevision as SupportedSchemaRevision);
       }
       ensureCreationOutputSortOrderColumn(db);
       ensureCreationOutputOrganizationColumns(db);
@@ -812,7 +802,7 @@ function migrateReleasedDatabase(db: Database.Database) {
       ensureCreationLibrary(db);
       ensureInspirationStashes(db);
       ensureSocialPostDrafts(db);
-      ensureArticles(db);
+      articleStorage.ensureArticles(db);
       ensureArticleCheckRuns(db);
       ensureDerivedVisuals(db);
       ensureCreationItemAlbumOwnership(db);
@@ -833,6 +823,11 @@ function migrateReleasedDatabase(db: Database.Database) {
       ensureArticleDrafts(db);
       ensureCalendarSchema(db);
       ensurePackSyncSchema(db);
+      ensureWorkTracking(db);
+      articleStorage.ensureArticleProvenance(db);
+      ensurePublishingMaskSchema(db);
+      ensureFollowingReferenceSchema(db);
+      creationOrganization.ensureCreationOrganizationSchema(db);
       if (!isCurrentSchemaShape(db)) unsupportedSchema();
 
       if (storedRevision !== DATABASE_SCHEMA_REVISION) {

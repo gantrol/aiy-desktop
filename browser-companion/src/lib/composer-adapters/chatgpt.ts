@@ -7,19 +7,47 @@ import {
   usableMediaInputs,
 } from '@/lib/composer-adapters/dom';
 
-const CHATGPT_SELECTORS = ['#prompt-textarea', 'textarea[data-testid="prompt-textarea"]'] as const;
+const CHATGPT_SELECTORS = ['#prompt-textarea', '[data-testid="prompt-textarea"]'] as const;
+const IDENTIFIED_COMPOSER_SCOPES = [
+  // ChatGPT reverted to the older ProseMirror input, which is now anchored by this form.
+  'form[data-chatgpt-composer]',
+  '[data-type="unified-composer"]',
+  '[data-testid="composer"]',
+] as const;
+const COMPOSER_SCOPE = `form,${IDENTIFIED_COMPOSER_SCOPES.join(',')}`;
+const EDITABLE_SELECTOR = 'textarea,[contenteditable]:not([contenteditable="false"])';
+const SEND_BUTTON_MARKER_SELECTOR = 'button[data-testid="send-button"],button#composer-submit-button';
+const SEND_BUTTON_SELECTOR = `${SEND_BUTTON_MARKER_SELECTOR},button[type="submit"]`;
+
 function findEditors(): ComposerElement[] {
   const candidates = new Set<ComposerElement>();
+  const collect = (root: Element) => {
+    if (isComposerElement(root)) candidates.add(root);
+    else
+      for (const element of root.querySelectorAll(EDITABLE_SELECTOR)) {
+        if (isComposerElement(element)) candidates.add(element);
+      }
+  };
   for (const selector of CHATGPT_SELECTORS) {
-    for (const element of document.querySelectorAll(selector)) {
-      if (isComposerElement(element)) candidates.add(element);
-    }
+    for (const element of document.querySelectorAll(selector)) collect(element);
   }
-  return [...candidates];
+  // The prompt marker can move to a wrapper during editor hydration. Fall back only
+  // inside a composer identified by its own scope or send control, never page-wide textboxes.
+  for (const scope of document.querySelectorAll(IDENTIFIED_COMPOSER_SCOPES.join(','))) collect(scope);
+  for (const button of document.querySelectorAll(SEND_BUTTON_MARKER_SELECTOR)) {
+    const scope = button.closest(COMPOSER_SCOPE);
+    if (scope) collect(scope);
+  }
+  return [...candidates].filter(
+    (editor) => ![...candidates].some((other) => other !== editor && other.contains(editor)),
+  );
 }
 
 function composerMediaScope(editor: ComposerElement): HTMLElement {
-  return editor.closest<HTMLElement>('form') ?? editor.parentElement ?? editor;
+  // Attachment controls can sit beside an inner composer wrapper in the same form.
+  return (
+    editor.closest<HTMLElement>('form') ?? editor.closest<HTMLElement>(COMPOSER_SCOPE) ?? editor.parentElement ?? editor
+  );
 }
 
 function visibleAttachmentElements(scope: HTMLElement): Element[] {
@@ -59,9 +87,7 @@ function attachmentNamesVisible(scope: HTMLElement, files: readonly File[]): boo
 }
 
 function chatGptSendReady(scope: HTMLElement): boolean {
-  const button = scope.querySelector<HTMLButtonElement>(
-    'button[data-testid="send-button"],button#composer-submit-button',
-  );
+  const button = scope.querySelector<HTMLButtonElement>(SEND_BUTTON_SELECTOR);
   return !button || (!button.disabled && button.getAttribute('aria-disabled') !== 'true');
 }
 
@@ -98,15 +124,13 @@ async function confirmMedia(
 export const chatGptComposerAdapter: ComposerAdapter = {
   findEditors,
   findMediaInput(editor) {
-    const form = editor.closest<HTMLElement>('form');
-    const formInput = form ? usableMediaInputs(form)[0] : null;
+    const formInput = usableMediaInputs(composerMediaScope(editor))[0];
     if (formInput) return formInput;
     const inputs = usableMediaInputs(document);
     return inputs.length === 1 ? (inputs[0] ?? null) : null;
   },
   requestMediaInput(editor) {
-    const form = editor.closest<HTMLElement>('form');
-    if (form) requestMediaInputWithin(form);
+    requestMediaInputWithin(composerMediaScope(editor));
   },
   captureMedia,
   confirmMedia,

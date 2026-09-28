@@ -1,4 +1,6 @@
 import { ulid } from 'ulid';
+import { applyMaterialAlbumMembership } from '@/main/database/albums/material-album-membership';
+import type { MaterialAlbumMembershipApplyInput } from '@/shared/contracts/material-album-membership';
 import type {
   CreateMaterialCollectionFromSourceInput,
   CreateMaterialCollectionFromSourceResult,
@@ -55,6 +57,10 @@ export {
 } from '@/main/database/albums/material-album-scopes';
 
 export class MaterialAlbumRepository extends MaterialAlbumReader {
+  applyMembership(input: MaterialAlbumMembershipApplyInput) {
+    return applyMaterialAlbumMembership(this.storage, this, input);
+  }
+
   create(input: MaterialAlbumCreateInput): MaterialAlbumDto {
     const title = normalizeTitle(input.title);
     const locale = input.locale ?? 'zh';
@@ -275,6 +281,10 @@ export class MaterialAlbumRepository extends MaterialAlbumReader {
       })
       .immediate();
     return this.getUserAlbumDto(input.albumId, locale);
+  }
+
+  assertWritable(albumId: string) {
+    this.assertMutableAlbum(albumId);
   }
 
   delete(albumId: string): void {

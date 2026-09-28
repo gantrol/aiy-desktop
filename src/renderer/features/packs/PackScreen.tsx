@@ -24,6 +24,7 @@ import {
   DialogTitle,
 } from '@/renderer/components/ui/dialog';
 import { ScrollArea } from '@/renderer/components/ui/scroll-area';
+import { CollectionDetailLayout } from '@/renderer/components/workbench/CollectionDetailLayout';
 import { cn } from '@/renderer/lib/utils';
 import { useI18n } from '@/renderer/i18n/useI18n';
 import type { NavigationMode } from '@/renderer/components/app/app-navigation';
@@ -45,6 +46,61 @@ function installationIcon(state: PackInstallationStateDto | null) {
   if (state === 'DISABLED' || state === 'REMOVED') return CircleOffIcon;
   if (state === 'INSTALLING' || state === 'UPDATING' || state === 'REMOVAL_PENDING') return LoaderCircleIcon;
   return PackageIcon;
+}
+
+function PackCatalogList({
+  catalog,
+  selectedPackId,
+  onSelect,
+}: {
+  catalog: readonly PackCatalogItemDto[];
+  selectedPackId: string;
+  onSelect(packId: string): void;
+}) {
+  const l = useI18n().messages.packs;
+  return (
+    <div className="grid gap-2 p-3">
+      {catalog.map((item) => {
+        const currentRelease =
+          item.releases.find((candidate) => candidate.id === item.installation?.selectedReleaseId) ??
+          item.releases[0] ??
+          null;
+        const Icon = installationIcon(item.installation?.state ?? null);
+        return (
+          <Button
+            key={item.pack.id}
+            type="button"
+            variant="ghost"
+            data-pack-id={item.pack.id}
+            aria-current={selectedPackId === item.pack.id ? 'true' : undefined}
+            className={cn(
+              'grid h-auto w-full justify-stretch gap-2 whitespace-normal rounded-sm border p-3 text-left font-normal focus-visible:ring-inset focus-visible:ring-offset-0',
+              selectedPackId === item.pack.id &&
+                'border-selected-foreground bg-selected hover:bg-selected active:bg-selected',
+            )}
+            onClick={() => onSelect(item.pack.id)}
+          >
+            <span className="flex min-w-0 items-center gap-2">
+              <Icon
+                className={cn(
+                  'size-4 shrink-0',
+                  ['INSTALLING', 'UPDATING', 'REMOVAL_PENDING'].includes(item.installation?.state ?? '') &&
+                    'animate-spin',
+                )}
+              />
+              <strong className="min-w-0 flex-1 truncate text-sm">{item.pack.displayName}</strong>
+              <Badge variant="outline">{item.pack.kind === 'BUNDLE' ? l.kind.bundle : l.kind.content}</Badge>
+            </span>
+            <span className="flex items-center gap-2 text-xs text-muted-foreground">
+              <span>{currentRelease?.version ?? '—'}</span>
+              <span>{currentRelease ? l.itemCount(currentRelease.itemCount) : l.itemCount(0)}</span>
+              <span className="ml-auto">{l.states[item.installation?.state ?? 'NOT_INSTALLED']}</span>
+            </span>
+          </Button>
+        );
+      })}
+    </div>
+  );
 }
 
 export function PackScreen({ active, embedded = false, requestedId, onSelectedIdChange, notify }: Props) {
@@ -71,7 +127,9 @@ export function PackScreen({ active, embedded = false, requestedId, onSelectedId
         const preferred = preferredPackId || requestedId || selectedPackId;
         const nextSelectedId = next.some((item) => item.pack.id === preferred) ? preferred : (next[0]?.pack.id ?? '');
         setSelectedPackId(nextSelectedId);
-        if (nextSelectedId && nextSelectedId !== requestedId) onSelectedIdChange(nextSelectedId, 'replace');
+        if (preferred && nextSelectedId && nextSelectedId !== requestedId) {
+          onSelectedIdChange(nextSelectedId, 'replace');
+        }
       } catch (reason) {
         setError(reason instanceof Error ? reason.message : String(reason));
       } finally {
@@ -196,76 +254,55 @@ export function PackScreen({ active, embedded = false, requestedId, onSelectedId
           <RefreshCwIcon className={cn('size-4', loading && 'animate-spin')} />
         </Button>
       </header>
-      <div className="grid min-h-0 grid-cols-[minmax(260px,360px)_minmax(0,1fr)]">
-        <ScrollArea className="min-h-0 border-r">
-          <div className="grid gap-2 p-3">
-            {catalog.map((item) => {
-              const currentRelease =
-                item.releases.find((candidate) => candidate.id === item.installation?.selectedReleaseId) ??
-                item.releases[0] ??
-                null;
-              const Icon = installationIcon(item.installation?.state ?? null);
-              return (
-                <button
-                  key={item.pack.id}
-                  type="button"
-                  data-pack-id={item.pack.id}
-                  aria-current={selectedPackId === item.pack.id ? 'true' : undefined}
-                  className={cn(
-                    'grid gap-2 rounded-lg border p-3 text-left outline-none transition-colors hover:bg-hover focus-visible:ring-2 focus-visible:ring-ring',
-                    selectedPackId === item.pack.id && 'border-selected-border bg-selected',
-                  )}
-                  onClick={() => {
-                    setSelectedPackId(item.pack.id);
-                    onSelectedIdChange(item.pack.id);
-                  }}
+      <div className="min-h-0 min-w-0">
+        <CollectionDetailLayout
+          layoutKey="content-packs"
+          collectionLabel={l.title}
+          collectionWidth={320}
+          minimumDetailWidth={520}
+          selectionKey={requestedId}
+          collection={({ revealDetail }) => (
+            <ScrollArea className="min-h-0 flex-1">
+              <PackCatalogList
+                catalog={catalog}
+                selectedPackId={selectedPackId}
+                onSelect={(packId) => {
+                  setSelectedPackId(packId);
+                  onSelectedIdChange(packId);
+                  revealDetail();
+                }}
+              />
+            </ScrollArea>
+          )}
+        >
+          {() => (
+            <ScrollArea className="min-h-0 min-w-0 flex-1">
+              {selected && selectedRelease && (
+                <PackDetails
+                  item={selected}
+                  selectedRelease={selectedRelease}
+                  release={release}
+                  busy={busy}
+                  onSelectRelease={setInspectedReleaseId}
+                  onAction={(kind, nextRelease) =>
+                    setPendingAction({ kind, packId: selected.pack.id, release: nextRelease })
+                  }
+                />
+              )}
+              {!selected && !loading && (
+                <div className="grid size-full place-items-center text-3xl tabular-nums text-muted-foreground">0</div>
+              )}
+              {error && (
+                <div
+                  role="alert"
+                  className="m-6 rounded-lg border border-destructive/30 bg-destructive/5 p-3 text-sm text-destructive"
                 >
-                  <span className="flex min-w-0 items-center gap-2">
-                    <Icon
-                      className={cn(
-                        'size-4 shrink-0',
-                        ['INSTALLING', 'UPDATING', 'REMOVAL_PENDING'].includes(item.installation?.state ?? '') &&
-                          'animate-spin',
-                      )}
-                    />
-                    <strong className="min-w-0 flex-1 truncate text-sm">{item.pack.displayName}</strong>
-                    <Badge variant="outline">{item.pack.kind === 'BUNDLE' ? l.kind.bundle : l.kind.content}</Badge>
-                  </span>
-                  <span className="flex items-center gap-2 text-xs text-muted-foreground">
-                    <span>{currentRelease?.version ?? '—'}</span>
-                    <span>{currentRelease ? l.itemCount(currentRelease.itemCount) : l.itemCount(0)}</span>
-                    <span className="ml-auto">{l.states[item.installation?.state ?? 'NOT_INSTALLED']}</span>
-                  </span>
-                </button>
-              );
-            })}
-          </div>
-        </ScrollArea>
-        <ScrollArea className="min-h-0">
-          {selected && selectedRelease && (
-            <PackDetails
-              item={selected}
-              selectedRelease={selectedRelease}
-              release={release}
-              busy={busy}
-              onSelectRelease={setInspectedReleaseId}
-              onAction={(kind, nextRelease) =>
-                setPendingAction({ kind, packId: selected.pack.id, release: nextRelease })
-              }
-            />
+                  {error}
+                </div>
+              )}
+            </ScrollArea>
           )}
-          {!selected && !loading && (
-            <div className="grid size-full place-items-center text-3xl tabular-nums text-muted-foreground">0</div>
-          )}
-          {error && (
-            <div
-              role="alert"
-              className="m-6 rounded-lg border border-destructive/30 bg-destructive/5 p-3 text-sm text-destructive"
-            >
-              {error}
-            </div>
-          )}
-        </ScrollArea>
+        </CollectionDetailLayout>
       </div>
 
       <Dialog

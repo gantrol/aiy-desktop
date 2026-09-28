@@ -5,6 +5,7 @@ import path from 'node:path';
 import { sha256HexAsync } from '@/main/database/core/storage';
 import { imageDimensions } from '@/main/media/image-dimensions';
 import { validateDecodablePngAsync } from '@/main/media/png-validation';
+import { validateSvgImageAsync } from '@/main/media/svg-validation';
 import { articleContentSchema } from '@/shared/contracts/article';
 import {
   AGENT_INTAKE_IMAGE_BYTES,
@@ -75,8 +76,8 @@ function decodeText(bytes: Buffer) {
 export async function readIntakeSource(request: AgentIntakeImportRequest, signal: AbortSignal) {
   const extension = path.extname(request.path).toLowerCase();
   const article = request.kind === 'ARTICLE' || request.kind === 'OUTLINE';
-  if (article ? !['.md', '.markdown'].includes(extension) : extension !== '.png') {
-    throw intakeError('UNSUPPORTED_FORMAT', 'Use Markdown for works or PNG for images');
+  if (article ? !['.md', '.markdown'].includes(extension) : !['.png', '.svg'].includes(extension)) {
+    throw intakeError('UNSUPPORTED_FORMAT', 'Use Markdown for works or PNG or SVG for images');
   }
   const bytes = await readIntakeBytes(
     request.path,
@@ -102,11 +103,27 @@ export async function readIntakeSource(request: AgentIntakeImportRequest, signal
     if (!parsed.success) throw intakeError('INVALID_MARKDOWN', 'Markdown exceeds the article content limits');
     return { kind: 'ARTICLE', title, content: parsed.data } as const;
   }
-  const dimensions = imageDimensions(bytes, '.png');
-  if (!dimensions || dimensions.width > 4_096 || dimensions.height > 4_096) {
-    throw intakeError('INVALID_DIMENSIONS', 'PNG dimensions must not exceed 4096 × 4096');
+  const svg = extension === '.svg';
+  if (svg && !(await validateSvgImageAsync(decodeText(bytes), signal))) {
+    throw intakeError(
+      'INVALID_IMAGE',
+      'SVG must be a complete UTF-8 SVG document without DTDs or processing instructions',
+    );
   }
-  if (!(await validateDecodablePngAsync(bytes))) throw intakeError('INVALID_IMAGE', 'PNG could not be fully decoded');
+  const dimensions = imageDimensions(bytes, extension);
+  if (!dimensions || dimensions.width > 4_096 || dimensions.height > 4_096) {
+    throw intakeError('INVALID_DIMENSIONS', 'Image dimensions must not exceed 4096 × 4096');
+  }
+  if (!svg && !(await validateDecodablePngAsync(bytes))) {
+    throw intakeError('INVALID_IMAGE', 'PNG could not be fully decoded');
+  }
   assertIntakeActive(signal);
-  return { kind: 'IMAGE_MATERIAL', title, bytes, dimensions } as const;
+  return {
+    kind: 'IMAGE_MATERIAL',
+    title,
+    bytes,
+    dimensions,
+    extension: svg ? '.svg' : '.png',
+    mimeType: svg ? 'image/svg+xml' : 'image/png',
+  } as const;
 }

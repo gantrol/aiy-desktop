@@ -465,6 +465,11 @@ export class BrowserCompanionLoopbackServer {
   private async dispatch(envelope: BrowserCompanionLoopbackEnvelope): Promise<BrowserCompanionResponse> {
     const request = envelope.request;
     switch (request.kind) {
+      case 'inspect-handoff':
+        if (request.target !== envelope.target) return companionError('TARGET_MISMATCH');
+        return this.handoffs.inspect(envelope.target, request.handoffId);
+      case 'begin-fill':
+        return this.handoffs.beginFill(request.handoffId, request.completionToken, envelope.target);
       case 'claim-handoff':
         if (request.target !== envelope.target) return companionError('TARGET_MISMATCH');
         return this.handoffs.claim(envelope.target, request.handoffId);

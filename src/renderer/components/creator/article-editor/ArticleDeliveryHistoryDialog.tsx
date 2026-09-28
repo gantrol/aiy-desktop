@@ -1,3 +1,4 @@
+import { useWorkspacePaneContainer } from '@/renderer/components/workspace/WorkspacePaneScope';
 import {
   CheckCircle2Icon,
   Clock3Icon,
@@ -47,6 +48,7 @@ export function ArticleDeliveryHistoryDialog({
   articleId,
   notify,
   onOpenChange,
+  onOpenArticle,
   open,
   spaceId,
   targets,
@@ -54,11 +56,13 @@ export function ArticleDeliveryHistoryDialog({
   articleId: string;
   notify(message: string): void;
   onOpenChange(open: boolean): void;
+  onOpenArticle?(): void;
   open: boolean;
   spaceId: string;
   targets: readonly DeliveryTargetLabel[];
 }) {
   const { locale, messages } = useI18n();
+  const paneContainer = useWorkspacePaneContainer();
   const copy = messages.articleDelivery;
   const [jobs, setJobs] = useState<ArticleDeliveryJob[]>([]);
   const [loading, setLoading] = useState(false);
@@ -119,7 +123,7 @@ export function ArticleDeliveryHistoryDialog({
   }
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
+    <Dialog container={paneContainer} open={open} onOpenChange={onOpenChange}>
       <DialogContent aria-describedby={undefined}>
         <DialogHeader>
           <DialogTitle>{copy.history}</DialogTitle>
@@ -165,7 +169,7 @@ export function ArticleDeliveryHistoryDialog({
                       </div>
                     )}
                   </div>
-                  {job.status === 'FAILED' && (
+                  {job.status === 'FAILED' && job.retryable && (
                     <Button
                       type="button"
                       variant="ghost"
@@ -182,6 +186,20 @@ export function ArticleDeliveryHistoryDialog({
                         <RefreshCwIcon className="size-4" />
                       )}
                       {copy.retry}
+                    </Button>
+                  )}
+                  {job.status === 'FAILED' && !job.retryable && (
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      className="shrink-0"
+                      onClick={() => {
+                        onOpenChange(false);
+                        onOpenArticle?.();
+                      }}
+                    >
+                      {copy.openArticle}
                     </Button>
                   )}
                   {job.status === 'SUCCEEDED' && job.result && (

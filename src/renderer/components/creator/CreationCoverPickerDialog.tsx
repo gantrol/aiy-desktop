@@ -1,3 +1,4 @@
+import { itemReorderHandler } from '@/renderer/components/albums/itemDrag';
 import { CheckIcon, ImagesIcon, LoaderCircleIcon, XIcon } from 'lucide-react';
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import type { AssetDto } from '@/shared/contracts';
@@ -168,13 +169,13 @@ export function CreationCoverPickerDialog({
                       event.preventDefault();
                       setSelectedAssetIds((current) => reorderCoverIds(current, asset.id, target.id, offset > 0));
                     }}
-                    onDragOver={(event) => {
+                    onDragOver={itemReorderHandler((event) => {
                       const sourceId = draggingAssetId ?? event.dataTransfer.getData('text/plain');
                       if (!sourceId || sourceId === asset.id) return;
                       event.preventDefault();
                       event.dataTransfer.dropEffect = 'move';
-                    }}
-                    onDrop={(event) => {
+                    })}
+                    onDrop={itemReorderHandler((event) => {
                       event.preventDefault();
                       const sourceId = draggingAssetId ?? event.dataTransfer.getData('text/plain');
                       const bounds = event.currentTarget.getBoundingClientRect();
@@ -184,7 +185,7 @@ export function CreationCoverPickerDialog({
                         );
                       }
                       setDraggingAssetId(null);
-                    }}
+                    })}
                   >
                     <img
                       src={thumbnailUrl}

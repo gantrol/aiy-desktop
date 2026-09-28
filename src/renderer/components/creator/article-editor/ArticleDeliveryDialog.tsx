@@ -1,26 +1,24 @@
+import { selectArticleDeliveryTargets } from '@/renderer/components/creator/article-editor/ArticleDeliverySelection';
+import { useWorkspacePaneContainer } from '@/renderer/components/workspace/WorkspacePaneScope';
+import { ArticleDeliverySettings } from '@/renderer/components/creator/article-editor/ArticleDeliverySettings';
+import { ArticleDeliveryTargetList } from '@/renderer/components/creator/article-editor/ArticleDeliveryTargetList';
+import { ArticleDeliveryHeader } from '@/renderer/components/creator/article-editor/ArticleDeliveryHeader';
+import { publishingMaskTarget } from '@/shared/contracts/publishing-mask';
 import { useMemo, useState } from 'react';
-import { CloudUploadIcon, HistoryIcon, LoaderCircleIcon, MoreHorizontalIcon, RefreshCwIcon } from 'lucide-react';
+import { CloudUploadIcon, LoaderCircleIcon } from 'lucide-react';
 import type { BrowserCompanionTarget, BrowserCompanionWatermarkSelection } from '@/shared/contracts';
 import { browserCompanionStageErrorCodeSchema } from '@/shared/contracts/browser-companion';
 import { Button } from '@/renderer/components/ui/button';
-import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/renderer/components/ui/dialog';
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from '@/renderer/components/ui/dropdown-menu';
+import { Dialog, DialogContent, DialogFooter } from '@/renderer/components/ui/dialog';
 import { useI18n } from '@/renderer/i18n/useI18n';
 import type { MessageCatalog } from '@/renderer/i18n/types';
 import { ArticleDeliveryTargetRow } from '@/renderer/components/creator/article-editor/ArticleDeliveryTargetRow';
 import { useArticleEditorSession } from '@/renderer/components/creator/article-editor/ArticleEditorSessionProvider';
-import { CompanionDestinationPicker } from '@/renderer/features/browser-companion/CompanionDestinationMenu';
-import { CompanionWatermarkSubmenu } from '@/renderer/features/browser-companion/CompanionWatermarkMenu';
 import { useWatermarkSelection } from '@/renderer/features/browser-companion/CompanionHandoffMenu';
 import {
   articleDeliveryConnectionMessage,
   articleDeliveryRequestErrorMessage,
+  articleDeliveryTargetUnavailableMessage,
 } from '@/renderer/features/article-delivery/presentation';
 import {
   articleBrowserDestinationState,
@@ -31,8 +29,6 @@ import {
 import {
   articleUploadTargetKey,
   readArticleDeliveryPreferences,
-  readDefaultArticleDeliveryPreferences,
-  saveDefaultArticleDeliveryPreferences,
   type ArticleDeliveryPreferences,
   type ArticleUploadTarget,
 } from '@/renderer/features/article-delivery/articleDeliveryPreferences';
@@ -46,7 +42,7 @@ import {
   type ArticleDeliveryBatchOutcome,
 } from '@/renderer/features/article-delivery/useArticleDeliveryBatch';
 
-const browserTargets = ['wechat', 'xiaohongshu', 'weibo', 'x'] as const;
+const browserTargets = ['xiaohongshu', 'weibo', 'x'] as const;
 
 function resultLabel(result: ArticleDeliveryBatchOutcome, messages: MessageCatalog): string {
   const copy = messages.articleDelivery.batch;
@@ -89,7 +85,7 @@ function choiceStatus(
   const key = articleUploadTargetKey(target);
   if (target.kind === 'API') {
     if (!definition) return copy.missingExtension;
-    if (!definition.activated) return copy.unavailable;
+    if (!definition.activated) return articleDeliveryTargetUnavailableMessage(definition, messages);
     if (setup.loading) return companionCopy.loadingProfiles;
     const entry = setup.entries[key];
     return entry?.status
@@ -154,9 +150,8 @@ export function ArticleDeliveryDialog({
   onOpenHistory(): void;
 }) {
   const { messages } = useI18n();
+  const paneContainer = useWorkspacePaneContainer();
   const copy = messages.articleDelivery.batch;
-  const companionCopy = messages.browserCompanion;
-  const publishingCopy = messages.publishing;
   const session = useArticleEditorSession();
   const [initial] = useState(() => readArticleDeliveryPreferences(spaceId, articleId));
   const [preferences, setPreferences] = useState<ArticleDeliveryPreferences>(initial.preferences);
@@ -172,19 +167,30 @@ export function ArticleDeliveryDialog({
     () => new Map(targets.map((target) => [articleUploadTargetKey(articleDeliveryTargetChoice(target)), target])),
     [targets],
   );
-  const choices = useMemo(() => {
-    const result: ArticleUploadTarget[] = [
-      ...browserTargets.map((target) => ({ kind: 'BROWSER' as const, target })),
-      ...targets.map(articleDeliveryTargetChoice),
-    ];
-    const known = new Set(result.map(articleUploadTargetKey));
-    for (const target of preferences.targets) {
-      if (!known.has(articleUploadTargetKey(target))) result.push(target);
-    }
-    return result;
-  }, [targets, preferences.targets]);
+  const choices = useMemo(() => deliveryChoices(targets, preferences.targets), [targets, preferences.targets]);
   const selectedByKey = new Map(preferences.targets.map((target) => [articleUploadTargetKey(target), target]));
-  const selectedBrowsers = preferences.targets.flatMap((target) => (target.kind === 'BROWSER' ? [target.target] : []));
+  const selectedBrowsers = [
+    ...new Set(preferences.targets.flatMap((target) => (target.kind === 'BROWSER' ? [target.target] : []))),
+  ];
+  const maskTargets = preferences.targets.flatMap((target) =>
+    target.kind === 'BROWSER'
+      ? [publishingMaskTarget(target.target, target.target === 'wechat' ? target.mode : 'images')]
+      : [],
+  );
+
+  const selectable = choices
+    .filter((choice) =>
+      choice.kind === 'BROWSER'
+        ? availableBrowserTargets.includes(choice.target)
+        : definitions.get(articleUploadTargetKey(choice))?.activated,
+    )
+    .slice(0, 32)
+    .map((choice) => selectedByKey.get(articleUploadTargetKey(choice)) ?? choice);
+  const groupTargets = choices.filter(
+    (choice) =>
+      selectedByKey.has(articleUploadTargetKey(choice)) ||
+      selectable.some((target) => articleUploadTargetKey(target) === articleUploadTargetKey(choice)),
+  );
 
   function profileFor(key: string): ArticleDeliveryProfileDraft {
     const profile = setup.entries[key]?.status?.profile;
@@ -208,14 +214,8 @@ export function ArticleDeliveryDialog({
     return definitions.get(key)?.activated && setup.entries[key]?.status?.connection.state === 'READY';
   }
 
-  function toggle(target: ArticleUploadTarget, selected: boolean) {
-    const key = articleUploadTargetKey(target);
-    setPreferences((current) => ({
-      ...current,
-      targets: selected
-        ? [...current.targets, target]
-        : current.targets.filter((item) => articleUploadTargetKey(item) !== key),
-    }));
+  function selectTargets(targets: readonly ArticleUploadTarget[], selected: boolean) {
+    setPreferences((current) => selectArticleDeliveryTargets(current, targets, selected));
   }
 
   function updateProfile(key: string, patch: Partial<ArticleDeliveryProfileDraft>) {
@@ -233,135 +233,116 @@ export function ArticleDeliveryDialog({
     (target) => definitions.get(articleUploadTargetKey(target))?.deliveryMode === 'PUBLISH',
   );
 
+  function renderChoice(choice: ArticleUploadTarget) {
+    const key = articleUploadTargetKey(choice);
+    const result = batch.outcomes[key];
+    return (
+      <ArticleDeliveryTargetRow
+        key={key}
+        choice={choice}
+        selected={selectedByKey.get(key)}
+        definition={definitions.get(key)}
+        ready={Boolean(ready(choice))}
+        available={
+          choice.kind === 'BROWSER'
+            ? availableBrowserTargets.includes(choice.target)
+            : Boolean(definitions.get(key)?.activated)
+        }
+        locked={locked}
+        canAdd={preferences.targets.length < 32}
+        profile={profileFor(key)}
+        hasProfile={Boolean(setup.entries[key]?.status?.profile)}
+        status={
+          result
+            ? resultLabel(result, messages)
+            : choiceStatus(choice, definitions.get(key), setup, messages, availableBrowserTargets)
+        }
+        result={Boolean(result)}
+        failed={result?.kind === 'FAILED' || result?.kind === 'UNKNOWN'}
+        retrying={batch.busy}
+        onSelect={(selected) => selectTargets([choice], selected)}
+        onProfileChange={(patch) => updateProfile(key, patch)}
+        onImageModeChange={(imageMode) =>
+          setPreferences((current) => ({
+            ...current,
+            targets: current.targets.map((item) =>
+              articleUploadTargetKey(item) === key && item.kind === 'API' ? { ...item, imageMode } : item,
+            ),
+          }))
+        }
+        onRetry={result && canRetryArticleDeliveryOutcome(result) ? () => void batch.retry(key) : undefined}
+      />
+    );
+  }
+
   return (
     <Dialog
+      container={paneContainer}
       open
       onOpenChange={(open) => {
         if (!open && !batch.busy) onClose();
       }}
     >
       <DialogContent
-        className="max-h-[90vh] max-w-2xl overflow-y-auto"
+        className={
+          paneContainer
+            ? 'inset-0 flex h-full max-h-full w-full max-w-none translate-x-0 translate-y-0 flex-col gap-0 overflow-hidden rounded-none border-0 p-0 shadow-none'
+            : 'flex max-h-[90vh] max-w-md flex-col gap-0 overflow-hidden p-0'
+        }
         aria-describedby={undefined}
         showCloseButton={!batch.busy}
       >
-        <DialogHeader>
-          <DialogTitle>{copy.title}</DialogTitle>
-        </DialogHeader>
-        <div className="flex flex-wrap items-center gap-2">
-          <span className="mr-auto text-xs text-muted-foreground">{copy.sources[initial.source]}</span>
-          <Button
-            type="button"
-            variant="ghost"
-            size="icon-sm"
-            disabled={locked || setup.loading}
-            aria-label={copy.refresh}
-            title={copy.refresh}
-            onClick={() => void setup.refresh()}
-          >
-            <RefreshCwIcon className="size-4" />
-          </Button>
-          <Button
-            type="button"
-            variant="ghost"
-            size="icon-sm"
-            disabled={batch.busy}
-            aria-label={messages.articleDelivery.history}
-            title={messages.articleDelivery.history}
-            onClick={onOpenHistory}
-          >
-            <HistoryIcon className="size-4" />
-          </Button>
-          <ArticleDeliveryPresetMenu
-            disabled={locked}
-            loading={setup.loading}
+        <ArticleDeliveryHeader
+          busy={batch.busy}
+          locked={locked}
+          loading={setup.loading}
+          preferences={preferences}
+          selectable={selectable}
+          configured={choices
+            .filter(ready)
+            .slice(0, 32)
+            .map((choice) => selectedByKey.get(articleUploadTargetKey(choice)) ?? choice)}
+          onRefresh={() => void setup.refresh()}
+          onOpenHistory={onOpenHistory}
+          onChange={setPreferences}
+          notify={notify}
+        />
+        <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 py-2">
+          <ArticleDeliveryTargetList
+            choices={choices}
+            renderChoice={renderChoice}
             preferences={preferences}
-            configured={choices
-              .filter(ready)
-              .slice(0, 32)
-              .map((choice) => selectedByKey.get(articleUploadTargetKey(choice)) ?? choice)}
-            onChange={setPreferences}
-            notify={notify}
+            groupTargets={groupTargets}
+            disabled={locked}
+            onSelect={selectTargets}
           />
-        </div>
-        <div className="divide-y divide-border" aria-label={publishingCopy.channels}>
-          {choices.map((choice) => {
-            const key = articleUploadTargetKey(choice);
-            const result = batch.outcomes[key];
-            return (
-              <ArticleDeliveryTargetRow
-                key={key}
-                choice={choice}
-                selected={selectedByKey.get(key)}
-                definition={definitions.get(key)}
-                ready={Boolean(ready(choice))}
-                available={
-                  choice.kind === 'BROWSER'
-                    ? availableBrowserTargets.includes(choice.target)
-                    : Boolean(definitions.get(key)?.activated)
-                }
-                locked={locked}
-                canAdd={preferences.targets.length < 32}
-                profile={profileFor(key)}
-                hasProfile={Boolean(setup.entries[key]?.status?.profile)}
-                wechatMode={preferences.wechatMode}
-                status={
-                  result
-                    ? resultLabel(result, messages)
-                    : choiceStatus(choice, definitions.get(key), setup, messages, availableBrowserTargets)
-                }
-                result={Boolean(result)}
-                failed={result?.kind === 'FAILED' || result?.kind === 'UNKNOWN'}
-                retrying={batch.busy}
-                onSelect={(selected) => toggle(choice, selected)}
-                onProfileChange={(patch) => updateProfile(key, patch)}
-                onImageModeChange={(imageMode) =>
-                  setPreferences((current) => ({
-                    ...current,
-                    targets: current.targets.map((item) =>
-                      articleUploadTargetKey(item) === key && item.kind === 'API' ? { ...item, imageMode } : item,
-                    ),
-                  }))
-                }
-                onWechatModeChange={(wechatMode) => setPreferences((current) => ({ ...current, wechatMode }))}
-                onRetry={result && canRetryArticleDeliveryOutcome(result) ? () => void batch.retry(key) : undefined}
-              />
-            );
-          })}
-        </div>
-        <div className="flex flex-wrap items-center gap-2">
-          <CompanionDestinationPicker
+          <ArticleDeliverySettings
+            articleId={articleId}
+            spaceId={spaceId}
             busy={batch.busy}
-            state={setup.destinations}
-            targets={selectedBrowsers.length ? selectedBrowsers : availableBrowserTargets}
-            onChange={setup.setDestinations}
+            submitted={batch.submitted}
+            destinations={setup.destinations}
+            onDestinationsChange={setup.setDestinations}
+            selectedBrowsers={selectedBrowsers}
+            availableBrowserTargets={availableBrowserTargets}
+            watermarkAvailable={watermarkAvailable}
+            selectedWatermark={selectedWatermark}
+            watermark={watermark}
+            maskTargets={maskTargets}
+            beforeOpen={() => session.flush('manual')}
           />
-          {watermarkAvailable && (
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button type="button" variant="outline" size="sm" disabled={locked}>
-                  {selectedWatermark.kind === 'NONE' ? companionCopy.noWatermark : companionCopy.watermark}
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end">
-                <CompanionWatermarkSubmenu
-                  busy={locked}
-                  selection={watermark.selection}
-                  onSelectionChange={watermark.select}
-                />
-              </DropdownMenuContent>
-            </DropdownMenu>
+          {batch.fault && (
+            <div role="alert" className="text-sm text-destructive">
+              {batch.fault}
+            </div>
           )}
         </div>
-        {batch.fault && (
-          <div role="alert" className="text-sm text-destructive">
-            {batch.fault}
-          </div>
-        )}
-        <DialogFooter>
-          <Button type="button" variant="outline" disabled={batch.busy} onClick={onClose}>
-            {messages.common.close}
-          </Button>
+        <DialogFooter className="shrink-0 flex-row items-center justify-end border-t bg-overlay px-4 py-3">
+          {batch.submitted && (
+            <Button type="button" variant="outline" disabled={batch.busy} onClick={onClose}>
+              {messages.common.close}
+            </Button>
+          )}
           {!batch.submitted && (
             <Button
               type="button"
@@ -391,64 +372,16 @@ export function ArticleDeliveryDialog({
   );
 }
 
-function ArticleDeliveryPresetMenu({
-  disabled,
-  loading,
-  preferences,
-  configured,
-  onChange,
-  notify,
-}: {
-  disabled: boolean;
-  loading: boolean;
-  preferences: ArticleDeliveryPreferences;
-  configured: ArticleUploadTarget[];
-  onChange(preferences: ArticleDeliveryPreferences): void;
-  notify(message: string): void;
-}) {
-  const copy = useI18n().messages.articleDelivery.batch;
-  function hasTargets(targets: readonly BrowserCompanionTarget[]) {
-    return targets.every((target) =>
-      configured.some((choice) => choice.kind === 'BROWSER' && choice.target === target),
-    );
+function deliveryChoices(targets: readonly ArticleDeliveryTarget[], selected: readonly ArticleUploadTarget[]) {
+  const result: ArticleUploadTarget[] = [
+    { kind: 'BROWSER', target: 'wechat', mode: 'article' },
+    { kind: 'BROWSER', target: 'wechat', mode: 'images' },
+    ...browserTargets.map((target) => ({ kind: 'BROWSER' as const, target })),
+    ...targets.map(articleDeliveryTargetChoice),
+  ];
+  const known = new Set(result.map(articleUploadTargetKey));
+  for (const target of selected) {
+    if (!known.has(articleUploadTargetKey(target))) result.push(target);
   }
-  function selectPreset(targets: ('wechat' | 'xiaohongshu' | 'weibo' | 'x')[]) {
-    onChange({ version: 1, targets: targets.map((target) => ({ kind: 'BROWSER', target })), wechatMode: 'article' });
-  }
-  return (
-    <DropdownMenu>
-      <DropdownMenuTrigger asChild>
-        <Button type="button" variant="ghost" size="icon-sm" disabled={disabled} aria-label={copy.sources.DEFAULT}>
-          <MoreHorizontalIcon className="size-4" />
-        </Button>
-      </DropdownMenuTrigger>
-      <DropdownMenuContent align="end">
-        <DropdownMenuItem onSelect={() => onChange(readDefaultArticleDeliveryPreferences())}>
-          {copy.useDefault}
-        </DropdownMenuItem>
-        <DropdownMenuItem
-          onSelect={() =>
-            notify(saveDefaultArticleDeliveryPreferences(preferences) ? copy.defaultSaved : copy.preferenceFailed)
-          }
-        >
-          {copy.saveDefault}
-        </DropdownMenuItem>
-        <DropdownMenuSeparator />
-        <DropdownMenuItem
-          disabled={!hasTargets(['wechat', 'xiaohongshu'])}
-          onSelect={() => selectPreset(['wechat', 'xiaohongshu'])}
-        >
-          {copy.presetWechatXhs}
-        </DropdownMenuItem>
-        <DropdownMenuItem disabled={!hasTargets(['weibo', 'x'])} onSelect={() => selectPreset(['weibo', 'x'])}>
-          {copy.presetWeiboX}
-        </DropdownMenuItem>
-        <DropdownMenuSeparator />
-        <DropdownMenuItem disabled={loading} onSelect={() => onChange({ ...preferences, targets: configured })}>
-          {copy.chooseConfigured}
-        </DropdownMenuItem>
-        <DropdownMenuItem onSelect={() => onChange({ ...preferences, targets: [] })}>{copy.clear}</DropdownMenuItem>
-      </DropdownMenuContent>
-    </DropdownMenu>
-  );
+  return result;
 }

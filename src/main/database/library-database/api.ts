@@ -7,6 +7,7 @@ import { createAssetLibraryApi } from '@/main/database/library-database/asset-li
 import { createCreationImportApi } from '@/main/database/library-database/creation-import-api';
 import { createCreationItemApi } from '@/main/database/library-database/creation-item-api';
 import { createCreationOutlineApi } from '@/main/database/library-database/creation-outline-api';
+import { createCreationOrganizationApi } from '@/main/database/library-database/creation-organization-api';
 import { createDictionaryApi } from '@/main/database/library-database/dictionary-api';
 import { createExtensionPackApi } from '@/main/database/library-database/extension-pack-api';
 import { createGenerationApi } from '@/main/database/library-database/generation-api';
@@ -48,6 +49,7 @@ export function createLibraryDatabaseApi(repositories: LibraryDatabaseRepositori
     ...createAssistantApi(repositories),
     ...createCreationItemApi(repositories),
     ...createCreationOutlineApi(repositories),
+    ...createCreationOrganizationApi(repositories),
     ...createCreationImportApi(repositories),
     ...createAssetLibraryApi(repositories),
     ...createGenerationApi(repositories),

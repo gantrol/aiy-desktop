@@ -96,17 +96,6 @@ export class CodexContentRepository {
       )
       .run(stashId, JSON.stringify(project));
   }
-  lastProject(): CodexProjectTarget | null {
-    const raw = this.db.prepare("SELECT value FROM app_meta WHERE key='codex.content.last-project'").pluck().get();
-    return typeof raw === 'string' ? codexProjectTargetSchema.parse(JSON.parse(raw)) : null;
-  }
-  rememberProject(project: CodexProjectTarget) {
-    this.db
-      .prepare(
-        "INSERT INTO app_meta(key,value) VALUES('codex.content.last-project',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",
-      )
-      .run(JSON.stringify(codexProjectTargetSchema.parse(project)));
-  }
   execution(stashId: string): CodexContentExecution {
     const raw = this.db
       .prepare('SELECT value FROM app_meta WHERE key=?')

@@ -9,7 +9,7 @@ const galleryCommandSchema = z
   .object({
     schemaVersion: z.literal(1),
     action: z.literal('open'),
-    target: z.literal('gallery'),
+    target: z.enum(['gallery', 'companion']),
   })
   .strict();
 
@@ -28,8 +28,15 @@ const contentCommandSchema = z
       .min(1)
       .max(200)
       .regex(/^[A-Za-z0-9._:-]+$/),
+    blockId: z
+      .string()
+      .min(1)
+      .max(200)
+      .regex(/^[A-Za-z0-9._:-]+$/)
+      .optional(),
   })
-  .strict();
+  .strict()
+  .refine((command) => !command.blockId || command.target === 'article');
 
 const calendarCommandSchema = z
   .object({
@@ -67,10 +74,14 @@ export function parseAiyDeepLink(rawValue: unknown): AppDeepLinkCommand | null {
     url.hash
   )
     return null;
+  if (url.pathname === '/companion') return { schemaVersion: 1, action: 'open', target: 'companion' };
   if (url.pathname === '/gallery') return { schemaVersion: 1, action: 'open', target: 'gallery' };
   const calendar = /^\/space\/([A-Za-z0-9._:-]+)\/calendar$/u.exec(url.pathname);
   if (calendar) return { schemaVersion: 1, action: 'open', target: 'calendar', spaceId: calendar[1] };
-  const route = /^\/space\/([A-Za-z0-9._:-]+)\/(article|material|album)\/([A-Za-z0-9._:-]+)$/u.exec(url.pathname);
+  const route =
+    /^\/space\/([A-Za-z0-9._:-]+)\/(article|material|album)\/([A-Za-z0-9._:-]+)(?:\/block\/([A-Za-z0-9._:-]+))?$/u.exec(
+      url.pathname,
+    );
   if (!route) return null;
   const command = appDeepLinkCommandSchema.safeParse({
     schemaVersion: 1,
@@ -78,6 +89,7 @@ export function parseAiyDeepLink(rawValue: unknown): AppDeepLinkCommand | null {
     target: route[2],
     spaceId: route[1],
     entityId: route[3],
+    ...(route[4] ? { blockId: route[4] } : {}),
   });
   return command.success ? command.data : null;
 }

@@ -63,9 +63,12 @@ export function useContentWorkspacePanelSize({
   useLayoutEffect(() => {
     const container = asideRef.current?.parentElement;
     if (!container) return;
-    const update = () => setAvailable({ width: container.clientWidth, height: container.clientHeight });
-    update();
-    const observer = new ResizeObserver(update);
+    // clientWidth rounds fractional widths and can disagree with the 960px CSS container query.
+    const update = ({ width, height }: DOMRectReadOnly) => setAvailable({ width, height });
+    update(container.getBoundingClientRect());
+    const observer = new ResizeObserver(([entry]) => {
+      if (entry) update(entry.contentRect);
+    });
     observer.observe(container);
     return () => observer.disconnect();
   }, []);

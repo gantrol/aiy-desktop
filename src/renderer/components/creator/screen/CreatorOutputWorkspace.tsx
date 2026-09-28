@@ -3,6 +3,7 @@ import { CreatorRecordPanel } from '@/renderer/components/creator/CreatorAssista
 import { CreatorInputPanel } from '@/renderer/components/creator/CreatorInputPanel';
 import { CreationOutputTabs } from '@/renderer/components/creator/CreationOutputTabs';
 import { OutputInspector } from '@/renderer/components/creator/OutputInspector';
+import { CreatorOutputEmptyState } from '@/renderer/components/creator/screen/CreatorOutputEmptyState';
 import type { CreatorScreenViewModel } from '@/renderer/components/creator/screen/creatorScreenViewModel';
 import { Button } from '@/renderer/components/ui/button';
 import { cn } from '@/renderer/lib/utils';
@@ -43,20 +44,6 @@ function OutputHeader({ model }: Pick<Props, 'model'>) {
   );
 }
 
-function OutputEmptyState({ model }: Pick<Props, 'model'>) {
-  const labels = useI18n().messages.creator.workNavigation;
-  return (
-    <div className="flex flex-1 items-center justify-center px-6">
-      <div className="flex max-w-md flex-col items-center gap-4">
-        <span className="text-sm font-semibold">{labels.emptyOutput}</span>
-        <Button type="button" variant="secondary" onClick={() => model.projection.panes.setCompactPanel('creator')}>
-          {labels.backToInput}
-        </Button>
-      </div>
-    </div>
-  );
-}
-
 export function CreatorOutputWorkspace({ model, sourceFormId }: Props) {
   const { app, generation, generationRuntime, navigation, outputUi, projection, workbench, workflow } = model;
   const document = generation.promptDocument;
@@ -84,7 +71,7 @@ export function CreatorOutputWorkspace({ model, sourceFormId }: Props) {
             onBeforeOpenVariant={navigation.creation.preserveBeforeNavigation}
             onCreateContentVariant={content.createImageVariant}
             headerNavigation={headerNavigation}
-            emptyState={<OutputEmptyState model={model} />}
+            emptyState={<CreatorOutputEmptyState model={model} />}
             series={workbench.outputSeries}
             primarySeries={workbench.outputPrimarySeries}
             outputProjection={workbench.outputProjection}

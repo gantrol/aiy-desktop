@@ -25,6 +25,9 @@ export function calendarActivityItemFromReadRow(
     category: row.category,
     title: source.title,
     sourceType: source.type,
+    writers: row.activity_writers
+      ? (JSON.parse(row.activity_writers) as string[]).map((value) => JSON.parse(value))
+      : [row.writer_json ? JSON.parse(row.writer_json) : { kind: 'UNKNOWN' }],
     changes: row.activity_changes
       ? JSON.parse(row.activity_changes)
       : [

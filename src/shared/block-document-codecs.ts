@@ -5,10 +5,17 @@ import { Node } from '@tiptap/core';
 import { TableKit } from '@tiptap/extension-table';
 import TaskItem from '@tiptap/extension-task-item';
 import TaskList from '@tiptap/extension-task-list';
-import { MarkdownManager } from '@tiptap/markdown';
+import { ContentMarkdownManager } from '@/shared/content-markdown-manager';
 import StarterKit from '@tiptap/starter-kit';
 import { linkCardMarkdown } from '@/shared/link-card-document';
+import { isMathNode, mathMarkdown } from '@/shared/content-math';
 import type { List, PhrasingContent, RootContent } from 'mdast';
+import {
+  contentReferenceToken,
+  parseContentReferenceToken,
+  referencePresentationAttribute,
+  referenceEditingAttribute,
+} from '@/shared/content-reference-token';
 
 const image = Node.create({
   name: 'image',
@@ -28,7 +35,13 @@ const reference = Node.create({
   name: 'contentReference',
   group: 'block',
   atom: true,
-  renderMarkdown: (node) => `:::aiy-block ${String(node.attrs?.referenceId ?? '')}\n:::`,
+  renderMarkdown: (node) =>
+    contentReferenceToken(
+      String(node.attrs?.referenceId ?? ''),
+      referencePresentationAttribute(node.attrs?.referencePresentation),
+      node.attrs?.referenceSpaceId,
+      node.attrs?.referenceEditing == null ? undefined : referenceEditingAttribute(node.attrs.referenceEditing),
+    ),
 });
 const inlineNodes = ['creatorTerm', 'creatorRecipe'].map((name) =>
   Node.create({
@@ -39,7 +52,7 @@ const inlineNodes = ['creatorTerm', 'creatorRecipe'].map((name) =>
     renderMarkdown: (node) => String(node.attrs?.promptText ?? ''),
   }),
 );
-const markdown = new MarkdownManager({
+const markdown = new ContentMarkdownManager({
   extensions: [
     StarterKit,
     TableKit,
@@ -48,6 +61,7 @@ const markdown = new MarkdownManager({
     image,
     reference,
     ...inlineNodes,
+    ...['inlineMath', 'blockMath'].map((name) => Node.create({ name, renderMarkdown: mathMarkdown })),
     Node.create({ name: 'linkCard', group: 'block', atom: true, renderMarkdown: linkCardMarkdown }),
   ],
 });
@@ -167,6 +181,9 @@ export function markdownBlockDocument(
   );
   const leaf = (node: RootContent | PhrasingContent): BlockNode[] | null => {
     switch (node.type) {
+      case 'math':
+      case 'inlineMath':
+        return [{ type: node.type === 'math' ? 'blockMath' : 'inlineMath', attrs: { latex: node.value } }];
       case 'text':
         return node.value ? [{ type: 'text', text: node.value }] : [];
       case 'break':
@@ -222,9 +239,19 @@ export function markdownBlockDocument(
     switch (node.type) {
       case 'paragraph': {
         const raw = text.slice(node.position?.start.offset, node.position?.end.offset);
-        const ref = /^:::aiy-block ([A-Za-z0-9_-]{1,200})\r?\n:::[ \t]*$/u.exec(raw);
-        return ref
-          ? [{ type: 'contentReference', attrs: { referenceId: ref[1] } }]
+        const ref = parseContentReferenceToken(raw);
+        return ref && ref.raw.trimEnd() === raw.trimEnd()
+          ? [
+              {
+                type: 'contentReference',
+                attrs: {
+                  referenceId: ref.referenceId,
+                  ...(ref.presentation ? { referencePresentation: ref.presentation } : {}),
+                  ...(ref.editing ? { referenceEditing: ref.editing } : {}),
+                  ...(ref.spaceId ? { referenceSpaceId: ref.spaceId } : {}),
+                },
+              },
+            ]
           : [{ type: 'paragraph', content: children() }];
       }
       case 'heading':
@@ -296,6 +323,7 @@ export function markdownBlockDocument(
 
 export function blockDocumentText(document: BlockDocument): string {
   const visit = (node: BlockNode): string => {
+    if (isMathNode(node.type)) return String(node.attrs?.latex ?? '');
     if (node.type === 'text') return node.text ?? '';
     if (node.type === 'hardBreak') return '\n';
     if (node.type === 'image') return String(node.attrs?.alt ?? '');

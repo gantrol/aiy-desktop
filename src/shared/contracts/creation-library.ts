@@ -201,6 +201,9 @@ export const creationItemSchema = z
     id: idSchema,
     /** Album membership is projected into the read model; it is not owned by a form. */
     albumId: idSchema.nullable(),
+    /** Optional organization edge; a child remains an ordinary creation item. */
+    parentCreationItemId: idSchema.nullable().optional(),
+    childSortOrder: sortOrderSchema.nullable().optional(),
     phase: creationItemPhaseSchema,
     lifecycle: creationItemLifecycleSchema,
     pinned: z.boolean(),
@@ -514,6 +517,8 @@ export const creationItemMoveInputSchema = z
   .object({
     creationItemId: idSchema,
     albumId: idSchema.nullable(),
+    parentCreationItemId: idSchema.nullable().optional(),
+    expectedParentCreationItemId: idSchema.nullable().optional(),
   })
   .strict();
 

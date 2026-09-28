@@ -9,6 +9,8 @@ import { contentLibraryApi } from '@/renderer/features/content-editor/contentLib
 import type { useWorkspaceController } from '@/renderer/components/workspace/useWorkspaceController';
 import { workspaceLocationKey } from '@/renderer/components/workspace/workspace-location';
 import { activeLocation, activeNavigationEntry } from '@/renderer/components/workspace/workspace-state';
+import { useArticleEditorSessions } from '@/renderer/components/creator/article-editor/ArticleEditorSessionProvider';
+import { liveReferenceLocation } from '@/renderer/features/content-editor/liveReferenceLocation';
 
 export function useReferenceLocationNavigation(
   data: Pick<BootstrapDto, 'spaceId'> | null,
@@ -17,7 +19,8 @@ export function useReferenceLocationNavigation(
   flushers: { current: Map<string, () => void> },
   overlays: readonly Dispatch<SetStateAction<boolean>>[],
 ) {
-  const options = { spaceId: data?.spaceId, workspace, setData, flushers, overlays };
+  const sessions = useArticleEditorSessions();
+  const options = { spaceId: data?.spaceId, workspace, setData, flushers, overlays, sessions };
   const current = useRef(options);
   current.current = options;
   useEffect(() => {
@@ -33,9 +36,13 @@ export function useReferenceLocationNavigation(
       const sourceKey = workspaceLocationKey(activeLocation(source.tab));
       const sourceEntryId = activeNavigationEntry(source.tab).id;
       context.flushers.current.get(tabId)?.();
+      const session = ['ARTICLE', 'INSPIRATION_STASH'].includes(request.target.source.kind)
+        ? context.sessions?.find(spaceId, request.target.source.id)
+        : undefined;
+      const live = session?.getDocumentProjection() ? session : undefined;
       const loaded = await contentLibraryApi().referenceOpen(
-        referenceTargetSchema.parse(request.target),
-        request.referenceId,
+        referenceTargetSchema.parse(live ? { source: request.target.source } : request.target),
+        live ? undefined : request.referenceId,
       );
       const latest = current.current;
       const latestSource = latest.workspace.findTab(tabId);
@@ -50,6 +57,11 @@ export function useReferenceLocationNavigation(
         workspaceLocationKey(activeLocation(latestSource.tab)) !== sourceKey
       )
         throw new Error('REFERENCE_TARGET_CHANGED');
+      if (live) {
+        if (latest.sessions?.find(spaceId, request.target.source.id) !== live)
+          throw new Error('REFERENCE_TARGET_CHANGED');
+        loaded.blockId = liveReferenceLocation(live, request.target, request.referenceId);
+      }
       latest.workspace.navigateReference(tabId, loaded.article.id, loaded.blockId, request);
       latest.setData((data) =>
         data?.spaceId === spaceId

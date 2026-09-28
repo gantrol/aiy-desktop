@@ -43,6 +43,7 @@ function move(active: Gesture): Promise<void> {
 export function usePetalDrag(onClick?: () => void, onError?: (reason: unknown) => void) {
   const gesture = useRef<Gesture | null>(null);
   const settling = useRef(false);
+  const mounted = useRef(true);
   const callbacks = useRef({ onClick, onError });
   callbacks.current = { onClick, onError };
   const [dragging, setDragging] = useState(false);
@@ -53,7 +54,6 @@ export function usePetalDrag(onClick?: () => void, onError?: (reason: unknown) =
       active.moved = true;
     gesture.current = null;
     releaseCapture(active);
-    setDragging(false);
     if (!active.moved) {
       if (released && !cancelled) callbacks.current.onClick?.();
       return;
@@ -61,6 +61,8 @@ export function usePetalDrag(onClick?: () => void, onError?: (reason: unknown) =
     const finalPoint = destination ?? active.last;
     active.next = null;
     settling.current = true;
+    // Menus and hover previews must stay disabled until native geometry has settled.
+    if (mounted.current) setDragging(true);
     void (async () => {
       let rollback = cancelled;
       try {
@@ -75,6 +77,7 @@ export function usePetalDrag(onClick?: () => void, onError?: (reason: unknown) =
           callbacks.current.onError?.(reason);
         } finally {
           settling.current = false;
+          if (mounted.current) setDragging(false);
         }
       }
     })();
@@ -83,13 +86,14 @@ export function usePetalDrag(onClick?: () => void, onError?: (reason: unknown) =
     (event: globalThis.PointerEvent) => {
       const active = gesture.current;
       if (!active || active.pointerId !== event.pointerId) return;
+      // A later button-free move is not the missing pointerup, nor its release position.
+      if (!(event.buttons & 1)) return finish(false);
       const destination = point(event);
       active.last = destination;
-      if (!(event.buttons & 1)) return finish(false, destination, active.moved);
       if (!active.moved && Math.hypot(destination.x - active.origin.x, destination.y - active.origin.y) < 6) return;
+      if (!active.moved) setDragging(true);
       active.moved = true;
       active.next = destination;
-      setDragging(true);
       if (active.frame === null)
         active.frame = requestAnimationFrame(() => {
           active.frame = null;
@@ -104,6 +108,7 @@ export function usePetalDrag(onClick?: () => void, onError?: (reason: unknown) =
     [finish],
   );
   useEffect(() => {
+    mounted.current = true;
     const up = (event: globalThis.PointerEvent) => {
       if (event.pointerId === gesture.current?.pointerId) finish(false, point(event), true);
     };
@@ -118,6 +123,7 @@ export function usePetalDrag(onClick?: () => void, onError?: (reason: unknown) =
     window.addEventListener('pointercancel', cancel, true);
     window.addEventListener('keydown', escape);
     return () => {
+      mounted.current = false;
       window.removeEventListener('pointermove', pointerMove, true);
       window.removeEventListener('pointerup', up, true);
       window.removeEventListener('pointercancel', cancel, true);
@@ -151,7 +157,7 @@ export function usePetalDrag(onClick?: () => void, onError?: (reason: unknown) =
         }
       },
       onPointerEnter(event: PointerEvent<Element>) {
-        if (!(event.buttons & 1)) finish(false, point(event), gesture.current?.moved);
+        if (!(event.buttons & 1)) finish(false);
       },
       onClick(event: React.MouseEvent<Element>) {
         if (event.detail === 0 && !settling.current) callbacks.current.onClick?.();

@@ -600,6 +600,9 @@ export class ContentLifecycleRepository {
   }
 
   private imageAssetHasActiveContentReference(assetId: string) {
+    // Fixed captures, following fallbacks and prepared deliveries retain readable media
+    // even after the author removes the original source or a newer cache replaces it.
+    if (this.db.prepare('SELECT 1 FROM content_block_assets WHERE asset_id=? LIMIT 1').get(assetId)) return true;
     const article = this.db
       .prepare(
         `SELECT 1

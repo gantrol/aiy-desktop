@@ -1,4 +1,10 @@
 import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process';
+import {
+  threadResponseSchema,
+  threadConfiguration,
+  type StartThreadInput,
+} from '@/main/extensions/codex-app-server/thread-configuration';
+export type { StartThreadInput } from '@/main/extensions/codex-app-server/thread-configuration';
 import { z } from 'zod';
 import { resolveCodexAppServerBinary } from '@/main/extensions/codex-app-server/binary';
 import { captureCodexCompletedItem } from '@/main/extensions/codex-app-server/completed-items';
@@ -71,12 +77,6 @@ const rpcMessageSchema = z
 
 type RpcMessage = z.infer<typeof rpcMessageSchema>;
 
-const threadResponseSchema = z
-  .object({
-    thread: z.object({ id: z.string().min(1).max(512), sessionId: z.string().max(512).optional() }).passthrough(),
-  })
-  .passthrough();
-
 const turnResponseSchema = z.object({ turn: z.object({ id: z.string().min(1).max(512) }).passthrough() }).passthrough();
 
 const ignoredResponseSchema = z.record(z.string(), z.unknown());
@@ -124,14 +124,6 @@ interface BufferedTurnMessage {
   critical: boolean;
 }
 
-export interface StartThreadInput {
-  cwd: string;
-  developerInstructions: string;
-  webSearchMode?: 'disabled' | 'live';
-  ephemeral?: boolean;
-  userTask?: boolean;
-}
-
 export interface StartTurnInput {
   threadId: string;
   cwd: string;
@@ -172,10 +164,6 @@ function parseRpcMessage(line: string) {
   return parsed.data;
 }
 
-function threadConfiguration(input: Pick<StartThreadInput, 'webSearchMode'>): JsonObject {
-  return input.webSearchMode ? { config: { web_search: input.webSearchMode } } : {};
-}
-
 /** One JSONL app-server connection shared by the detached model worker. */
 export class CodexAppServerClient {
   private child: ChildProcessWithoutNullStreams | null = null;
@@ -196,6 +184,7 @@ export class CodexAppServerClient {
   constructor(
     private readonly binary: string,
     private readonly defaultCwd: string,
+    private readonly projectMetadata = false,
   ) {}
 
   resolveBinary(): Promise<string> {
@@ -207,6 +196,7 @@ export class CodexAppServerClient {
       'thread/start',
       {
         cwd: input.cwd,
+        ...(input.projectId !== undefined ? { projectId: input.projectId } : {}),
         approvalPolicy: 'never',
         sandbox: 'workspace-write',
         serviceName: 'aiy_beauty_dictionary',
@@ -569,7 +559,7 @@ export class CodexAppServerClient {
             version: '0.3.0',
           },
           capabilities: {
-            experimentalApi: false,
+            experimentalApi: this.projectMetadata,
             requestAttestation: false,
           },
         },

@@ -6,12 +6,12 @@ import {
   ChevronDownIcon,
   ChevronRightIcon,
   FolderInputIcon,
-  GripVerticalIcon,
   PencilIcon,
   PlusIcon,
   RotateCcwIcon,
 } from 'lucide-react';
 import type { DragEvent } from 'react';
+import { itemDragStart, itemDragScopeProps, acceptsItemMove } from '@/renderer/components/albums/itemDrag';
 import { useI18n } from '@/renderer/i18n/useI18n';
 import { cn } from '@/renderer/lib/utils';
 import { ActionMenuButton, type ActionMenuAction } from '@/renderer/components/ui/action-menu';
@@ -99,6 +99,7 @@ function ClassificationBranch({ node, props }: { node: DictionaryClassificationN
   ];
 
   function acceptDrop(event: DragEvent<HTMLDivElement>) {
+    if (!acceptsItemMove(event)) return;
     if (!props.draggingId || props.draggingId === node.id) return;
     event.preventDefault();
     event.stopPropagation();
@@ -110,6 +111,14 @@ function ClassificationBranch({ node, props }: { node: DictionaryClassificationN
     <div className="relative" data-classification-branch={node.id}>
       <div
         data-classification-id={node.id}
+        {...itemDragScopeProps}
+        draggable={!props.busy}
+        onDragStart={itemDragStart((event) => {
+          event.dataTransfer.effectAllowed = 'move';
+          event.dataTransfer.setData('text/plain', node.id);
+          props.onDragStart(node.id);
+        })}
+        onDragEnd={props.onDragEnd}
         data-selected={props.selectedId === node.id ? 'true' : 'false'}
         className={cn(
           'group relative flex h-10 items-center gap-1 rounded-md pr-1 text-sm transition-colors duration-fast',
@@ -128,28 +137,15 @@ function ClassificationBranch({ node, props }: { node: DictionaryClassificationN
         onDragOver={(event) => {
           if (!props.draggingId || props.draggingId === node.id) return;
           event.preventDefault();
-          event.dataTransfer.dropEffect = 'move';
+          event.dataTransfer.dropEffect = acceptsItemMove(event) ? 'move' : 'none';
         }}
         onDragLeave={(event) => {
           if (!event.currentTarget.contains(event.relatedTarget as Node | null)) props.onDropTargetChange(null);
         }}
         onDrop={acceptDrop}
       >
-        <span
-          draggable={!props.busy}
-          title={copy.drag}
-          className="grid size-7 shrink-0 cursor-grab place-items-center rounded text-muted-foreground active:cursor-grabbing"
-          onDragStart={(event) => {
-            event.stopPropagation();
-            event.dataTransfer.effectAllowed = 'move';
-            event.dataTransfer.setData('text/plain', node.id);
-            props.onDragStart(node.id);
-          }}
-          onDragEnd={props.onDragEnd}
-        >
-          <GripVerticalIcon className="size-3.5" />
-        </span>
         <Button
+          data-item-drag-ignore
           type="button"
           variant="ghost"
           size="icon-sm"

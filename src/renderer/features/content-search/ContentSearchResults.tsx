@@ -1,3 +1,4 @@
+import { contentSearchSourceKey } from '@/renderer/features/content-search/contentSearchSelection';
 import { ArrowLeftIcon, ArrowRightIcon, RefreshCwIcon, SearchIcon } from 'lucide-react';
 import { useI18n } from '@/renderer/i18n/useI18n';
 import { Button } from '@/renderer/components/ui/button';
@@ -14,6 +15,9 @@ type ResultsProps = {
   query: string;
   type?: ContentLookupInput['type'];
   disabled?: boolean;
+  selectedKey?: string;
+  onPreview?(item: ContentLookupResult['items'][number]): void;
+  onOpen?(item: ContentLookupResult['items'][number]): void;
   enabled?: boolean;
   onSelect(item: ContentLookupResult['items'][number]): void;
 };
@@ -29,6 +33,9 @@ export function ContentSearchResultList({
   disabled,
   enabled = true,
   onSelect,
+  selectedKey,
+  onPreview,
+  onOpen,
   search,
 }: ResultsProps & { search: ReturnType<typeof useContentLookup> }) {
   const copy = useI18n().messages.referenceOutline.lookup;
@@ -115,6 +122,9 @@ export function ContentSearchResultList({
             terms={terms}
             disabled={inactive}
             onSelect={onSelect}
+            selected={selectedKey === contentSearchSourceKey(item.source)}
+            onPreview={onPreview}
+            onOpen={onOpen}
           />
         ))}
         {waiting && !search.paused && (

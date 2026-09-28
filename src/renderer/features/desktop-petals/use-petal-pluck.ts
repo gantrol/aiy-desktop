@@ -159,7 +159,7 @@ export function usePetalPluck(
       if (active.cancelled) return await restore(active);
       if (!delta) {
         setPull(project(active, { x: 0, y: 0 }, 'settling', 0));
-        // Give the expanded preview and starting pose a frame before click-to-pluck motion.
+        // Commit the detached surface's starting pose before click-to-pluck motion.
         await pause(active, 32);
         const dx = active.petal.x - active.center.x,
           dy = active.petal.y - active.center.y;
@@ -275,8 +275,8 @@ export function usePetalPluck(
         if (!watched && gesture.current === active) cancel();
       });
     };
-    // Expanding the native preview can blur the window or release capture
-    // while the button is still held. Neither event completes the gesture.
+    // A capture cancellation is not a release. Keep the existing native fallback
+    // for external interruptions; the source window is never resized for a pull.
     window.addEventListener('pointermove', move, true);
     window.addEventListener('pointerup', up, true);
     window.addEventListener('pointercancel', abort, true);
@@ -347,6 +347,7 @@ export function usePetalPluck(
   });
   return {
     flower,
+    cancel,
     pull,
     growing,
     events,

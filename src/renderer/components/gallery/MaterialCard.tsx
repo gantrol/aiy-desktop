@@ -25,6 +25,7 @@ import { AssetFileContextMenu } from '@/renderer/components/media/AssetFileConte
 import { useAssetMenuActions } from '@/renderer/components/media/AssetMenuActionsProvider';
 import { AssetMedia, isVideoAsset } from '@/renderer/components/media/AssetMedia';
 import { ImageAmbientBackdrop } from '@/renderer/components/media/AmbientImage';
+import { MediaCardCaption } from '@/renderer/components/media/MediaCardCaption';
 import { DEFAULT_MEDIA_ASPECT_RATIO, getSourceMediaAspectRatio } from '@/renderer/components/media/mediaAspectRatio';
 import { mediaThumbnailUrl } from '@/renderer/components/media/mediaThumbnailUrl';
 import { Checkbox } from '@/renderer/components/ui/checkbox';
@@ -206,7 +207,7 @@ function MaterialCardImpl({
   selectionAvailable = true,
   viewMode,
   frameAspectRatio,
-  showName = false,
+  showName = true,
   onSelect,
   onEnterSelection,
   onToggleSelection,
@@ -513,6 +514,7 @@ function MaterialCardImpl({
         data-material-key={item.key}
         data-material-id={materialId ?? undefined}
         data-material-kind={video ? 'VIDEO' : 'IMAGE'}
+        data-media-card
         draggable={Boolean(onDragStart)}
         onDragStart={(event) => onDragStart?.(event, item)}
         data-material-aspect-ratio={cardAspectRatio.toFixed(3)}
@@ -562,32 +564,25 @@ function MaterialCardImpl({
                 {selected && <CheckIcon className="size-3.5" aria-hidden="true" />}
               </span>
             )}
-            {shapeLabel && (
-              <span className="absolute bottom-2 right-2 bg-overlay/90 px-1.5 py-0.5 text-[10px] text-foreground group-hover:opacity-0 group-focus-within:opacity-0">
+            {shapeLabel && !showName && (
+              <span className="absolute bottom-2 right-2 bg-overlay/90 px-1.5 py-0.5 text-[10px] text-foreground group-hover:opacity-0 group-focus-within:opacity-0 [@media(hover:none)]:hidden">
                 {shapeLabel}
               </span>
             )}
-            {!showName && (
-              <span
-                data-material-overlay
-                className="pointer-events-none absolute inset-x-0 bottom-0 truncate bg-overlay/95 px-2 py-1.5 text-xs font-medium text-foreground opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100 [@media(hover:none)]:opacity-100"
-              >
-                {title}
-              </span>
+            {showName && (
+              <MediaCardCaption data-material-overlay>
+                <strong className="block truncate text-sm font-semibold">{title}</strong>
+                {shapeLabel && <span className="text-xs font-normal opacity-85">{shapeLabel}</span>}
+              </MediaCardCaption>
             )}
             <span
               className={cn(
-                'pointer-events-none absolute inset-0 group-focus-visible/card:ring-2 group-focus-visible/card:ring-inset group-focus-visible/card:ring-ring',
+                'pointer-events-none absolute inset-0 z-20 group-focus-visible/card:ring-2 group-focus-visible/card:ring-inset group-focus-visible/card:ring-ring',
                 (selected || checked) && 'ring-2 ring-inset ring-selected-border',
               )}
             />
           </button>
         </div>
-        {showName && (
-          <div className="h-7 truncate px-1 text-xs leading-7" title={title}>
-            {title}
-          </div>
-        )}
         {selectionAvailable && (
           <SelectionCheckbox
             visible={selectionMode || checked}

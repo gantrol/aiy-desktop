@@ -1,7 +1,8 @@
-import type { ReactNode } from 'react';
+import { useMemo, type ReactNode } from 'react';
 import { ArrowLeftIcon, FileTextIcon, HistoryIcon, PencilIcon, PlusIcon } from 'lucide-react';
-import type { AlbumDto, DerivedVisualDto, Locale, PromptSeriesDto, PromptVersionDto } from '@/shared/contracts';
-import { SearchableAlbumSelect } from '@/renderer/components/albums/SearchableAlbumSelect';
+import type { AlbumDto, DerivedVisualDto, PromptSeriesDto, PromptVersionDto } from '@/shared/contracts';
+import { AlbumSelect } from '@/renderer/components/albums/AlbumSelect';
+import { creationAlbumOptions } from '@/renderer/components/albums/albumSelectOptions';
 import type { CreationExperimentContext } from '@/renderer/components/creator/creationExperimentContext';
 import type { CreationStartMode } from '@/renderer/components/creator/creationStartMode';
 import type { MessageCatalog } from '@/renderer/i18n/types';
@@ -41,7 +42,6 @@ interface Props {
   desktopNoteAction?: ReactNode;
   inputStashBusy: boolean;
   labels: Labels;
-  locale: Locale;
   newCreationSurface: boolean;
   promptFullWindow: boolean;
   series: PromptSeriesDto | undefined;
@@ -170,7 +170,9 @@ function VersionSelector({ header: props, width }: { header: Props; width: 'comp
 }
 
 function CreatorInputHeaderContent(props: Props) {
-  const labels = useI18n().messages.creator.derivedVisual;
+  const { messages } = useI18n();
+  const labels = messages.creator.derivedVisual;
+  const albumOptions = useMemo(() => creationAlbumOptions(props.albums), [props.albums]);
   const main = props.derived ? (
     derivedHeader(props, props.derived, labels)
   ) : props.creationMode === 'new' ? (
@@ -179,33 +181,27 @@ function CreatorInputHeaderContent(props: Props) {
         {props.creationStartMode === 'video-document'
           ? props.labels.videoStartTitle
           : props.inspirationSelected
-            ? props.locale === 'zh'
-              ? '灵感暂存'
-              : 'Inspiration stash'
+            ? messages.creator.workNavigation.inspirationStash
             : props.labels.newPrompt}
       </span>
       {props.newCreationSurface && props.creationStartMode === 'video-document' && (
         <Button type="button" variant="ghost" size="sm" onClick={props.onSelectImageMode}>
           <FileTextIcon className="size-3.5" />
-          {props.locale === 'zh' ? '返回输入' : 'Back to input'}
+          {messages.creator.workNavigation.backToInput}
         </Button>
       )}
       {props.creationStartMode === 'image' && (
-        <SearchableAlbumSelect
-          albums={props.albums}
+        <AlbumSelect
+          options={albumOptions}
           value={props.targetAlbumId}
           className="h-8 w-48 max-w-[35vw] text-xs"
           disabled={props.busy}
-          labels={{
-            ariaLabel: props.locale === 'zh' ? '选择新创作图集' : 'Choose album for new creation',
-            unfiled: props.locale === 'zh' ? '不归入图集' : 'Unfiled',
-            searchPlaceholder: props.locale === 'zh' ? '搜索图集' : 'Search albums',
-            empty: props.locale === 'zh' ? '没有匹配的图集' : 'No matching albums',
-            create: props.locale === 'zh' ? '新建图集' : 'New album',
-            createChild: props.locale === 'zh' ? '新建子图集' : 'New child album',
-          }}
+          ariaLabel={messages.albumPicker.newCreation}
+          nullOption={{ kind: 'unassigned', label: messages.albumPicker.unassigned }}
           onValueChange={props.onChangeAlbum}
-          onRequestCreate={props.onCreateAlbum}
+          onRequestCreate={(parentId) =>
+            props.onCreateAlbum(props.albums.find((album) => album.id === parentId) ?? null)
+          }
         />
       )}
     </div>

@@ -1,3 +1,5 @@
+import { WorkspacePaneScope } from '@/renderer/components/workspace/WorkspacePaneScope';
+import { WorkbenchScopeProvider } from '@/renderer/components/workbench/WorkbenchScope';
 import { appMaterialsReturnSummary } from '@/renderer/appPresentation';
 import { GifWorkspaceScope } from '@/renderer/features/gif-making/GifMakerProvider';
 import { AppWorkspaceViews } from '@/renderer/components/app/AppWorkspaceViews';
@@ -31,7 +33,7 @@ import type {
   WorkspaceArticleEditOwnerDto,
   WorkspaceArticleEditorStateDto,
 } from '@/shared/contracts';
-import { useCallback, useEffect, useMemo, useRef, type ComponentProps } from 'react';
+import { useCallback, useEffect, useRef, type ComponentProps } from 'react';
 
 type WorkspaceViewProps = ComponentProps<typeof AppWorkspaceViews>;
 
@@ -188,7 +190,14 @@ export function WorkspaceTabSurface(props: WorkspaceTabSurfaceProps) {
       active={props.active && (props.visible ?? true)}
       navigationKey={`${entry.id}:${JSON.stringify(appLocationToWorkspaceTarget(entry.location))}`}
     >
-      <WorkspaceTabContent {...props} />
+      <WorkbenchScopeProvider
+        key={`${props.data.spaceId}:${props.tab.id}`}
+        scope={`${props.data.spaceId}:${props.tab.id}`}
+      >
+        <WorkspacePaneScope>
+          <WorkspaceTabContent {...props} />
+        </WorkspacePaneScope>
+      </WorkbenchScopeProvider>
     </PopoverNavigationScope>
   );
 }
@@ -234,7 +243,6 @@ function WorkspaceTabContent(props: WorkspaceTabSurfaceProps) {
   const navigationEntry = activeNavigationEntry(tab);
   const location = navigationEntry.location;
   const view = location.view;
-  const visitedViews = useMemo(() => new Set(tab.visitedViews), [tab.visitedViews]);
   const loadingBoundaries = createWorkspaceLoadingBoundaries(loadingPreviews, view);
   const returnSummary = appMaterialsReturnSummary(location.materialsReturnContext, data, locale);
   const articleId = view === 'creator' && location.creator.surface === 'article' ? location.creator.articleId : null;
@@ -344,7 +352,7 @@ function WorkspaceTabContent(props: WorkspaceTabSurfaceProps) {
     commit((current) => intakeLocation(current, result, requestId));
     onApplyIntakeResult(result);
   }
-  if (view === 'creator' && location.creator.surface === 'outline') {
+  if (visible && view === 'creator' && location.creator.surface === 'outline') {
     return <WorkspaceOutlineSurface {...props} location={location} />;
   }
   return (
@@ -355,7 +363,7 @@ function WorkspaceTabContent(props: WorkspaceTabSurfaceProps) {
         active={visible}
         focused={active}
         navigationKey={`${navigationEntry.id}:${JSON.stringify(appLocationToWorkspaceTarget(location))}`}
-        route={view === 'creator' && location.creator.surface === 'animation' ? location.creator : null}
+        route={visible && view === 'creator' && location.creator.surface === 'animation' ? location.creator : null}
         onNavigate={navigateCreator}
         onClose={() => (tab.history.index > 0 ? onGoBack(tab.id) : navigateCreator({ surface: 'default' }, 'replace'))}
       >
@@ -372,7 +380,8 @@ function WorkspaceTabContent(props: WorkspaceTabSurfaceProps) {
           onRequestEditOwnership={articleEditorBindings.requestOwnership}
           onLocationFlushChange={articleEditorBindings.changeLocationFlusher}
         >
-          {data.libraryEmpty &&
+          {visible &&
+            data.libraryEmpty &&
             view === 'creator' &&
             location.creator.surface === 'default' &&
             loadingBoundaries.creator(
@@ -383,9 +392,8 @@ function WorkspaceTabContent(props: WorkspaceTabSurfaceProps) {
               />,
             )}
           <AppWorkspaceViews
-            groupActive={active}
+            surfaceVisible={visible}
             view={view}
-            visitedViews={visitedViews}
             data={data}
             dataRevision={dataRevision}
             locale={locale}
@@ -444,9 +452,9 @@ function WorkspaceTabContent(props: WorkspaceTabSurfaceProps) {
             onReEditGeneration={reEditGeneration}
             onRetryGeneration={onRetryGeneration}
           />
-          {view === 'contentManagement' && (
+          {visible && view === 'contentManagement' && (
             <ContentManagementScreen
-              active={active}
+              active={visible}
               canNavigateBack={tab.history.index > 0}
               onNavigateBack={() => onGoBack(tab.id)}
               onContentChange={refresh}

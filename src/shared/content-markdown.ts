@@ -1,11 +1,13 @@
 import { unified } from 'unified';
 import remarkParse from 'remark-parse';
 import remarkGfm from 'remark-gfm';
+import remarkMath from 'remark-math';
 import type { RootContent, PhrasingContent } from 'mdast';
 import { contentAssetPath } from '@/shared/content-asset-path';
 import { contentFigureReferenceAssetId } from '@/shared/content-figure-reference';
+import { parseContentReferenceToken, type ReferencePresentation } from '@/shared/content-reference-token';
 
-const parser = unified().use(remarkParse).use(remarkGfm);
+const parser = unified().use(remarkParse).use(remarkGfm).use(remarkMath);
 export function contentMarkdownTree(markdown: string) {
   return parser.parse(markdown);
 }
@@ -14,6 +16,7 @@ export function contentMarkdownTree(markdown: string) {
 export function contentMarkdownText(
   markdown: string,
   imageLabel: (url: string, alt: string) => string = (_url, alt) => alt,
+  options: { omitReferences?: boolean } = {},
 ) {
   const tree = contentMarkdownTree(markdown);
   const definitions = new Map(
@@ -22,6 +25,16 @@ export function contentMarkdownText(
     ),
   );
   const render = (node: RootContent | PhrasingContent): string => {
+    if (options.omitReferences) {
+      try {
+        if (paragraphReference(markdown, node)) return '';
+      } catch (reason) {
+        // Display-only titles must not expose malformed metadata or crash a list.
+        // Authoritative reference parsing below still rejects invalid options.
+        if (!(reason instanceof Error) || reason.message !== 'REFERENCE_PRESENTATION_INVALID') throw reason;
+        return '';
+      }
+    }
     if (node.type === 'image') return imageLabel(node.url, node.alt ?? '');
     if (node.type === 'imageReference')
       return imageLabel(definitions.get(node.identifier.toLowerCase()) ?? '', node.alt ?? '');
@@ -37,16 +50,40 @@ export function contentMarkdownText(
   return tree.children.map(render).filter(Boolean).join('\n\n').trim();
 }
 
+function paragraphReference(markdown: string, node: RootContent | PhrasingContent) {
+  if (node.type !== 'paragraph') return null;
+  const start = node.position?.start.offset,
+    end = node.position?.end.offset;
+  if (start === undefined || end === undefined) return null;
+  const text = markdown.slice(start, end);
+  const match = parseContentReferenceToken(text);
+  return match && match.raw.trimEnd() === text.trimEnd() ? { match, start, end } : null;
+}
+
 /** Reference fences are document blocks, never code or escaped examples. */
 export function contentMarkdownReferences(markdown: string) {
-  const references: { id: string; start: number; end: number; indent: string }[] = [];
+  const references: {
+    id: string;
+    start: number;
+    end: number;
+    indent: string;
+    presentation?: ReferencePresentation;
+    spaceId?: string;
+  }[] = [];
   const walk = (node: RootContent | PhrasingContent) => {
     if (node.type === 'paragraph') {
-      const start = node.position?.start.offset,
-        end = node.position?.end.offset;
-      if (start === undefined || end === undefined) return;
-      const match = /^:::aiy-block ([A-Za-z0-9_-]{1,200})\r?\n([ >\t]*):::[ \t]*$/u.exec(markdown.slice(start, end));
-      if (match) references.push({ id: match[1]!, start, end, indent: match[2]! });
+      const reference = paragraphReference(markdown, node);
+      if (reference) {
+        const { match, start, end } = reference;
+        references.push({
+          id: match.referenceId,
+          start,
+          end,
+          indent: match.indent,
+          ...(match.presentation ? { presentation: match.presentation } : {}),
+          ...(match.spaceId ? { spaceId: match.spaceId } : {}),
+        });
+      }
       return;
     }
     if ('children' in node) node.children.forEach((child) => walk(child as RootContent));

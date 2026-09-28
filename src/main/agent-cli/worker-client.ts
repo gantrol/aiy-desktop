@@ -113,6 +113,7 @@ export class AgentCliWorkerClient {
             protocolVersion: MODEL_WORKER_PROTOCOL_VERSION,
             token: this.descriptor.token,
             clientId: randomUUID(),
+            clientKind: 'agent',
           }),
         );
       });

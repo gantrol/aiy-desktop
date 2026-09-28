@@ -2,6 +2,7 @@ import type { PhrasingContent, RootContent } from 'mdast';
 import { contentAssetPath, normalizeContentMediaPath } from '@/shared/content-asset-path';
 import { contentFigureReferenceAssetId } from '@/shared/content-figure-reference';
 import { contentMarkdownTree } from '@/shared/content-markdown';
+import { publishingMaskMediaOrder } from '@/shared/contracts/publishing-mask';
 export { contentFigureReferenceUrl, contentFigureReferenceAssetId } from '@/shared/content-figure-reference';
 
 type MarkdownNode = RootContent | PhrasingContent;
@@ -74,6 +75,7 @@ interface GalleryProjectionInput {
   mediaBindings: readonly { path: string; assetId: string }[];
   imageLabel(position: number): string;
   numbering: string;
+  preferredMediaAssetIds?: readonly string[] | null;
 }
 
 interface GalleryRenderContext {
@@ -201,6 +203,7 @@ export function projectNumberedGallery({
   mediaBindings,
   imageLabel,
   numbering,
+  preferredMediaAssetIds,
 }: GalleryProjectionInput) {
   const { tree, url } = markdownContext(markdown);
   const orderedIds = [...new Set([...leadingMediaAssetIds, ...mediaAssetIds])];
@@ -227,6 +230,8 @@ export function projectNumberedGallery({
     if (!assetId || !media.knownAssetIds.has(assetId)) missingImages.add(destination);
     else if (!orderedIds.includes(assetId)) orderedIds.push(assetId);
   });
+  const preferredOrder = publishingMaskMediaOrder(orderedIds, preferredMediaAssetIds);
+  orderedIds.splice(0, orderedIds.length, ...preferredOrder);
   const labels = new Map(orderedIds.map((id, index) => [id, imageLabel(index + 1)]));
   const context: GalleryRenderContext = {
     url,

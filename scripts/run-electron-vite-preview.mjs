@@ -5,6 +5,7 @@ import { availableParallelism } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { resolveDevelopmentElectronExecutable } from './windows-development-executable.mjs';
+import { createLaunchOutputLog } from './launch-output-log.mjs';
 
 const applicationRoot = fileURLToPath(new URL('..', import.meta.url));
 const previewStartedAt = Date.now();
@@ -184,40 +185,51 @@ async function buildPreview() {
     }
   }
   console.info(`[preview] Production bundles ready in ${((performance.now() - started) / 1000).toFixed(2)}s`);
-  return next.renderer.output;
+  return Object.fromEntries(targets.map((target) => [target, next[target].output]));
 }
 
-async function removeRendererSnapshot(snapshotRoot) {
+async function removeRuntimeSnapshot(snapshotRoot) {
   const relative = path.relative(cacheDirectory, snapshotRoot);
-  if (path.dirname(relative) !== '.' || !path.basename(relative).startsWith('renderer-')) {
-    throw new Error('Refusing to remove a renderer snapshot outside the preview cache.');
+  if (path.dirname(relative) !== '.' || !path.basename(relative).startsWith('runtime-')) {
+    throw new Error('Refusing to remove a runtime snapshot outside the preview cache.');
   }
   await rm(snapshotRoot, { recursive: true, force: true, maxRetries: 3 });
 }
 
-async function createRendererSnapshot(expectedOutput) {
+async function createRuntimeSnapshot(expectedOutputs) {
   const started = performance.now();
   await mkdir(cacheDirectory, { recursive: true });
-  const snapshotRoot = await mkdtemp(path.join(cacheDirectory, 'renderer-'));
+  const snapshotRoot = await mkdtemp(path.join(cacheDirectory, 'runtime-'));
   try {
-    // Copy instead of linking: another build can replace or rewrite out/renderer
-    // while this window still needs its original lazy JavaScript and CSS chunks.
-    await cp(path.join(applicationRoot, 'out', 'renderer'), snapshotRoot, {
-      recursive: true,
-      filter: (source) => !source.toLowerCase().includes('trash'),
-    });
-    if ((await outputFingerprint('renderer')) !== expectedOutput) {
-      throw new Error('Renderer output changed while preparing Preview. Run preview again.');
+    // New windows load preload from disk. Keep it with the renderer instead of
+    // mixing a running main process with another build's IPC contracts.
+    const copies = await Promise.allSettled(
+      ['renderer', 'preload'].map((target) =>
+        cp(path.join(applicationRoot, 'out', target), path.join(snapshotRoot, target), {
+          recursive: true,
+          filter: (source) => !source.toLowerCase().includes('trash'),
+        }),
+      ),
+    );
+    const failedCopy = copies.find((result) => result.status === 'rejected');
+    if (failedCopy) throw failedCopy.reason;
+    for (const target of targets) {
+      if ((await outputFingerprint(target)) !== expectedOutputs[target]) {
+        throw new Error(`${target} output changed while preparing Preview. Run preview again.`);
+      }
     }
-    console.info(`[preview] Renderer snapshot ready in ${((performance.now() - started) / 1000).toFixed(2)}s`);
+    console.info(
+      `[preview] Renderer and preload snapshot ready in ${((performance.now() - started) / 1000).toFixed(2)}s`,
+    );
     return snapshotRoot;
   } catch (error) {
-    await removeRendererSnapshot(snapshotRoot);
+    await removeRuntimeSnapshot(snapshotRoot);
     throw error;
   }
 }
 
 async function runElectronVite(command, options) {
+  const outputLog = await createLaunchOutputLog(applicationRoot, 'desktop-preview');
   const cli = path.join(applicationRoot, 'node_modules/electron-vite/bin/electron-vite.js');
   const environment = { ...process.env };
   if (command === 'preview') {
@@ -226,24 +238,26 @@ async function runElectronVite(command, options) {
   const child = spawn(process.execPath, [cli, command, ...options], {
     cwd: applicationRoot,
     env: environment,
-    stdio: 'inherit',
+    stdio: ['inherit', 'pipe', 'pipe'],
     windowsHide: true,
   });
+  outputLog.attach(child);
   process.exitCode = await new Promise((resolve, reject) => {
     child.once('error', reject);
     child.once('exit', (code) => resolve(code ?? 1));
   });
 }
 
-async function launchPreview(rendererOutput) {
+async function launchPreview(outputs) {
   const electronPath = await resolveDevelopmentElectronExecutable(applicationRoot);
   const args = process.env.ELECTRON_CLI_ARGS ? JSON.parse(process.env.ELECTRON_CLI_ARGS) : [];
   if (!Array.isArray(args) || args.some((argument) => typeof argument !== 'string')) {
     throw new Error('ELECTRON_CLI_ARGS must be an array of strings.');
   }
   if (process.env.NO_SANDBOX === '1') args.push('--no-sandbox');
-  const snapshotRoot = await createRendererSnapshot(rendererOutput);
+  const snapshotRoot = await createRuntimeSnapshot(outputs);
   try {
+    const outputLog = await createLaunchOutputLog(applicationRoot, 'desktop-preview');
     console.info('\nstarting electron app...\n');
     // Do not use windowsHide for the Electron process. On Windows it can also
     // suppress Electron's first BrowserWindow instead of only hiding a console.
@@ -252,16 +266,17 @@ async function launchPreview(rendererOutput) {
       env: {
         ...process.env,
         AIY_PREVIEW_STARTED_AT: String(previewStartedAt),
-        AIY_PREVIEW_RENDERER_ROOT: snapshotRoot,
+        AIY_PREVIEW_RUNTIME_ROOT: snapshotRoot,
       },
-      stdio: 'inherit',
+      stdio: ['inherit', 'pipe', 'pipe'],
     });
+    outputLog.attach(child);
     process.exitCode = await new Promise((resolve, reject) => {
       child.once('error', reject);
       child.once('exit', (code) => resolve(code ?? 1));
     });
   } finally {
-    await removeRendererSnapshot(snapshotRoot);
+    await removeRuntimeSnapshot(snapshotRoot);
   }
 }
 
@@ -272,8 +287,8 @@ async function main() {
     await runElectronVite(buildOnly ? 'build' : 'preview', forwardedArguments);
     return;
   }
-  const rendererOutput = await buildPreview();
-  if (!buildOnly) await launchPreview(rendererOutput);
+  const outputs = await buildPreview();
+  if (!buildOnly) await launchPreview(outputs);
 }
 
 main().catch((error) => {

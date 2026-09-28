@@ -3,6 +3,7 @@ import { projectNumberedGallery } from '@/shared/content-publishing-mask';
 import type { BrowserCompanionSource, BrowserCompanionStageInput, BrowserCompanionTarget } from '@/shared/contracts';
 import type { DesktopPetalMessages } from '@/shared/i18n/desktop-petals';
 import { xiaohongshuHandoffError } from '@/shared/xiaohongshu-publishing';
+import { publishingMaskMediaOrder } from '@/shared/contracts/publishing-mask';
 
 export function prepareImagePostHandoff({
   body,
@@ -15,6 +16,7 @@ export function prepareImagePostHandoff({
   target,
   copy,
   notify,
+  preferredMediaAssetIds,
 }: {
   body: string;
   format: 'markdown' | 'plain';
@@ -26,6 +28,7 @@ export function prepareImagePostHandoff({
   target: BrowserCompanionTarget;
   copy: DesktopPetalMessages['document'];
   notify(message: string): void;
+  preferredMediaAssetIds?: readonly string[] | null;
 }): Omit<BrowserCompanionStageInput, 'target' | 'watermark'> | null {
   const projected =
     format === 'markdown'
@@ -36,10 +39,14 @@ export function prepareImagePostHandoff({
           mediaBindings,
           numbering: copy.numbering,
           imageLabel: (position) => copy.imageNumber.replace('{number}', contentImageNumber(position, copy.numbering)),
+          preferredMediaAssetIds,
         })
       : {
           text: body.trim(),
-          mediaAssetIds: [...new Set([...leadingMediaAssetIds, ...mediaAssetIds])],
+          mediaAssetIds: publishingMaskMediaOrder(
+            [...new Set([...leadingMediaAssetIds, ...mediaAssetIds])],
+            preferredMediaAssetIds,
+          ),
           missingImages: [],
         };
   const { text, mediaAssetIds: orderedIds } = projected;

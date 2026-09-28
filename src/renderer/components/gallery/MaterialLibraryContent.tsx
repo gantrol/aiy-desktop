@@ -1,3 +1,4 @@
+import type { CreationTreeDrag } from '@/renderer/components/albums/albumDrag';
 import { ImageIcon } from 'lucide-react';
 import type { DragEvent as ReactDragEvent, RefObject } from 'react';
 import type { AssetFileRevealContext, MaterialAlbumDto, MaterialSelectionTargetInput } from '@/shared/contracts';
@@ -38,11 +39,11 @@ interface Props {
   viewportRef: RefObject<HTMLDivElement | null>;
   pageEndRef: RefObject<HTMLDivElement | null>;
   onOpenAlbum(albumId: string): void;
-  canMoveCreationAlbum(albumId: string, parentAlbumId: string | null): boolean;
-  onMoveCreationAlbum(albumId: string, parentAlbumId: string | null): Promise<void>;
-  canMoveAlbum(albumId: string, parentAlbumId: string | null): boolean;
-  onMoveAlbum(albumId: string, parentAlbumId: string | null): Promise<void>;
-  onCollectMaterials(albumId: string, targets: MaterialSelectionTargetInput[]): Promise<void>;
+  canMoveCreationAlbum(source: CreationTreeDrag, parentAlbumId: string | null, copy?: boolean): boolean;
+  onMoveCreationAlbum(source: CreationTreeDrag, parentAlbumId: string | null, copy?: boolean): Promise<void>;
+  canMoveAlbum(albumId: string, parentAlbumId: string | null, copy?: boolean): boolean;
+  onMoveAlbum(albumId: string, parentAlbumId: string | null, copy?: boolean): Promise<void>;
+  onCollectMaterials(albumId: string, targets: MaterialSelectionTargetInput[], sourceAlbumId?: string): Promise<void>;
   onImportFiles?(album: MaterialAlbumDto, files: File[]): void;
   onArchiveAlbum(album: MaterialAlbumDto): void;
   onDeleteAlbum(album: MaterialAlbumDto): void;
@@ -82,8 +83,8 @@ function CreationCollectionBrowser({
   viewportRef: RefObject<HTMLDivElement | null>;
   onOpen(albumId: string): void;
   busy: boolean;
-  canMoveCreationAlbum(albumId: string, parentAlbumId: string | null): boolean;
-  onMoveCreationAlbum(albumId: string, parentAlbumId: string | null): Promise<void>;
+  canMoveCreationAlbum(source: CreationTreeDrag, parentAlbumId: string | null, copy?: boolean): boolean;
+  onMoveCreationAlbum(source: CreationTreeDrag, parentAlbumId: string | null, copy?: boolean): Promise<void>;
 }) {
   const { messages } = useI18n();
   if (!albums.length) {

@@ -7,13 +7,13 @@
 export const calendarAsOfCtes = `
 calendar_known_events AS (
   SELECT e.rowid rowid,e.id,e.entity_type,e.entity_id,e.operation,e.occurred_at,
-    e.occurred_at recorded_at,NULL file_recorded_at
+    e.occurred_at recorded_at,NULL file_recorded_at,e.payload_json
   FROM change_events e
   WHERE e.rowid <= @snapshot AND e.occurred_at <= @knownAt
     AND NOT EXISTS(SELECT 1 FROM calendar_file_event_times f WHERE f.event_id=e.id)
   UNION ALL
   SELECT e.rowid rowid,e.id,e.entity_type,e.entity_id,e.operation,e.occurred_at,
-    f.recorded_at recorded_at,f.recorded_at file_recorded_at
+    f.recorded_at recorded_at,f.recorded_at file_recorded_at,e.payload_json
   FROM calendar_file_event_times f JOIN change_events e ON e.id=f.event_id
   WHERE e.rowid <= @snapshot AND f.recorded_at <= @knownAt
 ),

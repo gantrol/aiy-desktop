@@ -40,6 +40,7 @@ export const ANTIGRAVITY_CLI_IMAGE_MODEL_KEY = `${ANTIGRAVITY_CLI_PROVIDER_KEY}/
 export const TRANSITION_SHOWCASE_EXTENSION_ID = 'com.aiy.transition-showcase';
 export const FEATURE_DEMO_EXTENSION_ID = 'com.aiy.feature-demo';
 export const MAINTENANCE_GUIDE_EXTENSION_ID = 'com.aiy.maintenance-guide';
+export const WORK_TRACKING_EXTENSION_ID = 'com.aiy.work-tracking';
 export const OPENAI_IMAGE_API_EXTENSION_ID = 'com.aiy.openai-image-api';
 export const OPENAI_IMAGE_MODEL_KEY = 'openai/gpt-image-2';
 export const OPENAI_IMAGE_SUNBURST_MODEL_KEY = 'openai/gpt-image-2.5-sunburst';

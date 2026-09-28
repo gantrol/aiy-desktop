@@ -1,0 +1,12 @@
+/* Keep touch copy visible and restore it when a card or one of its controls has keyboard focus. */
+@media (hover: hover) {
+  [data-media-card]:hover:not(:focus-visible):not(:has(:focus-visible)) .media-card-caption {
+    opacity: 0;
+  }
+}
+
+@media (hover: hover) and (prefers-reduced-motion: no-preference) {
+  [data-media-card]:hover:not(:focus-visible):not(:has(:focus-visible)) .media-card-caption {
+    translate: 0 0.25rem;
+  }
+}

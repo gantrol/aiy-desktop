@@ -1,7 +1,13 @@
 import { useEffect, useRef, useState } from 'react';
 import type { Editor } from '@tiptap/core';
 import { Quote } from 'lucide-react';
-import { DropdownMenuItem } from '@/renderer/components/ui/dropdown-menu';
+import {
+  DropdownMenuItem,
+  DropdownMenuPortal,
+  DropdownMenuSub,
+  DropdownMenuSubContent,
+  DropdownMenuSubTrigger,
+} from '@/renderer/components/ui/dropdown-menu';
 import { useI18n } from '@/renderer/i18n/useI18n';
 import { referenceFailure } from '@/shared/i18n/reference-outline';
 import { contentLibraryApi } from '@/renderer/features/content-editor/contentLibraryClient';
@@ -9,6 +15,8 @@ import { useContentReferenceHost } from '@/renderer/features/content-editor/Cont
 import { copyContentReference } from '@/renderer/features/content-editor/contentReferenceClipboard';
 import type { ContentReference } from '@/shared/contracts/content-library';
 import { ContentBlockUsesAction } from '@/renderer/features/content-editor/ContentBlockUsesAction';
+import { currentReferenceTarget } from '@/renderer/features/content-editor/ContentReferencePicker';
+import { followingPresentation } from '@/shared/content-reference-token';
 
 export function ContentBlockReferenceAction({ editor, blockId }: { editor: Editor; blockId: string }) {
   const host = useContentReferenceHost();
@@ -25,7 +33,7 @@ export function ContentBlockReferenceAction({ editor, blockId }: { editor: Edito
     };
   }, []);
   if (!host.source) return null;
-  const capture = async (scope: 'SELF' | 'SUBTREE') => {
+  const capture = async (scope: 'SELF' | 'SUBTREE', following = false) => {
     if (running.current || editor.isDestroyed || editor.view.composing) return;
     running.current = true;
     setBusy(true);
@@ -37,17 +45,24 @@ export function ContentBlockReferenceAction({ editor, blockId }: { editor: Edito
       if (!source) throw new Error('REFERENCE_SAVE_FAILED');
       stage = 'capture';
       const api = contentLibraryApi();
-      const preview = await api.referenceInspect({ source, blockId, scope });
+      const target = following ? currentReferenceTarget(source, blockId, false, scope) : { source, blockId, scope };
+      const preview = await api.referenceInspect(target);
       if (!active.current || editor.isDestroyed) return;
-      const key = JSON.stringify([preview.target, preview.version]);
+      const key = JSON.stringify([preview.target, preview.version, following]);
       const reference =
         captured.current?.key === key
           ? captured.current.reference
-          : await api.referenceCapture(preview.target, preview.version);
+          : following
+            ? await api.referenceFollow(preview.target, preview.version)
+            : await api.referenceCapture(preview.target, preview.version, preview.resolutionId);
       captured.current = { key, reference };
       if (!active.current || editor.isDestroyed) return;
       stage = 'clipboard';
-      await copyContentReference(reference);
+      await copyContentReference(
+        reference,
+        'REFERENCE',
+        following ? { presentation: followingPresentation, editing: 'SOURCE' } : undefined,
+      );
       if (active.current) setStatus(copy.copied);
     } catch (reason) {
       console.error('[content-reference] copy failed', stage, reason);
@@ -70,34 +85,64 @@ export function ContentBlockReferenceAction({ editor, blockId }: { editor: Edito
   };
   return (
     <>
-      <DropdownMenuItem
-        disabled={busy}
-        onSelect={(event) => {
-          event.preventDefault();
-          void capture('SELF');
-        }}
-      >
-        <Quote />
-        {host.outline ? `${copy.copyReference} · ${copy.self}` : copy.copyReference}
-      </DropdownMenuItem>
-      {host.outline && (
+      {host.outline ? (
+        <DropdownMenuSub>
+          <DropdownMenuSubTrigger>
+            <Quote className="size-4 shrink-0" />
+            {copy.copyReference}
+          </DropdownMenuSubTrigger>
+          <DropdownMenuPortal>
+            <DropdownMenuSubContent>
+              <DropdownMenuItem
+                disabled={busy}
+                onSelect={(event) => {
+                  event.preventDefault();
+                  void capture('SELF');
+                }}
+              >
+                {copy.self}
+              </DropdownMenuItem>
+              <DropdownMenuItem
+                disabled={busy}
+                onSelect={(event) => {
+                  event.preventDefault();
+                  void capture('SUBTREE');
+                }}
+              >
+                {copy.subtree}
+              </DropdownMenuItem>
+            </DropdownMenuSubContent>
+          </DropdownMenuPortal>
+        </DropdownMenuSub>
+      ) : (
         <DropdownMenuItem
           disabled={busy}
           onSelect={(event) => {
             event.preventDefault();
-            void capture('SUBTREE');
+            void capture('SELF');
           }}
         >
           <Quote />
-          {copy.copyReference} · {copy.subtree}
+          {copy.copyReference}
         </DropdownMenuItem>
       )}
-      <ContentBlockUsesAction blockId={blockId} />
+      {host.source.kind === 'ARTICLE' && (
+        <DropdownMenuItem
+          disabled={busy}
+          onSelect={(event) => {
+            event.preventDefault();
+            void capture('SELF', true);
+          }}
+        >
+          {copy.copyFollowing}
+        </DropdownMenuItem>
+      )}
       {status && (
         <span role="status" className="block max-w-64 px-2 py-1 text-xs">
           {status}
         </span>
       )}
+      <ContentBlockUsesAction blockId={blockId} />
     </>
   );
 }

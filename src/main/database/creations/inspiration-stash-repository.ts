@@ -68,7 +68,9 @@ export class InspirationStashRepository {
         ? item.albumId
         : input.mode === 'ADD_FORM'
           ? null
-          : (input.albumId ?? ensureDefaultNotesAlbum(this.storage));
+          : input.mode === 'CREATE_NOTE'
+            ? (input.albumId ?? ensureDefaultNotesAlbum(this.storage))
+            : input.albumId;
       const saved = this.articles.save(
         {
           id: null,

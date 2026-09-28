@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import type { ArticleEditorLocationDto, BootstrapDto, WorkspaceArticleEditorStateDto } from '@/shared/contracts';
 import type { AppLocation, NavigationMode } from '@/renderer/components/app/app-navigation';
 import { useWorkspaceTabOpening } from '@/renderer/components/workspace/useWorkspaceTabOpening';
+import { useWorkspaceDiagnostics } from '@/renderer/components/workspace/useWorkspaceDiagnostics';
 import {
   activateWorkspaceGroup,
   activateWorkspaceGroupByIndex,
@@ -27,6 +28,7 @@ import {
   rememberActiveVisualWorkspace,
   resetWorkspace,
   restoreWorkspaceState,
+  setWorkspaceGroupTabsCollapsed,
   setWorkspaceSplitRatio,
   splitWorkspace,
   updateWorkspaceArticleLocation,
@@ -44,6 +46,7 @@ interface PersistenceContext {
 export function useWorkspaceController(data: BootstrapDto | null) {
   const [state, setState] = useState<WorkspaceRuntimeState | null>(null);
   const stateRef = useRef<WorkspaceRuntimeState | null>(null);
+  useWorkspaceDiagnostics(state);
   const persistenceRef = useRef<PersistenceContext | null>(null);
   const saveTimerRef = useRef<ReturnType<typeof globalThis.setTimeout> | null>(null);
 
@@ -190,6 +193,11 @@ export function useWorkspaceController(data: BootstrapDto | null) {
     (sourceGroupId: string) => update((current) => mergeWorkspaceGroups(current, sourceGroupId)),
     [update],
   );
+  const setGroupTabsCollapsed = useCallback(
+    (groupId: string, collapsed: boolean) =>
+      update((current) => setWorkspaceGroupTabsCollapsed(current, groupId, collapsed)),
+    [update],
+  );
   const setSplitRatio = useCallback(
     (ratio: number) => update((current) => setWorkspaceSplitRatio(current, ratio)),
     [update],
@@ -223,6 +231,7 @@ export function useWorkspaceController(data: BootstrapDto | null) {
         if (
           existing?.resumeLocation?.elementId === location.elementId &&
           existing.resumeLocation.relativeOffset === location.relativeOffset &&
+          existing.resumeLocation.outlineFocusId === location.outlineFocusId &&
           existing.resumeLocation.viewportOffset === location.viewportOffset
         ) {
           return positioned;
@@ -276,6 +285,7 @@ export function useWorkspaceController(data: BootstrapDto | null) {
     reset,
     split,
     mergeGroups,
+    setGroupTabsCollapsed,
     setSplitRatio,
     moveTabToOtherGroup,
     updateArticleEditorState,

@@ -23,6 +23,9 @@ export class ReadableContentQueue {
   }
   resume() {
     this.db.transaction(() => {
+      // A new process may contain a fix for a previously exhausted job, including
+      // failures before readable_content_files could be inserted. Retry once per start.
+      this.db.prepare('UPDATE readable_content_jobs SET attempts = 0, retry_at = 0 WHERE attempts > 0').run();
       this.db
         .prepare(
           "INSERT INTO readable_content_jobs(source_kind, source_id) SELECT source_kind, source_id FROM readable_content_files WHERE state IN ('PENDING', 'ERROR') ON CONFLICT(source_kind, source_id) DO NOTHING",
@@ -88,6 +91,19 @@ export class ReadableContentQueue {
     }
     this.db.transaction(() => {
       for (const source of sources.values()) this.enqueue(source);
+      const structuralChange = changes.some(({ entityType }) =>
+        ['ALBUM', 'ALBUM_MEMBER', 'CREATION_ITEM', 'CREATION_FORM'].includes(entityType),
+      );
+      const dependents = this.db.prepare(`SELECT DISTINCT dependency.source_kind,dependency.source_id
+        FROM readable_content_reference_dependencies dependency
+        JOIN content_following_references following ON following.reference_id=dependency.reference_id
+        JOIN content_block_references reference ON reference.id=following.reference_id
+        WHERE ? OR (reference.source_kind=? AND reference.source_id=?)`);
+      const affected = structuralChange ? [{ kind: 'ARTICLE' as const, id: '' }] : [...sources.values()];
+      for (const source of affected) {
+        for (const row of dependents.all(Number(structuralChange), source.kind, source.id) as SourceRow[])
+          this.enqueue({ kind: row.source_kind, id: row.source_id });
+      }
     })();
   }
   next(): ReadableContentJob | undefined {

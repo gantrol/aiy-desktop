@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import type { DesktopPetalSnapshot } from '@/shared/contracts/desktop-petals';
-import type { PetalQuota } from '@/shared/contracts/petal-hub';
+import { isPetalCenterMetricProvider, type PetalQuota } from '@/shared/contracts/petal-hub';
 
 export function usePetalHubData(snapshot: DesktopPetalSnapshot) {
   const [now, setNow] = useState(Date.now);
@@ -21,7 +21,8 @@ export function usePetalHubData(snapshot: DesktopPetalSnapshot) {
   }, [mode]);
   useEffect(() => {
     setQuota(null);
-    if (mode !== 'codex' || snapshot.suspended) return;
+    const readsMetric = isPetalCenterMetricProvider(mode);
+    if (snapshot.suspended || (!readsMetric && snapshot.hubView !== 'settings')) return;
     let live = true;
     const update = () => {
       if (document.hidden) return;
@@ -40,17 +41,18 @@ export function usePetalHubData(snapshot: DesktopPetalSnapshot) {
               primary: null,
               secondary: null,
               limits: [],
+              providers: [],
             });
         });
     };
-    const timer = setInterval(update, 60_000);
+    const timer = readsMetric ? setInterval(update, 60_000) : null;
     document.addEventListener('visibilitychange', update);
     update();
     return () => {
       live = false;
-      clearInterval(timer);
+      if (timer) clearInterval(timer);
       document.removeEventListener('visibilitychange', update);
     };
-  }, [mode, codexLimitId, snapshot.libraryId, snapshot.suspended]);
+  }, [mode, codexLimitId, snapshot.hubView, snapshot.libraryId, snapshot.suspended]);
   return { now, quota };
 }

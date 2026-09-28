@@ -56,6 +56,27 @@ export function generationRunIssueSnapshot(row: JsonMap): BackgroundIssueDto | n
   };
 }
 
+export function articleDeliveryJobIssueSnapshot(row: JsonMap): BackgroundIssueDto | null {
+  const status = text(row.status);
+  const subjectId = text(row.id);
+  if (status !== 'FAILED' || !subjectId) return null;
+  return {
+    kind: 'ARTICLE_DELIVERY_JOB',
+    subjectId,
+    occurrenceId: occurrenceId({
+      version: 1,
+      kind: 'ARTICLE_DELIVERY_JOB',
+      subjectId,
+      status,
+      attemptCount: Number(row.attempt_count),
+      completedAt: nullableText(row.completed_at),
+      errorCode: nullableText(row.error_code),
+      errorMessage: nullableText(row.error_message),
+    }),
+    acknowledgedAt: null,
+  };
+}
+
 export function directionExperimentIssueSnapshot(
   subjectId: string,
   currentRuns: readonly JsonMap[],
@@ -124,6 +145,17 @@ export class BackgroundIssueRepository {
   generationIssuesForRows(rows: readonly JsonMap[]) {
     const snapshots = rows.flatMap((row) => {
       const snapshot = generationRunIssueSnapshot(row);
+      return snapshot ? [snapshot] : [];
+    });
+    const hydrated = this.hydrate(snapshots);
+    return new Map(
+      snapshots.map((snapshot) => [snapshot.subjectId, hydrated.get(backgroundIssueIdentityKey(snapshot)) ?? snapshot]),
+    );
+  }
+
+  articleDeliveryIssuesForRows(rows: readonly JsonMap[]) {
+    const snapshots = rows.flatMap((row) => {
+      const snapshot = articleDeliveryJobIssueSnapshot(row);
       return snapshot ? [snapshot] : [];
     });
     const hydrated = this.hydrate(snapshots);
@@ -212,7 +244,18 @@ export class BackgroundIssueRepository {
 
   private currentIssue(kind: BackgroundIssueKind, subjectId: string) {
     if (kind === 'GENERATION_RUN') return this.currentGenerationIssue(subjectId);
+    if (kind === 'ARTICLE_DELIVERY_JOB') return this.currentArticleDeliveryIssue(subjectId);
     return this.currentDirectionExperimentIssue(subjectId);
+  }
+
+  private currentArticleDeliveryIssue(jobId: string) {
+    const row = this.db
+      .prepare(
+        `SELECT id, status, attempt_count, completed_at, error_code, error_message
+        FROM article_delivery_jobs WHERE id = ?`,
+      )
+      .get(jobId) as JsonMap | undefined;
+    return row ? articleDeliveryJobIssueSnapshot(row) : null;
   }
 
   private currentGenerationIssue(runId: string) {

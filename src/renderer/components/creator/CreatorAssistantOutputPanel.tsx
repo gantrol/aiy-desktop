@@ -1,5 +1,6 @@
+import { useI18n } from '@/renderer/i18n/useI18n';
+import { WorkbenchPaneToggle } from '@/renderer/components/workbench/WorkbenchPane';
 import type { PointerEvent as ReactPointerEvent, ReactNode } from 'react';
-import { HistoryIcon, PanelRightCloseIcon } from 'lucide-react';
 import type {
   AssistantActivityEventDto,
   AssistantProposalApplyValue,
@@ -10,7 +11,6 @@ import type {
   DirectionProposalDto,
   Locale,
 } from '@/shared/contracts';
-import { Button } from '@/renderer/components/ui/button';
 import { ScrollArea } from '@/renderer/components/ui/scroll-area';
 import { AssistantRunHistoryPanel } from '@/renderer/components/creator/AssistantRunHistoryPanel';
 import type { CreationAssistantMode } from '@/renderer/components/creator/CreationCollaborationPanel';
@@ -45,7 +45,6 @@ interface Props {
 
 export function CreatorRecordPanel({
   headerNavigation,
-  locale,
   scope,
   runs,
   progressEvents,
@@ -69,39 +68,38 @@ export function CreatorRecordPanel({
   onDismissTransient,
   onStartExperiment,
 }: Props) {
-  const recordLabel = locale === 'zh' ? '记录' : 'records';
+  const { messages } = useI18n();
 
   if (collapsed) {
     return (
-      <section className="relative hidden size-full min-h-0 flex-col items-center bg-secondary pt-3 @min-[840px]/creator:flex">
+      <section
+        data-workbench-pane
+        className="relative hidden size-full min-h-0 flex-col bg-secondary @min-[840px]/creator:flex"
+      >
         <CreatorPaneResizeHandle
           edge="left"
-          label={locale === 'zh' ? '调整产出区宽度' : 'Resize output'}
+          label={messages.workbench.resizePane(messages.workbench.records)}
           value={resizeValue}
           min={resizeMin}
           max={resizeMax}
           onValueChange={onResizeValueChange}
           onPointerDown={onResizeStart}
         />
-        <Button
-          type="button"
-          variant="ghost"
-          size="icon-sm"
-          title={locale === 'zh' ? '展开记录' : 'Expand records'}
-          aria-label={locale === 'zh' ? '展开记录' : 'Expand records'}
+        <WorkbenchPaneToggle
+          expanded={false}
+          side="right"
+          label={messages.workbench.records}
           onClick={() => onCollapsedChange(false)}
-        >
-          <HistoryIcon className="size-4" />
-        </Button>
+        />
       </section>
     );
   }
 
   return (
-    <section className="relative flex min-h-0 min-w-0 flex-col bg-background">
+    <section data-workbench-pane className="relative flex min-h-0 min-w-0 flex-col bg-background">
       <CreatorPaneResizeHandle
         edge="left"
-        label={locale === 'zh' ? '调整记录区宽度' : 'Resize records'}
+        label={messages.workbench.resizePane(messages.workbench.records)}
         value={resizeValue}
         min={resizeMin}
         max={resizeMax}
@@ -110,6 +108,13 @@ export function CreatorRecordPanel({
       />
       <header className="flex h-14 shrink-0 items-center border-b border-border/60 bg-secondary px-3">
         {headerNavigation}
+        <WorkbenchPaneToggle
+          expanded
+          side="right"
+          label={messages.workbench.records}
+          className="ml-auto hidden @min-[840px]/creator:inline-flex"
+          onClick={() => onCollapsedChange(true)}
+        />
       </header>
       <ScrollArea type="always" className="min-h-0 flex-1">
         <div className="mx-auto w-full max-w-3xl px-4 py-5">
@@ -135,17 +140,6 @@ export function CreatorRecordPanel({
           />
         </div>
       </ScrollArea>
-      <Button
-        type="button"
-        variant="secondary"
-        size="icon-sm"
-        className="absolute bottom-2 left-2 z-30 hidden shadow-overlay @min-[840px]/creator:inline-flex"
-        title={locale === 'zh' ? '收起记录区' : `Collapse ${recordLabel}`}
-        aria-label={locale === 'zh' ? '收起记录区' : `Collapse ${recordLabel}`}
-        onClick={() => onCollapsedChange(true)}
-      >
-        <PanelRightCloseIcon className="size-4" />
-      </Button>
     </section>
   );
 }

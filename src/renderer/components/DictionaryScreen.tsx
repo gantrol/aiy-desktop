@@ -1,3 +1,5 @@
+import { CollectionDetailLayout } from '@/renderer/components/workbench/CollectionDetailLayout';
+import { DictionaryBrowsePane } from '@/renderer/components/dictionary/DictionaryBrowsePane';
 import { lazy, useEffect, useMemo, useRef, useState } from 'react';
 import { WorkspaceDetailLoadingBoundary } from '@/renderer/components/app/WorkspaceDetailLoadingBoundary';
 import type {
@@ -23,10 +25,6 @@ import {
   DialogTitle,
 } from '@/renderer/components/ui/dialog';
 import { DictionaryToolbar } from '@/renderer/components/dictionary/DictionaryToolbar';
-import {
-  DictionaryContextSidebar,
-  type DictionaryContextSidebarMode,
-} from '@/renderer/components/dictionary/DictionaryContextSidebar';
 import { DictionaryMaintenanceDialog } from '@/renderer/components/dictionary/DictionaryMaintenanceDialog';
 import { DictionaryClassificationScreen } from '@/renderer/components/dictionary/classifications/DictionaryClassificationScreen';
 import { ImportPreviewDialog } from '@/renderer/components/dictionary/ImportPreviewDialog';
@@ -41,7 +39,6 @@ import {
   type DictionaryBrowseContext,
 } from '@/renderer/components/dictionary/dictionary-navigation';
 import { dictionaryMutationError, runDictionaryMutation } from '@/renderer/components/dictionary/dictionary-mutation';
-import { useDictionarySiblingPage } from '@/renderer/components/dictionary/useDictionarySiblingPage';
 import {
   navigationLocationKey,
   type DictionaryLocation,
@@ -142,9 +139,7 @@ export function DictionaryScreen({
   const [maintenanceError, setMaintenanceError] = useState('');
   const [discardOpen, setDiscardOpen] = useState(false);
   const [pendingNavigation, setPendingNavigation] = useState<DictionaryNavigationTarget | null>(null);
-  const [contextSidebarMode, setContextSidebarMode] = useState<DictionaryContextSidebarMode>(() =>
-    window.matchMedia('(max-width: 1199px)').matches ? 'compact' : 'expanded',
-  );
+  const [browseOrigin, setBrowseOrigin] = useState<TermListItem[] | null>(null);
   const overviewRequestIdRef = useRef(0);
   const pendingHistoryNavigationRef = useRef<(() => void) | null>(null);
   const dirty = useMemo(
@@ -154,6 +149,7 @@ export function DictionaryScreen({
   useEffect(() => {
     if (!active || appliedLocationKeyRef.current === locationKey) return;
     appliedLocationKeyRef.current = locationKey;
+    setBrowseOrigin(null);
     if (location.surface === 'overview') {
       setSurface('overview');
       setSelectedId('');
@@ -287,7 +283,6 @@ export function DictionaryScreen({
     setBrowseContext(deriveDictionaryBrowseContext(detail, data.categories));
   }, [browseContext, data.categories, detail, surface]);
 
-  const siblingPage = useDictionarySiblingPage(locale, browseContext);
   const siblingBreadcrumb = useMemo(
     () =>
       browseContext
@@ -295,19 +290,7 @@ export function DictionaryScreen({
         : null,
     [browseContext, data.categories, messages.dictionary.wordPalette.uncategorized],
   );
-  const siblingTerms = useMemo(
-    () =>
-      detail && !siblingPage.terms.some((term) => term.id === detail.id)
-        ? [detail, ...siblingPage.terms]
-        : siblingPage.terms,
-    [detail, siblingPage.terms],
-  );
-  const siblingTotal = Math.max(siblingPage.total, siblingTerms.length);
   const siblingCopy = messages.dictionary.relatedTerms;
-
-  useEffect(() => {
-    if (detail) siblingPage.updateTerm(detail);
-  }, [detail, siblingPage.updateTerm]);
 
   const availableAssets = useMemo(() => {
     const byId = new Map<string, AssetDto>();
@@ -358,6 +341,7 @@ export function DictionaryScreen({
   }
 
   function openTermFromOverview(term: TermListItem, context: DictionaryBrowseContext) {
+    setBrowseOrigin(overviewTerms);
     setSelectedId(term.id);
     setBrowseContext(context);
     setDetail(null);
@@ -377,7 +361,10 @@ export function DictionaryScreen({
   function openTerm(termId: string, resetContext = false) {
     const nextBrowseContext = resetContext ? null : browseContext;
     setSelectedId(termId);
-    if (resetContext) setBrowseContext(null);
+    if (resetContext) {
+      setBrowseContext(null);
+      setBrowseOrigin(null);
+    }
     setSurface('detail');
     setDetail(null);
     setDetailLocale(null);
@@ -763,106 +750,119 @@ export function DictionaryScreen({
       </section>
 
       {(surface === 'detail' || surface === 'edit') && (
-        <div className="flex size-full min-h-0 overflow-hidden">
-          <DictionaryContextSidebar
-            mode={contextSidebarMode}
-            breadcrumb={{
-              overview: messages.dictionary.overview.words,
-              path: siblingBreadcrumb?.path ?? [],
-            }}
-            copy={siblingCopy}
-            terms={siblingTerms}
-            total={siblingTotal}
-            currentTermId={selectedId}
-            initialLoading={siblingPage.initialLoading}
-            loadingMore={siblingPage.loadingMore}
-            hasMore={siblingPage.hasMore}
-            loadError={siblingPage.error}
-            onModeChange={setContextSidebarMode}
-            onBack={() => requestNavigation({ kind: 'overview' })}
-            onSelect={openSiblingTerm}
-            onLoadMore={siblingPage.loadMore}
-            notify={notify}
-          />
-          <div className="min-h-0 min-w-0 flex-1 overflow-hidden">
-            <WorkspaceDetailLoadingBoundary>
-              {surface === 'detail' &&
-                (detail ? (
-                  <TermIllustrationProvider
-                    key={detail.id}
-                    term={detail}
-                    locale={locale}
-                    routes={data.imageGenerationRoutes}
-                    availableAssets={availableAssets}
-                    mediaBusy={mediaBusy}
-                    onAddMedia={addMedia}
-                    onImportMedia={importMedia}
-                    onTermMediaChanged={reloadCurrentTerm}
-                    onOpenCreation={onOpenCreation}
-                    notify={notify}
-                  >
-                    <TermDetailView
-                      className="size-full"
+        <CollectionDetailLayout
+          layoutKey="dictionary"
+          collectionLabel={messages.dictionary.overview.words}
+          selectionKey={selectedId || null}
+          collection={({ toggle, visible, revealDetail }) => (
+            <DictionaryBrowsePane
+              active={active && visible}
+              context={browseContext}
+              locale={locale}
+              origin={browseOrigin?.some((term) => term.id === selectedId) ? browseOrigin : null}
+              detail={detail}
+              toggle={toggle}
+              breadcrumb={{
+                overview: messages.dictionary.overview.words,
+                path: browseOrigin?.some((term) => term.id === selectedId)
+                  ? [query || messages.workbench.browseResults]
+                  : (siblingBreadcrumb?.path ?? []),
+              }}
+              copy={siblingCopy}
+              currentTermId={selectedId}
+              onBack={() => requestNavigation({ kind: 'overview' })}
+              onSelect={(termId) => {
+                if (termId === selectedId) revealDetail();
+                else openSiblingTerm(termId);
+              }}
+              notify={notify}
+            />
+          )}
+        >
+          {({ toggle }) => (
+            <div className="min-h-0 min-w-0 flex-1 overflow-hidden">
+              <WorkspaceDetailLoadingBoundary>
+                {surface === 'detail' &&
+                  (detail ? (
+                    <TermIllustrationProvider
+                      key={detail.id}
                       term={detail}
                       locale={locale}
-                      selected={selectionTermIds.includes(detail.id)}
+                      routes={data.imageGenerationRoutes}
+                      availableAssets={availableAssets}
+                      mediaBusy={mediaBusy}
+                      onAddMedia={addMedia}
+                      onImportMedia={importMedia}
+                      onTermMediaChanged={reloadCurrentTerm}
+                      onOpenCreation={onOpenCreation}
+                      notify={notify}
+                    >
+                      <TermDetailView
+                        className="size-full"
+                        term={detail}
+                        locale={locale}
+                        selected={selectionTermIds.includes(detail.id)}
+                        loading={detailLoading}
+                        error={detailLoadError}
+                        onRetry={retryDetail}
+                        onBack={() => requestNavigation({ kind: 'overview' })}
+                        showBack={false}
+                        navigationAction={toggle}
+                        onSelectedChange={toggleSelection}
+                        onEdit={() => editTerm()}
+                        headerAction={<TermIllustrationAction />}
+                        afterContent={<TermIllustrationPanel />}
+                        notify={notify}
+                      />
+                    </TermIllustrationProvider>
+                  ) : (
+                    <TermDetailView
+                      className="size-full"
+                      term={null}
+                      locale={locale}
+                      selected={false}
                       loading={detailLoading}
                       error={detailLoadError}
                       onRetry={retryDetail}
                       onBack={() => requestNavigation({ kind: 'overview' })}
                       showBack={false}
+                      navigationAction={toggle}
                       onSelectedChange={toggleSelection}
-                      onEdit={() => editTerm()}
-                      headerAction={<TermIllustrationAction />}
-                      afterContent={<TermIllustrationPanel />}
                       notify={notify}
                     />
-                  </TermIllustrationProvider>
-                ) : (
-                  <TermDetailView
-                    className="size-full"
-                    term={null}
-                    locale={locale}
-                    selected={false}
-                    loading={detailLoading}
-                    error={detailLoadError}
-                    onRetry={retryDetail}
-                    onBack={() => requestNavigation({ kind: 'overview' })}
-                    showBack={false}
-                    onSelectedChange={toggleSelection}
-                    notify={notify}
-                  />
-                ))}
+                  ))}
 
-              {surface === 'edit' && (
-                <TermEditor
-                  copy={c}
-                  locale={locale}
-                  categories={data.categories}
-                  detail={detail}
-                  draft={draft}
-                  dirty={Boolean(dirty)}
-                  busy={busy}
-                  mediaBusy={mediaBusy}
-                  mediaFocusKey={0}
-                  availableAssets={availableAssets}
-                  onSet={setDraftField}
-                  onBack={returnToDetail}
-                  onSave={() => void save()}
-                  onApprove={() => void approve()}
-                  onWithdraw={() => void withdrawApproval()}
-                  onArchive={() => void setArchived(true)}
-                  onRestore={() => void setArchived(false)}
-                  onAddMedia={addMedia}
-                  onImportMedia={importMedia}
-                  onSetMediaCover={setMediaCover}
-                  onRemoveMedia={removeMedia}
-                  onReorderMedia={reorderMedia}
-                />
-              )}
-            </WorkspaceDetailLoadingBoundary>
-          </div>
-        </div>
+                {surface === 'edit' && (
+                  <TermEditor
+                    navigationAction={toggle}
+                    copy={c}
+                    locale={locale}
+                    categories={data.categories}
+                    detail={detail}
+                    draft={draft}
+                    dirty={Boolean(dirty)}
+                    busy={busy}
+                    mediaBusy={mediaBusy}
+                    mediaFocusKey={0}
+                    availableAssets={availableAssets}
+                    onSet={setDraftField}
+                    onBack={returnToDetail}
+                    onSave={() => void save()}
+                    onApprove={() => void approve()}
+                    onWithdraw={() => void withdrawApproval()}
+                    onArchive={() => void setArchived(true)}
+                    onRestore={() => void setArchived(false)}
+                    onAddMedia={addMedia}
+                    onImportMedia={importMedia}
+                    onSetMediaCover={setMediaCover}
+                    onRemoveMedia={removeMedia}
+                    onReorderMedia={reorderMedia}
+                  />
+                )}
+              </WorkspaceDetailLoadingBoundary>
+            </div>
+          )}
+        </CollectionDetailLayout>
       )}
 
       {surface === 'classifications' && (

@@ -6,21 +6,16 @@ import {
   useEditorState,
   type NodeViewProps,
 } from '@tiptap/react';
-import { useEffect, useRef, type DragEvent, type MouseEvent } from 'react';
+import { useEffect, type MouseEvent } from 'react';
 import { ChevronRight } from 'lucide-react';
 import { Button } from '@/renderer/components/ui/button';
 import { useI18n } from '@/renderer/i18n/useI18n';
-import { moveOutlineSelection, toggleOutlineTaskState } from '@/renderer/features/content-editor/outlineEditing';
-import type { OutlineDropPlacement } from '@/renderer/features/content-editor/outlineMove';
+import { toggleOutlineTaskState } from '@/renderer/features/content-editor/outlineEditing';
 import {
   focusOutlineItem,
-  beginOutlineDrag,
-  endOutlineDrag,
   outlineChildBranchIds,
   outlineItemVisibility,
-  outlinePlacementWithinFocus,
   outlineViewState,
-  previewOutlineDrop,
   selectOutlineItem,
   setOutlineView,
   toggleOutlineChildBranches,
@@ -29,36 +24,19 @@ import {
 import { isOutlineChildList } from '@/shared/outline-structure';
 import { OutlineItemMenu } from '@/renderer/features/content-editor/OutlineItemMenu';
 import { OutlineBranchRail } from '@/renderer/features/content-editor/OutlineBranchRail';
+import { focusOutlineView } from '@/renderer/features/content-editor/outlineActiveView';
 import { editingItemId, outlineTextSelectionItem } from '@/renderer/features/content-editor/outlinePointerSelection';
 import { cn } from '@/renderer/lib/utils';
+import { useOutlineItemDrag } from '@/renderer/features/content-editor/useOutlineItemDrag';
 import './outline-list-item.css';
 
-function insideChildGroup(node: NodeViewProps['node'], itemPosition: number, position: number) {
+function insideFoldedContent(node: NodeViewProps['node'], itemPosition: number, position: number) {
   let inside = false;
-  node.forEach((child, offset) => {
+  node.forEach((child, offset, index) => {
     const start = itemPosition + 1 + offset;
-    if (
-      isOutlineChildList({ type: child.type.name, attrs: child.attrs }) &&
-      position > start &&
-      position < start + child.nodeSize
-    )
-      inside = true;
+    if (index > 0 && position >= start && position < start + child.nodeSize) inside = true;
   });
   return inside;
-}
-
-function scrollOutlineDragEdge(element: HTMLElement, pointerY: number) {
-  let ancestor = element.parentElement;
-  while (ancestor) {
-    const overflow = window.getComputedStyle(ancestor).overflowY;
-    if ((overflow === 'auto' || overflow === 'scroll') && ancestor.scrollHeight > ancestor.clientHeight) {
-      const bounds = ancestor.getBoundingClientRect();
-      const distance = Math.min(pointerY - bounds.top, bounds.bottom - pointerY);
-      if (distance < 32) ancestor.scrollBy({ top: pointerY < bounds.top + 32 ? -16 : 16 });
-      return;
-    }
-    ancestor = ancestor.parentElement;
-  }
 }
 
 function outlineFocusButtonClassName(editing: boolean) {
@@ -89,9 +67,9 @@ function OutlineItem({ node, editor, getPos }: NodeViewProps) {
   const editing = useEditorState({ editor, selector: ({ editor: current }) => editingItemId(current) === id });
   const folded = view.folded.has(id);
   const selected = view.selected.includes(id);
-  const dragged = useRef(false);
   const visibility = outlineItemVisibility(editor.state.doc, view, id);
   const editable = useEditorState({ editor, selector: ({ editor: current }) => current.isEditable });
+  const drag = useOutlineItemDrag({ editor, id, selected, view, editable, visibility, getPos });
   let childCount = 0;
   node.forEach((child) => {
     if (isOutlineChildList({ type: child.type.name, attrs: child.attrs })) childCount += child.childCount;
@@ -105,7 +83,7 @@ function OutlineItem({ node, editor, getPos }: NodeViewProps) {
       if (position === undefined) return;
       const selection = editor.state.selection;
       // Navigation into a hidden descendant reveals it without changing content.
-      if (insideChildGroup(node, position, selection.from)) toggleOutlineFold(editor, id);
+      if (insideFoldedContent(node, position, selection.from)) toggleOutlineFold(editor, id);
     };
     const revealNavigation = ({ transaction }: { transaction: import('@tiptap/pm/state').Transaction }) => {
       if (transaction.getMeta('aiy:block-navigation')) reveal();
@@ -133,6 +111,7 @@ function OutlineItem({ node, editor, getPos }: NodeViewProps) {
       data-outline-visibility={visibility}
       data-outline-selected={selected ? 'true' : undefined}
       data-outline-drop={view.drop?.id === id ? view.drop.placement.toLowerCase() : undefined}
+      {...drag.dropBindings}
       onMouseDownCapture={(event: MouseEvent<HTMLElement>) => {
         if (!(event.target instanceof Element) || event.target.closest('.aiy-outline-item') !== event.currentTarget)
           return;
@@ -150,54 +129,6 @@ function OutlineItem({ node, editor, getPos }: NodeViewProps) {
         if (event.target !== event.currentTarget || !editable || !id) return;
         event.preventDefault();
         selectOutlineItem(editor, id, event.shiftKey, event.ctrlKey || event.metaKey);
-      }}
-      onDragOverCapture={(event: DragEvent<HTMLElement>) => {
-        if (!Array.from(event.dataTransfer.types).includes('application/x-aiy-outline')) return;
-        if (event.target instanceof Element && event.target.closest('.aiy-outline-item') !== event.currentTarget)
-          return;
-        const drag = outlineViewState(editor.state).drag;
-        if (visibility !== 'inside' || !drag?.validTargets.has(id)) {
-          previewOutlineDrop(editor, null);
-          return;
-        }
-        const title = event.currentTarget.querySelector<HTMLElement>(
-          ':scope > [data-node-view-content] > [data-node-view-content-react] > p:first-child',
-        );
-        const rect = title?.getBoundingClientRect() ?? event.currentTarget.getBoundingClientRect();
-        const position = getPos();
-        const resolved = position === undefined ? null : editor.state.doc.resolve(position + 1);
-        const firstSibling = resolved !== null && resolved.index(resolved.depth - 1) === 0;
-        const placement: OutlineDropPlacement =
-          view.focus === id || event.clientX >= rect.left + 24
-            ? 'INSIDE'
-            : firstSibling && event.clientY <= rect.top + Math.min(10, rect.height * 0.3)
-              ? 'BEFORE'
-              : 'AFTER';
-        if (!outlinePlacementWithinFocus(editor.state.doc, outlineViewState(editor.state), drag.ids, id, placement)) {
-          previewOutlineDrop(editor, null);
-          return;
-        }
-        event.preventDefault();
-        event.stopPropagation();
-        event.dataTransfer.dropEffect = 'move';
-        scrollOutlineDragEdge(event.currentTarget, event.clientY);
-        previewOutlineDrop(editor, id, placement);
-      }}
-      onDragLeaveCapture={(event: DragEvent<HTMLElement>) => {
-        if (!Array.from(event.dataTransfer.types).includes('application/x-aiy-outline')) return;
-        if (event.currentTarget.contains(event.relatedTarget as Node | null)) return;
-        previewOutlineDrop(editor, null);
-      }}
-      onDropCapture={(event: DragEvent<HTMLElement>) => {
-        if (!Array.from(event.dataTransfer.types).includes('application/x-aiy-outline')) return;
-        if (event.target instanceof Element && event.target.closest('.aiy-outline-item') !== event.currentTarget)
-          return;
-        event.preventDefault();
-        event.stopPropagation();
-        const drop = outlineViewState(editor.state).drop;
-        const ids = outlineViewState(editor.state).drag?.ids ?? [];
-        if (drop?.id === id) moveOutlineSelection(editor, ids, id, drop.placement);
-        endOutlineDrag(editor);
       }}
     >
       {visibility === 'inside' && childCount > 0 && !folded && (
@@ -219,7 +150,7 @@ function OutlineItem({ node, editor, getPos }: NodeViewProps) {
           contentEditable={false}
           className="group/outline-marker absolute left-0 top-0 flex h-7 w-6 items-center"
         >
-          {childCount > 0 && (
+          {node.childCount > 1 && (
             <Button
               type="button"
               size="icon-sm"
@@ -242,32 +173,21 @@ function OutlineItem({ node, editor, getPos }: NodeViewProps) {
             size="icon-sm"
             variant="ghost"
             className={outlineFocusButtonClassName(editing)}
+            data-outline-focus
+            draggable={drag.draggable}
+            {...drag.markerBindings}
             aria-label={view.focus === id ? copy.whole : copy.zoom}
             aria-pressed={view.focus === id}
             title={view.focus === id ? copy.whole : copy.zoom}
-            draggable={editable && view.focus !== id}
-            onMouseDown={(event) => event.preventDefault()}
             onClick={(event) => {
-              if (dragged.current) return;
+              if (drag.dragged.current) return;
               if (event.shiftKey || event.ctrlKey || event.metaKey) {
                 selectOutlineItem(editor, id, event.shiftKey, event.ctrlKey || event.metaKey);
+                focusOutlineView(editor);
                 return;
               }
               focusOutlineItem(editor, view.focus === id ? null : id);
-            }}
-            onDragStart={(event) => {
-              dragged.current = true;
-              if (!selected) selectOutlineItem(editor, id);
-              beginOutlineDrag(editor, selected ? view.selected : [id]);
-              event.dataTransfer.setData('application/x-aiy-outline', id);
-              event.dataTransfer.effectAllowed = 'move';
-              event.stopPropagation();
-            }}
-            onDragEnd={() => {
-              endOutlineDrag(editor);
-              window.setTimeout(() => {
-                dragged.current = false;
-              }, 0);
+              focusOutlineView(editor);
             }}
           >
             <span aria-hidden="true" className="size-1.5 rounded-full bg-current" />
@@ -303,8 +223,13 @@ function OutlineItem({ node, editor, getPos }: NodeViewProps) {
           />
         </div>
       )}
+      {drag.dragError && (
+        <span role="alert" className="block text-xs text-destructive">
+          {drag.dragError}
+        </span>
+      )}
       <NodeViewContent
-        className={`min-w-0 [&>[data-node-view-content-react]>p:first-child]:!my-0 [&>[data-node-view-content-react]>p:first-child]:min-h-7 [&>[data-node-view-content-react]>p:first-child]:leading-7 ${node.attrs.taskState ? '[&>[data-node-view-content-react]>p:first-child]:pr-20' : '[&>[data-node-view-content-react]>p:first-child]:pr-7'}`}
+        className={`min-w-0 [&>[data-node-view-content-react]>p:not(:first-child)]:my-2 [&>[data-node-view-content-react]>p:first-child]:!my-0 [&>[data-node-view-content-react]>p:first-child]:min-h-7 [&>[data-node-view-content-react]>p:first-child]:leading-7 ${node.attrs.taskState ? '[&>[data-node-view-content-react]>p:first-child]:pr-20' : '[&>[data-node-view-content-react]>p:first-child]:pr-7'}`}
       />
     </NodeViewWrapper>
   );

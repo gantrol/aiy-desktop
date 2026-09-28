@@ -16,6 +16,7 @@ export const pinMediaSchema = z.object({
 export const pinSummarySchema = z.object({
   source: pinSourceSchema,
   title: z.string(),
+  parentPath: z.string().optional(),
   preview: z.string(),
   mediaUrl: z.string().nullable(),
   // Optional during rolling updates and for legacy fixtures. Never infer MIME from the source kind.
@@ -69,6 +70,7 @@ export const pinSearchSchema = z
   .object({
     kind: pinSourceSchema.shape.kind,
     query: z.string().max(100),
+    locale: z.enum(['en', 'zh']).optional(),
     offset: z.number().int().min(0).max(10000).default(0),
   })
   .strict();

@@ -18,7 +18,6 @@ interface Props {
   initialQuery: string;
   initialRole: CodexHistoryRoleFilter;
   onOpen(threadId: string): void;
-  onClose(): void;
 }
 
 function HistoryThreadPane({
@@ -27,7 +26,6 @@ function HistoryThreadPane({
   initialQuery,
   initialRole,
   onOpen,
-  onClose,
 }: Props & { item: CodexHistorySearchResult }) {
   const l = useI18n().messages.extensions.codexHistorySearch;
   const [draftQuery, setDraftQuery] = useState(initialQuery);
@@ -85,9 +83,6 @@ function HistoryThreadPane({
       }}
     >
       <header className="flex min-h-14 items-start gap-3 border-b px-4 py-3">
-        <Button type="button" variant="ghost" size="sm" className="xl:hidden" onClick={onClose}>
-          {l.usage.back}
-        </Button>
         <div className="min-w-0 flex-1">
           <h3 className="line-clamp-2 text-sm font-semibold leading-5">
             <CodexHistoryHighlightedText text={item.title} query={initialQuery} />

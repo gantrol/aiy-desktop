@@ -1,27 +1,20 @@
 import type { ActiveLibraryContext } from '@/main/libraries/active-library-context';
+import type { Locale } from '@/shared/contracts';
 import { PetalLayoutStore } from '@/main/desktop-petals/petal-layout-store';
 import { petalHubSettingsSchema, petalTimerActionSchema, type PetalQuota } from '@/shared/contracts/petal-hub';
-import { petalError } from '@/shared/petal-errors';
-import { changePetalTimer } from '@/shared/petal-timer';
+import { changePetalTimer, normalizePetalTimer } from '@/shared/petal-timer';
 import { PetalTimerScheduler } from '@/main/desktop-petals/petal-timer-scheduler';
+import { FlowerCenterProviderRegistry } from '@/main/desktop-petals/flower-center-provider-registry';
 
-const empty = (state: PetalQuota['state'], messageCode: NonNullable<PetalQuota['messageCode']>): PetalQuota => ({
-  state,
-  message: '',
-  messageCode,
-  capturedAt: null,
-  primary: null,
-  secondary: null,
-  limits: [],
-});
-
-/** Hub settings are machine-local; quota reads reuse the library's existing Codex service and permissions. */
+/** Hub settings are machine-local; contributed center data reuses existing extension permissions. */
 export class PetalHubService {
   private writes: Promise<void> = Promise.resolve();
+  private readonly centers = new FlowerCenterProviderRegistry();
   readonly scheduler: PetalTimerScheduler;
   constructor(
     readonly layouts: PetalLayoutStore,
     private readonly onComplete?: (phase: 'focus' | 'break') => void,
+    private readonly locale: () => Locale = () => 'en',
   ) {
     this.scheduler = new PetalTimerScheduler(layouts, (deadline) =>
       this.enqueue(async () => {
@@ -39,14 +32,7 @@ export class PetalHubService {
   configure(raw: unknown) {
     const settings = petalHubSettingsSchema.parse(raw);
     return this.enqueue(async () => {
-      const previous = this.layouts.hubSettings;
-      settings.codexLimitId = previous.codexLimitId;
-      const durationChanged =
-        settings.focusMinutes !== previous.focusMinutes || settings.breakMinutes !== previous.breakMinutes;
-      if (durationChanged && this.layouts.timer.endsAt !== null) throw petalError('pauseTimer');
-      const timer = durationChanged
-        ? changePetalTimer(this.layouts.timer, 'reset', settings, Date.now())
-        : this.layouts.timer;
+      const timer = normalizePetalTimer(this.layouts.timer, this.layouts.hubSettings);
       await this.layouts.saveHub(settings, timer);
       this.scheduler.refresh();
     });
@@ -67,7 +53,6 @@ export class PetalHubService {
     );
   }
   quota(context: ActiveLibraryContext): Promise<PetalQuota> {
-    if (this.layouts.hubSettings.mode !== 'codex') return Promise.resolve(empty('unavailable', 'notSelected'));
-    return context.codexContent.quota.read(this.layouts.hubSettings.codexLimitId);
+    return this.centers.read(context, this.layouts.hubSettings, this.locale());
   }
 }

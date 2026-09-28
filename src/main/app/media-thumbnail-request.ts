@@ -8,7 +8,19 @@ interface Options {
   cache: MediaThumbnailCache;
 }
 
-export async function resolveMediaThumbnailRequest({ url, identifier, assetPath, codexGeneratedPath, cache }: Options) {
+interface ThumbnailRequest {
+  filePath: string | null;
+  svgBytes?: Buffer;
+  thumbnail: true;
+}
+
+export async function resolveMediaThumbnailRequest({
+  url,
+  identifier,
+  assetPath,
+  codexGeneratedPath,
+  cache,
+}: Options): Promise<ThumbnailRequest | null> {
   const request =
     url.hostname === 'asset-thumbnail' && assetPath
       ? { cacheKey: identifier, sourcePath: assetPath }
@@ -21,6 +33,8 @@ export async function resolveMediaThumbnailRequest({ url, identifier, assetPath,
   if (!request) return null;
 
   try {
+    const svgBytes = await cache.getSimpleSvg(request.cacheKey, request.sourcePath);
+    if (svgBytes) return { filePath: null, svgBytes, thumbnail: true };
     return {
       filePath: await cache.get(
         request.cacheKey,
