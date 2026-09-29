@@ -11,7 +11,6 @@ import type {
   WordPaletteDto,
 } from '@/shared/contracts';
 import { AlbumCreationDefaultsDialog } from '@/renderer/components/albums/AlbumCreationDefaultsDialog';
-import { CreateAlbumDialog } from '@/renderer/components/albums/CreateAlbumDialog';
 import { ApplyWordPaletteDialog } from '@/renderer/components/palette/ApplyWordPaletteDialog';
 import { SaveWordPaletteDialog } from '@/renderer/components/palette/SaveWordPaletteDialog';
 import { WordPaletteDetailsDialog } from '@/renderer/components/palette/WordPaletteDetailsDialog';
@@ -32,9 +31,6 @@ interface Props {
   albumDefaults: AlbumDto | null;
   appliedPalettes: readonly AppliedWordPalette[];
   confirmationDialog: ReactNode;
-  createAlbumBusy: boolean;
-  createAlbumLabels: ComponentProps<typeof CreateAlbumDialog>['labels'];
-  createAlbumRequest: { parent: AlbumDto | null; destination: 'LIBRARY' | 'NEW_CREATION' } | null;
   currentInput: CreationInputSnapshotDto;
   data: BootstrapDto;
   defaultPromptLocale: Locale | null;
@@ -61,8 +57,6 @@ interface Props {
   onAlbumDefaultsChange(album: AlbumDto | null): void;
   onAlbumDefaultsSaved(): Promise<void>;
   onApplyPalette(palette: WordPaletteDto, values: Record<string, string>, locale: Locale): void;
-  onCreateAlbum(parent: AlbumDto | null, title: string, destination: 'LIBRARY' | 'NEW_CREATION'): Promise<void>;
-  onCreateAlbumRequestChange(value: Props['createAlbumRequest']): void;
   onCreateExternal: ComponentProps<typeof NewExternalCreationDialog>['onCreate'];
   onDistilledPaletteChange(palette: WordPaletteDto | null): void;
   onExternalOpenChange(open: boolean): void;
@@ -212,22 +206,6 @@ export function CreatorDialogHost(props: Props) {
           onOpenChange={props.onRenameSeriesOpenChange}
           onSaved={props.onRefresh}
           notify={props.notify}
-        />
-      )}
-      {props.createAlbumRequest && (
-        <CreateAlbumDialog
-          open
-          parentTitle={props.createAlbumRequest.parent?.title}
-          busy={props.createAlbumBusy}
-          labels={props.createAlbumLabels}
-          onOpenChange={(open) => {
-            if (!open) props.onCreateAlbumRequestChange(null);
-          }}
-          onCreate={async (title) => {
-            if (props.createAlbumRequest) {
-              await props.onCreateAlbum(props.createAlbumRequest.parent, title, props.createAlbumRequest.destination);
-            }
-          }}
         />
       )}
       {props.renameAlbum && (

@@ -14,6 +14,7 @@ import { createGenerationApi } from '@/main/database/library-database/generation
 import { createIntakeApi } from '@/main/database/library-database/intake-api';
 import { createInspirationApi } from '@/main/database/library-database/inspiration-api';
 import { createContentLibraryApi } from '@/main/database/library-database/content-library-api';
+import { createMeApi } from '@/main/database/library-database/me-api';
 import { createDesktopNotesApi } from '@/main/database/library-database/desktop-notes-api';
 import { createPetalBoardApi } from '@/main/database/library-database/petal-board-api';
 import { createImageBreakdownApi } from '@/main/database/library-database/image-breakdown-api';
@@ -26,6 +27,7 @@ import { createBackgroundIssueApi } from '@/main/database/library-database/backg
 import type { RecordedLibraryChange } from '@/main/database/core/storage';
 
 export function createLibraryDatabaseApi(repositories: LibraryDatabaseRepositories) {
+  const content = createContentLibraryApi(repositories);
   return {
     subscribeContentChanges: (listener: (changes: readonly RecordedLibraryChange[]) => void) =>
       repositories.storage.changes.subscribe(listener),
@@ -40,7 +42,8 @@ export function createLibraryDatabaseApi(repositories: LibraryDatabaseRepositori
     ...createDictionaryApi(repositories),
     ...createIntakeApi(repositories),
     ...createInspirationApi(repositories),
-    ...createContentLibraryApi(repositories),
+    ...content,
+    ...createMeApi(repositories.storage, content.contentLibrary),
     ...createDesktopNotesApi(repositories),
     ...createPetalBoardApi(repositories),
     ...createImageBreakdownApi(repositories),

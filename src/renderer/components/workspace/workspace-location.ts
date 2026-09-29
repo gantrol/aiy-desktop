@@ -66,6 +66,12 @@ export function appLocationToWorkspaceTarget(location: AppLocation): WorkspaceTa
       return { kind: 'search', location: location.search };
     case 'calendar':
       return { kind: 'calendar' };
+    case 'me':
+      return { kind: 'me' };
+    case 'settings':
+      return { kind: 'settings' };
+    case 'about':
+      return { kind: 'about' };
     case 'companion':
       return { kind: 'companion' };
     case 'codexImages':
@@ -111,6 +117,12 @@ export function workspaceTargetToAppLocation(target: WorkspaceTarget): AppLocati
       return { ...initialAppLocation, view: 'search', search: target.location };
     case 'calendar':
       return { ...initialAppLocation, view: 'calendar' };
+    case 'me':
+      return { ...initialAppLocation, view: 'me' };
+    case 'settings':
+      return { ...initialAppLocation, view: 'settings' };
+    case 'about':
+      return { ...initialAppLocation, view: 'about' };
     case 'companion':
       return { ...initialAppLocation, view: 'companion' };
     case 'extensions':

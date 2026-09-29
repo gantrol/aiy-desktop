@@ -1,13 +1,10 @@
-import {
-  CreationLibraryViewMenu,
-  CreationLibraryPaneToggle,
-} from '@/renderer/components/creator/CreationLibraryViewControls';
+import { CreationLibraryPaneToggle } from '@/renderer/components/creator/CreationLibraryPaneToggle';
 import {
   allCreationLibraryFilters,
-  creationFormFilterKey,
   formMatchesFilter,
   isAllCreationLibraryFilter,
 } from '@/renderer/components/creator/creationLibraryFilter';
+import { creationLibraryAuthorOptions } from '@/renderer/components/creator/creationLibraryAuthorFilter';
 import {
   ArchiveIcon,
   BookmarkIcon,
@@ -26,7 +23,6 @@ import {
   PinOffIcon,
   PlusIcon,
   ScanSearchIcon,
-  SearchIcon,
   Trash2Icon,
 } from 'lucide-react';
 import {
@@ -92,7 +88,7 @@ import { QuietEmpty } from '@/renderer/components/ui/quiet-empty';
 import { ScrollArea } from '@/renderer/components/ui/scroll-area';
 import { CreatorPaneResizeHandle } from '@/renderer/components/creator/CreatorPaneResizeHandle';
 import { CreationLibraryChildList } from '@/renderer/components/creator/CreationLibraryChildDisclosure';
-import { CreationLibraryToolbar } from '@/renderer/components/creator/CreationLibraryToolbar';
+import { CreationLibraryHeader } from '@/renderer/components/creator/CreationLibraryHeader';
 import type { CreationLibraryFilter } from '@/renderer/components/creator/creationLibraryFilter';
 import { creationAlbumPreviewAssets } from '@/renderer/components/creator/creationAlbumPreviewAssets';
 import { creationFormTabTarget } from '@/renderer/components/creator/creationFormTabTarget';
@@ -122,8 +118,6 @@ import { AssetThumbnail } from '@/renderer/components/media/AssetThumbnail';
 import { useVideoDocumentList } from '@/renderer/features/video-documents/useVideoDocumentList';
 import { useVideoDocumentNavigation } from '@/renderer/features/video-documents/useVideoDocumentNavigation';
 import type { CreatorOpenTabTarget } from '@/renderer/components/app/app-navigation';
-import { CreationOutlineSidebar } from '@/renderer/features/creation-outline/CreationOutlineSidebar';
-import { useCreationOutlineView } from '@/renderer/features/creation-outline/useCreationOutlineView';
 import { outlineCurrentNodeKey } from '@/renderer/features/creation-outline/outline-tree';
 import {
   creationTreeNavigationKey,
@@ -134,8 +128,11 @@ import { CreationLibraryAssetPreview } from '@/renderer/components/creator/Creat
 import { creationSessionCoverFirstAssets } from '@/renderer/components/creator/creationCoverFirstAssets';
 import type { DerivedVisualWorkspaceViewState } from '@/renderer/components/creator/derivedVisualWorkspace';
 import { useCreationDraftSidebar } from '@/renderer/components/creator/useCreationDraftSidebar';
+import { useCreationAlbumDraft } from '@/renderer/components/creator/useCreationAlbumDraft';
+import type { CreationAlbumRequest } from '@/renderer/components/creator/CreationLibraryAlbumDraft';
+import './CreationLibraryTree.css';
 
-export type ResultLibraryMode = 'full' | 'images' | 'outline';
+export type ResultLibraryMode = 'full' | 'images';
 export type ResultLibrarySurface =
   | 'animation'
   | 'new-creation'
@@ -173,7 +170,6 @@ interface Props {
   documentNavigationRevision: number;
   surface: ResultLibrarySurface;
   mode: ResultLibraryMode;
-  expandedMode?: 'full' | 'outline';
   canExpand: boolean;
   resizeValue: number;
   resizeMin: number;
@@ -205,11 +201,13 @@ interface Props {
   onRenameAlbum(album: AlbumDto): void;
   onToggleAlbumPin(album: AlbumDto): void;
   onCreateAlbum(parent: AlbumDto | null): void;
+  createAlbumRequest: CreationAlbumRequest | null;
+  onConfirmCreateAlbum(request: CreationAlbumRequest, title: string): Promise<boolean>;
+  onCancelCreateAlbum(): void;
   onMoveAlbum(albumId: string, parentAlbumId: string | null, copy?: boolean): Promise<void>;
   onMoveCreationItem(creationItemId: string, albumId: string | null, copy?: boolean): Promise<void>;
   onToggleCreationItemPin(creationItemId: string, pinned: boolean): void;
   onImportExternalFiles?(albumId: string, files: File[], sourceUrl: string): void;
-  refresh(): Promise<void>;
   notify(message: string): void;
 }
 
@@ -217,8 +215,9 @@ type RootEntry = { kind: 'ALBUM'; album: AlbumDto } | { kind: 'ITEM'; item: Crea
 type AlbumChildEntry = RootEntry;
 
 const rowControlsClassName =
-  'pointer-events-none absolute inset-y-0 right-1 z-30 flex items-center gap-0.5 opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100';
-const rowControlClassName = 'pointer-events-auto shrink-0 rounded-md bg-overlay/95 shadow-overlay';
+  'pointer-events-none absolute inset-y-0 right-1 z-30 flex items-center gap-0.5 opacity-0 transition-opacity group-hover:pointer-events-auto group-hover:opacity-100 group-focus-within:pointer-events-auto group-focus-within:opacity-100 has-[[data-state=open]]:pointer-events-auto has-[[data-state=open]]:opacity-100 [@media(hover:none)]:pointer-events-auto [@media(hover:none)]:opacity-100';
+const rowControlClassName =
+  'shrink-0 rounded-sm text-muted-foreground hover:bg-hover-strong hover:text-foreground data-[state=open]:bg-hover-strong data-[state=open]:text-foreground';
 
 function creationSidebarEntryKey(entry: RootEntry) {
   return entry.kind === 'ALBUM' ? `ALBUM:${entry.album.id}` : `CREATION_ITEM:${entry.item.key}`;
@@ -277,23 +276,6 @@ function uniqueDocuments(items: readonly VideoDocumentSummaryDto[]) {
   const byId = new Map<string, VideoDocumentSummaryDto>();
   for (const item of items) byId.set(item.id, item);
   return [...byId.values()];
-}
-
-function creationAlbumContext(
-  selectedAlbumId: string | null,
-  selectedItem: CreationItemProjection | null,
-  selectedDocumentAlbumId: string | null,
-) {
-  return selectedAlbumId ?? selectedItem?.item.albumId ?? selectedDocumentAlbumId ?? null;
-}
-
-function albumCreationParent(
-  surface: ResultLibrarySurface,
-  selectedAlbumId: string | null,
-  albumsById: ReadonlyMap<string, AlbumDto>,
-) {
-  if (surface !== 'album-detail' || !selectedAlbumId) return null;
-  return albumsById.get(selectedAlbumId) ?? null;
 }
 
 function CreationLibraryEmptyState({
@@ -382,7 +364,6 @@ export function ResultLibrary({
   documentNavigationRevision,
   surface,
   mode,
-  expandedMode = 'full',
   canExpand,
   resizeValue,
   resizeMin,
@@ -414,11 +395,13 @@ export function ResultLibrary({
   onRenameAlbum,
   onToggleAlbumPin,
   onCreateAlbum,
+  createAlbumRequest,
+  onConfirmCreateAlbum,
+  onCancelCreateAlbum,
   onMoveAlbum,
   onMoveCreationItem,
   onToggleCreationItemPin,
   onImportExternalFiles,
-  refresh,
   notify,
 }: Props) {
   const { messages } = useI18n();
@@ -437,7 +420,6 @@ export function ResultLibrary({
   const [draggedAlbumId, setDraggedAlbumId] = useState<string | null>(null);
   const [dropAlbumId, setDropAlbumId] = useState<string | null>(null);
   const viewportRef = useRef<HTMLDivElement>(null);
-  const outlineView = useCreationOutlineView();
   const draftSidebar = useCreationDraftSidebar({
     active,
     data,
@@ -450,7 +432,6 @@ export function ResultLibrary({
     notify,
   });
   const libraryScroll = useCreationTreeScrollMemory();
-  const outlineOrigin = useRef<string | null>(null);
   const albumExpansion = useTreeBranchExpansion(viewportRef);
   const itemExpansion = useTreeBranchExpansion(viewportRef);
   const albumChildVisibility = useCreationAlbumChildVisibility();
@@ -465,7 +446,7 @@ export function ResultLibrary({
     notify,
   });
   const documentSearch = useVideoDocumentList({
-    active: active && mode === 'full' && filter.documents && Boolean(queryKey),
+    active: active && mode === 'full' && includeDocuments && Boolean(queryKey),
     refreshKey: documentNavigationRevision,
     query,
     albumId: null,
@@ -521,8 +502,21 @@ export function ResultLibrary({
     ],
   );
   const tree = useMemo(() => buildAlbumTreeIndex(data.albums), [data.albums]);
-  const newAlbumParent = albumCreationParent(surface, selectedAlbumId, tree.byId);
-  const newAlbumLabel = newAlbumParent ? creatorAlbumLabels.newSubAlbum : creatorAlbumLabels.newAlbum;
+  const albumDraft = useCreationAlbumDraft({
+    request: createAlbumRequest,
+    tree,
+    busy: lifecycleBusy,
+    reveal: (path) => {
+      setQuery('');
+      setSearchOpen(false);
+      onFilterChange({ ...allCreationLibraryFilters });
+      for (const id of path) setAlbumPersistent('album:' + id, true, false);
+    },
+    onConfirm: onConfirmCreateAlbum,
+    onCancel: onCancelCreateAlbum,
+    notify,
+  });
+  const draftAlbumPath = albumDraft.path;
   const assetsById = useMemo(() => {
     const result = new Map<string, AssetDto>();
     const add = (asset: AssetDto | null | undefined) => {
@@ -623,7 +617,6 @@ export function ResultLibrary({
     return path;
   }, [selectedAlbumId, selectedDocumentAlbumId, selectedItem?.item.albumId, tree.parentById]);
   const selectedAlbumPathSet = useMemo(() => new Set(selectedAlbumPath), [selectedAlbumPath]);
-  const newCreationAlbumId = creationAlbumContext(selectedAlbumId, selectedItem, selectedDocumentAlbumId);
   useCreationTreeScroll({
     active: active && mode === 'full',
     viewportRef,
@@ -631,11 +624,6 @@ export function ResultLibrary({
     navigationKey: creationTreeNavigationKey(outlineCurrentKey, selectedAlbumPath),
     currentSelector: '[data-result-library-selected="true"]',
   });
-
-  function startNewCreationInContext() {
-    if (newCreationAlbumId) onNewInAlbum(newCreationAlbumId);
-    else onNew();
-  }
 
   function socialCoverGroup(form: CreationFormProjection) {
     if (form.role !== 'SOCIAL_POST_COVER') return [form];
@@ -663,8 +651,7 @@ export function ResultLibrary({
   function formDisplayKind(form: CreationFormProjection) {
     if (form.role !== 'SOCIAL_POST_COVER') return formKindLabel(form);
     const count = socialCoverGroup(form).length;
-    if (locale === 'zh') return count > 1 ? `封面 · ${count} 方案` : '封面';
-    return count > 1 ? `Cover · ${count} concepts` : 'Cover';
+    return count > 1 ? libraryLabels.coverConcepts(count) : libraryLabels.cover;
   }
 
   function formTreeKey(form: CreationFormProjection) {
@@ -717,6 +704,10 @@ export function ResultLibrary({
       );
     });
   }, [filter, locale, messages.creator.album, projection.items, queryKey]);
+  const authorOptions = useMemo(
+    () => creationLibraryAuthorOptions(projection.items, messages),
+    [projection.items, messages],
+  );
   const itemsByAlbumId = useMemo(() => {
     const result = new Map<string | null, CreationItemProjection[]>();
     for (const item of visibleItems) {
@@ -746,13 +737,13 @@ export function ResultLibrary({
       const containsAlbums = (tree.childrenByParentId.get(albumId) ?? []).some((child) =>
         visit(child.id, nextVisiting),
       );
-      const visible = ownMatch || containsItems || containsAlbums;
+      const visible = draftAlbumPath.has(albumId) || ownMatch || containsItems || containsAlbums;
       cache.set(albumId, visible);
       return visible;
     };
     for (const album of data.albums) visit(album.id);
     return cache;
-  }, [data.albums, filter, itemsByAlbumId, locale, queryKey, tree]);
+  }, [data.albums, draftAlbumPath, filter, itemsByAlbumId, locale, queryKey, tree]);
 
   function visibleItemForms(item: CreationItemProjection) {
     const visible: CreationFormProjection[] = [];
@@ -794,19 +785,6 @@ export function ResultLibrary({
     const assets = new Map<string, AssetDto>();
     for (const form of item.orderedForms) {
       for (const asset of formAssets(form)) assets.set(asset.id, asset);
-    }
-    return [...assets.values()];
-  }
-
-  function albumChildDisclosureAssets(entries: readonly AlbumChildEntry[]) {
-    const assets = new Map<string, AssetDto>();
-    for (const entry of entries) {
-      const entryAssets =
-        entry.kind === 'ALBUM' ? creationAlbumPreviewAssets(entry.album, filter) : creationItemAssets(entry.item);
-      for (const asset of entryAssets) {
-        assets.set(asset.id, asset);
-        if (assets.size >= 3) return [...assets.values()];
-      }
     }
     return [...assets.values()];
   }
@@ -902,7 +880,7 @@ export function ResultLibrary({
         <span
           title={kindLabel}
           aria-label={kindLabel}
-          className="pointer-events-none absolute bottom-0 left-0 z-20 grid size-5 place-items-center rounded-md border bg-overlay/95 text-foreground-secondary shadow-overlay"
+          className="pointer-events-none absolute bottom-0 left-0 z-20 grid size-5 place-items-center rounded-sm bg-overlay/95 text-foreground-secondary"
         >
           <Icon className="size-3" />
         </span>
@@ -963,7 +941,7 @@ export function ResultLibrary({
     if (form.role === 'ARTICLE' && form.entity) {
       actions.push({
         id: 'rename-form',
-        label: locale === 'zh' ? '重命名…' : 'Rename…',
+        label: creatorAlbumLabels.rename,
         icon: PencilIcon,
         disabled: lifecycleBusy,
         onSelect: () => onRenameArticle(form.entity!),
@@ -1063,14 +1041,14 @@ export function ResultLibrary({
     const actions: ActionMenuAction[] = [];
     actions.push({
       id: 'open-item',
-      label: locale === 'zh' ? '打开' : 'Open',
+      label: creatorAlbumLabels.open,
       icon: formIcon(openTarget),
       onSelect: () => openForm(openTarget),
     });
     if (tabTarget) {
       actions.push({
         id: 'open-item-in-new-tab',
-        label: locale === 'zh' ? '在新标签页打开' : 'Open in new tab',
+        label: libraryLabels.openInNewTab,
         icon: PlusIcon,
         onSelect: () => onOpenInNewTab(tabTarget),
       });
@@ -1079,7 +1057,7 @@ export function ResultLibrary({
       if (defaultForm.role === 'ARTICLE' && defaultForm.entity) {
         actions.push({
           id: 'rename-item',
-          label: locale === 'zh' ? '重命名…' : 'Rename…',
+          label: creatorAlbumLabels.rename,
           icon: PencilIcon,
           disabled: lifecycleBusy,
           onSelect: () => onRenameArticle(defaultForm.entity!),
@@ -1089,14 +1067,14 @@ export function ResultLibrary({
         actions.push(
           {
             id: 'rename-item',
-            label: locale === 'zh' ? '重命名…' : 'Rename…',
+            label: creatorAlbumLabels.rename,
             icon: PencilIcon,
             disabled: lifecycleBusy,
             onSelect: () => onRenameSeries(defaultForm.session!.primarySeries),
           },
           {
             id: 'manage-results',
-            label: locale === 'zh' ? '管理成果' : 'Manage results',
+            label: libraryLabels.manageResults,
             icon: ImagesIcon,
             onSelect: () => onMore(defaultForm.session!.primarySeries.id),
           },
@@ -1105,7 +1083,7 @@ export function ResultLibrary({
       if (defaultForm.role === 'VIDEO_DOCUMENT' && defaultForm.entity) {
         actions.push({
           id: 'rename-item',
-          label: locale === 'zh' ? '重命名…' : 'Rename…',
+          label: creatorAlbumLabels.rename,
           icon: PencilIcon,
           disabled: lifecycleBusy,
           onSelect: () => onRenameDocument(defaultForm.entity!),
@@ -1114,7 +1092,7 @@ export function ResultLibrary({
     }
     actions.push({
       id: 'pin-item',
-      label: item.item.pinned ? (locale === 'zh' ? '取消置顶' : 'Unpin') : locale === 'zh' ? '置顶' : 'Pin',
+      label: item.item.pinned ? creatorAlbumLabels.unpin : creatorAlbumLabels.pin,
       icon: item.item.pinned ? PinOffIcon : PinIcon,
       disabled: lifecycleBusy,
       onSelect: () => onToggleCreationItemPin(item.key, !item.item.pinned),
@@ -1132,7 +1110,7 @@ export function ResultLibrary({
     actions.push(
       {
         id: 'move-item',
-        label: locale === 'zh' ? '移动…' : 'Move…',
+        label: creatorAlbumLabels.move,
         icon: FolderInputIcon,
         disabled: lifecycleBusy,
         onSelect: () =>
@@ -1145,7 +1123,7 @@ export function ResultLibrary({
       },
       {
         id: 'archive-item',
-        label: locale === 'zh' ? '归档' : 'Archive',
+        label: creatorAlbumLabels.archive,
         icon: ArchiveIcon,
         separatorBefore: true,
         disabled: lifecycleBusy,
@@ -1158,7 +1136,7 @@ export function ResultLibrary({
       },
       {
         id: 'delete-item',
-        label: locale === 'zh' ? '删除' : 'Delete',
+        label: creatorAlbumLabels.delete,
         icon: Trash2Icon,
         destructive: true,
         disabled: lifecycleBusy,
@@ -1490,7 +1468,7 @@ export function ResultLibrary({
     const childVisibilityEntries = children.map(creationSidebarEntryVisibility);
     const requiredChildKeys = new Set<string>();
     for (const entry of children) {
-      if (entry.kind === 'ALBUM' && selectedAlbumPathSet.has(entry.album.id)) {
+      if (entry.kind === 'ALBUM' && (selectedAlbumPathSet.has(entry.album.id) || draftAlbumPath.has(entry.album.id))) {
         requiredChildKeys.add(creationSidebarEntryKey(entry));
       } else if (entry.kind === 'ITEM' && selectedAlbumId === null && entry.item.key === selectedItemId) {
         requiredChildKeys.add(creationSidebarEntryKey(entry));
@@ -1503,14 +1481,15 @@ export function ResultLibrary({
       Boolean(queryKey),
     );
     const visibleChildren = children.slice(0, childVisibility.visibleCount);
-    const hiddenChildren = children.slice(childVisibility.visibleCount);
     const showChildDisclosure = childVisibility.disclosure !== null;
-    const renderedChildCount = visibleChildren.length + Number(showChildDisclosure);
+    const hasAlbumDraft = albumDraft.belongsTo(album.id);
+    const draftOffset = Number(hasAlbumDraft);
+    const renderedChildCount = visibleChildren.length + Number(showChildDisclosure) + draftOffset;
     const childDisclosureTopology = showChildDisclosure
-      ? getTreeBranchItemTopology(visibleChildren.length, renderedChildCount)
+      ? getTreeBranchItemTopology(visibleChildren.length + draftOffset, renderedChildCount)
       : undefined;
-    const expanded = albumExpansion.isOpen(branchId);
-    const expandable = children.length > 0 || (includeDocuments && album.creationItemCount > 0);
+    const expanded = draftAlbumPath.has(album.id) || albumExpansion.isOpen(branchId);
+    const expandable = hasAlbumDraft || children.length > 0 || (includeDocuments && album.creationItemCount > 0);
     const selected = selectedAlbumId === album.id;
     const actions = albumActions(album, expanded, expandable);
     const previewAssets = creationAlbumPreviewAssets(album, filter);
@@ -1591,11 +1570,11 @@ export function ResultLibrary({
           onClick={click}
           onDoubleClick={doubleClick}
         />
-        <span className="pointer-events-none relative z-10 min-w-0 flex-1 px-1 text-left">
+        <span className="pointer-events-none relative z-10 min-w-0 flex-1 px-1 pr-8 text-left">
           <strong
             className={cn(
               'line-clamp-2 break-words text-base font-medium leading-5',
-              compact && 'line-clamp-1 truncate text-sm',
+              compact && 'line-clamp-1 truncate',
             )}
             title={album.title}
           >
@@ -1637,13 +1616,11 @@ export function ResultLibrary({
         <CreationLibraryChildList
           branchTopology={childDisclosureTopology}
           collapseLabel={messages.gallery.albums.collapse}
-          hasVisibleChildren={visibleChildren.length > 0}
+          hasVisibleChildren={hasAlbumDraft || visibleChildren.length > 0}
           label={
             childVisibility.disclosure === 'fewer' ? libraryLabels.showFewerChildren : libraryLabels.showMoreChildren
           }
           loading={false}
-          previewAssets={childVisibility.disclosure === 'more' ? albumChildDisclosureAssets(hiddenChildren) : []}
-          onAssetSelect={(asset) => openAlbumPreviewAsset(album.id, asset)}
           resetLabel={childVisibility.canReset ? libraryLabels.restoreDefaultVisibleItems : undefined}
           showDisclosure={showChildDisclosure}
           onCollapse={() => albumExpansion.collapse(branchId)}
@@ -1653,8 +1630,9 @@ export function ResultLibrary({
           }}
           onReset={() => albumChildVisibility.reset(album.id)}
         >
+          {albumDraft.renderAt(album.id, getTreeBranchItemTopology(0, renderedChildCount))}
           {visibleChildren.map((entry, index) => {
-            const childTopology = getTreeBranchItemTopology(index, renderedChildCount);
+            const childTopology = getTreeBranchItemTopology(index + draftOffset, renderedChildCount);
             return entry.kind === 'ALBUM'
               ? renderAlbum(entry.album, childTopology)
               : renderCreationItem(entry.item, childTopology);
@@ -1697,8 +1675,8 @@ export function ResultLibrary({
       albums={data.albums}
       target={moveTarget}
       labels={{
-        title: locale === 'zh' ? '移动到图集' : 'Move to album',
-        topLevel: locale === 'zh' ? '顶层' : 'Top level',
+        title: creatorAlbumLabels.moveTitle,
+        topLevel: messages.creator.outline.topLevel,
         operationFailed: albumLabels.operationFailed,
       }}
       busy={lifecycleBusy}
@@ -1709,79 +1687,27 @@ export function ResultLibrary({
     />
   );
 
-  function openOutline() {
-    outlineOrigin.current = outlineCurrentKey;
-    onModeChange('outline');
-  }
-  function closeOutline(nextMode: 'full' | 'images') {
-    if (outlineCurrentKey && outlineOrigin.current !== outlineCurrentKey) {
-      // Returning from another view must not leave newly opened work behind an old filter.
-      if (selectedForm) {
-        if (!formMatchesFilter(selectedForm, filter))
-          onFilterChange({ ...filter, [creationFormFilterKey(selectedForm)]: true });
-        if (!normalized(creationFormTitle(selectedForm, messages.creator.album), locale).includes(queryKey))
-          setQuery('');
-      } else if (selectedAlbumId) {
-        onFilterChange({ ...allCreationLibraryFilters });
-        if (!normalized(tree.byId.get(selectedAlbumId)?.title ?? '', locale).includes(queryKey)) setQuery('');
-      }
-    }
-    onModeChange(nextMode);
-  }
-  const viewMenu = (
-    <CreationLibraryViewMenu
-      mode={mode}
-      expandedMode={expandedMode}
-      onOutline={openOutline}
-      onList={() => closeOutline('full')}
-    />
-  );
   const collapseButton = (
-    <CreationLibraryPaneToggle
-      mode={mode}
-      expandedMode={expandedMode}
-      visible={showModeToggle}
+    <CreationLibraryPaneToggle mode={mode} visible={showModeToggle} canExpand={canExpand} onModeChange={onModeChange} />
+  );
+  const header = (
+    <CreationLibraryHeader
+      collapsed={mode === 'images'}
+      busy={lifecycleBusy}
       canExpand={canExpand}
-      onModeChange={onModeChange}
+      paneToggle={collapseButton}
+      onExpand={() => onModeChange('full')}
+      onNewCreation={onNew}
+      onNewAlbum={() => onCreateAlbum(null)}
+      searchOpen={searchOpen}
+      onSearchOpenChange={setSearchOpen}
+      query={query}
+      filter={filter}
+      authors={authorOptions}
+      onQueryChange={setQuery}
+      onFilterChange={onFilterChange}
     />
   );
-
-  if (mode === 'outline') {
-    return (
-      <CreationOutlineSidebar
-        footer={
-          <>
-            {draftSidebar.content}
-            {draftSidebar.feedback}
-          </>
-        }
-        spaceId={data.spaceId}
-        refresh={refresh}
-        notify={notify}
-        onNew={(albumId) => (albumId ? onNewInAlbum(albumId) : onNew())}
-        view={outlineView}
-        currentKey={outlineCurrentKey}
-        albums={data.albums}
-        creations={projection.items}
-        active={active}
-        busy={lifecycleBusy}
-        documentNavigationRevision={documentNavigationRevision}
-        resizeHandle={resizeHandle}
-        viewMenu={viewMenu}
-        collapsible={showModeToggle}
-        onClose={() => closeOutline('full')}
-        onCollapse={() => onModeChange('images')}
-        onOpenAlbum={onSelectAlbum}
-        onOpenSeries={onSelect}
-        onOpenCreationForm={openForm}
-        onCommand={async (command) => {
-          const result = await window.desktopApi.creationOutlineCommand(command);
-          if (result.kind !== 'error') await refresh().catch(() => notify(messages.creator.outline.refreshFailed));
-          return result;
-        }}
-      />
-    );
-  }
 
   if (mode === 'images') {
     return (
@@ -1791,48 +1717,7 @@ export function ResultLibrary({
         className="relative isolate flex size-full min-h-0 flex-col border-r bg-surface-sunken"
       >
         {resizeHandle}
-        <header className="grid shrink-0 place-items-center gap-2 py-2">
-          {viewMenu}
-          {collapseButton}
-          <Button
-            type="button"
-            variant="ghost"
-            size="icon-sm"
-            disabled={lifecycleBusy}
-            title={newAlbumLabel}
-            aria-label={newAlbumLabel}
-            onClick={() => onCreateAlbum(newAlbumParent)}
-          >
-            <GalleryVerticalEndIcon className="size-4" />
-          </Button>
-          <Button
-            type="button"
-            variant="ghost"
-            size="icon-sm"
-            data-action="new-creation"
-            disabled={lifecycleBusy}
-            title={libraryLabels.newCreation}
-            aria-label={libraryLabels.newCreation}
-            onClick={startNewCreationInContext}
-          >
-            <PlusIcon className="size-4" />
-          </Button>
-          <Button
-            type="button"
-            variant="ghost"
-            size="icon-sm"
-            title={libraryLabels.search}
-            aria-label={libraryLabels.search}
-            onClick={() => {
-              if (canExpand) {
-                setSearchOpen(true);
-                onModeChange('full');
-              } else openOutline();
-            }}
-          >
-            <SearchIcon className="size-4" />
-          </Button>
-        </header>
+        {header}
         <div className="min-h-0 flex-1" />
         {draftSidebar.feedback}
         {moveDialog}
@@ -1847,43 +1732,7 @@ export function ResultLibrary({
       className="relative isolate flex min-h-0 min-w-0 flex-col border-r bg-surface-sunken"
     >
       {resizeHandle}
-      <header className="relative flex h-14 shrink-0 items-center justify-between gap-1 border-b border-border/60 px-3">
-        {viewMenu}
-        <div className="flex items-center gap-1">
-          <Button
-            type="button"
-            variant="ghost"
-            size="icon-sm"
-            disabled={lifecycleBusy}
-            title={newAlbumLabel}
-            aria-label={newAlbumLabel}
-            onClick={() => onCreateAlbum(newAlbumParent)}
-          >
-            <GalleryVerticalEndIcon className="size-4" />
-          </Button>
-          <Button
-            type="button"
-            data-action="new-creation"
-            variant={surface === 'new-creation' ? 'secondary' : 'outline'}
-            size="icon-sm"
-            disabled={lifecycleBusy}
-            title={libraryLabels.newCreation}
-            aria-label={libraryLabels.newCreation}
-            onClick={startNewCreationInContext}
-          >
-            <PlusIcon className="size-4" />
-          </Button>
-          <CreationLibraryToolbar
-            searchOpen={searchOpen}
-            onSearchOpenChange={setSearchOpen}
-            query={query}
-            filter={filter}
-            onQueryChange={setQuery}
-            onFilterChange={onFilterChange}
-          />
-          {collapseButton}
-        </div>
-      </header>
+      {header}
       <ScrollArea
         type="always"
         className="min-h-0 flex-1 [&_[data-slot=scroll-area-viewport]>div]:!block [&_[data-slot=scroll-area-viewport]>div]:min-h-full"
@@ -1892,7 +1741,7 @@ export function ResultLibrary({
         <div
           data-result-library-root
           data-rendered-root-count={roots.length}
-          className="min-h-full space-y-0.5 px-2 py-2"
+          className="creation-library-tree min-h-full space-y-0.5 px-2 py-2"
           onDragOver={(event) => {
             if (!lifecycleBusy && hasTreeDrag(event)) {
               event.preventDefault();
@@ -1903,16 +1752,17 @@ export function ResultLibrary({
             if (!lifecycleBusy && hasTreeDrag(event)) void dropAtRoot(event);
           }}
         >
+          {albumDraft.renderAt(null)}
           {roots.map((entry) => (entry.kind === 'ALBUM' ? renderAlbum(entry.album) : renderCreationItem(entry.item)))}
           <CreationLibraryEmptyState
             rootCount={roots.length}
-            hasDraftContent={draftSidebar.hasContent}
+            hasDraftContent={draftSidebar.hasContent || Boolean(createAlbumRequest)}
             query={queryKey}
             filter={filter}
             surface={surface}
             busy={lifecycleBusy}
             onCreateAlbum={onCreateAlbum}
-            onNew={startNewCreationInContext}
+            onNew={onNew}
           />
         </div>
       </ScrollArea>

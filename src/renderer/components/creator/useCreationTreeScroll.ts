@@ -16,7 +16,7 @@ interface Options {
   currentSelector: string;
 }
 
-function afterBranchExpansion(viewport: HTMLDivElement, callback: () => void) {
+export function afterBranchExpansion(viewport: HTMLDivElement, callback: () => void) {
   let cancelled = false;
   const frame = requestAnimationFrame(() => {
     const expansions = viewport

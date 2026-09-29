@@ -188,12 +188,12 @@ export const CreationLibraryTreeItem = forwardRef<HTMLDivElement, CreationLibrar
           {typeof preview === 'function' ? preview(previewGesture.previewExpanded) : preview}
         </CreationTreeNodeFrame>
         {leadingContent}
-        <span className="pointer-events-none relative z-10 min-w-0 flex-1 px-1 text-left">
+        <span className="pointer-events-none relative z-10 min-w-0 flex-1 px-1 pr-8 text-left">
           <strong
             className={cn(
               'line-clamp-2 break-words text-base font-medium leading-5',
               selected && 'font-semibold',
-              compact && 'line-clamp-1 truncate text-sm',
+              compact && 'line-clamp-1 truncate',
               titleClassName,
             )}
             title={title}

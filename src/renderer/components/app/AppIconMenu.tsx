@@ -136,15 +136,15 @@ export function AppIconMenu({
           data-action="app-menu-settings"
           className={cn(
             'h-9 w-full justify-start gap-2 px-2 font-normal',
-            view === 'contentManagement' &&
+            view === 'settings' &&
               'bg-selected text-selected-foreground data-[highlighted]:bg-selected data-[highlighted]:text-selected-foreground',
           )}
-          aria-current={view === 'contentManagement' ? 'page' : undefined}
+          aria-current={view === 'settings' ? 'page' : undefined}
           onSelect={() => select(onSettingsOpen)}
         >
           <SettingsIcon className="size-4" />
           <span>{navigation.settings}</span>
-          {view === 'contentManagement' && <CheckIcon className="ml-auto size-4" aria-hidden="true" />}
+          {view === 'settings' && <CheckIcon className="ml-auto size-4" aria-hidden="true" />}
         </DropdownMenuItem>
         <DropdownMenuItem
           data-action="app-menu-quit"

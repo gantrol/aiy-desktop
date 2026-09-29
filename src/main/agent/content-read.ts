@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import { parseContentProvenance } from '@/shared/contracts/content-provenance';
+import { readProvenanceV1 } from '@/main/agent/content-provenance-v1';
 import { pathToFileURL } from 'node:url';
 import type { LibraryDatabase } from '@/main/database';
 import {
@@ -62,12 +62,7 @@ export async function readAgentContent(
         revisionId: document.revisionId,
         markdown: expanded.markdown,
         bindings,
-        provenance: parseContentProvenance(
-          database.db
-            .prepare('SELECT provenance_json FROM article_revisions WHERE id=?')
-            .pluck()
-            .get(document.revisionId),
-        ),
+        provenance: readProvenanceV1(database.db, target.entityId, document.revisionId),
         ...(editSnapshot ? { editSnapshot } : {}),
       };
     }

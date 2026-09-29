@@ -36,7 +36,12 @@ import type { CreationSessionProjection } from '@/renderer/components/creator/cr
 import { useAlbumContentPane } from '@/renderer/components/creator/useAlbumContentPane';
 import { useVideoDocumentList } from '@/renderer/features/video-documents/useVideoDocumentList';
 import { AlbumContents, type AlbumContentsProps } from '@/renderer/components/creator/AlbumContents';
-import { albumContentCount, albumContentEntries } from '@/renderer/components/creator/albumContentEntries';
+import {
+  albumAuthorDocumentCount,
+  albumContentCount,
+  albumContentEntries,
+  albumContentFilters,
+} from '@/renderer/components/creator/albumContentEntries';
 import {
   buildCreationLibraryProjection,
   type CreationFormProjection,
@@ -106,6 +111,7 @@ export function CreatorAlbumDetail({
   const [tab, setTab] = useState('contents');
   const l = messages.gallery.screen;
   const contentPane = useAlbumContentPane();
+  const contentFilter = albumContentFilters(filter);
   const documentMembershipKey = useMemo(
     () =>
       creationItems
@@ -116,7 +122,7 @@ export function CreatorAlbumDetail({
     [album.id, creationItems],
   );
   const documentList = useVideoDocumentList({
-    active: filter.documents && tab !== 'work',
+    active: contentFilter.documents && tab !== 'work',
     refreshKey: `${documentNavigationRevision}:${documentMembershipKey}`,
     query: '',
     albumId: album.id,
@@ -144,7 +150,7 @@ export function CreatorAlbumDetail({
     return parentId ? (albumTree.byId.get(parentId) ?? null) : null;
   }, [album.id, albumTree]);
   const effectivelyArchived = albumTree.effectivelyArchived.has(album.id);
-  const activeTab = tab === 'images' && !filter.images ? 'contents' : tab;
+  const activeTab = tab === 'images' && !contentFilter.images ? 'contents' : tab;
   const childAlbums = useMemo(
     () =>
       (albumTree.childrenByParentId.get(album.id) ?? []).filter(
@@ -189,7 +195,11 @@ export function CreatorAlbumDetail({
     () => albumContentEntries(album, childAlbums, projection.items, documentList.items, filter),
     [album, childAlbums, projection.items, documentList.items, filter],
   );
-  const contentCount = albumContentCount(contentEntries, filter.documents ? documentList.total : 0);
+  const documentTotal = useMemo(
+    () => albumAuthorDocumentCount(album.id, projection.items, filter, documentList.total),
+    [album.id, projection.items, filter, documentList.total],
+  );
+  const contentCount = albumContentCount(contentEntries, filter.documents ? documentTotal : 0);
   const drop = useCreationAlbumDrop({
     albumId: album.id,
     tree: albumTree,
@@ -201,9 +211,9 @@ export function CreatorAlbumDetail({
   const contentsProps: Omit<AlbumContentsProps, 'layout'> = {
     entries: contentEntries,
     busy: busy || drop.moving || effectivelyArchived,
-    loading: filter.documents && documentList.loading,
+    loading: contentFilter.documents && documentList.loading,
     loadingMore: documentList.loadingMore,
-    hasMore: filter.documents && documentList.hasMore,
+    hasMore: contentFilter.documents && documentList.hasMore,
     onLoadMore: () => void documentList.loadMore(),
     onSelectAlbum,
     onOpenCreationForm,
@@ -280,7 +290,7 @@ export function CreatorAlbumDetail({
   }, [query]);
 
   useEffect(() => {
-    if (activeTab !== 'images' || !filter.images) {
+    if (activeTab !== 'images' || !contentFilter.images) {
       requestId.current += 1;
       setLoading(false);
       setError('');
@@ -321,7 +331,7 @@ export function CreatorAlbumDetail({
     return () => {
       requestId.current += 1;
     };
-  }, [activeTab, album, albums, debouncedQuery, filter.images, locale, retryKey, source, unratedDimensions]);
+  }, [activeTab, album, albums, debouncedQuery, contentFilter.images, locale, retryKey, source, unratedDimensions]);
 
   async function loadMore() {
     if (!nextCursor || loading) return;
@@ -467,7 +477,7 @@ export function CreatorAlbumDetail({
                 {messages.creator.album.contents}
                 <span className="ml-2 tabular-nums text-muted-foreground">{contentCount}</span>
               </TabsTrigger>
-              {filter.images && <TabsTrigger value="images">{messages.creator.album.browseImages}</TabsTrigger>}
+              {contentFilter.images && <TabsTrigger value="images">{messages.creator.album.browseImages}</TabsTrigger>}
               <TabsTrigger value="work">{messages.workTracking.albumTable}</TabsTrigger>
             </TabsList>
             <div className="flex items-center gap-2">

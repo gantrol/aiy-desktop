@@ -6,7 +6,6 @@ interface WorkspaceArticleEditorStateContextValue {
   tabId: string;
   navigationEntryId: string;
   articleLocation: ArticleEditorLocationDto | null;
-  editable: boolean;
   states: readonly WorkspaceArticleEditorStateDto[];
   update(
     articleId: string,
@@ -14,7 +13,6 @@ interface WorkspaceArticleEditorStateContextValue {
   ): void;
   updateArticleLocation(articleId: string, location: ArticleEditorLocationDto): void;
   navigateArticleLocation(articleId: string, location: ArticleEditorLocationDto): void;
-  requestEditOwnership(articleId: string): void;
   registerLocationFlush(articleId: string, flush: (() => void) | null): void;
 }
 
@@ -26,12 +24,10 @@ export function WorkspaceArticleEditorStateProvider({
   tabId,
   navigationEntryId,
   articleLocation,
-  editable,
   states,
   onChange,
   onArticleLocationChange,
   onArticleLocationNavigate,
-  onRequestEditOwnership,
   onLocationFlushChange,
 }: {
   children: ReactNode;
@@ -39,12 +35,10 @@ export function WorkspaceArticleEditorStateProvider({
   tabId: string;
   navigationEntryId: string;
   articleLocation: ArticleEditorLocationDto | null;
-  editable: boolean;
   states: readonly WorkspaceArticleEditorStateDto[];
   onChange: WorkspaceArticleEditorStateContextValue['update'];
   onArticleLocationChange(articleId: string, location: ArticleEditorLocationDto): void;
   onArticleLocationNavigate(articleId: string, location: ArticleEditorLocationDto): void;
-  onRequestEditOwnership(articleId: string): void;
   onLocationFlushChange(flush: (() => void) | null): void;
 }) {
   const locationFlushersRef = useRef(new Map<string, () => void>());
@@ -65,23 +59,19 @@ export function WorkspaceArticleEditorStateProvider({
       tabId,
       navigationEntryId,
       articleLocation,
-      editable,
       states,
       update: onChange,
       updateArticleLocation: onArticleLocationChange,
       navigateArticleLocation: onArticleLocationNavigate,
-      requestEditOwnership: onRequestEditOwnership,
       registerLocationFlush,
     }),
     [
       activeArticleId,
       articleLocation,
-      editable,
       navigationEntryId,
       onArticleLocationChange,
       onArticleLocationNavigate,
       onChange,
-      onRequestEditOwnership,
       registerLocationFlush,
       states,
       tabId,
@@ -130,7 +120,6 @@ export function useWorkspaceArticleEditorState(articleId: string) {
     },
     [articleId, context],
   );
-  const requestEditOwnership = useCallback(() => context?.requestEditOwnership(articleId), [articleId, context]);
   const registerLocationFlush = useCallback(
     (flush: (() => void) | null) => context?.registerLocationFlush(articleId, flush),
     [articleId, context],
@@ -141,10 +130,8 @@ export function useWorkspaceArticleEditorState(articleId: string) {
     tabId: context?.tabId ?? '',
     navigationEntryId: context?.activeArticleId === articleId ? context.navigationEntryId : '',
     articleLocation: context?.activeArticleId === articleId ? context.articleLocation : null,
-    editable: context?.editable ?? true,
     updateArticleLocation,
     navigateArticleLocation,
-    requestEditOwnership,
     registerLocationFlush,
   };
 }

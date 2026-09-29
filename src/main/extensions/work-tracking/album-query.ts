@@ -1,5 +1,8 @@
 import type { LibraryDatabase } from '@/main/database';
-import { parseContentProvenance, type ContentProvenance } from '@/shared/contracts/content-provenance';
+import type { ContentProvenance } from '@/shared/contracts/content-provenance';
+import { provenanceV1 } from '@/main/agent/content-provenance-v1';
+import { contentAuthorsMany } from '@/main/database/me/content-authorship';
+import { revisionContexts } from '@/main/database/creations/article-write-context';
 import type { AgentWorkList } from '@/shared/contracts/agent-work';
 import type { WorkSnapshot } from '@/shared/contracts/work-tracking';
 import { WorkTrackingError } from '@/main/extensions/work-tracking/errors';
@@ -37,7 +40,7 @@ export function listWorkAlbum(database: LibraryDatabase, input: AgentWorkList, s
   const forms = database.db
     .prepare(
       `SELECT form.creation_item_id AS itemId, form.id AS formId, article.id AS articleId,
-    COALESCE(json_extract(revision.content_json, '$.title'), '') AS title, revision.provenance_json
+    COALESCE(json_extract(revision.content_json, '$.title'), '') AS title, revision.id AS revisionId
     FROM creation_forms form JOIN json_each(?) selected ON selected.value=form.creation_item_id
     JOIN articles article ON article.id=form.entity_id AND article.deleted_at IS NULL AND article.status='ACTIVE'
     JOIN article_revisions revision ON revision.id=article.current_revision_id
@@ -48,15 +51,26 @@ export function listWorkAlbum(database: LibraryDatabase, input: AgentWorkList, s
     formId: string;
     articleId: string;
     title: string;
-    provenance_json: string | null;
+    revisionId: string;
   }[];
+  const authors = contentAuthorsMany(
+    database.db,
+    forms.map((form) => ({ kind: 'ARTICLE', id: form.articleId })),
+  );
+  const contexts = revisionContexts(
+    database.db,
+    forms.map((form) => form.revisionId),
+  );
   const byItem = new Map<
     string,
     { formId: string; articleId: string; title: string; provenance?: ContentProvenance }[]
   >();
-  for (const { itemId, provenance_json, ...source } of forms) {
+  for (const { itemId, revisionId, ...source } of forms) {
     const entries = byItem.get(itemId) ?? [];
-    entries.push({ ...source, provenance: parseContentProvenance(provenance_json) });
+    entries.push({
+      ...source,
+      provenance: provenanceV1(authors.get('ARTICLE:' + source.articleId) ?? [], contexts.get(revisionId)),
+    });
     byItem.set(itemId, entries);
   }
   const tracked = new Map(snapshot.items.map((item) => [item.id, item]));

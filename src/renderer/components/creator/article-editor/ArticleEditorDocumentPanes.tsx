@@ -29,6 +29,8 @@ import type {
 import type { BlockDocument } from '@/shared/contracts/block-document';
 import type { ComponentProps, ReactNode, RefObject } from 'react';
 import { Button } from '@/renderer/components/ui/button';
+import { Input } from '@/renderer/components/ui/input';
+import { articleTitleClassName } from '@/renderer/lib/articleTypography';
 import { MessageSquareIcon, XIcon } from 'lucide-react';
 import { useArticleEditorSession } from '@/renderer/components/creator/article-editor/ArticleEditorSessionProvider';
 import { ContentWorkspace, ContentWorkspacePanels } from '@/renderer/features/content-editor/ContentWorkspacePanels';
@@ -135,7 +137,7 @@ interface ArticleEditorDocumentPaneProps {
   scrollRootRef: RefObject<HTMLDivElement | null>;
   selectedCommentId: string | null;
   title: string;
-  titleAccessory?: ReactNode;
+  titleMetadata?: ReactNode;
   zh: boolean;
   onArticleNavigationLocation(location: ArticleEditorLocationDto): void;
   onClose?(): void;
@@ -163,7 +165,7 @@ function ArticleEditorDocumentPane({
   scrollRootRef,
   selectedCommentId,
   title,
-  titleAccessory,
+  titleMetadata,
   zh,
   onArticleNavigationLocation,
   onClose,
@@ -180,9 +182,9 @@ function ArticleEditorDocumentPane({
       documentWidth={controller.preferences.documentWidth}
       scrollRootRef={scrollRootRef}
       title={title}
+      titleMetadata={titleMetadata}
       titleAccessory={
         <div className="flex shrink-0 items-center gap-1">
-          {titleAccessory}
           {onClose && (
             <Button variant="ghost" size="icon-sm" aria-label={copy.closePane} title={copy.closePane} onClick={onClose}>
               <XIcon className="size-4" />
@@ -256,7 +258,7 @@ interface Props {
   selectedCommentId: string | null;
   splitOpen: boolean;
   title: string;
-  titleAccessory?: ReactNode;
+  titleMetadata?: ReactNode;
   zh: boolean;
   onActiveHeadingChange(index: number | null): void;
   onArticleEditLocation(location: ArticleEditorLocationDto): void;
@@ -323,7 +325,7 @@ export function ArticleEditorDocumentPanes({
   selectedCommentId,
   splitOpen,
   title,
-  titleAccessory,
+  titleMetadata,
   zh,
   onActiveHeadingChange,
   onArticleEditLocation,
@@ -367,6 +369,7 @@ export function ArticleEditorDocumentPanes({
       markdown={initialMarkdown}
       document={document}
       sessionIdentity={editorSessionIdentity}
+      documentViews={session.documentViews}
       articleElements={initialElements}
       articleElementControls={articleElementControls}
       mediaBindings={editorMediaBindings}
@@ -397,6 +400,18 @@ export function ArticleEditorDocumentPanes({
       <div ref={leftPaneRootRef} className="flex min-h-0 min-w-0 flex-1 flex-col">
         <ContentWorkspace>
           <div ref={scrollRootRef} className="min-h-0 min-w-0 flex-1 overflow-y-auto px-3 py-3 sm:px-6">
+            <div className="mb-7">
+              <Input
+                value={title}
+                maxLength={200}
+                aria-label={copy.title}
+                placeholder={copy.untitledArticle}
+                className={`${articleTitleClassName} h-auto border-0 px-0 shadow-none`}
+                onChange={(event) => onTitleChange(event.target.value)}
+                onBlur={() => onPersist('auto')}
+              />
+              {titleMetadata && <div className="mt-2">{titleMetadata}</div>}
+            </div>
             {primaryEditor}
           </div>
           <ContentWorkspacePanels
@@ -460,7 +475,7 @@ export function ArticleEditorDocumentPanes({
           scrollRootRef={scrollRootRef}
           selectedCommentId={selectedCommentId}
           title={title}
-          titleAccessory={titleAccessory}
+          titleMetadata={titleMetadata}
           zh={zh}
           onArticleNavigationLocation={onArticleNavigationLocation}
           onCommentHover={onCommentHover}

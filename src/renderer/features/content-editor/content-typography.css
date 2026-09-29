@@ -122,10 +122,6 @@
       @apply mb-6 mt-10 text-2xl leading-tight font-semibold text-foreground;
     }
 
-    :scope > :is(h1, h2, h3, h4, h5, h6):first-child {
-      @apply mt-0;
-    }
-
     :scope h2 {
       @apply mb-5 mt-12 border-b border-selected-border pb-2.5 text-[1.375rem] leading-[1.45] font-semibold tracking-[0.01em] text-[var(--button-primary)];
     }
@@ -252,6 +248,10 @@
 
     :scope .ProseMirror-selectednode {
       @apply ring-2 ring-selected-border;
+    }
+
+    :scope > :first-child {
+      @apply mt-0;
     }
   }
 

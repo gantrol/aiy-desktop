@@ -1,4 +1,4 @@
-import { Columns2, Ellipsis, History, Images, Search, SlidersHorizontal, Square, Upload } from 'lucide-react';
+import { Columns2, Download, Ellipsis, History, Images, Search, SlidersHorizontal, Square } from 'lucide-react';
 import { Button } from '@/renderer/components/ui/button';
 import { Segmented, SegmentedItem } from '@/renderer/components/ui/segmented';
 import { ImageMagnifier, ImageMagnifierScaleBadge } from '@/renderer/components/creator/ImageMagnifier';
@@ -59,7 +59,7 @@ export function DemoCreationOutput({ time, onError }: { time: number; onError():
             aria-label={messages.creator.workbench.importResults}
             onClick={demoNoop}
           >
-            <Upload />
+            <Download />
           </Button>
           <Segmented type="single" value="preview">
             <SegmentedItem value="preview" aria-label={copy.resultImage}>

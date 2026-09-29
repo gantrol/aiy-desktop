@@ -689,6 +689,10 @@ function ContentBlockEditorSession(props: Props) {
   });
 
   useVideoBindingDomProjection({ editor, root: editorRootRef, mediaById, videoBindingByPath });
+  useEffect(() => {
+    if (!editor || !props.documentViews) return;
+    return props.documentViews.connect(editor, composition.canSynchronizeDocument, composition.subscribeInput);
+  }, [editor, props.documentViews, composition]);
   useOutlineFocusNavigation(editor, articleCallbacksRef);
   const missingNavigationTarget = useContentBlockNavigation(editor, props.contentSource);
   useVideoBindingDomProjection({ editor, root: secondaryEditorRootRef, mediaById, videoBindingByPath });

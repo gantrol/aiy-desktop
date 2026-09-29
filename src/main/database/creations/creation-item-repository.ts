@@ -1,4 +1,7 @@
+import { creationEntityExists } from '@/main/database/creations/creation-form-entity';
 import { ulid } from 'ulid';
+import { contentAuthors, contentAuthorsMany, initializeContentAuthors } from '@/main/database/me/content-authorship';
+import type { AuthorSummary } from '@/shared/contracts/authorship';
 import type { LibraryStorage } from '@/main/database/core/storage';
 import { type JsonMap, now, text } from '@/main/database/core/values';
 import {
@@ -54,7 +57,7 @@ interface CreationItemRow extends JsonMap {
   creator_root_sort_order: unknown;
 }
 
-function formDto(row: JsonMap): CreationFormDto {
+function formDto(db: LibraryStorage['db'], row: JsonMap, authors?: AuthorSummary[]): CreationFormDto {
   const entity = creationFormEntityRefSchema.parse({
     kind: row.entity_type,
     id: row.entity_id,
@@ -65,6 +68,7 @@ function formDto(row: JsonMap): CreationFormDto {
     sourceFormId: row.source_form_id == null ? null : row.source_form_id,
     role: row.role,
     entity,
+    authors: authors ?? contentAuthors(db, entity),
     anchorKey: row.anchor_key,
     sortOrder: row.sort_order,
     createdAt: row.created_at,
@@ -117,7 +121,7 @@ export class CreationItemRepository {
     const row = this.db
       .prepare(creationImageSourceFormsSql('SELECT @assetId', '@preferredFormId'))
       .get({ assetId, preferredFormId }) as JsonMap | undefined;
-    return row ? formDto(row) : null;
+    return row ? formDto(this.db, row) : null;
   }
 
   findSourceFormForImageSeries(seriesId: string): CreationFormDto | null {
@@ -146,14 +150,14 @@ export class CreationItemRepository {
         LIMIT 1`,
       )
       .get({ seriesId }) as JsonMap | undefined;
-    return row ? formDto(row) : null;
+    return row ? formDto(this.db, row) : null;
   }
 
   getForm(id: string): CreationFormDto {
     const row = this.db.prepare('SELECT * FROM creation_forms WHERE id = ? AND deleted_at IS NULL').get(id) as
       JsonMap | undefined;
     if (!row) throw new Error('Creation form not found');
-    return formDto(row);
+    return formDto(this.db, row);
   }
 
   touchForEntity(entity: CreationFormEntityRef, timestamp = now()): CreationItemDto {
@@ -227,7 +231,7 @@ export class CreationItemRepository {
         LIMIT 1`,
       )
       .get(creationItemId, role, role === 'ARTICLE_INLINE' ? anchorKey : null) as JsonMap | undefined;
-    return row ? formDto(row) : null;
+    return row ? formDto(this.db, row) : null;
   }
 
   createWithForm(input: CreationItemCreateWithFormInput, identity?: { id: string }): CreationFormAddOrGetResult {
@@ -243,6 +247,7 @@ export class CreationItemRepository {
         this.assertAlbumAvailable(parsedInput.albumId);
 
         const timestamp = now();
+        initializeContentAuthors(this.db, registration.entity, parsedInput.authorIds);
         this.db
           .prepare(
             `INSERT INTO creation_items
@@ -394,7 +399,7 @@ export class CreationItemRepository {
           )
           .get(parsed.formId, parsed.creationItemId) as JsonMap | undefined;
         if (!formRow) throw new Error('Creation form not found in this item');
-        const form = formDto(formRow);
+        const form = formDto(this.db, formRow);
         if (!primaryRoles.has(form.role)) throw new Error('This creation form cannot be primary');
         const previousFormId = item.primary_form_id == null ? null : text(item.primary_form_id);
         if (previousFormId === form.id) return this.get(parsed.creationItemId);
@@ -537,11 +542,19 @@ export class CreationItemRepository {
         ORDER BY form.creation_item_id, form.sort_order, form.created_at, form.id`,
       )
       .all(JSON.stringify(itemIds)) as JsonMap[];
+    const authorsByTarget = contentAuthorsMany(
+      this.db,
+      forms.map((row) => creationFormEntityRefSchema.parse({ kind: row.entity_type, id: row.entity_id })),
+    );
     const activeFormIds = new Set(forms.map((row) => text(row.id)));
     const formsByItem = new Map<string, CreationFormDto[]>();
     for (const row of forms) {
       const sourceFormId = row.source_form_id == null ? null : text(row.source_form_id);
-      const form = formDto(sourceFormId && !activeFormIds.has(sourceFormId) ? { ...row, source_form_id: null } : row);
+      const form = formDto(
+        this.db,
+        sourceFormId && !activeFormIds.has(sourceFormId) ? { ...row, source_form_id: null } : row,
+        authorsByTarget.get(`${row.entity_type}:${row.entity_id}`) ?? [],
+      );
       const values = formsByItem.get(form.creationItemId);
       if (values) values.push(form);
       else formsByItem.set(form.creationItemId, [form]);
@@ -566,6 +579,7 @@ export class CreationItemRepository {
   }
 
   private insertForm(input: CreationFormAddOrGetInput, timestamp: string): CreationFormDto {
+    initializeContentAuthors(this.db, input.entity);
     const id = ulid();
     const sortOrder = Number(
       this.db
@@ -601,6 +615,7 @@ export class CreationItemRepository {
       sourceFormId: input.sourceFormId ?? null,
       role: input.role,
       entity: input.entity,
+      authors: contentAuthors(this.db, input.entity),
       anchorKey: input.anchorKey,
       sortOrder,
       createdAt: timestamp,
@@ -609,20 +624,7 @@ export class CreationItemRepository {
   }
 
   private assertEntityAvailable(entity: CreationFormEntityRef) {
-    const table = {
-      GIF_DOCUMENT: 'gif_documents',
-      PROMPT_SERIES: 'prompt_series',
-      IMAGE_BREAKDOWN: 'image_breakdowns',
-      INSPIRATION_STASH: 'inspiration_stashes',
-      SOCIAL_POST: 'social_post_drafts',
-      ARTICLE: 'articles',
-      VIDEO_DOCUMENT: 'documents',
-      EVALUATION_SUITE: 'evaluation_suites',
-      DERIVED_VISUAL: 'derived_visuals',
-    }[entity.kind];
-    const deletionPredicate = entity.kind === 'DERIVED_VISUAL' ? '' : ' AND deleted_at IS NULL';
-    const row = this.db.prepare(`SELECT 1 FROM ${table} WHERE id = ?${deletionPredicate}`).get(entity.id);
-    if (!row) throw new Error('Creation form entity not found');
+    if (!creationEntityExists(this.db, entity)) throw new Error('Creation form entity not found');
   }
 
   private assertSourceForm(creationItemId: string, sourceFormId: string | null) {

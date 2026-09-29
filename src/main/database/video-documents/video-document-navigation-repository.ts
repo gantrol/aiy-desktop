@@ -47,8 +47,17 @@ export class VideoDocumentNavigationRepository {
 
   list(input: VideoDocumentNavigationListInput): VideoDocumentNavigationPage {
     const parentAlbumId = input.parentAlbumId ?? null;
-    if (parentAlbumId) this.requireAlbum(parentAlbumId);
     const offset = decodeOffsetCursor(input.cursor);
+    // An expanded branch can outlive its album while the renderer refreshes.
+    // Reads then have no children; mutations still require an active album.
+    if (
+      parentAlbumId &&
+      !this.db
+        .prepare('SELECT 1 FROM albums WHERE id = ? AND deleted_at IS NULL AND archived_at IS NULL')
+        .get(parentAlbumId)
+    ) {
+      return { items: [], nextCursor: null };
+    }
     const limit = Math.min(input.limit ?? 50, 50);
     const navigationParentKey = parentKey(parentAlbumId);
     const rows = parentAlbumId

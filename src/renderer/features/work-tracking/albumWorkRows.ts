@@ -1,5 +1,5 @@
 import type { BootstrapDto } from '@/shared/contracts';
-import { matchesContentAuthor } from '@/shared/contracts/content-provenance';
+import { matchesAuthor } from '@/shared/contracts/authorship';
 import type { WorkItem, WorkSnapshot } from '@/shared/contracts/work-tracking';
 import type { WorkSourceOption } from '@/renderer/features/work-tracking/WorkItemEditor';
 import type { WorkFilters } from '@/renderer/features/work-tracking/WorkTrackingToolbar';
@@ -39,7 +39,7 @@ export function albumWorkRows(
                 formId: form.id,
                 articleId: article.id,
                 title: article.content.title || untitled,
-                provenance: article.provenance,
+                authors: article.authors,
               },
             ]
           : [];
@@ -60,9 +60,9 @@ export function albumWorkRows(
         (!row.item || filters.showStopped || row.item.enabled) &&
         (filters.kind === 'ALL' || (filters.kind === 'UNTRACKED' ? !row.item : row.item?.kind === filters.kind)) &&
         (filters.status === 'ALL' || row.item?.state === filters.status) &&
-        matchesContentAuthor(
-          row.sources.find((source) => source.formId === row.defaultFormId)?.provenance,
-          filters.source,
+        matchesAuthor(
+          row.sources.find((source) => source.formId === row.defaultFormId)?.authors ?? [],
+          filters.author,
         ) &&
         `${row.title} ${row.item?.owner ?? ''}`.toLocaleLowerCase().includes(query),
     );

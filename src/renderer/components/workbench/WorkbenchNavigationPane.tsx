@@ -1,4 +1,5 @@
 import { useEffect, useId, useLayoutEffect, useRef, useState, type ComponentProps, type PointerEvent } from 'react';
+import { createPortal } from 'react-dom';
 import { WorkbenchPaneToggle } from '@/renderer/components/workbench/WorkbenchPane';
 import { WorkbenchPaneResizeHandle } from '@/renderer/components/workbench/WorkbenchPaneResizeHandle';
 import { useWorkbenchLayout } from '@/renderer/components/workbench/useWorkbenchLayout';
@@ -13,6 +14,7 @@ export function WorkbenchNavigationPane({
   selectionKey,
   initialWidth = 256,
   minimumContentWidth = 480,
+  toggleHost,
   children,
   className,
   ...props
@@ -22,6 +24,8 @@ export function WorkbenchNavigationPane({
   selectionKey: string | number;
   initialWidth?: number;
   minimumContentWidth?: number;
+  /** Mount in an existing toolbar outside the collapsible navigation and content regions. */
+  toggleHost?: HTMLElement | null;
 }) {
   const layout = useWorkbenchLayout(layoutKey, initialWidth, minimumContentWidth, true);
   const [compactOpen, setCompactOpen] = useState(false);
@@ -68,11 +72,24 @@ export function WorkbenchNavigationPane({
       },
     );
   }
+  const control = (
+    <WorkbenchPaneToggle
+      ref={button}
+      floating={toggleHost === undefined}
+      floatingHost={host}
+      data-pane-toggle
+      expanded={expanded}
+      label={label}
+      aria-controls={id}
+      onClick={toggle}
+    />
+  );
   return (
     <div
       {...props}
       ref={layout.root}
       data-workbench-navigation-pane
+      data-inline-toggle={toggleHost !== undefined}
       data-mode={layout.wide ? 'split' : 'compact'}
       data-open={expanded}
       data-resizing={layout.resizing}
@@ -110,15 +127,7 @@ export function WorkbenchNavigationPane({
         onValueChange={layout.wide ? layout.resize : (value) => setCompactOpen(Boolean(value))}
         onPointerDown={beginResize}
       />
-      <WorkbenchPaneToggle
-        ref={button}
-        floatingHost={host}
-        data-pane-toggle
-        expanded={expanded}
-        label={label}
-        aria-controls={id}
-        onClick={toggle}
-      />
+      {toggleHost === undefined ? control : toggleHost && createPortal(control, toggleHost)}
     </div>
   );
 }

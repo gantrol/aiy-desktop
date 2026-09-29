@@ -1,3 +1,11 @@
+import { copyContentAuthors } from '@/main/database/me/content-authorship';
+import { authorSummary } from '@/main/database/me/author-identities';
+import { readUserProfile } from '@/main/database/me/user-profile';
+import {
+  revisionContexts,
+  revisionWriteEvent,
+  saveRevisionContext,
+} from '@/main/database/creations/article-write-context';
 import { createHash, randomUUID } from 'node:crypto';
 import { ArticleElementRepository } from '@/main/database/creations/article-element-repository';
 import { blockDocumentPlacements } from '@/shared/block-document-placements';
@@ -306,7 +314,17 @@ export class CreationCopyRepository {
       }
     }
     this.entities.set(key, next);
-    this.repositories.storage.recordChange(entity.kind, next, 'CREATE', { copiedFrom: id });
+    copyContentAuthors(this.db, entity, { ...entity, id: next });
+    const context =
+      entity.kind === 'ARTICLE'
+        ? revisionContexts(this.db, [String(this.row('articles', next).current_revision_id)])
+            .values()
+            .next().value
+        : undefined;
+    this.repositories.storage.recordChange(entity.kind, next, 'CREATE', {
+      copiedFrom: id,
+      ...revisionWriteEvent(context),
+    });
     return next;
   }
 
@@ -375,6 +393,16 @@ export class CreationCopyRepository {
       ...(content ? { content_json: content, content_hash: digest(content) } : {}),
       ...('content_pack_id' in revision ? { content_pack_id: null, content_pack_entry_index: null } : {}),
     });
+    if (table === 'articles') {
+      const previous = revisionContexts(this.db, [String(revision.id)]).get(String(revision.id));
+      saveRevisionContext(this.db, revisionId, {
+        writer: authorSummary(this.db, readUserProfile(this.db).id),
+        entry: 'AIY',
+        operation: 'COPIED',
+        baseRevisionId: String(revision.id),
+        sources: previous?.sources ?? [],
+      });
+    }
     this.db.prepare(`UPDATE ${table} SET current_revision_id = ? WHERE id = ?`).run(revisionId, next);
   }
 

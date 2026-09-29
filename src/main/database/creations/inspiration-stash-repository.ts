@@ -1,3 +1,4 @@
+import { localArticleWriteContext } from '@/main/database/creations/article-write-context';
 import { createHash } from 'node:crypto';
 import { ensureDefaultNotesAlbum } from '@/main/database/albums/default-notes-album';
 import type { LibraryStorage } from '@/main/database/core/storage';
@@ -44,12 +45,15 @@ export class InspirationStashRepository {
           throw new Error('[aiy-petal:unsaved]');
         const saved = same
           ? article
-          : this.articles.saveSystemRevision({
-              articleId: article.id,
-              expectedRevisionId: article.revisionId,
-              requestId: ulid(),
-              content,
-            });
+          : this.articles.saveSystemRevision(
+              {
+                articleId: article.id,
+                expectedRevisionId: article.revisionId,
+                requestId: ulid(),
+                content,
+              },
+              localArticleWriteContext(this.storage.db),
+            );
         this.consume(input.consumeCreationDraftId, saved.id);
         return articleDraftDto(saved);
       }
@@ -88,6 +92,7 @@ export class InspirationStashRepository {
                 : ulid(),
           ...(item ? { creationItemId: item.id } : {}),
         },
+        localArticleWriteContext(this.storage.db),
       );
       return articleDraftDto(saved);
     })();

@@ -37,8 +37,17 @@ import {
 import { assertBlockDocumentReady } from '@/shared/contracts/block-document';
 import { createHash } from 'node:crypto';
 import { ulid } from 'ulid';
-import { articleProvenance, type ArticleWriteContext } from '@/main/database/creations/article-provenance';
-import { parseContentProvenance, type ContentProvenance } from '@/shared/contracts/content-provenance';
+import {
+  articleWriteContext,
+  initialArticleAuthors,
+  revisionWriteEvent,
+  revisionContexts,
+  saveRevisionContext,
+  type ArticleWriteContext,
+} from '@/main/database/creations/article-write-context';
+import { initializeContentAuthors } from '@/main/database/me/content-authorship';
+import { articleReadMetadata } from '@/main/database/creations/article-read-metadata';
+import type { AuthorSummary, ContentWriteContext } from '@/shared/contracts/authorship';
 
 function assetDto(row: JsonMap): AssetDto {
   const id = text(row.id);
@@ -86,7 +95,7 @@ export class ArticleRepository {
     const rows = this.db
       .prepare(
         `SELECT article.*, revision.id AS revision_id, revision.revision_no,
-          revision.article_id AS revision_article_id, revision.content_json, revision.content_hash, revision.provenance_json,
+          revision.article_id AS revision_article_id, revision.content_json, revision.content_hash,
           revision.content_pack_id, revision.content_pack_entry_index
         FROM articles article
         JOIN article_revisions revision ON revision.id = article.current_revision_id
@@ -106,7 +115,7 @@ export class ArticleRepository {
       ),
     ];
     const assetsById = this.mediaAssetsById(assetIds);
-    return rows.map((row) => {
+    return articleReadMetadata(this.db, rows).map((row) => {
       const articleId = text(row.id);
       const revisionId = text(row.revision_id);
       const content = contentsByRevision.get(revisionId);
@@ -137,7 +146,7 @@ export class ArticleRepository {
     const rows = this.db
       .prepare(
         `SELECT revision.id AS revision_id, revision.article_id, revision.revision_no,
-          revision.content_hash, revision.provenance_json, revision.created_at
+          revision.content_hash, revision.created_at
         FROM article_revisions revision
         WHERE revision.article_id = ?
           AND (? IS NULL OR revision.revision_no < ?)
@@ -145,6 +154,10 @@ export class ArticleRepository {
         LIMIT ?`,
       )
       .all(input.articleId, input.beforeRevisionNo, input.beforeRevisionNo, input.limit + 1) as JsonMap[];
+    const contexts = revisionContexts(
+      this.db,
+      rows.slice(0, input.limit).map((row) => text(row.revision_id)),
+    );
     const hasMore = rows.length > input.limit;
     const revisions = rows.slice(0, input.limit).map((row): ArticleRevisionSummaryDto => ({
       articleId: text(row.article_id),
@@ -152,7 +165,7 @@ export class ArticleRepository {
       revisionNo: Number(row.revision_no),
       contentHash: text(row.content_hash),
       createdAt: text(row.created_at),
-      provenance: parseContentProvenance(row.provenance_json),
+      writeContext: contexts.get(text(row.revision_id)),
     }));
 
     return {
@@ -167,7 +180,7 @@ export class ArticleRepository {
     const row = this.db
       .prepare(
         `SELECT article.id, revision.id AS revision_id, revision.revision_no,
-          revision.article_id AS revision_article_id, revision.content_json, revision.content_hash, revision.provenance_json,
+          revision.article_id AS revision_article_id, revision.content_json, revision.content_hash,
           revision.content_pack_id, revision.content_pack_entry_index,
           revision.created_at AS revision_created_at
         FROM articles article
@@ -187,7 +200,7 @@ export class ArticleRepository {
       contentHash: text(row.content_hash),
       elements: this.elements.listPlacements(text(row.revision_id)),
       createdAt: text(row.revision_created_at),
-      provenance: parseContentProvenance(row.provenance_json),
+      writeContext: revisionContexts(this.db, [input.revisionId]).get(input.revisionId),
     };
   }
 
@@ -230,9 +243,10 @@ export class ArticleRepository {
           VALUES (?, ?, ?, NULL, 'ACTIVE', ?, ?, NULL, NULL)`,
         )
         .run(id, input.albumId, input.sourceInspirationStashId, timestamp, timestamp);
-      const provenance = articleProvenance(context);
-      const revisionId = this.insertRevision(id, 1, content, hash, timestamp, provenance);
+      const writeContext = articleWriteContext(this.db, context);
+      const revisionId = this.insertRevision(id, 1, content, hash, timestamp, writeContext);
       this.db.prepare('UPDATE articles SET current_revision_id = ? WHERE id = ?').run(revisionId, id);
+      initializeContentAuthors(this.db, { kind: 'ARTICLE', id }, initialArticleAuthors(this.db, context));
       const form = { role: 'ARTICLE' as const, entity: { kind: 'ARTICLE' as const, id }, anchorKey: null };
       const registration = identity?.creationItemId
         ? this.creationItems.addForm({ ...form, creationItemId: identity.creationItemId })
@@ -250,7 +264,7 @@ export class ArticleRepository {
           creationItemId: registration.item.id,
           sourceInspirationStashId: input.sourceInspirationStashId,
           revisionId,
-          ...(provenance ? { provenance } : {}),
+          ...revisionWriteEvent(writeContext),
         },
         { affectsFileView: false },
       );
@@ -317,7 +331,12 @@ export class ArticleRepository {
       }
 
       const timestamp = now();
-      const provenance = articleProvenance(context, currentArticle.provenance, currentArticle.revisionId);
+      const writeContext = articleWriteContext(
+        this.db,
+        context,
+        currentArticle.writeContext,
+        currentArticle.revisionId,
+      );
       const revisionId = this.insertRevision(
         input.articleId,
         Number(
@@ -329,7 +348,7 @@ export class ArticleRepository {
         content,
         hash,
         timestamp,
-        provenance,
+        writeContext,
       );
       if (input.elements) {
         this.elements.savePlacements(input.articleId, revisionId, input.elements, timestamp);
@@ -358,7 +377,7 @@ export class ArticleRepository {
           requestId: input.requestId,
           revisionId,
           sessionEpoch: input.sessionEpoch,
-          ...(provenance ? { provenance } : {}),
+          ...revisionWriteEvent(writeContext),
         },
         { affectsFileView: false },
       );
@@ -375,25 +394,31 @@ export class ArticleRepository {
     return this.db.inTransaction ? save() : this.db.transaction(save).immediate();
   }
 
-  saveSystemRevision(input: {
-    articleId: string;
-    expectedRevisionId: string;
-    requestId: string;
-    content: ArticleContentInput;
-    elements?: ArticleElementPlacementInput[];
-  }): ArticleDto {
+  saveSystemRevision(
+    input: {
+      articleId: string;
+      expectedRevisionId: string;
+      requestId: string;
+      content: ArticleContentInput;
+      elements?: ArticleElementPlacementInput[];
+    },
+    context?: ArticleWriteContext,
+  ): ArticleDto {
     const content = normalizeArticleContent(input.content);
-    const result = this.saveRevision({
-      requestId: input.requestId,
-      articleId: input.articleId,
-      sessionEpoch: input.requestId,
-      draftSeq: 0,
-      cause: 'SYSTEM',
-      elements: input.elements,
-      expectedRevisionId: input.expectedRevisionId,
-      contentHash: contentHash(content),
-      content,
-    });
+    const result = this.saveRevision(
+      {
+        requestId: input.requestId,
+        articleId: input.articleId,
+        sessionEpoch: input.requestId,
+        draftSeq: 0,
+        cause: 'SYSTEM',
+        elements: input.elements,
+        expectedRevisionId: input.expectedRevisionId,
+        contentHash: contentHash(content),
+        content,
+      },
+      context,
+    );
     if (result.status === 'CONFLICT') throw new Error('The article changed while applying a system revision');
     return result.article;
   }
@@ -406,7 +431,7 @@ export class ArticleRepository {
     return this.comments.createMany(input);
   }
 
-  addForm(input: ArticleFormAddInput): ArticleDto {
+  addForm(input: ArticleFormAddInput, context?: ArticleWriteContext): ArticleDto {
     return this.db
       .transaction(() => {
         const existing = this.creationItems.findForm(input.creationItemId, 'ARTICLE', null);
@@ -436,7 +461,8 @@ export class ArticleRepository {
             VALUES (?, ?, ?, NULL, 'ACTIVE', ?, ?, NULL, NULL)`,
           )
           .run(id, item.albumId, input.sourceInspirationStashId, timestamp, timestamp);
-        const revisionId = this.insertRevision(id, 1, content, hash, timestamp);
+        const revisionId = this.insertRevision(id, 1, content, hash, timestamp, articleWriteContext(this.db, context));
+        initializeContentAuthors(this.db, { kind: 'ARTICLE', id }, initialArticleAuthors(this.db, context));
         this.db.prepare('UPDATE articles SET current_revision_id = ? WHERE id = ?').run(revisionId, id);
         const sourceFormId = input.sourceInspirationStashId
           ? (item.forms.find(
@@ -468,7 +494,7 @@ export class ArticleRepository {
       .immediate();
   }
 
-  createForm(input: ArticleFormCreateInput): ArticleDto {
+  createForm(input: ArticleFormCreateInput, context?: ArticleWriteContext): ArticleDto {
     return this.db
       .transaction(() => {
         const sourceForm = this.creationItems.getForm(input.sourceFormId);
@@ -491,7 +517,8 @@ export class ArticleRepository {
             VALUES (?, ?, ?, NULL, 'ACTIVE', ?, ?, NULL, NULL)`,
           )
           .run(id, item.albumId, input.sourceInspirationStashId, timestamp, timestamp);
-        const revisionId = this.insertRevision(id, 1, content, hash, timestamp);
+        const revisionId = this.insertRevision(id, 1, content, hash, timestamp, articleWriteContext(this.db, context));
+        initializeContentAuthors(this.db, { kind: 'ARTICLE', id }, initialArticleAuthors(this.db, context));
         this.db.prepare('UPDATE articles SET current_revision_id = ? WHERE id = ?').run(revisionId, id);
         this.creationItems.addForm({
           creationItemId: item.id,
@@ -603,30 +630,23 @@ export class ArticleRepository {
     content: ArticleContentInput,
     hash: string,
     createdAt: string,
-    provenance?: ContentProvenance,
+    writeContext?: ContentWriteContext,
   ) {
     const id = ulid();
     this.db
       .prepare(
         `INSERT INTO article_revisions
-        (id, article_id, revision_no, content_json, content_hash, created_at, provenance_json)
-        VALUES (?, ?, ?, ?, ?, ?, ?)`,
+        (id, article_id, revision_no, content_json, content_hash, created_at)
+        VALUES (?, ?, ?, ?, ?, ?)`,
       )
-      .run(
-        id,
-        articleId,
-        revisionNo,
-        canonicalArticleContentJson(content),
-        hash,
-        createdAt,
-        provenance ? JSON.stringify(provenance) : null,
-      );
+      .run(id, articleId, revisionNo, canonicalArticleContentJson(content), hash, createdAt);
+    saveRevisionContext(this.db, id, writeContext);
     this.captureReferenceHistory?.(articleId, id, content);
     this.storage.recordChange(
       'ARTICLE_REVISION',
       id,
       'CREATE',
-      { articleId, revisionNo, contentHash: hash, ...(provenance ? { provenance } : {}) },
+      { articleId, revisionNo, contentHash: hash, ...revisionWriteEvent(writeContext) },
       { affectsFileView: false },
     );
     this.revisionPacks.schedule(articleId, revisionNo);
@@ -637,7 +657,7 @@ export class ArticleRepository {
     const row = this.db
       .prepare(
         `SELECT article.*, revision.id AS revision_id, revision.revision_no,
-          revision.article_id AS revision_article_id, revision.content_json, revision.content_hash, revision.provenance_json,
+          revision.article_id AS revision_article_id, revision.content_json, revision.content_hash,
           revision.content_pack_id, revision.content_pack_entry_index
         FROM articles article
         JOIN article_revisions revision ON revision.id = article.current_revision_id
@@ -652,7 +672,7 @@ export class ArticleRepository {
     const row = this.db
       .prepare(
         `SELECT article.*, revision.id AS revision_id, revision.revision_no,
-          revision.article_id AS revision_article_id, revision.content_json, revision.content_hash, revision.provenance_json,
+          revision.article_id AS revision_article_id, revision.content_json, revision.content_hash,
           revision.content_pack_id, revision.content_pack_entry_index
         FROM articles article
         JOIN article_revisions revision ON revision.id = article.current_revision_id
@@ -722,6 +742,7 @@ export class ArticleRepository {
   }
 
   private dto(row: JsonMap): ArticleDto {
+    row = articleReadMetadata(this.db, [row])[0]!;
     const content = this.storedContent(row);
     const assetIds = content.mediaBindings.map((binding) => binding.assetId);
     return this.dtoFromParts(
@@ -750,7 +771,8 @@ export class ArticleRepository {
       revisionId: text(row.revision_id),
       revisionNo: Number(row.revision_no),
       elements,
-      provenance: parseContentProvenance(row.provenance_json),
+      authors: row.authors as AuthorSummary[],
+      writeContext: row.write_context as ContentWriteContext | undefined,
       comments,
       status: text(row.status) as ArticleDto['status'],
       createdAt: text(row.created_at),

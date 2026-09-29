@@ -20,6 +20,7 @@ import { cn } from '@/renderer/lib/utils';
 export function WorkspaceTabStrip(props: WorkspaceTabStripProps) {
   const { data, group, active, collapsed = false, onActivate, onClose } = props;
   const vertical = collapsed && props.splitAxis === 'columns';
+  const ExpandIcon = vertical ? PanelLeftOpenIcon : PanelTopOpenIcon;
   const { labels, titleLabels } = useWorkspaceTabLabels();
   const tabListId = useId();
   const tabButtons = useRef(new Map<string, HTMLButtonElement>());
@@ -94,6 +95,27 @@ export function WorkspaceTabStrip(props: WorkspaceTabStripProps) {
     event.stopPropagation();
     tabButtons.current.get(targetId)?.focus();
   }
+  const expandButton = collapsed && (
+    <Button
+      type="button"
+      variant="ghost"
+      size="icon-sm"
+      className={cn(
+        'size-7 shrink-0 rounded-sm text-muted-foreground focus-visible:ring-inset focus-visible:ring-offset-0',
+        !vertical && 'mr-1',
+      )}
+      aria-label={labels.expandTabs}
+      title={labels.expandTabs}
+      aria-expanded={false}
+      aria-controls={`workspace-group-content-${group.id}`}
+      onClick={() => {
+        tabButtons.current.get(activeTab.id)?.focus({ preventScroll: true });
+        requestActivation(activeTab.id);
+      }}
+    >
+      <ExpandIcon className={cn('size-4', props.splitPosition === 'end' && 'rotate-180')} />
+    </Button>
+  );
   return (
     <TooltipProvider>
       <div
@@ -108,24 +130,7 @@ export function WorkspaceTabStrip(props: WorkspaceTabStripProps) {
         role="group"
         aria-label={labels.tabs}
       >
-        {collapsed && (
-          <Button
-            type="button"
-            variant="ghost"
-            size="icon-sm"
-            className="size-7 shrink-0 rounded-sm text-muted-foreground focus-visible:ring-inset focus-visible:ring-offset-0"
-            aria-label={labels.expandTabs}
-            title={labels.expandTabs}
-            aria-expanded={false}
-            aria-controls={`workspace-group-content-${group.id}`}
-            onClick={() => {
-              tabButtons.current.get(activeTab.id)?.focus({ preventScroll: true });
-              requestActivation(activeTab.id);
-            }}
-          >
-            {vertical ? <PanelLeftOpenIcon className="size-4" /> : <PanelTopOpenIcon className="size-4" />}
-          </Button>
-        )}
+        {vertical && expandButton}
         <div
           onBlur={(event) => {
             if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setFocusedTabId(activeTab.id);
@@ -168,6 +173,7 @@ export function WorkspaceTabStrip(props: WorkspaceTabStripProps) {
             />
           ))}
         </div>
+        {!vertical && expandButton}
         {!collapsed && (
           <WorkspaceTabActions {...props} pendingTabId={pendingTabId} requestActivation={requestActivation} />
         )}

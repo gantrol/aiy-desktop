@@ -142,7 +142,7 @@ export function AppUpdateSection({ active }: Props) {
     }
   };
 
-  if ((!state && !requestFailed) || state?.phase === 'UNSUPPORTED') return null;
+  if (!state && !requestFailed) return null;
 
   const phase = state?.phase;
   const busy = requestPending || (phase ? busyPhases.has(phase) : false);

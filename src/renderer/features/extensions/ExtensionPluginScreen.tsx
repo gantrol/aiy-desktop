@@ -109,11 +109,13 @@ function ExtensionDetail({
   manager,
   props,
   actions,
+  navigationAction,
 }: {
   extension: ExtensionDto;
   manager: Manager;
   props: Props;
   actions: ReactNode;
+  navigationAction: ReactNode;
 }) {
   const { messages } = useI18n();
   const l = messages.extensions;
@@ -122,7 +124,7 @@ function ExtensionDetail({
   const [tab, setTab] = useState(missing ? 'permissions' : hasFeature ? 'feature' : 'settings');
   return (
     <article className="mx-auto grid w-full max-w-6xl gap-5 p-4 @5xl/extension-detail:p-6">
-      <ExtensionPluginHeader extension={extension} actions={actions} />
+      <ExtensionPluginHeader extension={extension} actions={actions} navigationAction={navigationAction} />
       <Tabs value={tab} onValueChange={setTab}>
         <TabsList className="max-w-full flex-wrap">
           {hasFeature && <TabsTrigger value="feature">{l.pluginTabs.feature}</TabsTrigger>}
@@ -221,13 +223,14 @@ export function ExtensionPluginScreen(props: Props) {
           collectionLabel={l.tabs.plugins}
           collectionWidth={280}
           selectionKey={props.requestedId}
-          collection={({ revealDetail }) => (
+          collection={({ toggle, revealDetail }) => (
             <>
-              <div className="border-b border-border p-3">
+              <div className="flex items-center gap-2 border-b border-border p-3">
+                {toggle}
                 <Button
                   type="button"
                   variant="outline"
-                  className="w-full"
+                  className="min-w-0 flex-1"
                   disabled={busy}
                   onClick={() =>
                     void manager.install(l.notices.installed).then((installed) => {
@@ -252,7 +255,7 @@ export function ExtensionPluginScreen(props: Props) {
             </>
           )}
         >
-          {() => (
+          {({ toggle }) => (
             <div className="@container/extension-detail flex min-h-0 min-w-0 flex-1 flex-col">
               <ScrollArea className="min-h-0 min-w-0 flex-1">
                 {selected ? (
@@ -261,6 +264,7 @@ export function ExtensionPluginScreen(props: Props) {
                     extension={selected}
                     manager={manager}
                     props={props}
+                    navigationAction={toggle}
                     actions={
                       <ExtensionActions
                         extension={selected}
@@ -274,7 +278,10 @@ export function ExtensionPluginScreen(props: Props) {
                     }
                   />
                 ) : (
-                  <p className="p-5 text-sm text-muted-foreground">{messages.extensionManager.noSelection}</p>
+                  <div className="flex items-center gap-2 p-5 text-sm text-muted-foreground">
+                    {toggle}
+                    <p>{messages.extensionManager.noSelection}</p>
+                  </div>
                 )}
               </ScrollArea>
             </div>

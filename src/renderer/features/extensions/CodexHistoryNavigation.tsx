@@ -56,7 +56,7 @@ export function CodexHistoryNavigation({ onSelectThread, selectedThreadId, state
 
   return (
     <aside className="flex size-full min-h-0 min-w-0 flex-col bg-surface-sunken/20">
-      <div className="border-b p-2">{workspaceNavigation}</div>
+      {workspaceNavigation && <div className="border-b p-2">{workspaceNavigation}</div>}
       <ScrollArea className="min-h-0 flex-1">
         <nav className="grid gap-4 p-2" aria-label={l.navigation.label}>
           <div className="grid gap-0.5">

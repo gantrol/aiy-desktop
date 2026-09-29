@@ -11,6 +11,7 @@ import {
 import {
   CropIcon,
   Columns2Icon,
+  DownloadIcon,
   FlaskConicalIcon,
   LoaderCircleIcon,
   MessageSquareIcon,
@@ -1010,15 +1011,6 @@ export function OutputInspector({
         <div className="flex min-w-fit flex-1 flex-col gap-0.5">
           <div className="flex min-w-0 items-center gap-2">
             {headerNavigation}
-            {!comparisonFullWindow && (
-              <WorkbenchPaneToggle
-                expanded
-                side="right"
-                label={messages.workbench.results}
-                className="ml-auto hidden @min-[840px]/creator:inline-flex"
-                onClick={() => onCollapsedChange(true)}
-              />
-            )}
             {asset && (
               <small className="hidden truncate text-xs text-muted-foreground @min-[520px]/output:inline">
                 {asset.width} × {asset.height}
@@ -1068,7 +1060,7 @@ export function OutputInspector({
             aria-label={gallery.importResults}
             onClick={onChooseImport}
           >
-            {importing ? <LoaderCircleIcon className="size-4 animate-spin" /> : <UploadIcon className="size-4" />}
+            {importing ? <LoaderCircleIcon className="size-4 animate-spin" /> : <DownloadIcon className="size-4" />}
           </Button>
           {inspectorSeries &&
             (inspectorSeries.versions.length > 0 || (inspectorSeries.importedOutputs?.length ?? 0) > 0) && (
@@ -1097,6 +1089,16 @@ export function OutputInspector({
                 </SegmentedItem>
               </Segmented>
             )}
+          {!comparisonFullWindow && (
+            <WorkbenchPaneToggle
+              expanded
+              floating={false}
+              side="right"
+              label={messages.workbench.results}
+              className="hidden @min-[840px]/creator:inline-flex"
+              onClick={() => onCollapsedChange(true)}
+            />
+          )}
         </div>
       </header>
       {inspectorSeries && (

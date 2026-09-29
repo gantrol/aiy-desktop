@@ -335,6 +335,21 @@ interface MaterialImagePickerDialogProps<T extends MaterialImagePickerImage> {
   onApply(images: T[]): void;
 }
 
+function MaterialImagePickerHeader({
+  title,
+  onToggleHostChange,
+}: {
+  title: string;
+  onToggleHostChange(host: HTMLDivElement | null): void;
+}) {
+  return (
+    <DialogHeader className="flex-row items-center gap-2 border-b px-5 py-4">
+      <div ref={onToggleHostChange} className="flex shrink-0" />
+      <DialogTitle>{title}</DialogTitle>
+    </DialogHeader>
+  );
+}
+
 export function MaterialImagePickerDialog<T extends MaterialImagePickerImage>({
   open,
   dialogName = 'material-image-picker',
@@ -360,6 +375,7 @@ export function MaterialImagePickerDialog<T extends MaterialImagePickerImage>({
   const materialViewportRef = useRef<HTMLDivElement>(null);
   const collectionKey = JSON.stringify(collection);
   const [draftImages, setDraftImages] = useState<T[]>(() => [...selectedImages]);
+  const [navigationToggleHost, setNavigationToggleHost] = useState<HTMLDivElement | null>(null);
   const materialState = useMaterialImagePickerMaterials({
     active: open,
     libraryKey,
@@ -462,11 +478,10 @@ export function MaterialImagePickerDialog<T extends MaterialImagePickerImage>({
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent data-dialog={dialogName} className="max-h-[90vh] max-w-6xl gap-0 overflow-hidden p-0">
-        <DialogHeader className="border-b px-5 py-4">
-          <DialogTitle>{labels.title}</DialogTitle>
-        </DialogHeader>
+        <MaterialImagePickerHeader title={labels.title} onToggleHostChange={setNavigationToggleHost} />
         <div className="flex h-[min(70vh,42rem)] min-h-0 overflow-hidden">
           <MaterialLibraryNavigation
+            toggleHost={navigationToggleHost}
             albums={albumState.albums}
             browseOnly
             category={collection.kind === 'dictionary' ? 'DICTIONARY' : 'MATERIAL'}

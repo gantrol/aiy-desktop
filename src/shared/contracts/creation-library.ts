@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { authorSummarySchema } from '@/shared/contracts/authorship';
 
 const idSchema = z.string().min(1).max(200);
 const dateTimeSchema = z.string().datetime({ offset: true });
@@ -68,6 +69,7 @@ const creationFormEntityRefVariants = [
 export const creationFormEntityRefSchema = z.discriminatedUnion('kind', creationFormEntityRefVariants);
 
 const creationFormRecordShape = {
+  authors: z.array(authorSummarySchema).default([]),
   id: idSchema,
   creationItemId: idSchema,
   /** Optional immutable lineage edge to another form in the same creation item. */
@@ -498,6 +500,7 @@ export const creationInitialFormInputSchema = z.discriminatedUnion('role', [
 
 export const creationItemCreateWithFormInputSchema = z
   .object({
+    authorIds: z.array(z.string().uuid()).max(32).optional(),
     albumId: idSchema.nullable(),
     form: creationInitialFormInputSchema,
   })

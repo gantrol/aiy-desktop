@@ -107,6 +107,7 @@ export function PackScreen({ active, embedded = false, requestedId, onSelectedId
   const { messages } = useI18n();
   const l = messages.packs;
   const [catalog, setCatalog] = useState<PackCatalogItemDto[]>([]);
+  const [toggleHost, setToggleHost] = useState<HTMLDivElement | null>(null);
   const [selectedPackId, setSelectedPackId] = useState(requestedId ?? '');
   const [release, setRelease] = useState<PackReleaseDto | null>(null);
   const [loading, setLoading] = useState(false);
@@ -233,6 +234,7 @@ export function PackScreen({ active, embedded = false, requestedId, onSelectedId
   return (
     <div data-pack-screen className="grid size-full min-h-0 grid-rows-[auto_minmax(0,1fr)] bg-background">
       <header className={cn('flex items-center gap-3 border-b px-4', embedded ? 'h-12' : 'h-14 px-5')}>
+        <div ref={setToggleHost} className="flex shrink-0" />
         {!embedded && (
           <>
             <h1 className="text-base font-semibold">{l.title}</h1>
@@ -257,6 +259,7 @@ export function PackScreen({ active, embedded = false, requestedId, onSelectedId
       <div className="min-h-0 min-w-0">
         <CollectionDetailLayout
           layoutKey="content-packs"
+          toggleHost={toggleHost}
           collectionLabel={l.title}
           collectionWidth={320}
           minimumDetailWidth={520}

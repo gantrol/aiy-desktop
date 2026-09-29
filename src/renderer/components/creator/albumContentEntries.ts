@@ -1,6 +1,7 @@
 import type { AlbumDto, AlbumMemberDto, VideoDocumentSummaryDto } from '@/shared/contracts';
 import { formMatchesFilter, type CreationLibraryFilter } from '@/renderer/components/creator/creationLibraryFilter';
 import type { CreationItemProjection } from '@/renderer/components/creator/creationLibraryProjection';
+import { matchesAuthor } from '@/shared/contracts/authorship';
 
 export type AlbumContentEntry =
   | { kind: 'ALBUM'; album: AlbumDto }
@@ -33,6 +34,33 @@ export function albumContentCount(entries: readonly AlbumContentEntry[], documen
   return entries.length - documentRows + Math.max(documentRows, documentTotal - representedDocuments.size);
 }
 
+export function albumAuthorDocumentCount(
+  albumId: string,
+  creations: readonly CreationItemProjection[],
+  filter: CreationLibraryFilter,
+  documentTotal: number,
+) {
+  if (!albumContentFilters(filter).authorFiltered) return documentTotal;
+  return new Set(
+    creations
+      .filter((creation) => creation.item.albumId === albumId)
+      .flatMap((creation) =>
+        creation.orderedForms.flatMap((form) =>
+          form.role === 'VIDEO_DOCUMENT' && formMatchesFilter(form, filter) ? [form.entityRef.id] : [],
+        ),
+      ),
+  ).size;
+}
+
+export function albumContentFilters(filter: CreationLibraryFilter) {
+  const authorFiltered = Boolean(filter.author && filter.author !== 'ALL');
+  return {
+    authorFiltered,
+    images: filter.images && !authorFiltered,
+    documents: filter.documents,
+  };
+}
+
 /** Creation-item ownership is authoritative, as it is in the creation directory. */
 export function albumContentEntries(
   album: AlbumDto,
@@ -58,17 +86,36 @@ export function albumContentEntries(
       creation.orderedForms.flatMap((form) => (form.role === 'VIDEO_DOCUMENT' ? [form.entityRef.id] : [])),
     ),
   );
+  const contentFilter = albumContentFilters(filter);
+  const documentOwners = new Map(
+    contentFilter.authorFiltered
+      ? creations.flatMap((creation) =>
+          creation.orderedForms.flatMap((form) =>
+            form.role === 'VIDEO_DOCUMENT' ? [[form.entityRef.id, creation.item] as const] : [],
+          ),
+        )
+      : [],
+  );
   return [
     ...childAlbums.map((child): AlbumContentEntry => ({ kind: 'ALBUM', album: child })),
     ...directCreations.map((creation): AlbumContentEntry => ({ kind: 'CREATION', creation })),
-    ...(filter.images
+    ...(contentFilter.images
       ? album.members
           .filter((member) => member.targetType === 'MATERIAL')
           .map((member): AlbumContentEntry => ({ kind: 'MATERIAL', member }))
       : []),
-    ...(filter.documents
+    ...(contentFilter.documents
       ? documents
           .filter((document) => !representedDocuments.has(document.id))
+          .filter((document) =>
+            matchesAuthor(
+              documentOwners
+                .get(document.id)
+                ?.forms.find((form) => form.entity.kind === 'VIDEO_DOCUMENT' && form.entity.id === document.id)
+                ?.authors ?? [],
+              filter.author,
+            ),
+          )
           .map((document): AlbumContentEntry => ({ kind: 'DOCUMENT', document }))
       : []),
   ];

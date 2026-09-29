@@ -72,6 +72,7 @@ export const CodexUsageInvestigationResults = memo(function CodexUsageInvestigat
       value={investigation.quotaPurity?.minimumQuotaPercent ?? CODEX_USAGE_DEFAULT_QUOTA_SAMPLE_PERCENT}
       busy={quotaSamplingBusy}
       disabled={quotaSamplingDisabled}
+      empty={investigation.quotaPurity?.samples.length === 0 && !investigation.quotaPurityIssue}
       onChange={onQuotaSamplingChange}
     />
   );

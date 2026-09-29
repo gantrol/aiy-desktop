@@ -2,6 +2,7 @@ import { blockDocumentMarkdown, markdownBlockDocument } from '@/shared/block-doc
 import type { Schema } from '@tiptap/pm/model';
 import { blockDocumentPlacements } from '@/shared/block-document-placements';
 import { sameSharedDocument } from '@/renderer/features/content-editor/sharedDocumentEdit';
+import { ContentDocumentViews } from '@/renderer/features/content-editor/ContentDocumentViews';
 import { sharedDocumentCommentAnchors } from '@/renderer/features/video-documents/articleElementIdentity';
 import { hydrateArticleElementJsonIdentities } from '@/renderer/features/video-documents/articleElementJsonIdentity';
 import { ArticleEditorSessionModel } from '@/renderer/components/creator/article-editor/ArticleEditorSessionModel';
@@ -54,6 +55,7 @@ export interface ArticleEditorSessionRuntime {
     handlers: Pick<RuntimeOptions, 'onSave' | 'onSaved' | 'onConflict' | 'onError' | 'onRecoveryError'>,
   ): void;
   readonly model: ArticleEditorSessionModel;
+  readonly documentViews: ContentDocumentViews;
   readonly recovery: RecoveryStatus;
   readonly recoveryUpdatedAt: number | null;
   capturePersistedArticle(): ArticleDto;
@@ -78,10 +80,10 @@ export interface ArticleEditorSessionRuntime {
   adoptRecovery(): void;
   discardRecovery(): Promise<boolean>;
   keepRecovery(): void;
-  documentChanged(markdown: string): number;
+  documentChanged(markdown: string, source?: VideoDocumentWysiwygEditorHandle | null): number;
   editSharedDocument(before: BlockDocument, next: BlockDocument, schema: Schema): boolean;
   registerSharedInput(whenSettled: () => Promise<boolean>): () => void;
-  articleElementsChanged(): number;
+  articleElementsChanged(source?: VideoDocumentWysiwygEditorHandle | null): number;
   titleChanged(title: string): number;
   coverChanged(assetId: string | null): number;
   coverVariantChanged(
@@ -129,6 +131,7 @@ interface CoverHistoryEntry {
 
 class ArticleSession implements ArticleEditorSessionRuntime {
   readonly model: ArticleEditorSessionModel;
+  readonly documentViews = new ContentDocumentViews();
   readonly #coordinator: AutoSaveCoordinator;
   readonly #recoveryStore: ArticleEditorRecoveryStore;
   readonly #initialization: Promise<void>;
@@ -146,7 +149,7 @@ class ArticleSession implements ArticleEditorSessionRuntime {
   #started = false;
   #disposed = false;
   #editorHandle: VideoDocumentWysiwygEditorHandle | null = null;
-  #unsubscribeInput: (() => void) | null = null;
+  readonly #editorInputs = new Map<VideoDocumentWysiwygEditorHandle, () => void>();
   #markdown: string;
   #elements: ArticleElementPlacementInput[];
   #anchors: ArticleCommentAnchorUpdateInput[];
@@ -302,17 +305,19 @@ class ArticleSession implements ArticleEditorSessionRuntime {
 
   #whenSettled = async () => {
     if (!(await Promise.all([...this.#sharedInputs].map((settle) => settle()))).every(Boolean)) return false;
-    const handle = this.#editorHandle;
-    if (handle && !(await handle.whenSettled())) return false;
+    if (!(await Promise.all([...this.#editorInputs.keys()].map((handle) => handle.whenSettled()))).every(Boolean))
+      return false;
     if (this.#disposed) return false;
+    this.documentViews.flush();
     this.#recordChange();
     return true;
   };
 
   #detachEditor() {
-    this.#unsubscribeInput?.();
-    this.#unsubscribeInput = null;
+    for (const unsubscribe of this.#editorInputs.values()) unsubscribe();
+    this.#editorInputs.clear();
     this.#editorHandle = null;
+    this.documentViews.reset();
     this.model.setEditorPending(false);
   }
 
@@ -366,6 +371,7 @@ class ArticleSession implements ArticleEditorSessionRuntime {
   }
   capturePersistedArticle = () => this.model.getSnapshot().persisted.article;
   captureSnapshot = () => {
+    this.documentViews.flush();
     const { elements: _elements, commentAnchors: _anchors, ...content } = this.#captureDocument();
     return content;
   };
@@ -486,7 +492,9 @@ class ArticleSession implements ArticleEditorSessionRuntime {
     this.#recoveryListeners.forEach((listener) => listener());
     this.start();
   };
-  documentChanged = (value: string) => {
+  documentChanged = (value: string, source?: VideoDocumentWysiwygEditorHandle | null) => {
+    if (source && !this.#editorInputs.has(source)) return this.model.getSnapshot().draft.sequence;
+    if (source) this.#editorHandle = source;
     this.#markdown = value;
     return this.#recordChange();
   };
@@ -525,7 +533,11 @@ class ArticleSession implements ArticleEditorSessionRuntime {
     this.#recordChange();
     return true;
   };
-  articleElementsChanged = () => this.#recordChange();
+  articleElementsChanged = (source?: VideoDocumentWysiwygEditorHandle | null) => {
+    if (source && !this.#editorInputs.has(source)) return this.model.getSnapshot().draft.sequence;
+    if (source) this.#editorHandle = source;
+    return this.#recordChange();
+  };
   titleChanged = (value: string) => {
     this.model.setTitle(value);
     return this.#recordChange();
@@ -624,29 +636,34 @@ class ArticleSession implements ArticleEditorSessionRuntime {
     previous: VideoDocumentWysiwygEditorHandle | null,
   ) => {
     if (!handle) {
-      if (!previous || previous !== this.#editorHandle) return;
+      if (!previous || !this.#editorInputs.has(previous)) return;
+      this.documentViews.flush();
       this.#recordChange();
-      const snapshot = previous.getPersistenceSnapshot();
+      const snapshot = this.#editorHandle?.getPersistenceSnapshot() ?? previous.getPersistenceSnapshot();
       this.#elements = snapshot.articleElements;
       this.#anchors = snapshot.commentAnchors;
       this.#publishMarkdown(snapshot.markdown);
-      this.#detachEditor();
+      this.#editorInputs.get(previous)?.();
+      this.#editorInputs.delete(previous);
+      if (this.#editorHandle === previous) this.#editorHandle = this.#editorInputs.keys().next().value ?? null;
+      this.#updateInputPending();
       return;
     }
-    this.#unsubscribeInput?.();
+    if (this.#editorInputs.has(handle)) return;
     this.#editorHandle = handle;
-    const inputChanged = () => {
-      const wasPending = this.model.getSnapshot().editorPending;
-      this.model.setEditorPending(handle.isInputPending());
-      if (wasPending !== handle.isInputPending())
-        this.#trace(handle.isInputPending() ? 'article-input-pending' : 'article-input-settled');
-      if (!handle.isInputPending()) this.#receiveQueuedArticle();
-    };
-    this.#unsubscribeInput = handle.subscribeInput(inputChanged);
-    inputChanged();
+    this.#editorInputs.set(handle, handle.subscribeInput(this.#updateInputPending));
+    this.#updateInputPending();
     const snapshot = handle.getPersistenceSnapshot();
     this.#elements = snapshot.articleElements;
     this.#anchors = snapshot.commentAnchors;
+  };
+
+  #updateInputPending = () => {
+    const pending = [...this.#editorInputs.keys()].some((handle) => handle.isInputPending());
+    const wasPending = this.model.getSnapshot().editorPending;
+    this.model.setEditorPending(pending);
+    if (wasPending !== pending) this.#trace(pending ? 'article-input-pending' : 'article-input-settled');
+    if (!pending) this.#receiveQueuedArticle();
   };
 
   restoreRevision = async (revision: ArticleRevisionDto) => {
@@ -675,9 +692,11 @@ class ArticleSession implements ArticleEditorSessionRuntime {
   };
   flushForExit = async () => {
     await this.#initialization;
+    this.documentViews.flush();
     const snapshot = this.#captureDocument();
     if (snapshot.document && blockDocumentImportIds(snapshot.document).length) {
-      if (this.#editorHandle && !(await this.#editorHandle.whenRecoverable())) return false;
+      if (!(await Promise.all([...this.#editorInputs.keys()].map((handle) => handle.whenRecoverable()))).every(Boolean))
+        return false;
       if (!(await contentImagesRecoverable(snapshot.document))) return false;
       this.#recordChange();
       return this.#recoveryStore.flush();
@@ -695,6 +714,7 @@ class ArticleSession implements ArticleEditorSessionRuntime {
   dispose = () => {
     this.#disposed = true;
     this.#detachEditor();
+    this.documentViews.dispose();
     this.#coordinator.dispose();
     this.#recoveryStore.dispose();
     this.#acknowledgedListeners.clear();

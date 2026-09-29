@@ -1,0 +1,80 @@
+/** Required table sets for supported released baselines; feature shapes are checked separately. */
+export const releasedRevision1RequiredTables = [
+  'albums',
+  'app_meta',
+  'background_jobs',
+  'creation_output_imports',
+  'creation_drafts',
+  'creator_agent_turns',
+  'file_projection_links',
+  'local_spaces',
+  'materials',
+  'packs',
+  'prompt_series',
+  'term_categories',
+  'term_context_profiles',
+  'term_revision_categories',
+  'terms',
+  'word_palette_revision_content_nodes',
+  'word_palette_revisions',
+] as const;
+
+export const localizedRequiredTables = [
+  ...releasedRevision1RequiredTables,
+  'album_localizations',
+  'ai_process_attempts',
+  'ai_process_context_turns',
+  'ai_process_events',
+  'ai_process_external_refs',
+  'ai_processes',
+  'prompt_series_localizations',
+] as const;
+
+export const termIllustrationRequiredTables = [
+  ...localizedRequiredTables,
+  'term_illustration_batch_runs',
+  'term_illustration_batches',
+] as const;
+
+export const revision2RequiredTables = [
+  ...termIllustrationRequiredTables,
+  'document_branches',
+  'document_draft_revisions',
+  'document_drafts',
+  'document_source_relations',
+  'document_thumbnails',
+  'documents',
+  'video_assets',
+  'video_document_generation_runs',
+  'video_document_navigation_order',
+  'video_document_transcription_runs',
+  'video_document_translation_runs',
+] as const;
+
+export const currentRequiredTables = [
+  ...revision2RequiredTables,
+  'article_comment_replies',
+  'article_check_runs',
+  'article_comments',
+  'article_delivery_jobs',
+  'article_elements',
+  'article_revision_packs',
+  'article_revision_elements',
+  'article_revisions',
+  'articles',
+  'background_issue_acknowledgements',
+  'creation_forms',
+  'creation_items',
+  'content_lifecycle_batch_members',
+  'content_lifecycle_batches',
+  'derived_visuals',
+  'evaluation_suite_revisions',
+  'evaluation_suites',
+  'inspiration_stashes',
+  'image_breakdowns',
+  'prompt_series_cover_assets',
+  'prompt_series_output_exclusions',
+  'recycle_bin_entries',
+  'social_post_drafts',
+  'social_post_revisions',
+] as const;

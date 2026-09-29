@@ -11,6 +11,7 @@ export function ArticleEditorPane({
   sidePanel,
   title,
   titleAccessory,
+  titleMetadata,
   onPersist,
   onTitleChange,
 }: {
@@ -20,6 +21,7 @@ export function ArticleEditorPane({
   sidePanel?: ReactNode;
   title: string;
   titleAccessory?: ReactNode;
+  titleMetadata?: ReactNode;
   zh: boolean;
   onPersist(): void;
   onTitleChange(title: string): void;
@@ -31,6 +33,7 @@ export function ArticleEditorPane({
       scrollRootRef={scrollRootRef}
       sidePanel={sidePanel}
       titleAccessory={titleAccessory}
+      titleMetadata={titleMetadata}
       title={
         <Input
           value={title}

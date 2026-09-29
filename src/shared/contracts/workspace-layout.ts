@@ -11,6 +11,9 @@ export const workspaceAppViewSchema = z.enum([
   'dictionary',
   'gallery',
   'search',
+  'me',
+  'settings',
+  'about',
   'companion',
   'codexImages',
   'transitionShowcase',
@@ -142,6 +145,9 @@ export const workspaceTargetSchema = z.discriminatedUnion('kind', [
     .strict(),
   z.object({ kind: z.literal('companion') }).strict(),
   z.object({ kind: z.literal('calendar') }).strict(),
+  z.object({ kind: z.literal('me') }).strict(),
+  z.object({ kind: z.literal('settings') }).strict(),
+  z.object({ kind: z.literal('about') }).strict(),
   z
     .object({
       kind: z.literal('extensions'),

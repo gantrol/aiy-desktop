@@ -79,6 +79,7 @@ export function FullContentToolbar({
   articleTools,
   review,
   history,
+  search,
 }: {
   editor: Editor;
   embedded?: boolean;
@@ -90,6 +91,7 @@ export function FullContentToolbar({
   articleTools: ReactNode;
   review: ReactNode;
   history: ReactNode;
+  search?: ReactNode;
 }) {
   const sections: ToolbarSection[] = [
     {
@@ -134,6 +136,7 @@ export function FullContentToolbar({
                   {section.content}
                 </span>
               ))}
+            {search}
             {overflow.length > 0 && <ToolbarOverflow editor={editor} label={labels.more} sections={overflow} />}
           </>
         );

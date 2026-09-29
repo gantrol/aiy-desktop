@@ -17,9 +17,11 @@ import type {
   ArticleRevisionSaveInput,
 } from '@/shared/contracts/article';
 import type { LibraryDatabaseRepositories } from '@/main/database/library-database/repositories';
-import type { ArticleWriteContext } from '@/main/database/creations/article-provenance';
+import { localArticleWriteContext, type ArticleWriteContext } from '@/main/database/creations/article-write-context';
 
-export function createArticleApi(repositories: Pick<LibraryDatabaseRepositories, 'articleChecks' | 'articles'>) {
+export function createArticleApi(
+  repositories: Pick<LibraryDatabaseRepositories, 'articleChecks' | 'articles' | 'storage'>,
+) {
   return {
     listArticles() {
       return repositories.articles.list();
@@ -38,11 +40,14 @@ export function createArticleApi(repositories: Pick<LibraryDatabaseRepositories,
     },
 
     saveArticle(input: ArticleSaveInput, context?: ArticleWriteContext) {
-      return repositories.articles.save(input, undefined, context);
+      return repositories.articles.save(input, undefined, context ?? localArticleWriteContext(repositories.storage.db));
     },
 
     saveArticleRevision(input: ArticleRevisionSaveInput, context?: ArticleWriteContext) {
-      return repositories.articles.saveRevision(input, context);
+      return repositories.articles.saveRevision(
+        input,
+        context ?? localArticleWriteContext(repositories.storage.db, input.requestId),
+      );
     },
 
     mutateArticleComment(input: ArticleCommentMutationInput) {
@@ -74,11 +79,11 @@ export function createArticleApi(repositories: Pick<LibraryDatabaseRepositories,
     },
 
     addArticleForm(input: ArticleFormAddInput) {
-      return repositories.articles.addForm(input);
+      return repositories.articles.addForm(input, localArticleWriteContext(repositories.storage.db));
     },
 
     createArticleForm(input: ArticleFormCreateInput) {
-      return repositories.articles.createForm(input);
+      return repositories.articles.createForm(input, localArticleWriteContext(repositories.storage.db));
     },
 
     renameArticle(input: ArticleRenameInput) {

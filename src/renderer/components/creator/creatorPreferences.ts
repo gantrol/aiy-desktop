@@ -3,17 +3,16 @@ import type { ResultLibraryMode } from '@/renderer/components/creator/ResultLibr
 
 export interface CreatorPreferences {
   resultLibraryMode: ResultLibraryMode;
-  resultLibraryView: 'full' | 'outline';
   resultPanelWidth: number;
   outputPanelRatio: number;
   outputCollapsed: boolean;
 }
 
 const storageKey = 'aiy.creator-preferences.v1';
-const resultLibraryModes = ['full', 'images', 'outline'] as const satisfies readonly ResultLibraryMode[];
+// Accept the retired outline preference so existing layouts reopen as the default list.
+const resultLibraryModes = ['full', 'images', 'outline'] as const;
 const storedCreatorPreferencesSchema = z
   .object({
-    resultLibraryView: z.enum(['full', 'outline']).optional().catch(undefined),
     resultLibraryMode: z.enum(resultLibraryModes).optional().catch(undefined),
     resultPanelWidth: z.number().finite().optional().catch(undefined),
     outputPanelRatio: z.number().finite().optional().catch(undefined),
@@ -32,7 +31,6 @@ export const maximumOutputPanelRatio = 0.65;
 
 export const defaultCreatorPreferences: CreatorPreferences = {
   resultLibraryMode: 'images',
-  resultLibraryView: 'full',
   resultPanelWidth: 258,
   outputPanelRatio: defaultOutputPanelRatio,
   outputCollapsed: false,
@@ -55,8 +53,10 @@ function normalize(value: unknown): CreatorPreferences {
   const parsed = storedCreatorPreferencesSchema.safeParse(value);
   const stored = parsed.success ? parsed.data : {};
   return {
-    resultLibraryView: stored.resultLibraryView ?? (stored.resultLibraryMode === 'outline' ? 'outline' : 'full'),
-    resultLibraryMode: stored.resultLibraryMode ?? defaultCreatorPreferences.resultLibraryMode,
+    resultLibraryMode:
+      stored.resultLibraryMode === 'outline'
+        ? 'full'
+        : (stored.resultLibraryMode ?? defaultCreatorPreferences.resultLibraryMode),
     resultPanelWidth: width(
       stored.resultPanelWidth,
       minimumResultListWidth,

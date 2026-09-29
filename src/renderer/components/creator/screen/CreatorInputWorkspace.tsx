@@ -367,7 +367,7 @@ export function CreatorInputWorkspace({ model, sourceFormId }: Props) {
             if (versionId === generation.hydration.versionId) return;
             if (await draftInput.recovery.flush()) generation.hydration.chooseVersion(versionId);
           }}
-          onCreateAlbum={(parent) => library.setCreateAlbumRequest({ parent, destination: 'NEW_CREATION' })}
+          onCreateAlbum={(parent) => library.requestCreateAlbum(parent, 'NEW_CREATION')}
           onCreateDerivedScheme={() => {
             if (workbench.editorDerivedVisual) {
               void workflow.content.derivedVisual.createDerivedScheme(workbench.editorDerivedVisual.id);

@@ -110,6 +110,7 @@ export function CreatorRecordPanel({
         {headerNavigation}
         <WorkbenchPaneToggle
           expanded
+          floating={false}
           side="right"
           label={messages.workbench.records}
           className="ml-auto hidden @min-[840px]/creator:inline-flex"

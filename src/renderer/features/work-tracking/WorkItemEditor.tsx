@@ -20,7 +20,7 @@ export interface WorkEditorProps {
   onSave(command: WorkCommand): void;
 }
 export interface WorkSourceOption {
-  provenance?: import('@/shared/contracts/content-provenance').ContentProvenance;
+  authors?: import('@/shared/contracts/authorship').AuthorSummary[];
   itemId: string;
   formId: string;
   articleId: string;

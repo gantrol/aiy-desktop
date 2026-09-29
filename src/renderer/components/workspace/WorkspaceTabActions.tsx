@@ -1,4 +1,12 @@
-import { CheckIcon, PanelLeftCloseIcon, EllipsisIcon, ListIcon, LoaderCircleIcon, PlusIcon } from 'lucide-react';
+import {
+  CheckIcon,
+  PanelLeftCloseIcon,
+  PanelTopCloseIcon,
+  EllipsisIcon,
+  ListIcon,
+  LoaderCircleIcon,
+  PlusIcon,
+} from 'lucide-react';
 import { Button } from '@/renderer/components/ui/button';
 import {
   DropdownMenu,
@@ -21,7 +29,15 @@ import { cn } from '@/renderer/lib/utils';
 
 type Props = Pick<
   WorkspaceTabStripProps,
-  'group' | 'data' | 'splitAxis' | 'onTabsCollapsedChange' | 'onNewTab' | 'onOpenBeside' | 'onMerge' | 'onSplit'
+  | 'group'
+  | 'data'
+  | 'splitAxis'
+  | 'splitPosition'
+  | 'onTabsCollapsedChange'
+  | 'onNewTab'
+  | 'onOpenBeside'
+  | 'onMerge'
+  | 'onSplit'
 > & {
   pendingTabId: string | null;
   requestActivation(tabId: string): void;
@@ -43,6 +59,7 @@ export function WorkspaceTabActions(props: Props) {
   const platform = window.desktopApi.appPlatform;
   const activeTab = group.tabs.find((tab) => tab.id === group.activeTabId) ?? group.tabs[0];
   const canSplit = workspaceLocationCanSplit(activeLocation(activeTab));
+  const CollapseIcon = splitAxis === 'rows' ? PanelTopCloseIcon : PanelLeftCloseIcon;
   return (
     <div className="flex shrink-0 items-center gap-0.5 border-l border-border/60 px-1">
       <DropdownMenu>
@@ -146,7 +163,7 @@ export function WorkspaceTabActions(props: Props) {
           {splitAxis && (
             <>
               <DropdownMenuItem onSelect={() => props.onTabsCollapsedChange(true)}>
-                <PanelLeftCloseIcon />
+                <CollapseIcon className={cn('size-4', props.splitPosition === 'end' && 'rotate-180')} />
                 {labels.collapseTabs}
               </DropdownMenuItem>
               <DropdownMenuSeparator />

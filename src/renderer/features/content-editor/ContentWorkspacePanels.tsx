@@ -130,6 +130,7 @@ function ContentWorkspacePanelTabs({
           className={cn(
             'flex min-h-10 shrink-0 items-center border-b px-1',
             collapsedRail && 'min-h-0 flex-1 flex-col items-center border-b-0 py-1',
+            !size.compact && (collapsedRail ? 'pt-14' : 'min-h-14 pr-14'),
           )}
         >
           <TabsList

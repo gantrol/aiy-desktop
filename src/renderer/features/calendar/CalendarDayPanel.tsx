@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { contentAuthorLabel } from '@/renderer/features/content-provenance/ContentProvenance';
+import { contentAuthorLabel } from '@/renderer/features/content-provenance/ContentWriteContext';
 import './CalendarDayPanel.css';
 import { ArrowUpRightIcon, ChartNoAxesCombinedIcon, LoaderCircleIcon } from 'lucide-react';
 import { Button } from '@/renderer/components/ui/button';

@@ -14,6 +14,7 @@ import {
   CODEX_USAGE_DEFAULT_QUOTA_SAMPLE_PERCENT,
   codexUsageCleanupResultSchema,
   codexUsageInvestigationSchema,
+  codexUsageQuotaSamplePercentSchema,
   codexUsageTaskSchema,
 } from '@/shared/contracts/codex-usage';
 import {
@@ -53,6 +54,7 @@ export class CodexUsageInvestigator {
   private readonly onTaskChanged: InvestigatorOptions['onTaskChanged'];
   private controller: AbortController | null = null;
   private currentTask: CodexUsageTask | null = null;
+  private clearing = false;
   private readonly purityReads = new Map<string, Promise<CodexUsageInvestigation>>();
 
   constructor(options: InvestigatorOptions) {
@@ -61,11 +63,14 @@ export class CodexUsageInvestigator {
   }
 
   get hasPending() {
-    return this.controller !== null;
+    return this.controller !== null || this.clearing;
   }
 
   private getCache() {
-    return (this.cache ??= CodexUsageCacheDatabase.open(this.dataDirectory));
+    return (this.cache ??= CodexUsageCacheDatabase.open(this.dataDirectory).catch((error) => {
+      this.cache = null;
+      throw error;
+    }));
   }
 
   async state(): Promise<CodexUsageState> {
@@ -95,14 +100,19 @@ export class CodexUsageInvestigator {
     const investigation = cache.investigation(investigationId);
     if (!investigation) throw new Error('Codex usage investigation was not found');
     const current = investigation.quotaPurity;
+    const savedQuotaPercent = codexUsageQuotaSamplePercentSchema.safeParse(current?.minimumQuotaPercent);
     const minimumQuotaPercent =
       requestedQuotaPercent ??
-      (current?.algorithmVersion === CODEX_QUOTA_PURITY_VERSION
-        ? current.minimumQuotaPercent
-        : CODEX_USAGE_DEFAULT_QUOTA_SAMPLE_PERCENT);
+      (savedQuotaPercent.success ? savedQuotaPercent.data : CODEX_USAGE_DEFAULT_QUOTA_SAMPLE_PERCENT);
     if (
-      current?.algorithmVersion === CODEX_QUOTA_PURITY_VERSION &&
-      current.minimumQuotaPercent === minimumQuotaPercent
+      current &&
+      ((current.algorithmVersion === CODEX_QUOTA_PURITY_VERSION &&
+        current.minimumQuotaPercent === minimumQuotaPercent) ||
+        (requestedQuotaPercent === undefined &&
+          cache.hasRetainedHistory(
+            investigation.from ? Date.parse(investigation.from) : null,
+            Date.parse(investigation.to),
+          )))
     ) {
       return refreshCodexOfficialSpeeds(investigation);
     }
@@ -127,7 +137,7 @@ export class CodexUsageInvestigator {
 
   async start(input: CodexUsageScanInput) {
     const cache = await this.getCache();
-    if (this.controller) throw new Error('A Codex usage investigation is already running');
+    if (this.hasPending) throw new Error('A Codex usage investigation is already running');
     const now = Date.now();
     const timestamp = new Date(now).toISOString();
     const epochs =
@@ -158,7 +168,7 @@ export class CodexUsageInvestigator {
 
   async resume(taskId: string) {
     const cache = await this.getCache();
-    if (this.controller) throw new Error('A Codex usage investigation is already running');
+    if (this.hasPending) throw new Error('A Codex usage investigation is already running');
     const persisted = cache.task(taskId);
     if (!persisted || !['PAUSED', 'INTERRUPTED'].includes(persisted.status)) {
       throw new Error('Codex usage investigation cannot be resumed');
@@ -185,11 +195,17 @@ export class CodexUsageInvestigator {
 
   async cleanup(level: CodexUsageCleanupLevel): Promise<CodexUsageCleanupResult> {
     const cache = await this.getCache();
-    if (this.controller) throw new Error('A running Codex usage investigation cannot be cleared');
-    const removed = cache.cleanup(level);
-    const state = cache.state();
-    this.currentTask = state.task;
-    return codexUsageCleanupResultSchema.parse({ level, removed, state });
+    if (this.hasPending) throw new Error('A running Codex usage investigation cannot be cleared');
+    this.clearing = true;
+    try {
+      if (level === 'LOCAL_INDEX') await cache.backupFacts();
+      const removed = cache.cleanup(level);
+      const state = cache.state();
+      this.currentTask = state.task;
+      return codexUsageCleanupResultSchema.parse({ level, removed, state });
+    } finally {
+      this.clearing = false;
+    }
   }
 
   async export(

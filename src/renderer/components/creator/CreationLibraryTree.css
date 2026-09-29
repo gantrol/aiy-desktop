@@ -1,0 +1,8 @@
+.creation-library-tree [data-tree-branch-id]:has([data-result-library-selected='true']) > .tree-branch-transit-rail,
+.creation-library-tree
+  [data-tree-branch-id]:has([data-result-library-selected='true'])
+  > [data-tree-node-id]
+  .tree-branch-node-connector,
+.creation-library-tree [data-result-library-selected='true'] .tree-branch-node-connector {
+  color: var(--selected-foreground);
+}

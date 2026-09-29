@@ -386,6 +386,7 @@ const data: BootstrapDto = {
   articles: [
     {
       id: 'rose',
+      authors: [],
       albumId: null,
       sourceInspirationStashId: null,
       content: {

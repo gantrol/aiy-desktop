@@ -91,6 +91,7 @@ export function AiCenterScreen({
   const locationKey = navigationLocationKey(location);
   const appliedLocationKey = useRef(locationKey);
   const [tab, setTab] = useState<AiCenterLocation['tab']>(location.tab);
+  const [activityToggleHost, setActivityToggleHost] = useState<HTMLDivElement | null>(null);
   const [activityViewMode, setActivityViewMode] = useState<AiActivityViewMode>(initialActivityViewMode);
   const [categoryFilter, setCategoryFilter] = useState<AiActivityCategoryFilter>('ALL');
   const [statusFilter, setStatusFilter] = useState<AiActivityStatusFilter>('ALL');
@@ -163,6 +164,7 @@ export function AiCenterScreen({
     >
       <header className="min-w-0 shrink-0 border-b bg-surface px-5 pt-3">
         <div className="flex h-9 items-center gap-2">
+          <div ref={setActivityToggleHost} className={tab === 'activity' ? 'flex shrink-0' : 'hidden'} />
           <h1 className="text-lg font-semibold tracking-tight">{l.title}</h1>
           <span className="text-2xs tabular-nums text-muted-foreground">{l.stats.recordCount(records.length)}</span>
         </div>
@@ -181,6 +183,7 @@ export function AiCenterScreen({
       <TabsContent value="activity" className="min-h-0 min-w-0 flex-1">
         <CollectionDetailLayout
           layoutKey="ai-center-activity"
+          toggleHost={activityToggleHost}
           collectionLabel={l.tabs.activity}
           collectionWidth={360}
           minimumDetailWidth={480}

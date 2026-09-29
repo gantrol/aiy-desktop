@@ -1,9 +1,8 @@
-import { ArrowRightIcon, ExternalLinkIcon } from 'lucide-react';
+import { ArrowRightIcon } from 'lucide-react';
 import { useState } from 'react';
-import type { AppSupportDestination, Locale } from '@/shared/contracts';
+import type { Locale } from '@/shared/contracts';
 import { useI18n } from '@/renderer/i18n/useI18n';
 import { Button } from '@/renderer/components/ui/button';
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/renderer/components/ui/dialog';
 import { Label } from '@/renderer/components/ui/label';
 import { Checkbox } from '@/renderer/components/ui/checkbox';
 import {
@@ -11,7 +10,6 @@ import {
   useBracketAssociations,
 } from '@/renderer/features/content-editor/contentAssociationPreferences';
 import { Segmented, SegmentedItem } from '@/renderer/components/ui/segmented';
-import { AppUpdateSection } from '@/renderer/features/app-update/AppUpdateSection';
 import { KeyboardShortcutsSettings } from '@/renderer/components/app/KeyboardShortcutsSettings';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/renderer/components/ui/tabs';
 import { PetalMaintenance } from '@/renderer/features/desktop-petals/PetalMaintenance';
@@ -20,51 +18,35 @@ import { FontSettings } from '@/renderer/features/font-settings/FontSettings';
 
 interface Props {
   promptLocale: Locale | null;
-  open: boolean;
-  onOpenChange(open: boolean): void;
   onPromptLocaleChange(locale: Locale | null): void;
   onAiFeatureModelsOpen(): void;
   onContentManagementOpen(): void;
 }
 
-export function SettingsDialog({
+export function SettingsScreen({
   promptLocale,
-  open,
-  onOpenChange,
   onPromptLocaleChange,
   onAiFeatureModelsOpen,
   onContentManagementOpen,
 }: Props) {
   const { locale, setLocale, messages, availableLocales } = useI18n();
   const l = messages.app.settings;
-  const [supportError, setSupportError] = useState('');
   const [page, setPage] = useState('general');
   const bracketAssociations = useBracketAssociations();
 
-  async function openSupportDestination(destination: AppSupportDestination) {
-    setSupportError('');
-    try {
-      await window.desktopApi.appSupportOpen(destination);
-    } catch {
-      setSupportError(l.supportOpenFailed);
-    }
-  }
-
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className={page === 'shortcuts' ? 'max-w-4xl' : 'max-w-lg'}>
-        <DialogHeader>
-          <DialogTitle>{l.title}</DialogTitle>
-        </DialogHeader>
+    <div className="h-full overflow-y-auto">
+      <main className="mx-auto max-w-4xl space-y-6 px-6 py-8">
+        <h1 className="text-xl font-semibold">{l.title}</h1>
         <Tabs value={page} onValueChange={setPage} className="gap-4">
-          <TabsList>
+          <TabsList className="flex-wrap justify-start">
             <TabsTrigger value="general">{l.generalTab}</TabsTrigger>
             <TabsTrigger value="fonts">{l.fonts.tab}</TabsTrigger>
             <TabsTrigger value="shortcuts">{l.shortcutsTab}</TabsTrigger>
             <TabsTrigger value="maintenance">{l.maintenanceTab}</TabsTrigger>
             <TabsTrigger value="cli">{messages.agentPermissions.tab}</TabsTrigger>
           </TabsList>
-          <TabsContent value="general" className="grid gap-4">
+          <TabsContent value="general" className="grid max-w-xl gap-6">
             <div className="grid gap-2">
               <Label>{messages.contentEditor.association.editing}</Label>
               <Label className="flex items-center gap-2 font-normal">
@@ -111,7 +93,6 @@ export function SettingsDialog({
                 variant="outline"
                 className="justify-between"
                 onClick={() => {
-                  onOpenChange(false);
                   onAiFeatureModelsOpen();
                 }}
               >
@@ -126,7 +107,6 @@ export function SettingsDialog({
                 variant="outline"
                 className="justify-between"
                 onClick={() => {
-                  onOpenChange(false);
                   onContentManagementOpen();
                 }}
               >
@@ -134,35 +114,17 @@ export function SettingsDialog({
                 <ArrowRightIcon className="size-4" />
               </Button>
             </div>
-            <div className="grid gap-1 border-t pt-2">
-              <AppUpdateSection active={open} />
-              <Button
-                type="button"
-                variant="link"
-                size="sm"
-                className="h-8 w-fit px-1.5 text-xs text-muted-foreground"
-                onClick={() => void openSupportDestination('PRIVACY_POLICY')}
-              >
-                {l.privacyPolicy}
-                <ExternalLinkIcon className="size-3.5" />
-              </Button>
-              {supportError && (
-                <p role="alert" className="px-1.5 text-xs text-destructive">
-                  {supportError}
-                </p>
-              )}
-            </div>
           </TabsContent>
           <TabsContent value="shortcuts">
             <KeyboardShortcutsSettings />
           </TabsContent>
-          <TabsContent value="fonts">{open && page === 'fonts' && <FontSettings />}</TabsContent>
+          <TabsContent value="fonts">{page === 'fonts' && <FontSettings />}</TabsContent>
           <TabsContent value="maintenance">
             <PetalMaintenance />
           </TabsContent>
-          <TabsContent value="cli">{open && page === 'cli' && <AgentPermissionsSettings />}</TabsContent>
+          <TabsContent value="cli">{page === 'cli' && <AgentPermissionsSettings />}</TabsContent>
         </Tabs>
-      </DialogContent>
-    </Dialog>
+      </main>
+    </div>
   );
 }

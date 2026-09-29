@@ -1,5 +1,5 @@
 import { ImageOffIcon } from 'lucide-react';
-import { memo, useCallback, useDeferredValue, useEffect, useMemo, useRef, type RefObject } from 'react';
+import { memo, useCallback, useDeferredValue, useEffect, useMemo, useRef, type ReactNode, type RefObject } from 'react';
 import type { Components } from 'react-markdown';
 import { ContentMarkdown } from '@/renderer/features/content-editor/ContentMarkdown';
 import type {
@@ -110,6 +110,7 @@ export function ArticleReferenceDocument({
   media,
   mediaBindings,
   title,
+  titleMetadata,
   scrollRootRef,
 }: {
   articleId?: string;
@@ -117,6 +118,7 @@ export function ArticleReferenceDocument({
   media: readonly ArticleReferenceMedia[];
   mediaBindings: ArticleContentInput['mediaBindings'];
   title: string;
+  titleMetadata?: ReactNode;
   scrollRootRef?: RefObject<HTMLDivElement | null>;
 }) {
   const { messages } = useI18n();
@@ -127,9 +129,10 @@ export function ArticleReferenceDocument({
         data-content-source={articleId ? JSON.stringify({ kind: 'ARTICLE', id: articleId }) : undefined}
         className={`mx-auto w-full ${articleDocumentWidthClassName} px-6 py-7 lg:px-8`}
       >
-        <h1 className={`${articleReferenceTitleClassName} mb-7`}>
-          {title || messages.creator.manuscriptEditor.untitled}
-        </h1>
+        <div className="mb-7">
+          <h1 className={articleReferenceTitleClassName}>{title || messages.creator.manuscriptEditor.untitled}</h1>
+          {titleMetadata && <div className="mt-2">{titleMetadata}</div>}
+        </div>
         {deferredMarkdown.trim() ? (
           <ArticleComparisonMarkdown
             markdown={deferredMarkdown}
@@ -151,6 +154,7 @@ export function CurrentArticleReference({
   media,
   mediaBindings,
   title,
+  titleMetadata,
   articleId,
   elements = [],
   trackPosition = false,
@@ -158,6 +162,7 @@ export function CurrentArticleReference({
   media: readonly VideoDocumentRevisionMediaDto[];
   mediaBindings: ArticleContentInput['mediaBindings'];
   title: string;
+  titleMetadata?: ReactNode;
   articleId?: string;
   elements?: readonly ArticleElementPlacementInput[];
   trackPosition?: boolean;
@@ -253,6 +258,7 @@ export function CurrentArticleReference({
       media={referenceMedia}
       mediaBindings={mediaBindings}
       title={title}
+      titleMetadata={titleMetadata}
       scrollRootRef={scrollRootRef}
     />
   );

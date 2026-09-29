@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { ArrowLeftIcon, ExternalLinkIcon, SearchIcon, XIcon } from 'lucide-react';
 import type { CodexHistoryRoleFilter, CodexHistorySearchResult } from '@/shared/contracts';
 import { Badge } from '@/renderer/components/ui/badge';
@@ -17,6 +17,7 @@ interface Props {
   locale: string;
   initialQuery: string;
   initialRole: CodexHistoryRoleFilter;
+  navigationAction?: ReactNode;
   onOpen(threadId: string): void;
 }
 
@@ -25,6 +26,7 @@ function HistoryThreadPane({
   locale,
   initialQuery,
   initialRole,
+  navigationAction,
   onOpen,
 }: Props & { item: CodexHistorySearchResult }) {
   const l = useI18n().messages.extensions.codexHistorySearch;
@@ -83,6 +85,7 @@ function HistoryThreadPane({
       }}
     >
       <header className="flex min-h-14 items-start gap-3 border-b px-4 py-3">
+        {navigationAction}
         <div className="min-w-0 flex-1">
           <h3 className="line-clamp-2 text-sm font-semibold leading-5">
             <CodexHistoryHighlightedText text={item.title} query={initialQuery} />
@@ -185,5 +188,9 @@ function HistoryThreadPane({
 }
 
 export function CodexHistoryThreadDetail(props: Props) {
-  return props.item ? <HistoryThreadPane key={props.item.threadId} {...props} item={props.item} /> : null;
+  return props.item ? (
+    <HistoryThreadPane key={props.item.threadId} {...props} item={props.item} />
+  ) : (
+    <div className="p-3">{props.navigationAction}</div>
+  );
 }

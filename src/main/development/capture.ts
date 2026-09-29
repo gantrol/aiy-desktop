@@ -63,7 +63,11 @@ export async function runDevelopmentCapture(window: BrowserWindow) {
     );
   }
   if (captureView === 'settings') {
-    await window.webContents.executeJavaScript('document.querySelector(\'[data-action="settings"]\')?.click()');
+    await window.webContents.executeJavaScript(
+      'document.querySelector(\'[data-action="app-menu"]\').dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowDown", bubbles: true }))',
+    );
+    await new Promise((resolve) => setTimeout(resolve, 180));
+    await window.webContents.executeJavaScript('document.querySelector(\'[data-action="app-menu-settings"]\').click()');
   }
   if (captureView === 'libraries') {
     await window.webContents.executeJavaScript('document.querySelector(\'[data-action="library-switcher"]\')?.click()');

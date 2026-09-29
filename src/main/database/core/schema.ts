@@ -1,4 +1,12 @@
 import { articleDraftShape, ensureArticleDrafts } from '@/main/database/creations/article-draft-schema';
+import { creationAuthorSchemaComplete, ensureCreationAuthorSchema } from '@/main/database/me/creation-author-schema';
+import {
+  releasedRevision1RequiredTables,
+  localizedRequiredTables,
+  termIllustrationRequiredTables,
+  revision2RequiredTables,
+  currentRequiredTables,
+} from '@/main/database/core/schema-required-tables';
 import * as creationOrganization from '@/main/database/creations/creation-organization-schema';
 import { calendarSchemaShape, ensureCalendarSchema } from '@/main/database/calendar/calendar-schema';
 import {
@@ -79,88 +87,8 @@ import { backgroundIssueAcknowledgementShape } from '@/main/database/background-
 import { ensureWorkTracking, workTrackingShape } from '@/main/database/creations/work-tracking-schema';
 
 export const DATABASE_PRODUCT_BASELINE = '0.3.0';
-// AIY 0.5.5 consolidates all changes after the released revision 7 into revision 8.
-export const DATABASE_SCHEMA_REVISION = 8;
-
-const releasedRevision1RequiredTables = [
-  'albums',
-  'app_meta',
-  'background_jobs',
-  'creation_output_imports',
-  'creation_drafts',
-  'creator_agent_turns',
-  'file_projection_links',
-  'local_spaces',
-  'materials',
-  'packs',
-  'prompt_series',
-  'term_categories',
-  'term_context_profiles',
-  'term_revision_categories',
-  'terms',
-  'word_palette_revision_content_nodes',
-  'word_palette_revisions',
-] as const;
-
-const localizedRequiredTables = [
-  ...releasedRevision1RequiredTables,
-  'album_localizations',
-  'ai_process_attempts',
-  'ai_process_context_turns',
-  'ai_process_events',
-  'ai_process_external_refs',
-  'ai_processes',
-  'prompt_series_localizations',
-] as const;
-
-const termIllustrationRequiredTables = [
-  ...localizedRequiredTables,
-  'term_illustration_batch_runs',
-  'term_illustration_batches',
-] as const;
-
-const revision2RequiredTables = [
-  ...termIllustrationRequiredTables,
-  'document_branches',
-  'document_draft_revisions',
-  'document_drafts',
-  'document_source_relations',
-  'document_thumbnails',
-  'documents',
-  'video_assets',
-  'video_document_generation_runs',
-  'video_document_navigation_order',
-  'video_document_transcription_runs',
-  'video_document_translation_runs',
-] as const;
-
-const currentRequiredTables = [
-  ...revision2RequiredTables,
-  'article_comment_replies',
-  'article_check_runs',
-  'article_comments',
-  'article_delivery_jobs',
-  'article_elements',
-  'article_revision_packs',
-  'article_revision_elements',
-  'article_revisions',
-  'articles',
-  'background_issue_acknowledgements',
-  'creation_forms',
-  'creation_items',
-  'content_lifecycle_batch_members',
-  'content_lifecycle_batches',
-  'derived_visuals',
-  'evaluation_suite_revisions',
-  'evaluation_suites',
-  'inspiration_stashes',
-  'image_breakdowns',
-  'prompt_series_cover_assets',
-  'prompt_series_output_exclusions',
-  'recycle_bin_entries',
-  'social_post_drafts',
-  'social_post_revisions',
-] as const;
+// AIY 0.5.6 advances released revision 8 with creation author identities and registry.
+export const DATABASE_SCHEMA_REVISION = 9;
 
 const canonicalTitleColumns = [
   { table: 'albums', columns: ['title', 'title_locale'] },
@@ -651,7 +579,7 @@ const preVideoDocumentAiActivityRequiredTables = revision2RequiredTables.filter(
 );
 // Released revisions and the current release candidate only. Discarded development
 // revisions are not migration sources.
-const supportedSchemaRevisions = [2, 3, 4, 5, 6, 7, DATABASE_SCHEMA_REVISION] as const;
+const supportedSchemaRevisions = [2, 3, 4, 5, 6, 7, 8, DATABASE_SCHEMA_REVISION] as const;
 type SupportedSchemaRevision = (typeof supportedSchemaRevisions)[number];
 
 function isCurrentSchemaShapeBeforePromptSourceImport(db: Database.Database) {
@@ -716,6 +644,7 @@ const currentFeatureShapeChecks = [
   publishingMaskSchemaComplete,
   followingReferenceShape,
   creationOrganization.creationOrganizationSchemaComplete,
+  creationAuthorSchemaComplete,
 ] as const;
 
 const currentFeatureShapesComplete = (db: Database.Database) =>
@@ -828,6 +757,7 @@ function migrateReleasedDatabase(db: Database.Database) {
       ensurePublishingMaskSchema(db);
       ensureFollowingReferenceSchema(db);
       creationOrganization.ensureCreationOrganizationSchema(db);
+      ensureCreationAuthorSchema(db);
       if (!isCurrentSchemaShape(db)) unsupportedSchema();
 
       if (storedRevision !== DATABASE_SCHEMA_REVISION) {

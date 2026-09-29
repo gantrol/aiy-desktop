@@ -1,10 +1,18 @@
 import type { ComponentType } from 'react';
-import { ActivityIcon, BlocksIcon, CalendarDaysIcon, ImagesIcon, SearchIcon, SquarePenIcon } from 'lucide-react';
+import {
+  ActivityIcon,
+  BlocksIcon,
+  CalendarDaysIcon,
+  ImagesIcon,
+  SearchIcon,
+  SquarePenIcon,
+  UserRoundIcon,
+} from 'lucide-react';
 import type { AppView } from '@/renderer/components/app/app-navigation';
 import { DictionaryIcon } from '@/renderer/icons';
 
 export interface AppNavigationItem {
-  id: Exclude<AppView, 'documents' | 'companion' | 'contentManagement'>;
+  id: Exclude<AppView, 'documents' | 'companion' | 'contentManagement' | 'settings' | 'about'>;
   icon: ComponentType<{ className?: string }>;
   activeViews: readonly AppView[];
 }
@@ -27,4 +35,8 @@ export const utilityNavigationItems: readonly CoreNavigationItem[] = [
 ];
 
 /** Shared by the navigation rail and app menu; labels resolve through app.navigation. */
-export const navigationItems: readonly CoreNavigationItem[] = [...primaryNavigationItems, ...utilityNavigationItems];
+export const navigationItems: readonly CoreNavigationItem[] = [
+  ...primaryNavigationItems,
+  ...utilityNavigationItems,
+  { id: 'me', icon: UserRoundIcon, activeViews: ['me'] },
+];

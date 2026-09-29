@@ -33,9 +33,14 @@ export function useVideoDocumentLibraryTree({
 
   useEffect(() => {
     if (location.collection.kind !== 'album') return;
+    if (
+      !albumIndex.byId.has(location.collection.albumId) ||
+      albumIndex.effectivelyArchived.has(location.collection.albumId)
+    )
+      return;
     const ids: string[] = [];
     let current: string | undefined = location.collection.albumId;
-    while (current) {
+    while (current && !ids.includes(current)) {
       ids.unshift(current);
       current = albumIndex.parentById.get(current);
     }
@@ -48,9 +53,10 @@ export function useVideoDocumentLibraryTree({
   useEffect(() => {
     if (!root.loaded) return;
     for (const albumId of expandedAlbumIds) {
+      if (!albumIndex.byId.has(albumId) || albumIndex.effectivelyArchived.has(albumId)) continue;
       if (!children[albumId]?.loaded && !children[albumId]?.loading) onExpandAlbum(albumId);
     }
-  }, [children, expandedAlbumIds, onExpandAlbum, root.loaded]);
+  }, [albumIndex, children, expandedAlbumIds, onExpandAlbum, root.loaded]);
 
   const emptyAlbumCount = useMemo(() => {
     const ids = new Set<string>();

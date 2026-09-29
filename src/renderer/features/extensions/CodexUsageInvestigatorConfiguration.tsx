@@ -1,4 +1,5 @@
 import { CollectionDetailLayout } from '@/renderer/components/workbench/CollectionDetailLayout';
+import { CODEX_USAGE_FACT_BACKUP_FAILED } from '@/shared/contracts/codex-usage';
 import { useCodexUsageTaskState } from '@/renderer/features/extensions/useCodexUsageTaskState';
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
 import { DownloadIcon, HistoryIcon, LoaderCircleIcon, ScanLineIcon } from 'lucide-react';
@@ -462,7 +463,7 @@ export function CodexUsageInvestigatorConfiguration({
       )}
       {error && (
         <div role="alert" className="border-l-2 border-destructive/30 py-1 pl-3 text-sm text-destructive">
-          {error}
+          {error.includes(CODEX_USAGE_FACT_BACKUP_FAILED) ? l.factBackupFailed : error}
         </div>
       )}
     </div>

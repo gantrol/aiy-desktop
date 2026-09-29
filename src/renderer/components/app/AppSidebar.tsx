@@ -1,4 +1,4 @@
-import { SettingsIcon } from 'lucide-react';
+import { MeMenu } from '@/renderer/features/me/MeMenu';
 import type { AppView } from '@/renderer/components/app/app-navigation';
 import {
   type AppNavigationItem,
@@ -20,7 +20,6 @@ interface Props {
   transitionShowcaseVisible: boolean;
   view: AppView;
   onViewChange(view: AppView): void;
-  onSettingsOpen(): void;
   notify(message: string): void;
 }
 
@@ -33,7 +32,6 @@ export function AppSidebar({
   transitionShowcaseVisible,
   view,
   onViewChange,
-  onSettingsOpen,
   notify,
 }: Props) {
   const { messages } = useI18n();
@@ -80,15 +78,7 @@ export function AppSidebar({
           </div>
           <div className="flex w-full shrink-0 flex-col items-center gap-2 pt-2">
             {utilityNavigationItems.map(renderNavigationItem)}
-            <AppSidebarButton
-              data-action="settings"
-              icon={SettingsIcon}
-              label={labels.settings}
-              selected={view === 'contentManagement'}
-              disabled={spaceTransitioning}
-              aria-current={view === 'contentManagement' ? 'page' : undefined}
-              onClick={onSettingsOpen}
-            />
+            <MeMenu view={view} spaceName={spaceName} disabled={spaceTransitioning} onNavigate={onViewChange} />
           </div>
         </nav>
       </aside>

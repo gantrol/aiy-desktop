@@ -37,12 +37,12 @@ export function useAppDeepLinkNavigation(
   space: Pick<BootstrapDto, 'spaceId'> | null,
   workspace: Pick<ReturnType<typeof useWorkspaceController>, 'activeTab' | 'openTab' | 'navigateReference'>,
   setData: Dispatch<SetStateAction<BootstrapDto | null>>,
-  closeOverlays: readonly [CloseOverlay, CloseOverlay, CloseOverlay],
+  closeOverlays: readonly [CloseOverlay, CloseOverlay],
 ) {
   const { openTab, navigateReference } = workspace;
   const activeTabId = workspace.activeTab?.id;
   const spaceId = space?.spaceId;
-  const [closeSettings, closeComparison, closePrompt] = closeOverlays;
+  const [closeComparison, closePrompt] = closeOverlays;
   const pending = useRef<AppDeepLinkCommand[]>([]);
   const queue = useRef(Promise.resolve());
 
@@ -102,7 +102,6 @@ export function useAppDeepLinkNavigation(
               });
             }
             pending.current = pending.current.filter((entry) => entry !== command);
-            closeSettings(false);
             closeComparison(false);
             closePrompt(false);
             // Use a new tab so the current editor retains its document and undo history.
@@ -129,5 +128,5 @@ export function useAppDeepLinkNavigation(
       unsubscribe();
       window.removeEventListener(APP_CONTENT_LINK_EVENT, onContentLink);
     };
-  }, [spaceId, openTab, navigateReference, activeTabId, setData, closeSettings, closeComparison, closePrompt]);
+  }, [spaceId, openTab, navigateReference, activeTabId, setData, closeComparison, closePrompt]);
 }

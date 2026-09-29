@@ -12,13 +12,14 @@ import type { CodexUsageCacheDatabase } from '@/main/extensions/codex-usage-inve
 import type { CodexUsageInternalEvent } from '@/main/extensions/codex-usage-investigator/session-reader';
 import { normalizeCodexUsageModel } from '@/main/extensions/codex-usage-investigator/pricing';
 
-export const CODEX_QUOTA_PURITY_VERSION = 2;
+export const CODEX_QUOTA_PURITY_VERSION = 3;
 const MAX_SAMPLES = 20_000;
 const MINUTE_MS = 60_000;
 const EPSILON = 1e-9;
 
 interface Observation {
   event: CodexUsageInternalEvent;
+  gap: number;
   windowKind: CodexUsageQuotaWindowKind;
   used: number;
   duration: number;
@@ -38,6 +39,8 @@ interface Stream {
   tiers: Set<CodexUsageInternalEvent['serviceTier']>;
   requests: number;
   inferred: boolean;
+  sample: CodexUsageQuotaPuritySample | null;
+  sampleInferred: boolean;
 }
 
 const emptyUsage = (): Stream['usage'] => ({
@@ -49,7 +52,7 @@ const emptyUsage = (): Stream['usage'] => ({
   totalTokens: 0,
 });
 
-function observations(event: CodexUsageInternalEvent): Observation[] {
+function observations(event: CodexUsageInternalEvent, gap: number): Observation[] {
   if (!event.planType || event.quotaKind === 'UNKNOWN') return [];
   const windows = [
     ['PRIMARY', event.usedPercent, event.windowDurationMins, event.resetsAt],
@@ -63,7 +66,7 @@ function observations(event: CodexUsageInternalEvent): Observation[] {
     resetsAt !== null &&
     at <= resetsAt &&
     at >= resetsAt - duration * 60
-      ? [{ event, windowKind, used, duration, resetsAt }]
+      ? [{ event, gap, windowKind, used, duration, resetsAt }]
       : [],
   );
 }
@@ -93,7 +96,7 @@ export class CodexQuotaPurityAccumulator {
   }
 
   add(event: CodexUsageInternalEvent) {
-    const values = observations(event);
+    const values = observations(event, this.gap);
     if (!values.length && event.usage.totalTokens > 0) {
       this.resultValue.missingQuotaEventCount += 1;
       this.gap += 1;
@@ -130,6 +133,8 @@ export class CodexQuotaPurityAccumulator {
           tiers: new Set(),
           requests: 0,
           inferred: false,
+          sample: null,
+          sampleInferred: false,
         };
         this.streams.set(key, stream);
       }
@@ -151,7 +156,62 @@ export class CodexQuotaPurityAccumulator {
     stream.tiers.clear();
     stream.requests = 0;
     stream.inferred = false;
-    stream.gap = this.gap;
+    // A pre-gap observation cannot become a post-gap baseline when it is committed later.
+    stream.gap = stream.observation.gap;
+  }
+
+  private appendSample(stream: Stream, consumed: number) {
+    const { observation } = stream;
+    const model = [...stream.models][0]!;
+    const serviceTier = [...stream.tiers][0] as 'STANDARD' | 'FAST';
+    let sample = stream.sample;
+    if (
+      sample &&
+      sample.model === model &&
+      sample.serviceTier === serviceTier &&
+      sample.to === stream.from &&
+      sample.resetsAt === observation.resetsAt
+    ) {
+      sample.to = observation.event.timestamp;
+      sample.quotaPercentConsumed += consumed;
+      sample.requestCount += stream.requests;
+      for (const key of Object.keys(stream.usage) as Array<keyof Stream['usage']>) {
+        sample[key] = Math.min(Number.MAX_SAFE_INTEGER, sample[key] + stream.usage[key]);
+      }
+      stream.sampleInferred ||= stream.inferred;
+    } else {
+      sample = {
+        attribution: 'MODEL_TIER',
+        planType: observation.event.planType!,
+        limitId: observation.event.limitId,
+        quotaKind: observation.event.quotaKind,
+        windowKind: observation.windowKind,
+        windowDurationMins: observation.duration,
+        model,
+        serviceTier,
+        from: stream.from,
+        to: observation.event.timestamp,
+        resetsAt: observation.resetsAt,
+        quotaPercentConsumed: consumed,
+        requestCount: stream.requests,
+        ...stream.usage,
+        tokensPerOnePercent: 0,
+        quotaPercentPerMillionTokens: 0,
+      };
+      stream.sampleInferred = stream.inferred;
+    }
+    sample.tokensPerOnePercent = sample.totalTokens / sample.quotaPercentConsumed;
+    sample.quotaPercentPerMillionTokens = (sample.quotaPercentConsumed * 1_000_000) / sample.totalTokens;
+    stream.sample = sample;
+    if (sample.quotaPercentConsumed < this.resultValue.minimumQuotaPercent - EPSILON) return;
+    this.resultValue.samples.push(sample);
+    this.resultValue.eligibleSampleCount += 1;
+    if (stream.sampleInferred) this.resultValue.inferredSampleCount += 1;
+    if (this.resultValue.samples.length > MAX_SAMPLES * 2) {
+      this.resultValue.samples.splice(0, MAX_SAMPLES);
+      this.resultValue.samplesTruncated = true;
+    }
+    stream.sample = null;
   }
 
   private commit(stream: Stream) {
@@ -162,6 +222,7 @@ export class CodexQuotaPurityAccumulator {
       (stream.previous !== null && observation.used < stream.previous - EPSILON)
     ) {
       if (stream.baseline !== null) this.resultValue.boundaryCount += 1;
+      stream.sample = null;
       this.reset(stream);
     } else {
       for (const event of stream.pending) {
@@ -174,39 +235,17 @@ export class CodexQuotaPurityAccumulator {
         stream.requests += 1;
       }
       const consumed = observation.used - stream.baseline;
-      // Accumulate the selected span to reduce integer-reading boundary noise.
-      // Larger jumps use their observed delta; incomplete tails are never zero-cost samples.
-      if (consumed >= this.resultValue.minimumQuotaPercent - EPSILON) {
-        if (stream.models.size > 1 || stream.tiers.size > 1) this.resultValue.mixedSampleCount += 1;
-        else if (!stream.usage.totalTokens || stream.models.has('unknown') || stream.tiers.has('UNKNOWN'))
+      // Classify 1% intervals before accumulating the selected span. A mixed interval
+      // breaks the sample immediately instead of discarding later single-model usage.
+      // Larger jumps retain their observed delta; incomplete tails are never samples.
+      if (consumed >= 1 - EPSILON) {
+        if (stream.models.size > 1 || stream.tiers.size > 1) {
+          this.resultValue.mixedSampleCount += 1;
+          stream.sample = null;
+        } else if (!stream.usage.totalTokens || stream.models.has('unknown') || stream.tiers.has('UNKNOWN')) {
           this.resultValue.unknownSampleCount += 1;
-        else {
-          const sample: CodexUsageQuotaPuritySample = {
-            attribution: 'MODEL_TIER',
-            planType: observation.event.planType!,
-            limitId: observation.event.limitId,
-            quotaKind: observation.event.quotaKind,
-            windowKind: observation.windowKind,
-            windowDurationMins: observation.duration,
-            model: [...stream.models][0]!,
-            serviceTier: [...stream.tiers][0] as 'STANDARD' | 'FAST',
-            from: stream.from,
-            to: observation.event.timestamp,
-            resetsAt: observation.resetsAt,
-            quotaPercentConsumed: consumed,
-            requestCount: stream.requests,
-            ...stream.usage,
-            tokensPerOnePercent: stream.usage.totalTokens / consumed,
-            quotaPercentPerMillionTokens: (consumed * 1_000_000) / stream.usage.totalTokens,
-          };
-          this.resultValue.samples.push(sample);
-          this.resultValue.eligibleSampleCount += 1;
-          if (stream.inferred) this.resultValue.inferredSampleCount += 1;
-          if (this.resultValue.samples.length > MAX_SAMPLES * 2) {
-            this.resultValue.samples.splice(0, MAX_SAMPLES);
-            this.resultValue.samplesTruncated = true;
-          }
-        }
+          stream.sample = null;
+        } else this.appendSample(stream, consumed);
         this.reset(stream);
       }
     }

@@ -215,12 +215,24 @@ function VideoDocumentPaneResizeHandle({ width, label, onWidthChange }: ResizeHa
 
 interface SourcePaneHeaderProps {
   labels: ResolvedSourcePaneLabels;
+  onCollapse(): void;
 }
 
-function SourcePaneHeader({ labels }: SourcePaneHeaderProps) {
+function SourcePaneHeader({ labels, onCollapse }: SourcePaneHeaderProps) {
   return (
-    <header className="flex h-14 shrink-0 items-center border-b px-4 text-sm font-semibold">
-      <span>{labels.sourceVideo}</span>
+    <header className="flex h-14 shrink-0 items-center gap-2 border-b pl-4 pr-2.5 text-sm font-semibold">
+      <span className="min-w-0 flex-1 truncate">{labels.sourceVideo}</span>
+      <Button
+        type="button"
+        variant="ghost"
+        size="icon-sm"
+        title={labels.collapse}
+        aria-label={labels.collapse}
+        aria-expanded
+        onClick={onCollapse}
+      >
+        <PanelRightCloseIcon className="size-4" />
+      </Button>
     </header>
   );
 }
@@ -404,7 +416,7 @@ export function VideoDocumentSourcePane({
       data-audio-status={resolvedAudioInfo?.status}
     >
       <VideoDocumentPaneResizeHandle width={paneWidth} label={labels.resize} onWidthChange={updateWidth} />
-      <SourcePaneHeader labels={labels} />
+      <SourcePaneHeader labels={labels} onCollapse={onCollapse} />
       <SourcePaneBody
         videoDocument={document}
         labels={labels}
@@ -418,17 +430,6 @@ export function VideoDocumentSourcePane({
         onQuickInsertNote={onQuickInsertNote}
         onOpenMaterial={onOpenMaterial}
       />
-      <Button
-        type="button"
-        variant="secondary"
-        size="icon-sm"
-        className="absolute bottom-2 right-2 z-30 shadow-overlay"
-        title={labels.collapse}
-        aria-label={labels.collapse}
-        onClick={onCollapse}
-      >
-        <PanelRightCloseIcon className="size-4" />
-      </Button>
     </aside>
   );
 }

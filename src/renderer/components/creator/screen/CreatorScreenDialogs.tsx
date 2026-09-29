@@ -11,17 +11,6 @@ export function CreatorScreenDialogs({ model }: { model: CreatorScreenViewModel 
       albumDefaults={library.settingsAlbum}
       appliedPalettes={generation.promptDocument.appliedPalettes}
       confirmationDialog={library.lifecycle.confirmationDialog}
-      createAlbumBusy={library.busy}
-      createAlbumLabels={{
-        title: messages.gallery.albums.createTitle,
-        childTitle: messages.gallery.albums.createChild,
-        name: messages.gallery.albums.name,
-        placeholder: messages.gallery.albums.namePlaceholder,
-        cancel: messages.gallery.albums.cancel,
-        create: messages.gallery.albums.create,
-        operationFailed: messages.gallery.albums.operationFailed,
-      }}
-      createAlbumRequest={library.createAlbumRequest}
       currentInput={draftInput.draftProjection.currentInput}
       data={app.data}
       defaultPromptLocale={app.defaultPromptLocale}
@@ -72,8 +61,6 @@ export function CreatorScreenDialogs({ model }: { model: CreatorScreenViewModel 
       onAlbumDefaultsChange={library.setSettingsAlbum}
       onAlbumDefaultsSaved={app.refreshAlbums}
       onApplyPalette={generation.dictionaryMaterials.applyPalette}
-      onCreateAlbum={library.actions.createAlbum}
-      onCreateAlbumRequestChange={library.setCreateAlbumRequest}
       onCreateExternal={navigation.external.createExternalCreation}
       onDistilledPaletteChange={library.setDistilledPalette}
       onExternalOpenChange={(open) => {

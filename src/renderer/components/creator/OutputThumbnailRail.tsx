@@ -1,5 +1,5 @@
 import { WorkbenchPaneToggle } from '@/renderer/components/workbench/WorkbenchPane';
-import { LoaderCircleIcon, UploadIcon } from 'lucide-react';
+import { DownloadIcon, LoaderCircleIcon } from 'lucide-react';
 import type { PointerEvent as ReactPointerEvent } from 'react';
 import type { AssetDto, AssetFileRevealContext } from '@/shared/contracts';
 import { cn } from '@/renderer/lib/utils';
@@ -70,7 +70,13 @@ export function OutputThumbnailRail({
         onPointerDown={onResizeStart}
       />
       <div className="grid shrink-0 place-items-center gap-1 border-b border-border/60 py-3">
-        <WorkbenchPaneToggle expanded={false} side="right" label={label ?? expandLabel} onClick={onExpand} />
+        <WorkbenchPaneToggle
+          expanded={false}
+          floating={false}
+          side="right"
+          label={label ?? expandLabel}
+          onClick={onExpand}
+        />
         <Button
           type="button"
           variant="ghost"
@@ -80,7 +86,7 @@ export function OutputThumbnailRail({
           aria-label={importLabel}
           onClick={onImport}
         >
-          {importing ? <LoaderCircleIcon className="size-4 animate-spin" /> : <UploadIcon className="size-4" />}
+          {importing ? <LoaderCircleIcon className="size-4 animate-spin" /> : <DownloadIcon className="size-4" />}
         </Button>
       </div>
       <ScrollArea type="always" className="min-h-0 flex-1">

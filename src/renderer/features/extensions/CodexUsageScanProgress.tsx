@@ -12,6 +12,7 @@ const SCANNING_SHARE_PERCENT = 75;
 
 function scanProgressPercent(progress: ScanProgress) {
   if (progress.phase === 'DISCOVERING') return null;
+  if (progress.phase === 'BACKING_UP') return clampPercent(progress.calculationPercent);
   if (progress.phase === 'FINALIZING') {
     return clampPercent(SCANNING_SHARE_PERCENT + ((100 - SCANNING_SHARE_PERCENT) * progress.calculationPercent) / 100);
   }

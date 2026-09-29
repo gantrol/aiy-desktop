@@ -71,7 +71,13 @@ export class PetalRendererHost implements PetalWindowFactory {
     host.webContents.setWindowOpenHandler((details) => {
       const request = this.pending.get(details.frameName);
       return request && details.url === request.url
-        ? { action: 'allow', overrideBrowserWindowOptions: request.options }
+        ? {
+            action: 'allow',
+            // This host owns child teardown. Electron otherwise adds one opener
+            // listener per live petal, exceeding its default limit after ten.
+            outlivesOpener: true,
+            overrideBrowserWindowOptions: request.options,
+          }
         : { action: 'deny' };
     });
     host.webContents.on('did-create-window', (window, details) => {
@@ -100,7 +106,7 @@ export class PetalRendererHost implements PetalWindowFactory {
         request.reject(error);
       }
     });
-    host.webContents.on('render-process-gone', () => {
+    const rendererGone = () => {
       if (this.host !== host) return;
       try {
         this.onRendererGone?.([...this.children]);
@@ -109,6 +115,10 @@ export class PetalRendererHost implements PetalWindowFactory {
       } finally {
         this.dispose();
       }
+    };
+    host.webContents.on('render-process-gone', rendererGone);
+    host.webContents.on('did-start-navigation', (details) => {
+      if (details.isMainFrame && !details.isSameDocument && (this.children.size || this.pending.size)) rendererGone();
     });
     host.once('closed', () => {
       if (this.host === host) this.dispose();

@@ -1,6 +1,7 @@
 import { createBrowserCompanionPreloadApi } from '@/preload/browser-companion-api';
 import { createAppShellPreloadApi } from '@/preload/app-shell-api';
 import { createCalendarPreloadApi } from '@/preload/calendar-api';
+import { createMePreloadApi } from '@/preload/me-api';
 import { createExtensionMetricsApi, createOpenAiCostsConnectionApi } from '@/preload/extension-metrics-api';
 import { imageMakingApi } from '@/preload/image-making-api';
 import { createAppWindowApi } from '@/preload/app-window-api';
@@ -185,6 +186,7 @@ const api: DesktopApi = {
   extensionMetrics: createExtensionMetricsApi(ipcRenderer),
   openAiCostsConnection: createOpenAiCostsConnectionApi(ipcRenderer),
   calendar: createCalendarPreloadApi(ipcRenderer),
+  me: createMePreloadApi(ipcRenderer),
   contentLibrary: createContentLibraryBridge((input) => ipcRenderer.invoke('content-library:command', input)),
   onContentReferencesChanged: (callback) => {
     const listener = (_event: Electron.IpcRendererEvent, value: unknown) =>

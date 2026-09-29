@@ -1,7 +1,11 @@
 import { useEffect, useState } from 'react';
 import type { CreationFormProjection } from '@/renderer/components/creator/creationLibraryProjection';
+import {
+  creationMatchesAuthor,
+  readCreationLibraryAuthorFilter,
+} from '@/renderer/components/creator/creationLibraryAuthorFilter';
 
-export function creationFormFilterKey(form: CreationFormProjection): keyof CreationLibraryFilter {
+export function creationFormFilterKey(form: CreationFormProjection): keyof CreationLibraryTypeFilter {
   switch (form.role) {
     case 'ANIMATION':
       return 'animations';
@@ -23,12 +27,13 @@ export function creationFormFilterKey(form: CreationFormProjection): keyof Creat
 export function formMatchesFilter(form: CreationFormProjection, filter: CreationLibraryFilter) {
   // Saved creation inputs now own article forms; keep them reachable through the inspiration filter too.
   return (
-    filter[creationFormFilterKey(form)] ||
-    (filter.inspirations && form.role === 'ARTICLE' && Boolean(form.entity?.content.creationInput))
+    (filter[creationFormFilterKey(form)] ||
+      (filter.inspirations && form.role === 'ARTICLE' && Boolean(form.entity?.content.creationInput))) &&
+    creationMatchesAuthor([form], filter.author)
   );
 }
 
-export interface CreationLibraryFilter {
+export interface CreationLibraryTypeFilter {
   animations: boolean;
   images: boolean;
   documents: boolean;
@@ -37,6 +42,10 @@ export interface CreationLibraryFilter {
   socialPosts: boolean;
   inspirations: boolean;
   evaluations: boolean;
+}
+
+export interface CreationLibraryFilter extends CreationLibraryTypeFilter {
+  author?: string;
 }
 
 export const allCreationLibraryFilters: CreationLibraryFilter = {
@@ -64,6 +73,10 @@ export const emptyCreationLibraryFilters: CreationLibraryFilter = {
 const storageKey = 'aiy.creation-library-filter.v5';
 
 export function isAllCreationLibraryFilter(filter: CreationLibraryFilter) {
+  return isAllCreationLibraryTypes(filter) && (!filter.author || filter.author === 'ALL');
+}
+
+export function isAllCreationLibraryTypes(filter: CreationLibraryTypeFilter) {
   return (
     filter.animations &&
     filter.images &&
@@ -114,6 +127,7 @@ export function readCreationLibraryFilter(): CreationLibraryFilter {
       socialPosts: record.socialPosts,
       inspirations: record.inspirations,
       evaluations: record.evaluations,
+      author: readCreationLibraryAuthorFilter(record.author),
     };
   } catch {
     return fallback;

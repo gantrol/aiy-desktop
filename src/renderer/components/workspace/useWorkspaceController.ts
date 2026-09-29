@@ -13,14 +13,12 @@ import {
   activeWorkspaceGroup,
   activeWorkspaceTab,
   closeOtherWorkspaceTabs,
-  claimWorkspaceArticleEditOwnership,
   closeWorkspaceTab,
   findWorkspaceTab,
   navigateWorkspaceHistory,
   navigateWorkspaceArticleLocation,
   navigateWorkspaceReference,
   navigateWorkspaceTab,
-  normalizeWorkspaceArticleEditOwners,
   mergeWorkspaceGroups,
   moveWorkspaceTabToOtherGroup,
   persistedWorkspaceState,
@@ -133,7 +131,7 @@ export function useWorkspaceController(data: BootstrapDto | null) {
   const update = useCallback((operation: (current: WorkspaceRuntimeState) => WorkspaceRuntimeState) => {
     const current = stateRef.current;
     if (!current) return;
-    const next = rememberActiveVisualWorkspace(normalizeWorkspaceArticleEditOwners(operation(current)));
+    const next = rememberActiveVisualWorkspace(operation(current));
     if (next === current) return;
     stateRef.current = next;
     setState(next);
@@ -249,11 +247,6 @@ export function useWorkspaceController(data: BootstrapDto | null) {
       update((current) => navigateWorkspaceArticleLocation(current, tabId, articleId, location)),
     [update],
   );
-  const claimArticleEditOwnership = useCallback(
-    (articleId: string, tabId: string) =>
-      update((current) => claimWorkspaceArticleEditOwnership(current, articleId, tabId)),
-    [update],
-  );
   const navigateReference = useCallback(
     (
       sourceTabId: string,
@@ -292,7 +285,6 @@ export function useWorkspaceController(data: BootstrapDto | null) {
     updateArticleViewLocation,
     navigateArticleViewLocation,
     navigateReference,
-    claimArticleEditOwnership,
     findTab(tabId: string) {
       return state ? findWorkspaceTab(state, tabId) : null;
     },

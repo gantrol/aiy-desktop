@@ -15,7 +15,6 @@ import type {
   IntakeCommitResult,
   Locale,
   TransitionPreviewDto,
-  WorkspaceArticleEditOwnerDto,
   WorkspaceArticleEditorStateDto,
 } from '@/shared/contracts';
 import { memo, useRef, type ComponentProps, type FocusEvent } from 'react';
@@ -32,6 +31,7 @@ interface Props {
   dataRevision: number;
   locale: Locale;
   defaultPromptLocale: Locale | null;
+  onPromptLocaleChange(locale: Locale | null): void;
   comparisonFullWindow: boolean;
   creationPromptFullWindow: boolean;
   loadingPreviews: readonly TransitionPreviewDto[];
@@ -39,11 +39,9 @@ interface Props {
   transitionShowcaseNavigation: TransitionShowcaseNavigationState;
   documentNavigationRevision: number;
   articleEditorStates: readonly WorkspaceArticleEditorStateDto[];
-  articleEditOwners: readonly WorkspaceArticleEditOwnerDto[];
   onArticleEditorStateChange: WorkspaceTabSurfaceProps['onArticleEditorStateChange'];
   onArticleLocationChange: WorkspaceTabSurfaceProps['onArticleLocationChange'];
   onArticleLocationNavigate: WorkspaceTabSurfaceProps['onArticleLocationNavigate'];
-  onRequestEditOwnership: WorkspaceTabSurfaceProps['onRequestEditOwnership'];
   onLocationFlushChange: WorkspaceTabSurfaceProps['onLocationFlushChange'];
   onTabsCollapsedChange(collapsed: boolean): void;
   onActivateGroup(): void;
@@ -54,6 +52,7 @@ interface Props {
   onNewTab(sourceTabId: string, destination: AppLocation['view'] | AppLocation): void;
   onOpenBeside(sourceTabId: string, destination: AppLocation['view'] | AppLocation): void;
   splitAxis: 'columns' | 'rows' | null;
+  splitPosition: 'start' | 'end';
   onMergeGroups(): void;
   onMoveTabToOtherGroup(tabId: string): void;
   onSplit(sourceTabId: string, axis: 'columns' | 'rows'): void;
@@ -100,7 +99,6 @@ function WorkspaceTabSession({
   const onArticleEditorStateChange = useStableCallback(props.onArticleEditorStateChange);
   const onArticleLocationChange = useStableCallback(props.onArticleLocationChange);
   const onArticleLocationNavigate = useStableCallback(props.onArticleLocationNavigate);
-  const onRequestEditOwnership = useStableCallback(props.onRequestEditOwnership);
   const onLocationFlushChange = useStableCallback(props.onLocationFlushChange);
   const onNewTab = useStableCallback(props.onNewTab);
   const onOpenBeside = useStableCallback(props.onOpenBeside);
@@ -139,7 +137,6 @@ function WorkspaceTabSession({
         onArticleEditorStateChange={onArticleEditorStateChange}
         onArticleLocationChange={onArticleLocationChange}
         onArticleLocationNavigate={onArticleLocationNavigate}
-        onRequestEditOwnership={onRequestEditOwnership}
         onLocationFlushChange={onLocationFlushChange}
         onNewTab={onNewTab}
         onOpenBeside={onOpenBeside}
@@ -178,6 +175,7 @@ export function AppWorkspaceGroup({
   onNewTab,
   onOpenBeside,
   splitAxis,
+  splitPosition,
   onMergeGroups,
   onMoveTabToOtherGroup,
   onSplit,
@@ -219,6 +217,7 @@ export function AppWorkspaceGroup({
           onNewTab={(destination) => onNewTab(group.activeTabId, destination)}
           onOpenBeside={(view) => onOpenBeside(group.activeTabId, view)}
           splitAxis={splitAxis}
+          splitPosition={splitPosition}
           onMerge={onMergeGroups}
           onMoveToOtherGroup={onMoveTabToOtherGroup}
           onSplit={(axis) => onSplit(group.activeTabId, axis)}

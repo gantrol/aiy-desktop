@@ -59,6 +59,7 @@ export interface VideoDocumentWysiwygEditorHandle {
 }
 
 export interface VideoDocumentWysiwygEditorProps {
+  documentViews?: import('@/renderer/features/content-editor/ContentDocumentViews').ContentDocumentViews;
   compact?: boolean;
   embedded?: boolean;
   toolbarVisible?: boolean;

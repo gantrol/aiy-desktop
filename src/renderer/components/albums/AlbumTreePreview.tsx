@@ -62,9 +62,9 @@ export function AlbumCoverBadge({
   onDoubleClick?: MouseEventHandler<HTMLButtonElement>;
 }) {
   const className = cn(
-    'absolute z-30 grid place-items-center border bg-overlay/95 text-selected-foreground shadow-overlay',
-    overlayStyle === 'blurred' && 'backdrop-blur-sm',
-    compact ? 'bottom-0.5 left-0.5 size-4 rounded-[5px]' : 'right-0.5 bottom-0.5 size-5 rounded-md',
+    'absolute z-30 grid place-items-center bg-overlay/95 text-selected-foreground',
+    overlayStyle === 'blurred' ? 'rounded-md border shadow-overlay backdrop-blur-sm' : 'rounded-sm',
+    compact ? 'bottom-0.5 left-0.5 size-4' : 'right-0.5 bottom-0.5 size-5',
   );
   const icon = <AlbumGlyphIcon className={compact ? 'size-3' : 'size-3.5'} />;
 
@@ -77,14 +77,13 @@ export function AlbumCoverBadge({
   }
 
   return (
-    <button
+    <Button
       type="button"
+      variant="ghost"
+      size="icon-sm"
       title={label}
       aria-label={label}
-      className={cn(
-        className,
-        'pointer-events-auto outline-none transition-colors hover:bg-hover-strong focus-visible:ring-2 focus-visible:ring-ring',
-      )}
+      className={cn(className, 'pointer-events-auto p-0 hover:bg-hover-strong focus-visible:ring-offset-0')}
       onClick={(event) => {
         event.stopPropagation();
         onClick(event);
@@ -95,7 +94,7 @@ export function AlbumCoverBadge({
       }}
     >
       {icon}
-    </button>
+    </Button>
   );
 }
 

@@ -65,7 +65,13 @@ export function WorkbenchPaneToggle({
   const control =
     floating && host
       ? createPortal(
-          <div className="workbench-pane-toggle-dock" data-side={dockSide ?? side}>
+          <div
+            data-side={dockSide ?? side}
+            className={cn(
+              'workbench-pane-toggle-dock absolute top-3 z-[45] size-8',
+              (dockSide ?? side) === 'left' ? 'left-2.5' : 'right-2.5',
+            )}
+          >
             {button}
           </div>,
           host,

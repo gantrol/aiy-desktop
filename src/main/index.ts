@@ -52,6 +52,7 @@ import { finishStartupStage } from '@/main/app/startup-timing';
 import type { ActiveLibraryContext } from '@/main/libraries/active-library-context';
 import { createLibraryStartupTiming } from '@/main/libraries/library-startup-timing';
 import { LibraryRegistry, libraryDatabasePath, type LibraryDescriptor } from '@/main/libraries/library-registry';
+import { initializeDesktopLibrary } from '@/main/libraries/initialize-desktop-library';
 import { LegacySpaceMigrationService } from '@/main/libraries/legacy-space-migration';
 import { createLegacySpaceMigrationActions } from '@/main/libraries/legacy-space-migration-controller';
 import { legacyUserDataRoots, localSpaceForbiddenDestinationRoots } from '@/main/libraries/legacy-user-data-roots';
@@ -218,12 +219,6 @@ if (ownsSingleInstanceLock)
         temporaryRoot: path.join(app.getPath('temp'), 'aiy-space-transfer'),
         forbiddenDestinationRoots: forbiddenLocalSpaceDestinationRoots,
       });
-      const initializeLibrary = (target: LibraryDatabase, library: LibraryDescriptor) =>
-        target.initialize(library.name, library, {
-          recoverGenerationRuns: false,
-          recoverAssistantRuns: false,
-          recoverGifRuns: true,
-        });
       const connectionDirectory = path.join(app.getPath('userData'), 'connections');
       const secretProtector: SecretProtector = {
         isAvailable: () =>
@@ -282,7 +277,7 @@ if (ownsSingleInstanceLock)
         const targetImageTransforms = new ImageTransformService(targetDatabase);
         finishStage('openDatabase');
         try {
-          const databaseCheck = initializeLibrary(targetDatabase, library);
+          const databaseCheck = await initializeDesktopLibrary(targetDatabase, library);
           if (createsDatabase) libraryRegistry?.markDatabaseCreated(library.id);
           finishStage('initializeDatabase');
           reportProgress?.('CONNECTING_SERVICES', 55);

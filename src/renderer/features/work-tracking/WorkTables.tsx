@@ -1,5 +1,5 @@
 import { Button } from '@/renderer/components/ui/button';
-import { ContentProvenanceCell } from '@/renderer/features/content-provenance/ContentProvenance';
+import { AuthorNames } from '@/renderer/features/me/AuthorNames';
 import { useWorkTableEditing } from '@/renderer/features/work-tracking/WorkTableEditing';
 import { WorkItemCells, WorkTitleCell } from '@/renderer/features/work-tracking/WorkItemCells';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/renderer/components/ui/table';
@@ -19,7 +19,7 @@ export function WorkItemsTable({
   onSelect(id: string): void;
 }) {
   const l = useI18n().messages.workTracking;
-  const sourceLabel = useI18n().messages.contentProvenance.title;
+  const sourceLabel = useI18n().messages.creator.results.filterAuthor;
   const edit = useWorkTableEditing();
   return (
     <Table className="min-w-[62rem] table-fixed">
@@ -47,7 +47,7 @@ export function WorkItemsTable({
             title={titles.get(item.id) ?? l.untitled}
             selected={selectedId === item.id}
             colSpan={7}
-            source={<ContentProvenanceCell value={edit.article(item.articleId)?.provenance} />}
+            source={<AuthorNames authors={edit.article(item.articleId)?.authors} />}
           >
             <TableCell>
               <WorkTitleCell

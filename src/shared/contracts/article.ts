@@ -2,7 +2,7 @@ import { browserCompanionWatermarkSelectionSchema } from '@/shared/contracts/bro
 import { blockDocumentMarkdown } from '@/shared/block-document-codecs';
 import { blockDocumentAssetIds, blockDocumentSchema } from '@/shared/contracts/block-document';
 import { z } from 'zod';
-import { contentProvenanceSchema } from '@/shared/contracts/content-provenance';
+import { authorSummarySchema, contentWriteContextSchema } from '@/shared/contracts/authorship';
 import { ARTICLE_COVER_RATIOS, articleCoverAssetIds, articleCoverVariantsSchema } from '@/shared/article-covers';
 import { articleCreationInputSchema } from '@/shared/contracts/inspiration-stash';
 import { noteFileSchema, NOTE_FILE_LIMITS } from '@/shared/contracts/note-files';
@@ -180,7 +180,8 @@ const articleContentDtoSchema = z
 
 const articleDtoSchema = z
   .object({
-    provenance: contentProvenanceSchema.optional(),
+    authors: z.array(authorSummarySchema),
+    writeContext: contentWriteContextSchema.optional(),
     id: idSchema,
     albumId: idSchema.nullable(),
     sourceInspirationStashId: idSchema.nullable(),
@@ -203,7 +204,7 @@ export type ArticleOpenResult = z.infer<typeof articleOpenResultSchema>;
 
 export const articleRevisionSummarySchema = z
   .object({
-    provenance: contentProvenanceSchema.optional(),
+    writeContext: contentWriteContextSchema.optional(),
     articleId: idSchema,
     revisionId: idSchema,
     revisionNo: z.number().int().positive(),
@@ -238,7 +239,7 @@ export const articleRevisionGetInputSchema = z
 
 export const articleRevisionSchema = z
   .object({
-    provenance: contentProvenanceSchema.optional(),
+    writeContext: contentWriteContextSchema.optional(),
     articleId: idSchema,
     revisionId: idSchema,
     revisionNo: z.number().int().positive(),

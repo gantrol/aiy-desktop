@@ -63,16 +63,30 @@ export function useCreatorLibraryActions(options: Options) {
   });
 
   const createAlbum = useStableCallback(
-    async (parent: AlbumDto | null, title: string, destination: AlbumDestination = 'LIBRARY') =>
-      runBusy(async () => {
-        const created = await window.desktopApi.albumsCreate({
+    async (parent: AlbumDto | null, title: string, destination: AlbumDestination = 'LIBRARY') => {
+      if (busyRef.current || blocked()) return false;
+      busyRef.current = true;
+      setBusy(true);
+      let persisted = false;
+      try {
+        const album = await window.desktopApi.albumsCreate({
           title,
           titleLocale: options.locale,
           parentAlbumId: parent?.id ?? null,
         });
+        persisted = true;
         await refreshAlbums();
-        await albumCreated(created.id, destination);
-      }),
+        await albumCreated(album.id, destination);
+      } catch (reason) {
+        const message = persisted ? messages.creator.album.albumCreatedRefreshFailed : options.operationFailedMessage;
+        notify(`${message}: ${messageFor(reason)}`);
+      } finally {
+        busyRef.current = false;
+        setBusy(false);
+      }
+      // A refresh/navigation failure must not offer a retry that creates a second album.
+      return persisted;
+    },
   );
 
   const toggleAlbumPin = useStableCallback(async (album: AlbumDto) =>

@@ -1,4 +1,5 @@
 import type { RefObject } from 'react';
+import { CreationAuthor } from '@/renderer/features/me/CreationAuthor';
 import { Button } from '@/renderer/components/ui/button';
 import { ContentWorkspacePanels } from '@/renderer/features/content-editor/ContentWorkspacePanels';
 import { ContentDocumentWorkspace } from '@/renderer/features/content-editor/ContentDocumentWorkspace';
@@ -60,6 +61,14 @@ export function NoteDocumentWorkspace({
         documentWidth="STANDARD"
         scrollRootRef={scrollRoot}
         title={<NoteTitleInput document session={session} state={state} readOnly={state.frozen} />}
+        titleMetadata={
+          <CreationAuthor
+            key={`${libraryId}:${stashId}`}
+            spaceId={libraryId}
+            target={{ kind: 'INSPIRATION_STASH', id: stashId }}
+            editable={!state.frozen}
+          />
+        }
         sidePanel={
           <ContentWorkspacePanels
             preferenceKey="note"

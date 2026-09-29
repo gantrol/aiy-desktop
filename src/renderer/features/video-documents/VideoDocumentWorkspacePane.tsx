@@ -701,6 +701,21 @@ export function VideoDocumentWorkspacePane({
           onTitleChange={onTitleChange}
           onSaveTitle={onSaveTitle}
           onMove={onMove}
+          paneToggle={
+            !sourcePaneOpen && (
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon-sm"
+                title={labels.player.expand}
+                aria-label={labels.player.expand}
+                aria-expanded={false}
+                onClick={onOpenSourcePane}
+              >
+                <PanelRightOpenIcon className="size-4" />
+              </Button>
+            )
+          }
         />
         <Tabs
           value={activeBranch}
@@ -774,19 +789,6 @@ export function VideoDocumentWorkspacePane({
             </TabsContent>
           ))}
         </Tabs>
-        {!sourcePaneOpen && (
-          <Button
-            type="button"
-            variant="secondary"
-            size="icon-sm"
-            className="absolute bottom-2 right-2 z-30 shadow-overlay"
-            title={labels.player.expand}
-            aria-label={labels.player.expand}
-            onClick={onOpenSourcePane}
-          >
-            <PanelRightOpenIcon className="size-4" />
-          </Button>
-        )}
       </main>
       {sourcePaneOpen && (
         <VideoDocumentWorkspaceSourcePane

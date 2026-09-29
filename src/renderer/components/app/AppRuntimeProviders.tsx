@@ -7,6 +7,7 @@ import { AssetMenuActionsProvider, type AssetMenuActions } from '@/renderer/comp
 import { BackgroundIssueProvider } from '@/renderer/features/background-issues/BackgroundIssueProvider';
 import { ArticleDeliveryProvider } from '@/renderer/features/article-delivery/ArticleDeliveryProvider';
 import { DesktopPetalLanguageBridge } from '@/renderer/features/desktop-petals/DesktopPetalLanguageBridge';
+import { SpaceProfileProvider, type CreationAuthorChangeHandler } from '@/renderer/features/me/SpaceProfileProvider';
 
 interface Props {
   assetMenuActions: AssetMenuActions;
@@ -15,9 +16,18 @@ interface Props {
   terms: TermListItem[];
   extensions: readonly ExtensionDto[];
   refresh(): Promise<unknown>;
+  onAuthorChange: CreationAuthorChangeHandler;
 }
 
-export function AppRuntimeProviders({ assetMenuActions, children, spaceId, terms, extensions, refresh }: Props) {
+export function AppRuntimeProviders({
+  assetMenuActions,
+  children,
+  spaceId,
+  terms,
+  extensions,
+  refresh,
+  onAuthorChange,
+}: Props) {
   return (
     <AssetMenuActionsProvider value={assetMenuActions}>
       <BackgroundIssueProvider spaceId={spaceId} refresh={refresh} notify={assetMenuActions.notify}>
@@ -31,7 +41,9 @@ export function AppRuntimeProviders({ assetMenuActions, children, spaceId, terms
             refresh={refresh}
             notify={assetMenuActions.notify}
           >
-            <ExtensionContentLinks extensions={extensions}>{children}</ExtensionContentLinks>
+            <SpaceProfileProvider key={spaceId} spaceId={spaceId} onAuthorChange={onAuthorChange}>
+              <ExtensionContentLinks extensions={extensions}>{children}</ExtensionContentLinks>
+            </SpaceProfileProvider>
           </GifMakerProvider>
         </ArticleDeliveryProvider>
       </BackgroundIssueProvider>

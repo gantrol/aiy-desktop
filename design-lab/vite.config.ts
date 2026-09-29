@@ -35,6 +35,7 @@ export default defineConfig({
         search: fileURLToPath(new URL('./search.html', import.meta.url)),
         calendar: fileURLToPath(new URL('./calendar.html', import.meta.url)),
         extensions: fileURLToPath(new URL('./extensions.html', import.meta.url)),
+        creationCycle: fileURLToPath(new URL('./creation-cycle.html', import.meta.url)),
       },
     },
   },

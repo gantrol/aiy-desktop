@@ -1,5 +1,5 @@
 import { Checkbox } from '@/renderer/components/ui/checkbox';
-import { ContentProvenanceCell } from '@/renderer/features/content-provenance/ContentProvenance';
+import { AuthorNames } from '@/renderer/features/me/AuthorNames';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/renderer/components/ui/table';
 import { useI18n } from '@/renderer/i18n/useI18n';
 import { WorkSelect } from '@/renderer/features/work-tracking/WorkFields';
@@ -30,7 +30,7 @@ export function WorkAlbumRows({
   onSelect(id: string, articleId: string): void;
 }) {
   const l = useI18n().messages.workTracking;
-  const sourceLabel = useI18n().messages.contentProvenance.title;
+  const sourceLabel = useI18n().messages.creator.results.filterAuthor;
   const edit = useWorkTableEditing();
   return (
     <Table className="min-w-[66rem] table-fixed">
@@ -62,7 +62,7 @@ export function WorkAlbumRows({
               title={row.title}
               selected={selected.has(row.id)}
               colSpan={8}
-              source={<ContentProvenanceCell value={articleId ? edit.article(articleId)?.provenance : undefined} />}
+              source={<AuthorNames authors={articleId ? edit.article(articleId)?.authors : undefined} />}
             >
               <TableCell>
                 <Checkbox

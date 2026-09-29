@@ -1,5 +1,5 @@
 import type { BootstrapDto } from '@/shared/contracts';
-import { matchesContentAuthor } from '@/shared/contracts/content-provenance';
+import { matchesAuthor } from '@/shared/contracts/authorship';
 import type { WorkSnapshot } from '@/shared/contracts/work-tracking';
 import type { WorkFilters } from '@/renderer/features/work-tracking/WorkTrackingToolbar';
 
@@ -41,7 +41,7 @@ export function workTrackingView(
         (filters.showStopped || item.enabled) &&
         (filters.kind === 'ALL' || filters.kind === item.kind) &&
         (filters.status === 'ALL' || filters.status === item.state) &&
-        matchesContentAuthor(articles.get(item.articleId)?.provenance, filters.source) &&
+        matchesAuthor(articles.get(item.articleId)?.authors ?? [], filters.author) &&
         `${titles.get(item.id)} ${item.owner}`.toLocaleLowerCase().includes(query),
     )
     .slice()

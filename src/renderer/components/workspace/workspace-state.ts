@@ -2,7 +2,6 @@ import type {
   ArticleEditorLocationDto,
   BootstrapDto,
   WorkspaceArrangementDto,
-  WorkspaceArticleEditOwnerDto,
   WorkspaceArticleEditorStateDto,
   WorkspaceLayoutStateDto,
 } from '@/shared/contracts';
@@ -57,7 +56,6 @@ export interface WorkspaceRuntimeState {
   arrangement: WorkspaceArrangementDto;
   groups: WorkspaceRuntimeGroup[];
   articleEditors: WorkspaceArticleEditorStateDto[];
-  articleEditOwners: WorkspaceArticleEditOwnerDto[];
   visualWorkspaces: WorkspaceVisualResumeDto[];
 }
 
@@ -147,7 +145,6 @@ export function createDefaultWorkspaceState(spaceId: string, revision = 0): Work
     arrangement: { kind: 'single', groupId },
     groups: [{ id: groupId, activeTabId: tab.id, tabs: [tab] }],
     articleEditors: [],
-    articleEditOwners: [],
     visualWorkspaces: [],
   };
 }
@@ -208,7 +205,7 @@ export function restoreWorkspaceState(data: BootstrapDto): WorkspaceRuntimeState
           groupIds: [arrangedGroupIds[0], arrangedGroupIds[1]],
         }
       : { kind: 'single', groupId: groups[0].id };
-  return normalizeWorkspaceArticleEditOwners({
+  return {
     spaceId: data.spaceId,
     revision: snapshot.revision,
     activeGroupId,
@@ -217,11 +214,10 @@ export function restoreWorkspaceState(data: BootstrapDto): WorkspaceRuntimeState
       arrangement.kind === 'single' || group.id === activeGroupId ? { ...group, tabsCollapsed: false } : group,
     ),
     articleEditors: snapshot.state.articleEditors,
-    articleEditOwners: snapshot.state.articleEditOwners,
     visualWorkspaces: (snapshot.state.visualWorkspaces ?? []).filter((entry) =>
       data.derivedVisuals?.some((visual) => visual.id === entry.visualId && visual.promptSeriesId === entry.seriesId),
     ),
-  });
+  };
 }
 
 export function persistedWorkspaceState(state: WorkspaceRuntimeState): WorkspaceLayoutStateDto {
@@ -244,7 +240,8 @@ export function persistedWorkspaceState(state: WorkspaceRuntimeState): Workspace
       })),
     })),
     articleEditors: state.articleEditors,
-    articleEditOwners: state.articleEditOwners,
+    // Retain the published layout shape; legacy ownership no longer restricts editing.
+    articleEditOwners: [],
     visualWorkspaces: state.visualWorkspaces,
   };
 }
@@ -292,51 +289,6 @@ export function navigateWorkspaceTab(
 
 function articleIdAtLocation(location: AppLocation) {
   return location.view === 'creator' && location.creator.surface === 'article' ? location.creator.articleId : null;
-}
-
-export function normalizeWorkspaceArticleEditOwners(state: WorkspaceRuntimeState) {
-  const tabsByArticle = new Map<string, string[]>();
-  for (const group of state.groups) {
-    for (const tab of group.tabs) {
-      const articleId = articleIdAtLocation(activeLocation(tab));
-      if (articleId) tabsByArticle.set(articleId, [...(tabsByArticle.get(articleId) ?? []), tab.id]);
-    }
-  }
-  const owners = new Map(state.articleEditOwners.map((owner) => [owner.articleId, owner.tabId]));
-  const activeTab = activeWorkspaceTab(state);
-  const activeArticleId = articleIdAtLocation(activeLocation(activeTab));
-  const articleEditOwners = [...tabsByArticle].map(([articleId, tabIds]) => ({
-    articleId,
-    tabId: tabIds.includes(owners.get(articleId) ?? '')
-      ? owners.get(articleId)!
-      : articleId === activeArticleId && tabIds.includes(activeTab.id)
-        ? activeTab.id
-        : tabIds[0],
-  }));
-  if (
-    articleEditOwners.length === state.articleEditOwners.length &&
-    articleEditOwners.every(
-      (owner, index) =>
-        owner.articleId === state.articleEditOwners[index]?.articleId &&
-        owner.tabId === state.articleEditOwners[index]?.tabId,
-    )
-  ) {
-    return state;
-  }
-  return { ...state, articleEditOwners };
-}
-
-export function claimWorkspaceArticleEditOwnership(state: WorkspaceRuntimeState, articleId: string, tabId: string) {
-  const found = findWorkspaceTab(state, tabId);
-  if (!found || articleIdAtLocation(activeLocation(found.tab)) !== articleId) return state;
-  const activated = activateWorkspaceTab(state, found.group.id, tabId);
-  return {
-    ...activated,
-    articleEditOwners: [
-      ...activated.articleEditOwners.filter((owner) => owner.articleId !== articleId),
-      { articleId, tabId },
-    ],
-  };
 }
 
 export function updateWorkspaceArticleLocation(
@@ -434,7 +386,7 @@ export function navigateWorkspaceReference(
       history: { entries, index: entries.length - 1 },
     };
   });
-  return normalizeWorkspaceArticleEditOwners(positioned);
+  return positioned;
 }
 
 export function activateWorkspaceTab(state: WorkspaceRuntimeState, groupId: string, tabId: string) {
@@ -451,7 +403,7 @@ export function activateWorkspaceTab(state: WorkspaceRuntimeState, groupId: stri
   };
 }
 
-/** Fold one split pane without changing its tabs, edit ownership or saved split ratio. */
+/** Fold one split pane without changing its tabs or saved split ratio. */
 export function setWorkspaceGroupTabsCollapsed(state: WorkspaceRuntimeState, groupId: string, collapsed: boolean) {
   const current = state.groups.find((group) => group.id === groupId);
   if (!current || Boolean(current.tabsCollapsed) === collapsed) return state;

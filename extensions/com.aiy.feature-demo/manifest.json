@@ -3,7 +3,7 @@
   "kind": "CAPABILITY",
   "category": "FRONTEND_DESIGN",
   "id": "com.aiy.feature-demo",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "displayName": "Feature Demo",
   "description": "Preview current AIY feature views with local-space data and 2K video export.",
   "engines": {

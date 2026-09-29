@@ -86,6 +86,7 @@ export function VideoDocumentEditorChrome({
         editor={toolbarEditor}
         labels={props.labels}
         mode={searchReplaceMode}
+        className={props.outlineMode ? 'top-0' : undefined}
         onModeChange={setSearchReplaceMode}
         onNavigate={(position) => {
           if (shared) return;

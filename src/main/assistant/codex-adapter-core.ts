@@ -44,6 +44,10 @@ export class CodexAdapterCore {
 
   protected readonly appServer: CodexAppServerClient;
 
+  protected titleAppServer: CodexAppServerClient | null = null;
+
+  protected disposed = false;
+
   protected readonly threadTails = new Map<string, Promise<unknown>>();
 
   protected readonly transport: 'app-server' | 'exec';
@@ -105,8 +109,9 @@ export class CodexAdapterCore {
   }
 
   async dispose() {
+    this.disposed = true;
     this.cancelStatelessJobs();
-    await this.appServer.dispose();
+    await Promise.all([this.appServer.dispose(), this.titleAppServer?.dispose()]);
   }
 
   async refreshHealth(signal?: AbortSignal): Promise<CodexHealth> {
@@ -231,18 +236,19 @@ export class CodexAdapterCore {
     cwd: string,
     developerInstructions: string,
     webSearchMode?: 'disabled' | 'live',
+    appServer: CodexAppServerClient = this.appServer,
   ) {
     const scopeKind = context.scope.kind as ExtensionThreadScopeKind;
     const binding = this.database.getExtensionThreadBinding(CODEX_APP_SERVER_EXTENSION_ID, scopeKind, context.scope.id);
     if (binding) {
       try {
-        await this.appServer.resumeThread(binding.threadId, cwd, webSearchMode);
+        await appServer.resumeThread(binding.threadId, cwd, webSearchMode);
         return binding.threadId;
       } catch (error) {
         if (!this.isMissingThread(error)) throw error;
       }
     }
-    const started = await this.appServer.startThread({ cwd, developerInstructions, webSearchMode });
+    const started = await appServer.startThread({ cwd, developerInstructions, webSearchMode });
     const name = this.threadName(context);
     this.database.bindExtensionThread({
       extensionId: CODEX_APP_SERVER_EXTENSION_ID,
@@ -251,7 +257,7 @@ export class CodexAdapterCore {
       threadId: started.thread.id,
       threadName: name,
     });
-    await this.appServer.setThreadName(started.thread.id, name).catch(() => undefined);
+    await appServer.setThreadName(started.thread.id, name).catch(() => undefined);
     return started.thread.id;
   }
 

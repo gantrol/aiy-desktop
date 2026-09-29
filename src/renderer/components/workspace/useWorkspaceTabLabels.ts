@@ -9,7 +9,7 @@ export function useWorkspaceTabLabels() {
     titleLabels: {
       animation: messages.creator.gifMaker.workspaceTitle,
       outline: messages.creator.outline.title,
-      views: { ...navigation, contentManagement: navigation.settings },
+      views: { ...navigation, contentManagement: messages.app.settings.manageContent },
       newCreation: messages.creator.results.newCreation,
       creationKinds: messages.contentManagement.subtypes,
     },

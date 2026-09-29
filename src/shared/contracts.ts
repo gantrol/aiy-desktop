@@ -3012,7 +3012,8 @@ export interface ArticleContentDto extends ArticleContentInput {
 }
 
 export interface ArticleDto {
-  provenance?: import('@/shared/contracts/content-provenance').ContentProvenance;
+  authors: import('@/shared/contracts/authorship').AuthorSummary[];
+  writeContext?: import('@/shared/contracts/authorship').ContentWriteContext;
   id: string;
   albumId: string | null;
   sourceInspirationStashId: string | null;
@@ -4235,6 +4236,7 @@ export interface DesktopApi
   contentLibrary: import('@/shared/contracts/content-library').ContentLibraryApi;
   publishingMasks: import('@/shared/contracts/publishing-mask').PublishingMasksApi;
   calendar: import('@/shared/contracts/calendar').CalendarApi;
+  me: import('@/shared/contracts/me').MeApi;
   extensionMetrics: import('@/shared/extension-metrics').ExtensionMetricsApi;
   openAiCostsConnection: import('@/shared/openai-costs').OpenAiCostsConnectionApi;
   maintenanceGuide: MaintenanceGuideApi;

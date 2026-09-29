@@ -60,7 +60,7 @@ import {
 const MAX_FILES = 100_000;
 const MAX_EXPORT_ROWS = 100_000;
 const DISCOVERY_STAT_CONCURRENCY = 12;
-const PROCESSED_ANALYSIS_VERSION = 19;
+const PROCESSED_ANALYSIS_VERSION = 21;
 const DETAILED_STATISTICS_VERSION = 4;
 const FILE_YIELD_INTERVAL = 32;
 const safeIntegerSchema = z.number().int().nonnegative().safe();
@@ -690,6 +690,16 @@ export async function scanCodexUsage(options: ScanOptions): Promise<CodexUsageSc
     lastProgressAt = now;
     options.onProgress?.(progressSnapshot(phase));
   };
+  const backUpFacts = () =>
+    options.cache.backupFacts({
+      signal,
+      onProgress: (completed, total) =>
+        options.onProgress?.({
+          ...progressSnapshot('BACKING_UP'),
+          calculationPercent: total ? (completed / total) * 100 : 100,
+        }),
+    });
+  await backUpFacts();
   progress(true);
   for (const file of files) {
     throwIfAborted(signal);
@@ -731,6 +741,7 @@ export async function scanCodexUsage(options: ScanOptions): Promise<CodexUsageSc
     if (checkpoint) options.onCheckpoint?.(progressSnapshot('SCANNING'));
     if (filesProcessed % FILE_YIELD_INTERVAL === 0) await yieldToMainThread(signal);
   }
+  await backUpFacts();
   calculationStartedAt = Date.now();
   progress(true, 'FINALIZING');
   const allCoverage = options.cache.eventCoverage();
@@ -813,5 +824,8 @@ export async function scanCodexUsage(options: ScanOptions): Promise<CodexUsageSc
       processed.hasUnknownServiceTier,
     ),
   };
+  if (options.cache.hasRetainedHistory(fromEpoch, queryToEpoch)) {
+    investigation.warnings.push('SOURCE_HISTORY_RETAINED');
+  }
   return { investigation, exportRows: processed.exportRows };
 }

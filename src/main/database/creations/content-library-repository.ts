@@ -1,3 +1,4 @@
+import { localArticleWriteContext } from '@/main/database/creations/article-write-context';
 import { articleNote, saveArticleNote } from '@/main/database/creations/article-note-repository';
 import { mediaUrl, now } from '@/main/database/core/values';
 import type { LibraryDatabaseRepositories } from '@/main/database/library-database/repositories';
@@ -648,7 +649,7 @@ export class ContentLibraryRepository {
   }
   noteSave(input: DesktopNoteSave) {
     return this.db.transaction(() => {
-      saveArticleNote(this.repositories.articles, input);
+      saveArticleNote(this.repositories.articles, input, localArticleWriteContext(this.db));
       const row = this.db
         .prepare('SELECT draft_json FROM content_editor_drafts WHERE source_id = ? AND editor_id = ?')
         .get(input.id, input.editorId) as { draft_json: string } | undefined;

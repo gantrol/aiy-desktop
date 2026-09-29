@@ -18,6 +18,7 @@ export const contentProvenanceMessages = {
     SYNTHESIZED: 'Synthesized',
     EDITED: 'Edited',
     IMPORTED: 'Imported',
+    COPIED: 'Copied',
     UNKNOWN: 'Unknown',
   },
 };

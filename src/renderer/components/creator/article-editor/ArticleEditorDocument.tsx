@@ -62,7 +62,7 @@ interface Props {
   layoutToolbarRoot: HTMLElement | null;
   splitOpen: boolean;
   title: string;
-  titleAccessory?: ReactNode;
+  titleMetadata?: ReactNode;
   zh: boolean;
   onEditorHandleChange(
     handle: VideoDocumentWysiwygEditorHandle | null,
@@ -76,7 +76,7 @@ interface Props {
   onIllustrationRequest?(selectedText: string | null): void;
   onImageImportError(): void;
   onImageImported(result: VideoDocumentEditorImageImport): void;
-  onMarkdownChange(markdown: string): number;
+  onMarkdownChange(markdown: string, source?: VideoDocumentWysiwygEditorHandle | null): number;
   onPersist(mode: ArticleSaveMode): void;
   onSplitClose(): void;
   onSplitToggle(): void;
@@ -368,7 +368,7 @@ export function ArticleEditorDocument(props: Props) {
   const { attachmentsPanel, attachmentCount, articleId, editorSessionIdentity, comments, commentMutationBusy } = props;
   const { initialElements, layoutToolbarRoot, onTitleChange } = props;
   const { generatingIllustration = false, initialMarkdown, labels, media, mediaBindings, splitOpen } = props;
-  const { title, titleAccessory, zh, onEditorHandleChange, onCommentCreate, onCommentDelete } = props;
+  const { title, titleMetadata, zh, onEditorHandleChange, onCommentCreate, onCommentDelete } = props;
   const { onCommentReply, onCommentStatusChange, onCommentUpdateBody, onIllustrationRequest } = props;
   const { onImageImportError, onImageImported, onMarkdownChange, onPersist, onSplitClose, onSplitToggle } = props;
   const editorMediaBindings = useMemo(() => editorBindings(mediaBindings), [mediaBindings]);
@@ -376,7 +376,7 @@ export function ArticleEditorDocument(props: Props) {
   const initialOutlineItems = useMemo(() => videoDocumentArticleHeadings(initialMarkdown), [initialMarkdown]);
   const [outlineItems, setOutlineItems] = useState(initialOutlineItems);
   const { elements, handleElementsChange } = useArticleElementProjection(initialElements, () =>
-    recordDraftSequence(editorSession.articleElementsChanged()),
+    recordDraftSequence(editorSession.articleElementsChanged(editorHandleRef.current)),
   );
   const [hoveredCommentId, setHoveredCommentId] = useState<string | null>(null);
   const [hoveredCommentRect, setHoveredCommentRect] = useState<ContentCommentDraftPopover['rect'] | null>(null);
@@ -424,7 +424,7 @@ export function ArticleEditorDocument(props: Props) {
       outlineItemsRef.current = nextOutlineItems;
       setOutlineItems(nextOutlineItems);
     }
-    recordDraftSequence(onMarkdownChange(markdown));
+    recordDraftSequence(onMarkdownChange(markdown, editorHandleRef.current));
   }
   function beginComment() {
     const target = editorHandleRef.current?.captureArticleCommentTarget();
@@ -578,7 +578,7 @@ export function ArticleEditorDocument(props: Props) {
         selectedCommentId={selectedCommentId}
         splitOpen={splitOpen}
         title={title}
-        titleAccessory={titleAccessory}
+        titleMetadata={titleMetadata}
         zh={zh}
         onActiveHeadingChange={(index) => setCursorRequest((current) => ({ index, revision: current.revision + 1 }))}
         onArticleEditLocation={(location) => scheduleLocation(location, true)}

@@ -1,3 +1,4 @@
+import { localArticleWriteContext } from '@/main/database/creations/article-write-context';
 import { sameArticleElementPlacements, articleCommentAnchorUpdatesAreApplied } from '@/shared/contracts/article';
 import type { LibraryStorage } from '@/main/database/core/storage';
 import { now } from '@/main/database/core/values';
@@ -169,7 +170,7 @@ export class DesktopNotesRepository {
     return this.db.transaction(() => {
       const note = this.get(input.id);
       if (!note.editable) throw petalError('structuredNote');
-      saveArticleNote(this.articles, input, note.stashId);
+      saveArticleNote(this.articles, input, localArticleWriteContext(this.db), note.stashId);
       // Only acknowledge the exact draft this editor saved; a newer checkpoint survives.
       this.db
         .prepare(

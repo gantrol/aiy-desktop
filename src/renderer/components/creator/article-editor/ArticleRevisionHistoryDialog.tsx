@@ -1,4 +1,4 @@
-import { ContentProvenanceCell } from '@/renderer/features/content-provenance/ContentProvenance';
+import { ContentWriteContextCell } from '@/renderer/features/content-provenance/ContentWriteContext';
 import {
   CheckIcon,
   ChevronLeftIcon,
@@ -738,7 +738,7 @@ export function ArticleRevisionHistoryDialog({
             />
           </div>
           <DialogFooter className="min-h-14 flex-row items-center border-t px-4 py-3 sm:justify-between">
-            {selected.snapshot && <ContentProvenanceCell value={selected.snapshot.provenance} />}
+            {selected.snapshot && <ContentWriteContextCell value={selected.snapshot.writeContext} />}
             <span className="min-w-0 truncate text-xs text-muted-foreground">
               {index.selectedRevision
                 ? `${versionLabel(index.selectedRevision.revisionNo, historyCopy)} · ${revisionTimestamp(index.selectedRevision.createdAt, zh)}`

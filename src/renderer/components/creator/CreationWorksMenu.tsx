@@ -89,55 +89,57 @@ export function CreationWorksMenu({
     }
   };
   return (
-    <DropdownMenu>
-      <DropdownMenuTrigger asChild>
-        <Button
-          type="button"
-          size="icon-sm"
-          variant="ghost"
-          className="shrink-0"
-          data-creation-works
-          disabled={pending}
+    <>
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <Button
+            type="button"
+            size="icon-sm"
+            variant="ghost"
+            className="shrink-0"
+            data-creation-works
+            disabled={pending}
+            aria-label={labels.relatedContent}
+            title={labels.relatedContent}
+          >
+            <Link2Icon className="size-4" aria-hidden="true" />
+          </Button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent
+          align="end"
           aria-label={labels.relatedContent}
-          title={labels.relatedContent}
+          className="max-h-80 w-80 max-w-[calc(100vw-2rem)] overflow-y-auto"
         >
-          <Link2Icon className="size-4" aria-hidden="true" />
-        </Button>
-      </DropdownMenuTrigger>
-      <DropdownMenuContent
-        align="end"
-        aria-label={labels.relatedContent}
-        className="max-h-80 w-80 max-w-[calc(100vw-2rem)] overflow-y-auto"
-      >
-        {forms.map((form) => {
-          const title = creationFormTitle(form, messages.creator.album);
-          const selected = form.key === selectedId;
-          return (
-            <DropdownMenuItem
-              key={form.key}
-              className="min-w-0 gap-1.5"
-              disabled={pending || form.key === context?.form.id}
-              aria-current={selected ? 'page' : undefined}
-              title={`${messages.creator.album.formKinds[form.role]} · ${title}`}
-              onSelect={() => void select(form)}
-            >
-              <WorkLabel form={form} suffix={suffixes.get(form.entityRef.id)} />
-              {selected && <CheckIcon className="ml-auto size-3.5 shrink-0" />}
-            </DropdownMenuItem>
-          );
-        })}
-        {Boolean(relationsAction?.count) && (
-          <>
-            <DropdownMenuSeparator />
-            <DropdownMenuItem onSelect={() => relationsAction?.onOpen()}>
-              <Link2Icon className="size-3.5" />
-              {labels.sourceAndDerived}
-              <span className="ml-auto text-xs tabular-nums text-muted-foreground">{relationsAction?.count}</span>
-            </DropdownMenuItem>
-          </>
-        )}
-      </DropdownMenuContent>
-    </DropdownMenu>
+          {forms.map((form) => {
+            const title = creationFormTitle(form, messages.creator.album);
+            const selected = form.key === selectedId;
+            return (
+              <DropdownMenuItem
+                key={form.key}
+                className="min-w-0 gap-1.5"
+                disabled={pending || form.key === context?.form.id}
+                aria-current={selected ? 'page' : undefined}
+                title={`${messages.creator.album.formKinds[form.role]} · ${title}`}
+                onSelect={() => void select(form)}
+              >
+                <WorkLabel form={form} suffix={suffixes.get(form.entityRef.id)} />
+                {selected && <CheckIcon className="ml-auto size-3.5 shrink-0" />}
+              </DropdownMenuItem>
+            );
+          })}
+          {Boolean(relationsAction?.count) && (
+            <>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem onSelect={() => relationsAction?.onOpen()}>
+                <Link2Icon className="size-3.5" />
+                {labels.sourceAndDerived}
+                <span className="ml-auto text-xs tabular-nums text-muted-foreground">{relationsAction?.count}</span>
+              </DropdownMenuItem>
+            </>
+          )}
+        </DropdownMenuContent>
+      </DropdownMenu>
+    </>
   );
 }
 

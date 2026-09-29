@@ -4,6 +4,7 @@ import { Input } from '@/renderer/components/ui/input';
 import { CreationLibraryFilterMenu } from '@/renderer/components/creator/CreationLibraryFilterMenu';
 import { useI18n } from '@/renderer/i18n/useI18n';
 import type { CreationLibraryFilter } from '@/renderer/components/creator/creationLibraryFilter';
+import type { CreationLibraryAuthorOption } from '@/renderer/components/creator/creationLibraryAuthorFilter';
 
 interface Props {
   searchOpen: boolean;
@@ -12,6 +13,7 @@ interface Props {
   filter: CreationLibraryFilter;
   onQueryChange(query: string): void;
   onFilterChange(filter: CreationLibraryFilter): void;
+  authors?: readonly CreationLibraryAuthorOption[];
 }
 
 export function CreationLibraryToolbar({
@@ -21,6 +23,7 @@ export function CreationLibraryToolbar({
   filter,
   onQueryChange,
   onFilterChange,
+  authors,
 }: Props) {
   const { messages } = useI18n();
   const labels = messages.creator.results;
@@ -32,7 +35,7 @@ export function CreationLibraryToolbar({
     setSearchOpen(false);
   }
 
-  const filterMenu = <CreationLibraryFilterMenu filter={filter} onFilterChange={onFilterChange} />;
+  const filterMenu = <CreationLibraryFilterMenu filter={filter} onFilterChange={onFilterChange} authors={authors} />;
 
   if (!searchVisible) {
     return (
@@ -54,7 +57,7 @@ export function CreationLibraryToolbar({
   }
 
   return (
-    <div className="absolute inset-0 z-30 flex items-center gap-1 bg-surface-sunken px-3">
+    <div className="absolute inset-0 z-30 flex min-w-0 items-center gap-1 bg-surface-sunken">
       <Button
         type="button"
         variant="ghost"

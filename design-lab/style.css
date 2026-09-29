@@ -8,6 +8,9 @@
 @source '../src/renderer/components/creator';
 @source '../src/renderer/components/media';
 @source './extensions.tsx';
+@source './creation-cycle*.tsx';
+@source '../src/renderer/components/workbench';
+@source '../src/renderer/components/app/AppSidebarButton.tsx';
 @source '../src/renderer/features/extensions';
 @source '../src/renderer/components/ui';
 @source '../src/renderer/components/outline';

@@ -8,6 +8,7 @@ import { createHash } from 'node:crypto';
 import { chmod, copyFile } from 'node:fs/promises';
 import path from 'node:path';
 import { registerCalendarIpc } from '@/main/ipc/calendar-handlers';
+import { registerMeIpc } from '@/main/ipc/me-handlers';
 import { registerContentLibraryIpc } from '@/main/ipc/content-library-handlers';
 import { registerPublishingMaskIpc } from '@/main/ipc/publishing-mask-handlers';
 import { registerWorkTrackingIpc } from '@/main/ipc/work-tracking-handlers';
@@ -665,6 +666,7 @@ export function registerIpc(
   registerContentLibraryIpc(ipcMain, database);
   registerPublishingMaskIpc(ipcMain, database);
   registerCalendarIpc(ipcMain, database);
+  registerMeIpc(ipcMain, database);
   registerImageBreakdownIpc({
     ipcMain,
     database,

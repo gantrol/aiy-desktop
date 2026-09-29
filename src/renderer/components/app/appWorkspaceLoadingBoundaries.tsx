@@ -30,6 +30,7 @@ export function createWorkspaceLoadingBoundaries(
     gallery: screen('gallery'),
     search: screen('search'),
     calendar: screen('calendar'),
+    me: screen('me'),
     companion: screen('companion'),
     extensions: screen(view),
     aiCenter: screen('aiCenter'),

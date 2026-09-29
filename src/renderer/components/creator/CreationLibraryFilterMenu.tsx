@@ -3,24 +3,29 @@ import { Button } from '@/renderer/components/ui/button';
 import { Checkbox } from '@/renderer/components/ui/checkbox';
 import { Popover, PopoverContent, PopoverTrigger } from '@/renderer/components/ui/popover';
 import { useI18n } from '@/renderer/i18n/useI18n';
+import { CreationLibraryAuthorSelect } from '@/renderer/components/creator/CreationLibraryAuthorSelect';
+import type { CreationLibraryAuthorOption } from '@/renderer/components/creator/creationLibraryAuthorFilter';
 import {
   allCreationLibraryFilters,
   emptyCreationLibraryFilters,
   isAllCreationLibraryFilter,
+  isAllCreationLibraryTypes,
   type CreationLibraryFilter,
+  type CreationLibraryTypeFilter,
 } from '@/renderer/components/creator/creationLibraryFilter';
 
 interface Props {
   filter: CreationLibraryFilter;
   onFilterChange(filter: CreationLibraryFilter): void;
+  authors?: readonly CreationLibraryAuthorOption[];
 }
 
 interface FilterOption {
-  keys: (keyof CreationLibraryFilter)[];
+  keys: (keyof CreationLibraryTypeFilter)[];
   label: string;
 }
 
-export function CreationLibraryFilterMenu({ filter, onFilterChange }: Props) {
+export function CreationLibraryFilterMenu({ filter, onFilterChange, authors = [] }: Props) {
   const { messages } = useI18n();
   const labels = messages.creator.results;
   const kinds = messages.creator.album.formKinds;
@@ -33,7 +38,7 @@ export function CreationLibraryFilterMenu({ filter, onFilterChange }: Props) {
     { keys: ['inspirations'], label: kinds.INSPIRATION },
     { keys: ['evaluations'], label: kinds.EVALUATION_SUITE },
   ];
-  const allSelected = isAllCreationLibraryFilter(filter);
+  const allSelected = isAllCreationLibraryTypes(filter);
   const selectedOptions = options.filter(({ keys }) => keys.some((key) => filter[key]));
   const noneSelected = selectedOptions.length === 0;
   const valueLabel = allSelected
@@ -41,10 +46,14 @@ export function CreationLibraryFilterMenu({ filter, onFilterChange }: Props) {
     : noneSelected
       ? labels.filterNone
       : selectedOptions.map(({ label }) => label).join(', ');
-  const controlLabel = `${labels.filter}: ${valueLabel}`;
+  const authorLabel =
+    filter.author === 'UNASSIGNED'
+      ? labels.filterAuthorUnconfirmed
+      : authors.find((author) => author.value === filter.author)?.label;
+  const controlLabel = `${labels.filter}: ${valueLabel}${filter.author && filter.author !== 'ALL' ? ` · ${labels.filterAuthor}: ${authorLabel ?? labels.filterAuthorUnavailable}` : ''}`;
 
   function updateOption(keys: FilterOption['keys'], checked: boolean, only = false) {
-    const next = { ...(only ? emptyCreationLibraryFilters : filter) };
+    const next = { ...filter, ...(only ? emptyCreationLibraryFilters : {}) };
     for (const key of keys) next[key] = checked;
     onFilterChange(next);
   }
@@ -54,7 +63,7 @@ export function CreationLibraryFilterMenu({ filter, onFilterChange }: Props) {
       <PopoverTrigger asChild>
         <Button
           type="button"
-          variant={allSelected ? 'ghost' : 'secondary'}
+          variant={isAllCreationLibraryFilter(filter) ? 'ghost' : 'secondary'}
           size="icon-sm"
           className="h-8 shrink-0"
           title={controlLabel}
@@ -75,7 +84,10 @@ export function CreationLibraryFilterMenu({ filter, onFilterChange }: Props) {
               checked={allSelected ? true : noneSelected ? false : 'indeterminate'}
               aria-label={labels.filterSelectAll}
               onCheckedChange={(checked) =>
-                onFilterChange({ ...(checked === true ? allCreationLibraryFilters : emptyCreationLibraryFilters) })
+                onFilterChange({
+                  ...filter,
+                  ...(checked === true ? allCreationLibraryFilters : emptyCreationLibraryFilters),
+                })
               }
             />
             <span>{labels.filterSelectAll}</span>
@@ -86,7 +98,7 @@ export function CreationLibraryFilterMenu({ filter, onFilterChange }: Props) {
             size="xs"
             className="rounded-sm px-2 font-normal text-muted-foreground"
             disabled={noneSelected}
-            onClick={() => onFilterChange({ ...emptyCreationLibraryFilters })}
+            onClick={() => onFilterChange({ ...filter, ...emptyCreationLibraryFilters })}
           >
             {labels.filterClear}
           </Button>
@@ -126,6 +138,11 @@ export function CreationLibraryFilterMenu({ filter, onFilterChange }: Props) {
             </div>
           );
         })}
+        <CreationLibraryAuthorSelect
+          value={filter.author}
+          options={authors}
+          onChange={(author) => onFilterChange({ ...filter, author })}
+        />
       </PopoverContent>
     </Popover>
   );

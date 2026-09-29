@@ -1,3 +1,4 @@
+import { localArticleWriteContext } from '@/main/database/creations/article-write-context';
 import { createHash } from 'node:crypto';
 import { plainTextBlockDocument } from '@/shared/block-document-codecs';
 import { createOutlineDocument } from '@/shared/outline-document';
@@ -79,6 +80,7 @@ export function createCreationOrganizationApi(repositories: LibraryDatabaseRepos
                 },
               },
               requestId ? { requestId } : undefined,
+              localArticleWriteContext(db, requestId),
             );
             if (input.kind === 'create-child') {
               const item = creationItems.findForEntity({ kind: 'ARTICLE', id: article.id });

@@ -16,6 +16,7 @@ import { Input } from '@/renderer/components/ui/input';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/renderer/components/ui/tooltip';
 import type { VideoDocumentWysiwygEditorLabels } from '@/renderer/features/video-documents/VideoDocumentWysiwygToolbar';
 import { commandMatchesShortcut } from '@/renderer/commands/app-shortcuts';
+import { outlineNavigationFocus, revealOutlinePosition } from '@/renderer/features/content-editor/outlineViewState';
 import { cn } from '@/renderer/lib/utils';
 
 export type VideoDocumentSearchReplaceMode = 'search' | 'replace' | null;
@@ -24,6 +25,7 @@ interface Props {
   editor: Editor;
   labels: VideoDocumentWysiwygEditorLabels;
   mode: VideoDocumentSearchReplaceMode;
+  className?: string;
   onModeChange(mode: VideoDocumentSearchReplaceMode): void;
   onNavigate?(position: number): void;
 }
@@ -47,13 +49,25 @@ function selectedText(editor: Editor) {
   return from === to ? '' : editor.state.doc.textBetween(from, to, '\n', '\n');
 }
 
-function editorOwnsShortcut(editor: Editor) {
+function editorOwnsShortcut(editor: Editor, searchRoot: HTMLDivElement | null) {
+  if (editor.isDestroyed) return false;
   const activeElement = document.activeElement;
   const editorRoot = editor.view.dom.closest('[data-slot="video-document-wysiwyg-editor"]');
-  return activeElement !== null && editorRoot?.contains(activeElement) === true;
+  const outlineRoot = editor.view.dom.closest('[data-outline-editor]');
+  return (
+    activeElement !== null &&
+    (searchRoot?.contains(activeElement) === true ||
+      editorRoot?.contains(activeElement) === true ||
+      (outlineRoot?.contains(activeElement) === true &&
+        !activeElement.closest('[data-slot="video-document-wysiwyg-editor"]')))
+  );
 }
 
 function scrollCurrentResultIntoView(editor: Editor) {
+  const storage = findAndReplaceStorage(editor);
+  const current = storage?.results[storage.currentIndex ?? 0];
+  if (!current) return;
+  revealOutlinePosition(editor, current.from);
   window.requestAnimationFrame(() => {
     if (editor.isDestroyed) return;
     const result = editor.view.dom.querySelector<HTMLElement>('.find-and-replace-result-current');
@@ -149,13 +163,14 @@ function resultLabel(labels: VideoDocumentWysiwygEditorLabels, current: number, 
   return total ? labels.searchResultCount(current, total) : labels.noMatches;
 }
 
-export function VideoDocumentSearchReplace({ editor, labels, mode, onModeChange, onNavigate }: Props) {
+export function VideoDocumentSearchReplace({ editor, labels, mode, className, onModeChange, onNavigate }: Props) {
   const [query, setQuery] = useState('');
   const [replacement, setReplacement] = useState('');
   const queryRef = useRef(query);
   const previousModeRef = useRef<VideoDocumentSearchReplaceMode>(null);
   const searchInputRef = useRef<HTMLInputElement>(null);
   const replaceInputRef = useRef<HTMLInputElement>(null);
+  const searchRootRef = useRef<HTMLDivElement>(null);
   const state =
     useEditorState({
       editor,
@@ -183,8 +198,10 @@ export function VideoDocumentSearchReplace({ editor, labels, mode, onModeChange,
         queryRef.current = selection;
         setQuery(selection);
       }
-      if (nextQuery) editor.commands.setSearchTerm(nextQuery);
-      else editor.commands.clearSearch();
+      if (nextQuery) {
+        editor.commands.setSearchTerm(nextQuery);
+        scrollCurrentResultIntoView(editor);
+      } else editor.commands.clearSearch();
       focusFrame = window.requestAnimationFrame(() => {
         searchInputRef.current?.focus();
         searchInputRef.current?.select();
@@ -194,6 +211,12 @@ export function VideoDocumentSearchReplace({ editor, labels, mode, onModeChange,
     } else if (mode === 'search' && previousMode === 'replace') {
       focusFrame = window.requestAnimationFrame(() => searchInputRef.current?.focus());
     } else if (mode === null && previousMode !== null) {
+      const storage = findAndReplaceStorage(editor);
+      const match = storage?.results[storage.currentIndex ?? 0];
+      if (match && outlineNavigationFocus(editor.state) !== undefined) {
+        revealOutlinePosition(editor, match.from);
+        editor.commands.setTextSelection({ from: match.from, to: match.to });
+      }
       editor.commands.clearSearch();
       focusFrame = window.requestAnimationFrame(() => {
         if (!editor.isDestroyed) editor.commands.focus();
@@ -207,9 +230,15 @@ export function VideoDocumentSearchReplace({ editor, labels, mode, onModeChange,
 
   useEffect(() => {
     function handleShortcut(event: KeyboardEvent) {
+      if (event.defaultPrevented || event.isComposing || !editorOwnsShortcut(editor, searchRootRef.current)) return;
+      if (event.key === 'Escape' && mode !== null) {
+        event.preventDefault();
+        onModeChange(null);
+        return;
+      }
       const find = commandMatchesShortcut(event, window.desktopApi.appPlatform, 'document.find');
       const replace = commandMatchesShortcut(event, window.desktopApi.appPlatform, 'document.replace');
-      if ((!find && !replace) || !editorOwnsShortcut(editor)) return;
+      if (!find && !replace) return;
       if (find) {
         event.preventDefault();
         if (mode === null) onModeChange('search');
@@ -234,8 +263,10 @@ export function VideoDocumentSearchReplace({ editor, labels, mode, onModeChange,
   function updateQuery(value: string) {
     queryRef.current = value;
     setQuery(value);
-    if (value) editor.commands.setSearchTerm(value);
-    else editor.commands.clearSearch();
+    if (value) {
+      editor.commands.setSearchTerm(value);
+      scrollCurrentResultIntoView(editor);
+    } else editor.commands.clearSearch();
   }
 
   function updateReplacement(value: string) {
@@ -253,10 +284,11 @@ export function VideoDocumentSearchReplace({ editor, labels, mode, onModeChange,
 
   return (
     <div
+      ref={searchRootRef}
       hidden={mode === null}
       role="search"
       aria-label={labels.searchAndReplace}
-      className="sticky top-9 z-20 border-b bg-surface px-2 py-2"
+      className={cn('sticky top-9 z-20 border-b bg-surface px-2 py-2', className)}
       onKeyDown={(event) => {
         if (event.key !== 'Escape' || event.nativeEvent.isComposing) return;
         event.preventDefault();
@@ -298,14 +330,20 @@ export function VideoDocumentSearchReplace({ editor, labels, mode, onModeChange,
           <SearchIconButton
             active={state.caseSensitive}
             label={labels.matchCase}
-            onClick={() => editor.commands.setCaseSensitive(!state.caseSensitive)}
+            onClick={() => {
+              editor.commands.setCaseSensitive(!state.caseSensitive);
+              scrollCurrentResultIntoView(editor);
+            }}
           >
             <CaseSensitiveIcon className="size-4" />
           </SearchIconButton>
           <SearchIconButton
             active={state.wholeWord}
             label={labels.wholeWord}
-            onClick={() => editor.commands.setWholeWord(!state.wholeWord)}
+            onClick={() => {
+              editor.commands.setWholeWord(!state.wholeWord);
+              scrollCurrentResultIntoView(editor);
+            }}
           >
             <WholeWordIcon className="size-4" />
           </SearchIconButton>

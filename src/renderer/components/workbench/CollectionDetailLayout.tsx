@@ -8,6 +8,7 @@ import {
   type ReactNode,
   type PointerEvent,
 } from 'react';
+import { createPortal } from 'react-dom';
 import { WorkbenchPaneToggle } from '@/renderer/components/workbench/WorkbenchPane';
 import { WorkbenchPaneResizeHandle } from '@/renderer/components/workbench/WorkbenchPaneResizeHandle';
 import { useWorkbenchLayout } from '@/renderer/components/workbench/useWorkbenchLayout';
@@ -41,7 +42,7 @@ export function CollectionDetailLayout({
   collectionWidth = 280,
   minimumDetailWidth = 480,
   revealDetailOnSelection = true,
-  toggleDockSide = 'left',
+  toggleHost,
   collection,
   children,
   className,
@@ -53,7 +54,8 @@ export function CollectionDetailLayout({
   minimumDetailWidth?: number;
   /** Disable for background/automatic selection; explicit row activation still calls revealDetail. */
   revealDetailOnSelection?: boolean;
-  toggleDockSide?: 'left' | 'right';
+  /** Use an existing page toolbar when the regions do not have their own headers. */
+  toggleHost?: HTMLElement | null;
   collection(controls: WorkbenchRegionControls): ReactNode;
   children(controls: WorkbenchRegionControls): ReactNode;
   className?: string;
@@ -66,6 +68,8 @@ export function CollectionDetailLayout({
   const origin = useRef<HTMLElement | null>(null);
   const collectionRoot = useRef<HTMLElement>(null);
   const detailRoot = useRef<HTMLDivElement>(null);
+  const toggleButton = useRef<HTMLButtonElement>(null);
+  const restoreToggleFocus = useRef(false);
   const compactDrag = useRef<(() => void) | null>(null);
   const focusFrame = useRef<number | null>(null);
   const root = layout.root;
@@ -127,6 +131,11 @@ export function CollectionDetailLayout({
   }, [selectionKey, layout.wide, revealDetailOnSelection, focusVisibleRegion]);
   const collectionVisible = layout.wide ? layout.expanded : compactCollection;
   const detailVisible = layout.wide || !compactCollection;
+  useLayoutEffect(() => {
+    // Inline controls move between headers; keep keyboard focus on the replacement button.
+    if (restoreToggleFocus.current) toggleButton.current?.focus({ preventScroll: true });
+    restoreToggleFocus.current = false;
+  }, [collectionVisible]);
   const revealDetail = () => {
     if (layout.wide) return;
     const focused = document.activeElement;
@@ -144,6 +153,7 @@ export function CollectionDetailLayout({
     compactDrag.current?.();
     compactDrag.current = null;
     if (layout.wide) {
+      restoreToggleFocus.current = document.activeElement === toggleButton.current;
       layout.setExpanded(!layout.expanded);
     } else {
       setCompactCollection(!compactCollection);
@@ -168,6 +178,17 @@ export function CollectionDetailLayout({
       },
     );
   };
+  const toggle = (
+    <WorkbenchPaneToggle
+      ref={toggleButton}
+      data-pane-toggle
+      floating={false}
+      expanded={collectionVisible}
+      label={collectionLabel}
+      aria-controls={id}
+      onClick={toggleCollection}
+    />
+  );
   return (
     <div
       ref={layout.root}
@@ -199,7 +220,12 @@ export function CollectionDetailLayout({
           inert={!collectionVisible}
           className={cn('min-h-0 min-w-0 flex-1 flex-col', collectionVisible ? 'flex' : 'hidden')}
         >
-          {collection({ toggle: null, visible: collectionVisible, wide: layout.wide, revealDetail })}
+          {collection({
+            toggle: toggleHost === undefined && collectionVisible ? toggle : null,
+            visible: collectionVisible,
+            wide: layout.wide,
+            revealDetail,
+          })}
         </div>
         {layout.wide && (
           <WorkbenchPaneResizeHandle
@@ -221,7 +247,12 @@ export function CollectionDetailLayout({
         inert={!detailVisible}
         className={cn('min-h-0 min-w-0 flex-1 flex-col outline-none', detailVisible ? 'flex' : 'hidden')}
       >
-        {children({ toggle: null, visible: detailVisible, wide: layout.wide, revealDetail })}
+        {children({
+          toggle: toggleHost === undefined && !collectionVisible ? toggle : null,
+          visible: detailVisible,
+          wide: layout.wide,
+          revealDetail,
+        })}
       </div>
       {!layout.wide && (
         <div className={cn('absolute inset-y-0 w-0', compactCollection ? 'right-0' : 'left-0')}>
@@ -240,14 +271,7 @@ export function CollectionDetailLayout({
           />
         </div>
       )}
-      <WorkbenchPaneToggle
-        data-pane-toggle
-        expanded={collectionVisible}
-        dockSide={toggleDockSide}
-        label={collectionLabel}
-        aria-controls={id}
-        onClick={toggleCollection}
-      />
+      {toggleHost && createPortal(toggle, toggleHost)}
     </div>
   );
 }

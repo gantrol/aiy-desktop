@@ -199,6 +199,7 @@ export function GalleryScreen({
   }));
   const { scope, contentTypes, unratedDimensions } = preferences;
   const [query, setQuery] = useState(location.browse?.query ?? '');
+  const [navigationToggleHost, setNavigationToggleHost] = useState<HTMLDivElement | null>(null);
   const [debouncedQuery, setDebouncedQuery] = useState(() => location.browse?.query.trim() ?? '');
   const viewportSnapshotRef = useRef(location.browse?.viewport);
   const [viewportRestoreRevision, setViewportRestoreRevision] = useState(0);
@@ -1580,6 +1581,7 @@ export function GalleryScreen({
       >
         <div className={active && selectedItem ? 'hidden' : 'contents'}>
           <header className="flex min-h-14 shrink-0 flex-wrap items-center gap-x-3 gap-y-1 border-b px-4 py-2 sm:px-6">
+            <div ref={setNavigationToggleHost} className="flex shrink-0" />
             <h1 className="text-lg font-semibold tracking-tight">{l.title}</h1>
             <span data-slot="material-result-count" className="text-xs text-muted-foreground" aria-live="polite">
               {searchPending ? l.searching : resultCountLabel}
@@ -1603,6 +1605,7 @@ export function GalleryScreen({
 
           <div className="flex min-h-0 min-w-0 flex-1 overflow-hidden">
             <MaterialLibraryNavigation
+              toggleHost={navigationToggleHost}
               albums={albums}
               category={category}
               activeAlbumId={activeAlbumId}

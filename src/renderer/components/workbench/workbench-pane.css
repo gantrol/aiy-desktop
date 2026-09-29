@@ -5,21 +5,6 @@ aside:has(> .workbench-pane-toggle-dock),
   position: relative;
 }
 
-.workbench-pane-toggle-dock {
-  position: absolute;
-  bottom: 10px;
-  z-index: 45;
-  width: 32px;
-  height: 32px;
-}
-
-.workbench-pane-toggle-dock[data-side='left'] {
-  left: 10px;
-}
-.workbench-pane-toggle-dock[data-side='right'] {
-  right: 10px;
-}
-
 [data-workbench-layout] > [data-workbench-collection] {
   transition: width 200ms cubic-bezier(0.2, 0.8, 0.2, 1);
 }
@@ -35,6 +20,9 @@ aside:has(> .workbench-pane-toggle-dock),
 /* Navigation-only adapters own one direct flex sibling, without moving or remounting the content. */
 div:has(> [data-workbench-navigation-pane]) {
   position: relative;
+}
+div:has(> [data-workbench-navigation-pane][data-inline-toggle='false']) {
+  padding-top: 3.5rem;
 }
 div:has(> [data-workbench-navigation-pane][data-mode='compact'][data-open='true'])
   > :not([data-workbench-navigation-pane]):not(.workbench-pane-toggle-dock) {

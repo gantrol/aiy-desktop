@@ -6,7 +6,7 @@ import { WorkSelect } from '@/renderer/features/work-tracking/WorkFields';
 import { useI18n } from '@/renderer/i18n/useI18n';
 import { workItemKinds, workItemStates } from '@/shared/contracts/work-tracking';
 import type { ArticleDto } from '@/shared/contracts';
-import { ContentSourceFilter } from '@/renderer/features/content-provenance/ContentSourceFilter';
+import { ContentAuthorFilter } from '@/renderer/features/me/ContentAuthorFilter';
 
 export interface WorkFilters {
   tab: string;
@@ -14,7 +14,7 @@ export interface WorkFilters {
   kind: 'ALL' | 'UNTRACKED' | (typeof workItemKinds)[number];
   status: 'ALL' | (typeof workItemStates)[number];
   showStopped: boolean;
-  source?: string;
+  author?: string;
 }
 export function WorkTrackingToolbar({
   value,
@@ -92,7 +92,7 @@ export function WorkTrackingToolbar({
               />
               {l.showStopped}
             </label>
-            <ContentSourceFilter articles={articles} value={value.source} onChange={(source) => onChange({ source })} />
+            <ContentAuthorFilter articles={articles} value={value.author} onChange={(author) => onChange({ author })} />
           </>
         )}
       </div>

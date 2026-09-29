@@ -28,6 +28,7 @@ export function useVideoDocumentEditorComposition({
   const controller = useMemo(() => {
     const phase = { current: 'idle' as EditorCompositionPhase };
     let released = false;
+    let committedOnRelease = false;
     const activeView = { current: null as EditorView | null };
     const revision = { current: 0 };
     const deferredRevision = { current: 0 };
@@ -103,6 +104,9 @@ export function useVideoDocumentEditorComposition({
         released = false;
       },
       canReadSnapshot: () => !released && phase.current === 'idle' && !editor.current?.view.composing,
+      // A closing view may still owe its peers the final compositionend publication.
+      canSynchronizeDocument: () =>
+        released ? committedOnRelease : phase.current === 'idle' && !editor.current?.view.composing,
       isInputPending: () => phase.current !== 'idle',
       subscribeInput(listener: () => void) {
         listeners.add(listener);
@@ -116,6 +120,7 @@ export function useVideoDocumentEditorComposition({
         // identity/decorations transactions are allowed during this handoff.
         const current = editor.current;
         const committed = phase.current !== 'composing';
+        committedOnRelease = committed;
         if (phase.current === 'ending' && current && !current.isDestroyed) publish.current(current, false);
         released = true;
         revision.current += 1;

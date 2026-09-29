@@ -7,7 +7,15 @@ import { DEEPSEEK_API_EXTENSION_ID } from '@/shared/extension-ids';
 import { localizeExtensionManifest } from '@/shared/extension-localization';
 
 /** The extension detail heading, shared with prepared feature-demo windows. */
-export function ExtensionPluginHeader({ extension, actions }: { extension: ExtensionDto; actions?: ReactNode }) {
+export function ExtensionPluginHeader({
+  extension,
+  actions,
+  navigationAction,
+}: {
+  extension: ExtensionDto;
+  actions?: ReactNode;
+  navigationAction?: ReactNode;
+}) {
   const { locale, messages } = useI18n();
   const copy = messages.extensions;
   const manifest = localizeExtensionManifest(extension.manifest, locale);
@@ -20,12 +28,15 @@ export function ExtensionPluginHeader({ extension, actions }: { extension: Exten
     !(extension.manifest.id === DEEPSEEK_API_EXTENSION_ID && extension.connectionState === 'NEEDS_CONFIGURATION');
   return (
     <div className="grid grid-cols-[auto_minmax(0,1fr)] items-start gap-x-3 gap-y-3 @4xl/extension-detail:grid-cols-[auto_minmax(0,1fr)_auto] @4xl/extension-detail:gap-x-4">
-      <div className="grid size-10 shrink-0 place-items-center rounded-lg border bg-muted @xl/extension-detail:size-11">
-        {extension.manifest.kind === 'LANGUAGE' ? (
-          <LanguagesIcon className="size-5" />
-        ) : (
-          <BlocksIcon className="size-5" />
-        )}
+      <div className="flex items-center gap-2">
+        {navigationAction}
+        <div className="grid size-10 shrink-0 place-items-center rounded-lg border bg-muted @xl/extension-detail:size-11">
+          {extension.manifest.kind === 'LANGUAGE' ? (
+            <LanguagesIcon className="size-5" />
+          ) : (
+            <BlocksIcon className="size-5" />
+          )}
+        </div>
       </div>
       <div className="min-w-0 flex-1">
         <div className="flex flex-wrap items-center gap-2">

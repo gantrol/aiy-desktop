@@ -1,6 +1,8 @@
-import { mkdir } from 'node:fs/promises';
+import { mkdir, rm, stat, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import Database from 'better-sqlite3';
+import { replaceCodexUsageSource } from '@/main/extensions/codex-usage-investigator/cache-ingestion';
+import codexUsageSourceHistorySql from '@/main/database/sql/v03-codex-usage-cache-revision-006-source-history.sql?raw';
 import { z } from 'zod';
 import codexUsageCacheRevision3Sql from '@/main/database/sql/v03-codex-usage-cache-revision-003.sql?raw';
 import codexUsageCacheRevision4Sql from '@/main/database/sql/v03-codex-usage-cache-revision-004.sql?raw';
@@ -23,7 +25,6 @@ import {
 } from '@/shared/contracts/codex-usage';
 import {
   codexUsageInternalRowSchema,
-  codexUsageSessionReadResultSchema,
   type CodexUsageInternalEvent,
   type CodexUsageInternalRow,
   type SessionReadResult,
@@ -48,6 +49,9 @@ import { readCodexTurnSpeedAnalysis } from '@/main/extensions/codex-usage-invest
 import { readCodexModelComparison } from '@/main/extensions/codex-usage-investigator/model-comparison';
 import { sqlitePages } from '@/main/extensions/codex-usage-investigator/sqlite-pages';
 import { cachedUsageEventPages } from '@/main/extensions/codex-usage-investigator/cache-events';
+import { backupCodexUsageFacts, type FactBackupOptions } from '@/main/extensions/codex-usage-investigator/fact-backup';
+import { FACT_BACKUP_DIRECTORY } from '@/main/extensions/codex-usage-investigator/fact-backup-format';
+import { restoreCodexUsageFacts } from '@/main/extensions/codex-usage-investigator/fact-backup-restore';
 
 export { codexUsageSourceCacheKey } from '@/main/extensions/codex-usage-investigator/source-cache-key';
 
@@ -127,7 +131,37 @@ export class CodexUsageCacheDatabase {
   static async open(directory: string) {
     const root = path.resolve(directory);
     await mkdir(root, { recursive: true });
-    return new CodexUsageCacheDatabase(root);
+    const missing = await stat(path.join(root, 'usage-cache.sqlite')).then(
+      () => false,
+      (error: NodeJS.ErrnoException) => {
+        if (error.code === 'ENOENT') return true;
+        throw error;
+      },
+    );
+    const restoreMarker = path.join(root, 'usage-facts-restore-pending');
+    if (missing) await writeFile(restoreMarker, '1');
+    const cache = new CodexUsageCacheDatabase(root);
+    try {
+      await cache.migrate();
+      const restorePending = await stat(restoreMarker).then(
+        () => true,
+        (error: NodeJS.ErrnoException) => {
+          if (error.code === 'ENOENT') return false;
+          throw error;
+        },
+      );
+      if (missing || restorePending) {
+        if (!cache.database.prepare('SELECT 1 FROM usage_source_files LIMIT 1').get()) {
+          await restoreCodexUsageFacts(path.join(root, 'backups', FACT_BACKUP_DIRECTORY), cache.database);
+        }
+        await rm(restoreMarker);
+      }
+      cache.recoverInterruptedTasks();
+      return cache;
+    } catch (error) {
+      cache.close();
+      throw error;
+    }
   }
 
   /** Calendar reads never create, migrate or recover the investigator's private cache. */
@@ -148,8 +182,10 @@ export class CodexUsageCacheDatabase {
     if (journalMode !== 'wal') this.database.pragma('journal_mode = WAL');
     this.database.pragma('synchronous = NORMAL');
     this.database.pragma('foreign_keys = ON');
-    this.migrate();
-    this.recoverInterruptedTasks();
+  }
+
+  backupFacts(options?: FactBackupOptions) {
+    return backupCodexUsageFacts(this.database.name, options);
   }
 
   close() {
@@ -284,124 +320,18 @@ export class CodexUsageCacheDatabase {
     result: SessionReadResult,
     serviceTierFallback?: CodexUsageServiceTierFallback | null,
   ) {
-    const parsed = codexUsageSessionReadResultSchema.parse(result);
-    const events = [...parsed.events].sort(
-      (left, right) =>
-        Date.parse(left.timestamp) - Date.parse(right.timestamp) ||
-        (left.turnId ?? '').localeCompare(right.turnId ?? ''),
+    replaceCodexUsageSource(this.database, file, result, serviceTierFallback);
+  }
+
+  hasRetainedHistory(fromEpoch: number | null, toEpoch: number) {
+    return Boolean(
+      this.database
+        .prepare(
+          `SELECT 1 FROM usage_source_files
+      WHERE history_retained = 1 AND first_event_ms <= ? AND last_event_ms >= COALESCE(?, 0) LIMIT 1`,
+        )
+        .get(toEpoch, fromEpoch),
     );
-    const chatTurns = [...parsed.chatTurns].sort((left, right) => left.turnOrder - right.turnOrder);
-    const cacheKey = codexUsageSourceCacheKey(file, serviceTierFallback);
-    const firstEventMs = events.length ? Date.parse(events[0]!.timestamp) : null;
-    const lastEventMs = events.length ? Date.parse(events.at(-1)!.timestamp) : null;
-    const updatedAt = new Date().toISOString();
-    const upsertSource = this.database.prepare(
-      `INSERT INTO usage_source_files (
-        session_id, cache_key, size_bytes, mtime_ns, ctime_ns, thread_source, thread_created_ms,
-        first_event_ms, last_event_ms, event_count, invalid_records, oversized_records,
-        bytes_read, context_compaction_count, turn_metadata_complete, updated_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-      ON CONFLICT(session_id) DO UPDATE SET
-        cache_key = excluded.cache_key,
-        size_bytes = excluded.size_bytes,
-        mtime_ns = excluded.mtime_ns,
-        ctime_ns = excluded.ctime_ns,
-        thread_source = excluded.thread_source,
-        thread_created_ms = excluded.thread_created_ms,
-        first_event_ms = excluded.first_event_ms,
-        last_event_ms = excluded.last_event_ms,
-        event_count = excluded.event_count,
-        invalid_records = excluded.invalid_records,
-        oversized_records = excluded.oversized_records,
-        bytes_read = excluded.bytes_read,
-        context_compaction_count = excluded.context_compaction_count,
-        turn_metadata_complete = excluded.turn_metadata_complete,
-        updated_at = excluded.updated_at`,
-    );
-    const insertEvent = this.database.prepare(
-      `INSERT INTO usage_events (
-        source_session_id, event_order, event_fingerprint, turn_id, timestamp_ms, timestamp, model,
-        service_tier, service_tier_inferred, quota_kind,
-        limit_id, plan_type, used_percent, window_duration_mins, resets_at,
-        secondary_used_percent, secondary_window_duration_mins, secondary_resets_at,
-        input_tokens, cached_input_tokens, cache_write_input_tokens, output_tokens,
-        reasoning_output_tokens, total_tokens
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-    );
-    const insertChatTurn = this.database.prepare(
-      `INSERT INTO usage_chat_turns (
-        source_session_id, turn_order, turn_id, started_ms, started_at,
-        terminal_ms, terminal_at, terminal_state, duration_ms, model, reasoning_effort, service_tier
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-    );
-    this.database.transaction(() => {
-      upsertSource.run(
-        file.sessionId,
-        cacheKey,
-        file.size,
-        file.mtimeNs,
-        file.ctimeNs,
-        file.threadSource,
-        file.createdAtMs,
-        firstEventMs,
-        lastEventMs,
-        events.length,
-        parsed.invalidRecords,
-        parsed.oversizedRecords,
-        parsed.bytesRead,
-        parsed.contextCompactionCount,
-        parsed.turnMetadataComplete ? 1 : 0,
-        updatedAt,
-      );
-      this.database.prepare('DELETE FROM usage_events WHERE source_session_id = ?').run(file.sessionId);
-      this.database.prepare('DELETE FROM usage_chat_turns WHERE source_session_id = ?').run(file.sessionId);
-      chatTurns.forEach((turn) => {
-        insertChatTurn.run(
-          file.sessionId,
-          turn.turnOrder,
-          turn.turnId,
-          Date.parse(turn.startedAt),
-          turn.startedAt,
-          turn.terminalAt ? Date.parse(turn.terminalAt) : null,
-          turn.terminalAt,
-          turn.terminalState,
-          turn.durationMs,
-          turn.model,
-          turn.reasoningEffort,
-          turn.serviceTier,
-        );
-      });
-      events.forEach((event, eventOrder) => {
-        insertEvent.run(
-          file.sessionId,
-          eventOrder,
-          event.eventFingerprint,
-          event.turnId,
-          Date.parse(event.timestamp),
-          event.timestamp,
-          event.model,
-          event.serviceTier,
-          event.serviceTierInferred ? 1 : 0,
-          event.quotaKind,
-          event.limitId,
-          event.planType,
-          event.usedPercent,
-          event.windowDurationMins,
-          event.resetsAt,
-          event.secondaryUsedPercent,
-          event.secondaryWindowDurationMins,
-          event.secondaryResetsAt,
-          event.usage.inputTokens,
-          event.usage.cachedInputTokens,
-          event.usage.cacheWriteInputTokens,
-          event.usage.outputTokens,
-          event.usage.reasoningOutputTokens,
-          event.usage.totalTokens,
-        );
-      });
-      this.database.prepare('UPDATE usage_ingestion_meta SET data_revision = data_revision + 1 WHERE id = 1').run();
-      this.database.prepare('DELETE FROM usage_processed_cache').run();
-    })();
   }
 
   eventCoverage(fromEpoch: number | null = null, toEpoch: number = Number.MAX_SAFE_INTEGER): CodexUsageEventCoverage {
@@ -638,7 +568,7 @@ export class CodexUsageCacheDatabase {
     }
   }
 
-  private migrate() {
+  private async migrate() {
     const version = z
       .number()
       .int()
@@ -662,6 +592,7 @@ export class CodexUsageCacheDatabase {
     const sourceColumns = z
       .array(sqliteTableInfoRowSchema)
       .parse(this.database.pragma('table_info(usage_source_files)'));
+    const hasRetainedHistoryColumn = sourceColumns.some((column) => column.name === 'history_retained');
     const hasThreadSourceColumn = sourceColumns.some((column) => column.name === 'thread_source');
     const hasTurnMetadataCompleteColumn = sourceColumns.some((column) => column.name === 'turn_metadata_complete');
     const hasThreadCreatedMsColumn = sourceColumns.some((column) => column.name === 'thread_created_ms');
@@ -679,6 +610,7 @@ export class CodexUsageCacheDatabase {
       hasServiceTierInferredColumn &&
       hasTurnIdColumn &&
       hasThreadSourceColumn &&
+      hasRetainedHistoryColumn &&
       hasTurnMetadataCompleteColumn &&
       hasThreadCreatedMsColumn &&
       hasContextCompactionCountColumn &&
@@ -687,6 +619,8 @@ export class CodexUsageCacheDatabase {
     ) {
       return;
     }
+    // Some older migrations rebuild event tables. Preserve their facts before executing them.
+    if (sourceColumns.length) await this.backupFacts();
     this.database.transaction(() => {
       if (version < 1) {
         this.database.exec(
@@ -804,6 +738,7 @@ export class CodexUsageCacheDatabase {
       }
       if (!hasContextCompactionCountColumn) this.database.exec(codexUsageCacheRevision6ContextCompactionsSql);
       if (!hasTurnSpeedColumns) this.database.exec(codexUsageCacheRevision6TurnSpeedSql);
+      if (!hasRetainedHistoryColumn) this.database.exec(codexUsageSourceHistorySql);
       this.database.pragma(`user_version = ${DATABASE_SCHEMA_VERSION}`);
     })();
   }

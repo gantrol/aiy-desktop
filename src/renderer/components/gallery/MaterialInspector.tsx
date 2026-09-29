@@ -434,6 +434,7 @@ function MaterialDetailBody({
         navigationAction={navigationAction}
         propertiesAction={
           <WorkbenchPaneToggle
+            floating={false}
             side="right"
             expanded={propertiesOpen}
             label={messages.workbench.properties}

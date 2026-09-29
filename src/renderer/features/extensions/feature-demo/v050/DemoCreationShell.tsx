@@ -101,7 +101,6 @@ export function DemoCreationShell({ children, gif }: { children: ReactNode; gif:
           transitionShowcaseVisible={false}
           view="creator"
           onViewChange={demoNoop}
-          onSettingsOpen={demoNoop}
           notify={demoNoop}
         />
         <div

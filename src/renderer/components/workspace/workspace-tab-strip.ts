@@ -48,6 +48,7 @@ export interface WorkspaceTabStripProps {
   onNewTab(view: AppView): void;
   onOpenBeside(view: AppView): void;
   splitAxis: 'columns' | 'rows' | null;
+  splitPosition: 'start' | 'end';
   onMerge(): void;
   onMoveToOtherGroup(tabId: string): void;
   onSplit(axis: 'columns' | 'rows'): void;

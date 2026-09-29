@@ -78,10 +78,7 @@ export default function ContentSearchScreen({
       }}
     >
       <div ref={searchRoot} className="flex min-h-0 min-w-0 w-full flex-1 flex-col">
-        <header className="flex min-h-14 shrink-0 items-center gap-2 px-4 py-2">
-          <h1 className="text-sm font-semibold">{messages.app.navigation.search}</h1>
-        </header>
-        <div className="shrink-0 space-y-3 border-b px-3 pb-3">
+        <div className="shrink-0 space-y-3 border-b p-3">
           <div className="flex items-center gap-2 rounded-md bg-surface-sunken px-3 focus-within:ring-2 focus-within:ring-inset focus-within:ring-ring">
             <SearchIcon aria-hidden="true" className="size-4 shrink-0 text-muted-foreground" />
             <ContentSearchInput

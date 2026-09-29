@@ -541,6 +541,7 @@ export const codexUsageWarningCodeSchema = z.enum([
   'QUOTA_SAMPLES_TRUNCATED',
   'DATABASE_INDEX_UNAVAILABLE',
   'EXPORT_ROWS_TRUNCATED',
+  'SOURCE_HISTORY_RETAINED',
 ]);
 
 export const codexUsagePricingBasisSchema = z
@@ -593,9 +594,11 @@ export const codexUsageInvestigationSchema = z
   .strict()
   .refine(customRangeIsConsistent, { message: customRangeMessage, path: ['dateRange'] });
 
+export const CODEX_USAGE_FACT_BACKUP_FAILED = 'CODEX_USAGE_FACT_BACKUP_FAILED';
+
 export const codexUsageScanProgressSchema = z
   .object({
-    phase: z.enum(['DISCOVERING', 'SCANNING', 'FINALIZING']),
+    phase: z.enum(['DISCOVERING', 'BACKING_UP', 'SCANNING', 'FINALIZING']),
     filesDiscovered: nonNegativeIntegerSchema,
     filesProcessed: nonNegativeIntegerSchema,
     filesScanned: nonNegativeIntegerSchema,

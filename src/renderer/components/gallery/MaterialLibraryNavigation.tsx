@@ -55,6 +55,7 @@ interface Labels extends MaterialAlbumBranchLabels {
 interface Props {
   albums: MaterialAlbumDto[];
   browseOnly?: boolean;
+  toggleHost?: HTMLElement | null;
   category: MaterialLibraryCategory;
   activeAlbumId: string | null;
   dictionarySelection: GalleryDictionaryCollection | null;
@@ -79,6 +80,7 @@ interface Props {
 export function MaterialLibraryNavigation({
   albums,
   browseOnly = false,
+  toggleHost,
   category,
   activeAlbumId,
   dictionarySelection,
@@ -191,6 +193,7 @@ export function MaterialLibraryNavigation({
       {...itemDragScopeProps}
       data-slot="material-library-navigation"
       layoutKey={browseOnly ? 'material-picker-navigation' : 'material-library-navigation'}
+      toggleHost={toggleHost}
       label={labels.albums}
       selectionKey={JSON.stringify([navigationRevision, category, activeAlbumId, dictionarySelection])}
     >

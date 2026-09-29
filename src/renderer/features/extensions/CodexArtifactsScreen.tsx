@@ -34,6 +34,7 @@ export function CodexArtifactsScreen({ active, extension, notify, onOpenCreation
     l = messages.extensions.codexArtifacts;
   const [tab, setTab] = useState<WorkspaceTab>(initialTab);
   const [materialTab, setMaterialTab] = useState('images');
+  const [historyToggleHost, setHistoryToggleHost] = useState<HTMLDivElement | null>(null);
   const [visited, setVisited] = useState(() => new Set<WorkspaceTab>([tab]));
   const change = (next: string) => {
     setTab(next as WorkspaceTab);
@@ -70,21 +71,24 @@ export function CodexArtifactsScreen({ active, extension, notify, onOpenCreation
   }
   return (
     <Tabs value={tab} onValueChange={change} className="size-full bg-background">
-      <TabsList className="max-w-full shrink-0 overflow-x-auto px-3" aria-label={copy.codex.title}>
-        {(
-          [
-            ['history', History, l.tabs.history],
-            ['materials', ImagesIcon, copy.codex.materials],
-            ['usage', GaugeIcon, l.tabs.usage],
-            ['settings', Settings, copy.codex.settings],
-          ] as const
-        ).map(([value, Icon, label]) => (
-          <TabsTrigger key={value} value={value} className="h-12 shrink-0 gap-2">
-            <Icon className="size-4" />
-            <span>{label}</span>
-          </TabsTrigger>
-        ))}
-      </TabsList>
+      <div className="flex min-w-0 shrink-0 items-center border-b px-3">
+        <div ref={setHistoryToggleHost} className={tab === 'history' ? 'mr-2 flex shrink-0' : 'hidden'} />
+        <TabsList className="min-w-0 flex-1 overflow-x-auto border-b-0" aria-label={copy.codex.title}>
+          {(
+            [
+              ['history', History, l.tabs.history],
+              ['materials', ImagesIcon, copy.codex.materials],
+              ['usage', GaugeIcon, l.tabs.usage],
+              ['settings', Settings, copy.codex.settings],
+            ] as const
+          ).map(([value, Icon, label]) => (
+            <TabsTrigger key={value} value={value} className="h-12 shrink-0 gap-2">
+              <Icon className="size-4" />
+              <span>{label}</span>
+            </TabsTrigger>
+          ))}
+        </TabsList>
+      </div>
       {visited.has('history') && (
         <TabsContent
           forceMount
@@ -97,6 +101,7 @@ export function CodexArtifactsScreen({ active, extension, notify, onOpenCreation
               active={active && tab === 'history'}
               extension={extension}
               standalone
+              navigationToggleHost={historyToggleHost}
               notify={notify}
             />
           </ExtensionFeatureErrorBoundary>

@@ -20,6 +20,7 @@ const GalleryScreen = lazy(() =>
 const ExtensionCenterScreen = lazy(() => import('@/renderer/features/extensions/ExtensionCenterScreen'));
 const ContentSearchScreen = lazy(() => import('@/renderer/features/content-search/ContentSearchScreen'));
 const CalendarScreen = lazy(() => import('@/renderer/features/calendar/CalendarScreen'));
+const MeScreen = lazy(() => import('@/renderer/features/me/MeScreen'));
 const TransitionShowcaseScreen = lazy(() => import('@/renderer/features/extensions/TransitionShowcaseScreen'));
 const AiCenterScreen = lazy(() =>
   import('@/renderer/features/ai-center/AiCenterScreen').then((module) => ({ default: module.AiCenterScreen })),
@@ -42,6 +43,7 @@ export interface AppWorkspaceLoadingBoundaries {
   gallery(children: ReactNode): ReactNode;
   search(children: ReactNode): ReactNode;
   calendar(children: ReactNode): ReactNode;
+  me(children: ReactNode): ReactNode;
   companion(children: ReactNode): ReactNode;
   extensions(children: ReactNode): ReactNode;
   aiCenter(children: ReactNode): ReactNode;
@@ -260,6 +262,20 @@ function CalendarWorkspaceView(
   );
 }
 
+function MeWorkspaceView({
+  surfaceVisible,
+  view,
+  data,
+  loadingBoundaries,
+}: Pick<Props, 'surfaceVisible' | 'view' | 'data' | 'loadingBoundaries'>) {
+  if (view !== 'me') return null;
+  return loadingBoundaries.me(
+    <Activity mode={surfaceVisible ? 'visible' : 'hidden'}>
+      <MeScreen key={data.spaceId} spaceName={data.spaceName} />
+    </Activity>,
+  );
+}
+
 export function AppWorkspaceViews(props: Props) {
   const {
     surfaceVisible,
@@ -443,6 +459,7 @@ export function AppWorkspaceViews(props: Props) {
       )}
       <SearchWorkspaceView {...props} />
       <CalendarWorkspaceView {...props} />
+      <MeWorkspaceView {...props} />
       <CompanionWorkspaceView {...props} />
       {surfaceVisible && extensionViews.includes(view) && (
         <Activity mode={workspaceActivityMode(surfaceVisible, view, extensionViews)}>

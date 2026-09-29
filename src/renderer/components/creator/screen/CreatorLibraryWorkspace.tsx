@@ -1,4 +1,4 @@
-import { memo } from 'react';
+import { memo, useEffect, useRef } from 'react';
 import type { AlbumDto } from '@/shared/contracts';
 import { ResultLibrary } from '@/renderer/components/creator/ResultLibrary';
 import type { CreatorScreenViewModel } from '@/renderer/components/creator/screen/creatorScreenViewModel';
@@ -49,9 +49,28 @@ export function CreatorLibraryWorkspace({ model }: Pick<Props, 'model'>) {
   const startNewCreationInAlbum = useStableCallback(
     (albumId: string) => void navigation.creation.startNewCreation(albumId, 'push'),
   );
-  const createAlbum = useStableCallback((parent: AlbumDto | null) =>
-    library.setCreateAlbumRequest({ parent, destination: 'LIBRARY' }),
-  );
+  const createAlbum = useStableCallback((parent: AlbumDto | null) => library.requestCreateAlbum(parent));
+  const albumCreationOrigin = useRef<HTMLElement | null>(null);
+  const revealAlbumDraft = useStableCallback(() => {
+    albumCreationOrigin.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    app.onPromptFullWindowChange(false);
+    app.onComparisonFullWindowChange(false);
+    projection.panes.setResultLibraryMode('full');
+    projection.panes.setCompactPanel('library');
+  });
+  useEffect(() => {
+    if (library.createAlbumRequest) revealAlbumDraft();
+  }, [library.createAlbumRequest, revealAlbumDraft]);
+  const confirmCreateAlbum = useStableCallback(async (...args: Parameters<typeof library.confirmCreateAlbum>) => {
+    const created = await library.confirmCreateAlbum(...args);
+    if (created && args[0].destination === 'NEW_CREATION') projection.panes.setCompactPanel('creator');
+    return created;
+  });
+  const cancelCreateAlbum = useStableCallback(() => {
+    if (library.createAlbumRequest?.destination === 'NEW_CREATION') projection.panes.setCompactPanel('creator');
+    library.cancelCreateAlbum();
+    if (albumCreationOrigin.current?.isConnected) albumCreationOrigin.current.focus({ preventScroll: true });
+  });
   const setLibraryMode = useStableCallback((mode: Parameters<typeof projection.panes.setResultLibraryMode>[0]) => {
     projection.panes.setResultLibraryMode(mode);
   });
@@ -97,7 +116,6 @@ export function CreatorLibraryWorkspace({ model }: Pick<Props, 'model'>) {
             ? 'full'
             : projection.panes.resultLibraryMode
         }
-        expandedMode={projection.panes.resultLibraryView}
         canExpand={projection.panes.canExpandResultLibrary}
         resizeValue={projection.panes.resultWidth}
         resizeMin={projection.panes.resultResizeMin}
@@ -129,10 +147,12 @@ export function CreatorLibraryWorkspace({ model }: Pick<Props, 'model'>) {
         onRenameAlbum={library.setRenameAlbum}
         onToggleAlbumPin={library.actions.toggleAlbumPin}
         onCreateAlbum={createAlbum}
+        createAlbumRequest={library.createAlbumRequest}
+        onConfirmCreateAlbum={confirmCreateAlbum}
+        onCancelCreateAlbum={cancelCreateAlbum}
         onMoveAlbum={library.actions.moveAlbum}
         onMoveCreationItem={library.actions.moveCreationItem}
         onToggleCreationItemPin={library.actions.toggleCreationItemPin}
-        refresh={app.refresh}
         notify={app.notify}
       />
     </div>

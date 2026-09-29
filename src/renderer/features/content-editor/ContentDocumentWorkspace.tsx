@@ -13,6 +13,7 @@ export function ContentDocumentWorkspace({
   sidePanel,
   title,
   titleAccessory,
+  titleMetadata,
   toolbar,
 }: {
   children: ReactNode;
@@ -21,6 +22,7 @@ export function ContentDocumentWorkspace({
   sidePanel?: ReactNode;
   title: ReactNode;
   titleAccessory?: ReactNode;
+  titleMetadata?: ReactNode;
   toolbar?: ReactNode;
 }) {
   return (
@@ -29,9 +31,12 @@ export function ContentDocumentWorkspace({
       <ContentWorkspace>
         <div ref={scrollRootRef} className="min-h-0 min-w-0 flex-1 overflow-y-auto py-6">
           <div className={`mx-auto w-full ${articleEditorDocumentWidthClassName(documentWidth)} px-6 lg:px-8`}>
-            <div className="mb-7 flex items-start gap-2">
-              {title}
-              {titleAccessory}
+            <div className="mb-7">
+              <div className="flex items-start gap-2">
+                {title}
+                {titleAccessory}
+              </div>
+              {titleMetadata && <div className="mt-2">{titleMetadata}</div>}
             </div>
             {children}
           </div>

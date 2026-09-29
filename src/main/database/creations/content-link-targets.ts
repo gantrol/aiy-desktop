@@ -1,3 +1,4 @@
+import { localArticleWriteContext } from '@/main/database/creations/article-write-context';
 import { createHash } from 'node:crypto';
 import type { LibraryDatabaseRepositories } from '@/main/database/library-database/repositories';
 import { ContentReferenceTargets } from '@/main/database/creations/content-reference-targets';
@@ -97,6 +98,7 @@ export class ContentLinkTargets {
             },
           },
           { requestId: id },
+          localArticleWriteContext(this.repositories.db, input.requestId),
         );
         return {
           spaceId: input.spaceId,

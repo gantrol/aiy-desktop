@@ -1,4 +1,5 @@
 import { FolderInputIcon, LoaderCircleIcon } from 'lucide-react';
+import type { ReactNode } from 'react';
 import { Button } from '@/renderer/components/ui/button';
 import { Input } from '@/renderer/components/ui/input';
 import { CreationWorkNavigation } from '@/renderer/components/creator/CreationWorkNavigation';
@@ -9,6 +10,7 @@ interface Props {
   titleLabel: string;
   albumTitle: string;
   saving: boolean;
+  paneToggle?: ReactNode;
   onTitleChange(title: string): void;
   onSaveTitle(): void;
   onMove(): void;
@@ -20,6 +22,7 @@ export function VideoDocumentHeader({
   titleLabel,
   albumTitle,
   saving,
+  paneToggle,
   onTitleChange,
   onSaveTitle,
   onMove,
@@ -48,6 +51,7 @@ export function VideoDocumentHeader({
           <FolderInputIcon className="size-4" />
           <span className="truncate">{albumTitle}</span>
         </Button>
+        {paneToggle}
       </div>
     </header>
   );

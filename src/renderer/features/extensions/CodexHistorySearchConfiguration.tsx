@@ -35,6 +35,7 @@ interface Props {
   extension: ExtensionDto;
   standalone?: boolean;
   workspaceNavigation?: ReactNode;
+  navigationToggleHost?: HTMLElement | null;
   notify(message: string): void;
 }
 
@@ -77,6 +78,7 @@ export function CodexHistorySearchConfiguration({
   extension,
   standalone = false,
   workspaceNavigation = null,
+  navigationToggleHost,
   notify,
 }: Props) {
   const { locale, messages } = useI18n();
@@ -109,11 +111,11 @@ export function CodexHistorySearchConfiguration({
       collectionWidth={420}
       minimumDetailWidth={500}
       selectionKey={selectedResultId || null}
-      toggleDockSide="right"
       className={standalone ? undefined : 'h-[32rem]'}
-      collection={({ revealDetail }) => (
+      collection={({ toggle, revealDetail }) => (
         <main className="flex min-h-0 min-w-0 flex-1 flex-col bg-background">
           <header className="flex min-h-11 items-center gap-2 border-b px-3 text-xs text-muted-foreground">
+            {toggle}
             <span>{snapshot?.truncated ? `${l.matches(snapshot.total)}+` : l.matches(snapshot?.total ?? 0)}</span>
             <span className="hidden sm:inline">
               {l.indexed(state.index.indexedThreads, state.index.indexedMessages)}
@@ -243,9 +245,10 @@ export function CodexHistorySearchConfiguration({
         </main>
       )}
     >
-      {() =>
+      {({ toggle }) =>
         active ? (
           <CodexHistoryThreadDetail
+            navigationAction={toggle}
             {...messageSearchCriteria(state.snapshotCriteria)}
             item={selectedItem}
             locale={locale}
@@ -272,6 +275,7 @@ export function CodexHistorySearchConfiguration({
             selectionKey={navigationSelectionKey}
             initialWidth={240}
             minimumContentWidth={680}
+            toggleHost={navigationToggleHost}
           >
             <CodexHistoryNavigation
               state={state}

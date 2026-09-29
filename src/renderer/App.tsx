@@ -10,10 +10,8 @@ import {
 import { AppRuntimeProviders } from '@/renderer/components/app/AppRuntimeProviders';
 import { AppSidebar } from '@/renderer/components/app/AppSidebar';
 import { AppTitleBar } from '@/renderer/components/app/AppTitleBar';
-import { SettingsDialog } from '@/renderer/components/app/SettingsDialog';
 import {
   initialAppLocation,
-  type AiCenterLocation,
   type AppLocation,
   type AppView,
   type HistoryNavigationGuard,
@@ -91,10 +89,9 @@ export function App() {
       }) ?? [view],
     [view, workspaceState],
   );
-  const [settingsOpen, setSettingsOpen] = useState(false);
   const [comparisonFullWindow, setComparisonFullWindow] = useState(false);
   const [creationPromptFullWindow, setCreationPromptFullWindow] = useState(false);
-  const overlaySetters = [setSettingsOpen, setComparisonFullWindow, setCreationPromptFullWindow] as const;
+  const overlaySetters = [setComparisonFullWindow, setCreationPromptFullWindow] as const;
   useDeepLinks(data, workspace, setData, overlaySetters);
   const appFullWindow = comparisonFullWindow || creationPromptFullWindow;
   const nativeTitleBarOnly = appFullWindow && window.desktopApi.appPlatform === 'darwin';
@@ -149,7 +146,7 @@ export function App() {
     return () => window.removeEventListener('pagehide', flushBeforePageExit);
   }, [flushWorkspace]);
   const { messages: notifications, notify, dismiss: dismissNotification } = useToastQueue();
-  useAppUpdateNotification({ settingsOpen, notify });
+  useAppUpdateNotification({ updateSurfaceVisible: visibleViews.includes('about'), notify });
   const codexImagesNavigation = useCodexImagesNavigation(data?.extensions, view, replaceLocation);
   const transitionShowcaseNavigation = useTransitionShowcaseNavigation(data?.extensions, view, replaceLocation);
 
@@ -189,7 +186,10 @@ export function App() {
     setDocumentNavigationRevision((current) => current + 1);
   }, []);
 
-  const { updateArticle, updateSocialPost, updateImportedOutput } = useAppDataUpdates(setData, setDataRevision);
+  const { updateArticle, updateSocialPost, updateImportedOutput, updateCreationAuthor } = useAppDataUpdates(
+    setData,
+    setDataRevision,
+  );
 
   const refreshDocumentNavigation = useCallback(() => setDocumentNavigationRevision((current) => current + 1), []);
 
@@ -251,7 +251,6 @@ export function App() {
           return;
         }
         setSpaceTransition(transition);
-        setSettingsOpen(false);
         setComparisonFullWindow(false);
         setCreationPromptFullWindow(false);
         if (transition.phase === 'STARTING') {
@@ -525,7 +524,7 @@ export function App() {
 
   useAppWorkspaceShortcuts({
     state: workspaceState,
-    enabled: workspaceReady && !spaceTransition && !settingsOpen,
+    enabled: workspaceReady && !spaceTransition,
     activateGroup,
     activateTab: (groupId, tabId, committed) => {
       const group = workspaceState?.groups.find((candidate) => candidate.id === groupId);
@@ -548,18 +547,15 @@ export function App() {
   }
 
   function changeView(nextView: AppView) {
+    if (['me', 'settings', 'about'].includes(nextView) && activeTabId) {
+      const existing = workspaceState?.groups
+        .flatMap((group) => group.tabs.map((tab) => ({ group, tab })))
+        .find(({ tab }) => workspaceTabLocation(tab).view === nextView);
+      if (existing) activateTab(existing.group, existing.tab.id);
+      else openWorkspaceLocation(activeTabId, nextView, 'tab');
+      return;
+    }
     if (activeTabId) changeViewInTab(activeTabId, nextView);
-  }
-
-  function navigateAiCenter(aiCenter: AiCenterLocation, mode: NavigationMode = 'push') {
-    if (!activeTabId) return;
-    requestTabExit(activeTabId, () =>
-      commitTabLocation(
-        activeTabId,
-        (current) => ({ ...current, view: 'aiCenter', aiCenter, materialsReturnContext: null }),
-        mode,
-      ),
-    );
   }
 
   async function cancelGeneration(runId: string) {
@@ -636,6 +632,7 @@ export function App() {
         dataRevision={dataRevision}
         locale={locale}
         defaultPromptLocale={defaultPromptLocale}
+        onPromptLocaleChange={setDefaultPromptLocale}
         comparisonFullWindow={comparisonFullWindow}
         creationPromptFullWindow={creationPromptFullWindow}
         loadingPreviews={loadingPreviews}
@@ -643,11 +640,9 @@ export function App() {
         transitionShowcaseNavigation={transitionShowcaseNavigation}
         documentNavigationRevision={documentNavigationRevision}
         articleEditorStates={workspace.state?.articleEditors ?? []}
-        articleEditOwners={workspace.state?.articleEditOwners ?? []}
         onArticleEditorStateChange={workspace.updateArticleEditorState}
         onArticleLocationChange={workspace.updateArticleViewLocation}
         onArticleLocationNavigate={workspace.navigateArticleViewLocation}
-        onRequestEditOwnership={workspace.claimArticleEditOwnership}
         onLocationFlushChange={setArticleLocationFlusher}
         onTabsCollapsedChange={(collapsed) => setGroupTabsCollapsed(group.id, collapsed)}
         onActivateGroup={() => activateGroup(group.id)}
@@ -658,6 +653,11 @@ export function App() {
         onNewTab={(sourceTabId, destination) => openWorkspaceLocation(sourceTabId, destination, 'tab')}
         onOpenBeside={(sourceTabId, destination) => openWorkspaceLocation(sourceTabId, destination, 'beside')}
         splitAxis={workspace.state?.arrangement.kind === 'split' ? workspace.state.arrangement.axis : null}
+        splitPosition={
+          workspace.state?.arrangement.kind === 'split' && workspace.state.arrangement.groupIds[1] === group.id
+            ? 'end'
+            : 'start'
+        }
         onMergeGroups={() => mergeWorkspaceGroupsFrom(group)}
         onMoveTabToOtherGroup={moveTabToOtherGroup}
         onSplit={(sourceTabId, axis) => {
@@ -697,6 +697,7 @@ export function App() {
           spaceId={data?.spaceId ?? null}
           terms={data?.terms ?? []}
           refresh={refresh}
+          onAuthorChange={updateCreationAuthor}
         >
           <main className={`grid h-full min-h-0 overflow-hidden bg-background ${gridRows}`}>
             {!appFullWindow && (
@@ -718,7 +719,7 @@ export function App() {
                 notify={notify}
                 onNewCreation={startNewCreationFromContext}
                 onViewChange={changeView}
-                onSettingsOpen={() => setSettingsOpen(true)}
+                onSettingsOpen={() => changeView('settings')}
                 onQuit={() => {
                   articleLocationFlushersRef.current.forEach((flush) => flush());
                   void workspace.flush().finally(() => window.desktopApi.appRequestQuit());
@@ -743,7 +744,6 @@ export function App() {
                   transitionShowcaseVisible={transitionShowcaseNavigation.visible}
                   view={view}
                   onViewChange={changeView}
-                  onSettingsOpen={() => setSettingsOpen(true)}
                   notify={notify}
                 />
               </div>
@@ -776,15 +776,6 @@ export function App() {
                   ))}
               </section>
             </div>
-            <SettingsDialog
-              key={data?.spaceId ?? 'no-space'}
-              promptLocale={defaultPromptLocale}
-              open={settingsOpen}
-              onOpenChange={setSettingsOpen}
-              onPromptLocaleChange={setDefaultPromptLocale}
-              onAiFeatureModelsOpen={() => navigateAiCenter({ tab: 'capabilities', recordId: null })}
-              onContentManagementOpen={() => changeView('contentManagement')}
-            />
             <ToastViewport
               messages={notifications}
               label={messages.app.notifications}

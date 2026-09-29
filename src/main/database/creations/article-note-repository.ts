@@ -1,3 +1,4 @@
+import type { ArticleWriteContext } from '@/main/database/creations/article-write-context';
 import { mediaUrl } from '@/main/database/core/values';
 import { normalizeArticleContent } from '@/shared/article-revision';
 import { createHash } from 'node:crypto';
@@ -37,7 +38,12 @@ export function articleNote(article: ArticleDto, instanceId = article.id) {
 }
 
 /** Both editor surfaces commit through the article revision writer and its compare-and-swap. */
-export function saveArticleNote(articles: ArticleRepository, input: DesktopNoteSave, articleId = input.id) {
+export function saveArticleNote(
+  articles: ArticleRepository,
+  input: DesktopNoteSave,
+  context: ArticleWriteContext,
+  articleId = input.id,
+) {
   const article = articles.get(articleId);
   if (article.status !== 'ACTIVE') throw new Error('[aiy-petal:sourceUnavailable]');
   const previous = articleDraftInput(article.content);
@@ -57,20 +63,25 @@ export function saveArticleNote(articles: ArticleRepository, input: DesktopNoteS
       article.content,
     ),
   );
-  const result = articles.saveRevision({
-    requestId: ulid(),
-    articleId,
-    sessionEpoch: input.editorId,
-    draftSeq: 0,
-    cause: 'EDITOR',
-    expectedRevisionId:
-      input.expectedRevisionId ??
-      (input.expectedContentHash === article.contentHash ? article.revisionId : `legacy:${input.expectedContentHash}`),
-    contentHash: createHash('sha256').update(canonicalArticleContentJson(content)).digest('hex'),
-    content,
-    elements: input.elements,
-    commentAnchors: input.commentAnchors,
-  });
+  const result = articles.saveRevision(
+    {
+      requestId: ulid(),
+      articleId,
+      sessionEpoch: input.editorId,
+      draftSeq: 0,
+      cause: 'EDITOR',
+      expectedRevisionId:
+        input.expectedRevisionId ??
+        (input.expectedContentHash === article.contentHash
+          ? article.revisionId
+          : `legacy:${input.expectedContentHash}`),
+      contentHash: createHash('sha256').update(canonicalArticleContentJson(content)).digest('hex'),
+      content,
+      elements: input.elements,
+      commentAnchors: input.commentAnchors,
+    },
+    context,
+  );
   if (result.status === 'CONFLICT') throw new Error('[aiy-petal:unsaved]');
   return articleNote(result.article, input.id);
 }

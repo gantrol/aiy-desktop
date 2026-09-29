@@ -511,6 +511,31 @@ export function focusOutlineItem(editor: Editor, id: string | null, navigation =
   if (root) restoreScopeScroll(editor, root, id);
 }
 
+/** Reveal a search match without moving the editing selection or adding undo steps. */
+export function revealOutlinePosition(editor: Editor, position: number) {
+  if (editor.isDestroyed || outlineNavigationFocus(editor.state) === undefined) return;
+  const resolved = editor.state.doc.resolve(Math.max(0, Math.min(position, editor.state.doc.content.size)));
+  const ancestors: { id: string; hidden: boolean }[] = [];
+  for (let depth = 1; depth <= resolved.depth; depth += 1) {
+    const node = resolved.node(depth);
+    const id = itemId(node);
+    if (node.type.name === 'listItem' && id) ancestors.push({ id, hidden: resolved.index(depth) > 0 });
+  }
+  const current = outlineViewState(editor.state);
+  const next =
+    current.focus && !ancestors.some(({ id }) => id === current.focus)
+      ? changeOutlineFocus(editor.state.doc, current, null)
+      : current;
+  const folded = new Set(next.folded);
+  for (const { id, hidden } of ancestors) if (hidden) folded.delete(id);
+  if (next === current && folded.size === current.folded.size) return;
+  if (next.focus !== current.focus) {
+    const root = outlineScrollContainer(editor);
+    if (root) captureScopeScroll(editor, root);
+  }
+  setOutlineView(editor, { ...next, folded });
+}
+
 export function previewOutlineDrop(editor: Editor, id: string | null, placement?: OutlineDropPlacement) {
   const current = outlineViewState(editor.state);
   const drop = id && placement ? { id, placement } : null;

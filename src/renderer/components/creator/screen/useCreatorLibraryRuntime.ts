@@ -10,6 +10,8 @@ import type {
 import { useContentLifecycleActions } from '@/renderer/components/albums/useContentLifecycleActions';
 import { useCreatorAutoTitle } from '@/renderer/components/creator/workflows/useCreatorAutoTitle';
 import { useCreatorLibraryActions } from '@/renderer/components/creator/workflows/useCreatorLibraryActions';
+import type { CreationAlbumRequest } from '@/renderer/components/creator/CreationLibraryAlbumDraft';
+import { useStableCallback } from '@/renderer/lib/useStableCallback';
 
 type LifecycleRequest = Parameters<ReturnType<typeof useContentLifecycleActions>['request']>[0];
 
@@ -50,10 +52,7 @@ export function useCreatorLibraryRuntime({
   const [renameArticle, setRenameArticle] = useState<ArticleDto | null>(null);
   const [renameDocument, setRenameDocument] = useState<VideoDocumentSummaryDto | null>(null);
   const [settingsAlbum, setSettingsAlbum] = useState<AlbumDto | null>(null);
-  const [createAlbumRequest, setCreateAlbumRequest] = useState<{
-    parent: AlbumDto | null;
-    destination: 'LIBRARY' | 'NEW_CREATION';
-  } | null>(null);
+  const [createAlbumRequest, setCreateAlbumRequest] = useState<CreationAlbumRequest | null>(null);
   const lifecycle = useContentLifecycleActions({ notify, onApplied: onFinishLifecycle });
   const actions = useCreatorLibraryActions({
     albumCreated,
@@ -77,11 +76,28 @@ export function useCreatorLibraryRuntime({
     titleGeneratedMessage: messages.titleGenerated,
     titleGenerationFailedMessage: messages.titleGenerationFailed,
   });
+  const requestCreateAlbum = useStableCallback(
+    (parent: AlbumDto | null, destination: CreationAlbumRequest['destination'] = 'LIBRARY') => {
+      if (actions.busy || lifecycle.busy) return;
+      setCreateAlbumRequest((current) => current ?? { id: crypto.randomUUID(), parent, destination });
+    },
+  );
+  const cancelCreateAlbum = useStableCallback(() => {
+    if (!actions.busy) setCreateAlbumRequest(null);
+  });
+  const confirmCreateAlbum = useStableCallback(async (request: CreationAlbumRequest, title: string) => {
+    if (request !== createAlbumRequest) return false;
+    const created = await actions.createAlbum(request.parent, title, request.destination);
+    if (created) setCreateAlbumRequest((current) => (current === request ? null : current));
+    return created;
+  });
 
   return {
     actions,
     autoTitle,
     busy: actions.busy || lifecycle.busy,
+    cancelCreateAlbum,
+    confirmCreateAlbum,
     createAlbumRequest,
     distilledPalette,
     lifecycle,
@@ -89,7 +105,7 @@ export function useCreatorLibraryRuntime({
     renameArticle,
     renameDocument,
     renameSeriesOpen,
-    setCreateAlbumRequest,
+    requestCreateAlbum,
     setDistilledPalette,
     setRenameAlbum,
     setRenameArticle,

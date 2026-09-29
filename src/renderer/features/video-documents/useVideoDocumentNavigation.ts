@@ -46,29 +46,27 @@ export function useVideoDocumentNavigation({ active, refreshKey = 0, notify }: O
   const [children, setChildren] = useState<Record<string, NavigationPageState>>({});
   const [revision, setRevision] = useState(0);
   const requestGeneration = useRef(0);
+  const activeRef = useRef(active);
   const rootRef = useRef(root);
   const childrenRef = useRef(children);
-  rootRef.current = root;
-  childrenRef.current = children;
+  activeRef.current = active;
 
   const load = useCallback(
     async (parentAlbumId: string | null, append: boolean) => {
+      if (!activeRef.current) return;
       const current = parentAlbumId ? (childrenRef.current[parentAlbumId] ?? emptyPage) : rootRef.current;
       if (current.loading || current.loadingMore || (append && !current.nextCursor)) return;
       const request = requestGeneration.current;
       const update = (producer: (page: NavigationPageState) => NavigationPageState) => {
         if (parentAlbumId) {
-          setChildren((all) => {
-            const next = { ...all, [parentAlbumId]: producer(all[parentAlbumId] ?? emptyPage) };
-            childrenRef.current = next;
-            return next;
-          });
+          const all = childrenRef.current;
+          const next = { ...all, [parentAlbumId]: producer(all[parentAlbumId] ?? emptyPage) };
+          childrenRef.current = next;
+          setChildren(next);
         } else {
-          setRoot((page) => {
-            const next = producer(page);
-            rootRef.current = next;
-            return next;
-          });
+          const next = producer(rootRef.current);
+          rootRef.current = next;
+          setRoot(next);
         }
       };
       update((page) => ({ ...page, loading: !append, loadingMore: append }));
@@ -103,6 +101,9 @@ export function useVideoDocumentNavigation({ active, refreshKey = 0, notify }: O
     setRoot(emptyPage);
     setChildren({});
     void load(null, false);
+    return () => {
+      requestGeneration.current += 1;
+    };
   }, [active, load, refreshKey, revision]);
 
   const ensureChildren = useCallback(
@@ -115,10 +116,12 @@ export function useVideoDocumentNavigation({ active, refreshKey = 0, notify }: O
 
   const reorder = useCallback(
     async (input: VideoDocumentNavigationReorderInput) => {
+      const request = requestGeneration.current;
       await window.desktopApi.videoDocumentNavigationReorder(input);
+      if (!activeRef.current || request !== requestGeneration.current) return;
       if (input.parentAlbumId) {
         childrenRef.current = { ...childrenRef.current, [input.parentAlbumId]: emptyPage };
-        setChildren((all) => ({ ...all, [input.parentAlbumId!]: emptyPage }));
+        setChildren(childrenRef.current);
         await load(input.parentAlbumId, false);
       } else {
         rootRef.current = emptyPage;

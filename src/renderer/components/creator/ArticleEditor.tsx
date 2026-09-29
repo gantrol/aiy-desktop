@@ -1,12 +1,12 @@
 import { OutlineContentLinkHost } from '@/renderer/features/content-editor/OutlineContentLinkHost';
-import { ContentProvenanceCell } from '@/renderer/features/content-provenance/ContentProvenance';
 import {
   ArticleAttachments,
   ArticleAttachmentsInput,
   useArticleAttachments,
 } from '@/renderer/components/creator/article-editor/ArticleAttachments';
-import { LoaderCircleIcon, PencilIcon, SlidersHorizontalIcon, TextCursorInputIcon } from 'lucide-react';
+import { SlidersHorizontalIcon } from 'lucide-react';
 import { useRef, useState } from 'react';
+import { ArticleTitleMetadata } from '@/renderer/components/creator/article-editor/ArticleTitleMetadata';
 import type {
   ArticleContentInput,
   AssetDto,
@@ -20,12 +20,8 @@ import type {
 } from '@/shared/contracts';
 import { useI18n } from '@/renderer/i18n/useI18n';
 import { ArticleEditorDocument } from '@/renderer/components/creator/article-editor/ArticleEditorDocument';
-import { CurrentArticleReference } from '@/renderer/components/creator/article-editor/ArticleEditorComparison';
 import { ArticleWechatCopyAction } from '@/renderer/components/creator/article-editor/ArticleWechatCopyAction';
-import {
-  ArticleRevisionHistoryAction,
-  ArticleRevisionHistoryDialog,
-} from '@/renderer/components/creator/article-editor/ArticleRevisionHistoryDialog';
+import { ArticleRevisionHistoryAction } from '@/renderer/components/creator/article-editor/ArticleRevisionHistoryDialog';
 import { ArticleCheckButton } from '@/renderer/components/creator/article-editor/ArticleCheckButton';
 import { ArticleDeliveryAction } from '@/renderer/components/creator/article-editor/ArticleDeliveryAction';
 import {
@@ -50,18 +46,15 @@ import {
   ArticleHeaderActions,
   ArticleHeaderIconButton,
   ArticleSaveStatus,
-  SuggestedArticleTitle,
 } from '@/renderer/components/creator/article-editor/ArticleEditorHeader';
 import {
   CreationRelationsSheet,
   type CreationRelationItem,
 } from '@/renderer/components/creator/CreationRelationsSheet';
 import { TooltipProvider } from '@/renderer/components/ui/tooltip';
-import { useWorkspaceArticleEditorState } from '@/renderer/components/workspace/WorkspaceArticleEditorStateProvider';
 import { Button } from '@/renderer/components/ui/button';
 import { useArticleComments } from '@/renderer/components/creator/article-editor/useArticleComments';
 import { useArticleCheck } from '@/renderer/components/creator/article-editor/useArticleCheck';
-import { CreationWorkNavigation } from '@/renderer/components/creator/CreationWorkNavigation';
 import { OutlineArticleEditor } from '@/renderer/components/creator/article-editor/OutlineArticleEditor';
 import { CopyAgentLinkButton } from '@/renderer/features/content-editor/CopyAgentLinkButton';
 import { ContentBacklinksButton } from '@/renderer/features/content-editor/ContentBacklinksButton';
@@ -172,60 +165,6 @@ function useArticleVisualGeneration({
   };
 }
 
-function ReadOnlyArticleEditor({
-  article,
-  spaceId,
-  notify,
-  media,
-  mediaBindings,
-  requestEditOwnership,
-  session,
-  title,
-  zh,
-}: {
-  article: ArticleDto;
-  spaceId: string;
-  notify(message: string): void;
-  media: ReturnType<typeof selectArticleEditorMedia>;
-  mediaBindings: ArticleContentInput['mediaBindings'];
-  requestEditOwnership(): void;
-  session: ReturnType<typeof useArticleEditorSession>;
-  title: string;
-  zh: boolean;
-}) {
-  const labels = useI18n().messages.creator.manuscriptEditor;
-  return (
-    <div data-article-editor className="flex min-h-0 min-w-0 flex-1 flex-col bg-background">
-      <TooltipProvider delayDuration={300}>
-        <header className="flex min-h-14 shrink-0 flex-wrap items-center gap-2 border-b px-4 py-2">
-          <span className="min-w-0 flex-1 truncate font-semibold">{title || labels.untitled}</span>
-          <CreationWorkNavigation />
-          <ContentBacklinksButton spaceId={spaceId} articleId={article.id} />
-          <CopyAgentLinkButton target={{ spaceId, target: 'article', entityId: article.id }} notify={notify} />
-          <ArticleRevisionHistoryDialog
-            spaceId={spaceId}
-            articleId={article.id}
-            currentRevisionId={article.revisionId}
-            zh={zh}
-          />
-          <Button type="button" variant="outline" size="sm" onClick={requestEditOwnership}>
-            <PencilIcon className="size-3.5" />
-            {labels.editThisView}
-          </Button>
-        </header>
-      </TooltipProvider>
-      <CurrentArticleReference
-        articleId={article.id}
-        elements={session.getArticleElementsProjection()}
-        media={media}
-        mediaBindings={mediaBindings}
-        title={title}
-        trackPosition
-      />
-    </div>
-  );
-}
-
 function ArticleCreationInputAction({
   articleId,
   open,
@@ -249,31 +188,6 @@ function ArticleCreationInputAction({
     >
       <SlidersHorizontalIcon className="size-4" />
     </ArticleHeaderIconButton>
-  );
-}
-
-function ArticleTitleSuggestionAction({
-  disabled,
-  suggesting,
-  onSuggest,
-}: {
-  disabled: boolean;
-  suggesting: boolean;
-  onSuggest(): void;
-}) {
-  const label = useI18n().messages.creator.manuscriptEditor.aiTitle;
-  return (
-    <Button
-      type="button"
-      variant="ghost"
-      size="icon-sm"
-      disabled={disabled}
-      aria-label={label}
-      title={label}
-      onClick={onSuggest}
-    >
-      {suggesting ? <LoaderCircleIcon className="size-4 animate-spin" /> : <TextCursorInputIcon className="size-4" />}
-    </Button>
   );
 }
 
@@ -333,32 +247,6 @@ function useArticleCreation(
   return { creatingForm, createArticle };
 }
 
-function useArticleTitleSuggestion(session: ReturnType<typeof useArticleEditorSession>, notify: Props['notify']) {
-  const [suggesting, setSuggesting] = useState(false);
-  const [suggestedTitle, setSuggestedTitle] = useState<string | null>(null);
-
-  async function suggestTitle() {
-    const content = session.captureSnapshot();
-    const prompt = content.markdown.trim();
-    if (!prompt || suggesting) return;
-    setSuggesting(true);
-    try {
-      const result = await window.desktopApi.codexSuggestTitles({
-        prompt: prompt.slice(0, 30_000),
-        title: content.title,
-        mode: content.title.trim() ? 'regenerate' : 'fill',
-      });
-      setSuggestedTitle(result.title.trim() || null);
-    } catch (reason) {
-      notify(reason instanceof Error ? reason.message : String(reason));
-    } finally {
-      setSuggesting(false);
-    }
-  }
-
-  return { suggestTitle, suggesting, suggestedTitle, setSuggestedTitle };
-}
-
 function ArticleEditorWorkspace({
   article,
   projectCoverAssets = [],
@@ -383,7 +271,6 @@ function ArticleEditorWorkspace({
   const zh = locale === 'zh';
   const { messages } = useI18n();
   const session = useArticleEditorSession();
-  const { editable, requestEditOwnership } = useWorkspaceArticleEditorState(article.id);
   const title = useArticleEditorSessionSelector(selectArticleEditorTitle);
   const mediaBindings = useArticleEditorSessionSelector(selectArticleEditorMediaBindings);
   const media = useArticleEditorSessionSelector(selectArticleEditorMedia);
@@ -394,7 +281,6 @@ function ArticleEditorWorkspace({
   const dirty = useArticleEditorSessionSelector(articleEditorSessionDirty);
   const saveFailed = useArticleEditorSessionSelector(articleEditorSessionFailed);
   const saving = useArticleEditorSessionSelector(articleEditorSessionSaving);
-  const { suggestTitle, suggesting, suggestedTitle, setSuggestedTitle } = useArticleTitleSuggestion(session, notify);
   const { exporting, exportMarkdown } = useArticleExport(session, onExport, notify);
   const { creatingForm, createArticle } = useArticleCreation(session, onCreateArticle, notify);
   const attachments = useArticleAttachments({ spaceId, onSaved, notify });
@@ -418,32 +304,26 @@ function ArticleEditorWorkspace({
       session,
     });
 
+  const titleMetadata = (
+    <ArticleTitleMetadata
+      key={`${spaceId}:${article.id}`}
+      spaceId={spaceId}
+      articleId={article.id}
+      editable
+      writeContext={article.writeContext}
+      notify={notify}
+    />
+  );
+
   if (article.content.editorMode === 'OUTLINE') {
     return (
       <OutlineArticleEditor
         article={article}
         spaceId={spaceId}
         articleComments={articleComments}
-        editable={editable}
-        requestEditOwnership={requestEditOwnership}
+        titleMetadata={titleMetadata}
         onExport={exportMarkdown}
         notify={notify}
-        zh={zh}
-      />
-    );
-  }
-
-  if (!editable) {
-    return (
-      <ReadOnlyArticleEditor
-        article={article}
-        spaceId={spaceId}
-        notify={notify}
-        media={media}
-        mediaBindings={mediaBindings}
-        requestEditOwnership={requestEditOwnership}
-        session={session}
-        title={title}
         zh={zh}
       />
     );
@@ -488,7 +368,6 @@ function ArticleEditorWorkspace({
               }
             />
             <ArticleRevisionHistoryAction spaceId={spaceId} article={article} notify={notify} zh={zh} />
-            <ContentProvenanceCell value={article.provenance} />
             <ArticleDeliveryAction
               articleId={article.id}
               extensions={extensions}
@@ -522,17 +401,6 @@ function ArticleEditorWorkspace({
         </div>
       )}
 
-      {suggestedTitle && (
-        <SuggestedArticleTitle
-          title={suggestedTitle}
-          onApply={() => {
-            session.titleChanged(suggestedTitle);
-            setSuggestedTitle(null);
-          }}
-          onDismiss={() => setSuggestedTitle(null)}
-        />
-      )}
-
       <ArticleAttachmentsInput attachments={attachments} />
 
       <ArticleCoverWorkspaceProvider
@@ -561,13 +429,7 @@ function ArticleEditorWorkspace({
           layoutToolbarRoot={layoutToolbarRoot}
           splitOpen={splitOpen}
           title={title}
-          titleAccessory={
-            <ArticleTitleSuggestionAction
-              disabled={!hasBody || suggesting}
-              suggesting={suggesting}
-              onSuggest={() => void suggestTitle()}
-            />
-          }
+          titleMetadata={titleMetadata}
           zh={zh}
           onEditorHandleChange={session.registerEditor}
           onCommentCreate={articleComments.create}
@@ -584,10 +446,7 @@ function ArticleEditorWorkspace({
           onPersist={(mode) => void session.flush(mode)}
           onSplitClose={() => setSplitOpen(false)}
           onSplitToggle={() => setSplitOpen((current) => !current)}
-          onTitleChange={(nextTitle) => {
-            setSuggestedTitle(null);
-            session.titleChanged(nextTitle);
-          }}
+          onTitleChange={session.titleChanged}
         />
       </ArticleCoverWorkspaceProvider>
       <CreationRelationsSheet

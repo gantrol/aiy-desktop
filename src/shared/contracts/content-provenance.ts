@@ -57,19 +57,3 @@ export const contentProvenanceSchema = contentOriginSchema
 export type ContentAuthor = z.infer<typeof contentAuthorSchema>;
 export type ContentProvenance = z.infer<typeof contentProvenanceSchema>;
 export type AgentProvenance = z.infer<typeof agentProvenanceSchema>;
-
-export function parseContentProvenance(value: unknown): ContentProvenance | undefined {
-  if (value == null) return undefined;
-  return contentProvenanceSchema.parse(typeof value === 'string' ? JSON.parse(value) : value);
-}
-
-export function contentAuthorKey(author: ContentAuthor) {
-  return author.kind === 'AI' ? `AI:${author.application}` : author.kind;
-}
-
-export function matchesContentAuthor(provenance: ContentProvenance | undefined, filter = 'ALL') {
-  return (
-    filter === 'ALL' ||
-    (provenance?.authors ?? [{ kind: 'UNKNOWN' } as const]).some((author) => contentAuthorKey(author) === filter)
-  );
-}

@@ -247,15 +247,19 @@ function ToolbarReviewGroup({
   onSearchToggle,
   searchOpen,
   state,
-}: Pick<ViewProps, 'articleElementControls' | 'labels' | 'onSearchToggle' | 'searchOpen' | 'state'>) {
+  outlineMode,
+}: Pick<ViewProps, 'articleElementControls' | 'labels' | 'onSearchToggle' | 'searchOpen' | 'state' | 'outlineMode'>) {
+  if (outlineMode && !articleElementControls) return null;
   return (
     <ToolbarGroup>
       {articleElementControls && (
         <ArticleElementReviewButtons articleElementId={state.articleElementId} controls={articleElementControls} />
       )}
-      <FormatButton label={labels.search} active={searchOpen} expanded={searchOpen} onClick={onSearchToggle}>
-        <SearchIcon className="size-3.5" />
-      </FormatButton>
+      {!outlineMode && (
+        <FormatButton label={labels.search} active={searchOpen} expanded={searchOpen} onClick={onSearchToggle}>
+          <SearchIcon className="size-3.5" />
+        </FormatButton>
+      )}
     </ToolbarGroup>
   );
 }
@@ -358,6 +362,7 @@ export function VideoDocumentWysiwygToolbarView({
     ) : null;
   const reviewGroup = (
     <ToolbarReviewGroup
+      outlineMode={outlineMode}
       articleElementControls={articleElementControls}
       labels={labels}
       onSearchToggle={onSearchToggle}
@@ -409,6 +414,13 @@ export function VideoDocumentWysiwygToolbarView({
             articleTools={articleToolsGroup}
             review={reviewGroup}
             history={historyGroup}
+            search={
+              outlineMode && (
+                <FormatButton label={labels.search} active={searchOpen} expanded={searchOpen} onClick={onSearchToggle}>
+                  <SearchIcon className="size-3.5" />
+                </FormatButton>
+              )
+            }
           />
           <input
             ref={imageUpload.imageInputRef}

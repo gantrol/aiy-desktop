@@ -1,3 +1,5 @@
+import { SettingsScreen } from '@/renderer/components/app/SettingsScreen';
+import { AboutScreen } from '@/renderer/components/app/AboutScreen';
 import { WorkspacePaneScope } from '@/renderer/components/workspace/WorkspacePaneScope';
 import { WorkbenchScopeProvider } from '@/renderer/components/workbench/WorkbenchScope';
 import { appMaterialsReturnSummary } from '@/renderer/appPresentation';
@@ -30,10 +32,9 @@ import type {
   IntakeCommitResult,
   Locale,
   TransitionPreviewDto,
-  WorkspaceArticleEditOwnerDto,
   WorkspaceArticleEditorStateDto,
 } from '@/shared/contracts';
-import { useCallback, useEffect, useRef, type ComponentProps } from 'react';
+import { Activity, useCallback, useEffect, useRef, type ComponentProps } from 'react';
 
 type WorkspaceViewProps = ComponentProps<typeof AppWorkspaceViews>;
 
@@ -45,6 +46,7 @@ export interface WorkspaceTabSurfaceProps {
   dataRevision: number;
   locale: Locale;
   defaultPromptLocale: Locale | null;
+  onPromptLocaleChange(locale: Locale | null): void;
   comparisonFullWindow: boolean;
   creationPromptFullWindow: boolean;
   loadingPreviews: readonly TransitionPreviewDto[];
@@ -52,14 +54,12 @@ export interface WorkspaceTabSurfaceProps {
   transitionShowcaseNavigation: TransitionShowcaseNavigationState;
   documentNavigationRevision: number;
   articleEditorStates: readonly WorkspaceArticleEditorStateDto[];
-  articleEditOwners: readonly WorkspaceArticleEditOwnerDto[];
   onArticleEditorStateChange(
     articleId: string,
     operation: (current: WorkspaceArticleEditorStateDto | null) => WorkspaceArticleEditorStateDto | null,
   ): void;
   onArticleLocationChange(tabId: string, articleId: string, location: ArticleEditorLocationDto): void;
   onArticleLocationNavigate(tabId: string, articleId: string, location: ArticleEditorLocationDto): void;
-  onRequestEditOwnership(articleId: string, tabId: string): void;
   onLocationFlushChange(tabId: string, flush: (() => void) | null): void;
   onNewTab(sourceTabId: string, destination: AppLocation['view'] | AppLocation): void;
   onOpenBeside(sourceTabId: string, destination: AppLocation['view'] | AppLocation): void;
@@ -142,12 +142,8 @@ function useArticleEditorBindings(
   {
     onArticleLocationChange,
     onArticleLocationNavigate,
-    onRequestEditOwnership,
     onLocationFlushChange,
-  }: Pick<
-    WorkspaceTabSurfaceProps,
-    'onArticleLocationChange' | 'onArticleLocationNavigate' | 'onRequestEditOwnership' | 'onLocationFlushChange'
-  >,
+  }: Pick<WorkspaceTabSurfaceProps, 'onArticleLocationChange' | 'onArticleLocationNavigate' | 'onLocationFlushChange'>,
 ) {
   const changeLocation = useCallback(
     (articleId: string, location: ArticleEditorLocationDto) => onArticleLocationChange(tabId, articleId, location),
@@ -157,15 +153,11 @@ function useArticleEditorBindings(
     (articleId: string, location: ArticleEditorLocationDto) => onArticleLocationNavigate(tabId, articleId, location),
     [onArticleLocationNavigate, tabId],
   );
-  const requestOwnership = useCallback(
-    (articleId: string) => onRequestEditOwnership(articleId, tabId),
-    [onRequestEditOwnership, tabId],
-  );
   const changeLocationFlusher = useCallback(
     (flush: (() => void) | null) => onLocationFlushChange(tabId, flush),
     [onLocationFlushChange, tabId],
   );
-  return { changeLocation, navigateLocation, requestOwnership, changeLocationFlusher };
+  return { changeLocation, navigateLocation, changeLocationFlusher };
 }
 
 function WorkspaceOutlineSurface({ location, ...props }: WorkspaceTabSurfaceProps & { location: AppLocation }) {
@@ -202,6 +194,35 @@ export function WorkspaceTabSurface(props: WorkspaceTabSurfaceProps) {
   );
 }
 
+function WorkspaceSettingsSurface({
+  props,
+  location,
+  visible,
+}: {
+  props: WorkspaceTabSurfaceProps;
+  location: AppLocation;
+  visible: boolean;
+}) {
+  if (location.view === 'about') return <AboutScreen active={visible} />;
+  if (location.view !== 'settings') return null;
+  return (
+    <Activity mode={visible ? 'visible' : 'hidden'}>
+      <SettingsScreen
+        promptLocale={props.defaultPromptLocale}
+        onPromptLocaleChange={props.onPromptLocaleChange}
+        onAiFeatureModelsOpen={() =>
+          props.onNewTab(props.tab.id, {
+            ...location,
+            view: 'aiCenter',
+            aiCenter: { tab: 'capabilities', recordId: null },
+          })
+        }
+        onContentManagementOpen={() => props.onNewTab(props.tab.id, 'contentManagement')}
+      />
+    </Activity>
+  );
+}
+
 function WorkspaceTabContent(props: WorkspaceTabSurfaceProps) {
   const {
     tab,
@@ -218,7 +239,6 @@ function WorkspaceTabContent(props: WorkspaceTabSurfaceProps) {
     transitionShowcaseNavigation,
     documentNavigationRevision,
     articleEditorStates,
-    articleEditOwners,
     onArticleEditorStateChange,
     onNewTab,
     onCommitLocation,
@@ -246,7 +266,6 @@ function WorkspaceTabContent(props: WorkspaceTabSurfaceProps) {
   const loadingBoundaries = createWorkspaceLoadingBoundaries(loadingPreviews, view);
   const returnSummary = appMaterialsReturnSummary(location.materialsReturnContext, data, locale);
   const articleId = view === 'creator' && location.creator.surface === 'article' ? location.creator.articleId : null;
-  const editOwner = articleId ? (articleEditOwners.find((owner) => owner.articleId === articleId) ?? null) : null;
 
   const articleEditorBindings = useArticleEditorBindings(tab.id, props);
 
@@ -372,12 +391,10 @@ function WorkspaceTabContent(props: WorkspaceTabSurfaceProps) {
           tabId={tab.id}
           navigationEntryId={navigationEntry.id}
           articleLocation={navigationEntry.articleLocation}
-          editable={!articleId || editOwner?.tabId === tab.id}
           states={articleEditorStates}
           onChange={onArticleEditorStateChange}
           onArticleLocationChange={articleEditorBindings.changeLocation}
           onArticleLocationNavigate={articleEditorBindings.navigateLocation}
-          onRequestEditOwnership={articleEditorBindings.requestOwnership}
           onLocationFlushChange={articleEditorBindings.changeLocationFlusher}
         >
           {visible &&
@@ -452,6 +469,7 @@ function WorkspaceTabContent(props: WorkspaceTabSurfaceProps) {
             onReEditGeneration={reEditGeneration}
             onRetryGeneration={onRetryGeneration}
           />
+          <WorkspaceSettingsSurface props={props} location={location} visible={visible} />
           {visible && view === 'contentManagement' && (
             <ContentManagementScreen
               active={visible}

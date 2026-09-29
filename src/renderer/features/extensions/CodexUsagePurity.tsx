@@ -124,7 +124,7 @@ function PurityInfo({ investigation }: { investigation: CodexUsageInvestigation 
     : [text.unavailable];
   if (analysis && !analysis.samples.length) issues.push(text.noSamples);
   if (investigation.quotaPurityIssue) issues.push(text.issues[investigation.quotaPurityIssue]);
-  const problem = !analysis?.samples.length || issues.length > 0;
+  const problem = Boolean(investigation.quotaPurityIssue);
   const content = [
     ...issues,
     text.crossDevice,
@@ -194,7 +194,11 @@ export function CodexUsagePurityOverview({
           </div>
         );
       })}
-      {!rows.length && <span className="text-lg tabular-nums">—</span>}
+      {!rows.length && (
+        <span className="tabular-nums text-muted-foreground">
+          {investigation.quotaPurity ? `${labels.purity.eligibleSamples}: 0` : labels.evidence.noData}
+        </span>
+      )}
     </div>
   );
 }
@@ -318,7 +322,7 @@ export function CodexUsagePurityDetails({
             {!points.length && (
               <TableRow>
                 <TableCell colSpan={8} className="h-16 text-center">
-                  {text.noSamples}
+                  {investigation.quotaPurity ? `${text.eligibleSamples}: 0` : labels.evidence.noData}
                 </TableCell>
               </TableRow>
             )}
