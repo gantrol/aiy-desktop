@@ -202,7 +202,6 @@
   --selected-foreground: var(--plum-600);
   --selected-border: var(--plum-200);
   --hierarchy-accent: color-mix(in srgb, var(--selected-foreground) 58%, var(--selected-border));
-  --tree-branch-color: color-mix(in srgb, var(--hierarchy-accent) 80%, var(--selected-foreground));
   --ring: var(--plum-600);
   --primary: var(--sand-900);
   --primary-foreground: var(--neutral-0);

@@ -25,6 +25,11 @@ import type { ArticleContentInput, VideoDocumentRevisionMediaDto } from '@/share
 
 const centeredCrop: ArticleCoverCrop = { x: 0.5, y: 0.5, zoom: 1 };
 
+function retainedTextCoverSource(variant: ArticleCoverVariant | undefined, sourceAssetId: string) {
+  // Cropping keeps the text parameters; choosing another image starts a different source.
+  return variant?.sourceAssetId === sourceAssetId && variant.textSource ? { textSource: variant.textSource } : {};
+}
+
 async function cropCover(image: HTMLImageElement, ratio: ArticleCoverRatio, crop: ArticleCoverCrop) {
   const rect = articleCoverCropRect(image.naturalWidth, image.naturalHeight, ratio, crop);
   // Covers are bounded output assets; the original remains available for a later crop.
@@ -173,6 +178,7 @@ export function ArticleCoverDialog({
         assetId: result?.media.assetId ?? source.assetId,
         sourceAssetId: source.assetId,
         crop,
+        ...retainedTextCoverSource(variant, source.assetId),
       };
       const imported = [...(sourceImport ? [sourceImport] : []), ...(result ? [result] : [])];
       if (

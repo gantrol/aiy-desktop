@@ -10,6 +10,9 @@ export interface ArticleWriteContext {
   requestId: string;
   provenance?: AgentProvenance;
   actorId?: string;
+  operation?: ContentWriteContext['operation'];
+  sources?: ContentWriteContext['sources'];
+  commentCompilation?: ContentWriteContext['commentCompilation'];
 }
 
 /** Only explicit local authoring commands select the current user as the actor. */
@@ -41,6 +44,14 @@ export function initialArticleAuthors(db: Database.Database, input?: ArticleWrit
   ];
 }
 
+function articleWriteOperation(input?: ArticleWriteContext, baseRevisionId?: string): ContentWriteContext['operation'] {
+  return (
+    input?.operation ??
+    input?.provenance?.contribution ??
+    (baseRevisionId ? 'EDITED' : input?.actorId ? 'GENERATED' : 'IMPORTED')
+  );
+}
+
 export function articleWriteContext(
   db: Database.Database,
   input?: ArticleWriteContext,
@@ -56,7 +67,7 @@ export function articleWriteContext(
       : null;
   const sources = [
     ...new Map(
-      [...(previous?.sources ?? []), ...(declared?.origin?.sources ?? [])].map((source) => [
+      [...(previous?.sources ?? []), ...(input?.sources ?? []), ...(declared?.origin?.sources ?? [])].map((source) => [
         JSON.stringify(source),
         source,
       ]),
@@ -66,13 +77,14 @@ export function articleWriteContext(
     writer,
     sources,
     entry: input?.entry ?? 'AIY',
-    operation: declared?.contribution ?? (baseRevisionId ? 'EDITED' : input?.actorId ? 'GENERATED' : 'IMPORTED'),
+    operation: articleWriteOperation(input, baseRevisionId),
     agentId: declared?.agentId,
     model: declared?.model,
     threadId: declared?.threadId,
     requestId: input?.requestId,
     batchId: declared?.batchId,
     baseRevisionId,
+    commentCompilation: input?.commentCompilation ?? previous?.commentCompilation,
   });
 }
 

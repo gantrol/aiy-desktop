@@ -1,0 +1,25 @@
+{
+  "schemaVersion": 1,
+  "id": "minimal-loop",
+  "entry": "../minimal-loop.html",
+  "messageKey": "designLab.themeCreation.title",
+  "content": "plan.json",
+  "productBase": "e9f3e7c362e1ed50ab29107483e75d833a327d69",
+  "components": [
+    "src/renderer/features/content-editor/useContentEditor.ts",
+    "src/renderer/features/content-editor/ContentDocumentOutline.tsx",
+    "src/renderer/components/ui/button.tsx",
+    "src/renderer/components/ui/input.tsx",
+    "src/renderer/components/ui/dialog.tsx"
+  ],
+  "invariants": [
+    "one-editor-per-visited-work",
+    "explicit-input-selection",
+    "derivation-captures-source-revision",
+    "platform-draft-never-means-sent",
+    "responsive-layout-keeps-panel-preferences",
+    "no-product-storage-or-network-writes"
+  ],
+  "reviewStatus": "source-reviewed",
+  "productionRoutesChanged": false
+}

@@ -23,6 +23,10 @@ import { contentReferenceExtension } from '@/renderer/features/content-editor/Co
 import { ContentReferenceInsertAction } from '@/renderer/features/content-editor/ContentReferenceInsertAction';
 import { applySharedDocument } from '@/renderer/features/content-editor/sharedDocumentEdit';
 import { useContentEditor } from '@/renderer/features/content-editor/useContentEditor';
+import {
+  createContentEditorLoadTiming,
+  useContentEditorLoadFrame,
+} from '@/renderer/features/content-editor/contentEditorLoadDiagnostics';
 import { useContentFigureReferences } from '@/renderer/features/content-editor/useContentFigureReferences';
 import { useContentBlockNavigation } from '@/renderer/features/content-editor/useContentBlockNavigation';
 import { OutlineListItem } from '@/renderer/features/content-editor/OutlineListItem';
@@ -515,7 +519,23 @@ function outlineExtensions(preferenceKey: string | undefined) {
   ];
 }
 
+function useEditorImageRecovery(
+  editor: Editor | null,
+  callbacks: { current: Pick<Props, 'onImageImported' | 'onImageImportError'> },
+  inputs: ContentInputOperations,
+) {
+  useEffect(() => {
+    if (!editor) return;
+    return registerContentImageRecovery(editor, {
+      imported: (result) => callbacks.current.onImageImported(result),
+      failed: () => callbacks.current.onImageImportError(),
+      track: inputs.track,
+    });
+  }, [editor, callbacks, inputs]);
+}
+
 function ContentBlockEditorSession(props: Props) {
+  const [loadTiming] = useState(() => createContentEditorLoadTiming(props));
   const runtimeRefs = useVideoDocumentEditorRuntimeRefs(props);
   const {
     initialMarkdown,
@@ -590,6 +610,7 @@ function ContentBlockEditorSession(props: Props) {
     [articleElementExtension, imageExtension, referencesExtension, props.outlineMode, props.outlinePreferenceKey],
   );
   const materialDrop = materialImageDropHandler(editorRef, imageImportQueueRef, imageImportCallbacksRef);
+  if (loadTiming && loadTiming.preparedAt === null) loadTiming.preparedAt = performance.now();
   const editor = useContentEditor(
     {
       presentation: {
@@ -647,6 +668,8 @@ function ContentBlockEditorSession(props: Props) {
     },
     [extensions],
   );
+  if (loadTiming && editor && loadTiming.createdAt === null) loadTiming.createdAt = performance.now();
+  useContentEditorLoadFrame(loadTiming, editor);
   const secondaryEditorRootRef = useMemo(
     () => ({ current: props.secondaryEditorRoot ?? null }),
     [props.secondaryEditorRoot],
@@ -712,17 +735,7 @@ function ContentBlockEditorSession(props: Props) {
     onError: props.onQuickInsertNoteError,
   });
 
-  useEffect(() => {
-    if (!editor) return;
-    const unregister = registerContentImageRecovery(editor, {
-      imported: (result) => imageImportCallbacksRef.current.onImageImported(result),
-      failed: () => imageImportCallbacksRef.current.onImageImportError(),
-      track: inputs.track,
-    });
-    return () => {
-      unregister();
-    };
-  }, [editor, imageImportCallbacksRef, inputs]);
+  useEditorImageRecovery(editor, imageImportCallbacksRef, inputs);
 
   const state =
     useEditorState({

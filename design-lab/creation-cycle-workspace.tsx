@@ -13,6 +13,7 @@ import { cn } from '@/renderer/lib/utils';
 import { cycleAssets, type CycleModel } from './creation-cycle-model';
 import { DraftInputPane } from './creation-cycle-materials';
 import { ProcessingWorkspace } from './creation-cycle-processing';
+import { EditingContextBar } from './creation-cycle-navigation';
 
 function DraftPanels({ model }: { model: CycleModel }) {
   const labels = useI18n().messages.contentEditor;
@@ -39,7 +40,7 @@ function DraftPanels({ model }: { model: CycleModel }) {
                 )
               }
             >
-              {model.copy.exampleHeading}
+              {model.markdown.match(/^#{1,6}\s+(.+)$/m)?.[1] ?? model.title}
             </Button>
           ),
         },
@@ -97,7 +98,13 @@ function DraftEditor({ model }: { model: CycleModel }) {
   const body = useRef<HTMLDivElement>(null);
   function captureSelection() {
     const selection = window.getSelection();
-    if (!selection?.anchorNode || !body.current?.contains(selection.anchorNode)) return;
+    if (
+      !selection?.anchorNode ||
+      !selection.focusNode ||
+      !body.current?.contains(selection.anchorNode) ||
+      !body.current.contains(selection.focusNode)
+    )
+      return;
     model.setSelectedText(selection.toString().trim());
   }
   return (
@@ -107,6 +114,7 @@ function DraftEditor({ model }: { model: CycleModel }) {
       title={
         <Input
           value={model.title}
+          disabled={model.busy}
           aria-label={model.copy.writing}
           onChange={(event) => model.setTitle(event.target.value)}
           className={cn(articleTitleClassName, 'h-auto border-0 px-0 shadow-none')}
@@ -117,41 +125,60 @@ function DraftEditor({ model }: { model: CycleModel }) {
           {model.copy.mine} · {model.copy.localDraft}
         </span>
       }
-      sidePanel={<DraftPanels model={model} />}
+      sidePanel={model.output.kind === 'ARTICLE' ? <DraftPanels model={model} /> : undefined}
       toolbar={
         <WorkbenchPaneHeader>
           <FileTextIcon className="size-4" />
           <span className="min-w-0 flex-1 truncate text-sm font-semibold">
-            {model.copy.output} · {model.title}
+            {model.copy.output} · {model.contextLabel}
           </span>
           <span className="hidden text-xs text-muted-foreground xl:inline">
-            {model.selectedText ? model.copy.selectedPassage : model.copy.wholeDraft}
+            {model.output.kind === 'ARTICLE' && (
+              <>{model.selectedText ? model.copy.selectedPassage : model.copy.wholeDraft}</>
+            )}
           </span>
-          <Button variant="ghost" size="sm" onClick={() => void model.begin('rewrite')}>
-            {model.copy.rewrite}
-          </Button>
-          <Button variant="ghost" size="sm" onClick={() => void model.begin('image')}>
-            {model.copy.illustrate}
+          {model.output.kind === 'ARTICLE' && (
+            <Button variant="ghost" size="sm" disabled={model.busy} onClick={() => void model.begin('rewrite')}>
+              {model.copy.rewrite}
+            </Button>
+          )}
+          <Button variant="ghost" size="sm" disabled={model.busy} onClick={() => void model.begin('image')}>
+            {model.output.kind === 'IMAGE' ? model.copy.newCandidate : model.copy.illustrate}
           </Button>
         </WorkbenchPaneHeader>
       }
     >
-      <div ref={body} onPointerUp={captureSelection} onKeyUp={captureSelection}>
-        <ContentInput
-          key={model.epoch}
-          markdown={model.markdown}
-          sessionIdentity={`cycle-draft-${model.epoch}`}
-          assets={cycleAssets}
-          toolbarVisible={false}
-          mediaIntake="EXTERNAL"
-          onChange={model.setMarkdown}
-          onHandleChange={(handle) => {
-            model.editorHandle.current = handle;
-          }}
-          onSave={() => model.setNotice(model.copy.localDraft)}
-          onError={() => model.setNotice(model.copy.sourceMissing)}
-        />
-      </div>
+      {model.output.kind === 'IMAGE' ? (
+        <div className="flex justify-center py-6">
+          {cycleAssets
+            .filter((asset) => asset.id === model.draft.assetId)
+            .map((asset) => (
+              <AssetMedia
+                key={asset.id}
+                asset={asset}
+                alt={model.title}
+                className="max-h-[55dvh] w-full object-contain"
+              />
+            ))}
+        </div>
+      ) : (
+        <div ref={body} onPointerUp={captureSelection} onKeyUp={captureSelection}>
+          <ContentInput
+            key={model.epoch}
+            markdown={model.markdown}
+            sessionIdentity={`cycle-draft-${model.contextKey}-${model.epoch}`}
+            assets={cycleAssets}
+            toolbarVisible={false}
+            mediaIntake="EXTERNAL"
+            onChange={model.setMarkdown}
+            onHandleChange={(handle) => {
+              model.editorHandle.current = handle;
+            }}
+            onSave={() => void model.saveRevision()}
+            onError={() => model.setNotice(model.copy.sourceMissing)}
+          />
+        </div>
+      )}
     </ContentDocumentWorkspace>
   );
 }
@@ -159,9 +186,12 @@ function DraftEditor({ model }: { model: CycleModel }) {
 export function WritingWorkspace({ model }: { model: CycleModel }) {
   return (
     <>
-      <div className={cn('flex min-h-0 min-w-0 flex-1', model.operation && 'hidden')}>
-        <DraftInputPane model={model} />
-        <DraftEditor model={model} />
+      <div className={cn('flex min-h-0 min-w-0 flex-1 flex-col', model.operation && 'hidden')}>
+        <EditingContextBar model={model} />
+        <div className="flex min-h-0 min-w-0 flex-1">
+          <DraftInputPane model={model} />
+          <DraftEditor key={model.contextKey} model={model} />
+        </div>
       </div>
       {model.operation && <ProcessingWorkspace key={model.operation.kind} model={model} />}
     </>

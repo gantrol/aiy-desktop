@@ -73,6 +73,8 @@ function summaryFor(run: ErrorRun, copy: MessageCatalog['app']['generationErrors
       INVALID_REQUEST: copy.summaries.invalidRequest,
       UNSUPPORTED_CAPABILITY: copy.summaries.invalidRequest,
       NO_OUTPUT: copy.summaries.noOutput,
+      IMAGE_GENERATION_NO_OUTPUT: copy.summaries.noOutput,
+      IMAGE_GENERATION_INVALID_OUTPUT: copy.summaries.invalidImage,
       LOCAL_STATE: copy.summaries.localState,
       OUTPUT_COMMIT_FAILED: copy.summaries.localState,
     }[run.errorCode ?? ''] ?? copy.summaries.generic

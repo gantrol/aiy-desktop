@@ -5,7 +5,7 @@ import { Input } from '@/renderer/components/ui/input';
 import { Popover, PopoverContent, PopoverTrigger } from '@/renderer/components/ui/popover';
 import { useI18n } from '@/renderer/i18n/useI18n';
 import { calendarSelectClass } from '@/renderer/features/calendar/calendarControls';
-import type { CalendarPreferences } from '@/shared/contracts/calendar';
+import { calendarPreferencesSchema, type CalendarPreferences } from '@/shared/contracts/calendar';
 import type { CalendarView } from '@/shared/calendar-views';
 
 interface Props {
@@ -16,8 +16,13 @@ interface Props {
 }
 
 function preferencesKey(value: CalendarPreferences) {
-  return JSON.stringify({
+  const { lastSystemTimeZone: _observed, ...view } = calendarPreferencesSchema.parse({
     ...value,
+    followSystemTimeZone: value.followSystemTimeZone ?? false,
+  });
+  return JSON.stringify({
+    ...view,
+    timeZone: value.followSystemTimeZone ? undefined : value.timeZone,
     categories: [...value.categories].sort(),
   });
 }
@@ -150,7 +155,10 @@ export function CalendarViews({ spaceId, preferences, disabled, onApply }: Props
             disabled={!selected || loading || saving}
             onClick={() => {
               if (selected) {
-                onApply(selected.preferences);
+                onApply({
+                  ...selected.preferences,
+                  followSystemTimeZone: selected.preferences.followSystemTimeZone ?? false,
+                });
                 setOpen(false);
               }
             }}

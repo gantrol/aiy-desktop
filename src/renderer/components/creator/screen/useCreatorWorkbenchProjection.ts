@@ -14,6 +14,7 @@ import { derivedVisualCanvasPresetKeys } from '@/renderer/components/creator/der
 import { derivedVisualAppliedAssetId } from '@/shared/derived-visual-media';
 import { derivedVisualSchemes } from '@/renderer/components/creator/screen/creatorScreenProjection';
 import { useI18n } from '@/renderer/i18n/useI18n';
+import { creatorInputOwner } from '@/renderer/components/creator/screen/creatorInputOwnership';
 
 type CreationMode = 'existing' | 'new';
 
@@ -31,6 +32,7 @@ interface Options {
   selectedIdeaCreationId: string | null;
   selectedImageBreakdownAlbumId: string | null;
   selectedImageBreakdownId: string | null;
+  selectedInspirationStashId: string | null;
   selectedSocialPost: SocialPostDto | null;
   selectedSocialPostId: string | null;
   seriesId: string | null;
@@ -51,13 +53,7 @@ function resolveAssistantScope(
   sessionHostSeries: BootstrapDto['series'][number] | undefined,
   editingDerivedVisual: boolean,
 ): CreatorAgentScope | null {
-  const contentSelected = Boolean(
-    options.selectedEvaluationSuiteId ||
-    options.selectedImageBreakdownId ||
-    options.selectedSocialPostId ||
-    options.selectedArticleId,
-  );
-  if (contentSelected && !editingDerivedVisual) return null;
+  if (!creatorInputOwner(options, editingDerivedVisual)) return null;
   if (options.creationMode === 'existing' && sessionHostSeries) {
     return { kind: 'SERIES', id: sessionHostSeries.id };
   }

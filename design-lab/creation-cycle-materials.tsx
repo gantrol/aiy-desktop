@@ -10,6 +10,7 @@ import { AssetMedia } from '@/renderer/components/media/AssetMedia';
 import { ContentInput } from '@/renderer/features/content-editor/ContentInput';
 import { cn } from '@/renderer/lib/utils';
 import type { CycleMaterial, CycleModel } from './creation-cycle-model';
+import type { InputScope } from './creation-cycle-documents';
 
 export function SourcePreview({ material, model }: { material: CycleMaterial; model: CycleModel }) {
   return (
@@ -61,10 +62,19 @@ function MaterialRow({ material, model, onSelect }: { material: CycleMaterial; m
   );
 }
 
-export function MaterialBrowser({ model, onUse }: { model: CycleModel; onUse?(): void }) {
+export function MaterialBrowser({
+  model,
+  onUse,
+  scope = 'current',
+}: {
+  model: CycleModel;
+  onUse?(): void;
+  scope?: InputScope;
+}) {
   const [query, setQuery] = useState('');
   const [kind, setKind] = useState('ALL');
   const { copy } = model;
+  const usedIds = scope === 'shared' ? model.sharedInputIds : model.currentInputIds;
   const selected = model.materials.find((item) => item.id === model.selectedMaterialId) ?? model.materials[0];
   const filtered = model.materials.filter(
     (item) => (kind === 'ALL' || item.kind === kind) && item.title.toLowerCase().includes(query.toLowerCase()),
@@ -101,15 +111,18 @@ export function MaterialBrowser({ model, onUse }: { model: CycleModel; onUse?():
           <div className="min-h-0 flex-1 overflow-auto">
             <SourcePreview material={selected} model={model} />
           </div>
-          <div className="flex shrink-0 justify-end border-t p-3">
+          <div className="flex shrink-0 items-center justify-between gap-3 border-t p-3">
+            <span className="min-w-0 truncate text-xs text-muted-foreground">
+              {scope === 'shared' ? copy.sharedInputs : `${model.title} / ${model.contextLabel}`}
+            </span>
             <Button
               onClick={() => {
-                model.addInput(selected.id);
+                model.addInput(selected.id, scope);
                 onUse?.();
               }}
-              disabled={model.inputIds.includes(selected.id)}
+              disabled={usedIds.includes(selected.id)}
             >
-              {model.inputIds.includes(selected.id) ? copy.used : copy.useInDraft}
+              {usedIds.includes(selected.id) ? copy.used : scope === 'shared' ? copy.addSharedInput : copy.useInDraft}
             </Button>
           </div>
         </div>
@@ -118,7 +131,7 @@ export function MaterialBrowser({ model, onUse }: { model: CycleModel; onUse?():
   );
 }
 
-export function InputPicker({ model }: { model: CycleModel }) {
+export function InputPicker({ model, scope }: { model: CycleModel; scope: InputScope }) {
   const [open, setOpen] = useState(false);
   return (
     <Dialog open={open} onOpenChange={setOpen}>
@@ -128,8 +141,10 @@ export function InputPicker({ model }: { model: CycleModel }) {
         </Button>
       </DialogTrigger>
       <DialogContent className="flex h-[min(720px,90dvh)] max-w-5xl flex-col gap-0 p-0" aria-describedby={undefined}>
-        <DialogTitle className="shrink-0 border-b p-4 text-base">{model.copy.addInput}</DialogTitle>
-        <MaterialBrowser model={model} onUse={() => setOpen(false)} />
+        <DialogTitle className="shrink-0 border-b p-4 text-base">
+          {scope === 'shared' ? model.copy.sharedInputs : model.copy.currentInputs} · {model.copy.addInput}
+        </DialogTitle>
+        <MaterialBrowser model={model} scope={scope} onUse={() => setOpen(false)} />
       </DialogContent>
     </Dialog>
   );
@@ -145,41 +160,49 @@ export function DraftInputPane({ model }: { model: CycleModel }) {
       <WorkbenchNavigationPane
         layoutKey="design-cycle-input"
         label={model.copy.input}
-        selectionKey="draft"
-        initialWidth={300}
+        selectionKey={model.contextKey}
+        initialWidth={260}
         minimumContentWidth={600}
         toggleHost={toggleHost}
       >
         <WorkbenchPaneHeader>
-          <span className="flex-1 text-sm font-semibold">
-            {model.copy.input} · {model.copy.thisDraft}
-          </span>
-          <InputPicker model={model} />
+          <span className="flex-1 text-sm font-semibold">{model.copy.input}</span>
         </WorkbenchPaneHeader>
-        <div className="min-h-0 flex-1 overflow-auto p-2">
-          {model.materials
-            .filter((item) => model.inputIds.includes(item.id))
-            .map((material) => (
-              <div key={material.id} className="flex items-center">
-                <MaterialRow
-                  material={material}
-                  model={model}
-                  onSelect={() => {
-                    model.setSelectedMaterialId(material.id);
-                    setPreview(true);
-                  }}
-                />
-                <Button
-                  variant="ghost"
-                  size="icon-sm"
-                  aria-label={model.copy.removeInput}
-                  onClick={() => model.setInputIds((ids) => ids.filter((id) => id !== material.id))}
-                >
-                  <XIcon className="size-3.5" />
-                </Button>
-              </div>
-            ))}
-          {!model.inputIds.length && <div className="p-3 text-xs text-muted-foreground">{model.copy.noInputs}</div>}
+        <div className="min-h-0 flex-1 space-y-5 overflow-auto p-2">
+          {(['shared', 'current'] as const).map((scope) => {
+            const ids = scope === 'shared' ? model.sharedInputIds : model.currentInputIds;
+            return (
+              <section key={scope}>
+                <div className="flex items-center justify-between px-3 text-xs text-muted-foreground">
+                  <span>{scope === 'shared' ? model.copy.sharedInputs : model.copy.currentInputs}</span>
+                  <InputPicker model={model} scope={scope} />
+                </div>
+                {model.materials
+                  .filter((item) => ids.includes(item.id))
+                  .map((material) => (
+                    <div key={material.id} className="flex items-center">
+                      <MaterialRow
+                        material={material}
+                        model={model}
+                        onSelect={() => {
+                          model.setSelectedMaterialId(material.id);
+                          setPreview(true);
+                        }}
+                      />
+                      <Button
+                        variant="ghost"
+                        size="icon-sm"
+                        aria-label={model.copy.removeInput}
+                        onClick={() => model.removeInput(material.id, scope)}
+                      >
+                        <XIcon className="size-3.5" />
+                      </Button>
+                    </div>
+                  ))}
+                {!ids.length && <div className="p-3 text-xs text-muted-foreground">{model.copy.noInputs}</div>}
+              </section>
+            );
+          })}
         </div>
         {selected && preview && (
           <div className="max-h-[55%] overflow-auto border-t">

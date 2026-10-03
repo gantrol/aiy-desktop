@@ -45,6 +45,7 @@ interface ExternalDocumentUpdate {
 interface Props {
   active: boolean;
   libraryVisible?: boolean;
+  initialBranchId?: string;
   externalDocumentUpdate: ExternalDocumentUpdate | null;
   albums: AlbumDto[];
   location: VideoDocumentsLocation;
@@ -252,6 +253,7 @@ export async function continueEmptyCreation(
 }
 
 export function VideoDocumentsScreen({
+  initialBranchId,
   active,
   libraryVisible = true,
   externalDocumentUpdate,
@@ -280,6 +282,7 @@ export function VideoDocumentsScreen({
   const refreshNavigation = useCombinedNavigationRefresh(navigation.refresh, onLibraryChange);
   const session = useVideoDocumentSession({
     active,
+    initialBranchId,
     documentId: location.documentId,
     revisionLoadFailedLabel: labels.revisionLoadFailed,
     keyChangeErrorLabels: labels.keyChanges,

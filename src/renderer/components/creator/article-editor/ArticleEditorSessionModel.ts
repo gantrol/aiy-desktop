@@ -233,9 +233,16 @@ export class ArticleEditorSessionModel {
       ...articleCoverAssetIds({ coverAssetId, coverVariants }),
     ]);
     const retired = new Set(
-      (metadata.coverVariants ?? []).flatMap((previous) =>
-        previous.assetId !== previous.sourceAssetId && !retained.has(previous.assetId) ? [previous.assetId] : [],
-      ),
+      (metadata.coverVariants ?? []).flatMap((previous) => {
+        // Re-rendered text covers are generated resources, not uploaded originals.
+        // Drop only unused current bindings; revision history and undo keep the assets.
+        const candidates = previous.textSource
+          ? [previous.assetId, previous.sourceAssetId]
+          : previous.assetId !== previous.sourceAssetId
+            ? [previous.assetId]
+            : [];
+        return candidates.filter((id) => !retained.has(id));
+      }),
     );
     const mediaBindings = metadata.mediaBindings.filter((binding) => !retired.has(binding.assetId));
     for (const image of imported) {

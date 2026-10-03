@@ -8,6 +8,8 @@ import {
   codexHistorySearchPageSchema,
   codexHistoryThreadUsageInputSchema,
   codexHistoryThreadUsageSchema,
+  codexHistoryThroughputsInputSchema,
+  codexHistoryThroughputsSchema,
   codexHistoryThreadMessagesInputSchema,
   codexHistoryThreadMessagesPageSchema,
 } from '@/shared/contracts/codex-history-search';
@@ -33,6 +35,8 @@ type CodexArtifactsPreloadApi = Pick<
   | 'codexHistorySearchRefresh'
   | 'codexHistoryThreadUsageCancel'
   | 'codexHistoryThreadUsage'
+  | 'codexHistoryThroughputs'
+  | 'codexHistoryThroughputsCancel'
   | 'codexHistoryThreadMessages'
   | 'onCodexHistorySearchChanged'
   | 'codexVisualizationsList'
@@ -72,6 +76,11 @@ export function createCodexArtifactsPreloadApi(
       ),
     codexHistoryThreadUsageCancel: (input) =>
       ipcRenderer.invoke('codex-history-search:cancel-thread-usage', codexHistoryThreadUsageInputSchema.parse(input)),
+    codexHistoryThroughputs: async (input) =>
+      codexHistoryThroughputsSchema.parse(
+        await ipcRenderer.invoke('codex-history-search:throughputs', codexHistoryThroughputsInputSchema.parse(input)),
+      ),
+    codexHistoryThroughputsCancel: () => ipcRenderer.invoke('codex-history-search:cancel-throughputs'),
     codexHistoryThreadUsage: async (input) =>
       codexHistoryThreadUsageSchema
         .nullable()

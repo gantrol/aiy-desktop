@@ -189,6 +189,7 @@ function isoTimestamp(epochMs: number) {
 
 function searchResult(candidate: SearchCandidate, query: string): CodexHistorySearchResult {
   return {
+    throughput: null,
     threadId: candidate.threadId,
     title: candidate.title,
     titleAvailable: candidate.titleAvailable,

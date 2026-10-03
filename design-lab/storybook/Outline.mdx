@@ -1,0 +1,17 @@
+import { Meta, Canvas } from '@storybook/addon-docs/blocks';
+import * as Outline from './Outline.stories';
+
+<Meta of={Outline} name="Scenes and usage" />
+
+# 大纲
+
+`ContentDocumentOutline` 与右侧真实编辑器共享一份文档。左侧可查找、折叠和定位条目；修改右侧内容后，大纲跟随更新。
+
+| 分镜                                                | 操作                           | 预期                             |
+| --------------------------------------------------- | ------------------------------ | -------------------------------- |
+| [已有稿件](?path=/story/creation-outline--existing) | 查找条目、点击定位，再修改正文 | 目标块身份不变，大纲反映文档变化 |
+| [空白](?path=/story/creation-outline--blank)        | 输入内容                       | 大纲按正式规则生成条目           |
+
+<Canvas of={Outline.Existing} />
+
+这里独立展示大纲组件；完整的大纲编辑工作面从[编辑工作面／大纲](?path=/story/creation-editor--outline)进入。此组件样例不包含保存宿主。

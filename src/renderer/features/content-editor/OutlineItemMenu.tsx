@@ -9,6 +9,7 @@ import {
   Copy,
   CornerDownRight,
   Focus,
+  FilePlus2,
   IndentDecrease,
   IndentIncrease,
   Link,
@@ -58,6 +59,7 @@ import {
 } from '@/renderer/features/content-editor/outlineEditing';
 import { addOutlineItem, addOutlineParagraph } from '@/renderer/features/content-editor/outlineAppend';
 import { OutlineMoveDialog } from '@/renderer/features/content-editor/OutlineMoveDialog';
+import { useOutlinePageAction } from '@/renderer/features/content-editor/useOutlinePageAction';
 import { OutlineContentLinkDialog } from '@/renderer/features/content-editor/OutlineContentLinkDialog';
 import { useOutlineContentLinkHost } from '@/renderer/features/content-editor/OutlineContentLinkHost';
 import { openContentAssociation } from '@/renderer/features/content-editor/contentAssociation';
@@ -82,6 +84,25 @@ function OutlinePlainTextPasteItem({ editor, id, onSelect }: { editor: Editor; i
       <ClipboardPaste />
       {copy.pasteAsPlainText}
       <Kbd className="ml-auto">{shortcutTokens(outlinePlainTextPasteBinding(platform), platform).join('+')}</Kbd>
+    </DropdownMenuItem>
+  );
+}
+
+function OutlinePageMenuItem({
+  page,
+  id,
+  disabled,
+}: {
+  page: ReturnType<typeof useOutlinePageAction>;
+  id: string;
+  disabled: boolean;
+}) {
+  const copy = useI18n().messages.referenceOutline;
+  if (!page.supported) return null;
+  return (
+    <DropdownMenuItem disabled={disabled || page.busy} onSelect={() => void page.create([id])}>
+      <FilePlus2 />
+      {copy.turnIntoPage}
     </DropdownMenuItem>
   );
 }
@@ -260,19 +281,7 @@ interface OutlineItemMenuProps {
   id: string;
 }
 
-export function OutlineItemMenu({ editor, node, getPos, editable, selected, selectedIds, id }: OutlineItemMenuProps) {
-  const { messages } = useI18n();
-  const copy = messages.referenceOutline;
-  const host = useContentReferenceHost();
-  const linkHost = useOutlineContentLinkHost();
-  const [linkMode, setLinkMode] = useState<'EXISTING' | 'NEW' | null>(null);
-  const [moveOpen, setMoveOpen] = useState(false);
-  const [moveIds, setMoveIds] = useState<readonly string[]>([]);
-  const focusId = outlineViewState(editor.state).focus;
-  const focusedRoot = focusId === id;
-  const deleteBlocked = focusedRoot || Boolean(selected && focusId && selectedIds.includes(focusId));
-  const menuSelection = useRef<Selection | null>(null);
-  const plainTextPaste = useOutlinePlainTextPasteMenu(editor, id);
+function outlineNoteGroups(node: ProseMirrorNode) {
   const groups: { offset: number; id: string; role: string | undefined; preview: string }[] = [];
   node.forEach((child, offset) => {
     if (!['bulletList', 'orderedList'].includes(child.type.name)) return;
@@ -283,6 +292,24 @@ export function OutlineItemMenu({ editor, node, getPos, editable, selected, sele
       preview: child.firstChild?.firstChild?.textContent.trim().slice(0, 32) || '…',
     });
   });
+  return groups;
+}
+
+export function OutlineItemMenu({ editor, node, getPos, editable, selected, selectedIds, id }: OutlineItemMenuProps) {
+  const { messages } = useI18n();
+  const copy = messages.referenceOutline;
+  const host = useContentReferenceHost();
+  const linkHost = useOutlineContentLinkHost();
+  const page = useOutlinePageAction(editor);
+  const [linkMode, setLinkMode] = useState<'EXISTING' | 'NEW' | null>(null);
+  const [moveOpen, setMoveOpen] = useState(false);
+  const [moveIds, setMoveIds] = useState<readonly string[]>([]);
+  const focusId = outlineViewState(editor.state).focus;
+  const focusedRoot = focusId === id;
+  const deleteBlocked = focusedRoot || Boolean(selected && focusId && selectedIds.includes(focusId));
+  const menuSelection = useRef<Selection | null>(null);
+  const plainTextPaste = useOutlinePlainTextPasteMenu(editor, id);
+  const groups = outlineNoteGroups(node);
   const run = (action: Action) => {
     if (!editor.isEditable || editor.isDestroyed || activeOutlineView(editor).composing) return;
     const position = getPos();
@@ -359,6 +386,7 @@ export function OutlineItemMenu({ editor, node, getPos, editable, selected, sele
             <MousePointer2 />
             {copy.selectItem}
           </DropdownMenuItem>
+          <OutlinePageMenuItem page={page} id={id} disabled={!editable || focusedRoot} />
           {editable && (
             <>
               <DropdownMenuSeparator />

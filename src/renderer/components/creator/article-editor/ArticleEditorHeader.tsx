@@ -1,3 +1,4 @@
+import { ArticleOutlineStartAction } from '@/renderer/features/content-editor/ArticleOutlineStartAction';
 import {
   CircleAlertIcon,
   CopyIcon,
@@ -147,6 +148,7 @@ export function ArticleHeaderActions({
     <>
       <Separator orientation="vertical" className="mx-1 h-4" />
       <CreationWorkNavigation relationsAction={{ count: relationCount, onOpen: onOpenRelations }} />
+      <ArticleOutlineStartAction />
       <DropdownMenu>
         <Tooltip>
           <TooltipTrigger asChild>

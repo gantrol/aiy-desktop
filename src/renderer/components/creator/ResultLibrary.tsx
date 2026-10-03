@@ -9,6 +9,7 @@ import {
   ArchiveIcon,
   BookmarkIcon,
   FileTextIcon,
+  FolderOpenIcon,
   FolderInputIcon,
   GalleryVerticalEndIcon,
   ImageIcon,
@@ -30,7 +31,6 @@ import {
   useMemo,
   useRef,
   useState,
-  type DragEvent,
   type MouseEventHandler,
   type PointerEvent as ReactPointerEvent,
   type ReactNode,
@@ -48,21 +48,10 @@ import type {
 import { cn } from '@/renderer/lib/utils';
 import { useI18n } from '@/renderer/i18n/useI18n';
 import { usePinContentAction } from '@/renderer/features/desktop-petals/PinContentAction';
-import {
-  readCreationTreeDrag,
-  endCreationTreeDrag,
-  writeAlbumDrag,
-  writeCreationItemDrag,
-} from '@/renderer/components/albums/albumDrag';
 import { AlbumMoveDialog, type AlbumMoveTarget } from '@/renderer/components/albums/AlbumMoveDialog';
 import { AlbumTreePreview } from '@/renderer/components/albums/AlbumTreePreview';
 import { buildAlbumTreeIndex } from '@/renderer/components/albums/albumTree';
-import {
-  itemDragStart,
-  itemDragScopeProps,
-  acceptsItemTransfer,
-  itemDragIntent,
-} from '@/renderer/components/albums/itemDrag';
+import { itemDragStart, itemDragScopeProps } from '@/renderer/components/albums/itemDrag';
 import {
   TreeBranchCollapseProvider,
   TreeBranchCollapseRail,
@@ -71,7 +60,7 @@ import {
   TreeDisclosureRail,
 } from '@/renderer/components/albums/TreeDisclosureRail';
 import {
-  COMPACT_TREE_NODE_METRICS,
+  CREATION_TREE_COMPACT_NODE_METRICS,
   getTreeBranchItemTopology,
   getTreeNodeAnchor,
   TREE_CONNECTION_GEOMETRY,
@@ -82,13 +71,17 @@ import { createTreeBranchExpansionAction } from '@/renderer/components/albums/tr
 import type { ContentLifecycleActionRequest } from '@/renderer/components/albums/useContentLifecycleActions';
 import { ActionContextMenuItems, ActionMenuButton, type ActionMenuAction } from '@/renderer/components/ui/action-menu';
 import { Button } from '@/renderer/components/ui/button';
-import { Collapsible, CollapsibleTrigger } from '@/renderer/components/ui/collapsible';
+import { CollapsibleTrigger } from '@/renderer/components/ui/collapsible';
 import { ContextMenu, ContextMenuContent, ContextMenuTrigger } from '@/renderer/components/ui/context-menu';
 import { QuietEmpty } from '@/renderer/components/ui/quiet-empty';
-import { ScrollArea } from '@/renderer/components/ui/scroll-area';
 import { CreatorPaneResizeHandle } from '@/renderer/components/creator/CreatorPaneResizeHandle';
 import { CreationLibraryChildList } from '@/renderer/components/creator/CreationLibraryChildDisclosure';
 import { CreationLibraryHeader } from '@/renderer/components/creator/CreationLibraryHeader';
+import {
+  CreationLibraryStickyBranch,
+  CreationLibraryTreeViewport,
+} from '@/renderer/components/creator/CreationLibraryStickyPath';
+import { useCreationLibraryDrag } from '@/renderer/components/creator/useCreationLibraryDrag';
 import type { CreationLibraryFilter } from '@/renderer/components/creator/creationLibraryFilter';
 import { creationAlbumPreviewAssets } from '@/renderer/components/creator/creationAlbumPreviewAssets';
 import { creationFormTabTarget } from '@/renderer/components/creator/creationFormTabTarget';
@@ -416,9 +409,6 @@ export function ResultLibrary({
   const [searchOpen, setSearchOpen] = useState(false);
   const [previewAsset, setPreviewAsset] = useState<AssetDto | null>(null);
   const [moveTarget, setMoveTarget] = useState<AlbumMoveTarget | null>(null);
-  const [draggedCreationItemId, setDraggedCreationItemId] = useState<string | null>(null);
-  const [draggedAlbumId, setDraggedAlbumId] = useState<string | null>(null);
-  const [dropAlbumId, setDropAlbumId] = useState<string | null>(null);
   const viewportRef = useRef<HTMLDivElement>(null);
   const draftSidebar = useCreationDraftSidebar({
     active,
@@ -502,6 +492,14 @@ export function ResultLibrary({
     ],
   );
   const tree = useMemo(() => buildAlbumTreeIndex(data.albums), [data.albums]);
+  const drag = useCreationLibraryDrag({
+    busy: lifecycleBusy,
+    tree,
+    itemById: projection.itemById,
+    onMoveAlbum,
+    onMoveCreationItem,
+    onImportExternalFiles,
+  });
   const albumDraft = useCreationAlbumDraft({
     request: createAlbumRequest,
     tree,
@@ -852,6 +850,17 @@ export function ResultLibrary({
     setPreviewAsset(asset);
   }
 
+  function albumIsInside(candidateParentId: string, albumId: string) {
+    let current: string | undefined = candidateParentId;
+    const visited = new Set<string>();
+    while (current && !visited.has(current)) {
+      if (current === albumId) return true;
+      visited.add(current);
+      current = tree.parentById.get(current);
+    }
+    return false;
+  }
+
   function openAlbumPreviewAsset(albumId: string, asset: AssetDto) {
     const forms = projection.items
       .filter((item) => item.item.albumId && albumIsInside(item.item.albumId, albumId))
@@ -867,8 +876,7 @@ export function ResultLibrary({
       <span className="relative grid h-[3.75rem] w-full place-items-center overflow-visible">
         <MediaStackPreview
           className="pointer-events-none"
-          size="tree"
-          singleItemAlign="center"
+          size="creation-tree"
           items={assets.map((asset) => ({ asset }))}
           maxItems={3}
           spread={spread}
@@ -876,14 +884,16 @@ export function ResultLibrary({
             const item = projection.itemById.get(form.form.creationItemId);
             openPreviewAsset(asset, [...socialCoverGroup(form), ...(item?.orderedForms ?? [])]);
           }}
+          badge={
+            <span
+              title={kindLabel}
+              aria-label={kindLabel}
+              className="pointer-events-none absolute bottom-0 left-0 z-20 grid size-5 place-items-center rounded-sm bg-overlay/95 text-foreground-secondary"
+            >
+              <Icon className="size-3" />
+            </span>
+          }
         />
-        <span
-          title={kindLabel}
-          aria-label={kindLabel}
-          className="pointer-events-none absolute bottom-0 left-0 z-20 grid size-5 place-items-center rounded-sm bg-overlay/95 text-foreground-secondary"
-        >
-          <Icon className="size-3" />
-        </span>
       </span>
     );
   }
@@ -892,16 +902,15 @@ export function ResultLibrary({
     if (assets.length === 0) {
       const Icon = item.orderedForms.length === 1 ? formIcon(item.orderedForms[0]) : Layers3Icon;
       return (
-        <span className="mx-1 grid size-7 place-items-center text-muted-foreground">
-          <Icon className="size-4" aria-hidden="true" />
+        <span className="ml-7 grid size-7 place-items-center text-muted-foreground">
+          <Icon className="size-5" aria-hidden="true" />
         </span>
       );
     }
     return (
       <MediaStackPreview
         className="pointer-events-none"
-        size="tree"
-        singleItemAlign="center"
+        size="creation-tree"
         items={assets.map((asset) => ({ asset }))}
         maxItems={3}
         spread={spread}
@@ -973,7 +982,7 @@ export function ResultLibrary({
     const compact = compactMedia || assets.length === 0;
     const Icon = formIcon(form);
     const metrics = compact
-      ? COMPACT_TREE_NODE_METRICS
+      ? CREATION_TREE_COMPACT_NODE_METRICS
       : getCreationTreeMediaNodeMetrics(assets.map((asset) => ({ asset })));
     const actions = childFormActions(form);
     const row = (
@@ -996,11 +1005,11 @@ export function ResultLibrary({
         canSpreadPreview={!compact && assets.length > 1}
         preview={
           compact ? (
-            <span className="mx-1 grid size-7 place-items-center overflow-hidden rounded-sm">
+            <span className="ml-7 grid size-7 place-items-center overflow-hidden rounded-sm">
               {assets[0] ? (
                 <AssetThumbnail asset={assets[0]} size={64} alt="" className="size-full object-contain" />
               ) : (
-                <Icon className="size-4 text-muted-foreground" aria-hidden="true" />
+                <Icon className="size-5 text-muted-foreground" aria-hidden="true" />
               )}
             </span>
           ) : (
@@ -1151,86 +1160,6 @@ export function ResultLibrary({
     return actions;
   }
 
-  function startCreationItemDrag(event: DragEvent, creationItemId: string) {
-    writeCreationItemDrag(event.dataTransfer, creationItemId);
-    setDraggedCreationItemId(creationItemId);
-  }
-
-  function startAlbumDrag(event: DragEvent, albumId: string) {
-    writeAlbumDrag(event.dataTransfer, albumId);
-    setDraggedAlbumId(albumId);
-  }
-
-  function clearDrag() {
-    endCreationTreeDrag();
-    setDraggedCreationItemId(null);
-    setDraggedAlbumId(null);
-    setDropAlbumId(null);
-  }
-
-  function albumIsInside(candidateParentId: string, albumId: string) {
-    let current: string | undefined = candidateParentId;
-    const visited = new Set<string>();
-    while (current && !visited.has(current)) {
-      if (current === albumId) return true;
-      visited.add(current);
-      current = tree.parentById.get(current);
-    }
-    return false;
-  }
-
-  function hasTreeDrag(event: DragEvent) {
-    if (!acceptsItemTransfer(event)) return false;
-    return Boolean(readCreationTreeDrag(event.dataTransfer));
-  }
-
-  async function dropIntoAlbum(event: DragEvent, albumId: string) {
-    event.preventDefault();
-    event.stopPropagation();
-    try {
-      if (event.dataTransfer.types.includes('Files') && onImportExternalFiles) {
-        const files = [...event.dataTransfer.files];
-        if (files.length) onImportExternalFiles(albumId, files, 'file-drop');
-        return;
-      }
-      if (lifecycleBusy || !acceptsItemTransfer(event)) return;
-      const source = readCreationTreeDrag(event.dataTransfer);
-      const creationItemId = source?.kind === 'CREATION_ITEM' ? source.id : null;
-      if (creationItemId) {
-        const item = projection.itemById.get(creationItemId);
-        if (item && (item.item.albumId !== albumId || itemDragIntent(event) === 'COPY'))
-          await onMoveCreationItem(creationItemId, albumId, itemDragIntent(event) === 'COPY');
-        return;
-      }
-      const albumIdValue = source?.kind === 'ALBUM' ? source.id : null;
-      if (albumIdValue && albumIdValue !== albumId && !albumIsInside(albumId, albumIdValue)) {
-        await onMoveAlbum(albumIdValue, albumId, itemDragIntent(event) === 'COPY');
-      }
-    } finally {
-      clearDrag();
-    }
-  }
-
-  async function dropAtRoot(event: DragEvent) {
-    event.preventDefault();
-    if (lifecycleBusy || !acceptsItemTransfer(event)) return;
-    try {
-      const source = readCreationTreeDrag(event.dataTransfer);
-      const creationItemId = source?.kind === 'CREATION_ITEM' ? source.id : null;
-      if (creationItemId) {
-        const item = projection.itemById.get(creationItemId);
-        if (item && (item.item.albumId || itemDragIntent(event) === 'COPY'))
-          await onMoveCreationItem(creationItemId, null, itemDragIntent(event) === 'COPY');
-        return;
-      }
-      const albumIdValue = source?.kind === 'ALBUM' ? source.id : null;
-      if (albumIdValue && (tree.parentById.has(albumIdValue) || itemDragIntent(event) === 'COPY'))
-        await onMoveAlbum(albumIdValue, null, itemDragIntent(event) === 'COPY');
-    } finally {
-      clearDrag();
-    }
-  }
-
   function renderCreationItem(item: CreationItemProjection, topology?: TreeBranchItemTopology): ReactNode {
     const branchId = 'item:' + item.key;
     const forms = visibleItemForms(item);
@@ -1244,7 +1173,7 @@ export function ResultLibrary({
     const assets = creationItemAssets(visibleItem);
     const compact = assets.length === 0;
     const metrics = compact
-      ? COMPACT_TREE_NODE_METRICS
+      ? CREATION_TREE_COMPACT_NODE_METRICS
       : getCreationTreeMediaNodeMetrics(assets.map((asset) => ({ asset })));
     const rowHeight = compact ? TREE_CONNECTION_GEOMETRY.compactRowHeight : TREE_CONNECTION_GEOMETRY.rowHeight;
     const actions = itemActions(item, openTarget, expanded, forms.length);
@@ -1272,7 +1201,7 @@ export function ResultLibrary({
               assets,
               previewExpanded ? 'expanded' : expanded ? 'settled' : 'collapsed',
             )}
-            {compact && expandable && (
+            {expandable && (
               <CollapsibleTrigger asChild>
                 <TreeDisclosureRail
                   attached
@@ -1301,8 +1230,8 @@ export function ResultLibrary({
           </>
         }
         draggable={!lifecycleBusy}
-        onDragStart={(event) => startCreationItemDrag(event, item.key)}
-        onDragEnd={clearDrag}
+        onDragStart={(event) => drag.startCreationItemDrag(event, item.key)}
+        onDragEnd={drag.clearDrag}
         onGestureExpand={() => itemExpansion.expandFromGesture(branchId)}
         onPointerTrackStart={(clientY) => itemExpansion.beginPointerTrack(branchId, clientY)}
         onPointerTrack={(clientY) => itemExpansion.trackPointer(branchId, clientY)}
@@ -1310,9 +1239,19 @@ export function ResultLibrary({
       />
     );
     return (
-      <Collapsible
+      <CreationLibraryStickyBranch
         key={item.key}
         open={expanded}
+        path={{
+          id: branchId,
+          title,
+          icon: formIcon(openTarget),
+          openLabel: libraryLabels.openItemLabel(title),
+          collapseLabel: libraryLabels.collapseForms,
+          selected: selectedItemId === item.key && forms.some(formGroupSelected),
+          onOpen: () => openForm(openTarget),
+          onCollapse: () => itemExpansion.collapse(branchId),
+        }}
         onOpenChange={(open) => itemExpansion.setPersistent(branchId, open)}
         className="relative"
         data-tree-branch-id={branchId}
@@ -1355,7 +1294,7 @@ export function ResultLibrary({
             </TreeBranchCollapseProvider>
           </TreeBranchContent>
         )}
-      </Collapsible>
+      </CreationLibraryStickyBranch>
     );
   }
 
@@ -1512,35 +1451,11 @@ export function ResultLibrary({
           compact && 'h-9',
           selected &&
             'text-selected-foreground before:pointer-events-none before:absolute before:inset-y-0.5 before:left-0 before:right-0 before:rounded-sm before:bg-selected hover:bg-transparent',
-          dropAlbumId === album.id && 'bg-accent ring-1 ring-inset ring-ring',
+          drag.dropAlbumId === album.id && 'bg-accent ring-1 ring-inset ring-ring',
         )}
-        onDragEnter={(event) => {
-          if (event.dataTransfer.types.includes('Files') || hasTreeDrag(event)) {
-            event.preventDefault();
-            event.stopPropagation();
-            setDropAlbumId(album.id);
-          }
-        }}
-        onDragOver={(event) => {
-          if (event.dataTransfer.types.includes('Files') || hasTreeDrag(event)) {
-            event.preventDefault();
-            event.stopPropagation();
-            setDropAlbumId(album.id);
-            event.dataTransfer.dropEffect =
-              event.dataTransfer.types.includes('Files') || itemDragIntent(event) === 'COPY' ? 'copy' : 'move';
-          }
-        }}
-        onDragLeave={(event) => {
-          if (!event.currentTarget.contains(event.relatedTarget as Node | null)) {
-            setDropAlbumId(null);
-          }
-        }}
-        onDrop={(event) => {
-          void dropIntoAlbum(event, album.id);
-        }}
         draggable={!lifecycleBusy}
-        onDragStart={itemDragStart((event) => startAlbumDrag(event, album.id))}
-        onDragEnd={clearDrag}
+        onDragStart={itemDragStart((event) => drag.startAlbumDrag(event, album.id))}
+        onDragEnd={drag.clearDrag}
       >
         <Button
           type="button"
@@ -1555,6 +1470,7 @@ export function ResultLibrary({
           onDoubleClick={doubleClick}
         />
         <AlbumTreePreview
+          size="creation-tree"
           assets={previewAssets}
           title={album.title}
           open={expanded}
@@ -1592,12 +1508,24 @@ export function ResultLibrary({
       </div>
     );
     return (
-      <Collapsible
+      <CreationLibraryStickyBranch
         key={album.id}
         open={expanded}
+        path={{
+          id: branchId,
+          title: album.title,
+          icon: FolderOpenIcon,
+          openLabel: `${albumLabels.open}: ${album.title}`,
+          collapseLabel: messages.gallery.albums.collapse,
+          selected,
+          dropTarget: { active: drag.dropAlbumId === album.id, handlers: drag.dropProps(album.id) },
+          onOpen: () => onSelectAlbum(album.id),
+          onCollapse: () => albumExpansion.collapse(branchId),
+        }}
         onOpenChange={(open) => albumExpansion.setPersistent(branchId, open)}
         className="relative"
         data-tree-branch-id={branchId}
+        {...drag.dropProps(album.id)}
       >
         {topology && <TreeBranchTransitRail topology={topology} />}
         <ContextMenu>
@@ -1638,7 +1566,7 @@ export function ResultLibrary({
               : renderCreationItem(entry.item, childTopology);
           })}
         </CreationLibraryChildList>
-      </Collapsible>
+      </CreationLibraryStickyBranch>
     );
   }
 
@@ -1733,24 +1661,12 @@ export function ResultLibrary({
     >
       {resizeHandle}
       {header}
-      <ScrollArea
-        type="always"
-        className="min-h-0 flex-1 [&_[data-slot=scroll-area-viewport]>div]:!block [&_[data-slot=scroll-area-viewport]>div]:min-h-full"
-        viewportRef={viewportRef}
-      >
+      <CreationLibraryTreeViewport viewportRef={viewportRef} label={libraryLabels.library}>
         <div
           data-result-library-root
           data-rendered-root-count={roots.length}
           className="creation-library-tree min-h-full space-y-0.5 px-2 py-2"
-          onDragOver={(event) => {
-            if (!lifecycleBusy && hasTreeDrag(event)) {
-              event.preventDefault();
-              event.dataTransfer.dropEffect = itemDragIntent(event) === 'COPY' ? 'copy' : 'move';
-            }
-          }}
-          onDrop={(event) => {
-            if (!lifecycleBusy && hasTreeDrag(event)) void dropAtRoot(event);
-          }}
+          {...drag.dropProps(null)}
         >
           {albumDraft.renderAt(null)}
           {roots.map((entry) => (entry.kind === 'ALBUM' ? renderAlbum(entry.album) : renderCreationItem(entry.item)))}
@@ -1765,15 +1681,15 @@ export function ResultLibrary({
             onNew={onNew}
           />
         </div>
-      </ScrollArea>
+      </CreationLibraryTreeViewport>
       {draftSidebar.content}
       {draftSidebar.feedback}
       {moveDialog}
       <CreationLibraryAssetPreview asset={previewAsset} onClose={() => setPreviewAsset(null)} />
       <span
         data-result-library-drag-state
-        data-creation-item-id={draggedCreationItemId ?? undefined}
-        data-album-id={draggedAlbumId ?? undefined}
+        data-creation-item-id={drag.draggedCreationItemId ?? undefined}
+        data-album-id={drag.draggedAlbumId ?? undefined}
         className="hidden"
         aria-hidden="true"
       />

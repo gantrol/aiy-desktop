@@ -2,6 +2,7 @@ import { useRef, useState, type DragEvent } from 'react';
 import { acceptsItemTransfer, itemDragIntent } from '@/renderer/components/albums/itemDrag';
 import { writeReferenceDrag } from '@/renderer/lib/itemReferenceDrag';
 import {
+  CREATION_OUTLINE_DRAG_TYPE as dragType,
   endCreationTreeDrag,
   readCreationTreeDrag,
   writeAlbumDrag,
@@ -16,8 +17,6 @@ import {
   type OutlineNode,
   type OutlineTree,
 } from '@/renderer/features/creation-outline/outline-tree';
-
-const dragType = 'application/x-aiy-creation-outline';
 
 function referenceTarget(node: OutlineNode): ReferenceTarget | null {
   if (node.content)

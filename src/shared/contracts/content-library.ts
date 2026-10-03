@@ -1,5 +1,20 @@
+import {
+  commentCompilationInputSchema,
+  type CommentCompilationInput,
+  type CommentCompilationResult,
+} from '@/shared/contracts/comment-compilation';
+import {
+  articleOutlineStartInputSchema,
+  type ArticleOutlineStartInput,
+  type ArticleOutlineStartResult,
+} from '@/shared/contracts/article-outline-start';
 import { contentLookupInputSchema, type ContentLookupApi } from '@/shared/contracts/content-search';
 import { z } from 'zod';
+import {
+  outlinePageCreateInputSchema,
+  type OutlinePageCreateInput,
+  type OutlinePageCreateResult,
+} from '@/shared/contracts/outline-page';
 import { blockDocumentSchema } from '@/shared/contracts/block-document';
 import {
   referencePresentationSchema,
@@ -173,6 +188,9 @@ export const referenceUsesSchema = z.object({
 });
 export type ReferenceUse = z.infer<typeof referenceUsesSchema>['items'][number];
 export const contentLibraryCommandSchema = z.discriminatedUnion('kind', [
+  z.object({ kind: z.literal('comment-compilation-create'), input: commentCompilationInputSchema }).strict(),
+  z.object({ kind: z.literal('article-outline-start'), input: articleOutlineStartInputSchema }).strict(),
+  z.object({ kind: z.literal('outline-page-create'), input: outlinePageCreateInputSchema }).strict(),
   z.object({ kind: z.literal('reference-history'), articleId: id, revisionId: id, spaceId: id }).strict(),
   z.object({ kind: z.literal('article-structure'), input: articleStructureInputSchema }).strict(),
   z
@@ -284,9 +302,12 @@ export const contentSearchResultSchema = z.object({
 });
 export const contentNoteOpenSchema = z.object({ note: desktopNoteSchema, draft: desktopNoteDraftDtoSchema.nullable() });
 export interface ContentLibraryApi extends ContentLookupApi {
+  commentCompilationCreate(input: CommentCompilationInput): Promise<CommentCompilationResult>;
+  articleOutlineStart(input: ArticleOutlineStartInput): Promise<ArticleOutlineStartResult>;
   referenceHistory(articleId: string, revisionId: string, spaceId: string): Promise<ReferenceHistoryResult>;
   articleStructure(input: ArticleStructureInput): Promise<ArticleStructurePage>;
   outlineTransfer(input: OutlineTransferInput): Promise<OutlineTransferResult>;
+  outlinePageCreate(input: OutlinePageCreateInput): Promise<OutlinePageCreateResult>;
   linkResolve(input: ContentLinkInput): Promise<ContentLinkResult>;
   outlineLinkedCreate(input: OutlineLinkedCreateInput): Promise<ContentLinkResult>;
   linkUses(input: ContentLinkInput, offset?: number): Promise<ContentLinkUses>;

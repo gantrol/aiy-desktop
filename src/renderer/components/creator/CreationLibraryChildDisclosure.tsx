@@ -2,7 +2,7 @@ import { FoldVerticalIcon, ListCollapseIcon, LoaderCircleIcon } from 'lucide-rea
 import type { ReactNode } from 'react';
 import { TreeBranchCollapseProvider, TreeBranchContent } from '@/renderer/components/albums/TreeDisclosureRail';
 import {
-  COMPACT_TREE_NODE_METRICS,
+  CREATION_TREE_COMPACT_NODE_METRICS,
   type TreeBranchItemTopology,
 } from '@/renderer/components/albums/treeConnectionGeometry';
 import { CreationLibraryTreeItem } from '@/renderer/components/creator/CreationLibraryTreeItem';
@@ -42,11 +42,11 @@ export function CreationLibraryChildDisclosure({
       openLabel={label}
       title={label}
       titleClassName="text-sm font-normal text-muted-foreground"
-      previewBounds={COMPACT_TREE_NODE_METRICS.bounds}
-      previewStyle={{ width: COMPACT_TREE_NODE_METRICS.width }}
+      previewBounds={CREATION_TREE_COMPACT_NODE_METRICS.bounds}
+      previewStyle={{ width: CREATION_TREE_COMPACT_NODE_METRICS.width }}
       preview={
-        <span className="mx-1 grid size-7 place-items-center text-muted-foreground">
-          <ListCollapseIcon className="size-4" aria-hidden="true" />
+        <span className="ml-7 grid size-7 place-items-center text-muted-foreground">
+          <ListCollapseIcon className="size-5" aria-hidden="true" />
         </span>
       }
       controls={

@@ -130,6 +130,8 @@ interface CoverHistoryEntry {
 }
 
 class ArticleSession implements ArticleEditorSessionRuntime {
+  readonly #createdAt = performance.now();
+  #editorReadyRecorded = false;
   readonly model: ArticleEditorSessionModel;
   readonly documentViews = new ContentDocumentViews();
   readonly #coordinator: AutoSaveCoordinator;
@@ -224,15 +226,25 @@ class ArticleSession implements ArticleEditorSessionRuntime {
         this.#options.onError(mode, detail);
       },
     });
+    this.#trace('article-session-created', undefined, {
+      durationMs: performance.now() - this.#createdAt,
+      bodyLength: this.#markdown.length,
+      imageCount: article.content.mediaAssets.length,
+    });
     this.#initialization = this.#initialize(article);
   }
 
-  #trace(event: RendererDiagnosticInput['event'], requestId?: string) {
+  #trace(
+    event: RendererDiagnosticInput['event'],
+    requestId?: string,
+    details: RendererDiagnosticInput['details'] = {},
+  ) {
     const state = this.model.getSnapshot();
     try {
       window.desktopApi.rendererDiagnosticRecord?.({
         event,
         details: {
+          ...details,
           articleId: state.session.articleId,
           sessionId: state.session.epoch,
           requestId,
@@ -254,6 +266,7 @@ class ArticleSession implements ArticleEditorSessionRuntime {
   };
 
   async #initialize(article: ArticleDto) {
+    const startedAt = performance.now();
     const result = await this.#recoveryStore.load(article).catch(() => {
       this.#reportRecoveryError();
       return { kind: 'none' } as const;
@@ -265,6 +278,11 @@ class ArticleSession implements ArticleEditorSessionRuntime {
     if (this.#recoveredDraft) this.#loadArticle(article, this.#recoveredDraft);
     this.#recoveryAdopted = result.kind === 'resumed';
     this.#recoveryPending = result.kind === 'restored' || result.kind === 'conflict';
+    this.#trace('article-recovery-ready', undefined, {
+      durationMs: performance.now() - startedAt,
+      view: result.kind,
+      saveFailed: this.#recoveryErrorReported,
+    });
     this.#recoveryListeners.forEach((listener) => listener());
     this.start();
   }
@@ -656,6 +674,11 @@ class ArticleSession implements ArticleEditorSessionRuntime {
     const snapshot = handle.getPersistenceSnapshot();
     this.#elements = snapshot.articleElements;
     this.#anchors = snapshot.commentAnchors;
+    if (!this.#editorReadyRecorded) {
+      this.#editorReadyRecorded = true;
+      // A registered editor can accept input; this is not a paint or media-ready measurement.
+      this.#trace('article-editor-ready', undefined, { durationMs: performance.now() - this.#createdAt });
+    }
   };
 
   #updateInputPending = () => {

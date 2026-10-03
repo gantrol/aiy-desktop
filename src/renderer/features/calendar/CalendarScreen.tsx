@@ -8,6 +8,7 @@ import type {
   CalendarPreferences,
   CalendarSummaryResult,
   CalendarEntityRef,
+  CalendarQueryInput,
 } from '@/shared/contracts/calendar';
 import {
   dateInTimeZone,
@@ -22,6 +23,7 @@ import { calendarEntriesByDay } from '@/renderer/features/calendar/calendarProje
 import { CalendarItemDialog } from '@/renderer/features/calendar/CalendarItemDialog';
 import { CalendarDayPanel } from '@/renderer/features/calendar/CalendarDayPanel';
 import { CalendarSettings } from '@/renderer/features/calendar/CalendarSettings';
+import { CalendarTimeZoneChange } from '@/renderer/features/calendar/CalendarTimeZoneChange';
 import { useCalendarData } from '@/renderer/features/calendar/useCalendarData';
 import { CalendarToolbar } from '@/renderer/features/calendar/CalendarToolbar';
 import { CalendarUsageDetails } from '@/renderer/features/calendar/CalendarUsageDetails';
@@ -180,6 +182,19 @@ function CalendarWorkspace({ spaceId, data, dataRevision, active, onOpenLocation
   );
   const state = useCalendarData(spaceId, range, selectedDate, active, dataRevision, knownAt);
   const { preferences, updatePreferences, result } = state;
+  const detailQuery = useMemo<CalendarQueryInput>(
+    () => ({
+      startDate: state.date,
+      endDate: state.date,
+      timeZone: preferences.timeZone,
+      categories: preferences.categories,
+      writer: preferences.writer,
+      timeAxis: preferences.timeAxis,
+      includeInvalidated: preferences.showInvalidated,
+      knownAt,
+    }),
+    [state.date, preferences, knownAt],
+  );
   const visiblePreferences = useMemo(
     () => (knownAt ? { ...preferences, showUsage: false } : preferences),
     [preferences, knownAt],
@@ -296,8 +311,14 @@ function CalendarWorkspace({ spaceId, data, dataRevision, active, onOpenLocation
           <CalendarCoverage result={state.summary} timeZone={preferences.timeZone} />
         </div>
       </div>
+      <CalendarTimeZoneChange
+        preferences={preferences}
+        active={active && state.ready && !state.preferenceError && !detail && !showUsageDetails}
+        onChange={updatePreferences}
+      />
       {detail && (
         <CalendarItemDialog
+          query={detailQuery}
           key={detail.occurrenceId}
           spaceId={spaceId}
           item={detail}

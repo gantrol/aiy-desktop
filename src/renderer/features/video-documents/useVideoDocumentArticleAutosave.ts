@@ -14,6 +14,7 @@ import type {
 import { blockDocumentAssetIds, type BlockDocument } from '@/shared/contracts/block-document';
 import { blockDocumentMarkdown } from '@/shared/block-document-codecs';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { registerWorkspaceDrain } from '@/renderer/components/workspace/workspace-drain';
 
 type MarkdownContent = Extract<VideoDocumentRevisionContent, { format: 'MARKDOWN' }>;
 
@@ -242,6 +243,60 @@ function useIncomingArticleSnapshot(content: MarkdownContent | null) {
   );
 }
 
+function useArticleDraftPublisher({
+  bindings,
+  editor,
+  latest,
+  onChange,
+}: {
+  bindings: { current: VideoDocumentMediaBinding[] };
+  editor: { current: VideoDocumentWysiwygEditorHandle | null };
+  latest: { current: ArticleDraftSnapshot };
+  onChange(snapshot: Pick<ArticleDraftSnapshot, 'signature' | 'hasContent' | 'headings'>): void;
+}) {
+  return useCallback(
+    (markdown: string, mediaBindings: readonly VideoDocumentMediaBinding[] = bindings.current) => {
+      const snapshot = articleDraftSnapshot(
+        markdown,
+        mediaBindings,
+        editor.current?.getPersistenceSnapshot().document ?? latest.current.document,
+      );
+      latest.current = snapshot;
+      onChange({ signature: snapshot.signature, hasContent: snapshot.hasContent, headings: snapshot.headings });
+      return snapshot;
+    },
+    [bindings, editor, latest, onChange],
+  );
+}
+
+function useArticleNavigationDrain({
+  editing,
+  saveMode,
+  persist,
+  latest,
+  persisted,
+  editor,
+}: {
+  editing: { current: boolean };
+  saveMode: { current: 'manual' | 'auto' | null };
+  persist: { current: (mode: 'manual' | 'auto') => Promise<void> };
+  latest: { current: ArticleDraftSnapshot };
+  persisted: { current: string };
+  editor: { current: VideoDocumentWysiwygEditorHandle | null };
+}) {
+  useEffect(
+    () =>
+      registerWorkspaceDrain(async () => {
+        if (!editing.current && !saveMode.current) return;
+        if (editor.current && !(await editor.current.whenSettled())) throw new Error('VIDEO_DOCUMENT_UNSAVED');
+        await persist.current('auto');
+        if (saveMode.current || latest.current.signature !== persisted.current)
+          throw new Error('VIDEO_DOCUMENT_UNSAVED');
+      }),
+    [editing, saveMode, persist, latest, persisted, editor],
+  );
+}
+
 export function useVideoDocumentArticleAutosave({
   revision,
   content,
@@ -300,23 +355,12 @@ export function useVideoDocumentArticleAutosave({
   const isDirty = editing && draftState.signature !== persistedSignature;
   const canSave = Boolean(onSave);
 
-  const publishSnapshot = useCallback(
-    (markdown: string, mediaBindings: readonly VideoDocumentMediaBinding[] = draftMediaBindingsRef.current) => {
-      const snapshot = articleDraftSnapshot(
-        markdown,
-        mediaBindings,
-        editorHandleRef.current?.getPersistenceSnapshot().document ?? latestDraftRef.current.document,
-      );
-      latestDraftRef.current = snapshot;
-      setDraftState({
-        signature: snapshot.signature,
-        hasContent: snapshot.hasContent,
-        headings: snapshot.headings,
-      });
-      return snapshot;
-    },
-    [],
-  );
+  const publishSnapshot = useArticleDraftPublisher({
+    bindings: draftMediaBindingsRef,
+    editor: editorHandleRef,
+    latest: latestDraftRef,
+    onChange: setDraftState,
+  });
 
   const loadPersistedDraft = useCallback(
     (nextContextIdentity: string, snapshot: ArticleDraftSnapshot, media: readonly VideoDocumentRevisionMediaDto[]) => {
@@ -442,6 +486,15 @@ export function useVideoDocumentArticleAutosave({
       canSave && Boolean(content) && editing && isDirty && !saving && !generating && !mutating && draftState.hasContent,
     draftSignature: draftState.signature,
     persistDraft: persistDraftRef,
+  });
+
+  useArticleNavigationDrain({
+    editing: editingRef,
+    saveMode: saveModeRef,
+    persist: persistDraftRef,
+    latest: latestDraftRef,
+    persisted: persistedSignatureRef,
+    editor: editorHandleRef,
   });
 
   const autoSaveStatus = articleAutoSaveStatus(autoSavePreferences.enabled, saveMode, autoSaveFailed, isDirty);

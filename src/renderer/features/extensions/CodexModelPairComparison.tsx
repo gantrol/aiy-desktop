@@ -2,6 +2,7 @@ import { useId, useMemo, useState } from 'react';
 import { ArrowLeftRightIcon, ChevronDownIcon, DownloadIcon, SaveIcon } from 'lucide-react';
 import type { CodexModelComparisonMetric, CodexModelComparisonRow } from '@/shared/contracts/codex-model-comparison';
 import type { CodexUsageInvestigation } from '@/shared/contracts/codex-usage';
+import type { CodexOutputThroughputAnalysis } from '@/shared/contracts/codex-output-throughput';
 import {
   defaultComparisonGroups,
   modelComparisonCautions,
@@ -26,6 +27,7 @@ import { CodexUsageEvidenceHelp } from '@/renderer/features/extensions/CodexUsag
 import { codexModelComparisonChartData } from '@/renderer/features/extensions/codexModelComparisonChart';
 import {
   selectedCodexModelComparisonGroups,
+  selectedCodexOutputThroughput,
   type CodexModelComparisonSelection,
 } from '@/renderer/features/extensions/codexModelComparisonSelection';
 import {
@@ -79,6 +81,7 @@ interface CodexModelPairComparisonProps {
   date: Intl.DateTimeFormat;
   report?: CodexUsageInvestigation;
   samplesTruncated: boolean;
+  throughputAnalysis?: CodexOutputThroughputAnalysis | null;
 }
 
 export function CodexModelPairComparison({
@@ -90,6 +93,7 @@ export function CodexModelPairComparison({
   date,
   report,
   samplesTruncated,
+  throughputAnalysis = report?.modelComparison?.outputThroughput,
 }: CodexModelPairComparisonProps) {
   const text = useI18n().messages.extensions.codexUsageInvestigator.evidence;
   const id = useId();
@@ -253,6 +257,10 @@ export function CodexModelPairComparison({
         ))}
       </div>
       <CodexModelComparisonOverall
+        throughputs={[
+          selectedCodexOutputThroughput(throughputAnalysis, pair[0].selection),
+          selectedCodexOutputThroughput(throughputAnalysis, pair[1].selection),
+        ]}
         groups={[pair[0].groups, pair[1].groups]}
         labels={labels}
         numbers={numbers}

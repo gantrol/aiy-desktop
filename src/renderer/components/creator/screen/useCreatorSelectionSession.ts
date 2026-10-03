@@ -77,6 +77,7 @@ export function useCreatorSelectionSession({ data, locale, location }: Options) 
     selectedIdeaCreationId: contentSelection.selectedIdeaCreationId,
     selectedImageBreakdownAlbumId: contentSelection.selectedImageBreakdownItem?.albumId ?? null,
     selectedImageBreakdownId: contentSelection.selectedImageBreakdownId,
+    selectedInspirationStashId: contentSelection.selectedInspirationStashId,
     selectedSocialPost: contentSelection.selectedSocialPost,
     selectedSocialPostId: contentSelection.selectedSocialPostId,
     seriesId,

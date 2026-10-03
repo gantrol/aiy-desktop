@@ -23,6 +23,7 @@ import {
 } from '@/main/extensions/codex-app-server/image-runtime';
 import { validatePngFileAsync } from '@/main/media/png-validation';
 import { codexImageOutputError } from '@/main/assistant/codex-image-output';
+import { collectCodexCliImageOutput } from '@/main/assistant/codex-cli-image-output';
 import type { CodexAppServerImageResult } from '@/main/extensions/codex-app-server/client';
 import { CODEX_APP_SERVER_EXTENSION_ID } from '@/shared/extension-ids';
 
@@ -95,13 +96,16 @@ export class CodexAdapter extends CodexTextAdapter {
         execute: async (onStarted, onProgress) => {
           onProgress?.({ stage: 'PREPARING', message: 'Preparing Codex CLI image task' });
           onProgress?.({ stage: 'GENERATING', message: 'Generating image with Codex CLI' });
-          await this.processRunner(request.command, request.arguments, request.stdin, request.cwd, 900_000, (child) =>
-            onStarted(() => child.kill()),
+          const { stdout } = await this.processRunner(
+            request.command,
+            request.arguments,
+            request.stdin,
+            request.cwd,
+            900_000,
+            (child) => onStarted(() => child.kill()),
           );
           onProgress?.({ stage: 'FINALIZING', message: 'Collecting generated image' });
-          if (!(await validatePngFileAsync(request.expectedOutputPath)))
-            throw new Error('Codex output is not a complete valid PNG file');
-          return request.expectedOutputPath;
+          return collectCodexCliImageOutput(stdout, request.expectedOutputPath);
         },
         cleanup: () => this.tempJobRemover(this.libraryRoot, 'generation', runId),
       };

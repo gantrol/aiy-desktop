@@ -7,7 +7,7 @@ import type {
   IntakeCommitResult,
   IntakeCommitSource,
 } from '@/shared/contracts';
-import { transferSourceUrl } from '@/renderer/components/creator/imageImport';
+import { isEditableTarget, transferSourceUrl } from '@/renderer/components/creator/imageImport';
 import {
   createInitialIntakeState,
   intakeReducer,
@@ -34,10 +34,6 @@ export interface IntakeCommitOptions {
       }
     >
   >;
-}
-
-function isEditableTarget(target: EventTarget | null) {
-  return target instanceof HTMLElement && Boolean(target.closest('input, textarea, select, [contenteditable="true"]'));
 }
 
 function clipboardMediaFiles(clipboard: DataTransfer) {
@@ -133,15 +129,17 @@ export function useIntakeController(
   }
 
   function onPaste(event: ClipboardEvent) {
-    if (!enabled || !event.clipboardData || state.pendingIntent) return;
+    if (!enabled || !event.clipboardData || state.pendingIntent || event.defaultPrevented) return false;
+    // Editable controls own both text and media paste, even when they cannot consume the payload.
+    if (isEditableTarget(event.target)) return false;
     const files = clipboardMediaFiles(event.clipboardData).filter((file) => Boolean(intakeMediaMimeType(file)));
-    const editable = isEditableTarget(event.target);
     const sourceUrl = files.length ? transferSourceUrl(event.clipboardData) : '';
-    const pastedText = editable ? '' : event.clipboardData.getData('text/plain');
+    const pastedText = event.clipboardData.getData('text/plain');
     const text = pastedText.trim() === sourceUrl ? '' : pastedText;
-    if (!files.length && !text.trim()) return;
+    if (!files.length && !text.trim()) return false;
     event.preventDefault();
     void add('PASTE', files, text, sourceUrl);
+    return true;
   }
 
   function onDragEnter(event: React.DragEvent) {

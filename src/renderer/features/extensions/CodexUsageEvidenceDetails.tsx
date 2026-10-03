@@ -15,6 +15,7 @@ import {
 } from '@/renderer/features/extensions/CodexUsageEvidenceOverview';
 import { CodexUsagePurityDetails } from '@/renderer/features/extensions/CodexUsagePurity';
 import { useI18n } from '@/renderer/i18n/useI18n';
+import { CodexOutputThroughputComparison } from '@/renderer/features/extensions/CodexOutputThroughputComparison';
 
 const TOPICS: CodexUsageDetailTopic[] = ['money', 'quota', 'speed', 'records', 'sessions'];
 const PAGE_SIZE = 50;
@@ -183,6 +184,9 @@ export function CodexUsageEvidenceDetails({
             formatters={formatters}
           />
         </>
+      )}
+      {topic === 'speed' && (
+        <CodexOutputThroughputComparison analysis={investigation.modelComparison?.outputThroughput} />
       )}
       {topic === 'speed' &&
         (investigation.turnSpeed ? (

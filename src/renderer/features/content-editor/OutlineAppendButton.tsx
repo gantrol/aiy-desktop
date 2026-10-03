@@ -17,7 +17,7 @@ export function OutlineAppendButton({ editor }: { editor: Editor }) {
   });
   if (!editable) return null;
   return (
-    <div className={`group/outline-append pb-4 pr-2 ${focused ? 'pl-12' : 'pl-4'}`}>
+    <div data-outline-append className={`group/outline-append pb-4 pr-2 ${focused ? 'pl-12' : 'pl-4'}`}>
       <Button
         type="button"
         variant="ghost"

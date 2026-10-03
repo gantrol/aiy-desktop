@@ -54,16 +54,6 @@ export const GalleryIntakeAdapter = forwardRef<GalleryIntakeAdapterHandle, Props
   );
 
   useEffect(() => {
-    if (!active || state.pendingIntent) return undefined;
-    const paste = (event: ClipboardEvent) => {
-      setDropTarget(null);
-      controller.onPaste(event);
-    };
-    window.addEventListener('paste', paste);
-    return () => window.removeEventListener('paste', paste);
-  }, [active, controller, state.pendingIntent]);
-
-  useEffect(() => {
     if (!active) controller.cancelDrag();
   }, [active]);
 
@@ -139,6 +129,9 @@ export const GalleryIntakeAdapter = forwardRef<GalleryIntakeAdapterHandle, Props
       data-intake-state={state.status}
       aria-busy={reviewBusy}
       className="relative flex size-full min-h-0 flex-col overflow-hidden"
+      onPaste={(event) => {
+        if (controller.onPaste(event.nativeEvent)) setDropTarget(null);
+      }}
       onDragEnterCapture={(event) => {
         if (hasMaterialsDrag(event.dataTransfer)) controller.cancelDrag();
       }}

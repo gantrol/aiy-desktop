@@ -1,4 +1,7 @@
+import { createCommentCompilation } from '@/main/database/creations/comment-compilation';
+import { startArticleOutline } from '@/main/database/creations/article-outline-start';
 import { transferOutlineItems } from '@/main/database/creations/outline-transfer';
+import { createOutlinePage } from '@/main/database/creations/outline-page';
 import { ContentLibraryRepository } from '@/main/database/creations/content-library-repository';
 import { PublishingMaskRepository } from '@/main/database/creations/publishing-mask-repository';
 import { ContentReferenceTargets } from '@/main/database/creations/content-reference-targets';
@@ -12,6 +15,26 @@ import { ReadableContentRepository } from '@/main/database/assets/readable-conte
 import { ContentSearchRepository } from '@/main/database/search/content-search-repository';
 import { projectArticleStructure } from '@/shared/article-structure';
 import { ARTICLE_STRUCTURE_PAGE_SIZE, type ArticleStructureInput } from '@/shared/contracts/article-structure';
+
+function executeArticleCommand(
+  repositories: LibraryDatabaseRepositories,
+  references: ContentReferenceTargets,
+  command: Extract<
+    ContentLibraryCommand,
+    { kind: 'comment-compilation-create' | 'article-outline-start' | 'outline-page-create' | 'outline-transfer' }
+  >,
+) {
+  switch (command.kind) {
+    case 'comment-compilation-create':
+      return createCommentCompilation(repositories, references, command.input);
+    case 'article-outline-start':
+      return startArticleOutline(repositories, references, command.input);
+    case 'outline-page-create':
+      return createOutlinePage(repositories, references, command.input);
+    case 'outline-transfer':
+      return transferOutlineItems(repositories, command.input);
+  }
+}
 
 function readArticleStructure(
   repositories: LibraryDatabaseRepositories,
@@ -141,12 +164,12 @@ export function createContentLibraryApi(repositories: LibraryDatabaseRepositorie
           return content.noteOpen(command.id);
         case 'note-save':
           return content.noteSave(command.input);
-        case 'outline-transfer':
-          return transferOutlineItems(repositories, command.input);
         case 'note-checkpoint':
           return content.noteCheckpoint(command.input);
         case 'note-comment-mutate':
           return content.noteCommentMutate(command.input);
+        default:
+          return executeArticleCommand(repositories, references, command);
       }
     },
   };

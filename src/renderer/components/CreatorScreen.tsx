@@ -1,4 +1,8 @@
 import { CreatorScreenView } from '@/renderer/components/creator/screen/CreatorScreenView';
+import { creatorInputOwner } from '@/renderer/components/creator/screen/creatorInputOwnership';
+import { useCreatorNavigationProtection } from '@/renderer/components/creator/screen/useCreatorNavigationProtection';
+import { useStableCallback } from '@/renderer/lib/useStableCallback';
+import { isCreationDraftConflict } from '@/shared/creation-draft-errors';
 import type { CreatorScreenProps } from '@/renderer/components/creator/screen/creatorScreenTypes';
 import type { CreatorScreenViewModel } from '@/renderer/components/creator/screen/creatorScreenViewModel';
 import { useCreatorDraftInputSession } from '@/renderer/components/creator/screen/useCreatorDraftInputSession';
@@ -14,9 +18,13 @@ import { useCreatorWorkflowRuntime } from '@/renderer/components/creator/screen/
 import { useI18n } from '@/renderer/i18n/useI18n';
 import { useGifWorkspace } from '@/renderer/features/gif-making/GifMakerProvider';
 
-export function CreatorScreen(props: CreatorScreenProps) {
+export function CreatorScreen(inputProps: CreatorScreenProps) {
+  const notify = useStableCallback((message: string) => {
+    // Draft version conflicts are actionable inside this editor, rather than in the global toast stack.
+    if (!isCreationDraftConflict(message)) inputProps.notify(message);
+  });
+  const props = { ...inputProps, notify };
   const animationWorkspace = useGifWorkspace();
-  const inputActive = props.active && !animationWorkspace;
   const { messages } = useI18n();
   const c = messages.creator.workbench;
   const selection = useCreatorSelectionSession({
@@ -24,6 +32,11 @@ export function CreatorScreen(props: CreatorScreenProps) {
     locale: props.locale,
     location: props.location,
   });
+  const inputOwner = creatorInputOwner(
+    selection.contentSelection,
+    Boolean(selection.workbenchProjection.editorDerivedVisual),
+  );
+  const inputActive = props.active && !animationWorkspace && inputOwner !== null;
   const outputUi = useCreatorOutputUiState(props.location);
   const prompt = useCreatorPromptSession({
     active: inputActive,
@@ -106,6 +119,7 @@ export function CreatorScreen(props: CreatorScreenProps) {
     setRequestedAssetId: outputUi.setRequestedAssetId,
   });
   const projection = useCreatorScreenProjection({
+    libraryVisible: props.libraryVisible,
     animationWorkspaceActive: Boolean(animationWorkspace),
     comparisonFullWindow: props.comparisonFullWindow,
     documentWorkspaceActive: props.documentWorkspaceActive,
@@ -194,6 +208,16 @@ export function CreatorScreen(props: CreatorScreenProps) {
     starting: workflow.starting,
     workbench: selection.workbenchProjection,
     workflow,
+  });
+  useCreatorNavigationProtection({
+    enabled: inputActive && selection.creationMode === 'new' && inputOwner !== null,
+    hasUnsavedInput: () =>
+      navigation.creation.hasDraftState() &&
+      (Boolean(prompt.promptDocument.promptComposerRef.current?.hasPendingInput()) ||
+        !selection.creationDraftSession.isCurrentInputSaved()),
+    preserve: navigation.creation.preserveBeforeNavigation,
+    onError: () => props.notify(messages.creator.draftConflict.failed),
+    onHistoryNavigationGuardChange: props.onHistoryNavigationGuardChange,
   });
   const viewModel: CreatorScreenViewModel = {
     animationWorkspace,

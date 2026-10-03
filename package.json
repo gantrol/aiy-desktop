@@ -1,6 +1,6 @@
 {
   "name": "@aiy/desktop",
-  "version": "0.5.6",
+  "version": "0.5.7",
   "private": true,
   "description": "AI × DIY: a local-first creative workspace where you create and AI helps",
   "author": "AIY",
@@ -56,7 +56,9 @@
     "verify:store": "npm run verify:codex-pricing && npm run format:check && npm run lint && npm run typecheck && npm run verify:test-boundary && npm run test:smoke && npm run build",
     "verify": "npm run verify:codex-pricing && npm run format:check && npm run lint && npm run typecheck && npm run verify:test-boundary && npm run test:smoke && npm run build",
     "design:dev": "node scripts/design-lab.mjs dev",
-    "design:build": "node scripts/design-lab.mjs build"
+    "design:build": "node scripts/design-lab.mjs build",
+    "design:storybook": "storybook dev --config-dir design-lab/storybook --host 127.0.0.1 --port 6006 --ci --no-open --disable-telemetry",
+    "design:storybook:build": "storybook build --config-dir design-lab/storybook --output-dir .tmp/storybook --disable-telemetry"
   },
   "dependencies": {
     "@annotorious/react": "3.8.8",
@@ -125,6 +127,8 @@
   "devDependencies": {
     "@eslint/js": "^10.0.1",
     "@playwright/test": "^1.62.1",
+    "@storybook/addon-docs": "10.6.1",
+    "@storybook/react-vite": "10.6.1",
     "@tailwindcss/vite": "4.3.3",
     "@testing-library/jest-dom": "^6.9.1",
     "@testing-library/react": "^16.3.2",
@@ -146,6 +150,7 @@
     "jsdom": "^27.4.0",
     "magic-string": "0.30.21",
     "prettier": "^3.9.6",
+    "storybook": "10.6.1",
     "tailwindcss": "4.3.3",
     "typescript": "5.9.3",
     "typescript-eslint": "^8.66.0",

@@ -25,6 +25,7 @@ interface ComboboxProps {
   value: string;
   options: ComboboxOption[];
   onValueChange(value: string): void;
+  onOpenChange?(open: boolean): void;
   ariaLabel: string;
   placeholder: string;
   searchPlaceholder: string;
@@ -44,6 +45,7 @@ function Combobox({
   value,
   options,
   onValueChange,
+  onOpenChange,
   ariaLabel,
   placeholder,
   searchPlaceholder,
@@ -54,6 +56,10 @@ function Combobox({
   action,
 }: ComboboxProps) {
   const [open, setOpen] = React.useState(false);
+  function changeOpen(next: boolean) {
+    setOpen(next);
+    onOpenChange?.(next);
+  }
   const selected = options.find((option) => option.value === value);
   const groups = options.reduce<Map<string, ComboboxOption[]>>((result, option) => {
     const key = option.group ?? '';
@@ -62,7 +68,7 @@ function Combobox({
   }, new Map());
 
   return (
-    <Popover modal open={open} onOpenChange={setOpen}>
+    <Popover modal open={open} onOpenChange={changeOpen}>
       <PopoverTrigger asChild>
         <Button
           type="button"
@@ -102,7 +108,7 @@ function Combobox({
                     }
                     onSelect={() => {
                       onValueChange(option.value);
-                      setOpen(false);
+                      changeOpen(false);
                     }}
                   >
                     <CheckIcon
@@ -129,7 +135,7 @@ function Combobox({
                 className="w-full justify-start"
                 disabled={action.disabled}
                 onClick={() => {
-                  setOpen(false);
+                  changeOpen(false);
                   action.onSelect();
                 }}
               >

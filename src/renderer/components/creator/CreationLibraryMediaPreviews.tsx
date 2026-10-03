@@ -132,7 +132,7 @@ export function CreationSessionTreePreview({
   });
   const preview = (
     <MediaStackPreview
-      size="tree"
+      size="creation-tree"
       items={items}
       onAssetSelect={onAssetSelect}
       notify={notify}

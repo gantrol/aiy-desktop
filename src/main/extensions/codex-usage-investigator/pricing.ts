@@ -6,13 +6,16 @@ import {
   codexUsageCatalogModel,
   codexUsageModelPrice,
   codexUsagePriceAt,
+  type CodexUsageApiPricePeriod,
+  type CodexUsageCreditPricePeriod,
 } from '@/shared/codex-usage-rate-card';
 
 const TOKENS_PER_MILLION = 1_000_000;
+const PRICING_ALGORITHM_VERSION = 2;
 export const CODEX_USAGE_LONG_CONTEXT_THRESHOLD = CODEX_USAGE_RATE_CARD.longContextThresholdTokens;
-// Price-only edits invalidate derived statistics without re-reading unchanged rollout files.
+// Rates and calculation changes invalidate derived statistics while retaining imported usage events.
 export const CODEX_USAGE_PRICING_CACHE_KEY = createHash('sha256')
-  .update(JSON.stringify(CODEX_USAGE_RATE_CARD))
+  .update(JSON.stringify({ algorithmVersion: PRICING_ALGORITHM_VERSION, rateCard: CODEX_USAGE_RATE_CARD }))
   .digest('hex');
 
 export const CODEX_USAGE_PRICING_BASIS: CodexUsagePricingBasis = {
@@ -57,14 +60,24 @@ export function normalizeCodexUsageModel(model: string) {
   return value;
 }
 
-function boundedInputCategories(usage: CodexUsageBreakdown) {
+interface BillableInputTokens {
+  apiUncachedInputTokens: number;
+  creditUncachedInputTokens: number;
+  cachedInputTokens: number;
+  cacheWriteInputTokens: number;
+}
+
+function billableInputTokens(usage: CodexUsageBreakdown): BillableInputTokens {
   const cachedInputTokens = Math.min(usage.cachedInputTokens, usage.inputTokens);
-  const cacheWriteInputTokens = Math.min(
-    usage.cacheWriteInputTokens,
-    Math.max(0, usage.inputTokens - cachedInputTokens),
-  );
-  const uncachedInputTokens = Math.max(0, usage.inputTokens - cachedInputTokens - cacheWriteInputTokens);
-  return { uncachedInputTokens, cachedInputTokens, cacheWriteInputTokens };
+  const creditUncachedInputTokens = usage.inputTokens - cachedInputTokens;
+  const cacheWriteInputTokens = Math.min(usage.cacheWriteInputTokens, creditUncachedInputTokens);
+  // API prices cache writes separately; Credits include them at the regular input rate.
+  const apiUncachedInputTokens = creditUncachedInputTokens - cacheWriteInputTokens;
+  return { apiUncachedInputTokens, creditUncachedInputTokens, cachedInputTokens, cacheWriteInputTokens };
+}
+
+function tokenValue(tokenCount: number, ratePerMillion: number) {
+  return (tokenCount * ratePerMillion) / TOKENS_PER_MILLION;
 }
 
 export interface CodexUsagePriceEstimate {
@@ -77,61 +90,74 @@ export interface CodexUsagePriceEstimate {
   longContext: boolean;
 }
 
+function estimateApiUsage(
+  usage: CodexUsageBreakdown,
+  input: BillableInputTokens,
+  apiPrice: CodexUsageApiPricePeriod | null,
+): Pick<CodexUsagePriceEstimate, 'apiEquivalentUsd' | 'apiCacheSavingsUsd' | 'longContext'> {
+  const longContext = Boolean(apiPrice?.longContext && usage.inputTokens > CODEX_USAGE_LONG_CONTEXT_THRESHOLD);
+  if (!apiPrice) return { apiEquivalentUsd: null, apiCacheSavingsUsd: null, longContext };
+
+  const inputMultiplier = longContext ? 2 : 1;
+  const outputMultiplier = longContext ? 1.5 : 1;
+  const apiCacheSavingsUsd =
+    apiPrice.cachedInputPerMillionUsd !== null
+      ? tokenValue(input.cachedInputTokens, apiPrice.inputPerMillionUsd - apiPrice.cachedInputPerMillionUsd) *
+        inputMultiplier
+      : null;
+
+  const missingCacheReadPrice = input.cachedInputTokens > 0 && apiPrice.cachedInputPerMillionUsd === null;
+  const missingCacheWritePrice = input.cacheWriteInputTokens > 0 && apiPrice.cacheWriteInputPerMillionUsd === null;
+  if (missingCacheReadPrice || missingCacheWritePrice) {
+    return { apiEquivalentUsd: null, apiCacheSavingsUsd, longContext };
+  }
+
+  const inputUsd = tokenValue(input.apiUncachedInputTokens, apiPrice.inputPerMillionUsd);
+  const cacheReadUsd = tokenValue(input.cachedInputTokens, apiPrice.cachedInputPerMillionUsd ?? 0);
+  const cacheWriteUsd = tokenValue(input.cacheWriteInputTokens, apiPrice.cacheWriteInputPerMillionUsd ?? 0);
+  const outputUsd = tokenValue(usage.outputTokens, apiPrice.outputPerMillionUsd);
+  // API-equivalent estimates always use Standard rates, regardless of the recorded service mode.
+  const apiEquivalentUsd = (inputUsd + cacheReadUsd + cacheWriteUsd) * inputMultiplier + outputUsd * outputMultiplier;
+  return { apiEquivalentUsd, apiCacheSavingsUsd, longContext };
+}
+
+function estimateCreditUsage(
+  usage: CodexUsageBreakdown,
+  input: BillableInputTokens,
+  creditPrice: CodexUsageCreditPricePeriod | null,
+  creditMultiplier: number | null,
+): Pick<CodexUsagePriceEstimate, 'codexCredits' | 'codexCreditCacheSavings'> {
+  if (!creditPrice || creditMultiplier === null) return { codexCredits: null, codexCreditCacheSavings: null };
+
+  const inputCredits = tokenValue(input.creditUncachedInputTokens, creditPrice.inputPerMillion);
+  const cacheReadCredits = tokenValue(input.cachedInputTokens, creditPrice.cachedInputPerMillion);
+  const outputCredits = tokenValue(usage.outputTokens, creditPrice.outputPerMillion);
+  const codexCredits = (inputCredits + cacheReadCredits + outputCredits) * creditMultiplier;
+  const cacheSavings = tokenValue(
+    input.cachedInputTokens,
+    creditPrice.inputPerMillion - creditPrice.cachedInputPerMillion,
+  );
+  return { codexCredits, codexCreditCacheSavings: cacheSavings * creditMultiplier };
+}
+
 export function estimateCodexUsage(
   model: string,
   usage: CodexUsageBreakdown,
   serviceTier: CodexUsageServiceTier,
   occurredAt: string,
 ): CodexUsagePriceEstimate {
-  const key = normalizeCodexUsageModel(model);
-  const modelPrice = codexUsageModelPrice(key);
+  const normalizedModel = normalizeCodexUsageModel(model);
+  const modelPrice = codexUsageModelPrice(normalizedModel);
   const apiPrice = codexUsagePriceAt(modelPrice?.api ?? [], occurredAt);
   const creditPrice = codexUsagePriceAt(modelPrice?.credits ?? [], occurredAt);
-  const { uncachedInputTokens, cachedInputTokens, cacheWriteInputTokens } = boundedInputCategories(usage);
-  const creditMultiplier = codexUsageSpeedCreditMultiplier(key, serviceTier);
-  const longContext = Boolean(apiPrice?.longContext && usage.inputTokens > CODEX_USAGE_LONG_CONTEXT_THRESHOLD);
-  const inputMultiplier = longContext ? 2 : 1;
-  const outputMultiplier = longContext ? 1.5 : 1;
-  const apiPriceComplete = Boolean(
-    apiPrice &&
-    (cachedInputTokens === 0 || apiPrice.cachedInputPerMillionUsd !== null) &&
-    (cacheWriteInputTokens === 0 || apiPrice.cacheWriteInputPerMillionUsd !== null),
-  );
-  // Standard API-equivalent value, not the price of an API Fast request or a subscription invoice.
-  const apiEquivalentUsd =
-    apiPrice && apiPriceComplete
-      ? (uncachedInputTokens * apiPrice.inputPerMillionUsd * inputMultiplier +
-          cachedInputTokens * (apiPrice.cachedInputPerMillionUsd ?? 0) * inputMultiplier +
-          cacheWriteInputTokens * (apiPrice.cacheWriteInputPerMillionUsd ?? 0) * inputMultiplier +
-          usage.outputTokens * apiPrice.outputPerMillionUsd * outputMultiplier) /
-        TOKENS_PER_MILLION
-      : null;
-  const apiCacheSavingsUsd =
-    apiPrice && apiPrice.cachedInputPerMillionUsd !== null
-      ? (cachedInputTokens * (apiPrice.inputPerMillionUsd - apiPrice.cachedInputPerMillionUsd) * inputMultiplier) /
-        TOKENS_PER_MILLION
-      : null;
-  // The Codex credits rate card does not publish a separate cache-write category.
-  const codexCredits =
-    creditPrice && creditMultiplier !== null
-      ? ((uncachedInputTokens * creditPrice.inputPerMillion +
-          cachedInputTokens * creditPrice.cachedInputPerMillion +
-          usage.outputTokens * creditPrice.outputPerMillion) /
-          TOKENS_PER_MILLION) *
-        creditMultiplier
-      : null;
-  const codexCreditCacheSavings =
-    creditPrice && creditMultiplier !== null
-      ? ((cachedInputTokens * (creditPrice.inputPerMillion - creditPrice.cachedInputPerMillion)) / TOKENS_PER_MILLION) *
-        creditMultiplier
-      : null;
+  const creditMultiplier = codexUsageSpeedCreditMultiplier(normalizedModel, serviceTier);
+  const input = billableInputTokens(usage);
+  const api = estimateApiUsage(usage, input, apiPrice);
+  const credits = estimateCreditUsage(usage, input, creditPrice, creditMultiplier);
   return {
-    apiEquivalentUsd,
-    apiCacheSavingsUsd,
-    codexCredits,
-    codexCreditCacheSavings,
-    apiPricedTokens: apiEquivalentUsd === null ? 0 : usage.totalTokens,
-    creditPricedTokens: codexCredits === null ? 0 : usage.totalTokens,
-    longContext,
+    ...api,
+    ...credits,
+    apiPricedTokens: api.apiEquivalentUsd === null ? 0 : usage.totalTokens,
+    creditPricedTokens: credits.codexCredits === null ? 0 : usage.totalTokens,
   };
 }

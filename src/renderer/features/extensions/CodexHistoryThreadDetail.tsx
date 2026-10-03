@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { useEffect, useMemo, useRef, useState, type ReactNode, type ComponentProps } from 'react';
 import { ArrowLeftIcon, ExternalLinkIcon, SearchIcon, XIcon } from 'lucide-react';
 import type { CodexHistoryRoleFilter, CodexHistorySearchResult } from '@/shared/contracts';
 import { Badge } from '@/renderer/components/ui/badge';
@@ -19,6 +19,7 @@ interface Props {
   initialRole: CodexHistoryRoleFilter;
   navigationAction?: ReactNode;
   onOpen(threadId: string): void;
+  onThroughput?: ComponentProps<typeof CodexHistoryThreadUsage>['onThroughput'];
 }
 
 function HistoryThreadPane({
@@ -28,6 +29,7 @@ function HistoryThreadPane({
   initialRole,
   navigationAction,
   onOpen,
+  onThroughput,
 }: Props & { item: CodexHistorySearchResult }) {
   const l = useI18n().messages.extensions.codexHistorySearch;
   const [draftQuery, setDraftQuery] = useState(initialQuery);
@@ -75,7 +77,7 @@ function HistoryThreadPane({
 
   return (
     <aside
-      className="flex min-w-0 flex-1 flex-col border-l"
+      className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden border-l"
       aria-label={l.preview.conversation}
       onKeyDown={(event) => {
         if (event.key !== 'Escape' || event.nativeEvent.isComposing) return;
@@ -84,7 +86,7 @@ function HistoryThreadPane({
         else clear();
       }}
     >
-      <header className="flex min-h-14 items-start gap-3 border-b px-4 py-3">
+      <header className="flex min-h-14 shrink-0 items-start gap-3 border-b px-4 py-3">
         {navigationAction}
         <div className="min-w-0 flex-1">
           <h3 className="line-clamp-2 text-sm font-semibold leading-5">
@@ -107,11 +109,11 @@ function HistoryThreadPane({
           {l.preview.open}
         </Button>
       </header>
-      <CodexHistoryThreadUsage threadId={item.threadId} updatedAt={item.updatedAt} />
+      <CodexHistoryThreadUsage threadId={item.threadId} updatedAt={item.updatedAt} onThroughput={onThroughput} />
       <div
         role="search"
         aria-label={l.preview.searchLabel}
-        className="flex flex-wrap items-center gap-2 border-b px-3 py-2"
+        className="flex shrink-0 flex-wrap items-center gap-2 border-b px-3 py-2"
       >
         <div className="relative min-w-36 flex-1">
           <SearchIcon className="pointer-events-none absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground" />
@@ -158,7 +160,7 @@ function HistoryThreadPane({
         </Select>
       </div>
       {(state.filtered || state.anchor) && (
-        <div className="flex min-h-9 items-center gap-2 border-b px-3 text-xs text-muted-foreground">
+        <div className="flex min-h-9 shrink-0 items-center gap-2 border-b px-3 text-xs text-muted-foreground">
           {state.anchor ? (
             <Button type="button" variant="ghost" size="xs" onClick={state.backToResults}>
               <ArrowLeftIcon className="size-3.5" />

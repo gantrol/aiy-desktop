@@ -1,8 +1,10 @@
 import type { CodexModelComparisonRow } from '@/shared/contracts/codex-model-comparison';
+import type { CodexOutputThroughput } from '@/shared/contracts/codex-output-throughput';
+import { codexOutputTokensPerSecond } from '@/shared/codex-output-throughput';
 import { summarizeCodexModelComparisonCosts } from '@/shared/codex-model-comparison-summary';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/renderer/components/ui/table';
 import { CodexUsageEvidenceHelp } from '@/renderer/features/extensions/CodexUsageEvidenceHelp';
-import type { useI18n } from '@/renderer/i18n/useI18n';
+import { useI18n } from '@/renderer/i18n/useI18n';
 
 type Labels = ReturnType<typeof useI18n>['messages']['extensions']['codexUsageInvestigator']['modelComparison'];
 
@@ -44,19 +46,40 @@ export function CodexModelComparisonOverall({
   numbers,
   tokens,
   money,
+  throughputs = [null, null],
 }: {
   groups: readonly [readonly CodexModelComparisonRow[], readonly CodexModelComparisonRow[]];
   labels: Labels;
   numbers: Intl.NumberFormat;
   tokens: Intl.NumberFormat;
   money: Intl.NumberFormat;
+  throughputs?: readonly [CodexOutputThroughput | null, CodexOutputThroughput | null];
 }) {
+  const speed = useI18n().messages.extensions.codexThroughput;
+  const rates = [codexOutputTokensPerSecond(throughputs[0]), codexOutputTokensPerSecond(throughputs[1])] as const;
   const summaries = [
     summarizeCodexModelComparisonCosts(groups[0]),
     summarizeCodexModelComparisonCosts(groups[1]),
   ] as const;
   const [summaryA, summaryB] = summaries;
   const rows = [
+    {
+      label: `${speed.turn} (${speed.unit})`,
+      values: rates.map((value, index) =>
+        value === null ? '—' : `${numbers.format(value)}${throughputs[index]?.partial ? ' *' : ''}`,
+      ),
+      comparison: formatRatio(ratio(rates[0], rates[1]), numbers),
+    },
+    {
+      label: speed.coverage,
+      values: throughputs.map((value) =>
+        value === null
+          ? '—'
+          : `${tokens.format(value.pairedTurnCount)} / ${tokens.format(value.completedTurnCount + value.abortedTurnCount)}`,
+      ),
+      comparison: '—',
+    },
+    { label: speed.generation, values: [speed.unmeasured, speed.unmeasured], comparison: '—' },
     {
       label: labels.overall.inputCacheShare,
       values: summaries.map((summary) =>
@@ -135,7 +158,18 @@ export function CodexModelComparisonOverall({
           <TableBody>
             {rows.map((row) => (
               <TableRow key={row.label}>
-                <TableHead scope="row">{row.label}</TableHead>
+                <TableHead
+                  scope="row"
+                  title={
+                    row.label === speed.generation
+                      ? speed.generationNote
+                      : row.label.startsWith(speed.turn)
+                        ? speed.note
+                        : undefined
+                  }
+                >
+                  {row.label}
+                </TableHead>
                 <TableCell numeric>{row.values[0]}</TableCell>
                 <TableCell numeric>{row.values[1]}</TableCell>
                 <TableCell numeric>{row.comparison}</TableCell>

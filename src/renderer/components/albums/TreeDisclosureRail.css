@@ -17,7 +17,6 @@
 }
 
 .tree-disclosure-mark {
-  color: var(--selected-foreground);
   pointer-events: none;
 }
 
@@ -25,7 +24,23 @@
   transition: stroke-width var(--motion-fast) var(--ease-standard);
 }
 
-.tree-branch-line {
+/* Logical open changes before Radix finishes the exit animation. Keep the
+ * parent's outlet connected for the lifetime of its own visible child bus.
+ * Direct-child scopes prevent a nested branch from controlling an ancestor. */
+[data-tree-branch-id]:has(> .tree-branch-content:not([hidden]))
+  > [data-tree-node-id]
+  [data-tree-disclosure-shape='open'] {
+  display: inline;
+}
+
+[data-tree-branch-id]:has(> .tree-branch-content:not([hidden]))
+  > [data-tree-node-id]
+  [data-tree-disclosure-shape='closed'] {
+  display: none;
+}
+
+.tree-branch-line,
+.tree-disclosure-mark {
   color: var(--hierarchy-accent);
   transition: color var(--motion-fast) var(--ease-standard);
 }
@@ -46,12 +61,12 @@
 
 .tree-branch-collapse-rail:is(:hover, :focus-visible) + .tree-branch-content .tree-branch-line line,
 .tree-branch-collapse-rail:is(:hover, :focus-visible) + .tree-branch-content .tree-branch-line path,
-.tree-branch-node-connector:has(.tree-branch-hit-target:is(:hover, :focus-visible)) path {
+.tree-branch-node-connector:has(.tree-branch-hit-target:is(:hover, :focus-visible)) path,
+[data-tree-disclosure-attached]:is(:hover, :focus-visible) .tree-disclosure-path {
   stroke-width: 2.25px;
 }
 
-[data-tree-disclosure-attached][data-state='open'] .tree-disclosure-mark,
-[data-tree-disclosure-attached][data-state='closed'] .tree-disclosure-mark {
+[data-tree-disclosure-attached]:is(:hover, :focus-visible) .tree-disclosure-mark {
   color: var(--selected-foreground);
 }
 

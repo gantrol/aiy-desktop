@@ -1,4 +1,4 @@
-import { createContext, forwardRef, useContext, useId, type ComponentProps, type ReactNode } from 'react';
+import { createContext, forwardRef, useContext, type ComponentProps, type ReactNode } from 'react';
 import { cn } from '@/renderer/lib/utils';
 import { Button } from '@/renderer/components/ui/button';
 import { CollapsibleContent } from '@/renderer/components/ui/collapsible';
@@ -23,7 +23,7 @@ interface TreeDisclosureRailProps extends Omit<ComponentProps<typeof Button>, 'c
 
 /**
  * Tree branch disclosure bracket. It follows the primary preview's top and
- * leading edges instead of occupying a separate control column. Its light
+ * leading edges instead of occupying a separate control column. Its outgoing
  * connector appears only while the child bus is present.
  */
 export const TreeDisclosureRail = forwardRef<HTMLButtonElement, TreeDisclosureRailProps>(function TreeDisclosureRail(
@@ -40,7 +40,6 @@ export const TreeDisclosureRail = forwardRef<HTMLButtonElement, TreeDisclosureRa
   },
   ref,
 ) {
-  const gradientId = `tree-disclosure-${useId().replaceAll(':', '')}`;
   if (!attached)
     return (
       <Button
@@ -59,8 +58,6 @@ export const TreeDisclosureRail = forwardRef<HTMLButtonElement, TreeDisclosureRa
         {children}
       </Button>
     );
-
-  const disclosurePath = getTreeDisclosurePath(anchor, open, rowHeight);
 
   return (
     <Button
@@ -87,34 +84,34 @@ export const TreeDisclosureRail = forwardRef<HTMLButtonElement, TreeDisclosureRa
         fill="none"
         aria-hidden="true"
       >
-        <defs>
-          <linearGradient id={gradientId} x1="0" y1={anchor.topY} x2="0" y2={rowHeight} gradientUnits="userSpaceOnUse">
-            <stop offset="0" stopColor="var(--selected-foreground)" />
-            <stop offset="0.52" stopColor="var(--selected-foreground)" />
-            <stop offset="0.82" stopColor="var(--tree-branch-color, var(--hierarchy-accent))" />
-            <stop offset="1" stopColor="var(--tree-branch-color, var(--hierarchy-accent))" />
-          </linearGradient>
-        </defs>
-        <path
-          className="tree-disclosure-path"
-          d={disclosurePath}
-          stroke={open ? `url(#${gradientId})` : 'currentColor'}
-          strokeWidth={open ? 1.75 : 2.25}
-          strokeLinecap="round"
-          strokeLinejoin="round"
-          vectorEffect="non-scaling-stroke"
-        />
-        <path
-          className="cursor-pointer"
-          d={disclosurePath}
-          fill="none"
-          stroke="transparent"
-          strokeWidth="9"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-          pointerEvents="stroke"
-          vectorEffect="non-scaling-stroke"
-        />
+        {[false, true].map((connected) => (
+          <g
+            key={String(connected)}
+            data-tree-disclosure-shape={connected ? 'open' : 'closed'}
+            className={connected === open ? undefined : 'hidden'}
+          >
+            <path
+              className="tree-disclosure-path"
+              d={getTreeDisclosurePath(anchor, connected, rowHeight)}
+              stroke="currentColor"
+              strokeWidth="1.75"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              vectorEffect="non-scaling-stroke"
+            />
+            <path
+              className="cursor-pointer"
+              d={getTreeDisclosurePath(anchor, connected, rowHeight)}
+              fill="none"
+              stroke="transparent"
+              strokeWidth="9"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              pointerEvents="stroke"
+              vectorEffect="non-scaling-stroke"
+            />
+          </g>
+        ))}
       </svg>
     </Button>
   );
@@ -194,6 +191,16 @@ export function TreeBranchNodeConnector({
         strokeLinejoin="round"
         vectorEffect="non-scaling-stroke"
       />
+      {/* A selected route turns into this node without tinting the rail below it. */}
+      <path
+        className="tree-branch-selected-connector hidden text-selected-foreground"
+        d={getTreeBranchNodeConnectorPath({ ...topology, hasSuccessor: false }, anchor)}
+        stroke="currentColor"
+        strokeWidth="1.75"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        vectorEffect="non-scaling-stroke"
+      />
       {onCollapse && (
         <path
           data-tree-branch-node-hit-target
@@ -243,15 +250,25 @@ export function TreeBranchCollapseRail({
   );
 }
 
-type TreeBranchContentProps = ComponentProps<typeof CollapsibleContent>;
+interface TreeBranchContentProps extends Omit<ComponentProps<typeof CollapsibleContent>, 'children'> {
+  children: ReactNode | (() => ReactNode);
+}
+
+function TreeBranchChildren({ render }: { render(): ReactNode }) {
+  return render();
+}
 
 /** Keeps the visual indent and the connector geometry on the same source of truth. */
-export function TreeBranchContent({ className, style, ...props }: TreeBranchContentProps) {
+export function TreeBranchContent({ className, style, children, ...props }: TreeBranchContentProps) {
   return (
     <CollapsibleContent
       className={cn('tree-branch-content relative overflow-x-visible overflow-y-clip', className)}
       style={{ ...style, paddingLeft: TREE_CONNECTION_GEOMETRY.contentIndentX }}
       {...props}
-    />
+    >
+      {/* Radix owns mount/unmount, including the exit animation. Defer expensive
+          child trees without emptying them as soon as logical open turns false. */}
+      {typeof children === 'function' ? <TreeBranchChildren render={children} /> : children}
+    </CollapsibleContent>
   );
 }

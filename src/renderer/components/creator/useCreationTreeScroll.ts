@@ -1,4 +1,5 @@
 import { useLayoutEffect, useRef, type RefObject } from 'react';
+import { creationLibraryStickyInset } from '@/renderer/components/creator/CreationLibraryStickyPath';
 
 export function creationTreeNavigationKey(currentKey: string | null, ancestors: readonly string[]) {
   return currentKey ? JSON.stringify([...ancestors, currentKey]) : null;
@@ -88,7 +89,8 @@ export function useCreationTreeScroll({
       if (!current || !current.getClientRects().length) return;
       const bounds = viewport.getBoundingClientRect();
       const row = current.getBoundingClientRect();
-      if (row.top < bounds.top) viewport.scrollTop += row.top - bounds.top;
+      const visibleTop = bounds.top + creationLibraryStickyInset(viewport, current);
+      if (row.top < visibleTop) viewport.scrollTop += row.top - visibleTop;
       else if (row.bottom > bounds.bottom) viewport.scrollTop += row.bottom - bounds.bottom;
       memory.current.navigationKey = navigationKey;
       memory.current.top = viewport.scrollTop;

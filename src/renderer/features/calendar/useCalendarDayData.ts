@@ -16,8 +16,8 @@ export function useCalendarDayData(
   const generation = useRef(0);
   const pendingPage = useRef(false);
   const cacheScope = useMemo(
-    () => ({ spaceId, active, scope, dataRevision, refreshRevision }),
-    [spaceId, active, scope, dataRevision, refreshRevision],
+    () => ({ spaceId, scope, dataRevision, refreshRevision }),
+    [spaceId, scope, dataRevision, refreshRevision],
   );
   const identity = useMemo(() => ({ query, cacheScope }), [query, cacheScope]);
   const [state, setState] = useState<{
@@ -29,16 +29,26 @@ export function useCalendarDayData(
 
   useEffect(() => {
     cache.reset(cacheScope);
-    return () => cache.reset();
+    return () => cache.cancelQueued();
   }, [cache, cacheScope]);
 
   useEffect(() => {
-    if (!active) return;
+    if (!active) {
+      cache.cancelQueued();
+      return;
+    }
     const request = ++generation.current;
     pendingPage.current = false;
     void cache.read(query, spaceId, true).then(
       (result) => {
-        if (generation.current === request) setState({ identity, result, loadingMore: false, error: false });
+        if (generation.current === request) {
+          setState((current) => ({
+            identity,
+            result: current.identity === identity && current.result ? current.result : result,
+            loadingMore: false,
+            error: false,
+          }));
+        }
       },
       () => {
         if (generation.current === request) setState({ identity, result: null, loadingMore: false, error: true });

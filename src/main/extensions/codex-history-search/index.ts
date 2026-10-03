@@ -1,7 +1,7 @@
 import { EventEmitter } from 'node:events';
 import os from 'node:os';
 import path from 'node:path';
-import { CODEX_HISTORY_SEARCH_EXTENSION_ID } from '@/shared/extension-ids';
+import { CODEX_HISTORY_SEARCH_EXTENSION_ID, CODEX_USAGE_INVESTIGATOR_EXTENSION_ID } from '@/shared/extension-ids';
 import type {
   CodexHistoryFilterOptionsInput,
   CodexHistoryIndexState,
@@ -10,6 +10,7 @@ import type {
   CodexHistoryThreadMessagesInput,
   CodexHistoryThreadUsage,
   CodexHistoryThreadUsageInput,
+  CodexHistoryThroughputsInput,
 } from '@/shared/contracts/codex-history-search';
 import {
   CodexHistorySearchCacheDatabase,
@@ -22,6 +23,7 @@ import {
 import { readCodexHistoryThreadMessages } from '@/main/extensions/codex-history-search/thread-reader';
 
 import { CodexHistoryThreadUsageReader } from '@/main/extensions/codex-history-search/thread-usage';
+import { readCachedThreadThroughput } from '@/main/extensions/codex-history-search/cached-throughput';
 
 const SOURCE_REFRESH_INTERVAL_MS = 30_000;
 
@@ -42,6 +44,7 @@ export class CodexHistorySearch extends EventEmitter {
       path.join(userDataDirectory, 'extension-data', CODEX_HISTORY_SEARCH_EXTENSION_ID),
       undefined,
       userTaskThreadIds,
+      path.join(userDataDirectory, 'extension-data', CODEX_USAGE_INVESTIGATOR_EXTENSION_ID, 'usage-cache.sqlite'),
     );
   }
 
@@ -55,6 +58,7 @@ export class CodexHistorySearch extends EventEmitter {
   private usageThreadId: string | null = null;
   private usageController: AbortController | null = null;
   private threadMessagesController: AbortController | null = null;
+  private throughputController: AbortController | null = null;
   private progress = 0;
   private lastError: string | null = null;
   private sourceUnavailable = false;
@@ -64,6 +68,7 @@ export class CodexHistorySearch extends EventEmitter {
     private readonly dataDirectory: string,
     codexHome?: string,
     private readonly userTaskThreadIds: () => readonly string[] = () => [],
+    private readonly usageDatabasePath?: string,
   ) {
     super();
     const configuredHome = codexHome ?? process.env.CODEX_HOME?.trim();
@@ -80,6 +85,7 @@ export class CodexHistorySearch extends EventEmitter {
       this.refreshController?.abort();
       this.threadMessagesController?.abort();
       this.usageController?.abort();
+      this.throughputController?.abort();
     }
   }
 
@@ -95,6 +101,28 @@ export class CodexHistorySearch extends EventEmitter {
     const database = await this.database();
     this.scheduleRefresh();
     return database.search(input, this.indexState(database));
+  }
+
+  async throughputs(input: CodexHistoryThroughputsInput) {
+    this.assertActive();
+    this.throughputController?.abort();
+    const controller = new AbortController();
+    this.throughputController = controller;
+    try {
+      const summaries = await readCachedThreadThroughput(this.usageDatabasePath, input.threads, controller.signal);
+      controller.signal.throwIfAborted();
+      return Object.fromEntries(summaries);
+    } catch (error) {
+      if (controller.signal.aborted) return {};
+      console.warn('[codex-history-search] retained throughput unavailable', errorMessage(error));
+      return {};
+    } finally {
+      if (this.throughputController === controller) this.throughputController = null;
+    }
+  }
+
+  cancelThroughputs() {
+    this.throughputController?.abort();
   }
 
   async filterOptions(input: CodexHistoryFilterOptionsInput) {
@@ -155,6 +183,7 @@ export class CodexHistorySearch extends EventEmitter {
   }
 
   async purge() {
+    this.throughputController?.abort();
     this.usageController?.abort();
     this.usageReader.clear();
     this.refreshController?.abort();
@@ -169,6 +198,7 @@ export class CodexHistorySearch extends EventEmitter {
   }
 
   async dispose() {
+    this.throughputController?.abort();
     this.usageController?.abort();
     this.usageReader.clear();
     this.active = false;

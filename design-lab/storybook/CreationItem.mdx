@@ -1,0 +1,13 @@
+import { Meta, Canvas } from '@storybook/addon-docs/blocks';
+import * as Item from './CreationItem.stories';
+
+<Meta of={Item} name="Scenes and usage" />
+
+# 内容条目
+
+直接使用正式 `CreationLibraryTreeItem` 的紧凑文章条目。
+鼠标或键盘打开条目后，宿主设置选中状态，并在 Actions 中报告 `onOpen`。
+
+<Canvas of={Item.Default} />
+
+[已选中](?path=/story/library-item--selected)可独立进入。组件测试验证键盘触发回调；完整创作树的数据加载、层级拖放和路由尚未迁入这组分镜。

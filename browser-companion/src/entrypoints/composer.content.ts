@@ -3,6 +3,7 @@ import '@/components/automatic-handoff-notice.css';
 import '@/components/chatgpt-output-return.css';
 
 import type { ContentScriptContext } from 'wxt/utils/content-script-context';
+import { COMPOSER_CONTENT_SCRIPT_OPTIONS } from '@/lib/composer-registration';
 
 import { requestComposerReplacementConfirmation } from '@/components/composer-conflict-prompt';
 import {
@@ -161,17 +162,9 @@ async function fillWhenReady(
 }
 
 export default defineContentScript({
-  matches: [
-    'https://chatgpt.com/*',
-    'https://mp.weixin.qq.com/*',
-    'https://weibo.com/*',
-    'https://www.weibo.com/*',
-    'https://x.com/*',
-    'https://twitter.com/*',
-    'https://creator.xiaohongshu.com/*',
-  ],
-  allFrames: true,
-  runAt: 'document_start',
+  ...COMPOSER_CONTENT_SCRIPT_OPTIONS,
+  // The background registers dev scripts locally; WXT only updates them on reload.
+  registration: import.meta.env.COMMAND === 'serve' ? 'runtime' : 'manifest',
   cssInjectionMode: 'ui',
   main(ctx) {
     let active = false;

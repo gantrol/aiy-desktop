@@ -139,8 +139,11 @@ function standardCreatorInitialSession(
     !resumableDerivedSeriesId && data.creationDraft?.id === resumableDerivedVisual?.creationDraftId
       ? data.creationDraft
       : null;
-  const standaloneSeriesId = defaultStandaloneCreationSeriesId(data, creationSessions);
-  const standaloneDraft = defaultStandaloneCreationDraft(data);
+  // Only the default landing route may resume the most recent standalone work.
+  // Object routes must never acquire an unrelated draft or series from bootstrap.
+  const standaloneSeriesId =
+    location.surface === 'default' ? defaultStandaloneCreationSeriesId(data, creationSessions) : null;
+  const standaloneDraft = location.surface === 'default' ? defaultStandaloneCreationDraft(data) : null;
   const locatedDraft =
     location.surface === 'creation-draft' && data.creationDraft?.id === location.draftId ? data.creationDraft : null;
   const hasInitialContent = Boolean(initialSocialPost || initialArticle);
@@ -154,15 +157,7 @@ function standardCreatorInitialSession(
     standaloneSeriesId,
   });
   const initialDraft =
-    locatedDraft ??
-    resumableDerivedDraft ??
-    (location.surface !== 'new-creation' &&
-    location.surface !== 'creation-draft' &&
-    initialCreationMode === 'new' &&
-    !initialSocialPost &&
-    !initialArticle
-      ? standaloneDraft
-      : null);
+    locatedDraft ?? resumableDerivedDraft ?? (initialCreationMode === 'new' ? standaloneDraft : null);
   const initialSeriesId = resolveInitialSeriesId({
     location,
     resumableDerivedSeriesId,
@@ -174,7 +169,7 @@ function standardCreatorInitialSession(
   const initialAssistantRun = activeAssistantRun(data, initialCreationMode, initialDraft, initialSeriesId);
 
   return {
-    derivedDraftParentLocation: defaultDerivedDraftParentLocation(data),
+    derivedDraftParentLocation: location.surface === 'default' ? defaultDerivedDraftParentLocation(data) : null,
     initialAssistantRun,
     initialCreationMode,
     initialDraft,

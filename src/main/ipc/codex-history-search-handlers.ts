@@ -7,6 +7,7 @@ import {
   codexHistorySearchInputSchema,
   codexHistoryThreadMessagesInputSchema,
   codexHistoryThreadUsageInputSchema,
+  codexHistoryThroughputsInputSchema,
 } from '@/shared/contracts/codex-history-search';
 import { CODEX_EXTENSION_ID } from '@/shared/extension-ids';
 
@@ -44,6 +45,11 @@ export function registerCodexHistorySearchIpc(
     active();
     return await historySearch.threadUsage(codexHistoryThreadUsageInputSchema.parse(raw));
   });
+  ipcMain.handle('codex-history-search:throughputs', async (_event, raw) => {
+    active();
+    return await historySearch.throughputs(codexHistoryThroughputsInputSchema.parse(raw));
+  });
+  ipcMain.handle('codex-history-search:cancel-throughputs', () => historySearch.cancelThroughputs());
   ipcMain.handle('codex-history-search:thread-messages', async (_event, raw) => {
     active();
     return await historySearch.threadMessages(codexHistoryThreadMessagesInputSchema.parse(raw));

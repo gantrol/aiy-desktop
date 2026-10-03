@@ -2,13 +2,14 @@ import { Button } from '@/renderer/components/ui/button';
 import { useI18n } from '@/renderer/i18n/useI18n';
 import { cn } from '@/renderer/lib/utils';
 import { Node, mergeAttributes, type JSONContent } from '@tiptap/core';
-import { NodeViewContent, NodeViewWrapper, ReactNodeViewRenderer, type NodeViewProps } from '@tiptap/react';
+import { NodeViewWrapper, ReactNodeViewRenderer, type NodeViewProps } from '@tiptap/react';
+import { ContentNodeViewContent } from '@/renderer/features/content-editor/ContentNodeViewContent';
 import { useState } from 'react';
 import './contentRevealExtension.css';
 
 export type RevealKind = 'REVEAL' | 'IMAGE_SWAP';
 
-function RevealNodeView({ node, editor, getPos }: NodeViewProps) {
+function RevealNodeView({ node, editor, getPos, view }: NodeViewProps) {
   const copy = useI18n().messages.videoDocuments.editor.richText;
   const [preview, setPreview] = useState<'edit' | 'initial' | 'answer'>('edit');
 
@@ -70,12 +71,12 @@ function RevealNodeView({ node, editor, getPos }: NodeViewProps) {
           </Button>
         )}
       </div>
-      <NodeViewContent className={cn('min-w-0', preview !== 'edit' && 'select-none')} />
+      <ContentNodeViewContent view={view} className={cn('min-w-0', preview !== 'edit' && 'select-none')} />
     </NodeViewWrapper>
   );
 }
 
-function RevealStageView({ node }: NodeViewProps) {
+function RevealStageView({ node, view }: NodeViewProps) {
   const copy = useI18n().messages.videoDocuments.editor.richText;
   const initial = node.type.name === 'revealInitial';
   return (
@@ -83,7 +84,7 @@ function RevealStageView({ node }: NodeViewProps) {
       <div contentEditable={false} className="text-xs text-muted-foreground">
         {initial ? copy.initialState : copy.revealedState}
       </div>
-      <NodeViewContent className="min-w-0" />
+      <ContentNodeViewContent view={view} className="min-w-0" />
     </NodeViewWrapper>
   );
 }

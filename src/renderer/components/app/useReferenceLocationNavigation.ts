@@ -11,6 +11,11 @@ import { workspaceLocationKey } from '@/renderer/components/workspace/workspace-
 import { activeLocation, activeNavigationEntry } from '@/renderer/components/workspace/workspace-state';
 import { useArticleEditorSessions } from '@/renderer/components/creator/article-editor/ArticleEditorSessionProvider';
 import { liveReferenceLocation } from '@/renderer/features/content-editor/liveReferenceLocation';
+import {
+  ARTICLE_CREATED_EVENT,
+  mergeCreatedArticle,
+  type ArticleCreated,
+} from '@/renderer/features/content-editor/articleCreated';
 
 export function useReferenceLocationNavigation(
   data: Pick<BootstrapDto, 'spaceId'> | null,
@@ -25,6 +30,11 @@ export function useReferenceLocationNavigation(
   current.current = options;
   useEffect(() => {
     let epoch = 0;
+    const articleCreated = (event: Event) => {
+      if (!(event instanceof CustomEvent)) return;
+      const result = event.detail as ArticleCreated;
+      current.current.setData((data) => mergeCreatedArticle(data, result));
+    };
     const navigate = async (request: ReferenceNavigationRequest) => {
       const generation = ++epoch;
       const context = current.current;
@@ -84,9 +94,11 @@ export function useReferenceLocationNavigation(
       request.accept(navigate(request));
     };
     window.addEventListener(REFERENCE_NAVIGATION_EVENT, listener);
+    window.addEventListener(ARTICLE_CREATED_EVENT, articleCreated);
     return () => {
       epoch++;
       window.removeEventListener(REFERENCE_NAVIGATION_EVENT, listener);
+      window.removeEventListener(ARTICLE_CREATED_EVENT, articleCreated);
     };
   }, []);
 }

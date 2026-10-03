@@ -1,8 +1,46 @@
-.creation-library-tree [data-tree-branch-id]:has([data-result-library-selected='true']) > .tree-branch-transit-rail,
+/* Only preceding siblings carry the route toward the selected branch. */
+.creation-library-tree
+  .tree-branch-content
+  > :is(
+    :has(~ [data-result-library-selected='true']),
+    :has(~ [data-tree-branch-id] [data-result-library-selected='true'])
+  )
+  > .tree-branch-transit-rail,
+.creation-library-tree
+  .tree-branch-content
+  > :is(
+    :has(~ [data-result-library-selected='true']),
+    :has(~ [data-tree-branch-id] [data-result-library-selected='true'])
+  )
+  > [data-tree-node-id]
+  .tree-branch-transit-rail,
+.creation-library-tree
+  .tree-branch-content
+  > :is(
+    :has(~ [data-result-library-selected='true']),
+    :has(~ [data-tree-branch-id] [data-result-library-selected='true'])
+  )
+  > [data-creation-tree-node-frame]
+  > .tree-branch-transit-rail {
+  color: var(--selected-foreground);
+}
+
+/* The incoming path ends at the node; the full-height transit rail stays quiet. */
 .creation-library-tree
   [data-tree-branch-id]:has([data-result-library-selected='true'])
   > [data-tree-node-id]
-  .tree-branch-node-connector,
-.creation-library-tree [data-result-library-selected='true'] .tree-branch-node-connector {
+  .tree-branch-selected-connector,
+.creation-library-tree [data-result-library-selected='true'] .tree-branch-selected-connector {
+  display: block;
+}
+
+.creation-library-tree
+  [data-tree-branch-id]:has(> .tree-branch-content [data-result-library-selected='true'])
+  > [data-tree-node-id]
+  .tree-disclosure-mark,
+.creation-library-tree
+  [data-result-library-selected='true']
+  [data-tree-disclosure-attached][data-state='closed']
+  .tree-disclosure-mark {
   color: var(--selected-foreground);
 }

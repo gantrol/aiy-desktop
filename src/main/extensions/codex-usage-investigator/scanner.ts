@@ -60,7 +60,7 @@ import {
 const MAX_FILES = 100_000;
 const MAX_EXPORT_ROWS = 100_000;
 const DISCOVERY_STAT_CONCURRENCY = 12;
-const PROCESSED_ANALYSIS_VERSION = 21;
+const PROCESSED_ANALYSIS_VERSION = 22;
 const DETAILED_STATISTICS_VERSION = 4;
 const FILE_YIELD_INTERVAL = 32;
 const safeIntegerSchema = z.number().int().nonnegative().safe();
@@ -587,8 +587,8 @@ async function processStoredEvents(
     totals: totalsFromAggregate(total),
     models: modelBreakdowns(models),
     days: dailyBreakdowns(days),
-    turnSpeed: options.cache.turnSpeedAnalysis(options.fromEpoch, queryToEpoch),
-    modelComparison: await options.cache.modelComparisonAnalysis(options.fromEpoch, queryToEpoch, options.signal),
+    turnSpeed: options.cache.turnSpeedAnalysis(options.fromEpoch, options.toEpoch),
+    modelComparison: await options.cache.modelComparisonAnalysis(options.fromEpoch, options.toEpoch, options.signal),
     sessionLength: sessionLength?.result() ?? null,
     quotaYield: quotaYield.result(),
     quotaPurity: quotaPurity.result(),
@@ -751,7 +751,7 @@ export async function scanCodexUsage(options: ScanOptions): Promise<CodexUsageSc
   const cacheKey = processedCacheKey(
     range,
     fromEpoch,
-    queryToEpoch,
+    Math.min(toEpoch, Math.max(storedToEpoch, options.cache.latestTurnTimestamp() ?? 0)),
     options.timeZone,
     options.granularity,
     options.detailedStatistics,
@@ -767,10 +767,13 @@ export async function scanCodexUsage(options: ScanOptions): Promise<CodexUsageSc
     });
     options.cache.saveProcessed(cacheKey, processed, processedSnapshotSchema);
   }
-  if (processed.modelComparison.byReasoningEffort.some((row) => row.samples === null)) {
+  if (
+    processed.modelComparison.algorithmVersion < 3 ||
+    processed.modelComparison.byReasoningEffort.some((row) => row.samples === null)
+  ) {
     processed = {
       ...processed,
-      modelComparison: await options.cache.modelComparisonAnalysis(fromEpoch, queryToEpoch, options.signal),
+      modelComparison: await options.cache.modelComparisonAnalysis(fromEpoch, toEpoch, options.signal),
     };
     options.cache.saveProcessed(cacheKey, processed, processedSnapshotSchema);
   }

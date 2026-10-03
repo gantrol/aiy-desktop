@@ -104,7 +104,15 @@ export function validateCodexUsageRateCard(card) {
   const identifiers = new Set(entries.map(([key]) => key));
   for (const [key, model] of entries) {
     requireValue(identifierPattern.test(key) && !reserved.has(key), `${key}: invalid model ID`);
-    object(model, key, ['aliases', 'verifiedAt', 'sourceUrls', 'api', 'credits', 'fastCreditMultiplier']);
+    object(model, key, [
+      'aliases',
+      'verifiedAt',
+      'sourceUrls',
+      'api',
+      'credits',
+      'fastCreditMultiplier',
+      ...(Object.hasOwn(model, 'fastIncludedUsageMultiplier') ? ['fastIncludedUsageMultiplier'] : []),
+    ]);
     date(model.verifiedAt, `${key}.verifiedAt`);
     requireValue(model.verifiedAt <= card.updatedAt, `${key}: verification is newer than catalog`);
     requireValue(Array.isArray(model.sourceUrls) && model.sourceUrls.length > 0, `${key}: missing sources`);
@@ -123,6 +131,13 @@ export function validateCodexUsageRateCard(card) {
     requireValue(model.api.length + model.credits.length > 0, `${key}: no rates`);
     rate(model.fastCreditMultiplier, `${key}.fastCreditMultiplier`, true);
     requireValue(model.fastCreditMultiplier === null || model.fastCreditMultiplier > 0, `${key}: invalid Fast factor`);
+    if (Object.hasOwn(model, 'fastIncludedUsageMultiplier')) {
+      rate(model.fastIncludedUsageMultiplier, `${key}.fastIncludedUsageMultiplier`, true);
+      requireValue(
+        model.fastIncludedUsageMultiplier === null || model.fastIncludedUsageMultiplier > 0,
+        `${key}: invalid Fast included usage factor`,
+      );
+    }
   }
   return card;
 }

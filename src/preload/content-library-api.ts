@@ -1,4 +1,9 @@
+import { commentCompilationInputSchema } from '@/shared/contracts/comment-compilation';
+import { commentCompilationResultSchema } from '@/shared/contracts/comment-compilation-result';
+import { articleOutlineStartInputSchema } from '@/shared/contracts/article-outline-start';
+import { articleOpenResultSchema } from '@/shared/contracts/article';
 import { z } from 'zod';
+import { outlinePageCreateResultSchema } from '@/shared/contracts/outline-page';
 import { articleStructureInputSchema, articleStructurePageSchema } from '@/shared/contracts/article-structure';
 import { outlineTransferResultSchema } from '@/shared/contracts/outline-transfer';
 import { contentLinkResultSchema, contentLinkUsesSchema } from '@/shared/contracts/content-links';
@@ -27,6 +32,16 @@ export function createContentLibraryBridge(
   invoke: (command: ContentLibraryCommand) => Promise<unknown>,
 ): ContentLibraryApi {
   return {
+    commentCompilationCreate: async (input) =>
+      commentCompilationResultSchema.parse(
+        await invoke({ kind: 'comment-compilation-create', input: commentCompilationInputSchema.parse(input) }),
+      ),
+    articleOutlineStart: async (input) =>
+      articleOpenResultSchema.parse(
+        await invoke({ kind: 'article-outline-start', input: articleOutlineStartInputSchema.parse(input) }),
+      ),
+    outlinePageCreate: async (input) =>
+      outlinePageCreateResultSchema.parse(await invoke({ kind: 'outline-page-create', input })),
     referenceHistory: async (articleId, revisionId, spaceId) =>
       referenceHistoryResultSchema.parse(await invoke({ kind: 'reference-history', articleId, revisionId, spaceId })),
     articleStructure: async (input) =>

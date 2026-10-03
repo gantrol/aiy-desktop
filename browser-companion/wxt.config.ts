@@ -1,5 +1,7 @@
 import tailwindcss from '@tailwindcss/vite';
 import { defineConfig } from 'wxt';
+import { offlineDevelopmentHtmlPlugins } from './build/offline-development';
+import { COMPOSER_CONTENT_SCRIPT_OPTIONS } from './src/lib/composer-registration';
 
 declare const process: { env: Record<string, string | undefined> };
 
@@ -31,16 +33,9 @@ function workspaceIdentity(value: string): string {
 }
 
 let developmentBuildReadyAt = Number.POSITIVE_INFINITY;
+let developmentCommand = false;
 const developmentWorkspaceId = workspaceIdentity(new URL('.', import.meta.url).href.toLowerCase());
-const supportedMatches = [
-  'https://chatgpt.com/*',
-  'https://mp.weixin.qq.com/*',
-  'https://weibo.com/*',
-  'https://www.weibo.com/*',
-  'https://x.com/*',
-  'https://twitter.com/*',
-  'https://creator.xiaohongshu.com/*',
-] as const;
+const supportedMatches = COMPOSER_CONTENT_SCRIPT_OPTIONS.matches;
 const companionPermissions = ['activeTab', 'storage', 'scripting'] as const;
 const companionHostPermissions = [...supportedMatches, 'http://127.0.0.1/*'] as const;
 
@@ -58,11 +53,20 @@ export default defineConfig({
     },
   },
   webExt: { disabled: true },
+  hooks: {
+    'config:resolved'(wxt) {
+      developmentCommand = wxt.config.command === 'serve';
+    },
+    async 'vite:build:extendConfig'(entrypoints, config) {
+      if (!developmentCommand || !entrypoints.some((entrypoint) => entrypoint.inputPath.endsWith('.html'))) return;
+      config.plugins = await offlineDevelopmentHtmlPlugins(config.plugins ?? []);
+    },
+  },
   manifest: {
     name: '__MSG_extensionName__',
     description: '__MSG_extensionDescription__',
     default_locale: 'en',
-    version: '0.0.6',
+    version: '0.0.7',
     key: 'MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAr+eynucctrHD6gDJvWZCSyzvIvCuJkt+U7xZZqrs380WNovxaShRZ/CvVlRwKliW7I8Z2KfvABpmAvAc7Mvb8+eC+SntwpF/4TiEyoK5KM2Q0JF9KUoVt3PVPlaSi9G/PqkWHzAjqYWO+zB6zO0f2sC2I56hCN0kcrgDT/iVjbSdl8SKwWbdMl9+niD56Mb4a8zI8WHUmwU6KWmq/SmCEk9xtL5dGw4RDpVz20g+rvr6Cs+wJfrkxaIadQDvoR825lByJ/EYR/N3j3ePFQdxfSy7ubux/yGsGCcAV/JSKxt9jts53+PwW5zwym7FckQqGjysSeKOz7n1xevBWd0JSwIDAQAB',
     permissions: [...companionPermissions],
     optional_permissions: ['tabGroups'],

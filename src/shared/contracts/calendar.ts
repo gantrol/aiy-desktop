@@ -78,6 +78,12 @@ export const calendarRangeSchema = z
   );
 export const calendarQuerySchema = z
   .object({
+    details: z
+      .discriminatedUnion('kind', [
+        z.object({ kind: z.literal('object'), object: calendarEntityRefSchema }).strict(),
+        z.object({ kind: z.literal('event'), eventId: id }).strict(),
+      ])
+      .optional(),
     writer: writerFilter,
     startDate: calendarDateSchema,
     endDate: calendarDateSchema,
@@ -130,6 +136,10 @@ export const calendarItemSchema = z
           .strict(),
       )
       .default([]),
+    contentRevision: z
+      .object({ articleId: id, revisionId: id, revisionNo: z.number().int().positive().safe() })
+      .strict()
+      .optional(),
     thumbnailAssetId: id.nullable().default(null),
     packSync: packSyncSummarySchema.nullable().default(null),
     note: z.string().max(4000),
@@ -250,6 +260,8 @@ export const calendarPreferencesSchema = z
   .object({
     writer: writerFilter,
     timeZone: calendarTimeZoneSchema,
+    followSystemTimeZone: z.boolean().optional(),
+    lastSystemTimeZone: calendarTimeZoneSchema.optional(),
     categories: z.array(calendarCategorySchema).max(7),
     kinds: z.array(z.string().max(20)).max(3).optional(),
     showInvalidated: z.boolean(),

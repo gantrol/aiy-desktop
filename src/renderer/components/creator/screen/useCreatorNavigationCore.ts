@@ -50,7 +50,6 @@ function initialAppliedLocationKey(location: CreatorLocation) {
     case 'default':
     case 'album-detail':
     case 'existing-creation':
-    case 'idea-creation':
       return navigationLocationKey(location);
     default:
       return null;

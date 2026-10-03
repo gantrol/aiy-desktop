@@ -9,6 +9,7 @@ import {
 import { codexModelComparisonDistribution as distribution } from '@/shared/codex-model-comparison-distribution';
 import { codexUsageServiceTierSchema } from '@/shared/contracts/codex-usage';
 import { estimateCodexUsage, normalizeCodexUsageModel } from '@/main/extensions/codex-usage-investigator/pricing';
+import { readCodexOutputThroughput } from '@/main/extensions/codex-usage-investigator/output-throughput';
 
 const PAGE_SIZE = 2_000;
 const MAX_TURNS = 100_000;
@@ -203,9 +204,11 @@ export async function readCodexModelComparison(
   if (current) samples.push(current);
   const byModel = summarize(samples, false);
   const byReasoningEffort = summarize(samples, true);
+  const { analysis: outputThroughput } = await readCodexOutputThroughput(database, { fromEpoch, toEpoch, signal });
   return codexModelComparisonAnalysisSchema.parse({
     definition: 'OWNED_USER_COMPLETED_TURNS',
-    algorithmVersion: 2,
+    algorithmVersion: 3,
+    outputThroughput,
     rangeAssignment: 'COMPLETION_TIMESTAMP',
     completedTurnCount: samples.length,
     excludedModelTurnCount: samples.filter((sample) => !sample.model).length,

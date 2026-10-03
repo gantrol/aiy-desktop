@@ -23,9 +23,11 @@ export interface MediaStackItem {
 
 interface Props {
   items: MediaStackItem[];
-  size?: 'xs' | 'rail' | 'tree' | 'sm' | 'md' | 'card';
+  size?: 'xs' | 'rail' | 'tree' | 'creation-tree' | 'sm' | 'md' | 'card';
   className?: string;
   emptyContent?: ReactNode;
+  /** Type or collection badge anchored to the first image's actual frame. */
+  badge?: ReactNode;
   expanded?: boolean;
   animate?: boolean;
   spread?: MediaStackSpread;
@@ -55,6 +57,7 @@ interface MediaStackLayout {
   collapsedStep: number;
   settledStep: number;
   expandedStep: number;
+  trailingInset?: number;
 }
 
 const dimensions: Record<NonNullable<Props['size']>, MediaStackLayout> = {
@@ -86,6 +89,16 @@ const dimensions: Record<NonNullable<Props['size']>, MediaStackLayout> = {
     collapsedStep: 4,
     settledStep: 6,
     expandedStep: 14,
+  },
+  'creation-tree': {
+    containerWidth: 56,
+    containerHeight: 60,
+    itemWidth: 48,
+    itemHeight: 56,
+    collapsedStep: 2,
+    settledStep: 2,
+    expandedStep: 14,
+    trailingInset: 4,
   },
   sm: {
     containerWidth: 62,
@@ -142,6 +155,27 @@ function fittedStackFrame(asset: AssetDto, layout: MediaStackLayout, itemCount: 
   );
 }
 
+function stackFrameX(
+  layout: MediaStackLayout,
+  width: number,
+  count: number,
+  index: number,
+  step: number,
+  singleItemAlign: 'center' | 'end' = 'end',
+) {
+  // Keep the title column and cover-to-title gap stable without forcing a portrait frame.
+  if (layout.trailingInset !== undefined) return layout.containerWidth - layout.trailingInset - width + index * step;
+  if (count === 1)
+    return singleItemAlign === 'center' ? (layout.containerWidth - width) / 2 : layout.containerWidth - width - 2;
+  const firstCenter = layout.containerWidth / 2 - ((count - 1) / 2) * layout.collapsedStep;
+  return firstCenter + index * step - width / 2;
+}
+
+function stackFrameRotation(size: NonNullable<Props['size']>, count: number, index: number, spread: MediaStackSpread) {
+  if (spread !== 'collapsed' || count <= 1 || size === 'creation-tree') return 0;
+  return size === 'tree' ? index * 1.2 : (index - (count - 1) / 2) * 3;
+}
+
 /**
  * Stable, unrotated bounds for the first cover in a stack. Tree connections
  * attach here so the rail does not move when the remaining covers fan out.
@@ -158,8 +192,7 @@ export function getMediaStackPrimaryFrameBounds(
   }
 
   const frame = fittedStackFrame(visible[0].asset, layout, visible.length);
-  const firstCenter = layout.containerWidth / 2 - ((visible.length - 1) / 2) * layout.collapsedStep;
-  const left = visible.length === 1 ? layout.containerWidth - frame.width - 2 : firstCenter - frame.width / 2;
+  const left = stackFrameX(layout, frame.width, visible.length, 0, layout.collapsedStep);
   const top = (layout.containerHeight - frame.height) / 2;
   return { left, top, right: left + frame.width, bottom: top + frame.height };
 }
@@ -190,11 +223,8 @@ export function getMediaStackHorizontalBounds(
   return visible.reduce(
     (bounds, item, index) => {
       const frame = fittedStackFrame(item.asset, layout, visible.length);
-      const firstCenter = layout.containerWidth / 2 - ((visible.length - 1) / 2) * layout.collapsedStep;
-      const centerX = visible.length === 1 ? layout.containerWidth - frame.width / 2 - 2 : firstCenter + index * step;
-      const offset = index - (visible.length - 1) / 2;
-      const rotation =
-        spreadState === 'collapsed' && visible.length > 1 ? (size === 'tree' ? index * 1.2 : offset * 3) : 0;
+      const centerX = stackFrameX(layout, frame.width, visible.length, index, step) + frame.width / 2;
+      const rotation = stackFrameRotation(size, visible.length, index, spreadState);
       const radians = (Math.abs(rotation) * Math.PI) / 180;
       const rotatedWidth = Math.abs(frame.width * Math.cos(radians)) + Math.abs(frame.height * Math.sin(radians));
       return {
@@ -249,6 +279,7 @@ export function MediaStackPreview({
   size = 'md',
   className,
   emptyContent,
+  badge,
   expanded: controlledExpanded,
   animate = true,
   spread: controlledSpread,
@@ -272,8 +303,10 @@ export function MediaStackPreview({
   const spread = controlledSpread ?? (expanded ? 'expanded' : 'collapsed');
   const visible = items.slice(0, maxItems);
   const layout = dimensions[size];
+  const tree = size === 'tree' || size === 'creation-tree';
   const thumbnailSize = size === 'xs' || size === 'sm' ? 96 : 160;
   const frames = visible.map((item) => fittedStackFrame(item.asset, layout, visible.length));
+  const badgeBounds = badge ? getMediaStackPrimaryFrameBounds(size, visible, maxItems) : null;
 
   function updateExpanded(next: boolean) {
     if (controlledExpanded === undefined) setInternalExpanded(next);
@@ -289,7 +322,7 @@ export function MediaStackPreview({
       data-spread={spread}
       className={cn(
         'relative inline-block shrink-0 rounded-lg',
-        size === 'tree' ? 'overflow-visible' : 'overflow-hidden',
+        tree ? 'overflow-visible' : 'overflow-hidden',
         className,
       )}
       style={{ width: layout.containerWidth, height: layout.containerHeight }}
@@ -310,30 +343,35 @@ export function MediaStackPreview({
         <span
           className={cn(
             'absolute inset-1 grid place-items-center overflow-hidden rounded-md border bg-surface-sunken text-muted-foreground',
-            size === 'tree' && 'corner-continuous',
+            tree && 'corner-continuous',
           )}
         >
           {emptyContent ?? <ImageIcon className={size === 'sm' ? 'size-4' : 'size-5'} />}
         </span>
       )}
+      {badgeBounds && (
+        <span
+          className="pointer-events-none absolute z-30"
+          style={{
+            left: badgeBounds.left,
+            top: badgeBounds.top,
+            width: badgeBounds.right - badgeBounds.left,
+            height: badgeBounds.bottom - badgeBounds.top,
+          }}
+        >
+          {badge}
+        </span>
+      )}
       {visible.map((item, index) => {
         const frame = frames[index];
-        const offset = index - (visible.length - 1) / 2;
-        const singleX =
-          singleItemAlign === 'center'
-            ? (layout.containerWidth - frame.width) / 2
-            : layout.containerWidth - frame.width - 2;
-        const firstCenter = layout.containerWidth / 2 - ((visible.length - 1) / 2) * layout.collapsedStep;
-        const collapsedX =
-          visible.length === 1 ? singleX : firstCenter + index * layout.collapsedStep - frame.width / 2;
-        const settledX = visible.length === 1 ? singleX : firstCenter + index * layout.settledStep - frame.width / 2;
-        const expandedX =
-          visible.length === 1
-            ? singleX
-            : firstCenter + index * (expandedStep ?? layout.expandedStep) - frame.width / 2;
-        const x = spread === 'expanded' ? expandedX : spread === 'settled' ? settledX : collapsedX;
-        const rotation =
-          spread === 'collapsed' && visible.length > 1 ? (size === 'tree' ? index * 1.2 : offset * 3) : 0;
+        const step =
+          spread === 'expanded'
+            ? (expandedStep ?? layout.expandedStep)
+            : spread === 'settled'
+              ? layout.settledStep
+              : layout.collapsedStep;
+        const x = stackFrameX(layout, frame.width, visible.length, index, step, singleItemAlign);
+        const rotation = stackFrameRotation(size, visible.length, index, spread);
         const frameStyle = stackedMediaFrameStyle(visible.length - index, {
           top: (layout.containerHeight - frame.height) / 2,
           width: frame.width,
@@ -364,7 +402,7 @@ export function MediaStackPreview({
               'pointer-events-auto absolute left-0 overflow-hidden rounded-md bg-surface-sunken p-0 ring-1 ring-inset ring-foreground/10 outline-none transition-transform duration-fast ease-out hover:bg-surface-sunken motion-reduce:transition-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring focus-visible:ring-offset-0',
               stackedMediaFrameLayerClassName,
               stackedMediaFrameLiftClassName,
-              size === 'tree' && 'corner-continuous',
+              tree && 'corner-continuous',
             )}
             style={frameStyle}
             onMouseEnter={() => onAssetPreviewChange?.(item.asset)}
@@ -382,7 +420,8 @@ export function MediaStackPreview({
             className={cn(
               'absolute left-0 overflow-hidden rounded-md bg-surface-sunken ring-1 ring-inset ring-foreground/10 transition-transform duration-fast ease-out motion-reduce:transition-none',
               stackedMediaFrameLayerClassName,
-              size === 'tree' && 'corner-continuous',
+              tree && 'corner-continuous',
+              size === 'creation-tree' && 'pointer-events-auto',
             )}
             style={frameStyle}
             aria-hidden="true"

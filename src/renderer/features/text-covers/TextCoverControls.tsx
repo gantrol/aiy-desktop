@@ -26,7 +26,7 @@ function CoverSelect({
 }: {
   label: string;
   value: string;
-  choices: readonly { id: string; label: string; family?: string; recommended?: string }[];
+  choices: readonly { id: string; label: string; family?: string; recommended?: string; disabled?: boolean }[];
   onChange(value: string): void;
 }) {
   const id = useId();
@@ -39,7 +39,7 @@ function CoverSelect({
         </SelectTrigger>
         <SelectContent>
           {choices.map((choice) => (
-            <SelectItem key={choice.id} value={choice.id}>
+            <SelectItem key={choice.id} value={choice.id} disabled={choice.disabled}>
               <span className="flex items-center gap-2">
                 <span style={choice.family ? { fontFamily: choice.family } : undefined}>{choice.label}</span>
                 {choice.recommended && <span className="text-xs text-muted-foreground">{choice.recommended}</span>}
@@ -68,12 +68,13 @@ export function TextCoverControls({
   const copy = useI18n().messages.contentEditor.textCover;
   const fontChoices = [
     ...localTextCoverFonts
-      .filter((font) => installedFonts.includes(font.id))
+      .filter((font) => installedFonts.includes(font.id) || font.id === recipe.font)
       .sort((a, b) => Number(isRecommendedTextCoverFont(b.id)) - Number(isRecommendedTextCoverFont(a.id)))
       .map((font) => ({
         id: font.id,
         label: copy.fonts[font.id],
-        family: textCoverFontFamily(font.id),
+        family: installedFonts.includes(font.id) ? textCoverFontFamily(font.id) : undefined,
+        disabled: !installedFonts.includes(font.id),
         recommended: isRecommendedTextCoverFont(font.id) ? copy.recommended : undefined,
       })),
     ...(['sans', 'serif', 'kai'] as const).map((id) => ({

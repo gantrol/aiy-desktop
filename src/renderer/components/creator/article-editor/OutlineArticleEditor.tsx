@@ -31,7 +31,12 @@ import {
 export function OutlineArticleEditor(props: Parameters<typeof OutlineArticleWorkspace>[0]) {
   return (
     <OutlineContentLinkHost.Provider
-      value={{ spaceId: props.spaceId, articleId: props.article.id, albumId: props.article.albumId }}
+      value={{
+        spaceId: props.spaceId,
+        articleId: props.article.id,
+        albumId: props.article.albumId,
+        notify: props.notify,
+      }}
     >
       <OutlineArticleWorkspace {...props} />
     </OutlineContentLinkHost.Provider>

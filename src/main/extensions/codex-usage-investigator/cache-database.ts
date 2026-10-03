@@ -381,6 +381,23 @@ export class CodexUsageCacheDatabase {
     return readCodexTurnSpeedAnalysis(this.database, fromEpoch, toEpoch);
   }
 
+  latestTurnTimestamp(): number | null {
+    const row = this.database
+      .prepare(
+        `SELECT MAX(terminal_ms) AS timestamp FROM (
+        SELECT terminal_ms FROM usage_chat_turns WHERE terminal_state = 'COMPLETED' ORDER BY terminal_ms DESC LIMIT 1
+      ) UNION ALL SELECT MAX(terminal_ms) AS timestamp FROM (
+        SELECT terminal_ms FROM usage_chat_turns WHERE terminal_state = 'ABORTED' ORDER BY terminal_ms DESC LIMIT 1
+      )`,
+      )
+      .all();
+    const values = z.array(z.object({ timestamp: z.number().nullable() })).parse(row);
+    return values.reduce<number | null>(
+      (latest, value) => (value.timestamp === null ? latest : Math.max(latest ?? 0, value.timestamp)),
+      null,
+    );
+  }
+
   modelComparisonAnalysis(fromEpoch: number | null, toEpoch: number, signal?: AbortSignal) {
     return readCodexModelComparison(this.database, fromEpoch, toEpoch, signal);
   }

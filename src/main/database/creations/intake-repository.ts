@@ -3,6 +3,7 @@ import {
   writeImportedMaterialMetadata,
 } from '@/main/database/assets/external-material-import-metadata';
 import type { LibraryStorage } from '@/main/database/core/storage';
+import { CREATION_DRAFT_CONFLICT } from '@/shared/creation-draft-errors';
 import { type JsonMap, mediaUrl, now, text } from '@/main/database/core/values';
 import {
   creationDraftReferenceAssetIds,
@@ -353,7 +354,9 @@ export class IntakeRepository {
           )
             return this.getDraft(draftId);
           if (input.expectedUpdatedAt !== undefined && input.expectedUpdatedAt !== text(existing.updated_at)) {
-            throw new Error('Creation draft changed in another workspace; the newer state was kept');
+            throw new Error(
+              `${CREATION_DRAFT_CONFLICT}: Creation draft changed in another workspace; the newer state was kept`,
+            );
           }
         }
 

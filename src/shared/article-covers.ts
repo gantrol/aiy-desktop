@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { textCoverSourceSchema } from '@/shared/contracts/text-cover-source';
 
 export const ARTICLE_COVER_RATIOS = ['1:1', '3:4', '4:3', '16:9', '2.35:1'] as const;
 export type ArticleCoverRatio = (typeof ARTICLE_COVER_RATIOS)[number];
@@ -25,8 +26,14 @@ export const articleCoverVariantSchema = z
     assetId: z.string().min(1).max(200),
     sourceAssetId: z.string().min(1).max(200),
     crop: articleCoverCropSchema,
+    // The source describes this slot's rendered sourceAssetId, never a live template.
+    textSource: textCoverSourceSchema.optional(),
   })
-  .strict();
+  .strict()
+  .superRefine((variant, context) => {
+    if (variant.textSource && variant.textSource.ratio !== variant.ratio)
+      context.addIssue({ code: 'custom', path: ['textSource', 'ratio'], message: 'TEXT_COVER_RATIO_MISMATCH' });
+  });
 
 export const articleCoverVariantsSchema = z
   .array(articleCoverVariantSchema)

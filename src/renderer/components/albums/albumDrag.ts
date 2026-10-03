@@ -5,6 +5,7 @@ import { itemDragIntent } from '@/renderer/components/albums/itemDrag';
 
 export const ALBUM_DRAG_TYPE = 'application/x-aiy-album';
 export const CREATION_ITEM_DRAG_TYPE = 'application/x-aiy-creation-item';
+export const CREATION_OUTLINE_DRAG_TYPE = 'application/x-aiy-creation-outline';
 export const MATERIAL_ALBUM_DRAG_TYPE = 'application/x-aiy-material-album';
 export const MATERIALS_DRAG_TYPE = 'application/x-aiy-materials';
 const materialOriginType = 'application/x-aiy-material-origin';

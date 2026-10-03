@@ -3,11 +3,13 @@ import { calendarPreferencesSchema } from '@/shared/contracts/calendar';
 
 const viewId = z.string().min(1).max(200);
 const name = z.string().trim().min(1).max(100);
+// Device observations belong to the active preferences, not reusable view snapshots.
+const viewPreferences = calendarPreferencesSchema.transform(({ lastSystemTimeZone: _observed, ...value }) => value);
 export const calendarViewSchema = z
   .object({
     id: viewId,
     name,
-    preferences: calendarPreferencesSchema,
+    preferences: viewPreferences,
     revision: z.number().int().positive().safe(),
     createdAt: z.string().datetime(),
     updatedAt: z.string().datetime(),
@@ -19,7 +21,7 @@ export const calendarViewSaveSchema = z
     id: viewId.optional(),
     expectedRevision: z.number().int().positive().safe().optional(),
     name,
-    preferences: calendarPreferencesSchema,
+    preferences: viewPreferences,
   })
   .strict()
   .refine(

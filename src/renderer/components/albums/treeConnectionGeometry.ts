@@ -25,6 +25,12 @@ export const COMPACT_TREE_NODE_METRICS = {
   bounds: { left: 4, top: 4, right: 32, bottom: 32 },
 };
 
+/** Keep the 28px icon target beside the creation tree's shared title column. */
+export const CREATION_TREE_COMPACT_NODE_METRICS = {
+  width: 56,
+  bounds: { left: 28, top: 4, right: 56, bottom: 32 },
+};
+
 export type TreeBranchItemPosition = 'first' | 'middle' | 'last' | 'only';
 
 export interface TreeBranchItemTopology {

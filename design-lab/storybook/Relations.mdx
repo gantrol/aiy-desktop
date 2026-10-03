@@ -1,0 +1,14 @@
+import { Meta, Canvas } from '@storybook/addon-docs/blocks';
+import * as Relations from './Relations.stories';
+
+<Meta of={Relations} name="Scenes and usage" />
+
+# 关联作品
+
+复用 `CreationRelationsPreview`，区分来源与派生作品。展开、收起及选择回调由正式组件提供。
+点击条目在 Actions 中报告被选择的作品；本样例不执行页面导航。
+
+<Canvas of={Relations.Default} />
+
+[空结果](?path=/story/delivery-relations--empty)表达没有关联的状态。组件测试检查选择派生作品时回调携带正确身份。
+这不是发布版本列表或发布验收；相关工作面尚待接入。

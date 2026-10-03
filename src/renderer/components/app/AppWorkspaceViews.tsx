@@ -1,6 +1,7 @@
 import { ReturnToMaterialsBar } from '@/renderer/components/app/ReturnToMaterialsBar';
 import type { AppLocation, AppView, MaterialsReturnContext } from '@/renderer/components/app/app-navigation';
 import { CreatorScreen } from '@/renderer/features/creator/lazyCreatorScreen';
+import { AppContentSearchEditor, type ContentSearchEditorHost } from '@/renderer/components/app/AppContentSearchEditor';
 import { useI18n } from '@/renderer/i18n/useI18n';
 import type {
   BootstrapDto,
@@ -196,10 +197,12 @@ function SearchWorkspaceView({
   loadingBoundaries,
   onSearchNavigate,
   onSearchResultOpen,
+  ...editorHost
 }: Pick<
   Props,
   'surfaceVisible' | 'view' | 'location' | 'loadingBoundaries' | 'onSearchNavigate' | 'onSearchResultOpen'
->) {
+> &
+  ContentSearchEditorHost) {
   if (!surfaceVisible || view !== 'search') return null;
   return (
     <Activity mode={workspaceActivityMode(surfaceVisible, view, searchViews)}>
@@ -209,6 +212,9 @@ function SearchWorkspaceView({
           location={location.search}
           onNavigate={onSearchNavigate}
           onOpen={onSearchResultOpen}
+          renderEditor={(document, active) => (
+            <AppContentSearchEditor source={document.source} active={active} host={editorHost} />
+          )}
         />,
       )}
     </Activity>
@@ -245,7 +251,14 @@ function CalendarWorkspaceView(
   >,
 ) {
   const { surfaceVisible, view, data, dataRevision, loadingBoundaries, notify } = props;
-  if (!surfaceVisible || view !== 'calendar') return null;
+  const active = surfaceOwnsView(surfaceVisible, view, calendarViews);
+  const [retainedSpace, setRetainedSpace] = useState<string | null>(null);
+  useEffect(() => {
+    if (active) setRetainedSpace(data.spaceId);
+  }, [active, data.spaceId]);
+  // Mount on first use only; Activity then preserves the bounded calendar state
+  // while disconnecting effects whenever its workspace is hidden.
+  if (!active && retainedSpace !== data.spaceId) return null;
   return (
     <Activity mode={workspaceActivityMode(surfaceVisible, view, calendarViews)}>
       {loadingBoundaries.calendar(
@@ -253,7 +266,7 @@ function CalendarWorkspaceView(
           spaceId={data.spaceId}
           data={data}
           dataRevision={dataRevision}
-          active={surfaceOwnsView(surfaceVisible, view, calendarViews)}
+          active={active}
           onOpenLocation={props.onCalendarOpenLocation}
           notify={notify}
         />,
@@ -383,6 +396,7 @@ export function AppWorkspaceViews(props: Props) {
                   }
                   onDocumentsChange={handleCreatorDocumentsChange}
                   onNavigate={onCreatorNavigate}
+                  onHistoryNavigationGuardChange={view === 'creator' ? onHistoryNavigationGuardChange : undefined}
                   onOpenInNewTab={onCreatorOpenInNewTab}
                   onComparisonFullWindowChange={onComparisonFullWindowChange}
                   onPromptFullWindowChange={onCreationPromptFullWindowChange}

@@ -3,6 +3,7 @@ import { navigationLocationKey } from '@/renderer/components/app/app-navigation'
 import { isDerivedVisualLocation } from '@/renderer/components/creator/derivedVisualWorkspace';
 import type { useCreatorGenerationInputSession } from '@/renderer/components/creator/screen/useCreatorGenerationInputSession';
 import { useCreatorNavigationCore } from '@/renderer/components/creator/screen/useCreatorNavigationCore';
+import { creatorInputOwner } from '@/renderer/components/creator/screen/creatorInputOwnership';
 import type { useCreatorPromptSession } from '@/renderer/components/creator/screen/useCreatorPromptSession';
 import type { useCreatorSelectionSession } from '@/renderer/components/creator/screen/useCreatorSelectionSession';
 import { resolveCreatorPrompt } from '@/renderer/components/creator/utils';
@@ -98,18 +99,11 @@ export function useCreatorDraftInputSession({
   selection.settleCreationDraftInputRef.current = async () => {
     await document.promptComposerRef.current?.whenSettled();
   };
-  const visibleInput =
-    Boolean(selection.workbenchProjection.editorDerivedVisual) ||
-    !(
-      contentSelection.selectedArticleId ||
-      contentSelection.selectedSocialPostId ||
-      contentSelection.selectedEvaluationSuiteId ||
-      contentSelection.selectedImageBreakdownId
-    );
+  const inputOwner = creatorInputOwner(contentSelection, Boolean(selection.workbenchProjection.editorDerivedVisual));
   const recovery = useCreatorInputRecovery({
     scope:
       active &&
-      visibleInput &&
+      inputOwner !== null &&
       creationMode === 'existing' &&
       series &&
       generation.hydration.version &&

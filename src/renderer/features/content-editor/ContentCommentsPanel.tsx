@@ -1,3 +1,8 @@
+import { Checkbox } from '@/renderer/components/ui/checkbox';
+import { useCommentCompilation } from '@/renderer/features/comment-compilation/useCommentCompilation';
+import { CommentCompilationActions } from '@/renderer/features/comment-compilation/CommentCompilationActions';
+import { CommentCompilationDialog } from '@/renderer/features/comment-compilation/CommentCompilationDialog';
+import { COMMENT_COMPILATION_LIMIT } from '@/shared/contracts/comment-compilation';
 import { AlertTriangleIcon, CheckIcon, CircleXIcon, MessageSquareIcon, RotateCcwIcon } from 'lucide-react';
 import { useMemo, useState } from 'react';
 import type { ContentCommentDto, ContentCommentStatus } from '@/shared/contracts';
@@ -70,6 +75,10 @@ function CommentRow({
   comment,
   hovered,
   selected,
+  selecting,
+  selectionDisabled,
+  selectionLabel,
+  onToggle,
   onHover,
   onSelect,
   onStatusChange,
@@ -78,6 +87,10 @@ function CommentRow({
   comment: ContentCommentDto;
   hovered: boolean;
   selected: boolean;
+  selecting: boolean;
+  selectionDisabled: boolean;
+  selectionLabel: string;
+  onToggle(commentId: string): void;
   onHover(commentId: string | null): void;
   onSelect(commentId: string): void;
   onStatusChange(commentId: string, status: ContentCommentStatus): void;
@@ -101,13 +114,24 @@ function CommentRow({
       onPointerEnter={() => onHover(comment.id)}
       onPointerLeave={() => onHover(null)}
     >
+      {selecting && (
+        <Checkbox
+          className="ml-2 mt-3.5 shrink-0"
+          checked={selected}
+          disabled={selectionDisabled}
+          aria-label={selectionLabel}
+          onCheckedChange={() => onToggle(comment.id)}
+        />
+      )}
       <Button
         type="button"
         variant="ghost"
         size="sm"
         className="h-auto min-w-0 flex-1 justify-start gap-2 rounded-none px-3 py-3 text-left font-normal hover:bg-transparent active:bg-transparent"
-        aria-current={selected ? 'true' : undefined}
-        onClick={() => onSelect(comment.id)}
+        aria-current={!selecting && selected ? 'true' : undefined}
+        aria-pressed={selecting ? selected : undefined}
+        disabled={selecting && selectionDisabled}
+        onClick={() => (selecting ? onToggle(comment.id) : onSelect(comment.id))}
       >
         {!comment.modelAuthor && (
           <MessageSquareIcon
@@ -126,7 +150,7 @@ function CommentRow({
             <ContentCommentModelIdentity author={comment.modelAuthor} className="mb-1 flex max-w-full" />
           )}
           <span className="line-clamp-2 block text-sm leading-5">
-            {selected ? <CodexThreadLinkText value={body} /> : body}
+            {!selecting && selected ? <CodexThreadLinkText value={body} /> : body}
           </span>
           {target && <span className="mt-1 line-clamp-1 block text-xs text-muted-foreground">{target}</span>}
           {replyCount > 0 && (
@@ -139,46 +163,47 @@ function CommentRow({
       {targetWarning && (
         <AlertTriangleIcon className="mr-1 mt-3 size-3.5 shrink-0 text-warning" aria-label={targetWarning} role="img" />
       )}
-      {comment.status === 'OPEN' ? (
-        <div className="mr-1 mt-2 flex shrink-0 opacity-0 transition-opacity group-hover/comment-row:opacity-100 group-focus-within/comment-row:opacity-100">
+      {!selecting &&
+        (comment.status === 'OPEN' ? (
+          <div className="mr-1 mt-2 flex shrink-0 opacity-0 transition-opacity group-hover/comment-row:opacity-100 group-focus-within/comment-row:opacity-100">
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon-sm"
+              disabled={busy}
+              aria-label={resolveLabel}
+              title={resolveLabel}
+              onClick={() => onStatusChange(comment.id, 'RESOLVED')}
+            >
+              <CheckIcon className="size-3.5" />
+            </Button>
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon-sm"
+              className="text-muted-foreground hover:text-destructive"
+              disabled={busy}
+              aria-label={rejectLabel}
+              title={rejectLabel}
+              onClick={() => onStatusChange(comment.id, 'REJECTED')}
+            >
+              <CircleXIcon className="size-3.5" />
+            </Button>
+          </div>
+        ) : (
           <Button
             type="button"
             variant="ghost"
             size="icon-sm"
+            className="mr-1 mt-2 shrink-0 opacity-0 transition-opacity group-hover/comment-row:opacity-100 group-focus-within/comment-row:opacity-100"
             disabled={busy}
-            aria-label={resolveLabel}
-            title={resolveLabel}
-            onClick={() => onStatusChange(comment.id, 'RESOLVED')}
+            aria-label={reopenLabel}
+            title={reopenLabel}
+            onClick={() => onStatusChange(comment.id, 'OPEN')}
           >
-            <CheckIcon className="size-3.5" />
+            <RotateCcwIcon className="size-3.5" />
           </Button>
-          <Button
-            type="button"
-            variant="ghost"
-            size="icon-sm"
-            className="text-muted-foreground hover:text-destructive"
-            disabled={busy}
-            aria-label={rejectLabel}
-            title={rejectLabel}
-            onClick={() => onStatusChange(comment.id, 'REJECTED')}
-          >
-            <CircleXIcon className="size-3.5" />
-          </Button>
-        </div>
-      ) : (
-        <Button
-          type="button"
-          variant="ghost"
-          size="icon-sm"
-          className="mr-1 mt-2 shrink-0 opacity-0 transition-opacity group-hover/comment-row:opacity-100 group-focus-within/comment-row:opacity-100"
-          disabled={busy}
-          aria-label={reopenLabel}
-          title={reopenLabel}
-          onClick={() => onStatusChange(comment.id, 'OPEN')}
-        >
-          <RotateCcwIcon className="size-3.5" />
-        </Button>
-      )}
+        ))}
     </div>
   );
 }
@@ -193,6 +218,10 @@ export function ContentCommentsPanel({
   onStatusChange,
 }: Props) {
   const copy = useI18n().messages.contentEditor.comment;
+  const compilation = useCommentCompilation(busy);
+  const compilationCopy = useI18n().messages.commentCompilation;
+  const selectedIds = new Set(compilation.state.selectedIds);
+  const selecting = compilation.supported && compilation.state.selecting;
   const [filter, setFilter] = useState<CommentFilter>('OPEN');
   const filtered = useMemo(
     () => (filter === 'ALL' ? comments : comments.filter((comment) => comment.status === filter)),
@@ -202,15 +231,24 @@ export function ContentCommentsPanel({
   return (
     <div className="flex min-h-0 flex-1 flex-col" aria-label={copy.list}>
       <CommentFilterBar comments={comments} filter={filter} onChange={setFilter} />
+      {(comments.length > 0 || selectedIds.size > 0 || compilation.state.result) && (
+        <CommentCompilationActions controller={compilation} />
+      )}
       <ScrollArea className="min-h-0 flex-1 [&_[data-slot=scroll-area-viewport]>div]:!block">
         {filtered.length ? (
-          filtered.map((comment) => (
+          filtered.map((comment, index) => (
             <CommentRow
               key={comment.id}
               busy={busy}
               comment={comment}
               hovered={comment.id === hoveredId}
-              selected={comment.id === selectedId}
+              selected={selecting ? selectedIds.has(comment.id) : comment.id === selectedId}
+              selecting={selecting}
+              selectionDisabled={
+                compilation.locked || (!selectedIds.has(comment.id) && selectedIds.size >= COMMENT_COMPILATION_LIMIT)
+              }
+              selectionLabel={compilationCopy.selectComment.replace('{number}', String(index + 1))}
+              onToggle={compilation.toggle}
               onHover={onHover}
               onSelect={onSelect}
               onStatusChange={onStatusChange}
@@ -222,6 +260,7 @@ export function ContentCommentsPanel({
           </div>
         )}
       </ScrollArea>
+      <CommentCompilationDialog controller={compilation} />
     </div>
   );
 }

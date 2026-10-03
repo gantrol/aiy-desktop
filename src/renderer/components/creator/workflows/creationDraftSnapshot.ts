@@ -4,6 +4,7 @@ import type {
   AlbumCreationDefaultsDto,
   CreationDictionaryScopeDto,
   CreationDraftSaveInput,
+  CreationDraftDto,
   CreatorPromptNodeInput,
   GenerationQuality,
   GenerationTargetInput,
@@ -36,6 +37,49 @@ export interface CreationDraftSnapshotSource {
 }
 
 export type CreationDraftSaveSnapshot = Omit<CreationDraftSaveInput, 'id' | 'expectedUpdatedAt'>;
+
+export function savedCreationDraftSnapshot(draft: CreationDraftDto): CreationDraftSaveSnapshot {
+  return {
+    targetAlbumId: draft.targetAlbumId,
+    title: draft.title,
+    text: draft.text,
+    document: draft.document,
+    promptNodes: draft.promptNodes,
+    referenceAssetIds: draft.referenceAssets.map((asset) => asset.id),
+    videoMaterialIds: (draft.videoAttachments ?? []).map((video) => video.materialId),
+    termPromptLocale: draft.termPromptLocale,
+    termIds: draft.termIds,
+    wordPaletteReferences: draft.wordPaletteReferences,
+    dictionaryScope: draft.dictionaryScope,
+    canvasPresetKey: draft.canvasPresetKey,
+    quality: draft.quality,
+    selectedModelKeys: draft.selectedModelKeys,
+    repeatCount: draft.repeatCount,
+    modelTargets: draft.modelTargets,
+  };
+}
+
+/** Compare only persisted input fields, with the same defaults for loaded and captured drafts. */
+export function creationDraftSnapshotKey(snapshot: CreationDraftSaveSnapshot) {
+  return JSON.stringify([
+    snapshot.targetAlbumId ?? null,
+    snapshot.title,
+    snapshot.text,
+    snapshot.document ?? null,
+    snapshot.promptNodes ?? [],
+    snapshot.referenceAssetIds,
+    snapshot.videoMaterialIds ?? [],
+    snapshot.termPromptLocale,
+    snapshot.termIds,
+    snapshot.wordPaletteReferences,
+    snapshot.dictionaryScope,
+    snapshot.canvasPresetKey ?? null,
+    snapshot.quality,
+    snapshot.selectedModelKeys,
+    snapshot.repeatCount,
+    snapshot.modelTargets,
+  ]);
+}
 
 export function creationDraftSaveSnapshot(source: CreationDraftSnapshotSource): CreationDraftSaveSnapshot {
   return {

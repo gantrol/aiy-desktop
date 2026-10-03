@@ -1,0 +1,33 @@
+import { Meta, Canvas } from '@storybook/addon-docs/blocks';
+import * as Search from './Search.stories';
+
+<Meta of={Search} name="Scenes and usage" />
+
+## 搜索工作面
+
+正式搜索页与这些分镜共用 `ContentSearchView`、结果列表、分栏布局和预览状态组件。
+语言在上方工具栏切换；Viewport 改变预览文档尺寸。平台参数只切换快捷键规则。
+
+| 入口                                                              | 动作或条件                 | 可见结果                                   |
+| ----------------------------------------------------------------- | -------------------------- | ------------------------------------------ |
+| [最近内容](?path=/story/contentsearch-workspace--recent)          | 空查询，输入教程或选择类型 | 公开样本的结果随输入与筛选变化             |
+| [S02 查询中](?path=/story/contentsearch-workspace--s-02)          | 固定初始化为查询中         | 显示正式加载状态；不代表后台查询会自动完成 |
+| [S03 结果](?path=/story/contentsearch-workspace--s-03)            | 选择结果                   | 右侧显示同一来源的只读正文样本             |
+| [S04 空结果](?path=/story/contentsearch-workspace--s-04)          | 清空或修改查询             | 返回匹配的公开样本                         |
+| [S05 查询失败](?path=/story/contentsearch-workspace--s-05)        | 点击重试                   | 演示宿主切到结果状态                       |
+| [预览失败](?path=/story/contentsearch-workspace--preview-failed)  | 点击预览中的重试           | 恢复当前选中样本                           |
+| [窄窗结果](?path=/story/contentsearch-workspace--narrow-results)  | 选择结果，再用面板按钮返回 | 列表与预览切换，选中来源保持               |
+| [窄窗预览](?path=/story/contentsearch-workspace--narrow-selected) | 返回列表或改变视口         | 使用正式面板收展和布局行为                 |
+
+<Canvas of={Search.S03} />
+
+样例不连接个人内容库。打开来源会显示正式的来源不可用状态；选中预览使用只读正文，完整编辑、保存前检查与实际来源导航仍由产品宿主负责。这里的可操作分镜不是这些业务路径已验收的证据。
+
+## 工作区与控件
+
+[工作区布局](?path=/story/workbench-collectiondetaillayout--results) 可查看面板收展、拖动宽度以及列表／详情的组合；[窄窗预览](?path=/story/workbench-collectiondetaillayout--narrow-selected) 保留返回入口。
+[按钮](?path=/story/ui-button--b-01) 与[输入](?path=/story/ui-input--empty) 直接声明正式组件，Controls 只暴露适用参数。
+
+使用工具栏 **Reload story** 重建当前会话并清理本样例的面板偏好；Controls 的参数重置是另一个动作。语言与视口继续保留在工具环境中。
+
+正文编辑与媒体表面是局部组件。完整文章编辑从“创作编辑／编辑工作面”进入；完整媒体工作面仍待接入。

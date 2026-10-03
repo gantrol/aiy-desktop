@@ -1,0 +1,1023 @@
+[
+  {
+    "id": "SC01",
+    "kind": "scenario",
+    "title": "用三条资料写一篇教程并发到公众号",
+    "body": "起点：已有问题与三条资料。\n旅程：明确本次用哪些资料 → 整理提纲 → 写图文 → 准备公众号版本 → 在平台人工发布 → 记录地址和反馈。\n结果：一份原稿、一个平台版本、一条有证据等级的交付记录。",
+    "refs": [
+      { "relation": "satisfies", "target": "R01" },
+      { "relation": "satisfies", "target": "R02" },
+      { "relation": "verified_by", "target": "A01" },
+      { "relation": "verified_by", "target": "A03" },
+      { "relation": "verified_by", "target": "A07" },
+      { "relation": "verified_by", "target": "A10" }
+    ]
+  },
+  {
+    "id": "SC02",
+    "kind": "scenario",
+    "title": "用旧模板做一张设计包样张并发布",
+    "body": "起点：已有模板、字体来源说明和一份设计需求。\n旅程：选取资源 → 本地或外部工具制作 → 导回样张及工程 → 附上来源说明 → 发布展示 → 记录可复用参数。\n结果：设计样张、工程材料和可复用做法；不冒充完整字体管理器。",
+    "refs": [
+      { "relation": "satisfies", "target": "R01" },
+      { "relation": "verified_by", "target": "A09" },
+      { "relation": "verified_by", "target": "A12" }
+    ]
+  },
+  {
+    "id": "SC03",
+    "kind": "scenario",
+    "title": "把 3D 飞船与录屏整理成视频作品",
+    "body": "起点：外部工具已经生成工程与成片。\n旅程：附加工程文件 → 记录用到的参考 → 整理封面与简介 → 用目标平台版本交付 → 把制作经验写入下一次材料。\n结果：保留工程与成片，完成视频发布材料；AIY 不假装有建模或剪辑能力。",
+    "refs": [
+      { "relation": "satisfies", "target": "R01" },
+      { "relation": "satisfies", "target": "R02" },
+      { "relation": "verified_by", "target": "A07" },
+      { "relation": "verified_by", "target": "A12" }
+    ]
+  },
+  {
+    "id": "SC04",
+    "kind": "scenario",
+    "title": "把 AIY 需求交给 Codex，并带回验收证据",
+    "body": "起点：一份带稳定节点引用的需求大纲。\n旅程：选一个特性 → 查看场景、约束与验收 → 导出有界任务包 → Codex 核对仓库并实施 → 把 PR 与测试证据附回原节点。\n结果：一个有明确范围与证据缺口的实施切片，而非全库大改。",
+    "refs": [
+      { "relation": "satisfies", "target": "R01" },
+      { "relation": "satisfies", "target": "R02" },
+      { "relation": "verified_by", "target": "A08" },
+      { "relation": "verified_by", "target": "A15" },
+      { "relation": "verified_by", "target": "A17" }
+    ]
+  },
+  {
+    "id": "SC05",
+    "kind": "scenario",
+    "title": "把文章改成演示提纲，原稿继续保留",
+    "body": "起点：已有文章和一次演示目标。\n旅程：选文章修订 → 另建演示提纲 → 调整叙事和页序 → 外部工具或扩展生成演示文件 → 记录来源基准。\n结果：文章与演示有独立身份；不承诺任意格式无损双向转换。",
+    "refs": [
+      { "relation": "satisfies", "target": "R01" },
+      { "relation": "verified_by", "target": "A04" },
+      { "relation": "verified_by", "target": "A18" }
+    ]
+  },
+  {
+    "id": "SC06",
+    "kind": "scenario",
+    "title": "把读者的问题带进下一篇作品",
+    "body": "起点：一条值得回应的评论或自己的复盘。\n旅程：记录原文、来源与时间 → 说明值得继续的问题 → 放入既有主题或新主题 → 在下一篇选择使用。\n结果：下一次可直接采用的材料，不只是统计面板。",
+    "refs": [
+      { "relation": "satisfies", "target": "R01" },
+      { "relation": "satisfies", "target": "R03" },
+      { "relation": "verified_by", "target": "A10" },
+      { "relation": "verified_by", "target": "A13" }
+    ]
+  },
+  {
+    "id": "SC07",
+    "kind": "scenario",
+    "title": "半年后重用旧资料，只核对影响当前稿的变化",
+    "body": "起点：旧作品引用过一份已有变动的资料。\n旅程：找到旧资料 → 查看当时采用范围与日期 → 对照这次要用的部分 → 人工接受新版本或继续注明旧依据。\n结果：当前引用可解释；旧发布历史不被回写。",
+    "refs": [
+      { "relation": "satisfies", "target": "R02" },
+      { "relation": "verified_by", "target": "A05" },
+      { "relation": "verified_by", "target": "A06" },
+      { "relation": "verified_by", "target": "A14" }
+    ]
+  },
+  {
+    "id": "SC08",
+    "kind": "scenario",
+    "title": "想到一句话，直接写起来，晚点再整理",
+    "body": "起点：没有主题、没有模型账号、没有整理过的素材库。\n旅程：记录一句灵感 → 直接开始草稿 → 暂存在待整理 → 以后归入主题 → 继续成稿。\n结果：不会为了写一句话先配置四个概念。",
+    "refs": [
+      { "relation": "satisfies", "target": "R01" },
+      { "relation": "verified_by", "target": "A01" },
+      { "relation": "verified_by", "target": "A02" },
+      { "relation": "verified_by", "target": "A11" }
+    ]
+  },
+  {
+    "id": "SC09",
+    "kind": "scenario",
+    "title": "根据人物设定写小说章节，再准备朗读稿",
+    "body": "起点：作者自己的设定与表达目标。\n旅程：选取相关人物设定 → 写章节 → 另建朗读适配 → 在外部录音 → 回收声音文件与修改意见。\n结果：小说、朗读稿和录音各有明确身份；受众可以是作者自己。",
+    "refs": [
+      { "relation": "satisfies", "target": "R01" },
+      { "relation": "satisfies", "target": "R03" },
+      { "relation": "verified_by", "target": "A04" },
+      { "relation": "verified_by", "target": "A12" },
+      { "relation": "verified_by", "target": "A13" }
+    ]
+  },
+  {
+    "id": "A01",
+    "kind": "acceptance",
+    "title": "未配置模型也能保存、重开并继续写",
+    "body": "前提：关闭全部可选扩展与网络连接。\n操作：新建草稿、写文字、加入本地材料、关闭并重开。\n通过条件：内容与来源仍能访问；不会跳到模型、插件或账户配置；未声称平台发布可离线完成。",
+    "refs": []
+  },
+  {
+    "id": "A02",
+    "kind": "acceptance",
+    "title": "收起面板与切换主题不损害编辑状态",
+    "body": "前提：正在输入中文并有未完成的编辑。\n操作：收起输入区、切换作品、再返回；保存失败时再次尝试切换。\n通过条件：不丢字、不串稿，返回到原位置；保存失败不伪装成切换成功。",
+    "refs": []
+  },
+  {
+    "id": "A03",
+    "kind": "acceptance",
+    "title": "打开主题不会把全部材料发给模型",
+    "body": "前提：主题有十份材料，只选择其中两份。\n操作：预览处理任务或导出任务包。\n通过条件：只包含明确选中范围与必须的规则；取消不改变作品。",
+    "refs": []
+  },
+  {
+    "id": "A04",
+    "kind": "acceptance",
+    "title": "同稿换视图与另建作品不会混淆",
+    "body": "前提：同一份结构化正文及一份独立策划大纲。\n操作：在同稿大纲／正文间切换，再从策划大纲另建文章。\n通过条件：前者保持身份与块引用；后者新建独立稿并记录来源，不宣称自动双向同步。",
+    "refs": []
+  },
+  {
+    "id": "A05",
+    "kind": "acceptance",
+    "title": "移动来源不断链，删除来源不吞掉其他作品",
+    "body": "前提：两份作品都引用同一材料。\n操作：改名、移动材料，再执行经过确认的删除。\n通过条件：改名移动保持引用；删除显示缺失与可用快照，不级联删除引用作品。",
+    "refs": []
+  },
+  {
+    "id": "A06",
+    "kind": "acceptance",
+    "title": "发布材料固定采用范围，不随活引用暗改",
+    "body": "前提：作品含内部引用或同步内容。\n操作：准备交付材料，然后修改来源。\n通过条件：交付基准可找回；动态依赖被物化或明确阻止交付；不会上传无权限的其他内容。",
+    "refs": []
+  },
+  {
+    "id": "A07",
+    "kind": "acceptance",
+    "title": "导出或打开平台不等于已经发布",
+    "body": "前提：已准备一份渠道稿。\n操作：导出材料、打开平台、人工发帖并记录地址。\n通过条件：分别记录已准备、已交接、用户确认发布或平台验证状态；未知不标成功。",
+    "refs": []
+  },
+  {
+    "id": "A08",
+    "kind": "acceptance",
+    "title": "迟到的任务只返回发起时的目标",
+    "body": "前提：任务绑定作品 A 的修订；作者已转到 B。\n操作：任务完成或失败，然后回到 A。\n通过条件：不抢焦点、不写 B；A 的基准变化时返回候选或冲突，不覆盖新稿。",
+    "refs": []
+  },
+  {
+    "id": "A09",
+    "kind": "acceptance",
+    "title": "停用扩展后仍能找回内容与原件",
+    "body": "前提：扩展创建过作品与预览。\n操作：关闭或卸载扩展后重开作品。\n通过条件：保留身份、元信息、原件和已有预览，诚实显示专用编辑不可用。",
+    "refs": []
+  },
+  {
+    "id": "A10",
+    "kind": "acceptance",
+    "title": "反馈能成为下一次输入并保留出处",
+    "body": "前提：已有发布记录和一条反馈。\n操作：将反馈加入原主题，再在新草稿中选用。\n通过条件：反馈有来源与日期；新稿能回到反馈及其对应发布版本，不能把反馈替换成原稿。",
+    "refs": []
+  },
+  {
+    "id": "A11",
+    "kind": "acceptance",
+    "title": "退出主题不删除共同材料",
+    "body": "前提：主题内有独立作品及跨主题引用。\n操作：归档主题，检索其中一份作品，再恢复主题。\n通过条件：归档减少默认可见范围，不误删原件、引用或其他主题的作品。",
+    "refs": []
+  },
+  {
+    "id": "A12",
+    "kind": "acceptance",
+    "title": "视频与 3D 工程能进入闭环但不伪装可编辑",
+    "body": "前提：只有本地成片、工程文件或目录。\n操作：保存文件入口与说明，外部修改，再重新定位或取入。\n通过条件：明确原件／工作副本／交付件区别；文件缺失可重定位；不声称已有建模、剪辑或依赖自动收集。",
+    "refs": []
+  },
+  {
+    "id": "A13",
+    "kind": "acceptance",
+    "title": "方向卡可跳过，价值判断不被算法替代",
+    "body": "前提：作者没有商业目标或没有受众调查。\n操作：从空白创作，或填写自己关心的方向。\n通过条件：不强制画像，不凭推断改价值观；受众假设与观察证据可区分。",
+    "refs": []
+  },
+  {
+    "id": "A14",
+    "kind": "acceptance",
+    "title": "资料变动只影响使用它的当前任务",
+    "body": "前提：部分来源已更新，另一些只是多年未修改。\n操作：检查当前作品的材料，并选择采纳或暂不处理更新。\n通过条件：不按年龄自动判错；不把整库强制变成待办；不修改旧交付快照。",
+    "refs": []
+  },
+  {
+    "id": "A15",
+    "kind": "acceptance",
+    "title": "Codex 任务导出有边界且不伪造权限",
+    "body": "前提：选中一个待实施特性，仓库基准尚需核对。\n操作：导出任务包并检查所有字段。\n通过条件：保留目标、验收、直接必要的约束与依赖提示；未知 commit 为 null；不含凭据、不自动执行或授权全库访问。",
+    "refs": []
+  },
+  {
+    "id": "A16",
+    "kind": "acceptance",
+    "title": "小窗口仍能找到当前作品与面板入口",
+    "body": "前提：宽屏、常规笔记本与窄窗口。\n操作：收起主题、材料、作品区并恢复；用键盘操作。\n通过条件：主编辑面优先保留；不通过四栏硬挤压；隐藏区有有名可访问入口，恢复状态可解释。",
+    "refs": []
+  },
+  {
+    "id": "A17",
+    "kind": "acceptance",
+    "title": "代码完成、测试通过与业务验收分开记录",
+    "body": "前提：Codex 返回补丁、部分测试结果或 PR。\n操作：把结果附回特性与验收节点。\n通过条件：PR 存在不等于功能验收；未执行、失败、通过、待真实环境验证分别呈现。",
+    "refs": []
+  },
+  {
+    "id": "A18",
+    "kind": "acceptance",
+    "title": "原稿更新不能覆盖渠道人工改动",
+    "body": "前提：一个有人工修改的渠道稿与其来源基准。\n操作：修改原稿，再选择检查渠道稿更新。\n通过条件：默认保留渠道稿；采用差异需明确决定；来源与目标修订变化不能静默覆盖。",
+    "refs": []
+  },
+  {
+    "id": "F01",
+    "kind": "feature",
+    "title": "可靠的本地保存、恢复与撤销",
+    "body": "不增加新页面；保护已经创建的内容、原件和明确的编辑目标。",
+    "refs": [
+      { "relation": "serves", "target": "SC01" },
+      { "relation": "serves", "target": "SC08" },
+      { "relation": "verified_by", "target": "A01" },
+      { "relation": "verified_by", "target": "A02" }
+    ],
+    "rank": 1,
+    "priority": "P0",
+    "placement": "core",
+    "disposition": "keep",
+    "depends_on": [],
+    "reentry_condition": "始终保留"
+  },
+  {
+    "id": "F02",
+    "kind": "feature",
+    "title": "主题导航与待整理入口",
+    "body": "左侧只组织主题；允许先写后归类，归档不等于删除。",
+    "refs": [
+      { "relation": "depends_on", "target": "F01" },
+      { "relation": "serves", "target": "SC08" },
+      { "relation": "verified_by", "target": "A11" },
+      { "relation": "verified_by", "target": "A16" }
+    ],
+    "rank": 2,
+    "priority": "P0",
+    "placement": "core",
+    "disposition": "keep",
+    "depends_on": ["F01"],
+    "reentry_condition": "始终保留"
+  },
+  {
+    "id": "F03",
+    "kind": "feature",
+    "title": "主题内作品列表与准确切换",
+    "body": "右侧集中呈现真正的作品和草稿；不把每次候选、修订、附件都变成作品。",
+    "refs": [
+      { "relation": "depends_on", "target": "F01" },
+      { "relation": "depends_on", "target": "F02" },
+      { "relation": "serves", "target": "SC01" },
+      { "relation": "serves", "target": "SC03" },
+      { "relation": "verified_by", "target": "A02" },
+      { "relation": "verified_by", "target": "A08" },
+      { "relation": "verified_by", "target": "A16" }
+    ],
+    "rank": 3,
+    "priority": "P0",
+    "placement": "core",
+    "disposition": "keep",
+    "depends_on": ["F01", "F02"],
+    "reentry_condition": "始终保留"
+  },
+  {
+    "id": "F04",
+    "kind": "feature",
+    "title": "本次材料选择与粘贴、文件入口",
+    "body": "选中范围与主题材料库区分。普通文本、链接、图片及本地文件入口支持直接开始。",
+    "refs": [
+      { "relation": "depends_on", "target": "F01" },
+      { "relation": "serves", "target": "SC01" },
+      { "relation": "serves", "target": "SC03" },
+      { "relation": "serves", "target": "SC08" },
+      { "relation": "verified_by", "target": "A03" },
+      { "relation": "verified_by", "target": "A12" }
+    ],
+    "rank": 4,
+    "priority": "P0",
+    "placement": "core",
+    "disposition": "keep",
+    "depends_on": ["F01"],
+    "reentry_condition": "始终保留"
+  },
+  {
+    "id": "F05",
+    "kind": "feature",
+    "title": "已有大纲与图文编辑",
+    "body": "保留折叠、缩进、移动、聚焦与引用交互；只在同结构可保证的范围提供同稿视图切换。",
+    "refs": [
+      { "relation": "depends_on", "target": "F01" },
+      { "relation": "depends_on", "target": "F03" },
+      { "relation": "serves", "target": "SC01" },
+      { "relation": "serves", "target": "SC05" },
+      { "relation": "serves", "target": "SC09" },
+      { "relation": "verified_by", "target": "A02" },
+      { "relation": "verified_by", "target": "A04" }
+    ],
+    "rank": 5,
+    "priority": "P0",
+    "placement": "core",
+    "disposition": "keep",
+    "depends_on": ["F01", "F03"],
+    "reentry_condition": "始终保留"
+  },
+  {
+    "id": "F06",
+    "kind": "feature",
+    "title": "基本引用、出处与交付基准",
+    "body": "有稳定对象引用；已有块引用继续可用。交付时固定采用内容，不把全媒体精细定位做成首版门槛。",
+    "refs": [
+      { "relation": "depends_on", "target": "F01" },
+      { "relation": "depends_on", "target": "F04" },
+      { "relation": "serves", "target": "SC01" },
+      { "relation": "serves", "target": "SC07" },
+      { "relation": "verified_by", "target": "A05" },
+      { "relation": "verified_by", "target": "A06" }
+    ],
+    "rank": 6,
+    "priority": "P0",
+    "placement": "core",
+    "disposition": "keep",
+    "depends_on": ["F01", "F04"],
+    "reentry_condition": "始终保留"
+  },
+  {
+    "id": "F07",
+    "kind": "feature",
+    "title": "本地查找与引用选择",
+    "body": "从当前主题开始查找，作者可扩大到全库；不依赖语义搜索或全局图谱。",
+    "refs": [
+      { "relation": "depends_on", "target": "F02" },
+      { "relation": "depends_on", "target": "F06" },
+      { "relation": "serves", "target": "SC01" },
+      { "relation": "serves", "target": "SC07" },
+      { "relation": "verified_by", "target": "A03" },
+      { "relation": "verified_by", "target": "A05" }
+    ],
+    "rank": 7,
+    "priority": "P0",
+    "placement": "core",
+    "disposition": "keep",
+    "depends_on": ["F02", "F06"],
+    "reentry_condition": "始终保留"
+  },
+  {
+    "id": "F08",
+    "kind": "feature",
+    "title": "外部工程与已有媒体的基本承接",
+    "body": "保存原件入口、说明和明确可用的预览；重定位缺失文件。复杂依赖扫描和编辑器留给按需能力。",
+    "refs": [
+      { "relation": "depends_on", "target": "F01" },
+      { "relation": "depends_on", "target": "F04" },
+      { "relation": "serves", "target": "SC02" },
+      { "relation": "serves", "target": "SC03" },
+      { "relation": "serves", "target": "SC09" },
+      { "relation": "verified_by", "target": "A09" },
+      { "relation": "verified_by", "target": "A12" }
+    ],
+    "rank": 8,
+    "priority": "P0",
+    "placement": "core",
+    "disposition": "keep",
+    "depends_on": ["F01", "F04"],
+    "reentry_condition": "始终保留"
+  },
+  {
+    "id": "F09",
+    "kind": "feature",
+    "title": "一个可编辑发布版本与人工交付记录",
+    "body": "保留真实主流平台路径；复制或导出正文与媒体、人工发帖、记录地址与证据等级。导出不是发布成功。",
+    "refs": [
+      { "relation": "depends_on", "target": "F03" },
+      { "relation": "depends_on", "target": "F05" },
+      { "relation": "depends_on", "target": "F06" },
+      { "relation": "serves", "target": "SC01" },
+      { "relation": "serves", "target": "SC03" },
+      { "relation": "verified_by", "target": "A06" },
+      { "relation": "verified_by", "target": "A07" },
+      { "relation": "verified_by", "target": "A18" }
+    ],
+    "rank": 9,
+    "priority": "P0",
+    "placement": "core",
+    "disposition": "keep",
+    "depends_on": ["F03", "F05", "F06"],
+    "reentry_condition": "始终保留"
+  },
+  {
+    "id": "F10",
+    "kind": "feature",
+    "title": "反馈记录与再次选用",
+    "body": "将一条反馈或经验留在主题里，成为下一份作品可选材料，不要求先建设词典或数据看板。",
+    "refs": [
+      { "relation": "depends_on", "target": "F04" },
+      { "relation": "depends_on", "target": "F06" },
+      { "relation": "depends_on", "target": "F09" },
+      { "relation": "serves", "target": "SC06" },
+      { "relation": "verified_by", "target": "A10" },
+      { "relation": "verified_by", "target": "A13" }
+    ],
+    "rank": 10,
+    "priority": "P0",
+    "placement": "core",
+    "disposition": "keep",
+    "depends_on": ["F04", "F06", "F09"],
+    "reentry_condition": "始终保留"
+  },
+  {
+    "id": "F11",
+    "kind": "feature",
+    "title": "可跳过的一句话方向卡",
+    "body": "我想表达什么、帮助谁、交付什么、暂不做什么；先作为普通内容模板，不建画像中心。",
+    "refs": [
+      { "relation": "depends_on", "target": "F02" },
+      { "relation": "depends_on", "target": "F05" },
+      { "relation": "serves", "target": "SC08" },
+      { "relation": "serves", "target": "SC09" },
+      { "relation": "verified_by", "target": "A13" }
+    ],
+    "rank": 16,
+    "priority": "P1",
+    "placement": "content_pack",
+    "disposition": "on_demand",
+    "depends_on": ["F02", "F05"],
+    "reentry_condition": "真实使用中经常发生选题无方向或价值偏移"
+  },
+  {
+    "id": "F12",
+    "kind": "feature",
+    "title": "被保留异步动作的任务归属与取消",
+    "body": "只保留可靠执行所需的状态与当前任务入口；不因此保留一套必须访问的任务中心。",
+    "refs": [
+      { "relation": "depends_on", "target": "F01" },
+      { "relation": "depends_on", "target": "F03" },
+      { "relation": "serves", "target": "SC01" },
+      { "relation": "serves", "target": "SC04" },
+      { "relation": "verified_by", "target": "A08" }
+    ],
+    "rank": 11,
+    "priority": "P0",
+    "placement": "core",
+    "disposition": "keep",
+    "depends_on": ["F01", "F03"],
+    "reentry_condition": "只要存在异步导入、保存或生成就必须满足"
+  },
+  {
+    "id": "F13",
+    "kind": "feature",
+    "title": "从大纲另建文章或演示提纲",
+    "body": "明确建立新作品与来源关系，原稿保留；不宣称任意双向转换。",
+    "refs": [
+      { "relation": "depends_on", "target": "F03" },
+      { "relation": "depends_on", "target": "F05" },
+      { "relation": "depends_on", "target": "F06" },
+      { "relation": "serves", "target": "SC05" },
+      { "relation": "serves", "target": "SC09" },
+      { "relation": "verified_by", "target": "A04" }
+    ],
+    "rank": 14,
+    "priority": "P1",
+    "placement": "core",
+    "disposition": "on_demand",
+    "depends_on": ["F03", "F05", "F06"],
+    "reentry_condition": "跨作品组织与扩写成为重复操作"
+  },
+  {
+    "id": "F14",
+    "kind": "feature",
+    "title": "受控同步嵌入与来源变更提示",
+    "body": "保留已经安全可用的路径；默认用普通引用。更新有基准、循环保护与人工采用。",
+    "refs": [
+      { "relation": "depends_on", "target": "F06" },
+      { "relation": "depends_on", "target": "F12" },
+      { "relation": "serves", "target": "SC07" },
+      { "relation": "verified_by", "target": "A05" },
+      { "relation": "verified_by", "target": "A06" },
+      { "relation": "verified_by", "target": "A14" }
+    ],
+    "rank": 18,
+    "priority": "P1",
+    "placement": "core",
+    "disposition": "on_demand",
+    "depends_on": ["F06", "F12"],
+    "reentry_condition": "同一内容在多份活跃作品中反复人工同步"
+  },
+  {
+    "id": "F15",
+    "kind": "feature",
+    "title": "发布版本差异比较与选择更新",
+    "body": "手动版本先成立，再加入原稿更新后的差异和冲突处理。",
+    "refs": [
+      { "relation": "depends_on", "target": "F09" },
+      { "relation": "depends_on", "target": "F12" },
+      { "relation": "serves", "target": "SC01" },
+      { "relation": "serves", "target": "SC05" },
+      { "relation": "verified_by", "target": "A18" }
+    ],
+    "rank": 17,
+    "priority": "P1",
+    "placement": "core",
+    "disposition": "on_demand",
+    "depends_on": ["F09", "F12"],
+    "reentry_condition": "多平台稿经常重复修订且人工同步耗时"
+  },
+  {
+    "id": "F16",
+    "kind": "feature",
+    "title": "模板、方法与可复用内容包",
+    "body": "方法先用普通大纲与引用承载；专用字段、参数与执行器按实际领域拆分。",
+    "refs": [
+      { "relation": "depends_on", "target": "F05" },
+      { "relation": "depends_on", "target": "F06" },
+      { "relation": "serves", "target": "SC02" },
+      { "relation": "serves", "target": "SC09" },
+      { "relation": "verified_by", "target": "A09" },
+      { "relation": "verified_by", "target": "A13" }
+    ],
+    "rank": 19,
+    "priority": "P1",
+    "placement": "content_pack",
+    "disposition": "on_demand",
+    "depends_on": ["F05", "F06"],
+    "reentry_condition": "同一种制作方法已被反复使用并能说明适用条件"
+  },
+  {
+    "id": "F17",
+    "kind": "feature",
+    "title": "工程清单、工作副本与依赖检查",
+    "body": "先把原件接住，再为目录、版本和外部依赖提供可解释的检查。",
+    "refs": [
+      { "relation": "depends_on", "target": "F08" },
+      { "relation": "serves", "target": "SC02" },
+      { "relation": "serves", "target": "SC03" },
+      { "relation": "verified_by", "target": "A12" }
+    ],
+    "rank": 23,
+    "priority": "P1",
+    "placement": "core_plus_extension",
+    "disposition": "on_demand",
+    "depends_on": ["F08"],
+    "reentry_condition": "真实工程频繁因资源缺失或版本不清无法重开"
+  },
+  {
+    "id": "F18",
+    "kind": "feature",
+    "title": "文本 AI 与 Agent 动作",
+    "body": "在当前作品与明确选材上改写、提炼、检查；共享宿主写入、候选与权限。",
+    "refs": [
+      { "relation": "depends_on", "target": "F04" },
+      { "relation": "depends_on", "target": "F05" },
+      { "relation": "depends_on", "target": "F12" },
+      { "relation": "serves", "target": "SC01" },
+      { "relation": "serves", "target": "SC04" },
+      { "relation": "serves", "target": "SC09" },
+      { "relation": "verified_by", "target": "A03" },
+      { "relation": "verified_by", "target": "A08" },
+      { "relation": "verified_by", "target": "A09" }
+    ],
+    "rank": 13,
+    "priority": "P1",
+    "placement": "extension",
+    "disposition": "on_demand",
+    "depends_on": ["F04", "F05", "F12"],
+    "reentry_condition": "手工闭环稳定后，明确的文字处理成为主要瓶颈"
+  },
+  {
+    "id": "F19",
+    "kind": "feature",
+    "title": "图片生成与专用编辑",
+    "body": "作为为本稿制作封面或插图的动作出现，保留领域参数，不占全局必经导航。",
+    "refs": [
+      { "relation": "depends_on", "target": "F04" },
+      { "relation": "depends_on", "target": "F08" },
+      { "relation": "depends_on", "target": "F12" },
+      { "relation": "serves", "target": "SC02" },
+      { "relation": "verified_by", "target": "A08" },
+      { "relation": "verified_by", "target": "A09" }
+    ],
+    "rank": 20,
+    "priority": "P1",
+    "placement": "extension",
+    "disposition": "on_demand",
+    "depends_on": ["F04", "F08", "F12"],
+    "reentry_condition": "配图制作是持续高频瓶颈"
+  },
+  {
+    "id": "F20",
+    "kind": "feature",
+    "title": "截图、贴图与轻标注",
+    "body": "剪贴板取入在核心；热键截屏、复杂标注、桌面贴图按需开启，不与内容身份绑定。",
+    "refs": [
+      { "relation": "depends_on", "target": "F04" },
+      { "relation": "depends_on", "target": "F08" },
+      { "relation": "serves", "target": "SC02" },
+      { "relation": "serves", "target": "SC03" },
+      { "relation": "verified_by", "target": "A09" },
+      { "relation": "verified_by", "target": "A12" }
+    ],
+    "rank": 24,
+    "priority": "P1",
+    "placement": "extension",
+    "disposition": "on_demand",
+    "depends_on": ["F04", "F08"],
+    "reentry_condition": "收集图片时反复切换工具且普通粘贴不足"
+  },
+  {
+    "id": "F21",
+    "kind": "feature",
+    "title": "主流平台辅助填充与上传适配",
+    "body": "高业务优先级的扩展。平台特有行为可替换，宿主持有稿件、权限、快照和交付记录。",
+    "refs": [
+      { "relation": "depends_on", "target": "F09" },
+      { "relation": "depends_on", "target": "F12" },
+      { "relation": "serves", "target": "SC01" },
+      { "relation": "serves", "target": "SC03" },
+      { "relation": "verified_by", "target": "A07" },
+      { "relation": "verified_by", "target": "A09" }
+    ],
+    "rank": 15,
+    "priority": "P1",
+    "placement": "extension",
+    "disposition": "on_demand",
+    "depends_on": ["F09", "F12"],
+    "reentry_condition": "人工发布路径已验收，重复交接工作值得自动化"
+  },
+  {
+    "id": "F22",
+    "kind": "feature",
+    "title": "Blender、剪辑与代码工具适配",
+    "body": "受控交接明确的工作副本和输出；外部程序权限与 AIY 内部权限分别说明。",
+    "refs": [
+      { "relation": "depends_on", "target": "F08" },
+      { "relation": "depends_on", "target": "F12" },
+      { "relation": "serves", "target": "SC03" },
+      { "relation": "serves", "target": "SC04" },
+      { "relation": "verified_by", "target": "A09" },
+      { "relation": "verified_by", "target": "A12" }
+    ],
+    "rank": 25,
+    "priority": "P1",
+    "placement": "extension",
+    "disposition": "on_demand",
+    "depends_on": ["F08", "F12"],
+    "reentry_condition": "外部制作与回收成果的重复操作明显"
+  },
+  {
+    "id": "F23",
+    "kind": "feature",
+    "title": "PPT 与专用演示导出",
+    "body": "从可解释的演示提纲生成独立文件；不先做通用演示编辑器。",
+    "refs": [
+      { "relation": "depends_on", "target": "F08" },
+      { "relation": "depends_on", "target": "F13" },
+      { "relation": "depends_on", "target": "F12" },
+      { "relation": "serves", "target": "SC05" },
+      { "relation": "verified_by", "target": "A04" },
+      { "relation": "verified_by", "target": "A09" }
+    ],
+    "rank": 26,
+    "priority": "P1",
+    "placement": "extension",
+    "disposition": "on_demand",
+    "depends_on": ["F08", "F13", "F12"],
+    "reentry_condition": "已存在反复发生的演示交付需求"
+  },
+  {
+    "id": "F24",
+    "kind": "feature",
+    "title": "视频转写、片段定位与字幕处理",
+    "body": "为当前作品提供有范围的动作；不是默认转写全库，也不是内置完整剪辑。",
+    "refs": [
+      { "relation": "depends_on", "target": "F08" },
+      { "relation": "depends_on", "target": "F12" },
+      { "relation": "serves", "target": "SC03" },
+      { "relation": "serves", "target": "SC09" },
+      { "relation": "verified_by", "target": "A03" },
+      { "relation": "verified_by", "target": "A09" },
+      { "relation": "verified_by", "target": "A12" }
+    ],
+    "rank": 27,
+    "priority": "P1",
+    "placement": "extension",
+    "disposition": "on_demand",
+    "depends_on": ["F08", "F12"],
+    "reentry_condition": "具体视频创作需要转写或片段证据，且成本可接受"
+  },
+  {
+    "id": "F25",
+    "kind": "feature",
+    "title": "需求大纲导出 Codex 任务包并回收结果",
+    "body": "首个自举扩展候选。按当前选择导出有边界的任务包，核对仓库后实施，再带回 PR 与证据；此项尚未在本 Design Lab 接通。",
+    "refs": [
+      { "relation": "depends_on", "target": "F05" },
+      { "relation": "depends_on", "target": "F06" },
+      { "relation": "depends_on", "target": "F12" },
+      { "relation": "serves", "target": "SC04" },
+      { "relation": "verified_by", "target": "A15" },
+      { "relation": "verified_by", "target": "A17" }
+    ],
+    "rank": 12,
+    "priority": "P1",
+    "placement": "extension",
+    "disposition": "on_demand",
+    "depends_on": ["F05", "F06", "F12"],
+    "reentry_condition": "需要用当前真实需求验证有界读取、引用与回写合同"
+  },
+  {
+    "id": "F26",
+    "kind": "feature",
+    "title": "当前作品的来源时效与影响检查",
+    "body": "基准、人工标记在核心；自动抓取、差异和领域过期规则可由扩展提供。",
+    "refs": [
+      { "relation": "depends_on", "target": "F06" },
+      { "relation": "serves", "target": "SC07" },
+      { "relation": "verified_by", "target": "A14" }
+    ],
+    "rank": 22,
+    "priority": "P1",
+    "placement": "core_plus_extension",
+    "disposition": "on_demand",
+    "depends_on": ["F06"],
+    "reentry_condition": "真实创作受到来源变动的影响，而非单纯资料变老"
+  },
+  {
+    "id": "F27",
+    "kind": "feature",
+    "title": "本地相关材料与反例建议",
+    "body": "只在作者打开时提供少量有依据的建议；不建无限信息流，不替作者决定价值观。",
+    "refs": [
+      { "relation": "depends_on", "target": "F07" },
+      { "relation": "depends_on", "target": "F26" },
+      { "relation": "serves", "target": "SC01" },
+      { "relation": "serves", "target": "SC07" },
+      { "relation": "verified_by", "target": "A03" },
+      { "relation": "verified_by", "target": "A13" }
+    ],
+    "rank": 31,
+    "priority": "P2",
+    "placement": "extension",
+    "disposition": "park",
+    "depends_on": ["F07", "F26"],
+    "reentry_condition": "简单查找已不足，且能验证建议降低而非增加筛选负担"
+  },
+  {
+    "id": "F28",
+    "kind": "feature",
+    "title": "跨领域词典与参数化配方",
+    "body": "保留图片领域已有含义与数据；先验证其他领域的专用需求，不凭类型字段声称通用。",
+    "refs": [
+      { "relation": "depends_on", "target": "F16" },
+      { "relation": "serves", "target": "SC02" },
+      { "relation": "serves", "target": "SC09" },
+      { "relation": "verified_by", "target": "A09" },
+      { "relation": "verified_by", "target": "A13" }
+    ],
+    "rank": 32,
+    "priority": "P2",
+    "placement": "content_pack_plus_extension",
+    "disposition": "park",
+    "depends_on": ["F16"],
+    "reentry_condition": "至少两个领域有稳定、可验证的共同管理需求"
+  },
+  {
+    "id": "F29",
+    "kind": "feature",
+    "title": "日历、时间线与创作统计",
+    "body": "基础事实与交付时间不丢；日历只是按需视图，不作为创作必经页面。",
+    "refs": [
+      { "relation": "depends_on", "target": "F09" },
+      { "relation": "depends_on", "target": "F10" },
+      { "relation": "serves", "target": "SC06" },
+      { "relation": "verified_by", "target": "A10" },
+      { "relation": "verified_by", "target": "A17" }
+    ],
+    "rank": 33,
+    "priority": "P2",
+    "placement": "optional_view",
+    "disposition": "park",
+    "depends_on": ["F09", "F10"],
+    "reentry_condition": "安排与复盘已有明确时间视图需求"
+  },
+  {
+    "id": "F30",
+    "kind": "feature",
+    "title": "花花、桌面便签、番茄钟与空间联动",
+    "body": "可保留产品特色，但默认工作台不依赖这些入口。便签正文与来源不因关闭桌面形态而丢失。",
+    "refs": [
+      { "relation": "depends_on", "target": "F01" },
+      { "relation": "depends_on", "target": "F06" },
+      { "relation": "serves", "target": "SC08" },
+      { "relation": "verified_by", "target": "A09" },
+      { "relation": "verified_by", "target": "A11" }
+    ],
+    "rank": 34,
+    "priority": "P2",
+    "placement": "extension",
+    "disposition": "park",
+    "depends_on": ["F01", "F06"],
+    "reentry_condition": "用户确实需要桌面驻留入口，而不是主闭环仍不稳定"
+  },
+  {
+    "id": "F31",
+    "kind": "feature",
+    "title": "Codex 用量、额度与模型统计",
+    "body": "放在对应扩展内；不是开始创作时默认进入的 AI 中心。",
+    "refs": [
+      { "relation": "depends_on", "target": "F18" },
+      { "relation": "serves", "target": "SC04" },
+      { "relation": "verified_by", "target": "A09" },
+      { "relation": "verified_by", "target": "A17" }
+    ],
+    "rank": 35,
+    "priority": "P2",
+    "placement": "extension",
+    "disposition": "park",
+    "depends_on": ["F18"],
+    "reentry_condition": "用户主动需要该提供方的用量调查"
+  },
+  {
+    "id": "F32",
+    "kind": "feature",
+    "title": "自有网站后台与特殊分发",
+    "body": "不阻塞主流平台人工与辅助发布。",
+    "refs": [
+      { "relation": "depends_on", "target": "F09" },
+      { "relation": "depends_on", "target": "F21" },
+      { "relation": "serves", "target": "SC01" },
+      { "relation": "serves", "target": "SC03" },
+      { "relation": "verified_by", "target": "A07" },
+      { "relation": "verified_by", "target": "A09" }
+    ],
+    "rank": 36,
+    "priority": "P2",
+    "placement": "extension",
+    "disposition": "park",
+    "depends_on": ["F09", "F21"],
+    "reentry_condition": "主闭环稳定并出现明确自有网站运营任务"
+  },
+  {
+    "id": "F33",
+    "kind": "feature",
+    "title": "全局关系图与大型自由画布",
+    "body": "核心先给来源、被引用处和一跳上下文；不把巨大图谱作为理解门槛。",
+    "refs": [
+      { "relation": "depends_on", "target": "F06" },
+      { "relation": "depends_on", "target": "F07" },
+      { "relation": "serves", "target": "SC07" },
+      { "relation": "verified_by", "target": "A03" },
+      { "relation": "verified_by", "target": "A14" }
+    ],
+    "rank": 37,
+    "priority": "P2",
+    "placement": "optional_view",
+    "disposition": "park",
+    "depends_on": ["F06", "F07"],
+    "reentry_condition": "能证明特定探索任务比大纲与局部关系更有效"
+  },
+  {
+    "id": "F34",
+    "kind": "feature",
+    "title": "通用数据库、项目表格与工作流编排",
+    "body": "先用普通大纲、引用和轻字段完成 AIY 自举，不先造另一个管理平台。",
+    "refs": [
+      { "relation": "depends_on", "target": "F05" },
+      { "relation": "depends_on", "target": "F06" },
+      { "relation": "depends_on", "target": "F25" },
+      { "relation": "serves", "target": "SC04" },
+      { "relation": "verified_by", "target": "A15" },
+      { "relation": "verified_by", "target": "A17" }
+    ],
+    "rank": 38,
+    "priority": "P2",
+    "placement": "extension",
+    "disposition": "park",
+    "depends_on": ["F05", "F06", "F25"],
+    "reentry_condition": "真实场景超出大纲与几个固定字段，并有维护预算"
+  },
+  {
+    "id": "F35",
+    "kind": "feature",
+    "title": "内置完整视频、3D 与演示编辑器",
+    "body": "承接所有创作，不等于独自实现所有专业编辑器。原件入口与可替换工具链优先。",
+    "refs": [
+      { "relation": "depends_on", "target": "F08" },
+      { "relation": "serves", "target": "SC03" },
+      { "relation": "serves", "target": "SC05" },
+      { "relation": "verified_by", "target": "A12" }
+    ],
+    "rank": 39,
+    "priority": "X",
+    "placement": "out_of_scope",
+    "disposition": "reject",
+    "depends_on": ["F08"],
+    "reentry_condition": "产品定位与资源投入被重新明确决定"
+  },
+  {
+    "id": "F36",
+    "kind": "feature",
+    "title": "删除平行入口，而非隐藏第二套应用",
+    "body": "将 AI 中心、图库、上传等按具体职责归位；删除重复路由与重复写入路径前核对既有链接和数据契约。",
+    "refs": [
+      { "relation": "depends_on", "target": "F02" },
+      { "relation": "depends_on", "target": "F03" },
+      { "relation": "serves", "target": "SC01" },
+      { "relation": "serves", "target": "SC08" },
+      { "relation": "verified_by", "target": "A01" },
+      { "relation": "verified_by", "target": "A02" },
+      { "relation": "verified_by", "target": "A16" }
+    ],
+    "rank": 0,
+    "priority": "P0",
+    "placement": "core",
+    "disposition": "remove_duplicate_entry",
+    "depends_on": ["F02", "F03"],
+    "reentry_condition": "立即收敛；外部契约和旧数据另行安全评估"
+  },
+  {
+    "id": "F37",
+    "kind": "feature",
+    "title": "默认自动批量发布、全库上传与全库 Agent 自治",
+    "body": "不以安装扩展、点开主题或导出任务包代表授权。具体用户委托另走权限与预算合同。",
+    "refs": [
+      { "relation": "depends_on", "target": "F09" },
+      { "relation": "depends_on", "target": "F12" },
+      { "relation": "serves", "target": "SC04" },
+      { "relation": "verified_by", "target": "A03" },
+      { "relation": "verified_by", "target": "A07" },
+      { "relation": "verified_by", "target": "A15" }
+    ],
+    "rank": 40,
+    "priority": "X",
+    "placement": "out_of_scope",
+    "disposition": "reject",
+    "depends_on": ["F09", "F12"],
+    "reentry_condition": "仅在明确授权与可审计任务边界下评估具体自动化"
+  },
+  {
+    "id": "F38",
+    "kind": "feature",
+    "title": "为界面收敛执行万能节点库迁移",
+    "body": "界面先收敛；现有独立领域实体与稳定接口按职责维护，不新增双写与兼容影子模型。",
+    "refs": [
+      { "relation": "serves", "target": "SC04" },
+      { "relation": "verified_by", "target": "A01" },
+      { "relation": "verified_by", "target": "A09" }
+    ],
+    "rank": 41,
+    "priority": "X",
+    "placement": "out_of_scope",
+    "disposition": "reject",
+    "depends_on": [],
+    "reentry_condition": "仅在独立领域评估证明必要后讨论，不能由该原型批准"
+  },
+  {
+    "id": "F39",
+    "kind": "feature",
+    "title": "独立的全功能任务中心",
+    "body": "底层可靠任务不可砍；默认只显示当前作品任务和一个轻量全局状态入口。",
+    "refs": [
+      { "relation": "depends_on", "target": "F12" },
+      { "relation": "serves", "target": "SC04" },
+      { "relation": "verified_by", "target": "A08" },
+      { "relation": "verified_by", "target": "A17" }
+    ],
+    "rank": 30,
+    "priority": "P2",
+    "placement": "optional_view",
+    "disposition": "park",
+    "depends_on": ["F12"],
+    "reentry_condition": "真实跨作品并行任务量需要集中管理"
+  },
+  {
+    "id": "F40",
+    "kind": "feature",
+    "title": "资源来源、许可说明与分发依赖清单",
+    "body": "基础出处保留；复杂资源包检查按领域扩展。记录许可依据，不替用户断言没有提供的授权。",
+    "refs": [
+      { "relation": "depends_on", "target": "F06" },
+      { "relation": "depends_on", "target": "F08" },
+      { "relation": "depends_on", "target": "F16" },
+      { "relation": "serves", "target": "SC02" },
+      { "relation": "verified_by", "target": "A06" },
+      { "relation": "verified_by", "target": "A12" }
+    ],
+    "rank": 21,
+    "priority": "P1",
+    "placement": "core_plus_extension",
+    "disposition": "on_demand",
+    "depends_on": ["F06", "F08", "F16"],
+    "reentry_condition": "实际要分发资源包而不只是发布展示作品"
+  }
+]

@@ -10,6 +10,7 @@ import { appliedWordPalettesFromReferences, type AppliedWordPalette } from '@/re
 import type { CreationDraftPromptSnapshot } from '@/renderer/components/creator/workflows/creationDraftSnapshot';
 import { useI18n } from '@/renderer/i18n/useI18n';
 import { useStableCallback } from '@/renderer/lib/useStableCallback';
+import { useWorkspacePaneContainer } from '@/renderer/components/workspace/WorkspacePaneScope';
 import { plainTextBlockDocument } from '@/shared/block-document-codecs';
 import type {
   AssetDto,
@@ -53,6 +54,7 @@ interface Options {
 }
 
 export function useCreatorPromptDocument(options: Options) {
+  const pane = useWorkspacePaneContainer();
   const copy = useI18n().messages.contentEditor;
   const [document, setDocument] = useState(options.initial.document);
   const documentRef = useRef(document);
@@ -242,6 +244,7 @@ export function useCreatorPromptDocument(options: Options) {
     function undoMaterials(event: KeyboardEvent) {
       if (!(event.ctrlKey || event.metaKey) || event.shiftKey || event.key.toLowerCase() !== 'z') return;
       if (isEditableTarget(event.target)) return;
+      if (pane && event.target instanceof Node && !pane.parentElement?.contains(event.target)) return;
       const previous = materialsUndoRef.current.pop();
       if (!previous) return;
       event.preventDefault();
@@ -269,7 +272,7 @@ export function useCreatorPromptDocument(options: Options) {
     }
     window.addEventListener('keydown', undoMaterials);
     return () => window.removeEventListener('keydown', undoMaterials);
-  }, [options.active]);
+  }, [options.active, pane]);
 
   return {
     document,

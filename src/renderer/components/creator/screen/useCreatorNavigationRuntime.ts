@@ -1,4 +1,5 @@
 import type { Dispatch, SetStateAction } from 'react';
+import { creatorInputOwner } from '@/renderer/components/creator/screen/creatorInputOwnership';
 import type { BootstrapDto, Locale } from '@/shared/contracts';
 import type { CreatorLocation } from '@/renderer/components/app/app-navigation';
 import type { CreationOutputMode } from '@/renderer/components/creator/CreationOutputTabs';
@@ -90,6 +91,7 @@ export function useCreatorNavigationRuntime({
 }: Options) {
   const selected = selection.contentSelection;
   const document = generation.promptDocument;
+  const inputOwner = creatorInputOwner(selected, Boolean(workbench.editorDerivedVisual));
   return useCreatorNavigationWorkflows({
     onSelectDocument,
     active,
@@ -155,7 +157,6 @@ export function useCreatorNavigationRuntime({
     referenceAssets: document.referenceAssets,
     refresh,
     refreshAlbums,
-    rememberSavedDraft: selection.creationDraftSession.rememberSavedDraft,
     replaceDraftSession: selection.creationDraftSession.replaceDraftSession,
     requestAssistant: workflow.assistant.workflows.request.request,
     requestedAssetId,
@@ -176,11 +177,7 @@ export function useCreatorNavigationRuntime({
       socialPostId: selected.selectedSocialPostId,
     },
     selectedArticle: selected.selectedArticle,
-    selectedContent: Boolean(
-      selected.selectedEvaluationSuiteId ||
-      selected.selectedImageBreakdownId ||
-      (!workbench.editorDerivedVisual && (selected.selectedSocialPostId || selected.selectedArticleId)),
-    ),
+    selectedContent: inputOwner === null,
     selectedIdeaCreation: selected.selectedIdeaCreation,
     selectedSocialPost: selected.selectedSocialPost,
     selectedTermCount: document.selectedTerms.length,
@@ -208,10 +205,7 @@ export function useCreatorNavigationRuntime({
     setVersionId: generation.hydration.setVersionId,
     setVideoCreationRequest: selection.setVideoCreationRequest,
     startNewSession: generation.hydration.startNewSession,
-    startNewSaveBlocked: Boolean(
-      selected.selectedEvaluationSuiteId ||
-      (!workbench.editorDerivedVisual && (selected.selectedSocialPostId || selected.selectedArticleId)),
-    ),
+    startNewSaveBlocked: inputOwner === null,
     starting: starting || draftInput.recovery.state.status === 'loading',
     synchronizePrompt: document.synchronize,
     targetAlbumId: selection.targetAlbumId,

@@ -1,7 +1,13 @@
 import { contentSearchMessages } from '@/shared/i18n/content-search';
 import { referenceHistoryMessages } from '@/shared/i18n/reference-history';
+import { outlineSelectionMessages } from '@/shared/i18n/outline-selection';
 
 export const referenceOutlineMessages = {
+  turnIntoPage: 'Turn into page',
+  pageFailed: 'Could not turn the selection into a page. Retry to check and complete the operation.',
+  pageChanged: 'The outline changed. Select the content again and retry.',
+  pageOpenFailed: 'The page was saved. Open it using the link left in the outline.',
+  selectionToolbar: outlineSelectionMessages,
   history: referenceHistoryMessages,
   linkAbandon: 'Abandon this link operation',
   linkAbandonHint: 'Keep any created work and document edits; stop recovering this link operation.',

@@ -36,6 +36,8 @@ export default defineConfig({
         calendar: fileURLToPath(new URL('./calendar.html', import.meta.url)),
         extensions: fileURLToPath(new URL('./extensions.html', import.meta.url)),
         creationCycle: fileURLToPath(new URL('./creation-cycle.html', import.meta.url)),
+        themeCreation: fileURLToPath(new URL('./theme-creation.html', import.meta.url)),
+        minimalLoop: fileURLToPath(new URL('./minimal-loop.html', import.meta.url)),
       },
     },
   },

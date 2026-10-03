@@ -23,6 +23,8 @@ export interface CodexUsageModelPrice {
   api: CodexUsageApiPricePeriod[];
   credits: CodexUsageCreditPricePeriod[];
   fastCreditMultiplier: number | null;
+  // Older verified entries use a shared multiplier; newer rates can distinguish included usage.
+  fastIncludedUsageMultiplier?: number | null;
 }
 
 export interface CodexUsageRateCard {

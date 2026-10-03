@@ -1,0 +1,31 @@
+import { Meta, Canvas } from '@storybook/addon-docs/blocks';
+import * as Article from './Article.stories';
+
+<Meta of={Article} name="Scenes and usage" />
+
+# 编辑工作面
+
+直接挂载正式 `ArticleEditor`：标题、正文、工具栏、大纲／评论／媒体侧栏、分屏和保存状态共用产品实现。
+先打开已有稿件，编辑后按 Ctrl+S；顶部 Viewport 与语言控制属于 Storybook。
+
+| 分镜                                                         | 初始状态                                       | 操作                           | 预期结果                         |
+| ------------------------------------------------------------ | ---------------------------------------------- | ------------------------------ | -------------------------------- |
+| [已有稿件](?path=/story/creation-editor--existing)           | 同一份公开图文结构                             | 修改标题或正文、保存、切换侧栏 | 保留稿件与编辑会话；保存目标不变 |
+| [空白稿件](?path=/story/creation-editor--blank)              | 新会话、空正文                                 | 从正文直接开始                 | 可继续输入和保存                 |
+| [保存失败与重试](?path=/story/creation-editor--save-failure) | 正式保存队列提交一项标题修改，接口拒绝首次请求 | 点击正式重试按钮               | 修改保留，重试后确认相同稿件     |
+| [大纲](?path=/story/creation-editor--outline)                | 正式 OUTLINE 编辑模式                          | 展开、收起、编辑条目           | 使用正式结构化文档与保存会话     |
+| [窄窗口](?path=/story/creation-editor--narrow)               | 同一稿件、768px 视口                           | 打开与关闭辅助面板             | 工作面沿生产规则响应可用宽度     |
+
+<Canvas of={Article.Existing} />
+
+## 复用与边界
+
+保存接口仅确认本次预览内存中的修订，不写入个人库，刷新会重置。失败状态由真实保存会话到达，不是直接设置一个红色图标。
+桌面桥只提供预览所需的恢复与事件边界；未接入的导出、生成、发布等操作明确失败。这里不证明生产持久化、重启恢复、真实媒体和发布已通过。
+
+私有组件测试通过 Portable Stories 复用本文件关联的 CSF 场景与共同环境，报告用稳定分镜 ID 定位。
+测试中的动作、断言及运行证据留在私有测试仓；分镜存在不等于测试通过，Docs 不展示静态“已通过”徽章。
+jsdom 检查操作和数据，不能证明像素布局、输入法或 Electron 原生行为。
+
+Reload story 重建会话。改变语言只更新界面文案，不替换已经开始编辑的正文；改变场景会建立新会话。
+独立[正文组件](?path=/story/partial-editor--e-02)和[大纲组件](?path=/story/creation-outline--existing)用于定位局部行为。

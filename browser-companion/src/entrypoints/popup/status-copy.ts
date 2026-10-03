@@ -98,7 +98,13 @@ export function statusCopy(snapshot: CurrentHandoffSnapshot | null) {
             ? companionMessage(CONSUME_ERROR_MESSAGE_KEY[code])
             : '';
   const action =
-    state === 'ready' || (state === 'failed' && snapshot.task?.state === 'ready' && snapshot.connection === 'connected')
+    state === 'ready' ||
+    (state === 'failed' &&
+      snapshot.task?.state === 'ready' &&
+      snapshot.connection === 'connected' &&
+      code !== 'COMPOSER_NOT_FOUND' &&
+      code !== 'COMPOSER_AMBIGUOUS' &&
+      code !== 'MEDIA_INPUT_NOT_FOUND')
       ? 'fill'
       : state === 'receipt' && snapshot.canRetryReceipt
         ? 'receipt'

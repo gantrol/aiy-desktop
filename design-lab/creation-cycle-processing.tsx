@@ -12,8 +12,8 @@ import { cn } from '@/renderer/lib/utils';
 import { cycleAssets, type CycleModel } from './creation-cycle-model';
 
 function ProcessInput({ model }: { model: CycleModel }) {
-  const [references, setReferences] = useState<string[]>([]);
   const operation = model.operation!;
+  const asset = cycleAssets.find((item) => item.id === operation.base.assetId);
   return (
     <WorkbenchNavigationPane
       layoutKey="design-cycle-operation-input"
@@ -28,22 +28,35 @@ function ProcessInput({ model }: { model: CycleModel }) {
       <div className="min-h-0 flex-1 space-y-6 overflow-auto p-4">
         <div>
           <div className="mb-3 text-xs text-muted-foreground">
-            {operation.selection ? model.copy.selectedPassage : model.copy.wholeDraft}
+            {asset ? model.copy.image : operation.selection ? model.copy.selectedPassage : model.copy.wholeDraft}
           </div>
-          <p className="whitespace-pre-wrap text-sm leading-7">{operation.input}</p>
+          {asset ? (
+            <AssetMedia asset={asset} alt={operation.base.title} className="w-full object-contain" />
+          ) : (
+            <p className="whitespace-pre-wrap text-sm leading-7">{operation.input}</p>
+          )}
         </div>
         <div className="space-y-3 border-t pt-4">
+          <div className="text-xs text-muted-foreground">{model.copy.runReferences}</div>
           {model.materials
-            .filter((item) => model.inputIds.includes(item.id))
+            .filter((item) => operation.availableInputIds.includes(item.id))
             .map((material) => (
               <Label key={material.id} className="flex items-start gap-2 text-sm">
                 <Checkbox
-                  checked={references.includes(material.id)}
+                  checked={model.references.includes(material.id)}
+                  disabled={!material.markdown && !material.asset}
                   onCheckedChange={(checked) =>
-                    setReferences((ids) => (checked ? [...ids, material.id] : ids.filter((id) => id !== material.id)))
+                    model.setReferences((ids) =>
+                      checked ? [...new Set([...ids, material.id])] : ids.filter((id) => id !== material.id),
+                    )
                   }
                 />
-                <span className="min-w-0 truncate">{material.title}</span>
+                <span className="min-w-0">
+                  <span className="block truncate">{material.title}</span>
+                  {!material.markdown && !material.asset && (
+                    <span className="text-xs text-muted-foreground">{model.copy.sourceUnavailable}</span>
+                  )}
+                </span>
               </Label>
             ))}
         </div>
@@ -78,10 +91,24 @@ function ProcessControls({ model }: { model: CycleModel }) {
             </Button>
           </CollapsibleTrigger>
           <CollapsibleContent className="space-y-2 pt-2 text-xs text-muted-foreground">
-            {model.records.map((kind, index) => (
-              <div key={index}>
-                {index + 1}. {kind === 'image' ? copy.illustrate : copy.rewrite} · {copy.recorded}
-              </div>
+            {model.records.map((record, index) => (
+              <Collapsible key={index}>
+                <CollapsibleTrigger asChild>
+                  <Button variant="ghost" size="sm" className="h-auto w-full justify-start whitespace-normal text-left">
+                    {index + 1}. {record.kind === 'image' ? copy.illustrate : copy.rewrite} · {copy.recorded}
+                  </Button>
+                </CollapsibleTrigger>
+                <CollapsibleContent className="space-y-2 px-3 py-2">
+                  <div>{record.targetLabel}</div>
+                  <div>{record.requirements}</div>
+                  <div>
+                    {copy.runReferences} · {record.references.length}
+                  </div>
+                  {record.references.map((reference) => (
+                    <div key={reference.id}>{reference.title}</div>
+                  ))}
+                </CollapsibleContent>
+              </Collapsible>
             ))}
             {!model.records.length && copy.noRecords}
           </CollapsibleContent>
@@ -135,14 +162,25 @@ export function ProcessingWorkspace({ model }: { model: CycleModel }) {
   const operation = model.operation!;
   const image = operation.kind === 'image';
   const ready = image ? model.imageReady : model.candidate !== null;
+  const adoptLabel = image
+    ? model.output.kind === 'IMAGE'
+      ? copy.updateImage
+      : operation.selection
+        ? copy.insertAfterSelection
+        : copy.insertAtEnd
+    : operation.selection
+      ? copy.replacePassage
+      : model.draft.channel
+        ? copy.updateAdaptation
+        : copy.updateOriginal;
   return (
     <div className="flex min-h-0 min-w-0 flex-1 flex-col">
       <WorkbenchPaneHeader>
-        <Button variant="ghost" size="sm" onClick={() => model.setOperation(null)}>
+        <Button variant="ghost" size="sm" disabled={model.busy} onClick={() => model.setOperation(null)}>
           <ArrowLeftIcon className="size-4" />
           {copy.back}
         </Button>
-        <span className="truncate text-sm text-muted-foreground">{model.title}</span>
+        <span className="truncate text-sm text-muted-foreground">{operation.targetLabel}</span>
       </WorkbenchPaneHeader>
       <div className="flex min-h-0 min-w-0 flex-1 overflow-x-auto">
         <ProcessInput model={model} />
@@ -182,13 +220,18 @@ export function ProcessingWorkspace({ model }: { model: CycleModel }) {
               </div>
             )}
           </div>
-          <div className="flex shrink-0 items-center justify-between gap-3 border-t p-3">
-            <span className="text-xs text-muted-foreground">
-              {operation.selection ? copy.selectedPassage : copy.wholeDraft}
-            </span>
-            <Button disabled={!ready} onClick={() => void model.adopt()}>
-              {image ? copy.insertImage : copy.adopt}
-            </Button>
+          <div className="shrink-0 space-y-3 border-t p-3">
+            <div className="truncate text-xs text-muted-foreground" title={operation.targetLabel}>
+              {copy.adoptTarget} · {operation.targetLabel}
+            </div>
+            <div className="flex flex-wrap justify-end gap-2">
+              <Button variant="outline" disabled={!ready || model.busy} onClick={() => void model.adopt(true)}>
+                {image ? copy.saveIndependentImage : copy.saveIndependent}
+              </Button>
+              <Button disabled={!ready || model.busy} onClick={() => void model.adopt()}>
+                {adoptLabel}
+              </Button>
+            </div>
           </div>
         </section>
       </div>

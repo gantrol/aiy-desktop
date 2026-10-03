@@ -1,20 +1,25 @@
 import type { Editor } from '@tiptap/core';
-import type { NodeViewProps } from '@tiptap/react';
+import type { EditorView } from '@tiptap/pm/view';
 import { useRef, useState, type DragEvent } from 'react';
 import { useI18n } from '@/renderer/i18n/useI18n';
 import { itemDragIntent } from '@/renderer/components/albums/itemDrag';
+import { isContentLinkDrag } from '@/renderer/features/content-editor/contentLinkDrop';
 import { readReferenceDrag, referenceDragType, writeReferenceDrag } from '@/renderer/lib/itemReferenceDrag';
 import { referenceFailure } from '@/shared/i18n/reference-outline';
 import { useContentReferenceHost } from '@/renderer/features/content-editor/ContentReferenceHost';
-import { focusOutlineView } from '@/renderer/features/content-editor/outlineActiveView';
+import { focusOutlineView, rememberOutlineView } from '@/renderer/features/content-editor/outlineActiveView';
+import { outlineRowDropPlacement } from '@/renderer/features/content-editor/outlineDropTarget';
+import { outlineDropPending } from '@/renderer/features/content-editor/outlineDrop';
 import { dropOutlineReferences } from '@/renderer/features/content-editor/outlineReferenceDrop';
+import { dropOutlineContentLinks } from '@/renderer/features/content-editor/outlineContentLinkDrop';
+import { useOutlineContentLinkHost } from '@/renderer/features/content-editor/OutlineContentLinkHost';
 import { moveOutlineSelection } from '@/renderer/features/content-editor/outlineEditing';
 import {
   beginOutlineTransfer,
   outlineTransferSource,
   dropOutlineTransfer,
 } from '@/renderer/features/content-editor/outlineTransferDrag';
-import { outlineSelectionRoots, type OutlineDropPlacement } from '@/renderer/features/content-editor/outlineMove';
+import { outlineSelectionRoots } from '@/renderer/features/content-editor/outlineMove';
 import {
   beginOutlineDrag,
   endOutlineDrag,
@@ -42,33 +47,79 @@ function scrollOutlineDragEdge(element: HTMLElement, pointerY: number) {
 /** Owns one item's drag gesture and pending reference capture; text selection stays with the view. */
 export function useOutlineItemDrag({
   editor,
+  editorView,
   id,
   selected,
   view,
   editable,
   visibility,
-  getPos,
 }: {
   editor: Editor;
+  editorView: EditorView;
   id: string;
   selected: boolean;
   view: OutlineViewState;
   editable: boolean;
   visibility: 'inside' | 'path' | 'outside';
-  getPos: NodeViewProps['getPos'];
 }) {
   const copy = useI18n().messages.referenceOutline;
   const dragged = useRef(false);
   const referenceHost = useContentReferenceHost();
+  const linkHost = useOutlineContentLinkHost();
   const referencePending = useRef(false);
   const [dragError, setDragError] = useState('');
+  const isContentLink = (event: DragEvent) => Boolean(linkHost) && isContentLinkDrag(event);
+  const ownsEvent = (event: DragEvent<HTMLElement>) => {
+    if (!(event.target instanceof Element)) return false;
+    return (
+      event.target.closest('.aiy-outline-item') === event.currentTarget &&
+      event.target.closest('.ProseMirror') === editorView.dom &&
+      !event.target.closest('[data-reference-editor]')
+    );
+  };
+  const destination = (event: DragEvent<HTMLElement>) => {
+    const current = outlineViewState(editor.state);
+    const intent = itemDragIntent(event);
+    const reference =
+      isContentLink(event) || (intent === 'REFERENCE' && event.dataTransfer.types.includes(referenceDragType));
+    const transfer = outlineTransferSource(event.dataTransfer, editor, referenceHost);
+    if (
+      editor.isDestroyed ||
+      editorView.isDestroyed ||
+      !editor.isEditable ||
+      editorView.composing ||
+      referencePending.current ||
+      outlineDropPending(editor) ||
+      intent === 'NONE' ||
+      (intent === 'REFERENCE' && !reference) ||
+      visibility !== 'inside' ||
+      (!reference && !transfer && !current.drag?.validTargets.has(id))
+    )
+      return null;
+    const placement = outlineRowDropPlacement(event.currentTarget, event, current.focus === id);
+    return outlinePlacementWithinFocus(
+      editor.state.doc,
+      current,
+      reference || transfer ? [] : current.drag!.ids,
+      id,
+      placement,
+    )
+      ? { placement, reference, transfer, intent }
+      : null;
+  };
   return {
     draggable: editable && view.focus !== id,
     dragged,
     dragError,
     markerBindings: {
       onDragStart: (event: DragEvent<HTMLElement>) => {
-        if (!editable || view.focus === id || visibility !== 'inside') {
+        if (
+          !editor.isEditable ||
+          editorView.composing ||
+          outlineDropPending(editor) ||
+          view.focus === id ||
+          visibility !== 'inside'
+        ) {
           event.preventDefault();
           return;
         }
@@ -78,6 +129,7 @@ export function useOutlineItemDrag({
           return;
         }
         dragged.current = true;
+        rememberOutlineView(editor, editorView);
         if (!selected) selectOutlineItem(editor, id);
         beginOutlineDrag(editor, ids);
         beginOutlineTransfer(event.dataTransfer, editor, referenceHost, ids);
@@ -105,61 +157,29 @@ export function useOutlineItemDrag({
     },
     dropBindings: {
       onDragOverCapture: (event: DragEvent<HTMLElement>) => {
-        const intent = itemDragIntent(event);
-        const reference = intent === 'REFERENCE' && event.dataTransfer.types.includes(referenceDragType);
         if (
           !event.dataTransfer.types.includes(referenceDragType) &&
           !event.dataTransfer.types.includes('application/x-aiy-outline')
         )
           return;
-        if (event.target instanceof Element && event.target.closest('.aiy-outline-item') !== event.currentTarget)
-          return;
-        const drag = outlineViewState(editor.state).drag;
-        const transfer = outlineTransferSource(event.dataTransfer, editor, referenceHost);
-        if (
-          !editable ||
-          referencePending.current ||
-          intent === 'NONE' ||
-          (intent === 'REFERENCE' && !reference) ||
-          visibility !== 'inside' ||
-          (!reference && !transfer && !drag?.validTargets.has(id))
-        ) {
-          event.preventDefault();
-          event.stopPropagation();
-          event.dataTransfer.dropEffect = 'none';
-          previewOutlineDrop(editor, null);
-          return;
-        }
-        const title = event.currentTarget.querySelector<HTMLElement>(
-          ':scope > [data-node-view-content] > [data-node-view-content-react] > p:first-child',
-        );
-        const rect = title?.getBoundingClientRect() ?? event.currentTarget.getBoundingClientRect();
-        const position = getPos();
-        const resolved = position === undefined ? null : editor.state.doc.resolve(position + 1);
-        const firstSibling = resolved !== null && resolved.index(resolved.depth - 1) === 0;
-        const placement: OutlineDropPlacement =
-          view.focus === id || event.clientX >= rect.left + 24
-            ? 'INSIDE'
-            : firstSibling && event.clientY <= rect.top + Math.min(10, rect.height * 0.3)
-              ? 'BEFORE'
-              : 'AFTER';
-        if (
-          !outlinePlacementWithinFocus(
-            editor.state.doc,
-            outlineViewState(editor.state),
-            reference || transfer ? [] : drag!.ids,
-            id,
-            placement,
-          )
-        ) {
-          previewOutlineDrop(editor, null);
-          return;
-        }
+        if (!ownsEvent(event)) return;
         event.preventDefault();
         event.stopPropagation();
-        event.dataTransfer.dropEffect = reference ? 'link' : intent === 'COPY' ? 'copy' : 'move';
+        rememberOutlineView(editor, editorView);
+        const target = destination(event);
+        event.dataTransfer.dropEffect = !target
+          ? 'none'
+          : target.reference
+            ? 'link'
+            : target.intent === 'COPY'
+              ? 'copy'
+              : 'move';
+        if (!target) {
+          previewOutlineDrop(editor, null);
+          return;
+        }
         scrollOutlineDragEdge(event.currentTarget, event.clientY);
-        previewOutlineDrop(editor, id, placement);
+        previewOutlineDrop(editor, id, target.placement);
       },
       onDragLeaveCapture: (event: DragEvent<HTMLElement>) => {
         if (
@@ -167,43 +187,47 @@ export function useOutlineItemDrag({
           !event.dataTransfer.types.includes(referenceDragType)
         )
           return;
-        if (event.currentTarget.contains(event.relatedTarget as Node | null)) return;
+        if (event.relatedTarget instanceof Node && event.currentTarget.contains(event.relatedTarget)) return;
         previewOutlineDrop(editor, null);
       },
       onDropCapture: (event: DragEvent<HTMLElement>) => {
-        const intent = itemDragIntent(event);
-        const reference = intent === 'REFERENCE' && event.dataTransfer.types.includes(referenceDragType);
+        const link = isContentLink(event);
         if (
           !event.dataTransfer.types.includes(referenceDragType) &&
           !event.dataTransfer.types.includes('application/x-aiy-outline')
         )
           return;
-        if (event.target instanceof Element && event.target.closest('.aiy-outline-item') !== event.currentTarget)
-          return;
+        if (!ownsEvent(event)) return;
         event.preventDefault();
         event.stopPropagation();
-        const drop = outlineViewState(editor.state).drop;
+        rememberOutlineView(editor, editorView);
+        const drop = destination(event);
         const ids = outlineViewState(editor.state).drag?.ids ?? [];
-        if (drop?.id === id && editable && !referencePending.current) {
+        if (drop) {
+          const { intent, reference, transfer } = drop;
           if (reference) {
             const payload = readReferenceDrag(event.dataTransfer);
             if (payload) {
               referencePending.current = true;
               setDragError('');
-              void dropOutlineReferences(editor, payload, id, drop.placement)
-                .then(() => focusOutlineView(editor))
-                .catch((reason) => setDragError(referenceFailure(reason, copy, copy.captureFailed)))
+              const operation = link
+                ? dropOutlineContentLinks(editor, payload, linkHost!.spaceId, id, drop.placement)
+                : dropOutlineReferences(editor, payload, id, drop.placement);
+              void operation
+                .then(() => focusOutlineView(editor, editorView))
+                .catch((reason) =>
+                  setDragError(referenceFailure(reason, copy, link ? copy.linkFailed : copy.captureFailed)),
+                )
                 .finally(() => {
                   referencePending.current = false;
                 });
             } else setDragError(copy.dragUnavailable);
           } else if (intent === 'MOVE' || intent === 'COPY') {
-            const transfer = outlineTransferSource(event.dataTransfer, editor, referenceHost);
             if (transfer) {
               referencePending.current = true;
               setDragError('');
               void dropOutlineTransfer(transfer, editor, referenceHost, id, drop.placement, intent === 'COPY')
-                .then(() => focusOutlineView(editor))
+                .then(() => focusOutlineView(editor, editorView))
                 .catch((reason) => setDragError(referenceFailure(reason, copy, copy.transferFailed)))
                 .finally(() => {
                   referencePending.current = false;
@@ -211,7 +235,7 @@ export function useOutlineItemDrag({
             } else if (
               moveOutlineSelection(editor, ids, id, drop.placement, { copy: intent === 'COPY', expandTarget: true })
             )
-              focusOutlineView(editor);
+              focusOutlineView(editor, editorView);
           }
         }
         endOutlineDrag(editor);

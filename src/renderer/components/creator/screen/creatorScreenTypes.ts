@@ -1,4 +1,9 @@
-import type { CreatorLocation, CreatorOpenTabTarget, NavigationMode } from '@/renderer/components/app/app-navigation';
+import type {
+  CreatorLocation,
+  CreatorOpenTabTarget,
+  HistoryNavigationGuard,
+  NavigationMode,
+} from '@/renderer/components/app/app-navigation';
 import type {
   ArticleDto,
   BootstrapDto,
@@ -16,6 +21,7 @@ export interface CreatorScreenProps {
   defaultPromptLocale: Locale | null;
   active: boolean;
   creationLibraryActive: boolean;
+  libraryVisible?: boolean;
   location: CreatorLocation;
   comparisonFullWindow: boolean;
   promptFullWindow: boolean;
@@ -27,6 +33,7 @@ export interface CreatorScreenProps {
   onSelectDocument(documentId: string, albumId: string | null): void;
   onDocumentsChange(document: VideoDocumentDto, collectionChanged: boolean): void;
   onNavigate(location: CreatorLocation, mode?: NavigationMode): void;
+  onHistoryNavigationGuardChange?(guard: HistoryNavigationGuard | null): void;
   onOpenInNewTab(target: CreatorOpenTabTarget): void;
   onComparisonFullWindowChange(open: boolean): void;
   onPromptFullWindowChange(open: boolean): void;

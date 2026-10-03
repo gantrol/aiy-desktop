@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react';
+import { ImagesIcon } from 'lucide-react';
 import type { AssetDto } from '@/shared/contracts';
 import {
   TreeBranchCollapseProvider,
@@ -23,7 +24,8 @@ import {
 import type { CreationFormProjection } from '@/renderer/components/creator/creationLibraryProjection';
 import { MediaStackPreview } from '@/renderer/components/media/MediaStackPreview';
 import type { useTreeBranchExpansion } from '@/renderer/components/albums/useTreeBranchExpansion';
-import { Collapsible, CollapsibleTrigger } from '@/renderer/components/ui/collapsible';
+import { CollapsibleTrigger } from '@/renderer/components/ui/collapsible';
+import { CreationLibraryStickyBranch } from '@/renderer/components/creator/CreationLibraryStickyPath';
 import { useI18n } from '@/renderer/i18n/useI18n';
 
 interface Props {
@@ -57,8 +59,18 @@ export function CreationAnimationGroup({
   const metrics = getCreationTreeMediaNodeMetrics(items);
   const disclosureLabel = open ? labels.collapseAnimationGroup : labels.expandAnimationGroup;
   return (
-    <Collapsible
+    <CreationLibraryStickyBranch
       open={open}
+      path={{
+        id: group.key,
+        title,
+        icon: ImagesIcon,
+        openLabel: `${labels.open}: ${title}`,
+        collapseLabel: labels.collapseAnimationGroup,
+        selected,
+        onOpen: () => onOpen(target),
+        onCollapse: () => setOpen(false),
+      }}
       onOpenChange={setOpen}
       className="relative"
       data-tree-branch-id={group.key}
@@ -83,8 +95,7 @@ export function CreationAnimationGroup({
           <span className="relative grid h-full w-full place-items-center">
             <MediaStackPreview
               className="pointer-events-none"
-              size="tree"
-              singleItemAlign="center"
+              size="creation-tree"
               items={items}
               maxItems={3}
               spread={expanded ? 'expanded' : open ? 'settled' : 'collapsed'}
@@ -110,6 +121,6 @@ export function CreationAnimationGroup({
           )}
         </TreeBranchCollapseProvider>
       </TreeBranchContent>
-    </Collapsible>
+    </CreationLibraryStickyBranch>
   );
 }

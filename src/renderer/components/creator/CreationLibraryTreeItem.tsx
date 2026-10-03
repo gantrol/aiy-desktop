@@ -6,7 +6,6 @@ import {
   type TreeBranchItemTopology,
 } from '@/renderer/components/albums/treeConnectionGeometry';
 import {
-  getMediaStackHorizontalBounds,
   getMediaStackLayout,
   getMediaStackPrimaryFrameBounds,
   type MediaStackItem,
@@ -54,7 +53,7 @@ export function CreationTreeNodeFrame({
     <span
       {...props}
       data-creation-tree-node-frame
-      className={cn('relative z-10 shrink-0 overflow-visible', className)}
+      className={cn('relative z-20 shrink-0 overflow-visible', className)}
       style={style}
     >
       {branchTopology && <TreeBranchTransitRail topology={branchTopology} />}
@@ -65,10 +64,9 @@ export function CreationTreeNodeFrame({
 }
 
 export function getCreationTreeMediaNodeMetrics(items: readonly MediaStackItem[], maxItems = 3) {
-  const paintedBounds = getMediaStackHorizontalBounds('tree', items, 'expanded', maxItems);
   return {
-    bounds: getMediaStackPrimaryFrameBounds('tree', items, maxItems),
-    width: Math.ceil(Math.max(getMediaStackLayout('tree').containerWidth, paintedBounds.right)),
+    bounds: getMediaStackPrimaryFrameBounds('creation-tree', items, maxItems),
+    width: getMediaStackLayout('creation-tree').containerWidth,
   };
 }
 
@@ -176,14 +174,14 @@ export const CreationLibraryTreeItem = forwardRef<HTMLDivElement, CreationLibrar
           rowHeight={compact ? TREE_CONNECTION_GEOMETRY.compactRowHeight : undefined}
           branchTopology={branchTopology}
           className={cn(
-            '-ml-1 flex h-[4.25rem] w-16 items-center',
-            compact && 'h-9 w-9',
+            '-ml-1 flex h-[4.25rem] w-14 items-center',
+            compact && 'h-9',
             childBranch || canSpreadPreview ? 'pointer-events-auto' : 'pointer-events-none',
             previewClassName,
           )}
           style={previewStyle}
           {...(childBranch || canSpreadPreview ? previewGesture.bindings : {})}
-          onClick={childBranch || canSpreadPreview ? onOpen : undefined}
+          onClick={onOpen}
         >
           {typeof preview === 'function' ? preview(previewGesture.previewExpanded) : preview}
         </CreationTreeNodeFrame>

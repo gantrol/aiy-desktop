@@ -18,6 +18,7 @@ import zhMessages from '../extensions/com.aiy.language.zh-cn/messages.json';
 import { useCycleModel } from './creation-cycle-model';
 import { MaterialBrowser } from './creation-cycle-materials';
 import { WritingWorkspace } from './creation-cycle-workspace';
+import { OutputNavigation } from './creation-cycle-navigation';
 import './style.css';
 
 const catalogs = { en: enMessages, zh: hydrateLanguageCatalog(zhMessages, enMessages) };
@@ -70,11 +71,10 @@ function CycleLab() {
                 size="sm"
                 onClick={() => {
                   model.setSurface('write');
-                  model.setOperation(null);
                 }}
               >
                 <FileTextIcon className="size-3.5" />
-                {model.title}
+                {copy.creationTitle}
               </Button>
               <Button
                 variant={model.surface === 'materials' ? 'secondary' : 'ghost'}
@@ -83,7 +83,12 @@ function CycleLab() {
               >
                 {copy.materials}
               </Button>
-              <Button variant="ghost" size="sm" onClick={() => void model.begin('image')}>
+              <Button
+                variant="ghost"
+                size="sm"
+                disabled={model.busy || Boolean(model.operation)}
+                onClick={() => void model.begin('image')}
+              >
                 <ImagePlusIcon className="size-3.5" />
                 {copy.imageMaking}
               </Button>
@@ -91,15 +96,15 @@ function CycleLab() {
             <div className="flex min-h-0 min-w-0 flex-1">
               <WorkbenchNavigationPane
                 layoutKey="design-cycle-library"
-                label={messages.creator.results.library}
-                selectionKey={model.surface}
+                label={copy.creationTitle}
+                selectionKey={`${model.surface}/${model.contextKey}`}
                 initialWidth={220}
-                minimumContentWidth={1000}
+                minimumContentWidth={880}
                 toggleHost={toggleHost}
               >
                 <WorkbenchPaneHeader>
                   <FolderIcon className="size-4" />
-                  {messages.creator.results.library}
+                  {copy.creationTitle}
                 </WorkbenchPaneHeader>
                 <div className="space-y-1 p-2">
                   <Button
@@ -110,18 +115,8 @@ function CycleLab() {
                     <FolderIcon className="size-4" />
                     {copy.materials}
                   </Button>
-                  <Button
-                    variant="secondary"
-                    className="h-auto w-full justify-start whitespace-normal text-left"
-                    onClick={() => {
-                      model.setSurface('write');
-                      model.setOperation(null);
-                    }}
-                  >
-                    <FileTextIcon className="size-4" />
-                    {model.title}
-                  </Button>
                 </div>
+                <OutputNavigation model={model} />
               </WorkbenchNavigationPane>
               <div className={cn('flex min-h-0 min-w-0 flex-1', model.surface !== 'write' && 'hidden')}>
                 <WritingWorkspace model={model} />

@@ -17,6 +17,7 @@ import { TREE_BRANCH_INTERACTION } from '@/renderer/components/albums/treeBranch
 import { TreeBranchNodeConnector, TreeDisclosureRail } from '@/renderer/components/albums/TreeDisclosureRail';
 import {
   COMPACT_TREE_NODE_METRICS,
+  CREATION_TREE_COMPACT_NODE_METRICS,
   getTreeNodeAnchor,
   TREE_CONNECTION_GEOMETRY,
   type TreeBranchItemTopology,
@@ -26,6 +27,7 @@ import { useTreeBranchPreviewGesture } from '@/renderer/components/albums/useTre
 export type AlbumTreeOverlayStyle = 'blurred' | 'solid';
 
 interface Props {
+  size?: 'tree' | 'creation-tree';
   assets: AssetDto[];
   title: string;
   open: boolean;
@@ -46,6 +48,29 @@ interface Props {
   onPointerTrack?(clientY: number): boolean;
   onMediaAdmitted?(): void;
   className?: string;
+}
+
+function albumTreePreviewMetrics(size: NonNullable<Props['size']>, items: MediaStackItem[], compactIcon: boolean) {
+  const compactMetrics = size === 'creation-tree' ? CREATION_TREE_COMPACT_NODE_METRICS : COMPACT_TREE_NODE_METRICS;
+  const layout = getMediaStackLayout(size);
+  const bounds = compactIcon ? compactMetrics.bounds : getMediaStackPrimaryFrameBounds(size, items, ALBUM_COVER_LAYERS);
+  const expandedBounds = getMediaStackHorizontalBounds(
+    size,
+    items,
+    'expanded',
+    ALBUM_COVER_LAYERS,
+    TREE_BRANCH_INTERACTION.previewSpreadStepPx,
+  );
+  // Creation covers may overlap their own title; other trees retain their reserved fan width.
+  const mediaWidth =
+    size === 'creation-tree' ? layout.containerWidth : Math.ceil(Math.max(layout.containerWidth, expandedBounds.right));
+  return {
+    previewWidth: compactIcon ? compactMetrics.width : mediaWidth,
+    rowHeight: compactIcon ? TREE_CONNECTION_GEOMETRY.compactRowHeight : TREE_CONNECTION_GEOMETRY.rowHeight,
+    nodeAnchor: getTreeNodeAnchor(bounds, compactIcon ? 0 : undefined),
+    gestureSurfaceLeft: Math.min(0, expandedBounds.left),
+    gestureSurfaceRight: Math.max(layout.containerWidth, expandedBounds.right),
+  };
 }
 
 export function AlbumCoverBadge({
@@ -104,6 +129,7 @@ export function AlbumCoverBadge({
  * the disclosure curve is attached to that cover rather than laid out beside it.
  */
 export function AlbumTreePreview({
+  size = 'tree',
   assets,
   title,
   open,
@@ -127,7 +153,6 @@ export function AlbumTreePreview({
 }: Props) {
   const stackItems: MediaStackItem[] = albumCoverAssets(assets, ALBUM_COVER_LAYERS).map((asset) => ({ asset }));
   const compactIcon = compact && stackItems.length === 0;
-  const rowHeight = compactIcon ? TREE_CONNECTION_GEOMETRY.compactRowHeight : TREE_CONNECTION_GEOMETRY.rowHeight;
   const canSpreadCover = stackItems.length > 1;
   const previewGesture = useTreeBranchPreviewGesture({
     open,
@@ -139,31 +164,22 @@ export function AlbumTreePreview({
   });
   const previewExpanded = controlledPreviewExpanded ?? previewGesture.previewExpanded;
   const spread = previewExpanded ? 'expanded' : open ? 'settled' : 'collapsed';
-  const nodeAnchor = compactIcon
-    ? getTreeNodeAnchor(COMPACT_TREE_NODE_METRICS.bounds, 0)
-    : getTreeNodeAnchor(getMediaStackPrimaryFrameBounds('tree', stackItems, ALBUM_COVER_LAYERS));
-  const expandedBounds = getMediaStackHorizontalBounds(
-    'tree',
+  const { previewWidth, rowHeight, nodeAnchor, gestureSurfaceLeft, gestureSurfaceRight } = albumTreePreviewMetrics(
+    size,
     stackItems,
-    'expanded',
-    ALBUM_COVER_LAYERS,
-    TREE_BRANCH_INTERACTION.previewSpreadStepPx,
+    compactIcon,
   );
-  // Reserve the expanded footprint once: hovering must not push the title sideways.
-  const previewWidth = compactIcon
-    ? COMPACT_TREE_NODE_METRICS.width
-    : Math.ceil(Math.max(getMediaStackLayout('tree').containerWidth, expandedBounds.right));
-  const gestureSurfaceLeft = Math.min(0, expandedBounds.left);
-  const gestureSurfaceRight = Math.max(getMediaStackLayout('tree').containerWidth, expandedBounds.right);
 
   const mediaStack = compactIcon ? (
-    <span className="mx-1 grid size-7 place-items-center text-muted-foreground">
-      <FolderIcon className="size-4" aria-hidden="true" />
+    <span
+      className={cn('grid size-7 place-items-center text-muted-foreground', size === 'creation-tree' ? 'ml-7' : 'mx-1')}
+    >
+      <FolderIcon className={size === 'creation-tree' ? 'size-5' : 'size-4'} aria-hidden="true" />
     </span>
   ) : (
     <MediaStackPreview
       className={onAssetSelect ? 'pointer-events-none relative z-10' : undefined}
-      size="tree"
+      size={size}
       items={stackItems}
       emptyContent={<AlbumGlyphIcon className="size-5" />}
       spread={spread}
@@ -174,6 +190,14 @@ export function AlbumTreePreview({
       assetLabel={assetLabel}
       deferOffscreenMedia
       onMediaAdmitted={onMediaAdmitted}
+      badge={
+        size === 'creation-tree' ? (
+          <AlbumCoverBadge
+            overlayStyle={overlayStyle}
+            {...(onAssetSelect ? { label: title, onClick, onDoubleClick } : {})}
+          />
+        ) : undefined
+      }
     />
   );
 
@@ -184,7 +208,8 @@ export function AlbumTreePreview({
       role="group"
       aria-label={title}
       className={cn(
-        'relative z-10 -ml-1 flex shrink-0 items-center overflow-visible',
+        'relative -ml-1 flex shrink-0 items-center overflow-visible',
+        size === 'creation-tree' ? 'z-20' : 'z-10',
         previewExpanded && 'z-30',
         className,
       )}
@@ -194,7 +219,7 @@ export function AlbumTreePreview({
       {branchTopology && (
         <TreeBranchNodeConnector topology={branchTopology} anchor={nodeAnchor} rowHeight={rowHeight} />
       )}
-      {(open || previewExpanded) && canSpreadCover && (
+      {size === 'tree' && (open || previewExpanded) && canSpreadCover && (
         <span
           data-album-cover-gesture-surface
           className="absolute inset-y-0 z-0"
@@ -229,7 +254,14 @@ export function AlbumTreePreview({
             onDoubleClick={onDoubleClick}
           />
           {mediaStack}
-          <AlbumCoverBadge label={title} overlayStyle={overlayStyle} onClick={onClick} onDoubleClick={onDoubleClick} />
+          {size !== 'creation-tree' && (
+            <AlbumCoverBadge
+              label={title}
+              overlayStyle={overlayStyle}
+              onClick={onClick}
+              onDoubleClick={onDoubleClick}
+            />
+          )}
         </span>
       ) : (
         <Button
@@ -241,7 +273,7 @@ export function AlbumTreePreview({
           onDoubleClick={onDoubleClick}
         >
           {mediaStack}
-          {!compactIcon && <AlbumCoverBadge overlayStyle={overlayStyle} />}
+          {!compactIcon && size !== 'creation-tree' && <AlbumCoverBadge overlayStyle={overlayStyle} />}
         </Button>
       )}
     </span>

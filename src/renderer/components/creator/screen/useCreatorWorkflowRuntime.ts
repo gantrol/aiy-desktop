@@ -1,4 +1,5 @@
 import type { CreationOutputMode } from '@/renderer/components/creator/CreationOutputTabs';
+import { creatorInputOwner } from '@/renderer/components/creator/screen/creatorInputOwnership';
 import type { DerivedVisualWorkspaceViewState } from '@/renderer/components/creator/derivedVisualWorkspace';
 import { initialGenerationTargets } from '@/renderer/components/creator/generationTargetDefaults';
 import { useCreatorAssistantRuntime } from '@/renderer/components/creator/screen/useCreatorAssistantRuntime';
@@ -9,10 +10,9 @@ import type { useCreatorScreenProjection } from '@/renderer/components/creator/s
 import type { useCreatorSelectionSession } from '@/renderer/components/creator/screen/useCreatorSelectionSession';
 import type { useCreatorWorkbenchProjection } from '@/renderer/components/creator/screen/useCreatorWorkbenchProjection';
 import { creationDraftSnapshotHasMeaningfulInput } from '@/renderer/components/creator/workflows/creationDraftSnapshot';
-import {
-  isCreationDraftSessionSupersededError,
-  useCreationDraftAutosave,
-} from '@/renderer/components/creator/workflows/useCreationDraftSession';
+import { useCreationDraftAutosave } from '@/renderer/components/creator/workflows/useCreationDraftSession';
+import { isCreationDraftSessionSupersededError } from '@/renderer/components/creator/workflows/creationDraftSessionErrors';
+import { isCreationDraftConflict } from '@/shared/creation-draft-errors';
 import { useCreatorContentWorkflows } from '@/renderer/components/creator/workflows/useCreatorContentWorkflows';
 import { useCreatorInspirationSession } from '@/renderer/components/creator/workflows/useCreatorInspirationSession';
 import { articleCreationInputSchema } from '@/shared/contracts/inspiration-stash';
@@ -224,7 +224,7 @@ export function useCreatorWorkflowRuntime({
     const pendingInput = document.promptComposerRef.current?.hasPendingInput() ?? false;
     draftSession.invalidateAutosaves();
     const reportFailure = (reason: unknown) => {
-      if (!isCreationDraftSessionSupersededError(reason))
+      if (!isCreationDraftSessionSupersededError(reason) && !isCreationDraftConflict(reason))
         notify(reason instanceof Error ? reason.message : String(reason));
     };
     try {
@@ -258,7 +258,7 @@ export function useCreatorWorkflowRuntime({
     captureIdentity: draftSession.captureAutosaveIdentity,
     saveIfCurrent: draftSession.saveAutosaveIfCurrent,
     onError(reason) {
-      notify(reason instanceof Error ? reason.message : String(reason));
+      if (!isCreationDraftConflict(reason)) notify(reason instanceof Error ? reason.message : String(reason));
     },
   });
 
@@ -291,13 +291,9 @@ function autosaveEnabled(
   starting: boolean,
   editingDerivedVisual: boolean,
 ) {
-  const selected = selection.contentSelection;
   return Boolean(
     selection.creationMode === 'new' &&
-    !selected.selectedEvaluationSuiteId &&
-    !selected.selectedImageBreakdownId &&
-    !selected.selectedInspirationStashId &&
-    (editingDerivedVisual || (!selected.selectedSocialPostId && !selected.selectedArticleId)) &&
+    creatorInputOwner(selection.contentSelection, editingDerivedVisual) === 'creation' &&
     !adoptionBusy &&
     !starting,
   );

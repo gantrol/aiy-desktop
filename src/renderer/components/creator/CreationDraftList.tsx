@@ -4,7 +4,7 @@ import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/renderer/
 import { ScrollArea } from '@/renderer/components/ui/scroll-area';
 import { ActionMenuButton } from '@/renderer/components/ui/action-menu';
 import { CreationLibraryTreeItem } from '@/renderer/components/creator/CreationLibraryTreeItem';
-import { COMPACT_TREE_NODE_METRICS } from '@/renderer/components/albums/treeConnectionGeometry';
+import { CREATION_TREE_COMPACT_NODE_METRICS } from '@/renderer/components/albums/treeConnectionGeometry';
 import type { useCreationDraftList } from '@/renderer/components/creator/useCreationDraftList';
 import { useI18n } from '@/renderer/i18n/useI18n';
 
@@ -74,12 +74,12 @@ export function CreationDraftList({ drafts, selectedId, busy, onSelect, onDelete
                     ariaLabel={labels.openItemLabel(title)}
                     openLabel={labels.openItemLabel(title)}
                     preview={
-                      <span className="mx-1 grid size-7 place-items-center text-muted-foreground">
-                        <FilePenLineIcon className="size-4" aria-hidden="true" />
+                      <span className="ml-7 grid size-7 place-items-center text-muted-foreground">
+                        <FilePenLineIcon className="size-5" aria-hidden="true" />
                       </span>
                     }
-                    previewBounds={COMPACT_TREE_NODE_METRICS.bounds}
-                    previewStyle={{ width: COMPACT_TREE_NODE_METRICS.width }}
+                    previewBounds={CREATION_TREE_COMPACT_NODE_METRICS.bounds}
+                    previewStyle={{ width: CREATION_TREE_COMPACT_NODE_METRICS.width }}
                     dataAttributes={{ 'data-creation-draft-id': draft.id }}
                     aria-disabled={busy}
                     controls={

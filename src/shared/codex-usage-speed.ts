@@ -8,5 +8,9 @@ export function codexUsageSpeedCreditMultiplier(normalizedModel: string, service
 }
 
 export function codexUsageStandardEquivalentMultiplier(normalizedModel: string, serviceTier: CodexUsageServiceTier) {
+  const modelPrice = codexUsageModelPrice(normalizedModel);
+  if (serviceTier === 'FAST' && modelPrice?.fastIncludedUsageMultiplier !== undefined) {
+    return modelPrice.fastIncludedUsageMultiplier;
+  }
   return codexUsageSpeedCreditMultiplier(normalizedModel, serviceTier);
 }

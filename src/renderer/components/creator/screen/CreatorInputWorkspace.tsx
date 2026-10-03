@@ -8,6 +8,8 @@ import { GenerationTaskTray } from '@/renderer/components/creator/GenerationTask
 import { PasteDropSurface } from '@/renderer/components/creator/intake/PasteDropSurface';
 import { MinimalCreationStarter } from '@/renderer/components/creator/MinimalCreationStarter';
 import { CreatorInputHeader } from '@/renderer/components/creator/screen/CreatorInputHeader';
+import { CreationDraftConflictStatus } from '@/renderer/components/creator/screen/CreationDraftConflictStatus';
+import { creatorInputOwner } from '@/renderer/components/creator/screen/creatorInputOwnership';
 import type { CreatorScreenViewModel } from '@/renderer/components/creator/screen/creatorScreenViewModel';
 import { StyleExplorationPanel } from '@/renderer/components/creator/StyleExplorationPanel';
 import { useCreatorVideoImport } from '@/renderer/components/creator/workflows/useCreatorVideoImport';
@@ -379,6 +381,7 @@ export function CreatorInputWorkspace({ model, sourceFormId }: Props) {
           onSelectImageMode={() => draftInput.navigation.selectCreationStartMode('image')}
         />
         {noteWorkspace.back}
+        <CreationDraftConflictStatus model={model} />
         <CreationVideoAttachments
           videos={document.videoAttachments}
           locale={app.locale}
@@ -549,15 +552,10 @@ function useCreatorNoteWorkspace(model: CreatorScreenViewModel, hidden: boolean)
   };
 }
 function creatorInputHidden({ app, selection, workbench }: CreatorScreenViewModel) {
-  const selected = selection.contentSelection;
   return (
     app.documentWorkspaceActive ||
     app.comparisonFullWindow ||
-    selected.selectedAlbum ||
-    (selected.selectedArticle && !workbench.editorDerivedVisual) ||
-    selected.selectedEvaluationSuite ||
-    selected.selectedImageBreakdown ||
-    (selected.selectedSocialPost && !workbench.editorDerivedVisual)
+    !creatorInputOwner(selection.contentSelection, Boolean(workbench.editorDerivedVisual))
   );
 }
 

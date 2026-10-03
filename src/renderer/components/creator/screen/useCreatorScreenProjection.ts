@@ -14,6 +14,7 @@ type SelectionSession = ReturnType<typeof useCreatorSelectionSession>;
 type WorkbenchProjection = ReturnType<typeof useCreatorWorkbenchProjection>;
 
 interface Options {
+  libraryVisible?: boolean;
   animationWorkspaceActive: boolean;
   comparisonFullWindow: boolean;
   documentWorkspaceActive: boolean;
@@ -71,6 +72,7 @@ function outputPaneVisible(
 }
 
 export function useCreatorScreenProjection({
+  libraryVisible = true,
   animationWorkspaceActive,
   comparisonFullWindow,
   documentWorkspaceActive,
@@ -121,7 +123,7 @@ export function useCreatorScreenProjection({
     !animationWorkspaceActive &&
     outputPaneVisible(selection, workbench, documentWorkspaceActive, comparisonFullWindow, outputMode);
   const panes = useCreatorPanes({
-    showResultLibrary: true,
+    showResultLibrary: libraryVisible,
     showOutputInspector: showOutputPane,
     comparisonFullWindow: !animationWorkspaceActive && (comparisonFullWindow || promptFullWindow),
   });

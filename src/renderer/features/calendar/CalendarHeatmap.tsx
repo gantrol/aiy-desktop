@@ -3,6 +3,7 @@ import { Button } from '@/renderer/components/ui/button';
 import { useI18n } from '@/renderer/i18n/useI18n';
 import { cn } from '@/renderer/lib/utils';
 import { formatCivilDate } from '@/renderer/features/calendar/calendarDates';
+import { calendarHeatmapScale } from '@/renderer/features/calendar/calendarHeatmapScale';
 import type { CalendarDaySummary, CalendarPreferences } from '@/shared/contracts/calendar';
 
 // Quantity stays encoded in the fill while interaction is indicated by the ring.
@@ -10,7 +11,8 @@ const levels = [
   'bg-muted hover:bg-muted active:bg-muted',
   'bg-selected-foreground/20 hover:bg-selected-foreground/20 active:bg-selected-foreground/20',
   'bg-selected-foreground/40 hover:bg-selected-foreground/40 active:bg-selected-foreground/40',
-  'bg-selected-foreground/65 hover:bg-selected-foreground/65 active:bg-selected-foreground/65',
+  'bg-selected-foreground/60 hover:bg-selected-foreground/60 active:bg-selected-foreground/60',
+  'bg-selected-foreground/80 hover:bg-selected-foreground/80 active:bg-selected-foreground/80',
   'bg-selected-foreground hover:bg-selected-foreground active:bg-selected-foreground',
 ];
 
@@ -50,17 +52,19 @@ export function CalendarHeatmap({
   const columns = Math.ceil((offset + days.length) / 7);
   const months = useMemo(() => days.filter((date) => date.endsWith('-01')), [days]);
   const cells = useMemo(() => {
-    const maximum = Math.max(1, ...days.map((date) => summaries.get(date)?.total ?? 0));
+    const scale = calendarHeatmapScale(
+      days.filter((date) => date <= today).map((date) => summaries.get(date)?.total ?? 0),
+    );
     const number = new Intl.NumberFormat(locale);
     const format = new Intl.DateTimeFormat(locale, { timeZone: 'UTC', dateStyle: 'full' });
     return days.map((date) => {
       const summary = summaries.get(date);
       const count = summary?.total ?? 0;
-      const level = count ? Math.max(1, Math.ceil(Math.sqrt(count / maximum) * 4)) : 0;
+      const level = scale(count);
       const label = `${format.format(new Date(`${date}T12:00:00Z`))} · ${summary ? `${m.daySummary} ${number.format(count)}` : m.unknown}`;
       return { date, count, level, label, known: Boolean(summary) };
     });
-  }, [days, summaries, m, locale]);
+  }, [days, summaries, today, m, locale]);
 
   useLayoutEffect(() => {
     const root = scroller.current;
@@ -229,7 +233,7 @@ export function CalendarHeatmap({
       </div>
       <div
         className="mt-2 flex items-center justify-end gap-1.5 text-[10px] text-muted-foreground"
-        title={m.summaryScope}
+        title={`${m.summaryScope} ${m.heatmapScale}`}
       >
         <span className="mr-1">{m.heatmapLess}</span>
         {levels.map((level) => (

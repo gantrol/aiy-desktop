@@ -1,11 +1,5 @@
 import { ListItem } from '@tiptap/extension-list';
-import {
-  NodeViewContent,
-  NodeViewWrapper,
-  ReactNodeViewRenderer,
-  useEditorState,
-  type NodeViewProps,
-} from '@tiptap/react';
+import { NodeViewWrapper, ReactNodeViewRenderer, useEditorState, type NodeViewProps } from '@tiptap/react';
 import { useEffect, type MouseEvent } from 'react';
 import { ChevronRight } from 'lucide-react';
 import { Button } from '@/renderer/components/ui/button';
@@ -29,6 +23,7 @@ import { editingItemId, outlineTextSelectionItem } from '@/renderer/features/con
 import { cn } from '@/renderer/lib/utils';
 import { useOutlineItemDrag } from '@/renderer/features/content-editor/useOutlineItemDrag';
 import './outline-list-item.css';
+import { ContentNodeViewContent } from '@/renderer/features/content-editor/ContentNodeViewContent';
 
 function insideFoldedContent(node: NodeViewProps['node'], itemPosition: number, position: number) {
   let inside = false;
@@ -48,7 +43,7 @@ function outlineFocusButtonClassName(editing: boolean) {
   );
 }
 
-function OutlineItem({ node, editor, getPos }: NodeViewProps) {
+function OutlineItem({ node, editor, getPos, view: editorView }: NodeViewProps) {
   const initialPosition = getPos();
   const noteItem =
     initialPosition !== undefined &&
@@ -69,7 +64,7 @@ function OutlineItem({ node, editor, getPos }: NodeViewProps) {
   const selected = view.selected.includes(id);
   const visibility = outlineItemVisibility(editor.state.doc, view, id);
   const editable = useEditorState({ editor, selector: ({ editor: current }) => current.isEditable });
-  const drag = useOutlineItemDrag({ editor, id, selected, view, editable, visibility, getPos });
+  const drag = useOutlineItemDrag({ editor, editorView, id, selected, view, editable, visibility });
   let childCount = 0;
   node.forEach((child) => {
     if (isOutlineChildList({ type: child.type.name, attrs: child.attrs })) childCount += child.childCount;
@@ -99,7 +94,7 @@ function OutlineItem({ node, editor, getPos }: NodeViewProps) {
   if (noteItem) {
     return (
       <NodeViewWrapper className="relative pl-5 before:absolute before:left-1 before:top-2 before:size-1 before:rounded-full before:bg-current">
-        <NodeViewContent />
+        <ContentNodeViewContent view={editorView} />
       </NodeViewWrapper>
     );
   }
@@ -228,7 +223,8 @@ function OutlineItem({ node, editor, getPos }: NodeViewProps) {
           {drag.dragError}
         </span>
       )}
-      <NodeViewContent
+      <ContentNodeViewContent
+        view={editorView}
         className={`min-w-0 [&>[data-node-view-content-react]>p:not(:first-child)]:my-2 [&>[data-node-view-content-react]>p:first-child]:!my-0 [&>[data-node-view-content-react]>p:first-child]:min-h-7 [&>[data-node-view-content-react]>p:first-child]:leading-7 ${node.attrs.taskState ? '[&>[data-node-view-content-react]>p:first-child]:pr-20' : '[&>[data-node-view-content-react]>p:first-child]:pr-7'}`}
       />
     </NodeViewWrapper>

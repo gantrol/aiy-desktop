@@ -52,12 +52,6 @@ export function LibraryStartScreen({ onCommitted, onContentPackImported, notify 
   }, []);
 
   useEffect(() => {
-    const paste = (event: ClipboardEvent) => controller.onPaste(event);
-    window.addEventListener('paste', paste);
-    return () => window.removeEventListener('paste', paste);
-  }, [controller]);
-
-  useEffect(() => {
     function keyDown(event: KeyboardEvent) {
       if (event.key === 'Escape' && state.dragActive) controller.cancelDrag();
       else if (event.key === 'Escape' && state.items.length && !state.pendingIntent) controller.reset();
@@ -105,6 +99,7 @@ export function LibraryStartScreen({ onCommitted, onContentPackImported, notify 
       data-intake-state={state.status}
       aria-busy={state.status === 'READING' || pending}
       className="relative flex size-full min-h-0 flex-col overflow-hidden bg-background"
+      onPaste={(event) => controller.onPaste(event.nativeEvent)}
       onDragEnter={controller.onDragEnter}
       onDragOver={controller.onDragOver}
       onDragLeave={controller.onDragLeave}

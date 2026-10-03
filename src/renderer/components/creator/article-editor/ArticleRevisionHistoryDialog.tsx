@@ -11,7 +11,8 @@ import {
   RefreshCwIcon,
   RotateCcwIcon,
 } from 'lucide-react';
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { useArticleRevisionIndex } from '@/renderer/components/creator/article-editor/useArticleRevisionIndex';
 import type { ArticleDto, ArticleRevisionDto, ArticleRevisionSummaryDto } from '@/shared/contracts';
 import { ArticleReferenceDocument } from '@/renderer/components/creator/article-editor/ArticleEditorComparison';
 import { ArticleHeaderIconButton } from '@/renderer/components/creator/article-editor/ArticleEditorHeader';
@@ -34,8 +35,6 @@ import { fixedHistoryRevision } from '@/shared/reference-history-restore';
 import type { ReferenceHistoryResult } from '@/shared/contracts/content-library';
 import { referenceHistoryMessages } from '@/shared/i18n/reference-history';
 
-const REVISION_PAGE_SIZE = 50;
-
 type RevisionView = 'diff' | 'preview';
 type TextDiffPart = ReturnType<typeof diffPromptText>[number];
 type DisplayDiffPart = TextDiffPart | { type: 'omitted' };
@@ -55,116 +54,6 @@ function revisionTimestamp(createdAt: string, zh: boolean) {
     dateStyle: 'medium',
     timeStyle: 'short',
   }).format(timestamp);
-}
-
-function mergeRevisionPages(
-  current: readonly ArticleRevisionSummaryDto[],
-  incoming: readonly ArticleRevisionSummaryDto[],
-) {
-  const revisions = new Map(current.map((revision) => [revision.revisionId, revision]));
-  incoming.forEach((revision) => revisions.set(revision.revisionId, revision));
-  return [...revisions.values()].sort((left, right) => right.revisionNo - left.revisionNo);
-}
-
-function useRevisionIndex(articleId: string, currentRevisionId: string, open: boolean) {
-  const [revisions, setRevisions] = useState<ArticleRevisionSummaryDto[]>([]);
-  const [selectedRevisionId, setSelectedRevisionId] = useState<string | null>(null);
-  const [resolvedCurrentRevisionId, setResolvedCurrentRevisionId] = useState(currentRevisionId);
-  const [nextBeforeRevisionNo, setNextBeforeRevisionNo] = useState<number | null>(null);
-  const [loading, setLoading] = useState(false);
-  const [failed, setFailed] = useState(false);
-  const requestRef = useRef(0);
-
-  const loadPage = useCallback(
-    async (beforeRevisionNo: number | null, selection: 'current' | 'older' | 'none') => {
-      const request = ++requestRef.current;
-      setLoading(true);
-      setFailed(false);
-      try {
-        const result = await window.desktopApi.articleRevisionHistory({
-          articleId,
-          beforeRevisionNo,
-          limit: REVISION_PAGE_SIZE,
-        });
-        if (requestRef.current !== request) return;
-        if (result.articleId !== articleId) throw new Error('Article revision history identity mismatch');
-        setRevisions((current) =>
-          beforeRevisionNo === null ? result.revisions : mergeRevisionPages(current, result.revisions),
-        );
-        setResolvedCurrentRevisionId(result.currentRevisionId);
-        setNextBeforeRevisionNo(result.nextBeforeRevisionNo);
-        if (selection === 'current') {
-          const current = result.revisions.find((revision) => revision.revisionId === result.currentRevisionId);
-          setSelectedRevisionId(current?.revisionId ?? result.revisions[0]?.revisionId ?? null);
-        } else if (selection === 'older') {
-          setSelectedRevisionId(result.revisions[0]?.revisionId ?? null);
-        }
-      } catch {
-        if (requestRef.current === request) setFailed(true);
-      } finally {
-        if (requestRef.current === request) setLoading(false);
-      }
-    },
-    [articleId],
-  );
-
-  useEffect(() => {
-    if (!open) {
-      requestRef.current += 1;
-      return;
-    }
-    setRevisions([]);
-    setSelectedRevisionId(null);
-    setResolvedCurrentRevisionId(currentRevisionId);
-    setNextBeforeRevisionNo(null);
-    setFailed(false);
-    void loadPage(null, 'current');
-    return () => {
-      requestRef.current += 1;
-    };
-  }, [currentRevisionId, loadPage, open]);
-
-  const selectedIndex = revisions.findIndex((revision) => revision.revisionId === selectedRevisionId);
-  const loadOlder = useCallback(
-    async (selectFirst: boolean) => {
-      if (loading || nextBeforeRevisionNo === null) return;
-      await loadPage(nextBeforeRevisionNo, selectFirst ? 'older' : 'none');
-    },
-    [loadPage, loading, nextBeforeRevisionNo],
-  );
-  const selectOlder = useCallback(async () => {
-    setFailed(false);
-    const older = revisions[selectedIndex + 1];
-    if (older) setSelectedRevisionId(older.revisionId);
-    else await loadOlder(true);
-  }, [loadOlder, revisions, selectedIndex]);
-  const selectNewer = useCallback(() => {
-    setFailed(false);
-    const newer = revisions[selectedIndex - 1];
-    if (newer) setSelectedRevisionId(newer.revisionId);
-  }, [revisions, selectedIndex]);
-  const selectRevision = useCallback((revisionId: string) => {
-    setFailed(false);
-    setSelectedRevisionId(revisionId);
-  }, []);
-
-  return {
-    failed,
-    loading,
-    nextBeforeRevisionNo,
-    resolvedCurrentRevisionId,
-    revisions,
-    selectedRevisionId,
-    selectedRevision: selectedIndex >= 0 ? (revisions[selectedIndex] ?? null) : null,
-    olderRevision: selectedIndex >= 0 ? (revisions[selectedIndex + 1] ?? null) : null,
-    canSelectNewer: selectedIndex > 0,
-    canSelectOlder: selectedIndex >= 0 && (selectedIndex < revisions.length - 1 || nextBeforeRevisionNo !== null),
-    loadOlder,
-    reload: () => loadPage(null, 'current'),
-    selectNewer,
-    selectOlder,
-    selectRevision,
-  };
 }
 
 function useRevisionSnapshot(articleId: string, revisionId: string | null, open: boolean) {
@@ -220,7 +109,7 @@ function useRevisionSnapshot(articleId: string, revisionId: string | null, open:
   return { failed, loading, snapshot, retry: () => setRetryRevision((current) => current + 1) };
 }
 
-type RevisionIndex = ReturnType<typeof useRevisionIndex>;
+type RevisionIndex = ReturnType<typeof useArticleRevisionIndex>;
 type RevisionSnapshot = ReturnType<typeof useRevisionSnapshot>;
 
 function RevisionPicker({ disabled, index }: { disabled: boolean; index: RevisionIndex; zh: boolean }) {
@@ -657,19 +546,24 @@ export function ArticleRevisionHistoryDialog({
   currentRevisionId,
   zh,
   onRestore,
+  initialRevision,
+  triggerLabel,
 }: {
   spaceId: string;
   articleId: string;
   currentRevisionId: string;
   zh: boolean;
   onRestore?(revision: ArticleRevisionDto): Promise<boolean>;
+  initialRevision?: Pick<ArticleRevisionSummaryDto, 'revisionId' | 'revisionNo'>;
+  triggerLabel?: string;
 }) {
   const historyCopy = useI18n().messages.referenceOutline.history;
   const [open, setOpen] = useState(false);
   const [view, setView] = useState<RevisionView>('diff');
   const [restoring, setRestoring] = useState(false);
   const [restoreFailed, setRestoreFailed] = useState(false);
-  const index = useRevisionIndex(articleId, currentRevisionId, open);
+  const index = useArticleRevisionIndex(articleId, currentRevisionId, open, initialRevision);
+  const triggerRef = useRef<HTMLButtonElement>(null);
   const selected = useRevisionSnapshot(articleId, index.selectedRevisionId, open);
   const older = useRevisionSnapshot(articleId, index.olderRevision?.revisionId ?? null, open && view === 'diff');
   const selectedDependencies = useReferenceHistory(open ? selected.snapshot : null, spaceId);
@@ -714,11 +608,26 @@ export function ArticleRevisionHistoryDialog({
 
   return (
     <>
-      <ArticleHeaderIconButton type="button" variant="ghost" label={label} onClick={() => setOpen(true)}>
-        <HistoryIcon className="size-4" />
-      </ArticleHeaderIconButton>
+      {triggerLabel ? (
+        <Button ref={triggerRef} variant="ghost" size="sm" onClick={() => setOpen(true)}>
+          <FileDiffIcon className="size-3.5" />
+          {triggerLabel}
+        </Button>
+      ) : (
+        <ArticleHeaderIconButton type="button" variant="ghost" label={label} onClick={() => setOpen(true)}>
+          <HistoryIcon className="size-4" />
+        </ArticleHeaderIconButton>
+      )}
       <Dialog open={open} onOpenChange={setOpen}>
-        <DialogContent className="h-[min(48rem,calc(100vh-2rem))] max-w-5xl grid-rows-[auto_minmax(0,1fr)_auto] gap-0 p-0">
+        <DialogContent
+          className="h-[min(48rem,calc(100vh-2rem))] max-w-5xl grid-rows-[auto_minmax(0,1fr)_auto] gap-0 p-0"
+          onCloseAutoFocus={(event) => {
+            if (triggerRef.current) {
+              event.preventDefault();
+              triggerRef.current.focus();
+            }
+          }}
+        >
           <DialogHeader className="border-b px-4 py-3">
             <DialogTitle className="sr-only">{label}</DialogTitle>
             <div className="flex items-center gap-3 pr-8">

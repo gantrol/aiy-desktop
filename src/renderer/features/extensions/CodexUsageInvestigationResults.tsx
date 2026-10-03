@@ -13,6 +13,7 @@ import {
 import { CodexUsageEvidenceDetails } from '@/renderer/features/extensions/CodexUsageEvidenceDetails';
 import { CodexUsageQuotaSampling } from '@/renderer/features/extensions/CodexUsageQuotaSampling';
 import { useI18n } from '@/renderer/i18n/useI18n';
+import { CodexOutputThroughputComparison } from '@/renderer/features/extensions/CodexOutputThroughputComparison';
 
 type UsageLabels = ReturnType<typeof useI18n>['messages']['extensions']['codexUsageInvestigator'];
 type View = 'glance' | 'details' | 'compare';
@@ -148,6 +149,7 @@ export const CodexUsageInvestigationResults = memo(function CodexUsageInvestigat
           {visited.includes('compare') &&
             (investigation.modelComparison ? (
               <>
+                <CodexOutputThroughputComparison analysis={investigation.modelComparison.outputThroughput} />
                 {investigation.modelComparison.samplesTruncated && (
                   <Badge variant="outline">{labels.modelComparison.truncated}</Badge>
                 )}

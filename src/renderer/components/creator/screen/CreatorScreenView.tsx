@@ -41,7 +41,7 @@ export function CreatorScreenView({ model }: Props) {
       <div className="@container/creator flex size-full min-h-0 min-w-0 flex-col overflow-hidden">
         <nav
           className={
-            !animationWorkspace && (app.comparisonFullWindow || app.promptFullWindow)
+            app.libraryVisible === false || (!animationWorkspace && (app.comparisonFullWindow || app.promptFullWindow))
               ? 'hidden'
               : 'flex h-11 shrink-0 items-center justify-center border-b bg-muted/40 px-3 @min-[840px]/creator:hidden'
           }
@@ -76,7 +76,7 @@ export function CreatorScreenView({ model }: Props) {
           className="grid min-h-0 min-w-0 flex-1 grid-cols-[minmax(0,1fr)] grid-rows-[minmax(0,1fr)] overflow-hidden"
           style={projection.panes.workspaceGridStyle}
         >
-          <CreatorLibraryWorkspace model={model} />
+          {app.libraryVisible !== false && <CreatorLibraryWorkspace model={model} />}
           {animationWorkspace && (
             <div
               className={`${projection.panes.multiPane || projection.panes.compactPanel === 'creator' ? 'flex' : 'hidden'} min-h-0 min-w-0 overflow-hidden bg-background`}

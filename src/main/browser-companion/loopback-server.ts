@@ -3,6 +3,7 @@ import { createServer, type IncomingMessage, type Server, type ServerResponse } 
 import {
   BROWSER_COMPANION_BOOTSTRAP_PATH_PREFIX,
   BROWSER_COMPANION_EXTENSION_ID,
+  BROWSER_COMPANION_EXTENSION_ORIGIN,
   BROWSER_COMPANION_LOOPBACK_HOST,
   BROWSER_COMPANION_LOOPBACK_PORT,
   BROWSER_COMPANION_MAX_REQUEST_BYTES,
@@ -30,7 +31,7 @@ import {
   loadOrCreateBrowserCompanionCredentials,
 } from '@/main/browser-companion/loopback-credentials';
 import { resolveBrowserCompanionDataPath } from '@/main/browser-companion/data-path';
-import type { BrowserCompanionTarget } from '@/shared/contracts/browser-companion';
+import { browserCompanionTargetSchema, type BrowserCompanionTarget } from '@/shared/contracts/browser-companion';
 
 const REQUEST_CONTENT_TYPE = 'application/json';
 const NONCE_CACHE_LIMIT = 4_096;
@@ -285,6 +286,13 @@ export class BrowserCompanionLoopbackServer {
 
   private origin(request: IncomingMessage): { value: string; target: BrowserCompanionTarget } | null {
     const value = request.headers.origin;
+    if (value === BROWSER_COMPANION_EXTENSION_ORIGIN.slice(0, -1)) {
+      // The extension validates both frame and tab URLs. The signed envelope
+      // below still binds the request to this target; an Origin alone grants nothing.
+      const target = browserCompanionTargetSchema.safeParse(request.headers['x-aiy-companion-target']);
+      if (target.success) return { value, target: target.data };
+      return null;
+    }
     const target = browserCompanionTargetFromWebOrigin(value);
     return value && target ? { value, target } : null;
   }
@@ -292,7 +300,10 @@ export class BrowserCompanionLoopbackServer {
   private setCors(response: ServerResponse, origin: string): void {
     response.setHeader('Access-Control-Allow-Origin', origin);
     response.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
-    response.setHeader('Access-Control-Allow-Headers', `Content-Type, ${BROWSER_COMPANION_REQUEST_SIGNATURE_HEADER}`);
+    response.setHeader(
+      'Access-Control-Allow-Headers',
+      `Content-Type, ${BROWSER_COMPANION_REQUEST_SIGNATURE_HEADER}, x-aiy-companion-target`,
+    );
     response.setHeader(
       'Access-Control-Expose-Headers',
       [
@@ -541,6 +552,17 @@ export class BrowserCompanionLoopbackServer {
     const pendingBootstrapId = bootstrapId(request.url);
     if (pendingBootstrapId) {
       this.sendBootstrap(request, response, pendingBootstrapId);
+      return;
+    }
+    // Preflight lists header names, not the target value. It carries no operation.
+    if (
+      request.method === 'OPTIONS' &&
+      request.headers.origin === BROWSER_COMPANION_EXTENSION_ORIGIN.slice(0, -1) &&
+      this.validRequestSurface(request)
+    ) {
+      this.setCors(response, request.headers.origin);
+      response.writeHead(204);
+      response.end();
       return;
     }
     const origin = this.origin(request);

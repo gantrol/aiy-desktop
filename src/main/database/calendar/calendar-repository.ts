@@ -22,6 +22,7 @@ import {
 import { calendarCoverage } from '@/main/database/calendar/calendar-coverage';
 import { calendarDateStartEpoch, calendarLocalDate } from '@/main/database/calendar/calendar-time';
 import { calendarActivityItemFromReadRow } from '@/main/database/calendar/calendar-activity-item';
+import { attachCalendarContentRevisions } from '@/main/database/calendar/calendar-content-revisions';
 import { calendarCategorySql, CalendarSourceReader } from '@/main/database/calendar/calendar-sources';
 import {
   readCalendarDayCounts,
@@ -88,6 +89,7 @@ export class CalendarRepository {
             knownAt: input.knownAt ?? null,
             categories,
             includeInvalidated: input.includeInvalidated,
+            details: input.details,
           }),
         )
         .digest('hex');
@@ -115,6 +117,7 @@ export class CalendarRepository {
         }),
       );
       const items = visible.map((row) => this.readItem(row, input));
+      if (input.details) attachCalendarContentRevisions(this.db, items, input.knownAt);
       const last = visible.at(-1);
       return calendarQueryResultSchema.parse({
         items,

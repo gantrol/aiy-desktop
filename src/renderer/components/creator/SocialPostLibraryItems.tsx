@@ -143,12 +143,11 @@ export function SocialPostLibraryRow(props: Props) {
         <span className="relative grid h-[3.75rem] w-full place-items-center overflow-visible">
           <MediaStackPreview
             className="pointer-events-none"
-            size="tree"
-            singleItemAlign="center"
+            size="creation-tree"
             items={previewItems}
             maxItems={3}
+            badge={<SocialPostTypeBadge />}
           />
-          <SocialPostTypeBadge />
         </span>
       }
       controls={

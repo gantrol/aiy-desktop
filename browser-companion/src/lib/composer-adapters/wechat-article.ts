@@ -1,5 +1,10 @@
 import type { ComposerAdapter, ComposerElement } from '@/lib/composer-adapters/contract';
-import { isComposerElement, setMediaFiles } from '@/lib/composer-adapters/dom';
+import { isComposerElement, isVisible } from '@/lib/composer-adapters/dom';
+import {
+  embedWechatArticleImages,
+  isWechatImageUrl,
+  type UploadedWechatImage,
+} from '@/lib/composer-adapters/wechat-article-media';
 import { fillWechatArticleCover, hasWechatArticleCover } from '@/lib/composer-adapters/wechat-cover';
 import { WECHAT_ARTICLE as config, matchesWechatEditor } from '@/lib/composer-adapters/wechat-config';
 import { openWechatComposer, readWechatComposerText } from '@/lib/composer-adapters/wechat';
@@ -10,14 +15,6 @@ function findEditors(): ComposerElement[] {
   return [...document.querySelectorAll(config.body)].filter(isComposerElement);
 }
 
-function findMediaInput(): HTMLInputElement | null {
-  const inputs = [...document.querySelectorAll<HTMLInputElement>(config.upload)].filter(
-    (input) => !input.disabled && !input.closest('.image-selector,#js_cover,.js_cover,.cover') && input.isConnected,
-  );
-  // Multiple unscoped controls could include a cover uploader. Fail closed.
-  return inputs.length === 1 ? inputs[0]! : null;
-}
-
 function textOf(root: Node): string {
   const clone = root.cloneNode(true);
   if (clone instanceof Element) clone.querySelectorAll(config.placeholder).forEach((node) => node.remove());
@@ -25,18 +22,12 @@ function textOf(root: Node): string {
 }
 
 function loadedImage(image: HTMLImageElement): boolean {
-  try {
-    const url = new URL(image.src);
-    return (
-      url.protocol === 'https:' &&
-      (url.hostname === 'mmbiz.qpic.cn' || url.hostname.endsWith('.qpic.cn')) &&
-      /^[1-9]\d*$/u.test(image.getAttribute('data-imgfileid') ?? '') &&
-      image.complete &&
-      image.naturalWidth > 0
-    );
-  } catch {
-    return false;
-  }
+  return (
+    isWechatImageUrl(image.src) &&
+    /^[1-9]\d*$/u.test(image.getAttribute('data-imgfileid') ?? '') &&
+    image.complete &&
+    image.naturalWidth > 0
+  );
 }
 
 function articleImages(root: ParentNode): HTMLImageElement[] {
@@ -44,26 +35,16 @@ function articleImages(root: ParentNode): HTMLImageElement[] {
   return [...root.querySelectorAll<HTMLImageElement>('img:not(.ProseMirror-separator)')];
 }
 
-function selectPlaceholder(editor: HTMLElement, placeholder: string): boolean {
-  const walker = document.createTreeWalker(editor, NodeFilter.SHOW_TEXT);
-  let node: Node | null;
-  let match: { node: Node; offset: number } | null = null;
-  while ((node = walker.nextNode())) {
-    const text = node.textContent ?? '';
-    const offset = text.indexOf(placeholder);
-    if (offset < 0) continue;
-    if (match || text.lastIndexOf(placeholder) !== offset) return false;
-    match = { node, offset };
-  }
-  if (!match) return false;
-  editor.focus({ preventScroll: true });
-  const range = document.createRange();
-  range.setStart(match.node, match.offset);
-  range.setEnd(match.node, match.offset + placeholder.length);
-  const selection = window.getSelection();
-  selection?.removeAllRanges();
-  selection?.addRange(range);
-  return selection?.toString() === placeholder;
+async function waitForArticleText(editor: HTMLElement, expectedText: string): Promise<boolean> {
+  // WeChat can inspect pasted HTML asynchronously before applying its document
+  // transaction. A single event-loop turn is not a completion signal.
+  const deadline = Date.now() + 10_000;
+  do {
+    await new Promise((resolve) => window.setTimeout(resolve, 25));
+    if (!editor.isConnected) return false;
+    if (textOf(editor) === expectedText) return true;
+  } while (Date.now() < deadline);
+  return false;
 }
 
 const allowedTags = new Set([
@@ -124,8 +105,7 @@ function prepareArticle(html: string, fileCount: number, coverMediaIndex?: numbe
     return null;
   const template = document.createElement('template');
   template.innerHTML = html;
-  const uploads: { placeholder: string; fileIndex: number }[] = [];
-  const prefix = `AIY_IMAGE_${crypto.randomUUID().replaceAll('-', '')}_`;
+  const imageIndexes: number[] = [];
   for (const element of template.content.querySelectorAll('*')) {
     if (!allowedTags.has(element.tagName)) return null;
     for (const attribute of [...element.attributes]) {
@@ -135,17 +115,14 @@ function prepareArticle(html: string, fileCount: number, coverMediaIndex?: numbe
       if (attribute.name === 'src' && element.tagName !== 'IMG') return null;
     }
     if (element.tagName !== 'IMG') continue;
-    const index = /^aiy-handoff-media:(\d+)$/u.exec(element.getAttribute('src') ?? '');
-    if (!index || Number(index[1]) >= fileCount || uploads.length >= 100) return null;
-    const placeholder = `${prefix}${uploads.length}_END`;
-    uploads.push({ placeholder, fileIndex: Number(index[1]) });
-    element.replaceWith(document.createTextNode(placeholder));
+    const index = handoffMediaIndex(element.getAttribute('src'), fileCount);
+    if (index === null || imageIndexes.length >= 100) return null;
+    imageIndexes.push(index);
   }
-  const referencedFiles = new Set(uploads.map((item) => item.fileIndex));
+  const referencedFiles = new Set(imageIndexes);
   if (coverMediaIndex !== undefined) referencedFiles.add(coverMediaIndex);
   if (referencedFiles.size !== fileCount) return null;
-  const expectedWithPlaceholders = textOf(template.content);
-  return { html: template.innerHTML, uploads, expectedWithPlaceholders };
+  return { template, imageIndexes, svgCount: 0 };
 }
 
 const svgTags = new Set(['SVG', 'G', 'RECT', 'TEXT', 'IMAGE', 'ANIMATE']);
@@ -235,8 +212,8 @@ function prepareInteractiveArticle(html: string, fileCount: number) {
 }
 
 function substituteUploadedImages(
-  prepared: NonNullable<ReturnType<typeof prepareInteractiveArticle>>,
-  uploadedByIndex: ReadonlyMap<number, HTMLImageElement>,
+  prepared: { template: HTMLTemplateElement; svgCount: number },
+  uploadedByIndex: ReadonlyMap<number, UploadedWechatImage>,
   fileCount: number,
 ) {
   const { template } = prepared;
@@ -244,36 +221,108 @@ function substituteUploadedImages(
     const index = handoffMediaIndex(image.getAttribute('src'), fileCount);
     const uploaded = index === null ? null : uploadedByIndex.get(index);
     if (!uploaded) return null;
-    image.setAttribute('src', uploaded.src);
-    const fileId = uploaded.getAttribute('data-imgfileid');
-    if (fileId) image.setAttribute('data-imgfileid', fileId);
+    image.setAttribute('src', uploaded.url);
+    image.setAttribute('data-src', uploaded.url);
+    image.setAttribute('data-imgfileid', uploaded.fileId);
   }
   for (const image of template.content.querySelectorAll('svg image')) {
     const index = handoffMediaIndex(image.getAttribute('href'), fileCount);
     const uploaded = index === null ? null : uploadedByIndex.get(index);
     if (!uploaded) return null;
-    image.setAttribute('href', uploaded.src);
-    image.setAttribute('xlink:href', uploaded.src);
+    image.setAttribute('href', uploaded.url);
+    image.setAttribute('xlink:href', uploaded.url);
   }
-  return { html: template.innerHTML, expectedText: textOf(template.content), svgCount: prepared.svgCount };
+  return { template, html: template.innerHTML, expectedText: textOf(template.content), svgCount: prepared.svgCount };
 }
 
 async function pasteArticleHtml(editor: HTMLElement, html: string, expectedText: string) {
+  const beforeContent = articleContentSequence(editor);
   editor.focus({ preventScroll: true });
   const range = document.createRange();
   range.selectNodeContents(editor);
   const selection = window.getSelection();
   selection?.removeAllRanges();
   selection?.addRange(range);
+  document.dispatchEvent(new Event('selectionchange'));
+  await new Promise((resolve) => window.setTimeout(resolve, 0));
+  if (!editor.isConnected || articleContentSequence(editor) !== beforeContent) return false;
   const transfer = new DataTransfer();
   transfer.setData('text/html', html);
   transfer.setData('text/plain', expectedText);
   const unhandled = editor.dispatchEvent(
     new ClipboardEvent('paste', { clipboardData: transfer, bubbles: true, cancelable: true }),
   );
-  if (unhandled && !document.execCommand('insertHTML', false, html)) return false;
-  await new Promise((resolve) => window.setTimeout(resolve, 0));
-  return textOf(editor) === expectedText;
+  // DOM insertion can bypass the host's document model and image uploader.
+  // Require WeChat to accept the complete paste transaction.
+  if (unhandled) return false;
+  return waitForArticleText(editor, expectedText);
+}
+
+function articleContentSequence(root: Node, matchImageIds = true): string {
+  const parts: (string | { image: string } | { svgImage: string })[] = [];
+  let text = '';
+  const flushText = () => {
+    const normalized = text.replace(/\s+/gu, ' ').trim();
+    if (normalized) parts.push(normalized);
+    text = '';
+  };
+  const walker = document.createTreeWalker(root, NodeFilter.SHOW_ELEMENT | NodeFilter.SHOW_TEXT, {
+    acceptNode(node) {
+      return node instanceof Element && node.matches(`${config.placeholder},.ProseMirror-separator`)
+        ? NodeFilter.FILTER_REJECT
+        : NodeFilter.FILTER_ACCEPT;
+    },
+  });
+  let node: Node | null;
+  let imagePosition = 0;
+  while ((node = walker.nextNode())) {
+    if (node instanceof HTMLImageElement) {
+      flushText();
+      parts.push({ image: matchImageIds ? (node.getAttribute('data-imgfileid') ?? '') : String(imagePosition++) });
+    } else if (node instanceof SVGElement && node.localName === 'image') {
+      flushText();
+      parts.push({ svgImage: node.getAttribute('href') || node.getAttribute('xlink:href') || '' });
+    } else if (node.nodeType === Node.TEXT_NODE) text += node.textContent ?? '';
+  }
+  flushText();
+  return JSON.stringify(parts);
+}
+
+async function confirmArticle(
+  editor: HTMLElement,
+  final: NonNullable<ReturnType<typeof substituteUploadedImages>>,
+  isCurrent: () => boolean,
+  nativeUpload = false,
+) {
+  const expectedSequence = articleContentSequence(final.template.content, !nativeUpload);
+  const expectedImages = articleImages(final.template.content).length;
+  const deadline = Date.now() + (nativeUpload ? 8 * 60_000 : 30_000);
+  let progressDeadline = Date.now() + 90_000;
+  let loadedCount = 0;
+  while (isCurrent() && Date.now() < Math.min(deadline, progressDeadline)) {
+    const images = articleImages(editor);
+    const loaded = images.filter(loadedImage).length;
+    if (loaded > loadedCount) {
+      loadedCount = loaded;
+      progressDeadline = Date.now() + 90_000;
+    }
+    if (
+      [...document.querySelectorAll<HTMLElement>('.weui-desktop-toast,.weui-desktop-toptips')].some(
+        (element) => isVisible(element) && /上传失败|上传出错|文件过大|图片太大/.test(element.textContent ?? ''),
+      )
+    )
+      return false;
+    if (
+      images.length === expectedImages &&
+      loaded === expectedImages &&
+      textOf(editor) === final.expectedText &&
+      articleContentSequence(editor, !nativeUpload) === expectedSequence &&
+      !editor.innerHTML.includes('aiy-handoff-media:')
+    )
+      return true;
+    await new Promise((resolve) => window.setTimeout(resolve, 100));
+  }
+  return false;
 }
 
 export const wechatArticleComposerAdapter: ComposerAdapter = {
@@ -293,7 +342,9 @@ export const wechatArticleComposerAdapter: ComposerAdapter = {
   acceptsMedia(files) {
     return files.every((file) => ['image/png', 'image/jpeg', 'image/gif', 'image/webp'].includes(file.type));
   },
-  findMediaInput,
+  findMediaInput() {
+    return null;
+  },
   requestMediaInput() {},
   openComposer(handoffId) {
     return openWechatComposer(handoffId, 'article-body');
@@ -305,102 +356,77 @@ export const wechatArticleComposerAdapter: ComposerAdapter = {
     if (source.interactiveHtml && !interactive) return 'INVALID_REQUEST';
     const article = prepareArticle(source.staticHtml, files.length, coverMediaIndex);
     if (!article) return 'INVALID_REQUEST';
-    if (files.length && !findMediaInput()) return 'MEDIA_INPUT_NOT_FOUND';
-    // Use paste transactions so the host editor and its document stay aligned.
-    if (!(await pasteArticleHtml(editor, article.html, article.expectedWithPlaceholders))) return 'FILL_FAILED';
-
-    const deadline = Date.now() + 8 * 60_000;
-    let uploadedCount = 0;
-    const uploadedByIndex = new Map<number, HTMLImageElement>();
-    for (const upload of article.uploads) {
-      if (!editor.isConnected || !selectPlaceholder(editor, upload.placeholder)) return 'FILL_FAILED';
-      // The uploader reads ProseMirror's selection. Let its selection observer
-      // consume the DOM range before deleting the marker or opening an upload.
-      document.dispatchEvent(new Event('selectionchange'));
-      await new Promise((resolve) => window.setTimeout(resolve, 0));
-      if (window.getSelection()?.toString() !== upload.placeholder) return 'FILL_FAILED';
-      const input = findMediaInput();
-      if (!input) return 'MEDIA_FILL_FAILED';
-      if (!document.execCommand('delete') || textOf(editor).includes(upload.placeholder)) return 'FILL_FAILED';
-      await new Promise((resolve) => window.setTimeout(resolve, 0));
-      // WeChat's native image-paste plugin starts its remote upload pipeline.
-      // The toolbar can insert a local data URL without starting that pipeline.
-      const imageTransfer = new DataTransfer();
-      imageTransfer.items.add(files[upload.fileIndex]!);
-      const unhandledImage = editor.dispatchEvent(
-        new ClipboardEvent('paste', {
-          clipboardData: imageTransfer,
-          bubbles: true,
-          cancelable: true,
-        }),
-      );
-      if (unhandledImage) {
-        input.value = '';
-        if (!setMediaFiles(input, [files[upload.fileIndex]!])) return 'MEDIA_FILL_FAILED';
-      }
-      const imageDeadline = Math.min(deadline, Date.now() + 90_000);
-      let uploaded: HTMLImageElement | undefined;
-      while (Date.now() < imageDeadline && editor.isConnected) {
-        // The host normalizes earlier uploaded nodes and their CDN URLs.
-        // Each next upload must occupy the next image position in the document.
-        const currentImages = articleImages(editor);
-        if (currentImages.length > uploadedCount + 1) return 'MEDIA_FILL_FAILED';
-        const nextImage = currentImages[uploadedCount];
-        if (nextImage && loadedImage(nextImage) && currentImages.every(loadedImage)) {
-          uploaded = nextImage;
-          break;
-        }
-        const errors = [...document.querySelectorAll('.weui-desktop-toast,.weui-desktop-toptips')];
-        if (errors.some((element) => /上传失败|上传出错|文件过大/.test(element.textContent ?? '')))
-          return 'MEDIA_FILL_FAILED';
-        await new Promise((resolve) => window.setTimeout(resolve, 250));
-      }
-      if (!uploaded) return 'MEDIA_FILL_FAILED';
-      uploadedByIndex.set(upload.fileIndex, uploaded);
-      uploadedCount += 1;
-    }
-    const images = articleImages(editor);
-    if (images.length !== uploadedCount || images.some((image) => !loadedImage(image))) return 'MEDIA_FILL_FAILED';
-    const positioned = editor.cloneNode(true) as HTMLElement;
-    articleImages(positioned).forEach((image, index) =>
-      image.replaceWith(document.createTextNode(article.uploads[index]!.placeholder)),
-    );
-    if (textOf(positioned) !== article.expectedWithPlaceholders) return 'FILL_FAILED';
+    // Prepare the same embedded-image HTML as the original whole-article copy
+    // path. Keep local media references out of the page until it is complete.
+    const beforeHtml = editor.innerHTML;
+    const beforeUrl = window.location.href;
+    const unchanged = () => editor.isConnected && editor.innerHTML === beforeHtml && window.location.href === beforeUrl;
+    const referencedImages = new Set(article.imageIndexes);
     if (interactive) {
-      const final = substituteUploadedImages(interactive, uploadedByIndex, files.length);
-      if (!final) return 'INVALID_REQUEST';
-      const staticHtml = article.uploads.reduce(
-        (current, upload) => current.replace(upload.placeholder, uploadedByIndex.get(upload.fileIndex)!.outerHTML),
-        article.html,
-      );
-      const staticTemplate = document.createElement('template');
-      staticTemplate.innerHTML = staticHtml;
-      const restore = async () => {
-        await pasteArticleHtml(editor, staticHtml, textOf(staticTemplate.content));
-      };
-      const pasted = await pasteArticleHtml(editor, final.html, final.expectedText);
-      const svgRoots = editor.querySelectorAll('svg[id^="aiy_interaction_"]');
-      const survived =
-        pasted &&
-        svgRoots.length === final.svgCount &&
-        [...svgRoots].every(
-          (svg) =>
-            [...svg.querySelectorAll('animate')].length >= 2 &&
-            [...svg.querySelectorAll('animate')].every(
-              (animation) => animation.getAttribute('begin') === `${svg.getAttribute('id')}.click`,
-            ),
-        ) &&
-        [...editor.querySelectorAll('svg image')].every((image) =>
-          /^https:\/\/(?:[^/]+\.)?qpic\.cn\//u.test(
-            image.getAttribute('href') || image.getAttribute('xlink:href') || '',
-          ),
-        ) &&
-        articleImages(editor).every(loadedImage) &&
-        !editor.innerHTML.includes('aiy-handoff-media:');
-      if (!survived) {
-        await restore();
-        return 'FILL_FAILED';
+      for (const image of interactive.template.content.querySelectorAll('img,svg image')) {
+        const index = handoffMediaIndex(image.getAttribute('src') ?? image.getAttribute('href'), files.length);
+        if (index === null || !referencedImages.has(index)) return 'INVALID_REQUEST';
       }
+    }
+    const embedded = await embedWechatArticleImages(article.template, article.imageIndexes, files, unchanged);
+    if (!unchanged()) return 'COMPOSER_NOT_EMPTY';
+    if (!embedded) return 'MEDIA_FILL_FAILED';
+    const nativeArticle = {
+      template: embedded,
+      html: embedded.innerHTML,
+      expectedText: textOf(embedded.content),
+      svgCount: 0,
+    };
+    let userEdited = false;
+    const protectEdits = (event: Event) => {
+      if (event.isTrusted) userEdited = true;
+    };
+    const isCurrent = () => !userEdited && editor.isConnected && window.location.href === beforeUrl;
+    editor.addEventListener('beforeinput', protectEdits);
+    try {
+      if (!(await pasteArticleHtml(editor, nativeArticle.html, nativeArticle.expectedText))) return 'FILL_FAILED';
+      if (!(await confirmArticle(editor, nativeArticle, isCurrent, true))) return 'MEDIA_FILL_FAILED';
+      if (interactive) {
+        // Only interactive SVG needs a second whole-document transaction. Reuse
+        // the image URLs that WeChat has uploaded in the complete static body.
+        const uploadedByIndex = new Map<number, UploadedWechatImage>();
+        articleImages(editor).forEach((image, position) => {
+          uploadedByIndex.set(article.imageIndexes[position]!, {
+            url: image.src,
+            fileId: image.getAttribute('data-imgfileid')!,
+          });
+        });
+        const staticArticle = substituteUploadedImages(article, uploadedByIndex, files.length);
+        const final = substituteUploadedImages(interactive, uploadedByIndex, files.length);
+        if (!staticArticle || !final) return 'INVALID_REQUEST';
+        const restoreStatic = async () => {
+          if (isCurrent()) await pasteArticleHtml(editor, staticArticle.html, staticArticle.expectedText);
+        };
+        const pasted = await pasteArticleHtml(editor, final.html, final.expectedText);
+        if (!pasted || !(await confirmArticle(editor, final, isCurrent))) {
+          await restoreStatic();
+          return 'FILL_FAILED';
+        }
+        const svgRoots = editor.querySelectorAll('svg[id^="aiy_interaction_"]');
+        const survived =
+          svgRoots.length === final.svgCount &&
+          [...svgRoots].every(
+            (svg) =>
+              [...svg.querySelectorAll('animate')].length >= 2 &&
+              [...svg.querySelectorAll('animate')].every(
+                (animation) => animation.getAttribute('begin') === `${svg.getAttribute('id')}.click`,
+              ),
+          ) &&
+          [...editor.querySelectorAll('svg image')].every((image) =>
+            isWechatImageUrl(image.getAttribute('href') || image.getAttribute('xlink:href') || ''),
+          );
+        if (!survived) {
+          await restoreStatic();
+          return 'FILL_FAILED';
+        }
+      }
+    } finally {
+      editor.removeEventListener('beforeinput', protectEdits);
     }
     if (coverMediaIndex !== undefined && !(await fillWechatArticleCover(files[coverMediaIndex]!)))
       return 'MEDIA_FILL_FAILED';

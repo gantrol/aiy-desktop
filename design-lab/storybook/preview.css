@@ -1,0 +1,13 @@
+@import '../../src/renderer/styles/index.css';
+
+/* Discover the same production utilities even though Storybook has its own Vite entry. */
+@source '.';
+@source '../component-lab';
+@source '../../src/renderer';
+
+/* Storybook owns these loading elements outside React; keep their surface consistent. */
+body > .sb-preparing-story,
+body > .sb-preparing-docs {
+  background-color: var(--background);
+  color: var(--foreground);
+}

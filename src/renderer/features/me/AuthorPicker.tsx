@@ -1,11 +1,13 @@
-import { useEffect, useState } from 'react';
-import { CheckIcon, PencilIcon, PlusIcon, UserRoundIcon } from 'lucide-react';
+import { useEffect, useRef, useState } from 'react';
+import { PlusIcon, XIcon } from 'lucide-react';
 import { Button } from '@/renderer/components/ui/button';
-import { Input } from '@/renderer/components/ui/input';
-import { ProfileAvatar } from '@/renderer/features/me/ProfileAvatar';
+import { Command, CommandInput, CommandItem, CommandList } from '@/renderer/components/ui/command';
 import { authorDisplayName } from '@/renderer/features/me/AuthorNames';
 import { AuthorProfileForm } from '@/renderer/features/me/AuthorProfileForm';
-import { useAuthorUpdates } from '@/renderer/features/me/SpaceProfileProvider';
+import { AuthorPickerResults } from '@/renderer/features/me/AuthorPickerResults';
+import { AuthorPickerPagination } from '@/renderer/features/me/AuthorPickerPagination';
+import { AuthorWorks } from '@/renderer/features/me/AuthorWorks';
+import { useAuthorSearch } from '@/renderer/features/me/useAuthorSearch';
 import { useI18n } from '@/renderer/i18n/useI18n';
 import type { Author } from '@/shared/contracts/me';
 import type { useCreationAuthor } from '@/renderer/features/me/useCreationAuthor';
@@ -18,189 +20,214 @@ export function AuthorPicker({
   controller: ReturnType<typeof useCreationAuthor>;
 }) {
   const { messages } = useI18n();
-  const copy = messages.me.authors,
-    me = messages.me;
-  const [term, setTerm] = useState(''),
-    [offset, setOffset] = useState(0);
-  const [authors, setAuthors] = useState<Author[]>([]),
-    [nextOffset, setNextOffset] = useState<number | null>(null);
-  const [loading, setLoading] = useState(true),
-    [failed, setFailed] = useState(false);
-  const [mutationFailed, setMutationFailed] = useState(false),
-    [retry, setRetry] = useState(0);
-  const [editing, setEditing] = useState<Author | 'NEW' | null>(null);
-  const updates = useAuthorUpdates();
+  const copy = messages.me.authors;
+  const search = useAuthorSearch(spaceId);
+  const input = useRef<HTMLInputElement>(null);
+  const [active, setActive] = useState('');
+  const [error, setError] = useState<'candidatesChanged' | 'saveFailed' | null>(null);
+  const [detail, setDetail] = useState<{ kind: 'edit' | 'works'; author: Author } | null>(null);
+  const busy = controller.saving || controller.loading;
+  const disabled = busy || Boolean(controller.pendingAssignment);
+  const selected = controller.value?.authors ?? [];
+  const result = search.result;
+  const name = search.term.trim();
+  const canCreate = Boolean(name && result?.nameMatch.token);
+
   useEffect(() => {
-    let active = true;
-    setLoading(true);
-    setFailed(false);
-    const timer = window.setTimeout(
-      () => {
-        void window.desktopApi.me.authors({ spaceId, term, offset }).then(
-          (result) => {
-            if (!active) return;
-            setAuthors(result.authors);
-            setNextOffset(result.nextOffset);
-            setLoading(false);
-          },
-          () => {
-            if (active) {
-              setFailed(true);
-              setLoading(false);
-            }
-          },
-        );
-      },
-      term ? 180 : 0,
-    );
-    return () => {
-      active = false;
-      window.clearTimeout(timer);
-    };
-  }, [spaceId, term, offset, retry, updates.revision]);
-  const select = async (authorId: string | null) => {
-    setMutationFailed(false);
+    if (!detail && !disabled) input.current?.focus();
+  }, [detail, disabled]);
+
+  async function run(action: () => Promise<boolean>) {
+    setError(null);
     try {
-      await controller.assign(
+      if (await action()) input.current?.focus();
+    } catch (failure) {
+      const candidatesChanged = String(failure).includes('AUTHOR_CANDIDATES_CHANGED');
+      setError(candidatesChanged ? 'candidatesChanged' : 'saveFailed');
+      if (candidatesChanged || String(failure).includes('AUTHOR_CHANGED')) search.reload();
+    }
+  }
+  function select(authorId: string | null) {
+    void run(() =>
+      controller.assign(
         authorId
           ? {
-              kind: controller.value?.authors.some((author) => author.id === authorId) ? 'REMOVE' : 'EXISTING',
+              kind: selected.some((author) => author.id === authorId) ? 'REMOVE' : 'EXISTING',
               authorId,
             }
           : { kind: 'UNSET' },
-      );
-    } catch {
-      setMutationFailed(true);
-    }
-  };
-  if (editing)
-    return (
-      <AuthorProfileForm
-        key={editing === 'NEW' ? 'new' : editing.id}
-        initial={
-          editing === 'NEW'
-            ? { name: term, avatarDataUrl: null }
-            : { name: editing.name, avatarDataUrl: editing.avatarDataUrl }
-        }
-        busy={controller.saving}
-        onCancel={() => setEditing(null)}
-        onSave={async (fields) => {
-          const saved =
-            editing === 'NEW'
-              ? await controller.assign({ kind: 'NEW', fields })
-              : await controller.update(editing, fields);
-          if (saved) {
-            setEditing(null);
-          }
-          return saved;
-        }}
-      />
+      ),
     );
-  return (
-    <div className="grid gap-2">
-      <Input
-        value={term}
-        placeholder={copy.search}
-        aria-label={copy.search}
-        maxLength={200}
-        disabled={controller.saving}
-        onChange={(event) => {
-          setTerm(event.target.value);
-          setOffset(0);
+  }
+  function create() {
+    if (!name || !result?.nameMatch.token || disabled) return;
+    const selection = {
+      kind: 'NEW' as const,
+      fields: { name, avatarDataUrl: null },
+      requestId: crypto.randomUUID(),
+      nameMatchToken: result.nameMatch.token,
+    };
+    void run(async () => {
+      const saved = await controller.assign(selection);
+      if (saved) search.setTerm('');
+      return saved;
+    });
+  }
+
+  if (detail)
+    return (
+      <div
+        data-author-detail=""
+        onKeyDown={(event) => {
+          if (event.key === 'Escape') {
+            event.preventDefault();
+            event.stopPropagation();
+            if (!busy) setDetail(null);
+          }
         }}
-      />
-      <div className="max-h-64 overflow-y-auto">
-        {loading ? (
-          <span className="text-xs text-muted-foreground" role="status">
-            {me.loading}
-          </span>
-        ) : failed ? (
-          <Button variant="ghost" size="sm" onClick={() => setRetry((value) => value + 1)}>
-            {copy.retry}
-          </Button>
-        ) : authors.length ? (
-          authors.map((author) => (
-            <div key={author.id} className="flex items-center gap-1">
-              <Button
-                variant="ghost"
-                className="h-auto min-w-0 flex-1 justify-start gap-2 px-1 py-2"
-                disabled={controller.saving}
-                aria-pressed={controller.value?.authors.some((selected) => selected.id === author.id) ?? false}
-                onClick={() => void select(author.id)}
-              >
-                {author.kind === 'AI' ? (
-                  <UserRoundIcon className="size-6" />
-                ) : (
-                  <ProfileAvatar src={author.avatarDataUrl} className="size-6" />
-                )}
-                <span className="truncate">{authorDisplayName(author, messages)}</span>
-                {author.isCurrentUser && <span className="text-xs text-muted-foreground">{copy.me}</span>}
-                {controller.value?.authors.some((selected) => selected.id === author.id) && (
-                  <CheckIcon className="ml-auto size-3.5 shrink-0" />
-                )}
-              </Button>
-              <Button
-                variant="ghost"
-                size="icon-sm"
-                disabled={controller.saving}
-                aria-label={`${copy.edit}: ${authorDisplayName(author, messages)}`}
-                title={copy.edit}
-                onClick={() => setEditing(author)}
-              >
-                <PencilIcon className="size-3.5" />
-              </Button>
-            </div>
-          ))
+      >
+        {detail.kind === 'works' ? (
+          <AuthorWorks spaceId={spaceId} author={detail.author} onBack={() => setDetail(null)} />
         ) : (
-          <span className="text-xs text-muted-foreground">{copy.empty}</span>
+          <AuthorProfileForm
+            key={detail.author.id}
+            initial={{ name: detail.author.name, avatarDataUrl: detail.author.avatarDataUrl }}
+            busy={busy}
+            onCancel={() => setDetail(null)}
+            onSave={async (fields) => {
+              const saved = await controller.update(detail.author, fields);
+              if (saved) setDetail(null);
+              return saved;
+            }}
+          />
         )}
       </div>
-      {(offset > 0 || nextOffset !== null) && (
-        <div className="flex justify-between">
-          <Button
-            variant="ghost"
-            size="sm"
-            disabled={loading || controller.saving || offset === 0}
-            onClick={() => setOffset((value) => Math.max(0, value - 30))}
-          >
-            {me.previous}
-          </Button>
-          <Button
-            variant="ghost"
-            size="sm"
-            disabled={loading || controller.saving || nextOffset === null}
-            onClick={() => nextOffset !== null && setOffset(nextOffset)}
-          >
-            {me.more}
-          </Button>
+    );
+
+  return (
+    <div className="grid gap-2">
+      {selected.length > 0 && (
+        <div className="flex flex-wrap gap-1" aria-label={copy.selected}>
+          {selected.map((author) => (
+            <Button
+              key={author.id}
+              variant="secondary"
+              size="sm"
+              className="h-7 max-w-full gap-1 px-2"
+              disabled={disabled}
+              aria-label={copy.remove(authorDisplayName(author, messages))}
+              onClick={() => select(author.id)}
+            >
+              <span className="truncate">{authorDisplayName(author, messages)}</span>
+              <XIcon aria-hidden="true" className="size-3 shrink-0" />
+            </Button>
+          ))}
         </div>
       )}
-      {mutationFailed && (
+      <Command
+        label={copy.search}
+        shouldFilter={false}
+        value={active}
+        onValueChange={setActive}
+        onKeyDownCapture={(event) => {
+          // Committing an IME candidate must never select or create an author.
+          if (event.key === 'Enter' && (event.nativeEvent.isComposing || event.keyCode === 229))
+            event.stopPropagation();
+        }}
+      >
+        <CommandInput
+          ref={input}
+          value={search.term}
+          placeholder={copy.search}
+          aria-label={copy.search}
+          maxLength={200}
+          disabled={disabled}
+          onValueChange={(value) => {
+            search.setTerm(value);
+            setActive('');
+            setError(null);
+          }}
+        />
+        <CommandList ariaLabel={copy.search} className="max-h-64" aria-busy={search.loading}>
+          {search.loading ? (
+            <div className="p-2 text-xs text-muted-foreground" role="status">
+              {messages.me.loading}
+            </div>
+          ) : search.failed ? (
+            <Button variant="ghost" size="sm" onClick={search.reload}>
+              {copy.retry}
+            </Button>
+          ) : (
+            <>
+              <AuthorPickerResults
+                authors={result?.authors ?? []}
+                selected={selected}
+                disabled={disabled}
+                onSelect={select}
+                onEdit={(author) => setDetail({ kind: 'edit', author })}
+                onWorks={(author) => setDetail({ kind: 'works', author })}
+              />
+              {!result?.authors.length && <div className="p-2 text-xs text-muted-foreground">{copy.empty}</div>}
+              {canCreate && (
+                <CommandItem value="create-author" disabled={disabled} onSelect={create}>
+                  <PlusIcon className="size-3.5 shrink-0" />
+                  <span className="break-words">
+                    {result!.nameMatch.count ? copy.createSameName(name) : copy.createNamed(name)}
+                  </span>
+                </CommandItem>
+              )}
+            </>
+          )}
+        </CommandList>
+      </Command>
+      <AuthorPickerPagination
+        offset={search.offset}
+        nextOffset={result?.nextOffset ?? null}
+        disabled={search.loading || disabled}
+        onChange={(offset) => {
+          search.setOffset(offset);
+          setActive('');
+        }}
+      />
+      {error && (
         <span role="alert" className="text-xs text-destructive">
-          {copy.saveFailed}
+          {copy[error]}
         </span>
+      )}
+      {error && !controller.pendingAssignment && (
+        <Button
+          variant="ghost"
+          size="sm"
+          disabled={busy}
+          onClick={() => {
+            controller.retry();
+            search.reload();
+            setError(null);
+          }}
+        >
+          {copy.retry}
+        </Button>
+      )}
+      {controller.pendingAssignment && (
+        <Button variant="outline" size="sm" disabled={busy} onClick={() => void run(controller.retryAssignment)}>
+          {copy.retrySave}
+        </Button>
       )}
       {controller.value?.legacyAuthor && (
         <Button
           variant="ghost"
           size="sm"
-          disabled={controller.saving}
-          onClick={() => void select(controller.value!.legacyAuthor!.id)}
+          disabled={disabled}
+          onClick={() => select(controller.value!.legacyAuthor!.id)}
         >
           {copy.useLegacy(authorDisplayName(controller.value.legacyAuthor, messages))}
         </Button>
       )}
-      <div className="flex flex-wrap items-center justify-between gap-1 border-t pt-2">
-        <Button variant="ghost" size="sm" disabled={controller.saving} onClick={() => setEditing('NEW')}>
-          <PlusIcon className="size-3.5" />
-          {copy.create}
+      {Boolean(selected.length || controller.value?.legacyAuthor) && (
+        <Button variant="ghost" size="sm" className="justify-self-end" disabled={disabled} onClick={() => select(null)}>
+          {copy.unset}
         </Button>
-        {Boolean(controller.value?.authors.length || controller.value?.legacyAuthor) && (
-          <Button variant="ghost" size="sm" disabled={controller.saving} onClick={() => void select(null)}>
-            {copy.unset}
-          </Button>
-        )}
-      </div>
+      )}
     </div>
   );
 }

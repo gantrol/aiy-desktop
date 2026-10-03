@@ -19,6 +19,7 @@ export class CalendarDayCache {
   private pending = new Map<string, Promise<CalendarQueryResult>>();
 
   reset(scope: object | null = null) {
+    if (this.scope === scope) return;
     this.scope = scope;
     this.generation += 1;
     this.cancelQueued();

@@ -1,10 +1,31 @@
 import { z } from 'zod';
+import { codexOutputThroughputSchema } from '@/shared/contracts/codex-output-throughput';
 
 const isoTimestampSchema = z.string().datetime({ offset: true });
 const calendarDateSchema = z.iso.date();
 const threadIdSchema = z.string().trim().min(1).max(512);
 export const codexHistoryThreadUsageInputSchema = z.object({ threadId: threadIdSchema }).strict();
+export const codexHistoryThroughputsInputSchema = z
+  .object({
+    threads: z.array(z.object({ threadId: threadIdSchema, updatedAt: isoTimestampSchema }).strict()).max(50),
+  })
+  .strict();
+export const codexHistoryThroughputsSchema = z.record(threadIdSchema, codexOutputThroughputSchema);
+export type CodexHistoryThroughputsInput = z.infer<typeof codexHistoryThroughputsInputSchema>;
+export type CodexHistoryThroughputs = z.infer<typeof codexHistoryThroughputsSchema>;
 const usageCount = z.number().int().nonnegative().safe();
+export const codexHistoryThreadTimingSchema = z
+  .object({
+    totalDurationMs: usageCount.nullable(),
+    longestTurnDurationMs: usageCount.nullable(),
+    turnCount: usageCount,
+    timedTurnCount: usageCount,
+    completedTurnCount: usageCount,
+    abortedTurnCount: usageCount,
+    unfinishedTurnCount: usageCount,
+    partial: z.boolean(),
+  })
+  .strict();
 export const codexHistoryThreadUsageModelSchema = z
   .object({
     model: z.string(),
@@ -16,12 +37,17 @@ export const codexHistoryThreadUsageModelSchema = z
     reasoningOutputTokens: usageCount,
     apiPricedTokens: usageCount,
     apiEquivalentUsd: z.number().finite().nonnegative().nullable(),
+    creditPricedTokens: usageCount,
+    codexCredits: z.number().finite().nonnegative().nullable(),
   })
   .strict();
 export const codexHistoryThreadUsageSchema = z
   .object({
     threadId: threadIdSchema,
     models: z.array(codexHistoryThreadUsageModelSchema),
+    timing: codexHistoryThreadTimingSchema,
+    throughput: codexOutputThroughputSchema.nullable().default(null),
+    contextCompactionCount: usageCount,
     partial: z.boolean(),
   })
   .strict();
@@ -204,6 +230,7 @@ export const codexHistoryIndexStateSchema = z
 
 export const codexHistorySearchResultSchema = z
   .object({
+    throughput: codexOutputThroughputSchema.nullable().default(null),
     threadId: threadIdSchema,
     title: z.string().min(1).max(500),
     titleAvailable: z.boolean(),

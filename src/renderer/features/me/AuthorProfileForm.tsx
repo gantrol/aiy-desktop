@@ -82,6 +82,7 @@ export function AuthorProfileForm({
       <Label htmlFor={id}>{copy.authorName}</Label>
       <Input
         id={id}
+        autoFocus
         value={draft.name}
         maxLength={200}
         disabled={busy || reading}

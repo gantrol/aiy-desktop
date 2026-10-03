@@ -1,4 +1,5 @@
 import type { Dispatch, MutableRefObject, SetStateAction } from 'react';
+import { useI18n } from '@/renderer/i18n/useI18n';
 import type {
   ArticleDto,
   AssetDto,
@@ -92,7 +93,6 @@ interface Options {
   referenceAssets: readonly AssetDto[];
   refresh(): Promise<void>;
   refreshAlbums(): Promise<void>;
-  rememberSavedDraft(draft: CreationDraftDto | null): void;
   replaceDraftSession(draft: CreationDraftDto | null): void;
   requestAssistant: ReturnType<typeof useCreatorAssistantRequest>['request'];
   requestedAssetId: string | null;
@@ -159,6 +159,7 @@ interface Options {
 }
 
 function usePrimaryNavigation(options: Options) {
+  const draftMessages = useI18n().messages.creator.draftConflict;
   const creation = useCreatorCreationNavigation({
     active: options.active,
     albumTree: options.albumTree,
@@ -169,6 +170,7 @@ function usePrimaryNavigation(options: Options) {
     creationMode: options.creationMode,
     creationSessions: options.creationSessions,
     defaultPromptLocale: options.defaultPromptLocale,
+    draftMessages,
     detachDraftIdentity: options.detachDraftIdentity,
     hasPendingInput: options.hasPendingInput,
     getSavedDraft: options.getSavedDraft,
@@ -336,7 +338,6 @@ function useSecondaryNavigation(options: Options, primary: ReturnType<typeof use
     clearSavedInspiration: options.clearSavedInspiration,
     clearSelection: options.clearSelection,
     commit: options.commit,
-    creationDraft: options.data.creationDraft ?? null,
     creationDraftId: options.creationDraftId,
     creationMode: options.creationMode,
     creations: options.data.creations,
@@ -344,24 +345,17 @@ function useSecondaryNavigation(options: Options, primary: ReturnType<typeof use
     outputMode: options.outputMode,
     outputSeriesAvailable: options.outputSeriesAvailable,
     preserveBeforeNavigation: primary.creation.preserveBeforeNavigation,
-    rememberSavedDraft: options.rememberSavedDraft,
+    resumeCreationDraft: primary.creation.resumeCreationDraft,
     requestAssistant: options.requestAssistant,
     requestedAssetId: options.requestedAssetId,
-    resetInputs: options.resetInputs,
-    restoreAssistant: options.restoreAssistant,
-    restoreDraft: options.restoreDraft,
     selectedIdeaCreation: options.selectedIdeaCreation,
     seriesId: options.seriesId,
     setCompactPanel: options.panes.setCompactPanel,
-    setCreationMode: options.setCreationMode,
     setIdeaCreation: options.setSelectedIdeaCreationId,
     setOutputCollapsed: options.panes.setOutputCollapsed,
     setOutputGalleryOpen: options.setOutputGalleryOpen,
     setOutputMode: options.setOutputMode,
-    setOutputSeriesId: options.setOutputSeriesId,
     setRequestedAssetId: options.setRequestedAssetId,
-    setSeriesId: options.setSeriesId,
-    setTargetAlbumId: options.setTargetAlbumId,
     targetAlbumId: options.targetAlbumId,
   });
   useCreatorLocationSynchronization({

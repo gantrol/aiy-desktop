@@ -1,10 +1,4 @@
-import type {
-  AssistantWebSearchMode,
-  CreationDto,
-  CreationDraftDto,
-  CreatorAgentScope,
-  PromptSeriesDto,
-} from '@/shared/contracts';
+import type { AssistantWebSearchMode, CreationDto, PromptSeriesDto } from '@/shared/contracts';
 import type { CreatorLocation, NavigationMode } from '@/renderer/components/app/app-navigation';
 import type { CreationOutputMode } from '@/renderer/components/creator/CreationOutputTabs';
 import { useStableCallback } from '@/renderer/lib/useStableCallback';
@@ -19,37 +13,29 @@ interface Options {
   clearSavedInspiration(): void;
   clearSelection(): void;
   commit(location: CreatorLocation, mode?: NavigationMode): void;
-  creationDraft: CreationDraftDto | null;
   creationDraftId: string | null;
   creationMode: CreationMode;
   creations: readonly CreationDto[] | undefined;
   outputMode: CreationOutputMode;
   outputSeriesAvailable: boolean;
   preserveBeforeNavigation(): Promise<boolean>;
-  rememberSavedDraft(draft: CreationDraftDto): void;
+  resumeCreationDraft(id: string, mode: NavigationMode | null): Promise<boolean>;
   requestAssistant(
     mode: 'directions' | 'optimize',
     creationId?: string,
     webSearchMode?: AssistantWebSearchMode,
   ): Promise<unknown>;
   requestedAssetId: string | null;
-  restoreAssistant(scope: CreatorAgentScope): void;
-  restoreDraft(draft: CreationDraftDto): void;
   selectedIdeaCreation: CreationDto | null;
   seriesId: string | null;
   setCompactPanel(panel: 'creator' | 'output'): void;
-  setCreationMode(mode: CreationMode): void;
   setIdeaCreation(id: string | null): void;
   setOutputCollapsed(collapsed: boolean): void;
   setOutputGalleryOpen(open: boolean): void;
   setOutputMode(mode: CreationOutputMode): void;
-  setOutputSeriesId(id: string | null): void;
   setRequestedAssetId(id: string | null): void;
-  setSeriesId(id: string | null): void;
-  setTargetAlbumId(id: string | null): void;
   targetAlbumId: string | null;
   onComparisonFullWindowChange(open: boolean): void;
-  resetInputs(): void;
 }
 
 export function useCreatorIdeaNavigation(options: Options) {
@@ -57,27 +43,17 @@ export function useCreatorIdeaNavigation(options: Options) {
     const creation = (options.creations ?? []).find((item) => item.id === id);
     if (!creation || !(await options.preserveBeforeNavigation())) return false;
     options.onComparisonFullWindowChange(false);
-    options.clearSelection();
-    options.clearSavedInspiration();
     if (creation.sourceScope.kind === 'SERIES') {
       const sourceLoaded =
         options.creationMode === 'existing' &&
         (options.seriesId === creation.sourceScope.id ||
           options.activeSessionSeries.some((item) => item.id === creation.sourceScope.id));
       if (!sourceLoaded && !(await options.chooseSeries(creation.sourceScope.id, undefined, null))) return false;
-    } else if (options.creationDraft?.id === creation.sourceScope.id) {
-      const draftChanged = options.creationMode !== 'new' || options.creationDraftId !== options.creationDraft.id;
-      options.setTargetAlbumId(options.creationDraft.targetAlbumId);
-      options.setCreationMode('new');
-      options.setSeriesId(null);
-      options.setOutputSeriesId(null);
-      options.rememberSavedDraft(options.creationDraft);
-      if (draftChanged) {
-        options.resetInputs();
-        options.restoreDraft(options.creationDraft);
-        options.restoreAssistant({ kind: 'DRAFT', id: options.creationDraft.id });
-      }
+    } else if (!(await options.resumeCreationDraft(creation.sourceScope.id, null))) {
+      return false;
     }
+    options.clearSelection();
+    options.clearSavedInspiration();
     options.setIdeaCreation(id);
     options.setOutputMode('records');
     options.setRequestedAssetId(null);

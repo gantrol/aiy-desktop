@@ -28,6 +28,7 @@ import { CodexHistoryThreadDetail } from '@/renderer/features/extensions/CodexHi
 import { CodexHistoryHighlightedText as HighlightedText } from '@/renderer/features/extensions/CodexHistoryHighlightedText';
 import { useCodexHistorySearch } from '@/renderer/features/extensions/useCodexHistorySearch';
 import { useI18n } from '@/renderer/i18n/useI18n';
+import { CodexOutputThroughputValue } from '@/renderer/features/extensions/CodexOutputThroughput';
 import { cn } from '@/renderer/lib/utils';
 
 interface Props {
@@ -191,6 +192,7 @@ export function CodexHistorySearchConfiguration({
                             </span>
                           )}
                           <span className="mt-1.5 flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1 text-2xs text-muted-foreground">
+                            <CodexOutputThroughputValue throughput={item.throughput} />
                             {(item.projectName || item.workspace) && (
                               <span className="inline-flex min-w-0 items-center gap-1">
                                 <FolderIcon className="size-3 shrink-0" />
@@ -253,6 +255,7 @@ export function CodexHistorySearchConfiguration({
             item={selectedItem}
             locale={locale}
             onOpen={(threadId) => void state.openThread(threadId)}
+            onThroughput={state.updateThroughput}
           />
         ) : null
       }

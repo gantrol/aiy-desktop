@@ -4,6 +4,7 @@ import {
   codexModelComparisonRowSchema,
 } from '@/shared/contracts/codex-model-comparison';
 import type { CodexModelComparisonRow } from '@/shared/contracts/codex-model-comparison';
+import { selectedCodexOutputThroughput } from '@/renderer/features/extensions/codexModelComparisonSelection';
 import type { CodexUsageInvestigation } from '@/shared/contracts/codex-usage';
 import { parseEvidenceThreshold } from '@/shared/codex-usage-evidence';
 import { readCodexModelComparisonPreferences } from '@/renderer/features/extensions/codexModelComparisonPreferences';
@@ -120,6 +121,12 @@ export function freezeCodexComparison(
     ],
     sides: groups.map((rows, index) => ({
       side: index === 0 ? 'A' : 'B',
+      outputThroughput: selectedCodexOutputThroughput(
+        report.modelComparison?.outputThroughput,
+        settings.selection[index] ?? null,
+      ),
+      outputThroughputMethod: 'PAIRED_OUTPUT_TOKENS_PER_EXECUTION_SECOND_INCLUDING_ABORTED_TURNS_TOOLS_AND_WAITS',
+      generationMeasurement: 'NOT_MEASURED',
       columns: [
         'completedAtMs',
         'durationMs',

@@ -1,20 +1,7 @@
 import type { Editor } from '@tiptap/core';
 import { useEditorState } from '@tiptap/react';
-import {
-  ArrowDown,
-  ArrowUp,
-  ChevronDown,
-  ChevronRight,
-  ClipboardPaste,
-  Copy,
-  CornerDownRight,
-  IndentDecrease,
-  IndentIncrease,
-  Scissors,
-  Trash2,
-  X,
-} from 'lucide-react';
-import { useEffect, useRef, useState, useSyncExternalStore, type ComponentType } from 'react';
+import { Copy, CornerDownRight, FilePlus2, LoaderCircle, X } from 'lucide-react';
+import { useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import { Button } from '@/renderer/components/ui/button';
 import { useI18n } from '@/renderer/i18n/useI18n';
 import {
@@ -33,6 +20,11 @@ import {
   setOutlineView,
   setSelectedOutlineItemsFolded,
 } from '@/renderer/features/content-editor/outlineViewState';
+import {
+  OutlineSelectionMoreMenu,
+  type OutlineMoreAction,
+} from '@/renderer/features/content-editor/OutlineSelectionMoreMenu';
+import { useOutlinePageAction } from '@/renderer/features/content-editor/useOutlinePageAction';
 import { OutlineMoveDialog } from '@/renderer/features/content-editor/OutlineMoveDialog';
 import { activeOutlineView, focusOutlineView } from '@/renderer/features/content-editor/outlineActiveView';
 
@@ -65,57 +57,10 @@ function actionStateFor(editor: Editor) {
   return state;
 }
 
-const toolbarCopy = {
-  zh: {
-    title: '大纲批量操作',
-    selection: (count: number, roots: number) => `已选 ${count} 项 · 将操作 ${roots} 个分支`,
-    up: '上移',
-    down: '下移',
-    indent: '缩进',
-    outdent: '反缩进',
-    collapse: '收起',
-    expand: '展开',
-    copy: '复制',
-    cut: '剪切',
-    paste: '粘贴',
-    moveTo: '移动到',
-    delete: '删除',
-    clear: '取消选择',
-    unavailable: '当前选择不能执行这项操作；请检查范围或移动目标。',
-    clipboardUnavailable: '剪贴板不可用，或编辑位置已改变。请重新选择，或使用 Ctrl/Cmd+C、X、V 重试。',
-    done: (action: string, count: number) => `已${action} ${count} 个分支`,
-    pasted: '已粘贴大纲内容',
-    moved: '已移动所选分支',
-    deleted: '已删除所选分支，可撤销恢复',
-  },
-  en: {
-    title: 'Outline selection actions',
-    selection: (count: number, roots: number) => `${count} items selected · ${roots} branches to act on`,
-    up: 'Move up',
-    down: 'Move down',
-    indent: 'Indent',
-    outdent: 'Outdent',
-    collapse: 'Collapse',
-    expand: 'Expand',
-    copy: 'Copy',
-    cut: 'Cut',
-    paste: 'Paste',
-    moveTo: 'Move to',
-    delete: 'Delete',
-    clear: 'Clear selection',
-    unavailable: 'This action is unavailable for the current selection. Check the range or destination.',
-    clipboardUnavailable:
-      'The clipboard is unavailable or the editing position changed. Select again, or retry with Ctrl/Cmd+C, X or V.',
-    done: (action: string, count: number) => `${action}: ${count} branches`,
-    pasted: 'Outline content pasted',
-    moved: 'Selected branches moved',
-    deleted: 'Selected branches deleted. Undo to restore them.',
-  },
-};
-
 export function OutlineSelectionToolbar({ editor }: { editor: Editor }) {
-  const { locale } = useI18n();
-  const copy = toolbarCopy[locale === 'zh' ? 'zh' : 'en'];
+  const { messages } = useI18n();
+  const copy = messages.referenceOutline.selectionToolbar;
+  const page = useOutlinePageAction(editor);
   const { capabilities, editable, selected } = useEditorState({
     editor,
     selector: ({ editor: current }) => ({
@@ -181,34 +126,21 @@ export function OutlineSelectionToolbar({ editor }: { editor: Editor }) {
   };
 
   if (!selected.length && !status && !moveOpen) return null;
-  const locked = busy !== null || moveOpen || activeOutlineView(editor).composing;
-  const button = (
-    action: Action,
-    Icon: ComponentType<{ className?: string; 'aria-hidden'?: boolean }>,
-    available: boolean,
-    command: () => boolean | Promise<boolean>,
-  ) => (
-    <Button
-      key={action}
-      type="button"
-      variant="ghost"
-      size="xs"
-      aria-label={copy[action]}
-      title={copy[action]}
-      className={action === 'delete' ? 'text-destructive hover:text-destructive' : undefined}
-      disabled={locked || !available}
-      onClick={() => void run(action, command)}
-    >
-      <Icon aria-hidden className="size-3.5" />
-      {copy[action]}
-    </Button>
-  );
+  const locked = busy !== null || page.busy || moveOpen || activeOutlineView(editor).composing;
+  const moreCommands: Record<OutlineMoreAction, () => boolean | Promise<boolean>> = {
+    up: () => moveSelectedOutlineItemsByOne(editor, -1),
+    down: () => moveSelectedOutlineItemsByOne(editor, 1),
+    indent: () => shiftSelectedOutlineItems(editor, false),
+    outdent: () => shiftSelectedOutlineItems(editor, true),
+    collapse: () => setSelectedOutlineItemsFolded(editor, true),
+    expand: () => setSelectedOutlineItemsFolded(editor, false),
+    cut: () => cutOutlineSelectionToClipboard(editor),
+    paste: () => pasteOutlineSelectionFromClipboard(editor),
+    delete: () => deleteOutlineSelection(editor),
+  };
 
   return (
-    <div
-      data-outline-selection-toolbar
-      className="sticky bottom-2 z-30 mx-2 mt-3 rounded-md border bg-surface p-2 shadow-overlay"
-    >
+    <div data-outline-selection-toolbar className="sticky bottom-2 z-30 mx-2 mt-3 rounded-sm border bg-surface p-2">
       {selected.length > 0 && (
         <>
           <p className="px-1 pb-1 text-xs font-medium" aria-live="polite" aria-atomic="true">
@@ -217,29 +149,39 @@ export function OutlineSelectionToolbar({ editor }: { editor: Editor }) {
           <div
             role="toolbar"
             aria-label={copy.title}
-            aria-busy={busy !== null}
-            className="flex flex-wrap items-center gap-1"
+            aria-busy={busy !== null || page.busy}
+            className="flex min-w-0 items-center gap-1 overflow-x-auto [&>button]:shrink-0"
             onMouseDown={(event) => event.preventDefault()}
           >
-            {button('up', ArrowUp, editable && capabilities.canMoveUp, () => moveSelectedOutlineItemsByOne(editor, -1))}
-            {button('down', ArrowDown, editable && capabilities.canMoveDown, () =>
-              moveSelectedOutlineItemsByOne(editor, 1),
+            {page.supported && (
+              <Button
+                type="button"
+                variant="ghost"
+                size="xs"
+                disabled={locked || !editable || !capabilities.canDelete || capabilities.branchCount > 200}
+                onClick={() => {
+                  setStatus(null);
+                  void page.create(outlineViewState(editor.state).selected);
+                }}
+              >
+                {page.busy ? (
+                  <LoaderCircle aria-hidden className="size-3.5 animate-spin" />
+                ) : (
+                  <FilePlus2 aria-hidden className="size-3.5" />
+                )}
+                {messages.referenceOutline.turnIntoPage}
+              </Button>
             )}
-            {button('indent', IndentIncrease, editable && capabilities.canIndent, () =>
-              shiftSelectedOutlineItems(editor, false),
-            )}
-            {button('outdent', IndentDecrease, editable && capabilities.canOutdent, () =>
-              shiftSelectedOutlineItems(editor, true),
-            )}
-            <span role="separator" aria-orientation="vertical" className="mx-1 h-5 border-l" />
-            {button('collapse', ChevronRight, capabilities.canCollapse, () =>
-              setSelectedOutlineItemsFolded(editor, true),
-            )}
-            {button('expand', ChevronDown, capabilities.canExpand, () => setSelectedOutlineItemsFolded(editor, false))}
-            <span role="separator" aria-orientation="vertical" className="mx-1 h-5 border-l" />
-            {button('copy', Copy, capabilities.branchCount > 0, () => copyOutlineSelectionToClipboard(editor))}
-            {button('cut', Scissors, editable && capabilities.canDelete, () => cutOutlineSelectionToClipboard(editor))}
-            {button('paste', ClipboardPaste, editable, () => pasteOutlineSelectionFromClipboard(editor))}
+            <Button
+              type="button"
+              variant="ghost"
+              size="xs"
+              disabled={locked || !capabilities.branchCount}
+              onClick={() => void run('copy', () => copyOutlineSelectionToClipboard(editor))}
+            >
+              <Copy aria-hidden className="size-3.5" />
+              {copy.copy}
+            </Button>
             <Button
               type="button"
               variant="ghost"
@@ -253,21 +195,36 @@ export function OutlineSelectionToolbar({ editor }: { editor: Editor }) {
               <CornerDownRight aria-hidden className="size-3.5" />
               {copy.moveTo}
             </Button>
-            <span role="separator" aria-orientation="vertical" className="mx-1 h-5 border-l" />
-            {button('delete', Trash2, editable && capabilities.canDelete, () => deleteOutlineSelection(editor))}
+            <OutlineSelectionMoreMenu
+              disabled={locked}
+              available={{
+                up: editable && capabilities.canMoveUp,
+                down: editable && capabilities.canMoveDown,
+                indent: editable && capabilities.canIndent,
+                outdent: editable && capabilities.canOutdent,
+                collapse: capabilities.canCollapse,
+                expand: capabilities.canExpand,
+                cut: editable && capabilities.canDelete,
+                paste: editable,
+                delete: editable && capabilities.canDelete,
+              }}
+              onAction={(action) => void run(action, moreCommands[action])}
+            />
             <Button
               type="button"
               variant="ghost"
-              size="xs"
+              size="icon-sm"
+              className="ml-auto size-7"
+              aria-label={copy.clear}
+              title={copy.clear}
               disabled={locked}
               onClick={() => {
-                setOutlineView(editor, { ...outlineViewState(editor.state), selected: [], anchor: null });
+                setOutlineView(editor, { ...outlineViewState(editor.state), selected: [], anchor: null, active: null });
                 setStatus(null);
                 focusOutlineView(editor);
               }}
             >
               <X aria-hidden className="size-3.5" />
-              {copy.clear}
             </Button>
           </div>
         </>

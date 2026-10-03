@@ -1,0 +1,19 @@
+import { Meta, Canvas } from '@storybook/addon-docs/blocks';
+import * as Source from './SourcePreview.stories';
+
+<Meta of={Source} name="Scenes and usage" />
+
+# 来源预览
+
+复用正式搜索来源预览的空白、加载、错误和只读正文。这里只负责查看选中来源，尚未表示已采用材料。
+
+| 分镜                                                  | 操作或条件   | 预期                           |
+| ----------------------------------------------------- | ------------ | ------------------------------ |
+| [已选中](?path=/story/references-source--selected)    | 阅读正文     | 正文只读，标题与当前来源一致   |
+| [空结果](?path=/story/references-source--empty)       | 无选中来源   | 保留正式选择提示               |
+| [加载](?path=/story/references-source--loading)       | 来源等待返回 | 呈现正式加载状态               |
+| [不可用](?path=/story/references-source--unavailable) | 点击重试     | 同一来源恢复为公开样本，仍只读 |
+
+<Canvas of={Source.Selected} />
+
+重试后的响应由样例宿主提供。组件测试验证错误入口、只读约束与恢复后的来源显示；真实内容库的读取、竞态和失效规则由业务测试负责。

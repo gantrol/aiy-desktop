@@ -1,4 +1,5 @@
 import { CalendarHistory } from '@/renderer/features/calendar/CalendarHistory';
+import { CalendarActivityDetails } from '@/renderer/features/calendar/CalendarActivityDetails';
 import { useEffect, useRef, useState } from 'react';
 import { ArrowUpRightIcon, PencilIcon } from 'lucide-react';
 import { Button } from '@/renderer/components/ui/button';
@@ -18,13 +19,12 @@ import { useI18n } from '@/renderer/i18n/useI18n';
 import { dateInTimeZone, formatCivilDate } from '@/renderer/features/calendar/calendarDates';
 import {
   calendarItemTitle,
-  calendarChangeLabels,
   calendarActivityContext,
   calendarActivityTime,
   calendarOperationLabel,
   formatCalendarTime,
 } from '@/renderer/features/calendar/calendarPresentation';
-import type { CalendarItem } from '@/shared/contracts/calendar';
+import type { CalendarItem, CalendarQueryInput } from '@/shared/contracts/calendar';
 
 function initialDisplayDate(item: CalendarItem, timeZone: string) {
   return item.when.kind === 'allDay' ? item.when.date : dateInTimeZone(item.when.startAt, timeZone);
@@ -90,6 +90,7 @@ function CalendarItemFacts({ item, timeZone }: { item: CalendarItem; timeZone: s
 }
 
 interface Props {
+  query: CalendarQueryInput;
   spaceId: string;
   item: CalendarItem;
   timeZone: string;
@@ -101,6 +102,7 @@ interface Props {
 }
 
 export function CalendarItemDialog({
+  query,
   spaceId,
   item,
   timeZone,
@@ -173,13 +175,7 @@ export function CalendarItemDialog({
           <p className="rounded-lg bg-surface-sunken p-3 text-xs text-muted-foreground">{m.historicalSnapshot}</p>
         )}
         <CalendarItemFacts item={item} timeZone={timeZone} />
-        {item.activityCount > 1 && item.changes.length > 0 && (
-          <ul aria-label={m.change} className="grid gap-1 text-sm">
-            {calendarChangeLabels(item, m).map((change) => (
-              <li key={change}>{change}</li>
-            ))}
-          </ul>
-        )}
+        {item.entity?.available && <CalendarActivityDetails spaceId={spaceId} item={item} query={query} />}
         {item.note && (
           <p className="whitespace-pre-wrap break-words rounded-lg bg-surface-sunken p-3 text-sm leading-relaxed">
             {item.note}

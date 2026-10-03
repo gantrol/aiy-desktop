@@ -15,7 +15,7 @@ import { blockDocumentPlacements } from '@/shared/block-document-placements';
 type MediaBinding = { assetId: string; path: string };
 
 /** Reuse destination bindings where possible and keep every copied image path aligned with its binding. */
-function transferredDocumentMedia(
+export function transferredDocumentMedia(
   document: BlockDocument,
   sourceBindings: readonly MediaBinding[],
   targetBindings: readonly MediaBinding[],

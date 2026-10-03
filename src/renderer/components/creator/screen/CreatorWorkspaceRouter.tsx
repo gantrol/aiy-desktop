@@ -14,10 +14,24 @@ import {
 import { articleProjectCoverAssets } from '@/renderer/components/creator/article-editor/articleProjectCoverAssets';
 import { articleCoverGenerations } from '@/renderer/components/creator/article-editor/articleCoverGeneration';
 import { CODEX_APP_SERVER_EXTENSION_ID } from '@/shared/extension-ids';
+import { recordRendererDiagnostic } from '@/renderer/lib/rendererDiagnostics';
+import { rendererDiagnosticError } from '@/shared/renderer-diagnostic-error';
 
-const ArticleEditor = lazy(() =>
-  import('@/renderer/components/creator/ArticleEditor').then((module) => ({ default: module.ArticleEditor })),
-);
+const ArticleEditor = lazy(async () => {
+  const startedAt = performance.now();
+  recordRendererDiagnostic('article-module-start');
+  try {
+    const module = await import('@/renderer/components/creator/ArticleEditor');
+    recordRendererDiagnostic('article-module-ready', { durationMs: performance.now() - startedAt });
+    return { default: module.ArticleEditor };
+  } catch (error) {
+    recordRendererDiagnostic('article-module-failed', {
+      durationMs: performance.now() - startedAt,
+      error: rendererDiagnosticError(error),
+    });
+    throw error;
+  }
+});
 const CreatorAlbumDetail = lazy(() =>
   import('@/renderer/components/creator/CreatorAlbumDetail').then((module) => ({ default: module.CreatorAlbumDetail })),
 );

@@ -1,5 +1,6 @@
 import { CheckIcon, CopyIcon, LoaderCircleIcon, PencilIcon, SaveIcon, SearchIcon, XIcon } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { registerWorkspaceDrain } from '@/renderer/components/workspace/workspace-drain';
 import type {
   VideoDocumentRevisionContent,
   VideoDocumentRevisionDto,
@@ -508,6 +509,16 @@ function transcriptCopyText(
     .join('\n');
 }
 
+function useTranscriptNavigationGuard(editing: boolean, editingCueSourceIndex: number | null, saving: boolean) {
+  useEffect(
+    () =>
+      registerWorkspaceDrain(async () => {
+        if (editing || editingCueSourceIndex !== null || saving) throw new Error('VIDEO_DOCUMENT_UNSAVED');
+      }),
+    [editing, editingCueSourceIndex, saving],
+  );
+}
+
 export function VideoDocumentTranscript({
   revision,
   currentTimeMs = 0,
@@ -541,6 +552,8 @@ export function VideoDocumentTranscript({
   const sectionRef = useRef<HTMLElement>(null);
   const cueRefs = useRef(new Map<number, HTMLLIElement>());
   const [pendingScrollSourceIndex, setPendingScrollSourceIndex] = useState<number | null>(null);
+
+  useTranscriptNavigationGuard(editing, editingCueSourceIndex, saving);
 
   useEffect(() => {
     setQuery('');

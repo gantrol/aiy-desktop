@@ -1,14 +1,15 @@
 import type { Editor } from '@tiptap/core';
 import { TextSelection, type SelectionBookmark, type Transaction } from '@tiptap/pm/state';
 import type { Slice } from '@tiptap/pm/model';
+import type { EditorView } from '@tiptap/pm/view';
 
 /** A menu owns its original selection, not whichever editor happens to be focused when IPC finishes. */
-export function captureReferenceInsertion(editor: Editor, position?: number) {
+export function captureReferenceInsertion(editor: Editor, position?: number, view: EditorView = editor.view) {
   const initial =
     position === undefined ? editor.state.selection : TextSelection.near(editor.state.doc.resolve(position));
   let bookmark: SelectionBookmark = initial.getBookmark();
   const selected: Slice = initial.content();
-  let valid = !editor.isDestroyed && editor.isEditable && !editor.view.composing;
+  let valid = !editor.isDestroyed && !view.isDestroyed && editor.isEditable && !view.composing;
   const onTransaction = ({ transaction }: { transaction: Transaction }) => {
     if (!valid || !transaction.docChanged) return;
     try {
@@ -25,7 +26,7 @@ export function captureReferenceInsertion(editor: Editor, position?: number) {
   editor.on('transaction', onTransaction);
   return {
     selection() {
-      if (!valid || editor.isDestroyed || !editor.isEditable || editor.view.composing)
+      if (!valid || editor.isDestroyed || view.isDestroyed || !editor.isEditable || view.composing)
         throw new Error('REFERENCE_TARGET_CHANGED');
       return bookmark.resolve(editor.state.doc);
     },

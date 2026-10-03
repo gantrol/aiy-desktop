@@ -8,6 +8,10 @@ import ContentSearchScreen from '@/renderer/features/content-search/ContentSearc
 import { initialAppLocation } from '@/renderer/components/app/app-navigation';
 import { contentLookupInputSchema, type ContentLookupResult } from '@/shared/contracts/content-search';
 import type { ContentSource } from '@/shared/contracts/content-source';
+import type { ContentDocument } from '@/shared/contracts/content-library';
+import { ContentInput } from '@/renderer/features/content-editor/ContentInput';
+import { useI18n } from '@/renderer/i18n/useI18n';
+import { TooltipProvider } from '@/renderer/components/ui/tooltip';
 import { contentSearchQuery, contentSearchSnippet, normalizeSearchText } from '@/shared/content-search-query';
 import './style.css';
 
@@ -86,6 +90,28 @@ Object.defineProperty(window, 'desktopApi', {
   },
 });
 
+function SyntheticSearchEditor({ document }: { document: ContentDocument }) {
+  const [markdown, setMarkdown] = useState(document.markdown);
+  const [failed, setFailed] = useState(false);
+  const { messages } = useI18n();
+  return (
+    <div className="flex min-h-0 flex-1 flex-col overflow-auto p-5">
+      {failed && <div role="alert">{messages.referenceOutline.lookup.failure}</div>}
+      <ContentInput
+        markdown={markdown}
+        sessionIdentity={document.source.id}
+        assets={[]}
+        onChange={setMarkdown}
+        onSave={() => {
+          const row = rows.find((item) => item.id === document.source.id);
+          if (row) row.text = markdown;
+        }}
+        onError={() => setFailed(true)}
+      />
+    </div>
+  );
+}
+
 function Workbench() {
   const [search, setSearch] = useState(initialAppLocation.search);
   const [selected, setSelected] = useState('');
@@ -97,6 +123,7 @@ function Workbench() {
         location={search}
         onNavigate={setSearch}
         onOpen={(source) => setSelected(source.id)}
+        renderEditor={(document) => <SyntheticSearchEditor key={document.source.id} document={document} />}
       />
     </main>
   );
@@ -112,6 +139,8 @@ createRoot(document.getElementById('root')!).render(
       availableLocales: ['zh', 'en'],
     }}
   >
-    <Workbench />
+    <TooltipProvider>
+      <Workbench />
+    </TooltipProvider>
   </I18nContext.Provider>,
 );

@@ -95,6 +95,8 @@ import type {
   CodexHistoryThreadMessagesPage,
   CodexHistoryThreadUsage,
   CodexHistoryThreadUsageInput,
+  CodexHistoryThroughputsInput,
+  CodexHistoryThroughputs,
 } from '@/shared/contracts/codex-history-search';
 import type {
   CodexUsageCleanupInput,
@@ -4311,6 +4313,8 @@ export interface DesktopApi
   codexHistoryThreadUsageCancel(input: CodexHistoryThreadUsageInput): Promise<void>;
   /** Returns null when the usage request is cancelled. */
   codexHistoryThreadUsage(input: CodexHistoryThreadUsageInput): Promise<CodexHistoryThreadUsage | null>;
+  codexHistoryThroughputs(input: CodexHistoryThroughputsInput): Promise<CodexHistoryThroughputs>;
+  codexHistoryThroughputsCancel(): Promise<void>;
   codexHistoryThreadMessages(input: CodexHistoryThreadMessagesInput): Promise<CodexHistoryThreadMessagesPage>;
   onCodexHistorySearchChanged(callback: () => void): () => void;
   codexVisualizationsList(input: CodexVisualizationListInput): Promise<CodexVisualizationSnapshotDto>;

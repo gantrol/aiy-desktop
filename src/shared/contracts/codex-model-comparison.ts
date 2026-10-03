@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { codexOutputThroughputAnalysisSchema } from '@/shared/contracts/codex-output-throughput';
 
 const count = z.number().int().nonnegative().safe();
 const measurement = z.number().finite().nonnegative().nullable();
@@ -62,7 +63,8 @@ export const codexModelComparisonRowSchema = z
 export const codexModelComparisonAnalysisSchema = z
   .object({
     definition: z.literal('OWNED_USER_COMPLETED_TURNS'),
-    algorithmVersion: z.union([z.literal(1), z.literal(2)]),
+    algorithmVersion: z.union([z.literal(1), z.literal(2), z.literal(3)]),
+    outputThroughput: codexOutputThroughputAnalysisSchema.nullable().default(null),
     rangeAssignment: z.literal('COMPLETION_TIMESTAMP'),
     completedTurnCount: count,
     excludedModelTurnCount: count,

@@ -42,6 +42,28 @@ export const authorListResultSchema = z
   .object({
     authors: z.array(authorSchema).max(30),
     nextOffset: z.number().int().nonnegative().nullable(),
+    nameMatch: z
+      .object({
+        count: z.number().int().nonnegative(),
+        token: z
+          .string()
+          .regex(/^[a-f0-9]{64}$/)
+          .nullable(),
+      })
+      .strict(),
+  })
+  .strict();
+export const authorWorksInputSchema = z
+  .object({
+    spaceId,
+    authorId: z.string().uuid(),
+    offset: z.number().int().nonnegative().max(10000).default(0),
+  })
+  .strict();
+export const authorWorksResultSchema = z
+  .object({
+    works: z.array(z.object({ id: z.string(), title: z.string() }).strict()).max(30),
+    nextOffset: z.number().int().nonnegative().nullable(),
   })
   .strict();
 export const creationAuthorStateSchema = z
@@ -55,7 +77,14 @@ export const creationAuthorStateSchema = z
 export const authorSelectionSchema = z.discriminatedUnion('kind', [
   z.object({ kind: z.literal('EXISTING'), authorId: z.string().uuid() }).strict(),
   z.object({ kind: z.literal('REMOVE'), authorId: z.string().uuid() }).strict(),
-  z.object({ kind: z.literal('NEW'), fields: authorFieldsSchema }).strict(),
+  z
+    .object({
+      kind: z.literal('NEW'),
+      fields: authorFieldsSchema,
+      requestId: z.string().uuid(),
+      nameMatchToken: z.string().regex(/^[a-f0-9]{64}$/),
+    })
+    .strict(),
   z.object({ kind: z.literal('UNSET') }).strict(),
 ]);
 export const creationAuthorSetSchema = z
@@ -86,6 +115,7 @@ export const meCommandSchema = z.discriminatedUnion('kind', [
   z.object({ kind: z.literal('profile-get'), spaceId }).strict(),
   z.object({ kind: z.literal('profile-save'), spaceId, profile: userProfileSchema }).strict(),
   authorListInputSchema.extend({ kind: z.literal('authors-list') }).strict(),
+  authorWorksInputSchema.extend({ kind: z.literal('author-works') }).strict(),
   z.object({ kind: z.literal('creation-author'), spaceId, target: creationFormEntityRefSchema }).strict(),
   creationAuthorSetSchema.extend({ kind: z.literal('creation-author-set') }).strict(),
   authorUpdateSchema.extend({ kind: z.literal('author-update') }).strict(),
@@ -116,6 +146,7 @@ export interface MeApi {
   profile(spaceId: string): Promise<UserProfile>;
   saveProfile(spaceId: string, profile: UserProfile): Promise<UserProfile>;
   authors(input: z.input<typeof authorListInputSchema>): Promise<z.infer<typeof authorListResultSchema>>;
+  authorWorks(input: z.input<typeof authorWorksInputSchema>): Promise<z.infer<typeof authorWorksResultSchema>>;
   creationAuthor(
     spaceId: string,
     target: z.infer<typeof creationFormEntityRefSchema>,

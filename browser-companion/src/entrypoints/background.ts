@@ -1,4 +1,6 @@
 import { companionMessage } from '@/lib/i18n';
+import { registerDevelopmentComposer } from '@/lib/composer-registration';
+import { registerLoopbackRelay } from '@/lib/loopback-relay';
 import { forgetHandoffTab, registerHandoffTab } from '@/lib/batch-tabs';
 import { openWechatSocialPost, wechatNavigationRequestSchema } from '@/lib/composer-adapters/wechat-navigation';
 import {
@@ -94,6 +96,11 @@ const rejected = {
 } as const;
 
 export default defineBackground(() => {
+  registerLoopbackRelay();
+  const composerRegistration = registerDevelopmentComposer();
+  void composerRegistration.catch((reason: unknown) => {
+    console.error('[AIY Companion] Failed to register the composer content script', reason);
+  });
   void browser.action.setTitle({ title: companionMessage('extensionName') }).catch(() => undefined);
   browser.tabs.onRemoved.addListener((tabId) => {
     void forgetHandoffTab(tabId).catch(() => undefined);
@@ -189,6 +196,9 @@ export default defineBackground(() => {
       } as const;
     }
     try {
+      // The bootstrap redirects to the site as soon as we reply. On a cold
+      // offline start, the local content script must already be registered.
+      await composerRegistration;
       await browser.storage.local.set({
         [BROWSER_COMPANION_CONNECTION_STORAGE_KEY]: parsed.data.connection,
       });

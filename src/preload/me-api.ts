@@ -2,6 +2,7 @@ import type { IpcRenderer } from 'electron';
 import {
   keywordResultSchema,
   authorListResultSchema,
+  authorWorksResultSchema,
   authorSchema,
   creationAuthorStateSchema,
   meCommandSchema,
@@ -18,6 +19,8 @@ export function createMePreloadApi(ipc: Pick<IpcRenderer, 'invoke'>): MeApi {
       userProfileSchema.parse(await invoke({ kind: 'profile-save', spaceId, profile })),
     authors: async (input) =>
       authorListResultSchema.parse(await invoke(meCommandSchema.parse({ kind: 'authors-list', ...input }))),
+    authorWorks: async (input) =>
+      authorWorksResultSchema.parse(await invoke(meCommandSchema.parse({ kind: 'author-works', ...input }))),
     creationAuthor: async (spaceId, target) =>
       creationAuthorStateSchema.nullable().parse(await invoke({ kind: 'creation-author', spaceId, target })),
     setCreationAuthor: async (input) =>

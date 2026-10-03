@@ -1,12 +1,9 @@
 import {
-  BROWSER_COMPANION_LOOPBACK_ORIGIN,
   BROWSER_COMPANION_MAX_RESPONSE_BYTES,
   BROWSER_COMPANION_MAX_OUTPUT_IMPORT_BYTES,
   BROWSER_COMPANION_MEDIA_PATH,
-  BROWSER_COMPANION_OUTPUT_IMPORT_PATH_PREFIX,
   BROWSER_COMPANION_PROTOCOL_VERSION,
   BROWSER_COMPANION_REQUEST_PATH,
-  BROWSER_COMPANION_REQUEST_SIGNATURE_HEADER,
   BROWSER_COMPANION_RESPONSE_SIGNATURE_HEADER,
   browserCompanionBridgeResponseSchema,
   outputImageSchema,
@@ -17,6 +14,7 @@ import {
   type BrowserCompanionResponse,
   type CompanionSite,
 } from '@/lib/protocol';
+import { fetchCompanionLoopback } from '@/lib/loopback-fetch';
 
 const MEDIA_ID_HEADER = 'x-aiy-companion-media-id';
 const MEDIA_SIZE_HEADER = 'x-aiy-companion-media-size';
@@ -57,19 +55,15 @@ async function signedFetch(
   path: typeof BROWSER_COMPANION_REQUEST_PATH | typeof BROWSER_COMPANION_MEDIA_PATH,
 ) {
   const authorization = await authorize(site, request, path);
-  const response = await fetch(`${BROWSER_COMPANION_LOOPBACK_ORIGIN}${path}`, {
-    method: 'POST',
-    mode: 'cors',
-    credentials: 'omit',
-    cache: 'no-store',
-    redirect: 'error',
-    headers: {
-      'Content-Type': 'application/json',
-      [BROWSER_COMPANION_REQUEST_SIGNATURE_HEADER]: authorization.signature,
-    },
+  const response = await fetchCompanionLoopback({
+    kind: 'signed-request',
+    site,
+    path,
+    signature: authorization.signature,
     body: authorization.body,
   });
   if (!response.ok && !response.headers.has(BROWSER_COMPANION_RESPONSE_SIGNATURE_HEADER)) {
+    await response.body?.cancel();
     throw new Error(`Browser companion request failed: HTTP ${response.status}`);
   }
   return { authorization, response };
@@ -81,6 +75,7 @@ async function readVerifiedJson(
 ): Promise<BrowserCompanionResponse> {
   const declaredLength = Number(result.response.headers.get('content-length'));
   if (Number.isFinite(declaredLength) && declaredLength > BROWSER_COMPANION_MAX_RESPONSE_BYTES) {
+    await result.response.body?.cancel();
     throw new Error('Browser companion response is too large');
   }
   const body = await result.response.text();
@@ -128,43 +123,48 @@ export async function downloadCompanionMedia(
     },
     BROWSER_COMPANION_MEDIA_PATH,
   );
-  const contentType = result.response.headers.get('content-type') ?? '';
-  if (contentType.startsWith('application/json')) {
-    const response = await readVerifiedJson(site, result);
-    throw new Error(response.kind === 'error' ? response.code : 'MEDIA_DOWNLOAD_FAILED');
+  try {
+    const contentType = result.response.headers.get('content-type') ?? '';
+    if (contentType.startsWith('application/json')) {
+      const response = await readVerifiedJson(site, result);
+      throw new Error(response.kind === 'error' ? response.code : 'MEDIA_DOWNLOAD_FAILED');
+    }
+    if (
+      !result.response.ok ||
+      result.response.headers.get(MEDIA_ID_HEADER) !== media.mediaId ||
+      result.response.headers.get(MEDIA_SIZE_HEADER) !== String(media.byteSize) ||
+      result.response.headers.get(MEDIA_SHA256_HEADER) !== media.sha256 ||
+      result.response.headers.get(MEDIA_MIME_TYPE_HEADER) !== media.mimeType ||
+      result.response.headers.get('content-length') !== String(media.byteSize) ||
+      contentType !== media.mimeType
+    ) {
+      throw new Error('Browser companion media metadata is invalid');
+    }
+    const signature = result.response.headers.get(BROWSER_COMPANION_RESPONSE_SIGNATURE_HEADER);
+    if (!signature) throw new Error('Browser companion media response is unsigned');
+    const rawVerification: unknown = await browser.runtime.sendMessage({
+      protocolVersion: 1,
+      kind: 'verify-loopback-media',
+      site,
+      requestId: result.authorization.requestId,
+      verificationToken: result.authorization.verificationToken,
+      media,
+      signature,
+    });
+    const verification = browserCompanionBridgeResponseSchema.parse(rawVerification);
+    if (!verification.ok || verification.kind !== 'verified-loopback-media') {
+      throw new Error('Browser companion media signature is invalid');
+    }
+    const bytes = await result.response.arrayBuffer();
+    if (bytes.byteLength !== media.byteSize) throw new Error('Browser companion media size changed');
+    if (hex(await crypto.subtle.digest('SHA-256', bytes)) !== media.sha256) {
+      throw new Error('Browser companion media integrity check failed');
+    }
+    return new File([bytes], media.fileName, { type: media.mimeType });
+  } finally {
+    // Metadata/signature rejection must release the background stream immediately.
+    if (!result.response.bodyUsed) await result.response.body?.cancel().catch(() => undefined);
   }
-  if (
-    !result.response.ok ||
-    result.response.headers.get(MEDIA_ID_HEADER) !== media.mediaId ||
-    result.response.headers.get(MEDIA_SIZE_HEADER) !== String(media.byteSize) ||
-    result.response.headers.get(MEDIA_SHA256_HEADER) !== media.sha256 ||
-    result.response.headers.get(MEDIA_MIME_TYPE_HEADER) !== media.mimeType ||
-    result.response.headers.get('content-length') !== String(media.byteSize) ||
-    contentType !== media.mimeType
-  ) {
-    throw new Error('Browser companion media metadata is invalid');
-  }
-  const signature = result.response.headers.get(BROWSER_COMPANION_RESPONSE_SIGNATURE_HEADER);
-  if (!signature) throw new Error('Browser companion media response is unsigned');
-  const rawVerification: unknown = await browser.runtime.sendMessage({
-    protocolVersion: 1,
-    kind: 'verify-loopback-media',
-    site,
-    requestId: result.authorization.requestId,
-    verificationToken: result.authorization.verificationToken,
-    media,
-    signature,
-  });
-  const verification = browserCompanionBridgeResponseSchema.parse(rawVerification);
-  if (!verification.ok || verification.kind !== 'verified-loopback-media') {
-    throw new Error('Browser companion media signature is invalid');
-  }
-  const bytes = await result.response.arrayBuffer();
-  if (bytes.byteLength !== media.byteSize) throw new Error('Browser companion media size changed');
-  if (hex(await crypto.subtle.digest('SHA-256', bytes)) !== media.sha256) {
-    throw new Error('Browser companion media integrity check failed');
-  }
-  return new File([bytes], media.fileName, { type: media.mimeType });
 }
 
 export async function uploadCompanionOutput(
@@ -197,17 +197,16 @@ export async function uploadCompanionOutput(
   const prepared = await readVerifiedJson(site, preparedFetch);
   if (prepared.kind !== 'output-import-ready') return prepared;
 
-  const response = await fetch(
-    `${BROWSER_COMPANION_LOOPBACK_ORIGIN}${BROWSER_COMPANION_OUTPUT_IMPORT_PATH_PREFIX}${prepared.uploadToken}`,
+  if (site !== 'chatgpt') throw new Error('Output import requires ChatGPT');
+  const response = await fetchCompanionLoopback(
     {
-      method: 'POST',
-      mode: 'cors',
-      credentials: 'omit',
-      cache: 'no-store',
-      redirect: 'error',
-      headers: { 'Content-Type': image.mimeType },
-      body: bytes,
+      kind: 'output-upload',
+      site,
+      uploadToken: prepared.uploadToken,
+      mimeType: image.mimeType,
+      byteSize: bytes.byteLength,
     },
+    bytes,
   );
   return readVerifiedJson(site, {
     authorization: preparedFetch.authorization,

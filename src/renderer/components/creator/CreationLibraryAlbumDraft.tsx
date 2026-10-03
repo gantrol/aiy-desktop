@@ -6,7 +6,7 @@ import { useI18n } from '@/renderer/i18n/useI18n';
 import { CreationTreeNodeFrame } from '@/renderer/components/creator/CreationLibraryTreeItem';
 import { afterBranchExpansion } from '@/renderer/components/creator/useCreationTreeScroll';
 import {
-  COMPACT_TREE_NODE_METRICS,
+  CREATION_TREE_COMPACT_NODE_METRICS,
   TREE_CONNECTION_GEOMETRY,
   type TreeBranchItemTopology,
 } from '@/renderer/components/albums/treeConnectionGeometry';
@@ -81,15 +81,15 @@ export function CreationLibraryAlbumDraft({ request, siblings, branchTopology, b
       onKeyDown={(event) => event.stopPropagation()}
     >
       <CreationTreeNodeFrame
-        bounds={COMPACT_TREE_NODE_METRICS.bounds}
+        bounds={CREATION_TREE_COMPACT_NODE_METRICS.bounds}
         rowInsetY={0}
         rowHeight={TREE_CONNECTION_GEOMETRY.compactRowHeight}
         branchTopology={branchTopology}
         className="-ml-1 flex h-9 shrink-0 items-center"
-        style={{ width: COMPACT_TREE_NODE_METRICS.width }}
+        style={{ width: CREATION_TREE_COMPACT_NODE_METRICS.width }}
       >
-        <span className="mx-1 grid size-7 place-items-center text-muted-foreground">
-          <FolderIcon className="size-4" aria-hidden="true" />
+        <span className="ml-7 grid size-7 place-items-center text-muted-foreground">
+          <FolderIcon className="size-5" aria-hidden="true" />
         </span>
       </CreationTreeNodeFrame>
       <Input

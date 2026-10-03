@@ -151,6 +151,7 @@ export function CodexModelComparisonResults({
         {analysis && (analysis.byModel.length > 0 || analysis.byReasoningEffort.length > 0) ? (
           <>
             <CodexModelPairComparison
+              throughputAnalysis={analysis.outputThroughput}
               byReasoningEffort={analysis.byReasoningEffort}
               labels={labels}
               numbers={numbers}

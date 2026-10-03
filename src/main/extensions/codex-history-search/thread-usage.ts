@@ -1,9 +1,55 @@
 import { stat } from 'node:fs/promises';
 import { readThreadDescriptor, safeRolloutPath } from '@/main/extensions/codex-history-search/thread-reader';
 import type { CodexHistorySourcePaths } from '@/main/extensions/codex-history-search/source-reader';
-import { readCodexUsageSession } from '@/main/extensions/codex-usage-investigator/session-reader';
-import { estimateCodexUsage, normalizeCodexUsageModel } from '@/main/extensions/codex-usage-investigator/pricing';
+import {
+  readCodexUsageSession,
+  type SessionReadResult,
+} from '@/main/extensions/codex-usage-investigator/session-reader';
+import {
+  CODEX_USAGE_PRICING_CACHE_KEY,
+  estimateCodexUsage,
+  normalizeCodexUsageModel,
+} from '@/main/extensions/codex-usage-investigator/pricing';
 import type { CodexHistoryThreadUsage } from '@/shared/contracts/codex-history-search';
+import { summarizeThreadThroughput } from '@/main/extensions/codex-history-search/thread-throughput';
+
+function summarizeThreadTiming(result: SessionReadResult, createdAtMs: number | null) {
+  const timing: CodexHistoryThreadUsage['timing'] = {
+    totalDurationMs: null,
+    longestTurnDurationMs: null,
+    turnCount: 0,
+    timedTurnCount: 0,
+    completedTurnCount: 0,
+    abortedTurnCount: 0,
+    unfinishedTurnCount: 0,
+    partial: createdAtMs === null || !result.turnMetadataComplete,
+  };
+  for (const turn of result.chatTurns) {
+    const startedMs = Date.parse(turn.startedAt);
+    if (createdAtMs !== null && startedMs < createdAtMs) continue;
+    timing.turnCount += 1;
+    if (turn.terminalState === 'COMPLETED') timing.completedTurnCount += 1;
+    else if (turn.terminalState === 'ABORTED') timing.abortedTurnCount += 1;
+    else timing.unfinishedTurnCount += 1;
+    // Older rollouts and aborted turns lack duration_ms; explicit boundaries still give elapsed time.
+    const elapsedMs = turn.terminalAt === null ? null : Date.parse(turn.terminalAt) - startedMs;
+    const durationMs = turn.terminalState === null ? null : (turn.durationMs ?? elapsedMs);
+    if (
+      durationMs === null ||
+      durationMs < 0 ||
+      !Number.isSafeInteger(durationMs) ||
+      (elapsedMs !== null && elapsedMs < 0) ||
+      !Number.isSafeInteger((timing.totalDurationMs ?? 0) + durationMs)
+    ) {
+      timing.partial = true;
+      continue;
+    }
+    timing.timedTurnCount += 1;
+    timing.totalDurationMs = (timing.totalDurationMs ?? 0) + durationMs;
+    timing.longestTurnDurationMs = Math.max(timing.longestTurnDurationMs ?? 0, durationMs);
+  }
+  return timing;
+}
 
 /** A bounded cache of summaries only; raw session events are never retained. */
 export class CodexHistoryThreadUsageReader {
@@ -19,13 +65,22 @@ export class CodexHistoryThreadUsageReader {
     const file = await safeRolloutPath(home, descriptor.rolloutPath, signal);
     const fingerprint = async () => {
       const info = await stat(file, { bigint: true });
-      return `${file}:${info.size}:${info.mtimeNs}:${info.ctimeNs}:${descriptor.model}:${descriptor.createdAtMs}`;
+      return `${file}:${info.size}:${info.mtimeNs}:${info.ctimeNs}:${descriptor.model}:${descriptor.createdAtMs}:${CODEX_USAGE_PRICING_CACHE_KEY}`;
     };
     const before = await fingerprint();
     signal.throwIfAborted();
     const cached = this.cache.get(threadId);
     if (cached?.fingerprint === before) return cached.value;
-    const result = await readCodexUsageSession(file, threadId, 0, descriptor.model, null, Date.now(), null, signal);
+    const result = await readCodexUsageSession(
+      file,
+      threadId,
+      descriptor.createdAtMs ?? 0,
+      descriptor.model,
+      null,
+      Date.now(),
+      null,
+      signal,
+    );
     const models = new Map<string, CodexHistoryThreadUsage['models'][number]>();
     for (const event of result.events) {
       // Fork rollouts may contain inherited events from before this task existed.
@@ -42,6 +97,8 @@ export class CodexHistoryThreadUsageReader {
         reasoningOutputTokens: 0,
         apiPricedTokens: 0,
         apiEquivalentUsd: null,
+        creditPricedTokens: 0,
+        codexCredits: null,
       };
       for (const key of [
         'totalTokens',
@@ -55,6 +112,8 @@ export class CodexHistoryThreadUsageReader {
       const price = estimateCodexUsage(event.model, event.usage, event.serviceTier, event.timestamp);
       row.apiPricedTokens += price.apiPricedTokens;
       if (price.apiEquivalentUsd !== null) row.apiEquivalentUsd = (row.apiEquivalentUsd ?? 0) + price.apiEquivalentUsd;
+      row.creditPricedTokens += price.creditPricedTokens;
+      if (price.codexCredits !== null) row.codexCredits = (row.codexCredits ?? 0) + price.codexCredits;
       models.set(model, row);
     }
     signal.throwIfAborted();
@@ -63,9 +122,13 @@ export class CodexHistoryThreadUsageReader {
     const value: CodexHistoryThreadUsage = {
       threadId,
       models: [...models.values()],
+      timing: summarizeThreadTiming(result, descriptor.createdAtMs),
+      throughput: summarizeThreadThroughput(result, descriptor.createdAtMs, before === after),
+      contextCompactionCount: result.contextCompactionCount,
       partial:
         descriptor.createdAtMs === null || result.invalidRecords > 0 || result.oversizedRecords > 0 || before !== after,
     };
+    value.timing.partial ||= value.partial;
     if (before === after) {
       this.cache.delete(threadId);
       this.cache.set(threadId, { fingerprint: before, value });

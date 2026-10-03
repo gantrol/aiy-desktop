@@ -222,7 +222,8 @@ export const textCoverPresets = [
     layout: 'left',
     decoration: 'none',
     palette: 'ink',
-    font: 'yahei',
+    // Built-in presets must remain editable and importable without a local font.
+    font: 'sans',
     weight: 700,
     scale: 1.08,
     lineHeight: 1.16,

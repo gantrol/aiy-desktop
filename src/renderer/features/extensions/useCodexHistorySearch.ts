@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import type { CodexOutputThroughput } from '@/shared/contracts/codex-output-throughput';
 import type {
   CodexHistoryArchiveFilter,
   CodexHistoryFilterOptions,
@@ -86,6 +87,25 @@ function useSearchResults(
   const [loadingMore, setLoadingMore] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const requestRevision = useRef(0);
+  const detailThroughputs = useRef(new Map<string, { updatedAt: string; throughput: CodexOutputThroughput | null }>());
+  const updateThroughput = useCallback(
+    (threadId: string, updatedAt: string, throughput: CodexOutputThroughput | null) => {
+      detailThroughputs.current.delete(threadId);
+      detailThroughputs.current.set(threadId, { updatedAt, throughput });
+      if (detailThroughputs.current.size > 100)
+        detailThroughputs.current.delete(detailThroughputs.current.keys().next().value!);
+      setSnapshot(
+        (current) =>
+          current && {
+            ...current,
+            items: current.items.map((item) =>
+              item.threadId === threadId && item.updatedAt === updatedAt ? { ...item, throughput } : item,
+            ),
+          },
+      );
+    },
+    [],
+  );
 
   const load = useCallback(
     async (nextPage: number, append = false) => {
@@ -103,6 +123,28 @@ function useSearchResults(
         setSnapshot((current) => mergedPage(current, next, append));
         setSnapshotCriteria(criteria);
         onIndexChange(next.index);
+        // Render the page first, then finish its batch before admitting the next page.
+        // This prevents auto-pagination from cancelling an earlier page's enrichment.
+        await window.desktopApi
+          .codexHistoryThroughputs({ threads: next.items.map(({ threadId, updatedAt }) => ({ threadId, updatedAt })) })
+          .then(
+            (summaries) => {
+              if (requestRevision.current !== revision) return;
+              setSnapshot(
+                (current) =>
+                  current && {
+                    ...current,
+                    items: current.items.map((item) => {
+                      const detail = detailThroughputs.current.get(item.threadId);
+                      const throughput =
+                        detail?.updatedAt === item.updatedAt ? detail.throughput : summaries[item.threadId];
+                      return throughput ? { ...item, throughput } : item;
+                    }),
+                  },
+              );
+            },
+            () => undefined,
+          );
       } catch (reason) {
         if (requestRevision.current !== revision) return;
         setError(reason instanceof Error ? reason.message : String(reason));
@@ -129,10 +171,11 @@ function useSearchResults(
     void load(1);
     return () => {
       requestRevision.current += 1;
+      void window.desktopApi.codexHistoryThroughputsCancel().catch(() => undefined);
     };
   }, [active, authorized, load]);
 
-  return { snapshot, snapshotCriteria, loading, loadingMore, error, setError, load };
+  return { snapshot, snapshotCriteria, loading, loadingMore, error, setError, load, updateThroughput };
 }
 
 export function useCodexHistorySearch({ active, authorized, notify }: Options) {
@@ -190,12 +233,8 @@ export function useCodexHistorySearch({ active, authorized, notify }: Options) {
       workspace,
     ],
   );
-  const { snapshot, snapshotCriteria, loading, loadingMore, error, setError, load } = useSearchResults(
-    active,
-    authorized,
-    criteria,
-    setIndex,
-  );
+  const { snapshot, snapshotCriteria, loading, loadingMore, error, setError, load, updateThroughput } =
+    useSearchResults(active, authorized, criteria, setIndex);
   const queryPending = draftQuery.trim() !== query;
   const hasMore = Boolean(
     active &&
@@ -371,6 +410,7 @@ export function useCodexHistorySearch({ active, authorized, notify }: Options) {
     setDateSelection,
     resetAdvancedFilters,
     snapshot,
+    updateThroughput,
     filterOptions,
     index,
     loading: loading || queryPending,

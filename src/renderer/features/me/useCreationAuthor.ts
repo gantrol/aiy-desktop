@@ -10,12 +10,14 @@ export function useCreationAuthor(spaceId: string, target: CreationFormEntityRef
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [refresh, setRefresh] = useState(0);
+  const [pendingAssignment, setPendingAssignment] = useState<Parameters<MeApi['setCreationAuthor']>[0] | null>(null);
   const epoch = useRef(0),
     locked = useRef(false);
   const lifetime = useRef(0);
   useEffect(() => {
     const current = ++lifetime.current;
     setValue(null);
+    setPendingAssignment(null);
     setSaving(false);
     locked.current = false;
     return () => {
@@ -80,22 +82,40 @@ export function useCreationAuthor(spaceId: string, target: CreationFormEntityRef
       }
     }
   }
+  const submitAssignment = (input: Parameters<MeApi['setCreationAuthor']>[0]) =>
+    mutate(async () => {
+      const current = lifetime.current;
+      try {
+        const next = await window.desktopApi.me.setCreationAuthor(input);
+        if (lifetime.current === current) setPendingAssignment(null);
+        return next;
+      } catch (error) {
+        // Keep an uncertain creation request intact; its UUID also identifies the committed author.
+        const rejected =
+          /AUTHOR_(?:CHANGED|CANDIDATES_CHANGED|LIMIT|REQUEST_CONFLICT)|CREATION_UNAVAILABLE|ME_SPACE_CHANGED/.test(
+            String(error),
+          );
+        if (lifetime.current === current)
+          setPendingAssignment(input.selection.kind === 'NEW' && !rejected ? input : null);
+        throw error;
+      }
+    });
   return {
     value,
     failed,
     loading,
     saving,
+    pendingAssignment,
+    retryAssignment: () => (pendingAssignment ? submitAssignment(pendingAssignment) : Promise.resolve(false)),
     retry: () => setRefresh((count) => count + 1),
     assign: (selection: Parameters<MeApi['setCreationAuthor']>[0]['selection']) =>
-      value
-        ? mutate(() =>
-            window.desktopApi.me.setCreationAuthor({
-              spaceId,
-              target: value.target,
-              expectedRevision: value.revision,
-              selection,
-            }),
-          )
+      value && !pendingAssignment
+        ? submitAssignment({
+            spaceId,
+            target: value.target,
+            expectedRevision: value.revision,
+            selection,
+          })
         : Promise.resolve(false),
     update: (author: Author, fields: AuthorFields) =>
       mutate(() =>

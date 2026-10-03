@@ -77,6 +77,7 @@ export function VideoDocumentEditorSurfaces({
             data-content-source={contentSource ? JSON.stringify(contentSource) : undefined}
             onDragOverCapture={referenceDrop.onDragOverCapture}
             onDropCapture={referenceDrop.onDropCapture}
+            onDragLeaveCapture={referenceDrop.onDragLeaveCapture}
             className={cn(
               'group/editor relative min-w-0 w-full',
               outlineMode && 'min-h-[60vh]',
@@ -127,6 +128,11 @@ export function VideoDocumentEditorSurfaces({
             ? createPortal(
                 <>
                   {chrome}
+                  {referenceDrop.error && (
+                    <span role="alert" className="text-xs text-destructive">
+                      {referenceDrop.error}
+                    </span>
+                  )}
                   {outlineMode && <OutlineSelectionToolbar editor={editor} />}
                 </>,
                 secondaryChromeRoot,

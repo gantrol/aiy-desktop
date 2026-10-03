@@ -1,3 +1,4 @@
+import { commentCompilationOriginSchema } from '@/shared/contracts/comment-compilation';
 import { z } from 'zod';
 import { contentSourceSchema, type ContentAuthor } from '@/shared/contracts/content-provenance';
 
@@ -21,6 +22,7 @@ export const contentWriteContextSchema = z.object({
   batchId: z.string().optional(),
   baseRevisionId: z.string().optional(),
   sources: z.array(contentSourceSchema).max(100),
+  commentCompilation: commentCompilationOriginSchema.optional(),
 });
 export type ContentWriteContext = z.infer<typeof contentWriteContextSchema>;
 

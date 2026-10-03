@@ -29,7 +29,12 @@ export function useCalendarData(
   const preferencesRef = useRef(preferences);
   const [ready, setReady] = useState(false);
   const [preferenceError, setPreferenceError] = useState(false);
-  const [summaryState, setSummary] = useState<{ scope: object; value: CalendarSummaryResult } | null>(null);
+  const [summaryState, setSummary] = useState<{
+    scope: object;
+    startDate: string;
+    endDate: string;
+    value: CalendarSummaryResult;
+  } | null>(null);
   const [summaryLoading, setSummaryLoading] = useState(false);
   const [summaryError, setSummaryError] = useState(false);
   const [refreshRevision, setRefreshRevision] = useState(0);
@@ -54,8 +59,8 @@ export function useCalendarData(
     ],
   );
   const summaryScope = useMemo(
-    () => ({ filters, spaceId, dataRevision, refreshRevision, active }),
-    [filters, spaceId, dataRevision, refreshRevision, active],
+    () => ({ filters, spaceId, dataRevision, refreshRevision }),
+    [filters, spaceId, dataRevision, refreshRevision],
   );
   const summary = summaryState?.scope === summaryScope ? summaryState.value : null;
   const query = useMemo(
@@ -85,8 +90,17 @@ export function useCalendarData(
     void window.desktopApi.calendar.getPreferences(spaceId).then(
       (stored) => {
         if (cancelled) return;
-        preferencesRef.current = stored;
-        setPreferences(stored);
+        const current = preferencesRef.current;
+        const next = {
+          ...stored,
+          categories:
+            current.categories.length === stored.categories.length &&
+            current.categories.every((category) => stored.categories.includes(category))
+              ? current.categories
+              : stored.categories,
+        };
+        preferencesRef.current = next;
+        setPreferences(next);
         setReady(true);
       },
       () => {
@@ -103,13 +117,22 @@ export function useCalendarData(
 
   useEffect(() => {
     if (!ready || !active) return;
+    if (
+      summaryState?.scope === summaryScope &&
+      summaryState.startDate === range.startDate &&
+      summaryState.endDate === range.endDate
+    ) {
+      setSummaryLoading(false);
+      setSummaryError(false);
+      return;
+    }
     let cancelled = false;
     setSummaryLoading(true);
     setSummaryError(false);
     void window.desktopApi.calendar.summary({ ...range, ...filters }, spaceId).then(
       (next) => {
         if (cancelled) return;
-        setSummary({ scope: summaryScope, value: next });
+        setSummary({ scope: summaryScope, ...range, value: next });
         setSummaryLoading(false);
       },
       () => {
@@ -121,11 +144,15 @@ export function useCalendarData(
     return () => {
       cancelled = true;
     };
-  }, [ready, active, range, filters, spaceId, summaryScope]);
+  }, [ready, active, range, filters, spaceId, summaryScope, summaryState]);
 
   const updatePreferences = useCallback(
     (patch: Partial<CalendarPreferences>) => {
       const next = { ...preferencesRef.current, ...patch };
+      if (patch.timeZone !== undefined || patch.followSystemTimeZone !== undefined) {
+        next.lastSystemTimeZone = deviceTimeZone();
+        if (next.followSystemTimeZone) next.timeZone = next.lastSystemTimeZone;
+      }
       preferencesRef.current = next;
       setPreferences(next);
       setPreferenceError(false);

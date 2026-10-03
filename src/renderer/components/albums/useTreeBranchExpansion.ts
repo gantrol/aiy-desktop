@@ -1,14 +1,9 @@
 import { useCallback, useLayoutEffect, useMemo, useRef, useState, type RefObject } from 'react';
+import { useTreeBranchReveal } from '@/renderer/components/albums/useTreeBranchReveal';
 import {
   hasTreeBranchVerticalTravel,
   trackTreeBranchRetreat,
 } from '@/renderer/components/albums/treeBranchInteraction';
-
-// Let the 220ms branch reveal settle before measuring overflow so automatic
-// scrolling continues the same motion instead of starting as a late second step.
-const branchRevealDelayMs = 230;
-const viewportInset = 8;
-let nextRevealSequence = 0;
 
 export type TreeBranchDiagnosticValue = string | number | boolean | null;
 export type TreeBranchDiagnosticSink = (
@@ -46,70 +41,6 @@ function getTreeNodeCenters(
   return centers;
 }
 
-function revealBranch(viewport: HTMLDivElement | null, branchId: string, diagnostics?: TreeBranchDiagnosticSink) {
-  if (!viewport) {
-    diagnostics?.('tree.reveal.skipped', { branchId, reason: 'missing-viewport' });
-    return;
-  }
-  const revealSequence = diagnostics ? ++nextRevealSequence : 0;
-  const scheduledAt = diagnostics ? performance.now() : 0;
-  diagnostics?.('tree.reveal.scheduled', {
-    branchId,
-    delayMs: branchRevealDelayMs,
-    revealSequence,
-  });
-  window.setTimeout(() => {
-    diagnostics?.('tree.reveal.timer-fired', {
-      branchId,
-      actualDelayMs: performance.now() - scheduledAt,
-      revealSequence,
-    });
-    const branch = [...viewport.querySelectorAll<HTMLElement>('[data-tree-branch-id]')].find(
-      (element) => element.dataset.treeBranchId === branchId,
-    );
-    if (!branch) {
-      diagnostics?.('tree.reveal.skipped', { branchId, reason: 'missing-branch', revealSequence });
-      return;
-    }
-    const row = [...branch.querySelectorAll<HTMLElement>('[data-tree-node-id]')].find(
-      (element) => element.dataset.treeNodeId === branchId,
-    );
-    if (!row) {
-      diagnostics?.('tree.reveal.skipped', { branchId, reason: 'missing-row', revealSequence });
-      return;
-    }
-
-    const measuredAt = diagnostics ? performance.now() : 0;
-    const viewportRect = viewport.getBoundingClientRect();
-    const branchRect = branch.getBoundingClientRect();
-    const rowRect = row.getBoundingClientRect();
-    const overflow = branchRect.bottom - viewportRect.bottom + viewportInset;
-    const availableShift = rowRect.top - viewportRect.top - viewportInset;
-    const shift = Math.min(overflow, availableShift);
-    diagnostics?.('tree.reveal.geometry', {
-      branchId,
-      availableShiftPx: availableShift,
-      durationMs: performance.now() - measuredAt,
-      overflowPx: overflow,
-      revealSequence,
-      shiftPx: shift,
-    });
-    if (shift <= 0) {
-      diagnostics?.('tree.reveal.skipped', { branchId, reason: 'already-visible', revealSequence });
-      return;
-    }
-
-    const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-    diagnostics?.('tree.reveal.scroll-started', {
-      branchId,
-      behavior: reduceMotion ? 'auto' : 'smooth',
-      revealSequence,
-      shiftPx: shift,
-    });
-    viewport.scrollBy({ top: shift, behavior: reduceMotion ? 'auto' : 'smooth' });
-  }, branchRevealDelayMs);
-}
-
 /**
  * Keeps deliberate expansion separate from gesture expansion. A branch
  * opened by pulling downward stays latched open until the pointer slides
@@ -123,6 +54,8 @@ export function useTreeBranchExpansion(
 ) {
   const [persistentIds, setPersistentIds] = useState<Set<string>>(() => new Set(initialPersistentIds));
   const [gestureIds, setGestureIds] = useState<Set<string>>(() => new Set());
+  const openIds = useMemo(() => new Set([...persistentIds, ...gestureIds]), [gestureIds, persistentIds]);
+  const requestReveal = useTreeBranchReveal(viewportRef, openIds, diagnostics);
   const persistentIdsRef = useRef(persistentIds);
   const gestureIdsRef = useRef(gestureIds);
   const pointerYByBranch = useRef(new Map<string, number>());
@@ -191,9 +124,9 @@ export function useTreeBranchExpansion(
         next.add(branchId);
         return next;
       });
-      if (reveal) revealBranch(viewportRef.current, branchId, diagnostics);
+      if (reveal) requestReveal(branchId);
     },
-    [clearGestureMany, collapse, diagnostics, updatePersistent, viewportRef],
+    [clearGestureMany, collapse, diagnostics, updatePersistent, requestReveal],
   );
 
   const togglePersistent = useCallback(
@@ -223,7 +156,7 @@ export function useTreeBranchExpansion(
     next.add(branchId);
     gestureIdsRef.current = next;
     setGestureIds(next);
-    revealBranch(viewportRef.current, branchId, diagnostics);
+    requestReveal(branchId);
   }
 
   function beginPointerTrack(branchId: string, clientY: number) {
@@ -280,8 +213,6 @@ export function useTreeBranchExpansion(
   function trackPointer(branchId: string, clientY: number): boolean {
     return samplePointer(branchId, clientY, 'move');
   }
-
-  const openIds = useMemo(() => new Set([...persistentIds, ...gestureIds]), [gestureIds, persistentIds]);
 
   useLayoutEffect(() => {
     diagnostics?.('tree.expansion.committed', {

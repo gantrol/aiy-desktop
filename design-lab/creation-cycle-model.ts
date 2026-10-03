@@ -1,8 +1,14 @@
-import { useRef, useState } from 'react';
+import { useState } from 'react';
 import type { AssetDto } from '@/shared/contracts';
 import { contentAssetPath } from '@/shared/content-document';
 import { useI18n } from '@/renderer/i18n/useI18n';
-import type { VideoDocumentWysiwygEditorHandle } from '@/renderer/features/video-documents/videoDocumentEditorTypes';
+import {
+  sameDraft,
+  useCycleDocuments,
+  type DraftContent,
+  type DraftTarget,
+  type InputScope,
+} from './creation-cycle-documents';
 import { landscape, portrait } from './fixtures';
 
 export type OperationKind = 'rewrite' | 'image';
@@ -13,6 +19,22 @@ export interface CycleMaterial {
   author: string;
   markdown: string | null;
   asset?: AssetDto;
+}
+interface CycleOperation {
+  kind: OperationKind;
+  target: DraftTarget;
+  targetLabel: string;
+  base: DraftContent;
+  input: string;
+  selection: boolean;
+  availableInputIds: string[];
+}
+interface CycleRecord {
+  kind: OperationKind;
+  targetLabel: string;
+  input: string;
+  requirements: string;
+  references: CycleMaterial[];
 }
 
 export const cycleAssets: AssetDto[] = [landscape, portrait].map((mediaUrl, index) => ({
@@ -28,13 +50,9 @@ export const cycleAssets: AssetDto[] = [landscape, portrait].map((mediaUrl, inde
 
 export function useCycleModel() {
   const copy = useI18n().messages.designLab.creationCycle;
+  const documents = useCycleDocuments(copy);
   const [surface, setSurface] = useState<'write' | 'materials'>('write');
-  const [title, setTitle] = useState(copy.exampleTitle);
-  const [markdown, setMarkdown] = useState(
-    `## ${copy.exampleHeading}\n\n${copy.exampleIntro}\n\n${copy.exampleParagraph}`,
-  );
-  const [epoch, setEpoch] = useState(0);
-  const [inputIds, setInputIds] = useState(['external', 'notes']);
+  const [sharedInputIds, setSharedInputIds] = useState(['external']);
   const [selectedMaterialId, setSelectedMaterialId] = useState('notes');
   const [selectedText, setSelectedText] = useState('');
   const [notice, setNotice] = useState('');
@@ -42,15 +60,10 @@ export function useCycleModel() {
   const [candidate, setCandidate] = useState<string | null>(null);
   const [imageReady, setImageReady] = useState(false);
   const [candidateImage, setCandidateImage] = useState(0);
-  const [adoptedAssetIds, setAdoptedAssetIds] = useState<string[]>([]);
-  const [records, setRecords] = useState<OperationKind[]>([]);
-  const [operation, setOperation] = useState<{
-    kind: OperationKind;
-    base: string;
-    input: string;
-    selection: boolean;
-  } | null>(null);
-  const editorHandle = useRef<VideoDocumentWysiwygEditorHandle | null>(null);
+  const [references, setReferences] = useState<string[]>([]);
+  const [records, setRecords] = useState<CycleRecord[]>([]);
+  const [operation, setOperation] = useState<CycleOperation | null>(null);
+  const inputIds = [...new Set([...sharedInputIds, ...documents.draft.inputIds])];
   const materials: CycleMaterial[] = [
     { id: 'external', kind: 'ARTICLE', title: copy.externalTitle, author: copy.unknownAuthor, markdown: null },
     { id: 'notes', kind: 'ARTICLE', title: copy.exampleNoteTitle, author: copy.mine, markdown: copy.exampleNote },
@@ -64,76 +77,141 @@ export function useCycleModel() {
       asset,
     })),
   ];
+  const adoptedAssetIds = cycleAssets
+    .filter(
+      (asset) => documents.draft.assetId === asset.id || documents.draft.markdown.includes(contentAssetPath(asset.id)),
+    )
+    .map((asset) => asset.id);
 
-  function addInput(id: string) {
-    setInputIds((current) => (current.includes(id) ? current : [...current, id]));
+  function addInput(id: string, scope: InputScope = 'current') {
+    const update = (ids: string[]) => (ids.includes(id) ? ids : [...ids, id]);
+    if (scope === 'shared') setSharedInputIds(update);
+    else documents.setCurrentInputs(update);
     setSelectedMaterialId(id);
     setNotice(copy.used);
   }
 
-  async function captureDraft() {
-    const editor = editorHandle.current;
-    if (editor && !(await editor.whenSettled())) return null;
-    return editor?.getPersistenceSnapshot().markdown ?? markdown;
+  function removeInput(id: string, scope: InputScope) {
+    const update = (ids: string[]) => ids.filter((item) => item !== id);
+    if (scope === 'shared') setSharedInputIds(update);
+    else documents.setCurrentInputs(update);
   }
 
-  async function begin(kind: OperationKind) {
-    const base = await captureDraft();
-    if (base === null) return;
-    const first = selectedText ? base.indexOf(selectedText) : -1;
-    const selection = first >= 0 && base.indexOf(selectedText, first + selectedText.length) < 0;
-    setMarkdown(base);
-    setOperation({ kind, base, input: selection ? selectedText : base, selection });
-    setRequirements(kind === 'rewrite' ? copy.exampleRequirement : copy.exampleImageRequirement);
-    setCandidate(null);
-    setImageReady(false);
-    setNotice('');
-    setSurface('write');
+  function switchDraft(outputId: string, draftId = 'original') {
+    if (operation) return;
+    return documents.withSettledDraft(() => {
+      documents.switchTarget({ outputId, draftId });
+      setSelectedText('');
+      setSurface('write');
+      setNotice('');
+    });
+  }
+
+  function begin(kind: OperationKind) {
+    if (operation) return;
+    return documents.withSettledDraft((base) => {
+      const first = selectedText ? base.markdown.indexOf(selectedText) : -1;
+      const selection = first >= 0 && base.markdown.indexOf(selectedText, first + selectedText.length) < 0;
+      if (selectedText && !selection) return setNotice(copy.selectionUnavailable);
+      setOperation({
+        kind,
+        base,
+        target: documents.target,
+        targetLabel: `${base.title} / ${documents.contextLabel}`,
+        input: selection ? selectedText : base.markdown,
+        selection,
+        availableInputIds: [...inputIds],
+      });
+      setRequirements(kind === 'rewrite' ? copy.exampleRequirement : copy.exampleImageRequirement);
+      setReferences([]);
+      setCandidate(null);
+      setImageReady(false);
+      setCandidateImage(0);
+      setNotice('');
+      setSurface('write');
+    });
   }
 
   function previewCandidate() {
     if (!operation) return;
     if (operation.kind === 'rewrite') {
-      setCandidate(operation.input.replace(copy.exampleParagraph, copy.exampleRewrite));
+      setCandidate(
+        operation.input.includes(copy.exampleParagraph)
+          ? operation.input.replace(copy.exampleParagraph, copy.exampleRewrite)
+          : operation.input,
+      );
     } else setImageReady(true);
-    setRecords((current) => [...current, operation.kind]);
+    setRecords((current) => [
+      ...current,
+      {
+        kind: operation.kind,
+        targetLabel: operation.targetLabel,
+        input: operation.input,
+        requirements,
+        references: materials.filter((item) => references.includes(item.id)).map((item) => ({ ...item })),
+      },
+    ]);
   }
 
-  async function adopt() {
+  function adopt(independent = false) {
     if (!operation) return;
-    const current = await captureDraft();
-    if (current === null) return;
-    if (current !== operation.base) return setNotice(copy.stale);
-    let next = current;
-    if (operation.kind === 'rewrite') {
-      if (candidate === null) return;
-      next = operation.selection ? current.replace(operation.input, candidate) : candidate;
-    } else {
-      if (!imageReady) return;
-      const asset = cycleAssets[candidateImage];
-      const image = `\n\n![${copy.image}](${contentAssetPath(asset.id)})`;
-      next = operation.selection ? current.replace(operation.input, operation.input + image) : current + image;
-      setAdoptedAssetIds((ids) => [...new Set([...ids, asset.id])]);
-    }
-    setMarkdown(next);
-    setEpoch((currentEpoch) => currentEpoch + 1);
-    setSelectedText('');
-    setOperation(null);
-    setNotice(operation.kind === 'image' ? copy.imageInserted : copy.adopted);
+    return documents.withSettledDraft((current) => {
+      if (
+        documents.target.outputId !== operation.target.outputId ||
+        documents.target.draftId !== operation.target.draftId ||
+        (!independent && !sameDraft(current, operation.base))
+      )
+        return setNotice(copy.stale);
+      const next = { ...operation.base };
+      const image = operation.kind === 'image';
+      if (image) {
+        if (!imageReady) return;
+        const asset = cycleAssets[candidateImage];
+        if (independent || documents.output.kind === 'IMAGE') {
+          next.assetId = asset.id;
+          next.markdown = '';
+        } else {
+          const insert = `\n\n![${copy.image}](${contentAssetPath(asset.id)})\n\n`;
+          next.markdown = operation.selection
+            ? next.markdown.replace(operation.input, () => operation.input + insert)
+            : next.markdown + insert;
+        }
+      } else {
+        if (candidate === null) return;
+        next.markdown = operation.selection ? next.markdown.replace(operation.input, () => candidate) : candidate;
+      }
+      if (independent) {
+        next.title = `${operation.base.title} · ${image ? copy.image : copy.independentDraft}`;
+        documents.createIndependent(next, image ? 'IMAGE' : 'ARTICLE', operation.base, documents.draft.inputIds);
+      } else {
+        documents.saveRevision(next);
+        documents.remountEditor();
+      }
+      setSelectedText('');
+      setOperation(null);
+      setNotice(independent ? copy.independentSaved : copy.adopted);
+    });
+  }
+
+  function saveRevision() {
+    return documents.withSettledDraft((content) => {
+      documents.saveRevision(content);
+      setNotice(copy.revisionSaved);
+    });
   }
 
   return {
+    ...documents,
     copy,
     surface,
     setSurface,
-    title,
-    setTitle,
-    markdown,
-    setMarkdown,
-    epoch,
-    editorHandle,
+    title: documents.draft.title,
+    setTitle: (title: string) => documents.patchDraft({ title }),
+    markdown: documents.draft.markdown,
+    setMarkdown: (markdown: string) => documents.patchDraft({ markdown }),
     inputIds,
-    setInputIds,
+    sharedInputIds,
+    currentInputIds: documents.draft.inputIds,
     selectedMaterialId,
     setSelectedMaterialId,
     selectedText,
@@ -149,13 +227,18 @@ export function useCycleModel() {
     imageReady,
     candidateImage,
     setCandidateImage,
+    references,
+    setReferences,
     adoptedAssetIds,
     records,
     materials,
     addInput,
+    removeInput,
+    switchDraft,
     begin,
     previewCandidate,
     adopt,
+    saveRevision,
   };
 }
 

@@ -7,6 +7,19 @@ import type {
   CreationDraftSaveSnapshot,
 } from '@/renderer/components/creator/workflows/creationDraftSnapshot';
 import { useStableCallback } from '@/renderer/lib/useStableCallback';
+import {
+  creationDraftSnapshotKey,
+  savedCreationDraftSnapshot,
+} from '@/renderer/components/creator/workflows/creationDraftSnapshot';
+import {
+  CreationDraftSessionSupersededError,
+  isCreationDraftSessionSupersededError,
+} from '@/renderer/components/creator/workflows/creationDraftSessionErrors';
+import {
+  useCreationDraftSaveQueue,
+  type CreationDraftQueueTail,
+} from '@/renderer/components/creator/workflows/useCreationDraftSaveQueue';
+import { useCreationDraftConflict } from '@/renderer/components/creator/workflows/useCreationDraftConflict';
 
 export const CREATION_DRAFT_AUTOSAVE_IDLE_MS = 450;
 
@@ -18,11 +31,6 @@ interface CreationDraftSessionIdentity {
 
 interface CreationDraftSessionState extends CreationDraftSessionIdentity {
   savedDraft: CreationDraftDto | null;
-}
-
-interface CreationDraftQueueTail {
-  sessionGeneration: number;
-  promise: Promise<CreationDraftDto | null>;
 }
 
 interface UseCreationDraftSessionOptions {
@@ -44,13 +52,6 @@ interface UseCreationDraftAutosaveOptions {
   onError(reason: unknown): void;
 }
 
-class CreationDraftSessionSupersededError extends Error {
-  constructor(readonly persistedDraft: CreationDraftDto | null = null) {
-    super('Creation draft session was superseded');
-    this.name = 'CreationDraftSessionSupersededError';
-  }
-}
-
 function sameIdentity(state: CreationDraftSessionState, identity: CreationDraftSessionIdentity) {
   return (
     state.sessionGeneration === identity.sessionGeneration &&
@@ -58,10 +59,6 @@ function sameIdentity(state: CreationDraftSessionState, identity: CreationDraftS
     // The first acknowledgement assigns an ID without replacing this input session.
     (state.draftId === identity.draftId || identity.draftId === null)
   );
-}
-
-export function isCreationDraftSessionSupersededError(reason: unknown): reason is CreationDraftSessionSupersededError {
-  return reason instanceof CreationDraftSessionSupersededError;
 }
 
 function queuedSaveBaseline(
@@ -125,9 +122,11 @@ export function useCreationDraftSession({
     draftId: initialDraft?.id ?? null,
     savedDraft: initialDraft,
   });
-  const queueTailRef = useRef<CreationDraftQueueTail>({ sessionGeneration: 0, promise: Promise.resolve(null) });
-  const pendingSaveRef = useRef<Promise<CreationDraftDto> | null>(null);
-  const savedSnapshotKeyRef = useRef<string | null>(null);
+  const { queueTailRef, pendingSaveRef, trackSave, awaitPendingSave } = useCreationDraftSaveQueue();
+  const conflict = useCreationDraftConflict();
+  const savedSnapshotKeyRef = useRef<string | null>(
+    initialDraft ? creationDraftSnapshotKey(savedCreationDraftSnapshot(initialDraft)) : null,
+  );
   const mountedRef = useRef(true);
   const lifecycleRevisionRef = useRef(0);
   const inputWaitersRef = useRef(new Set<() => void>());
@@ -152,33 +151,11 @@ export function useCreationDraftSession({
 
   const captureIdentity = useStableCallback(() => captureDraftSessionIdentity(stateRef.current));
 
-  const trackSave = useStableCallback(
-    (sessionGeneration: number, previous: CreationDraftQueueTail, promise: Promise<CreationDraftDto>) => {
-      queueTailRef.current = {
-        sessionGeneration,
-        // A cancelled or failed entry must not erase an earlier successful write.
-        promise: promise.catch((reason) => {
-          if (isCreationDraftSessionSupersededError(reason) && reason.persistedDraft) return reason.persistedDraft;
-          return previous.sessionGeneration === sessionGeneration ? previous.promise : null;
-        }),
-      };
-      pendingSaveRef.current = promise;
-      void promise.then(
-        () => {
-          if (pendingSaveRef.current === promise) pendingSaveRef.current = null;
-        },
-        () => {
-          if (pendingSaveRef.current === promise) pendingSaveRef.current = null;
-        },
-      );
-      return promise;
-    },
-  );
-
   const saveSnapshot = useStableCallback(
     (
       input: CreationDraftSaveSnapshot | (() => CreationDraftSaveSnapshot),
       requiredIdentity?: CreationDraftSessionIdentity,
+      asCopy = false,
     ) => {
       const source = typeof input === 'function' ? input : structuredClone(input);
       const sessionGeneration = stateRef.current.sessionGeneration;
@@ -204,18 +181,24 @@ export function useCreationDraftSession({
           assertCurrent();
         }
         const snapshot = typeof source === 'function' ? structuredClone(source()) : source;
-        const snapshotKey = JSON.stringify(snapshot);
+        const snapshotKey = creationDraftSnapshotKey(snapshot);
         if (snapshot.document && !(await contentImagesRecoverable(snapshot.document)))
           throw new Error('BLOCK_IMAGE_IMPORT_NOT_DURABLE');
         // Image staging can yield while navigation or adoption invalidates this save.
         assertCurrent();
         const stateBeforeSave = stateRef.current;
         const baseline = queuedSaveBaseline(stateBeforeSave, previous, previousDraft, sessionGeneration);
-        const targetDraftId = stateBeforeSave.draftId ?? baseline?.id ?? null;
-        const savedDraft = await window.desktopApi.creationDraftSave({
-          ...snapshot,
-          ...draftRevisionInput(targetDraftId, baseline),
-        });
+        const targetDraftId = asCopy ? null : (stateBeforeSave.draftId ?? baseline?.id ?? null);
+        const savedDraft =
+          baseline && targetDraftId === baseline.id && snapshotKey === savedSnapshotKeyRef.current
+            ? baseline
+            : await conflict.save(
+                { ...snapshot, ...draftRevisionInput(targetDraftId, baseline) },
+                () =>
+                  mountedRef.current &&
+                  lifecycleRevisionRef.current === lifecycleRevision &&
+                  stateRef.current.sessionGeneration === sessionGeneration,
+              );
         const stateAfterSave = stateRef.current;
         if (
           !mountedRef.current ||
@@ -224,6 +207,12 @@ export function useCreationDraftSession({
           (requiredIdentity && !sameIdentity(stateAfterSave, requiredIdentity))
         ) {
           throw new CreationDraftSessionSupersededError(savedDraft);
+        }
+        if (asCopy) {
+          stateAfterSave.sessionGeneration += 1;
+          stateAfterSave.autosaveEpoch += 1;
+          cancelInputWaits();
+          conflict.clear();
         }
         stateAfterSave.savedDraft = savedDraft;
         stateAfterSave.draftId = savedDraft.id;
@@ -248,11 +237,14 @@ export function useCreationDraftSession({
     async (snapshot: CreationDraftSaveSnapshot) => await saveSnapshot(snapshot),
   );
 
+  const saveDraftCopy = useStableCallback(() => saveSnapshot(() => captureSnapshotStable(), captureIdentity(), true));
+
   const preserveCapturedSnapshot = useStableCallback((source: CreationDraftSaveSnapshot) => {
     const snapshot = structuredClone(source);
-    const snapshotKey = JSON.stringify(snapshot);
+    const snapshotKey = creationDraftSnapshotKey(snapshot);
     const sessionGeneration = stateRef.current.sessionGeneration;
     const capturedDraftId = stateRef.current.draftId;
+    const capturedSnapshotKey = savedSnapshotKeyRef.current;
     const capturedDraft =
       capturedDraftId && stateRef.current.savedDraft?.id === capturedDraftId ? stateRef.current.savedDraft : null;
     const previous = queueTailRef.current;
@@ -274,10 +266,15 @@ export function useCreationDraftSession({
         sessionGeneration,
       );
       const targetDraftId = capturedDraftId ?? baseline?.id ?? null;
-      const savedDraft = await window.desktopApi.creationDraftSave({
-        ...snapshot,
-        ...draftRevisionInput(targetDraftId, baseline),
-      });
+      const savedDraft =
+        baseline &&
+        targetDraftId === baseline.id &&
+        snapshotKey === (stillCurrent ? savedSnapshotKeyRef.current : capturedSnapshotKey)
+          ? baseline
+          : await conflict.save(
+              { ...snapshot, ...draftRevisionInput(targetDraftId, baseline) },
+              () => mountedRef.current && stateRef.current.sessionGeneration === sessionGeneration,
+            );
       const current = stateRef.current;
       if (
         mountedRef.current &&
@@ -310,7 +307,8 @@ export function useCreationDraftSession({
     state.autosaveEpoch += 1;
     state.draftId = draft?.id ?? null;
     state.savedDraft = draft;
-    savedSnapshotKeyRef.current = null;
+    savedSnapshotKeyRef.current = draft ? creationDraftSnapshotKey(savedCreationDraftSnapshot(draft)) : null;
+    conflict.clear();
     cancelInputWaits();
     setDraftId(draft?.id ?? null);
   });
@@ -320,7 +318,9 @@ export function useCreationDraftSession({
     state.sessionGeneration += 1;
     state.autosaveEpoch += 1;
     state.draftId = null;
+    state.savedDraft = null;
     savedSnapshotKeyRef.current = null;
+    conflict.clear();
     cancelInputWaits();
     setDraftId(null);
   });
@@ -329,7 +329,8 @@ export function useCreationDraftSession({
     const savedDraft = stateRef.current.savedDraft;
     if (draft && savedDraft?.id === draft.id && savedDraft.updatedAt > draft.updatedAt) return;
     stateRef.current.savedDraft = draft;
-    savedSnapshotKeyRef.current = null;
+    savedSnapshotKeyRef.current = draft ? creationDraftSnapshotKey(savedCreationDraftSnapshot(draft)) : null;
+    if (!draft || draft.updatedAt !== savedDraft?.updatedAt) conflict.clear();
   });
 
   const patchSavedDraftTitle = useStableCallback((title: string) => {
@@ -345,17 +346,12 @@ export function useCreationDraftSession({
     cancelInputWaits();
   });
 
-  const awaitPendingSave = useStableCallback(async () => {
-    const pending = pendingSaveRef.current;
-    return pending ? await pending : null;
-  });
-
   const getDraftId = useStableCallback(() => stateRef.current.draftId);
   const getSavedDraft = useStableCallback(() => stateRef.current.savedDraft);
   const isCurrentInputSaved = useStableCallback(() => {
     if (pendingSaveRef.current || !savedSnapshotKeyRef.current) return false;
     try {
-      return savedSnapshotKeyRef.current === JSON.stringify(captureSnapshotStable());
+      return savedSnapshotKeyRef.current === creationDraftSnapshotKey(captureSnapshotStable());
     } catch {
       // A new composition is dirty until its final document can be captured.
       return false;
@@ -365,6 +361,7 @@ export function useCreationDraftSession({
   return {
     awaitPendingSave,
     captureAutosaveIdentity: captureIdentity,
+    conflictDraftId: conflict.draftId,
     detachDraftIdentity,
     draftId,
     getDraftId,
@@ -377,6 +374,7 @@ export function useCreationDraftSession({
     replaceDraftSession,
     saveAutosaveIfCurrent: saveIfCurrent,
     saveCapturedSnapshot,
+    saveDraftCopy,
     saveDraftNow,
   };
 }

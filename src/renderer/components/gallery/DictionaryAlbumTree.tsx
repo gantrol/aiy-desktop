@@ -265,7 +265,6 @@ export function DictionaryAlbumTree({
       topology,
     );
     const visibleCount = Math.min(type.terms.length, visibleTermsByType[id] ?? pageSize);
-    const visibleTerms = open ? type.terms.slice(0, visibleCount) : [];
     return (
       <Collapsible
         key={id}
@@ -287,30 +286,34 @@ export function DictionaryAlbumTree({
         )}
         {type.terms.length > 0 && (
           <TreeBranchContent
-            onAnimationStart={(event) => traceBranchAnimation(id, 3, visibleTerms.length, 'start', event)}
-            onAnimationEnd={(event) => traceBranchAnimation(id, 3, visibleTerms.length, 'end', event)}
+            onAnimationStart={(event) => traceBranchAnimation(id, 3, visibleCount, 'start', event)}
+            onAnimationEnd={(event) => traceBranchAnimation(id, 3, visibleCount, 'end', event)}
           >
-            <TreeBranchCollapseProvider onCollapse={() => expansion.collapse(id)}>
-              {visibleTerms.map((term, index) =>
-                renderTerm(
-                  term,
-                  domainId,
-                  type.typeId,
-                  getTreeBranchItemTopology(index, visibleTerms.length + Number(visibleCount < type.terms.length)),
-                ),
-              )}
-              {open && visibleCount < type.terms.length && (
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="sm"
-                  className="ml-[5.5rem] h-8 px-2 text-xs text-muted-foreground"
-                  onClick={() => setVisibleTermsByType((current) => ({ ...current, [id]: visibleCount + pageSize }))}
-                >
-                  {moreLabel}
-                </Button>
-              )}
-            </TreeBranchCollapseProvider>
+            {() => (
+              <TreeBranchCollapseProvider onCollapse={() => expansion.collapse(id)}>
+                {type.terms
+                  .slice(0, visibleCount)
+                  .map((term, index) =>
+                    renderTerm(
+                      term,
+                      domainId,
+                      type.typeId,
+                      getTreeBranchItemTopology(index, visibleCount + Number(visibleCount < type.terms.length)),
+                    ),
+                  )}
+                {visibleCount < type.terms.length && (
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    className="ml-[5.5rem] h-8 px-2 text-xs text-muted-foreground"
+                    onClick={() => setVisibleTermsByType((current) => ({ ...current, [id]: visibleCount + pageSize }))}
+                  >
+                    {moreLabel}
+                  </Button>
+                )}
+              </TreeBranchCollapseProvider>
+            )}
           </TreeBranchContent>
         )}
       </Collapsible>
@@ -353,12 +356,13 @@ export function DictionaryAlbumTree({
             onAnimationStart={(event) => traceBranchAnimation(id, 2, domain.types.length, 'start', event)}
             onAnimationEnd={(event) => traceBranchAnimation(id, 2, domain.types.length, 'end', event)}
           >
-            <TreeBranchCollapseProvider onCollapse={() => expansion.collapse(id)}>
-              {open &&
-                domain.types.map((type, index) =>
+            {() => (
+              <TreeBranchCollapseProvider onCollapse={() => expansion.collapse(id)}>
+                {domain.types.map((type, index) =>
                   renderType(type, domain.domainId, getTreeBranchItemTopology(index, domain.types.length)),
                 )}
-            </TreeBranchCollapseProvider>
+              </TreeBranchCollapseProvider>
+            )}
           </TreeBranchContent>
         )}
       </Collapsible>

@@ -12,6 +12,7 @@ import type { CreationRelationItem } from '@/renderer/components/creator/Creatio
 import type { CreationOutputMode } from '@/renderer/components/creator/CreationOutputTabs';
 import { imageSeriesIdForCreationItem } from '@/renderer/components/creator/screen/creatorScreenProjection';
 import { useStableCallback } from '@/renderer/lib/useStableCallback';
+import { recordRendererDiagnostic } from '@/renderer/lib/rendererDiagnostics';
 import { useI18n } from '@/renderer/i18n/useI18n';
 import { useGifMakerLauncher } from '@/renderer/features/gif-making/GifMakerProvider';
 import type { DerivedVisualWorkspaceViewState } from '@/renderer/components/creator/derivedVisualWorkspace';
@@ -77,7 +78,18 @@ export function useCreatorContentNavigation(options: Options) {
 
   const chooseArticle = useStableCallback(async (id: string, mode: NavigationMode | null = 'push') => {
     const article = (options.data.articles ?? []).find((item) => item.id === id);
-    if (!article || !(await options.preserveBeforeNavigation())) return false;
+    if (!article) return false;
+    const startedAt = performance.now();
+    const requestId = crypto.randomUUID();
+    recordRendererDiagnostic('article-open-start', { articleId: id, requestId });
+    const preserved = await options.preserveBeforeNavigation();
+    recordRendererDiagnostic('article-open-prepared', {
+      articleId: id,
+      requestId,
+      durationMs: performance.now() - startedAt,
+      matchesSaved: preserved,
+    });
+    if (!preserved) return false;
     options.onComparisonFullWindowChange(false);
     options.openParentEditor();
     options.selectArticle(article.id);

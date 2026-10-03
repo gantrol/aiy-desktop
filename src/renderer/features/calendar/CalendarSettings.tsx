@@ -1,10 +1,10 @@
-import { useMemo } from 'react';
 import { SlidersHorizontalIcon } from 'lucide-react';
 import { Button } from '@/renderer/components/ui/button';
 import { Checkbox } from '@/renderer/components/ui/checkbox';
 import { Popover, PopoverContent, PopoverTrigger } from '@/renderer/components/ui/popover';
 import { useI18n } from '@/renderer/i18n/useI18n';
 import { calendarSelectClass } from '@/renderer/features/calendar/calendarControls';
+import { CalendarTimeZonePicker } from '@/renderer/features/calendar/CalendarTimeZonePicker';
 import type { CalendarCategory, CalendarPreferences } from '@/shared/contracts/calendar';
 
 export function CalendarSettings({
@@ -18,10 +18,6 @@ export function CalendarSettings({
 }) {
   const { messages } = useI18n();
   const m = messages.calendar;
-  const zones = useMemo(
-    () => [...new Set(['UTC', preferences.timeZone, ...Intl.supportedValuesOf('timeZone')])],
-    [preferences.timeZone],
-  );
   const toggleCategory = (category: CalendarCategory) =>
     onChange({
       categories: preferences.categories.includes(category)
@@ -51,20 +47,7 @@ export function CalendarSettings({
             ))}
           </fieldset>
           <div className="grid gap-3 border-t border-border pt-3">
-            <label className="grid gap-1.5 text-xs text-foreground-secondary">
-              {m.timeZone}
-              <select
-                className={calendarSelectClass}
-                value={preferences.timeZone}
-                onChange={(event) => onChange({ timeZone: event.target.value })}
-              >
-                {zones.map((zone) => (
-                  <option key={zone} value={zone}>
-                    {zone}
-                  </option>
-                ))}
-              </select>
-            </label>
+            <CalendarTimeZonePicker preferences={preferences} onChange={onChange} />
             <label className="grid gap-1.5 text-xs text-foreground-secondary">
               {m.weekStartsOn}
               <select

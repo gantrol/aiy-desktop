@@ -1,10 +1,10 @@
-import { useState } from 'react';
 import { UserRoundIcon } from 'lucide-react';
 import type { CreationFormEntityRef } from '@/shared/contracts/creation-library';
 import type { ContentWriteContext } from '@/shared/contracts/authorship';
 import { Button } from '@/renderer/components/ui/button';
 import { Skeleton } from '@/renderer/components/ui/skeleton';
 import { Popover, PopoverContent, PopoverTrigger } from '@/renderer/components/ui/popover';
+import { useNavigationPopoverState } from '@/renderer/components/ui/popover-navigation-scope';
 import { ProfileAvatar } from '@/renderer/features/me/ProfileAvatar';
 import { AuthorPicker } from '@/renderer/features/me/AuthorPicker';
 import { authorDisplayName } from '@/renderer/features/me/AuthorNames';
@@ -29,7 +29,7 @@ export function CreationAuthor({
   const { messages } = useI18n(),
     copy = messages.me.authors;
   const controller = useCreationAuthor(spaceId, target);
-  const [open, setOpen] = useState(false);
+  const [open, setOpen] = useNavigationPopoverState();
   const { value, loading, failed } = controller;
   if (loading && !value) return <Skeleton className="h-7 w-24 rounded-sm" aria-label={messages.me.loading} />;
   if (failed && !value)
@@ -75,9 +75,16 @@ export function CreationAuthor({
       </PopoverTrigger>
       <PopoverContent
         align="start"
+        hideWhenDetached
+        onEscapeKeyDown={(event) => {
+          if (event.target instanceof HTMLElement && event.target.closest('[data-author-detail]'))
+            event.preventDefault();
+        }}
         className="max-h-[var(--radix-popover-content-available-height)] w-80 max-w-[calc(100vw-2rem)] overflow-y-auto p-3"
       >
-        {open && <AuthorPicker spaceId={spaceId} controller={controller} />}
+        {open && (
+          <AuthorPicker key={`${spaceId}:${target.kind}:${target.id}`} spaceId={spaceId} controller={controller} />
+        )}
         {open && hasContentWriteContextDetails(writeContext) && (
           <div className="mt-3 border-t border-border pt-3">
             <ContentWriteContextDetails value={writeContext} />

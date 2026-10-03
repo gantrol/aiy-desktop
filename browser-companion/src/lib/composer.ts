@@ -104,7 +104,8 @@ export async function fillComposer(
     return null;
   };
   if (options.articleHtml && adapter.fillArticle) {
-    if (mediaFiles.length && !adapter.findMediaInput(editor)) return failure(requestId, site, 'MEDIA_INPUT_NOT_FOUND');
+    // Article adapters own their media preflight. Whole-HTML paste does not
+    // require the site's file picker to be mounted.
     const blocked = await beginWrite();
     if (blocked) return failure(requestId, site, blocked);
     if (titleControl && title) {

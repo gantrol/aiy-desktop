@@ -71,6 +71,7 @@ function isDocumentTransitionPending(active: boolean, documentId: string | null,
 interface Options {
   active: boolean;
   documentId: string | null;
+  initialBranchId?: string;
   revisionLoadFailedLabel: string;
   keyChangeErrorLabels: {
     ffmpegUnavailable: string;
@@ -83,6 +84,7 @@ interface Options {
 export function useVideoDocumentSession({
   active,
   documentId,
+  initialBranchId,
   revisionLoadFailedLabel,
   keyChangeErrorLabels,
   notify,
@@ -158,7 +160,9 @@ export function useVideoDocumentSession({
         if (!current) return;
         setDocument(next);
         setTitle(next.title);
-        setActiveBranchState(initialBranchRole(next));
+        setActiveBranchState(
+          next.branches.find((branch) => branch.id === initialBranchId)?.role ?? initialBranchRole(next),
+        );
         setDocumentLoading(false);
       })
       .catch((reason) => {
@@ -169,7 +173,7 @@ export function useVideoDocumentSession({
     return () => {
       current = false;
     };
-  }, [active, documentId, notify]);
+  }, [active, documentId, initialBranchId, notify]);
 
   function setSourcePaneWidth(width: number) {
     const normalized = Math.min(720, Math.max(320, Math.round(width)));

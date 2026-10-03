@@ -1,7 +1,12 @@
 import type { LibraryStorage } from '@/main/database/core/storage';
 import type { CreationFormEntityRef } from '@/shared/contracts/creation-library';
 import { authorSchema, creationAuthorStateSchema, type Author, type MeCommand } from '@/shared/contracts/me';
-import { authorSummary, createAuthorIdentity } from '@/main/database/me/author-identities';
+import { authorSummary } from '@/main/database/me/author-identities';
+import {
+  authorNameMatch,
+  authorSelectionWasCommitted,
+  createSelectedAuthor,
+} from '@/main/database/me/author-selection';
 import { contentAuthors, initializeContentAuthors, replaceContentAuthors } from '@/main/database/me/content-authorship';
 import { creationEntityExists } from '@/main/database/creations/creation-form-entity';
 
@@ -40,13 +45,64 @@ export class AuthorRepository {
   }
 
   list(input: Extract<MeCommand, { kind: 'authors-list' }>) {
+    return this.db.transaction(() => this.listSnapshot(input))();
+  }
+
+  private listSnapshot(input: Extract<MeCommand, { kind: 'authors-list' }>) {
     const rows = this.db
       .prepare(
         `${authorSelect} WHERE INSTR(LOWER(author.name || ' ' || COALESCE(author.application,'')),LOWER(?))>0
-      ORDER BY is_current_user DESC,author.name COLLATE NOCASE,author.id LIMIT 31 OFFSET ?`,
+      ORDER BY (LOWER(TRIM(author.name))=LOWER(?)) DESC,is_current_user DESC,author.name COLLATE NOCASE,author.id LIMIT 31 OFFSET ?`,
       )
-      .all(input.term, input.offset) as AuthorRow[];
-    return { authors: rows.slice(0, 30).map(authorDto), nextOffset: rows.length > 30 ? input.offset + 30 : null };
+      .all(input.term, input.term, input.offset) as AuthorRow[];
+    return {
+      authors: rows.slice(0, 30).map(authorDto),
+      nextOffset: rows.length > 30 ? input.offset + 30 : null,
+      nameMatch: authorNameMatch(this.db, input.term),
+    };
+  }
+
+  works(input: Extract<MeCommand, { kind: 'author-works' }>) {
+    this.get(input.authorId);
+    const rows = this.db
+      .prepare(
+        `SELECT form.id,COALESCE(json_extract(article_revision.content_json,'$.title'),
+           json_extract(post_revision.content_json,'$.title'),document.title,series.title,gif.title,breakdown.title,
+           json_extract(stash.input_json,'$.title'),json_extract(suite_revision.content_json,'$.title'),
+           derived_series.title,'') title FROM content_authors credit
+       JOIN creation_forms form ON form.entity_type=credit.target_type AND form.entity_id=credit.target_id
+         AND form.deleted_at IS NULL
+       JOIN creation_items item ON item.id=form.creation_item_id AND item.deleted_at IS NULL
+         AND item.archived_at IS NULL
+       LEFT JOIN articles article ON credit.target_type='ARTICLE' AND article.id=credit.target_id
+         AND article.deleted_at IS NULL AND article.status='ACTIVE'
+       LEFT JOIN article_revisions article_revision ON article_revision.id=article.current_revision_id
+       LEFT JOIN social_post_drafts post ON credit.target_type='SOCIAL_POST' AND post.id=credit.target_id
+         AND post.deleted_at IS NULL AND post.status='ACTIVE'
+       LEFT JOIN social_post_revisions post_revision ON post_revision.id=post.current_revision_id
+       LEFT JOIN documents document ON credit.target_type='VIDEO_DOCUMENT' AND document.id=credit.target_id
+         AND document.deleted_at IS NULL AND document.status='ACTIVE'
+       LEFT JOIN prompt_series series ON credit.target_type='PROMPT_SERIES' AND series.id=credit.target_id
+         AND series.deleted_at IS NULL
+       LEFT JOIN gif_documents gif ON credit.target_type='GIF_DOCUMENT' AND gif.id=credit.target_id
+         AND gif.deleted_at IS NULL AND gif.archived_at IS NULL
+       LEFT JOIN image_breakdowns breakdown ON credit.target_type='IMAGE_BREAKDOWN' AND breakdown.id=credit.target_id
+         AND breakdown.deleted_at IS NULL AND breakdown.archived_at IS NULL
+       LEFT JOIN inspiration_stashes stash ON credit.target_type='INSPIRATION_STASH' AND stash.id=credit.target_id
+         AND stash.deleted_at IS NULL AND stash.status='ACTIVE'
+       LEFT JOIN evaluation_suites suite ON credit.target_type='EVALUATION_SUITE' AND suite.id=credit.target_id
+         AND suite.deleted_at IS NULL AND suite.status='ACTIVE'
+       LEFT JOIN evaluation_suite_revisions suite_revision ON suite_revision.id=suite.current_revision_id
+       LEFT JOIN derived_visuals derived ON credit.target_type='DERIVED_VISUAL' AND derived.id=credit.target_id
+       LEFT JOIN prompt_series derived_series ON derived_series.id=derived.prompt_series_id AND derived_series.deleted_at IS NULL
+       WHERE credit.author_id=? AND COALESCE(article.id,post.id,document.id,series.id,gif.id,breakdown.id,stash.id,suite.id,derived.id) IS NOT NULL
+       ORDER BY item.updated_at DESC,form.id LIMIT 31 OFFSET ?`,
+      )
+      .all(input.authorId, input.offset) as { id: string; title: string }[];
+    return {
+      works: rows.slice(0, 30).map(({ id, title }) => ({ id, title })),
+      nextOffset: rows.length > 30 ? input.offset + 30 : null,
+    };
   }
 
   private targetItem(target: CreationFormEntityRef) {
@@ -100,6 +156,7 @@ export class AuthorRepository {
         )
           throw new Error('CREATION_UNAVAILABLE');
         const previous = this.forTarget(input.target)!;
+        if (authorSelectionWasCommitted(this.db, input)) return previous;
         if (previous.revision !== input.expectedRevision) throw new Error('AUTHOR_CHANGED');
         initializeContentAuthors(this.db, input.target);
         let ids = previous.authors.map((author) => author.id);
@@ -108,12 +165,7 @@ export class AuthorRepository {
         if (selection.kind === 'REMOVE') ids = ids.filter((id) => id !== selection.authorId);
         if (selection.kind === 'EXISTING') ids.push(this.get(selection.authorId).id);
         if (selection.kind === 'NEW') {
-          const author = createAuthorIdentity(this.db, selection.fields.name);
-          this.db
-            .prepare('UPDATE creation_authors SET avatar_data_url=? WHERE id=?')
-            .run(selection.fields.avatarDataUrl, author.id);
-          ids.push(author.id);
-          this.storage.recordChange('AUTHOR', author.id, 'CREATE', { name: author.name });
+          ids.push(createSelectedAuthor(this.storage, input));
         }
         const result = this.db
           .prepare(

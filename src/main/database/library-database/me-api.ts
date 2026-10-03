@@ -16,6 +16,7 @@ export function createMeApi(storage: LibraryStorage, content: ContentLibraryRepo
       if (command.kind === 'profile-get') return readUserProfile(storage.db);
       if (command.kind === 'profile-save') return saveUserProfile(storage, command.profile);
       if (command.kind === 'authors-list') return authors.list(command);
+      if (command.kind === 'author-works') return authors.works(command);
       if (command.kind === 'creation-author') return authors.forTarget(command.target);
       if (command.kind === 'creation-author-set') return authors.assign(command);
       if (command.kind === 'author-update') return authors.update(command);

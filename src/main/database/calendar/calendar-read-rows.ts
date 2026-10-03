@@ -1,5 +1,5 @@
 import type Database from 'better-sqlite3';
-import type { CalendarQueryInput } from '@/shared/contracts/calendar';
+import type { CalendarEntityRef, CalendarQueryInput } from '@/shared/contracts/calendar';
 import { calendarCategorySql, CalendarSourceReader } from '@/main/database/calendar/calendar-sources';
 import { calendarDateRangeEpochs, calendarNextDate } from '@/main/database/calendar/calendar-time';
 import { calendarAsOfCtes } from '@/main/database/calendar/calendar-as-of';
@@ -7,6 +7,7 @@ import { calendarActivityObjects } from '@/main/database/calendar/calendar-objec
 import { calendarVisibleActivitySql } from '@/main/database/calendar/calendar-activity-visibility';
 
 export interface CalendarReadFilter {
+  details?: CalendarQueryInput['details'];
   writer?: string;
   startDate: string;
   endDate: string;
@@ -173,21 +174,24 @@ function filteredRows(input: CalendarReadFilter, snapshot: number, includeDetail
   };
 }
 
-function objectRows(db: Database.Database, input: CalendarReadFilter, snapshot: number, details = false) {
-  const { sql, params } = filteredRows(input, snapshot, details);
-  const refs = db.prepare(`${sql} SELECT DISTINCT entity_type type,entity_id id FROM filtered`).all(params) as {
-    type: string;
-    id: string;
-  }[];
+function availableCalendarObjects(db: Database.Database, input: CalendarReadFilter, refs: CalendarEntityRef[]) {
   const objects =
     input.timeAxis === 'effective'
       ? calendarActivityObjects(db, refs)
       : refs.map((ref) => ({ ...ref, objectType: ref.type, objectId: ref.id }));
   const sources = new CalendarSourceReader(db, 'availability');
   sources.prefetch(objects.map((ref) => ({ type: ref.objectType, id: ref.objectId })));
-  // Filter before grouping, pagination and counting. Missing sources must not
+  // Filter before object-day merging, pagination and final counts. Missing sources must not
   // consume page slots or become separate anonymous objects in the heatmap.
-  const availableObjects = objects.filter((ref) => sources.read({ type: ref.objectType, id: ref.objectId }).available);
+  return objects.filter((ref) => sources.read({ type: ref.objectType, id: ref.objectId }).available);
+}
+
+function objectRows(db: Database.Database, input: CalendarReadFilter, snapshot: number, details = false) {
+  const { sql, params } = filteredRows(input, snapshot, details);
+  const refs = db
+    .prepare(`${sql} SELECT DISTINCT entity_type type,entity_id id FROM filtered`)
+    .all(params) as CalendarEntityRef[];
+  const availableObjects = availableCalendarObjects(db, input, refs);
   return {
     sql: `${sql}, object_refs AS MATERIALIZED (
       SELECT json_extract(value,'$.type') type,json_extract(value,'$.id') id,
@@ -253,16 +257,22 @@ export function readCalendarRows(
 ) {
   if (!input.categories.length) return [];
   const { sql, params } = objectRows(db, input, snapshot, true);
-  const grouped = input.timeAxis === 'effective';
+  const grouped = input.timeAxis === 'effective' && !input.details;
+  const detailFilter = !input.details
+    ? '1=1'
+    : input.details.kind === 'object'
+      ? 'object_type=@detailType AND object_id=@detailId'
+      : 'id=@detailId';
   return db
     .prepare(
       `${sql}${grouped ? groupedActivityRowsSql() : ''} SELECT ${readFields}
       ${grouped ? ',activity_count,object_type,object_id,first_at,last_at,activity_categories,activity_writers,group_corrected,activity_changes' : ''}
       FROM ${grouped ? 'visible_rows' : 'object_activity'}
+    WHERE ${detailFilter}
     ${
       cursor
-        ? `WHERE sort_at < @cursorAt OR (sort_at=@cursorAt AND (item_revision < @cursorOrdinal
-      OR (item_revision=@cursorOrdinal AND occurrence_id < @cursorOccurrenceId)))`
+        ? `AND (sort_at < @cursorAt OR (sort_at=@cursorAt AND (item_revision < @cursorOrdinal
+      OR (item_revision=@cursorOrdinal AND occurrence_id < @cursorOccurrenceId))))`
         : ''
     }
     ORDER BY sort_at DESC,item_revision DESC,occurrence_id DESC LIMIT @limit`,
@@ -270,6 +280,11 @@ export function readCalendarRows(
     .all({
       ...params,
       limit: limit + 1,
+      ...(input.details?.kind === 'object'
+        ? { detailType: input.details.object.type, detailId: input.details.object.id }
+        : input.details
+          ? { detailId: input.details.eventId }
+          : {}),
       ...(cursor
         ? { cursorAt: cursor.at, cursorOrdinal: cursor.ordinal, cursorOccurrenceId: cursor.occurrenceId }
         : {}),
@@ -280,22 +295,40 @@ export function readCalendarDayCounts(db: Database.Database, input: CalendarRead
   const days: string[] = [];
   for (let date = input.startDate; date <= input.endDate; date = calendarNextDate(date)) days.push(date);
   if (!input.categories.length) return days.map((date) => ({ date, total: 0 }));
-  const { sql, params } = objectRows(db, input, snapshot);
-  const dayParams = Object.fromEntries(days.map((date, index) => [`day${index}`, date]));
-  return db
+  const { sql, params } = filteredRows(input, snapshot);
+  // Read each matching event once. Resolve only the distinct sources afterwards,
+  // instead of rescanning the range and sending the source map back through JSON.
+  const rows = db
     .prepare(
-      `${sql}, days(date) AS (VALUES ${days.map((_, index) => `(@day${index})`).join(',')}),
-      activity_days AS (
-        ${
-          input.timeAxis === 'effective'
-            ? 'SELECT DISTINCT activity_date date,object_type,object_id FROM object_activity'
-            : 'SELECT activity_date date,id,occurrence_id FROM object_activity'
-        }
-      ), activity_counts AS (
-        SELECT date,COUNT(*) total FROM activity_days GROUP BY date
+      `${sql}, dated_activity AS MATERIALIZED (
+        SELECT entity_type type,entity_id id,
+          ${input.timeAxis === 'effective' ? 'COALESCE(display_date,aiy_calendar_local_date(sort_at,@timeZone))' : 'aiy_calendar_local_date(sort_at,@timeZone)'} date
+        FROM filtered
       )
-      SELECT d.date,COALESCE(a.total,0) total
-      FROM days d LEFT JOIN activity_counts a ON a.date=d.date ORDER BY d.date`,
+      SELECT type,id,date,COUNT(*) total FROM dated_activity GROUP BY type,id,date`,
     )
-    .all({ ...params, ...dayParams }) as { date: string; total: number }[];
+    .all(params) as (CalendarEntityRef & { date: string; total: number })[];
+  const sourceKey = (ref: CalendarEntityRef) => JSON.stringify([ref.type, ref.id]);
+  const refs = new Map(rows.map((row) => [sourceKey(row), { type: row.type, id: row.id }]));
+  const objects = new Map(
+    availableCalendarObjects(db, input, [...refs.values()]).map((ref) => [
+      sourceKey(ref),
+      JSON.stringify([ref.objectType, ref.objectId]),
+    ]),
+  );
+  const counts = new Map<string, number>();
+  const seen = new Map<string, Set<string>>();
+  for (const row of rows) {
+    const object = objects.get(sourceKey(row));
+    if (!object) continue;
+    if (input.timeAxis === 'effective') {
+      const dayObjects = seen.get(row.date) ?? new Set<string>();
+      seen.set(row.date, dayObjects);
+      dayObjects.add(object);
+      counts.set(row.date, dayObjects.size);
+    } else {
+      counts.set(row.date, (counts.get(row.date) ?? 0) + row.total);
+    }
+  }
+  return days.map((date) => ({ date, total: counts.get(date) ?? 0 }));
 }

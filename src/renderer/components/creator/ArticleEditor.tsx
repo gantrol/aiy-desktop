@@ -315,7 +315,8 @@ function ArticleEditorWorkspace({
     />
   );
 
-  if (article.content.editorMode === 'OUTLINE') {
+  const editorMode = useArticleEditorSessionSelector((state) => state.draft.metadata.editorMode);
+  if (editorMode === 'OUTLINE') {
     return (
       <OutlineArticleEditor
         article={article}
@@ -472,7 +473,7 @@ export function ArticleEditor(props: Props) {
       spaceId={spaceId}
       zh={locale === 'zh'}
     >
-      <OutlineContentLinkHost.Provider value={{ spaceId, articleId: article.id, albumId: article.albumId }}>
+      <OutlineContentLinkHost.Provider value={{ spaceId, articleId: article.id, albumId: article.albumId, notify }}>
         <ArticleEditorWorkspace {...props} />
       </OutlineContentLinkHost.Provider>
     </ArticleEditorSessionProvider>

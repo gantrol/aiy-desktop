@@ -3,7 +3,10 @@ import { CropIcon, ImagePlusIcon, ImagesIcon, LoaderCircleIcon, RotateCcwIcon, S
 import { ArticleHeaderIconButton } from '@/renderer/components/creator/article-editor/ArticleEditorHeader';
 import { ArticleCoverRatioInfo } from '@/renderer/components/creator/article-editor/ArticleCoverRatioInfo';
 import { useArticleCoverWorkspace } from '@/renderer/components/creator/article-editor/ArticleCoverWorkspace';
-import { useArticleEditorSession } from '@/renderer/components/creator/article-editor/ArticleEditorSessionProvider';
+import {
+  useArticleEditorSession,
+  useArticleEditorSessionSelector,
+} from '@/renderer/components/creator/article-editor/ArticleEditorSessionProvider';
 import { generationPhaseLabel } from '@/renderer/components/generation/task-presentation';
 import { AssetFileContextMenu } from '@/renderer/components/media/AssetFileContextMenu';
 import { mediaThumbnailUrl } from '@/renderer/components/media/mediaThumbnailUrl';
@@ -39,6 +42,18 @@ export function ArticleCoverSlot({
   const { messages } = useI18n();
   const copy = messages.contentEditor.coverEditor;
   const session = useArticleEditorSession();
+  const editableText = useArticleEditorSessionSelector((state) =>
+    Boolean(
+      state.draft.metadata.coverVariants?.some(
+        (variant) => variant.ratio === ratio && variant.assetId === assetId && variant.textSource,
+      ),
+    ),
+  );
+  const textLabel = editableText ? messages.textCoverSource.edit : messages.contentEditor.textCover.generate;
+  const previewAction = editableText
+    ? { label: textLabel, Icon: TypeIcon, open: onGenerateText }
+    : { label: copy.edit, Icon: CropIcon, open: onEdit };
+  const PreviewIcon = previewAction.Icon;
   const workspace = useArticleCoverWorkspace();
   const [dragOver, setDragOver] = useState(false);
   const generation = workspace.generations[ratio];
@@ -59,16 +74,16 @@ export function ArticleCoverSlot({
     <Button
       type="button"
       variant="ghost"
-      aria-label={`${copy.edit} ${ratio}`}
+      aria-label={`${previewAction.label} ${ratio}`}
       aria-busy={busy || undefined}
-      title={`${copy.edit} ${ratio}`}
+      title={`${previewAction.label} ${ratio}`}
       className={cn(
         'group relative mx-auto flex h-20 overflow-hidden rounded-sm bg-surface-sunken p-0',
         dragOver && 'ring-2 ring-ring ring-inset',
       )}
       style={{ width: articleCoverAspectRatio(ratio) * 80 }}
       disabled={Boolean(dropping)}
-      onClick={onEdit}
+      onClick={previewAction.open}
       onDragOver={(event) => {
         if (!acceptsDrop(event.dataTransfer)) return;
         event.preventDefault();
@@ -93,10 +108,10 @@ export function ArticleCoverSlot({
             src={mediaThumbnailUrl({ id: asset.assetId }, 192)}
             alt=""
             loading="lazy"
-            className="size-full object-contain"
+            className="size-full object-cover"
             draggable={false}
           />
-          <CropIcon className="absolute right-1 bottom-1 size-5 rounded-sm bg-background/90 p-0.5 opacity-0 group-hover:opacity-100 group-focus-visible:opacity-100" />
+          <PreviewIcon className="absolute right-1 bottom-1 size-5 rounded-sm bg-background/90 p-0.5 opacity-0 group-hover:opacity-100 group-focus-visible:opacity-100" />
           {busy && (
             <span className="absolute top-1 right-1 rounded-sm bg-background/90 p-1">
               <LoaderCircleIcon className="size-3.5 animate-spin motion-reduce:animate-none" />
@@ -119,7 +134,7 @@ export function ArticleCoverSlot({
             { id: 'crop-cover', label: copy.edit, icon: CropIcon, onSelect: onEdit },
             {
               id: 'generate-text-cover',
-              label: messages.contentEditor.textCover.generate,
+              label: textLabel,
               icon: TypeIcon,
               onSelect: onGenerateText,
               disabled: Boolean(dropping),
@@ -164,7 +179,7 @@ export function ArticleCoverSlot({
       <div className="flex items-center gap-0.5">
         <ArticleHeaderIconButton
           variant="ghost"
-          label={`${messages.contentEditor.textCover.generate} ${ratio}`}
+          label={`${textLabel} ${ratio}`}
           disabled={Boolean(dropping)}
           onClick={onGenerateText}
         >

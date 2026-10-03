@@ -14,8 +14,10 @@ import {
   type NavigationMode,
 } from '@/renderer/components/app/app-navigation';
 import type { CreationSessionProjection } from '@/renderer/components/creator/creationSessionProjection';
-import { isCreationDraftSessionSupersededError } from '@/renderer/components/creator/workflows/useCreationDraftSession';
+import { isCreationDraftSessionSupersededError } from '@/renderer/components/creator/workflows/creationDraftSessionErrors';
+import { isCreationDraftConflict } from '@/shared/creation-draft-errors';
 import { useStableCallback } from '@/renderer/lib/useStableCallback';
+import type { MessageCatalog } from '@/renderer/i18n/types';
 
 type CreationMode = 'existing' | 'new';
 
@@ -29,6 +31,7 @@ interface Options {
   creationMode: CreationMode;
   creationSessions: readonly CreationSessionProjection[];
   defaultPromptLocale: Locale | null;
+  draftMessages: Pick<MessageCatalog['creator']['draftConflict'], 'movedToRoot' | 'moveFailed'>;
   detachDraftIdentity(): void;
   hasPendingInput(): boolean;
   getSavedDraft(): CreationDraftDto | null;
@@ -90,8 +93,7 @@ function creationNavigationContextChanged(previous: CreationNavigationContext, c
   );
 }
 
-function replaceWithBlankSession(options: Options, albumId: string | null) {
-  options.invalidateAutosaves();
+function prepareDraftWorkspace(options: Options) {
   options.onComparisonFullWindowChange(false);
   options.clearSelection();
   options.clearSavedInspiration();
@@ -104,6 +106,11 @@ function replaceWithBlankSession(options: Options, albumId: string | null) {
   options.setRequestedAssetId(null);
   options.setOutputGalleryOpen(false);
   options.setCompactPanel('creator');
+}
+
+function replaceWithBlankSession(options: Options, albumId: string | null) {
+  options.invalidateAutosaves();
+  prepareDraftWorkspace(options);
   options.resetInputs();
   options.startNewSession(albumId);
   options.restoreAssistant(null);
@@ -127,17 +134,8 @@ export function useCreatorCreationNavigation(options: Options) {
     },
     [],
   );
-  const {
-    commit,
-    creationMode,
-    locale,
-    location,
-    notify,
-    saveDraft,
-    setTargetAlbumId,
-    targetAlbumId,
-    targetAlbumUnavailable,
-  } = options;
+  const { commit, creationMode, location, notify, saveDraft, setTargetAlbumId, targetAlbumId, targetAlbumUnavailable } =
+    options;
   const hasDraftState = useStableCallback(() =>
     Boolean(options.creationDraftId || options.meaningfulDraftInput || options.hasPendingInput()),
   );
@@ -151,7 +149,7 @@ export function useCreatorCreationNavigation(options: Options) {
       }
       return true;
     } catch (reason) {
-      if (!isCreationDraftSessionSupersededError(reason))
+      if (!isCreationDraftSessionSupersededError(reason) && !isCreationDraftConflict(reason))
         options.notify(reason instanceof Error ? reason.message : String(reason));
       return false;
     }
@@ -221,7 +219,8 @@ export function useCreatorCreationNavigation(options: Options) {
       if (!(await preserveCurrentDraft())) return false;
       if (commandRevisionRef.current !== commandRevision) return false;
       const savedDraft = options.getSavedDraft();
-      if (options.creationDraftId === draftId && savedDraft?.id === draftId) draft = savedDraft;
+      if (options.creationDraftId === draftId && savedDraft?.id === draftId && savedDraft.updatedAt > draft.updatedAt)
+        draft = savedDraft;
       replaceWithBlankSession(options, null);
       if (mode) {
         const nextLocation = { surface: 'creation-draft' as const, draftId };
@@ -249,8 +248,18 @@ export function useCreatorCreationNavigation(options: Options) {
     options.commit({ surface: 'new-creation', albumId: options.targetAlbumId }, 'replace');
   });
 
+  const continueSavedDraft = useStableCallback((draft: CreationDraftDto) => {
+    if (options.getSavedDraft()?.id !== draft.id) return;
+    commandRevisionRef.current += 1;
+    prepareDraftWorkspace(options);
+    options.restoreAssistant({ kind: 'DRAFT', id: draft.id });
+    // The save session already owns this copy. Keep input typed during its save;
+    // loading it again would add a failure point and replace those newer edits.
+    options.commit({ surface: 'creation-draft', draftId: draft.id }, 'replace');
+  });
+
   const detachDraftFromUnavailableAlbum = useStableCallback(async (albumId: string, includeDescendants: boolean) => {
-    if (options.creationMode !== 'new' || !options.targetAlbumId) return false;
+    if (options.selectedContent || options.creationMode !== 'new' || !options.targetAlbumId) return false;
     let affected = options.targetAlbumId === albumId;
     if (!affected && includeDescendants) {
       const visited = new Set<string>();
@@ -270,9 +279,7 @@ export function useCreatorCreationNavigation(options: Options) {
       await options.saveDraft(null);
     } catch (reason) {
       options.notify(
-        options.locale === 'zh'
-          ? `草稿已移到顶层，但自动保存失败：${reason instanceof Error ? reason.message : String(reason)}`
-          : `The draft was moved to the root, but autosave failed: ${reason instanceof Error ? reason.message : String(reason)}`,
+        options.draftMessages.moveFailed.replace('{error}', reason instanceof Error ? reason.message : String(reason)),
       );
     }
     if (options.location.surface === 'new-creation') {
@@ -282,26 +289,21 @@ export function useCreatorCreationNavigation(options: Options) {
   });
 
   useEffect(() => {
-    if (creationMode !== 'new' || !targetAlbumId || !targetAlbumUnavailable) return;
+    if (options.selectedContent || creationMode !== 'new' || !targetAlbumId || !targetAlbumUnavailable) return;
     setTargetAlbumId(null);
     if (location.surface === 'new-creation') {
       commit({ surface: 'new-creation', albumId: null }, 'replace');
     }
     void saveDraft(null)
-      .then(() =>
-        notify(
-          locale === 'zh'
-            ? '目标图集不可用，草稿已移到顶层'
-            : 'The target album is unavailable; the draft was moved to the root',
-        ),
-      )
+      .then(() => notify(options.draftMessages.movedToRoot))
       .catch((reason) => notify(reason instanceof Error ? reason.message : String(reason)));
   }, [
     commit,
     creationMode,
-    locale,
+    options.draftMessages,
     location.surface,
     notify,
+    options.selectedContent,
     saveDraft,
     setTargetAlbumId,
     targetAlbumId,
@@ -349,6 +351,7 @@ export function useCreatorCreationNavigation(options: Options) {
 
   return {
     chooseSeries,
+    continueSavedDraft,
     detachDraftFromUnavailableAlbum,
     discardDeletedDraft,
     hasDraftState,
